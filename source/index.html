@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Authoring tool for open, multimedial, and interactive learning resources" />
+    <title>WebWriter</title>
+    <link rel="apple-touch-icon" sizes="180x180" href="static/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="static/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="static/favicon-16x16.png">
+    <link rel="manifest" href="static/site.webmanifest">
+    <style>
+      html, body {
+        --scrollbar-width: calc(100vw - 100%);
+        width: calc(100vw - var(--scrollbar-width));
+        height: 100vh;
+        margin: 0;
+      }
+
+      body {
+        overflow-y: scroll;
+        overflow-x: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <script type="module" src="/index.js"></script>
+    <ww-app></ww-app>
+  </body>
+</html>

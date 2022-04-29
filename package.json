@@ -1,0 +1,34 @@
+{
+  "name": "webwriter",
+  "version": "1.0.0",
+  "description": "Authoring tool for open, multimedial, and interactive learning resources",
+  "main": "source/index.html",
+  "scripts": {
+    "dev": "snowpack dev",
+    "build": "snowpack build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://git.rwth-aachen.de/learntech-lufgi9/webwriter.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@shoelace-style/shoelace": "^2.0.0-beta.73",
+    "@xstate/immer": "^0.3.1",
+    "lit": "^2.2.2",
+    "prosemirror-commands": "^1.2.2",
+    "prosemirror-keymap": "^1.1.5",
+    "prosemirror-state": "^1.3.4",
+    "prosemirror-view": "^1.23.12",
+    "sortablejs": "^1.15.0",
+    "xstate": "^4.31.0"
+  },
+  "devDependencies": {
+    "@types/prosemirror-commands": "^1.0.4",
+    "@types/prosemirror-keymap": "^1.0.4",
+    "@types/prosemirror-state": "^1.2.8",
+    "@types/prosemirror-view": "^1.23.1"
+  }
+}

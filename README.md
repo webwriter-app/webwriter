@@ -1,4 +1,5 @@
 # WebWriter
+Authoring tool for open, multimedial, and interactive learning resources
 
 ## Tech
 - UI: lit
