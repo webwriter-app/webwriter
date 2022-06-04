@@ -10,15 +10,8 @@
     "tauri-dev": "tauri dev",
     "snowpack-dev": "snowpack dev --open none",
     "dev": "npm-run-all -pr tauri-dev snowpack-dev",
-    "build-local": "snowpack build && npm run build-npm-bin && node ./build.js && tauri build",
-    "build-npm-bin": "echo %npm_package_config_pkg_config% > %npm_package_config_pkg_config_path% && pkg %npm_package_config_pkg_npm_path% --config %npm_package_config_pkg_config_path% --targets %npm_package_config_pkg_targets% --no-bytecode --public-packages \"*\" --public --output %npm_package_config_pkg_output%"
-  },
-  "config": {
-    "pkg_config": "{\"scripts\": \"lib/**/*\"}",
-    "pkg_config_path": "./node_modules/npm/pkg.json",
-    "pkg_npm_path": "./node_modules/npm/index.js",
-    "pkg_targets": "node16-win-x64,node16-macos-x64,node16-linux-x64,node16-win-arm64,node16-macos-arm64,node16-linux-arm64",
-    "pkg_output": "./binaries/npm"
+    "build-local": "snowpack build && node createbinaries.js && node ./build.js && tauri build",
+    "createbinaries": "node createbinaries.js"
   },
   "repository": {
     "type": "git",
