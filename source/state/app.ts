@@ -1,17 +1,24 @@
-import {Machine, MachineConfig, MachineOptions, ExtractEvent, EventObject, StateSchema} from "xstate"
+import {Machine, MachineConfig, MachineOptions, ExtractEvent, EventObject, StateSchema, createMachine} from "xstate"
 import {assign} from '@xstate/immer'
 
-import {Document} from "../model"
+import {Block, Document} from "../model"
 import * as marshal from "../marshal"
 import * as connect from "../connect"
+import { WWURL, WWURLString } from "../utility"
+import { DocumentEditor } from "../view"
+
+export type Format = keyof typeof marshal
+export type Protocol = keyof typeof connect
 
 interface Context {
   documents: Record<Document["id"], Document>
   documentsOrder: Array<Document["id"]>
   activeDocument: Document["id"]
   pendingChanges: boolean
+  defaultBlockType: string
+  defaultFormat: Format
+  defaultProtocol: Protocol
 }
-
 
 type Event = 
   | {type: "SELECT", id?: Context["activeDocument"]}
@@ -19,9 +26,15 @@ type Event =
   | {type: "UPDATE", id?: Context["activeDocument"], change: Partial<Omit<Document, "id">>}
   | {type: "ARRANGE", order: Context["documentsOrder"]}
   | {type: "DISCARD", id?: Context["activeDocument"]}
-  | {type: "SAVE", id?: Context["activeDocument"], url: string, format: "plaintext"}
-  | {type: "LOAD", url: string}
+  | {type: "SAVE", documentEditor: DocumentEditor, id?: Context["activeDocument"], url?: WWURLString}
+  | {type: "LOAD", overwriteID?: Context["activeDocument"], url: WWURLString}
+  | {type: "RELABEL", id?: Context["activeDocument"], label: string}
+  | {type: "APPEND_BLOCK", id?: Context["activeDocument"], block?: Block | string}
+  | {type: "DELETE_BLOCK", id?: Context["activeDocument"], i: number}
   | {type: "CANCEL"}
+
+class MarshalError extends Error {}
+class ConnectError extends Error {}
 
 const config: MachineConfig<Context, StateSchema, Event> = {
   
@@ -29,7 +42,10 @@ const config: MachineConfig<Context, StateSchema, Event> = {
     documents: {},
     documentsOrder: [],
     activeDocument: null,
-    pendingChanges: false
+    pendingChanges: false,
+    defaultBlockType: "plaintext",
+    defaultFormat: "html",
+    defaultProtocol: "file"
   },
 
   initial: "idle",
@@ -38,12 +54,15 @@ const config: MachineConfig<Context, StateSchema, Event> = {
     idle: {
       on: {
         SELECT: {actions: "select", cond: "isValidSelection"},
-        CREATE: {actions: ["create", "select"]},
+        CREATE: {actions: "create"},
         UPDATE: {actions: "update"},
+        RELABEL: {actions: "relabel"},
         ARRANGE: {actions: "arrange"},
+        APPEND_BLOCK: {actions: "appendBlock"},
+        DELETE_BLOCK: {actions: "deleteBlock"},
         DISCARD: {target: "discarding"},
-        SAVE: {target: "saving"},
-        LOAD: {target: "loading"}
+        SAVE: {target: "saving", cond: "hasDocuments"},
+        LOAD: {target: "loading", cond: "hasDocuments"},
       }
     },
     discarding: {
@@ -52,15 +71,30 @@ const config: MachineConfig<Context, StateSchema, Event> = {
         data: {pendingChanges: (ctx: Context) => ctx.pendingChanges},
         onDone: {
           target: "idle",
-          actions: ["discard", "select"]
+          actions: "discard"
         }
       }
     },
     saving: {
-      // TODO: if no/temp url, select location
-      invoke: {
-        src: "saveDocument"
-      }
+      initial: "idle",
+      states: {
+        idle: {
+          always: [
+            {cond: "isProvidingWWURL", target: "active"},
+            {target: "configuring"}
+          ]
+        },
+        configuring: {
+          on: {
+            SAVE: {target: "active"}
+          }
+        },
+        active: {
+          invoke: {
+            src: "saveDocument"
+          }
+        },
+      },
     },
     loading: {
       // TODO: if no/temp url select location
@@ -96,24 +130,66 @@ const services: MachineOptions<Context, Event>["services"] = {
   }),
 
   saveDocument: async (ctx, ev: ExtractEvent<Event, "SAVE">) => {
+
+    console.log(ev)
+
     const id = ev.id ?? ctx.activeDocument
-    const protocol: keyof typeof connect = new URL(ev.url).protocol as any
-    const serialize = marshal[ev.format].serialize
-    const save = connect[protocol].save
+    if(!ev.url) {
+      throw TypeError("No 'url' provided")
+    }
 
-    const data = serialize(ctx.documents[id])
+    const url = new WWURL(ev.url)
 
-    return save(data, ev.url)
+    const save = connect[url.protocol.slice(0, -1)].save
+    const serialize = marshal[url.wwformat].serialize
+    const urlHasNoLocation = url.hash.includes("nolocation")
+
+    let data: string
+      data = serialize(ev.documentEditor, ctx.documents[id])
+
+    try {
+      return save(data, urlHasNoLocation? undefined: url.href)
+    }
+    catch(err) {
+      throw AggregateError([new ConnectError("Error saving data"), err])
+    }
   },
   
   loadDocument: async (ctx, ev: ExtractEvent<Event, "LOAD">) => {
-    const protocol: keyof typeof connect = new URL(ev.url).protocol as any
-    const load = connect[protocol].load
-    const parse = marshal["plaintext"].parse
-
-    const data = await load(ev.url)
     
-    return parse(data)
+    if(!ev.url) {
+      throw TypeError("No 'url' provided")
+    }
+
+    const url = new WWURL(ev.url)
+
+    const load = connect[url.protocol.slice(0, -1)].load
+    const parse = marshal[url.wwformat].parse
+    const urlHasNoLocation = url.hash.includes("nolocation")
+
+    let data: string
+    try {
+      data = await load(urlHasNoLocation? undefined: url.href)
+    }
+    catch(err) {
+      throw AggregateError([new ConnectError("Error loading data"), err])
+    }
+
+    let doc: Document
+    try {
+      doc = await parse(data)
+    }
+    catch(err) {
+      throw AggregateError([new MarshalError("Error parsing data"), err])
+    }
+    
+    if(ev.overwriteID) {
+      ctx.documents[ev.overwriteID] = doc
+      doc.id = ev.overwriteID
+    }
+    else {
+      // Append to existing documents
+    }
   }
 }
 
@@ -124,9 +200,19 @@ const guards: MachineOptions<Context, Event>["guards"] = {
     return ctx.documentsOrder.includes(ev.id)
   },
 
+  isProvidingWWURL: (ctx, ev: Event & {url: Document["url"]}) => {
+    try {
+      new WWURL(ev.url)
+      return true
+    }
+    catch(err) {
+      return false
+    }
+  },
+
   hasActiveDocument: ctx => ctx.activeDocument != null,
-  
-  noRemainingDocument: ctx => Object.keys(ctx.documents).length == 1,
+
+  hasDocuments: ctx => ctx.documentsOrder.length > 0,
   
   noPendingChanges: ctx => !ctx.pendingChanges
 
@@ -153,18 +239,47 @@ const actions: MachineOptions<Context, EventObject>["actions"] = {
 
   discard: assign((ctx, ev: ExtractEvent<Event, "DISCARD">) => {
     const id  = ev.id ?? ctx.activeDocument
+    const i = ctx.documentsOrder.indexOf(id)
+    if(id === ctx.activeDocument) {
+      ctx.activeDocument = ctx.documentsOrder[i+1] ?? ctx.documentsOrder[i-1]
+    }
     ctx.documents[id] = undefined
     ctx.documentsOrder.splice(ctx.documentsOrder.indexOf(id), 1)
   }),
   
   create: assign(ctx => {
-    const newDocument = new Document()
+    const id = Math.max(-1, ...Object.keys(ctx.documents).map(k => parseInt(k))) + 1
+    const newDocument = new Document(id)
     ctx.documents[newDocument.id] = newDocument
-    ctx.documentsOrder.push(newDocument.id)
-  })
+    ctx.documentsOrder.unshift(newDocument.id)
+    ctx.activeDocument = newDocument.id
+  }),
 
+  relabel: assign((ctx, ev: ExtractEvent<Event, "RELABEL">) => {
+    const id = ev.id ?? ctx.activeDocument
+    ctx.documents[id].attributes.label = ev.label
+  }),
+
+  appendBlock: assign((ctx, ev: ExtractEvent<Event, "APPEND_BLOCK">) => {
+    const id = ev.id ?? ctx.activeDocument
+    let block: Block
+    if(ev.block) {
+      block = typeof ev.block === "string"? new Block({type: ev.block}): ev.block 
+    }
+    else {
+      block = new Block({type: ctx.defaultBlockType})
+    }
+    ctx.documents[id].content = [...ctx.documents[id].content, block]
+  }),
+
+  deleteBlock: assign((ctx, ev: ExtractEvent<Event, "DELETE_BLOCK">) => {
+    const id = ev.id ?? ctx.activeDocument
+    const doc = ctx.documents[id]
+    doc.content.splice(ev.i, 1)
+    doc.content = [...doc.content]
+  }),
 
 }
 
 
-export const documentsMachine = Machine<Context, Event>(config, {services, guards, actions})
+export const documentsMachine = createMachine(config, {services, guards, actions})

@@ -1,47 +1,69 @@
-type JSONPrimitive = string | number | boolean | null
-type JSONValue = JSONPrimitive | JSONValue[] | {[k: string]: JSONValue}
-type JSONSchema = JSONValue
-type BlockMetadata = JSONValue & {
+import { WWURLString } from "../utility"
+
+type BlockMetadata = {
     label: string,
     type: string
 }
 
-export type Block<
-    M extends BlockMetadata=BlockMetadata,
-    C extends object=object,
-    S extends object=object> = 
-{
-    id: string
-    metadata: M
-    content: C
-    state: S
-}
+export class Block {
+    attributes: Record<string, any> & BlockMetadata
+    content: Block[]
 
-export type WWDocument<
-    C extends Block<BlockMetadata, object, object>[] = [],
-    S extends object=object> = 
-    Block<BlockMetadata & {type: "document"}, object, object>
-
-export class Document { 
-    constructor(
-        public readonly id: number = Document.generateID(),
-        public readonly name: string = "",
-        public readonly text: string = ""
-    ) {}
-
-    static maxID = -1
-    
-    static generateID() {
-        Document.maxID += 1
-        return Document.maxID
+    constructor(attributes?: Pick<BlockMetadata, "type"> & Record<string, any>, content: Block["content"] = null) {
+        if(!attributes?.type) {
+            throw TypeError("Missing required 'type' attribute in Block")
+        }
+        let attrs = {label: "", ...attributes}
+        this.attributes = {...attrs}
+        this.content = content
     }
 }
 
-export interface Package<S extends JSONSchema, E extends HTMLElement, V extends HTMLElement, A extends HTMLElement> {
-    schema: S
-    edit: (data: S) => E
-    display: (data: S, editable: boolean, printable: boolean) => V
-    actions: (data: S) => A
+export class Document { 
+
+    constructor(id?: Document["id"], url?: Document["url"], attributes: Document["attributes"] = {label: "", type: "document"}, content: Document["content"] = []) {
+        this.id = id
+        this.url = url
+        this.attributes = attributes
+        this.content = content
+    }
+
+    // Uniquely identifies the document among all opened documents
+    id: number
+
+    attributes: Record<string, any> & Omit<BlockMetadata, "type"> & {type: "document"}
+
+    // Remote location where the document is persisted ("remote" may also be on disk)
+    url: WWURLString
+
+    content: Block[] = []
+}
+
+export type BlockElement<B extends Block = Block> = HTMLElement & {
+    label: string
+    author: string
+    license: string
+    printable: boolean
+    editing: boolean
+    onlineOnly: boolean
+} & Omit<B["attributes"], "type">
+
+export interface BlockActionElement<B extends Block = Block> extends HTMLElement {
+    block: B
+}
+
+export interface BlockElementConstructor<B extends Block = Block> {
+    new (...params: any[]): BlockElement<B>
+}
+
+export interface BlockActionElementConstructor {
+    new (...params: any[]): BlockActionElement
+}
+
+export interface Package<E extends BlockElementConstructor, A extends BlockActionElementConstructor> {
+    element: E
+    actions: A[]
+    experienceEvents?: string[]
 }
 
 type CSSSelector = string

@@ -3,17 +3,17 @@ import {LitElement, html, css, CSSResult, CSSResultGroup} from "lit"
 import {customElement, property, query, queryAssignedElements} from "lit/decorators.js"
 import Sortable from "sortablejs"
 
-import {isOverflownX, isOverflownY} from "../utility"
+import {isOverflownX, isOverflownY} from "../../utility"
 
 
 @customElement("ww-tabs")
 export class Tabs extends LitElement {
 
-	@query("slot[name=tabs]")
-	tabsSlot: HTMLSlotElement
-
 	@queryAssignedElements({slot: "tabs"})
 	tabs: HTMLElement[]
+
+	@queryAssignedElements({slot: "tabs", selector: "[active]"})
+	activeTab: HTMLElement
 
 	@query("[part=tabs-wrapper]")
 	tabsWrapper: HTMLElement
@@ -30,6 +30,7 @@ export class Tabs extends LitElement {
 				display: grid;
 				grid: min-content / 1fr minmax(auto, 960px) 1fr;
 				grid-auto-rows: min-content;
+				row-gap: 1rem;
 				align-items: center;
 				height: 100%;
 			}
@@ -57,7 +58,6 @@ export class Tabs extends LitElement {
 				flex-wrap: nowrap;
 				overflow-x: scroll;
 				scrollbar-width: none;
-				z-index: 5000;
 			}
 
 			[part=tabs-wrapper]::-webkit-scrollbar {
@@ -78,11 +78,10 @@ export class Tabs extends LitElement {
 
 			[part=pre-tabs], [part=tabs], [part=post-tabs] {
 				height: 100%;
-				background: #E0E0E0;
 				position: sticky;
 				top: 0;
 				left: 0;
-				z-index: 10000;
+				background: #F0F0F0;
 			}
 
 			sl-icon-button {
@@ -104,30 +103,47 @@ export class Tabs extends LitElement {
 		(e.composedPath()[0] as HTMLElement).scrollIntoView({behavior: "smooth", block: "center", inline: "center"})
 	}
 
+	handleKeyDown(e: KeyboardEvent) {
+		if(e.key === "ArrowLeft") {
+			this.selectPreviousTab()
+		}
+		else if (e.key === "ArrowRight") {
+			this.selectNextTab()
+		}
+	}
+
+	selectPreviousTab() {
+		const previousTab = this.tabs[this.tabs.indexOf(this.activeTab[0]) - 1]
+		previousTab?.focus()		
+	}
+
+	selectNextTab() {
+		const nextTab = this.tabs[this.tabs.indexOf(this.activeTab[0]) + 1]
+		nextTab?.focus()
+	}
+
 	firstUpdated() {
 		Sortable.create(this)
 	}
 
 	render() {
 		return html`
-			<div part="base">
+			<div autofocus part="base">
 				<div part="pre-tabs">
 					<slot name="pre-tabs">
 						<sl-icon-button name="list"></sl-icon-button>
+						<sl-icon-button name="plus" @click=${this.emitNewTab}></sl-icon-button>
 					</slot>
 				</div>
-				<div part="tabs" @focusin=${this.handleFocusIn}>
-					<ww-scroll-button direction="left" .getTarget=${() => this.tabsWrapper}></ww-scroll-button>
+				<div part="tabs" @focusin=${this.handleFocusIn} @keydown=${this.handleKeyDown}>
+					<ww-scroll-button visible="always" direction="left" .getTarget=${() => this.tabsWrapper}></ww-scroll-button>
 					<div part="tabs-wrapper">
 						<slot name="tabs"></slot>
-						<sl-icon-button name="plus" @click=${this.emitNewTab}></sl-icon-button>
-						<sl-icon-button name="folder2-open" @click=${this.emitOpenTab}></sl-icon-button>
 					</div>
-					<ww-scroll-button direction="right" .getTarget=${() => this.tabsWrapper}></ww-scroll-button>
+					<ww-scroll-button visible="always" direction="right" .getTarget=${() => this.tabsWrapper}></ww-scroll-button>
 				</div>
 				<div part="post-tabs">
 					<slot name="post-tabs">
-						<sl-icon-button name="download"></sl-icon-button>
 					</slot>
 				</div>
 				<slot></slot>
@@ -144,9 +160,15 @@ export class Tab extends SlTab {
 			:host {
 				--focus-ring: none;
 				margin-right: 0.5em;
-				border: 2px solid transparent;
 				border-radius: 6px;
 				background: transparent;
+				border: 2px solid transparent;
+				flex-shrink: 1;
+				overflow: hidden;
+				width: 20ch;
+				min-width: min-content;
+				transition: max-width 1s ease-in;
+				position: relative;
 			}
 
 			:host(:hover) {
@@ -155,7 +177,7 @@ export class Tab extends SlTab {
 
 			:host([active]) {
 				background: white;
-				border: 2px solid lightgray;
+				border: 2px solid rgba(0, 0, 0, 0.1);
 				border-bottom: 2px solid white;
 				border-bottom-left-radius: 0;
 				border-bottom-right-radius: 0;
@@ -163,14 +185,34 @@ export class Tab extends SlTab {
 
 			[part=base] {
 				padding: 0.5rem;
-				min-width: 20ch;
 				display: flex;
 				justify-content: space-between;
 				border-radius: 0;
+				padding-bottom: 0.9em;
 			}
 
-			:host(:not(:hover):not([active])) [part=close-button] {
+			:host(:not([active])) [part=close-button] {
 				visibility: hidden;
+			}
+
+			[part=close-button] {
+				position: absolute;
+				top: 20%;
+				right: 5%;
+				background: rgba(255, 255, 255, 0.85);
+				box-shadow: 0 0 5px 10px rgba(255, 255, 255, 0.85);
+			}
+
+			[part=close-button]::part(base):hover {
+				color: red;
+			}
+
+			[part=close-button]::part(base):focus {
+				color: red;
+			}
+
+			[part=close-button]::part(base):active {
+				color: darkred;
 			}
 		`] as any
 	}
@@ -180,6 +222,7 @@ export class Tab extends SlTab {
 export class TabPanel extends SlTabPanel {
 	static get styles() {
 		return [SlTabPanel.styles, css`
+
 			:host([active]), :root, [part=base] {
 				display: contents !important;
 			}
@@ -187,6 +230,7 @@ export class TabPanel extends SlTabPanel {
 			[part=base] {
 				padding: 0;
 			}
+
 		`] as any
 	}
 }
@@ -194,6 +238,14 @@ export class TabPanel extends SlTabPanel {
 
 @customElement("ww-scroll-button")
 export class ScrollButton extends LitElement {
+
+	static get styles() {
+		return css`
+			sl-icon-button[disabled] {
+				visibility: hidden !important;
+			}
+		`
+	}
 
 	constructor() {
 		super()
@@ -228,7 +280,7 @@ export class ScrollButton extends LitElement {
 			behavior: this.behavior,
 			[horizontal? "left": "top"]: (backwards? -1: 1) * this.amount 
 		})
-		return window.requestAnimationFrame(this.scrollTarget)
+		// return window.requestAnimationFrame(this.scrollTarget)
 	}
 
 	startScrollingTarget = () => {
@@ -245,6 +297,7 @@ export class ScrollButton extends LitElement {
 		return this.visible === "always" || isOverflown(this.getTarget())
 			? html`<sl-icon-button
 				name="chevron-${this.direction}"
+				?disabled=${!isOverflown(this.getTarget())}
 				@mousedown=${this.startScrollingTarget}
 				@mouseup=${this.stopScrollingTarget}
 			></sl-icon-button>`
@@ -254,11 +307,16 @@ export class ScrollButton extends LitElement {
 
 @customElement("ww-tab-title")
 export class TabTitle extends SlInput {
+
+	@query("[part=input]")
+	input: HTMLInputElement
+
 	static get styles() {
 		return [SlInput.styles, css`
 			[part=base] {
 				border: none;
 				background: transparent !important;
+
 			}
 
 			[part=form-control], [part=base], [part=input] {
@@ -269,32 +327,58 @@ export class TabTitle extends SlInput {
 			*:disabled {
 				cursor: pointer !important;
 			}
+
+			*:focus {
+				background: white;
+				z-index: 100000;
+			}
 		`] as any
+	}
+
+	updated() {
+		this.input.setAttribute("style", `
+			font-family: Courier New, monospace;
+			font-weight: bold;
+			padding: 0;
+			padding-left: 1ch;
+			min-width: ${this.placeholder.length + 2}ch;
+			width: ${this.value.length + 2}ch;
+		`)
+	}
+
+	firstUpdated() {
+		this.autofocus? this.focus(): null
 	}
 }
 
 @customElement("ww-side-panel")
 export class SidePanel extends LitElement {
 
+	@property({reflect: true})
+	position: "left" | "right" = "left"
+
 	static get styles() {
 		return css`
-			:host, [part=base] {
+			:host {
 				height: 100%;
-			}
-
-			[part=base] {
-				padding: 0.5em;
 				display: flex;
 				flex-direction: column;
 				justify-content: flex-start;
+			}
+
+			:host([position=left]) {
+				margin-right: 0.25rem;
 				align-items: flex-end;
+			}
+
+			:host([position=right]) {
+				margin-left: 0.25rem;
+				align-items: flex-start;
 			}
 		`
 	}
 
 	render() {
-		return html`<div part="base">
-			<slot></slot>
-		</div>`
+		return html`<slot></slot>`
 	}
 }

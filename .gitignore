@@ -1,2 +1,5 @@
 /node_modules
 /.snowpack
+/src-tauri/target
+/build
+/binaries

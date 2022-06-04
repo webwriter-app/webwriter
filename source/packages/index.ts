@@ -1,2 +1,2 @@
-export * from "./codecell"
-export * from "./richtext"
+export {default as plaintext} from "./plaintext"
+export {default as embed} from "./embed"

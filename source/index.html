@@ -17,13 +17,20 @@
         margin: 0;
       }
 
-      body {
-        overflow-y: scroll;
-        overflow-x: auto;
+      #body {
+        position: static;
+        overflow-y: scroll !important;
+        overflow-x: auto !important;
       }
+
+      .sl-scroll-lock {
+        position: fixed !important;
+      }
+
+      
     </style>
   </head>
-  <body>
+  <body id="body">
     <script type="module" src="/index.js"></script>
     <ww-app></ww-app>
   </body>

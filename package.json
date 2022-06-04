@@ -1,34 +1,60 @@
 {
   "name": "webwriter",
-  "version": "1.0.0",
-  "description": "Authoring tool for open, multimedial, and interactive learning resources",
+  "version": "0.1.0",
+  "description": "Web-based authoring tool for open explorables",
   "main": "source/index.html",
   "scripts": {
-    "dev": "snowpack dev",
-    "build": "snowpack build"
+    "pkg": "pkg",
+    "tauri": "tauri",
+    "snowpack": "snowpack",
+    "tauri-dev": "tauri dev",
+    "snowpack-dev": "snowpack dev --open none",
+    "dev": "npm-run-all -pr tauri-dev snowpack-dev",
+    "build-local": "snowpack build && npm run build-npm-bin && node ./build.js && tauri build",
+    "build-npm-bin": "echo %npm_package_config_pkg_config% > %npm_package_config_pkg_config_path% && pkg %npm_package_config_pkg_npm_path% --config %npm_package_config_pkg_config_path% --targets %npm_package_config_pkg_targets% --no-bytecode --public-packages \"*\" --public --output %npm_package_config_pkg_output%"
+  },
+  "config": {
+    "pkg_config": "{\"scripts\": \"lib/**/*\"}",
+    "pkg_config_path": "./node_modules/npm/pkg.json",
+    "pkg_npm_path": "./node_modules/npm/index.js",
+    "pkg_targets": "node16-win-x64,node16-macos-x64,node16-linux-x64,node16-win-arm64,node16-macos-arm64,node16-linux-arm64",
+    "pkg_output": "./binaries/npm"
   },
   "repository": {
     "type": "git",
     "url": "https://git.rwth-aachen.de/learntech-lufgi9/webwriter.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "edtech",
+    "education",
+    "authoring",
+    "explorable",
+    "open",
+    "web",
+    "multimedial",
+    "interactive"
+  ],
+  "author": "Frederic Salmen <frederic@fsalmen.de>",
+  "license": "MIT",
   "dependencies": {
     "@shoelace-style/shoelace": "^2.0.0-beta.73",
+    "@tauri-apps/api": "^1.0.0-rc.6",
     "@xstate/immer": "^0.3.1",
+    "immer": "^9.0.14",
     "lit": "^2.2.2",
-    "prosemirror-commands": "^1.2.2",
-    "prosemirror-keymap": "^1.1.5",
-    "prosemirror-state": "^1.3.4",
-    "prosemirror-view": "^1.23.12",
     "sortablejs": "^1.15.0",
-    "xstate": "^4.31.0"
+    "xstate": "^4.32.0"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^1.0.0-rc.13",
     "@types/prosemirror-commands": "^1.0.4",
     "@types/prosemirror-keymap": "^1.0.4",
     "@types/prosemirror-state": "^1.2.8",
-    "@types/prosemirror-view": "^1.23.1"
+    "@types/prosemirror-view": "^1.23.1",
+    "@types/wicg-file-system-access": "^2020.9.5",
+    "npm": "^8.12.1",
+    "npm-run-all": "^4.1.5",
+    "pkg": "^5.7.0",
+    "snowpack": "^3.8.8"
   }
 }

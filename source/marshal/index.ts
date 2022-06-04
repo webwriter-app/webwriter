@@ -1,1 +1,1 @@
-export * as plaintext from "./plaintext"
+export * as html from "./html"
