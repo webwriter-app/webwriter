@@ -39,10 +39,7 @@ jobs:
         run: npm run snowpack build
         
       - name: Create binaries
-        run: "echo {\"scripts\": \"lib/**/*\"} > ./node_modules/npm/pkg.json && node ./node_modules/pkg/lib-es5/bin.js ./node_modules/npm/index.js --config ./node_modules/npm/pkg.json --targets node16-win-x64,node16-macos-x64,node16-linux-x64,node16-win-arm64,node16-macos-arm64,node16-linux-arm64 --no-bytecode --public-packages \"*\" --public --output ./binaries/npm"
-
-      - name: Rename binaries
-        run: node ./build.js
+        run: node ./createbinaries.js
 
       - name: Build the app
         uses: tauri-apps/tauri-action@v0
