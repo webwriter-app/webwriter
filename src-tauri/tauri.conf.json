@@ -15,7 +15,10 @@
       "all": true,
       "shell": {
         "sidecar": true,
-        "scope": [{"name": "../binaries/npm", "sidecar": true}]
+        "scope": [
+          {"name": "../binaries/npm", "sidecar": true},
+          {"name": "../binaries/esbuild", "sidecar": true}
+        ]
       }
     },
     "bundle": {
@@ -26,7 +29,8 @@
         "depends": []
       },
       "externalBin": [
-        "../binaries/npm"
+        "../binaries/npm",
+        "../binaries/esbuild"
       ],
       "icon": [
         "icons/32x32.png",

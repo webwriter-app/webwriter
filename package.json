@@ -10,7 +10,7 @@
     "tauri-dev": "tauri dev",
     "snowpack-dev": "snowpack dev --open none",
     "dev": "npm-run-all -pr tauri-dev snowpack-dev",
-    "build-local": "snowpack build && node createbinaries.js && node ./build.js && tauri build",
+    "build-local": "snowpack build && node createbinaries.js && tauri build",
     "createbinaries": "node createbinaries.js"
   },
   "repository": {
@@ -49,5 +49,13 @@
     "npm-run-all": "^4.1.5",
     "pkg": "^5.7.0",
     "snowpack": "^3.8.8"
+  },
+  "optionalDependencies": {
+    "esbuild-darwin-64": "^0.14.42",
+    "esbuild-darwin-arm64": "^0.14.42",
+    "esbuild-linux-64": "^0.14.42",
+    "esbuild-linux-arm64": "^0.14.42",
+    "esbuild-windows-64": "^0.14.42",
+    "esbuild-windows-arm64": "^0.14.42"
   }
 }
