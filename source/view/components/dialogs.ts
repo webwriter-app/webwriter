@@ -5,6 +5,8 @@ import { WWURL } from "../../utility";
 import * as connect from "../../connect"
 import * as marshal from "../../marshal"
 import { SlDialog } from "@shoelace-style/shoelace";
+import type {IPackageJson} from "package-json-type"
+import { PackageController } from "../controllers";
 
 
 @customElement("ww-io-dialog")
@@ -141,6 +143,114 @@ export class IODialog extends LitElement {
 				</form>
 				<sl-button slot="footer" variant="default" id="cancel-button" @click=${this.hide}>${"Cancel"}</sl-button>
 				<sl-button slot="footer" variant="primary" id="submit-button" @click=${emitSubmit}>${type === "saving"? "Save": "Load"}</sl-button>
+			</sl-dialog>
+		`
+	}
+}
+
+
+@customElement("ww-package-manager-dialog")
+export class PackageManagerDialog extends LitElement {
+
+	packageManager = new PackageController(this)
+
+	@property({attribute: false})
+	installedPackages: IPackageJson[] = []
+
+	@property({attribute: false})
+	availablePackages: IPackageJson[] = []
+
+	@query("sl-dialog")
+	dialog: SlDialog
+
+	@property({type: Boolean, attribute: true, reflect: true})
+	open: boolean = true
+
+	@property({type: Number, attribute: true, reflect: true})
+	pageSize: number = 20
+
+	@property({type: String, attribute: true, reflect: true})
+	registryStatus: "pending" | "fulfilled" | "rejected" = "rejected"
+
+	async hide() {
+		await this.dialog.hide()
+		this.emitCancel()
+	}
+
+	emitSubmit = () => this.dispatchEvent(
+		new CustomEvent("ww-submit", {composed: true, bubbles: true})
+	)
+
+	emitCancel = () => this.dispatchEvent(
+		new CustomEvent("ww-cancel", {composed: true, bubbles: true})
+	)
+
+	handleRequestClose(e: CustomEvent<{source: "close-button" | "keyboard" | "overlay"}>) {
+		e.preventDefault()
+		e.detail.source !== "overlay"? this.emitCancel(): null
+	}
+
+
+	static get styles() {
+		return css`
+			sl-dialog::part(title) {
+				display: flex;
+				flex-direction: row;
+				align-items: center;
+				gap: 0.5rem;
+			}
+
+			sl-alert::part(base) {
+				display: block flex;
+			}
+
+		`
+	}
+
+	registryStatusIndicator = () => {
+		switch(this.registryStatus) {
+			case "pending": return html`<sl-spinner slot="label"></sl-spinner>`
+			case "fulfilled": return null
+			case "rejected": return html`<sl-alert class="error" open variant="danger">
+				<sl-icon slot="icon" name="exclamation-octagon"></sl-icon>
+				<span>Error connecting to registry</span>
+			</sl-alert>`
+		}
+	}
+
+	packageListItem = (pkg: IPackageJson) => {
+		return html`<sl-card>
+			<span slot="header">${pkg.name}</span>
+			<span slot="header">${pkg.author}</span>
+			<code slot="header">${pkg.version}</code>
+			${pkg?.keywords.map(kw => html`<sl-tag slot="header">${kw}</sl-tag>`)}
+			<span>${pkg.description}</span>
+			<sl-button slot="footer">Install/Uninstall</sl-button>
+			<sl-button slot="footer">Update (if available)</sl-button>
+			<sl-button slot="footer">Read more...</sl-button>
+		</sl-card>`
+	}
+
+	npmPrompt = () => {
+		return html`<sl-input></sl-input>`
+	}
+
+	// NPM availability --> npm ping --json
+	// List all available packages --> npm ls --json --long + npm outdated --json + search
+		// Per package:
+			// Show name, description, version (outdated?), link to package
+			// Update package --> npm update <pkg>
+			// Install package --> npm install <pkg>
+			// Uninstall package --> npm uninstall <pkg>
+
+	// [ADVANCED] Manual npm commands --> npm <...args>
+
+	render() {
+		const allPackages = [...this.installedPackages, ...this.availablePackages]
+		return html`
+			<sl-dialog ?open=${this.open}>
+					<span slot="label">Manage widgets</span>
+					${this.registryStatusIndicator()}
 			</sl-dialog>
 		`
 	}

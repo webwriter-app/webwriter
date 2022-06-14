@@ -5,21 +5,25 @@ import {interpret, StateValue} from "xstate"
 
 import {documentsMachine} from "../state"
 import { Document, Block, BlockElement } from "../model"
-import {withMachine} from "../utility"
 import "./components"
 import * as packages from "../packages"
 import { SlSelect } from "@shoelace-style/shoelace"
 import { Tab, Tabs } from "./components"
+import { interpretAsController, MachineController } from "./controllers/machinecontroller"
+import { PackageController } from "./controllers/packagecontroller"
+import { BundleController } from "./controllers/bundlecontroller"
 
 @customElement("ww-app")
 // @ts-ignore: Until I fix the withMachine mixin types...
-export class App extends withMachine(LitElement, interpret(documentsMachine)) 
+export class App extends LitElement
 {
+
+	machine = new MachineController(documentsMachine, this)
+	bundler = new BundleController(this)
 
 	constructor() {
 		super()
 		this.addEventListener("ww-select-tab-title", (e: any) => this.focusTabTitle(e.detail.id))
-		window["state"] = () => this.machine.state
 	}
 	
 	static get styles() {
@@ -101,6 +105,7 @@ export class App extends withMachine(LitElement, interpret(documentsMachine))
 					@ww-cancel=${() => send("CANCEL")}
 				></ww-io-dialog>
 			`: null}
+			<ww-package-manager-dialog></ww-package-manager-dialog>
 		`
 	}
 }

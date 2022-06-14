@@ -37,6 +37,11 @@ class MarshalError extends Error {}
 class ConnectError extends Error {}
 
 const config: MachineConfig<Context, StateSchema, Event> = {
+
+  schema: {
+    context: {} as Context,
+    events: {} as Event,
+  },
   
   context: {
     documents: {},
@@ -210,11 +215,11 @@ const guards: MachineOptions<Context, Event>["guards"] = {
     }
   },
 
-  hasActiveDocument: ctx => ctx.activeDocument != null,
+  // hasActiveDocument: ctx => ctx.activeDocument != null,
 
   hasDocuments: ctx => ctx.documentsOrder.length > 0,
   
-  noPendingChanges: ctx => !ctx.pendingChanges
+  // noPendingChanges: ctx => !ctx.pendingChanges
 
 }
 

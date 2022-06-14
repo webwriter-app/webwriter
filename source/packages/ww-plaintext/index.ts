@@ -1,9 +1,9 @@
 import { html, css } from "lit"
 import { customElement, property, query } from "lit/decorators.js"
 
-import { Block, BlockElement } from "../model"
+import { Block, BlockElement } from "../../model"
 import { SlTextarea } from "@shoelace-style/shoelace"
-import { LitElementWw } from "../utility"
+import { LitElementWw } from "../../utility"
 
 interface PlaintextBlock extends Block {
   attributes: {

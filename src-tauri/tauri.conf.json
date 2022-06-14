@@ -12,12 +12,13 @@
   },
   "tauri": {
     "allowlist": {
-      "all": true,
+      "all": false,
       "shell": {
         "sidecar": true,
+        "execute": true,
         "scope": [
-          {"name": "../binaries/npm", "sidecar": true},
-          {"name": "../binaries/esbuild", "sidecar": true}
+          {"name": "../binaries/npm", "args": true, "sidecar": true},
+          {"name": "../binaries/esbuild", "args": true, "sidecar": true}
         ]
       }
     },

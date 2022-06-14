@@ -1,2 +1,2 @@
-export {default as plaintext} from "./plaintext"
-export {default as embed} from "./embed"
+export {default as plaintext} from "./ww-plaintext"
+export {default as embed} from "./ww-embed"

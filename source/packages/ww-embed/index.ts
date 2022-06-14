@@ -1,8 +1,8 @@
 import { html, css } from "lit"
 import { customElement, property } from "lit/decorators.js"
 
-import { LitElementWw } from "../utility"
-import { Block, BlockElement } from "../model"
+import { LitElementWw } from "../../utility"
+import { Block, BlockElement } from "../../model"
 
 interface EmbedBlock extends Block {
   attributes: {
