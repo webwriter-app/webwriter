@@ -41,12 +41,23 @@ export class App extends LitElement
 	@query("ww-tab-panel[active] ww-document-editor")
 	activeDocumentEditor: DocumentEditor
 
+	@property({type: Boolean, attribute: true})
+	managingPackages: boolean = false
+
 	focusTabTitle(id: number) {
 		const {documentsOrder} = this.machine.state.context
 		const i = documentsOrder.indexOf(id)
 		const tabElement = this.tabs.tabs[i]
 		const titleElement = tabElement?.querySelector(":last-child") as HTMLElement
 		titleElement?.focus()
+	}
+
+	handleManagePackagesClick() {
+		this.managingPackages = true
+	}
+
+	handleManagePackagesClose() {
+		this.managingPackages = false
 	}
 
 	render() {
@@ -91,6 +102,7 @@ export class App extends LitElement
 		return html`
 			<ww-tabs @ww-add-tab=${() => send("CREATE")}>
 				${tabs}
+				<sl-icon-button slot="pre-tabs" name="boxes" @click=${this.handleManagePackagesClick}></sl-icon-button>
 				<sl-icon-button slot="post-tabs" @click=${() => send("SAVE", {url: ctx.documents[ctx.activeDocument].url})} name="file-earmark-arrow-down-fill"></sl-icon-button>
 				<sl-icon-button slot="post-tabs" name="sliders"></sl-icon-button>
 			</ww-tabs>
@@ -105,7 +117,7 @@ export class App extends LitElement
 					@ww-cancel=${() => send("CANCEL")}
 				></ww-io-dialog>
 			`: null}
-			<ww-package-manager-dialog></ww-package-manager-dialog>
+			<ww-package-manager-drawer ?open=${this.managingPackages} @sl-hide=${this.handleManagePackagesClose}></ww-package-manager-drawer>
 		`
 	}
 }

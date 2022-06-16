@@ -256,7 +256,7 @@ const actions: MachineOptions<Context, EventObject>["actions"] = {
     const id = Math.max(-1, ...Object.keys(ctx.documents).map(k => parseInt(k))) + 1
     const newDocument = new Document(id)
     ctx.documents[newDocument.id] = newDocument
-    ctx.documentsOrder.unshift(newDocument.id)
+    ctx.documentsOrder.push(newDocument.id)
     ctx.activeDocument = newDocument.id
   }),
 

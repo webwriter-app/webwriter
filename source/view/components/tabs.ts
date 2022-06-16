@@ -82,6 +82,7 @@ export class Tabs extends LitElement {
 				top: 0;
 				left: 0;
 				background: #F0F0F0;
+				z-index: 100;
 			}
 
 			sl-icon-button {
@@ -131,14 +132,14 @@ export class Tabs extends LitElement {
 			<div autofocus part="base">
 				<div part="pre-tabs">
 					<slot name="pre-tabs">
-						<sl-icon-button name="list"></sl-icon-button>
-						<sl-icon-button name="plus" @click=${this.emitNewTab}></sl-icon-button>
+						
 					</slot>
 				</div>
 				<div part="tabs" @focusin=${this.handleFocusIn} @keydown=${this.handleKeyDown}>
 					<ww-scroll-button visible="always" direction="left" .getTarget=${() => this.tabsWrapper}></ww-scroll-button>
 					<div part="tabs-wrapper">
 						<slot name="tabs"></slot>
+						<sl-icon-button name="plus" @click=${this.emitNewTab}></sl-icon-button>
 					</div>
 					<ww-scroll-button visible="always" direction="right" .getTarget=${() => this.tabsWrapper}></ww-scroll-button>
 				</div>

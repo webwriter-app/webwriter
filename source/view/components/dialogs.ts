@@ -1,12 +1,11 @@
-import { LitElement, html, css } from "lit";
+import { LitElement, html, css, PropertyValueMap } from "lit";
 import { customElement, property, query } from "lit/decorators.js";
 import { Format, Protocol } from "../../state";
 import { WWURL } from "../../utility";
 import * as connect from "../../connect"
 import * as marshal from "../../marshal"
-import { SlDialog } from "@shoelace-style/shoelace";
-import type {IPackageJson} from "package-json-type"
-import { PackageController } from "../controllers";
+import { SlDialog, SlDrawer } from "@shoelace-style/shoelace";
+import { PackageController, PackageJson } from "../controllers";
 
 
 @customElement("ww-io-dialog")
@@ -81,7 +80,10 @@ export class IODialog extends LitElement {
 		return css`
 
 			sl-dialog::part(title) {
-				font-family: var(--sl-font-sans);
+				display: flex;
+				flex-direction: row;
+				align-items: center;
+				gap: 0.5rem;
 			}
 
 			sl-dialog::part(body) {
@@ -110,6 +112,8 @@ export class IODialog extends LitElement {
 				color: var(--sl-color-neutral-600);
 				margin-right: 0.5rem;
 			}
+
+		
 		`
 	}
 
@@ -118,6 +122,8 @@ export class IODialog extends LitElement {
 		const {open, type, wwformat, protocol, location, filename, handleProtocolChange, handleFormatChange, handleLocationChange, handleRequestClose, emitSubmit} = this
 		return html`
 			<sl-dialog ?open=${open} label=${type == "saving"? "Save your document": "Load a document"} @sl-request-close=${handleRequestClose}>
+			<sl-icon slot="label" name="file-earmark-arrow-down-fill"></sl-icon>
+				<span slot="label">${type == "saving"? "Save your document": "Load a document"}</span>
 				<form>
 					<label for="format">
 						<sl-icon class="label-icon" name="file-earmark"></sl-icon>
@@ -149,61 +155,188 @@ export class IODialog extends LitElement {
 }
 
 
-@customElement("ww-package-manager-dialog")
-export class PackageManagerDialog extends LitElement {
+@customElement("ww-package-manager-drawer")
+export class PackageManagerDrawer extends LitElement {
 
 	packageManager = new PackageController(this)
 
-	@property({attribute: false})
-	installedPackages: IPackageJson[] = []
+	fetchInstalledPackages = async () => {
+		this.loading = true
+		this.installedPackages = await this.packageManager.getInstalledPackages()
+		this.loading = false
+	}
+
+	protected updated(changed: PropertyValueMap<any> | Map<PropertyKey, unknown>) {
+		changed.has("open") && this.open? this.fetchInstalledPackages(): null
+	}
 
 	@property({attribute: false})
-	availablePackages: IPackageJson[] = []
+	installedPackages: PackageJson[] = []
 
-	@query("sl-dialog")
-	dialog: SlDialog
+	@property({attribute: false})
+	availablePackages: PackageJson[] = []
+
+	@query("sl-drawer")
+	drawer: SlDrawer
 
 	@property({type: Boolean, attribute: true, reflect: true})
-	open: boolean = true
+	open: boolean = false
 
 	@property({type: Number, attribute: true, reflect: true})
 	pageSize: number = 20
 
 	@property({type: String, attribute: true, reflect: true})
-	registryStatus: "pending" | "fulfilled" | "rejected" = "rejected"
+	registryStatus: "pending" | "fulfilled" | "rejected" = "fulfilled"
+
+	@property({type: Boolean, attribute: true, reflect: true})
+	loading: Boolean = true
+
+	@property({attribute: false})
+	installingPackages: string[] = []
+
+	@property({attribute: false})
+	uninstallingPackages: string[] = []
+
+	@property({attribute: false})
+	updatingPackages: string[] = []
+
 
 	async hide() {
-		await this.dialog.hide()
-		this.emitCancel()
+		await this.drawer.hide()
+		this.emitHide()
 	}
 
 	emitSubmit = () => this.dispatchEvent(
 		new CustomEvent("ww-submit", {composed: true, bubbles: true})
 	)
 
-	emitCancel = () => this.dispatchEvent(
-		new CustomEvent("ww-cancel", {composed: true, bubbles: true})
+	emitHide = () => this.dispatchEvent(
+		new CustomEvent("sl-hide", {composed: true, bubbles: true})
 	)
 
-	handleRequestClose(e: CustomEvent<{source: "close-button" | "keyboard" | "overlay"}>) {
-		e.preventDefault()
-		e.detail.source !== "overlay"? this.emitCancel(): null
+	handleCloseDrawer() {
+		this.installedPackages = []
+		this.availablePackages = []
+		this.emitHide()
+	}
+
+	async handleInstallPackage(pkg: string) {
+		this.installingPackages = [...this.installingPackages, pkg]
+		await this.packageManager.install([pkg])
+		this.installingPackages = this.installingPackages.filter(p => p !== pkg)
+	}
+
+	async handleUninstallPackage(pkg: string) {
+		this.uninstallingPackages = [...this.uninstallingPackages, pkg]
+		await this.packageManager.uninstall([pkg])
+		this.uninstallingPackages = this.uninstallingPackages.filter(p => p !== pkg)
+	}
+
+	async handleUpdatePackage(pkg: string) {
+		this.updatingPackages = [...this.updatingPackages, pkg]
+		await this.packageManager.update([pkg])
+		this.updatingPackages = this.updatingPackages.filter(p => p !== pkg)
 	}
 
 
 	static get styles() {
 		return css`
-			sl-dialog::part(title) {
-				display: flex;
-				flex-direction: row;
-				align-items: center;
+
+			sl-drawer::part(body) {
+				background: #f1f1f1;
+			}
+
+			sl-drawer::part(title) {
+				display: grid;
+				grid-template-rows: auto auto;
+				grid-template-columns: auto;
 				gap: 0.5rem;
+				background: #f1f1f1;
+				padding: 1rem;
+				padding-bottom: 0;
+			}
+
+			sl-tab-group {
+				grid-row: 2;
+			}
+
+			sl-tab::part(base) {
+				padding: 0.5rem;
+			}
+
+			sl-drawer::part(close-button) {
+				background: #f1f1f1;
+				display: flex;
+				flex-direction: column;
+				justify-content: flex-start;
+				padding: 1rem;
 			}
 
 			sl-alert::part(base) {
 				display: block flex;
 			}
 
+			.package-list {
+				display: flex;
+				flex-direction: column;
+				gap: 1rem;
+			}
+
+			sl-card {
+				box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+			}
+
+			sl-card::part(header) {
+				display: flex;
+				flex-direction: row;
+				align-items: center;
+				flex-wrap: wrap;
+				gap: 0.4rem;
+			}
+
+			sl-card::part(footer) {
+				display: flex;
+				flex-direction: row;
+				justify-content: flex-end;
+				gap: 0.25rem;
+				padding: 0.25rem;
+			}
+
+			sl-tag::part(base) {
+				padding: 0.2rem;
+				height: 20px;
+			}
+
+			.package-name {
+				color: var(--sl-color-primary-950);
+				font-weight: bold;
+			}
+
+			.package-author {
+				display: none;
+			}
+
+			.package-description {
+				font-size: 1rem;
+			}
+
+			.spinner-container {
+				display: flex;
+				flex-direction: row;
+				justify-content: center;
+			}
+
+			.spinner-container > sl-spinner {
+				font-size: 2rem;
+				--track-width: 4px;
+			}
+
+			.drawer-title {
+				display: flex;
+				flex-direction: row;
+				align-items: center;
+				gap: 1rem;
+			}
 		`
 	}
 
@@ -218,16 +351,23 @@ export class PackageManagerDialog extends LitElement {
 		}
 	}
 
-	packageListItem = (pkg: IPackageJson) => {
+
+	packageListItem = (pkg: PackageJson, i: number) => {
+		const installing = this.installingPackages.includes(pkg.name)
+		const uninstalling = this.uninstallingPackages.includes(pkg.name)
+		const updating = this.updatingPackages.includes(pkg.name)
 		return html`<sl-card>
-			<span slot="header">${pkg.name}</span>
-			<span slot="header">${pkg.author}</span>
-			<code slot="header">${pkg.version}</code>
-			${pkg?.keywords.map(kw => html`<sl-tag slot="header">${kw}</sl-tag>`)}
-			<span>${pkg.description}</span>
-			<sl-button slot="footer">Install/Uninstall</sl-button>
-			<sl-button slot="footer">Update (if available)</sl-button>
-			<sl-button slot="footer">Read more...</sl-button>
+			<sl-icon name="box-seam" slot="header"></sl-icon>
+			<span class="package-name" slot="header">${pkg.name}</span>
+			<span class="package-author" slot="header">${pkg.author}</span>
+			<code class="package-version" slot="header">${pkg.version}</code>
+			${pkg?.keywords?.map(kw => html`<sl-tag variant="primary" slot="header">${kw}</sl-tag>`)}
+			<span class="package-description">${pkg.description}</span>
+			<sl-button @click=${() => this.handleUpdatePackage(pkg.name)} outline slot="footer" ?loading=${updating}  ?disabled=${uninstalling || installing || !pkg.outdated}>Update</sl-button>
+			${pkg.installed
+				? html`<sl-button @click=${() => this.handleUninstallPackage(pkg.name)} outline slot="footer" ?loading=${uninstalling} ?disabled=${installing || updating}>Uninstall</sl-button>`
+				: html`<sl-button @click=${() => this.handleInstallPackage(pkg.name)} outline slot="footer" ?loading=${installing} ?disabled=${uninstalling || updating}>Install</sl-button>`
+			}
 		</sl-card>`
 	}
 
@@ -248,10 +388,22 @@ export class PackageManagerDialog extends LitElement {
 	render() {
 		const allPackages = [...this.installedPackages, ...this.availablePackages]
 		return html`
-			<sl-dialog ?open=${this.open}>
-					<span slot="label">Manage widgets</span>
+			<sl-drawer placement="start" ?open=${this.open} @sl-hide=${this.handleCloseDrawer}>
+					<span class="drawer-title" slot="label">
+						<sl-icon name="boxes" slot="label"></sl-icon>
+						Manage packages
+					</span>
 					${this.registryStatusIndicator()}
-			</sl-dialog>
+					<sl-tab-group slot="label">
+						<sl-tab name="all" slot="nav">All</sl-tab>
+						<sl-tab name="installed" slot="nav">Installed</sl-tab>
+						<sl-tab name="available" slot="nav">Available</sl-tab>
+					</sl-tab-group>
+					<div class="package-list">
+						${allPackages.map(this.packageListItem)}
+					</div>
+					<div class="spinner-container">${this.loading? html`<sl-spinner></sl-spinner>`: null}</div>
+			</sl-drawer>
 		`
 	}
 }

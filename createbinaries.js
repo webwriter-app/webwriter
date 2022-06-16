@@ -1,5 +1,5 @@
 /*
-Copies and renames binaries for all supported platforms (Windows, Mac OS, Linux) with Rust style triples specifying the compilation target, so Tauri can use npm as a sidecar.
+Copies and renames binaries for all supported platforms (Windows, Mac OS, Linux) with Rust style triples specifying the compilation target, so Tauri can use them as a sidecar.
 */
 
 const fs = require('fs')
