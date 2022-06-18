@@ -31,7 +31,7 @@
   "license": "MIT",
   "dependencies": {
     "@shoelace-style/shoelace": "^2.0.0-beta.73",
-    "@tauri-apps/api": "^1.0.0-rc.6",
+    "@tauri-apps/api": "^1.0.1",
     "@xstate/immer": "^0.3.1",
     "immer": "^9.0.14",
     "lit": "^2.2.2",
@@ -39,24 +39,24 @@
     "xstate": "^4.32.0"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^1.0.0-rc.13",
+    "@tauri-apps/cli": "^1.0.0",
     "@types/prosemirror-commands": "^1.0.4",
     "@types/prosemirror-keymap": "^1.0.4",
     "@types/prosemirror-state": "^1.2.8",
     "@types/prosemirror-view": "^1.23.1",
     "@types/wicg-file-system-access": "^2020.9.5",
-    "npm": "^8.12.1",
+    "npm": "^8.12.2",
     "npm-run-all": "^4.1.5",
     "package-json-type": "^1.0.3",
     "pkg": "^5.7.0",
     "snowpack": "^3.8.8"
   },
   "optionalDependencies": {
-    "esbuild-darwin-64": "^0.14.42",
-    "esbuild-darwin-arm64": "^0.14.42",
-    "esbuild-linux-64": "^0.14.42",
-    "esbuild-linux-arm64": "^0.14.42",
-    "esbuild-windows-64": "^0.14.42",
-    "esbuild-windows-arm64": "^0.14.42"
+    "esbuild-darwin-64": "^0.14.45",
+    "esbuild-darwin-arm64": "^0.14.45",
+    "esbuild-linux-64": "^0.14.45",
+    "esbuild-linux-arm64": "^0.14.45",
+    "esbuild-windows-64": "^0.14.45",
+    "esbuild-windows-arm64": "^0.14.45"
   }
 }

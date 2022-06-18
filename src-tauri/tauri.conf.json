@@ -4,7 +4,7 @@
     "beforeBuildCommand": "",
     "beforeDevCommand": "",
     "devPath": "http://localhost:8080",
-    "distDir": "../build"
+    "distDir": "../source"
   },
   "package": {
     "productName": "webwriter",
@@ -44,7 +44,7 @@
         "icons/icon.icns",
         "icons/icon.ico"
       ],
-      "identifier": "webwriter",
+      "identifier": "com.tauri.dev",
       "longDescription": "",
       "macOS": {
         "entitlements": null,
@@ -73,7 +73,7 @@
         "fullscreen": false,
         "height": 600,
         "resizable": true,
-        "title": "WebWriter",
+        "title": "webwriter",
         "width": 800
       }
     ]
