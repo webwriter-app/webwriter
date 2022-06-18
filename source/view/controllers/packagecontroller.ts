@@ -46,15 +46,15 @@ export class PackageController implements ReactiveController {
   }
 
   async install(args: string[] = [], save=true) {
-    return this.npm("install", args)
+    return this.npm("install", [...args, save? "-s": ""])
   }
 
   async uninstall(args: string[] = [], save=true) {
-    return this.npm("uninstall", args)
+    return this.npm("uninstall", [...args, save? "-s": ""])
   }
 
   async update(args: string[] = [], save=true) {
-    return this.npm("update", args)
+    return this.npm("update", [...args, save? "-s": ""])
   }
 
   async ls(args: string[] = [], ) {

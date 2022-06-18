@@ -176,6 +176,9 @@ export class PackageManagerDrawer extends LitElement {
 	@property({attribute: false})
 	availablePackages: PackageJson[] = []
 
+	@property({type: String, attribute: true})
+	activeTab: "all" | "installed" | "available" = "all"
+
 	@query("sl-drawer")
 	drawer: SlDrawer
 
@@ -236,6 +239,11 @@ export class PackageManagerDrawer extends LitElement {
 		this.updatingPackages = [...this.updatingPackages, pkg]
 		await this.packageManager.update([pkg])
 		this.updatingPackages = this.updatingPackages.filter(p => p !== pkg)
+	}
+
+	handleTabShow(e: CustomEvent<{name: PackageManagerDrawer["activeTab"]}>) {
+		console.log(e)
+		this.activeTab = e.detail.name
 	}
 
 
@@ -322,8 +330,9 @@ export class PackageManagerDrawer extends LitElement {
 
 			.spinner-container {
 				display: flex;
-				flex-direction: row;
-				justify-content: center;
+				flex-direction: column;
+				align-items: center;
+				color: var(--sl-color-neutral-700);
 			}
 
 			.spinner-container > sl-spinner {
@@ -387,22 +396,33 @@ export class PackageManagerDrawer extends LitElement {
 
 	render() {
 		const allPackages = [...this.installedPackages, ...this.availablePackages]
+		const packages = {"all": allPackages, "installed": this.installedPackages, "available": this.availablePackages}[this.activeTab]
+		console.log(packages)
+		console.log(this)
 		return html`
 			<sl-drawer placement="start" ?open=${this.open} @sl-hide=${this.handleCloseDrawer}>
 					<span class="drawer-title" slot="label">
 						<sl-icon name="boxes" slot="label"></sl-icon>
-						Manage packages
+						<span>Manage packages</span>
 					</span>
 					${this.registryStatusIndicator()}
-					<sl-tab-group slot="label">
-						<sl-tab name="all" slot="nav">All</sl-tab>
-						<sl-tab name="installed" slot="nav">Installed</sl-tab>
-						<sl-tab name="available" slot="nav">Available</sl-tab>
+					<sl-tab-group slot="label" @sl-tab-show=${this.handleTabShow}>
+						<sl-tab panel="all" slot="nav">All</sl-tab>
+						<sl-tab panel="installed" slot="nav">Installed</sl-tab>
+						<sl-tab panel="available" slot="nav">Available</sl-tab>
 					</sl-tab-group>
 					<div class="package-list">
-						${allPackages.map(this.packageListItem)}
+						${packages.length === 0 && !this.loading
+							? html`<span>No packages in this list</span>`
+							: packages.map(this.packageListItem) 
+						}
 					</div>
-					<div class="spinner-container">${this.loading? html`<sl-spinner></sl-spinner>`: null}</div>
+					<div class="spinner-container">
+						${this.loading? html`
+							<sl-spinner></sl-spinner>
+							<span>Loading packages...</span>
+						`: null}
+					</div>
 			</sl-drawer>
 		`
 	}
