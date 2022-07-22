@@ -1,29 +1,91 @@
 import {LitElement, html, css} from "lit"
-import {customElement, property, query, queryAll, state} from "lit/decorators.js"
+import {customElement, property, query} from "lit/decorators.js"
 import {repeat} from "lit/directives/repeat.js"
-import {interpret, StateValue} from "xstate"
+import Hotkeys from "hotkeys-js"
 
-import {documentsMachine} from "../state"
-import { Document, Block, BlockElement } from "../model"
+import {createManagerController, PackagerController, documentsMachine} from "../state"
 import "./components"
-import * as packages from "../packages"
-import { SlSelect } from "@shoelace-style/shoelace"
-import { Tab, Tabs } from "./components"
-import { interpretAsController, MachineController } from "./controllers/machinecontroller"
-import { PackageController } from "./controllers/packagecontroller"
-import { BundleController } from "./controllers/bundlecontroller"
+import { DocumentEditor } from "./components/editor"
+import { SlAlert, registerIconLibrary } from "@shoelace-style/shoelace"
+import { Tabs } from "./components"
+import { escapeHTML, mousetrapBindGlobalMixin } from "../utility"
+import { StateFrom } from "xstate"
+
+interface SlAlertAttributes {
+	message: string
+	variant?: SlAlert["variant"]
+	icon?: string
+	duration?: number
+}
 
 @customElement("ww-app")
-// @ts-ignore: Until I fix the withMachine mixin types...
 export class App extends LitElement
 {
 
-	machine = new MachineController(documentsMachine, this)
-	bundler = new BundleController(this)
+	manager = createManagerController(this)
+	packager = new PackagerController(this)
 
-	constructor() {
-		super()
+	keymap: Record<string, (e: KeyboardEvent, handler) => any> = {
+		"ctrl+s": (e, combo) => this.manager.send("SAVE"),
+		"ctrl+o": (e, combo) => this.manager.send("LOAD"),
+		"ctrl+n": (e, combo) => this.manager.send("CREATE"),
+		"ctrl+w": (e, combo) => this.manager.send("DISCARD"),
+		"escape": (e, combo) => this.manager.send("CANCEL")
+	}
+
+	notifications: Record<string, SlAlertAttributes> = {
+		"saving.success": {
+			message: "Your changes have been saved",
+			variant: "success",
+			icon: "check2-circle",
+			duration: 2000
+		},
+		"saving.failure": {
+			message: "An error occured while saving your changes",
+			variant: "danger",
+			icon: "exclamation-octagon",
+			duration: 2000
+		},
+		"loading.failure": {
+			message: "An error occured while loading your file",
+			variant: "danger",
+			icon: "exclamation-octagon",
+			duration: 2000
+		}
+	}
+
+	async connectedCallback() {
+		super.connectedCallback()
+
+		// Miscellaneous
 		this.addEventListener("ww-select-tab-title", (e: any) => this.focusTabTitle(e.detail.id))
+		registerIconLibrary("cc", {resolver: name => `/assets/icons/cc/${name}.svg`})
+		
+		// Extra view layers: Keyboard inputs and notification/error outputs
+		Object.entries(this.keymap).forEach(([shortcut, callback]) => Hotkeys(shortcut, callback))
+		Object.entries(this.notifications).forEach(([stateKey, alertAttributes]) => {
+			this.manager.onTransition((state, ev) => state.matches(stateKey) && this.notify(alertAttributes))
+		})
+		window.addEventListener("error", ({message}) => this.notify({message, variant: "danger"}))
+		// window.addEventListener("unhandledrejection", ({reason}) => this.notify({message: reason, variant: "danger"}))
+
+		// Loading installed packages into memory
+		await this.packager.fetchInstalledPackages(true, true)
+		this.packager.markOutdatedPackages()
+	}
+
+	notify({message, variant="primary", icon="info-circle", duration=Infinity}: SlAlertAttributes) {
+		const alert = Object.assign(document.createElement("sl-alert"), {
+			variant,
+			closable: true,
+			duration,
+			innerHTML: `
+				<sl-icon name="${icon}" slot="icon"></sl-icon>
+				${escapeHTML(message)}
+			`
+		})
+		this.appendChild(alert)
+		return alert.toast()
 	}
 	
 	static get styles() {
@@ -31,7 +93,20 @@ export class App extends LitElement
 			:host {
 				display: block;
 				min-height: 100vh;
+				transition: background-color 0.1s ease-in;
 			}
+
+			.save-button::part(base) {
+				padding: 0;
+				margin-right: 20px;
+			}
+
+			:host(.noDocuments) {
+				background-color: #f1f1f1;
+				transition: none;
+			}
+
+
 		`
 	}
 
@@ -41,11 +116,11 @@ export class App extends LitElement
 	@query("ww-tab-panel[active] ww-document-editor")
 	activeDocumentEditor: DocumentEditor
 
-	@property({type: Boolean, attribute: true})
+	@property({attribute: false})
 	managingPackages: boolean = false
 
 	focusTabTitle(id: number) {
-		const {documentsOrder} = this.machine.state.context
+		const {documentsOrder} = this.manager.state.context
 		const i = documentsOrder.indexOf(id)
 		const tabElement = this.tabs.tabs[i]
 		const titleElement = tabElement?.querySelector(":last-child") as HTMLElement
@@ -61,252 +136,85 @@ export class App extends LitElement
 	}
 
 	render() {
-		const ctx = this.machine.state.context
-		const state = this.machine.state
+		const ctx = this.manager.state.context
+		const state = this.manager.state
 		const documents = ctx.documentsOrder.map(id => ctx.documents[id])
-		const send = this.machine.send
+		const send = this.manager.send
 
-		const tabs = documents.map(({id, attributes, content}) => html`
+		this.className = documents.length === 0? "noDocuments": ""
+
+		console.log(state.value)
+
+		const tabs = repeat(documents, doc => doc.id, ({id, attributes, content, url, revisions}, i) => html`
 			<ww-tab 
 				slot="tabs"
+				titleAsIconicUrl
 				id=${id}
 				panel=${id}
 				?active=${id === ctx.activeDocument}
-				closable=${id === ctx.activeDocument}
+				?closable=${id === ctx.activeDocument}
+				?titleDisabled=${id !== ctx.activeDocument}
+				titleId=${id}
+				titleValue=${url}
+				confirmDiscardText="You have unsaved changes. Click again to discard your changes."
+				?confirmingDiscard=${state.matches("discarding.confirming")}
+				?lastLoaded=${id === ctx.lastLoadedDocument}
+				?pendingChanges=${!!ctx.documentsPendingChanges[id]}
 				@focus=${() => send("SELECT", {id})}
 				@keydown=${e => e.key === "Enter" || e.key === "ArrowDown"? this.activeDocumentEditor.focusFirstBlock(): null}
-				@sl-close=${() => send("DISCARD", {id})}>
-				<ww-tab-title
-					autofocus
-					id=${id}
-					value=${attributes.label}
-					@sl-change=${e => send("RELABEL", {id, label: e.target.value})}
-					@keydown=${e => e.key === "Escape"? e.target.blur(): null}
-					@click=${e => send("SELECT", {id})}
-					?disabled=${id !== ctx.activeDocument}  
-					placeholder="Untitled">
-				</ww-tab-title>
+				@ww-close-tab=${() => send("DISCARD", {id})}
+				@ww-save-tab=${() => send("SAVE", {url})}
+				@ww-title-click=${() => send("SELECT", {id})}
+				@ww-title-change=${e => send("SET_ATTRIBUTE", {key: "name", value: e.detail.title})}
+				@ww-cancel-discard=${e => send("CANCEL")}>
 			</ww-tab>
 			<ww-tab-panel name=${id} ?active=${id == ctx.activeDocument}>
 				<ww-document-editor
+					.revisions=${revisions}
 					docID=${id}
 					.docAttributes=${attributes}
 					.content=${content}
+					.packageModules=${this.packager.packageModules}
 					appendBlockType=${ctx.defaultBlockType}
+					?loadingPackages=${this.packager.loading}
+					@ww-block-change=${e => send("UPDATE_BLOCK", e.detail)}
 					@ww-append-block=${e => send("APPEND_BLOCK", {block: e.detail.type})}
-					@ww-delete-block=${e => send("DELETE_BLOCK", {i: e.detail.i})}>
+					@ww-delete-block=${e => send("DELETE_BLOCK", {i: e.detail.i})}
+					@ww-attribute-change=${e => send("SET_ATTRIBUTE", {key: e.detail.key, value: e.detail.value})}>
 				</ww-document-editor>
 			</ww-tab-panel>
 		`)
 
 		return html`
-			<ww-tabs @ww-add-tab=${() => send("CREATE")}>
+			<ww-tabs openTab @ww-add-tab=${() => send("CREATE")} @ww-open-tab=${() => send("LOAD")}>
 				${tabs}
 				<sl-icon-button slot="pre-tabs" name="boxes" @click=${this.handleManagePackagesClick}></sl-icon-button>
-				<sl-icon-button slot="post-tabs" @click=${() => send("SAVE", {url: ctx.documents[ctx.activeDocument].url})} name="file-earmark-arrow-down-fill"></sl-icon-button>
-				<sl-icon-button slot="post-tabs" name="sliders"></sl-icon-button>
+				<div slot="placeholder-tab">Get started</div>
 			</ww-tabs>
-			${state.matches("saving") || state.matches("loading")? html`
+			<ww-package-manager-drawer
+				.packager=${this.packager}
+				.installedPackages=${this.packager.installedPackages}
+				.availablePackages=${this.packager.availablePackages}
+				?loading=${this.packager.loading}
+				totalPackagesAvailable=${this.packager.totalPackagesAvailable}
+				?open=${this.managingPackages}
+				@sl-hide=${this.handleManagePackagesClose}>
+			</ww-package-manager-drawer>
+			${["saving.configuring", "saving.active"].some(state.matches) /*|| state.matches("loading")*/? html`
 				<ww-io-dialog 
 					open
 					protocol=${ctx.defaultProtocol} 
 					wwformat=${ctx.defaultFormat}
 					filename=${ctx.documents[ctx.activeDocument].attributes.label}
 					type=${state.matches("saving")? "saving": "loading"}
-					@ww-submit=${e => send("SAVE", {url: e.target.url, documentEditor: this.activeDocumentEditor})}
+					?loading=${["saving.active", "loading.active"].some(state.matches)}
+					@ww-submit=${e => state.matches("saving") 
+						? send("SAVE", {url: e.target.url, documentEditor: this.activeDocumentEditor})
+						: send("LOAD", {url: e.target.url})
+					}
 					@ww-cancel=${() => send("CANCEL")}
 				></ww-io-dialog>
 			`: null}
-			<ww-package-manager-drawer ?open=${this.managingPackages} @sl-hide=${this.handleManagePackagesClose}></ww-package-manager-drawer>
-		`
-	}
-}
-
-@customElement("ww-document-editor")
-export class DocumentEditor extends LitElement {
-
-	constructor() {
-		super()
-		this.addEventListener("keydown", e => e.key.startsWith("Arrow")
-				? this[`focus${e.key.split("Arrow")[1]}`]()
-				: null
-		)
-	}
-
-	@property({type: Number})
-	docID: Document["id"]
-
-	@property({type: Object})
-	docAttributes: Document["attributes"]
-
-	@property({type: Array})
-	content: Document["content"]
-
-	@property()
-	appendBlockType: string
-
-	@query("*")
-	firstChild: HTMLElement
-
-	@queryAll("ww-block-section")
-	blockSections: NodeListOf<BlockSection>
-
-	emitSelectTabTitle = () => this.dispatchEvent(
-		new CustomEvent("ww-select-tab-title", {composed: true, bubbles: true, detail: {id: this.docID}})
-	)
-
-	focusFirstBlock() {
-		this.firstChild.focus()
-	}
-
-	focusUp() {
-		let currentElement = this.shadowRoot.activeElement as HTMLElement
-		let nextElement = currentElement.previousElementSibling as HTMLElement
-		currentElement.blur()
-		nextElement? nextElement.focus(): this.emitSelectTabTitle()
-	}
-
-	focusDown() {
-		let currentElement = this.shadowRoot.activeElement as HTMLElement
-		let nextElement = currentElement.nextElementSibling as HTMLElement
-		currentElement.blur()
-		nextElement? nextElement.focus(): null
-	}
-
-	focusLeft() {
-		console.log("focusLeft")
-	}
-
-	focusRight() {
-		console.log("focusRight")
-	}
-
-	emitAppendBlock = () => this.dispatchEvent(
-		new CustomEvent("ww-append-block", {composed: true, bubbles: true, detail: {type: this.appendBlockType}})
-	)
-
-	emitDeleteBlock = (i: number) => this.dispatchEvent(
-		new CustomEvent("ww-delete-block", {composed: true, bubbles: true, detail: {i}})
-	)
-
-	static get styles() {
-		return css`
-
-			:host {
-				display: contents;
-			}
-
-			sl-select {
-				grid-column: 2;
-				height: 100%;
-				gap: 1rem;
-			}
-
-			.delete-block-button::part(base):hover {
-				color: red;
-			}
-
-			.delete-block-button::part(base):focus {
-				color: red;
-			}
-
-			.delete-block-button::part(base):active {
-				color: darkred;
-			}
-
-			.append-block {
-				padding-bottom: 6rem;
-			}
-		`
-	}
-
-	appendBlockTemplate = () => {
-		return html`
-			<sl-select
-				class="append-block"
-				value=${this.appendBlockType}
-				@sl-change=${e => (this.appendBlockType = e.target.value)}
-				@keydown=${(e: KeyboardEvent) => {
-					switch(e.key) {
-						case "ArrowUp": this.focusUp(); break;
-						case "Enter": this.emitAppendBlock(); break;
-					}
-				}}
-			>
-			${Object.keys(packages).map(name => html`
-					<sl-menu-item value=${name}>${name}</sl-menu-item>
-				`)}
-				<sl-icon-button slot="prefix" @click=${this.emitAppendBlock} name="plus-square"></sl-icon-button>
-			</sl-select>
-		`
-	}
-
-	render() {
-		return html`
-			${repeat(this.content, b => (b as any).id, (block, i) => html`
-				<ww-block-section .block=${block}>
-					<sl-icon-button
-						slot="left-panel"
-						name="arrows-move">
-					</sl-icon-button>
-					<sl-icon-button
-						slot="left-panel"
-						class="delete-block-button"
-						@click=${() => this.emitDeleteBlock(i)}
-						name="trash">
-					</sl-icon-button>
-				</ww-block-section>
-			`)}
-				${this.appendBlockTemplate()}
-		`
-	}
-}
-
-@customElement("ww-block-section")
-export class BlockSection extends LitElement {
-
-	constructor() {
-		super()
-		this.addEventListener("focus", () => this.element.focus())
-	}
-
-	@property({type: Object})
-	block: Block
-	
-	@property({type: Object})
-	element: BlockElement
-
-	static get styles() {
-		return css`
-			:host {
-				display: contents;
-			}
-
-			:host(:not(:focus-within)) .left-panel {
-				visibility: hidden;
-			}
-		`
-	}
-
-	connectedCallback() {
-		super.connectedCallback()
-		this.element = new packages[this.block.attributes.type].element()
-		this.element.block = this.block
-		this.element.classList.add("block-element")
-	}
-
-	focus() {
-		this.element.focus()
-	}
-
-	render() {
-
-		return html`
-			<ww-side-panel class="left-panel">
-				<slot name="left-panel"></slot>
-			</ww-side-panel>
-			${this.element}
-			<ww-side-panel></ww-side-panel>
 		`
 	}
 }

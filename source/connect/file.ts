@@ -1,7 +1,7 @@
 // Fallback list: FileSystemAccess API, Download/Upload
-import {save as pickSave, open as pickLoad} from "@tauri-apps/api/dialog"
+import {save as pickSave, open as pickLoad, DialogFilter} from "@tauri-apps/api/dialog"
 import {readTextFile, writeFile} from "@tauri-apps/api/fs"
-import { WWURL } from "../utility";
+import { WWURL } from "webwriter-model";
 
 function download(data: string, url: string) {
   const blob = new Blob([data])
@@ -20,32 +20,34 @@ async function saveFSA(data: string) {
   return await writableStream.close()
 }
 
-export async function save(data: string, url?: string) {
+export async function save(data: string, url?: string, filters?: DialogFilter[], defaultPath?: string) {
   
   let path: string
   if(!url) {
-    path = await pickSave()
+    path = await pickSave({filters, defaultPath})
   }
   else {
     const wwurl = new WWURL(url)
     path = wwurl.pathname
   }
   await writeFile({path, contents: data})
-  return path
+  return {url: new WWURL(path.replace("\\", "/")).href}
 }
 
-export async function load(url?: string) {
+export async function load(url?: string, filters?: DialogFilter[]) {
   
   let path: string
   if(!url) {
-    path = await pickLoad({multiple: false}) as string
+    path = await pickLoad({multiple: false, filters}) as string
+    if(path === null) {
+      return null
+    }
   }
   else {
     const wwurl = new WWURL(url)
     path = wwurl.pathname
   }
-  await readTextFile(path)
-  return path
+  return {data: await readTextFile(path), url: new WWURL(path.replace("\\", "/")).href}
 }
 
 export const label = "This Device"

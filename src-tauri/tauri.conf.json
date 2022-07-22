@@ -3,26 +3,33 @@
   "build": {
     "beforeBuildCommand": "",
     "beforeDevCommand": "",
-    "devPath": "http://localhost:8080",
+    "devPath": "http://localhost:3000",
     "distDir": "../source"
   },
   "package": {
-    "productName": "webwriter",
+    "productName": "WebWriter",
     "version": "0.1.0"
   },
   "tauri": {
     "allowlist": {
       "all": false,
+
       "fs": {
         "readFile": true,
+        "writeFile": true,
+        "removeFile": true,
         "scope": ["**"]
+      },
+      "dialog": {
+        "all": true
       },
       "shell": {
         "sidecar": true,
         "execute": true,
+        "open": true,
         "scope": [
-          {"name": "../binaries/npm", "args": true, "sidecar": true},
-          {"name": "../binaries/esbuild", "args": true, "sidecar": true}
+          {"name": "../static/binaries/npm", "args": true, "sidecar": true},
+          {"name": "../static/binaries/esbuild", "args": true, "sidecar": true}
         ]
       }
     },
@@ -34,8 +41,8 @@
         "depends": []
       },
       "externalBin": [
-        "../binaries/npm",
-        "../binaries/esbuild"
+        "../static/binaries/npm",
+        "../static/binaries/esbuild"
       ],
       "icon": [
         "icons/32x32.png",
@@ -44,7 +51,7 @@
         "icons/icon.icns",
         "icons/icon.ico"
       ],
-      "identifier": "com.tauri.dev",
+      "identifier": "webwriter.WebWriter",
       "longDescription": "",
       "macOS": {
         "entitlements": null,
@@ -73,7 +80,7 @@
         "fullscreen": false,
         "height": 600,
         "resizable": true,
-        "title": "webwriter",
+        "title": "WebWriter",
         "width": 800
       }
     ]

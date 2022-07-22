@@ -1,5 +1,9 @@
+import { ReactiveController, ReactiveControllerHost } from "lit"
+import {interpret, Interpreter, StateSchema, EventObject, Typestate, TypegenDisabled, StateMachine, InterpreterOptions} from "xstate";
+
 import * as marshal from "../marshal"
 import * as connect from "../connect"
+import Mousetrap from "mousetrap";
 
 type Format = keyof typeof marshal
 type Protocol = keyof typeof connect
@@ -16,29 +20,78 @@ export const escapeHTML = (unsafe: string) => unsafe
 
 export const getFileExtension = (path: string) => path.slice((path.lastIndexOf(".") - 1 >>> 0) + 2)
 
-export type WWURLString = string
+export class MachineController<
+    TContext,
+    TStateSchema extends StateSchema = any,
+    TEvent extends EventObject = EventObject,
+    TTypestate extends Typestate<TContext> = {value: any, context: TContext},
+    TResolvedTypesMeta = TypegenDisabled
+  > extends Interpreter<TContext, TStateSchema, TEvent, TTypestate, TResolvedTypesMeta> implements ReactiveController {
+  
+  host: ReactiveControllerHost
 
-export class WWURL extends URL {
-  constructor(url: string, base?: string) {
-    super(url, base)
-    const protocol = this.protocol.slice(0, -1)
-    const format = this.wwformat
-    if(protocol && !(protocol in connect)) {
-      throw TypeError(`Protocol specified is not supported by WebWriter: ${protocol}`)
-    }
-    else if(format && !(format in marshal)) {
-      throw TypeError(`Format specified is not supported by WebWriter: ${format}`)
-    }
+  constructor(machine: StateMachine<TContext, TStateSchema, TEvent, TTypestate, any, any, TResolvedTypesMeta>, host: ReactiveControllerHost, options: InterpreterOptions = {}) {
+    super(machine, options);
+    (this.host = host).addController(this);
   }
 
-  get wwformat() {
-    return getFileExtension(this.pathname)
+  hostConnected() {
+    this.onTransition(state => state.changed? this.host.requestUpdate():{})
+    this.start()
   }
 
-  set wwformat(value: string) {
-    const i = this.pathname.lastIndexOf(this.wwformat)
-    this.pathname = this.pathname.slice(0, i) + (i > -1? ".": "") + value
+  hostDisconnected() {
+    this.stop()
   }
 }
 
-window["WWURL"] = WWURL
+export const interpretAsController = (machine: Parameters<typeof interpret>[0], host: ReactiveControllerHost, options: Parameters<typeof interpret>[1] = {}) => new MachineController(machine, host, options)
+
+export function hashCode(str: string) {
+  let hash = 0;
+  for (let i = 0, len = str.length; i < len; i++) {
+      let chr = str.charCodeAt(i);
+      hash = (hash << 5) - hash + chr;
+      hash |= 0; // Convert to 32bit integer
+  }
+  return hash;
+}
+
+export function camelCaseToSpacedCase(str: string, capitalizeFirstLetter=true) {
+  const spacedStr = str.replace(/[A-Z][a-z]+/g, " $&")
+  return capitalizeFirstLetter? spacedStr.replace(/^[a-z]/g, match => match.toUpperCase()): spacedStr
+}
+
+export function prettifyPackageName(name: string, capitalizeFirstLetter=true) {
+  const coreName = name.split("-").pop()
+  return capitalizeFirstLetter? coreName.charAt(0).toUpperCase() + coreName.slice(1): coreName
+}
+
+export function createElementWithAttributes(doc: Document, tagName: string, options: ElementCreationOptions, attributes: Record<string, string> = {}, properties: Record<string, any> = {}) {
+  const el = doc.createElement(tagName, options)
+  Object.entries(attributes).forEach(([key, value]) => el.setAttribute(key, value))
+  Object.entries(properties).forEach(([key, value]) => el[key] = value)
+  return el
+}
+
+export function namedNodeMapToObject(nodeMap: NamedNodeMap) {
+  return Object.fromEntries(Array.from(nodeMap).map(x => [x.name, x.value]))
+}
+
+export function mousetrapBindGlobalMixin(mousetrap: typeof Mousetrap) {
+  var c={}, d = mousetrap.prototype.stopCallback;
+  mousetrap.prototype.stopCallback = function(e,b,a,f){
+    return this.paused?!0:c[a]||c[f]?!1:d.call(this,e,b,a)
+  };
+  mousetrap.prototype.bindGlobal = function(a,b,d){
+    this.bind(a,b,d)
+    if(a instanceof Array) {
+      for(b=0; b<mousetrap.length; b++) {
+        c[a[b]] = !0
+      }
+    }
+    else {
+      c[a]= !0
+    }
+  }
+}

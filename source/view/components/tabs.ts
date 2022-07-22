@@ -1,9 +1,17 @@
-import { SlButton, SlInput, SlTab, SlTabPanel } from "@shoelace-style/shoelace"
-import {LitElement, html, css, CSSResult, CSSResultGroup} from "lit"
+import { SlAnimation, SlButton, SlInput, SlTab, SlTabPanel } from "@shoelace-style/shoelace"
+import {LitElement, html, css, CSSResult, CSSResultGroup, PropertyValueMap} from "lit"
 import {customElement, property, query, queryAssignedElements} from "lit/decorators.js"
+import { classMap } from "lit/directives/class-map.js"
 import Sortable from "sortablejs"
+import {WWURL} from "webwriter-model"
 
 import {isOverflownX, isOverflownY} from "../../utility"
+
+const PROTOCOL_ICONS = {
+	"file": "hdd",
+	"http": "cloud",
+	"https": "cloud"
+}
 
 
 @customElement("ww-tabs")
@@ -18,6 +26,9 @@ export class Tabs extends LitElement {
 	@query("[part=tabs-wrapper]")
 	tabsWrapper: HTMLElement
 
+	@property({type: Boolean})
+	openTab: boolean
+
 	static get styles() {
 		return css`
 			:host {
@@ -28,7 +39,7 @@ export class Tabs extends LitElement {
 
 			[part=base] {
 				display: grid;
-				grid: min-content / 1fr minmax(auto, 960px) 1fr;
+				grid: min-content / minmax(32px, 1fr) minmax(auto, 960px) minmax(32px, 1fr);
 				grid-auto-rows: min-content;
 				row-gap: 1rem;
 				align-items: center;
@@ -81,12 +92,31 @@ export class Tabs extends LitElement {
 				position: sticky;
 				top: 0;
 				left: 0;
-				background: #F0F0F0;
+				background: #f1f1f1;
 				z-index: 100;
 			}
 
 			sl-icon-button {
 				background: transparent;
+			}
+
+			.placeholder-tab {
+				grid-column: 2;
+				width: 100%;
+				height: 100%;
+				display: flex;
+				flex-direction: column;
+				justify-content: center;
+				align-items: center;
+				gap: 1rem;
+			}
+
+			.placeholder-tab > * {
+				width: 50%;
+			}
+
+			.placeholder-tab sl-icon {
+				font-size: 1.25rem;
 			}
 		`
 	}
@@ -123,11 +153,22 @@ export class Tabs extends LitElement {
 		nextTab?.focus()
 	}
 
+	constructor() {
+		super()
+		this.classList.add("loading")
+	}
+
 	firstUpdated() {
-		Sortable.create(this)
+		Sortable.create(this.tabsWrapper)
+		this.addEventListener("wheel", e => {
+			this.tabsWrapper.scrollLeft += e.deltaY
+		})
+		this.shadowRoot.querySelector("slot[name=tabs]").addEventListener("slotchange", () => this.requestUpdate())
+		this.classList.remove("loading")
 	}
 
 	render() {
+
 		return html`
 			<div autofocus part="base">
 				<div part="pre-tabs">
@@ -139,7 +180,12 @@ export class Tabs extends LitElement {
 					<ww-scroll-button visible="always" direction="left" .getTarget=${() => this.tabsWrapper}></ww-scroll-button>
 					<div part="tabs-wrapper">
 						<slot name="tabs"></slot>
-						<sl-icon-button name="plus" @click=${this.emitNewTab}></sl-icon-button>
+						${this.tabs.length !== 0? html`
+							<sl-icon-button title="New document" name="file-earmark-plus-fill" @click=${this.emitNewTab}></sl-icon-button>
+						`: null}
+						${this.tabs.length !== 0 && this.openTab? html`
+							<sl-icon-button title="Open document" name="file-earmark-arrow-up-fill" @click=${this.emitOpenTab}></sl-icon-button>
+						`: null}
 					</div>
 					<ww-scroll-button visible="always" direction="right" .getTarget=${() => this.tabsWrapper}></ww-scroll-button>
 				</div>
@@ -147,75 +193,228 @@ export class Tabs extends LitElement {
 					<slot name="post-tabs">
 					</slot>
 				</div>
-				<slot></slot>
+				<slot class="tab-panel-slot"></slot>
+				${this.tabs.length === 0? html`<div class="placeholder-tab">
+					<sl-button outline variant="neutral" @click=${this.emitNewTab}>
+						<sl-icon slot="prefix" name="file-earmark-plus-fill"></sl-icon>
+						<span>New document</span>
+					</sl-button>
+					<sl-button outline variant="neutral" @click=${this.emitOpenTab}>
+						<sl-icon slot="prefix" name="file-earmark-arrow-up-fill"></sl-icon>
+						<span>Open document</span>
+					</sl-button>
+				</div>`: null}
 			</div>
 		`
 	}
 }
 
 @customElement("ww-tab")
-export class Tab extends SlTab {
+export class Tab extends LitElement {
+
+	@property({type: String, reflect: true})
+	panel: string
+
+	@property({type: Boolean, reflect: true})
+	active: boolean
+
+	@property({type: Boolean, reflect: true})
+	closable: boolean
+
+	@property({type: Boolean, reflect: true})
+	disabled: boolean
+
+	@property({type: String, reflect: true})
+	lang: string
+
+	@property({type: String})
+	titleId: string
+
+	@property({type: String})
+	confirmDiscardText: string
+
+	@property({type: Boolean})
+	confirmingDiscard: boolean
+	
+	@property({type: String, attribute: true, reflect: true})
+	titleValue: string
+	
+	@property({type: Boolean})
+	titleDisabled: boolean
+
+	@property({type: Boolean})
+	titleAsIconicUrl: boolean = false
+
+	@property({type: String})
+	placeholder: string = "Unsaved File"
+
+	@property({type: Boolean, attribute: true, reflect: true})
+	pendingChanges: boolean
+
+	@property({type: Boolean})
+	lastLoaded: boolean = false
+
+	@query("sl-animation")
+	animation: SlAnimation
+
+	connectedCallback() {
+		super.connectedCallback()
+		this.addEventListener("dragstart", e => {
+			console.log("dragstart")
+			this.titleAsIconicUrl && e.dataTransfer.setData("text/uri-list", this.titleValue)
+			e.dataTransfer.setData("text/plain", this.titleValue)
+			e.dataTransfer.setData("text", this.titleValue)
+		})
+	}
+
+	protected firstUpdated() {
+		this.animation.play = true
+	}
+
 	static get styles() {
 		return [SlTab.styles, css`
 
-			:host {
-				--focus-ring: none;
-				margin-right: 0.5em;
-				border-radius: 6px;
-				background: transparent;
-				border: 2px solid transparent;
-				flex-shrink: 1;
-				overflow: hidden;
-				width: 20ch;
-				min-width: min-content;
-				transition: max-width 1s ease-in;
-				position: relative;
+			:host(:hover) [part=base] {
+				background: #F9F9F9;
 			}
 
-			:host(:hover) {
-				background: #F5F5F5;
-			}
-
-			:host([active]) {
+			:host([active]) [part=base] {
 				background: white;
 				border: 2px solid rgba(0, 0, 0, 0.1);
 				border-bottom: 2px solid white;
 				border-bottom-left-radius: 0;
 				border-bottom-right-radius: 0;
+				cursor: grab;
 			}
 
 			[part=base] {
-				padding: 0.5rem;
+				--focus-ring: none;
+				margin-right: 0.5em;
+				border-radius: 6px;
+				flex-shrink: 1;
+				overflow: hidden;
+				width: 30ch;
+				min-width: min-content;
+				position: relative;
+				background: transparent;
+				border: 2px solid transparent;
+				padding: 0.7rem;
 				display: flex;
 				justify-content: space-between;
-				border-radius: 0;
-				padding-bottom: 0.9em;
 			}
 
-			:host(:not([active])) [part=close-button] {
+			:host(:not([active])) .buttons {
 				visibility: hidden;
 			}
 
-			[part=close-button] {
+			.title {
+				display: flex;
+				flex-direction: row;
+				align-items: center;
+			}
+
+			.title *:first-child {
+				margin-right: 1ch;
+			}
+
+			.title.empty {
+				color: darkgray;
+			}
+
+			.buttons {
 				position: absolute;
-				top: 20%;
-				right: 5%;
-				background: rgba(255, 255, 255, 0.85);
-				box-shadow: 0 0 5px 10px rgba(255, 255, 255, 0.85);
+				top: 0;
+				right: 0;
+				background: rgba(255, 255, 255, 0.9);
+				box-shadow: 0 0 5px 10px rgba(255, 255, 255, 0.9);
+				display: flex;
+				flex-direction: row;
+				align-items: center;
+				height: 100%;
+				padding-right: 0.25rem;
 			}
 
-			[part=close-button]::part(base):hover {
+			sl-icon-button {
+				height: 100%;
+			}
+
+			sl-icon-button::part(base) {
+				padding: 0;
+				height: 100%;
+				padding-left: 0.25rem;
+				padding-right: 0.25rem;
+			}
+
+			.close-button::part(base):hover {
 				color: red;
 			}
 
-			[part=close-button]::part(base):focus {
+			.close-button::part(base):focus {
 				color: red;
 			}
 
-			[part=close-button]::part(base):active {
+			.close-button::part(base):active {
 				color: darkred;
 			}
+
+			sl-tooltip {
+				--max-width: 100%;
+			}
 		`] as any
+	}
+
+	emitCloseTab = () => this.dispatchEvent(
+		new CustomEvent("ww-close-tab", {composed: true, bubbles: true})
+	)
+
+	emitSaveTab = () => this.dispatchEvent(
+		new CustomEvent("ww-save-tab", {composed: true, bubbles: true})
+	)
+
+	emitTitleClick = () => this.dispatchEvent(
+		new CustomEvent("ww-title-click", {composed: true, bubbles: true})
+	)
+
+	emitTitleChange = (title: string) => this.dispatchEvent(
+		new CustomEvent("ww-title-change", {composed: true, bubbles: true, detail: {title}})
+	)
+
+	emitCancelDiscard = () => this.dispatchEvent(
+		new CustomEvent("ww-cancel-discard", {composed: true, bubbles: true})
+	)
+
+	iconicUrlTemplate = () => {
+		const url = new WWURL(this.titleValue)
+		const iconName = PROTOCOL_ICONS[url.protocol.slice(0, -1)]
+		const filename = url.pathname.slice(url.pathname.lastIndexOf("/") + 1).split("#")[0]
+		return html`
+			<sl-icon name=${iconName}></sl-icon>
+			<span>${filename}</span>
+		`
+	}
+
+	render() {
+		return html`<sl-animation name="fadeIn" easing="easeIn" iterations=${1} duration=${100}>
+			<div class="tab" part="base" role="tab" aria-disabled=${this.disabled} aria-selected=${this.active} tabindex="-1">
+			<span 
+				title=${(this.titleAsIconicUrl? decodeURI(this.titleValue): this.titleValue) || this.placeholder}
+				class=${classMap({title: true, empty: !this.titleValue})}
+				id=${this.titleId}>
+				${this.titleAsIconicUrl
+					? this.titleValue? this.iconicUrlTemplate(): this.placeholder
+					: this.titleValue? this.titleValue: this.placeholder
+				}
+				${this.pendingChanges? html`<span name="title-suffix">*</span>`: null}
+			</span>
+			<div class="buttons">
+				<sl-icon-button title="Save document" class="save-button" @click=${() => this.emitSaveTab()} name="file-earmark-arrow-down"></sl-icon-button>
+				<sl-tooltip ?open=${this.confirmingDiscard} trigger="manual" placement="bottom" hoist>
+					<sl-icon-button title="Close document" class="close-button" @click=${() => this.emitCloseTab()} @blur=${() => this.emitCancelDiscard()} name="x-lg"></sl-icon-button>
+					<span slot="content" class="confirm-discard-text">${this.confirmDiscardText}</span>
+				</sl-tooltip>
+			</div>
+		</div>
+		</sl-animation>`
 	}
 }
 
@@ -338,7 +537,7 @@ export class TabTitle extends SlInput {
 
 	updated() {
 		this.input.setAttribute("style", `
-			font-family: Courier New, monospace;
+			font-family: var(--sl-font-mono);
 			font-weight: bold;
 			padding: 0;
 			padding-left: 1ch;

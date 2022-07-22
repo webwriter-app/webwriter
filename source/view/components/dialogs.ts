@@ -1,11 +1,12 @@
 import { LitElement, html, css, PropertyValueMap } from "lit";
 import { customElement, property, query } from "lit/decorators.js";
+import {classMap} from "lit/directives/class-map.js"
 import { Format, Protocol } from "../../state";
-import { WWURL } from "../../utility";
+import { WWURL } from "webwriter-model";
 import * as connect from "../../connect"
 import * as marshal from "../../marshal"
 import { SlDialog, SlDrawer } from "@shoelace-style/shoelace";
-import { PackageController, PackageJson } from "../controllers";
+import { BundlerController, PackagerController, PackageJson } from "../../state";
 
 
 @customElement("ww-io-dialog")
@@ -34,6 +35,9 @@ export class IODialog extends LitElement {
 
 	@property({type: Boolean, attribute: true, reflect: true})
 	open: boolean = true
+
+	@property({type: Boolean, attribute: true, reflect: true})
+	loading: boolean = false
 
 	get url() {
 		const url = new WWURL(`file://${this.location}`)
@@ -122,12 +126,12 @@ export class IODialog extends LitElement {
 		const {open, type, wwformat, protocol, location, filename, handleProtocolChange, handleFormatChange, handleLocationChange, handleRequestClose, emitSubmit} = this
 		return html`
 			<sl-dialog ?open=${open} label=${type == "saving"? "Save your document": "Load a document"} @sl-request-close=${handleRequestClose}>
-			<sl-icon slot="label" name="file-earmark-arrow-down-fill"></sl-icon>
+			<sl-icon slot="label" name=${`file-earmark-arrow-${type == "saving"? "down": "up"}-fill`}></sl-icon>
 				<span slot="label">${type == "saving"? "Save your document": "Load a document"}</span>
 				<form>
 					<label for="format">
 						<sl-icon class="label-icon" name="file-earmark"></sl-icon>
-						<span>Save as...</span>
+						<span>${type === "saving"? "Save as...": "Load as..."}</span>
 					</label>
 					<sl-radio-group name="format" value=${wwformat} @sl-change=${handleFormatChange} label="Format">
 						${Object.entries(marshal).map(([formatKey, format]) => html`
@@ -136,7 +140,7 @@ export class IODialog extends LitElement {
 					</sl-radio-group>
 					<label for="protocol">
 						<sl-icon class="label-icon" name="folder"></sl-icon>
-						<span>On...</span>
+						<span>${type === "saving"? "On...": "From..."}</span>
 					</label>
 					<sl-radio-group name="protocol" value=${protocol} @sl-change=${handleProtocolChange} label="Protocol">
 						${Object.entries(connect).map(([protocolKey, protocol]) => html`
@@ -148,7 +152,7 @@ export class IODialog extends LitElement {
 					`: null}
 				</form>
 				<sl-button slot="footer" variant="default" id="cancel-button" @click=${this.hide}>${"Cancel"}</sl-button>
-				<sl-button slot="footer" variant="primary" id="submit-button" @click=${emitSubmit}>${type === "saving"? "Save": "Load"}</sl-button>
+				<sl-button ?loading=${this.loading} slot="footer" variant="primary" id="submit-button" @click=${emitSubmit}>${type === "saving"? "Save": "Load"}</sl-button>
 			</sl-dialog>
 		`
 	}
@@ -158,23 +162,25 @@ export class IODialog extends LitElement {
 @customElement("ww-package-manager-drawer")
 export class PackageManagerDrawer extends LitElement {
 
-	packageManager = new PackageController(this)
-
-	fetchInstalledPackages = async () => {
-		this.loading = true
-		this.installedPackages = await this.packageManager.getInstalledPackages()
-		this.loading = false
-	}
 
 	protected updated(changed: PropertyValueMap<any> | Map<PropertyKey, unknown>) {
-		changed.has("open") && this.open? this.fetchInstalledPackages(): null
+		if(changed.has("open") && this.open) {
+			this.packager.fetchAllPackages(0, false, true)
+		}
 	}
+
+
+	@property({attribute: false})
+	packager: PackagerController
 
 	@property({attribute: false})
 	installedPackages: PackageJson[] = []
 
 	@property({attribute: false})
 	availablePackages: PackageJson[] = []
+
+	@property({type: Number})
+	totalPackagesAvailable: number
 
 	@property({type: String, attribute: true})
 	activeTab: "all" | "installed" | "available" = "all"
@@ -191,9 +197,6 @@ export class PackageManagerDrawer extends LitElement {
 	@property({type: String, attribute: true, reflect: true})
 	registryStatus: "pending" | "fulfilled" | "rejected" = "fulfilled"
 
-	@property({type: Boolean, attribute: true, reflect: true})
-	loading: Boolean = true
-
 	@property({attribute: false})
 	installingPackages: string[] = []
 
@@ -203,46 +206,62 @@ export class PackageManagerDrawer extends LitElement {
 	@property({attribute: false})
 	updatingPackages: string[] = []
 
+	@property({type: Boolean, attribute: true})
+	loading: boolean = false
+
+	private requestUpdateFull = () => this.requestUpdate()
+
+	connectedCallback() {
+		super.connectedCallback()
+		window.addEventListener("online", this.requestUpdateFull)
+		window.addEventListener("offline", this.requestUpdateFull)
+	}
+
+	disconnectedCallback() {
+		super.disconnectedCallback()
+		window.removeEventListener("online", this.requestUpdateFull)
+		window.removeEventListener("offline", this.requestUpdateFull)
+	}
+
+
 
 	async hide() {
 		await this.drawer.hide()
 		this.emitHide()
 	}
 
-	emitSubmit = () => this.dispatchEvent(
-		new CustomEvent("ww-submit", {composed: true, bubbles: true})
-	)
-
 	emitHide = () => this.dispatchEvent(
 		new CustomEvent("sl-hide", {composed: true, bubbles: true})
 	)
 
 	handleCloseDrawer() {
-		this.installedPackages = []
-		this.availablePackages = []
 		this.emitHide()
 	}
 
 	async handleInstallPackage(pkg: string) {
 		this.installingPackages = [...this.installingPackages, pkg]
-		await this.packageManager.install([pkg])
+		await this.packager.install([pkg])
+		await this.packager.fetchAllPackages(0, false, false)
 		this.installingPackages = this.installingPackages.filter(p => p !== pkg)
 	}
 
 	async handleUninstallPackage(pkg: string) {
 		this.uninstallingPackages = [...this.uninstallingPackages, pkg]
-		await this.packageManager.uninstall([pkg])
+		await this.packager.uninstall([pkg])
+		await this.packager.fetchAllPackages(0, false, false)
 		this.uninstallingPackages = this.uninstallingPackages.filter(p => p !== pkg)
 	}
 
 	async handleUpdatePackage(pkg: string) {
 		this.updatingPackages = [...this.updatingPackages, pkg]
-		await this.packageManager.update([pkg])
+		await this.packager.update([pkg])
+		await this.packager.fetchAllPackages(0, false, false)
 		this.updatingPackages = this.updatingPackages.filter(p => p !== pkg)
 	}
 
+
+
 	handleTabShow(e: CustomEvent<{name: PackageManagerDrawer["activeTab"]}>) {
-		console.log(e)
 		this.activeTab = e.detail.name
 	}
 
@@ -262,6 +281,7 @@ export class PackageManagerDrawer extends LitElement {
 				background: #f1f1f1;
 				padding: 1rem;
 				padding-bottom: 0;
+				padding-right: 0;
 			}
 
 			sl-tab-group {
@@ -270,6 +290,14 @@ export class PackageManagerDrawer extends LitElement {
 
 			sl-tab::part(base) {
 				padding: 0.5rem;
+			}
+
+			sl-drawer::part(header) {
+				background: #f1f1f1;
+			}
+
+			sl-drawer::part(header) > sl-icon-button {
+				background: #f1f1f1;
 			}
 
 			sl-drawer::part(close-button) {
@@ -294,6 +322,19 @@ export class PackageManagerDrawer extends LitElement {
 				box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
 			}
 
+			sl-card.installed::part(base) {
+				border-left: 4px solid var(--sl-color-gray-600);
+			}
+
+
+			sl-card.outdated::part(base) {
+				border-left: 4px solid var(--sl-color-yellow-600);
+			}
+
+			sl-card.available::part(base) {
+				border-left: 4px solid var(--sl-color-green-600);
+			}
+
 			sl-card::part(header) {
 				display: flex;
 				flex-direction: row;
@@ -315,6 +356,18 @@ export class PackageManagerDrawer extends LitElement {
 				height: 20px;
 			}
 
+			sl-tab::part(base) {
+				position: relative;
+				padding-right: 1.15rem;
+			}
+
+			sl-tab sl-badge::part(base) {
+				position: absolute;
+				right: 0;
+				top: 0;
+				font-size: 0.65rem;
+			}
+
 			.package-name {
 				color: var(--sl-color-primary-950);
 				font-weight: bold;
@@ -330,9 +383,10 @@ export class PackageManagerDrawer extends LitElement {
 
 			.spinner-container {
 				display: flex;
-				flex-direction: column;
 				align-items: center;
+				gap: 1rem;
 				color: var(--sl-color-neutral-700);
+				margin-top: 2rem;
 			}
 
 			.spinner-container > sl-spinner {
@@ -345,6 +399,10 @@ export class PackageManagerDrawer extends LitElement {
 				flex-direction: row;
 				align-items: center;
 				gap: 1rem;
+			}
+
+			sl-alert {
+				margin-bottom: 1rem;
 			}
 		`
 	}
@@ -362,43 +420,38 @@ export class PackageManagerDrawer extends LitElement {
 
 
 	packageListItem = (pkg: PackageJson, i: number) => {
-		const installing = this.installingPackages.includes(pkg.name)
-		const uninstalling = this.uninstallingPackages.includes(pkg.name)
-		const updating = this.updatingPackages.includes(pkg.name)
-		return html`<sl-card>
+		const {name, author, version, description, keywords, installed, outdated} = pkg
+		const installing = this.installingPackages.includes(name)
+		const uninstalling = this.uninstallingPackages.includes(name)
+		const updating = this.updatingPackages.includes(name)
+		return html`<sl-card class=${classMap({installed, outdated, available: !installed})}>
 			<sl-icon name="box-seam" slot="header"></sl-icon>
-			<span class="package-name" slot="header">${pkg.name}</span>
-			<span class="package-author" slot="header">${pkg.author}</span>
-			<code class="package-version" slot="header">${pkg.version}</code>
-			${pkg?.keywords?.map(kw => html`<sl-tag variant="primary" slot="header">${kw}</sl-tag>`)}
-			<span class="package-description">${pkg.description}</span>
-			<sl-button @click=${() => this.handleUpdatePackage(pkg.name)} outline slot="footer" ?loading=${updating}  ?disabled=${uninstalling || installing || !pkg.outdated}>Update</sl-button>
-			${pkg.installed
-				? html`<sl-button @click=${() => this.handleUninstallPackage(pkg.name)} outline slot="footer" ?loading=${uninstalling} ?disabled=${installing || updating}>Uninstall</sl-button>`
-				: html`<sl-button @click=${() => this.handleInstallPackage(pkg.name)} outline slot="footer" ?loading=${installing} ?disabled=${uninstalling || updating}>Install</sl-button>`
+			<span class="package-name" slot="header">${name}</span>
+			<span class="package-author" slot="header">${author}</span>
+			<code class="package-version" slot="header">${version}</code>
+			${keywords?.filter(kw => kw !== "webwriter").map(kw => html`
+				<sl-tag variant="primary" slot="header">${kw}</sl-tag>
+			`)}
+			<span class="package-description">${description}</span>
+			<sl-button @click=${() => this.handleUpdatePackage(name)} outline slot="footer" ?loading=${updating}  ?disabled=${uninstalling || installing || !outdated}>Update</sl-button>
+			${installed
+				? html`<sl-button @click=${() => this.handleUninstallPackage(name)} outline slot="footer" ?loading=${uninstalling} ?disabled=${installing || updating}>Uninstall</sl-button>`
+				: html`<sl-button @click=${() => this.handleInstallPackage(name)} outline slot="footer" ?loading=${installing} ?disabled=${uninstalling || updating}>Install</sl-button>`
 			}
 		</sl-card>`
 	}
 
 	npmPrompt = () => {
+		// TODO: Manual NPM command escape hatch? Safety issues? Or just "open modules folder"?
 		return html`<sl-input></sl-input>`
 	}
 
-	// NPM availability --> npm ping --json
-	// List all available packages --> npm ls --json --long + npm outdated --json + search
-		// Per package:
-			// Show name, description, version (outdated?), link to package
-			// Update package --> npm update <pkg>
-			// Install package --> npm install <pkg>
-			// Uninstall package --> npm uninstall <pkg>
-
-	// [ADVANCED] Manual npm commands --> npm <...args>
-
 	render() {
-		const allPackages = [...this.installedPackages, ...this.availablePackages]
-		const packages = {"all": allPackages, "installed": this.installedPackages, "available": this.availablePackages}[this.activeTab]
-		console.log(packages)
-		console.log(this)
+		const installed = this.installedPackages.filter(pkg => pkg?.keywords?.includes("webwriter"))
+		const available = this.availablePackages.filter(a => !installed.some(b => a.name === b.name))
+		const outdated = installed.filter(pkg => pkg.outdated)
+		const all = [...available, ...installed]
+		const packages = {all, installed, available, outdated}[this.activeTab]
 		return html`
 			<sl-drawer placement="start" ?open=${this.open} @sl-hide=${this.handleCloseDrawer}>
 					<span class="drawer-title" slot="label">
@@ -407,10 +460,28 @@ export class PackageManagerDrawer extends LitElement {
 					</span>
 					${this.registryStatusIndicator()}
 					<sl-tab-group slot="label" @sl-tab-show=${this.handleTabShow}>
-						<sl-tab panel="all" slot="nav">All</sl-tab>
-						<sl-tab panel="installed" slot="nav">Installed</sl-tab>
-						<sl-tab panel="available" slot="nav">Available</sl-tab>
+						<sl-tab panel="all" slot="nav">
+							All
+							<sl-badge variant="primary" pill>${!this.loading? all.length: "?"}</sl-badge>
+						</sl-tab>
+						<sl-tab panel="available" slot="nav" ?disabled=${!navigator.onLine}>
+							Available
+							<sl-badge variant="success" pill>${!this.loading? available.length: "?"}</sl-badge>
+						</sl-tab>
+						<sl-tab panel="installed" slot="nav">
+							Installed
+							<sl-badge variant="neutral" pill>${!this.loading? installed.length: "?"}</sl-badge>
+						</sl-tab>
+						<sl-tab panel="outdated" slot="nav" ?disabled=${!navigator.onLine}>
+							Outdated
+							<sl-badge variant="warning" pill>${!this.loading? outdated.length: "?"}</sl-badge>
+						</sl-tab>
 					</sl-tab-group>
+					<sl-alert variant="warning" ?open=${!navigator.onLine}>
+						<sl-icon slot="icon" name="wifi-off"></sl-icon>
+						<b>Warning: </b>
+						<span>You seem to be offline. While offline, you can't manage available or outdated packages.</span>
+					</sl-alert>
 					<div class="package-list">
 						${packages.length === 0 && !this.loading
 							? html`<span>No packages in this list</span>`

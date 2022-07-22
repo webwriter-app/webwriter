@@ -16,6 +16,7 @@
         width: calc(100vw - var(--scrollbar-width));
         height: 100vh;
         margin: 0;
+        font-family: var(--sl-font-sans);
       }
 
       #body {
@@ -33,7 +34,12 @@
     </style>
   </head>
   <body id="body">
-    <script type="module" src="/index.js"></script>
+    <script type="module">
+      import "redefine-custom-elements"
+      import "@shoelace-style/shoelace/dist/themes/light.css"
+      import "@shoelace-style/shoelace"
+      import "./view"
+    </script>
     <ww-app></ww-app>
   </body>
 </html>

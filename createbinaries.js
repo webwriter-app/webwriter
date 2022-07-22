@@ -35,7 +35,7 @@ const PKG_EXTRA_FLAGS = "--no-bytecode --public-packages \"*\" --public"
 
 async function main() {
 
-  const binariesDir = "./binaries"
+  const binariesDir = "./static/binaries"
   !fs.existsSync(binariesDir)? fs.mkdirSync(binariesDir): null
 
   fs.writeFileSync(`${PKG_CONFIG_PATH}`, PKG_CONFIG)
@@ -45,8 +45,8 @@ async function main() {
   for(const [binname, triple] of Object.entries(TRIPLES_OF_NPM)) {
     const suffix = binname.includes("win")? ".exe": ""
     fs.renameSync(
-      `./binaries/${binname}${suffix}`,
-      `./binaries/npm-${triple}${suffix}`
+      `./static/binaries/${binname}${suffix}`,
+      `./static/binaries/npm-${triple}${suffix}`
     )
   }
 
@@ -56,7 +56,7 @@ async function main() {
     if(fs.existsSync(`./node_modules/${packagename}`)) {
       fs.copyFileSync(
         `./node_modules/${packagename}/${prefix}esbuild${suffix}`,
-        `./binaries/esbuild-${triple}${suffix}`
+        `./static/binaries/esbuild-${triple}${suffix}`
       )
     }
   }

@@ -1,0 +1,18 @@
+{
+  "name": "webwriter-lit",
+  "version": "0.1.14",
+  "description": "Base classes for widget components with lit (WebWriter)",
+  "main": "index.ts",
+  "keywords": [
+    "webwriter-core"
+  ],
+  "author": "Frederic Salmen <frederic@fsalmen.de>",
+  "license": "MIT",
+  "dependencies": {
+    "lit": "^2.2.7",
+    "webwriter-model": "^0.1.13"
+  },
+  "scripts": {
+    "build": "tsc index.ts --target es2020  --experimentalDecorators --esModuleInterop --moduleResolution node"
+  }
+}

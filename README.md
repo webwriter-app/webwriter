@@ -24,11 +24,11 @@ Authoring tool for digital learning resources called Open Explorables. Open Expl
 ## Core Ideas
 At the core, each open explorable is just a sequence of widgets. Widget types are provided by packages.
 
-| Concept         | DOM representation | Runtime representation | File representation   |
-|-----------------|--------------------|------------------------|-----------------------|
-| Open Explorable | `HTMLDocument`     | `webwriter.Document`   | `.html`/`.h5p`        |
-| Widget          | `HTMLElement`      | `webwriter.Block`      | HTML tag + attributes |
-| Package         | -                  | `webwriter.Package`    | npm/yarn package      |
+| Concept         | DOM representation | Runtime representation              | File representation   |
+|-----------------|--------------------|-------------------------------------|-----------------------|
+| Open Explorable | `HTMLDocument`     | `webwriter.Document`                | `.html`/`.h5p`        |
+| Widget          | `HTMLElement`      | `webwriter.Block`                   | HTML tag + attributes |
+| Package         | -                  | `webwriter.BlockElementConstructor` | npm/yarn package      |
 
 
 ### Open Explorables
@@ -39,6 +39,14 @@ Corresponding to Open Explorables, widgets are simply HTML elements, again imple
 1. A string attribute `label`, naming the widget instance
 2. A boolean attribute `editing`, where the widget instance provides editing capabilities if `true`
 3. A boolean attribute `printable`, where the widget instance provides styles for printing if `true`
+
+### Metadata
+Both Open Explorables and Widgets may have attached metadata. It is recommended to use a subset of the [schema.org LearningResource type](https://schema.org/LearningResource), but any number of key/value pairs serializable to JSON is permitted. Metadata can be thought of as a cascade:
+1. Some metadata is constant for all Open Explorables and Widgets.
+2. Other metadata depends on the type of Widget, and is thus defined by the Widget author.
+3. Yet other metadata depends on the Widget or Open Explorable instance, and is thus defined by the end user.
+
+*Note: Level 3 of the metadata cascade may be automatically annotated to some degree in the future.* 
 
 ### Packages
 Packages must follow this interface (`webwriter.Package`):
@@ -54,6 +62,7 @@ The only difference between built-in and all other packages is that built-in pac
 ### I/O
 All widget attributes are persisted, so widget instance state should be stored as attributes.
 
+`html` serializer
 ```mermaid
 graph TD
 
@@ -68,8 +77,14 @@ C --> E
 D --> E
 ```
 
+`zip` serializer (SCORM, H5P)
 ```mermaid
 graph TD
 A[HTML file]
 
 ```
+
+### Modules of this repository
+1. `webwriter`: The authoring tool itself
+2. `webwriter-model`: Core types useful for implementing own widgets
+3. `webwriter-lit`: Base classes for widget components based on LitElement

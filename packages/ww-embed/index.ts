@@ -1,8 +1,12 @@
-import { html, css } from "lit"
-import { customElement, property } from "lit/decorators.js"
+import "@shoelace-style/shoelace/dist/themes/light.css"
+import SlInput from "@shoelace-style/shoelace/dist/components/input/input.js"
+import SlResponsiveMedia from "@shoelace-style/shoelace/dist/components/responsive-media/responsive-media.js"
 
-import { LitElementWw } from "../../utility"
-import { Block, BlockElement } from "../../model"
+import { html, css } from "lit"
+import { property } from "lit/decorators.js"
+
+import { LitElementWw } from "webwriter-lit"
+import { Block, BlockElement } from "webwriter-model"
 
 interface EmbedBlock extends Block {
   attributes: {
@@ -12,13 +16,24 @@ interface EmbedBlock extends Block {
   }
 }
 
-@customElement("ww-embed")
-class WwEmbed extends LitElementWw implements BlockElement<EmbedBlock> {
+export default class WwEmbed extends LitElementWw implements BlockElement<EmbedBlock> {
   
   @property({type: String, attribute: true, reflect: true})
   src: EmbedBlock["attributes"]["src"]
 
   setSrc = (src: string) => this.src = src
+
+  static get scopedElements() {
+    return {
+      "sl-input": SlInput,
+      "sl-responsive-media": SlResponsiveMedia
+    }
+  }
+
+  connectedCallback() {
+    super.connectedCallback()
+    this.requestUpdate()
+  }
 
   static get styles() {
     return css`
@@ -42,11 +57,4 @@ class WwEmbed extends LitElementWw implements BlockElement<EmbedBlock> {
       </sl-responsive-media>
     `
   }
-}
-
-export default {
-  element: WwEmbed,
-  actions: [
-
-  ]
 }

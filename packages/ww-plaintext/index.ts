@@ -1,9 +1,11 @@
-import { html, css } from "lit"
-import { customElement, property, query } from "lit/decorators.js"
+import "@shoelace-style/shoelace/dist/themes/light.css"
+import SlTextarea from "@shoelace-style/shoelace/dist/components/textarea/textarea.js"
 
-import { Block, BlockElement } from "../../model"
-import { SlTextarea } from "@shoelace-style/shoelace"
-import { LitElementWw } from "../../utility"
+import { html, css } from "lit"
+import { property, query } from "lit/decorators.js"
+
+import { Block, BlockElement } from "webwriter-model"
+import { LitElementWw } from "webwriter-lit"
 
 interface PlaintextBlock extends Block {
   attributes: {
@@ -13,8 +15,7 @@ interface PlaintextBlock extends Block {
   }
 }
 
-@customElement("ww-plaintext")
-class WwPlaintext extends LitElementWw implements BlockElement<PlaintextBlock> {  
+export default class WwPlaintext extends LitElementWw implements BlockElement<PlaintextBlock> {  
 
   @property({type: String, attribute: true, reflect: true})
   value: PlaintextBlock["attributes"]["value"]
@@ -26,6 +27,17 @@ class WwPlaintext extends LitElementWw implements BlockElement<PlaintextBlock> {
 
   focus() {
     this.textarea.focus()
+  }
+
+  static get scopedElements() {
+    return {
+      "sl-textarea": SlTextarea
+    }
+  }
+
+  connectedCallback() {
+    super.connectedCallback()
+    this.requestUpdate()
   }
 
   static get styles() {
@@ -41,7 +53,6 @@ class WwPlaintext extends LitElementWw implements BlockElement<PlaintextBlock> {
   }
 
   render() {
-
     return html`
       <sl-textarea
         @sl-change=${e => this.setValue(e.target.value)}
@@ -50,11 +61,4 @@ class WwPlaintext extends LitElementWw implements BlockElement<PlaintextBlock> {
       </sl-textarea>
     `
   }
-}
-
-export default {
-  element: WwPlaintext,
-  actions: [
-
-  ]
 }

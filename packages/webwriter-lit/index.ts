@@ -1,9 +1,10 @@
 import {LitElement} from "lit"
 import { property } from "lit/decorators.js"
+import {ScopedElementsMixin} from "@open-wc/scoped-elements"
 
-import {Block, BlockElement} from "../model"
+import {Block, BlockElement} from "webwriter-model"
 
-export class LitElementWw extends LitElement implements BlockElement {
+class LitElementWwUnscoped extends LitElement implements BlockElement {
   @property({type: Boolean, attribute: true, reflect: true})
   printable: boolean
 
@@ -24,4 +25,11 @@ export class LitElementWw extends LitElement implements BlockElement {
 
 	@property({type: String, attribute: true, reflect: true})
   license: string
+
+  connectedCallback() {
+    super.connectedCallback()
+    this.getAttributeNames().forEach(name => this.setAttribute(name, this.getAttribute(name)))
+  }
 }
+
+export const LitElementWw = ScopedElementsMixin(LitElementWwUnscoped)
