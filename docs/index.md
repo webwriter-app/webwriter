@@ -22,12 +22,12 @@ Open Explorables are...
 
 ## Explainers
 Explainers help understand the architecture of WebWriter.
-- [Explainer: Core Ideas](coreideas): Summarizes the core data structures of WebWriter
+- [Explainer: Core Ideas](coreideas.md): Summarizes the core data structures of WebWriter
 
 ## Guides
 Guides show practical steps to extend WebWriter with packages.
-- [Guide: Creating Packages](creatingpackages): 
-- [Guide: Creating Widgets](creatingwidgets): 
+- [Guide: Creating Packages](creatingpackages.md): How to create a new package, step by step.
+- [Guide: Creating Widgets](creatingwidgets.md): How to implement your own widget in a package, step by step.
 
 ## Manuals
 Manuals explain how to use the features of WebWriter.
