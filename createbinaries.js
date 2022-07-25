@@ -42,6 +42,8 @@ async function main() {
 
   child_process.execSync(`node ${PKG_PATH} ${NPM_ENTRYPOINT} --config ${PKG_CONFIG_PATH} --targets ${PKG_TARGETS} --output ${PKG_OUTPUT} ${PKG_EXTRA_FLAGS}`, {encoding: "utf8"})
 
+  fs.readdirSync(binariesDir, (err, files) => console.log(files));
+
   for(const [binname, triple] of Object.entries(TRIPLES_OF_NPM)) {
     const suffix = binname.includes("win")? ".exe": ""
     fs.renameSync(
