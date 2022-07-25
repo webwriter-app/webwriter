@@ -7,7 +7,7 @@ Open Explorables are...
 - **interactive**, allowing users to interact and receive feedback
 
 ## Features
-- Author open, interactive and multimedial content: Open Explorables
+- Author open, interactive and multimedial content on Windows/Mac/Linux: Open Explorables
 - Work with an easy-to-use, direct interface, no programming needed (WYSIWYG, "What you see is what you get")
 - Get extra packages online and use new widgets in your Open Explorable
 - Save your Open Explorable as a single, standalone HTML file (or a SCORM `.zip` file, or a H5P `.h5p` file)
@@ -15,19 +15,16 @@ Open Explorables are...
   - It's just a file! Use any cloud storage such as Dropbox, Google Drive, etc. or even use a USB drive
   - It's just a web page! Add it to any LMS (such as Moodle) or any CMS (such as WordPress) or even host it on your own web server
 
-### Supported Platforms
-- Windows (.msi: 64bit, ARM64)
-- Mac OS (.app: 64bit, ARM64)
-- Linux (.deb: 64bit, ARM64)
+## Learn More
 
-## Explainers
+### Explainers
 Explainers help understand the architecture of WebWriter.
 - [Explainer: Core Ideas](coreideas.md) - Summarizes the core data structures of WebWriter
 
-## Guides
+### Guides
 Guides show practical steps to extend WebWriter with packages.
 - [Guide: Creating a Package](creatingpackages.md) - How to create a new package, step by step.
 - [Guide: Creating a Widget](creatingwidgets.md) - How to implement your own widget in a package, step by step.
 
-## Manuals
+### Manuals
 Manuals explain how to use the features of WebWriter.
