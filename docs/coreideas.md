@@ -1,7 +1,3 @@
----
-layout: post
----
-
 # Core Ideas
 This article summarizes the core technical aspects such as data structures, IO, and so on. It is a helpful introduction 
 
