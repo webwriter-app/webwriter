@@ -1,3 +1,4 @@
 theme: jekyll-theme-minimal
 title: WebWriter
-logo: android-chrome-512x512.png
+github:
+  owner_name: Frederic Salmen
