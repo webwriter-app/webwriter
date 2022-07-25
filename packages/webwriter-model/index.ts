@@ -10,28 +10,16 @@ export type Attributes = Record<string, any> & RequiredAttributes & LearningReso
 
 export type WWURLString = string
 
+
 export type BlockElement<B extends Block = Block> = HTMLElement & {
-  label: string
-  author: string
-  license: string
-  printable: boolean
-  editing: boolean
-  onlineOnly: boolean
+  editable: boolean
+  printable?: boolean
+  analyzable?: boolean
 } & Omit<B["attributes"], "type">
 
-export interface BlockActionElement<B extends Block = Block> extends HTMLElement {
-  block: B
-}
 
-export interface BlockElementConstructor<B extends Block = Block, A extends BlockActionElementConstructor = any> {
+export interface BlockElementConstructor<B extends Block = Block> {
   new (...params: any[]): BlockElement<B>
-  actions?: A[]
-  experienceEvents?: string[]
-  tagName?: string
-}
-
-export interface BlockActionElementConstructor {
-  new (...params: any[]): BlockActionElement
 }
 
 export class Block {

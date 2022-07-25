@@ -3,7 +3,7 @@ export class Block {
         if (!attributes?.type) {
             throw TypeError("Missing required 'type' attribute in Block");
         }
-        let attrs = { name: "", ...attributes };
+        let attrs = { type: "", ...attributes };
         this.attributes = { ...attrs };
         this.content = content;
     }

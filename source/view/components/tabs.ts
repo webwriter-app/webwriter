@@ -42,7 +42,6 @@ export class Tabs extends LitElement {
 				grid: min-content / minmax(32px, 1fr) minmax(auto, 960px) minmax(32px, 1fr);
 				grid-auto-rows: min-content;
 				row-gap: 1rem;
-				align-items: center;
 				height: 100%;
 			}
 

@@ -45,8 +45,8 @@
     "sortablejs": "^1.15.0",
     "webwriter-lit": "file:packages/webwriter-lit",
     "webwriter-model": "file:packages/webwriter-model",
-    "ww-embed": "^0.1.14",
-    "ww-plaintext": "^0.1.14",
+    "ww-embed": "file:packages/ww-embed",
+    "ww-plaintext": "file:packages/ww-plaintext",
     "xstate": "^4.32.1"
   },
   "devDependencies": {

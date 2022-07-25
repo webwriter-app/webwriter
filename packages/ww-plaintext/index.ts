@@ -9,7 +9,6 @@ import { LitElementWw } from "webwriter-lit"
 
 interface PlaintextBlock extends Block {
   attributes: {
-    label: string
     value: string
     type: "ww-plaintext"
   }
@@ -25,19 +24,14 @@ export default class WwPlaintext extends LitElementWw implements BlockElement<Pl
 
   setValue = (value: string) => this.value = value
 
-  focus() {
-    this.textarea.focus()
+  focus(options: FocusOptions) {
+    this.textarea.focus(options)
   }
 
   static get scopedElements() {
     return {
       "sl-textarea": SlTextarea
     }
-  }
-
-  connectedCallback() {
-    super.connectedCallback()
-    this.requestUpdate()
   }
 
   static get styles() {

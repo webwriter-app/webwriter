@@ -1,6 +1,7 @@
 import "@shoelace-style/shoelace/dist/themes/light.css"
 import SlInput from "@shoelace-style/shoelace/dist/components/input/input.js"
 import SlResponsiveMedia from "@shoelace-style/shoelace/dist/components/responsive-media/responsive-media.js"
+import SlQrCode from "@shoelace-style/shoelace/dist/components/qr-code/qr-code.js"
 
 import { html, css } from "lit"
 import { property } from "lit/decorators.js"
@@ -10,7 +11,6 @@ import { Block, BlockElement } from "webwriter-model"
 
 interface EmbedBlock extends Block {
   attributes: {
-    label: string
     src: string
     type: "ww-embed"
   }
@@ -26,35 +26,54 @@ export default class WwEmbed extends LitElementWw implements BlockElement<EmbedB
   static get scopedElements() {
     return {
       "sl-input": SlInput,
-      "sl-responsive-media": SlResponsiveMedia
+      "sl-responsive-media": SlResponsiveMedia,
+      "sl-qr-code": SlQrCode
     }
-  }
-
-  connectedCallback() {
-    super.connectedCallback()
-    this.requestUpdate()
   }
 
   static get styles() {
     return css`
+      :host {
+        display: contents;
+      }
+
       sl-responsive-media {
+        grid-column: 2;
         margin-top: 0.1rem;
         background: rgba(0, 0, 0, 0.1);
+      }
+
+      sl-input {
+        grid-column: 3;
       }
     `
   }
 
+  inputTemplate = () => html`
+    <sl-input
+      type="url"
+      placeholder="URL to embed"
+      value=${this.src}
+      @sl-change=${e => this.setSrc(e.target.value)}>
+    </sl-input>  
+  `
+
+  contentTemplate = () => html`
+    <sl-responsive-media>
+      ${this.src? html`<iframe src=${this.src}></iframe>`: null}
+    </sl-responsive-media>
+  `
+
+  qrTemplate = () => html`
+    <sl-responsive-media>
+      ${this.src? html`<sl-qr-code value=${this.src}></sl-qr-code>`: null}
+    </sl-responsive-media>
+  `
+
   render() {
     return html`
-      <sl-input
-        type="url"
-        placeholder="URL to embed"
-        value=${this.src}
-        @sl-change=${e => this.setSrc(e.target.value)}>
-      </sl-input>
-      <sl-responsive-media>
-        ${this.src? html`<iframe src=${this.src}></iframe>`: null}
-      </sl-responsive-media>
+      ${this.printable? this.qrTemplate(): this.contentTemplate()}
+      ${this.editable? this.inputTemplate(): null}
     `
   }
 }

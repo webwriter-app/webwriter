@@ -206,6 +206,8 @@ export class BlockSection extends LitElement {
 		super.connectedCallback()
 		this.element = new this.elementConstructor()
 		this.element.block = this.block
+		this.element.editable = true
+		this.element.printable = false
 		Object.entries(this.element.block.attributes).forEach(([k, v]) => this.element[k] = v)
 		this.element.classList.add("block-element")
 		this.observer = new MutationObserver((mutations, observer) => {
@@ -236,8 +238,16 @@ export class BlockSection extends LitElement {
 				display: contents;
 			}
 
+			.left-panel {
+				grid-column: 1;
+			}
+
 			:host(:not(:focus-within)) .left-panel {
 				visibility: hidden;
+			}
+
+			.block-element {
+				grid-column: 2;
 			}
 		`
 	}
@@ -255,7 +265,6 @@ export class BlockSection extends LitElement {
 			<sl-animation name="fadeIn" easing="easeIn" iterations=${1} duration=${100}>
 				${this.element}
 			</sl-animation>
-			<ww-side-panel></ww-side-panel>
 		`
 	}
 }

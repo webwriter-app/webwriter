@@ -10,7 +10,7 @@ import { ScopedElementsMixin } from "@open-wc/scoped-elements";
 class LitElementWwUnscoped extends LitElement {
     connectedCallback() {
         super.connectedCallback();
-        this.getAttributeNames().forEach(name => this.setAttribute(name, this.getAttribute(name)));
+        this.getAttributeNames().forEach(n => this.setAttribute(n, this.getAttribute(n)));
     }
 }
 __decorate([
@@ -21,17 +21,6 @@ __decorate([
 ], LitElementWwUnscoped.prototype, "editable", void 0);
 __decorate([
     property({ type: Boolean, attribute: true, reflect: true })
-], LitElementWwUnscoped.prototype, "editing", void 0);
-__decorate([
-    property({ type: Boolean, attribute: true, reflect: true })
-], LitElementWwUnscoped.prototype, "onlineOnly", void 0);
-__decorate([
-    property({ type: String, attribute: true, reflect: true })
-], LitElementWwUnscoped.prototype, "label", void 0);
-__decorate([
-    property({ type: String, attribute: true, reflect: true })
-], LitElementWwUnscoped.prototype, "author", void 0);
-__decorate([
-    property({ type: String, attribute: true, reflect: true })
-], LitElementWwUnscoped.prototype, "license", void 0);
+], LitElementWwUnscoped.prototype, "analyzable", void 0);
+/**WebWriter API: Minimal base class for a widget implemented in Lit. Implements the core properties required by WebWriter, initializes the component when loaded and provides a Scoped Custom Element Registry (@open-wc/scoped-elements) to help with namespace conflicts when using other components in this widget. */
 export const LitElementWw = ScopedElementsMixin(LitElementWwUnscoped);

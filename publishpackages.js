@@ -25,9 +25,9 @@ async function main() {
   for(const dir of dirs) {
 
     console.log(`INSTALLING ${dir}`)
-    execSync(`npm install ${dir}`, {encoding: "utf8"})
+    execSync(`npm install -s ${dir}`, {encoding: "utf8"})
     console.log(`UPDATING ${dir}`)
-    execSync(`npm update -s  --prefix ${dir}`, {encoding: "utf8"})
+    execSync(`npx npm-check-updates -u --cwd ${dir}`, {encoding: "utf8"})
     console.log(`BUILDING ${dir}`)
     execSync(`npm run build --if-present --prefix ${dir}`, {encoding: "utf8"})
     console.log(`BUMPING ${dir}`)
