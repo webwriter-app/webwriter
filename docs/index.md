@@ -19,3 +19,15 @@ Open Explorables are...
 - Windows (.msi: 64bit, ARM64)
 - Mac OS (.app: 64bit, ARM64)
 - Linux (.deb: 64bit, ARM64)
+
+## Explainers
+Explainers help understand the architecture of WebWriter.
+- [Explainer: Core Ideas](coreideas): Summarizes the core data structures of WebWriter
+
+## Guides
+Guides show practical steps to extend WebWriter with packages.
+- [Guide: Creating Packages](creatingpackages): 
+- [Guide: Creating Widgets](creatingwidgets): 
+
+## Manuals
+Manuals explain how to use the features of WebWriter.
