@@ -9,6 +9,7 @@
     "vite": "node ./node_modules/vite/bin/vite",
     "tauri-dev": "tauri dev",
     "dev": "npm-run-all -pr vite tauri-dev",
+    "build-web": "npm run vite -- build",
     "build-local": "npm run vite -- build && node createbinaries.js && node preparestatic.js && tauri build",
     "createbinaries": "node createbinaries.js",
     "preparestatic": "node preparestatic.js",
