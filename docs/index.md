@@ -26,8 +26,8 @@ Explainers help understand the architecture of WebWriter.
 
 ## Guides
 Guides show practical steps to extend WebWriter with packages.
-- [Guide: Creating Packages](creatingpackages.md): How to create a new package, step by step.
-- [Guide: Creating Widgets](creatingwidgets.md): How to implement your own widget in a package, step by step.
+- [Guide: Creating a Package](creatingpackages.md): How to create a new package, step by step.
+- [Guide: Creating a Widget](creatingwidgets.md): How to implement your own widget in a package, step by step.
 
 ## Manuals
 Manuals explain how to use the features of WebWriter.
