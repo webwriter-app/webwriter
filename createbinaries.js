@@ -30,19 +30,16 @@ const NPM_ENTRYPOINT = path.join(NPM_PATH, "index.js")
 const PKG_CONFIG = "{\"scripts\": \"lib/**/*\"}"
 const PKG_CONFIG_PATH = path.join(NPM_PATH, "pkg.json")
 const PKG_TARGETS = "node16-win-x64,node16-macos-x64,node16-linux-x64,node16-win-arm64,node16-macos-arm64,node16-linux-arm64"
-const PKG_OUTPUT = path.normalize("./binaries/npm")
+const PKG_OUTPUT = path.normalize("./static/binaries/npm")
+const BINARIES_DIR = path.normalize("./static/binaries")
 const PKG_EXTRA_FLAGS = "--no-bytecode --public-packages \"*\" --public"
 
 async function main() {
-
-  const binariesDir = "./static/binaries"
-  !fs.existsSync(binariesDir) && fs.mkdirSync(binariesDir, {recursive: true})
+  !fs.existsSync(BINARIES_DIR) && fs.mkdirSync(BINARIES_DIR, {recursive: true})
 
   fs.writeFileSync(`${PKG_CONFIG_PATH}`, PKG_CONFIG)
 
   child_process.execSync(`node ${PKG_PATH} ${NPM_ENTRYPOINT} --config ${PKG_CONFIG_PATH} --targets ${PKG_TARGETS} --output ${PKG_OUTPUT} ${PKG_EXTRA_FLAGS}`, {encoding: "utf8"})
-
-  fs.readdirSync(binariesDir, (err, files) => console.log(files));
 
   for(const [binname, triple] of Object.entries(TRIPLES_OF_NPM)) {
     const suffix = binname.includes("win")? ".exe": ""
