@@ -1,37 +1,90 @@
-## Welcome to GitHub Pages
+# Overview
+Open Explorables are...
+- **web based**, built with client-side web standards and deployable on the web
+- **file oriented**, available as all-in-one, standalone, offline-capable files
+- **open**, conformant with OER principles allowing easy reuse
+- **multimedial**, combining many media types such as text, audio, video, etc.
+- **interactive**, allowing users to interact and receive feedback
 
-You can use the [editor on GitHub](https://github.com/salmenf/webwriter/edit/main/docs/index.md) to maintain and preview the content for your website in Markdown files.
+## Features
+- Author open, interactive and multimedial content: Open Explorables
+- Work with an easy-to-use, direct interface, no programming needed (WYSIWYG, "What you see is what you get")
+- Get extra packages online and use new widgets in your Open Explorable
+- Save your Open Explorable as a single, standalone HTML file (or a SCORM `.zip` file, or a H5P `.h5p` file)
+- Provide your Open Explorables to your learners any way you want:
+  - It's just a file! Use any cloud storage such as Dropbox, Google Drive, etc. or even use a USB drive
+  - It's just a web page! Add it to any LMS (such as Moodle) or any CMS (such as WordPress) or even host it on your own web server
 
-Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
+### Supported Platforms
+- Windows (.msi: 64bit, ARM64)
+- Mac OS (.app: 64bit, ARM64)
+- Linux (.deb: 64bit, ARM64)
+- Web (Web App) --> optional "WebWriterLite" (limited file and package management)
 
-### Markdown
+## Core Ideas
+At the core, each open explorable is just a sequence of widgets. Widget types are provided by packages.
 
-Markdown is a lightweight and easy-to-use syntax for styling your writing. It includes conventions for
+| Concept         | DOM representation | Runtime representation              | File representation   |
+|-----------------|--------------------|-------------------------------------|-----------------------|
+| Open Explorable | `HTMLDocument`     | `webwriter.Document`                | `.html`/`.h5p`        |
+| Widget          | `HTMLElement`      | `webwriter.Block`                   | HTML tag + attributes |
+| Package         | -                  | `webwriter.BlockElementConstructor` | npm/yarn package      |
 
-```markdown
-Syntax highlighted code block
 
-# Header 1
-## Header 2
-### Header 3
+### Open Explorables
+At the core, Open Explorables are simply HTML documents. As such, they follow the standard APIs for everything (`HTMLDocument`), including display (DOM) and serialization (saving as HTML). They contain `content`, which is a sequence of zero or more widgets.
 
-- Bulleted
-- List
+### Widgets
+Corresponding to Open Explorables, widgets are simply HTML elements, again implementing the same APIs (`HTMLElement`). This means that any element that can be defined in HTML can become a widget, as well. Widgets satisfy this interface (`webwriter.BlockElement`):
+1. A string attribute `label`, naming the widget instance
+2. A boolean attribute `editing`, where the widget instance provides editing capabilities if `true`
+3. A boolean attribute `printable`, where the widget instance provides styles for printing if `true`
 
-1. Numbered
-2. List
+### Metadata
+Both Open Explorables and Widgets may have attached metadata. It is recommended to use a subset of the [schema.org LearningResource type](https://schema.org/LearningResource), but any number of key/value pairs serializable to JSON is permitted. Metadata can be thought of as a cascade:
+1. Some metadata is constant for all Open Explorables and Widgets.
+2. Other metadata depends on the type of Widget, and is thus defined by the Widget author.
+3. Yet other metadata depends on the Widget or Open Explorable instance, and is thus defined by the end user.
 
-**Bold** and _Italic_ and `Code` text
+*Note: Level 3 of the metadata cascade may be automatically annotated to some degree in the future.* 
 
-[Link](url) and ![Image](src)
+### Packages
+Packages must follow this interface (`webwriter.Package`):
+1. An exported member `element`, satisfying `BlockElement`
+2. An exported member `actions`, satisfying `ActionElement[]`
+3. (Optional) An exported member type `block`, satisfying `Block`
+
+#### Built-in Packages
+The only difference between built-in and all other packages is that built-in packages come pre-installed with the editor. Otherwise, they implement the same interface. 
+- Rich text (includes images, audio, video)
+- H5P wrapper
+
+### I/O
+All widget attributes are persisted, so widget instance state should be stored as attributes.
+
+`html` serializer
+```mermaid
+graph TD
+
+A[DOM]
+A -->|importNode| B[[HTML template + data]]
+A -->|bundle| C[[Dependencies]]
+A -->|saveMetadata| D[[Metadata]]
+
+E[HTML file]
+B --> E
+C --> E
+D --> E
 ```
 
-For more details see [Basic writing and formatting syntax](https://docs.github.com/en/github/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax).
+`zip` serializer (SCORM, H5P)
+```mermaid
+graph TD
+A[HTML file]
 
-### Jekyll Themes
+```
 
-Your Pages site will use the layout and styles from the Jekyll theme you have selected in your [repository settings](https://github.com/salmenf/webwriter/settings/pages). The name of this theme is saved in the Jekyll `_config.yml` configuration file.
-
-### Support or Contact
-
-Having trouble with Pages? Check out our [documentation](https://docs.github.com/categories/github-pages-basics/) or [contact support](https://support.github.com/contact) and we’ll help you sort it out.
+### Modules of this repository
+1. `webwriter`: The authoring tool itself
+2. `webwriter-model`: Core types useful for implementing own widgets
+3. `webwriter-lit`: Base classes for widget components based on LitElement
