@@ -36,7 +36,7 @@ const PKG_EXTRA_FLAGS = "--no-bytecode --public-packages \"*\" --public"
 async function main() {
 
   const binariesDir = "./static/binaries"
-  !fs.existsSync(binariesDir)? fs.mkdirSync(binariesDir): null
+  !fs.existsSync(binariesDir) && fs.mkdirSync(binariesDir, {recursive: true})
 
   fs.writeFileSync(`${PKG_CONFIG_PATH}`, PKG_CONFIG)
 
