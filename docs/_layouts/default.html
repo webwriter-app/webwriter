@@ -107,7 +107,7 @@
             {% if page.url == site_page.url %}
             {% assign class = "current" %}
             {% endif %}
-            {% unless page.title == "Overview" %}
+            {% unless site_page.title == "Overview" %}
             <a class="{{class}}" href="{{site_page.url}}">{{site_page.title}}</a>
             {% endunless %}
           {% endfor %}
