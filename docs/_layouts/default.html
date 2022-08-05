@@ -59,9 +59,9 @@
         {% endif %}
 
         {% if site.show_downloads %}
-          {% assign display = "flex" %}
           <div class="releases">
           {% for asset in site.github.latest_release.assets %}
+          {% assign display = "flex" %}
           {% if asset.name contains ".msi" %}
             {% assign label = "Windows" %}
             {% assign order = "0" %}
