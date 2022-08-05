@@ -9,6 +9,8 @@
     <link rel="stylesheet" href="{{ "/assets/css/style.css?v=" | append: site.github.build_revision | relative_url }}">
     <!--[if lt IE 9]>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7.3/html5shiv.min.js"></script>
+    <script type="module" src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.esm.js"></script>
+    <script nomodule src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.js"></script>
     <![endif]-->
     {% include head-custom.html %}
     <style>
@@ -16,6 +18,7 @@
         display: flex;
         flex-wrap: wrap;
         gap: 0.25rem;
+        padding-bottom: 5px;
       }
 
       .releases > * {
@@ -24,6 +27,11 @@
         border-radius: 5px;
         padding: 5px;
         color: #006699;
+        display: flex;
+        flex-direction: row;
+        gap: 0.25rem;
+        align-items: center;
+        justify-content: space-between;
       }
 
       .releases > *:hover {
@@ -56,20 +64,25 @@
           {% if asset.name contains ".msi" %}
             {% assign label = "Windows" %}
             {% assign order = "0" %}
+            {% assign icon = "logo-windows" %}
           {% endif %}
           {% if asset.name contains ".dmg" %}
             {% assign label = "Mac" %}
             {% assign order = "1" %}
+            {% assign icon = "logo-apple" %}
           {% endif %}
           {% if asset.name contains ".deb" %}
             {% assign label = "Linux (.deb)" %}
             {% assign order = "2" %}
+            {% assign icon = "logo-tux" %}
           {% endif %}
           {% if asset.name contains ".AppImage" %}
             {% assign label = "Linux (.AppImage)" %}
             {% assign order = "3" %}
+            {% assign icon = "logo-tux" %}
           {% endif %}
           <a style="order: {{order}}" href="{{ asset.browser_download_url }}">
+            <ion-icon name="{{icon}}"></ion-icon>
             {{site.github.latest_release.tag_name}} for {{label}}
           </a>
           {% endfor %}
