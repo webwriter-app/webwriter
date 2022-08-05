@@ -20,11 +20,10 @@
       }
 
       .releases > * {
-        background: lightgray;
-        border: whitesmoke;
+        color: whitesmoke;
         border-radius: 5px;
         padding: 5px;
-        color: #006699;
+        background: #006699;
         display: flex;
         flex-direction: row;
         gap: 0.25rem;
@@ -34,6 +33,10 @@
 
       .releases > *:hover {
         font-weight: bold;
+      }
+
+      .releases-title {
+        color: #006699;
       }
     </style>
     <script type="module" src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.esm.js"></script>
@@ -63,7 +66,7 @@
         {% endif %}
 
         {% if site.show_downloads %}
-          <b>Get WebWriter</b>
+          <b class="releases-title">Get WebWriter</b>
           <div class="releases">
           {% for asset in site.github.latest_release.assets %}
           {% assign display = "flex" %}
