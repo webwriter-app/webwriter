@@ -60,6 +60,7 @@
 
         {% if site.show_downloads %}
           {% assign display = "flex" %}
+          <div class="releases">
           {% for asset in site.github.latest_release.assets %}
           {% if asset.name contains ".msi" %}
             {% assign label = "Windows" %}
@@ -80,7 +81,6 @@
           {% else %}
             {% assign display = "none" %}
           {% endif %}
-          <div class="releases">
             <a style="order: {{order}}; display: {{display}}" href="{{ asset.browser_download_url }}">
               <ion-icon name="{{icon}}"></ion-icon>
               {{site.github.latest_release.tag_name}} for {{label}}
