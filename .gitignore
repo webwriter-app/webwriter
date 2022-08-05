@@ -1,7 +1,0 @@
-/node_modules
-/.parcel-cache
-/src-tauri/target
-/build
-/binaries
-/static
-**/node_modules
