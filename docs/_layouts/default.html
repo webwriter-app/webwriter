@@ -39,12 +39,8 @@
       }
 
       a:hover {
-        font-weight: normal !important;
+        font-weight: normal;
         text-decoration: underline;
-      }
-
-      .releases-title {
-        color: #006699;
       }
 
       nav {
@@ -77,7 +73,7 @@
         <p>{{ site.description | default: site.github.project_tagline }}</p>
 
         {% if site.show_downloads %}
-          <b class="releases-title">Get WebWriter</b>
+          <h2 class="releases-title">Get WebWriter</h2>
           <div class="releases">
           {% for asset in site.github.latest_release.assets %}
           {% assign display = "flex" %}
@@ -105,12 +101,15 @@
         {% endif %}
 
         <nav>
+          <h2>Documentation</h2>
           {% for site_page in site.pages %}
             {% assign class = "" %}
             {% if page.url == site_page.url %}
             {% assign class = "current" %}
             {% endif %}
+            {% unless page.title == "Overview" %}
             <a class="{{class}}" href="{{site_page.url}}">{{site_page.title}}</a>
+            {% endunless %}
           {% endfor %}
         </nav>
       </header>
