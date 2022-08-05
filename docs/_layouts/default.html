@@ -34,7 +34,13 @@
         {% if site.show_downloads %}
         <ul class="downloads">
           {% for asset in site.github.latest_release.assets %}
-          <li><a href="{{ asset.browser_download_url }}">Download {{ asset.name }}</a></li>
+          <li><a href="{{ asset.browser_download_url }}">
+            {{site.github.latest_release.version}} for 
+            {% if asset.name contains ".msi" %}Windows{% endif %}
+            {% if asset.name contains ".dmg" %}Mac{% endif %}
+            {% if asset.name contains ".deb" %}Linux (.deb){% endif %}
+            {% if asset.name contains ".AppImage" %}Linux (.AppImage){% endif %}
+          </a></li>
           {% endfor %}
         </ul>
         {% endif %}
