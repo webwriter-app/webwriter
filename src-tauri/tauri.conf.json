@@ -4,7 +4,7 @@
     "beforeBuildCommand": "",
     "beforeDevCommand": "",
     "devPath": "http://localhost:3000",
-    "distDir": "../source"
+    "distDir": "../build"
   },
   "package": {
     "productName": "WebWriter",
@@ -28,8 +28,8 @@
         "execute": true,
         "open": true,
         "scope": [
-          {"name": "../static/binaries/npm", "args": true, "sidecar": true},
-          {"name": "../static/binaries/esbuild", "args": true, "sidecar": true}
+          {"name": "../binaries/npm", "args": true, "sidecar": true},
+          {"name": "../binaries/esbuild", "args": true, "sidecar": true}
         ]
       }
     },
@@ -41,8 +41,8 @@
         "depends": []
       },
       "externalBin": [
-        "../static/binaries/npm",
-        "../static/binaries/esbuild"
+        "../binaries/npm",
+        "../binaries/esbuild"
       ],
       "icon": [
         "icons/32x32.png",

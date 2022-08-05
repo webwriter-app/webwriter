@@ -3,3 +3,6 @@ title: WebWriter
 show_downloads: true
 github:
   owner_name: Frederic Salmen
+plugins:
+  - jekyll-spaceship
+

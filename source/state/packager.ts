@@ -11,14 +11,16 @@ export type PackageJson = IPackageJson & {installed: boolean, outdated: boolean,
 
 export class Packager {
 
+  static corePackages = ["ww-plaintext", "ww-embed", "@open-wc/scoped-elements"]
+
   installedPackages: PackageJson[] = []
 	availablePackages: PackageJson[] = []
   packageModules: Record<string, BlockElementConstructor> = {}
 	totalPackagesAvailable: number
 
   private async npm(subcommand: string, args: string[] = [], json=true): Promise<object | string> {
-    const cmdArgs = [subcommand, json ? "--json": "", ...args]
-    const output = await Command.sidecar("../static/binaries/npm", cmdArgs).execute()
+    const cmdArgs = [subcommand, ...(json ? ["--json"]: []), ...args]
+    const output = await Command.sidecar("../binaries/npm", cmdArgs).execute()
     if(output.stderr) {
       throw Error(output.stderr)
     }
@@ -30,8 +32,10 @@ export class Packager {
   async initialize() {
     const list = await this.ls() as any
     if(!list?.name) {
-      return this.npm("init", ["--yes"])
+      await this.npm("init", ["--yes"], false)
+      return this.install(Packager.corePackages)
     }
+
   }
 
   async install(args: string[] = [], save=true) {
@@ -59,20 +63,15 @@ export class Packager {
   }
 
   async getInstalledPackages() {
-    console.time("getInstalledPackages")
-    console.time("ls")
     const dependencies = (await this.ls(["--long"]))["dependencies"] as IPackageJson
-    console.timeEnd("ls")
-    // console.time("outdated")
-    // const outdated = await this.outdated()
-    // console.timeEnd("outdated")
-    console.time("package.json")
+    console.log(dependencies)
+    if(!dependencies) {
+      return []
+    }
     const packagePaths = Object.values(dependencies)
       .map(v => v?.path)
       .filter((path: string) => path)
     const packageStrings = await Promise.all(packagePaths.map(path => readTextFile(path + "\\package.json")))
-    console.timeEnd("package.json")
-    console.time("processing")
     const packagePathsAndStrings = packagePaths.map((path, i) => [path, packageStrings[i]])
     const packages = packagePathsAndStrings
       .map(([path, packageString]) => [path, JSON.parse(packageString)])
@@ -80,8 +79,6 @@ export class Packager {
       .map(([path, pkg]) => ({...pkg, installed: true, root: path}))
     // Object.entries(outdated)
     //   .forEach(([name, value]) => (packages.find(pkg => pkg.name === name) ?? {})["outdated"] = true)
-    console.timeEnd("processing")
-    console.timeEnd("getInstalledPackages")
     return packages as PackageJson[]
   }
 
@@ -117,7 +114,7 @@ export class Packager {
     return hashCode(packageVersions.join())
   }
 
-  async isBundleOutdated(packages: PackageJson[], bundlename="target/bundle") {
+  async isBundleOutdated(packages: PackageJson[], bundlename="bundle") {
     try {
       await readTextFile(`${bundlename}#${this.computeBundleHash(packages)}`)
       return false
@@ -128,20 +125,20 @@ export class Packager {
     
   }
 
-  async writeBundle(packages: PackageJson[], bundlename="target/bundle", force=false) {
+  async writeBundle(packages: PackageJson[], bundlename="bundle", force=false) {
     if(this.isBundleOutdated(packages, bundlename) || force) {
       const exportStatements = packages.map(pkg => `export {default as ${pkg.name.replaceAll("-", "ಠಠಠ")}} from '${pkg.name}'`)
       const hash = this.computeBundleHash(packages)
       const entrypoint = exportStatements.join(";")
       const bundlePath = `${bundlename}#${hash}`
-      await writeTextFile("./target/entrypoint.js", entrypoint)
-      await Bundler.build(["./target/entrypoint.js", "--bundle", `--outfile=${bundlePath}.js`, `--format=esm`])
-      await removeFile("./target/entrypoint.js")
+      await writeTextFile("./entrypoint.js", entrypoint)
+      await Bundler.build(["./entrypoint.js", "--bundle", `--outfile=${bundlePath}.js`, `--format=esm`])
+      await removeFile("./entrypoint.js")
       return bundlePath
     }
   }
 
-  async importBundle(packages: PackageJson[], bundlename="target/bundle") {
+  async importBundle(packages: PackageJson[], bundlename="bundle") {
     const bundlePath = `${bundlename}#${this.computeBundleHash(packages)}.js`
     const bundleCode = await readTextFile(bundlePath)
     let blobURL = URL.createObjectURL(new Blob([bundleCode], {type: 'application/javascript'}));
@@ -179,13 +176,14 @@ export class PackagerController extends Packager implements ReactiveController {
     super();
 
     (this.host = host).addController(this);
-    this.initialized = this.initialize().then(() => {}, reason => {
+    this.initialized = this.initialize().then(() => {console.log("initialized")}, reason => {
       throw Error("Error initializing package management with 'npm': " + reason)
     })
   }
 
   async fetchInstalledPackages(loading=true, importPackages=false) {
     this.loading = loading
+    await this.initialized
     this.host.requestUpdate()
     await this.host.updateComplete
     await super.fetchInstalledPackages()
@@ -202,6 +200,7 @@ export class PackagerController extends Packager implements ReactiveController {
 
   async fetchAvailablePackages(from=0, append=true, loading=true) {
     this.loading = loading
+    await this.initialized
     this.host.requestUpdate()
     await this.host.updateComplete
     await super.fetchAvailablePackages(from, append)
@@ -211,6 +210,7 @@ export class PackagerController extends Packager implements ReactiveController {
 
   async fetchAllPackages(from=0, append=true, loading=true) {
     this.loading = loading
+    await this.initialized
     this.host.requestUpdate()
     await this.host.updateComplete
     await super.fetchInstalledPackages()

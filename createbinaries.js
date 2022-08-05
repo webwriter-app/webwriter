@@ -30,8 +30,8 @@ const NPM_ENTRYPOINT = path.join(NPM_PATH, "index.js")
 const PKG_CONFIG = "{\"scripts\": \"lib/**/*\"}"
 const PKG_CONFIG_PATH = path.join(NPM_PATH, "pkg.json")
 const PKG_TARGETS = "node16-win-x64,node16-macos-x64,node16-linux-x64,node16-win-arm64,node16-macos-arm64,node16-linux-arm64"
-const PKG_OUTPUT = path.normalize("./static/binaries/npm")
-const BINARIES_DIR = path.normalize("./static/binaries")
+const PKG_OUTPUT = path.normalize("./binaries/npm")
+const BINARIES_DIR = path.normalize("./binaries")
 const PKG_EXTRA_FLAGS = "--no-bytecode --public-packages \"*\" --public"
 
 async function main() {
@@ -44,8 +44,8 @@ async function main() {
   for(const [binname, triple] of Object.entries(TRIPLES_OF_NPM)) {
     const suffix = binname.includes("win")? ".exe": ""
     fs.renameSync(
-      `./static/binaries/${binname}${suffix}`,
-      `./static/binaries/npm-${triple}${suffix}`
+      `./binaries/${binname}${suffix}`,
+      `./binaries/npm-${triple}${suffix}`
     )
   }
 
@@ -55,7 +55,7 @@ async function main() {
     if(fs.existsSync(`./node_modules/${packagename}`)) {
       fs.copyFileSync(
         `./node_modules/${packagename}/${prefix}esbuild${suffix}`,
-        `./static/binaries/esbuild-${triple}${suffix}`
+        `./binaries/esbuild-${triple}${suffix}`
       )
     }
   }

@@ -4,7 +4,7 @@ import { ReactiveController, ReactiveControllerHost } from "lit"
 export class Bundler {
 
   protected static async esbuild(args: string[] = []) {
-    const output = await Command.sidecar("../static/binaries/esbuild", [...args]).execute()
+    const output = await Command.sidecar("../binaries/esbuild", [...args]).execute()
     if(output.code !== 0) {
       throw Error(output.stderr)
     }

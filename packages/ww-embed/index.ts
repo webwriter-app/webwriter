@@ -4,7 +4,7 @@ import SlResponsiveMedia from "@shoelace-style/shoelace/dist/components/responsi
 import SlQrCode from "@shoelace-style/shoelace/dist/components/qr-code/qr-code.js"
 
 import { html, css } from "lit"
-import { property } from "lit/decorators.js"
+import { property, query } from "lit/decorators.js"
 
 import { LitElementWw } from "webwriter-lit"
 import { Block, BlockElement } from "webwriter-model"
@@ -21,7 +21,14 @@ export default class WwEmbed extends LitElementWw implements BlockElement<EmbedB
   @property({type: String, attribute: true, reflect: true})
   src: EmbedBlock["attributes"]["src"]
 
+  @query("sl-input")
+  slInputElement: SlInput
+
   setSrc = (src: string) => this.src = src
+
+  focus(options: FocusOptions) {
+    this.slInputElement?.focus(options)
+  }
 
   static get scopedElements() {
     return {
