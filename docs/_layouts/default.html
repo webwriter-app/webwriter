@@ -59,34 +59,34 @@
         {% endif %}
 
         {% if site.show_downloads %}
-        <div class="releases">
+          {% assign display = "flex" %}
           {% for asset in site.github.latest_release.assets %}
           {% if asset.name contains ".msi" %}
             {% assign label = "Windows" %}
             {% assign order = "0" %}
             {% assign icon = "logo-windows" %}
-          {% endif %}
-          {% if asset.name contains ".dmg" %}
+          {% elsif asset.name contains ".dmg" %}
             {% assign label = "Mac" %}
             {% assign order = "1" %}
             {% assign icon = "logo-apple" %}
-          {% endif %}
-          {% if asset.name contains ".deb" %}
+          {% elsif asset.name contains ".deb" %}
             {% assign label = "Linux (.deb)" %}
             {% assign order = "2" %}
             {% assign icon = "logo-tux" %}
-          {% endif %}
-          {% if asset.name contains ".AppImage" %}
+          {% elsif asset.name contains ".AppImage" %}
             {% assign label = "Linux (.AppImage)" %}
             {% assign order = "3" %}
             {% assign icon = "logo-tux" %}
+          {% else %}
+            {% assign display = "none" %}
           {% endif %}
-          <a style="order: {{order}}" href="{{ asset.browser_download_url }}">
-            <ion-icon name="{{icon}}"></ion-icon>
-            {{site.github.latest_release.tag_name}} for {{label}}
-          </a>
-          {% endfor %}
-        </ul>
+          <div class="releases">
+            <a style="order: {{order}}; display: {{display}}" href="{{ asset.browser_download_url }}">
+              <ion-icon name="{{icon}}"></ion-icon>
+              {{site.github.latest_release.tag_name}} for {{label}}
+            </a>
+            {% endfor %}
+          </div>
         {% endif %}
       </header>
       <section>
