@@ -1,10 +1,12 @@
 # Overview
-Open Explorables are...
-- **web based**, built with client-side web standards and deployable on the web
-- **file oriented**, available as all-in-one, standalone, offline-capable files
-- **open**, conformant with OER principles allowing easy reuse
-- **multimedial**, combining many media types such as text, audio, video, etc.
-- **interactive**, allowing users to interact and receive feedback
+
+> People currently think of text as information to be consumed. I want text to be used as an environment to think in. - [Bret Victor](http://worrydream.com/#!/ExplorableExplanations)
+
+Over the course of more than 30 years, the Web has evolved from a niche project for researchers openly sharing information to the dominant platform for open, interactive multimedia content. But still, leveraging this platform for education remains difficult: How can you create such content without coding?
+
+WebWriter tries to provide an answer, allowing educators to create their own open, interactive multimedia content. That content can be thought of as truly digital worksheets, also called Open Explorables.
+
+WebWriter is the product of a dissertation project at [RWTH Aachen University's Learning Technologies Research Group](https://learntech.rwth-aachen.de).
 
 ## Features
 - Author open, interactive and multimedial content on Windows/Mac/Linux: Open Explorables
@@ -14,17 +16,3 @@ Open Explorables are...
 - Provide your Open Explorables to your learners any way you want:
   - It's just a file! Use any cloud storage such as Dropbox, Google Drive, etc. or even use a USB drive
   - It's just a web page! Add it to any LMS (such as Moodle) or any CMS (such as WordPress) or even host it on your own web server
-
-## Learn More
-
-### Explainers
-Explainers help understand the architecture of WebWriter.
-- [Explainer: Core Ideas](coreideas.md) - Summarizes the core data structures of WebWriter
-
-### Guides
-Guides show practical steps to extend WebWriter with packages.
-- [Guide: Creating a Package](creatingpackages.md) - How to create a new package, step by step.
-- [Guide: Creating a Widget](creatingwidgets.md) - How to implement your own widget in a package, step by step.
-
-### Manuals
-Manuals explain how to use the features of WebWriter.

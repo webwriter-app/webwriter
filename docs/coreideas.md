@@ -2,6 +2,13 @@
 This article summarizes the core technical aspects such as data structures, IO, and so on. It is a helpful introduction to understand WebWriter before extending it with your own widgets.
 
 ## Open Explorables
+WebWriter is built to edit Open Explorables, which are...
+- **web based**, built with client-side web standards and deployable on the web
+- **file oriented**, available as all-in-one, standalone, offline-capable files
+- **open**, conformant with OER principles allowing easy reuse
+- **multimedial**, combining many media types such as text, audio, video, etc.
+- **interactive**, allowing users to interact and receive feedback
+
 At the core, Open Explorables are simply HTML documents. As such, they follow the standard APIs for everything (`HTMLDocument`), including display (DOM) and serialization (saving as HTML). They contain `content`, which is a sequence of zero or more widgets. Widgets are provided by packages.
 
 | Concept         | DOM representation | Runtime representation              | File representation   |
