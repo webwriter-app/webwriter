@@ -88,7 +88,7 @@
           {% else %}
             {% assign display = "none" %}
           {% endif %}
-            <a style="order: {{order}}; display: {{display}}" href="{{ asset.browser_download_url }}">
+            <a download style="order: {{order}}; display: {{display}}" href="{{ asset.browser_download_url }}">
               <ion-icon name="{{icon}}"></ion-icon>
               {{site.github.latest_release.tag_name}} for {{label}}
             </a>
