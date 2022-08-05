@@ -1,5 +1,5 @@
 # Core Ideas
-This article summarizes the core technical aspects such as data structures, IO, and so on. It is a helpful introduction 
+This article summarizes the core technical aspects such as data structures, IO, and so on. It is a helpful introduction to understand WebWriter before extending it with your own widgets.
 
 ## Open Explorables
 At the core, Open Explorables are simply HTML documents. As such, they follow the standard APIs for everything (`HTMLDocument`), including display (DOM) and serialization (saving as HTML). They contain `content`, which is a sequence of zero or more widgets. Widgets are provided by packages.
