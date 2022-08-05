@@ -33,7 +33,7 @@
 
         {% if site.show_downloads %}
         <ul class="downloads">
-          {% for asset in site.github.latest_release %}
+          {% for asset in site.github.latest_release.assets %}
           <li><a href="{{ asset.browser_download_url }}">Download {{ asset.name }}</a></li>
           {% endfor %}
         </ul>
