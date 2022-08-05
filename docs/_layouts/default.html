@@ -11,6 +11,25 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7.3/html5shiv.min.js"></script>
     <![endif]-->
     {% include head-custom.html %}
+    <style>
+      .releases {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+      }
+
+      .releases > * {
+        background: lightgray;
+        border: whitesmoke;
+        border-radius: 5px;
+        padding: 5px;
+        color: #006699;
+      }
+
+      .releases > *:hover {
+        font-weight: bold;
+      }
+    </style>
   </head>
   <body>
     <div class="wrapper">
@@ -32,15 +51,27 @@
         {% endif %}
 
         {% if site.show_downloads %}
-        <ul class="downloads">
+        <div class="releases">
           {% for asset in site.github.latest_release.assets %}
-          <li><a href="{{ asset.browser_download_url }}">
-            {{site.github.latest_release.tag_name}} for 
-            {% if asset.name contains ".msi" %}Windows{% endif %}
-            {% if asset.name contains ".dmg" %}Mac{% endif %}
-            {% if asset.name contains ".deb" %}Linux (.deb){% endif %}
-            {% if asset.name contains ".AppImage" %}Linux (.AppImage){% endif %}
-          </a></li>
+          {% if asset.name contains ".msi" %}
+            {% assign label = "Windows" %}
+            {% assign order = "0" %}
+          {% endif %}
+          {% if asset.name contains ".dmg" %}
+            {% assign label = "Mac" %}
+            {% assign order = "1" %}
+          {% endif %}
+          {% if asset.name contains ".deb" %}
+            {% assign label = "Linux (.deb)" %}
+            {% assign order = "2" %}
+          {% endif %}
+          {% if asset.name contains ".AppImage" %}
+            {% assign label = "Linux (.AppImage)" %}
+            {% assign order = "3" %}
+          {% endif %}
+          <a style="order: {{order}}" href="{{ asset.browser_download_url }}">
+            {{site.github.latest_release.tag_name}} for {{label}}
+          </a>
           {% endfor %}
         </ul>
         {% endif %}
