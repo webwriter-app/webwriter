@@ -15,9 +15,6 @@ Open Explorables are...
   - It's just a file! Use any cloud storage such as Dropbox, Google Drive, etc. or even use a USB drive
   - It's just a web page! Add it to any LMS (such as Moodle) or any CMS (such as WordPress) or even host it on your own web server
 
-## Installation
-Use the buttons to download an installer for your platform and run it. After the installation is complete, WebWriter will be available on your system.
-
 ## Learn More
 
 ### Explainers

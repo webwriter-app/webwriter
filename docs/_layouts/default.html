@@ -35,6 +35,9 @@
       .releases > *:hover {
         background: #003366;
         color: whitesmoke !important;
+      }
+
+      a:hover {
         font-weight: normal !important;
       }
 
@@ -47,6 +50,15 @@
         flex-direction: column;
         padding-top: 1rem;
         padding-bottom: 1rem;
+      }
+
+      nav a:active {
+        color: #003366;
+      }
+
+      .current {
+        text-decoration: underline;
+        font-weight: bold;
       }
     </style>
     <script type="module" src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.esm.js"></script>
@@ -92,8 +104,12 @@
         {% endif %}
 
         <nav>
-          {% for page in site.pages %}
-          <a href="{{page.url}}">{{page.title}}</a>
+          {% for site_page in site.pages %}
+            {% assign class = "" %}
+            {% if page.url == site_page.url %}
+            {% assign class = "current" %}
+            {% endif %}
+            <a class="{{class}}" href="{{site_page.url}}">{{site_page.title}}</a>
           {% endfor %}
         </nav>
       </header>
