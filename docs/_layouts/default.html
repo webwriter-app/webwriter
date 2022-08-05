@@ -75,13 +75,9 @@
             {% assign label = "Mac" %}
             {% assign order = "1" %}
             {% assign icon = "logo-apple" %}
-          {% elsif asset.name contains ".deb" %}
-            {% assign label = "Linux (.deb)" %}
-            {% assign order = "2" %}
-            {% assign icon = "logo-tux" %}
           {% elsif asset.name contains ".AppImage" %}
-            {% assign label = "Linux (.AppImage)" %}
-            {% assign order = "3" %}
+            {% assign label = "Linux" %}
+            {% assign order = "2" %}
             {% assign icon = "logo-tux" %}
           {% else %}
             {% assign display = "none" %}
