@@ -28,7 +28,7 @@ npm install -s webwriter-model webwriter-lit
 ```
 
 #### Choose your own web component library
-There are [many approaches to create web components](https://webcomponents.dev/blog/all-the-ways-to-make-a-web-component/) other than Lit. While those are technically supported, you may run into unknown issues employing thes
+There are [many approaches to create web components](https://webcomponents.dev/blog/all-the-ways-to-make-a-web-component/) other than Lit. While those are technically supported, you may run into unknown issues employing these.
 
 For alternatives, refer to this table:
 
@@ -41,6 +41,7 @@ Wrapped** | Use known non-standard components (Vue, React/Preact) | [Vue3](https
 Other | -  | [twind](https://twind.dev/)
 
 \* A more DIY approach, other libraries such as lit can be mixed in for features like templating
+
 ** Not recommended: Large bundle size since whole Vue/React/… runtime must be bundled
 
 ### Step 2: Define the core widget
