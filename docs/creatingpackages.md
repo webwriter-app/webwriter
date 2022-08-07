@@ -53,5 +53,5 @@ First off, your package should be available on [`npm`, try searching for it](htt
 
 ## Notes & Troubleshooting
 - When publishing a new version, you need to increment the version in your `package.json`, as well.
-- If your package does not show up in the Package Manager, make sure you added the `webwriter` keyword to your `package.json`.
+- If your package shows up on [npmjs.com](npmjs.com) but not in the Package Manager, make sure you added the `webwriter` keyword to your `package.json`.
 - Of course, the `package.json` file can also be created manually without `npm init` if you prefer.
