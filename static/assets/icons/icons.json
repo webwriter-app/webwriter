@@ -8806,6 +8806,28 @@
     ]
   },
   {
+    "name": "ev-station-fill",
+    "title": "EV station fill",
+    "categories": [
+      "Transportation"
+    ],
+    "tags": [
+      "charging",
+      "electric vehicle"
+    ]
+  },
+  {
+    "name": "ev-station",
+    "title": "EV station",
+    "categories": [
+      "Transportation"
+    ],
+    "tags": [
+      "charging",
+      "electric vehicle"
+    ]
+  },
+  {
     "name": "exclamation-circle-fill",
     "title": "Exclamation circle fill",
     "categories": [
@@ -11701,6 +11723,58 @@
     "tags": [
       "forward",
       "layer"
+    ]
+  },
+  {
+    "name": "fuel-pump-diesel-fill",
+    "title": "Fuel pump diesel fill",
+    "categories": [
+      "Transportation"
+    ],
+    "tags": [
+      "gas",
+      "petrol",
+      "fuel",
+      "gas station"
+    ]
+  },
+  {
+    "name": "fuel-pump-diesel",
+    "title": "Fuel pump diesel",
+    "categories": [
+      "Transportation"
+    ],
+    "tags": [
+      "gas",
+      "petrol",
+      "fuel",
+      "gas station"
+    ]
+  },
+  {
+    "name": "fuel-pump-fill",
+    "title": "Fuel pump fill",
+    "categories": [
+      "Transportation"
+    ],
+    "tags": [
+      "gas",
+      "petrol",
+      "fuel",
+      "gas station"
+    ]
+  },
+  {
+    "name": "fuel-pump",
+    "title": "Fuel pump",
+    "categories": [
+      "Transportation"
+    ],
+    "tags": [
+      "gas",
+      "petrol",
+      "fuel",
+      "gas station"
     ]
   },
   {

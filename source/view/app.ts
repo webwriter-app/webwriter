@@ -66,7 +66,7 @@ export class App extends LitElement
 		super.connectedCallback()
 
 		this.addEventListener("ww-select-tab-title", (e: any) => this.focusTabTitle(e.detail.id))
-		registerIconLibrary("cc", {resolver: name => `/assets/icons/cc/${name}.svg`})
+		registerIconLibrary("cc", {resolver: name => `/assets/cc/${name}.svg`})
 		
 		Object.entries(this.keymap).forEach(([shortcut, callback]) => Hotkeys(shortcut, callback))
 		Object.entries(this.notifications).forEach(([stateKey, alertAttributes]) => {
