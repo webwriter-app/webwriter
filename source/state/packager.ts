@@ -1,5 +1,5 @@
 import {Command} from "@tauri-apps/api/shell"
-import {readTextFile, writeTextFile, removeFile, readDir} from "@tauri-apps/api/fs"
+import {readTextFile, writeTextFile, removeFile, createDir, readDir} from "@tauri-apps/api/fs"
 import { ReactiveController, ReactiveControllerHost } from "lit"
 import { property } from "lit/decorators/property.js"
 import type { IPackageJson } from "package-json-type"
@@ -38,13 +38,17 @@ export class Packager {
   }
 
   async initialize(inAppDir=true) {
-    this.appDir = (await appDir()).slice(0, -1)
+    this.appDir = await appDir()
+    try {
+      await readDir(this.appDir)
+    }
+    catch(err) {
+      await createDir(this.appDir)
+    }
     const list = await this.ls() as any
     if(!list?.name) {
-      await this.npm("init", ["--yes"], false, true)
-      // const packageJsonPath = await join(this.appDir, "package.json")
-      // await (new Command(`"${DEFAULT_PACKAGE_JSON}" > "${packageJsonPath}"`)).execute()
-      return this.install(Packager.corePackages)
+      await this.npm("init", ["--yes"], false, inAppDir)
+      return this.install(Packager.corePackages, true, false)
     }
 
   }
@@ -194,6 +198,7 @@ export class PackagerController extends Packager implements ReactiveController {
   }
 
   async fetchInstalledPackages(loading=true, importPackages=false) {
+    console.trace("fetchInstalledPackages")
     this.loading = loading
     await this.initialized
     this.host.requestUpdate()
@@ -219,6 +224,7 @@ export class PackagerController extends Packager implements ReactiveController {
   }
 
   async fetchAllPackages(from=0, append=true, loading=true) {
+    console.trace("fetchAllPackages")
     this.loading = loading
     await this.initialized
     this.host.requestUpdate()
@@ -229,9 +235,9 @@ export class PackagerController extends Packager implements ReactiveController {
     this.host.requestUpdate()
   }
 
-  async install(args: string[] = [], importPackages=true) {
+  async install(args: string[] = [], importPackages=true, fetchInstalled=true) {
     const result = await super.install(args)
-    await this.fetchInstalledPackages()
+    fetchInstalled? await this.fetchInstalledPackages(): null
     importPackages? await super.writeBundle(this.installedPackages): null
     importPackages? await super.importBundle(this.installedPackages): null
     this.host.requestUpdate()

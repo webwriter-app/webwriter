@@ -7,7 +7,7 @@
     "distDir": "../build"
   },
   "package": {
-    "productName": "WebWriter",
+    "productName": "webwriter",
     "version": "0.1.0"
   },
   "tauri": {
@@ -18,7 +18,9 @@
         "readFile": true,
         "writeFile": true,
         "removeFile": true,
-        "scope": ["**"]
+        "createDir": true,
+        "readDir": true,
+        "scope": ["$APP", "$APP/*", "$APP/**/*"]
       },
       "path": {
         "all": true
@@ -54,7 +56,7 @@
         "icons/icon.icns",
         "icons/icon.ico"
       ],
-      "identifier": "webwriter.WebWriter",
+      "identifier": "webwriter",
       "longDescription": "",
       "macOS": {
         "entitlements": null,
