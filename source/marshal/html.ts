@@ -4,6 +4,7 @@ import {Attributes, Block, BlockElement, Document as WwDocument} from "webwriter
 import { DocumentEditor } from "../view/components"
 import { Bundler } from '../state'
 import { escapeHTML, createElementWithAttributes, namedNodeMapToObject } from "../utility"
+import { join, appDir } from '@tauri-apps/api/path'
 
 class NonHTMLDocumentError extends Error {}
 class NonWebwriterDocumentError extends Error {}
@@ -50,6 +51,8 @@ export function parse(data: string, supportedPackages) {
 }
 
 export async function serialize(editor: DocumentEditor) {
+
+  console.log(editor)
   
   const outputDoc = document.implementation.createHTMLDocument()
 
@@ -72,19 +75,22 @@ export async function serialize(editor: DocumentEditor) {
   const entrypoint = statements.length > 1? statements.join(";"): ""
 
   // Workaround without esbuild's transform API
-  await writeTextFile("./target/entrypoint.js", entrypoint)
+  const entrypointPath = await join(await appDir(), "entrypoint.js")
+  const bundleScriptPath = await join(await appDir(), "doc.js")
+  const bundleStylesPath = await join(await appDir(), "doc.css")
+  await writeTextFile(entrypointPath, entrypoint)
   let bundleScript = ""
   let bundleStyles = ""
   try {
-    await Bundler.build(["./target/entrypoint.js", "--bundle", "--minify", "--outfile=./target/doc.js"])
-    bundleScript = await readTextFile("./target/doc.js")
-    bundleStyles = await readTextFile("./target/doc.css")
+    await Bundler.build([entrypointPath, "--bundle", "--minify", `--outfile=${bundleScriptPath}`])
+    bundleScript = await readTextFile(bundleScriptPath)
+    bundleStyles = await readTextFile(bundleStylesPath)
   }
   catch(e) {}
   finally {
-    removeFile("./target/entrypoint.js")
-    bundleScript !== "" && removeFile("./target/doc.js")
-    bundleStyles !== "" && removeFile("./target/doc.css")
+    removeFile(entrypointPath)
+    bundleScript !== "" && removeFile(bundleScriptPath)
+    bundleStyles !== "" && removeFile(bundleStylesPath)
   }
 
   for(let blockElement of blockElements) {

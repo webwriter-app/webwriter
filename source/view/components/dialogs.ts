@@ -1,5 +1,5 @@
 import { LitElement, html, css, PropertyValueMap } from "lit";
-import { customElement, property, query } from "lit/decorators.js";
+import { customElement, property, query, queryAsync } from "lit/decorators.js";
 import {classMap} from "lit/directives/class-map.js"
 import { Format, Protocol } from "../../state";
 import { WWURL } from "webwriter-model";
@@ -188,6 +188,9 @@ export class PackageManagerDrawer extends LitElement {
 	@query("sl-drawer")
 	drawer: SlDrawer
 
+	@queryAsync("sl-drawer")
+	drawerAsync: Promise<SlDrawer>
+
 	@property({type: Boolean, attribute: true, reflect: true})
 	open: boolean = false
 
@@ -211,10 +214,10 @@ export class PackageManagerDrawer extends LitElement {
 
 	private requestUpdateFull = () => this.requestUpdate()
 
-	connectedCallback() {
+	async connectedCallback() {
 		super.connectedCallback()
 		window.addEventListener("online", this.requestUpdateFull)
-		window.addEventListener("offline", this.requestUpdateFull)
+		window.addEventListener("offline", this.requestUpdateFull);
 	}
 
 	disconnectedCallback() {
@@ -241,14 +244,14 @@ export class PackageManagerDrawer extends LitElement {
 	async handleInstallPackage(pkg: string) {
 		this.installingPackages = [...this.installingPackages, pkg]
 		await this.packager.install([pkg])
-		await this.packager.fetchAllPackages(0, false, false)
+		await this.packager.fetchAllPackages(0, false, true)
 		this.installingPackages = this.installingPackages.filter(p => p !== pkg)
 	}
 
 	async handleUninstallPackage(pkg: string) {
 		this.uninstallingPackages = [...this.uninstallingPackages, pkg]
 		await this.packager.uninstall([pkg])
-		await this.packager.fetchAllPackages(0, false, false)
+		await this.packager.fetchAllPackages(0, false, true)
 		this.uninstallingPackages = this.uninstallingPackages.filter(p => p !== pkg)
 	}
 
@@ -257,6 +260,10 @@ export class PackageManagerDrawer extends LitElement {
 		await this.packager.update([pkg])
 		await this.packager.fetchAllPackages(0, false, false)
 		this.updatingPackages = this.updatingPackages.filter(p => p !== pkg)
+	}
+
+	async handleRefresh() {
+		await this.packager.fetchAllPackages(0, false, true)
 	}
 
 
@@ -269,8 +276,13 @@ export class PackageManagerDrawer extends LitElement {
 	static get styles() {
 		return css`
 
+			sl-drawer {
+				--header-spacing: 0;
+			}
+
 			sl-drawer::part(body) {
 				background: #f1f1f1;
+				overflow-y: scroll;
 			}
 
 			sl-drawer::part(title) {
@@ -281,7 +293,6 @@ export class PackageManagerDrawer extends LitElement {
 				background: #f1f1f1;
 				padding: 1rem;
 				padding-bottom: 0;
-				padding-right: 0;
 			}
 
 			sl-tab-group {
@@ -300,12 +311,8 @@ export class PackageManagerDrawer extends LitElement {
 				background: #f1f1f1;
 			}
 
-			sl-drawer::part(close-button) {
-				background: #f1f1f1;
-				display: flex;
-				flex-direction: column;
-				justify-content: flex-start;
-				padding: 1rem;
+			sl-drawer::part(close-button__base), sl-drawer::part(close-button) {
+				display: none !important;
 			}
 
 			sl-alert::part(base) {
@@ -382,7 +389,7 @@ export class PackageManagerDrawer extends LitElement {
 			}
 
 			.spinner-container {
-				display: flex;
+				display: none;
 				align-items: center;
 				gap: 1rem;
 				color: var(--sl-color-neutral-700);
@@ -399,10 +406,24 @@ export class PackageManagerDrawer extends LitElement {
 				flex-direction: row;
 				align-items: center;
 				gap: 1rem;
+				width: 100%;
 			}
 
 			sl-alert {
 				margin-bottom: 1rem;
+			}
+
+			#refresh-button::part(base) {
+				background: none;
+				border: none;
+				padding: none;
+				font-size: 1.25rem;
+			}
+
+			#close-button, #close-button::part(base) {
+				font-size: 2rem;
+				margin-left: auto;
+				justify-self: end;
 			}
 		`
 	}
@@ -457,8 +478,11 @@ export class PackageManagerDrawer extends LitElement {
 					<span class="drawer-title" slot="label">
 						<sl-icon name="boxes" slot="label"></sl-icon>
 						<span>Manage packages</span>
+						<sl-button id="refresh-button" @click=${this.handleRefresh} ?loading=${this.loading} title="Refresh packages">
+							<sl-icon name="arrow-clockwise"></sl-icon>
+						</sl-button>
+						<sl-icon-button id="close-button" name="x" @click=${this.hide}></sl-icon-button>
 					</span>
-					${this.registryStatusIndicator()}
 					<sl-tab-group slot="label" @sl-tab-show=${this.handleTabShow}>
 						<sl-tab panel="all" slot="nav">
 							All

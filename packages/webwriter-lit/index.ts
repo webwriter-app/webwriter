@@ -5,6 +5,8 @@ import {ScopedElementsMixin} from "@open-wc/scoped-elements"
 import {BlockElement} from "webwriter-model"
 
 class LitElementWwUnscoped extends LitElement implements BlockElement {
+
+  static shadowRootOptions = {...LitElement.shadowRootOptions, delegatesFocus: true}
   
   /**WebWriter API: If true, render the component such that easy printing is possible. */
   @property({type: Boolean, attribute: true, reflect: true})

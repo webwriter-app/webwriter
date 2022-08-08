@@ -26,10 +26,12 @@ export class App extends LitElement
 	packager = new PackagerController(this)
 
 	keymap: Record<string, (e: KeyboardEvent, handler) => any> = {
-		"ctrl+s": (e, combo) => this.manager.send("SAVE"),
+		"ctrl+s": (e, combo) => this.manager.send("SAVE", {url: this.activeDocumentEditor.docAttributes.url, documentEditor: this.activeDocumentEditor}),
 		"ctrl+o": (e, combo) => this.manager.send("LOAD"),
 		"ctrl+n": (e, combo) => this.manager.send("CREATE"),
 		"ctrl+w": (e, combo) => this.manager.send("DISCARD"),
+		"ctrl+alt+p": (e, combo) => this.managingPackages = !this.managingPackages,
+		"ctrl+tab": (e, combo) => this.manager.send("SELECT_NEXT"),
 		"escape": (e, combo) => this.manager.send("CANCEL")
 	}
 
@@ -54,22 +56,31 @@ export class App extends LitElement
 		}
 	}
 
+	errorsToIgnore = [
+		"Uncaught TypeError: Cannot set properties of null (setting 'tabIndex')",
+		"ResizeObserver loop limit exceeded",
+		"UserCancelled"
+	]
+
 	async connectedCallback() {
 		super.connectedCallback()
 
-		// Miscellaneous
 		this.addEventListener("ww-select-tab-title", (e: any) => this.focusTabTitle(e.detail.id))
 		registerIconLibrary("cc", {resolver: name => `/assets/icons/cc/${name}.svg`})
 		
-		// Extra view layers: Keyboard inputs and notification/error outputs
 		Object.entries(this.keymap).forEach(([shortcut, callback]) => Hotkeys(shortcut, callback))
 		Object.entries(this.notifications).forEach(([stateKey, alertAttributes]) => {
 			this.manager.onTransition((state, ev) => state.matches(stateKey) && this.notify(alertAttributes))
 		})
-		window.addEventListener("error", ({message}) => this.notify({message, variant: "danger"}))
-		// window.addEventListener("unhandledrejection", ({reason}) => this.notify({message: reason, variant: "danger"}))
+		window.addEventListener("error", ({message}) => {
+			if(this.errorsToIgnore.includes(message)) {
+				console.warn(message)
+			}
+			else {
+				this.notify({message, variant: "danger"})
+			}
+		})
 
-		// Loading installed packages into memory
 		await this.packager.fetchInstalledPackages(true, true)
 		this.packager.markOutdatedPackages()
 	}
@@ -143,8 +154,6 @@ export class App extends LitElement
 
 		this.className = documents.length === 0? "noDocuments": ""
 
-		console.log(state.value)
-
 		const tabs = repeat(documents, doc => doc.id, ({id, attributes, content, url, revisions}, i) => html`
 			<ww-tab 
 				slot="tabs"
@@ -156,6 +165,7 @@ export class App extends LitElement
 				?titleDisabled=${id !== ctx.activeDocument}
 				titleId=${id}
 				titleValue=${url}
+				?hasUrl=${!!url}
 				confirmDiscardText="You have unsaved changes. Click again to discard your changes."
 				?confirmingDiscard=${state.matches("discarding.confirming")}
 				?lastLoaded=${id === ctx.lastLoadedDocument}
@@ -163,7 +173,8 @@ export class App extends LitElement
 				@focus=${() => send("SELECT", {id})}
 				@keydown=${e => e.key === "Enter" || e.key === "ArrowDown"? this.activeDocumentEditor.focusFirstBlock(): null}
 				@ww-close-tab=${() => send("DISCARD", {id})}
-				@ww-save-tab=${() => send("SAVE", {url})}
+				@ww-save-tab=${() => send("SAVE", {url, documentEditor: this.activeDocumentEditor})}
+				@ww-save-as-tab=${() => send("SAVE", {documentEditor: this.activeDocumentEditor})}
 				@ww-title-click=${() => send("SELECT", {id})}
 				@ww-title-change=${e => send("SET_ATTRIBUTE", {key: "name", value: e.detail.title})}
 				@ww-cancel-discard=${e => send("CANCEL")}>

@@ -13,6 +13,7 @@ class LitElementWwUnscoped extends LitElement {
         this.getAttributeNames().forEach(n => this.setAttribute(n, this.getAttribute(n)));
     }
 }
+LitElementWwUnscoped.shadowRootOptions = { ...LitElement.shadowRootOptions, delegatesFocus: true };
 __decorate([
     property({ type: Boolean, attribute: true, reflect: true })
 ], LitElementWwUnscoped.prototype, "printable", void 0);

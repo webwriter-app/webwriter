@@ -3,5 +3,5 @@
 /src-tauri/target
 /build
 /binaries
-/static
+/static/assets/icons/*.svg
 **/node_modules

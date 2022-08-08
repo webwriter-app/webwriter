@@ -39,8 +39,9 @@ export class Tabs extends LitElement {
 
 			[part=base] {
 				display: grid;
-				grid: min-content / minmax(32px, 1fr) minmax(auto, 960px) minmax(32px, 1fr);
+				grid: min-content / minmax(32px, 1fr) minmax(auto, 800px) minmax(32px, 1fr);
 				grid-auto-rows: min-content;
+				grid-auto-flow: row dense;
 				row-gap: 1rem;
 				height: 100%;
 			}
@@ -159,7 +160,8 @@ export class Tabs extends LitElement {
 
 	firstUpdated() {
 		Sortable.create(this.tabsWrapper)
-		this.addEventListener("wheel", e => {
+		this.tabsWrapper.addEventListener("wheel", e => {
+			e.preventDefault()
 			this.tabsWrapper.scrollLeft += e.deltaY
 		})
 		this.shadowRoot.querySelector("slot[name=tabs]").addEventListener("slotchange", () => this.requestUpdate())
@@ -253,6 +255,9 @@ export class Tab extends LitElement {
 	@property({type: Boolean})
 	lastLoaded: boolean = false
 
+	@property({type: Boolean})
+	hasUrl: boolean = false
+
 	@query("sl-animation")
 	animation: SlAnimation
 
@@ -292,7 +297,7 @@ export class Tab extends LitElement {
 				border-radius: 6px;
 				flex-shrink: 1;
 				overflow: hidden;
-				width: 30ch;
+				width: 40ch;
 				min-width: min-content;
 				position: relative;
 				background: transparent;
@@ -344,6 +349,10 @@ export class Tab extends LitElement {
 				padding-right: 0.25rem;
 			}
 
+			.close-button::part(base) {
+				margin-left: 0.25rem;
+			}
+
 			.close-button::part(base):hover {
 				color: red;
 			}
@@ -368,6 +377,10 @@ export class Tab extends LitElement {
 
 	emitSaveTab = () => this.dispatchEvent(
 		new CustomEvent("ww-save-tab", {composed: true, bubbles: true})
+	)
+
+	emitSaveAsTab = () => this.dispatchEvent(
+		new CustomEvent("ww-save-as-tab", {composed: true, bubbles: true})
 	)
 
 	emitTitleClick = () => this.dispatchEvent(
@@ -406,7 +419,8 @@ export class Tab extends LitElement {
 				${this.pendingChanges? html`<span name="title-suffix">*</span>`: null}
 			</span>
 			<div class="buttons">
-				<sl-icon-button title="Save document" class="save-button" @click=${() => this.emitSaveTab()} name="file-earmark-arrow-down"></sl-icon-button>
+				<sl-icon-button title="Save document as..." class="save-button" @click=${() => this.emitSaveAsTab()} name="file-earmark-arrow-down"></sl-icon-button>
+				${this.hasUrl? html`<sl-icon-button title="Save document" class="save-button" @click=${() => this.emitSaveTab()} name="file-earmark-check"></sl-icon-button>`: null}
 				<sl-tooltip ?open=${this.confirmingDiscard} trigger="manual" placement="bottom" hoist>
 					<sl-icon-button title="Close document" class="close-button" @click=${() => this.emitCloseTab()} @blur=${() => this.emitCancelDiscard()} name="x-lg"></sl-icon-button>
 					<span slot="content" class="confirm-discard-text">${this.confirmDiscardText}</span>
@@ -424,6 +438,10 @@ export class TabPanel extends SlTabPanel {
 
 			:host([active]), :root, [part=base] {
 				display: contents !important;
+			}
+
+			:host(:not([active])) {
+				display: none !important;
 			}
 
 			[part=base] {

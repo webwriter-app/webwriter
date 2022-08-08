@@ -6,6 +6,12 @@ import type { IPackageJson } from "package-json-type"
 import { BlockElementConstructor } from "webwriter-model"
 import { Bundler } from "./bundler"
 import { hashCode } from "../utility"
+import { join, appDir } from '@tauri-apps/api/path'
+
+const DEFAULT_PACKAGE_JSON = JSON.stringify({
+  "name": "webwriter-instance",
+  "version": "0"
+})
 
 export type PackageJson = IPackageJson & {installed: boolean, outdated: boolean, root: string}
 
@@ -17,10 +23,12 @@ export class Packager {
 	availablePackages: PackageJson[] = []
   packageModules: Record<string, BlockElementConstructor> = {}
 	totalPackagesAvailable: number
+  appDir: string
 
-  private async npm(subcommand: string, args: string[] = [], json=true): Promise<object | string> {
+  private async npm(subcommand: string, args: string[] = [], json=true, appDir=true): Promise<object | string> {
     const cmdArgs = [subcommand, ...(json ? ["--json"]: []), ...args]
-    const output = await Command.sidecar("../binaries/npm", cmdArgs).execute()
+    const opts = appDir? {cwd: this.appDir}: {}
+    const output = await Command.sidecar("../binaries/npm", cmdArgs, opts).execute()
     if(output.stderr) {
       throw Error(output.stderr)
     }
@@ -29,10 +37,13 @@ export class Packager {
     }
   }
 
-  async initialize() {
+  async initialize(inAppDir=true) {
+    this.appDir = (await appDir()).slice(0, -1)
     const list = await this.ls() as any
     if(!list?.name) {
-      await this.npm("init", ["--yes"], false)
+      await this.npm("init", ["--yes"], false, true)
+      // const packageJsonPath = await join(this.appDir, "package.json")
+      // await (new Command(`"${DEFAULT_PACKAGE_JSON}" > "${packageJsonPath}"`)).execute()
       return this.install(Packager.corePackages)
     }
 
@@ -50,7 +61,7 @@ export class Packager {
     return this.npm("update", [...args, save? "-s": ""])
   }
 
-  async ls(args: string[] = [], ) {
+  async ls(args: string[] = []) {
     return this.npm("ls", args)
   }
 
@@ -58,13 +69,8 @@ export class Packager {
     return this.npm("outdated", args)
   }
 
-  async view(args: string[] = []) {
-    return this.npm("view", args)
-  }
-
   async getInstalledPackages() {
     const dependencies = (await this.ls(["--long"]))["dependencies"] as IPackageJson
-    console.log(dependencies)
     if(!dependencies) {
       return []
     }
@@ -106,6 +112,8 @@ export class Packager {
 		const packages = objects.map(obj => obj["package"])
 		this.totalPackagesAvailable = total
 		this.availablePackages = append? [...this.availablePackages, ...packages]: packages
+    objects.map(obj => obj.package)
+      .forEach(({name, version}) => (this.installedPackages.find(pkg => pkg.name === name && pkg.version !== version) ?? {})["outdated"] = true)
 	}
 
 
@@ -116,7 +124,9 @@ export class Packager {
 
   async isBundleOutdated(packages: PackageJson[], bundlename="bundle") {
     try {
-      await readTextFile(`${bundlename}#${this.computeBundleHash(packages)}`)
+      const bundleFilename = `${bundlename}#${this.computeBundleHash(packages)}`
+      const bundlePath = await join(this.appDir, bundleFilename)
+      await readTextFile(bundlePath)
       return false
     }
     catch(e) {
@@ -127,19 +137,21 @@ export class Packager {
 
   async writeBundle(packages: PackageJson[], bundlename="bundle", force=false) {
     if(this.isBundleOutdated(packages, bundlename) || force) {
+      const bundleFilename = `${bundlename}#${this.computeBundleHash(packages)}`
+      const bundlePath = await join(this.appDir, bundleFilename)
+      const entrypointPath = await join(this.appDir, "entrypoint.js")
       const exportStatements = packages.map(pkg => `export {default as ${pkg.name.replaceAll("-", "ಠಠಠ")}} from '${pkg.name}'`)
-      const hash = this.computeBundleHash(packages)
       const entrypoint = exportStatements.join(";")
-      const bundlePath = `${bundlename}#${hash}`
-      await writeTextFile("./entrypoint.js", entrypoint)
-      await Bundler.build(["./entrypoint.js", "--bundle", `--outfile=${bundlePath}.js`, `--format=esm`])
-      await removeFile("./entrypoint.js")
+      await writeTextFile(entrypointPath, entrypoint)
+      await Bundler.build([entrypointPath, "--bundle", `--outfile=${bundlePath}.js`, `--format=esm`])
+      await removeFile(entrypointPath)
       return bundlePath
     }
   }
 
   async importBundle(packages: PackageJson[], bundlename="bundle") {
-    const bundlePath = `${bundlename}#${this.computeBundleHash(packages)}.js`
+    const bundleFilename = `${bundlename}#${this.computeBundleHash(packages)}.js`
+    const bundlePath = await join(this.appDir, bundleFilename)
     const bundleCode = await readTextFile(bundlePath)
     let blobURL = URL.createObjectURL(new Blob([bundleCode], {type: 'application/javascript'}));
     const customElements = globalThis.customElements
@@ -157,7 +169,7 @@ export class Packager {
     const bundle = await import(/* @vite-ignore */ blobURL)
     Object.defineProperty(window, "customElements", {get: () => customElements})
     this.packageModules = Object.fromEntries(Object.entries(bundle).map(([k, v]) => [k.replaceAll("ಠಠಠ", "-"), v])) as Record<string, BlockElementConstructor>
-    Object.entries(this.packageModules).forEach(([k, v]) => v.tagName = v.tagName ?? k)
+    Object.entries(this.packageModules).forEach(([k, v]) => v["tagName"] = v["tagName"] ?? k)
     Object.entries(this.packageModules).forEach(([k, v]) => customElements.define(k, v))
   }
 
@@ -176,7 +188,7 @@ export class PackagerController extends Packager implements ReactiveController {
     super();
 
     (this.host = host).addController(this);
-    this.initialized = this.initialize().then(() => {console.log("initialized")}, reason => {
+    this.initialized = this.initialize().then(() => {}, reason => {
       throw Error("Error initializing package management with 'npm': " + reason)
     })
   }
@@ -198,13 +210,11 @@ export class PackagerController extends Packager implements ReactiveController {
     this.host.requestUpdate()
   }
 
-  async fetchAvailablePackages(from=0, append=true, loading=true) {
-    this.loading = loading
+  async fetchAvailablePackages(from=0, append=true) {
     await this.initialized
     this.host.requestUpdate()
     await this.host.updateComplete
     await super.fetchAvailablePackages(from, append)
-    this.loading = false
     this.host.requestUpdate()
   }
 
@@ -214,26 +224,34 @@ export class PackagerController extends Packager implements ReactiveController {
     this.host.requestUpdate()
     await this.host.updateComplete
     await super.fetchInstalledPackages()
-    console.log("fetching available")
     await super.fetchAvailablePackages(from, append)
     this.loading = false
     this.host.requestUpdate()
   }
 
-  async install(args: string[] = []) {
+  async install(args: string[] = [], importPackages=true) {
     const result = await super.install(args)
+    await this.fetchInstalledPackages()
+    importPackages? await super.writeBundle(this.installedPackages): null
+    importPackages? await super.importBundle(this.installedPackages): null
     this.host.requestUpdate()
     return result
   }
 
-  async uninstall(args: string[] = []) {
+  async uninstall(args: string[] = [], importPackages=true) {
     const result = await super.uninstall(args)
+    await this.fetchInstalledPackages()
+    importPackages? await super.writeBundle(this.installedPackages): null
+    importPackages? await super.importBundle(this.installedPackages): null
     this.host.requestUpdate()
     return result
   }
 
-  async update(args: string[] = []) {
+  async update(args: string[] = [], importPackages=true) {
     const result = await super.update(args)
+    await this.fetchInstalledPackages()
+    importPackages? await super.writeBundle(this.installedPackages): null
+    importPackages? await super.importBundle(this.installedPackages): null
     this.host.requestUpdate()
     return result
   }

@@ -3,6 +3,8 @@ import {save as pickSave, open as pickLoad, DialogFilter} from "@tauri-apps/api/
 import {readTextFile, writeFile} from "@tauri-apps/api/fs"
 import { WWURL } from "webwriter-model";
 
+export class UserCancelledError extends Error {}
+
 function download(data: string, url: string) {
   const blob = new Blob([data])
   const blobURL = URL.createObjectURL(blob)
@@ -28,7 +30,10 @@ export async function save(data: string, url?: string, filters?: DialogFilter[],
   }
   else {
     const wwurl = new WWURL(url)
-    path = wwurl.pathname
+    path = decodeURI(wwurl.pathname).slice(1)
+  }
+  if(!path) {
+    throw new UserCancelledError("UserCancelled")
   }
   await writeFile({path, contents: data})
   return {url: new WWURL(path.replace("\\", "/")).href}

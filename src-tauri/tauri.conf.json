@@ -3,7 +3,7 @@
   "build": {
     "beforeBuildCommand": "",
     "beforeDevCommand": "",
-    "devPath": "http://localhost:3000",
+    "devPath": "http://localhost:5173",
     "distDir": "../build"
   },
   "package": {
@@ -19,6 +19,9 @@
         "writeFile": true,
         "removeFile": true,
         "scope": ["**"]
+      },
+      "path": {
+        "all": true
       },
       "dialog": {
         "all": true

@@ -26,6 +26,7 @@ interface Context {
 
 type Event = 
   | {type: "SELECT", id?: Context["activeDocument"]}
+  | {type: "SELECT_NEXT", backward?: boolean}
   | {type: "CREATE"}
   | {type: "UPDATE", id?: Context["activeDocument"], change: Partial<Omit<Document, "id">>}
   | {type: "ARRANGE", order: Context["documentsOrder"]}
@@ -44,6 +45,8 @@ class ConnectError extends Error {}
 const config: MachineConfig<Context, StateSchema, Event> = {
 
   id: "manager",
+
+  predictableActionArguments: true,
 
   schema: {
     context: {} as Context,
@@ -67,6 +70,7 @@ const config: MachineConfig<Context, StateSchema, Event> = {
     idle: {
       on: {
         SELECT: {actions: "select", cond: "isValidSelection"},
+        SELECT_NEXT: {actions: "selectNext"},
         CREATE: {actions: "create"},
         UPDATE: {actions: "update"},
         SET_ATTRIBUTE: {actions: "setAttribute"},
@@ -99,20 +103,17 @@ const config: MachineConfig<Context, StateSchema, Event> = {
       }
     },
     saving: {
-      initial: "idle",
+      initial: "active",
       states: {
-        idle: {
-          always: [
-            {cond: "isProvidingWWURL", target: "active"},
-            {target: "configuring"}
-          ]
-        },
         configuring: {
           on: {
             SAVE: {target: "active"}
           }
         },
         active: {
+          always: [
+            {cond: "isNotProvidingWWURL", target: "configuring"}
+          ],
           invoke: {
             src: "saveDocument",
             onError: "failure",
@@ -166,29 +167,22 @@ const services: MachineOptions<Context, Event>["services"] = {
 
   saveDocument: async (ctx, ev: ExtractEvent<Event, "SAVE">) => {
 
-    const id = ev.id ?? ctx.activeDocument
-    if(!ev.url) {
-      throw TypeError("No 'url' provided")
-    }
+    console.log(ev)
 
-    const url = new WWURL(ev.url)
+    const id = ev.id ?? ctx.activeDocument
+    const urlString = ev.url ?? ctx.documents[id].url
+    const url = new WWURL(urlString)
 
     const save = connect[url.protocol.slice(0, -1)].save
+    console.log(url.wwformat)
     const serialize = marshal[url.wwformat].serialize
     const urlHasNoLocation = url.hash.includes("nolocation")
 
     let data: string
-    data = await serialize(ev.documentEditor, ctx.documents[id])
-
-    try {
+      data = await serialize(ev.documentEditor, ctx.documents[id])
       const {url: newUrl} = await save(data, urlHasNoLocation? undefined: url.href, FILTERS)
       ctx.documentsPendingChanges = {...ctx.documentsPendingChanges, [id]: false}
       ctx.documents[id].url = newUrl
-    }
-    catch(err) {
-      console.log(err)
-      throw AggregateError([new ConnectError("Error saving data"), err])
-    }
   },
   
   loadDocument: async (ctx, ev: ExtractEvent<Event, "LOAD">) => {
@@ -259,7 +253,6 @@ const guards: MachineOptions<Context, Event>["guards"] = {
 
   isProvidingWWURL: (ctx, ev: Event & {url: Document["url"]}, meta) => {
     try {
-
       new WWURL(ev.url ?? meta.state.event["url"])
       return true
     }
@@ -267,6 +260,8 @@ const guards: MachineOptions<Context, Event>["guards"] = {
       return false
     }
   },
+
+  isNotProvidingWWURL: (ctx, ev: Event & {url: Document["url"]}, meta) => !guards.isProvidingWWURL(ctx, ev, meta),
 
   // hasActiveDocument: ctx => ctx.activeDocument != null,
 
@@ -294,6 +289,14 @@ const actions: MachineOptions<Context, EventObject>["actions"] = {
   select: assign((ctx, ev: ExtractEvent<Event, "SELECT">) => {
     const id = ev.id ?? ctx.documentsOrder[ctx.documentsOrder.length - 1]
     ctx.activeDocument = id
+  }),
+
+  selectNext: assign((ctx, ev: ExtractEvent<Event, "SELECT_NEXT">) => {
+    const id = ctx.activeDocument
+    const order = ctx.documentsOrder
+    ctx.activeDocument = !ev.backward
+      ? order[(order.indexOf(id) + 1) % order.length]
+      : order[id === 0? order.length - 1: order.indexOf(id) - 1]
   }),
 
   discard: assign((ctx, ev: ExtractEvent<Event, "DISCARD">) => {

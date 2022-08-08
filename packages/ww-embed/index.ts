@@ -49,15 +49,12 @@ export default class WwEmbed extends LitElementWw implements BlockElement<EmbedB
         margin-top: 0.1rem;
         background: rgba(0, 0, 0, 0.1);
       }
-
-      sl-input {
-        grid-column: 3;
-      }
     `
   }
 
   inputTemplate = () => html`
     <sl-input
+      part="action"
       type="url"
       placeholder="URL to embed"
       value=${this.src}
@@ -66,21 +63,21 @@ export default class WwEmbed extends LitElementWw implements BlockElement<EmbedB
   `
 
   contentTemplate = () => html`
-    <sl-responsive-media>
+    <sl-responsive-media part="base">
       ${this.src? html`<iframe src=${this.src}></iframe>`: null}
     </sl-responsive-media>
   `
 
   qrTemplate = () => html`
-    <sl-responsive-media>
+    <sl-responsive-media part="base">
       ${this.src? html`<sl-qr-code value=${this.src}></sl-qr-code>`: null}
     </sl-responsive-media>
   `
 
   render() {
     return html`
-      ${this.printable? this.qrTemplate(): this.contentTemplate()}
       ${this.editable? this.inputTemplate(): null}
+      ${this.printable? this.qrTemplate(): this.contentTemplate()}
     `
   }
 }

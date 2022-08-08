@@ -1,6 +1,6 @@
 {
   "name": "ww-plaintext",
-  "version": "0.1.21",
+  "version": "0.1.27",
   "description": "Widget for plaintext",
   "main": "index.ts",
   "keywords": [
@@ -9,9 +9,9 @@
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "license": "MIT",
   "dependencies": {
-    "@shoelace-style/shoelace": "^2.0.0-beta.78",
+    "@shoelace-style/shoelace": "^2.0.0-beta.79",
     "lit": "^2.2.8",
-    "webwriter-lit": "^0.1.21",
-    "webwriter-model": "^0.1.21"
+    "webwriter-lit": "^0.1.25",
+    "webwriter-model": "^0.1.25"
   }
 }

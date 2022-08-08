@@ -4,6 +4,8 @@ import { customElement, property, query, queryAssignedElements } from "lit/decor
 @customElement("ww-combobox")
 export class WwCombobox extends LitElement {
 
+  static shadowRootOptions = {...LitElement.shadowRootOptions, delegatesFocus: true}
+
   constructor() {
     super()
     this.tabIndex = 0

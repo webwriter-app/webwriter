@@ -12,7 +12,7 @@ export type WWURLString = string
 
 
 export type BlockElement<B extends Block = Block> = HTMLElement & {
-  editable: boolean
+  editable?: boolean
   printable?: boolean
   analyzable?: boolean
 } & Omit<B["attributes"], "type">

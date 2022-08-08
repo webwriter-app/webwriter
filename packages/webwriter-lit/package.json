@@ -1,6 +1,6 @@
 {
   "name": "webwriter-lit",
-  "version": "0.1.21",
+  "version": "0.1.25",
   "description": "Base classes for widget components with lit (WebWriter)",
   "main": "index.ts",
   "keywords": [
@@ -10,7 +10,7 @@
   "license": "MIT",
   "dependencies": {
     "lit": "^2.2.8",
-    "webwriter-model": "^0.1.21"
+    "webwriter-model": "^0.1.25"
   },
   "scripts": {
     "build": "tsc index.ts --target es2020  --experimentalDecorators --esModuleInterop --moduleResolution node"

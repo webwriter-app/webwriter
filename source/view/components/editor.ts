@@ -6,7 +6,7 @@ import {classMap} from "lit/directives/class-map.js"
 import {PackagerController} from "../../state"
 import { Document, Block, BlockElement, BlockElementConstructor, Attributes } from "webwriter-model"
 import { camelCaseToSpacedCase, namedNodeMapToObject, prettifyPackageName } from "../../utility"
-import { SlAnimation, SlDetails, SlInput, SlRadioButton, SlSelect } from "@shoelace-style/shoelace"
+import { SlAlert, SlAnimation, SlDetails, SlInput, SlRadioButton, SlSelect, SlTextarea } from "@shoelace-style/shoelace"
 
 import { WwCombobox } from "./uielements"
 
@@ -74,7 +74,6 @@ export class DocumentEditor extends LitElement {
 		else if(direction === "Up") {
 			nextElement = this.sections[Math.max(0, currentIndex - 1)]
 		}
-		console.log(currentElement)
 		currentElement.blur()
 		nextElement.focus()
 	}
@@ -139,10 +138,6 @@ export class DocumentEditor extends LitElement {
         grid-column: 2;
       }
 
-      #header-side-panel {
-        grid-column: 3;
-      }
-
       ww-document-footer {
         grid-column: 2;
       }
@@ -158,10 +153,6 @@ export class DocumentEditor extends LitElement {
 				@ww-block-change=${e => {e.detail.i = i}}>
         <sl-icon-button
           slot="left-panel"
-          name="arrows-move">
-        </sl-icon-button>
-        <sl-icon-button
-          slot="left-panel"
           class="delete-block-button"
           @click=${() => this.emitDeleteBlock(i)}
           name="trash">
@@ -173,7 +164,6 @@ export class DocumentEditor extends LitElement {
 		
     return html`
       <ww-document-header .docAttributes=${this.docAttributes} .revisions=${this.revisions}></ww-document-header>
-      <div id="header-side-panel"></div>
       ${content}
       <ww-document-footer .docAttributes=${this.docAttributes}></ww-document-footer>
     ` 
@@ -200,10 +190,19 @@ export class BlockSection extends LitElement {
 	@query("sl-animation")
 	animation: SlAnimation
 
+	@queryAsync(".block-element")
+	blockElementAsync: BlockElement
+
 	observer: MutationObserver
 
-	connectedCallback(): void {
+	@property({type: Boolean, attribute: true, reflect: true})
+	hasActions: boolean
+
+	async connectedCallback() {
 		super.connectedCallback()
+		if(!this.elementConstructor) {
+			return
+		}
 		this.element = new this.elementConstructor()
 		this.element.block = this.block
 		this.element.editable = true
@@ -214,10 +213,11 @@ export class BlockSection extends LitElement {
 			this.emitBlockChange()
 		})
 		this.observer.observe(this.shadowRoot, {attributes: true, subtree: true})
+		this.hasActions = !!(await this.blockElementAsync).shadowRoot.querySelector("[part=action]")
 	}
 
 	disconnectedCallback(): void {
-		this.observer.disconnect()
+		this.observer?.disconnect()
 	}
 
 	protected firstUpdated(_changedProperties: PropertyValueMap<any> | Map<PropertyKey, unknown>): void {
@@ -238,22 +238,51 @@ export class BlockSection extends LitElement {
 				display: contents;
 			}
 
-			.left-panel {
-				grid-column: 1;
-			}
-
 			:host(:not(:focus-within)) .left-panel {
 				visibility: hidden;
 			}
 
-			.block-element {
-				grid-column: 2;
+			@media screen and (min-width: 1080px) {
+				.left-panel {
+					grid-column: 1;
+				}
+
+				.block-element, .block-element::part(base) {
+					grid-column: 2;
+				}
+
+				.block-element::part(action) {
+					grid-column: 3;
+					margin: 0 0.5rem;
+					max-width: 600px;
+				}
 			}
+
+			@media screen and (max-width: 1080px) {
+				.left-panel {
+					grid-column: 1;
+				}
+
+				:host([hasActions]) .left-panel  {
+					grid-row: span 2;
+				}
+
+				.block-element, .block-element::part(base) {
+					grid-column: 2;
+				}
+
+				.block-element::part(action) {
+					grid-column: 2;
+					margin: 0;
+				}
+			}
+
+
 		`
 	}
 
 	focus() {
-		this.element.focus()
+		this.element?.focus()
 	}
 
 	render() {
@@ -263,7 +292,13 @@ export class BlockSection extends LitElement {
 				<slot name="left-panel"></slot>
 			</ww-side-panel>
 			<sl-animation name="fadeIn" easing="easeIn" iterations=${1} duration=${100}>
-				${this.element}
+				${this.elementConstructor? this.element: html`
+				<sl-alert class="block-element" variant="warning" open>
+					<sl-icon slot="icon" name="exclamation-triangle"></sl-icon>
+					<span>Unknown widget ${this.block.attributes.type} - Use the package manager to install it.</span>
+				</sl-alert>
+				`}
+				${this.hasActions? null: html`<div style="grid-column: 3"></div>`}
 			</sl-animation>
 		`
 	}
@@ -271,6 +306,8 @@ export class BlockSection extends LitElement {
 
 @customElement("ww-document-header")
 class DocumentHeader extends LitElement {
+
+	static shadowRootOptions = {...LitElement.shadowRootOptions, delegatesFocus: true}
 
 	@property({type: Object, attribute: false})
 	docAttributes: Attributes
@@ -289,6 +326,9 @@ class DocumentHeader extends LitElement {
 
 	@queryAsync("#headline")
 	headlineAsync: Promise<SlInput>
+
+	@queryAll("sl-tab-panel[aria-hidden=false] sl-input, sl-tab-panel[aria-hidden=false] sl-textarea, sl-tab-panel[aria-hidden=false] ww-combobox")
+	inputFields: Array<SlInput | SlTextarea | WwCombobox>
 
 	parentElement: DocumentEditor
 	
@@ -311,12 +351,14 @@ class DocumentHeader extends LitElement {
     @sl-change=${this.handleAttributeChange}
     value=${this.docAttributes[key] as string}
     placeholder=${camelCaseToSpacedCase(key)}
+		@keydown=${this.handleInputFieldKeyDown}
 		filled
   ></sl-input>`
 
   textareaTemplate = (key: keyof Attributes) => html`<sl-textarea 
     id=${key}
     @sl-change=${this.handleAttributeChange}
+		@keydown=${this.handleInputFieldKeyDown}
     value=${this.docAttributes[key] as string}
     placeholder=${camelCaseToSpacedCase(key)}
 		rows=${3}
@@ -329,6 +371,7 @@ class DocumentHeader extends LitElement {
 		multiple
 		placeholder=${camelCaseToSpacedCase(key)}
 		filled
+		@keydown=${this.handleInputFieldKeyDown}
 	></ww-combobox>`
 
 	revisionTemplate = ({date, author}: Document["revisions"][number], i: number) => html`<div class="revision">
@@ -343,12 +386,41 @@ class DocumentHeader extends LitElement {
 
 	constructor() {
 		super()
-		this.tabIndex = 0
-		this.addEventListener("focusout", e => this.slDetails.hide())
+		this.addEventListener("focusout", e => {
+			this.slDetails.hide()
+		})
 	}
 
 	handleHeadlineKeyDown = (e: KeyboardEvent) => {
-		e.stopPropagation()
+		if(e.key === "ArrowDown") {
+			e.stopImmediatePropagation()
+			if(this.slDetails.open && this.shadowRoot.activeElement === this.headline) {
+				this.inputFields[0].focus()
+			}
+			else {
+				this.dispatchEvent(new KeyboardEvent("keydown", e))
+			}
+		}
+		else if(["ArrowLeft", "ArrowRight", " "].includes(e.key)) {
+			e.stopImmediatePropagation()
+		}
+		// e.stopPropagation()
+	}
+
+	handleInputFieldKeyDown = (e: KeyboardEvent) => {
+		const inputFields = [...this.inputFields]
+		const fieldIndex = inputFields.indexOf(this.shadowRoot.activeElement as any)
+		if(e.key === "ArrowDown" && fieldIndex !== -1) {
+			if(fieldIndex < inputFields.length - 1) {
+				e.stopPropagation()
+				inputFields[fieldIndex + 1].focus()
+			}
+		}
+		else if(e.key === "ArrowUp" && fieldIndex !== -1) {
+			e.stopPropagation()
+			const field = fieldIndex === 0? this.headline: inputFields[fieldIndex - 1]
+			field.focus()
+		}
 	}
 
 	protected firstUpdated(_changedProperties: PropertyValueMap<any> | Map<PropertyKey, unknown>): void {
@@ -358,10 +430,23 @@ class DocumentHeader extends LitElement {
   static get styles() {
     return css`
 
-      :host {
+			:host {
+				display: contents;
+			}
+
+			#header-left-panel {
+				grid-column: 1;
+			}
+
+      sl-details {
         border-bottom: 2px solid darkgray;
         padding-bottom: 0.5rem;
+				grid-column: 2;
       }
+
+			#header-right-panel {
+				grid-column: 3;
+			}
 
       sl-input::part(base), sl-textarea::part(base), ww-combobox {
         border: none;
@@ -406,6 +491,10 @@ class DocumentHeader extends LitElement {
 
 			sl-tab-group {
 				--track-color: transparent;
+			}
+
+			sl-tab-panel[aria-hidden=true] {
+				display: none;
 			}
 
 			sl-tab-group::part(nav) {
@@ -466,7 +555,8 @@ class DocumentHeader extends LitElement {
 	render() {
 		const attrs = this.docAttributes
 		return html`
-			<sl-details>
+			<div id="header-left-panel"></div>
+			<sl-details tabindex=${-1}>
         <sl-input 
           id="headline"
           @sl-change=${this.handleAttributeChange}
@@ -528,6 +618,7 @@ class DocumentHeader extends LitElement {
 					</sl-tab-panel>
 				</sl-tab-group>
       </sl-details>
+			<div id="header-right-panel"></div>
 		`
 	}
 }
@@ -540,6 +631,9 @@ class DocumentFooter extends LitElement {
 
 	@queryAsync("#author")
 	authorAsync: Promise<SlInput>
+
+	@queryAll("#author, ww-license-picker")
+	footerFields: Element[]
 
 	emitAttributeChange = (key: string, value: any) => this.dispatchEvent(
 		new CustomEvent("ww-attribute-change", {composed: true, bubbles: true, detail: {key, value}})
@@ -559,28 +653,6 @@ class DocumentFooter extends LitElement {
 
 	focus() {
 		this.authorAsync.then(author => author.focus())
-	}
-
-	focusLeft() {
-		(this.shadowRoot?.activeElement?.parentElement?.previousElementSibling as HTMLElement)?.focus()
-	}
-
-	focusRight() {
-		console.log(this.shadowRoot.activeElement);
-		(this.shadowRoot?.activeElement?.parentElement?.nextElementSibling as HTMLElement)?.focus()
-	}
-
-	constructor() {
-		super()
-		this.addEventListener("keydown", e => {
-			if(e.key === "ArrowLeft") {
-				this.focusLeft()
-			}
-			else if(e.key === "ArrowRight") {
-				this.focusRight()
-			}
-		})
-
 	}
 
 	static get styles() {
@@ -650,8 +722,6 @@ class DocumentFooter extends LitElement {
 				height: 16px;
 				width: 16px;
 			}
-
-			#author.empty
 		`
 	}
 
@@ -678,8 +748,13 @@ class DocumentFooter extends LitElement {
 @customElement("ww-license-picker")
 class WwLicensePicker extends LitElement {
 
+	tabIndex = 0
+
 	@query(".choices")
 	choicesElement: HTMLDivElement
+
+	@query(".license")
+	licenseElement: HTMLSpanElement
 
 	@query("sl-animation")
 	animationElement: SlAnimation
@@ -710,6 +785,7 @@ class WwLicensePicker extends LitElement {
 	)
 
 	focus() {
+		this.licenseElement.focus()
 		this.handleOpen()
 	}
 
@@ -873,7 +949,7 @@ class WwLicensePicker extends LitElement {
 
 	render() {
 		return html`
-		<span class="license" @click=${this.handleOpen}>
+		<span tabindex=${0} class="license" @click=${this.handleOpen}>
 			<span>${!this.opened? this.value: WwLicensePicker.LICENSES[this.value]?.fullLabel}</span>
 			${WwLicensePicker.LICENSES[this.value]?.icons?.map(name => html`<sl-icon library="cc" name=${name}></sl-icon>`)}
 		</span>
@@ -953,7 +1029,7 @@ class AppendBlockWidget extends LitElement {
 	}
 
 	render() {
-		return html`
+		const mainTemplate = html`
 			<sl-radio-group>
 				${[...this.blockTypes].reverse().map(name => html`
 					<sl-radio-button
@@ -969,6 +1045,7 @@ class AppendBlockWidget extends LitElement {
 								this.value = name
 							}
 						}}
+						@focus=${() => this.value = name}
 						@keydown=${this.handleRadioButtonKeydown}>
 						
 						<sl-icon slot="prefix" name=${this.value === name? "plus": ""}></sl-icon>
@@ -977,5 +1054,9 @@ class AppendBlockWidget extends LitElement {
 				`)}
 			</sl-radio-group>
 		`
+		return this.blockTypes.length > 0? mainTemplate: html`<sl-alert variant="warning" open>
+			<sl-icon slot="icon" name="exclamation-triangle"></sl-icon>
+			<span>No widgets available. Get widgets with the package manager.</span>
+		</sl-alert>`
 	}
 }
