@@ -1,0 +1,36 @@
+{
+  "name": "@webwriter/webwriter-server",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "vite": "node ../../node_modules/vite/bin/vite",
+    "dev-core": "npm run vite -- build ../webwriter-core --watch --outDir ../webwriter-server/public",
+    "dev-server": "node ace serve --watch",
+    "dev": "npm-run-all -pr dev-core dev-server",
+    "build": "npm run vite -- build ../webwriter-core --outDir ../webwriter-server/public && docker build -t webwriter-server . && docker run -it --env-file production.env -p 3333:3333 webwriter-server",
+    "ace": "node ace"
+  },
+  "peerDependencies": {
+    "@webwriter/core": "file:../core"
+  },
+  "devDependencies": {
+    "@adonisjs/assembler": "^5.9.2",
+    "@japa/preset-adonis": "^1.2.0",
+    "@japa/runner": "^2.2.1",
+    "adonis-preset-ts": "^2.1.0",
+    "pino-pretty": "^9.1.0",
+    "typescript": "~4.6",
+    "youch": "^3.2.2",
+    "youch-terminal": "^2.1.5"
+  },
+  "dependencies": {
+    "@adonisjs/auth": "^8.2.2",
+    "@adonisjs/core": "^5.8.6",
+    "@adonisjs/lucid": "^18.1.1",
+    "luxon": "^3.0.4",
+    "proxy-addr": "^2.0.7",
+    "reflect-metadata": "^0.1.13",
+    "source-map-support": "^0.5.21",
+    "sqlite3": "^5.1.1"
+  }
+}

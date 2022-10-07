@@ -1,0 +1,21 @@
+{
+  "name": "@webwriter/ww-textarea",
+  "version": "0.2.3",
+  "description": "Let the user enter text",
+  "main": "index.ts",
+  "keywords": [
+    "webwriter"
+  ],
+  "author": "Frederic Salmen <frederic@fsalmen.de>",
+  "license": "MIT",
+  "dependencies": {
+    "@shoelace-style/shoelace": "^2.0.0-beta.83",
+    "lit": "^2.3.1",
+    "webwriter-lit": "file:../lit",
+    "webwriter-model": "file:../model"
+  },
+  "devDependencies": {},
+  "scripts": {
+
+  }
+}

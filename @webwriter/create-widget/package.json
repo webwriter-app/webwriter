@@ -1,0 +1,21 @@
+{
+  "name": "@webwriter/create-widget",
+  "version": "0.2.3",
+  "description": "NPM Initializer to create a new widget with the default setup",
+  "main": "index.mjs",
+  "bin": {
+    "create-widget": "index.mjs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Frederic Salmen <frederic@fsalmen.de>",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "fs-extra": "^10.1.0",
+    "lodash.merge": "^4.6.2",
+    "prompts": "^2.4.2",
+    "validate-element-name": "^3.0.0",
+    "validate-npm-package-name": "^4.0.0"
+  }
+}

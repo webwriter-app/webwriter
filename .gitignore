@@ -1,0 +1,11 @@
+/node_modules
+/.parcel-cache
+*/**/src-tauri/target
+*/**/src-tauri/icons
+.vscode
+*/**/public
+/build
+/binaries
+**/node_modules
+/static/assets/cc
+/static/assets/icons

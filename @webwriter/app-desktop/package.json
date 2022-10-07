@@ -1,0 +1,36 @@
+{
+  "name": "@webwriter/app-desktop",
+  "version": "0.2.0",
+  "description": "Windows/Mac/Linux version of WebWriter",
+  "scripts": {
+    "vite": "node ../../node_modules/vite/bin/vite",
+    "dev-core": "npm run vite ../webwriter-core",
+    "build-core": "npm run vite -- build ../webwriter-core",
+    "dev-tauri": "tauri dev",
+    "build-tauri": "tauri build",
+    "build-local": "npm run build-core && node ../../scripts/createbinaries.js && node ../../scripts/preparestatic.js && tauri build",
+    "dev": "npm-run-all -pr dev-core dev-tauri"
+  },
+  "author": "Frederic Salmen <frederic@fsalmen.de>",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@tauri-apps/api": "^1.1.0"
+  },
+  "peerDependencies": {
+    "@webwriter/core": "file:../core"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^1.1.1",
+    "npm": "^8.19.2",
+    "npm-run-all": "^4.1.5",
+    "pkg": "^5.8.0"
+  },
+  "optionalDependencies": {
+    "esbuild-darwin-64": "^0.15.10",
+    "esbuild-darwin-arm64": "^0.15.10",
+    "esbuild-linux-64": "^0.15.10",
+    "esbuild-linux-arm64": "^0.15.10",
+    "esbuild-windows-64": "^0.15.10",
+    "esbuild-windows-arm64": "^0.15.10"
+  }
+}
