@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/ww-h5p",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Wrapper widget to embed H5P files",
   "main": "index.ts",
   "private": true,
@@ -14,7 +14,7 @@
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "license": "MIT",
   "dependencies": {
-    "@webwriter/lit": "^0.2.2",
+    "@webwriter/lit": "^0.2.3",
     "lit": "^2.3.1"
   },
   "gitHead": "66708f3823f4045cce741a39c20fdcb1cac6de06"
