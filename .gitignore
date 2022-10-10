@@ -7,5 +7,4 @@
 /build
 /binaries
 **/node_modules
-/static/assets/cc
 /static/assets/icons
