@@ -1,4 +1,7 @@
-# Widget Quality
+---
+order: 6
+---
+# Explainer: Widget Quality
 
 ## Introduction
 As outlined in the [guide for creating widgets](./creatingwidgets.md), a widget can support many different attributes from the Widget Interface. Ideally, as many of these attributes as possible are supported. As such, this level of attribute coverage is an important measure of widget quality and can guide authors when picking widgets to install. Another measure is performance, considering both time requirements (loading time) and space requirements (bundle size). Finally, widget quality does not only from hard criteria like attribute coverage and performance, but also from soft criteria that depend on the value the widget provides to the authors and learners.

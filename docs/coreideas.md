@@ -1,3 +1,6 @@
+---
+order: 2
+---
 # Explainer: Core ideas
 This article summarizes the core technical aspects such as data structures, IO, and so on. It is a helpful introduction to understand WebWriter before extending it with your own widgets.
 

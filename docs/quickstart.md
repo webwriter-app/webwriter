@@ -1,4 +1,7 @@
-# Guide: Quick Start
+---
+order: 1
+---
+# Guide: Quick start
 
 ## Introduction
 This guide takes you through a few, quick steps of setup. When done, you will have a development environment to implement your own widget for WebWriter.

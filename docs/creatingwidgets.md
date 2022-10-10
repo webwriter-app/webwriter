@@ -1,3 +1,6 @@
+---
+order: 3
+---
 # Guide: Creating a widget
 
 ## Introduction

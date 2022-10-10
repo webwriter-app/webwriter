@@ -1,3 +1,6 @@
+---
+order: 4
+---
 # Guide: Creating a package
 
 ## Introduction
