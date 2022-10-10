@@ -10,6 +10,7 @@
   "license": "MIT",
   "dependencies": {
     "@shoelace-style/shoelace": "^2.0.0-beta.83",
+    "@webwriter/lit": "^0.2.1",
     "lit": "^2.3.1"
   },
   "scripts": {}

@@ -211,7 +211,10 @@ function* writeBundle({packages, bundlename="bundle", force=false}: {type: "writ
     const bundleFilename = `${bundlename}#${computeBundleHash(packages)}`
     const bundlePath = yield call(join, appDir, bundleFilename)
     const entrypointPath = yield call(join, appDir, "entrypoint.js")
-    const exportStatements = packages.map(pkg => `export {default as ${pkg.name.replaceAll("-", "ಠಠಠ")}} from '${pkg.name}'`)
+    const exportStatements = packages.map(pkg => {
+      const name = pkg.name.replaceAll("-", "ಠಠಠ").split(/\@.*\//).pop()
+      return `export {default as ${name}} from '${pkg.name}'`
+    })
     const entrypoint = exportStatements.join(";")
     yield call(writeTextFile as any, entrypointPath, entrypoint)
     yield call(bundle, [entrypointPath, "--bundle", `--outfile=${bundlePath}.js`, `--format=esm`])
@@ -248,7 +251,8 @@ function* importBundle({packages, bundlename="bundle"}: {type: "importBundle_REQ
     yield put({type: "addPackageModules", payload: {packageModules}})
     Object.entries(packageModules).forEach(([k, v]) => customElements.define(k, v))
     */
-    const widgetTypes = Object.keys(bundle).map(k => k.replaceAll("ಠಠಠ", "-"))
+    const widgetTypes = Object.keys(bundle)
+      .map(k => k.replaceAll("ಠಠಠ", "-"))
     yield put(resources.actions.setWidgetTypes({widgetTypes}))
     yield put({type: "importBundle_SUCCEEDED"})
   }

@@ -11,7 +11,8 @@
     "build": "vite build"
   },
   "dependencies": {
-    "lit": "^2.4.0"
+    "lit": "^2.4.0",
+    "@webwriter/lit": "^0.2.1"
   },
   "devDependencies": {
     "typescript": "^4.8.4",
