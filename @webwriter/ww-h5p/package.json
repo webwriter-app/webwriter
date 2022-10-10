@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/ww-h5p",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Wrapper widget to embed H5P files",
   "main": "index.ts",
   "private": true,
