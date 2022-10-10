@@ -106,7 +106,8 @@
 
         <nav>
           <h2>Documentation</h2>
-          {% for site_page in site.pages %}
+          {% assign sorted_pages = site.pages | sort:"order" %}
+          {% for site_page in sorted_pages %}
             {% assign class = "" %}
             {% if page.url == site_page.url %}
             {% assign class = "current" %}
