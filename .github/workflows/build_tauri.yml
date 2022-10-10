@@ -51,10 +51,10 @@ jobs:
         run: npm run build-core -w @webwriter/app-desktop
         
       - name: Create binaries
-        run: node ./createbinaries.js
+        run: node ./scripts/createbinaries.js
 
       - name: Prepare static
-        run: node ./preparestatic.js
+        run: node ./scripts/preparestatic.js
 
       - name: Build the app
         uses: tauri-apps/tauri-action@v0
