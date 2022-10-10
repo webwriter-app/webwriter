@@ -29,7 +29,7 @@ let isFetchingAll = false
 
 type State = typeof initialState
 const initialState = packagesAdapter.getInitialState({
-  corePackages: ["@webwriter/embed", "@webwriter/textarea", "@webwriter/figure", "@open-wc/scoped-elements"],
+  corePackages: ["@webwriter/ww-embed", "@webwriter/ww-textarea", "@webwriter/ww-figure", "@open-wc/scoped-elements"],
   isInitializing: true,
   isFetching: false,
   installPackages: [] as PackageJson["name"][],

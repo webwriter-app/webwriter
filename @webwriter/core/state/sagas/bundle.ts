@@ -28,7 +28,7 @@ async function isBundleOutdated(packages: PackageJson[], bundlename="bundle") {
 }
 
 export async function bundle(args: string[] = []) {
-  const output = await Command.sidecar("../../../binaries/esbuild", [...args]).execute()
+  const output = await Command.sidecar("../../../binaries/esbuild", args).execute()
   if(output.code !== 0) {
     return Error(output.stderr)
   }
@@ -78,9 +78,9 @@ function* initialize() {
       const corePackages = yield select(state => state.packages.corePackages)
       yield call(npm, "install", corePackages)
     }
-    const packages = yield call(fetchInstalledPackages)
-    yield call(writeBundle, {type: "writeBundle_REQUESTED", packages})
-    yield call(importBundle, {type: "importBundle_REQUESTED", packages})
+      const packages = yield call(fetchInstalledPackages)
+      yield call(writeBundle, {type: "writeBundle_REQUESTED", packages})
+      yield call(importBundle, {type: "importBundle_REQUESTED", packages})
     yield put({type: "initialize_SUCCEEDED"})
   }
   catch(error) {
@@ -218,8 +218,8 @@ function* writeBundle({packages, bundlename="bundle", force=false}: {type: "writ
     })
     const entrypoint = exportStatements.join(";")
     yield call(writeTextFile as any, entrypointPath, entrypoint)
-    yield call(bundle, [entrypointPath, "--bundle", `--outfile=${bundlePath}.js`, `--format=esm`])
-    yield call(removeFile, entrypointPath)
+    yield call(bundle, [`${entrypointPath}`, "--bundle", `--outfile=${bundlePath}.js`, `--format=esm`])
+    // yield call(removeFile, entrypointPath)
     return bundlePath
   }
 }
