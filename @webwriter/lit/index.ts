@@ -2,7 +2,7 @@ import {LitElement} from "lit"
 import { property } from "lit/decorators.js"
 import {ScopedElementsMixin} from "@open-wc/scoped-elements"
 
-import {Widget} from "webwriter-model"
+import {Widget} from "@webwriter/model"
 
 /**WebWriter API: Minimal base class for a widget implemented in Lit. Implements the core properties required by WebWriter, initializes the component when loaded and provides a Scoped Custom Element Registry (@open-wc/scoped-elements) to help with namespace conflicts when using other components in this widget. */
 export class LitElementWw extends ScopedElementsMixin(LitElement) implements Widget {

@@ -5,7 +5,7 @@ import SlQrCode from "@shoelace-style/shoelace/dist/components/qr-code/qr-code.j
 import { html, css } from "lit"
 import { property, customElement } from "lit/decorators.js"
 
-import { LitElementWw } from "webwriter-lit"
+import { LitElementWw } from "@webwriter/lit"
 
 
 @customElement("ww-embed")
