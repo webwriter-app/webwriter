@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/widget-actions",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "Generate input fields for widget properties",
   "main": "index.ts",
   "author": "Frederic Salmen <frederic@fsalmen.de>",
@@ -12,7 +12,7 @@
     "build": "vite build"
   },
   "dependencies": {
-    "@webwriter/lit": "^0.2.3",
+    "@webwriter/lit": "^0.3.0",
     "lit": "^2.4.0"
   },
   "devDependencies": {
