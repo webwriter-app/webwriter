@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/ww-figure",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Widget to show any type of multimedia figure",
   "main": "index.ts",
   "keywords": [
@@ -11,7 +11,7 @@
   "type": "module",
   "dependencies": {
     "@shoelace-style/shoelace": "^2.0.0-beta.83",
-    "@webwriter/lit": "^0.2.1",
+    "@webwriter/lit": "^0.2.2",
     "lit": "^2.4.0",
     "mime": "^3.0.0"
   },
