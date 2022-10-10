@@ -29,8 +29,6 @@ export async function docToBundle(doc: Node) {
     .map(el => el.tagName.toLowerCase())
     .filter(name => allWidgetTypes.includes(name))
 
-  console.log(widgetTypes)
-
   const statements = [
     `import "@open-wc/scoped-elements"`
   ].concat(widgetTypes.flatMap(t => [
@@ -135,5 +133,5 @@ export async function serialize(explorable: Node) {
 }
 
 export const label = "WebWriter File"
-export const extensions = ["ww.html"]
+export const extensions = ["ww.html", "html"]
 export const isBinary = false

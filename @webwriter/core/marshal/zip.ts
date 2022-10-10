@@ -53,8 +53,6 @@ export function docToManifest(explorable: Node, webFileName: string, fileNames: 
 
   xml.appendChild(manifest)
 
-  console.log(xml.documentElement.outerHTML)
-
   return xml
 }
 
@@ -92,12 +90,10 @@ export async function serialize(explorable: Node) {
 
   const content = await zip.generateAsync({type: "uint8array"})
 
-  console.log(content)
-
   return content
 
 }
 
 export const label = "SCORM Package"
-export const extensions = ["ww.zip"]
+export const extensions = ["ww.zip", "zip"]
 export const isBinary = true

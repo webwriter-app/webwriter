@@ -53,7 +53,6 @@ export const reducer = (state: State = initialState, action: ResourceAction) => 
     case "resources/create": {
       const url = getNewResourceURL(state.resources)
       const newResource = createResource(url, state.widgetTypes)
-      console.log(newResource)
       return {
         ...state,
         resources: {

@@ -487,7 +487,6 @@ export class ExplorableEditor extends LitElement {
 		const nextState = state.reconfigure({plugins: state.plugins})
 		nextState.doc = Node.fromJSON(this.editorViewController.state.schema, docObj)
 		this.editorViewController.updateState(nextState)
-		console.log(this.editorViewController.state)
 /*
 		class SetNodeMetaStep extends Step {
 			key: string
@@ -555,7 +554,7 @@ export class ExplorableEditor extends LitElement {
 class WwEditorToolbox extends LitElement {
 
 	emitChangeWidget = (name: string) => {
-		this.dispatchEvent(new CustomEvent("ww-change-widget", {composed: true, bubbles: true, detail: {name}}))
+		this.dispatchEvent(new CustomEvent("ww-change-widget", {composed: true, bubbles: true, detail: {name: unscopePackageName(name)}}))
 	}
 
 	emitClickMarkCommand = (name: string) => {

@@ -9,7 +9,6 @@ import { ExplorableEditor } from "./components/editor"
 import { SlAlert, registerIconLibrary } from "@shoelace-style/shoelace"
 import { Tabs } from "./components"
 import { escapeHTML, detectEnvironment } from "../utility"
-import { Command } from "../environment"
 
 
 
@@ -228,7 +227,6 @@ export class App extends LitElement
 		const {activeResource, resourcesPendingChanges, resourcesOrder} = resources
 		const allResources = resourcesOrder.map(url => resources.resources[url])
 		const availableWidgetTypes = selectors.packages.selectAvailableWidgetTypes(packages)
-		console.log(availableWidgetTypes)
 		const allPackages = selectors.packages.selectAll(packages)
 		this.className = allResources.length === 0? "noResources": ""
 		const tabs = repeat(allResources, res => res.url, ({url, editorState}, i) => html`
@@ -310,8 +308,6 @@ export class App extends LitElement
 	render() {
 		const state = this.store.getState()
 		const send = this.store.dispatch
-
-		console.log(state.packages.entities)
 
 		const initializingPlaceholder = this.initializingPlaceholderTemplate()
 		const tabs = this.tabsTemplate(send, state.resources, state.packages)

@@ -28,9 +28,10 @@ function* saveResource({payload}: PayloadAction<{type: "saveResource_REQUESTED",
 
     const save = connect[wwURL.protocol.slice(0, -1)].save
     const serialize = marshal[wwURL.wwformat].serialize
+    const isBinary = marshal[wwURL.wwformat].isBinary
   
     let data = yield call(serialize, payload.resource.editorState.doc)
-    yield call(save, data, wwURL.href)
+    yield call(save, data, wwURL.href, isBinary)
     yield put(resources.actions.relocate({url: payload.resource.url, newURL: wwURL.href}))
     yield put({type: "saveResource_SUCCEEDED", payload: {url: wwURL.href}})
   }
@@ -60,7 +61,6 @@ function* loadResource({payload}: PayloadAction<{type: "loadResource_REQUESTED",
     let data = yield call(load, wwURL.href, BINARY_EXTENSIONS)
     let editorState = yield call(parse, data, payload.schema)
     const resource: Resource = {url: wwURL.href, editorState}
-    console.log(resource)
     yield put(resources.actions.put({resource}))
     yield put({type: "loadResource_SUCCEEDED"})
   }

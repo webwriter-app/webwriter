@@ -206,7 +206,6 @@ const customBackspaceCommand = chainCommands(
 const customArrowCommand = (up=false) => chainCommands(
   (state, dispatch, view) => {
     const isWidgetNode = state.selection instanceof NodeSelection && state.selection.node.type.spec["widget"] as boolean
-    console.log(state.selection.$anchor.pos)
     const hasParagraph = up
       ? state.selection.$from.nodeBefore.type.name === "paragraph"
       : state.selection.$from.nodeAfter.type.name === "paragraph"

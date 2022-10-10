@@ -5,6 +5,8 @@ import { WWURL } from "../utility"
 
 export class UserCancelledError extends Error {}
 
+/*
+
 function download(data: string, url: string) {
   const blob = new Blob([data])
   const blobURL = URL.createObjectURL(blob)
@@ -16,11 +18,13 @@ function download(data: string, url: string) {
 
 async function saveFSA(data: string) {
   const blob = new Blob([data])
-  const handle = await showSaveFilePicker()
+  const handle = await pickSaveFile()
   const writableStream = await handle.createWritable()
   await writableStream.write(blob)
   return await writableStream.close()
 }
+
+*/
 
 export async function pickSave(filters?: DialogFilter[], defaultPath?: string) {
   return pickSaveFile({filters, defaultPath})
@@ -39,6 +43,7 @@ export async function pickLoad(filters?: DialogFilter[], multiple=false) {
 }
 
 export async function load(url: string, binaryExtensions=[]) {
+  console.log(url, binaryExtensions)
   
   const wwurl = new WWURL(url)
   const path = decodeURI(wwurl.pathname).slice(1)
