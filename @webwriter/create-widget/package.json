@@ -3,6 +3,9 @@
   "version": "0.2.1",
   "description": "NPM Initializer to create a new widget with the default setup",
   "main": "index.mjs",
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "create-widget": "index.mjs"
   },

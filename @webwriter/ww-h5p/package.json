@@ -4,6 +4,9 @@
   "description": "Wrapper widget to embed H5P files",
   "main": "index.ts",
   "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {},
   "keywords": [
     "webwriter"
