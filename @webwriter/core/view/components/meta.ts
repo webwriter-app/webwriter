@@ -1,11 +1,13 @@
 import {LitElement, html, css, PropertyValueMap} from "lit"
 import {customElement, property, query, queryAll, queryAsync} from "lit/decorators.js"
-import { Attributes } from "../../../packages/webwriter-model"
+import { Attributes } from "@webwriter/model"
 import { camelCaseToSpacedCase} from "../../utility"
-import { SlAnimation, SlDetails, SlInput, SlTextarea } from "@shoelace-style/shoelace"
+import { SlAnimation, SlDetails, SlInput, SlTextarea, registerIconLibrary } from "@shoelace-style/shoelace"
 
 import { WwCombobox } from "./uielements"
 import { ExplorableEditor } from "./editor"
+
+
 
 @customElement("ww-document-header")
 export class DocumentHeader extends LitElement {

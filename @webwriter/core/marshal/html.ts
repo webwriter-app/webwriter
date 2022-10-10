@@ -1,7 +1,7 @@
 import { readTextFile, removeFile, writeTextFile } from '@tauri-apps/api/fs'
 import {Node, DOMSerializer} from "prosemirror-model"
 
-import {Attributes} from "../../packages/webwriter-model"
+import {Attributes} from "@webwriter/model"
 import { bundle } from '../state'
 import { createElementWithAttributes, namedNodeMapToObject } from "../utility"
 import { join, appDir } from '@tauri-apps/api/path'

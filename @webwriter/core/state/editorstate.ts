@@ -1,18 +1,27 @@
 import {Schema, Node, NodeSpec, MarkSpec, Fragment} from "prosemirror-model"
-import {Command, EditorState, EditorStateConfig, NodeSelection, TextSelection} from "prosemirror-state"
+import {Command, EditorState, EditorStateConfig, NodeSelection, TextSelection, Plugin} from "prosemirror-state"
 import { baseKeymap, joinForward, selectNodeForward } from "prosemirror-commands"
 import {keymap} from "prosemirror-keymap"
 import {inputRules, InputRule} from "prosemirror-inputrules"
 import { gapCursor } from "prosemirror-gapcursor"
 import { history } from "prosemirror-history"
 import { chainCommands, deleteSelection, joinBackward, selectNodeBackward} from "prosemirror-commands"
+import { EditorView } from "prosemirror-view"
 
 const leafNodeSpecs: Record<string, NodeSpec & {group: "leaf"}> = {
   thematicBreak: {group: "leaf"}
 }
 
 
+export function getOtherAttrsFromWidget(dom: HTMLElement) {
+  return Object.fromEntries(dom
+    .getAttributeNames()
+    .filter(name => !["editable", "printable", "analyzable", "contenteditable"].includes(name))
+    .map(name => [name, dom.getAttribute(name)]))
+}
+
 function widgetTagNodeSpec(tag: string): NodeSpec {
+
   return {
     group: "leaf",
     widget: true,
@@ -24,21 +33,26 @@ function widgetTagNodeSpec(tag: string): NodeSpec {
       analyzable: {default: false},
       otherAttrs: {default: {}}
     },
-    parseDOM : [{tag, getAttrs: (dom: HTMLElement) => ({
-      editable: dom.getAttribute("editable") ?? false,
-      printable: dom.getAttribute("printable") ?? false,
-      analyzable: dom.getAttribute("analyzable") ?? false,
-      otherAttrs: Object.fromEntries(dom
-        .getAttributeNames()
-        .filter(name => !["editable", "printable", "analyzable"].includes(name))
-        .map(name => [name, dom.getAttribute(name)]))
-    })}],
-    toDOM: (node: Node) => [node.type.name, {
-      ...(node.attrs.editable? {"editable": true}: {}),
-      ...(node.attrs.printable? {"printable": true}: {}),
-      ...(node.attrs.analyzable? {"analyzable": true}: {}),
-      "class": "ww-widget"
-    }]
+    parseDOM : [{tag, getAttrs: (dom: HTMLElement) => {
+      return {
+        editable: dom.getAttribute("editable") ?? false,
+        printable: dom.getAttribute("printable") ?? false,
+        analyzable: dom.getAttribute("analyzable") ?? false,
+        otherAttrs: Object.fromEntries(dom
+          .getAttributeNames()
+          .filter(name => !["editable", "printable", "analyzable"].includes(name))
+          .map(name => [name, dom.getAttribute(name)]))
+      }
+    }}],
+    toDOM: (node: Node) => {
+      return [node.type.name, {
+        ...(node.attrs.editable? {"editable": true}: {}),
+        ...(node.attrs.printable? {"printable": true}: {}),
+        ...(node.attrs.analyzable? {"analyzable": true}: {}),
+        ...node.attrs.otherAttrs,
+        "class": "ww-widget"
+      }]
+    }
   }  
 }
 
@@ -249,6 +263,23 @@ const rules: InputRule[] = [
 //  new InputRule(/\*.$/, "italic"),
 ]
 
+function placeholder(text: string) {
+  const update = (view: EditorView) => {
+    if (view.state.doc.textContent || view.state.doc.childCount > 1 || view.state.doc?.firstChild?.type?.name !== "paragraph") {
+      view.dom.removeAttribute('data-placeholder');
+    } else {
+      view.dom.setAttribute('data-placeholder', text);
+    }
+  };
+
+  return new Plugin({
+    view(view) {
+      update(view);
+      return { update };
+    }
+  });
+}
+
 export const defaultConfig: EditorStateConfig = {
   schema: baseSchema,
   doc: baseSchema.node(baseSchema.topNodeType, {}, [baseSchema.node("paragraph")]),
@@ -256,7 +287,8 @@ export const defaultConfig: EditorStateConfig = {
     keymap({...baseKeymap, ...explorableKeymap}),
     inputRules({rules}),
     history(),
-    gapCursor()
+    gapCursor(),
+    placeholder("Enter content here...")
   ]
 }
 

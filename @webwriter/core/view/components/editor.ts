@@ -9,9 +9,10 @@ import { camelCaseToSpacedCase, prettifyPackageName } from "../../utility"
 import { Decoration, EditorView, NodeView } from "prosemirror-view"
 import { EditorState, Command, NodeSelection, Selection, Transaction } from "prosemirror-state"
 import { DOMSerializer, Node } from "prosemirror-model"
-import { chainCommands, setBlockType, toggleMark } from "prosemirror-commands"
+import { chainCommands, toggleMark } from "prosemirror-commands"
 import { PackageJson } from "../../state"
 import { DocumentFooter, DocumentHeader } from "./meta"
+import { getOtherAttrsFromWidget } from "../../state/editorstate"
 
 
 const insertParagraphWidget = (pos: number) => Decoration.widget(pos, 
@@ -54,14 +55,19 @@ class WidgetView implements NodeView {
 			const tr = view.state.tr.setSelection(new NodeSelection(resolvedPos))
 			view.dispatch(tr)
 		})
+	}
 
-
-
-
-		// on focusin: select
-		// on focusout: IGNORE
-		// on select: focus
-		// on unselect: blur
+	ignoreMutation(mutation: MutationRecord) {
+		const {type, target} = mutation
+		if(type === "attributes") {
+			const tr = this.view.state.tr.setNodeAttribute(
+				this.getPos(),
+				"otherAttrs",
+				getOtherAttrsFromWidget(target as HTMLElement)
+			)
+			this.view.dispatch(tr)
+		}
+		return true
 	}
 
 	selectNode() {
@@ -161,6 +167,7 @@ export class ExplorableEditor extends LitElement {
 			command: (state: EditorState) => toggleMark(state.schema.marks.strikethrough),
 			icon: "type-strikethrough"
 		},
+/*
 		makeHeading1: {
 			command: (state: EditorState) => setBlockType(state.schema.nodes.heading, {level: 1}),
 			icon: "type-h1"
@@ -173,6 +180,7 @@ export class ExplorableEditor extends LitElement {
 			command: (state: EditorState) => setBlockType(state.schema.nodes.heading, {level: 3}),
 			icon: "type-h3"
 		},
+*/
 	}
 
 	baseCommands: Record<string, {command: (state: EditorState) => Command, icon?: string, style?: string}> = {
@@ -309,6 +317,7 @@ export class ExplorableEditor extends LitElement {
 				position: relative;
 				background: white;
 				border: 1px solid rgba(0, 0, 0, 0.1);
+				margin-bottom: 200px;
 			}
 
 			:host > * {
@@ -328,10 +337,18 @@ export class ExplorableEditor extends LitElement {
 				white-space: normal !important;
 			}
 
+			.ProseMirror[data-placeholder]::before {
+				color: darkgray;
+				position: absolute;
+				content: attr(data-placeholder);
+				pointer-events: none;
+			}
+
 			#main-wrapper {
 				display: flex;
 				flex-direction: row;
 				margin: 1rem 0;
+				z-index: 10;
 			}
 
 			#main-wrapper:not(:focus-within) ww-editor-toolbox {
@@ -463,6 +480,43 @@ export class ExplorableEditor extends LitElement {
 		}
 	}
 
+	setMetaValue(key: string, value: any) {
+		const state = this.editorViewController.state
+		let docObj = state.doc.toJSON()
+		docObj.attrs.meta = {...state.doc.attrs["meta"], [key]: value}
+		const nextState = state.reconfigure({plugins: state.plugins})
+		nextState.doc = Node.fromJSON(this.editorViewController.state.schema, docObj)
+		this.editorViewController.updateState(nextState)
+		console.log(this.editorViewController.state)
+/*
+		class SetNodeMetaStep extends Step {
+			key: string
+			value: any
+
+			constructor(key: string, value: any) {
+				super()
+				this.key = key
+				this.value = value
+			}
+			apply(doc: Node) {
+				const 
+				new StepResult()
+			}
+			invert(doc: Node) {
+
+			}
+			map(mapping: Mappable) {
+
+			}
+			merge(other: Step) {
+				return step
+			}
+		}
+		state.tr.step()
+*/
+		this.editorViewController.updateState(nextState)
+	}
+
 	render() {
 		
     return html`
@@ -471,27 +525,28 @@ export class ExplorableEditor extends LitElement {
 				.docAttributes=${this.editorState.doc.attrs.meta}
 				.revisions=${[]}
 				@ww-focus-down=${e => this.editorViewController.focus()}
+				@ww-attribute-change=${e => this.setMetaValue(e.detail.key, e.detail.value)}
 			></ww-document-header>
 			<div id="main-wrapper">
 				${!this.loadingPackages
-						? html`<main part="main" id="main"></main>`
+						? html`<main part="main" id="main" spellcheck=${false}></main>`
 						: this.loadingSpinnerTemplate()
 					}
+				<sl-popup active anchor="main" placement="left" shift strategy="fixed" distance=${25}>
+					<ww-editor-toolbox
+						@ww-change-widget=${e => this.insertWidget(e.detail.name)}
+						@ww-click-mark-command=${e => this.exec(this.markCommands[e.detail.name].command(this.editorState))}
+						.packages=${this.packages}
+						.markCommands=${this.markCommands}
+						.activeMarks=${getActiveMarks(this.editorState)}
+					></ww-editor-toolbox>
+				</sl-popup>
 			</div>
       <ww-document-footer
 				part="footer"
 				.docAttributes=${this.editorState.doc.attrs.meta}
 				@ww-focus-up=${e => this.editorViewController.focus()}
 			></ww-document-footer>
-			<sl-popup active anchor="main" placement="left" shift strategy="fixed" distance=${25}>
-				<ww-editor-toolbox
-					@ww-change-widget=${e => this.insertWidget(e.detail.name)}
-					@ww-click-mark-command=${e => this.exec(this.markCommands[e.detail.name].command(this.editorState))}
-					.packages=${this.packages}
-					.markCommands=${this.markCommands}
-					.activeMarks=${getActiveMarks(this.editorState)}
-				></ww-editor-toolbox>
-			</sl-popup>
     ` 
 	}
 }

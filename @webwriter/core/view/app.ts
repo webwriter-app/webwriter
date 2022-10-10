@@ -39,9 +39,12 @@ export class App extends LitElement
 	store = createStoreController(this)
 
 	keymap: Record<string, (e: KeyboardEvent, handler) => any> = {
-		"ctrl+s": (e, combo) => this.store.dispatch(saveResource_REQUESTED({
-			resource: getActiveResource(this.store.getState().resources)
-		})),
+		"ctrl+s": (e, combo) => {
+			(document.activeElement as HTMLElement).blur()
+			this.store.dispatch(saveResource_REQUESTED({
+				resource: getActiveResource(this.store.getState().resources)
+			}))
+		},
 		"ctrl+o": (e, combo) => this.store.dispatch(loadResource_REQUESTED({
 			schema: this.store.getState().resources.schema
 		})),
@@ -75,7 +78,8 @@ export class App extends LitElement
 	errorsToIgnore = [
 		"Uncaught TypeError: Cannot set properties of null (setting 'tabIndex')",
 		"ResizeObserver loop limit exceeded",
-		"UserCancelled"
+		"UserCancelled",
+		"Uncaught TypeError: Failed to execute 'unobserve' on 'ResizeObserver': parameter 1 is not of type 'Element'."
 	]
 
 	async connectedCallback() {
@@ -84,8 +88,10 @@ export class App extends LitElement
 		globalThis.WEBWRITER_ENVIRONMENT = detectEnvironment()
 
 		this.addEventListener("ww-select-tab-title", (e: any) => this.focusTabTitle(e.detail.id))
-		registerIconLibrary("cc", {resolver: name => `/assets/cc/${name}.svg`})
+
 		
+		registerIconLibrary("cc", {resolver: name => `/asset/cc/${name}.svg`})
+
 		Object.entries(this.keymap).forEach(([shortcut, callback]) => Hotkeys(shortcut, callback))
 
 		Object.entries(this.notifications).forEach(([type, alertAttributes]) => {

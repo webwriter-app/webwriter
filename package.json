@@ -3,8 +3,9 @@
   "version": "0.2.0",
   "description": "Web-based authoring tool for open explorables",
   "scripts": {
-    "dev": "npm-run-all -pr dev-core dev-desktop",
+    "dev-desktop": "npm run -w @webwriter/app-desktop dev",
     "version": "lerna version",
+    "lerna": "lerna",
     "createbinaries": "node ./scripts/createbinaries.js",
     "preparestatic": "node ./scripts/preparestatic.js"
   },
