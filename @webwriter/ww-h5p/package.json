@@ -3,6 +3,7 @@
   "version": "0.2.2",
   "description": "Wrapper widget to embed H5P files",
   "main": "index.ts",
+  "private": true,
   "scripts": {},
   "keywords": [
     "webwriter"
