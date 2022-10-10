@@ -8,5 +8,6 @@
   },
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "license": "MIT",
-  "scripts": {}
+  "scripts": {},
+  "gitHead": "0fd0c30304aba6738f14ee1ec687b3d4614f7c60"
 }

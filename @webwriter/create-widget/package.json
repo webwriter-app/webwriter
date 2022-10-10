@@ -20,5 +20,6 @@
     "prompts": "^2.4.2",
     "validate-element-name": "^3.0.0",
     "validate-npm-package-name": "^4.0.0"
-  }
+  },
+  "gitHead": "0fd0c30304aba6738f14ee1ec687b3d4614f7c60"
 }
