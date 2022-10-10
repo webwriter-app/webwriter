@@ -1,0 +1,25 @@
+{
+  "name": "@webwriter/ww-figure",
+  "version": "0.2.0",
+  "description": "Widget to show any type of multimedia figure",
+  "main": "index.ts",
+  "keywords": [
+    "webwriter"
+  ],
+  "author": "Frederic Salmen <frederic@fsalmen.de>",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@shoelace-style/shoelace": "^2.0.0-beta.83",
+    "lit": "^2.4.0",
+    "mime": "^3.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^4.8.4",
+    "vite": "^3.1.6"
+  },
+  "scripts": {
+    "dev": "vite --open",
+    "build": "vite build"
+  }
+}
