@@ -4,7 +4,7 @@ import {customElement, property, query} from "lit/decorators.js"
 import prosemirrorCSS from "prosemirror-view/style/prosemirror.css"
 //@ts-ignore 
 import gapcursorCSS from "prosemirror-gapcursor/style/gapcursor.css"
-import { camelCaseToSpacedCase, prettifyPackageName } from "../../utility"
+import { camelCaseToSpacedCase, prettifyPackageName, unscopePackageName } from "../../utility"
 
 import { Decoration, EditorView, NodeView } from "prosemirror-view"
 import { EditorState, Command, NodeSelection, Selection, Transaction } from "prosemirror-state"
@@ -721,7 +721,7 @@ class WwEditorToolbox extends LitElement {
 			</sl-tooltip>
 			<sl-icon class="add-icon" name="plus-square"></sl-icon>
 		</span>
-		${new (customElements.get(pkg.name))()}
+		${new (customElements.get(unscopePackageName(pkg.name)))()}
 	</sl-card>`
 
 	markCommandsTemplate = () => Object.entries(this.markCommands).map(([k, v]) => 	{

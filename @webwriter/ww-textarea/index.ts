@@ -4,7 +4,7 @@ import SlTextarea from "@shoelace-style/shoelace/dist/components/textarea/textar
 import { html, css } from "lit"
 import { property, query, customElement } from "lit/decorators.js"
 
-import { LitElementWw } from "webwriter-lit"
+import { LitElementWw } from "@webwriter/lit"
 
 @customElement("ww-textarea")
 export default class WwTextarea extends LitElementWw {  

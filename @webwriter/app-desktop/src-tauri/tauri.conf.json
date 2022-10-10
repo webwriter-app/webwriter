@@ -4,11 +4,11 @@
     "beforeBuildCommand": "",
     "beforeDevCommand": "",
     "devPath": "http://localhost:5173",
-    "distDir": "../webwriter-core/dist"
+    "distDir": "../../core/dist"
   },
   "package": {
     "productName": "webwriter",
-    "version": "0.1.0"
+    "version": "0.3.0"
   },
   "tauri": {
     "allowlist": {

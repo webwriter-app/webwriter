@@ -8,3 +8,4 @@
 /binaries
 **/node_modules
 /static/assets/icons
+dist

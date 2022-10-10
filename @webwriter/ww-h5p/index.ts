@@ -1,7 +1,7 @@
 import { html, css } from "lit"
 import { property, query } from "lit/decorators.js"
 
-import { LitElementWw } from "webwriter-lit"
+import { LitElementWw } from "@webwriter/lit"
 
 export default class WwH5P extends LitElementWw {
 

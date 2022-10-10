@@ -9,7 +9,7 @@
     "build-core": "npm run vite -- build ../core -c ../core/vite.config.js",
     "dev-tauri": "tauri dev",
     "build-tauri": "tauri build",
-    "build-local": "npm run build-core && node ../../scripts/createbinaries.js && node ../../scripts/preparestatic.js && tauri build",
+    "build-local": "npm run build-core && tauri build",
     "dev": "npm-run-all -pr dev-core dev-tauri"
   },
   "author": "Frederic Salmen <frederic@fsalmen.de>",

@@ -3,7 +3,7 @@ import {readTextFile, writeTextFile, removeFile, createDir, readDir} from "@taur
 import { join, appDir as getAppDir } from '@tauri-apps/api/path'
 import {call, put, takeLeading, all, takeEvery, select, actionChannel, take, ActionPattern} from "redux-saga/effects"
 
-import { createRequestedActionEntry, hashCode } from "../../utility"
+import { createRequestedActionEntry, hashCode, unscopePackageName } from "../../utility"
 import {slice as packagesSlice, selectors as packageSelectors} from "../slices/packages"
 import { Action } from "@redux-saga/types"
 import {PackageJson} from ".."
@@ -29,6 +29,7 @@ async function isBundleOutdated(packages: PackageJson[], bundlename="bundle") {
 
 export async function bundle(args: string[] = []) {
   const output = await Command.sidecar("../../../binaries/esbuild", [...args]).execute()
+  console.log(output)
   if(output.code !== 0) {
     return Error(output.stderr)
   }
@@ -63,6 +64,7 @@ export async function npm(command: string, commandArgs: string[] = [], json=true
 type CLIAction<T extends string> = {type: `${T}_REQUESTED`, args: string[]}
 
 function* initialize() {
+  console.log("initialize")
   yield put({type: "initialize_REQUESTED"})
   try {
     let appDir = yield call(getAppDir)
@@ -79,6 +81,7 @@ function* initialize() {
       yield call(npm, "install", corePackages)
     }
     const packages = yield call(fetchInstalledPackages)
+    console.log(packages)
     yield call(writeBundle, {type: "writeBundle_REQUESTED", packages})
     yield call(importBundle, {type: "importBundle_REQUESTED", packages})
     yield put({type: "initialize_SUCCEEDED"})
@@ -155,7 +158,8 @@ function* fetchInstalledPackages({setPackages} = {setPackages: true}) {
     let packages = [] as PackageJson[]
     const dependencies = (yield call(npm, "ls", ["--long"]))["dependencies"] as PackageJson["dependencies"]
     if(!dependencies) {
-      return put(packagesSlice.actions.setAll(packages))
+      yield put(packagesSlice.actions.setAll(packages))
+      return []
     }
     const packagePaths = Object.values(dependencies)
       .map(v => (v as any)?.path)
@@ -207,28 +211,36 @@ function* fetchAllPackages({from}: {type: "fetchAllPackages_REQUESTED", from: nu
 
 function* writeBundle({packages, bundlename="bundle", force=false}: {type: "writeBundle_REQUESTED", packages: PackageJson[], bundlename?: string, force?: boolean}) {
   if(isBundleOutdated(packages, bundlename) || force) {
+    console.log("writing bundle")
     const appDir = yield call(getAppDir)
     const bundleFilename = `${bundlename}#${computeBundleHash(packages)}`
     const bundlePath = yield call(join, appDir, bundleFilename)
     const entrypointPath = yield call(join, appDir, "entrypoint.js")
     const exportStatements = packages.map(pkg => {
-      const name = pkg.name.replaceAll("-", "ಠಠಠ").split(/\@.*\//).pop()
+      const name = unscopePackageName(pkg.name.replaceAll("-", "ಠಠಠ"))
       return `export {default as ${name}} from '${pkg.name}'`
     })
     const entrypoint = exportStatements.join(";")
+    console.log(entrypoint)
     yield call(writeTextFile as any, entrypointPath, entrypoint)
+    console.log(entrypointPath)
     yield call(bundle, [entrypointPath, "--bundle", `--outfile=${bundlePath}.js`, `--format=esm`])
     yield call(removeFile, entrypointPath)
+    console.log("writeBundle done")
     return bundlePath
   }
 }
 
 function* importBundle({packages, bundlename="bundle"}: {type: "importBundle_REQUESTED", packages: PackageJson[], bundlename?: string}) {
   try {
+    console.log("importBundle")
     const appDir = yield call(getAppDir)
     const bundleFilename = `${bundlename}#${computeBundleHash(packages)}.js`
+    console.log(bundleFilename)
     const bundlePath = yield call(join, appDir, bundleFilename)
+    console.log(bundlePath)
     const bundleCode = yield call(readTextFile, bundlePath)
+    console.log(bundleCode)
     let blobURL = URL.createObjectURL(new Blob([bundleCode], {type: 'application/javascript'}))
     /*
     const customElements = globalThis.customElements
@@ -251,6 +263,7 @@ function* importBundle({packages, bundlename="bundle"}: {type: "importBundle_REQ
     yield put({type: "addPackageModules", payload: {packageModules}})
     Object.entries(packageModules).forEach(([k, v]) => customElements.define(k, v))
     */
+    console.log(bundle)
     const widgetTypes = Object.keys(bundle)
       .map(k => k.replaceAll("ಠಠಠ", "-"))
     yield put(resources.actions.setWidgetTypes({widgetTypes}))

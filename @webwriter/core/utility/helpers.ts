@@ -81,3 +81,7 @@ export function detectEnvironment() {
 		return "unknown"
 	}
 }
+
+export function unscopePackageName(name: string) {
+  return name.split(/\@.*\//).pop()
+}

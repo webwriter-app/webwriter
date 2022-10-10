@@ -1,6 +1,7 @@
 import { createSlice, createEntityAdapter, PayloadAction, Action } from "@reduxjs/toolkit"
 
 import { PackageJson } from ".."
+import { unscopePackageName } from "../../utility"
 
 type MutatingBundleAction = PayloadAction<{args?: string[]}, `${"install" | "uninstall" | "update"}_${"REQUESTED" | "SUCCEEDED" | "FAILED"}`>
 type FetchingBundleAction = Action<`${"fetchInstalled" | "fetchAvailable" |"fetchAll"}Packages_${"REQUESTED" | "SUCCEEDED" | "FAILED"}`>
@@ -28,7 +29,7 @@ let isFetchingAll = false
 
 type State = typeof initialState
 const initialState = packagesAdapter.getInitialState({
-  corePackages: ["ww-plaintext", "ww-embed", "@open-wc/scoped-elements"],
+  corePackages: ["@webwriter/embed", "@webwriter/textarea", "@webwriter/figure", "@open-wc/scoped-elements"],
   isInitializing: true,
   isFetching: false,
   installPackages: [] as PackageJson["name"][],
@@ -69,4 +70,7 @@ export const slice = createSlice({name: "packages", initialState,
     })
 })
 
-export const selectors = packagesAdapter.getSelectors()
+export const selectors = {
+  ...packagesAdapter.getSelectors(),
+  selectAvailableWidgetTypes: (state: State) => Object.keys(state.entities).map(unscopePackageName) 
+}
