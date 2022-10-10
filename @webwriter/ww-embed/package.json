@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/ww-embed",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Widget to embed websites via an iframe",
   "main": "index.ts",
   "keywords": [

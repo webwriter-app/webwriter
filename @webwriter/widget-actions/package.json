@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/widget-actions",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Generate input fields for widget properties",
   "main": "index.ts",
   "author": "Frederic Salmen <frederic@fsalmen.de>",

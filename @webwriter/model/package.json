@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/model",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Core types of WebWriter, also useful for implementing widgets",
   "main": "index.d.ts",
   "author": "Frederic Salmen <frederic@fsalmen.de>",

@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/ww-figure",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Widget to show any type of multimedia figure",
   "main": "index.ts",
   "keywords": [

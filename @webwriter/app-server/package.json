@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/webwriter-server",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "scripts": {
     "vite": "node ../../node_modules/vite/bin/vite",
