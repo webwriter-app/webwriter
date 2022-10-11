@@ -54,7 +54,7 @@ jobs:
         run: node ./scripts/createbinaries.js
 
       - name: Prepare static
-        run: node ./scripts/preparestatic.js
+        run: node ./scripts/preparestatic.js ./@webwriter/core/dist
 
       - name: Generate app icons
         run: npm run -w @webwriter/app-desktop make-app-icon
