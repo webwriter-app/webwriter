@@ -10,7 +10,8 @@
     "dev-tauri": "tauri dev",
     "build-tauri": "tauri build",
     "build-local": "npm run build-core && tauri build",
-    "dev": "npm-run-all -pr dev-core dev-tauri"
+    "dev": "npm-run-all -pr dev-core dev-tauri",
+    "make-app-icon": "tauri icon ../../static/assets/app-icon.png"
   },
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "license": "UNLICENSED",
