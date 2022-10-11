@@ -56,6 +56,9 @@ jobs:
       - name: Prepare static
         run: node ./scripts/preparestatic.js
 
+      - name: Generate app icons
+        run: npm run -w @webwriter/app-desktop make-app-icon
+
       - name: Build the app
         uses: tauri-apps/tauri-action@v0
 
