@@ -5,7 +5,7 @@
   },
   "dependencies": {
     "lit": "^2.4.0",
-    "@webwriter/lit": "^0.2.1"
+    "@webwriter/lit": "latest"
   },
   "devDependencies": {
     "typescript": "^4.8.4",
