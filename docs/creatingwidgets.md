@@ -98,9 +98,9 @@ export default class CoolWidget extends LitElementWw {
 ### Use a part-based layout
 As an extra feature, WebWriter can display your widget's editing elements separately from the widget's content.
 
-For this, the widget's content element needs the attribute `part="base"` and the widget's editing element needs the attribute `part="action"`. Each should be a single element and a direct child of the widget. Additionally, the widget itself must be set to `display: contents`.
+For this, the widget's editing element needs the attribute `part="action"`. It should be a single element and a direct child of the widget.
 
-To accomplish this for our example above, we add the `part="base"` and `part="action"` attributes to the respective elements, and add a `display: contents` rule to the CSS:
+To accomplish this for our example above, we simply add the `part="action"`to the our input element:
 
 ```ts
 export default class CoolWidget extends LitElementWw {
@@ -113,10 +113,6 @@ export default class CoolWidget extends LitElementWw {
 
   static get styles() {
     return css`
-      :host {
-        display: contents;
-      }
-
       :host([editable]) .placeholder {
         display: none;
       }
@@ -126,7 +122,7 @@ export default class CoolWidget extends LitElementWw {
   render() {
     return html`
     <input part="action" class="placeholder" @change=${e => this.placeholder = e.target.value}></input>
-    <textarea part="base" @change=${e => this.value = e.target.value} placeholder=${this.placeholder}>
+    <textarea @change=${e => this.value = e.target.value} placeholder=${this.placeholder}>
       ${this.value}
     </textarea>`
   }
@@ -135,7 +131,7 @@ export default class CoolWidget extends LitElementWw {
 
 #### Notes
 - The part-based layout is preferable for more complex widgets since it makes better use of screen space in WebWriter.
-- To have multiple elements for the `action` and `base` parts, simply add a wrapper element (`<div part="action">...</div>`).
+- To have multiple elements for the `action` part, simply add a wrapper element (`<div part="action">...</div>`). Only the wrapper needs the `part="action"`, other elements may
 
 ### `printable`: Allow users to print your widget
 Sometimes, users and authors may want to fall back to printed versions of documents. Only some widgets work well in a printed representation.
@@ -153,10 +149,6 @@ export default class CoolWidget extends LitElementWw {
 
   static get styles() {
     return css`
-      :host {
-        display: contents;
-      }
-
       :host([editable]) .placeholder {
         display: none;
       }
@@ -171,7 +163,7 @@ export default class CoolWidget extends LitElementWw {
   render() {
     return html`
     <input part="action" class="placeholder" @change=${e => this.placeholder = e.target.value}></input>
-    <textarea part="base" @change=${e => this.value = e.target.value} placeholder=${this.placeholder}>
+    <textarea @change=${e => this.value = e.target.value} placeholder=${this.placeholder}>
       ${this.value}
     </textarea>`
   }
@@ -208,10 +200,6 @@ export default class CoolWidget extends LitElementWw {
 
   static get styles() {
     return css`
-      :host {
-        display: contents;
-      }
-
       :host([editable]) .placeholder {
         display: none;
       }
@@ -226,7 +214,7 @@ export default class CoolWidget extends LitElementWw {
   render() {
     return html`
     <input part="action" class="placeholder" @change=${e => this.placeholder = e.target.value}></input>
-    <textarea part="base" @change=${e => this.value = e.target.value} placeholder=${this.placeholder}>
+    <textarea @change=${e => this.value = e.target.value} placeholder=${this.placeholder}>
       ${this.value}
     </textarea>`
   }
