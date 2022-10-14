@@ -10,10 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [macos-latest, ubuntu-latest, windows-latest]
-        include:
-          - platform: macos-latest
-            tauri_args: --target universal-apple-darwin
+        platform: [macos-latest, self-hosted, ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout repository
@@ -49,10 +46,6 @@ jobs:
       
       - name: Install web dependencies
         run: npm install
-
-      - name: Install esbuild for all architectures (mac only)
-        if: matrix.platform == 'macos-latest'
-        run: npm install --force esbuild-darwin-64 esbuild-darwin-arm64
         
       - name: Build web
         run: npm run build-core -w @webwriter/app-desktop
@@ -76,10 +69,11 @@ jobs:
           APPLE_SIGNING_IDENTITY: ${{ secrets.SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
           tagName: v__VERSION__ # tauri-action replaces \_\_VERSION\_\_ with the app version
           releaseName: 'v__VERSION__'
           releaseBody: 'See the assets to download this version and install.'
           releaseDraft: true
           prerelease: false
-          args: ${{ matrix.tauri_args }}
