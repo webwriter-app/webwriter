@@ -8,20 +8,20 @@ const child_process = require("child_process")
 
 const TRIPLES_OF_NPM = {
   "npm-win-x64": "x86_64-pc-windows-msvc",
-  "npm-win-arm64": "arm64-pc-windows-msvc",
+  "npm-win-arm64": "aarch64-pc-windows-msvc",
   "npm-macos-x64": "x86_64-apple-darwin",
-  "npm-macos-arm64": "arm64-apple-darwin",
+  "npm-macos-arm64": "aarch64-apple-darwin",
   "npm-linux-x64": "x86_64-unknown-linux-gnu",
-  "npm-linux-arm64": "arm64-unknown-linux-gnu",
+  "npm-linux-arm64": "aarch64-unknown-linux-gnu",
 }
 
 const TRIPLES_OF_ESBUILD = {
   "esbuild-windows-64": "x86_64-pc-windows-msvc",
-  "esbuild-windows-arm64": "arm64-pc-windows-msvc",
+  "esbuild-windows-arm64": "aarch64-pc-windows-msvc",
   "esbuild-darwin-64": "x86_64-apple-darwin",
-  "esbuild-darwin-arm64": "arm64-apple-darwin",
+  "esbuild-darwin-arm64": "aarch64-apple-darwin",
   "esbuild-linux-64": "x86_64-unknown-linux-gnu",
-  "esbuild-linux-arm64": "arm64-unknown-linux-gnu",
+  "esbuild-linux-arm64": "aarch64-unknown-linux-gnu",
 }
 
 const PKG_PATH = path.normalize("./node_modules/pkg/lib-es5/bin.js")

@@ -11,6 +11,9 @@ jobs:
       fail-fast: false
       matrix:
         platform: [macos-latest, ubuntu-latest, windows-latest]
+        include:
+          - os: macos-latest
+            tauri_args: --target universal-apple-darwin
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout repository
@@ -46,6 +49,10 @@ jobs:
       
       - name: Install web dependencies
         run: npm install
+
+      - name: Install esbuild for all architectures (mac only)
+        if: matrix.platform == 'mac-latest'
+        run: npm install --force esbuild-darwin-64 esbuild-darwin-arm64
         
       - name: Build web
         run: npm run build-core -w @webwriter/app-desktop
@@ -76,3 +83,4 @@ jobs:
           releaseBody: 'See the assets to download this version and install.'
           releaseDraft: true
           prerelease: false
+          args: ${{ matrix.tauri_args }}
