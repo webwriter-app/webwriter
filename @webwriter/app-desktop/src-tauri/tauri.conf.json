@@ -75,7 +75,8 @@
     "updater": {
       "active": true,
       "endpoints": [],
-      "dialog": true
+      "dialog": true,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhDRkIzODdFQkZBRkVCQTUKUldTbDY2Ky9mamo3alBnL2dLTmJSNkdTSVdpemlNVnJndXNjVkZKQVZiT05QSUNER0JCakpjR2wK"
     },
     "windows": [
       {

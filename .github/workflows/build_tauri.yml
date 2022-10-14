@@ -12,7 +12,7 @@ jobs:
       matrix:
         platform: [macos-latest, ubuntu-latest, windows-latest]
         include:
-          - os: macos-latest
+          - platform: macos-latest
             tauri_args: --target universal-apple-darwin
     runs-on: ${{ matrix.platform }}
     steps:
@@ -51,7 +51,7 @@ jobs:
         run: npm install
 
       - name: Install esbuild for all architectures (mac only)
-        if: matrix.platform == 'mac-latest'
+        if: matrix.platform == 'macos-latest'
         run: npm install --force esbuild-darwin-64 esbuild-darwin-arm64
         
       - name: Build web
