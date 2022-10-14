@@ -4,6 +4,7 @@
   "description": "Windows/Mac/Linux version of WebWriter",
   "private": true,
   "scripts": {
+    "tauri": "tauri",
     "vite": "node ../../node_modules/vite/bin/vite",
     "dev-core": "npm run vite -- ../core -c ../core/vite.config.js",
     "build-core": "npm run vite -- build ../core -c ../core/vite.config.js",

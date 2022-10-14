@@ -8,7 +8,7 @@
   },
   "package": {
     "productName": "webwriter",
-    "version": "0.3.0"
+    "version": "../package.json"
   },
   "tauri": {
     "allowlist": {
@@ -67,18 +67,15 @@
       },
       "resources": [],
       "shortDescription": "",
-      "targets": "all",
-      "windows": {
-        "certificateThumbprint": null,
-        "digestAlgorithm": "sha256",
-        "timestampUrl": ""
-      }
+      "targets": "all"
     },
     "security": {
       "csp": null
     },
     "updater": {
-      "active": false
+      "active": true,
+      "endpoints": [],
+      "dialog": true
     },
     "windows": [
       {
