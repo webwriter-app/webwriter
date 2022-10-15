@@ -7,6 +7,7 @@ import { gapCursor } from "prosemirror-gapcursor"
 import { history } from "prosemirror-history"
 import { chainCommands, deleteSelection, joinBackward, selectNodeBackward} from "prosemirror-commands"
 import { EditorView } from "prosemirror-view"
+import { unscopePackageName } from "../utility"
 
 const leafNodeSpecs: Record<string, NodeSpec & {group: "leaf"}> = {
   thematicBreak: {group: "leaf"}
@@ -20,13 +21,12 @@ export function getOtherAttrsFromWidget(dom: HTMLElement) {
     .map(name => [name, dom.getAttribute(name)]))
 }
 
-function widgetTagNodeSpec(tag: string): NodeSpec {
-
+function packageWidgetNodeSpec(tag: string, pkg: string): NodeSpec {
   return {
     group: "leaf",
     widget: true,
+    package: pkg,
     selectable: true,
-
     attrs: {
       editable: {default: true},
       printable: {default: false},
@@ -166,21 +166,27 @@ const markSpecs: Record<string, MarkSpec> = {
 }
 
 
-export const createSchemaSpec = (widgetTypes: string[] = []) => ({
-  topNode: "explorable",
-  nodes: {
-    explorable: {
-      content: "paragraph+ ((leaf | container) paragraph+)* paragraph*",
-      attrs: {meta: {default: {}}},
-      parseDOM: [{tag: "body"}]
-    } as NodeSpec,
-    ...leafNodeSpecs,
-    ...inlineNodeSpecs,
-    ...containerNodeSpecs,
-    ...Object.fromEntries(widgetTypes.map(t => [t, widgetTagNodeSpec(t)]))
-  },
-  marks: markSpecs
-})
+export const createSchemaSpec = (packages: string[] = []) => {
+  const widgetNodes = Object.fromEntries(packages.map(p => [
+    unscopePackageName(p),
+    packageWidgetNodeSpec(unscopePackageName(p), p)
+  ]))
+  return {
+    topNode: "explorable",
+    nodes: {
+      explorable: {
+        content: "paragraph+ ((leaf | container) paragraph+)* paragraph*",
+        attrs: {meta: {default: {}}},
+        parseDOM: [{tag: "body"}]
+      } as NodeSpec,
+      ...leafNodeSpecs,
+      ...inlineNodeSpecs,
+      ...containerNodeSpecs,
+      ...widgetNodes
+    },
+    marks: markSpecs
+  }
+}
 
 export const baseSchema = new Schema(createSchemaSpec())
 
@@ -293,9 +299,9 @@ export const defaultConfig: EditorStateConfig = {
 
 
 export const createEditorState = (
-  {widgetTypes = [], baseConfig = defaultConfig, schema, doc}
-  : {widgetTypes?: string[], baseConfig?: EditorStateConfig, schema?: Schema, doc?: Node}) => {
-  const activeSchema = schema? schema: new Schema(createSchemaSpec(widgetTypes))
+  {packages = [], baseConfig = defaultConfig, schema, doc}
+  : {packages?: string[], baseConfig?: EditorStateConfig, schema?: Schema, doc?: Node}) => {
+  const activeSchema = schema? schema: new Schema(createSchemaSpec(packages))
   return EditorState.create({
     selection: baseConfig.selection,
     storedMarks: baseConfig.storedMarks,

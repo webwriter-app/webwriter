@@ -254,7 +254,8 @@ function* importBundle({packages, bundlename="bundle"}: {type: "importBundle_REQ
     */
     const widgetTypes = Object.keys(bundle)
       .map(k => k.replaceAll("ಠಠಠ", "-"))
-    yield put(resources.actions.setWidgetTypes({widgetTypes}))
+    const importedPackages = packages.map(pkg => pkg.name)
+    yield put(resources.actions.setImportedPackages({importedPackages}))
     yield put({type: "importBundle_SUCCEEDED"})
   }
   catch(error) {

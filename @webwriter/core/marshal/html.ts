@@ -3,7 +3,7 @@ import {Node, DOMSerializer} from "prosemirror-model"
 
 import {Attributes} from "@webwriter/model"
 import { bundle } from '../state'
-import { createElementWithAttributes, namedNodeMapToObject } from "../utility"
+import { createElementWithAttributes, namedNodeMapToObject, unscopePackageName } from "../utility"
 import { join, appDir } from '@tauri-apps/api/path'
 import { EditorState } from 'prosemirror-state'
 import {Schema, DOMParser} from "prosemirror-model"
@@ -29,11 +29,14 @@ export async function docToBundle(doc: Node) {
     .map(el => el.tagName.toLowerCase())
     .filter(name => allWidgetTypes.includes(name))
 
+  const packageNames = widgetTypes.map(name => doc.type.schema.nodes[name].spec["package"])
+
+  console.log(packageNames)
   const statements = [
     `import "@open-wc/scoped-elements"`
-  ].concat(widgetTypes.flatMap(t => [
-    `import ${t.replaceAll("-", "_")} from "${t}"`,
-    `customElements.define("${t}", ${t.replaceAll("-", "_")})`
+  ].concat(packageNames.flatMap(t => [
+    `import ${unscopePackageName(t).replaceAll("-", "_")} from "${t}"`,
+    `customElements.define("${unscopePackageName(t)}", ${unscopePackageName(t).replaceAll("-", "_")})`
   ]))
   const entrypoint = statements.length > 1? statements.join(";"): ""
 
@@ -45,11 +48,13 @@ export async function docToBundle(doc: Node) {
   let js = ""
   let css = ""
   try {
-    await bundle([entrypointPath, "--bundle", "--minify", `--outfile=${jsPath}`])
+    console.log(await bundle([entrypointPath, "--bundle", "--minify", `--outfile=${jsPath}`]))
     js = await readTextFile(jsPath)
     css = await readTextFile(cssPath)
   }
-  catch(err) {}
+  catch(err) {
+    console.error(err)
+  }
   finally {
     removeFile(entrypointPath)
     js !== "" && removeFile(jsPath)
@@ -78,6 +83,8 @@ export async function docToBundle(doc: Node) {
   }
 
   html.documentElement.lang = lang
+
+  console.log({html, css, js})
 
   return {html, css, js}
 }

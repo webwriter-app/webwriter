@@ -19,7 +19,7 @@ const initialState = {
   resourcesOrder: [] as Array<Resource["url"]>,
   resourcesPendingChanges: {} as Record<Resource["url"], boolean>,
   activeResource: null as Resource["url"],
-  widgetTypes: [] as string[],
+  importedPackages: [] as string[],
   schema: baseSchema
 }
 
@@ -32,8 +32,8 @@ export function getNewResourceURL(resources: State["resources"]) {
   return `memory:${Math.max(-1, ...memoryNumberIDs) + 1}`
 }
 
-export function createResource(url: Resource["url"], widgetTypes: string[] = []) {
-  return {url, editorState: createEditorState({widgetTypes})} as Resource
+export function createResource(url: Resource["url"], packages: string[] = []) {
+  return {url, editorState: createEditorState({packages})} as Resource
 }
 
 export type ResourceAction = ReturnType<(typeof actions)[keyof typeof actions]>
@@ -45,14 +45,14 @@ export const actions = {
   select: createAction<{url: Resource["url"]}, "resources/select">("resources/select"),
   selectNext: createAction<{backward: boolean}, "resources/selectNext">("resources/selectNext"),
   relocate: createAction<{url?: string, newURL: string}, "resources/relocate">("resources/relocate"),
-  setWidgetTypes: createAction<{widgetTypes: string[]}, "resources/setWidgetTypes">("resources/setWidgetTypes")
+  setImportedPackages: createAction<{importedPackages: string[]}, "resources/setImportedPackages">("resources/setImportedPackages")
 }
 export const reducer = (state: State = initialState, action: ResourceAction) => {
   switch(action.type) {
     
     case "resources/create": {
       const url = getNewResourceURL(state.resources)
-      const newResource = createResource(url, state.widgetTypes)
+      const newResource = createResource(url, state.importedPackages)
       return {
         ...state,
         resources: {
@@ -175,12 +175,12 @@ export const reducer = (state: State = initialState, action: ResourceAction) => 
       }
     }
 
-    case "resources/setWidgetTypes": {
-      const {widgetTypes} = action.payload
-      const schema = new Schema(createSchemaSpec(widgetTypes))
+    case "resources/setImportedPackages": {
+      const {importedPackages} = action.payload
+      const schema = new Schema(createSchemaSpec(importedPackages))
       return {
         ...state,
-        widgetTypes,
+        importedPackages,
         schema,
         resources: Object.fromEntries(Object.entries(state.resources)
           .map(([key, {url, editorState}]) => [
