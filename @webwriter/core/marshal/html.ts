@@ -31,7 +31,6 @@ export async function docToBundle(doc: Node) {
 
   const packageNames = widgetTypes.map(name => doc.type.schema.nodes[name].spec["package"])
 
-  console.log(packageNames)
   const statements = [
     `import "@open-wc/scoped-elements"`
   ].concat(packageNames.flatMap(t => [
@@ -48,13 +47,11 @@ export async function docToBundle(doc: Node) {
   let js = ""
   let css = ""
   try {
-    console.log(await bundle([entrypointPath, "--bundle", "--minify", `--outfile=${jsPath}`]))
+    await bundle([entrypointPath, "--bundle", "--minify", `--outfile=${jsPath}`])
     js = await readTextFile(jsPath)
     css = await readTextFile(cssPath)
   }
-  catch(err) {
-    console.error(err)
-  }
+  catch(err) {}
   finally {
     removeFile(entrypointPath)
     js !== "" && removeFile(jsPath)
@@ -83,8 +80,6 @@ export async function docToBundle(doc: Node) {
   }
 
   html.documentElement.lang = lang
-
-  console.log({html, css, js})
 
   return {html, css, js}
 }
