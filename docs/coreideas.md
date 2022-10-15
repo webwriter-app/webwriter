@@ -9,7 +9,7 @@ WebWriter is built to edit Explorables, which are...
 - **web based**, built with client-side web standards and deployable on the web
 - **file oriented**, available as all-in-one, standalone, offline-capable files
 - **open**, conformant with OER principles allowing easy reuse
-- **multimedial**, combining many media types such as text, audio, video, etc.
+- **multimedia**, combining many media types such as text, audio, video, etc.
 - **interactive**, allowing users to interact and receive feedback
 
 At the core, Explorables are simply HTML documents. As such, they follow the standard APIs for everything (`HTMLDocument`), including display (DOM) and serialization (saving as HTML). They contain `content`, which is a sequence of zero or more widgets. Widgets are provided by packages.
