@@ -409,12 +409,6 @@ export class ExplorableEditor extends LitElement {
 				--ww-action-opacity: 1;
 			}
 
-			.ww-widget:focus-within {
-				background-color: var(--sl-input-background-color-focus);
-				border-color: var(--sl-input-border-color-focus);
-				box-shadow: 0 0 0 var(--sl-focus-ring-width) var(--sl-input-focus-ring-color);
-			}
-
 			.ww-widget:not(:focus-within) {
 				cursor: pointer;
 			}
@@ -441,6 +435,7 @@ export class ExplorableEditor extends LitElement {
 					left: 100%;
 					padding-left: 25px; 
 					top: 0;
+					border-left: calc(var(--sl-focus-ring-width) * 2) solid var(--sl-input-focus-ring-color);
 				}
 				
 				ww-editor-toolbox {
