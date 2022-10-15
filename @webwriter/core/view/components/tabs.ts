@@ -54,7 +54,7 @@ export class Tabs extends LitElement {
 			}
 
 			[part=pre-tabs] {
-				display: flex;
+				display: none;
 				align-items: center;
 				justify-content: flex-end;
 			}
@@ -68,6 +68,7 @@ export class Tabs extends LitElement {
 			}
 
 			[part=tabs-wrapper] {
+				position: relative;
 				display: flex;
 				align-items: center;
 				flex-direction: row;
@@ -77,6 +78,8 @@ export class Tabs extends LitElement {
 				margin-right: auto;
 				margin-bottom: -1px;
 				width: 800px;
+				overflow-x: scroll;
+				overflow-y: visible;
 			}
 
 			[part=tabs-wrapper]::-webkit-scrollbar {
@@ -125,6 +128,17 @@ export class Tabs extends LitElement {
 
 			.placeholder-tab sl-icon {
 				font-size: 1.25rem;
+			}
+
+			.add-buttons {
+				display: flex;
+				flex-direction: row;
+				flex-shrink: 0;
+				position: sticky;
+				top: 0;
+				right: 0;
+				background: rgba(241, 241, 241, 0.9);
+				box-shadow: 0 0 4px 8px rgba(241, 241, 241, 0.9);
 			}
 		`
 	}
@@ -181,12 +195,14 @@ export class Tabs extends LitElement {
 				<div part="tabs" @focusin=${this.handleFocusIn} @keydown=${this.handleKeyDown}>
 					<div part="tabs-wrapper">
 						<slot name="tabs"></slot>
-						${this.tabs.length !== 0? html`
-							<sl-icon-button title="New document [CTRL+N]" name="file-earmark-plus-fill" @click=${this.emitNewTab}></sl-icon-button>
-						`: null}
-						${this.tabs.length !== 0 && this.openTab? html`
-							<sl-icon-button title="Open document [CTRL+O]" name="file-earmark-arrow-up-fill" @click=${this.emitOpenTab}></sl-icon-button>
-						`: null}
+						<div class="add-buttons">
+							${this.tabs.length !== 0? html`
+								<sl-icon-button title="New document [CTRL+N]" name="file-earmark-plus-fill" @click=${this.emitNewTab}></sl-icon-button>
+							`: null}
+							${this.tabs.length !== 0 && this.openTab? html`
+								<sl-icon-button title="Open document [CTRL+O]" name="file-earmark-arrow-up-fill" @click=${this.emitOpenTab}></sl-icon-button>
+							`: null}
+						</div>
 					</div>
 				</div>
 				<div part="post-tabs">
@@ -229,6 +245,9 @@ export class Tab extends LitElement {
 
 	@property({type: Boolean, reflect: true})
 	disabled: boolean
+
+	@property({type: Boolean, reflect: true})
+	previewing: boolean
 
 	@property({type: String, reflect: true})
 	lang: string
@@ -280,10 +299,6 @@ export class Tab extends LitElement {
 	static get styles() {
 		return [SlTab.styles, css`
 
-			:host {
-				margin-bottom: -1px;
-			}
-
 			:host(:hover) [part=base] {
 				background: #F9F9F9;
 			}
@@ -295,6 +310,10 @@ export class Tab extends LitElement {
 				border-bottom-left-radius: 0;
 				border-bottom-right-radius: 0;
 				cursor: grab;
+			}
+
+			:host([previewing][active]) [part=base] {
+				border-top: 2px solid var(--sl-color-warning-600);
 			}
 
 			[part=base] {
@@ -371,6 +390,14 @@ export class Tab extends LitElement {
 				color: darkred;
 			}
 
+			.preview-button:hover::part(base) {
+				color: var(--sl-color-warning-600);
+			}
+
+			:host([previewing]) .preview-button::part(base) {
+				color: var(--sl-color-warning-600);
+			}
+
 			sl-tooltip {
 				--max-width: 100%;
 			}
@@ -387,6 +414,10 @@ export class Tab extends LitElement {
 
 	emitSaveAsTab = () => this.dispatchEvent(
 		new CustomEvent("ww-save-as-tab", {composed: true, bubbles: true})
+	)
+
+	emitTogglePreview = () => this.dispatchEvent(
+		new CustomEvent("ww-toggle-preview", {composed: true, bubbles: true})
 	)
 
 	emitTitleClick = () => this.dispatchEvent(
@@ -425,6 +456,7 @@ export class Tab extends LitElement {
 				${this.pendingChanges? html`<span name="title-suffix">*</span>`: null}
 			</span>
 			<div class="buttons">
+				<sl-icon-button title=${this.previewing? "Disable Preview [CTRL+B]": "Enable Preview [CTRL+B]"} class="preview-button" @click=${() => this.emitTogglePreview()} name=${this.previewing? "eye": "eye-slash"}></sl-icon-button>
 				<sl-icon-button title="Save document as... [CTRL+S]" class="save-button" @click=${() => this.emitSaveAsTab()} name="file-earmark-arrow-down"></sl-icon-button>
 				${!this.titleValue.startsWith("memory:")? html`<sl-icon-button title="Save document [CTRL+S]" class="save-button" @click=${() => this.emitSaveTab()} name="file-earmark-check"></sl-icon-button>`: null}
 				<sl-tooltip ?open=${this.confirmingDiscard} trigger="manual" placement="bottom" hoist>

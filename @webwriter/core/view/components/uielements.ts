@@ -24,6 +24,9 @@ export class WwCombobox extends LitElement {
   @property({type: Boolean, attribute: true, reflect: true})
   active: boolean
 
+  @property({type: Boolean, attribute: true})
+  disabled: boolean
+
   @property({type: Boolean, attribute: true, reflect: true})
   multiple: boolean = false
 
@@ -33,7 +36,7 @@ export class WwCombobox extends LitElement {
   @property({type: Boolean, attribute: true, reflect: true})
   filled: boolean = false
 
-  @property({state: true})
+  @property({type: Array, attribute: true, reflect: true})
   value: string | string[]
 
   static get styles() {
@@ -61,6 +64,10 @@ export class WwCombobox extends LitElement {
       :host([active]) {
 				border-color: var(--sl-input-border-color-focus);
 				box-shadow: 0 0 0 var(--sl-focus-ring-width) var(--sl-input-focus-ring-color);
+      }
+
+      :host([disabled]) {
+        background: none;
       }
 
       #values {
@@ -171,6 +178,7 @@ export class WwCombobox extends LitElement {
       <input 
         value=${this.inputValue}
         placeholder=${this.inputPlaceholder}
+        ?disabled=${this.disabled}
         @change=${this.handleInputChange}
         @keydown=${this.handleInputKeydown}
       >

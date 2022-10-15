@@ -18,6 +18,7 @@ const initialState = {
   resources: {} as Record<Resource["url"], Resource>,
   resourcesOrder: [] as Array<Resource["url"]>,
   resourcesPendingChanges: {} as Record<Resource["url"], boolean>,
+  resourcesPreviewing: {} as Record<Resource["url"], boolean>,
   activeResource: null as Resource["url"],
   importedPackages: [] as string[],
   schema: baseSchema
@@ -44,6 +45,7 @@ export const actions = {
   set: createAction<{url?: Resource["url"], editorState: EditorState}, "resources/set">("resources/set"),
   select: createAction<{url: Resource["url"]}, "resources/select">("resources/select"),
   selectNext: createAction<{backward: boolean}, "resources/selectNext">("resources/selectNext"),
+  togglePreview: createAction<{url: string} | undefined, "resources/togglePreview">("resources/togglePreview"), 
   relocate: createAction<{url?: string, newURL: string}, "resources/relocate">("resources/relocate"),
   setImportedPackages: createAction<{importedPackages: string[]}, "resources/setImportedPackages">("resources/setImportedPackages")
 }
@@ -131,6 +133,17 @@ export const reducer = (state: State = initialState, action: ResourceAction) => 
           [url]: {url, editorState: action.payload.editorState}
         },
         ...pendingChangesUpdate
+      }
+    }
+
+    case "resources/togglePreview": {
+      const url = action?.payload?.url ?? state.activeResource
+      return {
+        ...state,
+        resourcesPreviewing: {
+          ...state.resourcesPreviewing,
+          [url]: !state.resourcesPreviewing[url]
+        }
       }
     }
 

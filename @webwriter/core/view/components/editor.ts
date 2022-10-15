@@ -6,8 +6,8 @@ import prosemirrorCSS from "prosemirror-view/style/prosemirror.css"
 import gapcursorCSS from "prosemirror-gapcursor/style/gapcursor.css"
 import { camelCaseToSpacedCase, prettifyPackageName, unscopePackageName } from "../../utility"
 
-import { Decoration, EditorView, NodeView } from "prosemirror-view"
-import { EditorState, Command, NodeSelection, Selection, Transaction } from "prosemirror-state"
+import { Decoration, EditorView, NodeView, DecorationSet } from "prosemirror-view"
+import { EditorState, Command, NodeSelection, Selection, AllSelection } from "prosemirror-state"
 import { DOMSerializer, Node } from "prosemirror-model"
 import { chainCommands, toggleMark } from "prosemirror-commands"
 import { PackageJson } from "../../state"
@@ -223,8 +223,8 @@ export class ExplorableEditor extends LitElement {
 	@property({type: String})
 	appendBlockType: string
 
-	@property({type: Array})
-	availableWidgetTypes: string[]
+	@property({type: Boolean, attribute: true})
+	previewing: boolean
 	
 	@query("ww-document-header")
 	documentHeader: DocumentHeader
@@ -267,29 +267,29 @@ export class ExplorableEditor extends LitElement {
 					state: this.editorState,
 					nodeViews: Object.fromEntries(widgetViewEntries),
 					handleKeyDown: this.handleKeyDown,
-					/*decorations(state) {
-						const decorations = []
-						state.doc.forEach((node, k, i) => {
-							if(node.type.spec["widget"]) {
-								console.log({offset: k, index: i})
-								const prevSibling = state.doc.maybeChild(k - 1)
-								const nextSibling = state.doc.maybeChild(k + 1)
-
-								if(prevSibling?.type.name !== "paragraph") {
-									decorations.push(insertParagraphWidget(k))
+					decorations: (state) => {
+						if(!this.previewing) {
+							const decorations = []
+							state.doc.forEach((node, k, i) => {
+								if(node.type.spec["widget"]) {
+									decorations.push(Decoration.node(k, k + 1, {editable: "true"}))
 								}
-								if(nextSibling?.type.name !== "paragraph") {
-									decorations.push(insertParagraphWidget(k + 1))
-								}
-							}
-						})
-						return DecorationSet.create(state.doc, decorations)
-					},*/
+							})
+							return DecorationSet.create(state.doc, decorations)
+						}
+						else {
+							return DecorationSet.create(state.doc, [])
+						}
+					},
 				}
 			)
 			this.editorViewController.focus()
+			this.editorViewController.state
 		}
 		else if(_changedProperties.has("editorState") && (this.editorState !== this.editorViewController.state)) {
+			this.editorViewController.updateState(this.editorState)
+		}
+		else {
 			this.editorViewController.updateState(this.editorState)
 		}
 	}
@@ -337,7 +337,7 @@ export class ExplorableEditor extends LitElement {
 				white-space: normal !important;
 			}
 
-			.ProseMirror[data-placeholder]::before {
+			:host(:not([previewing])) .ProseMirror[data-placeholder]::before {
 				color: darkgray;
 				position: absolute;
 				content: attr(data-placeholder);
@@ -511,19 +511,19 @@ export class ExplorableEditor extends LitElement {
 		this.editorViewController.updateState(nextState)
 	}
 
-	render() {
-		
+	render() {		
     return html`
       <ww-document-header
 				part="header" 
 				.docAttributes=${this.editorState.doc.attrs.meta}
 				.revisions=${[]}
+				?editable=${!this.previewing}
 				@ww-focus-down=${e => this.editorViewController.focus()}
 				@ww-attribute-change=${e => this.setMetaValue(e.detail.key, e.detail.value)}
 			></ww-document-header>
 			<div id="main-wrapper">
 				${!this.loadingPackages
-						? html`<main part="main" id="main" spellcheck=${false}></main>`
+						? html`<main part="main" id="main" spellcheck=${false} contenteditable=${!this.previewing}></main>`
 						: this.loadingSpinnerTemplate()
 					}
 				<sl-popup active anchor="main" placement="left" shift strategy="fixed" distance=${25}>
@@ -539,6 +539,7 @@ export class ExplorableEditor extends LitElement {
       <ww-document-footer
 				part="footer"
 				.docAttributes=${this.editorState.doc.attrs.meta}
+				?editable=${!this.previewing}
 				@ww-focus-up=${e => this.editorViewController.focus()}
 			></ww-document-footer>
     ` 

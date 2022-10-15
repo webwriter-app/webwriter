@@ -28,7 +28,7 @@ function packageWidgetNodeSpec(tag: string, pkg: string): NodeSpec {
     package: pkg,
     selectable: true,
     attrs: {
-      editable: {default: true},
+      editable: {default: false},
       printable: {default: false},
       analyzable: {default: false},
       otherAttrs: {default: {}}

@@ -20,6 +20,9 @@ export class DocumentHeader extends LitElement {
 	@property({type: Array, attribute: false})
 	revisions: any
 
+	@property({type: Boolean})
+	editable: boolean
+
 	@query("sl-details")
 	slDetails: SlDetails
 
@@ -56,6 +59,7 @@ export class DocumentHeader extends LitElement {
     @sl-change=${this.handleAttributeChange}
     value=${this.docAttributes[key] as string}
     placeholder=${camelCaseToSpacedCase(key)}
+		?disabled=${!this.editable}
 		@keydown=${this.handleInputFieldKeyDown}
 		filled
   ></sl-input>`
@@ -69,6 +73,7 @@ export class DocumentHeader extends LitElement {
 		rows=${3}
 		maxlength=${280}
 		filled
+		?disabled=${!this.editable}
 		resize="none"
   ></sl-textarea>`
 
@@ -76,6 +81,7 @@ export class DocumentHeader extends LitElement {
 		multiple
 		placeholder=${camelCaseToSpacedCase(key)}
 		filled
+		?disabled=${!this.editable}
 		@keydown=${this.handleInputFieldKeyDown}
 	></ww-combobox>`
 
@@ -257,17 +263,30 @@ export class DocumentHeader extends LitElement {
 			.revision > * {
 				display: inline-block;
 			}
+
+      sl-input[disabled]::part(base), sl-textarea[disabled]::part(base) {
+        background: none;
+				cursor: auto;
+				opacity: 1;
+      }
+
+			sl-input[disabled][value=""]:not(#headline), ww-combobox[disabled][value=""],  ww-combobox[disabled]:not([value]), sl-textarea[disabled][value=""] {
+				display: none;
+			}
     `
   }
 
 
 	render() {
 		const attrs = this.docAttributes
-		return html`
+		const empty = !Object.values(attrs).some(v => v)
+
+		return empty && !this.editable? null: html`
 			<div id="header-left-panel"></div>
 			<sl-details part="details" tabindex=${-1}>
         <sl-input 
           id="headline"
+					?disabled=${!this.editable}
           @sl-change=${this.handleAttributeChange}
           value=${this.docAttributes["headline"] as string}
           placeholder=${camelCaseToSpacedCase("headline")}
@@ -340,6 +359,9 @@ export class DocumentFooter extends LitElement {
 	@property({type: Object, attribute: false})
 	docAttributes: Pick<Attributes, "license" | "author" | "dateCreated" | "dateModified">
 
+	@property({type: Boolean})
+	editable: boolean
+
 	@queryAsync("#author")
 	authorAsync: Promise<SlInput>
 
@@ -355,11 +377,12 @@ export class DocumentFooter extends LitElement {
 		this.emitAttributeChange(id, value)
 	}
 
-	inputTemplate = (key: keyof Attributes) => html`<sl-input 
+	inputTemplate = (key: keyof Attributes, placeholder: string) => html`<sl-input 
 		id=${key}
 		@sl-change=${this.handleAttributeChange}
 		value=${this.docAttributes[key] as string}
-		placeholder=${camelCaseToSpacedCase(key)}
+		?disabled=${!this.editable}
+		placeholder=${placeholder ?? camelCaseToSpacedCase(key)}
 	></sl-input>`
 
 	focus() {
@@ -442,11 +465,16 @@ export class DocumentFooter extends LitElement {
 				height: 16px;
 				width: 16px;
 			}
+
+      sl-input[disabled]::part(base) {
+        background: none;
+				opacity: 1;
+				cursor: auto;
+      }
 		`
 	}
 
 	render() {
-		const empty = !this.docAttributes.author
 
     const dateCreated = (this.docAttributes.dateCreated ?? new Date()) as Date
     const dateModified = this.docAttributes.dateModified as Date
@@ -458,9 +486,9 @@ export class DocumentFooter extends LitElement {
           <span>-</span>
           <sl-format-date  year="numeric" .date=${dateModified}></sl-format-date>
         `}
-        ${this.inputTemplate("author")}
+        ${this.inputTemplate("author", "Anonymous")}
       </div>
-			<ww-license-picker></ww-license-picker>
+			<ww-license-picker ?disabled=${!this.editable}></ww-license-picker>
 	  `
 	}
 }
@@ -482,6 +510,9 @@ export class WwLicensePicker extends LitElement {
 	@property({type: Boolean, attribute: true, reflect: true})
 	opened: boolean = false
 
+	@property({type: Boolean, attribute: true})
+	disabled: boolean = false
+
 	@property({state: true})
 	private ccChoice: "yes" | "no" = "no"
 
@@ -494,9 +525,13 @@ export class WwLicensePicker extends LitElement {
 	@property({state: true})
 	private commercialChoice: "yes" | "no" = "yes"
 
+	
+	@property({type: Boolean})
+	editable: boolean
+
 	constructor() {
 		super()
-		this.tabIndex = 0
+		registerIconLibrary("cc", {resolver: name => `./assets/cc/${name}.svg`})
 		this.addEventListener("blur", this.handleClose)
 	}
 
@@ -510,6 +545,9 @@ export class WwLicensePicker extends LitElement {
 	}
 
 	async handleOpen() {
+		if(this.disabled) {
+			return
+		}
 		this.opened = !this.opened
 		await this.updateComplete
 		this.choicesElement.scrollIntoView({behavior: "smooth"})
@@ -545,12 +583,12 @@ export class WwLicensePicker extends LitElement {
 		}
 
 		if(cc && !Object.values(choices).some(v => v)) {
-			return "CC 0"
+			return "CC0-1.0"
 		}
 
 		return !cc
 			? "All rights reserved"
-			: `CC ${Object.entries(choices).filter(([_, v]) => v).map(([k, _]) => k).join("-") || "0"}`
+			: `CC-${Object.entries(choices).filter(([_, v]) => v).map(([k, _]) => k).join("-") || "0"}-4.0`
 	}
 
 	static LICENSES = {
@@ -559,40 +597,40 @@ export class WwLicensePicker extends LitElement {
 			iconLibrary: null as string,
 			fullLabel: "All rights reserved"
 		},
-		"CC BY-NC-ND": {
+		"CC-BY-NC-ND-4.0": {
 			icons: ["cc", "by", "nc", "nd"],
 			iconLibrary: "cc",
-			fullLabel: "Creative Commons Attribution-NonCommercial-NoDerivatives"
+			fullLabel: "Creative Commons Attribution Non Commercial No Derivatives 4.0 International"
 		},
-		"CC BY-NC-SA": {
+		"CC-BY-NC-SA-4.0": {
 			icons: ["cc", "by", "nc", "sa"],
 			iconLibrary: "cc",
-			fullLabel: "Creative Commons Attribution-NonCommercial-ShareAlike"
+			fullLabel: "Creative Commons Attribution Non Commercial Share Alike 4.0 International"
 		},
-		"CC BY-NC": {
+		"CC-BY-NC-4.0": {
 			icons: ["cc", "by", "nc"],
 			iconLibrary: "cc",
-			fullLabel: "Creative Commons Attribution-NonCommercial"
+			fullLabel: "Creative Commons Attribution Non Commercial 4.0 International"
 		},
-		"CC BY-ND": {
+		"CC-BY-ND-4.0": {
 			icons: ["cc", "by", "nd"],
 			iconLibrary: "cc",
-			fullLabel: "Creative Commons Attribution-NoDerivatives"
+			fullLabel: "Creative Commons Attribution No Derivatives 4.0 International"
 		},
-		"CC BY-SA": {
+		"CC-BY-SA-4.0": {
 			icons: ["cc", "by", "sa"],
 			iconLibrary: "cc",
-			fullLabel: "Creative Commons Attribution-ShareAlike"
+			fullLabel: "Creative Commons Attribution Share Alike 4.0 International"
 		},
-		"CC BY": {
+		"CC-BY-4.0": {
 			icons: ["cc", "by"],
 			iconLibrary: "cc",
-			fullLabel: "Creative Commons Attribution"
+			fullLabel: "Creative Commons Attribution 4.0 International"
 		},
-		"CC 0": {
+		"CC0-1.0": {
 			icons: ["cc", "zero"],
 			iconLibrary: "cc",
-			fullLabel: "Creative Commons 'No rights reserved'"
+			fullLabel: "Creative Commons Zero v1.0 Universal"
 		}
 	}
 
@@ -605,7 +643,6 @@ export class WwLicensePicker extends LitElement {
 
 			.license {
 				font-size: 0.75rem;
-				cursor: pointer;
 				display: flex;
 				flex-direction: row;
 				align-items: center;
@@ -618,6 +655,13 @@ export class WwLicensePicker extends LitElement {
 				color: var(--sl-color-primary-400);
 				stroke: var(--sl-color-primary-400);
 				fill: var(--sl-color-primary-400);
+				cursor: pointer;
+			}
+
+			
+			:host([disabled]) .license {
+				color: black !important;
+				cursor: "text" !important;
 			}
 
 			.choices {
@@ -654,7 +698,7 @@ export class WwLicensePicker extends LitElement {
 	}
 
 	radioGroupTemplate = (key: string, label: string, options: {value: string, label: string}[], disabled: boolean = false) => html`
-		<sl-radio-group label=${label} fieldset>
+		<sl-radio-group label=${label} value=${this[key]} fieldset>
 			${options.map(({value, label}, i) => html`
 				<sl-radio-button
 					name="option"
@@ -669,37 +713,38 @@ export class WwLicensePicker extends LitElement {
 
 	render() {
 		return html`
-		<span tabindex=${0} class="license" @click=${this.handleOpen}>
-			<span>${!this.opened? this.value: WwLicensePicker.LICENSES[this.value]?.fullLabel}</span>
-			${WwLicensePicker.LICENSES[this.value]?.icons?.map(name => html`<sl-icon library="cc" name=${name}></sl-icon>`)}
-		</span>
-		<sl-animation name="fadeIn" easing="ease" duration=${500} iterations=${1}>
-			<sl-card class="choices">
-				${this.radioGroupTemplate(
-					"ccChoice",
-					"License as Creative Commons OER?", 
-					[{value: "yes", label: "Yes"}, {value: "no", label: "No"}]
-				)}
-				${this.radioGroupTemplate(
-					"attributionChoice",
-					"Require attribution?", 
-					[{value: "yes", label: "Yes"}, {value: "no", label: "No"}],
-					this.ccChoice === "no"
-				)}
-				${this.radioGroupTemplate(
-					"adaptationChoice",
-					"Allow adaptations?", 
-					[{value: "yes", label: "Yes"}, {value: "shareAlike", label: "Yes, but share alike"}, {value: "no", label: "No"}],
-					this.ccChoice === "no"
-				)}
-				${this.radioGroupTemplate(
-					"commercialChoice",
-					"Allow commercial use?", 
-					[{value: "yes", label: "Yes"}, {value: "no", label: "No"}],
-					this.ccChoice === "no"
-				)}
-			</sl-card>
-		</sl-animation>
+			<span tabindex=${0} class="license" @click=${this.handleOpen}>
+				<sl-icon library="cc" name="cc"></sl-icon>
+				<span>${!this.opened? this.value: WwLicensePicker.LICENSES[this.value]?.fullLabel}</span>
+				${WwLicensePicker.LICENSES[this.value]?.icons?.map(name => html`<sl-icon library="cc" name=${name} @sl-error=${console.log} @sl-load=${console.log}></sl-icon>`)}
+			</span>
+			<sl-animation name="fadeIn" easing="ease" duration=${500} iterations=${1}>
+				<sl-card class="choices">
+					${this.radioGroupTemplate(
+						"ccChoice",
+						"License as Creative Commons OER?", 
+						[{value: "yes", label: "Yes"}, {value: "no", label: "No"}]
+					)}
+					${this.radioGroupTemplate(
+						"attributionChoice",
+						"Require attribution?", 
+						[{value: "yes", label: "Yes"}, {value: "no", label: "No"}],
+						this.ccChoice === "no"
+					)}
+					${this.radioGroupTemplate(
+						"adaptationChoice",
+						"Allow adaptations?", 
+						[{value: "yes", label: "Yes"}, {value: "shareAlike", label: "Yes, but share alike"}, {value: "no", label: "No"}],
+						this.ccChoice === "no"
+					)}
+					${this.radioGroupTemplate(
+						"commercialChoice",
+						"Allow commercial use?", 
+						[{value: "yes", label: "Yes"}, {value: "no", label: "No"}],
+						this.ccChoice === "no"
+					)}
+				</sl-card>
+			</sl-animation>
 		`
 	}
 }

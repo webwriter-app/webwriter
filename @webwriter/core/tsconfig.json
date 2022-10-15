@@ -8,6 +8,7 @@
         "allowSyntheticDefaultImports": true,
         "moduleResolution": "node",
         "inlineSourceMap": true,
-        "useDefineForClassFields": false
+        "useDefineForClassFields": false,
+        "resolveJsonModule": true
     }
 }

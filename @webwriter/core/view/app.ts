@@ -10,9 +10,7 @@ import { SlAlert, registerIconLibrary } from "@shoelace-style/shoelace"
 import { Tabs } from "./components"
 import { escapeHTML, detectEnvironment } from "../utility"
 
-
-
-const {set, create, discard, select, selectNext} = actions.resources
+const {set, create, discard, select, selectNext, togglePreview} = actions.resources
 const {install_REQUESTED, uninstall_REQUESTED, update_REQUESTED, fetchAllPackages_REQUESTED} = actions.bundle
 const {saveResource_REQUESTED, loadResource_REQUESTED} = actions.persist
 const {getActiveResource} = selectors.resources
@@ -28,7 +26,6 @@ interface SlAlertAttributes {
 - LEARNERS & AUTHORS: Explorable-wide features API (fullscreen/fullwindow widgets, sharing/saving, visible metadata)
 - LEARNERS & AUTHORS: Themes (Explorable-wide CSS)
 - AUTHORS: Drag n' Drop widget interface 
-- AUTHORS: Rich Text primary widget type (markdown-based) with splitting off other widgets
 */
 
 @customElement("ww-app")
@@ -50,7 +47,8 @@ export class App extends LitElement
 		"ctrl+n": (e, combo) => this.store.dispatch(create()),
 		"ctrl+w": (e, combo) => this.store.dispatch(discard()),
 		"alt+p": (e, combo) => this.managingPackages = !this.managingPackages,
-		"ctrl+tab": (e, combo) => this.store.dispatch(selectNext())
+		"ctrl+tab": (e, combo) => this.store.dispatch(selectNext()),
+		"ctrl+b": (e, combo) => this.store.dispatch(togglePreview())
 	}
 
 	notifications: Record<string, SlAlertAttributes> = {
@@ -87,9 +85,6 @@ export class App extends LitElement
 		globalThis.WEBWRITER_ENVIRONMENT = detectEnvironment()
 
 		this.addEventListener("ww-select-tab-title", (e: any) => this.focusTabTitle(e.detail.id))
-
-		
-		registerIconLibrary("cc", {resolver: name => `/asset/cc/${name}.svg`})
 
 		Object.entries(this.keymap).forEach(([shortcut, callback]) => Hotkeys(shortcut, callback))
 
@@ -224,7 +219,7 @@ export class App extends LitElement
 	}
 
 	tabsTemplate = (send: typeof this.store.dispatch, resources: ReturnType<typeof this.store.getState>["resources"], packages: ReturnType<typeof this.store.getState>["packages"]) => {
-		const {activeResource, resourcesPendingChanges, resourcesOrder} = resources
+		const {activeResource, resourcesPendingChanges, resourcesOrder, resourcesPreviewing} = resources
 		const allResources = resourcesOrder.map(url => resources.resources[url])
 		const availableWidgetTypes = selectors.packages.selectAvailableWidgetTypes(packages)
 		const allPackages = selectors.packages.selectAll(packages)
@@ -242,9 +237,11 @@ export class App extends LitElement
 				titleValue=${url}
 				?hasUrl=${!!url}
 				confirmDiscardText="You have unsaved changes. Click again to discard your changes."
+				?previewing=${resourcesPreviewing[url]}
 				?confirmingDiscard=${this.discarding}
 				?pendingChanges=${!!resourcesPendingChanges[url]}
 				@focus=${() => send(select({url}))}
+				@ww-toggle-preview=${() => send(togglePreview({url}))}
 				@ww-close-tab=${() => !this.discarding && resourcesPendingChanges[url]? this.discarding = true: send(discard({url}))}
 				@ww-save-tab=${() => send(saveResource_REQUESTED({resource: {url, editorState}}))}
 				@ww-save-as-tab=${() => send(saveResource_REQUESTED({resource: {url: null, editorState}}))}
@@ -259,7 +256,8 @@ export class App extends LitElement
 					@update=${e => send(set({url, editorState: e.detail.editorState}))}
 					.availableWidgetTypes=${availableWidgetTypes}
 					.packages=${allPackages}
-					?loadingPackages=${false}>
+					?loadingPackages=${false}
+					?previewing=${resourcesPreviewing[url]}>
 				</ww-explorable-editor>
 			</ww-tab-panel>
 		`)
