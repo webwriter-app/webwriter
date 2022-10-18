@@ -3,6 +3,7 @@ import {customElement, property, query, queryAll, queryAsync} from "lit/decorato
 import { Attributes } from "@webwriter/model"
 import { camelCaseToSpacedCase} from "../../utility"
 import { SlAnimation, SlDetails, SlInput, SlTextarea, registerIconLibrary } from "@shoelace-style/shoelace"
+import spdx from "spdx-license-list"
 
 import { WwCombobox } from "./uielements"
 import { ExplorableEditor } from "./editor"
@@ -139,7 +140,7 @@ export class DocumentHeader extends LitElement {
 	}
 
 	protected firstUpdated(_changedProperties: PropertyValueMap<any> | Map<PropertyKey, unknown>): void {
-		this.headlineAsync.then(headline => headline.focus())
+		// this.headlineAsync.then(headline => headline.focus())
 	}
 
   static get styles() {
@@ -279,7 +280,7 @@ export class DocumentHeader extends LitElement {
 
 	render() {
 		const attrs = this.docAttributes
-		const empty = !Object.values(attrs).some(v => v)
+		const empty = !Object.keys(attrs).filter(k => !["license", "author"].includes(k)).some(k => attrs[k])
 
 		return empty && !this.editable? null: html`
 			<div id="header-left-panel"></div>
@@ -368,9 +369,11 @@ export class DocumentFooter extends LitElement {
 	@queryAll("#author, ww-license-picker")
 	footerFields: Element[]
 
-	emitAttributeChange = (key: string, value: any) => this.dispatchEvent(
-		new CustomEvent("ww-attribute-change", {composed: true, bubbles: true, detail: {key, value}})
-	)
+	emitAttributeChange = (key: string, value: any) => {
+		this.dispatchEvent(
+			new CustomEvent("ww-attribute-change", {composed: true, bubbles: true, detail: {key, value}})
+		)
+	}
 
 	handleAttributeChange = (e: InputEvent) => {
 		const {id, value} = e.target as HTMLInputElement
@@ -488,7 +491,7 @@ export class DocumentFooter extends LitElement {
         `}
         ${this.inputTemplate("author", "Anonymous")}
       </div>
-			<ww-license-picker ?disabled=${!this.editable}></ww-license-picker>
+			<ww-license-picker value=${this.docAttributes.license == undefined || this.docAttributes.license === ""? "All rights reserved": this.docAttributes.license} @ww-change=${e => this.emitAttributeChange("license", e.detail.value)} ?disabled=${!this.editable}></ww-license-picker>
 	  `
 	}
 }
@@ -513,6 +516,9 @@ export class WwLicensePicker extends LitElement {
 	@property({type: Boolean, attribute: true})
 	disabled: boolean = false
 
+	@property({type: String, attribute: true, reflect: true})
+	value: string = ""
+
 	@property({state: true})
 	private ccChoice: "yes" | "no" = "no"
 
@@ -535,8 +541,8 @@ export class WwLicensePicker extends LitElement {
 		this.addEventListener("blur", this.handleClose)
 	}
 
-	emitChange = () => this.dispatchEvent(
-		new Event("change", {bubbles: true, composed: true})
+	emitChange = (value: string) => this.dispatchEvent(
+		new CustomEvent("ww-change", {bubbles: true, composed: true, detail: {value}})
 	)
 
 	focus() {
@@ -562,6 +568,10 @@ export class WwLicensePicker extends LitElement {
 		this.animationElement.play = true
 	}
 
+	get href() {
+		return spdx[this.value]?.url
+	}
+
 	setChoice(key: string, value: string) {
 		if(key === "attributionChoice" && value === "no") {
 			this.adaptationChoice = "yes"
@@ -570,10 +580,9 @@ export class WwLicensePicker extends LitElement {
 		else if((key === "adaptationChoice" || key === "commercialChoice") && value !== "yes") {
 			this.attributionChoice = "yes"
 		}
-		this[key] = value
-	}
 
-	get value() {
+		this[key] = value
+
 		const cc = this.ccChoice === "yes"
 		const choices = {
 			"BY": this.attributionChoice === "yes",
@@ -583,12 +592,21 @@ export class WwLicensePicker extends LitElement {
 		}
 
 		if(cc && !Object.values(choices).some(v => v)) {
-			return "CC0-1.0"
+			return this.emitChange("CC0-1.0")
+		}
+		else if(key === "ccChoice" && value === "no") {
+			return this.emitChange("All rights reserved")
 		}
 
-		return !cc
-			? "All rights reserved"
-			: `CC-${Object.entries(choices).filter(([_, v]) => v).map(([k, _]) => k).join("-") || "0"}-4.0`
+		cc? this.emitChange(`CC-${Object.entries(choices).filter(([_, v]) => v).map(([k, _]) => k).join("-") || "0"}-4.0`): null
+	}
+
+	handleChange(value: string) {
+		console.log(value)
+		if(!Object.keys(WwLicensePicker.LICENSES).includes(value)) {
+			this.ccChoice = "no"
+		}
+		this.emitChange(value)
 	}
 
 	static LICENSES = {
@@ -650,14 +668,6 @@ export class WwLicensePicker extends LitElement {
 				user-select: none;
 				-moz-user-select: none;
 			}
-
-			.license:hover {
-				color: var(--sl-color-primary-400);
-				stroke: var(--sl-color-primary-400);
-				fill: var(--sl-color-primary-400);
-				cursor: pointer;
-			}
-
 			
 			:host([disabled]) .license {
 				color: black !important;
@@ -684,15 +694,33 @@ export class WwLicensePicker extends LitElement {
 					display: block;
 			}
 
-			:host([opened]) .license {
-				color: var(--sl-color-primary-600);
-				stroke: var(--sl-color-primary-600);
-				fill: var(--sl-color-primary-600);
-			}
-
 			sl-radio-group::part(base) {
 				padding: 0;
-				border: none;
+				border: 0;
+			}
+
+			sl-input::part(base) {
+				border: 0;
+				font-size: 0.75rem;
+			}
+			
+			sl-input::part(input) {
+				padding: 2px;
+				text-align: right;
+			}
+
+			:host([disabled]) sl-input::part(base) {
+				background: none;
+				cursor: auto;
+				opacity: 1;
+			}
+
+			sl-input, sl-input::part(base), sl-input::part(input) {
+				height: 1rem;
+			}
+
+			sl-icon {
+				font-size: 0.75rem;
 			}
 		`
 	}
@@ -713,10 +741,10 @@ export class WwLicensePicker extends LitElement {
 
 	render() {
 		return html`
-			<span tabindex=${0} class="license" @click=${this.handleOpen}>
-				<sl-icon library="cc" name="cc"></sl-icon>
-				<span>${!this.opened? this.value: WwLicensePicker.LICENSES[this.value]?.fullLabel}</span>
-				${WwLicensePicker.LICENSES[this.value]?.icons?.map(name => html`<sl-icon library="cc" name=${name} @sl-error=${console.log} @sl-load=${console.log}></sl-icon>`)}
+			<span tabindex=${0} class="license" spellcheck=${false}>
+				<sl-input ?disabled=${this.disabled} value=${this.value} ?spellcheck=${false} @sl-change=${e => this.handleChange(e.target.value)} @focusin=${this.handleOpen}></sl-input>
+				${null && WwLicensePicker.LICENSES[this.value]?.icons?.map(name => html`<sl-icon library="cc" name=${name} @sl-error=${console.log} @sl-load=${console.log}></sl-icon>`)}
+				${this.href? html`<a href=${this.href} target="_blank"><sl-icon name="box-arrow-up-right"></sl-icon></a>`: null}
 			</span>
 			<sl-animation name="fadeIn" easing="ease" duration=${500} iterations=${1}>
 				<sl-card class="choices">

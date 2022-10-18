@@ -289,9 +289,6 @@ export class ExplorableEditor extends LitElement {
 		else if(_changedProperties.has("editorState") && (this.editorState !== this.editorViewController.state)) {
 			this.editorViewController.updateState(this.editorState)
 		}
-		else {
-			this.editorViewController.updateState(this.editorState)
-		}
 	}
 
 	static get styles() {
@@ -541,6 +538,7 @@ export class ExplorableEditor extends LitElement {
 				.docAttributes=${this.editorState.doc.attrs.meta}
 				?editable=${!this.previewing}
 				@ww-focus-up=${e => this.editorViewController.focus()}
+				@ww-attribute-change=${e => this.setMetaValue(e.detail.key, e.detail.value)}
 			></ww-document-footer>
     ` 
 	}
@@ -710,9 +708,9 @@ class WwEditorToolbox extends LitElement {
 
 	packageTemplate = (pkg: PackageJson) => html`<sl-card class="package-card">
 		<span title="Add this widget" @click=${() => this.emitChangeWidget(pkg.name)} class="title" slot="header">
-			${prettifyPackageName(pkg.name)}
+			<span>${prettifyPackageName(pkg.name)}</span>
 			<sl-tooltip hoist content=${pkg.description}>
-				<sl-icon class="info-icon" name="info-circle"></sl-icon>
+				<sl-icon title=${pkg.description} class="info-icon" name="info-circle"></sl-icon>
 			</sl-tooltip>
 			<sl-icon class="add-icon" name="plus-square"></sl-icon>
 		</span>

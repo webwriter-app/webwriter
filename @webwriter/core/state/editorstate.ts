@@ -213,8 +213,8 @@ const customArrowCommand = (up=false) => chainCommands(
   (state, dispatch, view) => {
     const isWidgetNode = state.selection instanceof NodeSelection && state.selection.node.type.spec["widget"] as boolean
     const hasParagraph = up
-      ? state.selection.$from.nodeBefore.type.name === "paragraph"
-      : state.selection.$from.nodeAfter.type.name === "paragraph"
+      ? state.selection.$from.nodeBefore?.type.name === "paragraph"
+      : state.selection.$from.nodeAfter?.type.name === "paragraph"
     if(isWidgetNode && !hasParagraph) {
       const paragraph = state.schema.nodes.paragraph.create()
       

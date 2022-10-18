@@ -33,9 +33,11 @@
     "redefine-custom-elements": "^0.1.2",
     "redux": "^4.2.0",
     "redux-saga": "^1.2.1",
-    "sortablejs": "^1.15.0"
+    "sortablejs": "^1.15.0",
+    "spdx-license-list": "^6.6.0"
   },
   "devDependencies": {
+    "@types/mime": "^3.0.1",
     "vite": "^3.1.4"
   }
 }

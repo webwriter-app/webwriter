@@ -26,6 +26,7 @@ interface SlAlertAttributes {
 - LEARNERS & AUTHORS: Explorable-wide features API (fullscreen/fullwindow widgets, sharing/saving, visible metadata)
 - LEARNERS & AUTHORS: Themes (Explorable-wide CSS)
 - AUTHORS: Drag n' Drop widget interface 
+- LEARNERS & AUTHORS: Rewrite "Document" as container widget
 */
 
 @customElement("ww-app")
@@ -222,7 +223,7 @@ export class App extends LitElement
 		const {activeResource, resourcesPendingChanges, resourcesOrder, resourcesPreviewing} = resources
 		const allResources = resourcesOrder.map(url => resources.resources[url])
 		const availableWidgetTypes = selectors.packages.selectAvailableWidgetTypes(packages)
-		const allPackages = selectors.packages.selectAll(packages)
+		const allPackages = selectors.packages.selectInstalledPackages(packages)
 		this.className = allResources.length === 0? "noResources": ""
 		const tabs = repeat(allResources, res => res.url, ({url, editorState}, i) => html`
 			<ww-tab 

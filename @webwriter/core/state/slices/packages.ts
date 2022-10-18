@@ -29,7 +29,7 @@ let isFetchingAll = false
 
 type State = typeof initialState
 const initialState = packagesAdapter.getInitialState({
-  corePackages: ["@webwriter/ww-embed", "@webwriter/ww-textarea", "@webwriter/ww-figure", "@open-wc/scoped-elements"],
+  corePackages: ["@webwriter/ww-textarea", "@webwriter/ww-figure", "@open-wc/scoped-elements"],
   isInitializing: true,
   isFetching: false,
   installPackages: [] as PackageJson["name"][],
@@ -72,5 +72,6 @@ export const slice = createSlice({name: "packages", initialState,
 
 export const selectors = {
   ...packagesAdapter.getSelectors(),
-  selectAvailableWidgetTypes: (state: State) => Object.keys(state.entities).map(unscopePackageName) 
+  selectAvailableWidgetTypes: (state: State) => Object.values(state.entities).filter(pkg => pkg.installed).map(pkg => unscopePackageName(pkg.name)),
+  selectInstalledPackages: (state: State) => Object.values(state.entities).filter(pkg => pkg.installed)
 }

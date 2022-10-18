@@ -7,6 +7,7 @@ import * as connect from "../../connect"
 import * as marshal from "../../marshal"
 import { SlDialog, SlDrawer } from "@shoelace-style/shoelace";
 import { PackageJson } from "../../state";
+import { pickFile } from "../../environment";
 
 
 @customElement("ww-io-dialog")
@@ -166,7 +167,7 @@ export class PackageManagerDrawer extends LitElement {
 	packages: PackageJson[] = []
 
 	@property({type: String, attribute: true})
-	activeTab: "all" | "installed" | "available" = "all"
+	activeTab: "all" | "available" | "installed" | "outdated" | "more" = "all"
 
 	@query("sl-drawer")
 	drawer: SlDrawer
@@ -194,6 +195,9 @@ export class PackageManagerDrawer extends LitElement {
 
 	@property({type: Boolean, attribute: true})
 	loading: boolean = false
+
+	@property({type: String})
+	localInstallPath: string = ""
 
 	private requestUpdateFull = () => this.requestUpdate()
 
@@ -244,10 +248,13 @@ export class PackageManagerDrawer extends LitElement {
 		new CustomEvent("ww-refresh", {composed: true, bubbles: true})
 	)
 
-
-
 	handleTabShow(e: CustomEvent<{name: PackageManagerDrawer["activeTab"]}>) {
 		this.activeTab = e.detail.name
+	}
+
+	async handleFindLocalPackage(e: MouseEvent) {
+		const dirPath = await pickFile({directory: true, multiple: false}) as string
+		this.localInstallPath = dirPath
 	}
 
 
@@ -403,6 +410,19 @@ export class PackageManagerDrawer extends LitElement {
 				margin-left: auto;
 				justify-self: end;
 			}
+
+			.local-install::part(form-control-label) {
+				font-weight: bold;
+			}
+
+			.local-install::part(input) {
+				padding-left: 0;
+			}
+
+			.local-install sl-icon-button {
+				padding-inline-end: 0;
+			}
+
 		`
 	}
 
@@ -442,7 +462,11 @@ export class PackageManagerDrawer extends LitElement {
 
 	npmPrompt = () => {
 		// TODO: Manual NPM command escape hatch? Safety issues? Or just "open modules folder"?
-		return html`<sl-input></sl-input>`
+		return html`<sl-input value=${this.localInstallPath} @sl-input=${e => this.localInstallPath = e.target.value} class="local-install" name="path" label="Install local package">
+				<span slot="prefix">file:</span>
+				<sl-icon-button title="Find a local package" @click=${this.handleFindLocalPackage} name="folder2-open" slot="suffix"></sl-icon-button>
+				<sl-icon-button title="Install this local package" name="arrow-return-left" type="submit" slot="suffix" @click=${e => this.emitInstallPackage(this.localInstallPath)} ?disabled=${!this.localInstallPath}></sl-icon-button>
+			</sl-input>`
 	}
 
 	render() {
@@ -478,18 +502,24 @@ export class PackageManagerDrawer extends LitElement {
 							Outdated
 							<sl-badge variant="warning" pill>${!this.loading? outdated.length: "?"}</sl-badge>
 						</sl-tab>
+						<sl-tab panel="more" slot="nav">
+							More
+						</sl-tab>
 					</sl-tab-group>
 					<sl-alert variant="warning" ?open=${!navigator.onLine}>
 						<sl-icon slot="icon" name="wifi-off"></sl-icon>
 						<b>Warning: </b>
 						<span>You seem to be offline. While offline, you can't manage available or outdated packages.</span>
 					</sl-alert>
-					<div class="package-list">
-						${packages.length === 0 && !this.loading
-							? html`<span>No packages in this list</span>`
-							: packages.map(this.packageListItem) 
-						}
-					</div>
+					${this.activeTab === "more"? null: html`
+						<div class="package-list">
+							${packages.length === 0 && !this.loading
+								? html`<span>No packages in this list</span>`
+								: packages.map(this.packageListItem) 
+							}
+						</div>
+					`}
+					${this.activeTab === "more"? this.npmPrompt(): null}
 					<div class="spinner-container">
 						${this.loading? html`
 							<sl-spinner></sl-spinner>

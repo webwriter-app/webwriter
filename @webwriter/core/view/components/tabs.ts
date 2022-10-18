@@ -54,7 +54,7 @@ export class Tabs extends LitElement {
 			}
 
 			[part=pre-tabs] {
-				display: none;
+				display: flex;
 				align-items: center;
 				justify-content: flex-end;
 			}
@@ -143,9 +143,12 @@ export class Tabs extends LitElement {
 		`
 	}
 
-	emitNewTab = () => this.dispatchEvent(
-		new CustomEvent("ww-add-tab", {composed: true, bubbles: true})
-	)
+	emitNewTab = () => {
+		this.dispatchEvent(
+			new CustomEvent("ww-add-tab", {composed: true, bubbles: true})
+		)
+		setTimeout(() => this.tabs[this.tabs.length - 1]?.scrollIntoView({behavior: "smooth", block: "center", inline: "center"}), 100)
+}
 
 	emitOpenTab = () => this.dispatchEvent(
 		new CustomEvent("ww-open-tab", {composed: true, bubbles: true})
@@ -163,6 +166,10 @@ export class Tabs extends LitElement {
 		else if (e.key === "ArrowRight") {
 			this.selectNextTab()
 		}
+	}
+
+	handleTabSlotChange = (e: Event) => {
+
 	}
 
 	selectPreviousTab() {
@@ -194,7 +201,7 @@ export class Tabs extends LitElement {
 				</div>
 				<div part="tabs" @focusin=${this.handleFocusIn} @keydown=${this.handleKeyDown}>
 					<div part="tabs-wrapper">
-						<slot name="tabs"></slot>
+						<slot name="tabs" @slotchange=${this.handleTabSlotChange}></slot>
 						<div class="add-buttons">
 							${this.tabs.length !== 0? html`
 								<sl-icon-button title="New document [CTRL+N]" name="file-earmark-plus-fill" @click=${this.emitNewTab}></sl-icon-button>
@@ -348,6 +355,10 @@ export class Tab extends LitElement {
 
 			.title.empty {
 				color: darkgray;
+			}
+
+			:host([previewing][active]) .title {
+				color: var(--sl-color-warning-600);
 			}
 
 			.buttons {
