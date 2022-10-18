@@ -154,7 +154,6 @@ export default class WwFigure extends LitElementWw {
   get contentTemplate() {
 
     if(!this.contentSrc || this.contentError || this.urlInvalid || this.loading) {
-      console.log("first")
       if(this.urlInvalid) {
         this.contentSrcInput.setCustomValidity("Invalid URL")
         this.contentSrcInput.reportValidity()

@@ -292,7 +292,6 @@ export class Tab extends LitElement {
 	connectedCallback() {
 		super.connectedCallback()
 		this.addEventListener("dragstart", e => {
-			console.log("dragstart")
 			this.titleAsIconicUrl && e.dataTransfer.setData("text/uri-list", this.titleValue)
 			e.dataTransfer.setData("text/plain", this.titleValue)
 			e.dataTransfer.setData("text", this.titleValue)

@@ -602,7 +602,6 @@ export class WwLicensePicker extends LitElement {
 	}
 
 	handleChange(value: string) {
-		console.log(value)
 		if(!Object.keys(WwLicensePicker.LICENSES).includes(value)) {
 			this.ccChoice = "no"
 		}
@@ -743,7 +742,7 @@ export class WwLicensePicker extends LitElement {
 		return html`
 			<span tabindex=${0} class="license" spellcheck=${false}>
 				<sl-input ?disabled=${this.disabled} value=${this.value} ?spellcheck=${false} @sl-change=${e => this.handleChange(e.target.value)} @focusin=${this.handleOpen}></sl-input>
-				${null && WwLicensePicker.LICENSES[this.value]?.icons?.map(name => html`<sl-icon library="cc" name=${name} @sl-error=${console.log} @sl-load=${console.log}></sl-icon>`)}
+				${null && WwLicensePicker.LICENSES[this.value]?.icons?.map(name => html`<sl-icon library="cc" name=${name}></sl-icon>`)}
 				${this.href? html`<a href=${this.href} target="_blank"><sl-icon name="box-arrow-up-right"></sl-icon></a>`: null}
 			</span>
 			<sl-animation name="fadeIn" easing="ease" duration=${500} iterations=${1}>
