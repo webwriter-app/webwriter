@@ -20,7 +20,7 @@
         "removeFile": true,
         "createDir": true,
         "readDir": true,
-        "scope": ["$APP", "$APP/*", "$APP/**/*"]
+        "scope": ["$APP", "$APP/*", "$APP/**/*", "$HOME", "$HOME/*", "$HOME/**/*"]
       },
       "path": {
         "all": true
