@@ -1,8 +1,9 @@
 import "@shoelace-style/shoelace/dist/themes/light.css"
 import SlInput from "@shoelace-style/shoelace/dist/components/input/input.js"
 import SlQrCode from "@shoelace-style/shoelace/dist/components/qr-code/qr-code.js"
+import SlSpinner from "@shoelace-style/shoelace/dist/components/spinner/spinner.js"
 
-import { html, css, PropertyValueMap, LitElement, PropertyDeclaration } from "lit"
+import { html, css, PropertyValueMap  } from "lit"
 import { property, customElement, query } from "lit/decorators.js"
 
 import { LitElementWw } from "@webwriter/lit"
@@ -28,6 +29,7 @@ type MultimediaMIMEType =
   | "video/mp4"
   | "video/ogg"
   | "video/webm"
+  | "text/html"
 
 async function fileTypeFromUrl(url: string) {
   const urlObj = new URL(url)
@@ -44,11 +46,17 @@ export default class WwFigure extends LitElementWw {
   @property({type: String})
   caption: string
 
+  @property({type: String})
+  contentError: string = null
+
   @property({type: Boolean})
-  urlResolves: boolean
+  urlInvalid: boolean = false
+
+  @property({type: Boolean, state: true})
+  loading: boolean = false
 
   @property({type: String, attribute: true, reflect: true})
-  mimeType: MultimediaMIMEType
+  mimeType: string
 
   @query("#contentSrc")
   contentSrcInput: HTMLInputElement
@@ -64,14 +72,33 @@ export default class WwFigure extends LitElementWw {
   static get scopedElements() {
     return {
       "sl-input": SlInput,
-      "sl-qr-code": SlQrCode
+      "sl-qr-code": SlQrCode,
+      "sl-spinner": SlSpinner
     }
   }
 
-  protected async willUpdate(changedProperties: PropertyValueMap<any>) {
+  protected async updated(changedProperties: PropertyValueMap<any>) {
       if(changedProperties.has("contentSrc")) {
+        this.contentError = null
+        this.urlInvalid = false
+        this.contentSrcInput.setCustomValidity("")
+        try {
+          new URL(this.contentSrc)
+        }
+        catch(err) {
+          this.urlInvalid = true
+        }
         this.mimeType = await fileTypeFromUrl(this.contentSrc)
-        this.urlResolves = (await fetch(this.contentSrc)).ok
+        try {
+          this.loading = true
+        }
+        catch(err) {
+          this.contentError = err.message
+        }
+        finally {
+          this.loading = false
+        }
+        
       }
   }
 
@@ -85,10 +112,17 @@ export default class WwFigure extends LitElementWw {
 
       figure {
         margin: 4px;
+        text-align: center;
       }
 
-      figure > video {
+      figure > video, figure > iframe {
         aspect-ratio: 16/9;
+        width: 100%;
+        height: 100%;
+        border: none;
+      }
+
+      figure > img {
         width: 100%;
         height: 100%;
       }
@@ -104,19 +138,34 @@ export default class WwFigure extends LitElementWw {
         user-select: none;
       }
 
+
       #caption {
         display: inline-block;
+        width: 100%;
+      }
+
+      sl-spinner {
+        font-size: 2.5rem;
+        --track-width: 6px;
       }
     `
   }
 
   get contentTemplate() {
-    if(!this.urlResolves && this.contentSrcInput) {
-      this.contentSrcInput.setCustomValidity("Error 404: Media resource not found")
-      this.contentSrcInput.reportValidity()
-    }
-    if(!this.contentSrc || !this.urlResolves) {
-      return html`<div class="content-placeholder">Some media...</div>`
+
+    if(!this.contentSrc || this.contentError || this.urlInvalid || this.loading) {
+      console.log("first")
+      if(this.urlInvalid) {
+        this.contentSrcInput.setCustomValidity("Invalid URL")
+        this.contentSrcInput.reportValidity()
+      }
+      else if(this.contentError) {
+        this.contentSrcInput.setCustomValidity(this.contentError)
+        this.contentSrcInput.reportValidity()
+      }
+      return html`<div class="content-placeholder">
+        ${this.loading? html`<sl-spinner></sl-spinner>`: "Some media..."}
+      </div>`
     }
     else if(this.contentType === "video") {
       return html`
@@ -134,13 +183,15 @@ export default class WwFigure extends LitElementWw {
       `
     }
     else {
-      return html`Unsupported media type`
+      return html`
+        <iframe src=${this.contentSrc}></iframe>
+      `
     }
   }
 
   get printTemplate() {
-    if(this.contentType === "video" || this.contentType === "audio") {
-      return html``
+    if(this.contentSrc && !this.urlInvalid) {
+      return html`<sl-qr-code value=${this.contentSrc}></sl-qr-code>`
     }
     else {
       return this.contentTemplate
@@ -149,19 +200,18 @@ export default class WwFigure extends LitElementWw {
 
   get actionTemplate() {
     return html`<div part="action">
-      <sl-input id="contentSrc" type="url" placeholder="Source URL" clearable @sl-change=${e => this.contentSrc = e.target.value} @keydown=${e => e.key === "Enter" && e.target.blur()}>
+      <sl-input id="contentSrc" type="url" value=${this.contentSrc} placeholder="Source URL" clearable @sl-change=${e => this.contentSrc = e.target.value} @keydown=${e => e.key === "Enter" && e.target.blur()}>
       </sl-input>
     </div>`
   }
 
   render() {
-    WwFigure.elementProperties
     return html`
-    ${this.editable? this.actionTemplate: null}
+    ${this.editable && !this.printable? this.actionTemplate: null}
     <figure>
       ${this.printable? this.printTemplate: this.contentTemplate}
       <figcaption>
-        ${this.editable? html`<sl-input id="caption" filled placeholder="Caption" value=${this.caption} @sl-change=${e => this.caption=e.target.value}></sl-input>`: this.caption}
+        ${this.editable && !this.printable? html`<sl-input id="caption" filled placeholder="Caption" value=${this.caption} @sl-change=${e => this.caption=e.target.value}></sl-input>`: html`<span>${this.caption}</span>`}
       </figcaption>
     </figure>`
   }
