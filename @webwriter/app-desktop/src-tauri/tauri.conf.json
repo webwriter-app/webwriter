@@ -84,7 +84,9 @@
         "height": 600,
         "resizable": true,
         "title": "WebWriter",
-        "width": 800
+        "width": 800,
+        "minWidth": 500,
+        "minHeight": 500
       }
     ]
   }
