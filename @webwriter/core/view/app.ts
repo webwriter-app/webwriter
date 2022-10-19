@@ -127,6 +127,7 @@ export class App extends LitElement
 				min-height: 100vh;
 				transition: background-color 0.1s ease-in;
 				background: #f1f1f1;
+				overflow: hidden;
 			}
 
 			.save-button::part(base) {
@@ -187,7 +188,6 @@ export class App extends LitElement
 					display: none;
 				}
 			}
-
 		`
 	}
 

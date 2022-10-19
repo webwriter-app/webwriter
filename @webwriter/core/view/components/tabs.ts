@@ -34,6 +34,7 @@ export class Tabs extends LitElement {
 				flex-direction: column;
 				width: 100%;
 				height: 100%;
+				overflow-x: hidden;
 				overflow-y: visible;
 			}
 
@@ -65,6 +66,7 @@ export class Tabs extends LitElement {
 				display: flex;
 				flex-direction: row;
 				align-items: center;
+				overflow-y: visible;
 			}
 
 			[part=tabs-wrapper] {
@@ -76,7 +78,7 @@ export class Tabs extends LitElement {
 				scrollbar-width: none;
 				margin-left: auto;
 				margin-right: auto;
-				margin-bottom: -1px;
+				margin-bottom: -4px;
 				width: 800px;
 				overflow-x: scroll;
 				overflow-y: visible;
@@ -90,6 +92,9 @@ export class Tabs extends LitElement {
 				display: flex;
 				align-items: center;
 				justify-content: flex-start;
+				position: absolute;
+				top: 6px;
+				left: 0;
 			}
 
 			[part=tab-panel]
@@ -138,8 +143,10 @@ export class Tabs extends LitElement {
 				top: 0;
 				right: 0;
 				background: rgba(241, 241, 241, 0.9);
-				box-shadow: 0 0 4px 8px rgba(241, 241, 241, 0.9);
+				box-shadow: 0 0 4px 4px rgba(241, 241, 241, 0.9);
 			}
+
+
 		`
 	}
 
