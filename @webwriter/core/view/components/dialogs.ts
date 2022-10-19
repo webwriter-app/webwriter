@@ -327,6 +327,10 @@ export class PackageManagerDrawer extends LitElement {
 				border-left: 4px solid var(--sl-color-green-600);
 			}
 
+			sl-card:not(.official) .official-icon {
+				display: none;
+			}
+
 			sl-card::part(header) {
 				display: flex;
 				flex-direction: row;
@@ -443,12 +447,14 @@ export class PackageManagerDrawer extends LitElement {
 		const installing = this.installPackages.includes(name)
 		const uninstalling = this.uninstallPackages.includes(name)
 		const updating = this.updatePackages.includes(name)
-		return html`<sl-card class=${classMap({installed, outdated, available: !installed})}>
+		const official = name.startsWith("@webwriter/")
+		return html`<sl-card class=${classMap({installed, outdated, available: !installed, official})}>
 			<sl-icon name="box-seam" slot="header"></sl-icon>
 			<span class="package-name" slot="header">${name}</span>
 			<span class="package-author" slot="header">${author}</span>
 			<code class="package-version" slot="header">${version}</code>
-			${keywords?.filter(kw => kw !== "webwriter").map(kw => html`
+			<br slot="header">
+			${["official"].concat(keywords?.filter(kw => kw !== "webwriter" && kw !== "official")).map(kw => html`
 				<sl-tag variant="primary" slot="header">${kw}</sl-tag>
 			`)}
 			<span class="package-description">${description}</span>
