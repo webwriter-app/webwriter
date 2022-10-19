@@ -334,11 +334,16 @@ export class ExplorableEditor extends LitElement {
 				white-space: normal !important;
 			}
 
-			:host(:not([previewing])) .ProseMirror[data-placeholder]::before {
-				color: darkgray;
+			:host(:not([previewing])) .ProseMirror::before {
+        color: darkgray;
 				position: absolute;
-				content: attr(data-placeholder);
+				content: '⠀';
 				pointer-events: none;
+        user-select: none;
+			}
+
+			:host(:not([previewing])) .ProseMirror[data-placeholder]::before {
+				content: attr(data-placeholder);
 			}
 
 			#main-wrapper {
