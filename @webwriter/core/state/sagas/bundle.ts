@@ -161,7 +161,7 @@ function* fetchInstalledPackages({setPackages} = {setPackages: true}) {
     const packagePaths = Object.values(dependencies)
       .map(v => (v as any)?.path)
       .filter((path: string) => path)
-    const packageStrings = yield all(packagePaths.map(path => call(readTextFile, path + "\\package.json")))
+    const packageStrings = yield all(packagePaths.map(path => call(readTextFile, path + "/package.json")))
     const packagePathsAndStrings = packagePaths.map((path, i) => [path, packageStrings[i]])
     packages = packagePathsAndStrings
       .map(([path, packageString]) => [path, JSON.parse(packageString)])
