@@ -28,7 +28,7 @@ export function camelCaseToSpacedCase(str: string, capitalizeFirstLetter=true) {
 }
 
 export function prettifyPackageName(name: string, capitalizeFirstLetter=true) {
-  const coreName = name.split("-").pop()
+  const coreName = unscopePackageName(name.split("-").pop())
   return capitalizeFirstLetter? coreName.charAt(0).toUpperCase() + coreName.slice(1): coreName
 }
 
