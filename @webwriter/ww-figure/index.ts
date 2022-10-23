@@ -77,7 +77,7 @@ export default class WwFigure extends LitElementWw {
     }
   }
 
-  protected async updated(changedProperties: PropertyValueMap<any>) {
+  protected async willUpdate(changedProperties: PropertyValueMap<any>) {
       if(changedProperties.has("contentSrc")) {
         this.contentError = null
         this.urlInvalid = false
@@ -111,7 +111,6 @@ export default class WwFigure extends LitElementWw {
       }
 
       figure {
-        margin: 4px;
         text-align: center;
       }
 
