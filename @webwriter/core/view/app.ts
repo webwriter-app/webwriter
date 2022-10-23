@@ -243,7 +243,15 @@ export class App extends LitElement
 				?pendingChanges=${!!resourcesPendingChanges[url]}
 				@focus=${() => send(select({url}))}
 				@ww-toggle-preview=${() => send(togglePreview({url}))}
-				@ww-close-tab=${() => !this.discarding && resourcesPendingChanges[url]? this.discarding = true: send(discard({url}))}
+				@ww-close-tab=${() => {
+					if(this.discarding && resourcesPendingChanges[url] || !resourcesPendingChanges[url]) {
+						send(discard({url}))
+						this.discarding = false
+					}
+					else {
+						this.discarding = true
+					}
+				 }}
 				@ww-save-tab=${() => send(saveResource_REQUESTED({resource: {url, editorState}}))}
 				@ww-save-as-tab=${() => send(saveResource_REQUESTED({resource: {url: null, editorState}}))}
 				@ww-title-click=${() => send(select({url}))}

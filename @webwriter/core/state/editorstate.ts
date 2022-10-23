@@ -1,4 +1,4 @@
-import {Schema, Node, NodeSpec, MarkSpec, Fragment} from "prosemirror-model"
+import {Schema, Node, NodeSpec, MarkSpec, Fragment, DOMSerializer} from "prosemirror-model"
 import {Command, EditorState, EditorStateConfig, NodeSelection, TextSelection, Plugin} from "prosemirror-state"
 import { baseKeymap, joinForward, selectNodeForward } from "prosemirror-commands"
 import {keymap} from "prosemirror-keymap"
@@ -27,6 +27,8 @@ function packageWidgetNodeSpec(tag: string, pkg: string): NodeSpec {
     widget: true,
     package: pkg,
     selectable: true,
+    preserveWhitespace: false,
+    isolating: false,
     attrs: {
       editable: {default: false},
       printable: {default: false},
@@ -66,7 +68,7 @@ const inlineNodeSpecs: Record<string, NodeSpec & {group: "inline", inline: true}
     inline: true,
     parseDOM: [{"tag": "br"}],
     toDOM: () => ["br"]
-  },
+  }
 }
 
 
@@ -77,7 +79,12 @@ const containerNodeSpecs: Record<string, NodeSpec & {group: "container"}> = {
     group: "container",
     content: "inline*",
     parseDOM: [{tag: "p"}],
-    toDOM: () => ["p", 0]
+    toDOM: (node: Node) => {
+      const fragment = new DocumentFragment()
+      const p = DOMSerializer.renderSpec(document, ["p", 0])
+      p.contentDOM.appendChild(document.createTextNode(" "))
+      return p
+    }
   },
 
   heading: {
@@ -292,7 +299,6 @@ export const defaultConfig: EditorStateConfig = {
     keymap({...baseKeymap, ...explorableKeymap}),
     inputRules({rules}),
     history(),
-    gapCursor(),
     placeholder("Enter content here...")
   ]
 }

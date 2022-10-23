@@ -1,4 +1,5 @@
 import {LitElement, html, css, PropertyValueMap, ReactiveController, unsafeCSS} from "lit"
+import {styleMap} from "lit/directives/style-map.js"
 import {customElement, property, query} from "lit/decorators.js"
 //@ts-ignore 
 import prosemirrorCSS from "prosemirror-view/style/prosemirror.css"
@@ -7,35 +8,20 @@ import gapcursorCSS from "prosemirror-gapcursor/style/gapcursor.css"
 import { camelCaseToSpacedCase, prettifyPackageName, unscopePackageName } from "../../utility"
 
 import { Decoration, EditorView, NodeView, DecorationSet } from "prosemirror-view"
-import { EditorState, Command, NodeSelection, Selection, AllSelection } from "prosemirror-state"
+import { EditorState, Command, NodeSelection, Selection, AllSelection, TextSelection } from "prosemirror-state"
 import { DOMSerializer, Node } from "prosemirror-model"
 import { chainCommands, toggleMark } from "prosemirror-commands"
 import { PackageJson } from "../../state"
 import { DocumentFooter, DocumentHeader } from "./meta"
 import { getOtherAttrsFromWidget } from "../../state/editorstate"
+import {computePosition, autoUpdate, offset, shift, size} from '@floating-ui/dom'
 
 
-const insertParagraphWidget = (pos: number) => Decoration.widget(pos, 
-	(view: EditorView, getPos) => {
-		const div = document.createElement("div")
-		div.classList.add("insert-paragraph-widget")
-		div.style.height = "1.25em"
-		div.style.cursor = "text"
-		div.style.background = "rgba(0, 0, 0, 0.1)"
-		div.addEventListener("click", () => {
-			const paragraph = view.state.schema.nodes.paragraph.create()
-			const tr = view.state.tr.insert(getPos(), paragraph)
-			view.dispatch(tr)
-		})
-		return div
-	}, 
-	{
-		stopEvent(event) {
-			return !(event instanceof MouseEvent)
-		},
-		ignoreSelection: true
-	}
-)
+/* Issues
+- editor toolbox visibility
+- selecting empty first paragraph issues
+- styling of document-header
+*/
 
 class WidgetView implements NodeView {
 
@@ -73,7 +59,7 @@ class WidgetView implements NodeView {
 	selectNode() {
 		this.dom["focus"]()
 	}
-
+ 
 	deselectNode() {
 		this.dom["blur"]()
 	}
@@ -117,22 +103,6 @@ class EditorViewController extends EditorView implements ReactiveController {
 
 const toggleHeading = (editorState: EditorState, level=1) => chainCommands()
 
-/* EDITOR REWRITE 
-Document toolbox:
-	< display left >
-	< display wide (with labels) if there's space, else display narrow >
-	Commands for inline, block and container widgets
-	Commands for headings
-Context sensitive toolbox:
-	< display right if there is space, else display on content select >
-	< display wide (with labels) if there's space, else display narrow >
-	If a widget is selected: Display widget's 'action' part
-	If text is selected: Display rich text options
-*/
-
-// Anchor is ww-explorable-editor
-// Content is widget's part="action" child
-
 
 function getActiveMarks(state: EditorState) {
 	const marksInSelection = state.selection.$from.marks()
@@ -145,8 +115,6 @@ type MarkCommand = {command: (state: EditorState) => Command, icon?: string, cla
 
 @customElement("ww-explorable-editor")
 export class ExplorableEditor extends LitElement {
-
-	static shadowRootOptions = {...LitElement.shadowRootOptions, delegatesFocus: true}
 
 	editorViewController: EditorViewController
 
@@ -199,7 +167,6 @@ export class ExplorableEditor extends LitElement {
 		let tr = state.tr.replaceSelectionWith(node)
 		// tr = tr.insert(tr.selection.from, state.schema.nodes.paragraph.create())
 		// tr = tr.insert(tr.selection.to, state.schema.nodes.paragraph.create())
-		tr = tr.scrollIntoView()
 		this.editorViewController.dispatch(tr)
 	}
 
@@ -235,7 +202,11 @@ export class ExplorableEditor extends LitElement {
 	@query("main")
 	main: HTMLElement
 
+  @query("ww-widget-toolbox")
+  widgetToolbox: WwWidgetToolbox
 
+  @query("ww-editor-toolbox")
+  editorToolbox: WwEditorToolbox
 
 	getDocAttribute(key: string, asArray=true): string {
 		const attr = this.editorState.doc.attrs.meta[key]
@@ -269,10 +240,14 @@ export class ExplorableEditor extends LitElement {
 					handleKeyDown: this.handleKeyDown,
 					decorations: (state) => {
 						if(!this.previewing) {
+              const {from, to} = state.selection
 							const decorations = []
 							state.doc.forEach((node, k, i) => {
 								if(node.type.spec["widget"]) {
-									decorations.push(Decoration.node(k, k + 1, {editable: "true"}))
+									decorations.push(Decoration.node(k, k + 1, {
+                    editable: "true",
+                    ...from <= k && k <= to? {"data-pm-selected": "true"}: {}
+                  }))
 								}
 							})
 							return DecorationSet.create(state.doc, decorations)
@@ -289,10 +264,17 @@ export class ExplorableEditor extends LitElement {
 		else if(_changedProperties.has("editorState") && (this.editorState !== this.editorViewController.state)) {
 			this.editorViewController.updateState(this.editorState)
 		}
+    else if(_changedProperties.has("previewing")) {
+      this.editorViewController.updateState(this.editorState)
+    }
 	}
 
 	static get styles() {
 		return css`
+
+      * {
+        overscroll-behavior: none;
+      }
 
 			@keyframes fade-in {
 				from {
@@ -315,6 +297,7 @@ export class ExplorableEditor extends LitElement {
 				background: white;
 				border: 1px solid rgba(0, 0, 0, 0.1);
 				margin-bottom: 200px;
+        overscroll-behavior: none;
 			}
 
 			:host > * {
@@ -340,6 +323,7 @@ export class ExplorableEditor extends LitElement {
 				content: '⠀';
 				pointer-events: none;
         user-select: none;
+        -webkit-user-select: none;
 			}
 
 			:host(:not([previewing])) .ProseMirror[data-placeholder]::before {
@@ -354,7 +338,7 @@ export class ExplorableEditor extends LitElement {
 			}
 
 			#main-wrapper:not(:focus-within) ww-editor-toolbox {
-				visibility: hidden;
+				visibility: visible;
 			}
 
 			aside {
@@ -405,7 +389,19 @@ export class ExplorableEditor extends LitElement {
 
 			.ww-widget {
 				--ww-action-opacity: 0;
+        position: relative;
+        display: block;
+        user-select: none;
+        -webkit-user-select: none;
 			}
+
+      .ww-widget[data-pm-selected] {
+        outline: 8px double var(--sl-input-focus-ring-color);
+      }
+
+      main:not(:focus-within) .ww-widget[data-pm-selected] {
+        outline-color: lightgray;
+      }
 
 			.ww-widget:focus-within, .ww-widget:hover {
 				--ww-action-opacity: 1;
@@ -419,25 +415,33 @@ export class ExplorableEditor extends LitElement {
 				opacity: var(--ww-action-opacity);
 			}
 
-
+      :host([previewing]) ww-widget-toolbox {
+        display: none;
+      }
 
 			@media only screen and (max-width: 1300px) {
+
+        ww-widget-toolbox::part(base) {
+          display: flex;
+          flex-direction: row-reverse;
+          background: rgba(255, 255, 255, 0.95);
+          box-shadow: 0 0 4px 2px rgba(255, 255, 255, 0.95);
+          border-radius: 4px;
+        } 
 			}
 
 			@media only screen and (min-width: 1301px) {
 
-				.ww-widget {
-					display: block;
-					position: relative;
-				}
-
 				.ww-widget::part(action) {
 					position: absolute;
-					height: 100%;
+					height: calc(100% - 40px);
+          width: 200px;
 					left: 100%;
-					padding-left: 25px; 
-					top: 0;
-					border-left: calc(var(--sl-focus-ring-width) * 2) solid var(--sl-input-focus-ring-color);
+          top: 0px;
+					padding-left: 30px; 
+          padding-top: 40px;
+          user-select: none;
+          -webkit-user-select: none;
 				}
 				
 				ww-editor-toolbox {
@@ -477,6 +481,69 @@ export class ExplorableEditor extends LitElement {
 		}
 	}
 
+  handleFocusIn(e: FocusEvent) {
+    
+    const target = e.target as HTMLElement
+    
+    const targetIsWidget = target.classList.contains("ww-widget")
+
+    this.editorToolbox.activeElement = this.shadowRoot.activeElement
+    
+    if(targetIsWidget) {
+      this.widgetToolbox.widget = target
+    }
+  }
+
+  handleMouseIn(e: PointerEvent) {
+    
+    const target = e.target as HTMLElement
+    
+    const targetIsWidget = target.classList.contains("ww-widget")
+    const widgetAlreadyFocused = this.shadowRoot?.activeElement?.classList.contains("ww-widget")
+    
+    if(targetIsWidget && !widgetAlreadyFocused) {
+      this.widgetToolbox.widget = target
+    }
+  }  
+
+  handleFocusOut(e: FocusEvent) {
+
+    const target = e.target as HTMLElement
+    const related = e.relatedTarget as HTMLElement
+    const active = this.shadowRoot.activeElement
+    
+    if(target?.id === "main" && !related?.classList.contains("ww-widget")) {
+      this.editorToolbox.activeElement = null
+    }
+
+    const isWidgetActive = active?.classList.contains("ww-widget")
+    const isNextWidgetToolbox = related === this.widgetToolbox
+    const isExitingWidget = target.classList.contains("ww-widget")
+    
+    if(isExitingWidget && !isNextWidgetToolbox && !isWidgetActive) {
+      this.widgetToolbox.widget = undefined
+    }
+  }
+
+  handleMouseOut(e: MouseEvent) {
+
+    const target = e.target as HTMLElement
+    const related = e.relatedTarget as HTMLElement
+    const active = this.shadowRoot.activeElement
+
+    const isWidgetActive = active?.classList.contains("ww-widget")
+    const isNextWidgetToolbox = related === this.widgetToolbox
+    const isExitingWidget = target.classList.contains("ww-widget")
+    const isExitingWidgetToolbox = target === this.widgetToolbox && !(related === active)
+    
+    if((isExitingWidget && !isNextWidgetToolbox || isExitingWidgetToolbox) && !isWidgetActive) {
+      this.widgetToolbox.widget = undefined
+    }
+    if(true) {
+      e.preventDefault()
+    }
+  }
+
 	setMetaValue(key: string, value: any) {
 		const state = this.editorViewController.state
 		let docObj = state.doc.toJSON()
@@ -513,6 +580,13 @@ export class ExplorableEditor extends LitElement {
 		this.editorViewController.updateState(nextState)
 	}
 
+  deleteWidget(widget: HTMLElement) {
+    const pos = this.editorViewController.posAtDOM(widget, 0)
+    const tr = this.editorViewController.state.tr.delete(pos, pos + 1)
+    this.editorViewController.dispatch(tr)
+    this.widgetToolbox.widget = undefined
+  }
+
 	render() {		
     return html`
       <ww-document-header
@@ -523,11 +597,12 @@ export class ExplorableEditor extends LitElement {
 				@ww-focus-down=${e => this.editorViewController.focus()}
 				@ww-attribute-change=${e => this.setMetaValue(e.detail.key, e.detail.value)}
 			></ww-document-header>
-			<div id="main-wrapper">
+			<div id="main-wrapper" @focusin=${this.handleFocusIn} @focusout=${this.handleFocusOut} @mouseover=${this.handleMouseIn} @mouseout=${this.handleMouseOut}>
 				${!this.loadingPackages
 						? html`<main part="main" id="main" spellcheck=${false} contenteditable=${!this.previewing}></main>`
 						: this.loadingSpinnerTemplate()
 					}
+        <ww-widget-toolbox tabIndex=${-1} @ww-delete-widget=${e => this.deleteWidget(e.detail.widget)}></ww-widget-toolbox>
 				<sl-popup active anchor="main" placement="left" shift strategy="fixed" distance=${25}>
 					<ww-editor-toolbox
 						@ww-change-widget=${e => this.insertWidget(e.detail.name)}
@@ -535,6 +610,7 @@ export class ExplorableEditor extends LitElement {
 						.packages=${this.packages}
 						.markCommands=${this.markCommands}
 						.activeMarks=${getActiveMarks(this.editorState)}
+            tabindex="-1"
 					></ww-editor-toolbox>
 				</sl-popup>
 			</div>
@@ -547,6 +623,98 @@ export class ExplorableEditor extends LitElement {
 			></ww-document-footer>
     ` 
 	}
+}
+
+@customElement("ww-widget-toolbox")
+class WwWidgetToolbox extends LitElement {
+  
+  @property({type: Number, state: true})
+  x: number
+  
+  @property({type: Number, state: true})
+  y: number
+
+  @property({type: Object, attribute: false})
+  widget: HTMLElement
+
+  @query("div")
+  div: HTMLElement
+
+  cleanup: CallableFunction
+
+  emitDeleteWidget = () => this.dispatchEvent(
+    new CustomEvent("ww-delete-widget", {composed: true, bubbles: true, detail: {
+      widget: this.widget
+    }})
+  )
+
+  protected willUpdate(changedProperties: PropertyValueMap<any> | Map<PropertyKey, unknown>): void {
+    if(changedProperties.has("widget") && this.widget) {
+      const narrowLayout = document.documentElement.clientWidth <= 1300 
+      this.cleanup = autoUpdate(this.widget, this, async () => {
+        try {
+          const {x, y} = await computePosition(this.widget, this, {
+            placement: narrowLayout? "bottom-end": "right-start",
+            middleware: narrowLayout? [offset(5)]: [offset(30)]
+          })
+          this.x = narrowLayout? x - this.div.offsetWidth: x
+          this.y = y
+        }
+        catch(e) {}
+      })
+    }
+    /*else if(changedProperties.has("widget") && !this.widget) {
+      this.cleanup()
+      this.cleanup = undefined
+      this.x = undefined
+      this.y = undefined
+    }*/
+  }
+
+  static get styles() {
+    return css`
+
+      :host {
+        user-select: none;
+        -webkit-user-select: none;
+      }
+
+      div {
+        position: absolute;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        user-select: none;
+        -webkit-user-select: none;
+        font-size: 0.95rem;
+        padding-right: 1ch;
+      }
+      #name {
+        text-decoration: underline;
+        text-decoration-color: var(--sl-color-primary-400);
+        text-decoration-thickness: 2.5px;
+        cursor: default;
+      }
+
+      #delete-button:hover::part(base) {
+        color: var(--sl-color-danger-600);
+      }
+    `
+  }
+
+  render() {
+    if(!this.widget) {
+      return null
+    }
+    else {
+      const styles = {left: `${this.x}px`, top: `${this.y}px`}
+      const name = prettifyPackageName(this.widget.tagName.toLowerCase())
+      return html`<div part="base" style=${styleMap(styles)}>
+        <span id="name">${name}</span>
+        <sl-icon-button id="delete-button" title="Delete widget" name="trash" @click=${this.emitDeleteWidget}></sl-icon-button>
+      </div>`
+    }
+  }
 }
 
 @customElement("ww-editor-toolbox")
@@ -572,6 +740,9 @@ class WwEditorToolbox extends LitElement {
 
 	@property({type: Array, attribute: false})
 	activeMarks: string[]
+
+  @property({type: Object, attribute: false})
+  activeElement: Element
 
 	static styles = css`
 
@@ -614,6 +785,7 @@ class WwEditorToolbox extends LitElement {
 			gap: 1ch;
 			cursor: pointer;
 			font-size: 0.9rem;
+      height: 2ch;
 		}
 
 		.title:hover {
@@ -636,6 +808,7 @@ class WwEditorToolbox extends LitElement {
 
 		.info-icon {
 			color: darkgray;
+      z-index: 10;
 		}
 
 		.info-icon:hover {
@@ -733,14 +906,12 @@ class WwEditorToolbox extends LitElement {
 	})
 
 	render() {
-		return html`
-			<div part="mark-commands">
-				${this.markCommandsTemplate()}
-			</div>
-			<div part="widget-choices">
-				${this.packages.map(this.packageTemplate)}
-			</div>
-
-		`
+    return html`
+      <div part="mark-commands">
+        ${this.markCommandsTemplate()}
+      </div>
+      <div part="widget-choices">
+        ${this.packages.map(this.packageTemplate)}
+      </div>`
 	}
 }

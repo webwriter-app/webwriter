@@ -34,8 +34,6 @@ export class Tabs extends LitElement {
 				flex-direction: column;
 				width: 100%;
 				height: 100%;
-				overflow-x: hidden;
-				overflow-y: visible;
 			}
 
 			[part=nav] {
@@ -52,12 +50,17 @@ export class Tabs extends LitElement {
 			[part=content] {
 				overflow-y: scroll;
 				height: 100%;
+				margin-top: -1px;
 			}
 
 			[part=pre-tabs] {
 				display: flex;
+				position: absolute;
+				top: 5px;
+				left: 0;
 				align-items: center;
 				justify-content: flex-end;
+				z-index: 100;
 			}
 
 			[part=tabs] {
@@ -66,10 +69,11 @@ export class Tabs extends LitElement {
 				display: flex;
 				flex-direction: row;
 				align-items: center;
-				overflow-y: visible;
+				overflow: hidden;
 			}
 
 			[part=tabs-wrapper] {
+				border-left: 40px solid transparent;
 				position: relative;
 				display: flex;
 				align-items: center;
@@ -78,10 +82,8 @@ export class Tabs extends LitElement {
 				scrollbar-width: none;
 				margin-left: auto;
 				margin-right: auto;
-				margin-bottom: -4px;
 				width: 800px;
-				overflow-x: scroll;
-				overflow-y: visible;
+				overflow-x: hidden;
 			}
 
 			[part=tabs-wrapper]::-webkit-scrollbar {
@@ -96,8 +98,6 @@ export class Tabs extends LitElement {
 				top: 6px;
 				left: 0;
 			}
-
-			[part=tab-panel]
 
 			sl-icon-button {
 				background: transparent;
@@ -145,8 +145,6 @@ export class Tabs extends LitElement {
 				background: rgba(241, 241, 241, 0.9);
 				box-shadow: 0 0 4px 4px rgba(241, 241, 241, 0.9);
 			}
-
-
 		`
 	}
 
@@ -198,7 +196,6 @@ export class Tabs extends LitElement {
 	}
 
 	render() {
-
 		return html`
 			<nav part="nav">
 				<div part="pre-tabs">
@@ -303,6 +300,9 @@ export class Tab extends LitElement {
 			e.dataTransfer.setData("text/plain", this.titleValue)
 			e.dataTransfer.setData("text", this.titleValue)
 		})
+		this.addEventListener("focusout", e => {
+			this.emitCancelDiscard()
+		})
 	}
 
 	protected firstUpdated() {
@@ -312,34 +312,37 @@ export class Tab extends LitElement {
 	static get styles() {
 		return [SlTab.styles, css`
 
+
+
 			:host(:hover) [part=base] {
 				background: #F9F9F9;
 			}
 
 			:host([active]) [part=base] {
 				background: white;
-				border: 2px solid rgba(0, 0, 0, 0.1);
-				border-bottom: 2px solid white;
+				border: 3px solid rgba(0, 0, 0, 0.1);
+				border-bottom: 3px solid white;
 				border-bottom-left-radius: 0;
 				border-bottom-right-radius: 0;
 				cursor: grab;
 			}
 
 			:host([previewing][active]) [part=base] {
-				border-top: 2px solid var(--sl-color-warning-600);
+				border-top: 3px solid var(--sl-color-warning-600);
 			}
 
 			[part=base] {
+				left: 0;
 				--focus-ring: none;
 				margin-right: 0.5em;
 				border-radius: 6px;
 				flex-shrink: 1;
 				overflow: hidden;
-				width: 40ch;
+				width: 350px;
 				min-width: min-content;
 				position: relative;
 				background: transparent;
-				border: 2px solid transparent;
+				border: 3px solid transparent;
 				padding: 0.7rem;
 				display: flex;
 				justify-content: space-between;
@@ -477,7 +480,7 @@ export class Tab extends LitElement {
 				<sl-icon-button title="Save document as... [CTRL+S]" class="save-button" @click=${() => this.emitSaveAsTab()} name="file-earmark-arrow-down"></sl-icon-button>
 				${!this.titleValue.startsWith("memory:")? html`<sl-icon-button title="Save document [CTRL+S]" class="save-button" @click=${() => this.emitSaveTab()} name="file-earmark-check"></sl-icon-button>`: null}
 				<sl-tooltip ?open=${this.confirmingDiscard} trigger="manual" placement="bottom" hoist>
-					<sl-icon-button title="Close document [CTRL+W]" class="close-button" @click=${() => this.emitCloseTab()} @blur=${() => this.emitCancelDiscard()} name="x-lg"></sl-icon-button>
+					<sl-icon-button title="Close document [CTRL+W]" class="close-button" @click=${() => this.emitCloseTab()} @focusout=${() => this.emitCancelDiscard()} name="x-lg"></sl-icon-button>
 					<span slot="content" class="confirm-discard-text">${this.confirmDiscardText}</span>
 				</sl-tooltip>
 			</div>
