@@ -7,7 +7,7 @@
     "distDir": "../../core/dist"
   },
   "package": {
-    "productName": "webwriter",
+    "productName": "WebWriter",
     "version": "../package.json"
   },
   "tauri": {
@@ -21,6 +21,9 @@
         "createDir": true,
         "readDir": true,
         "scope": ["$APP", "$APP/*", "$APP/**/*", "$HOME", "$HOME/*", "$HOME/**/*"]
+      },
+      "os": {
+        "all": true
       },
       "path": {
         "all": true
