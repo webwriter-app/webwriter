@@ -110,13 +110,17 @@
               {% assign label = "Windows" %}
               {% assign order = "0" %}
               {% assign icon = "logo-windows" %}
-            {% elsif asset.name contains ".dmg" %}
+            {% elsif asset.name contains "x64.dmg" %}
               {% assign label = "Mac" %}
               {% assign order = "1" %}
               {% assign icon = "logo-apple" %}
+            {% elsif asset.name contains "aarch64.dmg" %}
+              {% assign label = "Mac (M-Series)" %}
+              {% assign order = "2" %}
+              {% assign icon = "logo-apple" %}
             {% elsif asset.name contains ".AppImage" %}
               {% assign label = "Linux" %}
-              {% assign order = "2" %}
+              {% assign order = "3" %}
               {% assign icon = "logo-tux" %}
             {% else %}
               {% assign display = "none" %}
