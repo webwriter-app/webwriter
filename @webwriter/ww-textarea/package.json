@@ -3,6 +3,7 @@
   "version": "0.3.2",
   "description": "Let the user enter text",
   "main": "index.ts",
+  "type": "module",
   "keywords": [
     "webwriter"
   ],
