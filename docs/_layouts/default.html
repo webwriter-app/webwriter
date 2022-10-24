@@ -114,10 +114,6 @@
               {% assign label = "Mac" %}
               {% assign order = "1" %}
               {% assign icon = "logo-apple" %}
-            {% elsif asset.name contains "aarch64.dmg" %}
-              {% assign label = "Mac (M-Series)" %}
-              {% assign order = "2" %}
-              {% assign icon = "logo-apple" %}
             {% elsif asset.name contains ".AppImage" %}
               {% assign label = "Linux" %}
               {% assign order = "3" %}
