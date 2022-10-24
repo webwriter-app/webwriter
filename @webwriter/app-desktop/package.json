@@ -17,8 +17,7 @@
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "license": "UNLICENSED",
   "dependencies": {
-    "@tauri-apps/api": "^1.1.0",
-    "@tauri-apps/cli-darwin-arm64": "^1.1.1"
+    "@tauri-apps/api": "^1.1.0"
   },
   "peerDependencies": {
     "@webwriter/core": "file:../core"
@@ -33,6 +32,7 @@
     "@tauri-apps/cli-darwin-x64": "^1.1.1",
     "@tauri-apps/cli-linux-x64-gnu": "^1.1.1",
     "@tauri-apps/cli-win32-x64-msvc": "^1.1.1",
+    "@tauri-apps/cli-darwin-arm64": "^1.1.1",
     "esbuild-darwin-64": "^0.15.10",
     "esbuild-darwin-arm64": "^0.15.10",
     "esbuild-linux-64": "^0.15.10",
