@@ -1,0 +1,29 @@
+<h2>Features</h2>
+<div class="features">
+  <style>
+    .features {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto;
+      gap: 10px;
+    }
+
+    .features .feature {
+      border: 4px solid #006699;
+      border-radius: 2px;
+      padding: 6px;
+    }
+
+    .features .feature h3 {
+      color: #006699;
+      font-size: 0.9rem;
+    }
+
+  </style>
+  {% for feature in site.data.features %}
+  <div class="feature">
+    <h3>{{feature.name}}</h3>
+    <div>{{feature.description}}</div>
+  </div>
+  {% endfor %}
+</div>

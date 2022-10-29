@@ -1,0 +1,90 @@
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+{% seo %}
+  <link rel="stylesheet" href="{{ "/assets/css/style.css?v=" | append: site.github.build_revision | relative_url }}">
+  <!--[if lt IE 9]>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7.3/html5shiv.min.js"></script>
+  <![endif]-->
+  {% include head-custom.html %}
+  <link rel="icon" type="image/png" href="static/app-icon.png">
+  <style>
+    .releases {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+      padding-bottom: 5px;
+    }
+
+    .releases > * {
+      color: whitesmoke;
+      border-radius: 5px;
+      padding: 5px;
+      background: #006699;
+      display: flex;
+      flex-direction: row;
+      gap: 0.25rem;
+      align-items: center;
+      justify-content: center;
+      width: 200px;
+    }
+
+    .releases > *:hover {
+      background: #003366;
+      color: whitesmoke !important;
+      text-decoration: none;
+    }
+
+    a:hover {
+      font-weight: normal;
+      text-decoration: underline;
+    }
+
+    nav {
+      display: flex;
+      flex-direction: column;
+      padding-top: 1rem;
+      padding-bottom: 1rem;
+    }
+
+    nav a:active {
+      color: #003366;
+    }
+
+    .current {
+      font-weight: bold;
+    }
+
+    aside {
+      float: left;
+      position: fixed;
+      height: 90%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      position: unset;
+      float: unset;
+    }
+
+    footer {
+      float: unset;
+      position: unset;
+      margin-top: auto;
+    }
+
+    @media print, screen and (max-width: 960px) {
+      aside {
+        float: unset;
+        position: unset;
+      }
+    }
+
+  </style>
+  <script type="module" src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.esm.js"></script>
+  <script nomodule src="https://unpkg.com/ionicons@5.5.2/dist/ionicons/ionicons.js"></script>
+  <script src="https://unpkg.com/medium-zoom@latest/dist/medium-zoom.min.js"></script>
+</head>
