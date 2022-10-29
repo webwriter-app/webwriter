@@ -4,6 +4,7 @@
   "description": "Web-based authoring tool for open explorables",
   "scripts": {
     "dev-desktop": "npm run -w @webwriter/app-desktop dev",
+    "dev-docs": "bundle exec jekyll serve -s ./docs",
     "lerna": "lerna",
     "publish": "lerna publish --no-private",
     "createbinaries": "node ./scripts/createbinaries.js",

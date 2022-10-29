@@ -9,3 +9,4 @@
 **/node_modules
 /static/assets/icons
 dist
+_site
