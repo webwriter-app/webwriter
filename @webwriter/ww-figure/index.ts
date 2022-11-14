@@ -112,6 +112,7 @@ export default class WwFigure extends LitElementWw {
 
       figure {
         text-align: center;
+        margin: 0;
       }
 
       figure > video, figure > iframe {
