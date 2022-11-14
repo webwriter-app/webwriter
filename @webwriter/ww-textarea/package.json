@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/ww-textarea",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Let the user enter text",
   "main": "index.ts",
   "type": "module",
