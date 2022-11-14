@@ -165,7 +165,7 @@ function* fetchInstalledPackages({setPackages} = {setPackages: true}) {
     const packagePathsAndStrings = packagePaths.map((path, i) => [path, packageStrings[i]])
     packages = packagePathsAndStrings
       .map(([path, packageString]) => [path, JSON.parse(packageString)])
-      .filter(([path, pkg]) => pkg.keywords?.includes("webwriter"))
+      .filter(([path, pkg]) => pkg.keywords?.includes("webwriter-widget"))
       .map(([path, pkg]) => ({...pkg, installed: true, root: path}))
     if(setPackages) {
       yield put(packagesSlice.actions.setAll(packages))
@@ -181,7 +181,7 @@ function* fetchInstalledPackages({setPackages} = {setPackages: true}) {
 
 function* fetchAvailablePackages({from}: {type: "fetchAvailablePackages_REQUESTED", from: number}) {
   try {
-    const {total, objects} = yield call(search, "keywords:webwriter", {from})
+    const {total, objects} = yield call(search, "keywords:webwriter-widget", {from})
     const packages = objects.map(obj => obj["package"])
     yield put({type: "fetchAvailablePackages_SUCCEEDED"})
     return packages
