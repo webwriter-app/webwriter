@@ -5,7 +5,7 @@
   "main": "index.ts",
   "type": "module",
   "keywords": [
-    "webwriter"
+    "webwriter-widget"
   ],
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "license": "MIT",

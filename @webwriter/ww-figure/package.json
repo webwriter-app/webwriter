@@ -4,7 +4,7 @@
   "description": "Widget to show any type of multimedia figure",
   "main": "index.ts",
   "keywords": [
-    "webwriter"
+    "webwriter-widget"
   ],
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "license": "MIT",
