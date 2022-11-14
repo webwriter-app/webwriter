@@ -188,6 +188,46 @@ export class App extends LitElement
 					display: none;
 				}
 			}
+
+			@media only print {
+
+				:host() {
+					overflow: visible;
+					height: min-content;
+				}
+
+				ww-tabs {
+					height: min-content;
+					overflow: visible;
+				}
+
+				ww-tabs::part(nav) {
+					display: none;
+				} 
+
+				ww-tabs::part(content) {
+					overflow: visible;
+					height: min-content;
+				}
+
+				ww-explorable-editor {
+					border: none;
+					padding: 0;
+					overflow: visible;
+					height: min-content;
+				}
+
+				ww-explorable-editor::part(editor-toolbox) {
+					display: none;
+				}
+
+				ww-explorable-editor::part(footer) {
+					position: fixed;
+					bottom: 0;
+					width: 100%;
+				}
+
+			}
 		`
 	}
 
