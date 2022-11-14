@@ -11,7 +11,7 @@ import { Tabs } from "./components"
 import { escapeHTML, detectEnvironment } from "../utility"
 
 const {set, create, discard, select, selectNext, togglePreview} = actions.resources
-const {install_REQUESTED, uninstall_REQUESTED, update_REQUESTED, fetchAllPackages_REQUESTED} = actions.bundle
+const {install_REQUESTED, uninstall_REQUESTED, update_REQUESTED, fetchAllPackages_REQUESTED, openAppDir_REQUESTED, clearAppDir_REQUESTED} = actions.bundle
 const {saveResource_REQUESTED, loadResource_REQUESTED} = actions.persist
 const {getActiveResource} = selectors.resources
 
@@ -308,7 +308,9 @@ export class App extends LitElement
 			@ww-install-package=${e => send(install_REQUESTED({args: e.detail.args}))}
 			@ww-uninstall-package=${e => send(uninstall_REQUESTED({args: e.detail.args}))}
 			@ww-update-package=${e => send(update_REQUESTED({args: e.detail.args}))}
-			@ww-refresh=${() => send(fetchAllPackages_REQUESTED({from: 0}))}>
+			@ww-refresh=${() => send(fetchAllPackages_REQUESTED({from: 0}))}
+			@ww-open-app-dir=${() => send(openAppDir_REQUESTED())}
+			@ww-clear-app-dir=${() => send(clearAppDir_REQUESTED())}>
 		</ww-package-manager-drawer>`
 	}
 

@@ -197,7 +197,7 @@ export class PackageManagerDrawer extends LitElement {
 	loading: boolean = false
 
 	@property({type: String})
-	localInstallPath: string = ""
+	unlistedInstallUrl: string = ""
 
 	private requestUpdateFull = () => this.requestUpdate()
 
@@ -248,13 +248,21 @@ export class PackageManagerDrawer extends LitElement {
 		new CustomEvent("ww-refresh", {composed: true, bubbles: true})
 	)
 
+	emitOpenAppDir = () => this.dispatchEvent(
+		new CustomEvent("ww-open-app-dir", {composed: true, bubbles: true})
+	)
+
+	emitClearAppDir = () => this.dispatchEvent(
+		new CustomEvent("ww-clear-app-dir", {composed: true, bubbles: true})
+	)
+
 	handleTabShow(e: CustomEvent<{name: PackageManagerDrawer["activeTab"]}>) {
 		this.activeTab = e.detail.name
 	}
 
 	async handleFindLocalPackage(e: MouseEvent) {
 		const dirPath = await pickFile({directory: true, multiple: false}) as string
-		this.localInstallPath = dirPath
+		this.unlistedInstallUrl = dirPath
 	}
 
 
@@ -415,16 +423,18 @@ export class PackageManagerDrawer extends LitElement {
 				justify-self: end;
 			}
 
-			.local-install::part(form-control-label) {
+			.unlisted-install::part(form-control-label) {
 				font-weight: bold;
 			}
 
-			.local-install::part(input) {
-				padding-left: 0;
+			.unlisted-install sl-icon-button {
+				padding-inline-end: 0;
 			}
 
-			.local-install sl-icon-button {
-				padding-inline-end: 0;
+			#more-tab-content {
+				display: flex;
+				flex-direction: column;
+				gap: 1rem;
 			}
 
 		`
@@ -467,12 +477,22 @@ export class PackageManagerDrawer extends LitElement {
 	}
 
 	npmPrompt = () => {
-		// TODO: Manual NPM command escape hatch? Safety issues? Or just "open modules folder"?
-		return html`<sl-input value=${this.localInstallPath} @sl-input=${e => this.localInstallPath = e.target.value} class="local-install" name="path" label="Install local package">
-				<span slot="prefix">file:</span>
+		return html`<sl-input value=${this.unlistedInstallUrl} @sl-input=${e => this.unlistedInstallUrl = e.target.value} class="unlisted-install" name="path" label="Install unlisted package" help-text="Enter either A) a path to a local folder, or B) a path to a .tar.gz archive, or C) a git remote URL, each containing an npm module">
 				<sl-icon-button title="Find a local package" @click=${this.handleFindLocalPackage} name="folder2-open" slot="suffix"></sl-icon-button>
-				<sl-icon-button title="Install this local package" name="arrow-return-left" type="submit" slot="suffix" @click=${e => this.emitInstallPackage(this.localInstallPath)} ?disabled=${!this.localInstallPath}></sl-icon-button>
+				<sl-icon-button title="Install unlisted package" name="arrow-return-left" type="submit" slot="suffix" @click=${e => this.emitInstallPackage(this.unlistedInstallUrl)} ?disabled=${!this.unlistedInstallUrl}></sl-icon-button>
 			</sl-input>`
+	}
+
+	viewAppDirButton = () => {
+		return html`<sl-button variant="neutral" class="view-local-files" @click=${this.emitOpenAppDir}>
+			View local application directory
+		</sl-button>`
+	}
+
+	clearAppDirButton = () => {
+		return html`<sl-button variant="danger" class="clear-local-files" @click=${this.emitClearAppDir}>
+			Clear local application directory
+		</sl-button>`
 	}
 
 	render() {
@@ -525,7 +545,11 @@ export class PackageManagerDrawer extends LitElement {
 							}
 						</div>
 					`}
-					${this.activeTab === "more"? this.npmPrompt(): null}
+					${this.activeTab === "more"? html`<div id="more-tab-content">
+						${this.npmPrompt()}
+						${this.viewAppDirButton()}
+						${this.clearAppDirButton()}
+					</div>`: null}
 					<div class="spinner-container">
 						${this.loading? html`
 							<sl-spinner></sl-spinner>
