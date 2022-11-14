@@ -4,7 +4,7 @@ order: 4
 # Guide: Creating a package
 
 ## Introduction
-WebWriter uses [npm packages](https://docs.npmjs.com/packages-and-modules) to provide an easy way of extending the authoring tool with new widgets. WebWriter will discover any package published on npm ([read more about npm here](https://docs.npmjs.com/about-npm)) if it is tagged with the keyword `webwriter`.
+WebWriter uses [npm packages](https://docs.npmjs.com/packages-and-modules) to provide an easy way of extending the authoring tool with new widgets. WebWriter will discover any package published on npm ([read more about npm here](https://docs.npmjs.com/about-npm)) if it is tagged with the keyword `webwriter-widget`.
 
 ## Prerequisites
 You have...
@@ -15,7 +15,7 @@ You have...
 If you're familiar with creating npm packages already, all you need to know is that you need to `npm publish` a package satisfying these conditions for WebWriter to detect it so that authors can install it:
 - `name` must be a [valid custom element element tag]((https://html.spec.whatwg.org/multipage/custom-elements.html#valid-custom-element-name))
 - `main` can be a `.js` or `.ts` file
-- `keywords` must contain `webwriter`
+- `keywords` must contain `webwriter-widget`
 
 
 ## Creating your package (step-by-step)
@@ -36,7 +36,7 @@ ww-coolwidget
 ```
 
 ### Step 3: Initializing your package
-Use npm to initialize the package. In the interactive prompt, the package name should be left as the directory name from step 1 (default), the entry point should be your main file from step 2, and one of the keywords *must* be `webwriter`.
+Use npm to initialize the package. In the interactive prompt, the package name should be left as the directory name from step 1 (default), the entry point should be your main file from step 2, and one of the keywords *must* be `webwriter-widget`.
 
 ```sh
 cd ww-coolwidget
@@ -65,5 +65,5 @@ First off, your package should be available on [`npm`, try searching for it](htt
 
 ## Notes & Troubleshooting
 - When publishing a new version, you need to increment the version in your `package.json`, as well.
-- If your package shows up on [npmjs.com](npmjs.com) but not in the Package Manager, make sure you added the `webwriter` keyword to your `package.json`.
+- If your package shows up on [npmjs.com](npmjs.com) but not in the Package Manager, make sure you added the `webwriter-widget` keyword to your `package.json`.
 - Of course, the `package.json` file can also be created manually without `npm init` if you prefer.
