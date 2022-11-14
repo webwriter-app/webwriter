@@ -28,7 +28,7 @@ Arguably the most basic feature is giving the widget a render function so it can
 In this example, we simply render a [vanilla `textarea` element](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/textarea) into the widget:
 
 ```ts
-import {LitElementWw} from "webwriter-lit"
+import {LitElementWw} from "@webwriter/lit"
 import {html, css} from "lit"
 import {property, query} from "lit/decorators.js"
 
