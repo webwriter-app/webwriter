@@ -1,5 +1,5 @@
-import {Command} from "@tauri-apps/api/shell"
-import {readTextFile, writeTextFile, removeFile, createDir, readDir} from "@tauri-apps/api/fs"
+import {Command, open} from "@tauri-apps/api/shell"
+import {readTextFile, writeTextFile, removeFile, createDir, readDir, removeDir} from "@tauri-apps/api/fs"
 import { join, appDir as getAppDir } from '@tauri-apps/api/path'
 import {call, put, takeLeading, all, takeEvery, select, actionChannel, take, ActionPattern} from "redux-saga/effects"
 
@@ -263,6 +263,35 @@ function* importBundle({packages, bundlename="bundle"}: {type: "importBundle_REQ
   }
 }
 
+function* clearAppDir() {
+  try {
+    const appDir = yield call(getAppDir)
+    yield call(removeDir, appDir, {recursive: true})
+    yield call(createDir, appDir)
+    yield call(fetchAllPackages, {type: "fetchAllPackages_REQUESTED", from: 0})
+    yield put({type: "clearAppDir_SUCCEEDED"})
+  }
+  catch(error) {
+    throw error
+    yield put({type: "clearAppDir_FAILED", error: {...error}})
+  }
+}
+
+function* openAppDir() {
+  console.log("openAppDir")
+  try {
+    const appDir = yield call(getAppDir)
+    console.log(appDir)
+    yield call(open, appDir)
+    console.log("opened")
+    yield put({type: "openAppDir_SUCCEEDED"})
+  }
+  catch(error) {
+    throw error
+    yield put({type: "openAppDir_FAILED", error: {...error}})
+  }
+}
+
 /*
 
 function* queueInstall(action: CLIAction<"install">) {
@@ -312,7 +341,9 @@ export function* rootSaga() {
     takeLeading("fetchAvailablePackages_REQUESTED", fetchAvailablePackages),
     takeLeading("fetchAllPackages_REQUESTED", fetchAllPackages),
     takeEvery("writeBundle_REQUESTED", writeBundle),
-    takeEvery("importBundle_REQUESTED", importBundle)
+    takeEvery("importBundle_REQUESTED", importBundle),
+    takeEvery("clearAppDir_REQUESTED", clearAppDir),
+    takeEvery("openAppDir_REQUESTED", openAppDir)
   ])
 }
 
@@ -327,4 +358,6 @@ export const actions = {
   ...createRequestedActionEntry("fetchAllPackages", fetchAllPackages),
   ...createRequestedActionEntry("writeBundle", writeBundle),
   ...createRequestedActionEntry("importBundle", importBundle),
+  ...createRequestedActionEntry("clearAppDir", clearAppDir),
+  ...createRequestedActionEntry("openAppDir", openAppDir)
 }

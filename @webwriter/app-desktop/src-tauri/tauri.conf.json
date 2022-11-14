@@ -20,6 +20,7 @@
         "removeFile": true,
         "createDir": true,
         "readDir": true,
+        "removeDir": true,
         "scope": ["$APP", "$APP/*", "$APP/**/*", "$HOME", "$HOME/*", "$HOME/**/*"]
       },
       "os": {
@@ -34,7 +35,7 @@
       "shell": {
         "sidecar": true,
         "execute": true,
-        "open": true,
+        "open": ".*",
         "scope": [
           {"name": "../../../binaries/npm", "args": true, "sidecar": true},
           {"name": "../../../binaries/esbuild", "args": true, "sidecar": true}
