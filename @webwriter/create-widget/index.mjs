@@ -55,7 +55,7 @@ const options = [
     name: "keywords",
     type: "list",
     message: "package keywords",
-    initial: "webwriter"
+    initial: "webwriter-widget"
   },
   {
     name: "author",
