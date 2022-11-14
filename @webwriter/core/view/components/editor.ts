@@ -605,6 +605,7 @@ export class ExplorableEditor extends LitElement {
         <ww-widget-toolbox tabIndex=${-1} @ww-delete-widget=${e => this.deleteWidget(e.detail.widget)}></ww-widget-toolbox>
 				<sl-popup active anchor="main" placement="left" shift strategy="fixed" distance=${25}>
 					<ww-editor-toolbox
+						part="editor-toolbox"
 						@ww-change-widget=${e => this.insertWidget(e.detail.name)}
 						@ww-click-mark-command=${e => this.exec(this.markCommands[e.detail.name].command(this.editorState))}
 						.packages=${this.packages}
