@@ -464,7 +464,7 @@ export class PackageManagerDrawer extends LitElement {
 			<span class="package-author" slot="header">${author}</span>
 			<code class="package-version" slot="header">${version}</code>
 			<br slot="header">
-			${["official"].concat(keywords?.filter(kw => kw !== "webwriter" && kw !== "official")).map(kw => html`
+			${["official"].concat(keywords?.filter(kw => kw !== "webwriter-widget" && kw !== "official")).map(kw => html`
 				<sl-tag variant="primary" slot="header">${kw}</sl-tag>
 			`)}
 			<span class="package-description">${description}</span>
