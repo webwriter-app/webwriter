@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/create-widget",
-  "version": "0.3.6",
+  "version": "0.4.0",
   "description": "NPM Initializer to create a new widget with the default setup",
   "main": "index.mjs",
   "publishConfig": {

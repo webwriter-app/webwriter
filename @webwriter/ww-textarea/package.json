@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/ww-textarea",
-  "version": "0.3.4",
+  "version": "0.4.0",
   "description": "Let the user enter text",
   "main": "index.ts",
   "type": "module",
@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@shoelace-style/shoelace": "^2.0.0-beta.83",
-    "@webwriter/lit": "^0.3.0",
+    "@webwriter/lit": "^0.4.0",
     "lit": "^2.3.1"
   },
   "scripts": {},
