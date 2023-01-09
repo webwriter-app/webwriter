@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/app-desktop",
-  "version": "0.3.4",
+  "version": "0.4.0",
   "description": "Windows/Mac/Linux version of WebWriter",
   "private": true,
   "scripts": {
