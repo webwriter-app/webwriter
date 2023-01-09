@@ -17,6 +17,7 @@
     "@shoelace-style/shoelace": "^2.0.0-beta.88",
     "@tauri-apps/api": "^1.2.0",
     "@webwriter/model": "file:../core",
+    "bootstrap-icons": "^1.10.3",
     "buffer": "^6.0.3",
     "hotkeys-js": "^3.10.0",
     "isomorphic-git": "^1.21.0",
