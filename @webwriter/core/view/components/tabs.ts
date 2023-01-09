@@ -3,7 +3,7 @@ import {LitElement, html, css} from "lit"
 import {customElement, property, query, queryAssignedElements} from "lit/decorators.js"
 import { classMap } from "lit/directives/class-map.js"
 
-import {isOverflownX, isOverflownY, WWURL} from "../../utility"
+import {isOverflownX, isOverflownY} from "../../utility"
 
 const PROTOCOL_ICONS = {
 	"file": "hdd",
@@ -453,7 +453,7 @@ export class Tab extends LitElement {
 	)
 
 	iconicUrlTemplate = () => {
-		const url = new WWURL(this.titleValue)
+		const url = new URL(this.titleValue)
 		const iconName = PROTOCOL_ICONS[url.protocol.slice(0, -1)]
 		const filename = url.pathname.slice(url.pathname.lastIndexOf("/") + 1).split("#")[0]
 		return html`

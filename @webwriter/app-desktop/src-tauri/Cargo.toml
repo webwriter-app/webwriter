@@ -12,12 +12,16 @@ rust-version = "1.57"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
-tauri-build = { version = "1.1.1", features = [] }
+tauri-build = { version = "1", features = [] }
 
 [dependencies]
-serde_json = "1.0"
-serde = { version = "1.0", features = ["derive"] }
-tauri = { version = "1.1.1", features = ["dialog-all", "fs-create-dir", "fs-read-dir", "fs-read-file", "fs-remove-dir", "fs-remove-file", "fs-write-file", "os-all", "path-all", "shell-execute", "shell-open", "shell-sidecar", "updater"] }
+serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+tauri = { version = "1.2.3", features = ["dialog-all", "fs-create-dir", "fs-exists", "fs-read-dir", "fs-read-file", "fs-remove-dir", "fs-remove-file", "fs-write-file", "http-all", "os-all", "path-all", "shell-execute", "shell-open", "shell-sidecar"] }
+
+[dependencies.tauri-plugin-fs-extra]
+git = "https://github.com/tauri-apps/tauri-plugin-fs-extra"
+branch = "dev"
 
 [features]
 # by default Tauri runs in production mode
@@ -26,3 +30,10 @@ default = [ "custom-protocol" ]
 # this feature is used for production builds where `devPath` points to the filesystem
 # DO NOT remove this
 custom-protocol = [ "tauri/custom-protocol" ]
+
+[profile.release]
+incremental = false
+codegen-units = 1
+panic = "abort"
+opt-level = "s"
+lto = true

@@ -4,7 +4,7 @@ import { baseKeymap, joinForward, selectNodeForward } from "prosemirror-commands
 import {keymap} from "prosemirror-keymap"
 import {inputRules, InputRule} from "prosemirror-inputrules"
 import { gapCursor } from "prosemirror-gapcursor"
-import { history } from "prosemirror-history"
+import { history, undo, redo } from "prosemirror-history"
 import { chainCommands, deleteSelection, joinBackward, selectNodeBackward} from "prosemirror-commands"
 import { EditorView } from "prosemirror-view"
 import { unscopePackageName } from "../utility"
@@ -30,6 +30,7 @@ function packageWidgetNodeSpec(tag: string, pkg: string): NodeSpec {
     preserveWhitespace: false,
     isolating: false,
     attrs: {
+      id: {},
       editable: {default: false},
       printable: {default: false},
       analyzable: {default: false},
@@ -37,6 +38,7 @@ function packageWidgetNodeSpec(tag: string, pkg: string): NodeSpec {
     },
     parseDOM : [{tag, getAttrs: (dom: HTMLElement) => {
       return {
+        id: dom.getAttribute("id"),
         editable: dom.getAttribute("editable") ?? false,
         printable: dom.getAttribute("printable") ?? false,
         analyzable: dom.getAttribute("analyzable") ?? false,
@@ -48,6 +50,7 @@ function packageWidgetNodeSpec(tag: string, pkg: string): NodeSpec {
     }}],
     toDOM: (node: Node) => {
       return [node.type.name, {
+        id: node.attrs.id,
         ...(node.attrs.editable? {"editable": true}: {}),
         ...(node.attrs.printable? {"printable": true}: {}),
         ...(node.attrs.analyzable? {"analyzable": true}: {}),
@@ -266,7 +269,9 @@ const customDeleteCommand = chainCommands(
 const explorableKeymap: Record<string, Command> = {
   "Backspace": customBackspaceCommand,
   "Control-ArrowUp": customArrowCommand(true),
-  "Control-ArrowDown": customArrowCommand()
+  "Control-ArrowDown": customArrowCommand(),
+  "Control-z": undo,
+  "Control-y": redo
 }
 
 const rules: InputRule[] = [
@@ -303,6 +308,9 @@ export const defaultConfig: EditorStateConfig = {
   ]
 }
 
+export function createSchema(packages: string[]) {
+  return new Schema(createSchemaSpec(packages))
+}
 
 export const createEditorState = (
   {packages = [], baseConfig = defaultConfig, schema, doc}

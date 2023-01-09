@@ -19,6 +19,7 @@
         "writeFile": true,
         "removeFile": true,
         "createDir": true,
+        "exists": true,
         "readDir": true,
         "removeDir": true,
         "scope": ["$APP", "$APP/*", "$APP/**/*", "$HOME", "$HOME/*", "$HOME/**/*"]
@@ -31,6 +32,10 @@
       },
       "dialog": {
         "all": true
+      },
+      "http": {
+        "all": true,
+        "scope": ["https://**"]
       },
       "shell": {
         "sidecar": true,
@@ -76,14 +81,9 @@
     "security": {
       "csp": null
     },
-    "updater": {
-      "active": true,
-      "endpoints": [],
-      "dialog": true,
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhDRkIzODdFQkZBRkVCQTUKUldTbDY2Ky9mamo3alBnL2dLTmJSNkdTSVdpemlNVnJndXNjVkZKQVZiT05QSUNER0JCakpjR2wK"
-    },
     "windows": [
       {
+        "fileDropEnabled": false,
         "fullscreen": false,
         "height": 600,
         "resizable": true,

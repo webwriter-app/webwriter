@@ -2,7 +2,7 @@
 import {save as pickSaveFile, open as pickLoadFile, DialogFilter} from "@tauri-apps/api/dialog"
 import {readBinaryFile, readTextFile, writeFile, writeBinaryFile} from "@tauri-apps/api/fs"
 import { platform } from '@tauri-apps/api/os'
-import { WWURL } from "../utility"
+import { getFileExtension } from "../utility"
 
 export class UserCancelledError extends Error {}
 
@@ -32,8 +32,10 @@ export async function pickSave(filters?: DialogFilter[], defaultPath?: string) {
 }
 
 export async function save(data: any, url: string, binary=false) {
-  const wwurl = new WWURL(url)
-  let path = decodeURI(wwurl.pathname).slice(1)
+  const urlObj = new URL(url)
+  const format = getFileExtension(urlObj.pathname)
+  let path = decodeURI(urlObj.pathname).slice(1)
+  console.log({format, path})
   path = ["darwin", "linux"].includes(await platform())? "/" + path: path
   return binary
     ? writeBinaryFile({path, contents: data})
@@ -45,12 +47,11 @@ export async function pickLoad(filters?: DialogFilter[], multiple=false) {
 }
 
 export async function load(url: string, binaryExtensions=[]) {
-  console.log(url, binaryExtensions)
-  
-  const wwurl = new WWURL(url)
-  let path = decodeURI(wwurl.pathname).slice(1)
+  const urlObj = new URL(url)
+  const format = getFileExtension(urlObj.pathname)
+  let path = decodeURI(urlObj.pathname).slice(1)
   path = ["darwin", "linux"].includes(await platform())? "/" + path: path
-  return binaryExtensions.includes(wwurl.wwformat)
+  return binaryExtensions.includes(format)
     ? readBinaryFile(path)
     : readTextFile(path)
 }

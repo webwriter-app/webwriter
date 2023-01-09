@@ -1,20 +1,22 @@
 import {LitElement, html, css, PropertyValueMap, ReactiveController, unsafeCSS} from "lit"
 import {styleMap} from "lit/directives/style-map.js"
 import {customElement, property, query} from "lit/decorators.js"
-//@ts-ignore 
-import prosemirrorCSS from "prosemirror-view/style/prosemirror.css"
-//@ts-ignore 
-import gapcursorCSS from "prosemirror-gapcursor/style/gapcursor.css"
-import { camelCaseToSpacedCase, prettifyPackageName, unscopePackageName } from "../../utility"
-
+import prosemirrorCSS from "prosemirror-view/style/prosemirror.css?raw"
+import gapcursorCSS from "prosemirror-gapcursor/style/gapcursor.css?raw"
+import { camelCaseToSpacedCase, getScrollbarWidth, prettifyPackageName, unscopePackageName } from "../../utility"
 import { Decoration, EditorView, NodeView, DecorationSet } from "prosemirror-view"
 import { EditorState, Command, NodeSelection, Selection, AllSelection, TextSelection } from "prosemirror-state"
 import { DOMSerializer, Node } from "prosemirror-model"
 import { chainCommands, toggleMark } from "prosemirror-commands"
+
 import { PackageJson } from "../../state"
 import { DocumentFooter, DocumentHeader } from "./meta"
 import { getOtherAttrsFromWidget } from "../../state/editorstate"
 import {computePosition, autoUpdate, offset, shift, size} from '@floating-ui/dom'
+import { WidgetForm } from "./widgetform"
+import { CollageImagePicker } from "./uielements"
+
+import * as allSemantics from "../../../../test/data/index"
 
 
 /* Issues
@@ -53,6 +55,9 @@ class WidgetView implements NodeView {
 			)
 			this.view.dispatch(tr)
 		}
+		else if(type === "childList") {
+			// TODO
+		}
 		return true
 	}
 
@@ -80,6 +85,10 @@ class WidgetView implements NodeView {
 				&& !(e instanceof KeyboardEvent && e.key === "Escape")
 		}
 	}
+
+}
+
+class H5PWidgetView extends WidgetView {
 
 }
 
@@ -159,14 +168,21 @@ export class ExplorableEditor extends LitElement {
 		this.editorViewController.focus()
 	}
 
+	get firstAvailableWidgetID() {
+		let num = 0
+		while(this.main.querySelector(`#ww_${num.toString(36)}`)) {
+			num++
+			if(num === Number.MAX_SAFE_INTEGER) {
+				return null
+			}
+		}
+		return `ww_${num.toString(36)}`
+	}
+
 	insertWidget = (name: string) => {
 		const state = this.editorViewController.state
-		const {$from, $to} = state.selection
-		const node = state.schema.nodes[name].create()
-
+		const node = state.schema.nodes[name].create({id: this.firstAvailableWidgetID})
 		let tr = state.tr.replaceSelectionWith(node)
-		// tr = tr.insert(tr.selection.from, state.schema.nodes.paragraph.create())
-		// tr = tr.insert(tr.selection.to, state.schema.nodes.paragraph.create())
 		this.editorViewController.dispatch(tr)
 	}
 
@@ -192,6 +208,9 @@ export class ExplorableEditor extends LitElement {
 
 	@property({type: Boolean, attribute: true})
 	previewing: boolean
+
+	@property({type: Boolean, attribute: true, reflect: true})
+	hoverWidgetAdd: boolean = false
 	
 	@query("ww-document-header")
 	documentHeader: DocumentHeader
@@ -317,6 +336,10 @@ export class ExplorableEditor extends LitElement {
 				white-space: normal !important;
 			}
 
+			:host([hoverWidgetAdd]) main {
+				caret-color: var(--sl-color-primary-600);
+			}
+
 			:host(:not([previewing])) .ProseMirror::before {
         color: darkgray;
 				position: absolute;
@@ -419,6 +442,10 @@ export class ExplorableEditor extends LitElement {
         display: none;
       }
 
+			ww-document-header, ww-document-footer {
+				display: none;
+			}
+
 			@media only screen and (max-width: 1300px) {
 
         ww-widget-toolbox::part(base) {
@@ -442,10 +469,6 @@ export class ExplorableEditor extends LitElement {
           padding-top: 40px;
           user-select: none;
           -webkit-user-select: none;
-				}
-				
-				ww-editor-toolbox {
-					padding-top: 40px;
 				}
 			}
 
@@ -597,6 +620,16 @@ export class ExplorableEditor extends LitElement {
 				@ww-focus-down=${e => this.editorViewController.focus()}
 				@ww-attribute-change=${e => this.setMetaValue(e.detail.key, e.detail.value)}
 			></ww-document-header>
+			<!--
+			<ww-file-input multiple style="margin-top: 1rem;"></ww-file-input>
+			<ww-image-coordinate-picker @change=${console.log} helpText="Pick a nice spot" label="Pick a hotspot" src="https://upload.wikimedia.org/wikipedia/commons/9/9e/Boufal2022.jpg"></ww-image-coordinate-picker>
+			<ww-rich-text-editor @change=${console.log}></ww-rich-text-editor>
+			-->
+			<!--<ww-collage-image-picker></ww-collage-image-picker>-->
+			<!--${null || Object.entries(allSemantics).map(([name, semantics]) => html`
+				<h2>${name}</h2>
+				<ww-widget-form .widgetProperties=${Object.fromEntries(semantics.map(desc => [desc.name, desc]))}></ww-widget-form>
+			`)}-->
 			<div id="main-wrapper" @focusin=${this.handleFocusIn} @focusout=${this.handleFocusOut} @mouseover=${this.handleMouseIn} @mouseout=${this.handleMouseOut}>
 				${!this.loadingPackages
 						? html`<main part="main" id="main" spellcheck=${false} contenteditable=${!this.previewing}></main>`
@@ -605,9 +638,12 @@ export class ExplorableEditor extends LitElement {
         <ww-widget-toolbox tabIndex=${-1} @ww-delete-widget=${e => this.deleteWidget(e.detail.widget)}></ww-widget-toolbox>
 				<sl-popup active anchor="main" placement="left" shift strategy="fixed" distance=${25}>
 					<ww-editor-toolbox
+						style=${styleMap({width: `calc(100% - ${getScrollbarWidth()}px)`})}
 						part="editor-toolbox"
 						@ww-change-widget=${e => this.insertWidget(e.detail.name)}
 						@ww-click-mark-command=${e => this.exec(this.markCommands[e.detail.name].command(this.editorState))}
+						@ww-mousein-widget-add=${() => this.hoverWidgetAdd = true}
+						@ww-mouseout-widget-add=${() => this.hoverWidgetAdd = false}
 						.packages=${this.packages}
 						.markCommands=${this.markCommands}
 						.activeMarks=${getActiveMarks(this.editorState)}
@@ -653,15 +689,17 @@ class WwWidgetToolbox extends LitElement {
     if(changedProperties.has("widget") && this.widget) {
       const narrowLayout = document.documentElement.clientWidth <= 1300 
       this.cleanup = autoUpdate(this.widget, this, async () => {
-        try {
-          const {x, y} = await computePosition(this.widget, this, {
-            placement: narrowLayout? "bottom-end": "right-start",
-            middleware: narrowLayout? [offset(5)]: [offset(30)]
-          })
-          this.x = narrowLayout? x - this.div.offsetWidth: x
-          this.y = y
-        }
-        catch(e) {}
+				if(this.widget) {
+					try {
+						const {x, y} = await computePosition(this.widget, this, {
+							placement: narrowLayout? "bottom-end": "right-start",
+							middleware: narrowLayout? [offset(5)]: [offset(30)]
+						})
+						this.x = narrowLayout? x - this.div.offsetWidth: x
+						this.y = y
+					}
+					catch(e) {}
+				}
       })
     }
     /*else if(changedProperties.has("widget") && !this.widget) {
@@ -711,7 +749,7 @@ class WwWidgetToolbox extends LitElement {
       const styles = {left: `${this.x}px`, top: `${this.y}px`}
       const name = prettifyPackageName(this.widget.tagName.toLowerCase())
       return html`<div part="base" style=${styleMap(styles)}>
-        <span id="name">${name}</span>
+        <span id="name" title=${this.widget.id}>${name}</span>
         <sl-icon-button id="delete-button" title="Delete widget" name="trash" @click=${this.emitDeleteWidget}></sl-icon-button>
       </div>`
     }
@@ -727,6 +765,14 @@ class WwEditorToolbox extends LitElement {
 
 	emitClickMarkCommand = (name: string) => {
 		this.dispatchEvent(new CustomEvent("ww-click-mark-command", {composed: true, bubbles: true, detail: {name}}))
+	}
+
+	emitMouseInWidgetAdd = (name: string) => {
+		this.dispatchEvent(new CustomEvent("ww-mousein-widget-add", {composed: true, bubbles: true, detail: {name}}))
+	}
+
+	emitMouseOutWidgetAdd = (name: string) => {
+		this.dispatchEvent(new CustomEvent("ww-mouseout-widget-add", {composed: true, bubbles: true, detail: {name}}))
 	}
 
 	emitClose = () => {
@@ -825,6 +871,24 @@ class WwEditorToolbox extends LitElement {
 				background: lightgray;
 				border-radius: 10px;
 			}
+
+		.alert-widget-creation::part(base) {
+			z-index: 100;
+			border: none;
+		}
+
+		.alert-widget-creation::part(icon) {
+			font-size: 2rem;
+			margin-right: 1ch;
+		}
+
+		.alert-widget-creation::part(message) {
+			padding: 4px;
+			height: 110px;
+			display: flex;
+			flex-direction: column;
+			justify-content: center;
+		}
 		
 		@media only screen and (max-width: 1300px) {
 			:host {
@@ -835,12 +899,12 @@ class WwEditorToolbox extends LitElement {
 				position: fixed;
 				bottom: 0;
 				left: 0;
-				width: 100%;
 				background: #f1f1f1;
 				padding: 5px;
 				height: 165px;
 				box-sizing: border-box;
 				border-top: 1px solid darkgray;
+				border-right: 1px solid darkgray;
 				transform: translateX(0);
 			}
 
@@ -885,15 +949,26 @@ class WwEditorToolbox extends LitElement {
 		}
 	`
 
+	private createPackagePreviewWidget(name: string) {
+		const widgetName = unscopePackageName(name)
+		const WidgetElement = customElements.get(widgetName)
+		return WidgetElement? document.createElement(widgetName): null
+	}
+
 	packageTemplate = (pkg: PackageJson) => html`<sl-card class="package-card">
-		<span title="Add this widget" @click=${() => this.emitChangeWidget(pkg.name)} class="title" slot="header">
+		<span title="Add this widget" @click=${() => this.emitChangeWidget(pkg.name)} class="title" slot="header" @mouseenter=${() => this.emitMouseInWidgetAdd(pkg.name)} @mouseleave=${() => this.emitMouseOutWidgetAdd(pkg.name)}>
 			<span>${prettifyPackageName(pkg.name)}</span>
 			<sl-tooltip hoist content=${pkg.description}>
 				<sl-icon title=${pkg.description} class="info-icon" name="info-circle"></sl-icon>
 			</sl-tooltip>
 			<sl-icon class="add-icon" name="plus-square"></sl-icon>
 		</span>
-		${new (customElements.get(unscopePackageName(pkg.name)))()}
+		${this.createPackagePreviewWidget(pkg.name) ?? html`
+		<sl-alert class="alert-widget-creation" variant="warning" open>
+			<sl-icon slot="icon" name="exclamation-triangle"></sl-icon>
+			<span>Could not create widget.</span>
+		</sl-alert>
+		`}
 	</sl-card>`
 
 	markCommandsTemplate = () => Object.entries(this.markCommands).map(([k, v]) => 	{

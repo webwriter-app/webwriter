@@ -12,7 +12,4 @@ export type Widget = HTMLElement & {
 
 export interface WidgetConstructor<W extends Widget = Widget> {
   new (...params: any[]): W
-
-  /** Flag to mark the widget for inline display instead of block display */
-  category?: "leaf" | "inline" | "container"
 }

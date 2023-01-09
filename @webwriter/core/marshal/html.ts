@@ -2,12 +2,12 @@ import { readTextFile, removeFile, writeTextFile } from '@tauri-apps/api/fs'
 import {Node, DOMSerializer} from "prosemirror-model"
 
 import {Attributes} from "@webwriter/model"
-import { bundle } from '../state'
 import { createElementWithAttributes, namedNodeMapToObject, unscopePackageName } from "../utility"
 import { join, appDir } from '@tauri-apps/api/path'
 import { EditorState } from 'prosemirror-state'
 import {Schema, DOMParser} from "prosemirror-model"
 import { createEditorState } from '../state/editorstate'
+import { Environment } from '../environment'
 
 class NonHTMLDocumentError extends Error {}
 class NonWebwriterDocumentError extends Error {}
@@ -15,7 +15,7 @@ class UnsupportedPackagesError extends Error {
   constructor(message: string, public readonly unsupportedPackageNames: string[]) {super(message)}
 }
 
-export async function docToBundle(doc: Node) {
+export async function docToBundle(doc: Node, bundle: Environment["bundle"]) {
   const html = document.implementation.createHTMLDocument()
   const serializer = DOMSerializer.fromSchema(doc.type.schema)
   serializer.serializeFragment(doc.content, {document: html}, html.body)
@@ -118,9 +118,9 @@ export function parse(data: string, schema: Schema) {
   return editorState
 }
 
-export async function serialize(explorable: Node) {
+export async function serialize(explorable: Node, bundle: Environment["bundle"]) {
   
-  const {html, js, css} = await docToBundle(explorable)
+  const {html, js, css} = await docToBundle(explorable, bundle)
 
   const script = html.createElement("script")
   script.type = "text/javascript"

@@ -1,5 +1,6 @@
 import {docToBundle} from "./html"
 import {Node, Schema} from "prosemirror-model"
+import { Environment } from "../environment"
 
 export function docToH5PPackageDefinition() {
   
@@ -9,9 +10,9 @@ export function parse(data: string, schema: Schema) {
 
 }
 
-export async function serialize(explorable: Node) {
+export async function serialize(explorable: Node, bundle: Environment["bundle"]) {
   
-  const {html, js, css} = await docToBundle(explorable)
+  const {html, js, css} = await docToBundle(explorable, bundle)
 
   const script = html.createElement("script")
   script.type = "text/javascript"

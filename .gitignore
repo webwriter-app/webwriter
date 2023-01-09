@@ -10,3 +10,5 @@
 /static/assets/icons
 dist
 _site
+test/data
+*.lnk

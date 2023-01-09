@@ -1,10 +1,12 @@
 {
   "name": "webwriter",
   "version": "0.2.0",
-  "description": "Web-based authoring tool for open explorables",
+  "description": "Web-based authoring tool for explorables",
   "scripts": {
     "dev-desktop": "npm run -w @webwriter/app-desktop dev",
+    "dev-cloud": "npm run -w @webwriter/app-cloud dev",
     "dev-docs": "bundle exec jekyll serve -s ./docs",
+    "test": "wdio run ./test/wdio.conf.ts",
     "lerna": "lerna",
     "publish": "lerna publish --no-private",
     "createbinaries": "node ./scripts/createbinaries.js",
@@ -26,12 +28,26 @@
   ],
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "license": "UNLICENSED",
-  "workspaces": ["@webwriter/*"],
+  "workspaces": [
+    "@webwriter/*"
+  ],
   "devDependencies": {
-    "fs-extra": "^10.1.0",
-    "lerna": "^5.6.1",
-    "npm": "^8.19.1",
+    "@types/mocha": "^10.0.1",
+    "@wdio/allure-reporter": "^8.1.2",
+    "@wdio/cli": "^8.0.15",
+    "@wdio/concise-reporter": "^8.1.2",
+    "@wdio/dot-reporter": "^8.1.2",
+    "@wdio/local-runner": "^8.0.15",
+    "@wdio/mocha-framework": "^8.0.14",
+    "@wdio/spec-reporter": "^8.0.14",
+    "@wdio/types": "^8.1.2",
+    "fs-extra": "^11.1.0",
+    "lerna": "^6.4.0",
+    "mocha": "^10.2.0",
+    "npm": "^9.2.0",
     "npm-run-all": "^4.1.5",
-    "pkg": "^5.8.0"
+    "pkg": "^5.8.0",
+    "ts-node": "^10.9.1",
+    "vite": "^4.0.4"
   }
 }

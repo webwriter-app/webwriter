@@ -15,9 +15,6 @@
     "@webwriter/lit": "^0.3.0",
     "lit": "^2.4.0"
   },
-  "devDependencies": {
-    "typescript": "^4.8.4",
-    "vite": "^3.1.6"
-  },
+  "devDependencies": {},
   "gitHead": "66708f3823f4045cce741a39c20fdcb1cac6de06"
 }

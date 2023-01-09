@@ -1,6 +1,7 @@
 import {docToBundle, parse as parseHTML} from "./html"
 import {Node, Schema} from "prosemirror-model"
 import JSZip from "jszip"
+import { Environment } from "../environment"
 
 export function docToManifest(explorable: Node, webFileName: string, fileNames: string[]) {
   const xml = document.implementation.createDocument(null, "")
@@ -63,9 +64,9 @@ export async function parse(data: string, schema: Schema) {
   return parseHTML(htmlString, schema)
 }
 
-export async function serialize(explorable: Node) {
+export async function serialize(explorable: Node, bundle: Environment["bundle"]) {
   
-  const {html, js, css} = await docToBundle(explorable)
+  const {html, js, css} = await docToBundle(explorable, bundle)
 
   const zip = new JSZip()
 
