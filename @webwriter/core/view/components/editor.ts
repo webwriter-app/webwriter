@@ -16,8 +16,6 @@ import {computePosition, autoUpdate, offset, shift, size} from '@floating-ui/dom
 import { WidgetForm } from "./widgetform"
 import { CollageImagePicker } from "./uielements"
 
-import * as allSemantics from "../../../../test/data/index"
-
 
 /* Issues
 - editor toolbox visibility
@@ -620,16 +618,6 @@ export class ExplorableEditor extends LitElement {
 				@ww-focus-down=${e => this.editorViewController.focus()}
 				@ww-attribute-change=${e => this.setMetaValue(e.detail.key, e.detail.value)}
 			></ww-document-header>
-			<!--
-			<ww-file-input multiple style="margin-top: 1rem;"></ww-file-input>
-			<ww-image-coordinate-picker @change=${console.log} helpText="Pick a nice spot" label="Pick a hotspot" src="https://upload.wikimedia.org/wikipedia/commons/9/9e/Boufal2022.jpg"></ww-image-coordinate-picker>
-			<ww-rich-text-editor @change=${console.log}></ww-rich-text-editor>
-			-->
-			<!--<ww-collage-image-picker></ww-collage-image-picker>-->
-			<!--${null || Object.entries(allSemantics).map(([name, semantics]) => html`
-				<h2>${name}</h2>
-				<ww-widget-form .widgetProperties=${Object.fromEntries(semantics.map(desc => [desc.name, desc]))}></ww-widget-form>
-			`)}-->
 			<div id="main-wrapper" @focusin=${this.handleFocusIn} @focusout=${this.handleFocusOut} @mouseover=${this.handleMouseIn} @mouseout=${this.handleMouseOut}>
 				${!this.loadingPackages
 						? html`<main part="main" id="main" spellcheck=${false} contenteditable=${!this.previewing}></main>`
