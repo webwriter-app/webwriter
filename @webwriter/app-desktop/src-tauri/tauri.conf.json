@@ -92,6 +92,14 @@
         "minWidth": 500,
         "minHeight": 500
       }
-    ]
+    ],
+    "updater": {
+      "active": true,
+      "dialog": true,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZDNzVDNDgzOTk0OUQyQzgKUldUSTBrbVpnOFIxL05YWm9ONGp6WERkNVZGamdsbzFmekZURzd0NENNbVZhcTlqc3cycWM2Y1EK",
+      "endpoints": [
+        "https://github.com/salmenf/webwriter/releases/download/{{current_version}}/"
+      ]
+    }
   }
 }
