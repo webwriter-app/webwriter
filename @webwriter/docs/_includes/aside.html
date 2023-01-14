@@ -13,25 +13,29 @@
       <div style="color: black; padding: 0.5rem; border-radius: 2px; border: 4px solid #ffa92b; margin-bottom: 1rem; width: 210px; box-sizing: border-box"><ion-icon name="warning"></ion-icon> <b>Warning:</b> WebWriter is still an early work in progress, things will break!</div>
       <div class="releases">
       {% for asset in site.github.latest_release.assets %}
-      {% assign display = "flex" %}
-      {% if asset.name contains ".msi" %}
-        {% assign label = "Windows" %}
-        {% assign order = "0" %}
-        {% assign icon = "logo-windows" %}
-      {% elsif asset.name contains "x64.dmg" %}
-        {% assign label = "Mac" %}
-        {% assign order = "1" %}
-        {% assign icon = "logo-apple" %}
-      {% elsif asset.name contains "aarch64.dmg" %}
-        {% assign label = "Mac (M-Series)" %}
-        {% assign order = "2" %}
-        {% assign icon = "logo-apple" %}
-      {% elsif asset.name contains ".AppImage" %}
-        {% assign label = "Linux" %}
-        {% assign order = "3" %}
-        {% assign icon = "logo-tux" %}
-      {% else %}
-        {% assign display = "none" %}
+        {% assign display = "flex" %}
+        {% unless asset.name contains ".zip" %}
+          {% unless asset.name contains ".tar.gz" %}
+            {% if asset.name contains ".msi" %}
+              {% assign label = "Windows" %}
+              {% assign order = "0" %}
+              {% assign icon = "logo-windows" %}
+            {% elsif asset.name contains "x64.dmg" %}
+              {% assign label = "Mac" %}
+              {% assign order = "1" %}
+              {% assign icon = "logo-apple" %}
+            {% elsif asset.name contains "aarch64.dmg" %}
+              {% assign label = "Mac (M-Series)" %}
+              {% assign order = "2" %}
+              {% assign icon = "logo-apple" %}
+            {% elsif asset.name contains ".AppImage" %}
+              {% assign label = "Linux" %}
+              {% assign order = "3" %}
+              {% assign icon = "logo-tux" %}
+            {% else %}
+              {% assign display = "none" %}
+          {% endunless %}
+        {% endunless %}
       {% endif %}
         <a download style="order: {{order}}; display: {{display}}" href="{{ asset.browser_download_url }}">
           <ion-icon name="{{icon}}"></ion-icon>
