@@ -2,7 +2,7 @@ import {LitElement, html, css, PropertyValueMap} from "lit"
 import {customElement, property, query, queryAll, queryAsync} from "lit/decorators.js"
 import { Attributes } from "@webwriter/model"
 import { camelCaseToSpacedCase} from "../../utility"
-import { SlAnimation, SlDetails, SlInput, SlTextarea, registerIconLibrary } from "@shoelace-style/shoelace"
+import { SlAnimation, SlDetails, SlInput, SlTextarea } from "@shoelace-style/shoelace"
 import spdx from "spdx-license-list"
 
 import { WwCombobox } from "./uielements"
@@ -537,7 +537,6 @@ export class WwLicensePicker extends LitElement {
 
 	constructor() {
 		super()
-		registerIconLibrary("cc", {resolver: name => `./assets/cc/${name}.svg`})
 		this.addEventListener("blur", this.handleClose)
 	}
 
@@ -615,38 +614,31 @@ export class WwLicensePicker extends LitElement {
 			fullLabel: "All rights reserved"
 		},
 		"CC-BY-NC-ND-4.0": {
-			icons: ["cc", "by", "nc", "nd"],
-			iconLibrary: "cc",
+			icons: ["o.cc", "o.cc-by", "o.nc", "o.nd"],
 			fullLabel: "Creative Commons Attribution Non Commercial No Derivatives 4.0 International"
 		},
 		"CC-BY-NC-SA-4.0": {
-			icons: ["cc", "by", "nc", "sa"],
-			iconLibrary: "cc",
+			icons: ["o.cc", "o.cc-by", "o.nc", "o.sa"],
 			fullLabel: "Creative Commons Attribution Non Commercial Share Alike 4.0 International"
 		},
 		"CC-BY-NC-4.0": {
-			icons: ["cc", "by", "nc"],
-			iconLibrary: "cc",
+			icons: ["o.cc", "o.cc-by", "o.nc"],
 			fullLabel: "Creative Commons Attribution Non Commercial 4.0 International"
 		},
 		"CC-BY-ND-4.0": {
-			icons: ["cc", "by", "nd"],
-			iconLibrary: "cc",
+			icons: ["o.cc", "o.cc-by", "o.nd"],
 			fullLabel: "Creative Commons Attribution No Derivatives 4.0 International"
 		},
 		"CC-BY-SA-4.0": {
-			icons: ["cc", "by", "sa"],
-			iconLibrary: "cc",
+			icons: ["o.cc", "o.cc-by", "o.sa"],
 			fullLabel: "Creative Commons Attribution Share Alike 4.0 International"
 		},
 		"CC-BY-4.0": {
-			icons: ["cc", "by"],
-			iconLibrary: "cc",
+			icons: ["o.cc", "o.cc-by"],
 			fullLabel: "Creative Commons Attribution 4.0 International"
 		},
 		"CC0-1.0": {
-			icons: ["cc", "zero"],
-			iconLibrary: "cc",
+			icons: ["o.cc", "o.zero"],
 			fullLabel: "Creative Commons Zero v1.0 Universal"
 		}
 	}
@@ -742,7 +734,7 @@ export class WwLicensePicker extends LitElement {
 		return html`
 			<span tabindex=${0} class="license" spellcheck=${false}>
 				<sl-input ?disabled=${this.disabled} value=${this.value} ?spellcheck=${false} @sl-change=${e => this.handleChange(e.target.value)} @focusin=${this.handleOpen}></sl-input>
-				${null && WwLicensePicker.LICENSES[this.value]?.icons?.map(name => html`<sl-icon library="cc" name=${name}></sl-icon>`)}
+				${null && WwLicensePicker.LICENSES[this.value]?.icons?.map(name => html`<sl-icon name=${name}></sl-icon>`)}
 				${this.href? html`<a href=${this.href} target="_blank"><sl-icon name="box-arrow-up-right"></sl-icon></a>`: null}
 			</span>
 			<sl-animation name="fadeIn" easing="ease" duration=${500} iterations=${1}>
