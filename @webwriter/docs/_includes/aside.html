@@ -14,7 +14,7 @@
       <div class="releases">
       {% for asset in site.github.latest_release.assets %}
         {% assign display = "flex" %}
-        {% assign extension = asset.name | slice: -3, 2}
+        {% assign extension = asset.name | slice: -3, 2 %}
         {% if extension == "msi" and asset.name contains "x64" %}
           {% assign label = "Windows" %}
           {% assign order = "0" %}
