@@ -48,7 +48,7 @@ jobs:
         run: npm install
 
       - name: Run prebuild actions (static resources, sidecar binaries, app icon)
-        run: node prebuild-desktop
+        run: npm run prebuild-desktop
 
       - name: Build web
         run: npm run build-core
