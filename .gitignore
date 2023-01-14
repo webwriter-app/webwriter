@@ -7,7 +7,7 @@
 /build
 /binaries
 **/node_modules
-/static/assets/icons
+static
 dist
 _site
 test/data

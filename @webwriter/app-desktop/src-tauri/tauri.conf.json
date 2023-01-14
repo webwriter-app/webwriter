@@ -42,8 +42,8 @@
         "execute": true,
         "open": ".*",
         "scope": [
-          {"name": "../../../binaries/npm", "args": true, "sidecar": true},
-          {"name": "../../../binaries/esbuild", "args": true, "sidecar": true}
+          {"name": "./binaries/npm", "args": true, "sidecar": true},
+          {"name": "./binaries/esbuild", "args": true, "sidecar": true}
         ]
       }
     },
@@ -55,8 +55,8 @@
         "depends": []
       },
       "externalBin": [
-        "../../../binaries/npm",
-        "../../../binaries/esbuild"
+        "./binaries/npm",
+        "./binaries/esbuild"
       ],
       "icon": [
         "icons/32x32.png",

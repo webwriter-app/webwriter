@@ -134,7 +134,7 @@ export const HTTP: HTTPAPI = {
 
 /** Runs the CLI command `esbuild [args]`. */
 export async function bundle(args: string[] = []) {
-  const output = await Command.sidecar("../../../binaries/esbuild", args).execute()
+  const output = await Command.sidecar("./binaries/esbuild", args).execute()
   if(output.code !== 0) {
     throw Error(output.stderr)
   }
@@ -158,7 +158,7 @@ export async function search(text: string, params?: {size?: number, from?: numbe
 export async function npm(command: string, commandArgs: string[] = [], json=true, cwd?: string) {
   const cmdArgs = [command, ...(json ? ["--json"]: []), ...commandArgs]
   const opts = cwd? {cwd}: {}
-  const output = await Command.sidecar("../../../binaries/npm", cmdArgs, opts).execute()
+  const output = await Command.sidecar("./binaries/npm", cmdArgs, opts).execute()
   if(output.stderr) {
     throw Error(output.stderr)
   }
