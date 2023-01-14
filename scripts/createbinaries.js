@@ -30,7 +30,7 @@ const NPM_ENTRYPOINT = path.join(NPM_PATH, "index.js")
 const PKG_CONFIG = "{\"scripts\": \"lib/**/*\"}"
 const PKG_CONFIG_PATH = path.join(NPM_PATH, "pkg.json")
 const PKG_TARGETS = "node16-win-x64,node16-macos-x64,node16-linux-x64,node16-win-arm64,node16-macos-arm64,node16-linux-arm64"
-const BINARIES_DIR = path.normalize("./@webwriter/app-desktop/src-tauri/binaries")
+const BINARIES_DIR = path.normalize("./@webwriter/app-desktop/src-tauri/bin")
 const PKG_OUTPUT = path.join(BINARIES_DIR, "npm")
 const PKG_EXTRA_FLAGS = "--no-bytecode --public-packages \"*\" --public"
 

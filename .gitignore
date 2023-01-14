@@ -2,10 +2,10 @@
 /.parcel-cache
 */**/src-tauri/target
 */**/src-tauri/icons
+*/**/src-tauri/bin
 .vscode
 */**/public
 /build
-binaries
 **/node_modules
 static
 dist

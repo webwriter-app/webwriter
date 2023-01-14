@@ -1,6 +1,6 @@
 export {open} from "@tauri-apps/api/shell"
 import {readTextFile, readBinaryFile, writeTextFile, writeBinaryFile, removeFile, readDir, createDir, removeDir, exists} from '@tauri-apps/api/fs'
-import {join, normalize, basename, dirname, extname, resolve, isAbsolute, appDataDir as appDir} from '@tauri-apps/api/path'
+import {join, normalize, basename, dirname, extname, resolve, isAbsolute, appDataDir as appDir, resourceDir} from '@tauri-apps/api/path'
 import {Command, open} from "@tauri-apps/api/shell"
 export {open as pickFile} from "@tauri-apps/api/dialog"
 import {fetch, Body, ResponseType} from "@tauri-apps/api/http"
@@ -134,7 +134,7 @@ export const HTTP: HTTPAPI = {
 
 /** Runs the CLI command `esbuild [args]`. */
 export async function bundle(args: string[] = []) {
-  const output = await Command.sidecar("./binaries/esbuild", args).execute()
+  const output = await Command.sidecar("bin/esbuild", args).execute()
   if(output.code !== 0) {
     throw Error(output.stderr)
   }
@@ -158,7 +158,7 @@ export async function search(text: string, params?: {size?: number, from?: numbe
 export async function npm(command: string, commandArgs: string[] = [], json=true, cwd?: string) {
   const cmdArgs = [command, ...(json ? ["--json"]: []), ...commandArgs]
   const opts = cwd? {cwd}: {}
-  const output = await Command.sidecar("./binaries/npm", cmdArgs, opts).execute()
+  const output = await Command.sidecar("bin/npm", cmdArgs, opts).execute()
   if(output.stderr) {
     throw Error(output.stderr)
   }
