@@ -14,29 +14,26 @@
       <div class="releases">
       {% for asset in site.github.latest_release.assets %}
         {% assign display = "flex" %}
-        {% unless asset.name contains ".zip" %}
-          {% unless asset.name contains ".tar.gz" %}
-            {% if asset.name contains ".msi" %}
-              {% assign label = "Windows" %}
-              {% assign order = "0" %}
-              {% assign icon = "logo-windows" %}
-            {% elsif asset.name contains "x64.dmg" %}
-              {% assign label = "Mac" %}
-              {% assign order = "1" %}
-              {% assign icon = "logo-apple" %}
-            {% elsif asset.name contains "aarch64.dmg" %}
-              {% assign label = "Mac (M-Series)" %}
-              {% assign order = "2" %}
-              {% assign icon = "logo-apple" %}
-            {% elsif asset.name contains ".AppImage" %}
-              {% assign label = "Linux" %}
-              {% assign order = "3" %}
-              {% assign icon = "logo-tux" %}
-            {% else %}
-              {% assign display = "none" %}
-            {% endif %}
-          {% endunless %}
-        {% endunless %}
+        {% assign extension = asset.name | slice: -3, 2}
+        {% if extension == "msi" and asset.name contains "x64" %}
+          {% assign label = "Windows" %}
+          {% assign order = "0" %}
+          {% assign icon = "logo-windows" %}
+        {% elsif extension == "dmg" and asset.name contains "x64" %}
+          {% assign label = "Mac" %}
+          {% assign order = "1" %}
+          {% assign icon = "logo-apple" %}
+        {% elsif extension == "dmg" and asset.name contains "aarch64" %}
+          {% assign label = "Mac (M-Series)" %}
+          {% assign order = "2" %}
+          {% assign icon = "logo-apple" %}
+        {% elsif extension == "age" and asset.name contains "x64" %}
+          {% assign label = "Linux" %}
+          {% assign order = "3" %}
+          {% assign icon = "logo-tux" %}
+        {% else %}
+          {% assign display = "none" %}
+        {% endif %}
         <a download style="order: {{order}}; display: {{display}}" href="{{ asset.browser_download_url }}">
           <ion-icon name="{{icon}}"></ion-icon>
           {{site.github.latest_release.tag_name}} for {{label}}
