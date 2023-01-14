@@ -57,7 +57,7 @@ jobs:
         run: node ./scripts/preparestatic.js ./@webwriter/core/dist
 
       - name: Build web
-        run: npm run build-core -w @webwriter/app-desktop
+        run: npm run build-core
 
       - name: Build the app
         uses: tauri-apps/tauri-action@v0
@@ -75,3 +75,4 @@ jobs:
           releaseBody: 'See the assets to download this version and install.'
           releaseDraft: true
           prerelease: false
+          configPath: "./@webwriter/app-desktop/src-tauri/tauri.conf.json"

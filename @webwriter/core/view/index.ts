@@ -1,3 +1,6 @@
+import "redefine-custom-elements" // Must be first import
+import "@shoelace-style/shoelace/dist/themes/light.css"
+import "@shoelace-style/shoelace"
 import {LitElement, html, css, ReactiveController} from "lit"
 import {customElement, property, query} from "lit/decorators.js"
 import {repeat} from "lit/directives/repeat.js"

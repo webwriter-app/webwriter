@@ -4,11 +4,6 @@
   "description": "Core functionality of WebWriter",
   "main": "index.html",
   "private": true,
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "npm run vite -- build",
-    "vite": "node ../../node_modules/vite/bin/vite"
-  },
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "license": "UNLICENSED",
   "dependencies": {

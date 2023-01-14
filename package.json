@@ -1,16 +1,26 @@
 {
   "name": "webwriter",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "description": "Web-based authoring tool for explorables",
   "scripts": {
-    "dev-desktop": "npm run -w @webwriter/app-desktop dev",
+    "lerna": "lerna",
+    "tauri": "tauri",
+    "vite": "vite",
+    "createbinaries": "node ./scripts/createbinaries.js",
+    "preparestatic": "node ./scripts/preparestatic.js",
+    "make-app-icon": "tauri icon ./static/assets/app-icon.png",
+    "predev-core": "npm run preparestatic",
+    "dev-core": "npm run vite -- @webwriter/core -l error",
+    "dev-desktop": "npm-run-all -pr dev-core \"tauri dev -- -c ./@webwriter/app-desktop/src-tauri/tauri.conf.json\"",
     "dev-cloud": "npm run -w @webwriter/app-cloud dev",
     "dev-docs": "bundle exec jekyll serve -s ./docs",
+    "prebuild-core": "npm run preparestatic",
+    "build-core": "npm run vite -- build @webwriter/core",
+    "prebuild-desktop": "npm-run-all createbinaries preparestatic make-app-icon",
+    "build-desktop": "npm run build-core && tauri build -c ./@webwriter/app-desktop/src-tauri/tauri.conf.json",
+    "build-cloud": "",
     "test": "wdio run ./test/wdio.conf.ts",
-    "lerna": "lerna",
-    "publish": "lerna publish --no-private",
-    "createbinaries": "node ./scripts/createbinaries.js",
-    "preparestatic": "node ./scripts/preparestatic.js"
+    "publish": "lerna publish --no-private"
   },
   "repository": {
     "type": "git",
@@ -32,6 +42,7 @@
     "@webwriter/*"
   ],
   "devDependencies": {
+    "@tauri-apps/cli": "^1.2.2",
     "@types/mocha": "^10.0.1",
     "@wdio/allure-reporter": "^8.1.2",
     "@wdio/cli": "^8.0.15",
