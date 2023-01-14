@@ -44,6 +44,7 @@
   "devDependencies": {
     "@tauri-apps/cli": "^1.2.2",
     "@types/mocha": "^10.0.1",
+    "@wagnerflo/cc-icons": "^1.2.1",
     "@wdio/allure-reporter": "^8.1.2",
     "@wdio/cli": "^8.0.15",
     "@wdio/concise-reporter": "^8.1.2",
@@ -53,7 +54,6 @@
     "@wdio/spec-reporter": "^8.0.14",
     "@wdio/types": "^8.1.2",
     "bootstrap-icons": "^1.10.3",
-    "cc-icons": "^1.0.0",
     "fs-extra": "^11.1.0",
     "lerna": "^6.4.0",
     "mocha": "^10.2.0",

@@ -5,7 +5,7 @@
 .vscode
 */**/public
 /build
-/binaries
+binaries
 **/node_modules
 static
 dist
