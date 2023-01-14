@@ -47,14 +47,8 @@ jobs:
       - name: Install web dependencies
         run: npm install
 
-      - name: Generate app icons
-        run: npm run -w @webwriter/app-desktop make-app-icon
-        
-      - name: Create binaries
-        run: node ./scripts/createbinaries.js
-
-      - name: Prepare static
-        run: node ./scripts/preparestatic.js ./@webwriter/core/dist
+      - name: Run prebuild actions (static resources, sidecar binaries, app icon)
+        run: node prebuild-desktop
 
       - name: Build web
         run: npm run build-core
