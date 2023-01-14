@@ -1,4 +1,4 @@
-name: Release
+name: Build & Release Desktop
 on:
   push:
     tags:
