@@ -1,8 +1,9 @@
 import { LitElement, html, css, PropertyDeclaration, PropertyValueMap, unsafeCSS } from "lit"
 import { customElement, property, query, queryAssignedElements } from "lit/decorators.js"
-import SortableJS, {SortableOptions} from "sortablejs";
-import {until} from 'lit/directives/until.js';
+import SortableJS, {SortableOptions} from "sortablejs"
+import {until} from "lit/directives/until.js"
 import { styleMap } from "lit/directives/style-map.js"
+import {ifDefined} from "lit/directives/if-defined.js"
 import { SlButton, SlIconButton, SlTooltip } from "@shoelace-style/shoelace";
 
 @customElement("ww-combobox")
@@ -189,7 +190,7 @@ export class WwCombobox extends LitElement {
         <sl-icon-button 
           id="open-button"
           name=${this.active? "chevron-up": "chevron-down"}
-          @focus=${e => e.stopPropagation()}
+          @focus=${(e: Event) => e.stopPropagation()}
           @click=${this.handleOpenButtonClick}
         ></sl-icon-button>
         <sl-menu id="options">
@@ -244,7 +245,7 @@ export class Sortable extends LitElement {
 
   firstUpdated() {
     const handlerNames = ["onChoose", "onUnchoose", "onStart", "onEnd", "onAdd", "onUpdate", "onSort", "onRemove", "onFilter", "onMove", "onClone", "onChange"] 
-    const handlerEntries = handlerNames.map(n => [n, e => new CustomEvent(n.toLowerCase().slice(2), {composed: true, bubbles: true, detail: e})])
+    const handlerEntries = handlerNames.map(n => [n, (e: any) => new CustomEvent(n.toLowerCase().slice(2), {composed: true, bubbles: true, detail: e})])
     const handlers = Object.fromEntries(handlerEntries)
     this.sortable = new SortableJS(this.slotElement, {...this.options, ...handlers}) 
   }
@@ -256,7 +257,7 @@ export class Sortable extends LitElement {
   }
 }
 
-function shortenBytes(n) {
+function shortenBytes(n: number) {
   const k = n > 0 ? Math.floor((Math.log2(n)/10)) : 0;
   const rank = (k > 0 ? 'KMGT'[k - 1] : '') + 'b';
   const count = Math.floor(n / Math.pow(1024, k));
@@ -499,9 +500,9 @@ export class FileInput extends LitElement {
     }
   }
 
-  static PreviewTabs(files: File[], activeFile?:number, setActiveFile?:CallableFunction) {
+  static PreviewTabs(files: File[], activeFile?: number, setActiveFile?: Function) {
     return files.map((file, i) => html`
-      <input class="radiotab" name="tabs" tabindex=${i} type="radio" id=${`tab${i}`} @change=${() => setActiveFile(i)} />
+      <input class="radiotab" name="tabs" tabindex=${i} type="radio" id=${`tab${i}`} @change=${() => setActiveFile? setActiveFile(i): null} />
       <label class="label" for=${`tab${i}`} ?data-active=${i === activeFile} title=${shortenBytes(file.size)}>
         ${file.name}
       </label>
@@ -512,7 +513,7 @@ export class FileInput extends LitElement {
   }
 
   handleFileChange = (e: Event) => {
-    this.files = (e.target as HTMLInputElement).files
+    this.files = (e.target as HTMLInputElement).files ?? this.files
     if(this.files.length >= 1) {
       this.activeFile = 0
     }
@@ -534,7 +535,7 @@ export class FileInput extends LitElement {
   handleDrop = (e: DragEvent) => {
     e.stopPropagation()
     e.preventDefault()
-    const files = e.dataTransfer.files
+    const files = e.dataTransfer?.files
     if(files) {
       this.files = files
       this.handleFileChange(e)
@@ -555,7 +556,7 @@ export class FileInput extends LitElement {
       <form name="fileInputForm" id="fileInputForm" @dragenter=${this.handleDragEnter} @dragover=${this.handleDragOver} @drop=${this.handleDrop} @mouseenter=${this.handleMouseEnter} @mouseleave=${this.handleMouseLeave}>
         <label id="select-button" for="fileInput">Select ${this.mediaType}...</label>
         <input name="fileInput" id="fileInput" type="file" .files=${this.files} accept=${this.accept} capture=${this.capture} ?multiple=${this.multiple} @change=${this.handleFileChange} />
-        ${FileInput.PreviewTabs(Array.from(this.files ?? []), this.activeFile, i => this.activeFile = i)}
+        ${FileInput.PreviewTabs(Array.from(this.files ?? []), this.activeFile, (i: number) => this.activeFile = i)}
         ${!this.files || this.files.length === 0? html`
           <div class="drop-zone-label">Or drop ${this.mediaType} here</div>`
         : null}
@@ -958,7 +959,7 @@ export class Button extends SlButton {
 
   render() {
     const {placement, skidding, trigger, hoist} = this.tooltipOptions
-    return html`<sl-tooltip placement=${placement} skidding=${skidding} trigger=${trigger} ?hoist=${hoist} ?disabled=${this.tooltipDisabled}>
+    return html`<sl-tooltip placement=${ifDefined(placement)} skidding=${ifDefined(skidding)} trigger=${ifDefined(trigger)} ?hoist=${hoist} ?disabled=${this.tooltipDisabled}>
       ${super.render()}
       <slot name=${this.variant} slot="content"></slot>
       <slot id="default-slot"></slot>

@@ -1,5 +1,4 @@
-import { createSchema } from "../editorstate"
-import { PackageJson, PackageStore } from "./packagestore"
+import { createSchema, Package, PackageStore } from ".."
 import { ResourceStore } from "./resourcestore"
 
 export * from "./packagestore"
@@ -19,7 +18,7 @@ export class RootStore {
     this.resources = new ResourceStore({schema, bundle})
   }
 
-  onImportPackages = (packages: PackageJson[]) => {
+  onImportPackages = (packages: Package[]) => {
     this.resources.schema = createSchema(packages.map(pkg => pkg.name))
   }
 }

@@ -2,7 +2,7 @@ import { LitElement, html, css, PropertyValueMap } from "lit"
 import { customElement, property, query, queryAsync } from "lit/decorators.js"
 import {classMap} from "lit/directives/class-map.js"
 import { SlDrawer } from "@shoelace-style/shoelace"
-import { PackageJson } from "../../state"
+import { Package, PackageWithOptions } from "../../state"
 import { pickFile } from "../../environment"
 import { Button } from "./uielements"
 
@@ -11,7 +11,7 @@ import { Button } from "./uielements"
 export class PackageManagerDrawer extends LitElement {
 
 	@property({attribute: false})
-	packages: PackageJson[] = []
+	packages: Package[] = []
 
 	@property({type: String, attribute: true})
 	activeTab: "all" | "available" | "installed" | "outdated" | "more" = "all"
@@ -346,7 +346,7 @@ export class PackageManagerDrawer extends LitElement {
 	}
 
 
-	packageListItem = (pkg: PackageJson, i: number) => {
+	packageListItem = (pkg: PackageWithOptions, i: number) => {
 		const {name, author, version, description, keywords, installed, outdated, importError} = pkg
 		const installing = this.installing.includes(name)
 		const uninstalling = this.uninstalling.includes(name)
@@ -354,6 +354,7 @@ export class PackageManagerDrawer extends LitElement {
 		const official = name.startsWith("@webwriter/")
 		const unimportable = !!importError
 		const available = !installed
+		// @ts-ignore
 		return html`<sl-card class=${classMap({installed, outdated, available, official, unimportable})}>
 			<sl-icon name="box-seam" slot="header"></sl-icon>
 			<span class="package-name" slot="header">${name}</span>
@@ -367,7 +368,7 @@ export class PackageManagerDrawer extends LitElement {
 			<sl-badge slot="footer" variant="danger" class="error-badge" @click=${() => this.viewingError = [...this.viewingError, pkg.name]} title="View error">
 				<sl-icon name="exclamation-diamond"></sl-icon> <span> Import failed</span>
 			</sl-badge>
-			<sl-dialog ?open=${this.viewingError.includes(pkg.name)} @sl-show=${e => {e.stopPropagation()}} @sl-hide=${e => {e.stopPropagation(); this.viewingError = this.viewingError.filter(name => name !== pkg.name)}}>
+			<sl-dialog ?open=${this.viewingError.includes(pkg.name)} @sl-show=${(e: any) => {e.stopPropagation()}} @sl-hide=${(e: any) => {e.stopPropagation(); this.viewingError = this.viewingError.filter(name => name !== pkg.name)}}>
 				<span class="error-label" slot="label">Error importing <span class="package-name">${pkg.name}</span></span>
 				<span class="error-text">${String(importError)}</span>
 			</sl-dialog>
@@ -380,9 +381,9 @@ export class PackageManagerDrawer extends LitElement {
 	}
 
 	npmPrompt = () => {
-		return html`<sl-input value=${this.unlistedInstallUrl} @sl-input=${e => this.unlistedInstallUrl = e.target.value} class="unlisted-install" name="path" label="Install unlisted package" help-text="Enter either A) a path to a local folder, or B) a path to a .tar.gz archive, or C) a git remote URL, each containing an npm module">
+		return html`<sl-input value=${this.unlistedInstallUrl} @sl-input=${(e: any) => this.unlistedInstallUrl = e.target.value} class="unlisted-install" name="path" label="Install unlisted package" help-text="Enter either A) a path to a local folder, or B) a path to a .tar.gz archive, or C) a git remote URL, each containing an npm module">
 				<sl-icon-button title="Find a local package" @click=${this.handleFindLocalPackage} name="folder2-open" slot="suffix"></sl-icon-button>
-				<ww-button ?loading=${this.installingUnlisted} circle class="confirm-install-unlisted" title="Install unlisted package" type="submit" slot="suffix" @click=${e => this.emitInstallPackage(this.unlistedInstallUrl)} @sl-hide=${e => e.stopPropagation()} ?disabled=${!this.unlistedInstallUrl}>
+				<ww-button ?loading=${this.installingUnlisted} circle class="confirm-install-unlisted" title="Install unlisted package" type="submit" slot="suffix" @click=${() => this.emitInstallPackage(this.unlistedInstallUrl)} @sl-hide=${(e: any) => e.stopPropagation()} ?disabled=${!this.unlistedInstallUrl}>
 				<sl-icon name="arrow-return-left"></sl-icon>
 				</ww-button>
 			</sl-input>`
@@ -405,7 +406,7 @@ export class PackageManagerDrawer extends LitElement {
 		const available = this.packages.filter(pkg => !pkg.installed)
 		const outdated = installed.filter(pkg => pkg.outdated)
 		const all = [...available, ...installed]
-		const packages = {all, installed, available, outdated}[this.activeTab]
+		const packages = {all, installed, available, outdated, more: []}[this.activeTab]
 		return html`
 			<sl-drawer part="drawer" placement="start" ?open=${this.open} @sl-hide=${this.handleCloseDrawer}>
 					<span class="drawer-title" slot="label">

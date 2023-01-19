@@ -22,25 +22,28 @@ interface SlAlertAttributes {
 	duration?: number
 }
 
-/* TODO
-- LEARNERS & AUTHORS: Explorable-wide features API (fullscreen/fullwindow widgets, sharing/saving, visible metadata)
-- LEARNERS & AUTHORS: Themes (Explorable-wide CSS)
-- AUTHORS: Drag n' Drop widget interface 
-- LEARNERS & AUTHORS: Rewrite "Document" as container widget
+/*
+- @TODO LEARNERS & AUTHORS: Explorable-wide features API (fullscreen/fullwindow widgets, sharing/saving, visible metadata)
+- @TODO LEARNERS & AUTHORS: Themes (Explorable-wide CSS)
+- @TODO AUTHORS: Drag n' Drop widget interface 
+- @TODO LEARNERS & AUTHORS: Rewrite "Document" as container widget
 */
 
 const CORE_PACKAGES = ["@webwriter/ww-textarea", "@webwriter/ww-figure", "@open-wc/scoped-elements"]
 
+declare global {
+	var WEBWRITER_ENVIRONMENT: string
+}
 
 type StoreController = RootStore & ReactiveController
 function StoreController(store: RootStore, host: App) {
-	const subStores = RootStore.storeKeys.map(key => store[key])
-	subStores.forEach(x => makeAutoObservable(x, {}, {autoBind: true, deep: true}))
-	store["host"] = host
-	store["hostConnected"] = () => {
+	const subStores = RootStore.storeKeys.map(key => (store as any)[key])
+	subStores.forEach(x => makeAutoObservable(x, {}, {autoBind: true, deep: true}));
+	(store as any)["host"] = host;
+	(store as any)["hostConnected"] = () => {
 		subStores.forEach(x => observe(x, () => host.requestUpdate()))
 	}
-	store["hostDisconnected"] = () => store["disposer"]()
+	(store as any)["hostDisconnected"] = () => (store as any)["disposer"]()
 	host.addController(store as StoreController)
 	return store as StoreController
 }
@@ -51,7 +54,7 @@ export class App extends LitElement
 	store: StoreController
 	environment: Environment 
 
-	keymap: Record<string, (e: KeyboardEvent, handler) => any> = {
+	keymap: Record<string, (e: KeyboardEvent, combo: string) => any> = {
 		"ctrl+s": (e, combo) => {
 			(document.activeElement as HTMLElement).blur()
 			this.store.resources.save()
@@ -98,7 +101,7 @@ export class App extends LitElement
 		this.environment = await import(`../environment/${globalThis.WEBWRITER_ENVIRONMENT}.ts`)
 		this.store = StoreController(new RootStore({corePackages: CORE_PACKAGES, ...this.environment}), this)
 		this.addEventListener("ww-select-tab-title", (e: any) => this.focusTabTitle(e.detail.id))
-		Object.entries(this.keymap).forEach(([shortcut, callback]) => Hotkeys(shortcut, callback))
+		Object.entries(this.keymap).forEach(([shortcut, callback]) => Hotkeys(shortcut, (e) => callback(e, shortcut)))
 		window.addEventListener("error", this.handleError)
 		window.addEventListener("unhandledrejection", this.handleError)
 	}
@@ -281,9 +284,9 @@ export class App extends LitElement
 				titleAsIconicUrl
 				id=${res.url}
 				panel=${res.url}
-				?active=${res.url === active.url}
-				?closable=${res.url === active.url}
-				?titleDisabled=${res.url !== active.url}
+				?active=${res.url === active?.url}
+				?closable=${res.url === active?.url}
+				?titleDisabled=${res.url !== active?.url}
 				titleId=${res.url}
 				titleValue=${res.url}
 				?hasUrl=${!!res.url}
@@ -307,12 +310,12 @@ export class App extends LitElement
 				@ww-title-click=${() => activate(res.url)}
 				@ww-cancel-discard=${() => this.discarding = false}>
 			</ww-tab>
-			<ww-tab-panel name=${res.url} ?active=${res.url === active.url}>
+			<ww-tab-panel name=${res.url} ?active=${res.url === active?.url}>
 				<ww-explorable-editor
 					.revisions=${[]}
 					docID=${res.url}
 					.editorState=${res.editorState}
-					@update=${e => set(res.url, e.detail.editorState)}
+					@update=${(e: any) => set(res.url, e.detail.editorState)}
 					.availableWidgetTypes=${availableWidgetTypes}
 					.packages=${packages}
 					?loadingPackages=${false}
@@ -355,9 +358,9 @@ export class App extends LitElement
 			?resetting=${resetting}
 			?open=${this.managingPackages}
 			@sl-hide=${this.handleManagePackagesClose}
-			@ww-install-package=${e => install(e.detail.args)}
-			@ww-uninstall-package=${e => uninstall(e.detail.args)}
-			@ww-update-package=${e => update(e.detail.args)}
+			@ww-install-package=${(e: any) => install(e.detail.args)}
+			@ww-uninstall-package=${(e: any) => uninstall(e.detail.args)}
+			@ww-update-package=${(e: any) => update(e.detail.args)}
 			@ww-refresh=${() => fetchAll(0)}
 			@ww-open-app-dir=${() => viewAppDir()}
 			@ww-reset-app-dir=${() => resetAppDir()}>

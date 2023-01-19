@@ -1,3 +1,5 @@
+import {z} from "zod"
+
 import {Schema, Node, NodeSpec, MarkSpec, Fragment, DOMSerializer} from "prosemirror-model"
 import {Command, EditorState, EditorStateConfig, NodeSelection, TextSelection, Plugin} from "prosemirror-state"
 import { baseKeymap, joinForward, selectNodeForward } from "prosemirror-commands"
@@ -7,12 +9,12 @@ import { gapCursor } from "prosemirror-gapcursor"
 import { history, undo, redo } from "prosemirror-history"
 import { chainCommands, deleteSelection, joinBackward, selectNodeBackward} from "prosemirror-commands"
 import { EditorView } from "prosemirror-view"
-import { unscopePackageName } from "../utility"
+import { unscopePackageName } from "../../utility"
+import * as marshal from "../../marshal"
 
 const leafNodeSpecs: Record<string, NodeSpec & {group: "leaf"}> = {
   thematicBreak: {group: "leaf"}
 }
-
 
 export function getOtherAttrsFromWidget(dom: HTMLElement) {
   return Object.fromEntries(dom
@@ -36,7 +38,7 @@ function packageWidgetNodeSpec(tag: string, pkg: string): NodeSpec {
       analyzable: {default: false},
       otherAttrs: {default: {}}
     },
-    parseDOM : [{tag, getAttrs: (dom: HTMLElement) => {
+    parseDOM : [{tag, getAttrs: (dom: HTMLElement ) => {
       return {
         id: dom.getAttribute("id"),
         editable: dom.getAttribute("editable") ?? false,
@@ -47,7 +49,7 @@ function packageWidgetNodeSpec(tag: string, pkg: string): NodeSpec {
           .filter(name => !["editable", "printable", "analyzable"].includes(name))
           .map(name => [name, dom.getAttribute(name)]))
       }
-    }}],
+    }}] as any,
     toDOM: (node: Node) => {
       return [node.type.name, {
         id: node.attrs.id,
@@ -85,7 +87,7 @@ const containerNodeSpecs: Record<string, NodeSpec & {group: "container"}> = {
     toDOM: (node: Node) => {
       const fragment = new DocumentFragment()
       const p = DOMSerializer.renderSpec(document, ["p", 0])
-      p.contentDOM.appendChild(document.createTextNode(" "))
+      p.contentDOM?.appendChild(document.createTextNode(" "))
       return p
     }
   },
@@ -113,7 +115,7 @@ const containerNodeSpecs: Record<string, NodeSpec & {group: "container"}> = {
     parseDOM: [{tag: "ol", getAttrs: (dom: HTMLElement) => ({
       order: dom.hasAttribute("start")? +dom.getAttribute("start")!: 1,
       tight: dom.hasAttribute("data-tight")
-    })}],
+    })}] as any,
     toDOM: node => ["ol", {
       start: node.attrs.order == 1? null: node.attrs.order,
       "data-tight": node.attrs.tight? "true": null
@@ -126,7 +128,7 @@ const containerNodeSpecs: Record<string, NodeSpec & {group: "container"}> = {
     attrs: {tight: {default: false}},
     parseDOM: [{tag: "ul", getAttrs: (dom: HTMLElement) => ({
       tight: dom.hasAttribute("data-tight")
-    })}],
+    })}] as any,
     toDOM: node => ["ul", {
       "data-tight": node.attrs.tight? "true": null
     }, 0]
@@ -171,7 +173,7 @@ const markSpecs: Record<string, MarkSpec> = {
     parseDOM: [{tag: "a[href]", getAttrs: (dom: HTMLElement) => ({
       href: dom.getAttribute("href"),
       title: dom.getAttribute("title")
-    })}]
+    })}] as any
   }
 }
 
@@ -234,14 +236,15 @@ const customArrowCommand = (up=false) => chainCommands(
       const selectPos = up? tr.selection.$from.pos - 1: tr.selection.$to.pos + 1
       const selection = new TextSelection(tr.doc.resolve(selectPos))
       tr = tr.setSelection(selection)
-      dispatch(tr)
+      dispatch? dispatch(tr): null
       return true
     }
     else if(isWidgetNode && hasParagraph) {
       const selectPos = up? state.selection.$from.pos - 1: state.selection.$to.pos + 1
       const selection = new TextSelection(state.doc.resolve(selectPos))
       const tr = state.tr.setSelection(selection)
-      dispatch(tr)
+      dispatch? dispatch(tr): null
+      return true
     }
     else {
       return false
@@ -297,7 +300,7 @@ function placeholder(text: string) {
   });
 }
 
-export const defaultConfig: EditorStateConfig = {
+export const defaultConfig: EditorStateConfig & {doc: Node} = {
   schema: baseSchema,
   doc: baseSchema.node(baseSchema.topNodeType, {}, [baseSchema.node("paragraph")]),
   plugins: [
@@ -316,15 +319,48 @@ export const createEditorState = (
   {packages = [], baseConfig = defaultConfig, schema, doc}
   : {packages?: string[], baseConfig?: EditorStateConfig, schema?: Schema, doc?: Node}) => {
   const activeSchema = schema? schema: new Schema(createSchemaSpec(packages))
+  const resolvedDoc = doc ?? activeSchema.node(
+    defaultConfig.doc.type.name,
+    defaultConfig.doc.attrs,
+    Fragment.fromJSON(activeSchema, defaultConfig.doc.content.toJSON()),
+    defaultConfig.doc.marks
+  ) ?? baseConfig.doc
   return EditorState.create({
+    doc: resolvedDoc,
     selection: baseConfig.selection,
     storedMarks: baseConfig.storedMarks,
     plugins: baseConfig.plugins,
-    doc: doc? doc: activeSchema.node(
-      baseConfig.doc.type.name,
-      baseConfig.doc.attrs,
-      Fragment.fromJSON(activeSchema, baseConfig.doc.content.toJSON()),
-      baseConfig.doc.marks
-    )
   })
 }
+
+type Format = keyof typeof marshal
+
+const ResourceSchema = z.object({
+  url: z.string().url({message: "Not a valid URL"}),
+  editorState: z
+    .instanceof(EditorState)
+    .or(
+      z.object({
+        value: z.any(),
+        schema: z.instanceof(Schema)
+      })
+      .transform(async ({value, schema}) => {
+        for(const parse of Object.values(marshal).map(({parse}) => parse)) {
+          try {
+            return await parse(value, schema)
+          } 
+          catch(e) {
+            return z.NEVER
+          }
+        }
+        return z.NEVER
+      })
+    )
+})
+
+export type Resource = z.infer<typeof ResourceSchema>
+export const Resource = Object.assign(ResourceSchema, {
+  serialize(resource: Resource, format: Format = "html", bundle: any) {
+    return marshal[format].serialize(resource.editorState.doc, bundle)
+  }
+})

@@ -1,9 +1,8 @@
-import type { IPackageJson } from "package-json-type"
-
 import { hashCode, unscopePackageName, arrayReplaceAt } from "../../utility"
 import { Environment } from "../../environment"
 import H5P_REPOSITORIES from "../../h5p-repositories.json"
 import { toJS } from "mobx"
+import { Package } from ".."
 
 type ProcessingEntry = {
   key: string
@@ -24,18 +23,19 @@ export function storeAction({onPending, onDone, queueKey}: StoreActionOptions) {
     descriptor.value = async function(...args: any[]) {
       onPending?.apply(this, [key, args])
       let value: any
-      let entry: ProcessingEntry
-      let i: number
+      let entry: ProcessingEntry | undefined
+      let i: number | undefined
       try {
-        if(queueKey) {
+        if(queueKey && queueKey in this) {
+          const store = this as PropertyDescriptor & Record<any, ProcessingEntry[]>
           entry = {key, args}
-          i = this[queueKey].length
-          this[queueKey] = [...this[queueKey], entry]
-          await Promise.allSettled(this[queueKey].map(entry => entry.promise))
+          i = store[queueKey].length
+          store[queueKey] = [...store[queueKey], entry]
+          await Promise.allSettled(store[queueKey].map(entry => entry.promise))
           const promise = func.apply(this, args)
-          this[queueKey] = arrayReplaceAt(this[queueKey], i, {...entry, promise})
+          store[queueKey] = arrayReplaceAt(store[queueKey], i, {...entry, promise})
           value = await promise
-          this[queueKey] = arrayReplaceAt(this[queueKey], i, {...entry, done: true})
+          store[queueKey] = arrayReplaceAt(store[queueKey], i, {...entry, done: true})
         }
         else {
           value = await func.apply(this, args)
@@ -43,10 +43,11 @@ export function storeAction({onPending, onDone, queueKey}: StoreActionOptions) {
         onDone?.apply(this, [key, args])
         return value
       }
-      catch(error) {
+      catch(error: any) {
         onDone?.apply(this, [key, args, error])
-        if(queueKey) {
-          this[queueKey] = arrayReplaceAt(this[queueKey], i, {...entry, done: true})
+        if(queueKey && queueKey in this && entry && i) {
+          const store = this as PropertyDescriptor & Record<any, ProcessingEntry[]>
+          store[queueKey] = arrayReplaceAt(store[queueKey], i, {...entry, done: true})
         }
         throw error
       }
@@ -56,17 +57,19 @@ export function storeAction({onPending, onDone, queueKey}: StoreActionOptions) {
 }
 
 type Options = {
-  corePackages?: PackageJson["name"][]
-  onImport?: (packages: PackageJson[]) => void
+  corePackages?: Package["name"][]
+  onImport?: (packages: Package[]) => void
 } & Environment
 
-export type PackageJson = IPackageJson & {installed?: boolean, outdated?: boolean, root?: string, imported?: boolean}
+type PackageOptions = {installed?: boolean, outdated?: boolean, root?: string, imported?: boolean, importError?: string}
+
+export type PackageWithOptions = Package & PackageOptions
 
 /** Handles packages. Packages are node (npm) packages which contain widgets. The PackageStore can also create bundles from packages, which can for example be imported by the runtime editor or embedded by serializers. Additionally, the PackageStore can open or clear the app directory which stores the packages. */
 export class PackageStore {
 
   /** Converts a H5P library object (library.json) into a node package (package.json), including the raw library data under the key "h5pLibrary". */
-  static H5PtoPackageJson(name: string, library: Record<string, any>): IPackageJson {
+  static H5PtoPackageJson(name: string, library: Record<string, any>): Package {
     return {
       name,
       version: `${library["majorVersion"]}.${library["minorVersion"]}.${library["patchVersion"]}`,
@@ -79,7 +82,7 @@ export class PackageStore {
   }
 
   /** Create a hash value to identify a bundle. The hash is deterministically computed from the packages' names and versions. This allows for caching of existing bundles. */
-  static computeBundleHash(packages: PackageJson[], editMode: boolean = false) {
+  static computeBundleHash(packages: PackageWithOptions[], editMode: boolean = false) {
     const packageVersions = packages.map(pkg => `${pkg.name}@${pkg.version}`)
     return hashCode(packageVersions.join() + (editMode? "edit": ""))
   }
@@ -96,10 +99,10 @@ export class PackageStore {
   initializing: boolean = false
   resetting: boolean = false
 
-  _packages: Record<string, PackageJson> = {}
-  corePackages: PackageJson["name"][] = []
+  _packages: Record<string, PackageWithOptions> = {}
+  corePackages: Package["name"][] = []
 
-  importError: Record<string, Error> = {}
+  importError: Record<string, string> = {}
 
   onImport: Options["onImport"]
 
@@ -136,7 +139,7 @@ export class PackageStore {
       .filter(arg => !arg.startsWith("-"))
   }
 
-  set packages(value: PackageJson[] | Record<string, PackageJson>) {
+  set packages(value: PackageWithOptions[] | Record<string, PackageWithOptions>) {
     const pkgs = Array.isArray(value)
       ? Object.fromEntries(value.map(x => [x.name, x]))
       : value
@@ -144,7 +147,7 @@ export class PackageStore {
 
   }
 
-  get packages(): PackageJson[] {
+  get packages(): PackageWithOptions[] {
     return Object.values(this._packages).map(pkg => ({
       ...pkg,
       importError: this.importError[pkg.name]
@@ -168,11 +171,11 @@ export class PackageStore {
   }
 
   /** Initializes the app directory. If the directory is empty (on first run of the app), creates the directory and installs the core packages. */
-  @storeAction({onPending() {this.initializing = true}, onDone() {this.initializing = false}})
+  @storeAction({onPending() {(this as any).initializing = true}, onDone() {(this as any).initializing = false}})
   async initialize() {
     let appDir = await this.Path.appDir()
     !(await this.FS.exists(appDir)) && await this.FS.mkdir(appDir)
-    const list = await this.npm("ls", undefined, true, appDir) as PackageJson
+    const list = await this.npm("ls", undefined, true, appDir) as PackageWithOptions
     if(!list?.name) {
       await this.npm("init", ["--yes"], false, appDir)
       await this.npm("install", this.corePackages, true, appDir)
@@ -181,21 +184,21 @@ export class PackageStore {
     const packages = await this.fetchInstalled()
     await this.writeBundle(packages, {editMode: true})
     const importable = (await this.writeBundle(packages, {editMode: true}))?.packages
-    this.import(importable, {editMode: true})
+    this.import(importable ?? [], {editMode: true})
   }
   
-  async testImportable(packages: PackageJson[], setImportError=true) {
+  async testImportable(packages: PackageWithOptions[], setImportError=true) {
     const pkgs = Object.fromEntries(packages.map(pkg => [pkg.name, pkg]))
     for(const pkg of this.packages) {
       try {
         const options = {bundlename: `test-importable`, force: false, editMode: true}
         await this.writeBundle([pkg], options)
-        const updatedPkg = {...pkg, importError: null}
+        const updatedPkg = {...pkg}
         pkgs[pkg.name] = updatedPkg
       }
-      catch(error) {
+      catch(error: any) {
         if(setImportError) {
-          this.importError = {...this.importError, [pkg.name]: error}
+          this.importError = {...this.importError, [pkg.name]: error.message}
         }
       }
     }
@@ -203,12 +206,15 @@ export class PackageStore {
   }
 
   /** Loads the installed packages, optionally setting the `packages` property. */
-  @storeAction({onPending() {this.fetching = true}, onDone() {this.fetching = false}})
+  @storeAction({
+    onPending() {(this as any).fetching = true},
+    onDone() {(this as any).fetching = false}
+  })
   async fetchInstalled(setPackages=true) {
-    let packages = [] as PackageJson[]
+    let packages = [] as PackageWithOptions[]
     const appDir = await this.Path.appDir()
-    const list = await this.npm("ls", ["--long"], true, appDir)
-    const dependencies = list["dependencies"] as PackageJson["dependencies"]
+    const list = (await this.npm("ls", ["--long"], true, appDir)) as Partial<Package>
+    const dependencies = list["dependencies"] as Package["dependencies"]
     if(dependencies) {
       const packagePaths = Object.values(dependencies)
         .map(v => (v as any)?.path)
@@ -229,7 +235,10 @@ export class PackageStore {
   }
 
   /** Loads the available packages, optionally from a starting point. */
-  @storeAction({onPending() {this.fetching = true}, onDone() {this.fetching = false}})
+  @storeAction({
+    onPending() {(this as any).fetching = true},
+    onDone() {(this as any).fetching = false}
+  })
   async fetchAvailable(from?: number) {
     const {total, objects} = await this.search("keywords:webwriter-widget", {from})
     const packages = objects.map(obj => obj["package"])
@@ -237,7 +246,10 @@ export class PackageStore {
   }
 
   /** Loads all packages. */
-  @storeAction({onPending() {this.fetching = true}, onDone() {this.fetching = false}})
+  @storeAction({
+    onPending() {(this as any).fetching = true},
+    onDone() {(this as any).fetching = false}
+  })
   async fetchAll(from?: number) {
     const installed = await this.fetchInstalled(false)
     const available = await this.fetchAvailable(from)
@@ -263,7 +275,7 @@ export class PackageStore {
     const allPackages = await this.fetchAll(0)
     const packages = allPackages.filter(pkg => pkg.installed)
     const importable = (await this.writeBundle(packages, {editMode: true}))?.packages
-    await this.import(importable, {editMode: true})
+    await this.import(importable ?? [], {editMode: true})
   }
 
   /** Installs a H5P package from a git repository and convert it to a node package. */
@@ -271,7 +283,7 @@ export class PackageStore {
   async installH5Package(url: string) {
     const {href, pathname, hash} = new URL(url)
     const urlWithoutHash = href.split("#")[0]
-    const packageName = pathname.split("/").filter(v => v).pop().replace(".git", "")
+    const packageName = pathname.split("/").filter(v => v).pop()?.replace(".git", "") as string
     const appDir = await this.Path.appDir()
     const dir = appDir + "h5_packages/" + packageName
     const ref = hash? hash.replace("#", ""): "master"
@@ -293,7 +305,7 @@ export class PackageStore {
     await this.npm("update", args, true, appDir)
     const packages = await this.fetchAll(0)
     const importable = (await this.writeBundle(packages, {editMode: true}))?.packages
-    await this.import(importable, {editMode: true})
+    await this.import(importable ?? [], {editMode: true})
   }
 
   /** Uninstalls one or more packages. Extra arguments for npm can be provided. */
@@ -310,7 +322,7 @@ export class PackageStore {
   }
 
   /** Writes a bundle to the provided file system. */
-  async writeBundle(packages: PackageJson[], {bundlename="bundle", force=false, editMode=false}: {bundlename?: string, force?: boolean, editMode?: boolean} = {bundlename: "bundle", force: false, editMode: false}) {
+  async writeBundle(packages: PackageWithOptions[], {bundlename="bundle", force=false, editMode=false}: {bundlename?: string, force?: boolean, editMode?: boolean} = {bundlename: "bundle", force: false, editMode: false}) {
     if(!await this.bundleExists(packages, {bundlename, editMode}) || force) {
       let pkgs = packages
       const appDir = await this.Path.appDir()
@@ -321,7 +333,7 @@ export class PackageStore {
       const bundlePath = await this.Path.join(appDir, bundleFilename)
       const entrypointPath = await this.Path.join(appDir, "entrypoint.js")
       const exportStatements = pkgs.map(pkg => {
-        const hasEditor = pkg.exports && pkg.exports["./edit"]
+        const hasEditor = pkg.exports && (pkg as any).exports["edit"]
         const name = unscopePackageName(pkg.name.replaceAll("-", "ಠಠಠ"))
         const moduleName = editMode && hasEditor? `${pkg.name}/edit`: pkg.name
         return `export {default as ${name}} from '${moduleName}'`
@@ -334,7 +346,7 @@ export class PackageStore {
   }
 
   /** Imports a bundle from the provided file system. */
-  async import(packages: PackageJson[], {bundlename="bundle", editMode=false}: {bundlename?: string, editMode?: boolean} = {bundlename: "bundle", editMode: false}) {
+  async import(packages: PackageWithOptions[], {bundlename="bundle", editMode=false}: {bundlename?: string, editMode?: boolean} = {bundlename: "bundle", editMode: false}) {
     const packageNames = packages.map(pkg => pkg.name)
     const appDir = await this.Path.appDir()
     const bundleFilename = `${bundlename}#${PackageStore.computeBundleHash(packages, editMode)}.js`
@@ -349,11 +361,11 @@ export class PackageStore {
     }
     const importedPackages = packages.map(pkg => pkg.name)
     this.packages = this.packages.map(pkg => importedPackages.includes(pkg.name)? {...pkg, imported: true}: pkg)
-    this?.onImport(packages)
+    this.onImport? this.onImport(packages): null
   }
 
   /** Checks if the bundle already exists on disk. */
-  async bundleExists(packages: PackageJson[], {bundlename="bundle", editMode=false}: {bundlename?: string, editMode?: boolean} = {bundlename: "bundle", editMode: false}) {
+  async bundleExists(packages: PackageWithOptions[], {bundlename="bundle", editMode=false}: {bundlename?: string, editMode?: boolean} = {bundlename: "bundle", editMode: false}) {
     const hash = PackageStore.computeBundleHash(packages, editMode)
     const bundleFilename = `${bundlename}#${hash}`
     const appDir = await this.Path.appDir()
@@ -368,7 +380,10 @@ export class PackageStore {
   }
 
   /** Uses the provided file system to clear the app directory and reinitializes it. */
-  @storeAction({onPending() {this.resetting = true}, onDone() {this.resetting = false}})
+  @storeAction({
+    onPending() {(this as any).resetting = true},
+    onDone() {(this as any).resetting = false}
+  })
   async resetAppDir() {
     const appDir = await this.Path.appDir()
     await this.FS.rmdir(appDir)

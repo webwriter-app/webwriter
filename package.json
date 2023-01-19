@@ -20,7 +20,8 @@
     "build-desktop": "npm run build-core && tauri build -c ./@webwriter/app-desktop/src-tauri/tauri.conf.json",
     "build-cloud": "",
     "test": "wdio run ./test/wdio.conf.ts",
-    "publish": "lerna publish --no-private"
+    "publish": "lerna publish --no-private",
+    "tsc-strict": "tsc-strict"
   },
   "repository": {
     "type": "git",
@@ -44,6 +45,7 @@
   "devDependencies": {
     "@tauri-apps/cli": "^1.2.2",
     "@types/mocha": "^10.0.1",
+    "@types/semver": "^7.3.13",
     "@wagnerflo/cc-icons": "^1.2.1",
     "@wdio/allure-reporter": "^8.1.2",
     "@wdio/cli": "^8.0.15",
@@ -62,5 +64,8 @@
     "pkg": "^5.8.0",
     "ts-node": "^10.9.1",
     "vite": "^4.0.4"
+  },
+  "dependencies": {
+    "semver": "^7.3.8"
   }
 }

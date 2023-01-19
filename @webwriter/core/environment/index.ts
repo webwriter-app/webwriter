@@ -1,4 +1,4 @@
-import { IPackageJson } from "package-json-type";
+import { Package } from "../state";
 
 export * from "./tauri"
 // export * from "./node"
@@ -40,7 +40,7 @@ export type SearchResults = {
   total: number,
   time: string,
   objects: {
-    package: IPackageJson,
+    package: Package,
     score: {
       final: number,
       detail: {quality: number, popularity: number, maintenance: number}
@@ -58,11 +58,10 @@ export type FileSystemAPI = {
   exists: (path: string) => Promise<boolean>
   unlink: (path: string, options?: undefined) => Promise<void>
   rename: (oldPath: string, newPath: string) => Promise<void>
-  stat: (path: string, options?: undefined) => Promise<Stats>
-  lstat: (path: string, options?: undefined) => Promise<Stats>
+  stat: (path: string, options?: undefined) => Promise<Stats | void>
+  lstat: (path: string, options?: undefined) => Promise<Stats | void>
   symlink: (targetPath: string, linkPath: string) => Promise<void>
   readlink: (path: string, options?: undefined) => Promise<string>
-  du: (path: string) => Promise<number>
 }
 
 export type PathAPI = {

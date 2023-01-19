@@ -46,7 +46,7 @@ export async function pickLoad(filters?: DialogFilter[], multiple=false) {
   return pickLoadFile({filters, multiple})
 }
 
-export async function load(url: string, binaryExtensions=[]) {
+export async function load(url: string, binaryExtensions=[] as string[]) {
   const urlObj = new URL(url)
   const format = getFileExtension(urlObj.pathname)
   let path = decodeURI(urlObj.pathname).slice(1)

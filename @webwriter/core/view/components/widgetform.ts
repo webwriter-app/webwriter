@@ -1,6 +1,7 @@
 import { LitElement, html, css, TemplateResult } from "lit"
 import { customElement, property } from "lit/decorators.js"
 import {ScopedElementsMixin} from "@open-wc/scoped-elements"
+import {ifDefined} from "lit/directives/if-defined.js"
 
 import {SlInput, SlColorPicker, SlSelect, SlTextarea, SlCheckbox, SlDetails, SlCard, SlRadio, SlRadioGroup, SlMenuItem, SlTabGroup, SlTab, SlTabPanel, SlAlert } from "@shoelace-style/shoelace"
 import { classMap } from "lit/directives/class-map.js"
@@ -222,11 +223,11 @@ export class WidgetForm extends ScopedElementsMixin(LitElement) {
     }
     else if(node?.name && (node as any).fields) { // group branch
       let _node = node as GroupPropertyDescription
-      _node.fields.forEach(desc => WidgetForm.backlinkPropertyTree(desc, _node))
+      _node.fields?.forEach(desc => WidgetForm.backlinkPropertyTree(desc, _node))
     }
     else if(node?.name && (node as any).field) { // list branch
       let _node = node as ListPropertyDescription
-      WidgetForm.backlinkPropertyTree(_node.field, _node)
+      _node.field ? WidgetForm.backlinkPropertyTree(_node.field, _node): null
     }
     else { // root
       let _node = node as  Record<PropertyKey, PropertyDescription>
@@ -278,12 +279,12 @@ export class WidgetForm extends ScopedElementsMixin(LitElement) {
   static Text([name, desc]: Entry<"text">, onChange: ChangeCallback, root: Root, show=true) {
     if(desc.widget === "textarea") {
       return html`<sl-textarea
-        @sl-input=${e => onChange(name, e.target.value)}
-        value=${desc.value ?? desc.default}
+        @sl-input=${(e: any) => onChange(name, e.target.value)}
+        value=${ifDefined(desc.value ?? desc.default)}
         class=${classMap({"text": true, [desc.importance ?? "low"]: true})}
-        defaultValue=${desc.default}
-        helpText=${desc.description}
-        maxlength=${desc.maxLength}
+        defaultValue=${ifDefined(desc.default)}
+        helpText=${ifDefined(desc.description)}
+        maxlength=${ifDefined(desc.maxLength)}
         ?disabled=${!show}
       >
       ${WidgetForm.LabelTemplate([name, desc])}
@@ -291,14 +292,14 @@ export class WidgetForm extends ScopedElementsMixin(LitElement) {
     }
     else if(desc.widget === "colorSelector") {
       return html`<sl-color-picker
-        @sl-input=${e => onChange(name, e.target.value)}
-        value=${desc.value ?? desc.default}
+        @sl-input=${(e: any) => onChange(name, e.target.value)}
+        value=${ifDefined(desc.value ?? desc.default)}
         class=${classMap({"text": true, "color": true, [desc.importance ?? "low"]: true})}
-        defaultValue=${desc.default}
-        helpText=${desc.description}
+        defaultValue=${ifDefined(desc.default)}
+        helpText=${ifDefined(desc.description)}
         format=${desc?.spectrum?.preferredFormat as any}
         .swatches=${desc?.spectrum?.palette?.flatMap(color => color) ?? []}
-        ?opacity=${desc?.spectrum.showAlpha}
+        ?opacity=${desc?.spectrum?.showAlpha}
         ?disabled=${!show}
       >
       ${WidgetForm.LabelTemplate([name, desc])}
@@ -306,11 +307,11 @@ export class WidgetForm extends ScopedElementsMixin(LitElement) {
     }
     else if(desc.widget === "html") {
       return html`<ww-rich-text-editor
-        value=${desc.value ?? desc.default}
-        @change=${e => onChange(name, e.target.value)}
+        value=${ifDefined(desc.value ?? desc.default)}
+        @change=${(e: any) => onChange(name, e.target.value)}
         class=${classMap({"text": true, "html": true, [desc.importance ?? "low"]: true})}
-        defaultValue=${desc.default}
-        helpText=${desc.description}
+        defaultValue=${ifDefined(desc.default)}
+        helpText=${ifDefined(desc.description)}
         ?disabled=${!show}
       >
       ${WidgetForm.LabelTemplate([name, desc])}
@@ -318,13 +319,13 @@ export class WidgetForm extends ScopedElementsMixin(LitElement) {
     }
     else {
       return html`<sl-input
-        @sl-input=${e => onChange(name, e.target.value)}
-        value=${desc.value ?? desc.default}
+        @sl-input=${(e: any) => onChange(name, e.target.value)}
+        value=${ifDefined(desc.value ?? desc.default)}
         class=${classMap({"text": true, [desc.importance ?? "low"]: true})}
-        defaultValue=${desc.default}
-        helpText=${desc.description}
-        maxlength=${desc.maxLength}
-        pattern=${desc.regexp?.pattern}
+        defaultValue=${ifDefined(desc.default)}
+        helpText=${ifDefined(desc.description)}
+        maxlength=${ifDefined(desc.maxLength)}
+        pattern=${ifDefined(desc.regexp?.pattern)}
         ?disabled=${!show}
       >
       ${WidgetForm.LabelTemplate([name, desc])}
@@ -334,11 +335,11 @@ export class WidgetForm extends ScopedElementsMixin(LitElement) {
 
   static Boolean([name, desc]: Entry<"boolean">, onChange: ChangeCallback, root: Root, show=true) {
     return html`<sl-checkbox
-      @sl-input=${e => onChange(name, e.target.value)}
-      value=${desc.value ?? desc.default}
+      @sl-input=${(e: any) => onChange(name, e.target.value)}
+      value=${ifDefined(desc.value ?? desc.default)}
       class=${classMap({"boolean": true, [desc.importance ?? "low"]: true})}
       .defaultValue=${desc.default}
-      helpText=${desc.description}
+      helpText=${ifDefined(desc.description)}
       ?disabled=${!show}
     >
     ${WidgetForm.LabelTemplate([name, desc])}
@@ -348,14 +349,14 @@ export class WidgetForm extends ScopedElementsMixin(LitElement) {
   static Number([name, desc]: Entry<"number">, onChange: ChangeCallback, root: Root, show=true) {
     return html`<sl-input 
       type=${desc.widget === "timecode"? "time": "number"}
-      @sl-input=${e => onChange(name, e.target.value)}
-      value=${desc.value ?? desc.default}
+      @sl-input=${(e: any) => onChange(name, e.target.value)}
+      value=${ifDefined(desc.value ?? desc.default)}
       class=${classMap({"number": true, [desc.importance ?? "low"]: true})}
-      defaultValue=${desc.default}
-      helpText=${desc.description}
-      min=${desc.min}
-      max=${desc.max}
-      step=${desc.steps}
+      defaultValue=${ifDefined(desc.default)}
+      helpText=${ifDefined(desc.description)}
+      min=${ifDefined(desc.min)}
+      max=${ifDefined(desc.max)}
+      step=${ifDefined(desc.steps)}
       ?disabled=${!show}
       inputmode=${!desc.decimals? "numeric": "decimal"}
     >
@@ -365,11 +366,11 @@ export class WidgetForm extends ScopedElementsMixin(LitElement) {
 
   static Object([name, desc]: Entry<"object">, onChange: ChangeCallback, root: Root, show=true) {
     return html`<sl-textarea
-      @sl-input=${e => onChange(name, JSON.parse(e.target.value))}
+      @sl-input=${(e: any) => onChange(name, JSON.parse(e.target.value))}
       value=${JSON.stringify(desc.value ?? desc.default)}
       class=${classMap({"object": true, [desc.importance ?? "low"]: true})}
       defaultValue=${JSON.stringify(desc.default)}
-      helpText=${desc.description}
+      helpText=${ifDefined(desc.description)}
       ?disabled=${!show}
     >
     ${WidgetForm.LabelTemplate([name, desc])}
@@ -378,11 +379,11 @@ export class WidgetForm extends ScopedElementsMixin(LitElement) {
 
   static Array([name, desc]: Entry<"array">, onChange: ChangeCallback, root: Root, show=true) {
     return html`<sl-textarea
-      @sl-input=${e => onChange(name, JSON.parse(e.target.value))}
+      @sl-input=${(e: any) => onChange(name, JSON.parse(e.target.value))}
       value=${JSON.stringify(desc.value ?? desc.default)}
       class=${classMap({"array": true, [desc.importance ?? "low"]: true})}
       defaultValue=${JSON.stringify(desc.default)}
-      helpText=${desc.description}
+      helpText=${ifDefined(desc.description)}
       ?disabled=${!show}
     >
     ${WidgetForm.LabelTemplate([name, desc])}
@@ -391,16 +392,16 @@ export class WidgetForm extends ScopedElementsMixin(LitElement) {
 
   static Group([name, desc]: Entry<"group">, onChange: ChangeCallback, root: Root, show=true) {
     if(desc.widget === "linkWidget") {
-      const prefixDescription = (desc.fields[0] as SelectPropertyDescription)
-      const prefixOptions = prefixDescription.options.map(({label, value}) => html`
+      const prefixDescription = ((desc as any).fields[0] as SelectPropertyDescription)
+      const prefixOptions = prefixDescription.options?.map(({label, value}) => html`
         <sl-menu-item value=${value}>${label}</sl-menu-item>
       `)
       return html`<sl-input
         type="url"
-        @sl-input=${e => onChange(name, e.target.value)}
+        @sl-input=${(e: any) => onChange(name, e.target.value)}
         value=${desc.value}
         class=${classMap({"group": true, [desc.importance ?? "low"]: true})}
-        helpText=${desc.description}
+        helpText=${ifDefined(desc.description)}
         inputmode="url"
         ?disabled=${!show}
       >
@@ -409,19 +410,19 @@ export class WidgetForm extends ScopedElementsMixin(LitElement) {
       </sl-input>`
     }
     else if(desc.widget === "duration") {
-      const numberDesc1 = desc.fields[0] as NumberPropertyDescription
-      const numberDesc2 = desc.fields[1] as NumberPropertyDescription
+      const numberDesc1 = (desc.fields as any)[0] as NumberPropertyDescription
+      const numberDesc2 = (desc.fields as any)[1] as NumberPropertyDescription
       return html`<div>
         <sl-input 
           type="number"
-          @sl-input=${e => onChange(`${String(name)}/${String(numberDesc1.name)}`, e.target.value)}
-          value=${numberDesc1.value ?? numberDesc1.default}
+          @sl-input=${(e: any) => onChange(`${String(name)}/${String(numberDesc1.name)}`, e.target.value)}
+          value=${ifDefined(numberDesc1.value ?? numberDesc1.default)}
           class=${classMap({"number": true, [numberDesc1.importance ?? "low"]: true})}
-          defaultValue=${numberDesc1.default}
-          helpText=${numberDesc1.description}
-          min=${numberDesc1.min}
-          max=${numberDesc1.max}
-          step=${numberDesc1.steps}
+          defaultValue=${ifDefined(numberDesc1.default)}
+          helpText=${ifDefined(numberDesc1.description)}
+          min=${ifDefined(numberDesc1.min)}
+          max=${ifDefined(numberDesc1.max)}
+          step=${ifDefined(numberDesc1.steps)}
           inputmode=${!numberDesc1.decimals? "numeric": "decimal"}
           ?disabled=${!show}
         >
@@ -429,14 +430,14 @@ export class WidgetForm extends ScopedElementsMixin(LitElement) {
         </sl-input>
         <sl-input 
           type="number"
-          @sl-input=${e => onChange(`${String(name)}/${String(numberDesc2.name)}`, e.target.value)}
-          value=${numberDesc2.value ?? numberDesc2.default}
+          @sl-input=${(e: any) => onChange(`${String(name)}/${String(numberDesc2.name)}`, e.target.value)}
+          value=${ifDefined(numberDesc2.value ?? numberDesc2.default)}
           class=${classMap({"number": true, [numberDesc2.importance ?? "low"]: true})}
-          defaultValue=${numberDesc2.default}
-          helpText=${numberDesc2.description}
-          min=${numberDesc2.min}
-          max=${numberDesc2.max}
-          step=${numberDesc2.steps}
+          defaultValue=${ifDefined(numberDesc2.default)}
+          helpText=${ifDefined(numberDesc2.description)}
+          min=${ifDefined(numberDesc2.min)}
+          max=${ifDefined(numberDesc2.max)}
+          step=${ifDefined(numberDesc2.steps)}
           inputmode=${!numberDesc2.decimals? "numeric": "decimal"}
           ?disabled=${!show}
         >
@@ -445,24 +446,24 @@ export class WidgetForm extends ScopedElementsMixin(LitElement) {
       </div>`
     }
     else if(desc.widget === "imageCoordinateSelector") {
-      const xDesc = desc.fields[0] as NumberPropertyDescription
-      const yDesc = desc.fields[1] as NumberPropertyDescription
+      const xDesc = (desc.fields as any)[0] as NumberPropertyDescription
+      const yDesc = (desc.fields as any)[1] as NumberPropertyDescription
       const x = xDesc.value
       const y = yDesc.value
       const defaultCoordinates = xDesc.default && yDesc.default? [{x: xDesc.default, y: yDesc.default}]: undefined
-      const imageField = WidgetForm.resolve(desc.imageFieldPath, root, desc)
-      const src = imageField.value
+      const imageField = desc.imageFieldPath? WidgetForm.resolve(desc.imageFieldPath, root, desc): null
+      const src = imageField?.value
       return html`<div>
         <ww-image-coordinate-picker 
-          @change=${e => {
+          @change=${(e: any) => {
             onChange(`${String(name)}/${String(xDesc.name)}`, e.target.coordinates[0].x)
             onChange(`${String(name)}/${String(yDesc.name)}`, e.target.coordinates[0].y)
           }}
           .coordinates=${x && y? [{x, y}]: defaultCoordinates}
-          class=${classMap({"group": true, [desc.importance]: true})}
+          class=${classMap({"group": true, [desc.importance as string]: true})}
           .defaultValue=${defaultCoordinates}
           src=${src}
-          helpText=${desc.description}
+          helpText=${ifDefined(desc.description)}
           ?disabled=${!show}
         >
         ${WidgetForm.LabelTemplate([name, desc])}
@@ -480,7 +481,7 @@ export class WidgetForm extends ScopedElementsMixin(LitElement) {
         <span slot="header">${WidgetForm.LabelTemplate([name, desc])}</span>
         <div class="help-text">${desc.description}</div>
         <sl-tab-group>
-          ${desc.fields.map(TabEntry)}
+          ${desc.fields?.map(TabEntry)}
         </sl-tab-group>
       </sl-card>
       `
@@ -489,7 +490,7 @@ export class WidgetForm extends ScopedElementsMixin(LitElement) {
       return html`<sl-details class=${classMap({"group": true, [desc.importance ?? "low"]: true})}>
         ${WidgetForm.LabelTemplate([name, desc], "summary")}
         <div class="help-text">${desc.description}</div>
-        ${desc.fields.map(field => WidgetForm.EntryTemplate([field.name, field], (name, value) => onChange(`${desc.name}/${String(name)}`, value), root))}
+        ${desc.fields?.map(field => WidgetForm.EntryTemplate([field.name, field], (name, value) => onChange(`${desc.name}/${String(name)}`, value), root))}
       </sl-details>`
     }
   }
@@ -504,22 +505,22 @@ export class WidgetForm extends ScopedElementsMixin(LitElement) {
     if(desc.widget === "verticalTabs") {
       return html`
         <sl-card class=${classMap({"list": true, [desc.importance ?? "low"]: true})}>
-          <span slot="header" title=${desc.description}>
+          <span slot="header" title=${ifDefined(desc.description)}>
             ${WidgetForm.LabelTemplate([name, desc])}
           </span>
           <sl-tab-group placement="start">
-            ${desc.value.map((value, i) => TabEntry({...desc.field, value}, i))}
+            ${desc.value?.map((value, i) => TabEntry({...desc.field, value} as PropertyDescription, i))}
           </sl-tab-group>
         </sl-card>
       `
     }
     else {
       return html`<sl-card class=${classMap({"list": true, [desc.importance ?? "low"]: true})}>
-        <span slot="header" title=${desc.description}>
+        <span slot="header" title=${ifDefined(desc.description)}>
         ${WidgetForm.LabelTemplate([name, desc])}
         </span>
         ${desc.value?.map((v, i) => 
-          WidgetForm.EntryTemplate([desc.name, {value: v, ...desc.field}], (name, value) => onChange(`${String(desc.name)}/#${i}/${String(name)}`, value), root)
+          WidgetForm.EntryTemplate([desc.name, {value: v, ...desc.field} as PropertyDescription], (name, value) => onChange(`${String(desc.name)}/#${i}/${String(name)}`, value), root)
         )}
       </sl-card>`
     }
@@ -528,27 +529,27 @@ export class WidgetForm extends ScopedElementsMixin(LitElement) {
   static Select([name, desc]: Entry<"select">, onChange: ChangeCallback, root: Root, show=true) {
     if(desc.widget === "radioGroup") {
       return html`<sl-select
-        @sl-input=${e => onChange(name, e.target.value)}
-        value=${desc.value ?? desc.default}
+        @sl-input=${(e: any) => onChange(name, e.target.value)}
+        value=${ifDefined(desc.value ?? desc.default)}
         class=${classMap({"select": true, [desc.importance ?? "low"]: true})}
-        defaultValue=${desc.default}
-        helpText=${desc.description}
+        defaultValue=${ifDefined(desc.default)}
+        helpText=${ifDefined(desc.description)}
         ?disabled=${!show}
       >
         ${WidgetForm.LabelTemplate([name, desc])}
-        ${desc.options.map(({label, value}) => html`
+        ${desc.options?.map(({label, value}) => html`
           <sl-menu-item value=${value}>${label}</sl-menu-item>
         `)}
       </sl-select>`
     }
     else {
       return html`<sl-radio-group
-        @sl-input=${e => onChange(name, e.target.value)}
-        value=${desc.value ?? desc.default}
+        @sl-input=${(e: any) => onChange(name, e.target.value)}
+        value=${ifDefined(desc.value ?? desc.default)}
         class=${classMap({"select": true, [desc.importance ?? "low"]: true})}
-        defaultValue=${desc.default}
-        helpText=${desc.description}
-      >${desc.options.map(({label, value}) => html`
+        defaultValue=${ifDefined(desc.default)}
+        helpText=${ifDefined(desc.description)}
+      >${desc.options?.map(({label, value}) => html`
         <sl-radio ?disabled=${!show} value=${value}>${WidgetForm.LabelTemplate([name, desc])}</sl-radio>
       `)}</sl-radio-group>`
     }
@@ -556,10 +557,10 @@ export class WidgetForm extends ScopedElementsMixin(LitElement) {
 
   static File([name, desc]: Entry<"file" | "image" | "audio" | "video">, onChange: ChangeCallback, root: Root, show=true) {
     return html`<ww-file-input
-      accept=${desc.type === "file"? undefined: `${desc.type}/*`}
-      @change=${e => e.target.files?.length > 0 && onChange(name, URL.createObjectURL(e.target.files.item(0)))}
+      accept=${ifDefined(desc.type === "file"? undefined: `${desc.type}/*`)}
+      @change=${(e: any) => e.target.files?.length > 0 && onChange(name, URL.createObjectURL(e.target.files.item(0)))}
       class=${classMap({[desc.type]: true, [desc.importance ?? "low"]: true})}
-      helpText=${desc.description}
+      helpText=${ifDefined(desc.description)}
       ?disabled=${!show}
     >
     ${WidgetForm.LabelTemplate([name, desc])}
@@ -585,7 +586,7 @@ export class WidgetForm extends ScopedElementsMixin(LitElement) {
   static Fallback([name, desc]: Entry<any>, onChange: ChangeCallback, root: Root, show=true) {
     return html`<sl-input
       class="unsupported-property"
-      @sl-input=${e => onChange(name, JSON.parse(e.target.value))}
+      @sl-input=${(e: any) => onChange(name, JSON.parse(e.target.value))}
       value=${desc.value}
       helpText="Unsupported property type '${desc.type}' (processing as JSON)"
       ?disabled=${!show}
@@ -601,7 +602,7 @@ export class WidgetForm extends ScopedElementsMixin(LitElement) {
     </div>`
   }
 
-  static resolve(path: string, root: Root, start?: PropertyDescription): PropertyDescription {
+  static resolve(path: string, root: Root, start?: PropertyDescription): PropertyDescription | null {
     let parts = path.split("/")
     const isRelativePath = !path.startsWith("/")
     parts = isRelativePath && parts[0] !== "."? [".", ...parts]: parts
@@ -618,7 +619,7 @@ export class WidgetForm extends ScopedElementsMixin(LitElement) {
           pos = root[part]
         }
         else if(pos?.fields) { // at an object branch
-          pos = pos.fields.find(field => field.name === part)
+          pos = pos.fields.find((field: any) => field.name === part)
         }
         else if(pos?.field) { // at a list branch
           pos = {...pos.field, value: pos.value}
@@ -642,13 +643,13 @@ export class WidgetForm extends ScopedElementsMixin(LitElement) {
     let show = false
     for(let rule of desc.showWhen.rules) {
       const field = WidgetForm.resolve(rule.field, root, desc)
-      const value = field.value ?? field["default"]
-      if(["list", "library", "select"].includes(field.type)) {
+      const value = field?.value ?? (field as any)?.default
+      if(field && ["list", "library", "select"].includes(field.type)) {
         show = show || (!Array.isArray(rule.equals)
           ? rule.equals === value
           : rule.equals.includes(value))
       }
-      else if(field.type === "boolean" || (field as any).type === Boolean) {
+      else if(field && (field.type === "boolean" || (field as any).type === Boolean)) {
         show = show || rule.equals === value
       }
       else {
@@ -665,7 +666,7 @@ export class WidgetForm extends ScopedElementsMixin(LitElement) {
     }
     let templateName = capitalize(entryType)
     const show = WidgetForm.showWhen([name, desc], root)
-    const Template = WidgetForm[templateName] ?? WidgetForm.Fallback
+    const Template = (WidgetForm as any)[templateName] ?? WidgetForm.Fallback
     desc.widget && !WidgetForm.supportedEditorWidgets.includes(desc.widget)? console.log({desc, widget: desc.widget}): null
     const result = html`
       ${desc.widget && desc.widget !== "none" && !WidgetForm.supportedEditorWidgets.includes(desc.widget)

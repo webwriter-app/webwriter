@@ -87,7 +87,7 @@ export class DocumentHeader extends LitElement {
 	></ww-combobox>`
 
 	revisionTemplate = ({date, author}: any[number], i: number) => html`<div class="revision">
-		<sl-input @sl-change=${e => this.handleAttributeChange(e, "author", i)} value=${author} placeholder=${camelCaseToSpacedCase("author")}></sl-input>
+		<sl-input @sl-change=${(e: any) => this.handleAttributeChange(e, "author", i)} value=${author} placeholder=${camelCaseToSpacedCase("author")}></sl-input>
 		<sl-format-date id="dateModified" .date=${date}></sl-format-date>
 	</div>`
 
@@ -110,7 +110,7 @@ export class DocumentHeader extends LitElement {
 	handleHeadlineKeyDown = (e: KeyboardEvent) => {
 		if(e.key === "ArrowDown") {
 			e.stopImmediatePropagation()
-			if(this.slDetails.open && this.shadowRoot.activeElement === this.headline) {
+			if(this.slDetails.open && this.shadowRoot?.activeElement === this.headline) {
 				this.inputFields[0].focus()
 			}
 			else {
@@ -125,7 +125,7 @@ export class DocumentHeader extends LitElement {
 
 	handleInputFieldKeyDown = (e: KeyboardEvent) => {
 		const inputFields = [...this.inputFields]
-		const fieldIndex = inputFields.indexOf(this.shadowRoot.activeElement as any)
+		const fieldIndex = inputFields.indexOf(this.shadowRoot?.activeElement as any)
 		if(e.key === "ArrowDown" && fieldIndex !== -1) {
 			if(fieldIndex < inputFields.length - 1) {
 				e.stopPropagation()
@@ -293,7 +293,7 @@ export class DocumentHeader extends LitElement {
           placeholder=${camelCaseToSpacedCase("headline")}
           slot="summary"
           @keydown=${this.handleHeadlineKeyDown}
-					@click=${e => e.stopPropagation()}
+					@click=${(e: any) => e.stopPropagation()}
         ></sl-input>
 				<sl-tab-group placement="end">
 					<sl-tab slot="nav" panel="general-information" active>
@@ -383,7 +383,7 @@ export class DocumentFooter extends LitElement {
 	inputTemplate = (key: keyof Attributes, placeholder: string) => html`<sl-input 
 		id=${key}
 		@sl-change=${this.handleAttributeChange}
-		value=${this.docAttributes[key] as string}
+		value=${(this.docAttributes as any)[key] as string}
 		?disabled=${!this.editable}
 		placeholder=${placeholder ?? camelCaseToSpacedCase(key)}
 	></sl-input>`
@@ -491,7 +491,7 @@ export class DocumentFooter extends LitElement {
         `}
         ${this.inputTemplate("author", "Anonymous")}
       </div>
-			<ww-license-picker value=${this.docAttributes.license == undefined || this.docAttributes.license === ""? "All rights reserved": this.docAttributes.license} @ww-change=${e => this.emitAttributeChange("license", e.detail.value)} ?disabled=${!this.editable}></ww-license-picker>
+			<ww-license-picker value=${this.docAttributes.license == undefined || this.docAttributes.license === ""? "All rights reserved": this.docAttributes.license} @ww-change=${(e: CustomEvent) => this.emitAttributeChange("license", e.detail.value)} ?disabled=${!this.editable}></ww-license-picker>
 	  `
 	}
 }
@@ -580,7 +580,7 @@ export class WwLicensePicker extends LitElement {
 			this.attributionChoice = "yes"
 		}
 
-		this[key] = value
+		(this as any)[key] = value
 
 		const cc = this.ccChoice === "yes"
 		const choices = {
@@ -609,8 +609,8 @@ export class WwLicensePicker extends LitElement {
 
 	static LICENSES = {
 		"All rights reserved": {
-			icons: null as string[],
-			iconLibrary: null as string,
+			icons: null as string[] | null,
+			iconLibrary: null as string | null,
 			fullLabel: "All rights reserved"
 		},
 		"CC-BY-NC-ND-4.0": {
@@ -717,12 +717,12 @@ export class WwLicensePicker extends LitElement {
 	}
 
 	radioGroupTemplate = (key: string, label: string, options: {value: string, label: string}[], disabled: boolean = false) => html`
-		<sl-radio-group label=${label} value=${this[key]} fieldset>
+		<sl-radio-group label=${label} value=${(this as any)[key]} fieldset>
 			${options.map(({value, label}, i) => html`
 				<sl-radio-button
 					name="option"
 					value=${value}
-					?checked=${this[key] === value}
+					?checked=${(this as any)[key] === value}
 					?disabled=${disabled}
 					@click=${() => this.setChoice(key, value)}>
 					${label}
@@ -733,8 +733,8 @@ export class WwLicensePicker extends LitElement {
 	render() {
 		return html`
 			<span tabindex=${0} class="license" spellcheck=${false}>
-				<sl-input ?disabled=${this.disabled} value=${this.value} ?spellcheck=${false} @sl-change=${e => this.handleChange(e.target.value)} @focusin=${this.handleOpen}></sl-input>
-				${null && WwLicensePicker.LICENSES[this.value]?.icons?.map(name => html`<sl-icon name=${name}></sl-icon>`)}
+				<sl-input ?disabled=${this.disabled} value=${this.value} ?spellcheck=${false} @sl-change=${(e: any) => this.handleChange(e.target.value)} @focusin=${this.handleOpen}></sl-input>
+				${null && (WwLicensePicker.LICENSES as any)[this.value]?.icons?.map((name: string) => html`<sl-icon name=${name}></sl-icon>`)}
 				${this.href? html`<a href=${this.href} target="_blank"><sl-icon name="box-arrow-up-right"></sl-icon></a>`: null}
 			</span>
 			<sl-animation name="fadeIn" easing="ease" duration=${500} iterations=${1}>

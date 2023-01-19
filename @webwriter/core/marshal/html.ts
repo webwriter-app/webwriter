@@ -6,7 +6,7 @@ import { createElementWithAttributes, namedNodeMapToObject, unscopePackageName }
 import { join, appDir } from '@tauri-apps/api/path'
 import { EditorState } from 'prosemirror-state'
 import {Schema, DOMParser} from "prosemirror-model"
-import { createEditorState } from '../state/editorstate'
+import { createEditorState } from '../state'
 import { Environment } from '../environment'
 
 class NonHTMLDocumentError extends Error {}
@@ -30,12 +30,13 @@ export async function docToBundle(doc: Node, bundle: Environment["bundle"]) {
     .filter(name => allWidgetTypes.includes(name))
 
   const packageNames = widgetTypes.map(name => doc.type.schema.nodes[name].spec["package"])
+  const unscopedPackageNames = packageNames.map(t => unscopePackageName(t))
 
   const statements = [
     `import "@open-wc/scoped-elements"`
-  ].concat(packageNames.flatMap(t => [
-    `import ${unscopePackageName(t).replaceAll("-", "_")} from "${t}"`,
-    `customElements.define("${unscopePackageName(t)}", ${unscopePackageName(t).replaceAll("-", "_")})`
+  ].concat(unscopedPackageNames.flatMap(t => [
+    `import ${t.replaceAll("-", "_")} from "${t}"`,
+    `customElements.define("${t}", ${t.replaceAll("-", "_")})`
   ]))
   const entrypoint = statements.length > 1? statements.join(";"): ""
 
@@ -90,15 +91,15 @@ export function parse(data: string, schema: Schema) {
   try {
     inputDoc = new globalThis.DOMParser().parseFromString(data, "text/html")
   }
-  catch(e) {
-    throw new NonHTMLDocumentError(e.message)
+  catch(e: any) {
+    throw new NonHTMLDocumentError(e?.message)
   }
 
   if(!inputDoc.querySelector("meta[name=generator][content=webwriter]")) {
     throw new NonWebwriterDocumentError("Did not find WebWriter marker: <meta name='generator' content='webwriter'>")
   }
 
-  const headline = inputDoc.querySelector("title").text
+  const headline = inputDoc.querySelector("title")?.text
   const keywords = inputDoc.querySelector("meta[name=keywords]")?.getAttribute("content")?.split(",")
   const inLanguage = inputDoc.documentElement.lang
 

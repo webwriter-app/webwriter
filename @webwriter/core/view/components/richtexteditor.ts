@@ -119,7 +119,7 @@ export class RichTextEditor extends LitElement {
   static createMenuItems() {
     const items = buildMenuItems(mySchema)
     for(const [key, value] of Object.entries(RichTextEditor.menuItemIcons)) {
-      items[key].spec.icon = {dom: svgStringToElement(value)}
+      (items as any)[key].spec.icon = {dom: svgStringToElement(value)}
     }
     // missing from H5P:
       // Command only: Clear formatting (marks)
@@ -141,7 +141,7 @@ export class RichTextEditor extends LitElement {
             [items.wrapBulletList, items.wrapOrderedList, items.wrapBlockQuote],
             [items.makeParagraph, items.makeHead1, items.makeHead2],
             [items.insertHorizontalRule]
-          ]
+          ] as any
         }),
       })
     })

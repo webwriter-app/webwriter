@@ -178,12 +178,12 @@ export class Tabs extends LitElement {
 	}
 
 	selectPreviousTab() {
-		const previousTab = this.tabs[this.tabs.indexOf(this.activeTab[0]) - 1]
+		const previousTab = this.tabs[this.tabs.indexOf(this.activeTab) - 1]
 		previousTab?.focus()		
 	}
 
 	selectNextTab() {
-		const nextTab = this.tabs[this.tabs.indexOf(this.activeTab[0]) + 1]
+		const nextTab = this.tabs[this.tabs.indexOf(this.activeTab) + 1]
 		nextTab?.focus()
 	}
 
@@ -192,7 +192,7 @@ export class Tabs extends LitElement {
 			e.preventDefault()
 			this.tabsWrapper.scrollLeft += e.deltaY
 		})
-		this.shadowRoot.querySelector("slot[name=tabs]").addEventListener("slotchange", () => this.requestUpdate())
+		this.shadowRoot?.querySelector("slot[name=tabs]")?.addEventListener("slotchange", () => this.requestUpdate())
 	}
 
 	render() {
@@ -296,9 +296,9 @@ export class Tab extends LitElement {
 	connectedCallback() {
 		super.connectedCallback()
 		this.addEventListener("dragstart", e => {
-			this.titleAsIconicUrl && e.dataTransfer.setData("text/uri-list", this.titleValue)
-			e.dataTransfer.setData("text/plain", this.titleValue)
-			e.dataTransfer.setData("text", this.titleValue)
+			this.titleAsIconicUrl && e.dataTransfer?.setData("text/uri-list", this.titleValue)
+			e.dataTransfer?.setData("text/plain", this.titleValue)
+			e.dataTransfer?.setData("text", this.titleValue)
 		})
 		this.addEventListener("focusout", e => {
 			this.emitCancelDiscard()
@@ -454,7 +454,7 @@ export class Tab extends LitElement {
 
 	iconicUrlTemplate = () => {
 		const url = new URL(this.titleValue)
-		const iconName = PROTOCOL_ICONS[url.protocol.slice(0, -1)]
+		const iconName = (PROTOCOL_ICONS as any)[url.protocol.slice(0, -1)]
 		const filename = url.pathname.slice(url.pathname.lastIndexOf("/") + 1).split("#")[0]
 		return html`
 			<sl-icon name=${iconName}></sl-icon>
@@ -524,12 +524,12 @@ export class ScrollButton extends LitElement {
 
 	constructor() {
 		super()
-		new ResizeObserver(() => this.requestUpdate()).observe(this.getTarget())
-		this.getTarget().addEventListener("slotchange", () => this.requestUpdate())
+		new ResizeObserver(() => this.requestUpdate()).observe(this.getTarget() as any)
+		this.getTarget()?.addEventListener("slotchange", () => this.requestUpdate())
 	}
 
 	@property({type: Object})
-	getTarget: () => HTMLElement = () => this.parentElement
+	getTarget = () => this.parentElement
 
 	@property({type: Number})
 	amount: number = 200
@@ -551,7 +551,7 @@ export class ScrollButton extends LitElement {
 	scrollTarget = () => {
 		const backwards = ["left", "top"].includes(this.direction)
 		const horizontal = ["left", "right"].includes(this.direction)
-		this.getTarget().scrollBy({
+		this.getTarget()?.scrollBy({
 			behavior: this.behavior,
 			[horizontal? "left": "top"]: (backwards? -1: 1) * this.amount 
 		})
@@ -569,10 +569,10 @@ export class ScrollButton extends LitElement {
 	render() {
 		const horizontal = ["left", "right"].includes(this.direction)
 		const isOverflown = horizontal? isOverflownX: isOverflownY
-		return this.visible === "always" || isOverflown(this.getTarget())
+		return this.visible === "always" || isOverflown(this.getTarget() as any)
 			? html`<sl-icon-button
 				name="chevron-${this.direction}"
-				?disabled=${!isOverflown(this.getTarget())}
+				?disabled=${!isOverflown(this.getTarget() as any)}
 				@mousedown=${this.startScrollingTarget}
 				@mouseup=${this.stopScrollingTarget}
 			></sl-icon-button>`

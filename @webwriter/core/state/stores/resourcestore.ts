@@ -1,7 +1,7 @@
 import { EditorState } from "prosemirror-state"
 
 import { getFileExtension } from "../../utility"
-import { createEditorState } from "../editorstate"
+import { createEditorState } from ".."
 import { Schema } from "prosemirror-model"
 import * as marshal from "../../marshal"
 import * as connect from "../../connect"
@@ -26,7 +26,7 @@ type Options = {
 export class ResourceStore {
 
   private _resources = {} as Record<Resource["url"], Resource>
-  private _active = null as Resource["url"]
+  private _active = null as Resource["url"] | null
   order = [] as Array<Resource["url"]>
   schema: Schema
   previewing: Record<Resource["url"], boolean> = {}
@@ -67,7 +67,7 @@ export class ResourceStore {
 
   /** The currently active resource. */
   get active() {
-    return this._resources[this._active]
+    return this._active? this._resources[this._active]: null
   }
 
   /** Gets a new, unused resource URL. */
@@ -92,12 +92,18 @@ export class ResourceStore {
   }
 
   /** Sets a new editor state for the given resource. */
-  set(url: Resource["url"] = this._active, editorState: EditorState) {
+  set(url = this._active, editorState: EditorState) {
+    if(!url) {
+      throw new TypeError("Needs a 'url' since no url is active")
+    }
     this._resources = {...this._resources, [url]: {url, editorState}}
   }
 
   /** Remove a resource from the list of resources. */
-  discard(url: Resource["url"] = this._active) {
+  discard(url = this._active) {
+    if(!url) {
+      throw new TypeError("Needs a 'url' since no url is active")
+    }
     this.activateNext(url, true)
     delete this._resources[url]
     delete this.previewing[url]
@@ -107,16 +113,22 @@ export class ResourceStore {
   }
 
   /** Toggles the preview flag for the given resource. */
-  togglePreview(url: Resource["url"] = this._active) {
+  togglePreview(url = this._active) {
+    if(!url) {
+      throw new TypeError("Needs a 'url' since no url is active")
+    }
     this.previewing = {...this.previewing, [url]: !this.previewing[url]}
   }
 
   /** Assigns the resource to a new URL, for example when saving. */
-  relocate(url: Resource["url"] = this._active, newURL: Resource["url"]) {
+  relocate(url = this._active, newURL: Resource["url"]) {
+    if(!url) {
+      throw new TypeError("Needs a 'url' since no url is active")
+    }
     if(url === newURL) {return}
     this.order.splice(this.order.indexOf(url), 1, newURL)
     const editorState = this._resources[url].editorState
-    delete this.resources[url]
+    delete this._resources[url]
     this._resources = {...this._resources, [newURL]: {url: newURL, editorState}}
     this.lastSavedState = {...this.lastSavedState, [newURL]: this.lastSavedState[url]}
     delete this.lastSavedState[url]
@@ -129,7 +141,10 @@ export class ResourceStore {
   }
 
   /** Activates the next (or previous) resource in order. */
-  activateNext(url: Resource["url"] = this._active, backward=false) {
+  activateNext(url = this._active, backward=false) {
+    if(!url) {
+      throw new TypeError("Needs a 'url' since no url is active")
+    }
     const order = this.order
     const i = order.indexOf(url)
     const n = order.length
@@ -137,7 +152,10 @@ export class ResourceStore {
   }
 
   /** Saves a resource on an external file system. */
-  async save(url: Resource["url"] = this._active, saveAs=false) {
+  async save(url = this._active, saveAs=false) {
+    if(!url) {
+      throw new TypeError("Needs a 'url' since no url is active")
+    }
     const resource = this._resources[url]
     let urlObj = new URL(resource?.url ?? "memory:/")
     if(urlObj.protocol === "memory:" || saveAs) {
@@ -151,9 +169,9 @@ export class ResourceStore {
 
     const protocol = urlObj.protocol.slice(0, -1)
     const format = getFileExtension(urlObj.href)
-    const save = connect[protocol].save
-    const serialize = marshal[format].serialize
-    const isBinary = marshal[format].isBinary
+    const save = (connect as any)[protocol].save
+    const serialize = (marshal as any)[format].serialize
+    const isBinary = (marshal as any)[format].isBinary
   
     let data = await serialize(resource.editorState.doc, this.bundle)
     await save(data, urlObj.href, isBinary)
@@ -176,8 +194,8 @@ export class ResourceStore {
 
     const protocol = urlObj.protocol.slice(0, -1)
     const format = getFileExtension(urlObj.href)
-    const load = connect[protocol].load
-    const parse = marshal[format].parse
+    const load = (connect as any)[protocol].load
+    const parse = (marshal as any)[format].parse
     
     let data = await load(urlObj.href, BINARY_EXTENSIONS)
     let editorState = await parse(data, this.schema)

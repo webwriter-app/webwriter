@@ -60,7 +60,7 @@ export function docToManifest(explorable: Node, webFileName: string, fileNames: 
 export async function parse(data: string, schema: Schema) {
   const zip = new JSZip()
   await zip.loadAsync(data)
-  const htmlString = await zip.file("index.html").async("string")
+  const htmlString = await zip.file("index.html")?.async("string") ?? ""
   return parseHTML(htmlString, schema)
 }
 

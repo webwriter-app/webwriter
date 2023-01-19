@@ -40,7 +40,7 @@ export function camelCaseToSpacedCase(str: string, capitalizeFirstLetter=true) {
  * @param name Scoped package name.
  */
 export function unscopePackageName(name: string) {
-  return name.split(/\@.*\//).pop()
+  return name.split(/\@.*\//).pop() ?? name
 }
 
 /**
@@ -49,7 +49,7 @@ export function unscopePackageName(name: string) {
  * @param capitalize Either "all", "first" or undefined, capitalizing either all words, only the first, or none. 
  */
 export function prettifyPackageName(name: string, capitalize: "all" | "first" = "all") {
-  let nameParts = unscopePackageName(name).split("-").slice(1)
+  let nameParts = unscopePackageName(name)?.split("-").slice(1) ?? []
   if(capitalize === "all") {
     return nameParts.map(capitalizeWord).join(" ")
   }
@@ -136,10 +136,10 @@ export function arrayReplaceAt<T extends Array<any>>(arr: T, i: number, item: an
  * @param properties Properties to assign
  * @returns The created element
  */
-export function createElementWithAttributes(doc: Document, tagName: string, options: ElementCreationOptions, attributes: Record<string, string> = {}, properties: Record<string, any> = {}) {
+export function createElementWithAttributes(doc: Document, tagName: string, options?: ElementCreationOptions, attributes: Record<string, string> = {}, properties: Record<string, any> = {}) {
   const el = doc.createElement(tagName, options)
   Object.entries(attributes).forEach(([key, value]) => el.setAttribute(key, value))
-  Object.entries(properties).forEach(([key, value]) => el[key] = value)
+  Object.entries(properties).forEach(([key, value]) => (el as any)[key] = value)
   return el
 }
 
@@ -153,14 +153,14 @@ export function namedNodeMapToObject(nodeMap: NamedNodeMap) {
 /**
  * Calculates this browser's scrollbar width and caches the result.
  */
-export  function getScrollbarWidth(): number {
-  var div, width = getScrollbarWidth["width"];
+export function getScrollbarWidth(): number {
+  var div, width = (getScrollbarWidth as any)["width"];
   if (width === undefined) {
     div = document.createElement('div');
     div.innerHTML = '<div style="width:50px;height:50px;position:absolute;left:-50px;top:-50px;overflow:auto;"><div style="width:1px;height:100px;"></div></div>';
-    div = div.firstChild;
+    div = div.firstChild as HTMLElement;
     document.body.appendChild(div);
-    width = getScrollbarWidth["width"] = div.offsetWidth - div.clientWidth;
+    width = (getScrollbarWidth as any)["width"] = div.offsetWidth - div.clientWidth;
     document.body.removeChild(div);
   }
   return width;

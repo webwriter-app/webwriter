@@ -1,6 +1,6 @@
 export {open} from "@tauri-apps/api/shell"
-import {readTextFile, readBinaryFile, writeTextFile, writeBinaryFile, removeFile, readDir, createDir, removeDir, exists} from '@tauri-apps/api/fs'
-import {join, normalize, basename, dirname, extname, resolve, isAbsolute, appDataDir as appDir, resourceDir} from '@tauri-apps/api/path'
+import {readTextFile, readBinaryFile, writeTextFile, writeBinaryFile, removeFile, readDir, createDir, removeDir, exists, renameFile} from '@tauri-apps/api/fs'
+import {join, normalize, basename, dirname, extname, resolve, isAbsolute, appDataDir as appDir} from '@tauri-apps/api/path'
 import {Command, open} from "@tauri-apps/api/shell"
 export {open as pickFile} from "@tauri-apps/api/dialog"
 import {fetch, Body, ResponseType} from "@tauri-apps/api/http"
@@ -54,14 +54,14 @@ const HTTP_STATUS = {
   '505': 'HTTP Version Not Supported',
 };
 
-export const FS: Partial<FileSystemAPI> = {
+export const FS: FileSystemAPI = {
   async readFile(path, options="utf8") {
-    const utf8 = options === "utf8" || options && options["encoding"] === "utf8"
-    return utf8? readTextFile(path): readBinaryFile(path)
+    const encoding = typeof options === "string"? options: options.encoding
+    return encoding === "utf8"? readTextFile(path): readBinaryFile(path)
   },
   async writeFile(path, data, options="utf8") {
-    const utf8 = options === "utf8" || options && options["encoding"] === "utf8"
-    return utf8
+    const encoding = typeof options === "string"? options: options.encoding
+    return encoding === "utf8"
       ? writeTextFile(path, data as string)
       : writeBinaryFile({path, contents: data as Uint8Array})
   },
@@ -72,7 +72,7 @@ export const FS: Partial<FileSystemAPI> = {
     return exists(path)
   },
   async readdir(path) {
-    return (await readDir(path)).map(entry => entry.name)
+    return (await readDir(path)).map(entry => entry.name) as string[]
   },
   async mkdir(path) {
     return createDir(path, {recursive: true})
@@ -107,7 +107,11 @@ export const FS: Partial<FileSystemAPI> = {
   },
   async symlink() { // mocked to support isomorphic-git
     console.error("symlink")
-  }
+  },
+  async rename(oldPath, newPath) {
+    return renameFile(oldPath, newPath)
+  },
+  
 }
 
 export const Path: PathAPI = {
@@ -126,7 +130,7 @@ export const HTTP: HTTPAPI = {
       headers: response.headers,
       body: [response.data],
       statusCode: response.status,
-      statusMessage: HTTP_STATUS[response.status]
+      statusMessage: (HTTP_STATUS as any)[response.status]
     } as Response
   },
   fetch: fetch as unknown as typeof window.fetch

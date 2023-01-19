@@ -9,9 +9,9 @@ import { EditorState, Command, NodeSelection, Selection, AllSelection, TextSelec
 import { DOMSerializer, Node } from "prosemirror-model"
 import { chainCommands, toggleMark } from "prosemirror-commands"
 
-import { PackageJson } from "../../state"
+import { Package } from "../../state"
 import { DocumentFooter, DocumentHeader } from "./meta"
-import { getOtherAttrsFromWidget } from "../../state/editorstate"
+import { getOtherAttrsFromWidget } from "../../state"
 import {computePosition, autoUpdate, offset, shift, size} from '@floating-ui/dom'
 import { WidgetForm } from "./widgetform"
 import { CollageImagePicker } from "./uielements"
@@ -68,7 +68,7 @@ class WidgetView implements NodeView {
 	}
 
 	stopEvent(e: Event) {
-		const activeElement = this.view.host.shadowRoot.activeElement
+		const activeElement = this.view?.host?.shadowRoot?.activeElement
 		const node = this.view.nodeDOM(this.getPos())
 		if(activeElement === node) {
 			return true
@@ -199,7 +199,7 @@ export class ExplorableEditor extends LitElement {
 	loadingPackages: boolean
 
 	@property({type: Array, attribute: false})
-	packages: PackageJson[]
+	packages: Package[]
 
 	@property({type: String})
 	appendBlockType: string
@@ -247,7 +247,7 @@ export class ExplorableEditor extends LitElement {
 		if(_changedProperties.has("editorState") && !this.editorViewController) {
 			const widgetViewEntries = Object.entries(this.editorState.schema.nodes)
 				.filter(([key, nodeType]) => nodeType.spec["widget"])
-				.map(([key, nodeType]) => [key, (node, view, getPos) => new WidgetView(node, view, getPos)])
+				.map(([key, nodeType]) => [key, (node: Node, view: EditorViewController, getPos: () => number) => new WidgetView(node, view, getPos)])
 			this.editorViewController = new EditorViewController(
 				this,
 				{mount: this.main},
@@ -258,7 +258,7 @@ export class ExplorableEditor extends LitElement {
 					decorations: (state) => {
 						if(!this.previewing) {
               const {from, to} = state.selection
-							const decorations = []
+							const decorations = [] as Decoration[]
 							state.doc.forEach((node, k, i) => {
 								if(node.type.spec["widget"]) {
 									decorations.push(Decoration.node(k, k + 1, {
@@ -508,7 +508,7 @@ export class ExplorableEditor extends LitElement {
     
     const targetIsWidget = target.classList.contains("ww-widget")
 
-    this.editorToolbox.activeElement = this.shadowRoot.activeElement
+    this.editorToolbox.activeElement = this.shadowRoot?.activeElement ?? null
     
     if(targetIsWidget) {
       this.widgetToolbox.widget = target
@@ -531,7 +531,7 @@ export class ExplorableEditor extends LitElement {
 
     const target = e.target as HTMLElement
     const related = e.relatedTarget as HTMLElement
-    const active = this.shadowRoot.activeElement
+    const active = this.shadowRoot?.activeElement
     
     if(target?.id === "main" && !related?.classList.contains("ww-widget")) {
       this.editorToolbox.activeElement = null
@@ -550,7 +550,7 @@ export class ExplorableEditor extends LitElement {
 
     const target = e.target as HTMLElement
     const related = e.relatedTarget as HTMLElement
-    const active = this.shadowRoot.activeElement
+    const active = this.shadowRoot?.activeElement
 
     const isWidgetActive = active?.classList.contains("ww-widget")
     const isNextWidgetToolbox = related === this.widgetToolbox
@@ -615,21 +615,21 @@ export class ExplorableEditor extends LitElement {
 				.docAttributes=${this.editorState.doc.attrs.meta}
 				.revisions=${[]}
 				?editable=${!this.previewing}
-				@ww-focus-down=${e => this.editorViewController.focus()}
-				@ww-attribute-change=${e => this.setMetaValue(e.detail.key, e.detail.value)}
+				@ww-focus-down=${() => this.editorViewController.focus()}
+				@ww-attribute-change=${(e: any) => this.setMetaValue(e.detail.key, e.detail.value)}
 			></ww-document-header>
 			<div id="main-wrapper" @focusin=${this.handleFocusIn} @focusout=${this.handleFocusOut} @mouseover=${this.handleMouseIn} @mouseout=${this.handleMouseOut}>
 				${!this.loadingPackages
 						? html`<main part="main" id="main" spellcheck=${false} contenteditable=${!this.previewing}></main>`
 						: this.loadingSpinnerTemplate()
 					}
-        <ww-widget-toolbox tabIndex=${-1} @ww-delete-widget=${e => this.deleteWidget(e.detail.widget)}></ww-widget-toolbox>
+        <ww-widget-toolbox tabIndex=${-1} @ww-delete-widget=${(e: any) => this.deleteWidget(e.detail.widget)}></ww-widget-toolbox>
 				<sl-popup active anchor="main" placement="left" shift strategy="fixed" distance=${25}>
 					<ww-editor-toolbox
 						style=${styleMap({width: `calc(100% - ${getScrollbarWidth()}px)`})}
 						part="editor-toolbox"
-						@ww-change-widget=${e => this.insertWidget(e.detail.name)}
-						@ww-click-mark-command=${e => this.exec(this.markCommands[e.detail.name].command(this.editorState))}
+						@ww-change-widget=${(e: any) => this.insertWidget(e.detail.name)}
+						@ww-click-mark-command=${(e: any) => this.exec(this.markCommands[e.detail.name].command(this.editorState))}
 						@ww-mousein-widget-add=${() => this.hoverWidgetAdd = true}
 						@ww-mouseout-widget-add=${() => this.hoverWidgetAdd = false}
 						.packages=${this.packages}
@@ -643,8 +643,8 @@ export class ExplorableEditor extends LitElement {
 				part="footer"
 				.docAttributes=${this.editorState.doc.attrs.meta}
 				?editable=${!this.previewing}
-				@ww-focus-up=${e => this.editorViewController.focus()}
-				@ww-attribute-change=${e => this.setMetaValue(e.detail.key, e.detail.value)}
+				@ww-focus-up=${() => this.editorViewController.focus()}
+				@ww-attribute-change=${(e: any) => this.setMetaValue(e.detail.key, e.detail.value)}
 			></ww-document-footer>
     ` 
 	}
@@ -660,7 +660,7 @@ class WwWidgetToolbox extends LitElement {
   y: number
 
   @property({type: Object, attribute: false})
-  widget: HTMLElement
+  widget: HTMLElement | undefined
 
   @query("div")
   div: HTMLElement
@@ -768,7 +768,7 @@ class WwEditorToolbox extends LitElement {
 	}
 
 	@property({type: Array, attribute: false})
-	packages: PackageJson[] = []
+	packages: Package[] = []
 
 	@property({type: Array, attribute: false})
 	markCommands: MarkCommand[] = []
@@ -777,7 +777,7 @@ class WwEditorToolbox extends LitElement {
 	activeMarks: string[]
 
   @property({type: Object, attribute: false})
-  activeElement: Element
+  activeElement: Element | null
 
 	static styles = css`
 
@@ -943,11 +943,11 @@ class WwEditorToolbox extends LitElement {
 		return WidgetElement? document.createElement(widgetName): null
 	}
 
-	packageTemplate = (pkg: PackageJson) => html`<sl-card class="package-card">
+	packageTemplate = (pkg: Package) => html`<sl-card class="package-card">
 		<span title="Add this widget" @click=${() => this.emitChangeWidget(pkg.name)} class="title" slot="header" @mouseenter=${() => this.emitMouseInWidgetAdd(pkg.name)} @mouseleave=${() => this.emitMouseOutWidgetAdd(pkg.name)}>
 			<span>${prettifyPackageName(pkg.name)}</span>
-			<sl-tooltip hoist content=${pkg.description}>
-				<sl-icon title=${pkg.description} class="info-icon" name="info-circle"></sl-icon>
+			<sl-tooltip hoist content=${pkg.description ?? "No description provided"}>
+				<sl-icon title=${pkg.description ?? "No description provided"} class="info-icon" name="info-circle"></sl-icon>
 			</sl-tooltip>
 			<sl-icon class="add-icon" name="plus-square"></sl-icon>
 		</span>
@@ -964,7 +964,7 @@ class WwEditorToolbox extends LitElement {
 			class=${`mark-command ${this.activeMarks.includes(k)? "applied": ""}`}
 			tabindex=${0}
 			title=${camelCaseToSpacedCase(k)} 
-			name=${v.icon} 
+			name=${v.icon ?? "circle-fill"} 
 			@click=${() => this.emitClickMarkCommand(k)}
 		></sl-icon-button>`
 	})

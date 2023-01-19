@@ -62,15 +62,15 @@ export class IODialog extends LitElement {
 	)
 
 	handleFormatChange(e: Event) {
-		this.wwformat = e.target["value"] as Format
+		this.wwformat = (e.target as any)["value"] as Format
 	}
 
 	handleProtocolChange(e: Event) {
-		this.protocol = e.target["value"] as Protocol
+		this.protocol = (e.target as any)["value"] as Protocol
 	}
 
 	handleLocationChange(e: Event) {
-		this.location = e.target["value"]
+		this.location = (e.target as any)["value"]
 	}
 
 	handleRequestClose(e: CustomEvent<{source: "close-button" | "keyboard" | "overlay"}>) {
