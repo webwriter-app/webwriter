@@ -1,3 +1,4 @@
+import { msg } from "@lit/localize"
 import { SlAnimation, SlInput, SlTab, SlTabPanel } from "@shoelace-style/shoelace"
 import {LitElement, html, css} from "lit"
 import {customElement, property, query, queryAssignedElements} from "lit/decorators.js"
@@ -208,10 +209,10 @@ export class Tabs extends LitElement {
 						<slot name="tabs" @slotchange=${this.handleTabSlotChange}></slot>
 						<div class="add-buttons">
 							${this.tabs.length !== 0? html`
-								<sl-icon-button title="New document [CTRL+N]" name="file-earmark-plus-fill" @click=${this.emitNewTab}></sl-icon-button>
+								<sl-icon-button title=${msg("New document [CTRL+N]")} name="file-earmark-plus-fill" @click=${this.emitNewTab}></sl-icon-button>
 							`: null}
 							${this.tabs.length !== 0 && this.openTab? html`
-								<sl-icon-button title="Open document [CTRL+O]" name="file-earmark-arrow-up-fill" @click=${this.emitOpenTab}></sl-icon-button>
+								<sl-icon-button title=${msg("Open document [CTRL+O]")} name="file-earmark-arrow-up-fill" @click=${this.emitOpenTab}></sl-icon-button>
 							`: null}
 						</div>
 					</div>
@@ -228,11 +229,11 @@ export class Tabs extends LitElement {
 						<div class="placeholder-tab">
 							<sl-button outline variant="neutral" @click=${this.emitNewTab}>
 								<sl-icon slot="prefix" name="file-earmark-plus-fill"></sl-icon>
-								<span>New document</span>
+								<span>${msg("New document")}</span>
 							</sl-button>
 							<sl-button outline variant="neutral" @click=${this.emitOpenTab}>
 								<sl-icon slot="prefix" name="file-earmark-arrow-up-fill"></sl-icon>
-								<span>Open document</span>
+								<span>${msg("Open document")}</span>
 							</sl-button>
 						</div>
 					</slot>
@@ -476,11 +477,11 @@ export class Tab extends LitElement {
 				${this.pendingChanges? html`<span name="title-suffix">*</span>`: null}
 			</span>
 			<div class="buttons">
-				<sl-icon-button title=${this.previewing? "Disable Preview [CTRL+B]": "Enable Preview [CTRL+B]"} class="preview-button" @click=${() => this.emitTogglePreview()} name=${this.previewing? "eye": "eye-slash"}></sl-icon-button>
-				<sl-icon-button title="Save document as... [CTRL+S]" class="save-button" @click=${() => this.emitSaveAsTab()} name="file-earmark-arrow-down"></sl-icon-button>
-				${!this.titleValue.startsWith("memory:")? html`<sl-icon-button title="Save document [CTRL+S]" class="save-button" @click=${() => this.emitSaveTab()} name="file-earmark-check"></sl-icon-button>`: null}
+				<sl-icon-button title=${this.previewing? msg("Disable Preview [CTRL+B]"): msg("Enable Preview [CTRL+B]")} class="preview-button" @click=${() => this.emitTogglePreview()} name=${this.previewing? "eye": "eye-slash"}></sl-icon-button>
+				<sl-icon-button title=${msg("Save document as... [CTRL+S]")} class="save-button" @click=${() => this.emitSaveAsTab()} name="file-earmark-arrow-down"></sl-icon-button>
+				${!this.titleValue.startsWith("memory:")? html`<sl-icon-button title=${msg("Save document [CTRL+S]")} class="save-button" @click=${() => this.emitSaveTab()} name="file-earmark-check"></sl-icon-button>`: null}
 				<sl-tooltip ?open=${this.confirmingDiscard} trigger="manual" placement="bottom" hoist>
-					<sl-icon-button title="Close document [CTRL+W]" class="close-button" @click=${() => this.emitCloseTab()} @focusout=${() => this.emitCancelDiscard()} name="x-lg"></sl-icon-button>
+					<sl-icon-button title=${msg("Close document [CTRL+W]")} class="close-button" @click=${() => this.emitCloseTab()} @focusout=${() => this.emitCancelDiscard()} name="x-lg"></sl-icon-button>
 					<span slot="content" class="confirm-discard-text">${this.confirmDiscardText}</span>
 				</sl-tooltip>
 			</div>

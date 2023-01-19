@@ -5,6 +5,7 @@ import { SlDrawer } from "@shoelace-style/shoelace"
 import { Package, PackageWithOptions } from "../../state"
 import { pickFile } from "../../environment"
 import { Button } from "./uielements"
+import { msg } from "@lit/localize"
 
 
 @customElement("ww-package-manager-drawer")
@@ -340,7 +341,7 @@ export class PackageManagerDrawer extends LitElement {
 			case "fulfilled": return null
 			case "rejected": return html`<sl-alert class="error" open variant="danger">
 				<sl-icon slot="icon" name="exclamation-octagon"></sl-icon>
-				<span>Error connecting to registry</span>
+				<span>${msg("Error connecting to registry")}</span>
 			</sl-alert>`
 		}
 	}
@@ -365,25 +366,25 @@ export class PackageManagerDrawer extends LitElement {
 				<sl-tag variant="primary" slot="header">${kw}</sl-tag>
 			`)}
 			<span class="package-description">${description}</span>
-			<sl-badge slot="footer" variant="danger" class="error-badge" @click=${() => this.viewingError = [...this.viewingError, pkg.name]} title="View error">
-				<sl-icon name="exclamation-diamond"></sl-icon> <span> Import failed</span>
+			<sl-badge slot="footer" variant="danger" class="error-badge" @click=${() => this.viewingError = [...this.viewingError, pkg.name]} title=${msg("View error")}>
+				<sl-icon name="exclamation-diamond"></sl-icon> <span>${msg("Import failed")}</span>
 			</sl-badge>
 			<sl-dialog ?open=${this.viewingError.includes(pkg.name)} @sl-show=${(e: any) => {e.stopPropagation()}} @sl-hide=${(e: any) => {e.stopPropagation(); this.viewingError = this.viewingError.filter(name => name !== pkg.name)}}>
-				<span class="error-label" slot="label">Error importing <span class="package-name">${pkg.name}</span></span>
+				<span class="error-label" slot="label">${msg("Error importing")}<span class="package-name">${pkg.name}</span></span>
 				<span class="error-text">${String(importError)}</span>
 			</sl-dialog>
-			<sl-button @click=${() => this.emitUpdatePackage(name)} outline slot="footer" ?loading=${updating}  ?disabled=${uninstalling || installing || !outdated}>Update</sl-button>
+			<sl-button @click=${() => this.emitUpdatePackage(name)} outline slot="footer" ?loading=${updating}  ?disabled=${uninstalling || installing || !outdated}>${msg("Update")}</sl-button>
 			${installed
-				? html`<sl-button @click=${() => this.emitUninstallPackage(name)} outline slot="footer" ?loading=${uninstalling} ?disabled=${installing || updating}>Uninstall</sl-button>`
-				: html`<sl-button @click=${() => this.emitInstallPackage(name)} outline slot="footer" ?loading=${installing} ?disabled=${uninstalling || updating}>Install</sl-button>`
+				? html`<sl-button @click=${() => this.emitUninstallPackage(name)} outline slot="footer" ?loading=${uninstalling} ?disabled=${installing || updating}>${msg("Uninstall")}</sl-button>`
+				: html`<sl-button @click=${() => this.emitInstallPackage(name)} outline slot="footer" ?loading=${installing} ?disabled=${uninstalling || updating}>${msg("Install")}</sl-button>`
 			}
 		</sl-card>`
 	}
 
 	npmPrompt = () => {
-		return html`<sl-input value=${this.unlistedInstallUrl} @sl-input=${(e: any) => this.unlistedInstallUrl = e.target.value} class="unlisted-install" name="path" label="Install unlisted package" help-text="Enter either A) a path to a local folder, or B) a path to a .tar.gz archive, or C) a git remote URL, each containing an npm module">
-				<sl-icon-button title="Find a local package" @click=${this.handleFindLocalPackage} name="folder2-open" slot="suffix"></sl-icon-button>
-				<ww-button ?loading=${this.installingUnlisted} circle class="confirm-install-unlisted" title="Install unlisted package" type="submit" slot="suffix" @click=${() => this.emitInstallPackage(this.unlistedInstallUrl)} @sl-hide=${(e: any) => e.stopPropagation()} ?disabled=${!this.unlistedInstallUrl}>
+		return html`<sl-input value=${this.unlistedInstallUrl} @sl-input=${(e: any) => this.unlistedInstallUrl = e.target.value} class="unlisted-install" name="path" label=${msg("Install unlisted package")} help-text=${msg("Enter either A) a path to a local folder, or B) a path to a .tar.gz archive, or C) a git remote URL, each containing an npm module")}>
+				<sl-icon-button title=${msg("Find a local package")} @click=${this.handleFindLocalPackage} name="folder2-open" slot="suffix"></sl-icon-button>
+				<ww-button ?loading=${this.installingUnlisted} circle class="confirm-install-unlisted" title=${msg("Install unlisted package")} type="submit" slot="suffix" @click=${() => this.emitInstallPackage(this.unlistedInstallUrl)} @sl-hide=${(e: any) => e.stopPropagation()} ?disabled=${!this.unlistedInstallUrl}>
 				<sl-icon name="arrow-return-left"></sl-icon>
 				</ww-button>
 			</sl-input>`
@@ -391,13 +392,13 @@ export class PackageManagerDrawer extends LitElement {
 
 	viewAppDirButton = () => {
 		return html`<sl-button variant="neutral" class="view-local-files" @click=${this.emitOpenAppDir}>
-			View local application directory
+			${msg("View local application directory")}
 		</sl-button>`
 	}
 
 	resetAppDirButton = () => {
 		return html`<sl-button variant="danger" class="reset-local-files" @click=${this.emitResetAppDir} ?loading=${this.resetting}>
-			Reset local application directory
+			${msg("Reset local application directory")}
 		</sl-button>`
 	}
 
@@ -411,42 +412,42 @@ export class PackageManagerDrawer extends LitElement {
 			<sl-drawer part="drawer" placement="start" ?open=${this.open} @sl-hide=${this.handleCloseDrawer}>
 					<span class="drawer-title" slot="label">
 						<sl-icon name="boxes" slot="label"></sl-icon>
-						<span>Packages</span>
-						<sl-button id="refresh-button" @click=${this.emitRefresh} ?loading=${this.loading} title="Refresh packages">
+						<span>${msg("Packages")}</span>
+						<sl-button id="refresh-button" @click=${this.emitRefresh} ?loading=${this.loading} title=${msg("Refresh packages")}>
 							<sl-icon name="arrow-clockwise"></sl-icon>
 						</sl-button>
 						<sl-icon-button id="close-button" name="x" @click=${this.hide}></sl-icon-button>
 					</span>
 					<sl-tab-group slot="label" @sl-tab-show=${this.handleTabShow}>
 						<sl-tab panel="all" slot="nav">
-							All
+							${msg("All")}
 							<sl-badge variant="primary" pill>${!this.loading? all.length: "?"}</sl-badge>
 						</sl-tab>
 						<sl-tab panel="available" slot="nav" ?disabled=${!navigator.onLine}>
-							Available
+							${msg("Available")}
 							<sl-badge variant="success" pill>${!this.loading? available.length: "?"}</sl-badge>
 						</sl-tab>
 						<sl-tab panel="installed" slot="nav">
-							Installed
+							${msg("Installed")}
 							<sl-badge variant="neutral" pill>${!this.loading? installed.length: "?"}</sl-badge>
 						</sl-tab>
 						<sl-tab panel="outdated" slot="nav" ?disabled=${!navigator.onLine}>
-							Outdated
+							${msg("Outdated")}
 							<sl-badge variant="warning" pill>${!this.loading? outdated.length: "?"}</sl-badge>
 						</sl-tab>
 						<sl-tab panel="more" slot="nav">
-							More
+							${msg("More")}
 						</sl-tab>
 					</sl-tab-group>
 					<sl-alert variant="warning" ?open=${!navigator.onLine}>
 						<sl-icon slot="icon" name="wifi-off"></sl-icon>
-						<b>Warning: </b>
-						<span>You seem to be offline. While offline, you can't manage available or outdated packages.</span>
+						<b>${msg("Warning:")} </b>
+						<span>${msg("You seem to be offline. While offline, you can't manage available or outdated packages.")}</span>
 					</sl-alert>
 					${this.activeTab === "more"? null: html`
 						<div class="package-list">
 							${packages.length === 0 && !this.loading
-								? html`<span>No packages in this list</span>`
+								? html`<span>${msg("No packages in this list")}</span>`
 								: packages.map(this.packageListItem) 
 							}
 						</div>
@@ -459,7 +460,7 @@ export class PackageManagerDrawer extends LitElement {
 					<div class="spinner-container">
 						${this.loading? html`
 							<sl-spinner></sl-spinner>
-							<span>Loading packages...</span>
+							<span>${msg("Loading packages...")}</span>
 						`: null}
 					</div>
 			</sl-drawer>

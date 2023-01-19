@@ -1,8 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/lit/lit/main/packages/localize-tools/config.schema.json",
   "sourceLocale": "en",
-  "targetLocales": ["de"],
-  "plannedLocales": ["zh", "es", "fr", "ar", "ru", "pt"],
+  "targetLocales": ["de", "zh", "es", "fr", "ar", "ru", "pt"],
   "tsConfig": "./tsconfig.json",
 
   "output": {
@@ -12,6 +11,6 @@
 
   "interchange": {
     "format": "xliff",
-    "xliffDir": "./xliff/"
+    "xliffDir": "./_localization/"
   } 
 }

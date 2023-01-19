@@ -30,6 +30,7 @@ function svgStringToElement(text: string) {
 import prosemirrorCSS from "prosemirror-view/style/prosemirror.css?raw"
 import basicSetupCSS from "prosemirror-example-setup/style/style.css?raw"
 import menuCSS from "prosemirror-menu/style/menu.css?raw"
+import { msg } from "@lit/localize"
 
 const mySchema = new Schema({
   nodes: addListNodes(schema.spec.nodes, "paragraph block*", "block"),

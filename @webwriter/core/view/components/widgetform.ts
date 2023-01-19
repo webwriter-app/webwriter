@@ -6,6 +6,7 @@ import {ifDefined} from "lit/directives/if-defined.js"
 import {SlInput, SlColorPicker, SlSelect, SlTextarea, SlCheckbox, SlDetails, SlCard, SlRadio, SlRadioGroup, SlMenuItem, SlTabGroup, SlTab, SlTabPanel, SlAlert } from "@shoelace-style/shoelace"
 import { classMap } from "lit/directives/class-map.js"
 import {FileInput as WwFileInput, ImageCoordinatePicker as WwImageCoordinatePicker, RichTextEditor as WwRichTextEditor} from "."
+import { msg, str } from "@lit/localize"
 
 /* to support:
 
@@ -585,10 +586,10 @@ export class WidgetForm extends ScopedElementsMixin(LitElement) {
 
   static Fallback([name, desc]: Entry<any>, onChange: ChangeCallback, root: Root, show=true) {
     return html`<sl-input
-      class="unsupported-property"
+      class=${"unsupported-property"}
       @sl-input=${(e: any) => onChange(name, JSON.parse(e.target.value))}
       value=${desc.value}
-      helpText="Unsupported property type '${desc.type}' (processing as JSON)"
+      helpText=${msg("Unsupported property type '${desc.type}' (processing as JSON)")}
       ?disabled=${!show}
     >
     ${WidgetForm.LabelTemplate([name, desc])}
@@ -670,7 +671,7 @@ export class WidgetForm extends ScopedElementsMixin(LitElement) {
     desc.widget && !WidgetForm.supportedEditorWidgets.includes(desc.widget)? console.log({desc, widget: desc.widget}): null
     const result = html`
       ${desc.widget && desc.widget !== "none" && !WidgetForm.supportedEditorWidgets.includes(desc.widget)
-        ? html`<sl-alert variant="warning">${desc.widget} is not supported</sl-alert>`
+        ? html`<sl-alert variant="warning">${msg(str`${desc.widget} is not supported`)}</sl-alert>`
         : null
       }
       ${Template([name, desc], onChange, root, show)}
@@ -681,7 +682,7 @@ export class WidgetForm extends ScopedElementsMixin(LitElement) {
   static LabelTemplate([name, desc]: Entry, slot="label") {
     return html`
       <label slot=${slot} for=${String(name)} class="label-container" ?data-required=${!desc.optional}>
-        <span class="label">${desc.label}<span class="required-marker" title="Required for this widget">*</span></span>
+        <span class="label">${desc.label}<span class="required-marker" title=${msg("Required for this widget")}>*</span></span>
         <span class="description">${desc.description}</span>
       </label>
     `
@@ -759,7 +760,7 @@ export class WidgetForm extends ScopedElementsMixin(LitElement) {
       ${normalEntries.map(entry => Template(entry, onChange, root))}
       ${commonEntries.length === 0? null: html`
         <sl-details>
-          <span slot="summary">Labels</span>
+          <span slot="summary">${msg("Labels")}</span>
           ${commonEntries.map(entry => Template(entry, onChange, root))}
         </sl-details>
       `}

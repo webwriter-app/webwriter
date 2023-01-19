@@ -15,6 +15,7 @@ import { getOtherAttrsFromWidget } from "../../state"
 import {computePosition, autoUpdate, offset, shift, size} from '@floating-ui/dom'
 import { WidgetForm } from "./widgetform"
 import { CollageImagePicker } from "./uielements"
+import { msg } from "@lit/localize"
 
 
 /* Issues
@@ -944,10 +945,10 @@ class WwEditorToolbox extends LitElement {
 	}
 
 	packageTemplate = (pkg: Package) => html`<sl-card class="package-card">
-		<span title="Add this widget" @click=${() => this.emitChangeWidget(pkg.name)} class="title" slot="header" @mouseenter=${() => this.emitMouseInWidgetAdd(pkg.name)} @mouseleave=${() => this.emitMouseOutWidgetAdd(pkg.name)}>
+		<span title=${msg("Add this widget")} @click=${() => this.emitChangeWidget(pkg.name)} class="title" slot="header" @mouseenter=${() => this.emitMouseInWidgetAdd(pkg.name)} @mouseleave=${() => this.emitMouseOutWidgetAdd(pkg.name)}>
 			<span>${prettifyPackageName(pkg.name)}</span>
-			<sl-tooltip hoist content=${pkg.description ?? "No description provided"}>
-				<sl-icon title=${pkg.description ?? "No description provided"} class="info-icon" name="info-circle"></sl-icon>
+			<sl-tooltip hoist content=${pkg.description ?? msg("No description provided")}>
+				<sl-icon title=${pkg.description ?? msg("No description provided")} class="info-icon" name="info-circle"></sl-icon>
 			</sl-tooltip>
 			<sl-icon class="add-icon" name="plus-square"></sl-icon>
 		</span>

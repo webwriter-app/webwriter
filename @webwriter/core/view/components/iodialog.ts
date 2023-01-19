@@ -3,6 +3,7 @@ import { customElement, property, query } from "lit/decorators.js"
 import * as connect from "../../connect"
 import * as marshal from "../../marshal"
 import { SlDialog } from "@shoelace-style/shoelace"
+import { msg } from "@lit/localize"
 
 type Format = keyof typeof marshal
 type Protocol = keyof typeof connect
@@ -123,34 +124,34 @@ export class IODialog extends LitElement {
 	render() {
 		const {open, type, wwformat, protocol, location, filename, handleProtocolChange, handleFormatChange, handleLocationChange, handleRequestClose, emitSubmit} = this
 		return html`
-			<sl-dialog ?open=${open} label=${type == "saving"? "Save your document": "Load a document"} @sl-request-close=${handleRequestClose}>
+			<sl-dialog ?open=${open} label=${type == "saving"? msg("Save your document"): msg("Load a document")} @sl-request-close=${handleRequestClose}>
 			<sl-icon slot="label" name=${`file-earmark-arrow-${type == "saving"? "down": "up"}-fill`}></sl-icon>
-				<span slot="label">${type == "saving"? "Save your document": "Load a document"}</span>
+				<span slot="label">${type == "saving"? msg("Save your document"): msg("Load a document")}</span>
 				<form>
 					<label for="format">
 						<sl-icon class="label-icon" name="file-earmark"></sl-icon>
-						<span>${type === "saving"? "Save as...": "Load as..."}</span>
+						<span>${type === "saving"? msg("Save as..."): msg("Load as...")}</span>
 					</label>
-					<sl-radio-group name="format" value=${wwformat} @sl-change=${handleFormatChange} label="Format">
+					<sl-radio-group name="format" value=${wwformat} @sl-change=${handleFormatChange} label=${msg("Format")}>
 						${Object.entries(marshal).map(([formatKey, format]) => html`
 							<sl-radio-button variant="neutral" ?checked=${formatKey === this.wwformat} value=${formatKey}>${format.label}</sl-radio-button>
 							`)}
 					</sl-radio-group>
 					<label for="protocol">
 						<sl-icon class="label-icon" name="folder"></sl-icon>
-						<span>${type === "saving"? "On...": "From..."}</span>
+						<span>${type === "saving"? msg("On..."): msg("From...")}</span>
 					</label>
-					<sl-radio-group name="protocol" value=${protocol} @sl-change=${handleProtocolChange} label="Protocol">
+					<sl-radio-group name="protocol" value=${protocol} @sl-change=${handleProtocolChange} label=${msg("Protocol")}>
 						${Object.entries(connect).map(([protocolKey, protocol]) => html`
 							<sl-radio-button variant="neutral" ?checked=${protocolKey === this.protocol} value=${protocolKey}>${protocol.label}</sl-radio-button>
 						`)}
 					</sl-radio-group>
 					${!connect[this.protocol].handlesLocationPicking? html`
-						<sl-input value=${location} @change=${handleLocationChange} type="url" label="Location"></sl-input>
+						<sl-input value=${location} @change=${handleLocationChange} type="url" label=${msg("Location")}></sl-input>
 					`: null}
 				</form>
-				<sl-button slot="footer" variant="default" id="cancel-button" @click=${this.hide}>${"Cancel"}</sl-button>
-				<sl-button ?loading=${this.loading} slot="footer" variant="primary" id="submit-button" @click=${emitSubmit}>${type === "saving"? "Save": "Load"}</sl-button>
+				<sl-button slot="footer" variant="default" id="cancel-button" @click=${this.hide}>${msg("Cancel")}</sl-button>
+				<sl-button ?loading=${this.loading} slot="footer" variant="primary" id="submit-button" @click=${emitSubmit}>${type === "saving"? msg("Save"): msg("Load")}</sl-button>
 			</sl-dialog>
 		`
 	}

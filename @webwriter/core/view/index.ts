@@ -14,6 +14,7 @@ import { Tabs } from "./components"
 import { escapeHTML, detectEnvironment } from "../utility"
 import { makeAutoObservable, observe } from "mobx"
 import { Environment } from "../environment"
+import { msg } from "@lit/localize"
 
 interface SlAlertAttributes {
 	message: string
@@ -290,7 +291,7 @@ export class App extends LitElement
 				titleId=${res.url}
 				titleValue=${res.url}
 				?hasUrl=${!!res.url}
-				confirmDiscardText="You have unsaved changes. Click again to discard your changes."
+				confirmDiscardText=${msg("You have unsaved changes. Click again to discard your changes.")}
 				?previewing=${previewing[res.url]}
 				?pendingChanges=${changed[res.url]}
 				?confirmingDiscard=${this.discarding}
@@ -335,7 +336,7 @@ export class App extends LitElement
 					slot="pre-tabs"
 					name="boxes"
 				></sl-icon-button>
-				<span class="text">Packages</span>
+				<span class="text">${msg("Packages")}</span>
 			</span>
 		</ww-tabs>`
 	}
@@ -343,7 +344,7 @@ export class App extends LitElement
 	initializingPlaceholderTemplate = () => html`<div id="initializingPlaceholder">
 		<div>
 			<sl-spinner></sl-spinner>
-			<div>Loading WebWriter...</div>
+			<div>${msg("Loading WebWriter...")}</div>
 		</div>
 	</div>`
 

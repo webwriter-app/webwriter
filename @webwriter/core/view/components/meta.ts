@@ -7,6 +7,7 @@ import spdx from "spdx-license-list"
 
 import { WwCombobox } from "./uielements"
 import { ExplorableEditor } from "./editor"
+import { msg } from "@lit/localize"
 
 
 
@@ -290,7 +291,7 @@ export class DocumentHeader extends LitElement {
 					?disabled=${!this.editable}
           @sl-change=${this.handleAttributeChange}
           value=${this.docAttributes["headline"] as string}
-          placeholder=${camelCaseToSpacedCase("headline")}
+          placeholder=${msg("Headline")}
           slot="summary"
           @keydown=${this.handleHeadlineKeyDown}
 					@click=${(e: any) => e.stopPropagation()}
@@ -298,15 +299,15 @@ export class DocumentHeader extends LitElement {
 				<sl-tab-group placement="end">
 					<sl-tab slot="nav" panel="general-information" active>
 						<sl-icon name="file-earmark-text"></sl-icon>
-						<span>General</span>
+						<span>${msg("General")}</span>
 					</sl-tab>
 					<sl-tab slot="nav" panel="educational-information">
 						<sl-icon name="mortarboard"></sl-icon>
-						<span>Educational</span>
+						<span>${msg("Educational")}</span>
 					</sl-tab>
 					<sl-tab slot="nav" panel="accessibility-information">
 						<sl-icon name="people"></sl-icon>
-						<span>Accessibility</span>
+						<span>${msg("Accessibility")}</span>
 					</sl-tab>
 					<!--
 					<sl-tab slot="nav" panel="custom-information">
@@ -489,9 +490,9 @@ export class DocumentFooter extends LitElement {
           <span>-</span>
           <sl-format-date  year="numeric" .date=${dateModified}></sl-format-date>
         `}
-        ${this.inputTemplate("author", "Anonymous")}
+        ${this.inputTemplate("author", msg("Anonymous"))}
       </div>
-			<ww-license-picker value=${this.docAttributes.license == undefined || this.docAttributes.license === ""? "All rights reserved": this.docAttributes.license} @ww-change=${(e: CustomEvent) => this.emitAttributeChange("license", e.detail.value)} ?disabled=${!this.editable}></ww-license-picker>
+			<ww-license-picker value=${this.docAttributes.license == undefined || this.docAttributes.license === ""? msg("All rights reserved"): this.docAttributes.license} @ww-change=${(e: CustomEvent) => this.emitAttributeChange("license", e.detail.value)} ?disabled=${!this.editable}></ww-license-picker>
 	  `
 	}
 }
@@ -741,24 +742,24 @@ export class WwLicensePicker extends LitElement {
 				<sl-card class="choices">
 					${this.radioGroupTemplate(
 						"ccChoice",
-						"License as Creative Commons OER?", 
+						msg("License as Creative Commons OER?"), 
 						[{value: "yes", label: "Yes"}, {value: "no", label: "No"}]
 					)}
 					${this.radioGroupTemplate(
 						"attributionChoice",
-						"Require attribution?", 
+						msg("Require attribution?"), 
 						[{value: "yes", label: "Yes"}, {value: "no", label: "No"}],
 						this.ccChoice === "no"
 					)}
 					${this.radioGroupTemplate(
 						"adaptationChoice",
-						"Allow adaptations?", 
+						msg("Allow adaptations?"), 
 						[{value: "yes", label: "Yes"}, {value: "shareAlike", label: "Yes, but share alike"}, {value: "no", label: "No"}],
 						this.ccChoice === "no"
 					)}
 					${this.radioGroupTemplate(
 						"commercialChoice",
-						"Allow commercial use?", 
+						msg("Allow commercial use?"), 
 						[{value: "yes", label: "Yes"}, {value: "no", label: "No"}],
 						this.ccChoice === "no"
 					)}

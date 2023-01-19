@@ -21,7 +21,8 @@
     "build-cloud": "",
     "test": "wdio run ./test/wdio.conf.ts",
     "publish": "lerna publish --no-private",
-    "tsc-strict": "tsc-strict"
+    "extract-localization": "lit-localize extract --config ./@webwriter/core/lit-localize.json",
+    "build-localization": "lit-localize build --config ./@webwriter/core/lit-localize.json"
   },
   "repository": {
     "type": "git",

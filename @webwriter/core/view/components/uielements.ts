@@ -5,6 +5,7 @@ import {until} from "lit/directives/until.js"
 import { styleMap } from "lit/directives/style-map.js"
 import {ifDefined} from "lit/directives/if-defined.js"
 import { SlButton, SlIconButton, SlTooltip } from "@shoelace-style/shoelace";
+import { msg, str } from "@lit/localize"
 
 @customElement("ww-combobox")
 export class WwCombobox extends LitElement {
@@ -554,11 +555,11 @@ export class FileInput extends LitElement {
     return html`
       <label for="fileInputForm">${this.label}</label>
       <form name="fileInputForm" id="fileInputForm" @dragenter=${this.handleDragEnter} @dragover=${this.handleDragOver} @drop=${this.handleDrop} @mouseenter=${this.handleMouseEnter} @mouseleave=${this.handleMouseLeave}>
-        <label id="select-button" for="fileInput">Select ${this.mediaType}...</label>
+        <label id="select-button" for="fileInput">${msg(str`Select ${this.mediaType}...`)}</label>
         <input name="fileInput" id="fileInput" type="file" .files=${this.files} accept=${this.accept} capture=${this.capture} ?multiple=${this.multiple} @change=${this.handleFileChange} />
         ${FileInput.PreviewTabs(Array.from(this.files ?? []), this.activeFile, (i: number) => this.activeFile = i)}
         ${!this.files || this.files.length === 0? html`
-          <div class="drop-zone-label">Or drop ${this.mediaType} here</div>`
+          <div class="drop-zone-label">${msg(str`Or drop ${this.mediaType} here`)}</div>`
         : null}
       </form>
     `
@@ -657,7 +658,7 @@ export class ImageCoordinatePicker extends LitElement {
         <label>${this.label}</label> <span class="help-text">${this.helpText}</span>
       </slot>
       <label>${this.label}</label> <span class="help-text">${this.helpText}</span>
-      <div id="coordinate-picker" @click=${this.handleClick} title="Pick coordinates">
+      <div id="coordinate-picker" @click=${this.handleClick} title=${msg("Pick coordinates")}>
         <img draggable="false" src=${this.src} />
         ${this.coordinates.map(ImageCoordinatePicker.Hotspot)}
       </div>
@@ -872,13 +873,13 @@ export class CollageImagePicker extends LitElement {
         <label>${this.label}</label> <span class="help-text">${this.helpText}</span>
       </slot>
       <fieldset class="layout-previews">
-        <legend>Choose a layout</legend>
+        <legend>${msg("Choose a layout")}</legend>
         ${previews}
       </fieldset>
       <div class="extra-options">
         <label for="gap">
           <span class="label-with-info">
-            Gap
+          ${msg("Gap")}
             <span class="value">${this.gap}</span>
           </span>
           <input id="gap" type="range" list="gap-tickmarks" min="0" max="50" value=${this.gap.slice(0, this.gap.length - 2)} @input=${this.handleGapChange} />
@@ -893,7 +894,7 @@ export class CollageImagePicker extends LitElement {
         </label>
         <label for="gridHeight">
           <span class="label-with-info">
-            Height
+          ${msg("Height")}
             <span class="value">${this.gridHeight}</span>
           </span>
           <input id="gridHeight" type="range" list="gridHeight-tickmarks" min="0.10" max="2.00" step="0.05" value=${this.gridHeight} @input=${this.handleGridHeightChange} />
@@ -904,7 +905,7 @@ export class CollageImagePicker extends LitElement {
           </datalist>
         </label>
         <label for="paddingLikeGap">
-          Padding<br> like gap
+          ${msg("Padding<br> like gap")}
           <input id="paddingLikeGap" type="checkbox" ?checked=${this.paddingLikeGap} @change=${this.handlePaddingLikeGapChange} />
         </label>
       </div>
