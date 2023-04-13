@@ -336,7 +336,7 @@ export class PackageStore {
         const hasEditor = pkg.exports && (pkg as any).exports["edit"]
         const name = unscopePackageName(pkg.name.replaceAll("-", "ಠಠಠ"))
         const moduleName = editMode && hasEditor? `${pkg.name}/edit`: pkg.name
-        return `export {default as ${name}} from '${moduleName}'`
+        return `import '${moduleName}'`
       })
       const entrypoint = exportStatements.join(";")
       this.FS.writeFile(entrypointPath, entrypoint)
