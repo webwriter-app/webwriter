@@ -1,0 +1,365 @@
+[
+  {
+    "name": "@luiskugel/ww-chart",
+    "scope": "luiskugel",
+    "version": "0.0.4",
+    "description": "ww-chart is an interactive data visualization widget for the WebWriter tool that implements various charts and diagrams for static and exploratory data visualization.",
+    "keywords": [
+      "data-visualization",
+      "charts",
+      "diagrams",
+      "WebWriter",
+      "webwriter-widget"
+    ],
+    "date": "2023-04-19T15:59:09.901Z",
+    "links": {
+      "npm": "https://www.npmjs.com/package/%40luiskugel%2Fww-chart"
+    },
+    "author": "Luis Kugel",
+    "publisher": {
+      "username": "luiskugel",
+      "email": "luis.kugel@idot-digital.de"
+    },
+    "maintainers": [
+      {
+        "username": "luiskugel",
+        "email": "luis.kugel@idot-digital.de"
+      }
+    ],
+    "license": "UNLICENSED",
+    "type": "module",
+    "main": "dist/widget.js",
+    "exports": {
+      ".": "./dist/widget.js"
+    },
+    "files": [
+      "dist",
+      "types"
+    ],
+    "scripts": {
+      "dev": "vite --open",
+      "build": "tsc && vite build && ./create-files.sh",
+      "check-prettier": "npx prettier --check .",
+      "run-prettier": "npx prettier --write .",
+      "test": "vitest",
+      "coverage": "vitest --coverage"
+    },
+    "repository": {
+      "type": "git",
+      "url": "git@git.rwth-aachen.de:learntech-lufgi9/bama/webwriter/ww-chart.git"
+    },
+    "publishConfig": {
+      "access": "public"
+    },
+    "dependencies": {
+      "chart.js": "^4.2.1",
+      "lit": "^2.6.1"
+    },
+    "devDependencies": {
+      "@vitest/coverage-c8": "^0.30.1",
+      "prettier": "^2.8.7",
+      "typescript": "^4.9.3",
+      "vite": "^4.2.0",
+      "vite-plugin-babel": "^1.1.3",
+      "vitest": "^0.30.1"
+    },
+    "bundleSize": {
+      "js": 224675,
+      "css": 0
+    },
+    "installSize": 2957
+  },
+  {
+    "name": "ww-formula",
+    "scope": "unscoped",
+    "version": "0.1.73",
+    "description": "Clone with `git clone` via SSH or HTTP",
+    "keywords": [
+      "webwriter-widget"
+    ],
+    "date": "2023-05-04T12:51:20.903Z",
+    "links": {
+      "npm": "https://www.npmjs.com/package/ww-formula"
+    },
+    "author": "maximilian.kuehlkamp@rwth-aachen.de",
+    "publisher": {
+      "username": "maximiliankuehlkamp",
+      "email": "maximilian.kuehlkamp@rwth-aachen.de"
+    },
+    "maintainers": [
+      {
+        "username": "maximiliankuehlkamp",
+        "email": "maximilian.kuehlkamp@rwth-aachen.de"
+      }
+    ],
+    "type": "module",
+    "main": "src/my-element.ts",
+    "scripts": {
+      "dev": "vite",
+      "build": "tsc && vite build"
+    },
+    "dependencies": {
+      "@shoelace-style/shoelace": "^2.4.0",
+      "@webwriter/lit": "^0.4.1",
+      "lit": "^2.6.1",
+      "mathjax-full": "^3.2.2"
+    },
+    "devDependencies": {
+      "typescript": "^4.9.3",
+      "vite": "^4.2.0"
+    },
+    "license": "MIT",
+    "publishConfig": {
+      "access": "public"
+    },
+    "bundleSize": {
+      "js": 28181,
+      "css": 0
+    },
+    "installSize": 3045
+  },
+  {
+    "name": "ww-quiz",
+    "scope": "unscoped",
+    "version": "0.2.1",
+    "description": "A quiz widget for webwriter",
+    "keywords": [
+      "webwriter-widget"
+    ],
+    "date": "2023-01-31T14:26:54.467Z",
+    "links": {
+      "npm": "https://www.npmjs.com/package/ww-quiz"
+    },
+    "publisher": {
+      "username": "luiskugel",
+      "email": "luis.kugel@idot-digital.de"
+    },
+    "maintainers": [
+      {
+        "username": "luiskugel",
+        "email": "luis.kugel@idot-digital.de"
+      },
+      {
+        "username": "salmenf",
+        "email": "frederic@fsalmen.de"
+      }
+    ],
+    "type": "module",
+    "main": "dist/assets/export.js",
+    "publishConfig": {
+      "access": "public"
+    },
+    "scripts": {
+      "dev": "vite --open",
+      "build": "vite build && node build.js",
+      "preview": "vite preview"
+    },
+    "devDependencies": {
+      "@sveltejs/vite-plugin-svelte": "^1.0.2",
+      "glob": "^8.1.0",
+      "sass": "^1.55.0",
+      "svelte": "^3.49.0",
+      "svelte-preprocess": "^4.10.7",
+      "typescript": "^4.8.4",
+      "vite": "^3.1.0",
+      "vite-plugin-static-copy": "^0.9.0"
+    },
+    "dependencies": {
+      "@shoelace-style/shoelace": "^2.0.0-beta.87",
+      "@smui/common": "^6.1.4"
+    },
+    "bundleSize": {
+      "js": 387191,
+      "css": 0
+    },
+    "installSize": 533055
+  },
+  {
+    "name": "ww-manualgraphviz",
+    "scope": "unscoped",
+    "version": "0.11.0",
+    "keywords": [
+      "webwriter",
+      "webwriter-widget"
+    ],
+    "date": "2023-02-26T16:20:54.925Z",
+    "links": {
+      "npm": "https://www.npmjs.com/package/ww-manualgraphviz"
+    },
+    "author": "Ferdinand Baumgarten <ferdinand.baumgarten@rwth-aachen.de>",
+    "publisher": {
+      "username": "ferdibaum",
+      "email": "ferdinand.baumgarten@yahoo.com"
+    },
+    "maintainers": [
+      {
+        "username": "ferdibaum",
+        "email": "ferdinand.baumgarten@yahoo.com"
+      }
+    ],
+    "scripts": {
+      "dev": "vite --open",
+      "build": "vite build"
+    },
+    "dependencies": {
+      "@antv/g6": "^4.7.8",
+      "@webwriter/lit": "latest",
+      "d3": "^7.6.1",
+      "lit": "^2.4.0"
+    },
+    "devDependencies": {
+      "typescript": "^4.8.4",
+      "vite": "^3.1.6"
+    },
+    "license": "MIT",
+    "main": "manual_index.ts",
+    "repository": {
+      "type": "git",
+      "url": "git@git.rwth-aachen.de:learntech-lufgi9/bama/webwriter/ww-graph-visualization.git"
+    },
+    "description": "",
+    "bundleSize": {
+      "js": 107533,
+      "css": 0
+    },
+    "installSize": 13398
+  },
+  {
+    "name": "ww-algographviz",
+    "scope": "unscoped",
+    "version": "0.5.0",
+    "keywords": [
+      "webwriter",
+      "webwriter-widget"
+    ],
+    "date": "2023-02-26T16:12:32.442Z",
+    "links": {
+      "npm": "https://www.npmjs.com/package/ww-algographviz"
+    },
+    "author": "Ferdinand Baumgarten <ferdinand.baumgarten@rwth-aachen.de>",
+    "publisher": {
+      "username": "ferdibaum",
+      "email": "ferdinand.baumgarten@yahoo.com"
+    },
+    "maintainers": [
+      {
+        "username": "ferdibaum",
+        "email": "ferdinand.baumgarten@yahoo.com"
+      }
+    ],
+    "scripts": {
+      "dev": "vite --open",
+      "build": "vite build"
+    },
+    "dependencies": {
+      "@antv/g6": "^4.7.8",
+      "@webwriter/lit": "latest",
+      "d3": "^7.6.1",
+      "lit": "^2.4.0"
+    },
+    "devDependencies": {
+      "typescript": "^4.8.4",
+      "vite": "^3.1.6"
+    },
+    "license": "MIT",
+    "main": "algo_index.ts",
+    "repository": {
+      "type": "git",
+      "url": "git@git.rwth-aachen.de:learntech-lufgi9/bama/webwriter/ww-graph-visualization.git"
+    },
+    "description": "",
+    "bundleSize": {
+      "js": 107487,
+      "css": 0
+    },
+    "installSize": 13253
+  },
+  {
+    "name": "@webwriter/ww-textarea",
+    "scope": "webwriter",
+    "version": "0.4.1",
+    "description": "Let the user enter text",
+    "keywords": [
+      "webwriter-widget"
+    ],
+    "date": "2023-01-14T20:44:33.635Z",
+    "links": {
+      "npm": "https://www.npmjs.com/package/%40webwriter%2Fww-textarea"
+    },
+    "author": "Frederic Salmen <frederic@fsalmen.de>",
+    "publisher": {
+      "username": "salmenf",
+      "email": "frederic@fsalmen.de"
+    },
+    "maintainers": [
+      {
+        "username": "salmenf",
+        "email": "frederic@fsalmen.de"
+      }
+    ],
+    "main": "index.ts",
+    "type": "module",
+    "license": "MIT",
+    "publishConfig": {
+      "access": "public"
+    },
+    "dependencies": {
+      "@shoelace-style/shoelace": "^2.0.0-beta.83",
+      "@webwriter/lit": "^0.4.1",
+      "lit": "^2.3.1"
+    },
+    "scripts": {},
+    "gitHead": "0fd0c30304aba6738f14ee1ec687b3d4614f7c60",
+    "bundleSize": {
+      "js": 67814,
+      "css": 17952
+    },
+    "installSize": 1818
+  },
+  {
+    "name": "@webwriter/ww-figure",
+    "scope": "webwriter",
+    "version": "0.4.1",
+    "description": "Widget to show any type of multimedia figure",
+    "keywords": [
+      "webwriter-widget"
+    ],
+    "date": "2023-01-14T20:44:33.613Z",
+    "links": {
+      "npm": "https://www.npmjs.com/package/%40webwriter%2Fww-figure"
+    },
+    "author": "Frederic Salmen <frederic@fsalmen.de>",
+    "publisher": {
+      "username": "salmenf",
+      "email": "frederic@fsalmen.de"
+    },
+    "maintainers": [
+      {
+        "username": "salmenf",
+        "email": "frederic@fsalmen.de"
+      }
+    ],
+    "main": "index.ts",
+    "license": "MIT",
+    "type": "module",
+    "publishConfig": {
+      "access": "public"
+    },
+    "dependencies": {
+      "@shoelace-style/shoelace": "^2.0.0-beta.83",
+      "@webwriter/lit": "^0.4.1",
+      "lit": "^2.4.0",
+      "mime": "^3.0.0"
+    },
+    "scripts": {
+      "dev": "vite --open",
+      "build": "vite build"
+    },
+    "gitHead": "0fd0c30304aba6738f14ee1ec687b3d4614f7c60",
+    "bundleSize": {
+      "js": 142012,
+      "css": 17952
+    },
+    "installSize": 7058
+  }
+]

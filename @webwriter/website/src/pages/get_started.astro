@@ -1,0 +1,138 @@
+---
+import {
+  GetResponseTypeFromEndpointMethod,
+  GetResponseDataTypeFromEndpointMethod,
+} from "@octokit/types";
+import { Octokit } from "@octokit/rest";
+import Layout from '../layouts/Layout.astro'
+import LinkButton from "@components/LinkButton.astro"
+
+
+const octokit = new Octokit()
+const latestRelease = (await octokit.repos.getLatestRelease({owner: "webwriter-app", repo: "webwriter"})).data
+
+type Asset = (typeof latestRelease)["assets"][number]
+type ParsedAsset = Asset & {
+  type: "misc" | "installer",
+  os?: "Windows" | "Mac" | "Linux",
+  arch?: "x32" | "x64" | "aarch64"
+}
+type TemplatedAsset = ParsedAsset & {
+  icon: string,
+  prettyLabel: string
+}
+
+function parseArch(str: string): ParsedAsset["arch"] {
+  if(str.includes("_x64") || str.includes("_amd64")) {
+    return "x64"
+  }
+  else {
+    return "x32"
+  }
+}
+
+function parseAsset(asset: Asset): ParsedAsset {
+  const extension = asset.name.split(".").at(-1) ?? ""
+  let result = {...asset}
+  if(extension === "msi") {
+    return {...asset, type: "installer", os: "Windows", arch: parseArch(asset.name)}
+  }
+  else if(extension === "dmg") {
+    return {...asset, type: "installer", os: "Mac", arch: parseArch(asset.name)}
+  }
+  else if(extension === "AppImage") {
+    return {...asset, type: "installer", os: "Linux", arch: parseArch(asset.name)}
+  }
+  else {
+    return {...asset, type: "misc"}
+  }
+}
+
+function templateAsset(asset: ParsedAsset): TemplatedAsset {
+  const iconOfOs = {
+    "Windows": "bi-windows",
+    "Linux": "bi-ubuntu",
+    "Mac": "bi-apple"
+  }
+
+  return {
+    ...asset,
+    icon: iconOfOs[asset.os ?? "Linux"],
+    prettyLabel: `Download WebWriter ${latestRelease.tag_name} for ${asset.os} (${asset.arch})`
+  }
+}
+
+const assets = latestRelease.assets.map(parseAsset).map(templateAsset).reverse()
+
+---
+
+<script>
+    import {UAParser} from "ua-parser-js"
+    const userAgent = (new UAParser(window.navigator.userAgent))
+    window.wwUserAgent = {...userAgent.getResult()}
+</script>
+
+<Layout title="Get Started | WebWriter">
+  <div id="get-started-base">
+    <h1>Get Started</h1>
+    {assets
+      .filter(asset => asset.type !== "misc")
+      .map((asset: any) => 
+        <LinkButton href={asset.browser_download_url}>
+          <span class={asset.icon}></span>
+          <span>{asset.prettyLabel}</span>
+        </LinkButton>
+      )
+    }
+    <a id="releases-hint" href="https://github.com/webwriter-app/webwriter/releases">Find older versions of WebWriter here</a>
+  </div>
+</Layout>
+
+<style is:global>
+    #get-started-base {
+        --s: 350px; /* control the size */
+        --c: var(--sl-color-primary-500); /* first color */
+        --_g: #0000 8%,var(--c) 0 17%,#0000 0 58%;
+        background: 
+            linear-gradient(135deg,#0000 20.5%,var(--c) 0 29.5%,#0000 0) 0 calc(var(--s)/4),
+            linear-gradient( 45deg,var(--_g)) calc(var(--s)/2) 0,
+            linear-gradient(135deg,var(--_g),var(--c) 0 67%,#0000 0),        
+            linear-gradient( 45deg,var(--_g),var(--c) 0 67%,#0000 0 83%,var(--c) 0 92%,#0000 0),
+            var(--sl-color-primary-600); /* second color */
+        background-size: var(--s) var(--s);
+        min-height: calc(100vh - 14rem - 70px);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 2rem;
+    }
+    #get-started-base > .link-button {
+      min-width: 500px;
+      font-size: 1.25rem;
+      display: flex;
+      justify-content: center;
+      gap: 1ch;
+      
+    }
+
+    #get-started-base > h1 {
+      display: inline-block;
+      min-width: unset;
+      background: var(--sl-color-gray-950);
+      color: var(--sl-color-gray-50);
+      padding: 1rem 2rem;
+    }
+
+    #get-started-base #releases-hint {
+      background: var(--sl-color-gray-950);
+      color: var(--sl-color-gray-50);
+      min-width: unset;
+      padding: 0.5rem 1rem;
+      text-decoration: none;
+    }
+
+    #get-started-base #releases-hint:hover {
+      text-decoration: underline;
+    }
+</style>

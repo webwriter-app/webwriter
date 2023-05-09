@@ -1,0 +1,21 @@
+---
+import { getCollection, getEntryBySlug } from 'astro:content';
+import DocPage from "@layouts/DocPage.astro"
+
+const pathname = new URL(Astro.request.url).pathname
+// 1. Generate a new path for every collection entry
+export async function getStaticPaths() {
+  const allDocs = await getCollection('docs');
+  const paths = allDocs.map(entry => ({
+    params: { slug: entry.slug }, props: { entry },
+  }))
+  return paths
+}
+// 2. When it's time to render, you can get the entry directly from the prop
+const { entry } = Astro.props;
+const { Content } = await entry.render();
+---
+
+<DocPage>
+    <Content></Content>
+</DocPage>

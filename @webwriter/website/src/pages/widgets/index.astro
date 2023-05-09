@@ -1,0 +1,143 @@
+---
+import Layout from "@layouts/Layout.astro"
+import allWidgets from "@resources/widgets.json"
+
+function calculateOrder(widget: any) {
+    let weight = 0
+    weight += widget.name.startsWith("@webwriter/")? 10: 0
+    return weight
+}
+
+function prettifyWidgetName(name: string) {
+    let result = name.replaceAll(/^@.+\//g, "").replaceAll(/^.+-/g, "")
+    result = result[0].toUpperCase() + result.slice(1)
+    return result
+}
+
+const widgets = allWidgets.sort((a, b) => calculateOrder(b) - calculateOrder(a))
+const widgetNames = widgets.map(widget => widget.name)
+const widgetUrls = widgetNames.map(name => `widgets/${encodeURI(name)}`)
+const prettyWidgetNames = widgetNames.map(prettifyWidgetName)
+
+// import "../../resources/widgets.js"
+---
+
+<Layout title="Widgets | WebWriter">
+    <header id="widgets-header">
+        <h1>Widgets</h1>
+        <p>Try any of WebWriter's widgets in this gallery.</p>
+    </header>
+    <div id="base">
+        {widgets.map((widget, i) => <div class:list={["widget-card", {official: widget.name.startsWith("@webwriter/")}]}>
+            <a href={widgetUrls[i]}>
+                <div class="pretty-widget-name">{prettyWidgetNames[i]}</div>
+                <div class="widget-name">{widget.name}</div>
+            </a>
+            <span>{(widget.description.length > 100? widget.description.slice(0, 110).trim() + "...": widget.description) || <i>No description</i>}</span>
+        </div>)}
+    </div>
+</Layout>
+
+<style>
+    #base {
+        display: grid;
+        grid-gap: 15px;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        grid-auto-rows: 200px;
+        grid-auto-flow: dense;
+        padding: 2rem;
+    }
+
+    #widgets-header {
+        --s: 350px; /* control the size */
+        --c: var(--sl-color-primary-500); /* first color */
+        --_g: #0000 8%,var(--c) 0 17%,#0000 0 58%;
+        background: 
+            linear-gradient(135deg,#0000 20.5%,var(--c) 0 29.5%,#0000 0) 0 calc(var(--s)/4),
+            linear-gradient( 45deg,var(--_g)) calc(var(--s)/2) 0,
+            linear-gradient(135deg,var(--_g),var(--c) 0 67%,#0000 0),        
+            linear-gradient( 45deg,var(--_g),var(--c) 0 67%,#0000 0 83%,var(--c) 0 92%,#0000 0),
+            var(--sl-color-primary-600); /* second color */
+        background-size: var(--s) var(--s);
+        z-index -10 !important;
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+        height: 70px;
+        box-sizing: border-box;
+        margin-top: 1rem;
+    }
+
+    #widgets-header h1 {
+        display: inline-flex;
+        align-items: center;
+        background: var(--sl-color-gray-950);
+        color: var(--sl-color-gray-50);
+        word-wrap: nowrap;
+        flex-shrink: 0;
+        height: 110%;
+        margin: 0;
+        position: relative;
+        top: -5%;
+        left: 0;
+        margin-left: 2rem;
+        box-sizing: border-box;
+        padding: 1rem 2rem;
+    }
+
+    #widgets-header p {
+        display: inline-flex;
+        align-items: center;
+        background: var(--sl-color-gray-950);
+        color: var(--sl-color-gray-50);
+        padding: 0.1rem 0.5rem;
+        margin-right: 2rem;
+    }
+
+    .widget-card {
+        --padding: 1rem;
+        background: white;
+        padding: 0.5rem;
+        border: 2px solid var(--sl-color-gray-950);
+        border-radius: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        overflow: hidden;
+    }
+
+    .widget-card .pretty-widget-name {
+        font-weight: bold;
+        font-size: 1.25rem;
+    }
+
+    .widget-card .widget-name {
+        font-weight: normal;
+        font-size: 0.75rem;
+    }
+
+    .widget-card.official {
+        border-width: 4px;
+    }
+
+    .widget-card.official .pretty-widget-name {
+        font-weight: 800;
+    }
+
+    .widget-card a {
+        color: inherit;
+        text-decoration: none;
+    }
+
+    .widget-card a:hover {
+        color: inherit;
+        text-decoration: underline;
+    }
+
+    @media (max-width: 800px) {
+        #widgets-header p {
+            display: none;
+        }
+    }
+
+</style>

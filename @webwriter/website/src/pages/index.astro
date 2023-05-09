@@ -1,0 +1,199 @@
+---
+import Layout from '@layouts/Layout.astro'
+import LinkButton from "@components/LinkButton.astro"
+import iconUrl from "@assets/app-icon.svg?url"
+---
+
+<Layout title="WebWriter">
+    <div class="card primary">
+        <span class="tagline"><span>Digital worksheets</span><br><span> made easy!</span></span>
+        <div class="action-buttons">
+            <LinkButton href="#description">Learn more</LinkButton>
+            <LinkButton href="/get_started">Get started</LinkButton>
+        </div>
+    </div>
+    <div id="banner-alpha">
+      <div>WebWriter is currently in alpha. It is only intended for developers. You will encounter bugs when using it. The list of features below is a roadmap and only partially available in WebWriter right now. </div>
+    </div>
+    <div id="description" class="description">
+      <img class="icon" src={iconUrl} alt="WebWriter Icon" width={100} height={100} />
+      <p>WebWriter allows you to create beautiful digital worksheets with ease. Mix text, images, videos, and interactive content. Share your worksheet on your website or LMS and get live feedback from students.</p>
+    </div>
+    <div class="pane">
+      <div class="pane-text">
+        <h2>Worksheets, new and improved</h2>
+        <p>Spice up your worksheets! Add a video, a quiz or even an interactive map, all with a click. This includes all default H5P content types.</p>
+      </div>
+      <div class="icon bi-file-earmark-text-fill"></div>
+    </div>
+    <div class="pane">
+      <div class="pane-text">
+        <h2>Easy to learn</h2>
+        <p>Start simple by writing text, like a paper worksheet. Later, you can add images and even videos. Better still: You can add interactive widgets.</p>
+      </div>
+      <div class="icon bi-mortarboard-fill"></div>
+    </div>
+    <div class="pane">
+      <div class="pane-text">
+        <h2>Simple to use</h2>
+        <p>WebWriter's interface is simple to use. You work directly on the worksheet and always see what your student will see.</p>
+      </div>
+      <div class="icon bi-hand-index-fill"></div>
+    </div>
+    <div class="pane">
+      <div class="pane-text">
+        <h2>Publish any way you want</h2>
+        <p>Put your worksheets online, into an LMS such as Moodle, or even store them on a flash drive. WebWriter fits into any system.</p>
+      </div>
+      <div class="icon bi-share-fill"></div>
+    </div>
+</Layout>
+
+<style>
+
+    .card.primary {
+        min-height: 300px;
+        box-sizing: border-box;
+        --s: 350px; /* control the size */
+        --c: var(--sl-color-primary-500); /* first color */
+        --_g: #0000 8%,var(--c) 0 17%,#0000 0 58%;
+        background: 
+            linear-gradient(135deg,#0000 20.5%,var(--c) 0 29.5%,#0000 0) 0 calc(var(--s)/4),
+            linear-gradient( 45deg,var(--_g)) calc(var(--s)/2) 0,
+            linear-gradient(135deg,var(--_g),var(--c) 0 67%,#0000 0),        
+            linear-gradient( 45deg,var(--_g),var(--c) 0 67%,#0000 0 83%,var(--c) 0 92%,#0000 0),
+            var(--sl-color-primary-600); /* second color */
+        background-size: var(--s) var(--s);
+        display: flex;
+        flex-direction: row;
+        justify-content: space-around;
+        align-items: center;
+        flex-wrap: wrap;
+
+    }
+    .tagline {
+        display: inline-block;
+        color: white;
+        font-family: var(--sl-font-sans);
+        font-weight: bolder;
+        font-size: 3rem;
+    }
+
+    .tagline span {
+        display: inline-block;
+        margin: 10px;
+        padding: 0.5rem 2rem;
+        background: var(--sl-color-gray-950);
+    }
+    
+    .action-buttons {
+        display: flex;
+        flex-direction: column;
+        gap: 3rem;
+        padding: 1rem;
+    }
+
+    .action-buttons > * {
+        border: 5px solid #f1f1f1;
+        background: var(--sl-color-gray-950);
+        border-radius: 10px;
+        padding: 1rem;
+        font-size: 1.5rem;
+        text-align: center;
+        font-weight: bold;
+        font-family: var(--sl-font-sans);
+        color: #f1f1f1;
+        text-decoration: none;
+    }
+
+    .action-buttons > *:hover {
+      border-color: var(--sl-color-primary-400);
+      color: var(--sl-color-primary-400);
+    }
+
+    .action-buttons > *:active {
+      border-color: var(--sl-color-primary-600);
+      color: var(--sl-color-primary-600);
+    }
+
+    .description {
+      padding: 4rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+
+    .description p {
+      width: 800px;
+      font-size: 1.5rem;
+      line-height: 2;
+    }
+
+    .description .icon {
+      box-shadow: var(--sl-shadow-medium);
+      border-radius: 10px;
+      background: white;
+      padding: 5px;
+    }
+
+    .pane {
+      padding: 2rem;
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      justify-content: space-between;
+    }
+
+    .pane:nth-of-type(2n) {
+      flex-direction: row-reverse;
+    }
+
+    .pane:nth-of-type(2n + 1) {
+      background: var(--sl-color-gray-300);
+    }
+
+    .pane:nth-of-type(2n + 1) .pane-text {
+      text-align: end;
+    }
+
+    .pane h2 {
+      margin: 0;
+      font-size: 1.5rem;
+    }
+
+    .pane p {
+      margin: 0;
+    }
+
+    .pane + .pane {
+      margin-bottom: 6rem;
+    }
+
+    .pane-text {
+      width: 60%;
+      line-height: 2;
+      font-size: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .pane .icon {
+      font-size: 10rem;
+    }
+
+    #banner-alpha {
+      background: var(--sl-color-warning-200);
+      padding: 1rem;
+      display: flex;
+      flex-direction: row;
+      justify-content: center;
+    }
+
+    #banner-alpha > * {
+      max-width: 800px;
+      text-align: center
+    }
+
+</style>

@@ -1,0 +1,37 @@
+---
+import Layout from "@layouts/Layout.astro"
+---
+
+<Layout title="Page not found | WebWriter">
+    <div id="base">
+        <span class="icon bi-exclamation-diamond"></span>
+        <h1 id="text"> 404 - Not found</h1>
+        <span>The page you requested could not be found.</span>
+    </div>
+</Layout>
+
+<style>
+    #base {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        width: 100%;
+        height: calc(100vh - 70px - 14rem);
+    }
+
+    h1 {
+        font-family: var(--sl-font-sans);
+        font-size: 2rem;
+        color: var(--sl-color-gray-800);
+    }
+
+    span {
+        color: var(--sl-color-gray-800);
+    }
+
+    .icon {
+        font-size: 4rem;
+        color: var(--sl-color-gray-800);
+    }
+</style>

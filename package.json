@@ -9,12 +9,13 @@
     "createbinaries": "node ./scripts/createbinaries.js",
     "preparestatic": "node ./scripts/preparestatic.js",
     "make-app-icon": "tauri icon ./@webwriter/core/app-icon.png",
-    "predev-core": "npm run preparestatic",
+    "predev-core": "npm-run-all -pc preparestatic build-localization",
     "dev-core": "npm run vite -- @webwriter/core -l error",
+    "predev-desktop": "tauri -V",
     "dev-desktop": "npm-run-all -pr dev-core \"tauri dev -- -c ./@webwriter/app-desktop/src-tauri/tauri.conf.json\"",
     "dev-cloud": "npm run -w @webwriter/app-cloud dev",
     "dev-docs": "bundle exec jekyll serve -s ./docs",
-    "prebuild-core": "npm run preparestatic",
+    "prebuild-core": "npm-run-all -p preparestatic build-localization",
     "build-core": "npm run vite -- build @webwriter/core",
     "prebuild-desktop": "npm-run-all createbinaries preparestatic make-app-icon",
     "build-desktop": "npm run build-core && tauri build -c ./@webwriter/app-desktop/src-tauri/tauri.conf.json",
@@ -44,7 +45,7 @@
     "@webwriter/*"
   ],
   "devDependencies": {
-    "@tauri-apps/cli": "^1.2.2",
+    "@tauri-apps/cli": "^1.2.3",
     "@types/mocha": "^10.0.1",
     "@types/semver": "^7.3.13",
     "@wagnerflo/cc-icons": "^1.2.1",
@@ -60,13 +61,15 @@
     "fs-extra": "^11.1.0",
     "lerna": "^6.4.0",
     "mocha": "^10.2.0",
-    "npm": "^9.2.0",
+    "npm": "^9.4.2",
     "npm-run-all": "^4.1.5",
     "pkg": "^5.8.0",
     "ts-node": "^10.9.1",
-    "vite": "^4.0.4"
+    "vite": "^4.0.4",
+    "yarn": "^1.22.19"
   },
   "dependencies": {
+    "lit": "^2.6.1",
     "semver": "^7.3.8"
   }
 }

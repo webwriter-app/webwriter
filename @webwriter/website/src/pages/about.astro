@@ -1,0 +1,65 @@
+---
+import Layout from '../layouts/Layout.astro';
+import {Content as AboutContent} from '../content/about.md';
+import LinkButton from '@components/LinkButton.astro';
+---
+
+<Layout title="About | WebWriter">
+    <div id="about-base">
+        <h1><span>About</span></h1>
+
+        <h2>Explorables</h2>
+        <p>WebWriter is a tool for creating explorables. Explorables mix text with multimedia and interactive content and can also be thought of as digital worksheets. <a class="learn-more" href="https://explorabl.es/">Learn more...</a></p>
+
+        <h2>Dissertation Project</h2>
+        <p>WebWriter is the product of a dissertation project at RWTH Aachen University's Learning Technologies Research Group. <a class="learn-more" href="https://learntech.rwth-aachen.de/cms/LearnTech/Forschung/Laufende-Dissertationen/~ybguz/Frederic-Salmen/?lidx=1">Learn more...</a></p>
+    </div>
+</Layout>
+
+<style>
+    #about-base {
+        padding: 2rem;
+        padding-top: 0;
+    }
+
+    #about-base h1 {
+        display: flex;
+        --s: 350px; /* control the size */
+        --c: var(--sl-color-primary-500); /* first color */
+        --_g: #0000 8%,var(--c) 0 17%,#0000 0 58%;
+        background: 
+            linear-gradient(135deg,#0000 20.5%,var(--c) 0 29.5%,#0000 0) 0 calc(var(--s)/4),
+            linear-gradient( 45deg,var(--_g)) calc(var(--s)/2) 0,
+            linear-gradient(135deg,var(--_g),var(--c) 0 67%,#0000 0),        
+            linear-gradient( 45deg,var(--_g),var(--c) 0 67%,#0000 0 83%,var(--c) 0 92%,#0000 0),
+            var(--sl-color-primary-600); /* second color */
+        background-size: var(--s) var(--s);
+        padding: 1rem 2rem;
+        margin-top: 0;
+    }
+
+    #about-base p {
+        margin-bottom: 5rem;
+        margin-top: 0.5rem;
+        font-size: 1.25rem;
+        line-height: 2
+    }
+
+    #about-base h1 span {
+        background: var(--sl-color-gray-950);
+        color: var(--sl-color-gray-50);
+        padding: 0.5rem 1rem;
+    }
+
+    #about-base h2 {
+        background: var(--sl-color-gray-950);
+        color: var(--sl-color-gray-50);
+        padding: 0.5rem 1rem;
+        margin-bottom: 0.1rem;
+    }
+
+    #about-base .learn-more {
+        float: right;
+        margin-left: 0.5rem;
+    }
+</style>

@@ -1,0 +1,301 @@
+---
+import icon from "@assets/app-icon-small.drawio.png"
+import "@shoelace-style/shoelace/dist/themes/light.css"
+import {EmailAddress} from "@components/EmailAddress"
+import iconUrl from "@assets/app-icon.svg?url"
+
+export interface Props {
+	title: string;
+}
+
+const { title } = Astro.props
+
+const pathname = new URL(Astro.request.url).pathname
+
+function capitalize(str: string) {
+  return str[0].toUpperCase() + str.slice(1)
+}
+
+const pageFiles = (await Astro.glob("../pages/**/*.astro")).filter(page => !page.url?.endsWith("]") && !page.url?.endsWith("404") && page.url)
+const pageUrls = pageFiles.map(page => page.url ?? "")
+const pageOrder = ["", "docs", "widgets", "about", "get_started"]
+const pages = pageUrls
+	.map(relUrl => {
+		let id = relUrl?.split("/").at(-1) as string
+    const rootLocation = relUrl?.split("/").at(1) as string
+		let name = id? id.split("_").map(capitalize).join(" "): "Features"
+    let active = rootLocation === pathname.split("/")?.at(1)
+    let urlObj = new URL(Astro.request.url); urlObj.pathname = relUrl
+    let url = urlObj.href
+		return {url, name, id, active}
+	})
+	.sort((a, b) => {
+		return pageOrder.indexOf(a.id) - pageOrder.indexOf(b.id)
+	})
+
+const rootActive = pathname === "/"
+const getStartedActive = pathname === "/get_started"
+
+const EMAIL = "contact@webwriter.app"
+import "bootstrap-icons/font/bootstrap-icons.css"
+---
+
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width" />
+		<link rel="icon" type="image/png" href={icon.src} />
+		<link rel="sitemap" href="/sitemap-index.xml" />
+		<meta name="generator" content={Astro.generator} />
+		<title>{title}</title>
+    <link rel="icon" href="/assets/app-icon.svg">
+	</head>
+	<body>
+		<header id="layout-header">
+      <a href="/" class="logo" data-active={rootActive}>
+        <img src={iconUrl} alt="WebWriter Icon" width={40} height={40} />
+        <span class="logo-text">WebWriter <sup>Alpha</sup></span>
+      </a>
+			<nav>
+        <label class="menu-toggle bi-list" for="menu-toggle"></label>
+        <input id="menu-toggle" type="checkbox" class="bi-list">
+        <ol class="menu">
+				{pages.filter(page => page.id !== "get_started").map(page => (<li><a class={page.id} data-active={page.active} draggable="false" href={page.url}>
+					{page.name}
+				</a></li>))}
+			</ol>
+      <a class="get_started" draggable="false" data-active={getStartedActive} href="/get_started">Get Started</a>
+    </nav>
+		</header>
+		<main>
+			<slot />
+		</main>
+		<footer>
+      <div class="imprint">
+        <div class="logo">
+          <img id="icon-footer" src={iconUrl} alt="WebWriter Icon" width={40} height={40} />
+          <span>WebWriter</span>
+        </div>
+        <div>© 2023 Frederic Salmen. All rights reserved.</div>
+        <EmailAddress class="contact" client:only="lit" address={EMAIL} />
+      </div>
+      <div class="sitemap-card">
+        <h2>Pages</h2>
+        <nav><ol>
+          {pages.map(page => (<li><a draggable="false" href={page.url}>
+            {page.name}
+          </a></li>))}
+        </ol></nav>
+      </div>
+      <div class="sitemap-card">
+        <h2>Community</h2>
+        <nav><ol>
+          <li><a href="https://github.com/webwriter-app">GitHub</a></li>
+          <li><a href="https://learntech.rwth-aachen.de">LearnTech RWTH Aachen</a></li>
+          <li><a href="https://explorabl.es">Explorables</a></li>
+        </ol></nav>
+      </div>
+		</footer>
+	</body>
+</html>
+<style is:global>
+	:root {
+		--background-color: #f0f0f0;
+	}
+
+	html {
+		--ww-features-bg-color: hsla(200, 98%, 39%, 0.2);
+		font-family: system-ui, sans-serif;
+    background: var(--background-color);
+    overflow-y: scroll;
+	}
+
+	body {
+		margin: 0;
+    max-width: 1920px;
+    margin: 0 auto;
+    position: relative;
+	}
+
+  main {
+    min-height: calc(100vh - 70px - 14rem);
+    box-sizing: border-box;
+    margin: 0 auto;
+  }
+
+	code {
+		font-family: Menlo, Monaco, Lucida Console, Liberation Mono, DejaVu Sans Mono,
+			Bitstream Vera Sans Mono, Courier New, monospace;
+	}
+
+	#layout-header {
+		display: flex;
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		position: sticky;
+    width: 100%;
+    height: 70px;
+		top: 0;
+		left: 0;
+    gap: 2rem;
+    padding: 0 2rem;
+		background: var(--background-color);
+    box-sizing: border-box;
+    color: var(--sl-color-gray-900);
+    z-index: 10;
+	}
+
+	#layout-header ol {
+		display: flex;
+		flex-direction: row;
+    flex-wrap: wrap;
+		list-style-type: none;
+		padding: 0;
+		margin: 0;
+		gap: 0.5rem 2rem;
+		align-items: center;
+		font-size: 1rem;
+    font-weight: bold;
+    font-family: system-ui;
+	}
+
+  footer ol {
+    display: flex;
+		flex-direction: column;
+		list-style-type: none;
+		padding: 0;
+		margin: 0;
+    margin-left: 0.5rem;
+		gap: 0.25rem;
+		font-size: 0.9rem;
+  }
+
+  #layout-header nav {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 2rem;
+  }
+
+	#layout-header a, footer a {
+		text-decoration: none;
+		color: inherit;
+		user-select: none;
+		-moz-user-select: none;
+	}
+
+  #layout-header a[data-active] {
+    color: var(--sl-color-primary-600);
+  }
+
+	#layout-header a:hover, footer a:hover {
+		color: var(--sl-color-primary-500);
+	}
+
+	#layout-header a:active, footer a:active {
+		color: var(--sl-color-primary-800);
+	}
+
+  footer {
+    background: var(--sl-color-gray-950);
+    color: white;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 1rem;
+    padding: 2rem;
+    justify-content: space-around;
+    height: 14rem;
+    box-sizing: border-box;
+  }
+
+  .logo {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 1rem;
+    font-weight: bold;
+    font-size: 1.5rem;
+  }
+
+  .logo[data-active] {
+    text-decoration: underline;
+  }
+
+  .logo sup {
+    font-size: 0.8rem;
+  }
+
+  .imprint {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    font-size: 0.8rem;
+  }
+
+  .imprint .contact {
+    margin-top: auto;
+    color: white;
+  }
+
+  .sitemap-card h2 {
+    margin-top: 0;
+  }
+
+  .get_started {
+    display: inline-block;
+    flex-shrink: 0;
+    background: var(--sl-color-primary-600);
+    padding: 0.25rem 0.5rem;
+    font-weight: bold;
+    color: var(--sl-color-gray-50) !important;
+    border-radius: var(--sl-border-radius-medium);
+    border: 2px solid var(--sl-color-gray-950);
+  }
+
+  .get_started:hover {
+    background: var(--sl-color-primary-400);
+  }
+
+  .get_started:active {
+    background: var(--sl-color-primary-800);
+  }
+
+  .get_started[data-active] {
+    text-decoration: underline !important;
+  }
+
+  #menu-toggle {
+    display: none;
+  }
+
+  .menu-toggle {
+    display: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+  }
+
+  .menu-toggle:hover {
+    color: var(--sl-color-primary-400);
+  }
+
+  .menu-toggle:active {
+    color: var(--sl-color-primary-800);
+  }
+
+  #icon-footer {
+    background: white;
+    padding: 5px;
+    border-radius: 10px;
+  }
+
+  @media (max-width: 800px) {
+    .logo-text {
+      display: none;
+    }
+  }
+
+
+</style>
