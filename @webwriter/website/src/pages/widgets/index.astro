@@ -16,7 +16,7 @@ function prettifyWidgetName(name: string) {
 
 const widgets = allWidgets.sort((a, b) => calculateOrder(b) - calculateOrder(a))
 const widgetNames = widgets.map(widget => widget.name)
-const widgetUrls = widgetNames.map(name => `widgets/${encodeURI(name)}`)
+const widgetUrls = widgetNames.map(name => `/widgets/${encodeURI(name)}`)
 const prettyWidgetNames = widgetNames.map(prettifyWidgetName)
 
 // import "../../resources/widgets.js"
