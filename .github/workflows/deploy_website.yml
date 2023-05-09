@@ -22,6 +22,8 @@ jobs:
         uses: withastro/action@v0
         with:
           path: './@webwriter/website'
+          node-version: 20
+          package-manager: yarn
 
   deploy:
     needs: build
