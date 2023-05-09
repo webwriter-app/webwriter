@@ -23,7 +23,7 @@ jobs:
         with:
           path: './@webwriter/website'
           node-version: 20
-          package-manager: yarn
+          package-manager: npm
 
   deploy:
     needs: build
