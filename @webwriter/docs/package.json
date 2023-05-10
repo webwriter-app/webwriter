@@ -1,9 +1,0 @@
-{
-  "name": "@webwriter/docs",
-  "version": "0.4.0",
-  "description": "Documentation for the WebWriter system",
-  "main": "index.md",
-  "private": true,
-  "author": "Frederic Salmen <frederic@fsalmen.de>",
-  "license": "UNLICENSED"
-}
