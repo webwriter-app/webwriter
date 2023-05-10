@@ -4,7 +4,7 @@ import LinkButton from "@components/LinkButton.astro"
 import iconUrl from "@assets/app-icon.svg?url"
 ---
 
-<Layout title="WebWriter">
+<Layout>
     <div class="card primary">
         <span class="tagline"><span>Digital worksheets</span><br><span> made easy!</span></span>
         <div class="action-buttons">
@@ -125,7 +125,7 @@ import iconUrl from "@assets/app-icon.svg?url"
     }
 
     .description p {
-      width: 800px;
+      width: min(800px, 100%);
       font-size: 1.5rem;
       line-height: 2;
     }

@@ -5,7 +5,7 @@ import {EmailAddress} from "@components/EmailAddress"
 import iconUrl from "@assets/app-icon.svg?url"
 
 export interface Props {
-	title: string;
+	title?: string;
 }
 
 const { title } = Astro.props
@@ -38,22 +38,48 @@ const getStartedActive = pathname === "/get_started"
 
 const EMAIL = "contact@webwriter.app"
 import "bootstrap-icons/font/bootstrap-icons.css"
+
+import { SEO } from "astro-seo";
 ---
 
 <!DOCTYPE html>
 <html lang="en">
 	<head>
 		<meta charset="UTF-8" />
-		<meta name="viewport" content="width=device-width" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
 		<link rel="icon" type="image/png" href={icon.src} />
 		<link rel="sitemap" href="/sitemap-index.xml" />
 		<meta name="generator" content={Astro.generator} />
-		<title>{title}</title>
     <link rel="icon" href="/assets/app-icon.svg">
+    <SEO
+      title={title}
+      titleTemplate="%s | WebWriter"
+      titleDefault="WebWriter"
+      description="Digital worksheet tool for teachers"
+    />
+    <script>
+      import Swup from "swup"
+      import AccessibilityPlugin from "@swup/a11y-plugin"
+      import HeadPlugin from "@swup/head-plugin"
+      import PreloadPlugin from "@swup/preload-plugin"
+
+      const swup = new Swup({
+        plugins: [new AccessibilityPlugin(), new HeadPlugin(), new PreloadPlugin()]
+      })
+
+      swup.on("pageView", () => {
+        document.querySelectorAll("a").forEach(a => {
+          const isActive = window.location.origin + "/" === a.href
+            ? window.location.href === a.href
+            : window.location.href.startsWith(a.href)
+          a.toggleAttribute("data-active", isActive)
+        })
+      })
+    </script>
 	</head>
 	<body>
 		<header id="layout-header">
-      <a href="/" class="logo" data-active={rootActive}>
+      <a data-swup-preload href="/" class="logo">
         <img src={iconUrl} alt="WebWriter Icon" width={40} height={40} />
         <span class="logo-text">WebWriter <sup>Alpha</sup></span>
       </a>
@@ -61,21 +87,21 @@ import "bootstrap-icons/font/bootstrap-icons.css"
         <label class="menu-toggle bi-list" for="menu-toggle"></label>
         <input id="menu-toggle" type="checkbox" class="bi-list">
         <ol class="menu">
-				{pages.filter(page => page.id !== "get_started").map(page => (<li><a class={page.id} data-active={page.active} draggable="false" href={page.url}>
+				{pages.filter(page => page.id !== "get_started").map(page => (<li><a  data-swup-preload class={page.id} data-active={page.active} draggable="false" href={page.url}>
 					{page.name}
 				</a></li>))}
 			</ol>
-      <a class="get_started" draggable="false" data-active={getStartedActive} href="/get_started">Get Started</a>
+      <a data-swup-preload class="get_started" draggable="false" data-active={getStartedActive} href="/get_started">Get Started</a>
     </nav>
 		</header>
-		<main>
+		<main id="swup">
 			<slot />
 		</main>
 		<footer>
       <div class="imprint">
         <div class="logo">
           <img id="icon-footer" src={iconUrl} alt="WebWriter Icon" width={40} height={40} />
-          <span>WebWriter</span>
+          <span class="logo-text">WebWriter</span>
         </div>
         <div>© 2023 Frederic Salmen. All rights reserved.</div>
         <EmailAddress class="contact" client:only="lit" address={EMAIL} />
@@ -83,7 +109,7 @@ import "bootstrap-icons/font/bootstrap-icons.css"
       <div class="sitemap-card">
         <h2>Pages</h2>
         <nav><ol>
-          {pages.map(page => (<li><a draggable="false" href={page.url}>
+          {pages.map(page => (<li><a data-swup-preload draggable="false" href={page.url}>
             {page.name}
           </a></li>))}
         </ol></nav>
@@ -116,12 +142,31 @@ import "bootstrap-icons/font/bootstrap-icons.css"
     max-width: 1920px;
     margin: 0 auto;
     position: relative;
+    background: var(--background-color);
 	}
 
   main {
     min-height: calc(100vh - 70px - 14rem);
     box-sizing: border-box;
     margin: 0 auto;
+  }
+
+  @keyframes spinner {
+    to {transform: rotate(360deg);}
+  }
+
+  main.loading::after {
+    content: '';
+    box-sizing: border-box;
+    position: absolute;
+    top: 150px;
+    left: 50%;
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    border: 10px solid #ccc;
+    border-top-color: var(--sl-color-primary-600);
+    animation: spinner .6s linear infinite;
   }
 
 	code {
@@ -152,9 +197,9 @@ import "bootstrap-icons/font/bootstrap-icons.css"
 		flex-direction: row;
     flex-wrap: wrap;
 		list-style-type: none;
-		padding: 0;
 		margin: 0;
-		gap: 0.5rem 2rem;
+		gap: 0.1rem 2rem;
+    padding-left: 0;
 		align-items: center;
 		font-size: 1rem;
     font-weight: bold;
@@ -246,13 +291,13 @@ import "bootstrap-icons/font/bootstrap-icons.css"
 
   .get_started {
     display: inline-block;
-    flex-shrink: 0;
     background: var(--sl-color-primary-600);
     padding: 0.25rem 0.5rem;
     font-weight: bold;
     color: var(--sl-color-gray-50) !important;
     border-radius: var(--sl-border-radius-medium);
     border: 2px solid var(--sl-color-gray-950);
+    text-align: center;
   }
 
   .get_started:hover {
@@ -291,9 +336,22 @@ import "bootstrap-icons/font/bootstrap-icons.css"
     border-radius: 10px;
   }
 
+  #swup {
+    transition: 0.5s;
+    opacity: 1;
+  }
+
+  html.is-animating #swup {
+    opacity: 0;
+  }
+
   @media (max-width: 800px) {
     .logo-text {
       display: none;
+    }
+
+    footer h2, footer .logo {
+      font-size: 1rem;
     }
   }
 

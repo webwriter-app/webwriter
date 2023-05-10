@@ -38,6 +38,7 @@ const installSizes = []
 for(const [i, name] of names.entries()) {
     const jsFile = `tmp/${name}.js`
     fs.ensureDir("public/widgetsrc")
+    fs.ensureFileSync(jsFile)
     fs.writeFileSync(jsFile, importStatements[name], {encoding: "utf8"})
     const outFileJs = `public/widgetsrc/${name}.js`
     const outFileCss = outFileJs.slice(0, -3) + ".css"
@@ -52,6 +53,8 @@ for(const [i, name] of names.entries()) {
     bundleSizes.push({js, css})
     installSizes.push(installSize)
 }
+
+fs.rm("tmp", {recursive: true})
 
 const packages = names
     .map(name => JSON.parse(fs.readFileSync(`../../node_modules/${name}/package.json`, "utf8")))

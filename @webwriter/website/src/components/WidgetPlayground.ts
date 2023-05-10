@@ -10,6 +10,9 @@ import {WidgetType, Decoration} from "@codemirror/view"
 import SPDX_LICENSES from "spdx-license-list/simple"
 
 import PENCIL_FILL from "bootstrap-icons/icons/pencil-fill.svg?raw"
+import PENCIL from "bootstrap-icons/icons/pencil.svg?raw"
+import SQUARE from "bootstrap-icons/icons/square.svg?raw"
+import CODE_SLASH from "bootstrap-icons/icons/code-slash.svg?raw"
 import GIT from "bootstrap-icons/icons/git.svg?raw"
 import GITHUB from "bootstrap-icons/icons/github.svg?raw"
 import BOX_FILL from "bootstrap-icons/icons/box-fill.svg?raw"
@@ -18,6 +21,9 @@ import X_LG from "bootstrap-icons/icons/x-lg.svg?raw"
 import DOWNLOAD from "bootstrap-icons/icons/download.svg?raw"
 import FILE_ARROW_DOWN from "bootstrap-icons/icons/file-arrow-down.svg?raw"
 import PLAY_CIRCLE_FILL from "bootstrap-icons/icons/play-circle-fill.svg?raw"
+import PRINTER_FILL from "bootstrap-icons/icons/printer-fill.svg?raw"
+import PRINTER from "bootstrap-icons/icons/printer.svg?raw"
+import LAYOUT_SIDEBAR_INSET_REVERSE from "bootstrap-icons/icons/layout-sidebar-inset-reverse.svg?raw"
 const ICON = (x: string) => html`<img class="icon" src=${"data:image/svg+xml;utf8," + x}>`
 
 import {IFrameObject, IFramePage, iframeResizer} from "iframe-resizer"
@@ -114,11 +120,11 @@ export class WidgetPlayground extends LitElement {
     return css`
       main {
         display: grid;
-        grid-template-columns: 2fr minmax(400px, 1fr);
-        grid-template-rows: min-content 1fr;
+        grid-template-columns: 3fr minmax(100%, 1fr);
+        grid-template-rows: min-content 1fr min-content;
         gap: 1rem;
-        padding: 2rem;
-        padding-top: 0;
+        padding: 0 2rem;
+        padding-bottom: 1rem;
         box-sizing: border-box;
         min-height: 800px;
       }
@@ -130,6 +136,11 @@ export class WidgetPlayground extends LitElement {
         grid-template-columns: min-content 1fr min-content;
         grid-template-rows: min-content min-content min-content;
         gap: 0.25rem 1rem;
+      }
+
+      #toggles {
+        grid-row: 3;
+        grid-column: 1 / 3;
       }
 
       header h1, header h2, header p {
@@ -175,6 +186,9 @@ export class WidgetPlayground extends LitElement {
 
       header #actions > * {
         padding: 0.4rem 0.5rem;
+        width: 35px;
+        height: 35px;
+        box-sizing: border-box;
         border: 2px solid var(--sl-color-gray-800);
       }
 
@@ -186,11 +200,10 @@ export class WidgetPlayground extends LitElement {
 
       #preview {
         grid-column: 1 / 2;
-        grid-row: 2 / 4;
+        grid-row: 2;
         width: 100%;
         height: 100%;
         border: none;
-        margin-top: calc(1.5rem + 3px);
       }
 
       .tab-panel {
@@ -210,7 +223,13 @@ export class WidgetPlayground extends LitElement {
       #subheading {
         display: flex;
         flex-direction: row;
-        gap: 2ch;
+        flex-wrap: wrap;
+        gap: 0 2ch;
+      }
+
+      #subheading p {
+        margin-top: 0.5ch;
+        width: 100%;
       }
 
       #people {
@@ -268,11 +287,23 @@ export class WidgetPlayground extends LitElement {
         line-height: 100%;
       }
 
-      #close:hover, #edit:hover {
+      #edit[data-active] {
+        background: var(--sl-color-primary-200);
+      }
+
+      #edit:hover {
+        background: var(--sl-color-primary-200);
+      }
+
+      #edit:active {
+        background: var(--sl-color-primary-300);
+      }
+
+      #close:hover {
         background: var(--sl-color-gray-200);
       }
 
-      #close:active, #active:hover {
+      #close:active {
         background: var(--sl-color-gray-300);
       }
 
@@ -331,9 +362,30 @@ export class WidgetPlayground extends LitElement {
 
       #editor nav {
         display: flex;
-        flex-direction: row-reverse;
+        flex-direction: row;
         justify-content: flex-start;
         gap: 0.5ch;
+      }
+
+      #editor nav label {
+        font-size: 0.75rem;
+      }
+
+      #toggles input[type=checkbox] {
+        display: none;
+      }
+
+      #toggles {
+        display: flex;
+        flex-direction: row;
+        justify-content: center;
+        gap: 1ch;
+        margin-top: 1rem;
+      }
+
+      #toggles .icon {
+        height: 20px;
+        width: 20px;
       }
 
       .cm-editor {
@@ -368,6 +420,61 @@ export class WidgetPlayground extends LitElement {
         opacity: 50%;
       }
 
+      .editor-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 5px;
+        cursor: pointer;
+        user-select: none;
+        -moz-user-select: none;
+      }
+
+      .editor-toggle:hover {
+        background: var(--sl-color-gray-200);
+      }
+
+      input:checked + .editor-toggle .for-inactive {
+        display: none;
+      }
+
+      input:not(:checked) + .editor-toggle .for-active {
+        display: none;
+      }
+
+      .sideline {
+        height: 2px;
+        width: 100%;
+        background: var(--sl-color-gray-950);
+        margin: auto 0;
+      }
+
+      @media (max-width: 800px) {
+        header h1 {
+          grid-row: 1;
+          grid-column: 1 / 3;
+        }
+
+        header #subheading {
+          grid-row: 2;
+          grid-column: 1 / 4;
+        }
+
+        header #actions {
+          grid-row: 1;
+          grid-column: 3;
+        }
+
+        header #tag-area {
+          grid-row: 3;
+          grid-column: 1 / 4;
+        }
+
+        #editor {
+          grid-column: 1 / 3;
+        }
+      }
+
     `
   }
 
@@ -386,12 +493,27 @@ export class WidgetPlayground extends LitElement {
         <style id="basestyle">
           body {
             max-width: 800px;
-            margin: 5px;
+            padding: 5px;
+            margin: 0 auto;
             overflow: hidden;
+          }
+
+          .ww-widget {
+            display: block;
+            position: relative;
+          }
+
+          @media (min-width: 1300px) {
+            body[data-sidebar] .ww-widget::part(action) {
+              position: absolute;
+              top: 0;
+              left: calc(100% + 10px);
+              width: calc((100vw - 100%) / 2 - 20px)
+            }
           }
         </style>
       </head>
-      <body><${tag}></${tag}>
+      <body data-sidebar><${tag} class="ww-widget"></${tag}>
 <style></style>
 <script></script></body>
 </html>`
@@ -411,6 +533,18 @@ export class WidgetPlayground extends LitElement {
   
   get window() {
     return this.iframe?.contentWindow as Window & typeof globalThis
+  }
+
+  toggleSidebar() {
+    this.body?.toggleAttribute("data-sidebar")
+  }
+
+  toggleEditable() {
+    this.body?.querySelectorAll(".ww-widget").forEach(el => el.toggleAttribute("editable"))
+  }
+
+  togglePrintable() {
+    this.body?.querySelectorAll(".ww-widget").forEach(el => el.toggleAttribute("printable"))
   }
 
   @property({state: true})
@@ -518,12 +652,12 @@ export class WidgetPlayground extends LitElement {
           <a id="name" title="Technical name of the widget" href=${ifDefined(this.homepage)}>${this.name ?? "unnamed"}</a>
           <span id="version" title="Version of the widget">${this.version}</span> 
           <span id="people" title="Author and contributors">${people.length > 0? people: "Anonymous"}</span>
+          <p>${this.description || html`<i>No description</i>`}</p>
         </span>
         <div id="actions">
           <a id="close" title="Back to widget gallery" href="/widgets">${ICON(X_LG)}</a>
-          <button id="edit" title="Edit this widget" @click=${() => this.editable = !this.editable}>${ICON(PENCIL_FILL)}</button>
+          <button id="edit" title="Edit this widget" @click=${() => this.editable = !this.editable} ?data-active=${this.editable}>${ICON(CODE_SLASH)}</button>
         </div>
-        <p>${this.description || html`<i>No description</i>`}</p>
         <div id="tag-area">
           ${this.name.startsWith("@webwriter/")? html`<span id="official" title="This widget comes pre-installed with WebWriter">Official</span>`: null}
           ${this.keywords.map(kw => html`<span>${kw}</span>`)}
@@ -544,6 +678,25 @@ export class WidgetPlayground extends LitElement {
           </a>
         </div>
       </header>
+      <div id="toggles">
+        <div class="sideline"></div>
+        <input id="toggle-sidebar-layout" checked type="checkbox" @change=${this.toggleSidebar}>
+        <label title="Toggle sidebar layout" class="editor-toggle" for="toggle-sidebar-layout">
+          <span class="for-active">${ICON(LAYOUT_SIDEBAR_INSET_REVERSE)}</span>
+          <span class="for-inactive">${ICON(SQUARE)}</span>
+        </label>
+        <input id="toggle-editable" type="checkbox" @change=${this.toggleEditable}>
+        <label title="Toggle editing view" class="editor-toggle for-active" for="toggle-editable">
+          <span class="for-active">${ICON(PENCIL_FILL)}</span>
+          <span class="for-inactive">${ICON(PENCIL)}</span>
+        </label>
+        <input id="toggle-printable" type="checkbox" @change=${this.togglePrintable}>
+        <label title="Toggle printing view" class="editor-toggle" for="toggle-printable">
+          <span class="for-active">${ICON(PRINTER_FILL)}</span>
+          <span class="for-inactive">${ICON(PRINTER)}</span>
+        </label>
+        <div class="sideline"></div>
+      </div>
       <iframe id="preview" srcdoc=${this.srcdoc}></iframe>
       <div id="editor">
         <nav>

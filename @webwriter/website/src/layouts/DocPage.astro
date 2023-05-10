@@ -17,16 +17,16 @@ const docActive = allDocs.map((doc, i) =>{
 })
 ---
 
-<Layout title="Documentation | WebWriter">
+<Layout title="Documentation">
   <div class="base">
       <input id="docsNavInput" type="checkbox">
       <label id="docsNavToggle" for="docsNavInput" class="bi-list" ></label>
       <nav id="docsNav">
           <h3 id="documentation-title">
-              <a href="/docs">Documentation</a>
+              <a data-swup-preload href="/docs">Documentation</a>
           </h3>
           <ol>
-              {allDocs.map((doc, i) => <li class="doc-link" data-active={docActive[i]}><a href={docUrls[i]}>{doc.data.title}</a></li>)}
+              {allDocs.map((doc, i) => <li class="doc-link" data-active={docActive[i]}><a  data-swup-preload href={docUrls[i]}>{doc.data.title}</a></li>)}
           </ol>
           <label id="closeDocsNav" for="docsNavInput" class="bi-x" ></label>
       </nav>
@@ -51,6 +51,7 @@ const docActive = allDocs.map((doc, i) =>{
         left: 0;
         box-sizing: border-box;
         background: white;
+        margin-bottom: 2rem;
     }
 
 
@@ -82,6 +83,9 @@ const docActive = allDocs.map((doc, i) =>{
         top: 60px;
         left: 0;
         font-size: 1.5rem;
+        width: 35px;
+        height: 35px;
+        box-sizing: border-box;
         background: var(--sl-color-gray-950);
         color: var(--sl-color-gray-50);
         padding: 0 2px;
@@ -205,8 +209,9 @@ const docActive = allDocs.map((doc, i) =>{
 <style is:global>
 
     article {
-        max-width: 700px;
-        width: 100%;
+        max-width: min(700px, 100vw);
+        padding-left: 3rem;
+        padding-right: 2rem;
         padding-bottom: 2.5rem;
         box-sizing: border-box;
     }
@@ -247,6 +252,8 @@ const docActive = allDocs.map((doc, i) =>{
         border-top: 2px solid var(--sl-color-gray-950);
         border-bottom: 2px solid var(--sl-color-gray-950);
         margin: 0 2ch;
+        display: block;
+        overflow-x: auto;
     }
 
     article h1 {
@@ -259,6 +266,8 @@ const docActive = allDocs.map((doc, i) =>{
         padding: 0.5rem;
         color: var(--sl-color-gray-50);
         margin-bottom: 2rem;
+        hyphens: auto;
+        word-wrap: break-word;
     }
 
     article h1::after {

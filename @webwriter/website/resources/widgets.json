@@ -64,7 +64,7 @@
       "vitest": "^0.30.1"
     },
     "bundleSize": {
-      "js": 224675,
+      "js": 224801,
       "css": 0
     },
     "installSize": 2957
@@ -113,7 +113,7 @@
       "access": "public"
     },
     "bundleSize": {
-      "js": 28181,
+      "js": 30014,
       "css": 0
     },
     "installSize": 3045
@@ -169,7 +169,7 @@
       "@smui/common": "^6.1.4"
     },
     "bundleSize": {
-      "js": 387191,
+      "js": 387256,
       "css": 0
     },
     "installSize": 533055
@@ -219,7 +219,7 @@
     },
     "description": "",
     "bundleSize": {
-      "js": 107533,
+      "js": 109343,
       "css": 0
     },
     "installSize": 13398
@@ -269,7 +269,7 @@
     },
     "description": "",
     "bundleSize": {
-      "js": 107487,
+      "js": 109297,
       "css": 0
     },
     "installSize": 13253
@@ -311,7 +311,7 @@
     "scripts": {},
     "gitHead": "0fd0c30304aba6738f14ee1ec687b3d4614f7c60",
     "bundleSize": {
-      "js": 67814,
+      "js": 70274,
       "css": 17952
     },
     "installSize": 1818
@@ -357,7 +357,7 @@
     },
     "gitHead": "0fd0c30304aba6738f14ee1ec687b3d4614f7c60",
     "bundleSize": {
-      "js": 142012,
+      "js": 144546,
       "css": 17952
     },
     "installSize": 7058

@@ -22,14 +22,14 @@ const prettyWidgetNames = widgetNames.map(prettifyWidgetName)
 // import "../../resources/widgets.js"
 ---
 
-<Layout title="Widgets | WebWriter">
+<Layout title="Widgets">
     <header id="widgets-header">
         <h1>Widgets</h1>
         <p>Try any of WebWriter's widgets in this gallery.</p>
     </header>
     <div id="base">
         {widgets.map((widget, i) => <div class:list={["widget-card", {official: widget.name.startsWith("@webwriter/")}]}>
-            <a href={widgetUrls[i]}>
+            <a data-swup-preload href={widgetUrls[i]}>
                 <div class="pretty-widget-name">{prettyWidgetNames[i]}</div>
                 <div class="widget-name">{widget.name}</div>
             </a>

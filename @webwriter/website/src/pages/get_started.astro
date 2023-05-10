@@ -1,15 +1,7 @@
 ---
-import {
-  GetResponseTypeFromEndpointMethod,
-  GetResponseDataTypeFromEndpointMethod,
-} from "@octokit/types";
-import { Octokit } from "@octokit/rest";
 import Layout from '../layouts/Layout.astro'
 import LinkButton from "@components/LinkButton.astro"
-
-
-const octokit = new Octokit()
-const latestRelease = (await octokit.repos.getLatestRelease({owner: "webwriter-app", repo: "webwriter"})).data
+import latestRelease from "../../public/releases.json"
 
 type Asset = (typeof latestRelease)["assets"][number]
 type ParsedAsset = Asset & {
@@ -72,7 +64,7 @@ const assets = latestRelease.assets.map(parseAsset).map(templateAsset).reverse()
     window.wwUserAgent = {...userAgent.getResult()}
 </script>
 
-<Layout title="Get Started | WebWriter">
+<Layout title="Get Started">
   <div id="get-started-base">
     <h1>Get Started</h1>
     {assets
@@ -108,7 +100,7 @@ const assets = latestRelease.assets.map(parseAsset).map(templateAsset).reverse()
         gap: 2rem;
     }
     #get-started-base > .link-button {
-      min-width: 500px;
+      width: min(80vw, 500px);
       font-size: 1.25rem;
       display: flex;
       justify-content: center;
@@ -130,6 +122,7 @@ const assets = latestRelease.assets.map(parseAsset).map(templateAsset).reverse()
       min-width: unset;
       padding: 0.5rem 1rem;
       text-decoration: none;
+      margin-bottom: 2rem;
     }
 
     #get-started-base #releases-hint:hover {

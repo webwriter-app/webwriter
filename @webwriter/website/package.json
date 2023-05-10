@@ -5,11 +5,12 @@
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
-    "prebuild": "npm run installwidgets",
+    "prebuild": "npm run getreleases && npm run installwidgets",
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "installwidgets": "node scripts/installwidgets"
+    "installwidgets": "node scripts/installwidgets",
+    "getreleases": "node scripts/getreleases"
   },
   "dependencies": {
     "@astrojs/lit": "^2.0.1",
@@ -19,8 +20,15 @@
     "@codemirror/lang-html": "^6.4.3",
     "@codemirror/state": "^6.2.0",
     "@octokit/rest": "^19.0.7",
+    "@swup/a11y-plugin": "^3.0.0",
+    "@swup/fade-theme": "^1.0.5",
+    "@swup/head-plugin": "^1.3.0",
+    "@swup/overlay-theme": "^1.1.1",
+    "@swup/preload-plugin": "^2.1.0",
+    "@swup/slide-theme": "^1.0.5",
     "@webcomponents/template-shadowroot": "^0.2.1",
     "astro": "^2.3.2",
+    "astro-seo": "^0.7.2",
     "bootstrap-icons": "^1.10.5",
     "codemirror": "^6.0.1",
     "esbuild": "^0.17.18",
@@ -30,6 +38,7 @@
     "octokit": "^2.0.14",
     "redefine-custom-elements": "^0.1.3",
     "spdx-license-list": "^6.6.0",
+    "swup": "^3.0.6",
     "ua-parser-js": "^1.0.35"
   },
   "optionalDependencies": {
