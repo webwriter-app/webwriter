@@ -120,7 +120,7 @@ export class WidgetPlayground extends LitElement {
     return css`
       main {
         display: grid;
-        grid-template-columns: 3fr minmax(100%, 1fr);
+        grid-template-columns: 3fr minmax(min-content, 1fr);
         grid-template-rows: min-content 1fr min-content;
         gap: 1rem;
         padding: 0 2rem;
@@ -199,6 +199,7 @@ export class WidgetPlayground extends LitElement {
       }
 
       #preview {
+        min-width: min(100%, 300px);
         grid-column: 1 / 2;
         grid-row: 2;
         width: 100%;

@@ -64,7 +64,11 @@ import { SEO } from "astro-seo";
       import PreloadPlugin from "@swup/preload-plugin"
 
       const swup = new Swup({
-        plugins: [new AccessibilityPlugin(), new HeadPlugin(), new PreloadPlugin()]
+        plugins: [
+          new AccessibilityPlugin(),
+          new HeadPlugin(),
+          new PreloadPlugin()
+        ]
       })
 
       swup.on("pageView", () => {
