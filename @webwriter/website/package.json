@@ -41,15 +41,6 @@
     "swup": "^3.0.6",
     "ua-parser-js": "^1.0.35"
   },
-  "optionalDependencies": {
-    "@luiskugel/ww-chart": "^0.0.4",
-    "@webwriter/ww-figure": "^0.4.1",
-    "@webwriter/ww-textarea": "^0.4.1",
-    "ww-algographviz": "^0.5.0",
-    "ww-formula": "^0.1.73",
-    "ww-manualgraphviz": "^0.11.0",
-    "ww-quiz": "^0.2.1"
-  },
   "devDependencies": {
     "@types/ua-parser-js": "^0.7.36"
   }
