@@ -22,7 +22,7 @@ const body = await response.json()
 const widgets = body.objects.map(obj => obj.package)
 const names = widgets.map(widget => widget.name)
 
-execSync(`npm install --no-save --no-audit ${names.join(" ")}`, (error, stdout, stderr) => {
+execSync(`npm install --no-package-lock --no-save --no-audit ${names.join(" ")}`, (error, stdout, stderr) => {
     error && console.error(error.message)
     stderr && console.error(stderr)
     stdout && console.log(stdout)
