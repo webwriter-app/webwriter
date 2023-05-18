@@ -22,11 +22,24 @@ const body = await response.json()
 const widgets = body.objects.map(obj => obj.package)
 const names = widgets.map(widget => widget.name)
 
-execSync(`npm install --force --no-package-lock --save-optional --no-audit ${names.join(" ")}`, (error, stdout, stderr) => {
+const pkg = fs.readJSONSync("package.json")
+fs.writeJSONSync("package.json", {
+    ...pkg,
+    optionalDependencies: {
+        ...pkg.optionalDependencies,
+        ...Object.fromEntries(names.map(name => [name, "*"]))
+    }
+}, {spaces: "\t"})
+
+/*
+
+execSync(`cd ../.. && npm -w @webwriter/website install --no-save --no-audit ${names.join(" ")}`, (error, stdout, stderr) => {
     error && console.error(error.message)
     stderr && console.error(stderr)
     stdout && console.log(stdout)
 })
+
+*/
 
 const importStatements = Object.fromEntries(names.map(name => [
     name,

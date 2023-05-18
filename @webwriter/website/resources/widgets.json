@@ -2,7 +2,7 @@
   {
     "name": "@luiskugel/ww-chart",
     "scope": "luiskugel",
-    "version": "0.0.4",
+    "version": "0.0.5",
     "description": "ww-chart is an interactive data visualization widget for the WebWriter tool that implements various charts and diagrams for static and exploratory data visualization.",
     "keywords": [
       "data-visualization",
@@ -11,7 +11,7 @@
       "WebWriter",
       "webwriter-widget"
     ],
-    "date": "2023-04-19T15:59:09.901Z",
+    "date": "2023-05-11T19:12:39.998Z",
     "links": {
       "npm": "https://www.npmjs.com/package/%40luiskugel%2Fww-chart"
     },
@@ -52,8 +52,10 @@
       "access": "public"
     },
     "dependencies": {
+      "@shoelace-style/shoelace": "^2.4.0",
       "chart.js": "^4.2.1",
-      "lit": "^2.6.1"
+      "lit": "^2.6.1",
+      "random-words": "^1.3.0"
     },
     "devDependencies": {
       "@vitest/coverage-c8": "^0.30.1",
@@ -64,10 +66,10 @@
       "vitest": "^0.30.1"
     },
     "bundleSize": {
-      "js": 224801,
+      "js": 415052,
       "css": 0
     },
-    "installSize": 2957
+    "installSize": 3029
   },
   {
     "name": "ww-formula",
