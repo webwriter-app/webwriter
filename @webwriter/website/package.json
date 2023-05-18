@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
-    "prebuild": "npm run getreleases && npm run installwidgets",
+    "prepare": "npm run getreleases && npm run installwidgets",
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
