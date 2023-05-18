@@ -22,7 +22,7 @@ jobs:
         uses: withastro/action@v0
         with:
           path: './@webwriter/website'
-          node-version: 20
+          node-version: 18
           package-manager: npm
 
   deploy:
