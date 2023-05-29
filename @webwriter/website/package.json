@@ -43,14 +43,5 @@
 	},
 	"devDependencies": {
 		"@types/ua-parser-js": "^0.7.36"
-	},
-	"optionalDependencies": {
-		"@luiskugel/ww-chart": "*",
-		"ww-formula": "*",
-		"ww-quiz": "*",
-		"ww-manualgraphviz": "*",
-		"ww-algographviz": "*",
-		"@webwriter/ww-textarea": "*",
-		"@webwriter/ww-figure": "*"
 	}
 }
