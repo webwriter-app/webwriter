@@ -28,6 +28,7 @@ fs.writeJSONSync("public/widgetsrc/package.json", {
   version: "0.0.0",
   private: true,
   dependencies: {
+    "esbuild": "*",
     ...Object.fromEntries(names.map(name => [name, "*"]))
   }
 }, {spaces: "\t"})
