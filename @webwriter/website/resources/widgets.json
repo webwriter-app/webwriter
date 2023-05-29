@@ -337,7 +337,7 @@
       "lit": "^2.3.1"
     },
     "scripts": {},
-    "gitHead": "0fd0c30304aba6738f14ee1ec687b3d4614f7c60",
+    "gitHead": "ee667087d26ca3ba189e094a17d45d10ff1ae89d",
     "bundleSize": {
       "js": 70274,
       "css": 17952
@@ -387,7 +387,7 @@
       "dev": "vite --open",
       "build": "vite build"
     },
-    "gitHead": "0fd0c30304aba6738f14ee1ec687b3d4614f7c60",
+    "gitHead": "ee667087d26ca3ba189e094a17d45d10ff1ae89d",
     "bundleSize": {
       "js": 144546,
       "css": 17952
@@ -458,7 +458,7 @@
       "vite": "^3.0.0"
     },
     "bundleSize": {
-      "js": 702655,
+      "js": 702643,
       "css": 17952
     },
     "installSize": 3811

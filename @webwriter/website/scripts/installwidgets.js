@@ -52,7 +52,7 @@ for(const [i, name] of names.entries()) {
     fs.writeFileSync(jsFile, importStatements[name], {encoding: "utf8"})
     const outFileJs = `public/widgetsrc/${name}.js`
     const outFileCss = outFileJs.slice(0, -3) + ".css"
-    execSync(`esbuild --bundle ${jsFile} --outfile=${outFileJs} --minify`, {env: {"NODE_PATH": "public/widgetsrc"}}, (error, stdout, stderr) => {
+    execSync(`node ./public/widgetsrc/node_modules/esbuild/bin/esbuild --bundle ${jsFile} --outfile=${outFileJs} --minify`, {env: {"NODE_PATH": "public/widgetsrc"}}, (error, stdout, stderr) => {
         error && console.error(error.message)
         stderr && console.error(stderr)
         stdout && console.log(stdout)
@@ -67,6 +67,6 @@ for(const [i, name] of names.entries()) {
 fs.rm("tmp", {recursive: true})
 
 const packages = names
-    .map(name => JSON.parse(fs.readFileSync(`../../node_modules/${name}/package.json`, "utf8")))
+    .map(name => JSON.parse(fs.readFileSync(`public/widgetsrc/node_modules/${name}/package.json`, "utf8")))
     .map((pkg, i) => ({...widgets[i], ...pkg, bundleSize: bundleSizes[i], installSize: installSizes[i]}))
 fs.writeFileSync("resources/widgets.json", JSON.stringify(packages, undefined, 2), "utf8")
