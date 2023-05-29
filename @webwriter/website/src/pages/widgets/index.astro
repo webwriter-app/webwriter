@@ -33,7 +33,7 @@ const prettyWidgetNames = widgetNames.map(prettifyWidgetName)
                 <div class="pretty-widget-name">{prettyWidgetNames[i]}</div>
                 <div class="widget-name">{widget.name}</div>
             </a>
-            <span>{(widget.description.length > 100? widget.description.slice(0, 110).trim() + "...": widget.description) || <i>No description</i>}</span>
+            <span>{(widget.description && widget.description.length > 100? widget?.description?.slice(0, 110).trim() + "...": widget.description) || <i>No description</i>}</span>
         </div>)}
     </div>
 </Layout>
