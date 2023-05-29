@@ -1,0 +1,15 @@
+---
+import Layout from '../layouts/Layout.astro';
+import {Impressum} from '@components/Impressum';
+
+---
+
+<Layout title="Legal Notice">
+  <Impressum client:only="lit" />
+</Layout>
+
+<style is:global>
+  ww-impressum #text {
+    margin: 2rem;
+  }
+</style>

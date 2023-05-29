@@ -15,7 +15,7 @@ function capitalize(str: string) {
   return str[0].toUpperCase() + str.slice(1)
 }
 
-const pageFiles = (await Astro.glob("../pages/**/*.astro")).filter(page => !page.url?.endsWith("]") && !page.url?.endsWith("404") && page.url)
+const pageFiles = (await Astro.glob("../pages/**/*.astro")).filter(page => !page.url?.endsWith("]") && !page.url?.endsWith("404") && !page?.url?.endsWith("legal_notice") && page.url)
 const pageUrls = pageFiles.map(page => page.url ?? "")
 const pageOrder = ["", "docs", "widgets", "about", "get_started"]
 const pages = pageUrls
@@ -35,7 +35,6 @@ const pages = pageUrls
 const rootActive = pathname === "/"
 const getStartedActive = pathname === "/get_started"
 
-const EMAIL = "contact@webwriter.app"
 import "bootstrap-icons/font/bootstrap-icons.css"
 
 import { SEO } from "astro-seo";
@@ -104,10 +103,13 @@ import { SEO } from "astro-seo";
       <div class="imprint">
         <div class="logo">
           <img id="icon-footer" src={iconUrl} alt="WebWriter Icon" width={40} height={40} />
-          <span class="logo-text">WebWriter</span>
+          <span class="logo-text">
+            <span>WebWriter</span>
+            <EmailAddress class="contact" client:only="lit" />
+          </span>
         </div>
         <div>© 2023 Frederic Salmen. All rights reserved.</div>
-        <EmailAddress class="contact" client:only="lit" address={EMAIL} />
+        <a data-swup-preload class="legal_notice" draggable="false" href="/legal_notice">Legal Notice</a>
       </div>
       <div class="sitemap-card">
         <h2>Pages</h2>
@@ -272,6 +274,11 @@ import { SEO } from "astro-seo";
     text-decoration: underline;
   }
 
+  .imprint .logo-text {
+    display: flex;
+    flex-direction: column;
+  }
+
   .logo sup {
     font-size: 0.8rem;
   }
@@ -284,8 +291,9 @@ import { SEO } from "astro-seo";
   }
 
   .imprint .contact {
-    margin-top: auto;
     color: white;
+    font-size: 0.8rem;
+    margin-bottom: 1rem;
   }
 
   .sitemap-card h2 {

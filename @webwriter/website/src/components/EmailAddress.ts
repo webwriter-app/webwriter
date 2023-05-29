@@ -3,20 +3,15 @@ import {property} from "lit/decorators.js"
 
 export const tagName = 'ww-email-address';
 
-export type Props = {
-  address: string
-}
+const address = "contact@webwriter.app"
 
 export class EmailAddress extends LitElement {
-
-  @property({type: String})
-  address: string = ""
 
   renderRoot: HTMLElement | ShadowRoot = this
 
 	render() {
 		return html`
-      <a href=${"mailto:" + this.address}>${this.address}</a>
+      <a href=${"mailto:" + address}>${address}</a>
 		`
 	}
 }
