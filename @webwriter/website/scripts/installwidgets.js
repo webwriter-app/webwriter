@@ -31,15 +31,11 @@ fs.writeJSONSync("package.json", {
     }
 }, {spaces: "\t"})
 
-/*
-
-execSync(`cd ../.. && npm -w @webwriter/website install --no-save --no-audit ${names.join(" ")}`, (error, stdout, stderr) => {
+execSync(`npm install`, (error, stdout, stderr) => {
     error && console.error(error.message)
     stderr && console.error(stderr)
     stdout && console.log(stdout)
 })
-
-*/
 
 const importStatements = Object.fromEntries(names.map(name => [
     name,
