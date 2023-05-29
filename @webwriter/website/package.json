@@ -27,6 +27,7 @@
 		"@swup/preload-plugin": "^2.1.0",
 		"@swup/slide-theme": "^1.0.5",
 		"@webcomponents/template-shadowroot": "^0.2.1",
+		"@webwriter/website-dependencies": "file:public/widgetsrc",
 		"astro": "^2.3.2",
 		"astro-seo": "^0.7.2",
 		"bootstrap-icons": "^1.10.5",

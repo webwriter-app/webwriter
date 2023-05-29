@@ -72,6 +72,84 @@
     "installSize": 3029
   },
   {
+    "name": "@webwriter/ww-quiz",
+    "scope": "webwriter",
+    "version": "0.6.2",
+    "description": "Ask questions with optional hints and automatic checking of solutions. Supports single/multiple choice, cloze, open questions and several response formats.",
+    "keywords": [
+      "webwriter-widget"
+    ],
+    "date": "2023-05-20T12:56:41.675Z",
+    "links": {
+      "npm": "https://www.npmjs.com/package/%40webwriter%2Fww-quiz"
+    },
+    "publisher": {
+      "username": "salmenf",
+      "email": "frederic@fsalmen.de"
+    },
+    "maintainers": [
+      {
+        "username": "k1r0j",
+        "email": "jorik@vangenuchten.de"
+      },
+      {
+        "username": "salmenf",
+        "email": "frederic@fsalmen.de"
+      }
+    ],
+    "type": "module",
+    "main": "index.ts",
+    "license": "MIT",
+    "publishConfig": {
+      "access": "public"
+    },
+    "scripts": {
+      "dev": "vite --open",
+      "build": "vite build && node build.js",
+      "preview": "vite preview"
+    },
+    "contributors": [
+      {
+        "name": "Luis Kugel",
+        "email": "luis@kugelx.de"
+      },
+      {
+        "name": "Alireza Ansarinia"
+      },
+      {
+        "name": "Max Tirdatov"
+      },
+      {
+        "name": "Nicolas Brinkmann"
+      },
+      {
+        "name": "Timm Köster"
+      },
+      {
+        "name": "Florin Große"
+      }
+    ],
+    "devDependencies": {
+      "@sveltejs/vite-plugin-svelte": "^1.0.2",
+      "glob": "^8.1.0",
+      "sass": "^1.55.0",
+      "svelte": "^3.49.0",
+      "svelte-preprocess": "^4.10.7",
+      "typescript": "^4.8.4",
+      "vite": "^3.1.0",
+      "vite-plugin-static-copy": "^0.9.0"
+    },
+    "dependencies": {
+      "@shoelace-style/shoelace": "^2.0.0-beta.87",
+      "@smui/common": "^6.1.4"
+    },
+    "bundleSize": {
+      "js": 387316,
+      "css": 20450
+    },
+    "installSize": 535193
+  },
+  {
     "name": "ww-formula",
     "scope": "unscoped",
     "version": "0.1.73",
@@ -119,62 +197,6 @@
       "css": 0
     },
     "installSize": 3045
-  },
-  {
-    "name": "ww-quiz",
-    "scope": "unscoped",
-    "version": "0.2.1",
-    "description": "A quiz widget for webwriter",
-    "keywords": [
-      "webwriter-widget"
-    ],
-    "date": "2023-01-31T14:26:54.467Z",
-    "links": {
-      "npm": "https://www.npmjs.com/package/ww-quiz"
-    },
-    "publisher": {
-      "username": "luiskugel",
-      "email": "luis.kugel@idot-digital.de"
-    },
-    "maintainers": [
-      {
-        "username": "luiskugel",
-        "email": "luis.kugel@idot-digital.de"
-      },
-      {
-        "username": "salmenf",
-        "email": "frederic@fsalmen.de"
-      }
-    ],
-    "type": "module",
-    "main": "dist/assets/export.js",
-    "publishConfig": {
-      "access": "public"
-    },
-    "scripts": {
-      "dev": "vite --open",
-      "build": "vite build && node build.js",
-      "preview": "vite preview"
-    },
-    "devDependencies": {
-      "@sveltejs/vite-plugin-svelte": "^1.0.2",
-      "glob": "^8.1.0",
-      "sass": "^1.55.0",
-      "svelte": "^3.49.0",
-      "svelte-preprocess": "^4.10.7",
-      "typescript": "^4.8.4",
-      "vite": "^3.1.0",
-      "vite-plugin-static-copy": "^0.9.0"
-    },
-    "dependencies": {
-      "@shoelace-style/shoelace": "^2.0.0-beta.87",
-      "@smui/common": "^6.1.4"
-    },
-    "bundleSize": {
-      "js": 387256,
-      "css": 0
-    },
-    "installSize": 533055
   },
   {
     "name": "ww-manualgraphviz",
@@ -295,6 +317,10 @@
     },
     "maintainers": [
       {
+        "username": "k1r0j",
+        "email": "jorik@vangenuchten.de"
+      },
+      {
         "username": "salmenf",
         "email": "frederic@fsalmen.de"
       }
@@ -337,6 +363,10 @@
     },
     "maintainers": [
       {
+        "username": "k1r0j",
+        "email": "jorik@vangenuchten.de"
+      },
+      {
         "username": "salmenf",
         "email": "frederic@fsalmen.de"
       }
@@ -363,5 +393,74 @@
       "css": 17952
     },
     "installSize": 7058
+  },
+  {
+    "name": "@webwriter/ww-code",
+    "scope": "webwriter",
+    "version": "0.1.0",
+    "keywords": [
+      "webwriter-widget",
+      "codeWidget"
+    ],
+    "date": "2023-05-23T14:56:15.352Z",
+    "links": {
+      "npm": "https://www.npmjs.com/package/%40webwriter%2Fww-code"
+    },
+    "author": "Erik Viere",
+    "publisher": {
+      "username": "k1r0j",
+      "email": "jorik@vangenuchten.de"
+    },
+    "maintainers": [
+      {
+        "username": "k1r0j",
+        "email": "jorik@vangenuchten.de"
+      },
+      {
+        "username": "salmenf",
+        "email": "frederic@fsalmen.de"
+      }
+    ],
+    "license": "MIT",
+    "main": "src/ww-code.ts",
+    "type": "module",
+    "scripts": {
+      "dev": "vite --port 3000",
+      "build": "vite build",
+      "preview": "vite preview"
+    },
+    "dependencies": {
+      "@codemirror/lang-html": "^6.2.0",
+      "@codemirror/lang-javascript": "^6.0.2",
+      "@codemirror/lang-python": "^6.0.2",
+      "@codemirror/state": "^6.1.2",
+      "@codemirror/theme-one-dark": "^6.1.0",
+      "@codemirror/view": "^6.2.5",
+      "@open-wc/scoped-elements": "^2.0.0-next.6",
+      "@replit/codemirror-indentation-markers": "^6.1.0",
+      "@shoelace-style/shoelace": "^2.0.0-beta.83",
+      "@webwriter/lit": "^0.3.0",
+      "codemirror": "^6.0.1",
+      "codemirror-readonly-ranges": "^0.1.0-alpha.1",
+      "lit": "2.3.1",
+      "range-analyzer": "^0.1.1-alpha.2",
+      "tslib": "^2.4.0"
+    },
+    "devDependencies": {
+      "@types/node": "^18.7.21",
+      "@typescript-eslint/eslint-plugin": "^5.38.1",
+      "eslint": "^8.24.0",
+      "eslint-config-standard-with-typescript": "^23.0.0",
+      "eslint-plugin-import": "^2.26.0",
+      "eslint-plugin-n": "^15.3.0",
+      "eslint-plugin-promise": "^6.0.1",
+      "typescript": "^4.8.3",
+      "vite": "^3.0.0"
+    },
+    "bundleSize": {
+      "js": 702655,
+      "css": 17952
+    },
+    "installSize": 3811
   }
 ]

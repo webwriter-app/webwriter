@@ -22,16 +22,16 @@ const body = await response.json()
 const widgets = body.objects.map(obj => obj.package)
 const names = widgets.map(widget => widget.name)
 
-const pkg = fs.readJSONSync("package.json")
-fs.writeJSONSync("package.json", {
-    ...pkg,
-    optionalDependencies: {
-        ...pkg.optionalDependencies,
-        ...Object.fromEntries(names.map(name => [name, "*"]))
-    }
+fs.writeJSONSync("public/widgetsrc/package.json", {
+  name: "@webwriter/website-dependencies",
+  version: "0.0.0",
+  private: true,
+  dependencies: {
+    ...Object.fromEntries(names.map(name => [name, "*"]))
+  }
 }, {spaces: "\t"})
 
-execSync(`npm ci`, (error, stdout, stderr) => {
+execSync(`npm --prefix ./public/widgetsrc install`, (error, stdout, stderr) => {
     error && console.error(error.message)
     stderr && console.error(stderr)
     stdout && console.log(stdout)
