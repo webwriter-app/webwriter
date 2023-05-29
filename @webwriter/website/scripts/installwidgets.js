@@ -45,6 +45,8 @@ const importStatements = Object.fromEntries(names.map(name => [
     `import "redefine-custom-elements"; import "${name}"`
 ]))
 
+const esbuildPath = path.normalize("public/widgetsrc/node_modules/.bin/esbuild")
+
 const bundleSizes = []
 const installSizes = []
 for(const [i, name] of names.entries()) {
@@ -54,10 +56,8 @@ for(const [i, name] of names.entries()) {
     const outFileJs = `public/widgetsrc/${name}.js`
     const outFileCss = outFileJs.slice(0, -3) + ".css"
     
-    execSync(`public/widgetsrc/node_modules/.bin/esbuild --bundle ${jsFile} --outfile=${outFileJs} --minify`, {env: {"NODE_PATH": "public/widgetsrc"}}, (error, stdout, stderr) => {
+    execSync(`${esbuildPath} --bundle ${jsFile} --outfile=${outFileJs} --minify`, {env: {"NODE_PATH": "public/widgetsrc"}}, (error, stdout, stderr) => {
         error && console.error(error.message)
-        stderr && console.error(stderr)
-        stdout && console.log(stdout)
     })
     const js = fs.statSync(outFileJs).size
     const css = fs.existsSync(outFileCss)? fs.statSync(outFileCss).size: 0
