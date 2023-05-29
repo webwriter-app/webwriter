@@ -61,7 +61,7 @@ for(const [i, name] of names.entries()) {
     })
     const js = fs.statSync(outFileJs).size
     const css = fs.existsSync(outFileCss)? fs.statSync(outFileCss).size: 0
-    const installSize = await dirSize(`../../node_modules/${name}`)
+    const installSize = await dirSize(`public/widgetsrc/node_modules/${name}`)
     bundleSizes.push({js, css})
     installSizes.push(installSize)
 }
