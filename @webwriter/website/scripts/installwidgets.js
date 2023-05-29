@@ -31,7 +31,7 @@ fs.writeJSONSync("package.json", {
     }
 }, {spaces: "\t"})
 
-execSync(`npm install`, (error, stdout, stderr) => {
+execSync(`npm ci`, (error, stdout, stderr) => {
     error && console.error(error.message)
     stderr && console.error(stderr)
     stdout && console.log(stdout)
