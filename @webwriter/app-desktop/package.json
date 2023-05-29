@@ -15,5 +15,8 @@
     "esbuild-linux-arm64": "^0.15.18",
     "esbuild-windows-64": "^0.15.18",
     "esbuild-windows-arm64": "^0.15.18"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^1.3.1"
   }
 }

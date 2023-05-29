@@ -1,22 +1,25 @@
-import "redefine-custom-elements" // Must be first import
 import "@shoelace-style/shoelace/dist/themes/light.css"
-import "@shoelace-style/shoelace"
-import {LitElement, html, css, ReactiveController} from "lit"
+// import "@shoelace-style/shoelace"
+
+export * from "./configurator"
+export * from "./editor"
+export * from "./elements"
+export * from "./layout"
+
+import {LitElement, html, css} from "lit"
 import {customElement, property, query} from "lit/decorators.js"
 import {repeat} from "lit/directives/repeat.js"
-import Hotkeys from "hotkeys-js"
+import { localized, msg } from "@lit/localize"
 
-import {RootStore} from "../state"
-import "./components"
-import { ExplorableEditor } from "./components/editor"
+import { escapeHTML, getFileNameInURL } from "../utility"
+import {ViewModelMixin} from "../viewmodel"
 import { SlAlert } from "@shoelace-style/shoelace"
-import { Tabs } from "./components"
-import { escapeHTML, detectEnvironment } from "../utility"
-import { makeAutoObservable, observe } from "mobx"
-import { Environment } from "../environment"
-import { msg } from "@lit/localize"
+import { ifDefined } from "lit/directives/if-defined.js"
+import { ExplorableEditor } from "./editor"
+import { keyed } from "lit/directives/keyed.js"
 
-interface SlAlertAttributes {
+
+export interface SlAlertAttributes {
 	message: string
 	variant?: SlAlert["variant"]
 	icon?: string
@@ -24,116 +27,19 @@ interface SlAlertAttributes {
 }
 
 /*
-- @TODO LEARNERS & AUTHORS: Explorable-wide features API (fullscreen/fullwindow widgets, sharing/saving, visible metadata)
-- @TODO LEARNERS & AUTHORS: Themes (Explorable-wide CSS)
-- @TODO AUTHORS: Drag n' Drop widget interface 
-- @TODO LEARNERS & AUTHORS: Rewrite "Document" as container widget
+@TODO Fix interaction widget insert transition
+@TODO Fix clipping on error for local package in palette
+@TODO Fix setting hydration of `showWidgetPreview`
+@TODO Fix local package loading
+@TODO Fix unreliable package install behaviour (queueing issue?)
+@TODO Add heading mark
+@TODO Add 
 */
 
-const CORE_PACKAGES = ["@webwriter/ww-textarea", "@webwriter/ww-figure", "@open-wc/scoped-elements"]
-
-declare global {
-	var WEBWRITER_ENVIRONMENT: string
-}
-
-type StoreController = RootStore & ReactiveController
-function StoreController(store: RootStore, host: App) {
-	const subStores = RootStore.storeKeys.map(key => (store as any)[key])
-	subStores.forEach(x => makeAutoObservable(x, {}, {autoBind: true, deep: true}));
-	(store as any)["host"] = host;
-	(store as any)["hostConnected"] = () => {
-		subStores.forEach(x => observe(x, () => host.requestUpdate()))
-	}
-	(store as any)["hostDisconnected"] = () => (store as any)["disposer"]()
-	host.addController(store as StoreController)
-	return store as StoreController
-}
-
+@localized()
 @customElement("ww-app")
-export class App extends LitElement
+export class App extends ViewModelMixin(LitElement)
 {
-	store: StoreController
-	environment: Environment 
-
-	keymap: Record<string, (e: KeyboardEvent, combo: string) => any> = {
-		"ctrl+s": (e, combo) => {
-			(document.activeElement as HTMLElement).blur()
-			this.store.resources.save()
-		},
-		"ctrl+o": (e, combo) => this.store.resources.load(),
-		"ctrl+n": (e, combo) => this.store.resources.create(),
-		"ctrl+w": (e, combo) => this.store.resources.discard(),
-		"alt+p": (e, combo) => this.managingPackages = !this.managingPackages,
-		"ctrl+tab": (e, combo) => this.store.resources.activateNext(),
-		"ctrl+b": (e, combo) => this.store.resources.togglePreview()
-	}
-
-	notifications: Record<string, SlAlertAttributes> = {
-		"saveResource_SUCCEEDED": {
-			message: "Your changes have been saved",
-			variant: "success",
-			icon: "check2-circle",
-			duration: 2000
-		},
-		"saveResource_FAILED": {
-			message: "An error occured while saving your changes",
-			variant: "danger",
-			icon: "exclamation-octagon",
-			duration: 2000
-		},
-		"loadResource_FAILED": {
-			message: "An error occured while loading your file",
-			variant: "danger",
-			icon: "exclamation-octagon",
-			duration: 2000
-		}
-	}
-
-	errorsToIgnore = [
-		"TypeError: Cannot set properties of null (setting 'tabIndex')",
-		"ResizeObserver loop limit exceeded",
-		"UserCancelled",
-		"TypeError: Failed to execute 'unobserve' on 'ResizeObserver': parameter 1 is not of type 'Element'."
-	]
-
-	async connectedCallback() {
-		super.connectedCallback()
-		globalThis.WEBWRITER_ENVIRONMENT = detectEnvironment()
-		this.environment = await import(`../environment/${globalThis.WEBWRITER_ENVIRONMENT}.ts`)
-		this.store = StoreController(new RootStore({corePackages: CORE_PACKAGES, ...this.environment}), this)
-		this.addEventListener("ww-select-tab-title", (e: any) => this.focusTabTitle(e.detail.id))
-		Object.entries(this.keymap).forEach(([shortcut, callback]) => Hotkeys(shortcut, (e) => callback(e, shortcut)))
-		window.addEventListener("error", this.handleError)
-		window.addEventListener("unhandledrejection", this.handleError)
-	}
-
-	handleError = (e: ErrorEvent | PromiseRejectionEvent) => {
-		const error = e instanceof ErrorEvent? e.error: new Error(e.reason)
-		if(this.errorsToIgnore.includes(String(error))) {
-			e.preventDefault()
-			return false
-		}
-		this.notify({
-			message: error.message,
-			variant: "danger",
-			icon: "exclamation-circle-fill",
-			duration: 5000
-		})
-	}
-
-	notify({message, variant="primary", icon="info-circle", duration=Infinity}: SlAlertAttributes) {
-		const alert = Object.assign(document.createElement("sl-alert"), {
-			variant,
-			closable: true,
-			duration,
-			innerHTML: `
-				<sl-icon name="${icon}" slot="icon"></sl-icon>
-				${escapeHTML(message)}
-			`
-		})
-		this.appendChild(alert)
-		return alert.toast()
-	}
 	
 	static get styles() {
 		return css`
@@ -141,7 +47,6 @@ export class App extends LitElement
 				display: block;
 				height: 100vh;
 				min-height: 100vh;
-				transition: background-color 0.1s ease-in;
 				background: #f1f1f1;
 				overflow: hidden;
 			}
@@ -173,115 +78,122 @@ export class App extends LitElement
 				--track-width: 8px;
 			}
 
-			.packages-button {
+			#settings-button {
+				margin-top: 1px;
+				height: 48px;
+				margin-right: auto;
 				user-select: none;
 				display: flex;
 				flex-direction: row;
 				align-items: center;
 				text-overflow: ellipsis;
 				overflow: hidden;
+				box-sizing: border-box;
+        z-index: 101;
 			}
 
-			.packages-button:hover, .packages-button:hover *::part(base) {
+			#settings-button > * {
+				flex-shrink: 0;
+			}
+
+			:host(.noResources) #settings-button {
+				grid-column: 1 / 4;
+			}
+
+			#settings-button:hover, #settings-button:hover *::part(base) {
 				cursor: pointer;
 				color: var(--sl-color-primary-600);
 			}
 
-			.packages-button:active, .packages-button:active *::part(base) {
+			#settings-button:active, #settings-button:active *::part(base) {
 				color: var(--sl-color-primary-800);
 			}
 
-			.packages-button .text {
+			#settings-button .text {
 				font-size: 0.8rem;
 			}
 
-			.packages-button:not(:hover):not(:active) .text {
+			#settings-button:not(:hover):not(:active) .text {
 				color: var(--sl-color-neutral-600);
 			}
 
-			@media only screen and (max-width: 1300px) {
-				.packages-button .text {
-					display: none;
-				}
+			ww-layout::part(drawer-left) {
+				--size: clamp(600px, 50vw, 800px);
+				--header-spacing: var(--sl-spacing-x-small);
 			}
 
-			@media only print {
+			ww-layout::part(drawer-left-title) {
+				display: flex;
+				flex-direction: row;
+				align-items: center;
+				gap: 1rem;
+			}
 
-				:host() {
-					overflow: visible;
-					height: min-content;
-				}
+			ww-layout::part(drawer-left-body) {
+				padding: 0;
+				height: 100%;
+			}
 
-				ww-tabs {
-					height: min-content;
-					overflow: visible;
-				}
+			ww-layout::part(drawer-left-footer) {
+				display: none;
+			}
 
-				ww-tabs::part(nav) {
+			ww-layout::part(drawer-left-header-actions) {
+				align-items: center;
+				gap: 2ch;
+			}
+
+			.title-button::part(base) {
+				height: var(--sl-input-height-small);
+    		line-height: calc(var(--sl-input-height-small) - var(--sl-input-border-width) * 2);
+			}
+
+			@media only screen and (max-width: 1300px) {
+				:host(:not(.noResources)) #settings-button .text {
 					display: none;
-				} 
-
-				ww-tabs::part(content) {
-					overflow: visible;
-					height: min-content;
 				}
-
-				ww-explorable-editor {
-					border: none;
-					padding: 0;
-					overflow: visible;
-					height: min-content;
-				}
-
-				ww-explorable-editor::part(editor-toolbox) {
-					display: none;
-				}
-
-				ww-explorable-editor::part(footer) {
-					position: fixed;
-					bottom: 0;
-					width: 100%;
-				}
-
 			}
 		`
 	}
 
-	@query("ww-tabs")
-	tabs: Tabs
-
-	@query("ww-tab-panel[active] ww-explorable-editor")
-	activeExplorableEditor: ExplorableEditor
-
 	@property({attribute: false})
-	managingPackages: boolean = false
+	settingsOpen: boolean = false
 
-	@property({attribute: false})
-	discarding: boolean = false
+	@query("ww-explorable-editor[data-active]")
+	activeEditor: ExplorableEditor | null
 
-	focusTabTitle(url: string) {
-		const {order} = this.store.resources
-		const i = order.indexOf(url)
-		const tabElement = this.tabs.tabs[i]
-		const titleElement = tabElement?.querySelector(":last-child") as HTMLElement
-		titleElement?.focus()
+	async notify({message, variant="primary"}: SlAlertAttributes) {
+		const duration = 2500
+		const icon = {
+			"primary": "info-circle",
+			"success": "check2-circle",
+			"neutral": "gear",
+			"warning": "exclamation-triangle",
+			"danger": "exclamation-octagon"
+		}[variant]
+		const alert = Object.assign(document.createElement("sl-alert"), {
+			variant,
+			closable: true,
+			duration,
+			innerHTML: `
+				<sl-icon name="${icon}" slot="icon"></sl-icon>
+				${typeof message  === "string"? escapeHTML(message): JSON.stringify(message)}
+			`
+		})
+		this.appendChild(alert)
+		return alert.toast()
 	}
 
-	handleManagePackagesClick() {
-		this.managingPackages = true
-	}
-
-	handleManagePackagesClose() {
-		this.managingPackages = false
-	}
-
-	tabsTemplate = () => {
+	Tabs = () => {
 		const {resources, active, previewing, changed, activate, togglePreview, discard, save, set} = this.store.resources
-		const {packages, imported, availableWidgetTypes} = this.store.packages
+		const {packages, availableWidgetTypes, bundleCode, bundleCSS, bundleID} = this.store.packages
+    const {commandMap} = this.commands
+		const {locale, showTextPlaceholder, showWidgetPreview} = this.store.ui
+		const {open} = this.environment.api.Shell
 		this.className = this.store.resources.empty? "noResources": ""
-		const tabs = repeat(resources, res => res.url, (res, i) => html`
+		return repeat(resources, res => res.url, (res, i) => html`
 			<ww-tab 
-				slot="tabs"
+				slot="nav"
 				titleAsIconicUrl
 				id=${res.url}
 				panel=${res.url}
@@ -294,83 +206,160 @@ export class App extends LitElement
 				confirmDiscardText=${msg("You have unsaved changes. Click again to discard your changes.")}
 				?previewing=${previewing[res.url]}
 				?pendingChanges=${changed[res.url]}
-				?confirmingDiscard=${this.discarding}
 				@focus=${() => activate(res.url)}
 				@ww-toggle-preview=${() => togglePreview(res.url)}
-				@ww-close-tab=${() => {
-					if(this.discarding && changed[res.url] || !changed[res.url]) {
-						discard(res.url)
-						this.discarding = false
-					}
-					else {
-						this.discarding = true
-					}
-				}}
+				@ww-close-tab=${() => discard(res.url)}
 				@ww-save-tab=${() => save(res.url)}
 				@ww-save-as-tab=${() => save(res.url, true)}
-				@ww-title-click=${() => activate(res.url)}
-				@ww-cancel-discard=${() => this.discarding = false}>
+				@ww-title-click=${() => activate(res.url)}>
 			</ww-tab>
-			<ww-tab-panel name=${res.url} ?active=${res.url === active?.url}>
-				<ww-explorable-editor
-					.revisions=${[]}
-					docID=${res.url}
-					.editorState=${res.editorState}
-					@update=${(e: any) => set(res.url, e.detail.editorState)}
-					.availableWidgetTypes=${availableWidgetTypes}
-					.packages=${packages}
-					?loadingPackages=${false}
-					?previewing=${previewing[res.url]}>
-				</ww-explorable-editor>
-				<ww-h5p-editor></ww-h5p-editor>
-			</ww-tab-panel>
+			<ww-explorable-editor
+				id=${`panel_${res.url}`}
+				slot="main"
+				docID=${res.url}
+        .commands=${commandMap}
+				.bundleCode=${bundleCode}
+				.bundleCSS=${bundleCSS}
+				bundleID=${bundleID}
+				.revisions=${[]}
+				.editorState=${res.editorState}
+				@update=${(e: any) => set(res.url, e.detail.editorState)}
+				@ww-open=${(e: any) => open(e.detail.url)}
+				.availableWidgetTypes=${availableWidgetTypes}
+				.packages=${packages}
+				?loadingPackages=${false}
+				?previewing=${previewing[res.url]}
+				?showTextPlaceholder=${showTextPlaceholder}
+				?showWidgetPreview=${showWidgetPreview}
+				?data-active=${res.url === active?.url}
+				lang=${locale}>
+			</ww-explorable-editor>
 		`)
-
-		return html`<ww-tabs 
-			openTab 
-			@ww-add-tab=${() => this.store.resources.create()}
-			@ww-open-tab=${() => this.store.resources.load()}>
-			${tabs}
-			<span class="packages-button" slot="pre-tabs" @click=${this.handleManagePackagesClick}>
-				<sl-icon-button 
-					slot="pre-tabs"
-					name="boxes"
-				></sl-icon-button>
-				<span class="text">${msg("Packages")}</span>
-			</span>
-		</ww-tabs>`
 	}
 
-	initializingPlaceholderTemplate = () => html`<div id="initializingPlaceholder">
+	Placeholder = () => html`<div id="initializingPlaceholder" slot="main">
 		<div>
 			<sl-spinner></sl-spinner>
 			<div>${msg("Loading WebWriter...")}</div>
 		</div>
 	</div>`
 
-	packageManagerTemplate = () => {
-		const {packages, installing, uninstalling, updating, fetching, resetting, install, uninstall, update, fetchAll, viewAppDir, resetAppDir} = this.store.packages
-		return html`<ww-package-manager-drawer
+	PackageManager = () => {
+		const {packages, adding, removing, upgrading, fetching, resetting, add, remove, upgrade, fetchAll, viewAppDir, resetAppDir, addLocal, watching} = this.store.packages
+		const {setAndPersist} = this.settings
+
+		return html`<ww-package-manager
+			slot="pre-tab-panel-a"
 			.packages=${packages}
-			.installing=${installing}
-			.uninstalling=${uninstalling}
-			.updating=${updating}
+			.adding=${adding}
+			.removing=${removing}
+			.upgrading=${upgrading}
 			?loading=${fetching}
 			?resetting=${resetting}
-			?open=${this.managingPackages}
-			@sl-hide=${this.handleManagePackagesClose}
-			@ww-install-package=${(e: any) => install(e.detail.args)}
-			@ww-uninstall-package=${(e: any) => uninstall(e.detail.args)}
-			@ww-update-package=${(e: any) => update(e.detail.args)}
+			@ww-add-package=${(e: any) => add(e.detail.args)}
+			@ww-remove-package=${(e: any) => remove(e.detail.args)}
+			@ww-upgrade-package=${(e: any) => upgrade(e.detail.args)}
+			@ww-add-local-package=${(e: any) => addLocal()}
+			@ww-toggle-watch=${(e: any) => setAndPersist("packages", "watching", {...watching, [e.detail.name]: !watching[e.detail.name]})}
 			@ww-refresh=${() => fetchAll(0)}
-			@ww-open-app-dir=${() => viewAppDir()}
-			@ww-reset-app-dir=${() => resetAppDir()}>
-		</ww-package-manager-drawer>`
+			@ww-open-app-dir=${() => viewAppDir()}></ww-package-manager>
+		</ww-package-manager>`
+	}
+
+	KeymapManager = () => {
+		const {commandMap, groupLabels, reassignShortcut} = this.commands
+		const {setAndPersist} = this.settings
+		return html`<ww-keymap-manager
+			slot="post-tab-panel-a"
+			.keymap=${commandMap}
+			.groupLabels=${groupLabels}
+			@ww-shortcut-change=${(e: CustomEvent) => {
+				const {name, shortcut} = e.detail
+				const customKeymap = this.store.get("ui", "keymap")
+        const oldShortcut = customKeymap[name]?.shortcut ?? commandMap[name].shortcut
+				setAndPersist("ui", "keymap", {...customKeymap, [name]: {shortcut}})
+        reassignShortcut(name, oldShortcut)
+			}}
+			@ww-shortcut-reset=${(e: CustomEvent) => {
+				const {name} = e.detail
+				const customKeymap = {...this.store.get("ui", "keymap")}
+        const oldShortcut = customKeymap[name]?.shortcut ?? commandMap[name].shortcut
+        delete customKeymap[name]
+				setAndPersist("ui", "keymap", customKeymap)
+        reassignShortcut(name, oldShortcut)
+			}}
+		></ww-keymap-manager>`
+	}
+
+	Settings = () => {
+		const {specs, values, specLabels, setAndPersist} = this.settings
+		const {fetchAll, viewAppDir, resetAppDir} = this.store.packages
+		return html`
+			<span
+				id="settings-button"
+				slot="header-left"
+				@click=${() => {fetchAll(); this.settingsOpen = !this.settingsOpen}}>
+				<sl-icon-button
+					id="settings-button"
+					name="gear-fill"
+					slot="pre-tabs"
+				></sl-icon-button>
+				<span class="text">${msg("Settings")}</span>
+			</span>
+			<sl-icon name="gear" slot="drawe-left-label"></sl-icon>
+			<label slot="drawer-left-label">${msg("Settings")}</label>
+			<ww-button size="small" slot="drawer-left-header-actions" variant="danger" outline class="title-button" @click=${() => resetAppDir()} confirm>
+				<span>${msg("Reset")}</span>
+				<span slot="confirm">${msg("Are you sure? This action can't be reversed, all your settings will be deleted and reset.")}</span>
+			</ww-button>
+			<ww-button size="small" slot="drawer-left-header-actions" variant="neutral" outline class="title-button" @click=${() => viewAppDir()}>
+				<span>${msg("View On Disk")}</span>
+			</ww-button>
+			<ww-configurator
+				slot="drawer-left-body"
+				.specs=${specs}
+				.specLabels=${specLabels}
+				.values=${values}
+				@ww-change=${(e: any) => setAndPersist(e.detail.groupKey, e.detail.key, e.detail.value)}
+			>
+				<span slot="pre-tab-a">
+					<span>${msg("Packages")}</span>
+				</span>
+				${this.PackageManager()}
+				<span slot="post-tab-a">
+					<span>${msg("Shortcuts")}</span>
+				</span>
+				${this.KeymapManager()}
+			</ww-configurator>
+		`
+	}
+
+	Notification() {
+		const {dequeueNotification} = this.store.ui
+		const nextNotification = dequeueNotification()
+		nextNotification && this.notify(nextNotification).then(() => this.requestUpdate())
 	}
 
 	render() {
-		return !this.store || this.store.packages.initializing
-			? this.initializingPlaceholderTemplate()
-			: [this.tabsTemplate(), this.packageManagerTemplate()]
+		const initializing = !this.store || this.store.packages.initializing
+		if(!initializing) {
+			this.Notification()
+			this.localization.setLocale(this.store.ui.locale)
+		}
+		return html`<ww-layout 
+			openTab
+			activeTabName=${ifDefined(this.store?.resources.active?.url)}
+			?drawerLeftOpen=${this.settingsOpen}
+			?hideAsides=${this.store?.resources.empty}
+			@ww-add-tab=${() => this.store.resources.create()}
+      @ww-print-tab=${() => this.commands.dispatch("print")}
+			@ww-open-tab=${() => this.store.resources.load()}
+			@ww-show-drawer=${() => this.settingsOpen = true}
+			@ww-hide-drawer=${() => this.settingsOpen = false}>
+			${initializing? this.Placeholder(): [
+				this.Tabs(),
+				this.Settings()
+			]}
+		</ww-layout>`
 	}
 }

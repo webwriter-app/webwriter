@@ -15,14 +15,8 @@
       "all": false,
 
       "fs": {
-        "readFile": true,
-        "writeFile": true,
-        "removeFile": true,
-        "createDir": true,
-        "exists": true,
-        "readDir": true,
-        "removeDir": true,
-        "scope": ["$APP", "$APP/*", "$APP/**/*"]
+        "all": true,
+        "scope": ["*", "**/*"]
       },
       "os": {
         "all": true
@@ -42,7 +36,7 @@
         "execute": true,
         "open": ".*",
         "scope": [
-          {"name": "bin/npm", "args": true, "sidecar": true},
+          {"name": "bin/yarn", "args": true, "sidecar": true},
           {"name": "bin/esbuild", "args": true, "sidecar": true}
         ]
       }
@@ -55,7 +49,7 @@
         "depends": []
       },
       "externalBin": [
-        "bin/npm",
+        "bin/yarn",
         "bin/esbuild"
       ],
       "icon": [
@@ -98,7 +92,7 @@
       "dialog": true,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZDNzVDNDgzOTk0OUQyQzgKUldUSTBrbVpnOFIxL05YWm9ONGp6WERkNVZGamdsbzFmekZURzd0NENNbVZhcTlqc3cycWM2Y1EK",
       "endpoints": [
-        "https://github.com/salmenf/webwriter/releases/latest/download/latest.json"
+        "https://github.com/webwriter-app/webwriter/releases/latest/download/latest.json"
       ]
     }
   }

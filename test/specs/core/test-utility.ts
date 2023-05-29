@@ -16,7 +16,6 @@ const testData: Partial<Record<keyof typeof utility, TestEntry | TestEntry[]>> =
   ],
   unscopePackageName: {args: ["@webwriter/ww-figure"], returnValue: "ww-figure"},
   arrayReplaceAt: {args: [[1, 2, 3], 1, "x"], returnValue: [1, "x", 3]},
-  detectEnvironment: {returnValue: "unknown"},
   escapeHTML: {args: ["&<>\"\'test"], returnValue: "&amp;&lt;&gt;&quot;&#039;test"}
 }
 

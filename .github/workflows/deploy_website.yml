@@ -5,7 +5,10 @@ on:
     branches: [ main ]
   workflow_dispatch:
   schedule:
-    - cron: '0 */12 * * *'
+    - cron: '1 */ 13 * * *'
+  workflow_run:
+    workflows: ['Build & Release Desktop']
+    types: [completed]
 
 permissions:
   contents: read

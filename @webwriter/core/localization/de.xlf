@@ -1,0 +1,779 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">
+<file target-language="de" source-language="en" original="lit-localize-inputs" datatype="plaintext">
+<body>
+<trans-unit id="se8a370b9a39c9c5e">
+  <source>New document [CTRL+N]</source>
+  <target>Dokument erstellen [STRG+N]</target>
+</trans-unit>
+<trans-unit id="s22dc82fb53ee2493">
+  <source>Open document [CTRL+O]</source>
+  <target>Dokument öffnen [STRG+O]</target>
+</trans-unit>
+<trans-unit id="s3a113cba87a8a856">
+  <source>New document</source>
+  <target>Neues Dokument</target>
+</trans-unit>
+<trans-unit id="s57ae2bdbf512b1ce">
+  <source>Open document</source>
+  <target>Dokument öffnen</target>
+</trans-unit>
+<trans-unit id="s0fbe1eb278c21168">
+  <source>Save document as... [CTRL+S]</source>
+  <target>Dokument speichern unter... [STRG+S]</target>
+</trans-unit>
+<trans-unit id="s216346eda4b4203e">
+  <source>Save document [CTRL+S]</source>
+  <target>Dokument speichern [STRG+S]</target>
+</trans-unit>
+<trans-unit id="sd641695ca0a3037d">
+  <source>Close document [CTRL+W]</source>
+  <target>Dokument schließen [STRG+W]</target>
+</trans-unit>
+<trans-unit id="s2b8f50c64be440f7">
+  <source>Select <x id="0" equiv-text="${this.mediaType}"/>...</source>
+  <target><x id="0" equiv-text="${this.mediaType}"/> auswählen...</target>
+</trans-unit>
+<trans-unit id="s739544d0c858c633">
+  <source>Or drop <x id="0" equiv-text="${this.mediaType}"/> here</source>
+  <target>Oder <x id="0" equiv-text="${this.mediaType}"/> hier ablegen</target>
+</trans-unit>
+<trans-unit id="se58f06c2b0583ff7">
+  <source>Pick coordinates</source>
+  <target>Koordinaten wählen</target>
+</trans-unit>
+<trans-unit id="sb430f5b4824de0d3">
+  <source>Choose a layout</source>
+  <target>Layout wählen</target>
+</trans-unit>
+<trans-unit id="seaf97719986faf4f">
+  <source>Gap</source>
+  <target>Abstand</target>
+</trans-unit>
+<trans-unit id="sffdadf0a576fd802">
+  <source>Height</source>
+  <target>Höhe</target>
+</trans-unit>
+<trans-unit id="sab55faae8e165407">
+  <source>Padding&lt;br&gt; like gap</source>
+  <target>Innenabstand &lt;br&gt; wie Außenabstand</target>
+</trans-unit>
+<trans-unit id="sf1ed4eed4de3012e">
+  <source>View error</source>
+  <target>Fehler anzeigen</target>
+</trans-unit>
+<trans-unit id="sda174a4c93e84ce6">
+  <source>Error importing</source>
+  <target>Fehler beim Importieren von</target>
+</trans-unit>
+<trans-unit id="s8b0432eecbd8b034">
+  <source>Update</source>
+  <target>Aktualisieren</target>
+</trans-unit>
+<trans-unit id="sbc5bb5bb74d141b9">
+  <source>Uninstall</source>
+  <target>Deinstallieren</target>
+</trans-unit>
+<trans-unit id="s6196153c4b0c1ea0">
+  <source>Install</source>
+  <target>Installieren</target>
+</trans-unit>
+<trans-unit id="s12aac40ecd87dc12">
+  <source>View local application directory</source>
+  <target>Lokalen Anwendungs-Ordner öffnen</target>
+</trans-unit>
+<trans-unit id="s815a7e524eda76aa">
+  <source>Reset local application directory</source>
+  <target>Lokalen Anwendungs-Ordner zurücksetzen</target>
+</trans-unit>
+<trans-unit id="s3ae67088bbefba98">
+  <source>Packages</source>
+  <target>Pakete</target>
+</trans-unit>
+<trans-unit id="sd158a5fc0f062f18">
+  <source>Available</source>
+  <target>Verfügbar</target>
+</trans-unit>
+<trans-unit id="s10e80d4c01c3cc21">
+  <source>Installed</source>
+  <target>Installiert</target>
+</trans-unit>
+<trans-unit id="s76cc1c6d9fab3a2d">
+  <source>Outdated</source>
+  <target>Veraltet</target>
+</trans-unit>
+<trans-unit id="s8a7fa8a052138aef">
+  <source>Warning:</source>
+  <target>Warnung:</target>
+</trans-unit>
+<trans-unit id="sad288b082f4d3521">
+  <source>You seem to be offline. While offline, you can't manage available or outdated packages.</source>
+  <target>Das System scheint offline zu sein. Offline können verfügbare und veraltete Pakete nicht abgerufen werden.</target>
+</trans-unit>
+<trans-unit id="s775056d1cb76fbe9">
+  <source>Headline</source>
+  <target>Titel</target>
+</trans-unit>
+<trans-unit id="sc3ac225273c8316b">
+  <source>General</source>
+  <target>Allgemeines</target>
+</trans-unit>
+<trans-unit id="scf735dfae10f3870">
+  <source>Educational</source>
+  <target>Bildung</target>
+</trans-unit>
+<trans-unit id="s11fdceabe7befeff">
+  <source>Accessibility</source>
+  <target>Zugänglichkeit</target>
+</trans-unit>
+<trans-unit id="sc221faca1ecb4aee">
+  <source>Anonymous</source>
+  <target>Anonym</target>
+</trans-unit>
+<trans-unit id="sdcd1efc06af80825">
+  <source>All rights reserved</source>
+  <target>Alle Rechte vorbehalten</target>
+</trans-unit>
+<trans-unit id="s851a7deea5984646">
+  <source>License as Creative Commons OER?</source>
+  <target>Als Creative Commons OER lizenzieren?</target>
+</trans-unit>
+<trans-unit id="s2540844a4bc4d9ba">
+  <source>Require attribution?</source>
+  <target>Namensnennung verlangen?</target>
+</trans-unit>
+<trans-unit id="sb0a974028c99ca6d">
+  <source>Allow adaptations?</source>
+  <target>Adaptionen erlauben?</target>
+</trans-unit>
+<trans-unit id="s77e594ddcc10c774">
+  <source>Allow commercial use?</source>
+  <target>Kommerzielle Nutzung erlauben?</target>
+</trans-unit>
+<trans-unit id="s4cb38675a21b2c98">
+  <source>Unsupported property type '${desc.type}' (processing as JSON)</source>
+  <target/>
+</trans-unit>
+<trans-unit id="sa00df4e39c72d3b4">
+  <source><x id="0" equiv-text="${desc.widget}"/> is not supported</source>
+  <target><x id="0" equiv-text="${desc.widget}"/> wird nicht unterstützt</target>
+</trans-unit>
+<trans-unit id="sf65df67a03bebe4b">
+  <source>Required for this widget</source>
+  <target>Erforderlich für dieses Widget</target>
+</trans-unit>
+<trans-unit id="s8a9eb438abac7c6a">
+  <source>Labels</source>
+  <target>Beschriftungen</target>
+</trans-unit>
+<trans-unit id="s0184079b36201d24">
+  <source>Add this widget</source>
+  <target>Dieses Widget hinzufügen</target>
+</trans-unit>
+<trans-unit id="sddc49047f66a64ab">
+  <source>No description provided</source>
+  <target>Keine Beschreibung verfügbar</target>
+</trans-unit>
+<trans-unit id="sded940efcadd8f10">
+  <source>Save your document</source>
+  <target>Das Dokument speichern</target>
+</trans-unit>
+<trans-unit id="s6910ed6dbaba4807">
+  <source>Load a document</source>
+  <target>Ein Dokument laden</target>
+</trans-unit>
+<trans-unit id="s8f533296a536965e">
+  <source>Save as...</source>
+  <target>Speichern unter...</target>
+</trans-unit>
+<trans-unit id="s1f0e5f8acab2f0d3">
+  <source>Load as...</source>
+  <target>Laden als...</target>
+</trans-unit>
+<trans-unit id="sa3c9339de23c1752">
+  <source>Format</source>
+  <target>Format</target>
+</trans-unit>
+<trans-unit id="s1cf730f96ac4f6b6">
+  <source>On...</source>
+  <target>Auf...</target>
+</trans-unit>
+<trans-unit id="s13388f2a0641c5a9">
+  <source>From...</source>
+  <target>Von...</target>
+</trans-unit>
+<trans-unit id="s61e136c0658e27d5">
+  <source>Protocol</source>
+  <target>Protokoll</target>
+</trans-unit>
+<trans-unit id="see2fcaedf9743ec6">
+  <source>Location</source>
+  <target>Ort</target>
+</trans-unit>
+<trans-unit id="s2ceb11be2290bb1b">
+  <source>Cancel</source>
+  <target>Abbrechen</target>
+</trans-unit>
+<trans-unit id="s33f85f24c0f5f008">
+  <source>Save</source>
+  <target>Speichern</target>
+</trans-unit>
+<trans-unit id="s4f20edb48a6287c9">
+  <source>Load</source>
+  <target>Laden</target>
+</trans-unit>
+<trans-unit id="s0ae61a762cdd8ae8">
+  <source>You have unsaved changes. Click again to discard your changes.</source>
+  <target>Es gibt ungesicherte Änderungen. Nochmal klicken, um die Änderungen zu verwerfen.</target>
+</trans-unit>
+<trans-unit id="se59ef70a4d2cfbac">
+  <source>Loading WebWriter...</source>
+  <target>Lade WebWriter...</target>
+</trans-unit>
+<trans-unit id="sed8ec5e3c64fa25d">
+  <source>Total</source>
+  <target>Gesamt</target>
+</trans-unit>
+<trans-unit id="s8cfdd110c30d604d">
+  <source>No packages installed or available</source>
+  <target>Keine Pakete installiert oder verfügbar</target>
+</trans-unit>
+<trans-unit id="s33b62827f665c461">
+  <source>No packages installed</source>
+  <target>Keine Pakete installiert</target>
+</trans-unit>
+<trans-unit id="se432a7c0c144d458">
+  <source>No packages available</source>
+  <target>Keine Pakete verfügbar</target>
+</trans-unit>
+<trans-unit id="sf9559106e88ee46d">
+  <source>No packages outdated</source>
+  <target>Keine Pakete veraltet</target>
+</trans-unit>
+<trans-unit id="s9d8b8aa2b404c2c8">
+  <source>Settings</source>
+  <target>Einstellungen</target>
+</trans-unit>
+<trans-unit id="sba509fd8ed61d1d5">
+  <source>Unsaved File</source>
+  <target>Ungespeicherte Datei</target>
+</trans-unit>
+<trans-unit id="sb199b34dca0a4cfc">
+  <source>Enter content here...</source>
+  <target>Hier Inhalt eingeben...</target>
+</trans-unit>
+<trans-unit id="s4caed5b7a7e5d89b">
+  <source>English</source>
+  <target>Englisch</target>
+</trans-unit>
+<trans-unit id="s63e71d20d1eaca93">
+  <source>German</source>
+  <target>Deutsch</target>
+</trans-unit>
+<trans-unit id="se25e4f2cb77b8be8">
+  <source>Language for the WebWriter interface and new documents</source>
+  <target>Sprache für das WebWriter-Interface und neue Dokumente</target>
+</trans-unit>
+<trans-unit id="s268ecd1cef45a9a8">
+  <source>Are you sure?</source>
+  <target>Bestätigen?</target>
+</trans-unit>
+<trans-unit id="se9b1fec72ffd8f48">
+  <source>Local</source>
+  <target>Lokal</target>
+</trans-unit>
+<trans-unit id="sc7691fecb3373a42">
+  <source>No local packages</source>
+  <target>Keine lokalen Pakete</target>
+</trans-unit>
+<trans-unit id="s255857544a9d5ec0">
+  <source>Reset</source>
+  <target>Rücksetzen</target>
+</trans-unit>
+<trans-unit id="sf1e79171c4856543">
+  <source>Are you sure? This action can't be reversed, all your settings will be deleted and reset.</source>
+  <target>Bist du sicher? Diese Aktion kann nicht rückgängig gemacht werden, alle Einstellungen werden zurückgesetzt.</target>
+</trans-unit>
+<trans-unit id="s61e9429637594e7a">
+  <source>View On Disk</source>
+  <target>Zeige Ordner</target>
+</trans-unit>
+<trans-unit id="sefcf950b3cc4fc3b">
+  <source>Language</source>
+  <target>Sprache</target>
+</trans-unit>
+<trans-unit id="s889fce46bd2236e5">
+  <source>Documents</source>
+  <target>Dokumente</target>
+</trans-unit>
+<trans-unit id="sae3629911a62147f">
+  <source>JS Size:</source>
+  <target>JS-Größe:</target>
+</trans-unit>
+<trans-unit id="s1357c9b016a9a631">
+  <source>CSS Size:</source>
+  <target>CSS-Größe:</target>
+</trans-unit>
+<trans-unit id="s5f343a43e7ea9f91">
+  <source>Error</source>
+  <target>Fehler</target>
+</trans-unit>
+<trans-unit id="h75b0cad9d9e80648">
+  <source>Stop watching files at <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/>.</source>
+  <target>Höre auf, Dateien unter <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/> zu beobachten.</target>
+</trans-unit>
+<trans-unit id="h0a75a995d1672be1">
+  <source>Start watching files at <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/> and reload the package if a file is changed.</source>
+  <target>Fange an, Dateien unter <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/> zu beobachten und lade das Paket neu, wenn sich eine Datei ändert.</target>
+</trans-unit>
+<trans-unit id="s8cd9849cd37d7753">
+  <source>Either select an existing package directory to install or an empty directory to create a new package.</source>
+  <target>Einen Ordner mit einem bestehenden Paket wählen zum installieren oder einen leeren Ordner, um ein neues Paket zu erstellen.</target>
+</trans-unit>
+<trans-unit id="s34a149298b7c68ca">
+  <source>Add unlisted package</source>
+  <target>Ungelistetes Paket hinzufügen</target>
+</trans-unit>
+<trans-unit id="see30e82e495e3e22">
+  <source>Local packages are intended for developers.</source>
+  <target>Lokale Pakete sind für Entwickler gedacht.</target>
+</trans-unit>
+<trans-unit id="s74099020a06276df">
+  <source>Watching files</source>
+  <target>Dateien werden beobachtet</target>
+</trans-unit>
+<trans-unit id="sa75b95980cd80e78">
+  <source>Editor</source>
+  <target>Editor</target>
+</trans-unit>
+<trans-unit id="s0c883713b83616a8">
+  <source>Save the active document</source>
+  <target>Speichere das aktive Dokument</target>
+</trans-unit>
+<trans-unit id="s8670e5ad3bf0dcf8">
+  <source>Save As</source>
+  <target>Speichern unter</target>
+</trans-unit>
+<trans-unit id="s38980f98cb07ceb8">
+  <source>Save the active document as a copy</source>
+  <target>Speichere das aktive Dokument als Kopie</target>
+</trans-unit>
+<trans-unit id="s1f7698c061c208c9">
+  <source>Open</source>
+  <target>Öffnen</target>
+</trans-unit>
+<trans-unit id="s16f2f1c2c516d307">
+  <source>Open a document</source>
+  <target>Öffne ein Dokument</target>
+</trans-unit>
+<trans-unit id="s382a2aa3984474dd">
+  <source>Create</source>
+  <target>Erstellen</target>
+</trans-unit>
+<trans-unit id="s64dc1fc7e3db45c9">
+  <source>Create a new document</source>
+  <target>Erstelle ein neues Dokument</target>
+</trans-unit>
+<trans-unit id="sc00a88b90cd60661">
+  <source>Discard</source>
+  <target>Verwerfen</target>
+</trans-unit>
+<trans-unit id="sde1831f28fdab23b">
+  <source>Close the active document</source>
+  <target>Schließe das aktive Dokument</target>
+</trans-unit>
+<trans-unit id="seec6798afe90ffc8">
+  <source>Print</source>
+  <target>Drucken</target>
+</trans-unit>
+<trans-unit id="s600fd23c9ce971e8">
+  <source>Print the active document</source>
+  <target>Drucke das aktive Dokument</target>
+</trans-unit>
+<trans-unit id="s417b90913e05bc17">
+  <source>Preview</source>
+  <target>Vorschau</target>
+</trans-unit>
+<trans-unit id="safc6f203342d09e2">
+  <source>Toggles the preview for the active document</source>
+  <target>Vorschau für das aktive Dokument umschalten</target>
+</trans-unit>
+<trans-unit id="s20c70732aecac427">
+  <source>Next Tab</source>
+  <target>Nächster Tab</target>
+</trans-unit>
+<trans-unit id="s8da425b75207dba7">
+  <source>Select the next document tab</source>
+  <target>Wähle den nächsten Dokumenten-Tab</target>
+</trans-unit>
+<trans-unit id="sf7c0eba7c822e3d6">
+  <source>Bold</source>
+  <target>Fett</target>
+</trans-unit>
+<trans-unit id="sb9e9a7dd45966756">
+  <source>Mark the selection as bold</source>
+  <target>Markiere die Auswahl als fett</target>
+</trans-unit>
+<trans-unit id="s523eb9043213ff0d">
+  <source>Italic</source>
+  <target>Kursiv</target>
+</trans-unit>
+<trans-unit id="s92f846b9be2e8e8d">
+  <source>Mark the selection as italic</source>
+  <target>Markiere die Auswahl als kursiv</target>
+</trans-unit>
+<trans-unit id="sb206d700d26b14ff">
+  <source>Underline</source>
+  <target>Unterstrichen</target>
+</trans-unit>
+<trans-unit id="s09c3f1d21de14ae1">
+  <source>Mark the selection as underlined</source>
+  <target>Markiere die Auswahl als unterstrichen</target>
+</trans-unit>
+<trans-unit id="s99b38e000175cc84">
+  <source>Strikethrough</source>
+  <target>Durchgestrichen</target>
+</trans-unit>
+<trans-unit id="s0396202b716732ec">
+  <source>Mark the selection as struck through</source>
+  <target>Markiere die Auswahl als durchgestrichen</target>
+</trans-unit>
+<trans-unit id="s3643189d1abbb7f4">
+  <source>Code</source>
+  <target>Code</target>
+</trans-unit>
+<trans-unit id="sf86bd4d2982f3b74">
+  <source>Mark the selection as code</source>
+  <target>Markiere die Auswahl als Code</target>
+</trans-unit>
+<trans-unit id="s3cf89cb47fdde7e9">
+  <source>Link</source>
+  <target>Link</target>
+</trans-unit>
+<trans-unit id="sf8e82313fa411494">
+  <source>Mark the selection as a link</source>
+  <target>Markiere die Auswahl als Link</target>
+</trans-unit>
+<trans-unit id="s8f4be9f086eb530f">
+  <source>Undo</source>
+  <target>Rückgängig</target>
+</trans-unit>
+<trans-unit id="s7beb1e77e82363eb">
+  <source>Undo the last change in the active document</source>
+  <target>Mache die letzte Änderung im aktiven Dokument rückgängig</target>
+</trans-unit>
+<trans-unit id="s7417792bbe720149">
+  <source>Redo</source>
+  <target>Wiederholen</target>
+</trans-unit>
+<trans-unit id="s640bc7710d0143ce">
+  <source>Redo the last undone change in the active document</source>
+  <target>Wiederhole die letzte rückgängig gemacht Änderung im aktiven Dokument</target>
+</trans-unit>
+<trans-unit id="s8688d74dd3716d6e">
+  <source>Keyboard shortcuts for commands</source>
+  <target>Tastenkürzel für Befehle</target>
+</trans-unit>
+<trans-unit id="sd846987afc2e2cde">
+  <source>Show a placeholder text when a document is empty</source>
+  <target>Zeige einen Platzhalter-Text, wenn ein Dokument leer ist</target>
+</trans-unit>
+<trans-unit id="sec4cb64c35332774">
+  <source>Show placeholder text</source>
+  <target>Zeige einen Platzhalter-Text</target>
+</trans-unit>
+<trans-unit id="s9017cdca3510148e">
+  <source>Show an instant preview when hovering over widgets in the palette</source>
+  <target>Zeige eine Live-Vorschau, wenn die Maus über ein Widget in der Palette bewegt wird.</target>
+</trans-unit>
+<trans-unit id="se400c16740eb77dc">
+  <source>Show widget preview</source>
+  <target>Zeige Widget-Vorschau</target>
+</trans-unit>
+<trans-unit id="se3b4c857f91f80d7">
+  <source>Keyboard shortcuts</source>
+  <target>Tastenkürzel</target>
+</trans-unit>
+<trans-unit id="keyCommand">
+  <source>⌘ Command/Win</source>
+  <target>⌘ Command/Win</target>
+</trans-unit>
+<trans-unit id="keyShift">
+  <source>⇧ Shift</source>
+  <target>⇧ Umschalt</target>
+</trans-unit>
+<trans-unit id="keyControl">
+  <source>^ Control</source>
+  <target>^ Strg</target>
+</trans-unit>
+<trans-unit id="keyOption">
+  <source>⌥ Option/Alt</source>
+  <target>⌥ Option/Alt</target>
+</trans-unit>
+<trans-unit id="s2692bc028fed91f1">
+  <source>⇪ Caps Lock</source>
+  <target>⇪ Feststell</target>
+</trans-unit>
+<trans-unit id="backspaceKey">
+  <source>⟵</source>
+  <target>⟵</target>
+</trans-unit>
+<trans-unit id="tabKey">
+  <source>⭾ Tab</source>
+  <target>⭾ Tab</target>
+</trans-unit>
+<trans-unit id="clearKey">
+  <source>⎚ Clear</source>
+  <target>⎚ Clear</target>
+</trans-unit>
+<trans-unit id="enterKey">
+  <source>↩ Enter</source>
+  <target>↩ Eingabe</target>
+</trans-unit>
+<trans-unit id="escapeKey">
+  <source>⎋ Escape</source>
+  <target>⎋ Escape</target>
+</trans-unit>
+<trans-unit id="spaceKey">
+  <source>Space</source>
+  <target>Leertaste</target>
+</trans-unit>
+<trans-unit id="upKey">
+  <source>↑ Up</source>
+  <target>↑ Hoch</target>
+</trans-unit>
+<trans-unit id="downKey">
+  <source>↓ Down</source>
+  <target>↓ Runter</target>
+</trans-unit>
+<trans-unit id="leftKey">
+  <source>← Left</source>
+  <target>← Links</target>
+</trans-unit>
+<trans-unit id="rightKey">
+  <source>→ Right</source>
+  <target>→ Rechts</target>
+</trans-unit>
+<trans-unit id="homeKey">
+  <source>⤒ Home</source>
+  <target>⤒ Pos1</target>
+</trans-unit>
+<trans-unit id="endKey">
+  <source>⤓ End</source>
+  <target>⤓ Ende</target>
+</trans-unit>
+<trans-unit id="pageupKey">
+  <source>▲ Pageup</source>
+  <target>▲ Bild</target>
+</trans-unit>
+<trans-unit id="pagedownKey">
+  <source>▼ Pagedown</source>
+  <target>▼ Bild</target>
+</trans-unit>
+<trans-unit id="deleteKey">
+  <source>⌦ Delete</source>
+  <target>⌦ Entf</target>
+</trans-unit>
+<trans-unit id="f1Key">
+  <source>F1</source>
+  <target>F1</target>
+</trans-unit>
+<trans-unit id="f2Key">
+  <source>F2</source>
+  <target>F2</target>
+</trans-unit>
+<trans-unit id="f3Key">
+  <source>F3</source>
+  <target>F3</target>
+</trans-unit>
+<trans-unit id="f4Key">
+  <source>F4</source>
+  <target>F5</target>
+</trans-unit>
+<trans-unit id="f5Key">
+  <source>F5</source>
+  <target>F6</target>
+</trans-unit>
+<trans-unit id="f6Key">
+  <source>F6</source>
+  <target/>
+</trans-unit>
+<trans-unit id="f7Key">
+  <source>F7</source>
+  <target>F7</target>
+</trans-unit>
+<trans-unit id="f8Key">
+  <source>F8</source>
+  <target>F8</target>
+</trans-unit>
+<trans-unit id="f9Key">
+  <source>F9</source>
+  <target>F9</target>
+</trans-unit>
+<trans-unit id="f10Key">
+  <source>F10</source>
+  <target>F10</target>
+</trans-unit>
+<trans-unit id="f11Key">
+  <source>F11</source>
+  <target>F11</target>
+</trans-unit>
+<trans-unit id="f12Key">
+  <source>F12</source>
+  <target>F12</target>
+</trans-unit>
+<trans-unit id="f13Key">
+  <source>F13</source>
+  <target>F13</target>
+</trans-unit>
+<trans-unit id="f14Key">
+  <source>F14</source>
+  <target>F14</target>
+</trans-unit>
+<trans-unit id="f15Key">
+  <source>F15</source>
+  <target>F15</target>
+</trans-unit>
+<trans-unit id="f16Key">
+  <source>F16</source>
+  <target>F16</target>
+</trans-unit>
+<trans-unit id="f17Key">
+  <source>F17</source>
+  <target>F17</target>
+</trans-unit>
+<trans-unit id="f18Key">
+  <source>F18</source>
+  <target>F18</target>
+</trans-unit>
+<trans-unit id="f19Key">
+  <source>F19</source>
+  <target>F19</target>
+</trans-unit>
+<trans-unit id="s7dea785045c3cc74">
+  <source>Press new key combination...</source>
+  <target>Neue Tastenkombination drücken...</target>
+</trans-unit>
+<trans-unit id="s46d4abe6255cb9e1">
+  <source>Reassign shortcut</source>
+  <target>Kürzel neu zuweisen</target>
+</trans-unit>
+<trans-unit id="s0bdca49248ba4820">
+  <source>Shortcuts</source>
+  <target>Tastenkürzel</target>
+</trans-unit>
+<trans-unit id="s599dcd2472c75c19">
+  <source>Paragraph</source>
+  <target>Absatz</target>
+</trans-unit>
+<trans-unit id="sb721548f59b9b1e2">
+  <source>Preview Mode</source>
+  <target>Vorschau-Modus</target>
+</trans-unit>
+<trans-unit id="s2a75c946ef4dcab7">
+  <source>Miscellaneous</source>
+  <target>Sonstiges</target>
+</trans-unit>
+<trans-unit id="sdf946172dfa0328f">
+  <source>Superscript</source>
+  <target>Hochgestellt</target>
+</trans-unit>
+<trans-unit id="saf3da7c95cb17260">
+  <source>Mark the selection as a superscript</source>
+  <target>Markiere die Auswahl als hochgestellt</target>
+</trans-unit>
+<trans-unit id="s5cab1e5d80e87b9a">
+  <source>subscript</source>
+  <target>Tiefgestellt</target>
+</trans-unit>
+<trans-unit id="sc5cb39478b9b7625">
+  <source>Mark the selection as a subscript</source>
+  <target>Markiere die Auswahl als tiefgestellt</target>
+</trans-unit>
+<trans-unit id="sf1e2ccb43f3cca39">
+  <source>Align paragraph left</source>
+  <target>Absatz linksbündig</target>
+</trans-unit>
+<trans-unit id="s2e787c95d8757702">
+  <source>Makes the paragraph text align left</source>
+  <target>Formatiert den Absatz-Text als linksbündig</target>
+</trans-unit>
+<trans-unit id="s5c04918c08efdb71">
+  <source>Align paragraph center</source>
+  <target>Absatz zentriert</target>
+</trans-unit>
+<trans-unit id="s68768abc7f25154e">
+  <source>Makes the paragraph text align center</source>
+  <target>Formatiert den Absatz-Text als zentriert</target>
+</trans-unit>
+<trans-unit id="saecb138c1d98d05a">
+  <source>Align paragraph right</source>
+  <target>Absatz rechtsbündig</target>
+</trans-unit>
+<trans-unit id="sd6e97f557fbc7d0f">
+  <source>Makes the paragraph text align right</source>
+  <target>Formatiert den Absatz-Text als rechtsbündig</target>
+</trans-unit>
+<trans-unit id="sd44f17e53e86b071">
+  <source>Align paragraph justified</source>
+  <target>Absatz im Blocksatz</target>
+</trans-unit>
+<trans-unit id="sd9a5cf6507662514">
+  <source>Makes the paragraph text align justified</source>
+  <target>Formatiert den Absatz-Text als im Blocksatz</target>
+</trans-unit>
+<trans-unit id="s4023fcc0ecf63c51">
+  <source>Opens or closes the settings drawer</source>
+  <target>Öffnet oder schließt die Einstellungen-Schublade</target>
+</trans-unit>
+<trans-unit id="s83420ad7b6a14db5">
+  <source>Toggle Dev Tools</source>
+  <target>Entwickler-Werkzeuge umschalten</target>
+</trans-unit>
+<trans-unit id="s7af555180b30a947">
+  <source>Open the developer tools</source>
+  <target>Öffne die Entwickler-Werkzeuge</target>
+</trans-unit>
+<trans-unit id="s4a77ad4a243a07e9">
+  <source>Print document... [CTRL+P]</source>
+  <target>Dokument drucken... [STRG+P]</target>
+</trans-unit>
+<trans-unit id="sb0d4f0f7993cf085">
+  <source>Set font size</source>
+  <target>Schriftgröße festlegen</target>
+</trans-unit>
+<trans-unit id="s37fa3b9cd51c2dfd">
+  <source>Sets the selection's font size</source>
+  <target>Legt die Schriftgröße der Auswahl fest</target>
+</trans-unit>
+<trans-unit id="s9e3dbb678150edd4">
+  <source>Set font family</source>
+  <target>Schriftart festlegen</target>
+</trans-unit>
+<trans-unit id="s1626a7e10a9f9dcc">
+  <source>Sets the selection's font family</source>
+  <target>Legt die Schriftart der Auswahl fest</target>
+</trans-unit>
+<trans-unit id="s979dc9098d6bb3e0">
+  <source>Increment font size</source>
+  <target>Schriftgröße erhöhen</target>
+</trans-unit>
+<trans-unit id="sa2ffa28d1155c0ff">
+  <source>Increment the selection's font size</source>
+  <target>Erhöht die Schriftgröße der Auswahl</target>
+</trans-unit>
+<trans-unit id="s1a2ba0c73ad1304c">
+  <source>Decrement font size</source>
+  <target>Schriftgröße verringern</target>
+</trans-unit>
+<trans-unit id="s7a57ed00db7a3b83">
+  <source>Decrement the selection's font size</source>
+  <target>Verringert die Schriftgröße der Auswahl</target>
+</trans-unit>
+<trans-unit id="s03d2a538c7c99132">
+  <source>Toggle Settings</source>
+  <target>Einstellungen umschalten</target>
+</trans-unit>
+</body>
+</file>
+</xliff>

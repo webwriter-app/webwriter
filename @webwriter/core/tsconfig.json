@@ -1,8 +1,8 @@
 {
     "compilerOptions": {
-        "target": "ES2020",
+        "target": "ES2022",
         "module": "es2020",
-        "lib": ["ES2021", "DOM"],
+        "lib": ["ES2022", "DOM"],
         "experimentalDecorators": true,
         "esModuleInterop": true,
         "allowSyntheticDefaultImports": true,
