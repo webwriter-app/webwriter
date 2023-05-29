@@ -22,6 +22,7 @@ const body = await response.json()
 const widgets = body.objects.map(obj => obj.package)
 const names = widgets.map(widget => widget.name)
 
+fs.ensureDir("public/widgetsrc")
 fs.writeJSONSync("public/widgetsrc/package.json", {
   name: "@webwriter/website-dependencies",
   version: "0.0.0",
@@ -46,7 +47,6 @@ const bundleSizes = []
 const installSizes = []
 for(const [i, name] of names.entries()) {
     const jsFile = `tmp/${name}.js`
-    fs.ensureDir("public/widgetsrc")
     fs.ensureFileSync(jsFile)
     fs.writeFileSync(jsFile, importStatements[name], {encoding: "utf8"})
     const outFileJs = `public/widgetsrc/${name}.js`
