@@ -54,7 +54,7 @@ for(const [i, name] of names.entries()) {
     const outFileJs = `public/widgetsrc/${name}.js`
     const outFileCss = outFileJs.slice(0, -3) + ".css"
     
-    execSync(`npm --prefix ./public/widgetsrc run esbuild -- --bundle ${jsFile} --outfile=${outFileJs} --minify`, {env: {"NODE_PATH": "public/widgetsrc"}}, (error, stdout, stderr) => {
+    execSync(`esbuild --bundle ${jsFile} --outfile=${outFileJs} --minify`, {env: {"NODE_PATH": "public/widgetsrc"}}, (error, stdout, stderr) => {
         error && console.error(error.message)
         stderr && console.error(stderr)
         stdout && console.log(stdout)
