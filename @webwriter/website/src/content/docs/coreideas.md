@@ -13,27 +13,20 @@ WebWriter is built to edit Explorables, which are...
 - **multimedia**, combining many media types such as text, audio, video, etc.
 - **interactive**, allowing users to interact and receive feedback
 
-At the core, Explorables are simply HTML documents. As such, they follow the standard APIs for everything (`HTMLDocument`), including display (DOM) and serialization (saving as HTML). They contain `content`, which is a sequence of zero or more widgets. Widgets are provided by packages.
+At the core, Explorables are simply HTML documents. Viewed as data structure, an Explorable is simply a DOM tree that be displayed by browsers and serialized to or parsed from HTML. WebWriter uses ProseMirror to make Explorables editable.
 
-| Concept         | DOM representation | Runtime representation              | File representation   |
-|-----------------|--------------------|-------------------------------------|-----------------------|
-| Explorable      | `HTMLDocument`     | `webwriter.Explorable`              | `.html`/`.h5p`        |
-| Widget          | `HTMLElement`      | `webwriter.Widget`                  | HTML tag + attributes |
-| Package         | -                  | `webwriter.WidgetConstructor`       | npm/yarn package      |
+| Concept         | DOM representation | File representation   |
+|-----------------|--------------------|-----------------------|
+| Explorable      | `HTMLDocument`     | `.html`/`.h5p`        |
+| Widget          | `HTMLElement`      | HTML tag + attributes |
+| Package         | -                  | npm/yarn package      |
 
 Another way to look at this is to consider the flow of data through WebWriter and related environments:
 ![WebWriter Data Flow Diagram](/src/public/assets/webwriter-data-architecture.drawio.svg)
 
+
 ## Widgets
-Corresponding to Explorables, widgets are simply HTML elements, again implementing the same APIs (`HTMLElement`). This means that any element that can be defined in HTML can become a widget, as well. Widgets satisfy the interface `webwriter.Widget`.
-
-## Metadata
-Both Explorables and Widgets may have attached metadata. It is recommended to use a subset of the [schema.org LearningResource type](https://schema.org/LearningResource), but any number of key/value pairs serializable to JSON is permitted. Metadata can be thought of as a cascade:
-1. Some metadata is constant for all Explorables and Widgets, being defined by the developer.
-2. Other metadata depends on the type of Widget, and is thus defined by the Widget author.
-3. Yet other metadata depends on the Widget or Explorable instance, and is thus defined by the end user.
-
-*Note: Level 3 of the metadata cascade may be automatically annotated to some degree in the future.* 
+Corresponding to Explorables, Widgets are simply HTML elements, again implementing the same APIs (`HTMLElement`). This means that any element that can be defined in HTML can become a Widget, as well. New HTML elements can be defined as Web Components.
 
 ## Packages
 Packages are npm packages containing a main file that can be bundled by esbuild (JS .js file or TypeScript .ts file). Each package should register exactly one custom element with the same name as the package on import.

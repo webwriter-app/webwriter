@@ -10,7 +10,7 @@ This guide assumes you use the `ts-lit-vite` setup from the [quick start guide](
 
 ### The target environment: What you need to know
 Viewed technically, widgets are Custom Elements. This means a widget can support any and every web technology capable of running in the browser. This includes [standard web APIs](https://developer.mozilla.org/en-US/docs/Web/API), [JS packages/modules for the browser](https://www.npmjs.com/), and so on.
-As each widget comes in a Package (see the [package guide](./creatingpackages.md) for more infos) that is loaded and bundled with `esbuild` when a document is saved, 
+As each widget comes in a Package (see the [package guide](./publishingwidgets.md) for more infos) that is loaded and bundled with `esbuild` when a document is saved, 
 [all content types of esbuild are supported](https://esbuild.github.io/content-types/).
 **Practically, this means you can use JavaScript-adjacent technology such TypeScript, CSS, JSON and more.**
 
@@ -79,7 +79,7 @@ export default class CoolWidget extends LitElementWw {
 
   static get styles() {
     return css`
-      :host([editable]) .placeholder {
+      :host(:not([editable])) .placeholder {
         display: none;
       }
     `
@@ -113,7 +113,7 @@ export default class CoolWidget extends LitElementWw {
 
   static get styles() {
     return css`
-      :host([editable]) .placeholder {
+      :host(:not([editable])) .placeholder {
         display: none;
       }
     `
@@ -149,7 +149,7 @@ export default class CoolWidget extends LitElementWw {
 
   static get styles() {
     return css`
-      :host([editable]) .placeholder {
+      :host(:not([editable])) .placeholder {
         display: none;
       }
 
@@ -195,7 +195,7 @@ export default class CoolWidget extends LitElementWw {
   textarea: HTMLTextAreaElement
 
   focus(options: FocusOptions) {
-    this.slInputElement?.focus(options)
+    this.textarea?.focus(options)
   }
 
   static get styles() {

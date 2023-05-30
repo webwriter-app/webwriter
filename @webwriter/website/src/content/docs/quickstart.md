@@ -9,7 +9,8 @@ This guide takes you through a few, quick steps of setup. When done, you will ha
 ### Prerequisites
 To get started, you need...
 - [ ] ...a text editor of your choice, for example [VSCode](https://code.visualstudio.com/)
-- [ ] ...an installation of [NodeJS](https://nodejs.org/), which already includes the package manager `npm`
+- [ ] ...[WebWriter](https://webwriter.app/get_started)
+- [ ] ...[NodeJS](https://nodejs.org/), which already includes the package manager `npm`
 
 ## A) Quick Start (Automatic)
 Get started with a minimal template for your widget. 
@@ -18,7 +19,9 @@ Get started with a minimal template for your widget.
 Create an empty project directory. In that directory, run `npm create @webwriter/widget`. This initializer allows you to configure the project and start from a template for your widget. We recommend you use the `ts-lit-vite` template.
 
 ### Step 2: Try out your setup
-In your project directory, run `npm run dev`. A test site for your widget should open automatically in your default browser. Now, try changing something in your widget's source code. The site should reload automatically!
+Open WebWriter. Go to settings, then to the "local" tab under packages, then press "add unlisted package". Choose your project directory. After loading, the package should be shown in the list. We recommend you press the lightning button to enable live reloading, so each time you change your code, the package is imported again. Now, you can have WebWriter and your text editor open side by side while making changes.
+
+Note: Alternatively, you can also run your widget outside of WebWriter: In your project directory, run `npm run dev`. A test site for your widget should open automatically in your default browser. Now, try changing something in your widget's source code. The site should reload automatically!
 
 ### What does this setup include?
 It uses the `LitElementWw` base class from the `@webwriter/lit` package, supporting these features in your widget:

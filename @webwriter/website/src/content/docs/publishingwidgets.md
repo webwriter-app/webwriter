@@ -1,8 +1,8 @@
 ---
 order: 4
-title: "Creating packages"
+title: "Publishing widgets"
 ---
-# Guide: Creating a package
+# Guide: Publishing widgets
 
 WebWriter uses [npm packages](https://docs.npmjs.com/packages-and-modules) to provide an easy way of extending the authoring tool with new widgets. WebWriter will discover any package published on npm ([read more about npm here](https://docs.npmjs.com/about-npm)) if it is tagged with the keyword `webwriter-widget`.
 
