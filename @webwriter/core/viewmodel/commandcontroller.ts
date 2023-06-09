@@ -346,7 +346,7 @@ export class CommandController implements ReactiveController {
       subscript: {
         id: "subscript",
         tags: ["mark"],
-        label: msg("subscript"),
+        label: msg("Subscript"),
         icon: "subscript",
         description: msg("Mark the selection as a subscript"),
         shortcut: "ctrl+shift+ArrowDown",
