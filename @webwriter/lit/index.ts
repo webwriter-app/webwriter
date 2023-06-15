@@ -23,6 +23,6 @@ export class LitElementWw extends ScopedElementsMixin(LitElement) implements Wid
 
   connectedCallback() {
     super.connectedCallback()
-    this.getAttributeNames().forEach(n => this.setAttribute(n, this.getAttribute(n)))
+    this.getAttributeNames().forEach(n => this.setAttribute(n, this.getAttribute(n)!))
   }
 }
