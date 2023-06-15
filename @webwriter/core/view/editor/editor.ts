@@ -3,12 +3,10 @@ import {styleMap} from "lit/directives/style-map.js"
 import {customElement, property, query} from "lit/decorators.js"
 import { Decoration, EditorView, DecorationSet } from "prosemirror-view"
 import { EditorState, Command, NodeSelection, TextSelection, AllSelection } from "prosemirror-state"
-import { Node, Mark } from "prosemirror-model"
-import { chainCommands, toggleMark } from "prosemirror-commands"
+import { Node, Mark, Slice, Fragment, DOMParser } from "prosemirror-model"
 import { localized, msg } from "@lit/localize"
-import { spread } from '@open-wc/lit-helpers';
 
-import { undo, redo, PackageWithOptions } from "../../model"
+import { PackageWithOptions } from "../../model"
 import { WidgetView } from "."
 import { DocumentHeader } from "./documentheader"
 import { DocumentFooter } from "./documentfooter"
@@ -22,9 +20,8 @@ import redefineCustomElementsString from "redefine-custom-elements/lib/index.js?
 // import scopedCustomElementsRegistryString from "@webcomponents/scoped-custom-element-registry/scoped-custom-element-registry.min.js?raw"
 
 import {computePosition, autoUpdate, offset, shift} from '@floating-ui/dom'
-import { redoDepth, undoDepth } from "prosemirror-history"
 import { CommandEntry, CommandEvent } from "../../viewmodel"
-import { keyed } from "lit/directives/keyed.js"
+
 
 export class EditorViewController extends EditorView implements ReactiveController {
 	
@@ -44,18 +41,6 @@ export class EditorViewController extends EditorView implements ReactiveControll
 	hostConnected() {}
 }
 
-const toggleHeading = (editorState: EditorState, level=1) => chainCommands()
-
-
-function getActiveMarks(state: EditorState) {
-	const marks = [...new Set([
-		...state.selection.$from.marks(),
-		...state.selection.$to.marks()
-	])]
-	const storedMarks = state?.storedMarks ?? null
-	return storedMarks ?? marks
-}
-
 @localized()
 @customElement("ww-explorable-editor")
 export class ExplorableEditor extends LitElement {
@@ -70,34 +55,43 @@ export class ExplorableEditor extends LitElement {
 		while(this.pmEditor.body.querySelector(`#ww_${num.toString(36)}`)) {
 			num++
 			if(num === Number.MAX_SAFE_INTEGER) {
-				return null
+				throw Error("Exceeded maximum number of widgets: " + String(Number.MAX_SAFE_INTEGER))
 			}
 		}
 		return `ww_${num.toString(36)}`
 	}
+
+  createWidget = (name: string, id: string, editable=true) => {
+    const nodeType = this.pmEditor.state.schema.nodes[name]
+    return nodeType.createAndFill({id, otherAttrs: {editable}}, [
+      
+    ])
+  }
 
 	insertWidget = async (name: string, preview=false, attrs: Record<string, string>={}) => {
 		const state = this.pmEditor.state
 		const previewEl = this.pmEditor.document.querySelector("#ww_preview")
 		const previewExists = previewEl?.tagName.toLowerCase() === name
 		const id = preview? "ww_preview": this.firstAvailableWidgetID
-		
 		let tr
+
 		if(!preview && previewEl && previewExists) {
-			const previewPos = this.pmEditor.posAtDOM(previewEl, 0)
+      const deepPos = this.pmEditor.posAtDOM(previewEl, 0)
+      const resolved = state.doc.resolve(deepPos)
+      const previewPos = resolved.pos - resolved.depth
 			tr = state.tr
 				.setNodeAttribute(previewPos, "id", this.firstAvailableWidgetID)
 				.setMeta("addToHistory", false)
 			this.stateBeforePreview = null
 		}
 		else if(!preview) {
-			const node = state.schema.nodes[name].create({id})
+			const node = this.createWidget(name, id)
 			tr = state.tr
 				.replaceSelectionWith(node)
 			this.stateBeforePreview = null
 		}
 		else if(preview && !previewExists) {
-			const node = state.schema.nodes[name].create({id})
+			const node = this.createWidget(name, id)
 			this.stateBeforePreview = state
 			tr = state.tr
 				.replaceSelectionWith(node)
@@ -440,6 +434,14 @@ export class ExplorableEditor extends LitElement {
 			margin: 0;
 			max-width: 840px;
 		}
+
+    audio, video, picture, picture > img {
+      width: 100%;
+    }
+
+    .slot-content {
+      cursor: text;
+    }
 
 
 		.ProseMirror {
@@ -834,8 +836,113 @@ export class ExplorableEditor extends LitElement {
     },
     "scroll": (_: any, ev: Event) => {
       // this.updatePosition()
+    },
+    "drop": (_:any, ev: DragEvent) => this.handleDropOrPaste(ev),
+    "paste": (_:any, ev: ClipboardEvent) => this.handleDropOrPaste(ev)
+  }
+
+  private static createMediaElement(blob: Blob) {
+    const mediaType = ["audio", "video", "image"].includes(blob.type.split("/")[0])? blob.type.split("/")[0]: null
+    if(!mediaType) {
+      return null
+    }
+    else {
+      const media = document.createElement(mediaType === "image"? "picture": mediaType)
+      const source = document.createElement(mediaType === "image"? "img": "source")
+      source["src"] = URL.createObjectURL(blob)
+      if(mediaType !== "image") {
+        (source as HTMLSourceElement).type = blob.type
+      }
+      else {
+        source.setAttribute("data-type", blob.type)
+      }
+      media.setAttribute("data-filename", blob.name)
+      media.appendChild(source)
+      return media
     }
   }
+
+  private static createScriptElement(blob: Blob) {
+    const script = document.createElement("script")
+    script.src = URL.createObjectURL(blob)
+    script.type = blob.type
+    script.setAttribute("data-filename", blob.name)
+    return script
+  }
+
+  private static elementsToHTMLString(elements: Element[]): string {
+    return elements.map(el => el.outerHTML).join("\n")
+  }
+
+  blobsToElements = (blobs: Blob[]): Element[] => {
+    const elements = []
+    // https://www.iana.org/assignments/media-types/media-types.xhtml
+    for(const blob of blobs) {
+      if(blob.type.startsWith("application/")) {
+        const element = ExplorableEditor.createScriptElement(blob)
+        elements.push(element)
+      }
+      else if(blob.type.startsWith("audio/")) {
+        const element = ExplorableEditor.createMediaElement(blob)
+        element? elements.push(element): null
+      }
+      else if(blob.type.startsWith("font/")) {
+        // In future, load font
+        // https://stackoverflow.com/a/75646428
+        const element = ExplorableEditor.createScriptElement(blob)
+        elements.push(element)
+      }
+      else if(blob.type.startsWith("example/")) {
+        continue
+      }
+      else if(blob.type.startsWith("image/")) {
+        const element = ExplorableEditor.createMediaElement(blob)
+        element? elements.push(element): null
+      }
+      else if(blob.type.startsWith("message/")) {
+        const element = ExplorableEditor.createScriptElement(blob)
+        elements.push(element)
+      }
+      else if(blob.type.startsWith("model/")) {
+        const element = ExplorableEditor.createMediaElement(blob)
+        element? elements.push(element): null 
+      }
+      else if(blob.type.startsWith("multipart/")) {
+        continue 
+      }
+      else if(blob.type.startsWith("text/") || blob.type === "text") {
+        const element = ExplorableEditor.createScriptElement(blob)
+        elements.push(element)
+      }
+      else if(blob.type.startsWith("video/")) {
+        const element = ExplorableEditor.createMediaElement(blob)
+        element? elements.push(element): null
+      }
+    }
+    return elements
+  }
+
+  handleDropOrPaste = (ev: DragEvent | ClipboardEvent) => {
+    const DragEvent = this.pmEditor.window.DragEvent
+    const EventType = ev instanceof DragEvent? DragEvent: ClipboardEvent
+    const data = ev instanceof DragEvent? ev.dataTransfer: ev.clipboardData
+    if((data?.files?.length ?? 0) > 0) {
+      const files = [...(data?.files as any)].filter(file => file) as File[]
+      const elements = this.blobsToElements(files)
+      const htmlString = ExplorableEditor.elementsToHTMLString(elements)
+      console.log(htmlString)
+      const dataTransfer = new DataTransfer()
+      dataTransfer.setData("text/html", htmlString)
+      // const eventToRedispatch = new DragEvent("drop", {...ev, dataTransfer})
+      const eventToRedispatch = new EventType(ev.type, {...ev, [EventType === DragEvent? "dataTransfer": "clipboardData"]: dataTransfer})
+      this.pmEditor.dom.dispatchEvent(eventToRedispatch)
+      ev.preventDefault()
+      ev.stopImmediatePropagation()
+      return false
+    }
+  }
+
+  
 
   get contentStyle() {
     return [
@@ -963,7 +1070,6 @@ export class ExplorableEditor extends LitElement {
         .paragraphCommands=${this.paragraphCommands}
         .setFontFamilyCommand=${this.setFontFamilyCommand}
         .setFontSizeCommand=${this.setFontSizeCommand}
-				.activeMarks=${getActiveMarks(this.editorState)}
 			></ww-toolbox>
 		`
 	}

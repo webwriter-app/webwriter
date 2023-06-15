@@ -97,7 +97,6 @@
 's57ae2bdbf512b1ce': `Dokument öffnen`,
 's599dcd2472c75c19': `Absatz`,
 's5c04918c08efdb71': `Absatz zentriert`,
-'s5cab1e5d80e87b9a': `Tiefgestellt`,
 's5f343a43e7ea9f91': `Fehler`,
 's600fd23c9ce971e8': `Drucke das aktive Dokument`,
 's6196153c4b0c1ea0': `Installieren`,
@@ -202,5 +201,6 @@
 'spaceKey': `Leertaste`,
 'tabKey': `⭾ Tab`,
 'upKey': `↑ Hoch`,
+'s587ac858dd80f6fa': `Subscript`,
     };
   

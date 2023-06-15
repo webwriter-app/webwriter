@@ -8,9 +8,13 @@ import { history, undo, redo } from "prosemirror-history"
 import { chainCommands, deleteSelection, joinBackward, selectNodeBackward} from "prosemirror-commands"
 import { EditorView } from "prosemirror-view"
 export {undo, redo} from "prosemirror-history"
+import mime from "mime/lite"
+
+const MIME = Object.values((mime as any)._types) as string[]
 
 import { camelCaseToSpacedCase, filterObject, namedNodeMapToObject, unscopePackageName } from "../../utility"
 import * as marshal from "../marshal"
+import { PackageWithOptions } from "../stores"
 
 const leafNodeSpecs: Record<string, NodeSpec & {group: "leaf"}> = {
   thematicBreak: {group: "leaf"}
@@ -23,15 +27,58 @@ export function getOtherAttrsFromWidget(dom: HTMLElement) {
     .map(name => [name, dom.getAttribute(name)]))
 }
 
-function packageWidgetNodeSpec(tag: string, pkg: string): NodeSpec {
+function slotContentNodeSpecName(packageName: string, slotName: string) {
+  return `${unscopePackageName(packageName).replace("-", "I")}_SLOT_${slotName}`
+}
+
+function widgetSlotContent(pkg: PackageWithOptions) {
+  return Object.keys(pkg.editingConfig?.content ?? {})
+    .map(name => slotContentNodeSpecName(pkg.name, name))
+    .join(" ")
+}
+
+function slotContentNodeSpec(pkg: PackageWithOptions, name: string, content: string): NodeSpec {
+  const nodeName = slotContentNodeSpecName(pkg.name, name)
+  return {
+    group: "_slotContent",
+    content,
+    toDOM: () => ["div", {class: nodeName + " slot-content", slot: name}, 0],
+    parseDOM: [{tag: `div.${nodeName}`}]
+  }
+}
+
+function getMediaTypesOfContent(content: Record<string, string> | undefined) {
+  if(content && "" in content) {
+    const expr = content[""]
+    const matches = [...expr.matchAll(/#\w+(?:\/[-+.\w]+)?/g)]
+    return matches.map(match => match[0].slice(1))
+  }
+  else {
+    return []
+  }
+}
+
+function parseRuleOfMediaType(mediaType: string) {
+
+}
+
+function packageWidgetNodeSpec(pkg: PackageWithOptions): NodeSpec {
+  const maybeContent = pkg.editingConfig?.content
+    ? {content: widgetSlotContent(pkg)}
+    : undefined
+  const mediaTypes = getMediaTypesOfContent(pkg.editingConfig?.content)
+  const maybeMediaParseRules = mediaTypes.length > 0? [
+
+  ]: []
+
   return {
     group: "leaf",
     widget: true,
     package: pkg,
     selectable: true,
     draggable: false,
-    preserveWhitespace: false,
     isolating: false,
+    ...maybeContent,
     attrs: {
       id: {},
       editable: {default: false},
@@ -39,7 +86,7 @@ function packageWidgetNodeSpec(tag: string, pkg: string): NodeSpec {
       analyzable: {default: false},
       otherAttrs: {default: {}}
     },
-    parseDOM : [{tag, getAttrs: (dom: HTMLElement ) => {
+    parseDOM : [{tag: unscopePackageName(pkg.name), getAttrs: (dom: HTMLElement ) => {
       return {
         id: dom.getAttribute("id"),
         editable: dom.getAttribute("editable") ?? false,
@@ -50,7 +97,7 @@ function packageWidgetNodeSpec(tag: string, pkg: string): NodeSpec {
           .filter(name => !["editable", "printable", "analyzable"].includes(name))
           .map(name => [name, dom.getAttribute(name)]))
       }
-    }}] as any,
+    }}, ...maybeMediaParseRules] as any,
     toDOM: (node: Node) => {
       return [node.type.name, {
         id: node.attrs.id,
@@ -59,7 +106,7 @@ function packageWidgetNodeSpec(tag: string, pkg: string): NodeSpec {
         ...(node.attrs.analyzable? {"analyzable": true}: {}),
         ...node.attrs.otherAttrs,
         "class": "ww-widget"
-      }]
+      }].concat(pkg.editingConfig?.content? [0]: []) as any
     }
   }  
 }
@@ -77,6 +124,81 @@ const inlineNodeSpecs: Record<string, NodeSpec & {group: "inline", inline: true}
   }
 }
 
+function maybeChildNodeOutputSpec(node: Node, mediaType: string) {
+  const result: any[] = []
+  const supertype = mediaType.split("/")[0]
+  if(supertype === "image") {
+    result.push(["img", {"src": node.attrs["src"], "data-type": mediaType}])
+  }
+  else if(supertype === "audio" || supertype === "video") {
+    result.push(["source", {"src": node.attrs["src"], "type": mediaType}])
+  }
+  return result
+}
+
+const rootTags = {
+  "application": "script",
+  "audio": "audio",
+  "font": "script",
+  "image": "picture",
+  "model": "script",
+  "text": "script",
+  "video": "video"
+}
+
+function detectMediaTypeFromDOM(dom: HTMLElement, rootTag: string) {
+  if(rootTag === "picture") {
+    return dom.querySelector("img")?.getAttribute("data-type")
+  }
+  else if(rootTag === "script") {
+    return dom.getAttribute("type")
+  }
+  else {
+    return dom.querySelector("source")?.getAttribute("type")
+  }
+}
+
+function mediaNodeEntry(mediaType: string): [string, NodeSpec] {
+  const name = mediaType.replaceAll("/", "__").replaceAll("-", "_")
+  const supertype = mediaType.split("/")[0] as keyof typeof rootTags
+  const subtype = mediaType.split("/")[1]
+  
+  const rootTag = rootTags[supertype]
+  const rootAttrs = (node: Node) => rootTag === "script"? {src: node.attrs["src"], type: mediaType}: {controls: true}
+
+  return [name, {
+    group: "_" + supertype,
+    attrs: {
+      src: {default: undefined}
+    },
+    toDOM: node => [rootTag, rootAttrs(node), ...maybeChildNodeOutputSpec(node, mediaType)],
+    parseDOM: [{tag: rootTag, getAttrs: (dom: HTMLElement | string) => {
+      const detectedMediaType = detectMediaTypeFromDOM(dom as HTMLElement, rootTag)
+      console.log(detectedMediaType)
+      if(typeof dom === "string" || detectedMediaType !== mediaType) {
+        return false
+      }
+      else if(rootTag === "picture") {
+        const src = dom.querySelector("img")?.src
+        return !src? false: {src}
+      }
+      else if(rootTag === "audio" || rootTag === "video") {
+        const src = dom.querySelector("source")?.src
+        return !src? false: {src}
+      }
+      else {
+        console.log(dom)
+        const src = (dom as HTMLScriptElement)?.src
+        return !src? false: {src}
+      }
+    }}]
+  }]
+}
+
+
+
+const mediaNodeSpecs = Object.fromEntries(MIME.map(mediaNodeEntry))
+
 
 
 const containerNodeSpecs: Record<string, NodeSpec & {group: "container"}> = {
@@ -90,13 +212,16 @@ const containerNodeSpecs: Record<string, NodeSpec & {group: "container"}> = {
       marginTop: {default: 0},
       marginBottom: {default: "0.5rem"},
       marginLeft: {default: 0},
-      marginRight: {default: 0},
+      marginRight: {default: 0}
     },
     whitespace: "pre",
     parseDOM: [{tag: "p"}],
     toDOM: node => [
       "p",
-      {style: Object.keys(node.attrs).map(key => `${camelCaseToSpacedCase(key, false, "-")}: ${String(node.attrs[key])}`).join("; ")},
+      {
+        style: Object.keys(node.attrs)
+          .map(key => `${camelCaseToSpacedCase(key, false, "-")}: ${String(node.attrs[key])}`).join("; ")
+      },
       0
     ]
   },
@@ -165,7 +290,7 @@ const markSpecs: Record<string, MarkSpec> = {
   },
   underline: {
     parseDOM: [
-      {tag: "span", style: "text-decoration", getAttrs: (v: any) => v.includes("underline")}
+      {tag: "span", style: "text-decoration", getAttrs: (v: any) => v.includes && v.includes("underline")}
     ],
     toDOM: () => ["span", {style: "text-decoration: underline"}, 0]
   },
@@ -233,16 +358,23 @@ const UnknownElementSpec: NodeSpec = {
 }
 
 
-export const createSchemaSpec = (packages: string[] = []) => {
-  const widgetNodes = Object.fromEntries(packages.map(p => [
-    unscopePackageName(p),
-    packageWidgetNodeSpec(unscopePackageName(p), p)
+export const createSchemaSpec = (packages: PackageWithOptions[] = []) => {
+  const widgetNodes = Object.fromEntries(packages.map(pkg => [
+    unscopePackageName(pkg.name),
+    packageWidgetNodeSpec(pkg)
   ]))
+  const slotNodes = Object.fromEntries(packages.flatMap(pkg => {
+    const content = pkg.editingConfig?.content ?? {}
+    return Object.entries(content).map(([name, expr]) => [
+      slotContentNodeSpecName(pkg.name, name),
+      slotContentNodeSpec(pkg, name, expr)
+    ])
+  }))
   return {
     topNode: "explorable",
     nodes: {
       explorable: {
-        content: "paragraph+ ((leaf | container) paragraph+)* paragraph*",
+        content: "paragraph+ ((leaf | container | _image | _audio | _video | _text | _application | _model) paragraph+)* paragraph*",
         attrs: {meta: {default: {}}},
         parseDOM: [{tag: "body"}]
       } as NodeSpec,
@@ -250,6 +382,8 @@ export const createSchemaSpec = (packages: string[] = []) => {
       ...inlineNodeSpecs,
       ...containerNodeSpecs,
       ...widgetNodes,
+      ...slotNodes,
+      ...mediaNodeSpecs,
       unknownElement: UnknownElementSpec,
     },
     marks: markSpecs
@@ -345,6 +479,12 @@ const rules: InputRule[] = [
 //  new InputRule(/^#{1,6} $/, "heading"),
 //  new InputRule(/\*\*.$/, "bold"),
 //  new InputRule(/\*.$/, "italic"),
+  new InputRule(/https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$/, (state, match, start, end) => {
+    const href = match[0]
+    const linkMark = state.schema.mark("link", {href})
+    const textNode = state.schema.text(href, [linkMark])
+    return state.tr.replaceRangeWith(start, end, textNode)
+  })
 ]
 
 export function isEmpty(attributeKey: string = "data-empty") {
@@ -371,11 +511,11 @@ export const defaultConfig: EditorStateConfig & {schema: Schema, doc: Node} = {
     keymap({...baseKeymap, ...explorableKeymap}),
     inputRules({rules}),
     history(),
-    isEmpty()
+    isEmpty(),
   ]
 }
 
-export function createEditorStateConfig(packages: string[]) {
+export function createEditorStateConfig(packages: PackageWithOptions[]) {
   return {
     schema: new Schema(createSchemaSpec(packages)),
     doc: baseSchema.node(baseSchema.topNodeType, {}, [baseSchema.node("paragraph")]),
@@ -388,7 +528,7 @@ export function createEditorStateConfig(packages: string[]) {
   }
 }
 
-export function createSchema(packages: string[]) {
+export function createSchema(packages: PackageWithOptions[]) {
   return new Schema(createSchemaSpec(packages))
 }
 

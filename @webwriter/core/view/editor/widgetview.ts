@@ -1,4 +1,4 @@
-import { NodeView } from "prosemirror-view"
+import { Decoration, DecorationSource, NodeView } from "prosemirror-view"
 import { NodeSelection } from "prosemirror-state"
 import { DOMSerializer, Node } from "prosemirror-model"
 
@@ -11,6 +11,7 @@ export class WidgetView implements NodeView {
 	view: EditorViewController
 	getPos: () => number
 	dom: HTMLElement
+  contentDOM?: HTMLElement
 
 	constructor(node: Node, view: EditorViewController, getPos: () => number) {
 		this.node = node
@@ -28,7 +29,12 @@ export class WidgetView implements NodeView {
 		this.dom.addEventListener("keydown", e => this.emitWidgetInteract(e))
 		this.dom.addEventListener("click", e => {this.emitWidgetInteract(e)})
 		this.dom.addEventListener("touchstart", e => this.emitWidgetInteract(e))
+    this.contentDOM = this.dom
 	}
+
+  get slots(): HTMLSlotElement[] {
+    return Array.from(this.dom.shadowRoot?.querySelectorAll("slot") ?? [])
+  }
 
 	ignoreMutation(mutation: MutationRecord) {
 		const {type, target} = mutation
@@ -42,6 +48,7 @@ export class WidgetView implements NodeView {
 		}
 		else if(type === "childList") {
 			// TODO
+      return false
 		}
 		return true
 	}
@@ -57,19 +64,26 @@ export class WidgetView implements NodeView {
 	}
 
 	stopEvent(e: Event) {
+    console.log(e)
+    const window = this.dom.ownerDocument.defaultView!
 		const activeElement = this.view?.host?.shadowRoot?.activeElement
 		const node = this.view.nodeDOM(this.getPos())
-		if(activeElement === node) {
+    if(e instanceof window.MouseEvent || e instanceof window.DragEvent) {
+      const clickedElement = e.composedPath()[0] as HTMLElement
+      const isFromSlotContent = e.composedPath().some((el: any) => el?.classList?.contains("slot-content"))
+      return false
+    }
+		else if(activeElement === node) {
 			return true
-				&& !(e instanceof KeyboardEvent && e.key === "Delete")
-				&& !(e instanceof KeyboardEvent && e.key === "Escape")
-				&& !(e instanceof KeyboardEvent && (e.ctrlKey && e.key === "ArrowDown"))
-				&& !(e instanceof KeyboardEvent && (e.ctrlKey && e.key === "ArrowUp"))
+				&& !(e instanceof window.KeyboardEvent && e.key === "Delete")
+				&& !(e instanceof window.KeyboardEvent && e.key === "Escape")
+				&& !(e instanceof window.KeyboardEvent && (e.ctrlKey && e.key === "ArrowDown"))
+				&& !(e instanceof window.KeyboardEvent && (e.ctrlKey && e.key === "ArrowUp"))
 		}
 		else {
 			return true 
-				&& !(e instanceof KeyboardEvent && e.key === "Delete")
-				&& !(e instanceof KeyboardEvent && e.key === "Escape")
+				&& !(e instanceof window.KeyboardEvent && e.key === "Delete")
+				&& !(e instanceof window.KeyboardEvent && e.key === "Escape")
 		}
 	}
 

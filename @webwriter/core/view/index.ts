@@ -17,6 +17,7 @@ import { SlAlert } from "@shoelace-style/shoelace"
 import { ifDefined } from "lit/directives/if-defined.js"
 import { ExplorableEditor } from "./editor"
 import { keyed } from "lit/directives/keyed.js"
+import { toJS } from "mobx"
 
 
 export interface SlAlertAttributes {

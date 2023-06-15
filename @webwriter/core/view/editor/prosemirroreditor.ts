@@ -18,7 +18,7 @@ type IProsemirrorEditor =
 
 type EditorIFrameElement = HTMLIFrameElement & {
   contentDocument: {body: HTMLElement}
-  contentWindow: {view: EditorView, eval: typeof eval, URL: typeof URL, Blob: typeof Blob, console: typeof console}
+  contentWindow: typeof globalThis
 }
 
 @localized()
@@ -259,7 +259,6 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
       this.view = new EditorView(this.body, this.directProps)
     }
     else {
-      console.log(previous)
       this.view?.setProps(this.directProps)
     }
   }
@@ -372,7 +371,6 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
   
 
   render() {
-    console.log(this.bundleID)
     return keyed(this.bundleID, html`<iframe part="iframe"></iframe>`)
   }
 }

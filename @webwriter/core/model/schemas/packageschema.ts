@@ -2,6 +2,8 @@
 import {z} from "zod"
 import SPDX_LICENSE_MAP from "spdx-license-list"
 import {valid as semverValid, validRange as semverValidRange} from "semver"
+import {ContentMatch, Schema} from "prosemirror-model"
+import { baseSchema, createSchemaSpec } from "./resourceschema"
 
 const SPDX_LICENSES = Object.keys(SPDX_LICENSE_MAP)
 const NODE_BUILTINS = [
@@ -123,6 +125,33 @@ const PersonSchema = z
     url: z.string().url().optional()
   })
 
+type ContentExpression = z.infer<typeof ContentExpression>
+const ContentExpression = z.string().superRefine((arg, ctx) => {
+  const words = [...arg.matchAll(/\w+/g)].map(match => match[0])
+  const wordNodeSpecs = Object.fromEntries(words.map(word => [word, {}]))
+  const baseSchemaSpec = createSchemaSpec()
+  const schema = new Schema({
+    ...baseSchemaSpec,
+    nodes: {
+      ...baseSchemaSpec.nodes,
+      ...wordNodeSpecs,
+      "_": {}
+    }
+  })
+  try {
+    const argWithoutMIMEExprs = arg.replaceAll(/#\w+\/[-+.\w]+/g, "_")
+    // @ts-ignore: Using internal method from ProseMirror
+    ContentMatch.parse(argWithoutMIMEExprs, schema.nodes)
+    return arg
+  }
+  catch(err: any) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: err.message
+    })
+  }
+})
+
 type Funding = z.infer<typeof Funding>
 const Funding = z.object({
   type: z.string(),
@@ -156,6 +185,15 @@ export const Person = z.string()
   })
   .refine(arg => PersonSchema.parse(arg))
   .or(PersonSchema)
+
+export type EditingConfig = z.infer<typeof EditingConfig>
+export const EditingConfig = z.object({
+  content: z
+    .record(z.string(), ContentExpression)
+    .or(ContentExpression.transform(arg => ({"": arg})))
+    .default({})
+    .optional(),
+})
 
 const PackageSchema = z.object({
   name: NpmName,
@@ -194,9 +232,9 @@ const PackageSchema = z.object({
   exports: z
     .string()
     .or(z.string().array())
-    .or(z.string().array())
     .optional(),
-  imports: z.record(z.string().startsWith("#"), z.record(z.string())).optional()
+  imports: z.record(z.string().startsWith("#"), z.record(z.string())).optional(),
+  editingConfig: EditingConfig.optional()
 })
 .catchall(Json)
 

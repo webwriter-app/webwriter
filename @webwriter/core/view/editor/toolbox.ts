@@ -42,9 +42,6 @@ export class Toolbox extends LitElement {
   @property({type: Array, attribute: false})
 	paragraphCommands: CommandEntry[] = []
 
-	@property({type: Array, attribute: false})
-	activeMarks: Mark[]
-
   @property({type: Object, attribute: false})
   activeElement: HTMLElement | null
 
@@ -189,7 +186,6 @@ export class Toolbox extends LitElement {
       "mark-command": true,
       "applied": Boolean(v.active)
     }
-    const activeMark = this.activeMarks.find(mark => mark.type.name === null)
 
 		return html`
     <span class=${classMap(classes)}>
@@ -200,7 +196,7 @@ export class Toolbox extends LitElement {
         @click=${() => this.dispatchEvent(CommandEvent(v.id))}
         variant="icon"
       ></ww-button>
-      ${Object.entries(v.fields ?? {}).map(([fk, fv]) => this.MarkCommandField(v.id, fk, fv.type, fv.placeholder, activeMark))}
+      ${Object.entries(v.fields ?? {}).map(([fk, fv]) => this.MarkCommandField(v.id, fk, fv.type, fv.placeholder, v.value))}
     </span>
     `
 	})
@@ -248,10 +244,10 @@ export class Toolbox extends LitElement {
     </ww-combobox>`
   }
 
-  MarkCommandField = (markType: string, key: string, type: "string" | "number" | "boolean", placeholder?: string, activeMark?: Mark) => {
+  MarkCommandField = (markType: string, key: string, type: "string" | "number" | "boolean", placeholder?: string, value?: any) => {
     if(type === "string" || type === "number") {
       return html`<sl-input 
-        value=${activeMark?.attrs[key] ?? ""}
+        value=${value ?? ""}
         placeholder=${placeholder ?? ""}
         class="field" 
         type=${type === "string"? "text": "number"}

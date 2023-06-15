@@ -1,0 +1,14 @@
+{
+  "name": "@webwriter/wui",
+  "version": "0.1.0",
+  "description": "UI components for WebWriter widgets",
+  "main": "index.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "author": "Frederic Salmen <frederic@fsalmen.de>",
+  "license": "MIT",
+  "scripts": {
+    "build": "vite build index.ts"
+  }
+}

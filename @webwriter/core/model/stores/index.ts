@@ -41,7 +41,7 @@ export class RootStore {
   }
 
   onImportPackages = (packages: Package[]) => {
-    this.resources.schema = createSchema(packages.map(pkg => pkg.name))
+    this.resources.schema = createSchema(packages)
     this.resources.updateSchemas()
   }
 

@@ -40,6 +40,8 @@ async function fileTypeFromUrl(url: string) {
 @customElement("ww-figure")
 export default class WwFigure extends LitElementWw {
 
+  static shadowRootOptions = {...LitElementWw.shadowRootOptions}
+
   @property({type: String, attribute: true, reflect: true})
   contentSrc: string
 
@@ -207,10 +209,15 @@ export default class WwFigure extends LitElementWw {
   render() {
     return html`
     ${this.editable && !this.printable? this.actionTemplate: null}
+    <slot name="heading">
+      Heading
+    </slot>
     <figure>
       ${this.printable? this.printTemplate: this.contentTemplate}
       <figcaption>
-        ${this.editable && !this.printable? html`<sl-input id="caption" filled placeholder="Caption" value=${this.caption} @sl-change=${e => this.caption=e.target.value}></sl-input>`: html`<span>${this.caption}</span>`}
+        <slot name="caption">
+          ${this.editable && !this.printable? html`<sl-input id="caption" filled placeholder="Caption" value=${this.caption} @sl-change=${e => this.caption=e.target.value}></sl-input>`: html`<span>${this.caption}</span>`}
+        </slot>
       </figcaption>
     </figure>`
   }
