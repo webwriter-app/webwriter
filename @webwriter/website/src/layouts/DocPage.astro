@@ -5,6 +5,12 @@ import Layout from "@layouts/Layout.astro"
 const allDocs = (await getCollection('docs'))
     .filter(doc => doc.slug !== "index")
     .sort((a, b) => a.data.order - b.data.order)
+    .map(doc => ({...doc, level: new Set(doc.slug.split("/")).size}))
+
+const categories = new Set(allDocs.reduce((acc, doc) => {
+  return doc.slug.includes("/")? [...acc, doc.slug.split("/")[0]]: acc
+}, [] as string[]))
+
 const docUrls = allDocs.map(doc => {
     const url = new URL(Astro.request.url)
     url.pathname = `docs/${doc.slug}`
@@ -26,7 +32,7 @@ const docActive = allDocs.map((doc, i) =>{
               <a data-swup-preload href="/docs">Documentation</a>
           </h3>
           <ol>
-              {allDocs.map((doc, i) => <li class="doc-link" data-active={docActive[i]}><a  data-swup-preload href={docUrls[i]}>{doc.data.title}</a></li>)}
+              {allDocs.map((doc, i) => <li class="doc-link" data-active={docActive[i]} data-level={doc.level}><a  data-swup-preload href={docUrls[i]}>{doc.data.title}</a></li>)}
           </ol>
           <label id="closeDocsNav" for="docsNavInput" class="bi-x" ></label>
       </nav>
@@ -149,7 +155,7 @@ const docActive = allDocs.map((doc, i) =>{
         display: inline-flex;
         text-decoration: none;
         font-size: 1rem;
-        height: 2.5rem;
+        height: 1.5rem;
         color: var(--sl-color-gray-950);
         width: 100%;
         flex-direction: row;
@@ -168,6 +174,15 @@ const docActive = allDocs.map((doc, i) =>{
 
     .doc-link[data-active] a {
         text-decoration: 2px solid underline;
+    }
+
+    .doc-link[data-level=1] {
+      margin-top: 0.5rem;
+      font-weight: bold;
+    }
+
+    .doc-link[data-level=2] {
+      margin-left: 1ch;
     }
 
     @media (max-width: 1000px) {
@@ -207,6 +222,11 @@ const docActive = allDocs.map((doc, i) =>{
 </style>
 
 <style is:global>
+
+    img {
+      margin: auto;
+      display: block;
+    }
 
     article {
         max-width: min(700px, 100vw);

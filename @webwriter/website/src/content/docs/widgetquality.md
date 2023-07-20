@@ -1,9 +1,10 @@
 ---
-order: 6
-title: "Widget quality"
+order: 500
+title: "Evaluating Widgets"
+type: "explainer"
 ---
-# Explainer: Designing Widgets
-This explainer outlines different criteria for what makes a good widget. It can help you to improve your widget's design.
+# Evaluating Widgets
+There are different criteria for what makes a good widget. This guide outlines a few to help you improve your widget's design.
 
 ## Criteria for widget quality
 As outlined in the [guide for creating widgets](./creatingwidgets.md), a widget can support many different attributes from the widget interface. Ideally, as many of these attributes as possible are supported. As such, this level of attribute coverage is an important measure of widget quality and can guide authors when picking widgets to install. Another measure is performance, considering both time requirements (loading time) and space requirements (bundle size). Finally, widget quality does not only from hard criteria like functionality and performance, but also from soft criteria that depend on the value the widget provides to the authors and learners.
@@ -42,9 +43,4 @@ There are several sets of usability principles. For this explainer, we apply [Ni
 8. **Aesthetic and minimalist design**: Interfaces should not contain information that is irrelevant or rarely needed. Every extra unit of information in an interface competes with the relevant units of information and diminishes their relative visibility.
 9. **Help users recognize, diagnose, and recover from errors**: Error messages should be expressed in plain language (no error codes), precisely indicate the problem, and constructively suggest a solution.
 10. **Help and documentation**: It’s best if the system doesn’t need any additional explanation. However, it may be necessary to provide documentation to help users understand how to complete their tasks.
-
-
-## Value
-*Work in Progress*:
-- Usefulness for education as evaluated by experts
 

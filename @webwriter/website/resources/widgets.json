@@ -66,7 +66,7 @@
       "vitest": "^0.30.1"
     },
     "bundleSize": {
-      "js": 415052,
+      "js": 415041,
       "css": 0
     },
     "installSize": 3029
@@ -144,20 +144,95 @@
       "@smui/common": "^6.1.4"
     },
     "bundleSize": {
-      "js": 387316,
+      "js": 387303,
       "css": 20450
     },
     "installSize": 535193
   },
   {
+    "name": "@webwriter/ww-code",
+    "scope": "webwriter",
+    "version": "0.3.0",
+    "description": "The code widget allows for coding exercises to be embedded into the worksheet. The code widget is a wrapper around the [CodeMirror](https://codemirror.net/) editor. The code widget supports the following languages:",
+    "keywords": [
+      "webwriter-widget",
+      "codeWidget"
+    ],
+    "date": "2023-06-20T10:00:03.440Z",
+    "links": {
+      "npm": "https://www.npmjs.com/package/%40webwriter%2Fww-code"
+    },
+    "publisher": {
+      "username": "k1r0j",
+      "email": "jorik@vangenuchten.de"
+    },
+    "maintainers": [
+      {
+        "username": "k1r0j",
+        "email": "jorik@vangenuchten.de"
+      },
+      {
+        "username": "salmenf",
+        "email": "frederic@fsalmen.de"
+      }
+    ],
+    "license": "MIT",
+    "main": "src/ww-code.ts",
+    "type": "module",
+    "contributors": [
+      "Erik Viere",
+      "Jorik van Genuchten"
+    ],
+    "scripts": {
+      "dev": "vite --port 3000",
+      "build": "vite build",
+      "preview": "vite preview"
+    },
+    "dependencies": {
+      "@codemirror/lang-css": "^6.2.0",
+      "@codemirror/lang-html": "^6.2.0",
+      "@codemirror/lang-javascript": "^6.0.2",
+      "@codemirror/lang-python": "^6.0.2",
+      "@codemirror/state": "^6.1.2",
+      "@codemirror/theme-one-dark": "^6.1.0",
+      "@codemirror/view": "^6.2.5",
+      "@open-wc/scoped-elements": "^2.0.0-next.6",
+      "@replit/codemirror-indentation-markers": "^6.1.0",
+      "@shoelace-style/shoelace": "^2.0.0-beta.83",
+      "@webwriter/lit": "^0.3.0",
+      "codemirror": "^6.0.1",
+      "codemirror-readonly-ranges": "^0.1.0-alpha.1",
+      "lit": "2.3.1",
+      "pyodide": "^0.23.3",
+      "range-analyzer": "^0.1.1-alpha.2",
+      "tslib": "^2.4.0"
+    },
+    "devDependencies": {
+      "@types/node": "^18.7.21",
+      "@typescript-eslint/eslint-plugin": "^5.38.1",
+      "eslint": "^8.24.0",
+      "eslint-config-standard-with-typescript": "^23.0.0",
+      "eslint-plugin-import": "^2.26.0",
+      "eslint-plugin-n": "^15.3.0",
+      "eslint-plugin-promise": "^6.0.1",
+      "typescript": "^4.8.3",
+      "vite": "^3.0.0"
+    },
+    "bundleSize": {
+      "js": 683353,
+      "css": 17952
+    },
+    "installSize": 5394
+  },
+  {
     "name": "ww-formula",
     "scope": "unscoped",
-    "version": "0.1.73",
-    "description": "Clone with `git clone` via SSH or HTTP",
+    "version": "0.2.31",
+    "description": "Widget for editing formulas. Use the buttons to insert math and edit it directly insinde the textarea.",
     "keywords": [
       "webwriter-widget"
     ],
-    "date": "2023-05-04T12:51:20.903Z",
+    "date": "2023-07-13T12:07:40.398Z",
     "links": {
       "npm": "https://www.npmjs.com/package/ww-formula"
     },
@@ -182,7 +257,13 @@
       "@shoelace-style/shoelace": "^2.4.0",
       "@webwriter/lit": "^0.4.1",
       "lit": "^2.6.1",
-      "mathjax-full": "^3.2.2"
+      "mathjax-full": "^3.2.2",
+      "prosemirror-example-setup": "^1.2.1",
+      "prosemirror-menu": "^1.2.2",
+      "prosemirror-model": "^1.19.2",
+      "prosemirror-schema-basic": "^1.2.2",
+      "prosemirror-state": "^1.4.3",
+      "prosemirror-view": "^1.31.4"
     },
     "devDependencies": {
       "typescript": "^4.9.3",
@@ -193,10 +274,55 @@
       "access": "public"
     },
     "bundleSize": {
-      "js": 30014,
+      "js": 30118,
       "css": 0
     },
-    "installSize": 3045
+    "installSize": 2918
+  },
+  {
+    "name": "ww-flowchart",
+    "scope": "unscoped",
+    "version": "0.5.1",
+    "description": "Create programme flowcharts!",
+    "keywords": [
+      "webwriter-widget"
+    ],
+    "date": "2023-06-14T14:01:32.740Z",
+    "links": {
+      "npm": "https://www.npmjs.com/package/ww-flowchart"
+    },
+    "author": "Kevin Lu",
+    "publisher": {
+      "username": "k.lu",
+      "email": "kevin.lu@live.de"
+    },
+    "maintainers": [
+      {
+        "username": "k.lu",
+        "email": "kevin.lu@live.de"
+      }
+    ],
+    "scripts": {
+      "dev": "vite --open",
+      "build": "vite build"
+    },
+    "dependencies": {
+      "@webwriter/lit": "latest",
+      "axios": "^1.4.0",
+      "dotenv": "^16.1.4",
+      "lit": "^2.4.0",
+      "uuid": "^9.0.0"
+    },
+    "devDependencies": {
+      "typescript": "^4.8.4",
+      "vite": "^3.1.6"
+    },
+    "license": "MIT",
+    "bundleSize": {
+      "js": 120876,
+      "css": 0
+    },
+    "installSize": 50343
   },
   {
     "name": "ww-manualgraphviz",
@@ -243,7 +369,7 @@
     },
     "description": "",
     "bundleSize": {
-      "js": 109343,
+      "js": 109289,
       "css": 0
     },
     "installSize": 13398
@@ -293,7 +419,7 @@
     },
     "description": "",
     "bundleSize": {
-      "js": 109297,
+      "js": 109238,
       "css": 0
     },
     "installSize": 13253
@@ -339,10 +465,10 @@
     "scripts": {},
     "gitHead": "ee667087d26ca3ba189e094a17d45d10ff1ae89d",
     "bundleSize": {
-      "js": 70274,
+      "js": 50171,
       "css": 17952
     },
-    "installSize": 1818
+    "installSize": 1796
   },
   {
     "name": "@webwriter/ww-figure",
@@ -389,24 +515,85 @@
     },
     "gitHead": "ee667087d26ca3ba189e094a17d45d10ff1ae89d",
     "bundleSize": {
-      "js": 144546,
+      "js": 125304,
       "css": 17952
     },
-    "installSize": 7058
+    "installSize": 7032
   },
   {
-    "name": "@webwriter/ww-code",
+    "name": "@christiankoch/ww-deeplearning",
+    "scope": "christiankoch",
+    "version": "0.1.1",
+    "description": "Deep learning visualizer for WebWriter",
+    "keywords": [
+      "webwriter-widget"
+    ],
+    "date": "2023-07-12T09:58:20.464Z",
+    "links": {
+      "npm": "https://www.npmjs.com/package/%40christiankoch%2Fww-deeplearning"
+    },
+    "author": "Christian Koch",
+    "publisher": {
+      "username": "christiankoch",
+      "email": "mail@christian-koch.eu"
+    },
+    "maintainers": [
+      {
+        "username": "christiankoch",
+        "email": "mail@christian-koch.eu"
+      }
+    ],
+    "license": "MIT",
+    "type": "module",
+    "main": "/dist/index.js",
+    "files": [
+      "dist",
+      "src"
+    ],
+    "scripts": {
+      "dev": "vite",
+      "build": "vite build",
+      "preview": "vite preview"
+    },
+    "dependencies": {
+      "@lit-labs/context": "^0.3.3",
+      "@shoelace-style/shoelace": "^2.2.0",
+      "@tensorflow/tfjs": "^4.2.0",
+      "@tensorflow/tfjs-vis": "^1.5.1",
+      "@types/cytoscape": "^3.19.9",
+      "@webwriter/create-widget": "^0.4.1",
+      "@webwriter/lit": "^0.4.2",
+      "cytoscape": "^3.23.0",
+      "lit": "^2.4.0"
+    },
+    "devDependencies": {
+      "@typescript-eslint/eslint-plugin": "^6.0.0",
+      "@typescript-eslint/parser": "^6.0.0",
+      "eslint": "^8.44.0",
+      "eslint-plugin-lit": "^1.8.3",
+      "eslint-plugin-wc": "^1.5.0",
+      "prettier": "^2.8.8",
+      "typescript": "^5.1.6",
+      "vite": "^3.1.6",
+      "vite-plugin-static-copy": "^0.13.1"
+    },
+    "bundleSize": {
+      "js": 457929,
+      "css": 0
+    },
+    "installSize": 53588
+  },
+  {
+    "name": "@webwriter/ww-image",
     "scope": "webwriter",
     "version": "0.1.0",
     "keywords": [
-      "webwriter-widget",
-      "codeWidget"
+      "webwriter-widget"
     ],
-    "date": "2023-05-23T14:56:15.352Z",
+    "date": "2023-06-27T12:34:41.280Z",
     "links": {
-      "npm": "https://www.npmjs.com/package/%40webwriter%2Fww-code"
+      "npm": "https://www.npmjs.com/package/%40webwriter%2Fww-image"
     },
-    "author": "Erik Viere",
     "publisher": {
       "username": "k1r0j",
       "email": "jorik@vangenuchten.de"
@@ -421,46 +608,24 @@
         "email": "frederic@fsalmen.de"
       }
     ],
-    "license": "MIT",
-    "main": "src/ww-code.ts",
-    "type": "module",
+    "description": "",
+    "main": "index.js",
+    "contributors": [
+      "Jorik van Genuchten"
+    ],
     "scripts": {
-      "dev": "vite --port 3000",
-      "build": "vite build",
-      "preview": "vite preview"
+      "dev": "vite --open",
+      "build": "vite build"
     },
     "dependencies": {
-      "@codemirror/lang-html": "^6.2.0",
-      "@codemirror/lang-javascript": "^6.0.2",
-      "@codemirror/lang-python": "^6.0.2",
-      "@codemirror/state": "^6.1.2",
-      "@codemirror/theme-one-dark": "^6.1.0",
-      "@codemirror/view": "^6.2.5",
-      "@open-wc/scoped-elements": "^2.0.0-next.6",
-      "@replit/codemirror-indentation-markers": "^6.1.0",
-      "@shoelace-style/shoelace": "^2.0.0-beta.83",
+      "@shoelace-style/shoelace": "^2.4.0",
       "@webwriter/lit": "^0.3.0",
-      "codemirror": "^6.0.1",
-      "codemirror-readonly-ranges": "^0.1.0-alpha.1",
-      "lit": "2.3.1",
-      "range-analyzer": "^0.1.1-alpha.2",
-      "tslib": "^2.4.0"
+      "jimp": "0.22.7",
+      "lit": "^2.4.0"
     },
     "devDependencies": {
-      "@types/node": "^18.7.21",
-      "@typescript-eslint/eslint-plugin": "^5.38.1",
-      "eslint": "^8.24.0",
-      "eslint-config-standard-with-typescript": "^23.0.0",
-      "eslint-plugin-import": "^2.26.0",
-      "eslint-plugin-n": "^15.3.0",
-      "eslint-plugin-promise": "^6.0.1",
-      "typescript": "^4.8.3",
-      "vite": "^3.0.0"
-    },
-    "bundleSize": {
-      "js": 702643,
-      "css": 17952
-    },
-    "installSize": 3811
+      "typescript": "^4.8.4",
+      "vite": "^3.1.6"
+    }
   }
 ]

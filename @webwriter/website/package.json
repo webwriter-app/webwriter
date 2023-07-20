@@ -1,5 +1,5 @@
 {
-	"name": "webwriter-website",
+	"name": "@webwriter/website",
 	"type": "module",
 	"version": "0.1.0",
 	"scripts": {

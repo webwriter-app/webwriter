@@ -22,7 +22,7 @@ const body = await response.json()
 const widgets = body.objects.map(obj => obj.package)
 const names = widgets.map(widget => widget.name)
 
-fs.ensureDir("public/widgetsrc")
+fs.ensureDirSync("public/widgetsrc")
 fs.writeJSONSync("public/widgetsrc/package.json", {
   name: "@webwriter/website-dependencies",
   version: "0.0.0",
@@ -34,11 +34,13 @@ fs.writeJSONSync("public/widgetsrc/package.json", {
   scripts: {"esbuild": "esbuild"}
 }, {spaces: "\t"})
 
-execSync(`npm --prefix ./public/widgetsrc install`, (error, stdout, stderr) => {
-    error && console.error(error.message)
-    stderr && console.error(stderr)
-    stdout && console.log(stdout)
-})
+try {
+  console.log(execSync(`npm install`, {cwd: "./public/widgetsrc"}).toString())
+}
+catch(err) {
+  throw err
+}
+
 
 const importStatements = Object.fromEntries(names.map(name => [
     name,
@@ -46,6 +48,15 @@ const importStatements = Object.fromEntries(names.map(name => [
 ]))
 
 const esbuildPath = path.normalize("public/widgetsrc/node_modules/.bin/esbuild")
+
+const tsconfigPath = path.normalize("tmp/tsconfig.json")
+fs.ensureFileSync(tsconfigPath)
+fs.writeFileSync(tsconfigPath, `{
+  "compilerOptions": {
+    "experimentalDecorators": true
+  }
+}
+`, {encoding: "utf8"})
 
 const bundleSizes = []
 const installSizes = []
@@ -55,10 +66,13 @@ for(const [i, name] of names.entries()) {
     fs.writeFileSync(jsFile, importStatements[name], {encoding: "utf8"})
     const outFileJs = `public/widgetsrc/${name}.js`
     const outFileCss = outFileJs.slice(0, -3) + ".css"
-    
-    execSync(`${esbuildPath} --bundle ${jsFile} --outfile=${outFileJs} --minify`, {env: {"NODE_PATH": "public/widgetsrc/node_modules"}}, (error, stdout, stderr) => {
-        error && console.error(error.message)
-    })
+    try {
+      execSync(`${esbuildPath} --bundle ${jsFile} --tsconfig=tmp/tsconfig.json --outfile=${outFileJs} --minify`, {env: {"NODE_PATH": "public/widgetsrc/node_modules"}})
+    }
+    catch(err) {
+      console.error(err)
+      continue
+    }
     const js = fs.statSync(outFileJs).size
     const css = fs.existsSync(outFileCss)? fs.statSync(outFileCss).size: 0
     const installSize = await dirSize(`public/widgetsrc/node_modules/${name}`)
@@ -66,7 +80,7 @@ for(const [i, name] of names.entries()) {
     installSizes.push(installSize)
 }
 
-fs.rm("tmp", {recursive: true})
+// fs.rm("tmp", {recursive: true})
 
 const packages = names
     .map(name => JSON.parse(fs.readFileSync(`public/widgetsrc/node_modules/${name}/package.json`, "utf8")))

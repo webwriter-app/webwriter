@@ -1,12 +1,11 @@
 ---
-order: 5
-title: "Using other libraries"
+order: 400
+title: "Using Other Libraries"
 ---
 
-# Guide: Using other libraries
+# Using Other Libraries
 
-This guide summarizes options to use component libraries other than the recommended Lit to implement widgets, and also how to use techonology not [supported by esbuild](https://esbuild.github.io/content-types/).
-
+This guide summarizes options to use component libraries other than the recommended Lit to implement widgets.
 
 ## Choose your own web component library
 There are [many approaches to create web components](https://webcomponents.dev/blog/all-the-ways-to-make-a-web-component/) other than Lit. While those are technically supported, you may run into unknown issues employing these.
@@ -61,8 +60,3 @@ export default class CoolWidget extends HTMLElement {
 1. `editable`: If `true`, the widget should render UI elements so that authors can edit the widget. If `false`, no such UI elements should be rendered.
 2. `printable`: If `true`, the widget should render itself so that it may be printed easily.
 3. `analyzable`: Not implemented yet...
-
-
-## Using technology not supported by esbuild
-In WebWriter, only [content types of esbuild are supported](https://esbuild.github.io/content-types/). If you want to use something else, such as SASS, Elm, etc., you need to add a build step to your package. 
-Take SASS for example: `esbuild` only supports importing `.css`, not `.scss`. To solve this, you could use the CLI `sass` to compile `.scss` files down to `.css` files first, then import those in your main file.
