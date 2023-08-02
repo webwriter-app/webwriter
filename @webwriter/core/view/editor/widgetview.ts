@@ -5,35 +5,46 @@ import { DOMSerializer, Node } from "prosemirror-model"
 import { getOtherAttrsFromWidget } from "../../model"
 import {EditorViewController} from "."
 
+var done = false
+
 export class WidgetView implements NodeView {
 
 	node: Node
 	view: EditorViewController
-	getPos: () => number
+	// getPos: () => number
 	dom: HTMLElement
   contentDOM?: HTMLElement
 
 	constructor(node: Node, view: EditorViewController, getPos: () => number) {
 		this.node = node
 		this.view = view
-		this.getPos = getPos
-		this.dom = DOMSerializer.fromSchema(node.type.schema).serializeNode(node) as HTMLElement
-		this.dom.tabIndex = -1
-		this.dom.addEventListener("focusin", e => {
-			const resolvedPos = view.state.doc.resolve(getPos())
-			const tr = view.state.tr.setSelection(new NodeSelection(resolvedPos))
-			view.dispatch(tr)
-		})
-		this.dom.addEventListener("mouseenter", e => this.emitWidgetMouseenter(e))
-		this.dom.addEventListener("mouseleave", e => this.emitWidgetMouseleave(e))
-		this.dom.addEventListener("keydown", e => this.emitWidgetInteract(e))
-		this.dom.addEventListener("click", e => {this.emitWidgetInteract(e)})
-		this.dom.addEventListener("touchstart", e => this.emitWidgetInteract(e))
-    this.contentDOM = this.dom
+    this.dom = view.dom.querySelector(`#${node.attrs.id}`) ?? this.createDOM()
 	}
+
+  getPos() {
+    return this.view.posAtDOM(this.dom, 0)
+  }
+
+  createDOM() {
+		const dom = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node) as HTMLElement
+		dom.tabIndex = -1
+		dom.addEventListener("focusin", e => this.selectFocused())
+		dom.addEventListener("mouseenter", e => this.emitWidgetMouseenter(e))
+		dom.addEventListener("mouseleave", e => this.emitWidgetMouseleave(e))
+		dom.addEventListener("keydown", e => this.emitWidgetInteract(e))
+		dom.addEventListener("click", e => this.emitWidgetInteract(e))
+		dom.addEventListener("touchstart", e => this.emitWidgetInteract(e))
+    return dom
+  }
 
   get slots(): HTMLSlotElement[] {
     return Array.from(this.dom.shadowRoot?.querySelectorAll("slot") ?? [])
+  }
+
+  selectFocused() {
+    const resolvedPos = this.view.state.doc.resolve(this.getPos())
+    const tr = this.view.state.tr.setSelection(new NodeSelection(resolvedPos))
+    this.view.dispatch(tr)
   }
 
 	ignoreMutation(mutation: MutationRecord) {
@@ -55,23 +66,23 @@ export class WidgetView implements NodeView {
 
 	selectNode() {
 		this.emitWidgetFocus()
-		// this.dom["focus"]()
+		this.dom["focus"]()
 	}
  
 	deselectNode() {
 		this.emitWidgetBlur()
-		// this.dom["blur"]()
+		this.dom["blur"]()
 	}
 
 	stopEvent(e: Event) {
-    console.log(e)
     const window = this.dom.ownerDocument.defaultView!
 		const activeElement = this.view?.host?.shadowRoot?.activeElement
 		const node = this.view.nodeDOM(this.getPos())
     if(e instanceof window.MouseEvent || e instanceof window.DragEvent) {
       const clickedElement = e.composedPath()[0] as HTMLElement
+      console.log(e.composedPath())
       const isFromSlotContent = e.composedPath().some((el: any) => el?.classList?.contains("slot-content"))
-      return false
+      return !isFromSlotContent
     }
 		else if(activeElement === node) {
 			return true
