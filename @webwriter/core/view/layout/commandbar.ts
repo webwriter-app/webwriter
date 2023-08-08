@@ -37,6 +37,7 @@ export class CommandBar extends LitElement {
 			border: 1px solid var(--sl-color-neutral-950);
 			border-radius: 100%;
 			padding: 2px;
+      --icon-size: 20px;
 		}
 
     .general-command::part(label) {
@@ -74,9 +75,9 @@ export class CommandBar extends LitElement {
     #togglePreview sl-icon {
 			border: 1px solid var(--sl-color-neutral-600);
 			border-radius: 100%;
-			padding: 2px;
       color: var(--sl-color-neutral-600);
       padding: 4.5px !important;
+      --icon-size: 20px;
     }
 
     :host([previewing]) sl-icon {
@@ -135,7 +136,7 @@ export class CommandBar extends LitElement {
       ${this.generalCommands.map(v => this.GeneralCommand(v))}
       <sl-button variant="warning" id="togglePreview" @click=${() => this.emitCommand(this.previewCommand.id)}>
         <span class="previewing-text">${msg("Preview Mode")}</span>
-        <sl-icon name=${this.previewing? "eye-slash": "eye"}></sl-icon>
+        <sl-icon name=${this.previewing? "eye-off": "eye"}></sl-icon>
       </sl-button>
     `
 	}

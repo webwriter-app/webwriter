@@ -41,7 +41,7 @@ export class SettingsController implements ReactiveController {
 
   async hostConnected() {
     await this.store.packages.initialized
-    this.store.rehydrate(this.settingsSchema)
+    await this.store.rehydrate(this.settingsSchema)
   }
   hostDisconnected() {}
 

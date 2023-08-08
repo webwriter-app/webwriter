@@ -5,10 +5,13 @@ export * from "./uistore"
 import { ZodSchema } from "zod"
 import merge from "lodash.merge"
 
-import { createSchema, Package, PackageStore, ResourceStore, UIStore } from ".."
+import { createSchema, Package, PackageStore, UIStore } from ".."
 import { Environment } from "../environment"
+import { ResourceStore } from "./resourcestore"
 
-type AllOptions = ConstructorParameters<typeof PackageStore>[0] & ConstructorParameters<typeof ResourceStore>[0]
+type StoreOptions<T extends abstract new (...args: any) => any> = ConstructorParameters<T>[0]
+
+type AllOptions = StoreOptions<typeof PackageStore> & StoreOptions<typeof ResourceStore>
 type OmitFunctions<T> = Pick<T, {
   [K in keyof T]: T[K] extends Function ? never : K;
 }[keyof T]>
@@ -30,12 +33,14 @@ export class RootStore {
 
   FS: Environment["FS"]
   Path: Environment["Path"]
+  Dialog: Environment["Dialog"]
 
-  constructor({corePackages, schema, FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, getSystemFonts}: AllOptions) {
+  constructor({corePackages, schema, FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, getSystemFonts, createWindow}: AllOptions) {
     const onImport = this.onImportPackages
     this.FS = FS
     this.Path = Path
-    this.packages = new PackageStore({corePackages, FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, onImport, getSystemFonts})
+    this.Dialog = Dialog
+    this.packages = new PackageStore({corePackages, FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, onImport, getSystemFonts, createWindow})
     this.resources = new ResourceStore({schema, bundle})
     this.ui = new UIStore()
   }
@@ -63,7 +68,7 @@ export class RootStore {
         const defaults = schema.parse(this)
         const settings = schema.parse(merge(defaults, JSON.parse(contents)))
         Object.entries(settings)
-          .flatMap(([sk, sv]) => Object.entries(sv).map(([k, v]) => [sk, k, v]))
+          .flatMap(([sk, sv]) => Object.entries(sv).map(([k, v]) => [sk, k, v])) // @ts-ignore
           .forEach(([sk, k, v]) => this.set(sk, k, v))
       }
       catch(cause: any) {

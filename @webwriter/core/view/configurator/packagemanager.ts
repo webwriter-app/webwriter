@@ -1,18 +1,31 @@
 import { LitElement, html, css } from "lit"
-import { customElement, property } from "lit/decorators.js"
+import { customElement, property, query } from "lit/decorators.js"
 import {classMap} from "lit/directives/class-map.js"
 import { localized, msg, str } from "@lit/localize"
-import { SlBadge } from "@shoelace-style/shoelace"
+import { SlBadge, SlDialog } from "@shoelace-style/shoelace"
 
-import { Package, PackageWithOptions } from "../../model"
+import { Package } from "../../model"
 import { shortenBytes } from "../../utility"
+import { ifDefined } from "lit/directives/if-defined.js"
+import { StoreController } from "../../viewmodel"
+import { PackageForm } from "./packageform"
 
 @localized()
 @customElement("ww-package-manager")
 export class PackageManager extends LitElement {
+  
+  emitEditPackage(name: string) {
+    this.dispatchEvent(new CustomEvent("ww-edit-package", {bubbles: true, composed: true, detail: {name}}))
+  }
+  emitOpenPackageCode(name: string) {
+    this.dispatchEvent(new CustomEvent("ww-open-package-code", {bubbles: true, composed: true, detail: {name}}))
+  }
+
+  @property({attribute: false})
+  store: StoreController
 
 	@property({attribute: false})
-	packages: PackageWithOptions[] = []
+	packages: Package[] = []
 
 	@property({type: Number, attribute: true, reflect: true})
 	pageSize: number = 20
@@ -34,6 +47,7 @@ export class PackageManager extends LitElement {
 
 	@property({attribute: false})
 	viewingError: string[] = []
+
 
 	private requestUpdateFull = () => this.requestUpdate()
 
@@ -122,6 +136,12 @@ export class PackageManager extends LitElement {
 			sl-card {
 				box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
 			}
+
+      sl-card sl-icon {
+        width: 28px;
+        height: 28px;
+        --icon-size: 28px;
+      }
 
 			sl-card.installed::part(base) {
 				border-left: 4px solid var(--sl-color-teal-600);
@@ -405,7 +425,7 @@ export class PackageManager extends LitElement {
 				--sl-color-primary-950: var(--sl-color-amber-950);				
 			}
 
-			sl-button.local {
+			ww-button.local {
 				--sl-color-primary-50: var(--sl-color-fuchsia-50);
 				--sl-color-primary-100: var(--sl-color-fuchsia-100);
 				--sl-color-primary-200: var(--sl-color-fuchsia-200);
@@ -417,11 +437,6 @@ export class PackageManager extends LitElement {
 				--sl-color-primary-800: var(--sl-color-fuchsia-800);
 				--sl-color-primary-900: var(--sl-color-fuchsia-900);
 				--sl-color-primary-950: var(--sl-color-fuchsia-950);
-			}
-
-			sl-button.local sl-icon {
-				font-size: 1.1rem;
-				color: var(--sl-color-fuchsia-800)
 			}
 
 			sl-button.uninstalled {
@@ -441,12 +456,53 @@ export class PackageManager extends LitElement {
 			sl-tooltip {
 				--show-delay: 750;
 			}
+
+      ww-button.local::part(base) {
+        width: 100%;
+        --icon-size: 24px;
+      }
+
+      ww-button.local.circle::part(base) {
+        padding-left: var(--sl-spacing-2x-small);
+        border-radius: 100%;
+        aspect-ratio: 1/1;
+      }
+
+      ww-button.local.circle::part(label) {
+        padding: 0;
+        padding-right: var(--sl-spacing-2x-small);
+      }
+
+      #package-form-dialog::part(body) {
+        padding-top: 0;
+      }
+
+      .package-form-label {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        --icon-size: 22px;
+        gap: 1ch;
+      }
+
+      sl-card:not(.local) ww-button.edit-package {
+        display: none;
+      }
+
+      ww-button.edit-package {
+        --icon-size: 22px;
+      }
+
+      .local.circle[name=watch] {
+        margin-right: 2ch;
+      }
 		`
 	}
 
-	packageListItem = (pkg: PackageWithOptions, i: number) => {
+	packageListItem = (pkg: Package, i: number) => {
 		const {name, author, version, description, keywords, installed, outdated, importError, localPath, watching, jsSize, cssSize} = pkg
-		const {emitAddPackage, emitRemovePackage, emitUpgradePackage, emitToggleWatch} = this
+		const {emitAddPackage, emitRemovePackage, emitUpgradePackage, emitToggleWatch, emitOpenPackageCode, emitEditPackage} = this
+    console.log(pkg.watching)
 		const adding = this.adding.includes(name)
 		const removing = this.removing.includes(name)
 		const upgrading = this.upgrading.includes(name)
@@ -473,18 +529,17 @@ export class PackageManager extends LitElement {
 			<span class="package-description">${description}</span>
 			${!installed? null: html`
 				<sl-badge slot="footer" variant="danger" class="error-badge" @click=${() => this.viewingError = [...this.viewingError, pkg.name]} title=${msg("View error")}>
-					<sl-icon name="exclamation-diamond"></sl-icon> <span>${msg("Error")}</span>
+					<sl-icon name="exclamation-circle"></sl-icon>
 				</sl-badge>			
 			`}
 			${local? html`
+        <ww-button class="local circle" slot="footer" icon="code" @click=${() => this.emitOpenPackageCode(name)}></ww-button>
 				<sl-tooltip slot="footer" @sl-show=${(e: any) => e.stopPropagation()}>
 					<span slot="content">${watching? msg(html`Stop watching files at <b><code>${localPath}</code></b>.`): msg(html`Start watching files at <b><code>${localPath}</code></b> and reload the package if a file is changed.`)}</span>
-					<sl-button circle class="local" @click=${() => emitToggleWatch(name)}>
-						<sl-icon name=${`lightning-charge${watching? "-fill": ""}`}></sl-icon>
-					</sl-button>
+					<ww-button name="watch" class="local circle" @click=${() => emitToggleWatch(name)} icon=${`bolt${watching? "-off": ""}`}></ww-button>
 				</sl-tooltip>
 			`: html`
-				<sl-button class="outdated" @click=${() => emitUpgradePackage(name)} outline slot="footer" ?loading=${upgrading}  ?disabled=${removing || adding || !outdated}>
+				<sl-button class="outdated" @click=${() => emitUpgradePackage(name)} outline slot="footer" ?loading=${upgrading} ?disabled=${removing || adding || !outdated} >
 					${msg("Update")}
 				</sl-button>
 			`}
@@ -499,12 +554,17 @@ export class PackageManager extends LitElement {
 		</sl-card>`
 	}
 
-	addLocalPackageButton = () => {
-		return html`<sl-button @click=${this.emitAddLocalPackage} class="local" help-text=${msg("Either select an existing package directory to install or an empty directory to create a new package.")}>
-			<sl-icon name="folder2-open"></sl-icon>
-			<span>${msg("Add unlisted package")}</span>
-		</sl-button>`
+	importLocalPackageButton = () => {
+		return html`<ww-button @click=${() => this.packageFormMode="import"}  class="local" help-text=${msg("Either select an existing package directory to install or an empty directory to create a new package.")} icon="package-import">
+			<span>${msg("Import local package")}</span>
+		</ww-button>`
 	}
+
+  createLocalPackageButton = () => {
+		return html`<ww-button @click=${() => this.packageFormMode="create"} class="local" icon="box">
+			<span>${msg("Create local package")}</span>
+		</ww-button>`
+  }
 
 	viewAppDirButton = () => {
 		return html`<sl-button variant="neutral" class="view-local-files" @click=${this.emitOpenAppDir}>
@@ -523,9 +583,129 @@ export class PackageManager extends LitElement {
 			<span class="badge-content">
 				${this.loading? html`<sl-spinner></sl-spinner>`: length ?? 0}
 			</span>
-			<sl-icon name="arrow-clockwise" class="badge-action"></sl-icon>
+			<sl-icon name="refresh" class="badge-action"></sl-icon>
 		</sl-badge>
 	`
+
+  @property({type: String, state: true})
+  packageFormMode: undefined | "edit" | "create" | "import" = undefined
+
+  @property({type: Boolean, state: true})
+  packageFormLoading = false
+
+  @query("#package-form-dialog")
+  packageFormDialog: SlDialog
+
+  @query("ww-package-form")
+  packageForm: PackageForm 
+
+  async handlePackageFormSubmit(e: CustomEvent) {
+    this.packageFormLoading = true
+    try {
+      const pkg = new Package(this.packageForm.value)
+      const options = this.packageFormMode === "create"
+      ? {
+        preset: this.packageForm.preset,
+        generateLicense: this.packageForm.generateLicense,
+        mergePackage: true
+      }: {
+        mergePackage: true
+      }
+      await this.store.packages.writeLocal(this.packageForm.localPath, pkg, options)
+      if(["import", "create"].includes(this.packageFormMode!) && !this.store.packages.isPackageImported(pkg.name)) {
+        await this.store.packages.addLocal(this.packageForm.localPath)
+        if(this.packageForm?.enableLiveReload) {
+          await this.store.packages.toggleWatch(pkg.name)
+        }
+      }
+    }
+    finally {
+      this.packageFormLoading = false
+      this.packageFormMode = undefined
+    }
+  }
+
+  async handlePackageFormPickPath(e: CustomEvent) {
+    let localPath = await this.store.Dialog.promptRead({directory: true}) as string
+    this.packageForm.localPath = localPath ?? this.packageForm.localPath
+    this.handlePackageFormChangeField(new CustomEvent("ww-change-field", {detail: {name: "localPath", valid: true}}))
+  }
+
+  async handlePackageFormChangeField(e: CustomEvent) {
+    if(e.detail.name === "localPath" && this.packageFormMode === "import" && e.detail.valid) {
+      this.fillPackageFormWithLocal()
+    }
+    else if(e.detail.name === "localPath" && this.packageFormMode === "create" && e.detail.valid) {
+      const possibleName = await this.store.Path.basename(this.packageForm.localPath)
+      this.packageForm.name = this.packageForm.name || possibleName
+    }
+  }
+
+  async fillPackageFormWithLocal() {
+    try {
+      const pkgKeys = ["name", "license", "version", "author", "keywords"] as const
+      const localPath = this.packageForm.localPath
+      const pkg = await this.store.packages.readLocal(localPath)
+      const localValue = {} as any
+      pkgKeys.forEach(key => {
+        localValue[key] = pkg[key] ?? "" as any
+      })
+      const newValue = {...this.packageForm.value, ...localValue}
+      this.packageForm.defaultValue = this.packageForm.value = newValue
+      
+    }
+    catch(err) {
+      this.packageForm.reset()
+    }
+  }
+
+  get packageFormDialogLabel() {
+    let title = ""
+    let icon = ""
+    if(this.packageFormMode === "edit") {
+       title = msg("Edit local package")
+       icon = "box"
+    }
+    else if(this.packageFormMode === "import") {
+      title = msg("Import local package")
+      icon="package-import"
+    }
+    else if(this.packageFormMode === "create") {
+      title = msg("Create local package")
+      icon = "box"
+    }
+    else {
+      title = msg("Widget Package")
+      icon = "box"
+    }
+    return html`
+      <sl-icon name=${icon}></sl-icon>
+      ${title}
+    `
+  }
+
+  localContent = () => html`
+    ${this.createLocalPackageButton()}
+    ${this.importLocalPackageButton()}
+    ${!this.packageFormMode? null: html`
+    <sl-dialog
+      @sl-request-close=${(e: any) => e.detail.source === "overlay"? e.preventDefault(): null}
+      id="package-form-dialog"
+      @sl-after-hide=${(e: any) => {this.packageFormMode = e.target instanceof SlDialog? undefined: this.packageFormMode}}
+      ?open=${!!this.packageFormMode}>
+      <div class="package-form-label" slot="label">${this.packageFormDialogLabel}</div>
+      <ww-package-form
+        @ww-pick-path=${this.handlePackageFormPickPath}
+        @ww-change-field=${this.handlePackageFormChangeField}
+        @ww-cancel=${(e: any) => this.packageFormDialog.hide()}
+        @submit=${this.handlePackageFormSubmit}
+        ?loading=${this.packageFormLoading}
+        ?isImport=${this.packageFormMode === "import"}
+        mode=${ifDefined(this.packageFormMode === "import"? "edit": this.packageFormMode)}
+      ></ww-package-form>
+    </sl-dialog>
+    `}
+  `
 
 	packagesTab = (key: "total" | "installed" | "available" | "outdated" | "local", label: string, packages: Package[], emptyText?: string) => {
 		const length = packages.length
@@ -541,13 +721,7 @@ export class PackageManager extends LitElement {
 					<b>${msg("Warning:")} </b>
 					<span>${msg("You seem to be offline. While offline, you can't manage available or outdated packages.")}</span>
 				</sl-alert>
-				${key !== "local"? null: html`
-					<sl-alert class="for-developers" open>
-						<sl-icon slot="icon" name="code-square"></sl-icon>
-						${msg("Local packages are intended for developers.")}
-					</sl-alert>
-					${this.addLocalPackageButton()}
-				`}
+				${key !== "local"? null: this.localContent()}
 				<div class="package-list">
 						${length === 0 && !this.loading
 							? html`<span>${emptyText}</span>`

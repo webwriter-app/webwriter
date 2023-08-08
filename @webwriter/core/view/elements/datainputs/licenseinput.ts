@@ -1,0 +1,76 @@
+import { html, css, render, PropertyValueMap, ComplexAttributeConverter } from "lit";
+import { DataInput, schemaConverter } from ".";
+import { customElement, property } from "lit/decorators.js";
+import { SlInput, SlOption } from "@shoelace-style/shoelace";
+import { localized, msg } from "@lit/localize";
+import { CustomElementName, NpmName, License } from "../../../model";
+import { unscopePackageName } from "../../../utility";
+import { ZodError, ZodSchema, z } from "zod";
+import { Combobox } from "../combobox";
+
+
+
+
+@customElement("ww-licenseinput")
+export class LicenseInput extends Combobox implements DataInput {
+
+  constructor() {
+    super()
+    this.addEventListener("sl-input", this.validate)
+  }
+
+  @property({reflect: true})
+  autocomplete: string = "off"
+  
+  @property({reflect: true})
+  autocorrect = "off" as const
+
+  @property({type: Object, attribute: false}) // @ts-ignore
+  value: License = new License("")
+
+  validityError?: string = undefined
+
+  validate() {
+    let validity = ""
+    try {
+      new License(this.value)
+    }
+    catch(err: any) {
+      validity = err.message
+      return false
+    }
+    finally {
+      this.setCustomValidity(validity)
+    }
+  }
+
+  static styles = [Combobox.styles, css`
+    :host(:not(:focus-within)[data-invalid]) [part=input] {
+      color: var(--sl-color-danger-600) !important;
+    }
+  `]
+
+  ready = false
+
+  protected willUpdate(_changedProperties: PropertyValueMap<any> | Map<PropertyKey, unknown>): void {
+    const isArray = Array.isArray(this.value)
+    const isString =  typeof this.value === "string"
+    if(_changedProperties.has("value") && (isString || isArray)) {
+      console.log({isString, isArray},this.value)
+      this.value = new License(isString? this.value: (this.value as any)[0])
+      console.log(this.value)
+    }
+  }
+
+  firstUpdated() {
+    this.ready = true
+  }
+
+  async updated() {
+    const container = this.shadowRoot?.querySelector("slot[name=suffix]") as HTMLElement
+    container && render(html`
+    ${ !this.ready || !this.validity.valid? null: html`
+      <a target="_blank" href=${this.value.url!}>${this.value.name}</a>
+    `}`, container)
+  }
+}

@@ -1,12 +1,13 @@
-import {readTextFile, readBinaryFile, writeTextFile, writeBinaryFile, removeFile, readDir, createDir, removeDir, exists, renameFile} from '@tauri-apps/api/fs'
-import {join, normalize, basename, dirname, extname, resolve, isAbsolute, appDataDir as appDir} from '@tauri-apps/api/path'
+import {readTextFile, readBinaryFile, writeTextFile, writeBinaryFile, removeFile, readDir, createDir, removeDir, exists, renameFile} from "@tauri-apps/api/fs"
+import {join, normalize, basename, dirname, extname, resolve, isAbsolute, appDataDir as appDir} from "@tauri-apps/api/path"
 import {Command, open} from "@tauri-apps/api/shell"
 import {arch, platform} from "@tauri-apps/api/os"
 import {open as promptRead, save as promptWrite} from "@tauri-apps/api/dialog"
 import {fetch, Body, ResponseType} from "@tauri-apps/api/http"
 import {Buffer} from "buffer"; window.Buffer = Buffer
 import {metadata} from "tauri-plugin-fs-extra-api"
-import { invoke } from '@tauri-apps/api/tauri'
+import { invoke } from "@tauri-apps/api/tauri"
+import { WebviewWindow, WindowOptions } from "@tauri-apps/api/window"
 
 import { DialogAPI, FileSystemAPI, HTTPAPI, OSAPI, PathAPI, Response, ShellAPI, Stats } from "."
 
@@ -173,9 +174,9 @@ export async function pm(command: string, commandArgs: string[] = [], json=true,
     const err = output.stderr.split("\n").map((e: any) => JSON.parse(e))
     const errors = err.filter((e: any) => e.type === "error")
     const warnings = err.filter((e: any) => e.type === "warning")
-    warnings.forEach((w: any) => console.warn(w))
+    warnings.forEach((w: any) => console.warn(w.data))
     if(err?.some((e: any) => e?.type === "error")) {
-      throw AggregateError(errors)
+      throw err
     }
   }
   else {
@@ -187,6 +188,16 @@ export async function pm(command: string, commandArgs: string[] = [], json=true,
   }
 }
 
+/** Get the names of all fonts installed on the user's system. */
 export function getSystemFonts() {
   return invoke("get_system_fonts") 
+}
+
+/** Create a new window. */
+export async function createWindow(url: string, options?: WindowOptions): Promise<string> {
+  const webview = new WebviewWindow(url, {url: "index.html", ...options})
+  return new Promise((resolve, reject) => {
+    webview.once("tauri://created", () => resolve(url))
+    webview.once("tauri://error", e => reject(e))
+  })
 }

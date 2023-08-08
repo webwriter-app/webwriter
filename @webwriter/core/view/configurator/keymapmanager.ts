@@ -21,7 +21,7 @@ export class KeymapManager extends LitElement {
   @property({state: true})
   reassigningCommand: string | null = null
 
-  @property({state: true})
+  @property({type: Array, state: true})
   pendingShortcut: string[] = []
 
   static get keyLabels() {return {
@@ -48,6 +48,10 @@ export class KeymapManager extends LitElement {
     "down": msg("↓ Down", {id: "downKey"}),
     "left": msg("← Left", {id: "leftKey"}),
     "right": msg("→ Right", {id: "rightKey"}),
+    "arrowup": msg("↑ Up", {id: "upKey"}),
+    "arrowdown": msg("↓ Down", {id: "downKey"}),
+    "arrowleft": msg("← Left", {id: "leftKey"}),
+    "arrowright": msg("→ Right", {id: "rightKey"}),
     "home": msg("⤒ Home", {id: "homeKey"}),
     "end": msg("⤓ End", {id: "endKey"}),
     "pageup": msg("▲ Pageup", {id: "pageupKey"}),
@@ -74,6 +78,12 @@ export class KeymapManager extends LitElement {
     "f18": msg("F18", {id: "f18Key"}),
     "f19": msg("F19", {id: "f19Key"}),
   }}
+
+  static get keyLabelsTextOnly() {
+    return Object.fromEntries(Object.entries(this.keyLabels).map(([k, v]) => {
+      return [k, v.replaceAll(/[^a-zA-Z0-9 ]/g, "").trim()]
+    }))
+  }
 
   static modifiers = ["command", "meta", "shift", "⇧", "control", "ctrl", "option", "alt", "⌥"]
 
@@ -266,7 +276,7 @@ export class KeymapManager extends LitElement {
         <span class="command-description">${entry.description}</span>
       </label>
       <div class="key-controls">
-        <sl-icon-button style=${styleMap({visibility: entry.modified? "visible": "hidden"})} name="arrow-counterclockwise" @click=${() => this.emitShortcutReset(key)}></sl-icon-button>
+        <sl-icon-button style=${styleMap({visibility: entry.modified? "visible": "hidden"})} name="arrow-back-up" @click=${() => this.emitShortcutReset(key)}></sl-icon-button>
         <sl-tooltip trigger="manual" ?open=${reassigningCommand === key} content=${msg("Press new key combination...")}>
           <button class="key-input" title=${msg("Reassign shortcut")} @focus=${(e: FocusEvent) => this.handleKeyInputFocus(e, key)} @blur=${this.handleKeyInputBlur}  @keydown=${this.handleKeyInputKeyDown} @keyup=${this.handleKeyInputKeyUp}>
             ${KeymapManager.Shortcut(isPending? this.pendingShortcut: entry.shortcut)}

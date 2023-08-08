@@ -682,10 +682,6 @@
   <source>Mark the selection as a superscript</source>
   <target>Markiere die Auswahl als hochgestellt</target>
 </trans-unit>
-<trans-unit id="s5cab1e5d80e87b9a">
-  <source>subscript</source>
-  <target>Tiefgestellt</target>
-</trans-unit>
 <trans-unit id="sc5cb39478b9b7625">
   <source>Mark the selection as a subscript</source>
   <target>Markiere die Auswahl als tiefgestellt</target>
@@ -773,6 +769,94 @@
 <trans-unit id="s03d2a538c7c99132">
   <source>Toggle Settings</source>
   <target>Einstellungen umschalten</target>
+</trans-unit>
+<trans-unit id="se036b53f145441cd">
+  <source>Mixed Content</source>
+  <target>Gemischter Inhalt</target>
+</trans-unit>
+<trans-unit id="s35aeaff1425bca9e">
+  <source>WebWriter does not support media of type </source>
+  <target>WebWriter unterstützt diesen Datentypen nicht</target>
+</trans-unit>
+<trans-unit id="s587ac858dd80f6fa">
+  <source>Subscript</source>
+  <target>Tiefgestellt</target>
+</trans-unit>
+<trans-unit id="s5b8cc9bb61ddce15">
+  <source>Insert a paragraph</source>
+  <target>Absatz einfügen</target>
+</trans-unit>
+<trans-unit id="s35c3125c7750681e">
+  <source>Blockquote</source>
+  <target>Blockzitat</target>
+</trans-unit>
+<trans-unit id="sa492a51a707930fa">
+  <source>Insert a blockquote</source>
+  <target>Blockzitat einfügen</target>
+</trans-unit>
+<trans-unit id="s2f2044f2431a32d5">
+  <source>Heading</source>
+  <target>Überschrift</target>
+</trans-unit>
+<trans-unit id="s29f21c34494d614d">
+  <source>Insert a heading (level 1)</source>
+  <target>Überschrift einfügen (Ebene 1)</target>
+</trans-unit>
+<trans-unit id="sbc5f2e81604bb667">
+  <source>Heading 2</source>
+  <target>Überschrift 2</target>
+</trans-unit>
+<trans-unit id="s29ee7434494a0dfe">
+  <source>Insert a heading (level 2)</source>
+  <target>Überschrift einfügen (Ebene 2)</target>
+</trans-unit>
+<trans-unit id="sbc5f2d81604bb4b4">
+  <source>Heading 3</source>
+  <target>Überschrift 3</target>
+</trans-unit>
+<trans-unit id="s29eb103449472e3b">
+  <source>Insert a heading (level 3)</source>
+  <target>Überschrift einfügen (Ebene 3)</target>
+</trans-unit>
+<trans-unit id="s3d249bb480032121">
+  <source>List</source>
+  <target>Liste</target>
+</trans-unit>
+<trans-unit id="s0978fb5ba3145996">
+  <source>Insert a list (unordered)</source>
+  <target>Liste einfügen (ungeordnet)</target>
+</trans-unit>
+<trans-unit id="s377e24af9628c37e">
+  <source>Ordered List</source>
+  <target>Geordnete Liste</target>
+</trans-unit>
+<trans-unit id="sdb711380a28fec75">
+  <source>Insert a list (ordered)</source>
+  <target>Liste einfügen (geordnet)</target>
+</trans-unit>
+<trans-unit id="s183f4082fbcd618c">
+  <source>Task List</source>
+  <target>Aufgabenliste</target>
+</trans-unit>
+<trans-unit id="sb1a1de1b8a318bf4">
+  <source>Insert a list (tasks)</source>
+  <target>Liste einfügen (Aufgaben)</target>
+</trans-unit>
+<trans-unit id="s337a1e9022a8d19f">
+  <source>Table</source>
+  <target>Tabelle</target>
+</trans-unit>
+<trans-unit id="s88a62d29529948fb">
+  <source>Insert a table</source>
+  <target>Tabelle einfügen</target>
+</trans-unit>
+<trans-unit id="scd0ddab5a7a0f930">
+  <source>Drawer</source>
+  <target>Schublade</target>
+</trans-unit>
+<trans-unit id="s162f6f7ed3fc2584">
+  <source>Insert a drawer</source>
+  <target>Schublade einfügen</target>
 </trans-unit>
 </body>
 </file>

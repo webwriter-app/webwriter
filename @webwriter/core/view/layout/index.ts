@@ -1,4 +1,2 @@
-export * from "./tab"
-export * from "./tabpanel"
-export * from "./tabs"
 export * from "./layout"
+export * from "./head"

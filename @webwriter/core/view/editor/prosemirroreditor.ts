@@ -3,9 +3,12 @@ import { customElement, property, queryAll, queryAsync } from "lit/decorators.js
 import { DirectEditorProps, EditorView } from "prosemirror-view"
 import { localized, msg } from "@lit/localize"
 import pmCSS from "prosemirror-view/style/prosemirror.css?raw"
+import pmGapcursorCSS from "prosemirror-gapcursor/style/gapcursor.css?raw"
+import pmTablesCSS from "prosemirror-tables/style/tables.css?raw"
 import { Transaction } from "prosemirror-state"
 import { pickObject, sameMembers } from "../../utility"
 import { keyed } from "lit/directives/keyed.js"
+import { fixTables } from "prosemirror-tables"
 
 type IProsemirrorEditor = 
   & Omit<DirectEditorProps, "attributes" | "editable">
@@ -132,7 +135,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
   @property({attribute: false})
   dispatchTransaction: IProsemirrorEditor["dispatchTransaction"]
 
-  @property({state: true})
+  @property({state: true, attribute: false})
   private view: EditorView
 
   @property({type: String, attribute: false, hasChanged(value, oldValue) {
@@ -179,41 +182,40 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
     return this.view.isDestroyed
   }
 
-  updateProps = (...args: Parameters<typeof this.view.update>) => this.view.update(...args)
+  updateProps = (...args: Parameters<typeof this.view.update>) => this.view?.update(...args)
 
-  setProps = (...args: Parameters<typeof this.view.setProps>) => this.view.setProps(...args)
+  setProps = (...args: Parameters<typeof this.view.setProps>) => this.view?.setProps(...args)
 
   updateState = (...args: Parameters<typeof this.view.updateState>) => {
-    const [state] = args
-    this.dispatchEvent(new CustomEvent("update", {composed: true, bubbles: true, detail: {editorState: state}}))
-    this.view.updateState(...args)
+    this?.view.updateState(...args)
+    this.dispatchEvent(new CustomEvent("update", {composed: true, bubbles: true, detail: {editorState: this.view.state}}))
   }
 
-  someProp = (...args: Parameters<typeof this.view.someProp>) => this.view.someProp(...args)
+  someProp = (...args: Parameters<typeof this.view.someProp>) => this.view?.someProp(...args)
 
-  hasFocus = (...args: Parameters<typeof this.view.hasFocus>) => this.view.hasFocus(...args)
+  hasFocus = (...args: Parameters<typeof this.view.hasFocus>) => this.view?.hasFocus(...args)
 
-  focus = (...args: Parameters<typeof this.view.focus>) => this.view.focus(...args)
+  focus = (...args: Parameters<typeof this.view.focus>) => this.view?.focus(...args)
 
-  posAtCoords = (...args: Parameters<typeof this.view.posAtCoords>) => this.view.posAtCoords(...args)
+  posAtCoords = (...args: Parameters<typeof this.view.posAtCoords>) => this?.view.posAtCoords(...args)
 
-  coordsAtPos = (...args: Parameters<typeof this.view.coordsAtPos>) => this.view.coordsAtPos(...args)
+  coordsAtPos = (...args: Parameters<typeof this.view.coordsAtPos>) => this?.view.coordsAtPos(...args)
 
-  domAtPos = (...args: Parameters<typeof this.view.domAtPos>) => this.view.domAtPos(...args)
+  domAtPos = (...args: Parameters<typeof this.view.domAtPos>) => this.view?.domAtPos(...args)
 
-  nodeDOM = (...args: Parameters<typeof this.view.nodeDOM>) => this.view.nodeDOM(...args)
+  nodeDOM = (...args: Parameters<typeof this.view.nodeDOM>) => this.view?.nodeDOM(...args)
 
-  posAtDOM = (...args: Parameters<typeof this.view.posAtDOM>) => this.view.posAtDOM(...args)
+  posAtDOM = (...args: Parameters<typeof this.view.posAtDOM>) => this.view?.posAtDOM(...args)
 
-  endOfTextblock = (...args: Parameters<typeof this.view.endOfTextblock>) => this.view.endOfTextblock(...args)
+  endOfTextblock = (...args: Parameters<typeof this.view.endOfTextblock>) => this?.view.endOfTextblock(...args)
 
-  pasteHTML = (...args: Parameters<typeof this.view.pasteHTML>) => this.view.pasteHTML(...args)
+  pasteHTML = (...args: Parameters<typeof this.view.pasteHTML>) => this.view?.pasteHTML(...args)
 
-  pasteText = (...args: Parameters<typeof this.view.pasteText>) => this.view.pasteText(...args)
+  pasteText = (...args: Parameters<typeof this.view.pasteText>) => this.view?.pasteText(...args)
 
-  destroy = (...args: Parameters<typeof this.view.destroy>) => this.view.destroy(...args)
+  destroy = (...args: Parameters<typeof this.view.destroy>) => this.view?.destroy(...args)
 
-  dispatch = (...args: Parameters<typeof this.view.dispatch>) => this.view.dispatch(...args)
+  dispatch = (...args: Parameters<typeof this.view.dispatch>) => this.view?.dispatch(...args)
 
   /*
   shouldUpdate(changed: Map<string, any>) {
@@ -287,6 +289,8 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
     const {contentStyle, contentScript} = this
     this.iframe = this.shadowRoot?.querySelector("iframe") as any
     this.importCSSString(pmCSS)
+    this.importCSSString(pmGapcursorCSS)
+    this.importCSSString(pmTablesCSS)
     const css = Array.isArray(contentStyle)? contentStyle: [contentStyle]
     const js = Array.isArray(contentScript)? contentScript: [contentScript]
     css.forEach(x => this.importCSSString(x))

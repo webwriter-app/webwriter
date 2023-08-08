@@ -1,3 +1,4 @@
+import { WindowOptions } from "@tauri-apps/api/window";
 import { Package } from ".."
 
 export * from "./tauri"
@@ -128,5 +129,6 @@ export type Environment = {
   search: (text: string, params?: {size?: number, from?: number, quality?: number, popularity?: number, maintenance?: number}, searchEndpoint?: string) => Promise<SearchResults>,
   pm: (command: string, commandArgs?: string[], json?: boolean, cwd?: string) => Promise<Object | string>,
   watch: (paths: string | string[], cb?: (event: WatchEvent) => void, options?: {recursive?: boolean, delayMs?: number}) => Promise<() => void>
-  getSystemFonts: () => Promise<string[]>
+  getSystemFonts: () => Promise<string[]>,
+  createWindow: (url: string, options?: WindowOptions) => Promise<void> 
 }

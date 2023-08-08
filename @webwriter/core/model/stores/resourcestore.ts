@@ -1,11 +1,12 @@
 import { EditorState } from "prosemirror-state"
-import { Schema } from "prosemirror-model"
+import { Schema, Mark, Node, NodeType, Attrs } from "prosemirror-model"
 
 import { createEditorState, Environment } from ".."
-import { getFileExtension } from "../../utility"
+import { getFileExtension, groupBy, range } from "../../utility"
 import * as marshal from "../marshal"
 import * as connect from "../connect"
 import { redoDepth, undoDepth } from "prosemirror-history"
+import { EditorView } from "prosemirror-view"
 
 const BINARY_EXTENSIONS = Object.entries(marshal).flatMap(([k, v]) => v.isBinary? v.extensions: [])
 const ALL_FILTER = {name: "Explorable", extensions: Object.values(marshal).flatMap(v => v.extensions)}
@@ -224,6 +225,101 @@ export class ResourceStore {
     this.order = [...this.order, resource.url]
     this._active = resource.url
     this.lastSavedState = {...this.lastSavedState, [resource.url]: resource.editorState}
+  }
+
+  get activeMarks() {
+    const {editorState: s} = this.active!
+    const stored = s.storedMarks ?? []
+    const marks = new Set(stored)
+    s.doc.nodesBetween(s.selection.from, s.selection.to, (node, pos, parent, index) => {
+      node.marks.forEach(mark => marks.add(mark))
+    })
+    return Array.from(marks)
+  }
+
+  get activeNodes() {
+    const {editorState: s} = this.active!
+    const nodes = [] as Node[]
+    s.doc.nodesBetween(s.selection.from, s.selection.to, node => {
+      nodes.push(node)
+    })
+    return nodes
+  }
+
+  get activePos() {
+    const {editorState: s} = this.active!
+    const posList = [] as number[]
+    s.doc.nodesBetween(s.selection.from, s.selection.to, (node, pos) => {
+      posList.push(pos)
+    })
+    return posList
+  }
+
+  get activeAttributes() {
+    return this.activeNodes.flatMap(node => {
+      return Object.entries(node.attrs).map(([key, value]) => {
+        return {node, key, value}
+      })
+    })
+  }
+
+  get activeAttributesByKey() {
+    return groupBy(this.activeAttributes, "key")
+  }
+
+  get activeNodeNames() {
+    return this.activeNodes.filter(node => node.type.name)
+  }
+
+  get docAttributes() {
+    const {editorState: s} = this.active!
+    return s.doc.attrs
+  }
+
+  getActiveDocAttributeValue(key: string) {
+    return this.docAttributes[key]
+  }
+
+  isMarkActive(markName: string) {
+    return this.activeMarks.some(mark => mark.type.name === markName)
+  }
+
+  getActiveAttributeValue(key: string) {
+    const all = (this.activeAttributesByKey[key] ?? []).map(({value}) => value)
+    const unique = new Set(all.filter(v => v))
+    if(unique.size === 0) {
+      return undefined
+    }
+    else if(unique.size === 1) {
+      return [...unique][0]
+    }
+    else {
+      return null
+    }
+  }
+
+  hasActiveNode(type: string | NodeType, attrs?: Attrs, includeAncestors=false) {
+    const {editorState: s} = this.active!
+    let matchFound = false
+    this.activeNodes.filter(node => {
+      const typeMatches = typeof type === "string"? node.type.name === type: node.type === type
+      const attrsMatches = !attrs || Object.keys(attrs).every(k => attrs[k] === node.attrs[k])
+      if(typeMatches && attrsMatches) {
+        matchFound = true
+      }
+    })
+    if(includeAncestors) {
+      const resolvedPos = s.selection.$anchor
+      const ancestors = range(0, resolvedPos.depth).map(i => resolvedPos.node(i))
+    }
+    return matchFound
+  }
+
+  getActiveComputedStyles(view: EditorView) {
+    const {getComputedStyle} = view.dom.ownerDocument.defaultView!
+    return this.activePos
+      .map(pos => view.nodeDOM(pos) as Element)
+      .map(element => getComputedStyle(element))
   }
 
 }

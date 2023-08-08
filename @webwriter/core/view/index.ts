@@ -1,5 +1,9 @@
 import "@shoelace-style/shoelace/dist/themes/light.css"
 // import "@shoelace-style/shoelace"
+import appIconRaw from "../app-icon-transparent.svg?raw"
+import {unsafeSVG} from 'lit/directives/unsafe-svg.js'
+import {guard} from 'lit/directives/guard.js'
+import { spreadProps } from "@open-wc/lit-helpers"
 
 export * from "./configurator"
 export * from "./editor"
@@ -8,16 +12,14 @@ export * from "./layout"
 
 import {LitElement, html, css} from "lit"
 import {customElement, property, query} from "lit/decorators.js"
-import {repeat} from "lit/directives/repeat.js"
 import { localized, msg } from "@lit/localize"
 
-import { escapeHTML, getFileNameInURL } from "../utility"
-import {ViewModelMixin} from "../viewmodel"
+import { escapeHTML, groupBy } from "../utility"
+import {CommandEvent, ViewModelMixin} from "../viewmodel"
 import { SlAlert } from "@shoelace-style/shoelace"
 import { ifDefined } from "lit/directives/if-defined.js"
 import { ExplorableEditor } from "./editor"
-import { keyed } from "lit/directives/keyed.js"
-import { toJS } from "mobx"
+import { classMap } from "lit/directives/class-map.js"
 
 
 export interface SlAlertAttributes {
@@ -33,9 +35,8 @@ export interface SlAlertAttributes {
 @TODO Fix setting hydration of `showWidgetPreview`
 @TODO Fix local package loading
 @TODO Fix unreliable package install behaviour (queueing issue?)
-@TODO Add heading mark
-@TODO Add 
 */
+
 
 @localized()
 @customElement("ww-app")
@@ -45,11 +46,11 @@ export class App extends ViewModelMixin(LitElement)
 	static get styles() {
 		return css`
 			:host {
-				display: block;
-				height: 100vh;
-				min-height: 100vh;
-				background: #f1f1f1;
+				background: var(--sl-color-gray-100);
 				overflow: hidden;
+        display: block;
+        height: 100vh;
+        width: 100vw;
 			}
 
 			.save-button::part(base) {
@@ -58,7 +59,7 @@ export class App extends ViewModelMixin(LitElement)
 			}
 
 			:host(.noResources) {
-				background-color: #f1f1f1;
+				background-color: white;
 				transition: none;
 			}
 
@@ -67,6 +68,8 @@ export class App extends ViewModelMixin(LitElement)
 				justify-content: center;
 				align-items: center;
 				height: 100%;
+        position: relative;
+        background: white;
 			}
 
 			#initializingPlaceholder > div {
@@ -75,9 +78,17 @@ export class App extends ViewModelMixin(LitElement)
 
 			#initializingPlaceholder sl-spinner {
 				margin-bottom: 0.5rem;
-				font-size: 3rem;
+				font-size: 8rem;
 				--track-width: 8px;
 			}
+
+      #initializingPlaceholder .app-icon, #initializingPlaceholder svg {
+        width: 80px;
+        height: 80px;
+        position: absolute;
+        top: calc(50% - 47px);
+        left: calc(50% - 38px);
+      }
 
 			#settings-button {
 				margin-top: 1px;
@@ -91,6 +102,7 @@ export class App extends ViewModelMixin(LitElement)
 				overflow: hidden;
 				box-sizing: border-box;
         z-index: 101;
+        --icon-size: 20px;
 			}
 
 			#settings-button > * {
@@ -144,10 +156,48 @@ export class App extends ViewModelMixin(LitElement)
 				gap: 2ch;
 			}
 
+      ww-layout.preview #header-left {
+        display: none;
+      }
+
+      ww-layout.preview #header-right > :not(#preview) {
+        display: none;
+      }
+
+      ww-layout:not(.preview) #preview-label {
+        display: none;
+      }
+
+      ww-layout.preview #header-right #preview {
+        z-index: 1000;
+      }
+
+      ww-layout.preview #header-right #preview.active {
+        z-index: 1000;
+      }
+
 			.title-button::part(base) {
 				height: var(--sl-input-height-small);
     		line-height: calc(var(--sl-input-height-small) - var(--sl-input-border-width) * 2);
 			}
+
+      #header-left, #header-right {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        --icon-size: 20px;
+        color: var(--sl-color-gray-700);
+        padding-left: 1.5ch;
+        padding-right: 1.5ch;
+      }
+
+      #header-right {
+        justify-content: flex-end;
+      }
+
+      #preview-label {
+        margin-right: 0.5ch;
+      }
 
 			@media only screen and (max-width: 1300px) {
 				:host(:not(.noResources)) #settings-button .text {
@@ -156,6 +206,65 @@ export class App extends ViewModelMixin(LitElement)
 			}
 		`
 	}
+
+  get markCommands() {
+    return this.commands.queryCommands({tags: ["mark"]})
+  }
+
+  get blockCommands() {
+    return this.commands.queryCommands({tags: ["block"]})
+  }
+
+  get groupedBlockCommands() {
+    return groupBy(this.blockCommands, "group")
+  }
+
+  get generalCommands() {
+    return this.commands.queryCommands({tags: ["general"]})
+  }
+
+  get containerCommands() {
+    return this.commands.queryCommands({tags: ["container"]})
+  }
+
+  get priorityContainerCommands() {
+    const commands = this.containerCommands
+    const activeI = commands.findIndex(cmd => cmd.active)
+    const activeCommand = commands[activeI]
+    const activeCommandGroup = commands.filter(cmd => activeCommand?.group && activeCommand.group === cmd.group).map(cmd => cmd.id)
+    const activeOffset = activeCommandGroup.indexOf(activeCommand?.id)
+    const nextCmd = activeCommandGroup[(activeOffset + 1) % activeCommandGroup.length]
+    const nextI = commands.findIndex(cmd => cmd.id === nextCmd)
+    const priorityCommands = commands.filter((cmd, i) => {
+      const primaryI = commands.findIndex(c => c.group === cmd.group)
+      return !cmd.group || (activeI !== undefined && activeCommandGroup.includes(cmd.id)? nextI: primaryI) === i
+    })
+    return priorityCommands
+  }
+
+  get groupedContainerCommands() {
+    return Object.values(groupBy(this.containerCommands, "group"))
+  }
+
+  get inlineCommands() {
+    return this.commands.queryCommands({tags: ["inline"]})
+  }
+
+  get fontCommands() {
+    return this.commands.queryCommands({tags: ["font"]})
+  }
+
+  get fontFamilyCommand() {
+    return this.commands.queryCommands("fontFamily")[0]
+  }
+
+  get fontSizeCommand() {
+    return this.commands.queryCommands("fontSize")[0]
+  }
+
+  get documentCommands() {
+    return this.commands.queryCommands({category: "document"})
+  }
 
 	@property({attribute: false})
 	settingsOpen: boolean = false
@@ -167,10 +276,10 @@ export class App extends ViewModelMixin(LitElement)
 		const duration = 2500
 		const icon = {
 			"primary": "info-circle",
-			"success": "check2-circle",
-			"neutral": "gear",
-			"warning": "exclamation-triangle",
-			"danger": "exclamation-octagon"
+			"success": "circle-check",
+			"neutral": "help-circle",
+			"warning": "alert-circle",
+			"danger": "circle-x"
 		}[variant]
 		const alert = Object.assign(document.createElement("sl-alert"), {
 			variant,
@@ -185,72 +294,67 @@ export class App extends ViewModelMixin(LitElement)
 		return alert.toast()
 	}
 
-	Tabs = () => {
-		const {resources, active, previewing, changed, activate, togglePreview, discard, save, set} = this.store.resources
+
+	Content = () => {
+		const {active, previewing, changed, set, create} = this.store.resources
 		const {packages, availableWidgetTypes, bundleCode, bundleCSS, bundleID} = this.store.packages
-    const {commandMap} = this.commands
 		const {locale, showTextPlaceholder, showWidgetPreview} = this.store.ui
 		const {open} = this.environment.api.Shell
-		this.className = this.store.resources.empty? "noResources": ""
-		return repeat(resources, res => res.url, (res, i) => html`
-			<ww-tab 
-				slot="nav"
-				titleAsIconicUrl
-				id=${res.url}
-				panel=${res.url}
-				?active=${res.url === active?.url}
-				?closable=${res.url === active?.url}
-				?titleDisabled=${res.url !== active?.url}
-				titleId=${res.url}
-				titleValue=${res.url}
-				?hasUrl=${!!res.url}
-				confirmDiscardText=${msg("You have unsaved changes. Click again to discard your changes.")}
-				?previewing=${previewing[res.url]}
-				?pendingChanges=${changed[res.url]}
-				@focus=${() => activate(res.url)}
-				@ww-toggle-preview=${() => togglePreview(res.url)}
-				@ww-close-tab=${() => discard(res.url)}
-				@ww-save-tab=${() => save(res.url)}
-				@ww-save-as-tab=${() => save(res.url, true)}
-				@ww-title-click=${() => activate(res.url)}>
-			</ww-tab>
-			<ww-explorable-editor
-				id=${`panel_${res.url}`}
-				slot="main"
-				docID=${res.url}
-        .commands=${commandMap}
-				.bundleCode=${bundleCode}
-				.bundleCSS=${bundleCSS}
-				bundleID=${bundleID}
-				.revisions=${[]}
-				.editorState=${res.editorState}
-				@update=${(e: any) => set(res.url, e.detail.editorState)}
-				@ww-open=${(e: any) => open(e.detail.url)}
-				.availableWidgetTypes=${availableWidgetTypes}
-				.packages=${packages}
-				?loadingPackages=${false}
-				?previewing=${previewing[res.url]}
-				?showTextPlaceholder=${showTextPlaceholder}
-				?showWidgetPreview=${showWidgetPreview}
-				?data-active=${res.url === active?.url}
-				lang=${locale}>
-			</ww-explorable-editor>
-		`)
+    const head = html`<ww-head 
+      slot="nav"
+      filename=${ifDefined(active?.url)}
+      ?pendingChanges=${Boolean(changed[active?.url as any])}
+      .resourceCommands=${this.documentCommands as any}
+    >
+    </ww-head>`
+    const editor = this.store && active? html`<ww-explorable-editor
+    slot="main"
+    docID=${active.url}
+    .markCommands=${this.markCommands as any}
+    .containerCommands=${this.containerCommands as any}
+    .priorityContainerCommands=${this.priorityContainerCommands as any}
+    .groupedContainerCommands=${this.groupedContainerCommands as any}
+    .inlineCommands=${this.inlineCommands as any}
+    .blockCommands=${this.blockCommands as any}
+    .fontFamilyCommand=${this.fontFamilyCommand as any}
+    .fontSizeCommand=${this.fontSizeCommand as any}
+    .bundleCode=${bundleCode}
+    .bundleCSS=${bundleCSS}
+    bundleID=${bundleID}
+    .editorState=${active.editorState}
+    @update=${(e: any) => set(active.url, e.detail.editorState)}
+    @ww-open=${(e: any) => open(e.detail.url)}
+    .availableWidgetTypes=${availableWidgetTypes}
+    .packages=${packages}
+    ?loadingPackages=${false}
+    ?previewing=${previewing[active.url]}
+    .showTextPlaceholder=${showTextPlaceholder}
+    .showWidgetPreview=${showWidgetPreview}
+    ?data-active=${active.url === active?.url}
+    lang=${locale}>
+  </ww-explorable-editor>`: null
+	return !active? head: [head, editor]
 	}
 
-	Placeholder = () => html`<div id="initializingPlaceholder" slot="main">
+	Placeholder = () => {
+    return html`<div id="initializingPlaceholder" slot="main">
 		<div>
 			<sl-spinner></sl-spinner>
+      <div class="app-icon">
+        ${unsafeSVG(appIconRaw)}
+      </div>
 			<div>${msg("Loading WebWriter...")}</div>
 		</div>
 	</div>`
+  }
 
 	PackageManager = () => {
-		const {packages, adding, removing, upgrading, fetching, resetting, add, remove, upgrade, fetchAll, viewAppDir, resetAppDir, addLocal, watching} = this.store.packages
+		const {packages, adding, removing, upgrading, fetching, resetting, add, remove, upgrade, fetchAll, viewAppDir, resetAppDir, addLocal, watching, openMain} = this.store.packages
 		const {setAndPersist} = this.settings
 
 		return html`<ww-package-manager
 			slot="pre-tab-panel-a"
+      .store=${this.store}
 			.packages=${packages}
 			.adding=${adding}
 			.removing=${removing}
@@ -260,7 +364,8 @@ export class App extends ViewModelMixin(LitElement)
 			@ww-add-package=${(e: any) => add(e.detail.args)}
 			@ww-remove-package=${(e: any) => remove(e.detail.args)}
 			@ww-upgrade-package=${(e: any) => upgrade(e.detail.args)}
-			@ww-add-local-package=${(e: any) => addLocal()}
+      @ww-edit-package=${(e: any) => e} 
+      @ww-open-package-code=${(e: any) => openMain(e.detail.name)} 
 			@ww-toggle-watch=${(e: any) => setAndPersist("packages", "watching", {...watching, [e.detail.name]: !watching[e.detail.name]})}
 			@ww-refresh=${() => fetchAll(0)}
 			@ww-open-app-dir=${() => viewAppDir()}></ww-package-manager>
@@ -292,29 +397,35 @@ export class App extends ViewModelMixin(LitElement)
 		></ww-keymap-manager>`
 	}
 
+  HeaderLeft = () => {
+    const {queryCommands} = this.commands
+    return html`<div id="header-left" slot="header-left" class=${classMap({})}>
+      ${queryCommands({category: "app"}).map(v => html`
+        <ww-button variant="icon" ${spreadProps(v)} @click=${() => this.dispatchEvent(CommandEvent(v.id))}></ww-button>
+      `)}
+    </div>`
+  }
+
+  HeaderRight = () => {
+    const {queryCommands} = this.commands
+    return html`<div id="header-right" slot="header-right">
+      ${queryCommands({category: "editor", tags: ["general"]}).map(v => html`
+        <ww-button variant="icon" ${spreadProps(v)} @click=${() => this.dispatchEvent(CommandEvent(v.id))} ?reverse=${v.id === "preview"}>${v.id === "preview"? html`<span id="preview-label">${v.label}</span>`: null}</ww-button>
+      `)}
+    </div>`
+  }
+
 	Settings = () => {
 		const {specs, values, specLabels, setAndPersist} = this.settings
 		const {fetchAll, viewAppDir, resetAppDir} = this.store.packages
 		return html`
-			<span
-				id="settings-button"
-				slot="header-left"
-				@click=${() => {fetchAll(); this.settingsOpen = !this.settingsOpen}}>
-				<sl-icon-button
-					id="settings-button"
-					name="gear-fill"
-					slot="pre-tabs"
-				></sl-icon-button>
-				<span class="text">${msg("Settings")}</span>
-			</span>
-			<sl-icon name="gear" slot="drawe-left-label"></sl-icon>
-			<label slot="drawer-left-label">${msg("Settings")}</label>
-			<ww-button size="small" slot="drawer-left-header-actions" variant="danger" outline class="title-button" @click=${() => resetAppDir()} confirm>
-				<span>${msg("Reset")}</span>
+      <span slot="drawer-left-label">${msg("Settings")}</span>
+			<ww-button size="small" slot="drawer-left-header-actions" variant="danger" outline class="title-button" @click=${() => {resetAppDir(); this.settingsOpen = false}} confirm>
+				<span>${msg("Reset WebWriter")}</span>
 				<span slot="confirm">${msg("Are you sure? This action can't be reversed, all your settings will be deleted and reset.")}</span>
 			</ww-button>
 			<ww-button size="small" slot="drawer-left-header-actions" variant="neutral" outline class="title-button" @click=${() => viewAppDir()}>
-				<span>${msg("View On Disk")}</span>
+				<span>${msg("View App Folder")}</span>
 			</ww-button>
 			<ww-configurator
 				slot="drawer-left-body"
@@ -343,24 +454,32 @@ export class App extends ViewModelMixin(LitElement)
 
 	render() {
 		const initializing = !this.store || this.store.packages.initializing
+    const previewing = this?.store?.resources?.previewing ?? {}
+    const active = this?.store?.resources?.active
+    const preview = previewing[active?.url ?? ""]
+    const classes = {preview}
 		if(!initializing) {
 			this.Notification()
 			this.localization.setLocale(this.store.ui.locale)
 		}
 		return html`<ww-layout 
 			openTab
+      class=${classMap(classes)}
 			activeTabName=${ifDefined(this.store?.resources.active?.url)}
 			?drawerLeftOpen=${this.settingsOpen}
 			?hideAsides=${this.store?.resources.empty}
+      ?loading=${initializing}
 			@ww-add-tab=${() => this.store.resources.create()}
       @ww-print-tab=${() => this.commands.dispatch("print")}
 			@ww-open-tab=${() => this.store.resources.load()}
-			@ww-show-drawer=${() => this.settingsOpen = true}
+			@ww-show-drawer=${() => {this.settingsOpen = true; this.store.packages.fetchAll()}}
 			@ww-hide-drawer=${() => this.settingsOpen = false}>
-			${initializing? this.Placeholder(): [
-				this.Tabs(),
-				this.Settings()
-			]}
+      ${initializing? this.Placeholder(): [
+        this.HeaderLeft(),
+        this.HeaderRight(),
+        this.Content(),
+        this.settingsOpen? this.Settings(): null
+      ]}
 		</ww-layout>`
 	}
 }

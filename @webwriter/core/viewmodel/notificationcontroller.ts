@@ -56,6 +56,7 @@ export class NotificationController implements ReactiveController {
 
 	warningsToIgnore = [
 		"ProseMirror expects the CSS white-space property to be set, preferably to 'pre-wrap'. It is recommended to load style/prosemirror.css from the prosemirror-view package.",
-    "The `requestUpdate` method should no longer return a Promise but does so on `ww-app`. Use `updateComplete` instead. See https://lit.dev/msg/request-update-promise for more information."
+    "The `requestUpdate` method should no longer return a Promise but does so on `ww-app`. Use `updateComplete` instead. See https://lit.dev/msg/request-update-promise for more information.",
+    "TextSelection endpoint not pointing into a node with inline content"
 	]
 }

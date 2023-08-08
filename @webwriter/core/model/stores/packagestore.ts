@@ -4,6 +4,7 @@ import { Package } from ".."
 
 import {version as appVersion} from "../../package.json"
 import { toJS } from "mobx"
+import { licenses, presets } from "../templates"
 
 type ProcessingEntry = {
   key: string
@@ -62,33 +63,29 @@ type Options = {
   onImport?: (packages: Package[]) => void
 } & Environment
 
-type PackageOptions = {installed?: boolean, outdated?: boolean, root?: string, imported?: boolean, localPath?: string, reloadCount?: number, importError?: string, watching?: boolean, jsSize?: number, cssSize?: number}
-
-export type PackageWithOptions = Package & PackageOptions
-
 /** Handles packages. Packages are node (npm) packages which contain widgets. The PackageStore can also create bundles from packages, which can for example be imported by the runtime editor or embedded by serializers. Additionally, the PackageStore can open or clear the app directory which stores the packages. */
 export class PackageStore {
 
   /** Converts a H5P library object (library.json) into a node package (package.json), including the raw library data under the key "h5pLibrary". */
   static H5PtoPackageJson(name: string, library: Record<string, any>): Package {
-    return {
+    return new Package({
       name,
       version: `${library["majorVersion"]}.${library["minorVersion"]}.${library["patchVersion"]}`,
       description: library["description"],
       license: library["license"],
       author: library["author"],
-      keywords: ["webwriter-h5p", "webwriter-widget"], // @ts-ignore: Fix schema
+      keywords: ["webwriter-h5p", "webwriter-widget"],
       h5pLibrary: {...library}
-    }
+    })
   }
 
   /** Create a hash value to identify a bundle. The hash is deterministically computed from the packages' names and versions. This allows for caching of existing bundles. */
-  static computeBundleHash(packages: PackageWithOptions[], editMode: boolean = false) {
+  static computeBundleHash(packages: Package[], editMode: boolean = false) {
     const bundleID = this.computeBundleID(packages, editMode)
     return hashCode(bundleID).toString(36)
   }
 
-  static computeBundleID(packages: PackageWithOptions[], editMode: boolean = false) {
+  static computeBundleID(packages: Package[], editMode: boolean = false) {
     const packageVersions = packages.map(pkg => `${pkg.name}@${pkg.version}-${pkg.reloadCount}`)
     return packageVersions.join("~") + (editMode? "!edit": "")
   }
@@ -110,7 +107,7 @@ export class PackageStore {
   _watching: Record<Package["name"], Function> = {}
   _imported: Record<Package["name"], boolean> = {}
 
-  _packages: Record<string, PackageWithOptions> = {}
+  _packages: Record<string, Package> = {}
   corePackages: Package["name"][] = []
   bundleCode: string = ""
   bundleCSS: string = ""
@@ -159,19 +156,17 @@ export class PackageStore {
 
   private _reloadCounts: Record<Package["name"], number> = {}
 
-  private _cachedPackages: PackageWithOptions[] = []
+  private _cachedPackages: Package[] = []
 
-  get packages(): PackageWithOptions[] {
+  get packages(): Package[] {
     const cached = this._cachedPackages
-    const pkgs = Object.values(this._packages).map(pkg => ({
-      ...pkg,
+    const pkgs = Object.values(this._packages).map(pkg => pkg.extend({
       importError: this.importError[pkg.name],
       watching: Boolean(this.watching[pkg.name])
     }))
-
     const isPkgsInCached = pkgs.every(pkg => cached.find(cpkg => JSON.stringify(cpkg) === JSON.stringify(pkg)))
     const isCachedInPkgs = cached.every(cpkg => cached.find(pkg => JSON.stringify(cpkg) === JSON.stringify(pkg)))
-    if(isPkgsInCached && isCachedInPkgs) {
+    if(false && isPkgsInCached && isCachedInPkgs) { // TODO
       return this._cachedPackages
     }
     else {
@@ -180,11 +175,11 @@ export class PackageStore {
     }
   }
 
-  set packages(value: PackageWithOptions[] | Record<string, PackageWithOptions>) {
+  set packages(value: Package[] | Record<string, Package>) {
     const pkgs = Array.isArray(value)
       ? Object.fromEntries(value.map(x => [x.name, x]))
       : value
-    this._packages = pkgs
+    this._packages = pkgs as any
 
   }
 
@@ -204,7 +199,8 @@ export class PackageStore {
     this.cleanupWatching(toCleanup)
     const toAddPaths = toAdd.map(k => this._packages[k].localPath as string)
     Promise.all(toAddPaths.map(k => this.watch(k, e => this.handleLocalPathChange(k, e), {recursive: true}))
-    ).then(cbs => this.setWatchingCallbacks(toAdd, cbs))      
+    ).then(cbs => this.setWatchingCallbacks(toAdd, cbs))
+    setTimeout(() => console.log(toJS(this._watching)))
   }
 
   private setWatchingCallbacks(names: string[], callbacks: (() => void)[]) {
@@ -251,8 +247,8 @@ export class PackageStore {
     const packageJsonPath = await this.Path.join(appDir, "package.json")
     const packageJsonExists = await this.FS.exists(packageJsonPath)
     if(!packageJsonExists) {
-      const pkgConfig: Package = {name: "webwriter.webwriter", version: appVersion, license: "UNLICENSED"}
-      await this.FS.writeFile(packageJsonPath, JSON.stringify(pkgConfig))
+      const pkgConfig = new Package({name: "webwriter.webwriter", version: appVersion, license: "UNLICENSED"})
+      await this.FS.writeFile(packageJsonPath, pkgConfig.serialize() as string)
       await this.pm("add", this.corePackages, true, appDir)
       // await Promise.all(H5P_REPOSITORIES.map(this.installH5Package))
     }
@@ -261,13 +257,13 @@ export class PackageStore {
     await this.import(importable ?? [], {editMode: true})
   }
   
-  async testImportable(packages: PackageWithOptions[], setImportError=true) {
+  async testImportable(packages: Package[], setImportError=true) {
     const pkgs = Object.fromEntries(packages.map(pkg => [pkg.name, pkg]))
     for(const pkg of this.packages) {
       try {
         const options = {bundlename: `test-importable`, force: false, editMode: true}
         const {jsSize, cssSize} = await this.writeBundle([pkg], options) ?? {}
-        const updatedPkg = {...pkg, jsSize, cssSize}
+        const updatedPkg = pkg.extend({jsSize, cssSize})
         pkgs[pkg.name] = updatedPkg
       }
       catch(error: any) {
@@ -285,7 +281,7 @@ export class PackageStore {
     onDone() {(this as any).fetching = false}
   })
   async fetchInstalled(setPackages=true, incrementReloadCount: string | null = null) {
-    let packages = [] as PackageWithOptions[]
+    let packages = [] as Package[]
     const appDir = await this.Path.appDir()
     const packageJsonPath = await this.Path.join(appDir, "package.json")
     const packageJsonString = await this.FS.readFile(packageJsonPath) as string
@@ -294,6 +290,7 @@ export class PackageStore {
     const pkgs = await Promise.all(pkgJsonPaths.map(async p => JSON.parse(await this.FS.readFile(p) as string)))
     if(pkgs) {
       packages = Object.values(pkgs)
+        .map(pkg => new Package(pkg))
         .filter(pkg => pkg.keywords?.includes("webwriter-widget"))
         .map(pkg => {
           const identifier = dependencies[pkg.name]
@@ -302,10 +299,10 @@ export class PackageStore {
           if(incrementReloadCount === pkg.name) {
             this._reloadCounts = {...this._reloadCounts, [pkg!.name]: (this._reloadCounts[pkg!.name] ?? 0) + 1}
           }
-          return {...pkg, installed: true, imported, localPath, reloadCount: this._reloadCounts[pkg.name] ?? 0}
+          return pkg.extend({installed: true, imported, localPath, reloadCount: this._reloadCounts[pkg.name] ?? 0})
         })
       const importErrors = await this.testImportable(packages)
-      packages = packages.map(pkg => ({...pkg, importError: importErrors[pkg.name]}))
+      packages = packages.map(pkg => pkg.extend({importError: importErrors[pkg.name]}))
     }
     if(setPackages) {
       this.importError = {}
@@ -321,7 +318,7 @@ export class PackageStore {
   })
   async fetchAvailable(from?: number) {
     const {total, objects} = await this.search("keywords:webwriter-widget", {from})
-    const packages = objects.map(obj => obj["package"])
+    const packages = objects.map(obj => obj["package"]).map(pkg => new Package(pkg))
     return packages
   }
 
@@ -337,11 +334,11 @@ export class PackageStore {
     const outdated = installed
       .filter(({name, version}) => {
         const availVersion = available.find(pkg => pkg.name === name)?.version
-        return availVersion && availVersion !== version
+        return availVersion && String(availVersion) !== String(version)
       })
     this.packages = [
       ...available.filter(pkg => !installedPkgNames.includes(pkg.name)),
-      ...installed.map(pkg => ({...pkg, outdated: outdated.includes(pkg)}))
+      ...installed.map(pkg => pkg.extend({outdated: outdated.includes(pkg)}))
     ]
     return this.packages
   }
@@ -399,18 +396,17 @@ export class PackageStore {
     this.watching = Object.fromEntries(pkgs.map(pkg => [pkg, false]))
     await this.pm("remove", args, true, appDir)
     await this.fetchAll(0)
-    console.log(this.installed.map(pkg => pkg.name))
     await this.import(this.installed ?? [], {editMode: true})
   }
 
   /** Writes a bundle to the provided file system. */
-  async writeBundle(packages: PackageWithOptions[], {bundlename="bundle", force=false, editMode=false}: {bundlename?: string, force?: boolean, editMode?: boolean} = {bundlename: "bundle", force: false, editMode: false}) {
+  async writeBundle(packages: Package[], {bundlename="bundle", force=false, editMode=false}: {bundlename?: string, force?: boolean, editMode?: boolean} = {bundlename: "bundle", force: false, editMode: false}) {
     if(force || !await this.bundleExists(packages, {bundlename, editMode})) {
       let pkgs = packages
       const appDir = await this.Path.appDir()
       if(packages.length > 1) {
         const importErrors = await this.testImportable(packages)
-        pkgs = pkgs.map(pkg => ({...pkg, importError: importErrors[pkg.name]}))
+        pkgs = pkgs.map(pkg => pkg.extend({importError: importErrors[pkg.name]}))
       }
       const bundleFilename = `${bundlename}#${PackageStore.computeBundleHash(pkgs, editMode)}`
       const bundlePath = await this.Path.join(appDir, bundleFilename)
@@ -424,7 +420,7 @@ export class PackageStore {
         })
       const entrypoint = exportStatements.join(";")
       this.FS.writeFile(entrypointPath, entrypoint)
-      await this.bundle([`${entrypointPath}`, "--bundle", "--sourcemap=inline", `--outfile=${bundlePath}.js`, `--format=esm`])
+      await this.bundle([`${entrypointPath}`, "--bundle", "--sourcemap=inline", `--outfile=${bundlePath}.js`, `--format=esm`, ])
       const jsSize = (await this.FS.stat(bundlePath + ".js"))?.size
       const cssSize = (await this.FS.stat(bundlePath + ".css"))?.size
       return {bundlePath, packages: pkgs, jsSize, cssSize}
@@ -432,7 +428,7 @@ export class PackageStore {
   }
 
   /** Loads bundle code from the provided file system into the store, to be imported by the view later. */
-  async import(packages: PackageWithOptions[], {bundlename="bundle", editMode=false}: {bundlename?: string, editMode?: boolean} = {bundlename: "bundle", editMode: false}) {
+  async import(packages: Package[], {bundlename="bundle", editMode=false}: {bundlename?: string, editMode?: boolean} = {bundlename: "bundle", editMode: false}) {
     const packageNames = packages.map(pkg => pkg.name)
     const appDir = await this.Path.appDir()
     const bundleFilename = `${bundlename}#${PackageStore.computeBundleHash(packages, editMode)}`
@@ -443,13 +439,13 @@ export class PackageStore {
     this.bundleCode = bundleCode as string
     this.bundleCSS = bundleCSS as string
     const importedPackages = packages.map(pkg => pkg.name)
-    this.packages = this.packages.map(pkg => importedPackages.includes(pkg.name)? {...pkg, imported: true}: pkg)
+    this.packages = this.packages.map(pkg => importedPackages.includes(pkg.name)? pkg.extend({imported: true}): pkg)
     this.bundleID = PackageStore.computeBundleID(this.imported, editMode)
     this.onImport? this.onImport(packages): null
   }
 
   /** Checks if the bundle already exists on disk. */
-  async bundleExists(packages: PackageWithOptions[], {bundlename="bundle", editMode=false}: {bundlename?: string, editMode?: boolean} = {bundlename: "bundle", editMode: false}) {
+  async bundleExists(packages: Package[], {bundlename="bundle", editMode=false}: {bundlename?: string, editMode?: boolean} = {bundlename: "bundle", editMode: false}) {
     const hash = PackageStore.computeBundleHash(packages, editMode)
     const bundleFilename = `${bundlename}#${hash}`
     const appDir = await this.Path.appDir()
@@ -469,39 +465,84 @@ export class PackageStore {
     onDone() {(this as any).resetting = false}
   })
   async resetAppDir() {
+    this.initializing = true
     const appDir = await this.Path.appDir()
     await this.FS.rmdir(appDir)
     return this.initialize()
   }
 
-  /** Adds a local directory as a package. If it does not contain a package, create a package there. */
+  /** Adds a directory as a local package. */
   @storeAction({})
-  async addLocal(path?: string, pkg?: Package) {
-    const localPath = path ?? await this.Dialog.promptRead({directory: true, multiple: false, recursive: true}) as string | null
-    if(localPath === null) {
-      return
-    }
-    const appDir = await this.Path.appDir()
-    const resolvedPath = await this.Path.resolve(localPath)
-    const basename = await this.Path.basename(resolvedPath)
-    const pkgJsonPath = await this.Path.join(resolvedPath, "package.json")
-    const existingPkg = await this.FS.exists(pkgJsonPath)
-      ? Package.parse(JSON.parse(await this.FS.readFile(pkgJsonPath) as string))
-      : null
-    const resolvedPkg: Package = existingPkg 
-      ?? pkg 
-      ?? {name: basename, version: "0.0.1", keywords: ["webwriter-widget"]}
-    if(!existingPkg) {
-      this.FS.writeFile(pkgJsonPath, Package.serialize(resolvedPkg))
-    }
-    const url = new URL("link:")
-    url.pathname = resolvedPath
+  async addLocal(path: string) {
+    const resolvedPath = await this.Path.resolve(path)
     await this.add([`link:${resolvedPath}`])
+  }
+
+  /** Reads a local package directory, returning the package config. */
+  @storeAction({})
+  async readLocal(path: string) {
+    const resolvedPath = await this.Path.resolve(path)
+    const pkgJsonPath = await this.Path.join(resolvedPath, "package.json")
+    const exists = await this.FS.exists(pkgJsonPath)
+    if(!exists) {
+      throw Error("No package found under " + pkgJsonPath)
+    }
+    const pkgString = await this.FS.readFile(pkgJsonPath) as string
+    const pkg = Package.parse(JSON.parse(pkgString))
+    return pkg
+  }
+
+  /** Write a given package to a directory, creating files as neccessary. If `force` is false, abort if existing files are found. */
+  @storeAction({})
+  async writeLocal(path: string, pkg: Package, {extraFiles = {} as Record<string, string>, mergePackage=false, overwrite=false, preset="none", generateLicense=false}) {
+    const resolvedPath = await this.Path.resolve(path)
+
+    let allExtraFiles = {...extraFiles}
+    if(preset && preset in presets) {
+      allExtraFiles = {...allExtraFiles, ...(presets as any)[String(preset)](pkg)}
+    }
+    if(generateLicense && String(pkg.license) in licenses) {
+      allExtraFiles = {...allExtraFiles, ...(licenses as any)[String(pkg.license)](pkg)}
+    }
+    await Promise.all(Object.keys(allExtraFiles).map(async fileName => {
+      const extraPath  = await this.Path.join(resolvedPath, fileName)
+      const extraExists = await this.FS.exists(extraPath)
+      if(extraExists && !overwrite) {
+        throw Error("Existing extra file found under " + extraPath)
+      }
+      return this.FS.writeFile(extraPath, allExtraFiles[fileName])
+    }))
+
+    const pkgJsonPath = await this.Path.join(resolvedPath, "package.json")
+    const exists = await this.FS.exists(pkgJsonPath)
+    if(exists && !mergePackage) {
+      throw Error("Existing package.json file found under " + pkgJsonPath)
+    }
+    const existingPkg = exists? new Package(JSON.parse(await this.FS.readFile(pkgJsonPath) as string)): null
+    const newPkg = existingPkg? existingPkg.extend(pkg): pkg
+    await this.FS.writeFile(pkgJsonPath, String(newPkg))
   }
 
   @storeAction({queueKey: "pending"})
   async toggleWatch(name: Package["name"]) {
     this.watching = {...this.watching, [name]: !this.watching[name]}
+  }
+
+  /** Open the main file specified in the given package's config. */
+  @storeAction({})
+  async openMain(name: Package["name"]) {
+    if(!(name in this._packages)) {
+      throw Error(`Package ${name} not found`)
+    }
+    const pkg = this._packages[name]
+    if(pkg.main) {
+      const appDir = await this.Path.appDir()
+      const path = await this.Path.join(appDir, "node_modules", name, pkg.main)
+      return this.Shell.open(path)
+    }
+    else {
+      throw Error(`No main file configured for package ${name}`)
+    }
   }
 
 }

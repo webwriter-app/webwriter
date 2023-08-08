@@ -9,7 +9,7 @@ const process = require("process")
 
 
 const STATIC_PATH = path.normalize(process.argv[2] ?? "./static")
-const ICONS_PATH = path.normalize("./node_modules/bootstrap-icons/icons/")
+const ICONS_PATH = path.normalize("./node_modules/@tabler/icons/icons")
 const CC_PATH = path.normalize("./node_modules/@wagnerflo/cc-icons/fonts/cc-icons-svg/")
 const STATIC_ICONS_PATH = path.join(STATIC_PATH, "assets", "icons")
 

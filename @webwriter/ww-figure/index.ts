@@ -2,8 +2,9 @@ import "@shoelace-style/shoelace/dist/themes/light.css"
 import SlInput from "@shoelace-style/shoelace/dist/components/input/input.js"
 import SlQrCode from "@shoelace-style/shoelace/dist/components/qr-code/qr-code.js"
 import SlSpinner from "@shoelace-style/shoelace/dist/components/spinner/spinner.js"
+import {ScopedElementsMixin} from "@open-wc/scoped-elements"
 
-import { html, css, PropertyValueMap  } from "lit"
+import { html, css, PropertyValueMap, LitElement, render, adoptStyles  } from "lit"
 import { property, customElement, query } from "lit/decorators.js"
 
 import { LitElementWw } from "@webwriter/lit"
@@ -39,8 +40,6 @@ async function fileTypeFromUrl(url: string) {
 
 @customElement("ww-figure")
 export default class WwFigure extends LitElementWw {
-
-  static shadowRootOptions = {...LitElementWw.shadowRootOptions}
 
   @property({type: String, attribute: true, reflect: true})
   contentSrc: string
@@ -104,9 +103,14 @@ export default class WwFigure extends LitElementWw {
       }
   }
 
-  static get styles() {
-    WwFigure.elementProperties
-    return css`
+  connectedCallback() {
+    super.connectedCallback()
+    let styles = (this.constructor as typeof LitElement).styles
+    styles = Array.isArray(styles)? styles: [styles]
+    this.shadowRoot && adoptStyles(this.shadowRoot, styles as any)
+  }
+
+  static styles = css`
       :host {
         max-width: 800px;
         display: block;
@@ -151,7 +155,6 @@ export default class WwFigure extends LitElementWw {
         --track-width: 6px;
       }
     `
-  }
 
   get contentTemplate() {
 

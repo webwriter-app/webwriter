@@ -6,6 +6,7 @@ import { ifDefined } from "lit/directives/if-defined.js"
 import { unsafeStatic } from "lit/static-html.js"
 import { CommandEntry } from "../../viewmodel"
 import { spreadProps } from "@open-wc/lit-helpers"
+import { KeymapManager } from "../configurator"
 
 type ButtonTooltipOptions = Partial<Pick<SlTooltip, "placement" | "skidding" | "trigger" |"hoist">>
 
@@ -88,6 +89,9 @@ export class Button extends LitElement implements CommandEntryProps {
   @property({type: String, attribute: true})
   type: "button" | "submit" | "reset" = "button"
 
+  @property({type: Boolean, attribute: true, reflect: true})
+  reverse = false
+
   @property({type: String, attribute: true})
   name: string = ""
 
@@ -139,12 +143,11 @@ export class Button extends LitElement implements CommandEntryProps {
       }
 
       :host([variant=icon]) sl-button::part(base)  {
-        line-height: 1;
-        height: auto;
+        min-height: unset;
         padding-inline-start: 0;
         color: inherit;
-        font-size: 1.1rem;
         padding: 4px;
+        box-sizing: border-box;
       }
 
       :host([variant=icon]) sl-button {
@@ -164,12 +167,29 @@ export class Button extends LitElement implements CommandEntryProps {
       :host([variant=icon]) sl-button::part(base):active {
         color: var(--sl-color-primary-600);
       }
+
+      :host([reverse]) sl-button::part(base) {
+        display: flex;
+        flex-direction: row-reverse;
+      }
+
+      sl-icon {
+        width: unset;
+        height: unset;
+      }
     `
   ]
 
   get titleText() {
-    const shortcutText = this.shortcut? ` [${this.shortcut}]`: ""
-    return this.label && (this.label + shortcutText) || undefined
+    if(this.shortcut) {
+      const splitShortcut = this.shortcut.split(",")[0].split("+")
+      const localizedShortcut = splitShortcut.map(s => KeymapManager.keyLabelsTextOnly[s as keyof typeof KeymapManager.keyLabels] ?? s.toLocaleUpperCase()).join("+")
+      const shortcutText = this.shortcut? ` [${localizedShortcut}]`: ""
+      return this.label && (this.label + shortcutText) || undefined
+    }
+    else {
+      return this.label
+    }
   }
 
   render() {
@@ -183,9 +203,9 @@ export class Button extends LitElement implements CommandEntryProps {
         this.confirming = !this.confirming
       }
     }}>
-      <sl-button part="base" title=${ifDefined(this.titleText)} variant=${variant === "icon"? "text": variant} ${spreadProps({size, caret, disabled, loading, outline, pill, circle, type, name, value, href, target, rel, download})}>
+      <sl-button part="base" title=${ifDefined(this.titleText)} variant=${variant === "icon"? "text": variant} ${spreadProps({size, caret, disabled, loading, outline, pill, circle, type, name, value, href, target, rel, download})} exportparts="base, prefix, label, suffix, caret">
         <slot name="prefix" slot=${this.icon? "prefix": ""}>
-          <sl-icon name=${this.icon}></sl-icon>
+          <sl-icon part="icon" name=${this.icon}></sl-icon>
         </slot>
         <slot>
         </slot>

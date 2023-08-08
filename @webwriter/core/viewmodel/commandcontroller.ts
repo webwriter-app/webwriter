@@ -1,59 +1,14 @@
-import {ReactiveController, ReactiveControllerHost} from "lit"
+import {ReactiveController} from "lit"
 import Hotkeys from "hotkeys-js"
 
-import { RootStore } from "../model"
-import { ExplorableEditor } from "../view/editor"
+import { RootStore, getActiveAttributes, getActiveBlockAttributes, getActiveMarks, getStyleValues, hasActiveNode, setAttributeOnSelectedBlocks, toggleOrUpdateMark, wrapSelection} from "../model"
 import { App } from "../view"
 import { msg } from "@lit/localize"
 import hotkeys from "hotkeys-js"
-import { chainCommands, toggleMark } from "prosemirror-commands"
-import { Transform } from "prosemirror-transform"
-import { Command, EditorState, TextSelection } from "prosemirror-state"
-import { redo, redoDepth, undo, undoDepth } from "prosemirror-history"
-
-function getActiveMarks(state: EditorState) {
-	const marks = [...new Set([
-		...state.selection.$from.marks(),
-		...state.selection.$to.marks()
-	])]
-	const storedMarks = state?.storedMarks ?? null
-	return storedMarks ?? marks
-}
-
-function toggleOrUpdateMark(mark: string, options: any = {}) {
-  return (state: EditorState, dispatch: any) => {
-    const {from, to} = state.selection
-    const markType = state.schema.marks[mark]
-    const newMark = markType.create(options)
-    const correspondingMark = getActiveMarks(state).find(m => m.type.name === mark)
-    if(!correspondingMark || !correspondingMark?.eq(newMark)) {
-      return dispatch(state.tr
-        .removeMark(from, to, markType)
-        .addMark(from, to, newMark)
-      )
-    }
-    else {
-      return dispatch(state.tr.removeMark(from, to, markType))
-    }
-  }
-}
-
-function getAttributeOfEnclosingParagraph(state: EditorState, key: string) {
-  return state.selection.$from.node(1)?.attrs[key]
-}
-
-function setAttributeOnEnclosingParagraph(key: string, value: any) {
-  return (state: EditorState, dispatch: any) => {
-    if(state.selection instanceof TextSelection) {
-      const pos = state.selection.$from.before(1)
-      const tr = state.tr.setNodeAttribute(pos, key, value)
-      return dispatch(tr)
-    }
-    else {
-      return false
-    }
-  }  
-}
+import {toggleMark} from "prosemirror-commands"
+import {Command} from "prosemirror-state"
+import {redo, redoDepth, undo, undoDepth} from "prosemirror-history"
+import {Node, Mark} from "prosemirror-model"
 
 export const CommandEvent = (id: string, options?: any) => new CustomEvent(
   "ww-command",
@@ -124,12 +79,23 @@ export class CommandController implements ReactiveController {
 		return this.host.activeEditor
 	}
 
+  get resources() {
+    return this.host.store.resources
+  }
+
   get editorState() {
 		return this.host.store.resources.active?.editorState
 	}
 
   get schema() {
     return this.host.activeEditor?.editorState.schema
+  }
+
+  active = {
+    marks: [] as Mark[],
+    nodes: [] as Node[],
+    elements: [] as Element[],
+
   }
 
   exec(command: Command) {
@@ -177,7 +143,8 @@ export class CommandController implements ReactiveController {
   }
 
 	get groupLabels() {return {
-		documents: msg("Documents"),
+    app: msg("App"),
+		document: msg("Document"),
 		editor: msg("Editor"),
     miscellaneous: msg("Miscellaneous")
 	}}
@@ -196,6 +163,19 @@ export class CommandController implements ReactiveController {
 
   dispatch<ID extends keyof typeof this._commandMap> (id: ID, options?: any) {
     this.host.dispatchEvent(new CustomEvent("ww-command", {detail: {id, options}}))
+  }
+
+  queryCommands = (query: keyof typeof this._commandMap | {id?: string, category?: string, tags?: string[]}) => {
+    if(typeof query === "string") {
+      return [this.commandMap[query]]
+    }
+    else {
+       return Object.values(this.commandMap).filter(v => true 
+        && (!query.id || (v.id === query.id)) 
+        && (!query.category || (v.category === query.category))
+        && (!query.tags || query.tags?.some(t => v.tags?.includes(t)))
+      )
+    }
   }
 
 	get commandMap() {
@@ -220,262 +200,379 @@ export class CommandController implements ReactiveController {
 	}
 
 
+  MarkCommandSpec({
+    id,
+    tags=["mark"],
+    category="editor",
+    callback=((options: any) => this.exec(toggleOrUpdateMark(id, options))),
+    active=(() => !!this.editorState && this.resources.isMarkActive(id)),
+    value=(() => this.editorState && getActiveMarks(this.editorState!).find(mark => mark.type.name === id)?.attrs[id]),
+    ...rest
+  }: Partial<CommandSpec> & {id: string}) {
+    return {id, tags, category, callback, active, value, ...rest}
+  }
+
+
+  BlockCommandSpec({
+    id,
+    tags=["block"],
+    category="editor",
+    callback=((options: any) => {
+      const value = options?.value
+      this.exec(setAttributeOnSelectedBlocks(id, value)as any)
+    }),
+    active=(() => !!this.editorState && this.resources.getActiveAttributeValue(id) !== undefined),
+    group=id,
+    value=(() => !!this.editorState && this.resources.getActiveAttributeValue(id)),
+    ...rest
+  }: Partial<CommandSpec> & {id: string}) {
+    return {id, tags, category, callback, active, value, ...rest}
+  }
+  
+  InsertContainerCommandSpec({
+    id,
+    tags=["container"],
+    category="editor",
+    callback=((options: any) => this.exec(wrapSelection(this.editorState?.schema.nodes[nodeName ?? id]!, attrs))),
+    active=(() => hasActiveNode(this.editorState!, nodeName ?? id, attrs)),
+    disabled=(() => false),
+    ...rest
+  }: Partial<CommandSpec> & {id: string}, attrs?: {}, nodeName?: string) {
+    return {id, tags, category, callback, active, ...rest}
+  }
+
+
 	get _commandMap() { 
     const commands = {
       save: {
         id: "save",
         label: msg("Save"),
-        icon: "file-earmark-check",
+        icon: "file-download",
         description: msg("Save the active document"),
         shortcut: "ctrl+s",
         callback: () => this.store.resources.save(),
-        category: "documents"
+        category: "document"
       },
       saveAs: {
         id: "saveAs",
         label: msg("Save As"),
-        icon: "file-earmark-arrow-down",
+        icon: "file-export",
         description: msg("Save the active document as a copy"),
         shortcut: "ctrl+shift+s",
         callback: () => this.store.resources.save(this.store.resources.active?.url, true),
-        category: "documents"
+        category: "document"
+      },
+      toggleSettings: {
+        id: "toggleSettings",
+        label: msg("Toggle Settings"),
+        icon: "settings-filled",
+        description: msg("Opens or closes the settings drawer"),
+        shortcut: "ctrl+i",
+        callback: () => this.host.settingsOpen = !this.host.settingsOpen,
+        category: "app"
       },
       open: {
         id: "open",
         label: msg("Open"),
-        icon: "file-earmark-arrow-up-fill",
+        icon: "file-upload",
         shortcut: "ctrl+o",
         description: msg("Open a document"),
         callback: () => this.store.resources.load(),
-        category: "documents"
+        category: "app"
       },
       create: {
         id: "create",
         label: msg("Create"),
-        icon: "file-earmark-plus-fill",
+        icon: "file-plus",
         description: msg("Create a new document"),
         shortcut: "ctrl+n",
-        callback: () => this.store.resources.create(),
-        category: "documents"
+        callback: () => {
+          this.store.ui
+        },
+        category: "app"
       },
-      discard: {
+      /*discard: {
         id: "discard",
         label: msg("Discard"),
-        icon: "file-earmark-x",
+        tags: ["active"],
+        icon: "file-x",
         description: msg("Close the active document"),
         shortcut: "ctrl+w",
         callback: () => this.store.resources.discard(),
-        category: "documents"
-      },
+        category: "document"
+      },*/
       print: {
         id: "print",
         label: msg("Print"),
         icon: "printer",
         description: msg("Print the active document"),
         shortcut: "ctrl+p",
-        callback: () => {
-          console.log(this.editor)
-          this.editor?.pmEditor?.window?.print()
-        },
-        category: "documents"
+        callback: () => this.editor?.pmEditor?.window?.print(),
+        category: "document"
       },
-      nextTab: {
-        id: "nextTab",
-        label: msg("Next Tab"),
-        icon: "arrow-right-square",
-        description: msg("Select the next document tab"),
-        shortcut: "ctrl+tab",
-        callback: () => this.store.resources.activateNext(),
-        category: "documents"
-      },
-      bold: {
+      bold: this.MarkCommandSpec({
         id: "bold",
-        tags: ["mark"],
         label: msg("Bold"),
-        icon: "type-bold",
+        icon: "bold",
         description: msg("Mark the selection as bold"),
-        shortcut: "ctrl+shift+b",
-        callback: () => this.exec(toggleOrUpdateMark("bold")),
-        category: "editor",
-        active: () => this.editorState && getActiveMarks(this.editorState).some(mark => mark.type.name === "bold")
-      },
-      italic: {
+        shortcut: "ctrl+shift+b"
+      }),
+      italic: this.MarkCommandSpec({
         id: "italic",
-        tags: ["mark"],
         label: msg("Italic"),
-        icon: "type-italic",
+        icon: "italic",
         description: msg("Mark the selection as italic"),
-        shortcut: "ctrl+shift+i",
-        callback: () => this.exec(toggleOrUpdateMark("italic")),
-        category: "editor",
-        active: () => this.editorState && getActiveMarks(this.editorState).some(mark => mark.type.name === "italic")
-      },
-      underline: {
+        shortcut: "ctrl+shift+i"
+      }),
+      underline: this.MarkCommandSpec({
         id: "underline",
-        tags: ["mark"],
         label: msg("Underline"),
-        icon: "type-underline",
+        icon: "underline",
         description: msg("Mark the selection as underlined"),
         shortcut: "ctrl+shift+u",
-        callback: () => this.exec(toggleOrUpdateMark("underline")),
-        category: "editor",
-        active: () => this.editorState && getActiveMarks(this.editorState).some(mark => mark.type.name === "underline")
-      },
-      strikethrough: {
+      }),
+      strikethrough: this.MarkCommandSpec({
         id: "strikethrough",
-        tags: ["mark"],
         label: msg("Strikethrough"),
-        icon: "type-strikethrough",
+        icon: "strikethrough",
         description: msg("Mark the selection as struck through"),
         shortcut: "ctrl+shift+s",
-        callback: () => this.exec(toggleOrUpdateMark("strikethrough")),
-        category: "editor",
-        active: () => this.editorState && getActiveMarks(this.editorState).some(mark => mark.type.name === "strikethrough")
-      },
-      superscript: {
+      }),
+      superscript: this.MarkCommandSpec({
         id: "superscript",
-        tags: ["mark"],
         label: msg("Superscript"),
         icon: "superscript",
         description: msg("Mark the selection as a superscript"),
         shortcut: "ctrl+shift+ArrowUp",
-        callback: () => this.exec(toggleOrUpdateMark("superscript")),
-        category: "editor",
-        active: () => this.editorState && getActiveMarks(this.editorState).some(mark => mark.type.name === "superscript")
-      },
-      subscript: {
+        group: "supsub"
+      }),
+      subscript: this.MarkCommandSpec({
         id: "subscript",
-        tags: ["mark"],
         label: msg("Subscript"),
         icon: "subscript",
         description: msg("Mark the selection as a subscript"),
         shortcut: "ctrl+shift+ArrowDown",
-        callback: () => this.exec(toggleOrUpdateMark("subscript")),
-        category: "editor",
-        active: () => this.editorState && getActiveMarks(this.editorState).some(mark => mark.type.name === "subscript")
-      },
-      code: {
+      }),
+      code: this.MarkCommandSpec({
         id: "code",
-        tags: ["mark"],
         label: msg("Code"),
         icon: "code",
         description: msg("Mark the selection as code"),
         shortcut: "ctrl+shift+c",
-        callback: () => this.exec(toggleOrUpdateMark("code")),
-        category: "editor",
-        active: () => this.editorState && getActiveMarks(this.editorState).some(mark => mark.type.name === "code")
-      },
-      setFontSize: {
-        id: "setFontSize",
-        tags: ["font"],
-        label: msg("Set font size"),
-        icon: "plus-slash-minus",
-        description: msg("Sets the selection's font size"),
-        callback: (options: any) => this.exec(toggleOrUpdateMark("fontSize", options)),
-        category: "editor",
-        value: () => this.editorState && getActiveMarks(this.editorState).find(mark => mark.type.name === "fontSize")?.attrs.value || "14pt"
-      },
-      setFontFamily: {
-        id: "setFontFamily",
-        tags: ["font"],
-        label: msg("Set font family"),
-        icon: "fonts",
-        description: msg("Sets the selection's font family"),
-        callback: (options: any) => this.exec(toggleOrUpdateMark("fontFamily", options)),
-        category: "editor",
-        value: () => this.editorState && getActiveMarks(this.editorState).find(mark => mark.type.name === "fontFamily")?.attrs.value || "Arial"
-      },
-      incrementFontSize: {
-        id: "incrementFontSize",
-        tags: ["font"],
-        label: msg("Increment font size"),
-        icon: "plus-square",
-        description: msg("Increment the selection's font size"),
-        callback: () => commands.setFontSize.callback({
-          value: `${parseInt(commands.setFontSize.value()) + 1}pt`
-        }),
-        category: "editor",
-      },
-      decrementFontSize: {
-        id: "decrementFontSize",
-        tags: ["font"],
-        label: msg("Decrement font size"),
-        icon: "dash-square",
-        description: msg("Decrement the selection's font size"),
-        callback: () => commands.setFontSize.callback({
-          value: `${Math.max(0, parseInt(commands.setFontSize.value()) - 1)}pt`
-        }),
-        category: "editor",
-      },
-      link: {
+        tags: ["mark", "inline"]
+      }),
+      link: this.MarkCommandSpec({
         id: "link",
-        tags: ["mark"],
         label: msg("Link"),
         icon: "link",
         description: msg("Mark the selection as a link"),
         shortcut: "ctrl+shift+l",
-        callback: () => this.exec(toggleMark(this.schema?.marks.link!)),
-        category: "editor",
-        active: () => this.editorState && getActiveMarks(this.editorState).some(mark => mark.type.name === "link"),
         fields: {
           href: {
             type: "string",
             placeholder: "https://example.com"
           }
-        }
-      },
-      alignParagraphLeft: {
-        id: "alignParagraphLeft",
-        tags: ["paragraph"],
-        label: msg("Align paragraph left"),
-        icon: "text-left",
-        description: msg("Makes the paragraph text align left"),
-        callback: () => this.exec(setAttributeOnEnclosingParagraph("textAlign", "left")),
-        active: () => this.editorState && getAttributeOfEnclosingParagraph(this.editorState, "textAlign") === "left",
+        },
+        tags: ["mark", "inline"]
+      }),
+      fontSize:  this.MarkCommandSpec({
+        id: "fontSize",
+        tags: [],
+        label: msg("Set font size"),
+        icon: "letter-case",
+        description: msg("Sets the selection's font size"), //@ts-ignore
+        value: () => this.editor && (getActiveMarks(this.editorState, true).find(mark => mark.type.name === "fontSize")?.attrs.value)
+      }),
+      fontFamily:  this.MarkCommandSpec({
+        id: "fontFamily",
+        tags: [],
+        label: msg("Set font family"),
+        icon: "typography",
+        description: msg("Sets the selection's font family"), //@ts-ignore
+        value: () => this.editor && (getActiveMarks(this.editorState, true).find(mark => mark.type.name === "fontFamily")?.attrs.value)
+      }),
+      setTextColor: {
+        id: "setTextColor",
+        tags: ["mark", "color"],
+        label: msg("Set text color"),
+        icon: "letter-a",
+        description: msg("Sets the color of the selected text"),
+        callback: (options: any) => this.exec(toggleOrUpdateMark("textBackground", options)),
         category: "editor",
-        group: "textAlign"
+        value: () => (this.editorState && getActiveMarks(this.editorState).find(mark => mark.type.name === "textColor")?.attrs.value) ?? "#000000"
       },
-      alignParagraphCenter: {
-        id: "alignParagraphCenter",
-        tags: ["paragraph"],
-        label: msg("Align paragraph center"),
-        icon: "text-center",
-        description: msg("Makes the paragraph text align center"),
-        callback: () => this.exec(setAttributeOnEnclosingParagraph("textAlign", "center")),
-        active: () => this.editorState && getAttributeOfEnclosingParagraph(this.editorState, "textAlign") === "center",
+      setTextBackground: {
+        id: "setTextBackground",
+        tags: ["mark", "color"],
+        label: msg("Set text background"),
+        icon: "highlight",
+        description: msg("Sets the background color of the selected text"),
+        callback: (options: any) => this.exec(toggleOrUpdateMark("textBackground", options)),
         category: "editor",
-        group: "textAlign"
+        value: () => (this.editorState && getActiveMarks(this.editorState).find(mark => mark.type.name === "textBackground")?.attrs.value) ?? "#fff000"
       },
-      alignParagraphRight: {
-        id: "alignParagraphRight",
-        tags: ["paragraph"],
-        label: msg("Align paragraph right"),
-        icon: "text-right",
-        description: msg("Makes the paragraph text align right"),
-        callback: () => this.exec(setAttributeOnEnclosingParagraph("textAlign", "right")),
-        active: () => this.editorState && getAttributeOfEnclosingParagraph(this.editorState, "textAlign") === "right",
+      incrementFontSize: {
+        id: "incrementFontSize",
+        tags: ["font", "color"],
+        label: msg("Increment font size"),
+        icon: "text-increase",
+        description: msg("Increment the selection's font size"),
+        callback: () => commands.fontSize.callback({ //@ts-ignore
+          value: `${parseInt(commands.fontSize.value()) + 1}pt`
+        }),
         category: "editor",
-        group: "textAlign"
+        group: "font"
       },
-      alignParagraphJustified: {
-        id: "alignParagraphJustified",
-        tags: ["paragraph"],
-        label: msg("Align paragraph justified"),
-        icon: "justify",
-        description: msg("Makes the paragraph text align justified"),
-        callback: () => this.exec(setAttributeOnEnclosingParagraph("textAlign", "justify")),
-        active: () => this.editorState && getAttributeOfEnclosingParagraph(this.editorState, "textAlign") === "justify",
+      decrementFontSize: {
+        id: "decrementFontSize",
+        tags: ["font"],
+        label: msg("Decrement font size"),
+        icon: "text-decrease",
+        description: msg("Decrement the selection's font size"),
+        callback: () => commands.fontSize.callback({ //@ts-ignore
+          value: `${Math.max(0, parseInt(commands.fontSize.value()) - 1)}pt`
+        }),
         category: "editor",
-        group: "textAlign"
+        group: "font"
       },
+      lineHeight: this.BlockCommandSpec({
+        id: "lineHeight",
+        label: msg("Set line height"),
+        icon: "line-height",
+        description: msg("Set the line height of the selected block"),
+        category: "editor",
+      }),
+      border: this.BlockCommandSpec({
+        id: "border",
+        label: msg("Set block border"),
+        icon: "border-style-2",
+        description: msg("Set the border of the selected block")
+      }),
+      margin: this.BlockCommandSpec({
+        id: "margin",
+        label: msg("Set block margin"),
+        icon: "box-margin",
+        description: msg("Set the margins of the selected block")
+      }),
+      padding: this.BlockCommandSpec({
+        id: "padding",
+        label: msg("Set block padding"),
+        icon: "box-padding",
+        description: msg("Set the padding of the selected block")
+      }),
+      background: this.BlockCommandSpec({
+        id: "background",
+        label: msg("Set block background"),
+        icon: "texture",
+        description: msg("Set the background of the selected block")
+      }),
+      textAlign: this.BlockCommandSpec({
+        id: "textAlign",
+        label: msg("Align block text"),
+        icon: "align-center",
+        description: msg("Set the text alignment of the selected block")
+      }),
+      paragraph: this.InsertContainerCommandSpec({
+        id: "paragraph",
+        label: msg("Paragraph"),
+        icon: "align-justified",
+        description: msg("Insert a paragraph"),
+        group: "block"
+      }),
+      blockquote: this.InsertContainerCommandSpec({
+        id: "blockquote",
+        label: msg("Blockquote"),
+        icon: "blockquote",
+        description: msg("Insert a blockquote"),
+        group: "block"
+      }),
+      heading1: this.InsertContainerCommandSpec({
+        id: "heading1",
+        label: msg("Heading"),
+        icon: "h-1",
+        description: msg("Insert a heading (level 1)"),
+        group: "heading"
+      }, {level: 1}, "heading"),
+      heading2: this.InsertContainerCommandSpec({
+        id: "heading2",
+        label: msg("Heading 2"),
+        icon: "h-2",
+        description: msg("Insert a heading (level 2)"),
+        group: "heading"
+      }, {level: 2}, "heading"),
+      heading3: this.InsertContainerCommandSpec({
+        id: "heading3",
+        label: msg("Heading 3"),
+        icon: "h-3",
+        description: msg("Insert a heading (level 3)"),
+        group: "heading"
+      }, {level: 3}, "heading"),
+      heading4: this.InsertContainerCommandSpec({
+        id: "heading4",
+        label: msg("Heading 4"),
+        icon: "h-4",
+        description: msg("Insert a heading (level 4)"),
+        group: "heading"
+      }, {level: 4}, "heading"),
+      heading5: this.InsertContainerCommandSpec({
+        id: "heading5",
+        label: msg("Heading 5"),
+        icon: "h-5",
+        description: msg("Insert a heading (level 5)"),
+        group: "heading"
+      }, {level: 5}, "heading"),
+      heading6: this.InsertContainerCommandSpec({
+        id: "heading6",
+        label: msg("Heading 6"),
+        icon: "h-6",
+        description: msg("Insert a heading (level 6)"),
+        group: "heading"
+      }, {level: 6}, "heading"),
+      unorderedList: this.InsertContainerCommandSpec({
+        id: "unorderedList",
+        label: msg("List"),
+        icon: "list",
+        description: msg("Insert a list (unordered)"),
+        group: "list",
+      }),
+      orderedList: this.InsertContainerCommandSpec({
+        id: "orderedList",
+        label: msg("Ordered List"),
+        icon: "list-numbers",
+        description: msg("Insert a list (ordered)"),
+        group: "list"
+      }),
+      /*taskList: this.InsertContainerCommandSpec({
+        id: "taskList",
+        label: msg("Task List"),
+        icon: "list-check",
+        description: msg("Insert a list (tasks)"),
+        group: "list"
+      }, {isTask: true}, "list"),*/
+      table: this.InsertContainerCommandSpec({
+        id: "table",
+        label: msg("Table"),
+        icon: "table",
+        description: msg("Insert a table"),
+        group: "table",
+        disabled: () => true // TODO
+      }),
+      drawer: this.InsertContainerCommandSpec({
+        id: "drawer",
+        label: msg("Drawer"),
+        icon: "square-chevron-down",
+        description: msg("Insert a drawer"),
+        group: "drawer",
+        disabled: () => true // TODO
+      }),
       undo: {
         id: "undo",
         tags: ["general"],
         label: msg("Undo"),
-        icon: "arrow-counterclockwise",
+        icon: "arrow-back-up",
         description: msg("Undo the last change in the active document"),
         shortcut: "ctrl+z",
-        callback: () => {console.log("undo"); this.exec(undo)},
+        callback: () => this.exec(undo),
         category: "editor",
         disabled: () => this.editorState && undoDepth(this.editorState) === 0
       },
@@ -483,7 +580,7 @@ export class CommandController implements ReactiveController {
         id: "redo",
         tags: ["general"],
         label: msg("Redo"),
-        icon: "arrow-clockwise",
+        icon: "arrow-forward-up",
         description: msg("Redo the last undone change in the active document"),
         shortcut: "ctrl+y",
         callback: () => this.exec(redo),
@@ -492,7 +589,7 @@ export class CommandController implements ReactiveController {
       },
       preview: {
         id: "preview",
-        tags: ["preview"],
+        tags: ["general"],
         label: msg("Preview"),
         icon: "eye",
         description: msg("Toggles the preview for the active document"),
@@ -500,15 +597,6 @@ export class CommandController implements ReactiveController {
         callback: () => this.store.resources.togglePreview(),
         category: "editor",
         value: () => this.editor?.previewing
-      },
-      toggleSettings: {
-        id: "toggleSettings",
-        label: msg("Toggle Settings"),
-        icon: "gear-fill",
-        description: msg("Opens or closes the settings drawer"),
-        shortcut: "ctrl+i",
-        callback: () => this.host.settingsOpen = !this.host.settingsOpen,
-        category: "miscellaneous"
       },
       toggleDevTools: {
         id: "toggleDevTools",

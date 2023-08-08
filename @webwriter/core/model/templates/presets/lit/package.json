@@ -1,0 +1,9 @@
+{
+  "name": "ww-lit-preset",
+  "version": "0.1.0",
+  "main": "index.ts",
+  "dependencies": {
+    "lit": "*",
+    "@webwriter/lit": "*"
+  }
+}

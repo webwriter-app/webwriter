@@ -3,10 +3,10 @@ import {styleMap} from "lit/directives/style-map.js"
 import {customElement, property, query} from "lit/decorators.js"
 import { Decoration, EditorView, DecorationSet } from "prosemirror-view"
 import { EditorState, Command, NodeSelection, TextSelection, AllSelection } from "prosemirror-state"
-import { Node, Mark, Slice, Fragment, DOMParser } from "prosemirror-model"
-import { localized, msg } from "@lit/localize"
+import { Node, Mark} from "prosemirror-model"
+import { localized, msg, str } from "@lit/localize"
 
-import { PackageWithOptions } from "../../model"
+import { Package, createWidget } from "../../model"
 import { WidgetView } from "."
 import { DocumentHeader } from "./documentheader"
 import { DocumentFooter } from "./documentfooter"
@@ -21,6 +21,7 @@ import redefineCustomElementsString from "redefine-custom-elements/lib/index.js?
 
 import {computePosition, autoUpdate, offset, shift} from '@floating-ui/dom'
 import { CommandEntry, CommandEvent } from "../../viewmodel"
+import { fixTables } from "prosemirror-tables"
 
 
 export class EditorViewController extends EditorView implements ReactiveController {
@@ -46,7 +47,7 @@ export class EditorViewController extends EditorView implements ReactiveControll
 export class ExplorableEditor extends LitElement {
 
 	exec = (command: Command) => {
-		command(this.pmEditor.state, this.pmEditor.dispatch)
+		command(this.pmEditor.state, this.pmEditor.dispatch, this.pmEditor as any)
 		this.pmEditor.focus()
 	}
 
@@ -60,13 +61,6 @@ export class ExplorableEditor extends LitElement {
 		}
 		return `ww_${num.toString(36)}`
 	}
-
-  createWidget = (name: string, id: string, editable=true) => {
-    const nodeType = this.pmEditor.state.schema.nodes[name]
-    return nodeType.createAndFill({id, otherAttrs: {editable}}, [
-      
-    ])
-  }
 
 	insertWidget = async (name: string, preview=false, attrs: Record<string, string>={}) => {
 		const state = this.pmEditor.state
@@ -85,16 +79,16 @@ export class ExplorableEditor extends LitElement {
 			this.stateBeforePreview = null
 		}
 		else if(!preview) {
-			const node = this.createWidget(name, id)
+			const node = createWidget(state.schema, name, id)
 			tr = state.tr
-				.replaceSelectionWith(node)
+				.replaceSelectionWith(node!)
 			this.stateBeforePreview = null
 		}
 		else if(preview && !previewExists) {
-			const node = this.createWidget(name, id)
+			const node = createWidget(state.schema, name, id)
 			this.stateBeforePreview = state
 			tr = state.tr
-				.replaceSelectionWith(node)
+				.replaceSelectionWith(node!)
 		}
 		tr? this.pmEditor.dispatch(tr): null
 		
@@ -110,34 +104,6 @@ export class ExplorableEditor extends LitElement {
 		this.classList.add("loading")
 	}
 
-  get markCommands() {
-    return Object.values(this.commands).filter(cmd => cmd.tags?.includes("mark"))
-  }
-
-  get paragraphCommands() {
-    return Object.values(this.commands).filter(cmd => cmd.tags?.includes("paragraph"))
-  }
-
-  get generalCommands() {
-    return Object.values(this.commands).filter(cmd => cmd.tags?.includes("general"))
-  }
-
-  get previewCommand() {
-    return this.commands["preview"]
-  }
-
-  get fontCommands() {
-    return Object.values(this.commands).filter(cmd => cmd.tags?.includes("font"))
-  }
-
-  get setFontFamilyCommand() {
-    return Object.values(this.commands).find(cmd => cmd.id === "setFontFamily")
-  }
-
-  get setFontSizeCommand() {
-    return Object.values(this.commands).find(cmd => cmd.id === "setFontSize")
-  }
-
 	@property({type: Object, attribute: false})
 	editorState: EditorState
 
@@ -147,11 +113,32 @@ export class ExplorableEditor extends LitElement {
 	@property({type: Boolean})
 	loadingPackages: boolean
 
+  @property({type: Array, attribute: false})
+  markCommands: CommandEntry[] = []
+
+  @property({type: Array, attribute: false})
+  blockCommands: CommandEntry[] = []
+
+  @property({type: Array, attribute: false})
+  containerCommands: CommandEntry[] = []
+
+  @property({type: Array, attribute: false})
+  priorityContainerCommands: CommandEntry[] = []
+
+  @property({type: Array, attribute: false})
+	inlineCommands: CommandEntry[] = []
+
+  @property({type: Array, attribute: false})
+  groupedContainerCommands: CommandEntry[][] = []
+
   @property({type: Object, attribute: false})
-  commands: Record<string, CommandEntry>
+  fontFamilyCommand: CommandEntry
+
+  @property({type: Object, attribute: false})
+  fontSizeCommand: CommandEntry
 
 	@property({type: Array, attribute: false})
-	packages: PackageWithOptions[]
+	packages: Package[]
 
 	@property({type: String})
 	appendBlockType: string
@@ -177,16 +164,16 @@ export class ExplorableEditor extends LitElement {
 	@property({type: String, attribute: false})
 	bundleCSS: string
 
-	@property({state: true})
+	@property({type: Number, state: true})
 	toolboxX: number
 
-	@property({state: true})
+	@property({type: Number, state: true})
 	toolboxY: number
 
-	@property({state: true})
+	@property({type: Object, state: true})
 	deletingWidget: Element | null
 
-	@property({state: true})
+	@property({type: Object, state: true})
 	stateBeforePreview: EditorState | null = null
 	
 	@query("ww-document-header")
@@ -214,7 +201,7 @@ export class ExplorableEditor extends LitElement {
 	}
 
 	get isTextSelected() {
-		return this.selection instanceof TextSelection
+		return this.selection instanceof TextSelection || this.selection instanceof AllSelection
 	}
 
 	get isWidgetSelected() {
@@ -227,11 +214,6 @@ export class ExplorableEditor extends LitElement {
 
 	get selectionY() {
 		return this.pmEditor.coordsAtPos(this.editorState.selection.anchor).top
-	}
-
-	getDocAttribute(key: string, asArray=true): string {
-		const attr = this.editorState.doc.attrs.meta[key]
-		return attr == null || Array.isArray(attr) || !asArray? attr: [attr]
 	}
 
 	emitSelectTabTitle = () => this.dispatchEvent(
@@ -308,10 +290,10 @@ export class ExplorableEditor extends LitElement {
 			}
 
       :host > main {
-        grid-column: 1 / 5;
+        grid-column: 1 / 6;
         grid-row: 2;
 				display: grid;
-				grid-template-columns: 1fr 40px minmax(auto, 800px) 1fr;
+				grid-template-columns: 1fr 80px minmax(auto, 680px) 80px 1fr;
 				grid-template-rows: 1fr max-content;
         place-items: stretch;
 				width: 100%;
@@ -323,12 +305,12 @@ export class ExplorableEditor extends LitElement {
 			}
 
       :host > aside {
-        grid-column: 4;
+        grid-column: 5;
         grid-row: 1;
       }
 
 			pm-editor {
-				grid-column: 2 / 5;
+				grid-column: 2 / 6;
 				grid-row: 1;
 			}
 
@@ -358,7 +340,7 @@ export class ExplorableEditor extends LitElement {
       }
 
 
-			:host([previewing]) ww-toolbox {
+			:host([previewing]) ww-toolbox, :host([previewing]) ww-palette {
 				display: none !important;
 			}
 
@@ -367,8 +349,8 @@ export class ExplorableEditor extends LitElement {
       }
 
       :host([previewing]) > main {
-        grid-column: 1 / 5;
-        grid-row: 1 / 5;
+        grid-column: 1 / 6;
+        grid-row: 1 / 6;
         z-index: 100;
       }
 
@@ -378,7 +360,7 @@ export class ExplorableEditor extends LitElement {
 
 			@media only screen and (max-width: 1300px) {
 				ww-palette {
-					grid-column: 1 / 5;
+					grid-column: 1 / 6;
 					grid-row: 2;
 				}
 
@@ -386,17 +368,9 @@ export class ExplorableEditor extends LitElement {
           display: none;
         }
 
-        :host([previewing]) ww-palette::part(widget-choices) {
-          display: none;
-        }
 
-        :host([previewing]) ww-palette {
-          position: fixed;
-          right: 0;
-          bottom: 0;
-          border: none;
-          background: none;
-          box-shadow: none;
+        ww-toolbox.right-text {
+          display: none;
         }
 			}
 
@@ -406,14 +380,6 @@ export class ExplorableEditor extends LitElement {
 					grid-row: 1;
 				}
 
-        ww-palette ww-commandbar {
-          display: none;
-        }
-
-        :host([previewing]) ww-palette {
-          display: none;
-        }
-
 			}
 		`
 	}
@@ -421,13 +387,69 @@ export class ExplorableEditor extends LitElement {
 	static editingStyles = css`
 
 		html {
-			background: #f1f1f1;
+			background: var(--sl-color-gray-100);
 			overflow-y: scroll;
+      overflow-x: hidden;
 			height: 100%;
 			--sl-color-danger-300: #fca5a5;
 			--sl-color-primary-400: #38bdf8;
-
 		}
+
+    ::-webkit-scrollbar {
+      width: 16px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background-color: #b0b0b0;
+      background-clip: padding-box;
+      border-bottom: 6px solid transparent;
+      border-top: 6px solid transparent;
+    }
+
+    ::-webkit-scrollbar-track {
+      background-color: transparent;
+    }
+    /* Buttons */
+    ::-webkit-scrollbar-button:single-button {
+      background-color: transparent;
+      display: block;
+      border-style: solid;
+      height: 16px;
+      width: 16px;
+      padding: 2px;
+    }
+    /* Up */
+    ::-webkit-scrollbar-button:single-button:vertical:decrement {
+      border-width: 0 8px 8px 8px;
+      border-color: transparent transparent var(--sl-color-gray-600) transparent;
+    }
+
+    ::-webkit-scrollbar-button:single-button:vertical:decrement:hover {
+      border-color: transparent transparent var(--sl-color-gray-800) transparent;
+    }
+
+    ::-webkit-scrollbar-button:single-button:vertical:decrement:disabled {
+      border-color: transparent transparent var(--sl-color-gray-400) transparent;
+    }
+
+    /* Down */
+    ::-webkit-scrollbar-button:single-button:vertical:increment {
+      border-width: 8px 8px 0 8px;
+      border-color: var(--sl-color-gray-600) transparent transparent transparent;
+    }
+
+    ::-webkit-scrollbar-button:vertical:single-button:increment:hover {
+      border-color: var(--sl-color-gray-800) transparent transparent transparent;
+    }
+
+    ::-webkit-scrollbar-button:vertical:single-button:increment:disabled {
+      border-color: var(--sl-color-gray-400) transparent transparent transparent;
+    }
+
+    a:not([href]) {
+      text-decoration: underline;
+      color: #0000EE;
+    }
 
 		body {
 			display: block;
@@ -435,8 +457,12 @@ export class ExplorableEditor extends LitElement {
 			max-width: 840px;
 		}
 
-    audio, video, picture, picture > img {
+    audio, video, picture, picture > img, embed {
       width: 100%;
+    }
+
+    embed {
+      aspect-ratio: 1/1.4142;
     }
 
     .slot-content {
@@ -527,9 +553,57 @@ export class ExplorableEditor extends LitElement {
       line-height: 2;
 		}
 
+    .ProseMirror table {
+      margin: 0;
+    }
+
+    .ProseMirror th,
+    .ProseMirror td {
+      min-width: 1em;
+      border: 1px solid var(--sl-color-gray-600);
+      padding: 3px 5px;
+      transition: width 0.1s;
+    }
+
+    .ProseMirror .tableWrapper {
+      margin: 1em 0;
+    }
+
+    .ProseMirror th {
+      font-weight: bold;
+      text-align: left;
+    }
+
+    table .ProseMirror-gapcursor {
+      border: 2px dashed var(--sl-color-primary-600);
+      display: table-cell;
+      min-width: 1em;
+      padding: 3px 5px;
+      vertical-align: top;
+      box-sizing: border-box;
+      position: relative;
+      height: 100%;
+    }
+
+    table .ProseMirror-gapcursor::after {
+      border-top: none;
+      border-left: 1px solid black;
+      width: 2px;
+      height: 1em;
+      position: static;
+    }
+
 		.ProseMirror ::selection {
 			background-color: var(--sl-color-primary-400);
+      color: var(--sl-color-gray-100);
 		}
+
+    blockquote {
+      background: #f9f9f9;
+      border-left: 10px solid #ccc;
+      margin: 1.5em 10px;
+      padding: 0.5em 10px;
+    }
 
 		@media only screen and (min-width: 1071px) {
 
@@ -649,19 +723,19 @@ export class ExplorableEditor extends LitElement {
 	}
 
 	get isInNarrowLayout() {
-		return document.documentElement.clientWidth <= 1300
+		return document.documentElement.offsetWidth <= 1300
 	}
 
-	get activeElement(): Element | null {
+	get activeElement(): HTMLElement | null {
 			const {selection} = this
       if(!this.pmEditor) {
         return null
       }
-			if(selection instanceof TextSelection) {
+			if(selection instanceof TextSelection || selection instanceof AllSelection) {
 				const pos = this.selection.from
-				let node = this.pmEditor?.domAtPos(pos, 0).node
-        let docNode = this.pmEditor.domAtPos(0, 0).node
-        while(node.parentElement && node.parentElement !== docNode) {
+				let node = this.pmEditor?.domAtPos(pos, 0)?.node
+        let docNode = this.pmEditor?.domAtPos(0, 0)?.node
+        while(node?.parentElement && node.parentElement !== docNode) {
           node = node.parentElement
         }
         /*
@@ -698,12 +772,12 @@ export class ExplorableEditor extends LitElement {
 
 	
 
-	get hasNonEmptyTextSelection() {
-		const selectionContent = (this.pmEditor?.state.selection.content().content.toJSON() ?? []) as any[]
+	get hasNonEmptySelection() {
+		const selectionContent = (this.pmEditor?.state?.selection.content().content.toJSON() ?? []) as any[]
 		const textSelection = this.selection instanceof TextSelection
 		const empty = this?.pmEditor?.state?.selection.empty
 		const textOnly = selectionContent.every(entry => entry.type === "paragraph")
-		return !empty && textOnly
+		return !empty
 	}
 
 	updatePosition = async () => {
@@ -729,7 +803,10 @@ export class ExplorableEditor extends LitElement {
 			const {bottom: anchorBottom, left: anchorLeft} = this.pmEditor.coordsAtPos(this.selection.anchor)
 			const {bottom: headBottom, left: headLeft} = this.pmEditor.coordsAtPos(this.selection.head)
 			this.toolboxX = roundByDPR(
-				Math.max(Math.min(anchorLeft, headLeft) + iframeOffsetX)
+          Math.min(
+            Math.min(anchorLeft, headLeft) + iframeOffsetX,
+            docWidth - this.toolbox.clientWidth - 20
+          )
 			)
 			this.toolboxY = roundByDPR(Math.min(
 				Math.max(anchorBottom, headBottom, yMin) + 2,
@@ -761,7 +838,7 @@ export class ExplorableEditor extends LitElement {
 				middleware: []
 			})
 			this.toolboxX = roundByDPR(docWidth + 10)
-			this.toolboxY = roundByDPR(Math.max(Math.min(y + 45, docHeight - this.toolbox.clientHeight + 30), 50))/*roundByDPR(
+			this.toolboxY = roundByDPR(Math.max(Math.min(y + 45, docHeight - this.toolbox.clientHeight + 50), 50))/*roundByDPR(
         Math.min(Math.max(selectionY, 0), yMax)
       )*/
 		}
@@ -770,20 +847,23 @@ export class ExplorableEditor extends LitElement {
 	autoUpdateElement: {element: Element, cleanup: () => void} | null = null
 
   protected willUpdate(changed: PropertyValueMap<any> | Map<PropertyKey, unknown>): void {
+    super.willUpdate(changed)
 		const elementNotAuto = this.autoUpdateElement?.element !== this.activeElement
     if(this.activeElement && changed.has("editorState") && elementNotAuto) {
 			this.forceToolboxPopup = null
 			this.autoUpdateElement?.cleanup()
 			this.autoUpdateElement = {
 				element: this.activeElement,
-				cleanup: autoUpdate(this.pmEditor.body, this.toolbox, () => this.updatePosition(), {animationFrame: true})
+				cleanup: autoUpdate(this.pmEditor.body, this.toolbox, () => this.updatePosition(), {animationFrame: false})
 			}
     }
   }
 
+
   disconnectedCallback(): void {
-	this.autoUpdateElement?.cleanup()
-	this.autoUpdateElement = null
+    super.disconnectedCallback()
+	  this.autoUpdateElement?.cleanup()
+	  this.autoUpdateElement = null
   }
 
   shouldBeEditable = (state: EditorState) => !this.previewing
@@ -870,6 +950,14 @@ export class ExplorableEditor extends LitElement {
     return script
   }
 
+  private static createEmbedElement(blob: Blob) {
+    const embed = document.createElement("embed")
+    embed.src = URL.createObjectURL(blob)
+    embed.type = blob.type
+    embed.setAttribute("data-filename", blob.name)
+    return embed
+  }
+
   private static elementsToHTMLString(elements: Element[]): string {
     return elements.map(el => el.outerHTML).join("\n")
   }
@@ -878,7 +966,17 @@ export class ExplorableEditor extends LitElement {
     const elements = []
     // https://www.iana.org/assignments/media-types/media-types.xhtml
     for(const blob of blobs) {
-      if(blob.type.startsWith("application/")) {
+      if(blob.size > 1e+8 && blob.size <= 5e+8) {
+        console.warn(str`File ${blob.name} is larger than 100MB. It is not recommended to embed files this large.`)
+      }
+      if(blob.size > 5e+8) {
+        console.error(str`File ${blob.name} is larger than 500MB. Files larger than 500MB can not be embedded.`)
+      }
+      else if(blob.type === "application/pdf") {
+        const element = ExplorableEditor.createEmbedElement(blob)
+        elements.push(element)
+      }
+      else if(blob.type.startsWith("application/")) {
         const element = ExplorableEditor.createScriptElement(blob)
         elements.push(element)
       }
@@ -893,6 +991,7 @@ export class ExplorableEditor extends LitElement {
         elements.push(element)
       }
       else if(blob.type.startsWith("example/")) {
+        console.warn(msg("WebWriter does not support media of type ") + blob.type)
         continue
       }
       else if(blob.type.startsWith("image/")) {
@@ -908,6 +1007,7 @@ export class ExplorableEditor extends LitElement {
         element? elements.push(element): null 
       }
       else if(blob.type.startsWith("multipart/")) {
+        console.warn(`WebWriter does not support media of type ${blob.type}`)
         continue 
       }
       else if(blob.type.startsWith("text/") || blob.type === "text") {
@@ -930,7 +1030,6 @@ export class ExplorableEditor extends LitElement {
       const files = [...(data?.files as any)].filter(file => file) as File[]
       const elements = this.blobsToElements(files)
       const htmlString = ExplorableEditor.elementsToHTMLString(elements)
-      console.log(htmlString)
       const dataTransfer = new DataTransfer()
       dataTransfer.setData("text/html", htmlString)
       // const eventToRedispatch = new DragEvent("drop", {...ev, dataTransfer})
@@ -983,12 +1082,12 @@ export class ExplorableEditor extends LitElement {
 
 	pendingBlur: number
 
-	@property({state: true})
+	@property({type: Boolean, state: true})
 	forceToolboxPopup: boolean | null = null
 
 	get toolboxMode(): "popup" | "right" | "right-text" | "inline" | "hidden" {
-		const {isInNarrowLayout, hasNonEmptyTextSelection, isWidgetSelected, forceToolboxPopup, isTextSelected} = this
-		if(isInNarrowLayout && (forceToolboxPopup ?? hasNonEmptyTextSelection) && !isWidgetSelected && this.activeElement) return "popup"
+		const {isInNarrowLayout, hasNonEmptySelection, isWidgetSelected, forceToolboxPopup, isTextSelected} = this
+		if(isInNarrowLayout && (forceToolboxPopup ?? hasNonEmptySelection) && !isWidgetSelected && this.activeElement) return "popup"
 		else if(!isInNarrowLayout && isWidgetSelected) return "right"
 		else if(!isInNarrowLayout && isTextSelected) return "right-text"
 		else if(isInNarrowLayout && isWidgetSelected) return "inline"
@@ -1005,7 +1104,7 @@ export class ExplorableEditor extends LitElement {
 			left: `${this.toolboxX}px`,
 			top: `${this.toolboxY}px`,
 			border: "1px solid lightgray",
-			padding: "4px",
+			padding: "12px",
 			boxShadow: "var(--sl-shadow-medium)",
       transition: "top 0.1s, left 0.1s"
 		}
@@ -1013,13 +1112,15 @@ export class ExplorableEditor extends LitElement {
 			position: "fixed",
 			left: `${this.toolboxX}px`,
 			top: `${this.toolboxY}px`,
-      transition: "top 0.1s, left 0.1s"
+      transition: "top 0.1s, left 0.1s",
+      willChange: "left, top"
 		}
 		else if(toolboxMode === "right-text") return {
 			position: "fixed",
 			left: `${this.toolboxX}px`,
 			top: `${this.toolboxY}px`,
-      transition: "top 0.1s, left 0.1s"
+      transition: "top 0.1s, left 0.1s",
+      willChange: "left, top"
 		}
 		else if(toolboxMode === "inline") return {
 			position: "fixed",
@@ -1045,6 +1146,7 @@ export class ExplorableEditor extends LitElement {
 		}
 		return html`
 			<ww-toolbox
+        class=${this.toolboxMode}
 				style=${styleMap(this.toolboxStyle)}
 				tabindex="-1"
 				.activeElement=${activeElement}
@@ -1067,9 +1169,10 @@ export class ExplorableEditor extends LitElement {
 					!e.detail.widget? this.pmEditor?.focus(): e.detail.widget.focus()
 				}}
 				.markCommands=${this.markCommands}
-        .paragraphCommands=${this.paragraphCommands}
-        .setFontFamilyCommand=${this.setFontFamilyCommand}
-        .setFontSizeCommand=${this.setFontSizeCommand}
+        .blockCommands=${this.blockCommands}
+        .containerCommands=${this.containerCommands}
+        .fontFamilyCommand=${this.fontFamilyCommand!}
+        .fontSizeCommand=${this.fontSizeCommand!}
 			></ww-toolbox>
 		`
 	}
@@ -1096,21 +1199,12 @@ export class ExplorableEditor extends LitElement {
 				.packages=${this.packages.filter(pkg => pkg.installed)}
 				tabindex="-1"
 				?showWidgetPreview=${this.showWidgetPreview}
+        .groupedContainerCommands=${this.groupedContainerCommands}
+        .inlineCommands=${this.inlineCommands}
 			>
-      ${this.GeneralCommands()}
     </ww-palette>
 		`
 	}
-
-  GeneralCommands = () => {
-    return html`<ww-commandbar
-				@ww-click-general-command=${(e: any) => this.dispatchEvent(CommandEvent(e.detail.name))}
-        @ww-toggle-preview=${() => this.previewing = !this.previewing}
-        ?previewing=${this.previewing}
-				.generalCommands=${this.generalCommands}
-        .previewCommand=${this.previewCommand}
-    ></ww-commandbar>`
-  }
 
 	render() {
 		return html`
@@ -1119,9 +1213,6 @@ export class ExplorableEditor extends LitElement {
         ${this.Toolbox()}
         ${this.Palette()}
       </main>
-      <aside part="toolbar">
-        ${this.GeneralCommands()}
-      </aside>
     ` 
 	}
 }

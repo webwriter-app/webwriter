@@ -4,7 +4,7 @@ import { html, css, LitElement } from "lit"
 import { customElement, property, query } from "lit/decorators.js"
 import { ZodBoolean, ZodLiteral, ZodSchema, ZodUnion } from "zod"
 
-import { Settings, SettingSpec, KeymapEntry } from "../../viewmodel"
+import { Settings, SettingSpec } from "../../viewmodel"
 
 @localized()
 @customElement("ww-configurator")
@@ -103,7 +103,7 @@ export class Configurator extends LitElement {
       const options = schema._def.options as ZodLiteral<any>[]
       return html`<sl-select value=${value} @sl-change=${(e: Event) => onChange(groupKey, key, (e.target as SlSelect).value)}>
         <label slot="label">
-          ${key === "locale" && html`<sl-icon name="translate"></sl-icon>`}
+          ${key === "locale" && html`<sl-icon name="language"></sl-icon>`}
           ${label}
         </label>
         <span slot="help-text">${schema.description}</span>

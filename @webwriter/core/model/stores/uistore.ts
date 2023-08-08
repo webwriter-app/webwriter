@@ -10,9 +10,9 @@ export class UIStore {
    
    notifications: Notification[] = []
 
-   showTextPlaceholder: boolean = true
+   showTextPlaceholder: boolean = false
 
-   showWidgetPreview: boolean = true
+   showWidgetPreview: boolean = false
 
    keymap: Record<string, {shortcut: string}> = {}
 
