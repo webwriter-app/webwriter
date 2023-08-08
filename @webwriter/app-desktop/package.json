@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/app-desktop",
-  "version": "0.5.0",
+  "version": "0.6.0-rc1",
   "description": "Windows/Mac/Linux version of WebWriter",
   "private": true,
   "author": "Frederic Salmen <frederic@fsalmen.de>",

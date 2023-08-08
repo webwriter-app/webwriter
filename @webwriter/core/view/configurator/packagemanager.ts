@@ -502,7 +502,6 @@ export class PackageManager extends LitElement {
 	packageListItem = (pkg: Package, i: number) => {
 		const {name, author, version, description, keywords, installed, outdated, importError, localPath, watching, jsSize, cssSize} = pkg
 		const {emitAddPackage, emitRemovePackage, emitUpgradePackage, emitToggleWatch, emitOpenPackageCode, emitEditPackage} = this
-    console.log(pkg.watching)
 		const adding = this.adding.includes(name)
 		const removing = this.removing.includes(name)
 		const upgrading = this.upgrading.includes(name)

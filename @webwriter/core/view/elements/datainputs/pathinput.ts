@@ -5,7 +5,7 @@ import { SlInput } from "@shoelace-style/shoelace";
 import { localized, msg } from "@lit/localize";
 
 
-const windowsPathPattern = /^(?<ParentPath>(?:[a-zA-Z]:|\\\\[^\<\>:"/\\|\?\*]+\\[^\<\>:"/\\|\?\*]+)\\(?:[^\<\>:"/\\|\?\*]+\\)*)(?<BaseName>[^<>:"/\\|\?\*]*?)/
+const windowsPathPattern = /^(?<ParentPath>(?:[a-zA-Z]:|\\\\[^\<\>:"\/\\|?*]+\\[^\<\>:"\/\\|?*]+)\\(?:[^\<\>:"\/\\|?*]+\\)*)(?<BaseName>[^\<\>:"\/\\|?*]*?)/
 const unixPathPattern = /[^\0]+/
 
 
