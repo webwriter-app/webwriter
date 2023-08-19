@@ -484,7 +484,7 @@ export class ExplorableEditor extends LitElement {
 		}
 
 		.ww-widget {
-			--ww-action-opacity: 0;
+			--ww-action-opacity: 1;
 			position: relative !important;
 			display: block !important;
 			user-select: none !important;
@@ -546,7 +546,7 @@ export class ExplorableEditor extends LitElement {
 			outline-color: lightgray;
 		}
 
-		.ww-widget:focus-within, .ww-widget:hover {
+		.ww-widget:focus-within {
 			--ww-action-opacity: 1;
 		}
 
@@ -658,6 +658,10 @@ export class ExplorableEditor extends LitElement {
 				user-select: none;
 				-webkit-user-select: none;
 			}
+
+      .ww-widget:not(:focus-within) {
+        --ww-action-opacity: 0;
+      }
 		}
 
     @media print {
