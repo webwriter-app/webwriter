@@ -307,6 +307,7 @@ export class Toolbox extends LitElement {
 
       .widget-name {
         text-decoration: solid underline var(--sl-color-primary-400) 2px;
+        cursor: pointer;
       }
 
       .paragraph-command.applied {
