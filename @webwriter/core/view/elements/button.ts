@@ -183,7 +183,7 @@ export class Button extends LitElement implements CommandEntryProps {
   get titleText() {
     if(this.shortcut) {
       const splitShortcut = this.shortcut.split(",")[0].split("+")
-      const localizedShortcut = splitShortcut.map(s => KeymapManager.keyLabelsTextOnly[s as keyof typeof KeymapManager.keyLabels] ?? s.toLocaleUpperCase()).join("+")
+      const localizedShortcut = splitShortcut.map(s => KeymapManager.keyLabelsTextOnly[s.toLowerCase() as keyof typeof KeymapManager.keyLabels] ?? s.toLocaleUpperCase()).join("+")
       const shortcutText = this.shortcut? ` [${localizedShortcut}]`: ""
       return this.label && (this.label + shortcutText) || undefined
     }
