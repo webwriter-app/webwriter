@@ -122,21 +122,72 @@ export const containerNodes: Record<string, ContainerNodeSpec> = {
     ]
   },
   
-  heading: {
+  heading1: {
     group: "container",
     content: "inline*",
-    attrs: {level: {default: 1}, ...styleAttrs},
+    attrs: {...styleAttrs},
     defining: true,
     parseDOM: [
-      {tag: "h1", attrs: {level: 1}, getAttrs: parseStyleAttrs},
-      {tag: "h2", attrs: {level: 2}, getAttrs: parseStyleAttrs},
-      {tag: "h3", attrs: {level: 3}, getAttrs: parseStyleAttrs},
-      {tag: "h4", attrs: {level: 4}, getAttrs: parseStyleAttrs},
-      {tag: "h5", attrs: {level: 5}, getAttrs: parseStyleAttrs},
-      {tag: "h6", attrs: {level: 6}, getAttrs: parseStyleAttrs},
+      {tag: "h1", getAttrs: parseStyleAttrs},
     ],
-    toDOM: node => ["h" + node.attrs.level, {style: serializeStyleAttrs(node.attrs)}, 0]
+    toDOM: node => ["h1", {style: serializeStyleAttrs(node.attrs)}, 0]
   },
+  
+  heading2: {
+    group: "container",
+    content: "inline*",
+    attrs: {...styleAttrs},
+    defining: true,
+    parseDOM: [
+      {tag: "h2", getAttrs: parseStyleAttrs},
+    ],
+    toDOM: node => ["h2", {style: serializeStyleAttrs(node.attrs)}, 0]
+  },
+  
+  heading3: {
+    group: "container",
+    content: "inline*",
+    attrs: {...styleAttrs},
+    defining: true,
+    parseDOM: [
+      {tag: "h3", getAttrs: parseStyleAttrs},
+    ],
+    toDOM: node => ["h3", {style: serializeStyleAttrs(node.attrs)}, 0]
+  },
+  
+  heading4: {
+    group: "container",
+    content: "inline*",
+    attrs: {...styleAttrs},
+    defining: true,
+    parseDOM: [
+      {tag: "h4", getAttrs: parseStyleAttrs},
+    ],
+    toDOM: node => ["h4", {style: serializeStyleAttrs(node.attrs)}, 0]
+  },
+  
+  heading5: {
+    group: "container",
+    content: "inline*",
+    attrs: {...styleAttrs},
+    defining: true,
+    parseDOM: [
+      {tag: "h5", getAttrs: parseStyleAttrs},
+    ],
+    toDOM: node => ["h5", {style: serializeStyleAttrs(node.attrs)}, 0]
+  },
+  
+  heading6: {
+    group: "container",
+    content: "inline*",
+    attrs: {...styleAttrs},
+    defining: true,
+    parseDOM: [
+      {tag: "h6", getAttrs: parseStyleAttrs},
+    ],
+    toDOM: node => ["h6", {style: serializeStyleAttrs(node.attrs)}, 0]
+  },
+
 
 
   /*

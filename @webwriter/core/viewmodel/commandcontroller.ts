@@ -492,42 +492,42 @@ export class CommandController implements ReactiveController {
         icon: "h-1",
         description: msg("Insert a heading (level 1)"),
         group: "heading"
-      }, {level: 1}, "heading"),
+      }),
       heading2: this.InsertContainerCommandSpec({
         id: "heading2",
         label: msg("Heading 2"),
         icon: "h-2",
         description: msg("Insert a heading (level 2)"),
         group: "heading"
-      }, {level: 2}, "heading"),
+      }),
       heading3: this.InsertContainerCommandSpec({
         id: "heading3",
         label: msg("Heading 3"),
         icon: "h-3",
         description: msg("Insert a heading (level 3)"),
         group: "heading"
-      }, {level: 3}, "heading"),
+      }),
       heading4: this.InsertContainerCommandSpec({
         id: "heading4",
         label: msg("Heading 4"),
         icon: "h-4",
         description: msg("Insert a heading (level 4)"),
         group: "heading"
-      }, {level: 4}, "heading"),
+      }),
       heading5: this.InsertContainerCommandSpec({
         id: "heading5",
         label: msg("Heading 5"),
         icon: "h-5",
         description: msg("Insert a heading (level 5)"),
         group: "heading"
-      }, {level: 5}, "heading"),
+      }),
       heading6: this.InsertContainerCommandSpec({
         id: "heading6",
         label: msg("Heading 6"),
         icon: "h-6",
         description: msg("Insert a heading (level 6)"),
         group: "heading"
-      }, {level: 6}, "heading"),
+      }),
       unorderedList: this.InsertContainerCommandSpec({
         id: "unorderedList",
         label: msg("List"),
