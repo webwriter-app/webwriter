@@ -305,6 +305,10 @@ export class Toolbox extends LitElement {
         margin-right: auto;
       }
 
+      .widget-name {
+        text-decoration: solid underline var(--sl-color-primary-400) 2px;
+      }
+
       .paragraph-command.applied {
         background: var(--sl-color-primary-200);
         border-radius: 4px;
@@ -665,7 +669,7 @@ export class Toolbox extends LitElement {
     else if(this.activeElement && this.isActiveElementWidget) {
       const name = prettifyPackageName(this.activeElement.tagName.toLowerCase())
       return html`
-        <span id="name" @click=${() => this.emitClickName(this.activeElement ?? undefined)} title=${this.activeElement.id}>${name}</span>
+        <span class="widget-name" id="name" @click=${() => this.emitClickName(this.activeElement ?? undefined)} title=${this.activeElement.id}>${name}</span>
         <!--<sl-icon-button class="meta" title="Edit metadata" name="tags"></sl-icon-button>-->
         <sl-icon-button tabindex="-1" class="delete" title="Delete widget" name="trash" @click=${this.emitDeleteWidget} @mouseenter=${this.emitMouseEnterDeleteWidget} @mouseleave=${this.emitMouseLeaveDeleteWidget}></sl-icon-button>
       `
