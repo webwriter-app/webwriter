@@ -8,7 +8,7 @@ const SYSTEM_ICONS = {
   "chevron-right": "chevron-right",
   "eye": "eye",
   "eye-slash": "eye-off",
-  "eyedropper": "test-pipe", // include alternative
+  "eyedropper": "color-picker",
   "grip-vertical": "grip-vertical",
   "indeterminate": "square-minus",
   "person-fill": "user",
