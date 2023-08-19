@@ -541,10 +541,20 @@ export class ExplorableEditor extends LitElement {
 			-webkit-user-select: none;
 		}
 
-		.ProseMirror[data-empty]::before {
-			content: attr(data-placeholder);
-      line-height: 1.25;
-		}
+    [data-empty] {
+      position: relative;
+    }
+
+    :is(h1, h2, h3, h4, h5, h6)[data-empty]::before {
+      content: attr(data-placeholder);
+      position: absolute;
+      top: 0;
+      left: 2px;
+      color: var(--sl-color-gray-400);
+      pointer-events: none;
+			user-select: none;
+			-webkit-user-select: none;
+    }
 		
 		.ProseMirror > p {
 			margin: 0;
@@ -705,10 +715,18 @@ export class ExplorableEditor extends LitElement {
 				if(node.type.spec["widget"]) {
 					decorations.push(Decoration.node(k, k + 1, {
 						editable: "true",
-						...this.deletingWidget?.id === node.attrs.id? {"data-ww-deleting": "true"}: {},
-						...from <= k && k <= to? {"data-ww-selected": "true"}: {}
+						...this.deletingWidget?.id === node.attrs.id? {"data-ww-deleting": ""}: {},
+						...from <= k && k <= to? {"data-ww-selected": ""}: {}
 					}))
 				}
+        else if(node.type.spec.group === "container") {
+          const cmd = this.containerCommands.find(cmd => cmd.id === node.type.name)
+          decorations.push(Decoration.node(k, state.doc.resolve(k + 1).after(1), {
+            "data-placeholder": cmd?.label,
+            ...(node.textContent.trim() === ""? {"data-empty": ""}: {}),
+            ...from <= k && k <= to? {"data-ww-selected": ""}: {}
+          }))
+        }
 			})
 			return DecorationSet.create(state.doc, decorations)
 		}
