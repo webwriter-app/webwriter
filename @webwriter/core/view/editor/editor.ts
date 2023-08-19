@@ -491,16 +491,23 @@ export class ExplorableEditor extends LitElement {
 			-webkit-user-select: none !important;
 		}
 
-		.ww-widget[editable][data-ww-selected] {
-			outline: 8px double var(--sl-color-primary-400) !important;
-		}
+    .ww-widget[editable][data-ww-selected]::after {
+      content: "";
+      position: absolute;
+      right: -14px;
+      top: 0;
+      width: 6px;
+      background: var(--sl-color-primary-300);
+      height: 100%;
+      border-radius: 4px;
+    }
 
-		.ww-widget[editable][data-ww-deleting] {
-			outline-color: var(--sl-color-danger-300) !important;
-		}
+    .ww-widget[editable][data-ww-deleting]::after {
+      background: var(--sl-color-danger-400);
+    }
 
-		.ww-widget[editable]:hover {
-			outline: 8px double var(--sl-color-primary-200);
+		.ww-widget[editable][data-ww-selected]:hover::after {
+			background: var(--sl-color-primary-400);
 		}
 
 		.ww-widget#ww_preview {
