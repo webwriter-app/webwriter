@@ -251,7 +251,7 @@ const MediaTypeSchema = z.string().transform((arg, ctx) => {
 export class MediaType extends DataType(MediaTypeSchema) {
   serialize(format: "expr" | "node" = "expr") {
     if(format === "expr") {
-      const [paramKey, paramValue] = Object.entries(this).find(([k]) => k !== "supertype" && k !== "subtype") ?? []
+      const [paramKey, paramValue] = Object.entries(this).find(([k]) => k !== "supertype" && k !== "subtype" && k !== "suffix") ?? []
       const paramStr = paramKey? `;${paramKey}=${paramValue}`: ""
       return `#${this?.supertype}/${this?.subtype}` + paramStr
     }
