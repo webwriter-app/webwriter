@@ -6,8 +6,8 @@ import { EditorState, Command, NodeSelection, TextSelection, AllSelection } from
 import { Node, Mark} from "prosemirror-model"
 import { localized, msg, str } from "@lit/localize"
 
-import { Package, createWidget } from "../../model"
-import { WidgetView } from "."
+import { MediaType, Package, createWidget } from "../../model"
+import { FigureView, WidgetView } from "."
 import { DocumentHeader } from "./documentheader"
 import { DocumentFooter } from "./documentfooter"
 
@@ -23,6 +23,7 @@ import {computePosition, autoUpdate, offset, shift} from '@floating-ui/dom'
 import { CommandEntry, CommandEvent } from "../../viewmodel"
 import { fixTables } from "prosemirror-tables"
 
+class EmbedTooLargeError extends Error {}
 
 export class EditorViewController extends EditorView implements ReactiveController {
 	
@@ -249,16 +250,22 @@ export class ExplorableEditor extends LitElement {
 
 	private get nodeViews() {
 		const cached = this.cachedNodeViews
-		const cachedWidgetKeys = Object.keys(cached ?? {})
+		const cachedKeys = Object.keys(cached ?? {})
 		const widgetKeys = Object.entries(this.editorState.schema.nodes)
 			.filter(([k, v]) => v.spec["widget"])
 			.map(([k, _]) => k)
-		if(sameMembers(widgetKeys, cachedWidgetKeys) && cached) {
+    const mediaKeys = Object.entries(this.editorState.schema.nodes)
+    .filter(([k, v]) => v.spec["media"])
+    .map(([k, _]) => k)
+		if(sameMembers([...widgetKeys, ...mediaKeys], cachedKeys)) {
 			return cached
 		}
 		else {
-			this.cachedNodeViews = Object.fromEntries(widgetKeys
-				.map(key => [key, (node: Node, view: EditorViewController, getPos: () => number) => new WidgetView(node, view, getPos)]))
+      const widgetViewEntries = widgetKeys
+        .map(key => [key, (node: Node, view: EditorViewController, getPos: () => number) => new WidgetView(node, view, getPos)])
+      const mediaViewEntries = mediaKeys
+        .map(key => [key, (node: Node, view: EditorViewController, getPos: () => number) => new FigureView(node, view, getPos)])
+			this.cachedNodeViews = Object.fromEntries([...widgetViewEntries, ...mediaViewEntries])
 			return this.cachedNodeViews
 		}
 	}
@@ -395,22 +402,22 @@ export class ExplorableEditor extends LitElement {
 			--sl-color-primary-400: #38bdf8;
 		}
 
-    ::-webkit-scrollbar {
+    html::-webkit-scrollbar {
       width: 16px;
     }
 
-    ::-webkit-scrollbar-thumb {
+    html::-webkit-scrollbar-thumb {
       background-color: #b0b0b0;
       background-clip: padding-box;
       border-bottom: 6px solid transparent;
       border-top: 6px solid transparent;
     }
 
-    ::-webkit-scrollbar-track {
+    html::-webkit-scrollbar-track {
       background-color: transparent;
     }
     /* Buttons */
-    ::-webkit-scrollbar-button:single-button {
+    html::-webkit-scrollbar-button:single-button {
       background-color: transparent;
       display: block;
       border-style: solid;
@@ -419,30 +426,30 @@ export class ExplorableEditor extends LitElement {
       padding: 2px;
     }
     /* Up */
-    ::-webkit-scrollbar-button:single-button:vertical:decrement {
+    html::-webkit-scrollbar-button:single-button:vertical:decrement {
       border-width: 0 8px 8px 8px;
       border-color: transparent transparent var(--sl-color-gray-600) transparent;
     }
 
-    ::-webkit-scrollbar-button:single-button:vertical:decrement:hover {
+    html::-webkit-scrollbar-button:single-button:vertical:decrement:hover {
       border-color: transparent transparent var(--sl-color-gray-800) transparent;
     }
 
-    ::-webkit-scrollbar-button:single-button:vertical:decrement:disabled {
+    html::-webkit-scrollbar-button:single-button:vertical:decrement:disabled {
       border-color: transparent transparent var(--sl-color-gray-400) transparent;
     }
 
     /* Down */
-    ::-webkit-scrollbar-button:single-button:vertical:increment {
+    html::-webkit-scrollbar-button:single-button:vertical:increment {
       border-width: 8px 8px 0 8px;
       border-color: var(--sl-color-gray-600) transparent transparent transparent;
     }
 
-    ::-webkit-scrollbar-button:vertical:single-button:increment:hover {
+    html::-webkit-scrollbar-button:vertical:single-button:increment:hover {
       border-color: var(--sl-color-gray-800) transparent transparent transparent;
     }
 
-    ::-webkit-scrollbar-button:vertical:single-button:increment:disabled {
+    html::-webkit-scrollbar-button:vertical:single-button:increment:disabled {
       border-color: var(--sl-color-gray-400) transparent transparent transparent;
     }
 
@@ -463,6 +470,41 @@ export class ExplorableEditor extends LitElement {
 
     embed {
       aspect-ratio: 1/1.4142;
+    }
+
+    figure:has(.ProseMirror-selectednode) {
+      position: relative;
+    }
+
+    figure:has(.ProseMirror-selectednode)::before {
+      position: absolute;
+      content: "";
+      left: 0;
+      top: 0;
+      height: 100%;
+      width: 100%;
+      background: var(--sl-color-primary-400);
+      opacity: 0.5;
+      z-index: 1;
+    }
+
+    figcaption {
+      text-align: center;
+      font-size: 0.875rem;
+      margin-top: 0.125rem;
+    }
+
+    figure > script {
+      display: block;
+      font-family: monospace;
+      border: 2px solid darkgray;
+      border-radius: 0.25rem;
+      font-size: 0.875rem;
+      padding: 0.5rem;
+      white-space: pre;
+      overflow: scroll;
+      height: 300px;
+      resize: vertical;
     }
 
     .slot-content {
@@ -974,7 +1016,7 @@ export class ExplorableEditor extends LitElement {
   }
 
   private static createMediaElement(blob: Blob) {
-    const mediaType = ["audio", "video", "image"].includes(blob.type.split("/")[0])? blob.type.split("/")[0]: null
+    const mediaType = new MediaType("#" + blob.type).supertype
     if(!mediaType) {
       return null
     }
@@ -990,13 +1032,19 @@ export class ExplorableEditor extends LitElement {
       }
       media.setAttribute("data-filename", blob.name)
       media.appendChild(source)
+      console.log(media)
       return media
     }
   }
 
-  private static createScriptElement(blob: Blob) {
+  private static async createScriptElement(blob: Blob, plain=false) {
     const script = document.createElement("script")
-    script.src = URL.createObjectURL(blob)
+    if(!plain) {
+      script.src = URL.createObjectURL(blob)
+    }
+    else {
+      script.innerHTML = await blob.text()
+    }
     script.type = blob.type
     script.setAttribute("data-filename", blob.name)
     return script
@@ -1010,85 +1058,96 @@ export class ExplorableEditor extends LitElement {
     return embed
   }
 
+  private static wrapWithFigureElement(contentElement: Element, caption: string) {
+    const figure = document.createElement("figure")
+    figure.appendChild(contentElement)
+    const figcaption = document.createElement("figcaption")
+    figcaption.innerText = caption
+    figure.appendChild(figcaption)
+    return figure
+  }
+
   private static elementsToHTMLString(elements: Element[]): string {
     return elements.map(el => el.outerHTML).join("\n")
   }
 
-  blobsToElements = (blobs: Blob[]): Element[] => {
+  private static textScriptTypes = [
+    "text", "application/AML", "application/ATF", "application/ATFX", "application/ATXML", "application/batch-SMTP", "application/call-completion", "application/ccex", "application/cdmi-", "application/cybercash", "application/dashdelta", "application/dca-rft", "application/DCD", "application/dec-dx", "application/dii", "application/dit", "application/ecmascript", "application/express", "application/ibe-pp-data", "application/iges", "application/IOTP", "application/javascript", "application/jose", "application/json", "application/jwt", "application/link-format", "application/linkset", "application/lxf", "application/mathematica", "application/mbox", "application/moss-keys", "application/mosskey-", "application/n-quads", "application/n-triples", "application/nasdata", "application/news-", "application/node", "application/ODX", "application/passport", "application/pem-certificate-chain", "application/pgp-", "application/postscript", "application/relax-ng-compact-syntax", "application/remote-printing", "application/sdp", "application/SGML", "application/sgml-open-catalog", "application/sieve", "application/smil", "application/sparql-query", "application/sql", "application/srgs", "application/trickle-ice-sdpfrag", "application/trig", "application/vq-rtcpxr", "application/x-www-form-urlencoded", "application/xml", "application/xml-dtd", "application/xml-external-parsed-entity", "application/yaml", "application/yang"
+  ]
+  private static metaformatTypes = ["+jwt", "+xml", "+json", "+json-seq"]
+  private static dataURLScriptTypes = ["application", "message", "model", "multipart", "font"]
+  private static mediaTypes = ["image", "audio", "video"]
+  private static embedTypes = ["application/pdf"]
+
+  blobsToElements = async (blobs: Blob[]) => {
     const elements = []
     // https://www.iana.org/assignments/media-types/media-types.xhtml
     for(const blob of blobs) {
-      if(blob.size > 1e+8 && blob.size <= 5e+8) {
-        console.warn(str`File ${blob.name} is larger than 100MB. It is not recommended to embed files this large.`)
+      const mediaType = new MediaType("#" + blob.type)
+      /*
+      if(blob.size > 1.5e+6) {
+        throw new EmbedTooLargeError(msg("Files larger than 1.5MB can not be embedded."))
+      }*/
+      if(blob.size > 1e+7 && blob.size <= 5e+8) {
+        console.warn(str`File ${blob.name} is larger than 10MB. It is not recommended to embed files this large.`)
       }
-      if(blob.size > 5e+8) {
-        console.error(str`File ${blob.name} is larger than 500MB. Files larger than 500MB can not be embedded.`)
+      
+      if(blob.size > 20e+8) {
+        throw new EmbedTooLargeError(`File ${blob.name} is larger than 2GB. Files larger than 2GB can not be embedded.`)
       }
-      else if(blob.type === "application/pdf") {
+      else if(ExplorableEditor.textScriptTypes.some(v => blob.type.startsWith(v)) || ExplorableEditor.metaformatTypes.some(v => mediaType.subtype.endsWith(v))) {
+        const element = ExplorableEditor.createScriptElement(blob, true)
+        elements.push(element)
+      }
+      else if(ExplorableEditor.embedTypes.some(v => blob.type.startsWith(v))) {
         const element = ExplorableEditor.createEmbedElement(blob)
-        elements.push(element)
+        elements.push(element) 
       }
-      else if(blob.type.startsWith("application/")) {
-        const element = ExplorableEditor.createScriptElement(blob)
-        elements.push(element)
-      }
-      else if(blob.type.startsWith("audio/")) {
+      else if(ExplorableEditor.mediaTypes.some(v => blob.type.startsWith(v))) {
         const element = ExplorableEditor.createMediaElement(blob)
         element? elements.push(element): null
       }
-      else if(blob.type.startsWith("font/")) {
-        // In future, load font
-        // https://stackoverflow.com/a/75646428
-        const element = ExplorableEditor.createScriptElement(blob)
+      else if(ExplorableEditor.dataURLScriptTypes.some(v => blob.type.startsWith(v))) {
+        const element = ExplorableEditor.createScriptElement(blob, true)
         elements.push(element)
       }
-      else if(blob.type.startsWith("example/")) {
+      else {
         console.warn(msg("WebWriter does not support media of type ") + blob.type)
-        continue
-      }
-      else if(blob.type.startsWith("image/")) {
-        const element = ExplorableEditor.createMediaElement(blob)
-        element? elements.push(element): null
-      }
-      else if(blob.type.startsWith("message/")) {
-        const element = ExplorableEditor.createScriptElement(blob)
-        elements.push(element)
-      }
-      else if(blob.type.startsWith("model/")) {
-        const element = ExplorableEditor.createMediaElement(blob)
-        element? elements.push(element): null 
-      }
-      else if(blob.type.startsWith("multipart/")) {
-        console.warn(`WebWriter does not support media of type ${blob.type}`)
-        continue 
-      }
-      else if(blob.type.startsWith("text/") || blob.type === "text") {
-        const element = ExplorableEditor.createScriptElement(blob)
-        elements.push(element)
-      }
-      else if(blob.type.startsWith("video/")) {
-        const element = ExplorableEditor.createMediaElement(blob)
-        element? elements.push(element): null
       }
     }
-    return elements
+    const figures = (await Promise.all(elements)).map(el => ExplorableEditor.wrapWithFigureElement(el, el.getAttribute("data-filename")!))
+    return figures 
   }
 
   handleDropOrPaste = (ev: DragEvent | ClipboardEvent) => {
+    ev.preventDefault()
+    ev.stopImmediatePropagation()
     const DragEvent = this.pmEditor.window.DragEvent
     const EventType = ev instanceof DragEvent? DragEvent: ClipboardEvent
     const data = ev instanceof DragEvent? ev.dataTransfer: ev.clipboardData
     if((data?.files?.length ?? 0) > 0) {
       const files = [...(data?.files as any)].filter(file => file) as File[]
-      const elements = this.blobsToElements(files)
-      const htmlString = ExplorableEditor.elementsToHTMLString(elements)
-      const dataTransfer = new DataTransfer()
-      dataTransfer.setData("text/html", htmlString)
-      // const eventToRedispatch = new DragEvent("drop", {...ev, dataTransfer})
-      const eventToRedispatch = new EventType(ev.type, {...ev, [EventType === DragEvent? "dataTransfer": "clipboardData"]: dataTransfer})
-      this.pmEditor.dom.dispatchEvent(eventToRedispatch)
-      ev.preventDefault()
-      ev.stopImmediatePropagation()
+      let elements = [] as Element[]
+      try {
+        this.blobsToElements(files).then(elements => {
+          const htmlString = ExplorableEditor.elementsToHTMLString(elements)
+          const dataTransfer = new DataTransfer()
+          dataTransfer.setData("text/html", htmlString)
+          // const eventToRedispatch = new DragEvent("drop", {...ev, dataTransfer})
+          const eventToRedispatch = new EventType(ev.type, {...ev, [EventType === DragEvent? "dataTransfer": "clipboardData"]: dataTransfer})
+          this.pmEditor.dom.dispatchEvent(eventToRedispatch)
+          console.log(dataTransfer.getData("text/html"))
+        })
+      }
+      catch(err) {
+        if(err instanceof EmbedTooLargeError) {
+          console.warn(err.message)
+          return
+        }
+        else {
+          throw err
+        }
+      }
       return false
     }
   }

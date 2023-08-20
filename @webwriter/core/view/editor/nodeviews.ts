@@ -5,8 +5,6 @@ import { DOMSerializer, Node } from "prosemirror-model"
 import { getOtherAttrsFromWidget } from "../../model"
 import {EditorViewController} from "."
 
-var done = false
-
 export class WidgetView implements NodeView {
 
 	node: Node
@@ -131,4 +129,20 @@ export class WidgetView implements NodeView {
 	)
 
 
+}
+
+
+export class FigureView implements NodeView {
+  node: Node
+	view: EditorViewController
+	getPos: () => number
+	dom: HTMLElement
+  contentDOM?: HTMLElement 
+
+	constructor(node: Node, view: EditorViewController, getPos: () => number) {
+		this.node = node
+		this.view = view
+    this.getPos = getPos
+    this.dom = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node) as HTMLElement
+	}
 }

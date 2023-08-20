@@ -15,6 +15,29 @@ class UnsupportedPackagesError extends Error {
   constructor(message: string, public readonly unsupportedPackageNames: string[]) {super(message)}
 }
 
+function createDataURL(blob: Blob) {
+  return new Promise(resolve => {
+    const reader = new FileReader()
+    reader.onloadend = () => resolve(reader.result as string)
+    reader.readAsDataURL(blob)
+  }) as Promise<string>
+}
+
+// TODO: Abysmal performance on save, replace with esbuild Base64 process? https://esbuild.github.io/content-types/#base64
+
+function createInitializerScript(id: string, tag: string, content: string) {
+  return `
+    let self = document.querySelector("#${id}.initializer");
+    let dataEl = document.querySelector("#${id}");
+    let blob = new Blob([Uint8Array.from(atob(dataEl.textContent.trim()), c => c.charCodeAt(0))], {type: dataEl.type});
+    let src = URL.createObjectURL(blob);
+    let newEl = document.createElement("${tag}");
+    ${tag === "img"? `newEl.src = src`: `newEl.href = src`};
+    dataEl.replaceWith(newEl);
+    self.remove();
+  `
+}
+
 export async function docToBundle(doc: Node, bundle: Environment["bundle"]) {
   const html = document.implementation.createHTMLDocument()
   const serializer = DOMSerializer.fromSchema(doc.type.schema)
@@ -80,6 +103,39 @@ export async function docToBundle(doc: Node, bundle: Environment["bundle"]) {
     html.head.appendChild(headElement)
   }
 
+  function uInt8ToBase64(bytes: Uint8Array) {
+    var binary = '';
+    var len = bytes.byteLength;
+    for (var i = 0; i < len; i++) {
+        binary += String.fromCharCode( bytes[ i ] );
+    }
+    return window.btoa( binary );
+}
+
+  const mediaElements = html.body.querySelectorAll(":is(img, source, embed)") as NodeListOf<HTMLSourceElement | HTMLImageElement>
+  for(const [i, el] of Array.from(mediaElements).entries()) {
+    const tag = el.tagName.toLowerCase()
+    const id = `ww_media_source_${i}`
+    if(!el.src || !el.src.startsWith("blob:")) {
+      continue
+    }
+    const blob = await (await fetch(el.src)).blob()
+    el.src = await createDataURL(blob)
+    /*
+    const bytes = new Uint8Array(await (await fetch(el.src)).arrayBuffer())
+    const contentString = String(bytes)
+    const sourceEl = document.createElement("script")
+    sourceEl.id = id
+    sourceEl.type = el.getAttribute(tag === "source"? "type": "data-type")!
+    sourceEl.innerHTML = contentString
+    const initializerEl = document.createElement("script")
+    initializerEl.id = id
+    initializerEl.className = "initializer"
+    initializerEl.innerHTML = createInitializerScript(id, tag, contentString)
+    el.replaceWith(sourceEl, initializerEl)
+    */
+  }
+
   html.documentElement.lang = lang
 
   return {html, css, js}
@@ -115,8 +171,6 @@ export function parse(data: string, schema: Schema) {
   const explorable = DOMParser.fromSchema(schema).parse(inputDoc.body)
 
   const editorState = createEditorState({schema, doc: explorable})
-
-  console.log(editorState.doc.content.forEach(node => console.log(node)))
   
   return editorState
 }
