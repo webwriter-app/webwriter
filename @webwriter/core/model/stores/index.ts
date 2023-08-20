@@ -5,7 +5,7 @@ export * from "./uistore"
 import { ZodSchema } from "zod"
 import merge from "lodash.merge"
 
-import { createSchema, Package, PackageStore, UIStore } from ".."
+import { Package, PackageStore, UIStore, createEditorStateConfig } from ".."
 import { Environment } from "../environment"
 import { ResourceStore } from "./resourcestore"
 
@@ -46,7 +46,7 @@ export class RootStore {
   }
 
   onImportPackages = (packages: Package[]) => {
-    this.resources.schema = createSchema(packages)
+    this.resources.schema = createEditorStateConfig(packages).schema
     this.resources.updateSchemas()
   }
 

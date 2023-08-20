@@ -1,11 +1,16 @@
-import {Node, NodeSpec} from "prosemirror-model"
+import {Node, NodeSpec, Schema} from "prosemirror-model"
 
-import { unscopePackageName } from "../../../utility"
-import { Package } from ".."
-import { Expression } from "../contentexpression"
-import { styleAttrs, parseStyleAttrs, serializeStyleAttrs } from "./nodes"
+import { unscopePackageName } from "../../../../utility"
+import { Package } from "../.."
+import { Expression } from "../../contentexpression"
+import { styleAttrs, parseStyleAttrs, serializeStyleAttrs } from "./style"
+import { SchemaPlugin } from ".";
 
 
+export function createWidget(schema: Schema, name: string, id: string, editable=true) {
+  const nodeType = schema.nodes[name]
+  return nodeType.createAndFill({id, otherAttrs: {editable}}, [])
+}
 
 export function getOtherAttrsFromWidget(dom: HTMLElement) {
   return Object.fromEntries(dom
@@ -76,7 +81,6 @@ export function packageWidgetNodeSpec(pkg: Package): NodeSpec {
       ...styleAttrs
     },
     parseDOM : [{tag: unscopePackageName(pkg.name), getAttrs: (dom: HTMLElement ) => {
-      console.log(parseStyleAttrs(dom))
       return {
         id: dom.getAttribute("id"),
         editable: dom.getAttribute("editable") ?? false,
@@ -102,3 +106,81 @@ export function packageWidgetNodeSpec(pkg: Package): NodeSpec {
     }
   }  
 }
+
+/*
+export const customBackspaceCommand = chainCommands(
+  deleteSelection,
+  (state, dispatch, view) => {
+    const nodeBefore = state.doc.resolve(state.selection.$from.before(1)).nodeBefore
+    if(!nodeBefore || !nodeBefore.type.spec["widget"]) {
+      return joinBackward(state, dispatch, view)
+    }
+    return false
+  },
+  (state, dispatch, view) => {
+    const nodeBefore = state.doc.resolve(state.selection.$from.before(1)).nodeBefore
+    if(!nodeBefore || !nodeBefore.type.spec["widget"]) {
+      return selectNodeBackward(state, dispatch, view)
+    }
+    return false
+  }
+)
+
+export const customArrowCommand = (up=false) => chainCommands(
+  (state, dispatch, view) => {
+    const isWidgetNode = state.selection instanceof NodeSelection && state.selection.node.type.spec["widget"] as boolean
+    const hasParagraph = up
+      ? state.selection.$from.nodeBefore?.type.name === "paragraph"
+      : state.selection.$from.nodeAfter?.type.name === "paragraph"
+    if(isWidgetNode && !hasParagraph) {
+      const paragraph = state.schema.nodes.paragraph.create()
+      
+      const insertPos = up? state.selection.$from.pos: state.selection.$to.pos
+      let tr = state.tr.insert(insertPos, paragraph)
+      
+      const selectPos = up? tr.selection.$from.pos - 1: tr.selection.$to.pos + 1
+      const selection = new TextSelection(tr.doc.resolve(selectPos))
+      tr = tr.setSelection(selection)
+      dispatch? dispatch(tr): null
+      return true
+    }
+    else if(isWidgetNode && hasParagraph) {
+      const selectPos = up? state.selection.$from.pos - 1: state.selection.$to.pos + 1
+      const selection = new TextSelection(state.doc.resolve(selectPos))
+      const tr = state.tr.setSelection(selection)
+      dispatch? dispatch(tr): null
+      return true
+    }
+    else {
+      return false
+    }
+
+  },
+)
+
+export const customSelectAllCommand = () => chainCommands(
+  (state, dispatch, view) => {
+    let selection = new TextSelection(TextSelection.atStart(state.doc).$from, TextSelection.atEnd(state.doc).$to)
+    const tr = state.tr.setSelection(selection)
+    dispatch? dispatch(tr): null
+    return false
+  }
+)
+*/
+
+
+export const widgetPlugin = (packages: Package[]) => ({
+  nodes: {
+    ...Object.fromEntries(packages.map(pkg => [
+      unscopePackageName(pkg.name),
+      packageWidgetNodeSpec(pkg)
+    ])),
+    ...Object.fromEntries(packages.flatMap(pkg => {
+      const content = pkg.editingConfig?.content ?? {}
+      return Object.entries(content).map(([name, expr]) => [
+        slotContentNodeSpecName(pkg.name, name),
+        slotContentNodeSpec(pkg, name, expr.raw!)
+      ])
+    }))
+  }
+} as SchemaPlugin)
