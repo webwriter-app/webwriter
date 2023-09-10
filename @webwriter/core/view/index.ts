@@ -20,6 +20,7 @@ import { SlAlert } from "@shoelace-style/shoelace"
 import { ifDefined } from "lit/directives/if-defined.js"
 import { ExplorableEditor } from "./editor"
 import { classMap } from "lit/directives/class-map.js"
+import { listen } from '@tauri-apps/api/event'
 
 
 export interface SlAlertAttributes {
@@ -29,19 +30,27 @@ export interface SlAlertAttributes {
 	duration?: number
 }
 
-/*
-@TODO Fix interaction widget insert transition
-@TODO Fix clipping on error for local package in palette
-@TODO Fix setting hydration of `showWidgetPreview`
-@TODO Fix local package loading
-@TODO Fix unreliable package install behaviour (queueing issue?)
-*/
-
 
 @localized()
 @customElement("ww-app")
 export class App extends ViewModelMixin(LitElement)
 {
+
+  async connectedCallback() {
+    super.connectedCallback()
+    document.addEventListener("dragenter", (e: DragEvent) => {
+      e.preventDefault()
+    })
+    document.addEventListener("dragover", (e: DragEvent) => {
+      if(e.dataTransfer) {
+        e.dataTransfer.dropEffect = "none"
+      }
+      e.preventDefault()
+    })
+    document.addEventListener("drop", (e: DragEvent) => {
+      e.preventDefault()
+    })
+  }
 	
 	static get styles() {
 		return css`
@@ -199,6 +208,15 @@ export class App extends ViewModelMixin(LitElement)
         margin-right: 0.5ch;
       }
 
+      #fold-button {
+        transition: cubic-bezier(0.23, 1, 0.320, 1) 0.75s;
+      }
+
+      :host([foldOpen]) #fold-button {
+        transform: rotate(90deg);
+        color: var(--sl-color-primary-600);
+      }
+
 			@media only screen and (max-width: 1300px) {
 				:host(:not(.noResources)) #settings-button .text {
 					display: none;
@@ -269,6 +287,9 @@ export class App extends ViewModelMixin(LitElement)
 	@property({attribute: false})
 	settingsOpen: boolean = false
 
+  @property({type: Boolean, attribute: true, reflect: true})
+	foldOpen: boolean = false
+
 	@query("ww-explorable-editor[data-active]")
 	activeEditor: ExplorableEditor | null
 
@@ -295,8 +316,10 @@ export class App extends ViewModelMixin(LitElement)
 	}
 
 
+
+
 	Content = () => {
-		const {active, previewing, changed, set, create} = this.store.resources
+		const {active, previewing, changed, set, setHead, create} = this.store.resources
 		const {packages, availableWidgetTypes, bundleCode, bundleCSS, bundleID} = this.store.packages
 		const {locale, showTextPlaceholder, showWidgetPreview} = this.store.ui
 		const {open} = this.environment.api.Shell
@@ -306,10 +329,19 @@ export class App extends ViewModelMixin(LitElement)
       ?pendingChanges=${Boolean(changed[active?.url as any])}
       .resourceCommands=${this.documentCommands as any}
     >
+      <ww-button id="fold-button" icon=${"chevron-right"} variant="icon" @click=${() => this.foldOpen = !this.foldOpen}></ww-button>
     </ww-head>`
+    const metaeditor = this.store && active? html`<ww-metaeditor
+      .head$=${active.editorState.head$}
+      .bodyAttrs=${active.editorState.doc.attrs}
+      @ww-change-body-attrs=${(e: any) => this.commands.dispatch("setDocAttrs", e.target.bodyAttrs)}
+      @ww-update=${(e: any) => setHead(active.url, e.detail.state)} @ww-click-tab=${(e: any) => this.foldOpen = true} slot="fold">
+
+    </ww-metaeditor>`: null
     const editor = this.store && active? html`<ww-explorable-editor
     slot="main"
     docID=${active.url}
+    @focus=${() => this.foldOpen = false}
     .markCommands=${this.markCommands as any}
     .containerCommands=${this.containerCommands as any}
     .priorityContainerCommands=${this.priorityContainerCommands as any}
@@ -331,9 +363,10 @@ export class App extends ViewModelMixin(LitElement)
     .showTextPlaceholder=${showTextPlaceholder}
     .showWidgetPreview=${showWidgetPreview}
     ?data-active=${active.url === active?.url}
+    ?controlsVisible=${!previewing[active.url] && !this.foldOpen}
     lang=${locale}>
   </ww-explorable-editor>`: null
-	return !active? head: [head, editor]
+	return !active? head: [head, metaeditor, editor]
 	}
 
 	Placeholder = () => {
@@ -469,6 +502,7 @@ export class App extends ViewModelMixin(LitElement)
 			?drawerLeftOpen=${this.settingsOpen}
 			?hideAsides=${this.store?.resources.empty}
       ?loading=${initializing}
+      ?foldOpen=${this.foldOpen}
 			@ww-add-tab=${() => this.store.resources.create()}
       @ww-print-tab=${() => this.commands.dispatch("print")}
 			@ww-open-tab=${() => this.store.resources.load()}
@@ -480,6 +514,6 @@ export class App extends ViewModelMixin(LitElement)
         this.Content(),
         this.settingsOpen? this.Settings(): null
       ]}
-		</ww-layout>`
+		</ww-layout><div style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1000000; pointer-events: none;"></div>`
 	}
 }

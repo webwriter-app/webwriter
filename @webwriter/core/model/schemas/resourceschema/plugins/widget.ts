@@ -1,10 +1,12 @@
 import {Node, NodeSpec, Schema} from "prosemirror-model"
+import redefineCustomElementsString from "redefine-custom-elements/lib/index.js?raw"
 
 import { unscopePackageName } from "../../../../utility"
 import { Package } from "../.."
 import { Expression } from "../../contentexpression"
 import { styleAttrs, parseStyleAttrs, serializeStyleAttrs } from "./style"
 import { SchemaPlugin } from ".";
+import { Command } from "prosemirror-state"
 
 
 export function createWidget(schema: Schema, name: string, id: string, editable=true) {
@@ -96,6 +98,7 @@ export function packageWidgetNodeSpec(pkg: Package): NodeSpec {
     toDOM: (node: Node) => {
       return [node.type.name, {
         id: node.attrs.id,
+        "data-widget": pkg.serialize("id"),
         ...(node.attrs.editable? {"editable": true}: {}),
         ...(node.attrs.printable? {"printable": true}: {}),
         ...(node.attrs.analyzable? {"analyzable": true}: {}),
@@ -169,6 +172,15 @@ export const customSelectAllCommand = () => chainCommands(
 */
 
 
+const preventWidgetDelete: Command = ({selection, doc}, dispatch, view) => {
+  if(selection.empty && selection.$anchor.parentOffset === 0) {
+    const $pos = selection.$anchor
+    const node = doc.resolve($pos.before($pos.depth)).nodeBefore
+    return node?.type.spec.widget
+  }
+  return false
+}
+
 export const widgetPlugin = (packages: Package[]) => ({
   nodes: {
     ...Object.fromEntries(packages.map(pkg => [
@@ -182,5 +194,18 @@ export const widgetPlugin = (packages: Package[]) => ({
         slotContentNodeSpec(pkg, name, expr.raw!)
       ])
     }))
+  },
+  scripts: [redefineCustomElementsString],
+  keymap: {
+    "Backspace": preventWidgetDelete,
+    "shift-Backspace": preventWidgetDelete,
+    "control-ArrowUp": (state, dispatch) => {
+      console.log("control-up")
+      return false
+    },
+    "control-ArrowDown": (state, dispatch) => {
+      console.log("control-down")
+      return false
+    }
   }
 } as SchemaPlugin)

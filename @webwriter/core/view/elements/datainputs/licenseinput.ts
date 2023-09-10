@@ -48,6 +48,10 @@ export class LicenseInput extends Combobox implements DataInput {
     :host(:not(:focus-within)[data-invalid]) [part=input] {
       color: var(--sl-color-danger-600) !important;
     }
+    
+    a {
+      font-size: 0.75rem;
+    }
   `]
 
   ready = false
@@ -56,9 +60,7 @@ export class LicenseInput extends Combobox implements DataInput {
     const isArray = Array.isArray(this.value)
     const isString =  typeof this.value === "string"
     if(_changedProperties.has("value") && (isString || isArray)) {
-      console.log({isString, isArray},this.value)
       this.value = new License(isString? this.value: (this.value as any)[0])
-      console.log(this.value)
     }
   }
 

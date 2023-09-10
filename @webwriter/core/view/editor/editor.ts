@@ -19,7 +19,7 @@ import { ProsemirrorEditor } from "./prosemirroreditor"
 import redefineCustomElementsString from "redefine-custom-elements/lib/index.js?raw"
 // import scopedCustomElementsRegistryString from "@webcomponents/scoped-custom-element-registry/scoped-custom-element-registry.min.js?raw"
 
-import {computePosition, autoUpdate, offset, shift} from '@floating-ui/dom'
+import {computePosition, autoUpdate, offset, shift, flip} from '@floating-ui/dom'
 import { CommandEntry, CommandEvent } from "../../viewmodel"
 import { fixTables } from "prosemirror-tables"
 
@@ -153,6 +153,9 @@ export class ExplorableEditor extends LitElement {
 	@property({type: Boolean, attribute: true, reflect: true})
 	hoverWidgetAdd: boolean = false
 
+  @property({type: Boolean, attribute: true, reflect: true})
+	controlsVisible: boolean = true
+
 	@property({type: Boolean, attribute: true})
 	showTextPlaceholder: boolean = true
 
@@ -265,7 +268,7 @@ export class ExplorableEditor extends LitElement {
         .map(key => [key, (node: Node, view: EditorViewController, getPos: () => number) => new WidgetView(node, view, getPos)])
       const mediaViewEntries = mediaKeys
         .map(key => [key, (node: Node, view: EditorViewController, getPos: () => number) => new FigureView(node, view, getPos)])
-			this.cachedNodeViews = Object.fromEntries([...widgetViewEntries, ...mediaViewEntries])
+			this.cachedNodeViews = {...Object.fromEntries([...widgetViewEntries, ...mediaViewEntries])}
 			return this.cachedNodeViews
 		}
 	}
@@ -298,7 +301,7 @@ export class ExplorableEditor extends LitElement {
 
       :host > main {
         grid-column: 1 / 6;
-        grid-row: 2;
+        grid-row: 3;
 				display: grid;
 				grid-template-columns: 1fr 80px minmax(auto, 680px) 80px 1fr;
 				grid-template-rows: 1fr max-content;
@@ -350,6 +353,10 @@ export class ExplorableEditor extends LitElement {
 			:host([previewing]) ww-toolbox, :host([previewing]) ww-palette {
 				display: none !important;
 			}
+
+      :host(:not([controlsVisible])) :is(ww-toolbox, ww-palette) {
+        display: none !important;
+      }
 
       :host([previewing]) > :not(main):not(aside) {
         display: none !important;
@@ -911,7 +918,7 @@ export class ExplorableEditor extends LitElement {
 			const {x, y} = await computePosition(this.activeElement, this.toolbox, {
 				placement:  "bottom-end",
 				strategy: "fixed",
-				middleware:  [offset(5), shift({padding: {top: 5, bottom: 5}, boundary: iframeEl})]
+				middleware:  [offset(5), shift({padding: {top: 20, bottom: 5}, boundary: iframeEl}), flip({boundary: iframeEl})]
 			})
 			this.toolboxX =  roundByDPR(x)
 			this.toolboxY = roundByDPR(Math.max(y, 50))
@@ -932,7 +939,7 @@ export class ExplorableEditor extends LitElement {
 				middleware: []
 			})
 			this.toolboxX = roundByDPR(docWidth + 10)
-			this.toolboxY = roundByDPR(Math.max(Math.min(y + 45, docHeight - this.toolbox.clientHeight + 50), 50))/*roundByDPR(
+			this.toolboxY = roundByDPR(Math.max(Math.min(iframeOffsetY + y, docHeight - this.toolbox.clientHeight + iframeOffsetY), iframeOffsetY))/*roundByDPR(
         Math.min(Math.max(selectionY, 0), yMax)
       )*/
 		}
@@ -952,7 +959,6 @@ export class ExplorableEditor extends LitElement {
 			}
     }
   }
-
 
   disconnectedCallback(): void {
     super.disconnectedCallback()
@@ -1032,7 +1038,6 @@ export class ExplorableEditor extends LitElement {
       }
       media.setAttribute("data-filename", blob.name)
       media.appendChild(source)
-      console.log(media)
       return media
     }
   }
@@ -1120,10 +1125,7 @@ export class ExplorableEditor extends LitElement {
   }
 
   handleDropOrPaste = (ev: DragEvent | ClipboardEvent) => {
-    ev.preventDefault()
-    ev.stopImmediatePropagation()
     const DragEvent = this.pmEditor.window.DragEvent
-    const EventType = ev instanceof DragEvent? DragEvent: ClipboardEvent
     const data = ev instanceof DragEvent? ev.dataTransfer: ev.clipboardData
     if((data?.files?.length ?? 0) > 0) {
       const files = [...(data?.files as any)].filter(file => file) as File[]
@@ -1131,12 +1133,7 @@ export class ExplorableEditor extends LitElement {
       try {
         this.blobsToElements(files).then(elements => {
           const htmlString = ExplorableEditor.elementsToHTMLString(elements)
-          const dataTransfer = new DataTransfer()
-          dataTransfer.setData("text/html", htmlString)
-          // const eventToRedispatch = new DragEvent("drop", {...ev, dataTransfer})
-          const eventToRedispatch = new EventType(ev.type, {...ev, [EventType === DragEvent? "dataTransfer": "clipboardData"]: dataTransfer})
-          this.pmEditor.dom.dispatchEvent(eventToRedispatch)
-          console.log(dataTransfer.getData("text/html"))
+          this.pmEditor.pasteHTML(htmlString)
         })
       }
       catch(err) {
@@ -1261,7 +1258,6 @@ export class ExplorableEditor extends LitElement {
 				style=${styleMap(this.toolboxStyle)}
 				tabindex="-1"
 				.activeElement=${activeElement}
-				@focus=${() => window.clearTimeout(this.pendingBlur)}
 				@ww-delete-widget=${(e: any) => this.deleteWidget(e.detail.widget)}
 				@ww-click-mark-command=${(e: any) => this.dispatchEvent(CommandEvent(e.detail.name))}
 				@ww-mark-field-input=${(e: any) => {

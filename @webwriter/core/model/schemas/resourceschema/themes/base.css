@@ -1,0 +1,48 @@
+html {
+  background: #f4f4f5;
+}
+
+body {
+  display: block;
+  margin: 0 auto;
+  max-width: 840px;
+  padding: 20px;
+  background: white;
+  min-height: 100vh;
+  box-sizing: border-box;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+figure {
+  margin: 0;
+}
+
+figure > script {
+  display: block;
+  font-family: monospace;
+  border: 2px solid darkgray;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  padding: 0.5rem;
+  white-space: pre;
+  overflow: scroll;
+  height: 300px;
+  resize: vertical;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+figure > embed {
+  aspect-ratio: 1/1.4142;
+}
+
+figure > :is(audio, video, picture, picture > img, embed, script) {
+  display: block;
+  width: 100%;
+}
+
+figcaption {
+  text-align: center;
+  font-size: 0.875rem;
+  margin-top: 0.125rem;
+}

@@ -65,9 +65,9 @@ export async function parse(data: string, schema: Schema) {
   return parseHTML(htmlString, schema)
 }
 
-export async function serialize(explorable: Node, bundle: Environment["bundle"]) {
+export async function serialize(explorable: Node, head: Node, bundle: Environment["bundle"]) {
   
-  const {html, js, css} = await docToBundle(explorable, bundle)
+  const {html, js, css} = await docToBundle(explorable, head, bundle)
 
   const zip = new JSZip()
 
@@ -75,6 +75,7 @@ export async function serialize(explorable: Node, bundle: Environment["bundle"])
   const script = html.createElement("script")
   script.type = "text/javascript"
   script.src = "index.js"
+  script.setAttribute("data-ww-editing", "bundle")
   html.head.appendChild(script)
 
   zip.file("index.css", css)
@@ -82,6 +83,7 @@ export async function serialize(explorable: Node, bundle: Environment["bundle"])
   link.rel = "stylesheet"
   link.type = "text/css"
   link.href = "index.css"
+  link.setAttribute("data-ww-editing", "bundle")
   html.head.appendChild(link)
 
   const xml = docToManifest(explorable, "index.html", ["index.html", "index.css", "index.js"])

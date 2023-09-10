@@ -1,6 +1,7 @@
 import { EditorState } from "prosemirror-state";
 import { SchemaPlugin } from ".";
 import { InputRule } from "prosemirror-inputrules";
+import { HTMLElementSpec } from "../htmlelementspec";
 
 
 export function getActiveMarks(state: EditorState, includeStored=true) {
@@ -36,12 +37,11 @@ export const inlinetextPlugin = () => ({
       group: "inline",
       inline: true
     },
-    lineBreak: {
+    lineBreak: HTMLElementSpec({
+      tag: "br",
       group: "inline",
-      inline: true,
-      parseDOM: [{"tag": "br"}],
-      toDOM: () => ["br"]
-    }
+      inline: true
+    })
   },
   marks: {
     bold: {
@@ -94,7 +94,7 @@ export const inlinetextPlugin = () => ({
       })}],
       toDOM: node => ["span", {style: `font-family: ${node.attrs.value}`}, 0]
     },
-    link: {
+    a: {
       attrs: {
         href: {default: ""},
         title: {default: null}

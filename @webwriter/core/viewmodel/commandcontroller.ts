@@ -1,7 +1,7 @@
 import {ReactiveController} from "lit"
 import Hotkeys from "hotkeys-js"
 
-import { RootStore, getActiveAttributes, getActiveBlockAttributes, getActiveMarks, getStyleValues, hasActiveNode, setAttributeOnSelectedBlocks, toggleOrUpdateMark, wrapSelection} from "../model"
+import { EditorStateWithHead, RootStore, getActiveAttributes, getActiveBlockAttributes, getActiveMarks, getStyleValues, hasActiveNode, setAttributeOnSelectedBlocks, setDocAttributes, themes, toggleOrUpdateMark, wrapSelection} from "../model"
 import { App } from "../view"
 import { msg } from "@lit/localize"
 import hotkeys from "hotkeys-js"
@@ -286,9 +286,7 @@ export class CommandController implements ReactiveController {
         icon: "file-plus",
         description: msg("Create a new document"),
         shortcut: "ctrl+n",
-        callback: () => {
-          this.store.ui
-        },
+        callback: () => this.store.resources.create(),
         category: "app"
       },
       /*discard: {
@@ -381,7 +379,7 @@ export class CommandController implements ReactiveController {
         label: msg("Set font size"),
         icon: "letter-case",
         description: msg("Sets the selection's font size"), //@ts-ignore
-        value: () => this.editor && (getActiveMarks(this.editorState, true).find(mark => mark.type.name === "fontSize")?.attrs.value)
+        value: () => this.editor && getStyleValues(this.editorState!, this.editor.pmEditor as any, "font-size")
       }),
       fontFamily:  this.MarkCommandSpec({
         id: "fontFamily",
@@ -389,7 +387,7 @@ export class CommandController implements ReactiveController {
         label: msg("Set font family"),
         icon: "typography",
         description: msg("Sets the selection's font family"), //@ts-ignore
-        value: () => this.editor && (getActiveMarks(this.editorState, true).find(mark => mark.type.name === "fontFamily")?.attrs.value)
+        value: () => this.editor && getStyleValues(this.editorState!, this.editor.pmEditor as any, "font-family")
       }),
       setTextColor: {
         id: "setTextColor",
@@ -486,57 +484,57 @@ export class CommandController implements ReactiveController {
         description: msg("Insert a blockquote"),
         group: "block"
       }),
-      heading1: this.InsertContainerCommandSpec({
-        id: "heading1",
+      h1: this.InsertContainerCommandSpec({
+        id: "h1",
         label: msg("Heading"),
         icon: "h-1",
         description: msg("Insert a heading (level 1)"),
         group: "heading"
       }),
-      heading2: this.InsertContainerCommandSpec({
-        id: "heading2",
+      h2: this.InsertContainerCommandSpec({
+        id: "h2",
         label: msg("Heading 2"),
         icon: "h-2",
         description: msg("Insert a heading (level 2)"),
         group: "heading"
       }),
-      heading3: this.InsertContainerCommandSpec({
-        id: "heading3",
+      h3: this.InsertContainerCommandSpec({
+        id: "h3",
         label: msg("Heading 3"),
         icon: "h-3",
         description: msg("Insert a heading (level 3)"),
         group: "heading"
       }),
-      heading4: this.InsertContainerCommandSpec({
-        id: "heading4",
+      h4: this.InsertContainerCommandSpec({
+        id: "h4",
         label: msg("Heading 4"),
         icon: "h-4",
         description: msg("Insert a heading (level 4)"),
         group: "heading"
       }),
-      heading5: this.InsertContainerCommandSpec({
-        id: "heading5",
+      h5: this.InsertContainerCommandSpec({
+        id: "h5",
         label: msg("Heading 5"),
         icon: "h-5",
         description: msg("Insert a heading (level 5)"),
         group: "heading"
       }),
-      heading6: this.InsertContainerCommandSpec({
-        id: "heading6",
+      h6: this.InsertContainerCommandSpec({
+        id: "h6",
         label: msg("Heading 6"),
         icon: "h-6",
         description: msg("Insert a heading (level 6)"),
         group: "heading"
       }),
-      unorderedList: this.InsertContainerCommandSpec({
-        id: "unorderedList",
+      ul: this.InsertContainerCommandSpec({
+        id: "ul",
         label: msg("List"),
         icon: "list",
         description: msg("Insert a list (unordered)"),
         group: "list",
       }),
-      orderedList: this.InsertContainerCommandSpec({
-        id: "orderedList",
+      ol: this.InsertContainerCommandSpec({
+        id: "ol",
         label: msg("Ordered List"),
         icon: "list-numbers",
         description: msg("Insert a list (ordered)"),
@@ -607,7 +605,11 @@ export class CommandController implements ReactiveController {
         callback: () => {},
         category: "miscellaneous",
         fixedShortcut: true
-      }
+      },
+      setDocAttrs: {
+        id: "setDocAttrs",
+        callback: (options: any) => this.exec(setDocAttributes(options))
+      },
     }
     return commands as unknown as CommandMap<keyof typeof commands>
   }

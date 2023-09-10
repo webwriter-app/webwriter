@@ -1,4 +1,4 @@
-import {Plugin, Command, EditorStateConfig} from "prosemirror-state"
+import {Plugin, Command, EditorStateConfig, PluginKey} from "prosemirror-state"
 import {NodeSpec, MarkSpec} from "prosemirror-model"
 import { InputRule, inputRules } from "prosemirror-inputrules"
 import {Schema, Node} from "prosemirror-model"
@@ -6,15 +6,27 @@ import { keymap } from "prosemirror-keymap"
 import { gapCursor } from "prosemirror-gapcursor"
 import { history } from "prosemirror-history"
 import { chainCommands } from "prosemirror-commands"
+import { head, themes } from ".."
 
 export interface SchemaPlugin<N extends string=string, M extends string=string, C extends string=string, PS=any> {
   nodes?: {[key in N]: NodeSpec},
   marks?: {[key in M]: MarkSpec},
   topNode?: N,
   plugin?: Plugin<PS>,
-  keymap?: Record<string, Command>,
+  keymap?: ((schema: Schema) => Record<string, Command>) | Record<string, Command>,
   inputRules?: InputRule[],
-  commands?: {[key in C]: Command}
+  commands?: {[key in C]: Command},
+  styles?: string[],
+  scripts?: string[]
+}
+
+export function chainCommandsApplyAll(...commands: Command[]): Command {
+  return function(state, dispatch, view) {
+    for(let i = 0; i < commands.length; i++) {
+      commands[i](state, dispatch, view)
+    }
+    return false
+  }
 }
 
 function mergeObjects<T extends Object>(objs: T[]): T {
@@ -23,6 +35,7 @@ function mergeObjects<T extends Object>(objs: T[]): T {
 
 function chainKeymaps(keymaps: Record<string, Command>[]) {
   const grouped = {} as Record<string, Command[]>
+  console.log(keymaps)
   for(const km of keymaps) {
     for(const [key, cmd] of Object.entries(km)) {
       grouped[key] = grouped[key]? [...grouped[key], cmd]: [cmd]
@@ -42,9 +55,14 @@ export function configFromSchemaPlugins(schemaPlugins: SchemaPlugin[]): EditorSt
     nodes: mergeObjects(schemaPlugins.map(p => p.nodes ?? {})),
     marks: mergeObjects(schemaPlugins.map(p => p.marks ?? {}))
   })
-  const doc = schema.node(schema.topNodeType, {}, [schema.node("paragraph")])
+  const doc = schema.nodes[schema.topNodeType.name].createAndFill()!
+  const keymaps = schemaPlugins.map(p => typeof p.keymap === "function"? p.keymap(schema): p.keymap ?? {})
   const plugins = [
-    keymap(chainKeymaps(schemaPlugins.map(p => p.keymap ?? {}))),
+    head(
+      [...schemaPlugins.flatMap(p => p.styles ?? [])],
+      schemaPlugins.flatMap(p => p.scripts ?? [])
+    ),
+    ...keymaps.map(p => keymap(p)),
     inputRules({rules: schemaPlugins.flatMap(p => p.inputRules ?? [])}),
     history(),
     gapCursor(),
@@ -58,7 +76,7 @@ export * from "./inlinetext"
 export * from "./list"
 export * from "./math"
 export * from "./media"
-export * from "./metadata"
+export * from "../head"
 export * from "./modal"
 export * from "./base"
 export * from "./style"

@@ -13,6 +13,9 @@ export class Layout extends LitElement {
   drawerRightOpen: boolean = false
 
   @property({type: Boolean, attribute: true, reflect: true})
+  foldOpen: boolean = false
+
+  @property({type: Boolean, attribute: true, reflect: true})
   hideAsides: boolean = false
 
   @property({type: Boolean, attribute: true})
@@ -37,6 +40,7 @@ export class Layout extends LitElement {
         <slot name="drawer-right-header-actions" slot="header-actions"></slot>
         <slot name="drawer-right-footer" slot="footer"></slot>
       </sl-drawer>
+      <slot name="fold"></slot>
       <slot name="main"></slot>
     `
   }
@@ -44,18 +48,22 @@ export class Layout extends LitElement {
   static styles = css`
     :host {
       display: grid;
-      grid-template-columns: 1fr 120px minmax(auto, 800px) 120px 1fr;
-      grid-template-rows: 50px 1fr;
+      grid-template-columns: 1fr 80px minmax(auto, 680px) 80px 1fr;
+      grid-template-rows: minmax(50px, max-content) max-content 1fr;
+      align-items: flex-start;
       height: 100vh;
       width: 100vw;
     }
+
     
     slot[name=header-left]::slotted(*) {
+      min-height: 50px;
       grid-column: 1 / 3;
       grid-row: 1;
     }
 
     nav {
+      min-height: 50px;
       grid-column: 3;
       grid-row: 1;
       position: relative;
@@ -67,6 +75,8 @@ export class Layout extends LitElement {
     }
 
     slot[name=header-right]::slotted(*) {
+      min-height: 50px;
+      overflow-y: visible;
       grid-column: 4 / 6;
       grid-row: 1;
     }
@@ -78,6 +88,37 @@ export class Layout extends LitElement {
     slot[name=main]::slotted(#initializingPlaceholder) {
       grid-column: 1 / 6;
       grid-row: 1 / 5;
+    }
+
+    slot[name=fold]::slotted(*) {
+      transition: cubic-bezier(0.23, 1, 0.320, 1) 0.75s;
+      transition-property: max-height box-shadow;
+    }
+
+    slot[name=fold]::slotted(*) {
+      grid-row: 2;
+      grid-column: 2 / 5; 
+      background: white;
+      border: 1px solid lightgray;
+      border-top: 14px solid var(--sl-color-gray-100);
+      border-left: 0;
+      border-right: 0;
+      max-height: 0;
+    }
+
+    :host(:not([foldopen])) slot[name=fold]::slotted(*) {
+      max-height: 0;
+    }
+
+    slot[name=fold]::slotted(*:hover) {
+      max-height: 56px !important;
+      box-shadow: 0 -14px 0 0 var(--sl-color-gray-100);
+      border: 1px solid lightgray !important;
+    }
+
+    :host([foldopen]) slot[name=fold]::slotted(*) {
+      max-height: 60vh !important;
+      border: 1px solid lightgray !important;
     }
 
     :host([hideasides]) aside {

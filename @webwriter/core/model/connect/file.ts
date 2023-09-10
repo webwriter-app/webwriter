@@ -35,7 +35,6 @@ export async function save(data: any, url: string, binary=false) {
   const urlObj = new URL(url)
   const format = getFileExtension(urlObj.pathname)
   let path = decodeURI(urlObj.pathname).slice(1)
-  console.log({format, path})
   path = ["darwin", "linux"].includes(await platform())? "/" + path: path
   return binary
     ? writeBinaryFile({path, contents: data})

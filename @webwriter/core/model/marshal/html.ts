@@ -6,7 +6,7 @@ import { EditorState } from 'prosemirror-state'
 import {Schema, DOMParser} from "prosemirror-model"
 
 import { createElementWithAttributes, namedNodeMapToObject, unscopePackageName } from "../../utility"
-import { createEditorState } from '..'
+import { createEditorState, headSchema, headSerializer } from '..'
 import { Environment } from '../environment'
 
 class NonHTMLDocumentError extends Error {}
@@ -38,7 +38,7 @@ function createInitializerScript(id: string, tag: string, content: string) {
   `
 }
 
-export async function docToBundle(doc: Node, bundle: Environment["bundle"]) {
+export async function docToBundle(doc: Node, head: Node, bundle: Environment["bundle"]) {
   const html = document.implementation.createHTMLDocument()
   const serializer = DOMSerializer.fromSchema(doc.type.schema)
   serializer.serializeFragment(doc.content, {document: html}, html.body)
@@ -52,7 +52,7 @@ export async function docToBundle(doc: Node, bundle: Environment["bundle"]) {
     .map(el => el.tagName.toLowerCase())
     .filter(name => allWidgetTypes.includes(name))
 
-  const packageNames = widgetTypes.map(name => doc.type.schema.nodes[name].spec["package"])
+  const packageNames = widgetTypes.map(name => doc.type.schema.nodes[name].spec["package"].name)
   const unscopedPackageNames = packageNames.map(t => unscopePackageName(t))
 
   const statements = [
@@ -82,25 +82,10 @@ export async function docToBundle(doc: Node, bundle: Environment["bundle"]) {
     css !== "" && removeFile(cssPath)
   }
 
-  const meta: Attributes = doc.attrs.meta
+  html.head.replaceWith(headSerializer.serializeNode(head))
 
-  const title = meta.headline as string
-  const keywords = (meta.keywords as string[] ?? []).join(",")
-  const lang = meta.inLanguage as string
-
-  const IGNORE_KEYS = ["type", "headline", "keywords", "inLanguage", "encoding", "generator"]
-  const attrs = Object.entries(meta).filter(([k, v]) => !IGNORE_KEYS.includes(k))
-
-  const headElements = [
-    createElementWithAttributes(html, "meta", undefined, {charset: "utf-8"}),
-    createElementWithAttributes(html, "meta", undefined, {name: "generator", content: "webwriter"}),
-    createElementWithAttributes(html, "title", undefined, {}, {text: title}),
-    createElementWithAttributes(html, "meta", undefined, {name: "keywords", content: keywords}),
-    ...attrs.map(([name, content]) => createElementWithAttributes(html, "meta", undefined, {name, content}))
-  ]
-
-  for(let headElement of headElements) {
-    html.head.appendChild(headElement)
+  for(let [key, value] of Object.entries(head.attrs.htmlAttrs ?? {})) {
+    html.documentElement.setAttribute(key, value as string)
   }
 
   function uInt8ToBase64(bytes: Uint8Array) {
@@ -136,8 +121,6 @@ export async function docToBundle(doc: Node, bundle: Environment["bundle"]) {
     */
   }
 
-  html.documentElement.lang = lang
-
   return {html, css, js}
 }
 
@@ -151,41 +134,37 @@ export function parse(data: string, schema: Schema) {
     throw new NonHTMLDocumentError(e?.message)
   }
 
-  if(!inputDoc.querySelector("meta[name=generator][content=webwriter]")) {
-    throw new NonWebwriterDocumentError("Did not find WebWriter marker: <meta name='generator' content='webwriter'>")
+  if(!inputDoc.querySelector("meta[name=generator][content^='webwriter@']")) {
+    throw new NonWebwriterDocumentError("Did not find <meta name='generator'> valid for WebWriter")
   }
 
-  const headline = inputDoc.querySelector("title")?.text
-  const keywords = inputDoc.querySelector("meta[name=keywords]")?.getAttribute("content")?.split(",")
-  const inLanguage = inputDoc.documentElement.lang
+  const doc = DOMParser.fromSchema(schema).parse(inputDoc.body)
 
-  const metaElements = Array.from(inputDoc.querySelectorAll("meta:not([name=keywords]):not([name=encoding]):not([name=generator]:not([name='']):not([name=viewport]))")) as HTMLMetaElement[]
-  const restAttributes = Object.fromEntries(metaElements.map(meta => [meta.name, meta.content]))
+  let head = DOMParser.fromSchema(headSchema).parse(inputDoc.head)
+  const htmlAttrs = {} as Record<string, string>
+  for(let key of inputDoc.documentElement.getAttributeNames()) {
+    htmlAttrs[key] = inputDoc.documentElement.getAttribute(key)!
+  }
+  head = head.type.schema.node("head", {...head.attrs, htmlAttrs}, head.content, head.marks)
 
-  const rawAttributes = {...restAttributes, type: "document", headline, keywords, inLanguage}
-
-  const attributes = Object.fromEntries(Object.entries(rawAttributes)
-    .filter(([k, v]) => k && v && v !== "undefined" && v[0] !== "undefined")
-  ) as Attributes & {type: "document"}
-
-  const explorable = DOMParser.fromSchema(schema).parse(inputDoc.body)
-
-  const editorState = createEditorState({schema, doc: explorable})
-  
+  const editorState = createEditorState({schema, doc}, head)
+  console.log(editorState)
   return editorState
 }
 
-export async function serialize(explorable: Node, bundle: Environment["bundle"]) {
+export async function serialize(explorable: Node, head: Node, bundle: Environment["bundle"]) {
   
-  const {html, js, css} = await docToBundle(explorable, bundle)
+  const {html, js, css} = await docToBundle(explorable, head, bundle)
 
   const script = html.createElement("script")
   script.type = "text/javascript"
   script.text = js
+  script.setAttribute("data-ww-editing", "bundle")
   html.head.appendChild(script)
 
   const style = html.createElement("style")
   style.textContent = css
+  style.setAttribute("data-ww-editing", "bundle")
   html.head.appendChild(style)
 
   return `<!DOCTYPE html>` + html.documentElement.outerHTML

@@ -40,7 +40,7 @@ export class Head extends LitElement {
       flex-direction: row;
       justify-content: center;
       --icon-size: 24px;
-      height: 100%;
+      height: 50px;
       width: 100%;
       align-items: center;
       color: var(--sl-color-gray-700);
@@ -93,6 +93,7 @@ export class Head extends LitElement {
         ${this.resourceCommands.map(v => html`<ww-button variant="icon" 
           ${spreadProps(v)} @click=${() => this.dispatchEvent(CommandEvent(v.id))}></ww-button>`)}
       </div>
+      <slot></slot>
     `
   }
 }

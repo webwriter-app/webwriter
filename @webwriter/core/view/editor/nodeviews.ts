@@ -1,9 +1,11 @@
 import { Decoration, DecorationSource, NodeView } from "prosemirror-view"
 import { NodeSelection } from "prosemirror-state"
 import { DOMSerializer, Node } from "prosemirror-model"
+import {html, render} from "lit"
 
 import { getOtherAttrsFromWidget } from "../../model"
 import {EditorViewController} from "."
+import { selectParentNode } from "prosemirror-commands"
 
 export class WidgetView implements NodeView {
 
@@ -78,7 +80,6 @@ export class WidgetView implements NodeView {
 		const node = this.view.nodeDOM(this.getPos())
     if(e instanceof window.MouseEvent || e instanceof window.DragEvent) {
       const clickedElement = e.composedPath()[0] as HTMLElement
-      console.log(e.composedPath())
       const isFromSlotContent = e.composedPath().some((el: any) => el?.classList?.contains("slot-content"))
       return !isFromSlotContent
     }
@@ -144,5 +145,26 @@ export class FigureView implements NodeView {
 		this.view = view
     this.getPos = getPos
     this.dom = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node) as HTMLElement
+    const observer = new MutationObserver(() => {
+      selectParentNode(this.view.state, this.view.dispatch, this.view)
+    })
+    observer.observe(this.dom, {subtree: true, attributes: true})
 	}
+
+}
+
+export class UnknownElementView implements NodeView {
+  node: Node
+	view: EditorViewController
+	getPos: () => number
+	dom: HTMLElement
+  contentDOM?: HTMLElement 
+
+	constructor(node: Node, view: EditorViewController, getPos: () => number) {
+		this.node = node
+		this.view = view
+    this.getPos = getPos
+    this.dom = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node) as HTMLElement
+	}
+
 }

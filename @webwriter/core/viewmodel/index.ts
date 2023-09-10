@@ -11,7 +11,7 @@ export * from "./iconcontroller"
 import {StoreController, EnvironmentController, CommandController, LocalizationController, NotificationController, SettingsController, IconController} from "."
 import { RootStore } from "../model"
 
-const CORE_PACKAGES = ["@webwriter/ww-textarea", "@webwriter/ww-figure", "@open-wc/scoped-elements"]
+const CORE_PACKAGES = ["@open-wc/scoped-elements"] as string[]
 
 type LitElementConstructor = typeof LitElement
 export const ViewModelMixin = (cls: LitElementConstructor) => class extends cls {

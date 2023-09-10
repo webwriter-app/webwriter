@@ -2,8 +2,9 @@
 import {SafeParseReturnType, ZodSchema, z} from "zod"
 import SPDX_LICENSE_MAP from "spdx-license-list"
 import {valid as semverValid, validRange as semverValidRange} from "semver"
+import ISO6391 from 'iso-639-1';
 
-import {ContentExpression, DataType} from ".."
+import {ContentExpression, DataType, PrimitiveDataType} from ".."
 import { filterObject } from "../../../utility"
 
 const SPDX_LICENSES = Object.keys(SPDX_LICENSE_MAP)
@@ -95,7 +96,7 @@ const nodeArchPattern = new RegExp(`^(${NODE_ARCHS.join("|")})$`)
 const npmPersonPattern = /^\s*(?<name>.*?)\s*(?:<(?<email>.+)>)?\s*(?:\((?<url>.+)\))?\s*$/
 const mimePattern = /#?(?<supertype>[\w!#$%&'*.^`|~-]+)(?:\/(?<subtype>[\w!#$%&'*.^`|~-]+)(?:\+(?<suffix>[\w!#$%&'*.^`|~-]+))?(?:;(?<pkey>[\w!#$%&'*.^`|~-]+)=(?<pval>[\w!#$%&'*.^`|~-]+))?)?/
 const semverPattern = /(?<major>0|[1-9]\d*)\.(?<minor>0|[1-9]\d*)\.(?<patch>0|[1-9]\d*)(?:-(?<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z\-][0-9a-zA-Z\-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z\-][0-9a-zA-Z\-]*))*))?(?:\+(?<buildmetadata>[0-9a-zA-Z\-]+(?:\.[0-9a-zA-Z\-]+)*))?/
-const npmNamePattern = /^(@[a-z0-9\-~][a-z0-9\-._~]*\/)?[a-z0-9\-~][a-z0-9\-._~]*$/
+const npmNamePattern = /^(@(?<organization>[a-z0-9\-~][a-z0-9\-._~]*)\/)?(?<name>[a-z0-9\-~][a-z0-9\-._~]*)$/
 const customElementNamePattern = /^[a-z][\w\d]*\-[\-.0-9_a-z\u00B7\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u037D\u037F-\u1FFF\u200C-\u200D\u203F-\u2040\u2070-\u218F\u2C00-\u2FEF\u3001-\uD7FF\uF900-\uFDCF\uFDF0-\uFFFD\u10000-\uEFFFF]*$/
 
 export type NpmName = z.infer<typeof NpmName>
@@ -157,7 +158,14 @@ export class SemVer extends DataType(SemVerSchema) {
 
 export type SemVerRange = z.infer<typeof SemVerRange>
 export const SemVerRange = z.string()
-  .refine(x => semverValidRange(x), {message: "Invalid NPM version range"})
+  .transform((x, ctx) => {
+    let version = semverValidRange(x)
+    if(version === null) {
+      // ctx.addIssue({fatal: false, code: z.ZodIssueCode.custom})
+      return "*"
+    }
+    else return version
+  })
 
 
 
@@ -339,7 +347,8 @@ export const CustomElementName = z
   .regex(customElementNamePattern)
   .refine(x => !RESERVED_CUSTOM_ELEMENT_NAMES.includes(x))
 
-const PackageSchema = z.object({
+
+const PackageObjectSchema = z.object({
   name: NpmName,
   version: SemVer.schema,
   description: z.string().optional(),
@@ -388,6 +397,16 @@ const PackageSchema = z.object({
 })
 .catchall(Json)
 
+const PackageSchema = PackageObjectSchema
+.or(z.string()
+  .transform((x, ctx) => {
+    let [name, version] = x.slice(1).split("@")
+    name = x[0] + name
+    return {name, version}
+  })
+  .pipe(PackageObjectSchema)
+)
+
 export class Package extends DataType(PackageSchema) {
 
   static optionKeys = [
@@ -402,7 +421,7 @@ export class Package extends DataType(PackageSchema) {
     "cssSize"
   ]
 
-  serialize(format:"json"|"object"="json") {
+  serialize(format:"json"|"object"|"id"="json") {
     const keys = Object.getOwnPropertyNames(this).filter(k => !Package.optionKeys.includes(k))
     const result = Object.fromEntries(keys.map(key => {
       const value = (this as any)[key]
@@ -410,6 +429,9 @@ export class Package extends DataType(PackageSchema) {
     }))
     if(format === "json") {
       return JSON.stringify(result, undefined, 4)
+    }
+    else if(format === "id") {
+      return `${this.name}@${this.version}`
     }
     else {
       return result
@@ -425,5 +447,67 @@ export class Package extends DataType(PackageSchema) {
 
   extend(extraProperties: Partial<Package>) {
     return new Package({...this, ...extraProperties})
+  }
+}
+
+
+
+
+
+const LocaleObjectSchema = z.object({
+  grandfathered: z.string().optional(),
+  language: z.string(),
+  extlang: z.string().optional(),
+  script: z.string().optional(),
+  region: z.string().optional(),
+  variant: z.string().optional(),
+  extension: z.string().optional(),
+  privateUse: z.string().optional()
+})
+
+export const bcp47Pattern = /^((?<grandfathered>(en-GB-oed|i-ami|i-bnn|i-default|i-enochian|i-hak|i-klingon|i-lux|i-mingo|i-navajo|i-pwn|i-tao|i-tay|i-tsu|sgn-BE-FR|sgn-BE-NL|sgn-CH-DE)|(art-lojban|cel-gaulish|no-bok|no-nyn|zh-guoyu|zh-hakka|zh-min|zh-min-nan|zh-xiang))|((?<language>([A-Za-z]{2,3}(-(?<extlang>[A-Za-z]{3}(-[A-Za-z]{3}){0,2}))?)|[A-Za-z]{4}|[A-Za-z]{5,8})(-(?<script>[A-Za-z]{4}))?(-(?<region>[A-Za-z]{2}|[0-9]{3}))?(-(?<variant>[A-Za-z0-9]{5,8}|[0-9][A-Za-z0-9]{3}))*(-(?<extension>[0-9A-WY-Za-wy-z](-[A-Za-z0-9]{2,8})+))*(-(?<privateUse>x(-[A-Za-z0-9]{1,8})+))?)|(?<privateUse1>x(-[A-Za-z0-9]{1,8})+))$/
+
+const LocaleSchema = (z
+  .string()
+  .transform((x, ctx) => {
+    const groups = bcp47Pattern.exec(x)?.groups ?? {}
+    const privateUse = (groups.privateUse ?? "") + (groups.privateUse1 ?? "")
+    return {
+      ...filterObject(groups, key => key !== "privateUse1"),
+      privateUse: privateUse !== ""? privateUse: undefined
+    }
+  })
+  .pipe(LocaleObjectSchema))
+  .or(LocaleObjectSchema)
+
+
+
+export class Locale extends DataType(LocaleSchema) {
+
+  static keys = ["language", "extlang", "script", "region", "variant", "extension", "privateUse"] as const
+
+  static get languageCodes() {
+    return ISO6391.getAllCodes()
+  }
+
+  static getLanguageInfo(localeOrLang: Locale | string) {
+    const lang = localeOrLang instanceof Locale? localeOrLang.language: localeOrLang
+    return ISO6391.getLanguages([lang])[0]
+  }
+
+  static get preferredLanguageCodes() {
+    return navigator.languages.filter(code => !code.includes("-"))
+  }
+
+  static get languageInfos() {
+    return this.languageCodes.map(this.getLanguageInfo)
+  }
+
+  serialize() {
+    return this.grandfathered ?? Locale.keys.map(k => this[k]).filter(v => v).join("-")
+  }
+
+  toString() {
+    return this.serialize()
   }
 }

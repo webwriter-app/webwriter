@@ -38,3 +38,8 @@ export function DataType<T extends ZodSchema>(schema: T) {
 
   return Object.assign(BaseDataType, schema) as unknown as (typeof BaseDataType) & Constructor<z.infer<T>> & T
 }
+
+export function PrimitiveDataType<T extends ZodSchema>(schema: T) {
+  abstract class Base {}
+  return Object.assign(Base, schema) as unknown as (typeof Base) & T
+}

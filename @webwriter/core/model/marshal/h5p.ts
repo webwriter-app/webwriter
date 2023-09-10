@@ -11,9 +11,9 @@ export function parse(data: string, schema: Schema) {
 
 }
 
-export async function serialize(explorable: Node, bundle: Environment["bundle"]) {
+export async function serialize(explorable: Node, head: Node, bundle: Environment["bundle"]) {
   
-  const {html, js, css} = await docToBundle(explorable, bundle)
+  const {html, js, css} = await docToBundle(explorable, head, bundle)
 
   const script = html.createElement("script")
   script.type = "text/javascript"

@@ -61,7 +61,7 @@ export class Palette extends LitElement {
       grid-template-columns: repeat(10, 1fr);
       grid-auto-rows: 30px;
       max-width: 400px;
-      z-index: 100;
+      z-index: 10000;
 			padding: 0 10px;
       margin-left: auto;
       gap: 5px;
@@ -220,13 +220,12 @@ export class Palette extends LitElement {
 				border-top: 1px solid lightgray;
 				border-right: 1px solid lightgray;
 				box-shadow: 0 -1px 2px hsl(240 3.8% 46.1% / 12%);;
-				transform: translateX(0);
 				box-sizing: border-box;
 				gap: 0.5rem;
 				padding-right: 0;
         max-width: unset;
         overflow-x: scroll;
-        overflow-y: hidden;
+        // overflow-y: hidden;
       }
 
       .package-card {

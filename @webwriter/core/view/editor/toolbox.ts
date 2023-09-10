@@ -446,6 +446,11 @@ export class Toolbox extends LitElement {
         color: var(--sl-color-gray-800);
       }
 
+      #mark-toolbox-label sl-icon {
+        height: 1em;
+        width: 1em;
+      }
+
       .mark-toolbox ww-fontpicker {
         grid-column: span 4;
         grid-row: span 2;
@@ -593,10 +598,12 @@ export class Toolbox extends LitElement {
   }
 
   MarkToolbox = () => {
+    const fontFamilies = this.fontFamilyCommand.value
+    const fontSizes = this.fontSizeCommand.value
     return html`<div class="mark-toolbox">
       <ww-fontpicker
-        fontFamily=${ifDefined(this.fontFamilyCommand.value)}
-        fontSize=${ifDefined(this.fontSizeCommand.value)}
+        fontFamily=${ifDefined(fontFamilies.length > 0? fontFamilies[0]: undefined)}
+        fontSize=${ifDefined(fontSizes.length > 0? fontSizes[0]: undefined)}
         recommendedOnly
         @ww-change-font-family=${(e: any) => this.dispatchEvent(CommandEvent(this.fontFamilyCommand.id, e.detail))}
         @ww-change-font-size=${(e: any) => this.dispatchEvent(CommandEvent(this.fontSizeCommand.id, e.detail))}
@@ -614,7 +621,7 @@ export class Toolbox extends LitElement {
     const cmds = this.markCommands.filter(cmd => cmd.active && cmd.tags?.includes("inline"))
     return cmds.map(cmd => html`<div class="mark-field-group">
       <sl-icon name=${cmd.icon ?? "square"}></sl-icon>
-      ${Object.entries(cmd.fields!).map(([key, field]) => this.MarkCommandField(cmd.id, key, field.type, field.placeholder))}
+      ${Object.entries(cmd.fields ?? {}).map(([key, field]) => this.MarkCommandField(cmd.id, key, field.type, field.placeholder))}
     </div>`)
   }
 

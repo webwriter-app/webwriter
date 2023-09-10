@@ -16,7 +16,7 @@ const MEDIA_GROUPS = [...new Set(MIME.map(t => "_" + new MediaType(`#${t}`).supe
 function maybeChildNodeOutputSpec(node: Node, type: MediaType) {
   const result: any[] = []
   if(type.supertype === "image") {
-    result.push(["img", {"src": node.attrs["src"], "data-type": String(type)}])
+    result.push(["img", {"src": node.attrs["src"], "data-type": String(type).slice(1)}])
   }
   else if(type.supertype === "audio" || type.supertype === "video") {
     result.push(["source", {"src": node.attrs["src"], "type": String(type).slice(1)}])
@@ -66,6 +66,7 @@ function mediaNodeEntry(mediaType: string): [string, NodeSpec] {
     toDOM: node => [rootTag, rootAttrs(node), ...maybeChildNodeOutputSpec(node, parsed), ...maybeContent(node)],
     parseDOM: [{tag: rootTag, getAttrs: (dom: HTMLElement | string) => {
       const detectedMediaType = detectMediaTypeFromDOM(dom as HTMLElement, rootTag)
+      console.log(detectedMediaType)
       if(typeof dom === "string" || detectedMediaType !== mediaType) {
         return false
       }

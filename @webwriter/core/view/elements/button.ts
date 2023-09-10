@@ -174,8 +174,22 @@ export class Button extends LitElement implements CommandEntryProps {
       }
 
       sl-icon {
-        width: unset;
-        height: unset;
+        font-size: 20px;
+      }
+
+      sl-button, sl-button::part(base) {
+        width: 100%;
+        height: 100%;
+      }
+
+      sl-button::part(base) {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+      }
+
+      :host([size=small]) sl-button::part(base) {
+        padding: 0;
       }
     `
   ]
@@ -188,7 +202,7 @@ export class Button extends LitElement implements CommandEntryProps {
       return this.label && (this.label + shortcutText) || undefined
     }
     else {
-      return this.label
+      return this.title ?? this.label
     }
   }
 
@@ -203,7 +217,7 @@ export class Button extends LitElement implements CommandEntryProps {
         this.confirming = !this.confirming
       }
     }}>
-      <sl-button part="base" title=${ifDefined(this.titleText)} variant=${variant === "icon"? "text": variant} ${spreadProps({size, caret, disabled, loading, outline, pill, circle, type, name, value, href, target, rel, download})} exportparts="base, prefix, label, suffix, caret">
+      <sl-button part="button" title=${ifDefined(this.titleText)} variant=${variant === "icon"? "text": variant} ${spreadProps({size, caret, disabled, loading, outline, pill, circle, type, name, value, href, target, rel, download})} exportparts="base, prefix, label, suffix, caret">
         <slot name="prefix" slot=${this.icon? "prefix": ""}>
           <sl-icon part="icon" name=${this.icon}></sl-icon>
         </slot>

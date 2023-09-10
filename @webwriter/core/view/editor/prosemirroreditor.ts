@@ -1,14 +1,11 @@
-import { LitElement, html, css } from "lit"
-import { customElement, property, queryAll, queryAsync } from "lit/decorators.js"
+import { LitElement, html, css, PropertyValueMap } from "lit"
+import { customElement, property, queryAsync } from "lit/decorators.js"
 import { DirectEditorProps, EditorView } from "prosemirror-view"
-import { localized, msg } from "@lit/localize"
-import pmCSS from "prosemirror-view/style/prosemirror.css?raw"
-import pmGapcursorCSS from "prosemirror-gapcursor/style/gapcursor.css?raw"
-import pmTablesCSS from "prosemirror-tables/style/tables.css?raw"
-import { Transaction } from "prosemirror-state"
+import { localized } from "@lit/localize"
+import { EditorState, Transaction } from "prosemirror-state"
 import { pickObject, sameMembers } from "../../utility"
 import { keyed } from "lit/directives/keyed.js"
-import { fixTables } from "prosemirror-tables"
+import { headSerializer, toAttributes } from "../../model"
 
 type IProsemirrorEditor = 
   & Omit<DirectEditorProps, "attributes" | "editable">
@@ -125,6 +122,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
 
   set state(state) {
     this.view? this.view.updateState(state): this.initialState = state 
+    this.requestUpdate("state")
   }
 
   private initialState: IProsemirrorEditor["state"]
@@ -233,10 +231,6 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
     return !(changed.has("state") && !this.view?.state.doc.eq(this.state.doc))
   }*/
 
-  constructor() {
-    super()
-  }
-
   get directProps(): DirectEditorProps {
     return {
       ...pickObject(this, ["handleDOMEvents", "handleKeyDown", "handleKeyPress", "handleTextInput", "handleClickOn", "handleClick", "handleDoubleClickOn", "handleDoubleClick", "handleTripleClickOn", "handleTripleClick", "handlePaste", "handleDrop", "handleScrollToSelection", "createSelectionBetween", "domParser", "transformPastedHTML", "clipboardParser", "transformPastedText", "clipboardTextParser", "transformPasted", "transformCopied", "nodeViews", "markViews", "clipboardSerializer", "clipboardTextSerializer", "decorations", "scrollThreshold", "scrollMargin"]),
@@ -258,11 +252,43 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
     if(previous.has("bundleID")) {
       await this.initializeIFrame()
       this.view?.destroy()
-      this.view = new EditorView(this.body, this.directProps)
+      this.view = new EditorView({mount: this.body}, this.directProps)
     }
     else {
       this.view?.setProps(this.directProps)
     }
+    if((this.state as any)?.head$ && (!previous.get("state")?.head$ || !previous.get("state")?.head$.doc.eq((this.state as any)?.head$.doc))) {
+      this.renderHead()
+    }
+    
+  }
+
+  renderHead() {
+    const headState = (this.state as any).head$ as EditorState
+    const newHead = headSerializer.serializeNode(headState.doc)
+    const editingElements = this.head.querySelectorAll("[data-ww-editing]")
+    editingElements.forEach(el => newHead.appendChild(el))
+    this.head.replaceWith(newHead)
+    for(let attr of this.documentElement.getAttributeNames()) {
+      this.documentElement.removeAttribute(attr)
+    }
+    for(let [key, value] of Object.entries(toAttributes(headState.doc.attrs.htmlAttrs ?? {}))) {
+      this.documentElement.setAttribute(key, value as string)
+    }
+    for(let attr of this.body.getAttributeNames()) {
+      if(!["contenteditable", "translate", "data-iframe-height", "data-placeholder", "class"].includes(attr)) {
+        this.body.removeAttribute(attr)
+      }
+    }
+    for(let [key, value] of Object.entries(toAttributes(this.state.doc))) {
+      if(key === "class") {
+        this.body.classList.add(...value.split(/ +/))
+      }
+      else {
+        this.body.setAttribute(key, value as string)
+      }
+    }
+    this.body.spellcheck = false
   }
 
   getUpdatedProps(previous: Map<string, any> = new Map()) {
@@ -285,23 +311,47 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
     }
   }
 
+  static eventsToRedispatch = ["dragenter", "dragleave"]
+
+  redispatch(e: Event) {
+		return this.dispatchEvent(new (e as any).constructor(e.type, e))
+	}
+
   async initializeIFrame() {
-    const {contentStyle, contentScript} = this
     this.iframe = this.shadowRoot?.querySelector("iframe") as any
-    this.importCSSString(pmCSS)
-    this.importCSSString(pmGapcursorCSS)
-    this.importCSSString(pmTablesCSS)
-    const css = Array.isArray(contentStyle)? contentStyle: [contentStyle]
+    const {contentScript} = this
     const js = Array.isArray(contentScript)? contentScript: [contentScript]
-    css.forEach(x => this.importCSSString(x))
     await Promise.all(js.map(x => this.importString(x)))
-    this.childNodes.forEach(node => {
-      this.head.appendChild(this.removeChild(node))
-    })
     this.document.documentElement.spellcheck = false
     this.window.console = console
     this.window.onerror = window.onerror
     this.window.onunhandledrejection = window.onunhandledrejection
+    this.window.addEventListener("focus", () => this.dispatchEvent(new Event("focus", {bubbles: true, composed: true})))
+    ProsemirrorEditor.eventsToRedispatch.map(name => this.window.addEventListener(name, (e: Event) => {
+      if(e.type === "dragleave" && (e as DragEvent).offsetX > 0) {
+        return
+      }
+      else {
+        this.redispatch(e)
+      }
+    }))
+    this.window.addEventListener("dragover", (e: DragEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+    })
+    window.addEventListener("dragenter", (e: any) => {
+      this.document.documentElement.toggleAttribute("data-dragover", true)
+    })
+    window.addEventListener("dragleave", (e: any) => {
+      const isBoundary = e.screenX === 0 && e.screenY === 0
+      isBoundary && this.document.documentElement.toggleAttribute("data-dragover", false)
+    })
+    this.window.addEventListener("dragend", (e: any) => {
+      this.document.documentElement.toggleAttribute("data-dragover", false)
+    })
+    window.addEventListener("drop", () => (e: any) => {
+      this.document.documentElement.toggleAttribute("data-dragover", false)
+    })
     this.loaded = true
   }
 
@@ -320,6 +370,10 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
 
   get body() {
     return this.iframe?.contentDocument?.body
+  }
+
+  get documentElement() {
+    return this.iframe?.contentDocument?.documentElement
   }
 
   get window() {
@@ -366,6 +420,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
         border: none;
         display: block;
         width: 100%;
+        user-select: none;
       }
     `
   }

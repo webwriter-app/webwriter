@@ -32,15 +32,15 @@ export class IconController implements ReactiveController {
     registerIconLibrary("default", {
       resolver: name => `assets/icons/${name}.svg`,
       mutator: svg => {
-        svg.style.width = "var(--icon-size, 16px)"
-        svg.style.height = "var(--icon-size, 16px)"
+        // svg.style.width = "var(--icon-size, 1em)"
+        // svg.style.height = "var(--icon-size, 1em)"
       }
     })
     registerIconLibrary("system", {
       resolver: name => `assets/icons/${SYSTEM_ICONS[name as keyof typeof SYSTEM_ICONS] ?? name}.svg`,
       mutator: svg => {
-        svg.style.width = "var(--icon-size, 16px)"
-        svg.style.height = "var(--icon-size, 16px)"
+        // svg.style.width = "var(--icon-size, 1em)"
+        // svg.style.height = "var(--icon-size, 1em)"
       }
     })
   }

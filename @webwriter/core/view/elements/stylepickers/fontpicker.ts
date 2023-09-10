@@ -91,8 +91,8 @@ export class FontPicker extends LitElement {
     }
   }
 
-  @property({type: Number, attribute: true, reflect: true})
-  defaultFontSize: number = 14
+  @property({type: String, attribute: true, reflect: true})
+  defaultFontSize: string = "14pt"
 
   @property({type: String, attribute: true, reflect: true})
   defaultFontFamily: string = "Arial"
@@ -102,19 +102,32 @@ export class FontPicker extends LitElement {
   @property({type: Boolean, attribute: true})
   recommendedOnly: boolean = false
 
+  @property({type: Boolean, attribute: true, reflect: true})
+  get fontFamilyIndefinite() {
+    return this._fontFamilyIndefinite
+  }
+
+  set fontFamilyIndefinite(value: boolean) {
+    this._fontFamilyIndefinite = value
+    this.showFontFamilyMultiple = value
+  }
+
+  _fontFamilyIndefinite: boolean = false
+
+  @property({type: Boolean, attribute: true, reflect: true})
+  get fontSizeIndefinite() {
+    return this._fontSizeIndefinite
+  }
+
+  set fontSizeIndefinite(value: boolean) {
+    this._fontSizeIndefinite = value
+    this.showFontSizeMultiple = value
+  }
+
+  _fontSizeIndefinite: boolean = false
+
 	static get styles() {
 		return css`
-      sl-select:not([open])::part(combobox) {
-        background: transparent;
-      }
-
-      sl-select::part(combobox) {
-        font: inherit;
-      }
-
-      sl-select::part(listbox) {
-        padding: 0;
-      }
 
       [part=base] {
         display: grid;
@@ -142,7 +155,6 @@ export class FontPicker extends LitElement {
 
       #font-size {
         max-width: 10ch;
-        // padding-right: 1ch;
       }
 
       #font-size sl-option::part(base) {
@@ -152,16 +164,7 @@ export class FontPicker extends LitElement {
 
       #font-size sl-option::part(checked-icon) {
         display: none;
-      }
-
-      #font-size::part(combobox) {
-        padding: 0 1ch;
-      }
-
-      sl-select::part(expand-icon) {
-        font-size: 0.75rem;
-        background: transparent;
-      }      
+      }   
 
       ww-button {
         width: min-content;
@@ -169,24 +172,6 @@ export class FontPicker extends LitElement {
 
       ww-button {
         --icon-size: 24px;
-      }
-
-      
-      sl-select::part(combobox) {
-        border-color: var(--sl-color-gray-400);
-      }
-
-      sl-select::part(display-input) {
-        z-index: 2;
-      }
-
-      sl-select::part(expand-icon) {
-        margin: 0;
-      }
-
-      #font-family sl-icon {
-        color: var(--sl-color-gray-600);
-        font-size: 1rem;
       }
 
       sl-divider {
@@ -208,25 +193,25 @@ export class FontPicker extends LitElement {
         display: none;
       }
 
-      #font-family::part(display-input) {
+      ww-combobox::part(base) {
+        padding: 0 0 0 var(--sl-spacing-2x-small);
+      }
+
+      #font-family::part(input) {
         display: none;
       }
-
-      #font-family::part(prefix) {
-        flex: unset;
-        flex-grow: 1;
+      
+      ww-combobox::part(input) {
+        width: 100%;
+        padding: 0;
       }
 
-      #font-family .prefix {
-        white-space: nowrap;
-        text-overflow: ellipsis;
-        max-width: 100%;
-        font-size: 0.8rem;
+      ww-combobox:not([open])::part(base) {
+        background: none;
       }
 
-      #font-family::part(combobox) {
-        padding-left: 6px;
-        padding-right: 6px;
+      .prefix, #font-size::part(input) {
+        font-size: 0.7rem;
       }
 		`
 	}
@@ -257,27 +242,34 @@ export class FontPicker extends LitElement {
     return String(parseInt(this.fontSize) + (backwards? 1: -1))
   }
 
+  @property({type: Boolean, state: true})
+  showFontFamilyMultiple = false
+
+  
+  @property({type: Boolean, state: true})
+  showFontSizeMultiple = false
+
 	render() {
     return html`<div part="base">
-      <sl-select id="font-family" size="small" value=${this.fontFamily?.replaceAll(" ", "_") ?? this.defaultFontFamily.replaceAll(" ", "_")} defaultValue=${this.defaultFontFamily} @sl-change=${(e: any) => this.fontFamily = e.target.value.replaceAll("_", " ")}>
-        <span class="prefix" slot="prefix" style=${`font-family: "${this.fontFamily}"`}>${this.fontFamily}</span>
+      <ww-combobox suggestions inputDisabled id="font-family" size="small" .value=${this.fontFamily ?? this.defaultFontFamily} defaultValue=${this.defaultFontFamily} @sl-change=${(e: any) => this.fontFamily = e.target.value.replaceAll("_", " ")}>
+        <span class="prefix" slot="prefix" style=${`font-family: "${this.fontFamily}"`}>${this.fontFamily ?? this.defaultFontFamily}</span>
         ${this.recommendedFonts.map(this.FontOption)}
         ${this.recommendedOnly? null: html`
           <sl-divider></sl-divider>
           ${this.notRecommendedFonts.map(this.FontOption)}
         `}
         <!--<ww-button slot="label" class="label" variant="icon" icon="typography"></ww-button>-->
-      </sl-select>
-      <sl-select id="font-size" size="small" value=${this.fontSize ?? this.defaultFontSize}  defaultValue=${this.defaultFontSize} @sl-change=${(e: any) => this.fontSize = e.target.value}>
+      </ww-combobox>
+      <ww-combobox suggestions id="font-size" size="small" .value=${(this.fontSize ?? this.defaultFontSize) + (this.fontSizeIndefinite && this.showFontSizeMultiple? "+": "")} @focus=${() => this.showFontSizeMultiple = false} @blur=${() => this.showFontSizeMultiple = true} defaultValue=${this.defaultFontSize} @sl-change=${(e: any) => this.fontSize = e.target.value}>
         ${this.allFontSizes.map(size => html`<sl-option
           ?data-recommended=${FONT_SIZES.includes(size)}
           style=${`font-size: ${size}`}
           value=${`${size}pt`}>
           ${size}
         </sl-option>`)}
-      </sl-select>
-      <ww-button variant="icon" @click=${(e: any) => this.fontSize = this.getNextFontSize()} icon="text-decrease"></ww-button>
-      <ww-button variant="icon"  @click=${(e: any) => this.fontSize = this.getNextFontSize(true)} icon="text-increase"></ww-button>
+      </ww-combobox>
+      <ww-button size="small" variant="icon" @click=${(e: any) => this.fontSize = this.getNextFontSize()} icon="text-decrease"></ww-button>
+      <ww-button size="small" variant="icon"  @click=${(e: any) => this.fontSize = this.getNextFontSize(true)} icon="text-increase"></ww-button>
       <!--
       <ww-button variant="icon" icon="dash-square"></ww-button>
       <ww-button variant="icon" icon="plus-square"></ww-button>

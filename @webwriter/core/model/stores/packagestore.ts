@@ -346,11 +346,12 @@ export class PackageStore {
   /** Adds one or more packages. Extra arguments for npm can be provided. */
   @storeAction({queueKey: "pending"})
   async add(args: string[] = []) {
+    const defaultArgs = ["--prod", "--ignore-optional", "--ignore-scripts", "--ignore-engines", "--no-lockfile", "--non-interactive", "--no-bin-links"]
     const appDir = await this.Path.appDir()
-    await this.pm("add", args, true, appDir)
+    await this.pm("add", [...defaultArgs, ...args], true, appDir)
     const packages = await this.fetchInstalled(true)
     const localPackages = packages.filter(pkg => pkg.localPath)
-    await Promise.all(localPackages.map(async pkg => this.pm("install", ["--prod", "--ignore-optional"], undefined, await this.Path.join(appDir, "node_modules", pkg.name))))
+    await Promise.all(localPackages.map(async pkg => this.pm("install", defaultArgs, undefined, await this.Path.join(appDir, "node_modules", pkg.name))))
     const importable = (await this.writeBundle(packages, {editMode: true, force: true}))?.packages
     await this.import(importable ?? [], {editMode: true})
     await this.fetchAll(0)

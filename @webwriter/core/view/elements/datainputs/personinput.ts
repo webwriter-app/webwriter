@@ -40,14 +40,17 @@ export class PersonInput extends SlInput implements DataInput {
       gap: 5px;
     }
 
-    :host {
+    [part=form-control] {
       display: flex;
       flex-direction: column;
-      gap: 5px;
     }
 
     sl-input.part {
       margin-left: 2ch;
+    }
+
+    ww-button::part(icon) {
+      font-size: 16px;
     }
 
     :host(:not(:focus-within):not(:hover)) .toggle {
@@ -86,6 +89,7 @@ export class PersonInput extends SlInput implements DataInput {
   }
 
   async togglePart(part: "email" | "url") {
+    this.focus()
     this[`${part}Active`] = !this[`${part}Active`]
     if(this[`${part}Active`]) {
       await this.updateComplete

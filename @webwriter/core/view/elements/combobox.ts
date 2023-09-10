@@ -3,6 +3,7 @@ import { customElement, property, query, queryAssignedElements } from "lit/decor
 import { localized } from "@lit/localize"
 import { DataInput } from "./datainputs"
 import { SlInput, SlOption } from "@shoelace-style/shoelace"
+import { ifDefined } from "lit/directives/if-defined.js"
 
 @localized()
 @customElement("ww-combobox")
@@ -45,6 +46,9 @@ export class Combobox extends SlInput implements DataInput {
   active: boolean
 
   @property({type: Boolean, attribute: true, reflect: true})
+  inputDisabled: boolean = false
+
+  @property({type: Boolean, attribute: true, reflect: true})
   multiple: boolean = false
 
   @property({type: String})
@@ -58,6 +62,9 @@ export class Combobox extends SlInput implements DataInput {
 
   @property({type: String, attribute: "help-text"})
   helpText: string
+
+  @property({type: Number, attribute: true})
+  fixLength?: number
   
   @property({type: String, attribute: true})
   separator: string = " "
@@ -79,7 +86,12 @@ export class Combobox extends SlInput implements DataInput {
   }
 
   focus() {
-    this.input?.focus()
+    if(this.inputDisabled && this.suggestions) {
+      this.open = !this.open
+    }
+    else {
+      this.input?.focus()
+    }
   }
 
   getForm() {
@@ -89,7 +101,6 @@ export class Combobox extends SlInput implements DataInput {
   static styles: CSSResult | CSSResultArray = [SlInput.styles, css`
     * {
       font-family: var(--sl-font-sans);
-      font-size: var(--sl-input-font-size-medium);
     }
 
     :host {
@@ -106,9 +117,17 @@ export class Combobox extends SlInput implements DataInput {
       border: solid var(--sl-input-border-width) var(--sl-input-border-color);
       border-radius: var(--sl-input-border-radius-medium);
       max-width: 100%;
-      min-height: calc(var(--sl-input-height-medium) - var(--sl-input-border-width) * 2);
-      cursor: text;
+      min-height: var(--sl-input-height-medium);
       padding: 0 var(--sl-input-spacing-medium);
+      background: white;
+    }
+
+    :host(:not([inputDisabled]):not([disabled])) {
+      cursor: text;
+    }
+
+    :host([inputDisabled]:not([disabled])), :host([inputDisabled]:not([disabled])) input {
+      cursor: pointer;
     }
 
     :host([multiple]) [part=base] {
@@ -152,16 +171,21 @@ export class Combobox extends SlInput implements DataInput {
       background: transparent;
     }
 
-    :host(:not([open])) #options {
-      display: none;
-    }
-
     #options {
       display: block;
+      font-family: var(--sl-font-sans);
+      font-size: var(--sl-font-size-medium);
+      font-weight: var(--sl-font-weight-normal);
+      box-shadow: var(--sl-shadow-large);
+      background: var(--sl-panel-background-color);
+      border: solid var(--sl-panel-border-width) var(--sl-panel-border-color);
+      border-radius: var(--sl-border-radius-medium);
+      padding-block: var(--sl-spacing-x-small);
+      padding-inline: 0;
+      overflow: auto;
+      overscroll-behavior: none;
       width: 100%;
-      position: absolute;
-      top: 100%;
-      left: 0;
+      max-height: var(--auto-size-available-height);
     }
 
     #options::part(base) {
@@ -177,16 +201,8 @@ export class Combobox extends SlInput implements DataInput {
       background: transparent;
     }
 
-    :host(:not([open])) sl-menu {
-      display: none;
-    } 
-
     :host(:not([suggestions])) sl-menu, :host(:not([suggestions])) #toggle {
       display: none;
-    }
-
-    sl-menu {
-      z-index: 100;
     }
 
     #toggle {
@@ -197,22 +213,12 @@ export class Combobox extends SlInput implements DataInput {
       transform: rotate(180deg);
     }
 
-    sl-menu {
-      display: block;
-      position: relative;
-      font-family: var(--sl-font-sans);
-      font-size: var(--sl-font-size-medium);
-      font-weight: var(--sl-font-weight-normal);
-      box-shadow: var(--sl-shadow-large);
-      background: var(--sl-panel-background-color);
-      border: solid var(--sl-panel-border-width) var(--sl-panel-border-color);
-      border-radius: var(--sl-border-radius-medium);
-      padding-block: var(--sl-spacing-x-small);
-      padding-inline: 0;
-      overflow: auto;
-      overscroll-behavior: none;
-      max-width: var(--auto-size-available-width);
-      max-height: var(--auto-size-available-height);
+    :host([open]) {
+      z-index: 100;
+    }
+
+    sl-dropdown::part(panel) {
+      width: 100%;
     }
 
     [part=suffix] {
@@ -224,11 +230,12 @@ export class Combobox extends SlInput implements DataInput {
       flex-grow: 0;
     }
 
-    label {
+    [part=label]::slotted(*), label {
       align-self: flex-start;
+      margin-bottom: var(--sl-spacing-3x-small);
     }
 
-    :host([required]) label::after {
+    :host([required]) [part=label]::after {
       content: "*";
       margin-left: 0.25ch;
     }
@@ -242,12 +249,24 @@ export class Combobox extends SlInput implements DataInput {
       color: var(--sl-input-help-text-color);
       margin-top: var(--sl-spacing-3x-small);
     }
+
+    slot[name=prefix]::slotted(:last-child) {
+      margin-right: 1ch;
+    }
+
+    :host([size=small]) [part=base] {
+      min-height: var(--sl-input-height-small);
+      padding: 0 var(--sl-input-spacing-small);
+    }
   `]
 
   handleTextInput(e: Event) {
     const input = e.target as HTMLInputElement
     e.preventDefault()
-    if(!this.multiple) {
+    if(!this.multiple && this.fixLength && input.value.length < this.fixLength) {
+      input.value = this.value as string
+    }
+    else if(!this.multiple) {
       this.value = input.value
     }
     else if(input.value === this.separator) {
@@ -273,32 +292,50 @@ export class Combobox extends SlInput implements DataInput {
       this.value = this.input.value = e.target.value
       this.focus()
       this.open = false
+      this.dispatchChange()
     }
   }
 
+  dispatchChange() {
+    this.dispatchEvent(new CustomEvent("sl-change", {composed: true, bubbles: true}))
+  }
+
   get valueList() {
-    return (this.multiple? this.value: [this.value])  as string[]
+    return (this.multiple? this.value || []: [this.value])  as string[]
   }
 
   protected updated(_changedProperties: PropertyValueMap<any> | Map<PropertyKey, unknown>): void {
     this.input.value = this.multiple? this.valueList.at(-1) ?? "": String(this.value)
   }
 
+  get inputSize() {
+    return !this.multiple? undefined: Math.min(
+      Math.max(this.placeholder?.length ?? 1, this.valueList.at(-1)!?.length ?? 1 - 1),
+      40
+    )
+  }
+
   render() {
     const input = html`
       <input
-        size=${Math.min(Math.max(1, this.valueList.at(-1)!?.length ?? 1 - 1), 40)}
+        part="input"
+        type=${this.type}
+        size=${ifDefined(this.inputSize)}
         .value=${this.multiple? this.valueList.at(-1)!: String(this.value)}
-        placeholder=${this.placeholder}
-        ?disabled=${this.disabled}
+        placeholder=${this.multiple && this.valueList.length > 1? "": this.placeholder}
+        ?disabled=${this.disabled || this.inputDisabled}
         @input=${this.handleTextInput}
+        @change=${this.dispatchChange}
         @keydown=${this.handleInputKeydown}
         autocomplete=${this.autocomplete as any}
       >
     `
     return html`
-      <label>${this.label}</label> 
-      <div part="base">
+      <slot name="label" part="label" @click=${this.focus}>
+        <label>${this.label}</label> 
+      </slot>
+      <div part="base" id="anchor" @click=${this.focus}>
+        <slot name="prefix"></slot>
         ${this.multiple? html`
           <span id="values">
             <slot name="values"></slot>
@@ -310,19 +347,23 @@ export class Combobox extends SlInput implements DataInput {
         `: input}
         <div part="suffix">
           <slot name="suffix"></slot>
-          <ww-button
-            id="toggle"
-            variant="icon" 
-            icon="chevron-down"
-            @click=${() => this.open = !this.open}
-            @focus=${(e: Event) => e.stopPropagation()}
-            @mousedown=${(e: Event) => {e.stopPropagation(); e.preventDefault()}}
-          ></ww-button>
+            <ww-button
+              slot="trigger"
+              part="trigger"
+              id="toggle"
+              variant="icon" 
+              icon="chevron-down"
+              @focus=${(e: Event) => e.stopPropagation()}
+              @click=${(e: Event) => {this.open = !this.open; e.stopPropagation()}}
+              @mousedown=${(e: Event) => {e.stopPropagation(); e.preventDefault()}}
+            ></ww-button>
         </div>
-        <sl-menu id="options" @click=${this.handleOptionClick}>
-          <slot></slot>
-        </sl-menu>
       </div>
+      <sl-popup anchor="anchor" placement="bottom" strategy="fixed" ?active=${this.open} sync="width" auto-size="vertical" auto-size-padding="10" flip shift>
+          <sl-menu id="options" @click=${this.handleOptionClick}>
+            <slot></slot>
+          </sl-menu>
+        </sl-popup>
       <div id="help-text">${this.helpText}</div>
     `
   }

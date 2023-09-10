@@ -2,9 +2,10 @@ import { EditorState, NodeSelection, TextSelection } from "prosemirror-state";
 import { SchemaPlugin, parseStyleAttrs, serializeStyleAttrs, styleAttrs } from ".";
 import { ProsemirrorEditor } from "../../../../view";
 import { camelCaseToSpacedCase, range } from "../../../../utility";
-import { chainCommands } from "prosemirror-commands";
+import { chainCommands, createParagraphNear, deleteSelection, joinBackward, lift, liftEmptyBlock, selectParentNode } from "prosemirror-commands";
 import {Node, NodeType, Attrs, Slice, Fragment} from "prosemirror-model"
 import { ContentExpression, ParentedExpression } from "../../contentexpression";
+import { HTMLElementSpec } from "../htmlelementspec";
 
 
 export function getActiveAttributes(state: EditorState, key: string) {
@@ -106,7 +107,6 @@ export function fitIntoNode(node: Node, content: Node[]): Node {
     })
     contentPaths.forEach(cp => newContent.push(nestNodes(cp)))
   }
-  console.log(newContent)
   return newContent && newContent.length > 0
     ? node.copy(Fragment.fromArray(newContent))
     : fillNode(node.type, node.attrs)
@@ -144,10 +144,10 @@ export function wrapSelection(type: string | NodeType, attrs?: Attrs) {
     const n = slice.content.childCount
     range(n).forEach(i => content.push(slice.content.child(i)))
     const newNode = fitIntoNode(nodeType.create(attrs)!, content)
-    console.log(newNode)
     let newStart: number | null = null
     let newEnd: number | null = null
     let tr = state.tr.replaceRangeWith(from, to, newNode)
+    /*
     tr.doc.nodesBetween(0, tr.doc.content.size - 1, (node, start) => {
       if(node === newNode) {
         newStart = start
@@ -159,6 +159,7 @@ export function wrapSelection(type: string | NodeType, attrs?: Attrs) {
       const s = new NodeSelection(tr.doc.resolve(newStart))
       tr = tr.setSelection(new TextSelection(s.$from, s.$to))
     }
+    */
     return dispatch(tr)
   }
   )
@@ -191,104 +192,39 @@ export function setAttributeOnSelectedBlocks(key: string, value: any) {
 
 export const textblockPlugin = () => ({
   nodes: {
-    thematicBreak: {
-      group: "leaf"
-    },
-    paragraph: {
+    paragraph: HTMLElementSpec({
+      tag: "p",
       group: "container",
       content: "inline*",
-      attrs: {...styleAttrs},
+      whitespace: "pre"
+    }),
+    
+    blockquote: HTMLElementSpec({
+      tag: "blockquote",
+      group: "container",
+      content: "inline*",
       whitespace: "pre",
-      parseDOM: [{tag: "p", getAttrs: parseStyleAttrs}],
-      toDOM: node => [
-        "p",
-        {
-          style: serializeStyleAttrs(node.attrs)
-        },
-        0
-      ]
-    },
-    
-    blockquote: {
-      group: "container",
-      content: "inline*",
-      attrs: {...styleAttrs},
-      whitespace: "pre",
-      parseDOM: [{tag: "blockquote", getAttrs: parseStyleAttrs}],
-      toDOM: node => [
-        "blockquote",
-        {
-          style: serializeStyleAttrs(node.attrs)
-        },
-        0
-      ]
-    },
-    
-    heading1: {
-      group: "container",
-      content: "inline*",
-      attrs: {...styleAttrs},
-      defining: true,
-      parseDOM: [
-        {tag: "h1", getAttrs: parseStyleAttrs},
-      ],
-      toDOM: node => ["h1", {style: serializeStyleAttrs(node.attrs)}, 0]
-    },
-    
-    heading2: {
-      group: "container",
-      content: "inline*",
-      attrs: {...styleAttrs},
-      defining: true,
-      parseDOM: [
-        {tag: "h2", getAttrs: parseStyleAttrs},
-      ],
-      toDOM: node => ["h2", {style: serializeStyleAttrs(node.attrs)}, 0]
-    },
-    
-    heading3: {
-      group: "container",
-      content: "inline*",
-      attrs: {...styleAttrs},
-      defining: true,
-      parseDOM: [
-        {tag: "h3", getAttrs: parseStyleAttrs},
-      ],
-      toDOM: node => ["h3", {style: serializeStyleAttrs(node.attrs)}, 0]
-    },
-    
-    heading4: {
-      group: "container",
-      content: "inline*",
-      attrs: {...styleAttrs},
-      defining: true,
-      parseDOM: [
-        {tag: "h4", getAttrs: parseStyleAttrs},
-      ],
-      toDOM: node => ["h4", {style: serializeStyleAttrs(node.attrs)}, 0]
-    },
-    
-    heading5: {
-      group: "container",
-      content: "inline*",
-      attrs: {...styleAttrs},
-      defining: true,
-      parseDOM: [
-        {tag: "h5", getAttrs: parseStyleAttrs},
-      ],
-      toDOM: node => ["h5", {style: serializeStyleAttrs(node.attrs)}, 0]
-    },
-    
-    heading6: {
-      group: "container",
-      content: "inline*",
-      attrs: {...styleAttrs},
-      defining: true,
-      parseDOM: [
-        {tag: "h6", getAttrs: parseStyleAttrs},
-      ],
-      toDOM: node => ["h6", {style: serializeStyleAttrs(node.attrs)}, 0]
-    },
-  
+    }),
+
+    ...Object.fromEntries(["h1", "h2", "h3", "h4", "h5", "h6"].map(tag => [
+      tag,
+      HTMLElementSpec({
+        tag,
+        group: "container",
+        content: "inline*",
+        defining: true
+      })
+    ]))
+  },
+  keymap: {
+    "Backspace": (state, dispatch, view) => {
+      const {selection, doc, tr} = state
+      if(selection.empty && selection.from === 1) {
+        return wrapSelection("paragraph")(state, dispatch, view)
+      }
+      else {
+        return false
+      }
+    }
   }
 } as SchemaPlugin)

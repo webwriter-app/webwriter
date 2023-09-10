@@ -3,6 +3,8 @@ export * from "./semverinput"
 export * from "./personinput"
 export * from "./npmnameinput"
 export * from "./licenseinput"
+export * from "./languageinput"
+export * from "./urlfileinput"
 import { ComplexAttributeConverter } from "lit"
 import { DataType } from "../../../model"
 

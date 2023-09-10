@@ -1,12 +1,13 @@
-import { EditorState } from "prosemirror-state"
+import { EditorState, Transaction } from "prosemirror-state"
 import { Schema, Mark, Node, NodeType, Attrs } from "prosemirror-model"
 
-import { createEditorState, Environment } from ".."
+import { createEditorState, Environment, themes } from ".."
 import { getFileExtension, groupBy, range } from "../../utility"
 import * as marshal from "../marshal"
 import * as connect from "../connect"
 import { redoDepth, undoDepth } from "prosemirror-history"
 import { EditorView } from "prosemirror-view"
+import { toJS } from "mobx"
 
 const BINARY_EXTENSIONS = Object.entries(marshal).flatMap(([k, v]) => v.isBinary? v.extensions: [])
 const ALL_FILTER = {name: "Explorable", extensions: Object.values(marshal).flatMap(v => v.extensions)}
@@ -33,6 +34,8 @@ export class ResourceStore {
   previewing: Record<Resource["url"], boolean> = {}
   lastSavedState: Record<Resource["url"], EditorState> = {}
 
+  themes = themes
+
   bundle: Options["bundle"]
 
   constructor(options: Options) {
@@ -53,7 +56,7 @@ export class ResourceStore {
       .filter(([url]) => this._resources[url])
       .map(([url, lastState]) => [
         url,
-        !lastState.doc.eq(this._resources[url].editorState.doc)
+        !lastState.doc.eq(this._resources[url].editorState.doc) || !(lastState as any).head$.doc.eq((this._resources[url].editorState as any).head$.doc)
       ])
     return Object.fromEntries(entries)
   }
@@ -118,6 +121,15 @@ export class ResourceStore {
       throw new TypeError("Needs a 'url' since no url is active")
     }
     this._resources = {...this._resources, [url]: {url, editorState}}
+  }
+
+  /** Sets a new editor state for the given resource. */
+  setHead(url = this._active, head$: EditorState) {
+    if(!url) {
+      throw new TypeError("Needs a 'url' since no url is active")
+    }
+    const state = this._resources[url].editorState.apply(this._resources[url].editorState.tr)
+    this.set(url, Object.assign(state, {head$}))
   }
 
   /** Remove a resource from the list of resources. */
@@ -193,8 +205,7 @@ export class ResourceStore {
     const save = (connect as any)[protocol].save
     const serialize = (marshal as any)[format].serialize
     const isBinary = (marshal as any)[format].isBinary
-  
-    let data = await serialize(resource.editorState.doc, this.bundle)
+    let data = await serialize(resource.editorState.doc, (resource.editorState as any).head$.doc, this.bundle)
     await save(data, urlObj.href, isBinary)
     this.relocate(url, urlObj.href)
     this.lastSavedState = {...this.lastSavedState, [urlObj.href]: resource.editorState}
