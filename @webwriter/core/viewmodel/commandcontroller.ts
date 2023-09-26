@@ -6,9 +6,10 @@ import { App } from "../view"
 import { msg } from "@lit/localize"
 import hotkeys from "hotkeys-js"
 import {toggleMark} from "prosemirror-commands"
-import {Command} from "prosemirror-state"
+import {Command as PmCommand} from "prosemirror-state"
 import {redo, redoDepth, undo, undoDepth} from "prosemirror-history"
 import {Node, Mark} from "prosemirror-model"
+import { makeAutoObservable } from "mobx"
 
 export const CommandEvent = (id: string, options?: any) => new CustomEvent(
   "ww-command",
@@ -25,6 +26,127 @@ type FieldRecord<K extends string = string> = Record<K, FieldEntry>
 type FieldType<T extends FieldEntry> = T["type"] extends "string"? string: (T["type"] extends "number"? number: boolean)
 
 type FieldOptions<T extends FieldRecord, K extends keyof T=keyof T> = Record<K, FieldType<T[K]>>
+
+// type CommandSpec<ID extends string=string, T=any> = {
+//   id: ID
+//   /** Keyboard shortcut for the command. */ 
+// 	shortcut?: string
+//   /** Tags for the command. */
+//   tags?: string[]
+//   /** Icon to represent the command to the user. */
+// 	icon?: string
+//   /** Rough categorization of the command. */
+// 	category?: string
+//   /** Grouping for exclusive commands. */
+//   group?: string
+//   /** Allow the default keyboard event in addition to the callback. */
+// 	allowDefault?: boolean
+//   /** Whether the shortcut has been changed from the default. */
+// 	modified?: boolean
+//   /** Whether to disallow changing the shortcut. */
+//   fixedShortcut?: boolean
+//   /** Fields of the command that will be passed as arguments. */
+// 	fields?: any
+//   /** Label of the command for the user. */
+// 	get label(): string
+//   /** Description of the commmand for the user. */
+//   get description(): string
+//   /** Whether the command should be disabled. */
+// 	get disabled(): boolean
+//   /** Whether the command is active. */
+//   get active(): boolean
+//   /** Associated value of the command. */
+//   get value(): T
+// }
+
+
+// class Command<ID extends string = string> {
+//   readonly id: ID
+//   /** Keyboard shortcut for the command. */ 
+// 	shortcut?: string
+//   /** Label of the command for the user. */
+// 	label?: string
+//   tags?: string[]
+//   /** Description of the commmand for the user. */
+// 	description?: string
+//   /** Icon to represent the command to the user. */
+// 	icon?: string
+//   /** Rough categorization of the command. */
+// 	category?: string
+//   /** Grouping for exclusive commands. */
+//   group?: string
+//   /** Allow the default keyboard event in addition to the callback. */
+// 	allowDefault?: boolean
+//   /** Whether the shortcut has been changed from the default. */
+// 	modified?: boolean
+//   /** Whether to disallow changing the shortcut. */
+//   fixedShortcut?: boolean
+//   /** Fields of the command that will be passed as arguments. */
+// 	fields?: any
+//   constructor(spec: CommandSpec<ID>) {
+//     this.id = spec.id
+//     this.shortcut = spec.shortcut
+//     this.label = spec.label
+//     this.tags = spec.tags
+//   }
+// }
+
+// class MarkCommand extends Command {
+//   constructor(spec: CommandSpec) {
+//     super(spec)
+//   }
+// }
+
+// class NodeCommand extends Command {
+
+// }
+
+// class LayoutCommand extends Command {
+  
+// }
+
+/*
+MarkCommandSpec({
+  id,
+  tags=["mark"],
+  category="editor",
+  callback=((options: any) => this.exec(toggleOrUpdateMark(id, options))),
+  active=(() => !!this.editorState && this.resources.isMarkActive(id)),
+  value=(() => this.editorState && getActiveMarks(this.editorState!).find(mark => mark.type.name === id)?.attrs[id]),
+  ...rest
+}: Partial<CommandSpec> & {id: string}) {
+  return {id, tags, category, callback, active, value, ...rest}
+}
+
+
+LayoutCommandSpec({
+  id,
+  tags=["layout"],
+  category="editor",
+  callback=((options: any) => {
+    const value = options?.value
+    this.exec(setAttributeOnSelectedBlocks(id, value)as any)
+  }),
+  active=(() => !!this.editorState && this.resources.getActiveAttributeValue(id) !== undefined),
+  group=id,
+  value=(() => !!this.editorState && this.resources.getActiveAttributeValue(id)),
+  ...rest
+}: Partial<CommandSpec> & {id: string}) {
+  return {id, tags, category, callback, active, value, ...rest}
+}
+
+NodeCommandSpec({
+  id,
+  tags=["node"],
+  category="editor",
+  callback=((options: any) => this.exec(wrapSelection(this.editorState?.schema.nodes[nodeName ?? id]!, attrs))),
+  active=(() => hasActiveNode(this.editorState!, nodeName ?? id, attrs)),
+  disabled=(() => false),
+  ...rest
+}: Partial<CommandSpec> & {id: string}, attrs?: {}, nodeName?: string) {
+  return {id, tags, category, callback, active, ...rest}
+}
+*/
 
 export type CommandEntry<ID extends string = string, T extends FieldRecord = FieldRecord> = {
   id: ID
@@ -70,6 +192,50 @@ type CommandSpec<ID extends string = string, T extends FieldRecord = FieldRecord
 
 type CommandMap<ID extends string, T extends CommandSpec<ID> = CommandSpec<ID>> = Record<ID, T>
 
+class Command<ID extends string> implements ReactiveController {
+
+  host: App
+	store: RootStore
+
+
+
+  constructor(host: App, store: RootStore, spec: CommandSpec) {
+		this.store = store;
+    (this.host = host).addController(this)
+  }
+
+  hostConnected(): void {
+    
+  }
+
+  readonly id: ID
+  
+  private _shortcut: string
+  get shortcut() {
+
+  }
+  set shortcut() {
+
+  }
+
+  get label() {
+  }
+}
+
+class NodeCommand<ID extends string> extends Command<ID> {
+
+}
+
+class MarkCommand<ID extends string> extends Command<ID> {
+  
+}
+
+class LayoutCommand<ID extends string> extends Command<ID> {
+  
+}
+
+
+
 export class CommandController implements ReactiveController {
 
   host: App
@@ -91,14 +257,7 @@ export class CommandController implements ReactiveController {
     return this.host.activeEditor?.editorState.schema
   }
 
-  active = {
-    marks: [] as Mark[],
-    nodes: [] as Node[],
-    elements: [] as Element[],
-
-  }
-
-  exec(command: Command) {
+  exec(command: PmCommand) {
     this.editor?.exec(command)
   }
 
@@ -124,7 +283,10 @@ export class CommandController implements ReactiveController {
   constructor(host: App, store: RootStore) {
 		this.store = store;
     (this.host = host).addController(this)
+    makeAutoObservable(this)
   }
+
+  
 
   hostConnected() {
     this.host.addEventListener("ww-command", ((e: CustomEvent) => {
@@ -205,17 +367,17 @@ export class CommandController implements ReactiveController {
     tags=["mark"],
     category="editor",
     callback=((options: any) => this.exec(toggleOrUpdateMark(id, options))),
-    active=(() => !!this.editorState && this.resources.isMarkActive(id)),
-    value=(() => this.editorState && getActiveMarks(this.editorState!).find(mark => mark.type.name === id)?.attrs[id]),
+    active=(() => !!this.resources.activeMarkMap[id]),
+    value=(() => this.resources.activeMarkMap[id]),
     ...rest
   }: Partial<CommandSpec> & {id: string}) {
     return {id, tags, category, callback, active, value, ...rest}
   }
 
 
-  BlockCommandSpec({
+  LayoutCommandSpec({
     id,
-    tags=["block"],
+    tags=["layout"],
     category="editor",
     callback=((options: any) => {
       const value = options?.value
@@ -229,12 +391,13 @@ export class CommandController implements ReactiveController {
     return {id, tags, category, callback, active, value, ...rest}
   }
   
-  InsertContainerCommandSpec({
+  NodeCommandSpec({
     id,
-    tags=["container"],
+    tags=["node"],
     category="editor",
     callback=((options: any) => this.exec(wrapSelection(this.editorState?.schema.nodes[nodeName ?? id]!, attrs))),
-    active=(() => hasActiveNode(this.editorState!, nodeName ?? id, attrs)),
+    active=(() => !!this.resources.activeNodeMap[id]),
+    value=(() => this.resources.activeNodeMap[id]),
     disabled=(() => false),
     ...rest
   }: Partial<CommandSpec> & {id: string}, attrs?: {}, nodeName?: string) {
@@ -261,6 +424,25 @@ export class CommandController implements ReactiveController {
         shortcut: "ctrl+shift+s",
         callback: () => this.store.resources.save(this.store.resources.active?.url, true),
         category: "document"
+      },
+      print: {
+        id: "print",
+        label: msg("Print"),
+        icon: "printer",
+        description: msg("Print the active document"),
+        shortcut: "ctrl+p",
+        callback: () => this.editor?.pmEditor?.window?.print(),
+        category: "document"
+      },
+      preview: {
+        id: "preview",
+        label: msg("Preview"),
+        icon: "eye",
+        description: msg("Toggles the preview for the active document"),
+        shortcut: "ctrl+b",
+        callback: () => this.store.resources.preview(),
+        category: "document",
+        value: () => this.editor?.previewing
       },
       toggleSettings: {
         id: "toggleSettings",
@@ -299,79 +481,668 @@ export class CommandController implements ReactiveController {
         callback: () => this.store.resources.discard(),
         category: "document"
       },*/
-      print: {
-        id: "print",
-        label: msg("Print"),
-        icon: "printer",
-        description: msg("Print the active document"),
-        shortcut: "ctrl+p",
-        callback: () => this.editor?.pmEditor?.window?.print(),
-        category: "document"
-      },
-      bold: this.MarkCommandSpec({
-        id: "bold",
+      canvas: this.NodeCommandSpec({
+        id: "br",
+        label: msg("Canvas"),
+        icon: "chalkboard",
+        description: msg("Insert a canvas"),
+        tags: ["node", "container"]
+      }),
+      button: this.NodeCommandSpec({
+        id: "button",
+        label: msg("Button"),
+        icon: "square-f1",
+        description: msg("Insert a button")
+      }),
+      input: this.NodeCommandSpec({
+        id: "input",
+        label: msg("Input"),
+        icon: "forms",
+        description: msg("Insert an input")
+      }),
+      select: this.NodeCommandSpec({
+        id: "select",
+        label: msg("Select"),
+        icon: "select",
+        description: msg("Insert a select")
+      }),
+      meter: this.NodeCommandSpec({
+        id: "meter",
+        label: msg("Meter"),
+        icon: "progress",
+        description: msg("Insert a meter")
+      }),
+      datalist: this.NodeCommandSpec({
+        id: "datalist",
+        label: msg("Data List"),
+        icon: "stack-2",
+        description: msg("Insert a data list")
+      }),
+      fieldset: this.NodeCommandSpec({
+        id: "fieldset",
+        label: msg("Field Set"),
+        icon: "forms",
+        description: msg("Insert a field set")
+      }),
+      form: this.NodeCommandSpec({
+        id: "form",
+        label: msg("Form"),
+        icon: "forms",
+        description: msg("Insert a form"),
+        tags: ["node", "container"]
+      }),
+      label: this.NodeCommandSpec({
+        id: "label",
+        label: msg("Label"),
+        icon: "capsule-horizontal",
+        description: msg("Insert a label")
+      }),
+      legend: this.NodeCommandSpec({
+        id: "legend",
+        label: msg("Legend"),
+        icon: "tags",
+        description: msg("Insert a legend")
+      }),
+      optgroup: this.NodeCommandSpec({
+        id: "optgroup",
+        label: msg("Option Group"),
+        icon: "circles",
+        description: msg("Insert an option group")
+      }),
+      option: this.NodeCommandSpec({
+        id: "option",
+        label: msg("Option"),
+        icon: "circle",
+        description: msg("Insert an option")
+      }),
+      output: this.NodeCommandSpec({
+        id: "output",
+        label: msg("Output"),
+        icon: "clipboard-text",
+        description: msg("Insert an output")
+      }),
+      progress: this.NodeCommandSpec({
+        id: "progress",
+        label: msg("Progress Indicator"),
+        icon: "progress",
+        description: msg("Insert a progress indicator")
+      }),
+      br: this.NodeCommandSpec({
+        id: "br",
+        label: msg("Line Break"),
+        icon: "arrow-forward",
+        description: msg("Insert a line break")
+      }),
+      wbr: this.NodeCommandSpec({
+        id: "wbr",
+        label: msg("Line Break Opportunity"),
+        icon: "arrow-forward",
+        description: msg("Insert a line break opportunity")
+      }),
+      b: this.MarkCommandSpec({
+        id: "b",
         label: msg("Bold"),
         icon: "bold",
         description: msg("Mark the selection as bold"),
-        shortcut: "ctrl+shift+b"
+        shortcut: "alt+shift+b"
       }),
-      italic: this.MarkCommandSpec({
-        id: "italic",
+      i: this.MarkCommandSpec({
+        id: "i",
         label: msg("Italic"),
         icon: "italic",
         description: msg("Mark the selection as italic"),
-        shortcut: "ctrl+shift+i"
+        shortcut: "alt+shift+i"
       }),
-      underline: this.MarkCommandSpec({
-        id: "underline",
+      u: this.MarkCommandSpec({
+        id: "u",
         label: msg("Underline"),
         icon: "underline",
         description: msg("Mark the selection as underlined"),
-        shortcut: "ctrl+shift+u",
+        shortcut: "alt+shift+u",
       }),
-      strikethrough: this.MarkCommandSpec({
-        id: "strikethrough",
+      s: this.MarkCommandSpec({
+        id: "s",
         label: msg("Strikethrough"),
         icon: "strikethrough",
         description: msg("Mark the selection as struck through"),
-        shortcut: "ctrl+shift+s",
+        shortcut: "alt+shift+s",
       }),
-      superscript: this.MarkCommandSpec({
-        id: "superscript",
+      sup: this.MarkCommandSpec({
+        id: "sup",
         label: msg("Superscript"),
         icon: "superscript",
         description: msg("Mark the selection as a superscript"),
-        shortcut: "ctrl+shift+ArrowUp",
+        shortcut: "alt+shift+o",
         group: "supsub"
       }),
-      subscript: this.MarkCommandSpec({
-        id: "subscript",
+      sub: this.MarkCommandSpec({
+        id: "sub",
         label: msg("Subscript"),
         icon: "subscript",
         description: msg("Mark the selection as a subscript"),
-        shortcut: "ctrl+shift+ArrowDown",
+        shortcut: "alt+shift+l",
       }),
       code: this.MarkCommandSpec({
         id: "code",
         label: msg("Code"),
         icon: "code",
         description: msg("Mark the selection as code"),
-        shortcut: "ctrl+shift+c",
-        tags: ["mark", "inline"]
+        shortcut: "alt+shift+c"
       }),
-      link: this.MarkCommandSpec({
-        id: "link",
+      a: this.MarkCommandSpec({
+        id: "a",
         label: msg("Link"),
         icon: "link",
         description: msg("Mark the selection as a link"),
-        shortcut: "ctrl+shift+l",
+        shortcut: "alt+shift+k",
         fields: {
           href: {
             type: "string",
             placeholder: "https://example.com"
           }
-        },
-        tags: ["mark", "inline"]
+        }
+      }),
+      q: this.MarkCommandSpec({
+        id: "q",
+        label: msg("Quotation"),
+        description: msg("Mark the selection as a quotation"),
+        shortcut: "alt+shift+q",
+        icon: "quote",
+        fields: {
+          title: {
+            type: "string",
+            placeholder: msg("Citation Source")
+          }
+        }
+      }),
+      kbd: this.MarkCommandSpec({
+        id: "kbd",
+        label: msg("Keyboard Shortcut"),
+        description: msg("Mark the selection as a keyboard shortcut"),
+        shortcut: "alt+shift+p",
+        icon: "command"
+      }),
+      abbr: this.MarkCommandSpec({
+        id: "abbr",
+        label: msg("Abbreviation"),
+        description: msg("Mark the selection as an abbreviation"),
+        icon: "emphasis",
+        shortcut: "alt+shift+a",
+        fields: {
+          title: {
+            type: "string",
+            placeholder: msg("Full Term")
+          }
+        }
+      }),
+      bdi: this.MarkCommandSpec({
+        id: "bdi",
+        label: msg("Bidirectional Isolate"),
+        description: msg("Mark the selection as a 'bidirectional isolate'"),
+        icon: "text-direction-ltr",
+        shortcut: "alt+shift+g",
+      }),
+      bdo: this.MarkCommandSpec({
+        id: "bdo",
+        label: msg("Bidirectional Override"),
+        description: msg("Mark the selection as a 'bidirectional override'"),
+        icon: "text-direction-ltr",
+        shortcut: "alt+shift+h",
+      }),
+      cite: this.MarkCommandSpec({
+        id: "cite",
+        label: msg("Citation Source"),
+        description: msg("Mark the selection as a citation source"),
+        icon: "letter-c",
+        shortcut: "alt+shift+j",
+      }),
+      data: this.MarkCommandSpec({
+        id: "data",
+        label: msg("Data Annotation"),
+        description: msg("Mark the selection with a data annotation"),
+        icon: "circle-dot",
+        shortcut: "alt+shift+f",
+      }),
+      del: this.MarkCommandSpec({
+        id: "del",
+        label: msg("Deletion"),
+        description: msg("Mark the selection as a deletion"),
+        icon: "pencil-minus",
+        shortcut: "alt+shift+d"
+      }),
+      dfn: this.MarkCommandSpec({
+        id: "dfn",
+        label: msg("Defined Term"),
+        description: msg("Mark the selection as a defined term"),
+        icon: "vocabulary",
+        shortcut: "alt+shift+t"
+      }),
+      em: this.MarkCommandSpec({
+        id: "em",
+        label: msg("Emphasis"),
+        description: msg("Mark the selection as emphasized"),
+        icon: "italic",
+        shortcut: "alt+shift+z"
+      }),
+      ins: this.MarkCommandSpec({
+        id: "ins",
+        label: msg("Insertion"),
+        description: msg("Mark the selection as an insertion"),
+        icon: "pencil-plus",
+        shortcut: "alt+shift+y"
+      }),
+      ruby: this.MarkCommandSpec({
+        id: "ruby",
+        label: msg("Ruby Annotation"),
+        description: msg("Mark the selection with a ruby annotation"),
+        icon: "letter-r",
+        shortcut: "alt+shift+r"
+      }),
+      samp: this.MarkCommandSpec({
+        id: "samp",
+        label: msg("Sample Output"),
+        description: msg("Mark the selection as sample output"),
+        icon: "source-code",
+        shortcut: "alt+shift+n"
+      }),
+      small: this.MarkCommandSpec({
+        id: "small",
+        label: msg("Side Comment"),
+        description: msg("Mark the selection as a side comment"),
+        icon: "letter-s",
+        shortcut: "alt+shift+m"
+
+      }),
+      span: this.MarkCommandSpec({
+        id: "span",
+        label: msg("Span"),
+        description: msg("Mark the selection as a span"),
+        icon: "rectangle",
+        shortcut: "alt+shift+x"
+      }),
+      strong: this.MarkCommandSpec({
+        id: "strong",
+        label: msg("Strong Importance"),
+        description: msg("Mark the selection as strongly important"),
+        icon: "bold",
+        shortcut: "alt+shift+w"
+      }),
+      time: this.MarkCommandSpec({
+        id: "time",
+        label: msg("Date/Time Annotation"),
+        description: msg("Mark the selection as a date/time annotation"),
+        icon: "calendar-time",
+        shortcut: "alt+shift+t"
+      }),
+      var: this.MarkCommandSpec({
+        id: "var",
+        label: msg("Variable"),
+        description: msg("Mark the selection as a variable"),
+        icon: "variable",
+        shortcut: "alt+shift+v"
+      }),
+      p: this.NodeCommandSpec({
+        id: "p",
+        label: msg("Paragraph"),
+        icon: "align-justified",
+        description: msg("Insert a paragraph"),
+        tags: ["node", "container"]
+      }),
+      h1: this.NodeCommandSpec({
+        id: "h1",
+        label: msg("Heading"),
+        icon: "h-1",
+        description: msg("Insert a heading (level 1)"),
+        group: "heading",
+        tags: ["node", "container"]
+      }),
+      h2: this.NodeCommandSpec({
+        id: "h2",
+        label: msg("Heading 2"),
+        icon: "h-2",
+        description: msg("Insert a heading (level 2)"),
+        group: "heading",
+        tags: ["node", "container"]
+      }),
+      h3: this.NodeCommandSpec({
+        id: "h3",
+        label: msg("Heading 3"),
+        icon: "h-3",
+        description: msg("Insert a heading (level 3)"),
+        group: "heading",
+        tags: ["node", "container"]
+      }),
+      h4: this.NodeCommandSpec({
+        id: "h4",
+        label: msg("Heading 4"),
+        icon: "h-4",
+        description: msg("Insert a heading (level 4)"),
+        group: "heading",
+        tags: ["node", "container"]
+      }),
+      h5: this.NodeCommandSpec({
+        id: "h5",
+        label: msg("Heading 5"),
+        icon: "h-5",
+        description: msg("Insert a heading (level 5)"),
+        group: "heading",
+        tags: ["node", "container"]
+      }),
+      h6: this.NodeCommandSpec({
+        id: "h6",
+        label: msg("Heading 6"),
+        icon: "h-6",
+        description: msg("Insert a heading (level 6)"),
+        group: "heading",
+        tags: ["node", "container"]
+      }),
+      hgroup: this.NodeCommandSpec({
+        id: "hgroup",
+        label: msg("Heading Group"),
+        icon: "heading",
+        description: msg("Insert a heading group")
+      }),
+      ul: this.NodeCommandSpec({
+        id: "ul",
+        label: msg("List"),
+        icon: "list",
+        description: msg("Insert a list (unordered)"),
+        group: "list",
+        tags: ["node", "container"]
+      }),
+      ol: this.NodeCommandSpec({
+        id: "ol",
+        label: msg("Ordered List"),
+        icon: "list-numbers",
+        description: msg("Insert a list (ordered)"),
+        group: "list",
+        tags: ["node", "container"]
+      }),
+      li: this.NodeCommandSpec({
+        id: "li",
+        label: msg("List Item"),
+        icon: "separator",
+        description: msg("Insert a list item")
+      }),
+      math: this.NodeCommandSpec({
+        id: "math",
+        label: msg("Math Formula"),
+        icon: "math",
+        description: msg("Insert a math formula"),
+        tags: ["node", "container"]
+      }),      
+      figure: this.NodeCommandSpec({
+        id: "figure",
+        label: msg("Figure"),
+        icon: "layout-bottombar",
+        description: msg("Insert a figure"),
+        tags: ["node", "container"]
+      }),
+      figcaption: this.NodeCommandSpec({
+        id: "figcaption",
+        label: msg("Figure Caption"),
+        icon: "text-caption",
+        description: msg("Insert a figure caption")
+      }),
+      img: this.NodeCommandSpec({
+        id: "img",
+        label: msg("Image"),
+        icon: "photo",
+        description: msg("Insert an image")
+      }),
+      source: this.NodeCommandSpec({
+        id: "source",
+        label: msg("Source"),
+        icon: "circles-relation",
+        description: msg("Insert a source")
+      }),
+      track: this.NodeCommandSpec({
+        id: "track",
+        label: msg("Track"),
+        icon: "track",
+        description: msg("Insert a track")
+      }),
+      picture: this.NodeCommandSpec({
+        id: "picture",
+        label: msg("Picture"),
+        icon: "photo",
+        description: msg("Insert a picture")
+      }),
+      audio: this.NodeCommandSpec({
+        id: "audio",
+        label: msg("Audio"),
+        icon: "music",
+        description: msg("Insert audio")
+      }),
+      video: this.NodeCommandSpec({
+        id: "video",
+        label: msg("Video"),
+        icon: "movie",
+        description: msg("Insert video")
+      }),
+      object: this.NodeCommandSpec({
+        id: "object",
+        label: msg("Object"),
+        icon: "frame",
+        description: msg("Insert object")
+      }),
+      embed: this.NodeCommandSpec({
+        id: "embed",
+        label: msg("Embed"),
+        icon: "frame",
+        description: msg("Insert embed")
+      }),
+      iframe: this.NodeCommandSpec({
+        id: "iframe",
+        label: msg("Inline Frame"),
+        icon: "frame",
+        description: msg("Insert an inline frame")
+      }),
+      portal: this.NodeCommandSpec({
+        id: "portal",
+        label: msg("Portal"),
+        icon: "window",
+        description: msg("Insert a portal")
+      }),
+      script: this.NodeCommandSpec({
+        id: "script",
+        label: msg("Script"),
+        icon: "script",
+        description: msg("Insert a script"),
+        tags: ["node", "container"]
+      }),
+      style: this.NodeCommandSpec({
+        id: "style",
+        label: msg("Style"),
+        icon: "brush",
+        description: msg("Insert a style"),
+        tags: ["node", "container"]
+      }),
+      template: this.NodeCommandSpec({
+        id: "template",
+        label: msg("Template"),
+        icon: "template",
+        description: msg("Insert a template")
+      }),
+      slot: this.NodeCommandSpec({
+        id: "slot",
+        label: msg("Slot"),
+        icon: "outlet",
+        description: msg("Insert a slot")
+      }),
+      noscript: this.NodeCommandSpec({
+        id: "noscript",
+        label: msg("NoScript"),
+        icon: "code-off",
+        description: msg("Insert a NoScript")
+      }),
+      dialog: this.NodeCommandSpec({
+        id: "dialog",
+        label: msg("Dialog"),
+        icon: "app-window",
+        description: msg("Insert a dialog"),
+        tags: ["node", "container"]
+      }),
+      details: this.NodeCommandSpec({
+        id: "details",
+        label: msg("Details"),
+        icon: "circle-chevron-right",
+        description: msg("Insert details"),
+        tags: ["node", "container"]
+      }),
+      summary: this.NodeCommandSpec({
+        id: "summary",
+        label: msg("Summary"),
+        icon: "circle-letter-s",
+        description: msg("Insert summary")
+      }),
+      article: this.MarkCommandSpec({
+        id: "article",
+        label: msg("Article"),
+        icon: "article",
+        description: msg("Insert an article"),
+        group: "semanticsection",
+        tags: ["node", "container"]
+      }),
+      aside: this.MarkCommandSpec({
+        id: "aside",
+        label: msg("Aside"),
+        icon: "notes",
+        description: msg("Insert an aside"),
+        group: "semanticsection",
+        tags: ["node", "container"]
+      }),
+      nav: this.MarkCommandSpec({
+        id: "nav",
+        label: msg("Navigation"),
+        icon: "directions",
+        description: msg("Insert a navigation"),
+        group: "semanticsection",
+        tags: ["node", "container"]
+      }),
+      section: this.MarkCommandSpec({
+        id: "section",
+        label: msg("Section"),
+        icon: "section-sign",
+        description: msg("Insert a section"),
+        group: "semanticsection",
+        tags: ["node", "container"]
+      }),
+      header: this.MarkCommandSpec({
+        id: "header",
+        label: msg("Header"),
+        icon: "layout-navbar",
+        description: msg("Insert a header"),
+        group: "semanticsection",
+        tags: ["node", "container"]
+      }),
+      footer: this.MarkCommandSpec({
+        id: "footer",
+        label: msg("Footer"),
+        icon: "layout-bottombar",
+        description: msg("Insert a footer"),
+        group: "semanticsection",
+        tags: ["node", "container"]
+      }),
+      main: this.MarkCommandSpec({
+        id: "main",
+        label: msg("Main"),
+        icon: "news",
+        description: msg("Insert a main"),
+        group: "semanticsection",
+        tags: ["node", "container"]
+      }),
+      search: this.MarkCommandSpec({
+        id: "search",
+        label: msg("Search"),
+        icon: "list-search",
+        description: msg("Insert a search"),
+        group: "semanticsection",
+        tags: ["node", "container"]
+      }),
+      address: this.MarkCommandSpec({
+        id: "address",
+        label: msg("Address"),
+        icon: "address-book",
+        description: msg("Insert an address"),
+        group: "semanticsection",
+        tags: ["node", "container"]
+      }),  
+      blockquote: this.MarkCommandSpec({
+        id: "blockquote",
+        label: msg("Blockquote"),
+        icon: "blockquote",
+        description: msg("Insert a blockquote"),
+        group: "semanticsection",
+        tags: ["node", "container"]
+      }),  
+      svg: this.MarkCommandSpec({
+        id: "svg",
+        label: msg("SVG Drawing"),
+        icon: "svg",
+        description: msg("Insert an SVG Drawing"),
+        tags: ["node", "container"]
+      }),
+      table: this.MarkCommandSpec({
+        id: "table",
+        label: msg("Table"),
+        icon: "table",
+        description: msg("Insert a table"),
+        tags: ["node", "container"]
+      }),
+      caption: this.MarkCommandSpec({
+        id: "caption",
+        label: msg("Table Caption"),
+        icon: "table-alias",
+        description: msg("Insert a table caption")
+      }),
+      col: this.MarkCommandSpec({
+        id: "col",
+        label: msg("Table Column"),
+        icon: "table-column",
+        description: msg("Insert a table column")
+      }),
+      colgroup: this.MarkCommandSpec({
+        id: "colgroup",
+        label: msg("Table Column Group"),
+        icon: "columns-3",
+        description: msg("Insert a table column group")
+      }),
+      tbody: this.MarkCommandSpec({
+        id: "tbody",
+        label: msg("Table Body"),
+        icon: "table",
+        description: msg("Insert a table body")
+      }),
+      td: this.MarkCommandSpec({
+        id: "td",
+        label: msg("Table cell"),
+        icon: "square",
+        description: msg("Insert a table cell")
+      }),
+      tfoot: this.MarkCommandSpec({
+        id: "tfoot",
+        label: msg("Table Footer"),
+        icon: "table-row",
+        description: msg("Insert a table footer")
+      }),
+      th: this.MarkCommandSpec({
+        id: "th",
+        label: msg("Table header"),
+        icon: "table-row",
+        description: msg("Insert a table header row")
+      }),
+      thead: this.MarkCommandSpec({
+        id: "thead",
+        label: msg("Table Head"),
+        icon: "table-settings",
+        description: msg("Insert a table head")
+      }),
+      tr: this.MarkCommandSpec({
+        id: "tr",
+        label: msg("Table Row"),
+        icon: "table-row",
+        description: msg("Insert a table row")
       }),
       fontSize:  this.MarkCommandSpec({
         id: "fontSize",
@@ -379,7 +1150,8 @@ export class CommandController implements ReactiveController {
         label: msg("Set font size"),
         icon: "letter-case",
         description: msg("Sets the selection's font size"), //@ts-ignore
-        value: () => this.editor && getStyleValues(this.editorState!, this.editor.pmEditor as any, "font-size")
+        callback: ({value}) => this.exec(toggleOrUpdateMark("span", {style: `font-size: ${value}`})),
+        value: () => ["14pt"] || this.editor && getStyleValues(this.editorState!, this.editor.pmEditor as any, "font-size")
       }),
       fontFamily:  this.MarkCommandSpec({
         id: "fontFamily",
@@ -387,7 +1159,8 @@ export class CommandController implements ReactiveController {
         label: msg("Set font family"),
         icon: "typography",
         description: msg("Sets the selection's font family"), //@ts-ignore
-        value: () => this.editor && getStyleValues(this.editorState!, this.editor.pmEditor as any, "font-family")
+        callback: () => null,
+        value: () => ["Arial"] || this.editor && getStyleValues(this.editorState!, this.editor.pmEditor as any, "font-family")
       }),
       setTextColor: {
         id: "setTextColor",
@@ -433,135 +1206,42 @@ export class CommandController implements ReactiveController {
         category: "editor",
         group: "font"
       },
-      lineHeight: this.BlockCommandSpec({
+      lineHeight: this.LayoutCommandSpec({
         id: "lineHeight",
         label: msg("Set line height"),
         icon: "line-height",
         description: msg("Set the line height of the selected block"),
         category: "editor",
       }),
-      border: this.BlockCommandSpec({
+      border: this.LayoutCommandSpec({
         id: "border",
         label: msg("Set block border"),
         icon: "border-style-2",
         description: msg("Set the border of the selected block")
       }),
-      margin: this.BlockCommandSpec({
+      margin: this.LayoutCommandSpec({
         id: "margin",
         label: msg("Set block margin"),
         icon: "box-margin",
         description: msg("Set the margins of the selected block")
       }),
-      padding: this.BlockCommandSpec({
+      padding: this.LayoutCommandSpec({
         id: "padding",
         label: msg("Set block padding"),
         icon: "box-padding",
         description: msg("Set the padding of the selected block")
       }),
-      background: this.BlockCommandSpec({
+      background: this.LayoutCommandSpec({
         id: "background",
         label: msg("Set block background"),
         icon: "texture",
         description: msg("Set the background of the selected block")
       }),
-      textAlign: this.BlockCommandSpec({
+      textAlign: this.LayoutCommandSpec({
         id: "textAlign",
         label: msg("Align block text"),
         icon: "align-center",
         description: msg("Set the text alignment of the selected block")
-      }),
-      paragraph: this.InsertContainerCommandSpec({
-        id: "paragraph",
-        label: msg("Paragraph"),
-        icon: "align-justified",
-        description: msg("Insert a paragraph"),
-        group: "block"
-      }),
-      blockquote: this.InsertContainerCommandSpec({
-        id: "blockquote",
-        label: msg("Blockquote"),
-        icon: "blockquote",
-        description: msg("Insert a blockquote"),
-        group: "block"
-      }),
-      h1: this.InsertContainerCommandSpec({
-        id: "h1",
-        label: msg("Heading"),
-        icon: "h-1",
-        description: msg("Insert a heading (level 1)"),
-        group: "heading"
-      }),
-      h2: this.InsertContainerCommandSpec({
-        id: "h2",
-        label: msg("Heading 2"),
-        icon: "h-2",
-        description: msg("Insert a heading (level 2)"),
-        group: "heading"
-      }),
-      h3: this.InsertContainerCommandSpec({
-        id: "h3",
-        label: msg("Heading 3"),
-        icon: "h-3",
-        description: msg("Insert a heading (level 3)"),
-        group: "heading"
-      }),
-      h4: this.InsertContainerCommandSpec({
-        id: "h4",
-        label: msg("Heading 4"),
-        icon: "h-4",
-        description: msg("Insert a heading (level 4)"),
-        group: "heading"
-      }),
-      h5: this.InsertContainerCommandSpec({
-        id: "h5",
-        label: msg("Heading 5"),
-        icon: "h-5",
-        description: msg("Insert a heading (level 5)"),
-        group: "heading"
-      }),
-      h6: this.InsertContainerCommandSpec({
-        id: "h6",
-        label: msg("Heading 6"),
-        icon: "h-6",
-        description: msg("Insert a heading (level 6)"),
-        group: "heading"
-      }),
-      ul: this.InsertContainerCommandSpec({
-        id: "ul",
-        label: msg("List"),
-        icon: "list",
-        description: msg("Insert a list (unordered)"),
-        group: "list",
-      }),
-      ol: this.InsertContainerCommandSpec({
-        id: "ol",
-        label: msg("Ordered List"),
-        icon: "list-numbers",
-        description: msg("Insert a list (ordered)"),
-        group: "list"
-      }),
-      /*taskList: this.InsertContainerCommandSpec({
-        id: "taskList",
-        label: msg("Task List"),
-        icon: "list-check",
-        description: msg("Insert a list (tasks)"),
-        group: "list"
-      }, {isTask: true}, "list"),*/
-      table: this.InsertContainerCommandSpec({
-        id: "table",
-        label: msg("Table"),
-        icon: "table",
-        description: msg("Insert a table"),
-        group: "table",
-        disabled: () => true // TODO
-      }),
-      drawer: this.InsertContainerCommandSpec({
-        id: "drawer",
-        label: msg("Drawer"),
-        icon: "square-chevron-down",
-        description: msg("Insert a drawer"),
-        group: "drawer",
-        disabled: () => true // TODO
       }),
       undo: {
         id: "undo",
@@ -584,17 +1264,6 @@ export class CommandController implements ReactiveController {
         callback: () => this.exec(redo),
         category: "editor",
         disabled: () => this.editorState && redoDepth(this.editorState) === 0
-      },
-      preview: {
-        id: "preview",
-        tags: ["general"],
-        label: msg("Preview"),
-        icon: "eye",
-        description: msg("Toggles the preview for the active document"),
-        shortcut: "ctrl+b",
-        callback: () => this.store.resources.togglePreview(),
-        category: "editor",
-        value: () => this.editor?.previewing
       },
       toggleDevTools: {
         id: "toggleDevTools",

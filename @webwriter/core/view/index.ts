@@ -20,7 +20,6 @@ import { SlAlert } from "@shoelace-style/shoelace"
 import { ifDefined } from "lit/directives/if-defined.js"
 import { ExplorableEditor } from "./editor"
 import { classMap } from "lit/directives/class-map.js"
-import { listen } from '@tauri-apps/api/event'
 
 
 export interface SlAlertAttributes {
@@ -229,43 +228,28 @@ export class App extends ViewModelMixin(LitElement)
     return this.commands.queryCommands({tags: ["mark"]})
   }
 
-  get blockCommands() {
-    return this.commands.queryCommands({tags: ["block"]})
+  get nodeCommands() {
+    return this.commands.queryCommands({tags: ["node"]})
   }
 
-  get groupedBlockCommands() {
-    return groupBy(this.blockCommands, "group")
-  }
-
-  get generalCommands() {
-    return this.commands.queryCommands({tags: ["general"]})
-  }
-
-  get containerCommands() {
-    return this.commands.queryCommands({tags: ["container"]})
-  }
-
-  get priorityContainerCommands() {
-    const commands = this.containerCommands
-    const activeI = commands.findIndex(cmd => cmd.active)
-    const activeCommand = commands[activeI]
-    const activeCommandGroup = commands.filter(cmd => activeCommand?.group && activeCommand.group === cmd.group).map(cmd => cmd.id)
-    const activeOffset = activeCommandGroup.indexOf(activeCommand?.id)
-    const nextCmd = activeCommandGroup[(activeOffset + 1) % activeCommandGroup.length]
-    const nextI = commands.findIndex(cmd => cmd.id === nextCmd)
-    const priorityCommands = commands.filter((cmd, i) => {
-      const primaryI = commands.findIndex(c => c.group === cmd.group)
-      return !cmd.group || (activeI !== undefined && activeCommandGroup.includes(cmd.id)? nextI: primaryI) === i
-    })
-    return priorityCommands
+  get groupedNodeCommands() {
+    return groupBy(this.nodeCommands, "group")
   }
 
   get groupedContainerCommands() {
     return Object.values(groupBy(this.containerCommands, "group"))
   }
+  
+  get containerCommands() {
+    return this.commands.queryCommands({tags: ["container"]})
+  }
 
-  get inlineCommands() {
-    return this.commands.queryCommands({tags: ["inline"]})
+  get layoutCommands() {
+    return this.commands.queryCommands({tags: ["layout"]})
+  }
+
+  get generalCommands() {
+    return this.commands.queryCommands({tags: ["general"]})
   }
 
   get fontCommands() {
@@ -282,6 +266,21 @@ export class App extends ViewModelMixin(LitElement)
 
   get documentCommands() {
     return this.commands.queryCommands({category: "document"})
+  }
+
+  get priorityContainerCommands() {
+    const commands = this.containerCommands
+    const activeI = commands.findIndex(cmd => cmd.active)
+    const activeCommand = commands[activeI]
+    const activeCommandGroup = commands.filter(cmd => activeCommand?.group && activeCommand.group === cmd.group).map(cmd => cmd.id)
+    const activeOffset = activeCommandGroup.indexOf(activeCommand?.id)
+    const nextCmd = activeCommandGroup[(activeOffset + 1) % activeCommandGroup.length]
+    const nextI = commands.findIndex(cmd => cmd.id === nextCmd)
+    const priorityCommands = commands.filter((cmd, i) => {
+      const primaryI = commands.findIndex(c => c.group === cmd.group)
+      return !cmd.group || (activeI !== undefined && activeCommandGroup.includes(cmd.id)? nextI: primaryI) === i
+    })
+    return priorityCommands
   }
 
 	@property({attribute: false})
@@ -319,7 +318,7 @@ export class App extends ViewModelMixin(LitElement)
 
 
 	Content = () => {
-		const {active, previewing, changed, set, setHead, create} = this.store.resources
+		const {active, changed, set, setHead, create} = this.store.resources
 		const {packages, availableWidgetTypes, bundleCode, bundleCSS, bundleID} = this.store.packages
 		const {locale, showTextPlaceholder, showWidgetPreview} = this.store.ui
 		const {open} = this.environment.api.Shell
@@ -332,7 +331,7 @@ export class App extends ViewModelMixin(LitElement)
       <ww-button id="fold-button" icon=${"chevron-right"} variant="icon" @click=${() => this.foldOpen = !this.foldOpen}></ww-button>
     </ww-head>`
     const metaeditor = this.store && active? html`<ww-metaeditor
-      .head$=${active.editorState.head$}
+      .head$=${(active.editorState as any).head$}
       .bodyAttrs=${active.editorState.doc.attrs}
       @ww-change-body-attrs=${(e: any) => this.commands.dispatch("setDocAttrs", e.target.bodyAttrs)}
       @ww-update=${(e: any) => setHead(active.url, e.detail.state)} @ww-click-tab=${(e: any) => this.foldOpen = true} slot="fold">
@@ -342,14 +341,7 @@ export class App extends ViewModelMixin(LitElement)
     slot="main"
     docID=${active.url}
     @focus=${() => this.foldOpen = false}
-    .markCommands=${this.markCommands as any}
-    .containerCommands=${this.containerCommands as any}
-    .priorityContainerCommands=${this.priorityContainerCommands as any}
-    .groupedContainerCommands=${this.groupedContainerCommands as any}
-    .inlineCommands=${this.inlineCommands as any}
-    .blockCommands=${this.blockCommands as any}
-    .fontFamilyCommand=${this.fontFamilyCommand as any}
-    .fontSizeCommand=${this.fontSizeCommand as any}
+
     .bundleCode=${bundleCode}
     .bundleCSS=${bundleCSS}
     bundleID=${bundleID}
@@ -357,13 +349,12 @@ export class App extends ViewModelMixin(LitElement)
     @update=${(e: any) => set(active.url, e.detail.editorState)}
     @ww-open=${(e: any) => open(e.detail.url)}
     .availableWidgetTypes=${availableWidgetTypes}
-    .packages=${packages}
+    .packages=${packages as any}
     ?loadingPackages=${false}
-    ?previewing=${previewing[active.url]}
     .showTextPlaceholder=${showTextPlaceholder}
     .showWidgetPreview=${showWidgetPreview}
     ?data-active=${active.url === active?.url}
-    ?controlsVisible=${!previewing[active.url] && !this.foldOpen}
+    ?controlsVisible=${!this.foldOpen}
     lang=${locale}>
   </ww-explorable-editor>`: null
 	return !active? head: [head, metaeditor, editor]
@@ -387,8 +378,8 @@ export class App extends ViewModelMixin(LitElement)
 
 		return html`<ww-package-manager
 			slot="pre-tab-panel-a"
-      .store=${this.store}
-			.packages=${packages}
+      .store=${this.store as any}
+			.packages=${packages as any}
 			.adding=${adding}
 			.removing=${removing}
 			.upgrading=${upgrading}
@@ -487,17 +478,13 @@ export class App extends ViewModelMixin(LitElement)
 
 	render() {
 		const initializing = !this.store || this.store.packages.initializing
-    const previewing = this?.store?.resources?.previewing ?? {}
     const active = this?.store?.resources?.active
-    const preview = previewing[active?.url ?? ""]
-    const classes = {preview}
 		if(!initializing) {
 			this.Notification()
 			this.localization.setLocale(this.store.ui.locale)
 		}
 		return html`<ww-layout 
 			openTab
-      class=${classMap(classes)}
 			activeTabName=${ifDefined(this.store?.resources.active?.url)}
 			?drawerLeftOpen=${this.settingsOpen}
 			?hideAsides=${this.store?.resources.empty}

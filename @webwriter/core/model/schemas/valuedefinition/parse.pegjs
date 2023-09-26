@@ -1,3 +1,11 @@
+ValueDefinition = head:Statement tail:(";" @value:Statement)* ";"? _ {
+	return Object.fromEntries([head, ...tail])
+}
+
+Statement = _ name:(Type/Literal) _ "=" _ expression:Expression _ {
+	return [name, expression]
+}
+
 Expression = Alternation/Subset/Conjunction/Sequence/Group/SimpleExpression
 
 Group = &_ "[" _ expression:Expression _ "]" quantifier:Quantifier? &_ {
@@ -24,11 +32,15 @@ SimpleExpression = &_ content:(Type/Literal) quantifier:Quantifier? &_ {
 	return {type: "SimpleExpression", content, ...(quantifier ?? {min: 1, max: 1}), raw: text()}
 }
 
-Literal
-  = $([_a-zA-Z][-_a-zA-Z0-9]*/[()/,])
-  
-Type
-  = "<" $([_a-zA-Z][-_a-zA-Z0-9]*) ">"
+Label = "?<" literal:Literal ">" {
+	return literal
+}
+
+Literal = $([_a-zA-Z][-_a-zA-Z0-9]*/[()/,])
+
+Type = "<" $([_a-zA-Z][-_a-zA-Z0-9]*) ">" {
+	return text()
+}
   
 Asterisk = "*" {
 	return {min: 0, max: Number.POSITIVE_INFINITY}
@@ -43,7 +55,11 @@ Question = "?" {
 }
 
 Hash = "#" {
-	return {min: 1, max: Number.POSITIVE_INFINITY, list: true}
+	return {min: 1, max: Number.POSITIVE_INFINITY, separator: ","}
+}
+
+Paragraph = "§" {
+	return {min: 1, max: Number.POSITIVE_INFINITY, separator: "/"}
 }
 
 Exclamation = "!" {
@@ -64,7 +80,7 @@ DoubleQuantifier = '{' _ minStr:([0-9]+)',' _ maxStr:([0-9]+) _ '}' {
 	return {min, max}
 }
 
-Quantifier = Asterisk / Plus / Question / Exclamation / Hash / SingleQuantifier / DoubleQuantifier
+Quantifier = Asterisk / Plus / Question / Exclamation / Hash / Paragraph / SingleQuantifier / DoubleQuantifier
 
 _
   = [ \t\n\r]*

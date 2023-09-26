@@ -148,26 +148,26 @@ export const listPlugin = () => ({
   nodes: {
     ol: HTMLElementSpec({
       tag: "ol",
-      group: "container",
+      group: "flow palpable",
       content: "li+"
     }),
   
     ul: HTMLElementSpec({
       tag: "ul",
-      group: "container",
+      group: "flow palpable",
       content: "li+"
     }),
     
     li: HTMLElementSpec({
       tag: "li",
-      content: "container+"
+      content: "flow*"
     }),
   },
   keymap: {
     "Enter": (state, dispatch, view) => {
       const {$to, empty} = state.selection
       const grandparent = $to.node(-1)
-      const isParentLi = grandparent.type.name === "li"
+      const isParentLi = grandparent?.type.name === "li"
       if(empty && !$to.node().textContent) {
         return liftListItem(state, dispatch)
       }

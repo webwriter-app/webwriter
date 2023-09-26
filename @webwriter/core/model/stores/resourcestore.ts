@@ -8,6 +8,7 @@ import * as connect from "../connect"
 import { redoDepth, undoDepth } from "prosemirror-history"
 import { EditorView } from "prosemirror-view"
 import { toJS } from "mobx"
+import { serialize } from "../marshal/html"
 
 const BINARY_EXTENSIONS = Object.entries(marshal).flatMap(([k, v]) => v.isBinary? v.extensions: [])
 const ALL_FILTER = {name: "Explorable", extensions: Object.values(marshal).flatMap(v => v.extensions)}
@@ -31,7 +32,6 @@ export class ResourceStore {
   private _active = null as Resource["url"] | null
   order = [] as Array<Resource["url"]>
   schema: Schema
-  previewing: Record<Resource["url"], boolean> = {}
   lastSavedState: Record<Resource["url"], EditorState> = {}
 
   themes = themes
@@ -139,18 +139,24 @@ export class ResourceStore {
     }
     this.activateNext(url, true)
     delete this._resources[url]
-    delete this.previewing[url]
     delete this.changed[url]
     delete this.lastSavedState[url]
     this.order = this.order.filter(x => x !== url)
   }
 
   /** Toggles the preview flag for the given resource. */
-  togglePreview(url = this._active) {
+  async preview(url = this._active) {
     if(!url) {
       throw new TypeError("Needs a 'url' since no url is active")
     }
-    this.previewing = {...this.previewing, [url]: !this.previewing[url]}
+    const htmlString = await serialize(
+      this.active!.editorState.doc,
+      (this.active?.editorState as any).head$.doc,
+      this.bundle
+    )
+    const blob = new Blob([htmlString], {type: "text/html"})
+    const blobURL = URL.createObjectURL(blob)
+    open(blobURL, "_blank")
   }
 
   /** Assigns the resource to a new URL, for example when saving. */
@@ -239,6 +245,9 @@ export class ResourceStore {
   }
 
   get activeMarks() {
+    if(!this.active) {
+      return []
+    }
     const {editorState: s} = this.active!
     const stored = s.storedMarks ?? []
     const marks = new Set(stored)
@@ -249,6 +258,9 @@ export class ResourceStore {
   }
 
   get activeNodes() {
+    if(!this.active) {
+      return []
+    }
     const {editorState: s} = this.active!
     const nodes = [] as Node[]
     s.doc.nodesBetween(s.selection.from, s.selection.to, node => {
@@ -279,7 +291,11 @@ export class ResourceStore {
   }
 
   get activeNodeNames() {
-    return this.activeNodes.filter(node => node.type.name)
+    return this.activeNodes.map(node => node.type.name)
+  }
+
+  get activeMarkNames() {
+    return this.activeMarks.map(mark => mark.type.name)
   }
 
   get docAttributes() {
@@ -324,6 +340,14 @@ export class ResourceStore {
       const ancestors = range(0, resolvedPos.depth).map(i => resolvedPos.node(i))
     }
     return matchFound
+  }
+
+  get activeNodeMap() {
+    return Object.fromEntries(this.activeNodes.map(n => [n.type.name, n]))
+  }
+
+  get activeMarkMap() {
+    return Object.fromEntries(this.activeMarks.map(m => [m.type.name, m]))
   }
 
   getActiveComputedStyles(view: EditorView) {

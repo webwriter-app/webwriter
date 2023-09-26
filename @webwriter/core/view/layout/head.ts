@@ -49,6 +49,7 @@ export class Head extends LitElement {
 
     #filename {
       font-weight: bold;
+      user-select: none;
     }
 
     #pending-indicator {

@@ -106,11 +106,10 @@
     }
 
 		.ProseMirror {
+      position: relative;
 			outline: none;
 			display: block;
 			white-space: normal !important;
-      font-family: Arial, sans-serif;
-			font-size: 14pt;
 			background: white;
 			border: 1px solid rgba(0, 0, 0, 0.1);
 			padding: 19px;
@@ -240,21 +239,6 @@
 			user-select: none;
 			-webkit-user-select: none;
     }
-		
-		.ProseMirror > p {
-			margin: 0;
-			position: relative;
-			z-index: 1;
-      line-height: 2;
-		}
-
-    .ProseMirror table {
-      margin: 0;
-    }
-
-    .ProseMirror {
-      position: relative;
-    }
 
     html[data-dragover] .ProseMirror::after {
       content: "";
@@ -308,11 +292,8 @@
       color: var(--sl-color-gray-100);
 		}
 
-    blockquote {
-      background: #f9f9f9;
-      border-left: 10px solid #ccc;
-      margin: 1.5em 10px;
-      padding: 0.5em 10px;
+    abbr {
+      text-decoration: underline 1px dotted currentColor;
     }
 
 		@media only screen and (min-width: 1071px) {

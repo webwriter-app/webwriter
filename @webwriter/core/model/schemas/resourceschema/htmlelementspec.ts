@@ -1,41 +1,7 @@
-import {Node, NodeSpec, AttributeSpec, Attrs} from "prosemirror-model"
+import {Node, NodeSpec, MarkSpec, AttributeSpec, Attrs} from "prosemirror-model"
+import { z } from "zod"
 
-const globalAttributes = {
-  accesskey: {default: undefined},
-  autocapitalize: {default: undefined},
-  autofocus: {default: undefined},
-  class: {default: undefined},
-  contenteditable: {default: undefined},
-  data: {default: {}},
-  dir: {default: undefined},
-  draggable: {default: undefined},
-  enterkeyhint: {default: undefined},
-  exportparts: {default: undefined},
-  hidden: {default: undefined},
-  id: {default: undefined},
-  inert: {default: undefined},
-  inputmode: {default: undefined},
-  is: {default: undefined},
-  itemid: {default: undefined},
-  itemprop: {default: undefined},
-  itemref: {default: undefined},
-  itemscope: {default: undefined},
-  itemtype: {default: undefined},
-  lang: {default: undefined},
-  nonce: {default: undefined},
-  part: {default: undefined},
-  popover: {default: undefined},
-  role: {default: undefined},
-  slot: {default: undefined},
-  spellcheck: {default: undefined},
-  style: {default: undefined},
-  tabindex: {default: undefined},
-  title: {default: undefined},
-  translate: {default: undefined},
-  virtualkeyboardpolicy: {default: undefined}
-}
-
-const eventhandlerAttributes = {
+export const eventHTMLAttributes = {
   onabort: {default: undefined},
   onautocomplete: {default: undefined},
   onautocompleteerror: {default: undefined},
@@ -100,7 +66,8 @@ const eventhandlerAttributes = {
   onwaiting: {default: undefined}
 }
 
-const ariaAttributes = {
+export const ariaAttributes = {
+  role: {default: undefined},
   "aria-autocomplete": {default: undefined},
   "aria-checked": {default: undefined},
   "aria-disabled": {default: undefined},
@@ -149,9 +116,59 @@ const ariaAttributes = {
   "aria-setsize": {default: undefined}
 }
 
-export function toAttributes(node: Node | Attrs) {
+export const coreHTMLAttributes = {
+  accesskey: {default: undefined},
+  autocapitalize: {default: undefined},
+  autofocus: {default: undefined},
+  class: {default: undefined},
+  contenteditable: {default: undefined},
+  data: {default: {}},
+  dir: {default: undefined},
+  draggable: {default: undefined},
+  enterkeyhint: {default: undefined},
+  exportparts: {default: undefined},
+  hidden: {default: undefined},
+  id: {default: undefined},
+  inert: {default: undefined},
+  inputmode: {default: undefined},
+  is: {default: undefined},
+  itemid: {default: undefined},
+  itemprop: {default: undefined},
+  itemref: {default: undefined},
+  itemscope: {default: undefined},
+  itemtype: {default: undefined},
+  lang: {default: undefined},
+  nonce: {default: undefined},
+  part: {default: undefined},
+  popover: {default: undefined},
+  role: {default: undefined},
+  slot: {default: undefined},
+  spellcheck: {default: undefined},
+  style: {default: undefined},
+  tabindex: {default: undefined},
+  title: {default: undefined},
+  translate: {default: undefined},
+  virtualkeyboardpolicy: {default: undefined}
+}
+
+export const globalHTMLAttributes = {
+  ...coreHTMLAttributes,
+  ...ariaAttributes,
+  ...eventHTMLAttributes
+}
+
+const globalKeywordValues = ["initial", "inherit", "unset", "revert", "revert-layer"]
+
+const styleSpec: AttributeSpec & Record<string, any> = {
+  default: undefined,
+  properties: {
+    accentColor: z.string()
+  }
+}
+
+export function toAttributes(node: Node | Attrs, extraAttrs?: Attrs) {
   const outputAttrs = {} as Record<string, string>
-  const attrs = node instanceof Node? node.attrs: node
+  const attrs = node instanceof Node? {...node.attrs, ...extraAttrs}: {...node, ...extraAttrs}
   const attrSpec: (k: string) => AttributeSpec & {private?: boolean} | undefined = (k: string) => node instanceof Node? (node.type?.spec?.attrs ?? {})[k]: {}
   for (const [k, v] of Object.entries(attrs)) {
     const spec = attrSpec(k)
@@ -167,7 +184,26 @@ export function toAttributes(node: Node | Attrs) {
   return outputAttrs
 }
 
-export function getAttrs(dom: HTMLElement | string) {
+const deprecatedStyleAttributes = {
+  "align": (textAlign: string) => ({textAlign}),
+  "background": (background: string) => ({background}),
+  "bgcolor": (backgroundColor: string) => ({backgroundColor}),
+  "border": (borderWidth: string) => ({borderWidth}),
+  "clear": () => ({clear: "both"}),
+  "height": (height: string) => ({height}),
+  "hspace": (p: string) => ({paddingLeft: p, paddingRight: p}),
+  "noshade": (textAlign: string) => ({textAlign}),
+  "nowrap": () => ({whiteSpace: "nowrap"}),
+  "start": (counterReset: string) => ({counterReset}),
+  "text": (color: string) => ({color}),
+  "type": (listStyleType: string) => ({listStyleType}),
+  "vspace": (p: string) => ({paddingTop: p, paddingBottom: p}),
+  "width": (width: string) => ({width}),
+}
+
+const otherDeprecatedAttributes = ["alink", "compact", "link", "size", "value", "vlink"]
+
+export function getAttrs(dom: HTMLElement | string, getDeprecated=true) {
   if(typeof dom === "string") {
     return false
   }
@@ -181,6 +217,9 @@ export function getAttrs(dom: HTMLElement | string) {
       if(k.startsWith("data-") && k !== "data-ww-editing") {
         attrs.data[k] = Array.isArray(v)? v.split(" "): v
       }
+      else if(getDeprecated && k in deprecatedStyleAttributes) {
+        attrs.style = {...attrs.style, ...(deprecatedStyleAttributes as any)[k](v)}
+      }
       else {
         attrs[k] = Array.isArray(v)? v.split(" "): v
       }
@@ -190,19 +229,14 @@ export function getAttrs(dom: HTMLElement | string) {
 }
 
 
-export function HTMLElementSpec({tag, content, marks, group, inline, atom, attrs, selectable, draggable, code, whitespace, definingAsContext, definingForContent, defining, isolating, toDOM, parseDOM, toDebugString, leafText, ...rest}: NodeSpec & {tag: string}): NodeSpec {
+export function HTMLElementSpec({tag, content, marks, group, inline, atom, attrs, selectable, draggable, code, whitespace, definingAsContext, definingForContent, defining, isolating, toDOM, parseDOM, toDebugString, leafText, phrasingContent, ...rest}: NodeSpec & {tag: string, }): NodeSpec {
   return {
     content,
     marks,
-    group,
+    group: !phrasingContent? group: group + " | _phrase*",
     inline,
     atom,
-    attrs: {
-      ...globalAttributes,
-      ...ariaAttributes,
-      ...eventhandlerAttributes,
-      ...attrs
-    },
+    attrs: {...globalHTMLAttributes, ...attrs},
     selectable,
     code,
     whitespace,
@@ -211,9 +245,35 @@ export function HTMLElementSpec({tag, content, marks, group, inline, atom, attrs
     defining,
     isolating,
     toDOM: toDOM ?? (n => [tag, toAttributes(n), ...(content? [0]: [])]),
-    parseDOM: parseDOM ?? [{tag, getAttrs}],
+    parseDOM: parseDOM ?? [{
+      tag,
+      getAttrs,
+      ...(!phrasingContent? null: {
+        contentElement: node => {
+          const span = node.ownerDocument!.createElement("span")
+          span.setAttribute("data-ww-editing", "phrase")
+          span.replaceChildren(...Array.from(node.childNodes))
+          console.log(node.childNodes, span)
+          node.replaceChildren(span)
+          return node
+        }
+      })
+    }],
     toDebugString,
     leafText,
+    ...rest
+  }
+}
+
+export function HTMLMarkSpec({tag, attrs, inclusive, excludes, group, spanning, toDOM, parseDOM, ...rest}: MarkSpec & {tag: string, formAssociated?: boolean, scriptSupporting?: boolean, transparent?: boolean}): MarkSpec {
+  return {
+    attrs: {...globalHTMLAttributes, ...attrs},
+    inclusive,
+    excludes,
+    group,
+    spanning,
+    toDOM: toDOM ?? (n => [tag]),
+    parseDOM: parseDOM ?? [{tag}],
     ...rest
   }
 }

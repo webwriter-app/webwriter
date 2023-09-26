@@ -345,3 +345,26 @@ export const getMatchedCSSRules = (element: Element /*, pseudo, author_only*/) =
     // sort according to specificity
     return sortBySpecificity(element, result);
 }
+
+export function permute<T>(arr: Array<T>): Array<Array<T>> {
+  var length = arr.length,
+      result = [arr.slice()],
+      c = new Array(length).fill(0),
+      i = 1, k, p;
+
+  while (i < length) {
+    if (c[i] < i) {
+      k = i % 2 && c[i];
+      p = arr[i];
+      arr[i] = arr[k];
+      arr[k] = p;
+      ++c[i];
+      i = 1;
+      result.push(arr.slice());
+    } else {
+      c[i] = 0;
+      ++i;
+    }
+  }
+  return result;
+}

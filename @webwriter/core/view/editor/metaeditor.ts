@@ -192,6 +192,7 @@ export class MetaEditor extends LitElement {
         align-items: center;
         padding-right: var(--sl-spacing-small);
         min-height: 57px;
+        user-select: none;
       }
 
       

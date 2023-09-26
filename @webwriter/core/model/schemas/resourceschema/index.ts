@@ -5,25 +5,32 @@ export {undo, redo} from "prosemirror-history"
 
 import * as marshal from "../../marshal"
 import { Package } from "../.."
-import { basePlugin, configFromSchemaPlugins, formPlugin, headSchema, inlinetextPlugin, listPlugin, mathPlugin, mediaPlugin, modalPlugin, stylePlugin, svgPlugin, tablePlugin, textblockPlugin, widgetPlugin } from "./plugins"
+import { basePlugin, configFromSchemaPlugins, formPlugin, phrasingPlugin, listPlugin, mathPlugin, mediaPlugin, modalPlugin, stylePlugin, svgPlugin, tablePlugin, textblockPlugin, widgetPlugin, canvasPlugin, deprecatedPlugin, headingPlugin, sectionPlugin } from "./plugins"
+import { headSchema } from "./head"
 
 export * from "./plugins"
 export * from "./htmlelementspec"
+export * from "./stylespec"
+export * from "./head"
 export * as themes from "./themes"
 
 export function createEditorStateConfig(packages: Package[]) {
   return configFromSchemaPlugins([
     basePlugin(),
-    formPlugin(),
-    inlinetextPlugin(),
-    listPlugin(),
-    mathPlugin(),
+    phrasingPlugin(),
+    textblockPlugin(),
+    headingPlugin(),
+    sectionPlugin(),
     mediaPlugin(),
+    canvasPlugin(),
+    formPlugin(),
+    listPlugin(),
     modalPlugin(),
     stylePlugin(),
-    svgPlugin(),
     tablePlugin(),
-    textblockPlugin(),
+    // mathPlugin(),
+    // svgPlugin(),
+    // deprecatedPlugin(),
     widgetPlugin(packages)
   ])
 }

@@ -192,35 +192,18 @@ export function setAttributeOnSelectedBlocks(key: string, value: any) {
 
 export const textblockPlugin = () => ({
   nodes: {
-    paragraph: HTMLElementSpec({
+    p: HTMLElementSpec({
       tag: "p",
-      group: "container",
-      content: "inline*",
+      group: "flow palpable",
+      content: "text | phrasing*",
       whitespace: "pre"
     }),
-    
-    blockquote: HTMLElementSpec({
-      tag: "blockquote",
-      group: "container",
-      content: "inline*",
-      whitespace: "pre",
-    }),
-
-    ...Object.fromEntries(["h1", "h2", "h3", "h4", "h5", "h6"].map(tag => [
-      tag,
-      HTMLElementSpec({
-        tag,
-        group: "container",
-        content: "inline*",
-        defining: true
-      })
-    ]))
   },
   keymap: {
     "Backspace": (state, dispatch, view) => {
       const {selection, doc, tr} = state
       if(selection.empty && selection.from === 1) {
-        return wrapSelection("paragraph")(state, dispatch, view)
+        return wrapSelection("p")(state, dispatch, view)
       }
       else {
         return false

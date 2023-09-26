@@ -77,6 +77,7 @@ export const headSchemaSpec = {
 export const headSchema = new Schema(headSchemaSpec)
 
 const initialHeadDoc = () => headSchema.node("head", undefined, [
+  headSchema.node("meta", {charset: "utf-8"}),
   headSchema.node("meta", {name: "generator", content: `webwriter@${webwriterPackage.version}`}),
   headSchema.node("style", {data: {"data-ww-theme": "base"}}, headSchema.text(themes.base))
 ])

@@ -6,7 +6,7 @@ import { keymap } from "prosemirror-keymap"
 import { gapCursor } from "prosemirror-gapcursor"
 import { history } from "prosemirror-history"
 import { chainCommands } from "prosemirror-commands"
-import { head, themes } from ".."
+import { head } from "../head"
 
 export interface SchemaPlugin<N extends string=string, M extends string=string, C extends string=string, PS=any> {
   nodes?: {[key in N]: NodeSpec},
@@ -71,14 +71,17 @@ export function configFromSchemaPlugins(schemaPlugins: SchemaPlugin[]): EditorSt
   return {schema, doc, plugins}
 }
 
+export * from "./base"
+export * from "./canvas"
+export * from "./deprecated"
 export * from "./form"
-export * from "./inlinetext"
+export * from "./heading"
 export * from "./list"
 export * from "./math"
 export * from "./media"
-export * from "../head"
 export * from "./modal"
-export * from "./base"
+export * from "./phrasing"
+export * from "./section"
 export * from "./style"
 export * from "./svg"
 export * from "./table"

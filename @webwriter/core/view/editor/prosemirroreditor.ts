@@ -349,9 +349,12 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
     this.window.addEventListener("dragend", (e: any) => {
       this.document.documentElement.toggleAttribute("data-dragover", false)
     })
-    window.addEventListener("drop", () => (e: any) => {
+    this.window.addEventListener("drop", (e: any) => {
       this.document.documentElement.toggleAttribute("data-dragover", false)
+      e.stopPropagation()
+      e.preventDefault()
     })
+    
     this.loaded = true
   }
 

@@ -93,7 +93,7 @@ const nonNodeBuiltinPattern = new RegExp(`^(?!${NODE_BUILTINS.join("|")}).*$`)
 const spdxLicensePattern = new RegExp(`^(${SPDX_LICENSES.map(x => x.replaceAll(".", "\.")).join("|")})$`)
 const nodePlatformPattern = new RegExp(`^(${NODE_PLATFORMS.join("|")})$`)
 const nodeArchPattern = new RegExp(`^(${NODE_ARCHS.join("|")})$`)
-const npmPersonPattern = /^\s*(?<name>.*?)\s*(?:<(?<email>.+)>)?\s*(?:\((?<url>.+)\))?\s*$/
+const npmPersonPattern = /^\s*(?<name>.*?)(?:<(?<email>.+)>)?\s*(?:\((?<url>.+)\))?\s*$/
 const mimePattern = /#?(?<supertype>[\w!#$%&'*.^`|~-]+)(?:\/(?<subtype>[\w!#$%&'*.^`|~-]+)(?:\+(?<suffix>[\w!#$%&'*.^`|~-]+))?(?:;(?<pkey>[\w!#$%&'*.^`|~-]+)=(?<pval>[\w!#$%&'*.^`|~-]+))?)?/
 const semverPattern = /(?<major>0|[1-9]\d*)\.(?<minor>0|[1-9]\d*)\.(?<patch>0|[1-9]\d*)(?:-(?<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z\-][0-9a-zA-Z\-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z\-][0-9a-zA-Z\-]*))*))?(?:\+(?<buildmetadata>[0-9a-zA-Z\-]+(?:\.[0-9a-zA-Z\-]+)*))?/
 const npmNamePattern = /^(@(?<organization>[a-z0-9\-~][a-z0-9\-._~]*)\/)?(?<name>[a-z0-9\-~][a-z0-9\-._~]*)$/

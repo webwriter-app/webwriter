@@ -32,7 +32,7 @@ export class Toolbox extends LitElement {
 	}
 
 	@property({type: Array, attribute: false})
-	markCommands: CommandEntry[] = []
+	inlineCommands: CommandEntry[] = []
 
   @property({type: Object, attribute: false})
   fontFamilyCommand: CommandEntry
@@ -42,9 +42,6 @@ export class Toolbox extends LitElement {
 
   @property({type: Array, attribute: false})
 	blockCommands: CommandEntry[] = []
-
-  @property({type: Array, attribute: false})
-  containerCommands: CommandEntry[] = []
 
   @property({type: Object, attribute: false})
   activeElement: HTMLElement | null
@@ -67,8 +64,8 @@ export class Toolbox extends LitElement {
     }})
   )
 
-  emitMarkFieldInput = (markType: string, key: string, value: string | number | boolean) => this.dispatchEvent(
-    new CustomEvent("ww-mark-field-input", {composed: true, bubbles: true, detail: {
+  emitInlineFieldInput = (markType: string, key: string, value: string | number | boolean) => this.dispatchEvent(
+    new CustomEvent("ww-inline-field-input", {composed: true, bubbles: true, detail: {
       element: this.activeElement, key, value, markType
     }})
   )
@@ -128,7 +125,7 @@ export class Toolbox extends LitElement {
         padding: var(--sl-spacing-3x-small);
       }
 
-      .mark-command {
+      .inline-commands {
         font-size: 1.25rem;
         display: inline-flex;
         flex-direction: row;
@@ -136,7 +133,7 @@ export class Toolbox extends LitElement {
         --icon-size: 20px;
       }
 
-      .mark-command.applied {
+      .inline-commands.applied {
         background: var(--sl-color-primary-200) !important;
         border-radius: 4px;
       }
@@ -174,11 +171,11 @@ export class Toolbox extends LitElement {
         box-shadow: none;
       }
 
-      :is(.mark-command, .paragraph-command):not(.color) sl-color-picker {
+      :is(.inline-commands, .block-command):not(.color) sl-color-picker {
         display: none;
       }
 
-      div[part=mark-commands] {
+      div[part=inline-commandss] {
         display: flex;
         flex-direction: row;
         flex-wrap: wrap;
@@ -186,7 +183,7 @@ export class Toolbox extends LitElement {
         gap: 3px;
       }
 
-      .mark-command:not(.applied) .field {
+      .inline-commands:not(.applied) .field {
         display: none;
       }
 
@@ -199,14 +196,14 @@ export class Toolbox extends LitElement {
         padding: 1ch;
       }
 
-      .container-toolbox {
+      .block-toolbox {
         display: flex;
         flex-direction: column;
         gap: 24px;
         width: 100%;
       }
 
-      .container-header {
+      .block-header {
         display: flex;
         flex-direction: row;
         align-items: flex-end;
@@ -219,6 +216,7 @@ export class Toolbox extends LitElement {
         padding-right: 5px;
         --icon-size: 24px;
         font-size: 1.125rem;
+        padding-bottom: 5px;
       }
  
       .container-picker-select sl-option::part(checked-icon) {
@@ -291,17 +289,17 @@ export class Toolbox extends LitElement {
       }
 
 
-      div[part=mark-commands] {
+      div[part=inline-commandss] {
         display: flex;
         justify-content: space-between;
       }
 
-      div[part=paragraph-commands] {
+      div[part=block-commands] {
         display: flex;
         margin-top: 2px;
       }
 
-      div[part=paragraph-commands] #name {
+      div[part=block-commands] #name {
         margin-right: auto;
       }
 
@@ -310,35 +308,35 @@ export class Toolbox extends LitElement {
         cursor: pointer;
       }
 
-      .paragraph-command.applied {
+      .block-command.applied {
         background: var(--sl-color-primary-200);
         border-radius: 4px;
       }
 
-      .paragraph-command ww-button::part(icon) {
+      .block-command ww-button::part(icon) {
         width: 24px;
         height: 24px;
         --icon-size: 24px;
       }
 
-      .container-option:not([data-secondary])::part(base) {
+      .block-option:not([data-secondary])::part(base) {
         height: 3rem;
       }
 
-      .container-option:not([data-secondary]) > sl-icon {
+      .block-option:not([data-secondary]) > sl-icon {
         --icon-size: 28px;
       }
 
-      .container-option[data-secondary] > sl-icon {
+      .block-option[data-secondary] > sl-icon {
         --icon-size: 20px;
       }
 
 
-      .container-option[data-secondary]::part(label) {
+      .block-option[data-secondary]::part(label) {
         padding: 0.5rem;
       }
 
-      .container-option[data-secondary] span {
+      .block-option[data-secondary] span {
         display: none;
       }
 
@@ -349,15 +347,15 @@ export class Toolbox extends LitElement {
         justify-content: flex-end;
       }
 
-      .container-option[aria-selected=true] .container-option[aria-selected=false]:not(:hover)::part(label) {
+      .block-option[aria-selected=true] .block-option[aria-selected=false]:not(:hover)::part(label) {
         color: white;
       }
 
-      .container-option[data-secondary] .secondary-options {
+      .block-option[data-secondary] .secondary-options {
         display: none;
       }
 
-      .container-option[data-secondary]::part(base):hover {
+      .block-option[data-secondary]::part(base):hover {
         background: var(--sl-color-gray-200);
       }
 
@@ -424,7 +422,7 @@ export class Toolbox extends LitElement {
         color: var(--sl-color-primary-600);
       }
 
-      .mark-toolbox {
+      .inline-toolbox {
         display: grid;
         grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr;
         grid-template-rows: min-content min-content min-content;
@@ -432,7 +430,7 @@ export class Toolbox extends LitElement {
         gap: 4px;
       }
 
-      #mark-toolbox-label {
+      #inline-toolbox-label {
         position: absolute;
         top: 0;
         right: 5px;
@@ -446,25 +444,25 @@ export class Toolbox extends LitElement {
         color: var(--sl-color-gray-800);
       }
 
-      #mark-toolbox-label sl-icon {
+      #inline-toolbox-label sl-icon {
         height: 1em;
         width: 1em;
       }
 
-      .mark-toolbox ww-fontpicker {
+      .inline-toolbox ww-fontpicker {
         grid-column: span 4;
         grid-row: span 2;
         order: 0;
       }
 
-      .mark-toolbox .mark-command.color {
+      .inline-toolbox .inline-commands.color {
         grid-row: span 2;
         order: 1;
         justify-content: flex-start;
         flex-direction: column-reverse;
       }
 
-      .mark-toolbox .mark-field-group {
+      .inline-toolbox .inline-field-group {
         grid-column: span 6;
         order: 3;
         color: var(--sl-color-primary-600);
@@ -475,19 +473,19 @@ export class Toolbox extends LitElement {
         margin-top: 0.5ch;
       }
 
-      .mark-toolbox .mark-field-group sl-input {
+      .inline-toolbox .inline-field-group sl-input {
         flex-grow: 1;
       }
 
-      .mark-toolbox .mark-field-group sl-input::part(base):not(:active):not(:focus-within) {
+      .inline-toolbox .inline-field-group sl-input::part(base):not(:active):not(:focus-within) {
         background: none;
       }
 
-      .mark-toolbox .mark-command {
+      .inline-toolbox .inline-commands {
         order: 2;
       }
 
-      .container-options {
+      .block-options {
         display: flex;
         flex-direction: column;
       }
@@ -495,9 +493,9 @@ export class Toolbox extends LitElement {
     `
   }
 
-  MarkCommands = () => this.markCommands.filter(cmd => !cmd.tags?.includes("inline")).map(v => {
+  InlineCommands = () => this.inlineCommands.filter(cmd => !cmd.tags?.includes("inline")).map(v => {
     const classes = {
-      "mark-command": true,
+      "inline-commands": true,
       "applied": Boolean(v.active),
       "color": v.tags?.includes("color") ?? false
     }
@@ -511,7 +509,6 @@ export class Toolbox extends LitElement {
         variant="icon"
       ></ww-button>
       <sl-color-picker value=${v.value}></sl-color-picker>
-      ${Object.entries(v.fields ?? {}).map(([fk, fv]) => this.MarkCommandField(v.id, fk, fv.type, fv.placeholder, v.value))}
     </span>
     `
 	})
@@ -519,7 +516,7 @@ export class Toolbox extends LitElement {
   BlockCommands = () => this.blockCommands.map(v => {
 
     const classes = {
-      "paragraph-command": true,
+      "block-command": true,
       "applied": Boolean(v.active),
       "color": v.tags?.includes("color") ?? false
     }
@@ -581,15 +578,15 @@ export class Toolbox extends LitElement {
 
   })
 
-  ContainerToolbox = () => {
-    return html`<div class="container-toolbox">
-      <div class="container-options">
-        ${this.ContainerPicker()}
-        <div part="paragraph-commands">
+  BlockToolbox = () => {
+    return html`<div class="block-toolbox">
+      <div class="block-options">
+        ${this.BlockHeader()}
+        <div part="block-commands">
           ${this.BlockCommands()}
         </div>
       </div>
-      ${this.MarkToolbox()}
+      ${this.InlineToolbox()}
       </div>
       <div class="pickers">
         ${this.Pickers()}
@@ -597,10 +594,10 @@ export class Toolbox extends LitElement {
     `
   }
 
-  MarkToolbox = () => {
+  InlineToolbox = () => {
     const fontFamilies = this.fontFamilyCommand.value
     const fontSizes = this.fontSizeCommand.value
-    return html`<div class="mark-toolbox">
+    return html`<div class="inline-toolbox">
       <ww-fontpicker
         fontFamily=${ifDefined(fontFamilies.length > 0? fontFamilies[0]: undefined)}
         fontSize=${ifDefined(fontSizes.length > 0? fontSizes[0]: undefined)}
@@ -608,61 +605,58 @@ export class Toolbox extends LitElement {
         @ww-change-font-family=${(e: any) => this.dispatchEvent(CommandEvent(this.fontFamilyCommand.id, e.detail))}
         @ww-change-font-size=${(e: any) => this.dispatchEvent(CommandEvent(this.fontSizeCommand.id, e.detail))}
       ></ww-fontpicker>
-      ${this.MarkCommands()}
-      ${this.ActiveMarkFields()}
-      <span id="mark-toolbox-label">
+      ${this.InlineCommands()}
+      ${this.ActiveInlineFields()}
+      <span id="inline-toolbox-label">
         ${msg("Text")}
         <sl-icon name="text-size"></sl-icon>
       </span>
     </div>`
   }
 
-  ActiveMarkFields = () => {
-    const cmds = this.markCommands.filter(cmd => cmd.active && cmd.tags?.includes("inline"))
-    return cmds.map(cmd => html`<div class="mark-field-group">
+  ActiveInlineFields = () => {
+    const cmds = this.inlineCommands.filter(cmd => cmd.active && cmd.fields)
+    return cmds.map(cmd => html`<div class="inline-field-group">
       <sl-icon name=${cmd.icon ?? "square"}></sl-icon>
-      ${Object.entries(cmd.fields ?? {}).map(([key, field]) => this.MarkCommandField(cmd.id, key, field.type, field.placeholder))}
+      ${Object.entries(cmd.fields!).map(([key, field]) => this.InlineCommandField(cmd.id, key, field.type, field.placeholder))}
     </div>`)
   }
 
-  ContainerOption: (cmd: CommandEntry) => TemplateResult = (cmd: CommandEntry) => {
-    const groupedCommands = this.containerCommands.filter(otherCmd => cmd.group && otherCmd.group === cmd.group)
+  BlockOption: (cmd: CommandEntry) => TemplateResult = (cmd: CommandEntry) => {
+    const groupedCommands = this.blockCommands.filter(otherCmd => cmd.group && otherCmd.group === cmd.group)
     const secondary = cmd.group && (groupedCommands[0] !== cmd)
     return html`
-      <sl-option title=${secondary? cmd.label ?? "": ""} class="container-option" ?data-secondary=${secondary} value=${cmd.id}>
+      <sl-option title=${secondary? cmd.label ?? "": ""} class="block-option" ?data-secondary=${secondary} value=${cmd.id}>
         <sl-icon name=${cmd.icon ?? "square"}></sl-icon>
         <span>${cmd.label ?? cmd.id}</span>
         <div class="secondary-options">
-          ${!secondary
-            ? groupedCommands.slice(1).map(this.ContainerOption)
-            : null
-          }
+          ${!secondary? groupedCommands.slice(1).map(this.BlockOption): null}
         </div>
       </sl-option>
     `
   }
 
-  ContainerPicker = () => {
-    const activeCommands = this.containerCommands.filter(cmd => cmd.active ?? false)
-    const activeContainerCommand = activeCommands.length === 1
+  BlockHeader = () => {
+    const activeCommands = this.blockCommands.filter(cmd => cmd.active ?? false)
+    const activeBlockCommand = activeCommands.length === 1
       ? activeCommands[0]
       : undefined
-    return html`<div @click=${() => this.emitClickName()} class="container-header">
-      <sl-icon class="current-icon" slot="prefix" name=${activeContainerCommand?.icon ?? "asterisk"}></sl-icon>
+    return html`<div @click=${() => this.emitClickName()} class="block-header">
+      <sl-icon class="current-icon" slot="prefix" name=${activeBlockCommand?.icon ?? "asterisk"}></sl-icon>
       <span tabIndex=${-1} id="name">
-        ${activeContainerCommand?.label ?? msg(`Mixed Content`)}
+        ${activeBlockCommand?.label ?? msg(`Mixed Content`)}
       </span>
     </div>`
   }
 
-  MarkCommandField = (markType: string, key: string, type: "string" | "number" | "boolean", placeholder?: string, value?: any) => {
+  InlineCommandField = (markType: string, key: string, type: "string" | "number" | "boolean", placeholder?: string, value?: any) => {
     if(type === "string" || type === "number") {
       return html`<sl-input 
         value=${value ?? ""}
         placeholder=${placeholder ?? ""}
         class="field" 
         type=${type === "string"? "text": "number"}
-        @sl-input=${(e: any) => this.emitMarkFieldInput(markType, key, e.target.value)}
+        @sl-input=${(e: any) => this.emitInlineFieldInput(markType, key, e.target.value)}
       ></sl-input>`
     }
     else {
@@ -672,7 +666,7 @@ export class Toolbox extends LitElement {
 
   render() {
     if(this.activeElement && this.isActiveElementContainer) {
-      return this.ContainerToolbox()
+      return this.BlockToolbox()
     }
     else if(this.activeElement && this.isActiveElementWidget) {
       const name = prettifyPackageName(this.activeElement.tagName.toLowerCase())

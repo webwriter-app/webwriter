@@ -11,6 +11,11 @@ body {
   min-height: 100vh;
   box-sizing: border-box;
   border: 1px solid rgba(0, 0, 0, 0.1);
+  font-size: 1.15rem;
+  line-height: 1.5;
+  font-family: -apple-system, BlinkMacSystemFont, "Avenir Next", Avenir,
+  "Nimbus Sans L", Roboto, "Noto Sans", "Segoe UI", Arial, Helvetica,
+  "Helvetica Neue", sans-serif;
 }
 
 figure {
@@ -36,13 +41,41 @@ figure > embed {
   aspect-ratio: 1/1.4142;
 }
 
-figure > :is(audio, video, picture, picture > img, embed, script) {
+figure > :is(audio, video, picture, img, picture > img, embed, script) {
   display: block;
-  width: 100%;
+  margin: 0 auto;
 }
 
 figcaption {
   text-align: center;
   font-size: 0.875rem;
   margin-top: 0.125rem;
+}
+
+kbd {
+  border: 0;
+  outline: 0;
+  vertical-align: baseline;
+  background: transparent;
+  padding: 0 5px;
+  background-color: #f7f7f7;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2), 0 0 0 2px #fff inset;
+  color: #333;
+  display: inline-block;
+  font-family: monospace, sans-serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 0 0.1em;
+  padding: 0.1em 0.6em;
+  text-shadow: 0 1px 0 #fff;
+  user-select: none;
+}
+
+blockquote {
+  padding: 0.4rem 0.8rem;
+  border-left: 10px solid #ccc;
+  color: var(--text-light);
 }

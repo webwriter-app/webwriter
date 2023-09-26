@@ -4,6 +4,7 @@ import mime from "mime/lite"
 import {Node, NodeSpec} from "prosemirror-model"
 
 import { MediaType } from "../../packageschema"
+import { HTMLElementSpec } from "../htmlelementspec";
 
 /**
  * Top-level media elements are parsed into figures.
@@ -57,16 +58,16 @@ function mediaNodeEntry(mediaType: string): [string, NodeSpec] {
   const maybeContent = (node: Node) => node.attrs.content? [node.attrs.content]: []
 
   return [parsed.serialize("node"), {
-    group: "_" + supertype,
+    group: ["flow", "embedded", `_${supertype}`, `_${parsed.serialize("node")}`].join(" "),
     attrs: {
       src: {default: undefined},
       content: {default: undefined}
     },
     media: true,
+    rootTag,
     toDOM: node => [rootTag, rootAttrs(node), ...maybeChildNodeOutputSpec(node, parsed), ...maybeContent(node)],
     parseDOM: [{tag: rootTag, getAttrs: (dom: HTMLElement | string) => {
       const detectedMediaType = detectMediaTypeFromDOM(dom as HTMLElement, rootTag)
-      console.log(detectedMediaType)
       if(typeof dom === "string" || detectedMediaType !== mediaType) {
         return false
       }
@@ -79,7 +80,6 @@ function mediaNodeEntry(mediaType: string): [string, NodeSpec] {
         return !src? false: {src}
       }
       else {
-        console.log(rootTag)
         const src = (dom as HTMLScriptElement | HTMLEmbedElement)?.src
         return {src, content: dom.innerText}
       }
@@ -91,23 +91,201 @@ export const mediaPlugin = () => ({
   nodes: {
     ...Object.fromEntries(MIME
       .map(mediaType => `#${mediaType}`)
-      .map(mediaNodeEntry)),
-    figure: {
-      group: "container",
-      content: `(${MEDIA_GROUPS.join(" | ")}) figcaption?`,
-      toDOM: () => ["figure", 0],
-      parseDOM: [{tag: "figure"}]
-    },
-    figcaption: {
-      group: "container",
-      content: "inline*",
-      toDOM: () => ["figcaption", 0],
-      parseDOM: [{tag: "figcaption"}]
-    },
-    attachment: {
-      group: "container",
-      content: `${MEDIA_GROUPS.join(" | ")}`,
-      toDOM: () => ["ww-attachment", 0]
-    }
+      .map(mediaNodeEntry)
+      .map(([k, v]) => [k, HTMLElementSpec({tag: v.rootTag, ...v})])
+    ),
+    figure: HTMLElementSpec({
+      tag: "figure",
+      group: "flow palpable",
+      content: `(figcaption? flow*) | (flow* figcaption?)`
+    }),
+    figcaption: HTMLElementSpec({
+      tag: "figcaption",
+      content: "phrasing*"
+    }),
+    img: HTMLElementSpec({
+      tag: "img",
+      group: "flow embedded palpable interactive", // phrasing
+      attrs: {
+        alt: {default: undefined},
+        crossorigin: {default: undefined},
+        anonymous: {default: undefined},
+        "use-credentials": {default: undefined},
+        decoding: {default: undefined},
+        sync: {default: undefined},
+        async: {default: undefined},
+        auto: {default: undefined},
+        elementtiming: {default: undefined},
+        fetchpriority: {default: undefined},
+        height: {default: undefined},
+        ismap: {default: undefined},
+        loading: {default: undefined},
+        referrerpolicy: {default: undefined},
+        sizes: {default: undefined},
+        src: {default: undefined},
+        srcset: {default: undefined},
+        usemap: {default: undefined},
+      }
+    }),
+    source: HTMLElementSpec({
+      tag: "source",
+      attrs: {
+        type: {default: undefined},
+        src: {default: undefined},
+        srcset: {default: undefined},
+        sizes: {default: undefined},
+        media: {default: undefined},
+        height: {default: undefined},
+        width: {default: undefined}
+      }
+    }),
+    track: HTMLElementSpec({
+      tag: "track",
+      attrs: {
+        default: {default: undefined},
+        kind: {default: undefined},
+        label: {default: undefined},
+        src: {default: undefined},
+        srclang: {default: undefined}
+      }
+    }),
+    picture: HTMLElementSpec({
+      tag: "picture",
+      group: "flow embedded", //phrasing
+      content: "(source | scriptsupporting)* img"
+    }),
+    audio: HTMLElementSpec({
+      tag: "audio",
+      group: "flow embedded interactive palpable",
+      content: `(source | track)* flow*`,
+      attrs: {
+        autoplay: {default: undefined},
+        controls: {default: undefined},
+        crossorigin: {default: undefined},
+        disableremoteplayback: {default: undefined},
+        loop: {default: undefined},
+        muted: {default: undefined},
+        preload: {default: undefined},
+        src: {default: undefined},
+      }
+    }),
+    video: HTMLElementSpec({
+      tag: "video",
+      group: "flow embedded interactive palpable",
+      content: "source*",
+      attrs: {
+        autoplay: {default: undefined},
+        controls: {default: undefined},
+        crossorigin: {default: undefined},
+        anonymous: {default: undefined},
+        disabledpictureinpicture: {default: undefined},
+        disableremoteplayback: {default: undefined},
+        height: {default: undefined},
+        loop: {default: undefined},
+        muted: {default: undefined},
+        playsinline: {default: undefined},
+        poster: {default: undefined},
+        preload: {default: undefined},
+        src: {default: undefined},
+        width: {default: undefined},
+      }
+    }),
+    object: HTMLElementSpec({
+      tag: "object",
+      group: "flow embedded palpable interactive listed submittable formassociated",
+      content: "flow*",
+      attrs: {
+        data: {default: undefined},
+        form: {default: undefined},
+        height: {default: undefined},
+        name: {default: undefined},
+        type: {default: undefined},
+        usemap: {default: undefined},
+        width: {default: undefined}
+      }
+    }),
+    embed: HTMLElementSpec({
+      tag: "embed",
+      group: "flow embedded interactive palpable", // phrasing
+      attrs: {
+        height: {default: undefined},
+        src: {default: undefined},
+        type: {default: undefined},
+        width: {default: undefined}
+      }
+    }),
+    iframe: HTMLElementSpec({
+      tag: "iframe",
+      group: "flow embedded interactive palpable", // phrasing
+      attrs: {
+        allow: {default: undefined},
+        allowfullscreen: {default: undefined},
+        allowpaymentrequest: {default: undefined},
+        credentialless: {default: undefined},
+        csp: {default: undefined},
+        height: {default: undefined},
+        loading: {default: undefined},
+        name: {default: undefined},
+        referrerpolicy: {default: undefined},
+        sandbox: {default: undefined},
+        src: {default: undefined},
+        srcdoc: {default: undefined},
+        width: {default: undefined}
+      }
+    }),
+    portal: HTMLElementSpec({
+      tag: "portal",
+      group: "flow embedded",
+      attrs: {
+        referrerpolicy: {default: undefined},
+        src: {default: undefined},
+      }
+    }),
+    script: HTMLElementSpec({
+      tag: "script",
+      group: "flow metadata scriptsupporting",
+      content: "text?",
+      attrs: {
+        async: {default: undefined as undefined | boolean},
+        crossorigin: {default: undefined as undefined | string},
+        defer: {default: undefined as undefined | boolean},
+        fetchpriority: {default: undefined as undefined | "high" | "low" | "auto"},
+        integrity: {default: undefined as undefined | string},
+        nomodule: {default: undefined as undefined | boolean},
+        referrerpolicy: {default: undefined as undefined | "no-referrer" | "no-referrer-when-downgrade" |"origin" | "origin-when-cross-origin" | "unsafe-url"},
+        src: {default: undefined as undefined | string},
+        type: {default: undefined as undefined | string | "module" | "importmap"},
+        blocking: {default: undefined as undefined | boolean}
+      }
+    }),
+    style: HTMLElementSpec({
+      tag: "style",
+      group: "flow metadata",
+      content: "text?",
+      attrs: {
+        media: {default: undefined},
+        nonce: {default: undefined},
+        title: {default: undefined},
+        blocking: {default: undefined},
+      }
+    }),
+    template: HTMLElementSpec({
+      tag: "template",
+      group: "flow metadata scriptsupporting",
+      content: "flow*"
+    }),
+    slot: HTMLElementSpec({
+      tag: "slot",
+      group: "flow", // phrasing
+      content: "flow*",
+      attrs: {
+        name: {default: undefined},
+      }
+    }),
+    noscript: HTMLElementSpec({
+      tag: "noscript",
+      group: "flow metadata", // phrasing
+      content: "flow*"
+    }),
   }
 } as SchemaPlugin)

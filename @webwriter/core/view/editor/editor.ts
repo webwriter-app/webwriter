@@ -114,23 +114,18 @@ export class ExplorableEditor extends LitElement {
 	@property({type: Boolean})
 	loadingPackages: boolean
 
-  @property({type: Array, attribute: false})
-  markCommands: CommandEntry[] = []
 
   @property({type: Array, attribute: false})
   blockCommands: CommandEntry[] = []
 
   @property({type: Array, attribute: false})
-  containerCommands: CommandEntry[] = []
-
-  @property({type: Array, attribute: false})
-  priorityContainerCommands: CommandEntry[] = []
+  priorityBlockCommands: CommandEntry[] = []
 
   @property({type: Array, attribute: false})
 	inlineCommands: CommandEntry[] = []
 
   @property({type: Array, attribute: false})
-  groupedContainerCommands: CommandEntry[][] = []
+  groupedBlockCommands: CommandEntry[][] = []
 
   @property({type: Object, attribute: false})
   fontFamilyCommand: CommandEntry
@@ -802,8 +797,8 @@ export class ExplorableEditor extends LitElement {
 						...from <= k && k <= to? {"data-ww-selected": ""}: {}
 					}))
 				}
-        else if(node.type.spec.group === "container") {
-          const cmd = this.containerCommands.find(cmd => cmd.id === node.type.name)
+        else if(node.type.spec.group?.split(" ").includes("heading")) {
+          const cmd = this.blockCommands.find(cmd => cmd.id === node.type.name)
           decorations.push(Decoration.node(k, state.doc.resolve(k + 1).after(1), {
             "data-placeholder": cmd?.label,
             ...(node.textContent.trim() === ""? {"data-empty": ""}: {}),
@@ -1275,9 +1270,9 @@ export class ExplorableEditor extends LitElement {
 					this.activeElement?.scrollIntoView({behavior: "smooth", block: "center"})
 					!e.detail.widget? this.pmEditor?.focus(): e.detail.widget.focus()
 				}}
-				.markCommands=${this.markCommands}
+				.markCommands=${this.inlineCommands}
         .blockCommands=${this.blockCommands}
-        .containerCommands=${this.containerCommands}
+        .blockCommands=${this.blockCommands}
         .fontFamilyCommand=${this.fontFamilyCommand!}
         .fontSizeCommand=${this.fontSizeCommand!}
 			></ww-toolbox>
@@ -1303,10 +1298,10 @@ export class ExplorableEditor extends LitElement {
 					}
 				}}
 				@focus=${() => window.clearTimeout(this.pendingBlur)}
-				.packages=${this.packages.filter(pkg => pkg.installed)}
+				.packages=${this.packages.filter(pkg => pkg.installed) as any}
 				tabindex="-1"
 				?showWidgetPreview=${this.showWidgetPreview}
-        .groupedContainerCommands=${this.groupedContainerCommands}
+        .groupedBlockCommands=${this.groupedBlockCommands}
         .inlineCommands=${this.inlineCommands}
 			>
     </ww-palette>

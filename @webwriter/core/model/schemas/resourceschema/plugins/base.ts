@@ -71,10 +71,30 @@ export const basePlugin = () => ({
   nodes: {
     explorable: HTMLElementSpec({
       tag: "body",
-      content: "container+ ((leaf | container) container+)* container*"
+      content: `(p | flow)+`,
+      phrasingContent: true,
+      attrs: {
+        onafterprint: {default: undefined},
+        onbeforeprint: {default: undefined},
+        onbeforeunload: {default: undefined},
+        onblur: {default: undefined},
+        onerror: {default: undefined},
+        onfocus: {default: undefined},
+        onhashchange: {default: undefined},
+        onlanguagechange: {default: undefined},
+        onload: {default: undefined},
+        onmessage: {default: undefined},
+        onoffline: {default: undefined},
+        ononline: {default: undefined},
+        onpopstate: {default: undefined},
+        onredo: {default: undefined},
+        onresize: {default: undefined},
+        onstorage: {default: undefined},
+        onundo: {default: undefined},
+        onunload: {default: undefined}
+      }
     }),
     unknownElement: {
-      group: "leaf",
       attrs: {
         tagName: {},
         otherAttrs: {default: {}}
@@ -88,7 +108,8 @@ export const basePlugin = () => ({
           const tagName = dom.tagName.toLowerCase()
           const unknownBuiltin = dom.constructor.name === "HTMLUnknownElement"
           const unknownCustom = !window.customElements.get(tagName)
-          if(unknownBuiltin || unknownCustom) {
+          const knownDashed = ["annotation-xml"].includes(tagName)
+          if((unknownBuiltin || unknownCustom) && !knownDashed) {
             return {tagName, otherAttrs: namedNodeMapToObject(dom.attributes)}
           }
           else return false
@@ -100,7 +121,7 @@ export const basePlugin = () => ({
         "data-ww-editing": CustomElementName.safeParse(node.attrs.tagName).success? "unknowncustom": "unknownbuiltin",
         "data-ww-tagname": node.attrs.tagName
       }]
-    }
+    },
   },
   topNode: "explorable",
   keymap: baseKeymap,

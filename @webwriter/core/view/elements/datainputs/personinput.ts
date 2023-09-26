@@ -82,12 +82,11 @@ export class PersonInput extends SlInput implements DataInput {
     container && container.children.length === 0 && render(this.Suffix(), container as HTMLElement)
   }
 
-  protected willUpdate(_changedProperties: PropertyValueMap<any> | Map<PropertyKey, unknown>): void {
-    if(_changedProperties.has("value") && typeof this.value === "string") {
-      this.value = new Person(this.value)
-    }
+  constructor() {
+    super()
+    this.addEventListener("sl-change", e => this.value = new Person(this.value))
   }
-
+  
   async togglePart(part: "email" | "url") {
     this.focus()
     this[`${part}Active`] = !this[`${part}Active`]
@@ -117,10 +116,10 @@ export class PersonInput extends SlInput implements DataInput {
     const template = super.render()
     return html`
       ${template}
-      <sl-input value=${this.value.email ?? ""} @sl-input=${(e: any) => this.value = this.value.extend({email: e.target.value})} class="part email" type="email" class="part-input" size="small">
+      <sl-input value=${this.value.email ?? ""} @sl-input=${(e: any) => this.value = this.value.extend({email: e.target.value})} class="part email" type="email" size="small">
         <sl-icon slot="prefix" name="mail"></sl-icon>
       </sl-input>
-      <sl-input value=${this.value.url ?? ""} @sl-input=${(e: any) => this.value = this.value.extend({url: e.target.value})} class="part url"  type="url" class="part-input" size="small">
+      <sl-input value=${this.value.url ?? ""} @sl-input=${(e: any) => this.value = this.value.extend({url: e.target.value})} class="part url"  type="url" size="small">
         <sl-icon slot="prefix" name="link"></sl-icon>
       </sl-input>
     `

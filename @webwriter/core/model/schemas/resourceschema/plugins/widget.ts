@@ -65,7 +65,7 @@ export function packageWidgetNodeSpec(pkg: Package): NodeSpec {
   ]: []
 
   return {
-    group: "leaf",
+    group: "flow widget",
     widget: true,
     package: pkg,
     selectable: true,
@@ -200,11 +200,9 @@ export const widgetPlugin = (packages: Package[]) => ({
     "Backspace": preventWidgetDelete,
     "shift-Backspace": preventWidgetDelete,
     "control-ArrowUp": (state, dispatch) => {
-      console.log("control-up")
       return false
     },
     "control-ArrowDown": (state, dispatch) => {
-      console.log("control-down")
       return false
     }
   }
