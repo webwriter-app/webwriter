@@ -4,17 +4,14 @@ import { LitElement, css, html } from "lit"
 import { customElement, property, query } from "lit/decorators.js"
 import { ifDefined } from "lit/directives/if-defined.js"
 import { unsafeStatic } from "lit/static-html.js"
-import { CommandEntry } from "../../viewmodel"
 import { spreadProps } from "@open-wc/lit-helpers"
 import { KeymapManager } from "../configurator"
 
 type ButtonTooltipOptions = Partial<Pick<SlTooltip, "placement" | "skidding" | "trigger" |"hoist">>
 
-type CommandEntryProps = Omit<CommandEntry, "callback" | "disabled">
-
 @localized()
 @customElement("ww-button")
-export class Button extends LitElement implements CommandEntryProps {
+export class Button extends LitElement {
 
   @property({type: Object, attribute: false})
   tooltipOptions: ButtonTooltipOptions = {
@@ -202,12 +199,11 @@ export class Button extends LitElement implements CommandEntryProps {
       return this.label && (this.label + shortcutText) || undefined
     }
     else {
-      return this.title ?? this.label
+      return this.title || this.label
     }
   }
 
   render() {
-    
     const {id, variant, size, caret, disabled, loading, outline, pill, circle, type, name, value, href, target, rel, download} = this
     const {placement, skidding, hoist} = this.tooltipOptions
     const tagName = unsafeStatic(variant === "icon"? "sl-icon-button": "sl-button")

@@ -25,13 +25,20 @@ export class Configurator extends LitElement {
   static get styles() {
     return css`
       :host {
-        position: relative;
         height: 100%;
         display: block;
       }
 
       sl-tab-group {
         height: 100%;
+      }
+
+      sl-tab-group::part(nav) {
+        position: sticky;
+        top: 0;
+        left: 0;
+        background: white;
+        z-index: 100;
       }
 
       sl-tab::part(base) {
@@ -82,6 +89,15 @@ export class Configurator extends LitElement {
         margin-top: var(--sl-spacing-3x-small);
         font-size: var(--sl-font-size-small);
         color: var(--sl-color-neutral-500);
+      }
+
+      #post-tabs {
+        display: flex;
+        margin-left: auto;
+        height: 100%;
+        align-items: center;
+        gap: 1rem;
+        margin-right: 1rem;
       }
     `
   }
@@ -153,6 +169,7 @@ export class Configurator extends LitElement {
         <sl-tab-panel name="post-a">
           <slot name="post-tab-panel-a"></slot>
         </sl-tab-panel>
+        <slot id="post-tabs" slot="nav" name="post-tabs"></slot>
       </sl-tab-group>
     `
   }

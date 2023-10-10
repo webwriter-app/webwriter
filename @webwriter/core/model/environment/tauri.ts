@@ -7,11 +7,15 @@ import {fetch, Body, ResponseType} from "@tauri-apps/api/http"
 import {Buffer} from "buffer"; window.Buffer = Buffer
 import {metadata} from "tauri-plugin-fs-extra-api"
 import { invoke } from "@tauri-apps/api/tauri"
-import { WebviewWindow, WindowOptions } from "@tauri-apps/api/window"
+import { WebviewWindow, WindowOptions, getAll, getCurrent } from "@tauri-apps/api/window"
+import {listen} from "@tauri-apps/api/event"
+import {exit} from "@tauri-apps/api/process"
 
-import { DialogAPI, FileSystemAPI, HTTPAPI, OSAPI, PathAPI, Response, ShellAPI, Stats } from "."
+import { DialogAPI, FileSystemAPI, HTTPAPI, OSAPI, PathAPI, Response, ShellAPI, Stats, WindowCloseBehavior } from "."
+import { idle } from "../../utility"
 
-export {watch} from "tauri-plugin-fs-watch-api"
+export {watchImmediate as watch} from "tauri-plugin-fs-watch-api"
+import {confirm} from "@tauri-apps/api/dialog"
 
 const HTTP_STATUS = {
   '200': 'OK',
@@ -125,7 +129,7 @@ export const Shell: ShellAPI = {open}
 
 export const OS: OSAPI = {arch, platform}
 
-export const Dialog: DialogAPI = {promptRead, promptWrite}
+export const Dialog: DialogAPI = {promptRead, promptWrite, confirm}
 
 export const HTTP: HTTPAPI = {
   async request({url, method, headers, body, onProgress, timeout}) {
@@ -193,11 +197,67 @@ export function getSystemFonts() {
   return invoke("get_system_fonts") 
 }
 
+
+
+
 /** Create a new window. */
-export async function createWindow(url: string, options?: WindowOptions): Promise<string> {
-  const webview = new WebviewWindow(url, {url: "index.html", ...options})
-  return new Promise((resolve, reject) => {
-    webview.once("tauri://created", () => resolve(url))
-    webview.once("tauri://error", e => reject(e))
-  })
+export async function createWindow(url="index.html", options?: WindowOptions & {label?: string}) {
+  const allWindows = getAll()
+  const allLabels = allWindows.map(w => w.label)
+  const i = Math.max(...allLabels.map(l => parseInt(l)), 1) + 1
+  const existingWebview = WebviewWindow.getByLabel(options?.label ?? "")
+  if(existingWebview && !(await existingWebview.isVisible())) {
+    return existingWebview?.show()
+  }
+  else if(existingWebview && await existingWebview.isVisible()) {
+    await existingWebview.unminimize()
+    await existingWebview.setFocus()
+  }
+  else {
+    const webview = new WebviewWindow(options?.label ?? `${i}`, {url, ...options})
+    return new Promise((resolve, reject) => {
+      webview.once("tauri://created", () => resolve(url))
+      webview.once("tauri://error", e => reject(e))
+    })
+  }
+}
+
+export function setWindowCloseBehavior(behaviors: WindowCloseBehavior[], closeConfirm?: () => Promise<boolean>) {
+  const webview = getCurrent()
+  for(const behavior of behaviors) {
+    if(behavior === "closeAllIfLastVisible") {
+      webview.onCloseRequested(async e => {
+        if(closeConfirm && !(await closeConfirm())) {
+          e.preventDefault()
+          return
+        }
+        const allWindows = getAll()
+        const visibilityList = await Promise.all(allWindows.map(w => w.isVisible()))
+        const isLast = !allWindows.some((w, i) => w.label !== webview.label && visibilityList[i])
+        if(isLast) {
+          e.preventDefault()
+          exit(0)
+        }
+      })
+    }
+    else if(behavior === "hideOnCloseUnlessLast") {
+      webview.onCloseRequested(async e => {
+        if(closeConfirm && await closeConfirm()) {
+          e.preventDefault()
+          return
+        }
+        getAll().length > 1 && e.preventDefault()
+        webview.hide()
+      })
+    }
+    else if(behavior === "closeOthersOnReload") {
+      window.addEventListener("beforeunload", e => {
+        getAll().filter(w => w.label !== webview.label).forEach(w => w.close())
+      })
+    }
+  }
+}
+
+export function getWindowLabel() {
+  return getCurrent().label
 }

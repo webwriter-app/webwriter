@@ -1,4 +1,4 @@
-import {Node, NodeSpec, MarkSpec, AttributeSpec, Attrs} from "prosemirror-model"
+import {Node, Mark, NodeSpec, MarkSpec, AttributeSpec, Attrs} from "prosemirror-model"
 import { z } from "zod"
 
 export const eventHTMLAttributes = {
@@ -167,9 +167,10 @@ const styleSpec: AttributeSpec & Record<string, any> = {
 }
 
 export function toAttributes(node: Node | Attrs, extraAttrs?: Attrs) {
+  const complex = node instanceof Node || node instanceof Mark
   const outputAttrs = {} as Record<string, string>
-  const attrs = node instanceof Node? {...node.attrs, ...extraAttrs}: {...node, ...extraAttrs}
-  const attrSpec: (k: string) => AttributeSpec & {private?: boolean} | undefined = (k: string) => node instanceof Node? (node.type?.spec?.attrs ?? {})[k]: {}
+  const attrs = complex? {...node.attrs, ...extraAttrs}: {...node, ...extraAttrs}
+  const attrSpec: (k: string) => AttributeSpec & {private?: boolean} | undefined = (k: string) => complex? (node.type?.spec?.attrs ?? {})[k]: {}
   for (const [k, v] of Object.entries(attrs)) {
     const spec = attrSpec(k)
     if(k !== "data" && v !== undefined && (spec?.default !== v) && !spec?.private) {
@@ -229,11 +230,11 @@ export function getAttrs(dom: HTMLElement | string, getDeprecated=true) {
 }
 
 
-export function HTMLElementSpec({tag, content, marks, group, inline, atom, attrs, selectable, draggable, code, whitespace, definingAsContext, definingForContent, defining, isolating, toDOM, parseDOM, toDebugString, leafText, phrasingContent, ...rest}: NodeSpec & {tag: string, }): NodeSpec {
+export function HTMLElementSpec({tag, content, marks, group, inline, atom, attrs, selectable, draggable, code, whitespace, definingAsContext, definingForContent, defining, isolating, toDOM, parseDOM, toDebugString, leafText, phrasingContent, ...rest}: NodeSpec & {tag: string, phrasingContent?: boolean}): NodeSpec {
   return {
     content,
     marks,
-    group: !phrasingContent? group: group + " | _phrase*",
+    group: !phrasingContent? group: "_phrase* | " + group,
     inline,
     atom,
     attrs: {...globalHTMLAttributes, ...attrs},
@@ -244,17 +245,16 @@ export function HTMLElementSpec({tag, content, marks, group, inline, atom, attrs
     definingForContent,
     defining,
     isolating,
-    toDOM: toDOM ?? (n => [tag, toAttributes(n), ...(content? [0]: [])]),
+    toDOM: toDOM ?? (n => [tag, toAttributes(n), ...(content? [0]: [])]), //@ts-ignore
     parseDOM: parseDOM ?? [{
       tag,
       getAttrs,
-      ...(!phrasingContent? null: {
+      ...(true? null: {
         contentElement: node => {
           const span = node.ownerDocument!.createElement("span")
           span.setAttribute("data-ww-editing", "phrase")
-          span.replaceChildren(...Array.from(node.childNodes))
-          console.log(node.childNodes, span)
-          node.replaceChildren(span)
+          span.replaceChildren(...Array.from(node.childNodes));
+          (node as HTMLElement).replaceChildren(span)
           return node
         }
       })
@@ -268,12 +268,12 @@ export function HTMLElementSpec({tag, content, marks, group, inline, atom, attrs
 export function HTMLMarkSpec({tag, attrs, inclusive, excludes, group, spanning, toDOM, parseDOM, ...rest}: MarkSpec & {tag: string, formAssociated?: boolean, scriptSupporting?: boolean, transparent?: boolean}): MarkSpec {
   return {
     attrs: {...globalHTMLAttributes, ...attrs},
-    inclusive,
+    inclusive: inclusive ?? true,
     excludes,
     group,
     spanning,
-    toDOM: toDOM ?? (n => [tag]),
-    parseDOM: parseDOM ?? [{tag}],
+    toDOM: toDOM ?? (n => [tag, toAttributes(n)]),
+    parseDOM: parseDOM ?? [{tag, getAttrs}],
     ...rest
   }
 }

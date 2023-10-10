@@ -2,7 +2,7 @@ import {LitElement, html, css, ReactiveController, PropertyValueMap} from "lit"
 import {styleMap} from "lit/directives/style-map.js"
 import {customElement, property, query} from "lit/decorators.js"
 import { Decoration, EditorView, DecorationSet } from "prosemirror-view"
-import { EditorState, Command, NodeSelection, TextSelection, AllSelection } from "prosemirror-state"
+import { EditorState, Command as PmCommand, NodeSelection, TextSelection, AllSelection } from "prosemirror-state"
 import { Node, Mark} from "prosemirror-model"
 import { localized, msg, str } from "@lit/localize"
 
@@ -20,8 +20,9 @@ import redefineCustomElementsString from "redefine-custom-elements/lib/index.js?
 // import scopedCustomElementsRegistryString from "@webcomponents/scoped-custom-element-registry/scoped-custom-element-registry.min.js?raw"
 
 import {computePosition, autoUpdate, offset, shift, flip} from '@floating-ui/dom'
-import { CommandEntry, CommandEvent } from "../../viewmodel"
+import { Command } from "../../viewmodel"
 import { fixTables } from "prosemirror-tables"
+import { App } from ".."
 
 class EmbedTooLargeError extends Error {}
 
@@ -47,7 +48,10 @@ export class EditorViewController extends EditorView implements ReactiveControll
 @customElement("ww-explorable-editor")
 export class ExplorableEditor extends LitElement {
 
-	exec = (command: Command) => {
+  @property({attribute: false})
+  app: App
+
+	exec = (command: PmCommand) => {
 		command(this.pmEditor.state, this.pmEditor.dispatch, this.pmEditor as any)
 		this.pmEditor.focus()
 	}
@@ -113,25 +117,6 @@ export class ExplorableEditor extends LitElement {
 
 	@property({type: Boolean})
 	loadingPackages: boolean
-
-
-  @property({type: Array, attribute: false})
-  blockCommands: CommandEntry[] = []
-
-  @property({type: Array, attribute: false})
-  priorityBlockCommands: CommandEntry[] = []
-
-  @property({type: Array, attribute: false})
-	inlineCommands: CommandEntry[] = []
-
-  @property({type: Array, attribute: false})
-  groupedBlockCommands: CommandEntry[][] = []
-
-  @property({type: Object, attribute: false})
-  fontFamilyCommand: CommandEntry
-
-  @property({type: Object, attribute: false})
-  fontSizeCommand: CommandEntry
 
 	@property({type: Array, attribute: false})
 	packages: Package[]
@@ -232,16 +217,16 @@ export class ExplorableEditor extends LitElement {
 	}
 
 	LinkView = (mark: Mark, view: EditorView, inline: boolean) => {
-			const dom = this.pmEditor.document.createElement("a")
-			const href = mark.attrs.href
-			Object.entries(mark.attrs)
-				.filter(([k, v]) => v)
-				.forEach(([k, v]) => dom.setAttribute(k, v))
-			dom.addEventListener("click", e => {
-				e.preventDefault()
-				this.previewing && this.emitOpen(href)
-			})
-			return {dom}
+    const dom = this.pmEditor.document.createElement("a")
+    const href = mark.attrs.href
+    Object.entries(mark.attrs)
+      .filter(([k, v]) => v)
+      .forEach(([k, v]) => dom.setAttribute(k, v))
+    dom.addEventListener("click", e => {
+      e.preventDefault()
+      this.previewing && this.emitOpen(href)
+    })
+    return {dom}
 	}
 
 	private cachedNodeViews: Record<string, any>
@@ -798,7 +783,7 @@ export class ExplorableEditor extends LitElement {
 					}))
 				}
         else if(node.type.spec.group?.split(" ").includes("heading")) {
-          const cmd = this.blockCommands.find(cmd => cmd.id === node.type.name)
+          const cmd = this.app.commands.containerCommands.find(cmd => cmd.id === node.type.name)
           decorations.push(Decoration.node(k, state.doc.resolve(k + 1).after(1), {
             "data-placeholder": cmd?.label,
             ...(node.textContent.trim() === ""? {"data-empty": ""}: {}),
@@ -972,9 +957,10 @@ export class ExplorableEditor extends LitElement {
     },
     "ww-widget-focus": (_: any, ev: CustomEvent) => {
       // this.activeElement = ev.detail.widget
+      /*
       if(this.previewing) {
         ev.detail.widget.focus()
-      }
+      }*/
       ev.detail.widget.scrollIntoView({behavior: "smooth", block: "center"})
     },
     "ww-widget-blur": () => {
@@ -1122,6 +1108,7 @@ export class ExplorableEditor extends LitElement {
   handleDropOrPaste = (ev: DragEvent | ClipboardEvent) => {
     const DragEvent = this.pmEditor.window.DragEvent
     const data = ev instanceof DragEvent? ev.dataTransfer: ev.clipboardData
+    console.log(data?.getData("text/html"))
     if((data?.files?.length ?? 0) > 0) {
       const files = [...(data?.files as any)].filter(file => file) as File[]
       let elements = [] as Element[]
@@ -1249,12 +1236,13 @@ export class ExplorableEditor extends LitElement {
 		}
 		return html`
 			<ww-toolbox
+        .app=${this.app}
+        .editorState=${this.editorState}
         class=${this.toolboxMode}
 				style=${styleMap(this.toolboxStyle)}
 				tabindex="-1"
 				.activeElement=${activeElement}
 				@ww-delete-widget=${(e: any) => this.deleteWidget(e.detail.widget)}
-				@ww-click-mark-command=${(e: any) => this.dispatchEvent(CommandEvent(e.detail.name))}
 				@ww-mark-field-input=${(e: any) => {
 					const {from, to} = this.editorState.selection
 					const markType = this.editorState.schema.marks[e.detail.markType]
@@ -1270,11 +1258,6 @@ export class ExplorableEditor extends LitElement {
 					this.activeElement?.scrollIntoView({behavior: "smooth", block: "center"})
 					!e.detail.widget? this.pmEditor?.focus(): e.detail.widget.focus()
 				}}
-				.markCommands=${this.inlineCommands}
-        .blockCommands=${this.blockCommands}
-        .blockCommands=${this.blockCommands}
-        .fontFamilyCommand=${this.fontFamilyCommand!}
-        .fontSizeCommand=${this.fontSizeCommand!}
 			></ww-toolbox>
 		`
 	}
@@ -1282,6 +1265,8 @@ export class ExplorableEditor extends LitElement {
 	Palette = () => {
 		return html`
 			<ww-palette
+        .app=${this.app}
+        .editorState=${this.editorState}
 				part="editor-toolbox"
 				@ww-change-widget=${(e: any) => this.insertWidget(e.detail.name)}
 				@ww-mousein-widget-add=${(e: CustomEvent) => {
@@ -1301,8 +1286,6 @@ export class ExplorableEditor extends LitElement {
 				.packages=${this.packages.filter(pkg => pkg.installed) as any}
 				tabindex="-1"
 				?showWidgetPreview=${this.showWidgetPreview}
-        .groupedBlockCommands=${this.groupedBlockCommands}
-        .inlineCommands=${this.inlineCommands}
 			>
     </ww-palette>
 		`

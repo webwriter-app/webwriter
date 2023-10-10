@@ -2,15 +2,19 @@ import { msg } from "@lit/localize"
 import { LitElement, css, html } from "lit"
 import { customElement, property, query } from "lit/decorators.js"
 import { classMap } from "lit/directives/class-map.js"
-import { EditorState, Command } from "prosemirror-state"
+import { EditorState, Command as PmCommand } from "prosemirror-state"
 
 import { Package, watch } from "../../model"
 import { unscopePackageName, prettifyPackageName, camelCaseToSpacedCase } from "../../utility"
 import { SlProgressBar } from "@shoelace-style/shoelace"
-import { CommandEntry, CommandEvent } from "../../viewmodel"
+import { Command } from "../../viewmodel"
+import { App } from ".."
 
 @customElement("ww-palette")
 export class Palette extends LitElement {
+
+  @property({attribute: false})
+  app: App
 
 	emitChangeWidget = (name: string) => {
 		this.dispatchEvent(new CustomEvent("ww-change-widget", {composed: true, bubbles: true, detail: {name: unscopePackageName(name)}}))
@@ -31,11 +35,8 @@ export class Palette extends LitElement {
 	@property({type: Array, attribute: false})
 	packages: Package[] = []
 
-  @property({type: Array, attribute: false})
-	groupedContainerCommands: CommandEntry[][] = []
-
-  @property({type: Array, attribute: false})
-	inlineCommands: CommandEntry[] = []
+  @property({type: Object, attribute: false})
+  editorState: EditorState
 
   @property({type: Object, attribute: false})
   activeElement: Element | null
@@ -60,7 +61,7 @@ export class Palette extends LitElement {
       display: grid;
       grid-template-columns: repeat(10, 1fr);
       grid-auto-rows: 30px;
-      max-width: 400px;
+      max-width: 420px;
       z-index: 10000;
 			padding: 0 10px;
       margin-left: auto;
@@ -293,17 +294,17 @@ export class Palette extends LitElement {
     */
 	`
 
-	private handleClickCard(pkg: Package | CommandEntry) {
+	private handleClickCard(pkg: Package | Command) {
     const isLeaf = "name" in pkg
 		if(isLeaf && !pkg.importError) {
 			this.addingWidget = pkg.name
 			this.widgetAddProgress = 100
 			clearInterval(this.widgetAddInterval)
-      this.emitChangeWidget(this.addingWidget)
+      this.emitChangeWidget(this.addingWidget!)
 		}
     else if(!isLeaf && !pkg.disabled) {
-      this.addingWidget = pkg.id
-      this.dispatchEvent(CommandEvent(this.addingWidget!))
+      this.addingWidget = pkg.id;
+      (pkg as Command).run()
     }
 	}
 
@@ -315,7 +316,7 @@ export class Palette extends LitElement {
 		return err
 	}
 
-	handleMouseInWidgetAdd = (pkg: Package | CommandEntry) => {
+	handleMouseInWidgetAdd = (pkg: Package | Command) => {
     const isLeaf = "name" in pkg
 		if(isLeaf && !pkg.importError && this.showWidgetPreview) {
 			this.addingWidget = pkg.name
@@ -325,7 +326,7 @@ export class Palette extends LitElement {
 					clearInterval(this.widgetAddInterval)
           isLeaf
             ? this.emitMouseInWidgetAdd(unscopePackageName(this.addingWidget!))
-            : this.dispatchEvent(CommandEvent(this.addingWidget!))
+            : (pkg as Command).run()
 				}
 			}, 50)
 		}
@@ -338,20 +339,19 @@ export class Palette extends LitElement {
 		this.emitMouseOutWidgetAdd(name)
 	}
 
-  ContainerCard = (cmds: CommandEntry[]) => {
+  ContainerCard = (cmds: Command[]) => {
     const cmd = cmds[(cmds.findIndex(cmd => cmd.active) + 1) % cmds.length]
-    const {id, label, icon, description} = cmd
     return html`<sl-card class=${classMap({"package-card": true, "container-card": true})}>
 		<sl-tooltip placement="left-start" class="package-tooltip" hoist trigger="hover">
-			<span ?inert=${cmd.disabled} @click=${() => this.handleClickCard(cmd)} class="title" @mouseenter=${() => this.handleMouseInWidgetAdd(cmd)} @mouseleave=${() => this.handleMouseOutWidgetAdd(unscopePackageName(id))}>
-			  <sl-icon class="container-icon" name=${icon ?? "square"}></sl-icon>
+			<span ?inert=${cmd.disabled} @click=${() => this.handleClickCard(cmd)} class="title" @mouseenter=${() => this.handleMouseInWidgetAdd(cmd)} @mouseleave=${() => this.handleMouseOutWidgetAdd(unscopePackageName(cmd.id))}>
+			  <sl-icon class="container-icon" name=${cmd.icon ?? "square"}></sl-icon>
 			</span>
       <span slot="content">
-        <b><code>${label}</code></b>
-        <div>${description || msg("No description provided")}</div>
+        <b><code>${cmd.label}</code></b>
+        <div>${cmd.description || msg("No description provided")}</div>
       </span>
 		</sl-tooltip>
-		<sl-progress-bar value=${id === this.addingWidget? this.widgetAddProgress: 0}></sl-progress-bar>
+		<sl-progress-bar value=${cmd.id === this.addingWidget? this.widgetAddProgress: 0}></sl-progress-bar>
 	</sl-card>`
   }
 
@@ -383,7 +383,7 @@ export class Palette extends LitElement {
 	</sl-card>`
   }
 
-  InlineCard = (cmd: CommandEntry) => {
+  InlineCard = (cmd: Command) => {
     const {id, label} = cmd
     return html`<sl-card class=${classMap({"package-card": true, "inline-card": true})}>
 		<sl-tooltip placement="left-start" class="package-tooltip" hoist trigger="hover">
@@ -399,7 +399,7 @@ export class Palette extends LitElement {
 	</sl-card>`
   }
 
-  Card = (cmdOrPkg: CommandEntry | CommandEntry[] | Package) => {
+  Card = (cmdOrPkg: Command | Command[] | Package) => {
     if("name" in cmdOrPkg) {
       return this.BlockCard(cmdOrPkg)
     }
@@ -416,9 +416,9 @@ export class Palette extends LitElement {
 
 	render() {
     return html`
-      ${this.groupedContainerCommands.map(this.Card)}
+      ${this.app.commands.groupedContainerCommands.map(this.Card)}
       ${this.packages.map(this.Card)}
-      ${this.inlineCommands.map(this.Card)}
+      ${this.app.commands.phrasingCommands.map(this.Card)}
     `
 	}
 }

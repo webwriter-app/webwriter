@@ -39,6 +39,12 @@
           {"name": "bin/yarn", "args": true, "sidecar": true},
           {"name": "bin/esbuild", "args": true, "sidecar": true}
         ]
+      },
+      "window": {
+        "all": true
+      },
+      "process": {
+        "all": true
       }
     },
     "bundle": {

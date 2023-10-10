@@ -3,7 +3,7 @@ import {LitElement, html, css, PropertyValueMap} from "lit"
 import {customElement, property, query, queryAssignedElements} from "lit/decorators.js"
 import { spreadProps } from "@open-wc/lit-helpers"
 
-import { CommandEntry, CommandEvent } from "../../viewmodel"
+import { Command } from "../../viewmodel"
 
 const PROTOCOL_ICONS = {
 	"file": "folder",
@@ -25,10 +25,7 @@ export class Head extends LitElement {
 	pendingChanges: boolean = false
 
   @property({type: Array, attribute: false})
-  resourceCommands: CommandEntry[] = []
-
-  @property({type: Array, attribute: false})
-  allResourceCommands: CommandEntry[] = []
+  documentCommands: Command[] = []
 
   get emptyFilename() {
     return msg("Unsaved File")
@@ -44,7 +41,7 @@ export class Head extends LitElement {
       width: 100%;
       align-items: center;
       color: var(--sl-color-gray-700);
-      gap: 1ch;
+      gap: 0.5ch;
     }
 
     #filename {
@@ -60,7 +57,7 @@ export class Head extends LitElement {
       visibility: visible;
     }
 
-    #resource-commands {
+    #document-commands {
       --icon-size: 20px;
     }
 
@@ -90,9 +87,9 @@ export class Head extends LitElement {
       <div id="filename">
         ${this.IconicURL()}
       </div>
-      <div id="resource-commands">
-        ${this.resourceCommands.map(v => html`<ww-button variant="icon" 
-          ${spreadProps(v)} @click=${() => this.dispatchEvent(CommandEvent(v.id))}></ww-button>`)}
+      <div id="document-commands">
+        ${this.documentCommands.map(v => html`<ww-button variant="icon" 
+          ${spreadProps(v.toObject())} @click=${() => v.run()}></ww-button>`)}
       </div>
       <slot></slot>
     `

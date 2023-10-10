@@ -1,7 +1,7 @@
 import {ReactiveController} from "lit"
 import Hotkeys from "hotkeys-js"
 
-import { EditorStateWithHead, RootStore, getActiveAttributes, getActiveBlockAttributes, getActiveMarks, getStyleValues, hasActiveNode, setAttributeOnSelectedBlocks, setDocAttributes, themes, toggleOrUpdateMark, wrapSelection} from "../model"
+import { EditorStateWithHead, INDIVIDUAL_FILTERS, RootStore, getActiveAttributes, getActiveBlockAttributes, getActiveMarks, getStyleValues, hasActiveNode, setAttributeOnSelectedBlocks, setDocAttributes, themes, toggleOrUpdateMark, wrapSelection} from "../model"
 import { App } from "../view"
 import { msg } from "@lit/localize"
 import hotkeys from "hotkeys-js"
@@ -9,12 +9,21 @@ import {toggleMark} from "prosemirror-commands"
 import {Command as PmCommand} from "prosemirror-state"
 import {redo, redoDepth, undo, undoDepth} from "prosemirror-history"
 import {Node, Mark} from "prosemirror-model"
-import { makeAutoObservable } from "mobx"
+import { makeAutoObservable, spy } from "mobx"
+import { groupBy } from "../utility"
+import { Memoize } from "typescript-memoize"
 
-export const CommandEvent = (id: string, options?: any) => new CustomEvent(
-  "ww-command",
-  {detail: {id, options}, composed: true, bubbles: true}
-)
+
+export const WINDOW_OPTIONS = {
+  "fileDropEnabled": false,
+  "fullscreen": false,
+  "height": 600,
+  "resizable": true,
+  "title": "WebWriter",
+  "width": 800,
+  "minWidth": 600,
+  "minHeight": 600
+}
 
 type FieldEntry = {
   type: "string" | "number" | "boolean",
@@ -39,7 +48,7 @@ type FieldOptions<T extends FieldRecord, K extends keyof T=keyof T> = Record<K, 
 // 	category?: string
 //   /** Grouping for exclusive commands. */
 //   group?: string
-//   /** Allow the default keyboard event in addition to the callback. */
+//   /** Allow the default keyboard event in addition to the run. */
 // 	allowDefault?: boolean
 //   /** Whether the shortcut has been changed from the default. */
 // 	modified?: boolean
@@ -75,7 +84,7 @@ type FieldOptions<T extends FieldRecord, K extends keyof T=keyof T> = Record<K, 
 // 	category?: string
 //   /** Grouping for exclusive commands. */
 //   group?: string
-//   /** Allow the default keyboard event in addition to the callback. */
+//   /** Allow the default keyboard event in addition to the run. */
 // 	allowDefault?: boolean
 //   /** Whether the shortcut has been changed from the default. */
 // 	modified?: boolean
@@ -110,12 +119,12 @@ MarkCommandSpec({
   id,
   tags=["mark"],
   category="editor",
-  callback=((options: any) => this.exec(toggleOrUpdateMark(id, options))),
+  run=((options: any) => this.exec(toggleOrUpdateMark(id, options))),
   active=(() => !!this.editorState && this.resources.isMarkActive(id)),
   value=(() => this.editorState && getActiveMarks(this.editorState!).find(mark => mark.type.name === id)?.attrs[id]),
   ...rest
 }: Partial<CommandSpec> & {id: string}) {
-  return {id, tags, category, callback, active, value, ...rest}
+  return {id, tags, category, run, active, value, ...rest}
 }
 
 
@@ -123,7 +132,7 @@ LayoutCommandSpec({
   id,
   tags=["layout"],
   category="editor",
-  callback=((options: any) => {
+  run=((options: any) => {
     const value = options?.value
     this.exec(setAttributeOnSelectedBlocks(id, value)as any)
   }),
@@ -132,508 +141,473 @@ LayoutCommandSpec({
   value=(() => !!this.editorState && this.resources.getActiveAttributeValue(id)),
   ...rest
 }: Partial<CommandSpec> & {id: string}) {
-  return {id, tags, category, callback, active, value, ...rest}
+  return {id, tags, category, run, active, value, ...rest}
 }
 
 NodeCommandSpec({
   id,
   tags=["node"],
   category="editor",
-  callback=((options: any) => this.exec(wrapSelection(this.editorState?.schema.nodes[nodeName ?? id]!, attrs))),
+  run=((options: any) => this.exec(wrapSelection(this.editorState?.schema.nodes[nodeName ?? id]!, attrs))),
   active=(() => hasActiveNode(this.editorState!, nodeName ?? id, attrs)),
   disabled=(() => false),
   ...rest
-}: Partial<CommandSpec> & {id: string}, attrs?: {}, nodeName?: string) {
-  return {id, tags, category, callback, active, ...rest}
+}: Partial<CommandSpec> & {id: string}, attrs?: new Command(this.host, {}, nodeName?: string) {
+  return {id, tags, category, run, active, ...rest}
 }
 */
 
-export type CommandEntry<ID extends string = string, T extends FieldRecord = FieldRecord> = {
+export type CommandSpec<ID extends string = string, T extends FieldRecord = FieldRecord> = {
   id: ID
   /** Keyboard shortcut for the command. */ 
 	shortcut?: string
-  /** Label of the command for the user. */
-	label?: string
-  tags?: string[]
-  /** Description of the commmand for the user. */
-	description?: string
-  /** Icon to represent the command to the user. */
-	icon?: string
   /** Rough categorization of the command. */
 	category?: string
   /** Grouping for exclusive commands. */
   group?: string
-  /** Allow the default keyboard event in addition to the callback. */
+  /** Allow the default keyboard event in addition to the run. */
 	allowDefault?: boolean
   /** Whether the shortcut has been changed from the default. */
-	modified?: boolean
-  /** Whether to disallow changing the shortcut. */
   fixedShortcut?: boolean
   /** Fields of the command that will be passed as arguments. */
 	fields?: T,
-  /** Whether the command should be disabled. */
-	disabled?: boolean
-  /** Whether the command should be disabled. */
-  active?: boolean
-  /** Associated value of the command. */
-  value?: any
-}
-
-type CommandSpec<ID extends string = string, T extends FieldRecord = FieldRecord> = Omit<CommandEntry, "disabled" | "active"> & {
-  /** Callback handling the event. Receives the keyboard event and combo if the callback was triggered by a keyboard shortcut. */
-	callback: (options?: FieldOptions<T>) => any | Promise<any>
+  /** Callback handling the event. Receives the keyboard event and combo if the run was triggered by a keyboard shortcut. */
+  tags?: string[]
+    /** Icon to represent the command to the user. */
+	icon?: string | ((host: App) => string)
+  /** Description of the commmand for the user. */
+	description?: string | ((host: App) => string)
+    /** Label of the command for the user. */
+	label?: string | ((host: App) => string)
+	run?: (host: App, options?: any, e?: Event) => any | Promise<any>
     /** Whether the command should be disabled. */
-	disabled?: () => boolean
+	disabled?: (host: App) => boolean
   /** Whether the command should be disabled. */
-  active?: () => boolean
+  active?: (host: App) => boolean
   /** Associated value of the command. */
-  value?: () => any
+  value?: (host: App) => any
 }
 
-type CommandMap<ID extends string, T extends CommandSpec<ID> = CommandSpec<ID>> = Record<ID, T>
-
-class Command<ID extends string> implements ReactiveController {
+export class Command<SPEC extends CommandSpec = CommandSpec> implements ReactiveController {
 
   host: App
-	store: RootStore
+  spec: SPEC
 
-
-
-  constructor(host: App, store: RootStore, spec: CommandSpec) {
-		this.store = store;
-    (this.host = host).addController(this)
+  constructor(host: App, spec: SPEC) {
+    this.spec = spec;
+    (this.host = host)?.addController(this)
   }
 
   hostConnected(): void {
-    
+    this.assignShortcut(this.shortcut)
   }
 
-  readonly id: ID
-  
-  private _shortcut: string
+  get id() {
+    return this.spec.id
+  }
+  /** Keyboard shortcut for the command. */ 
   get shortcut() {
-
+    return this.configuredShortcut ?? this.spec.shortcut
   }
-  set shortcut() {
+  set shortcut(value: string) {
+    if(this.fixedShortcut) {
+      return
+    }
+    this.assignShortcut(value, this.shortcut)
+  }
+  get configuredShortcut() {
+		return this.host.store.get("ui", "keymap")[this.id]?.shortcut
+	}
 
+  assignShortcut = (newShortcut: string, oldShortcut?: string) => {
+    oldShortcut && hotkeys.unbind(oldShortcut)
+    Hotkeys(newShortcut, e => this.run(undefined, e))
   }
 
+  /** Label of the command for the user. */
+  get tags() {
+    return this.spec.tags
+  }
+  /** Description of the commmand for the user. */
   get label() {
+    return typeof this.spec.label === "string" || !this.spec.label? this.spec.label: this.spec.label(this.host)
+  }
+  /** Description of the commmand for the user. */
+  get description() {
+    return typeof this.spec.description === "string" || !this.spec.description? this.spec.description: this.spec.description(this.host)
+  }
+  /** Icon to represent the command to the user. */
+  get icon() {
+    return typeof this.spec.icon === "string" || !this.spec.icon? this.spec.icon: this.spec.icon(this.host)
+  }
+  /** Rough categorization of the command. */
+  get category() {
+    return this.spec.category
+  }
+  /** Grouping for exclusive commands. */
+  get group() {
+    return this.spec.group
+  }
+  /** Whether the shortcut has been changed from the default. */
+  get modified() {
+    return !!this.configuredShortcut
+  }
+  /** Whether to disallow changing the shortcut. */
+  get fixedShortcut() {
+    return this.spec.fixedShortcut
+  }
+  /** Allow the default keyboard event in addition to the run. */
+  get allowDefault() {
+    return this.spec.allowDefault
+  }
+  /** Fields of the command that will be passed as arguments. */
+  get fields() {
+    return this.spec.fields
+  }
+  /** Whether the command should be disabled. */
+  get disabled() {
+    return !this.spec.disabled || !this.host.activeEditor? false: this.spec.disabled(this.host)
+  }
+  /** Whether the command should be disabled. */
+  get active() {
+    return !this.spec.active || !this.host.activeEditor? false: this.spec.active(this.host)
+  }
+  /** Associated value of the command. */
+  get value() {
+    return !this.spec.value || !this.host.activeEditor? undefined: this.spec.value(this.host)
+  }
+
+  run(options?: any, e?: Event, run=this.spec.run ?? (() => {})) {
+    if(e && !this.allowDefault) {
+      e.preventDefault()
+    }
+    if(!this.disabled && this.host.activeEditor) {
+      return run(this.host, options)
+    }
+  }
+
+  toObject() {
+    const {id, tags, label, description, icon, category, group, shortcut,  modified, fixedShortcut, allowDefault, fields, disabled, active, value} = this
+    return {id, tags, label, description, icon, category, group, modified, shortcut, fixedShortcut, allowDefault, fields, disabled, active, value}
   }
 }
 
-class NodeCommand<ID extends string> extends Command<ID> {
-
+class NodeCommand<SPEC extends CommandSpec = CommandSpec> extends Command<SPEC> {
+  get tags() {
+    return this.spec.tags ?? ["node"]
+  }
+  get category() {
+    return this.spec.category ?? "editor"
+  }
+  run(options?: any, e?: Event) {
+    const {exec, editorState} = this.host.activeEditor ?? {exec: () => {}}
+    return super.run(options, e, (host, attrs) => exec(wrapSelection(editorState?.schema.nodes[this.id]!, attrs)))
+  }
+  get active() {
+    return this.spec.active? this.spec.active(this.host): !!this.host.store.document.activeNodeMap[this.id]
+  }
+  get value() {
+    return this.spec.value? this.spec.value(this.host): this.host.store.document.activeNodeMap[this.id]
+  }
 }
 
-class MarkCommand<ID extends string> extends Command<ID> {
+class MarkCommand<SPEC extends CommandSpec = CommandSpec> extends Command<SPEC> {
+  get tags() {
+    return this.spec.tags ?? ["mark"]
+  }
+  get category() {
+    return this.spec.category ?? "editor"
+  }
   
+  run(options?: any, e?: Event) {
+    const {exec} = this.host.activeEditor ?? {exec: () => {}}
+    return super.run(options, e, (host, options) => exec(toggleOrUpdateMark(this.id, options)))
+  }
+  get active() {
+    return this.spec.active? this.spec.active(this.host): !!this.host.store.document.activeMarkMap[this.id]
+  }
+  get value() {
+    return this.spec.value? this.spec.value(this.host): this.host.store.document.activeMarkMap[this.id]
+  }
 }
 
-class LayoutCommand<ID extends string> extends Command<ID> {
-  
+class LayoutCommand<SPEC extends CommandSpec = CommandSpec> extends Command<SPEC> {
+  get tags() {
+    return this.spec.tags ?? ["layout"]
+  }
+  get category() {
+    return this.spec.category ?? "editor"
+  }
+
+  run(options?: any, e?: Event) {
+    const {exec} = this.host.activeEditor ?? {exec: () => {}}
+    return super.run(options, e, (host, options) => exec(setAttributeOnSelectedBlocks(this.id, options?.value)as any))
+  }
+  get active() {
+    return this.host.store.document.getActiveAttributeValue(this.id) !== undefined
+  }
+  get value() {
+    return this.host.store.document.getActiveAttributeValue(this.id)
+  }
 }
-
-
 
 export class CommandController implements ReactiveController {
 
   host: App
 	store: RootStore
 
-	get editor() {
-		return this.host.activeEditor
-	}
-
-  get resources() {
-    return this.host.store.resources
-  }
-
-  get editorState() {
-		return this.host.store.resources.active?.editorState
-	}
-
-  get schema() {
-    return this.host.activeEditor?.editorState.schema
-  }
-
-  exec(command: PmCommand) {
-    this.editor?.exec(command)
-  }
-
-  static sameShortcutEvent(e1: KeyboardEvent, e2: KeyboardEvent) {
-    return e1.key === e2.key && e1.altKey === e2.altKey && e1.shiftKey === e2.shiftKey && e1.ctrlKey === e2.ctrlKey && e1.metaKey === e2.metaKey
-  }
-
-	enhanceCallback(id: string, spec: CommandSpec) {
-		return (e: KeyboardEvent, combo: string) => {
-			const disabled = spec.disabled ?? (() => false)
-			const allowDefault = spec.allowDefault ?? false
-			if(!disabled()) {
-        allowDefault? null: window.addEventListener(e.type, (e2: any) => {
-          if(CommandController.sameShortcutEvent(e, e2)) {
-            e2.preventDefault()
-          }
-        })
-				this.host.dispatchEvent(new CustomEvent("ww-command", {detail: {id}}))
-			}
-		}
-	}
-
   constructor(host: App, store: RootStore) {
 		this.store = store;
     (this.host = host).addController(this)
-    makeAutoObservable(this)
   }
 
-  
+  hostConnected() {}
 
-  hostConnected() {
-    this.host.addEventListener("ww-command", ((e: CustomEvent) => {
-      if(e.detail.id in this._commandMap) {
-        const callback = this._commandMap[e.detail.id as keyof typeof this._commandMap].callback
-        callback(e.detail.options)
-      }
-      else {
-        throw Error(`Invalid command '${e.detail.id}'`)
-      }
-    }) as any)
-		Object.entries(this._commandMap).forEach(([key, spec]) => {
-			const callback = this.enhanceCallback(key, spec)
-			spec.shortcut && Hotkeys(spec.shortcut, (e) => callback(e, spec.shortcut!))
-		})
-  }
-
-	get groupLabels() {return {
-    app: msg("App"),
-		document: msg("Document"),
-		editor: msg("Editor"),
-    miscellaneous: msg("Miscellaneous")
-	}}
-
-	getConfiguredShortcut(name: string) {
-		return this.host.store.get("ui", "keymap")[name]?.shortcut
-	}
-
-  reassignShortcut = (name: string, oldShortcut: string) => {
-    const spec = this._commandMap[name as keyof typeof this._commandMap]
-    const newShortcut = this.getConfiguredShortcut(name) ?? spec.shortcut
-    const callback = this.enhanceCallback(name, spec)
-    hotkeys.unbind(oldShortcut)
-    Hotkeys(newShortcut, (e) => callback(e, newShortcut))
-  }
-
-  dispatch<ID extends keyof typeof this._commandMap> (id: ID, options?: any) {
-    this.host.dispatchEvent(new CustomEvent("ww-command", {detail: {id, options}}))
-  }
-
-  queryCommands = (query: keyof typeof this._commandMap | {id?: string, category?: string, tags?: string[]}) => {
+  queryCommands = (query: keyof typeof this.commands | {id?: string, category?: string, tags?: string[]}) => {
     if(typeof query === "string") {
-      return [this.commandMap[query]]
+      return [this.commands[query]]
     }
     else {
-       return Object.values(this.commandMap).filter(v => true 
+       return Object.values(this.commands).filter(v => true 
         && (!query.id || (v.id === query.id)) 
         && (!query.category || (v.category === query.category))
         && (!query.tags || query.tags?.some(t => v.tags?.includes(t)))
       )
     }
   }
-
-	get commandMap() {
-		const names = Object.keys(this._commandMap)
-		const configuredEntries = names
-			.map(name => {
-        const spec = this._commandMap[name as keyof typeof this._commandMap]
-        return [
-          name,
-          {
-            ...spec,
-            callback: undefined,
-            disabled: spec.disabled? spec.disabled(): false,
-            active: spec.active? spec.active(): false,
-            value: spec.value? spec.value(): null,
-            modified: Boolean(this.getConfiguredShortcut(name)),
-            shortcut: this.getConfiguredShortcut(name) ?? spec.shortcut
-          }
-        ]
-      })
-		return Object.fromEntries(configuredEntries) as Record<string, CommandEntry>
-	}
-
-
-  MarkCommandSpec({
-    id,
-    tags=["mark"],
-    category="editor",
-    callback=((options: any) => this.exec(toggleOrUpdateMark(id, options))),
-    active=(() => !!this.resources.activeMarkMap[id]),
-    value=(() => this.resources.activeMarkMap[id]),
-    ...rest
-  }: Partial<CommandSpec> & {id: string}) {
-    return {id, tags, category, callback, active, value, ...rest}
+  
+  @Memoize() get markCommands() {
+    return this.queryCommands({tags: ["mark"]}).filter(cmd => !cmd.tags?.includes("advanced"))
   }
 
+  @Memoize() get nodeCommands() {
+    return this.queryCommands({tags: ["node"]}).filter(cmd => !cmd.tags?.includes("advanced"))
+  }
 
-  LayoutCommandSpec({
-    id,
-    tags=["layout"],
-    category="editor",
-    callback=((options: any) => {
-      const value = options?.value
-      this.exec(setAttributeOnSelectedBlocks(id, value)as any)
-    }),
-    active=(() => !!this.editorState && this.resources.getActiveAttributeValue(id) !== undefined),
-    group=id,
-    value=(() => !!this.editorState && this.resources.getActiveAttributeValue(id)),
-    ...rest
-  }: Partial<CommandSpec> & {id: string}) {
-    return {id, tags, category, callback, active, value, ...rest}
+  @Memoize() get groupedNodeCommands() {
+    return groupBy(this.nodeCommands, "group")
+  }
+
+  @Memoize() get groupedContainerCommands() {
+    return Object.values(groupBy(this.containerCommands, "group"))
   }
   
-  NodeCommandSpec({
-    id,
-    tags=["node"],
-    category="editor",
-    callback=((options: any) => this.exec(wrapSelection(this.editorState?.schema.nodes[nodeName ?? id]!, attrs))),
-    active=(() => !!this.resources.activeNodeMap[id]),
-    value=(() => this.resources.activeNodeMap[id]),
-    disabled=(() => false),
-    ...rest
-  }: Partial<CommandSpec> & {id: string}, attrs?: {}, nodeName?: string) {
-    return {id, tags, category, callback, active, ...rest}
+  @Memoize() get containerCommands() {
+    return this.queryCommands({tags: ["container"]}).filter(cmd => !cmd.tags?.includes("advanced"))
   }
 
+  @Memoize() get layoutCommands() {
+    return this.queryCommands({tags: ["layout"]})
+  }
 
-	get _commandMap() { 
-    const commands = {
-      save: {
+  @Memoize() get generalCommands() {
+    return this.queryCommands({tags: ["general"]})
+  }
+
+  @Memoize() get fontCommands() {
+    return this.queryCommands({tags: ["font"]})
+  }
+
+  @Memoize() get fontFamilyCommand() {
+    return this.queryCommands("fontFamily")[0]
+  }
+
+  @Memoize() get fontSizeCommand() {
+    return this.queryCommands("fontSize")[0]
+  }
+
+  @Memoize() get documentCommands() {
+    return this.queryCommands({category: "document"})
+  }
+
+  @Memoize() get appCommands() {
+    return this.queryCommands({category: "app"})
+  }
+
+  @Memoize() get phrasingCommands() {
+    return this.queryCommands({tags: ["phrasing"]})
+  }
+
+  /*
+  get priorityContainerCommands() {
+    const commands = this.containerCommands
+    const activeI = commands.findIndex(cmd => cmd.active)
+    const activeCommand = commands[activeI]
+    const activeCommandGroup = commands.filter(cmd => activeCommand?.group && activeCommand.group === cmd.group).map(cmd => cmd.id)
+    const activeOffset = activeCommandGroup.indexOf(activeCommand?.id)
+    const nextCmd = activeCommandGroup[(activeOffset + 1) % activeCommandGroup.length]
+    const nextI = commands.findIndex(cmd => cmd.id === nextCmd)
+    const priorityCommands = commands.filter((cmd, i) => {
+      const primaryI = commands.findIndex(c => c.group === cmd.group)
+      return !cmd.group || (activeI !== undefined && activeCommandGroup.includes(cmd.id)? nextI: primaryI) === i
+    })
+    return priorityCommands
+  }*/
+
+  
+  get categoryLabels() {
+    return {
+      "document": msg("Document"),
+      "app": msg("App"),
+      "editor": msg("Editor"),
+      "miscellaneous": msg("Miscellaneous")
+    }
+  }
+
+  @Memoize() get commands() {
+    return {
+      save: new Command(this.host, {
         id: "save",
-        label: msg("Save"),
+        label: () => msg("Save"),
         icon: "file-download",
-        description: msg("Save the active document"),
+        description: () => msg("Save the active document"),
         shortcut: "ctrl+s",
-        callback: () => this.store.resources.save(),
+        run: host => host.store.document.save(),
         category: "document"
-      },
-      saveAs: {
+      }),
+      saveAs: new Command(this.host, {
         id: "saveAs",
-        label: msg("Save As"),
+        label: () => msg("Save As"),
         icon: "file-export",
-        description: msg("Save the active document as a copy"),
+        description: () => msg("Save the active document as a copy"),
         shortcut: "ctrl+shift+s",
-        callback: () => this.store.resources.save(this.store.resources.active?.url, true),
+        run: host => host.store.document.save(true),
         category: "document"
-      },
-      print: {
+      }),
+      print: new Command(this.host, {
         id: "print",
-        label: msg("Print"),
+        label: () => msg("Print"),
         icon: "printer",
-        description: msg("Print the active document"),
+        description: () => msg("Print the active document"),
         shortcut: "ctrl+p",
-        callback: () => this.editor?.pmEditor?.window?.print(),
+        run: host => host.activeEditor?.pmEditor?.window?.print(),
         category: "document"
-      },
-      preview: {
+      }),
+      preview: new Command(this.host, {
         id: "preview",
-        label: msg("Preview"),
+        label: () => msg("Preview"),
         icon: "eye",
-        description: msg("Toggles the preview for the active document"),
+        description: () => msg("Toggles the preview for the active document"),
         shortcut: "ctrl+b",
-        callback: () => this.store.resources.preview(),
-        category: "document",
-        value: () => this.editor?.previewing
-      },
-      toggleSettings: {
-        id: "toggleSettings",
-        label: msg("Toggle Settings"),
+        run: host => host.store.document.preview(),
+        category: "document"
+      }),
+      editHead: new Command(this.host, {
+        id: "editHead",
+        label: () => msg("Edit Metadata"),
+        icon: "chevron-right",
+        description: () => msg("Toggles the metadata editor"),
+        shortcut: "ctrl+h",
+        run: host => host.foldOpen = !host.foldOpen,
+        category: "document"
+      }),
+      openSettings: new Command(this.host, {
+        id: "openSettings",
+        label: () => msg("Open Settings"),
         icon: "settings-filled",
-        description: msg("Opens or closes the settings drawer"),
+        description: () => msg("Opens the settings"),
         shortcut: "ctrl+i",
-        callback: () => this.host.settingsOpen = !this.host.settingsOpen,
+        run: (host) => host.environment.api.createWindow("settings.html", {...WINDOW_OPTIONS, title: `${msg("Settings")} - WebWriter`, visible: false, label: "settings"}),
         category: "app"
-      },
-      open: {
+      }),
+      open: new Command(this.host, {
         id: "open",
-        label: msg("Open"),
+        label: () => msg("Open"),
         icon: "file-upload",
         shortcut: "ctrl+o",
-        description: msg("Open a document"),
-        callback: () => this.store.resources.load(),
+        description: () => msg("Open a document"),
+        run: async host => {
+          const url = await host.environment.api.Dialog.promptRead({filters: INDIVIDUAL_FILTERS})
+          url && host.environment.api.createWindow(`?open=${url}`, WINDOW_OPTIONS)
+        },
         category: "app"
-      },
-      create: {
+      }),
+      create: new Command(this.host, {
         id: "create",
-        label: msg("Create"),
+        label: () => msg("Create"),
         icon: "file-plus",
-        description: msg("Create a new document"),
+        description: () => msg("Create a new document"),
         shortcut: "ctrl+n",
-        callback: () => this.store.resources.create(),
+        run: host => host.environment.api.createWindow("", WINDOW_OPTIONS),
         category: "app"
-      },
-      /*discard: {
+      }),
+      /*discard: new Command(this.host, {
         id: "discard",
-        label: msg("Discard"),
+        label: () => msg("Discard"),
         tags: ["active"],
         icon: "file-x",
-        description: msg("Close the active document"),
+        description: () => msg("Close the active document"),
         shortcut: "ctrl+w",
-        callback: () => this.store.resources.discard(),
+        run: () => this.store.resources.discard(),
         category: "document"
-      },*/
-      canvas: this.NodeCommandSpec({
+      }),*/
+      br: new NodeCommand(this.host, {
         id: "br",
-        label: msg("Canvas"),
-        icon: "chalkboard",
-        description: msg("Insert a canvas"),
-        tags: ["node", "container"]
-      }),
-      button: this.NodeCommandSpec({
-        id: "button",
-        label: msg("Button"),
-        icon: "square-f1",
-        description: msg("Insert a button")
-      }),
-      input: this.NodeCommandSpec({
-        id: "input",
-        label: msg("Input"),
-        icon: "forms",
-        description: msg("Insert an input")
-      }),
-      select: this.NodeCommandSpec({
-        id: "select",
-        label: msg("Select"),
-        icon: "select",
-        description: msg("Insert a select")
-      }),
-      meter: this.NodeCommandSpec({
-        id: "meter",
-        label: msg("Meter"),
-        icon: "progress",
-        description: msg("Insert a meter")
-      }),
-      datalist: this.NodeCommandSpec({
-        id: "datalist",
-        label: msg("Data List"),
-        icon: "stack-2",
-        description: msg("Insert a data list")
-      }),
-      fieldset: this.NodeCommandSpec({
-        id: "fieldset",
-        label: msg("Field Set"),
-        icon: "forms",
-        description: msg("Insert a field set")
-      }),
-      form: this.NodeCommandSpec({
-        id: "form",
-        label: msg("Form"),
-        icon: "forms",
-        description: msg("Insert a form"),
-        tags: ["node", "container"]
-      }),
-      label: this.NodeCommandSpec({
-        id: "label",
-        label: msg("Label"),
-        icon: "capsule-horizontal",
-        description: msg("Insert a label")
-      }),
-      legend: this.NodeCommandSpec({
-        id: "legend",
-        label: msg("Legend"),
-        icon: "tags",
-        description: msg("Insert a legend")
-      }),
-      optgroup: this.NodeCommandSpec({
-        id: "optgroup",
-        label: msg("Option Group"),
-        icon: "circles",
-        description: msg("Insert an option group")
-      }),
-      option: this.NodeCommandSpec({
-        id: "option",
-        label: msg("Option"),
-        icon: "circle",
-        description: msg("Insert an option")
-      }),
-      output: this.NodeCommandSpec({
-        id: "output",
-        label: msg("Output"),
-        icon: "clipboard-text",
-        description: msg("Insert an output")
-      }),
-      progress: this.NodeCommandSpec({
-        id: "progress",
-        label: msg("Progress Indicator"),
-        icon: "progress",
-        description: msg("Insert a progress indicator")
-      }),
-      br: this.NodeCommandSpec({
-        id: "br",
-        label: msg("Line Break"),
+        label: () => msg("Line Break"),
         icon: "arrow-forward",
-        description: msg("Insert a line break")
+        description: () => msg("Insert a line break")
       }),
-      wbr: this.NodeCommandSpec({
+      wbr: new NodeCommand(this.host, {
         id: "wbr",
-        label: msg("Line Break Opportunity"),
+        label: () => msg("Line Break Opportunity"),
         icon: "arrow-forward",
-        description: msg("Insert a line break opportunity")
+        description: () => msg("Insert a line break opportunity")
       }),
-      b: this.MarkCommandSpec({
+      b: new MarkCommand(this.host, {
         id: "b",
-        label: msg("Bold"),
+        label: () => msg("Bold"),
         icon: "bold",
-        description: msg("Mark the selection as bold"),
+        description: () => msg("Mark the selection as bold"),
         shortcut: "alt+shift+b"
       }),
-      i: this.MarkCommandSpec({
+      i: new MarkCommand(this.host, {
         id: "i",
-        label: msg("Italic"),
+        label: () => msg("Italic"),
         icon: "italic",
-        description: msg("Mark the selection as italic"),
+        description: () => msg("Mark the selection as italic"),
         shortcut: "alt+shift+i"
       }),
-      u: this.MarkCommandSpec({
+      u: new MarkCommand(this.host, {
         id: "u",
-        label: msg("Underline"),
+        label: () => msg("Underline"),
         icon: "underline",
-        description: msg("Mark the selection as underlined"),
+        description: () => msg("Mark the selection as underlined"),
         shortcut: "alt+shift+u",
       }),
-      s: this.MarkCommandSpec({
+      s: new MarkCommand(this.host, {
         id: "s",
-        label: msg("Strikethrough"),
+        label: () => msg("Strikethrough"),
         icon: "strikethrough",
-        description: msg("Mark the selection as struck through"),
+        description: () => msg("Mark the selection as struck through"),
         shortcut: "alt+shift+s",
       }),
-      sup: this.MarkCommandSpec({
+      sup: new MarkCommand(this.host, {
         id: "sup",
-        label: msg("Superscript"),
+        label: () => msg("Superscript"),
         icon: "superscript",
-        description: msg("Mark the selection as a superscript"),
+        description: () => msg("Mark the selection as a superscript"),
         shortcut: "alt+shift+o",
         group: "supsub"
       }),
-      sub: this.MarkCommandSpec({
+      sub: new MarkCommand(this.host, {
         id: "sub",
-        label: msg("Subscript"),
+        label: () => msg("Subscript"),
         icon: "subscript",
-        description: msg("Mark the selection as a subscript"),
+        description: () => msg("Mark the selection as a subscript"),
         shortcut: "alt+shift+l",
       }),
-      code: this.MarkCommandSpec({
+      code: new MarkCommand(this.host, {
         id: "code",
-        label: msg("Code"),
+        label: () => msg("Code"),
         icon: "code",
-        description: msg("Mark the selection as code"),
+        description: () => msg("Mark the selection as code"),
         shortcut: "alt+shift+c"
       }),
-      a: this.MarkCommandSpec({
+      a: new MarkCommand(this.host, {
         id: "a",
-        label: msg("Link"),
+        label: () => msg("Link"),
         icon: "link",
-        description: msg("Mark the selection as a link"),
+        description: () => msg("Mark the selection as a link"),
         shortcut: "alt+shift+k",
         fields: {
           href: {
@@ -642,10 +616,10 @@ export class CommandController implements ReactiveController {
           }
         }
       }),
-      q: this.MarkCommandSpec({
+      q: new MarkCommand(this.host, {
         id: "q",
-        label: msg("Quotation"),
-        description: msg("Mark the selection as a quotation"),
+        label: () => msg("Quotation"),
+        description: () => msg("Mark the selection as a quotation"),
         shortcut: "alt+shift+q",
         icon: "quote",
         fields: {
@@ -655,17 +629,17 @@ export class CommandController implements ReactiveController {
           }
         }
       }),
-      kbd: this.MarkCommandSpec({
+      kbd: new MarkCommand(this.host, {
         id: "kbd",
-        label: msg("Keyboard Shortcut"),
-        description: msg("Mark the selection as a keyboard shortcut"),
+        label: () => msg("Keyboard Shortcut"),
+        description: () => msg("Mark the selection as a keyboard shortcut"),
         shortcut: "alt+shift+p",
         icon: "command"
       }),
-      abbr: this.MarkCommandSpec({
+      abbr: new MarkCommand(this.host, {
         id: "abbr",
-        label: msg("Abbreviation"),
-        description: msg("Mark the selection as an abbreviation"),
+        label: () => msg("Abbreviation"),
+        description: () => msg("Mark the selection as an abbreviation"),
         icon: "emphasis",
         shortcut: "alt+shift+a",
         fields: {
@@ -675,611 +649,742 @@ export class CommandController implements ReactiveController {
           }
         }
       }),
-      bdi: this.MarkCommandSpec({
+      bdi: new MarkCommand(this.host, {
         id: "bdi",
-        label: msg("Bidirectional Isolate"),
-        description: msg("Mark the selection as a 'bidirectional isolate'"),
+        label: () => msg("Bidirectional Isolate"),
+        description: () => msg("Mark the selection as a 'bidirectional isolate'"),
         icon: "text-direction-ltr",
         shortcut: "alt+shift+g",
+        tags: ["mark", "advanced"]
       }),
-      bdo: this.MarkCommandSpec({
+      bdo: new MarkCommand(this.host, {
         id: "bdo",
-        label: msg("Bidirectional Override"),
-        description: msg("Mark the selection as a 'bidirectional override'"),
+        label: () => msg("Bidirectional Override"),
+        description: () => msg("Mark the selection as a 'bidirectional override'"),
         icon: "text-direction-ltr",
         shortcut: "alt+shift+h",
+        tags: ["mark", "advanced"]
       }),
-      cite: this.MarkCommandSpec({
+      cite: new MarkCommand(this.host, {
         id: "cite",
-        label: msg("Citation Source"),
-        description: msg("Mark the selection as a citation source"),
+        label: () => msg("Citation Source"),
+        description: () => msg("Mark the selection as a citation source"),
         icon: "letter-c",
         shortcut: "alt+shift+j",
+        tags: ["mark", "advanced"]
       }),
-      data: this.MarkCommandSpec({
+      data: new MarkCommand(this.host, {
         id: "data",
-        label: msg("Data Annotation"),
-        description: msg("Mark the selection with a data annotation"),
+        label: () => msg("Data Annotation"),
+        description: () => msg("Mark the selection with a data annotation"),
         icon: "circle-dot",
         shortcut: "alt+shift+f",
+        tags: ["mark", "advanced"]
       }),
-      del: this.MarkCommandSpec({
+      del: new MarkCommand(this.host, {
         id: "del",
-        label: msg("Deletion"),
-        description: msg("Mark the selection as a deletion"),
+        label: () => msg("Deletion"),
+        description: () => msg("Mark the selection as a deletion"),
         icon: "pencil-minus",
-        shortcut: "alt+shift+d"
+        shortcut: "alt+shift+d",
+        tags: ["mark", "advanced"]
       }),
-      dfn: this.MarkCommandSpec({
+      dfn: new MarkCommand(this.host, {
         id: "dfn",
-        label: msg("Defined Term"),
-        description: msg("Mark the selection as a defined term"),
+        label: () => msg("Defined Term"),
+        description: () => msg("Mark the selection as a defined term"),
         icon: "vocabulary",
-        shortcut: "alt+shift+t"
+        shortcut: "alt+shift+t",
+        tags: ["mark", "advanced"]
       }),
-      em: this.MarkCommandSpec({
+      em: new MarkCommand(this.host, {
         id: "em",
-        label: msg("Emphasis"),
-        description: msg("Mark the selection as emphasized"),
+        label: () => msg("Emphasis"),
+        description: () => msg("Mark the selection as emphasized"),
         icon: "italic",
-        shortcut: "alt+shift+z"
+        shortcut: "alt+shift+z",
+        tags: ["mark", "advanced"]
       }),
-      ins: this.MarkCommandSpec({
+      ins: new MarkCommand(this.host, {
         id: "ins",
-        label: msg("Insertion"),
-        description: msg("Mark the selection as an insertion"),
+        label: () => msg("Insertion"),
+        description: () => msg("Mark the selection as an insertion"),
         icon: "pencil-plus",
-        shortcut: "alt+shift+y"
+        shortcut: "alt+shift+y",
+        tags: ["mark", "advanced"]
       }),
-      ruby: this.MarkCommandSpec({
+      ruby: new MarkCommand(this.host, {
         id: "ruby",
-        label: msg("Ruby Annotation"),
-        description: msg("Mark the selection with a ruby annotation"),
+        label: () => msg("Ruby Annotation"),
+        description: () => msg("Mark the selection with a ruby annotation"),
         icon: "letter-r",
-        shortcut: "alt+shift+r"
+        shortcut: "alt+shift+r",
+        tags: ["mark", "advanced"]
       }),
-      samp: this.MarkCommandSpec({
+      samp: new MarkCommand(this.host, {
         id: "samp",
-        label: msg("Sample Output"),
-        description: msg("Mark the selection as sample output"),
+        label: () => msg("Sample Output"),
+        description: () => msg("Mark the selection as sample output"),
         icon: "source-code",
-        shortcut: "alt+shift+n"
+        shortcut: "alt+shift+n",
+        tags: ["mark", "advanced"]
       }),
-      small: this.MarkCommandSpec({
+      small: new MarkCommand(this.host, {
         id: "small",
-        label: msg("Side Comment"),
-        description: msg("Mark the selection as a side comment"),
+        label: () => msg("Side Comment"),
+        description: () => msg("Mark the selection as a side comment"),
         icon: "letter-s",
-        shortcut: "alt+shift+m"
-
+        shortcut: "alt+shift+m",
+        tags: ["mark", "advanced"]
       }),
-      span: this.MarkCommandSpec({
+      span: new MarkCommand(this.host, {
         id: "span",
-        label: msg("Span"),
-        description: msg("Mark the selection as a span"),
+        label: () => msg("Span"),
+        description: () => msg("Mark the selection as a span"),
         icon: "rectangle",
-        shortcut: "alt+shift+x"
+        shortcut: "alt+shift+x",
+        tags: ["mark", "advanced"]
       }),
-      strong: this.MarkCommandSpec({
+      strong: new MarkCommand(this.host, {
         id: "strong",
-        label: msg("Strong Importance"),
-        description: msg("Mark the selection as strongly important"),
+        label: () => msg("Strong Importance"),
+        description: () => msg("Mark the selection as strongly important"),
         icon: "bold",
-        shortcut: "alt+shift+w"
+        shortcut: "alt+shift+w",
+        tags: ["mark", "advanced"]
       }),
-      time: this.MarkCommandSpec({
+      time: new MarkCommand(this.host, {
         id: "time",
-        label: msg("Date/Time Annotation"),
-        description: msg("Mark the selection as a date/time annotation"),
+        label: () => msg("Date/Time Annotation"),
+        description: () => msg("Mark the selection as a date/time annotation"),
         icon: "calendar-time",
-        shortcut: "alt+shift+t"
+        shortcut: "alt+shift+t",
+        tags: ["mark", "advanced"]
       }),
-      var: this.MarkCommandSpec({
+      var: new MarkCommand(this.host, {
         id: "var",
-        label: msg("Variable"),
-        description: msg("Mark the selection as a variable"),
+        label: () => msg("Variable"),
+        description: () => msg("Mark the selection as a variable"),
         icon: "variable",
-        shortcut: "alt+shift+v"
+        shortcut: "alt+shift+v",
+        tags: ["mark", "advanced"]
       }),
-      p: this.NodeCommandSpec({
+      p: new NodeCommand(this.host, {
         id: "p",
-        label: msg("Paragraph"),
+        label: () => msg("Paragraph"),
         icon: "align-justified",
-        description: msg("Insert a paragraph"),
+        description: () => msg("Insert a paragraph"),
+        group: "textblock",
         tags: ["node", "container"]
       }),
-      h1: this.NodeCommandSpec({
+      pre: new NodeCommand(this.host, {
+        id: "pre",
+        label: () => msg("Preformatted Text"),
+        icon: "code-dots",
+        description: () => msg("Insert a preformatted text block"),
+        group: "textblock",
+        tags: ["node", "container"]
+      }),
+      h1: new NodeCommand(this.host, {
         id: "h1",
-        label: msg("Heading"),
+        label: () => msg("Heading"),
         icon: "h-1",
-        description: msg("Insert a heading (level 1)"),
+        description: () => msg("Insert a heading (level 1)"),
         group: "heading",
         tags: ["node", "container"]
       }),
-      h2: this.NodeCommandSpec({
+      h2: new NodeCommand(this.host, {
         id: "h2",
-        label: msg("Heading 2"),
+        label: () => msg("Heading 2"),
         icon: "h-2",
-        description: msg("Insert a heading (level 2)"),
+        description: () => msg("Insert a heading (level 2)"),
         group: "heading",
         tags: ["node", "container"]
       }),
-      h3: this.NodeCommandSpec({
+      h3: new NodeCommand(this.host, {
         id: "h3",
-        label: msg("Heading 3"),
+        label: () => msg("Heading 3"),
         icon: "h-3",
-        description: msg("Insert a heading (level 3)"),
+        description: () => msg("Insert a heading (level 3)"),
         group: "heading",
         tags: ["node", "container"]
       }),
-      h4: this.NodeCommandSpec({
+      h4: new NodeCommand(this.host, {
         id: "h4",
-        label: msg("Heading 4"),
+        label: () => msg("Heading 4"),
         icon: "h-4",
-        description: msg("Insert a heading (level 4)"),
+        description: () => msg("Insert a heading (level 4)"),
         group: "heading",
         tags: ["node", "container"]
       }),
-      h5: this.NodeCommandSpec({
+      h5: new NodeCommand(this.host, {
         id: "h5",
-        label: msg("Heading 5"),
+        label: () => msg("Heading 5"),
         icon: "h-5",
-        description: msg("Insert a heading (level 5)"),
+        description: () => msg("Insert a heading (level 5)"),
         group: "heading",
         tags: ["node", "container"]
       }),
-      h6: this.NodeCommandSpec({
+      h6: new NodeCommand(this.host, {
         id: "h6",
-        label: msg("Heading 6"),
+        label: () => msg("Heading 6"),
         icon: "h-6",
-        description: msg("Insert a heading (level 6)"),
+        description: () => msg("Insert a heading (level 6)"),
         group: "heading",
         tags: ["node", "container"]
       }),
-      hgroup: this.NodeCommandSpec({
+      hgroup: new NodeCommand(this.host, {
         id: "hgroup",
-        label: msg("Heading Group"),
+        label: () => msg("Heading Group"),
         icon: "heading",
-        description: msg("Insert a heading group")
+        description: () => msg("Insert a heading group")
       }),
-      ul: this.NodeCommandSpec({
+      ul: new NodeCommand(this.host, {
         id: "ul",
-        label: msg("List"),
+        label: () => msg("List"),
         icon: "list",
-        description: msg("Insert a list (unordered)"),
+        description: () => msg("Insert a list (unordered)"),
         group: "list",
         tags: ["node", "container"]
       }),
-      ol: this.NodeCommandSpec({
+      ol: new NodeCommand(this.host, {
         id: "ol",
-        label: msg("Ordered List"),
+        label: () => msg("Ordered List"),
         icon: "list-numbers",
-        description: msg("Insert a list (ordered)"),
+        description: () => msg("Insert a list (ordered)"),
         group: "list",
         tags: ["node", "container"]
       }),
-      li: this.NodeCommandSpec({
+      li: new NodeCommand(this.host, {
         id: "li",
-        label: msg("List Item"),
+        label: () => msg("List Item"),
         icon: "separator",
-        description: msg("Insert a list item")
+        description: () => msg("Insert a list item")
       }),
-      math: this.NodeCommandSpec({
+      form: new NodeCommand(this.host, {
+        id: "form",
+        label: () => msg("Form"),
+        icon: "forms",
+        group: "form",
+        description: () => msg("Insert a form"),
+        tags: ["node", "container", "advanced"]
+      }),
+      button: new NodeCommand(this.host, {
+        id: "button",
+        label: () => msg("Button"),
+        icon: "square-f1",
+        description: () => msg("Insert a button")
+      }),
+      input: new NodeCommand(this.host, {
+        id: "input",
+        label: () => msg("Input"),
+        icon: "forms",
+        description: () => msg("Insert an input")
+      }),
+      select: new NodeCommand(this.host, {
+        id: "select",
+        label: () => msg("Select"),
+        icon: "select",
+        description: () => msg("Insert a select")
+      }),
+      meter: new NodeCommand(this.host, {
+        id: "meter",
+        label: () => msg("Meter"),
+        icon: "progress",
+        description: () => msg("Insert a meter")
+      }),
+      datalist: new NodeCommand(this.host, {
+        id: "datalist",
+        label: () => msg("Data List"),
+        icon: "stack-2",
+        description: () => msg("Insert a data list")
+      }),
+      fieldset: new NodeCommand(this.host, {
+        id: "fieldset",
+        label: () => msg("Field Set"),
+        icon: "forms",
+        description: () => msg("Insert a field set")
+      }),
+      label: new NodeCommand(this.host, {
+        id: "label",
+        label: () => msg("Label"),
+        icon: "capsule-horizontal",
+        description: () => msg("Insert a label")
+      }),
+      legend: new NodeCommand(this.host, {
+        id: "legend",
+        label: () => msg("Legend"),
+        icon: "tags",
+        description: () => msg("Insert a legend")
+      }),
+      optgroup: new NodeCommand(this.host, {
+        id: "optgroup",
+        label: () => msg("Option Group"),
+        icon: "circles",
+        description: () => msg("Insert an option group")
+      }),
+      option: new NodeCommand(this.host, {
+        id: "option",
+        label: () => msg("Option"),
+        icon: "circle",
+        description: () => msg("Insert an option")
+      }),
+      output: new NodeCommand(this.host, {
+        id: "output",
+        label: () => msg("Output"),
+        icon: "clipboard-text",
+        description: () => msg("Insert an output")
+      }),
+      progress: new NodeCommand(this.host, {
+        id: "progress",
+        label: () => msg("Progress Indicator"),
+        icon: "progress",
+        description: () => msg("Insert a progress indicator")
+      }),
+      math: new NodeCommand(this.host, {
         id: "math",
-        label: msg("Math Formula"),
+        label: () => msg("Math Formula"),
         icon: "math",
-        description: msg("Insert a math formula"),
-        tags: ["node", "container"]
+        group: "math",
+        description: () => msg("Insert a math formula"),
+        tags: ["node", "container", "advanced"]
       }),      
-      figure: this.NodeCommandSpec({
+      figure: new NodeCommand(this.host, {
         id: "figure",
-        label: msg("Figure"),
+        label: () => msg("Figure"),
         icon: "layout-bottombar",
-        description: msg("Insert a figure"),
-        tags: ["node", "container"]
+        description: () => msg("Insert a figure"),
+        group: "semanticsection",
+        tags: ["node", "container", "advanced"]
       }),
-      figcaption: this.NodeCommandSpec({
+      figcaption: new NodeCommand(this.host, {
         id: "figcaption",
-        label: msg("Figure Caption"),
+        label: () => msg("Figure Caption"),
         icon: "text-caption",
-        description: msg("Insert a figure caption")
+        description: () => msg("Insert a figure caption")
       }),
-      img: this.NodeCommandSpec({
+      img: new NodeCommand(this.host, {
         id: "img",
-        label: msg("Image"),
+        label: () => msg("Image"),
         icon: "photo",
-        description: msg("Insert an image")
+        description: () => msg("Insert an image")
       }),
-      source: this.NodeCommandSpec({
+      source: new NodeCommand(this.host, {
         id: "source",
-        label: msg("Source"),
+        label: () => msg("Source"),
         icon: "circles-relation",
-        description: msg("Insert a source")
+        description: () => msg("Insert a source")
       }),
-      track: this.NodeCommandSpec({
+      track: new NodeCommand(this.host, {
         id: "track",
-        label: msg("Track"),
+        label: () => msg("Track"),
         icon: "track",
-        description: msg("Insert a track")
+        description: () => msg("Insert a track")
       }),
-      picture: this.NodeCommandSpec({
+      picture: new NodeCommand(this.host, {
         id: "picture",
-        label: msg("Picture"),
+        label: () => msg("Picture"),
         icon: "photo",
-        description: msg("Insert a picture")
+        group: "image",
+        description: () => msg("Insert a picture"),
+        tags: ["node", "container", "advanced"]
       }),
-      audio: this.NodeCommandSpec({
+      audio: new NodeCommand(this.host, {
         id: "audio",
-        label: msg("Audio"),
+        label: () => msg("Audio"),
         icon: "music",
-        description: msg("Insert audio")
+        group: "audio",
+        description: () => msg("Insert audio"),
+        tags: ["node", "container", "advanced"]
       }),
-      video: this.NodeCommandSpec({
+      video: new NodeCommand(this.host, {
         id: "video",
-        label: msg("Video"),
+        label: () => msg("Video"),
         icon: "movie",
-        description: msg("Insert video")
+        group: "video",
+        description: () => msg("Insert video"),
+        tags: ["node", "container", "advanced"]
       }),
-      object: this.NodeCommandSpec({
+      object: new NodeCommand(this.host, {
         id: "object",
-        label: msg("Object"),
+        label: () => msg("Object"),
         icon: "frame",
-        description: msg("Insert object")
+        description: () => msg("Insert object")
       }),
-      embed: this.NodeCommandSpec({
+      embed: new NodeCommand(this.host, {
         id: "embed",
-        label: msg("Embed"),
+        label: () => msg("Embed"),
         icon: "frame",
-        description: msg("Insert embed")
+        description: () => msg("Insert embed")
       }),
-      iframe: this.NodeCommandSpec({
+      iframe: new NodeCommand(this.host, {
         id: "iframe",
-        label: msg("Inline Frame"),
-        icon: "frame",
-        description: msg("Insert an inline frame")
+        label: () => msg("Website"),
+        icon: "world-www",
+        group: "site",
+        description: () => msg("Insert a website (as an inline frame)"),
+        tags: ["node", "container", "advanced"]
       }),
-      portal: this.NodeCommandSpec({
+      portal: new NodeCommand(this.host, {
         id: "portal",
-        label: msg("Portal"),
+        label: () => msg("Portal"),
         icon: "window",
-        description: msg("Insert a portal")
+        group: "site",
+        description: () => msg("Insert a portal"),
+        tags: ["node", "container", "advanced"]
       }),
-      script: this.NodeCommandSpec({
+      script: new NodeCommand(this.host, {
         id: "script",
-        label: msg("Script"),
+        label: () => msg("Script"),
         icon: "script",
-        description: msg("Insert a script"),
-        tags: ["node", "container"]
+        group: "script",
+        description: () => msg("Insert a script"),
+        tags: ["node", "container", "advanced"]
       }),
-      style: this.NodeCommandSpec({
+      style: new NodeCommand(this.host, {
         id: "style",
-        label: msg("Style"),
+        label: () => msg("Style"),
         icon: "brush",
-        description: msg("Insert a style"),
-        tags: ["node", "container"]
+        group: "script",
+        description: () => msg("Insert a style"),
+        tags: ["node", "container", "advanced"]
       }),
-      template: this.NodeCommandSpec({
+      template: new NodeCommand(this.host, {
         id: "template",
-        label: msg("Template"),
+        label: () => msg("Template"),
         icon: "template",
-        description: msg("Insert a template")
+        description: () => msg("Insert a template")
       }),
-      slot: this.NodeCommandSpec({
+      slot: new NodeCommand(this.host, {
         id: "slot",
-        label: msg("Slot"),
+        label: () => msg("Slot"),
         icon: "outlet",
-        description: msg("Insert a slot")
+        description: () => msg("Insert a slot")
       }),
-      noscript: this.NodeCommandSpec({
+      noscript: new NodeCommand(this.host, {
         id: "noscript",
-        label: msg("NoScript"),
+        label: () => msg("NoScript"),
         icon: "code-off",
-        description: msg("Insert a NoScript")
+        description: () => msg("Insert a NoScript")
       }),
-      dialog: this.NodeCommandSpec({
+      dialog: new NodeCommand(this.host, {
         id: "dialog",
-        label: msg("Dialog"),
+        label: () => msg("Dialog"),
         icon: "app-window",
-        description: msg("Insert a dialog"),
-        tags: ["node", "container"]
+        description: () => msg("Insert a dialog"),
+        tags: ["node", "container", "advanced"]
       }),
-      details: this.NodeCommandSpec({
+      details: new NodeCommand(this.host, {
         id: "details",
-        label: msg("Details"),
+        label: () => msg("Details"),
         icon: "circle-chevron-right",
-        description: msg("Insert details"),
-        tags: ["node", "container"]
+        description: () => msg("Insert details"),
+        group: "details",
+        tags: ["node", "container", "advanced"]
       }),
-      summary: this.NodeCommandSpec({
+      summary: new NodeCommand(this.host, {
         id: "summary",
-        label: msg("Summary"),
+        label: () => msg("Summary"),
         icon: "circle-letter-s",
-        description: msg("Insert summary")
+        description: () => msg("Insert summary")
       }),
-      article: this.MarkCommandSpec({
+      article: new NodeCommand(this.host, {
         id: "article",
-        label: msg("Article"),
+        label: () => msg("Article"),
         icon: "article",
-        description: msg("Insert an article"),
+        description: () => msg("Insert an article"),
         group: "semanticsection",
-        tags: ["node", "container"]
+        tags: ["node", "container", "advanced"]
       }),
-      aside: this.MarkCommandSpec({
+      aside: new NodeCommand(this.host, {
         id: "aside",
-        label: msg("Aside"),
+        label: () => msg("Aside"),
         icon: "notes",
-        description: msg("Insert an aside"),
+        description: () => msg("Insert an aside"),
         group: "semanticsection",
-        tags: ["node", "container"]
+        tags: ["node", "container", "advanced"]
       }),
-      nav: this.MarkCommandSpec({
+      nav: new NodeCommand(this.host, {
         id: "nav",
-        label: msg("Navigation"),
+        label: () => msg("Navigation"),
         icon: "directions",
-        description: msg("Insert a navigation"),
+        description: () => msg("Insert a navigation"),
         group: "semanticsection",
-        tags: ["node", "container"]
+        tags: ["node", "container", "advanced"]
       }),
-      section: this.MarkCommandSpec({
+      section: new NodeCommand(this.host, {
         id: "section",
-        label: msg("Section"),
+        label: () => msg("Section"),
         icon: "section-sign",
-        description: msg("Insert a section"),
+        description: () => msg("Insert a section"),
         group: "semanticsection",
-        tags: ["node", "container"]
+        tags: ["node", "container", "advanced"]
       }),
-      header: this.MarkCommandSpec({
+      header: new NodeCommand(this.host, {
         id: "header",
-        label: msg("Header"),
+        label: () => msg("Header"),
         icon: "layout-navbar",
-        description: msg("Insert a header"),
+        description: () => msg("Insert a header"),
         group: "semanticsection",
-        tags: ["node", "container"]
+        tags: ["node", "container", "advanced"]
       }),
-      footer: this.MarkCommandSpec({
+      footer: new NodeCommand(this.host, {
         id: "footer",
-        label: msg("Footer"),
+        label: () => msg("Footer"),
         icon: "layout-bottombar",
-        description: msg("Insert a footer"),
+        description: () => msg("Insert a footer"),
         group: "semanticsection",
-        tags: ["node", "container"]
+        tags: ["node", "container", "advanced"]
       }),
-      main: this.MarkCommandSpec({
+      main: new NodeCommand(this.host, {
         id: "main",
-        label: msg("Main"),
+        label: () => msg("Main"),
         icon: "news",
-        description: msg("Insert a main"),
+        description: () => msg("Insert a main"),
         group: "semanticsection",
-        tags: ["node", "container"]
+        tags: ["node", "container", "advanced"]
       }),
-      search: this.MarkCommandSpec({
+      search: new NodeCommand(this.host, {
         id: "search",
-        label: msg("Search"),
+        label: () => msg("Search"),
         icon: "list-search",
-        description: msg("Insert a search"),
+        description: () => msg("Insert a search"),
         group: "semanticsection",
-        tags: ["node", "container"]
+        tags: ["node", "container", "advanced"]
       }),
-      address: this.MarkCommandSpec({
+      address: new NodeCommand(this.host, {
         id: "address",
-        label: msg("Address"),
+        label: () => msg("Address"),
         icon: "address-book",
-        description: msg("Insert an address"),
+        description: () => msg("Insert an address"),
         group: "semanticsection",
-        tags: ["node", "container"]
+        tags: ["node", "container", "advanced"]
       }),  
-      blockquote: this.MarkCommandSpec({
+      blockquote: new NodeCommand(this.host, {
         id: "blockquote",
-        label: msg("Blockquote"),
+        label: () => msg("Blockquote"),
         icon: "blockquote",
-        description: msg("Insert a blockquote"),
+        description: () => msg("Insert a blockquote"),
         group: "semanticsection",
-        tags: ["node", "container"]
+        tags: ["node", "container", "advanced"]
       }),  
-      svg: this.MarkCommandSpec({
+      svg: new NodeCommand(this.host, {
         id: "svg",
-        label: msg("SVG Drawing"),
+        label: () => msg("SVG Drawing"),
         icon: "svg",
-        description: msg("Insert an SVG Drawing"),
-        tags: ["node", "container"]
+        description: () => msg("Insert an SVG Drawing"),
+        group: "script",
+        tags: ["node", "container", "advanced"]
       }),
-      table: this.MarkCommandSpec({
+      table: new NodeCommand(this.host, {
         id: "table",
-        label: msg("Table"),
+        label: () => msg("Table"),
         icon: "table",
-        description: msg("Insert a table"),
-        tags: ["node", "container"]
+        group: "table",
+        description: () => msg("Insert a table"),
+        tags: ["node", "container", "advanced"]
       }),
-      caption: this.MarkCommandSpec({
+      caption: new NodeCommand(this.host, {
         id: "caption",
-        label: msg("Table Caption"),
+        label: () => msg("Table Caption"),
         icon: "table-alias",
-        description: msg("Insert a table caption")
+        description: () => msg("Insert a table caption")
       }),
-      col: this.MarkCommandSpec({
+      col: new NodeCommand(this.host, {
         id: "col",
-        label: msg("Table Column"),
+        label: () => msg("Table Column"),
         icon: "table-column",
-        description: msg("Insert a table column")
+        description: () => msg("Insert a table column")
       }),
-      colgroup: this.MarkCommandSpec({
+      colgroup: new NodeCommand(this.host, {
         id: "colgroup",
-        label: msg("Table Column Group"),
+        label: () => msg("Table Column Group"),
         icon: "columns-3",
-        description: msg("Insert a table column group")
+        description: () => msg("Insert a table column group")
       }),
-      tbody: this.MarkCommandSpec({
+      tbody: new NodeCommand(this.host, {
         id: "tbody",
-        label: msg("Table Body"),
+        label: () => msg("Table Body"),
         icon: "table",
-        description: msg("Insert a table body")
+        description: () => msg("Insert a table body")
       }),
-      td: this.MarkCommandSpec({
+      td: new NodeCommand(this.host, {
         id: "td",
-        label: msg("Table cell"),
+        label: () => msg("Table cell"),
         icon: "square",
-        description: msg("Insert a table cell")
+        description: () => msg("Insert a table cell")
       }),
-      tfoot: this.MarkCommandSpec({
+      tfoot: new NodeCommand(this.host, {
         id: "tfoot",
-        label: msg("Table Footer"),
+        label: () => msg("Table Footer"),
         icon: "table-row",
-        description: msg("Insert a table footer")
+        description: () => msg("Insert a table footer")
       }),
-      th: this.MarkCommandSpec({
+      th: new NodeCommand(this.host, {
         id: "th",
-        label: msg("Table header"),
+        label: () => msg("Table header"),
         icon: "table-row",
-        description: msg("Insert a table header row")
+        description: () => msg("Insert a table header row")
       }),
-      thead: this.MarkCommandSpec({
+      thead: new NodeCommand(this.host, {
         id: "thead",
-        label: msg("Table Head"),
-        icon: "table-settings",
-        description: msg("Insert a table head")
+        label: () => msg("Table Head"),
+        icon: "table-options",
+        description: () => msg("Insert a table head")
       }),
-      tr: this.MarkCommandSpec({
+      tr: new NodeCommand(this.host, {
         id: "tr",
-        label: msg("Table Row"),
+        label: () => msg("Table Row"),
         icon: "table-row",
-        description: msg("Insert a table row")
+        description: () => msg("Insert a table row")
       }),
-      fontSize:  this.MarkCommandSpec({
+      canvas: new NodeCommand(this.host, {
+        id: "br",
+        label: () => msg("Canvas"),
+        icon: "chalkboard",
+        group: "canvas",
+        description: () => msg("Insert a canvas"),
+        tags: ["node", "container", "advanced"]
+      }),
+      fontSize:  new MarkCommand(this.host, {
         id: "fontSize",
         tags: [],
-        label: msg("Set font size"),
+        label: () => msg("Set font size"),
         icon: "letter-case",
-        description: msg("Sets the selection's font size"), //@ts-ignore
-        callback: ({value}) => this.exec(toggleOrUpdateMark("span", {style: `font-size: ${value}`})),
-        value: () => ["14pt"] || this.editor && getStyleValues(this.editorState!, this.editor.pmEditor as any, "font-size")
+        description: () => msg("Sets the selection's font size"),
+        run: (host, {value}) => host.activeEditor?.exec(toggleOrUpdateMark("span", {style: `font-size: ${value}`})),
+        value: host => ["14pt"] || getStyleValues(host.activeEditor?.pmEditor.state!, host.activeEditor?.pmEditor as any, "font-size")
       }),
-      fontFamily:  this.MarkCommandSpec({
+      fontFamily:  new MarkCommand(this.host, {
         id: "fontFamily",
         tags: [],
-        label: msg("Set font family"),
+        label: () => msg("Set font family"),
         icon: "typography",
-        description: msg("Sets the selection's font family"), //@ts-ignore
-        callback: () => null,
-        value: () => ["Arial"] || this.editor && getStyleValues(this.editorState!, this.editor.pmEditor as any, "font-family")
+        description: () => msg("Sets the selection's font family"),
+        value: host => ["Arial"] || getStyleValues(host.activeEditor?.pmEditor.state!, host.activeEditor?.pmEditor as any, "font-family")
       }),
-      setTextColor: {
+      setTextColor: new Command(this.host, {
         id: "setTextColor",
         tags: ["mark", "color"],
-        label: msg("Set text color"),
+        label: () => msg("Set text color"),
         icon: "letter-a",
-        description: msg("Sets the color of the selected text"),
-        callback: (options: any) => this.exec(toggleOrUpdateMark("textBackground", options)),
+        description: () => msg("Sets the color of the selected text"),
+        run: (host, options) => host.activeEditor?.exec(toggleOrUpdateMark("textBackground", options)),
         category: "editor",
-        value: () => (this.editorState && getActiveMarks(this.editorState).find(mark => mark.type.name === "textColor")?.attrs.value) ?? "#000000"
-      },
-      setTextBackground: {
+        value: host => (getActiveMarks(host.activeEditor?.editorState!).find(mark => mark.type.name === "textColor")?.attrs.value) ?? "#000000"
+      }),
+      setTextBackground: new Command(this.host, {
         id: "setTextBackground",
         tags: ["mark", "color"],
-        label: msg("Set text background"),
+        label: () => msg("Set text background"),
         icon: "highlight",
-        description: msg("Sets the background color of the selected text"),
-        callback: (options: any) => this.exec(toggleOrUpdateMark("textBackground", options)),
+        description: () => msg("Sets the background color of the selected text"),
+        run: (host, options) => host.activeEditor!.exec(toggleOrUpdateMark("textBackground", options)),
         category: "editor",
-        value: () => (this.editorState && getActiveMarks(this.editorState).find(mark => mark.type.name === "textBackground")?.attrs.value) ?? "#fff000"
-      },
-      incrementFontSize: {
+        value: host => (getActiveMarks(host.activeEditor!.editorState).find(mark => mark.type.name === "textBackground")?.attrs.value) ?? "#fff000"
+      }),/*
+      incrementFontSize: new Command(this.host, {
         id: "incrementFontSize",
         tags: ["font", "color"],
-        label: msg("Increment font size"),
+        label: () => msg("Increment font size"),
         icon: "text-increase",
-        description: msg("Increment the selection's font size"),
-        callback: () => commands.fontSize.callback({ //@ts-ignore
+        description: () => msg("Increment the selection's font size"),
+        run: () => this.commands.fontSize.run({ //@ts-ignore
           value: `${parseInt(commands.fontSize.value()) + 1}pt`
         }),
         category: "editor",
         group: "font"
-      },
-      decrementFontSize: {
+      }),
+      decrementFontSize: new Command(this.host, {
         id: "decrementFontSize",
         tags: ["font"],
-        label: msg("Decrement font size"),
+        label: () => msg("Decrement font size"),
         icon: "text-decrease",
-        description: msg("Decrement the selection's font size"),
-        callback: () => commands.fontSize.callback({ //@ts-ignore
-          value: `${Math.max(0, parseInt(commands.fontSize.value()) - 1)}pt`
+        description: () => msg("Decrement the selection's font size"),
+        run: () => this.commands.fontSize.run({
+          value: `${Math.max(0, parseInt(this.commands.fontSize.value()) - 1)}pt`
         }),
         category: "editor",
         group: "font"
-      },
-      lineHeight: this.LayoutCommandSpec({
+      }),*/
+      lineHeight: new LayoutCommand(this.host, {
         id: "lineHeight",
-        label: msg("Set line height"),
+        label: () => msg("Set line height"),
         icon: "line-height",
-        description: msg("Set the line height of the selected block"),
+        description: () => msg("Set the line height of the selected block"),
         category: "editor",
       }),
-      border: this.LayoutCommandSpec({
+      border: new LayoutCommand(this.host, {
         id: "border",
-        label: msg("Set block border"),
+        label: () => msg("Set block border"),
         icon: "border-style-2",
-        description: msg("Set the border of the selected block")
+        description: () => msg("Set the border of the selected block")
       }),
-      margin: this.LayoutCommandSpec({
+      margin: new LayoutCommand(this.host, {
         id: "margin",
-        label: msg("Set block margin"),
+        label: () => msg("Set block margin"),
         icon: "box-margin",
-        description: msg("Set the margins of the selected block")
+        description: () => msg("Set the margins of the selected block")
       }),
-      padding: this.LayoutCommandSpec({
+      padding: new LayoutCommand(this.host, {
         id: "padding",
-        label: msg("Set block padding"),
+        label: () => msg("Set block padding"),
         icon: "box-padding",
-        description: msg("Set the padding of the selected block")
+        description: () => msg("Set the padding of the selected block")
       }),
-      background: this.LayoutCommandSpec({
+      background: new LayoutCommand(this.host, {
         id: "background",
-        label: msg("Set block background"),
+        label: () => msg("Set block background"),
         icon: "texture",
-        description: msg("Set the background of the selected block")
+        description: () => msg("Set the background of the selected block")
       }),
-      textAlign: this.LayoutCommandSpec({
+      textAlign: new LayoutCommand(this.host, {
         id: "textAlign",
-        label: msg("Align block text"),
+        label: () => msg("Align block text"),
         icon: "align-center",
-        description: msg("Set the text alignment of the selected block")
+        description: () => msg("Set the text alignment of the selected block")
       }),
-      undo: {
+      undo: new Command(this.host, {
         id: "undo",
         tags: ["general"],
-        label: msg("Undo"),
+        label: () => msg("Undo"),
         icon: "arrow-back-up",
-        description: msg("Undo the last change in the active document"),
+        description: () => msg("Undo the last change in the active document"),
         shortcut: "ctrl+z",
-        callback: () => this.exec(undo),
+        run: host => host.activeEditor?.exec(undo),
         category: "editor",
-        disabled: () => this.editorState && undoDepth(this.editorState) === 0
-      },
-      redo: {
+        disabled: host => undoDepth(host.activeEditor!.editorState) === 0
+      }),
+      redo: new Command(this.host, {
         id: "redo",
         tags: ["general"],
-        label: msg("Redo"),
+        label: () => msg("Redo"),
         icon: "arrow-forward-up",
-        description: msg("Redo the last undone change in the active document"),
+        description: () => msg("Redo the last undone change in the active document"),
         shortcut: "ctrl+y",
-        callback: () => this.exec(redo),
+        run: host => host.activeEditor?.exec(redo),
         category: "editor",
-        disabled: () => this.editorState && redoDepth(this.editorState) === 0
-      },
-      toggleDevTools: {
+        disabled: host => redoDepth(host.activeEditor!.editorState) === 0
+      }),
+      toggleDevTools: new Command(this.host, {
         id: "toggleDevTools",
-        label: msg("Toggle Dev Tools"),
+        label: () => msg("Toggle Dev Tools"),
         icon: "terminal",
-        description: msg("Open the developer tools"),
+        description: () => msg("Open the developer tools"),
         shortcut: "ctrl+shift+i",
-        callback: () => {},
         category: "miscellaneous",
         fixedShortcut: true
-      },
-      setDocAttrs: {
+      }),
+      setDocAttrs: new Command(this.host, {
         id: "setDocAttrs",
-        callback: (options: any) => this.exec(setDocAttributes(options))
-      },
+        run: (host, options) => host.activeEditor?.exec(setDocAttributes(options)),
+        category: "miscellaneous"
+      }),
     }
-    return commands as unknown as CommandMap<keyof typeof commands>
   }
+
+  /*
+  static sameShortcutEvent(e1: KeyboardEvent, e2: KeyboardEvent) {
+    return e1.key === e2.key && e1.altKey === e2.altKey && e1.shiftKey === e2.shiftKey && e1.ctrlKey === e2.ctrlKey && e1.metaKey === e2.metaKey
+  }*/
 }

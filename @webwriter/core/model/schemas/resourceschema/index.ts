@@ -6,7 +6,7 @@ export {undo, redo} from "prosemirror-history"
 import * as marshal from "../../marshal"
 import { Package } from "../.."
 import { basePlugin, configFromSchemaPlugins, formPlugin, phrasingPlugin, listPlugin, mathPlugin, mediaPlugin, modalPlugin, stylePlugin, svgPlugin, tablePlugin, textblockPlugin, widgetPlugin, canvasPlugin, deprecatedPlugin, headingPlugin, sectionPlugin } from "./plugins"
-import { headSchema } from "./head"
+import { EditorStateWithHead, headSchema } from "./head"
 
 export * from "./plugins"
 export * from "./htmlelementspec"
@@ -17,11 +17,11 @@ export * as themes from "./themes"
 export function createEditorStateConfig(packages: Package[]) {
   return configFromSchemaPlugins([
     basePlugin(),
-    phrasingPlugin(),
     textblockPlugin(),
     headingPlugin(),
-    sectionPlugin(),
     mediaPlugin(),
+    phrasingPlugin(),
+    sectionPlugin(),
     canvasPlugin(),
     formPlugin(),
     listPlugin(),
@@ -41,7 +41,7 @@ export const createEditorState = ({schema=defaultConfig.schema, doc=defaultConfi
   const resolvedDoc = schema.nodeFromJSON(doc.toJSON())
   const state = EditorState.create({selection, storedMarks, plugins, doc: resolvedDoc})
   const head$ = EditorState.create({schema: headSchema, doc: head})
-  return head? Object.assign(state, {head$}): state
+  return (head? Object.assign(state, {head$}): state) as EditorStateWithHead
 }
 
 type Format = keyof typeof marshal

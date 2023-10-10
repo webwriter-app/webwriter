@@ -80,15 +80,19 @@ export class PackageStore {
   }
 
   /** Create a hash value to identify a bundle. The hash is deterministically computed from the packages' names and versions. This allows for caching of existing bundles. */
-  static computeBundleHash(packages: Package[], editMode: boolean = false) {
+  static computeBundleHash(packages: Package[], bundlename="bundle", editMode: boolean = false) {
+    const reloadCount = packages.reduce((acc, pkg) => acc + pkg.reloadCount, 0)
+    const hasLocal = packages.some(pkg => pkg.localPath)
     const bundleID = this.computeBundleID(packages, editMode)
-    return hashCode(bundleID).toString(36)
+    return `${bundlename}#${hashCode(bundleID).toString(36)}${editMode? "!edit": ""}${hasLocal? `~${reloadCount}`: ""}`
   }
 
   static computeBundleID(packages: Package[], editMode: boolean = false) {
-    const packageVersions = packages.map(pkg => `${pkg.name}@${pkg.version}-${pkg.reloadCount}`)
-    return packageVersions.join("~") + (editMode? "!edit": "")
+    const packageVersions = packages.map(pkg => `${pkg.name.replaceAll("/", "~")}@${pkg.version}~~${pkg.reloadCount}`)
+    return packageVersions.join("~~~") + (editMode? "!edit": "")
   }
+
+  static defaultArgs = ["--prod", "--ignore-optional", "--ignore-scripts", "--ignore-engines", "--non-interactive", "--no-bin-links"] as const
 
   isPackageImported(name: string) {
     return this.bundleID.replace("!edit", "").split("~").includes(name)
@@ -198,9 +202,8 @@ export class PackageStore {
     this._watching = {...this._watching}
     this.cleanupWatching(toCleanup)
     const toAddPaths = toAdd.map(k => this._packages[k].localPath as string)
-    Promise.all(toAddPaths.map(k => this.watch(k, e => this.handleLocalPathChange(k, e), {recursive: true}))
+    Promise.all(toAddPaths.map(k => this.watch(k, e => this.handleLocalPathChange(k, e), {recursive: true, delayMs: 0}))
     ).then(cbs => this.setWatchingCallbacks(toAdd, cbs))
-    setTimeout(() => console.log(toJS(this._watching)))
   }
 
   private setWatchingCallbacks(names: string[], callbacks: (() => void)[]) {
@@ -212,11 +215,17 @@ export class PackageStore {
     names.forEach(k => {this._watching[k](); delete this._watching[k]})
   }
 
+  private handlingPathChangeOf: string | undefined
+
   private async handleLocalPathChange(path: string, e: WatchEvent) {
     const changedPkg = this.packages.find(pkg => pkg.localPath === path)
-    const pkgs = await this.fetchInstalled(true, changedPkg!.name)
-    await this.writeBundle(pkgs, {bundlename: "bundle", force: true, editMode: true})
-    await this.import(pkgs, {bundlename: "bundle", editMode: true})
+    if(this.handlingPathChangeOf !== changedPkg!.name) {
+      this.handlingPathChangeOf = changedPkg!.name
+      const pkgs = await this.fetchInstalled(true, changedPkg!.name)
+      await this.writeBundle(pkgs, {bundlename: "bundle", editMode: true})
+      await this.import(pkgs, {bundlename: "bundle", editMode: true})
+      this.handlingPathChangeOf = undefined
+    }
   }
 
   get installed() {
@@ -249,19 +258,19 @@ export class PackageStore {
     if(!packageJsonExists) {
       const pkgConfig = new Package({name: "webwriter.webwriter", version: appVersion, license: "UNLICENSED"})
       await this.FS.writeFile(packageJsonPath, pkgConfig.serialize() as string)
-      await this.pm("add", this.corePackages, true, appDir)
+      await this.pm("add", [...PackageStore.defaultArgs, ...this.corePackages], true, appDir)
       // await Promise.all(H5P_REPOSITORIES.map(this.installH5Package))
     }
     const packages = await this.fetchInstalled()
-    const importable = (await this.writeBundle(packages, {editMode: true}))?.packages
-    await this.import(importable ?? [], {editMode: true})
+    const importable = (await this.writeBundle(packages, {editMode: true, force: packages.some(pkg => pkg.localPath)}))?.packages
+    await this.import(importable ?? [], {bundlename: "bundle", editMode: true})
   }
   
   async testImportable(packages: Package[], setImportError=true) {
     const pkgs = Object.fromEntries(packages.map(pkg => [pkg.name, pkg]))
     for(const pkg of this.packages) {
       try {
-        const options = {bundlename: `test-importable`, force: false, editMode: true}
+        const options = {bundlename: `bundle`, editMode: true}
         const {jsSize, cssSize} = await this.writeBundle([pkg], options) ?? {}
         const updatedPkg = pkg.extend({jsSize, cssSize})
         pkgs[pkg.name] = updatedPkg
@@ -346,12 +355,11 @@ export class PackageStore {
   /** Adds one or more packages. Extra arguments for npm can be provided. */
   @storeAction({queueKey: "pending"})
   async add(args: string[] = []) {
-    const defaultArgs = ["--prod", "--ignore-optional", "--ignore-scripts", "--ignore-engines", "--no-lockfile", "--non-interactive", "--no-bin-links"]
     const appDir = await this.Path.appDir()
-    await this.pm("add", [...defaultArgs, ...args], true, appDir)
+    await this.pm("add", [...PackageStore.defaultArgs, ...args], true, appDir)
     const packages = await this.fetchInstalled(true)
     const localPackages = packages.filter(pkg => pkg.localPath)
-    await Promise.all(localPackages.map(async pkg => this.pm("install", defaultArgs, undefined, await this.Path.join(appDir, "node_modules", pkg.name))))
+    await Promise.all(localPackages.map(async pkg => this.pm("install", [...PackageStore.defaultArgs], undefined, await this.Path.join(appDir, "node_modules", pkg.name))))
     const importable = (await this.writeBundle(packages, {editMode: true, force: true}))?.packages
     await this.import(importable ?? [], {editMode: true})
     await this.fetchAll(0)
@@ -383,7 +391,7 @@ export class PackageStore {
   @storeAction({queueKey: "pending"})
   async upgrade(args: string[] = []) {
     const appDir = await this.Path.appDir()
-    await this.pm("upgrade", args, true, appDir)
+    await this.pm("upgrade", [...PackageStore.defaultArgs, ...args], true, appDir)
     const packages = await this.fetchAll(0)
     const importable = (await this.writeBundle(packages, {editMode: true}))?.packages
     await this.import(importable ?? [], {editMode: true})
@@ -395,22 +403,22 @@ export class PackageStore {
     const appDir = await this.Path.appDir()
     const pkgs = args.filter(arg => !arg?.startsWith("-"))
     this.watching = Object.fromEntries(pkgs.map(pkg => [pkg, false]))
-    await this.pm("remove", args, true, appDir)
+    await this.pm("remove", [...PackageStore.defaultArgs, ...args], true, appDir)
     await this.fetchAll(0)
     await this.import(this.installed ?? [], {editMode: true})
   }
 
   /** Writes a bundle to the provided file system. */
-  async writeBundle(packages: Package[], {bundlename="bundle", force=false, editMode=false}: {bundlename?: string, force?: boolean, editMode?: boolean} = {bundlename: "bundle", force: false, editMode: false}) {
+  async writeBundle(packages: Package[], {bundlename="bundle", force=packages.some(pkg => pkg.localPath), editMode=false}: {bundlename?: string, force?: boolean, editMode?: boolean} = {bundlename: "bundle", force: false, editMode: false}) {
+    const appDir = await this.Path.appDir()
+    const bundleFilename = PackageStore.computeBundleHash(packages, bundlename, editMode)
+    const bundlePath = await this.Path.join(appDir, bundleFilename)
     if(force || !await this.bundleExists(packages, {bundlename, editMode})) {
       let pkgs = packages
-      const appDir = await this.Path.appDir()
-      if(packages.length > 1) {
-        const importErrors = await this.testImportable(packages)
+      if(pkgs.length > 1) {
+        const importErrors = await this.testImportable(pkgs)
         pkgs = pkgs.map(pkg => pkg.extend({importError: importErrors[pkg.name]}))
       }
-      const bundleFilename = `${bundlename}#${PackageStore.computeBundleHash(pkgs, editMode)}`
-      const bundlePath = await this.Path.join(appDir, bundleFilename)
       const entrypointPath = await this.Path.join(appDir, "entrypoint.js")
       const exportStatements = pkgs
         .filter(pkg => !pkg.importError)
@@ -420,19 +428,21 @@ export class PackageStore {
           return `import '${moduleName}'`
         })
       const entrypoint = exportStatements.join(";")
-      this.FS.writeFile(entrypointPath, entrypoint)
-      await this.bundle([`${entrypointPath}`, "--bundle", "--sourcemap=inline", `--outfile=${bundlePath}.js`, `--format=esm`, ])
-      const jsSize = (await this.FS.stat(bundlePath + ".js"))?.size
-      const cssSize = (await this.FS.stat(bundlePath + ".css"))?.size
-      return {bundlePath, packages: pkgs, jsSize, cssSize}
+      await this.FS.writeFile(entrypointPath, entrypoint)
+      await this.bundle([`${entrypointPath}`, "--bundle", "--sourcemap=inline", `--outfile=${bundlePath}.js`, `--format=esm`])
     }
+    const jsSize = (await this.FS.stat(bundlePath + ".js"))?.size
+    const cssSize = (await this.FS.stat(bundlePath + ".css"))?.size
+    return {bundlePath, packages, jsSize, cssSize}
   }
 
   /** Loads bundle code from the provided file system into the store, to be imported by the view later. */
   async import(packages: Package[], {bundlename="bundle", editMode=false}: {bundlename?: string, editMode?: boolean} = {bundlename: "bundle", editMode: false}) {
-    const packageNames = packages.map(pkg => pkg.name)
+    if(packages.length === 0) {
+      return
+    }
     const appDir = await this.Path.appDir()
-    const bundleFilename = `${bundlename}#${PackageStore.computeBundleHash(packages, editMode)}`
+    const bundleFilename = PackageStore.computeBundleHash(packages, bundlename, editMode)
     const bundlePathJS = await this.Path.join(appDir, bundleFilename + ".js")
     const bundlePathCSS = await this.Path.join(appDir, bundleFilename + ".css")
     const bundleCode = await this.FS.readFile(bundlePathJS)
@@ -447,8 +457,7 @@ export class PackageStore {
 
   /** Checks if the bundle already exists on disk. */
   async bundleExists(packages: Package[], {bundlename="bundle", editMode=false}: {bundlename?: string, editMode?: boolean} = {bundlename: "bundle", editMode: false}) {
-    const hash = PackageStore.computeBundleHash(packages, editMode)
-    const bundleFilename = `${bundlename}#${hash}`
+    const bundleFilename = PackageStore.computeBundleHash(packages, bundlename, editMode) + ".js"
     const appDir = await this.Path.appDir()
     const bundlePath = await this.Path.join(appDir, bundleFilename)
     return this.FS.exists(bundlePath)

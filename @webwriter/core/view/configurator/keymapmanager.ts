@@ -2,7 +2,7 @@ import { LitElement, html, css } from "lit"
 import { customElement, property } from "lit/decorators.js"
 import { localized, msg } from "@lit/localize"
 
-import { CommandEntry } from "../../viewmodel"
+import { Command } from "../../viewmodel"
 import { capitalizeWord, groupBy, sameMembers } from "../../utility"
 import { classMap } from "lit/directives/class-map.js"
 import { styleMap } from "lit/directives/style-map.js"
@@ -13,10 +13,10 @@ import { ifDefined } from "lit/directives/if-defined.js"
 export class KeymapManager extends LitElement {
 
 	@property({attribute: false})
-	keymap: Record<string, CommandEntry> = {}
+	commands: Record<string, Command> = {}
 
   @property({attribute: false})
-	groupLabels: Record<string, string> = {}
+	categoryLabels: Record<string, string> = {}
 
   @property({state: true})
   reassigningCommand: string | null = null
@@ -137,7 +137,7 @@ export class KeymapManager extends LitElement {
         gap: 2ch;
       }
 
-      .key-entry {
+      .key-cmd {
         display: contents;
       }
 
@@ -236,7 +236,7 @@ export class KeymapManager extends LitElement {
       this.pendingShortcut = [...new Set([...this.pendingShortcut, e.key])]
       if(!KeymapManager.modifiers.includes(e.key.toLowerCase())) {
         const pending = KeymapManager.normalizeShortcut(this.pendingShortcut)
-        const existing = KeymapManager.normalizeShortcut(this.keymap[this.reassigningCommand].shortcut!)
+        const existing = KeymapManager.normalizeShortcut(this.commands[this.reassigningCommand].shortcut!)
         console.log(pending, existing)
         if(sameMembers(pending, existing)) {
           this.emitShortcutReset(this.reassigningCommand)
@@ -264,22 +264,22 @@ export class KeymapManager extends LitElement {
     this.reassigningCommand = null
   }
 
-  KeyInput(key: string, entry: CommandEntry) {
+  KeyInput(key: string, cmd: Command) {
     const {reassigningCommand, pendingShortcut} = this
     const isPending = reassigningCommand === key && pendingShortcut.length > 0
-    return html`<div ?inert=${entry.fixedShortcut} class=${classMap({"key-entry": true, reassigning: key === this.reassigningCommand})}>
+    return html`<div ?inert=${cmd.fixedShortcut} class=${classMap({"key-cmd": true, reassigning: key === this.reassigningCommand})}>
       <label>
         <span class="command-label">
-          ${entry.icon? html`<sl-icon name=${entry.icon}></sl-icon>`: null}
-          <span>${entry.label ?? key}</span>
+          ${cmd.icon? html`<sl-icon name=${cmd.icon}></sl-icon>`: null}
+          <span>${cmd.label ?? key}</span>
         </span>
-        <span class="command-description">${entry.description}</span>
+        <span class="command-description">${cmd.description}</span>
       </label>
       <div class="key-controls">
-        <sl-icon-button style=${styleMap({visibility: entry.modified? "visible": "hidden"})} name="arrow-back-up" @click=${() => this.emitShortcutReset(key)}></sl-icon-button>
+        <sl-icon-button style=${styleMap({visibility: cmd.modified? "visible": "hidden"})} name="arrow-back-up" @click=${() => this.emitShortcutReset(key)}></sl-icon-button>
         <sl-tooltip trigger="manual" ?open=${reassigningCommand === key} content=${msg("Press new key combination...")}>
           <button class="key-input" title=${msg("Reassign shortcut")} @focus=${(e: FocusEvent) => this.handleKeyInputFocus(e, key)} @blur=${this.handleKeyInputBlur}  @keydown=${this.handleKeyInputKeyDown} @keyup=${this.handleKeyInputKeyUp}>
-            ${KeymapManager.Shortcut(isPending? this.pendingShortcut: entry.shortcut)}
+            ${KeymapManager.Shortcut(isPending? this.pendingShortcut: cmd.shortcut)}
           </button>
         </sl-tooltip>
       </div>
@@ -288,10 +288,11 @@ export class KeymapManager extends LitElement {
 
 
   render() {
-    const groupedEntries = groupBy(Object.entries(this.keymap), ([key, entry]) => entry.category)
+    const groupedEntries = groupBy(Object.entries(this.commands), ([key, entry]) => entry.category)
+    console.log(Object.keys(groupedEntries))
     return html`<div class="base" part="base">
       ${Object.keys(groupedEntries).map(key => html`
-        <h2 class="group-title">${this.groupLabels[key] ?? key}</h2>
+        <h2 class="group-title">${this.categoryLabels[key] ?? key}</h2>
         ${groupedEntries[key]
           .filter(([key, entry]) => entry.shortcut)
           .map(([key, entry]) => this.KeyInput(key, entry))

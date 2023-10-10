@@ -6,6 +6,7 @@ import { EditorState, Transaction } from "prosemirror-state"
 import { pickObject, sameMembers } from "../../utility"
 import { keyed } from "lit/directives/keyed.js"
 import { headSerializer, toAttributes } from "../../model"
+import {DOMSerializer} from "prosemirror-model"
 
 type IProsemirrorEditor = 
   & Omit<DirectEditorProps, "attributes" | "editable">

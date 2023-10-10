@@ -6,15 +6,20 @@ import { camelCaseToSpacedCase, prettifyPackageName, unscopePackageName } from "
 import { Mark } from "prosemirror-model"
 import { classMap } from "lit/directives/class-map.js"
 import { localized, msg } from "@lit/localize"
-import { CommandEntry, CommandEvent } from "../../viewmodel"
+import { Command } from "../../viewmodel"
 import { spreadProps } from "@open-wc/lit-helpers"
 import "../elements/stylepickers"
 
 import { ifDefined } from "lit/directives/if-defined.js"
+import { App } from ".."
+import { EditorState } from "prosemirror-state"
 
 @localized()
 @customElement("ww-toolbox")
 export class Toolbox extends LitElement {
+
+  @property({attribute: false})
+  app: App
 
   @query("div")
   div: HTMLElement
@@ -27,21 +32,9 @@ export class Toolbox extends LitElement {
 		this.dispatchEvent(new CustomEvent("ww-change-widget", {composed: true, bubbles: true, detail: {name: unscopePackageName(name)}}))
 	}
 
-	emitCommand = (id: string) => {
-		this.dispatchEvent(CommandEvent(id))
-	}
-
-	@property({type: Array, attribute: false})
-	inlineCommands: CommandEntry[] = []
-
+  
   @property({type: Object, attribute: false})
-  fontFamilyCommand: CommandEntry
-
-  @property({type: Object, attribute: false})
-  fontSizeCommand: CommandEntry
-
-  @property({type: Array, attribute: false})
-	blockCommands: CommandEntry[] = []
+  editorState: EditorState
 
   @property({type: Object, attribute: false})
   activeElement: HTMLElement | null
@@ -64,8 +57,8 @@ export class Toolbox extends LitElement {
     }})
   )
 
-  emitInlineFieldInput = (markType: string, key: string, value: string | number | boolean) => this.dispatchEvent(
-    new CustomEvent("ww-inline-field-input", {composed: true, bubbles: true, detail: {
+  emitMarkFieldInput = (markType: string, key: string, value: string | number | boolean) => this.dispatchEvent(
+    new CustomEvent("ww-mark-field-input", {composed: true, bubbles: true, detail: {
       element: this.activeElement, key, value, markType
     }})
   )
@@ -489,23 +482,27 @@ export class Toolbox extends LitElement {
         display: flex;
         flex-direction: column;
       }
+
+      ww-fontpicker[inert], .inline-commands.color[inert] {
+        opacity: 0.5;
+      }
       
     `
   }
 
-  InlineCommands = () => this.inlineCommands.filter(cmd => !cmd.tags?.includes("inline")).map(v => {
+  MarkCommands = () => this.app.commands.markCommands.filter(cmd => !cmd.tags?.includes("inline") && !cmd.tags?.includes("advanced")).map(v => {
     const classes = {
       "inline-commands": true,
       "applied": Boolean(v.active),
       "color": v.tags?.includes("color") ?? false
     }
 		return html`
-    <span class=${classMap(classes)}>
+    <span class=${classMap(classes)} ?inert=${classes.color}>
       <ww-button
-        ${spreadProps(v)}
+        ${spreadProps(v.toObject())}
         tabindex=${0}
         name=${v.icon ?? "circle-fill"}
-        @click=${() => this.dispatchEvent(CommandEvent(v.id))}
+        @click=${() => v.run()}
         variant="icon"
       ></ww-button>
       <sl-color-picker value=${v.value}></sl-color-picker>
@@ -513,7 +510,7 @@ export class Toolbox extends LitElement {
     `
 	})
 
-  BlockCommands = () => this.blockCommands.map(v => {
+  LayoutCommands = (el: HTMLElement) => this.app.commands.layoutCommands.map(v => {
 
     const classes = {
       "block-command": true,
@@ -525,17 +522,17 @@ export class Toolbox extends LitElement {
     <span id=${v.id} class=${classMap(classes)}>
       <ww-button
         inert disabled style="color: darkgray"
-        ${spreadProps(v)}
+        ${spreadProps(v.toObject())}
         tabindex=${0}
         name=${v.icon ?? "circle-fill"}
-        @click=${() => this.dispatchEvent(CommandEvent(v.id))}
+        @click=${() => v.run()}
         variant="icon"
       ></ww-button>
     </span>
     `
 	})
 
-  Pickers = () => this.blockCommands.map(v => {
+  Pickers = (el: HTMLElement) => this.app.commands.layoutCommands.map(v => {
     let picker = null
     if(!v.active) {
       return null
@@ -557,17 +554,17 @@ export class Toolbox extends LitElement {
     }
     else if(v.id === "lineHeight") {
       picker = html`
-        <ww-lineheightpicker value=${v.value} @change=${(e: any) => this.dispatchEvent(CommandEvent(v.id, {value: e.target.value}))}></ww-lineheightpicker>
+        <ww-lineheightpicker value=${v.value} @change=${(e: any) => v.run({value: e.target.value})}></ww-lineheightpicker>
       `
     }
     else if(v.id === "background") {
       picker = html`
-        <ww-backgroundpicker value=${v.value} @change=${(e: any) => this.dispatchEvent(CommandEvent(v.id, {value: e.target.value}))}></ww-backgroundpicker>
+        <ww-backgroundpicker value=${v.value} @change=${(e: any) => v.run({value: e.target.value})}></ww-backgroundpicker>
       `
     }
     else if(v.id === "textAlign") {
       picker = html`
-        <ww-alignmentpicker value=${v.value} @change=${(e: any) => this.dispatchEvent(CommandEvent(v.id, {value: e.target.value}))}></ww-alignmentpicker>
+        <ww-alignmentpicker value=${v.value} @change=${(e: any) => v.run({value: e.target.value})}></ww-alignmentpicker>
       `
     }
 
@@ -578,34 +575,36 @@ export class Toolbox extends LitElement {
 
   })
 
-  BlockToolbox = () => {
+  BlockToolbox = (el: HTMLElement) => {
     return html`<div class="block-toolbox">
       <div class="block-options">
-        ${this.BlockHeader()}
+        ${this.BlockHeader(el)}
         <div part="block-commands">
-          ${this.BlockCommands()}
+          ${this.LayoutCommands(el)}
         </div>
       </div>
       ${this.InlineToolbox()}
       </div>
       <div class="pickers">
-        ${this.Pickers()}
+        ${this.Pickers(el)}
       </div>
     `
   }
 
   InlineToolbox = () => {
-    const fontFamilies = this.fontFamilyCommand.value
-    const fontSizes = this.fontSizeCommand.value
+    const {fontFamilyCommand, fontSizeCommand} = this.app.commands
+    const fontFamilies = fontFamilyCommand.value
+    const fontSizes = fontSizeCommand.value
     return html`<div class="inline-toolbox">
       <ww-fontpicker
         fontFamily=${ifDefined(fontFamilies.length > 0? fontFamilies[0]: undefined)}
         fontSize=${ifDefined(fontSizes.length > 0? fontSizes[0]: undefined)}
         recommendedOnly
-        @ww-change-font-family=${(e: any) => this.dispatchEvent(CommandEvent(this.fontFamilyCommand.id, e.detail))}
-        @ww-change-font-size=${(e: any) => this.dispatchEvent(CommandEvent(this.fontSizeCommand.id, e.detail))}
+        @ww-change-font-family=${(e: any) => fontFamilyCommand.run(e.detail)}
+        @ww-change-font-size=${(e: any) => fontSizeCommand.run(e.detail)}
+        inert
       ></ww-fontpicker>
-      ${this.InlineCommands()}
+      ${this.MarkCommands()}
       ${this.ActiveInlineFields()}
       <span id="inline-toolbox-label">
         ${msg("Text")}
@@ -615,15 +614,15 @@ export class Toolbox extends LitElement {
   }
 
   ActiveInlineFields = () => {
-    const cmds = this.inlineCommands.filter(cmd => cmd.active && cmd.fields)
+    const cmds = this.app.commands.markCommands.filter(cmd => cmd.active && cmd.fields)
     return cmds.map(cmd => html`<div class="inline-field-group">
       <sl-icon name=${cmd.icon ?? "square"}></sl-icon>
-      ${Object.entries(cmd.fields!).map(([key, field]) => this.InlineCommandField(cmd.id, key, field.type, field.placeholder))}
+      ${Object.entries(cmd.fields!).map(([key, field]) => this.InlineCommandField(cmd, key, field.type, field.placeholder))}
     </div>`)
   }
 
-  BlockOption: (cmd: CommandEntry) => TemplateResult = (cmd: CommandEntry) => {
-    const groupedCommands = this.blockCommands.filter(otherCmd => cmd.group && otherCmd.group === cmd.group)
+  BlockOption: (cmd: Command) => TemplateResult = (cmd: Command) => {
+    const groupedCommands = this.app.commands.layoutCommands.filter(otherCmd => cmd.group && otherCmd.group === cmd.group)
     const secondary = cmd.group && (groupedCommands[0] !== cmd)
     return html`
       <sl-option title=${secondary? cmd.label ?? "": ""} class="block-option" ?data-secondary=${secondary} value=${cmd.id}>
@@ -636,27 +635,25 @@ export class Toolbox extends LitElement {
     `
   }
 
-  BlockHeader = () => {
-    const activeCommands = this.blockCommands.filter(cmd => cmd.active ?? false)
-    const activeBlockCommand = activeCommands.length === 1
-      ? activeCommands[0]
-      : undefined
+  BlockHeader = (el: HTMLElement) => {
+    const {nodeCommands} = this.app.commands
+    const cmd = nodeCommands.find(cmd => cmd.id === el.tagName.toLowerCase())
     return html`<div @click=${() => this.emitClickName()} class="block-header">
-      <sl-icon class="current-icon" slot="prefix" name=${activeBlockCommand?.icon ?? "asterisk"}></sl-icon>
+      <sl-icon class="current-icon" name=${cmd?.icon ?? "asterisk"}></sl-icon>
       <span tabIndex=${-1} id="name">
-        ${activeBlockCommand?.label ?? msg(`Mixed Content`)}
+        ${cmd?.label ?? msg(`Mixed Content`)}
       </span>
     </div>`
   }
 
-  InlineCommandField = (markType: string, key: string, type: "string" | "number" | "boolean", placeholder?: string, value?: any) => {
+  InlineCommandField = (cmd: Command, key: string, type: "string" | "number" | "boolean", placeholder?: string, value?: any) => {
     if(type === "string" || type === "number") {
       return html`<sl-input 
-        value=${value ?? ""}
+        value=${cmd.value.attrs[key] ?? ""}
         placeholder=${placeholder ?? ""}
         class="field" 
         type=${type === "string"? "text": "number"}
-        @sl-input=${(e: any) => this.emitInlineFieldInput(markType, key, e.target.value)}
+        @sl-change=${(e: any) => cmd.run({[key]: e.target.value})}
       ></sl-input>`
     }
     else {
@@ -664,17 +661,29 @@ export class Toolbox extends LitElement {
     }
   }
 
-  render() {
-    if(this.activeElement && this.isActiveElementContainer) {
-      return this.BlockToolbox()
+  get activeElementAncestors() {
+    let el = this.activeElement
+    const ancestors = [el] as HTMLElement[]
+    while(el?.parentElement) {
+      if(!(["BODY", "HTML"].includes(el.parentElement.tagName))) {
+        ancestors.unshift(el.parentElement)
+      }
+      el = el.parentElement
     }
-    else if(this.activeElement && this.isActiveElementWidget) {
+    return ancestors
+  }
+
+  render() {
+    if (this.activeElement && this.isActiveElementWidget) {
       const name = prettifyPackageName(this.activeElement.tagName.toLowerCase())
       return html`
         <span class="widget-name" id="name" @click=${() => this.emitClickName(this.activeElement ?? undefined)} title=${this.activeElement.id}>${name}</span>
         <!--<sl-icon-button class="meta" title="Edit metadata" name="tags"></sl-icon-button>-->
         <sl-icon-button tabindex="-1" class="delete" title="Delete widget" name="trash" @click=${this.emitDeleteWidget} @mouseenter=${this.emitMouseEnterDeleteWidget} @mouseleave=${this.emitMouseLeaveDeleteWidget}></sl-icon-button>
       `
+    }
+    else if(this.activeElement) {
+      return this.activeElementAncestors.map(this.BlockToolbox)
     }
     else {
       return null

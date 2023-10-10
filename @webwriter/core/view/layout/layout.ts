@@ -48,7 +48,7 @@ export class Layout extends LitElement {
   static styles = css`
     :host {
       display: grid;
-      grid-template-columns: 1fr 80px minmax(auto, 680px) 80px 1fr;
+      grid-template-columns: 1fr 120px minmax(auto, 600px) 120px 1fr;
       grid-template-rows: minmax(50px, max-content) max-content 1fr;
       align-items: flex-start;
       height: 100vh;

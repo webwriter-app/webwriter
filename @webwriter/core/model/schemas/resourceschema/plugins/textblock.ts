@@ -191,14 +191,6 @@ export function setAttributeOnSelectedBlocks(key: string, value: any) {
 }
 
 export const textblockPlugin = () => ({
-  nodes: {
-    p: HTMLElementSpec({
-      tag: "p",
-      group: "flow palpable",
-      content: "text | phrasing*",
-      whitespace: "pre"
-    }),
-  },
   keymap: {
     "Backspace": (state, dispatch, view) => {
       const {selection, doc, tr} = state

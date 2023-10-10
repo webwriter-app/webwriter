@@ -52,13 +52,15 @@ export async function docToBundle(doc: Node, head: Node, bundle: Environment["bu
     .map(el => el.tagName.toLowerCase())
     .filter(name => allWidgetTypes.includes(name))
 
-  const packageNames = widgetTypes.map(name => doc.type.schema.nodes[name].spec["package"].name)
+  const packageNames = [...new Set(widgetTypes.map(name => doc.type.schema.nodes[name].spec["package"].name))]
   const scopedEntries = packageNames.map(n => [n, unscopePackageName(n)])
+
+  console.log(packageNames)
 
   const statements = [
     `import "@open-wc/scoped-elements"`
   ].concat(scopedEntries.flatMap(([s, u]) => [
-    `import ${u.replaceAll("-", "_")} from "${s}"`,
+    `import "${s}"`,
     `customElements.define("${u}", ${u.replaceAll("-", "_")})`
   ]))
   const entrypoint = statements.length > 1? statements.join(";"): ""
@@ -81,7 +83,7 @@ export async function docToBundle(doc: Node, head: Node, bundle: Environment["bu
     js !== "" && removeFile(jsPath)
     css !== "" && removeFile(cssPath)
   }
-
+  console.log(head)
   html.head.replaceWith(headSerializer.serializeNode(head))
 
   for(let [key, value] of Object.entries(head.attrs.htmlAttrs ?? {})) {
@@ -154,8 +156,6 @@ export function parse(data: string, schema: Schema) {
 export async function serialize(explorable: Node, head: Node, bundle: Environment["bundle"]) {
   
   const {html, js, css} = await docToBundle(explorable, head, bundle)
-
-  console.log(js)
 
   const script = html.createElement("script")
   script.type = "text/javascript"

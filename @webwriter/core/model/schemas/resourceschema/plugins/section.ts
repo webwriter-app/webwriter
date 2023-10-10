@@ -33,8 +33,7 @@ export const sectionPlugin = () => ({
     footer: HTMLElementSpec({
       tag: "footer",
       group: "flow palpable",
-      content: "flow*",
-      phrasingContent: true
+      content: "flow*"
     }),
     main: HTMLElementSpec({
       tag: "main",

@@ -602,10 +602,6 @@
   <source>Paragraph</source>
   <target>Absatz</target>
 </trans-unit>
-<trans-unit id="sb721548f59b9b1e2">
-  <source>Preview Mode</source>
-  <target>Vorschau-Modus</target>
-</trans-unit>
 <trans-unit id="s2a75c946ef4dcab7">
   <source>Miscellaneous</source>
   <target>Sonstiges</target>
@@ -621,10 +617,6 @@
 <trans-unit id="sc5cb39478b9b7625">
   <source>Mark the selection as a subscript</source>
   <target>Markiere die Auswahl als tiefgestellt</target>
-</trans-unit>
-<trans-unit id="s4023fcc0ecf63c51">
-  <source>Opens or closes the settings drawer</source>
-  <target>Öffnet oder schließt die Einstellungen-Schublade</target>
 </trans-unit>
 <trans-unit id="s83420ad7b6a14db5">
   <source>Toggle Dev Tools</source>
@@ -649,26 +641,6 @@
 <trans-unit id="s1626a7e10a9f9dcc">
   <source>Sets the selection's font family</source>
   <target>Legt die Schriftart der Auswahl fest</target>
-</trans-unit>
-<trans-unit id="s979dc9098d6bb3e0">
-  <source>Increment font size</source>
-  <target>Schriftgröße erhöhen</target>
-</trans-unit>
-<trans-unit id="sa2ffa28d1155c0ff">
-  <source>Increment the selection's font size</source>
-  <target>Erhöht die Schriftgröße der Auswahl</target>
-</trans-unit>
-<trans-unit id="s1a2ba0c73ad1304c">
-  <source>Decrement font size</source>
-  <target>Schriftgröße verringern</target>
-</trans-unit>
-<trans-unit id="s7a57ed00db7a3b83">
-  <source>Decrement the selection's font size</source>
-  <target>Verringert die Schriftgröße der Auswahl</target>
-</trans-unit>
-<trans-unit id="s03d2a538c7c99132">
-  <source>Toggle Settings</source>
-  <target>Einstellungen umschalten</target>
 </trans-unit>
 <trans-unit id="se036b53f145441cd">
   <source>Mixed Content</source>
@@ -741,14 +713,6 @@
 <trans-unit id="s88a62d29529948fb">
   <source>Insert a table</source>
   <target>Tabelle einfügen</target>
-</trans-unit>
-<trans-unit id="scd0ddab5a7a0f930">
-  <source>Drawer</source>
-  <target>Schublade</target>
-</trans-unit>
-<trans-unit id="s162f6f7ed3fc2584">
-  <source>Insert a drawer</source>
-  <target>Schublade einfügen</target>
 </trans-unit>
 <trans-unit id="sf9f2c719a04066ec">
   <source>App</source>
@@ -1037,6 +1001,634 @@
 <trans-unit id="s7b5d09422b533af9">
   <source>View App Folder</source>
   <target>App-Ordner öffnen</target>
+</trans-unit>
+<trans-unit id="s10f3845975a0351e">
+  <source>Edit Metadata</source>
+  <target>Metadaten bearbeiten</target>
+</trans-unit>
+<trans-unit id="sea6e7291e27ec53f">
+  <source>Toggles the metadata editor</source>
+  <target>Metadaten-Editor umschalten</target>
+</trans-unit>
+<trans-unit id="s70178e04a3b691b6">
+  <source>Open Settings</source>
+  <target>Einstellungen öffnen</target>
+</trans-unit>
+<trans-unit id="s0816468df86e4036">
+  <source>Opens the settings</source>
+  <target>Öffnet die Einstellungen</target>
+</trans-unit>
+<trans-unit id="sd10fdbe6caf9a998">
+  <source>Line Break</source>
+  <target>Zeilenumbruch</target>
+</trans-unit>
+<trans-unit id="sbefb6064cba01844">
+  <source>Insert a line break</source>
+  <target>Fügt einen Zeilenumbruch ein</target>
+</trans-unit>
+<trans-unit id="s410c465a5993f82d">
+  <source>Line Break Opportunity</source>
+  <target>Zeilenumbruchs-Gelegenheit</target>
+</trans-unit>
+<trans-unit id="s8df30fe2a50d3479">
+  <source>Insert a line break opportunity</source>
+  <target>Zeilenumbruchs-Gelegenheit einfügen</target>
+</trans-unit>
+<trans-unit id="sd29dc07235eea0f5">
+  <source>Quotation</source>
+  <target>Zitat</target>
+</trans-unit>
+<trans-unit id="s0e4862e87c7d53ce">
+  <source>Mark the selection as a quotation</source>
+  <target>Die Auswahl als Zitat markieren</target>
+</trans-unit>
+<trans-unit id="sfb9b6edb0ed378c9">
+  <source>Citation Source</source>
+  <target>Zitatquelle</target>
+</trans-unit>
+<trans-unit id="s4a894f57eba1cf1e">
+  <source>Keyboard Shortcut</source>
+  <target>Tastenkürzel</target>
+</trans-unit>
+<trans-unit id="s41c724f0698148e9">
+  <source>Mark the selection as a keyboard shortcut</source>
+  <target>Die Auswahl als Tastenkürzel markieren</target>
+</trans-unit>
+<trans-unit id="s0ca5c0460199cba1">
+  <source>Abbreviation</source>
+  <target>Abkürzung</target>
+</trans-unit>
+<trans-unit id="s2206c42e5b835e6e">
+  <source>Mark the selection as an abbreviation</source>
+  <target>Die Auswahl als Abkürzung markieren</target>
+</trans-unit>
+<trans-unit id="sf67571992e7dc88e">
+  <source>Full Term</source>
+  <target>Voller Begriff</target>
+</trans-unit>
+<trans-unit id="s1dfb744260fb3a01">
+  <source>Bidirectional Isolate</source>
+  <target>Bidirektionale Gruppierung</target>
+</trans-unit>
+<trans-unit id="sa39c7ac1d37f3bce">
+  <source>Mark the selection as a 'bidirectional isolate'</source>
+  <target>Auswahl als bidirektionale Gruppierung markieren</target>
+</trans-unit>
+<trans-unit id="s4c402ff5355fd310">
+  <source>Bidirectional Override</source>
+  <target>Bidirektionale Überschreibung</target>
+</trans-unit>
+<trans-unit id="s02ab1ea8e5100fc1">
+  <source>Mark the selection as a 'bidirectional override'</source>
+  <target>Auswahl als bidirektionale Überschreibung markieren</target>
+</trans-unit>
+<trans-unit id="se62385ac082368d2">
+  <source>Mark the selection as a citation source</source>
+  <target>Auswahl als Zitatquelle markieren</target>
+</trans-unit>
+<trans-unit id="s36a194e38d653a26">
+  <source>Data Annotation</source>
+  <target>Daten-Annotation</target>
+</trans-unit>
+<trans-unit id="s5a1a0898baf20675">
+  <source>Mark the selection with a data annotation</source>
+  <target>Auswahl als Daten-Annotation markieren</target>
+</trans-unit>
+<trans-unit id="s9d668a34af4128ff">
+  <source>Deletion</source>
+  <target>Löschung</target>
+</trans-unit>
+<trans-unit id="s1c246045629b0016">
+  <source>Mark the selection as a deletion</source>
+  <target>Auswahl als Löschung markieren</target>
+</trans-unit>
+<trans-unit id="s94653c76b2d86a04">
+  <source>Defined Term</source>
+  <target>Definierter Begriff</target>
+</trans-unit>
+<trans-unit id="s1082e1649793dca9">
+  <source>Mark the selection as a defined term</source>
+  <target>Auswahl als definierten Begriff markieren</target>
+</trans-unit>
+<trans-unit id="s92b177e579ef7b97">
+  <source>Emphasis</source>
+  <target>Betonung</target>
+</trans-unit>
+<trans-unit id="s782eac2b3e80323d">
+  <source>Mark the selection as emphasized</source>
+  <target>Auswahl als betont markieren</target>
+</trans-unit>
+<trans-unit id="s50489ffb1bde152e">
+  <source>Insertion</source>
+  <target>Hinzufügung</target>
+</trans-unit>
+<trans-unit id="sd1a78e667a1a139f">
+  <source>Mark the selection as an insertion</source>
+  <target>Auswahl als Hinzufügung markieren</target>
+</trans-unit>
+<trans-unit id="s3d6a732c792ccb9e">
+  <source>Ruby Annotation</source>
+  <target>Ruby-Annotation</target>
+</trans-unit>
+<trans-unit id="sdf62e305e1594805">
+  <source>Mark the selection with a ruby annotation</source>
+  <target>Auswahl als Ruby-Annotation markieren</target>
+</trans-unit>
+<trans-unit id="s474f0eec369d02a4">
+  <source>Sample Output</source>
+  <target>Ausgabe</target>
+</trans-unit>
+<trans-unit id="sf21c1f60c7515f44">
+  <source>Mark the selection as sample output</source>
+  <target>Auswahl als Ausgabe markieren</target>
+</trans-unit>
+<trans-unit id="s4eace13b3ed74187">
+  <source>Side Comment</source>
+  <target>Nebenkommentar</target>
+</trans-unit>
+<trans-unit id="s864b0e6270e97246">
+  <source>Mark the selection as a side comment</source>
+  <target>Auswahl als Nebenkommentar markieren</target>
+</trans-unit>
+<trans-unit id="sb60bc1250aad44c1">
+  <source>Span</source>
+  <target>Spanne</target>
+</trans-unit>
+<trans-unit id="s0a7db790db1fc45c">
+  <source>Mark the selection as a span</source>
+  <target>Auswahl als Spanne markieren</target>
+</trans-unit>
+<trans-unit id="s7bdf0fd5b014d36c">
+  <source>Strong Importance</source>
+  <target>Besondere Wichtigkeit</target>
+</trans-unit>
+<trans-unit id="s550839f3e4e205bb">
+  <source>Mark the selection as strongly important</source>
+  <target>Auswahl als besonders wichtig markieren</target>
+</trans-unit>
+<trans-unit id="s3d3efd1e19bdcfb4">
+  <source>Date/Time Annotation</source>
+  <target>Datum/Zeit-Annotation</target>
+</trans-unit>
+<trans-unit id="s47e257ae643b5851">
+  <source>Mark the selection as a date/time annotation</source>
+  <target>Auswahl als Datum/Zeit-Annotation markieren</target>
+</trans-unit>
+<trans-unit id="sec2557a35b702525">
+  <source>Variable</source>
+  <target>Variable</target>
+</trans-unit>
+<trans-unit id="sf59c9081d106dd9c">
+  <source>Mark the selection as a variable</source>
+  <target>Auswahl als Variable markieren</target>
+</trans-unit>
+<trans-unit id="s6f84199e62584905">
+  <source>Preformatted Text</source>
+  <target>Vorformatierter Text</target>
+</trans-unit>
+<trans-unit id="sb3ba3276ae93627c">
+  <source>Insert a preformatted text block</source>
+  <target>Einen Block vorformatierten Text einfügen</target>
+</trans-unit>
+<trans-unit id="sec8b0b6c729816b6">
+  <source>Heading Group</source>
+  <target>Überschrifts-Gruppe</target>
+</trans-unit>
+<trans-unit id="s4d528b416ac8dee2">
+  <source>Insert a heading group</source>
+  <target>Überschrifts-Gruppe einfügen</target>
+</trans-unit>
+<trans-unit id="sf0cf5c5d0102f674">
+  <source>List Item</source>
+  <target>Listen-Element</target>
+</trans-unit>
+<trans-unit id="s20db56373c0fc770">
+  <source>Insert a list item</source>
+  <target>Listen-Element einfügen</target>
+</trans-unit>
+<trans-unit id="s07aa10850d9ddcc7">
+  <source>Form</source>
+  <target>Formular</target>
+</trans-unit>
+<trans-unit id="s84e9c7f8785ca60b">
+  <source>Insert a form</source>
+  <target>Formular einfügen</target>
+</trans-unit>
+<trans-unit id="s0312976fe9da5951">
+  <source>Button</source>
+  <target>Knopf</target>
+</trans-unit>
+<trans-unit id="sd60c9bbc51375635">
+  <source>Insert a button</source>
+  <target>Knopf einfügen</target>
+</trans-unit>
+<trans-unit id="sdb1595f5c742dfbb">
+  <source>Input</source>
+  <target>Eingabe</target>
+</trans-unit>
+<trans-unit id="s29b24c06315e9343">
+  <source>Insert an input</source>
+  <target>Eingabe einfügen</target>
+</trans-unit>
+<trans-unit id="sfc63e31ac7c956ed">
+  <source>Select</source>
+  <target>Auswahl</target>
+</trans-unit>
+<trans-unit id="s531056f039febd39">
+  <source>Insert a select</source>
+  <target>Auswahl einfügen</target>
+</trans-unit>
+<trans-unit id="sfc00292e778b67e2">
+  <source>Meter</source>
+  <target>Zähler</target>
+</trans-unit>
+<trans-unit id="s52e0bdc3ee304436">
+  <source>Insert a meter</source>
+  <target>Zähler einfügen</target>
+</trans-unit>
+<trans-unit id="s8c7f51cb067644c7">
+  <source>Data List</source>
+  <target>Datenliste</target>
+</trans-unit>
+<trans-unit id="sfa59c7777e2a0eeb">
+  <source>Insert a data list</source>
+  <target>Datenliste einfügen</target>
+</trans-unit>
+<trans-unit id="s7fcb35d23be1e643">
+  <source>Field Set</source>
+  <target>Formularfeld-Gruppe</target>
+</trans-unit>
+<trans-unit id="s2d986d31f8d67357">
+  <source>Insert a field set</source>
+  <target>Formularfeld-Gruppe einfügen</target>
+</trans-unit>
+<trans-unit id="s5590dbf7e425789d">
+  <source>Label</source>
+  <target>Aufschrift</target>
+</trans-unit>
+<trans-unit id="s21f8a2eaf5a70749">
+  <source>Insert a label</source>
+  <target>Aufschrift einfügen</target>
+</trans-unit>
+<trans-unit id="s4b58c01e2578f5e4">
+  <source>Legend</source>
+  <target>Legende</target>
+</trans-unit>
+<trans-unit id="s3fd83566dd643d10">
+  <source>Insert a legend</source>
+  <target>Legende einfügen</target>
+</trans-unit>
+<trans-unit id="sef75f458d77491af">
+  <source>Option Group</source>
+  <target>Optionen-Gruppe</target>
+</trans-unit>
+<trans-unit id="sceecdd0bb404bc17">
+  <source>Insert an option group</source>
+  <target>Optionen-Gruppe einfügen</target>
+</trans-unit>
+<trans-unit id="s4802e47fe2e95134">
+  <source>Option</source>
+  <target>Option</target>
+</trans-unit>
+<trans-unit id="s3cb47df8290fa94c">
+  <source>Insert an option</source>
+  <target>Option einfügen</target>
+</trans-unit>
+<trans-unit id="sfd77270c3f54f664">
+  <source>Output</source>
+  <target>Ausgabe</target>
+</trans-unit>
+<trans-unit id="se64f418b4e733b6c">
+  <source>Insert an output</source>
+  <target>Ausgabe einfügen</target>
+</trans-unit>
+<trans-unit id="s18fca71e2e3308e7">
+  <source>Progress Indicator</source>
+  <target>Fortschrittsanzeige</target>
+</trans-unit>
+<trans-unit id="s52777d434baeed9b">
+  <source>Insert a progress indicator</source>
+  <target>Fortschrittsanzeige einfügen</target>
+</trans-unit>
+<trans-unit id="sa78a67272a4a6f95">
+  <source>Math Formula</source>
+  <target>Matheformel</target>
+</trans-unit>
+<trans-unit id="saaad98061a20ac39">
+  <source>Insert a math formula</source>
+  <target>Matheformel einfügen</target>
+</trans-unit>
+<trans-unit id="s5432ad3c84273229">
+  <source>Figure</source>
+  <target>Schaubild</target>
+</trans-unit>
+<trans-unit id="sf486ca1fdbe08645">
+  <source>Insert a figure</source>
+  <target>Schaubild einfügen</target>
+</trans-unit>
+<trans-unit id="sa5df1bcdba46c3fb">
+  <source>Figure Caption</source>
+  <target>Schaubild-Unterschrift</target>
+</trans-unit>
+<trans-unit id="s33c1450d2822bb0f">
+  <source>Insert a figure caption</source>
+  <target>Schaubild-Unterschrift einfügen</target>
+</trans-unit>
+<trans-unit id="s3d93f9ea0c5a13fa">
+  <source>Image</source>
+  <target>Bild</target>
+</trans-unit>
+<trans-unit id="s8bc4affa761aa8a2">
+  <source>Insert an image</source>
+  <target>Bild einfügen</target>
+</trans-unit>
+<trans-unit id="s5f43af3669b1e098">
+  <source>Source</source>
+  <target>Quelle</target>
+</trans-unit>
+<trans-unit id="sa7dc6b8ef3f595dc">
+  <source>Insert a source</source>
+  <target>Quelle einfügen</target>
+</trans-unit>
+<trans-unit id="s9e85800d3700e31c">
+  <source>Track</source>
+  <target>Spur</target>
+</trans-unit>
+<trans-unit id="sf39736a666dbb038">
+  <source>Insert a track</source>
+  <target>Spur einfügen</target>
+</trans-unit>
+<trans-unit id="s5ed03bb1f3a15949">
+  <source>Picture</source>
+  <target>Abbildung</target>
+</trans-unit>
+<trans-unit id="s93566b84230af4f5">
+  <source>Insert a picture</source>
+  <target>Abbildung einfügen</target>
+</trans-unit>
+<trans-unit id="s08e6bd98452e6bb9">
+  <source>Audio</source>
+  <target>Audio</target>
+</trans-unit>
+<trans-unit id="s96532132a29dd542">
+  <source>Insert audio</source>
+  <target>Audio einfügen</target>
+</trans-unit>
+<trans-unit id="s85186a61e0d55bac">
+  <source>Video</source>
+  <target>Video</target>
+</trans-unit>
+<trans-unit id="s9e28faa598332e2b">
+  <source>Insert video</source>
+  <target>Video einfügen</target>
+</trans-unit>
+<trans-unit id="s730182ad28374cda">
+  <source>Object</source>
+  <target>Objekt</target>
+</trans-unit>
+<trans-unit id="s123bea44f38abccf">
+  <source>Insert object</source>
+  <target>Objekt einfügen</target>
+</trans-unit>
+<trans-unit id="scace301a88231cce">
+  <source>Embed</source>
+  <target>Einbettung</target>
+</trans-unit>
+<trans-unit id="s91c5ed7769d00b65">
+  <source>Insert embed</source>
+  <target>Einbettung einfügen</target>
+</trans-unit>
+<trans-unit id="s82665b2ffabc9c0a">
+  <source>Website</source>
+  <target>Website</target>
+</trans-unit>
+<trans-unit id="sc3998b77d72c2932">
+  <source>Insert a website (as an inline frame)</source>
+  <target>Website einfügen</target>
+</trans-unit>
+<trans-unit id="s4802bb8eb52fbdeb">
+  <source>Portal</source>
+  <target>Portal</target>
+</trans-unit>
+<trans-unit id="sd4368b12645d3c0f">
+  <source>Insert a portal</source>
+  <target>Portal einfügen</target>
+</trans-unit>
+<trans-unit id="sbf00e1ee999ea94e">
+  <source>Insert a script</source>
+  <target>Skript einfügen</target>
+</trans-unit>
+<trans-unit id="s6dfb502188a8c7c2">
+  <source>Insert a style</source>
+  <target>Style einfügen</target>
+</trans-unit>
+<trans-unit id="se47baf2fd16b9d2b">
+  <source>Template</source>
+  <target>Schablone</target>
+</trans-unit>
+<trans-unit id="s7b4ba250601b8667">
+  <source>Insert a template</source>
+  <target>Schablone einfügen</target>
+</trans-unit>
+<trans-unit id="s919e1724f589c9b1">
+  <source>Slot</source>
+  <target>Slot</target>
+</trans-unit>
+<trans-unit id="s32911e52ee8ac745">
+  <source>Insert a slot</source>
+  <target>Slot einfügen</target>
+</trans-unit>
+<trans-unit id="s2d995a37cf5e4995">
+  <source>Insert a NoScript</source>
+  <target>NoScript</target>
+</trans-unit>
+<trans-unit id="sc50d09edf9325339">
+  <source>Dialog</source>
+  <target>NoScript einfügen</target>
+</trans-unit>
+<trans-unit id="sff99962304ac7d25">
+  <source>Insert a dialog</source>
+  <target>Dialog einfügen</target>
+</trans-unit>
+<trans-unit id="s355b21b89ce5d9c5">
+  <source>Details</source>
+  <target>Details</target>
+</trans-unit>
+<trans-unit id="sb6103872073d369e">
+  <source>Insert details</source>
+  <target>Details einfügen</target>
+</trans-unit>
+<trans-unit id="sc9474bf7a0668d73">
+  <source>Summary</source>
+  <target>Zusammenfassung</target>
+</trans-unit>
+<trans-unit id="sec30fbb20f102670">
+  <source>Insert summary</source>
+  <target>Zusammenfassung einfügen</target>
+</trans-unit>
+<trans-unit id="se16c5e66886fbc59">
+  <source>Article</source>
+  <target>Artikel</target>
+</trans-unit>
+<trans-unit id="s3f7e097a9b2e6181">
+  <source>Insert an article</source>
+  <target>Artikel einfügen</target>
+</trans-unit>
+<trans-unit id="sadd352cc7f6f2307">
+  <source>Aside</source>
+  <target>Nebenbemerkung</target>
+</trans-unit>
+<trans-unit id="s743f778233e42a3f">
+  <source>Insert an aside</source>
+  <target>Nebenbemerkung einfügen</target>
+</trans-unit>
+<trans-unit id="s07e6118e838b2e23">
+  <source>Navigation</source>
+  <target>Navigation</target>
+</trans-unit>
+<trans-unit id="s0a799f583098cadf">
+  <source>Insert a navigation</source>
+  <target>Navigation</target>
+</trans-unit>
+<trans-unit id="scc1db59d292cbc4c">
+  <source>Section</source>
+  <target>Navigation einfügen</target>
+</trans-unit>
+<trans-unit id="s22a2348c46a912a0">
+  <source>Insert a section</source>
+  <target>Abschnitt einfügen</target>
+</trans-unit>
+<trans-unit id="s75d83fc3f0cfab40">
+  <source>Header</source>
+  <target>Kopfzeile</target>
+</trans-unit>
+<trans-unit id="sa5c80e623459ffe4">
+  <source>Insert a header</source>
+  <target>Kopfzeile einfügen</target>
+</trans-unit>
+<trans-unit id="scf932a8577057752">
+  <source>Footer</source>
+  <target>Fußzeile</target>
+</trans-unit>
+<trans-unit id="sa352d168b262aa06">
+  <source>Insert a footer</source>
+  <target>Fußzeile einfügen</target>
+</trans-unit>
+<trans-unit id="s49e763aed00877a8">
+  <source>Main</source>
+  <target>Hauptabschnitt</target>
+</trans-unit>
+<trans-unit id="s8247d32213e35f24">
+  <source>Insert a main</source>
+  <target>Hauptabschnitt einfügen</target>
+</trans-unit>
+<trans-unit id="s5d929ff1619ac0c9">
+  <source>Search</source>
+  <target>Suche</target>
+</trans-unit>
+<trans-unit id="sbb85a407d730e13d">
+  <source>Insert a search</source>
+  <target>Suche einfügen</target>
+</trans-unit>
+<trans-unit id="sfcdd8e672c75b713">
+  <source>Address</source>
+  <target>Addresse</target>
+</trans-unit>
+<trans-unit id="s429dd933ba95549b">
+  <source>Insert an address</source>
+  <target>Addresse einfügen</target>
+</trans-unit>
+<trans-unit id="s1351734ce8177b5f">
+  <source>SVG Drawing</source>
+  <target>SVG-Zeichnung</target>
+</trans-unit>
+<trans-unit id="s3b51dea3b9ac2507">
+  <source>Insert an SVG Drawing</source>
+  <target>SVG-Zeichnung einfügen</target>
+</trans-unit>
+<trans-unit id="s0cf10c4f40588f8d">
+  <source>Table Caption</source>
+  <target>Tabellen-Unterschrift</target>
+</trans-unit>
+<trans-unit id="s0c11e479416c8421">
+  <source>Insert a table caption</source>
+  <target>Tabellen-Unterschrift einfügen</target>
+</trans-unit>
+<trans-unit id="s613c6ff83883c04f">
+  <source>Table Column</source>
+  <target>Tabellen-Spalte</target>
+</trans-unit>
+<trans-unit id="sd52660ee947ca58b">
+  <source>Insert a table column</source>
+  <target>Tabellen-Spalte einfügen</target>
+</trans-unit>
+<trans-unit id="s8517ae4da104b004">
+  <source>Table Column Group</source>
+  <target>Tabellen-Spaltengruppe</target>
+</trans-unit>
+<trans-unit id="s28b6246ce616a548">
+  <source>Insert a table column group</source>
+  <target>Tabellen-Spaltengruppe einfügen</target>
+</trans-unit>
+<trans-unit id="s21d61916eb8d137d">
+  <source>Table Body</source>
+  <target>Tabellen-Körper</target>
+</trans-unit>
+<trans-unit id="s156647179b21d351">
+  <source>Insert a table body</source>
+  <target>Tabellen-Körper einfügen</target>
+</trans-unit>
+<trans-unit id="sb616811735bfbafd">
+  <source>Table cell</source>
+  <target>Tabellen-Zelle</target>
+</trans-unit>
+<trans-unit id="s9faf26107ed49fb9">
+  <source>Insert a table cell</source>
+  <target>Tabellen-Zelle einfügen</target>
+</trans-unit>
+<trans-unit id="sa7af797a46c7d09a">
+  <source>Table Footer</source>
+  <target>Tabellen-Fußzeile</target>
+</trans-unit>
+<trans-unit id="sc252a4e091763606">
+  <source>Insert a table footer</source>
+  <target>Tabellen-Fußzeile einfügen</target>
+</trans-unit>
+<trans-unit id="sb68e83cda6c85af8">
+  <source>Table header</source>
+  <target>Tabellen-Kopfzeile</target>
+</trans-unit>
+<trans-unit id="s8f29e48d6b9a1aa8">
+  <source>Insert a table header row</source>
+  <target>Tabellen-Kopfzeile einfügen</target>
+</trans-unit>
+<trans-unit id="s153bc3c3aa39587b">
+  <source>Table Head</source>
+  <target>Tabellen-Kopfabschnitt</target>
+</trans-unit>
+<trans-unit id="s5d18ca4c3111be6f">
+  <source>Insert a table head</source>
+  <target>Tabellen-Kopfabschnitt einfügen</target>
+</trans-unit>
+<trans-unit id="s52af5d7ac34c2163">
+  <source>Table Row</source>
+  <target>Tabellen-Zeile</target>
+</trans-unit>
+<trans-unit id="s1988d71ef8060edf">
+  <source>Insert a table row</source>
+  <target>Tabellen-Zeile einfügen</target>
+</trans-unit>
+<trans-unit id="s9ffe1bbe64712bf1">
+  <source>Canvas</source>
+  <target>Leinwand</target>
+</trans-unit>
+<trans-unit id="sa7dbe35b758c138d">
+  <source>Insert a canvas</source>
+  <target>Leinwand einfügen</target>
+</trans-unit>
+<trans-unit id="s91c5921e7b46d4a6">
+  <source>You have unsaved changes. Are you sure you want to leave and discard them?</source>
+  <target>Es gibt ungesicherte Änderungen. Trotzdem schließen und Änderungen verwerfen?</target>
 </trans-unit>
 </body>
 </file>

@@ -3,6 +3,8 @@ import {ReactiveController, ReactiveControllerHost} from "lit"
 import { ZodSchema, z } from "zod"
 
 import { Package, RootStore, StoreKey, SubStoreKey } from "../model"
+import { App } from "../view"
+import { ViewModelMixin } from "."
 
 type OmitFunctions<T> = Pick<T, {
   [K in keyof T]: T[K] extends Function ? never : K;
@@ -31,24 +33,29 @@ export type Settings<T=null, K extends keyof T = any> = T extends null? AnySetti
 
 export class SettingsController implements ReactiveController {
 
-  host: ReactiveControllerHost
+  host: InstanceType<ReturnType<typeof ViewModelMixin>>
 	store: RootStore
 
-  constructor(host: ReactiveControllerHost, store: RootStore) {
+  constructor(host: InstanceType<ReturnType<typeof ViewModelMixin>>, store: RootStore) {
     this.store = store;
     (this.host = host).addController(this)
   }
 
   async hostConnected() {
+    const {join, appDir} = this.host.environment.api.Path
     await this.store.packages.initialized
     await this.store.rehydrate(this.settingsSchema)
+    const path = await join(await appDir(), "settings.json")
+    if(await this.host.environment.api.FS.exists(path)) {
+      this.host.environment.api.watch(path, () => this.store.rehydrate(this.settingsSchema))
+    }
   }
   hostDisconnected() {}
 
   get specLabels(): Partial<Record<StoreKey, string>> {
     return {
       ui: msg("General"),
-      resources: msg("Documents")
+      document: msg("Document"),
     }
   } 
 

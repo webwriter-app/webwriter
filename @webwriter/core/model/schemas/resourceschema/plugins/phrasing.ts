@@ -7,23 +7,34 @@ import { HTMLElementSpec, HTMLMarkSpec } from "../htmlelementspec";
 export function getActiveMarks(state: EditorState, includeStored=true) {
   const stored = state.storedMarks ?? []
   const marks = new Set(includeStored? stored: [])
-  state.doc.nodesBetween(state.selection.from, state.selection.to, (node, pos, parent, index) => {
-    node.marks.forEach(mark => marks.add(mark))
-  })
+  if(state.selection.empty) {
+    state.selection.$from.marks().forEach(mark => marks.add(mark))
+  }
+  else {
+    state.doc.nodesBetween(state.selection.from, state.selection.to, node => {
+      node.marks.forEach(mark => marks.add(mark))
+    })
+  }
 	return Array.from(marks)
 }
 
 export function toggleOrUpdateMark(mark: string, attrs: any = {}) {
   return (state: EditorState, dispatch: any) => {
-    const {from, to} = state.selection
+    const {from, to, empty} = state.selection
     const markType = state.schema.marks[mark]
     const newMark = markType.create(attrs)
     const correspondingMark = getActiveMarks(state).find(m => m.type.name === mark)
-    if(!correspondingMark || !correspondingMark?.eq(newMark)) {
+    if(!correspondingMark && empty) {
+      return dispatch(state.tr.addStoredMark(newMark))
+    }
+    else if(!correspondingMark || !correspondingMark?.eq(newMark)) {
       return dispatch(state.tr
         .removeMark(from, to, markType)
         .addMark(from, to, newMark)
       )
+    }
+    else if(correspondingMark.isInSet(state.storedMarks ?? [])) {
+      return dispatch(state.tr.removeStoredMark(markType))
     }
     else {
       return dispatch(state.tr.removeMark(from, to, markType))
@@ -49,16 +60,26 @@ export const phrasingPlugin = () => ({
     }),
     _phrase: HTMLElementSpec({
       tag: "span",
+      content: "text? | phrasing*",
       group: "flow",
-      content: "phrasing*",
       toDOM: () => ["span", {"data-ww-editing": "phrase"}, 0],
       parseDOM: [{tag: "span[data-ww-editing=phrase]"}]
-    })
+    }),
   },
   marks: {
     a: HTMLMarkSpec({
       tag: "a",
-      group: "phrasing"
+      group: "phrasing",
+      attrs: {
+        download: {default: undefined},
+        href: {default: undefined},
+        ping: {default: undefined},
+        hreflang: {default: undefined},
+        referrerpolicy: {default: undefined},
+        rel: {default: undefined},
+        target: {default: undefined},
+        type: {default: undefined}
+      }
     }),
     abbr: HTMLMarkSpec({
       tag: "abbr",

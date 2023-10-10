@@ -1,4 +1,104 @@
+import { LitElement, html } from "lit"
+import { ViewModelMixin } from "../../viewmodel"
+import { localized, msg } from "@lit/localize"
+import { customElement } from "lit/decorators.js"
+
 export * from "./configurator"
 export * from "./packagemanager"
 export * from "./keymapmanager"
 export * from "./packageform"
+
+@localized()
+@customElement("ww-settings")
+export class Settings extends ViewModelMixin(LitElement, true) {
+
+  async connectedCallback() {
+    await super.connectedCallback()
+    await this.initialized
+		this.localization.setLocale(this.store.ui.locale)
+  }
+
+	PackageManager = () => {
+		const {packages, adding, removing, upgrading, fetching, resetting, add, remove, upgrade, fetchAll, viewAppDir, resetAppDir, addLocal, watching, openMain} = this.store.packages
+		const {setAndPersist} = this.settings
+
+		return html`<ww-package-manager
+      .app=${this}
+			slot="pre-tab-panel-a"
+      .store=${this.store as any}
+			.packages=${packages as any}
+			.adding=${adding}
+			.removing=${removing}
+			.upgrading=${upgrading}
+			?loading=${fetching}
+			?resetting=${resetting}
+			@ww-add-package=${(e: any) => add(e.detail.args)}
+			@ww-remove-package=${(e: any) => remove(e.detail.args)}
+			@ww-upgrade-package=${(e: any) => upgrade(e.detail.args)}
+      @ww-edit-package=${(e: any) => e} 
+      @ww-open-package-code=${(e: any) => openMain(e.detail.name)} 
+			@ww-toggle-watch=${(e: any) => setAndPersist("packages", "watching", {...watching, [e.detail.name]: !watching[e.detail.name]})}
+			@ww-refresh=${() => fetchAll(0)}
+			@ww-open-app-dir=${() => viewAppDir()}></ww-package-manager>
+		</ww-package-manager>`
+	}
+
+	KeymapManager = () => {
+		const {commands, categoryLabels} = this.commands
+		const {setAndPersist} = this.settings
+		return html`<ww-keymap-manager
+      .app=${this}
+			slot="post-tab-panel-a"
+			.commands=${commands}
+			.categoryLabels=${categoryLabels}
+			@ww-shortcut-change=${(e: CustomEvent) => {
+				const {name, shortcut} = e.detail
+				const customKeymap = this.store.get("ui", "keymap")
+        const command = (commands as any)[name]
+				setAndPersist("ui", "keymap", {...customKeymap, [name]: {shortcut}})
+        command.shortcut = shortcut
+			}}
+			@ww-shortcut-reset=${(e: CustomEvent) => {
+				const {name} = e.detail
+				const customKeymap = {...this.store.get("ui", "keymap")}
+        const command = (commands as any)[name]
+        delete customKeymap[name]
+				setAndPersist("ui", "keymap", customKeymap)
+        command.shortcut = command.spec.shortcut
+			}}
+		></ww-keymap-manager>`
+	}
+
+  render() {
+    if(!this.settings || !this.store) {
+      return null
+    }
+		const {specs, values, specLabels, setAndPersist} = this.settings
+		const {fetchAll, viewAppDir, resetAppDir} = this.store.packages
+		return html`
+			<ww-configurator
+        .app=${this}
+				.specs=${specs}
+				.specLabels=${specLabels}
+				.values=${values}
+				@ww-change=${(e: any) => setAndPersist(e.detail.groupKey, e.detail.key, e.detail.value)}
+			>
+				<span slot="pre-tab-a">
+					<span>${msg("Packages")}</span>
+				</span>
+				${this.PackageManager()}
+				<span slot="post-tab-a">
+					<span>${msg("Shortcuts")}</span>
+				</span>
+				${this.KeymapManager()}
+        <ww-button size="small" slot="post-tabs" variant="danger" outline class="title-button" @click=${() => resetAppDir()} confirm>
+        <span>${msg("Reset WebWriter")}</span>
+          <span slot="confirm">${msg("Are you sure? This action can't be reversed, all your settings will be deleted and reset.")}</span>
+        </ww-button>
+      <ww-button size="small" slot="post-tabs" variant="neutral" outline class="title-button" @click=${() => viewAppDir()}>
+        <span>${msg("View App Folder")}</span>
+      </ww-button>
+			</ww-configurator>
+		`
+	}
+}

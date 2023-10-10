@@ -144,7 +144,7 @@ export class DocumentFooter extends LitElement {
         `}
         ${this.inputTemplate("author", msg("Anonymous"))}
       </div>
-			<ww-license-picker value=${this.docAttributes.license == undefined || this.docAttributes.license === ""? msg("All rights reserved"): this.docAttributes.license} @ww-change=${(e: CustomEvent) => this.emitAttributeChange("license", e.detail.value)} ?disabled=${!this.editable}></ww-license-picker>
+			<ww-license-picker value=${(this.docAttributes.license == undefined || this.docAttributes.license === ""? msg("All rights reserved"): this.docAttributes.license) as any} @ww-change=${(e: CustomEvent) => this.emitAttributeChange("license", e.detail.value)} ?disabled=${!this.editable}></ww-license-picker>
 	  `
 	}
 }

@@ -15,11 +15,10 @@ import {customElement, property, query} from "lit/decorators.js"
 import { localized, msg } from "@lit/localize"
 
 import { escapeHTML, groupBy } from "../utility"
-import {CommandEvent, ViewModelMixin} from "../viewmodel"
+import {ViewModelMixin} from "../viewmodel"
 import { SlAlert } from "@shoelace-style/shoelace"
 import { ifDefined } from "lit/directives/if-defined.js"
 import { ExplorableEditor } from "./editor"
-import { classMap } from "lit/directives/class-map.js"
 
 
 export interface SlAlertAttributes {
@@ -28,7 +27,6 @@ export interface SlAlertAttributes {
 	icon?: string
 	duration?: number
 }
-
 
 @localized()
 @customElement("ww-app")
@@ -86,16 +84,16 @@ export class App extends ViewModelMixin(LitElement)
 
 			#initializingPlaceholder sl-spinner {
 				margin-bottom: 0.5rem;
-				font-size: 8rem;
-				--track-width: 8px;
+				font-size: 12rem;
+				--track-width: 10px;
 			}
 
       #initializingPlaceholder .app-icon, #initializingPlaceholder svg {
-        width: 80px;
-        height: 80px;
+        width: 120px;
+        height: 120px;
         position: absolute;
-        top: calc(50% - 47px);
-        left: calc(50% - 38px);
+        top: calc(50% - 60px);
+        left: calc(50% - 55px);
       }
 
 			#settings-button {
@@ -207,11 +205,11 @@ export class App extends ViewModelMixin(LitElement)
         margin-right: 0.5ch;
       }
 
-      #fold-button {
+      #editHead {
         transition: cubic-bezier(0.23, 1, 0.320, 1) 0.75s;
       }
 
-      :host([foldOpen]) #fold-button {
+      :host([foldOpen]) #editHead {
         transform: rotate(90deg);
         color: var(--sl-color-primary-600);
       }
@@ -223,68 +221,6 @@ export class App extends ViewModelMixin(LitElement)
 			}
 		`
 	}
-
-  get markCommands() {
-    return this.commands.queryCommands({tags: ["mark"]})
-  }
-
-  get nodeCommands() {
-    return this.commands.queryCommands({tags: ["node"]})
-  }
-
-  get groupedNodeCommands() {
-    return groupBy(this.nodeCommands, "group")
-  }
-
-  get groupedContainerCommands() {
-    return Object.values(groupBy(this.containerCommands, "group"))
-  }
-  
-  get containerCommands() {
-    return this.commands.queryCommands({tags: ["container"]})
-  }
-
-  get layoutCommands() {
-    return this.commands.queryCommands({tags: ["layout"]})
-  }
-
-  get generalCommands() {
-    return this.commands.queryCommands({tags: ["general"]})
-  }
-
-  get fontCommands() {
-    return this.commands.queryCommands({tags: ["font"]})
-  }
-
-  get fontFamilyCommand() {
-    return this.commands.queryCommands("fontFamily")[0]
-  }
-
-  get fontSizeCommand() {
-    return this.commands.queryCommands("fontSize")[0]
-  }
-
-  get documentCommands() {
-    return this.commands.queryCommands({category: "document"})
-  }
-
-  get priorityContainerCommands() {
-    const commands = this.containerCommands
-    const activeI = commands.findIndex(cmd => cmd.active)
-    const activeCommand = commands[activeI]
-    const activeCommandGroup = commands.filter(cmd => activeCommand?.group && activeCommand.group === cmd.group).map(cmd => cmd.id)
-    const activeOffset = activeCommandGroup.indexOf(activeCommand?.id)
-    const nextCmd = activeCommandGroup[(activeOffset + 1) % activeCommandGroup.length]
-    const nextI = commands.findIndex(cmd => cmd.id === nextCmd)
-    const priorityCommands = commands.filter((cmd, i) => {
-      const primaryI = commands.findIndex(c => c.group === cmd.group)
-      return !cmd.group || (activeI !== undefined && activeCommandGroup.includes(cmd.id)? nextI: primaryI) === i
-    })
-    return priorityCommands
-  }
-
-	@property({attribute: false})
-	settingsOpen: boolean = false
 
   @property({type: Boolean, attribute: true, reflect: true})
 	foldOpen: boolean = false
@@ -318,46 +254,48 @@ export class App extends ViewModelMixin(LitElement)
 
 
 	Content = () => {
-		const {active, changed, set, setHead, create} = this.store.resources
+		const {changed, set, setHead, url, editorState} = this.store.document
 		const {packages, availableWidgetTypes, bundleCode, bundleCSS, bundleID} = this.store.packages
 		const {locale, showTextPlaceholder, showWidgetPreview} = this.store.ui
 		const {open} = this.environment.api.Shell
+    const {documentCommands, commands: {setDocAttrs, editHead}} = this.commands
     const head = html`<ww-head 
+      .documentCommands=${documentCommands.filter(cmd => cmd.id !== "editHead")}
       slot="nav"
-      filename=${ifDefined(active?.url)}
-      ?pendingChanges=${Boolean(changed[active?.url as any])}
-      .resourceCommands=${this.documentCommands as any}
+      filename=${ifDefined(url)}
+      ?pendingChanges=${changed}
     >
-      <ww-button id="fold-button" icon=${"chevron-right"} variant="icon" @click=${() => this.foldOpen = !this.foldOpen}></ww-button>
+      <ww-button variant="icon" ${spreadProps(editHead.toObject())} @click=${() => editHead.run()}></ww-button>
     </ww-head>`
-    const metaeditor = this.store && active? html`<ww-metaeditor
-      .head$=${(active.editorState as any).head$}
-      .bodyAttrs=${active.editorState.doc.attrs}
-      @ww-change-body-attrs=${(e: any) => this.commands.dispatch("setDocAttrs", e.target.bodyAttrs)}
-      @ww-update=${(e: any) => setHead(active.url, e.detail.state)} @ww-click-tab=${(e: any) => this.foldOpen = true} slot="fold">
+    const metaeditor = this.store? html`<ww-metaeditor
+      .app=${this}
+      .head$=${(editorState as any).head$}
+      .bodyAttrs=${editorState.doc.attrs}
+      @ww-change-body-attrs=${(e: any) => setDocAttrs.run(e.target.bodyAttrs)}
+      @ww-update=${(e: any) => setHead(e.detail.state)} @ww-click-tab=${(e: any) => this.foldOpen = true} slot="fold">
 
     </ww-metaeditor>`: null
-    const editor = this.store && active? html`<ww-explorable-editor
+    const editor = this.store? html`<ww-explorable-editor
+    .app=${this}
     slot="main"
-    docID=${active.url}
+    docID=${url}
+    data-active
     @focus=${() => this.foldOpen = false}
-
     .bundleCode=${bundleCode}
     .bundleCSS=${bundleCSS}
     bundleID=${bundleID}
-    .editorState=${active.editorState}
-    @update=${(e: any) => set(active.url, e.detail.editorState)}
+    .editorState=${editorState}
+    @update=${(e: any) => set(e.detail.editorState)}
     @ww-open=${(e: any) => open(e.detail.url)}
     .availableWidgetTypes=${availableWidgetTypes}
     .packages=${packages as any}
     ?loadingPackages=${false}
     .showTextPlaceholder=${showTextPlaceholder}
     .showWidgetPreview=${showWidgetPreview}
-    ?data-active=${active.url === active?.url}
     ?controlsVisible=${!this.foldOpen}
     lang=${locale}>
   </ww-explorable-editor>`: null
-	return !active? head: [head, metaeditor, editor]
+	return [head, metaeditor, editor]
 	}
 
 	Placeholder = () => {
@@ -367,65 +305,16 @@ export class App extends ViewModelMixin(LitElement)
       <div class="app-icon">
         ${unsafeSVG(appIconRaw)}
       </div>
-			<div>${msg("Loading WebWriter...")}</div>
+			<!--<div>${msg("Loading WebWriter...")}</div>-->
 		</div>
 	</div>`
   }
 
-	PackageManager = () => {
-		const {packages, adding, removing, upgrading, fetching, resetting, add, remove, upgrade, fetchAll, viewAppDir, resetAppDir, addLocal, watching, openMain} = this.store.packages
-		const {setAndPersist} = this.settings
-
-		return html`<ww-package-manager
-			slot="pre-tab-panel-a"
-      .store=${this.store as any}
-			.packages=${packages as any}
-			.adding=${adding}
-			.removing=${removing}
-			.upgrading=${upgrading}
-			?loading=${fetching}
-			?resetting=${resetting}
-			@ww-add-package=${(e: any) => add(e.detail.args)}
-			@ww-remove-package=${(e: any) => remove(e.detail.args)}
-			@ww-upgrade-package=${(e: any) => upgrade(e.detail.args)}
-      @ww-edit-package=${(e: any) => e} 
-      @ww-open-package-code=${(e: any) => openMain(e.detail.name)} 
-			@ww-toggle-watch=${(e: any) => setAndPersist("packages", "watching", {...watching, [e.detail.name]: !watching[e.detail.name]})}
-			@ww-refresh=${() => fetchAll(0)}
-			@ww-open-app-dir=${() => viewAppDir()}></ww-package-manager>
-		</ww-package-manager>`
-	}
-
-	KeymapManager = () => {
-		const {commandMap, groupLabels, reassignShortcut} = this.commands
-		const {setAndPersist} = this.settings
-		return html`<ww-keymap-manager
-			slot="post-tab-panel-a"
-			.keymap=${commandMap}
-			.groupLabels=${groupLabels}
-			@ww-shortcut-change=${(e: CustomEvent) => {
-				const {name, shortcut} = e.detail
-				const customKeymap = this.store.get("ui", "keymap")
-        const oldShortcut = customKeymap[name]?.shortcut ?? commandMap[name].shortcut
-				setAndPersist("ui", "keymap", {...customKeymap, [name]: {shortcut}})
-        reassignShortcut(name, oldShortcut)
-			}}
-			@ww-shortcut-reset=${(e: CustomEvent) => {
-				const {name} = e.detail
-				const customKeymap = {...this.store.get("ui", "keymap")}
-        const oldShortcut = customKeymap[name]?.shortcut ?? commandMap[name].shortcut
-        delete customKeymap[name]
-				setAndPersist("ui", "keymap", customKeymap)
-        reassignShortcut(name, oldShortcut)
-			}}
-		></ww-keymap-manager>`
-	}
-
   HeaderLeft = () => {
-    const {queryCommands} = this.commands
-    return html`<div id="header-left" slot="header-left" class=${classMap({})}>
-      ${queryCommands({category: "app"}).map(v => html`
-        <ww-button variant="icon" ${spreadProps(v)} @click=${() => this.dispatchEvent(CommandEvent(v.id))}></ww-button>
+    const {appCommands} = this.commands
+    return html`<div id="header-left" slot="header-left">
+      ${appCommands.map(v => html`
+        <ww-button variant="icon" ${spreadProps(v.toObject())} @click=${() => v.run()}></ww-button>
       `)}
     </div>`
   }
@@ -434,41 +323,10 @@ export class App extends ViewModelMixin(LitElement)
     const {queryCommands} = this.commands
     return html`<div id="header-right" slot="header-right">
       ${queryCommands({category: "editor", tags: ["general"]}).map(v => html`
-        <ww-button variant="icon" ${spreadProps(v)} @click=${() => this.dispatchEvent(CommandEvent(v.id))} ?reverse=${v.id === "preview"}>${v.id === "preview"? html`<span id="preview-label">${v.label}</span>`: null}</ww-button>
+        <ww-button variant="icon" ${spreadProps(v.toObject())} @click=${() => v.run()} ?reverse=${v.id === "preview"}>${v.id === "preview"? html`<span id="preview-label">${v.label}</span>`: null}</ww-button>
       `)}
     </div>`
   }
-
-	Settings = () => {
-		const {specs, values, specLabels, setAndPersist} = this.settings
-		const {fetchAll, viewAppDir, resetAppDir} = this.store.packages
-		return html`
-      <span slot="drawer-left-label">${msg("Settings")}</span>
-			<ww-button size="small" slot="drawer-left-header-actions" variant="danger" outline class="title-button" @click=${() => {resetAppDir(); this.settingsOpen = false}} confirm>
-				<span>${msg("Reset WebWriter")}</span>
-				<span slot="confirm">${msg("Are you sure? This action can't be reversed, all your settings will be deleted and reset.")}</span>
-			</ww-button>
-			<ww-button size="small" slot="drawer-left-header-actions" variant="neutral" outline class="title-button" @click=${() => viewAppDir()}>
-				<span>${msg("View App Folder")}</span>
-			</ww-button>
-			<ww-configurator
-				slot="drawer-left-body"
-				.specs=${specs}
-				.specLabels=${specLabels}
-				.values=${values}
-				@ww-change=${(e: any) => setAndPersist(e.detail.groupKey, e.detail.key, e.detail.value)}
-			>
-				<span slot="pre-tab-a">
-					<span>${msg("Packages")}</span>
-				</span>
-				${this.PackageManager()}
-				<span slot="post-tab-a">
-					<span>${msg("Shortcuts")}</span>
-				</span>
-				${this.KeymapManager()}
-			</ww-configurator>
-		`
-	}
 
 	Notification() {
 		const {dequeueNotification} = this.store.ui
@@ -478,28 +336,19 @@ export class App extends ViewModelMixin(LitElement)
 
 	render() {
 		const initializing = !this.store || this.store.packages.initializing
-    const active = this?.store?.resources?.active
 		if(!initializing) {
 			this.Notification()
 			this.localization.setLocale(this.store.ui.locale)
 		}
 		return html`<ww-layout 
 			openTab
-			activeTabName=${ifDefined(this.store?.resources.active?.url)}
-			?drawerLeftOpen=${this.settingsOpen}
-			?hideAsides=${this.store?.resources.empty}
+			activeTabName=${ifDefined(this.store?.document.url)}
       ?loading=${initializing}
-      ?foldOpen=${this.foldOpen}
-			@ww-add-tab=${() => this.store.resources.create()}
-      @ww-print-tab=${() => this.commands.dispatch("print")}
-			@ww-open-tab=${() => this.store.resources.load()}
-			@ww-show-drawer=${() => {this.settingsOpen = true; this.store.packages.fetchAll()}}
-			@ww-hide-drawer=${() => this.settingsOpen = false}>
+      ?foldOpen=${this.foldOpen}>
       ${initializing? this.Placeholder(): [
         this.HeaderLeft(),
         this.HeaderRight(),
         this.Content(),
-        this.settingsOpen? this.Settings(): null
       ]}
 		</ww-layout><div style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1000000; pointer-events: none;"></div>`
 	}

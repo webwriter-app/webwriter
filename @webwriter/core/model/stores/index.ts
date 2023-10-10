@@ -1,17 +1,16 @@
 export * from "./packagestore"
-export * from "./resourcestore"
+export * from "./documentstore"
 export * from "./uistore"
 
 import { ZodSchema } from "zod"
 import merge from "lodash.merge"
 
-import { Package, PackageStore, UIStore, createEditorStateConfig } from ".."
+import { Package, PackageStore, DocumentStore, UIStore, createEditorStateConfig } from ".."
 import { Environment } from "../environment"
-import { ResourceStore } from "./resourcestore"
 
 type StoreOptions<T extends abstract new (...args: any) => any> = ConstructorParameters<T>[0]
 
-type AllOptions = StoreOptions<typeof PackageStore> & StoreOptions<typeof ResourceStore>
+type AllOptions = StoreOptions<typeof PackageStore> & StoreOptions<typeof DocumentStore>
 type OmitFunctions<T> = Pick<T, {
   [K in keyof T]: T[K] extends Function ? never : K;
 }[keyof T]>
@@ -25,29 +24,28 @@ type StoreSlice<T extends object> = {
 
 export class RootStore {
 
-  static readonly storeKeys = ["packages", "resources", "ui"] as const
+  static readonly storeKeys = ["packages", "document", "ui"] as const
 
   packages: PackageStore
-  resources: ResourceStore
+  document: DocumentStore
   ui: UIStore
 
   FS: Environment["FS"]
   Path: Environment["Path"]
   Dialog: Environment["Dialog"]
 
-  constructor({corePackages, schema, FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, getSystemFonts, createWindow}: AllOptions) {
+  constructor({corePackages, schema, FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, getSystemFonts, createWindow, setWindowCloseBehavior, getWindowLabel}: AllOptions) {
     const onImport = this.onImportPackages
     this.FS = FS
     this.Path = Path
     this.Dialog = Dialog
-    this.packages = new PackageStore({corePackages, FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, onImport, getSystemFonts, createWindow})
-    this.resources = new ResourceStore({schema, bundle})
+    this.packages = new PackageStore({corePackages, FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, onImport, getSystemFonts, createWindow, setWindowCloseBehavior, getWindowLabel})
+    this.document = new DocumentStore({schema, bundle})
     this.ui = new UIStore()
   }
 
   onImportPackages = (packages: Package[]) => {
-    this.resources.schema = createEditorStateConfig(packages).schema
-    this.resources.updateSchemas()
+    this.document.updateSchema(createEditorStateConfig(packages).schema)
   }
 
   get<S extends StoreKey, K extends keyof RootStore[S]>(storeKey: S, key: K) {

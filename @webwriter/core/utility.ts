@@ -368,3 +368,7 @@ export function permute<T>(arr: Array<T>): Array<Array<T>> {
   }
   return result;
 }
+
+export function idle(ms: number) {
+  return new Promise(r => setTimeout(r, ms))
+}

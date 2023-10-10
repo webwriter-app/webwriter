@@ -151,13 +151,13 @@ export const mediaPlugin = () => ({
     }),
     picture: HTMLElementSpec({
       tag: "picture",
-      group: "flow embedded", //phrasing
+      group: "flow embedded",
       content: "(source | scriptsupporting)* img"
     }),
     audio: HTMLElementSpec({
       tag: "audio",
       group: "flow embedded interactive palpable",
-      content: `(source | track)* flow*`,
+      content: "(source | track)* flow*",
       attrs: {
         autoplay: {default: undefined},
         controls: {default: undefined},
@@ -172,7 +172,7 @@ export const mediaPlugin = () => ({
     video: HTMLElementSpec({
       tag: "video",
       group: "flow embedded interactive palpable",
-      content: "source*",
+      content: "source* flow*",
       attrs: {
         autoplay: {default: undefined},
         controls: {default: undefined},

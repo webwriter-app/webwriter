@@ -55,6 +55,7 @@ export class PackageManager extends LitElement {
 		super.connectedCallback()
 		window.addEventListener("online", this.requestUpdateFull)
 		window.addEventListener("offline", this.requestUpdateFull);
+    this.dispatchEvent(new CustomEvent("ww-refresh", {bubbles: true, composed: true}))
 	}
 
 	disconnectedCallback() {
@@ -109,6 +110,14 @@ export class PackageManager extends LitElement {
 				display: flex;
 				gap: 1ch;
 			}
+
+      sl-tab-group::part(nav) {
+        position: sticky;
+        top: 0;
+        left: 0;
+        background: white;
+        z-index: 99;
+      }
 
 			sl-tab-panel[active]::part(base) {
 				height: 100%;

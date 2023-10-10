@@ -10,11 +10,13 @@ export * from "./iconcontroller"
 
 import {StoreController, EnvironmentController, CommandController, LocalizationController, NotificationController, SettingsController, IconController} from "."
 import { RootStore } from "../model"
+import { msg } from "@lit/localize"
+import { WINDOW_OPTIONS } from "./commandcontroller"
 
 const CORE_PACKAGES = ["@open-wc/scoped-elements"] as string[]
 
 type LitElementConstructor = typeof LitElement
-export const ViewModelMixin = (cls: LitElementConstructor) => class extends cls {
+export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => class extends cls {
 	store: StoreController
 	environment: EnvironmentController
 	commands: CommandController
@@ -23,17 +25,52 @@ export const ViewModelMixin = (cls: LitElementConstructor) => class extends cls 
 	settings: SettingsController
   icons: IconController
 
+  initialized: Promise<void>
+
 	async connectedCallback() {
-		super.connectedCallback()
-		this.environment = new EnvironmentController(this)
-		await this.environment.apiReady
-		this.store = StoreController(new RootStore({corePackages: CORE_PACKAGES, ...this.environment.api}), this)
-    this.icons = new IconController(this)
-		this.localization = new LocalizationController(this, this.store)
-    this.commands = new CommandController(this as any, this.store)
-		this.notifications = new NotificationController(this, this.store)
-		this.settings = new SettingsController(this, this.store)
-    await this.store.packages.initialized
-    this.store.resources.create()
+    this.initialized = new Promise(async resolve => {
+      super.connectedCallback()
+      this.environment = new EnvironmentController(this)
+      await this.environment.apiReady
+      this.store = StoreController(new RootStore({corePackages: CORE_PACKAGES, ...this.environment.api}), this)
+      this.icons = new IconController(this)
+      this.localization = new LocalizationController(this, this.store)
+      this.commands = new CommandController(this as any, this.store)
+      this.notifications = new NotificationController(this, this.store)
+      this.settings = new SettingsController(this, this.store)
+      this.initializeWindow()
+      await this.store.packages.initialized
+      const path = new URL(window.location.href).searchParams.get("open")
+      if(path) {
+        const fileURL = new URL("file://")
+        fileURL.pathname = path
+        this.store.document.load(fileURL.href)
+      }
+      const {join, appDir} = this.environment.api.Path
+      const packageJsonPath = await join(await appDir(), "package.json")
+      this.environment.api.watch(packageJsonPath, () => this.store.packages.fetchInstalled(true))
+      resolve(undefined)
+    })
 	}
+
+  confirmWindowClose = async () => {
+    return !this.store.document.changed || await this.environment.api.Dialog.confirm(
+      msg("You have unsaved changes. Are you sure you want to leave and discard them?"),
+      {type: "warning"}
+    )
+  }
+
+  async initializeWindow() {
+    const label = this.environment.api.getWindowLabel()
+    if(label === "main") {
+      await this.environment.api.createWindow("settings.html", {...WINDOW_OPTIONS, title: `${msg("Settings")} - WebWriter`, visible: false, label: "settings"})
+      this.environment.api.setWindowCloseBehavior(["closeAllIfLastVisible", "closeOthersOnReload"], this.confirmWindowClose)
+    }
+    else if(label === "settings") {
+      this.environment.api.setWindowCloseBehavior(["hideOnCloseUnlessLast"])
+    }
+    else {
+      this.environment.api.setWindowCloseBehavior(["closeAllIfLastVisible"], this.confirmWindowClose)
+    }
+  }
 }

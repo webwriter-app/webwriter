@@ -94,6 +94,18 @@ export const basePlugin = () => ({
         onunload: {default: undefined}
       }
     }),
+    p: HTMLElementSpec({
+      tag: "p",
+      group: "flow palpable",
+      content: "text | phrasing*",
+      whitespace: "pre"
+    }),
+    pre: HTMLElementSpec({
+      tag: "pre",
+      group: "flow palpable",
+      content: "text | phrasing*",
+      whitespace: "pre"
+    }),
     unknownElement: {
       attrs: {
         tagName: {},

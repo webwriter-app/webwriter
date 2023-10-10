@@ -113,10 +113,20 @@ export type OSAPI = {
   arch: () => Promise<Arch>
 }
 
+export type ConfirmDialogOptions = {
+  cancelLabel?: string,
+  okLabel?: string,
+  title?: string,
+  type?: "info" | "warning" | "error"
+}
+
 export type DialogAPI = {
   promptRead: (options?: OpenDialogOptions) => Promise<null | string | string[]>
-  promptWrite: (options?: SaveDialogOptions) => Promise<string | null>
+  promptWrite: (options?: SaveDialogOptions) => Promise<string | null>,
+  confirm: (message: string, options?: ConfirmDialogOptions) => Promise<boolean>
 }
+
+export type WindowCloseBehavior = "closeAllIfLastVisible" | "hideOnCloseUnlessLast" | "closeOthersOnReload"
 
 export type Environment = {
   FS: FileSystemAPI,
@@ -130,5 +140,7 @@ export type Environment = {
   pm: (command: string, commandArgs?: string[], json?: boolean, cwd?: string) => Promise<Object | string>,
   watch: (paths: string | string[], cb?: (event: WatchEvent) => void, options?: {recursive?: boolean, delayMs?: number}) => Promise<() => void>
   getSystemFonts: () => Promise<string[]>,
-  createWindow: (url: string, options?: WindowOptions) => Promise<void> 
+  createWindow: (url?: string, options?: WindowOptions & {label?: string, hideOnClose?: boolean}) => Promise<void>,
+  setWindowCloseBehavior: (behaviors: WindowCloseBehavior[], closeConfirm?: () => Promise<boolean>) => void
+  getWindowLabel: () => string
 }

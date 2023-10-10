@@ -1,69 +1,60 @@
 import { EditorState } from "prosemirror-state"
-import { Schema } from "prosemirror-model"
+import { Schema, Node, NodeType, Attrs } from "prosemirror-model"
 
-import { createEditorState, Environment } from ".."
-import { getFileExtension } from "../../utility"
+import { createEditorState, EditorStateWithHead, Environment, getActiveMarks } from ".."
+import { getFileExtension, groupBy, range } from "../../utility"
 import * as marshal from "../marshal"
 import * as connect from "../connect"
 import { redoDepth, undoDepth } from "prosemirror-history"
+import { EditorView } from "prosemirror-view"
+import { serialize } from "../marshal/html"
 
 const BINARY_EXTENSIONS = Object.entries(marshal).flatMap(([k, v]) => v.isBinary? v.extensions: [])
 const ALL_FILTER = {name: "Explorable", extensions: Object.values(marshal).flatMap(v => v.extensions)}
-const INDIVIDUAL_FILTERS = Object.entries(marshal).map(([k, v]) => ({name: v.label, extensions: v.extensions}))
+export const INDIVIDUAL_FILTERS = Object.entries(marshal).map(([k, v]) => ({name: v.label, extensions: v.extensions}))
 const FILTERS = [ALL_FILTER, ...INDIVIDUAL_FILTERS]
 
 type Resource = {
   url: string
-  editorState: EditorState
+  editorState: EditorStateWithHead
 }
 
 type Options = {
   bundle: Environment["bundle"],
-  schema?: Schema
+  schema?: Schema,
+  url?: string,
+  editorState?: EditorStateWithHead
 }
 
-/** Manages all resources. A resource is the app's internal document format. Resources have `editorState`, storing all the document's data in the ProseMirror format. They are referred to with URLs, indicating whether the resources are in memory (not saved yet) or external such as on the user's hard drive (saved before at `url`). */
+/** Manages the document. A document is the app's central data format. The document has an `editorState`, storing all the document's data in the ProseMirror format. It is referred to with an URL, indicating whether the document is only in memory (not saved yet) or external such as on the user's hard drive (saved before at `url`). */
 export class DocumentStore implements Resource {
 
   url: string
-  editorState: EditorState
+  editorState: EditorStateWithHead
   isPreviewing: boolean = false
-  schema: Schema
-  lastSavedState: EditorState
+  lastSavedState: EditorStateWithHead
 
   bundle: Options["bundle"]
 
-  constructor(options: Options) {
-    Object.assign(this, options)
-    this.create()
+  constructor({bundle, schema, url, editorState}: Options) {
+    this.bundle = bundle
+    this.editorState = this.lastSavedState = editorState ?? createEditorState
+    ({schema})
+    this.url = url ?? "memory:0"
   }
 
   get changed() {
-    return !this.lastSavedState.doc.eq(this.editorState.doc)
+    return !this.lastSavedState.doc.eq(this.editorState.doc) || !this.lastSavedState.head$.doc.eq(this.editorState.head$.doc)
   }
 
   /** Updates the document schema with the store's schema. */
-  updateSchema() {
-    this.editorState = createEditorState({...this.editorState, schema: this.schema})
-  }
-
-  /** Gets a new, unused resource URL. */
-  getNewURL() {
-    return `memory:0`
-    /*
-    const memoryNumberIDs = Object.keys(this._resources)
-      .map(url => new URL(url))
-      .filter(url => url.protocol="memory")
-      .map(url => parseInt(url.pathname))
-      .filter(num => !Number.isNaN(num))
-    return `memory:${Math.max(-1, ...memoryNumberIDs) + 1}`
-    */
-  }
-
-  /** Creates a new resource. */
-  create(url: Resource["url"] = this.getNewURL(), schema: Schema = this.schema) {
-    this.editorState = this.lastSavedState = createEditorState({schema})
-    this.url = url
+  updateSchema(schema: Schema) {
+    const newState = createEditorState({...this.editorState, schema})
+    const defaultState = createEditorState({schema: this.editorState.schema})
+    if(this.editorState.doc.eq(defaultState.doc)) {
+      this.lastSavedState = newState
+    }
+    this.editorState = newState
   }
 
   get undoDepth() {
@@ -72,6 +63,18 @@ export class DocumentStore implements Resource {
 
   get redoDepth() {
     return redoDepth(this.editorState)
+  }
+
+  
+  /** Sets a new editor state for the given resource. */
+  set(editorState: EditorStateWithHead) {
+    this.editorState = editorState
+  }
+
+  /** Sets a new editor state for the given resource. */
+  setHead(head$: EditorState) {
+    const state = this.editorState.apply(this.editorState.tr)
+    this.set(Object.assign(state, {head$}))
   }
 
   /** Saves a resource on an external file system. */
@@ -93,9 +96,10 @@ export class DocumentStore implements Resource {
     const serialize = (marshal as any)[format].serialize
     const isBinary = (marshal as any)[format].isBinary
   
-    let data = await serialize(resource.editorState.doc, this.bundle)
+    let data = await serialize(resource.editorState.doc, resource.editorState.head$.doc, this.bundle)
     await save(data, urlObj.href, isBinary)
     this.lastSavedState = this.editorState
+    this.url = urlObj.href
   }
 
   /** Loads a resource from an external file system. */
@@ -117,9 +121,121 @@ export class DocumentStore implements Resource {
     const parse = (marshal as any)[format].parse
     
     let data = await load(urlObj.href, BINARY_EXTENSIONS)
-    let editorState = await parse(data, this.schema)
+    let editorState = await parse(data, this.editorState.schema)
     this.url = urlObj.href
     this.editorState = this.lastSavedState = editorState
+  }
+
+  /** Open a preview for this document. */
+  async preview() {
+    const htmlString = await serialize(
+      this.editorState.doc,
+      this.editorState.head$.doc,
+      this.bundle
+    )
+    const blob = new Blob([htmlString], {type: "text/html"})
+    const blobURL = URL.createObjectURL(blob)
+    open(blobURL, "_blank")
+  }
+
+  get activeMarks() {
+    return getActiveMarks(this.editorState)
+  }
+
+  get activeNodes() {
+    const {editorState: s} = this
+    const nodes = [] as Node[]
+    s.doc.nodesBetween(s.selection.from, s.selection.to, node => {
+      nodes.push(node)
+    })
+    return nodes
+  }
+
+  get activePos() {
+    const {editorState: s} = this
+    const posList = [] as number[]
+    s.doc.nodesBetween(s.selection.from, s.selection.to, (node, pos) => {
+      posList.push(pos)
+    })
+    return posList
+  }
+
+  get activeAttributes() {
+    return this.activeNodes.flatMap(node => {
+      return Object.entries(node.attrs).map(([key, value]) => {
+        return {node, key, value}
+      })
+    })
+  }
+
+  get activeAttributesByKey() {
+    return groupBy(this.activeAttributes, "key")
+  }
+
+  get activeNodeNames() {
+    return this.activeNodes.map(node => node.type.name)
+  }
+
+  get activeMarkNames() {
+    return this.activeMarks.map(mark => mark.type.name)
+  }
+
+  get docAttributes() {
+    return this.editorState.doc.attrs
+  }
+
+  getActiveDocAttributeValue(key: string) {
+    return this.docAttributes[key]
+  }
+
+  isMarkActive(markName: string) {
+    return this.activeMarks.some(mark => mark.type.name === markName)
+  }
+
+  getActiveAttributeValue(key: string) {
+    const all = (this.activeAttributesByKey[key] ?? []).map(({value}) => value)
+    const unique = new Set(all.filter(v => v))
+    if(unique.size === 0) {
+      return undefined
+    }
+    else if(unique.size === 1) {
+      return [...unique][0]
+    }
+    else {
+      return null
+    }
+  }
+
+  hasActiveNode(type: string | NodeType, attrs?: Attrs, includeAncestors=false) {
+    const {editorState: s} = this
+    let matchFound = false
+    this.activeNodes.filter(node => {
+      const typeMatches = typeof type === "string"? node.type.name === type: node.type === type
+      const attrsMatches = !attrs || Object.keys(attrs).every(k => attrs[k] === node.attrs[k])
+      if(typeMatches && attrsMatches) {
+        matchFound = true
+      }
+    })
+    if(includeAncestors) {
+      const resolvedPos = s.selection.$anchor
+      const ancestors = range(0, resolvedPos.depth).map(i => resolvedPos.node(i))
+    }
+    return matchFound
+  }
+
+  get activeNodeMap() {
+    return Object.fromEntries(this.activeNodes.map(n => [n.type.name, n]))
+  }
+
+  get activeMarkMap() {
+    return Object.fromEntries(this.activeMarks.map(m => [m.type.name, m]))
+  }
+
+  getActiveComputedStyles(view: EditorView) {
+    const {getComputedStyle} = view.dom.ownerDocument.defaultView!
+    return this.activePos
+      .map(pos => view.nodeDOM(pos) as Element)
+      .map(element => getComputedStyle(element))
   }
 
 }

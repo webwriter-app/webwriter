@@ -42,10 +42,13 @@ export const ContentExpression = Object.assign(z.string().transform<Expression>(
   resolve(schema: Schema, expression: ParentedExpression, parent?: ParentedExpression): ParentedExpression {
     const {content} = expression
     const representants = {} as Record<string, string>
-    Object.entries(schema.nodes).reverse().forEach(([k, v]) => {
+    schema.spec.nodes.forEach((k, v) => {
       representants[k] = k
-      if(v.spec.group) {
-        representants[v.spec.group] = k
+      if(v.group) {
+        const groups = v.group.trim().split(" ")
+        for(const group of groups) {
+          representants[group] = k
+        }
       }
     })
     if(typeof content === "string" && (schema.nodes[representants[content]])) {
