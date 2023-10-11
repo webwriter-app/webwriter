@@ -76,12 +76,12 @@ export class SettingsController implements ReactiveController {
             .describe(msg("Show a placeholder text when a document is empty")),
           label: msg("Show placeholder text")
         },
-        showWidgetPreview: {
+        /*showWidgetPreview: {
           schema: z
             .boolean()
             .describe(msg("Show an instant preview when hovering over widgets in the palette")),
           label: msg("Show widget preview")
-        },
+        },*/
         keymap: {
           schema: keymapSchema,
           label: msg("Keyboard shortcuts"),

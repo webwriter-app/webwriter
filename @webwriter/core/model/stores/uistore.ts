@@ -12,7 +12,7 @@ export class UIStore {
 
    showTextPlaceholder: boolean = false
 
-   showWidgetPreview: boolean = false
+   // showWidgetPreview: boolean = false // TODO: Causes multiple issues
 
    keymap: Record<string, {shortcut: string}> = {}
 

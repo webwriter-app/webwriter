@@ -128,7 +128,7 @@ export class ExplorableEditor extends LitElement {
 	previewing: boolean
 
 	@property({type: Boolean, attribute: true})
-	showWidgetPreview: boolean = true
+	showWidgetPreview: boolean = false
 
 	@property({type: Boolean, attribute: true, reflect: true})
 	hoverWidgetAdd: boolean = false
