@@ -9,21 +9,19 @@ This guide takes you through a few, quick steps of setup. When done, you will ha
 ### Prerequisites
 To get started, you need...
 - [ ] ...a text editor of your choice, for example [VSCode](https://code.visualstudio.com/)
+  - [ ] *optional*: The [`lit-plugin`](https://marketplace.visualstudio.com/items?itemName=runem.lit-plugin) extension for VSCode if you plan to use Lit - it adds support for syntax highlighting, type checking and code completion for Lit.
 - [ ] ...[WebWriter](https://webwriter.app/get_started)
-- [ ] ...[NodeJS](https://nodejs.org/), which already includes the package manager `npm`
 
-## A) Quick Start (Automatic)
-Get started with a minimal template for your widget. 
+## A) Quick Start in WebWriter
+Get started by developing your widget inside WebWriter.
 
-### Step 1: Initialize your widget's project
-Create an empty project directory. In that directory, run `npm create @webwriter/widget`. This initializer allows you to configure the project and start from a template for your widget. We recommend you use the `ts-lit-vite` template.
+### Step 1: Create a local package
+Open WebWriter. Open the settings (cog icon in the upper left corner). Under "Packages", select "Local". Then click the "create local package" button. Choose a directory where your package will be located. The dialog will help you pick a valid package/widget name. Once you are done, confirm to create the package. *You may need to restart WebWriter after this step!*
 
-### Step 2: Try out your setup
-Open WebWriter. Go to settings, then to the "local" tab under packages, then press "add unlisted package". Choose your project directory. After loading, the package should be shown in the list. We recommend you press the lightning button to enable live reloading, so each time you change your code, the package is imported again. Now, you can have WebWriter and your text editor open side by side while making changes.
+### Step 2: Edit your widget
+In your chosen package directory, you can find your widget's files. If you chose the default "Lit" template, there will be an `index.ts` file containing a basic scaffold for your widget. Try changing the code. Once you save your changes, WebWriter should automatically reload your widget so you see your changes immediately. Otherwise, manually restarting WebWriter should also achieve this.
 
-Note: Alternatively, you can also run your widget outside of WebWriter: In your project directory, run `npm run dev`. A test site for your widget should open automatically in your default browser. Now, try changing something in your widget's source code. The site should reload automatically!
-
-### What does this setup include?
+### What does the default "Lit" template include?
 It uses the `LitElementWw` base class from the `@webwriter/lit` package, supporting these features in your widget:
 1. Core properties as attributes: The core properties such as `editable` are already set up as boolean attributes.
 2. Scoped Custom Element Registry: [ScopedElementsMixin](https://open-wc.org/docs/development/scoped-elements/) is used to avoid name collisions between two widgets using the same third-party web components.
@@ -32,7 +30,7 @@ It uses the `LitElementWw` base class from the `@webwriter/lit` package, support
 Additionally, you can use `npm run dev` to start a development server. 
 
 ### What next?
-Now that your setup is ready, you can follow the [guide to create your widget](./creatingwidgets.md).
+Now that your setup is ready, you read more about [widgets](./widgets/widgets.md) and follow the documentation (see navigation) to implement features.
 
 ---
 
@@ -94,7 +92,7 @@ export class WwCoolWidget extends LitElementWw {
   "description": "A very cool widget",
   "main": "index.ts",
   "keywords": [
-    "webwriter"
+    "webwriter-widget"
   ],
   "author": "Your Name <your@mail.here>",
   "license": "MIT",
