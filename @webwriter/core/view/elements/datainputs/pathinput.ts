@@ -38,6 +38,7 @@ export class PathInput extends SlInput implements DataInput {
 
   // @ts-ignore
   get pattern() {
+    return unixPathPattern // TODO: Issue with Windows regex on some systems?
     return window.WEBWRITER_ENVIRONMENT.os.name === "Windows"? windowsPathPattern.source: unixPathPattern.source
   }
 
