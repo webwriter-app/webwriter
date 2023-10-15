@@ -8,6 +8,7 @@ import {Schema, DOMParser} from "prosemirror-model"
 import { createElementWithAttributes, namedNodeMapToObject, unscopePackageName } from "../../utility"
 import { createEditorState, headSchema, headSerializer } from '..'
 import { Environment } from '../environment'
+import scopedCustomElementRegistry from "@webcomponents/scoped-custom-element-registry/src/scoped-custom-element-registry.js?raw"
 
 class NonHTMLDocumentError extends Error {}
 class NonWebwriterDocumentError extends Error {}
@@ -42,6 +43,10 @@ export async function docToBundle(doc: Node, head: Node, bundle: Environment["bu
   const html = document.implementation.createHTMLDocument()
   const serializer = DOMSerializer.fromSchema(doc.type.schema)
   serializer.serializeFragment(doc.content, {document: html}, html.body)
+
+  html.querySelectorAll("[data-widget]").forEach(w => w.removeAttribute("editable"))
+  
+  console.log(html.querySelectorAll("[data-widget]"))
   
   const allWidgetTypes = [...new Set(Object.values(doc.type.schema.nodes)
     .filter(node => node.spec["widget"])
@@ -55,13 +60,10 @@ export async function docToBundle(doc: Node, head: Node, bundle: Environment["bu
   const packageNames = [...new Set(widgetTypes.map(name => doc.type.schema.nodes[name].spec["package"].name))]
   const scopedEntries = packageNames.map(n => [n, unscopePackageName(n)])
 
-  console.log(packageNames)
-
   const statements = [
-    `import "@open-wc/scoped-elements"`
+    scopedCustomElementRegistry
   ].concat(scopedEntries.flatMap(([s, u]) => [
     `import "${s}"`,
-    `customElements.define("${u}", ${u.replaceAll("-", "_")})`
   ]))
   const entrypoint = statements.length > 1? statements.join(";"): ""
 
@@ -83,7 +85,6 @@ export async function docToBundle(doc: Node, head: Node, bundle: Environment["bu
     js !== "" && removeFile(jsPath)
     css !== "" && removeFile(cssPath)
   }
-  console.log(head)
   html.head.replaceWith(headSerializer.serializeNode(head))
 
   for(let [key, value] of Object.entries(head.attrs.htmlAttrs ?? {})) {
