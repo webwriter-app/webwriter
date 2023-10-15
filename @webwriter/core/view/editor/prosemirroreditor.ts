@@ -10,7 +10,7 @@ import {DOMSerializer} from "prosemirror-model"
 
 type IProsemirrorEditor = 
   & Omit<DirectEditorProps, "attributes" | "editable">
-  & Omit<EditorView, "update" | "dispatchEvent">
+  & Omit<EditorView, "update" | "dispatchEvent" | "updateRoot">
   & {
     pmAttributes: DirectEditorProps["attributes"]
     shouldBeEditable: DirectEditorProps["editable"]
