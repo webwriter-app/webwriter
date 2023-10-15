@@ -17,7 +17,7 @@ import { Palette } from "./palette"
 import { ProsemirrorEditor } from "./prosemirroreditor"
 
 import redefineCustomElementsString from "redefine-custom-elements/lib/index.js?raw"
-// import scopedCustomElementsRegistryString from "@webcomponents/scoped-custom-element-registry/scoped-custom-element-registry.min.js?raw"
+import scopedCustomElementsRegistryString from "@webcomponents/scoped-custom-element-registry/scoped-custom-element-registry.min.js?raw"
 
 import {computePosition, autoUpdate, offset, shift, flip} from '@floating-ui/dom'
 import { Command } from "../../viewmodel"
