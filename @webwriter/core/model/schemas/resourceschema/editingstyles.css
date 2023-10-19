@@ -322,8 +322,8 @@ abbr {
     -webkit-user-select: none;
   }
 
-  .ww-widget:not(:focus-within) {
-    --ww-action-opacity: 0;
+  .ww-widget:not(:focus-within)::part(action) {
+    display: none;
   }
 }
 
