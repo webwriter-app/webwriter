@@ -1,6 +1,6 @@
 {
     "name": "@webwriter/ww-textarea",
-    "version": "0.4.1",
+    "version": "0.4.2",
     "description": "Let the user enter text",
     "keywords": [
         "webwriter-widget"
@@ -10,9 +10,9 @@
     "main": "index.ts",
     "scripts": {},
     "dependencies": {
-        "@shoelace-style/shoelace": "^2.5.1",
-        "@webwriter/lit": "^0.4.1",
-        "lit": "^2.3.1"
+        "@shoelace-style/shoelace": "^2.10.0",
+        "@webwriter/lit": "^0.4.2",
+        "lit": "^2.8.0"
     },
     "publishConfig": {
         "access": "public"

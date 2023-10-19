@@ -1,5 +1,5 @@
 import "@shoelace-style/shoelace/dist/themes/light.css"
-import SlTextarea from "@shoelace-style/shoelace/dist/components/textarea/textarea.js"
+import SlTextarea from "@shoelace-style/shoelace/dist/components/textarea/textarea.component.js"
 
 import { html, css } from "lit"
 import { property, query, customElement } from "lit/decorators.js"
