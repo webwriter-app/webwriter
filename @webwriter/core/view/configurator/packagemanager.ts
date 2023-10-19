@@ -4,7 +4,7 @@ import {classMap} from "lit/directives/class-map.js"
 import { localized, msg, str } from "@lit/localize"
 import { SlBadge, SlDialog } from "@shoelace-style/shoelace"
 
-import { Package } from "../../model"
+import { Package, SemVer } from "../../model"
 import { shortenBytes } from "../../utility"
 import { ifDefined } from "lit/directives/if-defined.js"
 import { StoreController } from "../../viewmodel"
@@ -72,8 +72,8 @@ export class PackageManager extends LitElement {
 		new CustomEvent("ww-remove-package", {composed: true, bubbles: true, detail: {args: [pkg]}})
 	)
 
-	emitUpgradePackage = (pkg: string) => this.dispatchEvent(
-		new CustomEvent("ww-upgrade-package", {composed: true, bubbles: true, detail: {args: [pkg]}})
+	emitUpgradePackage = (pkg: string, latest: SemVer) => this.dispatchEvent(
+		new CustomEvent("ww-upgrade-package", {composed: true, bubbles: true, detail: {args: [`${pkg}@${latest}`]}})
 	)
 
 	emitRefresh = () => this.dispatchEvent(
@@ -221,6 +221,10 @@ export class PackageManager extends LitElement {
 				content: "No description";
 				color: darkgray;
 			}
+
+      .package-latest {
+        color: var(--sl-color-amber-700);
+      }
 
 			.spinner-container {
 				display: none;
@@ -508,8 +512,8 @@ export class PackageManager extends LitElement {
 		`
 	}
 
-	packageListItem = (pkg: Package, i: number) => {
-		const {name, author, version, description, keywords, installed, outdated, importError, localPath, watching, jsSize, cssSize} = pkg
+	packageListItem = (pkg: Package) => {
+		const {name, author, version, description, keywords, installed, latest, importError, localPath, watching, jsSize, cssSize} = pkg
 		const {emitAddPackage, emitRemovePackage, emitUpgradePackage, emitToggleWatch, emitOpenPackageCode, emitEditPackage} = this
 		const adding = this.adding.includes(name)
 		const removing = this.removing.includes(name)
@@ -519,7 +523,7 @@ export class PackageManager extends LitElement {
 		const unimportable = !!importError
 		const available = !installed
 		// @ts-ignore
-		return html`<sl-card class=${classMap({installed, outdated, available, official, unimportable, local})}>
+		return html`<sl-card class=${classMap({installed, outdated: !!latest, available, official, unimportable, local})}>
 			<sl-icon name="box-seam" slot="header"></sl-icon>
 			<sl-tooltip ?disabled=${!localPath} slot="header" @sl-show=${(e: any) => e.stopPropagation()} style="cursor: help">
 				<div slot="content">
@@ -529,7 +533,12 @@ export class PackageManager extends LitElement {
 				<span class="package-name">${name}</span>
 			</sl-tooltip>
 			<span class="package-author" slot="header">${author}</span>
-			<code class="package-version" slot="header">${version}</code>
+			<code class="package-version" slot="header">
+        ${version}
+        ${latest? html`<code class="package-latest">
+          🠖${String(latest)}
+        </code>`: null}
+      </code>
 			<br slot="header">
 			${keywords?.filter(kw => kw !== "webwriter-widget" && kw !== "official").map(kw => html`
 				<sl-tag variant="primary" slot="header">${kw}</sl-tag>
@@ -547,7 +556,7 @@ export class PackageManager extends LitElement {
 					<ww-button name="watch" class="local circle" @click=${() => emitToggleWatch(name)} icon=${`bolt${watching? "-off": ""}`}></ww-button>
 				</sl-tooltip>
 			`: html`
-				<sl-button class="outdated" @click=${() => emitUpgradePackage(name)} outline slot="footer" ?loading=${upgrading} ?disabled=${removing || adding || !outdated} >
+				<sl-button class="outdated" @click=${() => emitUpgradePackage(name, latest)} outline slot="footer" ?loading=${upgrading} ?disabled=${removing || adding || !latest} >
 					${msg("Update")}
 				</sl-button>
 			`}
@@ -733,7 +742,7 @@ export class PackageManager extends LitElement {
 				<div class="package-list">
 						${length === 0 && !this.loading
 							? html`<span>${emptyText}</span>`
-							: packages.map(this.packageListItem) 
+							: packages.map(pkg => this.packageListItem(pkg)) 
 						}
 				</div>
 			</sl-tab-panel>
@@ -764,7 +773,7 @@ export class PackageManager extends LitElement {
 			{
 				key: "outdated" as const,
 				label: msg("Outdated"),
-				packages: this.packages.filter(pkg => pkg.outdated),
+				packages: this.packages.filter(pkg => pkg.latest),
 				emptyText: msg("No packages outdated")
 			},
 			{

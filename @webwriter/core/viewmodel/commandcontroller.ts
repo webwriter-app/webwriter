@@ -301,7 +301,8 @@ class NodeCommand<SPEC extends CommandSpec = CommandSpec> extends Command<SPEC> 
   }
   run(options?: any, e?: Event) {
     const {exec, editorState} = this.host.activeEditor ?? {exec: () => {}}
-    return super.run(options, e, (host, attrs) => exec(wrapSelection(editorState?.schema.nodes[this.id]!, attrs)))
+    console.log(editorState)
+    return super.run(options, e, (host, attrs) => exec(wrapSelection(this.id, attrs)))
   }
   get active() {
     return this.spec.active? this.spec.active(this.host): !!this.host.store.document.activeNodeMap[this.id]
@@ -377,11 +378,11 @@ export class CommandController implements ReactiveController {
   }
   
   @Memoize() get markCommands() {
-    return this.queryCommands({tags: ["mark"]}).filter(cmd => !cmd.tags?.includes("advanced"))
+    return this.queryCommands({tags: ["mark"]})
   }
-
+  
   @Memoize() get nodeCommands() {
-    return this.queryCommands({tags: ["node"]}).filter(cmd => !cmd.tags?.includes("advanced"))
+    return this.queryCommands({tags: ["node"]})
   }
 
   @Memoize() get groupedNodeCommands() {
@@ -777,13 +778,19 @@ export class CommandController implements ReactiveController {
         group: "textblock",
         tags: ["node", "container"]
       }),
+      div: new NodeCommand(this.host, {
+        id: "div",
+        label: () => msg("Division"),
+        icon: "square",
+        description: () => msg("Insert a division"),
+        tags: ["node", "container", "advanced"]
+      }),
       pre: new NodeCommand(this.host, {
         id: "pre",
         label: () => msg("Preformatted Text"),
         icon: "code-dots",
         description: () => msg("Insert a preformatted text block"),
-        group: "textblock",
-        tags: ["node", "container"]
+        tags: ["node", "container", "advanced"]
       }),
       h1: new NodeCommand(this.host, {
         id: "h1",
@@ -1080,7 +1087,7 @@ export class CommandController implements ReactiveController {
         icon: "circle-chevron-right",
         description: () => msg("Insert details"),
         group: "details",
-        tags: ["node", "container", "advanced"]
+        tags: ["node", "container"]
       }),
       summary: new NodeCommand(this.host, {
         id: "summary",

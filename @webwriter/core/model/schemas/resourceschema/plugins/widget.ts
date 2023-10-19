@@ -60,10 +60,7 @@ export function packageWidgetNodeSpec(pkg: Package): NodeSpec {
   const mediaTypes = getMediaTypesOfContent(pkg.editingConfig?.content)
   const mediaNodeNames = mediaTypes
     .map(t => t.slice(1).replaceAll("/", "__").replaceAll("-", "_"))
-  const maybeMediaParseRules = mediaTypes.length > 0? [
-
-  ]: []
-
+  const maybeMediaParseRules = mediaTypes.length > 0? []: []
   return {
     group: "flow widget",
     widget: true,
@@ -83,6 +80,7 @@ export function packageWidgetNodeSpec(pkg: Package): NodeSpec {
       ...styleAttrs
     },
     parseDOM : [{tag: unscopePackageName(pkg.name), getAttrs: (dom: HTMLElement ) => {
+      console.log(dom)
       return {
         id: dom.getAttribute("id"),
         editable: dom.getAttribute("editable") ?? false,

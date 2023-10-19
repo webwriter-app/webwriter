@@ -59,6 +59,10 @@ html::-webkit-scrollbar-button:vertical:single-button:increment:disabled {
   border-color: var(--sl-color-gray-400) transparent transparent transparent;
 }
 
+* {
+  outline: none;
+}
+
 a:not([href]) {
   text-decoration: underline;
   color: #0000EE;
@@ -145,24 +149,42 @@ figure.ProseMirror-selectednode::before {
   -webkit-user-select: none !important;
 }
 
-.ww-widget[editable]::after {
+.ProseMirror > :not(.ProseMirror-widget) {
+  position: relative;
+}
+
+.ProseMirror > :not(.ProseMirror-widget)::after {
   content: "";
   position: absolute;
-  right: -14px;
+  right: -18px;
   top: 0;
-  width: 6px;
+  border-right: 6px solid transparent;
   background: none;
   height: 100%;
-  border-radius: 4px;
+  cursor: pointer;
+  width: 20px;
 }
 
-.ww-widget[editable]:hover::after {
-  background: var(--sl-color-primary-300);
+.ProseMirror *:not([data-ww-inline]):hover {
+  outline: 1px dotted var(--sl-color-gray-400);
+  outline-offset: 2px;
+}
+/*
+.ProseMirror > *:hover::after {
+  border-color: var(--sl-color-gray-100);
 }
 
-.ww-widget[editable][data-ww-selected]::after {
-  background: var(--sl-color-primary-400);
+.ProseMirror > *:is([data-ww-selected], :has([data-ww-selected]))::after {
+  border-color: var(--sl-color-gray-200);
 }
+
+.ProseMirror > *:is([data-ww-selected]:hover, :has([data-ww-selected]:hover))::after {
+  border-color: var(--sl-color-gray-300);
+}
+
+.ww-widget[editable][data-ww-deleting]::after {
+  border-color: var(--sl-color-danger-400);
+}*/
 
 .ww-widget[editable][data-ww-deleting]::before {
   content: "";
@@ -175,10 +197,6 @@ figure.ProseMirror-selectednode::before {
   z-index: 2147483647;
   width: 100%;
   height: 100%;
-}
-
-.ww-widget[editable][data-ww-deleting]::after {
-  background: var(--sl-color-danger-400);
 }
 
 .ww-widget#ww_preview {

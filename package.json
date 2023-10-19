@@ -1,6 +1,6 @@
 {
   "name": "webwriter",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "description": "Web-based authoring tool for explorables",
   "scripts": {
     "lerna": "lerna",
@@ -70,6 +70,7 @@
   },
   "dependencies": {
     "lit": "^2.6.1",
+    "prosemirror-utils": "^1.2.1-0",
     "semver": "^7.3.8"
   }
 }

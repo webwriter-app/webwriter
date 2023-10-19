@@ -1,4 +1,4 @@
-import { Decoration, DecorationSource, NodeView } from "prosemirror-view"
+import { Decoration, DecorationSource, NodeView, NodeViewConstructor } from "prosemirror-view"
 import { NodeSelection } from "prosemirror-state"
 import { DOMSerializer, Node } from "prosemirror-model"
 import {html, render} from "lit"
@@ -20,7 +20,7 @@ export class WidgetView implements NodeView {
 		this.view = view
     const existingDom = view.dom.querySelector(`#${node.attrs.id}`)
     const newDom = this.createDOM(!!existingDom)
-    this.dom = existingDom as HTMLElement ?? newDom
+    this.dom = this.contentDOM = existingDom as HTMLElement ?? newDom
     if(existingDom) {
       const oldNames = this.dom.getAttributeNames()
       const newNames = newDom.getAttributeNames()
@@ -28,6 +28,7 @@ export class WidgetView implements NodeView {
       toRemove.forEach(k => this.dom.removeAttribute(k))
       newNames.forEach(k => this.dom.setAttribute(k, newDom.getAttribute(k)!))
     }
+    this.dom.toggleAttribute("editable", true)
 	}
 
   getPos() {
@@ -155,7 +156,7 @@ export class FigureView implements NodeView {
 		this.node = node
 		this.view = view
     this.getPos = getPos
-    this.dom = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node) as HTMLElement
+    this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node) as HTMLElement
     const observer = new MutationObserver(() => {
       selectParentNode(this.view.state, this.view.dispatch, this.view)
     })
@@ -176,7 +177,7 @@ export class AudioView implements NodeView {
 		this.node = node
 		this.view = view
     this.getPos = getPos
-    this.dom = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node) as HTMLElement
+    this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node) as HTMLElement
     const observer = new MutationObserver(mutations => {
       if(mutations.some(m => m.attributeName === "src") && !node.attrs.src) {
         this.dom.setAttribute("src", AudioView.emptyDataURL)
@@ -199,7 +200,7 @@ export class VideoView implements NodeView {
 		this.node = node
 		this.view = view
     this.getPos = getPos
-    this.dom = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node) as HTMLElement
+    this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node) as HTMLElement
     const observer = new MutationObserver(mutations => {
       if(mutations.some(m => m.attributeName === "src") && !node.attrs.src) {
         this.dom.setAttribute("src", AudioView.emptyDataURL)
@@ -220,14 +221,38 @@ export class UnknownElementView implements NodeView {
 		this.node = node
 		this.view = view
     this.getPos = getPos
-    this.dom = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node) as HTMLElement
+    this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node) as HTMLElement
 	}
 
 }
+
+export class DetailsView implements NodeView {
+  node: Node
+	view: EditorViewController
+	getPos: () => number
+	dom: HTMLDetailsElement
+  contentDOM?: HTMLElement 
+
+	constructor(node: Node, view: EditorViewController, getPos: () => number) {
+		this.node = node
+		this.view = view
+    this.getPos = getPos
+    this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node) as HTMLDetailsElement
+    this.dom.addEventListener("click", e => {
+      const el = e.target as HTMLElement
+      if(el.tagName === "SUMMARY") {
+        this.view.dispatch(this.view.state.tr.setNodeAttribute(this.getPos(), "open", !this.node.attrs.open))
+      }
+    })
+	}
+
+}
+
 
 export const nodeViews = {
   "_widget": WidgetView,
   "_unknownElement": UnknownElementView,
   "audio": AudioView,
-  "video": VideoView
+  "video": VideoView,
+  "details": DetailsView
 }

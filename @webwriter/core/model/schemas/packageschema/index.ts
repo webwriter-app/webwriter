@@ -386,7 +386,7 @@ const PackageObjectSchema = z.object({
   imports: z.record(z.string().startsWith("#"), z.record(z.string())).optional(),
   editingConfig: EditingConfig.optional(),
   installed: z.boolean().optional().default(false),
-  outdated: z.boolean().optional().default(false),
+  latest: SemVer.schema.optional(),
   imported: z.boolean().optional().default(false),
   watching: z.boolean().optional().default(false),
   reloadCount: z.number().optional().default(0),

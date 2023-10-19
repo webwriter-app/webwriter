@@ -9,7 +9,7 @@ export * from "./environmentcontroller"
 export * from "./iconcontroller"
 
 import {StoreController, EnvironmentController, CommandController, LocalizationController, NotificationController, SettingsController, IconController} from "."
-import { RootStore } from "../model"
+import { PackageStore, RootStore } from "../model"
 import { msg } from "@lit/localize"
 import { WINDOW_OPTIONS } from "./commandcontroller"
 
@@ -26,9 +26,11 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
   icons: IconController
 
   initialized: Promise<void>
+  initializing: boolean = false
 
 	async connectedCallback() {
     this.initialized = new Promise(async resolve => {
+      this.initializing = true
       super.connectedCallback()
       this.environment = new EnvironmentController(this)
       await this.environment.apiReady
@@ -48,7 +50,8 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
       }
       const {join, appDir} = this.environment.api.Path
       const packageJsonPath = await join(await appDir(), "package.json")
-      this.environment.api.watch(packageJsonPath, () => this.store.packages.fetchInstalled(true))
+      this.environment.api.watch(packageJsonPath, () => this.store.packages.loadAll())
+      this.initializing = false
       resolve(undefined)
     })
 	}

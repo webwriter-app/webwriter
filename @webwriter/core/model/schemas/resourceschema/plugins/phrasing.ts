@@ -44,10 +44,6 @@ export function toggleOrUpdateMark(mark: string, attrs: any = {}) {
 
 export const phrasingPlugin = () => ({
   nodes: {
-    text: {
-      group: "phrasing",
-      inline: true
-    },
     br: HTMLElementSpec({
       tag: "br",
       group: "phrasing",
@@ -58,6 +54,10 @@ export const phrasingPlugin = () => ({
       group: "phrasing",
       inline: true
     }),
+    text: {
+      group: "phrasing",
+      inline: true
+    },
     _phrase: HTMLElementSpec({
       tag: "span",
       content: "text? | phrasing*",

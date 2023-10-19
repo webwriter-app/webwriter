@@ -90,9 +90,9 @@ export class Toolbox extends LitElement {
         -webkit-user-select: none;
         background: var(--sl-color-gray-100);
         display: flex;
-        flex-direction: row;
+        flex-direction: column;
         flex-wrap: wrap;
-        gap: 32px;
+        gap: 8px;
         align-items: center;
         user-select: none;
         -webkit-user-select: none;
@@ -490,7 +490,7 @@ export class Toolbox extends LitElement {
     `
   }
 
-  MarkCommands = () => this.app.commands.markCommands.filter(cmd => !cmd.tags?.includes("inline") && !cmd.tags?.includes("advanced")).map(v => {
+  MarkCommands = () => this.app.commands.markCommands.filter(v => !v.tags?.includes("advanced") || v.active).map(v => {
     const classes = {
       "inline-commands": true,
       "applied": Boolean(v.active),
@@ -583,7 +583,6 @@ export class Toolbox extends LitElement {
           ${this.LayoutCommands(el)}
         </div>
       </div>
-      ${this.InlineToolbox()}
       </div>
       <div class="pickers">
         ${this.Pickers(el)}
@@ -661,12 +660,13 @@ export class Toolbox extends LitElement {
     }
   }
 
-  get activeElementAncestors() {
+  get activeElementPath() {
     let el = this.activeElement
-    const ancestors = [el] as HTMLElement[]
-    while(el?.parentElement) {
-      if(!(["BODY", "HTML"].includes(el.parentElement.tagName))) {
-        ancestors.unshift(el.parentElement)
+    const ancestors = [] as HTMLElement[]
+    while(el) {
+      const tagsToExclude = ["html", "body", ...this.app.commands.markCommands.map(cmd => cmd.id)].map(k => k.toUpperCase())
+      if(!(tagsToExclude.includes(el.tagName))) {
+        ancestors.unshift(el)
       }
       el = el.parentElement
     }
@@ -676,14 +676,17 @@ export class Toolbox extends LitElement {
   render() {
     if (this.activeElement && this.isActiveElementWidget) {
       const name = prettifyPackageName(this.activeElement.tagName.toLowerCase())
-      return html`
+      return html`<div>
         <span class="widget-name" id="name" @click=${() => this.emitClickName(this.activeElement ?? undefined)} title=${this.activeElement.id}>${name}</span>
         <!--<sl-icon-button class="meta" title="Edit metadata" name="tags"></sl-icon-button>-->
         <sl-icon-button tabindex="-1" class="delete" title="Delete widget" name="trash" @click=${this.emitDeleteWidget} @mouseenter=${this.emitMouseEnterDeleteWidget} @mouseleave=${this.emitMouseLeaveDeleteWidget}></sl-icon-button>
-      `
+      </div>`
     }
     else if(this.activeElement) {
-      return this.activeElementAncestors.map(this.BlockToolbox)
+      return html`
+        ${this.activeElementPath.map(this.BlockToolbox)}
+        ${this.InlineToolbox()}
+      `
     }
     else {
       return null

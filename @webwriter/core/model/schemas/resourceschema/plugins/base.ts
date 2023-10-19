@@ -100,13 +100,18 @@ export const basePlugin = () => ({
       content: "text | phrasing*",
       whitespace: "pre"
     }),
+    div: HTMLElementSpec({
+      tag: "div",
+      group: "flow palpable",
+      content: "flow*"
+    }),
     pre: HTMLElementSpec({
       tag: "pre",
       group: "flow palpable",
       content: "text | phrasing*",
       whitespace: "pre"
     }),
-    unknownElement: {
+    /*unknownElement: {
       attrs: {
         tagName: {},
         otherAttrs: {default: {}}
@@ -133,7 +138,7 @@ export const basePlugin = () => ({
         "data-ww-editing": CustomElementName.safeParse(node.attrs.tagName).success? "unknowncustom": "unknownbuiltin",
         "data-ww-tagname": node.attrs.tagName
       }]
-    },
+    },*/
   },
   topNode: "explorable",
   keymap: baseKeymap,

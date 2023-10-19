@@ -7,7 +7,7 @@ import { Node, Mark} from "prosemirror-model"
 import { localized, msg, str } from "@lit/localize"
 
 import { MediaType, Package, createWidget } from "../../model"
-import { FigureView, WidgetView } from "."
+import { FigureView, WidgetView, nodeViews } from "."
 import { DocumentHeader } from "./documentheader"
 import { DocumentFooter } from "./documentfooter"
 
@@ -232,23 +232,27 @@ export class ExplorableEditor extends LitElement {
 	private cachedNodeViews: Record<string, any>
 
 	private get nodeViews() {
+    const {nodes} = this.editorState.schema
 		const cached = this.cachedNodeViews
 		const cachedKeys = Object.keys(cached ?? {})
-		const widgetKeys = Object.entries(this.editorState.schema.nodes)
-			.filter(([k, v]) => v.spec["widget"])
+		const widgetKeys = Object.entries(nodes)
+			.filter(([_, v]) => v.spec["widget"])
 			.map(([k, _]) => k)
-    const mediaKeys = Object.entries(this.editorState.schema.nodes)
-    .filter(([k, v]) => v.spec["media"])
-    .map(([k, _]) => k)
-		if(sameMembers([...widgetKeys, ...mediaKeys], cachedKeys)) {
+    const nodeKeys = Object.keys(nodeViews)
+    //const mediaKeys = Object.entries(this.editorState.schema.nodes)
+    //.filter(([k, v]) => v.spec["media"])
+    //.map(([k, _]) => k)
+		if(sameMembers([...widgetKeys, ...nodeKeys], cachedKeys)) {
 			return cached
 		}
 		else {
       const widgetViewEntries = widgetKeys
         .map(key => [key, (node: Node, view: EditorViewController, getPos: () => number) => new WidgetView(node, view, getPos)])
-      const mediaViewEntries = mediaKeys
-        .map(key => [key, (node: Node, view: EditorViewController, getPos: () => number) => new FigureView(node, view, getPos)])
-			this.cachedNodeViews = {...Object.fromEntries([...widgetViewEntries, ...mediaViewEntries])}
+      const nodeViewEntries = Object.entries(nodeViews).map(([k, V]) => [
+        k,
+        (node: Node, view: EditorViewController, getPos: () => number) => new V(node, view, getPos)
+      ])
+			this.cachedNodeViews = {...Object.fromEntries([...widgetViewEntries, ...nodeViewEntries])}
 			return this.cachedNodeViews
 		}
 	}
@@ -378,345 +382,6 @@ export class ExplorableEditor extends LitElement {
 		`
 	}
 
-	static editingStyles = css`
-
-		html {
-			background: var(--sl-color-gray-100);
-			overflow-y: scroll;
-      overflow-x: hidden;
-			height: 100%;
-			--sl-color-danger-300: #fca5a5;
-			--sl-color-primary-400: #38bdf8;
-		}
-
-    html::-webkit-scrollbar {
-      width: 16px;
-    }
-
-    html::-webkit-scrollbar-thumb {
-      background-color: #b0b0b0;
-      background-clip: padding-box;
-      border-bottom: 6px solid transparent;
-      border-top: 6px solid transparent;
-    }
-
-    html::-webkit-scrollbar-track {
-      background-color: transparent;
-    }
-    /* Buttons */
-    html::-webkit-scrollbar-button:single-button {
-      background-color: transparent;
-      display: block;
-      border-style: solid;
-      height: 16px;
-      width: 16px;
-      padding: 2px;
-    }
-    /* Up */
-    html::-webkit-scrollbar-button:single-button:vertical:decrement {
-      border-width: 0 8px 8px 8px;
-      border-color: transparent transparent var(--sl-color-gray-600) transparent;
-    }
-
-    html::-webkit-scrollbar-button:single-button:vertical:decrement:hover {
-      border-color: transparent transparent var(--sl-color-gray-800) transparent;
-    }
-
-    html::-webkit-scrollbar-button:single-button:vertical:decrement:disabled {
-      border-color: transparent transparent var(--sl-color-gray-400) transparent;
-    }
-
-    /* Down */
-    html::-webkit-scrollbar-button:single-button:vertical:increment {
-      border-width: 8px 8px 0 8px;
-      border-color: var(--sl-color-gray-600) transparent transparent transparent;
-    }
-
-    html::-webkit-scrollbar-button:vertical:single-button:increment:hover {
-      border-color: var(--sl-color-gray-800) transparent transparent transparent;
-    }
-
-    html::-webkit-scrollbar-button:vertical:single-button:increment:disabled {
-      border-color: var(--sl-color-gray-400) transparent transparent transparent;
-    }
-
-    a:not([href]) {
-      text-decoration: underline;
-      color: #0000EE;
-    }
-
-		body {
-			display: block;
-			margin: 0;
-			max-width: 840px;
-		}
-
-    audio, video, picture, picture > img, embed {
-      width: 100%;
-    }
-
-    embed {
-      aspect-ratio: 1/1.4142;
-    }
-
-    figure:has(.ProseMirror-selectednode) {
-      position: relative;
-    }
-
-    figure:has(.ProseMirror-selectednode)::before {
-      position: absolute;
-      content: "";
-      left: 0;
-      top: 0;
-      height: 100%;
-      width: 100%;
-      background: var(--sl-color-primary-400);
-      opacity: 0.5;
-      z-index: 1;
-    }
-
-    figcaption {
-      text-align: center;
-      font-size: 0.875rem;
-      margin-top: 0.125rem;
-    }
-
-    figure > script {
-      display: block;
-      font-family: monospace;
-      border: 2px solid darkgray;
-      border-radius: 0.25rem;
-      font-size: 0.875rem;
-      padding: 0.5rem;
-      white-space: pre;
-      overflow: scroll;
-      height: 300px;
-      resize: vertical;
-    }
-
-    .slot-content {
-      cursor: text;
-    }
-
-
-		.ProseMirror {
-			outline: none;
-			display: block;
-			white-space: normal !important;
-      font-family: Arial, sans-serif;
-			font-size: 14pt;
-			background: white;
-			border: 1px solid rgba(0, 0, 0, 0.1);
-			padding: 19px;
-			min-height: 100%;
-			box-sizing: border-box;
-		}
-
-		.ww-widget {
-			--ww-action-opacity: 1;
-			position: relative !important;
-			display: block !important;
-			user-select: none !important;
-			-webkit-user-select: none !important;
-		}
-
-    .ww-widget[editable]::before {
-      content: "";
-      position: absolute;
-      right: -20px;
-      top: 0;
-      left: 0px;
-      background: transparent;
-      height: calc(100% + 5px);
-      width: calc(100% + 20px);
-    }
-
-    .ww-widget[editable]::after {
-      content: "";
-      position: absolute;
-      right: -14px;
-      top: 0;
-      width: 6px;
-      background: none;
-      height: 100%;
-      border-radius: 4px;
-    }
-
-    .ww-widget[editable]:hover::after {
-			background: var(--sl-color-primary-300);
-		}
-
-		.ww-widget[editable][data-ww-selected]::after {
-			background: var(--sl-color-primary-400);
-		}
-
-    .ww-widget[editable][data-ww-deleting]::before {
-      background: var(--sl-color-danger-400);
-      opacity: 0.25;
-      z-index: 1;
-      width: 100%;
-      height: 100%;
-    }
-
-    .ww-widget[editable][data-ww-deleting]::after {
-      background: var(--sl-color-danger-400);
-    }
-
-		.ww-widget#ww_preview {
-			position: relative;
-			display: block;
-			user-select: none;
-			-webkit-user-select: none;
-			outline: 4px dashed var(--sl-color-primary-400);
-		}
-
-
-		main:not(:focus-within) .ww-widget[data-ww-selected] {
-			outline-color: lightgray;
-		}
-
-		.ww-widget:focus-within {
-			--ww-action-opacity: 1;
-		}
-
-		.ww-widget:not(:focus-within) {
-			cursor: pointer;
-		}
-
-		.ww-widget::part(action) {
-			opacity: var(--ww-action-opacity);
-		}
-
-		:host([previewing]) ww-widget-toolbox {
-			display: none;
-		}
-
-		.ProseMirror::before {
-			color: darkgray;
-			position: absolute;
-			content: '⠀';
-			pointer-events: none;
-			user-select: none;
-			-webkit-user-select: none;
-		}
-
-    [data-empty] {
-      position: relative;
-    }
-
-    :is(h1, h2, h3, h4, h5, h6)[data-empty]::before {
-      content: attr(data-placeholder);
-      position: absolute;
-      top: 0;
-      left: 2px;
-      color: var(--sl-color-gray-400);
-      pointer-events: none;
-			user-select: none;
-			-webkit-user-select: none;
-    }
-		
-		.ProseMirror > p {
-			margin: 0;
-			position: relative;
-			z-index: 1;
-      line-height: 2;
-		}
-
-    .ProseMirror table {
-      margin: 0;
-    }
-
-    .ProseMirror th,
-    .ProseMirror td {
-      min-width: 1em;
-      border: 1px solid var(--sl-color-gray-600);
-      padding: 3px 5px;
-      transition: width 0.1s;
-    }
-
-    .ProseMirror .tableWrapper {
-      margin: 1em 0;
-    }
-
-    .ProseMirror th {
-      font-weight: bold;
-      text-align: left;
-    }
-
-    table .ProseMirror-gapcursor {
-      border: 2px dashed var(--sl-color-primary-600);
-      display: table-cell;
-      min-width: 1em;
-      padding: 3px 5px;
-      vertical-align: top;
-      box-sizing: border-box;
-      position: relative;
-      height: 100%;
-    }
-
-    table .ProseMirror-gapcursor::after {
-      border-top: none;
-      border-left: 1px solid black;
-      width: 2px;
-      height: 1em;
-      position: static;
-    }
-
-		.ProseMirror ::selection {
-			background-color: var(--sl-color-primary-400);
-      color: var(--sl-color-gray-100);
-		}
-
-    blockquote {
-      background: #f9f9f9;
-      border-left: 10px solid #ccc;
-      margin: 1.5em 10px;
-      padding: 0.5em 10px;
-    }
-
-		@media only screen and (min-width: 1071px) {
-
-			.ww-widget::part(action) {
-				position: absolute;
-				height: calc(100% - 40px);
-				width: calc(min(100vw - 840px - 40px, 800px));
-				left: 100%;
-				top: 0px;
-				padding-left: 30px; 
-				padding-top: 40px;
-				user-select: none;
-				-webkit-user-select: none;
-			}
-
-      .ww-widget:not(:focus-within) {
-        --ww-action-opacity: 0;
-      }
-		}
-
-    @media print {
-      html {
-        overflow: visible;
-        background: none;
-        border: none;
-      }
-
-      body {
-        background: none;
-        border: none;
-      }
-
-      .ProseMirror {
-        background: none;
-        border: none;
-      }
-
-      .ProseMirror[data-empty]::before {
-			  display: none;
-		  }
-    }
-
-	`
-
 	loadingSpinnerTemplate = () => html`
 		<div class="loading-packages-spinner-container">
 			<sl-spinner></sl-spinner>
@@ -771,31 +436,35 @@ export class ExplorableEditor extends LitElement {
   }
 
 	decorations = (state: EditorState) => {
-		if(!this.previewing) {
-			const {from, to} = state.selection
-			const decorations = [] as Decoration[]
-			state.doc.forEach((node, k, i) => {
-				if(node.type.spec["widget"]) {
-					decorations.push(Decoration.node(k, k + 1, {
-						editable: "true",
-						...this.deletingWidget?.id === node.attrs.id? {"data-ww-deleting": ""}: {},
-						...from <= k && k <= to? {"data-ww-selected": ""}: {}
-					}))
-				}
-        else if(node.type.spec.group?.split(" ").includes("heading")) {
-          const cmd = this.app.commands.containerCommands.find(cmd => cmd.id === node.type.name)
-          decorations.push(Decoration.node(k, state.doc.resolve(k + 1).after(1), {
+    const {from, to, $from} = state.selection
+    const decorations = [] as Decoration[]
+    state.doc.descendants((node, pos, parent, index) => {
+      const name = node.type.name
+      const selectionEndsInNode = pos <= to && to <= pos + node.nodeSize
+      const selectionStartsInNode = pos <= from && from <= pos + node.nodeSize
+      const selectionWrapsNode = from <= pos && pos + node.nodeSize <= to
+      if((selectionStartsInNode || selectionEndsInNode || selectionWrapsNode) && name !== "text") {
+        decorations.push(Decoration.node(pos, pos + node.nodeSize, {"data-ww-selected": ""}))
+      }
+      if(node.isInline || name === "_phrase") {
+        decorations.push(Decoration.node(pos, pos + node.nodeSize, {"data-ww-inline": ""}))
+      }
+      if(node.attrs.id && this.deletingWidget?.id === node.attrs.id) {
+        decorations.push(Decoration.node(pos, pos + node.nodeSize, {"data-ww-deleting": ""}))
+      }
+      if(node.type.spec.group?.split(" ").includes("heading")) {
+        const cmd = this.app.commands.containerCommands.find(cmd => cmd.id === name)
+        decorations.push(Decoration.node(
+          pos,
+          pos + node.nodeSize,
+          {
             "data-placeholder": cmd?.label,
-            ...(node.textContent.trim() === ""? {"data-empty": ""}: {}),
-            ...from <= k && k <= to? {"data-ww-selected": ""}: {}
-          }))
-        }
-			})
-			return DecorationSet.create(state.doc, decorations)
-		}
-		else {
-			return DecorationSet.create(state.doc, [])
-		}
+            ...(node.textContent.trim() === ""? {"data-empty": ""}: {})
+          }
+        ))
+      }
+    })
+    return DecorationSet.create(state.doc, decorations)
 	}
 	
 	handleUpdate = () => {
@@ -813,18 +482,9 @@ export class ExplorableEditor extends LitElement {
         return null
       }
 			if(selection instanceof TextSelection || selection instanceof AllSelection) {
-				const pos = this.selection.from
-				let node = this.pmEditor?.domAtPos(pos, 0)?.node
-        let docNode = this.pmEditor?.domAtPos(0, 0)?.node
-        while(node?.parentElement && node.parentElement !== docNode) {
-          node = node.parentElement
-        }
-        /*
-				let offset = this.pmEditor?.domAtPos(pos).offset
-				if(node instanceof Text) {
-					node = this.pmEditor?.domAtPos(pos - offset).node
-				}*/
-				return node as HTMLElement
+        const node = this.pmEditor.domAtPos(this.selection.anchor, 0)?.node
+        return node?.nodeType === window.Node.TEXT_NODE? node.parentElement: node as HTMLElement
+
 			}
 			else if(selection instanceof NodeSelection) {
 				const node = this.pmEditor?.nodeDOM(selection.anchor)
@@ -919,7 +579,13 @@ export class ExplorableEditor extends LitElement {
 				middleware: []
 			})
 			this.toolboxX = roundByDPR(docWidth + 10)
-			this.toolboxY = roundByDPR(Math.max(Math.min(iframeOffsetY + y, docHeight - this.toolbox.clientHeight + iframeOffsetY), iframeOffsetY))/*roundByDPR(
+			this.toolboxY = roundByDPR(Math.max(
+        Math.min(
+          y,
+          docHeight - this.toolbox.clientHeight + iframeOffsetY
+        ),
+        iframeOffsetY
+      ))/*roundByDPR(
         Math.min(Math.max(selectionY, 0), yMax)
       )*/
 		}
@@ -1108,7 +774,6 @@ export class ExplorableEditor extends LitElement {
   handleDropOrPaste = (ev: DragEvent | ClipboardEvent) => {
     const DragEvent = this.pmEditor.window.DragEvent
     const data = ev instanceof DragEvent? ev.dataTransfer: ev.clipboardData
-    console.log(data?.getData("text/html"))
     if((data?.files?.length ?? 0) > 0) {
       const files = [...(data?.files as any)].filter(file => file) as File[]
       let elements = [] as Element[]
@@ -1135,7 +800,6 @@ export class ExplorableEditor extends LitElement {
 
   get contentStyle() {
     return [
-			ExplorableEditor.editingStyles.cssText,
 			this.bundleCSS
 		]
   } 
@@ -1165,7 +829,10 @@ export class ExplorableEditor extends LitElement {
 				.contentScript=${this.contentScript}
 				.contentStyle=${this.contentStyle}
 				.shouldBeEditable=${this.shouldBeEditable}
-				.handleDOMEvents=${this.handleDOMEvents}>
+				.handleDOMEvents=${this.handleDOMEvents}
+        .transformPastedHTML=${(html: string) => {
+          return html.replaceAll(/style=["']?((?:.(?!["']?\s+(?:\S+)=|\s*\/?[>"']))+.)["']?/g, "")
+        }}>
 			</pm-editor>
 		`
 	}
@@ -1297,6 +964,7 @@ export class ExplorableEditor extends LitElement {
         ${this.CoreEditor()}
         ${this.Toolbox()}
         ${this.Palette()}
+        <!--<ww-debugoverlay .editorState=${this.editorState} .activeElement=${this.activeElement}></ww-debugoverlay>-->
       </main>
     ` 
 	}

@@ -289,7 +289,6 @@ export class KeymapManager extends LitElement {
 
   render() {
     const groupedEntries = groupBy(Object.entries(this.commands), ([key, entry]) => entry.category)
-    console.log(Object.keys(groupedEntries))
     return html`<div class="base" part="base">
       ${Object.keys(groupedEntries).map(key => html`
         <h2 class="group-title">${this.categoryLabels[key] ?? key}</h2>

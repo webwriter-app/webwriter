@@ -413,5 +413,7 @@
 'spaceKey': `Leertaste`,
 'tabKey': `⭾ Tab`,
 'upKey': `↑ Hoch`,
+'s3b3ea038c5d3bb06': `Division`,
+'se6cdad455e2d8c02': `Insert a division`,
     };
   

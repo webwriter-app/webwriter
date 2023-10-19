@@ -79,3 +79,12 @@ blockquote {
   border-left: 10px solid #ccc;
   color: var(--text-light);
 }
+
+details {
+  border-left: 2px solid black;
+  padding-left: 1ch;
+}
+
+details p {
+  margin: 0;
+}

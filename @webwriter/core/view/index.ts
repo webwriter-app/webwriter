@@ -256,7 +256,7 @@ export class App extends ViewModelMixin(LitElement)
 	Content = () => {
 		const {changed, set, setHead, url, editorState} = this.store.document
 		const {packages, availableWidgetTypes, bundleCode, bundleCSS, bundleID} = this.store.packages
-		const {locale, showTextPlaceholder, showWidgetPreview} = this.store.ui
+		const {locale, showTextPlaceholder} = this.store.ui
 		const {open} = this.environment.api.Shell
     const {documentCommands, commands: {setDocAttrs, editHead}} = this.commands
     const head = html`<ww-head 
@@ -291,7 +291,6 @@ export class App extends ViewModelMixin(LitElement)
     .packages=${packages as any}
     ?loadingPackages=${false}
     .showTextPlaceholder=${showTextPlaceholder}
-    .showWidgetPreview=${showWidgetPreview}
     ?controlsVisible=${!this.foldOpen}
     lang=${locale}>
   </ww-explorable-editor>`: null
@@ -335,17 +334,16 @@ export class App extends ViewModelMixin(LitElement)
 	}
 
 	render() {
-		const initializing = !this.store || this.store.packages.initializing
-		if(!initializing) {
+		if(!this.initializing) {
 			this.Notification()
 			this.localization.setLocale(this.store.ui.locale)
 		}
 		return html`<ww-layout 
 			openTab
 			activeTabName=${ifDefined(this.store?.document.url)}
-      ?loading=${initializing}
+      ?loading=${this.initializing}
       ?foldOpen=${this.foldOpen}>
-      ${initializing? this.Placeholder(): [
+      ${this.initializing? this.Placeholder(): [
         this.HeaderLeft(),
         this.HeaderRight(),
         this.Content(),

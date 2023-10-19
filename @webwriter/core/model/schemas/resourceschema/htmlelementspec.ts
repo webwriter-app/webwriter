@@ -173,7 +173,7 @@ export function toAttributes(node: Node | Attrs, extraAttrs?: Attrs) {
   const attrSpec: (k: string) => AttributeSpec & {private?: boolean} | undefined = (k: string) => complex? (node.type?.spec?.attrs ?? {})[k]: {}
   for (const [k, v] of Object.entries(attrs)) {
     const spec = attrSpec(k)
-    if(k !== "data" && v !== undefined && (spec?.default !== v) && !spec?.private) {
+    if(k !== "data" && v && (spec?.default !== v) && !spec?.private) {
       outputAttrs[k] = Array.isArray(v)? v.join(" "): v 
     }
     if(k === "data") {

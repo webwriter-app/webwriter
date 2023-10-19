@@ -241,7 +241,7 @@ export class PackageStore {
   }
 
   get outdatedPkgs() {
-    return this.packages.filter(pkg => pkg.outdated)
+    return this.packages.filter(pkg => pkg.latest)
   }
 
   get availableWidgetTypes() {
@@ -261,9 +261,13 @@ export class PackageStore {
       await this.pm("add", [...PackageStore.defaultArgs, ...this.corePackages], true, appDir)
       // await Promise.all(H5P_REPOSITORIES.map(this.installH5Package))
     }
-    const packages = await this.fetchInstalled()
-    const importable = (await this.writeBundle(packages, {editMode: true, force: packages.some(pkg => pkg.localPath)}))?.packages
-    await this.import(importable ?? [], {bundlename: "bundle", editMode: true})
+    await this.loadAll()
+  }
+
+  async loadAll() {
+    await this.fetchInstalled(true)
+    await this.writeBundle(this.installed, {editMode: true, force: this.installed.some(pkg => pkg.localPath)})
+    await this.import(this.installed.filter(pkg => !pkg.importError), {bundlename: "bundle", editMode: true})
   }
   
   async testImportable(packages: Package[], setImportError=true) {
@@ -340,14 +344,19 @@ export class PackageStore {
     const installed = await this.fetchInstalled(false)
     const available = await this.fetchAvailable(from)
     const installedPkgNames = installed.map(pkg => pkg.name)
-    const outdated = installed
-      .filter(({name, version}) => {
-        const availVersion = available.find(pkg => pkg.name === name)?.version
-        return availVersion && String(availVersion) !== String(version)
+    const installedWithLatest = installed
+      .map((pkg) => {
+        const availVersion = available.find(p => p.name === pkg.name)?.version
+        if(availVersion && String(availVersion) !== String(pkg.version)) {
+          return pkg.extend({latest: availVersion})
+        }
+        else {
+          return pkg
+        }
       })
     this.packages = [
       ...available.filter(pkg => !installedPkgNames.includes(pkg.name)),
-      ...installed.map(pkg => pkg.extend({outdated: outdated.includes(pkg)}))
+      ...installedWithLatest
     ]
     return this.packages
   }
@@ -441,6 +450,7 @@ export class PackageStore {
     if(packages.length === 0) {
       return
     }
+    console.log("import", PackageStore.computeBundleID(packages, editMode))
     const appDir = await this.Path.appDir()
     const bundleFilename = PackageStore.computeBundleHash(packages, bundlename, editMode)
     const bundlePathJS = await this.Path.join(appDir, bundleFilename + ".js")

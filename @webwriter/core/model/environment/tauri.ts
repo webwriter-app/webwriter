@@ -173,11 +173,19 @@ export async function search(text: string, params?: {size?: number, from?: numbe
 export async function pm(command: string, commandArgs: string[] = [], json=true, cwd?: string) {
   const cmdArgs = [command, ...(json ? ["--json"]: []), ...commandArgs]
   const opts = cwd? {cwd}: {}
+  console.info(`[TAURI] ${cwd? cwd: await appDir()}> bin/yarn ${[...cmdArgs, "--mutex file"].join(" ")}`)
   const output = await Command.sidecar("bin/yarn", [...cmdArgs, "--mutex file"], opts).execute()
   if(output.stderr) {
-    const err = output.stderr.split("\n").map((e: any) => JSON.parse(e))
-    const errors = err.filter((e: any) => e.type === "error")
-    const warnings = err.filter((e: any) => e.type === "warning")
+    const err = output.stderr.split("\n").map((e: any) => {
+      try {
+        console.error(JSON.parse(e))
+      }
+      catch(err) {
+        console.error(e)
+      }
+    })
+    const errors = err.filter((e: any) => e?.type === "error")
+    const warnings = err.filter((e: any) => e?.type === "warning")
     warnings.forEach((w: any) => console.warn(w.data))
     if(err?.some((e: any) => e?.type === "error")) {
       throw err
