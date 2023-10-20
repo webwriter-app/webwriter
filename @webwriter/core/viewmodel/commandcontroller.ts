@@ -301,7 +301,6 @@ class NodeCommand<SPEC extends CommandSpec = CommandSpec> extends Command<SPEC> 
   }
   run(options?: any, e?: Event) {
     const {exec, editorState} = this.host.activeEditor ?? {exec: () => {}}
-    console.log(editorState)
     return super.run(options, e, (host, attrs) => exec(wrapSelection(this.id, attrs)))
   }
   get active() {
