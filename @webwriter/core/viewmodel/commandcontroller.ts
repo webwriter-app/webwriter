@@ -459,7 +459,7 @@ export class CommandController implements ReactiveController {
       save: new Command(this.host, {
         id: "save",
         label: () => msg("Save"),
-        icon: "file-download",
+        icon: "device-floppy",
         description: () => msg("Save the active document"),
         shortcut: "ctrl+s",
         run: host => host.store.document.save(),
@@ -513,12 +513,17 @@ export class CommandController implements ReactiveController {
       open: new Command(this.host, {
         id: "open",
         label: () => msg("Open"),
-        icon: "file-upload",
+        icon: "file-symlink",
         shortcut: "ctrl+o",
         description: () => msg("Open a document"),
         run: async host => {
           const url = await host.environment.api.Dialog.promptRead({filters: INDIVIDUAL_FILTERS})
-          url && host.environment.api.createWindow(`?open=${url}`, WINDOW_OPTIONS)
+          if(url && !this.host.store.document.empty) {
+            host.environment.api.createWindow(`?open=${url}`, WINDOW_OPTIONS)
+          }
+          else if(url && this.host.store.document.empty) {
+            this.host.store.document.load(url as string)
+          }
         },
         category: "app"
       }),
