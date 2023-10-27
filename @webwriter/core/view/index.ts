@@ -254,15 +254,16 @@ export class App extends ViewModelMixin(LitElement)
 
 
 	Content = () => {
-		const {changed, set, setHead, url, editorState} = this.store.document
+		const {changed, set, setHead, url, editorState, ioState, provisionalTitle, inMemory} = this.store.document
 		const {packages, availableWidgetTypes, bundleCode, bundleCSS, bundleID} = this.store.packages
 		const {locale, showTextPlaceholder} = this.store.ui
 		const {open} = this.environment.api.Shell
     const {documentCommands, commands: {setDocAttrs, editHead}} = this.commands
     const head = html`<ww-head 
       .documentCommands=${documentCommands.filter(cmd => cmd.id !== "editHead")}
+      ioState=${ioState}
       slot="nav"
-      filename=${ifDefined(url)}
+      filename=${inMemory && provisionalTitle? provisionalTitle: url}
       ?pendingChanges=${changed}
     >
       <ww-button variant="icon" ${spreadProps(editHead.toObject())} @click=${() => editHead.run()}></ww-button>

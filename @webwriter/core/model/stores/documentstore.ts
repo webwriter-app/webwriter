@@ -34,6 +34,8 @@ export class DocumentStore implements Resource {
   isPreviewing: boolean = false
   lastSavedState: EditorStateWithHead
 
+  ioState: "idle" | "saving" | "loading" = "idle"
+
   bundle: Options["bundle"]
 
   constructor({bundle, schema, url, editorState}: Options) {
@@ -79,51 +81,63 @@ export class DocumentStore implements Resource {
 
   /** Saves a resource on an external file system. */
   async save(saveAs=false) {
-    const resource = this
-    let urlObj = new URL(resource?.url ?? "memory:/")
-    if(urlObj.protocol === "memory:" || saveAs) {
-      const path = await connect["file"].pickSave(INDIVIDUAL_FILTERS)
-      if(path === null) {
-        return
+    this.ioState = "saving"
+    try {
+      const resource = this
+      let urlObj = new URL(resource?.url ?? "memory:/")
+      if(urlObj.protocol === "memory:" || saveAs) {
+        const path = await connect["file"].pickSave(INDIVIDUAL_FILTERS, this.inMemory? this.provisionalTitle: this.url)
+        if(path === null) {
+          return
+        }
+        urlObj = new URL("file:/")
+        urlObj.pathname = path
       }
-      urlObj = new URL("file:/")
-      urlObj.pathname = path
-    }
-
-    const protocol = urlObj.protocol.slice(0, -1)
-    const format = getFileExtension(urlObj.href)
-    const save = (connect as any)[protocol].save
-    const serialize = (marshal as any)[format].serialize
-    const isBinary = (marshal as any)[format].isBinary
   
-    let data = await serialize(resource.editorState.doc, resource.editorState.head$.doc, this.bundle)
-    await save(data, urlObj.href, isBinary)
-    this.lastSavedState = this.editorState
-    this.url = urlObj.href
+      const protocol = urlObj.protocol.slice(0, -1)
+      const format = getFileExtension(urlObj.href)
+      const save = (connect as any)[protocol].save
+      const serialize = (marshal as any)[format].serialize
+      const isBinary = (marshal as any)[format].isBinary
+    
+      let data = await serialize(resource.editorState.doc, resource.editorState.head$.doc, this.bundle)
+      await save(data, urlObj.href, isBinary)
+      this.lastSavedState = this.editorState
+      this.url = urlObj.href
+    }
+    finally {
+      this.ioState = "idle"
+    }
   }
 
   /** Loads a resource from an external file system. */
   async load(url?: Resource["url"]) {
-    let urlObj = new URL("memory:/")
-    if(!url) {
-      urlObj.protocol = "file:"
-      const path = await connect["file"].pickLoad(INDIVIDUAL_FILTERS)
-      if(path === null) {return}
-      urlObj.pathname = path as string
+    this.ioState = "loading"
+    try {
+      let urlObj = new URL("memory:/")
+      if(!url) {
+        urlObj.protocol = "file:"
+        const path = await connect["file"].pickLoad(INDIVIDUAL_FILTERS)
+        if(path === null) {return}
+        urlObj.pathname = path as string
+      }
+      else {
+        urlObj = new URL(url)
+      }
+  
+      const protocol = urlObj.protocol.slice(0, -1)
+      const format = getFileExtension(urlObj.href)
+      const load = (connect as any)[protocol].load
+      const parse = (marshal as any)[format].parse
+      
+      let data = await load(urlObj.href, BINARY_EXTENSIONS)
+      let editorState = await parse(data, this.editorState.schema)
+      this.url = urlObj.href
+      this.editorState = this.lastSavedState = editorState
     }
-    else {
-      urlObj = new URL(url)
+    finally {
+      this.ioState = "idle"
     }
-
-    const protocol = urlObj.protocol.slice(0, -1)
-    const format = getFileExtension(urlObj.href)
-    const load = (connect as any)[protocol].load
-    const parse = (marshal as any)[format].parse
-    
-    let data = await load(urlObj.href, BINARY_EXTENSIONS)
-    let editorState = await parse(data, this.editorState.schema)
-    this.url = urlObj.href
-    this.editorState = this.lastSavedState = editorState
   }
 
   /** Open a preview for this document. */
@@ -136,6 +150,15 @@ export class DocumentStore implements Resource {
     const blob = new Blob([htmlString], {type: "text/html"})
     const blobURL = URL.createObjectURL(blob)
     open(blobURL, "_blank")
+  }
+
+  get empty() {
+    const defaultState = createEditorState({schema: this.editorState.schema})
+    return this.editorState.doc.eq(defaultState.doc)
+  }
+
+  get inMemory() {
+    return this.url.startsWith("memory:")
   }
 
   get activeMarks() {
@@ -236,6 +259,11 @@ export class DocumentStore implements Resource {
     return this.activePos
       .map(pos => view.nodeDOM(pos) as Element)
       .map(element => getComputedStyle(element))
+  }
+
+  /** Return the text content of the first element, if any, limited to 50 characters. */
+  get provisionalTitle() {
+    return this.editorState.doc.firstChild?.textContent.slice(0, 50)
   }
 
 }
