@@ -261,9 +261,12 @@ export class DocumentStore implements Resource {
       .map(element => getComputedStyle(element))
   }
 
-  /** Return the text content of the first element, if any, limited to 50 characters. */
+  /** Return the text content of the first element, if any, limited to 50 characters and with trimmed whitespace. */
   get provisionalTitle() {
-    return this.editorState.doc.firstChild?.textContent.slice(0, 50)
+    return this.editorState.doc.firstChild?.textContent
+      .replaceAll(/\s+/g, " ")
+      .trim()
+      .slice(0, 50)
   }
 
 }
