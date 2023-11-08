@@ -32,12 +32,6 @@ export function serializeStyleAttrs(attrs: Attrs) {
 }
 
 export function parseStyleAttrs(dom: HTMLElement | string) {
-  console.log(typeof dom === "string"
-  ? {} as Record<keyof typeof styleAttrs, string>
-  : Object.fromEntries(Object.keys(styleAttrs)
-    .map(k => [k, dom.style[k as keyof typeof dom.style]])
-    .filter(([k, v]) => v)
-  ) as Record<keyof typeof styleAttrs, string>)
   return typeof dom === "string"
     ? {} as Record<keyof typeof styleAttrs, string>
     : Object.fromEntries(Object.keys(styleAttrs)

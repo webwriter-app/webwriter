@@ -415,5 +415,8 @@
 'upKey': `↑ Hoch`,
 's3b3ea038c5d3bb06': `Division`,
 'se6cdad455e2d8c02': `Insert a division`,
+'se6297163cac9d276': `Edit source`,
+'s281d957112b10f12': `Edit the HTML of the document directly`,
+'sef00c258bc1ecf1e': `This explorable has unsaved changes.`,
     };
   

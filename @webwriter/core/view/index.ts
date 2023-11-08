@@ -201,6 +201,12 @@ export class App extends ViewModelMixin(LitElement)
         justify-content: flex-end;
       }
 
+      #header-right ww-button[data-active] {
+        background: var(--sl-color-warning-200);
+        color: var(--sl-color-warning-900);
+        border-radius: var(--sl-border-radius-medium);
+      }
+
       #preview-label {
         margin-right: 0.5ch;
       }
@@ -224,6 +230,9 @@ export class App extends ViewModelMixin(LitElement)
 
   @property({type: Boolean, attribute: true, reflect: true})
 	foldOpen: boolean = false
+
+  @property({type: Boolean, attribute: true, reflect: true})
+	sourceMode = false
 
 	@query("ww-explorable-editor[data-active]")
 	activeEditor: ExplorableEditor | null
@@ -254,7 +263,7 @@ export class App extends ViewModelMixin(LitElement)
 
 
 	Content = () => {
-		const {changed, set, setHead, url, editorState, ioState, provisionalTitle, inMemory} = this.store.document
+		const {changed, set, setHead, url, editorState, codeState, ioState, provisionalTitle, inMemory} = this.store.document
 		const {packages, availableWidgetTypes, bundleCode, bundleCSS, bundleID} = this.store.packages
 		const {locale, showTextPlaceholder} = this.store.ui
 		const {open} = this.environment.api.Shell
@@ -286,6 +295,7 @@ export class App extends ViewModelMixin(LitElement)
     .bundleCSS=${bundleCSS}
     bundleID=${bundleID}
     .editorState=${editorState}
+    .codeState=${codeState}
     @update=${(e: any) => set(e.detail.editorState)}
     @ww-open=${(e: any) => open(e.detail.url)}
     .availableWidgetTypes=${availableWidgetTypes}
@@ -323,7 +333,7 @@ export class App extends ViewModelMixin(LitElement)
     const {queryCommands} = this.commands
     return html`<div id="header-right" slot="header-right">
       ${queryCommands({category: "editor", tags: ["general"]}).map(v => html`
-        <ww-button variant="icon" ${spreadProps(v.toObject())} @click=${() => v.run()} ?reverse=${v.id === "preview"}>${v.id === "preview"? html`<span id="preview-label">${v.label}</span>`: null}</ww-button>
+        <ww-button variant="icon" ${spreadProps(v.toObject())} ?data-active=${v.active} @click=${() => v.run()} ?reverse=${v.id === "preview"}>${v.id === "preview"? html`<span id="preview-label">${v.label}</span>`: null}</ww-button>
       `)}
     </div>`
   }

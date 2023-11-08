@@ -6,8 +6,8 @@ import { EditorState, Command as PmCommand, NodeSelection, TextSelection, AllSel
 import { Node, Mark} from "prosemirror-model"
 import { localized, msg, str } from "@lit/localize"
 
-import { MediaType, Package, createWidget } from "../../model"
-import { FigureView, WidgetView, nodeViews } from "."
+import { CODEMIRROR_EXTENSIONS, MediaType, Package, createWidget } from "../../model"
+import { CodemirrorEditor, FigureView, WidgetView, nodeViews } from "."
 import { DocumentHeader } from "./documentheader"
 import { DocumentFooter } from "./documentfooter"
 
@@ -23,6 +23,9 @@ import {computePosition, autoUpdate, offset, shift, flip} from '@floating-ui/dom
 import { Command } from "../../viewmodel"
 import { fixTables } from "prosemirror-tables"
 import { App } from ".."
+import { undo, redo, undoDepth, redoDepth } from "prosemirror-history"
+import {StateCommand as CmCommand, EditorState as CmEditorState} from "@codemirror/state"
+import {undo as cmUndo, redo as cmRedo} from "@codemirror/commands"
 
 class EmbedTooLargeError extends Error {}
 
@@ -55,6 +58,8 @@ export class ExplorableEditor extends LitElement {
 		command(this.pmEditor.state, this.pmEditor.dispatch, this.pmEditor as any)
 		this.pmEditor.focus()
 	}
+
+  execInCodeEditor = (command: CmCommand) => command({state: this.cmEditor.state, dispatch: this.cmEditor.dispatch})
 
 	get firstAvailableWidgetID() {
 		let num = 0
@@ -111,6 +116,9 @@ export class ExplorableEditor extends LitElement {
 
 	@property({type: Object, attribute: false})
 	editorState: EditorState
+
+  @property({type: Object, attribute: false})
+	codeState: CmEditorState
 
 	@property({type: String})
 	url: string
@@ -178,6 +186,9 @@ export class ExplorableEditor extends LitElement {
 	@query("pm-editor")
 	pmEditor: ProsemirrorEditor
 
+  @query("cm-editor")
+	cmEditor: CodemirrorEditor
+
 	pendingMouseLeave: number
 
 	get selection() {
@@ -200,6 +211,10 @@ export class ExplorableEditor extends LitElement {
 		return this.pmEditor.coordsAtPos(this.editorState.selection.anchor).top
 	}
 
+  get codeEditorValue() {
+    return this.cmEditor.value
+  }
+
 	emitSelectTabTitle = () => this.dispatchEvent(
 		new CustomEvent("ww-select-tab-title", {composed: true, bubbles: true, detail: {url: this.url}})
 	)
@@ -215,6 +230,18 @@ export class ExplorableEditor extends LitElement {
 	firstUpdated() {
 		this.classList.remove("loading")
 	}
+
+  undo() {
+    !this.app.sourceMode
+      ? this.exec(undo)
+      : this.execInCodeEditor(cmUndo)
+  }
+
+  redo() {
+    !this.app.sourceMode
+      ? this.exec(redo)
+      : this.execInCodeEditor(cmRedo)
+  }
 
 	LinkView = (mark: Mark, view: EditorView, inline: boolean) => {
     const dom = this.pmEditor.document.createElement("a")
@@ -294,6 +321,7 @@ export class ExplorableEditor extends LitElement {
 				margin: 0 auto;
 				position: relative;
         overscroll-behavior: none;
+        overflow: auto;
 				height: 100%;
 				z-index: 10;
 			}
@@ -306,7 +334,17 @@ export class ExplorableEditor extends LitElement {
 			pm-editor {
 				grid-column: 2 / 6;
 				grid-row: 1;
+        font-size: 0.5rem;
 			}
+
+      cm-editor {
+        grid-column: 1 / 6;
+        grid-row: 1;
+        background: white;
+        border: 1px solid var(--sl-color-gray-300);
+        border-bottom: none;
+        cursor: text;
+      }
 
 			.loading-packages-spinner-container {
 				display: flex;
@@ -333,27 +371,8 @@ export class ExplorableEditor extends LitElement {
         opacity: 1;
       }
 
-
-			:host([previewing]) ww-toolbox, :host([previewing]) ww-palette {
-				display: none !important;
-			}
-
       :host(:not([controlsVisible])) :is(ww-toolbox, ww-palette) {
         display: none !important;
-      }
-
-      :host([previewing]) > :not(main):not(aside) {
-        display: none !important;
-      }
-
-      :host([previewing]) > main {
-        grid-column: 1 / 6;
-        grid-row: 1 / 6;
-        z-index: 100;
-      }
-
-      :host([previewing]) aside {
-        z-index: 101;
       }
 
 			@media only screen and (max-width: 1300px) {
@@ -812,6 +831,10 @@ export class ExplorableEditor extends LitElement {
 		]
   }
 
+  transformPastedHTML = (html: string) => {
+    return html.replaceAll(/style=["']?((?:.(?!["']?\s+(?:\S+)=|\s*\/?[>"']))+.)["']?/g, "")
+  }
+
 	CoreEditor = () => {
 		return html`
 			<pm-editor
@@ -830,12 +853,18 @@ export class ExplorableEditor extends LitElement {
 				.contentStyle=${this.contentStyle}
 				.shouldBeEditable=${this.shouldBeEditable}
 				.handleDOMEvents=${this.handleDOMEvents}
-        .transformPastedHTML=${(html: string) => {
-          return html.replaceAll(/style=["']?((?:.(?!["']?\s+(?:\S+)=|\s*\/?[>"']))+.)["']?/g, "")
-        }}>
+        .transformPastedHTML=${this.transformPastedHTML}>
 			</pm-editor>
 		`
 	}
+
+  CodeEditor = () => {
+    return html`<cm-editor
+      .state=${this.codeState}
+      .extensions=${CODEMIRROR_EXTENSIONS}
+      @change=${(e: any) => this.app.store.document.setCodeState(e.target.state)}
+    ></cm-editor>`
+  }
 
 	pendingBlur: number
 
@@ -961,9 +990,11 @@ export class ExplorableEditor extends LitElement {
 	render() {
 		return html`
       <main part="base">
-        ${this.CoreEditor()}
-        ${this.Toolbox()}
-        ${this.Palette()}
+        ${this.app.sourceMode? this.CodeEditor(): [
+          this.CoreEditor(),
+          this.Toolbox(),
+          this.Palette()
+        ]}
         <!--<ww-debugoverlay .editorState=${this.editorState} .activeElement=${this.activeElement}></ww-debugoverlay>-->
       </main>
     ` 

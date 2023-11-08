@@ -115,7 +115,7 @@ figure.ProseMirror-selectednode::before {
   display: block;
   white-space: normal !important;
   background: white;
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--sl-color-gray-300);
   padding: 19px;
   min-height: 100%;
   box-sizing: border-box;

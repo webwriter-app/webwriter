@@ -80,7 +80,6 @@ export function packageWidgetNodeSpec(pkg: Package): NodeSpec {
       ...styleAttrs
     },
     parseDOM : [{tag: unscopePackageName(pkg.name), getAttrs: (dom: HTMLElement ) => {
-      console.log(dom)
       return {
         id: dom.getAttribute("id"),
         editable: dom.getAttribute("editable") ?? false,

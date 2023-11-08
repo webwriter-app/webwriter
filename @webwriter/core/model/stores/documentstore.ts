@@ -1,18 +1,24 @@
-import { EditorState } from "prosemirror-state"
-import { Schema, Node, NodeType, Attrs } from "prosemirror-model"
+import { EditorState, Plugin } from "prosemirror-state"
+import { Schema, Node, NodeType, Attrs, DOMSerializer, DOMParser } from "prosemirror-model"
+import { html_beautify as htmlBeautify } from "js-beautify"
 
 import { createEditorState, EditorStateWithHead, Environment, getActiveMarks } from ".."
 import { getFileExtension, groupBy, range } from "../../utility"
 import * as marshal from "../marshal"
 import * as connect from "../connect"
 import { redoDepth, undoDepth } from "prosemirror-history"
+import {undo as cmUndo, redo as cmRedo, undoDepth as cmUndoDepth, redoDepth as cmRedoDepth} from "@codemirror/commands"
 import { EditorView } from "prosemirror-view"
 import { serialize } from "../marshal/html"
+import { EditorState as CmEditorState } from "@codemirror/state"
+import { html as cmHTML } from "@codemirror/lang-html"
+import { basicSetup } from "codemirror"
 
 const BINARY_EXTENSIONS = Object.entries(marshal).flatMap(([k, v]) => v.isBinary? v.extensions: [])
 const ALL_FILTER = {name: "Explorable", extensions: Object.values(marshal).flatMap(v => v.extensions)}
 export const INDIVIDUAL_FILTERS = Object.entries(marshal).map(([k, v]) => ({name: v.label, extensions: v.extensions}))
 const FILTERS = [ALL_FILTER, ...INDIVIDUAL_FILTERS]
+export const CODEMIRROR_EXTENSIONS = [basicSetup, cmHTML()]
 
 type Resource = {
   url: string
@@ -31,7 +37,7 @@ export class DocumentStore implements Resource {
 
   url: string
   editorState: EditorStateWithHead
-  isPreviewing: boolean = false
+  codeState: CmEditorState | null = null
   lastSavedState: EditorStateWithHead
 
   ioState: "idle" | "saving" | "loading" = "idle"
@@ -46,7 +52,18 @@ export class DocumentStore implements Resource {
   }
 
   get changed() {
-    return !this.lastSavedState.doc.eq(this.editorState.doc) || !this.lastSavedState.head$.doc.eq(this.editorState.head$.doc)
+    if(this.codeState) {
+      const lengthChanged = this.lastSavedCodeState.doc.length !== this.codeState.doc.length
+      return lengthChanged || !this.lastSavedCodeState.doc.eq(this.codeState.doc) || !this.lastSavedState.head$.doc.eq(this.editorState.head$.doc)
+    }
+    else {
+      const lengthChanged = this.lastSavedState.doc.nodeSize !== this.editorState.doc.nodeSize
+      return lengthChanged || !this.lastSavedState.doc.eq(this.editorState.doc) || !this.lastSavedState.head$.doc.eq(this.editorState.head$.doc)
+    }
+  }
+
+  get lastSavedCodeState() {
+    return DocumentStore.editorToCodeState(this.lastSavedState)
   }
 
   /** Updates the document schema with the store's schema. */
@@ -60,11 +77,15 @@ export class DocumentStore implements Resource {
   }
 
   get undoDepth() {
-    return undoDepth(this.editorState)
+    return !this.codeState
+      ? undoDepth(this.editorState)
+      : cmUndoDepth(this.codeState)
   }
 
   get redoDepth() {
-    return redoDepth(this.editorState)
+    return !this.codeState
+      ? redoDepth(this.editorState)
+      : cmRedoDepth(this.codeState)
   }
 
   
@@ -134,6 +155,9 @@ export class DocumentStore implements Resource {
       let editorState = await parse(data, this.editorState.schema)
       this.url = urlObj.href
       this.editorState = this.lastSavedState = editorState
+      if(this.codeState) {
+        this.deriveCodeState()
+      }
     }
     finally {
       this.ioState = "idle"
@@ -263,10 +287,46 @@ export class DocumentStore implements Resource {
 
   /** Return the text content of the first element, if any, limited to 50 characters and with trimmed whitespace. */
   get provisionalTitle() {
-    return this.editorState.doc.firstChild?.textContent
-      .replaceAll(/\s+/g, " ")
-      .trim()
-      .slice(0, 50)
+    let firstChildContent
+    if(this.codeState) {
+      const parser = new window.DOMParser()
+      const doc = parser.parseFromString(this.codeState.doc.toString(), "text/html")
+      firstChildContent = doc.body.children.item(0)?.textContent
+    }
+    else {
+      firstChildContent = this.editorState.doc.firstChild?.textContent
+    }
+    return firstChildContent?.replaceAll(/\s+/g, " ").trim().slice(0, 50)
+  }
+
+  setCodeState(state: CmEditorState) {
+    this.codeState = state
+  }
+
+  static editorToCodeState(state: EditorStateWithHead) {
+    const serializer = DOMSerializer.fromSchema(state.schema)
+    const dom = serializer.serializeNode(state.doc) as HTMLElement
+    const html = htmlBeautify(dom.outerHTML, {indent_size: 2, wrap_attributes: "force-aligned", inline_custom_elements: false})
+    return CmEditorState.create({doc: html, extensions: CODEMIRROR_EXTENSIONS})
+  }
+
+  static codeToEditorState(codeState: CmEditorState, editorState: EditorStateWithHead) {
+    const {schema, plugins, head$} = editorState
+    const value = codeState.doc.toString()
+    const dom = new window.DOMParser().parseFromString(value, "text/html")
+    const doc = DOMParser.fromSchema(editorState.schema).parse(dom)
+    return createEditorState({schema, doc, plugins}, head$.doc)    
+  }
+
+  deriveEditorState() {
+    this.editorState = this.codeState && this.undoDepth > 0
+      ? DocumentStore.codeToEditorState(this.codeState, this.editorState)
+      : this.editorState
+    this.codeState = null
+  }
+
+  deriveCodeState() {
+    this.codeState = DocumentStore.editorToCodeState(this.editorState)
   }
 
 }

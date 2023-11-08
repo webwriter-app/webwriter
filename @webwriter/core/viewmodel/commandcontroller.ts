@@ -463,7 +463,8 @@ export class CommandController implements ReactiveController {
         description: () => msg("Save the active document"),
         shortcut: "ctrl+s",
         run: host => host.store.document.save(),
-        category: "document"
+        category: "document",
+        disabled: host => host.sourceMode
       }),
       saveAs: new Command(this.host, {
         id: "saveAs",
@@ -472,7 +473,8 @@ export class CommandController implements ReactiveController {
         description: () => msg("Save the active document as a copy"),
         shortcut: "ctrl+shift+s",
         run: host => host.store.document.save(true),
-        category: "document"
+        category: "document",
+        disabled: host => host.sourceMode
       }),
       print: new Command(this.host, {
         id: "print",
@@ -481,7 +483,8 @@ export class CommandController implements ReactiveController {
         description: () => msg("Print the active document"),
         shortcut: "ctrl+p",
         run: host => host.activeEditor?.pmEditor?.window?.print(),
-        category: "document"
+        category: "document",
+        disabled: host => host.sourceMode
       }),
       preview: new Command(this.host, {
         id: "preview",
@@ -490,7 +493,8 @@ export class CommandController implements ReactiveController {
         description: () => msg("Toggles the preview for the active document"),
         shortcut: "ctrl+b",
         run: host => host.store.document.preview(),
-        category: "document"
+        category: "document",
+        disabled: host => host.sourceMode
       }),
       editHead: new Command(this.host, {
         id: "editHead",
@@ -499,7 +503,8 @@ export class CommandController implements ReactiveController {
         description: () => msg("Toggles the metadata editor"),
         shortcut: "ctrl+h",
         run: host => host.foldOpen = !host.foldOpen,
-        category: "document"
+        category: "document",
+        disabled: host => host.sourceMode
       }),
       openSettings: new Command(this.host, {
         id: "openSettings",
@@ -1355,6 +1360,25 @@ export class CommandController implements ReactiveController {
         icon: "align-center",
         description: () => msg("Set the text alignment of the selected block")
       }),
+      toggleSourceMode: new Command(this.host, {
+        id: "toggleSourceMode",
+        tags: ["general"],
+        label: () => msg("Edit source"),
+        icon: "code",
+        description: () => msg("Edit the HTML of the document directly"),
+        shortcut: "ctrl+u",
+        run: host => {
+          if(host.sourceMode) {
+            host.store.document.deriveEditorState()
+          }
+          else {
+            host.store.document.deriveCodeState()
+          }
+          host.sourceMode = !host.sourceMode
+        },
+        category: "editor",
+        active: host => Boolean(host.sourceMode),
+      }),
       undo: new Command(this.host, {
         id: "undo",
         tags: ["general"],
@@ -1362,9 +1386,9 @@ export class CommandController implements ReactiveController {
         icon: "arrow-back-up",
         description: () => msg("Undo the last change in the active document"),
         shortcut: "ctrl+z",
-        run: host => host.activeEditor?.exec(undo),
+        run: host => host.activeEditor?.undo(),
         category: "editor",
-        disabled: host => undoDepth(host.activeEditor!.editorState) === 0
+        disabled: host => host.store.document.undoDepth === 0
       }),
       redo: new Command(this.host, {
         id: "redo",
@@ -1373,9 +1397,9 @@ export class CommandController implements ReactiveController {
         icon: "arrow-forward-up",
         description: () => msg("Redo the last undone change in the active document"),
         shortcut: "ctrl+y",
-        run: host => host.activeEditor?.exec(redo),
+        run: host => host.activeEditor?.redo(),
         category: "editor",
-        disabled: host => redoDepth(host.activeEditor!.editorState) === 0
+        disabled: host => host.store.document.redoDepth === 0
       }),
       toggleDevTools: new Command(this.host, {
         id: "toggleDevTools",

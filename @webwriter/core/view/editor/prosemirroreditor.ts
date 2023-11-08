@@ -123,7 +123,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
 
   set state(state) {
     this.view? this.view.updateState(state): this.initialState = state 
-    this.requestUpdate("state")
+    this.requestUpdate("state", this.state)
   }
 
   private initialState: IProsemirrorEditor["state"]
@@ -250,6 +250,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
   }
 
   async updated(previous: Map<string, any>) {
+    console.log(previous)
     if(previous.has("bundleID")) {
       await this.initializeIFrame()
       this.view?.destroy()

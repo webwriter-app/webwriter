@@ -450,7 +450,6 @@ export class PackageStore {
     if(packages.length === 0) {
       return
     }
-    console.log("import", PackageStore.computeBundleID(packages, editMode))
     const appDir = await this.Path.appDir()
     const bundleFilename = PackageStore.computeBundleHash(packages, bundlename, editMode)
     const bundlePathJS = await this.Path.join(appDir, bundleFilename + ".js")
