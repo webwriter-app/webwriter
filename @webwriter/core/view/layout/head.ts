@@ -50,6 +50,8 @@ export class Head extends LitElement {
       display: inline flex;
       align-items: center;
       gap: 0.25ch;
+      overflow: hidden;
+      text-wrap: nowrap;
     }
 
     #pending-indicator {
@@ -70,6 +72,7 @@ export class Head extends LitElement {
 
     #document-commands {
       --icon-size: 20px;
+      flex-shrink: 0;
     }
 
     
