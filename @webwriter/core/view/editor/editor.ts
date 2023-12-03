@@ -1,4 +1,4 @@
-import {LitElement, html, css, ReactiveController, PropertyValueMap} from "lit"
+import {LitElement, html, css, ReactiveController, PropertyValueMap, CSSResult} from "lit"
 import {styleMap} from "lit/directives/style-map.js"
 import {customElement, property, query} from "lit/decorators.js"
 import { Decoration, EditorView, DecorationSet } from "prosemirror-view"
@@ -6,7 +6,7 @@ import { EditorState, Command as PmCommand, NodeSelection, TextSelection, AllSel
 import { Node, Mark} from "prosemirror-model"
 import { localized, msg, str } from "@lit/localize"
 
-import { CODEMIRROR_EXTENSIONS, MediaType, Package, createWidget } from "../../model"
+import { CODEMIRROR_EXTENSIONS, MediaType, Package, createWidget, removeMark } from "../../model"
 import { CodemirrorEditor, FigureView, WidgetView, nodeViews } from "."
 import { DocumentHeader } from "./documentheader"
 import { DocumentFooter } from "./documentfooter"
@@ -26,6 +26,7 @@ import { App } from ".."
 import { undo, redo, undoDepth, redoDepth } from "prosemirror-history"
 import {StateCommand as CmCommand, EditorState as CmEditorState} from "@codemirror/state"
 import {undo as cmUndo, redo as cmRedo} from "@codemirror/commands"
+import { GapCursor } from "prosemirror-gapcursor"
 
 class EmbedTooLargeError extends Error {}
 
@@ -148,7 +149,7 @@ export class ExplorableEditor extends LitElement {
 	showTextPlaceholder: boolean = true
 
 	@property({type: String, attribute: false})
-	bundleCode: string
+	bundleJS: string
 
 	@property({type: String})
 	bundleID: string
@@ -190,6 +191,14 @@ export class ExplorableEditor extends LitElement {
 	cmEditor: CodemirrorEditor
 
 	pendingMouseLeave: number
+
+  get toolboxHeight() {
+    return this.toolbox.clientHeight
+  }
+
+  get toolboxWidth() {
+    return this.toolbox.clientWidth
+  }
 
 	get selection() {
 		return this.editorState.selection
@@ -462,8 +471,11 @@ export class ExplorableEditor extends LitElement {
       const selectionEndsInNode = pos <= to && to <= pos + node.nodeSize
       const selectionStartsInNode = pos <= from && from <= pos + node.nodeSize
       const selectionWrapsNode = from <= pos && pos + node.nodeSize <= to
-      if((selectionStartsInNode || selectionEndsInNode || selectionWrapsNode) && name !== "text") {
+      if(state.selection instanceof NodeSelection && state.selection.node === node) {
         decorations.push(Decoration.node(pos, pos + node.nodeSize, {"data-ww-selected": ""}))
+      }
+      if(selectionWrapsNode && this.isTextSelected) {
+        decorations.push(Decoration.node(pos, pos + node.nodeSize, {"data-ww-selected-inner": ""}))
       }
       if(node.isInline || name === "_phrase") {
         decorations.push(Decoration.node(pos, pos + node.nodeSize, {"data-ww-inline": ""}))
@@ -488,6 +500,7 @@ export class ExplorableEditor extends LitElement {
 	
 	handleUpdate = () => {
 		this.editorState = this.pmEditor.state
+    this.dispatchEvent(new Event("change"))
 		this.updatePosition()
 	}
 
@@ -500,7 +513,13 @@ export class ExplorableEditor extends LitElement {
       if(!this.pmEditor) {
         return null
       }
-			if(selection instanceof TextSelection || selection instanceof AllSelection) {
+      if(selection instanceof GapCursor) {
+        return this.pmEditor.body.querySelector(".ProseMirror-gapcursor")
+      }
+      else if(selection instanceof AllSelection) {
+        return this.pmEditor.body
+      }
+			else if(selection instanceof TextSelection) {
         const node = this.pmEditor.domAtPos(this.selection.anchor, 0)?.node
         return node?.nodeType === window.Node.TEXT_NODE? node.parentElement: node as HTMLElement
 
@@ -543,11 +562,11 @@ export class ExplorableEditor extends LitElement {
 	updatePosition = async () => {
 		const mode = this.toolboxMode
 		const docEl = this.activeElement?.ownerDocument.querySelector("body")
-		const iframeEl = this.pmEditor.iframe
+		const iframeEl = this.pmEditor?.iframe
 		const docWidth = iframeEl?.clientWidth
     const docHeight = iframeEl?.clientHeight
-    const iframeOffsetX = iframeEl.getBoundingClientRect().x
-    const iframeOffsetY = iframeEl.getBoundingClientRect().y
+    const iframeOffsetX = iframeEl?.getBoundingClientRect().x
+    const iframeOffsetY = iframeEl?.getBoundingClientRect().y
 		if(mode === "popup" && this.selection && this.activeElement && iframeEl) {
 			const {y: yMin} = await computePosition(iframeEl, this.toolbox, {
 				placement:  "right-start",
@@ -557,7 +576,7 @@ export class ExplorableEditor extends LitElement {
 				placement:  "right-end",
 				strategy: "absolute",
 				middleware: [
-					shift({padding: {top: 5, bottom: 80 + 5}, boundary: iframeEl})
+					shift({padding: {top: 5, bottom: 5}, boundary: iframeEl})
 				]
 			})
 			const {bottom: anchorBottom, left: anchorLeft} = this.pmEditor.coordsAtPos(this.selection.anchor)
@@ -573,25 +592,7 @@ export class ExplorableEditor extends LitElement {
 				yMax
 			))
 		}
-		else if(mode === "inline" && this.activeElement && docEl) {
-			const {x, y} = await computePosition(this.activeElement, this.toolbox, {
-				placement:  "bottom-end",
-				strategy: "fixed",
-				middleware:  [offset(5), shift({padding: {top: 20, bottom: 5}, boundary: iframeEl}), flip({boundary: iframeEl})]
-			})
-			this.toolboxX =  roundByDPR(x)
-			this.toolboxY = roundByDPR(Math.max(y, 50))
-		}
 		else if(mode === "right" && this.selection && this.activeElement && docEl) {
-			const {x, y} = await computePosition(this.activeElement, this.toolbox, {
-				placement:  "right-start",
-				strategy: "fixed",
-				middleware:  [offset(30), shift({padding: {top: 5, bottom: 5}, boundary: iframeEl})]
-			})
-			this.toolboxX = roundByDPR(x)
-			this.toolboxY = roundByDPR(y)
-		}
-		else if(mode === "right-text" && this.selection && this.activeElement && docEl) {
 			const {y} = await computePosition(this.activeElement, this.toolbox, {
 				placement:  "right-start",
 				strategy: "fixed",
@@ -607,8 +608,25 @@ export class ExplorableEditor extends LitElement {
       ))/*roundByDPR(
         Math.min(Math.max(selectionY, 0), yMax)
       )*/
+      this.positionStyle = css`
+        body {
+          --ww-toolbox-action-x: ${this.toolboxX - iframeOffsetX};
+          --ww-toolbox-action-y: ${this.toolboxY + this.toolboxHeight - iframeOffsetY};
+          --ww-toolbox-action-height: ${docHeight + -this.toolboxY + -this.toolboxHeight}px
+        }
+      `
 		}
   }
+
+  set positionStyle(value: CSSResult) {
+    const styles = value instanceof CSSResult? value.cssText: value
+    this.pmEditor.document.adoptedStyleSheets = this.pmEditor.document.adoptedStyleSheets.filter(sheet => sheet !== this.positionStylesheet)
+    this.positionStylesheet = new this.pmEditor.window.CSSStyleSheet()
+    this.positionStylesheet.replaceSync(styles)
+    this.pmEditor.document.adoptedStyleSheets.push(this.positionStylesheet)
+  }
+
+  positionStylesheet: CSSStyleSheet
 
 	autoUpdateElement: {element: Element, cleanup: () => void} | null = null
 
@@ -664,6 +682,7 @@ export class ExplorableEditor extends LitElement {
     },
     "focus": (_:any, ev: FocusEvent) => {
       this.updatePosition()
+      this.dispatchEvent(new Event("focus", ev))
     },
     "blur": (_:any, ev: FocusEvent) => {
       const node = ev.target as HTMLElement
@@ -750,6 +769,14 @@ export class ExplorableEditor extends LitElement {
   private static mediaTypes = ["image", "audio", "video"]
   private static embedTypes = ["application/pdf"]
 
+  private selectElementInEditor(el: HTMLElement) {
+    const pos = Math.max(this.pmEditor.posAtDOM(el, 0) - 1, 0)
+    const selection = NodeSelection.create(this.pmEditor.state.doc, pos)
+    this.pmEditor.dispatch(this.pmEditor.state.tr.setSelection(selection))
+    this.pmEditor.focus()
+    el.focus()
+  }
+
   blobsToElements = async (blobs: Blob[]) => {
     const elements = []
     // https://www.iana.org/assignments/media-types/media-types.xhtml
@@ -818,17 +845,14 @@ export class ExplorableEditor extends LitElement {
   
 
   get contentStyle() {
-    return [
-			this.bundleCSS
-		]
+    return this.bundleCSS
   } 
 
   get contentScript() {
-    return [
+    return this.bundleJS
 			// scopedCustomElementsRegistryString,
-			redefineCustomElementsString,
-			this.bundleCode
-		]
+			// redefineCustomElementsString,
+			
   }
 
   transformPastedHTML = (html: string) => {
@@ -839,7 +863,7 @@ export class ExplorableEditor extends LitElement {
 		return html`
 			<pm-editor
 				id="main"
-        .bundleID=${this.bundleID}
+        bundleID=${this.bundleID}
 				@update=${this.handleUpdate}
 				.scrollMargin=${20}
 				scrollThreshold=${20}
@@ -871,12 +895,10 @@ export class ExplorableEditor extends LitElement {
 	@property({type: Boolean, state: true})
 	forceToolboxPopup: boolean | null = null
 
-	get toolboxMode(): "popup" | "right" | "right-text" | "inline" | "hidden" {
+	get toolboxMode(): "popup" | "right" | "hidden" {
 		const {isInNarrowLayout, hasNonEmptySelection, isWidgetSelected, forceToolboxPopup, isTextSelected} = this
-		if(isInNarrowLayout && (forceToolboxPopup ?? hasNonEmptySelection) && !isWidgetSelected && this.activeElement) return "popup"
-		else if(!isInNarrowLayout && isWidgetSelected) return "right"
-		else if(!isInNarrowLayout && isTextSelected) return "right-text"
-		else if(isInNarrowLayout && isWidgetSelected) return "inline"
+		if(isInNarrowLayout && (forceToolboxPopup || hasNonEmptySelection || isWidgetSelected)) return "popup"
+		else if(!isInNarrowLayout) return "right"
 		else return "hidden"
 	}
 
@@ -900,22 +922,6 @@ export class ExplorableEditor extends LitElement {
 			top: `${this.toolboxY}px`,
       transition: "top 0.1s, left 0.1s",
       willChange: "left, top"
-		}
-		else if(toolboxMode === "right-text") return {
-			position: "fixed",
-			left: `${this.toolboxX}px`,
-			top: `${this.toolboxY}px`,
-      transition: "top 0.1s, left 0.1s",
-      willChange: "left, top"
-		}
-		else if(toolboxMode === "inline") return {
-			position: "fixed",
-			left: `${this.toolboxX}px`,
-			top: `${this.toolboxY}px`,
-			border: "1px solid lightgray",
-			padding: "4px",
-			boxShadow: "var(--sl-shadow-medium)",
-      transition: "top 0.1s, left 0.1s"
 		}
 		else return {
 			display: "none",
@@ -948,12 +954,23 @@ export class ExplorableEditor extends LitElement {
 						.addMark(from, to, markType.create({[key]: value}))
 					this.pmEditor.dispatch(tr)
 				}}
+        @ww-remove-mark=${(e: any) => {
+          this.exec(removeMark(e.detail.markType))
+        }}
+        @ww-hover-breadcrumb=${(e: any) => {
+          
+        }}
+        @ww-click-breadcrumb=${(e: any) => {
+          console.log("select")
+          this.selectElementInEditor(e.detail.element)
+        }}
 				@ww-mouse-enter-delete-widget=${(e: CustomEvent) => this.deletingWidget = e.detail.widget}
 				@ww-mouse-leave-delete-widget=${(e: CustomEvent) => this.deletingWidget = null}
 				@ww-click-name=${(e: CustomEvent) => {
 					this.activeElement?.scrollIntoView({behavior: "smooth", block: "center"})
 					!e.detail.widget? this.pmEditor?.focus(): e.detail.widget.focus()
 				}}
+
 			></ww-toolbox>
 		`
 	}
@@ -978,8 +995,23 @@ export class ExplorableEditor extends LitElement {
 						this.pmEditor.focus()
 					}
 				}}
-				@focus=${() => window.clearTimeout(this.pendingBlur)}
-				.packages=${this.packages.filter(pkg => pkg.installed) as any}
+        @ww-add-widget=${(e: CustomEvent) => {
+          const name = e.detail.name
+          this.app.store.packages.add(name)
+        }}
+        @ww-remove-widget=${(e: CustomEvent) => {
+          const name = e.detail.name
+          this.app.store.packages.remove(name)
+        }}
+        @ww-update-widget=${(e: CustomEvent) => {
+          const name = e.detail.name
+          this.app.store.packages.update(name)
+        }}
+        @ww-watch-widget=${(e: CustomEvent) => {
+          const name = e.detail.name
+          this.app.store.packages.toggleWatch(name)
+        }}
+				.packages=${this.packages}
 				tabindex="-1"
 				?showWidgetPreview=${this.showWidgetPreview}
 			>

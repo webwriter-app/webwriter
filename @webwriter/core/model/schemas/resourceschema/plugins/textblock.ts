@@ -126,10 +126,7 @@ export function wrapSelection(type: string | NodeType, attrs?: Attrs) {
     const {selection} = state
     const nodeType = typeof type === "string"? state.schema.nodes[type]: type
     let from: number, to: number, slice: Slice
-    if(!(selection instanceof TextSelection)) {
-      return false
-    }
-    else if(!selection.empty) {
+    if(!selection.empty) {
       from = selection.from
       to = selection.to
       slice = selection.content()
@@ -200,6 +197,34 @@ export const textblockPlugin = () => ({
       else {
         return false
       }
+    },
+    "Alt-Shift-ArrowLeft": (state, dispatch, view) => {
+      const {selection, doc} = state
+      const {empty, $from} = selection
+      if($from.parent.type.name === state.schema.topNodeType.name) {
+        return true
+      }
+      const pos = $from.before($from.depth)
+      const $pos = doc.resolve(pos)
+      const newSelection = new NodeSelection($pos)
+      const tr = state.tr.setSelection(newSelection)
+      dispatch && dispatch(tr)
+      return true
+    },
+    "Alt-Shift-ArrowRight": (state, dispatch, view) => {
+      const {selection, doc} = state
+      const {empty, $from} = selection
+      if(!(selection instanceof NodeSelection)) {
+        return true
+      }
+      const pos = $from.posAtIndex(0, $from.depth + 1)
+      const $pos = doc.resolve(pos)
+      const newSelection = $pos.node().isTextblock
+        ? new TextSelection($pos)
+        : new NodeSelection($pos)
+      const tr = state.tr.setSelection(newSelection)
+      dispatch && dispatch(tr)
+      return true
     }
   }
 } as SchemaPlugin)

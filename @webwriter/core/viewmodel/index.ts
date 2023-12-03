@@ -12,6 +12,7 @@ import {StoreController, EnvironmentController, CommandController, LocalizationC
 import { PackageStore, RootStore } from "../model"
 import { msg } from "@lit/localize"
 import { WINDOW_OPTIONS } from "./commandcontroller"
+import { idle } from "../utility"
 
 const CORE_PACKAGES = ["@open-wc/scoped-elements"] as string[]
 
@@ -30,12 +31,12 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
 
 	async connectedCallback() {
     this.initialized = new Promise(async resolve => {
-      this.initializing = true
       super.connectedCallback()
+      this.initializing = true
+      this.icons = new IconController(this)
       this.environment = new EnvironmentController(this)
       await this.environment.apiReady
       this.store = StoreController(new RootStore({corePackages: CORE_PACKAGES, ...this.environment.api}), this)
-      this.icons = new IconController(this)
       this.localization = new LocalizationController(this, this.store)
       this.commands = new CommandController(this as any, this.store)
       this.notifications = new NotificationController(this, this.store)
@@ -49,10 +50,12 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
         this.store.document.load(fileURL.href)
       }
       const {join, appDir} = this.environment.api.Path
+      await this.store.packages.initialized
       const packageJsonPath = await join(await appDir(), "package.json")
-      this.environment.api.watch(packageJsonPath, () => this.store.packages.loadAll())
-      this.initializing = false
+      this.environment.api.watch(packageJsonPath, () => !this.store.packages.initializing && !this.store.packages.loading && this.store.packages.load())
       this.requestUpdate()
+      this.initializing = false
+      document.body.classList.add("loaded")
       resolve(undefined)
     })
 	}

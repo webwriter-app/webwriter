@@ -35,16 +35,16 @@ export class RootStore {
   Dialog: Environment["Dialog"]
 
   constructor({corePackages, schema, FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, getSystemFonts, createWindow, setWindowCloseBehavior, getWindowLabel}: AllOptions) {
-    const onImport = this.onImportPackages
+    const onBundleChange = this.onBundleChange
     this.FS = FS
     this.Path = Path
     this.Dialog = Dialog
-    this.packages = new PackageStore({corePackages, FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, onImport, getSystemFonts, createWindow, setWindowCloseBehavior, getWindowLabel})
+    this.packages = new PackageStore({corePackages, FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, onBundleChange, getSystemFonts, createWindow, setWindowCloseBehavior, getWindowLabel})
     this.document = new DocumentStore({schema, bundle})
     this.ui = new UIStore()
   }
 
-  onImportPackages = (packages: Package[]) => {
+  onBundleChange = (packages: Package[]) => {
     this.document.updateSchema(createEditorStateConfig(packages).schema)
   }
 

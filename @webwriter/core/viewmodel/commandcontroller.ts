@@ -971,7 +971,7 @@ export class CommandController implements ReactiveController {
         icon: "layout-bottombar",
         description: () => msg("Insert a figure"),
         group: "semanticsection",
-        tags: ["node", "container", "advanced"]
+        tags: ["node", "container"]
       }),
       figcaption: new NodeCommand(this.host, {
         id: "figcaption",

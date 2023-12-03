@@ -10,7 +10,7 @@ export default defineConfig({
         rollupOptions: {
           input: {
             app: fileURLToPath(new URL("./index.html", import.meta.url)),
-            settings: fileURLToPath(new URL("./settings.html", import.meta.url))
+            splashscreen: fileURLToPath(new URL("./splashscreen.html", import.meta.url))
           }
         }
     }

@@ -44,9 +44,9 @@ export async function docToBundle(doc: Node, head: Node, bundle: Environment["bu
   const serializer = DOMSerializer.fromSchema(doc.type.schema)
   serializer.serializeFragment(doc.content, {document: html}, html.body)
 
-  html.querySelectorAll("[data-widget]").forEach(w => w.removeAttribute("editable"))
+  html.querySelectorAll(".ww-widget").forEach(w => w.removeAttribute("contenteditable"))
   
-  console.log(html.querySelectorAll("[data-widget]"))
+  console.log(html.querySelectorAll(".ww-widget"))
   
   const allWidgetTypes = [...new Set(Object.values(doc.type.schema.nodes)
     .filter(node => node.spec["widget"])
@@ -173,5 +173,5 @@ export async function serialize(explorable: Node, head: Node, bundle: Environmen
 }
 
 export const label = "WebWriter File"
-export const extensions = ["ww.html", "html"]
+export const extensions = ["html", "ww.html"]
 export const isBinary = false

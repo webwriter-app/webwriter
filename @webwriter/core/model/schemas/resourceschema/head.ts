@@ -275,19 +275,22 @@ export function head(styles: string[], scripts: string[]) {
       for(const scriptString of scripts) {
         const script = document.createElement("script")
         script.innerHTML = scriptString
+        script.type = "module"
         script.toggleAttribute("data-ww-editing")
-        // head.appendChild(script)
-        window!.eval(scriptString)
+        head.appendChild(script)
+        // window!.eval(scriptString)
       }
 
       return {
         update(view: EditorView & {state: EditorStateWithHead}, prevState: EditorStateWithHead) {
           if(!view.state.head$.doc.eq(prevState.head$.doc)) {
-            const oldNodes = head.querySelectorAll(":not(.WebWriter-editing)")
-            oldNodes.forEach(node => node.remove())
             const headDOM = headSerializer.serializeNode(view.state.head$.doc)
             headDOM.childNodes.forEach(node => head.appendChild(node))
           }
+        },
+        destroy() {
+          const oldNodes = head.querySelectorAll("[data-ww-editing]")
+          oldNodes.forEach(node => node.remove())
         }
       }
     }) as any

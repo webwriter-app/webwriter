@@ -1,3 +1,5 @@
+import type { ZodSchema } from "zod"
+
 /**
  * Escapes HTML reserved characters (&, <, >, ", ') with HTML entities.
  * @param unsafe Unsafe (unescaped) string
@@ -371,4 +373,8 @@ export function permute<T>(arr: Array<T>): Array<Array<T>> {
 
 export function idle(ms: number) {
   return new Promise(r => setTimeout(r, ms))
+}
+
+export function disjunctPipe<A extends ZodSchema, B extends ZodSchema>(a: A, b: B) {
+  return a.pipe(b).or(b)
 }

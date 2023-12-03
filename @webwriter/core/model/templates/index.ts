@@ -1,4 +1,4 @@
-import { capitalizeWord } from "../../utility"
+import { capitalizeWord, unscopePackageName } from "../../utility"
 import { Package } from "../schemas"
 
 import litIndex from "./presets/lit/index.ts?raw" 
@@ -19,10 +19,11 @@ const interpolateTemplate = (template: string, pkg: Package) => {
     "____classname____": pkg.name.split("-").slice(1).map(capitalizeWord).join("") || "MyWidget",
     "____year____": String(new Date().getFullYear())
   }
-  for (const [key, value] of Object.entries(pkg.serialize("object"))) {
+  for (const [key, value] of Object.entries(pkg.toJSON())) {
     replacementMap[`___${key}___`] = String(value)
     replacementMap[`---${key}---`] = String(value)
   }
+  replacementMap["---name---"] = unscopePackageName(pkg.name)
   for (const [key, value] of Object.entries(replacementMap)) {
     result = result.replaceAll(key, value)
   }

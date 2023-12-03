@@ -6,6 +6,7 @@ import { keymap } from "prosemirror-keymap"
 import { gapCursor } from "prosemirror-gapcursor"
 import { history } from "prosemirror-history"
 import { chainCommands } from "prosemirror-commands"
+import { createVirtualCursor as virtualCursor } from "prosemirror-virtual-cursor"
 import { head } from "../head"
 
 export interface SchemaPlugin<N extends string=string, M extends string=string, C extends string=string, PS=any> {
@@ -66,6 +67,7 @@ export function configFromSchemaPlugins(schemaPlugins: SchemaPlugin[]): EditorSt
     inputRules({rules: schemaPlugins.flatMap(p => p.inputRules ?? [])}),
     history(),
     gapCursor(),
+    // virtualCursor(),
     ...schemaPlugins.filter(p => p.plugin).map(p => p.plugin!)
   ]
   return {schema, doc, plugins}

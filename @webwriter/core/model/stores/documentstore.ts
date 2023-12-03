@@ -2,8 +2,8 @@ import { EditorState, Plugin } from "prosemirror-state"
 import { Schema, Node, NodeType, Attrs, DOMSerializer, DOMParser } from "prosemirror-model"
 import { html_beautify as htmlBeautify } from "js-beautify"
 
-import { createEditorState, EditorStateWithHead, Environment, getActiveMarks } from ".."
-import { getFileExtension, groupBy, range } from "../../utility"
+import { createEditorState, EditorStateWithHead, Environment, getActiveMarks, Package, PackageStore } from ".."
+import { filterObject, getFileExtension, groupBy, range } from "../../utility"
 import * as marshal from "../marshal"
 import * as connect from "../connect"
 import { redoDepth, undoDepth } from "prosemirror-history"
@@ -35,6 +35,18 @@ type Options = {
 /** Manages the document. A document is the app's central data format. The document has an `editorState`, storing all the document's data in the ProseMirror format. It is referred to with an URL, indicating whether the document is only in memory (not saved yet) or external such as on the user's hard drive (saved before at `url`). */
 export class DocumentStore implements Resource {
 
+  static cdnUrlToPackage(url: string) {
+    const id = this.cdnProviders.reduce((acc, x) => acc.replace(x, ""), url)
+    return Package.fromID(id)
+  }
+
+  static cdnProviders = [
+    "https://cdn.skypack.dev",
+    "https://esm.run",
+    "https://esm.sh",
+    "https://ga.jspm.io"
+  ] as const
+
   url: string
   editorState: EditorStateWithHead
   codeState: CmEditorState | null = null
@@ -51,6 +63,12 @@ export class DocumentStore implements Resource {
     this.url = url ?? "memory:0"
   }
 
+  cdnProvider: (typeof DocumentStore.cdnProviders)[number]  = "https://esm.run"
+
+  packageToCdnURL(pkg: Package) {
+    return `${this.cdnProvider}/${pkg.name}@${pkg.version}`
+  }
+
   get changed() {
     if(this.codeState) {
       const lengthChanged = this.lastSavedCodeState.doc.length !== this.codeState.doc.length
@@ -58,7 +76,13 @@ export class DocumentStore implements Resource {
     }
     else {
       const lengthChanged = this.lastSavedState.doc.nodeSize !== this.editorState.doc.nodeSize
-      return lengthChanged || !this.lastSavedState.doc.eq(this.editorState.doc) || !this.lastSavedState.head$.doc.eq(this.editorState.head$.doc)
+      const bodyChanged = !this.lastSavedState.doc.eq(this.editorState.doc)
+      const headChanged = !this.lastSavedState.head$.doc.eq(this.editorState.head$.doc)
+      if(lengthChanged || bodyChanged || headChanged ) {
+        console.log(this.lastSavedState.toJSON())
+        console.log(this.editorState.toJSON())
+      }
+      return lengthChanged || bodyChanged || headChanged 
     }
   }
 
@@ -91,6 +115,7 @@ export class DocumentStore implements Resource {
   
   /** Sets a new editor state for the given resource. */
   set(editorState: EditorStateWithHead) {
+    console.trace("setting state", editorState)
     this.editorState = editorState
   }
 
@@ -327,6 +352,63 @@ export class DocumentStore implements Resource {
 
   deriveCodeState() {
     this.codeState = DocumentStore.editorToCodeState(this.editorState)
+  }
+
+  private get imports() {
+    let imports: Record<string, string> = {}
+    this.editorState.head$.doc.descendants(node => {
+      if(node.attrs.type === "importmap") {
+        imports = JSON.parse(node.textContent).imports
+      }
+    })
+    return imports
+  }
+
+  get packages() {
+    return Object.fromEntries(Object.entries(this.imports)
+      .filter(([k]) => k.startsWith("~webwriter-widget~"))
+      .map(([k, v]) => [k, DocumentStore.cdnUrlToPackage(v)])
+    )
+  }
+
+  set packages(pkgs: Record<string, Package>) {
+    const imports = Object.fromEntries([
+      ...Object.entries(this.imports).filter(([k]) => !k.startsWith("_webwriter-widget_")),
+      ...Object.entries(pkgs).map(([name, pkg]) => [
+        `_webwriter-widget_${name}`,
+        this.packageToCdnURL(pkg)
+      ])
+    ])
+    const text = JSON.stringify(imports)
+    const headState = this.editorState.head$
+    let existingPos: number, existingNode: Node | undefined
+    headState.doc.descendants((node, pos, parent, index) => {
+      if(node.attrs.type === "importmap") {
+        existingPos = pos
+        existingNode = node
+        return false
+      }
+    })
+    if(existingPos! !== undefined && existingNode !== undefined) {
+      let node = headState.schema.node(
+        "script",
+        {...(existingNode as any), type: "importmap"},
+        headState.schema.text(text)
+      )
+      const resolved = headState.doc.resolve(existingPos)
+      const tr = headState.tr.replaceWith(resolved.pos, resolved.pos + existingNode.nodeSize, node)
+      this.setHead(headState.apply(tr))
+    }
+    else {
+      let node = headState.schema.node("script", {type: "importmap"}, headState.schema.text(text))
+      const lastPos = headState.doc.nodeSize - 2
+      const tr = headState.tr.insert(lastPos, node)
+      this.setHead(headState.apply(tr))
+    }
+  }
+
+  addPackage(pkg: Package) {
+    this.packages = {...this.packages, [pkg.name]: pkg}
   }
 
 }

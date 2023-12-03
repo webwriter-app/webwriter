@@ -45,6 +45,7 @@
     "@webwriter/*"
   ],
   "devDependencies": {
+    "@pnpm/exe": "^8.11.0",
     "@tauri-apps/cli": "^1.2.3",
     "@types/mocha": "^10.0.1",
     "@types/semver": "^7.3.13",
@@ -58,8 +59,10 @@
     "@wdio/spec-reporter": "^8.0.14",
     "@wdio/types": "^8.1.2",
     "bootstrap-icons": "^1.10.3",
+    "darwin": "^0.0.5",
     "fs-extra": "^11.1.0",
     "lerna": "^6.4.0",
+    "linux": "^4.2.1",
     "mocha": "^10.2.0",
     "npm": "^9.4.2",
     "npm-run-all": "^4.1.5",
@@ -72,5 +75,6 @@
     "lit": "^2.6.1",
     "prosemirror-utils": "^1.2.1-0",
     "semver": "^7.3.8"
-  }
+  },
+  "packageManager": "yarn@4.0.2"
 }

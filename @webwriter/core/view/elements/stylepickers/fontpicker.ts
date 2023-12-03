@@ -206,6 +206,10 @@ export class FontPicker extends LitElement {
         padding: 0;
       }
 
+      ww-combobox::part(trigger) {
+        padding-right: 0;
+      }
+
       ww-combobox:not([open])::part(base) {
         background: none;
       }

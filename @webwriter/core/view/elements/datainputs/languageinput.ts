@@ -49,7 +49,6 @@ export class LanguageInput extends Combobox implements DataInput {
     this.ready = true
     const container = this.shadowRoot?.querySelector("slot:not([name])") as HTMLElement
     const infos = Locale.languageInfos
-    console.log(infos)
     container && render(infos.map(({code, name, nativeName}) => html`
       <sl-option value=${code}>${name} (${nativeName})</sl-option>
     `), container)

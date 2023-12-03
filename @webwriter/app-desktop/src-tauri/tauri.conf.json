@@ -36,7 +36,7 @@
         "execute": true,
         "open": ".*",
         "scope": [
-          {"name": "bin/yarn", "args": true, "sidecar": true},
+          {"name": "bin/pnpm", "args": true, "sidecar": true},
           {"name": "bin/esbuild", "args": true, "sidecar": true}
         ]
       },
@@ -55,7 +55,7 @@
         "depends": []
       },
       "externalBin": [
-        "bin/yarn",
+        "bin/pnpm",
         "bin/esbuild"
       ],
       "icon": [

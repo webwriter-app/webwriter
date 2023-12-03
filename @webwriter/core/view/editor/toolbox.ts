@@ -12,14 +12,12 @@ import "../elements/stylepickers"
 
 import { ifDefined } from "lit/directives/if-defined.js"
 import { App } from ".."
-import { EditorState } from "prosemirror-state"
+import { AllSelection, EditorState } from "prosemirror-state"
+import {GapCursor} from "prosemirror-gapcursor"
 
 @localized()
 @customElement("ww-toolbox")
 export class Toolbox extends LitElement {
-
-  @property({attribute: false})
-  app: App
 
   @query("div")
   div: HTMLElement
@@ -32,6 +30,8 @@ export class Toolbox extends LitElement {
 		this.dispatchEvent(new CustomEvent("ww-change-widget", {composed: true, bubbles: true, detail: {name: unscopePackageName(name)}}))
 	}
 
+  @property({attribute: false})
+  app: App
   
   @property({type: Object, attribute: false})
   editorState: EditorState
@@ -63,10 +63,24 @@ export class Toolbox extends LitElement {
     }})
   )
 
+  emitRemoveMark = (markType: string) => this.dispatchEvent(
+    new CustomEvent("ww-remove-mark", {composed: true, bubbles: true, detail: {
+      element: this.activeElement, markType
+    }})
+  )
+
   emitClickName = (widget?: Element) => this.dispatchEvent(
     new CustomEvent("ww-click-name", {composed: true, bubbles: true, detail: {
       widget
     }})
+  )
+
+  emitHoverBreadcrumb = (element: Element) => this.dispatchEvent( 
+    new CustomEvent("ww-hover-breadcrumb", {composed: true, bubbles: true, detail: {element}})
+  )
+
+  emitClickBreadcrumb = (element: Element) => this.dispatchEvent(
+    new CustomEvent("ww-click-breadcrumb", {composed: true, bubbles: true, detail: {element}})
   )
 
   get isActiveElementContainer() {
@@ -75,6 +89,14 @@ export class Toolbox extends LitElement {
 
   get isActiveElementWidget() {
     return this.activeElement?.classList?.contains("ww-widget") ?? false
+  }
+
+  get allSelected() {
+    return this.editorState.selection instanceof AllSelection
+  }
+
+  get gapSelected() {
+    return this.editorState.selection instanceof GapCursor
   }
 
   static get styles() {
@@ -464,6 +486,10 @@ export class Toolbox extends LitElement {
         align-items: center;
         gap: 0.5ch;
         margin-top: 0.5ch;
+
+        & ww-button::part(base) {
+          padding: 0;
+        }
       }
 
       .inline-toolbox .inline-field-group sl-input {
@@ -485,6 +511,93 @@ export class Toolbox extends LitElement {
 
       ww-fontpicker[inert], .inline-commands.color[inert] {
         opacity: 0.5;
+      }
+
+      #element-breadcrumb::part(base) {
+        border-bottom: 2px solid var(--sl-color-gray-600);
+      }
+
+      #element-breadcrumb sl-breadcrumb-item ww-button::part(base)
+      {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+      }
+
+      #element-breadcrumb sl-breadcrumb-item::part(label)
+      {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        color: inherit;
+      }
+
+      #element-breadcrumb sl-breadcrumb-item:last-of-type ww-button::part(base) {
+        gap: 0.5ch;
+      }
+
+      #element-breadcrumb sl-breadcrumb-item::part(separator) {
+        margin: -4px;
+        display: inline flex;
+      }
+
+      #element-breadcrumb .separator-button {
+        transform: rotate(-12.5deg);
+      }
+
+      #element-breadcrumb ww-button::part(base) {
+        padding: 0;
+      }
+
+      .children-dropdown[data-no-siblings] .dropdown-trigger {
+        visibility: hidden;
+      }
+
+      .dropdown-trigger {
+        width: 18px;
+        margin-left: 2px;
+      }
+
+      .dropdown-trigger::part(icon) {
+        width: 16px;
+        height: 16px;
+      }
+
+      .children-dropdown::part(trigger) {
+        margin-bottom: -5px;
+      }
+
+      .children-dropdown[data-empty] {
+        display: none;
+      }
+
+      .children-dropdown-menu {
+        // background: var(--sl-color-gray-100);
+        padding: 2px 1ch;
+        font-size: var(--sl-button-font-size-medium);
+        color: var(--sl-color-gray-700);
+
+        & sl-menu-item::part(checked-icon) {
+          display: none;
+        }
+
+        & sl-menu-item::part(submenu-icon) {
+          display: none;
+        }
+
+        & sl-menu-item::part(label) {
+          display: flex;
+          flex-direction: row;
+          align-items: center;
+          gap: 0.5ch;
+          font-size: 0.9rem;
+          font-family: var(--sl-font-sans);
+          font-weight: 500;
+        }
+
+        & sl-menu-item sl-icon {
+          width: 20px;
+        }
       }
       
     `
@@ -578,7 +691,7 @@ export class Toolbox extends LitElement {
   BlockToolbox = (el: HTMLElement) => {
     return html`<div class="block-toolbox">
       <div class="block-options">
-        ${this.BlockHeader(el)}
+        ${this.ElementBreadcrumb()}
         <div part="block-commands">
           ${this.LayoutCommands(el)}
         </div>
@@ -617,6 +730,7 @@ export class Toolbox extends LitElement {
     return cmds.map(cmd => html`<div class="inline-field-group">
       <sl-icon name=${cmd.icon ?? "square"}></sl-icon>
       ${Object.entries(cmd.fields!).map(([key, field]) => this.InlineCommandField(cmd, key, field.type, field.placeholder))}
+      <ww-button variant="icon" icon="x" @click=${() => this.emitRemoveMark(cmd.id)}></ww-button>
     </div>`)
   }
 
@@ -673,18 +787,138 @@ export class Toolbox extends LitElement {
     return ancestors
   }
 
-  render() {
-    if (this.activeElement && this.isActiveElementWidget) {
-      const name = prettifyPackageName(this.activeElement.tagName.toLowerCase())
-      return html`<div>
-        <span class="widget-name" id="name" @click=${() => this.emitClickName(this.activeElement ?? undefined)} title=${this.activeElement.id}>${name}</span>
-        <!--<sl-icon-button class="meta" title="Edit metadata" name="tags"></sl-icon-button>-->
-        <sl-icon-button tabindex="-1" class="delete" title="Delete widget" name="trash" @click=${this.emitDeleteWidget} @mouseenter=${this.emitMouseEnterDeleteWidget} @mouseleave=${this.emitMouseLeaveDeleteWidget}></sl-icon-button>
-      </div>`
+  get activeElementSiblings() {
+    let el = this.activeElement
+    const tagsToExclude = [...this.app.commands.markCommands.map(cmd => cmd.id)].map(k => k.toUpperCase())
+    return Array.from(el?.parentElement?.children ?? [])
+      .filter(child => !tagsToExclude.includes(child.tagName) && child !== el)
+  }
+
+
+  ElementBreadcrumbItem(el: Element, isLast=false, menuItem=false): TemplateResult {
+    const elementName = el.tagName.toLowerCase()
+    const isWidget = elementName in this.app.store.packages.widgetPackageMap
+    const isCommandEl = elementName in this.app.commands.commands
+
+    const children = Array.from(el.children).filter(child => !child.classList.contains("ProseMirror-trailingBreak"))
+
+    const separator = menuItem? null: html`<sl-dropdown slot="separator" class="children-dropdown" ?data-empty=${children.length === 0}>
+      <ww-button
+        class="separator-button"
+        variant="icon"
+        icon="slash"
+        slot="trigger"
+      ></ww-button>
+      <sl-menu class="children-dropdown-menu">
+        ${children.map(child => this.ElementBreadcrumbItem(child, false, true))}
+      </sl-menu>
+    </sl-dropdown>`
+
+    if(isWidget) {
+      const pkg = this.app.store.packages.widgetPackageMap[elementName]
+      const content = html`<ww-button
+        title=${pkg.name}
+        variant="icon"
+        icon="package"
+        @click=${() => this.emitClickBreadcrumb(el)}
+        @hover=${() => this.emitHoverBreadcrumb(el)}
+      >
+        ${prettifyPackageName(pkg.name)}
+        ${!isLast? null: html`
+          <sl-icon-button tabindex="-1" class="delete" title=${msg("Delete element")} name="trash" @click=${this.emitDeleteWidget} @mouseenter=${this.emitMouseEnterDeleteWidget} @mouseleave=${this.emitMouseLeaveDeleteWidget}></sl-icon-button>
+        `}
+      </ww-button>`
+      return !menuItem
+        ? html`<sl-breadcrumb-item>${content}${separator}</sl-breadcrumb-item>`
+        : html`<sl-menu-item>${content}</sl-menu-item>`
     }
-    else if(this.activeElement) {
+    else if(isCommandEl) {
+      const cmd = (this.app.commands.commands as Record<string, Command>)[elementName]
+      const content = html`<ww-button
+        variant="icon"
+        icon=${cmd?.icon ?? "square"}
+        @click=${() => this.emitClickBreadcrumb(el)}
+        @hover=${() => this.emitHoverBreadcrumb(el)}
+      >
+        ${!isLast? null: cmd.label}
+      </ww-button>`
+      return !menuItem
+        ? html`<sl-breadcrumb-item>${content}
+        ${separator}</sl-breadcrumb-item>`
+        : html`<sl-menu-item>${content}</sl-menu-item>`
+    }
+    else {
+      return html``
+    }
+  }
+
+  ElementBreadcrumb() {
+    if(this.allSelected || this.gapSelected) {
+      return html`<sl-breadcrumb id="element-breadcrumb">
+        <ww-button variant="icon"><i>${this.allSelected? msg("Everything"): msg("Gap")}</i></ww-button>
+      </sl-breadcrumb>`
+    }
+    const els = this.activeElementPath
+    return html`<sl-breadcrumb id="element-breadcrumb">
+      ${els.map((el, i) => this.ElementBreadcrumbItem(el, i === els.length - 1))}
+    </sl-breadcrumb>`
+
+    /*
+    const {nodeCommands} = this.app.commands
+    let pathParts = []
+    for(const [i, el] of this.activeElementPath.entries()) {
+      const cmd = nodeCommands.find(cmd => cmd.id === el.tagName.toLowerCase())
+      const isLast = i === this.activeElementPath.length - 1
+      if(!isLast) {
+        pathParts.push(html`<sl-breadcrumb-item>
+        <ww-button
+          variant="icon"
+          icon=${cmd?.icon ?? "square"}
+          @click=${() => this.emitClickBreadcrumb(el)}
+          @hover=${() => this.emitHoverBreadcrumb(el)}
+        ></ww-button>
+      </sl-breadcrumb-item>`)
+      }
+      else {
+        const siblingCmds = this.activeElementSiblings
+          .map(el => ({el, scmd: nodeCommands.find(cmd => cmd.id === el.tagName.toLowerCase())!}))
+          .filter(scmd => scmd)
+        const siblingMenuItems = siblingCmds.map(({el, scmd}) => html`
+          <sl-menu-item
+            @click=${() => this.emitClickBreadcrumb(el)}
+            @hover=${() => this.emitHoverBreadcrumb(el)}
+          >
+            <sl-icon name=${scmd.icon ?? "square"}></sl-icon>
+            ${scmd.label}
+          </sl-menu-item>
+        `)
+        siblingMenuItems.length > 0? pathParts.push(html`<sl-breadcrumb-item>
+          <sl-dropdown class="sibling-dropdown" ?data-no-siblings=${siblingCmds.length === 0} skidding=${-12}>
+            <ww-button slot="trigger" variant="icon" icon=${cmd?.icon ?? "square"}>
+              ${cmd?.label}
+              <ww-button variant="icon" icon="chevron-down" class="dropdown-trigger" @click=${() => this.emitClickBreadcrumb(el)} @hover=${() => this.emitHoverBreadcrumb(el)}></ww-button>
+            </ww-button>
+            <sl-menu class="sibling-dropdown-menu">
+              ${siblingMenuItems}
+            </sl-menu>
+          </sl-dropdown>
+        </sl-breadcrumb-item>`): pathParts.push(html`<sl-breadcrumb-item>
+          <ww-button variant="icon" icon=${cmd?.icon ?? "square"} @click=${() => this.emitClickBreadcrumb(el)} @hover=${() => this.emitHoverBreadcrumb(el)}>${cmd?.label}</ww-button>
+        </sl-breadcrumb-item>`)
+      }
+    }
+    return html`<sl-breadcrumb id="element-breadcrumb">
+      ${pathParts}
+      <sl-icon name="slash" slot="separator"></sl-icon>
+    </sl-breadcrumb>`
+    */
+  }
+
+  render() {
+    /*        <sl-icon-button tabindex="-1" class="delete" title="Delete widget" name="trash" @click=${this.emitDeleteWidget} @mouseenter=${this.emitMouseEnterDeleteWidget} @mouseleave=${this.emitMouseLeaveDeleteWidget}></sl-icon-button> */
+    if(this.activeElement) {
       return html`
-        ${this.activeElementPath.map(this.BlockToolbox)}
+        ${this.BlockToolbox(this.activeElement)}
         ${this.InlineToolbox()}
       `
     }

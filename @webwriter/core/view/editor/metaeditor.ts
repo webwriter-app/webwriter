@@ -13,12 +13,14 @@ import { SlDropdown } from "@shoelace-style/shoelace"
 
 type Field<T=any> = {
   name: string,
+  label?: string,
   element:  "meta" | "pragma" | "encoding" | "title" | "base" | "link",
   type: T,
   multiple?: boolean,
   multiline?: boolean,
   advanced?: boolean,
   options?: string[],
+  priorityOptions?: string[],
   fixed?: boolean
 }
 
@@ -27,13 +29,13 @@ type Field<T=any> = {
 export class MetaEditor extends LitElement {
 
   static metaFields = {
-    title: {name: "title", element: "title" as const, type: String, fixed: true},
-    keywords: {name: "keywords", element: "meta" as const, type: String, multiple: true, fixed: true},
-    description: {name: "description", element: "meta" as const, type: String, multiline: true, fixed: true},
-    author: {name: "author", element: "meta" as const, type: Person, fixed: true},
-    license: {name: "license", element: "meta" as const, type: License, options: ["CC0-1.0", "CC-BY-4.0", "CC-BY-SA-4.0"], fixed: true},
-    language: {name: "language", element: "meta" as const, type: Locale, fixed: true},
-    generator: {name: "generator", element: "meta" as const, type: String, fixed: true}
+    title: {name: "title", label: msg("Title"), element: "title" as const, type: String, fixed: true},
+    keywords: {name: "keywords", label: msg("Keywords"), element: "meta" as const, type: String, multiple: true, fixed: true},
+    description: {name: "description", label: msg("Description"), element: "meta" as const, type: String, multiline: true, fixed: true},
+    author: {name: "author", label: msg("Author"), element: "meta" as const, type: Person, fixed: true},
+    license: {name: "license", label: msg("License"), element: "meta" as const, type: License, options: License.spdxLicenseKeys, priorityOptions: ["CC0-1.0", "CC-BY-4.0", "CC-BY-SA-4.0", "CC-BY-NC-4.0", "CC-BY-ND-4.0", "CC-BY-NC-SA-4.0", "CC-BY-NC-ND-4.0"], fixed: true},
+    language: {name: "language", label: msg("Language"), element: "meta" as const, type: Locale, fixed: true},
+    generator: {name: "generator", label: msg("Generator"), element: "meta" as const, type: String, fixed: true}
   }
 
   static standardMetaKeys = [
@@ -628,14 +630,14 @@ export class MetaEditor extends LitElement {
     }
   }
 
-  Field({name, element, type, multiline, multiple, options, fixed}: Field, node?: Node, pos?: number, parent?: Node) {
+  Field({name, label, element, type, multiline, multiple, options, priorityOptions, fixed}: Field, node?: Node, pos?: number, parent?: Node) {
     const value = this.getNodeValue(node)
-    const label = this.getElementLabel(name, element, !!fixed, node)
+    const finalName = this.getElementLabel(name, element, !!fixed, node)
     const suggestions = this.getElementNameSuggestions(element)
     const placeholder = this.getElementPlaceholder(element)
 
     const labelTemplate = html`<label slot="label" class=${classMap({"label": true, fixed: !!fixed})}>
-      <ww-combobox placeholder=${placeholder} size="small" .value=${label} @click=${(e: any) => e.stopImmediatePropagation()} ?suggestions=${suggestions.length > 0} ?multiple=${element === "link"} @sl-change=${(e: any) => {this.handleFieldRename(element as any, e.target.value, pos!); e.stopImmediatePropagation()}} ?inert=${!!fixed || element === "pragma"}>
+      <ww-combobox placeholder=${placeholder} size="small" .value=${label ?? finalName} @click=${(e: any) => e.stopImmediatePropagation()} ?suggestions=${suggestions.length > 0} ?multiple=${element === "link"} @sl-change=${(e: any) => {this.handleFieldRename(element as any, e.target.value, pos!); e.stopImmediatePropagation()}} ?inert=${!!fixed || element === "pragma"}>
         ${suggestions.map(v => html`<sl-option value=${v}>${v}</sl-option>`)}
       </ww-combobox>
       ${name === "generator" || node?.attrs.name === "generator"? null: html`<div>
@@ -672,10 +674,16 @@ export class MetaEditor extends LitElement {
     </label>`
 
     if(type === License) {
+      const optionTemplate = (option: string) => html`<sl-option value=${option}>
+        <small><b>${option}</b></small>
+        <div>${new License(option).name}</div>
+      </sl-option>`
       return html`<ww-licenseinput suggestions .value=${value} @sl-change=${(e: any) => this.handleFieldChange(element, e.target.value, name, pos, !fixed? undefined: name)}>
-        ${options?.map(option => html`<sl-option value=${option}>
-          ${new License(option).name}
-        </sl-option>`)}
+        ${!priorityOptions? null: html`
+          ${priorityOptions.map(optionTemplate)}
+          <sl-divider></sl-divider>
+        `}
+        ${options?.map(optionTemplate)}
         ${labelTemplate}
       </ww-licenseinput>`
     }

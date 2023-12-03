@@ -2,6 +2,7 @@ import { EditorState } from "prosemirror-state";
 import { SchemaPlugin } from ".";
 import { InputRule } from "prosemirror-inputrules";
 import { HTMLElementSpec, HTMLMarkSpec } from "../htmlelementspec";
+import {Mark, Node, MarkType} from "prosemirror-model"
 
 
 export function getActiveMarks(state: EditorState, includeStored=true) {
@@ -16,6 +17,24 @@ export function getActiveMarks(state: EditorState, includeStored=true) {
     })
   }
 	return Array.from(marks)
+}
+
+export const findMarkPosition = (markType: MarkType, doc: Node) => {
+  let markPos = { start: -1, end: -1 };
+  doc.descendants((node, pos) => {
+    // stop recursing if result is found
+    if (markPos.start > -1) {
+      return false;
+    }
+    if (markPos.start === -1 && node.marks.some(mark => mark.type === markType)) {
+      markPos = {
+        start: pos,
+        end: pos + Math.max(node.textContent.length, 1),
+      };
+    }
+  });
+
+  return markPos;
 }
 
 export function toggleOrUpdateMark(mark: string, attrs: any = {}) {
@@ -39,6 +58,14 @@ export function toggleOrUpdateMark(mark: string, attrs: any = {}) {
     else {
       return dispatch(state.tr.removeMark(from, to, markType))
     }
+  }
+}
+
+export function removeMark(mark: string) {
+  return (state: EditorState, dispatch: any) => {
+    const markType = state.schema.marks[mark]
+    const {start, end} = findMarkPosition(markType, state.doc)
+    return dispatch(state.tr.removeMark(start, end, markType))
   }
 }
 

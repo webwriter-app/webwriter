@@ -5,6 +5,7 @@ import { Package } from "./packageschema";
 export * from "./contentexpression"
 export * from "./resourceschema"
 export * from "./packageschema"
+export * from "./datatypes"
 
 export type Constructor<T> = new (...args: any[]) => T;
 

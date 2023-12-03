@@ -3,9 +3,10 @@ import { NodeSelection } from "prosemirror-state"
 import { DOMSerializer, Node } from "prosemirror-model"
 import {html, render} from "lit"
 
-import { getOtherAttrsFromWidget, toAttributes } from "../../model"
+import { getAttrs, globalHTMLAttributes, toAttributes } from "../../model"
 import {EditorViewController} from "."
 import { selectParentNode } from "prosemirror-commands"
+import { shallowCompare } from "../../utility"
 
 export class WidgetView implements NodeView {
 
@@ -28,7 +29,7 @@ export class WidgetView implements NodeView {
       toRemove.forEach(k => this.dom.removeAttribute(k))
       newNames.forEach(k => this.dom.setAttribute(k, newDom.getAttribute(k)!))
     }
-    this.dom.toggleAttribute("editable", true)
+    this.dom.toggleAttribute("contenteditable", true)
 	}
 
   getPos() {
@@ -61,13 +62,27 @@ export class WidgetView implements NodeView {
 
 	ignoreMutation(mutation: MutationRecord) {
 		const {type, target} = mutation
+    const dom = target as HTMLElement
+    const attrs = getAttrs(target as HTMLElement)
 		if(type === "attributes") {
-			const tr = this.view.state.tr.setNodeAttribute(
-				this.getPos(),
-				"otherAttrs",
-				getOtherAttrsFromWidget(target as HTMLElement)
-			)
-			this.view.dispatch(tr)
+      if(!shallowCompare(attrs, this.node.attrs.otherAttrs)) {
+        const allAttrs = {
+          ...attrs,
+          _otherAttrs: Object.fromEntries(dom
+            .getAttributeNames()
+            .filter(name => !Object.keys(globalHTMLAttributes).includes(name) && !name.startsWith("data-"))
+            .map(name => [name, dom.getAttribute(name)])
+          )
+        }
+        const tr = this.view.state.tr.setNodeAttribute(
+          this.getPos(),
+          "otherAttrs",
+          allAttrs
+        )
+        this.view.dispatch(tr)
+        return true
+      }
+      return true
 		}
 		else if(type === "childList") {
 			// TODO

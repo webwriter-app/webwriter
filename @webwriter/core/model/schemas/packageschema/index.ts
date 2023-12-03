@@ -1,13 +1,9 @@
-// @ts-strict
-import {SafeParseReturnType, ZodSchema, z} from "zod"
-import SPDX_LICENSE_MAP from "spdx-license-list"
-import {valid as semverValid, validRange as semverValidRange} from "semver"
-import ISO6391 from 'iso-639-1';
+import {z} from "zod"
 
-import {ContentExpression, DataType, PrimitiveDataType} from ".."
-import { filterObject } from "../../../utility"
+import { CustomElementManifest } from "./customelementsmanifest";
+import {ContentExpression} from ".."
+import { Person, License, SemVer, SemVerRange } from "../datatypes";
 
-const SPDX_LICENSES = Object.keys(SPDX_LICENSE_MAP)
 const NODE_BUILTINS = [
   'assert',
   'buffer',
@@ -90,13 +86,8 @@ const RESERVED_CUSTOM_ELEMENT_NAMES = [
 const nonUrlSafePattern = /(?!\{|\}|\||\\|\^|~|\[|\]|\`)/
 const nonNpmBlacklistPattern = /^(?!node_modules|favicon\.ico).+$/
 const nonNodeBuiltinPattern = new RegExp(`^(?!${NODE_BUILTINS.join("|")}).*$`)
-const spdxLicensePattern = new RegExp(`^(${SPDX_LICENSES.map(x => x.replaceAll(".", "\.")).join("|")})$`)
 const nodePlatformPattern = new RegExp(`^(${NODE_PLATFORMS.join("|")})$`)
 const nodeArchPattern = new RegExp(`^(${NODE_ARCHS.join("|")})$`)
-const npmPersonPattern = /^\s*(?<name>.*?)(?:<(?<email>.+)>)?\s*(?:\((?<url>.+)\))?\s*$/
-const mimePattern = /#?(?<supertype>[\w!#$%&'*.^`|~-]+)(?:\/(?<subtype>[\w!#$%&'*.^`|~-]+)(?:\+(?<suffix>[\w!#$%&'*.^`|~-]+))?(?:;(?<pkey>[\w!#$%&'*.^`|~-]+)=(?<pval>[\w!#$%&'*.^`|~-]+))?)?/
-const semverPattern = /(?<major>0|[1-9]\d*)\.(?<minor>0|[1-9]\d*)\.(?<patch>0|[1-9]\d*)(?:-(?<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z\-][0-9a-zA-Z\-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z\-][0-9a-zA-Z\-]*))*))?(?:\+(?<buildmetadata>[0-9a-zA-Z\-]+(?:\.[0-9a-zA-Z\-]+)*))?/
-const npmNamePattern = /^(@(?<organization>[a-z0-9\-~][a-z0-9\-._~]*)\/)?(?<name>[a-z0-9\-~][a-z0-9\-._~]*)$/
 const customElementNamePattern = /^[a-z][\w\d]*\-[\-.0-9_a-z\u00B7\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u037D\u037F-\u1FFF\u200C-\u200D\u203F-\u2040\u2070-\u218F\u2C00-\u2FEF\u3001-\uD7FF\uF900-\uFDCF\uFDF0-\uFFFD\u10000-\uEFFFF]*$/
 
 export type NpmName = z.infer<typeof NpmName>
@@ -111,97 +102,6 @@ export const NpmName = z.string()
   .regex(nonNpmBlacklistPattern, {message: "Cannot be 'node_modules' or 'favicon.ico'"})
   .regex(nonNodeBuiltinPattern, {message: "Cannot be a builtin node module name"})
 
-
-const SemVerObjectSchema = z.object({
-  major: z.number(),
-  minor: z.number(),
-  patch: z.number(),
-  prerelease: z.string().optional(),
-  buildmetadata: z.string().optional()
-})
-
-const SemVerSchema = z.string()
-  .transform((x, ctx) => {
-    const match = x.match(semverPattern)
-    if(match) {
-      const {major, minor, patch, prerelease, buildmetadata} = match.groups ?? {}
-      return {major: parseInt(major), minor: parseInt(minor), patch: parseInt(patch), prerelease, buildmetadata}
-    }
-    else {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `Invalid SemVer`
-      })
-      return z.NEVER
-    }
-  })
-  .pipe(SemVerObjectSchema)
-  .or(SemVerObjectSchema)
-
-export class SemVer extends DataType(SemVerSchema) {
-  serialize() {
-    const {major, minor, patch, prerelease, buildmetadata} = this
-    return `${major}.${minor}.${patch}${prerelease? `-${prerelease}`: ""}${buildmetadata? `+${buildmetadata}`: ""}`
-  }
-
-  toString() {
-    return this.serialize()
-  }
-
-  increment(key: "major" | "minor" | "patch", decrement=false) {
-    return new SemVer({
-      ...this,
-      [key]: Math.max(0, this[key] + (decrement? -1: 1))
-    })
-  }
-}
-
-export type SemVerRange = z.infer<typeof SemVerRange>
-export const SemVerRange = z.string()
-  .transform((x, ctx) => {
-    let version = semverValidRange(x)
-    if(version === null) {
-      // ctx.addIssue({fatal: false, code: z.ZodIssueCode.custom})
-      return "*"
-    }
-    else return version
-  })
-
-
-
-const LicenseObjectSchema = z.object({
-  key: z.string(),
-  name: z.string().optional(),
-  url: z.string().url().optional(),
-  osiApproved: z.boolean().optional()
-})
-
-const LicenseSchema = (z
-  .string()
-  .transform((key, ctx) => {
-    if(!(key in SPDX_LICENSE_MAP)) {
-      // ctx.addIssue({code: z.ZodIssueCode.custom, message: "Not a valid SPDX license identifier"})
-      return {key} as {key: string}
-    }
-    else {
-      return {...SPDX_LICENSE_MAP[key], key}
-    }
-  })
-  .pipe(LicenseObjectSchema))
-  .or(LicenseObjectSchema)
-
-
-
-export class License extends DataType(LicenseSchema) {
-  serialize() {
-    return this.key
-  }
-
-  toString() {
-    return this.serialize()
-  }
-}
-
 export type NodePlatform = z.infer<typeof NodePlatform>
 export const NodePlatform = z.string().regex(nodePlatformPattern, {message: "Is not a valid node platform (process.platform)"})
 
@@ -214,64 +114,6 @@ export type Json = Literal | { [key: string]: Json } | Json[] | undefined
 export const Json: z.ZodType<Json> = z.lazy(() =>
   z.union([literalSchema, Json.array(), z.record(Json)])
 );
-
-const MIME_NAME_ENCODING = {
-  "~": "_".repeat(16),
-  "|": "_".repeat(15),
-  "`": "_".repeat(14),
-  "^": "_".repeat(13),
-  "*": "_".repeat(12),
-  "'": "_".repeat(11),
-  "&": "_".repeat(10),
-  "%": "_".repeat(9),
-  "$": "_".repeat(8),
-  "#": "_".repeat(7),
-  "!": "_".repeat(6),
-  ";": "_".repeat(5),
-  "/": "_".repeat(4),
-  ".": "_".repeat(3),
-  "+": "_".repeat(2),
-  "-": "_".repeat(1),
-}
-
-
-const MediaTypeSchema = z.string().transform((arg, ctx) => {
-  if(!arg.startsWith("_") && !arg.startsWith("#")) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: `MediaType must start with '#' or '_'`
-    })
-    return z.NEVER
-  }
-  const value = arg.startsWith("_")
-    ? Object.entries(MIME_NAME_ENCODING).reduce((acc, [k, v]) => acc.replaceAll(v, k), arg)
-    : arg
-  const match = value.match(mimePattern)
-  if(match) {
-    const {supertype, subtype, suffix, pkey, pvalue} = match.groups ?? {}
-    return {supertype, subtype, suffix, ...(pkey? {[pkey]: pvalue}: null)}
-  }
-  else {
-    return z.NEVER
-  }
-})
-
-export class MediaType extends DataType(MediaTypeSchema) {
-  serialize(format: "expr" | "node" = "expr") {
-    if(format === "expr") {
-      const [paramKey, paramValue] = Object.entries(this).find(([k]) => k !== "supertype" && k !== "subtype" && k !== "suffix") ?? []
-      const paramStr = paramKey? `;${paramKey}=${paramValue}`: ""
-      return `#${this?.supertype}/${this?.subtype}` + paramStr
-    }
-    else {
-      return `_${this?.supertype}____${this.subtype.replaceAll("-", "_")}`
-    }
-  }
-
-  toString() {
-    return this.serialize()
-  }
-}
 
 type Funding = z.infer<typeof Funding>
 const Funding = z.object({
@@ -291,43 +133,10 @@ const IssueTracker = z.object({
 
 type Repository = z.infer<typeof Repository>
 const Repository = z.object({
-  url: z.string().url(),
+  url: z.string().url().or(z.string()),
   type: z.string()
 })
 .or(z.string())
-
-
-const PersonObjectSchema = z.object({
-  name: z.string(),
-  email: z.string().optional(),
-  url: z.string().optional()
-})
-
-const PersonSchema = (z.string()
-  .regex(npmPersonPattern)
-  .transform(str => {
-    const groups = npmPersonPattern.exec(str)?.groups ?? {}
-    const {name, email, url} = groups
-    return {name, ...(email && {email}), ...(url && {url})} as z.infer<typeof PersonObjectSchema>
-  })
-  .refine(arg => PersonObjectSchema.parse(arg)))
-  .or(PersonObjectSchema)
-
-export class Person extends DataType(PersonSchema) {
-  serialize() {
-    const email = this.email != null? ` <${this.email}>`: ""
-    const url = this.url != null? ` (${this.url})`: ""
-    return `${this.name}${email}${url}`
-  }
-
-  toString() {
-    return this.serialize()
-  }
-
-  extend(extraProperties: Partial<Person>) {
-    return new Person({...this, ...extraProperties})
-  }
-}
 
 export type EditingConfig = z.infer<typeof EditingConfig>
 export const EditingConfig = z.object({
@@ -348,68 +157,70 @@ export const CustomElementName = z
   .refine(x => !RESERVED_CUSTOM_ELEMENT_NAMES.includes(x))
 
 
-const PackageObjectSchema = z.object({
-  name: NpmName,
-  version: SemVer.schema,
-  description: z.string().optional(),
-  keywords: z.array(z.string()).optional(),
-  homepage: z.string().url().optional(),
-  bugs: IssueTracker.optional(),
-  license: License.schema.optional(),
-  author: Person.schema.optional(),
-  contributors: Person.schema.array().optional(),
-  funding: Funding.or(Funding.array()).optional(),
-  files: z.array(z.string()).optional(),
-  main: z.string().optional(),
-  browser: z.string().optional(),
-  bin: z.record(z.string()).optional(),
-  man: z.array(z.string()).optional(),
-  directories: z.record(z.string()).optional(),
-  repository: Repository.optional(),
-  scripts: z.record(z.string()).optional(),
-  dependencies: z.record(NpmName, SemVerRange.or(FileURL)).optional(),
-  devDependencies: z.record(NpmName, SemVerRange.or(FileURL)).optional(),
-  peerDependencies: z.record(NpmName, SemVerRange.or(FileURL)).optional(),
-  bundleDependencies: z.record(NpmName, SemVerRange).or(FileURL).optional(),
-  optionalDependencies: z.record(NpmName, SemVerRange.or(FileURL)).optional(),
-  engines: z.record(z.string(), SemVerRange).optional(),
-  peerDependenciesMeta: z.record(NpmName, z.object({optional: z.boolean()})).optional(),
-  overrides: z.record(NpmName, z.string()).optional(),
-  os: NodePlatform.array().optional(),
-  arch: NodeArch.array().optional(),
-  private: z.boolean().optional(),
-  config: z.record(Json).optional(),
-  publishConfig: z.record(Json).optional(),
-  workspaces: z.string().array().optional(),
-  type: z.literal("commonjs").or(z.literal("module")).optional(),
-  exports: Json.optional(),
-  imports: z.record(z.string().startsWith("#"), z.record(z.string())).optional(),
-  editingConfig: EditingConfig.optional(),
-  installed: z.boolean().optional().default(false),
-  latest: SemVer.schema.optional(),
-  imported: z.boolean().optional().default(false),
-  watching: z.boolean().optional().default(false),
-  reloadCount: z.number().optional().default(0),
-  localPath: z.string().optional(),
-  importError: z.string().optional(),
-  jsSize: z.number().optional(),
-  cssSize: z.number().optional()
-})
-.catchall(Json)
+export interface Package extends z.infer<typeof Package.objectSchema> {}
+export class Package {
 
-const PackageSchema = PackageObjectSchema
-.or(z.string()
-  .transform((x, ctx) => {
-    let [name, version] = x.slice(1).split("@")
-    name = x[0] + name
-    return {name, version}
+  static objectSchema = z.object({
+    name: NpmName,
+    version: SemVer.schema,
+    description: z.string().optional(),
+    keywords: z.array(z.string()).optional(),
+    homepage: z.string().url().optional(),
+    bugs: IssueTracker.optional(),
+    license: License.schema.optional(),
+    author: Person.schema.optional(),
+    contributors: Person.schema.array().optional(),
+    funding: Funding.or(Funding.array()).optional(),
+    files: z.array(z.string()).optional(),
+    main: z.string().optional(),
+    browser: z.string().optional(),
+    bin: z.record(z.string()).optional(),
+    man: z.array(z.string()).optional(),
+    directories: z.record(z.string()).optional(),
+    repository: Repository.optional(),
+    scripts: z.record(z.string()).optional(),
+    dependencies: z.record(NpmName, z.string()).optional(),
+    devDependencies: z.record(NpmName, z.string()).optional(),
+    peerDependencies: z.record(NpmName, z.string()).optional(),
+    bundleDependencies: z.record(NpmName, z.string()).optional(),
+    optionalDependencies: z.record(NpmName, z.string()).optional(),
+    engines: z.record(z.string(), SemVerRange.schema).optional(),
+    peerDependenciesMeta: z.record(NpmName, z.object({optional: z.boolean()})).optional(),
+    overrides: z.record(NpmName, z.string()).optional(),
+    os: NodePlatform.array().optional(),
+    arch: NodeArch.array().optional(),
+    private: z.boolean().optional(),
+    config: z.record(Json).optional(),
+    publishConfig: z.record(Json).optional(),
+    workspaces: z.string().array().optional(),
+    type: z.literal("commonjs").or(z.literal("module")).optional(),
+    exports: Json.optional(),
+    imports: z.record(z.string().startsWith("#"), z.record(z.string())).optional(),
+    editingConfig: EditingConfig.optional(),
+    watching: z.boolean().optional().default(false),
+    localPath: z.string().optional(),
+    installed: z.boolean().optional(),
+    latest: SemVer.schema.optional(),
+    importError: z.string().optional(),
+    customElements: CustomElementManifest.optional()
   })
-  .pipe(PackageObjectSchema)
-)
+  .catchall(Json)
 
-export class Package extends DataType(PackageSchema) {
+  static schema = this.objectSchema.transform(x => Object.assign(Object.create(this.prototype), x))
+
+  static fromID(id: string) {
+    const i = id.lastIndexOf("@")
+    return new Package({name: id.slice(0, i), version: id.slice(i + 1)})
+  }
+
+  constructor(pkg: Package | z.input<typeof Package.objectSchema> & Record<string, any>) {
+    return pkg instanceof Package
+      ? pkg
+      : Package.schema.parse(pkg)
+  }
 
   static optionKeys = [
+    "id",
     "installed",
     "outdated",
     "imported",
@@ -421,93 +232,42 @@ export class Package extends DataType(PackageSchema) {
     "cssSize"
   ]
 
-  serialize(format:"json"|"object"|"id"="json") {
+  toString() {
+    return this.id
+  }
+
+  toJSON() {
     const keys = Object.getOwnPropertyNames(this).filter(k => !Package.optionKeys.includes(k))
-    const result = Object.fromEntries(keys.map(key => {
+    return Object.fromEntries(keys.map(key => {
       const value = (this as any)[key]
         return [key, value]
     }))
-    if(format === "json") {
-      return JSON.stringify(result, undefined, 4)
-    }
-    else if(format === "id") {
-      return `${this.name}@${this.version}`
-    }
-    else {
-      return result
-    }
-
   }
 
+  get id() {
+    return `${this.name}@${this.version}`
+  }
 
+  get outdated() {
+    return !!(this.latest && this.version.compare(this.latest) === -1)
+  }
 
-  toString() {
-    return this.serialize() as string
+  get status() {
+    if(this.localPath) {
+      return "local"
+    }
+    else if(this.installed) {
+      return "installed"
+    }
+    else if(this.installed && this.outdated) {
+      return "outdated"
+    }
+    else {
+      return "available"
+    }
   }
 
   extend(extraProperties: Partial<Package>) {
     return new Package({...this, ...extraProperties})
-  }
-}
-
-
-
-
-
-const LocaleObjectSchema = z.object({
-  grandfathered: z.string().optional(),
-  language: z.string(),
-  extlang: z.string().optional(),
-  script: z.string().optional(),
-  region: z.string().optional(),
-  variant: z.string().optional(),
-  extension: z.string().optional(),
-  privateUse: z.string().optional()
-})
-
-export const bcp47Pattern = /^((?<grandfathered>(en-GB-oed|i-ami|i-bnn|i-default|i-enochian|i-hak|i-klingon|i-lux|i-mingo|i-navajo|i-pwn|i-tao|i-tay|i-tsu|sgn-BE-FR|sgn-BE-NL|sgn-CH-DE)|(art-lojban|cel-gaulish|no-bok|no-nyn|zh-guoyu|zh-hakka|zh-min|zh-min-nan|zh-xiang))|((?<language>([A-Za-z]{2,3}(-(?<extlang>[A-Za-z]{3}(-[A-Za-z]{3}){0,2}))?)|[A-Za-z]{4}|[A-Za-z]{5,8})(-(?<script>[A-Za-z]{4}))?(-(?<region>[A-Za-z]{2}|[0-9]{3}))?(-(?<variant>[A-Za-z0-9]{5,8}|[0-9][A-Za-z0-9]{3}))*(-(?<extension>[0-9A-WY-Za-wy-z](-[A-Za-z0-9]{2,8})+))*(-(?<privateUse>x(-[A-Za-z0-9]{1,8})+))?)|(?<privateUse1>x(-[A-Za-z0-9]{1,8})+))$/
-
-const LocaleSchema = (z
-  .string()
-  .transform((x, ctx) => {
-    const groups = bcp47Pattern.exec(x)?.groups ?? {}
-    const privateUse = (groups.privateUse ?? "") + (groups.privateUse1 ?? "")
-    return {
-      ...filterObject(groups, key => key !== "privateUse1"),
-      privateUse: privateUse !== ""? privateUse: undefined
-    }
-  })
-  .pipe(LocaleObjectSchema))
-  .or(LocaleObjectSchema)
-
-
-
-export class Locale extends DataType(LocaleSchema) {
-
-  static keys = ["language", "extlang", "script", "region", "variant", "extension", "privateUse"] as const
-
-  static get languageCodes() {
-    return ISO6391.getAllCodes()
-  }
-
-  static getLanguageInfo(localeOrLang: Locale | string) {
-    const lang = localeOrLang instanceof Locale? localeOrLang.language: localeOrLang
-    return ISO6391.getLanguages([lang])[0]
-  }
-
-  static get preferredLanguageCodes() {
-    return navigator.languages.filter(code => !code.includes("-"))
-  }
-
-  static get languageInfos() {
-    return this.languageCodes.map(this.getLanguageInfo)
-  }
-
-  serialize() {
-    return this.grandfathered ?? Locale.keys.map(k => this[k]).filter(v => v).join("-")
-  }
-
-  toString() {
-    return this.serialize()
   }
 }

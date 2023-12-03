@@ -110,8 +110,8 @@ export class WidgetPlayground extends LitElement {
   @property({type: Object, attribute: false})
   keywords: string[] = []
 
-  @property({attribute: true, type: Boolean, reflect: true})
-  editable: boolean = false
+  @property({attribute: true, type: String, reflect: true}) // @ts-ignore
+  contentEditable: string
 
   @property({state: true})
   activeTab: string = "#markup"
@@ -213,11 +213,11 @@ export class WidgetPlayground extends LitElement {
         border-radius: 0 0 10px 10px;
       }
 
-      :host(:not([editable])) #editor {
+      :host(:not([contenteditable])) #editor {
         display: none;
       }
 
-      :host(:not([editable])) #preview {
+      :host(:not([contenteditable])) #preview {
         grid-column: 1 / 3;
       }
 
@@ -540,8 +540,8 @@ export class WidgetPlayground extends LitElement {
     this.body?.toggleAttribute("data-sidebar")
   }
 
-  toggleEditable() {
-    this.body?.querySelectorAll(".ww-widget").forEach(el => el.toggleAttribute("editable"))
+  toggleContentEditable() {
+    this.body?.querySelectorAll(".ww-widget").forEach(el => el.toggleAttribute("contentEditable"))
   }
 
   togglePrintable() {
@@ -657,15 +657,15 @@ export class WidgetPlayground extends LitElement {
         </span>
         <div id="actions">
           <a id="close" title="Back to widget gallery" href="/widgets">${ICON(X_LG)}</a>
-          <button id="edit" title="Edit this widget" @click=${() => this.editable = !this.editable} ?data-active=${this.editable}>${ICON(CODE_SLASH)}</button>
+          <button id="edit" title="Edit this widget" @click=${() => this.toggleAttribute("contenteditable")} ?data-active=${this.contentEditable}>${ICON(CODE_SLASH)}</button>
         </div>
         <div id="tag-area">
           ${this.name.startsWith("@webwriter/")? html`<span id="official" title="This widget comes pre-installed with WebWriter">Official</span>`: null}
           ${this.keywords.map(kw => html`<span>${kw}</span>`)}
           <span class="advanced divider"></span>
-          <span class="advanced" title="Size of the installed package on disk">${ICON(DOWNLOAD)} Install Size: <code>${shortenBytes(this.installSize)}</code></span>
-          <span class="advanced" title="Maximum size when bundled and minified into a worksheet (size may be smaller when dependencies are shared)">${ICON(FILE_ARROW_DOWN)} Bundle Size: <code>${shortenBytes(this.bundleSize.js + this.bundleSize.css)}</code></span>
-          <a class="advanced" title="License chosen by the author" href=${ifDefined(SPDX_LICENSES.has(this.license)? `https://spdx.org/licenses/${encodeURIComponent(this.license)}`: undefined)}>
+          <span class="advanced" title="Size of the installed package on disk">${ICON(DOWNLOAD)} Install Size: <code>${shortenBytes(this.installSize!)}</code></span>
+          <span class="advanced" title="Maximum size when bundled and minified into a worksheet (size may be smaller when dependencies are shared)">${ICON(FILE_ARROW_DOWN)} Bundle Size: <code>${shortenBytes(this.bundleSize!.js + this.bundleSize!.css)}</code></span>
+          <a class="advanced" title="License chosen by the author" href=${ifDefined(SPDX_LICENSES.has(this.license!)? `https://spdx.org/licenses/${encodeURIComponent(this.license)}`: undefined)}>
             ${ICON(CARD_CHECKLIST)}
             <span>License: ${this.license ?? "UNLICENSED"}</span>
           </a>
@@ -673,7 +673,7 @@ export class WidgetPlayground extends LitElement {
             ${ICON(BOX_FILL)}
             <code>Package</code>
           </a>
-          <a id="repository" class="advanced" title=${this.repository.url? "Source code of the widget": "No source code available"} href=${ifDefined(this.repository?.url)}>
+          <a id="repository" class="advanced" title=${this.repository!.url? "Source code of the widget": "No source code available"} href=${ifDefined(this.repository?.url)}>
             ${WidgetPlayground.providerIcon[this.repository?.provider] ?? ICON(GIT)}
             <code>Code</code>
           </a>
@@ -686,8 +686,8 @@ export class WidgetPlayground extends LitElement {
           <span class="for-active">${ICON(LAYOUT_SIDEBAR_INSET_REVERSE)}</span>
           <span class="for-inactive">${ICON(SQUARE)}</span>
         </label>
-        <input id="toggle-editable" type="checkbox" @change=${this.toggleEditable}>
-        <label title="Toggle editing view" class="editor-toggle for-active" for="toggle-editable">
+        <input id="toggle-contentEditable" type="checkbox" @change=${this.toggleContentEditable}>
+        <label title="Toggle editing view" class="editor-toggle for-active" for="toggle-contentEditable">
           <span class="for-active">${ICON(PENCIL_FILL)}</span>
           <span class="for-inactive">${ICON(PENCIL)}</span>
         </label>

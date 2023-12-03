@@ -3,7 +3,7 @@ import { SchemaPlugin } from ".";
 import mime from "mime/lite"
 import {Node, NodeSpec} from "prosemirror-model"
 
-import { MediaType } from "../../packageschema"
+import { MediaType } from "../../datatypes"
 import { HTMLElementSpec } from "../htmlelementspec";
 
 /**
@@ -57,8 +57,8 @@ function mediaNodeEntry(mediaType: string): [string, NodeSpec] {
 
   const maybeContent = (node: Node) => node.attrs.content? [node.attrs.content]: []
 
-  return [parsed.serialize("node"), {
-    group: ["flow", "embedded", `_${supertype}`, `_${parsed.serialize("node")}`].join(" "),
+  return [parsed.toString("node"), {
+    group: ["flow", "embedded", `_${supertype}`, `_${parsed.toString("node")}`].join(" "),
     attrs: {
       src: {default: undefined},
       content: {default: undefined}

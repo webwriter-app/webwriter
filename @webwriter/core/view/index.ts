@@ -69,33 +69,6 @@ export class App extends ViewModelMixin(LitElement)
 				transition: none;
 			}
 
-			#initializingPlaceholder {
-				display: flex;
-				justify-content: center;
-				align-items: center;
-				height: 100%;
-        position: relative;
-        background: white;
-			}
-
-			#initializingPlaceholder > div {
-				text-align: center;
-			}
-
-			#initializingPlaceholder sl-spinner {
-				margin-bottom: 0.5rem;
-				font-size: 12rem;
-				--track-width: 10px;
-			}
-
-      #initializingPlaceholder .app-icon, #initializingPlaceholder svg {
-        width: 120px;
-        height: 120px;
-        position: absolute;
-        top: calc(50% - 60px);
-        left: calc(50% - 55px);
-      }
-
 			#settings-button {
 				margin-top: 1px;
 				height: 48px;
@@ -135,6 +108,7 @@ export class App extends ViewModelMixin(LitElement)
 			#settings-button:not(:hover):not(:active) .text {
 				color: var(--sl-color-neutral-600);
 			}
+
 
 			ww-layout::part(drawer-left) {
 				--size: clamp(600px, 50vw, 800px);
@@ -263,8 +237,11 @@ export class App extends ViewModelMixin(LitElement)
 
 
 	Content = () => {
+    if(this.initializing) {
+      return null
+    }
 		const {changed, set, setHead, url, editorState, codeState, ioState, provisionalTitle, inMemory} = this.store.document
-		const {packages, availableWidgetTypes, bundleCode, bundleCSS, bundleID} = this.store.packages
+		const {packagesList, bundleJS, bundleCSS, bundleID} = this.store.packages
 		const {locale, showTextPlaceholder} = this.store.ui
 		const {open} = this.environment.api.Shell
     const {documentCommands, commands: {setDocAttrs, editHead}} = this.commands
@@ -291,15 +268,14 @@ export class App extends ViewModelMixin(LitElement)
     docID=${url}
     data-active
     @focus=${() => this.foldOpen = false}
-    .bundleCode=${bundleCode}
+    .bundleJS=${bundleJS}
     .bundleCSS=${bundleCSS}
     bundleID=${bundleID}
     .editorState=${editorState}
     .codeState=${codeState}
     @update=${(e: any) => set(e.detail.editorState)}
     @ww-open=${(e: any) => open(e.detail.url)}
-    .availableWidgetTypes=${availableWidgetTypes}
-    .packages=${packages as any}
+    .packages=${packagesList}
     ?loadingPackages=${false}
     .showTextPlaceholder=${showTextPlaceholder}
     ?controlsVisible=${!this.foldOpen}
@@ -308,19 +284,10 @@ export class App extends ViewModelMixin(LitElement)
 	return [head, metaeditor, editor]
 	}
 
-	Placeholder = () => {
-    return html`<div id="initializingPlaceholder" slot="main">
-		<div>
-			<sl-spinner></sl-spinner>
-      <div class="app-icon">
-        ${unsafeSVG(appIconRaw)}
-      </div>
-			<!--<div>${msg("Loading WebWriter...")}</div>-->
-		</div>
-	</div>`
-  }
-
   HeaderLeft = () => {
+    if(this.initializing) {
+      return null
+    }
     const {appCommands} = this.commands
     return html`<div id="header-left" slot="header-left">
       ${appCommands.map(v => html`
@@ -330,6 +297,9 @@ export class App extends ViewModelMixin(LitElement)
   }
 
   HeaderRight = () => {
+    if(this.initializing) {
+      return null
+    }
     const {queryCommands} = this.commands
     return html`<div id="header-right" slot="header-right">
       ${queryCommands({category: "editor", tags: ["general"]}).map(v => html`
@@ -354,11 +324,9 @@ export class App extends ViewModelMixin(LitElement)
 			activeTabName=${ifDefined(this.store?.document.url)}
       ?loading=${this.initializing}
       ?foldOpen=${this.foldOpen}>
-      ${this.initializing? this.Placeholder(): [
-        this.HeaderLeft(),
-        this.HeaderRight(),
-        this.Content(),
-      ]}
+        ${this.HeaderLeft()}
+        ${this.HeaderRight()}
+        ${this.Content()}
 		</ww-layout><div style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1000000; pointer-events: none;"></div>`
 	}
 }

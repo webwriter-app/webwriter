@@ -140,15 +140,15 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
   @property({type: String, attribute: false, hasChanged(value, oldValue) {
     return !sameMembers(value, oldValue)
 }})
-	contentScript: string | string[]
+	contentScript: string
 
-  @property({type: String, attribute: false})
+  @property({type: String, attribute: true})
 	bundleID: string
 
 	@property({type: String, attribute: false, hasChanged(value, oldValue) {
       return !sameMembers(value, oldValue)
   }})
-	contentStyle: string | string[]
+	contentStyle: string
 
   @property({type: String, attribute: true})
   placeholder: string
@@ -250,7 +250,6 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
   }
 
   async updated(previous: Map<string, any>) {
-    console.log(previous)
     if(previous.has("bundleID")) {
       await this.initializeIFrame()
       this.view?.destroy()
@@ -320,10 +319,10 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
 	}
 
   async initializeIFrame() {
+    console.log("initialize iframe")
     this.iframe = this.shadowRoot?.querySelector("iframe") as any
     const {contentScript} = this
-    const js = Array.isArray(contentScript)? contentScript: [contentScript]
-    await Promise.all(js.map(x => this.importString(x)))
+    await this.importString(contentScript)
     this.document.documentElement.spellcheck = false
     this.window.console = console
     this.window.onerror = window.onerror

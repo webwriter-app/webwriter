@@ -7,6 +7,7 @@ import pmGapcursorCSS from "prosemirror-gapcursor/style/gapcursor.css?raw"
 import pmCSS from "prosemirror-view/style/prosemirror.css?raw"
 import editingCSS from "../editingstyles.css?raw"
 import shoelaceCSS from "@shoelace-style/shoelace/dist/themes/light.css?raw"
+import virtualCursorCSS from "prosemirror-view/style/prosemirror.css?raw"
 import { HTMLElementSpec } from "../htmlelementspec";
 import { CustomElementName } from "../../packageschema";
 

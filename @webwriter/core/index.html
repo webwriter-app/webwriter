@@ -15,14 +15,46 @@
         font-family: var(--sl-font-sans);
         overscroll-behavior: none;
         font-size: 1.1rem;
+        min-height: 100vh;
       }
 
       .sl-scroll-lock {
         position: fixed !important;
       }
+
+      body.loaded #icon {
+        display: none;
+      }
+
+      #icon {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        width: 150px;
+        height: 150px;
+        transform: translate(-50%, -50%);
+        animation: load 1.5s infinite ease;
+      }
+      ww-app {
+        z-index: 10;
+      }
+      @keyframes load {
+        0% {
+          opacity: 0;
+        }
+        50% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0;
+        }
+      }
     </style>
   </head>
   <body id="body">
+    <div class="loader">
+    </div>
+    <img id="icon" src="app-icon-transparent.svg" />
     <script type="module">
       import {App} from "./view"
     </script>

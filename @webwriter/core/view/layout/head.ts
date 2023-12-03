@@ -48,6 +48,14 @@ export class Head extends LitElement {
       font-weight: bold;
       user-select: none;
       display: inline flex;
+      flex-direction: row;
+      align-items: center;
+      overflow: hidden;
+      
+    }
+
+    #filename :first-child {
+      display: flex;
       align-items: center;
       gap: 0.25ch;
       overflow: hidden;
@@ -57,6 +65,8 @@ export class Head extends LitElement {
     #pending-indicator {
       visibility: hidden;
       font-size: 1.5rem;
+      flex-shrink: 0;
+      display: block;
     }
 
     :host([pendingChanges]) #pending-indicator {
@@ -98,7 +108,7 @@ export class Head extends LitElement {
 		return html`
 			${!unsaved? html`<sl-icon name=${iconName}></sl-icon>`: null}
 			<span id="filename">
-        ${filename}
+        <span>${filename}</span>
         <span title=${msg("This explorable has unsaved changes.")} id="pending-indicator">${this.ioState === "idle"
           ? "*"
           : html`<sl-spinner></sl-spinner>`

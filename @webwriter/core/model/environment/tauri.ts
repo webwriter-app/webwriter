@@ -134,7 +134,6 @@ export const Dialog: DialogAPI = {promptRead, promptWrite, confirm}
 export const HTTP: HTTPAPI = {
   async request({url, method, headers, body, onProgress, timeout}) {
     const response = await fetch(url, {method, headers, body: body? Body.bytes(body[0] as any): undefined, timeout, responseType: ResponseType.Binary})
-    console.log(response)
     return {
       url: response.url,
       method,
@@ -149,7 +148,8 @@ export const HTTP: HTTPAPI = {
 
 /** Runs the CLI command `esbuild [args]`. */
 export async function bundle(args: string[] = []) {
-  const output = await Command.sidecar("bin/esbuild", args).execute()
+  const output = await Command.sidecar("bin/esbuild", [...args]).execute()
+  console.info(`[TAURI] > esbuild ${args.join(" ")}`)
   if(output.code !== 0) {
     throw Error(output.stderr)
   }
@@ -159,22 +159,38 @@ export async function bundle(args: string[] = []) {
 }
 
 /** Search using npm's registry API (https://github.com/npm/registry/blob/master/docs/REGISTRY-API.md). Uses the registry API since the CLI doesn't support search qualifiers such as tags. */
-export async function search(text: string, params?: {size?: number, from?: number, quality?: number, popularity?: number, maintenance?: number}, searchEndpoint="https://registry.npmjs.com/-/v1/search") {
+export async function search(text: string, params?: {size?: number, quality?: number, popularity?: number, maintenance?: number}, searchEndpoint="https://registry.npmjs.com/-/v1/search") {
   const allParams = {text, ...{size: 250, ...params}}
-  const url = new URL(searchEndpoint)
-  Object.entries(allParams).forEach(([k, v]) => v? url.searchParams.append(k, v.toString()): null)
-  const result = await window.fetch(url.href)
-  return result.ok
-    ? result.json()
-    : new Error(`${result.status} ${result.statusText}`)
+  const baseURL = new URL(searchEndpoint)
+  Object.entries(allParams).forEach(([k, v]) => v? baseURL.searchParams.append(k, v.toString()): null)
+  let from = 0
+  let total = Number.POSITIVE_INFINITY
+  let objects: any[] = []
+  let time = undefined
+  do {
+    let url = new URL(baseURL.href)
+    url.searchParams.set("from", String(from))
+    const result = await window.fetch(baseURL)
+    if(result.ok) {
+      const body = await result.json()
+      from += params?.size ?? 250
+      total = body.total
+      time = body.time
+      objects = objects.concat(body.objects)
+    }
+    else {
+      return new Error(`${result.status} ${result.statusText}`)
+    }
+  } while(from < total)
+  return {objects, total, time}
 }
 
-/** Runs the CLI command `npm [commandArgs]`. By default, this passes the `--json` flag. Optionally, you can disable `json` or set a directory to change to with `cwd`. */
-export async function pm(command: string, commandArgs: string[] = [], json=true, cwd?: string) {
-  const cmdArgs = [command, ...(json ? ["--json"]: []), ...commandArgs]
+/** Runs the CLI command `pnpm [commandArgs]`. */
+export async function pm(command: string, commandArgs: string[] = [], cwd?: string) {
+  const cmdArgs = [command, ...commandArgs]
   const opts = cwd? {cwd}: {}
-  console.info(`[TAURI] ${cwd? cwd: await appDir()}> bin/yarn ${[...cmdArgs, "--mutex file"].join(" ")}`)
-  const output = await Command.sidecar("bin/yarn", [...cmdArgs, "--mutex file"], opts).execute()
+  console.info(`[TAURI] ${cwd? cwd: await appDir()}> pnpm ${cmdArgs.join(" ")}`)
+  const output = await Command.sidecar("bin/pnpm", cmdArgs, opts).execute()
   if(output.stderr) {
     const err = output.stderr.split("\n").map((e: any) => {
       try {
@@ -185,6 +201,7 @@ export async function pm(command: string, commandArgs: string[] = [], json=true,
       }
     })
     const errors = err.filter((e: any) => e?.type === "error")
+    console.log(err)
     const warnings = err.filter((e: any) => e?.type === "warning")
     warnings.forEach((w: any) => console.warn(w.data))
     if(err?.some((e: any) => e?.type === "error")) {
@@ -195,7 +212,8 @@ export async function pm(command: string, commandArgs: string[] = [], json=true,
     let result = output.stdout
     try {
       result = JSON.parse(output.stdout)
-    } catch(e) {}
+    } catch(e) {
+    }
     return result
   }
 }

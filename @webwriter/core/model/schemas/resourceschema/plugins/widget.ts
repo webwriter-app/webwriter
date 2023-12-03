@@ -4,23 +4,15 @@ import redefineCustomElementsString from "redefine-custom-elements/lib/index.js?
 import { unscopePackageName } from "../../../../utility"
 import { Package } from "../.."
 import { Expression } from "../../contentexpression"
-import { styleAttrs, parseStyleAttrs, serializeStyleAttrs } from "./style"
 import { SchemaPlugin } from ".";
 import { Command } from "prosemirror-state"
+import { globalHTMLAttributes, getAttrs, toAttributes } from "../.."
 
 
 export function createWidget(schema: Schema, name: string, id: string, editable=true) {
   const nodeType = schema.nodes[name]
   return nodeType.createAndFill({id, otherAttrs: {editable}}, [])
 }
-
-export function getOtherAttrsFromWidget(dom: HTMLElement) {
-  return Object.fromEntries(dom
-    .getAttributeNames()
-    .filter(name => !["editable", "printable", "analyzable", "contenteditable"].includes(name))
-    .map(name => [name, dom.getAttribute(name)]))
-}
-
 
 export function slotContentNodeSpecName(packageName: string, slotName: string) {
   return `${unscopePackageName(packageName).replace("-", "I")}_SLOT_${slotName}`
@@ -58,7 +50,6 @@ export function packageWidgetNodeSpec(pkg: Package): NodeSpec {
     ? {content: widgetSlotContent(pkg)}
     : undefined
   const mediaTypes = getMediaTypesOfContent(pkg.editingConfig?.content)
-  const mediaNodeNames = mediaTypes
     .map(t => t.slice(1).replaceAll("/", "__").replaceAll("-", "_"))
   const maybeMediaParseRules = mediaTypes.length > 0? []: []
   return {
@@ -69,40 +60,27 @@ export function packageWidgetNodeSpec(pkg: Package): NodeSpec {
     draggable: false,
     isolating: false,
     ...maybeContent,
-    handledMediaNodes: () => mediaNodeNames,
-    supportsMediaType: (mediaType: string) => mediaTypes.includes(mediaType),
     attrs: {
-      id: {},
-      editable: {default: false},
-      printable: {default: false},
-      analyzable: {default: false},
-      otherAttrs: {default: {}},
-      ...styleAttrs
+      ...globalHTMLAttributes,
+      _otherAttrs: {default: {}, private: true} as any
     },
     parseDOM : [{tag: unscopePackageName(pkg.name), getAttrs: (dom: HTMLElement ) => {
       return {
-        id: dom.getAttribute("id"),
-        editable: dom.getAttribute("editable") ?? false,
-        printable: dom.getAttribute("printable") ?? false,
-        analyzable: dom.getAttribute("analyzable") ?? false,
-        otherAttrs: Object.fromEntries(dom
+        ...getAttrs(dom),
+        _otherAttrs: Object.fromEntries(dom
           .getAttributeNames()
-          .filter(name => !["editable", "printable", "analyzable"].includes(name))
-          .map(name => [name, dom.getAttribute(name)])),
-        ...parseStyleAttrs(dom)
+          .filter(name => !Object.keys(globalHTMLAttributes).includes(name) && !name.startsWith("data-"))
+          .map(name => [name, dom.getAttribute(name)])
+        )
       }
     }}, ...maybeMediaParseRules] as any,
     toDOM: (node: Node) => {
-      return [node.type.name, {
-        id: node.attrs.id,
-        "data-widget": pkg.serialize("id"),
-        ...(node.attrs.editable? {"editable": true}: {}),
-        ...(node.attrs.printable? {"printable": true}: {}),
-        ...(node.attrs.analyzable? {"analyzable": true}: {}),
-        ...node.attrs.otherAttrs,
-        "class": "ww-widget",
-        style: serializeStyleAttrs(node.attrs)
-      }].concat(pkg.editingConfig?.content? [0]: []) as any
+      const attrs = toAttributes(node, node.attrs._otherAttrs)
+      const classes = new DOMTokenList(); classes.value = attrs.class
+      classes.add("ww-widget", (node.type.spec.package as Package).id)
+      const attrsWithClass = {...attrs, class: classes.value}
+      
+      return [node.type.name, attrsWithClass].concat(pkg.editingConfig?.content? [0] as any: [] as any) as any
     }
   }  
 }

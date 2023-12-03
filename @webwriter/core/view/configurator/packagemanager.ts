@@ -513,7 +513,7 @@ export class PackageManager extends LitElement {
 	}
 
 	packageListItem = (pkg: Package) => {
-		const {name, author, version, description, keywords, installed, latest, importError, localPath, watching, jsSize, cssSize} = pkg
+		const {name, author, version, description, keywords, installed, latest, outdated, importError, localPath, watching, jsSize, cssSize} = pkg
 		const {emitAddPackage, emitRemovePackage, emitUpgradePackage, emitToggleWatch, emitOpenPackageCode, emitEditPackage} = this
 		const adding = this.adding.includes(name)
 		const removing = this.removing.includes(name)
@@ -522,8 +522,7 @@ export class PackageManager extends LitElement {
 		const local = !!localPath
 		const unimportable = !!importError
 		const available = !installed
-		// @ts-ignore
-		return html`<sl-card class=${classMap({installed, outdated: !!latest, available, official, unimportable, local})}>
+		return html`<sl-card class=${classMap({installed, outdated, available, official, unimportable, local})}>
 			<sl-icon name="box-seam" slot="header"></sl-icon>
 			<sl-tooltip ?disabled=${!localPath} slot="header" @sl-show=${(e: any) => e.stopPropagation()} style="cursor: help">
 				<div slot="content">
@@ -535,7 +534,7 @@ export class PackageManager extends LitElement {
 			<span class="package-author" slot="header">${author}</span>
 			<code class="package-version" slot="header">
         ${version}
-        ${latest? html`<code class="package-latest">
+        ${outdated? html`<code class="package-latest">
           🠖${String(latest)}
         </code>`: null}
       </code>
@@ -556,7 +555,7 @@ export class PackageManager extends LitElement {
 					<ww-button name="watch" class="local circle" @click=${() => emitToggleWatch(name)} icon=${`bolt${watching? "-off": ""}`}></ww-button>
 				</sl-tooltip>
 			`: html`
-				<sl-button class="outdated" @click=${() => emitUpgradePackage(name, latest)} outline slot="footer" ?loading=${upgrading} ?disabled=${removing || adding || !latest} >
+				<sl-button class="outdated" @click=${() => emitUpgradePackage(name, latest!)} outline slot="footer" ?loading=${upgrading} ?disabled=${removing || adding || !outdated} >
 					${msg("Update")}
 				</sl-button>
 			`}
@@ -629,8 +628,8 @@ export class PackageManager extends LitElement {
         mergePackage: true
       }
       await this.store.packages.writeLocal(this.packageForm.localPath, pkg, options)
-      if(["import", "create"].includes(this.packageFormMode!) && !this.store.packages.isPackageImported(pkg.name)) {
-        await this.store.packages.addLocal(this.packageForm.localPath)
+      if(["import", "create"].includes(this.packageFormMode!) && !this.store.packages.packages[pkg.name]?.imported) {
+        await this.store.packages.add("link:" + this.packageForm.localPath)
         if(this.packageForm?.enableLiveReload) {
           await this.store.packages.toggleWatch(pkg.name)
         }
@@ -773,7 +772,7 @@ export class PackageManager extends LitElement {
 			{
 				key: "outdated" as const,
 				label: msg("Outdated"),
-				packages: this.packages.filter(pkg => pkg.latest),
+				packages: this.packages.filter(pkg => pkg.outdated),
 				emptyText: msg("No packages outdated")
 			},
 			{

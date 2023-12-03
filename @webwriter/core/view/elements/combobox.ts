@@ -15,7 +15,7 @@ export class Combobox extends SlInput implements DataInput {
     super()
     this.tabIndex = 0
     this.addEventListener("focus", e => this.active = true)
-    this.addEventListener("blur", e => {
+    this.addEventListener("focusout", e => {
       this.active = this.open = false
     })
     this.value = this.defaultValue = this.multiple? []: ""
@@ -119,6 +119,7 @@ export class Combobox extends SlInput implements DataInput {
       max-width: 100%;
       min-height: var(--sl-input-height-medium);
       padding: 0 var(--sl-input-spacing-medium);
+      padding-right: 0;
       background: white;
     }
 
@@ -166,11 +167,6 @@ export class Combobox extends SlInput implements DataInput {
       margin-bottom: 0.125rem;
     }
 
-    #open-button {
-      margin-left: auto;
-      background: transparent;
-    }
-
     #options {
       display: block;
       font-family: var(--sl-font-sans);
@@ -206,10 +202,14 @@ export class Combobox extends SlInput implements DataInput {
     }
 
     #toggle {
+      padding-right: var(--sl-input-spacing-medium);
+    }
+
+    #toggle::part(icon) {
       transition: transform 0.25s ease;
     }
 
-    :host([open]) #toggle {
+    :host([open]) #toggle::part(icon) {
       transform: rotate(180deg);
     }
 
@@ -288,8 +288,9 @@ export class Combobox extends SlInput implements DataInput {
   }
 
   handleOptionClick = (e: PointerEvent) => {
-    if(e.target instanceof SlOption) {
-      this.value = this.input.value = e.target.value
+    const option = (e.target as HTMLElement).closest("sl-option") as SlOption | null
+    if(option) {
+      this.value = this.input.value = option.value
       this.focus()
       this.open = false
       this.dispatchChange()
@@ -354,7 +355,7 @@ export class Combobox extends SlInput implements DataInput {
               variant="icon" 
               icon="chevron-down"
               @focus=${(e: Event) => e.stopPropagation()}
-              @click=${(e: Event) => {this.open = !this.open; e.stopPropagation()}}
+              @click=${(e: Event) => {this.open = !this.open; this.focus(); e.stopPropagation()}}
               @mousedown=${(e: Event) => {e.stopPropagation(); e.preventDefault()}}
             ></ww-button>
         </div>

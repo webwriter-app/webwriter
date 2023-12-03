@@ -6,7 +6,6 @@ import { customElement } from "lit/decorators.js"
 export * from "./configurator"
 export * from "./packagemanager"
 export * from "./keymapmanager"
-export * from "./packageform"
 
 @localized()
 @customElement("ww-settings")
@@ -19,26 +18,22 @@ export class Settings extends ViewModelMixin(LitElement, true) {
   }
 
 	PackageManager = () => {
-		const {packages, adding, removing, upgrading, fetching, resetting, add, remove, upgrade, fetchAll, viewAppDir, resetAppDir, addLocal, watching, openMain} = this.store.packages
+		const {packagesList, adding, removing, updating, loading, resetting, add, remove, update, load, viewAppDir, watching, open} = this.store.packages
 		const {setAndPersist} = this.settings
 
 		return html`<ww-package-manager
       .app=${this}
 			slot="pre-tab-panel-a"
-      .store=${this.store as any}
-			.packages=${packages as any}
-			.adding=${adding}
-			.removing=${removing}
-			.upgrading=${upgrading}
-			?loading=${fetching}
+      .store=${this.store}
+			.packages=${packagesList}
+			?loading=${loading}
 			?resetting=${resetting}
 			@ww-add-package=${(e: any) => add(e.detail.args)}
 			@ww-remove-package=${(e: any) => remove(e.detail.args)}
-			@ww-upgrade-package=${(e: any) => upgrade(e.detail.args)}
       @ww-edit-package=${(e: any) => e} 
-      @ww-open-package-code=${(e: any) => openMain(e.detail.name)} 
+      @ww-open-package-code=${(e: any) => open(e.detail.name)} 
 			@ww-toggle-watch=${(e: any) => setAndPersist("packages", "watching", {...watching, [e.detail.name]: !watching[e.detail.name]})}
-			@ww-refresh=${() => fetchAll(0)}
+			@ww-refresh=${() => load()}
 			@ww-open-app-dir=${() => viewAppDir()}></ww-package-manager>
 		</ww-package-manager>`
 	}
@@ -74,7 +69,7 @@ export class Settings extends ViewModelMixin(LitElement, true) {
       return null
     }
 		const {specs, values, specLabels, setAndPersist} = this.settings
-		const {fetchAll, viewAppDir, resetAppDir} = this.store.packages
+		const {viewAppDir} = this.store.packages
 		return html`
 			<ww-configurator
         .app=${this}
@@ -83,15 +78,11 @@ export class Settings extends ViewModelMixin(LitElement, true) {
 				.values=${values}
 				@ww-change=${(e: any) => setAndPersist(e.detail.groupKey, e.detail.key, e.detail.value)}
 			>
-				<span slot="pre-tab-a">
-					<span>${msg("Packages")}</span>
-				</span>
-				${this.PackageManager()}
 				<span slot="post-tab-a">
 					<span>${msg("Shortcuts")}</span>
 				</span>
 				${this.KeymapManager()}
-        <ww-button size="small" slot="post-tabs" variant="danger" outline class="title-button" @click=${() => resetAppDir()} confirm>
+        <ww-button size="small" slot="post-tabs" variant="danger" outline class="title-button" confirm>
         <span>${msg("Reset WebWriter")}</span>
           <span slot="confirm">${msg("Are you sure? This action can't be reversed, all your settings will be deleted and reset.")}</span>
         </ww-button>
