@@ -675,9 +675,8 @@
         "name",
         "version"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   },
-  "$schema": "https://json.schemastore.org/package.json",
-  "additionalProperties": true
+  "$schema": "https://json.schemastore.org/package.json"
 }
