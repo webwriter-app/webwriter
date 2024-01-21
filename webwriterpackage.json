@@ -669,6 +669,9 @@
               }
             ]
           }
+        },
+        "$schema": {
+          "type": "string"
         }
       },
       "required": [
