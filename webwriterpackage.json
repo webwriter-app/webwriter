@@ -678,5 +678,6 @@
       "additionalProperties": false
     }
   },
-  "$schema": "https://json.schemastore.org/package.json"
+  "$schema": "https://json.schemastore.org/package.json",
+  "additionalProperties": true
 }
