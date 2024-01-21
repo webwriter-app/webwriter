@@ -1,677 +1,682 @@
 {
-  "type": "object",
-  "properties": {
-    "name": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 214,
-      "allOf": [
-        {
-          "pattern": "(?![A-Z])"
-        },
-        {
-          "pattern": "(?!\\{|\\}|\\||\\\\|\\^|~|\\[|\\]|\\`)"
-        },
-        {
-          "pattern": "^(?!\\.|_)"
-        },
-        {
-          "pattern": "(?!\\s)"
-        },
-        {
-          "pattern": "(?!(\\)|\\()|\\'|\\!\\*)"
-        },
-        {
-          "pattern": "^(?!node_modules|favicon\\.ico).+$"
-        },
-        {
-          "pattern": "^(?!assert|buffer|child_process|cluster|console|constants|crypto|dgram|dns|domain|events|fs|http|https|module|net|os|path|punycode|querystring|readline|repl|stream|string_decoder|sys|timers|tls|tty|url|util|vm|zlib|freelist|v8|process|inspector|async_hooks|http2|perf_hooks|trace_events|worker_threads|node:test|wasi|diagnostics_channel).*$"
-        }
-      ]
-    },
-    "version": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {}
-      ]
-    },
-    "description": {
-      "type": "string"
-    },
-    "keywords": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "homepage": {
-      "type": "string",
-      "format": "uri"
-    },
-    "bugs": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "url": {
-              "type": "string",
-              "format": "uri"
-            },
-            "email": {
-              "type": "string",
-              "format": "email"
-            }
-          },
-          "required": [
-            "url"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "url": {
-              "type": "string",
-              "format": "uri"
-            },
-            "email": {
-              "type": "string",
-              "format": "email"
-            }
-          },
-          "required": [
-            "email"
-          ],
-          "additionalProperties": false
-        }
-      ]
-    },
-    "license": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {}
-      ]
-    },
-    "author": {
-      "anyOf": [
-        {
+  "$ref": "#/definitions/webwriterpackage",
+  "definitions": {
+    "webwriterpackage": {
+      "type": "object",
+      "properties": {
+        "name": {
           "type": "string",
-          "pattern": "^\\s*(?<name>.*?)(?:<(?<email>.+)>)?\\s*(?:\\((?<url>.+)\\))?\\s*$"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "name": {
-              "type": "string"
+          "minLength": 1,
+          "maxLength": 214,
+          "allOf": [
+            {
+              "pattern": "(?![A-Z])"
             },
-            "email": {
-              "type": "string"
+            {
+              "pattern": "(?!\\{|\\}|\\||\\\\|\\^|~|\\[|\\]|\\`)"
             },
-            "url": {
-              "type": "string"
+            {
+              "pattern": "^(?!\\.|_)"
+            },
+            {
+              "pattern": "(?!\\s)"
+            },
+            {
+              "pattern": "(?!(\\)|\\()|\\'|\\!\\*)"
+            },
+            {
+              "pattern": "^(?!node_modules|favicon\\.ico).+$"
+            },
+            {
+              "pattern": "^(?!assert|buffer|child_process|cluster|console|constants|crypto|dgram|dns|domain|events|fs|http|https|module|net|os|path|punycode|querystring|readline|repl|stream|string_decoder|sys|timers|tls|tty|url|util|vm|zlib|freelist|v8|process|inspector|async_hooks|http2|perf_hooks|trace_events|worker_threads|node:test|wasi|diagnostics_channel).*$"
             }
-          },
-          "required": [
-            "name"
-          ],
-          "additionalProperties": false
-        }
-      ]
-    },
-    "contributors": {
-      "type": "array",
-      "items": {
-        "$ref": "#/properties/author"
-      }
-    },
-    "funding": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
+          ]
+        },
+        "version": {
+          "anyOf": [
+            {
               "type": "string"
             },
-            "url": {
-              "type": "string",
-              "format": "uri"
-            }
-          },
-          "required": [
-            "type",
-            "url"
-          ],
-          "additionalProperties": false
+            {}
+          ]
         },
-        {
+        "description": {
+          "type": "string"
+        },
+        "keywords": {
           "type": "array",
           "items": {
-            "$ref": "#/properties/funding/anyOf/0"
+            "type": "string"
           }
-        }
-      ]
-    },
-    "files": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "main": {
-      "type": "string"
-    },
-    "browser": {
-      "type": "string"
-    },
-    "bin": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "string"
-      }
-    },
-    "man": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "directories": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "string"
-      }
-    },
-    "repository": {
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "url": {
-              "anyOf": [
-                {
+        },
+        "homepage": {
+          "type": "string",
+          "format": "uri"
+        },
+        "bugs": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "url": {
                   "type": "string",
                   "format": "uri"
                 },
-                {
+                "email": {
+                  "type": "string",
+                  "format": "email"
+                }
+              },
+              "required": [
+                "url"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "email": {
+                  "type": "string",
+                  "format": "email"
+                }
+              },
+              "required": [
+                "email"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "license": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {}
+          ]
+        },
+        "author": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^\\s*(?<name>.*?)(?:<(?<email>.+)>)?\\s*(?:\\((?<url>.+)\\))?\\s*$"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "email": {
+                  "type": "string"
+                },
+                "url": {
                   "type": "string"
                 }
-              ]
+              },
+              "required": [
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "contributors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/webwriterpackage/properties/author"
+          }
+        },
+        "funding": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              },
+              "required": [
+                "type",
+                "url"
+              ],
+              "additionalProperties": false
             },
-            "type": {
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/webwriterpackage/properties/funding/anyOf/0"
+              }
+            }
+          ]
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "main": {
+          "type": "string"
+        },
+        "browser": {
+          "type": "string"
+        },
+        "bin": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "man": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "directories": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "repository": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "url": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "type": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "url",
+                "type"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "scripts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "dependencies": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "propertyNames": {
+            "minLength": 1,
+            "maxLength": 214,
+            "allOf": [
+              {
+                "pattern": "(?![A-Z])"
+              },
+              {
+                "pattern": "(?!\\{|\\}|\\||\\\\|\\^|~|\\[|\\]|\\`)"
+              },
+              {
+                "pattern": "^(?!\\.|_)"
+              },
+              {
+                "pattern": "(?!\\s)"
+              },
+              {
+                "pattern": "(?!(\\)|\\()|\\'|\\!\\*)"
+              },
+              {
+                "pattern": "^(?!node_modules|favicon\\.ico).+$"
+              },
+              {
+                "pattern": "^(?!assert|buffer|child_process|cluster|console|constants|crypto|dgram|dns|domain|events|fs|http|https|module|net|os|path|punycode|querystring|readline|repl|stream|string_decoder|sys|timers|tls|tty|url|util|vm|zlib|freelist|v8|process|inspector|async_hooks|http2|perf_hooks|trace_events|worker_threads|node:test|wasi|diagnostics_channel).*$"
+              }
+            ]
+          }
+        },
+        "devDependencies": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "propertyNames": {
+            "minLength": 1,
+            "maxLength": 214,
+            "allOf": [
+              {
+                "pattern": "(?![A-Z])"
+              },
+              {
+                "pattern": "(?!\\{|\\}|\\||\\\\|\\^|~|\\[|\\]|\\`)"
+              },
+              {
+                "pattern": "^(?!\\.|_)"
+              },
+              {
+                "pattern": "(?!\\s)"
+              },
+              {
+                "pattern": "(?!(\\)|\\()|\\'|\\!\\*)"
+              },
+              {
+                "pattern": "^(?!node_modules|favicon\\.ico).+$"
+              },
+              {
+                "pattern": "^(?!assert|buffer|child_process|cluster|console|constants|crypto|dgram|dns|domain|events|fs|http|https|module|net|os|path|punycode|querystring|readline|repl|stream|string_decoder|sys|timers|tls|tty|url|util|vm|zlib|freelist|v8|process|inspector|async_hooks|http2|perf_hooks|trace_events|worker_threads|node:test|wasi|diagnostics_channel).*$"
+              }
+            ]
+          }
+        },
+        "peerDependencies": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "propertyNames": {
+            "minLength": 1,
+            "maxLength": 214,
+            "allOf": [
+              {
+                "pattern": "(?![A-Z])"
+              },
+              {
+                "pattern": "(?!\\{|\\}|\\||\\\\|\\^|~|\\[|\\]|\\`)"
+              },
+              {
+                "pattern": "^(?!\\.|_)"
+              },
+              {
+                "pattern": "(?!\\s)"
+              },
+              {
+                "pattern": "(?!(\\)|\\()|\\'|\\!\\*)"
+              },
+              {
+                "pattern": "^(?!node_modules|favicon\\.ico).+$"
+              },
+              {
+                "pattern": "^(?!assert|buffer|child_process|cluster|console|constants|crypto|dgram|dns|domain|events|fs|http|https|module|net|os|path|punycode|querystring|readline|repl|stream|string_decoder|sys|timers|tls|tty|url|util|vm|zlib|freelist|v8|process|inspector|async_hooks|http2|perf_hooks|trace_events|worker_threads|node:test|wasi|diagnostics_channel).*$"
+              }
+            ]
+          }
+        },
+        "bundleDependencies": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "propertyNames": {
+            "minLength": 1,
+            "maxLength": 214,
+            "allOf": [
+              {
+                "pattern": "(?![A-Z])"
+              },
+              {
+                "pattern": "(?!\\{|\\}|\\||\\\\|\\^|~|\\[|\\]|\\`)"
+              },
+              {
+                "pattern": "^(?!\\.|_)"
+              },
+              {
+                "pattern": "(?!\\s)"
+              },
+              {
+                "pattern": "(?!(\\)|\\()|\\'|\\!\\*)"
+              },
+              {
+                "pattern": "^(?!node_modules|favicon\\.ico).+$"
+              },
+              {
+                "pattern": "^(?!assert|buffer|child_process|cluster|console|constants|crypto|dgram|dns|domain|events|fs|http|https|module|net|os|path|punycode|querystring|readline|repl|stream|string_decoder|sys|timers|tls|tty|url|util|vm|zlib|freelist|v8|process|inspector|async_hooks|http2|perf_hooks|trace_events|worker_threads|node:test|wasi|diagnostics_channel).*$"
+              }
+            ]
+          }
+        },
+        "optionalDependencies": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "propertyNames": {
+            "minLength": 1,
+            "maxLength": 214,
+            "allOf": [
+              {
+                "pattern": "(?![A-Z])"
+              },
+              {
+                "pattern": "(?!\\{|\\}|\\||\\\\|\\^|~|\\[|\\]|\\`)"
+              },
+              {
+                "pattern": "^(?!\\.|_)"
+              },
+              {
+                "pattern": "(?!\\s)"
+              },
+              {
+                "pattern": "(?!(\\)|\\()|\\'|\\!\\*)"
+              },
+              {
+                "pattern": "^(?!node_modules|favicon\\.ico).+$"
+              },
+              {
+                "pattern": "^(?!assert|buffer|child_process|cluster|console|constants|crypto|dgram|dns|domain|events|fs|http|https|module|net|os|path|punycode|querystring|readline|repl|stream|string_decoder|sys|timers|tls|tty|url|util|vm|zlib|freelist|v8|process|inspector|async_hooks|http2|perf_hooks|trace_events|worker_threads|node:test|wasi|diagnostics_channel).*$"
+              }
+            ]
+          }
+        },
+        "engines": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {}
+            ]
+          }
+        },
+        "peerDependenciesMeta": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "optional": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "optional"
+            ],
+            "additionalProperties": false
+          },
+          "propertyNames": {
+            "minLength": 1,
+            "maxLength": 214,
+            "allOf": [
+              {
+                "pattern": "(?![A-Z])"
+              },
+              {
+                "pattern": "(?!\\{|\\}|\\||\\\\|\\^|~|\\[|\\]|\\`)"
+              },
+              {
+                "pattern": "^(?!\\.|_)"
+              },
+              {
+                "pattern": "(?!\\s)"
+              },
+              {
+                "pattern": "(?!(\\)|\\()|\\'|\\!\\*)"
+              },
+              {
+                "pattern": "^(?!node_modules|favicon\\.ico).+$"
+              },
+              {
+                "pattern": "^(?!assert|buffer|child_process|cluster|console|constants|crypto|dgram|dns|domain|events|fs|http|https|module|net|os|path|punycode|querystring|readline|repl|stream|string_decoder|sys|timers|tls|tty|url|util|vm|zlib|freelist|v8|process|inspector|async_hooks|http2|perf_hooks|trace_events|worker_threads|node:test|wasi|diagnostics_channel).*$"
+              }
+            ]
+          }
+        },
+        "overrides": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "propertyNames": {
+            "minLength": 1,
+            "maxLength": 214,
+            "allOf": [
+              {
+                "pattern": "(?![A-Z])"
+              },
+              {
+                "pattern": "(?!\\{|\\}|\\||\\\\|\\^|~|\\[|\\]|\\`)"
+              },
+              {
+                "pattern": "^(?!\\.|_)"
+              },
+              {
+                "pattern": "(?!\\s)"
+              },
+              {
+                "pattern": "(?!(\\)|\\()|\\'|\\!\\*)"
+              },
+              {
+                "pattern": "^(?!node_modules|favicon\\.ico).+$"
+              },
+              {
+                "pattern": "^(?!assert|buffer|child_process|cluster|console|constants|crypto|dgram|dns|domain|events|fs|http|https|module|net|os|path|punycode|querystring|readline|repl|stream|string_decoder|sys|timers|tls|tty|url|util|vm|zlib|freelist|v8|process|inspector|async_hooks|http2|perf_hooks|trace_events|worker_threads|node:test|wasi|diagnostics_channel).*$"
+              }
+            ]
+          }
+        },
+        "os": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(aix|darwin|freebsd|linux|openbsd|sunos|win32)$"
+          }
+        },
+        "arch": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(arm|arm64|ia32|mips|mipsel|ppc|ppc64|s390|s390x|x64)$"
+          }
+        },
+        "private": {
+          "type": "boolean"
+        },
+        "config": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "not": {}
+                  }
+                ]
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/webwriterpackage/properties/config/additionalProperties"
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/definitions/webwriterpackage/properties/config/additionalProperties"
+                }
+              }
+            ]
+          }
+        },
+        "publishConfig": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/webwriterpackage/properties/config/additionalProperties"
+          }
+        },
+        "workspaces": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "commonjs",
+            "module"
+          ]
+        },
+        "exports": {
+          "$ref": "#/definitions/webwriterpackage/properties/config/additionalProperties"
+        },
+        "imports": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
               "type": "string"
             }
           },
-          "required": [
-            "url",
-            "type"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "string"
-        }
-      ]
-    },
-    "scripts": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "string"
-      }
-    },
-    "dependencies": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "string"
-      },
-      "propertyNames": {
-        "minLength": 1,
-        "maxLength": 214,
-        "allOf": [
-          {
-            "pattern": "(?![A-Z])"
-          },
-          {
-            "pattern": "(?!\\{|\\}|\\||\\\\|\\^|~|\\[|\\]|\\`)"
-          },
-          {
-            "pattern": "^(?!\\.|_)"
-          },
-          {
-            "pattern": "(?!\\s)"
-          },
-          {
-            "pattern": "(?!(\\)|\\()|\\'|\\!\\*)"
-          },
-          {
-            "pattern": "^(?!node_modules|favicon\\.ico).+$"
-          },
-          {
-            "pattern": "^(?!assert|buffer|child_process|cluster|console|constants|crypto|dgram|dns|domain|events|fs|http|https|module|net|os|path|punycode|querystring|readline|repl|stream|string_decoder|sys|timers|tls|tty|url|util|vm|zlib|freelist|v8|process|inspector|async_hooks|http2|perf_hooks|trace_events|worker_threads|node:test|wasi|diagnostics_channel).*$"
-          }
-        ]
-      }
-    },
-    "devDependencies": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "string"
-      },
-      "propertyNames": {
-        "minLength": 1,
-        "maxLength": 214,
-        "allOf": [
-          {
-            "pattern": "(?![A-Z])"
-          },
-          {
-            "pattern": "(?!\\{|\\}|\\||\\\\|\\^|~|\\[|\\]|\\`)"
-          },
-          {
-            "pattern": "^(?!\\.|_)"
-          },
-          {
-            "pattern": "(?!\\s)"
-          },
-          {
-            "pattern": "(?!(\\)|\\()|\\'|\\!\\*)"
-          },
-          {
-            "pattern": "^(?!node_modules|favicon\\.ico).+$"
-          },
-          {
-            "pattern": "^(?!assert|buffer|child_process|cluster|console|constants|crypto|dgram|dns|domain|events|fs|http|https|module|net|os|path|punycode|querystring|readline|repl|stream|string_decoder|sys|timers|tls|tty|url|util|vm|zlib|freelist|v8|process|inspector|async_hooks|http2|perf_hooks|trace_events|worker_threads|node:test|wasi|diagnostics_channel).*$"
-          }
-        ]
-      }
-    },
-    "peerDependencies": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "string"
-      },
-      "propertyNames": {
-        "minLength": 1,
-        "maxLength": 214,
-        "allOf": [
-          {
-            "pattern": "(?![A-Z])"
-          },
-          {
-            "pattern": "(?!\\{|\\}|\\||\\\\|\\^|~|\\[|\\]|\\`)"
-          },
-          {
-            "pattern": "^(?!\\.|_)"
-          },
-          {
-            "pattern": "(?!\\s)"
-          },
-          {
-            "pattern": "(?!(\\)|\\()|\\'|\\!\\*)"
-          },
-          {
-            "pattern": "^(?!node_modules|favicon\\.ico).+$"
-          },
-          {
-            "pattern": "^(?!assert|buffer|child_process|cluster|console|constants|crypto|dgram|dns|domain|events|fs|http|https|module|net|os|path|punycode|querystring|readline|repl|stream|string_decoder|sys|timers|tls|tty|url|util|vm|zlib|freelist|v8|process|inspector|async_hooks|http2|perf_hooks|trace_events|worker_threads|node:test|wasi|diagnostics_channel).*$"
-          }
-        ]
-      }
-    },
-    "bundleDependencies": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "string"
-      },
-      "propertyNames": {
-        "minLength": 1,
-        "maxLength": 214,
-        "allOf": [
-          {
-            "pattern": "(?![A-Z])"
-          },
-          {
-            "pattern": "(?!\\{|\\}|\\||\\\\|\\^|~|\\[|\\]|\\`)"
-          },
-          {
-            "pattern": "^(?!\\.|_)"
-          },
-          {
-            "pattern": "(?!\\s)"
-          },
-          {
-            "pattern": "(?!(\\)|\\()|\\'|\\!\\*)"
-          },
-          {
-            "pattern": "^(?!node_modules|favicon\\.ico).+$"
-          },
-          {
-            "pattern": "^(?!assert|buffer|child_process|cluster|console|constants|crypto|dgram|dns|domain|events|fs|http|https|module|net|os|path|punycode|querystring|readline|repl|stream|string_decoder|sys|timers|tls|tty|url|util|vm|zlib|freelist|v8|process|inspector|async_hooks|http2|perf_hooks|trace_events|worker_threads|node:test|wasi|diagnostics_channel).*$"
-          }
-        ]
-      }
-    },
-    "optionalDependencies": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "string"
-      },
-      "propertyNames": {
-        "minLength": 1,
-        "maxLength": 214,
-        "allOf": [
-          {
-            "pattern": "(?![A-Z])"
-          },
-          {
-            "pattern": "(?!\\{|\\}|\\||\\\\|\\^|~|\\[|\\]|\\`)"
-          },
-          {
-            "pattern": "^(?!\\.|_)"
-          },
-          {
-            "pattern": "(?!\\s)"
-          },
-          {
-            "pattern": "(?!(\\)|\\()|\\'|\\!\\*)"
-          },
-          {
-            "pattern": "^(?!node_modules|favicon\\.ico).+$"
-          },
-          {
-            "pattern": "^(?!assert|buffer|child_process|cluster|console|constants|crypto|dgram|dns|domain|events|fs|http|https|module|net|os|path|punycode|querystring|readline|repl|stream|string_decoder|sys|timers|tls|tty|url|util|vm|zlib|freelist|v8|process|inspector|async_hooks|http2|perf_hooks|trace_events|worker_threads|node:test|wasi|diagnostics_channel).*$"
-          }
-        ]
-      }
-    },
-    "engines": {
-      "type": "object",
-      "additionalProperties": {
-        "anyOf": [
-          {
-            "type": "string"
-          },
-          {}
-        ]
-      }
-    },
-    "peerDependenciesMeta": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "object",
-        "properties": {
-          "optional": {
-            "type": "boolean"
+          "propertyNames": {
+            "pattern": "^\\#"
           }
         },
-        "required": [
-          "optional"
-        ],
-        "additionalProperties": false
-      },
-      "propertyNames": {
-        "minLength": 1,
-        "maxLength": 214,
-        "allOf": [
-          {
-            "pattern": "(?![A-Z])"
-          },
-          {
-            "pattern": "(?!\\{|\\}|\\||\\\\|\\^|~|\\[|\\]|\\`)"
-          },
-          {
-            "pattern": "^(?!\\.|_)"
-          },
-          {
-            "pattern": "(?!\\s)"
-          },
-          {
-            "pattern": "(?!(\\)|\\()|\\'|\\!\\*)"
-          },
-          {
-            "pattern": "^(?!node_modules|favicon\\.ico).+$"
-          },
-          {
-            "pattern": "^(?!assert|buffer|child_process|cluster|console|constants|crypto|dgram|dns|domain|events|fs|http|https|module|net|os|path|punycode|querystring|readline|repl|stream|string_decoder|sys|timers|tls|tty|url|util|vm|zlib|freelist|v8|process|inspector|async_hooks|http2|perf_hooks|trace_events|worker_threads|node:test|wasi|diagnostics_channel).*$"
-          }
-        ]
-      }
-    },
-    "overrides": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "string"
-      },
-      "propertyNames": {
-        "minLength": 1,
-        "maxLength": 214,
-        "allOf": [
-          {
-            "pattern": "(?![A-Z])"
-          },
-          {
-            "pattern": "(?!\\{|\\}|\\||\\\\|\\^|~|\\[|\\]|\\`)"
-          },
-          {
-            "pattern": "^(?!\\.|_)"
-          },
-          {
-            "pattern": "(?!\\s)"
-          },
-          {
-            "pattern": "(?!(\\)|\\()|\\'|\\!\\*)"
-          },
-          {
-            "pattern": "^(?!node_modules|favicon\\.ico).+$"
-          },
-          {
-            "pattern": "^(?!assert|buffer|child_process|cluster|console|constants|crypto|dgram|dns|domain|events|fs|http|https|module|net|os|path|punycode|querystring|readline|repl|stream|string_decoder|sys|timers|tls|tty|url|util|vm|zlib|freelist|v8|process|inspector|async_hooks|http2|perf_hooks|trace_events|worker_threads|node:test|wasi|diagnostics_channel).*$"
-          }
-        ]
-      }
-    },
-    "os": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "pattern": "^(aix|darwin|freebsd|linux|openbsd|sunos|win32)$"
-      }
-    },
-    "arch": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "pattern": "^(arm|arm64|ia32|mips|mipsel|ppc|ppc64|s390|s390x|x64)$"
-      }
-    },
-    "private": {
-      "type": "boolean"
-    },
-    "config": {
-      "type": "object",
-      "additionalProperties": {
-        "anyOf": [
-          {
+        "editingConfig": {
+          "type": "object",
+          "additionalProperties": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "object",
+                "properties": {
+                  "group": {
+                    "type": "string"
+                  },
+                  "inline": {
+                    "type": "boolean"
+                  },
+                  "selectable": {
+                    "type": "boolean"
+                  },
+                  "draggable": {
+                    "type": "boolean"
+                  },
+                  "code": {
+                    "type": "boolean"
+                  },
+                  "whitespace": {
+                    "type": "string",
+                    "enum": [
+                      "pre",
+                      "normal"
+                    ]
+                  },
+                  "definingAsContext": {
+                    "type": "boolean"
+                  },
+                  "definingForContent": {
+                    "type": "boolean"
+                  },
+                  "defining": {
+                    "type": "boolean"
+                  },
+                  "isolating": {
+                    "type": "boolean"
+                  },
+                  "content": {
+                    "type": "string"
+                  },
+                  "marks": {
+                    "type": "string"
+                  },
+                  "parts": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "cssCustomProperties": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "propertyNames": {
+                      "pattern": "^\\-\\-"
+                    }
+                  },
+                  "label": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "noDefaultSnippet": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
               },
               {
-                "type": "number"
-              },
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              },
-              {
-                "not": {}
-              }
-            ]
-          },
-          {
-            "type": "array",
-            "items": {
-              "$ref": "#/properties/config/additionalProperties"
-            }
-          },
-          {
-            "type": "object",
-            "additionalProperties": {
-              "$ref": "#/properties/config/additionalProperties"
-            }
-          }
-        ]
-      }
-    },
-    "publishConfig": {
-      "type": "object",
-      "additionalProperties": {
-        "$ref": "#/properties/config/additionalProperties"
-      }
-    },
-    "workspaces": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "type": {
-      "type": "string",
-      "enum": [
-        "commonjs",
-        "module"
-      ]
-    },
-    "exports": {
-      "$ref": "#/properties/config/additionalProperties"
-    },
-    "imports": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "object",
-        "additionalProperties": {
-          "type": "string"
-        }
-      },
-      "propertyNames": {
-        "pattern": "^\\#"
-      }
-    },
-    "editingConfig": {
-      "type": "object",
-      "additionalProperties": {
-        "anyOf": [
-          {
-            "type": "object",
-            "properties": {
-              "group": {
-                "type": "string"
-              },
-              "inline": {
-                "type": "boolean"
-              },
-              "selectable": {
-                "type": "boolean"
-              },
-              "draggable": {
-                "type": "boolean"
-              },
-              "code": {
-                "type": "boolean"
-              },
-              "whitespace": {
-                "type": "string",
-                "enum": [
-                  "pre",
-                  "normal"
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "additionalProperties": false
+                  }
                 ]
-              },
-              "definingAsContext": {
-                "type": "boolean"
-              },
-              "definingForContent": {
-                "type": "boolean"
-              },
-              "defining": {
-                "type": "boolean"
-              },
-              "isolating": {
-                "type": "boolean"
-              },
-              "content": {
-                "type": "string"
-              },
-              "marks": {
-                "type": "string"
-              },
-              "parts": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "cssCustomProperties": {
-                "type": "object",
-                "additionalProperties": {
-                  "type": "string"
-                },
-                "propertyNames": {
-                  "pattern": "^\\-\\-"
-                }
-              },
-              "label": {
-                "type": "object",
-                "additionalProperties": {
-                  "type": "string"
-                }
-              },
-              "noDefaultSnippet": {
-                "type": "boolean"
-              }
-            },
-            "additionalProperties": false
-          },
-          {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "label": {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "label": {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "additionalProperties": false
               }
             ]
           }
-        ]
-      }
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "additionalProperties": false
     }
   },
-  "required": [
-    "name",
-    "version"
-  ],
-  "additionalProperties": false,
-  "$schema": "http://json-schema.org/draft-07/schema#"
+  "$schema": "https://json.schemastore.org/package.json"
 }
