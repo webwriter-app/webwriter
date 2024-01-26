@@ -70,8 +70,4 @@ const ResourceSchema = z.object({
 })
 
 export type Resource = z.infer<typeof ResourceSchema>
-export const Resource = Object.assign(ResourceSchema, {
-  serialize(resource: Resource, format: Format = "html", bundle: any) {
-    return marshal[format].serialize(resource.editorState.doc, (resource.editorState as any).head$, bundle)
-  }
-})
+export const Resource = ResourceSchema
