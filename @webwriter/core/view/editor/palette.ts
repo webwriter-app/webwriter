@@ -488,6 +488,10 @@ export class Palette extends LitElement {
 
     #clipboard-card {
       grid-column: span 10;
+
+      &:hover {
+        color: var(--sl-color-primary-600);
+      }
     }
 
     #add-local {
