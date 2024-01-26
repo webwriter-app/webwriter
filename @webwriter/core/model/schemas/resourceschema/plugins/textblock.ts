@@ -132,8 +132,8 @@ export function wrapSelection(type: string | NodeType, attrs?: Attrs) {
       slice = selection.content()
     }
     else {
-      from = selection.$cursor?.before(1)!
-      to = selection.$cursor?.after(1)!
+      from = selection.$from?.before(1)!
+      to = selection.$from?.after(1)!
       const wrappingSelection = TextSelection.create(state.doc, from, to)
       slice = wrappingSelection.content()
     }
