@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/lit",
-  "version": "0.7.1",
+  "version": "1.5.2",
   "description": "Base classes for widget components with lit (WebWriter)",
   "main": "index.ts",
   "publishConfig": {
@@ -9,9 +9,8 @@
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "license": "MIT",
   "dependencies": {
-    "@open-wc/scoped-elements": "^2.2.0",
-    "@webwriter/model": "^0.4.1",
-    "lit": "^3.0.0"
+    "@open-wc/scoped-elements": "^3.0.3",
+    "lit": "^3.1.1"
   },
   "scripts": {
     "build": "vite build"

@@ -80,6 +80,8 @@ export class Person {
 
 export class SemVer extends NodeSemVer {
 
+  static pattern = semverPattern
+
   constructor(ver: string | SemVer | NodeSemVer, optionsOrLoose?: ConstructorParameters<typeof NodeSemVer>[1]) {
     super(ver, optionsOrLoose)
   }

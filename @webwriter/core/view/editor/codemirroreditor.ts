@@ -21,6 +21,10 @@ export class CodemirrorEditor extends LitElement implements ICodemirrorEditor {
   view: EditorView
   initialState: EditorState
   initialRoot: DocumentOrShadowRoot = this.shadowRoot!
+
+  constructor() {
+    super()
+  }
   
   @property({attribute: false})
   dispatchTransactions: (trs: readonly Transaction[], view: EditorView) => void
@@ -58,97 +62,97 @@ export class CodemirrorEditor extends LitElement implements ICodemirrorEditor {
 
   @property({attribute: false})
   get viewport() {
-    return this.view.viewport
+    return this.view?.viewport
   }
 
   @property({attribute: false})
   get visibleRanges() {
-    return this.view.visibleRanges
+    return this.view?.visibleRanges
   }
 
   @property({attribute: false})
   get inView() {
-    return this.view.inView
+    return this.view?.inView
   }
 
   @property({attribute: false})
   get composing() {
-    return this.view.composing
+    return this.view?.composing
   }
 
   @property({attribute: false})
   get compositionStarted() {
-    return this.view.compositionStarted
+    return this.view?.compositionStarted
   }
 
   @property({attribute: false})
   get dom() {
-    return this.view.dom
+    return this.view?.dom
   }
 
   @property({attribute: false})
   get scrollDOM() {
-    return this.view.scrollDOM
+    return this.view?.scrollDOM
   }
 
   @property({attribute: false})
   get contentDOM() {
-    return this.view.contentDOM
+    return this.view?.contentDOM
   }
 
   @property({attribute: false})
   get themeClasses() {
-    return this.view.themeClasses
+    return this.view?.themeClasses
   }
 
   @property({attribute: false})
   get documentTop() {
-    return this.view.documentTop
+    return this.view?.documentTop
   }
 
   @property({attribute: false})
   get documentPadding() {
-    return this.view.documentPadding
+    return this.view?.documentPadding
   }
 
   @property({attribute: false})
   get scaleX() {
-    return this.view.scaleX
+    return this.view?.scaleX
   }
 
   @property({attribute: false})
   get scaleY() {
-    return this.view.scaleY
+    return this.view?.scaleY
   }
 
   @property({attribute: false})
   get contentHeight() {
-    return this.view.contentHeight
+    return this.view?.contentHeight
   }
 
   @property({attribute: false})
   get defaultCharacterWidth() {
-    return this.view.defaultCharacterWidth
+    return this.view?.defaultCharacterWidth
   }
 
   @property({attribute: false})
   get defaultLineHeight() {
-    return this.view.defaultLineHeight
+    return this.view?.defaultLineHeight
   }
 
   @property({attribute: false})
   get textDirection() {
-    return this.view.textDirection
+    return this.view?.textDirection
   }
 
   @property({attribute: false})
   get lineWrapping() {
-    return this.view.lineWrapping
+    return this.view?.lineWrapping
   }
 
   @property({attribute: false})
   get hasFocus() {
-    return this.view.hasFocus
+    return this.view?.hasFocus
   }
 
   //@ts-expect-error: How to fix this?

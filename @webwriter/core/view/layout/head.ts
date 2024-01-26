@@ -108,7 +108,7 @@ export class Head extends LitElement {
 		return html`
 			${!unsaved? html`<sl-icon name=${iconName}></sl-icon>`: null}
 			<span id="filename">
-        <span>${filename}</span>
+        <span title=${filename}>${filename}</span>
         <span title=${msg("This explorable has unsaved changes.")} id="pending-indicator">${this.ioState === "idle"
           ? "*"
           : html`<sl-spinner></sl-spinner>`

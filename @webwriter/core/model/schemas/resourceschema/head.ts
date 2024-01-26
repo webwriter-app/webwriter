@@ -79,7 +79,7 @@ export const headSchema = new Schema(headSchemaSpec)
 const initialHeadDoc = () => headSchema.node("head", undefined, [
   headSchema.node("meta", {charset: "utf-8"}),
   headSchema.node("meta", {name: "generator", content: `webwriter@${webwriterPackage.version}`}),
-  headSchema.node("style", {data: {"data-ww-theme": "base"}}, headSchema.text(themes.base))
+  headSchema.node("style", {data: {"data-ww-theme": "base"}}, headSchema.text(themes.base.source))
 ])
 
 export function initialHeadState(doc=initialHeadDoc()) {
@@ -278,7 +278,7 @@ export function head(styles: string[], scripts: string[]) {
         script.type = "module"
         script.toggleAttribute("data-ww-editing")
         head.appendChild(script)
-        // window!.eval(scriptString)
+        window!.eval(scriptString)
       }
 
       return {

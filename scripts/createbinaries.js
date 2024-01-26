@@ -6,56 +6,76 @@ const fs = require('fs')
 const path = require('path')
 const child_process = require("child_process")
 
-const TRIPLES_OF_YARN = {
-  "yarn-win-x64": "x86_64-pc-windows-msvc",
-  "yarn-win-arm64": "aarch64-pc-windows-msvc",
-  "yarn-macos-x64": "x86_64-apple-darwin",
-  "yarn-macos-arm64": "aarch64-apple-darwin",
-  "yarn-linux-x64": "x86_64-unknown-linux-gnu",
-  "yarn-linux-arm64": "aarch64-unknown-linux-gnu",
+const TRIPLES = {
+  "@pnpm/win-x64/pnpm.exe": "pnpm-x86_64-pc-windows-msvc.exe",
+  //  "@pnpm/win-arm64": "aarch64-pc-windows-msvc",  // TODO: Not available yet
+  "@pnpm/macos-x64/pnpm": "pnpm-x86_64-apple-darwin",
+  "@pnpm/macos-arm64/pnpm": "pnpm-aarch64-apple-darwin",
+  "@pnpm/linux-x64/pnpm": "pnpm-x86_64-unknown-linux-gnu",
+  "@pnpm/linux-arm64/pnpm": "pnpm-aarch64-unknown-linux-gnu",
+  "@esbuild/win32-x64/esbuild.exe": "esbuild-x86_64-pc-windows-msvc.exe",
+  "@esbuild/win32-arm64/esbuild.exe": "esbuild-aarch64-pc-windows-msvc.exe",
+  "@esbuild/darwin-x64/bin/esbuild": "esbuild-x86_64-apple-darwin",
+  "@esbuild/darwin-arm64/bin/esbuild": "esbuild-aarch64-apple-darwin",
+  "@esbuild/linux-x64/bin/esbuild": "esbuild-x86_64-unknown-linux-gnu",
+  "@esbuild/linux-arm64/bin/esbuild": "esbuild-aarch64-unknown-linux-gnu",
 }
 
-const TRIPLES_OF_ESBUILD = {
-  "esbuild-windows-64": "x86_64-pc-windows-msvc",
-  "esbuild-windows-arm64": "aarch64-pc-windows-msvc",
-  "esbuild-darwin-64": "x86_64-apple-darwin",
-  "esbuild-darwin-arm64": "aarch64-apple-darwin",
-  "esbuild-linux-64": "x86_64-unknown-linux-gnu",
-  "esbuild-linux-arm64": "aarch64-unknown-linux-gnu",
+const ANALYZER_RENAME_MAP = {
+  "analyzer-win-x64.exe": "analyzer-x86_64-pc-windows-msvc.exe",
+  "analyzer-win-arm64.exe": "analyzer-aarch64-pc-windows-msvc.exe",
+  "analyzer-macos-x64": "analyzer-x86_64-apple-darwin",
+  "analyzer-macos-arm64": "analyzer-aarch64-apple-darwin",
+  "analyzer-linux-x64": "analyzer-x86_64-unknown-linux-gnu",
+  "analyzer-linux-arm64": "analyzer-aarch64-unknown-linux-gnu",
 }
 
-const PKG_PATH = path.normalize("./node_modules/pkg/lib-es5/bin.js")
-const YARN_PATH = path.normalize("./node_modules/yarn/")
-const YARN_ENTRYPOINT = path.join(YARN_PATH, "/lib/cli.js")
-const PKG_CONFIG = "{\"scripts\": \"lib/**/*\"}"
-const PKG_CONFIG_PATH = path.join(YARN_PATH, "pkg.json")
-const PKG_TARGETS = "node16-win-x64,node16-macos-x64,node16-linux-x64,node16-win-arm64,node16-macos-arm64,node16-linux-arm64"
-const BINARIES_DIR = path.normalize("./@webwriter/app-desktop/src-tauri/bin")
-const PKG_OUTPUT = path.join(BINARIES_DIR, "yarn")
+const PKG_PATH = path.resolve("./node_modules/@yao-pkg/pkg/lib-es5/bin.js")
+const PKG_TARGETS = "node20-win-x64,node20-macos-x64,node20-linux-x64,node20-win-arm64,node20-macos-arm64,node20-linux-arm64"
+const BINARIES_DIR = path.resolve("./@webwriter/app-desktop/src-tauri/bin")
+const PKG_OUTPUT = path.join(BINARIES_DIR, "analyzer")
 const PKG_EXTRA_FLAGS = "--no-bytecode --public-packages \"*\" --public"
+const ANALYZER_PATH = path.resolve("./node_modules/@custom-elements-manifest/analyzer")
+const ANALYZER_PATH_JS = path.resolve("./node_modules/@custom-elements-manifest/analyzer/index.js")
+const ANALYZER_PATH_BUNDLE = path.resolve("./node_modules/@custom-elements-manifest/analyzer/bundle.js")
+const ANALYZER_PATH_CONFIG = path.resolve("./node_modules/@custom-elements-manifest/analyzer/vite.config.js")
 
 async function main() {
   !fs.existsSync(BINARIES_DIR) && fs.mkdirSync(BINARIES_DIR, {recursive: true})
 
-  fs.writeFileSync(`${PKG_CONFIG_PATH}`, PKG_CONFIG)
-
-  child_process.execSync(`node ${PKG_PATH} ${YARN_ENTRYPOINT} --config ${PKG_CONFIG_PATH} --targets ${PKG_TARGETS} --output ${PKG_OUTPUT} ${PKG_EXTRA_FLAGS}`, {encoding: "utf8"})
-
-  for(const [binname, triple] of Object.entries(TRIPLES_OF_YARN)) {
-    const suffix = binname.includes("win")? ".exe": ""
-    fs.renameSync(
-      path.join(BINARIES_DIR, `${binname}${suffix}`),
-      path.join(BINARIES_DIR, `yarn-${triple}${suffix}`)
-    )
+  /*const viteConfig = {
+    build: {
+      target: "node20",
+      minify: false,
+      rollupOptions: {
+        input: ANALYZER_PATH_JS,
+        output: {
+          format: "cjs",
+          dir: ANALYZER_PATH,
+          entryFileNames: `bundle.js`
+        }
+      }
+    }
   }
+  const viteConfigString = `export default ${JSON.stringify(viteConfig)}`
+  fs.writeFileSync(ANALYZER_PATH_CONFIG, viteConfigString, {encoding: "utf8"})
+  child_process.execSync(`cd "${ANALYZER_PATH}" && vite build`, {encoding: "utf8"})
 
-  for(const [packagename, triple] of Object.entries(TRIPLES_OF_ESBUILD)) {
-    const prefix = !packagename.includes("windows")? "bin/": ""
-    const suffix = packagename.includes("windows")? ".exe": ""
-    if(fs.existsSync(`./node_modules/${packagename}`)) {
+  child_process.execSync(`node "${PKG_PATH}" "${ANALYZER_PATH_BUNDLE}" --targets ${PKG_TARGETS} --output "${PKG_OUTPUT}" ${PKG_EXTRA_FLAGS}`, {encoding: "utf8"})*/
+  /*
+  for(const [binname, triple] of Object.entries(ANALYZER_RENAME_MAP)) {
+    fs.renameSync(
+      path.join(BINARIES_DIR, binname),
+      path.join(BINARIES_DIR, triple)
+    )
+  }*/
+
+  for(const [binpath, triple] of Object.entries(TRIPLES)) {
+    const fullpath = `./@webwriter/app-desktop/node_modules/${binpath}`
+    if(fs.existsSync(fullpath)) {
       fs.copyFileSync(
-        `./node_modules/${packagename}/${prefix}esbuild${suffix}`,
-        path.join(BINARIES_DIR, `esbuild-${triple}${suffix}`)
+        fullpath,
+        path.join(BINARIES_DIR, triple)
       )
     }
   }

@@ -8,15 +8,19 @@
   "dependencies": {
     "@tauri-apps/api": "^1.2.0"
   },
-  "optionalDependencies": {
-    "esbuild-darwin-64": "^0.15.18",
-    "esbuild-darwin-arm64": "^0.15.18",
-    "esbuild-linux-64": "^0.15.18",
-    "esbuild-linux-arm64": "^0.15.18",
-    "esbuild-windows-64": "^0.15.18",
-    "esbuild-windows-arm64": "^0.15.18"
-  },
   "devDependencies": {
+    "@custom-elements-manifest/analyzer": "^0.9.0",
+    "@esbuild/darwin-arm64": "^0.19.12",
+    "@esbuild/darwin-x64": "^0.19.12",
+    "@esbuild/linux-arm64": "^0.19.12",
+    "@esbuild/linux-x64": "^0.19.12",
+    "@esbuild/win32-arm64": "^0.19.12",
+    "@esbuild/win32-x64": "^0.19.12",
+    "@pnpm/linux-arm64": "^8.12.0",
+    "@pnpm/linux-x64": "^8.12.0",
+    "@pnpm/macos-arm64": "^8.12.0",
+    "@pnpm/macos-x64": "^8.12.0",
+    "@pnpm/win-x64": "^8.12.0",
     "@tauri-apps/cli": "^1.3.1"
   }
 }

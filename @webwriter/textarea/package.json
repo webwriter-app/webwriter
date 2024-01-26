@@ -1,0 +1,25 @@
+{
+  "name": "@webwriter/textarea",
+  "version": "1.7.0",
+  "description": "Let the user enter text",
+  "keywords": [
+    "webwriter-widget"
+  ],
+  "license": "MIT",
+  "author": "Frederic Salmen    <frederic@fsalmen.de>",
+  "scripts": {},
+  "dependencies": {
+    "@open-wc/scoped-elements": "^3.0.3",
+    "@shoelace-style/shoelace": "^2.12.0",
+    "@webcomponents/scoped-custom-element-registry": "^0.0.9",
+    "@webwriter/lit": "^1.3.0",
+    "lit": "^3.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "exports": {
+    "./widgets/webwriter-textarea": "./widgets/webwriter-textarea.ts"
+  }
+}

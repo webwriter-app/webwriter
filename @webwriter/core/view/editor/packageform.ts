@@ -12,7 +12,7 @@ const RECOMMENDED_LICENSES = ["MIT", "ISC", "Apache-2.0", "BSD-2-Clause", "BSD-3
 @customElement("ww-package-form")
 export class PackageForm extends LitElement {
 
-  static optionKeys = ["generateLicense", "enableLiveReload", "preset"] as const
+  static optionKeys = ["generateLicense", "enableLiveReload", "preset", "localPath"] as const
 
   static get defaults() {return {
     name: "",
@@ -174,6 +174,10 @@ export class PackageForm extends LitElement {
     })) as typeof PackageForm.defaults
   }
 
+  get editingState() {
+    return {localPath: this.localPath, watching: this.enableLiveReload}
+  }
+
   set value(value: typeof PackageForm.defaults) {
     Object.keys(value).forEach(key => {
       (this as any)[key] = (value as any)[key]
@@ -213,7 +217,7 @@ export class PackageForm extends LitElement {
         required name="name"
         label="Package Name"
         ?validateAvailability=${!this.isImport}
-        validateCustomElementName
+        validateWebWriterPackageName
         help-text=${msg("Both the tag of your widget and the name of your NPM package")}
       ></ww-npmnameinput>
       <ww-semverinput

@@ -1,7 +1,7 @@
 import {LitElement, html, css, PropertyValueMap, PropertyDeclarations, TemplateResult} from "lit"
 import {customElement, property, query, queryAll, queryAsync} from "lit/decorators.js"
 import { localized, msg } from "@lit/localize"
-import { License, Locale, Person, deleteHeadElement, getHeadElement, getHeadElementAll, initialHeadState, moveHeadElement, setHeadAttributes, themes, upsertHeadElement } from "../../model"
+import { License, Locale, Person, ThemeEditingSettings, deleteHeadElement, getHeadElement, getHeadElementAll, initialHeadState, moveHeadElement, setHeadAttributes, themes, upsertHeadElement } from "../../model"
 import { EditorState } from "prosemirror-state"
 import { capitalizeWord, filterObject } from "../../utility"
 import {Node, Fragment, Attrs} from "prosemirror-model"
@@ -9,6 +9,7 @@ import { classMap } from "lit/directives/class-map.js"
 import { ifDefined } from "lit/directives/if-defined.js"
 import { DataInput, URLFileInput } from "../elements"
 import { SlDropdown } from "@shoelace-style/shoelace"
+import { App } from ".."
 
 
 type Field<T=any> = {
@@ -184,7 +185,7 @@ export class MetaEditor extends LitElement {
         display: none;
       }
 
-      .panel:not(#advanced) .label.fixed .delete, .panel:not(#advanced) .move, .panel:not(#advanced) .more {
+      .panel:not(.advanced) .label.fixed .delete, .panel:not(.advanced) .move, .panel:not(.advanced) .more {
         display: none;
       }
 
@@ -198,18 +199,18 @@ export class MetaEditor extends LitElement {
       }
 
       
-      #advanced[data-active] {
+      .advanced[data-active] {
         display: flex;
         flex-direction: column;
         align-items: stretch;
         gap: 3ch;
       }
 
-      #advanced[data-active] .add-information {
+      .advanced[data-active] .add-information {
         width: 100%;
       }
 
-      #advanced[data-active] .add-information::part(base) {
+      .advanced[data-active] .add-information::part(base) {
         display: grid;
         grid-template-columns: 1fr 1fr 1fr min-content;
       }
@@ -449,6 +450,68 @@ export class MetaEditor extends LitElement {
         gap: 1ch;
       }
 
+      #metrics-list {
+        list-style: none;
+        padding-left: 0;
+        display: flex;
+        flex-direction: row;
+        gap: 4ch;
+        width: 100%;
+        justify-content: space-around;
+        grid-column: span 2;
+
+        & li {
+          display: grid;
+          grid-template-rows: 1fr 1fr;
+          grid-template-columns: max-content max-content;
+          flex-direction: row;
+          align-items: center;
+          height: 48px;
+          gap: 4px;
+
+          & sl-icon {
+            width: 48px;
+            height: 48px;
+            grid-row: span 2;
+          }
+
+          & b {
+            font-size: 0.8rem;
+            font-weight: bolder;
+          }
+
+          & sl-format-bytes, & sl-format-number {
+            font-family: var(--sl-font-mono);
+            font-size: 0.8rem;
+          }
+        }
+      }
+
+      .theme-select::part(display-input) {
+        display: none;
+      }
+
+      .theme-select::part(combobox) {
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+        padding-left: 0;
+      }
+
+      .theme-option::part(label) {
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+      }
+
+      .theme-option[slot=prefix] code {
+        display: none;
+      }
+
+      .theme-option::part(checked-icon) {
+        display: none;
+      }
+
       @media only screen and (max-width: 800px) {
         .panel {
           display: flex;
@@ -467,6 +530,15 @@ export class MetaEditor extends LitElement {
 
   @property({type: Object, attribute: false})
   bodyAttrs: Attrs = {}
+
+  @property({type: Object, attribute: false})
+  app: App
+
+  @property({type: Object, attribute: false})
+  editorState: EditorState
+
+  @property({attribute: false, state: true})
+  advanced = false
   
   static elementIcons: Record<Field["element"], string | undefined> = {
     "link": "link",
@@ -824,7 +896,7 @@ export class MetaEditor extends LitElement {
       `}
       <sl-button id="meta" outline @click=${() => this.handleAddClick("meta")}>
         <sl-icon name="plus"></sl-icon>
-        ${full? msg("Meta"): msg("Information")}
+        ${full? msg("Meta"): msg("Metadata")}
       </sl-button>
       ${!full? null: html`
         <sl-dropdown placement="bottom-end">
@@ -870,7 +942,8 @@ export class MetaEditor extends LitElement {
   }
 
   setTheme(value: string) {
-    if(!(value in themes)) {
+    const allThemes = this.app.store.packages.allThemes as any
+    if(!(value in allThemes)) {
       throw Error(`${value} is not a theme`)
     }
     else {
@@ -878,7 +951,7 @@ export class MetaEditor extends LitElement {
         this.head$,
         "style",
         {data: {"data-ww-theme": value}},
-        this.head$.schema.text((themes as any)[value]),
+        this.head$.schema.text(allThemes[value].source),
         node => node.attrs?.data && node.attrs.data["data-ww-theme"] !== undefined
       ))
     }
@@ -937,10 +1010,17 @@ export class MetaEditor extends LitElement {
     const theme = style && node.attrs?.data["data-ww-theme"] !== undefined
     const classes = {"code-card": true, script, style, theme}
 
+    const allThemes = this.app.store.packages.allThemes
+
     const cardBodyLabel = html`
       <sl-icon name=${script? "code-dots": "brush"}></sl-icon>
       <span class="label">${this.getCodeLabel(node, classes)}</span>
     `
+
+    const themeOption = (id: string, theme: ThemeEditingSettings, slot?: string) => html`<sl-option class="theme-option" value=${id} slot=${ifDefined(slot)}>
+      <span>${theme?.label?._ ?? msg("Unnamed Theme")}</span>
+      <code>${id}</code>
+    </sl-option>`
 
     const cardBody = theme
       ? html`
@@ -948,10 +1028,9 @@ export class MetaEditor extends LitElement {
           ${cardBodyLabel}
         </header>
         <main>
-          <sl-select hoist value=${node.attrs.data["data-ww-theme"]} @sl-change=${(e: any) => this.setTheme(e.target.value)}>
-            ${Object.keys(themes).map(k => html`<sl-option value=${k}>
-              ${capitalizeWord(k)}
-            </sl-option>`)}
+          <sl-select class="theme-select" hoist value=${node.attrs.data["data-ww-theme"]} @sl-change=${(e: any) => this.setTheme(e.target.value)}>
+            ${Object.entries(allThemes).map(t => themeOption(...t))}
+            ${themeOption(node.attrs.data["data-ww-theme"], (allThemes as any)[node.attrs.data["data-ww-theme"]], "prefix")}
           </sl-select>
         </main>
       `: html`
@@ -1114,6 +1193,34 @@ export class MetaEditor extends LitElement {
     this.updateState(newState)
   }
 
+  Metrics() {
+    const {graphemeCount, wordCount, sentenceCount} = this.app.store.document
+    const lang = this.app.store.ui.locale
+    return html`<ul id="metrics-list">
+      <li>
+        <sl-icon name="binary"></sl-icon> 
+        <b>${msg("File Size")}</b>
+        <sl-format-bytes lang=${lang}></sl-format-bytes>
+      </li>
+      <li>
+        <sl-icon name="letter-c-small"></sl-icon> 
+        <b>${msg("Characters")}</b>
+        <sl-format-number value=${graphemeCount} lang=${lang}></sl-format-number>
+      </li>
+      <li>
+        <sl-icon name="letter-w-small"></sl-icon> 
+        <b>${msg("Words")}</b>
+        <sl-format-number value=${wordCount} lang=${lang}></sl-format-number>
+      </li>
+      <li>
+        <sl-icon name="letter-s-small"></sl-icon> 
+        <b>${msg("Sentences")}</b>
+        <sl-format-number value=${sentenceCount} lang=${lang}></sl-format-number>
+      </li>
+    </ul>
+    `
+  }
+
 	render() {
     const mainInformationFields = Object.values(MetaEditor.metaFields)
       .map(v => {
@@ -1129,24 +1236,31 @@ export class MetaEditor extends LitElement {
     return html`
       <nav>
         <div>
-          <sl-tab slot="nav" @click=${this.onClickTab} ?active=${this.activeTab === "meta"} panel="meta">${msg("Information")}</sl-tab>
-          <sl-tab slot="nav" @click=${this.onClickTab} ?active=${this.activeTab === "advanced"} panel="advanced">${msg("Advanced")}</sl-tab>
+          <sl-tab slot="nav" @click=${this.onClickTab} ?active=${this.activeTab === "meta"} panel="meta">${msg("Metadata")}</sl-tab>
+          <sl-tab slot="nav" @click=${this.onClickTab} ?active=${this.activeTab === "metrics"} panel="metrics">${msg("Metrics")}</sl-tab>
         </div>
         <div>
-          <ww-button id="more" variant="icon" icon="rotate" @click=${this.handleResetClick} title=${msg("Reset information, styles and scripts")}></ww-button>
+          <ww-button id="advanced" variant="icon" icon=${this.advanced? "badge-filled": "badge"} @click=${() => this.advanced = !this.advanced} title=${msg("Toggle advanced options")}></ww-button>
+          <ww-button id="reset" variant="icon" icon="rotate" @click=${this.handleResetClick} title=${msg("Reset information, styles and scripts")}></ww-button>
           <ww-button id="more" variant="icon" icon="dots-vertical" @click=${(e: any) => {e.stopImmediatePropagation(); this.editingNode = this.head$.doc; this.editingPos = 0}}></ww-button>
         </div>
       </nav>
       <div id="content">
-        <div id="meta" class="panel" ?data-active=${this.activeTab === "meta"}>
-          ${themeCode}
-          ${mainInformationFields}
-          ${otherInformationFields}
-          ${this.AddInformationButton()}
+        <div id="meta" class=${"panel" + (this.advanced? " advanced": "")} ?data-active=${this.activeTab === "meta"}>
+          ${this.advanced? html`
+            ${this.allNodes.map(({node, pos}) => this.NodeElement(node, pos))}
+            ${this.AddInformationButton(true)}
+          `: html`
+            ${themeCode}
+            ${mainInformationFields}
+            ${otherInformationFields}
+            ${this.AddInformationButton()}
+          `}
         </div>
-        <div id="advanced" class="panel" ?data-active=${this.activeTab === "advanced"}>
-          ${this.allNodes.map(({node, pos}) => this.NodeElement(node, pos))}
-          ${this.AddInformationButton(true)}
+        <div id="assets" class="panel" ?data-active=${this.activeTab === "assets"}>
+        </div>
+        <div id="metrics" class="panel" ?data-active=${this.activeTab === "metrics"}>
+          ${this.Metrics()}
         </div>
       </div>
       <ww-attributesdialog

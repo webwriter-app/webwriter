@@ -3,7 +3,7 @@ import { DataInput } from ".";
 import { customElement, property } from "lit/decorators.js";
 import { SlInput } from "@shoelace-style/shoelace";
 import { localized, msg } from "@lit/localize";
-import { CustomElementName, NpmName } from "../../../model";
+import { CustomElementName, NpmName, WebWriterPackageName } from "../../../model";
 import { unscopePackageName } from "../../../utility";
 import { ZodError } from "zod";
 
@@ -14,6 +14,9 @@ export class NpmNameInput extends SlInput implements DataInput {
 
   @property({type: String, attribute: true})
   value: string = ""
+
+  @property({type: Boolean, attribute: true})
+  validateWebWriterPackageName = false
 
   @property({type: Boolean, attribute: true})
   validateCustomElementName = false
@@ -37,9 +40,10 @@ export class NpmNameInput extends SlInput implements DataInput {
   validate() {
     let validity = ""
     try {
-      NpmName.parse(this.value)
-      const name = unscopePackageName(this.value)
-      this.validateCustomElementName && CustomElementName.parse(name)
+      const name = NpmName.parse(this.value)
+      const unscoped = unscopePackageName(name)
+      this.validateCustomElementName && CustomElementName.parse(unscoped)
+      this.validateWebWriterPackageName && WebWriterPackageName.parse(name)
     }
     catch(err: any) {
       validity = err.message

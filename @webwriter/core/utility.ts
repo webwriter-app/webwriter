@@ -58,9 +58,10 @@ export function unscopePackageName(name: string) {
  * Returns a WebWriter npm package name without the scope, if present, without the segment before the first dash, and capitalized. ("@webwriter/ww-figure" -> "Figure")
  * @param name WebWriter npm package name
  * @param capitalize Either "all", "first" or undefined, capitalizing either all words, only the first, or none. 
+ * @param dropLeading If true, ignore the first part of the name, e.g. "webwriter-textarea" -> "Textarea". 
  */
-export function prettifyPackageName(name: string, capitalize: "all" | "first" = "all") {
-  let nameParts = unscopePackageName(name)?.split("-").slice(1) ?? []
+export function prettifyPackageName(name: string, capitalize: "all" | "first" = "all", dropLeading=false) {
+  let nameParts = unscopePackageName(name)?.split("-").slice(dropLeading? 1: 0) ?? []
   if(capitalize === "all") {
     return nameParts.map(capitalizeWord).join(" ")
   }
@@ -377,4 +378,8 @@ export function idle(ms: number) {
 
 export function disjunctPipe<A extends ZodSchema, B extends ZodSchema>(a: A, b: B) {
   return a.pipe(b).or(b)
+}
+
+export function escapeRegex(str: string) {
+  return str.replace(/[/\-\\^$*+?.()|[\]{}]/g, '\\$&')
 }

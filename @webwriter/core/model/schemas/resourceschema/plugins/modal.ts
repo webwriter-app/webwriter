@@ -69,11 +69,6 @@ export const modalPlugin = () => ({
     "Enter": selectDetailsContent(true),
     "ArrowDown": selectDetailsContent(),
     "Backspace": (state, dispatch, view) => {
-      const {selection, doc} = state
-      const [summaryPos, summary] = ancestorOfType(selection.$from, "summary")
-      if(summary && selection.from === summaryPos) {
-        
-      }
       /*
       console.log(getNodePath(selection.$from), getPosPath(selection.$from))
       const [detailsPos, details] = ancestorOfType(selection.$from, "details")

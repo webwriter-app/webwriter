@@ -15,8 +15,8 @@ function prettifyPackageName(name: string, capitalizeFirstLetter=true) {
   return capitalizeFirstLetter? coreName.charAt(0).toUpperCase() + coreName.slice(1): coreName
 }
 
-@customElement("ww-analyzer")
-export class WwAnalyzer extends LitElementWw {
+@customElement("webwriter-analyzer")
+export class WebwriterAnalyzer extends LitElementWw {
 
   parentElement: HTMLElement;
 

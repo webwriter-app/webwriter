@@ -156,12 +156,6 @@ export class Configurator extends LitElement {
     const keys = Object.keys(this.specs)
     return html`
       <sl-tab-group>
-        <sl-tab active slot="nav" panel="pre-a" @click=${() => this.tabGroup.show("pre-a")}>
-          <slot name="pre-tab-a"></slot>
-        </sl-tab>
-        <sl-tab-panel name="pre-a" active>
-          <slot name="pre-tab-panel-a"></slot>
-        </sl-tab-panel>
         ${keys.map(k => Configurator.SettingGroup(k, this.specs[k], this.values[k], this.emitChange, this.specLabels[k]))}
         <sl-tab slot="nav" panel="post-a" @click=${() => this.tabGroup.show("post-a")}>
           <slot name="post-tab-a"></slot>

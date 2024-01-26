@@ -1,8 +1,10 @@
 import {z} from "zod"
 
-import { CustomElementManifest } from "./customelementsmanifest";
-import {ContentExpression} from ".."
 import { Person, License, SemVer, SemVerRange } from "../datatypes";
+import { ValueDefinition } from "../valuedefinition";
+import { filterObject } from "../../../utility";
+
+export * from "./customelementsmanifest"
 
 const NODE_BUILTINS = [
   'assert',
@@ -138,16 +140,61 @@ const Repository = z.object({
 })
 .or(z.string())
 
-export type EditingConfig = z.infer<typeof EditingConfig>
-export const EditingConfig = z.object({
-  content: z
-    .record(z.string(), ContentExpression)
-    .or(ContentExpression.transform(arg => ({"": arg})))
-    .default({})
-    .optional(),
+type WidgetExportKey = `./widgets/${string}`
+const WidgetExportKey = z.string().startsWith("./widgets/")
+type SnippetExportKey = `./snippets/${string}`
+const SnippetExportKey = z.string().startsWith("./snippets/")
+type ThemeExportKey = `./themes/${string}`
+const ThemeExportKey = z.string().startsWith("./themes/")
+type ExportKey = WidgetExportKey | SnippetExportKey | ThemeExportKey
+const ExportKey = WidgetExportKey.or(SnippetExportKey).or(ThemeExportKey)
+type CSSCustomPropertyName = `--${string}`
+const CSSCustomPropertyName = z.string().startsWith("--")
+
+export type WidgetEditingSettings = z.infer<typeof WidgetEditingSettings>
+export const WidgetEditingSettings = z.object({
+  group: z.string().optional(),
+  inline: z.boolean().optional(),
+  selectable: z.boolean().optional(),
+  draggable: z.boolean().optional(),
+  code: z.boolean().optional(),
+  whitespace: z.enum(["pre", "normal"]).optional(),
+  definingAsContext: z.boolean().optional(),
+  definingForContent: z.boolean().optional(),
+  defining: z.boolean().optional(),
+  isolating: z.boolean().optional(),
+  content: z.string().optional(), // TODO: Validate content expressions in pkg
+  marks: z.string().optional(),
+  parts: z.array(z.string()).optional(),
+  cssCustomProperties: z.record(CSSCustomPropertyName, ValueDefinition).optional(),
+  label: z.record(z.string()).optional(),
+  noDefaultSnippet: z.boolean().optional()
 })
 
-export type FileURL = z.infer<typeof EditingConfig>
+export type SnippetEditingSettings = z.infer<typeof SnippetEditingSettings>
+export const SnippetEditingSettings = z.object({
+  label: z.record(z.string()).optional()
+})
+
+export type ThemeEditingSettings = z.infer<typeof ThemeEditingSettings>
+export const ThemeEditingSettings = z.object({
+  label: z.record(z.string()).optional()
+})
+
+export type PackageEditingSettings = z.infer<typeof PackageEditingSettings>
+export const PackageEditingSettings = z.object({
+  label: z.record(z.string()).optional(),
+  description: z.record(z.string()).optional(),
+  manual: z.record(z.string()).optional(),
+
+})
+
+export type EditingSettings = WidgetEditingSettings | SnippetEditingSettings | ThemeEditingSettings
+
+export type EditingConfig = z.infer<typeof EditingConfig>
+export const EditingConfig = z.record(ExportKey, WidgetEditingSettings.or(ThemeEditingSettings.or(SnippetEditingSettings))).and(z.object({".": PackageEditingSettings.optional()}))
+
+export type FileURL = z.infer<typeof FileURL>
 export const FileURL = z.string().url().startsWith("file")
 
 export type CustomElementName = z.infer<typeof CustomElementName>
@@ -157,10 +204,19 @@ export const CustomElementName = z
   .refine(x => !RESERVED_CUSTOM_ELEMENT_NAMES.includes(x))
 
 
+export type WebWriterPackageName = z.infer<typeof WebWriterPackageName>
+export const WebWriterPackageName = z.string()
+  .startsWith("@", {message: "Must be a scoped name (starting with '@')"})
+  .pipe(NpmName)
+
+
+export type MemberSettings = {name: string} & ((SnippetEditingSettings | ThemeEditingSettings) & {source: string} | WidgetEditingSettings)
+
+
 export interface Package extends z.infer<typeof Package.objectSchema> {}
 export class Package {
 
-  static objectSchema = z.object({
+  static coreObjectSchema = z.object({
     name: NpmName,
     version: SemVer.schema,
     description: z.string().optional(),
@@ -197,14 +253,17 @@ export class Package {
     exports: Json.optional(),
     imports: z.record(z.string().startsWith("#"), z.record(z.string())).optional(),
     editingConfig: EditingConfig.optional(),
-    watching: z.boolean().optional().default(false),
-    localPath: z.string().optional(),
-    installed: z.boolean().optional(),
-    latest: SemVer.schema.optional(),
-    importError: z.string().optional(),
-    customElements: CustomElementManifest.optional()
+    // customElements: CustomElementsManifest.optional()
   })
-  .catchall(Json)
+
+  static objectSchema = this.coreObjectSchema
+    .catchall(Json)
+    .transform(obj => {
+      const coreShape = this.coreObjectSchema.shape
+      const core = filterObject(obj, key => key in coreShape)
+      const rest = filterObject(obj, key => !(key in coreShape))
+      return {...core, _: rest} as unknown as z.infer<typeof this.coreObjectSchema> & {_: Json}
+    })
 
   static schema = this.objectSchema.transform(x => Object.assign(Object.create(this.prototype), x))
 
@@ -213,31 +272,26 @@ export class Package {
     return new Package({name: id.slice(0, i), version: id.slice(i + 1)})
   }
 
-  constructor(pkg: Package | z.input<typeof Package.objectSchema> & Record<string, any>) {
+  static coreKeys = Object.keys(this.coreObjectSchema.shape) as unknown as keyof typeof this.coreObjectSchema.shape
+
+  constructor(pkg: Package | z.input<typeof Package.objectSchema> & Record<string, any>, editingState?: Partial<Pick<Package, "watching" | "localPath" | "installed" | "latest" | "members">>) {
     return pkg instanceof Package
-      ? pkg
-      : Package.schema.parse(pkg)
+      ? Object.assign(pkg, editingState)
+      : Object.assign(Package.schema.parse(pkg), editingState)
   }
 
-  static optionKeys = [
-    "id",
-    "installed",
-    "outdated",
-    "imported",
-    "watching",
-    "reloadCount",
-    "localPath",
-    "importError",
-    "jsSize",
-    "cssSize"
-  ]
+  watching?: boolean = false
+  localPath?: string
+  installed?: boolean
+  latest?: SemVer
+  members: Record<string, MemberSettings> = {}
 
   toString() {
     return this.id
   }
 
   toJSON() {
-    const keys = Object.getOwnPropertyNames(this).filter(k => !Package.optionKeys.includes(k))
+    const keys = Object.getOwnPropertyNames(this).filter(k => Package.coreKeys.includes(k))
     return Object.fromEntries(keys.map(key => {
       const value = (this as any)[key]
         return [key, value]
@@ -246,6 +300,11 @@ export class Package {
 
   get id() {
     return `${this.name}@${this.version}`
+  }
+
+  get nameParts() {
+    const [scope, name] = this.name.startsWith("@")? this.name.slice(1).split("/"): [undefined, this.name]
+    return {scope, name}
   }
 
   get outdated() {
@@ -267,7 +326,23 @@ export class Package {
     }
   }
 
+  get widgets() {
+    return filterObject(this.members, k => k.startsWith("./widgets/"))
+  }
+
+  get snippets() {
+    return filterObject(this.members, k => k.startsWith("./snippets/"))
+  }
+
+  get themes() {
+    return filterObject(this.members, k => k.startsWith("./themes/"))
+  }
+
+  get packageEditingSettings(): EditingSettings | undefined {
+    return (this?.exports as any ?? {})["."]
+  }
+
   extend(extraProperties: Partial<Package>) {
-    return new Package({...this, ...extraProperties})
+    return Object.assign(new Package(this), extraProperties)
   }
 }

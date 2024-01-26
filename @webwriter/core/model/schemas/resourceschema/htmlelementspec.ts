@@ -167,13 +167,14 @@ const styleSpec: AttributeSpec & Record<string, any> = {
 }
 
 export function toAttributes(node: Node | Attrs, extraAttrs?: Attrs) {
+  node?.type?.name === "video" && console.log("toAttributes", node)
   const complex = node instanceof Node || node instanceof Mark
   const outputAttrs = {} as Record<string, string>
   const attrs = complex? {...node.attrs, ...extraAttrs}: {...node, ...extraAttrs}
   const attrSpec: (k: string) => AttributeSpec & {private?: boolean} | undefined = (k: string) => complex? (node.type?.spec?.attrs ?? {})[k]: {}
   for (const [k, v] of Object.entries(attrs)) {
     const spec = attrSpec(k)
-    if(k !== "data" && v && (spec?.default !== v) && !spec?.private) {
+    if(k !== "data" && v !== null && v !== undefined && v !== false && (spec?.default !== v) && !spec?.private) {
       outputAttrs[k] = Array.isArray(v)? v.join(" "): v 
     }
     if(k === "data") {
@@ -182,6 +183,7 @@ export function toAttributes(node: Node | Attrs, extraAttrs?: Attrs) {
       }
     }
   }
+  node?.type?.name === "video" && console.log("toAttributes", outputAttrs)
   return outputAttrs
 }
 
@@ -225,6 +227,7 @@ export function getAttrs(dom: HTMLElement | string, getDeprecated=true) {
         attrs[k] = Array.isArray(v)? v.split(" "): v
       }
     }
+    console.log(attrs)
     return attrs
   }
 }
@@ -234,7 +237,7 @@ export function HTMLElementSpec({tag, content, marks, group, inline, atom, attrs
   return {
     content,
     marks,
-    group: !phrasingContent? group: "_phrase* | " + group,
+    group,
     inline,
     atom,
     attrs: {...globalHTMLAttributes, ...attrs},

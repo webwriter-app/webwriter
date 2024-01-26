@@ -2,7 +2,7 @@ import { EditorState, NodeSelection, TextSelection } from "prosemirror-state";
 import { SchemaPlugin, parseStyleAttrs, serializeStyleAttrs, styleAttrs } from ".";
 import { ProsemirrorEditor } from "../../../../view";
 import { camelCaseToSpacedCase, range } from "../../../../utility";
-import { chainCommands, createParagraphNear, deleteSelection, joinBackward, lift, liftEmptyBlock, selectParentNode } from "prosemirror-commands";
+import { chainCommands, createParagraphNear, deleteSelection, joinBackward, joinTextblockBackward, lift, liftEmptyBlock, selectParentNode } from "prosemirror-commands";
 import {Node, NodeType, Attrs, Slice, Fragment} from "prosemirror-model"
 import { ContentExpression, ParentedExpression } from "../../contentexpression";
 import { HTMLElementSpec } from "../htmlelementspec";
@@ -191,7 +191,12 @@ export const textblockPlugin = () => ({
   keymap: {
     "Backspace": (state, dispatch, view) => {
       const {selection, doc, tr} = state
-      if(selection.empty && selection.from === 1) {
+      const $pos = selection.$from
+      const k = $pos.parentOffset
+      const indices = [...range(0, $pos.depth).map(d => $pos.index(d)), k]
+      const isAtStartOfFirstBranch = indices.every(i => i === 0)
+      const isEmptyFirstP = $pos.node().type.name === "p" && $pos.depth === 1
+      if(isAtStartOfFirstBranch && selection.empty && !isEmptyFirstP) {
         return wrapSelection("p")(state, dispatch, view)
       }
       else {

@@ -152,12 +152,14 @@ export const mediaPlugin = () => ({
     picture: HTMLElementSpec({
       tag: "picture",
       group: "flow embedded",
-      content: "(source | scriptsupporting)* img"
+      content: "(source | scriptsupporting)* img",
+      atom: true
     }),
     audio: HTMLElementSpec({
       tag: "audio",
       group: "flow embedded interactive palpable",
       content: "(source | track)* flow*",
+      atom: true,
       attrs: {
         autoplay: {default: undefined},
         controls: {default: undefined},
@@ -173,6 +175,7 @@ export const mediaPlugin = () => ({
       tag: "video",
       group: "flow embedded interactive palpable",
       content: "source* flow*",
+      atom: true,
       attrs: {
         autoplay: {default: undefined},
         controls: {default: undefined},
@@ -194,6 +197,7 @@ export const mediaPlugin = () => ({
       tag: "object",
       group: "flow embedded palpable interactive listed submittable formassociated",
       content: "flow*",
+      atom: true,
       attrs: {
         data: {default: undefined},
         form: {default: undefined},
@@ -207,6 +211,7 @@ export const mediaPlugin = () => ({
     embed: HTMLElementSpec({
       tag: "embed",
       group: "flow embedded interactive palpable", // phrasing
+      atom: true,
       attrs: {
         height: {default: undefined},
         src: {default: undefined},
@@ -217,6 +222,7 @@ export const mediaPlugin = () => ({
     iframe: HTMLElementSpec({
       tag: "iframe",
       group: "flow embedded interactive palpable", // phrasing
+      atom: true,
       attrs: {
         allow: {default: undefined},
         allowfullscreen: {default: undefined},
@@ -236,6 +242,7 @@ export const mediaPlugin = () => ({
     portal: HTMLElementSpec({
       tag: "portal",
       group: "flow embedded",
+      atom: true,
       attrs: {
         referrerpolicy: {default: undefined},
         src: {default: undefined},

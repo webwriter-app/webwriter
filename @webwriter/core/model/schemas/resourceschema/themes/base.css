@@ -88,3 +88,24 @@ details {
 details p {
   margin: 0;
 }
+
+picture {
+  width: 100%;
+  display: block;
+}
+
+iframe, audio, video {
+  width: 100%;
+  aspect-ratio: 16/9;
+}
+
+iframe {
+  border: none;
+}
+
+img[src] {
+  width: 100%;
+  aspect-ratio: auto;
+  max-height: 500px;
+  object-fit: contain;
+}

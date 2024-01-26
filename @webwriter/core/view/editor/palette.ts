@@ -8,7 +8,7 @@ import {Directive, PartInfo, directive, ElementPart} from "lit/directive.js"
 
 import { Package, watch } from "../../model"
 import { unscopePackageName, prettifyPackageName, camelCaseToSpacedCase } from "../../utility"
-import { SlProgressBar } from "@shoelace-style/shoelace"
+import { SlDropdown, SlInput, SlMenu, SlPopup, SlProgressBar } from "@shoelace-style/shoelace"
 import { Command } from "../../viewmodel"
 import { App, PackageForm } from ".."
 import { regex } from "parsimmon"
@@ -60,6 +60,11 @@ class FlipDirective extends Directive {
   }
 }
 
+// TODO: Add UI for any set of widgets/snippets/themes in package
+// TODO: Rework documentation for new widget system
+// TODO: Publish new @webwriter/lit
+// TODO: Implement webwriter-slides as an example
+
 
 @customElement("ww-palette")
 export class Palette extends LitElement {
@@ -67,8 +72,8 @@ export class Palette extends LitElement {
   @property({attribute: false})
   app: App
 
-	emitChangeWidget = (name: string) => {
-		this.dispatchEvent(new CustomEvent("ww-change-widget", {composed: true, bubbles: true, detail: {name: unscopePackageName(name)}}))
+	emitInsert = (pkgID: string, name: string) => {
+		this.dispatchEvent(new CustomEvent("ww-insert", {composed: true, bubbles: true, detail: {pkgID, name}}))
 	}
 
   emitAddWidget = (name: string) => {
@@ -135,6 +140,7 @@ export class Palette extends LitElement {
       z-index: 10000;
 			padding: 0 10px;
       margin-left: auto;
+      padding-bottom: 5px;
       gap: 5px;
       grid-auto-flow: row dense;
       max-height: 100%;
@@ -262,7 +268,7 @@ export class Palette extends LitElement {
         position: relative;
       }
 
-      &:not(.pinned):not(:hover) {
+      &:not(.installed):not(:hover) {
         color: var(--sl-color-gray-400);
         &::part(base) {
           background: var(--sl-color-gray-50);
@@ -270,11 +276,11 @@ export class Palette extends LitElement {
         }
       }
 
-      &.pinned:not(.error):hover .title {
+      &.installed:not(.error) .title:hover {
         color: var(--sl-color-primary-600);
       }
 
-      &:not(.pinned):hover {
+      &:not(.installed):hover {
         color: var(--sl-color-success-700);
       }
 
@@ -282,7 +288,7 @@ export class Palette extends LitElement {
         display: none;
       }
 
-      &:is(.pinned, :hover) .manage-controls {
+      &:is(.installed, :hover) .manage-controls {
         background: rgba(255, 255, 255, 0.85);
       }
 
@@ -295,7 +301,7 @@ export class Palette extends LitElement {
         justify-content: flex-end;
         align-items: stretch;
         height: 100%;
-        padding-right: 5px;
+        margin-right: 5px;
       }
 
       & .manage::part(icon) {
@@ -307,11 +313,11 @@ export class Palette extends LitElement {
         padding: 0;
       }
 
-      &.pinned .pin::part(base):hover, &.pinned:has(.pin:hover) .title {
+      &.installed .pin::part(base):hover, &.installed:has(.pin:hover) .title {
         color: var(--sl-color-danger-700) !important;
       }
 
-      &:not(.pinned) .pin::part(base):hover, &:not(.pinned):has(.pin:hover) .title {
+      &:not(.installed) .pin::part(base):hover, &:not(.installed):has(.pin:hover) .title {
         color: var(--sl-color-success-700) !important;
       }
 
@@ -319,7 +325,7 @@ export class Palette extends LitElement {
         color: var(--sl-color-warning-700) !important;
       }
 
-      &:not(.pinned):hover :is(.title, .pin::part(base):hover) {
+      &:not(.installed):hover :is(.title, .pin::part(base):hover) {
         color: var(--sl-color-success-700) !important;
       }
 
@@ -339,8 +345,19 @@ export class Palette extends LitElement {
         font-weight: bold;
       }
 
-      &:not(.local):not(.watching) .watch-button {
+      &:not(.local) .watch-button {
         display: none;
+      }
+
+      &.error .dropdown-trigger {
+        display: none;
+      }
+
+      & .dropdown-trigger {
+        &::part(base) {
+          padding: 0;
+          margin-right: 5px;
+        }
       }
     }
 
@@ -385,16 +402,27 @@ export class Palette extends LitElement {
       & #package-search {
 
         width: 100%;
-
         --sl-input-spacing-small: 3px;
+
+        cursor: text;
 
         &::part(base) {
           background: none;
           padding: 0;
+          position: relative;
         }
 
         &::part(clear-button) {
           font-size: 1.15rem;
+          position: absolute;
+          right: 0;
+          top: 0;
+          bottom: 0;
+          margin: auto 0;
+        }
+
+        &::part(input) {
+          width: 100%;
         }
       }
 
@@ -406,6 +434,10 @@ export class Palette extends LitElement {
           top: 0;
           left: 0;
         }
+      }
+
+      & sl-icon {
+        cursor: text;
       }
     }
 
@@ -421,8 +453,41 @@ export class Palette extends LitElement {
       border-radius: 100%;
     }
 
-    :host(:not([managing])) :is(#add-local, .package-card:not(.watching) .watch-button, .manage:not(.watch-button), .block-card:not(.pinned)) {
+    :host(:not([managing])) :is(#add-local, .package-card:not(.watching) .watch-button, .manage:not(.watch-button), .block-card:not(.installed)) {
       display: none;
+    }
+
+    :host(:not([managing])) .watch-button {
+      margin-right: 2ch;
+    }
+
+    :host(:is([managing], :not(:hover))) .dropdown-trigger {
+      visibility: hidden;
+    }
+
+    .package-card:not(.multiple) .dropdown-trigger {
+      display: none;
+    }
+    
+
+    .other-insertables-menu {
+      padding: 0;
+    }
+
+    .other-insertables-menu sl-menu-item::part(checked-icon) {
+      display: none;
+    }
+
+    .other-insertables-menu sl-menu-item::part(submenu-icon) {
+      display: none;
+    }
+
+    .other-insertables-menu sl-menu-item::part(base) {
+      font-size: 0.9rem;
+    }
+
+    #clipboard-card {
+      grid-column: span 10;
     }
 
     #add-local {
@@ -466,7 +531,7 @@ export class Palette extends LitElement {
         grid-template-columns: repeat(5, 1fr);
       }
 
-      #package-toolbar {
+      #package-toolbar, #clipboard-card {
         grid-column: span 5;
       }
     }
@@ -479,7 +544,6 @@ export class Palette extends LitElement {
 				background: #f1f1f1;
         padding-top: 5px;
 				height: 60px;
-        padding-bottom: 5px;
         width: 100%;
 				border-top: 1px solid lightgray;
 				border-right: 1px solid lightgray;
@@ -506,6 +570,10 @@ export class Palette extends LitElement {
         &:not(:hover) .manage {
           display: none;
         }
+        
+        & .dropdown-trigger {
+          transform: rotate(180deg);
+        }
       }
 
       .container-card {
@@ -519,6 +587,16 @@ export class Palette extends LitElement {
       }
       #add-local {
         margin-right: 1ch;
+      }
+
+      #package-search:not(:focus-within)[data-invalid] {
+        aspect-ratio: 1/1;
+        width: unset !important;
+        height: 100%;
+      }
+      
+      #package-search:is(:focus-within, :not([data-invalid])) {
+        min-width: 200px;
       }
     }
 
@@ -568,14 +646,18 @@ export class Palette extends LitElement {
     */
 	`
 
-	private handleClickCard(pkg: Package | Command) {
+	private handleClickCard(pkg: Package | Command, snippetName?: string) {
     const isLeaf = "name" in pkg
+    const hasIssues = this.app.store.packages.getPackageIssues(pkg.id).length
 		if(isLeaf) {
       if(!pkg.installed) {
         this.emitAddWidget(pkg.name)
       }
-      else if(!pkg.importError) {
-        this.emitChangeWidget(pkg.name)
+      else if(hasIssues) {
+        this.errorPkg = pkg
+      }
+      else {
+        this.emitInsert(pkg.id, snippetName!)
       }
 		}
     else if(!isLeaf && !pkg.disabled) {
@@ -584,15 +666,14 @@ export class Palette extends LitElement {
     }
 	}
 
-	static FormattedError(pkg: Package) {
+	static FormattedError(pkg: Package, issues: Error []) {
     const esbuildPathRegex = new RegExp(`^\\s*(?:[^/]+\/)+(${pkg.name.replaceAll("/", "\\\/")}\/(?:[^/]+\\/)+[^/]+\\d+:\\d+:)`, "g")
-
-		let err = pkg.importError
+		return issues.map(err => err.message
 			?.replaceAll("X [ERROR] ", "")
 			// ?.replaceAll(/\n\d* error(s)?/g, "")
       ?.replaceAll(esbuildPathRegex, "$1")
 			.trim()
-		return err
+    ).join("\n")
 	}
 
 	handleMouseInWidgetAdd = (pkg: Package | Command) => {
@@ -614,6 +695,7 @@ export class Palette extends LitElement {
 	handleMouseOutWidgetAdd = (name: string) => {
 		this.widgetAddProgress = 0
 		this.addingWidget = null
+    this.dropdownOpen = null
 		clearInterval(this.widgetAddInterval)
 		this.emitMouseOutWidgetAdd(name)
 	}
@@ -634,28 +716,44 @@ export class Palette extends LitElement {
 	</sl-card>`
   }
 
+  @query(".other-insertables")
+  otherInsertables: SlPopup
+
+  @property({state: true})
+  dropdownOpen: string | null = null
+
 	BlockCard = (pkg: Package) => {
-    const {watching, name, version, installed, outdated, importError, localPath} = pkg
+    const {watching, name, version, installed, outdated, localPath} = pkg
     const adding = !!this.app.store.packages.adding[name]
     const removing = !!this.app.store.packages.removing[name]
     const updating = !!this.app.store.packages.updating[name]
     const changing = adding || removing || updating
-    const label = prettifyPackageName(name)
     const found = name in this.searchResults
-    const tooltip = installed? msg("Add this widget"): msg("Install this widget package")
-    return html`<sl-card @contextmenu=${(e: any) => {this.contextPkg = pkg; e.preventDefault()}} data-package-name=${name} title=${tooltip} @click=${() => this.handleClickCard(pkg)} @mouseenter=${() => this.handleMouseInWidgetAdd(pkg)} @mouseleave=${() => this.handleMouseOutWidgetAdd(unscopePackageName(name))} class=${classMap({error: !!importError, "package-card": true, "block-card": true, pinned: !!pkg.installed, adding, removing, updating, outdated, watching, found, local: !!localPath})} ?inert=${changing}>
+    const error = this.app.store.packages.getPackageIssues(pkg.id).length
+    const insertables = this.app.store.packages.insertables[pkg.id]
+    const {name: firstName, label: firstLabel} = insertables[0] ?? {}
+    const otherInsertables = insertables.slice(1)
+    return html`<sl-card id=${pkg.id} @contextmenu=${(e: any) => {this.contextPkg = pkg; e.preventDefault()}} data-package-name=${name} @mouseenter=${() => this.handleMouseInWidgetAdd(pkg)} @mouseleave=${() => {this.handleMouseOutWidgetAdd(unscopePackageName(name))}} class=${classMap({"package-card": true, "block-card": true, installed: !!installed, error, adding, removing, updating, outdated, watching: !!watching, found, local: !!localPath, multiple: insertables.length > 1})} ?inert=${changing}>
 		<sl-tooltip placement="left-start" class="package-tooltip" hoist trigger="hover">
-			<span class="title">${label}</span>
+			<span class="title" @click=${() => this.handleClickCard(pkg, firstName)}>${firstLabel?._ ?? prettifyPackageName(pkg.name)}</span>
       <span slot="content">
         <b><code>${name} ${version}</code></b>
         <div>${pkg.description || msg("No description provided")}</div>
       </span>
       <aside class="manage-controls">
-        <ww-button variant="icon" class="error-button" icon="bug" @click=${() => this.errorPkg = pkg}></ww-button>
+        <ww-button variant="icon" class="watch-button manage" icon=${watching? "bolt-filled": "bolt"} @click=${(e: any) => {this.emitWatchWidget(pkg.name); e.stopPropagation()}}></ww-button>
+        <!--<ww-button variant="icon" class="error-button" icon="bug" @click=${() => this.errorPkg = pkg}></ww-button>-->
         <ww-button title=${msg("Update this widget package")} class="manage update" variant="icon" icon="download" @click=${(e: any) => {this.emitUpdateWidget(pkg.name); e.stopPropagation()}}></ww-button>
         <ww-button title=${pkg.installed? msg("Remove this widget package"): msg("Install this widget package")} class="manage pin" variant="icon" icon=${pkg.installed? "trash": "download"} @click=${(e: any) => {!pkg.installed? this.emitAddWidget(pkg.name): this.emitRemoveWidget(pkg.name); e.stopPropagation()}}></ww-button>
-        <ww-button variant="icon" class="watch-button manage" icon=${watching? "bolt-filled": "bolt"} @click=${(e: any) => {this.emitWatchWidget(pkg.name); e.stopPropagation()}}></ww-button>
       </aside>
+      <ww-button variant="icon" class="dropdown-trigger" icon=${!this.dropdownOpen? "chevron-down": "chevron-up"} @click=${(e: any) => this.dropdownOpen = this.dropdownOpen? null: pkg.id} @mouseenter=${() => this.dropdownOpen = pkg.id}></ww-button>
+      <sl-popup flip anchor=${pkg.id} class="other-insertables" strategy="fixed" placement="bottom-end" sync="width" ?active=${this.dropdownOpen === pkg.id}>
+        <sl-menu class="other-insertables-menu">
+          ${otherInsertables.map(v => html`<sl-menu-item @click=${() => this.handleClickCard(pkg, v.name)}>
+            ${v.label!._}
+          </sl-menu-item>`)}
+        </sl-menu>
+      </sl-popup>
 		</sl-tooltip>
 		<sl-progress-bar ?indeterminate=${changing}></sl-progress-bar>
 	</sl-card>`
@@ -709,12 +807,15 @@ export class Palette extends LitElement {
     })
   }
 
+  @query("#package-search")
+  packageSearch: SlInput
+
   PackageToolbar() {
     return html`<div id="package-toolbar">
-      <sl-input id="package-search" type="search" size="small" @sl-input=${this.handleSearchInput} @focus=${() => this.managing = true} clearable>
-        <sl-icon slot="prefix" name="search"></sl-icon>
+      <sl-input id="package-search" required type="search" size="small" @sl-input=${this.handleSearchInput} @focus=${() => this.managing = true} clearable>
+        <sl-icon slot="prefix" name="search" @click=${(e: any) => this.packageSearch.focus()}></sl-icon>
       </sl-input>
-      <ww-button title=${msg("Manage packages")} id="package-button" variant="icon" icon="packages" @click=${() => {this.managing = !this.managing; this.managing && this.app.store.packages.load()}}>
+      <ww-button title=${msg("Manage packages")} .issues=${this.app.store.packages.managementIssues} id="package-button" variant="icon" icon="packages" @click=${() => {this.managing = !this.managing; this.managing && this.app.store.packages.load()}}>
         ${!this.app.store.packages.loading? null: html`
           <sl-spinner id="packages-spinner"></sl-spinner>
         `}
@@ -728,6 +829,14 @@ export class Palette extends LitElement {
       <sl-icon name="plus"></sl-icon>
       <div>${importingName? prettifyPackageName(importingName): msg(" Create/import")}</div>
       <sl-progress-bar ?indeterminate=${!!importingName}></sl-progress-bar>
+    </span>
+	</sl-card>`
+  }
+
+  ClipboardCard() {
+    return html`<sl-card id="clipboard-card" class=${classMap({"package-card": true})} @click=${() => this.emitInsert("@webwriter/core", "clipboard")}>
+      <sl-icon name="clipboard"></sl-icon>
+      <sl-progress-bar></sl-progress-bar>
     </span>
 	</sl-card>`
   }
@@ -770,7 +879,7 @@ export class Palette extends LitElement {
 
   submitLocalPackage = async (e: Event) => {
     const packageForm = e.target as PackageForm
-    const pkg = new Package(packageForm.value)
+    const pkg = new Package(packageForm.value, packageForm.editingState)
     const options = this.packageFormMode === "edit"
       ? {
         mergePackage: true
@@ -778,11 +887,15 @@ export class Palette extends LitElement {
       : {
         preset: packageForm.preset,
         generateLicense: packageForm.generateLicense,
-        overwrite: false
+        overwrite: false,
+        mergePackage: true
       }
     this.packageFormMode = undefined
     await this.app.store.packages.writeLocal(pkg.localPath!, pkg, options)
     await this.app.store.packages.add(`file://${pkg.localPath!}`, pkg.name)
+    if(packageForm.editingState.watching) {
+      this.emitWatchWidget(pkg.name)
+    } 
     this.packageForm.reset()
   }
 
@@ -797,7 +910,9 @@ export class Palette extends LitElement {
       this.fillPackageFormWithLocal()
     }
     else if(e.detail.name === "localPath" && this.packageFormMode === "create" && e.detail.valid) {
-      const possibleName = await this.app.store.Path.basename(this.packageForm.localPath)
+      const basename = await this.app.store.Path.basename(this.packageForm.localPath)
+      const dirname = await this.app.store.Path.basename(await this.app.store.Path.dirname(this.packageForm.localPath))
+      const possibleName = `@${dirname.replace("@", "")}/${basename}`
       this.packageForm.name = this.packageForm.name || possibleName
     }
   }
@@ -847,8 +962,9 @@ export class Palette extends LitElement {
   }
 
   ErrorDialog() {
+    const issues = this.errorPkg? this.app.store.packages.getPackageIssues(this.errorPkg.id): []
     return html`<sl-dialog ?open=${!!this.errorPkg} @sl-after-hide=${() => this.errorPkg = undefined} label=${msg("Error importing ") + this.errorPkg?.name ?? ""}>
-      <pre class="error-content">${this.errorPkg? Palette.FormattedError(this.errorPkg): null}</pre>
+      <pre class="error-content">${issues.map(issue => issue.cause)}</pre>
     </sl-dialog>`
   }
 
@@ -860,6 +976,7 @@ export class Palette extends LitElement {
     return html`
       ${this.PackageToolbar()}
       ${this.app.commands.groupedContainerCommands.map(this.Card)}
+      ${this.ClipboardCard()}
       ${this.packagesInSearchOrder.map(this.Card)}
       ${this.AddLocalPackageButton()}
       ${this.LocalPackageDialog()}

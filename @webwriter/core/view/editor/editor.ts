@@ -2,16 +2,16 @@ import {LitElement, html, css, ReactiveController, PropertyValueMap, CSSResult} 
 import {styleMap} from "lit/directives/style-map.js"
 import {customElement, property, query} from "lit/decorators.js"
 import { Decoration, EditorView, DecorationSet } from "prosemirror-view"
-import { EditorState, Command as PmCommand, NodeSelection, TextSelection, AllSelection } from "prosemirror-state"
-import { Node, Mark} from "prosemirror-model"
+import { EditorState, Command as PmCommand, NodeSelection, TextSelection, AllSelection, Selection } from "prosemirror-state"
+import { Node, Mark, DOMParser, DOMSerializer} from "prosemirror-model"
 import { localized, msg, str } from "@lit/localize"
 
-import { CODEMIRROR_EXTENSIONS, MediaType, Package, createWidget, removeMark } from "../../model"
+import { CODEMIRROR_EXTENSIONS, ContentExpression, MediaType, Package, createWidget, removeMark } from "../../model"
 import { CodemirrorEditor, FigureView, WidgetView, nodeViews } from "."
 import { DocumentHeader } from "./documentheader"
 import { DocumentFooter } from "./documentfooter"
 
-import { roundByDPR, sameMembers } from "../../utility"
+import { range, roundByDPR, sameMembers } from "../../utility"
 import { Toolbox } from "./toolbox"
 import { Palette } from "./palette"
 import { ProsemirrorEditor } from "./prosemirroreditor"
@@ -29,6 +29,7 @@ import {undo as cmUndo, redo as cmRedo} from "@codemirror/commands"
 import { GapCursor } from "prosemirror-gapcursor"
 
 class EmbedTooLargeError extends Error {}
+
 
 export class EditorViewController extends EditorView implements ReactiveController {
 	
@@ -62,52 +63,58 @@ export class ExplorableEditor extends LitElement {
 
   execInCodeEditor = (command: CmCommand) => command({state: this.cmEditor.state, dispatch: this.cmEditor.dispatch})
 
-	get firstAvailableWidgetID() {
-		let num = 0
-		while(this.pmEditor.body.querySelector(`#ww_${num.toString(36)}`)) {
-			num++
-			if(num === Number.MAX_SAFE_INTEGER) {
-				throw Error("Exceeded maximum number of widgets: " + String(Number.MAX_SAFE_INTEGER))
-			}
-		}
-		return `ww_${num.toString(36)}`
+	getAvailableWidgetIDs(n=1) {
+    const widgetIDs = Array.from(this.pmEditor.body.querySelectorAll(".ww-widget")).map(el => el.id)
+    const widgetNumbers = widgetIDs.map(id => parseInt(id.slice(3), 36))
+    const floor = Math.max(...widgetNumbers, 0)
+		return range(n).map(k => `ww_${(floor + k).toString(36)}`)
 	}
 
-	insertWidget = async (name: string, preview=false, attrs: Record<string, string>={}) => {
-		const state = this.pmEditor.state
-		const previewEl = this.pmEditor.document.querySelector("#ww_preview")
-		const previewExists = previewEl?.tagName.toLowerCase() === name
-		const id = preview? "ww_preview": this.firstAvailableWidgetID
-		let tr
-
-		if(!preview && previewEl && previewExists) {
-      const deepPos = this.pmEditor.posAtDOM(previewEl, 0)
-      const resolved = state.doc.resolve(deepPos)
-      const previewPos = resolved.pos - resolved.depth
-			tr = state.tr
-				.setNodeAttribute(previewPos, "id", this.firstAvailableWidgetID)
-				.setMeta("addToHistory", false)
-			this.stateBeforePreview = null
-		}
-		else if(!preview) {
-			const node = createWidget(state.schema, name, id)
-			tr = state.tr
-				.replaceSelectionWith(node!)
-			this.stateBeforePreview = null
-		}
-		else if(preview && !previewExists) {
-			const node = createWidget(state.schema, name, id)
-			this.stateBeforePreview = state
-			tr = state.tr
-				.replaceSelectionWith(node!)
-		}
-		tr? this.pmEditor.dispatch(tr): null
-		
-		await this.updateComplete;
-		setTimeout(() => {
-			const el = this.pmEditor.body.querySelector(`#${id}`) as HTMLElement
-			el?.focus()
-		})
+	insertMember = async (pkgID: string, insertableName: string) => {
+    const state = this.pmEditor.state
+    const members = this.app.store.packages.members as any
+    if(insertableName.startsWith("./snippets/")) {
+      const htmlStr = members[pkgID][insertableName].source
+      const tagNames = this.app.store.packages.widgetTagNames
+      const parser = DOMParser.fromSchema(state.schema)
+      const template = this.pmEditor.document.createElement("template")
+      template.innerHTML = htmlStr
+      /*
+      const widgetsInTemplate = Array.from(template.content.querySelectorAll("*")).filter(el => tagNames.includes(el.tagName.toLowerCase()))
+      const ids = this.getAvailableWidgetIDs(widgetsInTemplate.length)
+      ids.forEach((id, i) => widgetsInTemplate[i].id = id)
+      */
+      const slice = parser.parseSlice(template.content)
+      let tr = this.pmEditor.state.tr.deleteSelection()
+      const insertPos = tr.selection.anchor - 1
+      tr = tr.insert(insertPos, slice.content)
+      // Find new selection: It should be as deep as possible into the first branch of the inserted slice. If the deepest node found is a textblock, make a TextSelection at the start of it. Otherwise, make a NodeSelection of it.
+      let selection: Selection | null = null
+      slice.content.descendants((node, pos, parent, index) => {
+        if(node.content.size === 0) {
+          const r = tr.doc.resolve(insertPos + pos)
+          selection = node.isTextblock? new TextSelection(r): new NodeSelection(r)
+          return true
+        }
+      })
+      if(selection) {
+        tr = tr.setSelection(selection).scrollIntoView()
+      }
+      this.pmEditor.dispatch(tr)
+      this.pmEditor.focus()
+    }
+    else if(insertableName.startsWith("./themes/")) {
+      // TODO
+      console.log("To be implemented")
+    }
+    else if(insertableName === "clipboard") {
+      const items = await navigator.clipboard.read()
+      const htmlStrs = await Promise.all(items
+        .filter(x => x.types.includes("text/html"))
+        .map(x => x.getType("text/html").then(blob => blob.text()))
+      )
+      this.pmEditor.pasteHTML(htmlStrs.join("\n"))
+    }
 	}
 
 	constructor() {
@@ -126,6 +133,9 @@ export class ExplorableEditor extends LitElement {
 
 	@property({type: Boolean})
 	loadingPackages: boolean
+
+  @property({type: Boolean, state: true})
+	printing = false
 
 	@property({type: Array, attribute: false})
 	packages: Package[]
@@ -267,12 +277,13 @@ export class ExplorableEditor extends LitElement {
 
 	private cachedNodeViews: Record<string, any>
 
+
 	private get nodeViews() {
     const {nodes} = this.editorState.schema
 		const cached = this.cachedNodeViews
 		const cachedKeys = Object.keys(cached ?? {})
 		const widgetKeys = Object.entries(nodes)
-			.filter(([_, v]) => v.spec["widget"])
+			.filter(([_, v]) => v.spec["package"])
 			.map(([k, _]) => k)
     const nodeKeys = Object.keys(nodeViews)
     //const mediaKeys = Object.entries(this.editorState.schema.nodes)
@@ -288,7 +299,9 @@ export class ExplorableEditor extends LitElement {
         k,
         (node: Node, view: EditorViewController, getPos: () => number) => new V(node, view, getPos)
       ])
-			this.cachedNodeViews = {...Object.fromEntries([...widgetViewEntries, ...nodeViewEntries])}
+      //return {...Object.fromEntries([...widgetViewEntries, ...nodeViewEntries])}
+			this.cachedNodeViews = Object.fromEntries([...widgetViewEntries, ...nodeViewEntries])
+
 			return this.cachedNodeViews
 		}
 	}
@@ -298,7 +311,7 @@ export class ExplorableEditor extends LitElement {
 	private get markViews() {
 		const cached = this.cachedMarkViews
 		if(cached) {
-			return cached
+			return cached // TODO: Fix this
 		}
 		else {
 			this.cachedMarkViews = {
@@ -457,10 +470,18 @@ export class ExplorableEditor extends LitElement {
 	}
 
   deleteWidget(widget: Element) {
-    const pos = this.pmEditor.posAtDOM(widget, 0)
-    const tr = this.pmEditor.state.tr.delete(pos, pos + 1)
+    widget.remove()
+    this.deletingWidget = null
+    /*
+    const pos = this.pmEditor.posAtDOM(widget, 0, 1)
+    let tr = this.pmEditor.state.tr.delete(pos - 1, pos + 1)
+    console.log(pos, this.selection.from, this.selection.to)
+    if(this.selection.from <= pos && pos <= this.selection.to) {
+      const newSelection = new TextSelection(tr.doc.resolve(pos))
+      tr = tr.setSelection(newSelection)
+    }
     this.pmEditor.dispatch(tr)
-		this.deletingWidget = null
+		this.deletingWidget = null*/
   }
 
 	decorations = (state: EditorState) => {
@@ -471,17 +492,21 @@ export class ExplorableEditor extends LitElement {
       const selectionEndsInNode = pos <= to && to <= pos + node.nodeSize
       const selectionStartsInNode = pos <= from && from <= pos + node.nodeSize
       const selectionWrapsNode = from <= pos && pos + node.nodeSize <= to
+      const deletingPos = this.deletingWidget? this.pmEditor.posAtDOM(this.deletingWidget, 0) - 1: -1
       if(state.selection instanceof NodeSelection && state.selection.node === node) {
-        decorations.push(Decoration.node(pos, pos + node.nodeSize, {"data-ww-selected": ""}))
+        decorations.push(Decoration.node(pos, pos + node.nodeSize, {class: "ww-selected"}))
       }
       if(selectionWrapsNode && this.isTextSelected) {
-        decorations.push(Decoration.node(pos, pos + node.nodeSize, {"data-ww-selected-inner": ""}))
+        decorations.push(Decoration.node(pos, pos + node.nodeSize, {class: "ww-selected-inner"}))
       }
       if(node.isInline || name === "_phrase") {
-        decorations.push(Decoration.node(pos, pos + node.nodeSize, {"data-ww-inline": ""}))
+        decorations.push(Decoration.node(pos, pos + node.nodeSize, {class: "ww-inline"}))
       }
-      if(node.attrs.id && this.deletingWidget?.id === node.attrs.id) {
-        decorations.push(Decoration.node(pos, pos + node.nodeSize, {"data-ww-deleting": ""}))
+      if(deletingPos === pos) {
+        decorations.push(Decoration.node(pos, pos + node.nodeSize, {class: "ww-deleting"}))
+      }
+      if(this.printing) {
+        decorations.push(Decoration.node(pos, pos + node.nodeSize, {class: "ww-beforeprint"}))
       }
       if(node.type.spec.group?.split(" ").includes("heading")) {
         const cmd = this.app.commands.containerCommands.find(cmd => cmd.id === name)
@@ -532,6 +557,43 @@ export class ExplorableEditor extends LitElement {
 				return null
 			}
 	}
+
+  inspect() {
+    alert(msg("This feature is not implemented yet"))
+  }
+  edit() {
+    alert(msg("This feature is not implemented yet"))
+  }
+  transform() {
+    alert(msg("This feature is not implemented yet"))
+  }
+  copy() {
+    const serializer = this.pmEditor.clipboardSerializer ?? DOMSerializer.fromSchema(this.editorState.schema)
+    const fragment = this.selection.content().content
+    const documentFragment = serializer.serializeFragment(fragment, {document: this.pmEditor.document}) as DocumentFragment
+    const dom = this.pmEditor.document.createElement("div")
+    dom.appendChild(documentFragment)
+
+    const clipboardItem = new ClipboardItem({
+      "text/html": new Blob([dom.innerHTML], {type: "text/html"}),
+      "text/plain": new Blob([dom.innerText], {type: "text/plain"}),
+    })
+    return navigator.clipboard.write([clipboardItem])
+  }
+
+  delete() {
+    const tr = this.editorState.tr.deleteSelection()
+    this.pmEditor.dispatch(tr)
+  }
+
+  cut() {
+    this.copy()?.then(() => this.delete())
+  }
+
+  paste() {
+    this.insertMember("@webwriter/core", "clipboard")
+  }
+
 
 	get activeNode(): Node | null {
 		return this.getActiveNodeInState(this.editorState)
@@ -649,7 +711,12 @@ export class ExplorableEditor extends LitElement {
 	  this.autoUpdateElement = null
   }
 
-  shouldBeEditable = (state: EditorState) => !this.previewing
+  shouldBeEditable = (state: EditorState) => !this.ownerDocument.fullscreenElement
+
+  setNodeAttribute(el: HTMLElement, key: string, value: string | undefined) {
+    const pos = this.pmEditor.posAtDOM(el, 0)
+    this.pmEditor.dispatch(this.editorState.tr.setNodeAttribute(pos, key, value))
+  }
 
   handleDOMEvents = {
     "keydown": (_: any, ev: KeyboardEvent) => {
@@ -659,7 +726,8 @@ export class ExplorableEditor extends LitElement {
       this.dispatchEvent(new KeyboardEvent(ev.type, ev))
     },
     "ww-widget-focus": (_: any, ev: CustomEvent) => {
-      // this.activeElement = ev.detail.widget
+      console.log(ev.detail.widget)
+      ev.detail.widget?.focus()
       /*
       if(this.previewing) {
         ev.detail.widget.focus()
@@ -668,13 +736,6 @@ export class ExplorableEditor extends LitElement {
     },
     "ww-widget-blur": () => {
       // this.activeElement = null
-    },
-    "ww-widget-interact": (_: any, ev: CustomEvent) => {
-      const {widget, relatedEvent} = ev.detail
-      if(widget.id === "ww_preview") {
-        const name = widget.tagName.toLowerCase()
-        this.insertWidget(name)
-      }
     },
     "ww-widget-click": (_: any, ev: CustomEvent) => {
       const {widget} = ev.detail
@@ -813,7 +874,7 @@ export class ExplorableEditor extends LitElement {
         console.warn(msg("WebWriter does not support media of type ") + blob.type)
       }
     }
-    const figures = (await Promise.all(elements)).map(el => ExplorableEditor.wrapWithFigureElement(el, el.getAttribute("data-filename")!))
+    const figures = await Promise.all(elements)
     return figures 
   }
 
@@ -842,7 +903,12 @@ export class ExplorableEditor extends LitElement {
     }
   }
 
-  
+  get windowListeners(): Partial<Record<keyof WindowEventMap, any>> {
+    return {
+      "beforeprint": () => this.printing = true,
+      "afterprint": () => this.printing = false
+    }
+  }  
 
   get contentStyle() {
     return this.bundleCSS
@@ -877,7 +943,8 @@ export class ExplorableEditor extends LitElement {
 				.contentStyle=${this.contentStyle}
 				.shouldBeEditable=${this.shouldBeEditable}
 				.handleDOMEvents=${this.handleDOMEvents}
-        .transformPastedHTML=${this.transformPastedHTML}>
+        .transformPastedHTML=${this.transformPastedHTML}
+        .windowListeners=${this.windowListeners}>
 			</pm-editor>
 		`
 	}
@@ -970,7 +1037,7 @@ export class ExplorableEditor extends LitElement {
 					this.activeElement?.scrollIntoView({behavior: "smooth", block: "center"})
 					!e.detail.widget? this.pmEditor?.focus(): e.detail.widget.focus()
 				}}
-
+        @ww-set-attribute=${(e: CustomEvent) => this.setNodeAttribute(e.detail.el, e.detail.key, e.detail.value)}
 			></ww-toolbox>
 		`
 	}
@@ -981,12 +1048,8 @@ export class ExplorableEditor extends LitElement {
         .app=${this.app}
         .editorState=${this.editorState}
 				part="editor-toolbox"
-				@ww-change-widget=${(e: any) => this.insertWidget(e.detail.name)}
+				@ww-insert=${(e: any) => this.insertMember(e.detail.pkgID, e.detail.name)}
 				@ww-mousein-widget-add=${(e: CustomEvent) => {
-					if(this.showWidgetPreview) {
-						const name = e.detail.name as string
-						this.insertWidget(name, true)
-					}
 				}}
 				@ww-mouseout-widget-add=${() => {
 					const previewEl = this.pmEditor.document.querySelector("#ww_preview")
@@ -1007,9 +1070,10 @@ export class ExplorableEditor extends LitElement {
           const name = e.detail.name
           this.app.store.packages.update(name)
         }}
-        @ww-watch-widget=${(e: CustomEvent) => {
+        @ww-watch-widget=${async (e: CustomEvent) => {
           const name = e.detail.name
-          this.app.store.packages.toggleWatch(name)
+          await this.app.store.packages.toggleWatch(name)
+          this.app.settings.setAndPersist("packages", "watching", this.app.store.packages.watching)
         }}
 				.packages=${this.packages}
 				tabindex="-1"

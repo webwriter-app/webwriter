@@ -38,7 +38,7 @@ export function createEditorStateConfig(packages: Package[]) {
 export const defaultConfig = createEditorStateConfig([])
 
 export const createEditorState = ({schema=defaultConfig.schema, doc=defaultConfig.doc, selection=defaultConfig.selection, storedMarks=defaultConfig.storedMarks, plugins=defaultConfig.plugins}: EditorStateConfig, head?: Node) => {
-  const resolvedDoc = schema.nodeFromJSON(doc.toJSON())
+  const resolvedDoc = doc
   const state = EditorState.create({selection, storedMarks, plugins, doc: resolvedDoc})
   const head$ = EditorState.create({schema: headSchema, doc: head})
   return (head? Object.assign(state, {head$}): state) as EditorStateWithHead

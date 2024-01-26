@@ -135,9 +135,9 @@ export type Environment = {
   HTTP: HTTPAPI,
   OS: OSAPI,
   Dialog: DialogAPI,
-  bundle: (args?: string[]) => Promise<{data: string}>,
+  bundle: (args?: string[]) => Promise<string>,
   search: (text: string, params?: {size?: number, from?: number, quality?: number, popularity?: number, maintenance?: number}, searchEndpoint?: string) => Promise<SearchResults>,
-  pm: (command: string, commandArgs?: string[], cwd?: string) => Promise<Object | string>,
+  pm: (command: string, commandArgs?: string[], cwd?: string) => Promise<string>,
   watch: (paths: string | string[], cb?: (event: WatchEvent) => void, options?: {recursive?: boolean, delayMs?: number}) => Promise<() => void>
   getSystemFonts: () => Promise<string[]>,
   createWindow: (url?: string, options?: WindowOptions & {label?: string, hideOnClose?: boolean}) => Promise<void>,

@@ -51,7 +51,8 @@ export class NotificationController implements ReactiveController {
 		"TypeError: Failed to execute 'unobserve' on 'ResizeObserver': parameter 1 is not of type 'Element'.",
 		"You are trying to re-register the",
 		"Uncaught TypeError: Failed to execute 'unobserve' on 'ResizeObserver'",
-    "Option values cannot include a space. All spaces have been replaced with underscores."
+    "Option values cannot include a space. All spaces have been replaced with underscores.",
+    "Uncaught TypeError: Cannot read properties of null (reading 'anchorNode')"
 	]
 
 	warningsToIgnore = [

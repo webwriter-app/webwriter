@@ -1,9 +1,12 @@
 {
+  "$schema": "https://raw.githubusercontent.com/webwriter-app/webwriter/main/webwriterpackage.json",
   "name": "ww-lit-preset",
   "version": "0.1.0",
-  "main": "index.ts",
   "dependencies": {
-    "lit": "*",
-    "@webwriter/lit": "*"
+    "lit": "^1",
+    "@webwriter/lit": "^1"
+  },
+  "exports": {
+    "./widgets/---name---": "./widgets/---name---.ts"
   }
 }

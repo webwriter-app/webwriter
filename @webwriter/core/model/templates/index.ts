@@ -1,7 +1,7 @@
 import { capitalizeWord, unscopePackageName } from "../../utility"
 import { Package } from "../schemas"
 
-import litIndex from "./presets/lit/index.ts?raw" 
+import litWidget from "./presets/lit/widgets/webwriter-widget.ts?raw" 
 import litPackage from "./presets/lit/package.json?raw"
 import litTsconfig from "./presets/lit/tsconfig.json?raw"
 import MIT from "./licenses/MIT.txt?raw"
@@ -15,15 +15,18 @@ const interpolateTemplate = (template: string, pkg: Package) => {
 
   let result = template
 
+  const {scope, name} = pkg.nameParts
+  const defaultElementName = `${scope}-${name}`
+
   const replacementMap: Record<string, string> = {
-    "____classname____": pkg.name.split("-").slice(1).map(capitalizeWord).join("") || "MyWidget",
+    "____classname____": [scope ?? "", name].map(capitalizeWord).join("") || "MyWidget",
     "____year____": String(new Date().getFullYear())
   }
   for (const [key, value] of Object.entries(pkg.toJSON())) {
     replacementMap[`___${key}___`] = String(value)
     replacementMap[`---${key}---`] = String(value)
   }
-  replacementMap["---name---"] = unscopePackageName(pkg.name)
+  replacementMap["---name---"] = defaultElementName
   for (const [key, value] of Object.entries(replacementMap)) {
     result = result.replaceAll(key, value)
   }
@@ -41,7 +44,7 @@ const interpolateTemplateRecord = (record: Record<string, string>, pkg: Package)
 
 export const presets = {
   lit: (pkg: Package) => interpolateTemplateRecord({
-    "index.ts": litIndex,
+    [`widgets/${pkg.nameParts.scope}-${pkg.nameParts.name}.ts`]: litWidget,
     "package.json": litPackage,
     "tsconfig.json": litTsconfig
   }, pkg)

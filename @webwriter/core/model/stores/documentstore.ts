@@ -1,8 +1,8 @@
-import { EditorState, Plugin } from "prosemirror-state"
+import { EditorState, Plugin, TextSelection } from "prosemirror-state"
 import { Schema, Node, NodeType, Attrs, DOMSerializer, DOMParser } from "prosemirror-model"
 import { html_beautify as htmlBeautify } from "js-beautify"
 
-import { createEditorState, EditorStateWithHead, Environment, getActiveMarks, Package, PackageStore } from ".."
+import { createEditorState, EditorStateWithHead, Environment, getActiveMarks, getHeadElement, Package, PackageStore, upsertHeadElement } from ".."
 import { filterObject, getFileExtension, groupBy, range } from "../../utility"
 import * as marshal from "../marshal"
 import * as connect from "../connect"
@@ -27,10 +27,14 @@ type Resource = {
 
 type Options = {
   bundle: Environment["bundle"],
+  Path: Environment["Path"],
+  FS: Environment["FS"],
   schema?: Schema,
   url?: string,
   editorState?: EditorStateWithHead
 }
+
+type ImportMap = {imports?: Record<string, string>, scopes?: Record<string, Record<string, string>>}
 
 /** Manages the document. A document is the app's central data format. The document has an `editorState`, storing all the document's data in the ProseMirror format. It is referred to with an URL, indicating whether the document is only in memory (not saved yet) or external such as on the user's hard drive (saved before at `url`). */
 export class DocumentStore implements Resource {
@@ -55,9 +59,13 @@ export class DocumentStore implements Resource {
   ioState: "idle" | "saving" | "loading" = "idle"
 
   bundle: Options["bundle"]
+  Path: Options["Path"]
+  FS: Options["FS"]
 
-  constructor({bundle, schema, url, editorState}: Options) {
+  constructor({bundle, schema, url, editorState, Path, FS}: Options) {
     this.bundle = bundle
+    this.Path = Path
+    this.FS = FS
     this.editorState = this.lastSavedState = editorState ?? createEditorState
     ({schema})
     this.url = url ?? "memory:0"
@@ -78,10 +86,6 @@ export class DocumentStore implements Resource {
       const lengthChanged = this.lastSavedState.doc.nodeSize !== this.editorState.doc.nodeSize
       const bodyChanged = !this.lastSavedState.doc.eq(this.editorState.doc)
       const headChanged = !this.lastSavedState.head$.doc.eq(this.editorState.head$.doc)
-      if(lengthChanged || bodyChanged || headChanged ) {
-        console.log(this.lastSavedState.toJSON())
-        console.log(this.editorState.toJSON())
-      }
       return lengthChanged || bodyChanged || headChanged 
     }
   }
@@ -90,9 +94,31 @@ export class DocumentStore implements Resource {
     return DocumentStore.editorToCodeState(this.lastSavedState)
   }
 
+  get importMap(): ImportMap {
+    let {node} = getHeadElement(this.editorState.head$) ?? {}
+    return !node? {}: JSON.parse(node.textContent)
+  }
+
+  set importMap(value: ImportMap) {
+    const json = JSON.stringify(value)
+    let {node, pos} = getHeadElement(this.editorState.head$) ?? {}
+    const state = upsertHeadElement(
+      this.editorState.head$,
+      "script",
+      node?.attrs ?? {type: "importmap"},
+      this.editorState.head$.schema.text(json),
+      (_, nPos) => pos === nPos
+    )
+    this.setHead(state)
+  }
+
   /** Updates the document schema with the store's schema. */
   updateSchema(schema: Schema) {
-    const newState = createEditorState({...this.editorState, schema})
+    const oldSerializer = DOMSerializer.fromSchema(this.editorState.schema)
+    const newParser = DOMParser.fromSchema(schema)
+    const doc = newParser.parse(oldSerializer.serializeNode(this.editorState.doc))
+    const selection = new TextSelection(doc.resolve(0))
+    const newState = createEditorState({...this.editorState, schema, doc, selection})
     const defaultState = createEditorState({schema: this.editorState.schema})
     if(this.editorState.doc.eq(defaultState.doc)) {
       this.lastSavedState = newState
@@ -115,7 +141,6 @@ export class DocumentStore implements Resource {
   
   /** Sets a new editor state for the given resource. */
   set(editorState: EditorStateWithHead) {
-    console.trace("setting state", editorState)
     this.editorState = editorState
   }
 
@@ -194,7 +219,9 @@ export class DocumentStore implements Resource {
     const htmlString = await serialize(
       this.editorState.doc,
       this.editorState.head$.doc,
-      this.bundle
+      this.bundle,
+      this.Path,
+      this.FS
     )
     const blob = new Blob([htmlString], {type: "text/html"})
     const blobURL = URL.createObjectURL(blob)
@@ -409,6 +436,41 @@ export class DocumentStore implements Resource {
 
   addPackage(pkg: Package) {
     this.packages = {...this.packages, [pkg.name]: pkg}
+  }
+
+  get lang() {
+    return this.editorState.doc.attrs.lang ?? navigator.language
+  }
+
+  get textContent() {
+    return this.editorState.doc.textContent
+  }
+
+  get graphemes() {
+    const segmenter = new Intl.Segmenter(this.lang, {granularity: "grapheme"})
+    return [...segmenter.segment(this.textContent)]
+  }
+
+  get words() {
+    const segmenter = new Intl.Segmenter(this.lang, {granularity: "word"})
+    return [...segmenter.segment(this.textContent)]
+  }
+
+  get sentences() {
+    const segmenter = new Intl.Segmenter(this.lang, {granularity: "sentence"})
+    return [...segmenter.segment(this.textContent)]
+  }
+
+  get graphemeCount() {
+    return this.graphemes.length
+  }
+
+  get wordCount() {
+    return this.words.length
+  }
+
+  get sentenceCount() {
+    return this.sentences.length
   }
 
 }

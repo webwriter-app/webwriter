@@ -1,88 +1,160 @@
 import {Node, NodeSpec, Schema} from "prosemirror-model"
 import redefineCustomElementsString from "redefine-custom-elements/lib/index.js?raw"
+import scopedCustomElementRegistry from "@webcomponents/scoped-custom-element-registry/src/scoped-custom-element-registry.js?raw"
 
-import { unscopePackageName } from "../../../../utility"
-import { Package } from "../.."
+import { filterObject, unscopePackageName } from "../../../../utility"
+import { HTMLElementSpec, ManifestClassField, ManifestCustomElementDeclaration, ManifestDeclaration, Package, WidgetEditingSettings } from "../.."
 import { Expression } from "../../contentexpression"
 import { SchemaPlugin } from ".";
 import { Command } from "prosemirror-state"
 import { globalHTMLAttributes, getAttrs, toAttributes } from "../.."
 
 
-export function createWidget(schema: Schema, name: string, id: string, editable=true) {
+
+export function createWidget(schema: Schema, name: string, id: string, contentEditable=true) {
   const nodeType = schema.nodes[name]
-  return nodeType.createAndFill({id, otherAttrs: {editable}}, [])
+  return nodeType.createAndFill({id, contentEditable}, [])
 }
 
-export function slotContentNodeSpecName(packageName: string, slotName: string) {
-  return `${unscopePackageName(packageName).replace("-", "I")}_SLOT_${slotName}`
+/*
+export function getManifestCustomElements(pkg: Package) {
+  return (pkg.customElements?.modules ?? [])
+    .flatMap(mod => (mod?.declarations ?? []) as ManifestDeclaration[])
+    .filter((decl): decl is ManifestCustomElementDeclaration => "customElement" in decl && !!decl.tagName?.startsWith(pkg.nameParts.scope!))
+}
+*/
+
+export function widgetSpecs(pkg: Package): NodeSpec[] {
+  return Object.entries(pkg.widgets)
+    .map(([name, settings]) => widgetSpec(name.replace("./widgets/", ""), settings, pkg))
 }
 
-export function widgetSlotContent(pkg: Package) {
-  return Object.keys(pkg.editingConfig?.content ?? {})
-    .map(name => slotContentNodeSpecName(pkg.name, name))
-    .join(" ")
-}
-
-export function slotContentNodeSpec(pkg: Package, name: string, content: string): NodeSpec {
-  const nodeName = slotContentNodeSpecName(pkg.name, name)
+export function widgetSpec(tag: string, settings: WidgetEditingSettings, pkg: Package): NodeSpec {
   return {
-    group: "_slotContent",
-    content,
-    toDOM: () => ["div", {class: nodeName + " slot-content", slot: name}, 0],
-    parseDOM: [{tag: `div.${nodeName}`}]
-  }
-}
-
-export function getMediaTypesOfContent(content: Record<string, Expression | string | undefined> | undefined) {
-  if(content && content[""]) {
-    const expr = typeof content[""] === "string"? content[""]: content[""].raw
-    const matches = [...expr.matchAll(/#\w+(?:\/[-+.\w]+)?/g)]
-    return matches.map(match => match[0].slice(1))
-  }
-  else {
-    return []
-  }
-}
-
-export function packageWidgetNodeSpec(pkg: Package): NodeSpec {
-  const maybeContent = pkg.editingConfig?.content
-    ? {content: widgetSlotContent(pkg)}
-    : undefined
-  const mediaTypes = getMediaTypesOfContent(pkg.editingConfig?.content)
-    .map(t => t.slice(1).replaceAll("/", "__").replaceAll("-", "_"))
-  const maybeMediaParseRules = mediaTypes.length > 0? []: []
-  return {
-    group: "flow widget",
-    widget: true,
+    ...settings,
+    content: settings.content? String(settings.content).replaceAll("-", "_"): undefined,
+    group: widgetGroup(settings),
+    tag,
+    fullName: `${pkg.name}/widgets/${tag}`,
     package: pkg,
-    selectable: true,
-    draggable: false,
-    isolating: false,
-    ...maybeContent,
-    attrs: {
-      ...globalHTMLAttributes,
-      _otherAttrs: {default: {}, private: true} as any
-    },
-    parseDOM : [{tag: unscopePackageName(pkg.name), getAttrs: (dom: HTMLElement ) => {
-      return {
-        ...getAttrs(dom),
-        _otherAttrs: Object.fromEntries(dom
-          .getAttributeNames()
-          .filter(name => !Object.keys(globalHTMLAttributes).includes(name) && !name.startsWith("data-"))
-          .map(name => [name, dom.getAttribute(name)])
-        )
-      }
-    }}, ...maybeMediaParseRules] as any,
-    toDOM: (node: Node) => {
-      const attrs = toAttributes(node, node.attrs._otherAttrs)
-      const classes = new DOMTokenList(); classes.value = attrs.class
-      classes.add("ww-widget", (node.type.spec.package as Package).id)
-      const attrsWithClass = {...attrs, class: classes.value}
-      
-      return [node.type.name, attrsWithClass].concat(pkg.editingConfig?.content? [0] as any: [] as any) as any
-    }
-  }  
+    attrs: widgetAttrs(),
+    toDebugString: widgetToDebugString(),
+    toDOM: widgetToDOM(pkg, !!settings.content),
+    parseDOM: widgetParseDOM(tag, pkg),
+    leafText: undefined,
+    widget: true,
+    isolating: true
+  }
+}
+
+/*
+export function escapePmNodeName(str: string) {
+  return str.replaceAll("-", "_".repeat(214))
+}
+
+export function unescapePmNodeName(str: string) {
+  return str.replaceAll("_".repeat(214), "-")
+}
+
+function widgetContent(pkg: Package, decl: ManifestCustomElementDeclaration) {
+  const slotsField = decl.members?.find(m => m.kind === "field" && m.static && m.name === "slots" && m.default) as ManifestClassField
+  const slots = JSON.parse(slotsField?.default ?? "null") as Record<string, string> | undefined
+
+  const slotMap = Object.fromEntries(Object.keys(slots ?? {}).map(slotName => 
+    [slotName,
+      `${escapePmNodeName(pkg.nameParts.scope!)}_SLOT_${slotName}`
+  ]))
+  const content = slots? `(${Object.keys(slotMap).join(" | ")}) | (${Object.values(slots).join(" | ")})*`: "flow*"
+
+  const slotContentSpecs = Object.entries(slotMap).map(([slot, slotID]) => ({
+    group: "_slotContent",
+    content: (slots ?? {})[slot],
+    toDOM: () => ["div", {class: `ww-slot ww-lift ww-${slotID}`, slot}, 0],
+    parseDOM: [{tag: `div.ww-${slotID}`}]
+  }))
+
+  return {content, slots, atom: !!slots, slotContentSpecs}
+}
+
+function widgetGroup(pkg: Package, decl: ManifestCustomElementDeclaration) {
+  const field = decl.members?.find(m => m.kind === "field" && m.static && m.name === "group" && m.default) as ManifestClassField
+  const group = field?.default ?? ""
+  return "flow widget " + group
+}
+
+function widgetConfig(pkg: Package, decl: ManifestCustomElementDeclaration) {
+  const field = decl.members?.find(m => m.kind === "field" && m.static && m.name === "editingConfig" && m.default) as ManifestClassField
+  const editingConfig = field?.default? JSON.parse(field.default): undefined
+  return editingConfig
+}
+*/
+
+function widgetGroup(settings: WidgetEditingSettings) {
+  return Array.from(new Set([
+    ...(settings?.group? settings.group.split(" "): []),
+    "flow",
+    "widget"
+  ])).join(" ")
+}
+
+function widgetAttrs() {
+  return {
+    ...globalHTMLAttributes,
+    _: {default: {}}
+  }
+}
+
+function widgetToDebugString() {
+  return (node: Node) => {
+    const normal = filterObject(node.attrs, k => k !== "_")
+    const attrs = Object.entries(normal).concat(Object.entries(node.attrs._))
+    const attrString = attrs
+      .filter(([k, v]) => v !== undefined)
+      .map(([k, v]) => `${k}:${JSON.stringify(v)}`)
+      .join(" ")
+    return `[${node.type.name} ${attrString}]`
+  }
+}
+
+function widgetBaseClasses(pkg: Package) {
+  return ["ww-widget", `ww-v${pkg.version}`]
+}
+
+function widgetToDOM(pkg: Package, hasContent: boolean) {
+  return (node: Node) => {
+    const normalAttrs = filterObject(node.attrs, k => k !== "_")
+    const builtinAttrs = toAttributes(normalAttrs)
+    const widgetAttrs = node.attrs._
+    const dummyDOM = document.createElement("div")
+    dummyDOM.classList.value = builtinAttrs.class ?? ""
+    dummyDOM.classList.add(...widgetBaseClasses(pkg))
+    const attrsWithClass = {...builtinAttrs,  class: dummyDOM.classList.value, ...widgetAttrs}
+    return [node.type.spec.tag, attrsWithClass, ...(hasContent? [0]: [])] as any
+  }
+}
+
+function getWidgetAttrs(dom: HTMLElement | string) {
+  if(typeof dom === "string") {
+    return {}
+  }
+  const _ = {} as Record<string, any>
+  const attrNames = dom.getAttributeNames().filter(name => !(name in globalHTMLAttributes))
+  for(const attrName of attrNames) {
+    _[attrName] = dom.getAttribute(attrName)
+  }
+  return _
+}
+
+function widgetParseDOM(tag: string, pkg: Package) {
+  return [{tag, getAttrs: (dom: string | HTMLElement) => {
+    const builtinAttrs = filterObject(getAttrs(dom), k => k in globalHTMLAttributes) as Record<string, any>
+    const widgetAttrs = getWidgetAttrs(dom)
+    const dummyDOM = document.createElement("div")
+    dummyDOM.classList.value = builtinAttrs.class ?? ""
+    dummyDOM.classList.remove(...widgetBaseClasses(pkg))
+    // console.log("parse", {...builtinAttrs, class: dummyDOM.classList.value, _: widgetAttrs})
+    return {...builtinAttrs, class: dummyDOM.classList.value, _: widgetAttrs}
+  }}]
 }
 
 /*
@@ -146,34 +218,13 @@ export const customSelectAllCommand = () => chainCommands(
 )
 */
 
-
-const preventWidgetDelete: Command = ({selection, doc}, dispatch, view) => {
-  if(selection.empty && selection.$anchor.parentOffset === 0) {
-    const $pos = selection.$anchor
-    const node = doc.resolve($pos.before($pos.depth)).nodeBefore
-    return node?.type.spec.widget
-  }
-  return false
-}
-
 export const widgetPlugin = (packages: Package[]) => ({
-  nodes: {
-    ...Object.fromEntries(packages.map(pkg => [
-      unscopePackageName(pkg.name),
-      packageWidgetNodeSpec(pkg)
-    ])),
-    ...Object.fromEntries(packages.flatMap(pkg => {
-      const content = pkg.editingConfig?.content ?? {}
-      return Object.entries(content).map(([name, expr]) => [
-        slotContentNodeSpecName(pkg.name, name),
-        slotContentNodeSpec(pkg, name, expr.raw!)
-      ])
-    }))
-  },
-  scripts: [redefineCustomElementsString],
+  nodes: Object.fromEntries(packages
+    .flatMap(pkg => widgetSpecs(pkg))
+    .map(spec => [spec.tag.replaceAll("-", "_"), spec])
+  ),
+  scripts: [scopedCustomElementRegistry],
   keymap: {
-    "Backspace": preventWidgetDelete,
-    "shift-Backspace": preventWidgetDelete,
     "control-ArrowUp": (state, dispatch) => {
       return false
     },

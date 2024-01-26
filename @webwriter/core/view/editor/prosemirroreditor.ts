@@ -7,6 +7,7 @@ import { pickObject, sameMembers } from "../../utility"
 import { keyed } from "lit/directives/keyed.js"
 import { headSerializer, toAttributes } from "../../model"
 import {DOMSerializer} from "prosemirror-model"
+import scopedCustomElementRegistry from "@webcomponents/scoped-custom-element-registry/src/scoped-custom-element-registry.js?raw"
 
 type IProsemirrorEditor = 
   & Omit<DirectEditorProps, "attributes" | "editable">
@@ -152,6 +153,9 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
 
   @property({type: String, attribute: true})
   placeholder: string
+
+  @property({type: Object, attribute: false})
+  windowListeners: Partial<Record<keyof WindowEventMap, any>> = {}
 
   get editable(): boolean {
     return this?.view.editable as any
@@ -328,6 +332,9 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
     this.window.onerror = window.onerror
     this.window.onunhandledrejection = window.onunhandledrejection
     this.window.addEventListener("focus", () => this.dispatchEvent(new Event("focus", {bubbles: true, composed: true})))
+    for(const [eventName, listener] of Object.entries(this.windowListeners)) {
+      this.window.addEventListener(eventName, listener)
+    }
     ProsemirrorEditor.eventsToRedispatch.map(name => this.window.addEventListener(name, (e: Event) => {
       if(e.type === "dragleave" && (e as DragEvent).offsetX > 0) {
         return
@@ -408,10 +415,6 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
     await this.iframeReady
     const url = this.window.URL.createObjectURL(new this.window.Blob([str], {type: "text/css"}))
     this.importCSS(url)
-  }
-
-  disconnectedCallback(): void {
-    super.disconnectedCallback()
   }
 
   static get styles() {

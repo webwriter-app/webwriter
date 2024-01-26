@@ -40,7 +40,7 @@ export class RootStore {
     this.Path = Path
     this.Dialog = Dialog
     this.packages = new PackageStore({corePackages, FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, onBundleChange, getSystemFonts, createWindow, setWindowCloseBehavior, getWindowLabel})
-    this.document = new DocumentStore({schema, bundle})
+    this.document = new DocumentStore({schema, bundle, Path, FS})
     this.ui = new UIStore()
   }
 

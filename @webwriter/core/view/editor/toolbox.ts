@@ -304,14 +304,20 @@ export class Toolbox extends LitElement {
       }
 
 
-      div[part=inline-commandss] {
+      div[part=inline-commands] {
         display: flex;
         justify-content: space-between;
       }
 
       div[part=block-commands] {
-        display: flex;
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr;
+        grid-auto-rows: 1fr;
         margin-top: 2px;
+
+        & .layout-command {
+          grid-row: 2;
+        }
       }
 
       div[part=block-commands] #name {
@@ -553,6 +559,46 @@ export class Toolbox extends LitElement {
         visibility: hidden;
       }
 
+      .media-toolbox {
+        & .switches {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          grid-auto-rows: 1fr;
+          gap: 2px;
+          & sl-switch {
+            font-size: smaller;
+          }
+        }
+        [data-hidden] {
+          display: none;
+        }
+      }
+
+      .details-toolbox {
+        & sl-switch {
+          font-size: smaller;
+        }
+      }
+
+      .heading-toolbox, .list-toolbox {
+        width: 100%;
+
+        & sl-radio-group::part(button-group), & sl-radio-group::part(button-group__base) {
+          width: 100%;
+        }
+
+        & sl-radio-button {
+          flex-grow: 1;
+
+          &::part(label) {
+            padding: 0;
+            width: 18px;
+            height: 18px;
+            margin: auto auto;
+          }
+        }
+      }
+
       .dropdown-trigger {
         width: 18px;
         margin-left: 2px;
@@ -627,6 +673,7 @@ export class Toolbox extends LitElement {
 
     const classes = {
       "block-command": true,
+      "layout-command": true,
       "applied": Boolean(v.active),
       "color": v.tags?.includes("color") ?? false
     }
@@ -688,11 +735,24 @@ export class Toolbox extends LitElement {
 
   })
 
+  ElementCommands = (el: HTMLElement) => this.app.commands.elementCommands.map(cmd => {
+    return html`
+      <ww-button
+        ${spreadProps(cmd.toObject())}
+        tabindex=${0}
+        name=${cmd.icon ?? "circle-fill"}
+        @click=${() => cmd.run()}
+        variant="icon"
+      ></ww-button>
+  `
+  })
+
   BlockToolbox = (el: HTMLElement) => {
     return html`<div class="block-toolbox">
       <div class="block-options">
         ${this.ElementBreadcrumb()}
         <div part="block-commands">
+          ${this.ElementCommands(el)}
           ${this.LayoutCommands(el)}
         </div>
       </div>
@@ -724,6 +784,100 @@ export class Toolbox extends LitElement {
       </span>
     </div>`
   }
+
+  static getMediaContainerOf(el: HTMLElement) {
+    const containerTags = ["img", "audio", "video", "object", "embed", "iframe", "portal"]
+    const tag = el.tagName.toLowerCase()
+    if(containerTags.includes(tag)) {
+      return el
+    }
+    else if(["source", "track"].includes(tag)) {
+      return el.parentElement
+    }
+    else if(tag === "figure") {
+      return el.querySelector(containerTags.join(", "))
+    }
+    else if(tag === "figcaption") {
+      return el.parentElement?.querySelector(containerTags.join(", ")) ?? null
+    }
+    else if(tag === "picture") {
+      return el.querySelector("img")
+    }
+    else if(tag === "img") {
+      const parentTag = el.parentElement?.tagName.toLowerCase()
+      return parentTag === "picture"? el.parentElement!: el
+    }
+    else {
+      return null
+    }
+  }
+
+  MediaToolbox(el: HTMLElement) {
+    const conEl = Toolbox.getMediaContainerOf(el)!
+    const tag = conEl?.tagName.toLowerCase() ?? ""
+    const isMedia = ["audio", "video", "picture", "object", "embed", "iframe", "portal", "img"].includes(tag)
+    const isAudioVideo = ["audio", "video"].includes(tag)
+    const isVideo = ["video"].includes(tag)
+    const isImg = ["img"].includes("tag")
+    return html`<div class="media-toolbox" @sl-change=${(e: any) => e.target.tagName === "SL-SWITCH"? this.emitSetAttribute(conEl, e.target.id, e.target.checked? "": undefined): this.emitSetAttribute(conEl, e.target.id, e.target.value)}>
+      <sl-input size="small" value=${conEl?.getAttribute("src") ?? ""} id="src" ?data-hidden=${!isMedia} label=${msg("Source")} placeholder=${msg("URL")}></sl-input>
+      <sl-input size="small" value=${conEl?.getAttribute("alt") ?? ""} id="alt" ?data-hidden=${!isImg} label=${msg("Alternate text")} placeholder=${msg("Short description")}></sl-input>
+      <sl-input size="small" value=${conEl?.getAttribute("poster") ?? ""} id="poster" ?data-hidden=${!isVideo} label=${msg("Poster")} placeholder=${msg("URL")}></sl-input>
+      <aside class="switches">
+        <sl-switch size="small" ?checked=${conEl?.hasAttribute("autoplay") ?? false} id="autoplay" ?data-hidden=${!isAudioVideo}>${msg("Autoplay")}</sl-switch>
+        <sl-switch size="small" ?checked=${conEl?.hasAttribute("controls") ?? false} id="controls" ?data-hidden=${!isAudioVideo}>${msg("Controls")}</sl-switch>
+        <sl-switch size="small" ?checked=${conEl?.hasAttribute("loop") ?? false} id="loop" ?data-hidden=${!isAudioVideo}>${msg("Loop")}</sl-switch>
+        <sl-switch size="small" ?checked=${conEl?.hasAttribute("mute") ?? false} id="mute" ?data-hidden=${!isAudioVideo}>${msg("Mute")}</sl-switch>
+      </aside>
+    </div>`
+  }
+
+  emitSetAttribute(el: Element, key: string, value: string | undefined) {
+    this.dispatchEvent(new CustomEvent("ww-set-attribute", {bubbles: true, composed: true, detail: {el, key, value}}))
+  }
+
+  DetailsToolbox(el: HTMLDetailsElement) {
+    console.log(el)
+    return html`<div class="details-toolbox">
+      <sl-switch id="open" size="small" ?checked=${el.open} @sl-change=${() => this.emitSetAttribute(el, "open", !el.open? "": undefined)}>${msg("Open")}</sl-switch>
+    </div>`
+  }
+
+  HeadingToolbox(el: HTMLHeadingElement) {
+    const tag = el.tagName.toLowerCase()
+    return html`<div class="heading-toolbox">
+      <sl-radio-group value=${tag} size="small" @sl-change=${(e: any) => {
+        const newEl = el.ownerDocument.createElement(e.target.value) as HTMLHeadingElement
+        el.getAttributeNames().forEach(k => newEl.setAttribute(k, el.getAttribute(k)!))
+        newEl.replaceChildren(...Array.from(el.childNodes))
+        el.replaceWith(newEl)
+      }}>
+        <sl-radio-button value="h1"><sl-icon name="h-1"></sl-icon></sl-radio-button>
+        <sl-radio-button value="h2"><sl-icon name="h-2"></sl-icon></sl-radio-button>
+        <sl-radio-button value="h3"><sl-icon name="h-3"></sl-icon></sl-radio-button>
+        <sl-radio-button value="h4"><sl-icon name="h-4"></sl-icon></sl-radio-button>
+        <sl-radio-button value="h5"><sl-icon name="h-5"></sl-icon></sl-radio-button>
+        <sl-radio-button value="h6"><sl-icon name="h-6"></sl-icon></sl-radio-button>
+      </sl-radio-group>
+    </div>`
+  }
+
+  ListToolbox(el: HTMLOListElement | HTMLUListElement) {
+    const tag = el.tagName.toLowerCase()
+    return html`<div class="list-toolbox">
+      <sl-radio-group value=${tag} size="small" @sl-change=${(e: any) => {
+        const newEl = el.ownerDocument.createElement(e.target.value) as HTMLOListElement | HTMLUListElement
+        el.getAttributeNames().forEach(k => newEl.setAttribute(k, el.getAttribute(k)!))
+        newEl.replaceChildren(...Array.from(el.childNodes))
+        el.replaceWith(newEl)
+      }}>
+        <sl-radio-button value="ul"><sl-icon name="list"></sl-icon></sl-radio-button>
+        <sl-radio-button value="ol"><sl-icon name="list-numbers"></sl-icon></sl-radio-button>
+      </sl-radio-group>
+    </div>`
+  }
+
+
 
   ActiveInlineFields = () => {
     const cmds = this.app.commands.markCommands.filter(cmd => cmd.active && cmd.fields)
@@ -794,13 +948,19 @@ export class Toolbox extends LitElement {
       .filter(child => !tagsToExclude.includes(child.tagName) && child !== el)
   }
 
+  isCustomElement(el: Element) {
+    return !!el.ownerDocument.defaultView?.customElements.get(el.tagName.toLowerCase())
+  }
+
 
   ElementBreadcrumbItem(el: Element, isLast=false, menuItem=false): TemplateResult {
     const elementName = el.tagName.toLowerCase()
-    const isWidget = elementName in this.app.store.packages.widgetPackageMap
+    const isCustomElement = this.isCustomElement(el)
     const isCommandEl = elementName in this.app.commands.commands
 
-    const children = Array.from(el.children).filter(child => !child.classList.contains("ProseMirror-trailingBreak"))
+    const children = Array.from(el.children)
+      .filter(child => !child.classList.contains("ProseMirror-trailingBreak"))
+      .filter(child => !["a", "abbr", "b", "bdi", "bdo", "cite", "code", "data", "del", "dfn", "em", "i", "ins", "kbd", "q", "ruby", "s", "samp", "small", "span", "strong", "sub", "sup", "time", "u", "var"].includes(child.tagName.toLowerCase()))
 
     const separator = menuItem? null: html`<sl-dropdown slot="separator" class="children-dropdown" ?data-empty=${children.length === 0}>
       <ww-button
@@ -814,19 +974,15 @@ export class Toolbox extends LitElement {
       </sl-menu>
     </sl-dropdown>`
 
-    if(isWidget) {
-      const pkg = this.app.store.packages.widgetPackageMap[elementName]
+    if(isCustomElement) {
       const content = html`<ww-button
-        title=${pkg.name}
+        title=${elementName}
         variant="icon"
         icon="package"
         @click=${() => this.emitClickBreadcrumb(el)}
         @hover=${() => this.emitHoverBreadcrumb(el)}
       >
-        ${prettifyPackageName(pkg.name)}
-        ${!isLast? null: html`
-          <sl-icon-button tabindex="-1" class="delete" title=${msg("Delete element")} name="trash" @click=${this.emitDeleteWidget} @mouseenter=${this.emitMouseEnterDeleteWidget} @mouseleave=${this.emitMouseLeaveDeleteWidget}></sl-icon-button>
-        `}
+        ${!isLast? null: prettifyPackageName(elementName, "all", true)}
       </ww-button>`
       return !menuItem
         ? html`<sl-breadcrumb-item>${content}${separator}</sl-breadcrumb-item>`
@@ -914,11 +1070,32 @@ export class Toolbox extends LitElement {
     */
   }
 
+  ContextToolbox(el: HTMLElement) {
+    const tag = el.tagName.toLowerCase()
+    if(["figure", "figcaption", "img", "source", "track", "picture", "audio", "video", "object", "embed", "iframe", "portal"].includes(tag)) {
+      return this.MediaToolbox(el)
+    }
+    else if(tag === "details") {
+      return this.DetailsToolbox(el as HTMLDetailsElement)
+    }
+    else if(tag === "summary" && el.parentElement) {
+      return this.DetailsToolbox(el.parentElement as HTMLDetailsElement)
+    }
+    else if(["h1", "h2", "h3", "h4", "h5", "h6"].includes(tag)) {
+      return this.HeadingToolbox(el as HTMLHeadingElement)
+    }
+    else if(el.closest("ul, ol")) {
+      const listEl = el.closest("ul, ol")
+      return this.ListToolbox(listEl as HTMLOListElement | HTMLUListElement)
+    }
+  }
+
   render() {
     /*        <sl-icon-button tabindex="-1" class="delete" title="Delete widget" name="trash" @click=${this.emitDeleteWidget} @mouseenter=${this.emitMouseEnterDeleteWidget} @mouseleave=${this.emitMouseLeaveDeleteWidget}></sl-icon-button> */
     if(this.activeElement) {
       return html`
         ${this.BlockToolbox(this.activeElement)}
+        ${this.ContextToolbox(this.activeElement)}
         ${this.InlineToolbox()}
       `
     }

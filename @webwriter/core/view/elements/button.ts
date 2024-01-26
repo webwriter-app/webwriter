@@ -106,7 +106,9 @@ export class Button extends LitElement {
 
   @property({type: String, attribute: true})
   download: string | undefined
-  
+
+  @property({attribute: false, converter: {toAttribute: (v: Error[]) => !v.length? null: ""}})
+  issues: Error[] = []
 
   constructor() {
     super()
@@ -188,6 +190,10 @@ export class Button extends LitElement {
       :host([size=small]) sl-button::part(base) {
         padding: 0;
       }
+
+      :host([issues]) {
+        color: var(--sl-color-danger-600);
+      }
     `
   ]
 
@@ -206,8 +212,7 @@ export class Button extends LitElement {
   render() {
     const {id, variant, size, caret, disabled, loading, outline, pill, circle, type, name, value, href, target, rel, download} = this
     const {placement, skidding, hoist} = this.tooltipOptions
-    const tagName = unsafeStatic(variant === "icon"? "sl-icon-button": "sl-button")
-    return html`<sl-tooltip placement=${ifDefined(placement)} skidding=${ifDefined(skidding)} ?open=${this.confirming} ?disabled=${!this.confirm} trigger="manual" @click=${(e: any) => {
+    return html`<sl-tooltip placement=${ifDefined(placement)} skidding=${ifDefined(skidding)} ?open=${this.confirming} ?disabled=${!this.confirm} trigger=${this.issues.length? "hover": "manual"} @click=${(e: any) => {
       if(this.confirm) {
         !this.confirming && e.stopPropagation()
         this.confirming = !this.confirming
@@ -221,7 +226,9 @@ export class Button extends LitElement {
         </slot>
       </sl-button>
       <slot name="confirm" slot="content">
-        <span>${this.label}</span>
+        <div>${!this.issues.length? this.label: this.issues.map(err => html`
+          <div>${err.message}</div>
+        `)}</div>
         <span id="fallback">${msg("Are you sure?")}</span>
       </slot>
 

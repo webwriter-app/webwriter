@@ -212,7 +212,7 @@ export class App extends ViewModelMixin(LitElement)
 	activeEditor: ExplorableEditor | null
 
 	async notify({message, variant="primary"}: SlAlertAttributes) {
-		const duration = 2500
+		const duration = 5000
 		const icon = {
 			"primary": "info-circle",
 			"success": "circle-check",
@@ -256,6 +256,7 @@ export class App extends ViewModelMixin(LitElement)
     </ww-head>`
     const metaeditor = this.store? html`<ww-metaeditor
       .app=${this}
+      .editorState=${editorState}
       .head$=${(editorState as any).head$}
       .bodyAttrs=${editorState.doc.attrs}
       @ww-change-body-attrs=${(e: any) => setDocAttrs.run(e.target.bodyAttrs)}

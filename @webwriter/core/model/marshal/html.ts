@@ -1,12 +1,11 @@
 import { readTextFile, removeFile, writeTextFile } from '@tauri-apps/api/fs'
 import {Node, DOMSerializer} from "prosemirror-model"
-import {Attributes} from "@webwriter/model"
 import { join, appDir } from '@tauri-apps/api/path'
 import { EditorState } from 'prosemirror-state'
 import {Schema, DOMParser} from "prosemirror-model"
 
 import { createElementWithAttributes, namedNodeMapToObject, unscopePackageName } from "../../utility"
-import { createEditorState, headSchema, headSerializer } from '..'
+import { PackageStore, createEditorState, headSchema, headSerializer } from '..'
 import { Environment } from '../environment'
 import scopedCustomElementRegistry from "@webcomponents/scoped-custom-element-registry/src/scoped-custom-element-registry.js?raw"
 
@@ -24,7 +23,16 @@ function createDataURL(blob: Blob) {
   }) as Promise<string>
 }
 
-// TODO: Abysmal performance on save, replace with esbuild Base64 process? https://esbuild.github.io/content-types/#base64
+function uInt8ToBase64(bytes: Uint8Array) {
+  var binary = '';
+  var len = bytes.byteLength;
+  for (var i = 0; i < len; i++) {
+      binary += String.fromCharCode( bytes[ i ] );
+  }
+  return window.btoa( binary );
+}
+
+// Abysmal performance on save, replace with esbuild Base64 process? https://esbuild.github.io/content-types/#base64
 
 function createInitializerScript(id: string, tag: string, content: string) {
   return `
@@ -39,89 +47,43 @@ function createInitializerScript(id: string, tag: string, content: string) {
   `
 }
 
-export async function docToBundle(doc: Node, head: Node, bundle: Environment["bundle"]) {
+export async function docToBundle(doc: Node, head: Node, bundle: Environment["bundle"], Path: Environment["Path"], FS: Environment["FS"]) {
   const html = document.implementation.createHTMLDocument()
   const serializer = DOMSerializer.fromSchema(doc.type.schema)
   serializer.serializeFragment(doc.content, {document: html}, html.body)
 
+  // Generate bundle
   html.querySelectorAll(".ww-widget").forEach(w => w.removeAttribute("contenteditable"))
   
-  console.log(html.querySelectorAll(".ww-widget"))
-  
-  const allWidgetTypes = [...new Set(Object.values(doc.type.schema.nodes)
+  const allImports = Object.fromEntries(Object.values(doc.type.schema.nodes)
     .filter(node => node.spec["widget"])
-    .map(node => node.name)
+    .map(node => [node.spec.tag, node.spec.fullName])
+  )
+
+  const importIDs = [...new Set(Array.from(html.querySelectorAll("*"))
+    .map(el => el.tagName.toLowerCase())
+    .filter(tag => Object.keys(allImports).includes(tag))
+    .map(tag => allImports[tag])
   )]
 
-  const widgetTypes = Array.from(html.querySelectorAll("*"))
-    .map(el => el.tagName.toLowerCase())
-    .filter(name => allWidgetTypes.includes(name))
-
-  const packageNames = [...new Set(widgetTypes.map(name => doc.type.schema.nodes[name].spec["package"].name))]
-  const scopedEntries = packageNames.map(n => [n, unscopePackageName(n)])
-
-  const statements = [
-    scopedCustomElementRegistry
-  ].concat(scopedEntries.flatMap(([s, u]) => [
-    `import "${s}"`,
-  ]))
-  const entrypoint = statements.length > 1? statements.join(";"): ""
-
-  // Workaround without esbuild's transform API
-  const entrypointPath = await join(await appDir(), "entrypoint.js")
-  const jsPath = await join(await appDir(), "doc.js")
-  const cssPath = await join(await appDir(), "doc.css")
-  await writeTextFile(entrypointPath, entrypoint)
-  let js = ""
-  let css = ""
-  try {
-    await bundle([entrypointPath, "--bundle", "--minify", `--outfile=${jsPath}`])
-    js = await readTextFile(jsPath)
-    css = await readTextFile(cssPath)
-  }
-  catch(err) {}
-  finally {
-    removeFile(entrypointPath)
-    js !== "" && removeFile(jsPath)
-    css !== "" && removeFile(cssPath)
-  }
+  const {bundleJS, bundleCSS} = await PackageStore.readBundle(importIDs, bundle, Path, FS, false, true)
+  const js = scopedCustomElementRegistry + ";" +  bundleJS
+  const css = bundleCSS
+  
+  // Generate head
   html.head.replaceWith(headSerializer.serializeNode(head))
-
   for(let [key, value] of Object.entries(head.attrs.htmlAttrs ?? {})) {
     html.documentElement.setAttribute(key, value as string)
   }
 
-  function uInt8ToBase64(bytes: Uint8Array) {
-    var binary = '';
-    var len = bytes.byteLength;
-    for (var i = 0; i < len; i++) {
-        binary += String.fromCharCode( bytes[ i ] );
-    }
-    return window.btoa( binary );
-}
-
+  // Embed media elements
   const mediaElements = html.body.querySelectorAll(":is(img, source, embed)") as NodeListOf<HTMLSourceElement | HTMLImageElement>
   for(const [i, el] of Array.from(mediaElements).entries()) {
-    const tag = el.tagName.toLowerCase()
-    const id = `ww_media_source_${i}`
     if(!el.src || !el.src.startsWith("blob:")) {
       continue
     }
     const blob = await (await fetch(el.src)).blob()
     el.src = await createDataURL(blob)
-    /*
-    const bytes = new Uint8Array(await (await fetch(el.src)).arrayBuffer())
-    const contentString = String(bytes)
-    const sourceEl = document.createElement("script")
-    sourceEl.id = id
-    sourceEl.type = el.getAttribute(tag === "source"? "type": "data-type")!
-    sourceEl.innerHTML = contentString
-    const initializerEl = document.createElement("script")
-    initializerEl.id = id
-    initializerEl.className = "initializer"
-    initializerEl.innerHTML = createInitializerScript(id, tag, contentString)
-    el.replaceWith(sourceEl, initializerEl)
-    */
   }
 
   return {html, css, js}
@@ -154,9 +116,9 @@ export function parse(data: string, schema: Schema) {
   return editorState
 }
 
-export async function serialize(explorable: Node, head: Node, bundle: Environment["bundle"]) {
+export async function serialize(explorable: Node, head: Node, bundle: Environment["bundle"], Path: Environment["Path"], FS: Environment["FS"]) {
   
-  const {html, js, css} = await docToBundle(explorable, head, bundle)
+  const {html, js, css} = await docToBundle(explorable, head, bundle, Path, FS)
 
   const script = html.createElement("script")
   script.type = "text/javascript"
@@ -165,7 +127,7 @@ export async function serialize(explorable: Node, head: Node, bundle: Environmen
   html.head.appendChild(script)
 
   const style = html.createElement("style")
-  style.textContent = css
+  style.textContent = css ?? ""
   style.setAttribute("data-ww-editing", "bundle")
   html.head.appendChild(style)
 

@@ -148,13 +148,14 @@ export const HTTP: HTTPAPI = {
 
 /** Runs the CLI command `esbuild [args]`. */
 export async function bundle(args: string[] = []) {
-  const output = await Command.sidecar("bin/esbuild", [...args]).execute()
   console.info(`[TAURI] > esbuild ${args.join(" ")}`)
-  if(output.code !== 0) {
-    throw Error(output.stderr)
+  const output = await Command.sidecar("bin/esbuild", [...args]).execute()
+  console.log(output.code, output.stdout, output.stderr)
+  if(!output.code) {
+    return output.stderr
   }
   else {
-    return {data: output.stdout}
+    throw output.stderr
   }
 }
 
@@ -187,34 +188,26 @@ export async function search(text: string, params?: {size?: number, quality?: nu
 
 /** Runs the CLI command `pnpm [commandArgs]`. */
 export async function pm(command: string, commandArgs: string[] = [], cwd?: string) {
-  const cmdArgs = [command, ...commandArgs]
+  const defaultArgs = ["--reporter=ndjson"]
+  const cmdArgs = [command, ...defaultArgs, ...commandArgs]
   const opts = cwd? {cwd}: {}
   console.info(`[TAURI] ${cwd? cwd: await appDir()}> pnpm ${cmdArgs.join(" ")}`)
   const output = await Command.sidecar("bin/pnpm", cmdArgs, opts).execute()
-  if(output.stderr) {
-    const err = output.stderr.split("\n").map((e: any) => {
-      try {
-        console.error(JSON.parse(e))
-      }
-      catch(err) {
-        console.error(e)
-      }
-    })
-    const errors = err.filter((e: any) => e?.type === "error")
-    console.log(err)
-    const warnings = err.filter((e: any) => e?.type === "warning")
-    warnings.forEach((w: any) => console.warn(w.data))
-    if(err?.some((e: any) => e?.type === "error")) {
-      throw err
+  if(!output.stderr) {
+    const error = output.stdout.split("\n")
+      .map(entry => entry.replaceAll("\n", "\\n"))
+      .map(entry => JSON.parse(entry))
+      .filter(entry => entry.level === "error")
+      .join("\n")
+    if(!error) {
+      return
+    }
+    else {
+      throw new Error(error)
     }
   }
   else {
-    let result = output.stdout
-    try {
-      result = JSON.parse(output.stdout)
-    } catch(e) {
-    }
-    return result
+    throw output.stderr
   }
 }
 
