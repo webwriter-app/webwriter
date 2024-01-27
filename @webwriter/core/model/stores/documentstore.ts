@@ -473,4 +473,9 @@ export class DocumentStore implements Resource {
     return this.sentences.length
   }
 
+  get themeName() {
+    const {node} = getHeadElement(this.editorState.head$, node => node.type.name === "style" && node.attrs.data["data-ww-theme"]) ?? {}
+    return node?.attrs.data["data-ww-theme"]
+  }
+
 }

@@ -472,6 +472,10 @@ export class Palette extends LitElement {
 
     .other-insertables-menu {
       padding: 0;
+
+      & .applied-theme::part(label) {
+        font-weight: bolder;
+      }
     }
 
     .other-insertables-menu sl-menu-item::part(checked-icon) {
@@ -753,7 +757,7 @@ export class Palette extends LitElement {
       <ww-button variant="icon" class="dropdown-trigger" icon=${!this.dropdownOpen? "chevron-down": "chevron-up"} @click=${(e: any) => this.dropdownOpen = this.dropdownOpen? null: pkg.id} @mouseenter=${() => this.dropdownOpen = pkg.id}></ww-button>
       <sl-popup flip anchor=${pkg.id} class="other-insertables" strategy="fixed" placement="bottom-end" sync="width" ?active=${this.dropdownOpen === pkg.id}>
         <sl-menu class="other-insertables-menu">
-          ${otherInsertables.map(v => html`<sl-menu-item @click=${() => this.handleClickCard(pkg, v.name)}>
+          ${otherInsertables.map(v => html`<sl-menu-item class=${classMap({"applied-theme": pkg.id + v.name.slice(1) === this.app.store.document.themeName})} @click=${() => this.handleClickCard(pkg, v.name)}>
             ${v.label!._}
           </sl-menu-item>`)}
         </sl-menu>

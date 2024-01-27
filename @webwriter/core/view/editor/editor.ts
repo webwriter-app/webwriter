@@ -6,7 +6,7 @@ import { EditorState, Command as PmCommand, NodeSelection, TextSelection, AllSel
 import { Node, Mark, DOMParser, DOMSerializer} from "prosemirror-model"
 import { localized, msg, str } from "@lit/localize"
 
-import { CODEMIRROR_EXTENSIONS, ContentExpression, MediaType, Package, createWidget, removeMark } from "../../model"
+import { CODEMIRROR_EXTENSIONS, ContentExpression, EditorStateWithHead, MediaType, Package, createWidget, removeMark, upsertHeadElement } from "../../model"
 import { CodemirrorEditor, FigureView, WidgetView, nodeViews } from "."
 import { DocumentHeader } from "./documentheader"
 import { DocumentFooter } from "./documentfooter"
@@ -41,7 +41,7 @@ export class EditorViewController extends EditorView implements ReactiveControll
 		host.addController(this)
 	}
 
-	updateState(state: EditorState): void {
+	updateState(state: EditorStateWithHead): void {
 		super.updateState(state)
 		this.host.dispatchEvent(new CustomEvent("update", {composed: true, bubbles: true, detail: {editorState: this.state}}))
 	}
@@ -104,8 +104,17 @@ export class ExplorableEditor extends LitElement {
       this.pmEditor.focus()
     }
     else if(insertableName.startsWith("./themes/")) {
-      // TODO
-      console.log("To be implemented")
+      const old = this.app.store.document.themeName
+      const toInsert = pkgID + insertableName.slice(1)
+      const value = old === toInsert? "base": toInsert
+      const allThemes = this.app.store.packages.allThemes as any
+      this.app.store.document.setHead(upsertHeadElement(
+        this.editorState.head$,
+        "style",
+        {data: {"data-ww-theme": value}},
+        this.editorState.head$.schema.text(allThemes[value].source),
+        node => node.attrs?.data && node.attrs.data["data-ww-theme"] !== undefined
+      )) 
     }
     else if(insertableName === "clipboard") {
       const items = await navigator.clipboard.read()
@@ -123,7 +132,7 @@ export class ExplorableEditor extends LitElement {
 	}
 
 	@property({type: Object, attribute: false})
-	editorState: EditorState
+	editorState: EditorStateWithHead
 
   @property({type: Object, attribute: false})
 	codeState: CmEditorState
