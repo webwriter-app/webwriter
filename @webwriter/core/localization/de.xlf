@@ -58,10 +58,6 @@
   <source>Reset local application directory</source>
   <target>Lokalen Anwendungs-Ordner zurücksetzen</target>
 </trans-unit>
-<trans-unit id="s3ae67088bbefba98">
-  <source>Packages</source>
-  <target>Pakete</target>
-</trans-unit>
 <trans-unit id="sd158a5fc0f062f18">
   <source>Available</source>
   <target>Verfügbar</target>
@@ -138,10 +134,6 @@
   <source>Labels</source>
   <target>Beschriftungen</target>
 </trans-unit>
-<trans-unit id="s0184079b36201d24">
-  <source>Add this widget</source>
-  <target>Dieses Widget hinzufügen</target>
-</trans-unit>
 <trans-unit id="sddc49047f66a64ab">
   <source>No description provided</source>
   <target>Keine Beschreibung verfügbar</target>
@@ -193,10 +185,6 @@
 <trans-unit id="s4f20edb48a6287c9">
   <source>Load</source>
   <target>Laden</target>
-</trans-unit>
-<trans-unit id="se59ef70a4d2cfbac">
-  <source>Loading WebWriter...</source>
-  <target>Lade WebWriter...</target>
 </trans-unit>
 <trans-unit id="sed8ec5e3c64fa25d">
   <source>Total</source>
@@ -266,10 +254,6 @@
   <source>Language</source>
   <target>Sprache</target>
 </trans-unit>
-<trans-unit id="s889fce46bd2236e5">
-  <source>Documents</source>
-  <target>Dokumente</target>
-</trans-unit>
 <trans-unit id="sae3629911a62147f">
   <source>JS Size:</source>
   <target>JS-Größe:</target>
@@ -289,10 +273,6 @@
 <trans-unit id="s8cd9849cd37d7753">
   <source>Either select an existing package directory to install or an empty directory to create a new package.</source>
   <target>Einen Ordner mit einem bestehenden Paket wählen zum installieren oder einen leeren Ordner, um ein neues Paket zu erstellen.</target>
-</trans-unit>
-<trans-unit id="s74099020a06276df">
-  <source>Watching files</source>
-  <target>Dateien werden beobachtet</target>
 </trans-unit>
 <trans-unit id="sa75b95980cd80e78">
   <source>Editor</source>
@@ -417,14 +397,6 @@
 <trans-unit id="sec4cb64c35332774">
   <source>Show placeholder text</source>
   <target>Zeige einen Platzhalter-Text</target>
-</trans-unit>
-<trans-unit id="s9017cdca3510148e">
-  <source>Show an instant preview when hovering over widgets in the palette</source>
-  <target>Zeige eine Live-Vorschau, wenn die Maus über ein Widget in der Palette bewegt wird.</target>
-</trans-unit>
-<trans-unit id="se400c16740eb77dc">
-  <source>Show widget preview</source>
-  <target>Zeige Widget-Vorschau</target>
 </trans-unit>
 <trans-unit id="se3b4c857f91f80d7">
   <source>Keyboard shortcuts</source>
@@ -742,50 +714,6 @@
   <source>Set line height</source>
   <target>Zeilenabstand setzen</target>
 </trans-unit>
-<trans-unit id="s116a50d707724ebf">
-  <source>Set the line height of the selected block</source>
-  <target>Setze den Zeilenabstand des gewählten Blocks</target>
-</trans-unit>
-<trans-unit id="s1c060a5ea3eff2d0">
-  <source>Set block border</source>
-  <target>Block-Rand setzen</target>
-</trans-unit>
-<trans-unit id="se94aa491754e67ac">
-  <source>Set the border of the selected block</source>
-  <target>Setze den Rand des auswählten Blocks</target>
-</trans-unit>
-<trans-unit id="s7c70d0bf2a12e88c">
-  <source>Set block margin</source>
-  <target>Block-Außenabstand setzen</target>
-</trans-unit>
-<trans-unit id="s24baf36b963988d1">
-  <source>Set the margins of the selected block</source>
-  <target>Setze den Außenabstand des auswählten Blocks</target>
-</trans-unit>
-<trans-unit id="s1570e1200a882f33">
-  <source>Set block padding</source>
-  <target>Block-Innenabstand setzen</target>
-</trans-unit>
-<trans-unit id="sbf89a6f724bef29f">
-  <source>Set the padding of the selected block</source>
-  <target>Setze den Innenabstand des ausgewählten Blocks</target>
-</trans-unit>
-<trans-unit id="s425e266433a1ebca">
-  <source>Set block background</source>
-  <target>Block-Hintergrund setzen</target>
-</trans-unit>
-<trans-unit id="sc60e0271fdc285f2">
-  <source>Set the background of the selected block</source>
-  <target>Setze den Hintergrund des auswählten Blocks</target>
-</trans-unit>
-<trans-unit id="s3b3cfb9df7a16976">
-  <source>Align block text</source>
-  <target>Block-Text ausrichten</target>
-</trans-unit>
-<trans-unit id="s5a0742dba0defaec">
-  <source>Set the text alignment of the selected block</source>
-  <target>Setze die Text-Ausrichtung des auswählten Blocks</target>
-</trans-unit>
 <trans-unit id="sbc5f2c81604bb301">
   <source>Heading 4</source>
   <target>Überschrift 4</target>
@@ -946,10 +874,6 @@
   <source>Meta</source>
   <target>Meta</target>
 </trans-unit>
-<trans-unit id="s1eaccbf2d6af8ab5">
-  <source>Information</source>
-  <target>Information</target>
-</trans-unit>
 <trans-unit id="s6827930ef1aeaf99">
   <source>Base URL</source>
   <target>Base URL</target>
@@ -965,10 +889,6 @@
 <trans-unit id="saab875d8cfcfe712">
   <source>Theme</source>
   <target>Theme</target>
-</trans-unit>
-<trans-unit id="s21b06c38fc4164db">
-  <source>Advanced</source>
-  <target>Fortgeschritten</target>
 </trans-unit>
 <trans-unit id="s98977a87d1b93941">
   <source>Reset information, styles and scripts</source>
@@ -1629,6 +1549,254 @@
 <trans-unit id="s91c5921e7b46d4a6">
   <source>You have unsaved changes. Are you sure you want to leave and discard them?</source>
   <target>Es gibt ungesicherte Änderungen. Trotzdem schließen und Änderungen verwerfen?</target>
+</trans-unit>
+<trans-unit id="s3b3ea038c5d3bb06">
+  <source>Division</source>
+  <target>Teil</target>
+</trans-unit>
+<trans-unit id="se6cdad455e2d8c02">
+  <source>Insert a division</source>
+  <target>Teil einfügen</target>
+</trans-unit>
+<trans-unit id="s95c161f68e5180a5">
+  <source>Inspect selection</source>
+  <target>Auswahl inspizieren</target>
+</trans-unit>
+<trans-unit id="s4c1535f316305a2a">
+  <source>Inspect the selection</source>
+  <target>Inspiziert die Auswahl</target>
+</trans-unit>
+<trans-unit id="sbba0156f795d8c07">
+  <source>Edit selection</source>
+  <target>Auswahl bearbeiten</target>
+</trans-unit>
+<trans-unit id="sc03fd15d83e5f292">
+  <source>Edit the </source>
+  <target>Bearbeite</target>
+</trans-unit>
+<trans-unit id="s561a2e79fc62d7d9">
+  <source>Transform selection</source>
+  <target>Auswahl transformieren</target>
+</trans-unit>
+<trans-unit id="s895e827a8c9f0b2e">
+  <source>Transform the selection</source>
+  <target>Transformiert die Auswahl</target>
+</trans-unit>
+<trans-unit id="s621ad19d35ba7742">
+  <source>Copy selection</source>
+  <target>Auswahl kopieren</target>
+</trans-unit>
+<trans-unit id="s365280e16a8ea32d">
+  <source>Copy the selection</source>
+  <target>Kopiert die Auswahl</target>
+</trans-unit>
+<trans-unit id="s73cb20c838e761e1">
+  <source>Cut selection</source>
+  <target>Auswahl ausschneiden</target>
+</trans-unit>
+<trans-unit id="s8e715248c3a78446">
+  <source>Cut the selection</source>
+  <target>Schneidet die Auswahl aus</target>
+</trans-unit>
+<trans-unit id="s13ef8ca26ca8861b">
+  <source>Cut element</source>
+  <target>Element ausschneiden</target>
+</trans-unit>
+<trans-unit id="s2ced8e8fafb499f6">
+  <source>Delete element</source>
+  <target>Element löschen</target>
+</trans-unit>
+<trans-unit id="s3eca5a034978754b">
+  <source>Delete the selection</source>
+  <target>Löscht die Auswahl</target>
+</trans-unit>
+<trans-unit id="s864518bdfb135d72">
+  <source>Set the line height of the selected element</source>
+  <target>Setze die Zeilenhöhe des ausgewählten Elements</target>
+</trans-unit>
+<trans-unit id="s091ef685b60239cb">
+  <source>Set element border</source>
+  <target>Element-Rand setzen</target>
+</trans-unit>
+<trans-unit id="s7d3d4b5b7d605a05">
+  <source>Set the border of the selected element</source>
+  <target>Setze den Rand des ausgewählten Elements</target>
+</trans-unit>
+<trans-unit id="s1dd05fa6617c24af">
+  <source>Set element margin</source>
+  <target>Element-Außenabstand setzen</target>
+</trans-unit>
+<trans-unit id="s22d653f1433b46c8">
+  <source>Set the margins of the selected element</source>
+  <target>Setze die Außenabstände des ausgewählten Elements</target>
+</trans-unit>
+<trans-unit id="s586d178a7db74a4a">
+  <source>Set element padding</source>
+  <target>Element-Innenabstand setzen</target>
+</trans-unit>
+<trans-unit id="s01a3659e7cfcd452">
+  <source>Set padding of the selected element</source>
+  <target>Setze die Innenabstände des ausgewählten Elements</target>
+</trans-unit>
+<trans-unit id="s5b82a23fbcad1a41">
+  <source>Set element background</source>
+  <target>Element-Hintergrund setzen</target>
+</trans-unit>
+<trans-unit id="s478bc923b43f93c7">
+  <source>Set the background of the selected element</source>
+  <target>Setze den Hintergrund des ausgewählten Elements</target>
+</trans-unit>
+<trans-unit id="s724ddbe05e009445">
+  <source>Align element text</source>
+  <target>Element-Text ausrichten</target>
+</trans-unit>
+<trans-unit id="safb1c9501fc85045">
+  <source>Set the text alignment of the selected element</source>
+  <target>Setze die Text-Ausrichtung des ausgewählten Elements</target>
+</trans-unit>
+<trans-unit id="se6297163cac9d276">
+  <source>Edit source</source>
+  <target>Quelltext bearbeiten</target>
+</trans-unit>
+<trans-unit id="s281d957112b10f12">
+  <source>Edit the HTML of the document directly</source>
+  <target>Den HTML-Text des Dokuments direkt bearbeiten</target>
+</trans-unit>
+<trans-unit id="s61eacb19db252f5e">
+  <source>URL</source>
+  <target>URL</target>
+</trans-unit>
+<trans-unit id="sa79167651dce1e80">
+  <source>Alternate text</source>
+  <target>Text als Alternative</target>
+</trans-unit>
+<trans-unit id="sa8bbe0197d31b423">
+  <source>Short description</source>
+  <target>Kurze Beschreibung</target>
+</trans-unit>
+<trans-unit id="seccd05955adb76bc">
+  <source>Poster</source>
+  <target>Poster</target>
+</trans-unit>
+<trans-unit id="s42e470ef1d707a28">
+  <source>Autoplay</source>
+  <target>Autoplay</target>
+</trans-unit>
+<trans-unit id="s83cd32b685ccc9b7">
+  <source>Controls</source>
+  <target>Steuerung</target>
+</trans-unit>
+<trans-unit id="s4efee5b48a4593cb">
+  <source>Loop</source>
+  <target>Schleife</target>
+</trans-unit>
+<trans-unit id="se0f67eae944f8f94">
+  <source>Mute</source>
+  <target>Stumm</target>
+</trans-unit>
+<trans-unit id="s651f3a92741d9520">
+  <source>Everything</source>
+  <target>Alles</target>
+</trans-unit>
+<trans-unit id="s1641ab440bf4daa4">
+  <source>Update this widget package</source>
+  <target>Dieses Paket aktualisieren</target>
+</trans-unit>
+<trans-unit id="sbd40f40cbadd38d5">
+  <source>Remove this widget package</source>
+  <target>Dieses Paket entfernen</target>
+</trans-unit>
+<trans-unit id="s54897f2764b0e4d0">
+  <source>Install this widget package</source>
+  <target>Dieses Paket installieren</target>
+</trans-unit>
+<trans-unit id="s985f2db57913324b">
+  <source>Manage packages</source>
+  <target>Pakete verwalten</target>
+</trans-unit>
+<trans-unit id="scdf536b65be39ec5">
+  <source> Create/import</source>
+  <target>Neu/Import</target>
+</trans-unit>
+<trans-unit id="sf2514d5dc78b1654">
+  <source>Insert widget</source>
+  <target>Widget einfügen</target>
+</trans-unit>
+<trans-unit id="s1857db526dc4dcdd">
+  <source>Create package</source>
+  <target>Paket erstellen</target>
+</trans-unit>
+<trans-unit id="sd2addf69477cd4b4">
+  <source>Import package</source>
+  <target>Paket importieren</target>
+</trans-unit>
+<trans-unit id="s7de0061f53ba7472">
+  <source>Error importing </source>
+  <target>Fehler beim Importieren</target>
+</trans-unit>
+<trans-unit id="s812cbda653daaeba">
+  <source>This feature is not implemented yet</source>
+  <target>Diese Funktion ist noch nicht umgesetzt</target>
+</trans-unit>
+<trans-unit id="s99f110d27e30b289">
+  <source>Title</source>
+  <target>Titel</target>
+</trans-unit>
+<trans-unit id="sef73fe18e351eb35">
+  <source>Keywords</source>
+  <target>Schlagwörter</target>
+</trans-unit>
+<trans-unit id="s63d894b1ddb06289">
+  <source>Description</source>
+  <target>Beschreibung</target>
+</trans-unit>
+<trans-unit id="s01d32b35baa3b676">
+  <source>Author</source>
+  <target>Autor</target>
+</trans-unit>
+<trans-unit id="s17597a8bb4810524">
+  <source>License</source>
+  <target>Lizenz</target>
+</trans-unit>
+<trans-unit id="sdc48456f9a27ae02">
+  <source>Generator</source>
+  <target>Generator</target>
+</trans-unit>
+<trans-unit id="s252a52330d32b900">
+  <source>Metadata</source>
+  <target>Metadaten</target>
+</trans-unit>
+<trans-unit id="sa417644bef21a9aa">
+  <source>Unnamed Theme</source>
+  <target>Unbenanntes Theme</target>
+</trans-unit>
+<trans-unit id="saa33768e03c45fc8">
+  <source>File Size</source>
+  <target>Dateigröße</target>
+</trans-unit>
+<trans-unit id="s3f06e9abb6ebcb79">
+  <source>Characters</source>
+  <target>Zeichen</target>
+</trans-unit>
+<trans-unit id="s0f350bc4e538e3ea">
+  <source>Words</source>
+  <target>Wörter</target>
+</trans-unit>
+<trans-unit id="s106b274b5af798e5">
+  <source>Sentences</source>
+  <target>Sätze</target>
+</trans-unit>
+<trans-unit id="s97aa76056a81bd36">
+  <source>Metrics</source>
+  <target>Metriken</target>
+</trans-unit>
+<trans-unit id="s94d2eee44b292567">
+  <source>Toggle advanced options</source>
+  <target>Fortgeschrittene Optionen umschalten</target>
+</trans-unit>
+<trans-unit id="sef00c258bc1ecf1e">
+  <source>This explorable has unsaved changes.</source>
+  <target>Es gibt ungesicherte Änderungen</target>
 </trans-unit>
 </body>
 </file>
