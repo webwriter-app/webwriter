@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/slides",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Present content as a sequence of screens (slides, tabs, etc.).",
   "keywords": [
     "webwriter-widget"
@@ -16,9 +16,7 @@
   "exports": {
     "./widgets/webwriter-slides": "./widgets/webwriter-slides.ts",
     "./widgets/webwriter-slide": "./widgets/webwriter-slide.ts",
-    "./snippets/webwriter-slides": "./snippets/webwriter-slides.html",
-    "./snippets/other-snippet": "./snippets/other-snippet.html",
-    "./themes/test-theme": "./themes/test-theme.css"
+    "./snippets/webwriter-slides": "./snippets/webwriter-slides.html"
   },
   "editingConfig": {
     "./widgets/webwriter-slides": {
