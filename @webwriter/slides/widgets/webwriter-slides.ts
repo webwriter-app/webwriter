@@ -51,6 +51,10 @@ export class WebwriterSlides extends LitElementWw {
       width: 100%;
     }
 
+    :host(:not([contenteditable=true]):not([contenteditable=""])) .author-only {
+      display: none;
+    }
+
     [part=actions] {
       position: absolute;
       right: 8px;
@@ -150,7 +154,7 @@ export class WebwriterSlides extends LitElementWw {
       <aside part="options">
       </aside>
       <aside part="actions">
-        <sl-icon-button @click=${() => this.addSlide()} src=${plusSquareIcon}></sl-icon-button>
+        <sl-icon-button class="author-only" @click=${() => this.addSlide()} src=${plusSquareIcon}></sl-icon-button>
         <sl-icon-button @click=${(e: MouseEvent) => this.handleNextSlideClick(e, true)} src=${chevronLeftIcon} ?disabled=${!this.hasPreviousSlide}></sl-icon-button>
         <div class="slides-index">
           <span>${this.activeSlideIndex + 1}</span> / <span>${this.slides?.length}</span>
