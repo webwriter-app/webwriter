@@ -60,12 +60,6 @@ class FlipDirective extends Directive {
   }
 }
 
-// TODO: Add UI for any set of widgets/snippets/themes in package
-// TODO: Rework documentation for new widget system
-// TODO: Publish new @webwriter/lit
-// TODO: Implement webwriter-slides as an example
-
-
 @customElement("ww-palette")
 export class Palette extends LitElement {
 
