@@ -1,6 +1,6 @@
 ---
 title: Localizing
-order: 105
+order: 305
 ---
 
 # Localizing
@@ -12,7 +12,11 @@ WebWriter passes the configured language to each widget using the [Web Standard 
 
 Consider this example for a widget only providing a German translation:
 ```ts
+import {html} from "lit"
+import {LitElementWw} from "@webwriter/lit"
+import {customElement, property} from "lit/decorators.js"
 
+@customElement("cool-widget")
 export default class CoolWidget extends LitElementWw {
 
   static LOCALIZED = {

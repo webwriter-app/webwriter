@@ -1,6 +1,6 @@
 ---
 title: Managing Focus
-order: 103
+order: 303
 ---
 
 # Managing Focus
@@ -11,6 +11,7 @@ A simple way of handling focus is delegating the focus to a child element.
 
 In our example, we implement `focus()` on the element such that the `textarea` is focused when the widget is focused:
 ```ts
+@customElement("cool-widget")
 export default class CoolWidget extends LitElementWw {
 
   @property({attribute: true})
@@ -28,11 +29,11 @@ export default class CoolWidget extends LitElementWw {
 
   static get styles() {
     return css`
-      :host([editable]) .placeholder {
+      :host(:is([contenteditable=true], [contenteditable=""])) .placeholder {
         display: none;
       }
 
-      :host([printable]) textarea {
+      :host(.ww-beforeprint) textarea {
         border: 2px solid black;
         border-radius: 2px;
       }

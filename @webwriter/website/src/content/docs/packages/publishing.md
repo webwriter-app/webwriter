@@ -1,5 +1,5 @@
 ---
-order: 203
+order: 202
 title: "Publishing"
 ---
 # Publishing
@@ -13,17 +13,17 @@ You have...
 
 ## Creating your package (summary)
 If you're familiar with creating npm packages already, all you need to know is that you need to `npm publish` a package satisfying these conditions for WebWriter to detect it so that authors can install it:
-- `name` must be a [valid custom element element tag]((https://html.spec.whatwg.org/multipage/custom-elements.html#valid-custom-element-name))
-- `main` can be a `.js` or `.ts` file
+- `name` must be scoped (e.g. `@org/pkg`)
+- `exports` should point to one or more exports of widgets/snippets/themes
 - `keywords` must contain `webwriter-widget`
 
 
 ## Creating your package (step-by-step)
 
 ### Step 1: Creating your package directory
-Create a new directory with the name you want for your package. The package name must be both a [valid custom element tag (one or more characters followed by a dash `-` and zero or more characters)](https://html.spec.whatwg.org/multipage/custom-elements.html#valid-custom-element-name) and an available package name on `npm` (check this by [searching npm](https://www.npmjs.com/)). We recommend using the prefix `ww-`: For example, a package name could be `ww-coolwidget`.
+Create a new directory with the name you want for your package. The package name must be scoped (`@org/pkg`). The scope name (e.g.`org`) is also the prefix of your widgets' custom elements. The name must be available on `npm` (check this by [searching npm](https://www.npmjs.com/)). You are responsible for avoiding name conflicts between widgets within your scope (e.g. `@org/pkg1` and `@org/pkg2` may not both export a widget named `org-foo`).
 ```sh
-mkdir ww-coolwidget
+mkdir -p @org/pkg
 ```
 
 ### Step 2: Creating your main file

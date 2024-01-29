@@ -1,6 +1,6 @@
 ---
 title: "Assets"
-order: 107
+order: 307
 ---
 
 # Assets
@@ -10,9 +10,9 @@ Widgets may use different external assets such as images (or even audio and vide
 When a widget is loaded into WebWriter (by installing a package), WebWriter bundles the package using [`esbuild`](https://esbuild.github.io/) and imports the resulting bundle. This means that a widget may include any [type of asset that `esbuild` allows](https://esbuild.github.io/content-types/). Bundling is used again when the author saves the explorable, as all widgets are combined into a single, minimal bundle and the bundle source is embedded into the explorable. 
 
 ## JS
-JS is the default asset type. It can be the entry point of your widget with `"main": "myfile.js"` configured in `package.json`. Any files imported in your entry point are also bundled (this applies recursively) according to normal bundler behavior.
+JS is the default asset type. It can be the entry point of your widget with `"exports": {... "./widgets/my-widget": "./widgets/my-widget.js"}` configured in `package.json`. Any files imported in your entry point are also bundled (this applies recursively) according to normal bundler behavior.
 
-`mywidget.js`
+`my-widget.js`
 ```js
 import MySubComponent from "./mysubcomponent"
 ```
@@ -20,9 +20,9 @@ import MySubComponent from "./mysubcomponent"
 More details can be found in the [esbuild documentation on JS](https://esbuild.github.io/content-types/#javascript).
 
 ## TypeScript
-[TypeScript (TS)](https://www.typescriptlang.org/) is a strongly typed language building on JS. In WebWriter, TypeScript has first-class support: A TypeScript file can also be an entry point with `"main": "myfile.ts"`, configured in `package.json`. The same rules as for JS generally apply. Additionally, if your package includes a [`tsconfig.json`](https://www.typescriptlang.org/docs/handbook/tsconfig-json.html), it is used when bundling.
+[TypeScript (TS)](https://www.typescriptlang.org/) is a strongly typed language building on JS. In WebWriter, TypeScript has first-class support: A TypeScript file can also be an entry point with `"exports": {... "./widgets/my-widget": "./widgets/my-widget.ts"}`, configured in `package.json`. The same rules as for JS generally apply. Additionally, if your package includes a [`tsconfig.json`](https://www.typescriptlang.org/docs/handbook/tsconfig-json.html), it is used when bundling.
 
-`mywidget.ts`
+`my-widget.ts`
 ```ts
 import MySubComponent from "./mysubcomponent"
 ```
@@ -35,9 +35,9 @@ JSX is a syntax for JS to create React elements with an XML-like syntax. Some co
 More details can be found in the [esbuild documentation on JSX](https://esbuild.github.io/content-types/#jsx).
 
 ## JSON
-JSON can be imported directly, as well. When a JSON file is imported, it is converted into a JS object at build time.
+JSON can be imported directly, as well. When a JSON file is imported, it is converted into a JS object at build time. This also applies to `.jsonld` files.
 
-`mywidget.js`
+`my-widget.js`
 ```js
 import config from "./config.json"
 ```
@@ -67,23 +67,32 @@ console.log(string)
 
 More details can be found in the [esbuild documentation on text](https://esbuild.github.io/content-types/#text).
 
-## Media: Images, (Audio, Video)
-Small media assets (< 1.45MB) can be imported in your JS/TS code. These assets are converted into a Base64-encoded data URI that can be used directly in any place a URI would be used. The limit of 1.45MB results from [the 2MB limit of data URIs in Chrome](https://stackoverflow.com/a/41755526) and the [~37% size increase of binary data in Base64 encoding](https://stackoverflow.com/a/11402374). Bigger files may work on browsers with higher limits but will break in Chrome.
+## Media: Images, Icons, (Audio, Video)
+Media assets can be imported in your JS/TS code. These assets are converted into a Base64-encoded data URI that can be used directly in any place a URI would be used.
+
+The following file extensions are loaded as data URIs:
+- Image: `.apng`, `.jpg`, `.jpeg`, `.jfif`, `.pjpeg`, `.pjp`, `.png`, `.svg`, `.webp`, `.bmp`, `.ico`, `.cur`, `.tif`, `.tiff`
+- Audio: `.wav`, `.wave`, `.mp3`, `.aac`, `.aacp`, `.oga`, `.flac`, `.weba`
+- Video: `.mp4`, `.webm`, `.avif`, `.gif`, `.mov`, `.avi`, `.ogv`, `.mkv`, `.opus`, `.mpeg`
+- Font: `.woff`, `.woff2`, `.ttf`, `.otf`
+- Document: `.pdf`
+
+Note that binary file types are loaded in Base64 encoding, while text formats such as SVG as loaded directly as text in the Data URI.
 
 ```js
 import myicon from "./myicon.svg"
 
+@customElement("my-widget")
 class MyWidget extends LitElement {
   render() {
-    // This will the icon at 
-    return html`<img src=${myicon}></img>`
+    return html`<img src=${myicon}></img>` // if using Shoelace.js, <sl-icon src=${myicon}></sl-icon> also works
   }
 }
 ```
 
 As shown in the example, this approach is most useful for using multiple small assets such as a set of icons for the widget.
 
-Larger media assets such as most video and audio files are not intended to be part of a widget's source. Since these assets would be bundled into every explorable that includes the widget, they would massively increase the widget's size.
+Larger media assets such as most video and audio files are not intended to be part of a widget's source. Since these assets would be bundled into every explorable that includes the widget, they would massively increase the widget's size, and slow down both authoring and usage of the explorable.
 
 ## WebAssembly
 WebAssembly is not supported yet.

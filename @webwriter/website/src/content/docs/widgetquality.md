@@ -1,5 +1,5 @@
 ---
-order: 500
+order: 1000
 title: "Evaluating Widgets"
 type: "explainer"
 ---

@@ -1,5 +1,5 @@
 ---
-order: 400
+order: 1002
 title: "Using Other Libraries"
 ---
 
@@ -43,20 +43,3 @@ What does this actually provide? `LitElementWw` is a class saving you some boile
 3. Scoped Custom Element Registry: [ScopedElementsMixin](https://open-wc.org/docs/development/scoped-elements/) is used to avoid name collisions between two widgets using the same third-party web components. This is a technical issue with the current specification of custom elements. To put it shortly: Custom elements must be registered globally by their tag (e.g. `my-button`). Now, the name is taken and trying to register the element again throws an error. This makes having different versions of the same element in the same page very difficult. Essentially, this is a typical global namespace issue. You can read more about it [here](https://github.com/justinfagnani/webcomponents/blob/scoped-registries/proposals/Scoped-Custom-Element-Registries.md).
 
 Why is this important? You need to implement these features with the web component library you want to use. (1) is usually very simple, almost any library provides this. (2) is also straightforward: Some libraries may do this automatically, otherwise, you can implement it with the [`connectedCallback` method](https://developer.mozilla.org/en-US/docs/Web/Web_Components/Using_custom_elements#using_the_lifecycle_callbacks), which is standardized and thus available with any library. (3) is probably the most difficult. You can check the page for the solution in Lit [here](https://open-wc.org/docs/development/scoped-elements/). This will hopefully become much easier once standardization progresses. 
-
-### Unfinished section...
-
-The minimum requirement for a widget is the [`HTMLElement` interface](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement). This would be an uneditable and stateless widget:
-
-```ts
-@customElement("cool-widget")
-export default class CoolWidget extends HTMLElement {
-  // Implementation depending on your web component approach
-}
-```
-
-
-- `Widget` is the interface widgets should support. It defines three core boolean properties that widgets may support: 
-1. `editable`: If `true`, the widget should render UI elements so that authors can edit the widget. If `false`, no such UI elements should be rendered.
-2. `printable`: If `true`, the widget should render itself so that it may be printed easily.
-3. `analyzable`: Not implemented yet...

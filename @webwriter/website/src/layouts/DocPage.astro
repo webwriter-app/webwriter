@@ -25,6 +25,11 @@ const docActive = allDocs.map((doc, i) =>{
 
 <Layout title="Documentation">
   <div class="base">
+      <script src="medium-zoom"></script>
+      <script>
+        import mediumZoom from "medium-zoom";
+        mediumZoom(".doc-article img")
+      </script>
       <input id="docsNavInput" type="checkbox">
       <label id="docsNavToggle" for="docsNavInput" class="bi-list" ></label>
       <nav id="docsNav">
@@ -36,7 +41,7 @@ const docActive = allDocs.map((doc, i) =>{
           </ol>
           <label id="closeDocsNav" for="docsNavInput" class="bi-x" ></label>
       </nav>
-      <article>
+      <article class="doc-article">
           <slot></slot>
       </article>
   </div>
@@ -223,9 +228,13 @@ const docActive = allDocs.map((doc, i) =>{
 
 <style is:global>
 
-    img {
+    .doc-article img {
       margin: auto;
       display: block;
+      width: 100%;
+      height: auto;
+      aspect-ratio: auto;
+      background: var(--background-color);
     }
 
     article {
