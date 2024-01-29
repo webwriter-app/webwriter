@@ -493,6 +493,9 @@ export class ExplorableEditor extends LitElement {
 		this.deletingWidget = null*/
   }
 
+  @property({attribute: false, state: true})
+  editingStatus: undefined | "copying" | "cutting" | "deleting" | "inserting"
+
 	decorations = (state: EditorState) => {
     const {from, to, $from} = state.selection
     const decorations = [] as Decoration[]
@@ -502,17 +505,14 @@ export class ExplorableEditor extends LitElement {
       const selectionStartsInNode = pos <= from && from <= pos + node.nodeSize
       const selectionWrapsNode = from <= pos && pos + node.nodeSize <= to
       const deletingPos = this.deletingWidget? this.pmEditor.posAtDOM(this.deletingWidget, 0) - 1: -1
-      if(state.selection instanceof NodeSelection && state.selection.node === node) {
-        decorations.push(Decoration.node(pos, pos + node.nodeSize, {class: "ww-selected"}))
-      }
-      if(selectionWrapsNode && this.isTextSelected) {
-        decorations.push(Decoration.node(pos, pos + node.nodeSize, {class: "ww-selected-inner"}))
+      const isSelectedInner = selectionWrapsNode && this.isTextSelected
+      const isSelectedNode = state.selection instanceof NodeSelection && state.selection.node === node
+      if(isSelectedNode || isSelectedInner) {
+        decorations.push(Decoration.node(pos, pos + node.nodeSize, {class: isSelectedInner? "ww-selected-inner": "ww-selected"}))
+        this.editingStatus && decorations.push(Decoration.node(pos, pos + node.nodeSize, {class: `ww-${this.editingStatus}`}))
       }
       if(node.isInline || name === "_phrase") {
         decorations.push(Decoration.node(pos, pos + node.nodeSize, {class: "ww-inline"}))
-      }
-      if(deletingPos === pos) {
-        decorations.push(Decoration.node(pos, pos + node.nodeSize, {class: "ww-deleting"}))
       }
       if(this.printing) {
         decorations.push(Decoration.node(pos, pos + node.nodeSize, {class: "ww-beforeprint"}))

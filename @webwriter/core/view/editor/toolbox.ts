@@ -742,6 +742,8 @@ export class Toolbox extends LitElement {
         tabindex=${0}
         name=${cmd.icon ?? "circle-fill"}
         @click=${() => cmd.run()}
+        @mouseenter=${() => cmd.preview()}
+        @mouseleave=${() => cmd.preview()}
         variant="icon"
       ></ww-button>
   `

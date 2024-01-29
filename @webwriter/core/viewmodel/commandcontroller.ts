@@ -187,6 +187,8 @@ export type CommandSpec<ID extends string = string, T extends FieldRecord = Fiel
   active?: (host: App) => boolean
   /** Associated value of the command. */
   value?: (host: App) => any
+  /** Callback to preview the command's result, for example on hovering a command button. */
+  preview?: (host: App, options?: any, e?: Event) => any | Promise<any>
 }
 
 export type NodeCommandSpec<ID extends string = string, T extends FieldRecord = FieldRecord> = CommandSpec<ID, T> & {defaultAttrs?: Attrs}
@@ -280,6 +282,13 @@ export class Command<SPEC extends CommandSpec = CommandSpec> implements Reactive
     return !this.spec.value || !this.host.activeEditor? undefined: this.spec.value(this.host)
   }
 
+  /** Callback to preview the command's result, for example on hovering a command button. */
+  preview(options?: any, e?: Event, preview=this.spec.preview ?? (() => {})) {
+    if(!this.disabled && this.host.activeEditor) {
+      return preview(this.host, options, e)
+    }
+  }
+
   run(options?: any, e?: Event, run=this.spec.run ?? (() => {})) {
     if(e && !this.allowDefault) {
       e.preventDefault()
@@ -303,7 +312,6 @@ class NodeCommand<SPEC extends NodeCommandSpec = NodeCommandSpec> extends Comman
     return this.spec.category ?? "editor"
   }
   run(options?: any, e?: Event) {
-    console.log(this.spec.defaultAttrs)
     const {exec, editorState} = this.host.activeEditor ?? {exec: () => {}}
     return super.run(options, e, (host, attrs) => exec(wrapSelection(this.id, {...attrs, ...this.spec.defaultAttrs})))
   }
@@ -312,6 +320,11 @@ class NodeCommand<SPEC extends NodeCommandSpec = NodeCommandSpec> extends Comman
   }
   get value() {
     return this.spec.value? this.spec.value(this.host): this.host.store.document.activeNodeMap[this.id]
+  }
+  preview(options?: any, e?: Event) {
+    return super.preview(options, e, host => {
+      host.activeEditor!.editingStatus = host.activeEditor?.editingStatus !== "inserting"? "inserting": undefined
+    })
   }
 }
 
@@ -1387,6 +1400,7 @@ export class CommandController implements ReactiveController {
         shortcut: "ctrl+c",
         icon: "copy",
         run: host => host.activeEditor?.copy(),
+        preview: host => host.activeEditor!.editingStatus = host.activeEditor?.editingStatus !== "copying"? "copying": undefined,
         category: "editor",
         tags: ["element"],
         fixedShortcut: true
@@ -1398,6 +1412,7 @@ export class CommandController implements ReactiveController {
         shortcut: "ctrl+x",
         icon: "cut",
         run: host => host.activeEditor?.cut(),
+        preview: host => host.activeEditor!.editingStatus = host.activeEditor?.editingStatus !== "cutting"? "cutting": undefined,
         category: "editor",
         tags: ["element"],
         fixedShortcut: true
@@ -1409,6 +1424,7 @@ export class CommandController implements ReactiveController {
         shortcut: "ctrl+v",
         icon: "clipboard",
         run: host => host.activeEditor?.paste(),
+        preview: host => host.activeEditor!.editingStatus = host.activeEditor?.editingStatus !== "pasting"? "pasting": undefined,
         category: "editor",
         fixedShortcut: true
       }),
@@ -1419,6 +1435,7 @@ export class CommandController implements ReactiveController {
         shortcut: "del",
         icon: "trash",
         run: host => host.activeEditor?.delete(),
+        preview: host => host.activeEditor!.editingStatus = host.activeEditor?.editingStatus !== "deleting"? "deleting": undefined,
         category: "editor",
         tags: ["element"],
         fixedShortcut: true

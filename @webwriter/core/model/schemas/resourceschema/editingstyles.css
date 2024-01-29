@@ -193,17 +193,24 @@ figure.ProseMirror-selectednode::before {
   border-color: var(--sl-color-danger-400);
 }*/
 
-.ww-deleting::before {
+:is(.ww-copying, .ww-cutting, .ww-deleting)::before {
   content: "";
   position: absolute;
   right: -20px;
   top: 0;
   left: 0px;
-  background: var(--sl-color-danger-400);
   opacity: 0.25;
   z-index: 2147483647;
   width: 100%;
   height: 100%;
+}
+
+:is(.ww-cutting)::before {
+  background: var(--sl-color-warning-400);
+}
+
+.ww-deleting::before {
+  background: var(--sl-color-danger-400);
 }
 
 .ww-selected-inner::before {
@@ -251,6 +258,10 @@ body > .ww-widget::after {
 
 .ww-widget.ww-deleting::after {
   --ww-widget-highlight-color: var(--sl-color-danger-400);
+}
+
+.ww-widget:is(.ww-cutting, .ww-copying)::after {
+  --ww-widget-highlight-color: var(--sl-color-warning-400);
 }
 
 
