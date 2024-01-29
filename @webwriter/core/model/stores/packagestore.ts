@@ -50,9 +50,10 @@ export class Warning extends Error {}
 /** Handles packages. Packages are node (npm) packages which contain widgets. The PackageStore can also create bundles from packages, which can for example be imported by the runtime editor or embedded by serializers. Additionally, the PackageStore can open or clear the app directory which stores the packages. */
 export class PackageStore {
 
-  static bundleOptions = ["--bundle", `--format=esm`, `--drop-labels=DEV`, `--tsconfig-raw={"compilerOptions":{"experimentalDecorators":true, "target": "es2022", "useDefineForClassFields": false}}`, ...BUNDLE_LOADER_OPTIONS]
+  static bundleOptions = ["--bundle", `--format=esm`, `--tsconfig-raw={"compilerOptions":{"experimentalDecorators":true, "target": "es2022", "useDefineForClassFields": false}}`, ...BUNDLE_LOADER_OPTIONS]
 
   static developmentBundleOptions = ["--sourcemap=inline"]
+  static productionBundleOptions = ["--drop-labels=DEV"]
 
   private static async readFileIfExists(path: string, FS: Environment["FS"]): Promise<string | undefined> {
     return await FS.exists(path)? await FS.readFile(path) as string: undefined
@@ -104,7 +105,7 @@ export class PackageStore {
           `${entryPath}`,
           `--outfile=${jsPath}`,
           ...PackageStore.bundleOptions,
-          ...(!production? PackageStore.developmentBundleOptions: []) 
+          ...(!production? PackageStore.developmentBundleOptions: PackageStore.productionBundleOptions) 
         ])
       }
       catch(rawCause) {
