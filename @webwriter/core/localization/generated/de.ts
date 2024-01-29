@@ -414,7 +414,7 @@
 'se9b1fec72ffd8f48': `Lokal`,
 'sea6e7291e27ec53f': `Metadaten-Editor umschalten`,
 'seabae79729c4b2ad': `Email-Adresse umschalten`,
-'seaf97719986faf4f': `Abstand`,
+'seaf97719986faf4f': `Lücke`,
 'sec2557a35b702525': `Variable`,
 'sec30fbb20f102670': `Zusammenfassung einfügen`,
 'sec4cb64c35332774': `Zeige einen Platzhalter-Text`,
