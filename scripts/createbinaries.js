@@ -78,6 +78,9 @@ async function main() {
         path.join(BINARIES_DIR, triple)
       )
     }
+    else {
+      console.warn(`'${fullpath}' not found`)
+    }
   }
 }
 
