@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/textarea",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "Let the user enter text",
   "keywords": [
     "webwriter-widget"
