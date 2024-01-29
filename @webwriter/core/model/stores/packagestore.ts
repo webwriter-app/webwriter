@@ -59,8 +59,8 @@ export class PackageStore {
     return await FS.exists(path)? await FS.readFile(path) as string: undefined
   }
 
-  private static async bundlePath(importIDs: string[], Path: Environment["Path"], FS: Environment["FS"], includesLocal=false) {
-    const hash = PackageStore.computeBundleHash(importIDs)
+  private static async bundlePath(importIDs: string[], Path: Environment["Path"], FS: Environment["FS"], includesLocal=false, production=false) {
+    const hash = PackageStore.computeBundleHash(importIDs, production)
     const appDir = await Path.appDir()
     const jsPath = await Path.join(appDir, "bundlecache", `${hash}.js`)
     const cssPath = await Path.join(appDir, "bundlecache", `${hash}.css`)
@@ -86,9 +86,8 @@ export class PackageStore {
     if(importIDs.length === 0) {
       return {bundleID, bundleJS: "", bundleCSS: ""}
     }
-    let {jsPath, jsExists, cssPath, cssExists, entryPath} = await this.bundlePath(importIDs, Path, FS, includesLocal)
+    let {jsPath, jsExists, cssPath, cssExists, entryPath} = await this.bundlePath(importIDs, Path, FS, includesLocal, production)
     if(!jsExists && !cssExists || includesLocal) {
-      console.log(jsPath, jsExists, cssPath, cssExists, entryPath)
       const entryCode = importIDs
         .map(id => id.replace(new RegExp(`@` + SemVer.pattern.source, "g"), ""))
         .map(k => `import "${k}"`)
@@ -109,7 +108,6 @@ export class PackageStore {
         ])
       }
       catch(rawCause) {
-        console.log(rawCause)
         const importPaths = [...new Set(importIDs
           .map(id => id.slice(0, id.replace("@", "_").indexOf("@"))))]
           .map(path => escapeRegex(path))
@@ -150,8 +148,8 @@ export class PackageStore {
   }
 
   /** Create a hash value to identify a bundle. The hash is deterministically computed from the packages' names and versions. This allows for caching of existing bundles. */
-  static computeBundleHash(importIDs: string[]) {
-    const bundleID = this.computeBundleID(importIDs)
+  static computeBundleHash(importIDs: string[], production=false) {
+    const bundleID = this.computeBundleID(importIDs, undefined, production)
     return hashCode(bundleID).toString(36)
   }
 
