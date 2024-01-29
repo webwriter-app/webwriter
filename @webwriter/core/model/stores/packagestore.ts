@@ -87,7 +87,7 @@ export class PackageStore {
       return {bundleID, bundleJS: "", bundleCSS: ""}
     }
     let {jsPath, jsExists, cssPath, cssExists, entryPath} = await this.bundlePath(importIDs, Path, FS, includesLocal, production)
-    if(!jsExists && !cssExists || includesLocal) {
+    if(!jsExists && !cssExists || includesLocal || production) {
       const entryCode = importIDs
         .map(id => id.replace(new RegExp(`@` + SemVer.pattern.source, "g"), ""))
         .map(k => `import "${k}"`)
