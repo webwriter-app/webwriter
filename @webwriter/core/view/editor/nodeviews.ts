@@ -51,7 +51,7 @@ export class WidgetView implements NodeView {
     const newDom = DOMSerializer.fromSchema(node.type.schema).serializeNode(node, {document: this.view.dom.ownerDocument}) as HTMLElement
     const oldNames = this.dom.getAttributeNames()
     const newNames = newDom.getAttributeNames()
-    const toRemove = oldNames.filter(k => !newNames.includes(k))
+    const toRemove = oldNames.filter(k => !newNames.includes(k)).filter(k => k !== "contenteditable")
     toRemove.forEach(k => this.dom.removeAttribute(k))
     newNames.forEach(k => this.dom.setAttribute(k, newDom.getAttribute(k)!))
     for(const dec of decorations) {
