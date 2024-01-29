@@ -17,7 +17,7 @@
     "@open-wc/lit-helpers": "^0.5.1",
     "@shoelace-style/shoelace": "^2.12.0",
     "@tabler/icons": "^2.25.0",
-    "@tauri-apps/api": "^1.2.0",
+    "@tauri-apps/api": "^1.5.3",
     "@webcomponents/scoped-custom-element-registry": "^0.0.9",
     "async": "^3.2.5",
     "async-es": "^3.2.5",

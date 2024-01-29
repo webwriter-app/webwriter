@@ -5,12 +5,9 @@
   "private": true,
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "license": "UNLICENSED",
-  "dependencies": {
-    "@tauri-apps/api": "^1.2.0"
-  },
   "devDependencies": {
     "@custom-elements-manifest/analyzer": "^0.9.0",
-    "@tauri-apps/cli": "^1.3.1"
+    "@tauri-apps/cli": "^1.5.9"
   },
   "optionalDependencies": {
     "@esbuild/darwin-arm64": "^0.20.0",
