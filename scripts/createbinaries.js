@@ -15,10 +15,10 @@ const TRIPLES = {
   "@pnpm/linux-arm64/pnpm": "pnpm-aarch64-unknown-linux-gnu",
   "@esbuild/win32-x64/esbuild.exe": "esbuild-x86_64-pc-windows-msvc.exe",
   "@esbuild/win32-arm64/esbuild.exe": "esbuild-aarch64-pc-windows-msvc.exe",
-  "@esbuild/darwin-x64/bin/esbuild": "esbuild-x86_64-apple-darwin",
-  "@esbuild/darwin-arm64/bin/esbuild": "esbuild-aarch64-apple-darwin",
-  "@esbuild/linux-x64/bin/esbuild": "esbuild-x86_64-unknown-linux-gnu",
-  "@esbuild/linux-arm64/bin/esbuild": "esbuild-aarch64-unknown-linux-gnu",
+  "@esbuild/darwin-x64/esbuild": "esbuild-x86_64-apple-darwin",
+  "@esbuild/darwin-arm64/esbuild": "esbuild-aarch64-apple-darwin",
+  "@esbuild/linux-x64/esbuild": "esbuild-x86_64-unknown-linux-gnu",
+  "@esbuild/linux-arm64/esbuild": "esbuild-aarch64-unknown-linux-gnu",
 }
 
 const ANALYZER_RENAME_MAP = {
