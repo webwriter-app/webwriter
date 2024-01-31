@@ -258,16 +258,37 @@ export class PackageStore {
         key,
         !key.startsWith("file")? key: tasks.find(t => t.parameters.includes(key))!.name!
       ]))
-      await this.pm("add", [...toAdd, "--ignore-scripts"], await this.appDir)
-      this.adding = {...this.adding, ...Object.fromEntries(toAdd.map(name => [names[name], false]))}
+      try {
+        await this.pm("add", [...toAdd, "--ignore-scripts"], await this.appDir)
+      }
+      catch(err) {
+        console.error(err)
+      }
+      finally {
+        this.adding = {...this.adding, ...Object.fromEntries(toAdd.map(name => [names[name], false]))}
+      }
     }
     if(toRemove.length > 0) {
-      await this.pm("remove", toRemove, await this.appDir)
-      this.removing = {...this.removing, ...Object.fromEntries(toRemove.map(name => [name, false]))}
+      try {
+        await this.pm("remove", toRemove, await this.appDir)
+      }
+      catch(err) {
+        console.error(err)
+      }
+      finally {
+        this.removing = {...this.removing, ...Object.fromEntries(toRemove.map(name => [name, false]))}
+      }
     }
     if(toUpdate.length > 0) {
-      await this.pm("update", [...toUpdate, "--ignore-scripts"], await this.appDir)
-      this.updating = {...this.updating, ...Object.fromEntries(toUpdate.map(name => [name, false]))}
+      try {
+        await this.pm("update", [...toUpdate, "--ignore-scripts"], await this.appDir)
+      }
+      catch(err) {
+        console.error(err)
+      }
+      finally {
+        this.updating = {...this.updating, ...Object.fromEntries(toUpdate.map(name => [name, false]))}
+      }
     }
   })
 
@@ -336,6 +357,7 @@ export class PackageStore {
   }
 
   async add(url: string, name?: string) {
+    console.log(url, name)
     this.adding = {...this.adding, [name ?? url]: true}
     return this.pmQueue.push({command: "add", parameters: [url], cwd: await this.appDir, name})
   }
@@ -407,7 +429,6 @@ export class PackageStore {
         this.appendManagementIssues(err as Error)
       }
     }
-    console.log(toJS(this.issues))
     console.log("merging package list")
     let final: Package[] = []
     for(const pkg of installed) {
@@ -563,6 +584,7 @@ export class PackageStore {
   get installed() {
     return Object.values(this.packages).filter(pkg => pkg.installed)
   }
+
   get available() {
     return Object.values(this.packages).filter(pkg => !pkg.installed)
   }

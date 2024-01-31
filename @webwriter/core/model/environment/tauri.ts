@@ -193,10 +193,18 @@ export async function pm(command: string, commandArgs: string[] = [], cwd?: stri
   const opts = cwd? {cwd}: {}
   console.info(`[TAURI] ${cwd? cwd: await appDir()}> pnpm ${cmdArgs.join(" ")}`)
   const output = await Command.sidecar("bin/pnpm", cmdArgs, opts).execute()
+  // console.log(output.stdout, output.stderr)
   if(!output.stderr) {
     const error = output.stdout.split("\n")
       .map(entry => entry.replaceAll("\n", "\\n"))
-      .map(entry => JSON.parse(entry))
+      .map(entry => {
+        try {
+          return JSON.parse(entry)
+        }
+        catch(err) {
+          return {level: "ignore"}
+        }
+      })
       .filter(entry => entry.level === "error")
       .join("\n")
     if(!error) {
@@ -207,7 +215,8 @@ export async function pm(command: string, commandArgs: string[] = [], cwd?: stri
     }
   }
   else {
-    throw output.stderr
+    console.log("throwing stderr")
+    throw new Error(output.stderr)
   }
 }
 

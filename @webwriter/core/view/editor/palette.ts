@@ -12,6 +12,7 @@ import { SlDropdown, SlInput, SlMenu, SlPopup, SlProgressBar } from "@shoelace-s
 import { Command } from "../../viewmodel"
 import { App, PackageForm } from ".."
 import { regex } from "parsimmon"
+import { toJS } from "mobx"
 
 
 // https://github.com/lit/lit-element/issues/1099#issuecomment-731614025
