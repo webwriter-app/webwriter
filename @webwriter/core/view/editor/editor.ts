@@ -86,7 +86,7 @@ export class ExplorableEditor extends LitElement {
       */
       const slice = parser.parseSlice(template.content)
       let tr = this.pmEditor.state.tr.deleteSelection()
-      const insertPos = tr.selection.anchor - 1
+      const insertPos = Math.max(tr.selection.anchor - 1, 0)
       tr = tr.insert(insertPos, slice.content)
       // Find new selection: It should be as deep as possible into the first branch of the inserted slice. If the deepest node found is a textblock, make a TextSelection at the start of it. Otherwise, make a NodeSelection of it.
       let selection: Selection | null = null
