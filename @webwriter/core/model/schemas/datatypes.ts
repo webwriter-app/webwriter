@@ -39,16 +39,19 @@ export interface Person extends z.infer<typeof Person["objectSchema"]> {}
 export class Person {
 
   static objectSchema = z.object({
-    name: z.string(),
-    email: z.string().optional(),
-    url: z.string().optional()
+    name: z.string().trim(),
+    email: z.string().trim().optional(),
+    url: z.string().trim().optional()
   })
 
   static schema = z.string()
     .regex(npmPersonPattern)
     .transform(str => {
       const groups = npmPersonPattern.exec(str)?.groups ?? {}
-      const {name, email, url} = groups
+      let {name, email, url} = groups
+      name = name.trim()
+      email = email?.trim()
+      url = url?.trim()
       const person = {name, ...(email && {email}), ...(url && {url})} as z.infer<typeof Person.objectSchema>
       return new Person(person)
     })
