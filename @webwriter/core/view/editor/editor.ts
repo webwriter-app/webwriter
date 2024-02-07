@@ -93,7 +93,7 @@ export class ExplorableEditor extends LitElement {
       slice.content.descendants((node, pos, parent, index) => {
         if(node.content.size === 0) {
           const r = tr.doc.resolve(insertPos + pos)
-          selection = node.isTextblock? new TextSelection(r): new NodeSelection(r)
+          selection = node.isTextblock? TextSelection.findFrom(r, 1): NodeSelection.findFrom(r, 1)
           return true
         }
       })
