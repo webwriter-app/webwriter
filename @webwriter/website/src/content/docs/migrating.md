@@ -60,6 +60,9 @@ Be careful on several points:
 ### `.ww-beforeprint` instead of `printable`
 That the widget is being printed is now indicated through the class `.ww-beforeprint` instead of a boolean attribute. Widgets should turn `class` into a reactive property and update when the class is changed. You can check for the presence of the class in your `render` method using the `classList` API, e.g. `this.classList.contains("ww-beforeprint")`. For CSS, simply use the class selector `.ww-beforeprint` instead of the attribute selector `[printable]`.
 
+### `part=options` instead of `part=action`
+The part-based layout feature has been renamed: You need to replace `part=action` with `part=options`.
+
 ## Extra recommendations
 
 ### Import assets such as icons as data URLs

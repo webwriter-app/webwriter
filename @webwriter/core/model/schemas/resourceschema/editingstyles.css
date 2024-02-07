@@ -277,7 +277,7 @@ body > .ww-widget::after {
   --ww-action-opacity: 1;
 }
 
-.ww-widget::part(action) {
+.ww-widget::part(options) {
   opacity: var(--ww-action-opacity);
 }
 
@@ -363,7 +363,7 @@ abbr {
 
 @media only screen and (min-width: 1071px) {
 
-  .ww-widget::part(action) {
+  .ww-widget::part(options) {
     position: fixed;
     width: calc(min(100vw - 840px - 40px, 800px));
     height: var(--ww-toolbox-action-height);
@@ -375,7 +375,7 @@ abbr {
     -webkit-user-select: none;
   }
 
-  .ww-widget:not(:focus-within)::part(action) {
+  .ww-widget:not(:focus-within)::part(options) {
     display: none;
   }
 }
