@@ -20,7 +20,6 @@ export class WidgetView implements NodeView {
   // static existingWidgets = new Set()
 
 	constructor(node: Node, view: EditorViewController, getPos: () => number) {
-    // console.log("constructor", node.type.name, node, getPos())
 		this.node = node
 		this.view = view
     this.getPos = getPos
@@ -146,6 +145,7 @@ export class WidgetView implements NodeView {
         tr = tr.setNodeAttribute(this.getPos(), "_", _)
       }
       this.view.dispatch(tr)
+      return true
     }
     return attrUnchanged
     const dom = target as HTMLElement
