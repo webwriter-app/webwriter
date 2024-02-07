@@ -748,7 +748,7 @@ export class ExplorableEditor extends LitElement {
     },
     "ww-widget-click": (_: any, ev: CustomEvent) => {
       const {widget} = ev.detail
-      widget.focus()
+      // widget.focus()
     },
     "focus": (_:any, ev: FocusEvent) => {
       this.updatePosition()
