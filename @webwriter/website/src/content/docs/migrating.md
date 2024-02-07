@@ -51,10 +51,10 @@ npm install @webwriter/lit@latest
 As noted above, your widget name must be prefixed by your package scope. This means you probably need to rename all your custom element registrations (`@customElement("my-element")` in Lit or `customElements.register()`) accordingly. 
 
 ### `contenteditable` instead of `editable`
-Current versions use the built-in enumerated `contenteditable` attribute instead of the old boolean `editable` attribute.
+Current versions use the built-in enumerated `contenteditable` attribute instead of the old boolean `editable` attribute
 Be careful on several points:
 - The property corresponding to the attribute is named `contentEditable`.
-- The attribute is *not* boolean, it is enumerated (`""`, `"true"`, `"false"`, or `"plaintext-only"`). Additionally, the property returns `"inherit"` if the attribute is not set. This means that expressions like `this.editable? a: b` or `if(this.editable) {...}` no longer work, since the value of `contentEditable` is always considered true. Instead, explicitly check for the value `"true"` or empty string `""`, e.g. `if(this.contentEditable === "true" || this.contentEditable === "") {}`.
+- The attribute is *not* boolean, it is enumerated (`""`, `"true"`, `"false"`, or `"plaintext-only"`). Additionally, the property returns `"inherit"` if the attribute is not set. This means that expressions like `this.editable? a: b` or `if(this.editable) {...}` no longer work, since the value of `contentEditable` is always considered true. Instead, use the standard read-only `isContentEditable` boolean property, e.g. `if(this.isContentEditable) {}`.
 - The previous point also applies to CSS. A selector applied only if the element is editable would look like this: `:host(:is([contenteditable=true], [contenteditable=""])) ...`. 
 
 ### `.ww-beforeprint` instead of `printable`
