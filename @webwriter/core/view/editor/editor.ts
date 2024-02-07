@@ -533,7 +533,7 @@ export class ExplorableEditor extends LitElement {
 	}
 	
 	handleUpdate = () => {
-		this.editorState = this.pmEditor.state
+		this.editorState = this.pmEditor.state as EditorStateWithHead
     this.dispatchEvent(new Event("change"))
 		this.updatePosition()
 	}
