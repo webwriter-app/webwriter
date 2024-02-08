@@ -79,7 +79,7 @@ export class WebwriterSlides extends LitElementWw {
     }
     
     ::slotted(webwriter-slide:not([active])) {
-      display: none;
+      display: none !important;
     }
 
     slot:not([name]) {
