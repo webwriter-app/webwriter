@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/slides",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Present content as a sequence of screens (slides, tabs, etc.).",
   "keywords": [
     "webwriter-widget"
