@@ -144,6 +144,7 @@ figure.ProseMirror-selectednode::before {
 .ww-widget {
   --ww-action-opacity: 1;
   position: relative !important;
+  display: block;
 }
 
 .ProseMirror > :not(.ProseMirror-widget) {
