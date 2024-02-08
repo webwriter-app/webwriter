@@ -69,7 +69,7 @@ export class Head extends LitElement {
       display: block;
     }
 
-    :host([pendingChanges]) #pending-indicator {
+    :host(:is([pendingChanges], [iostate=loading], [iostate=saving])) #pending-indicator {
       visibility: visible;
     }
 
