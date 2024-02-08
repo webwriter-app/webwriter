@@ -90,10 +90,16 @@ export class ExplorableEditor extends LitElement {
       tr = tr.insert(insertPos, slice.content)
       // Find new selection: It should be as deep as possible into the first branch of the inserted slice. If the deepest node found is a textblock, make a TextSelection at the start of it. Otherwise, make a NodeSelection of it.
       let selection: Selection | null = null
+      let widgetPos = -1
       slice.content.descendants((node, pos, parent, index) => {
         if(node.content.size === 0) {
           const r = tr.doc.resolve(insertPos + pos)
-          selection = node.isTextblock? TextSelection.findFrom(r, 1): NodeSelection.findFrom(r, 1)
+          if(node.type.spec.widget) {
+            widgetPos = insertPos + pos
+          }
+          else {
+            selection = node.isTextblock? TextSelection.findFrom(r, 1): NodeSelection.findFrom(r, 1)
+          }
           return true
         }
       })
@@ -101,7 +107,16 @@ export class ExplorableEditor extends LitElement {
         tr = tr.setSelection(selection).scrollIntoView()
       }
       this.pmEditor.dispatch(tr)
-      this.pmEditor.focus()
+      if(widgetPos !== -1) {
+        setTimeout(() => {
+          const widget = this.pmEditor.nodeDOM(widgetPos) as HTMLElement
+          widget.focus()
+        }, 0)
+      }
+      else {
+        this.pmEditor.focus()
+      }
+      
     }
     else if(insertableName.startsWith("./themes/")) {
       const old = this.app.store.document.themeName
