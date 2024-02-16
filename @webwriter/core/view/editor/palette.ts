@@ -559,6 +559,10 @@ export class Palette extends LitElement {
         // overflow-y: hidden;
       }
 
+      :host(:not([managing])) .watch-button {
+        display: none;
+      }
+
       .package-card {
         flex-shrink: 0;
 
