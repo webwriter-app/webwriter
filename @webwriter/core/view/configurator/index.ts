@@ -1,7 +1,8 @@
-import { LitElement, html } from "lit"
+import { LitElement, html, css } from "lit"
 import { ViewModelMixin } from "../../viewmodel"
 import { localized, msg } from "@lit/localize"
 import { customElement } from "lit/decorators.js"
+import {version} from "../../package.json"
 
 export * from "./configurator"
 export * from "./packagemanager"
@@ -10,6 +11,20 @@ export * from "./keymapmanager"
 @localized()
 @customElement("ww-settings")
 export class Settings extends ViewModelMixin(LitElement, true) {
+
+  static styles = css`
+    .version-info {
+      display: flex;
+      flex-direction: column;
+      font-size: 0.7rem;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .version-info > b {
+      user-select: none;
+    }
+  `
 
   async connectedCallback() {
     await super.connectedCallback()
@@ -82,6 +97,9 @@ export class Settings extends ViewModelMixin(LitElement, true) {
 					<span>${msg("Shortcuts")}</span>
 				</span>
 				${this.KeymapManager()}
+        <div class="version-info" slot="post-tabs">
+          <b>WebWriter</b>
+          <code>${version}</code></div>
         <ww-button size="small" slot="post-tabs" variant="danger" outline class="title-button" confirm>
         <span>${msg("Reset WebWriter")}</span>
           <span slot="confirm">${msg("Are you sure? This action can't be reversed, all your settings will be deleted and reset.")}</span>
