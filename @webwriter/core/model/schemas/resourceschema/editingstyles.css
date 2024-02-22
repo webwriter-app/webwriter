@@ -351,6 +351,25 @@ abbr {
   text-decoration: underline 1px dotted currentColor;
 }
 
+:not(:defined)::after {
+  content: "⚠ Element not defined";
+  color: goldenrod;
+}
+
+:is(:empty, :has(.ProseMirror-trailingBreak)) {
+  position: relative;
+}
+
+
+:is(:empty, :has(> .ProseMirror-trailingBreak))::after {
+  content: var(--ww-placeholder);
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: darkgray;
+  pointer-events: none;
+}
+
 @media only screen and (min-width: 1071px) {
 
   .ww-widget::part(options) {
