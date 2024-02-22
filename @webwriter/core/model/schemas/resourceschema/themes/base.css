@@ -109,3 +109,11 @@ img[src] {
   max-height: 500px;
   object-fit: contain;
 }
+
+p {
+  margin: 0;
+}
+
+body > p {
+  margin-block: 1em;
+}
