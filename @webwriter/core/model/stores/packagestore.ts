@@ -599,11 +599,6 @@ export class PackageStore {
         const isSnippetWithWidget = isSnippet && name.replace("./snippets/", "./widgets/") in members[pkg.id]
         const defaultLabel = name.replace(/\.\/\w+\//, "").split("-").slice(isSnippetWithWidget || isWidget? 1: 0).map(capitalizeWord).join(" ");
         (members as any)[pkg.id][name] = {...member, name, label: {_: defaultLabel, ...member.label}}
-        const widgetSnippetName = name.replace("./widgets/", "./snippets/")
-        const tag = name.replace("./widgets/", "")
-        if(isWidget && !(widgetSnippetName in members[pkg.id]) && !(member as WidgetEditingSettings).noDefaultSnippet) {
-          (members as any)[pkg.id][widgetSnippetName] = {name: widgetSnippetName, label: (members as any)[pkg.id][name].label, source: `<${tag}></${tag}>`, pkg}
-        }
       }
     }
     return members
