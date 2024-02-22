@@ -31,6 +31,7 @@ export function widgetSpecs(pkg: Package): NodeSpec[] {
 
 export function widgetSpec(tag: string, settings: WidgetEditingSettings, pkg: Package): NodeSpec {
   return {
+    isolating: true,
     ...settings,
     content: settings.content? String(settings.content).replaceAll("-", "_"): undefined,
     group: widgetGroup(settings),
@@ -43,7 +44,6 @@ export function widgetSpec(tag: string, settings: WidgetEditingSettings, pkg: Pa
     parseDOM: widgetParseDOM(tag, pkg),
     leafText: undefined,
     widget: true,
-    isolating: true
   }
 }
 
