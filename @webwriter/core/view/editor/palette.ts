@@ -898,7 +898,9 @@ export class Palette extends LitElement {
         mergePackage: true
       }
     this.packageFormMode = undefined
-    await this.app.store.packages.writeLocal(pkg.localPath!, pkg, options)
+    if(packageForm.changed) {
+      await this.app.store.packages.writeLocal(pkg.localPath!, pkg, options)
+    }
     await this.app.store.packages.add(`file://${pkg.localPath!}`, pkg.name)
     if(packageForm.editingState.watching) {
       this.emitWatchWidget(pkg.name)

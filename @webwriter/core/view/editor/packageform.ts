@@ -153,12 +153,16 @@ export class PackageForm extends LitElement {
     const element = e.target! as unknown as DataInput
     (this as any)[element.name] = element.value
     this.dispatchEvent(new CustomEvent("ww-change-field", {bubbles: true, composed: true, detail: {name: element.name, valid: element.checkValidity()}}))
+    if(element.name !== "localPath") {
+      this.changed = true
+    }
   }
 
   reset(toDefaults=false) {
     Object.keys(PackageForm.defaults).forEach(key => {
       (this as any)[key] = (toDefaults? PackageForm.defaults: this.defaultValue as any)[key]
     })
+    this.changed = false
     this.requestUpdate()
   }
 
@@ -184,22 +188,18 @@ export class PackageForm extends LitElement {
     })
   }
 
-  get defaultValueChanged() {
-    return this.defaultValue.name !== PackageForm.defaults.name
-  }
+  @property({type: Boolean, attribute: true, reflect: true})
+  changed = false
 
   get confirmText() {
     if(this.mode === "create") {
       return msg("Create")
     }
-    else if(this.mode === "edit" && !this.isImport) {
-      return msg("Apply")
-    }
-    else if(this.mode === "edit" && this.isImport && this.defaultValueChanged) {
-      return msg("Apply and import")
-    }
-    else if(this.mode === "edit" && this.isImport && !this.defaultValueChanged) {
+    else if(this.mode === "edit" && !this.isImport && !this.changed) {
       return msg("Import")
+    }
+    else if(this.mode === "edit" && this.isImport && this.changed) {
+      return msg("Apply and import")
     }
   }
 
@@ -281,13 +281,13 @@ export class PackageForm extends LitElement {
           outline 
           variant="danger"
           @click=${this.reset}>
-          ${!this.defaultValueChanged? msg("Reset"):msg("Reset changes")}
+          ${!this.changed? msg("Reset"):msg("Reset changes")}
         </ww-button>
         <ww-button
           outline 
           variant="neutral"
           @click=${this.handleCancel}>
-          ${!this.defaultValueChanged? msg("Cancel"):msg("Discard and cancel")}
+          ${!this.changed? msg("Cancel"):msg("Discard and cancel")}
         </ww-button>
         <ww-button
           variant="primary"
