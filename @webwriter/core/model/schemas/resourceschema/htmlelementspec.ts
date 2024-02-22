@@ -183,7 +183,6 @@ export function toAttributes(node: Node | Attrs, extraAttrs?: Attrs) {
       }
     }
   }
-  node?.type?.name === "video" && console.log("toAttributes", outputAttrs)
   return outputAttrs
 }
 
@@ -227,7 +226,6 @@ export function getAttrs(dom: HTMLElement | string, getDeprecated=true) {
         attrs[k] = Array.isArray(v)? v.split(" "): v
       }
     }
-    console.log(attrs)
     return attrs
   }
 }
