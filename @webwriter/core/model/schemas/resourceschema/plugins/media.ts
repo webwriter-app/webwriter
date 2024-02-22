@@ -89,11 +89,11 @@ function mediaNodeEntry(mediaType: string): [string, NodeSpec] {
 
 export const mediaPlugin = () => ({
   nodes: {
-    ...Object.fromEntries(MIME
+    /*...Object.fromEntries(MIME
       .map(mediaType => `#${mediaType}`)
       .map(mediaNodeEntry)
       .map(([k, v]) => [k, HTMLElementSpec({tag: v.rootTag, ...v})])
-    ),
+    ),*/
     figure: HTMLElementSpec({
       tag: "figure",
       group: "flow palpable",
