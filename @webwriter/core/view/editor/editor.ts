@@ -118,6 +118,20 @@ export class ExplorableEditor extends LitElement {
       }
       
     }
+    else if(insertableName.startsWith("./widgets/")) {
+      const tagName = insertableName.replace("./widgets/", "")
+      const nodeName = tagName.replaceAll("-", "_")
+      const nodeType = this.pmEditor.state.schema.nodes[nodeName]
+      const node = nodeType.createAndFill()
+      const state = this.pmEditor.state
+      const insertPos = Math.max(state.selection.anchor - 1, 0)
+      let tr = state.tr.insert(insertPos, node!)
+      this.pmEditor.dispatch(tr)
+      setTimeout(() => {
+        const widget = this.pmEditor.nodeDOM(insertPos) as HTMLElement
+        widget.focus()
+      }, 0)
+    }
     else if(insertableName.startsWith("./themes/")) {
       const old = this.app.store.document.themeName
       const toInsert = pkgID + insertableName.slice(1)
