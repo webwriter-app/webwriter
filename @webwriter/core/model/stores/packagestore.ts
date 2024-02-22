@@ -653,8 +653,15 @@ export class PackageStore {
     }
     const watching = forceValue ?? !pkg?.watching
     if(watching && pkg?.localPath) {
-      this.unwatchCallbacks[name] = await this.watch(pkg.localPath, () => {
-        !this.loading && this.load()
+      this.unwatchCallbacks[name] = await this.watch(pkg.localPath, async (e) => {
+        if((e?.type?.create || e?.type?.remove) && !this.adding[pkg.id]) {
+          this.loading = true
+          await this.add("file:" + pkg.localPath!)
+          this.load()
+        }
+        else {
+          !this.loading && this.load()
+        }
       }, {recursive: true})
     }
     else {
