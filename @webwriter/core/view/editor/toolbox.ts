@@ -12,7 +12,7 @@ import "../elements/stylepickers"
 
 import { ifDefined } from "lit/directives/if-defined.js"
 import { App } from ".."
-import { AllSelection, EditorState } from "prosemirror-state"
+import { AllSelection, EditorState, TextSelection } from "prosemirror-state"
 import {GapCursor} from "prosemirror-gapcursor"
 
 @localized()
@@ -97,6 +97,10 @@ export class Toolbox extends LitElement {
 
   get gapSelected() {
     return this.editorState.selection instanceof GapCursor
+  }
+
+  get textSelected() {
+    return this.editorState.selection instanceof TextSelection
   }
 
   static get styles() {
@@ -1080,15 +1084,14 @@ export class Toolbox extends LitElement {
     else if(tag === "details") {
       return this.DetailsToolbox(el as HTMLDetailsElement)
     }
-    else if(tag === "summary" && el.parentElement) {
-      return this.DetailsToolbox(el.parentElement as HTMLDetailsElement)
-    }
     else if(["h1", "h2", "h3", "h4", "h5", "h6"].includes(tag)) {
       return this.HeadingToolbox(el as HTMLHeadingElement)
     }
-    else if(el.closest("ul, ol")) {
-      const listEl = el.closest("ul, ol")
-      return this.ListToolbox(listEl as HTMLOListElement | HTMLUListElement)
+    else if(["ul", "ol"].includes(tag)) {
+      return this.ListToolbox(el as HTMLOListElement | HTMLUListElement)
+    }
+    else if(this.app.store.packages.widgetTagNames.includes(tag)) {
+      return html`<ww-widget-options .widget=${el}></ww-widget-options>`
     }
   }
 
@@ -1097,8 +1100,8 @@ export class Toolbox extends LitElement {
     if(this.activeElement) {
       return html`
         ${this.BlockToolbox(this.activeElement)}
-        ${this.ContextToolbox(this.activeElement)}
-        ${this.InlineToolbox()}
+        ${this.activeElementPath.map(el => this.ContextToolbox(el))}
+        ${this.textSelected? this.InlineToolbox(): null}
       `
     }
     else {
