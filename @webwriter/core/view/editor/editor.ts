@@ -6,7 +6,7 @@ import { EditorState, Command as PmCommand, NodeSelection, TextSelection, AllSel
 import { Node, Mark, DOMParser, DOMSerializer} from "prosemirror-model"
 import { localized, msg, str } from "@lit/localize"
 
-import { CODEMIRROR_EXTENSIONS, ContentExpression, EditorStateWithHead, MediaType, Package, createWidget, removeMark, upsertHeadElement } from "../../model"
+import { CODEMIRROR_EXTENSIONS, ContentExpression, EditorStateWithHead, MediaType, Package, createWidget, globalHTMLAttributes, removeMark, upsertHeadElement } from "../../model"
 import { CodemirrorEditor, FigureView, WidgetView, nodeViews } from "."
 import { DocumentHeader } from "./documentheader"
 import { DocumentFooter } from "./documentfooter"
@@ -751,9 +751,33 @@ export class ExplorableEditor extends LitElement {
 
   shouldBeEditable = (state: EditorState) => !this.ownerDocument.fullscreenElement
 
-  setNodeAttribute(el: HTMLElement, key: string, value: string | undefined) {
+  setNodeAttribute(el: HTMLElement, key: string, value: string | boolean | undefined) {
     const pos = this.pmEditor.posAtDOM(el, 0)
-    this.pmEditor.dispatch(this.editorState.tr.setNodeAttribute(pos, key, value))
+    const node = this.editorState.doc.resolve(pos).node()
+    const builtinAttr = key in globalHTMLAttributes
+    const dataAttr = key.startsWith("data-")
+    let v = value
+    if(value === true) {
+      v = ""
+    }
+    else if(value === false) {
+      v = undefined
+    }
+    let tr = this.editorState.tr
+    if(builtinAttr) {
+      tr = tr.setNodeAttribute(pos, key, v)
+    }
+    else if(dataAttr) {
+      const data = {...node.attrs.data, [key]: v}
+      tr = tr.setNodeAttribute(pos, "data", data)
+    }
+    else {
+      const _ = {...node.attrs._, [key]: v}
+      console.log(_)
+      tr = tr.setNodeAttribute(pos, "_", _)
+    }
+    this.pmEditor.dispatch(tr)
+    this.pmEditor.focus()
   }
 
   handleDOMEvents = {
