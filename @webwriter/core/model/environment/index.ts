@@ -142,5 +142,7 @@ export type Environment = {
   getSystemFonts: () => Promise<string[]>,
   createWindow: (url?: string, options?: WindowOptions & {label?: string, hideOnClose?: boolean}) => Promise<void>,
   setWindowCloseBehavior: (behaviors: WindowCloseBehavior[], closeConfirm?: () => Promise<boolean>) => void
-  getWindowLabel: () => string
+  getWindowLabel: () => string,
+  checkUpdate: () => Promise<{date: string, version: string}>,
+  installUpdate: () => Promise<void>
 }

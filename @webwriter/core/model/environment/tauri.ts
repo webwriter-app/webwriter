@@ -16,6 +16,7 @@ import { idle } from "../../utility"
 
 export {watchImmediate as watch} from "tauri-plugin-fs-watch-api"
 import {confirm} from "@tauri-apps/api/dialog"
+export { checkUpdate, installUpdate } from "@tauri-apps/api/updater"
 
 const HTTP_STATUS = {
   '200': 'OK',
