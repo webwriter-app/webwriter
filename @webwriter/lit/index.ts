@@ -78,22 +78,14 @@ export type OptionDeclaration =
 
 export function option(decl: OptionDeclaration = {type: "string"}) {
   return (target: LitElementWw, key: string | symbol) => {
-    target.constructor[OptionsSymbol] = {...target[OptionsSymbol], [key]: decl}
+    target.constructor["options"] = {...target.constructor["options"], [key]: decl}
   }
 }
-
-const OptionsSymbol = Symbol("options")
 
 /**Minimal base class for a WebWriter widget implemented in Lit. Implements the core properties required by WebWriter, initializes the component when loaded and provides a Scoped Custom Element Registry (@open-wc/scoped-elements) to help with namespace conflicts when using other components in this widget. */
 export class LitElementWw extends ScopedElementsMixin(LitElement) {
 
-  static OptionsSymbol = OptionsSymbol
-
-  static [OptionsSymbol]: Record<string, OptionDeclaration> = {}
-
-  get [OptionsSymbol]() {
-    return {...LitElementWw[OptionsSymbol], ...this.options}
-  }
+  static readonly options: Record<string, OptionDeclaration> = {}
 
   /** Declare attributes as options. Used by WebWriter to auto-generate input fields to modify these attributes. As the name suggests, this is mostly suited to simple attributes (boolean, string, etc.). Use a getter here (`get options() {...}`) to dynamically change options depending on the state of the widget.*/
   readonly options: Record<string, OptionDeclaration>
