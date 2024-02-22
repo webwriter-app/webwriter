@@ -4,6 +4,7 @@ import { Package } from "../schemas"
 import litWidget from "./presets/lit/widgets/webwriter-widget.ts?raw" 
 import litPackage from "./presets/lit/package.json?raw"
 import litTsconfig from "./presets/lit/tsconfig.json?raw"
+import litCustomD from "./presets/lit/custom.d.ts?raw"
 import MIT from "./licenses/MIT.txt?raw"
 import ISC from "./licenses/ISC.txt?raw"
 import Apache2 from "./licenses/Apache-2.0.txt?raw"
@@ -46,7 +47,8 @@ export const presets = {
   lit: (pkg: Package) => interpolateTemplateRecord({
     [`widgets/${pkg.nameParts.scope}-${pkg.nameParts.name}.ts`]: litWidget,
     "package.json": litPackage,
-    "tsconfig.json": litTsconfig
+    "tsconfig.json": litTsconfig,
+    "custom.d.ts": litCustomD
   }, pkg)
 }
 

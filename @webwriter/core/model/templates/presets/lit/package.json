@@ -3,7 +3,7 @@
   "name": "ww-lit-preset",
   "version": "0.1.0",
   "dependencies": {
-    "lit": "^1",
+    "lit": "^3",
     "@webwriter/lit": "^1"
   },
   "exports": {
