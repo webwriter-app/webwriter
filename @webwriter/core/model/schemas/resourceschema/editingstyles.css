@@ -240,7 +240,7 @@ main:not(:focus-within) .ww-widget.ww-selected {
   outline-color: lightgray;
 }
 
-body > .ww-widget::after {
+body .ww-widget::after {
   --ww-widget-highlight-color: transparent;
   content: "";
   position: absolute;
