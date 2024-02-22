@@ -93,16 +93,18 @@ export class Layout extends LitElement {
     slot[name=fold]::slotted(*) {
       transition: cubic-bezier(0.23, 1, 0.320, 1) 0.75s;
       transition-property: max-height box-shadow;
+      width: 100%;
+      justify-self: end;
     }
 
     slot[name=fold]::slotted(*) {
       grid-row: 2;
       grid-column: 2 / 5; 
       background: white;
-      border: 1px solid lightgray;
-      border-top: 14px solid var(--sl-color-gray-100);
-      border-left: 0;
-      border-right: 0;
+      // border: 1px solid lightgray;
+      // border-top: 14px solid var(--sl-color-gray-100);
+      // border-left: 0;
+      // border-right: 0;
       max-height: 0;
     }
 
@@ -112,13 +114,14 @@ export class Layout extends LitElement {
 
     slot[name=fold]::slotted(*:hover) {
       max-height: 56px !important;
-      box-shadow: 0 -14px 0 0 var(--sl-color-gray-100);
-      border: 1px solid lightgray !important;
+      // box-shadow: 0 -14px 0 0 var(--sl-color-gray-100);
+      // border: 1px solid lightgray !important;
     }
 
     :host([foldopen]) slot[name=fold]::slotted(*) {
       max-height: 60vh !important;
       border: 1px solid lightgray !important;
+      // border: 1px solid lightgray !important;
     }
 
     :host([hideasides]) aside {
