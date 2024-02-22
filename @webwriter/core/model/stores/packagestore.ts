@@ -632,7 +632,7 @@ export class PackageStore {
   }
 
   get insertables() {
-    return Object.fromEntries(Object.entries(merge(this.snippets, this.themes)).map(([k, v]) => [k, Object.values(v)]))
+    return Object.fromEntries(Object.entries(merge(this.snippets, this.widgets, this.themes)).map(([k, v]) => [k, Object.values(v).filter((v: any) => !v.noDefaultSnippet)]))
   }
 
   get widgetTagNames() {
