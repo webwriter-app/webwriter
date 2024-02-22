@@ -203,6 +203,14 @@ export const textblockPlugin = () => ({
         return false
       }
     },
+    "Control-Enter": (state, dispatch, view) => {
+      const {$from} = state.selection;
+      (dispatch ?? (() => null))(state.tr
+        .deleteSelection()
+        .split($from.pos, Math.min(2, $from.depth))
+      )
+      return true
+    },
     "Alt-Shift-ArrowLeft": (state, dispatch, view) => {
       const {selection, doc} = state
       const {empty, $from} = selection
