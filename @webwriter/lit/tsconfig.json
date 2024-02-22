@@ -1,9 +1,9 @@
 {
   "compilerOptions": {
     "experimentalDecorators": true,
-    "target": "ES2020",
+    "target": "es2022",
     "esModuleInterop": true,
-    "moduleResolution": "node"
+    "moduleResolution": "Bundler"
   },
   "files": [
     "index.ts"
