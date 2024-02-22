@@ -19,8 +19,11 @@ export class WidgetOptions extends LitElement {
   widget: HTMLElement | LitElement | LitElementWw
 
   get options() {
-    if("options" in this.widget) {
-      return this.widget.options
+    const proto = this.widget.constructor
+    if("options" in proto) {
+      const staticOptions = (proto as typeof LitElementWw).options
+      const options = (this.widget as LitElementWw).options
+      return {...staticOptions, ...options}
     }
     else {
       return {}
