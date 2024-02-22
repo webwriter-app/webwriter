@@ -1,7 +1,7 @@
 import { LitElement, html, css } from "lit"
 import { ViewModelMixin } from "../../viewmodel"
 import { localized, msg } from "@lit/localize"
-import { customElement } from "lit/decorators.js"
+import { customElement, property } from "lit/decorators.js"
 import {version} from "../../package.json"
 
 export * from "./configurator"
@@ -30,7 +30,11 @@ export class Settings extends ViewModelMixin(LitElement, true) {
     await super.connectedCallback()
     await this.initialized
 		this.localization.setLocale(this.store.ui.locale)
+    this.latestVersion = await this.environment.api.checkUpdate()
   }
+
+  @property({type: Object, attribute: false})
+  latestVersion: {date?: string, version?: string}
 
 	PackageManager = () => {
 		const {packagesList, adding, removing, updating, loading, resetting, add, remove, update, load, viewAppDir, watching, open} = this.store.packages
@@ -100,6 +104,10 @@ export class Settings extends ViewModelMixin(LitElement, true) {
         <div class="version-info" slot="post-tabs">
           <b>WebWriter</b>
           <code>${version}</code></div>
+        <ww-button size="small" slot="post-tabs" variant="warning" outline class="title-button" @click=${() => this.environment.api.installUpdate()} title=${this.latestVersion?.version? this.latestVersion.date!: msg("You have the latest version of WebWriter.")} ?disabled=${!this.latestVersion?.version} ?loading=${!this.latestVersion}>
+          <span>${this.latestVersion?.version? msg("Update to"): msg("Up to date")}</span>
+          <code>${this.latestVersion?.version}</code>
+        </ww-button>
         <ww-button size="small" slot="post-tabs" variant="danger" outline class="title-button" confirm>
         <span>${msg("Reset WebWriter")}</span>
           <span slot="confirm">${msg("Are you sure? This action can't be reversed, all your settings will be deleted and reset.")}</span>
