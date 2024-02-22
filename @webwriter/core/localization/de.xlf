@@ -918,10 +918,6 @@
   <source>Reset WebWriter</source>
   <target>WebWriter zurücksetzen</target>
 </trans-unit>
-<trans-unit id="s7b5d09422b533af9">
-  <source>View App Folder</source>
-  <target>App-Ordner öffnen</target>
-</trans-unit>
 <trans-unit id="s10f3845975a0351e">
   <source>Edit Metadata</source>
   <target>Metadaten bearbeiten</target>
@@ -1635,7 +1631,7 @@
   <target>Element-Innenabstand setzen</target>
 </trans-unit>
 <trans-unit id="s01a3659e7cfcd452">
-  <source>Set padding of the selected element</source>
+  <source>Set the padding of the selected element</source>
   <target>Setze die Innenabstände des ausgewählten Elements</target>
 </trans-unit>
 <trans-unit id="s5b82a23fbcad1a41">
@@ -1797,6 +1793,22 @@
 <trans-unit id="sef00c258bc1ecf1e">
   <source>This explorable has unsaved changes.</source>
   <target>Es gibt ungesicherte Änderungen</target>
+</trans-unit>
+<trans-unit id="s6988ab5d47593a26">
+  <source>You have the latest version of WebWriter.</source>
+  <target>Die aktuelle Version von WebWriter ist installiert.</target>
+</trans-unit>
+<trans-unit id="saf440a0a592f2835">
+  <source>Update to</source>
+  <target>Aktualisieren auf</target>
+</trans-unit>
+<trans-unit id="s564d1648b1ceee9f">
+  <source>Up to date</source>
+  <target>Aktuell</target>
+</trans-unit>
+<trans-unit id="se1b03a74b09ba7f0">
+  <source>App Folder</source>
+  <target>App-Ordner</target>
 </trans-unit>
 </body>
 </file>
