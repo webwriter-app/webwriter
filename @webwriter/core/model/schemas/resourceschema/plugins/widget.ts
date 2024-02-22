@@ -92,8 +92,8 @@ function widgetConfig(pkg: Package, decl: ManifestCustomElementDeclaration) {
 function widgetGroup(settings: WidgetEditingSettings) {
   return Array.from(new Set([
     ...(settings?.group? settings.group.split(" "): []),
-    "flow",
-    "widget"
+    settings.inline? "widgetinline": "flow",
+    settings.inline? "widgetinline": "widget"
   ])).join(" ")
 }
 
