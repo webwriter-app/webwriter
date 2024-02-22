@@ -754,7 +754,7 @@ export class ExplorableEditor extends LitElement {
   setNodeAttribute(el: HTMLElement, key: string, value: string | boolean | undefined) {
     const pos = this.pmEditor.posAtDOM(el, 0)
     const node = this.editorState.doc.resolve(pos).node()
-    const builtinAttr = key in globalHTMLAttributes
+    const builtinAttr = key in (this.editorState.schema.nodes[node.type.name].spec.attrs ?? {})
     const dataAttr = key.startsWith("data-")
     let v = value
     if(value === true) {
@@ -773,7 +773,6 @@ export class ExplorableEditor extends LitElement {
     }
     else {
       const _ = {...node.attrs._, [key]: v}
-      console.log(_)
       tr = tr.setNodeAttribute(pos, "_", _)
     }
     this.pmEditor.dispatch(tr)
