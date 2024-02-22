@@ -190,14 +190,12 @@ export class WidgetView implements NodeView {
     }
 		else if(activeElement === node) {
 			return true
-				&& !(e instanceof window.KeyboardEvent && e.key === "Delete")
 				&& !(e instanceof window.KeyboardEvent && e.key === "Escape")
 				&& !(e instanceof window.KeyboardEvent && (e.ctrlKey && e.key === "ArrowDown"))
 				&& !(e instanceof window.KeyboardEvent && (e.ctrlKey && e.key === "ArrowUp"))
 		}
 		else {
 			return true 
-				&& !(e instanceof window.KeyboardEvent && e.key === "Delete")
 				&& !(e instanceof window.KeyboardEvent && e.key === "Escape")
 		}
 	}
