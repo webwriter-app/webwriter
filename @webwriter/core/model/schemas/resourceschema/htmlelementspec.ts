@@ -177,7 +177,7 @@ export function toAttributes(node: Node | Attrs, extraAttrs?: Attrs) {
     if(k !== "data" && v !== null && v !== undefined && v !== false && (spec?.default !== v) && !spec?.private) {
       outputAttrs[k] = Array.isArray(v)? v.join(" "): v 
     }
-    if(k === "data") {
+    else if(k === "data") {
       for(const [dk, dv] of Object.entries(v)) {
         outputAttrs[dk] = Array.isArray(dv)? v.join(" "): dv as string
       }
