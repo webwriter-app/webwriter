@@ -39,6 +39,7 @@ export class WidgetView implements NodeView {
 	}
 
   update(node: Node, decorations: readonly Decoration[], innerDecorations: DecorationSource) {
+    /*
     const oldName = this.node.type.name
     const oldAttrs = {...this.node.attrs, ...this.node.attrs._, ...this.node.attrs.data, data: undefined, _: undefined}
     const name = node.type.name
@@ -53,6 +54,25 @@ export class WidgetView implements NodeView {
     const toRemove = oldNames.filter(k => !newNames.includes(k)).filter(k => k !== "contenteditable")
     toRemove.forEach(k => this.dom.removeAttribute(k))
     newNames.forEach(k => this.dom.setAttribute(k, newDom.getAttribute(k)!))
+    */
+    const oldName = this.node.type.name
+    const name = node.type.name
+    if(oldName !== name) {
+      return false
+    }
+    this.node = node
+    return true
+    /*
+    const attrs = toAttributes(node, node.attrs._)
+    delete attrs["_"]
+    const oldNames = this.dom.getAttributeNames()
+    const toRemove = oldNames.filter(k => !Object.keys(attrs).includes(k)).filter(k => k !== "contenteditable")
+    for(const [key, value] of Object.entries(attrs)) {
+      this.dom.setAttribute(key, value)
+    }
+    for(const name of toRemove) {
+      this.dom.removeAttribute(name)
+    }
     for(const dec of decorations) {
       const attrs = (dec as any)?.type.attrs ?? {}
       for(const attr of Object.keys(attrs)) {
@@ -64,7 +84,7 @@ export class WidgetView implements NodeView {
         }
       }
     }
-    return true
+    return true*/
   }
 
   /*getPos() {
