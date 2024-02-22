@@ -3,7 +3,7 @@ import { customElement, property } from "lit/decorators.js"
 import {ifDefined} from "lit/directives/if-defined.js"
 import { localized } from "@lit/localize"
 
-import { AttributeDeclaration, BooleanAttributeDeclaration, ColorAttributeDeclaration, DateAttributeDeclaration, DatetimeLocalAttributeDeclaration, EmailAttributeDeclaration, NumberAttributeDeclaration, ObjectAttributeDeclaration, PasswordAttributeDeclaration, SelectAttributeDeclaration, StringAttributeDeclaration, TelAttributeDeclaration, TimeAttributeDeclaration, UrlAttributeDeclaration } from "@webwriter/lit"
+import { OptionDeclaration, BooleanOptionDeclaration, ColorOptionDeclaration, DateOptionDeclaration, DatetimeLocalOptionDeclaration, EmailOptionDeclaration, NumberOptionDeclaration, ObjectOptionDeclaration, PasswordOptionDeclaration, SelectOptionDeclaration, StringOptionDeclaration, TelOptionDeclaration, TimeOptionDeclaration, UrlOptionDeclaration, LitElementWw } from "@webwriter/lit"
 import { capitalizeWord } from "../../utility"
 
 function getLocalized(localizationObj?: Record<string, string>) {
@@ -16,24 +16,27 @@ function getLocalized(localizationObj?: Record<string, string>) {
 export class WidgetOptions extends LitElement {
 
   @property({attribute: false})
-  widget: HTMLElement | LitElement
+  widget: HTMLElement | LitElement | LitElementWw
 
-  get declarations() {
-    const declEntries = ([...(this.widget.constructor as typeof LitElement)?.elementProperties?.entries()] as [string, AttributeDeclaration][])
-      .filter(([k, decl]) => decl.option)
-    return Object.fromEntries(declEntries)
+  get options() {
+    if("options" in this.widget) {
+      return this.widget.options
+    }
+    else {
+      return {}
+    }
   }
 
   render() {
-    return Object.entries(this.declarations).map(([k, v]) => this.Option(k, v))
+    return Object.entries(this.options).map(([k, v]) => this.Option(k, v))
   }
 
-  Option(attr: string, decl: AttributeDeclaration) {
+  Option(attr: string, decl: OptionDeclaration) {
     if(decl.type === "color") {
       return this.ColorOption(attr, decl)
     }
     else if(decl.type === "boolean" || (decl.type as any)?.name === "Boolean") {
-      return this.BooleanOption(attr, decl as BooleanAttributeDeclaration)
+      return this.BooleanOption(attr, decl as BooleanOptionDeclaration)
     }
     else if(decl.type === "select") {
       return this.SelectOption(attr, decl)
@@ -51,7 +54,7 @@ export class WidgetOptions extends LitElement {
     // this.dispatchEvent(new CustomEvent("ww-set-attribute", {bubbles: true, composed: true, detail: {el, key, value}}))
   }
 
-  BooleanOption(attr: string, decl: BooleanAttributeDeclaration) {
+  BooleanOption(attr: string, decl: BooleanOptionDeclaration) {
     const checked = !!this.widget?.hasAttribute(attr)
     return html`<sl-switch
       size="small"
@@ -62,7 +65,7 @@ export class WidgetOptions extends LitElement {
     </sl-switch>`
   }
 
-  InputOption(attr: string, decl: StringAttributeDeclaration | NumberAttributeDeclaration | DateAttributeDeclaration | DatetimeLocalAttributeDeclaration | EmailAttributeDeclaration | PasswordAttributeDeclaration |TelAttributeDeclaration | TimeAttributeDeclaration | UrlAttributeDeclaration) {
+  InputOption(attr: string, decl: StringOptionDeclaration | NumberOptionDeclaration | DateOptionDeclaration | DatetimeLocalOptionDeclaration | EmailOptionDeclaration | PasswordOptionDeclaration |TelOptionDeclaration | TimeOptionDeclaration | UrlOptionDeclaration) {
     const value = this.widget?.getAttribute(attr) ?? undefined
     const type = (typeof decl.type === "string"? decl.type: decl.type?.name.toLowerCase().replace("string", "text")) ?? "text"
     console.log("input")
@@ -85,11 +88,11 @@ export class WidgetOptions extends LitElement {
     ></sl-input>`
   }
 
-  ObjectOption(attr: string, decl: ObjectAttributeDeclaration) {
+  ObjectOption(attr: string, decl: ObjectOptionDeclaration) {
     // TODO
   }
 
-  ColorOption(attr: string, decl: ColorAttributeDeclaration) {
+  ColorOption(attr: string, decl: ColorOptionDeclaration) {
     const value = this.widget?.getAttribute(attr) ?? undefined
     return html`<sl-color-picker
         value=${ifDefined(value)}
@@ -99,7 +102,7 @@ export class WidgetOptions extends LitElement {
     </sl-color-picker>`
   }
 
-  SelectOption(attr: string, decl: SelectAttributeDeclaration) {
+  SelectOption(attr: string, decl: SelectOptionDeclaration) {
     const value = this.widget?.getAttribute(attr) ?? undefined
     return html`<sl-select
       size="small"
