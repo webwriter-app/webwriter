@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "experimentalDecorators": true,
+    "target": "es2022",
+    "moduleResolution": "Bundler",
+    "module": "ES2022"
+  }
+}

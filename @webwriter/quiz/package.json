@@ -1,0 +1,111 @@
+{
+  "name": "@webwriter/quiz",
+  "version": "0.0.1",
+  "keywords": [
+    "webwriter-widget"
+  ],
+  "license": "MIT",
+  "author": "Frederic Salmen <frederic@fsalmen.de>",
+  "dependencies": {
+    "@shoelace-style/shoelace": "^2.13.1",
+    "@webwriter/lit": "^1.6.3",
+    "bootstrap-icons": "^1.11.3",
+    "lit": "^3",
+    "sortablejs": "^1.15.2"
+  },
+  "devDependencies": {
+    "@types/sortablejs": "^1.15.7"
+  },
+  "exports": {
+    "./widgets/webwriter-quiz": "./widgets/webwriter-quiz.ts",
+    "./widgets/webwriter-task": "./widgets/webwriter-task.ts",
+    "./widgets/webwriter-task-prompt": "./widgets/webwriter-task-prompt.ts",
+    "./widgets/webwriter-choice": "./widgets/webwriter-choice.ts",
+    "./widgets/webwriter-choice-item": "./widgets/webwriter-choice-item.ts",
+    "./widgets/webwriter-order": "./widgets/webwriter-order.ts",
+    "./widgets/webwriter-order-item": "./widgets/webwriter-order-item.ts",
+    "./widgets/webwriter-pairing": "./widgets/webwriter-pairing.ts",
+    "./widgets/webwriter-text": "./widgets/webwriter-text.ts",
+    "./widgets/webwriter-mark": "./widgets/webwriter-mark.ts",
+    "./widgets/webwriter-markimage": "./widgets/webwriter-markimage.ts",
+    "./widgets/webwriter-speech": "./widgets/webwriter-speech.ts",
+    "./widgets/webwriter-cloze": "./widgets/webwriter-cloze.ts",
+    "./widgets/webwriter-cloze-gap": "./widgets/webwriter-cloze-gap.ts",
+    "./widgets/webwriter-wordsearch": "./widgets/webwriter-wordsearch.ts",
+    "./widgets/webwriter-memorygame": "./widgets/webwriter-memorygame.ts"
+  },
+  "editingConfig": {
+    "./widgets/webwriter-choice-item": {
+      "isolating": false,
+      "content": "(p | flow)+",
+      "noDefaultSnippet": true
+    },
+    "./widgets/webwriter-choice": {
+      "group": "answer",
+      "content": "webwriter-choice-item+",
+      "noDefaultSnippet": true
+    },
+    "./widgets/webwriter-order-item": {
+      "isolating": false,
+      "content": "(p | flow)+",
+      "noDefaultSnippet": true
+    },
+    "./widgets/webwriter-order": {
+      "group": "answer",
+      "content": "webwriter-order-item+",
+      "noDefaultSnippet": true
+    },
+    "./widgets/webwriter-pairing": {
+      "group": "answer",
+      "noDefaultSnippet": true
+    },
+    "./widgets/webwriter-text": {
+      "group": "answer",
+      "noDefaultSnippet": true
+    },
+    "./widgets/webwriter-mark": {
+      "group": "answer",
+      "content": "phrasing*",
+      "noDefaultSnippet": true
+    },
+    "./widgets/webwriter-markimage": {
+      "group": "answer",
+      "noDefaultSnippet": true
+    },
+    "./widgets/webwriter-speech": {
+      "group": "answer",
+      "noDefaultSnippet": true
+    },
+    "./widgets/webwriter-cloze": {
+      "group": "answer",
+      "content": "(phrasing | webwriter-cloze-gap)*",
+      "noDefaultSnippet": true
+    },
+    "./widgets/webwriter-cloze-gap": {
+      "inline": true,
+      "isolating": false,
+      "noDefaultSnippet": true
+    },
+    "./widgets/webwriter-wordsearch": {
+      "group": "answer",
+      "noDefaultSnippet": true
+    },
+    "./widgets/webwriter-memorygame": {
+      "group": "answer",
+      "noDefaultSnippet": true
+    },
+    "./widgets/webwriter-task": {
+      "content": "(p | flow) answer flow?",
+      "noDefaultSnippet": true
+    },
+    "./widgets/webwriter-task-prompt": {
+      "defining": true,
+      "content": "(p | flow)+",
+      "noDefaultSnippet": true
+    },
+    "./widgets/webwriter-quiz": {
+      "content": "webwriter-task*",
+      "noDefaultSnippet": false
+    }
+  }
+}
