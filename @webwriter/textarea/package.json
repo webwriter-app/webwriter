@@ -6,7 +6,7 @@
     "webwriter-widget"
   ],
   "license": "MIT",
-  "author": "Frederic Salmen    <frederic@fsalmen.de>",
+  "author": "Frederic Salmen <frederic@fsalmen.de>",
   "scripts": {},
   "dependencies": {
     "@open-wc/scoped-elements": "^3.0.3",
