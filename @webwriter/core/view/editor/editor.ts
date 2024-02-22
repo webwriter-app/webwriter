@@ -1026,7 +1026,7 @@ export class ExplorableEditor extends LitElement {
 
 	get toolboxMode(): "popup" | "right" | "hidden" {
 		const {isInNarrowLayout, hasNonEmptySelection, isWidgetSelected, forceToolboxPopup, isTextSelected} = this
-		if(isInNarrowLayout && (forceToolboxPopup || hasNonEmptySelection || isWidgetSelected)) return "popup"
+		if(isInNarrowLayout && (forceToolboxPopup)) return "popup"
 		else if(!isInNarrowLayout) return "right"
 		else return "hidden"
 	}
