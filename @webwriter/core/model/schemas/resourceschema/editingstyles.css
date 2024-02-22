@@ -306,17 +306,6 @@ body > .ww-widget::after {
   -webkit-user-select: none;
 }
 
-html[data-dragover] .ProseMirror::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0px;
-  background: var(--sl-color-primary-600);
-  opacity: 10%;
-  height: 100%;
-  width: 100%;
-}
-
 .ProseMirror th,
 .ProseMirror td {
   min-width: 1em;
