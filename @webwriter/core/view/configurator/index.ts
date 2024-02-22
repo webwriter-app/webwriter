@@ -105,7 +105,7 @@ export class Settings extends ViewModelMixin(LitElement, true) {
           <span slot="confirm">${msg("Are you sure? This action can't be reversed, all your settings will be deleted and reset.")}</span>
         </ww-button>
       <ww-button size="small" slot="post-tabs" variant="neutral" outline class="title-button" @click=${() => viewAppDir()}>
-        <span>${msg("View App Folder")}</span>
+        <span>${msg("App Folder")}</span>
       </ww-button>
 			</ww-configurator>
 		`
