@@ -171,7 +171,7 @@ export class DocumentStore implements Resource {
       const serialize = (marshal as any)[format].serialize
       const isBinary = (marshal as any)[format].isBinary
     
-      let data = await serialize(resource.editorState.doc, resource.editorState.head$.doc, this.bundle)
+      let data = await serialize(resource.editorState.doc, resource.editorState.head$.doc, this.bundle, this.Path, this.FS)
       await save(data, urlObj.href, isBinary)
       this.lastSavedState = this.editorState
       this.url = urlObj.href
