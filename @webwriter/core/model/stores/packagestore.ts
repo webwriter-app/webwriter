@@ -80,7 +80,7 @@ export class PackageStore {
        appDir = await Path.appDir()
     }
     catch(cause) {
-      throw new ReadWriteIssue("Could not read path of app directory", {cause})
+      throw new ReadWriteIssue("Could not read path of app directory: " + String(cause), {cause})
     }
     const bundleID = PackageStore.computeBundleID(importIDs, undefined, production)
     if(importIDs.length === 0) {
