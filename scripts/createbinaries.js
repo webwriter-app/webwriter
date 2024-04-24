@@ -73,10 +73,9 @@ async function main() {
   for(const [binpath, triple] of Object.entries(TRIPLES)) {
     const fullpath = `./@webwriter/app-desktop/node_modules/${binpath}`
     if(fs.existsSync(fullpath)) {
-      fs.copyFileSync(
-        fullpath,
-        path.join(BINARIES_DIR, triple)
-      )
+      const binpath = path.join(BINARIES_DIR, triple)
+      console.log(`Copying ${fullpath} to ${binpath}`)
+      fs.copyFileSync(fullpath, binpath)
     }
     else {
       console.warn(`'${fullpath}' not found`)
