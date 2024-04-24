@@ -73,8 +73,8 @@ async function main() {
   for(const [binpath, triple] of Object.entries(TRIPLES)) {
     const rootpackagePath = `./node_modules/${binpath}`
     const subpackagePath = `./@webwriter/app-desktop/node_modules/${binpath}`
-    const subpackagePathExists = fs.existsSync(fullpath)
     const rootpackagePathExists = fs.existsSync(rootpackagePath)
+    const subpackagePathExists = fs.existsSync(subpackagePath)
     const srcpath = subpackagePathExists? subpackagePath: rootpackagePath
     if(subpackagePathExists || rootpackagePathExists) {
       const binpath = path.join(BINARIES_DIR, triple)
