@@ -10,12 +10,20 @@ jobs:
         include:
           - platform: 'macos-latest'
             args: '--target aarch64-apple-darwin'
+            os: 'darwin'
+            cpu: 'arm64'
           - platform: 'macos-latest'
             args: '--target x86_64-apple-darwin'
+            os: 'darwin'
+            cpu: 'x64'
           - platform: 'ubuntu-22.04'
             args: ''
+            os: "linux"
+            cpu: 'x64'
           - platform: 'windows-latest'
             args: ''
+            os: "win32"
+            cpu: 'x64'
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout repository
@@ -50,7 +58,10 @@ jobs:
           Import-PfxCertificate -FilePath certificate/certificate.pfx -CertStoreLocation Cert:\CurrentUser\My -Password (ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText)
       
       - name: Install web dependencies
-        run: npm install -f
+        run: |
+          npm config set os=${{ matrix.os }}
+          npm config set cpu=${{ matrix.cpu }}
+          npm install
 
       - name: Run prebuild actions (static resources, sidecar binaries, app icon)
         run: npm run prebuild-desktop
