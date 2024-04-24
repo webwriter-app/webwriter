@@ -71,14 +71,18 @@ async function main() {
   }*/
 
   for(const [binpath, triple] of Object.entries(TRIPLES)) {
-    const fullpath = `./@webwriter/app-desktop/node_modules/${binpath}`
-    if(fs.existsSync(fullpath)) {
+    const rootpackagePath = `./node_modules/${binpath}`
+    const subpackagePath = `./@webwriter/app-desktop/node_modules/${binpath}`
+    const subpackagePathExists = fs.existsSync(fullpath)
+    const rootpackagePathExists = fs.existsSync(rootpackagePath)
+    const srcpath = subpackagePathExists? subpackagePath: rootpackagePath
+    if(subpackagePathExists || rootpackagePathExists) {
       const binpath = path.join(BINARIES_DIR, triple)
-      console.log(`Copying ${fullpath} to ${binpath}`)
-      fs.copyFileSync(fullpath, binpath)
+      console.log(`Copying ${srcpath} to ${binpath}`)
+      fs.copyFileSync(srcpath, binpath)
     }
     else {
-      console.warn(`'${fullpath}' not found`)
+      console.warn(`'${srcpath}' not found`)
     }
   }
 }
