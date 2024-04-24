@@ -50,7 +50,7 @@ jobs:
           Import-PfxCertificate -FilePath certificate/certificate.pfx -CertStoreLocation Cert:\CurrentUser\My -Password (ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText)
       
       - name: Install web dependencies
-        run: npm install
+        run: npm install -f
 
       - name: Run prebuild actions (static resources, sidecar binaries, app icon)
         run: npm run prebuild-desktop
