@@ -85,6 +85,8 @@ export function option(decl: OptionDeclaration = {type: "string"}) {
 /**Minimal base class for a WebWriter widget implemented in Lit. Implements the core properties required by WebWriter, initializes the component when loaded and provides a Scoped Custom Element Registry (@open-wc/scoped-elements) to help with namespace conflicts when using other components in this widget. */
 export class LitElementWw extends ScopedElementsMixin(LitElement) {
 
+  static shadowRootOptions = {...LitElement.shadowRootOptions}
+
   static readonly options: Record<string, OptionDeclaration> = {}
 
   /** Declare attributes as options. Used by WebWriter to auto-generate input fields to modify these attributes. As the name suggests, this is mostly suited to simple attributes (boolean, string, etc.). Use a getter here (`get options() {...}`) to dynamically change options depending on the state of the widget.*/
