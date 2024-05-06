@@ -18,6 +18,9 @@ export class Combobox extends SlInput implements DataInput {
     this.addEventListener("focusout", e => {
       this.active = this.open = false
     })
+    this.addEventListener("blur", e => {
+      this.active = this.open = false
+    })
     this.value = this.defaultValue = this.multiple? []: ""
   }
 
@@ -92,6 +95,10 @@ export class Combobox extends SlInput implements DataInput {
     else {
       this.input?.focus()
     }
+  }
+
+  blur() {
+    this.open = false
   }
 
   getForm() {
@@ -355,7 +362,7 @@ export class Combobox extends SlInput implements DataInput {
               variant="icon" 
               icon="chevron-down"
               @focus=${(e: Event) => e.stopPropagation()}
-              @click=${(e: Event) => {this.open = !this.open; this.focus(); e.stopPropagation()}}
+              @click=${(e: Event) => {this.focus(); e.stopPropagation()}}
               @mousedown=${(e: Event) => {e.stopPropagation(); e.preventDefault()}}
             ></ww-button>
         </div>
