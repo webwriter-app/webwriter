@@ -1,6 +1,6 @@
 /** config */
 import {html, css, PropertyValueMap} from "lit"
-import {EditingConfig, LitElementWw} from "@webwriter/lit"
+import {LitElementWw} from "@webwriter/lit"
 import {customElement, property, queryAll, queryAssignedElements} from "lit/decorators.js"
 import SlButton from "@shoelace-style/shoelace/dist/components/button/button.component.js"
 import SlIconButton from "@shoelace-style/shoelace/dist/components/icon-button/icon-button.component.js"
@@ -10,6 +10,7 @@ import "@shoelace-style/shoelace/dist/themes/light.css"
 import fullscreenIcon from "bootstrap-icons/icons/fullscreen.svg"
 import fullscreenExitIcon from "bootstrap-icons/icons/fullscreen-exit.svg"
 import plusSquareIcon from "bootstrap-icons/icons/plus-square.svg"
+import minusSquareIcon from "bootstrap-icons/icons/dash-square.svg"
 import chevronLeftIcon from "bootstrap-icons/icons/chevron-left.svg"
 import chevronRightIcon from "bootstrap-icons/icons/chevron-right.svg"
 import { WebwriterSlide } from "./webwriter-slide"
@@ -20,6 +21,13 @@ export class WebwriterSlides extends LitElementWw {
   constructor() {
     super()
     this.addEventListener("fullscreenchange", () => this.requestUpdate())
+    document.addEventListener("selectionchange", e => {
+      const selectedSlideIndex = this.slides?.findIndex(slide => document.getSelection().containsNode(slide, true))
+      if(selectedSlideIndex !== -1) {
+        this.activeSlideIndex = selectedSlideIndex
+        this.requestUpdate()
+      }
+    }, {passive: true})
   }
 
   protected firstUpdated(): void {
@@ -111,7 +119,12 @@ export class WebwriterSlides extends LitElementWw {
     slide.appendChild(p)
     this.appendChild(slide)
     this.activeSlideIndex = this.slides.indexOf(slide)
-    this.slides[this.activeSlideIndex].focus()
+    document.getSelection().setBaseAndExtent(p, 0, p, 0)
+  }
+
+  removeSlide() {
+    this.slides[this.activeSlideIndex].remove()
+    this.nextSlide()
   }
 
   nextSlide(backwards=false, step=1) {
@@ -154,6 +167,7 @@ export class WebwriterSlides extends LitElementWw {
       <aside part="options">
       </aside>
       <aside part="actions">
+        <sl-icon-button class="author-only" ?disabled=${this.slides.length <= 1} @click=${() => this.removeSlide()} src=${minusSquareIcon}></sl-icon-button>
         <sl-icon-button class="author-only" @click=${() => this.addSlide()} src=${plusSquareIcon}></sl-icon-button>
         <sl-icon-button @click=${(e: MouseEvent) => this.handleNextSlideClick(e, true)} src=${chevronLeftIcon} ?disabled=${!this.hasPreviousSlide}></sl-icon-button>
         <div class="slides-index">

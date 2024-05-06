@@ -15,8 +15,7 @@
   },
   "exports": {
     "./widgets/webwriter-slides": "./widgets/webwriter-slides.ts",
-    "./widgets/webwriter-slide": "./widgets/webwriter-slide.ts",
-    "./snippets/webwriter-slides": "./snippets/webwriter-slides.html"
+    "./widgets/webwriter-slide": "./widgets/webwriter-slide.ts"
   },
   "editingConfig": {
     "./widgets/webwriter-slides": {
@@ -28,7 +27,7 @@
       "definingAsContext": true,
       "definingForContent": true,
       "content": "p | flow*",
-      "noDefaultSnippet": true
+      "uninsertable": true
     }
   }
 }
