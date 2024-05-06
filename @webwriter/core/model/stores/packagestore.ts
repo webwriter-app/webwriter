@@ -5,7 +5,7 @@ import merge from "lodash.merge"
 
 import { capitalizeWord, escapeRegex, filterObject, hashCode, unscopePackageName } from "../../utility"
 import { Environment, WatchEvent } from "../environment"
-import { CustomElementsManifest, ManifestCustomElementDeclaration, ManifestDeclaration, ManifestPropertyLike, MemberSettings, Package, SemVer, SnippetEditingSettings, ThemeEditingSettings, WidgetEditingSettings, themes } from ".."
+import { CustomElementsManifest, ManifestCustomElementDeclaration, ManifestDeclaration, ManifestPropertyLike, MemberSettings, NpmName, Package, SemVer, SnippetEditingSettings, ThemeEditingSettings, WidgetEditingSettings, themes } from ".."
 import {version as appVersion} from "../../package.json"
 import { licenses, presets } from "../templates"
 import { toJS } from "mobx"
@@ -42,7 +42,21 @@ export class ReadWriteIssue extends Error {}
 export class InstallIssue extends Error {}
 export class UninstallIssue extends Error {}
 export class UpdateIssue extends Error {}
-export class BundleIssue extends Error {}
+export class BundleIssue extends Error {
+
+  stack?: string
+  id?: string
+
+  constructor(message?: string, options?: ErrorOptions & {stack?: string, id?: string}) {
+    super(message, options)
+    this.stack = options?.stack
+    this.id = options?.id
+  }
+
+  toJSON() {
+    return {id: this.id, stack: this.stack, message: this.message, cause: this.cause}
+  }
+}
 export class WidgetNameIssue extends Error {}
 export class PackageJsonIssue extends Error {}
 export class Warning extends Error {}
@@ -50,31 +64,54 @@ export class Warning extends Error {}
 /** Handles packages. Packages are node (npm) packages which contain widgets. The PackageStore can also create bundles from packages, which can for example be imported by the runtime editor or embedded by serializers. Additionally, the PackageStore can open or clear the app directory which stores the packages. */
 export class PackageStore {
 
-  static bundleOptions = ["--bundle", `--format=esm`, `--tsconfig-raw={"compilerOptions":{"experimentalDecorators":true, "target": "es2022", "useDefineForClassFields": false}}`, ...BUNDLE_LOADER_OPTIONS]
+  static bundleOptions = [...BUNDLE_LOADER_OPTIONS, "--bundle", `--outdir=./bundlecache`, `--entry-names=[dir]/[name].bundle`, `--format=esm`, `--metafile=bundlecache/meta.json`, `--tsconfig-raw={"compilerOptions":{"experimentalDecorators":true, "target": "es2022", "useDefineForClassFields": false}}`]
 
   static developmentBundleOptions = ["--sourcemap=inline"]
-  static productionBundleOptions = ["--drop-labels=DEV"]
+  static productionBundleOptions = ["--drop-labels=DEV", "--minify"]
+
+  updateOnStartup = true
 
   private static async readFileIfExists(path: string, FS: Environment["FS"]): Promise<string | undefined> {
     return await FS.exists(path)? await FS.readFile(path) as string: undefined
   }
 
-  private static async bundlePath(importIDs: string[], Path: Environment["Path"], FS: Environment["FS"], includesLocal=false, production=false) {
+  private static isLocalImportID(id: string) {
+    const match = id.match(SemVer.pattern)
+    return match? new SemVer(match[0]).prerelease.includes("local"): undefined
+  }
+
+  private static async bundlePath(importIDs: string[], Path: Environment["Path"], FS: Environment["FS"], production=false) {
+    const includesLocal = importIDs.some(this.isLocalImportID)
     const hash = PackageStore.computeBundleHash(importIDs, production)
     const appDir = await Path.appDir()
-    const jsPath = await Path.join(appDir, "bundlecache", `${hash}.js`)
-    const cssPath = await Path.join(appDir, "bundlecache", `${hash}.css`)
-    const entryPath = await Path.join(appDir, "bundlecache", `${hash}.entrypoint.js`)
+    const jsPath = await Path.join(appDir, "bundlecache", `${hash}.bundle.js`)
+    const jsPathRelative = ["bundlecache", `${hash}.bundle.js`].join("/")
+    const cssPath = await Path.join(appDir, "bundlecache", `${hash}.bundle.css`)
+    const cssPathRelative = ["bundlecache", `${hash}.bundle.css`].join("/")
+    const entryPath = await Path.join(appDir, "bundlecache", `${hash}.js`)
+    const entryPathRelative = ["bundlecache", `${hash}.js`].join("/")
+    const metaPath = await Path.join(appDir, "bundlecache", `${hash}.meta.json`)
+    const metaPathRelative = ["bundlecache", `${hash}.meta.json`].join("/")
     return {
+      hash,
       jsExists: !includesLocal && await FS.exists(jsPath),
       jsPath,
+      jsPathRelative,
       cssExists: !includesLocal && await FS.exists(cssPath),
       cssPath,
-      entryPath
+      cssPathRelative,
+      entryPath,
+      entryPathRelative,
+      metaExists: !includesLocal && await FS.exists(metaPath),
+      metaPath,
+      metaPathRelative,
     }
   }
 
-  static async readBundle(importIDs: string[], bundle: Environment["bundle"], Path: Environment["Path"], FS: Environment["FS"], includesLocal=false, production=false) {
+  static async readBundle(importIDs: string[], bundle: Environment["bundle"], Path: Environment["Path"], FS: Environment["FS"], production=false) {
+    if(importIDs.length === 0) {
+      return {bundleID: "", bundleJS: "", bundleCSS: "", errors: [] as BundleIssue[]}
+    }
     let appDir
     try {
        appDir = await Path.appDir()
@@ -82,51 +119,123 @@ export class PackageStore {
     catch(cause) {
       throw new ReadWriteIssue("Could not read path of app directory: " + String(cause), {cause})
     }
-    const bundleID = PackageStore.computeBundleID(importIDs, undefined, production)
-    if(importIDs.length === 0) {
-      return {bundleID, bundleJS: "", bundleCSS: ""}
+
+    const bundlecacheDir = await Path.join(appDir, "bundlecache")
+    if(!(await FS.exists(bundlecacheDir))) {
+      await FS.mkdir(bundlecacheDir)
     }
-    let {jsPath, jsExists, cssPath, cssExists, entryPath} = await this.bundlePath(importIDs, Path, FS, includesLocal, production)
-    if(!jsExists && !cssExists || includesLocal || production) {
-      const entryCode = importIDs
-        .map(id => id.replace(new RegExp(`@` + SemVer.pattern.source, "g"), ""))
-        .map(k => `import "${k}"`)
-        .join(";")
+
+    type BundleData = Awaited<ReturnType<typeof this.bundlePath>> & {bundleID?: string, bundleJS?: string, bundleCSS?: string, importIDs: string[], meta?: {errors: BundleIssue[], cssSize?: number, jsSize?: number, imports: {path: string, kind: string, external?: boolean}[], exports: string[]}}
+
+    const bundleData: BundleData[] = (await Promise.all(importIDs.map(async id => {
+      const bundleID = PackageStore.computeBundleID([id], production)
+      const bundleStatus = await this.bundlePath([id], Path, FS, production)
+      const meta = JSON.parse((await this.readFileIfExists(bundleStatus.metaPath, FS)) ?? "null") as BundleData["meta"]
+      return {bundleID, importIDs: [id], ...bundleStatus, meta}
+    })))
+
+    const hasUncached = (entry: BundleData) => !entry.metaExists || this.isLocalImportID(entry.bundleID!)
+
+    const writeEntrypoint = async (entry: BundleData) => {
+      const entryCode = entry.importIDs
+      .map(id => id.replace(new RegExp(`@` + `(local|${SemVer.pattern.source})`, "g"), ""))
+      .map(k => `import "${k}"`)
+      .join(";")
       try {
-        await FS.mkdir(await Path.join(appDir, "bundlecache"))
-        await FS.writeFile(entryPath, entryCode)
+        await FS.mkdir("bundlecache")
+        await FS.writeFile(entry.entryPath, entryCode)
       }
       catch(cause) {
-        throw new ReadWriteIssue(`Could not create entrypoint file ${entryPath}`, {cause})
-      }
-      try {
-        await bundle([
-          `${entryPath}`,
-          `--outfile=${jsPath}`,
-          ...PackageStore.bundleOptions,
-          ...(!production? PackageStore.developmentBundleOptions: PackageStore.productionBundleOptions) 
-        ])
-      }
-      catch(rawCause) {
-        const importPaths = [...new Set(importIDs
-          .map(id => id.slice(0, id.replace("@", "_").indexOf("@"))))]
-          .map(path => escapeRegex(path))
-        const esbuildPathRegex = new RegExp(`^\\s*(?:[^/]+\/)+(${importPaths.join("|")}\/(?:[^/]+\\/)+[^/]+\\d+:\\d+:)`, "g")
-        const cause = (rawCause as string)
-          .split("\n")
-          .map(str => str.replaceAll(esbuildPathRegex, "$1"))
-          .join("\n")
-          .split("X [ERROR] ")
-          .map(err => err.trim())
-          .join("\n")
-        throw new BundleIssue(`Bundle produced errors`, {cause})
+        throw new ReadWriteIssue(`Could not create entrypoint file ${entry.entryPath}`, {cause})
       }
     }
-    const [bundleJS, bundleCSS] = await Promise.all([
-      this.readFileIfExists(jsPath, FS),
-      this.readFileIfExists(cssPath, FS)
-    ])
-    return {bundleID, bundleJS, bundleCSS}
+ 
+    const options = (entries: BundleData[]) => [
+      ...entries.map(entry => entry.entryPathRelative),
+      ...PackageStore.bundleOptions,
+      ...(!production? PackageStore.developmentBundleOptions: PackageStore.productionBundleOptions) 
+    ]
+    let errors: BundleIssue[] = []
+
+    const esbuildErrorsToBundleIssues = (rawCause: string) => {
+      return rawCause
+        .split("\n")
+        .slice(0, -2)
+        .join("\n")
+        .split("X [ERROR] ")
+        .filter(err => err)
+        .map(str => {
+          const [message, afterPart] = str.trim().split("\n\n\n\n")
+          const [location, display] = afterPart.trim().split(":\n\n")
+          const nameRegex = /(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*/
+          const lineRegex = /\d+ │ .*\n/
+          const line = display.match(lineRegex)![0].trim()
+          const id = location.replace("node_modules/","").match(nameRegex)![0]
+          return new BundleIssue(message, {cause: line, stack: location, id})
+        })
+    }
+
+    const writeMeta = async (bundleData: BundleData[]) => {
+      const metaPath = await Path.join(appDir, "bundlecache", "meta.json")
+      const buildMeta = JSON.parse((await this.readFileIfExists(metaPath, FS)) ?? "null")
+      await Promise.all(bundleData.map(entry => {
+        const entryErrors = errors.filter(e => entry.bundleID?.startsWith(e.id!))
+        const entryBuildMetaJS = buildMeta?.outputs[entry.jsPathRelative]
+        const entryBuildMetaCSS = buildMeta?.outputs[entry.cssPathRelative]
+        const entryMeta = {
+          errors: entryErrors,
+          cssSize: entryBuildMetaCSS?.bytes,
+          jsSize: entryBuildMetaJS?.bytes,
+          imports: entryBuildMetaJS?.imports,
+          exports: entryBuildMetaJS?.exports
+        }
+        return FS.writeFile(entry.metaPath, JSON.stringify(entryMeta))
+      }))
+      if(await FS.exists(metaPath)) {
+        await FS.unlink(metaPath)
+      }
+    }
+     
+    const toBundleSingle = bundleData.filter(hasUncached)
+    if(toBundleSingle.length) {
+      try {
+        await Promise.all(toBundleSingle.map(entry => writeEntrypoint(entry)))
+        await bundle(options(toBundleSingle), appDir)
+      }
+      catch(rawCause) {
+        if(typeof rawCause === "string") {
+          errors = esbuildErrorsToBundleIssues(rawCause)
+        }
+        else throw rawCause
+      }
+      try {
+        await writeMeta(toBundleSingle)
+      }
+      catch(err) {
+        console.error(err)
+      }
+    }
+    const importIDsNoErrors = importIDs.filter(id => {
+      const currentError = errors.some(err => id.startsWith(err.id!))
+      const storedError = bundleData.some(entry => entry.importIDs.includes(id) && (entry.meta?.errors.length ?? 0) > 0)
+      return !currentError && !storedError
+    })
+    const compositeWithoutErrors = {
+      importIDs: importIDsNoErrors,
+      bundleID: PackageStore.computeBundleID(importIDsNoErrors, production),
+      ...(await this.bundlePath(importIDsNoErrors, Path, FS, production)),
+    }
+    if(hasUncached(compositeWithoutErrors)) {
+      await writeEntrypoint(compositeWithoutErrors)
+      await bundle(options([compositeWithoutErrors]), appDir)
+    }
+    await writeMeta([compositeWithoutErrors])
+    return {
+      ...compositeWithoutErrors,
+      bundleJS: await this.readFileIfExists(compositeWithoutErrors.jsPath, FS),
+      bundleCSS: await this.readFileIfExists(compositeWithoutErrors.cssPath,FS),
+      errors: [...errors, ...bundleData.flatMap(entry => entry.meta?.errors ?? [])]
+    }
   }
 
 
@@ -143,13 +252,13 @@ export class PackageStore {
     })
   }
 
-  static computeBundleID(importIDs: string[], reloadCount?: number, production=false) {
-    return importIDs.join("~~") + (reloadCount? `~~~${reloadCount}`: "") + (production? `~~~prod`: "")
+  static computeBundleID(importIDs: string[], production=false, reloadCount?: number) {
+    return importIDs.join(";") + (production? " !PROD": "") + (reloadCount? `!LOCALRELOAD_${reloadCount}`: "")
   }
 
   /** Create a hash value to identify a bundle. The hash is deterministically computed from the packages' names and versions. This allows for caching of existing bundles. */
   static computeBundleHash(importIDs: string[], production=false) {
-    const bundleID = this.computeBundleID(importIDs, undefined, production)
+    const bundleID = this.computeBundleID(importIDs, production)
     return hashCode(bundleID).toString(36)
   }
 
@@ -258,8 +367,9 @@ export class PackageStore {
         key,
         !key.startsWith("file")? key: tasks.find(t => t.parameters.includes(key))!.name!
       ]))
+      console.log(names)
       try {
-        await this.pm("add", [...toAdd, "--ignore-scripts"], await this.appDir)
+        await this.pm("add", toAdd, await this.appDir)
       }
       catch(err) {
         console.error(err)
@@ -281,7 +391,7 @@ export class PackageStore {
     }
     if(toUpdate.length > 0) {
       try {
-        await this.pm("update", [...toUpdate, "--ignore-scripts"], await this.appDir)
+        await this.pm("update", toUpdate, await this.appDir)
       }
       catch(err) {
         console.error(err)
@@ -300,7 +410,9 @@ export class PackageStore {
 
   set watching(value: Record<string, boolean>) {
     for (const [name, watching] of Object.entries(value)) {
-      this.toggleWatch(name, watching)
+      if(watching !== this.watching[name]) {
+        this.toggleWatch(name, watching)
+      }
     }
   }
 
@@ -315,17 +427,22 @@ export class PackageStore {
   async initialize(force=false) {
     this.initializing = true
     const rootExists = await this.FS.exists(await this.rootPackageJsonPath)
-    const appDirExists = rootExists || await this.FS.exists(await this.appDir)
+    const appDir = await this.appDir
+    const appDirExists = rootExists || await this.FS.exists(appDir)
     if(!rootExists || force) {
-      await (appDirExists && this.FS.rmdir(await this.appDir))
-      await this.FS.mkdir(await this.appDir)
+      await (appDirExists && this.FS.rmdir(appDir))
+      await this.FS.mkdir(appDir)
       await this.writeRootPackageJson()
-      await this.pm("install", [], await this.appDir)
+      await this.pm("install", undefined, appDir)
     }
     try {
-      await this.load()
+      await this.load()/*
+      if(this.updateOnStartup) {
+        await this.pm("update", undefined, appDir)
+      }*/
     }
     catch(err) {
+      throw err
       console.warn("Resetting app directory due to initialization error.", err)
       await this.initialize(true)
     }
@@ -337,11 +454,25 @@ export class PackageStore {
       name: "webwriter-root",
       version: appVersion,
       private: true,
-      description: "Internal package to manage installed WebWriter packages",
-      devDependencies: {
-        "@custom-elements-manifest/analyzer": "^0.9.0"
-      }
+      description: "Internal package to manage installed WebWriter packages"
     })
+  }
+
+  get tsconfigJson() {
+    return {
+      compilerOptions: {
+        experimentalDecorators: true,
+        target: "es2022",
+        useDefineForClassFields: false
+      }
+    }
+  }
+
+  get initialFiles() {
+    return {
+      "package.json": JSON.stringify(this.defaultRootPackage, undefined, 2),
+      "tsconfig.json": JSON.stringify(this.tsconfigJson, undefined, 2)
+    }
   }
 
   private async readRootPackageJson() {
@@ -357,7 +488,6 @@ export class PackageStore {
   }
 
   async add(url: string, name?: string) {
-    console.log(url, name)
     this.adding = {...this.adding, [name ?? url]: true}
     return this.pmQueue.push({command: "add", parameters: [url], cwd: await this.appDir, name})
   }
@@ -412,21 +542,26 @@ export class PackageStore {
       this.fetchInstalled(),
       this.fetchAvailable()
     ])
-    await this.validateInstalled(installed)
     const importable = installed.filter(pkg => !this.getPackageIssues(pkg.id)?.length)
+    const importableVersionMap = Object.fromEntries(importable.map(pkg => [pkg.name, pkg.id]))
     const includesLocal = importable.some(pkg => pkg?.localPath)
     const importIDs = this.widgetImportIDs(importable)
-    const newID = PackageStore.computeBundleID(importIDs, !includesLocal? undefined: this.reloadCount)
+    const newID = PackageStore.computeBundleID(importIDs, false, this.reloadCount)
     if(newID !== this.bundleID) {
       try {
-        const {bundleJS, bundleCSS} = await PackageStore.readBundle(importIDs, this.bundle, this.Path, this.FS, includesLocal)
+        const {bundleJS, bundleCSS, errors} = await PackageStore.readBundle(importIDs, this.bundle, this.Path, this.FS)
         this.bundleID = newID
+        for(const err of errors) {
+          this.appendPackageIssues(importableVersionMap[err.id as any], err)
+          console.error(err.message)
+        }
         this.bundleJS = bundleJS!
         this.bundleCSS = bundleCSS!;
         (this.onBundleChange ?? (() => null))(importable)
       }
-      catch(err) {
-        this.appendManagementIssues(err as Error)
+      catch(rawErr) {
+        throw rawErr
+        this.appendManagementIssues(new BundleIssue(rawErr as string))
       }
     }
     console.log("merging package list")
@@ -466,12 +601,13 @@ export class PackageStore {
     try {
       const dependencies = (await this.readRootPackageJson())?.dependencies ?? {}
       pkgJsonPaths = await Promise.all(Object.keys(dependencies).map(k => this.Path.join(appDir, "node_modules", k, "package.json")))
-      localPaths = Object.values(dependencies).map(v => v.startsWith("file:")? v.slice(5): undefined)
+      localPaths = Object.values(dependencies).map(v => v.startsWith("file:")? v.slice(7): undefined)
     }
     catch(cause) {
       this.appendManagementIssues(new ReadWriteIssue("Could not read installed package.json files", {cause}))
     }
-    return Promise.all(pkgJsonPaths.map((p, i) => this.readPackage(p, localPaths[i])))
+    const pkgs = await Promise.all(pkgJsonPaths.map((p, i) => this.readPackage(p, localPaths[i])))
+    return pkgs
   }
 
   private async validateInstalled(pkgs: Package[]) {
@@ -481,63 +617,53 @@ export class PackageStore {
 
   private async readPackage(jsonPath: string, localPath?: string) {
     const pkgRootPath = jsonPath.slice(0, -("package.json".length))
-    const pkgJson = JSON.parse(await this.FS.readFile(jsonPath) as string)
-    const members = await this.readPackageMembers(pkgJson, pkgRootPath)
-    const {jsExists, cssExists} = await PackageStore.bundlePath(this.widgetImportIDs([pkgJson]), this.Path, this.FS)
-    const pkg = new Package(pkgJson, {installed: true, watching: this.watching[pkgJson.name], localPath, members})
-    if(!jsExists && !cssExists) {
-      try {
-        await PackageStore.readBundle(this.widgetImportIDs([pkg]), this.bundle, this.Path, this.FS, !!pkg.localPath)
-      }
-      catch(cause) {
-        this.appendPackageIssues(pkg.id, cause as Error)
-      }
+    const pkgString = await this.FS.readFile(jsonPath) as string
+    let pkgJson = {} as any
+    try {
+      pkgJson = JSON.parse(pkgString)
     }
-    return pkg
+    catch(cause) {
+      const nameRegex = /"name":\s*".*"/g
+      const versionRegex = /"version":\s*".*"/g
+      const name = nameRegex.exec(pkgString)
+      const version = versionRegex.exec(pkgString)
+      const id = `${name}@${version}`
+      // this.appendPackageIssues(id, cause as Error)
+    }
+    const members = await this.readPackageMembers(pkgJson, pkgRootPath)
+    return new Package(pkgJson, {installed: true, watching: this.watching[pkgJson.name], localPath, members})
   }
 
   private async readPackageMembers(pkg: Package, path?: string) {
     const exports = pkg.exports ?? {}
     const editingConfig = pkg?.editingConfig ?? {}
-    
-    const customElements = undefined // !path? undefined: await this.readAnalysis(pkg, path)
-    const widgetKeys = Object.keys(exports).filter(k => k.startsWith("./widgets/"))
-    const widgets = Object.fromEntries(widgetKeys.map((name, i) => [
-      name,
-      {name, ...(editingConfig[widgetKeys[i]] ?? PackageStore.settingsFromDeclaration(customElements, name.replace("./widgets/", "")) ?? {})}
-    ]))
 
-    const snippetKeys = Object.keys(exports).filter(k => k.startsWith("./snippets/"))
-    const themeKeys = Object.keys(exports).filter(k => k.startsWith("./themes/"))
-    const keys = [...snippetKeys, ...themeKeys]
-    const paths = keys.map(k => exports[k as keyof typeof exports])
-    const sources = !path? {}: Object.fromEntries(await Promise.all(paths.map(async (p, i) => {
-      let fullPath
-      try {
-        fullPath = await this.Path.join(path, p)
+    const members = {} as Record<string, MemberSettings>
+    for(const [name, p] of Object.entries(exports)) {
+      const isWidget = name.startsWith("./widgets/")
+      const isSnippet = name.startsWith("./snippets/")
+      const isTheme = name.startsWith("./themes/")
+      if(isWidget || isSnippet || isTheme) {
+        const memberSettings = editingConfig[name]
+        let source: string | undefined, fullPath: string | undefined
+        if((isSnippet || isTheme) && path) {
+          try {
+            fullPath = await this.Path.join(path, p)
+          }
+          catch(cause) {
+            throw new ReadWriteIssue(`Could not join paths '${path}' and '${p}'`, {cause})
+          }
+          try {
+            source = await this.FS.readFile(fullPath) as string
+          }
+          catch(cause) {
+            // throw new ReadWriteIssue(`Could not read file ${fullPath}`, {cause})
+          }
+        }
+        members[name] = {name, ...memberSettings, ...(source? {source}: undefined)}
       }
-      catch(cause) {
-        throw new ReadWriteIssue(`Could not join paths '${path}' and '${p}'`, {cause})
-      }
-      let result
-      try {
-        result = await this.FS.readFile(fullPath)
-      }
-      catch(cause) {
-        throw new ReadWriteIssue(`Could not read file ${fullPath}`, {cause})
-      }
-      return [keys[i], result]
-    })))
-    const snippets = Object.fromEntries(snippetKeys.map(name => [
-      name,
-      {...editingConfig[name], name, source: sources[name]}
-    ]))
-    const themes = Object.fromEntries(themeKeys.map(name => [
-      name,
-      {...editingConfig[name], name, source: sources[name]}
-    ]))
-    
-    return {...widgets, ...snippets, ...themes}
+    }
+    return members
   }
 
   /*
@@ -590,7 +716,7 @@ export class PackageStore {
   }
 
   get members() {
-    const members = {} as Record<string, MemberSettings>
+    const members = {} as Record<string, Record<string, MemberSettings>>
     for(const pkg of this.packagesList) {
       members[pkg.id] = {} as any
       for(const [name, member] of Object.entries(pkg.members)) {
@@ -627,7 +753,16 @@ export class PackageStore {
   }
 
   get insertables() {
-    return Object.fromEntries(Object.entries(merge(this.snippets, this.widgets, this.themes)).map(([k, v]) => [k, Object.values(v).filter((v: any) => !v.noDefaultSnippet)]))
+    const result = {} as Record<string, MemberSettings>
+    for(const [pkgName, pkgMembers] of Object.entries(this.members)) {
+      for(const [memberName, memberSettings] of Object.entries(pkgMembers)) {
+        if(!(memberSettings as WidgetEditingSettings)?.uninsertable) {
+          result[`${pkgName}${memberName.slice(1)}`] = memberSettings
+        }
+      }
+    }
+    return result
+    return Object.fromEntries(Object.entries(merge(this.snippets, this.widgets, this.themes)).map(([k, v]) => [k, Object.values(v).filter((v: any) => !v.uninsertable)]))
   }
 
   get widgetTagNames() {
@@ -648,20 +783,26 @@ export class PackageStore {
     }
     const watching = forceValue ?? !pkg?.watching
     if(watching && pkg?.localPath) {
+      console.trace(`start watching ${name}`)
       this.unwatchCallbacks[name] = await this.watch(pkg.localPath, async (e) => {
-        if((e?.type?.create || e?.type?.remove) && !this.adding[pkg.id]) {
+        console.log("watch callback called")
+        if(!this.loading) {
           this.loading = true
-          await this.add("file:" + pkg.localPath!)
-          this.load()
+          const path = "file://" + pkg.localPath!
+          await this.remove(pkg.name)
+          await this.add(path, pkg.name)
+          this.loading = false
         }
-        else {
-          !this.loading && this.load()
+        if(!this.loading) {
+          this.load()
         }
       }, {recursive: true})
     }
     else {
+      console.log(`stop watching ${name}`);
       (this.unwatchCallbacks[name] ?? (() => {}))()
       delete this.unwatchCallbacks[name]
+      console.log(toJS(this.unwatchCallbacks))
     }
     this.packages = {...this.packages, [name]: pkg.extend({watching})}
   }
@@ -692,8 +833,12 @@ export class PackageStore {
       throw Error("No package found under " + pkgJsonPath)
     }
     const pkgString = await this.FS.readFile(pkgJsonPath) as string
-    const pkg = new Package(JSON.parse(pkgString))
-    return pkg
+    try {
+      return new Package(JSON.parse(pkgString))
+    }
+    catch(cause) {
+      throw new PackageJsonIssue(`Error parsing package.json: ${cause}`, {cause})
+    }
   }
 
   /** Write a given package to a directory, creating files as neccessary. If `force` is false, abort if existing files are found. */
