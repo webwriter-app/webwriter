@@ -212,7 +212,7 @@ export class Button extends LitElement {
   render() {
     const {id, variant, size, caret, disabled, loading, outline, pill, circle, type, name, value, href, target, rel, download} = this
     const {placement, skidding, hoist} = this.tooltipOptions
-    return html`<sl-tooltip placement=${ifDefined(placement)} skidding=${ifDefined(skidding)} ?open=${this.confirming} ?disabled=${!this.confirm} trigger=${this.issues.length? "hover": "manual"} @click=${(e: any) => {
+    return html`<sl-tooltip hoist placement=${ifDefined(placement)} skidding=${ifDefined(skidding)} ?open=${this.confirming} ?disabled=${!this.confirm} trigger=${this.issues.length? "hover": "manual"} @mouseleave=${() => this.confirming = false} @click=${(e: any) => {
       if(this.confirm) {
         !this.confirming && e.stopPropagation()
         this.confirming = !this.confirming
