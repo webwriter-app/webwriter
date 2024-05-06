@@ -167,11 +167,14 @@ export class App extends ViewModelMixin(LitElement)
         align-items: center;
         --icon-size: 20px;
         color: var(--sl-color-gray-700);
-        padding-left: 1.5ch;
+      }
+
+      #header-left {
         padding-right: 1.5ch;
       }
 
       #header-right {
+        padding-left: 1.5ch;
         justify-content: flex-end;
       }
 
