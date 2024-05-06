@@ -1436,18 +1436,45 @@ export class CommandController implements ReactiveController {
         tags: ["element"],
         fixedShortcut: true
       }),
-      lineHeight: new LayoutCommand(this.host, {
-        id: "lineHeight",
-        label: () => msg("Set line height"),
-        icon: "line-height",
-        description: () => msg("Set the line height of the selected element"),
+      inspect: new Command(this.host, {
+        id: "inspect",
+        label: () => msg("Inspect selection"),
+        description: () => msg("Inspect the selection"),
+        shortcut: "ctrl+alt+y",
+        icon: "info-square",
+        run: host => host.activeEditor?.inspect(),
+        disabled: () => true,
         category: "editor",
+        tags: ["element"]
       }),
-      border: new LayoutCommand(this.host, {
-        id: "border",
-        label: () => msg("Set element border"),
-        icon: "border-style-2",
-        description: () => msg("Set the border of the selected element")
+      edit: new Command(this.host, {
+        id: "edit",
+        label: () => msg("Edit selection"),
+        description: () => msg("Edit the selection"),
+        shortcut: "ctrl+alt+a",
+        icon: "edit",
+        disabled: () => true,
+        run: host => host.activeEditor?.edit(),
+        category: "editor",
+        tags: ["element"]
+      }),
+      pinSelection: new Command(this.host, {
+        id: "pinSelection",
+        label: () => msg("Pin selection"),
+        description: () => msg("Pin the selection as a snippet in the palette"),
+        shortcut: "ctrl+alt+p",
+        icon: "pin",
+        disabled: () => true,
+        run: host => null,
+        category: "editor",
+        tags: ["element"]
+      }),
+      textStyle: new LayoutCommand(this.host, {
+        id: "textStyle",
+        label: () => msg("Set text style of elements"),
+        icon: "align-left",
+        description: () => msg("Set text style (alignment, indentation, spacing, etc.) of selected elements"),
+        category: "editor",
       }),
       margin: new LayoutCommand(this.host, {
         id: "margin",
