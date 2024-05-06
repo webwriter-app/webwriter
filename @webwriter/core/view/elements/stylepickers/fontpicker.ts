@@ -3,6 +3,8 @@ import { customElement, property, query } from "lit/decorators.js"
 import { localized, msg } from "@lit/localize"
 import { range } from "../../../utility"
 import { ifDefined } from "lit/directives/if-defined.js"
+import { classMap } from "lit/directives/class-map.js"
+
 
 const GENERIC_FONT_FAMILY = [
   "serif",
@@ -13,17 +15,17 @@ const GENERIC_FONT_FAMILY = [
 ]
 
 const WEB_SAFE_FONTS = [
-  {name: "Arial", type: "sans-serif"},
-  {name: "Arial Black", type: "sans-serif"},
-  {name: "Arial Narrow", type: "sans-serif"},
-  {name: "Tahoma", type: "sans-serif"},
-  {name: "Trebuchet MS", type: "sans-serif"},
-  {name: "Verdana", type: "sans-serif"},
-  {name: "Georgia", type: "serif"},
-  {name: "Lucida Bright", type: "serif"},
-  {name: "Palatino", type: "serif"},
-  {name: "Times New Roman", type: "serif"},
-  {name: "Courier New", type: "monospace"}
+  {name: '"Arial"', type: "sans-serif"},
+  {name: '"Arial Black"', type: "sans-serif"},
+  {name: '"Arial Narrow"', type: "sans-serif"},
+  {name: '"Tahoma"', type: "sans-serif"},
+  {name: '"Trebuchet MS"', type: "sans-serif"},
+  {name: '"Verdana"', type: "sans-serif"},
+  {name: '"Georgia"', type: "serif"},
+  {name: '"Lucida Bright"', type: "serif"},
+  {name: '"Palatino"', type: "serif"},
+  {name: '"Times New Roman"', type: "serif"},
+  {name: '"Courier New"', type: "monospace"}
 ]
 
 const FONT_SIZES = [
@@ -49,6 +51,9 @@ const FONT_SIZES = [
 @customElement("ww-fontpicker")
 export class FontPicker extends LitElement {
 
+  static Indefinite = Symbol("INDEFINITE")
+  static Default = Symbol("DEFAULT")
+
   get allFontSizes() {
     return range(this.minFontSize, this.maxFontSize)
   }
@@ -59,36 +64,70 @@ export class FontPicker extends LitElement {
   @property({type: Number, attribute: true})
   maxFontSize: number = 128
 
-  @property({type: String, attribute: true, reflect: true})
-  get fontSize() {
-    return this._fontSize
+  private _fontSize: string | symbol
+
+  get fontSizes(): (string | symbol)[] {
+    return [this._fontSize]
   }
 
-  set fontSize(value: string) {
-    
+  set fontSizes(value: (string | symbol)[]) {
+    if(value.length > 1) {
+      this.fontSize = FontPicker.Indefinite
+    }
+    else if(value.length === 0) {
+      this.fontSize = FontPicker.Default
+    }
+    else {
+      this.fontSize = value[0]
+    }
+  }
+
+  @property({attribute: false, reflect: false})
+  get fontSize(): string | undefined {
+    return typeof this._fontSize === "string"? this._fontSize: this._fontSize?.description
+  }
+
+  set fontSize(value: string | symbol) {
     const oldValue = this.fontSize
-    const factor = typeof value === "string" && value.includes("px")? 0.75: 1
-    this._fontSize = String(Math.round(parseFloat(value) * factor)) + "pt"
-    if(oldValue !== this.fontSize) {
-      this.emitChangeFontSize(this.fontSize)
-      this.requestUpdate("fontSize", oldValue)
+    this._fontSize = value
+    this.requestUpdate("fontSize", oldValue)
+  }
+
+  changeFontSize(value: string) {
+    this.fontSize = value
+    this.emitChangeFontSize(value)
+  }
+  
+  get fontFamilies(): (string | symbol)[] {
+    return [this._fontFamily]
+  }
+
+  set fontFamilies(value: (string | symbol)[]) {
+    if(value.length > 1) {
+      this.fontFamily = FontPicker.Indefinite
+    }
+    else if(value.length === 0) {
+      this.fontFamily = FontPicker.Default
+    }
+    else {
+      this.fontFamily = value[0]
     }
   }
 
-  private _fontSize: string
-
-  @property({type: String, attribute: true, reflect: true})
-  get fontFamily() {
-    return this._fontFamily
+  @property({attribute: false, reflect: false})
+  get fontFamily(): string | undefined {
+    return typeof this._fontFamily === "string"? this._fontFamily: this._fontFamily?.description
   }
 
-  set fontFamily(value: string) {
+  set fontFamily(value: string | symbol) {
     const oldValue = this.fontFamily
-    this._fontFamily = value.split(",").at(0)!
-    if(oldValue !== this._fontFamily) {
-      this.emitChangeFontFamily(this.fontFamily)
-      this.requestUpdate("fontFamily", oldValue)
-    }
+    this._fontFamily = value
+    this.requestUpdate("fontFamily", oldValue)
+  }
+
+  changeFontFamily(value: string) {
+    this.fontFamily = value
+    this.emitChangeFontFamily(value)
   }
 
   @property({type: String, attribute: true, reflect: true})
@@ -97,34 +136,10 @@ export class FontPicker extends LitElement {
   @property({type: String, attribute: true, reflect: true})
   defaultFontFamily: string = "Arial"
 
-  private _fontFamily: string
+  private _fontFamily: string | (typeof FontPicker)["Default"] | (typeof FontPicker)["Indefinite"]
 
   @property({type: Boolean, attribute: true})
   recommendedOnly: boolean = false
-
-  @property({type: Boolean, attribute: true, reflect: true})
-  get fontFamilyIndefinite() {
-    return this._fontFamilyIndefinite
-  }
-
-  set fontFamilyIndefinite(value: boolean) {
-    this._fontFamilyIndefinite = value
-    this.showFontFamilyMultiple = value
-  }
-
-  _fontFamilyIndefinite: boolean = false
-
-  @property({type: Boolean, attribute: true, reflect: true})
-  get fontSizeIndefinite() {
-    return this._fontSizeIndefinite
-  }
-
-  set fontSizeIndefinite(value: boolean) {
-    this._fontSizeIndefinite = value
-    this.showFontSizeMultiple = value
-  }
-
-  _fontSizeIndefinite: boolean = false
 
 	static get styles() {
 		return css`
@@ -145,6 +160,18 @@ export class FontPicker extends LitElement {
 
       sl-option::part(label) {
         color: inherit !important;
+      }
+
+      sl-option.default {
+
+        & small {
+          font-size: 0.625rem;
+          text-transform: capitalize;
+        }
+
+        & div {
+          font-size: 0.75rem;
+        }
       }
 
       #font-family {
@@ -189,12 +216,16 @@ export class FontPicker extends LitElement {
         --icon-size: 16px;
       }
 
-      sl-option:not([data-recommended]) {
+      sl-option:not([data-recommended]):not(.default):not(.indefinite) {
         display: none;
       }
 
       ww-combobox::part(base) {
         padding: 0 0 0 var(--sl-spacing-2x-small);
+      }
+
+      ww-combobox[data-changed]::part(base) {
+        background: var(--sl-color-primary-100) !important;
       }
 
       #font-family::part(input) {
@@ -217,6 +248,30 @@ export class FontPicker extends LitElement {
       .prefix, #font-size::part(input) {
         font-size: 0.7rem;
       }
+
+      sl-option::part(base) {
+        padding: var(--sl-spacing-2x-small) !important;
+      }
+
+      sl-option::part(label) {
+        display: flex;
+        font-size: 0.75rem;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+
+      sl-option.prefix::part(label) {
+        padding: 0 !important;
+      }
+
+      sl-option::part(checked-icon) {
+        display: none;
+      }
+
+      #font-size:focus-within .prefix {
+        display: none;
+      }
 		`
 	}
 
@@ -238,12 +293,23 @@ export class FontPicker extends LitElement {
     return (WEBWRITER_ENVIRONMENT.fontFamilies ?? []).filter(font => !WEB_SAFE_FONTS.map(font => font.name).includes(font))
   }
 
-  FontOption = (font: string) => html`
-    <sl-option ?data-recommended=${this.recommendedFonts.includes(font)} style=${`font-family: "${font}"`} value=${font.replaceAll(" ", "_")}>${font}</sl-option>
-  `
+  FontOption = (font: string, prefix=false) => {
+    const classes = {prefix, indefinite: font === "INDEFINITE", default: font === "DEFAULT"}
+    if(font === "INDEFINITE") {
+      return html`<sl-option slot=${prefix? "prefix": ""} class=${classMap(classes)} value=${FontPicker.Indefinite.description!}></sl-option>`
+    }
+    else if(font === "DEFAULT") {
+      return html`<sl-option slot=${prefix? "prefix": ""} class=${classMap(classes)} value=${FontPicker.Default.description!} data-recommended>
+        <small>${prefix? msg("Font Family"): msg("Default")}</small>
+      </sl-option>`
+    }
+    else return html`
+      <sl-option slot=${prefix? "prefix": ""} class=${classMap(classes)} ?data-recommended=${this.recommendedFonts.includes(font)} style=${`font-family: ${font}`} value=${font.replaceAll(" ", "_")}>${font.replaceAll('"', "")}</sl-option>
+    `
+  } 
 
   getNextFontSize(backwards=false) {
-    return String(parseInt(this.fontSize) + (backwards? 1: -1))
+    return String(parseInt(this.fontSize ?? "0") + (backwards? 1: -1))
   }
 
   @property({type: Boolean, state: true})
@@ -254,20 +320,27 @@ export class FontPicker extends LitElement {
   showFontSizeMultiple = false
 
 	render() {
+    console.log(this.fontSize)
     return html`<div part="base">
-      <ww-combobox suggestions inputDisabled id="font-family" size="small" .value=${this.fontFamily ?? this.defaultFontFamily} defaultValue=${this.defaultFontFamily} @sl-change=${(e: any) => this.fontFamily = e.target.value.replaceAll("_", " ")}>
-        <span class="prefix" slot="prefix" style=${`font-family: "${this.fontFamily}"`}>${this.fontFamily ?? this.defaultFontFamily}</span>
-        ${this.recommendedFonts.map(this.FontOption)}
+      <ww-combobox ?data-changed=${this.fontFamily !== "DEFAULT"} suggestions inputDisabled id="font-family" size="small" .value=${this.fontFamily ?? this.defaultFontFamily} defaultValue=${this.defaultFontFamily} @sl-change=${(e: any) => this.changeFontFamily(e.target.value.replaceAll("_", " "))}>
+        ${this.FontOption(this.fontFamily ?? "DEFAULT", true)}
+        ${this.FontOption("DEFAULT")}
+        ${this.recommendedFonts.filter(name => name !== this.defaultFontFamily).map(name => this.FontOption(name))}
         ${this.recommendedOnly? null: html`
           <sl-divider></sl-divider>
-          ${this.notRecommendedFonts.map(this.FontOption)}
+          ${this.notRecommendedFonts.map(name => this.FontOption(name))}
         `}
         <!--<ww-button slot="label" class="label" variant="icon" icon="typography"></ww-button>-->
       </ww-combobox>
-      <ww-combobox suggestions id="font-size" size="small" .value=${(this.fontSize ?? this.defaultFontSize) + (this.fontSizeIndefinite && this.showFontSizeMultiple? "+": "")} @focus=${() => this.showFontSizeMultiple = false} @blur=${() => this.showFontSizeMultiple = true} defaultValue=${this.defaultFontSize} @sl-change=${(e: any) => this.fontSize = e.target.value}>
+      <ww-combobox ?data-changed=${this.fontSize !== "DEFAULT"} suggestions id="font-size" size="small" .value=${this.fontSize && this.fontSize !== "DEFAULT"? this.fontSize: ""} @focus=${() => this.showFontSizeMultiple = false} @blur=${() => this.showFontSizeMultiple = true} defaultValue=${this.defaultFontSize} @sl-change=${(e: any) => this.fontSize = e.target.value}>
+      <sl-option slot="prefix" class="prefix default">
+        <small>${msg("Size")}</small>
+      </sl-option>
+        <sl-option class="default" value=${this.defaultFontSize} data-recommended>
+          <small>Default</small>
+        </sl-option>
         ${this.allFontSizes.map(size => html`<sl-option
           ?data-recommended=${FONT_SIZES.includes(size)}
-          style=${`font-size: ${size}`}
           value=${`${size}pt`}>
           ${size}
         </sl-option>`)}
