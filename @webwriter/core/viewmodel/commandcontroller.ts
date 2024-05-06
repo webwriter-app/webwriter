@@ -1555,7 +1555,7 @@ export class CommandController implements ReactiveController {
         run: (host, options) => host.activeEditor?.exec(setDocAttributes(options)),
         category: "miscellaneous"
       })
-    }
+    } as const satisfies Record<string, Command>
   }
 
   /*
