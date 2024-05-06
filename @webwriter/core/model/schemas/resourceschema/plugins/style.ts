@@ -2,7 +2,7 @@ import { EditorState, Plugin } from "prosemirror-state"
 import { Attrs } from "prosemirror-model"
 import { EditorView } from "prosemirror-view"
 import { camelCaseToSpacedCase } from "../../../../utility"
-import { SchemaPlugin } from ".";
+import { SchemaPlugin, getActiveMarks } from ".";
 
 export const styleAttr = {default: null}
 
@@ -42,20 +42,19 @@ export function parseStyleAttrs(dom: HTMLElement | string) {
 
 export function getStyleValues(state: EditorState, view: EditorView & {window: Window}, key: string) {
   const values = new Set<string>()
-  const kebabKey = camelCaseToSpacedCase(key, false, "-")
-  state.selection.content().content.descendants((node, pos, parent) => {
+  const sel = view.dom.ownerDocument.getSelection()!
+  let fragment = state.selection.content().content
+  fragment = fragment.addToEnd(state.selection.$anchor.node())
+  fragment.descendants((node, pos, parent) => {
     const dom = view.nodeDOM(pos)
-    if(dom instanceof Element) {
-      const computed = view.window.getComputedStyle(dom).getPropertyValue(kebabKey)
-      values.add(computed)
+    if(dom instanceof Element && sel) {
+      const marked = [dom, ...Array.from(dom.children)]
+        .filter(el => sel.containsNode(el, true) || sel.isCollapsed && sel.anchorNode?.parentElement === el)
+        .map(el => (el as any).style[key])
+        .filter(k => k)
+      marked.forEach(value => values.add(value))
     }
   })
-  const beforeDom = view.nodeDOM(state.selection.$from.before(1))
-  if(beforeDom instanceof Element) {
-    const beforeComputed = view.window.getComputedStyle(beforeDom).getPropertyValue(kebabKey)
-    values.add(beforeComputed)
-  }
-
   return [...values]
 }
 
