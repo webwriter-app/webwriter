@@ -1012,13 +1012,13 @@ export class CommandController implements ReactiveController {
         description: () => msg("Insert a progress indicator"),
         tags: ["node", "container", "advanced"]
       }),
-      math: new NodeCommand(this.host, {
-        id: "math",
+      mathInline: new NodeCommand(this.host, {
+        id: "mathInline",
         label: () => msg("Math Formula"),
         icon: "math",
         group: "math",
         description: () => msg("Insert a math formula"),
-        tags: ["node", "container", "advanced"]
+        tags: ["node", "container"]
       }),      
       figure: new NodeCommand(this.host, {
         id: "figure",
