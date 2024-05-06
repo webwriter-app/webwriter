@@ -10,6 +10,7 @@ import { EditorStateWithHead, headSchema } from "./head"
 
 export * from "./plugins"
 export * from "./htmlelementspec"
+export * from "./cssspec"
 export * from "./stylespec"
 export * from "./head"
 export * as themes from "./themes"
