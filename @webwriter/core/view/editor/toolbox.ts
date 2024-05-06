@@ -1,5 +1,5 @@
 import { LitElement, TemplateResult, css, html } from "lit"
-import { customElement, property, query } from "lit/decorators.js"
+import { customElement, property, query, queryAll } from "lit/decorators.js"
 import { styleMap } from "lit/directives/style-map.js"
 
 import { camelCaseToSpacedCase, prettifyPackageName, unscopePackageName } from "../../utility"
@@ -11,20 +11,86 @@ import { spreadProps } from "@open-wc/lit-helpers"
 import "../elements/stylepickers"
 
 import { ifDefined } from "lit/directives/if-defined.js"
-import { App } from ".."
+import { App, URLFileInput } from ".."
 import { AllSelection, EditorState, TextSelection } from "prosemirror-state"
 import {GapCursor} from "prosemirror-gapcursor"
+// @ts-ignore
+import {render as latexToMathML} from "temml/dist/temml.cjs"
+import {MathMLToLaTeX} from "mathml-to-latex"
+import { SlColorPicker } from "@shoelace-style/shoelace"
+
+
 
 @localized()
 @customElement("ww-toolbox")
 export class Toolbox extends LitElement {
 
+  static siteEmbedding: Record<string, {url: RegExp, replacer: (url: string) => string, access: string, icon?: string, label?: string}> = {
+    "youtube": {url: /youtube\.com\/watch/, access: "https://youtube.com", icon: "brand-youtube", label: "YouTube", replacer: url => {
+      return url.replace("/watch?v=", "/embed/")
+    }},
+    "vimeo": {url: /vimeo\.com.*\/\d+/, access: "https://vimeo.com", icon: "brand-vimeo", label: "Vimeo", replacer: url => {
+      const id = url.match(/\/(\d+)/)![1]
+      return `https://player.vimeo.com/video/${id}`
+    }},
+    "instagram": {url: /instagram\.com\/p\/\w+/, access: "https://instagram.com", icon: "brand-instagram", label: "Instagram", replacer: url => {
+      return url + "/embed"
+    }},
+    "tiktok": {url: /tiktok\.com\/.*\/video\/\w+/, access: "https://tiktok.com", icon: "brand-tiktok", label: "TikTok", replacer: url => {
+      const id = url.match(/video\/(\w+)/)![1]
+      return `https://www.tiktok.com/embed/v2/${id}`
+    }},
+    "schooltube": {url:/schooltube\.com/, access: "https://schooltube.com", icon: "school", label: "Schooltube", replacer: url => {
+      const id = url.match(/watch\/.*_(\w+)\.html/)![1]
+      return `https://www.schooltube.com/embed/${id}`
+    }},
+    "dailymotion": {url: /dailymotion\.com\/video/, access: "https://dailymotion.com", icon: "circle-letter-d", label: "Dailymotion", replacer: url => {
+      return url.replace("video/", "embed/video/")
+    }},
+    "internetarchive": {url: /archive\.org\//, access: "https://archive.org", icon: "building-bank", label: "Internet Archive", replacer: url => {
+      const id = url.match(/details\/(.+)/)![1]
+      return `https://archive.org/embed/${id}`
+    }},
+    "flickr": {url: /flickr\.com\/(.+)/, access: "https://flickr.com", icon: "brand-flickr", label: "Flickr", replacer: url => {
+      const id = url.match(/flickr\.com\/(.+)/)![1]
+      return `https://embedr.flickr.com/${id}`
+    }},
+    "miro": {url: /miro\.com\/app\/board/, access: "https://miro.com", icon: "circle-letter-m", label: "Miro", replacer: url => {
+      const id = url.match(/miro\.com\/app\/board\/(.+)/)![1]
+      return `https://miro.com/app/live-embed/${id}`
+    }
+    },
+    "mentimeter": {url: /mentimeter\.com\//, access: "https://mentimeter.com", icon: "square-letter-m", label: "Mentimeter", replacer: url => {
+      const id = url.match(/\/app\/presentation\/(\w+)\//)![1]
+      return `https://www.mentimeter.com/app/presentation/${id}/embed`
+    }},
+    "figma": {url: /figma\.com/, access: "https://figma.com", icon: "brand-figma", label: "Figma", replacer: url => {
+      const id = url.match(/https:\/\/www\.figma\.com\/file\/\w+\//)![0]
+      return `https://www.figma.com/embed?embed_host=oembed&url=${encodeURIComponent(id)}`
+    }},
+  "pinterest": {url: /pinterest\.\w+\/pin\//, access: "https://pinterest.com", icon: "brand-pinterest", label: "Pinterest", replacer: url => {
+    const id = url.match(/\/pin\/.*--(\d+)/)![1]
+    return `https://assets.pinterest.com/ext/embed.html?id=${id}`
+  }},
+    "twitter": {url: /(twitter|x)\.com\//, access: "https://twitter.com", icon: "brand-x", label: "Twitter/X", replacer: url => url}, // TBD
+    "facebook": {url: /facebook\.com/, access: "https://facebook.com", icon: "brand-facebook", label: "Facebook", replacer: url => url}, // TBD
+    // "wikimedia": {}
+  }
+
   @query("div")
   div: HTMLElement
+
+  @queryAll("sl-color-picker")
+  colorPickerEls: SlColorPicker[]
 
   cleanup: CallableFunction
 
   inlineTooltip: boolean = false
+
+  connectedCallback(): void {
+      super.connectedCallback()
+      this.addEventListener("blur", () => this.colorPickerEls.forEach(el => el.dropdown.open = false))
+  }
 
 	emitChangeWidget = (name: string) => {
 		this.dispatchEvent(new CustomEvent("ww-change-widget", {composed: true, bubbles: true, detail: {name: unscopePackageName(name)}}))
@@ -123,9 +189,12 @@ export class Toolbox extends LitElement {
         user-select: none;
         -webkit-user-select: none;
         font-size: 0.95rem;
-        margin-right: 2ch;
         align-items: flex-start;
         padding-bottom: 1ch;
+        overflow-y: auto;
+        scrollbar-gutter: stable both-edges;
+        scrollbar-width: thin;
+        box-sizing: border-box;
       }
 
       :host > * {
@@ -152,7 +221,24 @@ export class Toolbox extends LitElement {
         --icon-size: 20px;
       }
 
-      .inline-commands.applied {
+      :host(:not([advancedinline])) .inline-commands.advanced {
+        display: none;
+      }
+
+      :host(:not([advancedstyling])) .layout-command.advanced {
+        display: none;
+      }
+
+      .inline-commands:not(.more-inline-commands).applied {
+        background: var(--sl-color-primary-200) !important;
+        border-radius: 4px;
+      }
+
+      .more-inline-commands {
+        color: var(--sl-color-gray-700);
+      }
+
+      :host(:not([advancedinline])) .more-inline-commands.applied {
         background: var(--sl-color-primary-200) !important;
         border-radius: 4px;
       }
@@ -318,10 +404,6 @@ export class Toolbox extends LitElement {
         grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr;
         grid-auto-rows: 1fr;
         margin-top: 2px;
-
-        & .layout-command {
-          grid-row: 2;
-        }
       }
 
       div[part=block-commands] #name {
@@ -462,11 +544,15 @@ export class Toolbox extends LitElement {
         font-size: 0.75rem;
         font-weight: 600;
         display: flex;
-        justify-content: flex-end;
-        align-items: flex-end;
+        justify-content: space-between;
+        align-items: flex-start;
         gap: 1ch;
-        border-bottom: 2px solid var(--sl-color-gray-600);
         color: var(--sl-color-gray-800);
+        min-width: calc(33% - 8px);
+        
+        & span {
+          border-bottom: 2px solid var(--sl-color-gray-600);
+        }
       }
 
       #inline-toolbox-label sl-icon {
@@ -481,10 +567,15 @@ export class Toolbox extends LitElement {
       }
 
       .inline-toolbox .inline-commands.color {
+        height: min-content;
+        width: min-content;
+        overflow: visible;
         grid-row: span 2;
         order: 1;
         justify-content: flex-start;
         flex-direction: column-reverse;
+        align-self: flex-end;
+        justify-self: flex-end;
       }
 
       .inline-toolbox .inline-field-group {
@@ -564,11 +655,13 @@ export class Toolbox extends LitElement {
       }
 
       .media-toolbox {
+        width: 100%;
+
         & .switches {
           display: grid;
           grid-template-columns: 1fr 1fr;
           grid-auto-rows: 1fr;
-          gap: 2px;
+          gap: 4px;
           & sl-switch {
             font-size: smaller;
           }
@@ -576,11 +669,33 @@ export class Toolbox extends LitElement {
         [data-hidden] {
           display: none;
         }
+
+        & .capture-pane {
+          display: flex;
+          flex-direction: row;
+          justify-content: space-between;
+          margin-top: 2px;
+          margin-bottom: 4px;
+          gap: 2px;
+
+          & > * {
+            flex-grow: 1;
+          }
+        }
       }
 
       .details-toolbox {
         & sl-switch {
           font-size: smaller;
+        }
+      }
+
+      .math-toolbox {
+        & sl-input::part(input) {
+          font-family: monospace;
+        }
+        & sl-input::part(input)::placeholder {
+          color: var(--sl-color-gray-400);
         }
       }
 
@@ -649,23 +764,47 @@ export class Toolbox extends LitElement {
           width: 20px;
         }
       }
+
+      .embeddings-explainer {
+        
+        padding-bottom: 1em;
+
+        & .embeddings-list {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          grid-auto-rows: 1fr;
+          gap: 0.25rem;
+
+          & > * {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 1ch;
+            pointer-events: all;
+            color: var(--sl-color-blue-200);
+          }
+        }
+      }
       
     `
   }
+  
 
-  MarkCommands = () => this.app.commands.markCommands.filter(v => !v.tags?.includes("advanced") || v.active).map(v => {
+
+  MarkCommands = (advanced=false) => this.app.commands.markCommands.filter(v => advanced? v.tags?.includes("advanced"): !v.tags?.includes("advanced")).map(v => {
     const classes = {
       "inline-commands": true,
       "applied": Boolean(v.active),
+      "advanced": !!v.tags?.includes("advanced"),
       "color": v.tags?.includes("color") ?? false
     }
 		return html`
-    <span class=${classMap(classes)} ?inert=${classes.color}>
+    <span class=${classMap(classes)}>
       <ww-button
         ${spreadProps(v.toObject())}
         tabindex=${0}
         name=${v.icon ?? "circle-fill"}
-        @click=${() => v.run()}
+        @click=${(e: any) => v.run({value: e.target.parentElement.querySelector("sl-color-picker").value})}
         variant="icon"
       ></ww-button>
       <sl-color-picker value=${v.value}></sl-color-picker>
@@ -673,19 +812,19 @@ export class Toolbox extends LitElement {
     `
 	})
 
-  LayoutCommands = (el: HTMLElement) => this.app.commands.layoutCommands.map(v => {
+  LayoutCommands = (el: HTMLElement, advanced=false) => this.app.commands.layoutCommands.filter(cmd => advanced? cmd.tags?.includes("advanced"): !cmd.tags?.includes("advanced")).map(v => {
 
     const classes = {
       "block-command": true,
       "layout-command": true,
       "applied": Boolean(v.active),
+      "advanced": !!v.tags?.includes("advanced"),
       "color": v.tags?.includes("color") ?? false
     }
 
 		return html`
     <span id=${v.id} class=${classMap(classes)}>
       <ww-button
-        inert disabled style="color: darkgray"
         ${spreadProps(v.toObject())}
         tabindex=${0}
         name=${v.icon ?? "circle-fill"}
@@ -754,12 +893,25 @@ export class Toolbox extends LitElement {
   })
 
   BlockToolbox = (el: HTMLElement) => {
+    const advancedApplied = false
     return html`<div class="block-toolbox">
       <div class="block-options">
         ${this.ElementBreadcrumb()}
         <div part="block-commands">
           ${this.ElementCommands(el)}
-          ${this.LayoutCommands(el)}
+          <!--
+          ${this.LayoutCommands(el, false)}
+          <span class=${classMap({"block-command": true, "applied": advancedApplied})}>
+            <ww-button
+              tabindex=${0}
+              title=${this.advancedInline? msg("Hide advanced styling"): msg("Show advanced styling")}
+              icon=${this.advancedStyling? "chevron-down": "chevron-left"}
+              @click=${(e: any) => this.advancedStyling = !this.advancedStyling}
+              variant="icon"
+            ></ww-button>
+          </span>
+          ${this.LayoutCommands(el, true)}
+        -->
         </div>
       </div>
       </div>
@@ -769,24 +921,40 @@ export class Toolbox extends LitElement {
     `
   }
 
+  @property({type: Boolean, attribute: true, reflect: true})
+  advancedInline = false
+
+  @property({type: Boolean, attribute: true, reflect: true})
+  advancedStyling = false
+
   InlineToolbox = () => {
-    const {fontFamilyCommand, fontSizeCommand} = this.app.commands
+    const {fontFamilyCommand, fontSizeCommand, clearFormattingCommand} = this.app.commands
     const fontFamilies = fontFamilyCommand.value
     const fontSizes = fontSizeCommand.value
+    const advancedApplied = this.app.commands.markCommands.some(v => v.tags?.includes("advanced") && v.active)
     return html`<div class="inline-toolbox">
       <ww-fontpicker
-        fontFamily=${ifDefined(fontFamilies.length > 0? fontFamilies[0]: undefined)}
-        fontSize=${ifDefined(fontSizes.length > 0? fontSizes[0]: undefined)}
+        .fontFamilies=${fontFamilies}
+        .fontSizes=${fontSizes}
         recommendedOnly
-        @ww-change-font-family=${(e: any) => fontFamilyCommand.run(e.detail)}
+        @ww-change-font-family=${(e: any) =>fontFamilyCommand.run(e.detail)}
         @ww-change-font-size=${(e: any) => fontSizeCommand.run(e.detail)}
-        inert
       ></ww-fontpicker>
       ${this.MarkCommands()}
+      <span class=${classMap({"more-inline-commands": true, "inline-commands": true, "applied": advancedApplied})}>
+        <ww-button
+          tabindex=${0}
+          title=${this.advancedInline? msg("Hide advanced text formatting"): msg("Show advanced text formatting")}
+          icon=${this.advancedInline? "chevron-down": "chevron-left"}
+          @click=${(e: any) => this.advancedInline = !this.advancedInline}
+          variant="icon"
+        ></ww-button>
+      </span>
+    ${this.MarkCommands(true)}
       ${this.ActiveInlineFields()}
       <span id="inline-toolbox-label">
-        ${msg("Text")}
-        <sl-icon name="text-size"></sl-icon>
+        <ww-button variant="icon" ${spreadProps(clearFormattingCommand.toObject())} @click=${() => clearFormattingCommand.run()}></ww-button>
+        <span>${msg("Text")}</span>
       </span>
     </div>`
   }
@@ -818,15 +986,63 @@ export class Toolbox extends LitElement {
     }
   }
 
+  handleMediaSetAttribute = (el: Element, e: CustomEvent) => {
+    const target = e.target as HTMLElement
+    if(target.tagName === "SL-SWITCH") {
+      this.emitSetAttribute(el, target.id, (target as any).checked? "": undefined)
+    }
+    else if(target.tagName === "WW-URLFILEINPUT") {
+      let url = (target as URLFileInput).value
+      let type = undefined
+      for(const spec of Object.values(Toolbox.siteEmbedding)) {
+        if(spec.url.test(url)) {
+          url = spec.replacer(url)
+          type = "iframe"
+          break
+        }
+      }
+      this.emitSetAttribute(el, target.id, url, type)
+    }
+    else {
+      this.emitSetAttribute(el, target.id, (target as any).value)
+    }
+  }
+
+  static mediaTypeOfTag = {
+    "audio": "audio",
+    "video": "video",
+    "picture": "image",
+    "img": "image"
+  }
+
   MediaToolbox(el: HTMLElement) {
     const conEl = Toolbox.getMediaContainerOf(el)!
     const tag = conEl?.tagName.toLowerCase() ?? ""
     const isMedia = ["audio", "video", "picture", "object", "embed", "iframe", "portal", "img"].includes(tag)
-    const isAudioVideo = ["audio", "video"].includes(tag)
-    const isVideo = ["video"].includes(tag)
-    const isImg = ["img"].includes("tag")
-    return html`<div class="media-toolbox" @sl-change=${(e: any) => e.target.tagName === "SL-SWITCH"? this.emitSetAttribute(conEl, e.target.id, e.target.checked? "": undefined): this.emitSetAttribute(conEl, e.target.id, e.target.value)}>
-      <sl-input size="small" value=${conEl?.getAttribute("src") ?? ""} id="src" ?data-hidden=${!isMedia} label=${msg("Source")} placeholder=${msg("URL")}></sl-input>
+    const isAudio = tag === "audio"
+    const isVideo = tag === "video"
+    const isImg = tag === "img"
+    const isPicture = tag === "picture"
+    const isAudiovisual = isAudio || isVideo || isImg || isPicture
+    const isAudioVideo = isAudio || isVideo
+    return html`<div class="media-toolbox" @sl-change=${(e: any) => this.handleMediaSetAttribute(conEl, e)}>
+      <ww-urlfileinput size="small" value=${conEl?.getAttribute("src") ?? ""} id="src" ?data-hidden=${!isMedia} placeholder=${msg("URL")} mediaType=${ifDefined((Toolbox.mediaTypeOfTag as any)[tag])} ?record=${isAudiovisual} ?capture=${isAudiovisual}>
+        <span slot="label">
+          ${msg("Source")}
+          <sl-tooltip>
+            <sl-icon-button name="info-circle"></sl-icon-button>
+            <div class="embeddings-explainer" slot="content">
+              <p>${msg("WebWriter supports embedding many different sources. Simply paste a link to content from:")}</p>
+              <div class="embeddings-list">
+                ${Object.values(Toolbox.siteEmbedding).map(spec => html`<a href=${spec.access} target="_blank">
+                  <sl-icon name=${spec.icon ?? "world"}></sl-icon>
+                  ${spec.label}
+                </a>`)}
+              </div>
+            </div>
+          </sl-tooltip>
+        </span>
+      </ww-urlfileinput>
       <sl-input size="small" value=${conEl?.getAttribute("alt") ?? ""} id="alt" ?data-hidden=${!isImg} label=${msg("Alternate text")} placeholder=${msg("Short description")}></sl-input>
       <sl-input size="small" value=${conEl?.getAttribute("poster") ?? ""} id="poster" ?data-hidden=${!isVideo} label=${msg("Poster")} placeholder=${msg("URL")}></sl-input>
       <aside class="switches">
@@ -838,12 +1054,11 @@ export class Toolbox extends LitElement {
     </div>`
   }
 
-  emitSetAttribute(el: Element, key: string, value: string | undefined) {
-    this.dispatchEvent(new CustomEvent("ww-set-attribute", {bubbles: true, composed: true, detail: {el, key, value}}))
+  emitSetAttribute(el: Element, key: string, value?: string, tag?: string) {
+    this.dispatchEvent(new CustomEvent("ww-set-attribute", {bubbles: true, composed: true, detail: {el, key, value, tag}}))
   }
 
   DetailsToolbox(el: HTMLDetailsElement) {
-    console.log(el)
     return html`<div class="details-toolbox">
       <sl-switch id="open" size="small" ?checked=${el.open} @sl-change=${() => this.emitSetAttribute(el, "open", !el.open? "": undefined)}>${msg("Open")}</sl-switch>
     </div>`
@@ -880,6 +1095,14 @@ export class Toolbox extends LitElement {
         <sl-radio-button value="ul"><sl-icon name="list"></sl-icon></sl-radio-button>
         <sl-radio-button value="ol"><sl-icon name="list-numbers"></sl-icon></sl-radio-button>
       </sl-radio-group>
+    </div>`
+  }
+
+  MathToolbox(el: MathMLElement & HTMLElement) {
+    return html`<div class="math-toolbox">
+      <sl-input id="math-input" size="small" label="TeX" placeholder=${"sqrt{a^2 + b^2}"} @sl-change=${(e: any) => latexToMathML(e.target.value, el)}>
+        <sl-icon-button slot="suffix" name="corner-down-left"></sl-icon-button>
+      </sl-input>
     </div>`
   }
 
@@ -1092,6 +1315,9 @@ export class Toolbox extends LitElement {
     }
     else if(this.app.store.packages.widgetTagNames.includes(tag)) {
       return html`<ww-widget-options .widget=${el}></ww-widget-options>`
+    }
+    else if(["math"].includes(tag)) {
+      return this.MathToolbox(el)
     }
   }
 
