@@ -196,8 +196,8 @@ export function roundByDPR(value: number) {
 }
 
 /** Filter an object based on a function. */
-export function filterObject<T extends {}>(value: T, func: (key: string, value: T) => boolean) {
-  return Object.fromEntries((Object.entries(value) as [string, T][]).filter(([k, v]) => func(k, v)))
+export function filterObject<T extends {}>(value: T, func: (key: string, value: T[keyof T]) => boolean) {
+  return Object.fromEntries((Object.entries(value) as [string, T[keyof T]][]).filter(([k, v]) => func(k, v)))
 }
 
 /** Create a new object by picking entries of the old object by key. */
