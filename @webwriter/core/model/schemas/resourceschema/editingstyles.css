@@ -8,6 +8,10 @@ html {
   --sl-color-primary-400: #38bdf8;
 }
 
+html:not(:has(:fullscreen)) {
+  scrollbar-gutter: stable both-edges;
+}
+
 html::-webkit-scrollbar {
   width: 16px;
 }
@@ -69,9 +73,13 @@ a:not([href]) {
 }
 
 body {
+  --scrollbar-width: calc(100vw - 100%);
   display: block;
   margin: 0;
+  margin-left: auto;
+  margin-right: auto;
   max-width: 840px;
+  box-sizing: border-box;
 }
 
 figure:hover {
@@ -116,7 +124,6 @@ figure.ProseMirror-selectednode::before {
   white-space: normal !important;
   background: white;
   border: 1px solid var(--sl-color-gray-300);
-  padding: 19px;
   min-height: 100%;
   box-sizing: border-box;
 }
@@ -143,7 +150,7 @@ figure.ProseMirror-selectednode::before {
 
 .ww-widget {
   --ww-action-opacity: 1;
-  position: relative !important;
+  position: relative;
   display: block;
 }
 
@@ -164,7 +171,7 @@ figure.ProseMirror-selectednode::before {
   width: 20px;
 }*/
 
-.ProseMirror *:not(:is(a, abbr, b, bdi, bdo, cite, code, data, del, dfn, em, i, ins, kbd, q, ruby, s, samp, small, span, strong, sub, sup, time, u, var)):hover {
+.ProseMirror *:not(:is(a, abbr, b, bdi, bdo, cite, code, data, del, dfn, em, i, ins, kbd, q, ruby, s, samp, small, span, strong, sub, sup, time, u, var, mtext, annotation, annotation-xml, maction, merror, mfrac, mi, mmultiscripts, mn, mo, mover, mpadded, mphantom, mprescripts, mroot, mrow, ms, mspace, msqrt, mstyle, msub, msubsup, msup, mtable, mtd, mtr, munder, munderover, none, semantics)):hover {
   outline: 1px dotted var(--sl-color-gray-400);
   outline-offset: 2px;
 }
@@ -173,10 +180,17 @@ figure.ProseMirror-selectednode::before {
   outline-offset: 2px;
 }
 
-.ProseMirror *:not(.ww-inline).ProseMirror-selectednode:hover {
+.ProseMirror *:not(.ww-inline).ww-selected:hover {
   outline: 2px dotted var(--sl-color-primary-400);
   outline-offset: 2px;
 }
+
+.ww-selected {
+  outline: 2px solid var(--sl-color-primary-400);
+  outline-offset: 2px;
+  z-index: 2147483646;
+}
+
 /*
 .ProseMirror > *:hover::after {
   border-color: var(--sl-color-gray-100);
@@ -240,7 +254,7 @@ main:not(:focus-within) .ww-widget.ww-selected {
   outline-color: lightgray;
 }
 
-body .ww-widget::after {
+body > .ww-widget::after {
   --ww-widget-highlight-color: transparent;
   content: "";
   position: absolute;
@@ -342,9 +356,10 @@ table .ProseMirror-gapcursor::after {
   position: static;
 }
 
-.ProseMirror ::selection {
+.ProseMirror ::selection:not(.ProseMirror-selectednode) {
   background-color: var(--sl-color-primary-400);
   color: var(--sl-color-gray-100);
+  z-index: 2147483647;
 }
 
 abbr {
@@ -356,12 +371,12 @@ abbr {
   color: goldenrod;
 }
 
-:is(:empty, :has(.ProseMirror-trailingBreak)) {
+:is(:empty, :has( .ProseMirror-trailingBreak)) {
   position: relative;
 }
 
 
-:is(:empty, :has(> .ProseMirror-trailingBreak))::after {
+:is(:empty, :has(> .ProseMirror-trailingBreak)):not(.ProseMirror-widget)::after {
   content: var(--ww-placeholder);
   position: absolute;
   left: 0;
@@ -370,11 +385,16 @@ abbr {
   pointer-events: none;
 }
 
-@media only screen and (min-width: 1071px) {
+.ProseMirror-gapcursor::after {
+  margin-top: 2px;
+  z-index: 2147483647;
+}
+
+@media only screen and (min-width: 1300px) {
 
   .ww-widget::part(options) {
     position: fixed;
-    width: calc(min(100vw - 840px - 40px, 800px));
+    width: var(--ww-toolbox-action-width);
     height: var(--ww-toolbox-action-height);
     left: var(--ww-toolbox-action-x);
     top: var(--ww-toolbox-action-y);
@@ -384,7 +404,7 @@ abbr {
     -webkit-user-select: none;
   }
 
-  .ww-widget:not(:focus-within)::part(options) {
+  .ww-widget:not(.ww-selected)::part(options) {
     display: none;
   }
 }
@@ -441,4 +461,35 @@ picture:not(:has(img[src])) {
 
 video:not([controls]) {
   display: unset !important;
+}
+
+math:not([display=block]) {
+  display: inline-block;
+}
+
+math:empty, math:has(mtext:only-child) {
+  display: inline-block;
+  background: lightgray;
+  cursor: pointer;
+  height: 0.7rlh;
+  aspect-ratio: 1/1;
+  padding: 2px;
+  line-height: inherit;
+  margin: 0 2px;
+  position: relative;
+  transform: translateY(0.3lh);
+
+  & mtext:is(:empty, :has(.ProseMirror-trailingBreak:only-child)) {
+    height: 100%;
+  }
+}
+
+math:empty::after, math:has(mtext:only-child)::after {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: inline-block;
+  width: 100%;
+  height: 100%;
+  content: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-math" width="100%" height="100%" viewBox="0 0 24 24" stroke-width="2" stroke="darkgray" fill="none" stroke-linecap="round" stroke-linejoin="round" part="svg"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><path d="M19 5h-7l-4 14l-3 -6h-2"></path><path d="M14 13l6 6"></path><path d="M14 19l6 -6"></path></svg>') !important;
 }
