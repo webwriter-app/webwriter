@@ -1,0 +1,32 @@
+@top ContentExpression { expression }
+
+@precedence { seq @left, alt @left }
+
+expression {
+  SimpleExpression | Sequence | Alternation |
+  Group<SimpleExpression | Sequence | Alternation>
+}
+
+SimpleExpression { 
+  Identifier quantifier?
+}
+Sequence { list<SimpleExpression | Group<SimpleExpression | Sequence | Alternation>, !seq ""> }
+Alternation { list<SimpleExpression | Sequence | Group<SimpleExpression | Sequence | Alternation>, !alt "|"> }
+
+list<expr, sep> { expr (sep expr)+ }
+Group<expr> {"(" expr ")" quantifier?}
+
+quantifier {
+  ZeroOrMore { "*" } | 
+  OneOrMore { "+" } | 
+  ZeroOrOne { "?" } |
+  Some { ("{" Min { number } "}") | "{" Min { number } "," Max { number } "}" }
+}
+
+@tokens {
+  Identifier { $[a-zA-Z_]+ }
+  whitespace { $[ \n\r\t]}
+  number { @digit+ }
+}
+
+@skip { whitespace }
