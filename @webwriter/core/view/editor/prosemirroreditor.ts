@@ -138,17 +138,13 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
   @property({state: true, attribute: false})
   private view: EditorView
 
-  @property({type: String, attribute: false, hasChanged(value, oldValue) {
-    return !sameMembers(value, oldValue)
-}})
+  @property({type: String, attribute: false})
 	contentScript: string
 
   @property({type: String, attribute: true})
 	bundleID: string
 
-	@property({type: String, attribute: false, hasChanged(value, oldValue) {
-      return !sameMembers(value, oldValue)
-  }})
+	@property({type: String, attribute: false})
 	contentStyle: string
 
   @property({type: String, attribute: true})
