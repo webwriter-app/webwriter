@@ -190,34 +190,12 @@ export async function search(text: string, params?: {size?: number, quality?: nu
 
 /** Runs the CLI command `pnpm [commandArgs]`. */
 export async function pm(command: string, commandArgs: string[] = [], cwd?: string) {
-  const defaultArgs = ["--reporter=ndjson"]
-  const cmdArgs = [command, ...defaultArgs, ...commandArgs]
+  // const defaultArgs = ["--reporter=ndjson"]
+  const cmdArgs = [command, ...commandArgs]
   const opts = cwd? {cwd}: {}
-  console.info(`[TAURI] ${cwd? cwd: await appDir()}> pnpm ${cmdArgs.join(" ")}`)
-  const output = await Command.sidecar("bin/pnpm", cmdArgs, opts).execute()
-  // console.log(output.stdout, output.stderr)
-  if(!output.stderr) {
-    const error = output.stdout.split("\n")
-      .map(entry => entry.replaceAll("\n", "\\n"))
-      .map(entry => {
-        try {
-          return JSON.parse(entry)
-        }
-        catch(err) {
-          return {level: "ignore"}
-        }
-      })
-      .filter(entry => entry.level === "error")
-      .join("\n")
-    if(!error) {
-      return
-    }
-    else {
-      throw new Error(error)
-    }
-  }
-  else {
-    console.log("throwing stderr")
+  console.info(`[TAURI] ${cwd? cwd: await appDir()}> bun ${cmdArgs.join(" ")}`)
+  const output = await Command.sidecar("bin/bun", cmdArgs, opts).execute()
+  if(output.code) {
     throw new Error(output.stderr)
   }
 }
