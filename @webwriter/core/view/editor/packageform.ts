@@ -257,6 +257,7 @@ export class PackageForm extends LitElement {
       ></ww-personinput>
       <div id="create-fields">
         <sl-select 
+          @sl-after-hide=${(e: any) => e.stopPropagation()}
           value=${this.preset}
           name="preset"
           value="lit"
