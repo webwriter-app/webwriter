@@ -1,6 +1,7 @@
 ---
 order: 401
 title: "Configuring"
+configFor: snippets/snippets
 ---
 
 # Configuring Snippets

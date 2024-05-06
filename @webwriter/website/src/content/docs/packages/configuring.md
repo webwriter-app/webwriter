@@ -1,6 +1,7 @@
 ---
 order: 201
 title: Configuring
+configFor: packages/packages
 ---
 
 # Configuring Packages

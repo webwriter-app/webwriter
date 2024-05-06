@@ -37,7 +37,10 @@ const docActive = allDocs.map((doc, i) =>{
               <a data-swup-preload href="/docs">Documentation</a>
           </h3>
           <ol>
-              {allDocs.map((doc, i) => <li class="doc-link" data-active={docActive[i]} data-level={doc.level}><a  data-swup-preload href={docUrls[i]}>{doc.data.title}</a></li>)}
+              {allDocs.map((doc, i) => <li class="doc-link" data-level={doc.level} data-hasconfig={allDocs.some(cdoc => cdoc.data.configFor === doc.slug)} data-isconfig={!!doc.data.configFor}>
+                <a data-active={docActive[i]} data-swup-preload href={docUrls[i]}>{doc.data.title}</a>
+                <a data-active={docActive[allDocs.findIndex(cdoc => cdoc.data.configFor === doc.slug)]} class="config-link" href={docUrls[allDocs.findIndex(cdoc => cdoc.data.configFor === doc.slug)]}>Config</a>
+              </li>)}
           </ol>
           <label id="closeDocsNav" for="docsNavInput" class="bi-x" ></label>
       </nav>
@@ -156,17 +159,29 @@ const docActive = allDocs.map((doc, i) =>{
         margin-bottom: 1rem;
     }
 
+    .doc-link {
+      position: relative;
+    }
+
     .doc-link a {
         display: inline-flex;
         text-decoration: none;
         font-size: 1rem;
         height: 1.5rem;
         color: var(--sl-color-gray-950);
-        width: 100%;
         flex-direction: row;
         align-items: center;
         padding-left: 1ch;
+        padding-right: 1ch;
         box-sizing: border-box;
+        background: white;
+        z-index: 1;
+    }
+
+    .config-link {
+      font-size: 0.8rem !important;
+      justify-content: flex-end;
+      padding-right: 0 !important;
     }
 
     .doc-link a:hover {
@@ -177,13 +192,34 @@ const docActive = allDocs.map((doc, i) =>{
         color: var(--sl-color-primary-800);
     }
 
-    .doc-link[data-active] a {
+    .doc-link a[data-active] {
         text-decoration: 2px solid underline;
     }
 
     .doc-link[data-level=1] {
-      margin-top: 0.5rem;
+      margin-top: 0.75rem;
       font-weight: bold;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .doc-link[data-level=1][data-hasconfig]::after {
+      content: "";
+      display: block;
+      width: 100%;
+      height: 1px;
+      background: black;
+      position: absolute;
+      left: 0;
+      top: calc(50% + 1px);
+    }
+
+    .doc-link:not([data-hasconfig]) .config-link {
+      display: none;
+    } 
+
+    .doc-link[data-isconfig] {
+      display: none;
     }
 
     .doc-link[data-level=2] {

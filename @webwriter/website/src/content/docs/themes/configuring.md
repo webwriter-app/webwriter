@@ -1,6 +1,7 @@
 ---
 order: 509
 title: "Configuring"
+configFor: themes/themes
 ---
 
 # Configuring Themes

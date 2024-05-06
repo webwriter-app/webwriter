@@ -1,6 +1,7 @@
 ---
 order: 309
 title: "Configuring"
+configFor: widgets/widgets
 ---
 
 # Configuring Widgets
