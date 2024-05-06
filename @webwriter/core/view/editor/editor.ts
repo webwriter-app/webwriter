@@ -5,9 +5,12 @@ import { Decoration, EditorView, DecorationSet } from "prosemirror-view"
 import { EditorState, Command as PmCommand, NodeSelection, TextSelection, AllSelection, Selection } from "prosemirror-state"
 import { Node, Mark, DOMParser, DOMSerializer} from "prosemirror-model"
 import { localized, msg, str } from "@lit/localize"
+// @ts-ignore
+import {render as latexToMathML} from "temml/dist/temml.cjs"
+import {MathMLToLaTeX} from "mathml-to-latex"
 
 import { CODEMIRROR_EXTENSIONS, ContentExpression, EditorStateWithHead, MediaType, Package, createWidget, globalHTMLAttributes, removeMark, upsertHeadElement } from "../../model"
-import { CodemirrorEditor, FigureView, WidgetView, nodeViews } from "."
+import { CodemirrorEditor, WidgetView, nodeViews } from "."
 import { DocumentHeader } from "./documentheader"
 import { DocumentFooter } from "./documentfooter"
 
@@ -129,7 +132,7 @@ export class ExplorableEditor extends LitElement {
       this.pmEditor.dispatch(tr)
       setTimeout(() => {
         const widget = this.pmEditor.nodeDOM(insertPos) as HTMLElement
-        widget.focus()
+        widget?.focus()
       }, 0)
     }
     else if(insertableName.startsWith("./themes/")) {
@@ -371,10 +374,10 @@ export class ExplorableEditor extends LitElement {
 			}
 
       :host > main {
-        grid-column: 1 / 6;
+        grid-column: 1 / 8;
         grid-row: 3;
 				display: grid;
-				grid-template-columns: 1fr 80px minmax(auto, 680px) 80px 1fr;
+				grid-template-columns: subgrid;
 				grid-template-rows: 1fr max-content;
         place-items: stretch;
 				width: 100%;
@@ -383,7 +386,6 @@ export class ExplorableEditor extends LitElement {
         overscroll-behavior: none;
         overflow: auto;
 				height: 100%;
-				z-index: 10;
 			}
 
       :host > aside {
@@ -392,18 +394,19 @@ export class ExplorableEditor extends LitElement {
       }
 
 			pm-editor {
-				grid-column: 2 / 6;
+				grid-column: 1 / 8;
 				grid-row: 1;
         font-size: 0.5rem;
 			}
 
       cm-editor {
-        grid-column: 1 / 6;
+        grid-column: 3 / 6;
         grid-row: 1;
         background: white;
         border: 1px solid var(--sl-color-gray-300);
         border-bottom: none;
         cursor: text;
+        font-size: 0.9rem;
       }
 
 			.loading-packages-spinner-container {
@@ -437,7 +440,7 @@ export class ExplorableEditor extends LitElement {
 
 			@media only screen and (max-width: 1300px) {
 				ww-palette {
-					grid-column: 1 / 6;
+					grid-column: 1 / 8;
 					grid-row: 2;
 				}
 
@@ -453,8 +456,9 @@ export class ExplorableEditor extends LitElement {
 
 			@media only screen and (min-width: 1301px) {
 				ww-palette {
-					grid-column: 1;
+					grid-column: 2;
 					grid-row: 1;
+          height: fit-content;
 				}
 
 			}
@@ -523,7 +527,7 @@ export class ExplorableEditor extends LitElement {
   }
 
   @property({attribute: false, state: true})
-  editingStatus: undefined | "copying" | "cutting" | "deleting" | "inserting"
+  editingStatus: undefined | "copying" | "cutting" | "deleting" | "inserting" | "pasting"
 
 	decorations = (state: EditorState) => {
     const {from, to, $from} = state.selection
@@ -545,6 +549,51 @@ export class ExplorableEditor extends LitElement {
       }
       if(this.printing) {
         decorations.push(Decoration.node(pos, pos + node.nodeSize, {class: "ww-beforeprint"}))
+      }
+      if(["audio", "video", "iframe"].includes(node.type.name)) {
+        decorations.push(Decoration.widget(pos, (view, getPos) => {
+          let el: HTMLElement | undefined = undefined
+          // TODO: Fix this crutch
+          try {
+            el = view.nodeDOM(pos) as HTMLElement
+          }
+          catch(err) {}
+          const extraDiv = view.dom.ownerDocument.createElement("div")
+          extraDiv.classList.add("ww-nodeview")
+          if(isSelectedNode || isSelectedInner) {
+            extraDiv.classList.add(`ww-${this.editingStatus}`)
+          }
+          extraDiv.style.display = "block"
+          extraDiv.style.position = "fixed"
+          extraDiv.style.zIndex = "2147483647"
+          extraDiv.style.pointerEvents = view.state.selection.from === pos? "none": "auto"
+          extraDiv.addEventListener("mousedown", (e) => {
+            const nodeSelection = view.state.selection instanceof NodeSelection
+            if((view.state.selection.from !== pos) || !nodeSelection) {
+              const sel = new NodeSelection(view.state.doc.resolve(pos))
+              const tr = view.state.tr.setSelection(sel)
+              view.dispatch(tr)
+              e.preventDefault()
+            }
+          })
+          el && new ResizeObserver(() => {
+            const {top, left, width, height} = (el ?? extraDiv).getBoundingClientRect()
+            const htmlNode = view.dom.ownerDocument.getRootNode() as HTMLElement
+            let scrollbarWidth = htmlNode.offsetWidth - htmlNode.clientWidth;
+            extraDiv.style.top = `${top}px`
+            extraDiv.style.left = `${scrollbarWidth + left}px`
+            extraDiv.style.width = `${width}px`
+            extraDiv.style.height = `${height}px`
+          }).observe(el)
+          this.pmEditor.document.addEventListener("scroll", () => {
+            const {top, left, width, height} = (el ?? extraDiv).getBoundingClientRect()
+            extraDiv.style.top = `${top}px`
+            extraDiv.style.left = `${left}px`
+            extraDiv.style.width = `${width}px`
+            extraDiv.style.height = `${height}px`
+          }, {passive: true})
+          return extraDiv
+        }))
       }
       if(node.type.spec.group?.split(" ").includes("heading")) {
         const cmd = this.app.commands.containerCommands.find(cmd => cmd.id === name)
@@ -663,8 +712,11 @@ export class ExplorableEditor extends LitElement {
 		const mode = this.toolboxMode
 		const docEl = this.activeElement?.ownerDocument.querySelector("body")
 		const iframeEl = this.pmEditor?.iframe
+    const iframeBody = this.pmEditor?.body
+    const bodyWidth = iframeBody?.offsetWidth
 		const docWidth = iframeEl?.clientWidth
     const docHeight = iframeEl?.clientHeight
+    const rightEdge = docWidth - (docWidth - bodyWidth) / 2
     const iframeOffsetX = iframeEl?.getBoundingClientRect().x
     const iframeOffsetY = iframeEl?.getBoundingClientRect().y
 		if(mode === "popup" && this.selection && this.activeElement && iframeEl) {
@@ -698,7 +750,7 @@ export class ExplorableEditor extends LitElement {
 				strategy: "fixed",
 				middleware: []
 			})
-			this.toolboxX = roundByDPR(docWidth + 10)
+			this.toolboxX = roundByDPR(rightEdge + 1)
 			this.toolboxY = roundByDPR(Math.max(
         Math.min(
           y,
@@ -712,7 +764,8 @@ export class ExplorableEditor extends LitElement {
         body {
           --ww-toolbox-action-x: ${this.toolboxX - iframeOffsetX};
           --ww-toolbox-action-y: ${this.toolboxY + this.toolboxHeight - iframeOffsetY};
-          --ww-toolbox-action-height: ${docHeight + -this.toolboxY + -this.toolboxHeight}px
+          --ww-toolbox-action-width: ${docWidth - rightEdge}
+          --ww-toolbox-action-height: ${docHeight + -this.toolboxY + -this.toolboxHeight}
         }
       `
 		}
@@ -751,10 +804,12 @@ export class ExplorableEditor extends LitElement {
 
   shouldBeEditable = (state: EditorState) => !this.ownerDocument.fullscreenElement
 
-  setNodeAttribute(el: HTMLElement, key: string, value: string | boolean | undefined) {
-    const pos = this.pmEditor.posAtDOM(el, 0)
-    const node = this.editorState.doc.resolve(pos).node()
-    const builtinAttr = key in (this.editorState.schema.nodes[node.type.name].spec.attrs ?? {})
+  setNodeAttribute(el: HTMLElement, key: string, value?: string | boolean, tag?: string) {
+    
+    const pos = this.pmEditor.posAtDOM(el, 0, 1) - 1
+    const resolved = this.editorState.doc.resolve(pos)
+    const node = resolved.nodeAfter ?? resolved.nodeBefore
+    const builtinAttr = key in (this.editorState.schema.nodes[node!.type.name].spec.attrs ?? {})
     const dataAttr = key.startsWith("data-")
     let v = value
     if(value === true) {
@@ -765,15 +820,26 @@ export class ExplorableEditor extends LitElement {
     }
     let tr = this.editorState.tr
     if(builtinAttr) {
-      tr = tr.setNodeAttribute(pos, key, v)
+      tr = tr.setNodeMarkup(
+        pos,
+        tag? this.editorState.schema.nodes[tag]: undefined,
+        {...node!.attrs, [key]: v}
+      )
+      // tr.setNodeAttribute(pos, key, v)
     }
     else if(dataAttr) {
-      const data = {...node.attrs.data, [key]: v}
-      tr = tr.setNodeAttribute(pos, "data", data)
+      tr = tr.setNodeMarkup(
+        pos,
+        tag? this.editorState.schema.nodes[tag]: undefined,
+        {...node!.attrs, data: {...node!.attrs.data, [key]: v}}
+      )
     }
     else {
-      const _ = {...node.attrs._, [key]: v}
-      tr = tr.setNodeAttribute(pos, "_", _)
+      tr = tr.setNodeMarkup(
+        pos,
+        tag? this.editorState.schema.nodes[tag]: undefined,
+        {...node!.attrs, _: {...node!.attrs._, [key]: v}}
+      )
     }
     this.pmEditor.dispatch(tr)
     this.pmEditor.focus()
@@ -787,7 +853,6 @@ export class ExplorableEditor extends LitElement {
       this.dispatchEvent(new KeyboardEvent(ev.type, ev))
     },
     "ww-widget-focus": (_: any, ev: CustomEvent) => {
-      console.log(ev.detail.widget)
       ev.detail.widget?.focus()
       /*
       if(this.previewing) {
@@ -971,17 +1036,6 @@ export class ExplorableEditor extends LitElement {
     }
   }  
 
-  get contentStyle() {
-    return this.bundleCSS
-  } 
-
-  get contentScript() {
-    return this.bundleJS
-			// scopedCustomElementsRegistryString,
-			// redefineCustomElementsString,
-			
-  }
-
   transformPastedHTML = (html: string) => {
     return html.replaceAll(/style=["']?((?:.(?!["']?\s+(?:\S+)=|\s*\/?[>"']))+.)["']?/g, "")
   }
@@ -1000,8 +1054,8 @@ export class ExplorableEditor extends LitElement {
 				.markViews=${this.markViews}
 				.handleKeyDown=${this.handleKeyDown}
 				.decorations=${this.decorations}
-				.contentScript=${this.contentScript}
-				.contentStyle=${this.contentStyle}
+				.contentScript=${this.bundleJS}
+				.contentStyle=${this.bundleCSS}
 				.shouldBeEditable=${this.shouldBeEditable}
 				.handleDOMEvents=${this.handleDOMEvents}
         .transformPastedHTML=${this.transformPastedHTML}
@@ -1098,7 +1152,7 @@ export class ExplorableEditor extends LitElement {
 					this.activeElement?.scrollIntoView({behavior: "smooth", block: "center"})
 					!e.detail.widget? this.pmEditor?.focus(): e.detail.widget.focus()
 				}}
-        @ww-set-attribute=${(e: CustomEvent) => this.setNodeAttribute(e.detail.el, e.detail.key, e.detail.value)}
+        @ww-set-attribute=${(e: CustomEvent) => this.setNodeAttribute(e.detail.el, e.detail.key, e.detail.value, e.detail.tag)}
 			></ww-toolbox>
 		`
 	}
