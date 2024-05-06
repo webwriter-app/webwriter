@@ -348,7 +348,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
       e.stopPropagation()
     })
     window.addEventListener("dragenter", (e: any) => {
-      this.document.documentElement.toggleAttribute("data-dragover", true)
+      this.document?.documentElement.toggleAttribute("data-dragover", true)
     })
     window.addEventListener("dragleave", (e: any) => {
       const isBoundary = e.screenX === 0 && e.screenY === 0
