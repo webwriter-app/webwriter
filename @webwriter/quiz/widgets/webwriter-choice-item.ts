@@ -7,7 +7,7 @@ import {customElement, property} from "lit/decorators.js"
 
 import SlRadio from "@shoelace-style/shoelace/dist/components/radio/radio.component.js"
 import SlCheckbox from "@shoelace-style/shoelace/dist/components/checkbox/checkbox.component.js"
-
+import "@shoelace-style/shoelace/dist/themes/light.css"
 
 @customElement("webwriter-choice-item")
 export class WebwriterChoiceItem extends LitElementWw {

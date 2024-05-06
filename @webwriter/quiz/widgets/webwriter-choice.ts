@@ -13,6 +13,7 @@ import SlRadioGroup from "@shoelace-style/shoelace/dist/components/radio-group/r
 import IconPlusSquare from "bootstrap-icons/icons/plus-square.svg"
 import IconPlusCircle from "bootstrap-icons/icons/plus-circle.svg"
 import { WebwriterChoiceItem } from "./webwriter-choice-item.js"
+import "@shoelace-style/shoelace/dist/themes/light.css"
 
 function shuffle<T>(a: T[]) {
   for (let i = a.length - 1; i > 0; i--) {
@@ -172,7 +173,7 @@ export class WebwriterChoice extends LitElementWw {
   }
 
   handleSlotChange(e: Event) {
-    this.value = this.value
+    this.requestUpdate()
   }
 
   protected willUpdate(changed: PropertyValueMap<any>) {

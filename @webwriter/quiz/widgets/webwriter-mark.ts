@@ -2,6 +2,7 @@ import {html, css} from "lit"
 import {LitElementWw} from "@webwriter/lit"
 import {customElement, property} from "lit/decorators.js"
 import {styleMap} from "lit/directives/style-map.js"
+import "@shoelace-style/shoelace/dist/themes/light.css"
 
 import SlIconButton from "@shoelace-style/shoelace/dist/components/icon-button/icon-button.component.js"
 
@@ -10,7 +11,7 @@ import SlIconButton from "@shoelace-style/shoelace/dist/components/icon-button/i
  * @param {boolean=} optimized
  * @return {string}
  */
-const xPath = function (node, optimized=false) {
+export const xPath = function (node, optimized=false) {
     if (node.nodeType === Node.DOCUMENT_NODE) {
         return '/';
     }
@@ -176,11 +177,14 @@ export class WebwriterMark extends LitElementWw {
       cursor: text;
     }
 
-    #highlight-mode {
+    #highlight {
       position: absolute;
       right: 0;
       top: 0;
-      background: rgba(255, 255, 255, 0.85)
+    }
+
+    #highlight::part(base):hover {
+      background: yellow;
     }
 
     :host ::highlight(webwriter-mark) {
@@ -188,7 +192,11 @@ export class WebwriterMark extends LitElementWw {
     }
 
     :host([highlighting]) sl-icon-button::part(base) {
-      background-color: yellow;
+      background-color: lightyellow;
+    }
+
+    :host(:has( #highlight:hover)) ::selection {
+      background: lightyellow !important;
     }
   `
 
@@ -259,16 +267,19 @@ export class WebwriterMark extends LitElementWw {
     }
   }
 
-  connectedCallback(): void {
+  /*connectedCallback(): void {
     super.connectedCallback()
     document.addEventListener("selectionchange", e => {
       const sel = document.getSelection()
       const el = document.getSelection()?.anchorNode?.parentElement
-      if(el?.closest("webwriter-mark") && this.highlighting && !sel.isCollapsed) {
-        this.addHighlight()
+      if(el?.closest("webwriter-mark") && !sel.isCollapsed) {
+        this.highlighting = true
       }
-    }, {passive: true})
-  }
+      else {
+        this.highlighting = false
+      }
+    })
+  }*/
 
   addHighlight() {
     const range = document.getSelection().getRangeAt(0)
@@ -280,14 +291,20 @@ export class WebwriterMark extends LitElementWw {
     WebwriterMark.highlight.delete(range)
   }
 
-  toggleHighlightMode = () => {
-    this.highlighting = !this.highlighting    
+  toggleHighlight = () => {
+    const range = document.getSelection().getRangeAt(0)
+    if(WebwriterMark.highlight.has(range)) {
+      this.deleteHighlight()
+    }
+    else {
+      this.addHighlight()
+    }
   }
 
   render() {
     return html`
-      <slot></slot>
-      <sl-icon-button id="highlight-mode" src=${IconHighlighter} @click=${this.toggleHighlightMode}></sl-icon-button>
+      <slot style=${styleMap({"--ww-placeholder": `"${this.msg("Text to Highlight")}"`})}></slot>
+      <sl-icon-button id="highlight" src=${IconHighlighter} @click=${this.toggleHighlight}></sl-icon-button>
     `
   }
 }

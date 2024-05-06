@@ -10,6 +10,7 @@
     "@shoelace-style/shoelace": "^2.13.1",
     "@webwriter/lit": "^1.6.3",
     "bootstrap-icons": "^1.11.3",
+    "interactjs": "^1.10.26",
     "lit": "^3",
     "sortablejs": "^1.15.2"
   },
@@ -18,6 +19,15 @@
   },
   "exports": {
     "./widgets/webwriter-quiz": "./widgets/webwriter-quiz.ts",
+    "./snippets/choice": "./snippets/choice.html",
+    "./snippets/order": "./snippets/order.html",
+    "./snippets/text": "./snippets/text.html",
+    "./snippets/mark": "./snippets/mark.html",
+    "./snippets/pairing": "./snippets/pairing.html",
+    "./snippets/cloze": "./snippets/cloze.html",
+    "./snippets/speech": "./snippets/speech.html",
+    "./snippets/memory": "./snippets/memory.html",
+    "./snippets/wordsearch": "./snippets/wordsearch.html",
     "./widgets/webwriter-task": "./widgets/webwriter-task.ts",
     "./widgets/webwriter-task-prompt": "./widgets/webwriter-task-prompt.ts",
     "./widgets/webwriter-choice": "./widgets/webwriter-choice.ts",
@@ -25,87 +35,99 @@
     "./widgets/webwriter-order": "./widgets/webwriter-order.ts",
     "./widgets/webwriter-order-item": "./widgets/webwriter-order-item.ts",
     "./widgets/webwriter-pairing": "./widgets/webwriter-pairing.ts",
+    "./widgets/webwriter-pairing-item": "./widgets/webwriter-pairing-item.ts",
     "./widgets/webwriter-text": "./widgets/webwriter-text.ts",
     "./widgets/webwriter-mark": "./widgets/webwriter-mark.ts",
-    "./widgets/webwriter-markimage": "./widgets/webwriter-markimage.ts",
     "./widgets/webwriter-speech": "./widgets/webwriter-speech.ts",
     "./widgets/webwriter-cloze": "./widgets/webwriter-cloze.ts",
     "./widgets/webwriter-cloze-gap": "./widgets/webwriter-cloze-gap.ts",
     "./widgets/webwriter-wordsearch": "./widgets/webwriter-wordsearch.ts",
-    "./widgets/webwriter-memorygame": "./widgets/webwriter-memorygame.ts"
+    "./widgets/webwriter-memory": "./widgets/webwriter-memory.ts",
+    "./widgets/webwriter-memory-item": "./widgets/webwriter-memory-item.ts"
   },
   "editingConfig": {
     "./widgets/webwriter-choice-item": {
       "isolating": false,
       "content": "(p | flow)+",
-      "noDefaultSnippet": true
+      "uninsertable": true
     },
     "./widgets/webwriter-choice": {
       "group": "answer",
       "content": "webwriter-choice-item+",
-      "noDefaultSnippet": true
+      "uninsertable": true
     },
     "./widgets/webwriter-order-item": {
       "isolating": false,
       "content": "(p | flow)+",
-      "noDefaultSnippet": true
+      "uninsertable": true
     },
     "./widgets/webwriter-order": {
       "group": "answer",
       "content": "webwriter-order-item+",
-      "noDefaultSnippet": true
+      "uninsertable": true
     },
     "./widgets/webwriter-pairing": {
       "group": "answer",
-      "noDefaultSnippet": true
+      "content": "webwriter-pairing-item+",
+      "uninsertable": true,
+      "isolating": true
+    },
+    "./widgets/webwriter-pairing-item": {
+      "content": "(p | flow)*",
+      "uninsertable": true,
+      "draggable": true,
+      "isolating": true
     },
     "./widgets/webwriter-text": {
       "group": "answer",
-      "noDefaultSnippet": true
+      "uninsertable": true
     },
     "./widgets/webwriter-mark": {
       "group": "answer",
       "content": "phrasing*",
-      "noDefaultSnippet": true
-    },
-    "./widgets/webwriter-markimage": {
-      "group": "answer",
-      "noDefaultSnippet": true
+      "uninsertable": true
     },
     "./widgets/webwriter-speech": {
       "group": "answer",
-      "noDefaultSnippet": true
+      "uninsertable": true
     },
     "./widgets/webwriter-cloze": {
       "group": "answer",
       "content": "(phrasing | webwriter-cloze-gap)*",
-      "noDefaultSnippet": true
+      "uninsertable": true
     },
     "./widgets/webwriter-cloze-gap": {
       "inline": true,
       "isolating": false,
-      "noDefaultSnippet": true
+      "uninsertable": true
     },
     "./widgets/webwriter-wordsearch": {
       "group": "answer",
-      "noDefaultSnippet": true
+      "uninsertable": true,
+      "content": "text*"
     },
-    "./widgets/webwriter-memorygame": {
+    "./widgets/webwriter-memory": {
       "group": "answer",
-      "noDefaultSnippet": true
+      "content": "webwriter-memory-item+",
+      "uninsertable": true
+    },
+    "./widgets/webwriter-memory-item": {
+      "group": "answer",
+      "uninsertable": true,
+      "content": "picture | flow"
     },
     "./widgets/webwriter-task": {
-      "content": "(p | flow) answer flow?",
-      "noDefaultSnippet": true
+      "content": "(p | flow) answer (p | flow)?",
+      "uninsertable": true,
+      "isolating": true
     },
     "./widgets/webwriter-task-prompt": {
       "defining": true,
       "content": "(p | flow)+",
-      "noDefaultSnippet": true
+      "uninsertable": true
     },
     "./widgets/webwriter-quiz": {
-      "content": "webwriter-task*",
-      "noDefaultSnippet": false
+      "content": "webwriter-task*"
     }
   }
 }

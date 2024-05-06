@@ -73,18 +73,13 @@ export class WebwriterQuiz extends LitElementWw {
         advanced: true,
         icon: IconMic
       },
-      "webwriter-markimage": {
-        label: this.msg("Mark Image"),
-        advanced: true,
-        icon: IconImage
-      },
       "webwriter-wordsearch": {
         label: this.msg("Word Search"),
         advanced: true,
         icon: IconSearch
       },
-      "webwriter-memorygame": {
-        label: this.msg("Memory Game"),
+      "webwriter-memory": {
+        label: this.msg("Memory"),
         advanced: true,
         icon: IconGrid3x3Gap
       }
@@ -207,7 +202,7 @@ export class WebwriterQuiz extends LitElementWw {
   connectedCallback(): void {
     super.connectedCallback()
     const observer = new MutationObserver(() => {
-      if(!this.contentEditable) {
+      if(!this.contentEditable && this.randomOrder) {
         this.shuffleTasks()
       }
     })

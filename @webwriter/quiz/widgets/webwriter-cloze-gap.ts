@@ -5,6 +5,7 @@ import {customElement} from "lit/decorators.js"
 import SlInput from "@shoelace-style/shoelace/dist/components/input/input.component.js"
 import { property } from "lit/decorators/property.js"
 import { queryAsync } from "lit/decorators/query-async.js"
+import "@shoelace-style/shoelace/dist/themes/light.css"
 
 @customElement("webwriter-cloze-gap")
 export class WebwriterClozeGap extends LitElementWw {

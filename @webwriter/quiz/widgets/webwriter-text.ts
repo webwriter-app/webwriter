@@ -5,6 +5,7 @@ import {ifDefined} from "lit/directives/if-defined.js"
 
 import SlTextarea from "@shoelace-style/shoelace/dist/components/textarea/textarea.component.js"
 import SlInput from "@shoelace-style/shoelace/dist/components/input/input.component.js"
+import "@shoelace-style/shoelace/dist/themes/light.css"
 
 @customElement("webwriter-text")
 export class WebwriterText extends LitElementWw {
@@ -28,6 +29,9 @@ export class WebwriterText extends LitElementWw {
   @option()
   placeholder: string
 
+  @property({type: String, attribute: true, reflect: true})
+  value: string
+
   static scopedElements = {
     "sl-textarea": SlTextarea,
     "sl-input": SlInput
@@ -39,9 +43,28 @@ export class WebwriterText extends LitElementWw {
     }
   `
 
+  handleChange = (e: CustomEvent) => {
+    const target = e.target as SlTextarea | SlInput
+    this.dispatchEvent(new CustomEvent("ww-answer-change", {
+      detail: {value: target.value},
+      bubbles: true,
+      composed: true
+    }))
+  }
+
+  reportSolution(solution: string) {
+    this.solution = solution
+  }
+
+  @property({type: String, attribute: false, reflect: false})
+  solution: string
+
   render() {
-    const textarea = html`<sl-textarea placeholder=${this.placeholder}></sl-textarea>`
-    const input = html`<sl-input placeholder=${this.placeholder} type=${this.type}></sl-input>`
-    return this.type === "long-text"? textarea: input
+    const textarea = html`<sl-textarea value=${this.isContentEditable? this.solution: this.value} placeholder=${this.placeholder}></sl-textarea>`
+    const input = html`<sl-input value=${this.isContentEditable? this.solution: this.value} placeholder=${this.placeholder} type=${this.type}></sl-input>`
+    return html`
+      <div id="solution">${this.solution}</div>
+      ${this.type === "long-text"? textarea: input}
+    `
   }
 }

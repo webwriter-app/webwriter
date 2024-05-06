@@ -8,6 +8,7 @@ import SlIconButton from "@shoelace-style/shoelace/dist/components/icon-button/i
 
 import IconTextarea from "bootstrap-icons/icons/textarea.svg"
 import { WebwriterClozeGap } from "./webwriter-cloze-gap.js"
+import "@shoelace-style/shoelace/dist/themes/light.css"
 
 @customElement("webwriter-cloze")
 export class WebwriterCloze extends LitElementWw {

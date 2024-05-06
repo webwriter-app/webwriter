@@ -8,6 +8,7 @@ import SlIconButton from "@shoelace-style/shoelace/dist/components/icon-button/i
 import IconArrowsMove from "bootstrap-icons/icons/arrows-move.svg"
 import IconArrowUp from "bootstrap-icons/icons/arrow-up.svg"
 import IconArrowDown from "bootstrap-icons/icons/arrow-down.svg"
+import "@shoelace-style/shoelace/dist/themes/light.css"
 
 @customElement("webwriter-order-item")
 export class WebwriterOrderItem extends LitElementWw {

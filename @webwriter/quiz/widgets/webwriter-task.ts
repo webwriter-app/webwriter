@@ -13,7 +13,7 @@ import IconCheckCircle from "bootstrap-icons/icons/check-circle.svg"
 import IconCheckCircleFill from "bootstrap-icons/icons/check-circle-fill.svg"
 
 import IconSendCheck from "bootstrap-icons/icons/send-check.svg"
-
+import "@shoelace-style/shoelace/dist/themes/light.css"
 function romanOrdinal(num: number, capitalize=false) {
   let roman = {
     m: 1000,
@@ -150,8 +150,12 @@ export class WebwriterTask extends LitElementWw {
   @queryAssignedElements({slot: "hint"})
   hints: HTMLElement[]
 
-  get hasHintContent() {
+  get hasHintElement() {
     return this.hints.length > 0
+  }
+
+  get hasHintContent() {
+    return this.hints.some(hint => Array.from(hint.children).some(child => !["BR", "WBR"].includes(child.tagName)) || hint.innerText !== "")
   }
 
   @property({type: Boolean, attribute: true, reflect: true})
@@ -163,15 +167,21 @@ export class WebwriterTask extends LitElementWw {
 
   toggleHint() {
     this.hintOpen = !this.hintOpen
-    if(this.isContentEditable) {
+    if(this.isContentEditable && this.hintOpen) {
       this.hint = true
-      if(!this.hasHintContent) {
+      if(!this.hasHintElement) {
         const p = this.ownerDocument.createElement("p")
         p.slot = "hint"
         this.appendChild(p)
         this.ownerDocument.getSelection().setBaseAndExtent(p, 0, p, 0)
         p.focus()
         this.requestUpdate()
+      }
+    }
+    else if(this.isContentEditable && !this.hintOpen) {
+      if(!this.hasHintContent) {
+        this.hint = false
+        this.hintSlotEl.assignedElements().forEach(el => el.remove())
       }
     }
   }
@@ -213,16 +223,19 @@ export class WebwriterTask extends LitElementWw {
     this.parentElement && observer.observe(this.parentElement, {childList: true})
   }
 
-  @property({type: String, attribute: true, reflect: true})
+  /** Property containing the password currently entered by the author or user */
+  @property({type: String, attribute: false, reflect: false})
   password: string
 
-  #decodeSolution(): Record<string, string> {
-    // TODO: Encode/Decode password  
-    return JSON.parse(atob(this.getAttribute("solution") ?? "") || "[]")
+  #encodeSolution(value: Record<string, string>, password?: string) {
+    // TODO: Password protection
+    // Solution attribute should contain a JSON string with a configuration of attributes for the answer considered correct (`value`)
+    this.setAttribute("solution", btoa(JSON.stringify(value)))
   }
 
-  #encodeSolution(value: Record<string, string>) {
-    this.setAttribute("solution", btoa(JSON.stringify(value)))
+  #decodeSolution(password: string): Record<string, string> {
+    // reverse of #encodeSolution
+    return JSON.parse(atob(this.getAttribute("solution") ?? "") || "[]")
   }
 
   checkSolution() {
@@ -265,7 +278,7 @@ export class WebwriterTask extends LitElementWw {
 
 
   handleHintSlotChange = (e: Event) => {
-    if(this.hintSlotEl.assignedElements().length === 0) {
+    if(!this.hasHintElement) {
       this.hintOpen = false
       this.hint = false
     }
