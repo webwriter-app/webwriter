@@ -1,13 +1,13 @@
 import { LitElement, html, css } from "lit"
 import { customElement, property } from "lit/decorators.js"
-import { localized } from "@lit/localize"
+import { localized, msg } from "@lit/localize"
+import { StyleForm } from "."
+
+const props = ["background", "background-attachment", "background-clip", "background-color", "background-image", "background-origin", "background-position", "background-repeat", "background-size", "background-position-x", "background-position-y"] as const
 
 @localized()
 @customElement("ww-backgroundpicker")
-export class BackgroundPicker extends LitElement {
-  
-  @property({type: String, attribute: true})
-  value: string = "white"
+export class BackgroundPicker extends StyleForm(LitElement, props) {
 
 	static get styles() {
 		return css`
@@ -53,25 +53,31 @@ export class BackgroundPicker extends LitElement {
     `
   }
 
-  handleChange(e: {target: HTMLElement & {value: string}}) {
-    this.value =  e.target.value
-    this.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
-  }
-
-  
-  ColorInput = () => {
-    return html`<sl-color-picker
-      id="value"
-      class="input value"
-      value=${this.value}
-      @sl-change=${this.handleChange}
-    >
-    </sl-color-picker>`
-  }
 
 	render() {
     return html`
-      ${this.ColorInput()}
+      <!-- Color OR Image -->
+      <sl-color-picker name="backgroundColor"  label=${msg("Background Color")}
+        value=${this._value["background-color"] ?? "transparent"}
+        @sl-change=${(e: any) => this.setValueField("background-color", e.target.  value)}
+      ></sl-color-picker>
+      <ww-urlfileinput name="backgroundImage"  label=${msg("Background Image")}></ww-urlfileinput>
+      <sl-select name="backgroundOrigin" label=${msg("Background Origin")}>
+        <sl-option value="border-box">${msg("Border Box")}</sl-option>
+        <sl-option value="padding-box">${msg("Padding Box")}</sl-option>
+        <sl-option value="content-box">${msg("Content Box")}</sl-option>
+      </sl-select>
+      <ww-combobox name="backgroundAttachment" label=${msg("Background Attachment")} suggestions>
+        <sl-option value="fixed">${msg("Fixed")}</sl-option>
+        <sl-option value="local">${msg("Local")}</sl-option>
+        <sl-option value="scroll">${msg("Scroll")}</sl-option>
+      </ww-combobox>
+      <sl-select name="backgroundClip" label=${msg("Background Clip")} value="padding-box">
+        <sl-option value="border-box">${msg("Border Box")}</sl-option>
+        <sl-option value="padding-box">${msg("Padding Box")}</sl-option>
+        <sl-option value="content-box">${msg("Content Box")}</sl-option>
+        <sl-option value="text">${msg("Text")}</sl-option>
+      </sl-select>
     `
   }
 }
