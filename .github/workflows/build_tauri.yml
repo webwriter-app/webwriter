@@ -59,7 +59,6 @@ jobs:
       
       - name: Install web dependencies
         run: |
-          npm install
           npm config set os=${{ matrix.os }}
           npm config set cpu=${{ matrix.cpu }}
           npm install
