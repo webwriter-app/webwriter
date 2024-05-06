@@ -552,10 +552,10 @@ export class CommandController implements ReactiveController {
         description: () => msg("Open a document"),
         run: async host => {
           const url = await host.environment.api.Dialog.promptRead({filters: INDIVIDUAL_FILTERS})
-          if(url && !this.host.store.document.empty) {
+          if(url && !this.host.store.document.sameAsInitial) {
             host.environment.api.createWindow(`?open=${url}`, WINDOW_OPTIONS)
           }
-          else if(url && this.host.store.document.empty) {
+          else if(url) {
             this.host.store.document.load(url as string)
           }
         },
