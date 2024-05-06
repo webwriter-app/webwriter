@@ -240,6 +240,7 @@ export function HTMLElementSpec({tag, content, marks, group, inline, atom, attrs
     atom,
     attrs: {...globalHTMLAttributes, ...attrs},
     selectable,
+    draggable,
     code,
     whitespace,
     definingAsContext,
