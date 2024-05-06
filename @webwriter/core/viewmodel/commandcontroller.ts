@@ -1389,36 +1389,6 @@ export class CommandController implements ReactiveController {
         category: "editor",
         group: "font"
       }),*/
-      inspect: new Command(this.host, {
-        id: "inspect",
-        label: () => msg("Inspect selection"),
-        description: () => msg("Inspect the selection"),
-        shortcut: "ctrl+alt+y",
-        icon: "info-square",
-        run: host => host.activeEditor?.inspect(),
-        category: "editor",
-        tags: ["element"]
-      }),
-      edit: new Command(this.host, {
-        id: "edit",
-        label: () => msg("Edit selection"),
-        description: () => msg("Edit the "),
-        shortcut: "ctrl+alt+a",
-        icon: "edit",
-        run: host => host.activeEditor?.edit(),
-        category: "editor",
-        tags: ["element"]
-      }),
-      transform: new Command(this.host, {
-        id: "transform",
-        label: () => msg("Transform selection"),
-        description: () => msg("Transform the selection"),
-        shortcut: "ctrl+alt+s",
-        icon: "transform",
-        run: host => host.activeEditor?.transform(),
-        category: "editor",
-        tags: ["element"]
-      }),
       copy: new Command(this.host, {
         id: "copy",
         label: () => msg("Copy selection"),
