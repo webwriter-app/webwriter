@@ -9,6 +9,20 @@ import { SlInput, SlOption } from "@shoelace-style/shoelace"
 @customElement("ww-urlfileinput")
 export class URLFileInput extends SlInput implements DataInput {
 
+  static mediaRecordIcons = {
+    "image": "camera",
+    "audio": "microphone",
+    "video": "video"
+  }
+
+  static mediaCaptureIcons = {
+    "image": "screenshot",
+    "audio": "device-laptop",
+    "video": "screenshot"
+  }
+
+  static stream: MediaStream
+
   constructor() {
     super()
     this.addEventListener("paste", this.handlePaste)
@@ -74,6 +88,15 @@ export class URLFileInput extends SlInput implements DataInput {
 
   @property({type: String, attribute: "help-text"})
   helpText: string
+
+  @property({type: String, attribute: true, reflect: true})
+  mediaType: "image" | "audio" | "video"
+
+  @property({type: Boolean, attribute: true, reflect: true})
+  record = false
+
+  @property({type: Boolean, attribute: true, reflect: true})
+  capture = false
 
   get isBlob() {
     return this.value.startsWith("blob:")
@@ -223,6 +246,45 @@ export class URLFileInput extends SlInput implements DataInput {
     :host([linkOnly]) #pick-file {
       display: none;
     }
+
+    :host([size=small]) [part=base] {
+      min-height: var(--sl-input-height-small);
+      padding: 0 var(--sl-input-spacing-small);
+    }
+
+    :host([size=small]) [part=label] {
+      font-size: var(--sl-font-size-x-small);
+    }
+
+    :host([size=small]) ww-button::part(icon) {
+      width: 16px;
+      height: 16px;
+    }
+
+    :host(:not([record]):not([capture])) aside {
+      display: none;
+    }
+
+    aside {
+      display: flex;
+      flex-direction: row;
+      justify-content: space-between;
+      gap: 2px;
+      margin-top: 2px;
+      & > * {
+        flex-grow: 1;
+      }
+
+      & .streaming-indicator {
+        background: var(--sl-color-red-600);
+        border-radius: 100%;
+        position: absolute;
+        right: 4px;
+        top: 4px;
+        width: 8px;
+        height: 8px;
+      }
+    }
   `]
 
   handleInputKeydown(e: KeyboardEvent) {
@@ -278,6 +340,139 @@ export class URLFileInput extends SlInput implements DataInput {
     return msg("Enter link") + " " + (this.linkOnly? "": msg("or paste/drop/pick file"))
   }
 
+  recorder?: MediaRecorder
+  chunks = [] as Blob[]
+
+  @property({type: String, attribute: false, state: true})
+  streamingStatus: "idle" | "loading" | "recording" | "capturing" = "idle"
+  
+  handleRecordingClick = (e: Event) => {
+    if(this.streamingStatus === "idle") {
+      this.startStream()
+    }
+    else if(this.streamingStatus === "loading") {
+      return
+    }
+    else {
+      this.stopStream()
+    }
+  }
+  
+  handleCapturingClick = (e: Event) => {
+    if(this.streamingStatus === "idle") {
+      this.startStream(true)
+    }
+    else if(this.streamingStatus === "loading") {
+      return
+    }
+    else {
+      this.stopStream()
+    }
+  }
+
+  static mediaRecordingTypes = {
+    "image": "video/mp4",
+    "audio": "video/mp4",
+    "video": "video/mp4",
+  }
+
+  async startStream(capture=false) {
+    if(this.recorder) {
+      return
+    }
+    this.streamingStatus = "loading"
+    const constraints = {
+      video: this.mediaType === "video" || this.mediaType === "image" || this.mediaType === "audio" && capture,
+      audio: this.mediaType === "video" || this.mediaType === "audio"
+    }
+    const options = {
+      mimeType: "video/webm"
+    }
+    try {
+      const stream = await (capture? navigator.mediaDevices.getDisplayMedia(constraints): navigator.mediaDevices.getUserMedia(constraints))
+      if(this.mediaType === "image" && "ImageCapture" in window && !capture) {
+        this.streamingStatus = capture? "capturing": "recording"
+        const imgcap = new (window as any).ImageCapture(stream.getVideoTracks()[0])
+        const blob = await imgcap.takePhoto()
+        URL.revokeObjectURL(this.value)
+        this.value = URL.createObjectURL(blob)
+        this.dispatchChange()
+        stream?.getTracks().forEach(track => stream.removeTrack(track))
+        this.streamingStatus = "idle"
+      }
+      else {
+        this.recorder = new MediaRecorder(stream, options)
+        this.recorder.addEventListener("stop", () => {
+          let value: string
+          clearInterval(this.recordingInterval)
+          this.recordingDuration = 0
+          if(this.mediaType === "image") {
+            const video = document.createElement("video")
+            video.srcObject = this.recorder!.stream
+            video.currentTime = 1
+            const canvas = document.createElement("canvas")
+            canvas.width = 640
+            canvas.height = 480
+            canvas.getContext("2d")?.drawImage(video, canvas.width, canvas.height)
+            value = canvas.toDataURL()
+            video.remove()
+            canvas.remove()
+          }
+          else {
+            const blob = new Blob(this.chunks, {type: options.mimeType})
+            value = URL.createObjectURL(blob)
+          }
+          this.chunks = []
+          const stream = this.recorder?.stream
+          stream?.getTracks().forEach(track => stream.removeTrack(track))
+          URL.revokeObjectURL(this.value)
+          this.value = value
+          delete this.recorder
+          this.dispatchChange()
+          this.streamingStatus = "idle"
+        })
+        this.recorder.addEventListener("dataavailable", e => {
+          this.chunks.push(e.data)
+        })
+        this.recorder.addEventListener("error", e => {
+          console.error("Error recording")
+        })
+        let maxDuration = 0
+        if(this.mediaType === "audio") {
+          maxDuration = 1000 * 60 * 10
+        }
+        else if(this.mediaType === "video") {
+          maxDuration = 1000 * 60 * 1
+        }
+        this.recorder.start()
+        setInterval(() => this.recordingDuration += 1000, 1000)
+        if(maxDuration) {
+          setTimeout(() => this.stopStream(), maxDuration)
+        }
+        this.streamingStatus = capture? "capturing": "recording"
+      }
+    }
+    catch(err: any) {
+      this.streamingStatus = "idle"
+      if(err.message !== "Permission denied") {
+        console.error(err)
+      }
+    }
+  }
+  async stopStream() {
+    this.recorder?.stop()
+  }
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback()
+    this.stopStream()
+  }
+
+  recordingInterval: number
+
+  @property({type: Number, attribute: false, state: true})
+  recordingDuration: number = 0
+
   render() {
     const input = html`
       <input
@@ -304,6 +499,34 @@ export class URLFileInput extends SlInput implements DataInput {
           <ww-button id="pick-file" variant="icon" icon="folder-open" @click=${this.openFileDialog}></ww-button>
         </div>
       </div>
+      <aside>
+        ${this.mediaType === "image" && !("ImageCapture" in window)? null: html`
+          <ww-button
+            class="record-button"
+            ?disabled=${this.streamingStatus === "loading" || this.streamingStatus === "capturing"}
+            @click=${this.handleRecordingClick}
+            size="small"
+            icon=${this.streamingStatus === "recording"? "player-stop-filled": (URLFileInput.mediaRecordIcons as any)[this.mediaType]}>
+            ${this.streamingStatus === "recording"? html`
+              <sl-format-date .date=${new Date(this.recordingDuration)} minute="2-digit" second="2-digit"></sl-format-date>
+              <div class="streaming-indicator"></div>
+            `: msg("Record")}
+          </ww-button>
+        `}
+        ${this.mediaType === "image"? null: html`
+          <ww-button
+            class="capture-button"
+            @click=${this.handleCapturingClick}
+            ?disabled=${this.streamingStatus === "loading" || this.streamingStatus === "recording"}
+            size="small"
+            icon=${this.streamingStatus === "capturing"? "player-stop-filled": (URLFileInput.mediaCaptureIcons as any)[this.mediaType]}>
+            ${this.streamingStatus === "capturing"? html`
+              <sl-format-date .date=${new Date(this.recordingDuration)} minute="2-digit" second="2-digit"></sl-format-date>
+              <div class="streaming-indicator"></div>
+            `: msg("Capture")}
+          </ww-button>
+        `}
+      </aside>
       <div id="help-text">${this.helpText}</div>
     `
   }
