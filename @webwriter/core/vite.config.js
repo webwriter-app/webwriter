@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'url'
 import { defineConfig } from 'vite'
+import { lezer } from '@lezer/generator/rollup'
 
 export default defineConfig({
     publicDir: "../../static",
@@ -13,5 +14,6 @@ export default defineConfig({
             settings: fileURLToPath(new URL("./settings.html", import.meta.url))
           }
         }
-    }
+    },
+    plugins: [lezer({exportName: "parser"})]
 })
