@@ -10,16 +10,7 @@
     "@tauri-apps/cli": "^1.5.9"
   },
   "optionalDependencies": {
-    "@esbuild/darwin-arm64": "^0.20.0",
-    "@esbuild/darwin-x64": "^0.20.0",
-    "@esbuild/linux-arm64": "^0.20.0",
-    "@esbuild/linux-x64": "^0.20.0",
-    "@esbuild/win32-arm64": "^0.20.0",
-    "@esbuild/win32-x64": "^0.20.0",
-    "@pnpm/linux-arm64": "^8.15.1",
-    "@pnpm/linux-x64": "^8.15.1",
-    "@pnpm/macos-arm64": "^8.15.1",
-    "@pnpm/macos-x64": "^8.15.1",
-    "@pnpm/win-x64": "^8.15.1"
+    "bun": "^1.1.7",
+    "esbuild": "^0.20.2"
   }
 }
