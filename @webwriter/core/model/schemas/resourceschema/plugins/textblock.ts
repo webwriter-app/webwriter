@@ -2,7 +2,7 @@ import { EditorState, NodeSelection, TextSelection } from "prosemirror-state";
 import { SchemaPlugin, parseStyleAttrs, serializeStyleAttrs, styleAttrs } from ".";
 import { ProsemirrorEditor } from "../../../../view";
 import { camelCaseToSpacedCase, range } from "../../../../utility";
-import { chainCommands, createParagraphNear, deleteSelection, joinBackward, joinTextblockBackward, lift, liftEmptyBlock, selectParentNode } from "prosemirror-commands";
+import { chainCommands, createParagraphNear, deleteSelection, joinBackward, joinTextblockBackward, joinUp, lift, liftEmptyBlock, selectParentNode } from "prosemirror-commands";
 import {Node, NodeType, Attrs, Slice, Fragment} from "prosemirror-model"
 import { ContentExpression, ParentedExpression } from "../../contentexpression";
 import { HTMLElementSpec } from "../htmlelementspec";
@@ -75,6 +75,7 @@ export function nestNodes(nodes: Node[]): Node {
 /**
  * Try to fit `content` into `node`.
  * For each content node, DFS until content node fits
+ * 
  */
 export function fitIntoNode(node: Node, content: Node[]): Node {
   const {type} = node
@@ -112,6 +113,19 @@ export function fitIntoNode(node: Node, content: Node[]): Node {
     : fillNode(node.type, node.attrs)
 }
 
+/** 
+ * Paradigm: Discard as little as possible
+export function fitIntoNodeAlt(node: Node, content: Fragment | Node[]): Node {
+  const frag = content instanceof Fragment? content: Fragment.fromArray(content)
+  if(node.type.spec.content) {
+    const match = node.type.contentMatch
+    match.
+  }
+  return subFragment && subFragment.size > 0
+    ? node.copy(subFragment)
+    : fillNode(node.type, node.attrs)
+}*/
+
 export function fillNode(type: NodeType, attrs?: Attrs): Node {
   const node = type.createAndFill(attrs)!
   let content = Fragment.fromArray([])
@@ -131,18 +145,21 @@ export function wrapSelection(type: string | NodeType, attrs?: Attrs) {
       to = selection.to
       slice = selection.content()
     }
-    else {
-      from = selection.$from?.before(1)!
-      to = selection.$from?.after(1)!
+    // selection.$anchor.parent.canReplaceWith(selection.$from.index(), selection.$to.index(), nodeType)
+    else if(!nodeType.isInline && !nodeType.isLeaf) {
+      from = selection.$from?.before(selection.$from.depth)!
+      to = selection.$from?.after(selection.$from.depth)!
       const wrappingSelection = TextSelection.create(state.doc, from, to)
       slice = wrappingSelection.content()
+    }
+    else {
+      slice = Slice.empty
+      from = to = selection.from
     }
     let content = [] as Node[]
     const n = slice.content.childCount
     range(n).forEach(i => content.push(slice.content.child(i)))
     const newNode = fitIntoNode(nodeType.create(attrs)!, content)
-    let newStart: number | null = null
-    let newEnd: number | null = null
     let tr = state.tr.replaceRangeWith(from, to, newNode)
     /*
     tr.doc.nodesBetween(0, tr.doc.content.size - 1, (node, start) => {
@@ -210,6 +227,10 @@ export const textblockPlugin = () => ({
         .split($from.pos, Math.min(2, $from.depth))
       )
       return true
+    },
+    "Control-Backspace": (state, dispatch, view) => {
+      const {$from} = state.selection;
+      return joinUp(state, dispatch, view)
     },
     "Alt-Shift-ArrowLeft": (state, dispatch, view) => {
       const {selection, doc} = state
