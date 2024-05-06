@@ -30,14 +30,20 @@ export class IconController implements ReactiveController {
 
   async hostConnected() {
     registerIconLibrary("default", {
-      resolver: name => `assets/icons/${name}.svg`,
+      resolver: name => name.endsWith("-filled")
+        ? `assets/icons/filled/${name.slice(0, name.length - "-filled".length)}.svg`
+        : `assets/icons/outline/${name}.svg`,
       mutator: svg => {
         // svg.style.width = "var(--icon-size, 1em)"
         // svg.style.height = "var(--icon-size, 1em)"
       },
     })
     registerIconLibrary("system", {
-      resolver: name => `assets/icons/${SYSTEM_ICONS[name as keyof typeof SYSTEM_ICONS] ?? name}.svg`,
+      resolver: name => {
+        const fileName = SYSTEM_ICONS[name as keyof typeof SYSTEM_ICONS] ?? name
+        const path = name.endsWith("filled")? `filled/${fileName}.svg`: `outline/${fileName}.svg`
+        return `assets/icons/${path}`
+      },
       mutator: svg => {
         // svg.style.width = "var(--icon-size, 1em)"
         // svg.style.height = "var(--icon-size, 1em)"
