@@ -52,7 +52,9 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
       const {join, appDir} = this.environment.api.Path
       await this.store.packages.initialized
       const packageJsonPath = await join(await appDir(), "package.json")
-      this.environment.api.watch(packageJsonPath, () => !this.store.packages.initializing && !this.store.packages.loading && this.store.packages.load())
+      this.environment.api.watch(packageJsonPath, (e) => {
+        !this.store.packages.initializing && !this.store.packages.loading && this.store.packages.load()
+      })
       this.requestUpdate()
       this.initializing = false
       document.body.classList.add("loaded")
