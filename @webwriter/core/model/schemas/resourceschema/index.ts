@@ -17,7 +17,6 @@ export * as themes from "./themes"
 
 export function createEditorStateConfig(packages: Package[]) {
   return configFromSchemaPlugins([
-    basePlugin(),
     textblockPlugin(),
     headingPlugin(),
     mediaPlugin(),
@@ -29,10 +28,11 @@ export function createEditorStateConfig(packages: Package[]) {
     modalPlugin(),
     stylePlugin(),
     tablePlugin(),
-    // mathPlugin(),
+    mathPlugin(),
     // svgPlugin(),
     // deprecatedPlugin(),
-    widgetPlugin(packages)
+    widgetPlugin(packages),
+    basePlugin(),
   ])
 }
 
