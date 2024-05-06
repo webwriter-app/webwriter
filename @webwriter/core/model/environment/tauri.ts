@@ -148,10 +148,11 @@ export const HTTP: HTTPAPI = {
 }
 
 /** Runs the CLI command `esbuild [args]`. */
-export async function bundle(args: string[] = []) {
-  console.info(`[TAURI] > esbuild ${args.join(" ")}`)
-  const output = await Command.sidecar("bin/esbuild", [...args]).execute()
-  console.log(output.code, output.stdout, output.stderr)
+export async function bundle(args: string[] = [], cwd?: string) {
+  console.info(`[TAURI] ${cwd? cwd: await appDir()}> esbuild ${args.join(" ")}`)
+  const opts = cwd? {cwd}: {}
+  const output = await Command.sidecar("bin/esbuild", [...args], opts).execute()
+  console.log(output.stdout || output.stderr)
   if(!output.code) {
     return output.stderr
   }

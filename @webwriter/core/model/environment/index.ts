@@ -135,7 +135,7 @@ export type Environment = {
   HTTP: HTTPAPI,
   OS: OSAPI,
   Dialog: DialogAPI,
-  bundle: (args?: string[]) => Promise<string>,
+  bundle: (args?: string[], cwd?: string) => Promise<string>,
   search: (text: string, params?: {size?: number, from?: number, quality?: number, popularity?: number, maintenance?: number}, searchEndpoint?: string) => Promise<SearchResults>,
   pm: (command: string, commandArgs?: string[], cwd?: string) => Promise<string>,
   watch: (paths: string | string[], cb?: (event: {attrs: any, paths: string[], type: {create?: any, modify?: any, remove?: any}}) => void, options?: {recursive?: boolean, delayMs?: number}) => Promise<() => void>
