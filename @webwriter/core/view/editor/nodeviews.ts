@@ -1,12 +1,13 @@
 import { Decoration, DecorationSource, NodeView, NodeViewConstructor } from "prosemirror-view"
 import { NodeSelection } from "prosemirror-state"
 import { DOMSerializer, Node } from "prosemirror-model"
-import {html, render} from "lit"
+import {LitElement, html, render} from "lit"
 
 import { getAttrs, globalHTMLAttributes, toAttributes } from "../../model"
 import {EditorViewController} from "."
 import { selectParentNode } from "prosemirror-commands"
 import { filterObject, sameMembers, shallowCompare } from "../../utility"
+
 
 export class WidgetView implements NodeView {
 
@@ -124,6 +125,7 @@ export class WidgetView implements NodeView {
       dom.addEventListener("keydown", e => this.emitWidgetInteract(e), {passive: true})
       dom.addEventListener("click", e => this.handleWidgetClick(e), {passive: true})
       dom.addEventListener("touchstart", e => this.emitWidgetInteract(e), {passive: true})
+      // dom.addEventListener("selectionchange", e => e.preventDefault())
     }
     return dom
   }
@@ -203,10 +205,8 @@ export class WidgetView implements NodeView {
     const window = this.dom.ownerDocument.defaultView!
 		const activeElement = this.view?.host?.shadowRoot?.activeElement
 		const node = this.view.nodeDOM(this.getPos())
-    if(e instanceof window.MouseEvent || e instanceof window.DragEvent) {
-      const clickedElement = e.composedPath()[0] as HTMLElement
-      const isFromSlotContent = e.composedPath().some((el: any) => el?.classList?.contains("slot-content"))
-      return !isFromSlotContent
+    if(e instanceof window.MouseEvent) {
+      return true
     }
 		else if(activeElement === node) {
 			return true
@@ -255,27 +255,6 @@ export class WidgetView implements NodeView {
 
 }
 
-
-export class FigureView implements NodeView {
-  node: Node
-	view: EditorViewController
-	getPos: () => number
-	dom: HTMLElement
-  contentDOM?: HTMLElement 
-
-	constructor(node: Node, view: EditorViewController, getPos: () => number) {
-		this.node = node
-		this.view = view
-    this.getPos = getPos
-    this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node) as HTMLElement
-    const observer = new MutationObserver(() => {
-      selectParentNode(this.view.state, this.view.dispatch, this.view)
-    })
-    observer.observe(this.dom, {subtree: true, attributes: true})
-	}
-
-}
-
 export class AudioView implements NodeView {
   node: Node
 	view: EditorViewController
@@ -287,8 +266,10 @@ export class AudioView implements NodeView {
 		this.node = node
 		this.view = view
     this.getPos = getPos
-    this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node) as HTMLElement
+    this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node, {document: this.view.dom.ownerDocument}) as HTMLElement
 	}
+
+  
 
 }
 
@@ -303,7 +284,7 @@ export class VideoView implements NodeView {
 		this.node = node
 		this.view = view
     this.getPos = getPos
-    this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node) as HTMLElement
+    this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node, {document: this.view.dom.ownerDocument}) as HTMLElement
 	}
 }
 
@@ -318,7 +299,7 @@ export class UnknownElementView implements NodeView {
 		this.node = node
 		this.view = view
     this.getPos = getPos
-    this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node) as HTMLElement
+    this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node, {document: this.view.dom.ownerDocument}) as HTMLElement
 	}
 
 }
@@ -334,7 +315,7 @@ export class DetailsView implements NodeView {
 		this.node = node
 		this.view = view
     this.getPos = getPos
-    this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node) as HTMLDetailsElement
+    this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node, {document: this.view.dom.ownerDocument}) as HTMLDetailsElement
     this.dom.addEventListener("mousedown", e => {
       const el = e.target as HTMLElement
       if(el.tagName === "SUMMARY") {
@@ -365,24 +346,45 @@ export class IFrameView implements NodeView {
 		this.node = node
 		this.view = view
     this.getPos = getPos
-    this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node) as HTMLIFrameElement
+    this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node, {document: this.view.dom.ownerDocument}) as HTMLIFrameElement
     this.dom.addEventListener("focus", () => this.selectFocused())
     this.dom.addEventListener("load", e => {
-      this.dom.contentDocument?.addEventListener("click", () => this.dom.focus())
-      if(this.dom.contentWindow!.location.href === "about:blank") {
-        const img = this.dom.contentDocument!.createElement("img")
-        img.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-world-www" width="64" height="64" viewBox="0 0 24 24" stroke-width="2" stroke="darkgray" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M19.5 7a9 9 0 0 0 -7.5 -4a8.991 8.991 0 0 0 -7.484 4" /><path d="M11.5 3a16.989 16.989 0 0 0 -1.826 4" /><path d="M12.5 3a16.989 16.989 0 0 1 1.828 4" /><path d="M19.5 17a9 9 0 0 1 -7.5 4a8.991 8.991 0 0 1 -7.484 -4" /><path d="M11.5 21a16.989 16.989 0 0 1 -1.826 -4" /><path d="M12.5 21a16.989 16.989 0 0 0 1.828 -4" /><path d="M2 10l1 4l1.5 -4l1.5 4l1 -4" /><path d="M17 10l1 4l1.5 -4l1.5 4l1 -4" /><path d="M9.5 10l1 4l1.5 -4l1.5 4l1 -4" /></svg>'
-        img.setAttribute("style", "position: fixed; top: calc(50% - 32px); left: calc(50% - 32px); user-select: none;")
-        this.dom.contentDocument!.body.appendChild(img)
+      // this.dom.contentDocument?.addEventListener("click", () => this.dom.focus())
+      try {
+        if(this.dom.contentWindow!.location.href === "about:blank") {
+          const img = this.dom.contentDocument!.createElement("img")
+          img.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-world-www" width="64" height="64" viewBox="0 0 24 24" stroke-width="2" stroke="darkgray" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M19.5 7a9 9 0 0 0 -7.5 -4a8.991 8.991 0 0 0 -7.484 4" /><path d="M11.5 3a16.989 16.989 0 0 0 -1.826 4" /><path d="M12.5 3a16.989 16.989 0 0 1 1.828 4" /><path d="M19.5 17a9 9 0 0 1 -7.5 4a8.991 8.991 0 0 1 -7.484 -4" /><path d="M11.5 21a16.989 16.989 0 0 1 -1.826 -4" /><path d="M12.5 21a16.989 16.989 0 0 0 1.828 -4" /><path d="M2 10l1 4l1.5 -4l1.5 4l1 -4" /><path d="M17 10l1 4l1.5 -4l1.5 4l1 -4" /><path d="M9.5 10l1 4l1.5 -4l1.5 4l1 -4" /></svg>'
+          img.setAttribute("style", "position: fixed; top: calc(50% - 32px); left: calc(50% - 32px); user-select: none;")
+          this.dom.contentDocument!.body.appendChild(img)
+        } 
       }
+      catch(err) {}
     })
 	}
 
   selectFocused() {
+    console.log("focus")
     const resolvedPos = this.view.state.doc.resolve(this.getPos())
     const tr = this.view.state.tr.setSelection(new NodeSelection(resolvedPos))
     this.view.dispatch(tr)
   }
+}
+
+export class MathView implements NodeView {
+  node: Node
+	view: EditorViewController
+	getPos: () => number
+	dom: MathMLElement & HTMLElement
+  contentDOM?: MathMLElement & HTMLElement
+
+  
+
+  constructor(node: Node, view: EditorViewController, getPos: () => number) {
+		this.node = node
+		this.view = view
+    this.getPos = getPos
+    this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node, {document: this.view.dom.ownerDocument}) as MathMLElement & HTMLElement
+	}
 }
 
 
@@ -391,5 +393,6 @@ export const nodeViews = {
   "audio": AudioView,
   "video": VideoView,
   "details": DetailsView,
-  "iframe": IFrameView
+  "iframe": IFrameView,
+  // "math": MathView
 }
