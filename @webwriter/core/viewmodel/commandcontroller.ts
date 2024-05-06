@@ -1476,29 +1476,200 @@ export class CommandController implements ReactiveController {
         description: () => msg("Set text style (alignment, indentation, spacing, etc.) of selected elements"),
         category: "editor",
       }),
-      margin: new LayoutCommand(this.host, {
-        id: "margin",
-        label: () => msg("Set element margin"),
+      marginStyle: new LayoutCommand(this.host, {
+        id: "marginStyle",
+        label: () => msg("Set element margins"),
         icon: "box-margin",
-        description: () => msg("Set the margins of the selected element")
+        description: () => msg("Set the margins of the selected elements")
       }),
-      padding: new LayoutCommand(this.host, {
-        id: "padding",
-        label: () => msg("Set element padding"),
+      paddingStyle: new LayoutCommand(this.host, {
+        id: "paddingStyle",
+        label: () => msg("Set element paddings"),
         icon: "box-padding",
-        description: () => msg("Set the padding of the selected element")
+        description: () => msg("Set the paddings of the selected elements")
       }),
-      background: new LayoutCommand(this.host, {
-        id: "background",
+      backgroundStyle: new LayoutCommand(this.host, {
+        id: "backgroundStyle",
         label: () => msg("Set element background"),
         icon: "texture",
-        description: () => msg("Set the background of the selected element")
+        description: () => msg("Set the background of the selected elements")
       }),
-      textAlign: new LayoutCommand(this.host, {
-        id: "textAlign",
-        label: () => msg("Align element text"),
-        icon: "align-center",
-        description: () => msg("Set the text alignment of the selected element")
+      borderStyle: new LayoutCommand(this.host, {
+        id: "borderStyle",
+        label: () => msg("Set element borders"),
+        icon: "border-style-2",
+        description: () => msg("Set the borders of the selected elements")
+      }),
+      animationStyle: new LayoutCommand(this.host, { // + motion path, scroll-driven animations, transitions
+        id: "animationStyle",
+        label: () => msg("Animate elements"),
+        icon: "keyframes",
+        description: () => msg("Animate selected elements using keyframes"),
+        category: "editor",
+        tags: ["layout", "advanced"]
+      }),
+      interactivityStyle: new LayoutCommand(this.host, {
+        id: "interactivityStyle",
+        label: () => msg("Set interactivity of elements"),
+        icon: "hand-click",
+        description: () => msg("Set interactivty options for selected elements"),
+        category: "editor",
+        tags: ["layout", "advanced"]
+      }),
+      boxAlignmentStyle: new LayoutCommand(this.host, { // + vertical align
+        id: "boxAlignmentStyle",
+        label: () => msg("Set box aligment of elements"),
+        icon: "layout-align-left",
+        description: () => msg("Set box alignment of selected elements"),
+        category: "editor",
+        tags: ["layout", "advanced"]
+      }),
+      colorAdjustmentStyle: new LayoutCommand(this.host, {
+        id: "colorAdjustmentStyle",
+        label: () => msg("Set color adjustment of elements"),
+        icon: "sun-moon",
+        description: () => msg("Set color adjustment (light/dark mode) options of selected elements"),
+        tags: ["layout", "advanced"]
+      }),
+      colorStyle: new LayoutCommand(this.host, {
+        id: "colorStyle",
+        label: () => msg("Set text/stroke color of elements"),
+        icon: "text-color",
+        description: () => msg("Set text/stroke color of selected elements"),
+        category: "editor",
+        tags: ["layout", "advanced"]
+      }),
+      blendingStyle: new LayoutCommand(this.host, { // + opacity
+        id: "blendingStyle",
+        label: () => msg("Set blending of elements"),
+        icon: "brightness",
+        description: () => msg("Set blending (e.g. opacity) of selected elements"),
+        category: "editor",
+        tags: ["layout", "advanced"]
+      }),
+      displayStyle: new LayoutCommand(this.host, { // + flex/grid/table container options
+        id: "displayStyle",
+        label: () => msg("Set display mode of elements"),
+        icon: "layout",
+        description: () => msg("Set the display mode of the selected elements"),
+        category: "editor",
+        tags: ["layout", "advanced"]
+      }),
+      filterStyle: new LayoutCommand(this.host, {
+        id: "filterStyle",
+        label: () => msg("Apply filters to elements"),
+        icon: "filters",
+        description: () => msg("Apply filters (blur, invert, etc.) to the selected elements"),
+        category: "editor",
+        tags: ["layout", "advanced"]
+      }),
+      flexStyle: new LayoutCommand(this.host, {
+        // only on flex children
+        id: "flexStyle",
+        label: () => msg("Set flex behaviour of elements"),
+        icon: "versions",
+        description: () => msg("Set flex behaviour (grow, shrink, wrap, order) of selected elements"),
+        category: "editor",
+        tags: ["layout", "advanced"]
+      }),
+      fontStyle: new LayoutCommand(this.host, {
+        id: "fontStyle",
+        label: () => msg("Set typography of elements"),
+        icon: "typography",
+        description: () => msg("Set typography (font family, size, etc.) of selected elements"),
+        category: "editor",
+        tags: ["layout", "advanced"]
+      }),
+      fragmentationStyle: new LayoutCommand(this.host, { // + paged media
+        id: "fragmentationStyle",
+        label: () => msg("Set fragmentation of elements"),
+        icon: "section",
+        description: () => msg("Set fragmentation (behaviour on page/region/column breaks) of selected elements"),
+        category: "editor",
+        tags: ["layout", "advanced"]
+      }),
+      gridStyle: new LayoutCommand(this.host, {
+        // only on grid children
+        id: "gridStyle",
+        label: () => msg("Set grid options of elements"),
+        icon: "grid-4x4",
+        description: () => msg("Set grid options (row, column, etc.) of selected elements"),
+        category: "editor",
+        tags: ["layout", "advanced"]
+      }),
+      imageStyle: new LayoutCommand(this.host, {
+        // only on replaced elements
+        id: "imageStyle",
+        label: () => msg("Set image sizing options of elements"),
+        icon: "picture-in-picture-off",
+        description: () => msg("Set image sizing options of selected elements"),
+        category: "editor",
+        tags: ["layout", "advanced"]
+      }),
+      listStyle: new LayoutCommand(this.host, { // + counters
+        // only on ul, ol, li
+        id: "listStyle",
+        label: () => msg("Set list options of elements"),
+        icon: "list-details",
+        description: () => msg("Set list options of selected elements"),
+        category: "editor",
+        tags: ["layout", "advanced"]
+      }),
+      columnStyle: new LayoutCommand(this.host, {
+        id: "columnStyle",
+        label: () => msg("Column break elements"),
+        icon: "columns",
+        description: () => msg("Apply column layout to selected elements"),
+        category: "editor",
+        tags: ["layout", "advanced"]
+      }),
+      overflowStyle: new LayoutCommand(this.host, { // + overscroll, containment, scrollbars styling
+        id: "overflowStyle",
+        label: () => msg("Set overflow behaviour of elements"),
+        icon: "layers-difference",
+        description: () => msg("Set overflow behaviour of selected elements"),
+        category: "editor",
+        tags: ["layout", "advanced"]
+      }),
+      positionStyle: new LayoutCommand(this.host, {
+        id: "positionStyle",
+        label: () => msg("Set positioning of elements"),
+        icon: "box-align-bottom-right",
+        description: () => msg("Set positioning of selected elements"),
+        category: "editor",
+        tags: ["layout", "advanced"]
+      }),
+      shapeStyle: new LayoutCommand(this.host, { // + mask
+        id: "shapeStyle",
+        label: () => msg("Shape elements"),
+        icon: "triangle-square-circle",
+        description: () => msg("Set shape of selected elements"),
+        category: "editor",
+        tags: ["layout", "advanced"]
+      }),
+      transformStyle: new LayoutCommand(this.host, {
+        id: "transformStyle",
+        label: () => msg("2D/3D transform elements"),
+        icon: "transform-point",
+        description: () => msg("Apply 2D or 3D transformations to selected elements"),
+        category: "editor",
+        tags: ["layout", "advanced"]
+      }),
+      writingModeStyle: new LayoutCommand(this.host, { // + ruby layout
+        id: "writingModeStyle",
+        label: () => msg("Set writing mode of elements"),
+        icon: "text-direction-ltr",
+        description: () => msg("Set writing mode options of selected elements"),
+        category: "editor",
+        tags: ["layout", "advanced"]
+      }),
+      miscellaneousStyle: new LayoutCommand(this.host, { // --custom and all
+        id: "miscellaneousStyle",
+        label: () => msg("Set other style options of elements"),
+        icon: "dots-circle-horizontal",
+        description: () => msg("Set other style options of selected elements"),
+        category: "editor",
+        tags: ["layout", "advanced"]
       }),
       toggleSourceMode: new Command(this.host, {
         id: "toggleSourceMode",
