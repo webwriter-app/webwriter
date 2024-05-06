@@ -1,0 +1,59 @@
+@top PropertyExpression { expression }
+
+@precedence {expr @left}
+
+expression { !expr value (w_ value)* }
+
+value { literal | ident | FunctionCall }
+
+literal { String | Number | Dimension | Percentage | Color}
+
+String { string }
+Number { number }
+Dimension { number unit }
+Percentage { number "%" }
+Color { hex-color | named-color }
+
+ident { Ident | DashedIdent | Initial | Inherit | Revert | Unset}
+
+Ident { identifier }
+DashedIdent { dashed-ident }
+Initial { @specialize<identifier, "initial"> }
+Inherit { @specialize<identifier, "inherit"> }
+Revert { @specialize<identifier, "revert"> }
+Unset { @specialize<identifier, "unset"> }
+FunctionCall { Name { identifier } "(" commasep<expression> ")" }
+
+commasep<value> { "" | (value ("," value)*) }
+
+@skip { w }
+
+@tokens {
+  @precedence { hex-color, named-color, number, identifier }
+  @precedence { w_, w }
+  w { @whitespace }
+  w_ { @whitespace+ }
+  escaped-char { "\\"$[.]}
+  hex-digit { $[0-9A-Fa-f] }
+  unicode-point { "\\" hex-digit hex-digit? hex-digit? hex-digit? hex-digit? hex-digit? }
+  identifier { $[a-zA-Z_] ($[a-zA-Z0-9_\-] | escaped-char | unicode-point)* }
+  unit { $[a-zA-Z] $[a-zA-Z]* }
+  dashed-ident {  "--" identifier }
+  integer { ("+" | "-")? @digit @digit* }
+  float { ("+" | "-")? @digit* "." @digit @digit* }
+  scientific { (integer | float) "e" ("+" | "-")? @digit+}
+  number { integer | float | scientific }
+  hex-color { "#" (hex-digit hex-digit hex-digit) | (hex-digit hex-digit hex-digit hex-digit) | (hex-digit hex-digit hex-digit hex-digit hex-digit hex-digit) | (hex-digit hex-digit hex-digit hex-digit hex-digit hex-digit hex-digit hex-digit) }
+  named-color { "aliceblue" | "antiquewhite" | "aqua" | "aquamarine" | "azure" | "beige" | "bisque" | "black" | "blanchedalmond" | "blue" | "blueviolet" | "brown" | "burlywood" | "cadetblue" | "chartreuse" | "chocolate" | "coral" | "cornflowerblue" | "cornsilk" | "crimson" | "cyan" | "darkblue" | "darkcyan" | "darkgoldenrod" | "darkgray" | "darkgreen" | "darkgrey" | "darkkhaki" | "darkmagenta" | "darkolivegreen" | "darkorange" | "darkorchid" | "darkred" | "darksalmon" | "darkseagreen" | "darkslateblue" | "darkslategray" | "darkslategrey" | "darkturquoise" | "darkviolet" | "deeppink" | "deepskyblue" | "dimgray" | "dimgrey" | "dodgerblue" | "firebrick" | "floralwhite" | "forestgreen" | "fuchsia" | "gainsboro" | "ghostwhite" | "goldenrod" | "gold" | "gray" | "green" | "greenyellow" | "grey" | "honeydew" | "hotpink" | "indianred" | "indigo" | "ivory" | "khaki" | "lavenderblush" | "lavender" | "lawngreen" | "lemonchiffon" | "lightblue" | "lightcoral" | "lightcyan" | "lightgoldenrodyellow" | "lightgray" | "lightgreen" | "lightgrey" | "lightpink" | "lightsalmon" | "lightseagreen" | "lightskyblue" | "lightslategray" | "lightslategrey" | "lightsteelblue" | "lightyellow" | "lime" | "limegreen" | "linen" | "magenta" | "maroon" | "mediumaquamarine" | "mediumblue" | "mediumorchid" | "mediumpurple" | "mediumseagreen" | "mediumslateblue" | "mediumspringgreen" | "mediumturquoise" | "mediumvioletred" | "midnightblue" | "mintcream" | "mistyrose" | "moccasin" | "navajowhite" | "navy" | "oldlace" | "olive" | "olivedrab" | "orange" | "orangered" | "orchid" | "palegoldenrod" | "palegreen" | "paleturquoise" | "palevioletred" | "papayawhip" | "peachpuff" | "peru" | "pink" | "plum" | "powderblue" | "purple" | "rebeccapurple" | "red" | "rosybrown" | "royalblue" | "saddlebrown" | "salmon" | "sandybrown" | "seagreen" | "seashell" | "sienna" | "silver" | "skyblue" | "slateblue" | "slategray" | "slategrey" | "snow" | "springgreen" | "steelblue" | "tan" | "teal" | "thistle" | "tomato" | "turquoise" | "violet" | "wheat" | "white" | "whitesmoke" | "yellow" | "yellowgreen" | "transparent" | "currentColor" }
+}
+
+@local tokens {
+  stringEndSingle { "'" }
+  stringEndDouble { '"' }
+  stringEscape { "\\" _ }
+  @else stringContent
+}
+
+@skip {} {
+  string { ("'" (stringContent | stringEscape)* stringEndSingle) | ('"' (stringContent | stringEscape)* stringEndDouble) }
+}

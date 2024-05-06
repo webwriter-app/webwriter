@@ -3,6 +3,7 @@ import { fromZodError } from "zod-validation-error";
 import { Package } from "./packageschema";
 
 export * from "./contentexpression"
+export * from "./valuedefinition"
 export * from "./resourceschema"
 export * from "./packageschema"
 export * from "./datatypes"
