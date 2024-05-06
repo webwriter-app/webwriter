@@ -6,8 +6,8 @@ import { ifDefined } from "lit/directives/if-defined.js"
 import { EditorState, Command as PmCommand } from "prosemirror-state"
 import {Directive, PartInfo, directive, ElementPart} from "lit/directive.js"
 
-import { Package, watch } from "../../model"
-import { unscopePackageName, prettifyPackageName, camelCaseToSpacedCase } from "../../utility"
+import { MemberSettings, Package, watch } from "../../model"
+import { unscopePackageName, prettifyPackageName, camelCaseToSpacedCase, filterObject } from "../../utility"
 import { SlDropdown, SlInput, SlMenu, SlPopup, SlProgressBar } from "@shoelace-style/shoelace"
 import { Command } from "../../viewmodel"
 import { App, PackageForm } from ".."
@@ -133,7 +133,6 @@ export class Palette extends LitElement {
       grid-auto-rows: 40px;
       max-width: 420px;
       z-index: 10000;
-			padding: 0 10px;
       margin-left: auto;
       padding-bottom: 5px;
       gap: 5px;
@@ -141,6 +140,9 @@ export class Palette extends LitElement {
       max-height: 100%;
       overflow-y: auto;
       position: relative;
+      scrollbar-gutter: stable;
+      scrollbar-width: thin;
+      box-sizing: border-box;
     }
 
     .inline-commands-wrapper {
@@ -463,10 +465,12 @@ export class Palette extends LitElement {
     .package-card:not(.multiple) .dropdown-trigger {
       display: none;
     }
-    
 
     .other-insertables-menu {
       padding: 0;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      max-height: var(--auto-size-available-height);
 
       & .applied-theme::part(label) {
         font-weight: bolder;
@@ -524,8 +528,12 @@ export class Palette extends LitElement {
       background: var(--sl-color-gray-100);
     }
 
-    .error-content {
+    .error-pane {
       font-size: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .error-content {
       padding-right: 1ch;
     }
 
@@ -556,6 +564,8 @@ export class Palette extends LitElement {
 				padding-right: 0;
         max-width: unset;
         overflow-x: scroll;
+        scrollbar-width: thin;
+        padding-left: 5px;
         // overflow-y: hidden;
       }
 
@@ -597,9 +607,7 @@ export class Palette extends LitElement {
       }
 
       #package-search:not(:focus-within)[data-invalid] {
-        aspect-ratio: 1/1;
-        width: unset !important;
-        height: 100%;
+        width: 3ch !important;
       }
       
       #package-search:is(:focus-within, :not([data-invalid])) {
@@ -730,15 +738,17 @@ export class Palette extends LitElement {
   dropdownOpen: string | null = null
 
 	BlockCard = (pkg: Package) => {
-    const {watching, name, version, installed, outdated, localPath} = pkg
-    const adding = !!this.app.store.packages.adding[name]
-    const removing = !!this.app.store.packages.removing[name]
-    const updating = !!this.app.store.packages.updating[name]
+    const {watching, name, version, installed, outdated, localPath, packageEditingSettings} = pkg
+    const {packages} = this.app.store
+    const adding = !!packages.adding[name]
+    const removing = !!packages.removing[name]
+    const updating = !!packages.updating[name]
     const changing = adding || removing || updating
     const found = name in this.searchResults
-    const error = this.app.store.packages.getPackageIssues(pkg.id).length
-    const insertables = this.app.store.packages.insertables[pkg.id]
-    const {name: firstName, label: firstLabel} = insertables[0] ?? {}
+    const error = packages.getPackageIssues(pkg.id).length
+    const insertables = Object.values(filterObject(packages.members[pkg.id], (_, ms) => !ms.uninsertable) as unknown as Record<string, MemberSettings>)
+    const pkgEditingSettings = !packageEditingSettings? undefined: {name: undefined, label: undefined, ...packageEditingSettings}
+    const {name: firstName, label: firstLabel} =  pkgEditingSettings ?? insertables[0] ?? {}
     const otherInsertables = insertables.slice(1)
     return html`<sl-card id=${pkg.id} @contextmenu=${(e: any) => {this.contextPkg = pkg; e.preventDefault()}} data-package-name=${name} @mouseenter=${() => this.handleMouseInWidgetAdd(pkg)} @mouseleave=${() => {this.handleMouseOutWidgetAdd(unscopePackageName(name))}} class=${classMap({"package-card": true, "block-card": true, installed: !!installed, error, adding, removing, updating, outdated, watching: !!watching, found, local: !!localPath, multiple: insertables.length > 1})} ?inert=${changing}>
 		<sl-tooltip placement="left-start" class="package-tooltip" hoist trigger="hover">
@@ -753,8 +763,8 @@ export class Palette extends LitElement {
         <ww-button title=${msg("Update this widget package")} class="manage update" variant="icon" icon="download" @click=${(e: any) => {this.emitUpdateWidget(pkg.name); e.stopPropagation()}}></ww-button>
         <ww-button title=${pkg.installed? msg("Remove this widget package"): msg("Install this widget package")} class="manage pin" variant="icon" icon=${pkg.installed? "trash": "download"} @click=${(e: any) => {!pkg.installed? this.emitAddWidget(pkg.name): this.emitRemoveWidget(pkg.name); e.stopPropagation()}}></ww-button>
       </aside>
-      <ww-button variant="icon" class="dropdown-trigger" icon=${!this.dropdownOpen? "chevron-down": "chevron-up"} @click=${(e: any) => this.dropdownOpen = this.dropdownOpen? null: pkg.id} @mouseenter=${() => this.dropdownOpen = pkg.id}></ww-button>
-      <sl-popup flip anchor=${pkg.id} class="other-insertables" strategy="fixed" placement="bottom-end" sync="width" ?active=${this.dropdownOpen === pkg.id}>
+      <ww-button variant="icon" class="dropdown-trigger" icon=${this.dropdownOpen !== pkg.id? "chevron-down": "chevron-up"} @click=${(e: any) => this.dropdownOpen = this.dropdownOpen? null: pkg.id} @mouseenter=${() => this.dropdownOpen = pkg.id}></ww-button>
+      <sl-popup flip anchor=${pkg.id} class="other-insertables" strategy="fixed" placement="bottom-end" sync="width" ?active=${this.dropdownOpen === pkg.id} auto-size="both" auto-size-padding=${1}>
         <sl-menu class="other-insertables-menu">
           ${otherInsertables.map(v => html`<sl-menu-item class=${classMap({"applied-theme": pkg.id + v.name.slice(1) === this.app.store.document.themeName})} @click=${() => this.handleClickCard(pkg, v.name)}>
             ${v.label!._}
@@ -822,7 +832,7 @@ export class Palette extends LitElement {
       <sl-input id="package-search" required type="search" size="small" @sl-input=${this.handleSearchInput} @focus=${() => this.managing = true} clearable>
         <sl-icon slot="prefix" name="search" @click=${(e: any) => this.packageSearch.focus()}></sl-icon>
       </sl-input>
-      <ww-button title=${msg("Manage packages")} .issues=${this.app.store.packages.managementIssues} id="package-button" variant="icon" icon="packages" @click=${() => {this.managing = !this.managing; this.managing && this.app.store.packages.load()}}>
+      <ww-button title=${msg("Manage packages")} .issues=${this.app.store.packages.managementIssues} id="package-button" variant="icon" icon="packages" @click=${(e: any) => {this.managing = !this.managing; this.managing && this.app.store.packages.load()}}>
         ${!this.app.store.packages.loading? null: html`
           <sl-spinner id="packages-spinner"></sl-spinner>
         `}
@@ -930,7 +940,13 @@ export class Palette extends LitElement {
     try {
       const pkgKeys = ["name", "license", "version", "author", "keywords"] as const
       const localPath = this.packageForm.localPath
-      const pkg = await this.app.store.packages.readLocal(localPath)
+      let pkg: Package
+      try {
+        pkg = await this.app.store.packages.readLocal(localPath)
+      }
+      catch(err) {
+        console.error(err)
+      }
       const localValue = {} as any
       pkgKeys.forEach(key => {
         localValue[key] = pkg[key] ?? "" as any
@@ -973,12 +989,28 @@ export class Palette extends LitElement {
   ErrorDialog() {
     const issues = this.errorPkg? this.app.store.packages.getPackageIssues(this.errorPkg.id): []
     return html`<sl-dialog ?open=${!!this.errorPkg} @sl-after-hide=${() => this.errorPkg = undefined} label=${msg("Error importing ") + this.errorPkg?.name ?? ""}>
-      <pre class="error-content">${issues.map(issue => issue.cause)}</pre>
+      ${issues.map(issue => html`
+        <div class="error-pane">
+          <b>${issue.message}</b>
+          <pre class="error-location">${issue.stack}</pre>
+          <pre class="error-content">${issue.cause}</pre>
+        </div>
+      `)}
+      <i style="float: right; font-size: 0.75rem;">${msg("See developer tools for more details")}</i>
     </sl-dialog>`
   }
 
   protected firstUpdated() {
-    this.app.activeEditor?.addEventListener("change", () => this.managing = false)
+    this.app.addEventListener("keydown", e => {
+      if(!e.composedPath().includes(this)) {
+        this.managing = false
+      }
+    })
+    this.app.addEventListener("mousedown", e => {
+      if(!e.composedPath().includes(this)) {
+        this.managing = false
+      }
+    })
   }
 
 	render() {
