@@ -88,7 +88,9 @@ export class WidgetOptions extends LitElement {
       min=${ifDefined((decl as any).min)}
       max=${ifDefined((decl as any).max)}
       step=${ifDefined((decl as any).step)}
-    ></sl-input>`
+    >
+      <sl-icon-button slot="suffix" name="corner-down-left"></sl-icon-button>
+    </sl-input>`
   }
 
   ObjectOption(attr: string, decl: ObjectOptionDeclaration) {
