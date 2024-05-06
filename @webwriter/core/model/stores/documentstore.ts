@@ -55,6 +55,7 @@ export class DocumentStore implements Resource {
   editorState: EditorStateWithHead
   codeState: CmEditorState | null = null
   lastSavedState: EditorStateWithHead
+  initialState: EditorStateWithHead
 
   ioState: "idle" | "saving" | "loading" = "idle"
 
@@ -66,8 +67,7 @@ export class DocumentStore implements Resource {
     this.bundle = bundle
     this.Path = Path
     this.FS = FS
-    this.editorState = this.lastSavedState = editorState ?? createEditorState
-    ({schema})
+    this.editorState = this.lastSavedState = this.initialState = editorState ?? createEditorState({schema})
     this.url = url ?? "memory:0"
   }
 
@@ -79,15 +79,19 @@ export class DocumentStore implements Resource {
 
   get changed() {
     if(this.codeState) {
-      const lengthChanged = this.lastSavedCodeState.doc.length !== this.codeState.doc.length
-      return lengthChanged || !this.lastSavedCodeState.doc.eq(this.codeState.doc) || !this.lastSavedState.head$.doc.eq(this.editorState.head$.doc)
+      return this.lastSavedCodeState.doc.length !== this.codeState.doc.length
+        || !this.lastSavedCodeState.doc.eq(this.codeState.doc)
+        || !this.lastSavedState.head$.doc.eq(this.editorState.head$.doc)
     }
     else {
-      const lengthChanged = this.lastSavedState.doc.nodeSize !== this.editorState.doc.nodeSize
-      const bodyChanged = !this.lastSavedState.doc.eq(this.editorState.doc)
-      const headChanged = !this.lastSavedState.head$.doc.eq(this.editorState.head$.doc)
-      return lengthChanged || bodyChanged || headChanged 
+      return this.lastSavedState.doc.nodeSize !== this.editorState.doc.nodeSize
+        || !this.lastSavedState.doc.eq(this.editorState.doc) 
+        || !this.lastSavedState.head$.doc.eq(this.editorState.head$.doc) 
     }
+  }
+
+  get sameAsInitial() {
+    return JSON.stringify(this.editorState.doc) === JSON.stringify(this.initialState.doc)
   }
 
   get lastSavedCodeState() {
@@ -119,8 +123,7 @@ export class DocumentStore implements Resource {
     const doc = newParser.parse(oldSerializer.serializeNode(this.editorState.doc))
     const selection = new TextSelection(doc.resolve(0))
     const newState = createEditorState({...this.editorState, schema, doc, selection})
-    const defaultState = createEditorState({schema: this.editorState.schema})
-    if(this.editorState.doc.eq(defaultState.doc)) {
+    if(this.sameAsInitial) {
       this.lastSavedState = newState
     }
     this.editorState = newState
