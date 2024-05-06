@@ -48,7 +48,7 @@ export class Layout extends LitElement {
   static styles = css`
     :host {
       display: grid;
-      grid-template-columns: 1fr 120px minmax(auto, 600px) 120px 1fr;
+      grid-template-columns: 16px 1fr 80px minmax(auto, 680px) 80px 1fr 16px;
       grid-template-rows: minmax(50px, max-content) max-content 1fr;
       align-items: flex-start;
       height: 100vh;
@@ -58,13 +58,13 @@ export class Layout extends LitElement {
     
     slot[name=header-left]::slotted(*) {
       min-height: 50px;
-      grid-column: 1 / 3;
+      grid-column: 2 / 4;
       grid-row: 1;
     }
 
     nav {
       min-height: 50px;
-      grid-column: 3;
+      grid-column: 4;
       grid-row: 1;
       position: relative;
       margin-bottom: -1px;
@@ -77,7 +77,7 @@ export class Layout extends LitElement {
     slot[name=header-right]::slotted(*) {
       min-height: 50px;
       overflow-y: visible;
-      grid-column: 4 / 6;
+      grid-column: 5 / 7;
       grid-row: 1;
     }
 
@@ -86,7 +86,7 @@ export class Layout extends LitElement {
     }
 
     slot[name=main]::slotted(#initializingPlaceholder) {
-      grid-column: 1 / 6;
+      grid-column: 1 / 8;
       grid-row: 1 / 5;
     }
 
@@ -98,8 +98,9 @@ export class Layout extends LitElement {
     }
 
     slot[name=fold]::slotted(*) {
+      box-sizing: border-box;
       grid-row: 2;
-      grid-column: 2 / 5; 
+      grid-column: 3 / 6; 
       background: white;
       // border: 1px solid lightgray;
       // border-top: 14px solid var(--sl-color-gray-100);
@@ -129,7 +130,7 @@ export class Layout extends LitElement {
     }
 
     :host([hideasides]) main {
-      grid-column: 1 / 5;
+      grid-column: 2 / 6;
     }
   `
 
