@@ -1,7 +1,6 @@
 import {z} from "zod"
 
 import { Person, License, SemVer, SemVerRange } from "../datatypes";
-import { ValueDefinition } from "../valuedefinition";
 import { filterObject } from "../../../utility";
 
 export * from "./customelementsmanifest"
@@ -146,8 +145,10 @@ type SnippetExportKey = `./snippets/${string}`
 const SnippetExportKey = z.string().startsWith("./snippets/")
 type ThemeExportKey = `./themes/${string}`
 const ThemeExportKey = z.string().startsWith("./themes/")
-type ExportKey = WidgetExportKey | SnippetExportKey | ThemeExportKey
-const ExportKey = WidgetExportKey.or(SnippetExportKey).or(ThemeExportKey)
+type PackageExportKey = "."
+const PackageExportKey = z.literal(".")
+type ExportKey = WidgetExportKey | SnippetExportKey | ThemeExportKey | PackageExportKey
+const ExportKey = WidgetExportKey.or(SnippetExportKey).or(ThemeExportKey).or(PackageExportKey)
 type CSSCustomPropertyName = `--${string}`
 const CSSCustomPropertyName = z.string().startsWith("--")
 
@@ -166,9 +167,9 @@ export const WidgetEditingSettings = z.object({
   content: z.string().optional(), // TODO: Validate content expressions in pkg
   marks: z.string().optional(),
   parts: z.array(z.string()).optional(),
-  cssCustomProperties: z.record(CSSCustomPropertyName, ValueDefinition).optional(),
+  cssCustomProperties: z.record(CSSCustomPropertyName, z.string()).optional(),
   label: z.record(z.string()).optional(),
-  noDefaultSnippet: z.boolean().optional()
+  uninsertable: z.boolean().optional()
 })
 
 export type SnippetEditingSettings = z.infer<typeof SnippetEditingSettings>
@@ -299,7 +300,7 @@ export class Package {
   }
 
   get id() {
-    return `${this.name}@${this.version}`
+    return `${this.name}@${this.version}${this.localPath? "-local": ""}`
   }
 
   get nameParts() {
@@ -339,7 +340,7 @@ export class Package {
   }
 
   get packageEditingSettings(): EditingSettings | undefined {
-    return (this?.exports as any ?? {})["."]
+    return (this?.editingConfig as any ?? {})["."]
   }
 
   extend(extraProperties: Partial<Package>) {
