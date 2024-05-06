@@ -1312,8 +1312,9 @@ export class CommandController implements ReactiveController {
         label: () => msg("Set font size"),
         icon: "letter-case",
         description: () => msg("Sets the selection's font size"),
-        run: (host, {value}) => host.activeEditor?.exec(toggleOrUpdateMark("span", {style: `font-size: ${value}`})),
-        value: host => ["14pt"] || getStyleValues(host.activeEditor?.pmEditor.state!, host.activeEditor?.pmEditor as any, "font-size")
+        run: (host, {value}) => host.activeEditor?.exec(toggleOrUpdateMark("_fontsize", {value})),
+        value: host => getStyleValues(host.activeEditor?.pmEditor.state!, host.activeEditor?.pmEditor as any, "font-size"),
+        active: () => !!this.host.store.document.activeMarkMap["_fontsize"]
       }),
       fontFamily:  new MarkCommand(this.host, {
         id: "fontFamily",
@@ -1321,7 +1322,9 @@ export class CommandController implements ReactiveController {
         label: () => msg("Set font family"),
         icon: "typography",
         description: () => msg("Sets the selection's font family"),
-        value: host => ["Arial"] || getStyleValues(host.activeEditor?.pmEditor.state!, host.activeEditor?.pmEditor as any, "font-family")
+        run: (host, {value}) => host.activeEditor?.exec(toggleOrUpdateMark("_fontfamily", {value})),
+        value: host => getStyleValues(host.activeEditor?.pmEditor.state!, host.activeEditor?.pmEditor as any, "font-family"),
+        active: () => !!this.host.store.document.activeMarkMap["_fontfamily"]
       }),
       setTextColor: new Command(this.host, {
         id: "setTextColor",
@@ -1329,9 +1332,10 @@ export class CommandController implements ReactiveController {
         label: () => msg("Set text color"),
         icon: "letter-a",
         description: () => msg("Sets the color of the selected text"),
-        run: (host, options) => host.activeEditor?.exec(toggleOrUpdateMark("textBackground", options)),
+        run: (host, {value}) => host.activeEditor?.exec(toggleOrUpdateMark("_color", {value})),
         category: "editor",
-        value: host => (getActiveMarks(host.activeEditor?.editorState!).find(mark => mark.type.name === "textColor")?.attrs.value) ?? "#000000"
+        value: () => "#000000",
+        active: () => !!this.host.store.document.activeMarkMap["_color"]
       }),
       setTextBackground: new Command(this.host, {
         id: "setTextBackground",
@@ -1339,10 +1343,28 @@ export class CommandController implements ReactiveController {
         label: () => msg("Set text background"),
         icon: "highlight",
         description: () => msg("Sets the background color of the selected text"),
-        run: (host, options) => host.activeEditor!.exec(toggleOrUpdateMark("textBackground", options)),
+        run: (host, {value}) => host.activeEditor?.exec(toggleOrUpdateMark("_background", {value})),
         category: "editor",
-        value: host => (getActiveMarks(host.activeEditor!.editorState).find(mark => mark.type.name === "textBackground")?.attrs.value) ?? "#fff000"
-      }),/*
+        value: host => "#fff000",
+        active: () => !!this.host.store.document.activeMarkMap["_background"]
+      }),
+      clearFormatting: new Command(this.host, {
+        id: "clearFormatting",
+        label: () => msg("Clear formatting"),
+        icon: "clear-formatting",
+        description: () => msg("Removes all text formatting from the selection"),
+        run: (host) => {
+          const state = host.activeEditor?.pmEditor.state
+          if(state) {
+            const {from, to} = state.selection
+            const tr = state.tr.removeMark(from, to).setStoredMarks(null)
+            host.activeEditor?.pmEditor.dispatch(tr)
+          }
+        },
+        category: "editor",
+        disabled: host => (getActiveMarks(host.activeEditor!.editorState).length === 0) || (host.activeEditor!.editorState.selection.empty && !host.activeEditor!.editorState.storedMarks?.length)
+      }),
+      /*
       incrementFontSize: new Command(this.host, {
         id: "incrementFontSize",
         tags: ["font", "color"],
