@@ -102,7 +102,7 @@ export const basePlugin = () => ({
       whitespace: "pre"
     }),
     div: HTMLElementSpec({
-      tag: "div",
+      tag: "div:not(.ww-nodeview)",
       group: "flow palpable",
       content: "flow*"
     }),
