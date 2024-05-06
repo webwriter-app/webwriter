@@ -338,7 +338,7 @@ class MarkCommand<SPEC extends CommandSpec = CommandSpec> extends Command<SPEC> 
   
   run(options?: any, e?: Event) {
     const {exec} = this.host.activeEditor ?? {exec: () => {}}
-    return super.run(options, e, (host, options) => exec(toggleOrUpdateMark(this.id, options)))
+    return super.run(options, e, this.spec.run ?? ((host, options) => exec(toggleOrUpdateMark(this.id, options))))
   }
   get active() {
     return this.spec.active? this.spec.active(this.host): !!this.host.store.document.activeMarkMap[this.id]
@@ -431,6 +431,10 @@ export class CommandController implements ReactiveController {
 
   @Memoize() get fontSizeCommand() {
     return this.queryCommands("fontSize")[0]
+  }
+
+  @Memoize() get clearFormattingCommand() {
+    return this.queryCommands("clearFormatting")[0]
   }
 
   @Memoize() get documentCommands() {
