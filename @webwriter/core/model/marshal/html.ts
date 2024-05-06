@@ -77,7 +77,7 @@ export async function docToBundle(doc: Node, head: Node, bundle: Environment["bu
   }
 
   // Embed media elements
-  const mediaElements = html.body.querySelectorAll(":is(img, source, embed)") as NodeListOf<HTMLSourceElement | HTMLImageElement>
+  const mediaElements = html.body.querySelectorAll(":is(img, source, embed, audio, video)") as NodeListOf<HTMLSourceElement | HTMLImageElement>
   for(const [i, el] of Array.from(mediaElements).entries()) {
     if(!el.src || !el.src.startsWith("blob:")) {
       continue
