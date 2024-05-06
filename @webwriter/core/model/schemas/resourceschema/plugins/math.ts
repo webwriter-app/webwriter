@@ -31,15 +31,15 @@ export function MathMLElementSpec({tag, content, marks, group, inline, atom, att
     inline,
     atom,
     attrs: {...globalMathMLAttributes, ...attrs},
-    selectable,
+    selectable: selectable ?? false,
     code,
     whitespace,
     definingAsContext,
     definingForContent,
     defining,
     isolating,
-    toDOM: toDOM ?? (n => [tag, toAttributes(n), ...(content? [0]: [])]),
-    parseDOM: parseDOM ?? [{tag, getAttrs, context: "math//"}],
+    toDOM: toDOM ?? (n => [`http://www.w3.org/1998/Math/MathML ${tag}`, toAttributes(n), ...(content? [0]: [])]),
+    parseDOM: parseDOM ?? [{tag, getAttrs, context: "mathInline//|mathBlock//"}],
     toDebugString,
     leafText,
     ...rest
@@ -47,10 +47,10 @@ export function MathMLElementSpec({tag, content, marks, group, inline, atom, att
 }
 
 const MATHML_TAGS = [
+  "mtext",
   "annotation",
   "annotation-xml",
   "maction",
-  "math",
   "merror",
   "mfrac",
   "mi",
@@ -72,7 +72,6 @@ const MATHML_TAGS = [
   "msup",
   "mtable",
   "mtd",
-  "mtext",
   "mtr",
   "munder",
   "munderover",
@@ -86,10 +85,26 @@ const MATHML_TAGS_RADICAL = ["mroot", "msqrt"]
 const MATHML_CONTENT = "(" + MATHML_TAGS
   .filter(tag => !["math", "annotation", "annotation-xml"].includes(tag))
   .map(tag => tag + "MathML")
-  .join("|") + ")*"
+  .join("|") + ")+"
 
 export const mathPlugin = () => ({
   nodes: {
+    "mathInline": HTMLElementSpec({
+      tag: "math",
+      group: "phrasing",
+      content: MATHML_CONTENT,
+      atom: true,
+      inline: true,
+      parseDOM: [{tag: "math:not([display=block])", getAttrs}]
+    }),
+    "mathBlock": HTMLElementSpec({
+      tag: "math",
+      group: "flow",
+      content: MATHML_CONTENT,
+      atom: true,
+      toDOM: (n => ["math", {...toAttributes(n), display: "block"}, 0]),
+      parseDOM: [{tag: "math[display=block]", getAttrs}],
+    }),
     "annotationMathML": MathMLElementSpec({
       tag: "annotation",
       content: "text?",
@@ -99,7 +114,7 @@ export const mathPlugin = () => ({
     }),
     "annotationxmlMathML": MathMLElementSpec({ // deviating from naming convention: "-" is not valid in Prosemirror Node Names
       tag: "annotation-xml",
-      content: `(unknownElement | flow)*`,
+      content: `flow*`,
       attrs: {
         encoding: {default: undefined}
       }
@@ -109,14 +124,6 @@ export const mathPlugin = () => ({
       attrs: {
         actiontype: {default: undefined},
         selection: {default: undefined},
-      }
-    }),
-    "math": MathMLElementSpec({
-      tag: "math",
-      group: "flow",
-      content: MATHML_CONTENT,
-      attrs: {
-        display: {default: undefined}
       }
     }),
     "merrorMathML": MathMLElementSpec({
