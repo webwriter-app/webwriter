@@ -10,20 +10,12 @@ jobs:
         include:
           - platform: 'macos-latest'
             args: '--target aarch64-apple-darwin'
-            os: 'darwin'
-            cpu: 'arm64'
           - platform: 'macos-latest'
             args: '--target x86_64-apple-darwin'
-            os: 'darwin'
-            cpu: 'x64'
           - platform: 'ubuntu-22.04'
             args: ''
-            os: "linux"
-            cpu: 'x64'
           - platform: 'windows-latest'
             args: ''
-            os: "win32"
-            cpu: 'x64'
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout repository
@@ -57,18 +49,11 @@ jobs:
           Remove-Item -path certificate -include tempCert.txt
           Import-PfxCertificate -FilePath certificate/certificate.pfx -CertStoreLocation Cert:\CurrentUser\My -Password (ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText)
       
-      - name: Install dev dependencies
-        run: npm install --only=dev
+      - name: Install web dependencies
+        run: npm install
 
       - name: Run prebuild actions (static resources, sidecar binaries, app icon)
         run: npm run prebuild-desktop
-
-
-      - name: Install web dependencies
-        run: |
-          npm config set os=${{ matrix.os }}
-          npm config set cpu=${{ matrix.cpu }}
-          npm install
 
       - name: Build web
         run: npm run build-core
