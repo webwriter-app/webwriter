@@ -73,7 +73,6 @@ a:not([href]) {
 }
 
 body {
-  --scrollbar-width: calc(100vw - 100%);
   display: block;
   margin: 0;
   margin-left: auto;
