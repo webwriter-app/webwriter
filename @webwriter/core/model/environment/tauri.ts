@@ -224,7 +224,7 @@ export async function createWindow(url="index.html", options?: WindowOptions & {
   else {
     const webview = new WebviewWindow(options?.label ?? `${i}`, {url, ...options})
     return new Promise((resolve, reject) => {
-      webview.once("tauri://created", () => resolve(url))
+      webview.once("tauri://window-created", () => resolve(url))
       webview.once("tauri://error", e => reject(e))
     })
   }
@@ -260,7 +260,10 @@ export function setWindowCloseBehavior(behaviors: WindowCloseBehavior[], closeCo
     }
     else if(behavior === "closeOthersOnReload") {
       window.addEventListener("beforeunload", e => {
-        getAll().filter(w => w.label !== webview.label).forEach(w => w.close())
+        getAll().filter(w => w.label !== webview.label).forEach(w => {
+          !WEBWRITER_ENVIRONMENT.dev && e.preventDefault()
+          w.close()
+        })
       })
     }
   }

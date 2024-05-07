@@ -24,13 +24,12 @@ export function detectBackend() {
   }
 }
 
-
-
 declare global {
 	var WEBWRITER_ENVIRONMENT: {
     language: string,
     backend: "tauri" | "node" | "unknown",
-    fontFamilies: string[]
+    fontFamilies: string[],
+    dev: boolean
   } & UAParser.IResult
 }
 
@@ -52,7 +51,8 @@ export class EnvironmentController implements ReactiveController {
     globalThis.WEBWRITER_ENVIRONMENT = {
       backend,
       fontFamilies: await this.api.getSystemFonts(),
-      language: navigator.language,
+      language: navigator.language, // @ts-ignore: Defined by Vite
+      dev: !!import.meta?.env?.DEV,
       ...UAParser(navigator.userAgent)
     }
   }
