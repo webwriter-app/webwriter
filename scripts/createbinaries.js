@@ -14,10 +14,10 @@ const TRIPLES = {
   "esbuild-aarch64-unknown-linux-gnu": "@esbuild/linux-arm64/bin/esbuild",
   "bun-x86_64-pc-windows-msvc.exe": "bun/bin/bun.exe",
   // "bun-aarch64-pc-windows-msvc.exe": "bun/bin/bun.exe", // MISSING
-  "bun-x86_64-apple-darwin": "bun/bin/bun",
-  "bun-aarch64-apple-darwin": "bun/bin/bun",
-  "bun-x86_64-unknown-linux-gnu": "bun/bin/bun",
-  "bun-aarch64-unknown-linux-gnu": "bun/bin/bun"
+  "bun-x86_64-apple-darwin": "bun/bin/bun.exe",
+  "bun-aarch64-apple-darwin": "bun/bin/bun.exe",
+  "bun-x86_64-unknown-linux-gnu": "bun/bin/bun.exe",
+  "bun-aarch64-unknown-linux-gnu": "bun/bin/bun.exe"
 }
 
 const BINARIES_DIR = path.resolve("./@webwriter/app-desktop/src-tauri/bin")
