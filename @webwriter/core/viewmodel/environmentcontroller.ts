@@ -33,7 +33,6 @@ declare global {
   } & UAParser.IResult
 }
 
-
 export class EnvironmentController implements ReactiveController {
 
   host: ReactiveControllerHost
@@ -52,7 +51,7 @@ export class EnvironmentController implements ReactiveController {
       backend,
       fontFamilies: await this.api.getSystemFonts(),
       language: navigator.language, // @ts-ignore: Defined by Vite
-      dev: !!import.meta?.env?.DEV,
+      dev: Boolean(import.meta.env?.DEV),
       ...UAParser(navigator.userAgent)
     }
   }
