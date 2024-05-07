@@ -358,6 +358,17 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
       e.stopPropagation()
       e.preventDefault()
     })
+
+    if(WEBWRITER_ENVIRONMENT.browser.name === "Safari") {
+      const scrollDiv = this.document.createElement('div')
+      scrollDiv.style.cssText = 'width: 99px; height: 99px; overflow: scroll; position: absolute; top: -9999px;'
+      this.document.body.appendChild(scrollDiv)
+      const scrollbarWidth = scrollDiv.offsetWidth - scrollDiv.clientWidth
+      this.document.body.removeChild(scrollDiv)
+      const sheet = new this.window.CSSStyleSheet()
+      sheet.replaceSync(`html { margin: 0 ${scrollbarWidth}px !important }`)
+      this.document.adoptedStyleSheets = [...this.document.adoptedStyleSheets, sheet]
+    }
     
     this.loaded = true
   }
