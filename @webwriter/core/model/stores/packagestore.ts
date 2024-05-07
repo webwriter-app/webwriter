@@ -142,11 +142,10 @@ export class PackageStore {
       .map(k => `import "${k}"`)
       .join(";")
       try {
-        await FS.mkdir("bundlecache")
         await FS.writeFile(entry.entryPath, entryCode)
       }
       catch(cause) {
-        throw new ReadWriteIssue(`Could not create entrypoint file ${entry.entryPath}`, {cause})
+        throw new ReadWriteIssue(`Could not create entrypoint file ${entry.entryPath}:\n${cause}`, {cause})
       }
     }
  
