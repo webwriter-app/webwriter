@@ -57,14 +57,18 @@ jobs:
           Remove-Item -path certificate -include tempCert.txt
           Import-PfxCertificate -FilePath certificate/certificate.pfx -CertStoreLocation Cert:\CurrentUser\My -Password (ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText)
       
+      - name: Install dev dependencies
+        run: npm install --only=dev
+
+      - name: Run prebuild actions (static resources, sidecar binaries, app icon)
+        run: npm run prebuild-desktop
+
+
       - name: Install web dependencies
         run: |
           npm config set os=${{ matrix.os }}
           npm config set cpu=${{ matrix.cpu }}
           npm install
-
-      - name: Run prebuild actions (static resources, sidecar binaries, app icon)
-        run: npm run prebuild-desktop
 
       - name: Build web
         run: npm run build-core
