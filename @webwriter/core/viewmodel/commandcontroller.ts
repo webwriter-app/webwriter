@@ -295,8 +295,8 @@ export class Command<SPEC extends CommandSpec = CommandSpec> implements Reactive
     }
     if(!this.disabled && this.host.activeEditor) {
       try {
-      return run(this.host, options, e)
-    }
+        return run(this.host, options, e)
+      }
       catch(err) {
         console.log(err)
         throw err
@@ -543,7 +543,7 @@ export class CommandController implements ReactiveController {
         icon: "settings-filled",
         description: () => msg("Opens the settings"),
         shortcut: "ctrl+i",
-        run: (host) => host.environment.api.createWindow("settings.html", {...WINDOW_OPTIONS, title: `${msg("Settings")} - WebWriter`, visible: false, label: "settings"}),
+        run: (host) => host.environment.api.createWindow("settings.html", {...WINDOW_OPTIONS, title: `${msg("Settings")} - WebWriter`, visible: true, label: "settings"}),
         category: "app"
       }),
       open: new Command(this.host, {
