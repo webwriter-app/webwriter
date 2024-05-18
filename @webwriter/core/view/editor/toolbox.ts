@@ -90,6 +90,11 @@ export class Toolbox extends LitElement {
   connectedCallback(): void {
       super.connectedCallback()
       this.addEventListener("blur", () => this.colorPickerEls.forEach(el => el.dropdown.open = false))
+      if(WEBWRITER_ENVIRONMENT.engine.name === "WebKit") {
+        const sheet = new CSSStyleSheet()
+        sheet.replaceSync(`:host { padding-left: 10px }`)
+        this.shadowRoot!.adoptedStyleSheets = [...this.shadowRoot!.adoptedStyleSheets, sheet]
+      }
   }
 
 	emitChangeWidget = (name: string) => {
@@ -191,7 +196,7 @@ export class Toolbox extends LitElement {
         font-size: 0.95rem;
         align-items: flex-start;
         padding-bottom: 1ch;
-        overflow-y: auto;
+        overflow: visible;
         scrollbar-gutter: stable both-edges;
         scrollbar-width: thin;
         box-sizing: border-box;
@@ -404,6 +409,7 @@ export class Toolbox extends LitElement {
         grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr;
         grid-auto-rows: 1fr;
         margin-top: 2px;
+        gap: 4px;
       }
 
       div[part=block-commands] #name {

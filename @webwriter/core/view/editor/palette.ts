@@ -125,6 +125,15 @@ export class Palette extends LitElement {
 	@query(".package-card:hover sl-progress-bar")
 	activeProgressBar: SlProgressBar
 
+  connectedCallback(): void {
+    super.connectedCallback()
+    if(WEBWRITER_ENVIRONMENT.engine.name === "WebKit") {
+      const sheet = new CSSStyleSheet()
+      sheet.replaceSync(`:host { padding-right: 10px; overflow-y: scroll; height: 100% !important}`)
+      this.shadowRoot!.adoptedStyleSheets = [...this.shadowRoot!.adoptedStyleSheets, sheet]
+    }
+  }
+
 	static styles = css`
 
     :host {
@@ -132,13 +141,13 @@ export class Palette extends LitElement {
       grid-template-columns: repeat(10, 1fr);
       grid-auto-rows: 40px;
       max-width: 420px;
-      z-index: 10000;
       margin-left: auto;
       padding-bottom: 5px;
       gap: 5px;
       grid-auto-flow: row dense;
       max-height: 100%;
       overflow-y: auto;
+      overflow-x: visible;
       position: relative;
       scrollbar-gutter: stable;
       scrollbar-width: thin;
@@ -150,7 +159,6 @@ export class Palette extends LitElement {
     }
 
     .package-card {
-      z-index: -1;
 
       &::part(base) {
         --padding: 10px;
@@ -746,7 +754,7 @@ export class Palette extends LitElement {
     const changing = adding || removing || updating
     const found = name in this.searchResults
     const error = packages.getPackageIssues(pkg.id).length
-    const insertables = Object.values(filterObject(packages.members[pkg.id], (_, ms) => !ms.uninsertable) as unknown as Record<string, MemberSettings>)
+    const insertables = Object.values(filterObject(packages.members[pkg.id], (_, ms) => !(ms as any).uninsertable) as unknown as Record<string, MemberSettings>)
     const pkgEditingSettings = !packageEditingSettings? undefined: {name: undefined, label: undefined, ...packageEditingSettings}
     const {name: firstName, label: firstLabel} =  pkgEditingSettings ?? insertables[0] ?? {}
     const otherInsertables = insertables.slice(1)

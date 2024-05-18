@@ -319,7 +319,6 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
 	}
 
   async initializeIFrame() {
-    console.log("initialize iframe")
     this.iframe = this.shadowRoot?.querySelector("iframe") as any
     const {contentScript} = this
     await this.importString(contentScript)
@@ -359,14 +358,9 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
       e.preventDefault()
     })
 
-    if(WEBWRITER_ENVIRONMENT.browser.name === "Safari") {
-      const scrollDiv = this.document.createElement('div')
-      scrollDiv.style.cssText = 'width: 99px; height: 99px; overflow: scroll; position: absolute; top: -9999px;'
-      this.document.body.appendChild(scrollDiv)
-      const scrollbarWidth = scrollDiv.offsetWidth - scrollDiv.clientWidth
-      this.document.body.removeChild(scrollDiv)
+    if(WEBWRITER_ENVIRONMENT.engine.name === "WebKit") {
       const sheet = new this.window.CSSStyleSheet()
-      sheet.replaceSync(`html { margin: 0 ${scrollbarWidth}px !important }`)
+      sheet.replaceSync(`html { margin-left: var(--scrollbar-width) !important }`)
       this.document.adoptedStyleSheets = [...this.document.adoptedStyleSheets, sheet]
     }
     
