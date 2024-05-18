@@ -6,6 +6,7 @@ html {
   height: 100%;
   --sl-color-danger-300: #fca5a5;
   --sl-color-primary-400: #38bdf8;
+  --scrollbar-width: 16px;
 }
 
 html:not(:has(:fullscreen)) {
@@ -13,7 +14,7 @@ html:not(:has(:fullscreen)) {
 }
 
 html::-webkit-scrollbar {
-  width: 16px;
+  width: var(--scrollbar-width);
 }
 
 html::-webkit-scrollbar-thumb {
@@ -79,6 +80,11 @@ body {
   margin-right: auto;
   max-width: 840px;
   box-sizing: border-box;
+  caret-color: currentColor;
+}
+
+body:has(.ww-selected) {
+  caret-color: transparent;
 }
 
 figure:hover {
@@ -431,7 +437,7 @@ abbr {
 }
 
 
-iframe:not([src]), picture:not(:has(img[src])) {
+iframe:not([src]), picture:not(:has(img[src])), video:not([src]):not(:has(track[src])) {
   background: lightgray;
   position: relative;
 }
@@ -491,4 +497,11 @@ math:empty::after, math:has(mtext:only-child)::after {
   width: 100%;
   height: 100%;
   content: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-math" width="100%" height="100%" viewBox="0 0 24 24" stroke-width="2" stroke="darkgray" fill="none" stroke-linecap="round" stroke-linejoin="round" part="svg"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><path d="M19 5h-7l-4 14l-3 -6h-2"></path><path d="M14 13l6 6"></path><path d="M14 19l6 -6"></path></svg>') !important;
+}
+
+@media only print {
+  body {
+    width: 100%;
+    margin: 0 !important;
+  }
 }
