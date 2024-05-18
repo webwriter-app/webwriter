@@ -2,8 +2,8 @@ import { EditorState, Plugin, TextSelection } from "prosemirror-state"
 import { Schema, Node, NodeType, Attrs, DOMSerializer, DOMParser } from "prosemirror-model"
 import { html_beautify as htmlBeautify } from "js-beautify"
 
-import { createEditorState, EditorStateWithHead, Environment, getActiveMarks, getHeadElement, Package, PackageStore, upsertHeadElement } from ".."
-import { filterObject, getFileExtension, groupBy, range } from "../../utility"
+import { createEditorState, createWindow, EditorStateWithHead, Environment, getActiveMarks, getHeadElement, Package, PackageStore, setHeadAttributes, upsertHeadElement } from ".."
+import { filterObject, getFileExtension, groupBy, idle, range } from "../../utility"
 import * as marshal from "../marshal"
 import * as connect from "../connect"
 import { redoDepth, undoDepth } from "prosemirror-history"
@@ -27,11 +27,15 @@ type Resource = {
 
 type Options = {
   bundle: Environment["bundle"],
+  Shell: Environment["Shell"],
   Path: Environment["Path"],
   FS: Environment["FS"],
+  createWindow: Environment["createWindow"],
+  setWindowCloseBehavior: Environment["setWindowCloseBehavior"],
   schema?: Schema,
   url?: string,
-  editorState?: EditorStateWithHead
+  editorState?: EditorStateWithHead,
+  lang?: string
 }
 
 type ImportMap = {imports?: Record<string, string>, scopes?: Record<string, Record<string, string>>}
@@ -62,12 +66,14 @@ export class DocumentStore implements Resource {
   bundle: Options["bundle"]
   Path: Options["Path"]
   FS: Options["FS"]
+  Shell: Options["Shell"]
 
-  constructor({bundle, schema, url, editorState, Path, FS}: Options) {
+  constructor({bundle, schema, url, editorState, Path, FS, Shell, lang}: Options) {
     this.bundle = bundle
     this.Path = Path
     this.FS = FS
-    this.editorState = this.lastSavedState = this.initialState = editorState ?? createEditorState({schema})
+    this.Shell = Shell
+    this.editorState = this.lastSavedState = this.initialState = editorState ?? createEditorState({schema, lang})
     this.url = url ?? "memory:0"
   }
 
@@ -122,7 +128,7 @@ export class DocumentStore implements Resource {
     const newParser = DOMParser.fromSchema(schema)
     const doc = newParser.parse(oldSerializer.serializeNode(this.editorState.doc))
     const selection = new TextSelection(doc.resolve(0))
-    const newState = createEditorState({...this.editorState, schema, doc, selection})
+    const newState = createEditorState({...this.editorState, schema, doc, selection, lang: this.lang})
     if(this.sameAsInitial) {
       this.lastSavedState = newState
     }
@@ -159,8 +165,9 @@ export class DocumentStore implements Resource {
     try {
       const resource = this
       let urlObj = new URL(resource?.url ?? "memory:/")
+      const title = this.provisionalTitle !== ""? this.provisionalTitle: undefined
       if(urlObj.protocol === "memory:" || saveAs) {
-        const path = await connect["file"].pickSave(INDIVIDUAL_FILTERS, this.inMemory? this.provisionalTitle: this.url)
+        const path = await connect["file"].pickSave(INDIVIDUAL_FILTERS, this.inMemory? title: this.url)
         if(path === null) {
           return
         }
@@ -173,7 +180,6 @@ export class DocumentStore implements Resource {
       const save = (connect as any)[protocol].save
       const serialize = (marshal as any)[format].serialize
       const isBinary = (marshal as any)[format].isBinary
-    
       let data = await serialize(resource.editorState.doc, resource.editorState.head$.doc, this.bundle, this.Path, this.FS)
       await save(data, urlObj.href, isBinary)
       this.lastSavedState = this.editorState
@@ -196,7 +202,7 @@ export class DocumentStore implements Resource {
         urlObj.pathname = path as string
       }
       else {
-        urlObj = new URL(url)
+        urlObj = new URL(url, "file:")
       }
   
       const protocol = urlObj.protocol.slice(0, -1)
@@ -226,9 +232,23 @@ export class DocumentStore implements Resource {
       this.Path,
       this.FS
     )
-    const blob = new Blob([htmlString], {type: "text/html"})
-    const blobURL = URL.createObjectURL(blob)
-    open(blobURL, "_blank")
+    if(WEBWRITER_ENVIRONMENT.engine.name === "WebKit") {
+      const suffix = "#ww-preview.html";
+      const ids = (await this.FS.readdir("/tmp"))
+        .filter(path => path.endsWith(suffix))
+        .map(path => path.replace(suffix, ""))
+        .map(prefix => parseInt(prefix))
+      const nextId = Math.max(0, ...ids) + 1
+      const previewPath = `/tmp/${nextId}${suffix}`
+      await this.FS.writeFile(previewPath, htmlString)
+      //return createWindow(previewPath, {focus: true, label: `p${nextId}`})
+      return this.Shell.open(previewPath)
+    }
+    else {
+      const blob = new Blob([htmlString], {type: "text/html"})
+      const blobURL = URL.createObjectURL(blob)
+      open(blobURL, "_blank", "popup")
+    }
   }
 
   get empty() {
@@ -442,7 +462,16 @@ export class DocumentStore implements Resource {
   }
 
   get lang() {
-    return this.editorState.doc.attrs.lang ?? navigator.language
+    return this.head.doc.attrs.htmlAttrs?.lang ?? navigator.language
+  }
+
+  set lang(value: string) {
+    const htmlAttrs = this.head.doc.attrs?.htmlAttrs
+    this.setHead(this.head.apply(this.head.tr.setDocAttribute("htmlAttrs", {...htmlAttrs, lang: value})))
+  }
+
+  get head() {
+    return this.editorState.head$
   }
 
   get textContent() {
