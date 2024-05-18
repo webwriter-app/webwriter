@@ -366,7 +366,6 @@ export class PackageStore {
         key,
         !key.startsWith("file")? key: tasks.find(t => t.parameters.includes(key))!.name!
       ]))
-      console.log(names)
       try {
         await this.pm("add", toAdd, await this.appDir)
       }
@@ -563,7 +562,6 @@ export class PackageStore {
         this.appendManagementIssues(new BundleIssue(rawErr as string))
       }
     }
-    console.log("merging package list")
     let final: Package[] = []
     for(const pkg of installed) {
       const aPkg = available.find(a => a.name === pkg.name)
@@ -578,7 +576,6 @@ export class PackageStore {
     this.searchIndex.addAll(final)
     this.packages = Object.fromEntries(final.map(pkg => [pkg.name, pkg]))
     this.loading = false
-    console.log("loading done")
   }
 
   private async fetchAvailable() {
@@ -782,9 +779,7 @@ export class PackageStore {
     }
     const watching = forceValue ?? !pkg?.watching
     if(watching && pkg?.localPath) {
-      console.trace(`start watching ${name}`)
       this.unwatchCallbacks[name] = await this.watch(pkg.localPath, async (e) => {
-        console.log("watch callback called")
         if(!this.loading) {
           this.loading = true
           const path = "file://" + pkg.localPath!
@@ -798,10 +793,8 @@ export class PackageStore {
       }, {recursive: true})
     }
     else {
-      console.log(`stop watching ${name}`);
       (this.unwatchCallbacks[name] ?? (() => {}))()
       delete this.unwatchCallbacks[name]
-      console.log(toJS(this.unwatchCallbacks))
     }
     this.packages = {...this.packages, [name]: pkg.extend({watching})}
   }
