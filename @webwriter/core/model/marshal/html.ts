@@ -66,8 +66,8 @@ export async function docToBundle(doc: Node, head: Node, bundle: Environment["bu
     .map(tag => allImports[tag])
   )]
 
-  const {bundleJS, bundleCSS} = await PackageStore.readBundle(importIDs, bundle, Path, FS, false, true)
-  const js = scopedCustomElementRegistry + ";" +  bundleJS
+  const {bundleJS, bundleCSS} = await PackageStore.readBundle(importIDs, bundle, Path, FS, true)
+  const js = bundleJS? scopedCustomElementRegistry + ";" +  bundleJS: ""
   const css = bundleCSS
   
   // Generate head
