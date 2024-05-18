@@ -212,7 +212,7 @@ export function getSystemFonts() {
 export async function createWindow(url="index.html", options?: WindowOptions & {label?: string}) {
   const allWindows = getAll()
   const allLabels = allWindows.map(w => w.label)
-  const i = Math.max(...allLabels.map(l => parseInt(l)), 1) + 1
+  const i = Math.max(...allLabels.map(l => parseInt(l)).filter(n => !Number.isNaN(n)), 1) + 1
   const existingWebview = WebviewWindow.getByLabel(options?.label ?? "")
   if(existingWebview && !(await existingWebview.isVisible())) {
     return existingWebview?.show()
@@ -225,13 +225,15 @@ export async function createWindow(url="index.html", options?: WindowOptions & {
     const webview = new WebviewWindow(options?.label ?? `${i}`, {url, ...options})
     return new Promise((resolve, reject) => {
       webview.once("tauri://window-created", () => resolve(url))
-      webview.once("tauri://error", e => reject(e))
+      webview.once("tauri://error", e => reject(new Error((e as any).payload)))
     })
   }
 }
 
 export function setWindowCloseBehavior(behaviors: WindowCloseBehavior[], closeConfirm?: () => Promise<boolean>) {
+  return
   const webview = getCurrent()
+  console.log(webview)
   for(const behavior of behaviors) {
     if(behavior === "closeAllIfLastVisible") {
       webview.onCloseRequested(async e => {
@@ -250,6 +252,7 @@ export function setWindowCloseBehavior(behaviors: WindowCloseBehavior[], closeCo
     }
     else if(behavior === "hideOnCloseUnlessLast") {
       webview.onCloseRequested(async e => {
+        console.log(e)
         if(closeConfirm && await closeConfirm()) {
           e.preventDefault()
           return
