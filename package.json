@@ -13,7 +13,7 @@
     "predev-core": "npm-run-all -pc preparestatic build-localization",
     "dev-core": "npm run vite -- @webwriter/core -l error",
     "predev-desktop": "tauri -V",
-    "dev-desktop": "npm-run-all -pr dev-core \"tauri dev -- -c ./@webwriter/app-desktop/src-tauri/tauri.conf.json\"",
+    "dev-desktop": "RUST_BACKTRACE=1 npm-run-all -pr dev-core \"tauri dev -- -c ./@webwriter/app-desktop/src-tauri/tauri.conf.json\"",
     "dev-cloud": "npm run -w @webwriter/app-cloud dev",
     "dev-docs": "bundle exec jekyll serve -s ./docs",
     "prebuild-core": "npm-run-all -p preparestatic build-localization",
@@ -47,7 +47,7 @@
   ],
   "devDependencies": {
     "@tabler/icons": "^3.3.0",
-    "@tauri-apps/cli": "^1.2.3",
+    "@tauri-apps/cli": "^1.5.13",
     "@types/mocha": "^10.0.1",
     "@types/semver": "^7.3.13",
     "@wagnerflo/cc-icons": "^1.2.1",
