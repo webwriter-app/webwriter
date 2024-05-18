@@ -1,6 +1,7 @@
 import {ReactiveController, ReactiveControllerHost} from "lit"
 
 import { RootStore } from "../model"
+import { save } from "@tauri-apps/api/dialog";
 
 export class NotificationController implements ReactiveController {
 
@@ -26,17 +27,26 @@ export class NotificationController implements ReactiveController {
 		}
   }
 
-	handleEvent = (e: any, {warn=console.warn, error=console.error, warning=false, throwOnly=false, isOnError=false} = {}, ...params: any[]) => {
-    const message = e instanceof Error? String(e.message): String(e)
-    const notify = (m: string) => this.notify(m, warning? "warning": "danger")
-    const log = (m: string) => warning? warn(m, ...params): error(m, ...params)
-    const ignoreList = warning? this.warningsToIgnore: this.errorsToIgnore
-		if(ignoreList.some(s => message.startsWith && message.startsWith(s))) {
+	handleEvent = (e: any, {warn=console.warn, error=console.error, warning=false, throwOnly=false, isOnError=false} = {}, ...params: any[]) => {	
+    let err: Error
+		if(e.type === "unhandledrejection") {
+      err = (e as PromiseRejectionEvent).reason
+		}
+		else if(e instanceof Error) {
+			err = e
+		}
+		else {
+			err = new Error(e)
+		}
+		const notify = (m: string) => this.notify(m, warning? "warning": "danger")
+		const log = (m: string) => warning? warn(m, ...params): error(m, ...params)
+		const ignoreList = warning? this.warningsToIgnore: this.errorsToIgnore
+		if(ignoreList.some(s => err.message.startsWith(s))) {
 			return isOnError
 		}
 		else if(!throwOnly) {
-      notify(message)
-      log(e)
+		notify(err.message)
+		log(e)
 		}
 	}
 
@@ -61,6 +71,7 @@ export class NotificationController implements ReactiveController {
     "TextSelection endpoint not pointing into a node with inline content",
     "Ignored scripts due to flag.",
     "The main 'lit-element' module entrypoint is deprecated.",
-    "Element sl-button scheduled an update (generally because a property was set) after an update completed, causing a new update to be scheduled. This is inefficient and should be avoided unless the next update can only be scheduled as a side effect of the previous update. See https://lit.dev/msg/change-in-update for more information."
+    "Element sl-button scheduled an update (generally because a property was set) after an update completed, causing a new update to be scheduled. This is inefficient and should be avoided unless the next update can only be scheduled as a side effect of the previous update. See https://lit.dev/msg/change-in-update for more information.",
+	"[TAURI] Couldn't find callback id",
 	]
 }
