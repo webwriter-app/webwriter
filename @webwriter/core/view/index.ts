@@ -245,7 +245,7 @@ export class App extends ViewModelMixin(LitElement)
     }
 		const {changed, set, setHead, url, editorState, codeState, ioState, provisionalTitle, inMemory} = this.store.document
 		const {packagesList, bundleJS, bundleCSS, bundleID} = this.store.packages
-		const {locale, showTextPlaceholder} = this.store.ui
+		const {locale} = this.store.ui
 		const {open} = this.environment.api.Shell
     const {documentCommands, commands: {setDocAttrs, editHead}} = this.commands
     const head = html`<ww-head 
@@ -281,7 +281,6 @@ export class App extends ViewModelMixin(LitElement)
     @ww-open=${(e: any) => open(e.detail.url)}
     .packages=${packagesList}
     ?loadingPackages=${false}
-    .showTextPlaceholder=${showTextPlaceholder}
     ?controlsVisible=${!this.foldOpen}
     lang=${locale}>
   </ww-explorable-editor>`: null
