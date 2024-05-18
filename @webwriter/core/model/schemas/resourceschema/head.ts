@@ -76,14 +76,14 @@ export const headSchemaSpec = {
 
 export const headSchema = new Schema(headSchemaSpec)
 
-const initialHeadDoc = () => headSchema.node("head", undefined, [
+const initialHeadDoc = (lang?: string) => headSchema.node("head", {htmlAttrs: {lang}}, [
   headSchema.node("meta", {charset: "utf-8"}),
   headSchema.node("meta", {name: "generator", content: `webwriter@${webwriterPackage.version}`}),
-  headSchema.node("style", {data: {"data-ww-theme": "base"}}, headSchema.text(themes.base.source))
+  headSchema.node("style", {data: {"data-ww-theme": "base"}}, headSchema.text(themes.base.source)),
 ])
 
-export function initialHeadState(doc=initialHeadDoc()) {
-  return EditorState.create({schema: headSchema, doc})
+export function initialHeadState({doc, lang}: {doc?: Node, lang?: string} = {}) {
+  return EditorState.create({schema: headSchema, doc: doc ?? initialHeadDoc(lang)})
 }
 
 type Matcher = (node: Node, pos: number, parent: Node | null, index: number) => boolean
@@ -110,7 +110,7 @@ export function upsertHeadElement(headState: EditorState, name: "head" |"meta" |
   if(existingNode === headState.doc) {
     const newAttrs = {...(existingNode as any).attrs, ...attrs}
     const newHead = headState.schema.node("head", newAttrs, headState.doc.content, headState.doc.marks)
-    return initialHeadState(newHead)
+    return initialHeadState({doc: newHead})
   }
   if(existingPos! !== undefined && existingNode !== undefined) {
     let node = headState.schema.node(
