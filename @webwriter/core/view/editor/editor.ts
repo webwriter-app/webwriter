@@ -462,6 +462,12 @@ export class ExplorableEditor extends LitElement {
 				}
 
 			}
+
+      @media only print {
+        ww-palette, ww-toolbox {
+          display: none !important;
+        } 
+      }
 		`
 	}
 
