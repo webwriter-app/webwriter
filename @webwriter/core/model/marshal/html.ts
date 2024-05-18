@@ -76,6 +76,11 @@ export async function docToBundle(doc: Node, head: Node, bundle: Environment["bu
     html.documentElement.setAttribute(key, value as string)
   }
 
+  // Minify theme CSS
+  for(let styleEl of Array.from(html.querySelectorAll("head > style"))) {
+    styleEl.textContent = styleEl.textContent?.replaceAll("\n", "") ?? null
+  }
+
   // Embed media elements
   const mediaElements = html.body.querySelectorAll(":is(img, source, embed, audio, video)") as NodeListOf<HTMLSourceElement | HTMLImageElement>
   for(const [i, el] of Array.from(mediaElements).entries()) {
