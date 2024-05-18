@@ -95,7 +95,7 @@ export class Settings extends ViewModelMixin(LitElement, true) {
 				.specs=${specs}
 				.specLabels=${specLabels}
 				.values=${values}
-				@ww-change=${(e: any) => setAndPersist(e.detail.groupKey, e.detail.key, e.detail.value)}
+				@ww-change=${(e: any) => {setAndPersist(e.detail.groupKey, e.detail.key, e.detail.value); this.localization.setLocale(this.store.ui.locale)}}
 			>
 				<span slot="post-tab-a">
 					<span>${msg("Shortcuts")}</span>
