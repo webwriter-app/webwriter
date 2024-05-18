@@ -13,8 +13,7 @@ export class Combobox extends SlInput implements DataInput {
 
   constructor() {
     super()
-    this.tabIndex = 0
-    this.addEventListener("focus", e => this.active = true)
+    this.addEventListener("focus", e => {this.active = true; this.open = true})
     this.addEventListener("focusout", e => {
       this.active = this.open = false
     })
@@ -23,6 +22,8 @@ export class Combobox extends SlInput implements DataInput {
     })
     this.value = this.defaultValue = this.multiple? []: ""
   }
+
+  tabIndex = 0
 
   @property({attribute: false}) //@ts-ignore
   value: string[] | string
@@ -91,6 +92,7 @@ export class Combobox extends SlInput implements DataInput {
   focus() {
     if(this.inputDisabled && this.suggestions) {
       this.open = !this.open
+      super.focus()
     }
     else {
       this.input?.focus()
@@ -342,7 +344,7 @@ export class Combobox extends SlInput implements DataInput {
       <slot name="label" part="label" @click=${this.focus}>
         <label>${this.label}</label> 
       </slot>
-      <div part="base" id="anchor" @click=${this.focus}>
+      <div part="base" id="anchor" tabindex=${0}>
         <slot name="prefix"></slot>
         ${this.multiple? html`
           <span id="values">
@@ -362,7 +364,7 @@ export class Combobox extends SlInput implements DataInput {
               variant="icon" 
               icon="chevron-down"
               @focus=${(e: Event) => e.stopPropagation()}
-              @click=${(e: Event) => {this.focus(); e.stopPropagation()}}
+              @click=${(e: Event) => {this.open = !this.open; e.stopPropagation()}}
               @mousedown=${(e: Event) => {e.stopPropagation(); e.preventDefault()}}
             ></ww-button>
         </div>
