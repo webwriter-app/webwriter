@@ -266,7 +266,7 @@ export class Locale {
   }
 
   static get preferredLanguageCodes() {
-    return navigator.languages.filter(code => !code.includes("-"))
+    return Array.from(new Set([document.documentElement.lang, ...navigator.languages.map(locale => locale.split("-")[0])]))
   }
 
   static get languageInfos() {
