@@ -129,8 +129,9 @@ export class Palette extends LitElement {
     super.connectedCallback()
     if(WEBWRITER_ENVIRONMENT.engine.name === "WebKit") {
       const sheet = new CSSStyleSheet()
-      sheet.replaceSync(`:host { padding-right: 10px; overflow-y: scroll; height: 100% !important}`)
+      sheet.replaceSync(`:host { padding-right: 10px; overflow-y: auto; height: 100% !important}`)
       this.shadowRoot!.adoptedStyleSheets = [...this.shadowRoot!.adoptedStyleSheets, sheet]
+      this.requestUpdate()
     }
   }
 
