@@ -294,7 +294,13 @@ export class Command<SPEC extends CommandSpec = CommandSpec> implements Reactive
       e.preventDefault()
     }
     if(!this.disabled && this.host.activeEditor) {
+      try {
       return run(this.host, options, e)
+    }
+      catch(err) {
+        console.log(err)
+        throw err
+      }
     }
   }
 
