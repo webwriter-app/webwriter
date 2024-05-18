@@ -132,6 +132,17 @@ export class Layout extends LitElement {
     :host([hideasides]) main {
       grid-column: 2 / 6;
     }
+
+
+
+    @media only print {
+      :host > :not(slot[name=main]) {
+        display: none !important;
+      } 
+      slot[name=main] {
+        grid-column: 1 / 7;
+      }
+    }
   `
 
 	@query("[part=tabs-wrapper]")
