@@ -36,11 +36,12 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
       this.icons = new IconController(this)
       this.environment = new EnvironmentController(this)
       await this.environment.apiReady
-      this.store = StoreController(new RootStore({corePackages: CORE_PACKAGES, ...this.environment.api}), this)
+      const userSettings = await SettingsController.getUserSettings(this.environment.api)
+      this.store = StoreController(new RootStore({settings: userSettings, corePackages: CORE_PACKAGES, ...this.environment.api}), this)
+      this.settings = new SettingsController(this, this.store)
       this.localization = new LocalizationController(this, this.store)
       this.commands = new CommandController(this as any, this.store)
       this.notifications = new NotificationController(this, this.store)
-      this.settings = new SettingsController(this, this.store)
       this.initializeWindow()
       await this.store.packages.initialized
       const path = new URL(window.location.href).searchParams.get("open")
@@ -72,8 +73,13 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
   async initializeWindow() {
     const label = this.environment.api.getWindowLabel()
     if(label === "main") {
-      await this.environment.api.createWindow("settings.html", {...WINDOW_OPTIONS, title: `${msg("Settings")} - WebWriter`, visible: false, label: "settings"})
-      this.environment.api.setWindowCloseBehavior(["closeAllIfLastVisible", "closeOthersOnReload"], this.confirmWindowClose)
+      try {
+        // await this.environment.api.createWindow("settings.html", {...WINDOW_OPTIONS, title: `${msg("Settings")} - WebWriter`, visible: false, label: "settings"})
+        this.environment.api.setWindowCloseBehavior(["closeAllIfLastVisible", "closeOthersOnReload"], this.confirmWindowClose)
+      }
+      catch(err) {
+        console.log(err)
+      }
     }
     else if(label === "settings") {
       this.environment.api.setWindowCloseBehavior(["hideOnCloseUnlessLast"])

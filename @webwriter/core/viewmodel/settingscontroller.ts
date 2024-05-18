@@ -2,7 +2,7 @@ import { msg } from "@lit/localize"
 import {ReactiveController, ReactiveControllerHost} from "lit"
 import { ZodSchema, z } from "zod"
 
-import { Package, RootStore, StoreKey, SubStoreKey } from "../model"
+import { Environment, Package, RootStore, StoreKey, SubStoreKey } from "../model"
 import { App } from "../view"
 import { ViewModelMixin } from "."
 
@@ -43,14 +43,26 @@ export class SettingsController implements ReactiveController {
 
   async hostConnected() {
     const {join, appDir} = this.host.environment.api.Path
-    await this.store.packages.initialized
-    await this.store.rehydrate(this.settingsSchema)
     const path = await join(await appDir(), "settings.json")
-    if(await this.host.environment.api.FS.exists(path)) {
-      this.host.environment.api.watch(path, () => this.store.rehydrate(this.settingsSchema))
-    }
+    this.host.environment.api.watch(path, async () => {
+      const userSettings = await SettingsController.getUserSettings(this.host.environment.api)
+      this.store.rehydrate(userSettings)
+    })
   }
   hostDisconnected() {}
+
+  static async getUserSettings({FS, Path}: Environment) {
+    const path = await Path.join(await Path.appDir(), "settings.json")
+    if(await FS.exists(path)) {
+      try {
+        const str = await FS.readFile(path) as string
+        return JSON.parse(str)
+      }
+      catch(err) {
+        console.error(err)
+      }
+    }
+  }
 
   get specLabels(): Partial<Record<StoreKey, string>> {
     return {
@@ -70,12 +82,12 @@ export class SettingsController implements ReactiveController {
             .describe(msg("Language for the WebWriter interface and new documents")),
           label: msg("Language")
         },
-        showTextPlaceholder: {
+        /*showTextPlaceholder: {
           schema: z
             .boolean()
             .describe(msg("Show a placeholder text when a document is empty")),
           label: msg("Show placeholder text")
-        },
+        },*/
         /*showWidgetPreview: {
           schema: z
             .boolean()

@@ -10,7 +10,7 @@ import { Environment } from "../environment"
 
 type StoreOptions<T extends abstract new (...args: any) => any> = ConstructorParameters<T>[0]
 
-type AllOptions = StoreOptions<typeof PackageStore> & StoreOptions<typeof DocumentStore>
+type AllOptions = StoreOptions<typeof PackageStore> & StoreOptions<typeof DocumentStore> & {settings: any}
 type OmitFunctions<T> = Pick<T, {
   [K in keyof T]: T[K] extends Function ? never : K;
 }[keyof T]>
@@ -34,14 +34,14 @@ export class RootStore {
   Path: Environment["Path"]
   Dialog: Environment["Dialog"]
 
-  constructor({corePackages, schema, FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, getSystemFonts, createWindow, setWindowCloseBehavior, getWindowLabel}: AllOptions) {
+  constructor({corePackages, schema, FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, getSystemFonts, createWindow, setWindowCloseBehavior, getWindowLabel, checkUpdate, installUpdate, settings}: AllOptions) {
     const onBundleChange = this.onBundleChange
     this.FS = FS
     this.Path = Path
     this.Dialog = Dialog
-    this.packages = new PackageStore({corePackages, FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, onBundleChange, getSystemFonts, createWindow, setWindowCloseBehavior, getWindowLabel})
-    this.document = new DocumentStore({schema, bundle, Path, FS})
-    this.ui = new UIStore()
+    this.ui = new UIStore({...settings?.ui})
+    this.packages = new PackageStore({...settings?.packages, corePackages, FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, onBundleChange, getSystemFonts, createWindow, setWindowCloseBehavior, getWindowLabel, checkUpdate, installUpdate})
+    this.document = new DocumentStore({...settings?.document, schema, bundle, Path, FS, Shell, createWindow, setWindowCloseBehavior, lang: this.ui.locale})
   }
 
   onBundleChange = (packages: Package[]) => {
@@ -57,22 +57,10 @@ export class RootStore {
     persistWithSchema && this.persist(persistWithSchema)
   }
 
-  async rehydrate(schema: ZodSchema<StoreSlice<RootStore>>, settingsPath?: string) {
-    const {appDir, join} = this.Path
-    const path = settingsPath ?? await join(await appDir(), "settings.json")
-    if(await this.FS.exists(path)) {
-      try {
-        const contents = await this.FS.readFile(path) as string
-        const defaults = schema.parse(this)
-        const settings = schema.parse(merge(defaults, JSON.parse(contents)))
-        Object.entries(settings)
-          .flatMap(([sk, sv]) => Object.entries(sv).map(([k, v]) => [sk, k, v])) // @ts-ignore
-          .forEach(([sk, k, v]) => this.set(sk, k, v))
-      }
-      catch(cause: any) {
-        throw new Error(`Could not load settings from file system: ${cause}`, {cause})
-      }
-    }
+  async rehydrate(userSettings: StoreSlice<RootStore> | undefined) {
+    Object.entries((userSettings ?? {}) as any)
+      .flatMap(([sk, sv]) => Object.entries(sv as any).map(([k, v]) => [sk, k, v]))
+      .forEach(([sk, k, v]) => this.set(sk as any, k as any, v))
   }
 
   async persist(schema: ZodSchema<StoreSlice<RootStore>>, settingsPath?: string) {

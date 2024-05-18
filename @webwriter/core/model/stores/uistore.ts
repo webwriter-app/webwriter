@@ -5,12 +5,16 @@ type Notification = {
 }
 
 export class UIStore {
+
+   constructor(options: any) {
+      Object.assign(this, options)
+   }
    
    locale: string = "en"
    
    notifications: Notification[] = []
 
-   showTextPlaceholder: boolean = false
+   // showTextPlaceholder: boolean = false
 
    // showWidgetPreview: boolean = false // TODO: Causes multiple issues
 
