@@ -50,6 +50,11 @@
           opacity: 0;
         }
       }
+      @media only print {
+        body > :not(ww-app) {
+          display: none !important;
+        }
+      }
     </style>
   </head>
   <body id="body">
