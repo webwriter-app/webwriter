@@ -390,14 +390,6 @@
   <source>Keyboard shortcuts for commands</source>
   <target>Tastenkürzel für Befehle</target>
 </trans-unit>
-<trans-unit id="sd846987afc2e2cde">
-  <source>Show a placeholder text when a document is empty</source>
-  <target>Zeige einen Platzhalter-Text, wenn ein Dokument leer ist</target>
-</trans-unit>
-<trans-unit id="sec4cb64c35332774">
-  <source>Show placeholder text</source>
-  <target>Zeige einen Platzhalter-Text</target>
-</trans-unit>
 <trans-unit id="se3b4c857f91f80d7">
   <source>Keyboard shortcuts</source>
   <target>Tastenkürzel</target>
@@ -709,10 +701,6 @@
 <trans-unit id="s34f724979a124c50">
   <source>Sets the background color of the selected text</source>
   <target>Setze die Hintergrundfarbe des auswählten Texts</target>
-</trans-unit>
-<trans-unit id="s163770926259036e">
-  <source>Set line height</source>
-  <target>Zeilenabstand setzen</target>
 </trans-unit>
 <trans-unit id="sbc5f2c81604bb301">
   <source>Heading 4</source>
@@ -1566,18 +1554,6 @@
   <source>Edit selection</source>
   <target>Auswahl bearbeiten</target>
 </trans-unit>
-<trans-unit id="sc03fd15d83e5f292">
-  <source>Edit the </source>
-  <target>Bearbeite</target>
-</trans-unit>
-<trans-unit id="s561a2e79fc62d7d9">
-  <source>Transform selection</source>
-  <target>Auswahl transformieren</target>
-</trans-unit>
-<trans-unit id="s895e827a8c9f0b2e">
-  <source>Transform the selection</source>
-  <target>Transformiert die Auswahl</target>
-</trans-unit>
 <trans-unit id="s621ad19d35ba7742">
   <source>Copy selection</source>
   <target>Auswahl kopieren</target>
@@ -1606,49 +1582,9 @@
   <source>Delete the selection</source>
   <target>Löscht die Auswahl</target>
 </trans-unit>
-<trans-unit id="s864518bdfb135d72">
-  <source>Set the line height of the selected element</source>
-  <target>Setze die Zeilenhöhe des ausgewählten Elements</target>
-</trans-unit>
-<trans-unit id="s091ef685b60239cb">
-  <source>Set element border</source>
-  <target>Element-Rand setzen</target>
-</trans-unit>
-<trans-unit id="s7d3d4b5b7d605a05">
-  <source>Set the border of the selected element</source>
-  <target>Setze den Rand des ausgewählten Elements</target>
-</trans-unit>
-<trans-unit id="s1dd05fa6617c24af">
-  <source>Set element margin</source>
-  <target>Element-Außenabstand setzen</target>
-</trans-unit>
-<trans-unit id="s22d653f1433b46c8">
-  <source>Set the margins of the selected element</source>
-  <target>Setze die Außenabstände des ausgewählten Elements</target>
-</trans-unit>
-<trans-unit id="s586d178a7db74a4a">
-  <source>Set element padding</source>
-  <target>Element-Innenabstand setzen</target>
-</trans-unit>
-<trans-unit id="s01a3659e7cfcd452">
-  <source>Set the padding of the selected element</source>
-  <target>Setze die Innenabstände des ausgewählten Elements</target>
-</trans-unit>
 <trans-unit id="s5b82a23fbcad1a41">
   <source>Set element background</source>
   <target>Element-Hintergrund setzen</target>
-</trans-unit>
-<trans-unit id="s478bc923b43f93c7">
-  <source>Set the background of the selected element</source>
-  <target>Setze den Hintergrund des ausgewählten Elements</target>
-</trans-unit>
-<trans-unit id="s724ddbe05e009445">
-  <source>Align element text</source>
-  <target>Element-Text ausrichten</target>
-</trans-unit>
-<trans-unit id="safb1c9501fc85045">
-  <source>Set the text alignment of the selected element</source>
-  <target>Setze die Text-Ausrichtung des ausgewählten Elements</target>
 </trans-unit>
 <trans-unit id="se6297163cac9d276">
   <source>Edit source</source>
@@ -1809,6 +1745,314 @@
 <trans-unit id="se1b03a74b09ba7f0">
   <source>App Folder</source>
   <target>App-Ordner</target>
+</trans-unit>
+<trans-unit id="se219da7b1e955c65">
+  <source>Clear formatting</source>
+  <target>Formatierung zurücksetzen</target>
+</trans-unit>
+<trans-unit id="s256ab831a48c941c">
+  <source>Removes all text formatting from the selection</source>
+  <target>Entferne sämtliche Text-Formatierung von der Auswahl</target>
+</trans-unit>
+<trans-unit id="sbd181cd54b8402a4">
+  <source>Edit the selection</source>
+  <target>Auswahl bearbeiten</target>
+</trans-unit>
+<trans-unit id="s06634274f19b0572">
+  <source>Pin selection</source>
+  <target>Auswahl anheften</target>
+</trans-unit>
+<trans-unit id="sa53c5cb03a8fda50">
+  <source>Pin the selection as a snippet in the palette</source>
+  <target>Auswahl als Snippet in der Palette anheften</target>
+</trans-unit>
+<trans-unit id="s97e1835af555416d">
+  <source>Set text style of elements</source>
+  <target>Textstil von Elementen setzen</target>
+</trans-unit>
+<trans-unit id="sc8d2c7f6c33a2b32">
+  <source>Set text style (alignment, indentation, spacing, etc.) of selected elements</source>
+  <target>Setze den Textstil (Ausrichtung, Einrückung, Leerräume, etc.) of selected elements</target>
+</trans-unit>
+<trans-unit id="s253763b7a5f2a1d4">
+  <source>Set element margins</source>
+  <target>Außenabstände setzen</target>
+</trans-unit>
+<trans-unit id="s6d775df53db92fc1">
+  <source>Set the margins of the selected elements</source>
+  <target>Setze die Außenabstände der ausgewählten Elemente</target>
+</trans-unit>
+<trans-unit id="sf8a939539e731edb">
+  <source>Set element paddings</source>
+  <target>Innenabstände setzen</target>
+</trans-unit>
+<trans-unit id="s4296275288e95fd6">
+  <source>Set the paddings of the selected elements</source>
+  <target>Setze die Innenabstände der ausgewählten Elemente</target>
+</trans-unit>
+<trans-unit id="sd21a7bab4807fadc">
+  <source>Set the background of the selected elements</source>
+  <target>Setze den Hintergrund der ausgewählten Elemente</target>
+</trans-unit>
+<trans-unit id="s81d69d3445c813a8">
+  <source>Set element borders</source>
+  <target>Ränder setzen</target>
+</trans-unit>
+<trans-unit id="s822b4cbbb9731fd1">
+  <source>Set the borders of the selected elements</source>
+  <target>Setze die Ränder der ausgewählten Elemente</target>
+</trans-unit>
+<trans-unit id="sa0d881177fddd8f1">
+  <source>Animate elements</source>
+  <target>Elemente animieren</target>
+</trans-unit>
+<trans-unit id="s4c4cb162f1aa7a7f">
+  <source>Animate selected elements using keyframes</source>
+  <target>Ausgewählte Elemente mit Keyframes animieren</target>
+</trans-unit>
+<trans-unit id="sde9069c57416888e">
+  <source>Set interactivity of elements</source>
+  <target>Interaktivitäts-Optionen anpassen</target>
+</trans-unit>
+<trans-unit id="se8bb865aeb8602dc">
+  <source>Set interactivty options for selected elements</source>
+  <target>Setze Interaktivitäts-Optionen der ausgewählten Elemente</target>
+</trans-unit>
+<trans-unit id="s1daf89c02a41099d">
+  <source>Set box aligment of elements</source>
+  <target>Elemente ausrichten</target>
+</trans-unit>
+<trans-unit id="s96611799d29d7d82">
+  <source>Set box alignment of selected elements</source>
+  <target>Setze die Ausrichtung der ausgewählten Elemente</target>
+</trans-unit>
+<trans-unit id="s0027a5727286bb11">
+  <source>Set color adjustment of elements</source>
+  <target>Farbanpassung einstellen</target>
+</trans-unit>
+<trans-unit id="s7ad802c20f77b1e9">
+  <source>Set color adjustment (light/dark mode) options of selected elements</source>
+  <target>Setze die Farbanpassung (Light/Dark Mode) der ausgewählten Elemente</target>
+</trans-unit>
+<trans-unit id="s9dde1d5d59bd3e12">
+  <source>Set text/stroke color of elements</source>
+  <target>Setze die Innenabstände der ausgewählten Elemente</target>
+</trans-unit>
+<trans-unit id="se6f9a782d95c2a87">
+  <source>Set text/stroke color of selected elements</source>
+  <target>Setze die Text-/Strichfarbe der ausgewählten Elemente</target>
+</trans-unit>
+<trans-unit id="sf71ac38322b51fce">
+  <source>Set blending of elements</source>
+  <target>Elemente überblenden</target>
+</trans-unit>
+<trans-unit id="sdbdf663c872fb855">
+  <source>Set blending (e.g. opacity) of selected elements</source>
+  <target>Setze die Überblendung (z.B. Transparenz) der ausgewählten Elemente</target>
+</trans-unit>
+<trans-unit id="s7571add53e89c666">
+  <source>Set display mode of elements</source>
+  <target>Darstellungsmodus setzen</target>
+</trans-unit>
+<trans-unit id="s3c1c59a8fe1ce8af">
+  <source>Set the display mode of the selected elements</source>
+  <target>Setze den Darstellungsmodus der ausgewählten Elemente</target>
+</trans-unit>
+<trans-unit id="s908673a6a066890a">
+  <source>Apply filters to elements</source>
+  <target>Filter anwenden</target>
+</trans-unit>
+<trans-unit id="s52e1a890841a3ae8">
+  <source>Apply filters (blur, invert, etc.) to the selected elements</source>
+  <target>Setze Filter (Unschärfe, Invertierung, etc.) für die ausgewählten Elemente</target>
+</trans-unit>
+<trans-unit id="sa6cb149303cb6b9b">
+  <source>Set flex behaviour of elements</source>
+  <target>Flex-Verhalten setzen</target>
+</trans-unit>
+<trans-unit id="se17a380e47aa8613">
+  <source>Set flex behaviour (grow, shrink, wrap, order) of selected elements</source>
+  <target>Setze das Flex-Verhalten (wachsen, schrumpfen, umbrechen, ordnen) der ausgewählten Elemente</target>
+</trans-unit>
+<trans-unit id="s956d818a5ba9094a">
+  <source>Set typography of elements</source>
+  <target>Typographie setzen</target>
+</trans-unit>
+<trans-unit id="safb272a7b342509c">
+  <source>Set typography (font family, size, etc.) of selected elements</source>
+  <target>Setze die Typographie (Schriftart, Größe, etc.) der ausgewählten Elemente</target>
+</trans-unit>
+<trans-unit id="s3c17342a705bd1c4">
+  <source>Set fragmentation of elements</source>
+  <target>Fragmentierungs-Optionen setzen</target>
+</trans-unit>
+<trans-unit id="s87c65faff16a53bd">
+  <source>Set fragmentation (behaviour on page/region/column breaks) of selected elements</source>
+  <target>Setze die Fragmentierungs-Optionen (Verhalten bei Seiten-/Abschnitts-/Spaltenumbrüchen) der ausgewählten Elemente</target>
+</trans-unit>
+<trans-unit id="s0e85f20deb68dce5">
+  <source>Set grid options of elements</source>
+  <target>Raster-Optionen setzen</target>
+</trans-unit>
+<trans-unit id="se4c980b07af2341d">
+  <source>Set grid options (row, column, etc.) of selected elements</source>
+  <target>Setze die Raster-Optionen (Zeile, Spalte, etc.) der ausgewählten Elemente</target>
+</trans-unit>
+<trans-unit id="sc4bf75dec107c18c">
+  <source>Set image sizing options of elements</source>
+  <target>Bildgrößen-Optionen setzen</target>
+</trans-unit>
+<trans-unit id="saaf255f484959835">
+  <source>Set image sizing options of selected elements</source>
+  <target>Setze die Bildgrößen-Optionen der ausgewählten Elemente</target>
+</trans-unit>
+<trans-unit id="s369fb1cfa9034f85">
+  <source>Set list options of elements</source>
+  <target>Listen-Optionen setzen</target>
+</trans-unit>
+<trans-unit id="s833cf35ed6049636">
+  <source>Set list options of selected elements</source>
+  <target>Setze die Listen-Optionen der ausgewählten Elemente</target>
+</trans-unit>
+<trans-unit id="se1a6fda0ab83e279">
+  <source>Column break elements</source>
+  <target>Spaltenumbruch einstellen</target>
+</trans-unit>
+<trans-unit id="s0898264186c682fa">
+  <source>Apply column layout to selected elements</source>
+  <target>Spalten-Layout auf die ausgewählten Elemente anwenden</target>
+</trans-unit>
+<trans-unit id="s428e7029a6865fee">
+  <source>Set overflow behaviour of elements</source>
+  <target>Overflow-Verhalten setzen</target>
+</trans-unit>
+<trans-unit id="sa5c062dc12553bbb">
+  <source>Set overflow behaviour of selected elements</source>
+  <target>Setze das Overflow-Verhalten der ausgewählten Elemente</target>
+</trans-unit>
+<trans-unit id="sc564f16e50f1d13c">
+  <source>Set positioning of elements</source>
+  <target>Elemente positionieren</target>
+</trans-unit>
+<trans-unit id="s19d9b0051c5e3b45">
+  <source>Set positioning of selected elements</source>
+  <target>Setze die Position der ausgewählten Elemente</target>
+</trans-unit>
+<trans-unit id="s2921e08499b3b31b">
+  <source>Shape elements</source>
+  <target>Elemente formen</target>
+</trans-unit>
+<trans-unit id="s2dbeef0cb14e4f4d">
+  <source>Set shape of selected elements</source>
+  <target>Forme die ausgewählten Elemente</target>
+</trans-unit>
+<trans-unit id="s68681ccdf4058284">
+  <source>2D/3D transform elements</source>
+  <target>Elemente 2D/3D-transformieren</target>
+</trans-unit>
+<trans-unit id="sab4fb4f4ff5b43e4">
+  <source>Apply 2D or 3D transformations to selected elements</source>
+  <target>2D/3D-Transformation auf ausgewählte Elemente anwenden</target>
+</trans-unit>
+<trans-unit id="s48b3acc8bdc2a8a0">
+  <source>Set writing mode of elements</source>
+  <target>Schreibart wählen</target>
+</trans-unit>
+<trans-unit id="sdedc76f6a0a2583b">
+  <source>Set writing mode options of selected elements</source>
+  <target>Setze Schreibart-Optionen der auswählten Elemente</target>
+</trans-unit>
+<trans-unit id="sf84ef06e1a73e854">
+  <source>Set other style options of elements</source>
+  <target>Andere Stil-Optionen setzen</target>
+</trans-unit>
+<trans-unit id="s762e5704cc84089d">
+  <source>Set other style options of selected elements</source>
+  <target>Setze andere Stil-Optionen der ausgewählten Elemente</target>
+</trans-unit>
+<trans-unit id="s8a4ff2bd9c13498c">
+  <source>Record</source>
+  <target>Aufnehmen</target>
+</trans-unit>
+<trans-unit id="s1a5230a71d9285c1">
+  <source>Capture</source>
+  <target>Aufzeichnen</target>
+</trans-unit>
+<trans-unit id="s78789724e789221c">
+  <source>Size</source>
+  <target>Größe</target>
+</trans-unit>
+<trans-unit id="s1b4a36fce2456660">
+  <source>Font Family</source>
+  <target>Schriftart</target>
+</trans-unit>
+<trans-unit id="s11326fd2590f4e5e">
+  <source>Default</source>
+  <target>Standard</target>
+</trans-unit>
+<trans-unit id="s9c356016f81585f6">
+  <source>Background Color</source>
+  <target>Hintergrundfarbe</target>
+</trans-unit>
+<trans-unit id="s1f74bdf32b51a5fc">
+  <source>Background Image</source>
+  <target>Hintergrundbild</target>
+</trans-unit>
+<trans-unit id="s927d796559f49439">
+  <source>Background Origin</source>
+  <target>Hintergrundquelle</target>
+</trans-unit>
+<trans-unit id="s1637c7d1a30629e2">
+  <source>Border Box</source>
+  <target>Border Box</target>
+</trans-unit>
+<trans-unit id="scd15088c39fe9edf">
+  <source>Padding Box</source>
+  <target>Padding Box</target>
+</trans-unit>
+<trans-unit id="s1db591f5a54dbfd3">
+  <source>Content Box</source>
+  <target>Content Box</target>
+</trans-unit>
+<trans-unit id="sa01e7bf33563ef72">
+  <source>Background Attachment</source>
+  <target>Hintergrund-Anheftung</target>
+</trans-unit>
+<trans-unit id="sd319aae1401f1e19">
+  <source>Fixed</source>
+  <target>Fest</target>
+</trans-unit>
+<trans-unit id="sa7698b3d20a6d1ec">
+  <source>Scroll</source>
+  <target>Scrollen</target>
+</trans-unit>
+<trans-unit id="s89bca7498f20e041">
+  <source>Background Clip</source>
+  <target>Hintergrund-Clipping</target>
+</trans-unit>
+<trans-unit id="s67d6d8f179e655df">
+  <source>Hide advanced styling</source>
+  <target>Fortgeschrittene Stil-Optionen verstecken</target>
+</trans-unit>
+<trans-unit id="s84e5eb4dc1ad9d98">
+  <source>Show advanced styling</source>
+  <target>Fortgeschrittene Stil-Optionen zeigen</target>
+</trans-unit>
+<trans-unit id="s29acfd2778e8c377">
+  <source>Hide advanced text formatting</source>
+  <target>Fortgeschrittene Text-Optionen verstecken</target>
+</trans-unit>
+<trans-unit id="s1a1acc902e6668e0">
+  <source>Show advanced text formatting</source>
+  <target>Fortgeschrittene Text-Optionen zeigen</target>
+</trans-unit>
+<trans-unit id="s4fd2e638aabb0bb3">
+  <source>WebWriter supports embedding many different sources. Simply paste a link to content from:</source>
+  <target>WebWriter unterstützt viele verschiedene Quellen. Einfach einen Link einfügen zu: </target>
+</trans-unit>
+<trans-unit id="s00065e45db8c0441">
+  <source>See developer tools for more details</source>
+  <target>Siehe Entwickler-Werkzeuge für mehr Informationen</target>
 </trans-unit>
 </body>
 </file>
