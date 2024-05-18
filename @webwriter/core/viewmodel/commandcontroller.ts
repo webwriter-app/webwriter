@@ -513,11 +513,7 @@ export class CommandController implements ReactiveController {
         icon: "printer",
         description: () => msg("Print the active document"),
         shortcut: "ctrl+p",
-        run: (host, _, e) => {
-          if(e?.isTrusted) {
-            host.activeEditor?.pmEditor?.window?.print()
-          }
-        },
+        run: host => {host.activeEditor?.pmEditor.window.focus(); host.activeEditor?.pmEditor.iframe.contentWindow.print()},
         category: "document",
         disabled: host => host.sourceMode
       }),
