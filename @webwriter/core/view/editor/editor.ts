@@ -768,7 +768,7 @@ export class ExplorableEditor extends LitElement {
       )*/
       this.positionStyle = css`
         body {
-          --ww-toolbox-action-x: ${this.toolboxX - iframeOffsetX};
+          --ww-toolbox-action-x: ${this.toolboxX - iframeOffsetX + 10};
           --ww-toolbox-action-y: ${this.toolboxY + this.toolboxHeight - iframeOffsetY};
           --ww-toolbox-action-width: ${docWidth - rightEdge}
           --ww-toolbox-action-height: ${docHeight + -this.toolboxY + -this.toolboxHeight}
@@ -1149,7 +1149,6 @@ export class ExplorableEditor extends LitElement {
           
         }}
         @ww-click-breadcrumb=${(e: any) => {
-          console.log("select")
           this.selectElementInEditor(e.detail.element)
         }}
 				@ww-mouse-enter-delete-widget=${(e: CustomEvent) => this.deletingWidget = e.detail.widget}
