@@ -148,6 +148,7 @@ export class MetaEditor extends LitElement {
         display: grid;
         grid-template-rows: max-content 1fr;
         grid-template-columns: 1fr;
+        overflow: visible;
       }
 
       #content {
@@ -703,7 +704,7 @@ export class MetaEditor extends LitElement {
   }
 
   Field({name, label, element, type, multiline, multiple, options, priorityOptions, fixed}: Field, node?: Node, pos?: number, parent?: Node) {
-    const value = this.getNodeValue(node)
+    let value = this.getNodeValue(node)
     const finalName = this.getElementLabel(name, element, !!fixed, node)
     const suggestions = this.getElementNameSuggestions(element)
     const placeholder = this.getElementPlaceholder(element)
@@ -767,9 +768,10 @@ export class MetaEditor extends LitElement {
     }
 
     else if(type === Locale) {
+      value = this.head$.doc.attrs?.htmlAttrs?.lang
       const preferredLangs = Locale.preferredLanguageCodes.map(code => Locale.getLanguageInfo(code))
       const otherLangs = Locale.languageInfos.filter(({code}) => !navigator.languages.includes(code))
-      return html`<sl-select .value=${value} hoist @sl-change=${(e: any) => this.handleFieldChange(element, e.target.value, name, pos, !fixed? undefined: name)}>
+      return html`<sl-select value=${value} hoist @sl-change=${(e: any) => this.handleFieldChange(element, e.target.value, name, pos, !fixed? undefined: name)}>
         ${labelTemplate}
         ${preferredLangs
           .map(({code, name, nativeName}) => html`
