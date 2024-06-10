@@ -1,6 +1,6 @@
 {
   "name": "webwriter",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "description": "Web-based authoring tool for explorables",
   "scripts": {
     "lerna": "lerna",
@@ -13,7 +13,7 @@
     "predev-core": "npm-run-all -pc preparestatic build-localization",
     "dev-core": "npm run vite -- @webwriter/core -l error",
     "predev-desktop": "tauri -V",
-    "dev-desktop": "RUST_BACKTRACE=1 npm-run-all -pr dev-core \"tauri dev -- -c ./@webwriter/app-desktop/src-tauri/tauri.conf.json\"",
+    "dev-desktop": "npm-run-all -pr dev-core \"tauri dev -- -c ./@webwriter/app-desktop/src-tauri/tauri.conf.json\"",
     "dev-cloud": "npm run -w @webwriter/app-cloud dev",
     "dev-docs": "bundle exec jekyll serve -s ./docs",
     "prebuild-core": "npm-run-all -p preparestatic build-localization",
