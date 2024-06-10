@@ -768,7 +768,7 @@ export class ExplorableEditor extends LitElement {
       )*/
       this.positionStyle = css`
         body {
-          --ww-toolbox-action-x: ${this.toolboxX - iframeOffsetX + 10};
+          --ww-toolbox-action-x: ${this.toolboxX - iframeOffsetX};
           --ww-toolbox-action-y: ${this.toolboxY + this.toolboxHeight - iframeOffsetY};
           --ww-toolbox-action-width: ${docWidth - rightEdge}
           --ww-toolbox-action-height: ${docHeight + -this.toolboxY + -this.toolboxHeight}
@@ -1036,8 +1036,8 @@ export class ExplorableEditor extends LitElement {
   }
 
   windowListeners: Partial<Record<keyof WindowEventMap, any>> = {
-      "beforeprint": () => this.printing = true,
-      "afterprint": () => this.printing = false
+    "beforeprint": () => this.printing = true,
+    "afterprint": () => this.printing = false
   }  
 
   transformPastedHTML = (html: string) => {

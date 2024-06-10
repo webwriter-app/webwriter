@@ -195,9 +195,9 @@ export class Toolbox extends LitElement {
         -webkit-user-select: none;
         font-size: 0.95rem;
         align-items: flex-start;
+        padding-left: 10px;
         padding-bottom: 1ch;
         overflow: visible;
-        scrollbar-gutter: stable both-edges;
         scrollbar-width: thin;
         box-sizing: border-box;
       }

@@ -143,6 +143,7 @@ export class Palette extends LitElement {
       grid-auto-rows: 40px;
       max-width: 420px;
       margin-left: auto;
+      padding-right: 10px;
       padding-bottom: 5px;
       gap: 5px;
       grid-auto-flow: row dense;
@@ -150,9 +151,7 @@ export class Palette extends LitElement {
       overflow-y: auto;
       overflow-x: visible;
       position: relative;
-      scrollbar-gutter: stable;
       scrollbar-width: thin;
-      box-sizing: border-box;
     }
 
     .inline-commands-wrapper {
