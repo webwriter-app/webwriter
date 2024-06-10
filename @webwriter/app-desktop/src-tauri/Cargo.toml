@@ -1,6 +1,6 @@
 [package]
 name = "webwriter"
-version = "0.9.3"
+version = "0.9.4"
 description = "Windows/Mac/Linux version of WebWriter"
 authors = ["Frederic Salmen <frederic@fsalmen.de>"]
 license = "UNLICENSED"
