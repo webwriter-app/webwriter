@@ -195,6 +195,7 @@ export async function pm(command: string, commandArgs: string[] = [], cwd?: stri
   const opts = cwd? {cwd}: {}
   console.info(`[TAURI] ${cwd? cwd: await appDir()}> bun ${cmdArgs.join(" ")}`)
   const output = await Command.sidecar("bin/bun", cmdArgs, opts).execute()
+  console.log(output.stdout, output.stderr)
   if(output.code) {
     throw new Error(output.stderr)
   }
