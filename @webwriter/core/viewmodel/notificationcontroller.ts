@@ -41,7 +41,7 @@ export class NotificationController implements ReactiveController {
 		const notify = (m: string) => this.notify(m, warning? "warning": "danger")
 		const log = (m: string) => warning? warn(m, ...params): error(m, ...params)
 		const ignoreList = warning? this.warningsToIgnore: this.errorsToIgnore
-		if(ignoreList.some(s => err.message.startsWith(s))) {
+		if(ignoreList.some(s => err.message?.startsWith(s))) {
 			return isOnError
 		}
 		else if(!throwOnly) {
