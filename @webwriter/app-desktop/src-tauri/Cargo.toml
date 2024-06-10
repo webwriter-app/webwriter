@@ -7,7 +7,7 @@ license = "UNLICENSED"
 repository = "https://github.com/salmenf/webwriter.git"
 default-run = "webwriter"
 edition = "2021"
-rust-version = "1.78"
+rust-version = "1.76"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
