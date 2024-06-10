@@ -12,7 +12,8 @@ import { toJS } from "mobx"
 
 type Options = {
   corePackages?: Package["name"][]
-  onBundleChange?: (packages: Package[]) => void
+  onBundleChange?: (packages: Package[]) => void,
+  watching?: Record<string, boolean>
 } & Environment
 
 type PmQueueTask = {
@@ -127,13 +128,6 @@ export class PackageStore {
 
     type BundleData = Awaited<ReturnType<typeof this.bundlePath>> & {bundleID?: string, bundleJS?: string, bundleCSS?: string, importIDs: string[], meta?: {errors: BundleIssue[], cssSize?: number, jsSize?: number, imports: {path: string, kind: string, external?: boolean}[], exports: string[]}}
 
-    const bundleData: BundleData[] = (await Promise.all(importIDs.map(async id => {
-      const bundleID = PackageStore.computeBundleID([id], production)
-      const bundleStatus = await this.bundlePath([id], Path, FS, production)
-      const meta = JSON.parse((await this.readFileIfExists(bundleStatus.metaPath, FS)) ?? "null") as BundleData["meta"]
-      return {bundleID, importIDs: [id], ...bundleStatus, meta}
-    })))
-
     const hasUncached = (entry: BundleData) => !entry.metaExists || this.isLocalImportID(entry.bundleID!)
 
     const writeEntrypoint = async (entry: BundleData) => {
@@ -166,7 +160,7 @@ export class PackageStore {
         .map(str => {
           const [message, afterPart] = str.trim().split("\n\n\n\n")
           const [location, display] = afterPart.trim().split(":\n\n")
-          const nameRegex = /(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*/
+          const nameRegex = /(@[a-z0-9-~][a-z0-9-._~]*\/)[a-z0-9-~][a-z0-9-._~]*/g
           const lineRegex = /\d+ │ .*\n/
           const line = display.match(lineRegex)![0].trim()
           const id = location.replace("node_modules/","").match(nameRegex)![0]
@@ -194,6 +188,13 @@ export class PackageStore {
         await FS.unlink(metaPath)
       }
     }
+
+    const bundleData = (await Promise.all(importIDs.map(async id => {
+      const bundleID = PackageStore.computeBundleID([id], production)
+      const bundleStatus = await this.bundlePath([id], Path, FS, production)
+      const meta = JSON.parse((await this.readFileIfExists(bundleStatus.metaPath, FS)) ?? "null") as BundleData["meta"]
+      return {bundleID, importIDs: [id], ...bundleStatus, meta}
+    }))) as BundleData[]
      
     const toBundleSingle = bundleData.filter(hasUncached)
     if(toBundleSingle.length) {
@@ -216,7 +217,7 @@ export class PackageStore {
     }
     const importIDsNoErrors = importIDs.filter(id => {
       const currentError = errors.some(err => id.startsWith(err.id!))
-      const storedError = bundleData.some(entry => entry.importIDs.includes(id) && (entry.meta?.errors.length ?? 0) > 0)
+      const storedError = bundleData.some(entry => !this.isLocalImportID(id) && entry.importIDs.includes(id) && (entry.meta?.errors.length ?? 0) > 0)
       return !currentError && !storedError
     })
     const compositeWithoutErrors = {
@@ -233,7 +234,7 @@ export class PackageStore {
       ...compositeWithoutErrors,
       bundleJS: await this.readFileIfExists(compositeWithoutErrors.jsPath, FS),
       bundleCSS: await this.readFileIfExists(compositeWithoutErrors.cssPath,FS),
-      errors: [...errors, ...bundleData.flatMap(entry => entry.meta?.errors ?? [])]
+      errors
     }
   }
 
@@ -286,7 +287,12 @@ export class PackageStore {
     Object.assign(this, options)
     this.appDir = this.Path.appDir()
     this.rootPackageJsonPath = this.appDir.then(dir => this.Path.join(dir, "package.json"))
-    this.initialized = this.initialize()
+    this.localPathsPath = this.appDir.then(dir => this.Path.join(dir, "localpaths.json"))
+    this.initialized = this.initialize();
+    (async () => {
+      await this.initialized
+      this.watching = options.watching ?? this.watching
+    })()
   }
 
   FS: Environment["FS"]
@@ -306,6 +312,7 @@ export class PackageStore {
   resetting: boolean = false
   appDir: Promise<string>
   rootPackageJsonPath: Promise<string>
+  localPathsPath: Promise<string>
 
   bundleJS: string = ""
   bundleCSS: string = ""
@@ -358,13 +365,14 @@ export class PackageStore {
   }
 
   pmQueue = cargoQueue(async (tasks: PmQueueTask[]) => {
-    const toAdd = tasks.filter(t => t.command === "add").flatMap(t => t.parameters)
+    const toAdd = tasks.filter(t => t.command === "add" && !t.name).flatMap(t => t.parameters)
     const toRemove = tasks.filter(t => t.command === "remove").flatMap(t => t.parameters)
     const toUpdate = tasks.filter(t => t.command === "update").flatMap(t => t.parameters)
+    const toLink = tasks.filter(t => t.command === "add" && t.name)
     if(toAdd.length > 0) {
       const names = Object.fromEntries(toAdd.map(key => [
         key,
-        !key.startsWith("file")? key: tasks.find(t => t.parameters.includes(key))!.name!
+        !key.startsWith("file://")? key: tasks.find(t => t.parameters.includes(key))!.name!
       ]))
       try {
         await this.pm("add", toAdd, await this.appDir)
@@ -375,6 +383,27 @@ export class PackageStore {
       finally {
         this.adding = {...this.adding, ...Object.fromEntries(toAdd.map(name => [names[name], false]))}
       }
+    }
+    if(toLink.length > 0) {
+      const pkg = (await this.readRootPackageJson())!
+      pkg.localPaths = Object.fromEntries(toLink
+        .map(task => [task.name!, task.parameters[0]!.replace("file:\/\/", "")])
+      )
+      await this.updateLocalLinks(pkg.localPaths)
+      for(const key of Object.keys(pkg.localPaths)) {
+        try {
+          await this.pm("link", [key, "--save"], await this.appDir)
+        }
+        catch(err) {
+          console.error(err)
+        }
+        finally {
+          this.adding = {...this.adding, ...Object.fromEntries(toLink.map(task => [task.name, false]))}
+        }
+      }
+      const updatedPkg = (await this.readRootPackageJson())!
+      updatedPkg.localPaths = pkg.localPaths
+      await this.writeRootPackageJson(updatedPkg)
     }
     if(toRemove.length > 0) {
       try {
@@ -478,11 +507,23 @@ export class PackageStore {
       return undefined
     }
     const json = JSON.parse(await this.FS.readFile(await this.rootPackageJsonPath) as string)
-    return new Package(json)
+    return new Package(json) as Package & {localPaths: Record<string, string>}
   }
 
   private async writeRootPackageJson(pkg: Package = this.defaultRootPackage) {
     return this.FS.writeFile(await this.rootPackageJsonPath, JSON.stringify(pkg, undefined, 2))
+  }
+
+  private async readLocalPathsJson() {
+    if(!await this.FS.exists(await this.localPathsPath)) {
+      return undefined
+    }
+    const json = JSON.parse(await this.FS.readFile(await this.localPathsPath) as string)
+    return json as Record<string, string>
+  }
+
+  private async writeLocalPathsJson(localPaths: Record<string, string> = {}) {
+    return this.FS.writeFile(await this.localPathsPath, JSON.stringify(localPaths, undefined, 2))
   }
 
   async add(url: string, name?: string) {
@@ -529,6 +570,26 @@ export class PackageStore {
     return dir
   }
 
+  async updateLocalLinks(dependencies?: Record<string, string>) {
+    if(dependencies) {
+      for(const path of Object.values(dependencies)) {
+        await this.pm("link", undefined, path)
+      }
+    }
+    else {
+      let localPaths = await this.readLocalPathsJson()
+      const pkg = await this.readRootPackageJson()
+      if(localPaths) {
+        const deps = pkg?.dependencies ?? {}
+        localPaths = filterObject(localPaths, k => k in deps)
+        for(const path in Object.keys(localPaths)) {
+          await this.pm("link", undefined, path)
+        }
+        return this.writeLocalPathsJson(localPaths)
+      } 
+    }
+  }
+
   reloadCount = 0
 
   /** Reads local packages from disk, importing them, and/or fetches available packages from the configured registry.*/
@@ -536,6 +597,7 @@ export class PackageStore {
     this.loading = true
     this.issues = {}
     this.reloadCount++
+    await this.updateLocalLinks()
     let [installed, available] = await Promise.all([
       this.fetchInstalled(),
       this.fetchAvailable()
@@ -593,16 +655,17 @@ export class PackageStore {
 
   private async fetchInstalled() {
     const appDir = await this.appDir;
-    let pkgJsonPaths = [] as any[], localPaths: any[]
+    let pkgJsonPaths = {} as Record<string, string>, localPaths = {} as Record<string, string>
     try {
-      const dependencies = (await this.readRootPackageJson())?.dependencies ?? {}
-      pkgJsonPaths = await Promise.all(Object.keys(dependencies).map(k => this.Path.join(appDir, "node_modules", k, "package.json")))
-      localPaths = Object.values(dependencies).map(v => v.startsWith("file:")? v.slice(7): undefined)
+      const pkg = await this.readRootPackageJson()
+      const dependencies = pkg?.dependencies ?? {}
+      localPaths = pkg?.localPaths ?? {}
+      pkgJsonPaths = Object.fromEntries(await Promise.all(Object.keys(dependencies).map(async k => [k, await this.Path.join(appDir, "node_modules", k, "package.json")])))
     }
     catch(cause) {
       this.appendManagementIssues(new ReadWriteIssue("Could not read installed package.json files", {cause}))
     }
-    const pkgs = await Promise.all(pkgJsonPaths.map((p, i) => this.readPackage(p, localPaths[i])))
+    const pkgs = await Promise.all(Object.entries(pkgJsonPaths).map(([k, jsonPath]) => this.readPackage(jsonPath, localPaths[k])))
     return pkgs
   }
 
@@ -773,6 +836,7 @@ export class PackageStore {
 
   /** Toggles watching on a single named package.*/
   async toggleWatch(name: string, forceValue?: boolean) {
+    await this.initialized
     const pkg = this.packages[name]
     if(!pkg) {
       return 
@@ -780,13 +844,6 @@ export class PackageStore {
     const watching = forceValue ?? !pkg?.watching
     if(watching && pkg?.localPath) {
       this.unwatchCallbacks[name] = await this.watch(pkg.localPath, async (e) => {
-        if(!this.loading) {
-          this.loading = true
-          const path = "file://" + pkg.localPath!
-          await this.remove(pkg.name)
-          await this.add(path, pkg.name)
-          this.loading = false
-        }
         if(!this.loading) {
           this.load()
         }

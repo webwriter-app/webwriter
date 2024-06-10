@@ -255,6 +255,7 @@ export class Package {
     imports: z.record(z.string().startsWith("#"), z.record(z.string())).optional(),
     editingConfig: EditingConfig.optional(),
     // customElements: CustomElementsManifest.optional()
+    localPaths: z.record(z.string()).optional()
   })
 
   static objectSchema = this.coreObjectSchema
