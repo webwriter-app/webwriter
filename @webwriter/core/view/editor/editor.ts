@@ -1035,11 +1035,9 @@ export class ExplorableEditor extends LitElement {
     }
   }
 
-  get windowListeners(): Partial<Record<keyof WindowEventMap, any>> {
-    return {
+  windowListeners: Partial<Record<keyof WindowEventMap, any>> = {
       "beforeprint": () => this.printing = true,
       "afterprint": () => this.printing = false
-    }
   }  
 
   transformPastedHTML = (html: string) => {
