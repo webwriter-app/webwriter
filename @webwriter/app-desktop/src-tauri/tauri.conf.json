@@ -70,9 +70,8 @@
       "macOS": {
         "exceptionDomain": "",
         "frameworks": [],
-        "providerShortName": null,
-        "signingIdentity": null,
-        "minimumSystemVersion": "10.14.5"
+        "minimumSystemVersion": "14.5",
+        "entitlements": "./Info.plist"
       },
       "resources": [],
       "shortDescription": "",
@@ -81,6 +80,7 @@
     "security": {
       "csp": null
     },
+    "macOSPrivateApi": true,
     "windows": [
       {
         "fileDropEnabled": false,
