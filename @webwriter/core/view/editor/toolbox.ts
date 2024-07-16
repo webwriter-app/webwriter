@@ -6,7 +6,7 @@ import { camelCaseToSpacedCase, prettifyPackageName, unscopePackageName } from "
 import { Mark } from "prosemirror-model"
 import { classMap } from "lit/directives/class-map.js"
 import { localized, msg } from "@lit/localize"
-import { Command } from "../../viewmodel"
+import { Command, LayoutCommand } from "../../viewmodel"
 import { spreadProps } from "@open-wc/lit-helpers"
 import "../elements/stylepickers"
 
@@ -109,6 +109,9 @@ export class Toolbox extends LitElement {
 
   @property({type: Object, attribute: false})
   activeElement: HTMLElement | null
+
+  @property({attribute: false})
+  activeLayoutCommand: LayoutCommand | undefined
 
   emitDeleteWidget = () => this.dispatchEvent(
     new CustomEvent("ww-delete-widget", {composed: true, bubbles: true, detail: {
@@ -232,6 +235,13 @@ export class Toolbox extends LitElement {
 
       :host(:not([advancedstyling])) .layout-command.advanced {
         display: none;
+      }
+
+      .layout-command[data-active] {
+        border: 2px solid var(--sl-color-gray-600);
+        border-radius: 5px;
+        background: white;
+        position: relative;
       }
 
       .inline-commands:not(.more-inline-commands).applied {
@@ -421,6 +431,10 @@ export class Toolbox extends LitElement {
         cursor: pointer;
       }
 
+      .block-command {
+        border: 2px solid transparent;
+      }
+
       .block-command.applied {
         background: var(--sl-color-primary-200);
         border-radius: 4px;
@@ -430,6 +444,15 @@ export class Toolbox extends LitElement {
         width: 24px;
         height: 24px;
         --icon-size: 24px;
+      }
+
+      .block-command ww-button {
+        width: 100%;
+        height: 100%;
+      }
+
+      .block-command ww-button::part(base) {
+        padding: 0;
       }
 
       .block-option:not([data-secondary])::part(base) {
@@ -485,15 +508,45 @@ export class Toolbox extends LitElement {
       }
 
       .pickers {
-        display: grid;
-        gap: 16px 8px;
-        grid-template-columns: 1fr 1fr;
-        grid-auto-rows: 40px;
-        grid-auto-flow: dense;
-      }
+        position: absolute;
+        left: calc(100% + 10px);
+        border: 2px solid var(--sl-color-gray-600);
+        top: 0;
+        padding: 10px;
+        padding-right: 5px;
+        padding-top: 0;
+        border-radius: 5px;
+        background: white;
+        overflow-y: auto;
+        scrollbar-width: thin;
+        max-height: 80vh;
+        width: 100%;
 
-      .pickers:not(:has( *)) {
-        display: none;
+        & > h3 {
+          display: flex;
+          flex-direction: row;
+          align-items: center;
+          color: var(--sl-color-gray-600);
+          margin: 0;
+          padding: 15px 0;
+          position: sticky;
+          top: 0;
+          left: 0;
+          z-index: 1;
+          background: inherit;
+
+          & > sl-icon {
+            margin-right: 1ch;
+          }
+
+          & > span {
+            font-size: 0.875rem;
+          }
+
+          & > sl-icon-button {
+            margin-left: auto;
+          }
+        }
       }
 
       .picker#blockBorder, .picker#blockTextAlign {
@@ -541,6 +594,8 @@ export class Toolbox extends LitElement {
         grid-template-rows: min-content min-content min-content;
         position: relative;
         gap: 4px;
+        grid-column: 1;
+        grid-row: 2;
       }
 
       #inline-toolbox-label {
@@ -829,7 +884,7 @@ export class Toolbox extends LitElement {
     }
 
 		return html`
-    <span id=${v.id} class=${classMap(classes)}>
+    <span id=${v.id} class=${classMap(classes)} ?data-active=${v === this.activeLayoutCommand}>
       <ww-button
         ${spreadProps(v.toObject())}
         tabindex=${0}
@@ -841,48 +896,24 @@ export class Toolbox extends LitElement {
     `
 	})
 
-  Pickers = (el: HTMLElement) => this.app.commands.layoutCommands.map(v => {
-    let picker = null
-    if(!v.active) {
-      return null
+  Pickers = (el: HTMLElement, activeLayoutCommand?: LayoutCommand) => {
+    let properties
+    if(!activeLayoutCommand) {
+      return undefined
     }
-    if(v.id === "border") {
-      picker = html`
-        <ww-borderpicker></ww-borderpicker>
-      `
+    else if(activeLayoutCommand?.id === "textStyle") {
+      const propertyNames = ["hyphens", "letter-spacing", "line-break", "overflow-wrap", "tab-size", "text-align", "text-align-last", "text-indent", "text-justify", "text-transform", "text-wrap", "white-space", "white-space-collapse", "word-break", "word-spacing", "text-decoration", "text-emphasis", "text-shadow", "text-underline-offset", "text-underline-position"] as const
+      properties = propertyNames.map(name => html`<ww-css-property-input name=${name} plaintext value=""></ww-css-property-input>`)
     }
-    else if(v.id === "padding") {
-      picker = html`
-        <ww-paddingpicker></ww-paddingpicker>
-      `
-    }
-    else if(v.id === "margin") {
-      picker = html`
-        <ww-marginpicker></ww-marginpicker>
-      `
-    }
-    else if(v.id === "lineHeight") {
-      picker = html`
-        <ww-lineheightpicker value=${v.value} @change=${(e: any) => v.run({value: e.target.value})}></ww-lineheightpicker>
-      `
-    }
-    else if(v.id === "background") {
-      picker = html`
-        <ww-backgroundpicker value=${v.value} @change=${(e: any) => v.run({value: e.target.value})}></ww-backgroundpicker>
-      `
-    }
-    else if(v.id === "textAlign") {
-      picker = html`
-        <ww-alignmentpicker value=${v.value} @change=${(e: any) => v.run({value: e.target.value})}></ww-alignmentpicker>
-      `
-    }
-
-    return picker? html`<div class="picker" id=${v.id}>
-      ${picker}
-      <ww-button variant="icon" class="picker-icon" icon=${v.icon ?? "square"}></ww-button>
-    </div>`: null
-
-  })
+    return html`<div class="pickers">
+      <h3>
+        <sl-icon name=${activeLayoutCommand?.icon ?? ""}></sl-icon>
+        <span>${activeLayoutCommand?.label}</span>
+        <sl-icon-button name="x" @click=${() => this.activeLayoutCommand = undefined}></sl-icon-button>
+      </h3>
+      ${properties}
+    </div>`
+  }
 
   ElementCommands = (el: HTMLElement) => this.app.commands.elementCommands.map(cmd => {
     return html`
@@ -905,8 +936,7 @@ export class Toolbox extends LitElement {
         ${this.ElementBreadcrumb()}
         <div part="block-commands">
           ${this.ElementCommands(el)}
-          <!--
-          ${this.LayoutCommands(el, false)}
+          <!--${this.LayoutCommands(el, false)}
           <span class=${classMap({"block-command": true, "applied": advancedApplied})}>
             <ww-button
               tabindex=${0}
@@ -916,15 +946,11 @@ export class Toolbox extends LitElement {
               variant="icon"
             ></ww-button>
           </span>
-          ${this.LayoutCommands(el, true)}
-        -->
+          ${this.LayoutCommands(el, true)}-->
         </div>
       </div>
-      </div>
-      <div class="pickers">
-        ${this.Pickers(el)}
-      </div>
-    `
+    </div>
+    ${this.Pickers(el, this.activeLayoutCommand)}`
   }
 
   @property({type: Boolean, attribute: true, reflect: true})
@@ -1167,8 +1193,8 @@ export class Toolbox extends LitElement {
     let el = this.activeElement
     const ancestors = [] as HTMLElement[]
     while(el) {
-      const tagsToExclude = ["html", "body", ...this.app.commands.markCommands.map(cmd => cmd.id)].map(k => k.toUpperCase())
-      if(!(tagsToExclude.includes(el.tagName))) {
+      const tagsToExclude = ["HTML", "BODY", "BR", "WBR", ...this.app.commands.markCommands.map(cmd => cmd.id)].map(k => k.toUpperCase())
+      if(!(tagsToExclude.includes(el.tagName)) && !(el.classList.contains("ProseMirror-widget"))) {
         ancestors.unshift(el)
       }
       el = el.parentElement
@@ -1178,7 +1204,7 @@ export class Toolbox extends LitElement {
 
   get activeElementSiblings() {
     let el = this.activeElement
-    const tagsToExclude = [...this.app.commands.markCommands.map(cmd => cmd.id)].map(k => k.toUpperCase())
+    const tagsToExclude = ["HTML", "BODY", "BR", "WBR", ...this.app.commands.markCommands.map(cmd => cmd.id)].map(k => k.toUpperCase())
     return Array.from(el?.parentElement?.children ?? [])
       .filter(child => !tagsToExclude.includes(child.tagName) && child !== el)
   }
@@ -1195,7 +1221,7 @@ export class Toolbox extends LitElement {
 
     const children = Array.from(el.children)
       .filter(child => !child.classList.contains("ProseMirror-trailingBreak"))
-      .filter(child => !["a", "abbr", "b", "bdi", "bdo", "cite", "code", "data", "del", "dfn", "em", "i", "ins", "kbd", "q", "ruby", "s", "samp", "small", "span", "strong", "sub", "sup", "time", "u", "var"].includes(child.tagName.toLowerCase()))
+      .filter(child => !["br", "wbr", "a", "abbr", "b", "bdi", "bdo", "cite", "code", "data", "del", "dfn", "em", "i", "ins", "kbd", "q", "ruby", "s", "samp", "small", "span", "strong", "sub", "sup", "time", "u", "var"].includes(child.tagName.toLowerCase()))
 
     const separator = menuItem? null: html`<sl-dropdown slot="separator" class="children-dropdown" ?data-empty=${children.length === 0}>
       <ww-button
@@ -1244,14 +1270,17 @@ export class Toolbox extends LitElement {
   }
 
   ElementBreadcrumb() {
-    if(this.allSelected || this.gapSelected) {
+    if(this.allSelected) {
       return html`<sl-breadcrumb id="element-breadcrumb">
-        <ww-button variant="icon"><i>${this.allSelected? msg("Everything"): msg("Gap")}</i></ww-button>
+        <ww-button @click=${() => this.app.activeEditor?.focus()} variant="icon"><i>${msg("Everything")}</i></ww-button>
       </sl-breadcrumb>`
     }
     const els = this.activeElementPath
     return html`<sl-breadcrumb id="element-breadcrumb">
       ${els.map((el, i) => this.ElementBreadcrumbItem(el, i === els.length - 1))}
+      ${this.gapSelected? html`
+        <ww-button @click=${() => this.app.activeEditor?.focus()} variant="icon"><i>${msg("Gap")}</i></ww-button>
+      `: null}
     </sl-breadcrumb>`
 
     /*
@@ -1328,7 +1357,6 @@ export class Toolbox extends LitElement {
   }
 
   render() {
-    /*        <sl-icon-button tabindex="-1" class="delete" title="Delete widget" name="trash" @click=${this.emitDeleteWidget} @mouseenter=${this.emitMouseEnterDeleteWidget} @mouseleave=${this.emitMouseLeaveDeleteWidget}></sl-icon-button> */
     if(this.activeElement) {
       return html`
         ${this.BlockToolbox(this.activeElement)}

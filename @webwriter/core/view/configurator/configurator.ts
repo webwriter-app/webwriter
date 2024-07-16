@@ -97,7 +97,7 @@ export class Configurator extends LitElement {
         height: 100%;
         align-items: center;
         gap: 1rem;
-        margin-right: 1rem;
+        margin-right: var(--sl-spacing-small);
       }
     `
   }
@@ -153,6 +153,7 @@ export class Configurator extends LitElement {
   @query("sl-tab-group") tabGroup: SlTabGroup
 
   render() {
+    console.log(this.specs)
     const keys = Object.keys(this.specs)
     return html`
       <sl-tab-group>
@@ -162,6 +163,12 @@ export class Configurator extends LitElement {
         </sl-tab>
         <sl-tab-panel name="post-a">
           <slot name="post-tab-panel-a"></slot>
+        </sl-tab-panel>
+        <sl-tab slot="nav" panel="post-b" @click=${() => this.tabGroup.show("post-b")}>
+          <slot name="post-tab-b"></slot>
+        </sl-tab>
+        <sl-tab-panel name="post-b">
+          <slot name="post-tab-panel-b"></slot>
         </sl-tab-panel>
         <slot id="post-tabs" slot="nav" name="post-tabs"></slot>
       </sl-tab-group>

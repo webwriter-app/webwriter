@@ -383,3 +383,7 @@ export function disjunctPipe<A extends ZodSchema, B extends ZodSchema>(a: A, b: 
 export function escapeRegex(str: string) {
   return str.replace(/[/\-\\^$*+?.()|[\]{}]/g, '\\$&')
 }
+
+export function emitCustomEvent<T extends {}>(emitter: HTMLElement, name: string, detail?: T, options: EventInit = {bubbles: true, composed: true}) {
+  return emitter.dispatchEvent(new CustomEvent(name, {detail, ...options}))
+}

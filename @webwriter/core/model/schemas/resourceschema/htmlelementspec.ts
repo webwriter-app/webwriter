@@ -231,7 +231,7 @@ export function getAttrs(dom: HTMLElement | string, getDeprecated=true) {
 }
 
 
-export function HTMLElementSpec({tag, content, marks, group, inline, atom, attrs, selectable, draggable, code, whitespace, definingAsContext, definingForContent, defining, isolating, toDOM, parseDOM, toDebugString, leafText, phrasingContent, ...rest}: NodeSpec & {tag: string, phrasingContent?: boolean}): NodeSpec {
+export function HTMLElementSpec({tag, content, marks, group, inline, atom, attrs, selectable, draggable, code, whitespace, definingAsContext, definingForContent, defining, isolating, toDOM, parseDOM, toDebugString, leafText, phrasingContent, selector, ...rest}: NodeSpec & {tag: string, phrasingContent?: boolean, selector?: string}): NodeSpec {
   return {
     content,
     marks,
@@ -242,14 +242,13 @@ export function HTMLElementSpec({tag, content, marks, group, inline, atom, attrs
     selectable,
     draggable,
     code,
-    whitespace,
     definingAsContext,
     definingForContent,
     defining,
     isolating,
     toDOM: toDOM ?? (n => [tag, toAttributes(n), ...(content? [0]: [])]), //@ts-ignore
     parseDOM: parseDOM ?? [{
-      tag,
+      tag: selector ?? tag,
       getAttrs,
       ...(true? null: {
         contentElement: node => {

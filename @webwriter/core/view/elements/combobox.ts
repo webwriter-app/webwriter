@@ -57,6 +57,9 @@ export class Combobox extends SlInput implements DataInput {
 
   @property({type: String})
   placeholder: string
+  
+  @property({type: String, attribute: true, reflect: true})
+  emptyValue: string
 
   @property({type: Boolean, attribute: true, reflect: true})
   open: boolean = false
@@ -72,6 +75,10 @@ export class Combobox extends SlInput implements DataInput {
   
   @property({type: String, attribute: true})
   separator: string = " "
+
+  @property({type: String, attribute: true})
+  placement = "bottom"
+
   get validity() {
     return this.input.validity
   }
@@ -285,6 +292,7 @@ export class Combobox extends SlInput implements DataInput {
       this.value = [...this.valueList.slice(0, -1), ...input.value.split(this.separator)]
       input.value = this.valueList.at(-1)!
     }
+    this.dispatchInput()
     this.setValidity(this.validity.valid)
   }
 
@@ -299,10 +307,11 @@ export class Combobox extends SlInput implements DataInput {
   handleOptionClick = (e: PointerEvent) => {
     const option = (e.target as HTMLElement).closest("sl-option") as SlOption | null
     if(option) {
-      this.value = this.input.value = option.value
+      this.value = option.value
       this.focus()
       this.open = false
       this.dispatchChange()
+      this.requestUpdate()
     }
   }
 
@@ -310,12 +319,12 @@ export class Combobox extends SlInput implements DataInput {
     this.dispatchEvent(new CustomEvent("sl-change", {composed: true, bubbles: true}))
   }
 
-  get valueList() {
-    return (this.multiple? this.value || []: [this.value])  as string[]
+  dispatchInput() {
+    this.dispatchEvent(new CustomEvent("sl-input", {composed: true, bubbles: true}))
   }
 
-  protected updated(_changedProperties: PropertyValueMap<any> | Map<PropertyKey, unknown>): void {
-    this.input.value = this.multiple? this.valueList.at(-1) ?? "": String(this.value)
+  get valueList() {
+    return (this.multiple? this.value || []: [this.value])  as string[]
   }
 
   get inputSize() {
@@ -325,13 +334,18 @@ export class Combobox extends SlInput implements DataInput {
     )
   }
 
+  get inputValue() {
+    const value = this.multiple? this.valueList.at(-1) ?? "": String(this.value ?? "")
+    return value !== this.emptyValue? value: ""
+  }
+
   render() {
     const input = html`
       <input
         part="input"
         type=${this.type}
         size=${ifDefined(this.inputSize)}
-        .value=${this.multiple? this.valueList.at(-1)!: String(this.value)}
+        .value=${this.inputValue}
         placeholder=${this.multiple && this.valueList.length > 1? "": this.placeholder}
         ?disabled=${this.disabled || this.inputDisabled}
         @input=${this.handleTextInput}
@@ -369,7 +383,7 @@ export class Combobox extends SlInput implements DataInput {
             ></ww-button>
         </div>
       </div>
-      <sl-popup anchor="anchor" placement="bottom" strategy="fixed" ?active=${this.open} sync="width" auto-size="vertical" auto-size-padding="10" flip shift>
+      <sl-popup anchor="anchor" placement=${this.placement} strategy="fixed" ?active=${this.open} sync="width" auto-size="vertical" auto-size-padding="10" flip shift>
           <sl-menu id="options" @click=${this.handleOptionClick}>
             <slot></slot>
           </sl-menu>

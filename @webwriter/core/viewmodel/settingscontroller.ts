@@ -5,6 +5,8 @@ import { ZodSchema, z } from "zod"
 import { Environment, Package, RootStore, StoreKey, SubStoreKey } from "../model"
 import { App } from "../view"
 import { ViewModelMixin } from "."
+import { FileAccount, NpmAccount, PocketbaseAccount } from "../model/schemas/accounts"
+import { autorun, observe, reaction, when } from "mobx"
 
 type OmitFunctions<T> = Pick<T, {
   [K in keyof T]: T[K] extends Function ? never : K;
@@ -43,7 +45,11 @@ export class SettingsController implements ReactiveController {
 
   async hostConnected() {
     const {join, appDir} = this.host.environment.api.Path
+    const {exists, writeFile} = this.host.environment.api.FS
     const path = await join(await appDir(), "settings.json")
+    if(!(await exists(path))) {
+      await this.persist()
+    }
     this.host.environment.api.watch(path, async () => {
       const userSettings = await SettingsController.getUserSettings(this.host.environment.api)
       this.store.rehydrate(userSettings)
@@ -56,7 +62,8 @@ export class SettingsController implements ReactiveController {
     if(await FS.exists(path)) {
       try {
         const str = await FS.readFile(path) as string
-        return JSON.parse(str)
+        const rawSettings = JSON.parse(str)
+        return this.settingsSchema.parse(rawSettings)
       }
       catch(err) {
         console.error(err)
@@ -64,14 +71,14 @@ export class SettingsController implements ReactiveController {
     }
   }
 
-  get specLabels(): Partial<Record<StoreKey, string>> {
+  static get specLabels(): Partial<Record<StoreKey, string>> {
     return {
       ui: msg("General"),
       document: msg("Document"),
     }
   } 
 
-	get specs(): Settings<RootStore, StoreKey> {
+	static get specs(): Settings<RootStore, StoreKey> {
     return {
       ui: {
         locale: {
@@ -105,12 +112,22 @@ export class SettingsController implements ReactiveController {
           schema: z.record(z.string(), z.boolean()),
           hidden: true
         },
-
+      },
+      accounts: {
+        accounts: {
+          schema: z.object({
+            "file": z.record(z.string(), FileAccount.schema),
+            "pocketbase": z.record(z.string(), PocketbaseAccount.schema),
+            "npm": z.record(z.string(), NpmAccount.schema)
+          }) as any,
+          hidden: true
+        },
+  
       }
     }
   }
 
-  get settingsSchema() {
+  static get settingsSchema() {
     return z.object(Object.fromEntries(Object.entries(this.specs).map(([sk, sv]) => [
       sk,
       z.object(Object.fromEntries(Object.entries(sv).filter(([k, v]) => v).map(([k, v]) => [
@@ -121,7 +138,7 @@ export class SettingsController implements ReactiveController {
   }
 
 	get values() {
-    return Object.fromEntries(Object.entries(this.specs).map(([sk, sv]) => [
+    return Object.fromEntries(Object.entries(SettingsController.specs).map(([sk, sv]) => [
       sk,
       Object.fromEntries(Object.entries(sv).map(([k, v]) => [
         k,
@@ -131,6 +148,8 @@ export class SettingsController implements ReactiveController {
   }
 
   setAndPersist = <S extends StoreKey, K extends SubStoreKey<S>>(storeKey: S, key: K, value: RootStore[S][K]) => {
-    this.store.set(storeKey, key, value, this.settingsSchema)
+    this.store.set(storeKey, key, value, SettingsController.settingsSchema)
   }
+
+  persist = () => this.store.persist(SettingsController.settingsSchema)
 }

@@ -2054,6 +2054,98 @@
   <source>See developer tools for more details</source>
   <target>Siehe Entwickler-Werkzeuge für mehr Informationen</target>
 </trans-unit>
+<trans-unit id="s2df075aface0dab8">
+  <source>Share</source>
+  <target>Teilen</target>
+</trans-unit>
+<trans-unit id="sb7fb7568f6883ab8">
+  <source>Share the active document</source>
+  <target>Teile das aktive Dokument</target>
+</trans-unit>
+<trans-unit id="sd1f44f1a8bc20e67">
+  <source>Email</source>
+  <target>Email</target>
+</trans-unit>
+<trans-unit id="sf6e1665c7022a1f8">
+  <source>Password</source>
+  <target>Passwort</target>
+</trans-unit>
+<trans-unit id="s151bc2eea7a032a4">
+  <source>-unchanged-</source>
+  <target>-unverändert-</target>
+</trans-unit>
+<trans-unit id="s506b6a19d12f414c">
+  <source>Key</source>
+  <target>Schlüssel</target>
+</trans-unit>
+<trans-unit id="sd3f402df8619ddcd">
+  <source>This information about you is automatically added to new documents. You can change this for each document in the metadata editor.</source>
+  <target>Diese Informationen über dich werden automatisch zu neuen Dokumenten hinzugefügt. Du kannst das für jedes Dokument im Metadaten-Editor ändern.</target>
+</trans-unit>
+<trans-unit id="s90105521fcc40453">
+  <source>WebWriter Cloud accounts allow you store documents online and share them with your students. Add an account here and it will be available as a location for saving, loading, sharing and opening documents.</source>
+  <target>Konten in WebWriter Cloud erlauben es dir, Dokumente online zu speichern und mit deinen Lernenden zu teilen. Fügst du hier ein Konto hinzu, dann ist es als Ort zum Speichern, Laden, Teilen und Öffnen verfügbar.</target>
+</trans-unit>
+<trans-unit id="s2712dc5641a33226">
+  <source>Package registry accounts are intended for developers and allow you to configure one or more registries</source>
+  <target>Package-Registry-Konten sind für Entwickler gedacht und erlauben es dir, eine oder mehrere Registries zu verbinden.</target>
+</trans-unit>
+<trans-unit id="s669b18c6d2d9c95b">
+  <source>None</source>
+  <target>Keine</target>
+</trans-unit>
+<trans-unit id="s7cfe12cd14df9950">
+  <source>Sign out</source>
+  <target>Abmelden</target>
+</trans-unit>
+<trans-unit id="s5e27738a2e8eb763">
+  <source>Sign in</source>
+  <target>Anmelden</target>
+</trans-unit>
+<trans-unit id="sf28903d4ca0ddcfc">
+  <source>Remove this account</source>
+  <target>Entferne dieses Account</target>
+</trans-unit>
+<trans-unit id="sb85b1e36579852a6">
+  <source>Invalid email or password</source>
+  <target>Ungültige Email oder Passwort</target>
+</trans-unit>
+<trans-unit id="se48bd9e6c2a3109d">
+  <source>Accounts</source>
+  <target>Konten</target>
+</trans-unit>
+<trans-unit id="s731678e227a20559">
+  <source>This Device</source>
+  <target>Dieses Gerät</target>
+</trans-unit>
+<trans-unit id="s71940c32987f675f">
+  <source>WebWriter Cloud</source>
+  <target>WebWriter Cloud</target>
+</trans-unit>
+<trans-unit id="sd3775ef947e0de32">
+  <source>File Name</source>
+  <target>Dateiname</target>
+</trans-unit>
+<trans-unit id="sfdb1e4d90981a535">
+  <source>Share this document</source>
+  <target>Teile dieses Dokument</target>
+</trans-unit>
+<trans-unit id="s1c3fc313a9184670">
+  <source>Public Link</source>
+  <target>Öffentlicher Link</target>
+</trans-unit>
+<trans-unit id="s3a5ca02f282d247e">
+  <source>Share...</source>
+  <target>Teilen...</target>
+</trans-unit>
+<trans-unit id="sb85774dc5d18ff0f">
+  <source>Confirm</source>
+  <target>Bestätigen</target>
+</trans-unit>
+<trans-unit id="s5e8250fb85d64c23">
+  <source>Close</source>
+  <target>Schließen</target>
+</trans-unit>
 </body>
 </file>
 </xliff>

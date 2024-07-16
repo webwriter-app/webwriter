@@ -63,7 +63,7 @@ export function configFromSchemaPlugins(schemaPlugins: SchemaPlugin[]): EditorSt
       [...schemaPlugins.flatMap(p => p.styles ?? [])],
       schemaPlugins.flatMap(p => p.scripts ?? [])
     ),
-    ...keymaps.map(p => keymap(p)),
+    ...keymaps.map(p => keymap(p)).reverse(),
     inputRules({rules: schemaPlugins.flatMap(p => p.inputRules ?? [])}),
     history(),
     gapCursor(),

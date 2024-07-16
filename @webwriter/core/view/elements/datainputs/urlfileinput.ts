@@ -65,7 +65,7 @@ export class URLFileInput extends SlInput implements DataInput {
   @property({type: Boolean, attribute: true, reflect: true})
   dragOverWindow: boolean = false
   
-  @property({attribute: false})
+  @property({attribute: true})
   value: string
 
   @property({attribute: false})

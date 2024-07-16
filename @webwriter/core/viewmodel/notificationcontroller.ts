@@ -66,6 +66,7 @@ export class NotificationController implements ReactiveController {
 	]
 
 	warningsToIgnore = [
+    "Attempted to register <",
 		"ProseMirror expects the CSS white-space property to be set, preferably to 'pre-wrap'. It is recommended to load style/prosemirror.css from the prosemirror-view package.",
     "The `requestUpdate` method should no longer return a Promise but does so on `ww-app`. Use `updateComplete` instead. See https://lit.dev/msg/request-update-promise for more information.",
     "TextSelection endpoint not pointing into a node with inline content",
@@ -73,5 +74,7 @@ export class NotificationController implements ReactiveController {
     "The main 'lit-element' module entrypoint is deprecated.",
     "Element sl-button scheduled an update (generally because a property was set) after an update completed, causing a new update to be scheduled. This is inefficient and should be avoided unless the next update can only be scheduled as a side effect of the previous update. See https://lit.dev/msg/change-in-update for more information.",
 	"[TAURI] Couldn't find callback id",
+  "Element ww-share-form scheduled an update",
+  "Element sl-tree-item scheduled an update"
 	]
 }

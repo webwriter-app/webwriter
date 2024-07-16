@@ -1,4 +1,5 @@
 
+
 html {
   background: var(--sl-color-gray-100);
   overflow-y: scroll;
@@ -78,13 +79,10 @@ body {
   margin: 0;
   margin-left: auto;
   margin-right: auto;
+  min-height: 100vh;
   max-width: 840px;
   box-sizing: border-box;
   caret-color: currentColor;
-}
-
-body:has(.ww-selected) {
-  caret-color: transparent;
 }
 
 figure:hover {
@@ -158,6 +156,8 @@ figure.ProseMirror-selectednode::before {
   position: relative;
   display: block;
 }
+
+
 
 .ProseMirror > :not(.ProseMirror-widget) {
   position: relative;
@@ -391,50 +391,9 @@ abbr {
 }
 
 .ProseMirror-gapcursor::after {
-  margin-top: 2px;
   z-index: 2147483647;
 }
 
-@media only screen and (min-width: 1300px) {
-
-  .ww-widget::part(options) {
-    position: fixed;
-    width: var(--ww-toolbox-action-width);
-    height: var(--ww-toolbox-action-height);
-    left: var(--ww-toolbox-action-x);
-    top: var(--ww-toolbox-action-y);
-    overflow: auto;
-    padding-top: 5px;
-    user-select: none;
-    -webkit-user-select: none;
-  }
-
-  .ww-widget:not(.ww-selected)::part(options) {
-    display: none;
-  }
-}
-
-@media print {
-  html {
-    overflow: visible;
-    background: none;
-    border: none;
-  }
-
-  body {
-    background: none;
-    border: none;
-  }
-
-  .ProseMirror {
-    background: none;
-    border: none;
-  }
-
-  .ProseMirror[data-empty]::before {
-    display: none;
-  }
-}
 
 
 iframe:not([src]), picture:not(:has(img[src])), video:not([src]):not(:has(track[src])) {
@@ -499,9 +458,54 @@ math:empty::after, math:has(mtext:only-child)::after {
   content: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-math" width="100%" height="100%" viewBox="0 0 24 24" stroke-width="2" stroke="darkgray" fill="none" stroke-linecap="round" stroke-linejoin="round" part="svg"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><path d="M19 5h-7l-4 14l-3 -6h-2"></path><path d="M14 13l6 6"></path><path d="M14 19l6 -6"></path></svg>') !important;
 }
 
-@media only print {
+.ProseMirror-gapcursor::after {
+  width: 1em;
+  height: 1em;
+  clip-path: polygon(26% 50%, 0 16%, 3% 13%, 30% 48%, 100% 48%, 100% 52%, 30% 52%, 3% 87%, 0 84%);;
+  margin-left: -0.4em;
+  margin-top: -0.4em;
+  background: currentColor;
+}
+
+@media only screen and (min-width: 1300px) {
+
+  .ww-widget::part(options) {
+    position: fixed;
+    width: var(--ww-toolbox-action-width);
+    height: var(--ww-toolbox-action-height);
+    left: var(--ww-toolbox-action-x);
+    top: var(--ww-toolbox-action-y);
+    overflow: auto;
+    padding-top: 5px;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .ww-widget:not(.ww-selected)::part(options) {
+    display: none;
+  }
+}
+
+@media print {
+  html {
+    overflow: visible;
+    background: none;
+    border: none;
+  }
+
   body {
     width: 100%;
     margin: 0 !important;
+    background: none;
+    border: none;
+  }
+
+  .ProseMirror {
+    background: none;
+    border: none;
+  }
+
+  .ProseMirror[data-empty]::before {
+    display: none;
   }
 }

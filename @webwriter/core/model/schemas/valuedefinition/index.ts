@@ -32,7 +32,7 @@ class CSSStringValue implements CSSStyleValue {
   }
 }
 
-class CSSColorValue implements CSSStyleValue {
+export class CSSColorValue implements CSSStyleValue {
 
   #color: Color
 
@@ -53,7 +53,7 @@ class CSSColorValue implements CSSStyleValue {
   }
 }
 
-class CSSColorMixValue implements CSSStyleValue {
+export class CSSColorMixValue implements CSSStyleValue {
   colorSpace: "srgb" |"srgb-linear" | "display-p3" | "a98-rgb" | "prophoto-rgb" | "rec2020" | "lab" | "oklab" | "xyz" |"xyz-d50" | "xyz-d65" | "hsl" | "hwb" | "lch" | "oklch"
   hueInterpolation?: "shorter" | "longer" | "increasing" | "decreasing"
 
@@ -77,7 +77,7 @@ class CSSColorMixValue implements CSSStyleValue {
   }
 }
 
-class CSSDeviceCmykValue implements CSSStyleValue {
+export class CSSDeviceCmykValue implements CSSStyleValue {
   c: CSSUnitValue
   m: CSSUnitValue
   y: CSSUnitValue
@@ -97,23 +97,23 @@ class CSSDeviceCmykValue implements CSSStyleValue {
   }
 }
 
-class CSSLinearGradientValue implements CSSStyleValue {
+export class CSSLinearGradientValue implements CSSStyleValue {
   repeating = false
   angle?: CSSUnitValue
   sideOrCorner?: "left" | "right" | "top" | "bottom" | "top left" | "top right" | "bottom left" | "bottom right"
 
 }
 
-class CSSRadialGradientValue implements CSSStyleValue {
+export class CSSRadialGradientValue implements CSSStyleValue {
   repeating = false
 }
 
-class CSSConicGradientValue implements CSSStyleValue {
+export class CSSConicGradientValue implements CSSStyleValue {
   repeating = false
 }
 
 
-class CSSLightDarkValue implements CSSStyleValue {
+export class CSSLightDarkValue implements CSSStyleValue {
   colorA: CSSColorValue
   colorB: CSSColorValue
 
@@ -127,8 +127,8 @@ class CSSLightDarkValue implements CSSStyleValue {
   }
 }
 
-class CSSFilterValue implements CSSStyleValue {}
-class CSSBlurValue extends CSSFilterValue {
+export class CSSFilterValue implements CSSStyleValue {}
+export class CSSBlurValue extends CSSFilterValue {
   radius?: CSSUnitValue
 
   constructor(radius?: CSSUnitValue) {
@@ -140,7 +140,7 @@ class CSSBlurValue extends CSSFilterValue {
     return cssFunc("blur", [this.radius])
   }
 }
-class CSSBrightnessValue extends CSSFilterValue {
+export class CSSBrightnessValue extends CSSFilterValue {
   amount?: CSSUnitValue
 
   constructor(amount?: CSSUnitValue) {
@@ -152,7 +152,7 @@ class CSSBrightnessValue extends CSSFilterValue {
     return cssFunc("brightness", [this.amount])
   }
 }
-class CSSContrastValue extends CSSFilterValue {
+export class CSSContrastValue extends CSSFilterValue {
   amount?: CSSUnitValue
 
   constructor(amount?: CSSUnitValue) {
@@ -164,7 +164,7 @@ class CSSContrastValue extends CSSFilterValue {
     return cssFunc("contrast", [this.amount])
   }
 }
-class CSSDropShadowValue extends CSSFilterValue {
+export class CSSDropShadowValue extends CSSFilterValue {
   color?: CSSColorValue
   offsetX: CSSNumericValue
   offsetY: CSSNumericValue
@@ -182,7 +182,7 @@ class CSSDropShadowValue extends CSSFilterValue {
     return cssFunc("drop-shadow", [this.color, this.offsetX, this.offsetY, this.standardDeviation])
   }
 }
-class CSSGrayscaleValue extends CSSFilterValue {
+export class CSSGrayscaleValue extends CSSFilterValue {
   amount?: CSSUnitValue
 
   constructor(amount?: CSSUnitValue) {
@@ -194,7 +194,7 @@ class CSSGrayscaleValue extends CSSFilterValue {
     return cssFunc("grayscale", [this.amount])
   }
 }
-class CSSHueRotateValue extends CSSFilterValue {
+export class CSSHueRotateValue extends CSSFilterValue {
   angle?: CSSUnitValue
 
   constructor(angle?: CSSUnitValue) {
@@ -206,7 +206,7 @@ class CSSHueRotateValue extends CSSFilterValue {
     return cssFunc("hue-rotate", [this.angle])
   }
 }
-class CSSInvertValue extends CSSFilterValue {
+export class CSSInvertValue extends CSSFilterValue {
   amount?: CSSUnitValue
 
   constructor(amount?: CSSUnitValue) {
@@ -218,7 +218,7 @@ class CSSInvertValue extends CSSFilterValue {
     return cssFunc("invert", [this.amount])
   }
 }
-class CSSOpacityValue extends CSSFilterValue {
+export class CSSOpacityValue extends CSSFilterValue {
   amount?: CSSUnitValue
 
   constructor(amount?: CSSUnitValue) {
@@ -230,7 +230,7 @@ class CSSOpacityValue extends CSSFilterValue {
     return cssFunc("opacity", [this.amount])
   }
 }
-class CSSSepiaValue extends CSSFilterValue {
+export class CSSSepiaValue extends CSSFilterValue {
   amount?: CSSUnitValue
 
   constructor(amount?: CSSUnitValue) {
@@ -242,7 +242,7 @@ class CSSSepiaValue extends CSSFilterValue {
     return cssFunc("sepia", [this.amount])
   }
 }
-class CSSSaturateValue extends CSSFilterValue {
+export class CSSSaturateValue extends CSSFilterValue {
   amount?: CSSUnitValue
 
   constructor(amount?: CSSUnitValue) {
@@ -255,7 +255,7 @@ class CSSSaturateValue extends CSSFilterValue {
   }
 }
 
-class CSSCounterValue implements CSSStyleValue {
+export class CSSCounterValue implements CSSStyleValue {
   name: string
   style?: string | CSSVariableReferenceValue | CSSSymbolsValue | "none" | "disc" | "circle" | "square" | "decimal" | "cjk-decimal" | "decimal-leading-zero" | "lower-roman" | "upper-roman" | "lower-greek" | "lower-alpha" | "upper-alpha" | "arabic-indic" | "armenian" | "cambodian" | "cjk-earthly-branch" | "cjk-heavenly-stem" | "cjk-ideographic" | "devanagari" | "ethiopic-numeric" | "georgian" | "gujarati" | "gurmukhi" | "hebrew" | "hiragana" | "hiragana-iroha" | "japanese-formal" | "japanese-informal" | "kannada" | "katakana" | "katakana-iroha" | "korean-hangul-formal" | "korean-hanja-informal" | "lao" | "lower-armenian" | "malayalam" | "mongolian" | "myanmar" | "oriya" | "persian" | "simp-chinese-formal" | "simp-chinese-informal" | "tamil" | "telugu" | "thai" | "tibetan" | "trad-chinese-formal" | "trad-chinese-informal" | "upper-armenian" | "disclosure-open" | "disclosure-closed"
 
@@ -265,7 +265,7 @@ class CSSCounterValue implements CSSStyleValue {
   }
 }
 
-class CSSCountersValue extends CSSCounterValue {
+export class CSSCountersValue extends CSSCounterValue {
 
   separator: string
 
@@ -275,7 +275,7 @@ class CSSCountersValue extends CSSCounterValue {
   }
 }
 
-class CSSSymbolsValue implements CSSStyleValue {
+export class CSSSymbolsValue implements CSSStyleValue {
   type?: "cyclic" | "numeric" | "alphabetic" | "symbolic" | "fixed"
   #values: (CSSStringValue | CSSImageValue)[] = []
 
@@ -294,9 +294,9 @@ class CSSSymbolsValue implements CSSStyleValue {
   }
 }
 
-class CSSShapeValue implements CSSStyleValue {}
+export class CSSShapeValue implements CSSStyleValue {}
 
-class CSSCircleValue extends CSSShapeValue {
+export class CSSCircleValue extends CSSShapeValue {
   r?: CSSUnitValue | "closest" | "farthest"
   position?: CSSPositionValue
 
@@ -313,7 +313,7 @@ class CSSCircleValue extends CSSShapeValue {
   }
 }
 
-class CSSEllipseValue extends CSSShapeValue {
+export class CSSEllipseValue extends CSSShapeValue {
   r1?: CSSUnitValue | "closest" | "farthest"
   r2?: CSSUnitValue | "closest" | "farthest"
   position?: CSSPositionValue
@@ -331,18 +331,18 @@ class CSSEllipseValue extends CSSShapeValue {
   }
 }
 
-class CSSInsetValue extends CSSShapeValue {}
+export class CSSInsetValue extends CSSShapeValue {}
 
-class CSSRectValue extends CSSShapeValue {}
+export class CSSRectValue extends CSSShapeValue {}
 
-class CSSXywhValue extends CSSShapeValue {
+export class CSSXywhValue extends CSSShapeValue {
   x: CSSUnitValue
   y: CSSUnitValue
   w: CSSUnitValue
   h: CSSUnitValue
 }
 
-class CSSPolygonValue extends CSSShapeValue {
+export class CSSPolygonValue extends CSSShapeValue {
   fillRule: "nonzero" | "evenodd"
 
   vertices: [CSSUnitValue, CSSUnitValue][] = []
@@ -359,7 +359,7 @@ class CSSPolygonValue extends CSSShapeValue {
   }
 }
 
-class CSSPathValue extends CSSShapeValue {
+export class CSSPathValue extends CSSShapeValue {
   fillRule: "nonzero" | "evenodd"
   pathString: string
 
@@ -375,7 +375,7 @@ class CSSPathValue extends CSSShapeValue {
   }
 }
 
-class CSSAttrValue implements CSSStyleValue {
+export class CSSAttrValue implements CSSStyleValue {
   constructor(
     readonly name: CSSKeywordValue,
     readonly type?: "string" | "ident" | "color" | "number" | "percentage" | "length" | "angle" | "time" | "frequency" | "flex" | "em" | "ex" | "px" | "rem" | "vw" | "vh" | "vmin" | "vmax" | "mm" | "cm" | "in" | "pt" | "pc" | "deg" | "grad" | "rad" | "time" | "s" | "ms" | "Hz" | "kHz" | "%",
@@ -388,7 +388,7 @@ class CSSAttrValue implements CSSStyleValue {
   }
 }
 
-class CSSEnvValue implements CSSStyleValue {
+export class CSSEnvValue implements CSSStyleValue {
   constructor(
     readonly name: CSSKeywordValue,
     readonly dimensions?: CSSNumericValue[],
@@ -401,7 +401,7 @@ class CSSEnvValue implements CSSStyleValue {
   }
 }
 
-class CSSUrlValue implements CSSStyleValue {
+export class CSSUrlValue implements CSSStyleValue {
   constructor(
     readonly value: CSSStringValue,
   ) {}
@@ -411,7 +411,7 @@ class CSSUrlValue implements CSSStyleValue {
   }
 }
 
-class CSSVarValue implements CSSStyleValue {
+export class CSSVarValue implements CSSStyleValue {
   constructor(
     readonly value: CSSStringValue,
     readonly fallback?: CSSStyleValue
@@ -422,7 +422,7 @@ class CSSVarValue implements CSSStyleValue {
   }
 }
 
-class CSSCompositeValue implements CSSStyleValue {
+export class CSSCompositeValue implements CSSStyleValue {
 
   #values = [] as CSSStyleValue[]
 

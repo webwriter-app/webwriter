@@ -13,7 +13,8 @@ import { toJS } from "mobx"
 type Options = {
   corePackages?: Package["name"][]
   onBundleChange?: (packages: Package[]) => void,
-  watching?: Record<string, boolean>
+  watching?: Record<string, boolean>,
+  initializePackages?: boolean
 } & Environment
 
 type PmQueueTask = {
@@ -169,12 +170,12 @@ export class PackageStore {
     }
 
     const writeMeta = async (bundleData: BundleData[]) => {
-      const metaPath = await Path.join(appDir, "bundlecache", "meta.json")
+      const {metaPath, metaExists} = await this.bundlePath(bundleData.flatMap(entry => entry.importIDs), Path, FS, production)
       const buildMeta = JSON.parse((await this.readFileIfExists(metaPath, FS)) ?? "null")
       await Promise.all(bundleData.map(entry => {
         const entryErrors = errors.filter(e => entry.bundleID?.startsWith(e.id!))
-        const entryBuildMetaJS = buildMeta?.outputs[entry.jsPathRelative]
-        const entryBuildMetaCSS = buildMeta?.outputs[entry.cssPathRelative]
+        const entryBuildMetaJS = buildMeta && entry.jsPathRelative in buildMeta? buildMeta?.outputs[entry.jsPathRelative]: {}
+        const entryBuildMetaCSS = buildMeta && entry.cssPathRelative in buildMeta? buildMeta?.outputs[entry.cssPathRelative]: {}
         const entryMeta = {
           errors: entryErrors,
           cssSize: entryBuildMetaCSS?.bytes,
@@ -252,8 +253,8 @@ export class PackageStore {
     })
   }
 
-  static computeBundleID(importIDs: string[], production=false, reloadCount?: number) {
-    return importIDs.join(";") + (production? " !PROD": "") + (reloadCount? `!LOCALRELOAD_${reloadCount}`: "")
+  static computeBundleID(importIDs: string[], production=false) {
+    return importIDs.join(";") + (production? " !PROD": "")
   }
 
   /** Create a hash value to identify a bundle. The hash is deterministically computed from the packages' names and versions. This allows for caching of existing bundles. */
@@ -288,7 +289,7 @@ export class PackageStore {
     this.appDir = this.Path.appDir()
     this.rootPackageJsonPath = this.appDir.then(dir => this.Path.join(dir, "package.json"))
     this.localPathsPath = this.appDir.then(dir => this.Path.join(dir, "localpaths.json"))
-    this.initialized = this.initialize();
+    this.initialized = options.initializePackages? this.initialize(): Promise.resolve();
     (async () => {
       await this.initialized
       this.watching = options.watching ?? this.watching
@@ -590,13 +591,10 @@ export class PackageStore {
     }
   }
 
-  reloadCount = 0
-
   /** Reads local packages from disk, importing them, and/or fetches available packages from the configured registry.*/
   async load() {
     this.loading = true
     this.issues = {}
-    this.reloadCount++
     await this.updateLocalLinks()
     let [installed, available] = await Promise.all([
       this.fetchInstalled(),
@@ -604,9 +602,8 @@ export class PackageStore {
     ])
     const importable = installed.filter(pkg => !this.getPackageIssues(pkg.id)?.length)
     const importableVersionMap = Object.fromEntries(importable.map(pkg => [pkg.name, pkg.id]))
-    const includesLocal = importable.some(pkg => pkg?.localPath)
     const importIDs = this.widgetImportIDs(importable)
-    const newID = PackageStore.computeBundleID(importIDs, false, this.reloadCount)
+    const newID = PackageStore.computeBundleID(importIDs, false)
     if(newID !== this.bundleID) {
       try {
         const {bundleJS, bundleCSS, errors} = await PackageStore.readBundle(importIDs, this.bundle, this.Path, this.FS)
@@ -690,7 +687,7 @@ export class PackageStore {
       // this.appendPackageIssues(id, cause as Error)
     }
     const members = await this.readPackageMembers(pkgJson, pkgRootPath)
-    return new Package(pkgJson, {installed: true, watching: this.watching[pkgJson.name], localPath, members})
+    return new Package(pkgJson, {installed: true, watching: this.watching[pkgJson.name], localPath, members, lastLoaded: Date.now()})
   }
 
   private async readPackageMembers(pkg: Package, path?: string) {

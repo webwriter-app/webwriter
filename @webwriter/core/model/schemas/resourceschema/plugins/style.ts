@@ -55,6 +55,13 @@ export function getStyleValues(state: EditorState, view: EditorView & {window: W
       marked.forEach(value => values.add(value))
     }
   })
+  if(key === "font-family" || key === "font-size") {
+    const markName = key === "font-family"? "_fontfamily": "_fontsize"
+    state.storedMarks
+      ?.filter(mark => mark.type.name === markName)
+      ?.forEach(mark => values.add(mark.attrs.value))
+    
+  }
   return [...values]
 }
 

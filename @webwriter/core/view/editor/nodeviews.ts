@@ -1,6 +1,6 @@
 import { Decoration, DecorationSource, NodeView, NodeViewConstructor } from "prosemirror-view"
-import { NodeSelection } from "prosemirror-state"
-import { DOMSerializer, Node } from "prosemirror-model"
+import { NodeSelection, TextSelection } from "prosemirror-state"
+import { DOMParser, DOMSerializer, Fragment, Node, Slice } from "prosemirror-model"
 import {LitElement, html, render} from "lit"
 
 import { getAttrs, globalHTMLAttributes, toAttributes } from "../../model"
@@ -8,6 +8,30 @@ import {EditorViewController} from "."
 import { selectParentNode } from "prosemirror-commands"
 import { filterObject, sameMembers, shallowCompare } from "../../utility"
 
+
+export function treeLog(tree: Node) {
+  let depth = -1
+  let openGroups = 0
+  console.group(`${tree.type.name}`)
+  tree.descendants(
+    (node, pos) => {
+      const resolved = tree.resolve(pos)
+      if(resolved.depth < depth) {
+        for(; openGroups > 0; openGroups--) {
+          console.groupEnd()
+        }
+      }
+      depth = resolved.depth
+      openGroups++
+      const text = node.type.name === "text"? ` '${node.textContent}'`: ""
+      console.group(`${node.type.name}${text}`)
+    }
+  )
+  for(let i = 0; i < openGroups; i++) {
+    console.groupEnd()
+  }
+  console.groupEnd()
+}
 
 export class WidgetView implements NodeView {
 
@@ -135,8 +159,12 @@ export class WidgetView implements NodeView {
   }
 
   selectFocused() {
-    const resolvedPos = this.view.state.doc.resolve(this.getPos())
-    const tr = this.view.state.tr.setSelection(new NodeSelection(resolvedPos))
+    const pos = this.getPos()
+    if(pos === undefined) {
+      return
+    }
+    const $pos = this.view.state.doc.resolve(pos)
+    const tr = this.view.state.tr.setSelection(new NodeSelection($pos))
     this.view.dispatch(tr)
   }
 
@@ -148,10 +176,37 @@ export class WidgetView implements NodeView {
   }
 
 	ignoreMutation(mutation: MutationRecord) {
-    const {type, target, attributeName: attr, oldValue} = mutation
+    const {type, target, attributeName: attr, oldValue, addedNodes, removedNodes, previousSibling, nextSibling, attributeNamespace} = mutation
     const value = attr? this.dom.getAttribute(attr): null
     const attrUnchanged = !!(attr && (value === oldValue))
-    if(attr && !attrUnchanged) {
+    if(type === "childList") {
+      const sel = this.view.dom.ownerDocument.getSelection()
+      const anchor = this.view.posAtDOM(sel!.anchorNode!, 0) + 2
+      const focus = this.view.posAtDOM(sel!.focusNode!, 0) + 2
+      const parser = DOMParser.fromSchema(this.view.state.schema)
+      const pos = this.getPos()
+      const node = parser.parse(target, {topNode: this.node})
+      let tr = this.view.state.tr
+      tr = tr.replaceWith(pos, pos + this.node.nodeSize, node)
+      const max = tr.doc.nodeSize - 2
+      const $anchor = tr.doc.resolve(Math.min(max, anchor))
+      const $focus = tr.doc.resolve(Math.min(max, focus))
+      const selection = new TextSelection($anchor, $focus)
+      tr = tr.setSelection(selection)
+      // tr = tr.setSelection(sel.getBookmark().resolve(tr.doc))
+      this.view.dispatch(tr)
+      /*
+      const fragment = Array.from(addedNodes)
+        .map(node => parser.parseSlice(node))
+        .map(slice => slice.content)
+        .reduce((acc, fragment) => acc.append(fragment))
+      const pos = previousSibling? this.view.posAtDOM(previousSibling, 0): this.getPos() + 1
+      let tr = this.view.state.tr
+      tr = tr.insert(pos, fragment)
+      this.view.dispatch(tr)*/
+      return true
+    }
+    else if(attr && !attrUnchanged) {
       const builtinAttr = attr in globalHTMLAttributes
       const dataAttr = attr.startsWith("data-")
       let tr = this.view.state.tr

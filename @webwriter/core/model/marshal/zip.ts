@@ -1,8 +1,9 @@
 import {Node, Schema} from "prosemirror-model"
 import JSZip from "jszip"
 
-import { Environment } from ".."
-import {docToBundle, parse as parseHTML} from "./html"
+import { EditorStateWithHead } from ".."
+import {docToBundle, HTMLParserSerializer} from "./html"
+import { ParserSerializer } from "./parserserializer"
 
 export function docToManifest(explorable: Node, webFileName: string, fileNames: string[]) {
   const xml = document.implementation.createDocument(null, "")
@@ -58,46 +59,49 @@ export function docToManifest(explorable: Node, webFileName: string, fileNames: 
   return xml
 }
 
-export async function parse(data: string, schema: Schema) {
-  const zip = new JSZip()
-  await zip.loadAsync(data)
-  const htmlString = await zip.file("index.html")?.async("string") ?? ""
-  return parseHTML(htmlString, schema)
-}
+export class ZipParserSerializer extends ParserSerializer {
+  static readonly format = "html" as const
+  static readonly extensions = ["zip"] as const
+  static readonly mediaType = "application/zip" as const
+  static readonly isBinary = true
 
-export async function serialize(explorable: Node, head: Node, bundle: Environment["bundle"]) {
+  async parse(data: string, schema: Schema) {
+    const zip = new JSZip()
+    await zip.loadAsync(data)
+    const htmlString = await zip.file("index.html")?.async("string") ?? ""
+    const htmlParserSerializer = new HTMLParserSerializer(this.Environment)
+    return htmlParserSerializer.parse(htmlString, schema)
+  }
+  async serialize(state: EditorStateWithHead) {
+    const {html, js, css} = await docToBundle(state.doc, state.head$.doc, this.Environment.bundle, this.Environment.Path, this.Environment.FS)
+
+    const zip = new JSZip()
   
-  const {html, js, css} = await docToBundle(explorable, head, bundle)
-
-  const zip = new JSZip()
-
-  zip.file("index.js", js)
-  const script = html.createElement("script")
-  script.type = "text/javascript"
-  script.src = "index.js"
-  script.setAttribute("data-ww-editing", "bundle")
-  html.head.appendChild(script)
-
-  zip.file("index.css", css)
-  const link = html.createElement("link")
-  link.rel = "stylesheet"
-  link.type = "text/css"
-  link.href = "index.css"
-  link.setAttribute("data-ww-editing", "bundle")
-  html.head.appendChild(link)
-
-  const xml = docToManifest(explorable, "index.html", ["index.html", "index.css", "index.js"])
-
-  zip.file("imsmanifest.xml", xml.documentElement.outerHTML)
-
-  zip.file("index.html", `<!DOCTYPE html>` + html.documentElement.outerHTML)
-
-  const content = await zip.generateAsync({type: "uint8array"})
-
-  return content
-
+    zip.file("index.js", js)
+    const script = html.createElement("script")
+    script.type = "text/javascript"
+    script.src = "index.js"
+    script.setAttribute("data-ww-editing", "bundle")
+    html.head.appendChild(script)
+  
+    if(css) {
+      zip.file("index.css", css)
+      const link = html.createElement("link")
+      link.rel = "stylesheet"
+      link.type = "text/css"
+      link.href = "index.css"
+      link.setAttribute("data-ww-editing", "bundle")
+      html.head.appendChild(link)
+    }
+  
+    const xml = docToManifest(state.doc, "index.html", ["index.html", "index.css", "index.js"])
+  
+    zip.file("imsmanifest.xml", xml.documentElement.outerHTML)
+  
+    zip.file("index.html", `<!DOCTYPE html>` + html.documentElement.outerHTML)
+  
+    const content = await zip.generateAsync({type: "uint8array"})
+  
+    return content
+  }
 }
-
-export const label = "SCORM Package"
-export const extensions = ["ww.zip", "zip"]
-export const isBinary = true

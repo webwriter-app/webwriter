@@ -255,7 +255,8 @@ export class Package {
     imports: z.record(z.string().startsWith("#"), z.record(z.string())).optional(),
     editingConfig: EditingConfig.optional(),
     // customElements: CustomElementsManifest.optional()
-    localPaths: z.record(z.string()).optional()
+    localPaths: z.record(z.string()).optional(),
+    lastLoaded: z.number().optional()
   })
 
   static objectSchema = this.coreObjectSchema
@@ -276,7 +277,7 @@ export class Package {
 
   static coreKeys = Object.keys(this.coreObjectSchema.shape) as unknown as keyof typeof this.coreObjectSchema.shape
 
-  constructor(pkg: Package | z.input<typeof Package.objectSchema> & Record<string, any>, editingState?: Partial<Pick<Package, "watching" | "localPath" | "installed" | "latest" | "members">>) {
+  constructor(pkg: Package | z.input<typeof Package.objectSchema> & Record<string, any>, editingState?: Partial<Pick<Package, "watching" | "localPath" | "installed" | "latest" | "members" | "lastLoaded">>) {
     return pkg instanceof Package
       ? Object.assign(pkg, editingState)
       : Object.assign(Package.schema.parse(pkg), editingState)
@@ -284,6 +285,7 @@ export class Package {
 
   watching?: boolean = false
   localPath?: string
+  lastLoaded?: number
   installed?: boolean
   latest?: SemVer
   members: Record<string, MemberSettings> = {}
@@ -301,7 +303,7 @@ export class Package {
   }
 
   get id() {
-    return `${this.name}@${this.version}${this.localPath? "-local": ""}`
+    return `${this.name}@${this.version}${this.localPath? `-local${this.lastLoaded ?? ""}`: ""}`
   }
 
   get nameParts() {

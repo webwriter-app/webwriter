@@ -13,6 +13,7 @@ import { makeAutoObservable, spy } from "mobx"
 import { groupBy } from "../utility"
 import { Memoize } from "typescript-memoize"
 import { Attrs } from "prosemirror-utils/dist/types"
+import marshal from "../model/marshal"
 
 
 export const WINDOW_OPTIONS = {
@@ -310,7 +311,7 @@ export class Command<SPEC extends CommandSpec = CommandSpec> implements Reactive
   }
 }
 
-class NodeCommand<SPEC extends NodeCommandSpec = NodeCommandSpec> extends Command<SPEC> {
+export class NodeCommand<SPEC extends NodeCommandSpec = NodeCommandSpec> extends Command<SPEC> {
   get tags() {
     return this.spec.tags ?? ["node"]
   }
@@ -334,7 +335,7 @@ class NodeCommand<SPEC extends NodeCommandSpec = NodeCommandSpec> extends Comman
   }
 }
 
-class MarkCommand<SPEC extends CommandSpec = CommandSpec> extends Command<SPEC> {
+export class MarkCommand<SPEC extends CommandSpec = CommandSpec> extends Command<SPEC> {
   get tags() {
     return this.spec.tags ?? ["mark"]
   }
@@ -354,7 +355,7 @@ class MarkCommand<SPEC extends CommandSpec = CommandSpec> extends Command<SPEC> 
   }
 }
 
-class LayoutCommand<SPEC extends CommandSpec = CommandSpec> extends Command<SPEC> {
+export class LayoutCommand<SPEC extends CommandSpec = CommandSpec> extends Command<SPEC> {
   get tags() {
     return this.spec.tags ?? ["layout"]
   }
@@ -363,8 +364,9 @@ class LayoutCommand<SPEC extends CommandSpec = CommandSpec> extends Command<SPEC
   }
 
   run(options?: any, e?: Event) {
-    const {exec} = this.host.activeEditor ?? {exec: () => {}}
-    return super.run(options, e, (host, options) => exec(setAttributeOnSelectedBlocks(this.id, options?.value)as any))
+    if(this.host.activeEditor) {
+      return super.run(options, e, (host, options) => this.host.activeEditor!.toolbox.activeLayoutCommand = this.host.activeEditor!.toolbox.activeLayoutCommand !== this? this: undefined)
+    }
   }
   get active() {
     return this.host.store.document.getActiveAttributeValue(this.id) !== undefined
@@ -459,6 +461,18 @@ export class CommandController implements ReactiveController {
     return this.queryCommands({tags: ["element"]})
   }
 
+  @Memoize() get saveCommand() {
+    return this.queryCommands({id: "save"})[0]
+  }
+
+  @Memoize() get openCommand() {
+    return this.queryCommands({id: "open"})[0]
+  }
+
+  @Memoize() get deleteDocumentCommand() {
+    return this.queryCommands({id: "deleteDocument"})[0]
+  }
+
   /*
   get priorityContainerCommands() {
     const commands = this.containerCommands
@@ -493,9 +507,20 @@ export class CommandController implements ReactiveController {
         icon: "device-floppy",
         description: () => msg("Save the active document"),
         shortcut: "ctrl+s",
-        run: host => host.store.document.save(),
+        run: async (host, options) => {
+          if(host.store.accounts.size === 1 || (options?.client && options?.serializer) || host.store.document.url) {
+            const url = await host.store.document.save(options?.saveAs, options?.serializer, options?.client, options?.filename)
+            if(url) {
+              host.dialog = undefined
+            }
+
+          }
+          else {
+            host.dialog = "save"
+          }
+        },
         category: "document",
-        disabled: host => host.sourceMode
+        disabled: host => host.sourceMode || host.store.document.ioState !== "idle"
       }),
       saveAs: new Command(this.host, {
         id: "saveAs",
@@ -503,9 +528,47 @@ export class CommandController implements ReactiveController {
         icon: "file-export",
         description: () => msg("Save the active document as a copy"),
         shortcut: "ctrl+shift+s",
-        run: host => host.store.document.save(true),
+        run: async (host, options) => {
+          if(host.store.accounts.size === 1) {
+            const url = await host.store.document.save(true)
+            if(url) {
+              host.dialog = undefined
+            }
+          }
+          else {
+            host.dialog = "save"
+          }
+        },
         category: "document",
-        disabled: host => host.sourceMode
+        disabled: host => host.sourceMode || host.store.document.ioState !== "idle"
+      }),
+      deleteDocument: new Command(this.host, {
+        id: "deleteDocument",
+        label: () => msg("Delete document"),
+        icon: "trash",
+        description: () => msg("Delete a document"),
+        run: async (host, options) => {
+          if(options.client && "deleteDocument" in options.client) {
+            await options.client.deleteDocument(options.url)
+            this.store.document.url = undefined
+          }
+        }
+      }),
+      /** New share: 
+       * If not saved and not shared: Cloud-save and share
+       * If cloud-saved and not shared: Share
+       * If local-saved and not shared: Cloud-save and share
+       * If cloud-saved and shared: Overwrite
+       */
+      share: new Command(this.host, {
+        id: "share",
+        label: () => msg("Share"),
+        icon: "share",
+        description: () => msg("Share the active document"),
+        shortcut: "ctrl+l",
+        run: host => host.dialog = "share",
+        category: "document",
+        disabled: host => host.sourceMode || host.store.accounts.size === 1 || !("getSharingURLForDocument" in (host.store.document.client ?? {}))
       }),
       print: new Command(this.host, {
         id: "print",
@@ -552,13 +615,27 @@ export class CommandController implements ReactiveController {
         icon: "file-symlink",
         shortcut: "ctrl+o",
         description: () => msg("Open a document"),
-        run: async host => {
-          const url = await host.environment.api.Dialog.promptRead({filters: INDIVIDUAL_FILTERS})
-          if(url && !this.host.store.document.sameAsInitial) {
-            host.environment.api.createWindow(`?open=${url}`, WINDOW_OPTIONS)
+        run: async (host, options) => { 
+          console.log(options)
+          if(host.store.accounts.size === 1) {
+            await host.store.document.load(options?.url)
           }
-          else if(url) {
-            this.host.store.document.load(url as string)
+          else if(!options?.parser || !options?.client) {
+            host.dialog = "open"
+            return
+          }
+          else if(!options?.url && !this.host.store.document.sameAsInitial) {
+            const url = await options.client.pickLoad()
+            if(url) {
+              await host.environment.api.createWindow(`?open=${url}`, WINDOW_OPTIONS)
+            }
+            host.dialog = undefined
+          }
+          else {
+            const data = await host.store.document.load(options.url, options.parser, options.client)
+            if(data) {
+              host.dialog = undefined
+            }
           }
         },
         category: "app"
@@ -1314,7 +1391,7 @@ export class CommandController implements ReactiveController {
         label: () => msg("Set font size"),
         icon: "letter-case",
         description: () => msg("Sets the selection's font size"),
-        run: (host, {value}) => host.activeEditor?.exec(toggleOrUpdateMark("_fontsize", {value})),
+        run: (host, {value}) => host.activeEditor?.exec(toggleOrUpdateMark("_fontsize", {value}, true)),
         value: host => getStyleValues(host.activeEditor?.pmEditor.state!, host.activeEditor?.pmEditor as any, "font-size"),
         active: () => !!this.host.store.document.activeMarkMap["_fontsize"]
       }),
@@ -1324,7 +1401,7 @@ export class CommandController implements ReactiveController {
         label: () => msg("Set font family"),
         icon: "typography",
         description: () => msg("Sets the selection's font family"),
-        run: (host, {value}) => host.activeEditor?.exec(toggleOrUpdateMark("_fontfamily", {value})),
+        run: (host, {value}) => host.activeEditor?.exec(toggleOrUpdateMark("_fontfamily", {value}, true)),
         value: host => getStyleValues(host.activeEditor?.pmEditor.state!, host.activeEditor?.pmEditor as any, "font-family"),
         active: () => !!this.host.store.document.activeMarkMap["_fontfamily"]
       }),
@@ -1473,38 +1550,38 @@ export class CommandController implements ReactiveController {
       }),
       textStyle: new LayoutCommand(this.host, {
         id: "textStyle",
-        label: () => msg("Set text style of elements"),
+        label: () => msg("Text Style"),
         icon: "align-left",
         description: () => msg("Set text style (alignment, indentation, spacing, etc.) of selected elements"),
         category: "editor",
       }),
       marginStyle: new LayoutCommand(this.host, {
         id: "marginStyle",
-        label: () => msg("Set element margins"),
+        label: () => msg("Margins"),
         icon: "box-margin",
         description: () => msg("Set the margins of the selected elements")
       }),
       paddingStyle: new LayoutCommand(this.host, {
         id: "paddingStyle",
-        label: () => msg("Set element paddings"),
+        label: () => msg("Paddings"),
         icon: "box-padding",
         description: () => msg("Set the paddings of the selected elements")
       }),
       backgroundStyle: new LayoutCommand(this.host, {
         id: "backgroundStyle",
-        label: () => msg("Set element background"),
+        label: () => msg("Background"),
         icon: "texture",
         description: () => msg("Set the background of the selected elements")
       }),
       borderStyle: new LayoutCommand(this.host, {
         id: "borderStyle",
-        label: () => msg("Set element borders"),
+        label: () => msg("Borders"),
         icon: "border-style-2",
         description: () => msg("Set the borders of the selected elements")
       }),
       animationStyle: new LayoutCommand(this.host, { // + motion path, scroll-driven animations, transitions
         id: "animationStyle",
-        label: () => msg("Animate elements"),
+        label: () => msg("Animations"),
         icon: "keyframes",
         description: () => msg("Animate selected elements using keyframes"),
         category: "editor",
@@ -1512,7 +1589,7 @@ export class CommandController implements ReactiveController {
       }),
       interactivityStyle: new LayoutCommand(this.host, {
         id: "interactivityStyle",
-        label: () => msg("Set interactivity of elements"),
+        label: () => msg("Interactivity"),
         icon: "hand-click",
         description: () => msg("Set interactivty options for selected elements"),
         category: "editor",
@@ -1520,7 +1597,7 @@ export class CommandController implements ReactiveController {
       }),
       boxAlignmentStyle: new LayoutCommand(this.host, { // + vertical align
         id: "boxAlignmentStyle",
-        label: () => msg("Set box aligment of elements"),
+        label: () => msg("Box alignment"),
         icon: "layout-align-left",
         description: () => msg("Set box alignment of selected elements"),
         category: "editor",
@@ -1528,14 +1605,14 @@ export class CommandController implements ReactiveController {
       }),
       colorAdjustmentStyle: new LayoutCommand(this.host, {
         id: "colorAdjustmentStyle",
-        label: () => msg("Set color adjustment of elements"),
+        label: () => msg("Color adjustment"),
         icon: "sun-moon",
         description: () => msg("Set color adjustment (light/dark mode) options of selected elements"),
         tags: ["layout", "advanced"]
       }),
       colorStyle: new LayoutCommand(this.host, {
         id: "colorStyle",
-        label: () => msg("Set text/stroke color of elements"),
+        label: () => msg("Text/stroke color"),
         icon: "text-color",
         description: () => msg("Set text/stroke color of selected elements"),
         category: "editor",
@@ -1543,7 +1620,7 @@ export class CommandController implements ReactiveController {
       }),
       blendingStyle: new LayoutCommand(this.host, { // + opacity
         id: "blendingStyle",
-        label: () => msg("Set blending of elements"),
+        label: () => msg("Blending"),
         icon: "brightness",
         description: () => msg("Set blending (e.g. opacity) of selected elements"),
         category: "editor",
@@ -1551,7 +1628,7 @@ export class CommandController implements ReactiveController {
       }),
       displayStyle: new LayoutCommand(this.host, { // + flex/grid/table container options
         id: "displayStyle",
-        label: () => msg("Set display mode of elements"),
+        label: () => msg("Display mode"),
         icon: "layout",
         description: () => msg("Set the display mode of the selected elements"),
         category: "editor",
@@ -1559,7 +1636,7 @@ export class CommandController implements ReactiveController {
       }),
       filterStyle: new LayoutCommand(this.host, {
         id: "filterStyle",
-        label: () => msg("Apply filters to elements"),
+        label: () => msg("Filters"),
         icon: "filters",
         description: () => msg("Apply filters (blur, invert, etc.) to the selected elements"),
         category: "editor",
@@ -1568,7 +1645,7 @@ export class CommandController implements ReactiveController {
       flexStyle: new LayoutCommand(this.host, {
         // only on flex children
         id: "flexStyle",
-        label: () => msg("Set flex behaviour of elements"),
+        label: () => msg("Flex behavior"),
         icon: "versions",
         description: () => msg("Set flex behaviour (grow, shrink, wrap, order) of selected elements"),
         category: "editor",
@@ -1576,7 +1653,7 @@ export class CommandController implements ReactiveController {
       }),
       fontStyle: new LayoutCommand(this.host, {
         id: "fontStyle",
-        label: () => msg("Set typography of elements"),
+        label: () => msg("Typography"),
         icon: "typography",
         description: () => msg("Set typography (font family, size, etc.) of selected elements"),
         category: "editor",
@@ -1584,7 +1661,7 @@ export class CommandController implements ReactiveController {
       }),
       fragmentationStyle: new LayoutCommand(this.host, { // + paged media
         id: "fragmentationStyle",
-        label: () => msg("Set fragmentation of elements"),
+        label: () => msg("Fragmentation"),
         icon: "section",
         description: () => msg("Set fragmentation (behaviour on page/region/column breaks) of selected elements"),
         category: "editor",
@@ -1593,7 +1670,7 @@ export class CommandController implements ReactiveController {
       gridStyle: new LayoutCommand(this.host, {
         // only on grid children
         id: "gridStyle",
-        label: () => msg("Set grid options of elements"),
+        label: () => msg("Grid options"),
         icon: "grid-4x4",
         description: () => msg("Set grid options (row, column, etc.) of selected elements"),
         category: "editor",
@@ -1602,7 +1679,7 @@ export class CommandController implements ReactiveController {
       imageStyle: new LayoutCommand(this.host, {
         // only on replaced elements
         id: "imageStyle",
-        label: () => msg("Set image sizing options of elements"),
+        label: () => msg("Image sizing"),
         icon: "picture-in-picture-off",
         description: () => msg("Set image sizing options of selected elements"),
         category: "editor",
@@ -1611,7 +1688,7 @@ export class CommandController implements ReactiveController {
       listStyle: new LayoutCommand(this.host, { // + counters
         // only on ul, ol, li
         id: "listStyle",
-        label: () => msg("Set list options of elements"),
+        label: () => msg("List options"),
         icon: "list-details",
         description: () => msg("Set list options of selected elements"),
         category: "editor",
@@ -1619,7 +1696,7 @@ export class CommandController implements ReactiveController {
       }),
       columnStyle: new LayoutCommand(this.host, {
         id: "columnStyle",
-        label: () => msg("Column break elements"),
+        label: () => msg("Column break"),
         icon: "columns",
         description: () => msg("Apply column layout to selected elements"),
         category: "editor",
@@ -1627,7 +1704,7 @@ export class CommandController implements ReactiveController {
       }),
       overflowStyle: new LayoutCommand(this.host, { // + overscroll, containment, scrollbars styling
         id: "overflowStyle",
-        label: () => msg("Set overflow behaviour of elements"),
+        label: () => msg("Overflow behavior"),
         icon: "layers-difference",
         description: () => msg("Set overflow behaviour of selected elements"),
         category: "editor",
@@ -1635,7 +1712,7 @@ export class CommandController implements ReactiveController {
       }),
       positionStyle: new LayoutCommand(this.host, {
         id: "positionStyle",
-        label: () => msg("Set positioning of elements"),
+        label: () => msg("Positioning"),
         icon: "box-align-bottom-right",
         description: () => msg("Set positioning of selected elements"),
         category: "editor",
@@ -1643,7 +1720,7 @@ export class CommandController implements ReactiveController {
       }),
       shapeStyle: new LayoutCommand(this.host, { // + mask
         id: "shapeStyle",
-        label: () => msg("Shape elements"),
+        label: () => msg("Shaping"),
         icon: "triangle-square-circle",
         description: () => msg("Set shape of selected elements"),
         category: "editor",
@@ -1651,7 +1728,7 @@ export class CommandController implements ReactiveController {
       }),
       transformStyle: new LayoutCommand(this.host, {
         id: "transformStyle",
-        label: () => msg("2D/3D transform elements"),
+        label: () => msg("2D/3D transform"),
         icon: "transform-point",
         description: () => msg("Apply 2D or 3D transformations to selected elements"),
         category: "editor",
@@ -1659,7 +1736,7 @@ export class CommandController implements ReactiveController {
       }),
       writingModeStyle: new LayoutCommand(this.host, { // + ruby layout
         id: "writingModeStyle",
-        label: () => msg("Set writing mode of elements"),
+        label: () => msg("Writing mode"),
         icon: "text-direction-ltr",
         description: () => msg("Set writing mode options of selected elements"),
         category: "editor",
@@ -1667,7 +1744,7 @@ export class CommandController implements ReactiveController {
       }),
       miscellaneousStyle: new LayoutCommand(this.host, { // --custom and all
         id: "miscellaneousStyle",
-        label: () => msg("Set other style options of elements"),
+        label: () => msg("Miscellaneous"),
         icon: "dots-circle-horizontal",
         description: () => msg("Set other style options of selected elements"),
         category: "editor",

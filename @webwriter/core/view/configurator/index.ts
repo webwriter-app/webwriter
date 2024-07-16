@@ -1,5 +1,5 @@
 import { LitElement, html, css } from "lit"
-import { ViewModelMixin } from "../../viewmodel"
+import { SettingsController, ViewModelMixin } from "../../viewmodel"
 import { localized, msg } from "@lit/localize"
 import { customElement, property } from "lit/decorators.js"
 import {version} from "../../package.json"
@@ -7,6 +7,8 @@ import {version} from "../../package.json"
 export * from "./configurator"
 export * from "./packagemanager"
 export * from "./keymapmanager"
+export * from "./accountmanager"
+export * from "./accountform"
 
 @localized()
 @customElement("ww-settings")
@@ -83,11 +85,16 @@ export class Settings extends ViewModelMixin(LitElement, true) {
 		></ww-keymap-manager>`
 	}
 
+  AccountManager = () => {
+    return html`<ww-account-manager slot="post-tab-panel-b" .app=${this}></ww-account-manager>`
+  }
+
   render() {
     if(!this.settings || !this.store) {
       return null
     }
-		const {specs, values, specLabels, setAndPersist} = this.settings
+		const {values, setAndPersist} = this.settings
+    const {specs, specLabels} = SettingsController
 		const {viewAppDir} = this.store.packages
 		return html`
 			<ww-configurator
@@ -101,6 +108,10 @@ export class Settings extends ViewModelMixin(LitElement, true) {
 					<span>${msg("Shortcuts")}</span>
 				</span>
 				${this.KeymapManager()}
+        <span slot="post-tab-b">
+					<span>${msg("Accounts")}</span>
+				</span>
+        ${this.AccountManager()}
         <div class="version-info" slot="post-tabs">
           <b>WebWriter</b>
           <code>${version}</code></div>

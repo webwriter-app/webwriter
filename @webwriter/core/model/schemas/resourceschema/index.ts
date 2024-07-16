@@ -11,7 +11,6 @@ import { EditorStateWithHead, headSchema, initialHeadState } from "./head"
 export * from "./plugins"
 export * from "./htmlelementspec"
 export * from "./cssspec"
-export * from "./stylespec"
 export * from "./head"
 export * as themes from "./themes"
 
@@ -20,11 +19,11 @@ export function createEditorStateConfig(packages: Package[]) {
     textblockPlugin(),
     headingPlugin(),
     mediaPlugin(),
+    listPlugin(),
     phrasingPlugin(),
     sectionPlugin(),
     canvasPlugin(),
     formPlugin(),
-    listPlugin(),
     modalPlugin(),
     stylePlugin(),
     tablePlugin(),

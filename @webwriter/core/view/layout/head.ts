@@ -90,17 +90,20 @@ export class Head extends LitElement {
   `
 
   IconicURL = () => {
+    let unsaved = !this.filename
     let url: string | URL = this.filename
     try {
       url = new URL(this.filename)
     }
     catch(e) {}
-
-    let unsaved, iconName, filename
-    if(url instanceof URL) {
-      unsaved = url.protocol === "memory:"
+    let iconName, filename, prettyFilename
+    if(unsaved) {
+      filename = this.emptyFilename
+    }
+    else if(url instanceof URL) {
       iconName = (PROTOCOL_ICONS as any)[url.protocol.slice(0, -1)]
-      filename = unsaved? this.emptyFilename: url.pathname.slice(url.pathname.lastIndexOf("/") + 1).split("#")[0]
+      filename = url.searchParams.get("filename") ?? url.pathname.slice(url.pathname.lastIndexOf("/") + 1).split("#")[0]
+      prettyFilename = filename.replace(/\_[a-zA-Z0-9]{10}\.[a-zA-Z0-9]+/, "")
     }
     else {
       filename = url
@@ -108,7 +111,7 @@ export class Head extends LitElement {
 		return html`
 			${!unsaved? html`<sl-icon name=${iconName}></sl-icon>`: null}
 			<span id="filename">
-        <span title=${filename}>${filename}</span>
+        <span title=${filename}>${prettyFilename ?? filename}</span>
         <span title=${msg("This explorable has unsaved changes.")} id="pending-indicator">${this.ioState === "idle"
           ? "*"
           : html`<sl-spinner></sl-spinner>`

@@ -2,38 +2,31 @@ import { EditorState, Plugin, TextSelection } from "prosemirror-state"
 import { Schema, Node, NodeType, Attrs, DOMSerializer, DOMParser } from "prosemirror-model"
 import { html_beautify as htmlBeautify } from "js-beautify"
 
-import { createEditorState, createWindow, EditorStateWithHead, Environment, getActiveMarks, getHeadElement, Package, PackageStore, setHeadAttributes, upsertHeadElement } from ".."
+import { createEditorState, createWindow, DocumentClient, EditorStateWithHead, Environment, getActiveMarks, getHeadElement, Package, PackageStore, setHeadAttributes, upsertHeadElement } from ".."
 import { filterObject, getFileExtension, groupBy, idle, range } from "../../utility"
-import * as marshal from "../marshal"
-import * as connect from "../connect"
+import marshal from "../marshal"
 import { redoDepth, undoDepth } from "prosemirror-history"
 import {undo as cmUndo, redo as cmRedo, undoDepth as cmUndoDepth, redoDepth as cmRedoDepth} from "@codemirror/commands"
 import { EditorView } from "prosemirror-view"
-import { serialize } from "../marshal/html"
 import { EditorState as CmEditorState } from "@codemirror/state"
 import { html as cmHTML } from "@codemirror/lang-html"
 import { basicSetup } from "codemirror"
+import { Account, AccountStore } from "./accountstore"
+import { HTMLParserSerializer } from "../marshal/html"
 
-const BINARY_EXTENSIONS = Object.entries(marshal).flatMap(([k, v]) => v.isBinary? v.extensions: [])
-const ALL_FILTER = {name: "Explorable", extensions: Object.values(marshal).flatMap(v => v.extensions)}
-export const INDIVIDUAL_FILTERS = Object.entries(marshal).map(([k, v]) => ({name: v.label, extensions: v.extensions}))
-const FILTERS = [ALL_FILTER, ...INDIVIDUAL_FILTERS]
+
 export const CODEMIRROR_EXTENSIONS = [basicSetup, cmHTML()]
 
+type FileFormat = keyof typeof marshal
+
 type Resource = {
-  url: string
+  url?: URL
   editorState: EditorStateWithHead
 }
 
 type Options = {
-  bundle: Environment["bundle"],
-  Shell: Environment["Shell"],
-  Path: Environment["Path"],
-  FS: Environment["FS"],
-  createWindow: Environment["createWindow"],
-  setWindowCloseBehavior: Environment["setWindowCloseBehavior"],
   schema?: Schema,
-  url?: string,
+  url?: URL,
   editorState?: EditorStateWithHead,
   lang?: string
 }
@@ -55,7 +48,7 @@ export class DocumentStore implements Resource {
     "https://ga.jspm.io"
   ] as const
 
-  url: string
+  url?: URL
   editorState: EditorStateWithHead
   codeState: CmEditorState | null = null
   lastSavedState: EditorStateWithHead
@@ -63,18 +56,9 @@ export class DocumentStore implements Resource {
 
   ioState: "idle" | "saving" | "loading" = "idle"
 
-  bundle: Options["bundle"]
-  Path: Options["Path"]
-  FS: Options["FS"]
-  Shell: Options["Shell"]
 
-  constructor({bundle, schema, url, editorState, Path, FS, Shell, lang}: Options) {
-    this.bundle = bundle
-    this.Path = Path
-    this.FS = FS
-    this.Shell = Shell
+  constructor({schema, url, editorState, lang}: Options, readonly Environment: Environment, readonly accounts: AccountStore) {
     this.editorState = this.lastSavedState = this.initialState = editorState ?? createEditorState({schema, lang})
-    this.url = url ?? "memory:0"
   }
 
   cdnProvider: (typeof DocumentStore.cdnProviders)[number]  = "https://esm.run"
@@ -160,30 +144,20 @@ export class DocumentStore implements Resource {
   }
 
   /** Saves a resource on an external file system. */
-  async save(saveAs=false) {
+  async save(saveAs=false, serializer=this.parserSerializer, client=this.client, filename=this.provisionalTitle) {
     this.ioState = "saving"
     try {
-      const resource = this
-      let urlObj = new URL(resource?.url ?? "memory:/")
-      const title = this.provisionalTitle !== ""? this.provisionalTitle: undefined
-      if(urlObj.protocol === "memory:" || saveAs) {
-        const path = await connect["file"].pickSave(INDIVIDUAL_FILTERS, this.inMemory? title: this.url)
-        if(path === null) {
-          return
-        }
-        urlObj = new URL("file:/")
-        urlObj.pathname = path
+      const saveUrl = saveAs || !this.url? undefined: this.url
+      const data = await serializer.serialize(this.editorState)
+      const url = await client.saveDocument(data, saveUrl, filename)
+      if(url) {
+        this.lastSavedState = this.editorState
+        this.url = url
+        return url
       }
-  
-      const protocol = urlObj.protocol.slice(0, -1)
-      const format = getFileExtension(urlObj.href)
-      const save = (connect as any)[protocol].save
-      const serialize = (marshal as any)[format].serialize
-      const isBinary = (marshal as any)[format].isBinary
-      let data = await serialize(resource.editorState.doc, resource.editorState.head$.doc, this.bundle, this.Path, this.FS)
-      await save(data, urlObj.href, isBinary)
-      this.lastSavedState = this.editorState
-      this.url = urlObj.href
+    }
+    catch(err) {
+      throw err
     }
     finally {
       this.ioState = "idle"
@@ -191,32 +165,20 @@ export class DocumentStore implements Resource {
   }
 
   /** Loads a resource from an external file system. */
-  async load(url?: Resource["url"]) {
+  async load(url: Resource["url"] | undefined = undefined, parser=this.parserSerializer, client=this.client, schema=this.editorState.schema) {
     this.ioState = "loading"
     try {
-      let urlObj = new URL("memory:/")
-      if(!url) {
-        urlObj.protocol = "file:"
-        const path = await connect["file"].pickLoad(INDIVIDUAL_FILTERS)
-        if(path === null) {return}
-        urlObj.pathname = path as string
+      const data = await client.loadDocument(url)
+      if(!data) {
+        return
       }
-      else {
-        urlObj = new URL(url, "file:")
-      }
-  
-      const protocol = urlObj.protocol.slice(0, -1)
-      const format = getFileExtension(urlObj.href)
-      const load = (connect as any)[protocol].load
-      const parse = (marshal as any)[format].parse
-      
-      let data = await load(urlObj.href, BINARY_EXTENSIONS)
-      let editorState = await parse(data, this.editorState.schema)
-      this.url = urlObj.href
+      const editorState = await parser.parse(data as string, schema)
       this.editorState = this.lastSavedState = editorState
       if(this.codeState) {
         this.deriveCodeState()
       }
+      this.url = url
+      return data
     }
     finally {
       this.ioState = "idle"
@@ -224,25 +186,19 @@ export class DocumentStore implements Resource {
   }
 
   /** Open a preview for this document. */
-  async preview() {
-    const htmlString = await serialize(
-      this.editorState.doc,
-      this.editorState.head$.doc,
-      this.bundle,
-      this.Path,
-      this.FS
-    )
+  async preview(serializer=new HTMLParserSerializer(this.Environment)) {
+    const htmlString = await serializer.serialize(this.editorState)
     if(WEBWRITER_ENVIRONMENT.engine.name === "WebKit") {
       const suffix = "#ww-preview.html";
-      const ids = (await this.FS.readdir("/tmp"))
+      const ids = (await this.Environment.FS.readdir("/tmp"))
         .filter(path => path.endsWith(suffix))
         .map(path => path.replace(suffix, ""))
         .map(prefix => parseInt(prefix))
       const nextId = Math.max(0, ...ids) + 1
       const previewPath = `/tmp/${nextId}${suffix}`
-      await this.FS.writeFile(previewPath, htmlString)
+      await this.Environment.FS.writeFile(previewPath, htmlString)
       //return createWindow(previewPath, {focus: true, label: `p${nextId}`})
-      return this.Shell.open(previewPath)
+      return this.Environment.Shell.open(previewPath)
     }
     else {
       const blob = new Blob([htmlString], {type: "text/html"})
@@ -257,7 +213,7 @@ export class DocumentStore implements Resource {
   }
 
   get inMemory() {
-    return this.url.startsWith("memory:")
+    return !this.url
   }
 
   get activeMarks() {
@@ -508,6 +464,17 @@ export class DocumentStore implements Resource {
   get themeName() {
     const {node} = getHeadElement(this.editorState.head$, node => node.type.name === "style" && node.attrs.data["data-ww-theme"]) ?? {}
     return node?.attrs.data["data-ww-theme"]
+  }
+
+  get client() {
+    const file = this.accounts.getClient("file", "file")!
+    console.log(this.url)
+    return this.url? this.accounts.clientFromURL(this.url) ?? file: file 
+  }
+
+  get parserSerializer() {
+    const html = new HTMLParserSerializer(this.Environment)
+    return this.url? this.accounts.parserSerializerFromURL(this.url) ?? html: html
   }
 
 }

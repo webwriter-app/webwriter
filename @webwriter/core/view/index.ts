@@ -9,17 +9,22 @@ export * from "./configurator"
 export * from "./editor"
 export * from "./elements"
 export * from "./layout"
+export * from "./forms"
 
 import {LitElement, html, css} from "lit"
 import {customElement, property, query} from "lit/decorators.js"
 import { localized, msg } from "@lit/localize"
 
-import { escapeHTML, groupBy } from "../utility"
+import { capitalizeWord, escapeHTML, groupBy } from "../utility"
 import {ViewModelMixin} from "../viewmodel"
 import { SlAlert } from "@shoelace-style/shoelace"
 import { ifDefined } from "lit/directives/if-defined.js"
 import { ExplorableEditor } from "./editor"
 
+import appIconString from  "../app-icon.svg?raw"
+import { SaveForm, ShareForm } from "./forms"
+
+export const APPICON = `data:image/svg+xml;base64,${btoa(appIconString)}`
 
 export interface SlAlertAttributes {
 	message: string
@@ -197,6 +202,15 @@ export class App extends ViewModelMixin(LitElement)
         color: var(--sl-color-primary-600);
       }
 
+      .dialog {
+        .dialog-label {
+          display: flex;
+          flex-direction: row;
+          align-items: center;
+          gap: 1ch;
+        }
+      }
+
 			@media only screen and (max-width: 1300px) {
 				:host(:not(.noResources)) #settings-button .text {
 					display: none;
@@ -210,6 +224,9 @@ export class App extends ViewModelMixin(LitElement)
 
   @property({type: Boolean, attribute: true, reflect: true})
 	sourceMode = false
+
+  @property({type: String, attribute: true, reflect: true})
+	dialog: undefined | "save" | "share" | "open"
 
 	@query("ww-explorable-editor[data-active]")
 	activeEditor: ExplorableEditor | null
@@ -252,7 +269,7 @@ export class App extends ViewModelMixin(LitElement)
       .documentCommands=${documentCommands.filter(cmd => cmd.id !== "editHead")}
       ioState=${ioState}
       slot="nav"
-      filename=${inMemory && provisionalTitle? provisionalTitle: url}
+      filename=${ifDefined(inMemory && provisionalTitle? provisionalTitle: url)}
       ?pendingChanges=${changed}
     >
       <ww-button variant="icon" ${spreadProps(editHead.toObject())} @click=${() => editHead.run()}></ww-button>
@@ -269,7 +286,7 @@ export class App extends ViewModelMixin(LitElement)
     const editor = this.store? html`<ww-explorable-editor
     .app=${this}
     slot="main"
-    docID=${url}
+    docID=${String(url)}
     data-active
     @focus=${() => this.foldOpen = false}
     .bundleJS=${bundleJS}
@@ -317,6 +334,69 @@ export class App extends ViewModelMixin(LitElement)
 		nextNotification && this.notify(nextNotification).then(() => this.requestUpdate())
 	}
 
+  closeDialog = () => {
+    this.dialog = undefined
+  }
+
+  static get dialogLabel() {return {
+    "save": msg("Save as..."),
+    "share": msg("Share..."),
+    "open": msg("Open..."),
+    "": ""
+  }}
+
+  static get dialogIcon() {return {
+    "save": "file-export",
+    "share": "share",
+    "open": "file-symlink",
+    "": ""
+  }}
+
+  @query(".dialog > ww-save-form")
+  activeDialogSaveForm: SaveForm
+
+  Dialog() {
+    let content = undefined
+    if(this.dialog === "save") {
+      content = html`<ww-save-form
+        .clients=${this.store.accounts.clientTriples as any}
+        .Environment=${this.environment.api}
+        @ww-delete-document=${(e: any) => this.commands.deleteDocumentCommand.run({url: e.detail.url, client: this.activeDialogSaveForm.client})}
+        filename=${(this.store.document.provisionalTitle || msg("Unnamed")) + ".html"}
+        @ww-cancel=${() => this.dialog = undefined}
+        @ww-confirm=${(e: any) => this.commands.saveCommand.run({client: e.target.client, serializer: e.target.parserSerializer, filename: e.target.filename, url: e.target.url, saveAs: !e.target.url})}
+        ?loading=${this.store.document.ioState !== "idle"}
+        .url=${this.store.document.url}
+        .clientName=${this.store.document.url? this.store.accounts.clientNameFromURL(this.store.document.url): "file file"}
+      ></ww-save-form>`
+    }
+    else if(this.dialog === "share") {
+      content = html`<ww-share-form
+        url=${String(this.store.document.url)}
+        .client=${this.store.document.client as any}
+        @ww-cancel=${() => this.dialog = undefined}
+      ></ww-share-form>`
+    }
+    else if(this.dialog === "open") {
+      content = html`<ww-save-form
+        mode="open"
+        .clients=${this.store.accounts.clientTriples as any}
+        .Environment=${this.environment.api}
+        @ww-delete-document=${(e: any) => this.commands.deleteDocumentCommand.run({url: e.detail.url, client: this.activeDialogSaveForm.client})}
+        @ww-cancel=${() => this.dialog = undefined}
+        @ww-confirm=${(e: any) => this.commands.openCommand.run({url: e.target.url, parser: e.target.parserSerializer, client: e.target.client})}
+        ?loading=${this.store.document.ioState === "loading"}
+      ></ww-save-form>`
+    }
+    return html`<sl-dialog class="dialog" ?open=${!!this.dialog} @sl-after-hide=${(e: CustomEvent) => e.target === e.currentTarget && this.closeDialog()}>
+      <div slot="label" class="dialog-label">
+        <sl-icon name=${App.dialogIcon[this.dialog ?? ""]}></sl-icon>
+        <b>${App.dialogLabel[this.dialog ?? ""]}</b>
+      </div>
+      ${content}
+    </sl-dialog>`
+  }
+
 	render() {
 		if(!this.initializing) {
 			this.Notification()
@@ -324,12 +404,15 @@ export class App extends ViewModelMixin(LitElement)
 		}
 		return html`<ww-layout 
 			openTab
-			activeTabName=${ifDefined(this.store?.document.url)}
+			activeTabName=${String(this.store?.document.url)}
       ?loading=${this.initializing}
       ?foldOpen=${this.foldOpen}>
         ${this.HeaderLeft()}
         ${this.HeaderRight()}
         ${this.Content()}
-		</ww-layout><div style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1000000; pointer-events: none;"></div>`
+		</ww-layout>
+    <div style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1000000; pointer-events: none;"></div>
+    ${this.Dialog()}
+    `
 	}
 }

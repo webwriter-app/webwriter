@@ -406,7 +406,7 @@ export async function serialize(explorable: Node, head: Node, bundle: Environmen
   html.head.appendChild(script)
 
   const style = html.createElement("style")
-  style.textContent = css
+  style.textContent = css ?? null
   html.head.appendChild(style)
 
   return `<!DOCTYPE html>` + html.documentElement.outerHTML
@@ -414,5 +414,5 @@ export async function serialize(explorable: Node, head: Node, bundle: Environmen
 }
 
 export const label = "H5P Package"
-export const extensions = ["h5p"]
+export const extensions = ["h5p", "ww.h5p"]
 export const isBinary = true

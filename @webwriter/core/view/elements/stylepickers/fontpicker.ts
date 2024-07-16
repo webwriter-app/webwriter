@@ -89,7 +89,7 @@ export class FontPicker extends LitElement {
     }
   }
 
-  @property({attribute: false, reflect: false})
+  @property({attribute: true, reflect: true})
   get fontSize(): string | undefined {
     return typeof this._fontSize === "string"? this._fontSize: this._fontSize?.description
   }
@@ -116,7 +116,7 @@ export class FontPicker extends LitElement {
     }
   }
 
-  @property({attribute: false, reflect: false})
+  @property({attribute: true, reflect: true})
   get fontFamily(): string | undefined {
     return typeof this._fontFamily === "string"? this._fontFamily: this._fontFamily?.description
   }
@@ -128,13 +128,17 @@ export class FontPicker extends LitElement {
   }
 
   changeFontFamily(value: string) {
-    this.fontFamily = value
-    this.emitChangeFontFamily(value)
+    if(this.fontFamily !== value) {
+      this.fontFamily = value
+      this.emitChangeFontFamily(value)
+    }
   }
 
   changeFontSize(value: string) {
-    this.fontSize = value
-    this.emitChangeFontSize(value)
+    if(this.fontSize !== value) {
+      this.fontSize = value
+      this.emitChangeFontSize(value)
+    }
   }
 
   @property({type: String, attribute: true, reflect: true})
@@ -327,6 +331,7 @@ export class FontPicker extends LitElement {
   showFontSizeMultiple = false
 
 	render() {
+    console.log(this.fontSize)
     return html`<div part="base">
       <ww-combobox ?data-changed=${this.fontFamily !== "DEFAULT"} suggestions inputDisabled id="font-family" size="small" .value=${this.fontFamily ?? this.defaultFontFamily} defaultValue=${this.defaultFontFamily} @sl-change=${(e: any) => this.changeFontFamily(e.target.value.replaceAll("_", " "))}>
         ${this.FontOption(this.fontFamily ?? "DEFAULT", true)}
@@ -338,7 +343,7 @@ export class FontPicker extends LitElement {
         `}
         <!--<ww-button slot="label" class="label" variant="icon" icon="typography"></ww-button>-->
       </ww-combobox>
-      <ww-combobox ?data-changed=${this.fontSize !== "DEFAULT"} suggestions id="font-size" size="small" .value=${this.fontSize && this.fontSize !== "DEFAULT"? this.fontSize: ""} @focus=${() => this.showFontSizeMultiple = false} @blur=${() => this.showFontSizeMultiple = true} defaultValue=${this.defaultFontSize} @sl-change=${(e: any) => this.changeFontSize(e.target.value)}>
+      <ww-combobox emptyValue="DEFAULT" ?data-changed=${this.fontSize !== "DEFAULT"} suggestions id="font-size" size="small" .value=${this.fontSize && (this.fontSize !== "DEFAULT")? this.fontSize: " "} @focus=${() => this.showFontSizeMultiple = false} @blur=${() => this.showFontSizeMultiple = true} defaultValue=${this.defaultFontSize} @sl-change=${(e: any) => {this.changeFontSize(e.target.value); this.requestUpdate("fontSize")}}>
         ${this.FontOption(this.fontSize ?? "DEFAULT", true, "font-size")}
         ${this.FontOption("DEFAULT", false, "font-size")}
         ${this.allFontSizes.map(size => html`<sl-option

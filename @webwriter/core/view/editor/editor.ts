@@ -384,7 +384,7 @@ export class ExplorableEditor extends LitElement {
 				margin: 0 auto;
 				position: relative;
         overscroll-behavior: none;
-        overflow: auto;
+        overflow: hidden;
 				height: 100%;
 			}
 
@@ -456,6 +456,7 @@ export class ExplorableEditor extends LitElement {
 
 			@media only screen and (min-width: 1301px) {
 				ww-palette {
+          padding-left: 5px;
 					grid-column: 2;
 					grid-row: 1;
           height: fit-content;
@@ -497,7 +498,7 @@ export class ExplorableEditor extends LitElement {
 		*/
 	}
 
-	focus(options: Parameters<HTMLElement["focus"]>[0]) {
+	focus(options?: Parameters<HTMLElement["focus"]>[0]) {
 		setTimeout(() => this.pmEditor.focus(), 75)
 	}
 
@@ -802,6 +803,11 @@ export class ExplorableEditor extends LitElement {
     }
   }
 
+  connectedCallback(): void {
+    super.connectedCallback()
+    window.addEventListener("resize", () => this.requestUpdate())
+  }
+
   disconnectedCallback(): void {
     super.disconnectedCallback()
 	  this.autoUpdateElement?.cleanup()
@@ -858,20 +864,22 @@ export class ExplorableEditor extends LitElement {
     "keyup": (_: any, ev: KeyboardEvent) => {
       this.dispatchEvent(new KeyboardEvent(ev.type, ev))
     },
+    /*
     "ww-widget-focus": (_: any, ev: CustomEvent) => {
       ev.detail.widget?.focus()
       /*
       if(this.previewing) {
         ev.detail.widget.focus()
-      }*/
+      }
       ev.detail.widget.scrollIntoView({behavior: "smooth", block: "center"})
     },
     "ww-widget-blur": () => {
-      // this.activeElement = null
+      // this.activeElement?.blur()
     },
     "ww-widget-click": (_: any, ev: CustomEvent) => {
       const {widget} = ev.detail
       // widget.focus()
+     widget.focus()
     },
     "focus": (_:any, ev: FocusEvent) => {
       this.updatePosition()
@@ -884,8 +892,7 @@ export class ExplorableEditor extends LitElement {
       /*
       this.pendingBlur !== null && window.clearTimeout(this.pendingBlur)
       this.pendingBlur = window.setTimeout(() => this.activeElement = null, 100)
-      */
-    },
+    },*/
     "contextmenu": (_:any, ev: Event) => {
       ev.preventDefault()
       this.forceToolboxPopup = !(this.toolboxMode === "popup")
@@ -1044,12 +1051,15 @@ export class ExplorableEditor extends LitElement {
     return html.replaceAll(/style=["']?((?:.(?!["']?\s+(?:\S+)=|\s*\/?[>"']))+.)["']?/g, "")
   }
 
+  handleEditorFocus = () => this.requestUpdate()
+
 	CoreEditor = () => {
 		return html`
 			<pm-editor
 				id="main"
         bundleID=${this.bundleID}
 				@update=${this.handleUpdate}
+        @focus=${this.handleEditorFocus}
 				.scrollMargin=${20}
 				scrollThreshold=${20}
 				placeholder=${this.showTextPlaceholder && !this.previewing? msg("Enter content here..."): ""}
@@ -1106,8 +1116,7 @@ export class ExplorableEditor extends LitElement {
 			position: "fixed",
 			left: `${this.toolboxX}px`,
 			top: `${this.toolboxY}px`,
-      transition: "top 0.1s, left 0.1s",
-      willChange: "left, top"
+      transition: "top 0.1s"
 		}
 		else return {
 			display: "none",

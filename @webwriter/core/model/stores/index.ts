@@ -7,10 +7,11 @@ import merge from "lodash.merge"
 
 import { Package, PackageStore, DocumentStore, UIStore, createEditorStateConfig } from ".."
 import { Environment } from "../environment"
+import { AccountStore } from "./accountstore"
 
 type StoreOptions<T extends abstract new (...args: any) => any> = ConstructorParameters<T>[0]
 
-type AllOptions = StoreOptions<typeof PackageStore> & StoreOptions<typeof DocumentStore> & {settings: any}
+type AllOptions = StoreOptions<typeof PackageStore> & StoreOptions<typeof DocumentStore> & {settings: any, initializePackages?: boolean}
 type OmitFunctions<T> = Pick<T, {
   [K in keyof T]: T[K] extends Function ? never : K;
 }[keyof T]>
@@ -24,24 +25,26 @@ type StoreSlice<T extends object> = {
 
 export class RootStore {
 
-  static readonly storeKeys = ["packages", "document", "ui"] as const
+  static readonly storeKeys = ["packages", "document", "accounts", "ui"] as const
 
   packages: PackageStore
   document: DocumentStore
+  accounts: AccountStore
   ui: UIStore
 
   FS: Environment["FS"]
   Path: Environment["Path"]
   Dialog: Environment["Dialog"]
 
-  constructor({corePackages, schema, FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, getSystemFonts, createWindow, setWindowCloseBehavior, getWindowLabel, checkUpdate, installUpdate, settings}: AllOptions) {
+  constructor({corePackages, schema, FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, getSystemFonts, createWindow, setWindowCloseBehavior, getWindowLabel, checkUpdate, installUpdate, settings, initializePackages}: AllOptions) {
     const onBundleChange = this.onBundleChange
     this.FS = FS
     this.Path = Path
     this.Dialog = Dialog
     this.ui = new UIStore({...settings?.ui})
-    this.packages = new PackageStore({...settings?.packages, corePackages, FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, onBundleChange, getSystemFonts, createWindow, setWindowCloseBehavior, getWindowLabel, checkUpdate, installUpdate})
-    this.document = new DocumentStore({...settings?.document, schema, bundle, Path, FS, Shell, createWindow, setWindowCloseBehavior, lang: this.ui.locale})
+    this.packages = new PackageStore({...settings?.packages, corePackages, FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, onBundleChange, getSystemFonts, createWindow, setWindowCloseBehavior, getWindowLabel, checkUpdate, installUpdate, initializePackages})
+    this.accounts = new AccountStore({FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, getSystemFonts, createWindow, setWindowCloseBehavior, getWindowLabel, checkUpdate, installUpdate, }, settings?.accounts.accounts)
+    this.document = new DocumentStore({...settings?.document, lang: this.ui.locale, defaultAccount: this.accounts.getAccount("file")}, {FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, getSystemFonts, createWindow, setWindowCloseBehavior, getWindowLabel, checkUpdate, installUpdate}, this.accounts)
   }
 
   onBundleChange = (packages: Package[]) => {

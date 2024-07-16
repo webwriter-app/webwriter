@@ -1,8 +1,9 @@
-import { EditorState } from "prosemirror-state";
+import { Command, EditorState } from "prosemirror-state";
 import { SchemaPlugin } from ".";
 import { InputRule } from "prosemirror-inputrules";
 import { HTMLElementSpec, HTMLMarkSpec } from "../htmlelementspec";
 import {Mark, Node, MarkType} from "prosemirror-model"
+import { chainCommands } from "prosemirror-commands";
 
 
 export function getActiveMarks(state: EditorState, includeStored=true) {
@@ -37,13 +38,30 @@ export const findMarkPosition = (mark: Mark | MarkType, doc: Node) => {
   return markPos;
 }
 
-export function toggleOrUpdateMark(mark: string, attrs: any = {}) {
+export const insertBreak: Command = (state, dispatch=()=>{}, view) => {
+  dispatch(state.tr.replaceSelectionWith(state.schema.node("br")))
+  return true
+}
+
+export const insertWordBreak: Command = (state, dispatch=()=>{}, view) => {
+  dispatch(state.tr.replaceSelectionWith(state.schema.node("wbr")))
+  return true
+}
+
+export function toggleOrUpdateMark(mark: string, attrs: any = {}, forceUpdate=false) {
+  console.log(mark, attrs)
   return (state: EditorState, dispatch: any) => {
     const {from, to, empty} = state.selection
     const markType = mark in state.schema.marks? state.schema.marks[mark]: state.schema.marks["span"]
     const newMark = markType.create(attrs)
     const correspondingMark = getActiveMarks(state, true).find(m => m.type.name === mark)
-    if(!correspondingMark && empty) {
+    if(!empty && (forceUpdate || !correspondingMark || !correspondingMark?.eq(newMark))) {
+      return dispatch(state.tr
+        .removeMark(from, to, markType)
+        .addMark(from, to, newMark)
+      )
+    }
+    if((forceUpdate || !correspondingMark) && empty) {
       return dispatch(state.tr.addStoredMark(newMark))
     }
     else if(correspondingMark && empty) {
@@ -57,12 +75,6 @@ export function toggleOrUpdateMark(mark: string, attrs: any = {}) {
       return dispatch(state.tr
         .removeMark(cFrom, cTo, correspondingMark)
         .removeStoredMark(correspondingMark)
-      )
-    }
-    else if(!correspondingMark || !correspondingMark?.eq(newMark)) {
-      return dispatch(state.tr
-        .removeMark(from, to, markType)
-        .addMark(from, to, newMark)
       )
     }
     else {
@@ -83,8 +95,10 @@ export const phrasingPlugin = () => ({
   nodes: {
     br: HTMLElementSpec({
       tag: "br",
+      selector: "br:not(.ProseMirror-trailingBreak)",
       group: "phrasing",
-      inline: true
+      inline: true,
+      linebreakReplacement: true
     }),
     wbr: HTMLElementSpec({
       tag: "wbr",
@@ -317,13 +331,8 @@ export const phrasingPlugin = () => ({
     })
   ],
   keymap: {
-    "alt-Enter": (state, dispatch=()=>{}) => {
-      dispatch(state.tr.replaceSelectionWith(state.schema.node("br")))
-      return true
-    },
-    "alt-shift-Enter": (state, dispatch=()=>{}) => {
-      dispatch(state.tr.replaceSelectionWith(state.schema.node("wbr")))
-      return true
-    }
+    // "Enter": insertBreak,
+    "alt-Enter": insertBreak,
+    "alt-shift-Enter": insertWordBreak
   }
 } as SchemaPlugin)

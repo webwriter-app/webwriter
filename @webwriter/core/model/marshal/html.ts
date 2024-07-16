@@ -5,9 +5,10 @@ import { EditorState } from 'prosemirror-state'
 import {Schema, DOMParser} from "prosemirror-model"
 
 import { createElementWithAttributes, namedNodeMapToObject, unscopePackageName } from "../../utility"
-import { PackageStore, createEditorState, headSchema, headSerializer } from '..'
+import { EditorStateWithHead, PackageStore, createEditorState, headSchema, headSerializer } from '..'
 import { Environment } from '../environment'
 import scopedCustomElementRegistry from "@webcomponents/scoped-custom-element-registry/src/scoped-custom-element-registry.js?raw"
+import { ParserSerializer } from './parserserializer'
 
 class NonHTMLDocumentError extends Error {}
 class NonWebwriterDocumentError extends Error {}
@@ -94,51 +95,51 @@ export async function docToBundle(doc: Node, head: Node, bundle: Environment["bu
   return {html, css, js}
 }
 
+export class HTMLParserSerializer extends ParserSerializer {
+  static readonly format = "html" as const
+  static readonly extensions = ["html", "htm"] as const
+  static readonly mediaType = "text/html" as const
 
-export function parse(data: string, schema: Schema) {
-  let inputDoc: Document
-  try {
-    inputDoc = new globalThis.DOMParser().parseFromString(data, "text/html")
-  }
-  catch(e: any) {
-    throw new NonHTMLDocumentError(e?.message)
-  }
-
-  if(!inputDoc.querySelector("meta[name=generator][content^='webwriter@']")) {
-    throw new NonWebwriterDocumentError("Did not find <meta name='generator'> valid for WebWriter")
-  }
-
-  const doc = DOMParser.fromSchema(schema).parse(inputDoc.body)
-
-  let head = DOMParser.fromSchema(headSchema).parse(inputDoc.head)
-  const htmlAttrs = {} as Record<string, string>
-  for(let key of inputDoc.documentElement.getAttributeNames()) {
-    htmlAttrs[key] = inputDoc.documentElement.getAttribute(key)!
-  }
-  head = head.type.schema.node("head", {...head.attrs, htmlAttrs}, head.content, head.marks)
-
-  const editorState = createEditorState({schema, doc}, head)
-  return editorState
-}
-
-export async function serialize(explorable: Node, head: Node, bundle: Environment["bundle"], Path: Environment["Path"], FS: Environment["FS"]) {
+  async parse(data: string, schema: Schema) {
+    let inputDoc: Document
+    try {
+      inputDoc = new globalThis.DOMParser().parseFromString(data, "text/html")
+    }
+    catch(e: any) {
+      throw new NonHTMLDocumentError(e?.message)
+    }
   
-  const {html, js, css} = await docToBundle(explorable, head, bundle, Path, FS)
+    if(!inputDoc.querySelector("meta[name=generator][content^='webwriter@']")) {
+      throw new NonWebwriterDocumentError("Did not find <meta name='generator'> valid for WebWriter")
+    }
+  
+    const doc = DOMParser.fromSchema(schema).parse(inputDoc.body)
+  
+    let head = DOMParser.fromSchema(headSchema).parse(inputDoc.head)
+    const htmlAttrs = {} as Record<string, string>
+    for(let key of inputDoc.documentElement.getAttributeNames()) {
+      htmlAttrs[key] = inputDoc.documentElement.getAttribute(key)!
+    }
+    head = head.type.schema.node("head", {...head.attrs, htmlAttrs}, head.content, head.marks)
+  
+    const editorState = createEditorState({schema, doc}, head)
+    return editorState
+  }
+  
+  async serialize(state: EditorStateWithHead) {
+    const {html, js, css} = await docToBundle(state.doc, state.head$.doc, this.Environment.bundle, this.Environment.Path, this.Environment.FS)
 
-  const script = html.createElement("script")
-  script.type = "text/javascript"
-  script.text = js
-  script.setAttribute("data-ww-editing", "bundle")
-  html.head.appendChild(script)
-
-  const style = html.createElement("style")
-  style.textContent = css ?? ""
-  style.setAttribute("data-ww-editing", "bundle")
-  html.head.appendChild(style)
-
-  return `<!DOCTYPE html>` + html.documentElement.outerHTML
+    const script = html.createElement("script")
+    script.type = "text/javascript"
+    script.text = js
+    script.setAttribute("data-ww-editing", "bundle")
+    html.head.appendChild(script)
+  
+    const style = html.createElement("style")
+    style.textContent = css ?? ""
+    style.setAttribute("data-ww-editing", "bundle")
+    html.head.appendChild(style)
+  
+    return `<!DOCTYPE html>` + html.documentElement.outerHTML
+  }
 }
-
-export const label = "WebWriter File"
-export const extensions = ["html", "ww.html"]
-export const isBinary = false

@@ -92,9 +92,9 @@ function widgetConfig(pkg: Package, decl: ManifestCustomElementDeclaration) {
 function widgetGroup(settings: WidgetEditingSettings) {
   return Array.from(new Set([
     ...(settings?.group? settings.group.split(" "): []),
-    settings.inline? "widgetinline": "flow",
-    settings.inline? "widgetinline": "widget"
-  ])).join(" ")
+    settings?.inline? "widgetinline": "widget",
+    !settings?.group && !settings?.inline? "flow": ""
+  ])).join(" ").trim()
 }
 
 function widgetAttrs() {
@@ -223,13 +223,5 @@ export const widgetPlugin = (packages: Package[]) => ({
     .flatMap(pkg => widgetSpecs(pkg))
     .map(spec => [spec.tag.replaceAll("-", "_"), spec])
   ),
-  scripts: [scopedCustomElementRegistry],
-  keymap: {
-    "control-ArrowUp": (state, dispatch) => {
-      return false
-    },
-    "control-ArrowDown": (state, dispatch) => {
-      return false
-    }
-  }
+  scripts: [scopedCustomElementRegistry]
 } as SchemaPlugin)

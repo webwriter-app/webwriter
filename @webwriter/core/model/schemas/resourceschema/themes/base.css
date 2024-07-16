@@ -4,11 +4,10 @@ html {
 
 body {
   display: block;
-  margin: 0 auto;
+  margin: 20px auto;
   max-width: 840px;
   padding: 19px;
   background: white;
-  min-height: 100vh;
   box-sizing: border-box;
   border: 1px solid rgba(0, 0, 0, 0.1);
   font-size: 1.15rem;

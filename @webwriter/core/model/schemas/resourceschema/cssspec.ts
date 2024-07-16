@@ -2,7 +2,11 @@ import rawProperties from "mdn-data/css/properties.json"
 import rawSyntaxes from "mdn-data/css/syntaxes.json"
 import { filterObject } from "../../../utility"
 
-export const CSSPropertySpecs = {
+type KeysMatching<T extends object, V> = {
+  [K in keyof T]-?: T[K] extends V ? K : never
+}[keyof T];
+
+export const CSSPropertySpecs = { // TODO: Incorrectly typed until TS supports "import .json as const"
   ...filterObject(rawProperties, (k, v) => ["standard", "experimental"].includes(v.status) || k === "font-smooth" || k === "zoom"),
   "overflow-clip-margin": { // fix syntax error in base data
     ...rawProperties["overflow-clip-margin"],
@@ -48,7 +52,7 @@ export const CSSPropertySpecs = {
       forbiddenIdents: ["unset", "initial", "inherit", "will-change", "auto", "scroll-position", "contents"]
     },
   },
-} as unknown as {[Property in keyof typeof rawProperties]: CSSPropertySpec}
+} as unknown as Omit<typeof rawProperties, `-${string}`>
 
 export type CSSSyntaxes = typeof rawSyntaxes
 export const CSSSyntaxes = rawSyntaxes
