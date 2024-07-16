@@ -69,7 +69,7 @@
       "longDescription": "",
       "macOS": {
         "minimumSystemVersion": "14.5",
-        "entitlements": "./Info.plist"
+        "entitlements": "./entitlements.plist"
       },
       "resources": [],
       "shortDescription": "",

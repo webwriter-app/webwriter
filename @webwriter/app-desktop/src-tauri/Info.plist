@@ -5,8 +5,8 @@
 	<key>UIApplicationSupportsPrintCommand</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Request microphone access for Audio/Video recording</string>
+	<string>Record audio to insert into explorables</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Request camera access for Image/Video recording</string>
+	<string>Record video to insert into explorables</string>
 </dict>
 </plist>
