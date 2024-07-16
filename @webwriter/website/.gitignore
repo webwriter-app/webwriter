@@ -23,3 +23,9 @@ pnpm-debug.log*
 !public
 public/widgetsrc
 tmp/
+
+# pocketbase
+pocketbase.exe
+pb_data/
+pb_migrations/
+pb_public/

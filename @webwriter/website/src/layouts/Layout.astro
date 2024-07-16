@@ -15,7 +15,7 @@ function capitalize(str: string) {
   return str[0].toUpperCase() + str.slice(1)
 }
 
-const pageFiles = (await Astro.glob("../pages/**/*.astro")).filter(page => !page.url?.endsWith("]") && !page.url?.endsWith("404") && !page?.url?.endsWith("legal_notice") && page.url)
+const pageFiles = (await Astro.glob("../pages/**/*.astro")).filter(page => !page.url?.endsWith("]") && !page.url?.endsWith("404") && !page?.url?.endsWith("legal_notice") && !page?.url?.endsWith("dashboard") && page.url)
 const pageUrls = pageFiles.map(page => page.url ?? "")
 const pageOrder = ["", "docs", "widgets", "about", "get_started"]
 const pages = pageUrls
@@ -55,29 +55,6 @@ import { SEO } from "astro-seo";
       titleDefault="WebWriter"
       description="Digital worksheet tool for teachers"
     />
-    <script>
-      import Swup from "swup"
-      import AccessibilityPlugin from "@swup/a11y-plugin"
-      import HeadPlugin from "@swup/head-plugin"
-      import PreloadPlugin from "@swup/preload-plugin"
-
-      const swup = new Swup({
-        plugins: [
-          new AccessibilityPlugin(),
-          new HeadPlugin(),
-          new PreloadPlugin()
-        ]
-      })
-
-      swup.on("pageView", () => {
-        document.querySelectorAll("a").forEach(a => {
-          const isActive = window.location.origin + "/" === a.href
-            ? window.location.href === a.href
-            : window.location.href.startsWith(a.href)
-          a.toggleAttribute("data-active", isActive)
-        })
-      })
-    </script>
 	</head>
 	<body>
 		<header id="layout-header">
@@ -93,6 +70,9 @@ import { SEO } from "astro-seo";
 					{page.name}
 				</a></li>))}
 			</ol>
+      <a class="dashboard" href="/dashboard">
+        <div class="icon bi-person-circle"></div>
+      </a>
       <a data-swup-preload class="get_started" draggable="false" data-active={getStartedActive} href="/get_started">Get Started</a>
     </nav>
 		</header>
@@ -130,6 +110,27 @@ import { SEO } from "astro-seo";
 		</footer>
 	</body>
 </html>
+
+<script>
+  import {pocketbase} from "../lib/pocketbase"
+
+
+
+  function updateUserUI() {
+    if(!pocketbase.authStore.isValid) {
+      document.body.setAttribute("data-status", "signedout")
+    }
+    else {
+      document.body.setAttribute("data-status", "signedin")
+      const dashHeader = document.querySelector("#dash h1")
+      const user = pocketbase.authStore.model as {email: string}
+      dashHeader && (dashHeader.textContent = `Welcome, ${user.email}`)
+    }
+  }
+  pocketbase.authStore.onChange((token, model) => updateUserUI())
+  updateUserUI()
+</script>
+
 <style is:global>
 	:root {
 		--background-color: #f0f0f0;
@@ -298,6 +299,14 @@ import { SEO } from "astro-seo";
 
   .sitemap-card h2 {
     margin-top: 0;
+  }
+
+  .dashboard {
+    font-size: 1.75rem;
+  }
+
+  body[data-status=signedin] .dashboard:not(:hover) {
+    color: var(--sl-color-primary-700) !important;
   }
 
   .get_started {
