@@ -49,8 +49,8 @@
     },
     "bundle": {
       "active": true,
-      "category": "DeveloperTool",
-      "copyright": "",
+      "category": "Education",
+      "copyright": "(c) 2024 All rights reserved",
       "deb": {
         "depends": []
       },
@@ -68,8 +68,6 @@
       "identifier": "webwriter.webwriter",
       "longDescription": "",
       "macOS": {
-        "exceptionDomain": "",
-        "frameworks": [],
         "minimumSystemVersion": "14.5",
         "entitlements": "./Info.plist"
       },
