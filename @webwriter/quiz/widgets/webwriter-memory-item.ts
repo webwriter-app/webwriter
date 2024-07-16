@@ -3,6 +3,10 @@ import {LitElementWw} from "@webwriter/lit"
 import {customElement} from "lit/decorators.js"
 import "@shoelace-style/shoelace/dist/themes/light.css"
 
+declare global {interface HTMLElementTagNameMap {
+  "webwriter-memory-item": WebwriterMemoryItem;
+}}
+
 @customElement("webwriter-memory-item")
 export class WebwriterMemoryItem extends LitElementWw {
 

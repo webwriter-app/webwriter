@@ -17,6 +17,10 @@ import SlIcon from "@shoelace-style/shoelace/dist/components/icon/icon.component
 import SlFormatDate from "@shoelace-style/shoelace/dist/components/format-date/format-date.component.js"
 import SlPopup from "@shoelace-style/shoelace/dist/components/popup/popup.component.js"
 
+declare global {interface HTMLElementTagNameMap {
+  "webwriter-speech": WebwriterSpeech;
+}}
+
 @customElement("webwriter-speech")
 export class WebwriterSpeech extends LitElementWw {
 

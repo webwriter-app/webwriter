@@ -35,6 +35,10 @@ function shuffle<T>(a: T[]) {
   return a;
 }
 
+declare global {interface HTMLElementTagNameMap {
+  "webwriter-quiz": WebwriterQuiz;
+}}
+
 @customElement("webwriter-quiz")
 export class WebwriterQuiz extends LitElementWw {
 
@@ -60,20 +64,20 @@ export class WebwriterQuiz extends LitElementWw {
         label: this.msg("Mark"),
         icon: IconHighlighter
       },
-      "webwriter-pairing": {
+      /*"webwriter-pairing": {
         label: this.msg("Pairing"),
         icon: IconSubtract
-      },
+      },*/
       "webwriter-cloze": {
         label: this.msg("Cloze"),
         icon: IconBodyText
       },
       "webwriter-speech": {
         label: this.msg("Speech"),
-        advanced: true,
+        //advanced: true,
         icon: IconMic
       },
-      "webwriter-wordsearch": {
+      /*"webwriter-wordsearch": {
         label: this.msg("Word Search"),
         advanced: true,
         icon: IconSearch
@@ -82,7 +86,7 @@ export class WebwriterQuiz extends LitElementWw {
         label: this.msg("Memory"),
         advanced: true,
         icon: IconGrid3x3Gap
-      }
+      }*/
     }
   }
 
@@ -138,6 +142,10 @@ export class WebwriterQuiz extends LitElementWw {
       flex-grow: 1;
     }
 
+    sl-dropdown[data-empty] {
+      display: none;
+    }
+
     sl-button:not([caret])::part(label) {
       padding: 0;
       display: flex;
@@ -156,8 +164,14 @@ export class WebwriterQuiz extends LitElementWw {
       z-index: 10000;
     }
 
-    #submit {
-      order: 2147483647;
+    .user-actions {
+      & #submit {
+        flex-grow: 3;
+      }
+
+      & #reset {
+        flex-grow: 1;
+      }
     }
   `
   
@@ -199,6 +213,11 @@ export class WebwriterQuiz extends LitElementWw {
     this.tasks.forEach(task => task.reportSolution())
   }
 
+  handleReset = () => {
+    this.tasks.forEach(task => task.resetSolution())
+    this.submitted = false
+  }
+
   connectedCallback(): void {
     super.connectedCallback()
     const observer = new MutationObserver(() => {
@@ -223,7 +242,10 @@ export class WebwriterQuiz extends LitElementWw {
     const otherAnswerTypes = Object.keys(this.answerTypes).filter(k => this.answerTypes[k]?.advanced)
     return html`
       <slot ?inert=${this.submitted}></slot>
-      <sl-button id="submit" class="user-only" @click=${this.handleSubmit}>Submit</sl-button>
+        <sl-button-group class="user-only user-actions">
+          <sl-button id="submit" @click=${this.handleSubmit}>Submit</sl-button>
+          <sl-button ?disabled=${!this.submitted} id="reset" @click=${this.handleReset}>Reset</sl-button>
+        </sl-button-group>
       <sl-button-group class="author-only">
         ${basicAnswerTypes.map(k => html`
           <sl-button @click=${() => this.addTask(k)}>
@@ -231,7 +253,7 @@ export class WebwriterQuiz extends LitElementWw {
             ${this.answerTypes[k].label}
           </sl-button>
         `)}
-        <sl-dropdown placement="bottom-end" hoist>
+        <sl-dropdown data-empty=${!otherAnswerTypes.length} placement="bottom-end" hoist>
           <sl-button slot="trigger" caret></sl-button>
           <sl-menu>
             ${otherAnswerTypes.map(k => html`

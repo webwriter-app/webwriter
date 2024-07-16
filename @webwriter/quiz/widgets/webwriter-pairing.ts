@@ -7,6 +7,10 @@ import IconPlusCircle from "bootstrap-icons/icons/plus-circle.svg"
 import SlIconButton from "@shoelace-style/shoelace/dist/components/icon-button/icon-button.component.js"
 import { WebwriterPairingItem } from "./webwriter-pairing-item"
 
+declare global {interface HTMLElementTagNameMap {
+  "webwriter-pairing": WebwriterPairing;
+}}
+
 @customElement("webwriter-pairing")
 export class WebwriterPairing extends LitElementWw {
   

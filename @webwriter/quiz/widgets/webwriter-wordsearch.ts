@@ -13,6 +13,10 @@ export function range(a: number, b?: number) {
   return [...Array((b ?? a*2) - a).keys()].map(x => x + (b? a: 0))
 }
 
+declare global {interface HTMLElementTagNameMap {
+  "webwriter-wordsearch": WebwriterWordSearch;
+}}
+
 @customElement("webwriter-wordsearch")
 export class WebwriterWordSearch extends LitElementWw {
 

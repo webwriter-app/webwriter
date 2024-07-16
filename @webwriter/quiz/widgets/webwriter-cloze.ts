@@ -10,6 +10,10 @@ import IconTextarea from "bootstrap-icons/icons/textarea.svg"
 import { WebwriterClozeGap } from "./webwriter-cloze-gap.js"
 import "@shoelace-style/shoelace/dist/themes/light.css"
 
+declare global {interface HTMLElementTagNameMap {
+  "webwriter-cloze": WebwriterCloze;
+}}
+
 @customElement("webwriter-cloze")
 export class WebwriterCloze extends LitElementWw {
 
@@ -46,7 +50,6 @@ export class WebwriterCloze extends LitElementWw {
   `
 
   toggleGap = () => {
-    // Get selected text
     const sel = document.getSelection()
     const selectedElement = sel.anchorNode.childNodes.item(sel.anchorOffset)
     if(selectedElement?.nodeName.toLowerCase() === "webwriter-cloze-gap") {
@@ -58,14 +61,13 @@ export class WebwriterCloze extends LitElementWw {
       sel.deleteFromDocument()
       const textNode = sel.anchorNode as Text
       const at = sel.anchorOffset
-      const clozeGap = document.createElement("webwriter-cloze-gap") as WebwriterClozeGap
+      const clozeGap = document.createElement("webwriter-cloze-gap")
       clozeGap.setAttribute("solution", textContent)
       const afterTextNode = textNode.splitText(at)
       afterTextNode.textContent = " " + afterTextNode.textContent.trimStart()
       textNode.textContent = textNode.textContent.trimEnd() + " "
       textNode.parentElement.insertBefore(clozeGap, afterTextNode)
       if(afterTextNode.textContent.trim() === "") {
-        console.log("empty after")
         textNode.parentElement.appendChild(document.createTextNode("​"))
       }
     }

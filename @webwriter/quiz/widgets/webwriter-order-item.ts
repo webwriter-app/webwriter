@@ -10,6 +10,10 @@ import IconArrowUp from "bootstrap-icons/icons/arrow-up.svg"
 import IconArrowDown from "bootstrap-icons/icons/arrow-down.svg"
 import "@shoelace-style/shoelace/dist/themes/light.css"
 
+declare global {interface HTMLElementTagNameMap {
+  "webwriter-order-item": WebwriterOrderItem;
+}}
+
 @customElement("webwriter-order-item")
 export class WebwriterOrderItem extends LitElementWw {
 
@@ -17,15 +21,6 @@ export class WebwriterOrderItem extends LitElementWw {
 
   static scopedElements = {
     "sl-icon-button": SlIconButton
-  }
-
-  static dropPreviewElement: WebwriterOrderItem 
-
-  static clearDropPreviewElement() {
-    if(this.dropPreviewElement) {
-      this.dropPreviewElement.dropPreview = undefined
-      this.dropPreviewElement = undefined
-    }
   }
 
   @property({attribute: true, reflect: true, converter: {toAttribute: (v: boolean) => v? "true": "false", fromAttribute: (attr: string) => attr === "true"}})
@@ -41,33 +36,31 @@ export class WebwriterOrderItem extends LitElementWw {
     return this.parentElement.children.item(i)
   }
 
+  emitClearDropPreview = () => {
+    this.dispatchEvent(new CustomEvent("webwriter-clear-drop-preview", {bubbles: true}))
+  }
+
   connectedCallback(): void {
     super.connectedCallback()
     this.addEventListener("dragstart", e => {
-      console.log("dragstart", this.elementIndex)
       this.dropPreview = undefined
       e.dataTransfer.setData("text/plain", String(this.elementIndex))
+      e.dataTransfer.setDragImage(document.createElement("p"), 0, 0)
     }, {passive: true})
     this.addEventListener("drop", e => {
       const i = parseInt(e.dataTransfer.getData("text/plain"))
-      if(i === this.elementIndex) {
-        return
-      }
-      else {
+      if(i !== this.elementIndex)  {
         const toDrop = this.getSibling(i) as WebwriterOrderItem
         const inTopHalf = e.offsetY < this.offsetHeight / 2
         this.insertAdjacentElement(inTopHalf? "beforebegin": "afterend", toDrop)
       }
-      WebwriterOrderItem.clearDropPreviewElement()
     }, {passive: true})
     this.addEventListener("dragover", e => {
-      WebwriterOrderItem.clearDropPreviewElement()
       const inTopHalf = e.offsetY < this.offsetHeight / 2
       this.dropPreview = inTopHalf? "top": "bottom"
-      WebwriterOrderItem.dropPreviewElement = this
     }, {passive: true})
-    this.addEventListener("dragleave", () => WebwriterOrderItem.clearDropPreviewElement(), {passive: true})
-    document.addEventListener("dragend", () => WebwriterOrderItem.clearDropPreviewElement(), {passive: true})
+    this.addEventListener("dragleave", () => this.emitClearDropPreview(), {passive: true})
+    document.addEventListener("dragend", () => this.emitClearDropPreview(), {passive: true})
   }
 
   @property({type: String, attribute: true, reflect: true})
@@ -118,11 +111,13 @@ export class WebwriterOrderItem extends LitElementWw {
   moveUp() {
     const prev = this.previousElementSibling
     prev && this.parentElement.insertBefore(this, prev)
+    this.requestUpdate()
   }
 
   moveDown() {
     const next = this.nextElementSibling
     next && this.parentElement.insertBefore(next, this)
+    this.requestUpdate()
   }
 
   handleClick = (e: PointerEvent, up=false) => {
@@ -137,11 +132,11 @@ export class WebwriterOrderItem extends LitElementWw {
 
   render() {
     return html`
-      <sl-icon-button src=${IconArrowsMove}></sl-icon-button>
+      <span id="counter"></span>
       <slot style=${styleMap({"--ww-placeholder": `"${this.msg("Option")}"`})}></slot>
       <div id="order-buttons">
-        <sl-icon-button id="up" class="order-button" src=${IconArrowUp} @click=${this.handleClick}></sl-icon-button>
-        <sl-icon-button id="down" class="order-button" src=${IconArrowDown} @click=${this.handleClick}></sl-icon-button>
+        <sl-icon-button ?disabled=${!this.previousElementSibling} id="up" class="order-button" src=${IconArrowUp} @click=${this.handleClick}></sl-icon-button>
+        <sl-icon-button ?disabled=${!this.nextElementSibling} id="down" class="order-button" src=${IconArrowDown} @click=${this.handleClick}></sl-icon-button>
       </div>
     `
   }

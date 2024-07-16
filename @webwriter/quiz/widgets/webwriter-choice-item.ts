@@ -9,6 +9,10 @@ import SlRadio from "@shoelace-style/shoelace/dist/components/radio/radio.compon
 import SlCheckbox from "@shoelace-style/shoelace/dist/components/checkbox/checkbox.component.js"
 import "@shoelace-style/shoelace/dist/themes/light.css"
 
+declare global {interface HTMLElementTagNameMap {
+  "webwriter-choice-item": WebwriterChoiceItem;
+}}
+
 @customElement("webwriter-choice-item")
 export class WebwriterChoiceItem extends LitElementWw {
 

@@ -23,6 +23,10 @@ function shuffle<T>(a: T[]) {
   return a;
 }
 
+declare global {interface HTMLElementTagNameMap {
+  "webwriter-choice": WebwriterChoice;
+}}
+
 @customElement("webwriter-choice")
 export class WebwriterChoice extends LitElementWw {
 
@@ -56,7 +60,7 @@ export class WebwriterChoice extends LitElementWw {
   @query("slot")
   slotEl: HTMLSlotElement
   
-  addItem() {
+  addItem = () => {
     const choiceItem = this.ownerDocument.createElement("webwriter-choice-item")
     const p = this.ownerDocument.createElement("p")
     choiceItem.appendChild(p)
@@ -156,6 +160,10 @@ export class WebwriterChoice extends LitElementWw {
 
   reportSolution(solution: {value: number[]}) {
     this.items.forEach((item, i) => item.valid = solution?.value?.includes(i))
+  }
+
+  resetSolution() {
+    this.items.forEach(item => {item.valid = false; item.active = false})
   }
 
   handleControlChange = (e: CustomEvent) => {

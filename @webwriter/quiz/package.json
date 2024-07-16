@@ -47,7 +47,8 @@
   },
   "editingConfig": {
     "./widgets/webwriter-choice-item": {
-      "isolating": false,
+      "group": "",
+      "isolating": true,
       "content": "(p | flow)+",
       "uninsertable": true
     },
@@ -57,7 +58,8 @@
       "uninsertable": true
     },
     "./widgets/webwriter-order-item": {
-      "isolating": false,
+      "group": "",
+      "isolating": true,
       "content": "(p | flow)+",
       "uninsertable": true
     },
@@ -99,6 +101,7 @@
     "./widgets/webwriter-cloze-gap": {
       "inline": true,
       "isolating": false,
+      "atom": true,
       "uninsertable": true
     },
     "./widgets/webwriter-wordsearch": {

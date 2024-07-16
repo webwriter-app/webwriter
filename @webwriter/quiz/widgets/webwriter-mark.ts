@@ -146,6 +146,10 @@ const Step = class {
 
 import IconHighlighter from "bootstrap-icons/icons/highlighter.svg"
 
+declare global {interface HTMLElementTagNameMap {
+  "webwriter-mark": WebwriterMark;
+}}
+
 @customElement("webwriter-mark")
 export class WebwriterMark extends LitElementWw {
 

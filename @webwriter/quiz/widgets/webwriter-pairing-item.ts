@@ -9,6 +9,10 @@ import IconArrowsMove from "bootstrap-icons/icons/arrows-move.svg"
 import SlIconButton from "@shoelace-style/shoelace/dist/components/icon-button/icon-button.component.js"
 
 
+declare global {interface HTMLElementTagNameMap {
+  "webwriter-pairing-item": WebwriterPairingItem;
+}}
+
 @customElement("webwriter-pairing-item")
 export class WebwriterPairingItem extends LitElementWw {
 

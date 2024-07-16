@@ -4,8 +4,10 @@ import {LitElementWw, option} from "@webwriter/lit"
 import {customElement, queryAssignedElements, property, query} from "lit/decorators.js"
 
 import SlIconButton from "@shoelace-style/shoelace/dist/components/icon-button/icon-button.component.js"
+import SlButton from "@shoelace-style/shoelace/dist/components/button/button.component.js"
 import SlDetails from "@shoelace-style/shoelace/dist/components/details/details.component.js"
 import SlPopup from "@shoelace-style/shoelace/dist/components/popup/popup.component.js"
+import SlButtonGroup from "@shoelace-style/shoelace/dist/components/button-group/button-group.component.js"
 
 import IconPatchQuestion from "bootstrap-icons/icons/patch-question.svg"
 import IconPatchQuestionFill from "bootstrap-icons/icons/patch-question-fill.svg"
@@ -48,6 +50,10 @@ function alphabeticalOrdinal(num: number, capitalize=false, alphabet="abcdefghij
   return capitalize? str.toUpperCase(): str
 }
 
+declare global {interface HTMLElementTagNameMap {
+  "webwriter-task": WebwriterTask;
+}}
+
 @customElement("webwriter-task")
 export class WebwriterTask extends LitElementWw {
 
@@ -56,7 +62,9 @@ export class WebwriterTask extends LitElementWw {
   static scopedElements = {
     "sl-icon-button": SlIconButton,
     "sl-details": SlDetails,
-    "sl-popup": SlPopup
+    "sl-popup": SlPopup,
+    "sl-button": SlButton,
+    "sl-button-group": SlButtonGroup
   }
 
   msg = (str: string) => this.lang in WebwriterTask.localization? WebwriterTask.localization[this.lang][str] ?? str: str
@@ -100,6 +108,13 @@ export class WebwriterTask extends LitElementWw {
     :host(:is([contenteditable=true], [contenteditable=""])) .user-only {
       display: none;
     }
+
+    :host(:not([contenteditable=true]):not([contenteditable=""])) {
+      ::slotted([slot=prompt]:empty) {
+        display: none;
+      }
+    }
+
 
     sl-icon-button {
       background: rgba(255, 255, 255, 0.9);
@@ -145,6 +160,17 @@ export class WebwriterTask extends LitElementWw {
         flex-grow: 1;
       }
     }
+
+    .user-actions {
+      & #submit {
+        flex-grow: 3;
+      }
+
+      & #reset {
+        flex-grow: 1;
+      }
+    }
+
   `
 
   @queryAssignedElements({slot: "hint"})
@@ -155,15 +181,19 @@ export class WebwriterTask extends LitElementWw {
   }
 
   get hasHintContent() {
-    return this.hints.some(hint => Array.from(hint.children).some(child => !["BR", "WBR"].includes(child.tagName)) || hint.innerText !== "")
+    return this.hints.some(hint => Array.from(hint.children).some(child => !["BR", "WBR"].includes(child.tagName)) || hint.innerText.trim() !== "")
   }
 
   @property({type: Boolean, attribute: true, reflect: true})
   hint = false
 
+  @property({type: Boolean, attribute: false, reflect: true})
+  get directSubmit() {
+    return !this.closest("webwriter-quiz")
+  }
+
   @property({type: Boolean, attribute: true, reflect: true})
-  @option({type: Boolean})
-  directSubmit = false
+  submitted = false
 
   toggleHint() {
     this.hintOpen = !this.hintOpen
@@ -179,6 +209,7 @@ export class WebwriterTask extends LitElementWw {
       }
     }
     else if(this.isContentEditable && !this.hintOpen) {
+      console.log(this.hasHintContent)
       if(!this.hasHintContent) {
         this.hint = false
         this.hintSlotEl.assignedElements().forEach(el => el.remove())
@@ -250,6 +281,11 @@ export class WebwriterTask extends LitElementWw {
     this.answer.reportSolution(this.#decodeSolution())
   }
 
+  resetSolution() {
+    // @ts-ignore
+    this.answer.resetSolution()
+  }
+
   handleAnswerChange = (e: CustomEvent) => {
     if(this.isContentEditable) {
       this.#encodeSolution(e.detail)
@@ -257,6 +293,7 @@ export class WebwriterTask extends LitElementWw {
   }
 
   handleSlotChange = (e: Event) => {
+    this.requestUpdate()
     if(this.isContentEditable) {
       const solution = this.#decodeSolution() ?? {}
       Object.entries(solution).forEach(([k, v]) => {
@@ -284,13 +321,23 @@ export class WebwriterTask extends LitElementWw {
     }
   }
 
+  handleSubmit = () => {
+    this.answer.reportSolution()
+    this.submitted = true
+  }
+
+  handleReset = () => {
+    this.answer.resetSolution()
+    this.submitted = false
+  }
+
   render() {
     return html`
       <header>
         <span>${this.ordinalExpr}</span>
         <slot name="prompt" style=${styleMap({"--ww-placeholder": `"${this.msg("Prompt")}"`})}></slot>
         <sl-popup id="hint-popup" ?active=${this.hintOpen} placement="left" arrow auto-size shift>
-          <sl-icon-button slot="anchor" id="hint" src=${!this.hasHintContent? IconPatchQuestion: IconPatchQuestionFill} @click=${() => this.toggleHint()}></sl-icon-button>
+          <sl-icon-button slot="anchor" id="hint" src=${!this.hasHintContent && !this.hintOpen? IconPatchQuestion: IconPatchQuestionFill} @click=${() => this.toggleHint()}></sl-icon-button>
           <div id="hint-content">
             <slot name="hint" @slotchange=${this.handleHintSlotChange}></slot>
           </div>
@@ -298,6 +345,12 @@ export class WebwriterTask extends LitElementWw {
       </header>
       <!--<sl-icon-button class="user-only" id="check" src=${IconCheckCircleFill}></sl-icon-button>-->
       <slot @ww-answer-change=${this.handleAnswerChange} @slotchange=${this.handleSlotChange}></slot>
+      ${!this.directSubmit || !this.answer?.reportSolution? null: html`
+        <sl-button-group class="user-only user-actions">
+          <sl-button id="submit" @click=${this.handleSubmit}>Submit</sl-button>
+          <sl-button ?disabled=${!this.submitted} id="reset" class="user-only" @click=${this.handleReset}>Reset</sl-button>
+        </sl-button-group>
+      `}
     `
   }
 }

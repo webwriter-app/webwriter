@@ -1,16 +1,20 @@
 import {html, css} from "lit"
 import {LitElementWw, option} from "@webwriter/lit"
-import {customElement, property} from "lit/decorators.js"
+import {customElement, property, query} from "lit/decorators.js"
 import {ifDefined} from "lit/directives/if-defined.js"
 
 import SlTextarea from "@shoelace-style/shoelace/dist/components/textarea/textarea.component.js"
 import SlInput from "@shoelace-style/shoelace/dist/components/input/input.component.js"
 import "@shoelace-style/shoelace/dist/themes/light.css"
 
+declare global {interface HTMLElementTagNameMap {
+  "webwriter-text": WebwriterText;
+}}
+
 @customElement("webwriter-text")
 export class WebwriterText extends LitElementWw {
 
-  @property({type: String, attribute: true, reflect: true,})
+  @property({type: String, attribute: true, reflect: true})
   @option({
     type: "select",
     label: {"en": "Type", "de": "Typ"},
@@ -50,6 +54,13 @@ export class WebwriterText extends LitElementWw {
       bubbles: true,
       composed: true
     }))
+  }
+
+  @query("sl-textarea, sl-input")
+  input: SlTextarea | SlInput
+
+  focus() {
+    this.input.focus()
   }
 
   reportSolution(solution: string) {

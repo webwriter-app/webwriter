@@ -7,6 +7,10 @@ import IconPlus from "bootstrap-icons/icons/plus.svg"
 import SlButton from "@shoelace-style/shoelace/dist/components/button/button.component.js"
 import SlIcon from "@shoelace-style/shoelace/dist/components/icon/icon.component.js"
 
+declare global {interface HTMLElementTagNameMap {
+  "webwriter-memory": WebwriterMemory;
+}}
+
 @customElement("webwriter-memory")
 export class WebwriterMemory extends LitElementWw {
 

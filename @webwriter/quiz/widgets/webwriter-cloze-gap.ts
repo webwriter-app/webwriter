@@ -7,6 +7,10 @@ import { property } from "lit/decorators/property.js"
 import { queryAsync } from "lit/decorators/query-async.js"
 import "@shoelace-style/shoelace/dist/themes/light.css"
 
+declare global {interface HTMLElementTagNameMap {
+  "webwriter-cloze-gap": WebwriterClozeGap;
+}}
+
 @customElement("webwriter-cloze-gap")
 export class WebwriterClozeGap extends LitElementWw {
 
