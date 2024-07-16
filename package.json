@@ -52,10 +52,10 @@
     "@types/semver": "^7.3.13",
     "@wagnerflo/cc-icons": "^1.2.1",
     "@wdio/allure-reporter": "^8.1.2",
-    "@wdio/cli": "^8.0.15",
+    "@wdio/cli": "^7.16.4",
     "@wdio/concise-reporter": "^8.1.2",
     "@wdio/dot-reporter": "^8.1.2",
-    "@wdio/local-runner": "^8.0.15",
+    "@wdio/local-runner": "^7.16.4",
     "@wdio/mocha-framework": "^8.0.14",
     "@wdio/spec-reporter": "^8.0.14",
     "@wdio/types": "^8.1.2",
@@ -69,5 +69,13 @@
     "typescript": "^5.4.5",
     "vite": "^5.2.11",
     "zod-to-json-schema": "^3.23.0"
+  },
+  "dependencies": {
+    "@astrojs/lit": "^4.3.0",
+    "@astrojs/prefetch": "^0.4.1",
+    "@astrojs/sitemap": "^3.1.6",
+    "@astrojs/turbolinks": "^0.2.2",
+    "astro": "^4.11.0",
+    "astro-seo": "^0.8.4"
   }
 }
