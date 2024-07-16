@@ -14,11 +14,12 @@ const CC_PATH = path.normalize("./node_modules/@wagnerflo/cc-icons/fonts/cc-icon
 const ASSETS_PATH = path.normalize("./@webwriter/assets/")
 const STATIC_ASSETS_PATH = path.join(STATIC_PATH, "assets")
 const STATIC_ICONS_PATH = path.join(STATIC_PATH, "assets", "icons")
+const STATIC_ICONS_OUTLINE_PATH = path.join(STATIC_PATH, "assets", "icons", "outline")
 
 async function main() {
   !existsSync(STATIC_ICONS_PATH) && mkdirSync(STATIC_ICONS_PATH, {recursive: true})
   fse.copySync(ICONS_PATH, STATIC_ICONS_PATH)
-  fse.copySync(CC_PATH, STATIC_ICONS_PATH)
+  fse.copySync(CC_PATH, STATIC_ICONS_OUTLINE_PATH)
   fse.copySync(ASSETS_PATH, STATIC_ASSETS_PATH)
 }
 
