@@ -259,7 +259,8 @@ export class PackageStore {
 
   /** Create a hash value to identify a bundle. The hash is deterministically computed from the packages' names and versions. This allows for caching of existing bundles. */
   static computeBundleHash(importIDs: string[], production=false) {
-    const bundleID = this.computeBundleID(importIDs, production)
+    const ids = importIDs.map(id => id.replace(/-local\d+/, "-local"))
+    const bundleID = this.computeBundleID(ids, production)
     return hashCode(bundleID).toString(36)
   }
 
