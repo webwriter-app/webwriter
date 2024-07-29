@@ -1,0 +1,2336 @@
+<xliff xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:oasis:names:tc:xliff:document:1.2 http://docs.oasis-open.org/xliff/v1.2/os/xliff-core-1.2-strict.xsd" xmlns="urn:oasis:names:tc:xliff:document:1.2" version="1.2">
+  <file original="lit-localize-inputs" datatype="plaintext" source-language="en" target-language="da">
+    <body>
+      <trans-unit id="sa311a24c1471a974">
+        <source>Document</source>
+        <target>Dokument</target>
+      </trans-unit>
+      <trans-unit id="sf9f2c719a04066ec">
+        <source>App</source>
+        <target>App</target>
+      </trans-unit>
+      <trans-unit id="sa75b95980cd80e78">
+        <source>Editor</source>
+        <target>Redaktør</target>
+      </trans-unit>
+      <trans-unit id="s2a75c946ef4dcab7">
+        <source>Miscellaneous</source>
+        <target>Diverse</target>
+      </trans-unit>
+      <trans-unit id="s0c883713b83616a8">
+        <source>Save the active document</source>
+        <target>Gem det aktive dokument</target>
+      </trans-unit>
+      <trans-unit id="s8670e5ad3bf0dcf8">
+        <source>Save As</source>
+        <target>Gem som</target>
+      </trans-unit>
+      <trans-unit id="s38980f98cb07ceb8">
+        <source>Save the active document as a copy</source>
+        <target>Gem det aktive dokument som en kopi</target>
+      </trans-unit>
+      <trans-unit id="sa37fee6a52d18063">
+        <source>Delete document</source>
+        <target>Slet dokument</target>
+      </trans-unit>
+      <trans-unit id="sf64a8229a8136552">
+        <source>Delete a document</source>
+        <target>Slet et dokument</target>
+      </trans-unit>
+      <trans-unit id="s2df075aface0dab8">
+        <source>Share</source>
+        <target>Del</target>
+      </trans-unit>
+      <trans-unit id="sb7fb7568f6883ab8">
+        <source>Share the active document</source>
+        <target>Del det aktive dokument</target>
+      </trans-unit>
+      <trans-unit id="seec6798afe90ffc8">
+        <source>Print</source>
+        <target>Print</target>
+      </trans-unit>
+      <trans-unit id="s600fd23c9ce971e8">
+        <source>Print the active document</source>
+        <target>Udskriv det aktive dokument</target>
+      </trans-unit>
+      <trans-unit id="s417b90913e05bc17">
+        <source>Preview</source>
+        <target>Forhåndsvisning</target>
+      </trans-unit>
+      <trans-unit id="safc6f203342d09e2">
+        <source>Toggles the preview for the active document</source>
+        <target>Skifter til forhåndsvisning af det aktive dokument</target>
+      </trans-unit>
+      <trans-unit id="s10f3845975a0351e">
+        <source>Edit Metadata</source>
+        <target>Rediger metadata</target>
+      </trans-unit>
+      <trans-unit id="sea6e7291e27ec53f">
+        <source>Toggles the metadata editor</source>
+        <target>Slår metadata-editoren til</target>
+      </trans-unit>
+      <trans-unit id="s70178e04a3b691b6">
+        <source>Open Settings</source>
+        <target>Åbn indstillinger</target>
+      </trans-unit>
+      <trans-unit id="s0816468df86e4036">
+        <source>Opens the settings</source>
+        <target>Åbner indstillingerne</target>
+      </trans-unit>
+      <trans-unit id="s9d8b8aa2b404c2c8">
+        <source>Settings</source>
+        <target>Indstillinger</target>
+      </trans-unit>
+      <trans-unit id="s1f7698c061c208c9">
+        <source>Open</source>
+        <target>Åben</target>
+      </trans-unit>
+      <trans-unit id="s16f2f1c2c516d307">
+        <source>Open a document</source>
+        <target>Åbn et dokument</target>
+      </trans-unit>
+      <trans-unit id="s382a2aa3984474dd">
+        <source>Create</source>
+        <target>Opret</target>
+      </trans-unit>
+      <trans-unit id="s64dc1fc7e3db45c9">
+        <source>Create a new document</source>
+        <target>Opret et nyt dokument</target>
+      </trans-unit>
+      <trans-unit id="sd10fdbe6caf9a998">
+        <source>Line Break</source>
+        <target>Linjeskift</target>
+      </trans-unit>
+      <trans-unit id="sbefb6064cba01844">
+        <source>Insert a line break</source>
+        <target>Indsæt et linjeskift</target>
+      </trans-unit>
+      <trans-unit id="s410c465a5993f82d">
+        <source>Line Break Opportunity</source>
+        <target>Mulighed for linjeskift</target>
+      </trans-unit>
+      <trans-unit id="s8df30fe2a50d3479">
+        <source>Insert a line break opportunity</source>
+        <target>Indsæt en mulighed for linjeskift</target>
+      </trans-unit>
+      <trans-unit id="sf7c0eba7c822e3d6">
+        <source>Bold</source>
+        <target>Fed skrift</target>
+      </trans-unit>
+      <trans-unit id="sb9e9a7dd45966756">
+        <source>Mark the selection as bold</source>
+        <target>Marker markeringen som fed</target>
+      </trans-unit>
+      <trans-unit id="s523eb9043213ff0d">
+        <source>Italic</source>
+        <target>Kursiv</target>
+      </trans-unit>
+      <trans-unit id="s92f846b9be2e8e8d">
+        <source>Mark the selection as italic</source>
+        <target>Marker markeringen som kursiv</target>
+      </trans-unit>
+      <trans-unit id="sb206d700d26b14ff">
+        <source>Underline</source>
+        <target>Understregning</target>
+      </trans-unit>
+      <trans-unit id="s09c3f1d21de14ae1">
+        <source>Mark the selection as underlined</source>
+        <target>Marker markeringen som understreget</target>
+      </trans-unit>
+      <trans-unit id="s99b38e000175cc84">
+        <source>Strikethrough</source>
+        <target>Gennemstreget</target>
+      </trans-unit>
+      <trans-unit id="s0396202b716732ec">
+        <source>Mark the selection as struck through</source>
+        <target>Marker markeringen som slået igennem</target>
+      </trans-unit>
+      <trans-unit id="sdf946172dfa0328f">
+        <source>Superscript</source>
+        <target>Overskrift</target>
+      </trans-unit>
+      <trans-unit id="saf3da7c95cb17260">
+        <source>Mark the selection as a superscript</source>
+        <target>Marker markeringen som en overskrift</target>
+      </trans-unit>
+      <trans-unit id="s587ac858dd80f6fa">
+        <source>Subscript</source>
+        <target>Underskrift</target>
+      </trans-unit>
+      <trans-unit id="sc5cb39478b9b7625">
+        <source>Mark the selection as a subscript</source>
+        <target>Marker markeringen som en underskrift</target>
+      </trans-unit>
+      <trans-unit id="s3643189d1abbb7f4">
+        <source>Code</source>
+        <target>Kode</target>
+      </trans-unit>
+      <trans-unit id="sf86bd4d2982f3b74">
+        <source>Mark the selection as code</source>
+        <target>Marker valget som kode</target>
+      </trans-unit>
+      <trans-unit id="s3cf89cb47fdde7e9">
+        <source>Link</source>
+        <target>Link</target>
+      </trans-unit>
+      <trans-unit id="sf8e82313fa411494">
+        <source>Mark the selection as a link</source>
+        <target>Marker markeringen som et link</target>
+      </trans-unit>
+      <trans-unit id="sd29dc07235eea0f5">
+        <source>Quotation</source>
+        <target>Citat</target>
+      </trans-unit>
+      <trans-unit id="s0e4862e87c7d53ce">
+        <source>Mark the selection as a quotation</source>
+        <target>Marker markeringen som et citat</target>
+      </trans-unit>
+      <trans-unit id="sfb9b6edb0ed378c9">
+        <source>Citation Source</source>
+        <target>Kilde til citat</target>
+      </trans-unit>
+      <trans-unit id="s4a894f57eba1cf1e">
+        <source>Keyboard Shortcut</source>
+        <target>Tastaturgenvej</target>
+      </trans-unit>
+      <trans-unit id="s41c724f0698148e9">
+        <source>Mark the selection as a keyboard shortcut</source>
+        <target>Marker markeringen som en tastaturgenvej</target>
+      </trans-unit>
+      <trans-unit id="s0ca5c0460199cba1">
+        <source>Abbreviation</source>
+        <target>Forkortelse</target>
+      </trans-unit>
+      <trans-unit id="s2206c42e5b835e6e">
+        <source>Mark the selection as an abbreviation</source>
+        <target>Marker valget som en forkortelse</target>
+      </trans-unit>
+      <trans-unit id="sf67571992e7dc88e">
+        <source>Full Term</source>
+        <target>Fuld periode</target>
+      </trans-unit>
+      <trans-unit id="s1dfb744260fb3a01">
+        <source>Bidirectional Isolate</source>
+        <target>Tovejs-isolat</target>
+      </trans-unit>
+      <trans-unit id="sa39c7ac1d37f3bce">
+        <source>Mark the selection as a 'bidirectional isolate'</source>
+        <target>Marker markeringen som et 'tovejsisolat'</target>
+      </trans-unit>
+      <trans-unit id="s4c402ff5355fd310">
+        <source>Bidirectional Override</source>
+        <target>Tovejs overstyring</target>
+      </trans-unit>
+      <trans-unit id="s02ab1ea8e5100fc1">
+        <source>Mark the selection as a 'bidirectional override'</source>
+        <target>Marker valget som en 'tovejs tilsidesættelse'</target>
+      </trans-unit>
+      <trans-unit id="se62385ac082368d2">
+        <source>Mark the selection as a citation source</source>
+        <target>Marker valget som en kilde til citat</target>
+      </trans-unit>
+      <trans-unit id="s36a194e38d653a26">
+        <source>Data Annotation</source>
+        <target>Annotation af data</target>
+      </trans-unit>
+      <trans-unit id="s5a1a0898baf20675">
+        <source>Mark the selection with a data annotation</source>
+        <target>Marker markeringen med en dataannotation</target>
+      </trans-unit>
+      <trans-unit id="s9d668a34af4128ff">
+        <source>Deletion</source>
+        <target>Sletning</target>
+      </trans-unit>
+      <trans-unit id="s1c246045629b0016">
+        <source>Mark the selection as a deletion</source>
+        <target>Marker markeringen som en sletning</target>
+      </trans-unit>
+      <trans-unit id="s94653c76b2d86a04">
+        <source>Defined Term</source>
+        <target>Defineret periode</target>
+      </trans-unit>
+      <trans-unit id="s1082e1649793dca9">
+        <source>Mark the selection as a defined term</source>
+        <target>Marker valget som en defineret term</target>
+      </trans-unit>
+      <trans-unit id="s92b177e579ef7b97">
+        <source>Emphasis</source>
+        <target>Fremhævelse</target>
+      </trans-unit>
+      <trans-unit id="s782eac2b3e80323d">
+        <source>Mark the selection as emphasized</source>
+        <target>Marker markeringen som fremhævet</target>
+      </trans-unit>
+      <trans-unit id="s50489ffb1bde152e">
+        <source>Insertion</source>
+        <target>Indsættelse</target>
+      </trans-unit>
+      <trans-unit id="sd1a78e667a1a139f">
+        <source>Mark the selection as an insertion</source>
+        <target>Marker markeringen som en indsættelse</target>
+      </trans-unit>
+      <trans-unit id="s3d6a732c792ccb9e">
+        <source>Ruby Annotation</source>
+        <target>Ruby-annotation</target>
+      </trans-unit>
+      <trans-unit id="sdf62e305e1594805">
+        <source>Mark the selection with a ruby annotation</source>
+        <target>Marker markeringen med en ruby-annotation</target>
+      </trans-unit>
+      <trans-unit id="s474f0eec369d02a4">
+        <source>Sample Output</source>
+        <target>Eksempel på output</target>
+      </trans-unit>
+      <trans-unit id="sf21c1f60c7515f44">
+        <source>Mark the selection as sample output</source>
+        <target>Marker valget som prøveoutput</target>
+      </trans-unit>
+      <trans-unit id="s4eace13b3ed74187">
+        <source>Side Comment</source>
+        <target>Kommentar fra siden</target>
+      </trans-unit>
+      <trans-unit id="s864b0e6270e97246">
+        <source>Mark the selection as a side comment</source>
+        <target>Marker valget som en sidekommentar</target>
+      </trans-unit>
+      <trans-unit id="sb60bc1250aad44c1">
+        <source>Span</source>
+        <target>Spændvidde</target>
+      </trans-unit>
+      <trans-unit id="s0a7db790db1fc45c">
+        <source>Mark the selection as a span</source>
+        <target>Marker markeringen som et spænd</target>
+      </trans-unit>
+      <trans-unit id="s7bdf0fd5b014d36c">
+        <source>Strong Importance</source>
+        <target>Stor betydning</target>
+      </trans-unit>
+      <trans-unit id="s550839f3e4e205bb">
+        <source>Mark the selection as strongly important</source>
+        <target>Marker valget som meget vigtigt</target>
+      </trans-unit>
+      <trans-unit id="s3d3efd1e19bdcfb4">
+        <source>Date/Time Annotation</source>
+        <target>Dato/tid-annotation</target>
+      </trans-unit>
+      <trans-unit id="s47e257ae643b5851">
+        <source>Mark the selection as a date/time annotation</source>
+        <target>Marker markeringen som en dato/tid-annotation</target>
+      </trans-unit>
+      <trans-unit id="sec2557a35b702525">
+        <source>Variable</source>
+        <target>Variabel</target>
+      </trans-unit>
+      <trans-unit id="sf59c9081d106dd9c">
+        <source>Mark the selection as a variable</source>
+        <target>Marker valget som en variabel</target>
+      </trans-unit>
+      <trans-unit id="s599dcd2472c75c19">
+        <source>Paragraph</source>
+        <target>Paragraf</target>
+      </trans-unit>
+      <trans-unit id="s5b8cc9bb61ddce15">
+        <source>Insert a paragraph</source>
+        <target>Indsæt et afsnit</target>
+      </trans-unit>
+      <trans-unit id="s3b3ea038c5d3bb06">
+        <source>Division</source>
+        <target>Division</target>
+      </trans-unit>
+      <trans-unit id="se6cdad455e2d8c02">
+        <source>Insert a division</source>
+        <target>Indsæt en opdeling</target>
+      </trans-unit>
+      <trans-unit id="s6f84199e62584905">
+        <source>Preformatted Text</source>
+        <target>Præformateret tekst</target>
+      </trans-unit>
+      <trans-unit id="sb3ba3276ae93627c">
+        <source>Insert a preformatted text block</source>
+        <target>Indsæt en præformateret tekstblok</target>
+      </trans-unit>
+      <trans-unit id="s2f2044f2431a32d5">
+        <source>Heading</source>
+        <target>Overskrift</target>
+      </trans-unit>
+      <trans-unit id="s29f21c34494d614d">
+        <source>Insert a heading (level 1)</source>
+        <target>Indsæt en overskrift (niveau 1)</target>
+      </trans-unit>
+      <trans-unit id="sbc5f2e81604bb667">
+        <source>Heading 2</source>
+        <target>Overskrift 2</target>
+      </trans-unit>
+      <trans-unit id="s29ee7434494a0dfe">
+        <source>Insert a heading (level 2)</source>
+        <target>Indsæt en overskrift (niveau 2)</target>
+      </trans-unit>
+      <trans-unit id="sbc5f2d81604bb4b4">
+        <source>Heading 3</source>
+        <target>Overskrift 3</target>
+      </trans-unit>
+      <trans-unit id="s29eb103449472e3b">
+        <source>Insert a heading (level 3)</source>
+        <target>Indsæt en overskrift (niveau 3)</target>
+      </trans-unit>
+      <trans-unit id="sbc5f2c81604bb301">
+        <source>Heading 4</source>
+        <target>Overskrift 4</target>
+      </trans-unit>
+      <trans-unit id="s2a031834495bcdb4">
+        <source>Insert a heading (level 4)</source>
+        <target>Indsæt en overskrift (niveau 4)</target>
+      </trans-unit>
+      <trans-unit id="sbc5f2b81604bb14e">
+        <source>Heading 5</source>
+        <target>Overskrift 5</target>
+      </trans-unit>
+      <trans-unit id="s29ff743449588131">
+        <source>Insert a heading (level 5)</source>
+        <target>Indsæt en overskrift (niveau 5)</target>
+      </trans-unit>
+      <trans-unit id="sbc5f2a81604baf9b">
+        <source>Heading 6</source>
+        <target>Rubrik 6</target>
+      </trans-unit>
+      <trans-unit id="s29fbfc3449557f72">
+        <source>Insert a heading (level 6)</source>
+        <target>Indsæt en overskrift (niveau 6)</target>
+      </trans-unit>
+      <trans-unit id="sec8b0b6c729816b6">
+        <source>Heading Group</source>
+        <target>Overskriftsgruppe</target>
+      </trans-unit>
+      <trans-unit id="s4d528b416ac8dee2">
+        <source>Insert a heading group</source>
+        <target>Indsæt en overskriftsgruppe</target>
+      </trans-unit>
+      <trans-unit id="s3d249bb480032121">
+        <source>List</source>
+        <target>Liste</target>
+      </trans-unit>
+      <trans-unit id="s0978fb5ba3145996">
+        <source>Insert a list (unordered)</source>
+        <target>Indsæt en liste (uordnet)</target>
+      </trans-unit>
+      <trans-unit id="s377e24af9628c37e">
+        <source>Ordered List</source>
+        <target>Bestilt liste</target>
+      </trans-unit>
+      <trans-unit id="sdb711380a28fec75">
+        <source>Insert a list (ordered)</source>
+        <target>Indsæt en liste (ordnet)</target>
+      </trans-unit>
+      <trans-unit id="sf0cf5c5d0102f674">
+        <source>List Item</source>
+        <target>Liste over emner</target>
+      </trans-unit>
+      <trans-unit id="s20db56373c0fc770">
+        <source>Insert a list item</source>
+        <target>Indsæt et element på listen</target>
+      </trans-unit>
+      <trans-unit id="s07aa10850d9ddcc7">
+        <source>Form</source>
+        <target>Form</target>
+      </trans-unit>
+      <trans-unit id="s84e9c7f8785ca60b">
+        <source>Insert a form</source>
+        <target>Indsæt en formular</target>
+      </trans-unit>
+      <trans-unit id="s355b21b89ce5d9c5">
+        <source>Details</source>
+        <target>Detaljer</target>
+      </trans-unit>
+      <trans-unit id="sb6103872073d369e">
+        <source>Insert details</source>
+        <target>Indsæt detaljer</target>
+      </trans-unit>
+      <trans-unit id="sc9474bf7a0668d73">
+        <source>Summary</source>
+        <target>Sammenfatning</target>
+      </trans-unit>
+      <trans-unit id="sec30fbb20f102670">
+        <source>Insert summary</source>
+        <target>Indsæt resumé</target>
+      </trans-unit>
+      <trans-unit id="s0312976fe9da5951">
+        <source>Button</source>
+        <target>Knap</target>
+      </trans-unit>
+      <trans-unit id="sd60c9bbc51375635">
+        <source>Insert a button</source>
+        <target>Indsæt en knap</target>
+      </trans-unit>
+      <trans-unit id="sdb1595f5c742dfbb">
+        <source>Input</source>
+        <target>Input</target>
+      </trans-unit>
+      <trans-unit id="s29b24c06315e9343">
+        <source>Insert an input</source>
+        <target>Indsæt et input</target>
+      </trans-unit>
+      <trans-unit id="sfc63e31ac7c956ed">
+        <source>Select</source>
+        <target>Vælg</target>
+      </trans-unit>
+      <trans-unit id="s531056f039febd39">
+        <source>Insert a select</source>
+        <target>Indsæt en markering</target>
+      </trans-unit>
+      <trans-unit id="sfc00292e778b67e2">
+        <source>Meter</source>
+        <target>Meter</target>
+      </trans-unit>
+      <trans-unit id="s52e0bdc3ee304436">
+        <source>Insert a meter</source>
+        <target>Indsæt en måler</target>
+      </trans-unit>
+      <trans-unit id="s8c7f51cb067644c7">
+        <source>Data List</source>
+        <target>Dataliste</target>
+      </trans-unit>
+      <trans-unit id="sfa59c7777e2a0eeb">
+        <source>Insert a data list</source>
+        <target>Indsæt en dataliste</target>
+      </trans-unit>
+      <trans-unit id="s7fcb35d23be1e643">
+        <source>Field Set</source>
+        <target>Feltsæt</target>
+      </trans-unit>
+      <trans-unit id="s2d986d31f8d67357">
+        <source>Insert a field set</source>
+        <target>Indsæt et feltsæt</target>
+      </trans-unit>
+      <trans-unit id="s5590dbf7e425789d">
+        <source>Label</source>
+        <target>Etiket</target>
+      </trans-unit>
+      <trans-unit id="s21f8a2eaf5a70749">
+        <source>Insert a label</source>
+        <target>Indsæt en etiket</target>
+      </trans-unit>
+      <trans-unit id="s4b58c01e2578f5e4">
+        <source>Legend</source>
+        <target>Legende</target>
+      </trans-unit>
+      <trans-unit id="s3fd83566dd643d10">
+        <source>Insert a legend</source>
+        <target>Indsæt en forklaring</target>
+      </trans-unit>
+      <trans-unit id="sef75f458d77491af">
+        <source>Option Group</source>
+        <target>Tilvalgsgruppe</target>
+      </trans-unit>
+      <trans-unit id="sceecdd0bb404bc17">
+        <source>Insert an option group</source>
+        <target>Indsæt en indstillingsgruppe</target>
+      </trans-unit>
+      <trans-unit id="s4802e47fe2e95134">
+        <source>Option</source>
+        <target>Mulighed</target>
+      </trans-unit>
+      <trans-unit id="s3cb47df8290fa94c">
+        <source>Insert an option</source>
+        <target>Indsæt en mulighed</target>
+      </trans-unit>
+      <trans-unit id="sfd77270c3f54f664">
+        <source>Output</source>
+        <target>Output</target>
+      </trans-unit>
+      <trans-unit id="se64f418b4e733b6c">
+        <source>Insert an output</source>
+        <target>Indsæt et output</target>
+      </trans-unit>
+      <trans-unit id="s18fca71e2e3308e7">
+        <source>Progress Indicator</source>
+        <target>Indikator for fremskridt</target>
+      </trans-unit>
+      <trans-unit id="s52777d434baeed9b">
+        <source>Insert a progress indicator</source>
+        <target>Indsæt en statusindikator</target>
+      </trans-unit>
+      <trans-unit id="sa78a67272a4a6f95">
+        <source>Math Formula</source>
+        <target>Matematisk formel</target>
+      </trans-unit>
+      <trans-unit id="saaad98061a20ac39">
+        <source>Insert a math formula</source>
+        <target>Indsæt en matematisk formel</target>
+      </trans-unit>
+      <trans-unit id="s5432ad3c84273229">
+        <source>Figure</source>
+        <target>Figur</target>
+      </trans-unit>
+      <trans-unit id="sf486ca1fdbe08645">
+        <source>Insert a figure</source>
+        <target>Indsæt en figur</target>
+      </trans-unit>
+      <trans-unit id="sa5df1bcdba46c3fb">
+        <source>Figure Caption</source>
+        <target>Billedtekst</target>
+      </trans-unit>
+      <trans-unit id="s33c1450d2822bb0f">
+        <source>Insert a figure caption</source>
+        <target>Indsæt en billedtekst</target>
+      </trans-unit>
+      <trans-unit id="s3d93f9ea0c5a13fa">
+        <source>Image</source>
+        <target>Billede</target>
+      </trans-unit>
+      <trans-unit id="s8bc4affa761aa8a2">
+        <source>Insert an image</source>
+        <target>Indsæt et billede</target>
+      </trans-unit>
+      <trans-unit id="s5f43af3669b1e098">
+        <source>Source</source>
+        <target>Kilde</target>
+      </trans-unit>
+      <trans-unit id="sa7dc6b8ef3f595dc">
+        <source>Insert a source</source>
+        <target>Indsæt en kilde</target>
+      </trans-unit>
+      <trans-unit id="s9e85800d3700e31c">
+        <source>Track</source>
+        <target>Spor</target>
+      </trans-unit>
+      <trans-unit id="sf39736a666dbb038">
+        <source>Insert a track</source>
+        <target>Indsæt et spor</target>
+      </trans-unit>
+      <trans-unit id="s5ed03bb1f3a15949">
+        <source>Picture</source>
+        <target>Billede</target>
+      </trans-unit>
+      <trans-unit id="s93566b84230af4f5">
+        <source>Insert a picture</source>
+        <target>Indsæt et billede</target>
+      </trans-unit>
+      <trans-unit id="s08e6bd98452e6bb9">
+        <source>Audio</source>
+        <target>Lyd</target>
+      </trans-unit>
+      <trans-unit id="s96532132a29dd542">
+        <source>Insert audio</source>
+        <target>Indsæt lyd</target>
+      </trans-unit>
+      <trans-unit id="s85186a61e0d55bac">
+        <source>Video</source>
+        <target>Video</target>
+      </trans-unit>
+      <trans-unit id="s9e28faa598332e2b">
+        <source>Insert video</source>
+        <target>Indsæt video</target>
+      </trans-unit>
+      <trans-unit id="s730182ad28374cda">
+        <source>Object</source>
+        <target>Objekt</target>
+      </trans-unit>
+      <trans-unit id="s123bea44f38abccf">
+        <source>Insert object</source>
+        <target>Indsæt objekt</target>
+      </trans-unit>
+      <trans-unit id="scace301a88231cce">
+        <source>Embed</source>
+        <target>Indlejre</target>
+      </trans-unit>
+      <trans-unit id="s91c5ed7769d00b65">
+        <source>Insert embed</source>
+        <target>Indsæt indlejring</target>
+      </trans-unit>
+      <trans-unit id="s82665b2ffabc9c0a">
+        <source>Website</source>
+        <target>Hjemmeside</target>
+      </trans-unit>
+      <trans-unit id="sc3998b77d72c2932">
+        <source>Insert a website (as an inline frame)</source>
+        <target>Indsæt en hjemmeside (som en inline-ramme)</target>
+      </trans-unit>
+      <trans-unit id="s4802bb8eb52fbdeb">
+        <source>Portal</source>
+        <target>Portal</target>
+      </trans-unit>
+      <trans-unit id="sd4368b12645d3c0f">
+        <source>Insert a portal</source>
+        <target>Indsæt en portal</target>
+      </trans-unit>
+      <trans-unit id="s9565553d163fc92a">
+        <source>Script</source>
+        <target>Manuskript</target>
+      </trans-unit>
+      <trans-unit id="sbf00e1ee999ea94e">
+        <source>Insert a script</source>
+        <target>Indsæt et script</target>
+      </trans-unit>
+      <trans-unit id="s7f326a142e856656">
+        <source>Style</source>
+        <target>Stil</target>
+      </trans-unit>
+      <trans-unit id="s6dfb502188a8c7c2">
+        <source>Insert a style</source>
+        <target>Indsæt en stil</target>
+      </trans-unit>
+      <trans-unit id="se47baf2fd16b9d2b">
+        <source>Template</source>
+        <target>Skabelon</target>
+      </trans-unit>
+      <trans-unit id="s7b4ba250601b8667">
+        <source>Insert a template</source>
+        <target>Indsæt en skabelon</target>
+      </trans-unit>
+      <trans-unit id="s919e1724f589c9b1">
+        <source>Slot</source>
+        <target>Slot</target>
+      </trans-unit>
+      <trans-unit id="s32911e52ee8ac745">
+        <source>Insert a slot</source>
+        <target>Indsæt et slot</target>
+      </trans-unit>
+      <trans-unit id="sbbe639e3a3ed95d1">
+        <source>NoScript</source>
+        <target>NoScript</target>
+      </trans-unit>
+      <trans-unit id="s2d995a37cf5e4995">
+        <source>Insert a NoScript</source>
+        <target>Indsæt et NoScript</target>
+      </trans-unit>
+      <trans-unit id="sc50d09edf9325339">
+        <source>Dialog</source>
+        <target>Dialog</target>
+      </trans-unit>
+      <trans-unit id="sff99962304ac7d25">
+        <source>Insert a dialog</source>
+        <target>Indsæt en dialog</target>
+      </trans-unit>
+      <trans-unit id="se16c5e66886fbc59">
+        <source>Article</source>
+        <target>Artikel</target>
+      </trans-unit>
+      <trans-unit id="s3f7e097a9b2e6181">
+        <source>Insert an article</source>
+        <target>Indsæt en artikel</target>
+      </trans-unit>
+      <trans-unit id="sadd352cc7f6f2307">
+        <source>Aside</source>
+        <target>Til side</target>
+      </trans-unit>
+      <trans-unit id="s743f778233e42a3f">
+        <source>Insert an aside</source>
+        <target>Indsæt en sidebemærkning</target>
+      </trans-unit>
+      <trans-unit id="s07e6118e838b2e23">
+        <source>Navigation</source>
+        <target>Navigation</target>
+      </trans-unit>
+      <trans-unit id="s0a799f583098cadf">
+        <source>Insert a navigation</source>
+        <target>Indsæt en navigation</target>
+      </trans-unit>
+      <trans-unit id="scc1db59d292cbc4c">
+        <source>Section</source>
+        <target>Sektion</target>
+      </trans-unit>
+      <trans-unit id="s22a2348c46a912a0">
+        <source>Insert a section</source>
+        <target>Indsæt en sektion</target>
+      </trans-unit>
+      <trans-unit id="s75d83fc3f0cfab40">
+        <source>Header</source>
+        <target>Overskrift</target>
+      </trans-unit>
+      <trans-unit id="sa5c80e623459ffe4">
+        <source>Insert a header</source>
+        <target>Indsæt en overskrift</target>
+      </trans-unit>
+      <trans-unit id="scf932a8577057752">
+        <source>Footer</source>
+        <target>Sidefod</target>
+      </trans-unit>
+      <trans-unit id="sa352d168b262aa06">
+        <source>Insert a footer</source>
+        <target>Indsæt en sidefod</target>
+      </trans-unit>
+      <trans-unit id="s49e763aed00877a8">
+        <source>Main</source>
+        <target>Vigtigste</target>
+      </trans-unit>
+      <trans-unit id="s8247d32213e35f24">
+        <source>Insert a main</source>
+        <target>Indsæt en main</target>
+      </trans-unit>
+      <trans-unit id="s5d929ff1619ac0c9">
+        <source>Search</source>
+        <target>Søg efter</target>
+      </trans-unit>
+      <trans-unit id="sbb85a407d730e13d">
+        <source>Insert a search</source>
+        <target>Indsæt en søgning</target>
+      </trans-unit>
+      <trans-unit id="sfcdd8e672c75b713">
+        <source>Address</source>
+        <target>Adresse</target>
+      </trans-unit>
+      <trans-unit id="s429dd933ba95549b">
+        <source>Insert an address</source>
+        <target>Indsæt en adresse</target>
+      </trans-unit>
+      <trans-unit id="s35c3125c7750681e">
+        <source>Blockquote</source>
+        <target>Blokcitat</target>
+      </trans-unit>
+      <trans-unit id="sa492a51a707930fa">
+        <source>Insert a blockquote</source>
+        <target>Indsæt et blokcitat</target>
+      </trans-unit>
+      <trans-unit id="s1351734ce8177b5f">
+        <source>SVG Drawing</source>
+        <target>SVG-tegning</target>
+      </trans-unit>
+      <trans-unit id="s3b51dea3b9ac2507">
+        <source>Insert an SVG Drawing</source>
+        <target>Indsæt en SVG-tegning</target>
+      </trans-unit>
+      <trans-unit id="s337a1e9022a8d19f">
+        <source>Table</source>
+        <target>Bord</target>
+      </trans-unit>
+      <trans-unit id="s88a62d29529948fb">
+        <source>Insert a table</source>
+        <target>Indsæt en tabel</target>
+      </trans-unit>
+      <trans-unit id="s0cf10c4f40588f8d">
+        <source>Table Caption</source>
+        <target>Billedtekst til tabel</target>
+      </trans-unit>
+      <trans-unit id="s0c11e479416c8421">
+        <source>Insert a table caption</source>
+        <target>Indsæt en tabeltekst</target>
+      </trans-unit>
+      <trans-unit id="s613c6ff83883c04f">
+        <source>Table Column</source>
+        <target>Tabel Kolonne</target>
+      </trans-unit>
+      <trans-unit id="sd52660ee947ca58b">
+        <source>Insert a table column</source>
+        <target>Indsæt en tabelkolonne</target>
+      </trans-unit>
+      <trans-unit id="s8517ae4da104b004">
+        <source>Table Column Group</source>
+        <target>Gruppe af tabelkolonner</target>
+      </trans-unit>
+      <trans-unit id="s28b6246ce616a548">
+        <source>Insert a table column group</source>
+        <target>Indsæt en kolonnegruppe i tabellen</target>
+      </trans-unit>
+      <trans-unit id="s21d61916eb8d137d">
+        <source>Table Body</source>
+        <target>Bordkrop</target>
+      </trans-unit>
+      <trans-unit id="s156647179b21d351">
+        <source>Insert a table body</source>
+        <target>Indsæt en tabelkrop</target>
+      </trans-unit>
+      <trans-unit id="sb616811735bfbafd">
+        <source>Table cell</source>
+        <target>Tabelcelle</target>
+      </trans-unit>
+      <trans-unit id="s9faf26107ed49fb9">
+        <source>Insert a table cell</source>
+        <target>Indsæt en tabelcelle</target>
+      </trans-unit>
+      <trans-unit id="sa7af797a46c7d09a">
+        <source>Table Footer</source>
+        <target>Foden af tabellen</target>
+      </trans-unit>
+      <trans-unit id="sc252a4e091763606">
+        <source>Insert a table footer</source>
+        <target>Indsæt en sidefod til en tabel</target>
+      </trans-unit>
+      <trans-unit id="sb68e83cda6c85af8">
+        <source>Table header</source>
+        <target>Tabeloverskrift</target>
+      </trans-unit>
+      <trans-unit id="s8f29e48d6b9a1aa8">
+        <source>Insert a table header row</source>
+        <target>Indsæt en række med tabeloverskrift</target>
+      </trans-unit>
+      <trans-unit id="s153bc3c3aa39587b">
+        <source>Table Head</source>
+        <target>Bordhoved</target>
+      </trans-unit>
+      <trans-unit id="s5d18ca4c3111be6f">
+        <source>Insert a table head</source>
+        <target>Indsæt et tabelhoved</target>
+      </trans-unit>
+      <trans-unit id="s52af5d7ac34c2163">
+        <source>Table Row</source>
+        <target>Tabelrække</target>
+      </trans-unit>
+      <trans-unit id="s1988d71ef8060edf">
+        <source>Insert a table row</source>
+        <target>Indsæt en tabelrække</target>
+      </trans-unit>
+      <trans-unit id="s9ffe1bbe64712bf1">
+        <source>Canvas</source>
+        <target>Lærred</target>
+      </trans-unit>
+      <trans-unit id="sa7dbe35b758c138d">
+        <source>Insert a canvas</source>
+        <target>Indsæt et lærred</target>
+      </trans-unit>
+      <trans-unit id="sb0d4f0f7993cf085">
+        <source>Set font size</source>
+        <target>Indstil skriftstørrelse</target>
+      </trans-unit>
+      <trans-unit id="s37fa3b9cd51c2dfd">
+        <source>Sets the selection's font size</source>
+        <target>Indstiller markeringens skriftstørrelse</target>
+      </trans-unit>
+      <trans-unit id="s9e3dbb678150edd4">
+        <source>Set font family</source>
+        <target>Indstil skrifttypefamilie</target>
+      </trans-unit>
+      <trans-unit id="s1626a7e10a9f9dcc">
+        <source>Sets the selection's font family</source>
+        <target>Indstiller markeringens skrifttypefamilie</target>
+      </trans-unit>
+      <trans-unit id="sb1494c08c8c720d1">
+        <source>Set text color</source>
+        <target>Indstil tekstfarve</target>
+      </trans-unit>
+      <trans-unit id="se1f5bb0386c88f96">
+        <source>Sets the color of the selected text</source>
+        <target>Indstiller farven på den valgte tekst</target>
+      </trans-unit>
+      <trans-unit id="sa65d4ad99f1d8c06">
+        <source>Set text background</source>
+        <target>Indstil tekstens baggrund</target>
+      </trans-unit>
+      <trans-unit id="s34f724979a124c50">
+        <source>Sets the background color of the selected text</source>
+        <target>Indstiller baggrundsfarven for den valgte tekst</target>
+      </trans-unit>
+      <trans-unit id="se219da7b1e955c65">
+        <source>Clear formatting</source>
+        <target>Tydelig formatering</target>
+      </trans-unit>
+      <trans-unit id="s256ab831a48c941c">
+        <source>Removes all text formatting from the selection</source>
+        <target>Fjerner al tekstformatering fra markeringen</target>
+      </trans-unit>
+      <trans-unit id="s621ad19d35ba7742">
+        <source>Copy selection</source>
+        <target>Valg af kopi</target>
+      </trans-unit>
+      <trans-unit id="s365280e16a8ea32d">
+        <source>Copy the selection</source>
+        <target>Kopier markeringen</target>
+      </trans-unit>
+      <trans-unit id="s73cb20c838e761e1">
+        <source>Cut selection</source>
+        <target>Valg af snit</target>
+      </trans-unit>
+      <trans-unit id="s8e715248c3a78446">
+        <source>Cut the selection</source>
+        <target>Klip udvalget ud</target>
+      </trans-unit>
+      <trans-unit id="s13ef8ca26ca8861b">
+        <source>Cut element</source>
+        <target>Klippet element</target>
+      </trans-unit>
+      <trans-unit id="s2ced8e8fafb499f6">
+        <source>Delete element</source>
+        <target>Slet element</target>
+      </trans-unit>
+      <trans-unit id="s3eca5a034978754b">
+        <source>Delete the selection</source>
+        <target>Slet markeringen</target>
+      </trans-unit>
+      <trans-unit id="s95c161f68e5180a5">
+        <source>Inspect selection</source>
+        <target>Inspicér udvalg</target>
+      </trans-unit>
+      <trans-unit id="s4c1535f316305a2a">
+        <source>Inspect the selection</source>
+        <target>Undersøg udvælgelsen</target>
+      </trans-unit>
+      <trans-unit id="sbba0156f795d8c07">
+        <source>Edit selection</source>
+        <target>Rediger valg</target>
+      </trans-unit>
+      <trans-unit id="sbd181cd54b8402a4">
+        <source>Edit the selection</source>
+        <target>Rediger valget</target>
+      </trans-unit>
+      <trans-unit id="s06634274f19b0572">
+        <source>Pin selection</source>
+        <target>Valg af stift</target>
+      </trans-unit>
+      <trans-unit id="sa53c5cb03a8fda50">
+        <source>Pin the selection as a snippet in the palette</source>
+        <target>Fastgør markeringen som et uddrag i paletten</target>
+      </trans-unit>
+      <trans-unit id="s5c63af7695445fcf">
+        <source>Text Style</source>
+        <target>Tekst-stil</target>
+      </trans-unit>
+      <trans-unit id="sc8d2c7f6c33a2b32">
+        <source>Set text style (alignment, indentation, spacing, etc.) of selected elements</source>
+        <target>Indstil tekststil (justering, indrykning, afstand osv.) for udvalgte elementer</target>
+      </trans-unit>
+      <trans-unit id="s6907015655602158">
+        <source>Margins</source>
+        <target>Margener</target>
+      </trans-unit>
+      <trans-unit id="s6d775df53db92fc1">
+        <source>Set the margins of the selected elements</source>
+        <target>Indstil margenerne for de valgte elementer</target>
+      </trans-unit>
+      <trans-unit id="sb1bd619a8d7cb15f">
+        <source>Paddings</source>
+        <target>Udfyldninger</target>
+      </trans-unit>
+      <trans-unit id="s4296275288e95fd6">
+        <source>Set the paddings of the selected elements</source>
+        <target>Indstil udfyldningerne af de valgte elementer</target>
+      </trans-unit>
+      <trans-unit id="s1efbfc3937d565bd">
+        <source>Background</source>
+        <target>Baggrund</target>
+      </trans-unit>
+      <trans-unit id="sd21a7bab4807fadc">
+        <source>Set the background of the selected elements</source>
+        <target>Indstil baggrunden for de valgte elementer</target>
+      </trans-unit>
+      <trans-unit id="sfa31adc78eb90e2c">
+        <source>Borders</source>
+        <target>Grænser</target>
+      </trans-unit>
+      <trans-unit id="s822b4cbbb9731fd1">
+        <source>Set the borders of the selected elements</source>
+        <target>Indstil grænserne for de valgte elementer</target>
+      </trans-unit>
+      <trans-unit id="s4481f5525a7a394a">
+        <source>Animations</source>
+        <target>Animationer</target>
+      </trans-unit>
+      <trans-unit id="s4c4cb162f1aa7a7f">
+        <source>Animate selected elements using keyframes</source>
+        <target>Animer udvalgte elementer ved hjælp af keyframes</target>
+      </trans-unit>
+      <trans-unit id="s7060970b5ed20a58">
+        <source>Interactivity</source>
+        <target>Interaktivitet</target>
+      </trans-unit>
+      <trans-unit id="se8bb865aeb8602dc">
+        <source>Set interactivty options for selected elements</source>
+        <target>Indstil interaktivitetsmuligheder for valgte elementer</target>
+      </trans-unit>
+      <trans-unit id="s8e70186b35a577db">
+        <source>Box alignment</source>
+        <target>Justering af boks</target>
+      </trans-unit>
+      <trans-unit id="s96611799d29d7d82">
+        <source>Set box alignment of selected elements</source>
+        <target>Indstil boksjustering af valgte elementer</target>
+      </trans-unit>
+      <trans-unit id="sbd0a91688c13adeb">
+        <source>Color adjustment</source>
+        <target>Justering af farver</target>
+      </trans-unit>
+      <trans-unit id="s7ad802c20f77b1e9">
+        <source>Set color adjustment (light/dark mode) options of selected elements</source>
+        <target>Indstil farvejustering (lys/mørk tilstand) for udvalgte elementer</target>
+      </trans-unit>
+      <trans-unit id="s8ebfd594312e77d4">
+        <source>Text/stroke color</source>
+        <target>Farve på tekst/streger</target>
+      </trans-unit>
+      <trans-unit id="se6f9a782d95c2a87">
+        <source>Set text/stroke color of selected elements</source>
+        <target>Indstil tekst/stregefarve på udvalgte elementer</target>
+      </trans-unit>
+      <trans-unit id="se25d54a8943385b0">
+        <source>Blending</source>
+        <target>Blanding</target>
+      </trans-unit>
+      <trans-unit id="sdbdf663c872fb855">
+        <source>Set blending (e.g. opacity) of selected elements</source>
+        <target>Indstil blanding (f.eks. opacitet) af udvalgte elementer</target>
+      </trans-unit>
+      <trans-unit id="s550492e6c28b6628">
+        <source>Display mode</source>
+        <target>Visningstilstand</target>
+      </trans-unit>
+      <trans-unit id="s3c1c59a8fe1ce8af">
+        <source>Set the display mode of the selected elements</source>
+        <target>Indstil visningstilstanden for de valgte elementer</target>
+      </trans-unit>
+      <trans-unit id="sa8beb6b1182241ac">
+        <source>Filters</source>
+        <target>Filtre</target>
+      </trans-unit>
+      <trans-unit id="s52e1a890841a3ae8">
+        <source>Apply filters (blur, invert, etc.) to the selected elements</source>
+        <target>Anvend filtre (sløring, invertering osv.) på de valgte elementer</target>
+      </trans-unit>
+      <trans-unit id="s5052b94fa8278950">
+        <source>Flex behavior</source>
+        <target>Fleksibel adfærd</target>
+      </trans-unit>
+      <trans-unit id="se17a380e47aa8613">
+        <source>Set flex behaviour (grow, shrink, wrap, order) of selected elements</source>
+        <target>Indstil flexadfærd (vokse, krympe, pakke ind, rækkefølge) for udvalgte elementer</target>
+      </trans-unit>
+      <trans-unit id="s4b4afa8bcb02d5ac">
+        <source>Typography</source>
+        <target>Typografi</target>
+      </trans-unit>
+      <trans-unit id="safb272a7b342509c">
+        <source>Set typography (font family, size, etc.) of selected elements</source>
+        <target>Indstil typografi (skrifttypefamilie, størrelse osv.) for udvalgte elementer</target>
+      </trans-unit>
+      <trans-unit id="s0c669387c45c4dc6">
+        <source>Fragmentation</source>
+        <target>Fragmentering</target>
+      </trans-unit>
+      <trans-unit id="s87c65faff16a53bd">
+        <source>Set fragmentation (behaviour on page/region/column breaks) of selected elements</source>
+        <target>Indstil fragmentering (adfærd ved side-/område-/kolonneskift) af udvalgte elementer</target>
+      </trans-unit>
+      <trans-unit id="s02f7ae451695e417">
+        <source>Grid options</source>
+        <target>Indstillinger for gitter</target>
+      </trans-unit>
+      <trans-unit id="se4c980b07af2341d">
+        <source>Set grid options (row, column, etc.) of selected elements</source>
+        <target>Indstil gitterindstillinger (række, kolonne osv.) for udvalgte elementer</target>
+      </trans-unit>
+      <trans-unit id="sebee375c65c0cd58">
+        <source>Image sizing</source>
+        <target>Billedets størrelse</target>
+      </trans-unit>
+      <trans-unit id="saaf255f484959835">
+        <source>Set image sizing options of selected elements</source>
+        <target>Indstil billedstørrelser for udvalgte elementer</target>
+      </trans-unit>
+      <trans-unit id="s6ac7f151cff18f07">
+        <source>List options</source>
+        <target>Liste over muligheder</target>
+      </trans-unit>
+      <trans-unit id="s833cf35ed6049636">
+        <source>Set list options of selected elements</source>
+        <target>Indstil listeindstillinger for valgte elementer</target>
+      </trans-unit>
+      <trans-unit id="sea7f9a84b82663b8">
+        <source>Column break</source>
+        <target>Kolonnebrud</target>
+      </trans-unit>
+      <trans-unit id="s0898264186c682fa">
+        <source>Apply column layout to selected elements</source>
+        <target>Anvend kolonnelayout på udvalgte elementer</target>
+      </trans-unit>
+      <trans-unit id="s687416d1ea01d0bb">
+        <source>Overflow behavior</source>
+        <target>Overløbsadfærd</target>
+      </trans-unit>
+      <trans-unit id="sa5c062dc12553bbb">
+        <source>Set overflow behaviour of selected elements</source>
+        <target>Indstil overløbsadfærd for udvalgte elementer</target>
+      </trans-unit>
+      <trans-unit id="s4a14e0d787c30116">
+        <source>Positioning</source>
+        <target>Positionering</target>
+      </trans-unit>
+      <trans-unit id="s19d9b0051c5e3b45">
+        <source>Set positioning of selected elements</source>
+        <target>Indstil positionering af udvalgte elementer</target>
+      </trans-unit>
+      <trans-unit id="sa559701e1cdc3331">
+        <source>Shaping</source>
+        <target>Formgivning</target>
+      </trans-unit>
+      <trans-unit id="s2dbeef0cb14e4f4d">
+        <source>Set shape of selected elements</source>
+        <target>Indstil formen på de valgte elementer</target>
+      </trans-unit>
+      <trans-unit id="s04061a8e12259e3f">
+        <source>2D/3D transform</source>
+        <target>2D/3D-transformation</target>
+      </trans-unit>
+      <trans-unit id="sab4fb4f4ff5b43e4">
+        <source>Apply 2D or 3D transformations to selected elements</source>
+        <target>Anvend 2D- eller 3D-transformationer på udvalgte elementer</target>
+      </trans-unit>
+      <trans-unit id="sf190149f9d8bbb2a">
+        <source>Writing mode</source>
+        <target>Skrivetilstand</target>
+      </trans-unit>
+      <trans-unit id="sdedc76f6a0a2583b">
+        <source>Set writing mode options of selected elements</source>
+        <target>Indstil skrivetilstand for udvalgte elementer</target>
+      </trans-unit>
+      <trans-unit id="s762e5704cc84089d">
+        <source>Set other style options of selected elements</source>
+        <target>Indstil andre stilindstillinger for valgte elementer</target>
+      </trans-unit>
+      <trans-unit id="se6297163cac9d276">
+        <source>Edit source</source>
+        <target>Rediger kilde</target>
+      </trans-unit>
+      <trans-unit id="s281d957112b10f12">
+        <source>Edit the HTML of the document directly</source>
+        <target>Rediger dokumentets HTML direkte</target>
+      </trans-unit>
+      <trans-unit id="s8f4be9f086eb530f">
+        <source>Undo</source>
+        <target>Fortryd</target>
+      </trans-unit>
+      <trans-unit id="s7beb1e77e82363eb">
+        <source>Undo the last change in the active document</source>
+        <target>Fortryd den sidste ændring i det aktive dokument</target>
+      </trans-unit>
+      <trans-unit id="s7417792bbe720149">
+        <source>Redo</source>
+        <target>Gør det om</target>
+      </trans-unit>
+      <trans-unit id="s640bc7710d0143ce">
+        <source>Redo the last undone change in the active document</source>
+        <target>Gør den sidst fortrykte ændring i det aktive dokument om</target>
+      </trans-unit>
+      <trans-unit id="s83420ad7b6a14db5">
+        <source>Toggle Dev Tools</source>
+        <target>Skift mellem udviklingsværktøjer</target>
+      </trans-unit>
+      <trans-unit id="s7af555180b30a947">
+        <source>Open the developer tools</source>
+        <target>Åbn udviklerværktøjerne</target>
+      </trans-unit>
+      <trans-unit id="s8688d74dd3716d6e">
+        <source>Keyboard shortcuts for commands</source>
+        <target>Tastaturgenveje til kommandoer</target>
+      </trans-unit>
+      <trans-unit id="sc3ac225273c8316b">
+        <source>General</source>
+        <target>Generelt</target>
+      </trans-unit>
+      <trans-unit id="s4caed5b7a7e5d89b">
+        <source>English</source>
+        <target>Engelsk</target>
+      </trans-unit>
+      <trans-unit id="s63e71d20d1eaca93">
+        <source>German</source>
+        <target>Tysk</target>
+      </trans-unit>
+      <trans-unit id="se25e4f2cb77b8be8">
+        <source>Language for the WebWriter interface and new documents</source>
+        <target>Sprog til WebWriter-grænsefladen og nye dokumenter</target>
+      </trans-unit>
+      <trans-unit id="sefcf950b3cc4fc3b">
+        <source>Language</source>
+        <target>Sprog</target>
+      </trans-unit>
+      <trans-unit id="se3b4c857f91f80d7">
+        <source>Keyboard shortcuts</source>
+        <target>Tastaturgenveje</target>
+      </trans-unit>
+      <trans-unit id="s91c5921e7b46d4a6">
+        <source>You have unsaved changes. Are you sure you want to leave and discard them?</source>
+        <target>Du har ændringer, der ikke er gemt. Er du sikker på, at du vil forlade og kassere
+          dem?</target>
+      </trans-unit>
+      <trans-unit id="s268ecd1cef45a9a8">
+        <source>Are you sure?</source>
+        <target>Er du sikker?</target>
+      </trans-unit>
+      <trans-unit id="sb430f5b4824de0d3">
+        <source>Choose a layout</source>
+        <target>Vælg et layout</target>
+      </trans-unit>
+      <trans-unit id="seaf97719986faf4f">
+        <source>Gap</source>
+        <target>Mellemrum</target>
+      </trans-unit>
+      <trans-unit id="sffdadf0a576fd802">
+        <source>Height</source>
+        <target>Højde</target>
+      </trans-unit>
+      <trans-unit id="sab55faae8e165407">
+        <source>Padding&lt;br&gt; like gap</source>
+        <target>Udfyldning&lt;br&gt; som mellemrum</target>
+      </trans-unit>
+      <trans-unit id="sa645d315510dc09e">
+        <source>Choose path from disk</source>
+        <target>Vælg sti fra disk</target>
+      </trans-unit>
+      <trans-unit id="seabae79729c4b2ad">
+        <source>Toggle email</source>
+        <target>Skift e-mail</target>
+      </trans-unit>
+      <trans-unit id="s34dcda3b0f9d5a98">
+        <source>Toggle url</source>
+        <target>Skift url</target>
+      </trans-unit>
+      <trans-unit id="sc3cfee84dbbf36ae">
+        <source>Local File</source>
+        <target>Lokal fil</target>
+      </trans-unit>
+      <trans-unit id="s9896529e5cb20558">
+        <source>External File</source>
+        <target>Ekstern fil</target>
+      </trans-unit>
+      <trans-unit id="s7e0b179d4d1414eb">
+        <source>Enter link</source>
+        <target>Indtast link</target>
+      </trans-unit>
+      <trans-unit id="sbe4a7c8f231739b3">
+        <source>or paste/drop/pick file</source>
+        <target>eller indsæt/drop/vælg fil</target>
+      </trans-unit>
+      <trans-unit id="s8a4ff2bd9c13498c">
+        <source>Record</source>
+        <target>Rekord</target>
+      </trans-unit>
+      <trans-unit id="s1a5230a71d9285c1">
+        <source>Capture</source>
+        <target>Indfangning</target>
+      </trans-unit>
+      <trans-unit id="s2b8f50c64be440f7">
+        <source>Select 
+          <x id="0" equiv-text="${this.mediaType}"/>...
+        </source>
+        <target>Vælg 
+          <x id="0" equiv-text="${this.mediaType}"/>... 
+        </target>
+      </trans-unit>
+      <trans-unit id="s739544d0c858c633">
+        <source>Or drop 
+          <x id="0" equiv-text="${this.mediaType}"/> here
+        </source>
+        <target>Eller aflever 
+          <x id="0" equiv-text="${this.mediaType}"/> her 
+        </target>
+      </trans-unit>
+      <trans-unit id="se58f06c2b0583ff7">
+        <source>Pick coordinates</source>
+        <target>Vælg koordinater</target>
+      </trans-unit>
+      <trans-unit id="sded940efcadd8f10">
+        <source>Save your document</source>
+        <target>Gem dit dokument</target>
+      </trans-unit>
+      <trans-unit id="s6910ed6dbaba4807">
+        <source>Load a document</source>
+        <target>Indlæs et dokument</target>
+      </trans-unit>
+      <trans-unit id="s8f533296a536965e">
+        <source>Save as...</source>
+        <target>Gem som...</target>
+      </trans-unit>
+      <trans-unit id="s1f0e5f8acab2f0d3">
+        <source>Load as...</source>
+        <target>Indlæs som...</target>
+      </trans-unit>
+      <trans-unit id="sa3c9339de23c1752">
+        <source>Format</source>
+        <target>Format</target>
+      </trans-unit>
+      <trans-unit id="s1cf730f96ac4f6b6">
+        <source>On...</source>
+        <target>På...</target>
+      </trans-unit>
+      <trans-unit id="s13388f2a0641c5a9">
+        <source>From...</source>
+        <target>Fra...</target>
+      </trans-unit>
+      <trans-unit id="s61e136c0658e27d5">
+        <source>Protocol</source>
+        <target>Protokol</target>
+      </trans-unit>
+      <trans-unit id="see2fcaedf9743ec6">
+        <source>Location</source>
+        <target>Beliggenhed</target>
+      </trans-unit>
+      <trans-unit id="s2ceb11be2290bb1b">
+        <source>Cancel</source>
+        <target>Annuller</target>
+      </trans-unit>
+      <trans-unit id="s4f20edb48a6287c9">
+        <source>Load</source>
+        <target>Belastning</target>
+      </trans-unit>
+      <trans-unit id="s851a7deea5984646">
+        <source>License as Creative Commons OER?</source>
+        <target>Licens som Creative Commons OER?</target>
+      </trans-unit>
+      <trans-unit id="s2540844a4bc4d9ba">
+        <source>Require attribution?</source>
+        <target>Kræve tilskrivning?</target>
+      </trans-unit>
+      <trans-unit id="sb0a974028c99ca6d">
+        <source>Allow adaptations?</source>
+        <target>Tillade tilpasninger?</target>
+      </trans-unit>
+      <trans-unit id="s77e594ddcc10c774">
+        <source>Allow commercial use?</source>
+        <target>Tillade kommerciel brug?</target>
+      </trans-unit>
+      <trans-unit id="sb8f855b49234b81b">
+        <source>Apply</source>
+        <target>Ansøg</target>
+      </trans-unit>
+      <trans-unit id="sb66beca1e766dcb3">
+        <source>Apply and import</source>
+        <target>Ansøg og importer</target>
+      </trans-unit>
+      <trans-unit id="s3914cb410fca44d4">
+        <source>Import</source>
+        <target>Import</target>
+      </trans-unit>
+      <trans-unit id="sed17285cd25d6389">
+        <source>Directory where package.json is located</source>
+        <target>Katalog, hvor package.json er placeret</target>
+      </trans-unit>
+      <trans-unit id="sc74e3567875ce255">
+        <source>Both the tag of your widget and the name of your NPM package</source>
+        <target>Både tagget på din widget og navnet på din NPM-pakke</target>
+      </trans-unit>
+      <trans-unit id="s342b0cabfa672822">
+        <source>Help the user find your widget</source>
+        <target>Hjælp brugeren med at finde din widget</target>
+      </trans-unit>
+      <trans-unit id="sfdeef3dccf409f81">
+        <source>This keyword is required for widgets</source>
+        <target>Dette nøgleord er påkrævet for widgets</target>
+      </trans-unit>
+      <trans-unit id="h64cd12550420f6f1">
+        <source>Generate a 
+          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
+          <x id="1" equiv-text="&lt;/code&gt;"/> file
+        </source>
+        <target>Generer en 
+          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE 
+          <x id="1" equiv-text="&lt;/code&gt;"/> fil 
+        </target>
+      </trans-unit>
+      <trans-unit id="s0dc452999c129e15">
+        <source>Enable live reload</source>
+        <target>Aktiver live genindlæsning</target>
+      </trans-unit>
+      <trans-unit id="s255857544a9d5ec0">
+        <source>Reset</source>
+        <target>Nulstil</target>
+      </trans-unit>
+      <trans-unit id="s2591806d7b222591">
+        <source>Reset changes</source>
+        <target>Nulstil ændringer</target>
+      </trans-unit>
+      <trans-unit id="s445b8acb9206db6e">
+        <source>Discard and cancel</source>
+        <target>Kassér og annuller</target>
+      </trans-unit>
+      <trans-unit id="sae3629911a62147f">
+        <source>JS Size:</source>
+        <target>JS størrelse:</target>
+      </trans-unit>
+      <trans-unit id="s1357c9b016a9a631">
+        <source>CSS Size:</source>
+        <target>CSS-størrelse:</target>
+      </trans-unit>
+      <trans-unit id="sf1ed4eed4de3012e">
+        <source>View error</source>
+        <target>Se fejl</target>
+      </trans-unit>
+      <trans-unit id="h75b0cad9d9e80648">
+        <source>Stop watching files at 
+          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/>.
+        </source>
+        <target>Stop med at se filer på 
+          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/>. 
+        </target>
+      </trans-unit>
+      <trans-unit id="h0a75a995d1672be1">
+        <source>Start watching files at 
+          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/> and reload the package if a file is changed.
+        </source>
+        <target>Begynd at holde øje med filer på 
+          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/> og genindlæs
+          pakken, hvis en fil ændres. 
+        </target>
+      </trans-unit>
+      <trans-unit id="s8b0432eecbd8b034">
+        <source>Update</source>
+        <target>Opdatering</target>
+      </trans-unit>
+      <trans-unit id="sbc5bb5bb74d141b9">
+        <source>Uninstall</source>
+        <target>Afinstaller</target>
+      </trans-unit>
+      <trans-unit id="s6196153c4b0c1ea0">
+        <source>Install</source>
+        <target>Installer</target>
+      </trans-unit>
+      <trans-unit id="sda174a4c93e84ce6">
+        <source>Error importing</source>
+        <target>Fejl ved import</target>
+      </trans-unit>
+      <trans-unit id="s8cd9849cd37d7753">
+        <source>Either select an existing package directory to install or an empty directory to create a new package.</source>
+        <target>Vælg enten et eksisterende pakkekatalog, der skal installeres, eller et tomt katalog
+          for at oprette en ny pakke.</target>
+      </trans-unit>
+      <trans-unit id="sdb311229f4b5eb3b">
+        <source>Import local package</source>
+        <target>Importer lokal pakke</target>
+      </trans-unit>
+      <trans-unit id="s65f6740a45cea0aa">
+        <source>Create local package</source>
+        <target>Opret lokal pakke</target>
+      </trans-unit>
+      <trans-unit id="s12aac40ecd87dc12">
+        <source>View local application directory</source>
+        <target>Se det lokale programkatalog</target>
+      </trans-unit>
+      <trans-unit id="s815a7e524eda76aa">
+        <source>Reset local application directory</source>
+        <target>Nulstil lokal applikationsmappe</target>
+      </trans-unit>
+      <trans-unit id="s3a6538ae341633f6">
+        <source>Edit local package</source>
+        <target>Rediger lokal pakke</target>
+      </trans-unit>
+      <trans-unit id="s9bf0b9da3f509795">
+        <source>Widget Package</source>
+        <target>Widget-pakke</target>
+      </trans-unit>
+      <trans-unit id="s8a7fa8a052138aef">
+        <source>Warning:</source>
+        <target>Advarsel:</target>
+      </trans-unit>
+      <trans-unit id="sad288b082f4d3521">
+        <source>You seem to be offline. While offline, you can't manage available or outdated packages.</source>
+        <target>Du ser ud til at være offline. Når du er offline, kan du ikke administrere
+          tilgængelige eller forældede pakker.</target>
+      </trans-unit>
+      <trans-unit id="sed8ec5e3c64fa25d">
+        <source>Total</source>
+        <target>I alt</target>
+      </trans-unit>
+      <trans-unit id="s8cfdd110c30d604d">
+        <source>No packages installed or available</source>
+        <target>Ingen pakker installeret eller tilgængelige</target>
+      </trans-unit>
+      <trans-unit id="s10e80d4c01c3cc21">
+        <source>Installed</source>
+        <target>Installeret</target>
+      </trans-unit>
+      <trans-unit id="s33b62827f665c461">
+        <source>No packages installed</source>
+        <target>Ingen pakker installeret</target>
+      </trans-unit>
+      <trans-unit id="sd158a5fc0f062f18">
+        <source>Available</source>
+        <target>Tilgængelig</target>
+      </trans-unit>
+      <trans-unit id="se432a7c0c144d458">
+        <source>No packages available</source>
+        <target>Ingen pakker tilgængelige</target>
+      </trans-unit>
+      <trans-unit id="s76cc1c6d9fab3a2d">
+        <source>Outdated</source>
+        <target>Forældet</target>
+      </trans-unit>
+      <trans-unit id="sf9559106e88ee46d">
+        <source>No packages outdated</source>
+        <target>Ingen forældede pakker</target>
+      </trans-unit>
+      <trans-unit id="se9b1fec72ffd8f48">
+        <source>Local</source>
+        <target>Lokal</target>
+      </trans-unit>
+      <trans-unit id="sc7691fecb3373a42">
+        <source>No local packages</source>
+        <target>Ingen lokale pakker</target>
+      </trans-unit>
+      <trans-unit id="keyCommand">
+        <source>⌘ Command/Win</source>
+        <target>⌘ Kommando/Win</target>
+      </trans-unit>
+      <trans-unit id="keyShift">
+        <source>⇧ Shift</source>
+        <target>⇧ Skift</target>
+      </trans-unit>
+      <trans-unit id="keyControl">
+        <source>^ Control</source>
+        <target>^ Kontrol</target>
+      </trans-unit>
+      <trans-unit id="keyOption">
+        <source>⌥ Option/Alt</source>
+        <target>⌥ Option/Alt</target>
+      </trans-unit>
+      <trans-unit id="s2692bc028fed91f1">
+        <source>⇪ Caps Lock</source>
+        <target>⇪ Caps Lock</target>
+      </trans-unit>
+      <trans-unit id="backspaceKey">
+        <source>⟵</source>
+        <target>⟵</target>
+      </trans-unit>
+      <trans-unit id="tabKey">
+        <source>⭾ Tab</source>
+        <target>⭾ Tab</target>
+      </trans-unit>
+      <trans-unit id="clearKey">
+        <source>⎚ Clear</source>
+        <target>⎚ Klar</target>
+      </trans-unit>
+      <trans-unit id="enterKey">
+        <source>↩ Enter</source>
+        <target>Indtast</target>
+      </trans-unit>
+      <trans-unit id="escapeKey">
+        <source>⎋ Escape</source>
+        <target>⎋ Flugt</target>
+      </trans-unit>
+      <trans-unit id="spaceKey">
+        <source>Space</source>
+        <target>Rummet</target>
+      </trans-unit>
+      <trans-unit id="upKey">
+        <source>↑ Up</source>
+        <target>↑ Op</target>
+      </trans-unit>
+      <trans-unit id="downKey">
+        <source>↓ Down</source>
+        <target>↓ Ned</target>
+      </trans-unit>
+      <trans-unit id="leftKey">
+        <source>← Left</source>
+        <target>← Venstre</target>
+      </trans-unit>
+      <trans-unit id="rightKey">
+        <source>→ Right</source>
+        <target>→ Højre</target>
+      </trans-unit>
+      <trans-unit id="homeKey">
+        <source>⤒ Home</source>
+        <target>⤒ Hjem</target>
+      </trans-unit>
+      <trans-unit id="endKey">
+        <source>⤓ End</source>
+        <target>⤓ Slut</target>
+      </trans-unit>
+      <trans-unit id="pageupKey">
+        <source>▲ Pageup</source>
+        <target>▲ Opslag</target>
+      </trans-unit>
+      <trans-unit id="pagedownKey">
+        <source>▼ Pagedown</source>
+        <target>Pagedown</target>
+      </trans-unit>
+      <trans-unit id="deleteKey">
+        <source>⌦ Delete</source>
+        <target>⌦ Slet</target>
+      </trans-unit>
+      <trans-unit id="f1Key">
+        <source>F1</source>
+        <target>F1</target>
+      </trans-unit>
+      <trans-unit id="f2Key">
+        <source>F2</source>
+        <target>F2</target>
+      </trans-unit>
+      <trans-unit id="f3Key">
+        <source>F3</source>
+        <target>F3</target>
+      </trans-unit>
+      <trans-unit id="f4Key">
+        <source>F4</source>
+        <target>F4</target>
+      </trans-unit>
+      <trans-unit id="f5Key">
+        <source>F5</source>
+        <target>F5</target>
+      </trans-unit>
+      <trans-unit id="f6Key">
+        <source>F6</source>
+        <target>F6</target>
+      </trans-unit>
+      <trans-unit id="f7Key">
+        <source>F7</source>
+        <target>F7</target>
+      </trans-unit>
+      <trans-unit id="f8Key">
+        <source>F8</source>
+        <target>F8</target>
+      </trans-unit>
+      <trans-unit id="f9Key">
+        <source>F9</source>
+        <target>F9</target>
+      </trans-unit>
+      <trans-unit id="f10Key">
+        <source>F10</source>
+        <target>F10</target>
+      </trans-unit>
+      <trans-unit id="f11Key">
+        <source>F11</source>
+        <target>F11</target>
+      </trans-unit>
+      <trans-unit id="f12Key">
+        <source>F12</source>
+        <target>F12</target>
+      </trans-unit>
+      <trans-unit id="f13Key">
+        <source>F13</source>
+        <target>F13</target>
+      </trans-unit>
+      <trans-unit id="f14Key">
+        <source>F14</source>
+        <target>F14</target>
+      </trans-unit>
+      <trans-unit id="f15Key">
+        <source>F15</source>
+        <target>F15</target>
+      </trans-unit>
+      <trans-unit id="f16Key">
+        <source>F16</source>
+        <target>F16</target>
+      </trans-unit>
+      <trans-unit id="f17Key">
+        <source>F17</source>
+        <target>F17</target>
+      </trans-unit>
+      <trans-unit id="f18Key">
+        <source>F18</source>
+        <target>F18</target>
+      </trans-unit>
+      <trans-unit id="f19Key">
+        <source>F19</source>
+        <target>F19</target>
+      </trans-unit>
+      <trans-unit id="s7dea785045c3cc74">
+        <source>Press new key combination...</source>
+        <target>Tryk på en ny tastekombination...</target>
+      </trans-unit>
+      <trans-unit id="s46d4abe6255cb9e1">
+        <source>Reassign shortcut</source>
+        <target>Tildel genvej igen</target>
+      </trans-unit>
+      <trans-unit id="sd1f44f1a8bc20e67">
+        <source>Email</source>
+        <target>E-mail</target>
+      </trans-unit>
+      <trans-unit id="sf6e1665c7022a1f8">
+        <source>Password</source>
+        <target>Adgangskode</target>
+      </trans-unit>
+      <trans-unit id="s151bc2eea7a032a4">
+        <source>-unchanged-</source>
+        <target>-...uændret...</target>
+      </trans-unit>
+      <trans-unit id="s61eacb19db252f5e">
+        <source>URL</source>
+        <target>URL</target>
+      </trans-unit>
+      <trans-unit id="s506b6a19d12f414c">
+        <source>Key</source>
+        <target>Nøgle</target>
+      </trans-unit>
+      <trans-unit id="sd3f402df8619ddcd">
+        <source>This information about you is automatically added to new documents. You can change this for each document in the metadata editor.</source>
+        <target>Disse oplysninger om dig tilføjes automatisk til nye dokumenter. Du kan ændre dette
+          for hvert dokument i metadataeditoren.</target>
+      </trans-unit>
+      <trans-unit id="s90105521fcc40453">
+        <source>WebWriter Cloud accounts allow you store documents online and share them with your students. Add an account here and it will be available as a location for saving, loading, sharing and opening documents.</source>
+        <target>WebWriter Cloud-konti giver dig mulighed for at gemme dokumenter online og dele dem
+          med dine studerende. Tilføj en konto her, og den vil være tilgængelig som et sted, hvor du
+          kan gemme, indlæse, dele og åbne dokumenter.</target>
+      </trans-unit>
+      <trans-unit id="s2712dc5641a33226">
+        <source>Package registry accounts are intended for developers and allow you to configure one or more registries</source>
+        <target>Pakkeregistreringskonti er beregnet til udviklere og giver dig mulighed for at
+          konfigurere en eller flere registreringer</target>
+      </trans-unit>
+      <trans-unit id="s669b18c6d2d9c95b">
+        <source>None</source>
+        <target>Ingen</target>
+      </trans-unit>
+      <trans-unit id="sef49aec68fd1dc66">
+        <source>Name</source>
+        <target>Navn</target>
+      </trans-unit>
+      <trans-unit id="s7cfe12cd14df9950">
+        <source>Sign out</source>
+        <target>Meld dig ud</target>
+      </trans-unit>
+      <trans-unit id="s5e27738a2e8eb763">
+        <source>Sign in</source>
+        <target>Log ind</target>
+      </trans-unit>
+      <trans-unit id="sf28903d4ca0ddcfc">
+        <source>Remove this account</source>
+        <target>Fjern denne konto</target>
+      </trans-unit>
+      <trans-unit id="sb85b1e36579852a6">
+        <source>Invalid email or password</source>
+        <target>Ugyldig e-mail eller adgangskode</target>
+      </trans-unit>
+      <trans-unit id="s0bdca49248ba4820">
+        <source>Shortcuts</source>
+        <target>Genveje</target>
+      </trans-unit>
+      <trans-unit id="se48bd9e6c2a3109d">
+        <source>Accounts</source>
+        <target>Regnskaber</target>
+      </trans-unit>
+      <trans-unit id="s6988ab5d47593a26">
+        <source>You have the latest version of WebWriter.</source>
+        <target>Du har den nyeste version af WebWriter.</target>
+      </trans-unit>
+      <trans-unit id="saf440a0a592f2835">
+        <source>Update to</source>
+        <target>Opdatering til</target>
+      </trans-unit>
+      <trans-unit id="s564d1648b1ceee9f">
+        <source>Up to date</source>
+        <target>Op til dato</target>
+      </trans-unit>
+      <trans-unit id="sf6673729c03ae999">
+        <source>Reset WebWriter</source>
+        <target>Nulstil WebWriter</target>
+      </trans-unit>
+      <trans-unit id="sf1e79171c4856543">
+        <source>Are you sure? This action can't be reversed, all your settings will be deleted and reset.</source>
+        <target>Er du sikker på det? Denne handling kan ikke omgøres, alle dine indstillinger
+          slettes og nulstilles.</target>
+      </trans-unit>
+      <trans-unit id="se1b03a74b09ba7f0">
+        <source>App Folder</source>
+        <target>App-mappe</target>
+      </trans-unit>
+      <trans-unit id="sc221faca1ecb4aee">
+        <source>Anonymous</source>
+        <target>Anonym</target>
+      </trans-unit>
+      <trans-unit id="sdcd1efc06af80825">
+        <source>All rights reserved</source>
+        <target>Alle rettigheder forbeholdes</target>
+      </trans-unit>
+      <trans-unit id="s78789724e789221c">
+        <source>Size</source>
+        <target>Størrelse</target>
+      </trans-unit>
+      <trans-unit id="s1b4a36fce2456660">
+        <source>Font Family</source>
+        <target>Skriftfamilie</target>
+      </trans-unit>
+      <trans-unit id="s11326fd2590f4e5e">
+        <source>Default</source>
+        <target>Standard</target>
+      </trans-unit>
+      <trans-unit id="s9c356016f81585f6">
+        <source>Background Color</source>
+        <target>Baggrundsfarve</target>
+      </trans-unit>
+      <trans-unit id="s1f74bdf32b51a5fc">
+        <source>Background Image</source>
+        <target>Baggrundsbillede</target>
+      </trans-unit>
+      <trans-unit id="s927d796559f49439">
+        <source>Background Origin</source>
+        <target>Baggrund Oprindelse</target>
+      </trans-unit>
+      <trans-unit id="s1637c7d1a30629e2">
+        <source>Border Box</source>
+        <target>Ramme-boks</target>
+      </trans-unit>
+      <trans-unit id="scd15088c39fe9edf">
+        <source>Padding Box</source>
+        <target>Boks til polstring</target>
+      </trans-unit>
+      <trans-unit id="s1db591f5a54dbfd3">
+        <source>Content Box</source>
+        <target>Indholdsboks</target>
+      </trans-unit>
+      <trans-unit id="sa01e7bf33563ef72">
+        <source>Background Attachment</source>
+        <target>Baggrundsvedhæftning</target>
+      </trans-unit>
+      <trans-unit id="sd319aae1401f1e19">
+        <source>Fixed</source>
+        <target>Fast</target>
+      </trans-unit>
+      <trans-unit id="sa7698b3d20a6d1ec">
+        <source>Scroll</source>
+        <target>Rulle</target>
+      </trans-unit>
+      <trans-unit id="s89bca7498f20e041">
+        <source>Background Clip</source>
+        <target>Baggrundsklip</target>
+      </trans-unit>
+      <trans-unit id="s2492f5fb1b05b45e">
+        <source>Text</source>
+        <target>Tekst</target>
+      </trans-unit>
+      <trans-unit id="s67d6d8f179e655df">
+        <source>Hide advanced styling</source>
+        <target>Skjul avanceret styling</target>
+      </trans-unit>
+      <trans-unit id="s84e5eb4dc1ad9d98">
+        <source>Show advanced styling</source>
+        <target>Vis avanceret styling</target>
+      </trans-unit>
+      <trans-unit id="s29acfd2778e8c377">
+        <source>Hide advanced text formatting</source>
+        <target>Skjul avanceret tekstformatering</target>
+      </trans-unit>
+      <trans-unit id="s1a1acc902e6668e0">
+        <source>Show advanced text formatting</source>
+        <target>Vis avanceret tekstformatering</target>
+      </trans-unit>
+      <trans-unit id="s4fd2e638aabb0bb3">
+        <source>WebWriter supports embedding many different sources. Simply paste a link to content from:</source>
+        <target>WebWriter understøtter indlejring af mange forskellige kilder. Du skal blot indsætte
+          et link til indhold fra:</target>
+      </trans-unit>
+      <trans-unit id="sa79167651dce1e80">
+        <source>Alternate text</source>
+        <target>Alternativ tekst</target>
+      </trans-unit>
+      <trans-unit id="sa8bbe0197d31b423">
+        <source>Short description</source>
+        <target>Kort beskrivelse</target>
+      </trans-unit>
+      <trans-unit id="seccd05955adb76bc">
+        <source>Poster</source>
+        <target>Plakat</target>
+      </trans-unit>
+      <trans-unit id="s42e470ef1d707a28">
+        <source>Autoplay</source>
+        <target>Autoplay</target>
+      </trans-unit>
+      <trans-unit id="s83cd32b685ccc9b7">
+        <source>Controls</source>
+        <target>Kontroller</target>
+      </trans-unit>
+      <trans-unit id="s4efee5b48a4593cb">
+        <source>Loop</source>
+        <target>Sløjfe</target>
+      </trans-unit>
+      <trans-unit id="se0f67eae944f8f94">
+        <source>Mute</source>
+        <target>Dæmpet</target>
+      </trans-unit>
+      <trans-unit id="se036b53f145441cd">
+        <source>Mixed Content</source>
+        <target>Blandet indhold</target>
+      </trans-unit>
+      <trans-unit id="s651f3a92741d9520">
+        <source>Everything</source>
+        <target>Det hele</target>
+      </trans-unit>
+      <trans-unit id="sddc49047f66a64ab">
+        <source>No description provided</source>
+        <target>Ingen beskrivelse givet</target>
+      </trans-unit>
+      <trans-unit id="s1641ab440bf4daa4">
+        <source>Update this widget package</source>
+        <target>Opdater denne widget-pakke</target>
+      </trans-unit>
+      <trans-unit id="sbd40f40cbadd38d5">
+        <source>Remove this widget package</source>
+        <target>Fjern denne widget-pakke</target>
+      </trans-unit>
+      <trans-unit id="s54897f2764b0e4d0">
+        <source>Install this widget package</source>
+        <target>Installer denne widget-pakke</target>
+      </trans-unit>
+      <trans-unit id="s985f2db57913324b">
+        <source>Manage packages</source>
+        <target>Administrer pakker</target>
+      </trans-unit>
+      <trans-unit id="scdf536b65be39ec5">
+        <source> Create/import</source>
+        <target> Opret/importer</target>
+      </trans-unit>
+      <trans-unit id="sf2514d5dc78b1654">
+        <source>Insert widget</source>
+        <target>Indsæt widget</target>
+      </trans-unit>
+      <trans-unit id="s1857db526dc4dcdd">
+        <source>Create package</source>
+        <target>Opret pakke</target>
+      </trans-unit>
+      <trans-unit id="sd2addf69477cd4b4">
+        <source>Import package</source>
+        <target>Importer pakke</target>
+      </trans-unit>
+      <trans-unit id="s7de0061f53ba7472">
+        <source>Error importing </source>
+        <target>Fejl ved import </target>
+      </trans-unit>
+      <trans-unit id="s00065e45db8c0441">
+        <source>See developer tools for more details</source>
+        <target>Se udviklerværktøjer for flere detaljer</target>
+      </trans-unit>
+      <trans-unit id="s812cbda653daaeba">
+        <source>This feature is not implemented yet</source>
+        <target>Denne funktion er ikke implementeret endnu</target>
+      </trans-unit>
+      <trans-unit id="s35aeaff1425bca9e">
+        <source>WebWriter does not support media of type </source>
+        <target>WebWriter understøtter ikke medier af typen </target>
+      </trans-unit>
+      <trans-unit id="sb199b34dca0a4cfc">
+        <source>Enter content here...</source>
+        <target>Indtast indhold her...</target>
+      </trans-unit>
+      <trans-unit id="s775056d1cb76fbe9">
+        <source>Headline</source>
+        <target>Overskrift</target>
+      </trans-unit>
+      <trans-unit id="scf735dfae10f3870">
+        <source>Educational</source>
+        <target>Uddannelse</target>
+      </trans-unit>
+      <trans-unit id="s11fdceabe7befeff">
+        <source>Accessibility</source>
+        <target>Tilgængelighed</target>
+      </trans-unit>
+      <trans-unit id="s99f110d27e30b289">
+        <source>Title</source>
+        <target>Titel</target>
+      </trans-unit>
+      <trans-unit id="sef73fe18e351eb35">
+        <source>Keywords</source>
+        <target>Nøgleord</target>
+      </trans-unit>
+      <trans-unit id="s63d894b1ddb06289">
+        <source>Description</source>
+        <target>Beskrivelse</target>
+      </trans-unit>
+      <trans-unit id="s01d32b35baa3b676">
+        <source>Author</source>
+        <target>Forfatter</target>
+      </trans-unit>
+      <trans-unit id="s17597a8bb4810524">
+        <source>License</source>
+        <target>Licens</target>
+      </trans-unit>
+      <trans-unit id="sdc48456f9a27ae02">
+        <source>Generator</source>
+        <target>Generator</target>
+      </trans-unit>
+      <trans-unit id="s8d342ecaa9e75b9b">
+        <source>Relationship</source>
+        <target>Relation</target>
+      </trans-unit>
+      <trans-unit id="s4ea0f21fc2a338a1">
+        <source>Move up</source>
+        <target>Bevæg dig opad</target>
+      </trans-unit>
+      <trans-unit id="sb233557012dcb328">
+        <source>Move down</source>
+        <target>Bevæg dig nedad</target>
+      </trans-unit>
+      <trans-unit id="s3d09398e555ee5f9">
+        <source>Advanced Options</source>
+        <target>Avancerede indstillinger</target>
+      </trans-unit>
+      <trans-unit id="s17fb3f4805f4f4b9">
+        <source>Remove field</source>
+        <target>Fjern feltet</target>
+      </trans-unit>
+      <trans-unit id="sa6f8d27bca557059">
+        <source>Move meta/link/style elements up/down into this element</source>
+        <target>Flyt meta/link/style-elementer op/ned i dette element</target>
+      </trans-unit>
+      <trans-unit id="s6dadeaaee49d6d18">
+        <source>Meta</source>
+        <target>Meta</target>
+      </trans-unit>
+      <trans-unit id="s252a52330d32b900">
+        <source>Metadata</source>
+        <target>Metadata</target>
+      </trans-unit>
+      <trans-unit id="s6827930ef1aeaf99">
+        <source>Base URL</source>
+        <target>Basis-URL</target>
+      </trans-unit>
+      <trans-unit id="s1ca22ce85e074da5">
+        <source>Pragma</source>
+        <target>Pragma</target>
+      </trans-unit>
+      <trans-unit id="s064339c229374050">
+        <source>Encoding</source>
+        <target>Kodning</target>
+      </trans-unit>
+      <trans-unit id="saab875d8cfcfe712">
+        <source>Theme</source>
+        <target>Tema</target>
+      </trans-unit>
+      <trans-unit id="sa417644bef21a9aa">
+        <source>Unnamed Theme</source>
+        <target>Ikke navngivet tema</target>
+      </trans-unit>
+      <trans-unit id="saa33768e03c45fc8">
+        <source>File Size</source>
+        <target>Filstørrelse</target>
+      </trans-unit>
+      <trans-unit id="s3f06e9abb6ebcb79">
+        <source>Characters</source>
+        <target>Karakterer</target>
+      </trans-unit>
+      <trans-unit id="s0f350bc4e538e3ea">
+        <source>Words</source>
+        <target>Ord</target>
+      </trans-unit>
+      <trans-unit id="s106b274b5af798e5">
+        <source>Sentences</source>
+        <target>Sætninger</target>
+      </trans-unit>
+      <trans-unit id="s97aa76056a81bd36">
+        <source>Metrics</source>
+        <target>Metrikker</target>
+      </trans-unit>
+      <trans-unit id="s94d2eee44b292567">
+        <source>Toggle advanced options</source>
+        <target>Skift mellem avancerede indstillinger</target>
+      </trans-unit>
+      <trans-unit id="s98977a87d1b93941">
+        <source>Reset information, styles and scripts</source>
+        <target>Nulstil information, stilarter og scripts</target>
+      </trans-unit>
+      <trans-unit id="s543906d1db8b2283">
+        <source>Edit </source>
+        <target>Rediger </target>
+      </trans-unit>
+      <trans-unit id="sbba865d4b437944f">
+        <source>Attribute</source>
+        <target>Attribut</target>
+      </trans-unit>
+      <trans-unit id="s16b9446e3a70e1f4">
+        <source>Attributes</source>
+        <target>Egenskaber</target>
+      </trans-unit>
+      <trans-unit id="sf471ec2496f904cc">
+        <source>Discard changes</source>
+        <target>Kassér ændringer</target>
+      </trans-unit>
+      <trans-unit id="s418f2020fe996832">
+        <source>Confirm changes</source>
+        <target>Bekræft ændringer</target>
+      </trans-unit>
+      <trans-unit id="sba509fd8ed61d1d5">
+        <source>Unsaved File</source>
+        <target>Ikke gemt fil</target>
+      </trans-unit>
+      <trans-unit id="sef00c258bc1ecf1e">
+        <source>This explorable has unsaved changes.</source>
+        <target>Denne explorable har ikke gemte ændringer.</target>
+      </trans-unit>
+      <trans-unit id="s731678e227a20559">
+        <source>This Device</source>
+        <target>Denne enhed</target>
+      </trans-unit>
+      <trans-unit id="s71940c32987f675f">
+        <source>WebWriter Cloud</source>
+        <target>WebWriter Cloud</target>
+      </trans-unit>
+      <trans-unit id="s99a990f3841ad283">
+        <source>Files of </source>
+        <target>Filer af </target>
+      </trans-unit>
+      <trans-unit id="s3eb6d1e6e79ed7c4">
+        <source>No documents found</source>
+        <target>Ingen dokumenter fundet</target>
+      </trans-unit>
+      <trans-unit id="s4e2562fe3990e621">
+        <source>Error connecting</source>
+        <target>Fejl ved tilslutning</target>
+      </trans-unit>
+      <trans-unit id="sf52d840949a980d1">
+        <source>
+          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
+        </source>
+        <target>
+          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
+          vil blive slettet permanent. Er du sikker på det? 
+        </target>
+      </trans-unit>
+      <trans-unit id="s9b7cd8860c8fc922">
+        <source>
+          <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
+        </source>
+        <target>
+          <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
+          vil blive overskrevet. Er du sikker på det? 
+        </target>
+      </trans-unit>
+      <trans-unit id="sfdb1e4d90981a535">
+        <source>Share this document</source>
+        <target>Del dette dokument</target>
+      </trans-unit>
+      <trans-unit id="s1c3fc313a9184670">
+        <source>Public Link</source>
+        <target>Offentligt link</target>
+      </trans-unit>
+      <trans-unit id="sc28864200d2a3799">
+        <source>Copy QR Code as image</source>
+        <target>Kopier QR-koden som billede</target>
+      </trans-unit>
+      <trans-unit id="sfc815c9078bba30a">
+        <source>Download QR Code as image</source>
+        <target>Download QR-kode som billede</target>
+      </trans-unit>
+      <trans-unit id="s3a5ca02f282d247e">
+        <source>Share...</source>
+        <target>Del...</target>
+      </trans-unit>
+      <trans-unit id="sda2d76b976502a8d">
+        <source>Open...</source>
+        <target>Åben...</target>
+      </trans-unit>
+      <trans-unit id="sb26035b596566abf">
+        <source>Unnamed</source>
+        <target>Ikke navngivet</target>
+      </trans-unit>
+      <trans-unit id="s4cb38675a21b2c98">
+        <source>Unsupported property type '${desc.type}' (processing as JSON)</source>
+        <target>Ikke-understøttet egenskabstype '${desc.type}' (behandles som JSON)</target>
+      </trans-unit>
+      <trans-unit id="sa00df4e39c72d3b4">
+        <source>
+          <x id="0" equiv-text="${desc.widget}"/> is not supported
+        </source>
+        <target>
+          <x id="0" equiv-text="${desc.widget}"/> er ikke understøttet 
+        </target>
+      </trans-unit>
+      <trans-unit id="sf65df67a03bebe4b">
+        <source>Required for this widget</source>
+        <target>Påkrævet for denne widget</target>
+      </trans-unit>
+      <trans-unit id="s8a9eb438abac7c6a">
+        <source>Labels</source>
+        <target>Etiketter</target>
+      </trans-unit>
+      <trans-unit id="s33f85f24c0f5f008">
+        <source>Save</source>
+        <target>Gem</target>
+      </trans-unit>
+      <trans-unit id="sdef34fe08bb28b09">
+        <source>Chinese (Simplified)</source>
+        <target>Kinesisk (forenklet)</target>
+      </trans-unit>
+      <trans-unit id="sf1868dc19e3917bb">
+        <source>Spanish</source>
+        <target>Spansk</target>
+      </trans-unit>
+      <trans-unit id="s75a27f43413e02c5">
+        <source>French</source>
+        <target>Fransk</target>
+      </trans-unit>
+      <trans-unit id="scf932840a69dbb7c">
+        <source>Portuguese</source>
+        <target>Portugisisk</target>
+      </trans-unit>
+      <trans-unit id="sa30c12014e955946">
+        <source>Russian</source>
+        <target>Russer</target>
+      </trans-unit>
+      <trans-unit id="seb8982ae8c3cdcc5">
+        <source>Indonesian</source>
+        <target>Indonesisk</target>
+      </trans-unit>
+      <trans-unit id="sdd35b688281b6dea">
+        <source>Japanese</source>
+        <target>Japansk</target>
+      </trans-unit>
+      <trans-unit id="s9d2d00982edafabb">
+        <source>Turkish</source>
+        <target>Tyrkisk</target>
+      </trans-unit>
+      <trans-unit id="s94d61907ee22a8c1">
+        <source>Korean</source>
+        <target>Koreansk</target>
+      </trans-unit>
+      <trans-unit id="sd48cc52117f4d68b">
+        <source>Italian</source>
+        <target>Italiensk</target>
+      </trans-unit>
+      <trans-unit id="sffa395f64ec6ac36">
+        <source>Bulgarian</source>
+        <target>Bulgarsk</target>
+      </trans-unit>
+      <trans-unit id="sc94e314312a8900c">
+        <source>Czech</source>
+        <target>Tjekkisk</target>
+      </trans-unit>
+      <trans-unit id="sd9c21e5f60d6bdd8">
+        <source>Danish</source>
+        <target>Dansk</target>
+      </trans-unit>
+      <trans-unit id="scf00d48fd5953a03">
+        <source>Greek</source>
+        <target>Græsk</target>
+      </trans-unit>
+      <trans-unit id="sa6607436f60ccc1a">
+        <source>Estonian</source>
+        <target>Estisk</target>
+      </trans-unit>
+      <trans-unit id="sc98b103772de63f4">
+        <source>Finnish</source>
+        <target>Finsk</target>
+      </trans-unit>
+      <trans-unit id="sda9254d1f1228e1a">
+        <source>Hungarian</source>
+        <target>Ungarsk</target>
+      </trans-unit>
+      <trans-unit id="sb2dc787b0983ebc6">
+        <source>Lithuanian</source>
+        <target>Litauisk</target>
+      </trans-unit>
+      <trans-unit id="sd3dcb76f7b28adb8">
+        <source>Latvian</source>
+        <target>Lettisk</target>
+      </trans-unit>
+      <trans-unit id="s5941292bb77281ab">
+        <source>Norwegian Bokmål</source>
+        <target>Norsk bokmål</target>
+      </trans-unit>
+      <trans-unit id="s95d56e58f816d211">
+        <source>Dutch</source>
+        <target>Hollandsk</target>
+      </trans-unit>
+      <trans-unit id="s03f49e598ffb11cc">
+        <source>Polish</source>
+        <target>Polsk</target>
+      </trans-unit>
+      <trans-unit id="sc1aa1f6051b7102a">
+        <source>Romanian</source>
+        <target>Rumænsk</target>
+      </trans-unit>
+      <trans-unit id="se0cda6b80a1bb50f">
+        <source>Slovak</source>
+        <target>Slovakisk</target>
+      </trans-unit>
+      <trans-unit id="se96d43a515b8451c">
+        <source>Slovenian</source>
+        <target>Slovensk</target>
+      </trans-unit>
+      <trans-unit id="sae185e6af80ec81e">
+        <source>Swedish</source>
+        <target>Svensk</target>
+      </trans-unit>
+      <trans-unit id="sc4ee3e4ee994dafd">
+        <source>Ukrainian</source>
+        <target>Ukrainsk</target>
+      </trans-unit>
+      <trans-unit id="s082869038c117fe5">
+        <source>Portuguese (Brazil)</source>
+        <target>Portugisisk (Brasilien)</target>
+      </trans-unit>
+    </body>
+  </file>
+</xliff>

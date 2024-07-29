@@ -2,7 +2,7 @@ import { msg } from "@lit/localize"
 import {ReactiveController, ReactiveControllerHost} from "lit"
 import { ZodSchema, z } from "zod"
 
-import { Environment, Package, RootStore, StoreKey, SubStoreKey } from "../model"
+import { Environment, Locale, Package, RootStore, StoreKey, SubStoreKey } from "../model"
 import { App } from "../view"
 import { ViewModelMixin } from "."
 import { FileAccount, NpmAccount, PocketbaseAccount } from "../model/schemas/accounts"
@@ -79,13 +79,42 @@ export class SettingsController implements ReactiveController {
   } 
 
 	static get specs(): Settings<RootStore, StoreKey> {
+    const languageOptions = [
+      {code: "en", label: msg("English")},
+      {code: "de", label: msg("German")},
+      {code: "zh-hans", label: msg("Chinese (Simplified)")},
+      {code: "es", label: msg("Spanish")},
+      {code: "fr", label: msg("French")},
+      {code: "pt-PT", label: msg("Portuguese")},
+      {code: "ru", label: msg("Russian")},
+      {code: "id", label: msg("Indonesian")},
+      {code: "ja", label: msg("Japanese")},
+      {code: "tr", label: msg("Turkish")},
+      {code: "ko", label: msg("Korean")},
+      {code: "it", label: msg("Italian")},
+      {code: "bg", label: msg("Bulgarian")},
+      {code: "cs", label: msg("Czech")},
+      {code: "da", label: msg("Danish")},
+      {code: "el", label: msg("Greek")},
+      {code: "et", label: msg("Estonian")},
+      {code: "fi", label: msg("Finnish")},
+      {code: "hu", label: msg("Hungarian")},
+      {code: "lt", label: msg("Lithuanian")},
+      {code: "lv", label: msg("Latvian")},
+      {code: "nb", label: msg("Norwegian Bokmål")},
+      {code: "nl", label: msg("Dutch")},
+      {code: "pl", label: msg("Polish")},
+      {code: "ro", label: msg("Romanian")},
+      {code: "sk", label: msg("Slovak")},
+      {code: "sl", label: msg("Slovenian")},
+      {code: "sv", label: msg("Swedish")},
+      {code: "uk", label: msg("Ukrainian")},
+      {code: "pt-BR", label: msg("Portuguese (Brazil)")},
+    ]
     return {
       ui: {
         locale: {
-          schema: z.union([
-              z.literal("en").describe("English - " + msg("English")),
-              z.literal("de").describe("Deutsch - " + msg("German"))
-            ])
+          schema: z.union(languageOptions.map(({code, label}) => z.literal(code).describe(`${Locale.getLanguageInfo(code.split("-")[0]).nativeName} - ${label}`)) as any)
             .describe(msg("Language for the WebWriter interface and new documents")),
           label: msg("Language")
         },

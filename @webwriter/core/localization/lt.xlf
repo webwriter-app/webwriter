@@ -1,0 +1,2337 @@
+<xliff xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:oasis:names:tc:xliff:document:1.2 http://docs.oasis-open.org/xliff/v1.2/os/xliff-core-1.2-strict.xsd" xmlns="urn:oasis:names:tc:xliff:document:1.2" version="1.2">
+  <file original="lit-localize-inputs" datatype="plaintext" source-language="en" target-language="lt">
+    <body>
+      <trans-unit id="sa311a24c1471a974">
+        <source>Document</source>
+        <target>Dokumentas</target>
+      </trans-unit>
+      <trans-unit id="sf9f2c719a04066ec">
+        <source>App</source>
+        <target>Programėlė</target>
+      </trans-unit>
+      <trans-unit id="sa75b95980cd80e78">
+        <source>Editor</source>
+        <target>Redaktorius</target>
+      </trans-unit>
+      <trans-unit id="s2a75c946ef4dcab7">
+        <source>Miscellaneous</source>
+        <target>Įvairūs</target>
+      </trans-unit>
+      <trans-unit id="s33f85f24c0f5f008">
+        <source>Save</source>
+        <target>Išsaugoti</target>
+      </trans-unit>
+      <trans-unit id="s0c883713b83616a8">
+        <source>Save the active document</source>
+        <target>Išsaugoti aktyvųjį dokumentą</target>
+      </trans-unit>
+      <trans-unit id="s8670e5ad3bf0dcf8">
+        <source>Save As</source>
+        <target>Išsaugoti kaip</target>
+      </trans-unit>
+      <trans-unit id="s38980f98cb07ceb8">
+        <source>Save the active document as a copy</source>
+        <target>Išsaugoti aktyvųjį dokumentą kaip kopiją</target>
+      </trans-unit>
+      <trans-unit id="sa37fee6a52d18063">
+        <source>Delete document</source>
+        <target>Ištrinti dokumentą</target>
+      </trans-unit>
+      <trans-unit id="sf64a8229a8136552">
+        <source>Delete a document</source>
+        <target>Ištrinti dokumentą</target>
+      </trans-unit>
+      <trans-unit id="s2df075aface0dab8">
+        <source>Share</source>
+        <target>Dalintis</target>
+      </trans-unit>
+      <trans-unit id="sb7fb7568f6883ab8">
+        <source>Share the active document</source>
+        <target>Bendrinti aktyvųjį dokumentą</target>
+      </trans-unit>
+      <trans-unit id="seec6798afe90ffc8">
+        <source>Print</source>
+        <target>Spausdinti</target>
+      </trans-unit>
+      <trans-unit id="s600fd23c9ce971e8">
+        <source>Print the active document</source>
+        <target>Spausdinti aktyvųjį dokumentą</target>
+      </trans-unit>
+      <trans-unit id="s417b90913e05bc17">
+        <source>Preview</source>
+        <target>Peržiūra</target>
+      </trans-unit>
+      <trans-unit id="safc6f203342d09e2">
+        <source>Toggles the preview for the active document</source>
+        <target>Perjungia aktyviojo dokumento peržiūrą</target>
+      </trans-unit>
+      <trans-unit id="s10f3845975a0351e">
+        <source>Edit Metadata</source>
+        <target>Redaguoti metaduomenis</target>
+      </trans-unit>
+      <trans-unit id="sea6e7291e27ec53f">
+        <source>Toggles the metadata editor</source>
+        <target>Perjungia metaduomenų redaktorių</target>
+      </trans-unit>
+      <trans-unit id="s70178e04a3b691b6">
+        <source>Open Settings</source>
+        <target>Atidaryti nustatymus</target>
+      </trans-unit>
+      <trans-unit id="s0816468df86e4036">
+        <source>Opens the settings</source>
+        <target>Atidaro nustatymus</target>
+      </trans-unit>
+      <trans-unit id="s9d8b8aa2b404c2c8">
+        <source>Settings</source>
+        <target>Nustatymai</target>
+      </trans-unit>
+      <trans-unit id="s1f7698c061c208c9">
+        <source>Open</source>
+        <target>Atviras</target>
+      </trans-unit>
+      <trans-unit id="s16f2f1c2c516d307">
+        <source>Open a document</source>
+        <target>Atidaryti dokumentą</target>
+      </trans-unit>
+      <trans-unit id="s382a2aa3984474dd">
+        <source>Create</source>
+        <target>Sukurti</target>
+      </trans-unit>
+      <trans-unit id="s64dc1fc7e3db45c9">
+        <source>Create a new document</source>
+        <target>Sukurti naują dokumentą</target>
+      </trans-unit>
+      <trans-unit id="sd10fdbe6caf9a998">
+        <source>Line Break</source>
+        <target>Linijos pertrauka</target>
+      </trans-unit>
+      <trans-unit id="sbefb6064cba01844">
+        <source>Insert a line break</source>
+        <target>Įterpti eilutės pertrauką</target>
+      </trans-unit>
+      <trans-unit id="s410c465a5993f82d">
+        <source>Line Break Opportunity</source>
+        <target>Linijos pertraukos galimybė</target>
+      </trans-unit>
+      <trans-unit id="s8df30fe2a50d3479">
+        <source>Insert a line break opportunity</source>
+        <target>Įterpti eilutės pertraukos galimybę</target>
+      </trans-unit>
+      <trans-unit id="sf7c0eba7c822e3d6">
+        <source>Bold</source>
+        <target>Drąsiai</target>
+      </trans-unit>
+      <trans-unit id="sb9e9a7dd45966756">
+        <source>Mark the selection as bold</source>
+        <target>Pažymėkite pasirinkimą kaip paryškintą</target>
+      </trans-unit>
+      <trans-unit id="s523eb9043213ff0d">
+        <source>Italic</source>
+        <target>Kursyvu</target>
+      </trans-unit>
+      <trans-unit id="s92f846b9be2e8e8d">
+        <source>Mark the selection as italic</source>
+        <target>Pažymėti pasirinkimą kaip pasvirąjį</target>
+      </trans-unit>
+      <trans-unit id="sb206d700d26b14ff">
+        <source>Underline</source>
+        <target>Pabraukti</target>
+      </trans-unit>
+      <trans-unit id="s09c3f1d21de14ae1">
+        <source>Mark the selection as underlined</source>
+        <target>Pažymėkite pasirinkimą kaip pabrauktą</target>
+      </trans-unit>
+      <trans-unit id="s99b38e000175cc84">
+        <source>Strikethrough</source>
+        <target>Perbrauktas</target>
+      </trans-unit>
+      <trans-unit id="s0396202b716732ec">
+        <source>Mark the selection as struck through</source>
+        <target>Pažymėkite pasirinkimą kaip perbrauktą</target>
+      </trans-unit>
+      <trans-unit id="sdf946172dfa0328f">
+        <source>Superscript</source>
+        <target>Viršutiniai indeksai</target>
+      </trans-unit>
+      <trans-unit id="saf3da7c95cb17260">
+        <source>Mark the selection as a superscript</source>
+        <target>Pažymėkite pasirinkimą kaip viršutinį indeksą</target>
+      </trans-unit>
+      <trans-unit id="s587ac858dd80f6fa">
+        <source>Subscript</source>
+        <target>Indeksas</target>
+      </trans-unit>
+      <trans-unit id="sc5cb39478b9b7625">
+        <source>Mark the selection as a subscript</source>
+        <target>Pažymėti pasirinkimą kaip indeksą</target>
+      </trans-unit>
+      <trans-unit id="s3643189d1abbb7f4">
+        <source>Code</source>
+        <target>Kodas</target>
+      </trans-unit>
+      <trans-unit id="sf86bd4d2982f3b74">
+        <source>Mark the selection as code</source>
+        <target>Pažymėti pasirinkimą kaip kodą</target>
+      </trans-unit>
+      <trans-unit id="s3cf89cb47fdde7e9">
+        <source>Link</source>
+        <target>Nuoroda</target>
+      </trans-unit>
+      <trans-unit id="sf8e82313fa411494">
+        <source>Mark the selection as a link</source>
+        <target>Pažymėti pasirinkimą kaip nuorodą</target>
+      </trans-unit>
+      <trans-unit id="sd29dc07235eea0f5">
+        <source>Quotation</source>
+        <target>Citata</target>
+      </trans-unit>
+      <trans-unit id="s0e4862e87c7d53ce">
+        <source>Mark the selection as a quotation</source>
+        <target>Pažymėti pasirinkimą kaip citatą</target>
+      </trans-unit>
+      <trans-unit id="sfb9b6edb0ed378c9">
+        <source>Citation Source</source>
+        <target>Citavimo šaltinis</target>
+      </trans-unit>
+      <trans-unit id="s4a894f57eba1cf1e">
+        <source>Keyboard Shortcut</source>
+        <target>Spartusis klavišo klavišas</target>
+      </trans-unit>
+      <trans-unit id="s41c724f0698148e9">
+        <source>Mark the selection as a keyboard shortcut</source>
+        <target>Pažymėti pasirinkimą kaip klaviatūros spartųjį klavišą</target>
+      </trans-unit>
+      <trans-unit id="s0ca5c0460199cba1">
+        <source>Abbreviation</source>
+        <target>Santrumpa</target>
+      </trans-unit>
+      <trans-unit id="s2206c42e5b835e6e">
+        <source>Mark the selection as an abbreviation</source>
+        <target>Pažymėti pasirinkimą kaip santrumpą</target>
+      </trans-unit>
+      <trans-unit id="sf67571992e7dc88e">
+        <source>Full Term</source>
+        <target>Visas terminas</target>
+      </trans-unit>
+      <trans-unit id="s1dfb744260fb3a01">
+        <source>Bidirectional Isolate</source>
+        <target>Dvikryptė izoliacija</target>
+      </trans-unit>
+      <trans-unit id="sa39c7ac1d37f3bce">
+        <source>Mark the selection as a 'bidirectional isolate'</source>
+        <target>Pažymėti pasirinkimą kaip "dvikryptį izoliuotą".</target>
+      </trans-unit>
+      <trans-unit id="s4c402ff5355fd310">
+        <source>Bidirectional Override</source>
+        <target>Dvikryptis valdymas</target>
+      </trans-unit>
+      <trans-unit id="s02ab1ea8e5100fc1">
+        <source>Mark the selection as a 'bidirectional override'</source>
+        <target>Pažymėti pasirinkimą kaip "dvikryptį pakeitimą</target>
+      </trans-unit>
+      <trans-unit id="se62385ac082368d2">
+        <source>Mark the selection as a citation source</source>
+        <target>Pažymėkite pasirinkimą kaip citavimo šaltinį</target>
+      </trans-unit>
+      <trans-unit id="s36a194e38d653a26">
+        <source>Data Annotation</source>
+        <target>Duomenų anotacija</target>
+      </trans-unit>
+      <trans-unit id="s5a1a0898baf20675">
+        <source>Mark the selection with a data annotation</source>
+        <target>Pažymėkite pasirinkimą duomenų anotacija</target>
+      </trans-unit>
+      <trans-unit id="s9d668a34af4128ff">
+        <source>Deletion</source>
+        <target>Pašalinimas</target>
+      </trans-unit>
+      <trans-unit id="s1c246045629b0016">
+        <source>Mark the selection as a deletion</source>
+        <target>Pažymėti pasirinkimą kaip ištrynimą</target>
+      </trans-unit>
+      <trans-unit id="s94653c76b2d86a04">
+        <source>Defined Term</source>
+        <target>Apibrėžtas terminas</target>
+      </trans-unit>
+      <trans-unit id="s1082e1649793dca9">
+        <source>Mark the selection as a defined term</source>
+        <target>Pažymėti pasirinkimą kaip apibrėžtą terminą</target>
+      </trans-unit>
+      <trans-unit id="s92b177e579ef7b97">
+        <source>Emphasis</source>
+        <target>Akcentas</target>
+      </trans-unit>
+      <trans-unit id="s782eac2b3e80323d">
+        <source>Mark the selection as emphasized</source>
+        <target>Pažymėti pasirinkimą kaip pabrėžtą</target>
+      </trans-unit>
+      <trans-unit id="s50489ffb1bde152e">
+        <source>Insertion</source>
+        <target>Įterpimas</target>
+      </trans-unit>
+      <trans-unit id="sd1a78e667a1a139f">
+        <source>Mark the selection as an insertion</source>
+        <target>Pažymėti pasirinkimą kaip įterpimą</target>
+      </trans-unit>
+      <trans-unit id="s3d6a732c792ccb9e">
+        <source>Ruby Annotation</source>
+        <target>"Ruby" anotacija</target>
+      </trans-unit>
+      <trans-unit id="sdf62e305e1594805">
+        <source>Mark the selection with a ruby annotation</source>
+        <target>Pažymėkite pasirinkimą ruby anotacija</target>
+      </trans-unit>
+      <trans-unit id="s474f0eec369d02a4">
+        <source>Sample Output</source>
+        <target>Išvesties pavyzdys</target>
+      </trans-unit>
+      <trans-unit id="sf21c1f60c7515f44">
+        <source>Mark the selection as sample output</source>
+        <target>Pažymėti pasirinkimą kaip pavyzdžio išvestį</target>
+      </trans-unit>
+      <trans-unit id="s4eace13b3ed74187">
+        <source>Side Comment</source>
+        <target>Šalutinis komentaras</target>
+      </trans-unit>
+      <trans-unit id="s864b0e6270e97246">
+        <source>Mark the selection as a side comment</source>
+        <target>Pažymėti pasirinkimą kaip šalutinį komentarą</target>
+      </trans-unit>
+      <trans-unit id="sb60bc1250aad44c1">
+        <source>Span</source>
+        <target>Spanas</target>
+      </trans-unit>
+      <trans-unit id="s0a7db790db1fc45c">
+        <source>Mark the selection as a span</source>
+        <target>Pažymėkite pasirinkimą kaip intervalą</target>
+      </trans-unit>
+      <trans-unit id="s7bdf0fd5b014d36c">
+        <source>Strong Importance</source>
+        <target>Didelė svarba</target>
+      </trans-unit>
+      <trans-unit id="s550839f3e4e205bb">
+        <source>Mark the selection as strongly important</source>
+        <target>Pažymėkite pasirinkimą kaip labai svarbų</target>
+      </trans-unit>
+      <trans-unit id="s3d3efd1e19bdcfb4">
+        <source>Date/Time Annotation</source>
+        <target>Datos ir laiko anotacija</target>
+      </trans-unit>
+      <trans-unit id="s47e257ae643b5851">
+        <source>Mark the selection as a date/time annotation</source>
+        <target>Pažymėti pasirinkimą kaip datos ir laiko anotaciją</target>
+      </trans-unit>
+      <trans-unit id="sec2557a35b702525">
+        <source>Variable</source>
+        <target>Kintamas</target>
+      </trans-unit>
+      <trans-unit id="sf59c9081d106dd9c">
+        <source>Mark the selection as a variable</source>
+        <target>Pažymėti pasirinkimą kaip kintamąjį</target>
+      </trans-unit>
+      <trans-unit id="s599dcd2472c75c19">
+        <source>Paragraph</source>
+        <target>Pastraipa</target>
+      </trans-unit>
+      <trans-unit id="s5b8cc9bb61ddce15">
+        <source>Insert a paragraph</source>
+        <target>Įterpti pastraipą</target>
+      </trans-unit>
+      <trans-unit id="s3b3ea038c5d3bb06">
+        <source>Division</source>
+        <target>Skyrius</target>
+      </trans-unit>
+      <trans-unit id="se6cdad455e2d8c02">
+        <source>Insert a division</source>
+        <target>Įterpkite padalijimą</target>
+      </trans-unit>
+      <trans-unit id="s6f84199e62584905">
+        <source>Preformatted Text</source>
+        <target>Iš anksto suformatuotas tekstas</target>
+      </trans-unit>
+      <trans-unit id="sb3ba3276ae93627c">
+        <source>Insert a preformatted text block</source>
+        <target>Įterpti iš anksto suformatuotą teksto bloką</target>
+      </trans-unit>
+      <trans-unit id="s2f2044f2431a32d5">
+        <source>Heading</source>
+        <target>Antraštė</target>
+      </trans-unit>
+      <trans-unit id="s29f21c34494d614d">
+        <source>Insert a heading (level 1)</source>
+        <target>Įterpti antraštę (1 lygis)</target>
+      </trans-unit>
+      <trans-unit id="sbc5f2e81604bb667">
+        <source>Heading 2</source>
+        <target>2 antraštė</target>
+      </trans-unit>
+      <trans-unit id="s29ee7434494a0dfe">
+        <source>Insert a heading (level 2)</source>
+        <target>Įterpti antraštę (2 lygis)</target>
+      </trans-unit>
+      <trans-unit id="sbc5f2d81604bb4b4">
+        <source>Heading 3</source>
+        <target>3 antraštė</target>
+      </trans-unit>
+      <trans-unit id="s29eb103449472e3b">
+        <source>Insert a heading (level 3)</source>
+        <target>Įterpti antraštę (3 lygis)</target>
+      </trans-unit>
+      <trans-unit id="sbc5f2c81604bb301">
+        <source>Heading 4</source>
+        <target>4 antraštė</target>
+      </trans-unit>
+      <trans-unit id="s2a031834495bcdb4">
+        <source>Insert a heading (level 4)</source>
+        <target>Įterpti antraštę (4 lygis)</target>
+      </trans-unit>
+      <trans-unit id="sbc5f2b81604bb14e">
+        <source>Heading 5</source>
+        <target>5 antraštė</target>
+      </trans-unit>
+      <trans-unit id="s29ff743449588131">
+        <source>Insert a heading (level 5)</source>
+        <target>Įterpti antraštę (5 lygis)</target>
+      </trans-unit>
+      <trans-unit id="sbc5f2a81604baf9b">
+        <source>Heading 6</source>
+        <target>6 antraštė</target>
+      </trans-unit>
+      <trans-unit id="s29fbfc3449557f72">
+        <source>Insert a heading (level 6)</source>
+        <target>Įterpti antraštę (6 lygis)</target>
+      </trans-unit>
+      <trans-unit id="sec8b0b6c729816b6">
+        <source>Heading Group</source>
+        <target>Antraštės grupė</target>
+      </trans-unit>
+      <trans-unit id="s4d528b416ac8dee2">
+        <source>Insert a heading group</source>
+        <target>Įterpti antraščių grupę</target>
+      </trans-unit>
+      <trans-unit id="s3d249bb480032121">
+        <source>List</source>
+        <target>Sąrašas</target>
+      </trans-unit>
+      <trans-unit id="s0978fb5ba3145996">
+        <source>Insert a list (unordered)</source>
+        <target>Įterpti sąrašą (be eilės)</target>
+      </trans-unit>
+      <trans-unit id="s377e24af9628c37e">
+        <source>Ordered List</source>
+        <target>Užsakytas sąrašas</target>
+      </trans-unit>
+      <trans-unit id="sdb711380a28fec75">
+        <source>Insert a list (ordered)</source>
+        <target>Įterpti sąrašą (sutvarkytą)</target>
+      </trans-unit>
+      <trans-unit id="sf0cf5c5d0102f674">
+        <source>List Item</source>
+        <target>Sąrašo elementas</target>
+      </trans-unit>
+      <trans-unit id="s20db56373c0fc770">
+        <source>Insert a list item</source>
+        <target>Įterpti sąrašo elementą</target>
+      </trans-unit>
+      <trans-unit id="s07aa10850d9ddcc7">
+        <source>Form</source>
+        <target>Forma</target>
+      </trans-unit>
+      <trans-unit id="s84e9c7f8785ca60b">
+        <source>Insert a form</source>
+        <target>Įterpti formą</target>
+      </trans-unit>
+      <trans-unit id="s355b21b89ce5d9c5">
+        <source>Details</source>
+        <target>Išsami informacija</target>
+      </trans-unit>
+      <trans-unit id="sb6103872073d369e">
+        <source>Insert details</source>
+        <target>Įterpti informaciją</target>
+      </trans-unit>
+      <trans-unit id="sc9474bf7a0668d73">
+        <source>Summary</source>
+        <target>Santrauka</target>
+      </trans-unit>
+      <trans-unit id="sec30fbb20f102670">
+        <source>Insert summary</source>
+        <target>Įterpti santrauką</target>
+      </trans-unit>
+      <trans-unit id="s0312976fe9da5951">
+        <source>Button</source>
+        <target>Mygtukas</target>
+      </trans-unit>
+      <trans-unit id="sd60c9bbc51375635">
+        <source>Insert a button</source>
+        <target>Įterpti mygtuką</target>
+      </trans-unit>
+      <trans-unit id="sdb1595f5c742dfbb">
+        <source>Input</source>
+        <target>Įvestis</target>
+      </trans-unit>
+      <trans-unit id="s29b24c06315e9343">
+        <source>Insert an input</source>
+        <target>Įterpti įvestį</target>
+      </trans-unit>
+      <trans-unit id="sfc63e31ac7c956ed">
+        <source>Select</source>
+        <target>Pasirinkite</target>
+      </trans-unit>
+      <trans-unit id="s531056f039febd39">
+        <source>Insert a select</source>
+        <target>Įterpkite pasirinkimą</target>
+      </trans-unit>
+      <trans-unit id="sfc00292e778b67e2">
+        <source>Meter</source>
+        <target>Skaitiklis</target>
+      </trans-unit>
+      <trans-unit id="s52e0bdc3ee304436">
+        <source>Insert a meter</source>
+        <target>Įdėkite skaitiklį</target>
+      </trans-unit>
+      <trans-unit id="s8c7f51cb067644c7">
+        <source>Data List</source>
+        <target>Duomenų sąrašas</target>
+      </trans-unit>
+      <trans-unit id="sfa59c7777e2a0eeb">
+        <source>Insert a data list</source>
+        <target>Įterpti duomenų sąrašą</target>
+      </trans-unit>
+      <trans-unit id="s7fcb35d23be1e643">
+        <source>Field Set</source>
+        <target>Laukų rinkinys</target>
+      </trans-unit>
+      <trans-unit id="s2d986d31f8d67357">
+        <source>Insert a field set</source>
+        <target>Lauko rinkinio įterpimas</target>
+      </trans-unit>
+      <trans-unit id="s5590dbf7e425789d">
+        <source>Label</source>
+        <target>Etiketė</target>
+      </trans-unit>
+      <trans-unit id="s21f8a2eaf5a70749">
+        <source>Insert a label</source>
+        <target>Įterpti etiketę</target>
+      </trans-unit>
+      <trans-unit id="s4b58c01e2578f5e4">
+        <source>Legend</source>
+        <target>Legenda</target>
+      </trans-unit>
+      <trans-unit id="s3fd83566dd643d10">
+        <source>Insert a legend</source>
+        <target>Įterpti legendą</target>
+      </trans-unit>
+      <trans-unit id="sef75f458d77491af">
+        <source>Option Group</source>
+        <target>Galimybių grupė</target>
+      </trans-unit>
+      <trans-unit id="sceecdd0bb404bc17">
+        <source>Insert an option group</source>
+        <target>Įterpti parinkčių grupę</target>
+      </trans-unit>
+      <trans-unit id="s4802e47fe2e95134">
+        <source>Option</source>
+        <target>Galimybė</target>
+      </trans-unit>
+      <trans-unit id="s3cb47df8290fa94c">
+        <source>Insert an option</source>
+        <target>Įterpti parinktį</target>
+      </trans-unit>
+      <trans-unit id="sfd77270c3f54f664">
+        <source>Output</source>
+        <target>Išėjimas</target>
+      </trans-unit>
+      <trans-unit id="se64f418b4e733b6c">
+        <source>Insert an output</source>
+        <target>Įterpti išvestį</target>
+      </trans-unit>
+      <trans-unit id="s18fca71e2e3308e7">
+        <source>Progress Indicator</source>
+        <target>Pažangos rodiklis</target>
+      </trans-unit>
+      <trans-unit id="s52777d434baeed9b">
+        <source>Insert a progress indicator</source>
+        <target>Įterpti pažangos indikatorių</target>
+      </trans-unit>
+      <trans-unit id="sa78a67272a4a6f95">
+        <source>Math Formula</source>
+        <target>Matematinė formulė</target>
+      </trans-unit>
+      <trans-unit id="saaad98061a20ac39">
+        <source>Insert a math formula</source>
+        <target>Įterpkite matematinę formulę</target>
+      </trans-unit>
+      <trans-unit id="s5432ad3c84273229">
+        <source>Figure</source>
+        <target>Paveikslas</target>
+      </trans-unit>
+      <trans-unit id="sf486ca1fdbe08645">
+        <source>Insert a figure</source>
+        <target>Įterpkite paveikslėlį</target>
+      </trans-unit>
+      <trans-unit id="sa5df1bcdba46c3fb">
+        <source>Figure Caption</source>
+        <target>Paveikslėlio antraštė</target>
+      </trans-unit>
+      <trans-unit id="s33c1450d2822bb0f">
+        <source>Insert a figure caption</source>
+        <target>Įterpkite paveikslėlio antraštę</target>
+      </trans-unit>
+      <trans-unit id="s3d93f9ea0c5a13fa">
+        <source>Image</source>
+        <target>Vaizdas</target>
+      </trans-unit>
+      <trans-unit id="s8bc4affa761aa8a2">
+        <source>Insert an image</source>
+        <target>Įterpti paveikslėlį</target>
+      </trans-unit>
+      <trans-unit id="s5f43af3669b1e098">
+        <source>Source</source>
+        <target>Šaltinis</target>
+      </trans-unit>
+      <trans-unit id="sa7dc6b8ef3f595dc">
+        <source>Insert a source</source>
+        <target>Įterpti šaltinį</target>
+      </trans-unit>
+      <trans-unit id="s9e85800d3700e31c">
+        <source>Track</source>
+        <target>Trasa</target>
+      </trans-unit>
+      <trans-unit id="sf39736a666dbb038">
+        <source>Insert a track</source>
+        <target>Įterpti takelį</target>
+      </trans-unit>
+      <trans-unit id="s5ed03bb1f3a15949">
+        <source>Picture</source>
+        <target>Paveikslėlis</target>
+      </trans-unit>
+      <trans-unit id="s93566b84230af4f5">
+        <source>Insert a picture</source>
+        <target>Įterpti paveikslėlį</target>
+      </trans-unit>
+      <trans-unit id="s08e6bd98452e6bb9">
+        <source>Audio</source>
+        <target>Garso</target>
+      </trans-unit>
+      <trans-unit id="s96532132a29dd542">
+        <source>Insert audio</source>
+        <target>Įterpti garso įrašą</target>
+      </trans-unit>
+      <trans-unit id="s85186a61e0d55bac">
+        <source>Video</source>
+        <target>Vaizdo įrašas</target>
+      </trans-unit>
+      <trans-unit id="s9e28faa598332e2b">
+        <source>Insert video</source>
+        <target>Įterpti vaizdo įrašą</target>
+      </trans-unit>
+      <trans-unit id="s730182ad28374cda">
+        <source>Object</source>
+        <target>Objektas</target>
+      </trans-unit>
+      <trans-unit id="s123bea44f38abccf">
+        <source>Insert object</source>
+        <target>Objekto įterpimas</target>
+      </trans-unit>
+      <trans-unit id="scace301a88231cce">
+        <source>Embed</source>
+        <target>Įterpti</target>
+      </trans-unit>
+      <trans-unit id="s91c5ed7769d00b65">
+        <source>Insert embed</source>
+        <target>Įterpti įterpti</target>
+      </trans-unit>
+      <trans-unit id="s82665b2ffabc9c0a">
+        <source>Website</source>
+        <target>Svetainė</target>
+      </trans-unit>
+      <trans-unit id="sc3998b77d72c2932">
+        <source>Insert a website (as an inline frame)</source>
+        <target>Įterpkite svetainę (kaip įterptinį rėmelį)</target>
+      </trans-unit>
+      <trans-unit id="s4802bb8eb52fbdeb">
+        <source>Portal</source>
+        <target>Portalas</target>
+      </trans-unit>
+      <trans-unit id="sd4368b12645d3c0f">
+        <source>Insert a portal</source>
+        <target>Įterpti portalą</target>
+      </trans-unit>
+      <trans-unit id="s9565553d163fc92a">
+        <source>Script</source>
+        <target>Skriptas</target>
+      </trans-unit>
+      <trans-unit id="sbf00e1ee999ea94e">
+        <source>Insert a script</source>
+        <target>Įterpti scenarijų</target>
+      </trans-unit>
+      <trans-unit id="s7f326a142e856656">
+        <source>Style</source>
+        <target>Stilius</target>
+      </trans-unit>
+      <trans-unit id="s6dfb502188a8c7c2">
+        <source>Insert a style</source>
+        <target>Įterpti stilių</target>
+      </trans-unit>
+      <trans-unit id="se47baf2fd16b9d2b">
+        <source>Template</source>
+        <target>Šablonas</target>
+      </trans-unit>
+      <trans-unit id="s7b4ba250601b8667">
+        <source>Insert a template</source>
+        <target>Įterpti šabloną</target>
+      </trans-unit>
+      <trans-unit id="s919e1724f589c9b1">
+        <source>Slot</source>
+        <target>Lizdas</target>
+      </trans-unit>
+      <trans-unit id="s32911e52ee8ac745">
+        <source>Insert a slot</source>
+        <target>Įdėkite lizdą</target>
+      </trans-unit>
+      <trans-unit id="sbbe639e3a3ed95d1">
+        <source>NoScript</source>
+        <target>NoScript</target>
+      </trans-unit>
+      <trans-unit id="s2d995a37cf5e4995">
+        <source>Insert a NoScript</source>
+        <target>Įterpkite "NoScript</target>
+      </trans-unit>
+      <trans-unit id="sc50d09edf9325339">
+        <source>Dialog</source>
+        <target>Dialogas</target>
+      </trans-unit>
+      <trans-unit id="sff99962304ac7d25">
+        <source>Insert a dialog</source>
+        <target>Įterpti dialogo langą</target>
+      </trans-unit>
+      <trans-unit id="se16c5e66886fbc59">
+        <source>Article</source>
+        <target>Straipsnis</target>
+      </trans-unit>
+      <trans-unit id="s3f7e097a9b2e6181">
+        <source>Insert an article</source>
+        <target>Įterpti straipsnį</target>
+      </trans-unit>
+      <trans-unit id="sadd352cc7f6f2307">
+        <source>Aside</source>
+        <target>Šalia</target>
+      </trans-unit>
+      <trans-unit id="s743f778233e42a3f">
+        <source>Insert an aside</source>
+        <target>Įterpkite pastabą</target>
+      </trans-unit>
+      <trans-unit id="s07e6118e838b2e23">
+        <source>Navigation</source>
+        <target>Navigacija</target>
+      </trans-unit>
+      <trans-unit id="s0a799f583098cadf">
+        <source>Insert a navigation</source>
+        <target>Įterpti navigaciją</target>
+      </trans-unit>
+      <trans-unit id="scc1db59d292cbc4c">
+        <source>Section</source>
+        <target>Skyrius</target>
+      </trans-unit>
+      <trans-unit id="s22a2348c46a912a0">
+        <source>Insert a section</source>
+        <target>Įterpti skyrių</target>
+      </trans-unit>
+      <trans-unit id="s75d83fc3f0cfab40">
+        <source>Header</source>
+        <target>Antraštė</target>
+      </trans-unit>
+      <trans-unit id="sa5c80e623459ffe4">
+        <source>Insert a header</source>
+        <target>Įterpti antraštę</target>
+      </trans-unit>
+      <trans-unit id="scf932a8577057752">
+        <source>Footer</source>
+        <target>Kojinė</target>
+      </trans-unit>
+      <trans-unit id="sa352d168b262aa06">
+        <source>Insert a footer</source>
+        <target>Įterpti poraštę</target>
+      </trans-unit>
+      <trans-unit id="s49e763aed00877a8">
+        <source>Main</source>
+        <target>Pagrindinis</target>
+      </trans-unit>
+      <trans-unit id="s8247d32213e35f24">
+        <source>Insert a main</source>
+        <target>Įterpkite pagrindinį</target>
+      </trans-unit>
+      <trans-unit id="s5d929ff1619ac0c9">
+        <source>Search</source>
+        <target>Paieška</target>
+      </trans-unit>
+      <trans-unit id="sbb85a407d730e13d">
+        <source>Insert a search</source>
+        <target>Įterpti paiešką</target>
+      </trans-unit>
+      <trans-unit id="sfcdd8e672c75b713">
+        <source>Address</source>
+        <target>Adresas</target>
+      </trans-unit>
+      <trans-unit id="s429dd933ba95549b">
+        <source>Insert an address</source>
+        <target>Įterpti adresą</target>
+      </trans-unit>
+      <trans-unit id="s35c3125c7750681e">
+        <source>Blockquote</source>
+        <target>Blokinė citata</target>
+      </trans-unit>
+      <trans-unit id="sa492a51a707930fa">
+        <source>Insert a blockquote</source>
+        <target>Įterpti blokinę citatą</target>
+      </trans-unit>
+      <trans-unit id="s1351734ce8177b5f">
+        <source>SVG Drawing</source>
+        <target>SVG piešimas</target>
+      </trans-unit>
+      <trans-unit id="s3b51dea3b9ac2507">
+        <source>Insert an SVG Drawing</source>
+        <target>SVG piešinio įterpimas</target>
+      </trans-unit>
+      <trans-unit id="s337a1e9022a8d19f">
+        <source>Table</source>
+        <target>Lentelė</target>
+      </trans-unit>
+      <trans-unit id="s88a62d29529948fb">
+        <source>Insert a table</source>
+        <target>Įterpti lentelę</target>
+      </trans-unit>
+      <trans-unit id="s0cf10c4f40588f8d">
+        <source>Table Caption</source>
+        <target>Lentelės antraštė</target>
+      </trans-unit>
+      <trans-unit id="s0c11e479416c8421">
+        <source>Insert a table caption</source>
+        <target>Įterpti lentelės antraštę</target>
+      </trans-unit>
+      <trans-unit id="s613c6ff83883c04f">
+        <source>Table Column</source>
+        <target>Lentelės stulpelis</target>
+      </trans-unit>
+      <trans-unit id="sd52660ee947ca58b">
+        <source>Insert a table column</source>
+        <target>Lentelės stulpelio įterpimas</target>
+      </trans-unit>
+      <trans-unit id="s8517ae4da104b004">
+        <source>Table Column Group</source>
+        <target>Lentelės stulpelių grupė</target>
+      </trans-unit>
+      <trans-unit id="s28b6246ce616a548">
+        <source>Insert a table column group</source>
+        <target>Įterpti lentelės stulpelių grupę</target>
+      </trans-unit>
+      <trans-unit id="s21d61916eb8d137d">
+        <source>Table Body</source>
+        <target>Lentelės korpusas</target>
+      </trans-unit>
+      <trans-unit id="s156647179b21d351">
+        <source>Insert a table body</source>
+        <target>Įterpti lentelės korpusą</target>
+      </trans-unit>
+      <trans-unit id="sb616811735bfbafd">
+        <source>Table cell</source>
+        <target>Lentelės langelis</target>
+      </trans-unit>
+      <trans-unit id="s9faf26107ed49fb9">
+        <source>Insert a table cell</source>
+        <target>Lentelės ląstelės įterpimas</target>
+      </trans-unit>
+      <trans-unit id="sa7af797a46c7d09a">
+        <source>Table Footer</source>
+        <target>Lentelės poraštė</target>
+      </trans-unit>
+      <trans-unit id="sc252a4e091763606">
+        <source>Insert a table footer</source>
+        <target>Įterpti lentelės poraštę</target>
+      </trans-unit>
+      <trans-unit id="sb68e83cda6c85af8">
+        <source>Table header</source>
+        <target>Lentelės antraštė</target>
+      </trans-unit>
+      <trans-unit id="s8f29e48d6b9a1aa8">
+        <source>Insert a table header row</source>
+        <target>Lentelės antraštės eilutės įterpimas</target>
+      </trans-unit>
+      <trans-unit id="s153bc3c3aa39587b">
+        <source>Table Head</source>
+        <target>Stalo galvutė</target>
+      </trans-unit>
+      <trans-unit id="s5d18ca4c3111be6f">
+        <source>Insert a table head</source>
+        <target>Įterpkite lentelės antraštę</target>
+      </trans-unit>
+      <trans-unit id="s52af5d7ac34c2163">
+        <source>Table Row</source>
+        <target>Lentelės eilutė</target>
+      </trans-unit>
+      <trans-unit id="s1988d71ef8060edf">
+        <source>Insert a table row</source>
+        <target>Lentelės eilutės įterpimas</target>
+      </trans-unit>
+      <trans-unit id="s9ffe1bbe64712bf1">
+        <source>Canvas</source>
+        <target>Drobė</target>
+      </trans-unit>
+      <trans-unit id="sa7dbe35b758c138d">
+        <source>Insert a canvas</source>
+        <target>Įterpti drobę</target>
+      </trans-unit>
+      <trans-unit id="sb0d4f0f7993cf085">
+        <source>Set font size</source>
+        <target>Nustatyti šrifto dydį</target>
+      </trans-unit>
+      <trans-unit id="s37fa3b9cd51c2dfd">
+        <source>Sets the selection's font size</source>
+        <target>Nustato pasirinkimo šrifto dydį</target>
+      </trans-unit>
+      <trans-unit id="s9e3dbb678150edd4">
+        <source>Set font family</source>
+        <target>Nustatyti šrifto šeimą</target>
+      </trans-unit>
+      <trans-unit id="s1626a7e10a9f9dcc">
+        <source>Sets the selection's font family</source>
+        <target>Nustato pasirinkimo šrifto šeimą</target>
+      </trans-unit>
+      <trans-unit id="sb1494c08c8c720d1">
+        <source>Set text color</source>
+        <target>Nustatyti teksto spalvą</target>
+      </trans-unit>
+      <trans-unit id="se1f5bb0386c88f96">
+        <source>Sets the color of the selected text</source>
+        <target>Nustato pasirinkto teksto spalvą</target>
+      </trans-unit>
+      <trans-unit id="sa65d4ad99f1d8c06">
+        <source>Set text background</source>
+        <target>Nustatyti teksto foną</target>
+      </trans-unit>
+      <trans-unit id="s34f724979a124c50">
+        <source>Sets the background color of the selected text</source>
+        <target>Nustato pasirinkto teksto fono spalvą</target>
+      </trans-unit>
+      <trans-unit id="se219da7b1e955c65">
+        <source>Clear formatting</source>
+        <target>Aiškus formatavimas</target>
+      </trans-unit>
+      <trans-unit id="s256ab831a48c941c">
+        <source>Removes all text formatting from the selection</source>
+        <target>Pašalina visą teksto formatavimą iš pasirinkimo</target>
+      </trans-unit>
+      <trans-unit id="s621ad19d35ba7742">
+        <source>Copy selection</source>
+        <target>Kopijuoti pasirinkimą</target>
+      </trans-unit>
+      <trans-unit id="s365280e16a8ea32d">
+        <source>Copy the selection</source>
+        <target>Kopijuoti pasirinkimą</target>
+      </trans-unit>
+      <trans-unit id="s73cb20c838e761e1">
+        <source>Cut selection</source>
+        <target>Pjūvio pasirinkimas</target>
+      </trans-unit>
+      <trans-unit id="s8e715248c3a78446">
+        <source>Cut the selection</source>
+        <target>Iškirpti atranką</target>
+      </trans-unit>
+      <trans-unit id="s13ef8ca26ca8861b">
+        <source>Cut element</source>
+        <target>Pjūvio elementas</target>
+      </trans-unit>
+      <trans-unit id="s2ced8e8fafb499f6">
+        <source>Delete element</source>
+        <target>Ištrinti elementą</target>
+      </trans-unit>
+      <trans-unit id="s3eca5a034978754b">
+        <source>Delete the selection</source>
+        <target>Ištrinti pasirinkimą</target>
+      </trans-unit>
+      <trans-unit id="s95c161f68e5180a5">
+        <source>Inspect selection</source>
+        <target>Patikrinkite pasirinkimą</target>
+      </trans-unit>
+      <trans-unit id="s4c1535f316305a2a">
+        <source>Inspect the selection</source>
+        <target>Patikrinkite pasirinkimą</target>
+      </trans-unit>
+      <trans-unit id="sbba0156f795d8c07">
+        <source>Edit selection</source>
+        <target>Redaguoti pasirinkimą</target>
+      </trans-unit>
+      <trans-unit id="sbd181cd54b8402a4">
+        <source>Edit the selection</source>
+        <target>Redaguoti pasirinkimą</target>
+      </trans-unit>
+      <trans-unit id="s06634274f19b0572">
+        <source>Pin selection</source>
+        <target>Kaiščių pasirinkimas</target>
+      </trans-unit>
+      <trans-unit id="sa53c5cb03a8fda50">
+        <source>Pin the selection as a snippet in the palette</source>
+        <target>Prisegti pasirinkimą kaip fragmentą paletėje</target>
+      </trans-unit>
+      <trans-unit id="s5c63af7695445fcf">
+        <source>Text Style</source>
+        <target>Teksto stilius</target>
+      </trans-unit>
+      <trans-unit id="sc8d2c7f6c33a2b32">
+        <source>Set text style (alignment, indentation, spacing, etc.) of selected elements</source>
+        <target>Nustatyti pasirinktų elementų teksto stilių (lygiuotę, įtrauką, tarpus ir t. t.)</target>
+      </trans-unit>
+      <trans-unit id="s6907015655602158">
+        <source>Margins</source>
+        <target>Maržos</target>
+      </trans-unit>
+      <trans-unit id="s6d775df53db92fc1">
+        <source>Set the margins of the selected elements</source>
+        <target>Nustatyti pasirinktų elementų kraštines</target>
+      </trans-unit>
+      <trans-unit id="sb1bd619a8d7cb15f">
+        <source>Paddings</source>
+        <target>Išklotinės</target>
+      </trans-unit>
+      <trans-unit id="s4296275288e95fd6">
+        <source>Set the paddings of the selected elements</source>
+        <target>Nustatykite pasirinktų elementų išklotines</target>
+      </trans-unit>
+      <trans-unit id="s1efbfc3937d565bd">
+        <source>Background</source>
+        <target>Pagrindinė informacija</target>
+      </trans-unit>
+      <trans-unit id="sd21a7bab4807fadc">
+        <source>Set the background of the selected elements</source>
+        <target>Nustatyti pasirinktų elementų foną</target>
+      </trans-unit>
+      <trans-unit id="sfa31adc78eb90e2c">
+        <source>Borders</source>
+        <target>Sienos</target>
+      </trans-unit>
+      <trans-unit id="s822b4cbbb9731fd1">
+        <source>Set the borders of the selected elements</source>
+        <target>Nustatyti pasirinktų elementų ribas</target>
+      </trans-unit>
+      <trans-unit id="s4481f5525a7a394a">
+        <source>Animations</source>
+        <target>Animacija</target>
+      </trans-unit>
+      <trans-unit id="s4c4cb162f1aa7a7f">
+        <source>Animate selected elements using keyframes</source>
+        <target>Animuoti pasirinktus elementus naudojant raktinius kadrus</target>
+      </trans-unit>
+      <trans-unit id="s7060970b5ed20a58">
+        <source>Interactivity</source>
+        <target>Interaktyvumas</target>
+      </trans-unit>
+      <trans-unit id="se8bb865aeb8602dc">
+        <source>Set interactivty options for selected elements</source>
+        <target>Pasirinktų elementų interaktyvumo parinkčių nustatymas</target>
+      </trans-unit>
+      <trans-unit id="s8e70186b35a577db">
+        <source>Box alignment</source>
+        <target>Dėžutės išlyginimas</target>
+      </trans-unit>
+      <trans-unit id="s96611799d29d7d82">
+        <source>Set box alignment of selected elements</source>
+        <target>Nustatyti pasirinktų elementų langelio lygiavimą</target>
+      </trans-unit>
+      <trans-unit id="sbd0a91688c13adeb">
+        <source>Color adjustment</source>
+        <target>Spalvų reguliavimas</target>
+      </trans-unit>
+      <trans-unit id="s7ad802c20f77b1e9">
+        <source>Set color adjustment (light/dark mode) options of selected elements</source>
+        <target>Nustatyti pasirinktų elementų spalvų reguliavimo (šviesaus/tamsaus režimo) parinktis</target>
+      </trans-unit>
+      <trans-unit id="s8ebfd594312e77d4">
+        <source>Text/stroke color</source>
+        <target>Teksto / brūkšnio spalva</target>
+      </trans-unit>
+      <trans-unit id="se6f9a782d95c2a87">
+        <source>Set text/stroke color of selected elements</source>
+        <target>Nustatyti pasirinktų elementų teksto / brūkšnio spalvą</target>
+      </trans-unit>
+      <trans-unit id="se25d54a8943385b0">
+        <source>Blending</source>
+        <target>Maišymas</target>
+      </trans-unit>
+      <trans-unit id="sdbdf663c872fb855">
+        <source>Set blending (e.g. opacity) of selected elements</source>
+        <target>Nustatyti pasirinktų elementų suliejimą (pvz., nepermatomumą)</target>
+      </trans-unit>
+      <trans-unit id="s550492e6c28b6628">
+        <source>Display mode</source>
+        <target>Ekrano režimas</target>
+      </trans-unit>
+      <trans-unit id="s3c1c59a8fe1ce8af">
+        <source>Set the display mode of the selected elements</source>
+        <target>Pasirinktų elementų rodymo režimo nustatymas</target>
+      </trans-unit>
+      <trans-unit id="sa8beb6b1182241ac">
+        <source>Filters</source>
+        <target>Filtrai</target>
+      </trans-unit>
+      <trans-unit id="s52e1a890841a3ae8">
+        <source>Apply filters (blur, invert, etc.) to the selected elements</source>
+        <target>Pasirinktiems elementams taikyti filtrus (suliejimo, inversijos ir kt.)</target>
+      </trans-unit>
+      <trans-unit id="s5052b94fa8278950">
+        <source>Flex behavior</source>
+        <target>Lankstus elgesys</target>
+      </trans-unit>
+      <trans-unit id="se17a380e47aa8613">
+        <source>Set flex behaviour (grow, shrink, wrap, order) of selected elements</source>
+        <target>Nustatyti pasirinktų elementų lankstumo elgseną (augti, susitraukti, apvynioti,
+          sutvarkyti)</target>
+      </trans-unit>
+      <trans-unit id="s4b4afa8bcb02d5ac">
+        <source>Typography</source>
+        <target>Tipografija</target>
+      </trans-unit>
+      <trans-unit id="safb272a7b342509c">
+        <source>Set typography (font family, size, etc.) of selected elements</source>
+        <target>Nustatyti pasirinktų elementų tipografiją (šrifto šeimą, dydį ir t. t.)</target>
+      </trans-unit>
+      <trans-unit id="s0c669387c45c4dc6">
+        <source>Fragmentation</source>
+        <target>Fragmentacija</target>
+      </trans-unit>
+      <trans-unit id="s87c65faff16a53bd">
+        <source>Set fragmentation (behaviour on page/region/column breaks) of selected elements</source>
+        <target>Nustatyti pasirinktų elementų fragmentaciją (elgsena puslapio/regiono/stulpelio
+          pertrūkių metu)</target>
+      </trans-unit>
+      <trans-unit id="s02f7ae451695e417">
+        <source>Grid options</source>
+        <target>Tinklelio parinktys</target>
+      </trans-unit>
+      <trans-unit id="se4c980b07af2341d">
+        <source>Set grid options (row, column, etc.) of selected elements</source>
+        <target>Nustatyti pasirinktų elementų tinklelio parinktis (eilutė, stulpelis ir t. t.)</target>
+      </trans-unit>
+      <trans-unit id="sebee375c65c0cd58">
+        <source>Image sizing</source>
+        <target>Vaizdo dydžio nustatymas</target>
+      </trans-unit>
+      <trans-unit id="saaf255f484959835">
+        <source>Set image sizing options of selected elements</source>
+        <target>Nustatyti pasirinktų elementų vaizdo dydžio parinktis</target>
+      </trans-unit>
+      <trans-unit id="s6ac7f151cff18f07">
+        <source>List options</source>
+        <target>Sąrašo parinktys</target>
+      </trans-unit>
+      <trans-unit id="s833cf35ed6049636">
+        <source>Set list options of selected elements</source>
+        <target>Nustatyti pasirinktų elementų sąrašo parinktis</target>
+      </trans-unit>
+      <trans-unit id="sea7f9a84b82663b8">
+        <source>Column break</source>
+        <target>Stulpelio pertrauka</target>
+      </trans-unit>
+      <trans-unit id="s0898264186c682fa">
+        <source>Apply column layout to selected elements</source>
+        <target>Stulpelių išdėstymo taikymas pasirinktiems elementams</target>
+      </trans-unit>
+      <trans-unit id="s687416d1ea01d0bb">
+        <source>Overflow behavior</source>
+        <target>Perpildymo elgsena</target>
+      </trans-unit>
+      <trans-unit id="sa5c062dc12553bbb">
+        <source>Set overflow behaviour of selected elements</source>
+        <target>Nustatyti pasirinktų elementų perpildymo elgseną</target>
+      </trans-unit>
+      <trans-unit id="s4a14e0d787c30116">
+        <source>Positioning</source>
+        <target>Padėties nustatymas</target>
+      </trans-unit>
+      <trans-unit id="s19d9b0051c5e3b45">
+        <source>Set positioning of selected elements</source>
+        <target>Nustatyti pasirinktų elementų padėtį</target>
+      </trans-unit>
+      <trans-unit id="sa559701e1cdc3331">
+        <source>Shaping</source>
+        <target>Formuoti</target>
+      </trans-unit>
+      <trans-unit id="s2dbeef0cb14e4f4d">
+        <source>Set shape of selected elements</source>
+        <target>Nustatyti pasirinktų elementų formą</target>
+      </trans-unit>
+      <trans-unit id="s04061a8e12259e3f">
+        <source>2D/3D transform</source>
+        <target>2D/3D transformacija</target>
+      </trans-unit>
+      <trans-unit id="sab4fb4f4ff5b43e4">
+        <source>Apply 2D or 3D transformations to selected elements</source>
+        <target>Pasirinktiems elementams taikyti 2D arba 3D transformacijas</target>
+      </trans-unit>
+      <trans-unit id="sf190149f9d8bbb2a">
+        <source>Writing mode</source>
+        <target>Rašymo režimas</target>
+      </trans-unit>
+      <trans-unit id="sdedc76f6a0a2583b">
+        <source>Set writing mode options of selected elements</source>
+        <target>Nustatyti pasirinktų elementų rašymo režimo parinktis</target>
+      </trans-unit>
+      <trans-unit id="s762e5704cc84089d">
+        <source>Set other style options of selected elements</source>
+        <target>Nustatyti kitas pasirinktų elementų stiliaus parinktis</target>
+      </trans-unit>
+      <trans-unit id="se6297163cac9d276">
+        <source>Edit source</source>
+        <target>Redaguoti šaltinį</target>
+      </trans-unit>
+      <trans-unit id="s281d957112b10f12">
+        <source>Edit the HTML of the document directly</source>
+        <target>Tiesiogiai redaguokite dokumento HTML</target>
+      </trans-unit>
+      <trans-unit id="s8f4be9f086eb530f">
+        <source>Undo</source>
+        <target>Panaikinti</target>
+      </trans-unit>
+      <trans-unit id="s7beb1e77e82363eb">
+        <source>Undo the last change in the active document</source>
+        <target>Atšaukti paskutinį aktyviojo dokumento pakeitimą</target>
+      </trans-unit>
+      <trans-unit id="s7417792bbe720149">
+        <source>Redo</source>
+        <target>Redo</target>
+      </trans-unit>
+      <trans-unit id="s640bc7710d0143ce">
+        <source>Redo the last undone change in the active document</source>
+        <target>Aktyviajame dokumente iš naujo atlikti paskutinį neatliktą pakeitimą</target>
+      </trans-unit>
+      <trans-unit id="s83420ad7b6a14db5">
+        <source>Toggle Dev Tools</source>
+        <target>Perjungti Dev įrankiai</target>
+      </trans-unit>
+      <trans-unit id="s7af555180b30a947">
+        <source>Open the developer tools</source>
+        <target>Atidarykite kūrėjo įrankius</target>
+      </trans-unit>
+      <trans-unit id="s8688d74dd3716d6e">
+        <source>Keyboard shortcuts for commands</source>
+        <target>Komandų klaviatūros spartieji klavišai</target>
+      </trans-unit>
+      <trans-unit id="sc3ac225273c8316b">
+        <source>General</source>
+        <target>Bendra</target>
+      </trans-unit>
+      <trans-unit id="s4caed5b7a7e5d89b">
+        <source>English</source>
+        <target>Anglų kalba</target>
+      </trans-unit>
+      <trans-unit id="s63e71d20d1eaca93">
+        <source>German</source>
+        <target>Vokiečių kalba</target>
+      </trans-unit>
+      <trans-unit id="se25e4f2cb77b8be8">
+        <source>Language for the WebWriter interface and new documents</source>
+        <target>"WebWriter" sąsajos kalba ir nauji dokumentai</target>
+      </trans-unit>
+      <trans-unit id="sefcf950b3cc4fc3b">
+        <source>Language</source>
+        <target>Kalba</target>
+      </trans-unit>
+      <trans-unit id="se3b4c857f91f80d7">
+        <source>Keyboard shortcuts</source>
+        <target>Spartieji klaviatūros klavišai</target>
+      </trans-unit>
+      <trans-unit id="s91c5921e7b46d4a6">
+        <source>You have unsaved changes. Are you sure you want to leave and discard them?</source>
+        <target>Neišsaugoti pakeitimai. Ar tikrai norite juos palikti ir išmesti?</target>
+      </trans-unit>
+      <trans-unit id="s268ecd1cef45a9a8">
+        <source>Are you sure?</source>
+        <target>Ar tikrai?</target>
+      </trans-unit>
+      <trans-unit id="sb430f5b4824de0d3">
+        <source>Choose a layout</source>
+        <target>Pasirinkite išdėstymą</target>
+      </trans-unit>
+      <trans-unit id="seaf97719986faf4f">
+        <source>Gap</source>
+        <target>Tarpas</target>
+      </trans-unit>
+      <trans-unit id="sffdadf0a576fd802">
+        <source>Height</source>
+        <target>Aukštis</target>
+      </trans-unit>
+      <trans-unit id="sab55faae8e165407">
+        <source>Padding&lt;br&gt; like gap</source>
+        <target>Padding&lt;br&gt; kaip tarpas</target>
+      </trans-unit>
+      <trans-unit id="sa645d315510dc09e">
+        <source>Choose path from disk</source>
+        <target>Pasirinkite kelią iš disko</target>
+      </trans-unit>
+      <trans-unit id="seabae79729c4b2ad">
+        <source>Toggle email</source>
+        <target>Perjungti el. paštą</target>
+      </trans-unit>
+      <trans-unit id="s34dcda3b0f9d5a98">
+        <source>Toggle url</source>
+        <target>Perjungti url</target>
+      </trans-unit>
+      <trans-unit id="sc3cfee84dbbf36ae">
+        <source>Local File</source>
+        <target>Vietinis failas</target>
+      </trans-unit>
+      <trans-unit id="s9896529e5cb20558">
+        <source>External File</source>
+        <target>Išorinis failas</target>
+      </trans-unit>
+      <trans-unit id="s7e0b179d4d1414eb">
+        <source>Enter link</source>
+        <target>Įveskite nuorodą</target>
+      </trans-unit>
+      <trans-unit id="sbe4a7c8f231739b3">
+        <source>or paste/drop/pick file</source>
+        <target>arba įklijuokite / numeskite / pasirinkite failą</target>
+      </trans-unit>
+      <trans-unit id="s8a4ff2bd9c13498c">
+        <source>Record</source>
+        <target>Įrašas</target>
+      </trans-unit>
+      <trans-unit id="s1a5230a71d9285c1">
+        <source>Capture</source>
+        <target>Užfiksuoti</target>
+      </trans-unit>
+      <trans-unit id="s2b8f50c64be440f7">
+        <source>Select 
+          <x id="0" equiv-text="${this.mediaType}"/>...
+        </source>
+        <target>Pasirinkite 
+          <x id="0" equiv-text="${this.mediaType}"/>... 
+        </target>
+      </trans-unit>
+      <trans-unit id="s739544d0c858c633">
+        <source>Or drop 
+          <x id="0" equiv-text="${this.mediaType}"/> here
+        </source>
+        <target>Arba atsisakykite 
+          <x id="0" equiv-text="${this.mediaType}"/> čia 
+        </target>
+      </trans-unit>
+      <trans-unit id="se58f06c2b0583ff7">
+        <source>Pick coordinates</source>
+        <target>Pasirinkite koordinates</target>
+      </trans-unit>
+      <trans-unit id="sded940efcadd8f10">
+        <source>Save your document</source>
+        <target>Išsaugokite dokumentą</target>
+      </trans-unit>
+      <trans-unit id="s6910ed6dbaba4807">
+        <source>Load a document</source>
+        <target>Įkelti dokumentą</target>
+      </trans-unit>
+      <trans-unit id="s8f533296a536965e">
+        <source>Save as...</source>
+        <target>Išsaugoti kaip...</target>
+      </trans-unit>
+      <trans-unit id="s1f0e5f8acab2f0d3">
+        <source>Load as...</source>
+        <target>Įkelti kaip...</target>
+      </trans-unit>
+      <trans-unit id="sa3c9339de23c1752">
+        <source>Format</source>
+        <target>Formatas</target>
+      </trans-unit>
+      <trans-unit id="s1cf730f96ac4f6b6">
+        <source>On...</source>
+        <target>Dėl...</target>
+      </trans-unit>
+      <trans-unit id="s13388f2a0641c5a9">
+        <source>From...</source>
+        <target>Iš...</target>
+      </trans-unit>
+      <trans-unit id="s61e136c0658e27d5">
+        <source>Protocol</source>
+        <target>Protokolas</target>
+      </trans-unit>
+      <trans-unit id="see2fcaedf9743ec6">
+        <source>Location</source>
+        <target>Vieta</target>
+      </trans-unit>
+      <trans-unit id="s2ceb11be2290bb1b">
+        <source>Cancel</source>
+        <target>Atšaukti</target>
+      </trans-unit>
+      <trans-unit id="s4f20edb48a6287c9">
+        <source>Load</source>
+        <target>Krovinys</target>
+      </trans-unit>
+      <trans-unit id="s851a7deea5984646">
+        <source>License as Creative Commons OER?</source>
+        <target>Licencija kaip Creative Commons OER?</target>
+      </trans-unit>
+      <trans-unit id="s2540844a4bc4d9ba">
+        <source>Require attribution?</source>
+        <target>Reikia nurodyti autorystę?</target>
+      </trans-unit>
+      <trans-unit id="sb0a974028c99ca6d">
+        <source>Allow adaptations?</source>
+        <target>Leisti pritaikyti?</target>
+      </trans-unit>
+      <trans-unit id="s77e594ddcc10c774">
+        <source>Allow commercial use?</source>
+        <target>Leisti naudoti komerciniais tikslais?</target>
+      </trans-unit>
+      <trans-unit id="sb8f855b49234b81b">
+        <source>Apply</source>
+        <target>Taikyti</target>
+      </trans-unit>
+      <trans-unit id="sb66beca1e766dcb3">
+        <source>Apply and import</source>
+        <target>Taikyti ir importuoti</target>
+      </trans-unit>
+      <trans-unit id="s3914cb410fca44d4">
+        <source>Import</source>
+        <target>Importas</target>
+      </trans-unit>
+      <trans-unit id="sed17285cd25d6389">
+        <source>Directory where package.json is located</source>
+        <target>Katalogas, kuriame yra package.json</target>
+      </trans-unit>
+      <trans-unit id="sc74e3567875ce255">
+        <source>Both the tag of your widget and the name of your NPM package</source>
+        <target>ir valdiklio žyma, ir NPM paketo pavadinimas</target>
+      </trans-unit>
+      <trans-unit id="s342b0cabfa672822">
+        <source>Help the user find your widget</source>
+        <target>Padėkite naudotojui rasti valdiklį</target>
+      </trans-unit>
+      <trans-unit id="sfdeef3dccf409f81">
+        <source>This keyword is required for widgets</source>
+        <target>Šis raktažodis reikalingas valdikliams</target>
+      </trans-unit>
+      <trans-unit id="h64cd12550420f6f1">
+        <source>Generate a 
+          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
+          <x id="1" equiv-text="&lt;/code&gt;"/> file
+        </source>
+        <target>Sukurti 
+          <x id="0" equiv-text="&lt;code&gt;"/>LICENCIJA 
+          <x id="1" equiv-text="&lt;/code&gt;"/> failą 
+        </target>
+      </trans-unit>
+      <trans-unit id="s0dc452999c129e15">
+        <source>Enable live reload</source>
+        <target>Įjungti tiesioginį perkrovimą</target>
+      </trans-unit>
+      <trans-unit id="s255857544a9d5ec0">
+        <source>Reset</source>
+        <target>Iš naujo nustatyti</target>
+      </trans-unit>
+      <trans-unit id="s2591806d7b222591">
+        <source>Reset changes</source>
+        <target>Iš naujo nustatyti pakeitimus</target>
+      </trans-unit>
+      <trans-unit id="s445b8acb9206db6e">
+        <source>Discard and cancel</source>
+        <target>Atmesti ir atšaukti</target>
+      </trans-unit>
+      <trans-unit id="sae3629911a62147f">
+        <source>JS Size:</source>
+        <target>JS dydis:</target>
+      </trans-unit>
+      <trans-unit id="s1357c9b016a9a631">
+        <source>CSS Size:</source>
+        <target>CSS dydis:</target>
+      </trans-unit>
+      <trans-unit id="sf1ed4eed4de3012e">
+        <source>View error</source>
+        <target>Peržiūrėti klaidą</target>
+      </trans-unit>
+      <trans-unit id="h75b0cad9d9e80648">
+        <source>Stop watching files at 
+          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/>.
+        </source>
+        <target>Nustokite žiūrėti failus adresu 
+          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/>. 
+        </target>
+      </trans-unit>
+      <trans-unit id="h0a75a995d1672be1">
+        <source>Start watching files at 
+          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/> and reload the package if a file is changed.
+        </source>
+        <target>Pradėkite žiūrėti failus adresu 
+          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/> ir iš naujo
+          įkelti paketą, jei failas pasikeičia. 
+        </target>
+      </trans-unit>
+      <trans-unit id="s8b0432eecbd8b034">
+        <source>Update</source>
+        <target>Atnaujinti</target>
+      </trans-unit>
+      <trans-unit id="sbc5bb5bb74d141b9">
+        <source>Uninstall</source>
+        <target>Pašalinti</target>
+      </trans-unit>
+      <trans-unit id="s6196153c4b0c1ea0">
+        <source>Install</source>
+        <target>Įdiekite</target>
+      </trans-unit>
+      <trans-unit id="sda174a4c93e84ce6">
+        <source>Error importing</source>
+        <target>Klaida importuojant</target>
+      </trans-unit>
+      <trans-unit id="s8cd9849cd37d7753">
+        <source>Either select an existing package directory to install or an empty directory to create a new package.</source>
+        <target>Pasirinkite esamą paketų katalogą, į kurį norite įdiegti paketą, arba tuščią
+          katalogą, į kurį norite sukurti naują paketą.</target>
+      </trans-unit>
+      <trans-unit id="sdb311229f4b5eb3b">
+        <source>Import local package</source>
+        <target>Importuoti vietinį paketą</target>
+      </trans-unit>
+      <trans-unit id="s65f6740a45cea0aa">
+        <source>Create local package</source>
+        <target>Sukurti vietinį paketą</target>
+      </trans-unit>
+      <trans-unit id="s12aac40ecd87dc12">
+        <source>View local application directory</source>
+        <target>Peržiūrėti vietinį programų katalogą</target>
+      </trans-unit>
+      <trans-unit id="s815a7e524eda76aa">
+        <source>Reset local application directory</source>
+        <target>Vietinių programų katalogo atstatymas</target>
+      </trans-unit>
+      <trans-unit id="s3a6538ae341633f6">
+        <source>Edit local package</source>
+        <target>Redaguoti vietinį paketą</target>
+      </trans-unit>
+      <trans-unit id="s9bf0b9da3f509795">
+        <source>Widget Package</source>
+        <target>Valdiklių paketas</target>
+      </trans-unit>
+      <trans-unit id="s8a7fa8a052138aef">
+        <source>Warning:</source>
+        <target>Įspėjimas:</target>
+      </trans-unit>
+      <trans-unit id="sad288b082f4d3521">
+        <source>You seem to be offline. While offline, you can't manage available or outdated packages.</source>
+        <target>Atrodo, kad esate neprisijungęs. Kai esate neprisijungę, negalite tvarkyti turimų
+          arba pasenusių paketų.</target>
+      </trans-unit>
+      <trans-unit id="sed8ec5e3c64fa25d">
+        <source>Total</source>
+        <target>Iš viso</target>
+      </trans-unit>
+      <trans-unit id="s8cfdd110c30d604d">
+        <source>No packages installed or available</source>
+        <target>Nėra įdiegtų arba prieinamų paketų</target>
+      </trans-unit>
+      <trans-unit id="s10e80d4c01c3cc21">
+        <source>Installed</source>
+        <target>Įdiegta</target>
+      </trans-unit>
+      <trans-unit id="s33b62827f665c461">
+        <source>No packages installed</source>
+        <target>Nėra įdiegtų paketų</target>
+      </trans-unit>
+      <trans-unit id="sd158a5fc0f062f18">
+        <source>Available</source>
+        <target>Galima rasti</target>
+      </trans-unit>
+      <trans-unit id="se432a7c0c144d458">
+        <source>No packages available</source>
+        <target>Paketų nėra</target>
+      </trans-unit>
+      <trans-unit id="s76cc1c6d9fab3a2d">
+        <source>Outdated</source>
+        <target>Pasenęs</target>
+      </trans-unit>
+      <trans-unit id="sf9559106e88ee46d">
+        <source>No packages outdated</source>
+        <target>Nėra pasenusių paketų</target>
+      </trans-unit>
+      <trans-unit id="se9b1fec72ffd8f48">
+        <source>Local</source>
+        <target>Vietinis</target>
+      </trans-unit>
+      <trans-unit id="sc7691fecb3373a42">
+        <source>No local packages</source>
+        <target>Vietinių paketų nėra</target>
+      </trans-unit>
+      <trans-unit id="keyCommand">
+        <source>⌘ Command/Win</source>
+        <target>⌘ Komanda / Win</target>
+      </trans-unit>
+      <trans-unit id="keyShift">
+        <source>⇧ Shift</source>
+        <target>⇧ Pamaina</target>
+      </trans-unit>
+      <trans-unit id="keyControl">
+        <source>^ Control</source>
+        <target>^ Kontrolė</target>
+      </trans-unit>
+      <trans-unit id="keyOption">
+        <source>⌥ Option/Alt</source>
+        <target>⌥ Pasirinktis / Alt</target>
+      </trans-unit>
+      <trans-unit id="s2692bc028fed91f1">
+        <source>⇪ Caps Lock</source>
+        <target>⇪ Caps Lock</target>
+      </trans-unit>
+      <trans-unit id="backspaceKey">
+        <source>⟵</source>
+        <target>⟵</target>
+      </trans-unit>
+      <trans-unit id="tabKey">
+        <source>⭾ Tab</source>
+        <target>⭾ Skirtukas</target>
+      </trans-unit>
+      <trans-unit id="clearKey">
+        <source>⎚ Clear</source>
+        <target>⎚ Išvalyti</target>
+      </trans-unit>
+      <trans-unit id="enterKey">
+        <source>↩ Enter</source>
+        <target>Įveskite</target>
+      </trans-unit>
+      <trans-unit id="escapeKey">
+        <source>⎋ Escape</source>
+        <target>⎋ Pabėgimas</target>
+      </trans-unit>
+      <trans-unit id="spaceKey">
+        <source>Space</source>
+        <target>Erdvė</target>
+      </trans-unit>
+      <trans-unit id="upKey">
+        <source>↑ Up</source>
+        <target>↑ Į viršų</target>
+      </trans-unit>
+      <trans-unit id="downKey">
+        <source>↓ Down</source>
+        <target>↓ žemyn</target>
+      </trans-unit>
+      <trans-unit id="leftKey">
+        <source>← Left</source>
+        <target>← Kairė</target>
+      </trans-unit>
+      <trans-unit id="rightKey">
+        <source>→ Right</source>
+        <target>→ Teisė</target>
+      </trans-unit>
+      <trans-unit id="homeKey">
+        <source>⤒ Home</source>
+        <target>⤒ Pagrindinis puslapis</target>
+      </trans-unit>
+      <trans-unit id="endKey">
+        <source>⤓ End</source>
+        <target>⤓ Pabaiga</target>
+      </trans-unit>
+      <trans-unit id="pageupKey">
+        <source>▲ Pageup</source>
+        <target>▲ puslapio atnaujinimas</target>
+      </trans-unit>
+      <trans-unit id="pagedownKey">
+        <source>▼ Pagedown</source>
+        <target>▼ Pagedown</target>
+      </trans-unit>
+      <trans-unit id="deleteKey">
+        <source>⌦ Delete</source>
+        <target>⌦ Ištrinti</target>
+      </trans-unit>
+      <trans-unit id="f1Key">
+        <source>F1</source>
+        <target>F1</target>
+      </trans-unit>
+      <trans-unit id="f2Key">
+        <source>F2</source>
+        <target>F2</target>
+      </trans-unit>
+      <trans-unit id="f3Key">
+        <source>F3</source>
+        <target>F3</target>
+      </trans-unit>
+      <trans-unit id="f4Key">
+        <source>F4</source>
+        <target>F4</target>
+      </trans-unit>
+      <trans-unit id="f5Key">
+        <source>F5</source>
+        <target>F5</target>
+      </trans-unit>
+      <trans-unit id="f6Key">
+        <source>F6</source>
+        <target>F6</target>
+      </trans-unit>
+      <trans-unit id="f7Key">
+        <source>F7</source>
+        <target>F7</target>
+      </trans-unit>
+      <trans-unit id="f8Key">
+        <source>F8</source>
+        <target>F8</target>
+      </trans-unit>
+      <trans-unit id="f9Key">
+        <source>F9</source>
+        <target>F9</target>
+      </trans-unit>
+      <trans-unit id="f10Key">
+        <source>F10</source>
+        <target>F10</target>
+      </trans-unit>
+      <trans-unit id="f11Key">
+        <source>F11</source>
+        <target>F11</target>
+      </trans-unit>
+      <trans-unit id="f12Key">
+        <source>F12</source>
+        <target>F12</target>
+      </trans-unit>
+      <trans-unit id="f13Key">
+        <source>F13</source>
+        <target>F13</target>
+      </trans-unit>
+      <trans-unit id="f14Key">
+        <source>F14</source>
+        <target>F14</target>
+      </trans-unit>
+      <trans-unit id="f15Key">
+        <source>F15</source>
+        <target>F15</target>
+      </trans-unit>
+      <trans-unit id="f16Key">
+        <source>F16</source>
+        <target>F16</target>
+      </trans-unit>
+      <trans-unit id="f17Key">
+        <source>F17</source>
+        <target>F17</target>
+      </trans-unit>
+      <trans-unit id="f18Key">
+        <source>F18</source>
+        <target>F18</target>
+      </trans-unit>
+      <trans-unit id="f19Key">
+        <source>F19</source>
+        <target>F19</target>
+      </trans-unit>
+      <trans-unit id="s7dea785045c3cc74">
+        <source>Press new key combination...</source>
+        <target>Paspauskite naują klavišų kombinaciją...</target>
+      </trans-unit>
+      <trans-unit id="s46d4abe6255cb9e1">
+        <source>Reassign shortcut</source>
+        <target>Iš naujo priskirti spartųjį klavišą</target>
+      </trans-unit>
+      <trans-unit id="sd1f44f1a8bc20e67">
+        <source>Email</source>
+        <target>El. paštas</target>
+      </trans-unit>
+      <trans-unit id="sf6e1665c7022a1f8">
+        <source>Password</source>
+        <target>Slaptažodis</target>
+      </trans-unit>
+      <trans-unit id="s151bc2eea7a032a4">
+        <source>-unchanged-</source>
+        <target>-nepakeistas-</target>
+      </trans-unit>
+      <trans-unit id="s61eacb19db252f5e">
+        <source>URL</source>
+        <target>URL</target>
+      </trans-unit>
+      <trans-unit id="s506b6a19d12f414c">
+        <source>Key</source>
+        <target>Pagrindinis</target>
+      </trans-unit>
+      <trans-unit id="sd3f402df8619ddcd">
+        <source>This information about you is automatically added to new documents. You can change this for each document in the metadata editor.</source>
+        <target>Ši informacija apie jus automatiškai įtraukiama į naujus dokumentus. Metaduomenų
+          redaktoriuje ją galite pakeisti kiekvienam dokumentui.</target>
+      </trans-unit>
+      <trans-unit id="s90105521fcc40453">
+        <source>WebWriter Cloud accounts allow you store documents online and share them with your students. Add an account here and it will be available as a location for saving, loading, sharing and opening documents.</source>
+        <target>"WebWriter Cloud" paskyrose galite saugoti dokumentus internete ir dalytis jais su
+          mokiniais. Pridėkite paskyrą čia ir ji bus prieinama kaip vieta dokumentams išsaugoti,
+          įkelti, bendrinti ir atidaryti.</target>
+      </trans-unit>
+      <trans-unit id="s2712dc5641a33226">
+        <source>Package registry accounts are intended for developers and allow you to configure one or more registries</source>
+        <target>Paketų registrų paskyros skirtos kūrėjams ir leidžia konfigūruoti vieną ar daugiau
+          registrų.</target>
+      </trans-unit>
+      <trans-unit id="s669b18c6d2d9c95b">
+        <source>None</source>
+        <target>Nėra</target>
+      </trans-unit>
+      <trans-unit id="sef49aec68fd1dc66">
+        <source>Name</source>
+        <target>Pavadinimas</target>
+      </trans-unit>
+      <trans-unit id="s7cfe12cd14df9950">
+        <source>Sign out</source>
+        <target>Pasirašyti</target>
+      </trans-unit>
+      <trans-unit id="s5e27738a2e8eb763">
+        <source>Sign in</source>
+        <target>Prisijunkite</target>
+      </trans-unit>
+      <trans-unit id="sf28903d4ca0ddcfc">
+        <source>Remove this account</source>
+        <target>Pašalinti šią paskyrą</target>
+      </trans-unit>
+      <trans-unit id="sb85b1e36579852a6">
+        <source>Invalid email or password</source>
+        <target>Neteisingas el. pašto adresas arba slaptažodis</target>
+      </trans-unit>
+      <trans-unit id="s0bdca49248ba4820">
+        <source>Shortcuts</source>
+        <target>Trumpieji keliai</target>
+      </trans-unit>
+      <trans-unit id="se48bd9e6c2a3109d">
+        <source>Accounts</source>
+        <target>Sąskaitos</target>
+      </trans-unit>
+      <trans-unit id="s6988ab5d47593a26">
+        <source>You have the latest version of WebWriter.</source>
+        <target>Turite naujausią "WebWriter" versiją.</target>
+      </trans-unit>
+      <trans-unit id="saf440a0a592f2835">
+        <source>Update to</source>
+        <target>Atnaujinti iki</target>
+      </trans-unit>
+      <trans-unit id="s564d1648b1ceee9f">
+        <source>Up to date</source>
+        <target>Atnaujinta</target>
+      </trans-unit>
+      <trans-unit id="sf6673729c03ae999">
+        <source>Reset WebWriter</source>
+        <target>Iš naujo nustatyti "WebWriter</target>
+      </trans-unit>
+      <trans-unit id="sf1e79171c4856543">
+        <source>Are you sure? This action can't be reversed, all your settings will be deleted and reset.</source>
+        <target>Ar tikrai? Šio veiksmo negalima atšaukti, visi jūsų nustatymai bus ištrinti ir iš
+          naujo nustatyti.</target>
+      </trans-unit>
+      <trans-unit id="se1b03a74b09ba7f0">
+        <source>App Folder</source>
+        <target>Programėlių aplankas</target>
+      </trans-unit>
+      <trans-unit id="sc221faca1ecb4aee">
+        <source>Anonymous</source>
+        <target>Anoniminis</target>
+      </trans-unit>
+      <trans-unit id="sdcd1efc06af80825">
+        <source>All rights reserved</source>
+        <target>Visos teisės saugomos</target>
+      </trans-unit>
+      <trans-unit id="s78789724e789221c">
+        <source>Size</source>
+        <target>Dydis</target>
+      </trans-unit>
+      <trans-unit id="s1b4a36fce2456660">
+        <source>Font Family</source>
+        <target>Šriftų šeima</target>
+      </trans-unit>
+      <trans-unit id="s11326fd2590f4e5e">
+        <source>Default</source>
+        <target>Numatytoji</target>
+      </trans-unit>
+      <trans-unit id="s9c356016f81585f6">
+        <source>Background Color</source>
+        <target>Fono spalva</target>
+      </trans-unit>
+      <trans-unit id="s1f74bdf32b51a5fc">
+        <source>Background Image</source>
+        <target>Fono paveikslėlis</target>
+      </trans-unit>
+      <trans-unit id="s927d796559f49439">
+        <source>Background Origin</source>
+        <target>Pagrindinė informacija Kilmė</target>
+      </trans-unit>
+      <trans-unit id="s1637c7d1a30629e2">
+        <source>Border Box</source>
+        <target>Pasienio langelis</target>
+      </trans-unit>
+      <trans-unit id="scd15088c39fe9edf">
+        <source>Padding Box</source>
+        <target>Langelis "Padding Box</target>
+      </trans-unit>
+      <trans-unit id="s1db591f5a54dbfd3">
+        <source>Content Box</source>
+        <target>Turinio langelis</target>
+      </trans-unit>
+      <trans-unit id="sa01e7bf33563ef72">
+        <source>Background Attachment</source>
+        <target>Pagrindiniai duomenys Priedas</target>
+      </trans-unit>
+      <trans-unit id="sd319aae1401f1e19">
+        <source>Fixed</source>
+        <target>Fiksuota</target>
+      </trans-unit>
+      <trans-unit id="sa7698b3d20a6d1ec">
+        <source>Scroll</source>
+        <target>Slinkti</target>
+      </trans-unit>
+      <trans-unit id="s89bca7498f20e041">
+        <source>Background Clip</source>
+        <target>Fono klipas</target>
+      </trans-unit>
+      <trans-unit id="s2492f5fb1b05b45e">
+        <source>Text</source>
+        <target>Tekstas</target>
+      </trans-unit>
+      <trans-unit id="s67d6d8f179e655df">
+        <source>Hide advanced styling</source>
+        <target>Paslėpti išplėstinį stilių</target>
+      </trans-unit>
+      <trans-unit id="s84e5eb4dc1ad9d98">
+        <source>Show advanced styling</source>
+        <target>Rodyti išplėstinį stilių</target>
+      </trans-unit>
+      <trans-unit id="s29acfd2778e8c377">
+        <source>Hide advanced text formatting</source>
+        <target>Paslėpti išplėstinį teksto formatavimą</target>
+      </trans-unit>
+      <trans-unit id="s1a1acc902e6668e0">
+        <source>Show advanced text formatting</source>
+        <target>Rodyti išplėstinį teksto formatavimą</target>
+      </trans-unit>
+      <trans-unit id="s4fd2e638aabb0bb3">
+        <source>WebWriter supports embedding many different sources. Simply paste a link to content from:</source>
+        <target>"WebWriter" palaiko daugelio skirtingų šaltinių įterpimą. Tiesiog įklijuokite
+          nuorodą į turinį iš:</target>
+      </trans-unit>
+      <trans-unit id="sa79167651dce1e80">
+        <source>Alternate text</source>
+        <target>Alternatyvus tekstas</target>
+      </trans-unit>
+      <trans-unit id="sa8bbe0197d31b423">
+        <source>Short description</source>
+        <target>Trumpas aprašymas</target>
+      </trans-unit>
+      <trans-unit id="seccd05955adb76bc">
+        <source>Poster</source>
+        <target>Plakatas</target>
+      </trans-unit>
+      <trans-unit id="s42e470ef1d707a28">
+        <source>Autoplay</source>
+        <target>Automatinis paleidimas</target>
+      </trans-unit>
+      <trans-unit id="s83cd32b685ccc9b7">
+        <source>Controls</source>
+        <target>Valdikliai</target>
+      </trans-unit>
+      <trans-unit id="s4efee5b48a4593cb">
+        <source>Loop</source>
+        <target>Kilpa</target>
+      </trans-unit>
+      <trans-unit id="se0f67eae944f8f94">
+        <source>Mute</source>
+        <target>Nutildyti</target>
+      </trans-unit>
+      <trans-unit id="se036b53f145441cd">
+        <source>Mixed Content</source>
+        <target>Mišrus turinys</target>
+      </trans-unit>
+      <trans-unit id="s651f3a92741d9520">
+        <source>Everything</source>
+        <target>Viskas</target>
+      </trans-unit>
+      <trans-unit id="sddc49047f66a64ab">
+        <source>No description provided</source>
+        <target>Aprašymas nepateiktas</target>
+      </trans-unit>
+      <trans-unit id="s1641ab440bf4daa4">
+        <source>Update this widget package</source>
+        <target>Atnaujinti šį valdiklių paketą</target>
+      </trans-unit>
+      <trans-unit id="sbd40f40cbadd38d5">
+        <source>Remove this widget package</source>
+        <target>Pašalinti šį valdiklių paketą</target>
+      </trans-unit>
+      <trans-unit id="s54897f2764b0e4d0">
+        <source>Install this widget package</source>
+        <target>Įdiekite šį valdiklių paketą</target>
+      </trans-unit>
+      <trans-unit id="s985f2db57913324b">
+        <source>Manage packages</source>
+        <target>Tvarkyti paketus</target>
+      </trans-unit>
+      <trans-unit id="scdf536b65be39ec5">
+        <source> Create/import</source>
+        <target> Sukurti / importuoti</target>
+      </trans-unit>
+      <trans-unit id="sf2514d5dc78b1654">
+        <source>Insert widget</source>
+        <target>Įterpti valdiklį</target>
+      </trans-unit>
+      <trans-unit id="s1857db526dc4dcdd">
+        <source>Create package</source>
+        <target>Sukurti paketą</target>
+      </trans-unit>
+      <trans-unit id="sd2addf69477cd4b4">
+        <source>Import package</source>
+        <target>Importo paketas</target>
+      </trans-unit>
+      <trans-unit id="s7de0061f53ba7472">
+        <source>Error importing </source>
+        <target>Klaida importuojant </target>
+      </trans-unit>
+      <trans-unit id="s00065e45db8c0441">
+        <source>See developer tools for more details</source>
+        <target>Išsamesnės informacijos ieškokite kūrėjų įrankiuose</target>
+      </trans-unit>
+      <trans-unit id="s812cbda653daaeba">
+        <source>This feature is not implemented yet</source>
+        <target>Ši funkcija dar neįgyvendinta</target>
+      </trans-unit>
+      <trans-unit id="s35aeaff1425bca9e">
+        <source>WebWriter does not support media of type </source>
+        <target>"WebWriter" nepalaiko medijos tipo </target>
+      </trans-unit>
+      <trans-unit id="sb199b34dca0a4cfc">
+        <source>Enter content here...</source>
+        <target>Įveskite turinį čia...</target>
+      </trans-unit>
+      <trans-unit id="s775056d1cb76fbe9">
+        <source>Headline</source>
+        <target>Antraštė</target>
+      </trans-unit>
+      <trans-unit id="scf735dfae10f3870">
+        <source>Educational</source>
+        <target>Švietimas</target>
+      </trans-unit>
+      <trans-unit id="s11fdceabe7befeff">
+        <source>Accessibility</source>
+        <target>Prieinamumas</target>
+      </trans-unit>
+      <trans-unit id="s99f110d27e30b289">
+        <source>Title</source>
+        <target>Pavadinimas</target>
+      </trans-unit>
+      <trans-unit id="sef73fe18e351eb35">
+        <source>Keywords</source>
+        <target>Raktiniai žodžiai</target>
+      </trans-unit>
+      <trans-unit id="s63d894b1ddb06289">
+        <source>Description</source>
+        <target>Aprašymas</target>
+      </trans-unit>
+      <trans-unit id="s01d32b35baa3b676">
+        <source>Author</source>
+        <target>Autorius</target>
+      </trans-unit>
+      <trans-unit id="s17597a8bb4810524">
+        <source>License</source>
+        <target>Licencija</target>
+      </trans-unit>
+      <trans-unit id="sdc48456f9a27ae02">
+        <source>Generator</source>
+        <target>Generatorius</target>
+      </trans-unit>
+      <trans-unit id="s8d342ecaa9e75b9b">
+        <source>Relationship</source>
+        <target>Santykiai</target>
+      </trans-unit>
+      <trans-unit id="s4ea0f21fc2a338a1">
+        <source>Move up</source>
+        <target>Pereiti į aukštesnį lygį</target>
+      </trans-unit>
+      <trans-unit id="sb233557012dcb328">
+        <source>Move down</source>
+        <target>Perkelkite žemyn</target>
+      </trans-unit>
+      <trans-unit id="s3d09398e555ee5f9">
+        <source>Advanced Options</source>
+        <target>Išplėstinės parinktys</target>
+      </trans-unit>
+      <trans-unit id="s17fb3f4805f4f4b9">
+        <source>Remove field</source>
+        <target>Pašalinti lauką</target>
+      </trans-unit>
+      <trans-unit id="sa6f8d27bca557059">
+        <source>Move meta/link/style elements up/down into this element</source>
+        <target>Perkelti meta / nuorodų / stiliaus elementus aukštyn / žemyn į šį elementą</target>
+      </trans-unit>
+      <trans-unit id="s6dadeaaee49d6d18">
+        <source>Meta</source>
+        <target>Meta</target>
+      </trans-unit>
+      <trans-unit id="s252a52330d32b900">
+        <source>Metadata</source>
+        <target>Metaduomenys</target>
+      </trans-unit>
+      <trans-unit id="s6827930ef1aeaf99">
+        <source>Base URL</source>
+        <target>Bazinis URL adresas</target>
+      </trans-unit>
+      <trans-unit id="s1ca22ce85e074da5">
+        <source>Pragma</source>
+        <target>Pragma</target>
+      </trans-unit>
+      <trans-unit id="s064339c229374050">
+        <source>Encoding</source>
+        <target>Kodavimas</target>
+      </trans-unit>
+      <trans-unit id="saab875d8cfcfe712">
+        <source>Theme</source>
+        <target>Tema</target>
+      </trans-unit>
+      <trans-unit id="sa417644bef21a9aa">
+        <source>Unnamed Theme</source>
+        <target>Neįvardyta tema</target>
+      </trans-unit>
+      <trans-unit id="saa33768e03c45fc8">
+        <source>File Size</source>
+        <target>Failo dydis</target>
+      </trans-unit>
+      <trans-unit id="s3f06e9abb6ebcb79">
+        <source>Characters</source>
+        <target>Personažai</target>
+      </trans-unit>
+      <trans-unit id="s0f350bc4e538e3ea">
+        <source>Words</source>
+        <target>Žodžiai</target>
+      </trans-unit>
+      <trans-unit id="s106b274b5af798e5">
+        <source>Sentences</source>
+        <target>Sakiniai</target>
+      </trans-unit>
+      <trans-unit id="s97aa76056a81bd36">
+        <source>Metrics</source>
+        <target>Metrikos</target>
+      </trans-unit>
+      <trans-unit id="s94d2eee44b292567">
+        <source>Toggle advanced options</source>
+        <target>Išplėstinių parinkčių perjungimas</target>
+      </trans-unit>
+      <trans-unit id="s98977a87d1b93941">
+        <source>Reset information, styles and scripts</source>
+        <target>Informacijos, stilių ir scenarijų atstatymas</target>
+      </trans-unit>
+      <trans-unit id="s543906d1db8b2283">
+        <source>Edit </source>
+        <target>Redaguoti </target>
+      </trans-unit>
+      <trans-unit id="sbba865d4b437944f">
+        <source>Attribute</source>
+        <target>Atributas</target>
+      </trans-unit>
+      <trans-unit id="s16b9446e3a70e1f4">
+        <source>Attributes</source>
+        <target>Atributai</target>
+      </trans-unit>
+      <trans-unit id="sf471ec2496f904cc">
+        <source>Discard changes</source>
+        <target>Atmesti pakeitimus</target>
+      </trans-unit>
+      <trans-unit id="s418f2020fe996832">
+        <source>Confirm changes</source>
+        <target>Patvirtinkite pakeitimus</target>
+      </trans-unit>
+      <trans-unit id="sba509fd8ed61d1d5">
+        <source>Unsaved File</source>
+        <target>Neišsaugotas failas</target>
+      </trans-unit>
+      <trans-unit id="sef00c258bc1ecf1e">
+        <source>This explorable has unsaved changes.</source>
+        <target>Šis tyrinėjamasis turi neišsaugotų pakeitimų.</target>
+      </trans-unit>
+      <trans-unit id="s731678e227a20559">
+        <source>This Device</source>
+        <target>Šis įrenginys</target>
+      </trans-unit>
+      <trans-unit id="s71940c32987f675f">
+        <source>WebWriter Cloud</source>
+        <target>"WebWriter Cloud</target>
+      </trans-unit>
+      <trans-unit id="s99a990f3841ad283">
+        <source>Files of </source>
+        <target>Failai </target>
+      </trans-unit>
+      <trans-unit id="s3eb6d1e6e79ed7c4">
+        <source>No documents found</source>
+        <target>Dokumentų nerasta</target>
+      </trans-unit>
+      <trans-unit id="s4e2562fe3990e621">
+        <source>Error connecting</source>
+        <target>Klaida jungiantis</target>
+      </trans-unit>
+      <trans-unit id="sf52d840949a980d1">
+        <source>
+          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
+        </source>
+        <target>
+          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
+          bus ištrintas visam laikui. Ar tikrai? 
+        </target>
+      </trans-unit>
+      <trans-unit id="s9b7cd8860c8fc922">
+        <source>
+          <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
+        </source>
+        <target>
+          <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
+          bus perrašytas. Ar esate tikri? 
+        </target>
+      </trans-unit>
+      <trans-unit id="sfdb1e4d90981a535">
+        <source>Share this document</source>
+        <target>Dalytis šiuo dokumentu</target>
+      </trans-unit>
+      <trans-unit id="s1c3fc313a9184670">
+        <source>Public Link</source>
+        <target>Viešoji nuoroda</target>
+      </trans-unit>
+      <trans-unit id="sc28864200d2a3799">
+        <source>Copy QR Code as image</source>
+        <target>Nukopijuokite QR kodą kaip paveikslėlį</target>
+      </trans-unit>
+      <trans-unit id="sfc815c9078bba30a">
+        <source>Download QR Code as image</source>
+        <target>Atsisiųsti QR kodą kaip paveikslėlį</target>
+      </trans-unit>
+      <trans-unit id="s3a5ca02f282d247e">
+        <source>Share...</source>
+        <target>Dalytis...</target>
+      </trans-unit>
+      <trans-unit id="sda2d76b976502a8d">
+        <source>Open...</source>
+        <target>Atviras...</target>
+      </trans-unit>
+      <trans-unit id="sb26035b596566abf">
+        <source>Unnamed</source>
+        <target>Neįvardyta</target>
+      </trans-unit>
+      <trans-unit id="s4cb38675a21b2c98">
+        <source>Unsupported property type '${desc.type}' (processing as JSON)</source>
+        <target>Nepalaikomas savybės tipas '${desc.type}' (apdorojama kaip JSON)</target>
+      </trans-unit>
+      <trans-unit id="sa00df4e39c72d3b4">
+        <source>
+          <x id="0" equiv-text="${desc.widget}"/> is not supported
+        </source>
+        <target>
+          <x id="0" equiv-text="${desc.widget}"/> nepalaikomas 
+        </target>
+      </trans-unit>
+      <trans-unit id="sf65df67a03bebe4b">
+        <source>Required for this widget</source>
+        <target>Būtinas šiam valdikliui</target>
+      </trans-unit>
+      <trans-unit id="s8a9eb438abac7c6a">
+        <source>Labels</source>
+        <target>Etiketės</target>
+      </trans-unit>
+      <trans-unit id="sdef34fe08bb28b09">
+        <source>Chinese (Simplified)</source>
+        <target>Kinų kalba (supaprastinta)</target>
+      </trans-unit>
+      <trans-unit id="sf1868dc19e3917bb">
+        <source>Spanish</source>
+        <target>Ispanų kalba</target>
+      </trans-unit>
+      <trans-unit id="s75a27f43413e02c5">
+        <source>French</source>
+        <target>Prancūzų kalba</target>
+      </trans-unit>
+      <trans-unit id="scf932840a69dbb7c">
+        <source>Portuguese</source>
+        <target>Portugalų kalba</target>
+      </trans-unit>
+      <trans-unit id="sa30c12014e955946">
+        <source>Russian</source>
+        <target>Rusų kalba</target>
+      </trans-unit>
+      <trans-unit id="seb8982ae8c3cdcc5">
+        <source>Indonesian</source>
+        <target>Indonezijos</target>
+      </trans-unit>
+      <trans-unit id="sdd35b688281b6dea">
+        <source>Japanese</source>
+        <target>Japonų</target>
+      </trans-unit>
+      <trans-unit id="s9d2d00982edafabb">
+        <source>Turkish</source>
+        <target>Turkijos</target>
+      </trans-unit>
+      <trans-unit id="s94d61907ee22a8c1">
+        <source>Korean</source>
+        <target>Korėjiečių kalba</target>
+      </trans-unit>
+      <trans-unit id="sd48cc52117f4d68b">
+        <source>Italian</source>
+        <target>Italų kalba</target>
+      </trans-unit>
+      <trans-unit id="sffa395f64ec6ac36">
+        <source>Bulgarian</source>
+        <target>Bulgarų</target>
+      </trans-unit>
+      <trans-unit id="sc94e314312a8900c">
+        <source>Czech</source>
+        <target>Čekijos</target>
+      </trans-unit>
+      <trans-unit id="sd9c21e5f60d6bdd8">
+        <source>Danish</source>
+        <target>Danų</target>
+      </trans-unit>
+      <trans-unit id="scf00d48fd5953a03">
+        <source>Greek</source>
+        <target>Graikų kalba</target>
+      </trans-unit>
+      <trans-unit id="sa6607436f60ccc1a">
+        <source>Estonian</source>
+        <target>Estų kalba</target>
+      </trans-unit>
+      <trans-unit id="sc98b103772de63f4">
+        <source>Finnish</source>
+        <target>Suomijos</target>
+      </trans-unit>
+      <trans-unit id="sda9254d1f1228e1a">
+        <source>Hungarian</source>
+        <target>Vengrų</target>
+      </trans-unit>
+      <trans-unit id="sb2dc787b0983ebc6">
+        <source>Lithuanian</source>
+        <target>Lietuvių kalba</target>
+      </trans-unit>
+      <trans-unit id="sd3dcb76f7b28adb8">
+        <source>Latvian</source>
+        <target>Latvijos</target>
+      </trans-unit>
+      <trans-unit id="s5941292bb77281ab">
+        <source>Norwegian Bokmål</source>
+        <target>Norvegų bokmål</target>
+      </trans-unit>
+      <trans-unit id="s95d56e58f816d211">
+        <source>Dutch</source>
+        <target>Olandų kalba</target>
+      </trans-unit>
+      <trans-unit id="s03f49e598ffb11cc">
+        <source>Polish</source>
+        <target>Lenkų kalba</target>
+      </trans-unit>
+      <trans-unit id="sc1aa1f6051b7102a">
+        <source>Romanian</source>
+        <target>Rumunijos</target>
+      </trans-unit>
+      <trans-unit id="se0cda6b80a1bb50f">
+        <source>Slovak</source>
+        <target>Slovakų</target>
+      </trans-unit>
+      <trans-unit id="se96d43a515b8451c">
+        <source>Slovenian</source>
+        <target>Slovėnijos</target>
+      </trans-unit>
+      <trans-unit id="sae185e6af80ec81e">
+        <source>Swedish</source>
+        <target>Švedų kalba</target>
+      </trans-unit>
+      <trans-unit id="sc4ee3e4ee994dafd">
+        <source>Ukrainian</source>
+        <target>Ukrainiečių</target>
+      </trans-unit>
+      <trans-unit id="s082869038c117fe5">
+        <source>Portuguese (Brazil)</source>
+        <target>portugalų kalba (Brazilija)</target>
+      </trans-unit>
+    </body>
+  </file>
+</xliff>

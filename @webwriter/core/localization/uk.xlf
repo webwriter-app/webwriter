@@ -1,0 +1,2337 @@
+<xliff xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:oasis:names:tc:xliff:document:1.2 http://docs.oasis-open.org/xliff/v1.2/os/xliff-core-1.2-strict.xsd" xmlns="urn:oasis:names:tc:xliff:document:1.2" version="1.2">
+  <file original="lit-localize-inputs" datatype="plaintext" source-language="en" target-language="uk">
+    <body>
+      <trans-unit id="sa311a24c1471a974">
+        <source>Document</source>
+        <target>Документ</target>
+      </trans-unit>
+      <trans-unit id="sf9f2c719a04066ec">
+        <source>App</source>
+        <target>Додаток</target>
+      </trans-unit>
+      <trans-unit id="sa75b95980cd80e78">
+        <source>Editor</source>
+        <target>Редактор</target>
+      </trans-unit>
+      <trans-unit id="s2a75c946ef4dcab7">
+        <source>Miscellaneous</source>
+        <target>Різне</target>
+      </trans-unit>
+      <trans-unit id="s33f85f24c0f5f008">
+        <source>Save</source>
+        <target>Зберегти</target>
+      </trans-unit>
+      <trans-unit id="s0c883713b83616a8">
+        <source>Save the active document</source>
+        <target>Збережіть активний документ</target>
+      </trans-unit>
+      <trans-unit id="s8670e5ad3bf0dcf8">
+        <source>Save As</source>
+        <target>Зберегти як</target>
+      </trans-unit>
+      <trans-unit id="s38980f98cb07ceb8">
+        <source>Save the active document as a copy</source>
+        <target>Збережіть активний документ як копію</target>
+      </trans-unit>
+      <trans-unit id="sa37fee6a52d18063">
+        <source>Delete document</source>
+        <target>Видалити документ</target>
+      </trans-unit>
+      <trans-unit id="sf64a8229a8136552">
+        <source>Delete a document</source>
+        <target>Видалення документа</target>
+      </trans-unit>
+      <trans-unit id="s2df075aface0dab8">
+        <source>Share</source>
+        <target>Поділіться</target>
+      </trans-unit>
+      <trans-unit id="sb7fb7568f6883ab8">
+        <source>Share the active document</source>
+        <target>Поділіться активним документом</target>
+      </trans-unit>
+      <trans-unit id="seec6798afe90ffc8">
+        <source>Print</source>
+        <target>Друк</target>
+      </trans-unit>
+      <trans-unit id="s600fd23c9ce971e8">
+        <source>Print the active document</source>
+        <target>Друк активного документа</target>
+      </trans-unit>
+      <trans-unit id="s417b90913e05bc17">
+        <source>Preview</source>
+        <target>Попередній перегляд</target>
+      </trans-unit>
+      <trans-unit id="safc6f203342d09e2">
+        <source>Toggles the preview for the active document</source>
+        <target>Вмикає попередній перегляд для активного документа</target>
+      </trans-unit>
+      <trans-unit id="s10f3845975a0351e">
+        <source>Edit Metadata</source>
+        <target>Редагувати метадані</target>
+      </trans-unit>
+      <trans-unit id="sea6e7291e27ec53f">
+        <source>Toggles the metadata editor</source>
+        <target>Вмикає редактор метаданих</target>
+      </trans-unit>
+      <trans-unit id="s70178e04a3b691b6">
+        <source>Open Settings</source>
+        <target>Відкрийте Налаштування</target>
+      </trans-unit>
+      <trans-unit id="s0816468df86e4036">
+        <source>Opens the settings</source>
+        <target>Відкриває налаштування</target>
+      </trans-unit>
+      <trans-unit id="s9d8b8aa2b404c2c8">
+        <source>Settings</source>
+        <target>Налаштування</target>
+      </trans-unit>
+      <trans-unit id="s1f7698c061c208c9">
+        <source>Open</source>
+        <target>Відкрито</target>
+      </trans-unit>
+      <trans-unit id="s16f2f1c2c516d307">
+        <source>Open a document</source>
+        <target>Відкрийте документ</target>
+      </trans-unit>
+      <trans-unit id="s382a2aa3984474dd">
+        <source>Create</source>
+        <target>Створити</target>
+      </trans-unit>
+      <trans-unit id="s64dc1fc7e3db45c9">
+        <source>Create a new document</source>
+        <target>Створіть новий документ</target>
+      </trans-unit>
+      <trans-unit id="sd10fdbe6caf9a998">
+        <source>Line Break</source>
+        <target>Розрив рядка</target>
+      </trans-unit>
+      <trans-unit id="sbefb6064cba01844">
+        <source>Insert a line break</source>
+        <target>Вставте розрив рядка</target>
+      </trans-unit>
+      <trans-unit id="s410c465a5993f82d">
+        <source>Line Break Opportunity</source>
+        <target>Можливість розриву рядка</target>
+      </trans-unit>
+      <trans-unit id="s8df30fe2a50d3479">
+        <source>Insert a line break opportunity</source>
+        <target>Можливість вставити розрив рядка</target>
+      </trans-unit>
+      <trans-unit id="sf7c0eba7c822e3d6">
+        <source>Bold</source>
+        <target>Сміливіше.</target>
+      </trans-unit>
+      <trans-unit id="sb9e9a7dd45966756">
+        <source>Mark the selection as bold</source>
+        <target>Виділіть виділення жирним шрифтом</target>
+      </trans-unit>
+      <trans-unit id="s523eb9043213ff0d">
+        <source>Italic</source>
+        <target>Курсив</target>
+      </trans-unit>
+      <trans-unit id="s92f846b9be2e8e8d">
+        <source>Mark the selection as italic</source>
+        <target>Виділіть виділення курсивом</target>
+      </trans-unit>
+      <trans-unit id="sb206d700d26b14ff">
+        <source>Underline</source>
+        <target>Підкреслити</target>
+      </trans-unit>
+      <trans-unit id="s09c3f1d21de14ae1">
+        <source>Mark the selection as underlined</source>
+        <target>Позначте вибір підкресленим кольором</target>
+      </trans-unit>
+      <trans-unit id="s99b38e000175cc84">
+        <source>Strikethrough</source>
+        <target>Закреслено</target>
+      </trans-unit>
+      <trans-unit id="s0396202b716732ec">
+        <source>Mark the selection as struck through</source>
+        <target>Позначте вибір як закреслений</target>
+      </trans-unit>
+      <trans-unit id="sdf946172dfa0328f">
+        <source>Superscript</source>
+        <target>Надрядковий індекс</target>
+      </trans-unit>
+      <trans-unit id="saf3da7c95cb17260">
+        <source>Mark the selection as a superscript</source>
+        <target>Позначте виділення надрядковим знаком</target>
+      </trans-unit>
+      <trans-unit id="s587ac858dd80f6fa">
+        <source>Subscript</source>
+        <target>Підпис</target>
+      </trans-unit>
+      <trans-unit id="sc5cb39478b9b7625">
+        <source>Mark the selection as a subscript</source>
+        <target>Позначте виділення як підпис</target>
+      </trans-unit>
+      <trans-unit id="s3643189d1abbb7f4">
+        <source>Code</source>
+        <target>Код</target>
+      </trans-unit>
+      <trans-unit id="sf86bd4d2982f3b74">
+        <source>Mark the selection as code</source>
+        <target>Позначте вибір як код</target>
+      </trans-unit>
+      <trans-unit id="s3cf89cb47fdde7e9">
+        <source>Link</source>
+        <target>Посилання</target>
+      </trans-unit>
+      <trans-unit id="sf8e82313fa411494">
+        <source>Mark the selection as a link</source>
+        <target>Позначте вибір як посилання</target>
+      </trans-unit>
+      <trans-unit id="sd29dc07235eea0f5">
+        <source>Quotation</source>
+        <target>Цитата</target>
+      </trans-unit>
+      <trans-unit id="s0e4862e87c7d53ce">
+        <source>Mark the selection as a quotation</source>
+        <target>Позначте виділення як цитату</target>
+      </trans-unit>
+      <trans-unit id="sfb9b6edb0ed378c9">
+        <source>Citation Source</source>
+        <target>Джерело цитування</target>
+      </trans-unit>
+      <trans-unit id="s4a894f57eba1cf1e">
+        <source>Keyboard Shortcut</source>
+        <target>Комбінація клавіш</target>
+      </trans-unit>
+      <trans-unit id="s41c724f0698148e9">
+        <source>Mark the selection as a keyboard shortcut</source>
+        <target>Позначте виділення як комбінацію клавіш</target>
+      </trans-unit>
+      <trans-unit id="s0ca5c0460199cba1">
+        <source>Abbreviation</source>
+        <target>Абревіатура</target>
+      </trans-unit>
+      <trans-unit id="s2206c42e5b835e6e">
+        <source>Mark the selection as an abbreviation</source>
+        <target>Позначте вибір як абревіатуру</target>
+      </trans-unit>
+      <trans-unit id="sf67571992e7dc88e">
+        <source>Full Term</source>
+        <target>Повний термін</target>
+      </trans-unit>
+      <trans-unit id="s1dfb744260fb3a01">
+        <source>Bidirectional Isolate</source>
+        <target>Двонаправлений ізолятор</target>
+      </trans-unit>
+      <trans-unit id="sa39c7ac1d37f3bce">
+        <source>Mark the selection as a 'bidirectional isolate'</source>
+        <target>Позначте виділення як "двонаправлену ізоляцію</target>
+      </trans-unit>
+      <trans-unit id="s4c402ff5355fd310">
+        <source>Bidirectional Override</source>
+        <target>Двонаправлене перевизначення</target>
+      </trans-unit>
+      <trans-unit id="s02ab1ea8e5100fc1">
+        <source>Mark the selection as a 'bidirectional override'</source>
+        <target>Позначте вибір як "двонаправлене перевизначення</target>
+      </trans-unit>
+      <trans-unit id="se62385ac082368d2">
+        <source>Mark the selection as a citation source</source>
+        <target>Позначте виділення як джерело цитування</target>
+      </trans-unit>
+      <trans-unit id="s36a194e38d653a26">
+        <source>Data Annotation</source>
+        <target>Анотація даних</target>
+      </trans-unit>
+      <trans-unit id="s5a1a0898baf20675">
+        <source>Mark the selection with a data annotation</source>
+        <target>Позначте вибір анотацією до даних</target>
+      </trans-unit>
+      <trans-unit id="s9d668a34af4128ff">
+        <source>Deletion</source>
+        <target>Видалення</target>
+      </trans-unit>
+      <trans-unit id="s1c246045629b0016">
+        <source>Mark the selection as a deletion</source>
+        <target>Позначте виділення як видалення</target>
+      </trans-unit>
+      <trans-unit id="s94653c76b2d86a04">
+        <source>Defined Term</source>
+        <target>Визначений термін</target>
+      </trans-unit>
+      <trans-unit id="s1082e1649793dca9">
+        <source>Mark the selection as a defined term</source>
+        <target>Позначте вибір як визначений термін</target>
+      </trans-unit>
+      <trans-unit id="s92b177e579ef7b97">
+        <source>Emphasis</source>
+        <target>Наголос</target>
+      </trans-unit>
+      <trans-unit id="s782eac2b3e80323d">
+        <source>Mark the selection as emphasized</source>
+        <target>Позначте вибір як підкреслений</target>
+      </trans-unit>
+      <trans-unit id="s50489ffb1bde152e">
+        <source>Insertion</source>
+        <target>Вставка</target>
+      </trans-unit>
+      <trans-unit id="sd1a78e667a1a139f">
+        <source>Mark the selection as an insertion</source>
+        <target>Позначте виділення як вставку</target>
+      </trans-unit>
+      <trans-unit id="s3d6a732c792ccb9e">
+        <source>Ruby Annotation</source>
+        <target>Рубінова анотація</target>
+      </trans-unit>
+      <trans-unit id="sdf62e305e1594805">
+        <source>Mark the selection with a ruby annotation</source>
+        <target>Позначте вибір рубіновою анотацією</target>
+      </trans-unit>
+      <trans-unit id="s474f0eec369d02a4">
+        <source>Sample Output</source>
+        <target>Зразок виводу</target>
+      </trans-unit>
+      <trans-unit id="sf21c1f60c7515f44">
+        <source>Mark the selection as sample output</source>
+        <target>Позначте виділення як вихідні дані вибірки</target>
+      </trans-unit>
+      <trans-unit id="s4eace13b3ed74187">
+        <source>Side Comment</source>
+        <target>Побічний коментар</target>
+      </trans-unit>
+      <trans-unit id="s864b0e6270e97246">
+        <source>Mark the selection as a side comment</source>
+        <target>Позначте вибір як додатковий коментар</target>
+      </trans-unit>
+      <trans-unit id="sb60bc1250aad44c1">
+        <source>Span</source>
+        <target>Проліт</target>
+      </trans-unit>
+      <trans-unit id="s0a7db790db1fc45c">
+        <source>Mark the selection as a span</source>
+        <target>Позначте виділення як проміжок</target>
+      </trans-unit>
+      <trans-unit id="s7bdf0fd5b014d36c">
+        <source>Strong Importance</source>
+        <target>Велике значення</target>
+      </trans-unit>
+      <trans-unit id="s550839f3e4e205bb">
+        <source>Mark the selection as strongly important</source>
+        <target>Позначте вибір як дуже важливий</target>
+      </trans-unit>
+      <trans-unit id="s3d3efd1e19bdcfb4">
+        <source>Date/Time Annotation</source>
+        <target>Дата/час Анотація Дата/час</target>
+      </trans-unit>
+      <trans-unit id="s47e257ae643b5851">
+        <source>Mark the selection as a date/time annotation</source>
+        <target>Позначте вибір як анотацію дати/часу</target>
+      </trans-unit>
+      <trans-unit id="sec2557a35b702525">
+        <source>Variable</source>
+        <target>Змінна</target>
+      </trans-unit>
+      <trans-unit id="sf59c9081d106dd9c">
+        <source>Mark the selection as a variable</source>
+        <target>Позначте виділення як змінну</target>
+      </trans-unit>
+      <trans-unit id="s599dcd2472c75c19">
+        <source>Paragraph</source>
+        <target>Абзац</target>
+      </trans-unit>
+      <trans-unit id="s5b8cc9bb61ddce15">
+        <source>Insert a paragraph</source>
+        <target>Вставте абзац</target>
+      </trans-unit>
+      <trans-unit id="s3b3ea038c5d3bb06">
+        <source>Division</source>
+        <target>Підрозділ</target>
+      </trans-unit>
+      <trans-unit id="se6cdad455e2d8c02">
+        <source>Insert a division</source>
+        <target>Вставте поділ</target>
+      </trans-unit>
+      <trans-unit id="s6f84199e62584905">
+        <source>Preformatted Text</source>
+        <target>Попередньо відформатований текст</target>
+      </trans-unit>
+      <trans-unit id="sb3ba3276ae93627c">
+        <source>Insert a preformatted text block</source>
+        <target>Вставте попередньо відформатований текстовий блок</target>
+      </trans-unit>
+      <trans-unit id="s2f2044f2431a32d5">
+        <source>Heading</source>
+        <target>Заголовок</target>
+      </trans-unit>
+      <trans-unit id="s29f21c34494d614d">
+        <source>Insert a heading (level 1)</source>
+        <target>Вставити заголовок (рівень 1)</target>
+      </trans-unit>
+      <trans-unit id="sbc5f2e81604bb667">
+        <source>Heading 2</source>
+        <target>Розділ 2</target>
+      </trans-unit>
+      <trans-unit id="s29ee7434494a0dfe">
+        <source>Insert a heading (level 2)</source>
+        <target>Вставити заголовок (рівень 2)</target>
+      </trans-unit>
+      <trans-unit id="sbc5f2d81604bb4b4">
+        <source>Heading 3</source>
+        <target>Розділ 3</target>
+      </trans-unit>
+      <trans-unit id="s29eb103449472e3b">
+        <source>Insert a heading (level 3)</source>
+        <target>Вставити заголовок (рівень 3)</target>
+      </trans-unit>
+      <trans-unit id="sbc5f2c81604bb301">
+        <source>Heading 4</source>
+        <target>Розділ 4</target>
+      </trans-unit>
+      <trans-unit id="s2a031834495bcdb4">
+        <source>Insert a heading (level 4)</source>
+        <target>Вставити заголовок (рівень 4)</target>
+      </trans-unit>
+      <trans-unit id="sbc5f2b81604bb14e">
+        <source>Heading 5</source>
+        <target>Розділ 5</target>
+      </trans-unit>
+      <trans-unit id="s29ff743449588131">
+        <source>Insert a heading (level 5)</source>
+        <target>Вставити заголовок (рівень 5)</target>
+      </trans-unit>
+      <trans-unit id="sbc5f2a81604baf9b">
+        <source>Heading 6</source>
+        <target>Розділ 6</target>
+      </trans-unit>
+      <trans-unit id="s29fbfc3449557f72">
+        <source>Insert a heading (level 6)</source>
+        <target>Вставити заголовок (рівень 6)</target>
+      </trans-unit>
+      <trans-unit id="sec8b0b6c729816b6">
+        <source>Heading Group</source>
+        <target>Заголовна група</target>
+      </trans-unit>
+      <trans-unit id="s4d528b416ac8dee2">
+        <source>Insert a heading group</source>
+        <target>Вставити групу заголовків</target>
+      </trans-unit>
+      <trans-unit id="s3d249bb480032121">
+        <source>List</source>
+        <target>Список</target>
+      </trans-unit>
+      <trans-unit id="s0978fb5ba3145996">
+        <source>Insert a list (unordered)</source>
+        <target>Вставити список (невпорядкований)</target>
+      </trans-unit>
+      <trans-unit id="s377e24af9628c37e">
+        <source>Ordered List</source>
+        <target>Список замовлень</target>
+      </trans-unit>
+      <trans-unit id="sdb711380a28fec75">
+        <source>Insert a list (ordered)</source>
+        <target>Вставити список (впорядкований)</target>
+      </trans-unit>
+      <trans-unit id="sf0cf5c5d0102f674">
+        <source>List Item</source>
+        <target>Пункт списку</target>
+      </trans-unit>
+      <trans-unit id="s20db56373c0fc770">
+        <source>Insert a list item</source>
+        <target>Вставка елемента списку</target>
+      </trans-unit>
+      <trans-unit id="s07aa10850d9ddcc7">
+        <source>Form</source>
+        <target>Форма</target>
+      </trans-unit>
+      <trans-unit id="s84e9c7f8785ca60b">
+        <source>Insert a form</source>
+        <target>Вставте форму</target>
+      </trans-unit>
+      <trans-unit id="s355b21b89ce5d9c5">
+        <source>Details</source>
+        <target>Деталі</target>
+      </trans-unit>
+      <trans-unit id="sb6103872073d369e">
+        <source>Insert details</source>
+        <target>Деталі вставки</target>
+      </trans-unit>
+      <trans-unit id="sc9474bf7a0668d73">
+        <source>Summary</source>
+        <target>Підсумок</target>
+      </trans-unit>
+      <trans-unit id="sec30fbb20f102670">
+        <source>Insert summary</source>
+        <target>Вставити резюме</target>
+      </trans-unit>
+      <trans-unit id="s0312976fe9da5951">
+        <source>Button</source>
+        <target>Кнопка</target>
+      </trans-unit>
+      <trans-unit id="sd60c9bbc51375635">
+        <source>Insert a button</source>
+        <target>Вставте кнопку</target>
+      </trans-unit>
+      <trans-unit id="sdb1595f5c742dfbb">
+        <source>Input</source>
+        <target>Вхідні дані</target>
+      </trans-unit>
+      <trans-unit id="s29b24c06315e9343">
+        <source>Insert an input</source>
+        <target>Вставте вхідні дані</target>
+      </trans-unit>
+      <trans-unit id="sfc63e31ac7c956ed">
+        <source>Select</source>
+        <target>Виберіть</target>
+      </trans-unit>
+      <trans-unit id="s531056f039febd39">
+        <source>Insert a select</source>
+        <target>Вставте вибране</target>
+      </trans-unit>
+      <trans-unit id="sfc00292e778b67e2">
+        <source>Meter</source>
+        <target>Лічильник.</target>
+      </trans-unit>
+      <trans-unit id="s52e0bdc3ee304436">
+        <source>Insert a meter</source>
+        <target>Вставте лічильник</target>
+      </trans-unit>
+      <trans-unit id="s8c7f51cb067644c7">
+        <source>Data List</source>
+        <target>Список даних</target>
+      </trans-unit>
+      <trans-unit id="sfa59c7777e2a0eeb">
+        <source>Insert a data list</source>
+        <target>Вставте список даних</target>
+      </trans-unit>
+      <trans-unit id="s7fcb35d23be1e643">
+        <source>Field Set</source>
+        <target>Набір полів</target>
+      </trans-unit>
+      <trans-unit id="s2d986d31f8d67357">
+        <source>Insert a field set</source>
+        <target>Вставити набір полів</target>
+      </trans-unit>
+      <trans-unit id="s5590dbf7e425789d">
+        <source>Label</source>
+        <target>Етикетка</target>
+      </trans-unit>
+      <trans-unit id="s21f8a2eaf5a70749">
+        <source>Insert a label</source>
+        <target>Вставте етикетку</target>
+      </trans-unit>
+      <trans-unit id="s4b58c01e2578f5e4">
+        <source>Legend</source>
+        <target>Легенда</target>
+      </trans-unit>
+      <trans-unit id="s3fd83566dd643d10">
+        <source>Insert a legend</source>
+        <target>Вставте легенду</target>
+      </trans-unit>
+      <trans-unit id="sef75f458d77491af">
+        <source>Option Group</source>
+        <target>Група опцій</target>
+      </trans-unit>
+      <trans-unit id="sceecdd0bb404bc17">
+        <source>Insert an option group</source>
+        <target>Вставити групу опцій</target>
+      </trans-unit>
+      <trans-unit id="s4802e47fe2e95134">
+        <source>Option</source>
+        <target>Варіант</target>
+      </trans-unit>
+      <trans-unit id="s3cb47df8290fa94c">
+        <source>Insert an option</source>
+        <target>Вставте опцію</target>
+      </trans-unit>
+      <trans-unit id="sfd77270c3f54f664">
+        <source>Output</source>
+        <target>Вихідні дані</target>
+      </trans-unit>
+      <trans-unit id="se64f418b4e733b6c">
+        <source>Insert an output</source>
+        <target>Вставте вихідні дані</target>
+      </trans-unit>
+      <trans-unit id="s18fca71e2e3308e7">
+        <source>Progress Indicator</source>
+        <target>Індикатор прогресу</target>
+      </trans-unit>
+      <trans-unit id="s52777d434baeed9b">
+        <source>Insert a progress indicator</source>
+        <target>Вставте індикатор прогресу</target>
+      </trans-unit>
+      <trans-unit id="sa78a67272a4a6f95">
+        <source>Math Formula</source>
+        <target>Математична формула</target>
+      </trans-unit>
+      <trans-unit id="saaad98061a20ac39">
+        <source>Insert a math formula</source>
+        <target>Вставте математичну формулу</target>
+      </trans-unit>
+      <trans-unit id="s5432ad3c84273229">
+        <source>Figure</source>
+        <target>Малюнок</target>
+      </trans-unit>
+      <trans-unit id="sf486ca1fdbe08645">
+        <source>Insert a figure</source>
+        <target>Вставте цифру</target>
+      </trans-unit>
+      <trans-unit id="sa5df1bcdba46c3fb">
+        <source>Figure Caption</source>
+        <target>Підпис до малюнка</target>
+      </trans-unit>
+      <trans-unit id="s33c1450d2822bb0f">
+        <source>Insert a figure caption</source>
+        <target>Вставте підпис до малюнка</target>
+      </trans-unit>
+      <trans-unit id="s3d93f9ea0c5a13fa">
+        <source>Image</source>
+        <target>Зображення</target>
+      </trans-unit>
+      <trans-unit id="s8bc4affa761aa8a2">
+        <source>Insert an image</source>
+        <target>Вставте зображення</target>
+      </trans-unit>
+      <trans-unit id="s5f43af3669b1e098">
+        <source>Source</source>
+        <target>Джерело</target>
+      </trans-unit>
+      <trans-unit id="sa7dc6b8ef3f595dc">
+        <source>Insert a source</source>
+        <target>Вставте джерело</target>
+      </trans-unit>
+      <trans-unit id="s9e85800d3700e31c">
+        <source>Track</source>
+        <target>Трек</target>
+      </trans-unit>
+      <trans-unit id="sf39736a666dbb038">
+        <source>Insert a track</source>
+        <target>Вставити доріжку</target>
+      </trans-unit>
+      <trans-unit id="s5ed03bb1f3a15949">
+        <source>Picture</source>
+        <target>Зображення</target>
+      </trans-unit>
+      <trans-unit id="s93566b84230af4f5">
+        <source>Insert a picture</source>
+        <target>Вставте зображення</target>
+      </trans-unit>
+      <trans-unit id="s08e6bd98452e6bb9">
+        <source>Audio</source>
+        <target>Аудіо</target>
+      </trans-unit>
+      <trans-unit id="s96532132a29dd542">
+        <source>Insert audio</source>
+        <target>Вставити аудіо</target>
+      </trans-unit>
+      <trans-unit id="s85186a61e0d55bac">
+        <source>Video</source>
+        <target>Відео</target>
+      </trans-unit>
+      <trans-unit id="s9e28faa598332e2b">
+        <source>Insert video</source>
+        <target>Вставити відео</target>
+      </trans-unit>
+      <trans-unit id="s730182ad28374cda">
+        <source>Object</source>
+        <target>Об'єкт</target>
+      </trans-unit>
+      <trans-unit id="s123bea44f38abccf">
+        <source>Insert object</source>
+        <target>Вставити об'єкт</target>
+      </trans-unit>
+      <trans-unit id="scace301a88231cce">
+        <source>Embed</source>
+        <target>Вставити</target>
+      </trans-unit>
+      <trans-unit id="s91c5ed7769d00b65">
+        <source>Insert embed</source>
+        <target>Вставити вбудовування</target>
+      </trans-unit>
+      <trans-unit id="s82665b2ffabc9c0a">
+        <source>Website</source>
+        <target>Веб-сайт</target>
+      </trans-unit>
+      <trans-unit id="sc3998b77d72c2932">
+        <source>Insert a website (as an inline frame)</source>
+        <target>Вставте веб-сайт (як вбудований фрейм)</target>
+      </trans-unit>
+      <trans-unit id="s4802bb8eb52fbdeb">
+        <source>Portal</source>
+        <target>Портал</target>
+      </trans-unit>
+      <trans-unit id="sd4368b12645d3c0f">
+        <source>Insert a portal</source>
+        <target>Вставити портал</target>
+      </trans-unit>
+      <trans-unit id="s9565553d163fc92a">
+        <source>Script</source>
+        <target>Сценарій</target>
+      </trans-unit>
+      <trans-unit id="sbf00e1ee999ea94e">
+        <source>Insert a script</source>
+        <target>Вставте скрипт</target>
+      </trans-unit>
+      <trans-unit id="s7f326a142e856656">
+        <source>Style</source>
+        <target>Стиль</target>
+      </trans-unit>
+      <trans-unit id="s6dfb502188a8c7c2">
+        <source>Insert a style</source>
+        <target>Вставте стиль</target>
+      </trans-unit>
+      <trans-unit id="se47baf2fd16b9d2b">
+        <source>Template</source>
+        <target>Шаблон</target>
+      </trans-unit>
+      <trans-unit id="s7b4ba250601b8667">
+        <source>Insert a template</source>
+        <target>Вставте шаблон</target>
+      </trans-unit>
+      <trans-unit id="s919e1724f589c9b1">
+        <source>Slot</source>
+        <target>Слот</target>
+      </trans-unit>
+      <trans-unit id="s32911e52ee8ac745">
+        <source>Insert a slot</source>
+        <target>Вставте слот</target>
+      </trans-unit>
+      <trans-unit id="sbbe639e3a3ed95d1">
+        <source>NoScript</source>
+        <target>NoScript</target>
+      </trans-unit>
+      <trans-unit id="s2d995a37cf5e4995">
+        <source>Insert a NoScript</source>
+        <target>Вставити NoScript</target>
+      </trans-unit>
+      <trans-unit id="sc50d09edf9325339">
+        <source>Dialog</source>
+        <target>Діалог</target>
+      </trans-unit>
+      <trans-unit id="sff99962304ac7d25">
+        <source>Insert a dialog</source>
+        <target>Вставити діалогове вікно</target>
+      </trans-unit>
+      <trans-unit id="se16c5e66886fbc59">
+        <source>Article</source>
+        <target>Стаття</target>
+      </trans-unit>
+      <trans-unit id="s3f7e097a9b2e6181">
+        <source>Insert an article</source>
+        <target>Вставити статтю</target>
+      </trans-unit>
+      <trans-unit id="sadd352cc7f6f2307">
+        <source>Aside</source>
+        <target>Убік.</target>
+      </trans-unit>
+      <trans-unit id="s743f778233e42a3f">
+        <source>Insert an aside</source>
+        <target>Вставте відступ</target>
+      </trans-unit>
+      <trans-unit id="s07e6118e838b2e23">
+        <source>Navigation</source>
+        <target>Навігація</target>
+      </trans-unit>
+      <trans-unit id="s0a799f583098cadf">
+        <source>Insert a navigation</source>
+        <target>Вставити навігацію</target>
+      </trans-unit>
+      <trans-unit id="scc1db59d292cbc4c">
+        <source>Section</source>
+        <target>Розділ</target>
+      </trans-unit>
+      <trans-unit id="s22a2348c46a912a0">
+        <source>Insert a section</source>
+        <target>Вставити розділ</target>
+      </trans-unit>
+      <trans-unit id="s75d83fc3f0cfab40">
+        <source>Header</source>
+        <target>Заголовок</target>
+      </trans-unit>
+      <trans-unit id="sa5c80e623459ffe4">
+        <source>Insert a header</source>
+        <target>Вставте заголовок</target>
+      </trans-unit>
+      <trans-unit id="scf932a8577057752">
+        <source>Footer</source>
+        <target>Нижній колонтитул</target>
+      </trans-unit>
+      <trans-unit id="sa352d168b262aa06">
+        <source>Insert a footer</source>
+        <target>Вставити нижній колонтитул</target>
+      </trans-unit>
+      <trans-unit id="s49e763aed00877a8">
+        <source>Main</source>
+        <target>Головна</target>
+      </trans-unit>
+      <trans-unit id="s8247d32213e35f24">
+        <source>Insert a main</source>
+        <target>Вставте основний</target>
+      </trans-unit>
+      <trans-unit id="s5d929ff1619ac0c9">
+        <source>Search</source>
+        <target>Пошук</target>
+      </trans-unit>
+      <trans-unit id="sbb85a407d730e13d">
+        <source>Insert a search</source>
+        <target>Вставте пошук</target>
+      </trans-unit>
+      <trans-unit id="sfcdd8e672c75b713">
+        <source>Address</source>
+        <target>Адреса</target>
+      </trans-unit>
+      <trans-unit id="s429dd933ba95549b">
+        <source>Insert an address</source>
+        <target>Вставте адресу</target>
+      </trans-unit>
+      <trans-unit id="s35c3125c7750681e">
+        <source>Blockquote</source>
+        <target>Blockquote</target>
+      </trans-unit>
+      <trans-unit id="sa492a51a707930fa">
+        <source>Insert a blockquote</source>
+        <target>Вставити блок-цитату</target>
+      </trans-unit>
+      <trans-unit id="s1351734ce8177b5f">
+        <source>SVG Drawing</source>
+        <target>Креслення SVG</target>
+      </trans-unit>
+      <trans-unit id="s3b51dea3b9ac2507">
+        <source>Insert an SVG Drawing</source>
+        <target>Вставити малюнок SVG</target>
+      </trans-unit>
+      <trans-unit id="s337a1e9022a8d19f">
+        <source>Table</source>
+        <target>Таблиця</target>
+      </trans-unit>
+      <trans-unit id="s88a62d29529948fb">
+        <source>Insert a table</source>
+        <target>Вставити таблицю</target>
+      </trans-unit>
+      <trans-unit id="s0cf10c4f40588f8d">
+        <source>Table Caption</source>
+        <target>Підпис до таблиці</target>
+      </trans-unit>
+      <trans-unit id="s0c11e479416c8421">
+        <source>Insert a table caption</source>
+        <target>Вставте підпис до таблиці</target>
+      </trans-unit>
+      <trans-unit id="s613c6ff83883c04f">
+        <source>Table Column</source>
+        <target>Стовпчик таблиці</target>
+      </trans-unit>
+      <trans-unit id="sd52660ee947ca58b">
+        <source>Insert a table column</source>
+        <target>Вставка стовпця таблиці</target>
+      </trans-unit>
+      <trans-unit id="s8517ae4da104b004">
+        <source>Table Column Group</source>
+        <target>Таблиця Стовпчик Група</target>
+      </trans-unit>
+      <trans-unit id="s28b6246ce616a548">
+        <source>Insert a table column group</source>
+        <target>Вставка групи стовпців таблиці</target>
+      </trans-unit>
+      <trans-unit id="s21d61916eb8d137d">
+        <source>Table Body</source>
+        <target>Корпус столу</target>
+      </trans-unit>
+      <trans-unit id="s156647179b21d351">
+        <source>Insert a table body</source>
+        <target>Вставте тіло таблиці</target>
+      </trans-unit>
+      <trans-unit id="sb616811735bfbafd">
+        <source>Table cell</source>
+        <target>Комірка таблиці</target>
+      </trans-unit>
+      <trans-unit id="s9faf26107ed49fb9">
+        <source>Insert a table cell</source>
+        <target>Вставити комірку таблиці</target>
+      </trans-unit>
+      <trans-unit id="sa7af797a46c7d09a">
+        <source>Table Footer</source>
+        <target>Нижній колонтитул таблиці</target>
+      </trans-unit>
+      <trans-unit id="sc252a4e091763606">
+        <source>Insert a table footer</source>
+        <target>Вставити нижній колонтитул таблиці</target>
+      </trans-unit>
+      <trans-unit id="sb68e83cda6c85af8">
+        <source>Table header</source>
+        <target>Заголовок таблиці</target>
+      </trans-unit>
+      <trans-unit id="s8f29e48d6b9a1aa8">
+        <source>Insert a table header row</source>
+        <target>Вставка рядка заголовка таблиці</target>
+      </trans-unit>
+      <trans-unit id="s153bc3c3aa39587b">
+        <source>Table Head</source>
+        <target>Головка столу</target>
+      </trans-unit>
+      <trans-unit id="s5d18ca4c3111be6f">
+        <source>Insert a table head</source>
+        <target>Вставте головку столу</target>
+      </trans-unit>
+      <trans-unit id="s52af5d7ac34c2163">
+        <source>Table Row</source>
+        <target>Рядок таблиці</target>
+      </trans-unit>
+      <trans-unit id="s1988d71ef8060edf">
+        <source>Insert a table row</source>
+        <target>Вставка рядка таблиці</target>
+      </trans-unit>
+      <trans-unit id="s9ffe1bbe64712bf1">
+        <source>Canvas</source>
+        <target>Полотно</target>
+      </trans-unit>
+      <trans-unit id="sa7dbe35b758c138d">
+        <source>Insert a canvas</source>
+        <target>Вставте полотно</target>
+      </trans-unit>
+      <trans-unit id="sb0d4f0f7993cf085">
+        <source>Set font size</source>
+        <target>Встановити розмір шрифту</target>
+      </trans-unit>
+      <trans-unit id="s37fa3b9cd51c2dfd">
+        <source>Sets the selection's font size</source>
+        <target>Задає розмір шрифту виділення</target>
+      </trans-unit>
+      <trans-unit id="s9e3dbb678150edd4">
+        <source>Set font family</source>
+        <target>Встановити сімейство шрифтів</target>
+      </trans-unit>
+      <trans-unit id="s1626a7e10a9f9dcc">
+        <source>Sets the selection's font family</source>
+        <target>Задає сімейство шрифтів для виділення</target>
+      </trans-unit>
+      <trans-unit id="sb1494c08c8c720d1">
+        <source>Set text color</source>
+        <target>Задати колір тексту</target>
+      </trans-unit>
+      <trans-unit id="se1f5bb0386c88f96">
+        <source>Sets the color of the selected text</source>
+        <target>Задає колір виділеного тексту</target>
+      </trans-unit>
+      <trans-unit id="sa65d4ad99f1d8c06">
+        <source>Set text background</source>
+        <target>Встановити текстовий фон</target>
+      </trans-unit>
+      <trans-unit id="s34f724979a124c50">
+        <source>Sets the background color of the selected text</source>
+        <target>Задає колір фону виділеного тексту</target>
+      </trans-unit>
+      <trans-unit id="se219da7b1e955c65">
+        <source>Clear formatting</source>
+        <target>Чітке форматування</target>
+      </trans-unit>
+      <trans-unit id="s256ab831a48c941c">
+        <source>Removes all text formatting from the selection</source>
+        <target>Видаляє все форматування тексту з виділення</target>
+      </trans-unit>
+      <trans-unit id="s621ad19d35ba7742">
+        <source>Copy selection</source>
+        <target>Виділення копії</target>
+      </trans-unit>
+      <trans-unit id="s365280e16a8ea32d">
+        <source>Copy the selection</source>
+        <target>Скопіюйте виділення</target>
+      </trans-unit>
+      <trans-unit id="s73cb20c838e761e1">
+        <source>Cut selection</source>
+        <target>Вибір розрізу</target>
+      </trans-unit>
+      <trans-unit id="s8e715248c3a78446">
+        <source>Cut the selection</source>
+        <target>Виріжте виділення</target>
+      </trans-unit>
+      <trans-unit id="s13ef8ca26ca8861b">
+        <source>Cut element</source>
+        <target>Вирізаний елемент</target>
+      </trans-unit>
+      <trans-unit id="s2ced8e8fafb499f6">
+        <source>Delete element</source>
+        <target>Видалити елемент</target>
+      </trans-unit>
+      <trans-unit id="s3eca5a034978754b">
+        <source>Delete the selection</source>
+        <target>Видалити виділення</target>
+      </trans-unit>
+      <trans-unit id="s95c161f68e5180a5">
+        <source>Inspect selection</source>
+        <target>Ознайомтеся з вибором</target>
+      </trans-unit>
+      <trans-unit id="s4c1535f316305a2a">
+        <source>Inspect the selection</source>
+        <target>Ознайомтеся з вибором</target>
+      </trans-unit>
+      <trans-unit id="sbba0156f795d8c07">
+        <source>Edit selection</source>
+        <target>Редагувати виділення</target>
+      </trans-unit>
+      <trans-unit id="sbd181cd54b8402a4">
+        <source>Edit the selection</source>
+        <target>Відредагуйте вибір</target>
+      </trans-unit>
+      <trans-unit id="s06634274f19b0572">
+        <source>Pin selection</source>
+        <target>Вибір штифта</target>
+      </trans-unit>
+      <trans-unit id="sa53c5cb03a8fda50">
+        <source>Pin the selection as a snippet in the palette</source>
+        <target>Закріпіть виділення як фрагмент у палітрі</target>
+      </trans-unit>
+      <trans-unit id="s5c63af7695445fcf">
+        <source>Text Style</source>
+        <target>Стиль тексту</target>
+      </trans-unit>
+      <trans-unit id="sc8d2c7f6c33a2b32">
+        <source>Set text style (alignment, indentation, spacing, etc.) of selected elements</source>
+        <target>Встановлення стилю тексту (вирівнювання, відступ, інтервал тощо) для вибраних
+          елементів</target>
+      </trans-unit>
+      <trans-unit id="s6907015655602158">
+        <source>Margins</source>
+        <target>Маржинальність</target>
+      </trans-unit>
+      <trans-unit id="s6d775df53db92fc1">
+        <source>Set the margins of the selected elements</source>
+        <target>Встановіть поля вибраних елементів</target>
+      </trans-unit>
+      <trans-unit id="sb1bd619a8d7cb15f">
+        <source>Paddings</source>
+        <target>Набивки</target>
+      </trans-unit>
+      <trans-unit id="s4296275288e95fd6">
+        <source>Set the paddings of the selected elements</source>
+        <target>Налаштуйте відступи вибраних елементів</target>
+      </trans-unit>
+      <trans-unit id="s1efbfc3937d565bd">
+        <source>Background</source>
+        <target>Передумови</target>
+      </trans-unit>
+      <trans-unit id="sd21a7bab4807fadc">
+        <source>Set the background of the selected elements</source>
+        <target>Встановіть фон вибраних елементів</target>
+      </trans-unit>
+      <trans-unit id="sfa31adc78eb90e2c">
+        <source>Borders</source>
+        <target>Кордони</target>
+      </trans-unit>
+      <trans-unit id="s822b4cbbb9731fd1">
+        <source>Set the borders of the selected elements</source>
+        <target>Встановіть межі виділених елементів</target>
+      </trans-unit>
+      <trans-unit id="s4481f5525a7a394a">
+        <source>Animations</source>
+        <target>Анімація</target>
+      </trans-unit>
+      <trans-unit id="s4c4cb162f1aa7a7f">
+        <source>Animate selected elements using keyframes</source>
+        <target>Анімуйте вибрані елементи за допомогою ключових кадрів</target>
+      </trans-unit>
+      <trans-unit id="s7060970b5ed20a58">
+        <source>Interactivity</source>
+        <target>Інтерактивність</target>
+      </trans-unit>
+      <trans-unit id="se8bb865aeb8602dc">
+        <source>Set interactivty options for selected elements</source>
+        <target>Налаштуйте параметри інтерактивності для вибраних елементів</target>
+      </trans-unit>
+      <trans-unit id="s8e70186b35a577db">
+        <source>Box alignment</source>
+        <target>Вирівнювання коробки</target>
+      </trans-unit>
+      <trans-unit id="s96611799d29d7d82">
+        <source>Set box alignment of selected elements</source>
+        <target>Встановіть вирівнювання виділених елементів</target>
+      </trans-unit>
+      <trans-unit id="sbd0a91688c13adeb">
+        <source>Color adjustment</source>
+        <target>Налаштування кольору</target>
+      </trans-unit>
+      <trans-unit id="s7ad802c20f77b1e9">
+        <source>Set color adjustment (light/dark mode) options of selected elements</source>
+        <target>Налаштуйте параметри регулювання кольору (світлий/темний режим) вибраних елементів</target>
+      </trans-unit>
+      <trans-unit id="s8ebfd594312e77d4">
+        <source>Text/stroke color</source>
+        <target>Колір тексту/обведення</target>
+      </trans-unit>
+      <trans-unit id="se6f9a782d95c2a87">
+        <source>Set text/stroke color of selected elements</source>
+        <target>Задати колір тексту/обведення вибраних елементів</target>
+      </trans-unit>
+      <trans-unit id="se25d54a8943385b0">
+        <source>Blending</source>
+        <target>Змішування</target>
+      </trans-unit>
+      <trans-unit id="sdbdf663c872fb855">
+        <source>Set blending (e.g. opacity) of selected elements</source>
+        <target>Налаштуйте змішування (наприклад, непрозорість) вибраних елементів</target>
+      </trans-unit>
+      <trans-unit id="s550492e6c28b6628">
+        <source>Display mode</source>
+        <target>Режим відображення</target>
+      </trans-unit>
+      <trans-unit id="s3c1c59a8fe1ce8af">
+        <source>Set the display mode of the selected elements</source>
+        <target>Налаштуйте режим відображення вибраних елементів</target>
+      </trans-unit>
+      <trans-unit id="sa8beb6b1182241ac">
+        <source>Filters</source>
+        <target>Фільтри</target>
+      </trans-unit>
+      <trans-unit id="s52e1a890841a3ae8">
+        <source>Apply filters (blur, invert, etc.) to the selected elements</source>
+        <target>Застосуйте фільтри (розмиття, інвертування тощо) до вибраних елементів</target>
+      </trans-unit>
+      <trans-unit id="s5052b94fa8278950">
+        <source>Flex behavior</source>
+        <target>Гнучка поведінка</target>
+      </trans-unit>
+      <trans-unit id="se17a380e47aa8613">
+        <source>Set flex behaviour (grow, shrink, wrap, order) of selected elements</source>
+        <target>Налаштуйте поведінку гнучкості (рости, стискатися, загортатися, впорядковуватися)
+          вибраних елементів</target>
+      </trans-unit>
+      <trans-unit id="s4b4afa8bcb02d5ac">
+        <source>Typography</source>
+        <target>Типографіка</target>
+      </trans-unit>
+      <trans-unit id="safb272a7b342509c">
+        <source>Set typography (font family, size, etc.) of selected elements</source>
+        <target>Задати типографіку (сімейство шрифтів, розмір тощо) вибраних елементів</target>
+      </trans-unit>
+      <trans-unit id="s0c669387c45c4dc6">
+        <source>Fragmentation</source>
+        <target>Фрагментація</target>
+      </trans-unit>
+      <trans-unit id="s87c65faff16a53bd">
+        <source>Set fragmentation (behaviour on page/region/column breaks) of selected elements</source>
+        <target>Задати фрагментацію (поведінку на розривах сторінки/регіону/стовпця) вибраних
+          елементів</target>
+      </trans-unit>
+      <trans-unit id="s02f7ae451695e417">
+        <source>Grid options</source>
+        <target>Параметри сітки</target>
+      </trans-unit>
+      <trans-unit id="se4c980b07af2341d">
+        <source>Set grid options (row, column, etc.) of selected elements</source>
+        <target>Задати параметри сітки (рядок, стовпець тощо) для вибраних елементів</target>
+      </trans-unit>
+      <trans-unit id="sebee375c65c0cd58">
+        <source>Image sizing</source>
+        <target>Розмір зображення</target>
+      </trans-unit>
+      <trans-unit id="saaf255f484959835">
+        <source>Set image sizing options of selected elements</source>
+        <target>Налаштування параметрів розміру зображень вибраних елементів</target>
+      </trans-unit>
+      <trans-unit id="s6ac7f151cff18f07">
+        <source>List options</source>
+        <target>Перерахувати варіанти</target>
+      </trans-unit>
+      <trans-unit id="s833cf35ed6049636">
+        <source>Set list options of selected elements</source>
+        <target>Налаштування параметрів списку вибраних елементів</target>
+      </trans-unit>
+      <trans-unit id="sea7f9a84b82663b8">
+        <source>Column break</source>
+        <target>Розрив колонки</target>
+      </trans-unit>
+      <trans-unit id="s0898264186c682fa">
+        <source>Apply column layout to selected elements</source>
+        <target>Застосувати макет стовпців до вибраних елементів</target>
+      </trans-unit>
+      <trans-unit id="s687416d1ea01d0bb">
+        <source>Overflow behavior</source>
+        <target>Поведінка при переповненні</target>
+      </trans-unit>
+      <trans-unit id="sa5c062dc12553bbb">
+        <source>Set overflow behaviour of selected elements</source>
+        <target>Задати поведінку переповнення вибраних елементів</target>
+      </trans-unit>
+      <trans-unit id="s4a14e0d787c30116">
+        <source>Positioning</source>
+        <target>Позиціонування</target>
+      </trans-unit>
+      <trans-unit id="s19d9b0051c5e3b45">
+        <source>Set positioning of selected elements</source>
+        <target>Задати позиціонування вибраних елементів</target>
+      </trans-unit>
+      <trans-unit id="sa559701e1cdc3331">
+        <source>Shaping</source>
+        <target>Формування</target>
+      </trans-unit>
+      <trans-unit id="s2dbeef0cb14e4f4d">
+        <source>Set shape of selected elements</source>
+        <target>Задати форму вибраних елементів</target>
+      </trans-unit>
+      <trans-unit id="s04061a8e12259e3f">
+        <source>2D/3D transform</source>
+        <target>2D/3D перетворення</target>
+      </trans-unit>
+      <trans-unit id="sab4fb4f4ff5b43e4">
+        <source>Apply 2D or 3D transformations to selected elements</source>
+        <target>Застосовуйте 2D- або 3D-трансформації до вибраних елементів</target>
+      </trans-unit>
+      <trans-unit id="sf190149f9d8bbb2a">
+        <source>Writing mode</source>
+        <target>Режим запису</target>
+      </trans-unit>
+      <trans-unit id="sdedc76f6a0a2583b">
+        <source>Set writing mode options of selected elements</source>
+        <target>Встановлення параметрів режиму запису вибраних елементів</target>
+      </trans-unit>
+      <trans-unit id="s762e5704cc84089d">
+        <source>Set other style options of selected elements</source>
+        <target>Налаштуйте інші параметри стилю вибраних елементів</target>
+      </trans-unit>
+      <trans-unit id="se6297163cac9d276">
+        <source>Edit source</source>
+        <target>Редагувати джерело</target>
+      </trans-unit>
+      <trans-unit id="s281d957112b10f12">
+        <source>Edit the HTML of the document directly</source>
+        <target>Редагуйте HTML безпосередньо в документі</target>
+      </trans-unit>
+      <trans-unit id="s8f4be9f086eb530f">
+        <source>Undo</source>
+        <target>Відмінити</target>
+      </trans-unit>
+      <trans-unit id="s7beb1e77e82363eb">
+        <source>Undo the last change in the active document</source>
+        <target>Скасувати останню зміну в активному документі</target>
+      </trans-unit>
+      <trans-unit id="s7417792bbe720149">
+        <source>Redo</source>
+        <target>Повторити</target>
+      </trans-unit>
+      <trans-unit id="s640bc7710d0143ce">
+        <source>Redo the last undone change in the active document</source>
+        <target>Повторіть останню скасовану зміну в активному документі</target>
+      </trans-unit>
+      <trans-unit id="s83420ad7b6a14db5">
+        <source>Toggle Dev Tools</source>
+        <target>Переключити Інструменти розробника</target>
+      </trans-unit>
+      <trans-unit id="s7af555180b30a947">
+        <source>Open the developer tools</source>
+        <target>Відкрийте інструменти розробника</target>
+      </trans-unit>
+      <trans-unit id="s8688d74dd3716d6e">
+        <source>Keyboard shortcuts for commands</source>
+        <target>Комбінації клавіш для команд</target>
+      </trans-unit>
+      <trans-unit id="sc3ac225273c8316b">
+        <source>General</source>
+        <target>Генерал</target>
+      </trans-unit>
+      <trans-unit id="s4caed5b7a7e5d89b">
+        <source>English</source>
+        <target>Англійська мова</target>
+      </trans-unit>
+      <trans-unit id="s63e71d20d1eaca93">
+        <source>German</source>
+        <target>Німецька</target>
+      </trans-unit>
+      <trans-unit id="se25e4f2cb77b8be8">
+        <source>Language for the WebWriter interface and new documents</source>
+        <target>Мова для інтерфейсу WebWriter та нових документів</target>
+      </trans-unit>
+      <trans-unit id="sefcf950b3cc4fc3b">
+        <source>Language</source>
+        <target>Мова</target>
+      </trans-unit>
+      <trans-unit id="se3b4c857f91f80d7">
+        <source>Keyboard shortcuts</source>
+        <target>Комбінації клавіш</target>
+      </trans-unit>
+      <trans-unit id="s91c5921e7b46d4a6">
+        <source>You have unsaved changes. Are you sure you want to leave and discard them?</source>
+        <target>У вас є незбережені зміни. Ви впевнені, що хочете піти і викинути їх?</target>
+      </trans-unit>
+      <trans-unit id="s268ecd1cef45a9a8">
+        <source>Are you sure?</source>
+        <target>Ти впевнений?</target>
+      </trans-unit>
+      <trans-unit id="sb430f5b4824de0d3">
+        <source>Choose a layout</source>
+        <target>Виберіть макет</target>
+      </trans-unit>
+      <trans-unit id="seaf97719986faf4f">
+        <source>Gap</source>
+        <target>Розрив</target>
+      </trans-unit>
+      <trans-unit id="sffdadf0a576fd802">
+        <source>Height</source>
+        <target>Висота</target>
+      </trans-unit>
+      <trans-unit id="sab55faae8e165407">
+        <source>Padding&lt;br&gt; like gap</source>
+        <target>Відступ&lt;br&gt; як пробіл</target>
+      </trans-unit>
+      <trans-unit id="sa645d315510dc09e">
+        <source>Choose path from disk</source>
+        <target>Виберіть шлях з диска</target>
+      </trans-unit>
+      <trans-unit id="seabae79729c4b2ad">
+        <source>Toggle email</source>
+        <target>Переключити електронну пошту</target>
+      </trans-unit>
+      <trans-unit id="s34dcda3b0f9d5a98">
+        <source>Toggle url</source>
+        <target>Переключити URL-адресу</target>
+      </trans-unit>
+      <trans-unit id="sc3cfee84dbbf36ae">
+        <source>Local File</source>
+        <target>Локальний файл</target>
+      </trans-unit>
+      <trans-unit id="s9896529e5cb20558">
+        <source>External File</source>
+        <target>Зовнішній файл</target>
+      </trans-unit>
+      <trans-unit id="s7e0b179d4d1414eb">
+        <source>Enter link</source>
+        <target>Введіть посилання</target>
+      </trans-unit>
+      <trans-unit id="sbe4a7c8f231739b3">
+        <source>or paste/drop/pick file</source>
+        <target>або вставити/скинути/вибрати файл</target>
+      </trans-unit>
+      <trans-unit id="s8a4ff2bd9c13498c">
+        <source>Record</source>
+        <target>Запис</target>
+      </trans-unit>
+      <trans-unit id="s1a5230a71d9285c1">
+        <source>Capture</source>
+        <target>Захоплення</target>
+      </trans-unit>
+      <trans-unit id="s2b8f50c64be440f7">
+        <source>Select 
+          <x id="0" equiv-text="${this.mediaType}"/>...
+        </source>
+        <target>Виберіть 
+          <x id="0" equiv-text="${this.mediaType}"/>... 
+        </target>
+      </trans-unit>
+      <trans-unit id="s739544d0c858c633">
+        <source>Or drop 
+          <x id="0" equiv-text="${this.mediaType}"/> here
+        </source>
+        <target>Або кинути 
+          <x id="0" equiv-text="${this.mediaType}"/> тут. 
+        </target>
+      </trans-unit>
+      <trans-unit id="se58f06c2b0583ff7">
+        <source>Pick coordinates</source>
+        <target>Виберіть координати</target>
+      </trans-unit>
+      <trans-unit id="sded940efcadd8f10">
+        <source>Save your document</source>
+        <target>Збережіть документ</target>
+      </trans-unit>
+      <trans-unit id="s6910ed6dbaba4807">
+        <source>Load a document</source>
+        <target>Завантажити документ</target>
+      </trans-unit>
+      <trans-unit id="s8f533296a536965e">
+        <source>Save as...</source>
+        <target>Зберегти як...</target>
+      </trans-unit>
+      <trans-unit id="s1f0e5f8acab2f0d3">
+        <source>Load as...</source>
+        <target>Завантажити як...</target>
+      </trans-unit>
+      <trans-unit id="sa3c9339de23c1752">
+        <source>Format</source>
+        <target>Формат</target>
+      </trans-unit>
+      <trans-unit id="s1cf730f96ac4f6b6">
+        <source>On...</source>
+        <target>На...</target>
+      </trans-unit>
+      <trans-unit id="s13388f2a0641c5a9">
+        <source>From...</source>
+        <target>Від...</target>
+      </trans-unit>
+      <trans-unit id="s61e136c0658e27d5">
+        <source>Protocol</source>
+        <target>Протокол</target>
+      </trans-unit>
+      <trans-unit id="see2fcaedf9743ec6">
+        <source>Location</source>
+        <target>Місцезнаходження</target>
+      </trans-unit>
+      <trans-unit id="s2ceb11be2290bb1b">
+        <source>Cancel</source>
+        <target>Скасувати</target>
+      </trans-unit>
+      <trans-unit id="s4f20edb48a6287c9">
+        <source>Load</source>
+        <target>Завантажити</target>
+      </trans-unit>
+      <trans-unit id="s851a7deea5984646">
+        <source>License as Creative Commons OER?</source>
+        <target>Ліцензія як Creative Commons OER?</target>
+      </trans-unit>
+      <trans-unit id="s2540844a4bc4d9ba">
+        <source>Require attribution?</source>
+        <target>Вимагати авторства?</target>
+      </trans-unit>
+      <trans-unit id="sb0a974028c99ca6d">
+        <source>Allow adaptations?</source>
+        <target>Дозволити адаптацію?</target>
+      </trans-unit>
+      <trans-unit id="s77e594ddcc10c774">
+        <source>Allow commercial use?</source>
+        <target>Дозволити комерційне використання?</target>
+      </trans-unit>
+      <trans-unit id="sb8f855b49234b81b">
+        <source>Apply</source>
+        <target>Подати заявку</target>
+      </trans-unit>
+      <trans-unit id="sb66beca1e766dcb3">
+        <source>Apply and import</source>
+        <target>Подати заявку та імпортувати</target>
+      </trans-unit>
+      <trans-unit id="s3914cb410fca44d4">
+        <source>Import</source>
+        <target>Імпорт</target>
+      </trans-unit>
+      <trans-unit id="sed17285cd25d6389">
+        <source>Directory where package.json is located</source>
+        <target>Каталог, в якому знаходиться package.json</target>
+      </trans-unit>
+      <trans-unit id="sc74e3567875ce255">
+        <source>Both the tag of your widget and the name of your NPM package</source>
+        <target>Як тег вашого віджету, так і ім'я вашого NPM-пакету</target>
+      </trans-unit>
+      <trans-unit id="s342b0cabfa672822">
+        <source>Help the user find your widget</source>
+        <target>Допоможіть користувачеві знайти ваш віджет</target>
+      </trans-unit>
+      <trans-unit id="sfdeef3dccf409f81">
+        <source>This keyword is required for widgets</source>
+        <target>Це ключове слово є обов'язковим для віджетів</target>
+      </trans-unit>
+      <trans-unit id="h64cd12550420f6f1">
+        <source>Generate a 
+          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
+          <x id="1" equiv-text="&lt;/code&gt;"/> file
+        </source>
+        <target>Згенеруйте ліцензію 
+          <x id="0" equiv-text="&lt;code&gt;"/>ЛІЦЕНЗІЯ 
+          <x id="1" equiv-text="&lt;/code&gt;"/> файл 
+        </target>
+      </trans-unit>
+      <trans-unit id="s0dc452999c129e15">
+        <source>Enable live reload</source>
+        <target>Увімкнути перезаряджання в реальному часі</target>
+      </trans-unit>
+      <trans-unit id="s255857544a9d5ec0">
+        <source>Reset</source>
+        <target>Перезавантаження</target>
+      </trans-unit>
+      <trans-unit id="s2591806d7b222591">
+        <source>Reset changes</source>
+        <target>Скинути зміни</target>
+      </trans-unit>
+      <trans-unit id="s445b8acb9206db6e">
+        <source>Discard and cancel</source>
+        <target>Викинути та скасувати</target>
+      </trans-unit>
+      <trans-unit id="sae3629911a62147f">
+        <source>JS Size:</source>
+        <target>JS Size:</target>
+      </trans-unit>
+      <trans-unit id="s1357c9b016a9a631">
+        <source>CSS Size:</source>
+        <target>CSS Size:</target>
+      </trans-unit>
+      <trans-unit id="sf1ed4eed4de3012e">
+        <source>View error</source>
+        <target>Помилка перегляду</target>
+      </trans-unit>
+      <trans-unit id="h75b0cad9d9e80648">
+        <source>Stop watching files at 
+          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/>.
+        </source>
+        <target>Припиніть перегляд файлів за адресою 
+          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/>. 
+        </target>
+      </trans-unit>
+      <trans-unit id="h0a75a995d1672be1">
+        <source>Start watching files at 
+          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/> and reload the package if a file is changed.
+        </source>
+        <target>Почніть перегляд файлів за адресою 
+          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/> і
+          перезавантажте пакунок, якщо файл змінено. 
+        </target>
+      </trans-unit>
+      <trans-unit id="s8b0432eecbd8b034">
+        <source>Update</source>
+        <target>Оновлення</target>
+      </trans-unit>
+      <trans-unit id="sbc5bb5bb74d141b9">
+        <source>Uninstall</source>
+        <target>Видалити</target>
+      </trans-unit>
+      <trans-unit id="s6196153c4b0c1ea0">
+        <source>Install</source>
+        <target>Встановити</target>
+      </trans-unit>
+      <trans-unit id="sda174a4c93e84ce6">
+        <source>Error importing</source>
+        <target>Помилка імпорту</target>
+      </trans-unit>
+      <trans-unit id="s8cd9849cd37d7753">
+        <source>Either select an existing package directory to install or an empty directory to create a new package.</source>
+        <target>Виберіть каталог існуючих пакунків для встановлення або порожній каталог для
+          створення нового пакунка.</target>
+      </trans-unit>
+      <trans-unit id="sdb311229f4b5eb3b">
+        <source>Import local package</source>
+        <target>Імпортувати локальний пакет</target>
+      </trans-unit>
+      <trans-unit id="s65f6740a45cea0aa">
+        <source>Create local package</source>
+        <target>Створіть локальний пакунок</target>
+      </trans-unit>
+      <trans-unit id="s12aac40ecd87dc12">
+        <source>View local application directory</source>
+        <target>Перегляд локального каталогу програм</target>
+      </trans-unit>
+      <trans-unit id="s815a7e524eda76aa">
+        <source>Reset local application directory</source>
+        <target>Скидання локального каталогу програм</target>
+      </trans-unit>
+      <trans-unit id="s3a6538ae341633f6">
+        <source>Edit local package</source>
+        <target>Редагування локального пакунка</target>
+      </trans-unit>
+      <trans-unit id="s9bf0b9da3f509795">
+        <source>Widget Package</source>
+        <target>Пакет віджетів</target>
+      </trans-unit>
+      <trans-unit id="s8a7fa8a052138aef">
+        <source>Warning:</source>
+        <target>Обережно:</target>
+      </trans-unit>
+      <trans-unit id="sad288b082f4d3521">
+        <source>You seem to be offline. While offline, you can't manage available or outdated packages.</source>
+        <target>Здається, ви перебуваєте в режимі офлайн. В автономному режимі ви не можете керувати
+          доступними або застарілими пакунками.</target>
+      </trans-unit>
+      <trans-unit id="sed8ec5e3c64fa25d">
+        <source>Total</source>
+        <target>Всього</target>
+      </trans-unit>
+      <trans-unit id="s8cfdd110c30d604d">
+        <source>No packages installed or available</source>
+        <target>Немає встановлених або доступних пакунків</target>
+      </trans-unit>
+      <trans-unit id="s10e80d4c01c3cc21">
+        <source>Installed</source>
+        <target>Встановлено</target>
+      </trans-unit>
+      <trans-unit id="s33b62827f665c461">
+        <source>No packages installed</source>
+        <target>Пакунки не встановлено</target>
+      </trans-unit>
+      <trans-unit id="sd158a5fc0f062f18">
+        <source>Available</source>
+        <target>Доступно</target>
+      </trans-unit>
+      <trans-unit id="se432a7c0c144d458">
+        <source>No packages available</source>
+        <target>Немає доступних пакетів</target>
+      </trans-unit>
+      <trans-unit id="s76cc1c6d9fab3a2d">
+        <source>Outdated</source>
+        <target>Застаріла.</target>
+      </trans-unit>
+      <trans-unit id="sf9559106e88ee46d">
+        <source>No packages outdated</source>
+        <target>Немає застарілих пакунків</target>
+      </trans-unit>
+      <trans-unit id="se9b1fec72ffd8f48">
+        <source>Local</source>
+        <target>Місцевий</target>
+      </trans-unit>
+      <trans-unit id="sc7691fecb3373a42">
+        <source>No local packages</source>
+        <target>Немає локальних пакунків</target>
+      </trans-unit>
+      <trans-unit id="keyCommand">
+        <source>⌘ Command/Win</source>
+        <target>⌘ Командний/Перемогти</target>
+      </trans-unit>
+      <trans-unit id="keyShift">
+        <source>⇧ Shift</source>
+        <target>Зміна</target>
+      </trans-unit>
+      <trans-unit id="keyControl">
+        <source>^ Control</source>
+        <target>Контроль</target>
+      </trans-unit>
+      <trans-unit id="keyOption">
+        <source>⌥ Option/Alt</source>
+        <target>⌥ Option/Alt</target>
+      </trans-unit>
+      <trans-unit id="s2692bc028fed91f1">
+        <source>⇪ Caps Lock</source>
+        <target>Caps Lock</target>
+      </trans-unit>
+      <trans-unit id="backspaceKey">
+        <source>⟵</source>
+        <target>⟵</target>
+      </trans-unit>
+      <trans-unit id="tabKey">
+        <source>⭾ Tab</source>
+        <target>⭾ Вкладка</target>
+      </trans-unit>
+      <trans-unit id="clearKey">
+        <source>⎚ Clear</source>
+        <target>Чисто</target>
+      </trans-unit>
+      <trans-unit id="enterKey">
+        <source>↩ Enter</source>
+        <target>Увійдіть</target>
+      </trans-unit>
+      <trans-unit id="escapeKey">
+        <source>⎋ Escape</source>
+        <target>Втеча</target>
+      </trans-unit>
+      <trans-unit id="spaceKey">
+        <source>Space</source>
+        <target>Простір</target>
+      </trans-unit>
+      <trans-unit id="upKey">
+        <source>↑ Up</source>
+        <target>↑ Вгору</target>
+      </trans-unit>
+      <trans-unit id="downKey">
+        <source>↓ Down</source>
+        <target>↓ Вниз</target>
+      </trans-unit>
+      <trans-unit id="leftKey">
+        <source>← Left</source>
+        <target>← Ліворуч</target>
+      </trans-unit>
+      <trans-unit id="rightKey">
+        <source>→ Right</source>
+        <target>→ Так.</target>
+      </trans-unit>
+      <trans-unit id="homeKey">
+        <source>⤒ Home</source>
+        <target>⤒ Головна</target>
+      </trans-unit>
+      <trans-unit id="endKey">
+        <source>⤓ End</source>
+        <target>⤓ Кінець</target>
+      </trans-unit>
+      <trans-unit id="pageupKey">
+        <source>▲ Pageup</source>
+        <target>▲ Початок сторінки</target>
+      </trans-unit>
+      <trans-unit id="pagedownKey">
+        <source>▼ Pagedown</source>
+        <target>▼ Прокрутка сторінок</target>
+      </trans-unit>
+      <trans-unit id="deleteKey">
+        <source>⌦ Delete</source>
+        <target>Видалити</target>
+      </trans-unit>
+      <trans-unit id="f1Key">
+        <source>F1</source>
+        <target>F1</target>
+      </trans-unit>
+      <trans-unit id="f2Key">
+        <source>F2</source>
+        <target>F2</target>
+      </trans-unit>
+      <trans-unit id="f3Key">
+        <source>F3</source>
+        <target>F3</target>
+      </trans-unit>
+      <trans-unit id="f4Key">
+        <source>F4</source>
+        <target>F4</target>
+      </trans-unit>
+      <trans-unit id="f5Key">
+        <source>F5</source>
+        <target>F5</target>
+      </trans-unit>
+      <trans-unit id="f6Key">
+        <source>F6</source>
+        <target>F6</target>
+      </trans-unit>
+      <trans-unit id="f7Key">
+        <source>F7</source>
+        <target>F7</target>
+      </trans-unit>
+      <trans-unit id="f8Key">
+        <source>F8</source>
+        <target>F8</target>
+      </trans-unit>
+      <trans-unit id="f9Key">
+        <source>F9</source>
+        <target>F9</target>
+      </trans-unit>
+      <trans-unit id="f10Key">
+        <source>F10</source>
+        <target>F10</target>
+      </trans-unit>
+      <trans-unit id="f11Key">
+        <source>F11</source>
+        <target>F11</target>
+      </trans-unit>
+      <trans-unit id="f12Key">
+        <source>F12</source>
+        <target>F12</target>
+      </trans-unit>
+      <trans-unit id="f13Key">
+        <source>F13</source>
+        <target>F13</target>
+      </trans-unit>
+      <trans-unit id="f14Key">
+        <source>F14</source>
+        <target>F14</target>
+      </trans-unit>
+      <trans-unit id="f15Key">
+        <source>F15</source>
+        <target>F15</target>
+      </trans-unit>
+      <trans-unit id="f16Key">
+        <source>F16</source>
+        <target>F16</target>
+      </trans-unit>
+      <trans-unit id="f17Key">
+        <source>F17</source>
+        <target>F17</target>
+      </trans-unit>
+      <trans-unit id="f18Key">
+        <source>F18</source>
+        <target>F18</target>
+      </trans-unit>
+      <trans-unit id="f19Key">
+        <source>F19</source>
+        <target>F19</target>
+      </trans-unit>
+      <trans-unit id="s7dea785045c3cc74">
+        <source>Press new key combination...</source>
+        <target>Натисніть нову комбінацію клавіш...</target>
+      </trans-unit>
+      <trans-unit id="s46d4abe6255cb9e1">
+        <source>Reassign shortcut</source>
+        <target>Перепризначити ярлик</target>
+      </trans-unit>
+      <trans-unit id="sd1f44f1a8bc20e67">
+        <source>Email</source>
+        <target>Електронна пошта</target>
+      </trans-unit>
+      <trans-unit id="sf6e1665c7022a1f8">
+        <source>Password</source>
+        <target>Пароль</target>
+      </trans-unit>
+      <trans-unit id="s151bc2eea7a032a4">
+        <source>-unchanged-</source>
+        <target>-без змін.</target>
+      </trans-unit>
+      <trans-unit id="s61eacb19db252f5e">
+        <source>URL</source>
+        <target>URL</target>
+      </trans-unit>
+      <trans-unit id="s506b6a19d12f414c">
+        <source>Key</source>
+        <target>Ключ</target>
+      </trans-unit>
+      <trans-unit id="sd3f402df8619ddcd">
+        <source>This information about you is automatically added to new documents. You can change this for each document in the metadata editor.</source>
+        <target>Ця інформація про вас автоматично додається до нових документів. Ви можете змінити
+          її для кожного документа в редакторі метаданих.</target>
+      </trans-unit>
+      <trans-unit id="s90105521fcc40453">
+        <source>WebWriter Cloud accounts allow you store documents online and share them with your students. Add an account here and it will be available as a location for saving, loading, sharing and opening documents.</source>
+        <target>Облікові записи WebWriter Cloud дозволяють зберігати документи онлайн і ділитися
+          ними зі своїми учнями. Додайте обліковий запис тут, і він стане доступним для збереження,
+          завантаження, обміну та відкриття документів.</target>
+      </trans-unit>
+      <trans-unit id="s2712dc5641a33226">
+        <source>Package registry accounts are intended for developers and allow you to configure one or more registries</source>
+        <target>Пакетні облікові записи реєстру призначені для розробників і дозволяють налаштувати
+          один або декілька реєстрів</target>
+      </trans-unit>
+      <trans-unit id="s669b18c6d2d9c95b">
+        <source>None</source>
+        <target>Ні.</target>
+      </trans-unit>
+      <trans-unit id="sef49aec68fd1dc66">
+        <source>Name</source>
+        <target>Ім'я</target>
+      </trans-unit>
+      <trans-unit id="s7cfe12cd14df9950">
+        <source>Sign out</source>
+        <target>Вийдіть з системи.</target>
+      </trans-unit>
+      <trans-unit id="s5e27738a2e8eb763">
+        <source>Sign in</source>
+        <target>Увійдіть в систему</target>
+      </trans-unit>
+      <trans-unit id="sf28903d4ca0ddcfc">
+        <source>Remove this account</source>
+        <target>Видаліть цей обліковий запис</target>
+      </trans-unit>
+      <trans-unit id="sb85b1e36579852a6">
+        <source>Invalid email or password</source>
+        <target>Неправильна адреса електронної пошти або пароль</target>
+      </trans-unit>
+      <trans-unit id="s0bdca49248ba4820">
+        <source>Shortcuts</source>
+        <target>Ярлики</target>
+      </trans-unit>
+      <trans-unit id="se48bd9e6c2a3109d">
+        <source>Accounts</source>
+        <target>Рахунки</target>
+      </trans-unit>
+      <trans-unit id="s6988ab5d47593a26">
+        <source>You have the latest version of WebWriter.</source>
+        <target>У вас найновіша версія WebWriter.</target>
+      </trans-unit>
+      <trans-unit id="saf440a0a592f2835">
+        <source>Update to</source>
+        <target>Оновлення до</target>
+      </trans-unit>
+      <trans-unit id="s564d1648b1ceee9f">
+        <source>Up to date</source>
+        <target>Актуально</target>
+      </trans-unit>
+      <trans-unit id="sf6673729c03ae999">
+        <source>Reset WebWriter</source>
+        <target>Перезавантажити WebWriter</target>
+      </trans-unit>
+      <trans-unit id="sf1e79171c4856543">
+        <source>Are you sure? This action can't be reversed, all your settings will be deleted and reset.</source>
+        <target>Ви впевнені? Цю дію неможливо скасувати, всі ваші налаштування буде видалено та
+          скинуто.</target>
+      </trans-unit>
+      <trans-unit id="se1b03a74b09ba7f0">
+        <source>App Folder</source>
+        <target>Папка програми</target>
+      </trans-unit>
+      <trans-unit id="sc221faca1ecb4aee">
+        <source>Anonymous</source>
+        <target>Анонім</target>
+      </trans-unit>
+      <trans-unit id="sdcd1efc06af80825">
+        <source>All rights reserved</source>
+        <target>Всі права захищені</target>
+      </trans-unit>
+      <trans-unit id="s78789724e789221c">
+        <source>Size</source>
+        <target>Розмір</target>
+      </trans-unit>
+      <trans-unit id="s1b4a36fce2456660">
+        <source>Font Family</source>
+        <target>Сімейство шрифтів</target>
+      </trans-unit>
+      <trans-unit id="s11326fd2590f4e5e">
+        <source>Default</source>
+        <target>За замовчуванням</target>
+      </trans-unit>
+      <trans-unit id="s9c356016f81585f6">
+        <source>Background Color</source>
+        <target>Колір фону</target>
+      </trans-unit>
+      <trans-unit id="s1f74bdf32b51a5fc">
+        <source>Background Image</source>
+        <target>Фонове зображення</target>
+      </trans-unit>
+      <trans-unit id="s927d796559f49439">
+        <source>Background Origin</source>
+        <target>Передісторія походження</target>
+      </trans-unit>
+      <trans-unit id="s1637c7d1a30629e2">
+        <source>Border Box</source>
+        <target>Прикордонна коробка</target>
+      </trans-unit>
+      <trans-unit id="scd15088c39fe9edf">
+        <source>Padding Box</source>
+        <target>Коробка для набивання</target>
+      </trans-unit>
+      <trans-unit id="s1db591f5a54dbfd3">
+        <source>Content Box</source>
+        <target>Вставка зі змістом</target>
+      </trans-unit>
+      <trans-unit id="sa01e7bf33563ef72">
+        <source>Background Attachment</source>
+        <target>Довідковий додаток</target>
+      </trans-unit>
+      <trans-unit id="sd319aae1401f1e19">
+        <source>Fixed</source>
+        <target>Виправлено</target>
+      </trans-unit>
+      <trans-unit id="sa7698b3d20a6d1ec">
+        <source>Scroll</source>
+        <target>Прокрутка</target>
+      </trans-unit>
+      <trans-unit id="s89bca7498f20e041">
+        <source>Background Clip</source>
+        <target>Фоновий кліп</target>
+      </trans-unit>
+      <trans-unit id="s2492f5fb1b05b45e">
+        <source>Text</source>
+        <target>Текст</target>
+      </trans-unit>
+      <trans-unit id="s67d6d8f179e655df">
+        <source>Hide advanced styling</source>
+        <target>Приховати розширені стилі</target>
+      </trans-unit>
+      <trans-unit id="s84e5eb4dc1ad9d98">
+        <source>Show advanced styling</source>
+        <target>Показати розширені можливості стайлінгу</target>
+      </trans-unit>
+      <trans-unit id="s29acfd2778e8c377">
+        <source>Hide advanced text formatting</source>
+        <target>Приховати розширене форматування тексту</target>
+      </trans-unit>
+      <trans-unit id="s1a1acc902e6668e0">
+        <source>Show advanced text formatting</source>
+        <target>Показати розширене форматування тексту</target>
+      </trans-unit>
+      <trans-unit id="s4fd2e638aabb0bb3">
+        <source>WebWriter supports embedding many different sources. Simply paste a link to content from:</source>
+        <target>WebWriter підтримує вбудовування різних джерел. Просто вставте посилання на вміст:</target>
+      </trans-unit>
+      <trans-unit id="sa79167651dce1e80">
+        <source>Alternate text</source>
+        <target>Альтернативний текст</target>
+      </trans-unit>
+      <trans-unit id="sa8bbe0197d31b423">
+        <source>Short description</source>
+        <target>Короткий опис</target>
+      </trans-unit>
+      <trans-unit id="seccd05955adb76bc">
+        <source>Poster</source>
+        <target>Постер</target>
+      </trans-unit>
+      <trans-unit id="s42e470ef1d707a28">
+        <source>Autoplay</source>
+        <target>Автовідтворення</target>
+      </trans-unit>
+      <trans-unit id="s83cd32b685ccc9b7">
+        <source>Controls</source>
+        <target>Керування</target>
+      </trans-unit>
+      <trans-unit id="s4efee5b48a4593cb">
+        <source>Loop</source>
+        <target>Петля</target>
+      </trans-unit>
+      <trans-unit id="se0f67eae944f8f94">
+        <source>Mute</source>
+        <target>Вимкнути звук.</target>
+      </trans-unit>
+      <trans-unit id="se036b53f145441cd">
+        <source>Mixed Content</source>
+        <target>Змішаний вміст</target>
+      </trans-unit>
+      <trans-unit id="s651f3a92741d9520">
+        <source>Everything</source>
+        <target>Все</target>
+      </trans-unit>
+      <trans-unit id="sddc49047f66a64ab">
+        <source>No description provided</source>
+        <target>Опис не надано</target>
+      </trans-unit>
+      <trans-unit id="s1641ab440bf4daa4">
+        <source>Update this widget package</source>
+        <target>Оновити цей пакет віджетів</target>
+      </trans-unit>
+      <trans-unit id="sbd40f40cbadd38d5">
+        <source>Remove this widget package</source>
+        <target>Видаліть цей пакунок віджетів</target>
+      </trans-unit>
+      <trans-unit id="s54897f2764b0e4d0">
+        <source>Install this widget package</source>
+        <target>Встановіть цей пакунок віджету</target>
+      </trans-unit>
+      <trans-unit id="s985f2db57913324b">
+        <source>Manage packages</source>
+        <target>Керування пакетами</target>
+      </trans-unit>
+      <trans-unit id="scdf536b65be39ec5">
+        <source> Create/import</source>
+        <target> Створити/імпортувати</target>
+      </trans-unit>
+      <trans-unit id="sf2514d5dc78b1654">
+        <source>Insert widget</source>
+        <target>Вставити віджет</target>
+      </trans-unit>
+      <trans-unit id="s1857db526dc4dcdd">
+        <source>Create package</source>
+        <target>Створити пакет</target>
+      </trans-unit>
+      <trans-unit id="sd2addf69477cd4b4">
+        <source>Import package</source>
+        <target>Імпортний пакет</target>
+      </trans-unit>
+      <trans-unit id="s7de0061f53ba7472">
+        <source>Error importing </source>
+        <target>Помилка імпорту </target>
+      </trans-unit>
+      <trans-unit id="s00065e45db8c0441">
+        <source>See developer tools for more details</source>
+        <target>Дивіться інструменти для розробників для отримання додаткової інформації</target>
+      </trans-unit>
+      <trans-unit id="s812cbda653daaeba">
+        <source>This feature is not implemented yet</source>
+        <target>Ця функція ще не реалізована</target>
+      </trans-unit>
+      <trans-unit id="s35aeaff1425bca9e">
+        <source>WebWriter does not support media of type </source>
+        <target>WebWriter не підтримує носії типу </target>
+      </trans-unit>
+      <trans-unit id="sb199b34dca0a4cfc">
+        <source>Enter content here...</source>
+        <target>Введіть вміст тут...</target>
+      </trans-unit>
+      <trans-unit id="s775056d1cb76fbe9">
+        <source>Headline</source>
+        <target>Заголовок</target>
+      </trans-unit>
+      <trans-unit id="scf735dfae10f3870">
+        <source>Educational</source>
+        <target>Освітні</target>
+      </trans-unit>
+      <trans-unit id="s11fdceabe7befeff">
+        <source>Accessibility</source>
+        <target>Доступність</target>
+      </trans-unit>
+      <trans-unit id="s99f110d27e30b289">
+        <source>Title</source>
+        <target>Назва</target>
+      </trans-unit>
+      <trans-unit id="sef73fe18e351eb35">
+        <source>Keywords</source>
+        <target>Ключові слова</target>
+      </trans-unit>
+      <trans-unit id="s63d894b1ddb06289">
+        <source>Description</source>
+        <target>Опис</target>
+      </trans-unit>
+      <trans-unit id="s01d32b35baa3b676">
+        <source>Author</source>
+        <target>Автор</target>
+      </trans-unit>
+      <trans-unit id="s17597a8bb4810524">
+        <source>License</source>
+        <target>Ліцензія</target>
+      </trans-unit>
+      <trans-unit id="sdc48456f9a27ae02">
+        <source>Generator</source>
+        <target>Генератор</target>
+      </trans-unit>
+      <trans-unit id="s8d342ecaa9e75b9b">
+        <source>Relationship</source>
+        <target>Відносини</target>
+      </trans-unit>
+      <trans-unit id="s4ea0f21fc2a338a1">
+        <source>Move up</source>
+        <target>Рухайся.</target>
+      </trans-unit>
+      <trans-unit id="sb233557012dcb328">
+        <source>Move down</source>
+        <target>Вниз.</target>
+      </trans-unit>
+      <trans-unit id="s3d09398e555ee5f9">
+        <source>Advanced Options</source>
+        <target>Додаткові параметри</target>
+      </trans-unit>
+      <trans-unit id="s17fb3f4805f4f4b9">
+        <source>Remove field</source>
+        <target>Видалити поле</target>
+      </trans-unit>
+      <trans-unit id="sa6f8d27bca557059">
+        <source>Move meta/link/style elements up/down into this element</source>
+        <target>Переміщення елементів мета/посилання/стилю вгору/вниз у цьому елементі</target>
+      </trans-unit>
+      <trans-unit id="s6dadeaaee49d6d18">
+        <source>Meta</source>
+        <target>Мета</target>
+      </trans-unit>
+      <trans-unit id="s252a52330d32b900">
+        <source>Metadata</source>
+        <target>Метадані</target>
+      </trans-unit>
+      <trans-unit id="s6827930ef1aeaf99">
+        <source>Base URL</source>
+        <target>Базова URL-адреса</target>
+      </trans-unit>
+      <trans-unit id="s1ca22ce85e074da5">
+        <source>Pragma</source>
+        <target>Прагма</target>
+      </trans-unit>
+      <trans-unit id="s064339c229374050">
+        <source>Encoding</source>
+        <target>Кодування</target>
+      </trans-unit>
+      <trans-unit id="saab875d8cfcfe712">
+        <source>Theme</source>
+        <target>Тема</target>
+      </trans-unit>
+      <trans-unit id="sa417644bef21a9aa">
+        <source>Unnamed Theme</source>
+        <target>Безіменна тема</target>
+      </trans-unit>
+      <trans-unit id="saa33768e03c45fc8">
+        <source>File Size</source>
+        <target>Розмір файлу</target>
+      </trans-unit>
+      <trans-unit id="s3f06e9abb6ebcb79">
+        <source>Characters</source>
+        <target>Персонажі</target>
+      </trans-unit>
+      <trans-unit id="s0f350bc4e538e3ea">
+        <source>Words</source>
+        <target>Слова</target>
+      </trans-unit>
+      <trans-unit id="s106b274b5af798e5">
+        <source>Sentences</source>
+        <target>Речення</target>
+      </trans-unit>
+      <trans-unit id="s97aa76056a81bd36">
+        <source>Metrics</source>
+        <target>Метрики</target>
+      </trans-unit>
+      <trans-unit id="s94d2eee44b292567">
+        <source>Toggle advanced options</source>
+        <target>Перемикання додаткових параметрів</target>
+      </trans-unit>
+      <trans-unit id="s98977a87d1b93941">
+        <source>Reset information, styles and scripts</source>
+        <target>Скидання інформації, стилів і скриптів</target>
+      </trans-unit>
+      <trans-unit id="s543906d1db8b2283">
+        <source>Edit </source>
+        <target>Редагувати </target>
+      </trans-unit>
+      <trans-unit id="sbba865d4b437944f">
+        <source>Attribute</source>
+        <target>Атрибут</target>
+      </trans-unit>
+      <trans-unit id="s16b9446e3a70e1f4">
+        <source>Attributes</source>
+        <target>Атрибути</target>
+      </trans-unit>
+      <trans-unit id="sf471ec2496f904cc">
+        <source>Discard changes</source>
+        <target>Відкинути зміни</target>
+      </trans-unit>
+      <trans-unit id="s418f2020fe996832">
+        <source>Confirm changes</source>
+        <target>Підтвердити зміни</target>
+      </trans-unit>
+      <trans-unit id="sba509fd8ed61d1d5">
+        <source>Unsaved File</source>
+        <target>Незбережений файл</target>
+      </trans-unit>
+      <trans-unit id="sef00c258bc1ecf1e">
+        <source>This explorable has unsaved changes.</source>
+        <target>У цьому дослідженні є незбережені зміни.</target>
+      </trans-unit>
+      <trans-unit id="s731678e227a20559">
+        <source>This Device</source>
+        <target>Цей пристрій</target>
+      </trans-unit>
+      <trans-unit id="s71940c32987f675f">
+        <source>WebWriter Cloud</source>
+        <target>WebWriter Cloud</target>
+      </trans-unit>
+      <trans-unit id="s99a990f3841ad283">
+        <source>Files of </source>
+        <target>Файли з </target>
+      </trans-unit>
+      <trans-unit id="s3eb6d1e6e79ed7c4">
+        <source>No documents found</source>
+        <target>Документи не знайдено</target>
+      </trans-unit>
+      <trans-unit id="s4e2562fe3990e621">
+        <source>Error connecting</source>
+        <target>Помилка підключення</target>
+      </trans-unit>
+      <trans-unit id="sf52d840949a980d1">
+        <source>
+          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
+        </source>
+        <target>
+          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
+          буде видалено назавжди. Ви впевнені? 
+        </target>
+      </trans-unit>
+      <trans-unit id="s9b7cd8860c8fc922">
+        <source>
+          <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
+        </source>
+        <target>
+          <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
+          будуть перезаписані. Ти впевнений? 
+        </target>
+      </trans-unit>
+      <trans-unit id="sfdb1e4d90981a535">
+        <source>Share this document</source>
+        <target>Поділіться цим документом</target>
+      </trans-unit>
+      <trans-unit id="s1c3fc313a9184670">
+        <source>Public Link</source>
+        <target>Публічне посилання</target>
+      </trans-unit>
+      <trans-unit id="sc28864200d2a3799">
+        <source>Copy QR Code as image</source>
+        <target>Скопіювати QR-код як зображення</target>
+      </trans-unit>
+      <trans-unit id="sfc815c9078bba30a">
+        <source>Download QR Code as image</source>
+        <target>Завантажити QR-код як зображення</target>
+      </trans-unit>
+      <trans-unit id="s3a5ca02f282d247e">
+        <source>Share...</source>
+        <target>Поділіться...</target>
+      </trans-unit>
+      <trans-unit id="sda2d76b976502a8d">
+        <source>Open...</source>
+        <target>Відчини...</target>
+      </trans-unit>
+      <trans-unit id="sb26035b596566abf">
+        <source>Unnamed</source>
+        <target>Безіменний</target>
+      </trans-unit>
+      <trans-unit id="s4cb38675a21b2c98">
+        <source>Unsupported property type '${desc.type}' (processing as JSON)</source>
+        <target>Непідтримуваний тип властивості '${desc.type}' (обробка як JSON)</target>
+      </trans-unit>
+      <trans-unit id="sa00df4e39c72d3b4">
+        <source>
+          <x id="0" equiv-text="${desc.widget}"/> is not supported
+        </source>
+        <target>
+          <x id="0" equiv-text="${desc.widget}"/> не підтримується 
+        </target>
+      </trans-unit>
+      <trans-unit id="sf65df67a03bebe4b">
+        <source>Required for this widget</source>
+        <target>Необхідно для цього віджету</target>
+      </trans-unit>
+      <trans-unit id="s8a9eb438abac7c6a">
+        <source>Labels</source>
+        <target>Етикетки</target>
+      </trans-unit>
+      <trans-unit id="sdef34fe08bb28b09">
+        <source>Chinese (Simplified)</source>
+        <target>Китайська (спрощена)</target>
+      </trans-unit>
+      <trans-unit id="sf1868dc19e3917bb">
+        <source>Spanish</source>
+        <target>Іспанська</target>
+      </trans-unit>
+      <trans-unit id="s75a27f43413e02c5">
+        <source>French</source>
+        <target>Французька</target>
+      </trans-unit>
+      <trans-unit id="scf932840a69dbb7c">
+        <source>Portuguese</source>
+        <target>Португальська</target>
+      </trans-unit>
+      <trans-unit id="sa30c12014e955946">
+        <source>Russian</source>
+        <target>Російська мова</target>
+      </trans-unit>
+      <trans-unit id="seb8982ae8c3cdcc5">
+        <source>Indonesian</source>
+        <target>Індонезійська</target>
+      </trans-unit>
+      <trans-unit id="sdd35b688281b6dea">
+        <source>Japanese</source>
+        <target>Японський</target>
+      </trans-unit>
+      <trans-unit id="s9d2d00982edafabb">
+        <source>Turkish</source>
+        <target>Турецька</target>
+      </trans-unit>
+      <trans-unit id="s94d61907ee22a8c1">
+        <source>Korean</source>
+        <target>Корейська</target>
+      </trans-unit>
+      <trans-unit id="sd48cc52117f4d68b">
+        <source>Italian</source>
+        <target>Італійська</target>
+      </trans-unit>
+      <trans-unit id="sffa395f64ec6ac36">
+        <source>Bulgarian</source>
+        <target>Болгарська</target>
+      </trans-unit>
+      <trans-unit id="sc94e314312a8900c">
+        <source>Czech</source>
+        <target>Чеська</target>
+      </trans-unit>
+      <trans-unit id="sd9c21e5f60d6bdd8">
+        <source>Danish</source>
+        <target>Данська</target>
+      </trans-unit>
+      <trans-unit id="scf00d48fd5953a03">
+        <source>Greek</source>
+        <target>Грецька</target>
+      </trans-unit>
+      <trans-unit id="sa6607436f60ccc1a">
+        <source>Estonian</source>
+        <target>естонська</target>
+      </trans-unit>
+      <trans-unit id="sc98b103772de63f4">
+        <source>Finnish</source>
+        <target>Фінська</target>
+      </trans-unit>
+      <trans-unit id="sda9254d1f1228e1a">
+        <source>Hungarian</source>
+        <target>угорська</target>
+      </trans-unit>
+      <trans-unit id="sb2dc787b0983ebc6">
+        <source>Lithuanian</source>
+        <target>Литовська</target>
+      </trans-unit>
+      <trans-unit id="sd3dcb76f7b28adb8">
+        <source>Latvian</source>
+        <target>латвійська</target>
+      </trans-unit>
+      <trans-unit id="s5941292bb77281ab">
+        <source>Norwegian Bokmål</source>
+        <target>Норвезький Бокмоль</target>
+      </trans-unit>
+      <trans-unit id="s95d56e58f816d211">
+        <source>Dutch</source>
+        <target>Голландська</target>
+      </trans-unit>
+      <trans-unit id="s03f49e598ffb11cc">
+        <source>Polish</source>
+        <target>Польська</target>
+      </trans-unit>
+      <trans-unit id="sc1aa1f6051b7102a">
+        <source>Romanian</source>
+        <target>Румунська</target>
+      </trans-unit>
+      <trans-unit id="se0cda6b80a1bb50f">
+        <source>Slovak</source>
+        <target>Словацька</target>
+      </trans-unit>
+      <trans-unit id="se96d43a515b8451c">
+        <source>Slovenian</source>
+        <target>Словенська</target>
+      </trans-unit>
+      <trans-unit id="sae185e6af80ec81e">
+        <source>Swedish</source>
+        <target>Шведська</target>
+      </trans-unit>
+      <trans-unit id="sc4ee3e4ee994dafd">
+        <source>Ukrainian</source>
+        <target>Українська</target>
+      </trans-unit>
+      <trans-unit id="s082869038c117fe5">
+        <source>Portuguese (Brazil)</source>
+        <target>Португальська (Бразилія)</target>
+      </trans-unit>
+    </body>
+  </file>
+</xliff>
