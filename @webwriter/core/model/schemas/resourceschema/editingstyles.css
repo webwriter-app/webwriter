@@ -488,10 +488,13 @@ math:empty::after, math:has(mtext:only-child)::after {
   .ww-widget::part(options) {
     position: fixed;
     width: var(--ww-toolbox-action-width);
+    max-width: 400px;
     height: var(--ww-toolbox-action-height);
     left: var(--ww-toolbox-action-x);
     top: var(--ww-toolbox-action-y);
-    overflow: auto;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-gutter: stable;
     padding-top: 5px;
     user-select: none;
     -webkit-user-select: none;
