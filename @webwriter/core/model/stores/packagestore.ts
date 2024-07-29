@@ -160,11 +160,11 @@ export class PackageStore {
         .filter(err => err)
         .map(str => {
           const [message, afterPart] = str.trim().split("\n\n\n\n")
-          const [location, display] = afterPart.trim().split(":\n\n")
+          const [location, display] = (afterPart ?? "").trim().split(":\n\n")
           const nameRegex = /(@[a-z0-9-~][a-z0-9-._~]*\/)[a-z0-9-~][a-z0-9-._~]*/g
           const lineRegex = /\d+ │ .*\n/
-          const line = display.match(lineRegex)![0].trim()
-          const id = location.replace("node_modules/","").match(nameRegex)![0]
+          const line = display?.match(lineRegex)![0].trim()
+          const id = (location?.replace("node_modules/","").match(nameRegex) ?? [])[0]
           return new BundleIssue(message, {cause: line, stack: location, id})
         })
     }
