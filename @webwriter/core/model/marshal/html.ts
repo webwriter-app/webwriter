@@ -130,7 +130,7 @@ export class HTMLParserSerializer extends ParserSerializer {
     const {html, js, css} = await docToBundle(state.doc, state.head$.doc, this.Environment.bundle, this.Environment.Path, this.Environment.FS)
 
     const script = html.createElement("script")
-    script.type = "text/javascript"
+    script.type = "module"
     script.text = js
     script.setAttribute("data-ww-editing", "bundle")
     html.head.appendChild(script)
