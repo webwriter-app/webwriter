@@ -391,7 +391,7 @@ export class PackageStore {
       pkg.localPaths = {
         ...pkg?.localPaths,
         ...Object.fromEntries(toLink.map(t => [t.name!, t.parameters[0]!.replace("file:\/\/", "")])
-      )
+        )
       }
       await this.updateLocalLinks(pkg.localPaths)
       for(const key of Object.keys(pkg.localPaths)) {
