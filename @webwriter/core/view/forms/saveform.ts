@@ -1,6 +1,6 @@
 import { LitElement, html, css } from "lit"
 import { customElement, property, query, queryAsync } from "lit/decorators.js"
-import { localized, msg } from "@lit/localize"
+import { localized, msg, str } from "@lit/localize"
 import { SlChangeEvent, SlInput, getFormControls } from "@shoelace-style/shoelace"
 import { Combobox, DataInput } from "../elements"
 import { NpmAccount, PocketbaseAccount } from "../../model/schemas/accounts"
@@ -331,7 +331,7 @@ export class SaveForm extends LitElement {
   }
 
   handleDeleteDocument = async (url: URL) => {
-    const confirmed = await confirm(msg(`${url.searchParams.get("filename") ?? "This file"} will be deleted permanently. Are you sure?`))
+    const confirmed = await confirm(msg(str`${url.searchParams.get("filename") ?? "This file"} will be deleted permanently. Are you sure?`))
     if(confirmed) {
       this.dispatchEvent(new CustomEvent(
         "ww-delete-document",
@@ -342,7 +342,7 @@ export class SaveForm extends LitElement {
   }
 
   handleConfirm = async () => {
-    if(this.mode === "open" || !this.url || await confirm(msg(`${this.url.searchParams.get("filename") ?? "This file"} will be overwritten. Are you sure?`))) {
+    if(this.mode === "open" || !this.url || await confirm(msg(str`${this.url.searchParams.get("filename") ?? "This file"} will be overwritten. Are you sure?`))) {
       emitCustomEvent(this, "ww-confirm")
     }
   }
