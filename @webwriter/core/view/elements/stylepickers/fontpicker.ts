@@ -331,7 +331,6 @@ export class FontPicker extends LitElement {
   showFontSizeMultiple = false
 
 	render() {
-    console.log(this.fontSize)
     return html`<div part="base">
       <ww-combobox ?data-changed=${this.fontFamily !== "DEFAULT"} suggestions inputDisabled id="font-family" size="small" .value=${this.fontFamily ?? this.defaultFontFamily} defaultValue=${this.defaultFontFamily} @sl-change=${(e: any) => this.changeFontFamily(e.target.value.replaceAll("_", " "))}>
         ${this.FontOption(this.fontFamily ?? "DEFAULT", true)}
