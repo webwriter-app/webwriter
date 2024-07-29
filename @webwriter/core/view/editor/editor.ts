@@ -1066,7 +1066,7 @@ export class ExplorableEditor extends LitElement {
   windowListeners: Partial<Record<keyof WindowEventMap, any>> = {
     "beforeprint": () => this.printing = true,
     "afterprint": () => this.printing = false
-  }  
+  }
 
   globalListeners: Partial<Record<keyof WindowEventMap, any>> = {
     "keydown": (e: any) => this.updateDocumentElementClasses(e),

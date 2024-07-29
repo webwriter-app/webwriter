@@ -141,13 +141,11 @@ export class WidgetView implements NodeView {
   createDOM(ignoreListeners=false) {
 		const dom = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node, {document: this.view.dom.ownerDocument}) as HTMLElement
     if(!ignoreListeners) {
-      if(this.node.isAtom) {
-        dom.addEventListener("focusin", e => this.selectFocused(), {passive: true})
-      }
+      dom.addEventListener("focus", e => this.selectFocused(), {passive: true})
       dom.addEventListener("mouseenter", e => this.emitWidgetMouseenter(e), {passive: true})
       dom.addEventListener("mouseleave", e => this.emitWidgetMouseleave(e), {passive: true})
       dom.addEventListener("keydown", e => this.emitWidgetInteract(e), {passive: true})
-      dom.addEventListener("click", e => this.handleWidgetClick(e), {passive: true})
+      dom.addEventListener("click", e => this.handleWidgetClick(e))
       dom.addEventListener("touchstart", e => this.emitWidgetInteract(e), {passive: true})
       // dom.addEventListener("selectionchange", e => e.preventDefault())
     }
@@ -169,8 +167,10 @@ export class WidgetView implements NodeView {
   }
 
   handleWidgetClick(e: MouseEvent) {
-    if(e.offsetX > this.dom.offsetWidth) {
+    if(e.offsetX > this.dom.offsetWidth || e.ctrlKey) {
       this.selectFocused()
+      e.preventDefault()
+      e.stopImmediatePropagation()
     }
     this.emitWidgetClick(e)
   }
@@ -240,7 +240,6 @@ export class WidgetView implements NodeView {
       return true
 		}
 		else if(type === "childList") {
-			// TODO
       return false
 		}
 		return true
@@ -258,21 +257,12 @@ export class WidgetView implements NodeView {
 
 	stopEvent(e: Event) {
     const window = this.dom.ownerDocument.defaultView!
-		const activeElement = this.view?.host?.shadowRoot?.activeElement
-		const node = this.view.nodeDOM(this.getPos())
-    if(e instanceof window.MouseEvent) {
-      return true
-    }
-		else if(activeElement === node) {
-			return true
-				&& !(e instanceof window.KeyboardEvent && e.key === "Escape")
-				&& !(e instanceof window.KeyboardEvent && (e.ctrlKey && e.key === "ArrowDown"))
-				&& !(e instanceof window.KeyboardEvent && (e.ctrlKey && e.key === "ArrowUp"))
-		}
-		else {
-			return true 
-				&& !(e instanceof window.KeyboardEvent && e.key === "Escape")
-		}
+    const atomDenyList = [window.UIEvent]
+    const atomAllowList = [window.FocusEvent, window.DragEvent]
+    this.emitWidgetInteract(e)
+    const isDenied = atomDenyList.some(E => typeof E === "string"? E === e.type: e instanceof E)
+    const isAllowed = atomAllowList.some(E => typeof E === "string"? E === e.type: e instanceof E)
+    return isDenied && !isAllowed
 	}
 
 	emitWidgetFocus = () => this.dom.dispatchEvent(new CustomEvent("ww-widget-focus", {
@@ -418,7 +408,6 @@ export class IFrameView implements NodeView {
 	}
 
   selectFocused() {
-    console.log("focus")
     const resolvedPos = this.view.state.doc.resolve(this.getPos())
     const tr = this.view.state.tr.setSelection(new NodeSelection(resolvedPos))
     this.view.dispatch(tr)
