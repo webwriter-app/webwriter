@@ -161,6 +161,9 @@ figure.ProseMirror-selectednode::before {
   display: block;
 }
 
+html.ww-key-ctrl body * {
+  cursor: pointer;
+}
 
 
 .ProseMirror > :not(.ProseMirror-widget) {
@@ -217,7 +220,7 @@ figure.ProseMirror-selectednode::before {
   border-color: var(--sl-color-danger-400);
 }*/
 
-:is(.ww-copying, .ww-cutting, .ww-deleting)::before {
+:is(.ww-copying, .ww-cutting, .ww-deleting, html.ww-key-ctrl body *)::before {
   content: "";
   position: absolute;
   right: -20px;
@@ -229,7 +232,16 @@ figure.ProseMirror-selectednode::before {
   height: 100%;
 }
 
-:is(.ww-cutting)::before {
+html.ww-key-ctrl body * {
+  pointer-events: none;
+}
+
+html.ww-key-ctrl body *::before {
+  pointer-events: all;
+  z-index: unset;
+}
+
+.ww-cutting::before {
   background: var(--sl-color-warning-400);
 }
 

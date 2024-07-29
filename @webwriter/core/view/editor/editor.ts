@@ -771,7 +771,7 @@ export class ExplorableEditor extends LitElement {
         body {
           --ww-toolbox-action-x: ${this.toolboxX - iframeOffsetX};
           --ww-toolbox-action-y: ${this.toolboxY + this.toolboxHeight - iframeOffsetY};
-          --ww-toolbox-action-width: ${docWidth - rightEdge}
+          --ww-toolbox-action-width: ${docWidth - rightEdge - 40};
           --ww-toolbox-action-height: ${docHeight + -this.toolboxY + -this.toolboxHeight}
         }
       `
@@ -785,6 +785,18 @@ export class ExplorableEditor extends LitElement {
     this.positionStylesheet.replaceSync(styles)
     this.pmEditor.document.adoptedStyleSheets.push(this.positionStylesheet)
   }
+
+  set rootElementStyle(value: Record<string, string>) {
+    this.rootElementStyle = {...this.#rootElementStyle, ...value}
+    const props = Object.entries(this.rootElementStyle).map(([p,v])=>`${p}: ${v}`).join(";")
+    const styles = `html { ${props} }`
+    this.pmEditor.document.adoptedStyleSheets = this.pmEditor.document.adoptedStyleSheets.filter(sheet => sheet !== this.positionStylesheet)
+    this.positionStylesheet = new this.pmEditor.window.CSSStyleSheet()
+    this.positionStylesheet.replaceSync(styles)
+    this.pmEditor.document.adoptedStyleSheets.push(this.positionStylesheet)
+  }
+
+  #rootElementStyle: Record<string, string> = {}
 
   positionStylesheet: CSSStyleSheet
 
@@ -805,7 +817,10 @@ export class ExplorableEditor extends LitElement {
 
   connectedCallback(): void {
     super.connectedCallback()
-    window.addEventListener("resize", () => this.requestUpdate())
+    for(const [name, callback] of Object.entries(this.globalListeners)) {
+      window.addEventListener(name, callback)
+    }
+
   }
 
   disconnectedCallback(): void {
@@ -863,6 +878,12 @@ export class ExplorableEditor extends LitElement {
     },
     "keyup": (_: any, ev: KeyboardEvent) => {
       this.dispatchEvent(new KeyboardEvent(ev.type, ev))
+    },
+    "selectstart": (_: any, ev: Event) => {
+
+    },
+    "ww-widget-interact": (_: any, ev: KeyboardEvent) => {
+      this.updateDocumentElementClasses(ev, true)
     },
     /*
     "ww-widget-focus": (_: any, ev: CustomEvent) => {
@@ -1046,6 +1067,30 @@ export class ExplorableEditor extends LitElement {
     "beforeprint": () => this.printing = true,
     "afterprint": () => this.printing = false
   }  
+
+  globalListeners: Partial<Record<keyof WindowEventMap, any>> = {
+    "keydown": (e: any) => this.updateDocumentElementClasses(e),
+    "keyup": (e: any) => this.updateDocumentElementClasses(e, true),
+    "mouseup": (e: any) => this.updateDocumentElementClasses(e),
+    "resize": () => this.requestUpdate()
+  }
+
+  updateDocumentElementClasses = (e: KeyboardEvent | MouseEvent, removeOnly=false) => {
+    const toRemove = [
+      !e.ctrlKey && "ww-key-ctrl",
+      !e.altKey && "ww-key-alt",
+      !e.shiftKey && "ww-key-shift",
+      !e.metaKey && "ww-key-meta"
+    ].filter(k => k) as string[]
+    const toAdd = [
+      e.ctrlKey && "ww-key-ctrl",
+      e.altKey && "ww-key-alt",
+      e.shiftKey && "ww-key-shift",
+      e.metaKey && "ww-key-meta"
+    ].filter(k => k) as string[]
+    toRemove.length && this.pmEditor.documentElement.classList.remove(...toRemove)
+    !removeOnly && toAdd.length && this.pmEditor.documentElement.classList.add(...toAdd)
+  }
 
   transformPastedHTML = (html: string) => {
     return html.replaceAll(/style=["']?((?:.(?!["']?\s+(?:\S+)=|\s*\/?[>"']))+.)["']?/g, "")
