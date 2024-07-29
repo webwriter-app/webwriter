@@ -113,6 +113,8 @@ export const basePlugin = () => ({
       tag: "body",
       content: `(p | flow)+`,
       phrasingContent: true,
+      draggable: false,
+      selectable: false,
       attrs: {
         onafterprint: {default: undefined},
         onbeforeprint: {default: undefined},
