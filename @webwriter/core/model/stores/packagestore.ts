@@ -388,9 +388,11 @@ export class PackageStore {
     }
     if(toLink.length > 0) {
       const pkg = (await this.readRootPackageJson())!
-      pkg.localPaths = Object.fromEntries(toLink
-        .map(task => [task.name!, task.parameters[0]!.replace("file:\/\/", "")])
+      pkg.localPaths = {
+        ...pkg?.localPaths,
+        ...Object.fromEntries(toLink.map(t => [t.name!, t.parameters[0]!.replace("file:\/\/", "")])
       )
+      }
       await this.updateLocalLinks(pkg.localPaths)
       for(const key of Object.keys(pkg.localPaths)) {
         try {
