@@ -8,6 +8,8 @@ html {
   --sl-color-danger-300: #fca5a5;
   --sl-color-primary-400: #38bdf8;
   --scrollbar-width: 16px;
+  pointer-events: none;
+  user-select: none;
 }
 
 html:not(:has(:fullscreen)) {
@@ -121,6 +123,8 @@ figure.ProseMirror-selectednode::before {
 }
 
 .ProseMirror {
+  pointer-events: all;
+  user-select: unset;
   position: relative;
   outline: none;
   display: block;
