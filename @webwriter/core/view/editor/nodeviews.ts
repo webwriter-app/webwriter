@@ -257,7 +257,7 @@ export class WidgetView implements NodeView {
 
 	stopEvent(e: Event) {
     const window = this.dom.ownerDocument.defaultView!
-    const atomDenyList = [window.UIEvent]
+    const atomDenyList = [window.UIEvent, window.ClipboardEvent]
     const atomAllowList = [window.FocusEvent, window.DragEvent]
     this.emitWidgetInteract(e)
     const isDenied = atomDenyList.some(E => typeof E === "string"? E === e.type: e instanceof E)
