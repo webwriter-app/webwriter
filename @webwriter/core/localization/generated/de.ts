@@ -518,6 +518,8 @@
 'upKey': `↑ Hoch`,
 'sa37fee6a52d18063': `Delete document`,
 'sf64a8229a8136552': `Delete a document`,
+'s6dc3339b268508dd': `Spell Check`,
+'s5c1501691641b359': `Checks the document for grammar errors`,
 's5c63af7695445fcf': `Text Style`,
 's6907015655602158': `Margins`,
 'sb1bd619a8d7cb15f': `Paddings`,
