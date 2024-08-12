@@ -1,4 +1,9 @@
-import { EditorState, Plugin, TextSelection } from "prosemirror-state";
+import {
+  EditorState,
+  Plugin,
+  TextSelection,
+  Transaction,
+} from "prosemirror-state";
 import {
   Schema,
   Node,
@@ -6,9 +11,18 @@ import {
   Attrs,
   DOMSerializer,
   DOMParser,
+  Slice,
 } from "prosemirror-model";
 import { html_beautify as htmlBeautify } from "js-beautify";
 import { formatHTMLToPlainText } from "../../../spell-check/htmlparser";
+import {
+  applyGrammarSuggestions,
+  diffTokens,
+  matchDiffs,
+  tokenizeText,
+  // diff,
+  // matchSpellingSuggestions,
+} from "../../../spell-check/text-tokenizer";
 import { fetchGrammarCorrection } from "../../../spell-check/openai-fetcher";
 
 import {
@@ -266,8 +280,11 @@ export class DocumentStore implements Resource {
     }
   }
 
+  isSpellchecking = false;
+
   /** Does a spell check on the document text */
   async spellcheck() {
+    this.isSpellchecking = true;
     // get raw editor html
     const state = this.editorState;
     const serializer = DOMSerializer.fromSchema(state.schema);
@@ -284,16 +301,35 @@ export class DocumentStore implements Resource {
 
     // send text to spellchecker
     const res = await fetchGrammarCorrection(text);
+    console.log("spellcheck response:", res);
     const correctedText = res.choices[0].message.content;
+    if (!correctedText) {
+      console.error("no corrected text!");
+      return;
+    }
     console.log("corrected:", correctedText);
 
     // tokenize both texts
+    const originalTokens = tokenizeText(text);
+    const correctedTokens = tokenizeText(correctedText);
 
     // get token differences
+    const diffs = diffTokens(originalTokens, correctedTokens);
+    console.log(diffs);
+    const suggestions = matchDiffs(diffs);
+    console.log("suggestions:", suggestions);
 
-    // highlight differences in content
+    // highlight differences in content using transactions
 
-    // set editor state
+    const transaction = applyGrammarSuggestions(state, suggestions);
+
+    // Create a new EditorStateWithHead applying the transaction
+    const newState = this.editorState.apply(transaction) as EditorStateWithHead;
+    newState["head$"] = this.editorState["head$"];
+
+    // Update the editorState
+    this.editorState = newState;
+    this.isSpellchecking = false;
   }
 
   get empty() {

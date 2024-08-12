@@ -23,9 +23,9 @@ import {
   deprecatedPlugin,
   headingPlugin,
   sectionPlugin,
+  grammarPlugin,
 } from "./plugins";
 import { EditorStateWithHead, headSchema, initialHeadState } from "./head";
-import { grammarPlugin } from "./plugins/grammar";
 
 export * from "./plugins";
 export * from "./htmlelementspec";
