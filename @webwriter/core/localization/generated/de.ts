@@ -545,6 +545,8 @@
 'sa559701e1cdc3331': `Shaping`,
 's04061a8e12259e3f': `2D/3D transform`,
 'sf190149f9d8bbb2a': `Writing mode`,
+'s60a4538660593aef': `OpenAI accounts allow you to use the OpenAI API to generate text and other content.`,
+'s82a13785572f0760': `OpenAI API Key`,
 's99a990f3841ad283': `Files of `,
 's3eb6d1e6e79ed7c4': `No documents found`,
 's4e2562fe3990e621': `Error connecting`,
