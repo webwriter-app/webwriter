@@ -172,13 +172,18 @@ export class AccountManager extends LitElement {
       return html`<sl-card class="account-card-oai">
         <sl-input
           size="small"
+          class="openai-form"
           placeholder=${msg("None")}
           label=${msg("OpenAI API Key")}
           value=${ifDefined(account?.apikey)}
           @sl-change=${(e: any) =>
             this.handleFileAccountChange("apikey", e.target.value)}
         ></sl-input>
-        <ww-button slot="footer" variant="primary" @click=${this.saveOpenAI}>
+        <ww-button
+          slot="footer"
+          variant="primary"
+          @click=${this.handleSaveApiKey}
+        >
           ${msg("Save")}
         </ww-button>
       </sl-card>`;
@@ -314,7 +319,6 @@ export class AccountManager extends LitElement {
         ${Object.values(accounts).map((account) =>
           this.accountCards[type](account as any)
         )}
-        ${this.accountCards["openai"]()}
         ${type === "file"
           ? undefined
           : html`
@@ -339,16 +343,24 @@ export class AccountManager extends LitElement {
     await this.app.settings.persist();
   }
 
-  saveOpenAI = async (e: SubmitEvent) => {
+  handleSaveApiKey = async (e: SubmitEvent) => {
     e.preventDefault();
-    const form = e.target as HTMLElement;
-    const apikey = form.querySelector("sl-input") as SlInput;
-    console.log(apikey.value);
-    const account = new OpenAIAccount({ apikey: "test" });
-    this.app.store.accounts.addAccount(account);
-    await this.app.settings.persist();
+    const el = (e.target as HTMLElement).parentElement!;
+    const form = (
+      el.classList.contains("openai-form")
+        ? el
+        : el.querySelector(".openai-form")
+    ) as SlCard;
+    console.log(form);
 
-    this.requestUpdate();
+    const accounts = this.app.store.accounts;
+    const openaiAccount = accounts.getAccount("openai");
+    const newAccount = new OpenAIAccount({
+      // apikey: (form as any).apikey,
+      apikey: "apikey",
+    });
+    accounts.updateAccount(newAccount);
+    await this.app.settings.persist();
   };
 
   handleSubmit = async (e: SubmitEvent) => {
@@ -431,6 +443,9 @@ export class AccountManager extends LitElement {
   @query(".pending-account-card .account-form")
   pendingAccountForm: PocketbaseAccountForm | NpmAccountForm;
 
+  // @query(".openai-apikey-form")
+  // openaiApikeyForm: SlCard;
+
   @query(".pending-account-card .label-input")
   pendingAccountLabelInput: SlInput;
 
@@ -440,7 +455,7 @@ export class AccountManager extends LitElement {
   render() {
     const accounts = this.app.store.accounts.accounts;
     const types = Object.keys(accounts).filter(
-      (k) => k === "pocketbase"
+      (k) => k === "pocketbase" || k === "openai"
     ) as AccountTypeId[];
     return html` ${types.map((t) => this.AccountsPane(t, accounts[t]))} `;
   }

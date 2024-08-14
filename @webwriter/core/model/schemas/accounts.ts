@@ -101,6 +101,7 @@ export class FileAccount {
   }
 }
 
+// @meeting
 export interface OpenAIAccount
   extends z.infer<(typeof OpenAIAccount)["objectSchema"]> {}
 export class OpenAIAccount {

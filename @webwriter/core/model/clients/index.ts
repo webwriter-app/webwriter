@@ -425,4 +425,5 @@ export default {
   file: FileClient,
   pocketbase: PocketbaseClient,
   npm: NpmClient,
+  openai: OpenAIClient,
 };

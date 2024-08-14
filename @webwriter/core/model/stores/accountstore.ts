@@ -22,6 +22,7 @@ export type Client<T extends AccountTypeId = AccountTypeId> = InstanceType<
   (typeof AccountStore)["clients"][T]
 >;
 
+// @meeting
 /** Handles accounts. */
 export class AccountStore {
   static accountType = {
