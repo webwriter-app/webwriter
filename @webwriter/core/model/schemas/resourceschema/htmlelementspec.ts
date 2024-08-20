@@ -167,7 +167,6 @@ const styleSpec: AttributeSpec & Record<string, any> = {
 }
 
 export function toAttributes(node: Node | Attrs, extraAttrs?: Attrs) {
-  node?.type?.name === "video" && console.log("toAttributes", node)
   const complex = node instanceof Node || node instanceof Mark
   const outputAttrs = {} as Record<string, string>
   const attrs = complex? {...node.attrs, ...extraAttrs}: {...node, ...extraAttrs}
