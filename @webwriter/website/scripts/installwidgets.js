@@ -41,7 +41,7 @@ catch(err) {
   throw err
 }
 
-
+/*
 const importStatements = Object.fromEntries(names.map(name => [
     name,
     `import "redefine-custom-elements"; import "${name}"`
@@ -81,8 +81,9 @@ for(const [i, name] of names.entries()) {
 }
 
 // fs.rm("tmp", {recursive: true})
+*/
 
 const packages = names
     .map(name => JSON.parse(fs.readFileSync(`public/widgetsrc/node_modules/${name}/package.json`, "utf8")))
-    .map((pkg, i) => ({...widgets[i], ...pkg, bundleSize: bundleSizes[i], installSize: installSizes[i]}))
+    .map((pkg, i) => ({...widgets[i], ...pkg}))
 fs.writeFileSync("resources/widgets.json", JSON.stringify(packages, undefined, 2), "utf8")
