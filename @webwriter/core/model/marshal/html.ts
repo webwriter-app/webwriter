@@ -109,13 +109,19 @@ export class HTMLParserSerializer extends ParserSerializer {
       throw new NonHTMLDocumentError(e?.message)
     }
   
+
+    let defaultState = undefined as EditorStateWithHead | undefined
     if(!inputDoc.querySelector("meta[name=generator][content^='webwriter@']")) {
-      throw new NonWebwriterDocumentError("Did not find <meta name='generator'> valid for WebWriter")
+      defaultState = createEditorState({schema})
+//      throw new NonWebwriterDocumentError("Did not find <meta name='generator'> valid for WebWriter")
     }
   
-    const doc = DOMParser.fromSchema(schema).parse(inputDoc.body)
+    let doc = DOMParser.fromSchema(schema).parse(inputDoc.body)
   
     let head = DOMParser.fromSchema(headSchema).parse(inputDoc.head)
+    if(defaultState) {
+      head = defaultState.head$.apply(defaultState.head$.tr.insert(1, head.content)).doc
+    }
     const htmlAttrs = {} as Record<string, string>
     for(let key of inputDoc.documentElement.getAttributeNames()) {
       htmlAttrs[key] = inputDoc.documentElement.getAttribute(key)!
@@ -125,8 +131,8 @@ export class HTMLParserSerializer extends ParserSerializer {
     const editorState = createEditorState({schema, doc}, head)
     return editorState
   }
-  
-  async serialize(state: EditorStateWithHead) {
+
+  async serializeToDOM(state: EditorStateWithHead) {
     const {html, js, css} = await docToBundle(state.doc, state.head$.doc, this.Environment.bundle, this.Environment.Path, this.Environment.FS)
 
     const script = html.createElement("script")
@@ -139,7 +145,11 @@ export class HTMLParserSerializer extends ParserSerializer {
     style.textContent = css ?? ""
     style.setAttribute("data-ww-editing", "bundle")
     html.head.appendChild(style)
+    return html
+  }
   
+  async serialize(state: EditorStateWithHead) {
+    const html = await this.serializeToDOM(state)
     return `<!DOCTYPE html>` + html.documentElement.outerHTML
   }
 }
