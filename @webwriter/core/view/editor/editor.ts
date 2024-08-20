@@ -716,6 +716,9 @@ export class ExplorableEditor extends LitElement {
 	}
 
 	updatePosition = async () => {
+    if(!this.app.store.ui.stickyToolbox) {
+      return undefined
+    }
 		const mode = this.toolboxMode
 		const docEl = this.activeElement?.ownerDocument.querySelector("body")
 		const iframeEl = this.pmEditor?.iframe
@@ -1149,10 +1152,15 @@ export class ExplorableEditor extends LitElement {
 
 	get toolboxStyle(): Parameters<typeof styleMap>[0] {
 		const {toolboxMode} = this
-		if(!this.toolboxY) return {
+    if(!this.app.store.ui.stickyToolbox && toolboxMode === "right") return {
+      gridColumn: "6",
+      gridRow: "1/3",
+      width: "100%"
+    }
+		else if(!this.toolboxY) return {
 			display: "none"
 		}
-		if(toolboxMode === "popup") return {
+		else if(toolboxMode === "popup") return {
 			position: "absolute",
 			left: `${this.toolboxX}px`,
 			top: `${this.toolboxY}px`,
