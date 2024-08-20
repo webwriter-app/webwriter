@@ -230,7 +230,7 @@ export function getAttrs(dom: HTMLElement | string, getDeprecated=true) {
 }
 
 
-export function HTMLElementSpec({tag, content, marks, group, inline, atom, attrs, selectable, draggable, code, whitespace, definingAsContext, definingForContent, defining, isolating, toDOM, parseDOM, toDebugString, leafText, phrasingContent, selector, ...rest}: NodeSpec & {tag: string, phrasingContent?: boolean, selector?: string}): NodeSpec {
+export function HTMLElementSpec({tag, content, marks, group, inline, atom, attrs, selectable, draggable, code, whitespace, definingAsContext, definingForContent, defining, isolating, toDOM, parseDOM, toDebugString, leafText, selector, contentKind, ...rest}: NodeSpec & {tag: string, selector?: string}): NodeSpec {
   return {
     content,
     marks,
@@ -249,19 +249,19 @@ export function HTMLElementSpec({tag, content, marks, group, inline, atom, attrs
     parseDOM: parseDOM ?? [{
       tag: selector ?? tag,
       getAttrs,
-      ...(true? null: {
-        contentElement: node => {
-          const span = node.ownerDocument!.createElement("span")
-          span.setAttribute("data-ww-editing", "phrase")
-          span.replaceChildren(...Array.from(node.childNodes));
-          (node as HTMLElement).replaceChildren(span)
-          return node
-        }
-      })
+      context: undefined 
     }],
     toDebugString,
     leafText,
     ...rest
+  }
+}
+
+export function HTMLElementSpecPair(pair: Record<string, Partial<Parameters<typeof HTMLElementSpec>[0]>>) {
+  const [[name1, value1], [name2, value2]] = Object.entries(pair)
+  return {
+    [name1]: HTMLElementSpec(value1 as any),
+    [name2]: HTMLElementSpec({...(value1 as any), ...value2})
   }
 }
 
