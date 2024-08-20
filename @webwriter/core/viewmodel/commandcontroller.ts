@@ -1090,8 +1090,8 @@ export class CommandController implements ReactiveController {
         description: () => msg("Insert a progress indicator"),
         tags: ["node", "container", "advanced"]
       }),
-      mathInline: new NodeCommand(this.host, {
-        id: "mathInline",
+      math_inline: new NodeCommand(this.host, {
+        id: "math_inline",
         label: () => msg("Math Formula"),
         icon: "math",
         group: "math",
