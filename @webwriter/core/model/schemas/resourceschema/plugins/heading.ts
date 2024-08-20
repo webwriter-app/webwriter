@@ -9,14 +9,14 @@ export const headingPlugin = () => ({
       tag,
       HTMLElementSpec({
         tag,
-        group: "flow heading palpable",
+        group: "flow heading palpable containerinline",
         content: "phrasing*",
         defining: true
       })
     ])),
     hgroup: HTMLElementSpec({
       tag: "hgroup",
-      group: "flow heading palpable",
+      group: "flow heading palpable containerblock",
       content: "h1 | h2 | h3 | h4 | h5 |h6"
     })
   }

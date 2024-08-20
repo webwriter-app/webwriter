@@ -148,19 +148,20 @@ export const listPlugin = () => ({
   nodes: {
     ol: HTMLElementSpec({
       tag: "ol",
-      group: "flow palpable",
+      group: "flow palpable containerblock",
       content: "li+" // (li | scriptsupporting)*
     }),
   
     ul: HTMLElementSpec({
       tag: "ul",
-      group: "flow palpable",
+      group: "flow palpable containerinline",
       content: "li+" // (li | scriptsupporting)*
     }),
     
     li: HTMLElementSpec({
       tag: "li",
-      content: "(p | flow)+"
+      group: "containerblock",
+      content: "(p | flow)+" // mixed
     }),
   },
   keymap: {

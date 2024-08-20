@@ -1,6 +1,6 @@
 import {z} from "zod"
 import {Schema, Node} from "prosemirror-model"
-import {EditorState, EditorStateConfig} from "prosemirror-state"
+import {EditorState, EditorStateConfig, TextSelection} from "prosemirror-state"
 export {undo, redo} from "prosemirror-history"
 
 import * as marshal from "../../marshal"
@@ -20,7 +20,6 @@ export function createEditorStateConfig(packages: Package[]) {
     headingPlugin(),
     mediaPlugin(),
     listPlugin(),
-    phrasingPlugin(),
     sectionPlugin(),
     canvasPlugin(),
     formPlugin(),
@@ -28,7 +27,8 @@ export function createEditorStateConfig(packages: Package[]) {
     stylePlugin(),
     tablePlugin(),
     mathPlugin(),
-    // svgPlugin(),
+    phrasingPlugin(),
+    svgPlugin(),
     // deprecatedPlugin(),
     widgetPlugin(packages),
     basePlugin(),
@@ -39,8 +39,10 @@ export const defaultConfig = createEditorStateConfig([])
 
 export const createEditorState = ({schema=defaultConfig.schema, doc=defaultConfig.doc, selection=defaultConfig.selection, storedMarks=defaultConfig.storedMarks, plugins=defaultConfig.plugins, lang="en"}: EditorStateConfig & {lang?: string}, head?: Node) => {
   const resolvedDoc = doc
-  const state = EditorState.create({selection, storedMarks, plugins, doc: resolvedDoc})
+  let state = EditorState.create({selection, storedMarks, plugins, doc: resolvedDoc})
+  state = state.apply(state.tr.setSelection(TextSelection.atStart(state.doc)))
   const head$ = EditorState.create({schema: headSchema, doc: head ?? initialHeadState({lang}).doc})
+  
   return (head || lang? Object.assign(state, {head$}): state) as EditorStateWithHead
 }
 

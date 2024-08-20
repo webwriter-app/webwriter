@@ -1,5 +1,5 @@
 import { SchemaPlugin } from ".";
-import { HTMLElementSpec, getAttrs, toAttributes, eventHTMLAttributes } from "../htmlelementspec";
+import { HTMLElementSpec, getAttrs, toAttributes, eventHTMLAttributes, HTMLElementSpecPair } from "../htmlelementspec";
 import {NodeSpec} from "prosemirror-model"
 
 const coreMathMLAttributes = {
@@ -89,22 +89,27 @@ const MATHML_CONTENT = "(" + MATHML_TAGS
 
 export const mathPlugin = () => ({
   nodes: {
-    "mathInline": HTMLElementSpec({
-      tag: "math",
-      group: "phrasing",
-      content: MATHML_CONTENT,
-      atom: true,
-      inline: true,
-      parseDOM: [{tag: "math:not([display=block])", getAttrs}]
-    }),
-    "mathBlock": HTMLElementSpec({
-      tag: "math",
-      group: "flow",
-      content: MATHML_CONTENT,
-      atom: true,
-      toDOM: (n => ["math", {...toAttributes(n), display: "block"}, 0]),
-      parseDOM: [{tag: "math[display=block]", getAttrs}],
-    }),
+    ...HTMLElementSpecPair({
+      math: {
+        tag: "math",
+        group: "flow",
+        //content: MATHML_CONTENT,
+        atom: true,
+        toDOM: n => {
+          const dom = document.createElementNS("http://www.w3.org/1998/Math/MathML", "math")
+          const attrs = toAttributes(n)
+          Object.entries(attrs).forEach(([k, v]) => dom.setAttribute(k, v))
+          dom.innerHTML = n.attrs._content ?? ""
+          return {dom}
+        },
+        parseDOM: [{tag: "math", getAttrs: dom => ({_content: dom.innerHTML, ...getAttrs(dom)}), preserveWhitespace: true}],
+        whitespace: "pre"
+      },
+      math_inline: {
+        group: "phrasing",
+        inline: true
+      }
+    }),/*
     "annotationMathML": MathMLElementSpec({
       tag: "annotation",
       content: "text?",
@@ -268,6 +273,7 @@ export const mathPlugin = () => ({
     }),
     "semanticsMathML": MathMLElementSpec({
       tag: "semantics",
-      content: `(annotationMathML | annotationxmlMathML)* ${MATHML_CONTENT} (annotationMathML | annotationxmlMathML)*`}),
+      content: `(annotationMathML | annotationxmlMathML)* ${MATHML_CONTENT} (annotationMathML | annotationxmlMathML)*`
+    }),*/
   }
 } as SchemaPlugin)

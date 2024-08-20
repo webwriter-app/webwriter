@@ -93,7 +93,7 @@ function widgetGroup(settings: WidgetEditingSettings) {
   return Array.from(new Set([
     ...(settings?.group? settings.group.split(" "): []),
     settings?.inline? "widgetinline": "widget",
-    !settings?.group && !settings?.inline? "flow": ""
+    settings?.group == undefined && !settings?.inline? "flow": ""
   ])).join(" ").trim()
 }
 
@@ -124,6 +124,9 @@ function widgetToDOM(pkg: Package, hasContent: boolean) {
   return (node: Node) => {
     const normalAttrs = filterObject(node.attrs, k => k !== "_")
     const builtinAttrs = toAttributes(normalAttrs)
+    if(!("id" in builtinAttrs)) {
+      builtinAttrs.id = `ww-${crypto.randomUUID()}`
+    }
     const widgetAttrs = node.attrs._
     const dummyDOM = document.createElement("div")
     dummyDOM.classList.value = builtinAttrs.class ?? ""
@@ -147,7 +150,10 @@ function getWidgetAttrs(dom: HTMLElement | string) {
 
 function widgetParseDOM(tag: string, pkg: Package) {
   return [{tag, getAttrs: (dom: string | HTMLElement) => {
-    const builtinAttrs = filterObject(getAttrs(dom), k => k in globalHTMLAttributes) as Record<string, any>
+    let builtinAttrs = filterObject(getAttrs(dom), k => k in globalHTMLAttributes) as Record<string, any>
+    if(!("id" in builtinAttrs)) {
+      builtinAttrs.id = `ww-${crypto.randomUUID()}`
+    }
     const widgetAttrs = getWidgetAttrs(dom)
     const dummyDOM = document.createElement("div")
     dummyDOM.classList.value = builtinAttrs.class ?? ""

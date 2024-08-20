@@ -1,5 +1,5 @@
 import { SchemaPlugin } from ".";
-import { HTMLElementSpec, ariaAttributes, getAttrs, toAttributes } from "../htmlelementspec";
+import { HTMLElementSpec, HTMLElementSpecPair, ariaAttributes, getAttrs, toAttributes } from "../htmlelementspec";
 import {NodeSpec} from "prosemirror-model"
 
 const coreSVGAttributes = {
@@ -225,24 +225,39 @@ export function SVGElementSpec(spec: NodeSpec & {tag: string}) {
 
 export const svgPlugin = () => ({
   nodes: {
-    svg: HTMLElementSpec({
-      tag: "svg",
-      group: "embedded",
-      attrs: {
-        ...globalSVGAttributes,
-        ...documentEventSVGAttributes,
-        ...documentElementEventSVGAttributes,
-        baseProfile: {default: undefined},
-        contentScriptType: {default: undefined},
-        height: {default: undefined},
-        preserveAspectRatio: {default: undefined},
-        version: {default: undefined},
-        viewBox: {default: undefined},
-        width: {default: undefined},
-        x: {default: undefined},
-        y: {default: undefined}
-      }
+    ...HTMLElementSpecPair({
+      svg: {
+        tag: "svg",
+        group: "flow embedded",
+        atom: true,
+        toDOM: n => {
+          const dom = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+          const attrs = toAttributes(n)
+          Object.entries(attrs).forEach(([k, v]) => dom.setAttribute(k, v))
+          dom.innerHTML = n.attrs._content
+          return {dom}
+        },
+        parseDOM: [{tag: "svg", getAttrs: dom => ({_content: dom.innerHTML, ...getAttrs(dom)}), preserveWhitespace: true}],
+        whitespace: "pre",
+        attrs: {
+          ...globalSVGAttributes,
+          ...documentEventSVGAttributes,
+          ...documentElementEventSVGAttributes,
+          baseProfile: {default: undefined},
+          contentScriptType: {default: undefined},
+          height: {default: undefined},
+          preserveAspectRatio: {default: undefined},
+          version: {default: undefined},
+          viewBox: {default: undefined},
+          width: {default: undefined},
+          x: {default: undefined},
+          y: {default: undefined},
+          _content: {default: undefined, private: true} as any,
+        }
+      },
+      svg_inline: {group: "phrasing", inline: true}
     }),
+    /*
     aSVG: SVGElementSpec({
       tag: "a",
       group: "container_svg",
@@ -943,6 +958,6 @@ export const svgPlugin = () => ({
         viewBox: {default: undefined},
         preserveAspectRatio: {default: undefined}
       }
-    })
+    })*/
   }
 } as SchemaPlugin)

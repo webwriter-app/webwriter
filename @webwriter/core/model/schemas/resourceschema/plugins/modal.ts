@@ -46,7 +46,7 @@ export const modalPlugin = () => ({
   nodes: {
     dialog: HTMLElementSpec({
       tag: "dialog",
-      group: "flow sectioningroot",
+      group: "flow sectioningroot containerblock",
       content: "flow*",
       attrs: {
         open: {default: undefined}
@@ -54,13 +54,14 @@ export const modalPlugin = () => ({
     }),
     details: HTMLElementSpec({
       tag: "details",
-      group: "flow sectioningroot interactive palpable",
+      group: "flow sectioningroot interactive palpable containerblock",
       content: `summary flow*`,
       attrs: {
         open: {default: undefined}
       }
     }),
     summary: HTMLElementSpec({
+      group: "containerinline",
       tag: "summary",
       content: "phrasing*" // simplified until phrase editing is fixed
     })

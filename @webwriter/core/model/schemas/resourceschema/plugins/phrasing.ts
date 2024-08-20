@@ -49,7 +49,6 @@ export const insertWordBreak: Command = (state, dispatch=()=>{}, view) => {
 }
 
 export function toggleOrUpdateMark(mark: string, attrs: any = {}, forceUpdate=false) {
-  console.log(mark, attrs)
   return (state: EditorState, dispatch: any) => {
     const {from, to, empty} = state.selection
     const markType = mark in state.schema.marks? state.schema.marks[mark]: state.schema.marks["span"]
@@ -93,28 +92,10 @@ export function removeMark(mark: string) {
 
 export const phrasingPlugin = () => ({
   nodes: {
-    br: HTMLElementSpec({
-      tag: "br",
-      selector: "br:not(.ProseMirror-trailingBreak)",
-      group: "phrasing",
-      inline: true,
-      linebreakReplacement: true
-    }),
     wbr: HTMLElementSpec({
       tag: "wbr",
       group: "phrasing",
       inline: true
-    }),
-    text: {
-      group: "phrasing",
-      inline: true
-    },
-    _phrase: HTMLElementSpec({
-      tag: "span",
-      content: "text? | phrasing*",
-      group: "flow",
-      toDOM: () => ["span", {"data-ww-editing": "phrase"}, 0],
-      parseDOM: [{tag: "span[data-ww-editing=phrase]"}]
     }),
   },
   marks: {
@@ -329,10 +310,5 @@ export const phrasingPlugin = () => ({
       const textNode = state.schema.text(href, [aMark])
       return state.tr.replaceRangeWith(start, end, textNode)
     })
-  ],
-  keymap: {
-    // "Enter": insertBreak,
-    "alt-Enter": insertBreak,
-    "alt-shift-Enter": insertWordBreak
-  }
+  ]
 } as SchemaPlugin)

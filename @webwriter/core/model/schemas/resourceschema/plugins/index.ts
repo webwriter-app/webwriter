@@ -36,7 +36,6 @@ function mergeObjects<T extends Object>(objs: T[]): T {
 
 function chainKeymaps(keymaps: Record<string, Command>[]) {
   const grouped = {} as Record<string, Command[]>
-  console.log(keymaps)
   for(const km of keymaps) {
     for(const [key, cmd] of Object.entries(km)) {
       grouped[key] = grouped[key]? [...grouped[key], cmd]: [cmd]

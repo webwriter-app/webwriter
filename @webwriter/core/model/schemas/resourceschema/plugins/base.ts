@@ -1,5 +1,5 @@
 import { Command, EditorState, NodeSelection, TextSelection } from "prosemirror-state";
-import { SchemaPlugin } from ".";
+import { insertBreak, insertWordBreak, SchemaPlugin } from ".";
 import { Node, Attrs } from "prosemirror-model";
 import { baseKeymap, chainCommands, createParagraphNear, deleteSelection, exitCode, joinBackward, joinForward, joinUp, liftEmptyBlock, macBaseKeymap, newlineInCode, selectAll, selectNodeBackward, selectNodeForward, splitBlock } from "prosemirror-commands";
 import { namedNodeMapToObject } from "../../../../utility";
@@ -11,7 +11,7 @@ import virtualCursorCSS from "prosemirror-view/style/prosemirror.css?raw"
 import { HTMLElementSpec } from "../htmlelementspec";
 import { CustomElementName } from "../../packageschema";
 
-import { Step, StepResult } from "prosemirror-transform"
+import { canSplit, Step, StepResult } from "prosemirror-transform"
 
 export const selectParentNode: Command = (state, dispatch, view) => {
   const {selection, doc} = state
@@ -153,8 +153,7 @@ export const basePlugin = () => ({
   nodes: {
     explorable: HTMLElementSpec({
       tag: "body",
-      content: `(p | flow)+`,
-      phrasingContent: true,
+      content: `(p | flow)+`, // mixed
       draggable: false,
       selectable: false,
       attrs: {
@@ -180,36 +179,60 @@ export const basePlugin = () => ({
     }),
     p: HTMLElementSpec({
       tag: "p",
-      group: "flow palpable",
+      group: "flow palpable containerinline",
       content: "text | phrasing*",
       whitespace: "pre"
     }),
     div: HTMLElementSpec({
-      tag: "div:not(.ww-nodeview)",
+      tag: "div",
+      selector: "div:not(.ww-nodeview)",
       group: "flow palpable",
-      content: "flow*"
+      content: "flow*", // mixed
     }),
     pre: HTMLElementSpec({
       tag: "pre",
-      group: "flow palpable",
+      group: "flow palpable containerinline",
       content: "text | phrasing*",
       whitespace: "pre"
     }),
-    /*unknownElement: {
+    hr: HTMLElementSpec({
+      tag: "hr",
+      group: "flow"
+    }),
+    text: {
+      group: "phrasing containerinline",
+      inline: true
+    },
+    _phrase: HTMLElementSpec({
+      tag: "span",
+      content: "(text | phrasing)*",
+      group: "flow",
+      toDOM: () => ["span", {"data-ww-editing": "phrase"}, 0],
+      parseDOM: [{tag: "span[data-ww-editing=phrase]"}]
+    }),
+    br: HTMLElementSpec({
+      tag: "br",
+      selector: "br:not(.ProseMirror-trailingBreak)",
+      group: "phrasing",
+      inline: true,
+      linebreakReplacement: true
+    }),
+    unknownElement: {
       attrs: {
         tagName: {},
         otherAttrs: {default: {}}
       },
+      group: "flow",
       parseDOM: [{
         tag: "*",
         getAttrs: dom => {
-          if(typeof dom === "string") {
+          if(typeof dom === "string" || dom?.tagName === "HTML" || dom?.tagName === "HEAD") {
             return false
           }
           const tagName = dom.tagName.toLowerCase()
-          const unknownBuiltin = dom.constructor.name === "HTMLUnknownElement"
-          const unknownCustom = !window.customElements.get(tagName)
           const knownDashed = ["annotation-xml"].includes(tagName)
+          const unknownBuiltin = dom.constructor.name === "HTMLUnknownElement"
+          const unknownCustom = CustomElementName.safeParse(tagName).success && !window.customElements.get(tagName) && !knownDashed
           if((unknownBuiltin || unknownCustom) && !knownDashed) {
             return {tagName, otherAttrs: namedNodeMapToObject(dom.attributes)}
           }
@@ -219,10 +242,10 @@ export const basePlugin = () => ({
       }],
       toDOM: node => [node.attrs.tagName, {
         ...node.attrs.otherAttrs,
-        "data-ww-editing": CustomElementName.safeParse(node.attrs.tagName).success? "unknowncustom": "unknownbuiltin",
+        "data-ww-editing": CustomElementName.safeParse(node.attrs.tagName).success && node.attrs.tagName !== "annotation-xml"? "unknowncustom": "unknownbuiltin",
         "data-ww-tagname": node.attrs.tagName
       }]
-    },*/
+    },
   },
   topNode: "explorable",
   keymap: {
