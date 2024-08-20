@@ -299,7 +299,7 @@ export class Command<SPEC extends CommandSpec = CommandSpec> implements Reactive
         return run(this.host, options, e)
       }
       catch(err) {
-        console.log(err)
+        console.error(err)
         throw err
       }
     }
