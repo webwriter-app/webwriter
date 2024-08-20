@@ -1078,6 +1078,7 @@ export class ExplorableEditor extends LitElement {
     "keydown": (e: any) => this.updateDocumentElementClasses(e),
     "keyup": (e: any) => this.updateDocumentElementClasses(e, true),
     "mouseup": (e: any) => this.updateDocumentElementClasses(e),
+    "mousedown": (e: any) => this.updateDocumentElementClasses(e),
     "resize": () => this.requestUpdate()
   }
 
@@ -1094,8 +1095,8 @@ export class ExplorableEditor extends LitElement {
       e.shiftKey && "ww-key-shift",
       e.metaKey && "ww-key-meta"
     ].filter(k => k) as string[]
-    toRemove.length && this.pmEditor.documentElement.classList.remove(...toRemove)
-    !removeOnly && toAdd.length && this.pmEditor.documentElement.classList.add(...toAdd)
+    toRemove.length && this.pmEditor?.documentElement.classList.remove(...toRemove)
+    !removeOnly && toAdd.length && this.pmEditor?.documentElement.classList.add(...toAdd)
   }
 
   transformPastedHTML = (html: string) => {
