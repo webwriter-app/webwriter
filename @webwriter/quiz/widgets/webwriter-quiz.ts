@@ -1,4 +1,4 @@
-import {css, html} from "lit"
+import {css, html, PropertyValues} from "lit"
 import {LitElementWw, option} from "@webwriter/lit"
 import {customElement, property, query, queryAssignedElements} from "lit/decorators.js"
 
@@ -22,10 +22,6 @@ import IconGrid3x3Gap from "bootstrap-icons/icons/grid-3x3-gap.svg"
 import "@shoelace-style/shoelace/dist/themes/light.css"
 import { WebwriterTask } from "./webwriter-task.js"
 
-// TODO: Drag and drop reordering of tasks
-// TODO: Feedback (per question, final)
-// TODO: Points
-// TODO: Reset
 
 function shuffle<T>(a: T[]) {
   for (let i = a.length - 1; i > 0; i--) {
@@ -102,13 +98,15 @@ export class WebwriterQuiz extends LitElementWw {
   addTask(answerTypeName: string) {
     const task = this.ownerDocument.createElement("webwriter-task") as WebwriterTask
     task.setAttribute("counter", this.counter)
-    const prompt = this.ownerDocument.createElement("p")
+    const prompt = this.ownerDocument.createElement("webwriter-task-prompt")
+    const p = this.ownerDocument.createElement("p")
+    prompt.append(p)
     prompt.slot = "prompt"
     const answer = this.ownerDocument.createElement(answerTypeName)
     task.appendChild(prompt)
     task.appendChild(answer)
     this.appendChild(task)
-    document.getSelection().setBaseAndExtent(prompt, 0, prompt, 0)
+    document.getSelection().setBaseAndExtent(p, 0, p, 0)
   }
 
   static styles = css`
@@ -177,7 +175,11 @@ export class WebwriterQuiz extends LitElementWw {
   
   @property({type: Boolean, attribute: true, reflect: true})
   @option({type: Boolean, label: {"en": "Random Task Order"}})
-  randomOrder = false
+  accessor randomOrder = false
+
+  get counter(): "number" | "roman" | "roman-capitalized" | "alphabetical" | "alphabetical-capitalized" {
+    return this.tasks[0]?.counter
+  }
 
   @property({attribute: true})
   @option({
@@ -194,10 +196,6 @@ export class WebwriterQuiz extends LitElementWw {
       {value: "alphabetical-capitalized", label: {"en": "A. B. C."}},
     ]
   })
-  get counter(): "number" | "roman" | "roman-capitalized" | "alphabetical" | "alphabetical-capitalized" {
-    return this.tasks[0]?.counter
-  }
-
   set counter(value) {
     this.tasks.forEach(el => el.counter = value)
   }
@@ -210,6 +208,7 @@ export class WebwriterQuiz extends LitElementWw {
 
   handleSubmit(e: Event) {
     this.submitted = true
+    this.dispatchEvent(new Event("submit"))
     this.tasks.forEach(task => task.reportSolution())
   }
 
@@ -218,24 +217,31 @@ export class WebwriterQuiz extends LitElementWw {
     this.submitted = false
   }
 
+  observer: MutationObserver
+
   connectedCallback(): void {
     super.connectedCallback()
-    const observer = new MutationObserver(() => {
+    this.observer = new MutationObserver(() => {
       if(!this.contentEditable && this.randomOrder) {
         this.shuffleTasks()
       }
     })
-    observer.observe(this, {childList: true})
+    this.observer.observe(this, {childList: true})
+  }
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback()
+    this.observer.disconnect()
   }
 
   @query("slot")
-  slotEl: HTMLSlotElement
+  accessor slotEl: HTMLSlotElement
 
   @queryAssignedElements()
-  tasks: WebwriterTask[]
+  accessor tasks: WebwriterTask[]
 
   @property({type: Boolean, attribute: true, reflect: true})
-  submitted = false
+  accessor submitted = false
 
   render() {
     const basicAnswerTypes = Object.keys(this.answerTypes).filter(k => !this.answerTypes[k]?.advanced)
@@ -265,6 +271,7 @@ export class WebwriterQuiz extends LitElementWw {
           </sl-menu>
         </sl-dropdown>
       </sl-button-group>
+      <sl-button @click=${this.requestFullscreen}>Fullscreen</sl-button>
       `
   }
 }

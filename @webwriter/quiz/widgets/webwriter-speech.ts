@@ -136,10 +136,10 @@ export class WebwriterSpeech extends LitElementWw {
   chunks = [] as Blob[]
 
   @property({type: Boolean, attribute: true})
-  loading = false
+  accessor loading = false
 
   @property({type: String, attribute: true, reflect: true})
-  src: string
+  accessor src: string
 
   firstUpdated() {
     const evs = ["abort", "canplay", "canplaythrough", "durationchange", "emptied", "ended", "error", "loadeddata", "loadedmetadata", "loadstart", "pause", "play", "playing", "progress", "ratechange", "resize", "seeked", "seeking", "stalled", "suspend", "timeupdate", "volumechange", "waiting"] as const
@@ -192,7 +192,7 @@ export class WebwriterSpeech extends LitElementWw {
   }
 
   @query("audio")
-  audioEl: HTMLAudioElement
+  accessor audioEl: HTMLAudioElement
 
   get duration() {
     const d = this.audioEl?.duration
@@ -207,9 +207,14 @@ export class WebwriterSpeech extends LitElementWw {
     return !this.audioEl?.paused && !this.audioEl?.ended
   }
 
-  @property({type: Boolean, attribute: true, reflect: true})
+  
   get recording() {
     return this.mediaRecorder?.state === "recording"
+  }
+
+  @property({type: Boolean, attribute: true, reflect: true})
+  set recording(value: boolean) {
+    return
   }
 
   get volume() {
@@ -225,7 +230,7 @@ export class WebwriterSpeech extends LitElementWw {
   }
 
   @property({type: Boolean})
-  volumeOpen = false
+  accessor volumeOpen = false
 
   render() {
     return html`<sl-button-group>

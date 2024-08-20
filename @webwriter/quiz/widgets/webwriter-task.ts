@@ -1,7 +1,7 @@
 import {html, css} from "lit"
 import {styleMap} from "lit/directives/style-map.js"
 import {LitElementWw, option} from "@webwriter/lit"
-import {customElement, queryAssignedElements, property, query} from "lit/decorators.js"
+import {customElement, queryAssignedElements, property, query, queryAll} from "lit/decorators.js"
 
 import SlIconButton from "@shoelace-style/shoelace/dist/components/icon-button/icon-button.component.js"
 import SlButton from "@shoelace-style/shoelace/dist/components/button/button.component.js"
@@ -9,13 +9,55 @@ import SlDetails from "@shoelace-style/shoelace/dist/components/details/details.
 import SlPopup from "@shoelace-style/shoelace/dist/components/popup/popup.component.js"
 import SlButtonGroup from "@shoelace-style/shoelace/dist/components/button-group/button-group.component.js"
 
+import SlTabGroup from "@shoelace-style/shoelace/dist/components/tab-group/tab-group.component.js"
+import SlTab from "@shoelace-style/shoelace/dist/components/tab/tab.component.js"
+import SlTabPanel from "@shoelace-style/shoelace/dist/components/tab-panel/tab-panel.component.js"
+
 import IconPatchQuestion from "bootstrap-icons/icons/patch-question.svg"
 import IconPatchQuestionFill from "bootstrap-icons/icons/patch-question-fill.svg"
-import IconCheckCircle from "bootstrap-icons/icons/check-circle.svg"
-import IconCheckCircleFill from "bootstrap-icons/icons/check-circle-fill.svg"
+import IconPatchCheck from "bootstrap-icons/icons/patch-check.svg"
+import IconPatchCheckFill from "bootstrap-icons/icons/patch-check-fill.svg"
 
-import IconSendCheck from "bootstrap-icons/icons/send-check.svg"
+async function arrayBufferToDataUrl(buffer: ArrayBuffer | Uint8Array) {
+  return new Promise(r => {
+    const reader = new FileReader()
+    reader.onload = () => r(reader.result as string)
+    reader.readAsDataURL(new Blob([buffer]))
+  }) as Promise<string>
+}
+
+async function dataUrlToUint8Array(url: string) {
+  return new Uint8Array(await (await (await fetch(url)).blob()).arrayBuffer())
+}
+
+function getKeyMaterial(password: string) {
+  let enc = new TextEncoder();
+  return window.crypto.subtle.importKey(
+    "raw", 
+    enc.encode(password), 
+    {name: "PBKDF2"}, 
+    false, 
+    ["deriveBits", "deriveKey"]
+  );
+}
+
+function getKey(keyMaterial: CryptoKey, salt: ArrayBufferView) {
+  return window.crypto.subtle.deriveKey(
+    {
+      "name": "PBKDF2",
+      salt: salt, 
+      "iterations": 100000,
+      "hash": "SHA-256"
+    },
+    keyMaterial,
+    { "name": "AES-GCM", "length": 256},
+    true,
+    [ "encrypt", "decrypt" ]
+  )
+}
+
 import "@shoelace-style/shoelace/dist/themes/light.css"
+import { WebwriterTaskExplainer } from "./webwriter-task-explainer"
 function romanOrdinal(num: number, capitalize=false) {
   let roman = {
     m: 1000,
@@ -50,6 +92,12 @@ function alphabeticalOrdinal(num: number, capitalize=false, alphabet="abcdefghij
   return capitalize? str.toUpperCase(): str
 }
 
+
+
+interface Answer {
+  
+}
+
 declare global {interface HTMLElementTagNameMap {
   "webwriter-task": WebwriterTask;
 }}
@@ -64,7 +112,10 @@ export class WebwriterTask extends LitElementWw {
     "sl-details": SlDetails,
     "sl-popup": SlPopup,
     "sl-button": SlButton,
-    "sl-button-group": SlButtonGroup
+    "sl-button-group": SlButtonGroup,
+    "sl-tab-group": SlTabGroup,
+    "sl-tab": SlTab,
+    "sl-tab-panel": SlTabPanel
   }
 
   msg = (str: string) => this.lang in WebwriterTask.localization? WebwriterTask.localization[this.lang][str] ?? str: str
@@ -89,7 +140,7 @@ export class WebwriterTask extends LitElementWw {
 
     #hint-popup {
       --arrow-color: var(--sl-color-neutral-700);
-      z-index: 100;
+      z-index: 1000;
     }
 
     #hint-popup::part(popup) {
@@ -115,26 +166,13 @@ export class WebwriterTask extends LitElementWw {
       }
     }
 
-
-    sl-icon-button {
+    #task-buttons {
+      position: absolute;
+      right: 0;
+      top: 0;
       background: rgba(255, 255, 255, 0.9);
-      &#hint {
-        position: absolute;
-        right: 0;
-        top: 0;
-      }
-
-      &#solutions {
-        position: absolute;
-        right: 30px;
-        top: 0;
-      }
-
-      &#check {
-        position: absolute;
-        right: 0;
-        bottom: 0;
-      }
+      user-select: none;
+      z-index: 100;
     }
 
     #hint-content {
@@ -144,6 +182,31 @@ export class WebwriterTask extends LitElementWw {
       font-size: 0.75rem;
       padding: 0.5rem;
       border-radius: 4px;
+      user-select: auto;
+    }
+
+    ::slotted([slot=explainer]:not([active])) {
+      display: none !important;
+    }
+
+    sl-tab-group {
+      &[data-empty] {
+        display: none;
+      }
+
+      & sl-tab::part(base) {
+        padding: 10px;
+      }
+
+      &::part(tabs) {
+        height: 100px;
+        margin-left: -1px;
+        z-index: 10;
+      }
+
+      & ::slotted([name=explainer]) {
+        height: 100%;
+      }
     }
 
     header {
@@ -174,7 +237,7 @@ export class WebwriterTask extends LitElementWw {
   `
 
   @queryAssignedElements({slot: "hint"})
-  hints: HTMLElement[]
+  accessor hints: HTMLElement[]
 
   get hasHintElement() {
     return this.hints.length > 0
@@ -185,31 +248,33 @@ export class WebwriterTask extends LitElementWw {
   }
 
   @property({type: Boolean, attribute: true, reflect: true})
-  hint = false
+  accessor hint = false
 
-  @property({type: Boolean, attribute: false, reflect: true})
+  
   get directSubmit() {
     return !this.closest("webwriter-quiz")
   }
 
+  @property({type: Boolean, attribute: false, reflect: true})
+  private set directSubmit(value: boolean) {
+    return
+  }
+
   @property({type: Boolean, attribute: true, reflect: true})
-  submitted = false
+  accessor submitted = false
 
   toggleHint() {
     this.hintOpen = !this.hintOpen
     if(this.isContentEditable && this.hintOpen) {
       this.hint = true
       if(!this.hasHintElement) {
-        const p = this.ownerDocument.createElement("p")
-        p.slot = "hint"
-        this.appendChild(p)
-        this.ownerDocument.getSelection().setBaseAndExtent(p, 0, p, 0)
-        p.focus()
-        this.requestUpdate()
+        const hintEl = this.ownerDocument.createElement("webwriter-task-hint")
+        hintEl.slot = "hint"
+        this.answer.insertAdjacentElement("beforebegin", hintEl)
+        this.ownerDocument.getSelection().setBaseAndExtent(hintEl, 0, hintEl, 0)
       }
     }
     else if(this.isContentEditable && !this.hintOpen) {
-      console.log(this.hasHintContent)
       if(!this.hasHintContent) {
         this.hint = false
         this.hintSlotEl.assignedElements().forEach(el => el.remove())
@@ -217,11 +282,35 @@ export class WebwriterTask extends LitElementWw {
     }
   }
 
+  get explainers(): WebwriterTaskExplainer[] {
+    return Array.from(this.querySelectorAll("webwriter-task-explainer")) as unknown as WebwriterTaskExplainer[]
+  }
+
+  toggleExplainers = () => {
+    if(this.explainers.length) {
+      this.explainers.forEach(explainer => explainer.remove())
+      this.activeExplainer = undefined
+    }
+    else {
+      const solutionExplainer = this.ownerDocument.createElement("webwriter-task-explainer")
+      solutionExplainer.slot = "explainer"
+      solutionExplainer.id = "solution"
+      solutionExplainer.active = true
+      const elseExplainer = this.ownerDocument.createElement("webwriter-task-explainer")
+      elseExplainer.slot = "explainer"
+      elseExplainer.id = "else"
+      this.append(solutionExplainer, elseExplainer)
+      this.ownerDocument.getSelection().setBaseAndExtent(solutionExplainer, 0, solutionExplainer, 0)
+      this.requestUpdate()
+      this.activeExplainer = "solution"
+    }
+  }
+
   @property({attribute: false, state: true})
-  private hintOpen = false
+  private accessor hintOpen = false
 
   @property({attribute: true, reflect: true})
-  counter: "number" | "roman" | "roman-capitalized" | "alphabetical" | "alphabetical-capitalized"
+  accessor counter: "number" | "roman" | "roman-capitalized" | "alphabetical" | "alphabetical-capitalized"
 
   get index() {
     return [...(this?.parentElement?.children ?? [])].indexOf(this)
@@ -248,25 +337,71 @@ export class WebwriterTask extends LitElementWw {
     }
   }
 
+  observer: MutationObserver
+
   connectedCallback(): void {
     super.connectedCallback()
-    const observer = new MutationObserver(() => this.requestUpdate())
-    this.parentElement && observer.observe(this.parentElement, {childList: true})
+    this.observer = new MutationObserver(() => this.requestUpdate())
+    this.parentElement && this.observer.observe(this.parentElement, {childList: true})
+    this.#encodeSolution({})
   }
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback()
+    this.observer.disconnect()
+  }
+
+  @property({type: String, attribute: true, reflect: true})
+  accessor solution: string
 
   /** Property containing the password currently entered by the author or user */
   @property({type: String, attribute: false, reflect: false})
-  password: string
+  accessor password: string = "B08bxd82SAOf"
 
-  #encodeSolution(value: Record<string, string>, password?: string) {
-    // TODO: Password protection
-    // Solution attribute should contain a JSON string with a configuration of attributes for the answer considered correct (`value`)
-    this.setAttribute("solution", btoa(JSON.stringify(value)))
+  @property({type: String, attribute: true, reflect: true})
+  accessor salt: string
+  
+  @property({type: String, attribute: true, reflect: true})
+  accessor iv: string
+
+  async #encodeSolution(value: Record<string, string>) {
+    let keyMaterial = await getKeyMaterial(this.password)
+    let salt = window.crypto.getRandomValues(new Uint8Array(16))
+    let iv = window.crypto.getRandomValues(new Uint8Array(12))
+    let key = await getKey(keyMaterial, salt)
+    
+    let encoder = new TextEncoder();
+    let encodedMessage = encoder.encode(JSON.stringify(value))
+  
+    const solution = await window.crypto.subtle.encrypt(
+      {name: "AES-GCM", iv}, 
+      key,
+      encodedMessage
+    )
+
+    this.solution = await arrayBufferToDataUrl(solution)
+    this.iv = await arrayBufferToDataUrl(iv)
+    this.salt = await arrayBufferToDataUrl(salt)
+
   }
 
-  #decodeSolution(password: string): Record<string, string> {
-    // reverse of #encodeSolution
-    return JSON.parse(atob(this.getAttribute("solution") ?? "") || "[]")
+  async #decodeSolution(): Promise<Record<string, string>> {
+    const encodedSolution = await dataUrlToUint8Array(this.solution)
+    const iv = await dataUrlToUint8Array(this.iv)
+    const salt = await dataUrlToUint8Array(this.salt)
+    let keyMaterial = await getKeyMaterial(this.password)
+    let key = await getKey(keyMaterial, salt)
+    try {
+      return {}
+      const solutionBuffer = await window.crypto.subtle.decrypt({name: "AES-GCM", iv}, key, encodedSolution)
+      let decoder = new TextDecoder()
+      const solution = JSON.parse(decoder.decode(solutionBuffer))
+      return solution
+    }
+    catch(err) {
+      throw err
+      throw new Error("Invalid password")
+    }
   }
 
   checkSolution() {
@@ -286,9 +421,10 @@ export class WebwriterTask extends LitElementWw {
     this.answer.resetSolution()
   }
 
-  handleAnswerChange = (e: CustomEvent) => {
+  handleAnswerChange = async (e: CustomEvent) => {
     if(this.isContentEditable) {
       this.#encodeSolution(e.detail)
+      console.log(await this.#decodeSolution())
     }
   }
 
@@ -303,10 +439,10 @@ export class WebwriterTask extends LitElementWw {
   }
 
   @query("slot:not([name])")
-  slotEl: HTMLSlotElement
+  accessor slotEl: HTMLSlotElement
 
   @query("slot[name=hint]")
-  hintSlotEl: HTMLSlotElement
+  accessor hintSlotEl: HTMLSlotElement
 
   get answer() {
     return this.slotEl?.assignedElements()[0] as HTMLElement
@@ -331,20 +467,44 @@ export class WebwriterTask extends LitElementWw {
     this.submitted = false
   }
 
+  @property()
+  accessor activeExplainer: string
+
+  selectExplainer(id: string) {
+    const explainer = this.explainers.find(node => node.id === id)
+    explainer.active = true
+    this.explainers.filter(node => node.id !== id).forEach(node => node.active = false)
+    this.activeExplainer = id
+    setTimeout(() => this.ownerDocument.getSelection().setBaseAndExtent(explainer, 0, explainer, 0))
+  }
+
+  get explainerLabels() {
+    return {
+      "solution": "If correct",
+      "else": "Else"
+    }
+  }
+
   render() {
     return html`
       <header>
         <span>${this.ordinalExpr}</span>
-        <slot name="prompt" style=${styleMap({"--ww-placeholder": `"${this.msg("Prompt")}"`})}></slot>
-        <sl-popup id="hint-popup" ?active=${this.hintOpen} placement="left" arrow auto-size shift>
-          <sl-icon-button slot="anchor" id="hint" src=${!this.hasHintContent && !this.hintOpen? IconPatchQuestion: IconPatchQuestionFill} @click=${() => this.toggleHint()}></sl-icon-button>
-          <div id="hint-content">
-            <slot name="hint" @slotchange=${this.handleHintSlotChange}></slot>
-          </div>
-        </sl-popup>
+        <slot name="prompt"></slot>
+        <div id="task-buttons">
+          <sl-icon-button class="author-only" id="feedback" src=${!this.explainers.length? IconPatchCheck: IconPatchCheckFill} @click=${() => this.toggleExplainers()}></sl-icon-button>
+          <sl-popup id="hint-popup" ?active=${this.hintOpen} placement="left" arrow auto-size shift @selectstart=${e => e.stopImmediatePropagation()}>
+            <sl-icon-button class="author-only" slot="anchor" id="hint" src=${!this.hasHintContent && !this.hintOpen? IconPatchQuestion: IconPatchQuestionFill} @click=${() => this.toggleHint()}></sl-icon-button>
+            <div id="hint-content">
+              <slot name="hint" @slotchange=${this.handleHintSlotChange}></slot>
+            </div>
+          </sl-popup>
+        </div>
       </header>
-      <!--<sl-icon-button class="user-only" id="check" src=${IconCheckCircleFill}></sl-icon-button>-->
       <slot @ww-answer-change=${this.handleAnswerChange} @slotchange=${this.handleSlotChange}></slot>
+      <sl-tab-group placement="end" ?data-empty=${!this.explainers.length}>
+        ${this.explainers.map((explainer, i) => html`<sl-tab ?active=${this.activeExplainer === explainer.id} slot="nav" @click=${() => this.selectExplainer(explainer.id)}>${this.explainerLabels[explainer.id] ?? explainer.id}</sl-tab>`)}
+        <slot name="explainer" style=${styleMap({"--ww-placeholder": `"${this.msg("Explanation")}"`})}></slot>
+      </sl-tab-group>
       ${!this.directSubmit || !this.answer?.reportSolution? null: html`
         <sl-button-group class="user-only user-actions">
           <sl-button id="submit" @click=${this.handleSubmit}>Submit</sl-button>

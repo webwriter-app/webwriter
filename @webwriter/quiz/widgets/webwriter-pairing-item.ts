@@ -1,13 +1,7 @@
-import {css, html} from "lit"
-import {styleMap} from "lit/directives/style-map.js"
-import {classMap} from "lit/directives/class-map.js"
-import {unsafeStatic} from "lit/static-html.js"
-import {LitElementWw} from "@webwriter/lit"
+import {html, css} from "lit"
+import {LitElementWw, option} from "@webwriter/lit"
 import {customElement, property} from "lit/decorators.js"
-import IconArrowsMove from "bootstrap-icons/icons/arrows-move.svg"
-
-import SlIconButton from "@shoelace-style/shoelace/dist/components/icon-button/icon-button.component.js"
-
+import "@shoelace-style/shoelace/dist/themes/light.css"
 
 declare global {interface HTMLElementTagNameMap {
   "webwriter-pairing-item": WebwriterPairingItem;
@@ -16,82 +10,147 @@ declare global {interface HTMLElementTagNameMap {
 @customElement("webwriter-pairing-item")
 export class WebwriterPairingItem extends LitElementWw {
 
-  static localization = {}
-
-  msg = (str: string) => this.lang in WebwriterPairingItem.localization? WebwriterPairingItem.localization[this.lang][str] ?? str: str
-
-  static scopedElements = {
-    "sl-icon-button": SlIconButton
-  }
+  tabIndex = -1
 
   static styles = css`
+
     :host {
-      height: 100px;
-      width: 100px;
-      background: lightgray;
-      position: absolute !important;
-      padding: 5px;
-      resize: both;
+      aspect-ratio: 1;
+      min-width: 125px;
+      max-width: 350px;
+      min-height: 125px;
+      max-height: 350px;
+      position: relative;
       overflow: hidden;
-      min-width: 50px;
-      min-height: 50px;
-      max-width: 100%;
-      box-sizing: border-box;
-      top: 0;
-      left: 0;
-      overflow: auto;
+      overflow-y: auto;
       scrollbar-width: thin;
-      contain: layout;
+      resize: both;
+      border: 2px solid var(--sl-color-gray-500);
+      border-radius: 5px;
+      background: white;
+    }
+
+    slot {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      box-sizing: border-box;
+      position: relative;
+      font-size: 0.8em;
+      z-index: 1;
+    }
+
+    :host([droppreview]) slot {
+      background: lightblue;
+    }
+
+    ::slotted(*) {
+      height: 100%;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    ::slotted(:not(:is(picture, audio, video, img, iframe))) {
+      padding: 5px !important;
     }
 
     #handle {
-      position: fixed;
-      bottom: 5px;
-      right: 5px;
-      z-index: 1;
-      &::part(base) {
-        cursor: move;
-        height: 20px;
-        width: 20px;
-        box-sizing: border-box;
-        padding: 0;
-      }
+      box-sizing: border-box;
+      border-radius: 2px;
+      position: absolute;
+      left: 1px;
+      bottom: 1px;
+      width: 20px;
+      height: 30px;
+      display: inline-block;
+      overflow: hidden;
+      line-height: 5px;
+      padding: 6px 4px;
+      cursor: move;
+      vertical-align: middle;
+      font-size: 12px;
+      font-family: sans-serif;
+      letter-spacing: 2px;
+      color: #cccccc;
+      text-shadow: 1px 0 1px black;
+      font-weight: 600;
+      opacity: 0.95;
+      z-index: 100;
+    }
+    #handle::after {
+      content: '.. .. ..';
+    }
+
+    :host(:not([contenteditable=true]):not([contenteditable=""])) .author-only {
+      display: none !important;
+    }
+
+    #click-overlay {
+      position: absolute;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+    }
+
+    #click-overlay:hover {
+      background: var(--sl-color-primary-600);
+      opacity: 10%;
+    }
+
+    :host(.ww-selected) #click-overlay {
+      display: none;
     }
   `
 
-  mousedown = false
+  @property({attribute: true, reflect: true, converter: {toAttribute: (v: boolean) => v? "true": "false", fromAttribute: (attr: string) => attr === "true"}})
+  accessor draggable = true
+
+  @property({type: Boolean, attribute: true, reflect: true})
+  accessor dropPreview = false
 
   connectedCallback(): void {
     super.connectedCallback()
     this.addEventListener("dragstart", e => {
-      e.dataTransfer.dropEffect = "move"
-    })
-    this.addEventListener("dragend", () => this.draggable = false)
-    this.addEventListener("mousedown", () => {
-      this.mousedown = true
-    })
-    document.addEventListener("mouseup", e => {
-      if(this.isContentEditable && this.mousedown) {
-        const maxHeight = this.parentElement.offsetHeight - (this.offsetTop - this.parentElement.offsetTop)
-        const maxWidth = this.parentElement.offsetWidth - (this.offsetLeft - this.parentElement.offsetLeft)
-        this.style.height = `${Math.min(this.offsetHeight, maxHeight)}px`
-        this.style.width = `${Math.min(this.offsetWidth, maxWidth)}px`
+      if(e.target !== this) {
+        e.preventDefault()
       }
-      this.mousedown = false
+      // this.dropPreview = undefined
+      e.dataTransfer.setData("text/html", this.outerHTML)
+      e.dataTransfer.setData("text/plain", this.id)
+      // setTimeout(() => this.baseEl.style.visibility = "hidden")
+      e.stopPropagation()
     })
-
-  }
-
-  startDrag = () => {
-    this.draggable = true
+    this.addEventListener("drop", e => {
+      e.stopPropagation()
+      const id = e.dataTransfer.getData("text/plain")
+      const el = document.querySelector(`webwriter-pairing-item#${id}`)
+      if(!el) {
+        const html = e.dataTransfer.getData("text/html")
+        this.parentElement.insertAdjacentHTML("beforeend", html)
+      }
+      else if(el && !this.contains(el)) {
+        this.parentElement.insertAdjacentElement("beforeend", el)
+      }
+      this.dispatchEvent(new CustomEvent("ww-pairwith", {bubbles: true, detail: {with: id}}))
+    }, {passive: true})
+    this.addEventListener("dragover", e => {
+      this.dropPreview = true
+      e.preventDefault()
+      e.stopImmediatePropagation()
+    })
+    this.addEventListener("dragleave", () => this.dropPreview = false, {passive: true})
+    document.addEventListener("dragend", (e) => {
+      // (e.target as HTMLElement)?.remove()
+      this.dropPreview = false
+    }, {passive: true})
   }
 
   render() {
-    const editable = this.isContentEditable
-
     return html`
-      <sl-icon-button src=${IconArrowsMove} id="handle" @mousedown=${() => this.draggable = true}></sl-icon-button>
       <slot></slot>
+      <div class="author-only" id="handle" @click=${() => this.dispatchEvent(new FocusEvent("focus"))}></div>
+
     `
   }
 }

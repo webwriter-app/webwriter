@@ -1,13 +1,15 @@
-import {css, html} from "lit"
-import {LitElementWw} from "@webwriter/lit"
-import {customElement, query, queryAssignedElements} from "lit/decorators.js"
-import Sortable from "sortablejs/modular/sortable.complete.esm.js"
+import {css, html, PropertyValues} from "lit"
+import {LitElementWw, option} from "@webwriter/lit"
+import {customElement, property, query, queryAssignedElements} from "lit/decorators.js"
+
 import SlButton from "@shoelace-style/shoelace/dist/components/button/button.component.js"
 import SlIcon from "@shoelace-style/shoelace/dist/components/icon/icon.component.js"
 import "@shoelace-style/shoelace/dist/themes/light.css"
-
+import { Sortable } from "@shopify/draggable"
 import IconPlus from "bootstrap-icons/icons/plus.svg"
+
 import { WebwriterOrderItem } from "./webwriter-order-item"
+import { ifDefined } from "lit/directives/if-defined.js"
 
 declare global {interface HTMLElementTagNameMap {
   "webwriter-order": WebwriterOrder;
@@ -30,11 +32,17 @@ export class WebwriterOrder extends LitElementWw {
       gap: 2px;
     }
 
+    :host([layout=tiles]) {
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 15px;
+    }
+
     :host(:is([contenteditable=true], [contenteditable=""])) {
       --text-color: var(--sl-color-success-700);
     }
 
-    :host ::slotted(*)::before {
+    :host ::slotted(*::part(counter)) {
       counter-increment: orderItem;
       content: counter(orderItem) '. ';
       cursor: move;
@@ -60,29 +68,100 @@ export class WebwriterOrder extends LitElementWw {
       width: 19px;
       height: 19px;
       padding: var(--sl-spacing-x-small);
+      padding-left: 0;
+    }
+
+    #add-option {
+      order: 2147483647;
     }
 
     #add-option:not(:hover)::part(base) {
       color: darkgray;
     }
 
+    :host([layout=tiles]) #add-option {
+      width: 125px;
+      height: 125px;
+      overflow: hidden;
+      border: 2px solid var(--sl-color-gray-300);
+      border-radius: 5px;
+      padding: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+
     :host(:not([contenteditable=true]):not([contenteditable=""])) .author-only {
       display: none;
     }
   `
 
-  firstUpdated() {
-    this.itemsSlot.addEventListener("slotchange", () => {
-      this.items.forEach(el => el.requestUpdate())
+  get layout(): "list" | "tiles" {
+    return this.children?.item(0)?.getAttribute("layout") as any ?? "list"
+  }
+
+  @property({type: String, attribute: true, reflect: true})
+  @option({
+    type: "select",
+    options: [
+      {value: "list", label: {"en": "List"}},
+      {value: "tiles", label: {"en": "Tiles"}}
+    ]
+  })
+  set layout(value) {
+    this.querySelectorAll("webwriter-order-item").forEach(el => el.setAttribute("layout", value))
+    this.requestUpdate("layout")
+  }
+
+  @property({type: Array, attribute: true, reflect: true})
+  accessor solution: string[] = []
+
+  observer: MutationObserver
+
+  connectedCallback() {
+    super.connectedCallback()
+    this.addEventListener("ww-moveup", this.handleMove)
+    this.addEventListener("ww-movedown", this.handleMove)
+    this.addEventListener("ww-moveto", this.handleMove)
+    this.observer = new MutationObserver(() => {
+      this.items.forEach(el => {
+        if(!this.solution.includes(el.id)) {
+          this.solution = [...this.solution, el.id]
+        }
+      })
+      const itemIDs = this.items.map(item => item.id)
+      this.solution = this.solution.filter(id => itemIDs.includes(id))
+      this.items.forEach(item => item.requestUpdate())
       this.clearDropPreviews()
     })
+    this.shadowRoot.adoptedStyleSheets = [...this.shadowRoot.adoptedStyleSheets, this.orderSheet]
+    this.observer.observe(this, {childList: true})
+  }
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback()
+    this.observer.disconnect()
+  }
+
+  orderSheet = new CSSStyleSheet()
+
+  protected updated(_changedProperties: PropertyValues): void {
+    if(_changedProperties.has("solution")) {
+      return
+      const cssText = this.solution.map((id, i) => `::slotted(#${id}) {order: ${i}}`).join("\n")
+      this.orderSheet.replaceSync(cssText)
+      this.items.forEach(el => el.requestUpdate())
+    }
   }
 
   addItem() {
     const orderItem = this.ownerDocument.createElement("webwriter-order-item")
     const p = this.ownerDocument.createElement("p")
     orderItem.appendChild(p)
-    this.appendChild(orderItem)
+    orderItem.setAttribute("layout", this.layout)
+    this.append(orderItem)
+    this.solution = [...this.solution, orderItem.id]
     this.ownerDocument.getSelection().setBaseAndExtent(p, 0, p, 0)
   }
 
@@ -91,10 +170,50 @@ export class WebwriterOrder extends LitElementWw {
   }
   
   @query("#items-slot")
-  itemsSlot: HTMLSlotElement
+  accessor itemsSlot: HTMLSlotElement
 
   @queryAssignedElements()
-  items: WebwriterOrderItem[]
+  accessor items: WebwriterOrderItem[]
+
+  handleKeyDown(e: KeyboardEvent) {
+    console.log(e.key)
+    if(e.key == "ArrowDown") {
+      e.stopPropagation()
+      e.preventDefault()
+    }
+    else if(e.key === "ArrowUp") {
+      e.stopPropagation()
+      e.preventDefault()
+    }
+  }
+
+  
+  moveChild(elem: Element, i: number) {
+    let children = Array.from(this.children).map(el => el !== elem? el: undefined)
+    children.splice(i, 0, elem)
+    children = children.filter(el => el)
+    this.innerHTML = children.map(child => child.outerHTML).join("")
+    // const template = document.createElement("template")
+    // template.content.append(...children)
+  }
+
+  handleMove = (e: CustomEvent) => {
+    const elem = e.target as HTMLElement
+    const children = Array.from(this.children)
+    const pos = children.indexOf(elem)
+    let i: number
+    if(e.type === "ww-moveup") {
+      i = Math.max(0, pos - 1)
+    }
+    else if(e.type === "ww-movedown") {
+      i = Math.min(children.length, pos + 2)
+
+    }
+    else if(e.type === "ww-moveto") {
+      i = e.detail.i
+    }
+    this.moveChild(elem, i)
+  }
 
   render() {
     return html`

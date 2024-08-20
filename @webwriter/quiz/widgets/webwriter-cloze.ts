@@ -1,6 +1,6 @@
-import {html, css} from "lit"
+import {html, css, LitElement} from "lit"
 import {LitElementWw} from "@webwriter/lit"
-import {customElement} from "lit/decorators.js"
+import {customElement, query} from "lit/decorators.js"
 import {styleMap} from "lit/directives/style-map.js"
 
 import SlIconButton from "@shoelace-style/shoelace/dist/components/icon-button/icon-button.component.js"
@@ -16,6 +16,8 @@ declare global {interface HTMLElementTagNameMap {
 
 @customElement("webwriter-cloze")
 export class WebwriterCloze extends LitElementWw {
+
+  static shadowRootOptions: ShadowRootInit = {...LitElementWw.shadowRootOptions, delegatesFocus: false}
 
   static localization = {}
 
@@ -37,11 +39,29 @@ export class WebwriterCloze extends LitElementWw {
       cursor: text;
     }
 
+    slot[data-empty]:after {
+      content: var(--placeholder);
+      position: absolute;
+      left: 0;
+      top: 0;
+      color: darkgray;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    slot::after, slot::before {
+      content: ' ';
+    }
+
     #add-gap {
       position: absolute;
       right: 0;
       top: 0;
-      background: rgba(255, 255, 255, 0.85)
+      background: rgba(255, 255, 255, 0.85);
+
+      &[data-highlighting]::part(base) {
+        background: var(--sl-color-primary-100);
+      }
     }
 
     :host(:not([contenteditable=true]):not([contenteditable=""])) .author-only {
@@ -49,34 +69,68 @@ export class WebwriterCloze extends LitElementWw {
     }
   `
 
+  @query("#add-gap")
+  accessor addGapButton: SlIconButton
+
+  observer: MutationObserver
+
+  connectedCallback(): void {
+    super.connectedCallback()
+    document.addEventListener("selectionchange", e => {
+      const sel = document.getSelection()
+      const node = document.getSelection()?.anchorNode
+      const el = node.nodeType === node.TEXT_NODE? node.parentElement: node as HTMLElement
+      this.addGapButton.toggleAttribute("data-visible", el?.closest("webwriter-cloze")? true: false)
+      if(el?.closest("webwriter-cloze") && !sel.isCollapsed) {
+        this.addGapButton.toggleAttribute("data-highlighting", true)
+      }
+      else {
+        this.addGapButton.toggleAttribute("data-highlighting", false)
+      }
+    })
+    this.observer = new MutationObserver(() => this.requestUpdate())
+    this.observer.observe(this, {characterData: true, childList: true, subtree: true})
+  }
+
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback()
+    this.observer?.disconnect()
+  }
+
   toggleGap = () => {
     const sel = document.getSelection()
     const selectedElement = sel.anchorNode.childNodes.item(sel.anchorOffset)
     if(selectedElement?.nodeName.toLowerCase() === "webwriter-cloze-gap") {
       const gap = selectedElement as WebwriterClozeGap
-      selectedElement.replaceWith(document.createTextNode(gap.solution))
+      selectedElement.replaceWith(document.createTextNode(gap.value))
     }
     else if(this.contains(sel.anchorNode)) {
-      const textContent = sel.toString()
-      sel.deleteFromDocument()
-      const textNode = sel.anchorNode as Text
-      const at = sel.anchorOffset
-      const clozeGap = document.createElement("webwriter-cloze-gap")
-      clozeGap.setAttribute("solution", textContent)
-      const afterTextNode = textNode.splitText(at)
-      afterTextNode.textContent = " " + afterTextNode.textContent.trimStart()
-      textNode.textContent = textNode.textContent.trimEnd() + " "
-      textNode.parentElement.insertBefore(clozeGap, afterTextNode)
-      if(afterTextNode.textContent.trim() === "") {
-        textNode.parentElement.appendChild(document.createTextNode("​"))
+      if(sel.anchorNode !== this) {
+        const textContent = sel.toString()
+        sel.deleteFromDocument()
+        const textNode = sel.anchorNode as Text
+        const at = sel.anchorOffset
+        const clozeGap = document.createElement("webwriter-cloze-gap")
+        clozeGap.classList.add("webwriter-new")
+        clozeGap.setAttribute("value", textContent)
+        const afterTextNode = textNode.splitText(at)
+        afterTextNode.textContent = afterTextNode.textContent.trimStart()
+        textNode.textContent = textNode.textContent.trimEnd()
+        textNode.parentElement.insertBefore(clozeGap, afterTextNode)
+      }
+      else {
+        const clozeGap = document.createElement("webwriter-cloze-gap")
+        clozeGap.setAttribute("value", "")
+        this.append(clozeGap)
       }
     }
   }
 
   render() {
     return html`
-      <slot></slot>
+      <slot style=${styleMap({"--placeholder": `"${this.msg("Text to add gaps to")}"`})} ?data-empty=${!this.textContent.trim() && !this.querySelectorAll("& > p *:not(br)").length}></slot>
       <sl-icon-button class="author-only" id="add-gap" src=${IconTextarea} @click=${this.toggleGap}></sl-icon-button>
     `
   }
-}
+} 

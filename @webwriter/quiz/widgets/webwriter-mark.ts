@@ -1,6 +1,6 @@
 import {html, css} from "lit"
 import {LitElementWw} from "@webwriter/lit"
-import {customElement, property} from "lit/decorators.js"
+import {customElement, property, query} from "lit/decorators.js"
 import {styleMap} from "lit/directives/style-map.js"
 import "@shoelace-style/shoelace/dist/themes/light.css"
 
@@ -185,6 +185,17 @@ export class WebwriterMark extends LitElementWw {
       position: absolute;
       right: 0;
       top: 0;
+      background: rgba(255, 255, 255, 0.85)
+    }
+
+    slot[data-empty]:after {
+      content: var(--ww-placeholder);
+      position: absolute;
+      left: 0;
+      top: 0;
+      color: darkgray;
+      pointer-events: none;
+      user-select: none;
     }
 
     #highlight::part(base):hover {
@@ -195,19 +206,23 @@ export class WebwriterMark extends LitElementWw {
       background-color: yellow;
     }
 
-    :host([highlighting]) sl-icon-button::part(base) {
+    #highlight[data-highlighting]::part(base) {
       background-color: lightyellow;
     }
 
-    :host(:has( #highlight:hover)) ::selection {
+    :host(:has(#highlight[data-highlighting])) ::selection {
       background: lightyellow !important;
     }
   `
 
   @property({type: Boolean, attribute: true, reflect: true})
-  highlighting = false
+  accessor highlighting = false
 
   #value: Range[] = []
+
+  get value() {
+    return this.#value
+  }
 
   @property({
     attribute: true,
@@ -244,25 +259,24 @@ export class WebwriterMark extends LitElementWw {
       }
     }
   })
-  get value() {
-    return this.#value
-  }
-
   set value(value) {
     const prev = this.#value
-    /*const finalValue = value.filter(range => {
+    const added = []
+    const removed = []
+    // for each added:
+    //  
+    const finalValue = value.filter(range => {
       const isContained = value.some(otherRange => {
         if(range === otherRange) {
           return
         }
-        console.log(range.compareBoundaryPoints(Range.START_TO_START, otherRange), range.compareBoundaryPoints(Range.END_TO_END, otherRange))
         const startsWithin = range.compareBoundaryPoints(Range.START_TO_START, otherRange) > -1
         const endsWithin = range.compareBoundaryPoints(Range.END_TO_END, otherRange) <= 0
         return startsWithin && endsWithin
       })
-      return !isContained
-    })*/
-    this.#value = value
+      return !isContained && !range.collapsed
+    })
+    this.#value = finalValue
     for(const range of prev) {
       WebwriterMark.highlight.delete(range)
     }
@@ -271,19 +285,31 @@ export class WebwriterMark extends LitElementWw {
     }
   }
 
-  /*connectedCallback(): void {
+  observer: MutationObserver
+
+  connectedCallback(): void {
     super.connectedCallback()
     document.addEventListener("selectionchange", e => {
       const sel = document.getSelection()
       const el = document.getSelection()?.anchorNode?.parentElement
       if(el?.closest("webwriter-mark") && !sel.isCollapsed) {
-        this.highlighting = true
+        this.highlightButton.toggleAttribute("data-highlighting", true)
       }
       else {
-        this.highlighting = false
+        this.highlightButton.toggleAttribute("data-highlighting", false)
       }
     })
-  }*/
+    this.observer = new MutationObserver(() => this.value = this.value)
+    this.observer.observe(this, {characterData: true, childList: true, subtree: true})
+  }
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback()
+    this.observer?.disconnect()
+  }
+
+  @query("#highlight")
+  accessor highlightButton: SlIconButton
 
   addHighlight() {
     const range = document.getSelection().getRangeAt(0)
@@ -306,8 +332,9 @@ export class WebwriterMark extends LitElementWw {
   }
 
   render() {
+    console.log(this.value)
     return html`
-      <slot style=${styleMap({"--ww-placeholder": `"${this.msg("Text to Highlight")}"`})}></slot>
+      <slot style=${styleMap({"--ww-placeholder": `"${this.msg("Text to Highlight")}"`})} ?data-empty=${!this.textContent}></slot>
       <sl-icon-button id="highlight" src=${IconHighlighter} @click=${this.toggleHighlight}></sl-icon-button>
     `
   }

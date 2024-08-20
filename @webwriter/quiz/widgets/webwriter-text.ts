@@ -27,14 +27,28 @@ export class WebwriterText extends LitElementWw {
       {value: "datetime-local", label: {"en": "Date & Time", "de": "Datum & Uhrzeit"}}
     ]
   })
-  type: "date" | "datetime-local" | "number" | "text" | "time" | "long-text" = "long-text"
+  accessor type: "date" | "datetime-local" | "number" | "text" | "time" | "long-text" = "long-text"
 
   @property({type: String, attribute: true, reflect: true})
   @option()
-  placeholder: string
+  accessor placeholder: string
 
   @property({type: String, attribute: true, reflect: true})
-  value: string
+  accessor value: string
+
+  /*
+  @property({type: Number, attribute: true, reflect: true})
+  @option({type: Number})
+  min: number
+
+  @property({type: Number, attribute: true, reflect: true})
+  @option({type: Number})
+  max: number
+
+  @property({type: Number, attribute: true, reflect: true})
+  @option({type: Number})
+  step: number
+  */
 
   static scopedElements = {
     "sl-textarea": SlTextarea,
@@ -44,6 +58,16 @@ export class WebwriterText extends LitElementWw {
   static styles = css`
     :host(:is([contenteditable=true], [contenteditable=""])) sl-textarea::part(textarea) {
       color: var(--sl-color-success-700);
+    }
+
+    sl-textarea {
+      resize: vertical;
+      overflow: hidden;
+      min-height: 40px;
+
+      &::part(form-control), &::part(form-control-input), &::part(base), &::part(textarea) {
+        height: 100%;
+      }
     }
   `
 
@@ -57,7 +81,7 @@ export class WebwriterText extends LitElementWw {
   }
 
   @query("sl-textarea, sl-input")
-  input: SlTextarea | SlInput
+  accessor input: SlTextarea | SlInput
 
   focus() {
     this.input.focus()
@@ -68,10 +92,10 @@ export class WebwriterText extends LitElementWw {
   }
 
   @property({type: String, attribute: false, reflect: false})
-  solution: string
+  accessor solution: string
 
   render() {
-    const textarea = html`<sl-textarea value=${this.isContentEditable? this.solution: this.value} placeholder=${this.placeholder}></sl-textarea>`
+    const textarea = html`<sl-textarea value=${this.isContentEditable? this.solution: this.value} placeholder=${this.placeholder} resize="none"></sl-textarea>`
     const input = html`<sl-input value=${this.isContentEditable? this.solution: this.value} placeholder=${this.placeholder} type=${this.type}></sl-input>`
     return html`
       <div id="solution">${this.solution}</div>
