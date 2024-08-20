@@ -616,7 +616,6 @@ export class CommandController implements ReactiveController {
         shortcut: "ctrl+o",
         description: () => msg("Open a document"),
         run: async (host, options) => { 
-          console.log(options)
           if(host.store.accounts.size === 1) {
             await host.store.document.load(options?.url)
           }
