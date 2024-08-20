@@ -11,7 +11,7 @@
     "generatejsonschema": "tsx ./scripts/generatejsonschema.ts --tsconfig ./@webwriter/core/tsconfig.json",
     "make-app-icon": "tauri icon ./@webwriter/core/app-icon.png",
     "predev-core": "npm-run-all -pc preparestatic build-localization",
-    "dev-core": "npm run vite -- @webwriter/core -l error",
+    "dev-core": "npm run vite -- @webwriter/core -l error --force",
     "predev-desktop": "tauri -V",
     "dev-desktop": "npm-run-all -pr dev-core \"tauri dev -- -c ./@webwriter/app-desktop/src-tauri/tauri.conf.json\"",
     "dev-cloud": "npm run -w @webwriter/app-cloud dev",
