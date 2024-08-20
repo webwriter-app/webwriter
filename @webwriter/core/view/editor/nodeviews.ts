@@ -7,7 +7,7 @@ import { EditorStateWithHead, getAttrs, globalHTMLAttributes, toAttributes } fro
 import {EditorViewController} from "."
 import { selectParentNode } from "prosemirror-commands"
 import { filterObject, sameMembers, shallowCompare, browser } from "../../utility"
-import { readDOMChange } from "./domchange"
+import { readDOMChange } from "./prosemirror-view/domchange"
 
 
 

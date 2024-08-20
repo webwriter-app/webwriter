@@ -1,10 +1,10 @@
 import {Fragment, DOMParser, TagParseRule, Node, Mark, ResolvedPos} from "prosemirror-model"
 import {Selection, TextSelection} from "prosemirror-state"
 
-import {selectionBetween, selectionFromDOM, selectionToDOM} from "prosemirror-view/src/selection"
-import {selectionCollapsed, keyEvent, DOMNode} from "prosemirror-view/src/dom"
-import { browser } from "../../utility"
-import { EditorView } from "prosemirror-view"
+import {selectionBetween, selectionFromDOM, selectionToDOM} from "./selection"
+import {selectionCollapsed, keyEvent, DOMNode} from "./dom"
+import { browser } from "../../../utility"
+import { EditorView } from "."
 
 // Note that all referencing and parsing is done with the
 // start-of-operation selection and document, since that's the one
