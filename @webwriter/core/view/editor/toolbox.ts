@@ -1132,7 +1132,7 @@ export class Toolbox extends LitElement {
 
   MathToolbox(el: MathMLElement & HTMLElement) {
     return html`<div class="math-toolbox">
-      <sl-input id="math-input" size="small" label="TeX" placeholder=${"sqrt{a^2 + b^2}"} @sl-change=${(e: any) => latexToMathML(e.target.value, el)}>
+      <sl-input id="math-input" size="small" label="TeX" placeholder=${"\\sqrt{a^2 + b^2}"} @sl-change=${(e: any) => latexToMathML(e.target.value, el)}>
         <sl-icon-button slot="suffix" name="corner-down-left"></sl-icon-button>
       </sl-input>
     </div>`
@@ -1218,7 +1218,6 @@ export class Toolbox extends LitElement {
     const elementName = el.tagName.toLowerCase()
     const isCustomElement = this.isCustomElement(el)
     const isCommandEl = elementName in this.app.commands.commands
-
     const children = Array.from(el.children)
       .filter(child => !child.classList.contains("ProseMirror-trailingBreak"))
       .filter(child => !["br", "wbr", "a", "abbr", "b", "bdi", "bdo", "cite", "code", "data", "del", "dfn", "em", "i", "ins", "kbd", "q", "ruby", "s", "samp", "small", "span", "strong", "sub", "sup", "time", "u", "var"].includes(child.tagName.toLowerCase()))
