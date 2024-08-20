@@ -66,7 +66,15 @@ export class Warning extends Error {}
 /** Handles packages. Packages are node (npm) packages which contain widgets. The PackageStore can also create bundles from packages, which can for example be imported by the runtime editor or embedded by serializers. Additionally, the PackageStore can open or clear the app directory which stores the packages. */
 export class PackageStore {
 
-  static bundleOptions = [...BUNDLE_LOADER_OPTIONS, "--bundle", `--outdir=./bundlecache`, `--entry-names=[dir]/[name].bundle`, `--format=esm`, `--metafile=bundlecache/meta.json`, `--tsconfig-raw={"compilerOptions":{"experimentalDecorators":true, "target": "es2022", "useDefineForClassFields": false}}`]
+  static get bundleOptions()  {return [
+    "--bundle",
+    `--outdir=./bundlecache`,
+    `--entry-names=[dir]/[name].bundle`,
+    `--metafile=bundlecache/meta.json`,
+    "--target=es2022",
+    `--format=esm`,
+    ...BUNDLE_LOADER_OPTIONS
+  ]}
 
   static developmentBundleOptions = ["--sourcemap=inline"]
   static productionBundleOptions = ["--drop-labels=DEV", "--minify"]
@@ -459,6 +467,8 @@ export class PackageStore {
     this.initializing = true
     const rootExists = await this.FS.exists(await this.rootPackageJsonPath)
     const appDir = await this.appDir
+    await this.pm("--version", undefined, appDir)
+    await this.bundle(["--version"], appDir)
     const appDirExists = rootExists || await this.FS.exists(appDir)
     if(!rootExists || force) {
       await (appDirExists && this.FS.rmdir(appDir))
@@ -480,7 +490,7 @@ export class PackageStore {
     this.initializing = false
   }
 
-  get defaultRootPackage() {
+  static get defaultRootPackage() {
     return new Package({
       name: "webwriter-root",
       version: appVersion,
@@ -489,20 +499,19 @@ export class PackageStore {
     })
   }
 
-  get tsconfigJson() {
+  static get tsconfigJson() {
     return {
       compilerOptions: {
-        experimentalDecorators: true,
         target: "es2022",
-        useDefineForClassFields: false
+        esModuleInterop: true
       }
     }
   }
 
   get initialFiles() {
     return {
-      "package.json": JSON.stringify(this.defaultRootPackage, undefined, 2),
-      "tsconfig.json": JSON.stringify(this.tsconfigJson, undefined, 2)
+      "package.json": JSON.stringify(PackageStore.defaultRootPackage, undefined, 2),
+      "tsconfig.json": JSON.stringify(PackageStore.tsconfigJson, undefined, 2)
     }
   }
 
@@ -514,7 +523,7 @@ export class PackageStore {
     return new Package(json) as Package & {localPaths: Record<string, string>}
   }
 
-  private async writeRootPackageJson(pkg: Package = this.defaultRootPackage) {
+  private async writeRootPackageJson(pkg: Package = PackageStore.defaultRootPackage) {
     return this.FS.writeFile(await this.rootPackageJsonPath, JSON.stringify(pkg, undefined, 2))
   }
 
