@@ -44,12 +44,54 @@ export const selectFirstChildNode: Command = (state, dispatch, view) => {
 }
 
 export const splitParent: Command = (state, dispatch, view) => {
-  const {$from} = state.selection;
-  (dispatch ?? (() => null))(state.tr
-    .deleteSelection()
-    .split($from.pos, Math.min(2, $from.depth))
-  )
-  return true
+  let tr = state.tr.deleteSelection()
+  const pos = tr.selection.anchor
+  const depth = tr.selection.$from.depth
+  try {
+    const grandparent = tr.selection.$from.node(tr.selection.$from.depth - 1)
+    if(true) {
+      tr = tr.split(pos, Math.min(2, depth))
+      let resolved = tr.doc.resolve(tr.doc.resolve(pos).after())
+      if(resolved.node().type.spec.widget) {
+        tr = tr.setNodeAttribute(resolved.pos + 1, "id", `ww-${crypto.randomUUID()}`)
+      }
+      dispatch && dispatch(tr)
+      return true 
+    }
+    else {
+      return false
+    }
+  }
+  catch {
+    return false
+  }
+}
+
+export const splitOrBreak: Command = (state, dispatch, view) => {
+  let tr = state.tr.deleteSelection()
+  const pos = tr.selection.anchor
+  if(canSplit(tr.doc, pos)) {
+    tr = tr.split(pos)
+    let resolved = tr.doc.resolve(tr.doc.resolve(pos).after())
+    if(resolved.nodeAfter?.type.spec.widget) {
+      tr = tr.setNodeAttribute(resolved.pos + 1, "id", `ww-${crypto.randomUUID()}`)
+    }
+    dispatch && dispatch(tr)
+    return true
+  }
+  else {
+    return insertBreak(state, dispatch, view)
+  }
+}
+
+export const joinUpIfAtStart: Command = (state, dispatch, view) => {
+  const {selection} = state
+  if(selection.empty && selection.$anchor.parentOffset === 0 && selection.$anchor.index(selection.$anchor.depth - 1) === 0) {
+    return joinUp(state, dispatch, view)
+  }
+  else {
+    return false
+  }
 }
 
 export class SetDocAttrsStep extends Step {
@@ -188,19 +230,22 @@ export const basePlugin = () => ({
       newlineInCode,
       createParagraphNear,
       liftEmptyBlock,
-      splitBlock
+      splitOrBreak
     ),
     "Mod-Enter": chainCommands(
       splitParent,
+      createParagraphNear,
       exitCode
     ),
+    "alt-Enter": insertBreak,
+    "alt-shift-Enter": insertWordBreak,
     "Backspace": chainCommands(
       deleteSelection,
       joinBackward,
       selectNodeBackward
     ),
     "Mod-Backspace": chainCommands(
-      joinUp,
+      joinUpIfAtStart,
       deleteSelection,
       joinBackward,
       selectNodeBackward
