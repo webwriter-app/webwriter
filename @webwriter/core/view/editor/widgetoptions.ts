@@ -107,7 +107,7 @@ export class WidgetOptions extends LitElement {
   }
 
   SelectOption(attr: string, decl: SelectOptionDeclaration) {
-    const value = this.widget?.getAttribute(attr) ?? undefined
+    const value = this.widget?.getAttribute(attr) ?? undefined ?? (decl?.options ?? [])[0]?.value
     return html`<sl-select
       size="small"
       label=${ifDefined(getLocalized(decl.label))}
