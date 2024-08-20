@@ -12,6 +12,17 @@ const ALL_FILTER = {name: "Explorable", extensions: Object.values(marshal).flatM
 export const INDIVIDUAL_FILTERS = Object.entries(marshal).map(([k, v]) => ({name: "Explorable", extensions: v.extensions as unknown as string[]}))
 const FILTERS = [ALL_FILTER, ...INDIVIDUAL_FILTERS]
 
+const SAVE_FILTERS = [
+  ...Object.entries(marshal)
+    .filter(([k, v]) => !v.isParseOnly)
+    .map(([k, v]) => ({name: "Explorable", extensions: v.extensions as unknown as string[]}))
+]
+const LOAD_FILTERS = [
+  {name: "Explorable", extensions: Object.values(marshal).flatMap(v => v.extensions)},
+  ...Object.entries(marshal)
+    .map(([k, v]) => ({name: "Explorable", extensions: v.extensions as unknown as string[]}))
+]
+
 type FileFormat = keyof typeof marshal
 
 export interface Client {
@@ -89,12 +100,12 @@ export class FileClient implements DocumentClient {
     return data
   }
 
-  async pickSave(filters: DialogFilter[]=INDIVIDUAL_FILTERS, defaultPath?: string) {
+  async pickSave(filters: DialogFilter[]=SAVE_FILTERS, defaultPath?: string) {
     const path = await this.Environment.Dialog.promptWrite({filters, defaultPath}) as null | string ?? undefined
     return path? new URL(path, "file://"): undefined
   }
 
-  async pickLoad(filters: DialogFilter[]=FILTERS) {
+  async pickLoad(filters: DialogFilter[]=LOAD_FILTERS) {
     const path = await this.Environment.Dialog.promptRead({filters}) as null | string ?? undefined
     return path? new URL(path, "file://"): undefined
 
