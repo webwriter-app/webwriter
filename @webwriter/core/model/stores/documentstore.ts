@@ -4,7 +4,7 @@ import { html_beautify as htmlBeautify } from "js-beautify"
 
 import { createEditorState, createWindow, DocumentClient, EditorStateWithHead, Environment, getActiveMarks, getHeadElement, Package, PackageStore, setHeadAttributes, upsertHeadElement } from ".."
 import { filterObject, getFileExtension, groupBy, idle, range } from "../../utility"
-import marshal from "../marshal"
+import marshal, { getParserSerializerByExtension } from "../marshal"
 import { redoDepth, undoDepth } from "prosemirror-history"
 import {undo as cmUndo, redo as cmRedo, undoDepth as cmUndoDepth, redoDepth as cmRedoDepth} from "@codemirror/commands"
 import { EditorView } from "prosemirror-view"
@@ -13,6 +13,7 @@ import { html as cmHTML } from "@codemirror/lang-html"
 import { basicSetup } from "codemirror"
 import { Account, AccountStore } from "./accountstore"
 import { HTMLParserSerializer } from "../marshal/html"
+import { ParserSerializer } from "../marshal/parserserializer"
 
 
 export const CODEMIRROR_EXTENSIONS = [basicSetup, cmHTML()]
@@ -144,12 +145,22 @@ export class DocumentStore implements Resource {
   }
 
   /** Saves a resource on an external file system. */
-  async save(saveAs=false, serializer=this.parserSerializer, client=this.client, filename=this.provisionalTitle) {
+  async save(saveAs=false, serializer=this.serializer, client=this.client, filename=this.provisionalTitle) {
     this.ioState = "saving"
     try {
-      const saveUrl = saveAs || !this.url? undefined: this.url
-      const data = await serializer.serialize(this.editorState)
-      const url = await client.saveDocument(data, saveUrl, filename)
+      let newUrl = saveAs || !this.url? undefined: this.url
+      let newSerializer = serializer
+      if(!newUrl && "pickLoad" in client) {
+        newUrl = await client.pickSave()
+        if(!newUrl) {
+          return
+        }
+        const foundPs = getParserSerializerByExtension(newUrl?.pathname)
+        newSerializer = foundPs? new foundPs(this.Environment): serializer
+        newSerializer = "serialize" in newSerializer? newSerializer: this.serializer
+      }
+      const data = await newSerializer.serialize!(this.editorState)
+      const url = await client.saveDocument(data, newUrl, filename)
       if(url) {
         this.lastSavedState = this.editorState
         this.url = url
@@ -165,14 +176,24 @@ export class DocumentStore implements Resource {
   }
 
   /** Loads a resource from an external file system. */
-  async load(url: Resource["url"] | undefined = undefined, parser=this.parserSerializer, client=this.client, schema=this.editorState.schema) {
+  async load(url: Resource["url"] | undefined = undefined, parser=this.parser, client=this.client, schema=this.editorState.schema) {
     this.ioState = "loading"
     try {
-      const data = await client.loadDocument(url)
+      let newUrl = url
+      let newParser = parser
+      if(!url && "pickLoad" in client) {
+        newUrl = await client.pickLoad()
+        if(!newUrl) {
+          return
+        }
+        const foundPs = getParserSerializerByExtension(newUrl?.pathname)
+        newParser = foundPs? new foundPs(this.Environment): parser
+      }
+      const data = await client.loadDocument(newUrl)
       if(!data) {
         return
       }
-      const editorState = await parser.parse(data as string, schema)
+      const editorState = await newParser.parse(data as string, schema)
       this.editorState = this.lastSavedState = editorState
       if(this.codeState) {
         this.deriveCodeState()
@@ -468,13 +489,21 @@ export class DocumentStore implements Resource {
 
   get client() {
     const file = this.accounts.getClient("file", "file")!
-    console.log(this.url)
     return this.url? this.accounts.clientFromURL(this.url) ?? file: file 
   }
 
   get parserSerializer() {
     const html = new HTMLParserSerializer(this.Environment)
     return this.url? this.accounts.parserSerializerFromURL(this.url) ?? html: html
+  }
+
+  get parser() {
+    return this.parserSerializer
+  }
+
+  get serializer() {
+    const html = new HTMLParserSerializer(this.Environment)
+    return "serialize" in this.parserSerializer? this.parserSerializer: html
   }
 
 }
