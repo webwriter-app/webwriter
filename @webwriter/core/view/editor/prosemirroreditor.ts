@@ -318,6 +318,13 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
 		return this.dispatchEvent(new (e as any).constructor(e.type, e))
 	}
 
+  isFullscreen = false
+
+  toggleFullscreen = (value?: boolean) => {
+    this.isFullscreen = value ?? !this.isFullscreen
+    this.dispatchEvent(new Event("fullscreenchange", {bubbles: true}))
+  }
+
   async initializeIFrame() {
     this.iframe = this.shadowRoot?.querySelector("iframe") as any
     const {contentScript} = this
@@ -327,6 +334,29 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
     this.window.onerror = window.onerror
     this.window.onunhandledrejection = window.onunhandledrejection
     this.window.addEventListener("focus", () => this.dispatchEvent(new Event("focus", {bubbles: true, composed: true})))
+    // const requestFullscreen = this.window.Element.prototype.requestFullscreen
+    const toggleFullscreen = this.toggleFullscreen
+    this.window.Element.prototype.requestFullscreen = async function(options) {
+      this.classList.add("ww-fullscreen")
+      toggleFullscreen(true)
+    }
+    this.document.exitFullscreen = async () => {
+      this.document.querySelectorAll(".ww-fullscreen").forEach(el => el.classList.remove("ww-fullscreen"))
+      toggleFullscreen(false)
+    }
+    Object.defineProperty(this.document, "fullscreenElement", {
+      get() {
+        return this.querySelector(".ww-fullscreen")
+      }
+    })
+    const createElement = this.document.createElement
+    this.document.createElement = (tagName: string, options: ElementCreationOptions) => {
+      const el = createElement.call(this.document, tagName, options)
+      if(tagName.includes("-")) {
+        el.id = "ww-" + crypto.randomUUID()
+      }
+      return el
+    }
     for(const [eventName, listener] of Object.entries(this.windowListeners)) {
       this.window.addEventListener(eventName, listener)
     }

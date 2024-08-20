@@ -875,6 +875,9 @@ export class ExplorableEditor extends LitElement {
   handleDOMEvents = {
     "keydown": (_: any, ev: KeyboardEvent) => {
       this.dispatchEvent(new KeyboardEvent(ev.type, ev))
+      if(ev.key === "Escape") {
+        this.pmEditor.document.exitFullscreen()
+      }
     },
     "keyup": (_: any, ev: KeyboardEvent) => {
       this.dispatchEvent(new KeyboardEvent(ev.type, ev))
@@ -1105,6 +1108,7 @@ export class ExplorableEditor extends LitElement {
         bundleID=${this.bundleID}
 				@update=${this.handleUpdate}
         @focus=${this.handleEditorFocus}
+        @fullscreenchange=${() => this.requestUpdate()}
 				.scrollMargin=${20}
 				scrollThreshold=${20}
 				placeholder=${this.showTextPlaceholder && !this.previewing? msg("Enter content here..."): ""}
@@ -1260,8 +1264,8 @@ export class ExplorableEditor extends LitElement {
       <main part="base">
         ${this.app.sourceMode? this.CodeEditor(): [
           this.CoreEditor(),
-          this.Toolbox(),
-          this.Palette()
+          !this.pmEditor?.isFullscreen? this.Toolbox(): null,
+          !this.pmEditor?.isFullscreen? this.Palette(): null
         ]}
         <!--<ww-debugoverlay .editorState=${this.editorState} .activeElement=${this.activeElement}></ww-debugoverlay>-->
       </main>

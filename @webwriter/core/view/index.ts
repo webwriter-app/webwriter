@@ -405,6 +405,7 @@ export class App extends ViewModelMixin(LitElement)
 		return html`<ww-layout 
 			openTab
 			activeTabName=${String(this.store?.document.url)}
+      @click=${() => this.activeEditor?.pmEditor?.document.exitFullscreen()}
       ?loading=${this.initializing}
       ?foldOpen=${this.foldOpen}>
         ${this.HeaderLeft()}
