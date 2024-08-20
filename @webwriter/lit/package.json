@@ -1,19 +1,25 @@
 {
   "name": "@webwriter/lit",
-  "version": "1.6.3",
+  "version": "2.0.0",
   "description": "Base classes for widget components with lit (WebWriter)",
-  "main": "index.ts",
   "publishConfig": {
     "access": "public"
   },
+  "module": "index.js",
+  "browser": "index.js",
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "license": "MIT",
   "dependencies": {
-    "@open-wc/scoped-elements": "^3.0.3",
-    "lit": "^3.1.1"
+    "@open-wc/scoped-elements": "^3.0.5"
   },
   "scripts": {
-    "build": "vite build"
+    "build": "esbuild ./index.ts --bundle --target=es2022 --format=esm --outfile=index.js"
   },
-  "gitHead": "0fd0c30304aba6738f14ee1ec687b3d4614f7c60"
+  "gitHead": "0fd0c30304aba6738f14ee1ec687b3d4614f7c60",
+  "peerDependencies": {
+    "lit": "^3.2.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.23.1"
+  }
 }
