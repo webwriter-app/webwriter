@@ -63,6 +63,51 @@ That the widget is being printed is now indicated through the class `.ww-beforep
 ### `part=options` instead of `part=action`
 The part-based layout feature has been renamed: You need to replace `part=action` with `part=options`.
 
+### Standard Decorators instead of TypeScript Experimental Decorators
+In the past, WebWriter was configured to support TypeScript's experimental decorators. Since this language feature will likely be deprecated in the long term, WebWriter is moving to standard decorators. You can read more about the change in [Lit's documentation](https://lit.dev/docs/components/decorators/#standard-decorators). To migrate your code, follow these steps:
+
+1. Install the latest version of `@webwriter/lit`: `npm install @webwriter/lit@latest`
+
+2. **Either** delete your `tsconfig.json` **or** set these options:
+```json
+{ // tsconfig.json
+  "compilerOptions": {
+    "experimentalDecorators": false, // default for TypeScript 5.0 and up
+    "useDefineForClassFields": true, // default when "target" is "ES2022" or higher
+  }
+}
+```
+
+3. Add the `accessor` keyword to all decorated fields (e.g. `@property() myprop`):
+
+```ts
+@customElement('my-element') // this stays the same
+export class MyElement extends LitElement {
+  @property() accessor greeting = 'Welcome' // with 'accessor'
+}
+```
+
+4. If you have a decorated getter, move the decorator to the setter instead:
+
+```ts
+@customElement('my-element') // this stays the same
+export class MyElement extends LitElement {
+
+  #greeting = "welcome"
+
+  // no more decorator here
+  get greeting() {
+    return this.#greeting
+  }
+
+  @property() // !
+  set greeting(value) {
+    this.#greeting = value
+  }
+}
+```
+
+
 ## Extra recommendations
 
 ### Import assets such as icons as data URLs

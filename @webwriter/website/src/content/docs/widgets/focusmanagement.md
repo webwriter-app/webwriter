@@ -15,13 +15,13 @@ In our example, we implement `focus()` on the element such that the `textarea` i
 export default class CoolWidget extends LitElementWw {
 
   @property({attribute: true})
-  value: string
+  accessor value: string
 
   @property({attribute: true})
-  placeholder: string
+  accessor placeholder: string
 
   @query("textarea")
-  textarea: HTMLTextAreaElement
+  accessor textarea: HTMLTextAreaElement
 
   focus(options: FocusOptions) {
     this.textarea?.focus(options)

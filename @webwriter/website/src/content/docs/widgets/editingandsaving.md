@@ -17,7 +17,7 @@ In this example, we save our textarea's content in an attribute `value` which we
 export default class CoolWidget extends LitElementWw {
 
   @property({attribute: true})
-  value: string
+  accessor value: string
 
   render() {
     return html`<textarea @change=${e => this.value = e.target.value}>
@@ -46,10 +46,10 @@ For example, we may want to add the ability for authors to add a placeholder tex
 export default class CoolWidget extends LitElementWw {
 
   @property({attribute: true})
-  value: string
+  accessor value: string
 
   @property({attribute: true})
-  placeholder: string
+  accessor placeholder: string
 
   static get styles() {
     return css`

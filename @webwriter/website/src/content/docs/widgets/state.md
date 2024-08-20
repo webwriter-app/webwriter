@@ -26,7 +26,7 @@ Attributes can be used to store data that can be represented as a string. Attrib
 class MyWidget extends LitElementWw {
 
   @property({type: Boolean, attribute: true, reflect: true})
-  showSuggestions = false
+  accessor showSuggestions = false
 }
 ```
 
@@ -45,7 +45,7 @@ class MyWidget extends LitElementWw {
   }
 
   @property({type: Boolean, attribute: true, reflect: true})
-  showSuggestions = false
+  accessor showSuggestions = false
 }
 ```
 
@@ -55,7 +55,7 @@ class MyWidget extends LitElementWw {
 
   @property({type: Boolean, attribute: true, reflect: true})
   @option({type: Boolean, label: {en: "Show suggestions"}})
-  showSuggestions = false
+  accessor showSuggestions = false
 }
 ```
 
@@ -66,10 +66,10 @@ class MyWidget extends LitElementWw {
 class MyWidget extends LitElementWw {
 
   @property({type: Boolean, attribute: true, reflect: true})
-  hasSuggestions = false
+  accessor hasSuggestions = false
 
   @property({type: Boolean, attribute: true, reflect: true})
-  showSuggestions = false
+  accessor showSuggestions = false
 
   get options() {
     return !this.hasSuggestions? {}: {
