@@ -68,7 +68,6 @@
       "identifier": "webwriter.webwriter",
       "longDescription": "",
       "macOS": {
-        "minimumSystemVersion": "14.5",
         "entitlements": "./entitlements.plist"
       },
       "resources": [],
