@@ -48,6 +48,7 @@
   ],
   "devDependencies": {
     "@tabler/icons": "^3.3.0",
+    "@tauri-apps/cli": "^1.6.0",
     "@types/mocha": "^10.0.1",
     "@types/semver": "^7.3.13",
     "@wagnerflo/cc-icons": "^1.2.1",
