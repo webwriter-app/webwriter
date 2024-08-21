@@ -12,7 +12,7 @@ jobs:
             args: '--target aarch64-apple-darwin'
           - platform: 'macos-13'
             args: '--target x86_64-apple-darwin'
-          - platform: 'ubuntu-22.04'
+          - platform: 'ubuntu-20.04'
             args: ''
           - platform: 'windows-latest'
             args: ''
@@ -32,10 +32,10 @@ jobs:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Install tauri dependencies (ubuntu only)
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.platform == 'ubuntu-20.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.0-dev libappindicator3-dev
 
       - name: import windows certificate (windows only)
         if: matrix.platform == 'windows-latest'
