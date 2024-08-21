@@ -60,6 +60,7 @@ import { basicSetup } from "codemirror";
 import { Account, AccountStore } from "./accountstore";
 import { HTMLParserSerializer } from "../marshal/html";
 import { ChatCompletion } from "openai/resources";
+import { OpenAIAccount } from "../schemas/accounts";
 
 export const CODEMIRROR_EXTENSIONS = [basicSetup, cmHTML()];
 
@@ -297,17 +298,21 @@ export class DocumentStore implements Resource {
 
     // get plain text
     const text = formatHTMLToPlainText(html);
-    console.log("spellchecking:", text);
+
+    // get apiKey
+    const openAiAccount: OpenAIAccount = this.accounts.getAccount(
+      "openai"
+    ) as OpenAIAccount;
+    const apiKey = openAiAccount.apikey;
 
     // send text to spellchecker
-    const res = await fetchGrammarCorrection(text);
-    console.log("spellcheck response:", res);
+    const res = await fetchGrammarCorrection(text, apiKey);
     const correctedText = res.choices[0].message.content;
     if (!correctedText) {
       console.error("no corrected text!");
       return;
     }
-    console.log("corrected:", correctedText);
+    console.log("original:", text, "corrected:", correctedText);
 
     // tokenize both texts
     const originalTokens = tokenizeText(text);
@@ -320,7 +325,6 @@ export class DocumentStore implements Resource {
     console.log("suggestions:", suggestions);
 
     // highlight differences in content using transactions
-
     const transaction = applyGrammarSuggestions(state, suggestions);
 
     // Create a new EditorStateWithHead applying the transaction

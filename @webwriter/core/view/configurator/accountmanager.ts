@@ -8,7 +8,11 @@ import { classMap } from "lit/directives/class-map.js";
 import { styleMap } from "lit/directives/style-map.js";
 import { ifDefined } from "lit/directives/if-defined.js";
 import { Account, AccountTypeId } from "../../model/stores/accountstore";
-import { NpmAccountForm, PocketbaseAccountForm } from "./accountform";
+import {
+  NpmAccountForm,
+  OpenAIAccountForm,
+  PocketbaseAccountForm,
+} from "./accountform";
 import { APPICON, App, Button, Settings } from "..";
 import {
   FileAccount,
@@ -168,26 +172,39 @@ export class AccountManager extends LitElement {
         ></sl-input>
       </sl-card>`;
     },
+    // @meeting
     openai: (account?: OpenAIAccount) => {
       return html`<sl-card class="account-card-oai">
         <sl-input
+          name="apikey"
           size="small"
           class="openai-form"
           placeholder=${msg("None")}
           label=${msg("OpenAI API Key")}
           value=${ifDefined(account?.apikey)}
           @sl-change=${(e: any) =>
-            this.handleFileAccountChange("apikey", e.target.value)}
+            this.handleApiKeyChange("apikey", e.target.value)}
         ></sl-input>
-        <ww-button
-          slot="footer"
-          variant="primary"
-          @click=${this.handleSaveApiKey}
-        >
-          ${msg("Save")}
-        </ww-button>
       </sl-card>`;
+
+      // return html`<sl-card
+      //   class=${classMap({
+      //     // "pending-account-card": pending,
+      //     "account-card": true,
+      //   })}
+      //   class="account-card"
+      // >
+      //   ${this.AccountHeader(account)}
+      //   <ww-openai-account-form
+      //     class="account-form"
+      //     size="small"
+      //     @ww-cancel=${this.handleCancel}
+      //     @submit=${this.handleSubmit}
+      //     .value=${account}
+      //   ></ww-npm-account-form>
+      // </sl-card>`;
     },
+
     pocketbase: (account?: PocketbaseAccount) => {
       const pending = !account;
       const isSignedIn = Boolean(
@@ -343,25 +360,16 @@ export class AccountManager extends LitElement {
     await this.app.settings.persist();
   }
 
-  handleSaveApiKey = async (e: SubmitEvent) => {
-    e.preventDefault();
-    const el = (e.target as HTMLElement).parentElement!;
-    const form = (
-      el.classList.contains("openai-form")
-        ? el
-        : el.querySelector(".openai-form")
-    ) as SlCard;
-    console.log(form);
-
-    const accounts = this.app.store.accounts;
-    const openaiAccount = accounts.getAccount("openai");
+  async handleApiKeyChange(key: string, value: string) {
+    console.log("handleApiKeyChange", key, value);
+    const openAiAccount = this.app.store.accounts.getAccount("openai");
     const newAccount = new OpenAIAccount({
-      // apikey: (form as any).apikey,
-      apikey: "apikey",
-    });
-    accounts.updateAccount(newAccount);
+      ...openAiAccount,
+      [key]: value,
+    } as any);
+    this.app.store.accounts.updateAccount(newAccount);
     await this.app.settings.persist();
-  };
+  }
 
   handleSubmit = async (e: SubmitEvent) => {
     e.preventDefault();

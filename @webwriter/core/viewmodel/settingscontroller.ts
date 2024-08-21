@@ -143,6 +143,7 @@ export class SettingsController implements ReactiveController {
             file: z.record(z.string(), FileAccount.schema),
             pocketbase: z.record(z.string(), PocketbaseAccount.schema),
             npm: z.record(z.string(), NpmAccount.schema),
+            // @meeting
             openai: z.record(z.string(), OpenAIAccount.schema),
           }) as any,
           hidden: true,

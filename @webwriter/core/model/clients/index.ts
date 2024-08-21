@@ -5,6 +5,7 @@ import {
   Account,
   FileAccount,
   NpmAccount,
+  OpenAIAccount,
   PocketbaseAccount,
 } from "../schemas/accounts";
 import PocketBase, {
@@ -99,6 +100,7 @@ export interface AnalyticsClient extends Client {
 
 export interface ApiKeyClient extends Client {
   getApiKey(): string;
+  account: OpenAIAccount;
 }
 
 export interface AuthenticationClient extends Client {
@@ -178,11 +180,15 @@ export class FileClient implements DocumentClient {
   }
 }
 
+// @meeting
 export class OpenAIClient implements ApiKeyClient {
-  constructor(readonly account: Account, readonly Environment: Environment) {}
+  constructor(
+    readonly account: OpenAIAccount,
+    readonly Environment: Environment
+  ) {}
 
   getApiKey() {
-    return "test";
+    return this.account.apikey;
   }
 }
 

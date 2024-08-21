@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export type Account = NpmAccount | PocketbaseAccount;
+export type Account = NpmAccount | PocketbaseAccount | OpenAIAccount;
 
 export interface NpmAccount
   extends z.infer<(typeof NpmAccount)["objectSchema"]> {}
