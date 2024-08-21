@@ -13,7 +13,7 @@ jobs:
           - platform: 'macos-13'
             args: '--target x86_64-apple-darwin'
           - platform: 'ubuntu-20.04'
-            args: ''
+            args: '--verbose'
           - platform: 'windows-latest'
             args: ''
     runs-on: ${{ matrix.platform }}
