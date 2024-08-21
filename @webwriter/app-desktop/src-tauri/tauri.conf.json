@@ -36,7 +36,6 @@
         "execute": true,
         "open": ".*",
         "scope": [
-          {"name": "bin/bun", "args": true, "sidecar": true},
           {"name": "bin/esbuild", "args": true, "sidecar": true}
         ]
       },
@@ -54,8 +53,10 @@
       "deb": {
         "depends": []
       },
+      "appimage": {
+        "bundleMediaFramework": true
+      },
       "externalBin": [
-        "bin/bun",
         "bin/esbuild"
       ],
       "icon": [
