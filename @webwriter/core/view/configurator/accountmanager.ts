@@ -181,7 +181,12 @@ export class AccountManager extends LitElement {
           class="openai-form"
           placeholder=${msg("None")}
           label=${msg("OpenAI API Key")}
-          value=${ifDefined(account?.apikey)}
+          value=${ifDefined(
+            account?.apikey
+              ? account.apikey.slice(0, 10) +
+                  "*".repeat(account.apikey.length - 10)
+              : undefined
+          )}
           @sl-change=${(e: any) =>
             this.handleApiKeyChange("apikey", e.target.value)}
         ></sl-input>
@@ -336,7 +341,7 @@ export class AccountManager extends LitElement {
         ${Object.values(accounts).map((account) =>
           this.accountCards[type](account as any)
         )}
-        ${type === "file"
+        ${type === "file" || type === "openai"
           ? undefined
           : html`
               ${this.pendingAccount?.type === type
@@ -450,9 +455,6 @@ export class AccountManager extends LitElement {
 
   @query(".pending-account-card .account-form")
   pendingAccountForm: PocketbaseAccountForm | NpmAccountForm;
-
-  // @query(".openai-apikey-form")
-  // openaiApikeyForm: SlCard;
 
   @query(".pending-account-card .label-input")
   pendingAccountLabelInput: SlInput;
