@@ -717,9 +717,6 @@ export class ExplorableEditor extends LitElement {
 	}
 
 	updatePosition = async () => {
-    if(!this.app.store.ui.stickyToolbox) {
-      return undefined
-    }
 		const mode = this.toolboxMode
 		const docEl = this.activeElement?.ownerDocument.querySelector("body")
 		const iframeEl = this.pmEditor?.iframe
@@ -771,14 +768,29 @@ export class ExplorableEditor extends LitElement {
       ))/*roundByDPR(
         Math.min(Math.max(selectionY, 0), yMax)
       )*/
-      this.positionStyle = css`
-        body {
-          --ww-toolbox-action-x: ${this.toolboxX - iframeOffsetX};
-          --ww-toolbox-action-y: ${this.toolboxY + this.toolboxHeight - iframeOffsetY};
-          --ww-toolbox-action-width: ${docWidth - rightEdge - 40};
-          --ww-toolbox-action-height: ${docHeight + -this.toolboxY + -this.toolboxHeight}
-        }
-      `
+      if(this.app.store.ui.stickyToolbox) {
+        this.positionStyle = css`
+          body {
+            --ww-toolbox-action-x: ${this.toolboxX - iframeOffsetX};
+            --ww-toolbox-action-y: ${this.toolboxY + this.toolboxHeight - iframeOffsetY};
+            --ww-toolbox-action-width: ${docWidth - rightEdge - 40};
+            --ww-toolbox-action-height: ${docHeight + -this.toolboxY + -this.toolboxHeight}
+          }
+        `
+      }
+      else {
+        const toolboxX = this.toolbox.offsetLeft
+        const toolboxY = this.toolbox.offsetTop
+        const toolboxWidth = this.toolbox.offsetWidth
+        this.positionStyle = css`
+          body {
+            --ww-toolbox-action-x: ${toolboxX};
+            --ww-toolbox-action-y: ${toolboxY + this.toolboxHeight};
+            --ww-toolbox-action-width: ${toolboxWidth - 20};
+            --ww-toolbox-action-height: ${docHeight + -toolboxY + -this.toolboxHeight - 20}
+          }
+        `
+      }
 		}
   }
 
@@ -1157,7 +1169,8 @@ export class ExplorableEditor extends LitElement {
     if(!this.app.store.ui.stickyToolbox && toolboxMode === "right") return {
       gridColumn: "6",
       gridRow: "1/3",
-      width: "100%"
+      width: "100%",
+      alignSelf: "start"
     }
 		else if(!this.toolboxY) return {
 			display: "none"
