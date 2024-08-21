@@ -175,14 +175,14 @@ export type CommandSpec<ID extends string = string, T extends FieldRecord = Fiel
 	fields?: T,
   /** Callback handling the event. Receives the keyboard event and combo if the run was triggered by a keyboard shortcut. */
   tags?: string[]
-    /** Icon to represent the command to the user. */
+  /** Icon to represent the command to the user. */
 	icon?: string | ((host: App) => string)
   /** Description of the commmand for the user. */
 	description?: string | ((host: App) => string)
-    /** Label of the command for the user. */
+  /** Label of the command for the user. */
 	label?: string | ((host: App) => string)
 	run?: (host: App, options?: any, e?: Event) => any | Promise<any>
-    /** Whether the command should be disabled. */
+  /** Whether the command should be disabled. */
 	disabled?: (host: App) => boolean
   /** Whether the command should be disabled. */
   active?: (host: App) => boolean
@@ -190,6 +190,8 @@ export type CommandSpec<ID extends string = string, T extends FieldRecord = Fiel
   value?: (host: App) => any
   /** Callback to preview the command's result, for example on hovering a command button. */
   preview?: (host: App, options?: any, e?: Event) => any | Promise<any>
+  /** Whether the command is currently in progress. */
+  loading?: (host: App) => boolean
 }
 
 export type NodeCommandSpec<ID extends string = string, T extends FieldRecord = FieldRecord> = CommandSpec<ID, T> & {defaultAttrs?: Attrs}
@@ -283,6 +285,10 @@ export class Command<SPEC extends CommandSpec = CommandSpec> implements Reactive
     return !this.spec.value || !this.host.activeEditor? undefined: this.spec.value(this.host)
   }
 
+  get loading() {
+    return this.spec.loading && this.spec.loading(this.host)
+  }
+
   /** Callback to preview the command's result, for example on hovering a command button. */
   preview(options?: any, e?: Event, preview=this.spec.preview ?? (() => {})) {
     if(!this.disabled && this.host.activeEditor) {
@@ -306,8 +312,8 @@ export class Command<SPEC extends CommandSpec = CommandSpec> implements Reactive
   }
 
   toObject() {
-    const {id, tags, label, description, icon, category, group, shortcut,  modified, fixedShortcut, allowDefault, fields, disabled, active, value} = this
-    return {id, tags, label, description, icon, category, group, modified, shortcut, fixedShortcut, allowDefault, fields, disabled, active, value}
+    const {id, tags, label, description, icon, category, group, shortcut,  modified, fixedShortcut, allowDefault, fields, disabled, active, value, loading} = this
+    return {id, tags, label, description, icon, category, group, modified, shortcut, fixedShortcut, allowDefault, fields, disabled, active, value, loading}
   }
 }
 
