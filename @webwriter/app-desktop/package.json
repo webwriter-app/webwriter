@@ -10,7 +10,7 @@
     "@tauri-apps/cli": "^1.6.0"
   },
   "optionalDependencies": {
-    "bun": "^1.1.24",
+    "bun": "^1.1.25",
     "esbuild": "^0.23.1"
   }
 }
