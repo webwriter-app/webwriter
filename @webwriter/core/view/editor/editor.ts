@@ -407,6 +407,7 @@ export class ExplorableEditor extends LitElement {
         border-bottom: none;
         cursor: text;
         font-size: 0.9rem;
+        overflow-y: scroll;
       }
 
 			.loading-packages-spinner-container {
