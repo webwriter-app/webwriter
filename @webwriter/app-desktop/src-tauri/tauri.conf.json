@@ -16,7 +16,7 @@
 
       "fs": {
         "all": true,
-        "scope": ["**", "**/*", "$APP", "$APP/**", "$CACHE", "$CACHE/**", "$CONFIG", "$CONFIG/**", "$LOG", "$LOG/**", "$HOME/**"]
+        "scope": ["*/**"]
       },
       "os": {
         "all": true
