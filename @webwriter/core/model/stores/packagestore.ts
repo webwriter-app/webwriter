@@ -468,8 +468,6 @@ export class PackageStore {
     this.initializing = true
     const rootExists = await this.FS.exists(await this.rootPackageJsonPath)
     const appDir = await this.appDir
-    await this.pm("--version", undefined, appDir)
-    await this.bundle(["--version"], appDir)
     const appDirExists = rootExists || await this.FS.exists(appDir)
     if(!rootExists || force) {
       await (appDirExists && this.FS.rmdir(appDir))
