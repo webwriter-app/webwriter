@@ -463,28 +463,31 @@ export class PackageStore {
   get widgetPackageMap(): Record<string, Package> {
     return Object.fromEntries(Object.keys(this.packages).map(name => [unscopePackageName(name), this.packages[name]]))
   }
-
+  
   async initialize(force=false) {
     this.initializing = true
     const rootExists = await this.FS.exists(await this.rootPackageJsonPath)
     const appDir = await this.appDir
     const appDirExists = rootExists || await this.FS.exists(appDir)
-    if(!rootExists || force) {
-      await (appDirExists && this.FS.rmdir(appDir))
-      await this.FS.mkdir(appDir)
-      await this.writeRootPackageJson()
-      await this.pm("install", undefined, appDir)
-    }
     try {
-      await this.load()/*
+      if(!rootExists || force) {
+        await (appDirExists && this.FS.rmdir(appDir))
+        await this.FS.mkdir(appDir)
+        await this.writeRootPackageJson()
+        await this.pm("install", undefined, appDir)
+      }
+
+      await this.load()
+      /*
       if(this.updateOnStartup) {
         await this.pm("update", undefined, appDir)
       }*/
     }
     catch(err) {
-      throw err
-      console.warn("Resetting app directory due to initialization error.", err)
-      await this.initialize(true)
+      console.error(err)
+      if(await confirm("Error initializing WebWriter. Reset and try again?")) {
+        await this.initialize(true)
+      }
     }
     this.initializing = false
   }
