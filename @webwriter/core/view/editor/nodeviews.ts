@@ -102,6 +102,7 @@ export class WidgetView implements NodeView {
       dom.addEventListener("keydown", e => this.emitWidgetInteract(e), {passive: true})
       dom.addEventListener("click", e => this.handleWidgetClick(e))
       dom.addEventListener("touchstart", e => this.emitWidgetInteract(e), {passive: true})
+      dom.addEventListener("dragstart", e => e.preventDefault())
       // dom.addEventListener("selectstart", e => e.preventDefault())
     }
     return dom
@@ -132,7 +133,7 @@ export class WidgetView implements NodeView {
     const tr = this.view.state.tr.setSelection(new NodeSelection($pos))
     this.view.dispatch(tr)
   }
-
+  
   handleWidgetClick(e: MouseEvent) {
     if(e.offsetX > this.dom.offsetWidth || e.ctrlKey) {
       this.selectFocused()
@@ -261,16 +262,6 @@ export class WidgetView implements NodeView {
       return false
 		}
 		return true
-	}
-
-	selectNode() {
-		this.emitWidgetFocus()
-		this.dom["focus"]()
-	}
- 
-	deselectNode() {
-		this.emitWidgetBlur()
-		this.dom["blur"]()
 	}
 
 	stopEvent(e: Event) {
