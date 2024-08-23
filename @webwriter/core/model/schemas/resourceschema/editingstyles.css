@@ -269,6 +269,7 @@ main:not(:focus-within) .ww-widget.ww-selected {
   outline-color: lightgray;
 }
 
+/*
 body > .ww-widget::after {
   --ww-widget-highlight-color: transparent;
   content: "";
@@ -281,6 +282,7 @@ body > .ww-widget::after {
   cursor: pointer;
   box-sizing: border-box;
 }
+  */
 
 .ww-widget.ww-selected::after {
   --ww-widget-highlight-color: var(--sl-color-primary-400);
