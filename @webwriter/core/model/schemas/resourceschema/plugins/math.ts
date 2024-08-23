@@ -39,7 +39,7 @@ export function MathMLElementSpec({tag, content, marks, group, inline, atom, att
     defining,
     isolating,
     toDOM: toDOM ?? (n => [`http://www.w3.org/1998/Math/MathML ${tag}`, toAttributes(n), ...(content? [0]: [])]),
-    parseDOM: parseDOM ?? [{tag, getAttrs, context: "mathInline//|mathBlock//"}],
+    parseDOM: parseDOM ?? [{tag, getAttrs, context: "math//|math_inline//"}],
     toDebugString,
     leafText,
     ...rest
@@ -93,23 +93,15 @@ export const mathPlugin = () => ({
       math: {
         tag: "math",
         group: "flow",
-        //content: MATHML_CONTENT,
+        content: MATHML_CONTENT,
         atom: true,
-        toDOM: n => {
-          const dom = document.createElementNS("http://www.w3.org/1998/Math/MathML", "math")
-          const attrs = toAttributes(n)
-          Object.entries(attrs).forEach(([k, v]) => dom.setAttribute(k, v))
-          dom.innerHTML = n.attrs._content ?? ""
-          return {dom}
-        },
-        parseDOM: [{tag: "math", getAttrs: dom => ({_content: dom.innerHTML, ...getAttrs(dom)}), preserveWhitespace: true}],
-        whitespace: "pre"
+        toDOM: n => [`http://www.w3.org/1998/Math/MathML math`, toAttributes(n), 0],
       },
       math_inline: {
         group: "phrasing",
         inline: true
       }
-    }),/*
+    }),
     "annotationMathML": MathMLElementSpec({
       tag: "annotation",
       content: "text?",
@@ -274,6 +266,6 @@ export const mathPlugin = () => ({
     "semanticsMathML": MathMLElementSpec({
       tag: "semantics",
       content: `(annotationMathML | annotationxmlMathML)* ${MATHML_CONTENT} (annotationMathML | annotationxmlMathML)*`
-    }),*/
+    }),
   }
 } as SchemaPlugin)

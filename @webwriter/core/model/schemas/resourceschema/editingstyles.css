@@ -449,10 +449,10 @@ video:not([controls]) {
 }
 
 math:not([display=block]) {
-  display: inline-block;
-  font-family: math;
-  user-select: none;
-  pointer-events: none;
+  & * {
+    user-select: none;
+    pointer-events: none;
+  }
 }
 
 math:empty, math:has(mtext:only-child) {
@@ -505,6 +505,7 @@ body:has(.ww-fullscreen) {
   margin: 0;
   padding: 0;
   max-width: unset;
+  background: black;
 }
 
 .ww-fullscreen {
@@ -516,7 +517,6 @@ body:has(.ww-fullscreen) {
   box-sizing: border-box;
   overflow-y: auto;
   scrollbar-width: thin;
-  background: black;
 
   &::after {
     display: none;
