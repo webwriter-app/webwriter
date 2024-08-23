@@ -1009,6 +1009,9 @@ export class Palette extends LitElement {
   }
 
   protected firstUpdated() {
+    this.addEventListener("blur", e => {
+      this.managing = false
+    })
     this.app.addEventListener("keydown", e => {
       if(!e.composedPath().includes(this)) {
         this.managing = false
