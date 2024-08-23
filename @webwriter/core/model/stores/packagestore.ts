@@ -420,6 +420,7 @@ export class PackageStore {
     if(toRemove.length > 0) {
       try {
         await this.pm("remove", toRemove, await this.appDir)
+        await this.updateLocalLinks()
       }
       catch(err) {
         console.error(err)
@@ -527,18 +528,6 @@ export class PackageStore {
     return this.FS.writeFile(await this.rootPackageJsonPath, JSON.stringify(pkg, undefined, 2))
   }
 
-  private async readLocalPathsJson() {
-    if(!await this.FS.exists(await this.localPathsPath)) {
-      return undefined
-    }
-    const json = JSON.parse(await this.FS.readFile(await this.localPathsPath) as string)
-    return json as Record<string, string>
-  }
-
-  private async writeLocalPathsJson(localPaths: Record<string, string> = {}) {
-    return this.FS.writeFile(await this.localPathsPath, JSON.stringify(localPaths, undefined, 2))
-  }
-
   async add(url: string, name?: string) {
     this.adding = {...this.adding, [name ?? url]: true}
     return this.pmQueue.push({command: "add", parameters: [url], cwd: await this.appDir, name})
@@ -590,15 +579,14 @@ export class PackageStore {
       }
     }
     else {
-      let localPaths = await this.readLocalPathsJson()
       const pkg = await this.readRootPackageJson()
-      if(localPaths) {
+      if(pkg?.localPaths) {
         const deps = pkg?.dependencies ?? {}
-        localPaths = filterObject(localPaths, k => k in deps)
-        for(const path in Object.keys(localPaths)) {
+        pkg.localPaths = filterObject(pkg.localPaths, k => k in deps)
+        for(const path of Object.values(pkg.localPaths)) {
           await this.pm("link", undefined, path)
         }
-        return this.writeLocalPathsJson(localPaths)
+        this.writeRootPackageJson(pkg)
       } 
     }
   }
