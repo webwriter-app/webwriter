@@ -83,7 +83,6 @@ export class WidgetOptions extends LitElement {
       maxlength=${ifDefined(decl.minlength)}
       autocapitalize=${ifDefined(decl.autocapitalize)}
       spellcheck=${ifDefined(decl.spellcheck)}
-      autocapitalize=${ifDefined(decl.autocapitalize)}
       min=${ifDefined((decl as any).min)}
       max=${ifDefined((decl as any).max)}
       step=${ifDefined((decl as any).step)}
