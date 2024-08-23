@@ -87,7 +87,7 @@ export class PackageStore {
 
   private static isLocalImportID(id: string) {
     const match = id.match(SemVer.pattern)
-    return match? new SemVer(match[0]).prerelease.includes("local"): undefined
+    return match? (new SemVer(match[0]).prerelease[0] as any)?.includes("local"): undefined
   }
 
   private static async bundlePath(importIDs: string[], Path: Environment["Path"], FS: Environment["FS"], production=false) {
@@ -167,8 +167,8 @@ export class PackageStore {
         .split("X [ERROR] ")
         .filter(err => err)
         .map(str => {
-          const [message, afterPart] = str.trim().split("\n\n\n\n")
-          const [location, display] = (afterPart ?? "").trim().split(":\n\n")
+          const [message, afterPart] = str.trim().split("\n\n")
+          const [location, display] = (afterPart ?? "").trim().split(":\n")
           const nameRegex = /(@[a-z0-9-~][a-z0-9-._~]*\/)[a-z0-9-~][a-z0-9-._~]*/g
           const lineRegex = /\d+ │ .*\n/
           const line = display?.match(lineRegex)![0].trim()
