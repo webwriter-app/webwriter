@@ -102,7 +102,9 @@ export class WidgetView implements NodeView {
       dom.addEventListener("keydown", e => this.emitWidgetInteract(e), {passive: true})
       dom.addEventListener("click", e => this.handleWidgetClick(e))
       dom.addEventListener("touchstart", e => this.emitWidgetInteract(e), {passive: true})
-      dom.addEventListener("dragstart", e => e.preventDefault())
+      if(!this.node.type.spec.draggable) {
+        dom.addEventListener("dragstart", e => e.preventDefault())
+      }
       // dom.addEventListener("selectstart", e => e.preventDefault())
     }
     return dom
@@ -430,6 +432,15 @@ export class MathView implements NodeView {
 	dom: MathMLElement & HTMLElement
   contentDOM?: MathMLElement & HTMLElement
 
+  selectFocused() {
+    const pos = this.getPos()
+    if(pos === undefined) {
+      return
+    }
+    const $pos = this.view.state.doc.resolve(pos)
+    const tr = this.view.state.tr.setSelection(new NodeSelection($pos))
+    this.view.dispatch(tr)
+  }
   
 
   constructor(node: Node, view: EditorViewController, getPos: () => number) {
@@ -437,15 +448,25 @@ export class MathView implements NodeView {
 		this.view = view
     this.getPos = getPos
     this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node, {document: this.view.dom.ownerDocument}) as MathMLElement & HTMLElement
+    this.dom.addEventListener("selectstart", (e: any) => e.preventDefault())
 	}
+
+  setSelection?: (anchor: number, head: number, root: Document | ShadowRoot) => {
+    
+  }
 }
 
 
 export const nodeViews = {
   "_widget": WidgetView,
   "audio": AudioView,
+  "audio_inline": AudioView,
   "video": VideoView,
+  "video_inline": VideoView,
   "details": DetailsView,
+  "details_inline": DetailsView,
   "iframe": IFrameView,
-  // "math": MathView
+  "iframe_inline": IFrameView,
+  "math": MathView,
+  "math_inline": MathView
 }
