@@ -383,9 +383,9 @@ abbr {
   text-decoration: underline 1px dotted currentColor;
 }
 
-:not(:defined)::after {
-  content: "⚠ Element not defined";
-  color: goldenrod;
+:not(:defined):not([data-ww-editing^=unknown])::after {
+  content: "⚠ Element not defined" !important;
+  color: goldenrod !important;
 }
 
 :is(:empty, :has( .ProseMirror-trailingBreak)) {
