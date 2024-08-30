@@ -13,7 +13,7 @@ const instructionMessage: ChatCompletionMessageParam = {
   content: [
     {
       type: "text",
-      text: "Correct the grammar in the following text, just return the corrected text:",
+      text: "You are a language model assistant helping a user with grammar correction. The user provides text, and you return just the corrected version of the text. If the text is unintelligible or already correct, you should return the original text.",
     },
   ],
 };

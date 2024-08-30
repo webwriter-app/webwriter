@@ -23,7 +23,7 @@ import {
   // diff,
   // matchSpellingSuggestions,
 } from "../../../spell-check/text-tokenizer";
-import { fetchGrammarCorrection } from "../../../spell-check/openai-fetcher";
+import { fetchGrammarCorrection } from "../../../spell-check/fetchers/openai-fetcher";
 
 import {
   createEditorState,
