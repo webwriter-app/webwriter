@@ -297,20 +297,6 @@ export class LLMClient implements LLMApiClient {
   getApiKey() {
     return this.account.apiKey;
   }
-
-  async validateApiKey() {
-    switch (this.account.company) {
-      case "openai":
-        return await validateOpenAIKey(this.account.apiKey);
-      case "google":
-        return await this.Environment.validateHuggingFaceKey(this.account.apiKey);
-      default:
-        return false;
-    }
-
-
-
-
 }
 export class PocketbaseClient implements DocumentClient, AuthenticationClient {
   #pocketbase: PocketBase;
