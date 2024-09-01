@@ -100,7 +100,7 @@ export class WidgetView implements NodeView {
       dom.addEventListener("mouseenter", e => this.emitWidgetMouseenter(e), {passive: true})
       dom.addEventListener("mouseleave", e => this.emitWidgetMouseleave(e), {passive: true})
       dom.addEventListener("keydown", e => this.emitWidgetInteract(e), {passive: true})
-      dom.addEventListener("click", e => this.handleWidgetClick(e))
+      dom.addEventListener("click", e => this.emitWidgetInteract(e))
       dom.addEventListener("touchstart", e => this.emitWidgetInteract(e), {passive: true})
       if(!this.node.type.spec.draggable) {
         dom.addEventListener("dragstart", e => e.preventDefault())
@@ -139,8 +139,8 @@ export class WidgetView implements NodeView {
   handleWidgetClick(e: MouseEvent) {
     if(e.offsetX > this.dom.offsetWidth || e.ctrlKey) {
       this.selectFocused()
-      e.preventDefault()
-      e.stopImmediatePropagation()
+      // e.preventDefault()
+      // e.stopImmediatePropagation()
     }
     this.emitWidgetClick(e)
   }
