@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-export type Account = NpmAccount | PocketbaseAccount | OpenAIAccount;
+export type Account =
+  | NpmAccount
+  | PocketbaseAccount
+  | OpenAIAccount
+  | LLMAccount;
 
 export interface NpmAccount
   extends z.infer<(typeof NpmAccount)["objectSchema"]> {}
@@ -71,6 +75,40 @@ export class PocketbaseAccount {
     value:
       | z.input<(typeof PocketbaseAccount)["objectSchema"]>
       | PocketbaseAccount
+  ) {
+    return Object.assign(this, value);
+  }
+}
+
+export interface LLMAccount
+  extends z.infer<(typeof LLMAccount)["objectSchema"]> {}
+export class LLMAccount {
+  static readonly key = "llm" as const;
+
+  static objectSchema = z.object({
+    company: z.string(),
+    model: z.string(),
+    apiKey: z.string(),
+  });
+
+  get data() {
+    return {
+      company: this.company,
+      model: this.model,
+      apiKey: this.apiKey,
+    };
+  }
+
+  get id() {
+    return "llm" as const;
+  }
+
+  static schema = LLMAccount.objectSchema
+    .transform((x) => new LLMAccount(x))
+    .or(z.instanceof(LLMAccount));
+
+  constructor(
+    value: z.input<(typeof LLMAccount)["objectSchema"]> | LLMAccount
   ) {
     return Object.assign(this, value);
   }

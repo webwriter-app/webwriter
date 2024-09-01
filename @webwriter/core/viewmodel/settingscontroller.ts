@@ -13,6 +13,7 @@ import { App } from "../view";
 import { ViewModelMixin } from ".";
 import {
   FileAccount,
+  LLMAccount,
   NpmAccount,
   OpenAIAccount,
   PocketbaseAccount,
@@ -145,6 +146,7 @@ export class SettingsController implements ReactiveController {
             npm: z.record(z.string(), NpmAccount.schema),
             // @meeting
             openai: z.record(z.string(), OpenAIAccount.schema),
+            llm: z.record(z.string(), LLMAccount.schema),
           }) as any,
           hidden: true,
         },

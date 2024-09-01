@@ -1,6 +1,7 @@
 import { filterObject, getFileExtension } from "../../utility";
 import {
   FileClient,
+  LLMClient,
   NpmClient,
   OpenAIClient,
   PocketbaseClient,
@@ -12,6 +13,7 @@ import {
   NpmAccount,
   PocketbaseAccount,
   OpenAIAccount,
+  LLMAccount,
 } from "../schemas/accounts";
 
 type AccountsMap = AccountStore["accounts"];
@@ -30,6 +32,7 @@ export class AccountStore {
     npm: NpmAccount,
     pocketbase: PocketbaseAccount,
     openai: OpenAIAccount,
+    llm: LLMAccount,
   } as const;
 
   static clients = {
@@ -37,6 +40,7 @@ export class AccountStore {
     npm: NpmClient,
     pocketbase: PocketbaseClient,
     openai: OpenAIClient,
+    llm: LLMClient,
   } as const;
 
   static accountTypeIdMap = new Map(
@@ -61,6 +65,7 @@ export class AccountStore {
     pocketbase: {} as Record<string, PocketbaseAccount>,
     npm: {} as Record<string, NpmAccount>,
     openai: {} as Record<string, OpenAIAccount>,
+    llm: {} as Record<string, LLMAccount>,
   };
 
   get accounts() {
@@ -86,6 +91,7 @@ export class AccountStore {
       npm: Record<string, NpmClient>;
       pocketbase: Record<string, PocketbaseClient>;
       openai: Record<string, OpenAIClient>;
+      llm: Record<string, LLMClient>;
     }>;
   }
 

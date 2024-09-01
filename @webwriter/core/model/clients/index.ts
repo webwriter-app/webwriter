@@ -4,6 +4,7 @@ import { Environment } from "../environment";
 import {
   Account,
   FileAccount,
+  LLMAccount,
   NpmAccount,
   OpenAIAccount,
   PocketbaseAccount,
@@ -101,6 +102,13 @@ export interface AnalyticsClient extends Client {
 export interface ApiKeyClient extends Client {
   getApiKey(): string;
   account: OpenAIAccount;
+}
+
+export interface LLMApiClient extends Client {
+  getModel(): string;
+  getCompany(): string;
+  getApiKey(): string;
+  account: LLMAccount;
 }
 
 export interface AuthenticationClient extends Client {
@@ -272,6 +280,38 @@ class PocketbaseAuthStore extends BaseAuthStore {
   }
 }
 
+export class LLMClient implements LLMApiClient {
+  constructor(
+    readonly account: LLMAccount,
+    readonly Environment: Environment
+  ) {}
+
+  getModel() {
+    return this.account.model;
+  }
+
+  getCompany() {
+    return this.account.company;
+  }
+
+  getApiKey() {
+    return this.account.apiKey;
+  }
+
+  async validateApiKey() {
+    switch (this.account.company) {
+      case "openai":
+        return await validateOpenAIKey(this.account.apiKey);
+      case "google":
+        return await this.Environment.validateHuggingFaceKey(this.account.apiKey);
+      default:
+        return false;
+    }
+
+
+
+
+}
 export class PocketbaseClient implements DocumentClient, AuthenticationClient {
   #pocketbase: PocketBase;
 
@@ -432,4 +472,5 @@ export default {
   pocketbase: PocketbaseClient,
   npm: NpmClient,
   openai: OpenAIClient,
+  llm: LLMClient,
 };

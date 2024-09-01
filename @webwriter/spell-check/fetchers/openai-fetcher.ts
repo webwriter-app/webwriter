@@ -56,4 +56,7 @@ function fetchGrammarCorrection(
   return fetchChatCompletion([{ role: "user", content: text }], apiKey);
 }
 
-export { fetchGrammarCorrection };
+async function validateOpenAIApiKey(apiKey: string): Promise<boolean> {
+  return true;
+}
+export { fetchGrammarCorrection, validateOpenAIApiKey };

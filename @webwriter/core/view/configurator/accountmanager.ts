@@ -9,6 +9,7 @@ import { styleMap } from "lit/directives/style-map.js";
 import { ifDefined } from "lit/directives/if-defined.js";
 import { Account, AccountTypeId } from "../../model/stores/accountstore";
 import {
+  LLMAccountForm,
   NpmAccountForm,
   OpenAIAccountForm,
   PocketbaseAccountForm,
@@ -16,6 +17,7 @@ import {
 import { APPICON, App, Button, Settings } from "..";
 import {
   FileAccount,
+  LLMAccount,
   NpmAccount,
   OpenAIAccount,
   PocketbaseAccount,
@@ -37,6 +39,7 @@ export class AccountManager extends LitElement {
       pocketbase: "webwriter-app-icon",
       npm: "brand-npm",
       openai: "brand-openai",
+      llm: "brand-openai",
     } as const;
   }
 
@@ -46,6 +49,7 @@ export class AccountManager extends LitElement {
       pocketbase: "WebWriter Cloud",
       npm: "Package Registry",
       openai: "OpenAI",
+      llm: "Grammar LLM",
     } as const;
   }
 
@@ -63,10 +67,29 @@ export class AccountManager extends LitElement {
       openai: msg(
         "OpenAI accounts allow you to use the OpenAI API to generate text and other content."
       ),
+      llm: msg(
+        "Grammar LLM accounts allow you to use the Grammar LLM API to correct grammar in text."
+      ),
     } as const;
   }
 
+  static llmData = {
+    OpenAI: ["gpt-3.5-turbo", "gpt-4o", "gpt-4o-mini"],
+    Google: ["gemini-1.5-flash", "gemini-1.5-pro"],
+    Anthropic: ["claude-3.5-sonnet", "claude-3.5-haiku"],
+  };
+
   static styles = css`
+    .llm-account-form {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .button-group {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+    }
     :host {
       display: flex;
       flex-direction: column;
@@ -191,23 +214,6 @@ export class AccountManager extends LitElement {
             this.handleApiKeyChange("apikey", e.target.value)}
         ></sl-input>
       </sl-card>`;
-
-      // return html`<sl-card
-      //   class=${classMap({
-      //     // "pending-account-card": pending,
-      //     "account-card": true,
-      //   })}
-      //   class="account-card"
-      // >
-      //   ${this.AccountHeader(account)}
-      //   <ww-openai-account-form
-      //     class="account-form"
-      //     size="small"
-      //     @ww-cancel=${this.handleCancel}
-      //     @submit=${this.handleSubmit}
-      //     .value=${account}
-      //   ></ww-npm-account-form>
-      // </sl-card>`;
     },
 
     pocketbase: (account?: PocketbaseAccount) => {
@@ -280,6 +286,24 @@ export class AccountManager extends LitElement {
         </ww-pocketbase-account-form>
       </sl-card>`;
     },
+    llm: (account?: LLMAccount) => {
+      const pending = !account;
+      return html`<sl-card
+        class=${classMap({
+          "pending-account-card": pending,
+          "account-card": true,
+        })}
+      >
+        ${this.AccountHeader(account)}
+        <ww-llm-account-form
+          class="account-form"
+          size="small"
+          @ww-cancel=${this.handleCancel}
+          @submit=${this.handleLLMSubmit}
+          .value=${account?.data ?? undefined}
+        ></ww-llm-account-form>
+      </sl-card>`;
+    },
     npm: (account?: NpmAccount) => {
       const pending = !account;
       return html`<sl-card
@@ -341,7 +365,7 @@ export class AccountManager extends LitElement {
         ${Object.values(accounts).map((account) =>
           this.accountCards[type](account as any)
         )}
-        ${type === "file" || type === "openai"
+        ${type === "file"
           ? undefined
           : html`
               ${this.pendingAccount?.type === type
@@ -357,6 +381,50 @@ export class AccountManager extends LitElement {
       </div>
     </div>`;
   }
+
+  handleLLMCompanyChange(e: CustomEvent, account?: LLMAccount) {
+    const company = (e.target as HTMLSelectElement).value;
+    console.log("handleLLMCompanyChange", company);
+  }
+
+  handleLLMModelChange(e: CustomEvent, account?: LLMAccount) {
+    const model = (e.target as HTMLSelectElement).value;
+    console.log("handleLLMModelChange", model);
+  }
+
+  handleLLMApiKeyChange(e: CustomEvent, account?: LLMAccount) {
+    const key = (e.target as HTMLInputElement).value;
+    console.log("handleLLMApiKeyChange", key);
+  }
+
+  handleLLMSubmit = async (e: Event) => {
+    const form = e.target as LLMAccountForm;
+
+    if (form.checkValidity()) {
+      const submitButton = form.parentElement!.querySelector(
+        ".submit-button"
+      ) as Button;
+
+      const accountData = form.value;
+      if (!accountData) {
+        return;
+      }
+      submitButton.loading = true;
+      // validate key
+      console.log("handleLLMSubmit", accountData);
+      const llmAccount = this.app.store.accounts.getAccount("llm");
+      const newAccount = new LLMAccount({
+        ...llmAccount,
+        company: accountData.company,
+        model: accountData.model,
+        apiKey: accountData.apiKey,
+      } as any);
+      console.log("newAccount", newAccount);
+      this.app.store.accounts.updateAccount(newAccount);
+      await this.app.settings.persist();
+      submitButton.loading = false;
+    }
+  };
 
   async handleFileAccountChange(key: string, value: string) {
     const fileAccount = this.app.store.accounts.getAccount("file");
@@ -465,7 +533,7 @@ export class AccountManager extends LitElement {
   render() {
     const accounts = this.app.store.accounts.accounts;
     const types = Object.keys(accounts).filter(
-      (k) => k === "pocketbase" || k === "openai"
+      (k) => k === "pocketbase" || k === "llm"
     ) as AccountTypeId[];
     return html` ${types.map((t) => this.AccountsPane(t, accounts[t]))} `;
   }
