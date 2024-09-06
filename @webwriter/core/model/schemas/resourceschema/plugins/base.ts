@@ -70,7 +70,8 @@ export const splitParent: Command = (state, dispatch, view) => {
 export const splitOrBreak: Command = (state, dispatch, view) => {
   let tr = state.tr.deleteSelection()
   const pos = tr.selection.anchor
-  if(canSplit(tr.doc, pos)) {
+  const $pos = tr.selection.$anchor
+  if(canSplit(tr.doc, pos) && !$pos.parent.type.spec.isolating) {
     tr = tr.split(pos)
     let resolved = tr.doc.resolve(tr.doc.resolve(pos).after())
     if(resolved.nodeAfter?.type.spec.widget) {
@@ -80,6 +81,7 @@ export const splitOrBreak: Command = (state, dispatch, view) => {
     return true
   }
   else {
+    console.log("inserting break")
     return insertBreak(state, dispatch, view)
   }
 }
@@ -205,7 +207,7 @@ export const basePlugin = () => ({
     },
     _phrase: HTMLElementSpec({
       tag: "span",
-      content: "(text | phrasing)*",
+      content: "text*",
       group: "flow",
       toDOM: () => ["span", {"data-ww-editing": "phrase"}, 0],
       parseDOM: [{tag: "span[data-ww-editing=phrase]"}]

@@ -24,6 +24,8 @@ import { ExplorableEditor } from "./editor"
 import appIconString from  "../app-icon.svg?raw"
 import { SaveForm, ShareForm } from "./forms"
 
+import scopedCustomElementsRegistryString from "@webcomponents/scoped-custom-element-registry/scoped-custom-element-registry.min.js?raw"
+
 export const APPICON = `data:image/svg+xml;base64,${btoa(appIconString)}`
 
 export interface SlAlertAttributes {
@@ -222,9 +224,6 @@ export class App extends ViewModelMixin(LitElement)
   @property({type: Boolean, attribute: true, reflect: true})
 	foldOpen: boolean = false
 
-  @property({type: Boolean, attribute: true, reflect: true})
-	sourceMode = false
-
   @property({type: String, attribute: true, reflect: true})
 	dialog: undefined | "save" | "share" | "open"
 
@@ -263,13 +262,13 @@ export class App extends ViewModelMixin(LitElement)
 		const {changed, set, setHead, url, editorState, codeState, ioState, provisionalTitle, inMemory} = this.store.document
 		const {packagesList, bundleJS, bundleCSS, bundleID} = this.store.packages
 		const {locale} = this.store.ui
-		const {open} = this.environment.api.Shell
+		const {open} = this.environment?.api?.Shell ?? window.open
     const {documentCommands, commands: {setDocAttrs, editHead}} = this.commands
     const head = html`<ww-head 
       .documentCommands=${documentCommands.filter(cmd => cmd.id !== "editHead")}
       ioState=${ioState}
       slot="nav"
-      filename=${ifDefined(inMemory && provisionalTitle? provisionalTitle: url)}
+      .filename=${inMemory && provisionalTitle? provisionalTitle: url}
       ?pendingChanges=${changed}
     >
       <ww-button variant="icon" ${spreadProps(editHead.toObject())} @click=${() => editHead.run()}></ww-button>
@@ -289,9 +288,9 @@ export class App extends ViewModelMixin(LitElement)
     docID=${String(url)}
     data-active
     @focus=${() => this.foldOpen = false}
-    .bundleJS=${bundleJS}
+    .bundleJS=${bundleJS || scopedCustomElementsRegistryString}
     .bundleCSS=${bundleCSS}
-    bundleID=${bundleID}
+    .bundleID=${bundleID}
     .editorState=${editorState}
     .codeState=${codeState}
     @update=${(e: any) => set(e.detail.editorState)}
@@ -405,7 +404,7 @@ export class App extends ViewModelMixin(LitElement)
 		return html`<ww-layout 
 			openTab
 			activeTabName=${String(this.store?.document.url)}
-      @click=${() => this.activeEditor?.pmEditor?.document.exitFullscreen()}
+      @click=${() => this.activeEditor?.pmEditor?.document.fullscreenElement && this.activeEditor?.pmEditor?.document.exitFullscreen()}
       ?loading=${this.initializing}
       ?foldOpen=${this.foldOpen}>
         ${this.HeaderLeft()}

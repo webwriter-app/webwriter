@@ -44,31 +44,48 @@ export class SettingsController implements ReactiveController {
   }
 
   async hostConnected() {
-    const {join, appDir} = this.host.environment.api.Path
-    const {exists, writeFile} = this.host.environment.api.FS
-    const path = await join(await appDir(), "settings.json")
-    if(!(await exists(path))) {
-      await this.persist()
+    if(!this.host.store.packages.apiBase) {
+      const {join, appDir} = this.host.environment.api.Path
+      const {exists, writeFile} = this.host.environment.api.FS
+      const path = await join(await appDir(), "settings.json")
+      if(!(await exists(path))) {
+        await this.persist()
+      }
+      this.host.environment.api.watch(path, async () => {
+        const userSettings = await SettingsController.getUserSettings(this.host.environment.api)
+        this.store.rehydrate(userSettings)
+      })
     }
-    this.host.environment.api.watch(path, async () => {
-      const userSettings = await SettingsController.getUserSettings(this.host.environment.api)
-      this.store.rehydrate(userSettings)
-    })
+    else {
+      const userSettings = await SettingsController.getUserSettings()
+      userSettings && this.store.rehydrate(userSettings)
+      window.addEventListener("storage", async () => {
+        const userSettings = await SettingsController.getUserSettings()
+        userSettings && this.store.rehydrate(userSettings)
+      })
+    }
+
   }
   hostDisconnected() {}
 
-  static async getUserSettings({FS, Path}: Environment) {
-    const path = await Path.join(await Path.appDir(), "settings.json")
-    if(await FS.exists(path)) {
-      try {
-        const str = await FS.readFile(path) as string
-        const rawSettings = JSON.parse(str)
-        return this.settingsSchema.parse(rawSettings)
-      }
-      catch(err) {
-        console.error(err)
-      }
+  static async getUserSettings(environment?: Environment) {
+    if(environment) {
+      const path = await environment.Path.join(await environment.Path.appDir(), "settings.json")
+      if(await environment.FS.exists(path)) {
+        try {
+          const str = await environment.FS.readFile(path) as string
+          const rawSettings = JSON.parse(str)
+          return this.settingsSchema.parse(rawSettings)
+        }
+        catch(err) {
+          console.error(err)
+        }
+      }      
     }
+    else {
+      return JSON.parse(localStorage.getItem("webwriter_settings") ?? "null")
+    }
+
   }
 
   static get specLabels(): Partial<Record<StoreKey, string>> {

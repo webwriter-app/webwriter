@@ -6,21 +6,51 @@ import PocketBase, { AsyncAuthStore, AuthModel, BaseAuthStore, BaseModel, Collec
 import { EditorStateWithHead, Package, Resource, defaultConfig } from "../schemas"
 import marshal from "../marshal"
 import { Schema } from "prosemirror-model"
+import { toJS } from "mobx"
 
-const BINARY_EXTENSIONS = Object.entries(marshal).flatMap(([k, v]) => v.isBinary? v.extensions: [])
-const ALL_FILTER = {name: "Explorable", extensions: Object.values(marshal).flatMap(v => v.extensions)}
-export const INDIVIDUAL_FILTERS = Object.entries(marshal).map(([k, v]) => ({name: "Explorable", extensions: v.extensions as unknown as string[]}))
-const FILTERS = [ALL_FILTER, ...INDIVIDUAL_FILTERS]
+
+function writeFileDownload(uri: string, name?: string) {
+    const a = document.createElement("a")
+    name && a.setAttribute('download', name)
+    a.style.display = "none"
+    a.href = uri
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+}
+
+async function readFileInput() {
+  return new Promise<string | Uint8Array | undefined>(async resolve => {
+    const file = await pickFileInput()
+    const reader = new FileReader()
+    reader.readAsText(file)
+    reader.addEventListener("load", () => typeof reader.result === "string"? resolve(reader.result!): resolve(new Uint8Array(reader.result!)))
+  })
+}
+
+async function pickFileInput() {
+  const input = document.createElement("input")
+  input.type = "file"
+  return new Promise<File>(resolve => {
+    input.addEventListener("change", () => {
+      if(input.files && input.files.length && input.files.item(0)) {
+        const file = input.files.item(0)!
+        resolve(file)
+      }
+    })
+    input.click()
+  })
+}
 
 const SAVE_FILTERS = [
   ...Object.entries(marshal)
     .filter(([k, v]) => !v.isParseOnly)
-    .map(([k, v]) => ({name: "Explorable", extensions: v.extensions as unknown as string[]}))
+    .map(([k, v]) => ({name: "Explorable", extensions: v.extensions as unknown as string[], types: {[k]: v.extensions.map(ext => "." + ext)}}))
 ]
 const LOAD_FILTERS = [
-  {name: "Explorable", extensions: Object.values(marshal).flatMap(v => v.extensions)},
+  {name: "Explorable", extensions: Object.values(marshal).flatMap(v => v.extensions), types: Object.fromEntries(Object.keys(marshal).map(k => [k, (marshal as any)[k].extensions.map((ext: string) => "." + ext)]))},
   ...Object.entries(marshal)
-    .map(([k, v]) => ({name: "Explorable", extensions: v.extensions as unknown as string[]}))
+    .map(([k, v]) => ({name: "Explorable", extensions: v.extensions as unknown as string[], types: {[k]: v.extensions.map(ext => "." + ext)}}))
 ]
 
 type FileFormat = keyof typeof marshal
@@ -34,17 +64,17 @@ export interface DocumentClient extends Client {
   /** Whether a given URL could be serviced by this client (same origin and username).*/
   isClientURL(url: URL): boolean
   /** Save a document `doc` in the given `format` at the given `url`. If no `url` is provided, let the configured storage handle the specific location. If no format is provided, assume `html`. Returns the URL of the saved document. */
-  saveDocument(doc: string | Uint8Array, url?: URL | string, filename?: string): Promise<URL | undefined>
+  saveDocument(doc: string | Uint8Array, url?: URL | string, filename?: string): Promise<URL | FileSystemFileHandle | undefined>
   /** Load a document from the given `url` in the configured storage. If no `url` is provided, let the configured storage handle the specific location.*/
   loadDocument(url?: URL | string): Promise<string | Uint8Array | undefined>
   /** Delete a document at the given URL. */
   deleteDocument?(url: string | URL): Promise<boolean>
   /** Search the documents of configured storage. If no `options` are provided, return all documents. */
   searchDocuments?(options: {page?: number, perPage?: number, sort?: string, filter?: string, expand?: string, fields?: string, skipTotal?: boolean}): Promise<URL[]>
-  /** Pick a location for saving in the configured storage. Returns the location as a URL. */
-  pickSave?(): Promise<URL | undefined>
-  /** Pick a document from the configured storage. Returns the location as a URL. */
-  pickLoad?(): Promise<URL | undefined>
+  /** Pick a location for saving in the configured storage. Returns the location as a URL or FileSystemFileHandle. */
+  pickSave?(): Promise<URL | FileSystemFileHandle | undefined>
+  /** Pick a document from the configured storage. Returns the location as a URL or FileSystemFileHandle. */
+  pickLoad?(): Promise<URL | FileSystemFileHandle | undefined>
   /** Get the public URL of the given document. */
   getSharingURLForDocument?(url: string | URL): Promise<URL>
 }
@@ -73,42 +103,120 @@ export interface AuthenticationClient extends Client {
 
 // @ts-ignore: Fix account types
 export class FileClient implements DocumentClient {
-  constructor(readonly account: FileAccount, readonly Environment: Environment) {}
+  constructor(readonly account: FileAccount, readonly Environment?: Environment) {}
 
-  async saveDocument(doc: string | Uint8Array, url?: string | URL, title?: string) {
-    const {OS, FS} = this.Environment
-    const binary = doc instanceof Uint8Array
-    const urlObj = url? new URL(url): await this.pickSave(undefined, title)
-    if(!urlObj) {
-      return
+  async saveDocument(doc: string | Uint8Array, url?: string | URL | FileSystemFileHandle, title?: string) {
+    if(WEBWRITER_ENVIRONMENT.backend === "tauri" && this.Environment && (!url || !(url instanceof FileSystemFileHandle))) {
+      const {OS, FS} = this.Environment
+      const binary = doc instanceof Uint8Array
+      const urlObj = url? new URL(url): await this.pickSave(undefined, title) as URL | undefined
+      if(!urlObj) {
+        return
+      }
+      let path = decodeURI(urlObj.pathname).slice(1)
+      path = ["darwin", "linux"].includes(await OS.platform())? "/" + path: path
+      await FS.writeFile(path, doc, binary? "binary": "utf8")
+      return urlObj
     }
-    let path = decodeURI(urlObj.pathname).slice(1)
-    path = ["darwin", "linux"].includes(await OS.platform())? "/" + path: path
-    await FS.writeFile(path, doc, binary? "binary": "utf8")
-    return urlObj
-  }
-
-  async loadDocument(url?: string | URL, binary=false) {
-    const {OS, FS} = this.Environment
-    const urlObj = url? new URL(url): await this.pickLoad()
-    if(!urlObj) {
-      return
+    else {
+      if("createWritable" in FileSystemFileHandle.prototype) {
+        const handle = url as FileSystemFileHandle ?? await this.pickSave() as FileSystemFileHandle | undefined
+        const writable = await handle.createWritable()
+        await writable.write(doc)
+        await writable.close()
+        return handle
+      }
+      else {
+        const blob = new Blob([doc])
+        const url = URL.createObjectURL(blob)
+        writeFileDownload(url, "explorable.html")
+        URL.revokeObjectURL(url)
+      }
     }
-    let path = decodeURI(urlObj.pathname).slice(1)
-    path = ["darwin", "linux"].includes(await OS.platform())? "/" + path: path
-    let data = await FS.readFile(path, binary? "binary": "utf8")
-    return data
   }
 
-  async pickSave(filters: DialogFilter[]=SAVE_FILTERS, defaultPath?: string) {
-    const path = await this.Environment.Dialog.promptWrite({filters, defaultPath}) as null | string ?? undefined
-    return path? new URL(path, "file://"): undefined
+  async loadDocument(url?: string | FileSystemFileHandle | URL, binary=false) {
+    if(WEBWRITER_ENVIRONMENT.backend === "tauri" && this.Environment && !(url instanceof FileSystemFileHandle)) {
+      const {OS, FS} = this.Environment
+      const urlObj = url? new URL(url): await this.pickLoad() as URL | undefined
+      if(!urlObj) {
+        return
+      }
+      let path = decodeURI(urlObj.pathname).slice(1)
+      path = ["darwin", "linux"].includes(await OS.platform())? "/" + path: path
+      let data = await FS.readFile(path, binary? "binary": "utf8")
+      return data
+    }
+    else if("showOpenFilePicker" in window) {
+      const handle = url as FileSystemFileHandle ?? await this.pickLoad() as FileSystemFileHandle | undefined
+      if(!handle) {
+        return
+      }
+      const file = await handle.getFile()
+      const reader = new FileReader()
+      reader.readAsText(file)
+      return new Promise<string | Uint8Array>(resolve => {
+        reader.addEventListener("load", () => typeof reader.result === "string"? resolve(reader.result!): resolve(new Uint8Array(reader.result!)))
+      })
+    }
+    else if(url) {
+      throw Error("Not supported in your browser (try Chrome or Edge)")
+    }
+    else {
+      return readFileInput()
+    }
   }
 
-  async pickLoad(filters: DialogFilter[]=LOAD_FILTERS) {
-    const path = await this.Environment.Dialog.promptRead({filters}) as null | string ?? undefined
-    return path? new URL(path, "file://"): undefined
+  async pickSave(filters: typeof SAVE_FILTERS=SAVE_FILTERS, defaultPath?: string) {
+    if(WEBWRITER_ENVIRONMENT.backend === "tauri" && this.Environment) {
+      const path = await this.Environment.Dialog.promptWrite({filters, defaultPath}) as null | string ?? undefined
+      return path? new URL(path, "file://"): undefined
+    }
+    else if("showSaveFilePicker" in window) {
+      try {
+        let handle: FileSystemFileHandle = await (window as any).showSaveFilePicker({startIn: "documents", types: filters.map(filter => ({description: filter.name, accept: filter.types}))})
+        handle = Array.isArray(handle)? handle[0]: handle
+        return handle
+      }
+      catch(err) {
+        if((err as Error)?.name === "AbortError") {
+          return undefined
+        }
+        else {
+          throw err
+        }
+      }
+    }
+    else {
+      throw Error("Not supported in your browser (try Chrome or Edge)")
+    }
+  }
 
+  async pickLoad(filters: typeof LOAD_FILTERS=LOAD_FILTERS) {
+    if(WEBWRITER_ENVIRONMENT.backend === "tauri" && this.Environment) {
+      const path = await this.Environment.Dialog.promptRead({filters}) as null | string ?? undefined
+      return path? new URL(path, "file://"): undefined
+    }
+    else {
+      if("showOpenFilePicker" in window) {
+        try {
+          let handle: FileSystemFileHandle = await (window as any).showOpenFilePicker({startIn: "documents", types: filters.map(filter => ({description: filter.name, accept: filter.types}))})
+          handle = Array.isArray(handle)? handle[0]: handle
+          return handle
+        }
+        catch(err) {
+          if((err as Error)?.name === "AbortError") {
+            return undefined
+          }
+          else {
+            throw err
+          }
+        }
+      }
+      else {
+        throw Error("Not supported in your browser")
+      }
+    }
   }
 
   isClientURL(url: URL) {

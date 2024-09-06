@@ -394,7 +394,10 @@ abbr {
 
 
 :is(:empty, :has(> :only-of-type.ProseMirror-trailingBreak)):not(.ProseMirror-widget):after {
+  font: inherit;
+  text-align: inherit;
   content: var(--ww-placeholder);
+  width: 100%;
   position: absolute;
   left: 0;
   top: 0;
@@ -479,6 +482,37 @@ math:empty::after, math:has(mtext:only-child)::after {
   width: 100%;
   height: 100%;
   content: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-math" width="100%" height="100%" viewBox="0 0 24 24" stroke-width="2" stroke="darkgray" fill="none" stroke-linecap="round" stroke-linejoin="round" part="svg"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><path d="M19 5h-7l-4 14l-3 -6h-2"></path><path d="M14 13l6 6"></path><path d="M14 19l6 -6"></path></svg>') !important;
+}
+
+svg:empty {
+  background: lightgray;
+}
+
+svg:empty::after {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: inline-block;
+  width: 100%;
+  height: 100%;
+  content: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="darkgray" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-vector"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M3 3m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M17 3m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M17 17m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M3 17m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M5 7l0 10"/><path d="M19 7l0 10"/><path d="M7 5l10 0"/><path d="M7 19l10 0"/></svg>');
+}
+
+table:empty {
+  display: block;
+  background: lightgray;
+  width: 100%;
+  min-height: 100px;
+}
+
+table:empty::after {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: inline-block;
+  width: 100%;
+  height: 100%;
+  content: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="darkgray" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-vector"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M3 3m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M17 3m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M17 17m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M3 17m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M5 7l0 10"/><path d="M19 7l0 10"/><path d="M7 5l10 0"/><path d="M7 19l10 0"/></svg>');
 }
 
 .ProseMirror-gapcursor::after {

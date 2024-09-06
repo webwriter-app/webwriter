@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'url'
 import { defineConfig } from 'vite'
 import { lezer } from '@lezer/generator/rollup'
+import {VitePWA} from "vite-plugin-pwa"
 
 export default defineConfig({
     publicDir: "../../static",
@@ -15,5 +16,23 @@ export default defineConfig({
           }
         }
     },
-    plugins: [lezer({exportName: "parser"})]
+    resolve: {
+      alias: {find: "@babel/core", replacement: "@babel/standalone"}
+    },
+    plugins: [
+      lezer({exportName: "parser"}),
+      VitePWA({
+        srcDir: "./viewmodel/services",
+        filename: "bundleservice.ts",
+        strategies: "injectManifest",
+        injectRegister: false,
+        manifest: false,
+        injectManifest: {
+          injectionPoint: undefined
+        },
+        devOptions: {
+          enabled: true
+        }
+      })
+    ]
 })

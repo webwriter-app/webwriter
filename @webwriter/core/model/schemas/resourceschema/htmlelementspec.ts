@@ -204,7 +204,7 @@ const deprecatedStyleAttributes = {
 
 const otherDeprecatedAttributes = ["alink", "compact", "link", "size", "value", "vlink"]
 
-export function getAttrs(dom: HTMLElement | string, getDeprecated=true) {
+export function getAttrs(dom: HTMLElement | string, getDeprecated=false) {
   if(typeof dom === "string") {
     return false
   }
@@ -245,11 +245,10 @@ export function HTMLElementSpec({tag, content, marks, group, inline, atom, attrs
     definingForContent,
     defining,
     isolating,
-    toDOM: toDOM ?? (n => [tag, toAttributes(n), ...(content? [0]: [])]), //@ts-ignore
+    toDOM: toDOM ?? (n => [tag, toAttributes(n), ...(content? [0]: [])]),
     parseDOM: parseDOM ?? [{
       tag: selector ?? tag,
-      getAttrs,
-      context: undefined 
+      getAttrs
     }],
     toDebugString,
     leafText,

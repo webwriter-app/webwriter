@@ -116,3 +116,8 @@ p {
 body > * {
   margin-block: 1rem;
 }
+
+svg {
+  aspect-ratio: 16/9;
+  width: 100%;
+}

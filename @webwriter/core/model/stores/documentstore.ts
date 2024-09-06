@@ -21,7 +21,7 @@ export const CODEMIRROR_EXTENSIONS = [basicSetup, cmHTML()]
 type FileFormat = keyof typeof marshal
 
 type Resource = {
-  url?: URL
+  url?: URL | FileSystemFileHandle
   editorState: EditorStateWithHead
 }
 
@@ -49,13 +49,13 @@ export class DocumentStore implements Resource {
     "https://ga.jspm.io"
   ] as const
 
-  url?: URL
+  url?: URL | FileSystemFileHandle
   editorState: EditorStateWithHead
   codeState: CmEditorState | null = null
   lastSavedState: EditorStateWithHead
   initialState: EditorStateWithHead
 
-  ioState: "idle" | "saving" | "loading" = "idle"
+  ioState: "idle" | "saving" | "loading" | "loadingPreview" = "idle"
 
 
   constructor({schema, url, editorState, lang}: Options, readonly Environment: Environment, readonly accounts: AccountStore) {
@@ -148,23 +148,40 @@ export class DocumentStore implements Resource {
   async save(saveAs=false, serializer=this.serializer, client=this.client, filename=this.provisionalTitle) {
     this.ioState = "saving"
     try {
-      let newUrl = saveAs || !this.url? undefined: this.url
+      let newUrlOrHandle: URL | FileSystemFileHandle | undefined = saveAs || !this.url? undefined: this.url
       let newSerializer = serializer
-      if(!newUrl && "pickLoad" in client) {
-        newUrl = await client.pickSave()
-        if(!newUrl) {
+      if(!newUrlOrHandle && "pickSave" in client) {
+        newUrlOrHandle = await client.pickSave()
+        if(!newUrlOrHandle) {
           return
         }
-        const foundPs = getParserSerializerByExtension(newUrl?.pathname)
-        newSerializer = foundPs? new foundPs(this.Environment): serializer
-        newSerializer = "serialize" in newSerializer? newSerializer: this.serializer
-      }
-      const data = await newSerializer.serialize!(this.editorState)
-      const url = await client.saveDocument(data, newUrl, filename)
-      if(url) {
-        this.lastSavedState = this.editorState
-        this.url = url
-        return url
+        else if(newUrlOrHandle instanceof FileSystemFileHandle) {
+          const handle = newUrlOrHandle
+          const foundPs = getParserSerializerByExtension(handle.name)
+          newSerializer = foundPs? new foundPs(this.Environment): serializer
+          newSerializer = "serialize" in newSerializer? newSerializer: this.serializer
+          const data = await newSerializer.serialize!(this.editorState)
+          const returnedHandle = await client.saveDocument(data, handle, filename) as FileSystemFileHandle
+          console.log(returnedHandle)
+          if(returnedHandle) {
+            this.lastSavedState = this.editorState
+            this.url = returnedHandle
+            return returnedHandle
+          }
+        }
+        else {
+          const newUrl = newUrlOrHandle
+          const foundPs = getParserSerializerByExtension(newUrl?.pathname)
+          newSerializer = foundPs? new foundPs(this.Environment): serializer
+          newSerializer = "serialize" in newSerializer? newSerializer: this.serializer
+          const data = await newSerializer.serialize!(this.editorState)
+          const url = await client.saveDocument(data, newUrl, filename) as URL
+          if(url) {
+            this.lastSavedState = this.editorState
+            this.url = url
+            return url
+          }
+        }
       }
     }
     catch(err) {
@@ -186,10 +203,10 @@ export class DocumentStore implements Resource {
         if(!newUrl) {
           return
         }
-        const foundPs = getParserSerializerByExtension(newUrl?.pathname)
+        const foundPs = getParserSerializerByExtension(newUrl instanceof FileSystemFileHandle? newUrl.name: newUrl?.pathname)
         newParser = foundPs? new foundPs(this.Environment): parser
       }
-      const data = await client.loadDocument(newUrl)
+      const data = await client.loadDocument(newUrl as any)
       if(!data) {
         return
       }
@@ -206,25 +223,20 @@ export class DocumentStore implements Resource {
     }
   }
 
+  previewSrc: string
+
   /** Open a preview for this document. */
   async preview(serializer=new HTMLParserSerializer(this.Environment)) {
-    const htmlString = await serializer.serialize(this.editorState)
-    if(WEBWRITER_ENVIRONMENT.engine.name === "WebKit") {
-      const suffix = "#ww-preview.html";
-      const ids = (await this.Environment.FS.readdir("/tmp"))
-        .filter(path => path.endsWith(suffix))
-        .map(path => path.replace(suffix, ""))
-        .map(prefix => parseInt(prefix))
-      const nextId = Math.max(0, ...ids) + 1
-      const previewPath = `/tmp/${nextId}${suffix}`
-      await this.Environment.FS.writeFile(previewPath, htmlString)
-      //return createWindow(previewPath, {focus: true, label: `p${nextId}`})
-      return this.Environment.Shell.open(previewPath)
-    }
-    else {
+    this.ioState = "loadingPreview"
+    try {
+      this.previewSrc && URL.revokeObjectURL(this.previewSrc)
+      const htmlString = await serializer.serialize(this.editorState)
       const blob = new Blob([htmlString], {type: "text/html"})
-      const blobURL = URL.createObjectURL(blob)
-      open(blobURL, "_blank", "popup")
+      this.previewSrc = URL.createObjectURL(blob)
+      return this.previewSrc
+    }
+    finally {
+      this.ioState = "idle"
     }
   }
 
@@ -488,7 +500,7 @@ export class DocumentStore implements Resource {
   }
 
   get client() {
-    const file = this.accounts.getClient("file", "file")!
+    const file = this.accounts.getClient("file", "file")!  
     return this.url? this.accounts.clientFromURL(this.url) ?? file: file 
   }
 

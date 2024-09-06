@@ -35,31 +35,50 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
       this.initializing = true
       this.icons = new IconController(this)
       this.environment = new EnvironmentController(this)
-      await this.environment.apiReady
-      const isSettingsWindow = this.environment.api.getWindowLabel() === "settings"
+      await this.environment.ready
+      if ('serviceWorker' in navigator && WEBWRITER_ENVIRONMENT.browser.name !== "Firefox") {
+        navigator.serviceWorker.register(
+          // @ts-ignore
+          import.meta.env.MODE === 'production' ? '/bundleservice.js' : '/dev-sw.js?dev-sw', // @ts-ignore
+          { type: import.meta.env.MODE === 'production' ? 'classic' : 'module' }
+        )
+      }
+      else {
+        document.body.innerHTML = `<div style="text-align: center; padding: 2rem;">Sorry! WebWriter is currently not supported on Firefox for <a href="https://caniuse.com/mdn-javascript_statements_import_service_worker_support">technical reasons</a>. A browser such as Chrome, Edge, or Safari should work.</div>`
+        return
+      }
+      const isSettingsWindow = this.environment?.api?.getWindowLabel() === "settings"
       const userSettings = await SettingsController.getUserSettings(this.environment.api)
-      console.log(userSettings)
-      this.store = StoreController(new RootStore({settings: userSettings, corePackages: CORE_PACKAGES, ...this.environment.api, initializePackages: !isSettingsWindow}), this)
+      this.store = StoreController(new RootStore({settings: userSettings, corePackages: CORE_PACKAGES, ...this.environment.api, initializePackages: !isSettingsWindow, apiBase: WEBWRITER_ENVIRONMENT.backend === "tauri"? undefined: "https://api.webwriter.app/ww/v1/"}), this)
       this.settings = new SettingsController(this, this.store)
       this.localization = new LocalizationController(this, this.store)
       this.commands = new CommandController(this as any, this.store)
       this.notifications = new NotificationController(this, this.store)
-      this.initializeWindow()
-      await this.store.packages.initialized
-      const openUrl = new URL(window.location.href).searchParams.get("open")
-      if(openUrl) {
-        const url = new URL(openUrl)
-        const parser = this.store.accounts.parserSerializerFromURL(url)
-        const client = this.store.accounts.clientFromURL(url)
-        console.log(url, parser, client)
-        this.store.document.load(url, parser, client)
+      if(!this.store.packages.apiBase) {
+        this.initializeWindow()
+        await this.store.packages.initialized
+        const openUrl = new URL(window.location.href).searchParams.get("open")
+        if(openUrl) {
+          const url = new URL(openUrl)
+          const parser = this.store.accounts.parserSerializerFromURL(url)
+          const client = this.store.accounts.clientFromURL(url)
+          console.log(url, parser, client)
+          this.store.document.load(url, parser, client)
+        }
+        const {join, appDir} = this.environment.api.Path
+        await this.store.packages.initialized
+        const packageJsonPath = await join(await appDir(), "package.json")
+        this.environment.api.watch(packageJsonPath, (e) => {
+          !this.store.packages.initializing && !this.store.packages.loading && this.store.packages.load()
+        })
       }
-      const {join, appDir} = this.environment.api.Path
-      await this.store.packages.initialized
-      const packageJsonPath = await join(await appDir(), "package.json")
-      this.environment.api.watch(packageJsonPath, (e) => {
-        !this.store.packages.initializing && !this.store.packages.loading && this.store.packages.load()
+      window.addEventListener("beforeunload", e => {
+        if(this.store.document.changed) {
+          e.preventDefault()
+          return ""
+        }
       })
+      await this.store.packages.load()
       this.requestUpdate()
       this.initializing = false
       document.body.classList.add("loaded")

@@ -107,6 +107,7 @@ export class Layout extends LitElement {
       // border-left: 0;
       // border-right: 0;
       max-height: 0;
+      overflow: hidden;
     }
 
     :host(:not([foldopen])) slot[name=fold]::slotted(*) {

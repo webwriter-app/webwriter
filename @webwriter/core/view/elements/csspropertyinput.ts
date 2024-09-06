@@ -3,7 +3,8 @@ import { customElement, property, query } from "lit/decorators.js"
 import {until} from "lit/directives/until.js"
 import { msg, str } from "@lit/localize"
 import { camelCaseToSpacedCase, capitalizeWord, shortenBytes } from "../../utility"
-import { CSSColorValue, CSSCompositeValue, CSSPropertySpecs } from "../../model"
+import { CSSColorValue, CSSCompositeValue, CSSPropertySpecs, parseValueDefinition, ValueDefinition } from "../../model"
+import { Combobox } from "./combobox"
 
 @customElement("ww-css-property-input")
 export class CSSPropertyInput extends LitElement {
@@ -28,7 +29,13 @@ export class CSSPropertyInput extends LitElement {
   plaintext=false
 
   get #valueDefinition() {
-    return this.valueDefinition || (this.name in CSSPropertySpecs? CSSPropertySpecs[this.name as keyof typeof CSSPropertySpecs].syntax: undefined)
+    const raw = this.valueDefinition || (this.name in CSSPropertySpecs? CSSPropertySpecs[this.name as keyof typeof CSSPropertySpecs].syntax: undefined)
+    return raw? parseValueDefinition(raw): undefined
+  }
+
+  get isLiteralAlternation() {
+    const content = this.#valueDefinition?.content
+    return Boolean(content && !(typeof content === "string") && content.every(val => val.type === "Literal"))
   }
 
   get remainderDefinition() {
@@ -37,7 +44,10 @@ export class CSSPropertyInput extends LitElement {
 
   static get styles() {
     return css`
-
+      ww-combobox[data-is-literal-alternation]::part(label) {
+        color: darkgreen;
+        font-weight: bold;
+      }
     `
   }
 
@@ -64,8 +74,21 @@ export class CSSPropertyInput extends LitElement {
     }
   }
 
+  handleChange(e: CustomEvent) {
+    this.value = (e.target as Combobox).value as string
+    this.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+  }
+
+  get options() {
+    return this.isLiteralAlternation
+      ? (this.#valueDefinition?.content as ValueDefinition[]).map(def => def.content as string)
+      : []
+  }
+
   CSSPlaintextInput() {
-    return html`<sl-input size="small" value=${this.value} label=${this.#label}></sl-input>`
+    return html`<ww-combobox ?suggestions=${this.isLiteralAlternation}  size="small" .value=${this.value} label=${this.#label} @sl-change=${this.handleChange}>
+      ${this.options.map(opt => html`<sl-option value=${opt}>${opt}</sl-option>`)}
+    </ww-combobox>`
   }
 
   render() {

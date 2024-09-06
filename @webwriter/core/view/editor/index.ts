@@ -1,5 +1,3 @@
-export * from "./documentfooter"
-export * from "./documentheader"
 export * from "./editor"
 export * from "./palette"
 export * from "./prosemirroreditor"

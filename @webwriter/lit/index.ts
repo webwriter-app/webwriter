@@ -75,7 +75,7 @@ export type OptionDeclaration =
 | ColorOptionDeclaration
 | SelectOptionDeclaration
 
-interface ActionDeclaration {
+export interface ActionDeclaration {
   label?: Record<string, string>
   placeholder?: Record<string, string>
   description?: Record<string, string>

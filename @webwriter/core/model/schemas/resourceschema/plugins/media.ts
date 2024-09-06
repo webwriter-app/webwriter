@@ -279,7 +279,7 @@ export const mediaPlugin = () => ({
     ...HTMLElementSpecPair({
       script: {
         tag: "script",
-        group: "flow metadata scriptsupporting containerinline",
+        group: "metadata scriptsupporting containerinline",
         content: "text?",
         attrs: {
           async: {default: undefined as undefined | boolean},
@@ -299,7 +299,7 @@ export const mediaPlugin = () => ({
     ...HTMLElementSpecPair({
       style: {
         tag: "style",
-        group: "flow metadata containerinline",
+        group: "metadata containerinline",
         content: "text?",
         attrs: {
           media: {default: undefined},
@@ -313,7 +313,7 @@ export const mediaPlugin = () => ({
     ...HTMLElementSpecPair({
       template: {
         tag: "template",
-        group: "flow metadata scriptsupporting containerblock",
+        group: "metadata scriptsupporting containerblock",
         content: "flow*"
       },
       template_inline: {inline: true, group: "phrasing containerinline"}
@@ -321,7 +321,7 @@ export const mediaPlugin = () => ({
     ...HTMLElementSpecPair({
       slot: {
         tag: "slot",
-        group: "flow containerblock",
+        group: "containerblock",
         content: "flow*",
         attrs: {
           name: {default: undefined},

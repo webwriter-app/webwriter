@@ -279,7 +279,7 @@ export class SaveForm extends LitElement {
           </span>
         </sl-tree-item>`: null}
       </sl-tree>
-      ${this.mode === "save" && !this.client.pickSave? html`
+      ${this.mode === "save" && !this.client.saveDocument? html`
         ${this.Filename()}
         <sl-icon-button slot="footer" name="file-plus" class="add-document-icon" @click=${() => {this.url = undefined; this.combobox.focus()}}></sl-icon-button>
       `: null}
@@ -356,7 +356,7 @@ export class SaveForm extends LitElement {
           <span class="location-identity">${client?.account?.id}</span>
         </sl-radio-button>`)}
       </sl-radio-group>
-      ${this.client.searchDocuments && !this.client.pickSave? this.Tree(): null}
+      ${this.client.searchDocuments && !this.client.saveDocument? this.Tree(): null}
       <footer>
         <sl-button variant="neutral" outline @click=${() => emitCustomEvent(this, "ww-cancel")}>${msg("Cancel")}</sl-button>
         <sl-button variant="primary" ?disabled=${this?.loadingState !== "idle" || this.loading} ?loading=${this.loading} @click=${this.handleConfirm}>${this.mode === "save"? msg("Save"): msg("Open")}</sl-button>

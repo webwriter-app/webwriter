@@ -18,12 +18,13 @@ import {GapCursor} from "prosemirror-gapcursor"
 import {render as latexToMathML} from "temml/dist/temml.cjs"
 import {MathMLToLaTeX} from "mathml-to-latex"
 import { SlColorPicker } from "@shoelace-style/shoelace"
+import { CSSPropertySpecs } from "../../model"
 
 
 
 @localized()
 @customElement("ww-toolbox")
-export class Toolbox extends LitElement {
+export class  Toolbox extends LitElement {
 
   static siteEmbedding: Record<string, {url: RegExp, replacer: (url: string) => string, access: string, icon?: string, label?: string}> = {
     "youtube": {url: /youtube\.com\/watch/, access: "https://youtube.com", icon: "brand-youtube", label: "YouTube", replacer: url => {
@@ -203,6 +204,7 @@ export class Toolbox extends LitElement {
         overflow: visible;
         scrollbar-width: thin;
         box-sizing: border-box;
+        position: relative;
       }
 
       :host > * {
@@ -507,11 +509,9 @@ export class Toolbox extends LitElement {
         margin-right: 5px;
       }
 
-      .pickers {
-        position: absolute;
-        left: calc(100% + 10px);
+      .pickers-popup::part(popup) {
+        z-index: 1;
         border: 2px solid var(--sl-color-gray-600);
-        top: 0;
         padding: 10px;
         padding-right: 5px;
         padding-top: 0;
@@ -519,33 +519,31 @@ export class Toolbox extends LitElement {
         background: white;
         overflow-y: auto;
         scrollbar-width: thin;
-        max-height: 80vh;
-        width: 100%;
+      }
 
-        & > h3 {
-          display: flex;
-          flex-direction: row;
-          align-items: center;
-          color: var(--sl-color-gray-600);
-          margin: 0;
-          padding: 15px 0;
-          position: sticky;
-          top: 0;
-          left: 0;
-          z-index: 1;
-          background: inherit;
+      .pickers-popup > h3 {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        color: var(--sl-color-gray-600);
+        margin: 0;
+        padding: 15px 0;
+        position: sticky;
+        top: 0;
+        left: 0;
+        z-index: 1;
+        background: white;
 
-          & > sl-icon {
-            margin-right: 1ch;
-          }
+        & > sl-icon {
+          margin-right: 1ch;
+        }
 
-          & > span {
-            font-size: 0.875rem;
-          }
+        & > span {
+          font-size: 0.875rem;
+        }
 
-          & > sl-icon-button {
-            margin-left: auto;
-          }
+        & > sl-icon-button {
+          margin-left: auto;
         }
       }
 
@@ -760,7 +758,7 @@ export class Toolbox extends LitElement {
         }
       }
 
-      .heading-toolbox, .list-toolbox {
+      .heading-toolbox, .paragraph-toolbox, .list-toolbox {
         width: 100%;
 
         & sl-radio-group::part(button-group), & sl-radio-group::part(button-group__base) {
@@ -846,6 +844,23 @@ export class Toolbox extends LitElement {
           }
         }
       }
+
+      @media only screen and (min-width: 1830px) {
+        :host {
+          display: grid;
+          grid-template-columns: 1fr 1fr; 
+          grid-template-rows: max-content max-content;
+          gap: 1rem;
+        }
+
+        .context-toolbox {
+          grid-row: span 2;
+          grid-column: 2;
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+        }
+      }
       
     `
   }
@@ -897,22 +912,25 @@ export class Toolbox extends LitElement {
 	})
 
   Pickers = (el: HTMLElement, activeLayoutCommand?: LayoutCommand) => {
-    let properties
     if(!activeLayoutCommand) {
       return undefined
     }
-    else if(activeLayoutCommand?.id === "textStyle") {
-      const propertyNames = ["hyphens", "letter-spacing", "line-break", "overflow-wrap", "tab-size", "text-align", "text-align-last", "text-indent", "text-justify", "text-transform", "text-wrap", "white-space", "white-space-collapse", "word-break", "word-spacing", "text-decoration", "text-emphasis", "text-shadow", "text-underline-offset", "text-underline-position"] as const
-      properties = propertyNames.map(name => html`<ww-css-property-input name=${name} plaintext value=""></ww-css-property-input>`)
+    let properties: TemplateResult[] | TemplateResult
+    if(activeLayoutCommand.id === "boxStyle") {
+      properties = html`<ww-box-picker></ww-box-picker>`
     }
-    return html`<div class="pickers">
+    else {
+      console.log(el.style.textAlign)
+      properties = activeLayoutCommand.cssProperties.map(name => html`<ww-css-property-input name=${name} plaintext value=${(el.style as any)[name]}></ww-css-property-input>`)
+    }
+    return html`<sl-popup class="pickers-popup" shift strategy="fixed" auto-size="both" auto-size-padding=${10} active anchor=${activeLayoutCommand.id} .autoSizeBoundary=${document.body} placement="bottom-start" @change=${(e: any) => this.emitSetStyle(el, e.target.name, e.target.value)}>
       <h3>
         <sl-icon name=${activeLayoutCommand?.icon ?? ""}></sl-icon>
         <span>${activeLayoutCommand?.label}</span>
         <sl-icon-button name="x" @click=${() => this.activeLayoutCommand = undefined}></sl-icon-button>
       </h3>
       ${properties}
-    </div>`
+    </sl-popup>`
   }
 
   ElementCommands = (el: HTMLElement) => this.app.commands.elementCommands.map(cmd => {
@@ -936,7 +954,7 @@ export class Toolbox extends LitElement {
         ${this.ElementBreadcrumb()}
         <div part="block-commands">
           ${this.ElementCommands(el)}
-          <!--${this.LayoutCommands(el, false)}
+          ${this.LayoutCommands(el, false)}
           <span class=${classMap({"block-command": true, "applied": advancedApplied})}>
             <ww-button
               tabindex=${0}
@@ -946,7 +964,7 @@ export class Toolbox extends LitElement {
               variant="icon"
             ></ww-button>
           </span>
-          ${this.LayoutCommands(el, true)}-->
+          ${this.LayoutCommands(el, true)}
         </div>
       </div>
     </div>
@@ -1090,6 +1108,10 @@ export class Toolbox extends LitElement {
     this.dispatchEvent(new CustomEvent("ww-set-attribute", {bubbles: true, composed: true, detail: {el, key, value, tag}}))
   }
 
+  emitSetStyle(el: Element, key: string, value: string) {
+    this.dispatchEvent(new CustomEvent("ww-set-style", {bubbles: true, composed: true, detail: {el, key, value}}))
+  }
+
   DetailsToolbox(el: HTMLDetailsElement) {
     return html`<div class="details-toolbox">
       <sl-switch id="open" size="small" ?checked=${el.open} @sl-change=${() => this.emitSetAttribute(el, "open", !el.open? "": undefined)}>${msg("Open")}</sl-switch>
@@ -1111,6 +1133,21 @@ export class Toolbox extends LitElement {
         <sl-radio-button value="h4"><sl-icon name="h-4"></sl-icon></sl-radio-button>
         <sl-radio-button value="h5"><sl-icon name="h-5"></sl-icon></sl-radio-button>
         <sl-radio-button value="h6"><sl-icon name="h-6"></sl-icon></sl-radio-button>
+      </sl-radio-group>
+    </div>`
+  }
+
+  ParagraphToolbox(el: HTMLParagraphElement | HTMLPreElement) {
+    const tag = el.tagName.toLowerCase()
+    return html`<div class="paragraph-toolbox">
+      <sl-radio-group value=${tag} size="small" @sl-change=${(e: any) => {
+        const newEl = el.ownerDocument.createElement(e.target.value) as HTMLParagraphElement | HTMLPreElement
+        el.getAttributeNames().forEach(k => newEl.setAttribute(k, el.getAttribute(k)!))
+        newEl.replaceChildren(...Array.from(el.childNodes))
+        el.replaceWith(newEl)
+      }}>
+        <sl-radio-button value="p"><sl-icon name="align-justified"></sl-icon></sl-radio-button>
+        <sl-radio-button value="pre"><sl-icon name="code-dots"></sl-icon></sl-radio-button>
       </sl-radio-group>
     </div>`
   }
@@ -1235,6 +1272,7 @@ export class Toolbox extends LitElement {
     </sl-dropdown>`
 
     if(isCustomElement) {
+      console.log(elementName)
       const content = html`<ww-button
         title=${elementName}
         variant="icon"
@@ -1275,6 +1313,7 @@ export class Toolbox extends LitElement {
       </sl-breadcrumb>`
     }
     const els = this.activeElementPath
+    console.log(els)
     return html`<sl-breadcrumb id="element-breadcrumb">
       ${els.map((el, i) => this.ElementBreadcrumbItem(el, i === els.length - 1))}
       ${this.gapSelected? html`
@@ -1343,12 +1382,15 @@ export class Toolbox extends LitElement {
     }
     else if(["h1", "h2", "h3", "h4", "h5", "h6"].includes(tag)) {
       return this.HeadingToolbox(el as HTMLHeadingElement)
-    }
+    }/*
+    else if(["p", "pre"].includes(tag)) {
+      return this.ParagraphToolbox(el as HTMLParagraphElement | HTMLPreElement)
+    }*/
     else if(["ul", "ol"].includes(tag)) {
       return this.ListToolbox(el as HTMLOListElement | HTMLUListElement)
     }
     else if(this.app.store.packages.widgetTagNames.includes(tag)) {
-      return html`<ww-widget-options .widget=${el}></ww-widget-options>`
+      return html`<ww-widget-options .widget=${el} @ww-focus-editor=${() => this.app.activeEditor?.focus()}></ww-widget-options>`
     }
     else if(["math"].includes(tag)) {
       return this.MathToolbox(el)
@@ -1359,7 +1401,7 @@ export class Toolbox extends LitElement {
     if(this.activeElement) {
       return html`
         ${this.BlockToolbox(this.activeElement)}
-        ${this.activeElementPath.map(el => this.ContextToolbox(el))}
+        <aside class="context-toolbox">${this.activeElementPath.map(el => this.ContextToolbox(el))}</aside>
         ${this.textSelected? this.InlineToolbox(): null}
       `
     }

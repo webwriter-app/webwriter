@@ -218,7 +218,7 @@ export function SVGElementSpec(spec: NodeSpec & {tag: string}) {
   return HTMLElementSpec({
     ...spec,
     attrs: {...globalSVGAttributes, ...spec.attrs},
-    toDOM: spec.toDOM ?? (n => [spec.tag, toAttributes(n), ...(spec.content? [0]: [])]),
+    toDOM: spec.toDOM ?? (n => [`http://www.w3.org/2000/svg ${spec.tag}`, toAttributes(n), ...(spec.content? [0]: [])]),
     parseDOM: spec.parseDOM ?? [{tag: spec.tag, getAttrs, context: "svg//"}],
   })
 }
@@ -230,14 +230,8 @@ export const svgPlugin = () => ({
         tag: "svg",
         group: "flow embedded",
         atom: true,
-        toDOM: n => {
-          const dom = document.createElementNS("http://www.w3.org/2000/svg", "svg")
-          const attrs = toAttributes(n)
-          Object.entries(attrs).forEach(([k, v]) => dom.setAttribute(k, v))
-          dom.innerHTML = n.attrs._content
-          return {dom}
-        },
-        parseDOM: [{tag: "svg", getAttrs: dom => ({_content: dom.innerHTML, ...getAttrs(dom)}), preserveWhitespace: true}],
+        content: "(animation_svg | descriptive_svg | shape_svg | structural_svg | svg | gradient_svg | aSVG | clipPathSVG | filterSVG | foreignObjectSVG | imageSVG | markerSVG | maskSVG | patternSVG | scriptSVG | styleSVG | switchSVG | textSVG | viewSVG)*",
+        toDOM: n => [`http://www.w3.org/2000/svg svg`, toAttributes(n), 0],
         whitespace: "pre",
         attrs: {
           ...globalSVGAttributes,
@@ -257,7 +251,6 @@ export const svgPlugin = () => ({
       },
       svg_inline: {group: "phrasing", inline: true}
     }),
-    /*
     aSVG: SVGElementSpec({
       tag: "a",
       group: "container_svg",
@@ -333,7 +326,7 @@ export const svgPlugin = () => ({
     descSVG: SVGElementSpec({
       tag: "desc",
       group: "descriptive_svg",
-      content: "text*",
+      content: "textSVG*",
       attrs: {
         ...documentElementEventSVGAttributes
       }
@@ -821,7 +814,7 @@ export const svgPlugin = () => ({
     }),
     scriptSVG: SVGElementSpec({
       tag: "script",
-      content: `text*`,
+      content: `textSVG*`,
       attrs: {
         crossorigin: {default: undefined},
         href: {default: undefined},
@@ -851,7 +844,7 @@ export const svgPlugin = () => ({
     }),
     styleSVG: SVGElementSpec({
       tag: "style",
-      content: `text*`,
+      content: `textSVG*`,
       attrs: {
         type: {default: undefined},
         media: {default: undefined},
@@ -886,7 +879,7 @@ export const svgPlugin = () => ({
       }
     }),
     textSVG: SVGElementSpec({
-      tag: "text*",
+      tag: "text",
       group: "textcontent_svg",
       content: "(animation_svg | descriptive_svg | textcontent_svg | aSVG)*",
       attrs: {
@@ -918,7 +911,7 @@ export const svgPlugin = () => ({
     titleSVG: SVGElementSpec({
       tag: "title",
       group: "descriptive_svg",
-      content: `text*`,
+      content: `textSVG`,
       attrs: {
         ...documentElementEventSVGAttributes
       },
@@ -958,6 +951,6 @@ export const svgPlugin = () => ({
         viewBox: {default: undefined},
         preserveAspectRatio: {default: undefined}
       }
-    })*/
+    })
   }
 } as SchemaPlugin)

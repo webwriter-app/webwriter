@@ -3,8 +3,8 @@ import { customElement, property } from "lit/decorators.js"
 import {ifDefined} from "lit/directives/if-defined.js"
 import { localized } from "@lit/localize"
 
-import { OptionDeclaration, BooleanOptionDeclaration, ColorOptionDeclaration, DateOptionDeclaration, DatetimeLocalOptionDeclaration, EmailOptionDeclaration, NumberOptionDeclaration, ObjectOptionDeclaration, PasswordOptionDeclaration, SelectOptionDeclaration, StringOptionDeclaration, TelOptionDeclaration, TimeOptionDeclaration, UrlOptionDeclaration, LitElementWw } from "@webwriter/lit"
-import { capitalizeWord } from "../../utility"
+import { OptionDeclaration, BooleanOptionDeclaration, ColorOptionDeclaration, DateOptionDeclaration, DatetimeLocalOptionDeclaration, EmailOptionDeclaration, NumberOptionDeclaration, ObjectOptionDeclaration, PasswordOptionDeclaration, SelectOptionDeclaration, StringOptionDeclaration, TelOptionDeclaration, TimeOptionDeclaration, UrlOptionDeclaration, LitElementWw, ActionDeclaration, } from "@webwriter/lit"
+import { camelCaseToSpacedCase, capitalizeWord, emitCustomEvent } from "../../utility"
 
 function getLocalized(localizationObj?: Record<string, string>) {
   const obj = localizationObj ?? {}
@@ -14,6 +14,20 @@ function getLocalized(localizationObj?: Record<string, string>) {
 @localized()
 @customElement("ww-widget-options")
 export class WidgetOptions extends LitElement {
+
+  static styles = css`
+
+    :host {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .action-button, .action-button::part(base) {
+      width: 100%;
+    }
+  `
 
   @property({attribute: false})
   widget: HTMLElement | LitElement | LitElementWw
@@ -30,8 +44,23 @@ export class WidgetOptions extends LitElement {
     }
   }
 
+  get actions() {
+    const proto = this.widget.constructor
+    if("actions" in proto) {
+      const staticActions = (proto as typeof LitElementWw).actions
+      const actions = (this.widget as LitElementWw).actions
+      return {...staticActions, ...actions}
+    }
+    else {
+      return {}
+    }
+  }
+
   render() {
-    return Object.entries(this.options).map(([k, v]) => this.Option(k, v))
+    return [
+      ...Object.entries(this.options).map(([k, v]) => this.Option(k, v)),
+      ...Object.entries(this.actions).map(([k, v]) => this.Action(k, v))
+    ]
   }
 
   Option(attr: string, decl: OptionDeclaration) {
@@ -47,6 +76,17 @@ export class WidgetOptions extends LitElement {
     else {
       return this.InputOption(attr, decl as any)
     }
+  }
+
+  async handleActionClick(funcName: string) {
+    await (this.widget as any)[funcName]()
+    emitCustomEvent(this, "ww-focus-editor")
+  }
+
+  Action(funcName: string, decl: ActionDeclaration) {
+    return html`<sl-button class="action-button" size="small" title=${ifDefined(decl?.description)} @click=${() => this.handleActionClick(funcName)}>
+      ${decl?.label?._ ?? camelCaseToSpacedCase(funcName, true)}
+    </sl-button>`
   }
 
   setWidgetAttribute(el: HTMLElement, key: string, value?: string | boolean) {

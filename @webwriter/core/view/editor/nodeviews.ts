@@ -125,6 +125,35 @@ export class WidgetView implements NodeView {
     }
     this.node = node
     return true
+    const dom = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node, {document: this.view.dom.ownerDocument}) as HTMLElement
+    dom.toggleAttribute("contenteditable", true)
+    const newAttrs = dom.getAttributeNames()
+    const oldAttrs = this.dom.getAttributeNames()
+    const toRemove = oldAttrs.filter(attr => !newAttrs.includes(attr));
+    (this.view as any).domObserver.stop()
+    toRemove.forEach(attr => this.dom.removeAttribute(attr))
+    newAttrs.forEach(attr => this.dom.setAttribute(attr, dom.getAttribute(attr)!));
+    this.node = node
+    return true
+    const oldNodeAttrs = {...this.node.attrs, _: undefined, data: undefined, ...this.node.attrs._, ...this.node.attrs.data}
+    const newNodeAttrs = {...node.attrs, _: undefined, data: undefined, ...node.attrs._, ...node.attrs.data}
+    if(!sameMembers(oldNodeAttrs, newNodeAttrs)) {
+      const oldKeys = Object.keys(oldNodeAttrs)
+      const newKeys = Object.keys(newNodeAttrs)
+      const toRemove = oldKeys.filter(key => !newKeys.includes(key))
+      toRemove.forEach(key => this.dom.removeAttribute(key))
+      console.log(toRemove, Object.fromEntries(newKeys.map(k => [k, newNodeAttrs[k]])))
+      newKeys.forEach(key => {
+        if(newNodeAttrs[key] === undefined || newNodeAttrs[key] === false || newNodeAttrs[key] === null && oldNodeAttrs[key] !== undefined) {
+          this.dom.removeAttribute(key)
+        }
+        else if(newNodeAttrs[key] !== undefined) {
+          this.dom.setAttribute(key, newNodeAttrs[key])
+        }
+      })
+    }
+    this.node = node
+    return true
   }
 
   get slots(): HTMLSlotElement[] {
@@ -150,14 +179,11 @@ export class WidgetView implements NodeView {
     this.emitWidgetClick(e)
   }
 
-  lastMutation: MutationRecord
-
 	ignoreMutation(mutation: MutationRecord) {
     const {type, target, attributeName: attr, oldValue, addedNodes, removedNodes, previousSibling, nextSibling, attributeNamespace} = mutation
     const value = attr? this.dom.getAttribute(attr): null
     const attrUnchanged = !!(attr && (value === oldValue))
     if((type as any) === "selection") {
-      // console.log(type, target)
       return false
     }
     if(type === "childList") {
@@ -167,7 +193,7 @@ export class WidgetView implements NodeView {
           node.classList.forEach(cls => cls.startsWith("ww-") && !cls.startsWith("ww-widget") && !cls.startsWith("ww-v")? node.classList.remove(cls): null)
         }
       }
-      readDOMChange(this.view, this.getPos(), this.getPos() + this.node.nodeSize, true, Array.from(addedNodes));
+      readDOMChange(this.view as any, this.getPos(), this.getPos() + this.node.nodeSize, true, Array.from(addedNodes));
       /*
       const {doc, sel, from, to} = parseBetween(this.view, this.getPos(), this.getPos() + this.node.nodeSize)
       let tr = this.view.state.tr, oldDoc = this.view.state.doc
@@ -186,7 +212,7 @@ export class WidgetView implements NodeView {
       const nodesToInsert = Array.from(addedNodes).map(node => parser.parse(node, {topNode: this.node}))
       let tr = this.view.state.tr
       tr = tr.insert(insertionPos, nodesToInsert)
-      this.view.dispatch(tr)*/
+      this.view.dispatch(tr)
       const pos = this.getPos()
       // let tr = this.view.state.tr
       const parser = DOMParser.fromSchema(this.view.state.schema)
@@ -197,6 +223,7 @@ export class WidgetView implements NodeView {
       tr = tr.replaceWith(pos, pos + this.node.nodeSize, node)
       tr = tr.setSelection(this.view.state.selection.getBookmark().resolve(tr.doc))
       this.view.dispatch(tr)
+      */
       /*
       const max = tr.doc.nodeSize - 2
       const $anchor = tr.doc.resolve(Math.min(max, anchor))
@@ -247,7 +274,6 @@ export class WidgetView implements NodeView {
         tr = tr.setNodeAttribute(this.getPos(), "_", _)
       }
       this.view.dispatch(tr)
-      this.lastMutation = mutation
       return true
     }
     return attrUnchanged
@@ -461,6 +487,46 @@ export class MathView implements NodeView {
   }
 }
 
+export class ElementView implements NodeView {
+    node: Node
+    view: EditorViewController
+    getPos: () => number
+    dom: HTMLElement
+    contentDOM?: HTMLElement
+  
+    constructor(node: Node, view: EditorViewController, getPos: () => number) {
+      this.node = node
+      this.view = view
+      this.getPos = getPos
+      this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node, {document: this.view.dom.ownerDocument}) as HTMLElement
+    }
+
+    ignoreMutation(mutation: MutationRecord) {
+      const {type, target, attributeName: attr, oldValue, addedNodes, removedNodes, previousSibling, nextSibling, attributeNamespace} = mutation
+      const value = attr? this.dom.getAttribute(attr): null
+      const attrUnchanged = !!(attr && (value === oldValue))
+      if(attr && !attrUnchanged) {
+        const builtinAttr = attr in globalHTMLAttributes
+        const dataAttr = attr.startsWith("data-")
+        let tr = this.view.state.tr
+        if(builtinAttr) {
+          tr = tr.setNodeAttribute(this.getPos(), attr, value)
+        }
+        else if(dataAttr) {
+          const data = {...this.node.attrs.data, [attr]: value}
+          tr = tr.setNodeAttribute(this.getPos(), "data", data)
+        }
+        else {
+          const _ = {...this.node.attrs._, [attr]: value}
+          tr = tr.setNodeAttribute(this.getPos(), "_", _)
+        }
+        this.view.dispatch(tr)
+        return true
+      }
+      return attrUnchanged
+    }
+}
+
 
 export const nodeViews = {
   "_widget": WidgetView,
@@ -473,5 +539,6 @@ export const nodeViews = {
   "iframe": IFrameView,
   "iframe_inline": IFrameView,
   "math": MathView,
-  "math_inline": MathView
+  "math_inline": MathView,
+  "_": ElementView
 }

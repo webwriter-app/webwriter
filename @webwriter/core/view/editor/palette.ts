@@ -139,19 +139,20 @@ export class Palette extends LitElement {
 
     :host {
       display: grid;
-      grid-template-columns: repeat(10, 1fr);
+      grid-template-columns: repeat(12, 1fr);
       grid-auto-rows: 40px;
-      max-width: 420px;
+      max-width: 500px;
       margin-left: auto;
       padding-right: 10px;
       padding-bottom: 5px;
-      gap: 5px;
+      gap: 4px;
       grid-auto-flow: row dense;
       max-height: 100%;
       overflow-y: auto;
-      overflow-x: visible;
+      overflow-x: hidden;
       position: relative;
       scrollbar-width: thin;
+      box-sizing: border-box;
     }
 
     .inline-commands-wrapper {
@@ -266,7 +267,7 @@ export class Palette extends LitElement {
 
     .block-card {
       order: 1;
-      grid-column: span 5;
+      grid-column: span 6;
 
       &::part(body) {
         justify-content: flex-start;
@@ -379,12 +380,45 @@ export class Palette extends LitElement {
       }
 
       & .title {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
         justify-content: center;
+        position: relative;
 
-        & sl-icon {
+        & .container-icon {
           --icon-size: 24px;
           width: 24px;
           height: 24px;
+        }
+
+        & .dropdown-trigger {
+          position: absolute;
+          bottom: 4px;
+        }
+
+        & .dropdown-trigger::part(icon) {
+          --icon-size: 16px;
+          width: 16px;
+          height: 16px;
+          color: var(--sl-color-gray-600);
+        }
+      }
+
+      & .sub-command {
+
+        &::part(label) {
+          display: flex;
+          flex-direction: row;
+          align-items: center;
+          gap: 1ch;
+          padding-right: 0.5ch;
+        }
+
+        & .container-icon {
+          --icon-size: 20px;
+          width: 20px;
+          height: 20px;
         }
       }
     }
@@ -396,7 +430,7 @@ export class Palette extends LitElement {
       top: 0;
       left: 0;
       grid-row: 1;
-      grid-column: span 10;
+      grid-column: span 12;
       display: flex;
       flex-direction: row;
       justify-content: flex-end;
@@ -470,6 +504,10 @@ export class Palette extends LitElement {
       visibility: hidden;
     }
 
+    .container-card:not(.multiple) .dropdown-trigger {
+      visibility: hidden,
+    }
+
     .package-card:not(.multiple) .dropdown-trigger {
       display: none;
     }
@@ -498,16 +536,22 @@ export class Palette extends LitElement {
     }
 
     #clipboard-card {
-      grid-column: span 10;
 
-      &:hover {
+      grid-row: span 2;
+
+      &::part(base) {
+        min-width: unset;
+        color: var(--sl-color-gray-600);
+      }
+
+      &::part(base):hover {
         color: var(--sl-color-primary-600);
       }
     }
 
     #add-local {
       order: 10000;
-      grid-column: span 5;
+      grid-column: span 6;
       user-select: none;
 
       &:hover {
@@ -545,17 +589,17 @@ export class Palette extends LitElement {
       padding-right: 1ch;
     }
 
-    @media only screen and (max-width: 1731px) {
+    @media only screen and (max-width: 1830px) {
       :host {
-        grid-template-columns: repeat(5, 1fr);
+        grid-template-columns: repeat(6, 1fr);
       }
 
-      #package-toolbar, #clipboard-card {
-        grid-column: span 5;
+      #package-toolbar {
+        grid-column: span 6;
       }
     }
 
-    @media only screen and (max-width: 1300px) {
+    @media only screen and (max-width: 1360px) {
       :host {
 				display: flex;
 				flex-direction: row;
@@ -608,6 +652,10 @@ export class Palette extends LitElement {
             width: 16px;
             height: 16px;
           }
+        }
+
+        & .dropdown-trigger::part(icon) {
+          visibility: hidden;
         }
       }
       #add-local {
@@ -724,17 +772,26 @@ export class Palette extends LitElement {
 	}
 
   ContainerCard = (cmds: Command[]) => {
-    const cmd = cmds[(cmds.findIndex(cmd => cmd.active) + 1) % cmds.length]
-    return html`<sl-card class=${classMap({"package-card": true, "container-card": true})} ?inert=${cmd.disabled} @click=${() => this.handleClickCard(cmd)} @mouseenter=${() => this.handleMouseInWidgetAdd(cmd)} @mouseleave=${() => this.handleMouseOutWidgetAdd(unscopePackageName(cmd.id))}>
+    const cmd = cmds[0]
+    return html`<sl-card id=${cmd.group ?? cmd.id} class=${classMap({"package-card": true, "container-card": true, "multiple": cmds.length > 1})} ?inert=${cmd.disabled} @click=${() => this.handleClickCard(cmd)} @mouseenter=${() => this.handleMouseInWidgetAdd(cmd)} @mouseleave=${() => this.handleMouseOutWidgetAdd(unscopePackageName(cmd.id))}>
 		<sl-tooltip placement="left-start" class="package-tooltip" hoist trigger="hover">
 			<span class="title">
 			  <sl-icon class="container-icon" name=${cmd.icon ?? "square"}></sl-icon>
+        <ww-button variant="icon" class="dropdown-trigger" icon=${this.dropdownOpen !== cmd.group? "chevron-down": "chevron-up"} @click=${(e: any) => this.dropdownOpen = this.dropdownOpen? null: cmd.group!} @mouseenter=${() => this.dropdownOpen = cmd.group!}></ww-button>
 			</span>
       <span slot="content">
         <b><code>${cmd.label}</code></b>
         <div>${cmd.description || msg("No description provided")}</div>
       </span>
 		</sl-tooltip>
+    <sl-popup flip anchor=${cmd.group ?? cmd.id} class="other-insertables" strategy="fixed" placement="bottom-start" ?active=${this.dropdownOpen === cmd.group} auto-size="both" auto-size-padding=${1}>
+        <sl-menu class="other-insertables-menu">
+          ${cmds.map(c => html`<sl-menu-item class="sub-command" @click=${(e: any) => {this.handleClickCard(c); e.stopPropagation()}}>
+            <sl-icon class="container-icon" name=${c.icon ?? "square"}></sl-icon>
+            ${c.label}
+          </sl-menu-item>`)}
+        </sl-menu>
+      </sl-popup>
 		<sl-progress-bar value=${cmd.id === this.addingWidget? this.widgetAddProgress: 0}></sl-progress-bar>
 	</sl-card>`
   }
@@ -754,7 +811,7 @@ export class Palette extends LitElement {
     const changing = adding || removing || updating
     const found = name in this.searchResults
     const error = packages.getPackageIssues(pkg.id).length
-    const insertables = Object.values(filterObject(packages.members[pkg.id], (_, ms) => !(ms as any).uninsertable) as unknown as Record<string, MemberSettings>)
+    const insertables = packages.members[pkg.id]? Object.values(filterObject(packages.members[pkg.id], (_, ms) => !(ms as any).uninsertable) as unknown as Record<string, MemberSettings>): []
     const pkgEditingSettings = !packageEditingSettings? undefined: {name: undefined, label: undefined, ...packageEditingSettings}
     const {name: firstName, label: firstLabel} =  pkgEditingSettings ?? insertables[0] ?? {}
     const otherInsertables = insertables.slice(1)
@@ -1030,7 +1087,7 @@ export class Palette extends LitElement {
       ${this.app.commands.groupedContainerCommands.map(this.Card)}
       ${this.ClipboardCard()}
       ${this.packagesInSearchOrder.map(this.Card)}
-      ${this.AddLocalPackageButton()}
+      ${!this.app.store.packages.apiBase? this.AddLocalPackageButton(): null}
       ${this.LocalPackageDialog()}
       ${this.ErrorDialog()}
     `

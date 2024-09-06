@@ -4006,7 +4006,7 @@ dependencies = [
 
 [[package]]
 name = "webwriter"
-version = "0.11.3"
+version = "0.12.0"
 dependencies = [
  "font-loader",
  "serde",

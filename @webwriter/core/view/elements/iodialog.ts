@@ -3,11 +3,10 @@ import { customElement, property, query } from "lit/decorators.js"
 import { SlDialog } from "@shoelace-style/shoelace"
 import { localized, msg } from "@lit/localize"
 
-import * as connect from "../../model/connect"
 import * as marshal from "../../model/marshal"
 
 type Format = keyof typeof marshal
-type Protocol = keyof typeof connect
+type Protocol = string
 
 
 @localized()

@@ -11,8 +11,6 @@ import {MathMLToLaTeX} from "mathml-to-latex"
 
 import { CODEMIRROR_EXTENSIONS, ContentExpression, EditorStateWithHead, MediaType, Package, createWidget, globalHTMLAttributes, removeMark, upsertHeadElement } from "../../model"
 import { CodemirrorEditor, WidgetView, nodeViews } from "."
-import { DocumentHeader } from "./documentheader"
-import { DocumentFooter } from "./documentfooter"
 
 import { range, roundByDPR, sameMembers } from "../../utility"
 import { Toolbox } from "./toolbox"
@@ -20,7 +18,6 @@ import { Palette } from "./palette"
 import { ProsemirrorEditor } from "./prosemirroreditor"
 
 import redefineCustomElementsString from "redefine-custom-elements/lib/index.js?raw"
-import scopedCustomElementsRegistryString from "@webcomponents/scoped-custom-element-registry/scoped-custom-element-registry.min.js?raw"
 
 import {computePosition, autoUpdate, offset, shift, flip} from '@floating-ui/dom'
 import { Command } from "../../viewmodel"
@@ -30,6 +27,8 @@ import { undo, redo, undoDepth, redoDepth } from "prosemirror-history"
 import {StateCommand as CmCommand, EditorState as CmEditorState} from "@codemirror/state"
 import {undo as cmUndo, redo as cmRedo} from "@codemirror/commands"
 import { GapCursor } from "prosemirror-gapcursor"
+import { Generator } from "@jspm/generator"
+import { ifDefined } from "lit/directives/if-defined.js"
 
 class EmbedTooLargeError extends Error {}
 
@@ -77,7 +76,12 @@ export class ExplorableEditor extends LitElement {
     const state = this.pmEditor.state
     const members = this.app.store.packages.members as any
     if(insertableName.startsWith("./snippets/")) {
-      const htmlStr = members[pkgID][insertableName].source
+      const source = members[pkgID][insertableName].source
+      let htmlStr = source
+      if(!source) {
+        const url = new URL("@" + pkgID.split("@").slice(0, 2).join("") + insertableName.slice(1), this.app.store.packages.apiBase)
+        htmlStr = await (await fetch(url, {headers: {"Accept": "text/html"}})).text()
+      }
       const tagNames = this.app.store.packages.widgetTagNames
       const parser = DOMParser.fromSchema(state.schema)
       const template = this.pmEditor.document.createElement("template")
@@ -184,8 +188,18 @@ export class ExplorableEditor extends LitElement {
 	@property({type: String})
 	appendBlockType: string
 
-	@property({type: Boolean, attribute: true, reflect: true})
-	previewing: boolean
+  @property({type: Boolean, attribute: true, reflect: true})
+	sourceMode = false
+
+  @property({attribute: false, state: true})
+  previewSrc?: string 
+
+  @property({type: Boolean})
+  loadingPreview: boolean = false 
+  
+	get previewMode() {
+    return !!this.previewSrc
+  }
 
 	@property({type: Boolean, attribute: true})
 	showWidgetPreview: boolean = false
@@ -202,7 +216,7 @@ export class ExplorableEditor extends LitElement {
 	@property({type: String, attribute: false})
 	bundleJS: string
 
-	@property({type: String})
+	@property({type: String, attribute: false})
 	bundleID: string
 
 	@property({type: String, attribute: false})
@@ -219,12 +233,6 @@ export class ExplorableEditor extends LitElement {
 
 	@property({type: Object, state: true})
 	stateBeforePreview: EditorState | null = null
-	
-	@query("ww-document-header")
-	documentHeader: DocumentHeader
-
-	@query("ww-document-footer")
-	documentFooter: DocumentFooter
 
 	@query("main")
 	main: HTMLElement
@@ -292,13 +300,13 @@ export class ExplorableEditor extends LitElement {
 	}
 
   undo() {
-    !this.app.sourceMode
+    !this.sourceMode
       ? this.exec(undo)
       : this.execInCodeEditor(cmUndo)
   }
 
   redo() {
-    !this.app.sourceMode
+    !this.sourceMode
       ? this.exec(redo)
       : this.execInCodeEditor(cmRedo)
   }
@@ -311,7 +319,7 @@ export class ExplorableEditor extends LitElement {
       .forEach(([k, v]) => dom.setAttribute(k, v))
     dom.addEventListener("click", e => {
       e.preventDefault()
-      this.previewing && this.emitOpen(href)
+      this.previewMode && this.emitOpen(href)
     })
     return {dom}
 	}
@@ -327,22 +335,22 @@ export class ExplorableEditor extends LitElement {
 			.filter(([_, v]) => v.spec["package"])
 			.map(([k, _]) => k)
     const nodeKeys = Object.keys(nodeViews)
-    //const mediaKeys = Object.entries(this.editorState.schema.nodes)
-    //.filter(([k, v]) => v.spec["media"])
-    //.map(([k, _]) => k)
-		if(sameMembers([...widgetKeys, ...nodeKeys], cachedKeys)) {
+      .filter(k => k !== "_" && k !== "_widget")
+    const elementKeys = Object.entries(nodes)
+      .map(([k, _]) => k)
+      .filter(k => k !== "text" && !widgetKeys.includes(k) && !nodeKeys.includes(k))
+		if(sameMembers([...elementKeys, ...nodeKeys, ...widgetKeys], cachedKeys)) {
 			return cached
 		}
 		else {
-      const widgetViewEntries = widgetKeys
-        .map(key => [key, (node: Node, view: EditorViewController, getPos: () => number) => new WidgetView(node, view, getPos)])
-      const nodeViewEntries = Object.entries(nodeViews).map(([k, V]) => [
+      const elementViewEntries = elementKeys.map(k => [k, (node: Node, view: EditorViewController, getPos: () => number) => new nodeViews._(node, view, getPos)])
+      const nodeViewEntries = nodeKeys.map(k => [
         k,
-        (node: Node, view: EditorViewController, getPos: () => number) => new V(node, view, getPos)
+        (node: Node, view: EditorViewController, getPos: () => number) => new (nodeViews as any)[k](node, view, getPos),
       ])
-      //return {...Object.fromEntries([...widgetViewEntries, ...nodeViewEntries])}
-			this.cachedNodeViews = Object.fromEntries([...widgetViewEntries, ...nodeViewEntries])
-
+      const widgetViewEntries = widgetKeys
+      .map(key => [key, (node: Node, view: EditorViewController, getPos: () => number) => new WidgetView(node, view, getPos)])
+			this.cachedNodeViews = Object.fromEntries([...elementViewEntries, ...nodeViewEntries, ...widgetViewEntries])
 			return this.cachedNodeViews
 		}
 	}
@@ -439,7 +447,7 @@ export class ExplorableEditor extends LitElement {
         display: none !important;
       }
 
-			@media only screen and (max-width: 1300px) {
+			@media only screen and (max-width: 1360px) {
 				ww-palette {
 					grid-column: 1 / 8;
 					grid-row: 2;
@@ -455,7 +463,7 @@ export class ExplorableEditor extends LitElement {
         }
 			}
 
-			@media only screen and (min-width: 1301px) {
+			@media only screen and (min-width: 1361px) {
 				ww-palette {
           padding-left: 5px;
 					grid-column: 2;
@@ -558,7 +566,7 @@ export class ExplorableEditor extends LitElement {
       if(this.printing) {
         decorations.push(Decoration.node(pos, pos + node.nodeSize, {class: "ww-beforeprint"}))
       }
-      if(["picture", "audio", "video", "iframe"].includes(node.type.name)) {
+      if(["picture", "audio", "video", "iframe", "table"].includes(node.type.name)) {
         decorations.push(Decoration.widget(pos, (view, getPos) => {
           let el: HTMLElement | undefined = undefined
           // Fix this crutch
@@ -625,7 +633,7 @@ export class ExplorableEditor extends LitElement {
 	}
 
 	get isInNarrowLayout() {
-		return document.documentElement.offsetWidth <= 1300
+		return document.documentElement.offsetWidth <= 1360
 	}
 
 	get activeElement(): HTMLElement | null {
@@ -836,7 +844,6 @@ export class ExplorableEditor extends LitElement {
     for(const [name, callback] of Object.entries(this.globalListeners)) {
       window.addEventListener(name, callback)
     }
-
   }
 
   disconnectedCallback(): void {
@@ -1096,6 +1103,9 @@ export class ExplorableEditor extends LitElement {
   }
 
   updateDocumentElementClasses = (e: KeyboardEvent | MouseEvent, removeOnly=false) => {
+    if(this.previewMode || this.sourceMode) {
+      return
+    }
     const toRemove = [
       !e.ctrlKey && "ww-key-ctrl",
       !e.altKey && "ww-key-alt",
@@ -1122,14 +1132,16 @@ export class ExplorableEditor extends LitElement {
 		return html`
 			<pm-editor
 				id="main"
-        bundleID=${this.bundleID}
+        url=${ifDefined(this.previewSrc)}
+        .bundleID=${this.bundleID}
 				@update=${this.handleUpdate}
         @focus=${this.handleEditorFocus}
         @fullscreenchange=${() => this.requestUpdate()}
 				.scrollMargin=${20}
 				scrollThreshold=${20}
-				placeholder=${this.showTextPlaceholder && !this.previewing? msg("Enter content here..."): ""}
+				placeholder=${this.showTextPlaceholder && !this.previewMode? msg("Enter content here..."): ""}
 				.state=${this.editorState}
+        .importMap=${this.app.store.packages.importMap}
 				.nodeViews=${this.nodeViews}
 				.markViews=${this.markViews}
 				.handleKeyDown=${this.handleKeyDown}
@@ -1169,7 +1181,8 @@ export class ExplorableEditor extends LitElement {
     if(!this.app.store.ui.stickyToolbox && toolboxMode === "right") return {
       gridColumn: "6",
       gridRow: "1/3",
-      width: "100%",
+      width: "auto",
+      justifySelf: "start",
       alignSelf: "start"
     }
 		else if(!this.toolboxY) return {
@@ -1237,6 +1250,7 @@ export class ExplorableEditor extends LitElement {
 					!e.detail.widget? this.pmEditor?.focus(): e.detail.widget.focus()
 				}}
         @ww-set-attribute=${(e: CustomEvent) => this.setNodeAttribute(e.detail.el, e.detail.key, e.detail.value, e.detail.tag)}
+        @ww-set-style=${(e: CustomEvent) => e.detail.el.style[e.detail.key] = e.detail.value}
 			></ww-toolbox>
 		`
 	}
@@ -1285,7 +1299,7 @@ export class ExplorableEditor extends LitElement {
 	render() {
 		return html`
       <main part="base">
-        ${this.app.sourceMode? this.CodeEditor(): [
+        ${this.sourceMode? this.CodeEditor(): [
           this.CoreEditor(),
           !this.pmEditor?.isFullscreen? this.Toolbox(): null,
           !this.pmEditor?.isFullscreen? this.Palette(): null
