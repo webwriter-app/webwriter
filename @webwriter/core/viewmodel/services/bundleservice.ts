@@ -574,6 +574,14 @@ async function getFetchResponse(e: FetchEvent) {
   return respond(action)
 }
 
+worker.addEventListener("install", async () => {
+  console.log("Installing service worker")
+  worker.skipWaiting()
+  await caches.delete("ww/v1")
+})
+
+worker.addEventListener("activate", () => console.log("Activating service worker"))
+
 worker.addEventListener("fetch", e => {
   const url = new URL(e.request.url)
   const shouldIntercept = url.hostname === "api.webwriter.app" && url.pathname.startsWith("/ww/v1/")
