@@ -47,7 +47,7 @@ export class EnvironmentController implements ReactiveController {
 
   async hostConnected() {
     this.ready = new Promise(async resolve => {
-      const backend = "unknown"
+      const backend = detectBackend()
       if(backend === "tauri") {
         this.apiReady = import(`../model/environment/${backend}.ts`)
         this.api = await this.apiReady
