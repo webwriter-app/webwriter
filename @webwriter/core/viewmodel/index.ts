@@ -42,6 +42,7 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
           import.meta.env.MODE === 'production' ? '/bundleservice.js' : '/dev-sw.js?dev-sw', // @ts-ignore
           { type: import.meta.env.MODE === 'production' ? 'classic' : 'module' }
         )
+        await navigator.serviceWorker.ready
       }
       else {
         document.body.innerHTML = `<div style="text-align: center; padding: 2rem;">Sorry! WebWriter is currently not supported in your browser for <a href="https://caniuse.com/mdn-javascript_statements_import_service_worker_support">technical reasons</a>. An up-to-date version of Chrome, Edge, Firefox, or Safari should work.</div>`
