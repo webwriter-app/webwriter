@@ -586,7 +586,6 @@ worker.addEventListener("activate", async (e) => {
 })
 
 worker.addEventListener("fetch", e => {
-  console.log("fetch intercepted")
   const url = new URL(e.request.url)
   const shouldIntercept = url.hostname === "api.webwriter.app" && url.pathname.startsWith("/ww/v1/")
   if(shouldIntercept) {
