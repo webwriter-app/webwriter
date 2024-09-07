@@ -43,6 +43,7 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
           { type: "module", scope: "/" }
         )
         const worker = registration.installing
+        console.log(registration.installing, registration.waiting, registration.active)
         if(worker) {
           await Promise.race([
             new Promise(resolve => worker.addEventListener("statechange", e => worker.state === "activated"? resolve: null)),
