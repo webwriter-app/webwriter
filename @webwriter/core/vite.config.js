@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'url'
 import { defineConfig } from 'vite'
 import { lezer } from '@lezer/generator/rollup'
-import {VitePWA} from "vite-plugin-pwa"
+import { VitePWA } from "vite-plugin-pwa"
 
 export default defineConfig({
     publicDir: "../../static",
@@ -12,12 +12,10 @@ export default defineConfig({
         rollupOptions: {
           input: {
             app: fileURLToPath(new URL("./index.html", import.meta.url)),
-            settings: fileURLToPath(new URL("./settings.html", import.meta.url))
-          }
+            settings: fileURLToPath(new URL("./settings.html", import.meta.url)),
+            worker: fileURLToPath(new URL("./viewmodel/services/bundleservice.ts", import.meta.url))
+          },
         }
-    },
-    resolve: {
-      alias: {find: "@babel/core", replacement: "@babel/standalone"}
     },
     plugins: [
       lezer({exportName: "parser"}),
@@ -28,7 +26,10 @@ export default defineConfig({
         injectRegister: false,
         manifest: false,
         injectManifest: {
-          injectionPoint: undefined
+          injectionPoint: undefined,
+          rollupOptions: {
+            external: ["@babel/core", "@babel/plugin-syntax-import-attributes","@babel/preset-typescript"]
+          }
         },
         devOptions: {
           enabled: true
