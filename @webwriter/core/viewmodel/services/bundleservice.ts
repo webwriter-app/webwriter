@@ -580,10 +580,9 @@ worker.addEventListener("install", async () => {
   await caches.delete("ww/v1")
 })
 
-worker.addEventListener("activate", async () => {
+worker.addEventListener("activate", async (e) => {
   console.log("Activating service worker")
-  worker.skipWaiting()
-  await caches.delete("ww/v1")
+  e.waitUntil(worker.clients.claim())
 })
 
 worker.addEventListener("fetch", e => {
