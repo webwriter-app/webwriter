@@ -845,6 +845,7 @@ export class  Toolbox extends LitElement {
         }
       }
 
+      /*
       @media only screen and (min-width: 1830px) {
         :host {
           display: grid;
@@ -860,7 +861,7 @@ export class  Toolbox extends LitElement {
           flex-direction: column;
           gap: 0.5rem;
         }
-      }
+      }*/
       
     `
   }
