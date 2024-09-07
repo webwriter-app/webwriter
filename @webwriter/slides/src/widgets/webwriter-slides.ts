@@ -40,7 +40,7 @@ export class WebwriterSlides extends LitElementWw {
   }
 
   @property({attribute: false, state: true})
-  activeSlideIndex = 0
+  accessor activeSlideIndex = 0
 
   get activeSlide() {
     return this.slides[this.activeSlideIndex]
@@ -111,7 +111,7 @@ export class WebwriterSlides extends LitElementWw {
   }
 
   @queryAssignedElements()
-  slides?: WebwriterSlide[]
+  accessor slides: WebwriterSlide[]
 
   addSlide() {
     const slide = this.ownerDocument.createElement("webwriter-slide") as WebwriterSlide

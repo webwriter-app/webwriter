@@ -9,7 +9,7 @@ import "@shoelace-style/shoelace/dist/themes/light.css"
 export class WebwriterSlide extends LitElementWw {
 
   @property({type: Boolean, attribute: true, reflect: true})
-  active = false
+  accessor active = false
 
   static styles = css`
     :host {

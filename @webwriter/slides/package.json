@@ -1,21 +1,31 @@
 {
   "name": "@webwriter/slides",
-  "version": "0.1.1",
-  "description": "Present content as a sequence of screens (slides, tabs, etc.).",
+  "version": "2.0.0",
+  "description": "WORK IN PROGRESS: Present content as a sequence of screens (slides, tabs, etc.).",
   "keywords": [
     "webwriter-widget"
   ],
+  "scripts": {
+    "prepublishOnly": "npx @webwriter/build"
+  },
   "license": "MIT",
   "author": "",
   "dependencies": {
     "@shoelace-style/shoelace": "^2.12.0",
-    "@webwriter/lit": "^1",
+    "@webwriter/lit": "^2.0.0",
     "bootstrap-icons": "^1.11.3",
-    "lit": "^3"
+    "lit": "^3.2.0"
   },
   "exports": {
-    "./widgets/webwriter-slides": "./widgets/webwriter-slides.ts",
-    "./widgets/webwriter-slide": "./widgets/webwriter-slide.ts"
+    "./widgets/webwriter-slides.*": {
+      "source": "./src/widgets/webwriter-slides.ts",
+      "default": "./dist/widgets/webwriter-slides.*"
+    },
+    "./widgets/webwriter-slide.*": {
+      "source": "./src/widgets/webwriter-slide.ts",
+      "default": "./dist/widgets/webwriter-slide.*"
+    },
+    "./package.json": "./package.json"
   },
   "editingConfig": {
     "./widgets/webwriter-slides": {
@@ -29,5 +39,8 @@
       "content": "p | flow*",
       "uninsertable": true
     }
+  },
+  "devDependencies": {
+    "@webwriter/build": "^1.0.1"
   }
 }
