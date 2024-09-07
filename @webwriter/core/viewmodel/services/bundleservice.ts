@@ -441,6 +441,7 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
 }
 
 async function getBundle(ids: string[], importMap: ImportMap, options?: esbuild.BuildOptions) {
+  console.log(importMap)
   const jsIds = ids.filter(id => id.endsWith(".js") || id.endsWith(".mjs"))
   const cssIds = ids.filter(id => id.endsWith(".css"))
   if(jsIds.length && cssIds.length) {
