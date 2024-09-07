@@ -37,7 +37,7 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
       this.environment = new EnvironmentController(this)
       await this.environment.ready
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register(
+        await navigator.serviceWorker.register(
           // @ts-ignore
           import.meta.env.MODE === 'production' ? '/bundleservice.js' : '/dev-sw.js?dev-sw', // @ts-ignore
           { type: import.meta.env.MODE === 'production' ? 'classic' : 'module' }
