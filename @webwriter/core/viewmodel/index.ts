@@ -40,7 +40,7 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
         await navigator.serviceWorker.register(
           // @ts-ignore
           import.meta.env.MODE === 'production' ? '/bundleservice.js' : '/dev-sw.js?dev-sw', // @ts-ignore
-          { type: import.meta.env.MODE === 'production' ? 'classic' : 'module' }
+          { type: "module" }
         )
         await navigator.serviceWorker.ready
       }
