@@ -337,14 +337,6 @@
         <source>Insert a paragraph</source>
         <target>Vložit odstavec</target>
       </trans-unit>
-      <trans-unit id="s3b3ea038c5d3bb06">
-        <source>Division</source>
-        <target>Divize</target>
-      </trans-unit>
-      <trans-unit id="se6cdad455e2d8c02">
-        <source>Insert a division</source>
-        <target>Vložení rozdělení</target>
-      </trans-unit>
       <trans-unit id="s6f84199e62584905">
         <source>Preformatted Text</source>
         <target>Předformátovaný text</target>
@@ -424,22 +416,6 @@
       <trans-unit id="sdb711380a28fec75">
         <source>Insert a list (ordered)</source>
         <target>Vložení seznamu (uspořádaného)</target>
-      </trans-unit>
-      <trans-unit id="sf0cf5c5d0102f674">
-        <source>List Item</source>
-        <target>Položka seznamu</target>
-      </trans-unit>
-      <trans-unit id="s20db56373c0fc770">
-        <source>Insert a list item</source>
-        <target>Vložení položky seznamu</target>
-      </trans-unit>
-      <trans-unit id="s07aa10850d9ddcc7">
-        <source>Form</source>
-        <target>Formulář</target>
-      </trans-unit>
-      <trans-unit id="s84e9c7f8785ca60b">
-        <source>Insert a form</source>
-        <target>Vložení formuláře</target>
       </trans-unit>
       <trans-unit id="s355b21b89ce5d9c5">
         <source>Details</source>
@@ -545,10 +521,6 @@
         <source>Insert an output</source>
         <target>Vložení výstupu</target>
       </trans-unit>
-      <trans-unit id="s18fca71e2e3308e7">
-        <source>Progress Indicator</source>
-        <target>Ukazatel pokroku</target>
-      </trans-unit>
       <trans-unit id="s52777d434baeed9b">
         <source>Insert a progress indicator</source>
         <target>Vložení indikátoru průběhu</target>
@@ -560,30 +532,6 @@
       <trans-unit id="saaad98061a20ac39">
         <source>Insert a math formula</source>
         <target>Vložení matematického vzorce</target>
-      </trans-unit>
-      <trans-unit id="s5432ad3c84273229">
-        <source>Figure</source>
-        <target>Obrázek</target>
-      </trans-unit>
-      <trans-unit id="sf486ca1fdbe08645">
-        <source>Insert a figure</source>
-        <target>Vložení obrázku</target>
-      </trans-unit>
-      <trans-unit id="sa5df1bcdba46c3fb">
-        <source>Figure Caption</source>
-        <target>Obrázek Titulek</target>
-      </trans-unit>
-      <trans-unit id="s33c1450d2822bb0f">
-        <source>Insert a figure caption</source>
-        <target>Vložení popisku obrázku</target>
-      </trans-unit>
-      <trans-unit id="s3d93f9ea0c5a13fa">
-        <source>Image</source>
-        <target>Obrázek</target>
-      </trans-unit>
-      <trans-unit id="s8bc4affa761aa8a2">
-        <source>Insert an image</source>
-        <target>Vložení obrázku</target>
       </trans-unit>
       <trans-unit id="s5f43af3669b1e098">
         <source>Source</source>
@@ -624,22 +572,6 @@
       <trans-unit id="s9e28faa598332e2b">
         <source>Insert video</source>
         <target>Vložit video</target>
-      </trans-unit>
-      <trans-unit id="s730182ad28374cda">
-        <source>Object</source>
-        <target>Objekt</target>
-      </trans-unit>
-      <trans-unit id="s123bea44f38abccf">
-        <source>Insert object</source>
-        <target>Vložit objekt</target>
-      </trans-unit>
-      <trans-unit id="scace301a88231cce">
-        <source>Embed</source>
-        <target>Vložit</target>
-      </trans-unit>
-      <trans-unit id="s91c5ed7769d00b65">
-        <source>Insert embed</source>
-        <target>Vložit vložení</target>
       </trans-unit>
       <trans-unit id="s82665b2ffabc9c0a">
         <source>Website</source>
@@ -704,94 +636,6 @@
       <trans-unit id="sff99962304ac7d25">
         <source>Insert a dialog</source>
         <target>Vložení dialogového okna</target>
-      </trans-unit>
-      <trans-unit id="se16c5e66886fbc59">
-        <source>Article</source>
-        <target>Článek</target>
-      </trans-unit>
-      <trans-unit id="s3f7e097a9b2e6181">
-        <source>Insert an article</source>
-        <target>Vložit článek</target>
-      </trans-unit>
-      <trans-unit id="sadd352cc7f6f2307">
-        <source>Aside</source>
-        <target>Na okraj</target>
-      </trans-unit>
-      <trans-unit id="s743f778233e42a3f">
-        <source>Insert an aside</source>
-        <target>Vložte poznámku stranou</target>
-      </trans-unit>
-      <trans-unit id="s07e6118e838b2e23">
-        <source>Navigation</source>
-        <target>Navigace</target>
-      </trans-unit>
-      <trans-unit id="s0a799f583098cadf">
-        <source>Insert a navigation</source>
-        <target>Vložení navigace</target>
-      </trans-unit>
-      <trans-unit id="scc1db59d292cbc4c">
-        <source>Section</source>
-        <target>Sekce</target>
-      </trans-unit>
-      <trans-unit id="s22a2348c46a912a0">
-        <source>Insert a section</source>
-        <target>Vložení oddílu</target>
-      </trans-unit>
-      <trans-unit id="s75d83fc3f0cfab40">
-        <source>Header</source>
-        <target>Záhlaví</target>
-      </trans-unit>
-      <trans-unit id="sa5c80e623459ffe4">
-        <source>Insert a header</source>
-        <target>Vložení záhlaví</target>
-      </trans-unit>
-      <trans-unit id="scf932a8577057752">
-        <source>Footer</source>
-        <target>Zápatí</target>
-      </trans-unit>
-      <trans-unit id="sa352d168b262aa06">
-        <source>Insert a footer</source>
-        <target>Vložení zápatí</target>
-      </trans-unit>
-      <trans-unit id="s49e763aed00877a8">
-        <source>Main</source>
-        <target>Hlavní stránka</target>
-      </trans-unit>
-      <trans-unit id="s8247d32213e35f24">
-        <source>Insert a main</source>
-        <target>Vložení hlavního</target>
-      </trans-unit>
-      <trans-unit id="s5d929ff1619ac0c9">
-        <source>Search</source>
-        <target>Vyhledávání</target>
-      </trans-unit>
-      <trans-unit id="sbb85a407d730e13d">
-        <source>Insert a search</source>
-        <target>Vložení vyhledávání</target>
-      </trans-unit>
-      <trans-unit id="sfcdd8e672c75b713">
-        <source>Address</source>
-        <target>Adresa</target>
-      </trans-unit>
-      <trans-unit id="s429dd933ba95549b">
-        <source>Insert an address</source>
-        <target>Vložení adresy</target>
-      </trans-unit>
-      <trans-unit id="s35c3125c7750681e">
-        <source>Blockquote</source>
-        <target>Blokové citace</target>
-      </trans-unit>
-      <trans-unit id="sa492a51a707930fa">
-        <source>Insert a blockquote</source>
-        <target>Vložení blokové citace</target>
-      </trans-unit>
-      <trans-unit id="s1351734ce8177b5f">
-        <source>SVG Drawing</source>
-        <target>Kreslení SVG</target>
-      </trans-unit>
-      <trans-unit id="s3b51dea3b9ac2507">
-        <source>Insert an SVG Drawing</source>
-        <target>Vložení kresby SVG</target>
       </trans-unit>
       <trans-unit id="s337a1e9022a8d19f">
         <source>Table</source>
@@ -872,14 +716,6 @@
       <trans-unit id="s1988d71ef8060edf">
         <source>Insert a table row</source>
         <target>Vložení řádku tabulky</target>
-      </trans-unit>
-      <trans-unit id="s9ffe1bbe64712bf1">
-        <source>Canvas</source>
-        <target>Plátno</target>
-      </trans-unit>
-      <trans-unit id="sa7dbe35b758c138d">
-        <source>Insert a canvas</source>
-        <target>Vložení plátna</target>
       </trans-unit>
       <trans-unit id="sb0d4f0f7993cf085">
         <source>Set font size</source>
@@ -981,46 +817,6 @@
         <source>Set text style (alignment, indentation, spacing, etc.) of selected elements</source>
         <target>Nastavení stylu textu (zarovnání, odsazení, mezery atd.) vybraných prvků</target>
       </trans-unit>
-      <trans-unit id="s6907015655602158">
-        <source>Margins</source>
-        <target>Marže</target>
-      </trans-unit>
-      <trans-unit id="s6d775df53db92fc1">
-        <source>Set the margins of the selected elements</source>
-        <target>Nastavení okrajů vybraných prvků</target>
-      </trans-unit>
-      <trans-unit id="sb1bd619a8d7cb15f">
-        <source>Paddings</source>
-        <target>Výplně</target>
-      </trans-unit>
-      <trans-unit id="s4296275288e95fd6">
-        <source>Set the paddings of the selected elements</source>
-        <target>Nastavení výplní vybraných prvků</target>
-      </trans-unit>
-      <trans-unit id="s1efbfc3937d565bd">
-        <source>Background</source>
-        <target>Pozadí</target>
-      </trans-unit>
-      <trans-unit id="sd21a7bab4807fadc">
-        <source>Set the background of the selected elements</source>
-        <target>Nastavení pozadí vybraných prvků</target>
-      </trans-unit>
-      <trans-unit id="sfa31adc78eb90e2c">
-        <source>Borders</source>
-        <target>Hranice</target>
-      </trans-unit>
-      <trans-unit id="s822b4cbbb9731fd1">
-        <source>Set the borders of the selected elements</source>
-        <target>Nastavení okrajů vybraných prvků</target>
-      </trans-unit>
-      <trans-unit id="s4481f5525a7a394a">
-        <source>Animations</source>
-        <target>Animace</target>
-      </trans-unit>
-      <trans-unit id="s4c4cb162f1aa7a7f">
-        <source>Animate selected elements using keyframes</source>
-        <target>Animace vybraných prvků pomocí klíčových snímků</target>
-      </trans-unit>
       <trans-unit id="s7060970b5ed20a58">
         <source>Interactivity</source>
         <target>Interaktivita</target>
@@ -1028,30 +824,6 @@
       <trans-unit id="se8bb865aeb8602dc">
         <source>Set interactivty options for selected elements</source>
         <target>Nastavení možností interaktivity pro vybrané prvky</target>
-      </trans-unit>
-      <trans-unit id="s8e70186b35a577db">
-        <source>Box alignment</source>
-        <target>Zarovnání rámečku</target>
-      </trans-unit>
-      <trans-unit id="s96611799d29d7d82">
-        <source>Set box alignment of selected elements</source>
-        <target>Nastavení zarovnání vybraných prvků v rámečku</target>
-      </trans-unit>
-      <trans-unit id="sbd0a91688c13adeb">
-        <source>Color adjustment</source>
-        <target>Úprava barev</target>
-      </trans-unit>
-      <trans-unit id="s7ad802c20f77b1e9">
-        <source>Set color adjustment (light/dark mode) options of selected elements</source>
-        <target>Nastavení možností nastavení barev (světlý/tmavý režim) vybraných prvků</target>
-      </trans-unit>
-      <trans-unit id="s8ebfd594312e77d4">
-        <source>Text/stroke color</source>
-        <target>Barva textu/tahu</target>
-      </trans-unit>
-      <trans-unit id="se6f9a782d95c2a87">
-        <source>Set text/stroke color of selected elements</source>
-        <target>Nastavení barvy textu/tuhy vybraných prvků</target>
       </trans-unit>
       <trans-unit id="se25d54a8943385b0">
         <source>Blending</source>
@@ -1069,31 +841,6 @@
         <source>Set the display mode of the selected elements</source>
         <target>Nastavení režimu zobrazení vybraných prvků</target>
       </trans-unit>
-      <trans-unit id="sa8beb6b1182241ac">
-        <source>Filters</source>
-        <target>Filtry</target>
-      </trans-unit>
-      <trans-unit id="s52e1a890841a3ae8">
-        <source>Apply filters (blur, invert, etc.) to the selected elements</source>
-        <target>Použití filtrů (rozmazání, inverze atd.) na vybrané prvky.</target>
-      </trans-unit>
-      <trans-unit id="s5052b94fa8278950">
-        <source>Flex behavior</source>
-        <target>Flexibilní chování</target>
-      </trans-unit>
-      <trans-unit id="se17a380e47aa8613">
-        <source>Set flex behaviour (grow, shrink, wrap, order) of selected elements</source>
-        <target>Nastavení chování vybraných prvků při ohybu (zvětšení, zmenšení, zabalení,
-          uspořádání)</target>
-      </trans-unit>
-      <trans-unit id="s4b4afa8bcb02d5ac">
-        <source>Typography</source>
-        <target>Typografie</target>
-      </trans-unit>
-      <trans-unit id="safb272a7b342509c">
-        <source>Set typography (font family, size, etc.) of selected elements</source>
-        <target>Nastavení typografie (rodiny písma, velikosti atd.) vybraných prvků</target>
-      </trans-unit>
       <trans-unit id="s0c669387c45c4dc6">
         <source>Fragmentation</source>
         <target>Fragmentace</target>
@@ -1103,14 +850,6 @@
         <target>Nastavení fragmentace (chování při přerušení stránky/oblasti/sloupce) vybraných
           prvků</target>
       </trans-unit>
-      <trans-unit id="s02f7ae451695e417">
-        <source>Grid options</source>
-        <target>Možnosti mřížky</target>
-      </trans-unit>
-      <trans-unit id="se4c980b07af2341d">
-        <source>Set grid options (row, column, etc.) of selected elements</source>
-        <target>Nastavení možností mřížky (řádek, sloupec atd.) vybraných prvků</target>
-      </trans-unit>
       <trans-unit id="sebee375c65c0cd58">
         <source>Image sizing</source>
         <target>Velikost obrázku</target>
@@ -1118,14 +857,6 @@
       <trans-unit id="saaf255f484959835">
         <source>Set image sizing options of selected elements</source>
         <target>Nastavení možností velikosti obrázků vybraných prvků</target>
-      </trans-unit>
-      <trans-unit id="s6ac7f151cff18f07">
-        <source>List options</source>
-        <target>Možnosti seznamu</target>
-      </trans-unit>
-      <trans-unit id="s833cf35ed6049636">
-        <source>Set list options of selected elements</source>
-        <target>Nastavení možností seznamu vybraných prvků</target>
       </trans-unit>
       <trans-unit id="sea7f9a84b82663b8">
         <source>Column break</source>
@@ -1813,14 +1544,6 @@
         <source>App Folder</source>
         <target>Složka aplikací</target>
       </trans-unit>
-      <trans-unit id="sc221faca1ecb4aee">
-        <source>Anonymous</source>
-        <target>Anonymní</target>
-      </trans-unit>
-      <trans-unit id="sdcd1efc06af80825">
-        <source>All rights reserved</source>
-        <target>Všechna práva vyhrazena</target>
-      </trans-unit>
       <trans-unit id="s78789724e789221c">
         <source>Size</source>
         <target>Velikost</target>
@@ -1988,18 +1711,6 @@
       <trans-unit id="sb199b34dca0a4cfc">
         <source>Enter content here...</source>
         <target>Zde zadejte obsah...</target>
-      </trans-unit>
-      <trans-unit id="s775056d1cb76fbe9">
-        <source>Headline</source>
-        <target>Titulek</target>
-      </trans-unit>
-      <trans-unit id="scf735dfae10f3870">
-        <source>Educational</source>
-        <target>Vzdělávání</target>
-      </trans-unit>
-      <trans-unit id="s11fdceabe7befeff">
-        <source>Accessibility</source>
-        <target>Přístupnost</target>
       </trans-unit>
       <trans-unit id="s99f110d27e30b289">
         <source>Title</source>
@@ -2330,6 +2041,70 @@
       <trans-unit id="s082869038c117fe5">
         <source>Portuguese (Brazil)</source>
         <target>portugalština (Brazílie)</target>
+      </trans-unit>
+      <trans-unit id="s55905c735052d295">
+        <source>Thematic Break</source>
+        <target>Tematická přestávka</target>
+      </trans-unit>
+      <trans-unit id="s936aa0b239679585">
+        <source>Insert a thematic break (usually displayed as a horizontal line)</source>
+        <target>Vložení tematického zlomu (obvykle se zobrazuje jako vodorovná čára).</target>
+      </trans-unit>
+      <trans-unit id="sc43767deea72e9f3">
+        <source>Description List</source>
+        <target>Seznam popisů</target>
+      </trans-unit>
+      <trans-unit id="saf312eaeec77a802">
+        <source>Insert a description list (glossary, term list)</source>
+        <target>Vložení seznamu popisu (slovníček, seznam pojmů)</target>
+      </trans-unit>
+      <trans-unit id="s9abadcc828884d7b">
+        <source>Textarea</source>
+        <target>Textový prostor</target>
+      </trans-unit>
+      <trans-unit id="sf4e0e02a5277ef23">
+        <source>Insert an textarea</source>
+        <target>Vložení textového pole</target>
+      </trans-unit>
+      <trans-unit id="sa557ae6bee9148a6">
+        <source>Progress</source>
+        <target>Progress</target>
+      </trans-unit>
+      <trans-unit id="s4f26e7cb7c0a8318">
+        <source>Vector Drawing</source>
+        <target>Vektorové kreslení</target>
+      </trans-unit>
+      <trans-unit id="sfbbab09dbe553571">
+        <source>Insert a vector drawing (SVG)</source>
+        <target>Vložení vektorové kresby (SVG)</target>
+      </trans-unit>
+      <trans-unit id="s029504322b353edf">
+        <source>Size &amp; Spacing</source>
+        <target>Velikost a rozestupy</target>
+      </trans-unit>
+      <trans-unit id="sa589e1df65dde0ec">
+        <source>Set the size, padding, and margins of the selected elements</source>
+        <target>Nastavení velikosti, výplně a okrajů vybraných prvků</target>
+      </trans-unit>
+      <trans-unit id="sfd54046c9e2030c2">
+        <source>Filters &amp; Colors</source>
+        <target>Filtry a barvy</target>
+      </trans-unit>
+      <trans-unit id="s3db5d66ac9e64eae">
+        <source>Apply filters (blur, invert, etc.) to and set colors for the selected elements</source>
+        <target>Použití filtrů (rozmazání, inverze atd.) a nastavení barev pro vybrané prvky.</target>
+      </trans-unit>
+      <trans-unit id="s3f1e7a3f2b283d3b">
+        <source>Margin</source>
+        <target>Marže</target>
+      </trans-unit>
+      <trans-unit id="s9370dc6afa716b57">
+        <source>Border</source>
+        <target>Hranice</target>
+      </trans-unit>
+      <trans-unit id="s7d8103f6f06f83d6">
+        <source>Padding</source>
+        <target>Vycpávky</target>
       </trans-unit>
     </body>
   </file>

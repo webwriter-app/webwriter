@@ -337,14 +337,6 @@
         <source>Insert a paragraph</source>
         <target>Een alinea invoegen</target>
       </trans-unit>
-      <trans-unit id="s3b3ea038c5d3bb06">
-        <source>Division</source>
-        <target>Divisie</target>
-      </trans-unit>
-      <trans-unit id="se6cdad455e2d8c02">
-        <source>Insert a division</source>
-        <target>Een divisie invoegen</target>
-      </trans-unit>
       <trans-unit id="s6f84199e62584905">
         <source>Preformatted Text</source>
         <target>Voorgeformatteerde tekst</target>
@@ -424,22 +416,6 @@
       <trans-unit id="sdb711380a28fec75">
         <source>Insert a list (ordered)</source>
         <target>Een lijst invoegen (geordend)</target>
-      </trans-unit>
-      <trans-unit id="sf0cf5c5d0102f674">
-        <source>List Item</source>
-        <target>Lijstitem</target>
-      </trans-unit>
-      <trans-unit id="s20db56373c0fc770">
-        <source>Insert a list item</source>
-        <target>Een lijstitem invoegen</target>
-      </trans-unit>
-      <trans-unit id="s07aa10850d9ddcc7">
-        <source>Form</source>
-        <target>Formulier</target>
-      </trans-unit>
-      <trans-unit id="s84e9c7f8785ca60b">
-        <source>Insert a form</source>
-        <target>Een formulier invoegen</target>
       </trans-unit>
       <trans-unit id="s355b21b89ce5d9c5">
         <source>Details</source>
@@ -545,10 +521,6 @@
         <source>Insert an output</source>
         <target>Een uitvoer invoegen</target>
       </trans-unit>
-      <trans-unit id="s18fca71e2e3308e7">
-        <source>Progress Indicator</source>
-        <target>Voortgangsindicator</target>
-      </trans-unit>
       <trans-unit id="s52777d434baeed9b">
         <source>Insert a progress indicator</source>
         <target>Een voortgangsindicator invoegen</target>
@@ -560,30 +532,6 @@
       <trans-unit id="saaad98061a20ac39">
         <source>Insert a math formula</source>
         <target>Een wiskundige formule invoegen</target>
-      </trans-unit>
-      <trans-unit id="s5432ad3c84273229">
-        <source>Figure</source>
-        <target>Afbeelding</target>
-      </trans-unit>
-      <trans-unit id="sf486ca1fdbe08645">
-        <source>Insert a figure</source>
-        <target>Een figuur invoegen</target>
-      </trans-unit>
-      <trans-unit id="sa5df1bcdba46c3fb">
-        <source>Figure Caption</source>
-        <target>Figuur Onderschrift</target>
-      </trans-unit>
-      <trans-unit id="s33c1450d2822bb0f">
-        <source>Insert a figure caption</source>
-        <target>Een figuurbijschrift invoegen</target>
-      </trans-unit>
-      <trans-unit id="s3d93f9ea0c5a13fa">
-        <source>Image</source>
-        <target>Afbeelding</target>
-      </trans-unit>
-      <trans-unit id="s8bc4affa761aa8a2">
-        <source>Insert an image</source>
-        <target>Een afbeelding invoegen</target>
       </trans-unit>
       <trans-unit id="s5f43af3669b1e098">
         <source>Source</source>
@@ -624,22 +572,6 @@
       <trans-unit id="s9e28faa598332e2b">
         <source>Insert video</source>
         <target>Video invoegen</target>
-      </trans-unit>
-      <trans-unit id="s730182ad28374cda">
-        <source>Object</source>
-        <target>Object</target>
-      </trans-unit>
-      <trans-unit id="s123bea44f38abccf">
-        <source>Insert object</source>
-        <target>Object invoegen</target>
-      </trans-unit>
-      <trans-unit id="scace301a88231cce">
-        <source>Embed</source>
-        <target>Insluiten</target>
-      </trans-unit>
-      <trans-unit id="s91c5ed7769d00b65">
-        <source>Insert embed</source>
-        <target>Insluiten</target>
       </trans-unit>
       <trans-unit id="s82665b2ffabc9c0a">
         <source>Website</source>
@@ -704,94 +636,6 @@
       <trans-unit id="sff99962304ac7d25">
         <source>Insert a dialog</source>
         <target>Een dialoogvenster invoegen</target>
-      </trans-unit>
-      <trans-unit id="se16c5e66886fbc59">
-        <source>Article</source>
-        <target>Artikel</target>
-      </trans-unit>
-      <trans-unit id="s3f7e097a9b2e6181">
-        <source>Insert an article</source>
-        <target>Een artikel invoegen</target>
-      </trans-unit>
-      <trans-unit id="sadd352cc7f6f2307">
-        <source>Aside</source>
-        <target>Opzij</target>
-      </trans-unit>
-      <trans-unit id="s743f778233e42a3f">
-        <source>Insert an aside</source>
-        <target>Een terzijde invoegen</target>
-      </trans-unit>
-      <trans-unit id="s07e6118e838b2e23">
-        <source>Navigation</source>
-        <target>Navigatie</target>
-      </trans-unit>
-      <trans-unit id="s0a799f583098cadf">
-        <source>Insert a navigation</source>
-        <target>Een navigatie invoegen</target>
-      </trans-unit>
-      <trans-unit id="scc1db59d292cbc4c">
-        <source>Section</source>
-        <target>Sectie</target>
-      </trans-unit>
-      <trans-unit id="s22a2348c46a912a0">
-        <source>Insert a section</source>
-        <target>Een sectie invoegen</target>
-      </trans-unit>
-      <trans-unit id="s75d83fc3f0cfab40">
-        <source>Header</source>
-        <target>Kop</target>
-      </trans-unit>
-      <trans-unit id="sa5c80e623459ffe4">
-        <source>Insert a header</source>
-        <target>Een koptekst invoegen</target>
-      </trans-unit>
-      <trans-unit id="scf932a8577057752">
-        <source>Footer</source>
-        <target>Voettekst</target>
-      </trans-unit>
-      <trans-unit id="sa352d168b262aa06">
-        <source>Insert a footer</source>
-        <target>Een voettekst invoegen</target>
-      </trans-unit>
-      <trans-unit id="s49e763aed00877a8">
-        <source>Main</source>
-        <target>Hoofd</target>
-      </trans-unit>
-      <trans-unit id="s8247d32213e35f24">
-        <source>Insert a main</source>
-        <target>Een hoofd</target>
-      </trans-unit>
-      <trans-unit id="s5d929ff1619ac0c9">
-        <source>Search</source>
-        <target>Zoek op</target>
-      </trans-unit>
-      <trans-unit id="sbb85a407d730e13d">
-        <source>Insert a search</source>
-        <target>Een zoekopdracht invoegen</target>
-      </trans-unit>
-      <trans-unit id="sfcdd8e672c75b713">
-        <source>Address</source>
-        <target>Adres</target>
-      </trans-unit>
-      <trans-unit id="s429dd933ba95549b">
-        <source>Insert an address</source>
-        <target>Een adres invoegen</target>
-      </trans-unit>
-      <trans-unit id="s35c3125c7750681e">
-        <source>Blockquote</source>
-        <target>Blokcitaat</target>
-      </trans-unit>
-      <trans-unit id="sa492a51a707930fa">
-        <source>Insert a blockquote</source>
-        <target>Een blokcitaat invoegen</target>
-      </trans-unit>
-      <trans-unit id="s1351734ce8177b5f">
-        <source>SVG Drawing</source>
-        <target>SVG tekenen</target>
-      </trans-unit>
-      <trans-unit id="s3b51dea3b9ac2507">
-        <source>Insert an SVG Drawing</source>
-        <target>Een SVG-tekening invoegen</target>
       </trans-unit>
       <trans-unit id="s337a1e9022a8d19f">
         <source>Table</source>
@@ -872,14 +716,6 @@
       <trans-unit id="s1988d71ef8060edf">
         <source>Insert a table row</source>
         <target>Een tabelrij invoegen</target>
-      </trans-unit>
-      <trans-unit id="s9ffe1bbe64712bf1">
-        <source>Canvas</source>
-        <target>Canvas</target>
-      </trans-unit>
-      <trans-unit id="sa7dbe35b758c138d">
-        <source>Insert a canvas</source>
-        <target>Een canvas invoegen</target>
       </trans-unit>
       <trans-unit id="sb0d4f0f7993cf085">
         <source>Set font size</source>
@@ -982,46 +818,6 @@
         <target>Tekststijl (uitlijning, inspringen, spatiëring, enz.) van geselecteerde elementen
           instellen</target>
       </trans-unit>
-      <trans-unit id="s6907015655602158">
-        <source>Margins</source>
-        <target>Marges</target>
-      </trans-unit>
-      <trans-unit id="s6d775df53db92fc1">
-        <source>Set the margins of the selected elements</source>
-        <target>Stel de marges van de geselecteerde elementen in</target>
-      </trans-unit>
-      <trans-unit id="sb1bd619a8d7cb15f">
-        <source>Paddings</source>
-        <target>Vullingen</target>
-      </trans-unit>
-      <trans-unit id="s4296275288e95fd6">
-        <source>Set the paddings of the selected elements</source>
-        <target>Stel de vullingen van de geselecteerde elementen in</target>
-      </trans-unit>
-      <trans-unit id="s1efbfc3937d565bd">
-        <source>Background</source>
-        <target>Achtergrond</target>
-      </trans-unit>
-      <trans-unit id="sd21a7bab4807fadc">
-        <source>Set the background of the selected elements</source>
-        <target>De achtergrond van de geselecteerde elementen instellen</target>
-      </trans-unit>
-      <trans-unit id="sfa31adc78eb90e2c">
-        <source>Borders</source>
-        <target>Grenzen</target>
-      </trans-unit>
-      <trans-unit id="s822b4cbbb9731fd1">
-        <source>Set the borders of the selected elements</source>
-        <target>Stel de randen van de geselecteerde elementen in</target>
-      </trans-unit>
-      <trans-unit id="s4481f5525a7a394a">
-        <source>Animations</source>
-        <target>Animaties</target>
-      </trans-unit>
-      <trans-unit id="s4c4cb162f1aa7a7f">
-        <source>Animate selected elements using keyframes</source>
-        <target>Geselecteerde elementen animeren met keyframes</target>
-      </trans-unit>
       <trans-unit id="s7060970b5ed20a58">
         <source>Interactivity</source>
         <target>Interactiviteit</target>
@@ -1029,31 +825,6 @@
       <trans-unit id="se8bb865aeb8602dc">
         <source>Set interactivty options for selected elements</source>
         <target>Interactiviteitsopties instellen voor geselecteerde elementen</target>
-      </trans-unit>
-      <trans-unit id="s8e70186b35a577db">
-        <source>Box alignment</source>
-        <target>Box uitlijning</target>
-      </trans-unit>
-      <trans-unit id="s96611799d29d7d82">
-        <source>Set box alignment of selected elements</source>
-        <target>Kaderuitlijning van geselecteerde elementen instellen</target>
-      </trans-unit>
-      <trans-unit id="sbd0a91688c13adeb">
-        <source>Color adjustment</source>
-        <target>Kleuraanpassing</target>
-      </trans-unit>
-      <trans-unit id="s7ad802c20f77b1e9">
-        <source>Set color adjustment (light/dark mode) options of selected elements</source>
-        <target>Opties voor kleuraanpassing (licht/donker-modus) van geselecteerde elementen
-          instellen</target>
-      </trans-unit>
-      <trans-unit id="s8ebfd594312e77d4">
-        <source>Text/stroke color</source>
-        <target>Tekst/tekenkleur</target>
-      </trans-unit>
-      <trans-unit id="se6f9a782d95c2a87">
-        <source>Set text/stroke color of selected elements</source>
-        <target>Tekst-/streepkleur van geselecteerde elementen instellen</target>
       </trans-unit>
       <trans-unit id="se25d54a8943385b0">
         <source>Blending</source>
@@ -1071,31 +842,6 @@
         <source>Set the display mode of the selected elements</source>
         <target>De weergavemodus van de geselecteerde elementen instellen</target>
       </trans-unit>
-      <trans-unit id="sa8beb6b1182241ac">
-        <source>Filters</source>
-        <target>Filters</target>
-      </trans-unit>
-      <trans-unit id="s52e1a890841a3ae8">
-        <source>Apply filters (blur, invert, etc.) to the selected elements</source>
-        <target>Filters toepassen (vervagen, omkeren, enz.) op de geselecteerde elementen</target>
-      </trans-unit>
-      <trans-unit id="s5052b94fa8278950">
-        <source>Flex behavior</source>
-        <target>Flex gedrag</target>
-      </trans-unit>
-      <trans-unit id="se17a380e47aa8613">
-        <source>Set flex behaviour (grow, shrink, wrap, order) of selected elements</source>
-        <target>Flexgedrag instellen (groeien, krimpen, omwikkelen, volgorde) van geselecteerde
-          elementen</target>
-      </trans-unit>
-      <trans-unit id="s4b4afa8bcb02d5ac">
-        <source>Typography</source>
-        <target>Typografie</target>
-      </trans-unit>
-      <trans-unit id="safb272a7b342509c">
-        <source>Set typography (font family, size, etc.) of selected elements</source>
-        <target>Typografie (lettertype, lettergrootte, enz.) van geselecteerde elementen instellen</target>
-      </trans-unit>
       <trans-unit id="s0c669387c45c4dc6">
         <source>Fragmentation</source>
         <target>Versnippering</target>
@@ -1105,14 +851,6 @@
         <target>Fragmentatie instellen (gedrag bij pagina-/regio-/kolomscheidingen) van
           geselecteerde elementen</target>
       </trans-unit>
-      <trans-unit id="s02f7ae451695e417">
-        <source>Grid options</source>
-        <target>Roosteropties</target>
-      </trans-unit>
-      <trans-unit id="se4c980b07af2341d">
-        <source>Set grid options (row, column, etc.) of selected elements</source>
-        <target>Rasteropties (rij, kolom, enz.) van geselecteerde elementen instellen</target>
-      </trans-unit>
       <trans-unit id="sebee375c65c0cd58">
         <source>Image sizing</source>
         <target>Grootte afbeelding</target>
@@ -1120,14 +858,6 @@
       <trans-unit id="saaf255f484959835">
         <source>Set image sizing options of selected elements</source>
         <target>Opties voor afbeeldingsgrootte van geselecteerde elementen instellen</target>
-      </trans-unit>
-      <trans-unit id="s6ac7f151cff18f07">
-        <source>List options</source>
-        <target>Lijst opties</target>
-      </trans-unit>
-      <trans-unit id="s833cf35ed6049636">
-        <source>Set list options of selected elements</source>
-        <target>Lijstopties van geselecteerde elementen instellen</target>
       </trans-unit>
       <trans-unit id="sea7f9a84b82663b8">
         <source>Column break</source>
@@ -1815,14 +1545,6 @@
         <source>App Folder</source>
         <target>App Map</target>
       </trans-unit>
-      <trans-unit id="sc221faca1ecb4aee">
-        <source>Anonymous</source>
-        <target>Anonieme</target>
-      </trans-unit>
-      <trans-unit id="sdcd1efc06af80825">
-        <source>All rights reserved</source>
-        <target>Alle rechten voorbehouden</target>
-      </trans-unit>
       <trans-unit id="s78789724e789221c">
         <source>Size</source>
         <target>Maat</target>
@@ -1991,18 +1713,6 @@
       <trans-unit id="sb199b34dca0a4cfc">
         <source>Enter content here...</source>
         <target>Voer hier inhoud in...</target>
-      </trans-unit>
-      <trans-unit id="s775056d1cb76fbe9">
-        <source>Headline</source>
-        <target>Headline</target>
-      </trans-unit>
-      <trans-unit id="scf735dfae10f3870">
-        <source>Educational</source>
-        <target>Onderwijs</target>
-      </trans-unit>
-      <trans-unit id="s11fdceabe7befeff">
-        <source>Accessibility</source>
-        <target>Toegankelijkheid</target>
       </trans-unit>
       <trans-unit id="s99f110d27e30b289">
         <source>Title</source>
@@ -2333,6 +2043,70 @@
       <trans-unit id="s082869038c117fe5">
         <source>Portuguese (Brazil)</source>
         <target>Portugees (Brazilië)</target>
+      </trans-unit>
+      <trans-unit id="s55905c735052d295">
+        <source>Thematic Break</source>
+        <target>Thematische onderbreking</target>
+      </trans-unit>
+      <trans-unit id="s936aa0b239679585">
+        <source>Insert a thematic break (usually displayed as a horizontal line)</source>
+        <target>Een thematische onderbreking invoegen (meestal weergegeven als een horizontale lijn)</target>
+      </trans-unit>
+      <trans-unit id="sc43767deea72e9f3">
+        <source>Description List</source>
+        <target>Beschrijving Lijst</target>
+      </trans-unit>
+      <trans-unit id="saf312eaeec77a802">
+        <source>Insert a description list (glossary, term list)</source>
+        <target>Een beschrijvingslijst invoegen (woordenlijst, begrippenlijst)</target>
+      </trans-unit>
+      <trans-unit id="s9abadcc828884d7b">
+        <source>Textarea</source>
+        <target>Tekstveld</target>
+      </trans-unit>
+      <trans-unit id="sf4e0e02a5277ef23">
+        <source>Insert an textarea</source>
+        <target>Een tekstgebied invoegen</target>
+      </trans-unit>
+      <trans-unit id="sa557ae6bee9148a6">
+        <source>Progress</source>
+        <target>Vooruitgang</target>
+      </trans-unit>
+      <trans-unit id="s4f26e7cb7c0a8318">
+        <source>Vector Drawing</source>
+        <target>Vectortekening</target>
+      </trans-unit>
+      <trans-unit id="sfbbab09dbe553571">
+        <source>Insert a vector drawing (SVG)</source>
+        <target>Een vectortekening (SVG) invoegen</target>
+      </trans-unit>
+      <trans-unit id="s029504322b353edf">
+        <source>Size &amp; Spacing</source>
+        <target>Grootte en afstand</target>
+      </trans-unit>
+      <trans-unit id="sa589e1df65dde0ec">
+        <source>Set the size, padding, and margins of the selected elements</source>
+        <target>De grootte, opvulling en marges van de geselecteerde elementen instellen</target>
+      </trans-unit>
+      <trans-unit id="sfd54046c9e2030c2">
+        <source>Filters &amp; Colors</source>
+        <target>Filters en kleuren</target>
+      </trans-unit>
+      <trans-unit id="s3db5d66ac9e64eae">
+        <source>Apply filters (blur, invert, etc.) to and set colors for the selected elements</source>
+        <target>Filters (vervagen, omkeren, enz.) toepassen op en kleuren instellen voor de geselecteerde elementen</target>
+      </trans-unit>
+      <trans-unit id="s3f1e7a3f2b283d3b">
+        <source>Margin</source>
+        <target>Marge</target>
+      </trans-unit>
+      <trans-unit id="s9370dc6afa716b57">
+        <source>Border</source>
+        <target>Grens</target>
+      </trans-unit>
+      <trans-unit id="s7d8103f6f06f83d6">
+        <source>Padding</source>
+        <target>Opvulling</target>
       </trans-unit>
     </body>
   </file>

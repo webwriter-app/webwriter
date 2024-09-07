@@ -337,14 +337,6 @@
         <source>Insert a paragraph</source>
         <target>Εισάγετε μια παράγραφο</target>
       </trans-unit>
-      <trans-unit id="s3b3ea038c5d3bb06">
-        <source>Division</source>
-        <target>Τμήμα</target>
-      </trans-unit>
-      <trans-unit id="se6cdad455e2d8c02">
-        <source>Insert a division</source>
-        <target>Εισαγωγή διαίρεσης</target>
-      </trans-unit>
       <trans-unit id="s6f84199e62584905">
         <source>Preformatted Text</source>
         <target>Προδιαμορφωμένο κείμενο</target>
@@ -424,22 +416,6 @@
       <trans-unit id="sdb711380a28fec75">
         <source>Insert a list (ordered)</source>
         <target>Εισαγωγή λίστας (διατεταγμένη)</target>
-      </trans-unit>
-      <trans-unit id="sf0cf5c5d0102f674">
-        <source>List Item</source>
-        <target>Στοιχείο λίστας</target>
-      </trans-unit>
-      <trans-unit id="s20db56373c0fc770">
-        <source>Insert a list item</source>
-        <target>Εισαγωγή ενός στοιχείου λίστας</target>
-      </trans-unit>
-      <trans-unit id="s07aa10850d9ddcc7">
-        <source>Form</source>
-        <target>Έντυπο</target>
-      </trans-unit>
-      <trans-unit id="s84e9c7f8785ca60b">
-        <source>Insert a form</source>
-        <target>Εισαγωγή φόρμας</target>
       </trans-unit>
       <trans-unit id="s355b21b89ce5d9c5">
         <source>Details</source>
@@ -545,10 +521,6 @@
         <source>Insert an output</source>
         <target>Εισαγωγή εξόδου</target>
       </trans-unit>
-      <trans-unit id="s18fca71e2e3308e7">
-        <source>Progress Indicator</source>
-        <target>Δείκτης προόδου</target>
-      </trans-unit>
       <trans-unit id="s52777d434baeed9b">
         <source>Insert a progress indicator</source>
         <target>Εισαγωγή δείκτη προόδου</target>
@@ -560,30 +532,6 @@
       <trans-unit id="saaad98061a20ac39">
         <source>Insert a math formula</source>
         <target>Εισαγωγή μαθηματικού τύπου</target>
-      </trans-unit>
-      <trans-unit id="s5432ad3c84273229">
-        <source>Figure</source>
-        <target>Εικόνα</target>
-      </trans-unit>
-      <trans-unit id="sf486ca1fdbe08645">
-        <source>Insert a figure</source>
-        <target>Εισαγωγή σχήματος</target>
-      </trans-unit>
-      <trans-unit id="sa5df1bcdba46c3fb">
-        <source>Figure Caption</source>
-        <target>Εικόνα Λεζάντα</target>
-      </trans-unit>
-      <trans-unit id="s33c1450d2822bb0f">
-        <source>Insert a figure caption</source>
-        <target>Εισαγωγή λεζάντας σχήματος</target>
-      </trans-unit>
-      <trans-unit id="s3d93f9ea0c5a13fa">
-        <source>Image</source>
-        <target>Εικόνα</target>
-      </trans-unit>
-      <trans-unit id="s8bc4affa761aa8a2">
-        <source>Insert an image</source>
-        <target>Εισαγωγή εικόνας</target>
       </trans-unit>
       <trans-unit id="s5f43af3669b1e098">
         <source>Source</source>
@@ -624,22 +572,6 @@
       <trans-unit id="s9e28faa598332e2b">
         <source>Insert video</source>
         <target>Εισαγωγή βίντεο</target>
-      </trans-unit>
-      <trans-unit id="s730182ad28374cda">
-        <source>Object</source>
-        <target>Αντικείμενο</target>
-      </trans-unit>
-      <trans-unit id="s123bea44f38abccf">
-        <source>Insert object</source>
-        <target>Εισαγωγή αντικειμένου</target>
-      </trans-unit>
-      <trans-unit id="scace301a88231cce">
-        <source>Embed</source>
-        <target>Ενσωματώστε το</target>
-      </trans-unit>
-      <trans-unit id="s91c5ed7769d00b65">
-        <source>Insert embed</source>
-        <target>Εισαγωγή ενσωμάτωσης</target>
       </trans-unit>
       <trans-unit id="s82665b2ffabc9c0a">
         <source>Website</source>
@@ -704,94 +636,6 @@
       <trans-unit id="sff99962304ac7d25">
         <source>Insert a dialog</source>
         <target>Εισαγωγή διαλόγου</target>
-      </trans-unit>
-      <trans-unit id="se16c5e66886fbc59">
-        <source>Article</source>
-        <target>Άρθρο</target>
-      </trans-unit>
-      <trans-unit id="s3f7e097a9b2e6181">
-        <source>Insert an article</source>
-        <target>Εισαγωγή ενός άρθρου</target>
-      </trans-unit>
-      <trans-unit id="sadd352cc7f6f2307">
-        <source>Aside</source>
-        <target>Εκτός</target>
-      </trans-unit>
-      <trans-unit id="s743f778233e42a3f">
-        <source>Insert an aside</source>
-        <target>Εισάγετε μια παρένθεση</target>
-      </trans-unit>
-      <trans-unit id="s07e6118e838b2e23">
-        <source>Navigation</source>
-        <target>Πλοήγηση</target>
-      </trans-unit>
-      <trans-unit id="s0a799f583098cadf">
-        <source>Insert a navigation</source>
-        <target>Εισαγωγή πλοήγησης</target>
-      </trans-unit>
-      <trans-unit id="scc1db59d292cbc4c">
-        <source>Section</source>
-        <target>Τμήμα</target>
-      </trans-unit>
-      <trans-unit id="s22a2348c46a912a0">
-        <source>Insert a section</source>
-        <target>Εισαγωγή τμήματος</target>
-      </trans-unit>
-      <trans-unit id="s75d83fc3f0cfab40">
-        <source>Header</source>
-        <target>Κεφαλίδα</target>
-      </trans-unit>
-      <trans-unit id="sa5c80e623459ffe4">
-        <source>Insert a header</source>
-        <target>Εισαγωγή κεφαλίδας</target>
-      </trans-unit>
-      <trans-unit id="scf932a8577057752">
-        <source>Footer</source>
-        <target>Υποσέλιδο</target>
-      </trans-unit>
-      <trans-unit id="sa352d168b262aa06">
-        <source>Insert a footer</source>
-        <target>Εισαγωγή υποσέλιδου</target>
-      </trans-unit>
-      <trans-unit id="s49e763aed00877a8">
-        <source>Main</source>
-        <target>Κύρια</target>
-      </trans-unit>
-      <trans-unit id="s8247d32213e35f24">
-        <source>Insert a main</source>
-        <target>Εισάγετε ένα κύριο</target>
-      </trans-unit>
-      <trans-unit id="s5d929ff1619ac0c9">
-        <source>Search</source>
-        <target>Αναζήτηση</target>
-      </trans-unit>
-      <trans-unit id="sbb85a407d730e13d">
-        <source>Insert a search</source>
-        <target>Εισαγωγή μιας αναζήτησης</target>
-      </trans-unit>
-      <trans-unit id="sfcdd8e672c75b713">
-        <source>Address</source>
-        <target>Διεύθυνση</target>
-      </trans-unit>
-      <trans-unit id="s429dd933ba95549b">
-        <source>Insert an address</source>
-        <target>Εισαγωγή διεύθυνσης</target>
-      </trans-unit>
-      <trans-unit id="s35c3125c7750681e">
-        <source>Blockquote</source>
-        <target>Blockquote</target>
-      </trans-unit>
-      <trans-unit id="sa492a51a707930fa">
-        <source>Insert a blockquote</source>
-        <target>Εισαγωγή ενός blockquote</target>
-      </trans-unit>
-      <trans-unit id="s1351734ce8177b5f">
-        <source>SVG Drawing</source>
-        <target>Σχεδίαση SVG</target>
-      </trans-unit>
-      <trans-unit id="s3b51dea3b9ac2507">
-        <source>Insert an SVG Drawing</source>
-        <target>Εισαγωγή ενός σχεδίου SVG</target>
       </trans-unit>
       <trans-unit id="s337a1e9022a8d19f">
         <source>Table</source>
@@ -872,14 +716,6 @@
       <trans-unit id="s1988d71ef8060edf">
         <source>Insert a table row</source>
         <target>Εισαγωγή γραμμής πίνακα</target>
-      </trans-unit>
-      <trans-unit id="s9ffe1bbe64712bf1">
-        <source>Canvas</source>
-        <target>Καμβάς</target>
-      </trans-unit>
-      <trans-unit id="sa7dbe35b758c138d">
-        <source>Insert a canvas</source>
-        <target>Εισαγωγή καμβά</target>
       </trans-unit>
       <trans-unit id="sb0d4f0f7993cf085">
         <source>Set font size</source>
@@ -981,46 +817,6 @@
         <source>Set text style (alignment, indentation, spacing, etc.) of selected elements</source>
         <target>Ορισμός στυλ κειμένου (στοίχιση, εσοχή, απόσταση κ.λπ.) των επιλεγμένων στοιχείων</target>
       </trans-unit>
-      <trans-unit id="s6907015655602158">
-        <source>Margins</source>
-        <target>Περιθώρια</target>
-      </trans-unit>
-      <trans-unit id="s6d775df53db92fc1">
-        <source>Set the margins of the selected elements</source>
-        <target>Ορισμός των περιθωρίων των επιλεγμένων στοιχείων</target>
-      </trans-unit>
-      <trans-unit id="sb1bd619a8d7cb15f">
-        <source>Paddings</source>
-        <target>Paddings</target>
-      </trans-unit>
-      <trans-unit id="s4296275288e95fd6">
-        <source>Set the paddings of the selected elements</source>
-        <target>Ορίστε τα περιθώρια των επιλεγμένων στοιχείων</target>
-      </trans-unit>
-      <trans-unit id="s1efbfc3937d565bd">
-        <source>Background</source>
-        <target>Ιστορικό</target>
-      </trans-unit>
-      <trans-unit id="sd21a7bab4807fadc">
-        <source>Set the background of the selected elements</source>
-        <target>Ορίστε το φόντο των επιλεγμένων στοιχείων</target>
-      </trans-unit>
-      <trans-unit id="sfa31adc78eb90e2c">
-        <source>Borders</source>
-        <target>Σύνορα</target>
-      </trans-unit>
-      <trans-unit id="s822b4cbbb9731fd1">
-        <source>Set the borders of the selected elements</source>
-        <target>Ορισμός των ορίων των επιλεγμένων στοιχείων</target>
-      </trans-unit>
-      <trans-unit id="s4481f5525a7a394a">
-        <source>Animations</source>
-        <target>Κινούμενα σχέδια</target>
-      </trans-unit>
-      <trans-unit id="s4c4cb162f1aa7a7f">
-        <source>Animate selected elements using keyframes</source>
-        <target>Ενεργοποίηση επιλεγμένων στοιχείων με χρήση πλαισίων-κλειδιών</target>
-      </trans-unit>
       <trans-unit id="s7060970b5ed20a58">
         <source>Interactivity</source>
         <target>Διαδραστικότητα</target>
@@ -1028,31 +824,6 @@
       <trans-unit id="se8bb865aeb8602dc">
         <source>Set interactivty options for selected elements</source>
         <target>Ορισμός επιλογών διαδραστικότητας για επιλεγμένα στοιχεία</target>
-      </trans-unit>
-      <trans-unit id="s8e70186b35a577db">
-        <source>Box alignment</source>
-        <target>Ευθυγράμμιση κουτιού</target>
-      </trans-unit>
-      <trans-unit id="s96611799d29d7d82">
-        <source>Set box alignment of selected elements</source>
-        <target>Ορισμός ευθυγράμμισης πλαισίου επιλεγμένων στοιχείων</target>
-      </trans-unit>
-      <trans-unit id="sbd0a91688c13adeb">
-        <source>Color adjustment</source>
-        <target>Ρύθμιση χρώματος</target>
-      </trans-unit>
-      <trans-unit id="s7ad802c20f77b1e9">
-        <source>Set color adjustment (light/dark mode) options of selected elements</source>
-        <target>Ρύθμιση επιλογών ρύθμισης χρώματος (φωτεινή/σκοτεινή λειτουργία) των επιλεγμένων
-          στοιχείων</target>
-      </trans-unit>
-      <trans-unit id="s8ebfd594312e77d4">
-        <source>Text/stroke color</source>
-        <target>Χρώμα κειμένου/επίπεδου</target>
-      </trans-unit>
-      <trans-unit id="se6f9a782d95c2a87">
-        <source>Set text/stroke color of selected elements</source>
-        <target>Ρύθμιση χρώματος κειμένου/επιπεδώσεων επιλεγμένων στοιχείων</target>
       </trans-unit>
       <trans-unit id="se25d54a8943385b0">
         <source>Blending</source>
@@ -1070,32 +841,6 @@
         <source>Set the display mode of the selected elements</source>
         <target>Ρύθμιση του τρόπου εμφάνισης των επιλεγμένων στοιχείων</target>
       </trans-unit>
-      <trans-unit id="sa8beb6b1182241ac">
-        <source>Filters</source>
-        <target>Φίλτρα</target>
-      </trans-unit>
-      <trans-unit id="s52e1a890841a3ae8">
-        <source>Apply filters (blur, invert, etc.) to the selected elements</source>
-        <target>Εφαρμογή φίλτρων (θόλωση, αντιστροφή κ.λπ.) στα επιλεγμένα στοιχεία</target>
-      </trans-unit>
-      <trans-unit id="s5052b94fa8278950">
-        <source>Flex behavior</source>
-        <target>Συμπεριφορά Flex</target>
-      </trans-unit>
-      <trans-unit id="se17a380e47aa8613">
-        <source>Set flex behaviour (grow, shrink, wrap, order) of selected elements</source>
-        <target>Ορισμός συμπεριφοράς flex (αύξηση, συρρίκνωση, τύλιγμα, σειρά) των επιλεγμένων
-          στοιχείων</target>
-      </trans-unit>
-      <trans-unit id="s4b4afa8bcb02d5ac">
-        <source>Typography</source>
-        <target>Τυπογραφία</target>
-      </trans-unit>
-      <trans-unit id="safb272a7b342509c">
-        <source>Set typography (font family, size, etc.) of selected elements</source>
-        <target>Ορισμός τυπογραφίας (οικογένεια γραμματοσειράς, μέγεθος κ.λπ.) των επιλεγμένων
-          στοιχείων</target>
-      </trans-unit>
       <trans-unit id="s0c669387c45c4dc6">
         <source>Fragmentation</source>
         <target>Κατακερματισμός</target>
@@ -1105,14 +850,6 @@
         <target>Ορισμός κατακερματισμού (συμπεριφορά σε διαλείμματα σελίδας/περιοχής/στήλης)
           επιλεγμένων στοιχείων</target>
       </trans-unit>
-      <trans-unit id="s02f7ae451695e417">
-        <source>Grid options</source>
-        <target>Επιλογές πλέγματος</target>
-      </trans-unit>
-      <trans-unit id="se4c980b07af2341d">
-        <source>Set grid options (row, column, etc.) of selected elements</source>
-        <target>Ορισμός επιλογών πλέγματος (γραμμή, στήλη κ.λπ.) των επιλεγμένων στοιχείων</target>
-      </trans-unit>
       <trans-unit id="sebee375c65c0cd58">
         <source>Image sizing</source>
         <target>Μεγέθυνση εικόνας</target>
@@ -1120,14 +857,6 @@
       <trans-unit id="saaf255f484959835">
         <source>Set image sizing options of selected elements</source>
         <target>Ορισμός επιλογών μεγέθους εικόνας επιλεγμένων στοιχείων</target>
-      </trans-unit>
-      <trans-unit id="s6ac7f151cff18f07">
-        <source>List options</source>
-        <target>Λίστα επιλογών</target>
-      </trans-unit>
-      <trans-unit id="s833cf35ed6049636">
-        <source>Set list options of selected elements</source>
-        <target>Ορισμός επιλογών λίστας επιλεγμένων στοιχείων</target>
       </trans-unit>
       <trans-unit id="sea7f9a84b82663b8">
         <source>Column break</source>
@@ -1817,14 +1546,6 @@
         <source>App Folder</source>
         <target>Φάκελος εφαρμογών</target>
       </trans-unit>
-      <trans-unit id="sc221faca1ecb4aee">
-        <source>Anonymous</source>
-        <target>Ανώνυμος</target>
-      </trans-unit>
-      <trans-unit id="sdcd1efc06af80825">
-        <source>All rights reserved</source>
-        <target>Όλα τα δικαιώματα διατηρούνται</target>
-      </trans-unit>
       <trans-unit id="s78789724e789221c">
         <source>Size</source>
         <target>Μέγεθος</target>
@@ -1993,18 +1714,6 @@
       <trans-unit id="sb199b34dca0a4cfc">
         <source>Enter content here...</source>
         <target>Εισάγετε το περιεχόμενο εδώ...</target>
-      </trans-unit>
-      <trans-unit id="s775056d1cb76fbe9">
-        <source>Headline</source>
-        <target>Επικεφαλίδα</target>
-      </trans-unit>
-      <trans-unit id="scf735dfae10f3870">
-        <source>Educational</source>
-        <target>Εκπαιδευτικό</target>
-      </trans-unit>
-      <trans-unit id="s11fdceabe7befeff">
-        <source>Accessibility</source>
-        <target>Προσβασιμότητα</target>
       </trans-unit>
       <trans-unit id="s99f110d27e30b289">
         <source>Title</source>
@@ -2335,6 +2044,70 @@
       <trans-unit id="s082869038c117fe5">
         <source>Portuguese (Brazil)</source>
         <target>Πορτογαλικά (Βραζιλία)</target>
+      </trans-unit>
+      <trans-unit id="s55905c735052d295">
+        <source>Thematic Break</source>
+        <target>Θεματικό διάλειμμα</target>
+      </trans-unit>
+      <trans-unit id="s936aa0b239679585">
+        <source>Insert a thematic break (usually displayed as a horizontal line)</source>
+        <target>Εισάγετε ένα θεματικό διάλειμμα (συνήθως εμφανίζεται ως οριζόντια γραμμή)</target>
+      </trans-unit>
+      <trans-unit id="sc43767deea72e9f3">
+        <source>Description List</source>
+        <target>Λίστα περιγραφής</target>
+      </trans-unit>
+      <trans-unit id="saf312eaeec77a802">
+        <source>Insert a description list (glossary, term list)</source>
+        <target>Εισαγωγή καταλόγου περιγραφής (γλωσσάριο, κατάλογος όρων)</target>
+      </trans-unit>
+      <trans-unit id="s9abadcc828884d7b">
+        <source>Textarea</source>
+        <target>Περιοχή κειμένου</target>
+      </trans-unit>
+      <trans-unit id="sf4e0e02a5277ef23">
+        <source>Insert an textarea</source>
+        <target>Εισαγωγή μιας περιοχής κειμένου</target>
+      </trans-unit>
+      <trans-unit id="sa557ae6bee9148a6">
+        <source>Progress</source>
+        <target>Πρόοδος</target>
+      </trans-unit>
+      <trans-unit id="s4f26e7cb7c0a8318">
+        <source>Vector Drawing</source>
+        <target>Διανυσματικό σχέδιο</target>
+      </trans-unit>
+      <trans-unit id="sfbbab09dbe553571">
+        <source>Insert a vector drawing (SVG)</source>
+        <target>Εισαγωγή διανυσματικού σχεδίου (SVG)</target>
+      </trans-unit>
+      <trans-unit id="s029504322b353edf">
+        <source>Size &amp; Spacing</source>
+        <target>Μέγεθος &amp; απόσταση</target>
+      </trans-unit>
+      <trans-unit id="sa589e1df65dde0ec">
+        <source>Set the size, padding, and margins of the selected elements</source>
+        <target>Ορίστε το μέγεθος, το padding και τα περιθώρια των επιλεγμένων στοιχείων</target>
+      </trans-unit>
+      <trans-unit id="sfd54046c9e2030c2">
+        <source>Filters &amp; Colors</source>
+        <target>Φίλτρα &amp; χρώματα</target>
+      </trans-unit>
+      <trans-unit id="s3db5d66ac9e64eae">
+        <source>Apply filters (blur, invert, etc.) to and set colors for the selected elements</source>
+        <target>Εφαρμογή φίλτρων (θόλωση, αντιστροφή κ.λπ.) και ορισμός χρωμάτων για τα επιλεγμένα στοιχεία</target>
+      </trans-unit>
+      <trans-unit id="s3f1e7a3f2b283d3b">
+        <source>Margin</source>
+        <target>Περιθώριο</target>
+      </trans-unit>
+      <trans-unit id="s9370dc6afa716b57">
+        <source>Border</source>
+        <target>Σύνορα</target>
+      </trans-unit>
+      <trans-unit id="s7d8103f6f06f83d6">
+        <source>Padding</source>
+        <target>γεμίζω</target>
       </trans-unit>
     </body>
   </file>
