@@ -577,13 +577,10 @@ async function getFetchResponse(e: FetchEvent) {
 worker.addEventListener("install", async () => {
   console.log("Installing service worker")
   worker.skipWaiting()
-  await caches.delete("ww/v1")
 })
 
 worker.addEventListener("activate", async (e) => {
   console.log("Activating service worker")
-  worker.skipWaiting()
-  e.waitUntil(new Promise(r => setTimeout(r, 500)))
   await caches.delete("ww/v1")
 })
 
