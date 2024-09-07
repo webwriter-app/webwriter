@@ -6,7 +6,7 @@ const pkg = JSON.parse(readFileSync("package.json", "utf8"))
 for(const [name, simulation] of Object.entries(simulations)) {
   const template = `<iframe src="https://phet.colorado.edu/sims/html/${name}/latest/${name}_all.html"></iframe>`
   writeFileSync(`snippets/${name}.html`, template, "utf8")
-  const key = `./snippets/${name}`
+  const key = `./snippets/${name}.html`
   const path = `./snippets/${name}.html`
   pkg.exports = {
     ...pkg?.exports,
