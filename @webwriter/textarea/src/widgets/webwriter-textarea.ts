@@ -1,6 +1,5 @@
 import "@shoelace-style/shoelace/dist/themes/light.css"
 import SlTextarea from "@shoelace-style/shoelace/dist/components/textarea/textarea.component.js"
-import { ScopedElementsMixin } from '@open-wc/scoped-elements/lit-element.js';
 
 import { html, css, LitElement } from "lit"
 import { property, query, customElement } from "lit/decorators.js"
@@ -13,10 +12,10 @@ export default class WebwriterTextarea extends LitElementWw {
   static shadowRootOptions = {...LitElement.shadowRootOptions, delegatesFocus: true}
 
   @property({type: String, attribute: true, reflect: true})
-  value: string
+  accessor value: string
 
   @query("sl-textarea")
-  textarea: SlTextarea
+  accessor textarea: SlTextarea
 
   setValue = (value: string) => this.value = value
 
