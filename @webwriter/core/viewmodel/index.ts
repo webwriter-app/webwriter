@@ -42,7 +42,14 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
           import.meta.env.MODE === 'production' ? '/bundleservice.js' : '/dev-sw.js?dev-sw', // @ts-ignore
           { type: "module", scope: "/" }
         )
-        await registration.update();
+        const worker = registration.installing
+        if(worker) {
+          console.log("Worker is installing")
+          await Promise.race([
+            new Promise(resolve => worker.addEventListener("statechange", e => worker.state === "activated"? resolve: null)),
+            new Promise(r => setTimeout(r, 10000))
+          ])
+        }
         console.log("App considers service worker ready")
       }
       else {
