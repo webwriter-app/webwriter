@@ -759,7 +759,7 @@ export class PackageStore {
 
     const members = {} as Record<string, MemberSettings>
     for(const [rawName, p] of Object.entries(exports)) {
-      const name = rawName.endsWith(".*")? rawName.replace(".*", ""): rawName
+      const name = rawName.replace(/(\.html|\.\*|\.css)$/g, "")
       const isWidget = name.split("/").at(-2) === "widgets"
       const isSnippet = name.split("/").at(-2) === "snippets"
       const isTheme = name.split("/").at(-2) === "themes"
@@ -901,10 +901,7 @@ export class PackageStore {
     return pkgs.flatMap(pkg => {
       const widgets = pkg?.widgets ?? {}
       console.log(widgets)
-      return Object.keys(widgets).map(k => widgets[k].legacy
-        ? pkg.id + k.slice(1)
-        : pkg.id + k.slice(1)
-      )
+      return Object.keys(widgets).map(k => pkg.id + k.slice(1) + ".js")
     })
   }
 
