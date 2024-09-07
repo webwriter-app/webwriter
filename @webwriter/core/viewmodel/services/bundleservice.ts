@@ -422,7 +422,6 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
   let allLinked = false
   do {
     try {
-      console.log(_ids)
       await generator.install(_ids)
       allLinked = true
     }
@@ -433,7 +432,8 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
         _ids = _ids.filter(id => id !== regexMatch[1])
       }
       else {
-        throw err
+        console.error(err)
+        return new Response(null, {status: 500, statusText: err?.message})
       }
     }
   } while(_ids.length && !allLinked)
@@ -448,8 +448,15 @@ async function getBundle(ids: string[], importMap: ImportMap, options?: esbuild.
   }
   else if(jsIds.length) {
     const opts = {...parseEsbuildOptions(ids.join(" ")), ...options}
-    const result = await compiler.compile({target: "es2022", format: "esm", conditions: ["source"], ...opts}, importMap)
-    const js = result.outputFiles.find(file => file.path.endsWith("js"))?.contents
+    let result: esbuild.BuildResult
+    try {
+      result = await compiler.compile({target: "es2022", format: "esm", conditions: ["source"], ...opts}, importMap)
+    }
+    catch(err: any) {
+      console.error(err)
+      return new Response(null, {status: 500, statusText: err?.message})
+    }
+    const js = result.outputFiles?.find(file => file.path.endsWith("js"))?.contents
     if(result.errors.length || !js) {
       return new Response(new Blob([JSON.stringify(result.errors)], {type: "application/json"}), {status: 400, statusText: "Error while bundling"})
     }
