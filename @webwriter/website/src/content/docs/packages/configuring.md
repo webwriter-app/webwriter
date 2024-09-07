@@ -13,11 +13,17 @@ Here is a minimal example:
 **`package.json`**
 ```json
 {
-  "name": "@awesome/widgets",
+  "name": "@awesome/package",
   "version": "0.1.0",
   "keywords": ["webwriter-widget"],
+  "script": {
+    "prepublishOnly": "npx @webwriter/build"
+  },
   "exports": {
-    "./widgets/awesome-widget": "./widgets/awesome-widget.ts"
+    "./widgets/awesome-widget.*": {
+      "source": "./src/widgets/awesome-widget.ts",
+      "default": "./dist/widgets/awesome-widget.*"
+    },
   }
 }
 ```
@@ -39,7 +45,24 @@ You should stick to some rules so WebWriter can automatically update explorable 
 Each WebWriter widget must have the `webwriter-widget` keyword so it can be found and installed. It is recommended you add additional keywords to describe your widget further.
 
 ### `exports`
-The `exports` field is an object mapping an exported name to a file path. There are three types of exports: Widgets, snippets and themes. 
+The `exports` field is an object mapping an exported name to a file path. There are three types of exports: Widgets, snippets and themes. Each should be exported according to the following example:
+
+**Full format for `@webwriter/build`**
+```json
+{
+  "name": "@awesome/package",
+  "version": "0.1.0",
+  "keywords": ["webwriter-widget"],
+  "exports": {
+    "./widgets/awesome-widget.*": {
+      "source": "./src/widgets/awesome-widget.ts",
+      "default": "./dist/widgets/awesome-widget.*"
+    },
+    "./snippets/awesome-snippet.html": "./src/snippets/awesome-snippet.html",
+    "./themes/awesome-theme.html": "./src/themes/awesome-theme.css"
+  }
+}
+```
 
 ## Optional fields
 
