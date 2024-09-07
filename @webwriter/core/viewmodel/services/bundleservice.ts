@@ -580,20 +580,27 @@ worker.addEventListener("install", async () => {
   await caches.delete("ww/v1")
 })
 
-worker.addEventListener("activate", () => console.log("Activating service worker"))
+worker.addEventListener("activate", async (e) => {
+  console.log("Activating service worker")
+  worker.skipWaiting()
+  e.waitUntil(new Promise(r => setTimeout(r, 500)))
+  await caches.delete("ww/v1")
+})
 
-worker.addEventListener("fetch", e => {
-  const url = new URL(e.request.url)
-  const shouldIntercept = url.hostname === "api.webwriter.app" && url.pathname.startsWith("/ww/v1/")
-  if(shouldIntercept) {
-    try {
-      e.respondWith(getFetchResponse(e) as any)
+worker.addEventListener("activate", () => {
+  worker.addEventListener("fetch", e => {
+    const url = new URL(e.request.url)
+    const shouldIntercept = url.hostname === "api.webwriter.app" && url.pathname.startsWith("/ww/v1/")
+    if(shouldIntercept) {
+      try {
+        e.respondWith(getFetchResponse(e) as any)
+      }
+      catch(err: any) {
+        console.error(err)
+        e.respondWith(new Response(null, {status: 500, statusText: err.message}))
+      }
     }
-    catch(err: any) {
-      console.error(err)
-      e.respondWith(new Response(null, {status: 500, statusText: err.message}))
-    }
-  }
+  })
 })
 
 /** API api.webwriter.app/bundle/
