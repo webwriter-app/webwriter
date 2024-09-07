@@ -40,10 +40,9 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
         const registration = await navigator.serviceWorker.register(
           // @ts-ignore
           import.meta.env.MODE === 'production' ? '/bundleservice.js' : '/dev-sw.js?dev-sw', // @ts-ignore
-          { type: "module" }
+          { type: "module", scope: "/" }
         )
-        await registration.update()
-        await navigator.serviceWorker.ready
+        await registration.update();
         console.log("App considers service worker ready")
       }
       else {
