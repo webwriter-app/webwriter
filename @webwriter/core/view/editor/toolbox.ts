@@ -1311,7 +1311,6 @@ export class  Toolbox extends LitElement {
       </sl-breadcrumb>`
     }
     const els = this.activeElementPath
-    console.log(els)
     return html`<sl-breadcrumb id="element-breadcrumb">
       ${els.map((el, i) => this.ElementBreadcrumbItem(el, i === els.length - 1))}
       ${this.gapSelected? html`

@@ -352,7 +352,6 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
   accessor url: string
 
   async initializeIFrame() {
-    console.log("initialize iframe")
     this.iframe = this.shadowRoot?.querySelector("iframe") as any
     if(WEBWRITER_ENVIRONMENT.backend === "tauri") {
       const {contentScript} = this
