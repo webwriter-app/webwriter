@@ -1,6 +1,6 @@
 import {html, css, PropertyValueMap, TemplateResult, PropertyValues} from "lit"
 import {styleMap} from "lit/directives/style-map.js"
-import {LitElementWw, option, action} from "../../lit"
+import {LitElementWw, option, action} from "@webwriter/lit"
 import {customElement, property, queryAssignedElements, query} from "lit/decorators.js"
 
 import SlButton from "@shoelace-style/shoelace/dist/components/button/button.component.js"
@@ -17,7 +17,7 @@ import "@shoelace-style/shoelace/dist/themes/light.css"
 import MiniMasonry from "minimasonry"
 
 
-function shuffle<T>(a: T[]) {
+export function shuffle<T>(a: T[]) {
   for (let i = a.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [a[i], a[j]] = [a[j], a[i]];
@@ -48,7 +48,7 @@ export class WebwriterChoice extends LitElementWw {
     return this.children?.item(0)?.getAttribute("layout") as any ?? "list"
   }
 
-  @property({type: String, attribute: true, reflect: true})
+  @property({type: String, attribute: true, reflect: true}) //@ts-ignore
   @option({
     type: "select",
     options: [
@@ -67,6 +67,30 @@ export class WebwriterChoice extends LitElementWw {
     label: {"en": "Random Choice Order"}
   })
   accessor randomOrder = false
+
+
+  get solution() {
+    const validIDs = this.items.filter(item => item.valid).map(item => item.id)
+    return validIDs.length? validIDs: undefined
+  }
+
+  set solution(value: string[]) {
+    this.items.forEach(item => value.includes(item.id)? item.valid=true: null)
+  }
+
+  
+  reportSolution() {
+    if(!this.solution) {
+      this.items.forEach(item => item.valid = true)
+      return
+    }
+    this.items.forEach(item => item.valid = (this.solution ?? []).includes(item.id))
+  }
+
+  reset() {
+    this.items.forEach(item => {item.valid = undefined; item.active = false})
+    this.shuffleItems()
+  }
 
   static scopedElements = {
     "sl-button": SlButton,
@@ -230,14 +254,6 @@ export class WebwriterChoice extends LitElementWw {
     .map((item, i) => [item.valid, i] as [boolean, number])
     .filter(([valid]) => valid)
     .map(([_, i]) => i)
-  }
-
-  reportSolution(solution: {value: number[]}) {
-    this.items.forEach((item, i) => item.valid = solution?.value?.includes(i))
-  }
-
-  resetSolution() {
-    this.items.forEach(item => {item.valid = false; item.active = false})
   }
 
   handleControlChange = (e: CustomEvent) => {

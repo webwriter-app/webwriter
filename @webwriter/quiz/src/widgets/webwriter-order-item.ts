@@ -13,6 +13,10 @@ import "@shoelace-style/shoelace/dist/themes/light.css"
 import { keyed } from "lit/directives/keyed.js"
 import { ifDefined } from "lit/directives/if-defined.js"
 
+import IconX from "bootstrap-icons/icons/x.svg"
+import IconCheck from "bootstrap-icons/icons/check.svg"
+import { shuffle } from "./webwriter-choice"
+
 declare global {interface HTMLElementTagNameMap {
   "webwriter-order-item": WebwriterOrderItem;
 }}
@@ -67,19 +71,8 @@ export class WebwriterOrderItem extends LitElementWw {
       const inTopHalf = e.offsetY < this.offsetHeight / 2
       const inLeftHalf = e.offsetX < this.offsetWidth / 2
       const el = document.querySelector(`webwriter-order-item#${id}`)
-      if(!el) {
-        console.log("element from other document")
-        const html = e.dataTransfer.getData("text/html")
-        this.parentElement.insertAdjacentHTML("beforeend", html)
-      }
-      else if(el && !this.parentElement?.contains(el)) {
-        console.log("element from this document")
-        this.parentElement.insertAdjacentElement("beforeend", el)
-      }
-      else {
-        const offset = (this.layout === "tiles"? inLeftHalf: inTopHalf)? 0: 1
-        el.dispatchEvent(new CustomEvent("ww-moveto", {bubbles: true, detail: {i: this.elementIndex + offset}}))
-      }
+      const offset = (this.layout === "tiles"? inLeftHalf: inTopHalf)? 0: 1
+      el.dispatchEvent(new CustomEvent("ww-moveto", {bubbles: true, detail: {i: this.elementIndex + offset}}))
       // this.insertAdjacentHTML(inTopHalf? "beforebegin": "afterend", html)
     }, {passive: true})
     this.addEventListener("dragover", e => {
@@ -107,10 +100,28 @@ export class WebwriterOrderItem extends LitElementWw {
   @property({type: String, attribute: true, reflect: true})
   accessor layout: "list" | "tiles" = "list"
 
+  @property({type: Number, attribute: false})
+  accessor validOrder: number | undefined
+
+  @property({type: Boolean, attribute: true, reflect: true})
+  accessor hideOrderButtons = false
+
   static styles = css`
 
     :host {
       position: relative;
+    }
+
+    :host(:is([contenteditable=true], [contenteditable=""])) .user-only {
+      display: none;
+    }
+
+    ::marker {
+      font-weight: bold;
+    }
+
+    :host(:is([contenteditable=true], [contenteditable=""])) ::marker {
+      color: var(--sl-color-success-800);
     }
 
     ol {
@@ -119,6 +130,32 @@ export class WebwriterOrderItem extends LitElementWw {
       width: 100%;
       position: relative;
     }
+
+    .solution {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: absolute;
+      top: -7px;
+      left: -13px;
+      border: 2px solid var(--sl-color-gray-500);
+      border-radius: 100%;
+      width: 15px;
+      height: 15px;
+      font-size: 10px;
+      z-index: 1;
+      color: white;
+      font-weight: bold;
+
+      &[data-valid] {
+        background: var(--sl-color-success-600);
+      }
+
+      &:not([data-valid]) {
+        background: var(--sl-color-danger-600);
+      }
+    }
+
 
     :host([layout=tiles]) {
       border: 2px solid var(--sl-color-gray-500);
@@ -130,6 +167,15 @@ export class WebwriterOrderItem extends LitElementWw {
       min-height: 125px;
       height: 125px;
       max-height: 350px;
+
+      & .solution {
+        left: unset;
+        top: -10px;
+        right: -10px;
+        width: 20px;
+        height: 20px;
+        font-size: 15px;
+      }
 
       & ol[part=base] {
         padding-left: 0;
@@ -222,6 +268,10 @@ export class WebwriterOrderItem extends LitElementWw {
       }
     }
 
+    :host([hideorderbuttons]) #order-buttons {
+      display: none;
+    }
+
     #handle {
       box-sizing: border-box;
       border-radius: 2px;
@@ -301,24 +351,6 @@ export class WebwriterOrderItem extends LitElementWw {
     }
   `
 
-  moveUp() {
-    const prev = this.previousElementSibling
-    const html = this.outerHTML
-    if(prev) {
-      prev.insertAdjacentHTML("beforebegin", html)
-      this.remove()
-    }
-  }
-
-  moveDown() {
-    const next = this.nextElementSibling
-    const html = this.outerHTML
-    if(next) {
-      next.insertAdjacentHTML("afterend", html)
-      this.remove()
-    }
-  }
-
   handleClick = (e: PointerEvent, up=false) => {
     if((e.target as HTMLElement).id === "up") {
       this.dispatchEvent(new CustomEvent("ww-moveup", {bubbles: true}))
@@ -339,14 +371,22 @@ export class WebwriterOrderItem extends LitElementWw {
 
   protected async updated(_changedProperties: PropertyValues) {
     if(_changedProperties.has("layout") && this.layout === "list") {
+      console.log("switched to list")
       this.syncSize(true)
       this.observer?.disconnect()
+      this.requestUpdate()
     }
     else if(_changedProperties.has("layout") && this.layout === "tiles") {
       this.syncSize()
-      this.observer = new MutationObserver(() => this.syncSize())
-      this.observer.observe(this.baseEl, {attributeFilter: ["style"], attributes: true})
+      if(!this.observer) {
+        this.observer = new MutationObserver(() => this.syncSize())
+        this.observer.observe(this.baseEl, {attributeFilter: ["style"], attributes: true})
+      }
     }
+  }
+
+  protected firstUpdated(_changedProperties: PropertyValues): void {
+    this.requestUpdate()
   }
 
   syncSize(clear=false) {
@@ -363,18 +403,43 @@ export class WebwriterOrderItem extends LitElementWw {
   disconnectedCallback(): void {
     super.disconnectedCallback()
     this.observer?.disconnect()
+    this.observer = undefined
+  }
+
+  get nextElementInOrder() {
+    return Array.from(this?.parentElement?.children ?? []).find((el: HTMLElement) => {
+      const elOrder = parseInt(getComputedStyle(el).order)
+      return elOrder === this.elementIndex + 1
+    })
+  }
+
+  get prevElementInOrder() {
+    return Array.from(this?.parentElement?.children ?? []).find((el: HTMLElement) => {
+      const elOrder = parseInt(getComputedStyle(el).order)
+      return elOrder === this.elementIndex - 1
+    })
+  }
+
+  get inCorrectPosition() {
+    return this.elementIndex === this.validOrder
   }
 
   render() {
+    const solution = this.validOrder !== undefined? html`<span class="solution" ?data-valid=${this.elementIndex === this.validOrder}>${this.validOrder + 1}</span>`: null
     return html`<ol part="base" start=${this.elementIndex + 1}>
-      <li id="main-li"><slot id="content" style=${styleMap({"--ww-placeholder": `"${this.msg("Option")}"`, "--offset": `${this.contentSlotEl?.offsetLeft + 1}px`})}></slot></li>
-      <div id="order-buttons" draggable="false">
-        <!--<sl-icon-button id="up" class="order-button" src=${IconTrash} @click=${() => this.remove()} ?disabled=${this.matches(":only-child")}></sl-icon-button>-->
-        <sl-icon-button ?disabled=${!this.previousElementSibling} id="up" class="order-button" src=${IconArrowUp} @click=${this.handleClick}  @mousedown=${e => this.draggable = false} @mouseup=${() => this.draggable = true}></sl-icon-button>
-        <sl-icon-button ?disabled=${!this.nextElementSibling} id="down" class="order-button" src=${IconArrowDown} @click=${this.handleClick}></sl-icon-button>
+      ${this.layout === "list"? solution: null}
+      <li id="main-li">
+        <slot id="content" style=${styleMap({"--ww-placeholder": `"${this.msg("Option")}"`, "--offset": `${this.contentSlotEl?.offsetLeft + 1}px`})}></slot>
+      </li>
+      <div id="order-buttons" part="order-buttons" draggable="false">
+        <sl-icon-button ?disabled=${!this.previousElementSibling} id="up" class="order-button user-only" src=${IconArrowUp} @click=${this.handleClick} @mouseup=${() => this.draggable = true}></sl-icon-button>
+        <sl-icon-button ?disabled=${!this.nextElementSibling} id="down" class="order-button user-only" src=${IconArrowDown} @click=${this.handleClick}></sl-icon-button>
       </div>
     </ol>
-    <ol id="count" start=${this.elementIndex + 1}><li ?data-two-digit=${this.elementIndex + 1 >= 10}></li></ol>
+    <ol id="count" start=${this.elementIndex + 1}>
+      <li ?data-two-digit=${this.elementIndex + 1 >= 10}></li>
+      ${this.layout === "tiles"? solution: null}
+    </ol>
     <div id="handle"></div>`
   }
 }

@@ -26,6 +26,7 @@ export class WebwriterTaskExplainer extends LitElementWw {
       overflow-y: auto;
       scrollbar-width: thin;
       resize: vertical;
+      display: block;
     }
   `
 

@@ -7,8 +7,12 @@ import {customElement, property, query} from "lit/decorators.js"
 
 import SlRadio from "@shoelace-style/shoelace/dist/components/radio/radio.component.js"
 import SlCheckbox from "@shoelace-style/shoelace/dist/components/checkbox/checkbox.component.js"
+import SlIcon from "@shoelace-style/shoelace/dist/components/icon/icon.component.js"
 import "@shoelace-style/shoelace/dist/themes/light.css"
 import { keyed } from "lit/directives/keyed.js"
+import IconX from "bootstrap-icons/icons/x.svg"
+import IconCheck from "bootstrap-icons/icons/check.svg"
+
 
 declare global {interface HTMLElementTagNameMap {
   "webwriter-choice-item": WebwriterChoiceItem;
@@ -25,23 +29,39 @@ export class WebwriterChoiceItem extends LitElementWw {
   accessor active = false
 
   @property({type: Boolean, attribute: false})
-  accessor valid = false
+  accessor valid: true | false | undefined
+
+  // inactive + invalid/no validity -> nothing
+  // active + no validity -> blue circle
+  // inactive/active + valid -> green upper checkmark
+  // active + invalid -> red upper cross
+
 
   @property({type: String, attribute: true, reflect: true})
   accessor layout: "list" | "tiles" = "list"
 
   static scopedElements = {
     "sl-radio": SlRadio,
-    "sl-checkbox": SlCheckbox
+    "sl-checkbox": SlCheckbox,
+    "sl-icon": SlIcon
   }
 
   static styles = css`
 
     :host {
       width: 100%;
+      position: relative;
     }
 
-    sl-checkbox.valid {
+    :host(:not([contenteditable=true]):not([contenteditable=""])) .author-only {
+      display: none;
+    }
+
+    :host(:is([contenteditable=true], [contenteditable=""])) .user-only {
+      display: none;
+    }
+
+    :host(:is([contenteditable=true], [contenteditable=""])) sl-checkbox.valid {
       --webwriter-control-color-600: var(--sl-color-success-600);
       --webwriter-control-color-400: var(--sl-color-success-400);
     }
@@ -82,6 +102,26 @@ export class WebwriterChoiceItem extends LitElementWw {
 
       &::part(label) {
         width: 100%;
+      }
+    }
+
+    .solution {
+      position: absolute;
+      top: -6px;
+      left: -6px;
+      border: 2px solid var(--sl-color-gray-500);
+      border-radius: var(--webwriter-choice-radius, 2px);
+      width: 12px;
+      height: 12px;
+      z-index: 1;
+      color: white;
+
+      &[data-valid] {
+        background: var(--sl-color-success-600);
+      }
+
+      &:not([data-valid]) {
+        background: var(--sl-color-danger-600);
       }
     }
 
@@ -202,7 +242,8 @@ export class WebwriterChoiceItem extends LitElementWw {
 
   render() {
     return keyed(this.layout, html`
-      <sl-checkbox class=${classMap({valid: this.valid, active: this.active})} exportparts="base, control, label" @click=${this.handleClick} @sl-change=${this.handleChange} ?checked=${this.valid || this.active}>
+      ${this.valid !== undefined && (this.active || !this.active && this.valid)? html`<sl-icon class="solution user-only" ?data-valid=${this.valid} src=${this.valid? IconCheck: IconX}></sl-icon>`: null}
+      <sl-checkbox class=${classMap({valid: this.valid, active: this.active})} exportparts="base, control, label" @click=${this.handleClick} @sl-change=${this.handleChange} ?checked=${this.isContentEditable? this.valid: this.active}>
         <slot part="slot" style=${styleMap({"--ww-placeholder": `"${this.msg("Option")}"`})}></slot>
       </sl-checkbox>
     `)

@@ -1,9 +1,12 @@
 {
   "name": "@webwriter/quiz",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "keywords": [
     "webwriter-widget"
   ],
+  "scripts": {
+    "prepublishOnly": "npx @webwriter/build"
+  },
   "license": "MIT",
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "dependencies": {
@@ -24,29 +27,76 @@
     "@webwriter/phet-simulation": "^1.0.0"
   },
   "exports": {
-    "./widgets/webwriter-quiz": "./widgets/webwriter-quiz.ts",
-    "./snippets/choice": "./snippets/choice.html",
-    "./snippets/order": "./snippets/order.html",
-    "./snippets/text": "./snippets/text.html",
-    "./snippets/mark": "./snippets/mark.html",
-    "./snippets/pairing": "./snippets/pairing.html",
-    "./snippets/cloze": "./snippets/cloze.html",
-    "./snippets/speech": "./snippets/speech.html",
-    "./widgets/webwriter-task": "./widgets/webwriter-task.ts",
-    "./widgets/webwriter-task-prompt": "./widgets/webwriter-task-prompt.ts",
-    "./widgets/webwriter-task-hint": "./widgets/webwriter-task-hint.ts",
-    "./widgets/webwriter-task-explainer": "./widgets/webwriter-task-explainer.ts",
-    "./widgets/webwriter-choice": "./widgets/webwriter-choice.ts",
-    "./widgets/webwriter-choice-item": "./widgets/webwriter-choice-item.ts",
-    "./widgets/webwriter-order": "./widgets/webwriter-order.ts",
-    "./widgets/webwriter-order-item": "./widgets/webwriter-order-item.ts",
-    "./widgets/webwriter-pairing": "./widgets/webwriter-pairing.ts",
-    "./widgets/webwriter-pairing-item": "./widgets/webwriter-pairing-item.ts",
-    "./widgets/webwriter-text": "./widgets/webwriter-text.ts",
-    "./widgets/webwriter-mark": "./widgets/webwriter-mark.ts",
-    "./widgets/webwriter-speech": "./widgets/webwriter-speech.ts",
-    "./widgets/webwriter-cloze": "./widgets/webwriter-cloze.ts",
-    "./widgets/webwriter-cloze-gap": "./widgets/webwriter-cloze-gap.ts"
+    "./widgets/webwriter-quiz.*": {
+      "source": "./src/widgets/webwriter-quiz.ts",
+      "default": "./dist/widgets/webwriter-quiz.*"
+    },
+    "./snippets/choice.html": "./src/snippets/choice.html",
+    "./snippets/order.html": "./src/snippets/order.html",
+    "./snippets/text.html": "./src/snippets/text.html",
+    "./snippets/mark.html": "./src/snippets/mark.html",
+    "./snippets/speech.html": "./src/snippets/speech.html",
+    "./widgets/webwriter-task.*": {
+      "source": "./src/widgets/webwriter-task.ts",
+      "default": "./dist/widgets/webwriter-task.*"
+    },
+    "./widgets/webwriter-task-prompt.*": {
+      "source": "./src/widgets/webwriter-task-prompt.ts",
+      "default": "./dist/widgets/webwriter-task-prompt.*"
+    },
+    "./widgets/webwriter-task-hint.*": {
+      "source": "./src/widgets/webwriter-task-hint.ts",
+      "default": "./dist/widgets/webwriter-task-hint.*"
+    },
+    "./widgets/webwriter-task-explainer.*": {
+      "source": "./src/widgets/webwriter-task-explainer.ts",
+      "default": "./dist/widgets/webwriter-task-explainer.*"
+    },
+    "./widgets/webwriter-choice.*": {
+      "source": "./src/widgets/webwriter-choice.ts",
+      "default": "./dist/widgets/webwriter-choice.*"
+    },
+    "./widgets/webwriter-choice-item.*": {
+      "source": "./src/widgets/webwriter-choice-item.ts",
+      "default": "./dist/widgets/webwriter-choice-item.*"
+    },
+    "./widgets/webwriter-order.*": {
+      "source": "./src/widgets/webwriter-order.ts",
+      "default": "./dist/widgets/webwriter-order.*"
+    }, 
+    "./widgets/webwriter-order-item.*": {
+      "source": "./src/widgets/webwriter-order-item.ts",
+      "default": "./dist/widgets/webwriter-order-item.*"
+    },
+    "./widgets/webwriter-pairing.*": {
+      "source": "./src/widgets/webwriter-pairing.ts",
+      "default": "./dist/widgets/webwriter-pairing.*"
+    },
+    "./widgets/webwriter-pairing-item.*": {
+      "source": "./src/widgets/webwriter-pairing-item.ts",
+      "default": "./dist/widgets/webwriter-pairing-item.*"
+    },
+    "./widgets/webwriter-text.*": {
+      "source": "./src/widgets/webwriter-text.ts",
+      "default": "./dist/widgets/webwriter-text.*"
+    },
+    "./widgets/webwriter-mark.*": {
+      "source": "./src/widgets/webwriter-mark.ts",
+      "default": "./dist/widgets/webwriter-mark.*"
+    },
+    "./widgets/webwriter-speech.*": {
+      "source": "./src/widgets/webwriter-speech.ts",
+      "default": "./dist/widgets/webwriter-speech.*"
+    },
+    "./widgets/webwriter-cloze.*": {
+      "source": "./src/widgets/webwriter-cloze.ts",
+      "default": "./dist/widgets/webwriter-cloze.*"
+    },
+    "./widgets/webwriter-cloze-gap.*": {
+      "source": "./src/widgets/webwriter-cloze-gap.ts",
+      "default": "./dist/widgets/webwriter-cloze-gap.*"
+    },
+    "./package.json": "./package.json"
   },
   "editingConfig": {
     "./widgets/webwriter-choice-item": {
@@ -66,7 +116,7 @@
       "group": "",
       "content": "(p | flow)+",
       "uninsertable": true,
-      "draggable": false,
+      "draggable": true,
       "selectable": false,
       "isolating": false
     },
@@ -85,7 +135,7 @@
       "group": "",
       "content": "picture | flow",
       "uninsertable": true,
-      "draggable": false,
+      "draggable": true,
       "isolating": true
     },
     "./widgets/webwriter-text": {
@@ -94,7 +144,7 @@
     },
     "./widgets/webwriter-mark": {
       "group": "answer inlinecontainer",
-      "content": "_phrase | picture",
+      "content": "(text | br | wbr)*",
       "isolating": true,
       "defining": true,
       "marks": "",

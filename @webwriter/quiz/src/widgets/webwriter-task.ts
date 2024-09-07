@@ -1,4 +1,4 @@
-import {html, css} from "lit"
+import {html, css, PropertyValues} from "lit"
 import {styleMap} from "lit/directives/style-map.js"
 import {LitElementWw, option} from "@webwriter/lit"
 import {customElement, queryAssignedElements, property, query, queryAll} from "lit/decorators.js"
@@ -26,8 +26,8 @@ async function arrayBufferToDataUrl(buffer: ArrayBuffer | Uint8Array) {
   }) as Promise<string>
 }
 
-async function dataUrlToUint8Array(url: string) {
-  return new Uint8Array(await (await (await fetch(url)).blob()).arrayBuffer())
+async function dataUrlToArrayBuffer(url: string) {
+  return await (await (await fetch(url)).blob()).arrayBuffer()
 }
 
 function getKeyMaterial(password: string) {
@@ -95,7 +95,9 @@ function alphabeticalOrdinal(num: number, capitalize=false, alphabet="abcdefghij
 
 
 interface Answer {
-  
+  solution: any
+  reportSolution(): void
+  reset(): void
 }
 
 declare global {interface HTMLElementTagNameMap {
@@ -166,6 +168,10 @@ export class WebwriterTask extends LitElementWw {
       }
     }
 
+    :host(:not([submitted]):not([contenteditable=true]):not([contenteditable=""])) #explainer-group {
+      display: none;
+    }
+
     #task-buttons {
       position: absolute;
       right: 0;
@@ -191,6 +197,10 @@ export class WebwriterTask extends LitElementWw {
 
     sl-tab-group {
       &[data-empty] {
+        display: none;
+      }
+
+      &[data-single] sl-tab {
         display: none;
       }
 
@@ -244,12 +254,14 @@ export class WebwriterTask extends LitElementWw {
   }
 
   get hasHintContent() {
-    return this.hints.some(hint => Array.from(hint.children).some(child => !["BR", "WBR"].includes(child.tagName)) || hint.innerText.trim() !== "")
+    return this.hints.some(hint => hint.innerText.trim() !== "")
   }
 
   @property({type: Boolean, attribute: true, reflect: true})
   accessor hint = false
 
+  @property({type: Boolean, state: true, attribute: false, reflect: false})
+  accessor isChanged = false
   
   get directSubmit() {
     return !this.closest("webwriter-quiz")
@@ -295,11 +307,11 @@ export class WebwriterTask extends LitElementWw {
       const solutionExplainer = this.ownerDocument.createElement("webwriter-task-explainer")
       solutionExplainer.slot = "explainer"
       solutionExplainer.id = "solution"
-      solutionExplainer.active = true
+      solutionExplainer.active = true/*
       const elseExplainer = this.ownerDocument.createElement("webwriter-task-explainer")
       elseExplainer.slot = "explainer"
-      elseExplainer.id = "else"
-      this.append(solutionExplainer, elseExplainer)
+      elseExplainer.id = "else"*/
+      this.append(solutionExplainer)
       this.ownerDocument.getSelection().setBaseAndExtent(solutionExplainer, 0, solutionExplainer, 0)
       this.requestUpdate()
       this.activeExplainer = "solution"
@@ -343,8 +355,15 @@ export class WebwriterTask extends LitElementWw {
     super.connectedCallback()
     this.observer = new MutationObserver(() => this.requestUpdate())
     this.parentElement && this.observer.observe(this.parentElement, {childList: true})
-    this.#encodeSolution({})
+    this.addEventListener("keydown", (e) => this.handleHintKeydown(e))
   }
+
+  protected firstUpdated(_changedProperties: PropertyValues): void {
+    if(this.isContentEditable) {
+      this.#decodeSolution()
+    }
+  }
+
 
   disconnectedCallback(): void {
     super.disconnectedCallback()
@@ -356,6 +375,7 @@ export class WebwriterTask extends LitElementWw {
 
   /** Property containing the password currently entered by the author or user */
   @property({type: String, attribute: false, reflect: false})
+  // @option({type: String, label: {_: "Password"}, description: {_: "Password-protects quiz answers"}})
   accessor password: string = "B08bxd82SAOf"
 
   @property({type: String, attribute: true, reflect: true})
@@ -364,15 +384,15 @@ export class WebwriterTask extends LitElementWw {
   @property({type: String, attribute: true, reflect: true})
   accessor iv: string
 
-  async #encodeSolution(value: Record<string, string>) {
+  async #encodeSolution() {
+    const value = this.answer.solution as any
+    console.log(value)
     let keyMaterial = await getKeyMaterial(this.password)
     let salt = window.crypto.getRandomValues(new Uint8Array(16))
     let iv = window.crypto.getRandomValues(new Uint8Array(12))
     let key = await getKey(keyMaterial, salt)
-    
     let encoder = new TextEncoder();
     let encodedMessage = encoder.encode(JSON.stringify(value))
-  
     const solution = await window.crypto.subtle.encrypt(
       {name: "AES-GCM", iv}, 
       key,
@@ -382,24 +402,25 @@ export class WebwriterTask extends LitElementWw {
     this.solution = await arrayBufferToDataUrl(solution)
     this.iv = await arrayBufferToDataUrl(iv)
     this.salt = await arrayBufferToDataUrl(salt)
-
   }
 
-  async #decodeSolution(): Promise<Record<string, string>> {
-    const encodedSolution = await dataUrlToUint8Array(this.solution)
-    const iv = await dataUrlToUint8Array(this.iv)
-    const salt = await dataUrlToUint8Array(this.salt)
+  async #decodeSolution() {
+    if(!this.solution) {
+      return
+    }
+    const encodedSolution = await dataUrlToArrayBuffer(this.solution)
+    const iv = await dataUrlToArrayBuffer(this.iv)
+    const salt = await dataUrlToArrayBuffer(this.salt)
     let keyMaterial = await getKeyMaterial(this.password)
-    let key = await getKey(keyMaterial, salt)
+    let key = await getKey(keyMaterial, new Uint8Array(salt))
     try {
-      return {}
       const solutionBuffer = await window.crypto.subtle.decrypt({name: "AES-GCM", iv}, key, encodedSolution)
       let decoder = new TextDecoder()
       const solution = JSON.parse(decoder.decode(solutionBuffer))
-      return solution
+      this.answer.solution = solution
     }
     catch(err) {
-      throw err
+      console.error(err)
       throw new Error("Invalid password")
     }
   }
@@ -414,28 +435,6 @@ export class WebwriterTask extends LitElementWw {
   reportSolution() {
     // @ts-ignore
     this.answer.reportSolution(this.#decodeSolution())
-  }
-
-  resetSolution() {
-    // @ts-ignore
-    this.answer.resetSolution()
-  }
-
-  handleAnswerChange = async (e: CustomEvent) => {
-    if(this.isContentEditable) {
-      this.#encodeSolution(e.detail)
-      console.log(await this.#decodeSolution())
-    }
-  }
-
-  handleSlotChange = (e: Event) => {
-    this.requestUpdate()
-    if(this.isContentEditable) {
-      const solution = this.#decodeSolution() ?? {}
-      Object.entries(solution).forEach(([k, v]) => {
-        this.answer[k] = v
-      })
-    }
   }
 
   @query("slot:not([name])")
@@ -457,14 +456,43 @@ export class WebwriterTask extends LitElementWw {
     }
   }
 
-  handleSubmit = () => {
+  handleHintKeydown = (e: KeyboardEvent) => {
+    console.log(document.getSelection().anchorOffset === 0, this.hints.includes(document.getSelection().anchorNode.parentElement))
+    if(e.key === "Backspace" && document.getSelection().anchorOffset === 0 && this.hints.includes(document.getSelection().anchorNode.parentElement)) {
+      this.hintOpen = false
+      this.hint = false
+    }
+  }
+
+  handleSubmit = async () => {
+    await this.#decodeSolution()
     this.answer.reportSolution()
+    this.dispatchEvent(new SubmitEvent("submit", {bubbles: true, composed: true}))
+    this.activeExplainer = this.explainers[0].id
     this.submitted = true
   }
 
   handleReset = () => {
-    this.answer.resetSolution()
+    this.answer.reset && this.answer.reset()
+    this.isChanged = false
     this.submitted = false
+  }
+
+  handleAnswerChange = async (e: CustomEvent) => {
+    this.isChanged = true
+    if(this.isContentEditable) {
+      this.#encodeSolution()
+    }
+  }
+
+  handleSlotChange = (e: Event) => {
+    this.requestUpdate()
+    if(this.isContentEditable) {
+      const solution = this.#decodeSolution() ?? {}
+      Object.entries(solution).forEach(([k, v]) => {
+        this.answer[k] = v
+      })
+    }
   }
 
   @property()
@@ -480,7 +508,7 @@ export class WebwriterTask extends LitElementWw {
 
   get explainerLabels() {
     return {
-      "solution": "If correct",
+      "solution": "Explainer",
       "else": "Else"
     }
   }
@@ -500,15 +528,15 @@ export class WebwriterTask extends LitElementWw {
           </sl-popup>
         </div>
       </header>
-      <slot @ww-answer-change=${this.handleAnswerChange} @slotchange=${this.handleSlotChange}></slot>
-      <sl-tab-group placement="end" ?data-empty=${!this.explainers.length}>
+      <slot @ww-answer-change=${this.handleAnswerChange} @slotchange=${this.handleSlotChange} ?inert=${this.submitted}></slot>
+      <sl-tab-group id="explainer-group" placement="end" ?data-empty=${!this.explainers.length} ?data-single=${this.explainers.length === 1}>
         ${this.explainers.map((explainer, i) => html`<sl-tab ?active=${this.activeExplainer === explainer.id} slot="nav" @click=${() => this.selectExplainer(explainer.id)}>${this.explainerLabels[explainer.id] ?? explainer.id}</sl-tab>`)}
         <slot name="explainer" style=${styleMap({"--ww-placeholder": `"${this.msg("Explanation")}"`})}></slot>
       </sl-tab-group>
       ${!this.directSubmit || !this.answer?.reportSolution? null: html`
         <sl-button-group class="user-only user-actions">
-          <sl-button id="submit" @click=${this.handleSubmit}>Submit</sl-button>
-          <sl-button ?disabled=${!this.submitted} id="reset" class="user-only" @click=${this.handleReset}>Reset</sl-button>
+          <sl-button id="submit" @click=${this.handleSubmit}>Check your answers</sl-button>
+          <sl-button ?disabled=${!this.isChanged && !this.submitted} id="reset" class="user-only" @click=${this.handleReset}>Try again</sl-button>
         </sl-button-group>
       `}
     `

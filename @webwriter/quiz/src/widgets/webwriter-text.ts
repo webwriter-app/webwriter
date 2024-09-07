@@ -69,10 +69,32 @@ export class WebwriterText extends LitElementWw {
         height: 100%;
       }
     }
+
+    :is(sl-textarea, sl-input)[data-correct]::part(base) {
+      background: var(--sl-color-success-200);
+    }
+
+    #solution {
+      padding: 1rem;
+    }
+
+    #solution[data-correct] {
+      background: var(--sl-color-success-200);
+    }
+
+    #solution:not([data-correct]) {
+      background: var(--sl-color-danger-200);
+    }
   `
 
   handleChange = (e: CustomEvent) => {
     const target = e.target as SlTextarea | SlInput
+    if(this.isContentEditable) {
+      this.solution = target.value?.trim()
+    }
+    else {
+      this.value = target.value?.trim()
+    }
     this.dispatchEvent(new CustomEvent("ww-answer-change", {
       detail: {value: target.value},
       bubbles: true,
@@ -87,19 +109,23 @@ export class WebwriterText extends LitElementWw {
     this.input.focus()
   }
 
-  reportSolution(solution: string) {
-    this.solution = solution
+  reset() {
+    this.solution = undefined
+    this.input.value = ""
   }
+
+  reportSolution() {}
 
   @property({type: String, attribute: false, reflect: false})
   accessor solution: string
 
   render() {
-    const textarea = html`<sl-textarea value=${this.isContentEditable? this.solution: this.value} placeholder=${this.placeholder} resize="none"></sl-textarea>`
-    const input = html`<sl-input value=${this.isContentEditable? this.solution: this.value} placeholder=${this.placeholder} type=${this.type}></sl-input>`
+    const correct = this.solution && this.value?.trim() === this.solution
+    const textarea = html`<sl-textarea ?data-correct=${correct} value=${this.isContentEditable? this.solution: this.value} placeholder=${this.placeholder} resize="none" @sl-change=${this.handleChange}></sl-textarea>`
+    const input = html`<sl-input ?data-correct=${correct} value=${this.isContentEditable? this.solution: this.value} placeholder=${this.placeholder} type=${this.type} @sl-change=${this.handleChange}></sl-input>`
     return html`
-      <div id="solution">${this.solution}</div>
       ${this.type === "long-text"? textarea: input}
+      ${this.solution && !this.isContentEditable && !correct? html`<div id="solution" ?data-correct=${correct}>${this.solution}</div>`: undefined}
     `
   }
 }

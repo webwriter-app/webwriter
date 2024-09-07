@@ -59,15 +59,15 @@ export class WebwriterQuiz extends LitElementWw {
       "webwriter-mark": {
         label: this.msg("Mark"),
         icon: IconHighlighter
-      },
-      /*"webwriter-pairing": {
+      },/*
+      "webwriter-pairing": {
         label: this.msg("Pairing"),
         icon: IconSubtract
-      },*/
+      },
       "webwriter-cloze": {
         label: this.msg("Cloze"),
         icon: IconBodyText
-      },
+      },*/
       "webwriter-speech": {
         label: this.msg("Speech"),
         //advanced: true,
@@ -181,7 +181,7 @@ export class WebwriterQuiz extends LitElementWw {
     return this.tasks[0]?.counter
   }
 
-  @property({attribute: true})
+  @property({attribute: true}) //@ts-ignore
   @option({
     type: "select",
     label: {
@@ -209,11 +209,12 @@ export class WebwriterQuiz extends LitElementWw {
   handleSubmit(e: Event) {
     this.submitted = true
     this.dispatchEvent(new Event("submit"))
-    this.tasks.forEach(task => task.reportSolution())
+    this.tasks.forEach(task => task.handleSubmit())
   }
 
   handleReset = () => {
-    this.tasks.forEach(task => task.resetSolution())
+    this.tasks.forEach(task => task.reset())
+    this.requestUpdate()
     this.submitted = false
   }
 
@@ -243,14 +244,18 @@ export class WebwriterQuiz extends LitElementWw {
   @property({type: Boolean, attribute: true, reflect: true})
   accessor submitted = false
 
+  get isChanged() {
+    return this.tasks.some(task => task.isChanged)
+  }
+
   render() {
     const basicAnswerTypes = Object.keys(this.answerTypes).filter(k => !this.answerTypes[k]?.advanced)
     const otherAnswerTypes = Object.keys(this.answerTypes).filter(k => this.answerTypes[k]?.advanced)
     return html`
-      <slot ?inert=${this.submitted}></slot>
+      <slot ?inert=${this.submitted} @ww-answer-change=${() => this.requestUpdate()}></slot>
         <sl-button-group class="user-only user-actions">
           <sl-button id="submit" @click=${this.handleSubmit}>Submit</sl-button>
-          <sl-button ?disabled=${!this.submitted} id="reset" @click=${this.handleReset}>Reset</sl-button>
+          <sl-button ?disabled=${!this.isChanged} id="reset" @click=${this.handleReset}>Reset</sl-button>
         </sl-button-group>
       <sl-button-group class="author-only">
         ${basicAnswerTypes.map(k => html`
@@ -271,7 +276,6 @@ export class WebwriterQuiz extends LitElementWw {
           </sl-menu>
         </sl-dropdown>
       </sl-button-group>
-      <sl-button @click=${this.requestFullscreen}>Fullscreen</sl-button>
       `
   }
 }

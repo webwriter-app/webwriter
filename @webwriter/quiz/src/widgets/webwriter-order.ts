@@ -10,6 +10,7 @@ import IconPlus from "bootstrap-icons/icons/plus.svg"
 
 import { WebwriterOrderItem } from "./webwriter-order-item"
 import { ifDefined } from "lit/directives/if-defined.js"
+import { shuffle } from "./webwriter-choice"
 
 declare global {interface HTMLElementTagNameMap {
   "webwriter-order": WebwriterOrder;
@@ -101,7 +102,7 @@ export class WebwriterOrder extends LitElementWw {
     return this.children?.item(0)?.getAttribute("layout") as any ?? "list"
   }
 
-  @property({type: String, attribute: true, reflect: true})
+  @property({type: String, attribute: true, reflect: true}) //@ts-ignore
   @option({
     type: "select",
     options: [
@@ -114,8 +115,16 @@ export class WebwriterOrder extends LitElementWw {
     this.requestUpdate("layout")
   }
 
-  @property({type: Array, attribute: true, reflect: true})
-  accessor solution: string[] = []
+  get hideOrderButtons() {
+    return !!this.items[0]?.hideOrderButtons
+  }
+
+  @property({type: Boolean, attribute: true, reflect: true}) //@ts-ignore
+  @option({type: Boolean, label: {_: "Hide order buttons"}})
+  set hideOrderButtons(value: boolean) {
+    this.items.forEach(item => item.hideOrderButtons = value)
+  }
+
 
   observer: MutationObserver
 
@@ -125,35 +134,27 @@ export class WebwriterOrder extends LitElementWw {
     this.addEventListener("ww-movedown", this.handleMove)
     this.addEventListener("ww-moveto", this.handleMove)
     this.observer = new MutationObserver(() => {
-      this.items.forEach(el => {
-        if(!this.solution.includes(el.id)) {
-          this.solution = [...this.solution, el.id]
-        }
-      })
-      const itemIDs = this.items.map(item => item.id)
-      this.solution = this.solution.filter(id => itemIDs.includes(id))
       this.items.forEach(item => item.requestUpdate())
+      if(this.isContentEditable) {
+        this.solution = this.items.map(item => item.id)
+      }
       this.clearDropPreviews()
     })
-    this.shadowRoot.adoptedStyleSheets = [...this.shadowRoot.adoptedStyleSheets, this.orderSheet]
     this.observer.observe(this, {childList: true})
+    // this.shadowRoot.adoptedStyleSheets = [...this.shadowRoot.adoptedStyleSheets, this.orderSheet]
+  }
+
+  serializedCallback() {
+    this.shuffleItems()
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback()
-    this.observer.disconnect()
+    this.observer?.disconnect()
+    this.observer = undefined
   }
 
   orderSheet = new CSSStyleSheet()
-
-  protected updated(_changedProperties: PropertyValues): void {
-    if(_changedProperties.has("solution")) {
-      return
-      const cssText = this.solution.map((id, i) => `::slotted(#${id}) {order: ${i}}`).join("\n")
-      this.orderSheet.replaceSync(cssText)
-      this.items.forEach(el => el.requestUpdate())
-    }
-  }
 
   addItem() {
     const orderItem = this.ownerDocument.createElement("webwriter-order-item")
@@ -161,8 +162,14 @@ export class WebwriterOrder extends LitElementWw {
     orderItem.appendChild(p)
     orderItem.setAttribute("layout", this.layout)
     this.append(orderItem)
-    this.solution = [...this.solution, orderItem.id]
+    this.solution = [...this.#solution, orderItem.id]
     this.ownerDocument.getSelection().setBaseAndExtent(p, 0, p, 0)
+  }
+
+  shuffleItems() {
+    const n = this.items.length
+    const nums = shuffle([...(new Array(n)).keys()])
+    this.innerHTML = nums.map(i => this.children.item(i).outerHTML).join("")
   }
 
   clearDropPreviews = () => {
@@ -176,7 +183,6 @@ export class WebwriterOrder extends LitElementWw {
   accessor items: WebwriterOrderItem[]
 
   handleKeyDown(e: KeyboardEvent) {
-    console.log(e.key)
     if(e.key == "ArrowDown") {
       e.stopPropagation()
       e.preventDefault()
@@ -187,14 +193,27 @@ export class WebwriterOrder extends LitElementWw {
     }
   }
 
+  /*
+  If contenteditable: Reorder solution -> Triggers orderSheet change
+  If not contenteditable: Reorder value -> Triggers orderSheet change 
+  */
   
-  moveChild(elem: Element, i: number) {
-    let children = Array.from(this.children).map(el => el !== elem? el: undefined)
-    children.splice(i, 0, elem)
-    children = children.filter(el => el)
-    this.innerHTML = children.map(child => child.outerHTML).join("")
-    // const template = document.createElement("template")
-    // template.content.append(...children)
+  moveChild(elem: HTMLElement, i: number) {
+    /*
+    let items = this.items.map(el => el !== elem? el: undefined)
+    items.splice(i, 0, elem as WebwriterOrderItem)
+    items = items.filter(child => child)
+    this.replaceChildren(...items)
+    this.items.forEach(item => item.requestUpdate())*/
+    if(i === 0) {
+      this.insertAdjacentElement("afterbegin", elem)
+    }
+    else if(i < this.items.length) {
+      this.items[i].insertAdjacentElement("beforebegin", elem)
+    }
+    else {
+      this.insertAdjacentElement("beforeend", elem)
+    }
   }
 
   handleMove = (e: CustomEvent) => {
@@ -213,6 +232,34 @@ export class WebwriterOrder extends LitElementWw {
       i = e.detail.i
     }
     this.moveChild(elem, i)
+  }
+
+
+  #solution: string[] = []
+
+  get solution() {
+    return this.#solution?.length? this.#solution: undefined
+  }
+
+  @property({attribute: false})
+  set solution(value: string[]) {
+    this.#solution = value
+    if(value) {
+      this.dispatchEvent(new CustomEvent("ww-answer-change", {
+        bubbles: true,
+        composed: true
+      }))
+    }
+  }
+
+  
+  reportSolution() {
+    this.solution.forEach((id, i) => this.querySelector(`#${id}`).validOrder = i)
+  }
+
+  reset() {
+    this.solution = undefined
+    this.shuffleItems()
   }
 
   render() {
