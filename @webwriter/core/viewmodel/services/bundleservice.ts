@@ -433,7 +433,7 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
       }
       else {
         console.error(err)
-        return new Response(null, {status: 500, statusText: err?.message})
+        return new Response(null, {status: 500})
       }
     }
   } while(_ids.length && !allLinked)
@@ -455,7 +455,7 @@ async function getBundle(ids: string[], importMap: ImportMap, options?: esbuild.
     }
     catch(err: any) {
       console.error(err)
-      return new Response(null, {status: 500, statusText: err?.message})
+      return new Response(null, {status: 500})
     }
     const js = result.outputFiles?.find(file => file.path.endsWith("js"))?.contents
     if(result.errors.length || !js) {
@@ -552,7 +552,7 @@ async function respond<T extends Action["collection"]>(action: Action<T>) {
     const mapResponse = await respond({collection: "importmaps", ids: action.ids, args: {}})
     const map: ImportMap = await mapResponse.json()
     console.log(mapResponse, map)
-    const bundleResponse = await getBundle(action.ids, new ImportMap({map, mapUrl: self.location.origin}))
+    const bundleResponse = await getBundle(action.ids, new ImportMap({map, mapUrl: self.location.origin, rootUrl: null}))
     cache.put(url, bundleResponse.clone())
     return bundleResponse
   }
@@ -594,7 +594,7 @@ worker.addEventListener("fetch", e => {
     }
     catch(err: any) {
       console.error(err)
-      e.respondWith(new Response(null, {status: 500, statusText: err.message}))
+      e.respondWith(new Response(null, {status: 500}))
     }
   }
 })
