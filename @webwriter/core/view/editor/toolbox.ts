@@ -916,13 +916,12 @@ export class  Toolbox extends LitElement {
       return undefined
     }
     let properties: TemplateResult[] | TemplateResult
-    if(activeLayoutCommand.id === "boxStyle") {
+    /*if(activeLayoutCommand.id === "boxStyle") {
       properties = html`<ww-box-picker></ww-box-picker>`
     }
-    else {
-      console.log(el.style.textAlign)
+    else {*/
       properties = activeLayoutCommand.cssProperties.map(name => html`<ww-css-property-input name=${name} plaintext value=${(el.style as any)[name]}></ww-css-property-input>`)
-    }
+    //}
     return html`<sl-popup class="pickers-popup" shift strategy="fixed" auto-size="both" auto-size-padding=${10} active anchor=${activeLayoutCommand.id} .autoSizeBoundary=${document.body} placement="bottom-start" @change=${(e: any) => this.emitSetStyle(el, e.target.name, e.target.value)}>
       <h3>
         <sl-icon name=${activeLayoutCommand?.icon ?? ""}></sl-icon>
@@ -1272,7 +1271,6 @@ export class  Toolbox extends LitElement {
     </sl-dropdown>`
 
     if(isCustomElement) {
-      console.log(elementName)
       const content = html`<ww-button
         title=${elementName}
         variant="icon"
