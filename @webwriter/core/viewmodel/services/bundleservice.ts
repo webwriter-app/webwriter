@@ -332,16 +332,12 @@ export class Compiler {
       return { path: "/" + importMap.resolve(args.path) }
     }
     if (args.kind === 'import-statement') {
-      const parentUrl = args.path.startsWith(".")
-        ? args.resolveDir.slice(1) + "/"
-        : args.importer.slice(1) + "/"
-      let url = importMap.resolve(args.path, parentUrl)
+      let url = importMap.resolve(args.path, args.resolveDir.slice(1) + "/")
+      console.log(args.path, args.resolveDir, url)
       return { path: "/" + url}
     }
     throw Error('not resolvable')
   }
-
-  // temp1.importMap.resolve("@lit/reactive-element/decorators/custom-element.js", "https://cdn.jsdelivr.net/npm/lit@3.2.0/")
 
   static defaultLoader = {
     ".js": "js",
@@ -556,9 +552,9 @@ async function respond<T extends Action["collection"]>(action: Action<T>) {
     return mapResponse
   }
   else if(action.collection === "bundles") {
-    const mapResponse = await respond({collection: "importmaps", ids: action.ids, args: {}})
+    const mapResponse = await respond({collection: "importmaps", ids: action.ids, args: {forPackage: "true"}})
     const map: IImportMap = await mapResponse.json()
-    const importMap = new ImportMap({map, mapUrl: self.location.origin, rootUrl: CDN_URL})
+    const importMap = new ImportMap({map, mapUrl: self.location.origin, rootUrl: null})
     const bundleResponse = await getBundle(action.ids, importMap)
     cache.put(url, bundleResponse.clone())
     return bundleResponse
