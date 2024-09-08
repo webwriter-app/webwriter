@@ -333,7 +333,7 @@ export class Compiler {
     }
     if (args.kind === 'import-statement') {
       console.log(args)
-      let url = importMap.resolve(args.path, args.resolveDir.slice(1) + "/")
+      let url = importMap.resolve(args.path, args.importer.slice(1) + "/")
       return { path: "/" + url}
     }
     throw Error('not resolvable')
