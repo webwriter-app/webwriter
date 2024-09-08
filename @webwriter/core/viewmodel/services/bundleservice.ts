@@ -4,7 +4,7 @@ import * as esbuild from "esbuild-wasm"
 import PathBrowserifyEsm from "path-browserify-esm" // @ts-ignore
 import wasmURL from "esbuild-wasm/esbuild.wasm?url"
 import {Generator} from "@jspm/generator"
-import {ImportMap} from "@jspm/import-map"
+import {ImportMap, IImportMap} from "@jspm/import-map"
 import {BuildOptions} from "esbuild-wasm"
 import { PackageConfig } from "@jspm/generator/lib/install/package"
 import {parseUrlPkg, pkgToUrl} from "@jspm/generator/lib/providers/jsdelivr"
@@ -553,9 +553,9 @@ async function respond<T extends Action["collection"]>(action: Action<T>) {
   }
   else if(action.collection === "bundles") {
     const mapResponse = await respond({collection: "importmaps", ids: action.ids, args: {}})
-    const map: ImportMap = await mapResponse.json()
-    console.log(mapResponse, map)
-    const bundleResponse = await getBundle(action.ids, new ImportMap({map, mapUrl: self.location.origin, rootUrl: null}))
+    const map: IImportMap = await mapResponse.json()
+    const importMap = new ImportMap({map, mapUrl: self.location.origin, rootUrl: CDN_URL})
+    const bundleResponse = await getBundle(action.ids, importMap)
     cache.put(url, bundleResponse.clone())
     return bundleResponse
   }
