@@ -332,6 +332,7 @@ export class Compiler {
       return { path: "/" + importMap.resolve(args.path) }
     }
     if (args.kind === 'import-statement') {
+      console.log(args.path, args.resolveDir.slice(1) + "/")
       let url = importMap.resolve(args.path, args.resolveDir.slice(1) + "/")
       return { path: "/" + url}
     }
