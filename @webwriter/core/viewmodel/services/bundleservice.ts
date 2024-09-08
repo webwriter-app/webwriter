@@ -335,8 +335,7 @@ export class Compiler {
       const parentUrl = args.path.startsWith(".")
         ? args.resolveDir.slice(1) + "/"
         : args.importer.slice(1) + "/"
-      console.log(args.path, args.resolveDir.slice(1) + "/")
-      let url = importMap.resolve(args.path, args.resolveDir.slice(1) + "/")
+      let url = importMap.resolve(args.path, parentUrl)
       return { path: "/" + url}
     }
     throw Error('not resolvable')
