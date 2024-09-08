@@ -3,10 +3,11 @@ const worker = self as unknown as ServiceWorkerGlobalScope
 import * as esbuild from "esbuild-wasm"
 import PathBrowserifyEsm from "path-browserify-esm" // @ts-ignore
 import wasmURL from "esbuild-wasm/esbuild.wasm?url"
-import {Generator, getPackageConfig, getPackageBase} from "@jspm/generator"
+import {Generator} from "@jspm/generator"
 import {ImportMap} from "@jspm/import-map"
 import {BuildOptions} from "esbuild-wasm"
 import { PackageConfig } from "@jspm/generator/lib/install/package"
+import {parseUrlPkg, pkgToUrl} from "@jspm/generator/lib/providers/jsdelivr"
 
 const commaSeparatedArrays = [
   'conditions',
@@ -417,6 +418,7 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
     const pkgs = ids as Record<string, any>[]
     _ids = pkgs.flatMap(pkg => Object.keys(pkg.exports).filter(k => k.startsWith(".")).map(k => pkg.name + k.slice(1)))
     _ids = _ids.flatMap(id => id.endsWith(".*")? [id.slice(0, -2) + ".js", id.slice(0, -2) + ".css"]: [id])
+    console.log(_ids)
   }
   const generator = new Generator({cache: false, defaultProvider: "jsdelivr"})
   let allLinked = false
