@@ -552,7 +552,7 @@ async function respond<T extends Action["collection"]>(action: Action<T>) {
     return mapResponse
   }
   else if(action.collection === "bundles") {
-    const mapResponse = await respond({collection: "importmaps", ids: action.ids, args: {forPackage: "true"}})
+    const mapResponse = await respond({collection: "importmaps", ids: action.ids, args: {}})
     const map: IImportMap = await mapResponse.json()
     const importMap = new ImportMap({map, mapUrl: new URL("http://localhost:5173"), rootUrl: null})
     const bundleResponse = await getBundle(action.ids, importMap)
