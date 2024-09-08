@@ -332,12 +332,17 @@ export class Compiler {
       return { path: "/" + importMap.resolve(args.path) }
     }
     if (args.kind === 'import-statement') {
-      console.log(args)
-      let url = importMap.resolve(args.path, args.importer.slice(1) + "/")
+      const parentUrl = args.path.startsWith(".")
+        ? args.resolveDir.slice(1) + "/"
+        : args.importer.slice(1) + "/"
+      console.log(args.path, args.resolveDir.slice(1) + "/")
+      let url = importMap.resolve(args.path, args.resolveDir.slice(1) + "/")
       return { path: "/" + url}
     }
     throw Error('not resolvable')
   }
+
+  // temp1.importMap.resolve("@lit/reactive-element/decorators/custom-element.js", "https://cdn.jsdelivr.net/npm/lit@3.2.0/")
 
   static defaultLoader = {
     ".js": "js",
