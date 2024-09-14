@@ -67,9 +67,10 @@ export class Person {
 
 
   toString() {
+    const name = this.name ?? ""
     const email = this.email != null? ` <${this.email}>`: ""
     const url = this.url != null? ` (${this.url})`: ""
-    return `${this.name}${email}${url}`
+    return `${name}${email}${url}`
   }
 
   toJSON() {

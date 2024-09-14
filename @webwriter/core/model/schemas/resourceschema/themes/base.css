@@ -3,7 +3,6 @@ html {
 }
 
 body {
-  display: block;
   margin: 20px auto;
   max-width: 840px;
   padding: 19px;
@@ -114,6 +113,11 @@ p {
   min-height: 1lh;
 }
 
-body > p {
-  margin-block: 1em;
+body > * {
+  margin-block: 1rem;
+}
+
+svg {
+  aspect-ratio: 16/9;
+  width: 100%;
 }

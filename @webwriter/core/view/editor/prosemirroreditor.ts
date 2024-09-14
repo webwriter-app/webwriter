@@ -8,6 +8,9 @@ import { keyed } from "lit/directives/keyed.js"
 import { headSerializer, toAttributes } from "../../model"
 import {DOMSerializer} from "prosemirror-model"
 import scopedCustomElementRegistry from "@webcomponents/scoped-custom-element-registry/src/scoped-custom-element-registry.js?raw"
+import {ImportMap} from "@jspm/import-map"
+import {Generator} from "@jspm/generator"
+import { ifDefined } from "lit/directives/if-defined.js"
 
 type IProsemirrorEditor = 
   & Omit<DirectEditorProps, "attributes" | "editable">
@@ -123,7 +126,14 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
   }
 
   set state(state) {
-    this.view? this.view.updateState(state): this.initialState = state 
+    try {
+      this.view? this.view.updateState(state): this.initialState = state 
+    }
+    catch(err: any) {
+      if(err.message !== "Cannot read properties of null (reading 'focusNode')") {
+        throw err
+      }
+    }
     this.requestUpdate("state", this.state)
   }
 
@@ -141,8 +151,11 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
   @property({type: String, attribute: false})
 	contentScript: string
 
-  @property({type: String, attribute: true})
+  @property({type: String, attribute: false})
 	bundleID: string
+
+  @property({attribute: false})
+	preloadedModules: string[] = []
 
 	@property({type: String, attribute: false})
 	contentStyle: string
@@ -250,15 +263,22 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
   }
 
   async updated(previous: Map<string, any>) {
-    if(previous.has("bundleID")) {
+    if((previous.has("bundleID") || previous.has("url")) && !this.url) {
       await this.initializeIFrame()
       this.view?.destroy()
       this.view = new EditorView({mount: this.body}, this.directProps)
     }
     else {
-      this.view?.setProps(this.directProps)
+      try {
+        this.view?.setProps(this.directProps)
+      }
+      catch(err: any) {
+        if(err.message !== "Cannot read properties of null (reading 'focusNode')") {
+          throw err
+        }
+      }
     }
-    if((this.state as any)?.head$ && (!previous.get("state")?.head$ || !previous.get("state")?.head$.doc.eq((this.state as any)?.head$.doc))) {
+    if((this.state as any)?.head$ && (!previous.get("state")?.head$ || !previous.get("state")?.head$.doc.eq((this.state as any)?.head$.doc)) && !this.url) {
       this.renderHead()
     }
     
@@ -318,15 +338,73 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
 		return this.dispatchEvent(new (e as any).constructor(e.type, e))
 	}
 
+  isFullscreen = false
+
+  toggleFullscreen = (value?: boolean) => {
+    this.isFullscreen = value ?? !this.isFullscreen
+    this.dispatchEvent(new Event("fullscreenchange", {bubbles: true}))
+  }
+
+  @property({attribute: false})
+  accessor importMap: ImportMap
+
+  @property({attribute: true})
+  accessor url: string
+
   async initializeIFrame() {
     this.iframe = this.shadowRoot?.querySelector("iframe") as any
-    const {contentScript} = this
-    await this.importString(contentScript)
+    if(WEBWRITER_ENVIRONMENT.backend === "tauri") {
+      const {contentScript} = this
+      await this.importString(contentScript)
+    }
+    else {
+      const importMap = !this.importMap? "": `<script type="importmap" data-ww-editing>${JSON.stringify(this.importMap.toJSON(), undefined, 2)}</script>`
+      const scriptIds = !this.importMap? []: Object.keys(this.importMap.imports).filter(k => k.endsWith(".js"))
+      const styleUrls = !this.importMap? []: Object.keys(this.importMap.imports).filter(k => k.endsWith(".css")).map(k => this.importMap.resolve(k))
+      const scripts = [
+        `<script type="module" data-ww-editing>${scopedCustomElementRegistry}</script>`,
+        `<script type="module" data-ww-editing>${this.contentScript}</script>`,
+        ...scriptIds.map(id => `<script blocking="render" type="module" async data-ww-editing>import "${id}"</script>`)
+      ]
+      const styles = [
+        `<style data-ww-editing>${this.contentStyle}</style>`,
+        ...styleUrls.map(src => `<style data-ww-editing src=${src}></style>`)
+      ]
+      const template = `<html><head><meta charset="utf-8">${[importMap, ...scripts, ...styles].join("")}</head><body></body></html>`
+      const blob = new Blob([template], {type: "text/html"})
+      const url = URL.createObjectURL(blob)
+      const loaded = new Promise(resolve => this.iframe.addEventListener("load", resolve))
+      this.window.location.href = url
+      await loaded
+    }
     this.document.documentElement.spellcheck = false
     this.window.console = console
     this.window.onerror = window.onerror
     this.window.onunhandledrejection = window.onunhandledrejection
     this.window.addEventListener("focus", () => this.dispatchEvent(new Event("focus", {bubbles: true, composed: true})))
+    // const requestFullscreen = this.window.Element.prototype.requestFullscreen
+    const toggleFullscreen = this.toggleFullscreen
+    this.window.Element.prototype.requestFullscreen = async function(options) {
+      this.classList.add("ww-fullscreen")
+      toggleFullscreen(true)
+    }
+    this.document.exitFullscreen = async () => {
+      this.document.querySelectorAll(".ww-fullscreen").forEach(el => el.classList.remove("ww-fullscreen"))
+      toggleFullscreen(false)
+    }
+    Object.defineProperty(this.document, "fullscreenElement", {
+      get() {
+        return this.querySelector(".ww-fullscreen")
+      }
+    })
+    const createElement = this.document.createElement
+    this.document.createElement = (tagName: string, options: ElementCreationOptions) => {
+      const el = createElement.call(this.document, tagName, options)
+      if(tagName.includes("-")) {
+        el.id = "ww-" + crypto.randomUUID()
+      }
+      return el
+    }
     for(const [eventName, listener] of Object.entries(this.windowListeners)) {
       this.window.addEventListener(eventName, listener)
     }
@@ -438,6 +516,6 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
   
 
   render() {
-    return keyed(this.bundleID, html`<iframe part="iframe"></iframe>`)
+    return keyed(this.bundleID + String(this.url), html`<iframe part="iframe" src=${ifDefined(this.url)}></iframe>`)
   }
 }

@@ -76,10 +76,10 @@ export const headSchemaSpec = {
 
 export const headSchema = new Schema(headSchemaSpec)
 
-const initialHeadDoc = (lang?: string) => headSchema.node("head", {htmlAttrs: {lang}}, [
+const initialHeadDoc = (lang?: string, id=`ww-${crypto.randomUUID()}`) => headSchema.node("head", {htmlAttrs: {id, lang}}, [
   headSchema.node("meta", {charset: "utf-8"}),
   headSchema.node("meta", {name: "generator", content: `webwriter@${webwriterPackage.version}`}),
-  headSchema.node("style", {data: {"data-ww-theme": "base"}}, headSchema.text(themes.base.source)),
+  headSchema.node("style", {data: {"data-ww-theme": "base"}, blocking: "render"}, headSchema.text(themes.base.source)),
 ])
 
 export function initialHeadState({doc, lang}: {doc?: Node, lang?: string} = {}) {

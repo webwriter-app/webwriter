@@ -1,0 +1,2113 @@
+<xliff xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:oasis:names:tc:xliff:document:1.2 http://docs.oasis-open.org/xliff/v1.2/os/xliff-core-1.2-strict.xsd" xmlns="urn:oasis:names:tc:xliff:document:1.2" version="1.2">
+  <file original="lit-localize-inputs" datatype="plaintext" source-language="en" target-language="ro">
+    <body>
+      <trans-unit id="sa311a24c1471a974">
+        <source>Document</source>
+        <target>Document</target>
+      </trans-unit>
+      <trans-unit id="sf9f2c719a04066ec">
+        <source>App</source>
+        <target>Aplicație</target>
+      </trans-unit>
+      <trans-unit id="sa75b95980cd80e78">
+        <source>Editor</source>
+        <target>Editor</target>
+      </trans-unit>
+      <trans-unit id="s2a75c946ef4dcab7">
+        <source>Miscellaneous</source>
+        <target>Diverse</target>
+      </trans-unit>
+      <trans-unit id="s33f85f24c0f5f008">
+        <source>Save</source>
+        <target>Salvați</target>
+      </trans-unit>
+      <trans-unit id="s0c883713b83616a8">
+        <source>Save the active document</source>
+        <target>Salvați documentul activ</target>
+      </trans-unit>
+      <trans-unit id="s8670e5ad3bf0dcf8">
+        <source>Save As</source>
+        <target>Salvați ca</target>
+      </trans-unit>
+      <trans-unit id="s38980f98cb07ceb8">
+        <source>Save the active document as a copy</source>
+        <target>Salvați documentul activ ca o copie</target>
+      </trans-unit>
+      <trans-unit id="sa37fee6a52d18063">
+        <source>Delete document</source>
+        <target>Ștergeți documentul</target>
+      </trans-unit>
+      <trans-unit id="sf64a8229a8136552">
+        <source>Delete a document</source>
+        <target>Ștergeți un document</target>
+      </trans-unit>
+      <trans-unit id="s2df075aface0dab8">
+        <source>Share</source>
+        <target>Share</target>
+      </trans-unit>
+      <trans-unit id="sb7fb7568f6883ab8">
+        <source>Share the active document</source>
+        <target>Partajați documentul activ</target>
+      </trans-unit>
+      <trans-unit id="seec6798afe90ffc8">
+        <source>Print</source>
+        <target>Imprimare</target>
+      </trans-unit>
+      <trans-unit id="s600fd23c9ce971e8">
+        <source>Print the active document</source>
+        <target>Tipăriți documentul activ</target>
+      </trans-unit>
+      <trans-unit id="s417b90913e05bc17">
+        <source>Preview</source>
+        <target>Previzualizare</target>
+      </trans-unit>
+      <trans-unit id="safc6f203342d09e2">
+        <source>Toggles the preview for the active document</source>
+        <target>Comută previzualizarea pentru documentul activ</target>
+      </trans-unit>
+      <trans-unit id="s10f3845975a0351e">
+        <source>Edit Metadata</source>
+        <target>Editarea metadatelor</target>
+      </trans-unit>
+      <trans-unit id="sea6e7291e27ec53f">
+        <source>Toggles the metadata editor</source>
+        <target>Comută editorul de metadate</target>
+      </trans-unit>
+      <trans-unit id="s70178e04a3b691b6">
+        <source>Open Settings</source>
+        <target>Deschideți setările</target>
+      </trans-unit>
+      <trans-unit id="s0816468df86e4036">
+        <source>Opens the settings</source>
+        <target>Deschide setările</target>
+      </trans-unit>
+      <trans-unit id="s9d8b8aa2b404c2c8">
+        <source>Settings</source>
+        <target>Setări</target>
+      </trans-unit>
+      <trans-unit id="s1f7698c061c208c9">
+        <source>Open</source>
+        <target>Deschis</target>
+      </trans-unit>
+      <trans-unit id="s16f2f1c2c516d307">
+        <source>Open a document</source>
+        <target>Deschideți un document</target>
+      </trans-unit>
+      <trans-unit id="s382a2aa3984474dd">
+        <source>Create</source>
+        <target>Creați</target>
+      </trans-unit>
+      <trans-unit id="s64dc1fc7e3db45c9">
+        <source>Create a new document</source>
+        <target>Creați un document nou</target>
+      </trans-unit>
+      <trans-unit id="sd10fdbe6caf9a998">
+        <source>Line Break</source>
+        <target>Întrerupere de linie</target>
+      </trans-unit>
+      <trans-unit id="sbefb6064cba01844">
+        <source>Insert a line break</source>
+        <target>Introduceți o întrerupere de linie</target>
+      </trans-unit>
+      <trans-unit id="s410c465a5993f82d">
+        <source>Line Break Opportunity</source>
+        <target>Oportunitate de întrerupere a liniei</target>
+      </trans-unit>
+      <trans-unit id="s8df30fe2a50d3479">
+        <source>Insert a line break opportunity</source>
+        <target>Introduceți o oportunitate de întrerupere a liniei</target>
+      </trans-unit>
+      <trans-unit id="sf7c0eba7c822e3d6">
+        <source>Bold</source>
+        <target>Bold</target>
+      </trans-unit>
+      <trans-unit id="sb9e9a7dd45966756">
+        <source>Mark the selection as bold</source>
+        <target>Marcați selecția ca fiind bold</target>
+      </trans-unit>
+      <trans-unit id="s523eb9043213ff0d">
+        <source>Italic</source>
+        <target>italic</target>
+      </trans-unit>
+      <trans-unit id="s92f846b9be2e8e8d">
+        <source>Mark the selection as italic</source>
+        <target>Marcați selecția ca italic</target>
+      </trans-unit>
+      <trans-unit id="sb206d700d26b14ff">
+        <source>Underline</source>
+        <target>Subliniere</target>
+      </trans-unit>
+      <trans-unit id="s09c3f1d21de14ae1">
+        <source>Mark the selection as underlined</source>
+        <target>Marcați selecția ca fiind subliniată</target>
+      </trans-unit>
+      <trans-unit id="s99b38e000175cc84">
+        <source>Strikethrough</source>
+        <target>Strikethrough</target>
+      </trans-unit>
+      <trans-unit id="s0396202b716732ec">
+        <source>Mark the selection as struck through</source>
+        <target>Marcați selecția ca marcată prin</target>
+      </trans-unit>
+      <trans-unit id="sdf946172dfa0328f">
+        <source>Superscript</source>
+        <target>Superscript</target>
+      </trans-unit>
+      <trans-unit id="saf3da7c95cb17260">
+        <source>Mark the selection as a superscript</source>
+        <target>Marcați selecția ca un superscript</target>
+      </trans-unit>
+      <trans-unit id="s587ac858dd80f6fa">
+        <source>Subscript</source>
+        <target>Subscripție</target>
+      </trans-unit>
+      <trans-unit id="sc5cb39478b9b7625">
+        <source>Mark the selection as a subscript</source>
+        <target>Marcați selecția ca subscript</target>
+      </trans-unit>
+      <trans-unit id="s3643189d1abbb7f4">
+        <source>Code</source>
+        <target>Cod</target>
+      </trans-unit>
+      <trans-unit id="sf86bd4d2982f3b74">
+        <source>Mark the selection as code</source>
+        <target>Marcați selecția ca cod</target>
+      </trans-unit>
+      <trans-unit id="s3cf89cb47fdde7e9">
+        <source>Link</source>
+        <target>Legătură</target>
+      </trans-unit>
+      <trans-unit id="sf8e82313fa411494">
+        <source>Mark the selection as a link</source>
+        <target>Marcați selecția ca o legătură</target>
+      </trans-unit>
+      <trans-unit id="sd29dc07235eea0f5">
+        <source>Quotation</source>
+        <target>Cotație</target>
+      </trans-unit>
+      <trans-unit id="s0e4862e87c7d53ce">
+        <source>Mark the selection as a quotation</source>
+        <target>Marcați selecția ca citat</target>
+      </trans-unit>
+      <trans-unit id="sfb9b6edb0ed378c9">
+        <source>Citation Source</source>
+        <target>Sursa de citare</target>
+      </trans-unit>
+      <trans-unit id="s4a894f57eba1cf1e">
+        <source>Keyboard Shortcut</source>
+        <target>Comandă rapidă de la tastatură</target>
+      </trans-unit>
+      <trans-unit id="s41c724f0698148e9">
+        <source>Mark the selection as a keyboard shortcut</source>
+        <target>Marcați selecția ca o comandă rapidă de la tastatură</target>
+      </trans-unit>
+      <trans-unit id="s0ca5c0460199cba1">
+        <source>Abbreviation</source>
+        <target>Abreviere</target>
+      </trans-unit>
+      <trans-unit id="s2206c42e5b835e6e">
+        <source>Mark the selection as an abbreviation</source>
+        <target>Marcați selecția ca abreviere</target>
+      </trans-unit>
+      <trans-unit id="sf67571992e7dc88e">
+        <source>Full Term</source>
+        <target>Termen complet</target>
+      </trans-unit>
+      <trans-unit id="s1dfb744260fb3a01">
+        <source>Bidirectional Isolate</source>
+        <target>Izolare bidirecțională</target>
+      </trans-unit>
+      <trans-unit id="sa39c7ac1d37f3bce">
+        <source>Mark the selection as a 'bidirectional isolate'</source>
+        <target>Marcați selecția ca un "izolat bidirecțional</target>
+      </trans-unit>
+      <trans-unit id="s4c402ff5355fd310">
+        <source>Bidirectional Override</source>
+        <target>Suprascriere bidirecțională</target>
+      </trans-unit>
+      <trans-unit id="s02ab1ea8e5100fc1">
+        <source>Mark the selection as a 'bidirectional override'</source>
+        <target>Marcați selecția ca o "suprapunere bidirecțională</target>
+      </trans-unit>
+      <trans-unit id="se62385ac082368d2">
+        <source>Mark the selection as a citation source</source>
+        <target>Marcați selecția ca sursă de citare</target>
+      </trans-unit>
+      <trans-unit id="s36a194e38d653a26">
+        <source>Data Annotation</source>
+        <target>Adnotarea datelor</target>
+      </trans-unit>
+      <trans-unit id="s5a1a0898baf20675">
+        <source>Mark the selection with a data annotation</source>
+        <target>Marcați selecția cu o adnotare de date</target>
+      </trans-unit>
+      <trans-unit id="s9d668a34af4128ff">
+        <source>Deletion</source>
+        <target>Ștergere</target>
+      </trans-unit>
+      <trans-unit id="s1c246045629b0016">
+        <source>Mark the selection as a deletion</source>
+        <target>Marcați selecția ca fiind o ștergere</target>
+      </trans-unit>
+      <trans-unit id="s94653c76b2d86a04">
+        <source>Defined Term</source>
+        <target>Termen definit</target>
+      </trans-unit>
+      <trans-unit id="s1082e1649793dca9">
+        <source>Mark the selection as a defined term</source>
+        <target>Marcați selecția ca un termen definit</target>
+      </trans-unit>
+      <trans-unit id="s92b177e579ef7b97">
+        <source>Emphasis</source>
+        <target>Subliniere</target>
+      </trans-unit>
+      <trans-unit id="s782eac2b3e80323d">
+        <source>Mark the selection as emphasized</source>
+        <target>Marcați selecția ca fiind accentuată</target>
+      </trans-unit>
+      <trans-unit id="s50489ffb1bde152e">
+        <source>Insertion</source>
+        <target>Inserție</target>
+      </trans-unit>
+      <trans-unit id="sd1a78e667a1a139f">
+        <source>Mark the selection as an insertion</source>
+        <target>Marcați selecția ca o inserție</target>
+      </trans-unit>
+      <trans-unit id="s3d6a732c792ccb9e">
+        <source>Ruby Annotation</source>
+        <target>Adnotare Ruby</target>
+      </trans-unit>
+      <trans-unit id="sdf62e305e1594805">
+        <source>Mark the selection with a ruby annotation</source>
+        <target>Marcați selecția cu o adnotare ruby</target>
+      </trans-unit>
+      <trans-unit id="s474f0eec369d02a4">
+        <source>Sample Output</source>
+        <target>Exemplu de ieșire</target>
+      </trans-unit>
+      <trans-unit id="sf21c1f60c7515f44">
+        <source>Mark the selection as sample output</source>
+        <target>Marcați selecția ca probă de ieșire</target>
+      </trans-unit>
+      <trans-unit id="s4eace13b3ed74187">
+        <source>Side Comment</source>
+        <target>Comentariu lateral</target>
+      </trans-unit>
+      <trans-unit id="s864b0e6270e97246">
+        <source>Mark the selection as a side comment</source>
+        <target>Marcați selecția ca un comentariu secundar</target>
+      </trans-unit>
+      <trans-unit id="sb60bc1250aad44c1">
+        <source>Span</source>
+        <target>Span</target>
+      </trans-unit>
+      <trans-unit id="s0a7db790db1fc45c">
+        <source>Mark the selection as a span</source>
+        <target>Marcați selecția ca un interval</target>
+      </trans-unit>
+      <trans-unit id="s7bdf0fd5b014d36c">
+        <source>Strong Importance</source>
+        <target>Importanță puternică</target>
+      </trans-unit>
+      <trans-unit id="s550839f3e4e205bb">
+        <source>Mark the selection as strongly important</source>
+        <target>Marcați selecția ca fiind foarte importantă</target>
+      </trans-unit>
+      <trans-unit id="s3d3efd1e19bdcfb4">
+        <source>Date/Time Annotation</source>
+        <target>Adnotare dată/oră</target>
+      </trans-unit>
+      <trans-unit id="s47e257ae643b5851">
+        <source>Mark the selection as a date/time annotation</source>
+        <target>Marcați selecția ca o adnotare dată/timp</target>
+      </trans-unit>
+      <trans-unit id="sec2557a35b702525">
+        <source>Variable</source>
+        <target>Variabilă</target>
+      </trans-unit>
+      <trans-unit id="sf59c9081d106dd9c">
+        <source>Mark the selection as a variable</source>
+        <target>Marcați selecția ca o variabilă</target>
+      </trans-unit>
+      <trans-unit id="s599dcd2472c75c19">
+        <source>Paragraph</source>
+        <target>Paragraf</target>
+      </trans-unit>
+      <trans-unit id="s5b8cc9bb61ddce15">
+        <source>Insert a paragraph</source>
+        <target>Introduceți un paragraf</target>
+      </trans-unit>
+      <trans-unit id="s6f84199e62584905">
+        <source>Preformatted Text</source>
+        <target>Text preformatat</target>
+      </trans-unit>
+      <trans-unit id="sb3ba3276ae93627c">
+        <source>Insert a preformatted text block</source>
+        <target>Introduceți un bloc de text preformatat</target>
+      </trans-unit>
+      <trans-unit id="s2f2044f2431a32d5">
+        <source>Heading</source>
+        <target>Titlul</target>
+      </trans-unit>
+      <trans-unit id="s29f21c34494d614d">
+        <source>Insert a heading (level 1)</source>
+        <target>Introduceți un titlu (nivelul 1)</target>
+      </trans-unit>
+      <trans-unit id="sbc5f2e81604bb667">
+        <source>Heading 2</source>
+        <target>Rubrica 2</target>
+      </trans-unit>
+      <trans-unit id="s29ee7434494a0dfe">
+        <source>Insert a heading (level 2)</source>
+        <target>Introduceți un titlu (nivelul 2)</target>
+      </trans-unit>
+      <trans-unit id="sbc5f2d81604bb4b4">
+        <source>Heading 3</source>
+        <target>Rubrica 3</target>
+      </trans-unit>
+      <trans-unit id="s29eb103449472e3b">
+        <source>Insert a heading (level 3)</source>
+        <target>Introduceți un titlu (nivelul 3)</target>
+      </trans-unit>
+      <trans-unit id="sbc5f2c81604bb301">
+        <source>Heading 4</source>
+        <target>Rubrica 4</target>
+      </trans-unit>
+      <trans-unit id="s2a031834495bcdb4">
+        <source>Insert a heading (level 4)</source>
+        <target>Introduceți un titlu (nivelul 4)</target>
+      </trans-unit>
+      <trans-unit id="sbc5f2b81604bb14e">
+        <source>Heading 5</source>
+        <target>Rubrica 5</target>
+      </trans-unit>
+      <trans-unit id="s29ff743449588131">
+        <source>Insert a heading (level 5)</source>
+        <target>Introduceți un titlu (nivelul 5)</target>
+      </trans-unit>
+      <trans-unit id="sbc5f2a81604baf9b">
+        <source>Heading 6</source>
+        <target>Rubrica 6</target>
+      </trans-unit>
+      <trans-unit id="s29fbfc3449557f72">
+        <source>Insert a heading (level 6)</source>
+        <target>Introduceți un titlu (nivelul 6)</target>
+      </trans-unit>
+      <trans-unit id="sec8b0b6c729816b6">
+        <source>Heading Group</source>
+        <target>Grup șef</target>
+      </trans-unit>
+      <trans-unit id="s4d528b416ac8dee2">
+        <source>Insert a heading group</source>
+        <target>Introduceți un grup de titluri</target>
+      </trans-unit>
+      <trans-unit id="s3d249bb480032121">
+        <source>List</source>
+        <target>Listă</target>
+      </trans-unit>
+      <trans-unit id="s0978fb5ba3145996">
+        <source>Insert a list (unordered)</source>
+        <target>Introduceți o listă (fără ordine)</target>
+      </trans-unit>
+      <trans-unit id="s377e24af9628c37e">
+        <source>Ordered List</source>
+        <target>Listă ordonată</target>
+      </trans-unit>
+      <trans-unit id="sdb711380a28fec75">
+        <source>Insert a list (ordered)</source>
+        <target>Introduceți o listă (ordonată)</target>
+      </trans-unit>
+      <trans-unit id="s355b21b89ce5d9c5">
+        <source>Details</source>
+        <target>Detalii</target>
+      </trans-unit>
+      <trans-unit id="sb6103872073d369e">
+        <source>Insert details</source>
+        <target>Introduceți detalii</target>
+      </trans-unit>
+      <trans-unit id="sc9474bf7a0668d73">
+        <source>Summary</source>
+        <target>Rezumat</target>
+      </trans-unit>
+      <trans-unit id="sec30fbb20f102670">
+        <source>Insert summary</source>
+        <target>Introduceți un rezumat</target>
+      </trans-unit>
+      <trans-unit id="s0312976fe9da5951">
+        <source>Button</source>
+        <target>Buton</target>
+      </trans-unit>
+      <trans-unit id="sd60c9bbc51375635">
+        <source>Insert a button</source>
+        <target>Introduceți un buton</target>
+      </trans-unit>
+      <trans-unit id="sdb1595f5c742dfbb">
+        <source>Input</source>
+        <target>Introducere</target>
+      </trans-unit>
+      <trans-unit id="s29b24c06315e9343">
+        <source>Insert an input</source>
+        <target>Introduceți o intrare</target>
+      </trans-unit>
+      <trans-unit id="sfc63e31ac7c956ed">
+        <source>Select</source>
+        <target>Selectați</target>
+      </trans-unit>
+      <trans-unit id="s531056f039febd39">
+        <source>Insert a select</source>
+        <target>Introduceți o selecție</target>
+      </trans-unit>
+      <trans-unit id="sfc00292e778b67e2">
+        <source>Meter</source>
+        <target>Contor</target>
+      </trans-unit>
+      <trans-unit id="s52e0bdc3ee304436">
+        <source>Insert a meter</source>
+        <target>Introduceți un contor</target>
+      </trans-unit>
+      <trans-unit id="s8c7f51cb067644c7">
+        <source>Data List</source>
+        <target>Lista de date</target>
+      </trans-unit>
+      <trans-unit id="sfa59c7777e2a0eeb">
+        <source>Insert a data list</source>
+        <target>Introduceți o listă de date</target>
+      </trans-unit>
+      <trans-unit id="s7fcb35d23be1e643">
+        <source>Field Set</source>
+        <target>Set de câmpuri</target>
+      </trans-unit>
+      <trans-unit id="s2d986d31f8d67357">
+        <source>Insert a field set</source>
+        <target>Introduceți un set de câmpuri</target>
+      </trans-unit>
+      <trans-unit id="s5590dbf7e425789d">
+        <source>Label</source>
+        <target>Etichetă</target>
+      </trans-unit>
+      <trans-unit id="s21f8a2eaf5a70749">
+        <source>Insert a label</source>
+        <target>Introduceți o etichetă</target>
+      </trans-unit>
+      <trans-unit id="s4b58c01e2578f5e4">
+        <source>Legend</source>
+        <target>Legendă</target>
+      </trans-unit>
+      <trans-unit id="s3fd83566dd643d10">
+        <source>Insert a legend</source>
+        <target>Introduceți o legendă</target>
+      </trans-unit>
+      <trans-unit id="sef75f458d77491af">
+        <source>Option Group</source>
+        <target>Grup de opțiuni</target>
+      </trans-unit>
+      <trans-unit id="sceecdd0bb404bc17">
+        <source>Insert an option group</source>
+        <target>Introduceți un grup de opțiuni</target>
+      </trans-unit>
+      <trans-unit id="s4802e47fe2e95134">
+        <source>Option</source>
+        <target>Opțiune</target>
+      </trans-unit>
+      <trans-unit id="s3cb47df8290fa94c">
+        <source>Insert an option</source>
+        <target>Introduceți o opțiune</target>
+      </trans-unit>
+      <trans-unit id="sfd77270c3f54f664">
+        <source>Output</source>
+        <target>Ieșire</target>
+      </trans-unit>
+      <trans-unit id="se64f418b4e733b6c">
+        <source>Insert an output</source>
+        <target>Introduceți o ieșire</target>
+      </trans-unit>
+      <trans-unit id="s52777d434baeed9b">
+        <source>Insert a progress indicator</source>
+        <target>Introduceți un indicator de progres</target>
+      </trans-unit>
+      <trans-unit id="sa78a67272a4a6f95">
+        <source>Math Formula</source>
+        <target>Formula matematică</target>
+      </trans-unit>
+      <trans-unit id="saaad98061a20ac39">
+        <source>Insert a math formula</source>
+        <target>Introduceți o formulă matematică</target>
+      </trans-unit>
+      <trans-unit id="s5f43af3669b1e098">
+        <source>Source</source>
+        <target>Sursa</target>
+      </trans-unit>
+      <trans-unit id="sa7dc6b8ef3f595dc">
+        <source>Insert a source</source>
+        <target>Introduceți o sursă</target>
+      </trans-unit>
+      <trans-unit id="s9e85800d3700e31c">
+        <source>Track</source>
+        <target>Track</target>
+      </trans-unit>
+      <trans-unit id="sf39736a666dbb038">
+        <source>Insert a track</source>
+        <target>Introduceți o piesă</target>
+      </trans-unit>
+      <trans-unit id="s5ed03bb1f3a15949">
+        <source>Picture</source>
+        <target>Imagine</target>
+      </trans-unit>
+      <trans-unit id="s93566b84230af4f5">
+        <source>Insert a picture</source>
+        <target>Introduceți o imagine</target>
+      </trans-unit>
+      <trans-unit id="s08e6bd98452e6bb9">
+        <source>Audio</source>
+        <target>Audio</target>
+      </trans-unit>
+      <trans-unit id="s96532132a29dd542">
+        <source>Insert audio</source>
+        <target>Introduceți audio</target>
+      </trans-unit>
+      <trans-unit id="s85186a61e0d55bac">
+        <source>Video</source>
+        <target>Video</target>
+      </trans-unit>
+      <trans-unit id="s9e28faa598332e2b">
+        <source>Insert video</source>
+        <target>Introduceți video</target>
+      </trans-unit>
+      <trans-unit id="s82665b2ffabc9c0a">
+        <source>Website</source>
+        <target>Site web</target>
+      </trans-unit>
+      <trans-unit id="sc3998b77d72c2932">
+        <source>Insert a website (as an inline frame)</source>
+        <target>Introduceți un site web (ca un cadru în linie)</target>
+      </trans-unit>
+      <trans-unit id="s4802bb8eb52fbdeb">
+        <source>Portal</source>
+        <target>Portal</target>
+      </trans-unit>
+      <trans-unit id="sd4368b12645d3c0f">
+        <source>Insert a portal</source>
+        <target>Introduceți un portal</target>
+      </trans-unit>
+      <trans-unit id="s9565553d163fc92a">
+        <source>Script</source>
+        <target>Script</target>
+      </trans-unit>
+      <trans-unit id="sbf00e1ee999ea94e">
+        <source>Insert a script</source>
+        <target>Introduceți un script</target>
+      </trans-unit>
+      <trans-unit id="s7f326a142e856656">
+        <source>Style</source>
+        <target>Stil</target>
+      </trans-unit>
+      <trans-unit id="s6dfb502188a8c7c2">
+        <source>Insert a style</source>
+        <target>Introduceți un stil</target>
+      </trans-unit>
+      <trans-unit id="se47baf2fd16b9d2b">
+        <source>Template</source>
+        <target>Șablon</target>
+      </trans-unit>
+      <trans-unit id="s7b4ba250601b8667">
+        <source>Insert a template</source>
+        <target>Introduceți un șablon</target>
+      </trans-unit>
+      <trans-unit id="s919e1724f589c9b1">
+        <source>Slot</source>
+        <target>Slot</target>
+      </trans-unit>
+      <trans-unit id="s32911e52ee8ac745">
+        <source>Insert a slot</source>
+        <target>Introduceți un slot</target>
+      </trans-unit>
+      <trans-unit id="sbbe639e3a3ed95d1">
+        <source>NoScript</source>
+        <target>NoScript</target>
+      </trans-unit>
+      <trans-unit id="s2d995a37cf5e4995">
+        <source>Insert a NoScript</source>
+        <target>Introduceți un NoScript</target>
+      </trans-unit>
+      <trans-unit id="sc50d09edf9325339">
+        <source>Dialog</source>
+        <target>Dialog</target>
+      </trans-unit>
+      <trans-unit id="sff99962304ac7d25">
+        <source>Insert a dialog</source>
+        <target>Introduceți un dialog</target>
+      </trans-unit>
+      <trans-unit id="s337a1e9022a8d19f">
+        <source>Table</source>
+        <target>Tabel</target>
+      </trans-unit>
+      <trans-unit id="s88a62d29529948fb">
+        <source>Insert a table</source>
+        <target>Introduceți un tabel</target>
+      </trans-unit>
+      <trans-unit id="s0cf10c4f40588f8d">
+        <source>Table Caption</source>
+        <target>Captură de tabel</target>
+      </trans-unit>
+      <trans-unit id="s0c11e479416c8421">
+        <source>Insert a table caption</source>
+        <target>Introduceți un titlu de tabel</target>
+      </trans-unit>
+      <trans-unit id="s613c6ff83883c04f">
+        <source>Table Column</source>
+        <target>Tabel Coloană</target>
+      </trans-unit>
+      <trans-unit id="sd52660ee947ca58b">
+        <source>Insert a table column</source>
+        <target>Introduceți o coloană de tabel</target>
+      </trans-unit>
+      <trans-unit id="s8517ae4da104b004">
+        <source>Table Column Group</source>
+        <target>Grup de coloane de tabel</target>
+      </trans-unit>
+      <trans-unit id="s28b6246ce616a548">
+        <source>Insert a table column group</source>
+        <target>Introduceți un grup de coloane de tabel</target>
+      </trans-unit>
+      <trans-unit id="s21d61916eb8d137d">
+        <source>Table Body</source>
+        <target>Corp de masă</target>
+      </trans-unit>
+      <trans-unit id="s156647179b21d351">
+        <source>Insert a table body</source>
+        <target>Introduceți un corp de tabel</target>
+      </trans-unit>
+      <trans-unit id="sb616811735bfbafd">
+        <source>Table cell</source>
+        <target>Celulă de tabel</target>
+      </trans-unit>
+      <trans-unit id="s9faf26107ed49fb9">
+        <source>Insert a table cell</source>
+        <target>Introduceți o celulă de tabel</target>
+      </trans-unit>
+      <trans-unit id="sa7af797a46c7d09a">
+        <source>Table Footer</source>
+        <target>Picior de tabel</target>
+      </trans-unit>
+      <trans-unit id="sc252a4e091763606">
+        <source>Insert a table footer</source>
+        <target>Introduceți un subsol de tabel</target>
+      </trans-unit>
+      <trans-unit id="sb68e83cda6c85af8">
+        <source>Table header</source>
+        <target>Tabelul de antet</target>
+      </trans-unit>
+      <trans-unit id="s8f29e48d6b9a1aa8">
+        <source>Insert a table header row</source>
+        <target>Introduceți un rând de antet de tabel</target>
+      </trans-unit>
+      <trans-unit id="s153bc3c3aa39587b">
+        <source>Table Head</source>
+        <target>Cap de masă</target>
+      </trans-unit>
+      <trans-unit id="s5d18ca4c3111be6f">
+        <source>Insert a table head</source>
+        <target>Introduceți un cap de tabel</target>
+      </trans-unit>
+      <trans-unit id="s52af5d7ac34c2163">
+        <source>Table Row</source>
+        <target>Rând de masă</target>
+      </trans-unit>
+      <trans-unit id="s1988d71ef8060edf">
+        <source>Insert a table row</source>
+        <target>Introduceți un rând de tabel</target>
+      </trans-unit>
+      <trans-unit id="sb0d4f0f7993cf085">
+        <source>Set font size</source>
+        <target>Setați dimensiunea fontului</target>
+      </trans-unit>
+      <trans-unit id="s37fa3b9cd51c2dfd">
+        <source>Sets the selection's font size</source>
+        <target>Setează dimensiunea fontului selecției</target>
+      </trans-unit>
+      <trans-unit id="s9e3dbb678150edd4">
+        <source>Set font family</source>
+        <target>Setați familia de fonturi</target>
+      </trans-unit>
+      <trans-unit id="s1626a7e10a9f9dcc">
+        <source>Sets the selection's font family</source>
+        <target>Setează familia de fonturi a selecției</target>
+      </trans-unit>
+      <trans-unit id="sb1494c08c8c720d1">
+        <source>Set text color</source>
+        <target>Setați culoarea textului</target>
+      </trans-unit>
+      <trans-unit id="se1f5bb0386c88f96">
+        <source>Sets the color of the selected text</source>
+        <target>Setează culoarea textului selectat</target>
+      </trans-unit>
+      <trans-unit id="sa65d4ad99f1d8c06">
+        <source>Set text background</source>
+        <target>Setați fundalul textului</target>
+      </trans-unit>
+      <trans-unit id="s34f724979a124c50">
+        <source>Sets the background color of the selected text</source>
+        <target>Setează culoarea de fundal a textului selectat</target>
+      </trans-unit>
+      <trans-unit id="se219da7b1e955c65">
+        <source>Clear formatting</source>
+        <target>Formatare clară</target>
+      </trans-unit>
+      <trans-unit id="s256ab831a48c941c">
+        <source>Removes all text formatting from the selection</source>
+        <target>Îndepărtează toate formatele textului din selecție</target>
+      </trans-unit>
+      <trans-unit id="s621ad19d35ba7742">
+        <source>Copy selection</source>
+        <target>Selectare copie</target>
+      </trans-unit>
+      <trans-unit id="s365280e16a8ea32d">
+        <source>Copy the selection</source>
+        <target>Copiați selecția</target>
+      </trans-unit>
+      <trans-unit id="s73cb20c838e761e1">
+        <source>Cut selection</source>
+        <target>Selectarea tăieturii</target>
+      </trans-unit>
+      <trans-unit id="s8e715248c3a78446">
+        <source>Cut the selection</source>
+        <target>Tăiați selecția</target>
+      </trans-unit>
+      <trans-unit id="s13ef8ca26ca8861b">
+        <source>Cut element</source>
+        <target>Element de tăiere</target>
+      </trans-unit>
+      <trans-unit id="s2ced8e8fafb499f6">
+        <source>Delete element</source>
+        <target>Ștergeți elementul</target>
+      </trans-unit>
+      <trans-unit id="s3eca5a034978754b">
+        <source>Delete the selection</source>
+        <target>Ștergeți selecția</target>
+      </trans-unit>
+      <trans-unit id="s95c161f68e5180a5">
+        <source>Inspect selection</source>
+        <target>Inspectați selecția</target>
+      </trans-unit>
+      <trans-unit id="s4c1535f316305a2a">
+        <source>Inspect the selection</source>
+        <target>Inspectați selecția</target>
+      </trans-unit>
+      <trans-unit id="sbba0156f795d8c07">
+        <source>Edit selection</source>
+        <target>Editare selecție</target>
+      </trans-unit>
+      <trans-unit id="sbd181cd54b8402a4">
+        <source>Edit the selection</source>
+        <target>Editați selecția</target>
+      </trans-unit>
+      <trans-unit id="s06634274f19b0572">
+        <source>Pin selection</source>
+        <target>Selectarea pinilor</target>
+      </trans-unit>
+      <trans-unit id="sa53c5cb03a8fda50">
+        <source>Pin the selection as a snippet in the palette</source>
+        <target>Fixați selecția ca fragment în paletă</target>
+      </trans-unit>
+      <trans-unit id="s5c63af7695445fcf">
+        <source>Text Style</source>
+        <target>Stilul textului</target>
+      </trans-unit>
+      <trans-unit id="sc8d2c7f6c33a2b32">
+        <source>Set text style (alignment, indentation, spacing, etc.) of selected elements</source>
+        <target>Setarea stilului de text (aliniere, indentare, spațiere etc.) al elementelor
+          selectate</target>
+      </trans-unit>
+      <trans-unit id="s7060970b5ed20a58">
+        <source>Interactivity</source>
+        <target>Interactivitate</target>
+      </trans-unit>
+      <trans-unit id="se8bb865aeb8602dc">
+        <source>Set interactivty options for selected elements</source>
+        <target>Setarea opțiunilor de interactivitate pentru elementele selectate</target>
+      </trans-unit>
+      <trans-unit id="se25d54a8943385b0">
+        <source>Blending</source>
+        <target>Amestecare</target>
+      </trans-unit>
+      <trans-unit id="sdbdf663c872fb855">
+        <source>Set blending (e.g. opacity) of selected elements</source>
+        <target>Setați amestecarea (de exemplu, opacitatea) elementelor selectate</target>
+      </trans-unit>
+      <trans-unit id="s550492e6c28b6628">
+        <source>Display mode</source>
+        <target>Modul de afișare</target>
+      </trans-unit>
+      <trans-unit id="s3c1c59a8fe1ce8af">
+        <source>Set the display mode of the selected elements</source>
+        <target>Setați modul de afișare a elementelor selectate</target>
+      </trans-unit>
+      <trans-unit id="s0c669387c45c4dc6">
+        <source>Fragmentation</source>
+        <target>Fragmentare</target>
+      </trans-unit>
+      <trans-unit id="s87c65faff16a53bd">
+        <source>Set fragmentation (behaviour on page/region/column breaks) of selected elements</source>
+        <target>Setați fragmentarea (comportamentul la întreruperile de pagină/regiune/colonală)
+          elementelor selectate</target>
+      </trans-unit>
+      <trans-unit id="sebee375c65c0cd58">
+        <source>Image sizing</source>
+        <target>Dimensionarea imaginii</target>
+      </trans-unit>
+      <trans-unit id="saaf255f484959835">
+        <source>Set image sizing options of selected elements</source>
+        <target>Setarea opțiunilor de dimensionare a imaginii elementelor selectate</target>
+      </trans-unit>
+      <trans-unit id="sea7f9a84b82663b8">
+        <source>Column break</source>
+        <target>Întreruperea coloanei</target>
+      </trans-unit>
+      <trans-unit id="s0898264186c682fa">
+        <source>Apply column layout to selected elements</source>
+        <target>Aplicați aspectul coloanelor la elementele selectate</target>
+      </trans-unit>
+      <trans-unit id="s687416d1ea01d0bb">
+        <source>Overflow behavior</source>
+        <target>Comportamentul de revărsare</target>
+      </trans-unit>
+      <trans-unit id="sa5c062dc12553bbb">
+        <source>Set overflow behaviour of selected elements</source>
+        <target>Setarea comportamentului de revărsare a elementelor selectate</target>
+      </trans-unit>
+      <trans-unit id="s4a14e0d787c30116">
+        <source>Positioning</source>
+        <target>Poziționare</target>
+      </trans-unit>
+      <trans-unit id="s19d9b0051c5e3b45">
+        <source>Set positioning of selected elements</source>
+        <target>Setarea poziționării elementelor selectate</target>
+      </trans-unit>
+      <trans-unit id="sa559701e1cdc3331">
+        <source>Shaping</source>
+        <target>Modelare</target>
+      </trans-unit>
+      <trans-unit id="s2dbeef0cb14e4f4d">
+        <source>Set shape of selected elements</source>
+        <target>Setarea formei elementelor selectate</target>
+      </trans-unit>
+      <trans-unit id="s04061a8e12259e3f">
+        <source>2D/3D transform</source>
+        <target>Transformare 2D/3D</target>
+      </trans-unit>
+      <trans-unit id="sab4fb4f4ff5b43e4">
+        <source>Apply 2D or 3D transformations to selected elements</source>
+        <target>Aplicați transformări 2D sau 3D elementelor selectate</target>
+      </trans-unit>
+      <trans-unit id="sf190149f9d8bbb2a">
+        <source>Writing mode</source>
+        <target>Mod de scriere</target>
+      </trans-unit>
+      <trans-unit id="sdedc76f6a0a2583b">
+        <source>Set writing mode options of selected elements</source>
+        <target>Setarea opțiunilor modului de scriere al elementelor selectate</target>
+      </trans-unit>
+      <trans-unit id="s762e5704cc84089d">
+        <source>Set other style options of selected elements</source>
+        <target>Setarea altor opțiuni de stil ale elementelor selectate</target>
+      </trans-unit>
+      <trans-unit id="se6297163cac9d276">
+        <source>Edit source</source>
+        <target>Editează sursa</target>
+      </trans-unit>
+      <trans-unit id="s281d957112b10f12">
+        <source>Edit the HTML of the document directly</source>
+        <target>Editați direct HTML-ul documentului</target>
+      </trans-unit>
+      <trans-unit id="s8f4be9f086eb530f">
+        <source>Undo</source>
+        <target>Anulare</target>
+      </trans-unit>
+      <trans-unit id="s7beb1e77e82363eb">
+        <source>Undo the last change in the active document</source>
+        <target>Anularea ultimei modificări în documentul activ</target>
+      </trans-unit>
+      <trans-unit id="s7417792bbe720149">
+        <source>Redo</source>
+        <target>Refacere</target>
+      </trans-unit>
+      <trans-unit id="s640bc7710d0143ce">
+        <source>Redo the last undone change in the active document</source>
+        <target>Refacerea ultimei modificări anulate în documentul activ</target>
+      </trans-unit>
+      <trans-unit id="s83420ad7b6a14db5">
+        <source>Toggle Dev Tools</source>
+        <target>Toggle Instrumente de dezvoltare</target>
+      </trans-unit>
+      <trans-unit id="s7af555180b30a947">
+        <source>Open the developer tools</source>
+        <target>Deschideți instrumentele dezvoltatorului</target>
+      </trans-unit>
+      <trans-unit id="s8688d74dd3716d6e">
+        <source>Keyboard shortcuts for commands</source>
+        <target>Comenzi rapide de la tastatură pentru comenzi</target>
+      </trans-unit>
+      <trans-unit id="sc3ac225273c8316b">
+        <source>General</source>
+        <target>Generalități</target>
+      </trans-unit>
+      <trans-unit id="s4caed5b7a7e5d89b">
+        <source>English</source>
+        <target>Engleză</target>
+      </trans-unit>
+      <trans-unit id="s63e71d20d1eaca93">
+        <source>German</source>
+        <target>germană</target>
+      </trans-unit>
+      <trans-unit id="se25e4f2cb77b8be8">
+        <source>Language for the WebWriter interface and new documents</source>
+        <target>Limbaj pentru interfața WebWriter și documente noi</target>
+      </trans-unit>
+      <trans-unit id="sefcf950b3cc4fc3b">
+        <source>Language</source>
+        <target>Limba</target>
+      </trans-unit>
+      <trans-unit id="se3b4c857f91f80d7">
+        <source>Keyboard shortcuts</source>
+        <target>Comenzi rapide de la tastatură</target>
+      </trans-unit>
+      <trans-unit id="s91c5921e7b46d4a6">
+        <source>You have unsaved changes. Are you sure you want to leave and discard them?</source>
+        <target>Aveți modificări nesalvate. Sunteți sigur că doriți să le lăsați și să le aruncați?</target>
+      </trans-unit>
+      <trans-unit id="s268ecd1cef45a9a8">
+        <source>Are you sure?</source>
+        <target>Sunteți sigur?</target>
+      </trans-unit>
+      <trans-unit id="sb430f5b4824de0d3">
+        <source>Choose a layout</source>
+        <target>Alegeți un aspect</target>
+      </trans-unit>
+      <trans-unit id="seaf97719986faf4f">
+        <source>Gap</source>
+        <target>Gap</target>
+      </trans-unit>
+      <trans-unit id="sffdadf0a576fd802">
+        <source>Height</source>
+        <target>Înălțime</target>
+      </trans-unit>
+      <trans-unit id="sab55faae8e165407">
+        <source>Padding&lt;br&gt; like gap</source>
+        <target>Padding&lt;br&gt; ca decalaj</target>
+      </trans-unit>
+      <trans-unit id="sa645d315510dc09e">
+        <source>Choose path from disk</source>
+        <target>Alegeți calea de pe disc</target>
+      </trans-unit>
+      <trans-unit id="seabae79729c4b2ad">
+        <source>Toggle email</source>
+        <target>Toggle e-mail</target>
+      </trans-unit>
+      <trans-unit id="s34dcda3b0f9d5a98">
+        <source>Toggle url</source>
+        <target>Schimbare url</target>
+      </trans-unit>
+      <trans-unit id="sc3cfee84dbbf36ae">
+        <source>Local File</source>
+        <target>Fișier local</target>
+      </trans-unit>
+      <trans-unit id="s9896529e5cb20558">
+        <source>External File</source>
+        <target>Fișier extern</target>
+      </trans-unit>
+      <trans-unit id="s7e0b179d4d1414eb">
+        <source>Enter link</source>
+        <target>Introduceți link-ul</target>
+      </trans-unit>
+      <trans-unit id="sbe4a7c8f231739b3">
+        <source>or paste/drop/pick file</source>
+        <target>sau lipiți/lipiți/alegeți fișierul</target>
+      </trans-unit>
+      <trans-unit id="s8a4ff2bd9c13498c">
+        <source>Record</source>
+        <target>Înregistrare</target>
+      </trans-unit>
+      <trans-unit id="s1a5230a71d9285c1">
+        <source>Capture</source>
+        <target>Captură</target>
+      </trans-unit>
+      <trans-unit id="s2b8f50c64be440f7">
+        <source>Select 
+          <x id="0" equiv-text="${this.mediaType}"/>...
+        </source>
+        <target>Selectați 
+          <x id="0" equiv-text="${this.mediaType}"/>... 
+        </target>
+      </trans-unit>
+      <trans-unit id="s739544d0c858c633">
+        <source>Or drop 
+          <x id="0" equiv-text="${this.mediaType}"/> here
+        </source>
+        <target>Sau lăsați 
+          <x id="0" equiv-text="${this.mediaType}"/> aici 
+        </target>
+      </trans-unit>
+      <trans-unit id="se58f06c2b0583ff7">
+        <source>Pick coordinates</source>
+        <target>Alegeți coordonatele</target>
+      </trans-unit>
+      <trans-unit id="sded940efcadd8f10">
+        <source>Save your document</source>
+        <target>Salvați documentul</target>
+      </trans-unit>
+      <trans-unit id="s6910ed6dbaba4807">
+        <source>Load a document</source>
+        <target>Încărcați un document</target>
+      </trans-unit>
+      <trans-unit id="s8f533296a536965e">
+        <source>Save as...</source>
+        <target>Salvați ca...</target>
+      </trans-unit>
+      <trans-unit id="s1f0e5f8acab2f0d3">
+        <source>Load as...</source>
+        <target>Încărcați ca...</target>
+      </trans-unit>
+      <trans-unit id="sa3c9339de23c1752">
+        <source>Format</source>
+        <target>Format</target>
+      </trans-unit>
+      <trans-unit id="s1cf730f96ac4f6b6">
+        <source>On...</source>
+        <target>Pe...</target>
+      </trans-unit>
+      <trans-unit id="s13388f2a0641c5a9">
+        <source>From...</source>
+        <target>De la...</target>
+      </trans-unit>
+      <trans-unit id="s61e136c0658e27d5">
+        <source>Protocol</source>
+        <target>Protocol</target>
+      </trans-unit>
+      <trans-unit id="see2fcaedf9743ec6">
+        <source>Location</source>
+        <target>Locație</target>
+      </trans-unit>
+      <trans-unit id="s2ceb11be2290bb1b">
+        <source>Cancel</source>
+        <target>Anulează</target>
+      </trans-unit>
+      <trans-unit id="s4f20edb48a6287c9">
+        <source>Load</source>
+        <target>Încărcare</target>
+      </trans-unit>
+      <trans-unit id="s851a7deea5984646">
+        <source>License as Creative Commons OER?</source>
+        <target>Licență ca Creative Commons OER?</target>
+      </trans-unit>
+      <trans-unit id="s2540844a4bc4d9ba">
+        <source>Require attribution?</source>
+        <target>Cereți atribuirea?</target>
+      </trans-unit>
+      <trans-unit id="sb0a974028c99ca6d">
+        <source>Allow adaptations?</source>
+        <target>Permiteți adaptări?</target>
+      </trans-unit>
+      <trans-unit id="s77e594ddcc10c774">
+        <source>Allow commercial use?</source>
+        <target>Permiteți utilizarea comercială?</target>
+      </trans-unit>
+      <trans-unit id="sb8f855b49234b81b">
+        <source>Apply</source>
+        <target>Aplicați</target>
+      </trans-unit>
+      <trans-unit id="sb66beca1e766dcb3">
+        <source>Apply and import</source>
+        <target>Aplicare și import</target>
+      </trans-unit>
+      <trans-unit id="s3914cb410fca44d4">
+        <source>Import</source>
+        <target>Import</target>
+      </trans-unit>
+      <trans-unit id="sed17285cd25d6389">
+        <source>Directory where package.json is located</source>
+        <target>Directorul în care este localizat package.json</target>
+      </trans-unit>
+      <trans-unit id="sc74e3567875ce255">
+        <source>Both the tag of your widget and the name of your NPM package</source>
+        <target>Atât eticheta widget-ului dvs., cât și numele pachetului NPM</target>
+      </trans-unit>
+      <trans-unit id="s342b0cabfa672822">
+        <source>Help the user find your widget</source>
+        <target>Ajutați utilizatorul să vă găsească widget-ul</target>
+      </trans-unit>
+      <trans-unit id="sfdeef3dccf409f81">
+        <source>This keyword is required for widgets</source>
+        <target>Acest cuvânt cheie este necesar pentru widget-uri</target>
+      </trans-unit>
+      <trans-unit id="h64cd12550420f6f1">
+        <source>Generate a 
+          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
+          <x id="1" equiv-text="&lt;/code&gt;"/> file
+        </source>
+        <target>Generați o 
+          <x id="0" equiv-text="&lt;code&gt;"/>LICENȚĂ 
+          <x id="1" equiv-text="&lt;/code&gt;"/> fișier 
+        </target>
+      </trans-unit>
+      <trans-unit id="s0dc452999c129e15">
+        <source>Enable live reload</source>
+        <target>Activarea reîncărcării live</target>
+      </trans-unit>
+      <trans-unit id="s255857544a9d5ec0">
+        <source>Reset</source>
+        <target>Resetare</target>
+      </trans-unit>
+      <trans-unit id="s2591806d7b222591">
+        <source>Reset changes</source>
+        <target>Resetați modificările</target>
+      </trans-unit>
+      <trans-unit id="s445b8acb9206db6e">
+        <source>Discard and cancel</source>
+        <target>Aruncați și anulați</target>
+      </trans-unit>
+      <trans-unit id="sae3629911a62147f">
+        <source>JS Size:</source>
+        <target>JS Dimensiune:</target>
+      </trans-unit>
+      <trans-unit id="s1357c9b016a9a631">
+        <source>CSS Size:</source>
+        <target>Dimensiune CSS:</target>
+      </trans-unit>
+      <trans-unit id="sf1ed4eed4de3012e">
+        <source>View error</source>
+        <target>Vezi eroarea</target>
+      </trans-unit>
+      <trans-unit id="h75b0cad9d9e80648">
+        <source>Stop watching files at 
+          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/>.
+        </source>
+        <target>Opriți urmărirea fișierelor la 
+          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/>. 
+        </target>
+      </trans-unit>
+      <trans-unit id="h0a75a995d1672be1">
+        <source>Start watching files at 
+          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/> and reload the package if a file is changed.
+        </source>
+        <target>Începeți urmărirea fișierelor la 
+          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/> și reîncarcă
+          pachetul dacă un fișier este modificat. 
+        </target>
+      </trans-unit>
+      <trans-unit id="s8b0432eecbd8b034">
+        <source>Update</source>
+        <target>Actualizare</target>
+      </trans-unit>
+      <trans-unit id="sbc5bb5bb74d141b9">
+        <source>Uninstall</source>
+        <target>Dezinstalare</target>
+      </trans-unit>
+      <trans-unit id="s6196153c4b0c1ea0">
+        <source>Install</source>
+        <target>Instalați</target>
+      </trans-unit>
+      <trans-unit id="sda174a4c93e84ce6">
+        <source>Error importing</source>
+        <target>Eroare la import</target>
+      </trans-unit>
+      <trans-unit id="s8cd9849cd37d7753">
+        <source>Either select an existing package directory to install or an empty directory to create a new package.</source>
+        <target>Selectați un director de pachete existent pentru instalare sau un director gol
+          pentru a crea un pachet nou.</target>
+      </trans-unit>
+      <trans-unit id="sdb311229f4b5eb3b">
+        <source>Import local package</source>
+        <target>Importați pachetul local</target>
+      </trans-unit>
+      <trans-unit id="s65f6740a45cea0aa">
+        <source>Create local package</source>
+        <target>Crearea pachetului local</target>
+      </trans-unit>
+      <trans-unit id="s12aac40ecd87dc12">
+        <source>View local application directory</source>
+        <target>Vizualizați directorul local de aplicații</target>
+      </trans-unit>
+      <trans-unit id="s815a7e524eda76aa">
+        <source>Reset local application directory</source>
+        <target>Resetați directorul local al aplicației</target>
+      </trans-unit>
+      <trans-unit id="s3a6538ae341633f6">
+        <source>Edit local package</source>
+        <target>Editarea pachetului local</target>
+      </trans-unit>
+      <trans-unit id="s9bf0b9da3f509795">
+        <source>Widget Package</source>
+        <target>Pachet Widget</target>
+      </trans-unit>
+      <trans-unit id="s8a7fa8a052138aef">
+        <source>Warning:</source>
+        <target>Avertisment:</target>
+      </trans-unit>
+      <trans-unit id="sad288b082f4d3521">
+        <source>You seem to be offline. While offline, you can't manage available or outdated packages.</source>
+        <target>Se pare că sunteți offline. În timp ce sunteți offline, nu puteți gestiona pachetele
+          disponibile sau învechite.</target>
+      </trans-unit>
+      <trans-unit id="sed8ec5e3c64fa25d">
+        <source>Total</source>
+        <target>Total</target>
+      </trans-unit>
+      <trans-unit id="s8cfdd110c30d604d">
+        <source>No packages installed or available</source>
+        <target>Nu există pachete instalate sau disponibile</target>
+      </trans-unit>
+      <trans-unit id="s10e80d4c01c3cc21">
+        <source>Installed</source>
+        <target>Instalat</target>
+      </trans-unit>
+      <trans-unit id="s33b62827f665c461">
+        <source>No packages installed</source>
+        <target>Nu există pachete instalate</target>
+      </trans-unit>
+      <trans-unit id="sd158a5fc0f062f18">
+        <source>Available</source>
+        <target>Disponibil</target>
+      </trans-unit>
+      <trans-unit id="se432a7c0c144d458">
+        <source>No packages available</source>
+        <target>Nu există pachete disponibile</target>
+      </trans-unit>
+      <trans-unit id="s76cc1c6d9fab3a2d">
+        <source>Outdated</source>
+        <target>Depășit</target>
+      </trans-unit>
+      <trans-unit id="sf9559106e88ee46d">
+        <source>No packages outdated</source>
+        <target>Nu există pachete învechite</target>
+      </trans-unit>
+      <trans-unit id="se9b1fec72ffd8f48">
+        <source>Local</source>
+        <target>Local</target>
+      </trans-unit>
+      <trans-unit id="sc7691fecb3373a42">
+        <source>No local packages</source>
+        <target>Nu există pachete locale</target>
+      </trans-unit>
+      <trans-unit id="keyCommand">
+        <source>⌘ Command/Win</source>
+        <target>⌘ Comandă/Win</target>
+      </trans-unit>
+      <trans-unit id="keyShift">
+        <source>⇧ Shift</source>
+        <target>⇧ Schimb</target>
+      </trans-unit>
+      <trans-unit id="keyControl">
+        <source>^ Control</source>
+        <target>^ Control</target>
+      </trans-unit>
+      <trans-unit id="keyOption">
+        <source>⌥ Option/Alt</source>
+        <target>⌥ Opțiune/Alt</target>
+      </trans-unit>
+      <trans-unit id="s2692bc028fed91f1">
+        <source>⇪ Caps Lock</source>
+        <target>⇪ Blocare majuscule</target>
+      </trans-unit>
+      <trans-unit id="backspaceKey">
+        <source>⟵</source>
+        <target>⟵</target>
+      </trans-unit>
+      <trans-unit id="tabKey">
+        <source>⭾ Tab</source>
+        <target>⭾ Tab</target>
+      </trans-unit>
+      <trans-unit id="clearKey">
+        <source>⎚ Clear</source>
+        <target>⎚ Clar</target>
+      </trans-unit>
+      <trans-unit id="enterKey">
+        <source>↩ Enter</source>
+        <target>Introduceți</target>
+      </trans-unit>
+      <trans-unit id="escapeKey">
+        <source>⎋ Escape</source>
+        <target>⎋ Evadare</target>
+      </trans-unit>
+      <trans-unit id="spaceKey">
+        <source>Space</source>
+        <target>Spațiu</target>
+      </trans-unit>
+      <trans-unit id="upKey">
+        <source>↑ Up</source>
+        <target>↑ Sus</target>
+      </trans-unit>
+      <trans-unit id="downKey">
+        <source>↓ Down</source>
+        <target>↓ Jos</target>
+      </trans-unit>
+      <trans-unit id="leftKey">
+        <source>← Left</source>
+        <target>← Stânga</target>
+      </trans-unit>
+      <trans-unit id="rightKey">
+        <source>→ Right</source>
+        <target>→ Dreapta</target>
+      </trans-unit>
+      <trans-unit id="homeKey">
+        <source>⤒ Home</source>
+        <target>⤒ Acasă</target>
+      </trans-unit>
+      <trans-unit id="endKey">
+        <source>⤓ End</source>
+        <target>⤓ Sfârșit</target>
+      </trans-unit>
+      <trans-unit id="pageupKey">
+        <source>▲ Pageup</source>
+        <target>▲ Pageup</target>
+      </trans-unit>
+      <trans-unit id="pagedownKey">
+        <source>▼ Pagedown</source>
+        <target>▼ Pagedown</target>
+      </trans-unit>
+      <trans-unit id="deleteKey">
+        <source>⌦ Delete</source>
+        <target>⌦ Ștergeți</target>
+      </trans-unit>
+      <trans-unit id="f1Key">
+        <source>F1</source>
+        <target>F1</target>
+      </trans-unit>
+      <trans-unit id="f2Key">
+        <source>F2</source>
+        <target>F2</target>
+      </trans-unit>
+      <trans-unit id="f3Key">
+        <source>F3</source>
+        <target>F3</target>
+      </trans-unit>
+      <trans-unit id="f4Key">
+        <source>F4</source>
+        <target>F4</target>
+      </trans-unit>
+      <trans-unit id="f5Key">
+        <source>F5</source>
+        <target>F5</target>
+      </trans-unit>
+      <trans-unit id="f6Key">
+        <source>F6</source>
+        <target>F6</target>
+      </trans-unit>
+      <trans-unit id="f7Key">
+        <source>F7</source>
+        <target>F7</target>
+      </trans-unit>
+      <trans-unit id="f8Key">
+        <source>F8</source>
+        <target>F8</target>
+      </trans-unit>
+      <trans-unit id="f9Key">
+        <source>F9</source>
+        <target>F9</target>
+      </trans-unit>
+      <trans-unit id="f10Key">
+        <source>F10</source>
+        <target>F10</target>
+      </trans-unit>
+      <trans-unit id="f11Key">
+        <source>F11</source>
+        <target>F11</target>
+      </trans-unit>
+      <trans-unit id="f12Key">
+        <source>F12</source>
+        <target>F12</target>
+      </trans-unit>
+      <trans-unit id="f13Key">
+        <source>F13</source>
+        <target>F13</target>
+      </trans-unit>
+      <trans-unit id="f14Key">
+        <source>F14</source>
+        <target>F14</target>
+      </trans-unit>
+      <trans-unit id="f15Key">
+        <source>F15</source>
+        <target>F15</target>
+      </trans-unit>
+      <trans-unit id="f16Key">
+        <source>F16</source>
+        <target>F16</target>
+      </trans-unit>
+      <trans-unit id="f17Key">
+        <source>F17</source>
+        <target>F17</target>
+      </trans-unit>
+      <trans-unit id="f18Key">
+        <source>F18</source>
+        <target>F18</target>
+      </trans-unit>
+      <trans-unit id="f19Key">
+        <source>F19</source>
+        <target>F19</target>
+      </trans-unit>
+      <trans-unit id="s7dea785045c3cc74">
+        <source>Press new key combination...</source>
+        <target>Apăsați noua combinație de taste...</target>
+      </trans-unit>
+      <trans-unit id="s46d4abe6255cb9e1">
+        <source>Reassign shortcut</source>
+        <target>Reatribuire comandă rapidă</target>
+      </trans-unit>
+      <trans-unit id="sd1f44f1a8bc20e67">
+        <source>Email</source>
+        <target>E-mail</target>
+      </trans-unit>
+      <trans-unit id="sf6e1665c7022a1f8">
+        <source>Password</source>
+        <target>Parolă</target>
+      </trans-unit>
+      <trans-unit id="s151bc2eea7a032a4">
+        <source>-unchanged-</source>
+        <target>-schimbat-</target>
+      </trans-unit>
+      <trans-unit id="s61eacb19db252f5e">
+        <source>URL</source>
+        <target>URL</target>
+      </trans-unit>
+      <trans-unit id="s506b6a19d12f414c">
+        <source>Key</source>
+        <target>Cheie</target>
+      </trans-unit>
+      <trans-unit id="sd3f402df8619ddcd">
+        <source>This information about you is automatically added to new documents. You can change this for each document in the metadata editor.</source>
+        <target>Aceste informații despre dvs. sunt adăugate automat la documentele noi. Puteți
+          modifica acest lucru pentru fiecare document în editorul de metadate.</target>
+      </trans-unit>
+      <trans-unit id="s90105521fcc40453">
+        <source>WebWriter Cloud accounts allow you store documents online and share them with your students. Add an account here and it will be available as a location for saving, loading, sharing and opening documents.</source>
+        <target>Conturile WebWriter Cloud vă permit să stocați documente online și să le partajați
+          cu elevii dumneavoastră. Adăugați un cont aici și acesta va fi disponibil ca locație
+          pentru salvarea, încărcarea, partajarea și deschiderea documentelor.</target>
+      </trans-unit>
+      <trans-unit id="s2712dc5641a33226">
+        <source>Package registry accounts are intended for developers and allow you to configure one or more registries</source>
+        <target>Conturile de registru pentru pachete sunt destinate dezvoltatorilor și vă permit să
+          configurați unul sau mai multe registre</target>
+      </trans-unit>
+      <trans-unit id="s669b18c6d2d9c95b">
+        <source>None</source>
+        <target>Niciuna</target>
+      </trans-unit>
+      <trans-unit id="sef49aec68fd1dc66">
+        <source>Name</source>
+        <target>Nume și prenume</target>
+      </trans-unit>
+      <trans-unit id="s7cfe12cd14df9950">
+        <source>Sign out</source>
+        <target>Deconectare</target>
+      </trans-unit>
+      <trans-unit id="s5e27738a2e8eb763">
+        <source>Sign in</source>
+        <target>Conectați-vă</target>
+      </trans-unit>
+      <trans-unit id="sf28903d4ca0ddcfc">
+        <source>Remove this account</source>
+        <target>Eliminați acest cont</target>
+      </trans-unit>
+      <trans-unit id="sb85b1e36579852a6">
+        <source>Invalid email or password</source>
+        <target>E-mail sau parolă invalidă</target>
+      </trans-unit>
+      <trans-unit id="s0bdca49248ba4820">
+        <source>Shortcuts</source>
+        <target>Scurtături</target>
+      </trans-unit>
+      <trans-unit id="se48bd9e6c2a3109d">
+        <source>Accounts</source>
+        <target>Conturi</target>
+      </trans-unit>
+      <trans-unit id="s6988ab5d47593a26">
+        <source>You have the latest version of WebWriter.</source>
+        <target>Aveți cea mai recentă versiune a WebWriter.</target>
+      </trans-unit>
+      <trans-unit id="saf440a0a592f2835">
+        <source>Update to</source>
+        <target>Actualizare la</target>
+      </trans-unit>
+      <trans-unit id="s564d1648b1ceee9f">
+        <source>Up to date</source>
+        <target>La zi</target>
+      </trans-unit>
+      <trans-unit id="sf6673729c03ae999">
+        <source>Reset WebWriter</source>
+        <target>Resetați WebWriter</target>
+      </trans-unit>
+      <trans-unit id="sf1e79171c4856543">
+        <source>Are you sure? This action can't be reversed, all your settings will be deleted and reset.</source>
+        <target>Sunteți sigur? Această acțiune nu poate fi anulată, toate setările dvs. vor fi
+          șterse și resetate.</target>
+      </trans-unit>
+      <trans-unit id="se1b03a74b09ba7f0">
+        <source>App Folder</source>
+        <target>Folder aplicație</target>
+      </trans-unit>
+      <trans-unit id="s78789724e789221c">
+        <source>Size</source>
+        <target>Mărime</target>
+      </trans-unit>
+      <trans-unit id="s1b4a36fce2456660">
+        <source>Font Family</source>
+        <target>Familie de fonturi</target>
+      </trans-unit>
+      <trans-unit id="s11326fd2590f4e5e">
+        <source>Default</source>
+        <target>Implicit</target>
+      </trans-unit>
+      <trans-unit id="s9c356016f81585f6">
+        <source>Background Color</source>
+        <target>Culoarea fundalului</target>
+      </trans-unit>
+      <trans-unit id="s1f74bdf32b51a5fc">
+        <source>Background Image</source>
+        <target>Imagine de fundal</target>
+      </trans-unit>
+      <trans-unit id="s927d796559f49439">
+        <source>Background Origin</source>
+        <target>Originea fundalului</target>
+      </trans-unit>
+      <trans-unit id="s1637c7d1a30629e2">
+        <source>Border Box</source>
+        <target>Caseta de frontieră</target>
+      </trans-unit>
+      <trans-unit id="scd15088c39fe9edf">
+        <source>Padding Box</source>
+        <target>Cutie de căptușeală</target>
+      </trans-unit>
+      <trans-unit id="s1db591f5a54dbfd3">
+        <source>Content Box</source>
+        <target>Cutie de conținut</target>
+      </trans-unit>
+      <trans-unit id="sa01e7bf33563ef72">
+        <source>Background Attachment</source>
+        <target>Anexă de fond</target>
+      </trans-unit>
+      <trans-unit id="sd319aae1401f1e19">
+        <source>Fixed</source>
+        <target>Fix</target>
+      </trans-unit>
+      <trans-unit id="sa7698b3d20a6d1ec">
+        <source>Scroll</source>
+        <target>Derulați</target>
+      </trans-unit>
+      <trans-unit id="s89bca7498f20e041">
+        <source>Background Clip</source>
+        <target>Clip de fundal</target>
+      </trans-unit>
+      <trans-unit id="s2492f5fb1b05b45e">
+        <source>Text</source>
+        <target>Text</target>
+      </trans-unit>
+      <trans-unit id="s67d6d8f179e655df">
+        <source>Hide advanced styling</source>
+        <target>Ascundeți stilul avansat</target>
+      </trans-unit>
+      <trans-unit id="s84e5eb4dc1ad9d98">
+        <source>Show advanced styling</source>
+        <target>Afișarea stilului avansat</target>
+      </trans-unit>
+      <trans-unit id="s29acfd2778e8c377">
+        <source>Hide advanced text formatting</source>
+        <target>Ascundeți formatarea avansată a textului</target>
+      </trans-unit>
+      <trans-unit id="s1a1acc902e6668e0">
+        <source>Show advanced text formatting</source>
+        <target>Afișați formatarea avansată a textului</target>
+      </trans-unit>
+      <trans-unit id="s4fd2e638aabb0bb3">
+        <source>WebWriter supports embedding many different sources. Simply paste a link to content from:</source>
+        <target>WebWriter acceptă încorporarea mai multor surse diferite. Pur și simplu lipiți un
+          link către conținut din:</target>
+      </trans-unit>
+      <trans-unit id="sa79167651dce1e80">
+        <source>Alternate text</source>
+        <target>Text alternativ</target>
+      </trans-unit>
+      <trans-unit id="sa8bbe0197d31b423">
+        <source>Short description</source>
+        <target>Scurtă descriere</target>
+      </trans-unit>
+      <trans-unit id="seccd05955adb76bc">
+        <source>Poster</source>
+        <target>Poster</target>
+      </trans-unit>
+      <trans-unit id="s42e470ef1d707a28">
+        <source>Autoplay</source>
+        <target>Joc automat</target>
+      </trans-unit>
+      <trans-unit id="s83cd32b685ccc9b7">
+        <source>Controls</source>
+        <target>Controale</target>
+      </trans-unit>
+      <trans-unit id="s4efee5b48a4593cb">
+        <source>Loop</source>
+        <target>Bucla</target>
+      </trans-unit>
+      <trans-unit id="se0f67eae944f8f94">
+        <source>Mute</source>
+        <target>Mută</target>
+      </trans-unit>
+      <trans-unit id="se036b53f145441cd">
+        <source>Mixed Content</source>
+        <target>Conținut mixt</target>
+      </trans-unit>
+      <trans-unit id="s651f3a92741d9520">
+        <source>Everything</source>
+        <target>Totul</target>
+      </trans-unit>
+      <trans-unit id="sddc49047f66a64ab">
+        <source>No description provided</source>
+        <target>Nu a fost furnizată nicio descriere</target>
+      </trans-unit>
+      <trans-unit id="s1641ab440bf4daa4">
+        <source>Update this widget package</source>
+        <target>Actualizați acest pachet de widget-uri</target>
+      </trans-unit>
+      <trans-unit id="sbd40f40cbadd38d5">
+        <source>Remove this widget package</source>
+        <target>Eliminați acest pachet de widget-uri</target>
+      </trans-unit>
+      <trans-unit id="s54897f2764b0e4d0">
+        <source>Install this widget package</source>
+        <target>Instalați acest pachet widget</target>
+      </trans-unit>
+      <trans-unit id="s985f2db57913324b">
+        <source>Manage packages</source>
+        <target>Gestionarea pachetelor</target>
+      </trans-unit>
+      <trans-unit id="scdf536b65be39ec5">
+        <source> Create/import</source>
+        <target> Creare/import</target>
+      </trans-unit>
+      <trans-unit id="sf2514d5dc78b1654">
+        <source>Insert widget</source>
+        <target>Inserare widget</target>
+      </trans-unit>
+      <trans-unit id="s1857db526dc4dcdd">
+        <source>Create package</source>
+        <target>Creați pachetul</target>
+      </trans-unit>
+      <trans-unit id="sd2addf69477cd4b4">
+        <source>Import package</source>
+        <target>Pachet de import</target>
+      </trans-unit>
+      <trans-unit id="s7de0061f53ba7472">
+        <source>Error importing </source>
+        <target>Eroare la import </target>
+      </trans-unit>
+      <trans-unit id="s00065e45db8c0441">
+        <source>See developer tools for more details</source>
+        <target>Consultați instrumente pentru dezvoltatori pentru mai multe detalii</target>
+      </trans-unit>
+      <trans-unit id="s812cbda653daaeba">
+        <source>This feature is not implemented yet</source>
+        <target>Această caracteristică nu este încă implementată</target>
+      </trans-unit>
+      <trans-unit id="s35aeaff1425bca9e">
+        <source>WebWriter does not support media of type </source>
+        <target>WebWriter nu acceptă media de tip </target>
+      </trans-unit>
+      <trans-unit id="sb199b34dca0a4cfc">
+        <source>Enter content here...</source>
+        <target>Introduceți conținutul aici...</target>
+      </trans-unit>
+      <trans-unit id="s99f110d27e30b289">
+        <source>Title</source>
+        <target>Titlu</target>
+      </trans-unit>
+      <trans-unit id="sef73fe18e351eb35">
+        <source>Keywords</source>
+        <target>Cuvinte-cheie</target>
+      </trans-unit>
+      <trans-unit id="s63d894b1ddb06289">
+        <source>Description</source>
+        <target>Descriere</target>
+      </trans-unit>
+      <trans-unit id="s01d32b35baa3b676">
+        <source>Author</source>
+        <target>Autor</target>
+      </trans-unit>
+      <trans-unit id="s17597a8bb4810524">
+        <source>License</source>
+        <target>Licență</target>
+      </trans-unit>
+      <trans-unit id="sdc48456f9a27ae02">
+        <source>Generator</source>
+        <target>Generator</target>
+      </trans-unit>
+      <trans-unit id="s8d342ecaa9e75b9b">
+        <source>Relationship</source>
+        <target>Relația</target>
+      </trans-unit>
+      <trans-unit id="s4ea0f21fc2a338a1">
+        <source>Move up</source>
+        <target>Înaintează</target>
+      </trans-unit>
+      <trans-unit id="sb233557012dcb328">
+        <source>Move down</source>
+        <target>Coborâți</target>
+      </trans-unit>
+      <trans-unit id="s3d09398e555ee5f9">
+        <source>Advanced Options</source>
+        <target>Opțiuni avansate</target>
+      </trans-unit>
+      <trans-unit id="s17fb3f4805f4f4b9">
+        <source>Remove field</source>
+        <target>Eliminarea câmpului</target>
+      </trans-unit>
+      <trans-unit id="sa6f8d27bca557059">
+        <source>Move meta/link/style elements up/down into this element</source>
+        <target>Mutați elementele meta/link/style sus/jos în acest element</target>
+      </trans-unit>
+      <trans-unit id="s6dadeaaee49d6d18">
+        <source>Meta</source>
+        <target>Meta</target>
+      </trans-unit>
+      <trans-unit id="s252a52330d32b900">
+        <source>Metadata</source>
+        <target>Metadate</target>
+      </trans-unit>
+      <trans-unit id="s6827930ef1aeaf99">
+        <source>Base URL</source>
+        <target>URL de bază</target>
+      </trans-unit>
+      <trans-unit id="s1ca22ce85e074da5">
+        <source>Pragma</source>
+        <target>Pragma</target>
+      </trans-unit>
+      <trans-unit id="s064339c229374050">
+        <source>Encoding</source>
+        <target>Codificare</target>
+      </trans-unit>
+      <trans-unit id="saab875d8cfcfe712">
+        <source>Theme</source>
+        <target>Tema</target>
+      </trans-unit>
+      <trans-unit id="sa417644bef21a9aa">
+        <source>Unnamed Theme</source>
+        <target>Temă fără nume</target>
+      </trans-unit>
+      <trans-unit id="saa33768e03c45fc8">
+        <source>File Size</source>
+        <target>Dimensiunea fișierului</target>
+      </trans-unit>
+      <trans-unit id="s3f06e9abb6ebcb79">
+        <source>Characters</source>
+        <target>Personaje</target>
+      </trans-unit>
+      <trans-unit id="s0f350bc4e538e3ea">
+        <source>Words</source>
+        <target>Cuvinte</target>
+      </trans-unit>
+      <trans-unit id="s106b274b5af798e5">
+        <source>Sentences</source>
+        <target>Propoziții</target>
+      </trans-unit>
+      <trans-unit id="s97aa76056a81bd36">
+        <source>Metrics</source>
+        <target>Metrici</target>
+      </trans-unit>
+      <trans-unit id="s94d2eee44b292567">
+        <source>Toggle advanced options</source>
+        <target>Comutați opțiunile avansate</target>
+      </trans-unit>
+      <trans-unit id="s98977a87d1b93941">
+        <source>Reset information, styles and scripts</source>
+        <target>Resetați informațiile, stilurile și scripturile</target>
+      </trans-unit>
+      <trans-unit id="s543906d1db8b2283">
+        <source>Edit </source>
+        <target>Editare </target>
+      </trans-unit>
+      <trans-unit id="sbba865d4b437944f">
+        <source>Attribute</source>
+        <target>Atribut</target>
+      </trans-unit>
+      <trans-unit id="s16b9446e3a70e1f4">
+        <source>Attributes</source>
+        <target>Atribute</target>
+      </trans-unit>
+      <trans-unit id="sf471ec2496f904cc">
+        <source>Discard changes</source>
+        <target>Respingeți modificările</target>
+      </trans-unit>
+      <trans-unit id="s418f2020fe996832">
+        <source>Confirm changes</source>
+        <target>Confirmați modificările</target>
+      </trans-unit>
+      <trans-unit id="sba509fd8ed61d1d5">
+        <source>Unsaved File</source>
+        <target>Fișier nesalvat</target>
+      </trans-unit>
+      <trans-unit id="sef00c258bc1ecf1e">
+        <source>This explorable has unsaved changes.</source>
+        <target>Acest explorabil are modificări nesalvate.</target>
+      </trans-unit>
+      <trans-unit id="s731678e227a20559">
+        <source>This Device</source>
+        <target>Acest dispozitiv</target>
+      </trans-unit>
+      <trans-unit id="s71940c32987f675f">
+        <source>WebWriter Cloud</source>
+        <target>WebWriter Cloud</target>
+      </trans-unit>
+      <trans-unit id="s99a990f3841ad283">
+        <source>Files of </source>
+        <target>Fișiere de </target>
+      </trans-unit>
+      <trans-unit id="s3eb6d1e6e79ed7c4">
+        <source>No documents found</source>
+        <target>Nu s-au găsit documente</target>
+      </trans-unit>
+      <trans-unit id="s4e2562fe3990e621">
+        <source>Error connecting</source>
+        <target>Eroare de conectare</target>
+      </trans-unit>
+      <trans-unit id="sf52d840949a980d1">
+        <source>
+          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
+        </source>
+        <target>
+          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
+          vor fi șterse definitiv. Sunteți sigur? 
+        </target>
+      </trans-unit>
+      <trans-unit id="s9b7cd8860c8fc922">
+        <source>
+          <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
+        </source>
+        <target>
+          <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
+          va fi suprascrisă. Sunteți sigur? 
+        </target>
+      </trans-unit>
+      <trans-unit id="sfdb1e4d90981a535">
+        <source>Share this document</source>
+        <target>Distribuiți acest document</target>
+      </trans-unit>
+      <trans-unit id="s1c3fc313a9184670">
+        <source>Public Link</source>
+        <target>Legătură publică</target>
+      </trans-unit>
+      <trans-unit id="sc28864200d2a3799">
+        <source>Copy QR Code as image</source>
+        <target>Copiați codul QR ca imagine</target>
+      </trans-unit>
+      <trans-unit id="sfc815c9078bba30a">
+        <source>Download QR Code as image</source>
+        <target>Descărcați codul QR ca imagine</target>
+      </trans-unit>
+      <trans-unit id="s3a5ca02f282d247e">
+        <source>Share...</source>
+        <target>Share...</target>
+      </trans-unit>
+      <trans-unit id="sda2d76b976502a8d">
+        <source>Open...</source>
+        <target>Deschide...</target>
+      </trans-unit>
+      <trans-unit id="sb26035b596566abf">
+        <source>Unnamed</source>
+        <target>Fără nume</target>
+      </trans-unit>
+      <trans-unit id="s4cb38675a21b2c98">
+        <source>Unsupported property type '${desc.type}' (processing as JSON)</source>
+        <target>Tip de proprietate nesuportat "${desc.type}" (procesare ca JSON)</target>
+      </trans-unit>
+      <trans-unit id="sa00df4e39c72d3b4">
+        <source>
+          <x id="0" equiv-text="${desc.widget}"/> is not supported
+        </source>
+        <target>
+          <x id="0" equiv-text="${desc.widget}"/> nu este acceptat 
+        </target>
+      </trans-unit>
+      <trans-unit id="sf65df67a03bebe4b">
+        <source>Required for this widget</source>
+        <target>Necesar pentru acest widget</target>
+      </trans-unit>
+      <trans-unit id="s8a9eb438abac7c6a">
+        <source>Labels</source>
+        <target>Etichete</target>
+      </trans-unit>
+      <trans-unit id="sdef34fe08bb28b09">
+        <source>Chinese (Simplified)</source>
+        <target>Chineză (simplificată)</target>
+      </trans-unit>
+      <trans-unit id="sf1868dc19e3917bb">
+        <source>Spanish</source>
+        <target>spaniolă</target>
+      </trans-unit>
+      <trans-unit id="s75a27f43413e02c5">
+        <source>French</source>
+        <target>franceză</target>
+      </trans-unit>
+      <trans-unit id="scf932840a69dbb7c">
+        <source>Portuguese</source>
+        <target>portugheză</target>
+      </trans-unit>
+      <trans-unit id="sa30c12014e955946">
+        <source>Russian</source>
+        <target>Rusă</target>
+      </trans-unit>
+      <trans-unit id="seb8982ae8c3cdcc5">
+        <source>Indonesian</source>
+        <target>Indoneziană</target>
+      </trans-unit>
+      <trans-unit id="sdd35b688281b6dea">
+        <source>Japanese</source>
+        <target>Japoneză</target>
+      </trans-unit>
+      <trans-unit id="s9d2d00982edafabb">
+        <source>Turkish</source>
+        <target>Turcă</target>
+      </trans-unit>
+      <trans-unit id="s94d61907ee22a8c1">
+        <source>Korean</source>
+        <target>Coreeană</target>
+      </trans-unit>
+      <trans-unit id="sd48cc52117f4d68b">
+        <source>Italian</source>
+        <target>Italiană</target>
+      </trans-unit>
+      <trans-unit id="sffa395f64ec6ac36">
+        <source>Bulgarian</source>
+        <target>bulgară</target>
+      </trans-unit>
+      <trans-unit id="sc94e314312a8900c">
+        <source>Czech</source>
+        <target>Cehă</target>
+      </trans-unit>
+      <trans-unit id="sd9c21e5f60d6bdd8">
+        <source>Danish</source>
+        <target>daneză</target>
+      </trans-unit>
+      <trans-unit id="scf00d48fd5953a03">
+        <source>Greek</source>
+        <target>Greacă</target>
+      </trans-unit>
+      <trans-unit id="sa6607436f60ccc1a">
+        <source>Estonian</source>
+        <target>Estonă</target>
+      </trans-unit>
+      <trans-unit id="sc98b103772de63f4">
+        <source>Finnish</source>
+        <target>finlandeză</target>
+      </trans-unit>
+      <trans-unit id="sda9254d1f1228e1a">
+        <source>Hungarian</source>
+        <target>maghiară</target>
+      </trans-unit>
+      <trans-unit id="sb2dc787b0983ebc6">
+        <source>Lithuanian</source>
+        <target>lituaniană</target>
+      </trans-unit>
+      <trans-unit id="sd3dcb76f7b28adb8">
+        <source>Latvian</source>
+        <target>Letonă</target>
+      </trans-unit>
+      <trans-unit id="s5941292bb77281ab">
+        <source>Norwegian Bokmål</source>
+        <target>Norvegiană Bokmål</target>
+      </trans-unit>
+      <trans-unit id="s95d56e58f816d211">
+        <source>Dutch</source>
+        <target>olandeză</target>
+      </trans-unit>
+      <trans-unit id="s03f49e598ffb11cc">
+        <source>Polish</source>
+        <target>poloneză</target>
+      </trans-unit>
+      <trans-unit id="sc1aa1f6051b7102a">
+        <source>Romanian</source>
+        <target>română</target>
+      </trans-unit>
+      <trans-unit id="se0cda6b80a1bb50f">
+        <source>Slovak</source>
+        <target>Slovacă</target>
+      </trans-unit>
+      <trans-unit id="se96d43a515b8451c">
+        <source>Slovenian</source>
+        <target>Slovenă</target>
+      </trans-unit>
+      <trans-unit id="sae185e6af80ec81e">
+        <source>Swedish</source>
+        <target>suedeză</target>
+      </trans-unit>
+      <trans-unit id="sc4ee3e4ee994dafd">
+        <source>Ukrainian</source>
+        <target>Ucraineană</target>
+      </trans-unit>
+      <trans-unit id="s082869038c117fe5">
+        <source>Portuguese (Brazil)</source>
+        <target>Portugheză (Brazilia)</target>
+      </trans-unit>
+      <trans-unit id="s55905c735052d295">
+        <source>Thematic Break</source>
+        <target>Pauză tematică</target>
+      </trans-unit>
+      <trans-unit id="s936aa0b239679585">
+        <source>Insert a thematic break (usually displayed as a horizontal line)</source>
+        <target>Introduceți o pauză tematică (de obicei afișată ca o linie orizontală)</target>
+      </trans-unit>
+      <trans-unit id="sc43767deea72e9f3">
+        <source>Description List</source>
+        <target>Lista de descriere</target>
+      </trans-unit>
+      <trans-unit id="saf312eaeec77a802">
+        <source>Insert a description list (glossary, term list)</source>
+        <target>Introduceți o listă de descrieri (glosar, listă de termeni)</target>
+      </trans-unit>
+      <trans-unit id="s9abadcc828884d7b">
+        <source>Textarea</source>
+        <target>Textarea</target>
+      </trans-unit>
+      <trans-unit id="sf4e0e02a5277ef23">
+        <source>Insert an textarea</source>
+        <target>Introduceți o zonă de text</target>
+      </trans-unit>
+      <trans-unit id="sa557ae6bee9148a6">
+        <source>Progress</source>
+        <target>Progres</target>
+      </trans-unit>
+      <trans-unit id="s4f26e7cb7c0a8318">
+        <source>Vector Drawing</source>
+        <target>Desen vectorial</target>
+      </trans-unit>
+      <trans-unit id="sfbbab09dbe553571">
+        <source>Insert a vector drawing (SVG)</source>
+        <target>Introduceți un desen vectorial (SVG)</target>
+      </trans-unit>
+      <trans-unit id="s029504322b353edf">
+        <source>Size &amp; Spacing</source>
+        <target>Dimensiune și spațiere</target>
+      </trans-unit>
+      <trans-unit id="sa589e1df65dde0ec">
+        <source>Set the size, padding, and margins of the selected elements</source>
+        <target>Setați dimensiunea, umplutura și marginile elementelor selectate</target>
+      </trans-unit>
+      <trans-unit id="sfd54046c9e2030c2">
+        <source>Filters &amp; Colors</source>
+        <target>Filtre și culori</target>
+      </trans-unit>
+      <trans-unit id="s3db5d66ac9e64eae">
+        <source>Apply filters (blur, invert, etc.) to and set colors for the selected elements</source>
+        <target>Aplicați filtre (estompare, inversare etc.) și setați culori pentru elementele selectate</target>
+      </trans-unit>
+      <trans-unit id="s3f1e7a3f2b283d3b">
+        <source>Margin</source>
+        <target>Marjă</target>
+      </trans-unit>
+      <trans-unit id="s9370dc6afa716b57">
+        <source>Border</source>
+        <target>Frontieră</target>
+      </trans-unit>
+      <trans-unit id="s7d8103f6f06f83d6">
+        <source>Padding</source>
+        <target>Căptușeală</target>
+      </trans-unit>
+    </body>
+  </file>
+</xliff>

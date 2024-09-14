@@ -16,7 +16,10 @@
 
       "fs": {
         "all": true,
-        "scope": ["*", "**/*"]
+        "scope": {
+          "allow": ["**", "**/*", "*/**"],
+          "requireLiteralLeadingDot": false
+        }
       },
       "os": {
         "all": true
@@ -54,6 +57,9 @@
       "deb": {
         "depends": []
       },
+      "appimage": {
+        "bundleMediaFramework": true
+      },
       "externalBin": [
         "bin/bun",
         "bin/esbuild"
@@ -68,7 +74,6 @@
       "identifier": "webwriter.webwriter",
       "longDescription": "",
       "macOS": {
-        "minimumSystemVersion": "14.5",
         "entitlements": "./entitlements.plist"
       },
       "resources": [],

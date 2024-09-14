@@ -1,7 +1,6 @@
 import {ReactiveController, ReactiveControllerHost} from "lit"
 
 import { RootStore } from "../model"
-import { save } from "@tauri-apps/api/dialog";
 
 export class NotificationController implements ReactiveController {
 

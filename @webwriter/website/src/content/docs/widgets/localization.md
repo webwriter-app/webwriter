@@ -28,10 +28,10 @@ export default class CoolWidget extends LitElementWw {
 
   // `this.lang` exists by default, but we still need to make it reactive so our component updates when it is changed
   @property({attribute: true})
-  lang: string
+  accessor lang: string
 
   @property({attribute: true})
-  value: string
+  accessor value: string
 
   render() {
     return html`

@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/app-desktop",
-  "version": "0.10.1",
+  "version": "0.12.0",
   "description": "Windows/Mac/Linux version of WebWriter",
   "private": true,
   "author": "Frederic Salmen <frederic@fsalmen.de>",
@@ -10,7 +10,7 @@
     "@tauri-apps/cli": "^1.6.0"
   },
   "optionalDependencies": {
-    "bun": "^1.1.20",
-    "esbuild": "^0.23.0"
+    "bun": "1.1.20",
+    "esbuild": "^0.23.1"
   }
 }

@@ -1,12 +1,14 @@
-import { Decoration, DecorationSource, NodeView, NodeViewConstructor } from "prosemirror-view"
-import { NodeSelection, TextSelection } from "prosemirror-state"
-import { DOMParser, DOMSerializer, Fragment, Node, Slice } from "prosemirror-model"
+import { Decoration, DecorationSource, EditorView, NodeView, NodeViewConstructor } from "prosemirror-view"
+import { AllSelection, NodeSelection, TextSelection } from "prosemirror-state"
+import { DOMParser, DOMSerializer, Fragment, Node, ResolvedPos, Slice, TagParseRule } from "prosemirror-model"
 import {LitElement, html, render} from "lit"
 
-import { getAttrs, globalHTMLAttributes, toAttributes } from "../../model"
+import { EditorStateWithHead, getAttrs, globalHTMLAttributes, toAttributes } from "../../model"
 import {EditorViewController} from "."
 import { selectParentNode } from "prosemirror-commands"
-import { filterObject, sameMembers, shallowCompare } from "../../utility"
+import { filterObject, sameMembers, shallowCompare, browser } from "../../utility"
+import { readDOMChange } from "./prosemirror-view/domchange"
+
 
 
 export function treeLog(tree: Node) {
@@ -32,6 +34,7 @@ export function treeLog(tree: Node) {
   }
   console.groupEnd()
 }
+
 
 export class WidgetView implements NodeView {
 
@@ -63,55 +66,6 @@ export class WidgetView implements NodeView {
     console.log(Array.from(WidgetView.existingWidgets as any))*/
 	}
 
-  update(node: Node, decorations: readonly Decoration[], innerDecorations: DecorationSource) {
-    /*
-    const oldName = this.node.type.name
-    const oldAttrs = {...this.node.attrs, ...this.node.attrs._, ...this.node.attrs.data, data: undefined, _: undefined}
-    const name = node.type.name
-    const attrs = {...node.attrs, ...node.attrs._, ...node.attrs.data, data: undefined, _: undefined}
-    if(oldName !== name) {
-      return false
-    }
-    // this.node = node
-    const newDom = DOMSerializer.fromSchema(node.type.schema).serializeNode(node, {document: this.view.dom.ownerDocument}) as HTMLElement
-    const oldNames = this.dom.getAttributeNames()
-    const newNames = newDom.getAttributeNames()
-    const toRemove = oldNames.filter(k => !newNames.includes(k)).filter(k => k !== "contenteditable")
-    toRemove.forEach(k => this.dom.removeAttribute(k))
-    newNames.forEach(k => this.dom.setAttribute(k, newDom.getAttribute(k)!))
-    */
-    const oldName = this.node.type.name
-    const name = node.type.name
-    if(oldName !== name) {
-      return false
-    }
-    this.node = node
-    return true
-    /*
-    const attrs = toAttributes(node, node.attrs._)
-    delete attrs["_"]
-    const oldNames = this.dom.getAttributeNames()
-    const toRemove = oldNames.filter(k => !Object.keys(attrs).includes(k)).filter(k => k !== "contenteditable")
-    for(const [key, value] of Object.entries(attrs)) {
-      this.dom.setAttribute(key, value)
-    }
-    for(const name of toRemove) {
-      this.dom.removeAttribute(name)
-    }
-    for(const dec of decorations) {
-      const attrs = (dec as any)?.type.attrs ?? {}
-      for(const attr of Object.keys(attrs)) {
-        if(attr !== "class") {
-          this.dom.setAttribute(attr, attrs[attr])
-        }
-        else {
-          this.dom.classList.add(attrs[attr])
-        }
-      }
-    }
-    return true*/
-  }
-
   /*getPos() {
     return this.view.posAtDOM(this.dom, 0)
   }*/
@@ -139,19 +93,67 @@ export class WidgetView implements NodeView {
   }*/
 
   createDOM(ignoreListeners=false) {
+    // console.log("recreate DOM of", "<" + this.node.type.name + ">")
 		const dom = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node, {document: this.view.dom.ownerDocument}) as HTMLElement
     if(!ignoreListeners) {
-      if(this.node.isAtom) {
-        dom.addEventListener("focusin", e => this.selectFocused(), {passive: true})
-      }
+      dom.addEventListener("focus", e => this.selectFocused(), {passive: true})
       dom.addEventListener("mouseenter", e => this.emitWidgetMouseenter(e), {passive: true})
       dom.addEventListener("mouseleave", e => this.emitWidgetMouseleave(e), {passive: true})
       dom.addEventListener("keydown", e => this.emitWidgetInteract(e), {passive: true})
-      dom.addEventListener("click", e => this.handleWidgetClick(e), {passive: true})
+      dom.addEventListener("click", e => this.emitWidgetInteract(e))
       dom.addEventListener("touchstart", e => this.emitWidgetInteract(e), {passive: true})
-      // dom.addEventListener("selectionchange", e => e.preventDefault())
+      dom.addEventListener("dragstart", e => {
+        if(e.composedPath()[0] !== this.dom) {
+          e.stopPropagation()
+        }
+        else if(!this.node.type.spec.draggable) {
+          e.preventDefault()
+        }
+      })
+      // dom.addEventListener("selectstart", e => e.preventDefault())
     }
     return dom
+  }
+
+  inTransaction = false
+
+  update(node: Node, decorations: readonly Decoration[], innerDecorations: DecorationSource) {
+    const oldName = this.node.type.name
+    const name = node.type.name
+    if(oldName !== name) {
+      return false
+    }
+    this.node = node
+    return true
+    const dom = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node, {document: this.view.dom.ownerDocument}) as HTMLElement
+    dom.toggleAttribute("contenteditable", true)
+    const newAttrs = dom.getAttributeNames()
+    const oldAttrs = this.dom.getAttributeNames()
+    const toRemove = oldAttrs.filter(attr => !newAttrs.includes(attr));
+    (this.view as any).domObserver.stop()
+    toRemove.forEach(attr => this.dom.removeAttribute(attr))
+    newAttrs.forEach(attr => this.dom.setAttribute(attr, dom.getAttribute(attr)!));
+    this.node = node
+    return true
+    const oldNodeAttrs = {...this.node.attrs, _: undefined, data: undefined, ...this.node.attrs._, ...this.node.attrs.data}
+    const newNodeAttrs = {...node.attrs, _: undefined, data: undefined, ...node.attrs._, ...node.attrs.data}
+    if(!sameMembers(oldNodeAttrs, newNodeAttrs)) {
+      const oldKeys = Object.keys(oldNodeAttrs)
+      const newKeys = Object.keys(newNodeAttrs)
+      const toRemove = oldKeys.filter(key => !newKeys.includes(key))
+      toRemove.forEach(key => this.dom.removeAttribute(key))
+      console.log(toRemove, Object.fromEntries(newKeys.map(k => [k, newNodeAttrs[k]])))
+      newKeys.forEach(key => {
+        if(newNodeAttrs[key] === undefined || newNodeAttrs[key] === false || newNodeAttrs[key] === null && oldNodeAttrs[key] !== undefined) {
+          this.dom.removeAttribute(key)
+        }
+        else if(newNodeAttrs[key] !== undefined) {
+          this.dom.setAttribute(key, newNodeAttrs[key])
+        }
+      })
+    }
+    this.node = node
+    return true
   }
 
   get slots(): HTMLSlotElement[] {
@@ -167,10 +169,12 @@ export class WidgetView implements NodeView {
     const tr = this.view.state.tr.setSelection(new NodeSelection($pos))
     this.view.dispatch(tr)
   }
-
+  
   handleWidgetClick(e: MouseEvent) {
-    if(e.offsetX > this.dom.offsetWidth) {
+    if(e.offsetX > this.dom.offsetWidth || e.ctrlKey) {
       this.selectFocused()
+      // e.preventDefault()
+      // e.stopImmediatePropagation()
     }
     this.emitWidgetClick(e)
   }
@@ -179,30 +183,78 @@ export class WidgetView implements NodeView {
     const {type, target, attributeName: attr, oldValue, addedNodes, removedNodes, previousSibling, nextSibling, attributeNamespace} = mutation
     const value = attr? this.dom.getAttribute(attr): null
     const attrUnchanged = !!(attr && (value === oldValue))
+    if((type as any) === "selection") {
+      return false
+    }
     if(type === "childList") {
-      const sel = this.view.dom.ownerDocument.getSelection()
+      (this.view as any).domObserver.stop()
+      for(const node of [...Array.from(addedNodes), ...Array.from(removedNodes)]) {
+        if(node instanceof this.view.dom.ownerDocument.defaultView!.HTMLElement) {
+          node.classList.forEach(cls => cls.startsWith("ww-") && !cls.startsWith("ww-widget") && !cls.startsWith("ww-v")? node.classList.remove(cls): null)
+        }
+      }
+      readDOMChange(this.view as any, this.getPos(), this.getPos() + this.node.nodeSize, true, Array.from(addedNodes));
+      /*
+      const {doc, sel, from, to} = parseBetween(this.view, this.getPos(), this.getPos() + this.node.nodeSize)
+      let tr = this.view.state.tr, oldDoc = this.view.state.doc
+      tr = tr.replaceWith(Math.max(from - 1, 0), Math.min(to + 1, oldDoc.nodeSize - 2), doc)
+      if(sel) {
+        tr = tr.setSelection(TextSelection.create(tr.doc, sel.anchor, sel?.head))
+      }
+      this.view.updateState(this.view.state.apply(tr) as EditorStateWithHead)
+      this.view.domObserver.start()*/
+      (this.view as any).domObserver.start()
+      return true
+      // this.view.updateState(this.view.state.apply(this.view.state.tr.setSelection(new TextSelection(this.view.state.doc.resolve(0)))) as any)
+      // Array.from(this.lastMutation?.removedNodes ?? []).some(node => Array.from(mutation?.addedNodes ?? []).some(added => added === node))
+      /*
+      const insertionPos = previousSibling? this.view.posAtDOM(previousSibling, 0): 0
+      const nodesToInsert = Array.from(addedNodes).map(node => parser.parse(node, {topNode: this.node}))
+      let tr = this.view.state.tr
+      tr = tr.insert(insertionPos, nodesToInsert)
+      this.view.dispatch(tr)
+      const pos = this.getPos()
+      // let tr = this.view.state.tr
+      const parser = DOMParser.fromSchema(this.view.state.schema)
+      // const sel = this.view.dom.ownerDocument.getSelection()
       const anchor = this.view.posAtDOM(sel!.anchorNode!, 0) + 2
       const focus = this.view.posAtDOM(sel!.focusNode!, 0) + 2
-      const parser = DOMParser.fromSchema(this.view.state.schema)
-      const pos = this.getPos()
       const node = parser.parse(target, {topNode: this.node})
-      let tr = this.view.state.tr
       tr = tr.replaceWith(pos, pos + this.node.nodeSize, node)
+      tr = tr.setSelection(this.view.state.selection.getBookmark().resolve(tr.doc))
+      this.view.dispatch(tr)
+      */
+      /*
       const max = tr.doc.nodeSize - 2
       const $anchor = tr.doc.resolve(Math.min(max, anchor))
       const $focus = tr.doc.resolve(Math.min(max, focus))
       const selection = new TextSelection($anchor, $focus)
       tr = tr.setSelection(selection)
-      // tr = tr.setSelection(sel.getBookmark().resolve(tr.doc))
-      this.view.dispatch(tr)
       /*
-      const fragment = Array.from(addedNodes)
-        .map(node => parser.parseSlice(node))
-        .map(slice => slice.content)
-        .reduce((acc, fragment) => acc.append(fragment))
-      const pos = previousSibling? this.view.posAtDOM(previousSibling, 0): this.getPos() + 1
       let tr = this.view.state.tr
-      tr = tr.insert(pos, fragment)
+      const parser = DOMParser.fromSchema(this.view.state.schema)
+      if(addedNodes.length) {
+        const fragment = Array.from(addedNodes)
+          .map(node => parser.parseSlice(node, {topNode: this.node}))
+          .map(slice => slice.content)
+          .reduce((acc, val) => acc.append(val), Fragment.empty)
+        let pos = previousSibling? this.view.posAtDOM(previousSibling, 0): this.getPos() + 1
+        if(previousSibling) {
+          let previousNode = this.view.state.doc.resolve(pos).node()
+          pos += previousNode.nodeSize - 1
+        }
+        console.log(this.node, "inserting", fragment, "at", pos)
+        tr = tr.insert(pos, fragment)
+      }
+      if(removedNodes.length) {
+        let start = previousSibling? this.view.posAtDOM(previousSibling, 0): this.getPos() + 1
+        if(previousSibling) {
+          let previousNode = this.view.state.doc.resolve(start).node()
+          start += previousNode.nodeSize - 1
+        }
+        let end = nextSibling? this.view.posAtDOM(nextSibling, 0): this.getPos() + this.node.nodeSize - 1
+        tr = tr.delete(start, end)
+      }
       this.view.dispatch(tr)*/
       return true
     }
@@ -240,39 +292,19 @@ export class WidgetView implements NodeView {
       return true
 		}
 		else if(type === "childList") {
-			// TODO
       return false
 		}
 		return true
 	}
 
-	selectNode() {
-		this.emitWidgetFocus()
-		this.dom["focus"]()
-	}
- 
-	deselectNode() {
-		this.emitWidgetBlur()
-		this.dom["blur"]()
-	}
-
 	stopEvent(e: Event) {
     const window = this.dom.ownerDocument.defaultView!
-		const activeElement = this.view?.host?.shadowRoot?.activeElement
-		const node = this.view.nodeDOM(this.getPos())
-    if(e instanceof window.MouseEvent) {
-      return true
-    }
-		else if(activeElement === node) {
-			return true
-				&& !(e instanceof window.KeyboardEvent && e.key === "Escape")
-				&& !(e instanceof window.KeyboardEvent && (e.ctrlKey && e.key === "ArrowDown"))
-				&& !(e instanceof window.KeyboardEvent && (e.ctrlKey && e.key === "ArrowUp"))
-		}
-		else {
-			return true 
-				&& !(e instanceof window.KeyboardEvent && e.key === "Escape")
-		}
+    const atomDenyList = [window.UIEvent, window.ClipboardEvent]
+    const atomAllowList = [window.FocusEvent, window.DragEvent, "contextmenu"]
+    this.emitWidgetInteract(e)
+    const isDenied = atomDenyList.some(E => typeof E === "string"? E === e.type: e instanceof E)
+    const isAllowed = atomAllowList.some(E => typeof E === "string"? E === e.type: e instanceof E)
+    return isDenied && !isAllowed
 	}
 
 	emitWidgetFocus = () => this.dom.dispatchEvent(new CustomEvent("ww-widget-focus", {
@@ -418,7 +450,6 @@ export class IFrameView implements NodeView {
 	}
 
   selectFocused() {
-    console.log("focus")
     const resolvedPos = this.view.state.doc.resolve(this.getPos())
     const tr = this.view.state.tr.setSelection(new NodeSelection(resolvedPos))
     this.view.dispatch(tr)
@@ -432,6 +463,15 @@ export class MathView implements NodeView {
 	dom: MathMLElement & HTMLElement
   contentDOM?: MathMLElement & HTMLElement
 
+  selectFocused() {
+    const pos = this.getPos()
+    if(pos === undefined) {
+      return
+    }
+    const $pos = this.view.state.doc.resolve(pos)
+    const tr = this.view.state.tr.setSelection(new NodeSelection($pos))
+    this.view.dispatch(tr)
+  }
   
 
   constructor(node: Node, view: EditorViewController, getPos: () => number) {
@@ -439,15 +479,66 @@ export class MathView implements NodeView {
 		this.view = view
     this.getPos = getPos
     this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node, {document: this.view.dom.ownerDocument}) as MathMLElement & HTMLElement
+    this.dom.addEventListener("selectstart", (e: any) => e.preventDefault())
 	}
+
+  setSelection?: (anchor: number, head: number, root: Document | ShadowRoot) => {
+    
+  }
+}
+
+export class ElementView implements NodeView {
+    node: Node
+    view: EditorViewController
+    getPos: () => number
+    dom: HTMLElement
+    contentDOM?: HTMLElement
+  
+    constructor(node: Node, view: EditorViewController, getPos: () => number) {
+      this.node = node
+      this.view = view
+      this.getPos = getPos
+      this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node, {document: this.view.dom.ownerDocument}) as HTMLElement
+    }
+
+    ignoreMutation(mutation: MutationRecord) {
+      const {type, target, attributeName: attr, oldValue, addedNodes, removedNodes, previousSibling, nextSibling, attributeNamespace} = mutation
+      const value = attr? this.dom.getAttribute(attr): null
+      const attrUnchanged = !!(attr && (value === oldValue))
+      if(attr && !attrUnchanged) {
+        const builtinAttr = attr in globalHTMLAttributes
+        const dataAttr = attr.startsWith("data-")
+        let tr = this.view.state.tr
+        if(builtinAttr) {
+          tr = tr.setNodeAttribute(this.getPos(), attr, value)
+        }
+        else if(dataAttr) {
+          const data = {...this.node.attrs.data, [attr]: value}
+          tr = tr.setNodeAttribute(this.getPos(), "data", data)
+        }
+        else {
+          const _ = {...this.node.attrs._, [attr]: value}
+          tr = tr.setNodeAttribute(this.getPos(), "_", _)
+        }
+        this.view.dispatch(tr)
+        return true
+      }
+      return attrUnchanged
+    }
 }
 
 
 export const nodeViews = {
   "_widget": WidgetView,
   "audio": AudioView,
+  "audio_inline": AudioView,
   "video": VideoView,
+  "video_inline": VideoView,
   "details": DetailsView,
+  "details_inline": DetailsView,
   "iframe": IFrameView,
-  // "math": MathView
+  "iframe_inline": IFrameView,
+  "math": MathView,
+  "math_inline": MathView,
+  "_": ElementView
 }

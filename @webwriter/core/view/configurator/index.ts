@@ -96,6 +96,19 @@ export class Settings extends ViewModelMixin(LitElement, true) {
 		const {values, setAndPersist} = this.settings
     const {specs, specLabels} = SettingsController
 		const {viewAppDir} = this.store.packages
+    const postTabsButtons = WEBWRITER_ENVIRONMENT.backend !== "tauri"? null:  html`
+      <ww-button size="small" slot="post-tabs" variant="warning" outline class="title-button" @click=${() => this.environment.api.installUpdate()} title=${this.latestVersion?.version? this.latestVersion.date!: msg("You have the latest version of WebWriter.")} ?disabled=${!this.latestVersion?.version} ?loading=${!this.latestVersion}>
+      <span>${this.latestVersion?.version? msg("Update to"): msg("Up to date")}</span>
+      <code>${this.latestVersion?.version}</code>
+    </ww-button>
+    <ww-button size="small" slot="post-tabs" variant="danger" outline class="title-button" confirm>
+    <span>${msg("Reset WebWriter")}</span>
+      <span slot="confirm">${msg("Are you sure? This action can't be reversed, all your settings will be deleted and reset.")}</span>
+    </ww-button>
+    <ww-button size="small" slot="post-tabs" variant="neutral" outline class="title-button" @click=${() => viewAppDir()}>
+      <span>${msg("App Folder")}</span>
+    </ww-button>
+    `
 		return html`
 			<ww-configurator
         .app=${this}
@@ -114,18 +127,9 @@ export class Settings extends ViewModelMixin(LitElement, true) {
         ${this.AccountManager()}
         <div class="version-info" slot="post-tabs">
           <b>WebWriter</b>
-          <code>${version}</code></div>
-        <ww-button size="small" slot="post-tabs" variant="warning" outline class="title-button" @click=${() => this.environment.api.installUpdate()} title=${this.latestVersion?.version? this.latestVersion.date!: msg("You have the latest version of WebWriter.")} ?disabled=${!this.latestVersion?.version} ?loading=${!this.latestVersion}>
-          <span>${this.latestVersion?.version? msg("Update to"): msg("Up to date")}</span>
-          <code>${this.latestVersion?.version}</code>
-        </ww-button>
-        <ww-button size="small" slot="post-tabs" variant="danger" outline class="title-button" confirm>
-        <span>${msg("Reset WebWriter")}</span>
-          <span slot="confirm">${msg("Are you sure? This action can't be reversed, all your settings will be deleted and reset.")}</span>
-        </ww-button>
-      <ww-button size="small" slot="post-tabs" variant="neutral" outline class="title-button" @click=${() => viewAppDir()}>
-        <span>${msg("App Folder")}</span>
-      </ww-button>
+          <code>${version}</code>
+        </div>
+        ${postTabsButtons}
 			</ww-configurator>
 		`
 	}

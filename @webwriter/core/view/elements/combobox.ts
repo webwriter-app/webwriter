@@ -217,10 +217,6 @@ export class Combobox extends SlInput implements DataInput {
       display: none;
     }
 
-    #toggle {
-      padding-right: var(--sl-input-spacing-medium);
-    }
-
     #toggle::part(icon) {
       transition: transform 0.25s ease;
     }
@@ -230,7 +226,8 @@ export class Combobox extends SlInput implements DataInput {
     }
 
     :host([open]) {
-      z-index: 100;
+      z-index: 1000;
+      position: relative;
     }
 
     sl-dropdown::part(panel) {

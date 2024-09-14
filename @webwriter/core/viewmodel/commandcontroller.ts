@@ -321,6 +321,10 @@ export class Command<SPEC extends CommandSpec = CommandSpec>
       : this.spec.value(this.host);
   }
 
+  get loading() {
+    return this.spec.loading && this.spec.loading(this.host);
+  }
+
   /** Callback to preview the command's result, for example on hovering a command button. */
   preview(options?: any, e?: Event, preview = this.spec.preview ?? (() => {})) {
     if (!this.disabled && this.host.activeEditor) {
@@ -476,6 +480,10 @@ export class LayoutCommand<
   }
   get value() {
     return this.host.store.document.getActiveAttributeValue(this.id);
+  }
+
+  get cssProperties() {
+    return this.#cssProperties as (keyof CSSPropertySpecs)[];
   }
 }
 
@@ -702,7 +710,50 @@ export class CommandController implements ReactiveController {
         category: "document",
         disabled: (host) => host.sourceMode,
       }),
-      preview: new Command(this.host, {
+      undo: new Command(this.host, {
+        id: "undo",
+        tags: ["general"],
+        label: () => msg("Undo"),
+        icon: "arrow-back-up",
+        description: () => msg("Undo the last change in the active document"),
+        shortcut: "ctrl+z",
+        run: (host) => host.activeEditor?.undo(),
+        category: "editor",
+        disabled: (host) => host.store.document.undoDepth === 0,
+      }),
+      redo: new Command(this.host, {
+        id: "redo",
+        tags: ["general"],
+        label: () => msg("Redo"),
+        icon: "arrow-forward-up",
+        description: () =>
+          msg("Redo the last undone change in the active document"),
+        shortcut: "ctrl+y",
+        run: (host) => host.activeEditor?.redo(),
+        category: "editor",
+        disabled: (host) => host.store.document.redoDepth === 0,
+      }),
+      toggleSourceMode: new Command(this.host, {
+        id: "toggleSourceMode",
+        tags: ["general"],
+        label: () => msg("Edit source"),
+        icon: "code",
+        description: () => msg("Edit the HTML of the document directly"),
+        shortcut: "ctrl+u",
+        run: (host) => {
+          if (host.activeEditor!.sourceMode) {
+            host.store.document.deriveEditorState();
+          } else {
+            host.store.document.deriveCodeState();
+          }
+          host.activeEditor!.sourceMode = !host.activeEditor!.sourceMode;
+          host.requestUpdate();
+        },
+        category: "editor",
+        disabled: (host) => host.activeEditor!.previewMode,
+        active: (host) => Boolean(host.activeEditor!.sourceMode),
+      }),
+      togglePreviewMode: new Command(this.host, {
         id: "preview",
         label: () => msg("Preview"),
         icon: "eye",
@@ -732,6 +783,21 @@ export class CommandController implements ReactiveController {
         category: "editor",
         disabled: (host) =>
           host.sourceMode || host.store.document.isSpellchecking,
+        run: async (host) => {
+          if (!host.activeEditor!.previewMode) {
+            host.activeEditor!.previewSrc = await host.store.document.preview();
+          } else {
+            host.activeEditor!.previewSrc = undefined;
+          }
+          host.requestUpdate();
+        },
+        category: "editor",
+        tags: ["general"],
+        disabled: (host) =>
+          host.activeEditor!.sourceMode ||
+          host.store.document.ioState === "loadingPreview",
+        active: (host) => Boolean(host.activeEditor!.previewMode),
+        loading: (host) => host.store.document.ioState === "loadingPreview",
       }),
       editHead: new Command(this.host, {
         id: "editHead",
@@ -1166,7 +1232,7 @@ export class CommandController implements ReactiveController {
         id: "button",
         label: () => msg("Button"),
         icon: "square-f1",
-        group: "form",
+        group: "interactive",
         description: () => msg("Insert a button"),
         tags: ["node", "container", "advanced"],
       }),
@@ -1174,7 +1240,7 @@ export class CommandController implements ReactiveController {
         id: "input",
         label: () => msg("Input"),
         icon: "forms",
-        group: "form",
+        group: "interactive",
         description: () => msg("Insert an input"),
         tags: ["node", "container", "advanced"],
       }),
@@ -1182,7 +1248,7 @@ export class CommandController implements ReactiveController {
         id: "select",
         label: () => msg("Select"),
         icon: "select",
-        group: "form",
+        group: "interactive",
         description: () => msg("Insert a select"),
         tags: ["node", "container", "advanced"],
       }),
@@ -1190,7 +1256,7 @@ export class CommandController implements ReactiveController {
         id: "meter",
         label: () => msg("Meter"),
         icon: "progress",
-        group: "form",
+        group: "interactive",
         description: () => msg("Insert a meter"),
         tags: ["node", "container", "advanced"],
       }),
@@ -1234,15 +1300,15 @@ export class CommandController implements ReactiveController {
         id: "output",
         label: () => msg("Output"),
         icon: "clipboard-text",
-        group: "form",
+        group: "interactive",
         description: () => msg("Insert an output"),
         tags: ["node", "container", "advanced"],
       }),
       progress: new NodeCommand(this.host, {
         id: "progress",
-        label: () => msg("Progress Indicator"),
+        label: () => msg("Progress"),
         icon: "progress",
-        group: "form",
+        group: "interactive",
         description: () => msg("Insert a progress indicator"),
         tags: ["node", "container", "advanced"],
       }),
@@ -1312,17 +1378,25 @@ export class CommandController implements ReactiveController {
         tags: ["node", "container"],
         defaultAttrs: { controls: "" },
       }),
+      iframe: new NodeCommand(this.host, {
+        id: "iframe",
+        label: () => msg("Website"),
+        icon: "world-www",
+        description: () => msg("Insert a website (as an inline frame)"),
+        tags: ["node", "container"],
+        group: "frame",
+      }) /*
       object: new NodeCommand(this.host, {
         id: "object",
         label: () => msg("Object"),
         icon: "frame",
-        description: () => msg("Insert object"),
+        description: () => msg("Insert object")
       }),
       embed: new NodeCommand(this.host, {
         id: "embed",
         label: () => msg("Embed"),
         icon: "frame",
-        description: () => msg("Insert embed"),
+        description: () => msg("Insert embed")
       }),
       iframe: new NodeCommand(this.host, {
         id: "iframe",
@@ -1330,13 +1404,13 @@ export class CommandController implements ReactiveController {
         icon: "world-www",
         group: "site",
         description: () => msg("Insert a website (as an inline frame)"),
-        tags: ["node", "container"],
+        tags: ["node", "container"]
       }),
       portal: new NodeCommand(this.host, {
         id: "portal",
         label: () => msg("Portal"),
         icon: "window",
-        group: "site",
+        group: "frame",
         description: () => msg("Insert a portal"),
         tags: ["node", "container", "advanced"],
       }),
@@ -1378,9 +1452,9 @@ export class CommandController implements ReactiveController {
         id: "dialog",
         label: () => msg("Dialog"),
         icon: "app-window",
-        group: "details",
+        group: "interactive",
         description: () => msg("Insert a dialog"),
-        tags: ["node", "container", "advanced"],
+        tags: ["node", "container", "advanced"]
       }),
       article: new NodeCommand(this.host, {
         id: "article",
@@ -1388,7 +1462,7 @@ export class CommandController implements ReactiveController {
         icon: "article",
         description: () => msg("Insert an article"),
         group: "semanticsection",
-        tags: ["node", "container", "advanced"],
+        tags: ["node", "container", "advanced"]
       }),
       aside: new NodeCommand(this.host, {
         id: "aside",
@@ -1396,7 +1470,7 @@ export class CommandController implements ReactiveController {
         icon: "notes",
         description: () => msg("Insert an aside"),
         group: "semanticsection",
-        tags: ["node", "container", "advanced"],
+        tags: ["node", "container", "advanced"]
       }),
       nav: new NodeCommand(this.host, {
         id: "nav",
@@ -1404,7 +1478,7 @@ export class CommandController implements ReactiveController {
         icon: "directions",
         description: () => msg("Insert a navigation"),
         group: "semanticsection",
-        tags: ["node", "container", "advanced"],
+        tags: ["node", "container", "advanced"]
       }),
       section: new NodeCommand(this.host, {
         id: "section",
@@ -1412,7 +1486,7 @@ export class CommandController implements ReactiveController {
         icon: "section-sign",
         description: () => msg("Insert a section"),
         group: "semanticsection",
-        tags: ["node", "container", "advanced"],
+        tags: ["node", "container", "advanced"]
       }),
       header: new NodeCommand(this.host, {
         id: "header",
@@ -1420,7 +1494,7 @@ export class CommandController implements ReactiveController {
         icon: "layout-navbar",
         description: () => msg("Insert a header"),
         group: "semanticsection",
-        tags: ["node", "container", "advanced"],
+        tags: ["node", "container", "advanced"]
       }),
       footer: new NodeCommand(this.host, {
         id: "footer",
@@ -1428,7 +1502,7 @@ export class CommandController implements ReactiveController {
         icon: "layout-bottombar",
         description: () => msg("Insert a footer"),
         group: "semanticsection",
-        tags: ["node", "container", "advanced"],
+        tags: ["node", "container", "advanced"]
       }),
       main: new NodeCommand(this.host, {
         id: "main",
@@ -1436,7 +1510,7 @@ export class CommandController implements ReactiveController {
         icon: "news",
         description: () => msg("Insert a main"),
         group: "semanticsection",
-        tags: ["node", "container", "advanced"],
+        tags: ["node", "container", "advanced"]
       }),
       search: new NodeCommand(this.host, {
         id: "search",
@@ -1444,7 +1518,7 @@ export class CommandController implements ReactiveController {
         icon: "list-search",
         description: () => msg("Insert a search"),
         group: "semanticsection",
-        tags: ["node", "container", "advanced"],
+        tags: ["node", "container", "advanced"]
       }),
       address: new NodeCommand(this.host, {
         id: "address",
@@ -1452,23 +1526,23 @@ export class CommandController implements ReactiveController {
         icon: "address-book",
         description: () => msg("Insert an address"),
         group: "semanticsection",
-        tags: ["node", "container", "advanced"],
-      }),
+        tags: ["node", "container", "advanced"]
+      }),  
       blockquote: new NodeCommand(this.host, {
         id: "blockquote",
         label: () => msg("Blockquote"),
         icon: "blockquote",
         description: () => msg("Insert a blockquote"),
         group: "semanticsection",
-        tags: ["node", "container", "advanced"],
-      }),
+        tags: ["node", "container", "advanced"]
+      }),  
       svg: new NodeCommand(this.host, {
         id: "svg",
         label: () => msg("SVG Drawing"),
         icon: "vector",
         description: () => msg("Insert an SVG Drawing"),
         group: "svg",
-        tags: ["node", "container", "advanced"],
+        tags: ["node", "container", "advanced"]
       }),
       table: new NodeCommand(this.host, {
         id: "table",
@@ -1476,61 +1550,61 @@ export class CommandController implements ReactiveController {
         icon: "table",
         group: "table",
         description: () => msg("Insert a table"),
-        tags: ["node", "container", "advanced"],
+        tags: ["node", "container", "advanced"]
       }),
       caption: new NodeCommand(this.host, {
         id: "caption",
         label: () => msg("Table Caption"),
         icon: "table-alias",
-        description: () => msg("Insert a table caption"),
+        description: () => msg("Insert a table caption")
       }),
       col: new NodeCommand(this.host, {
         id: "col",
         label: () => msg("Table Column"),
         icon: "table-column",
-        description: () => msg("Insert a table column"),
+        description: () => msg("Insert a table column")
       }),
       colgroup: new NodeCommand(this.host, {
         id: "colgroup",
         label: () => msg("Table Column Group"),
         icon: "columns-3",
-        description: () => msg("Insert a table column group"),
+        description: () => msg("Insert a table column group")
       }),
       tbody: new NodeCommand(this.host, {
         id: "tbody",
         label: () => msg("Table Body"),
         icon: "table",
-        description: () => msg("Insert a table body"),
+        description: () => msg("Insert a table body")
       }),
       td: new NodeCommand(this.host, {
         id: "td",
         label: () => msg("Table cell"),
         icon: "square",
-        description: () => msg("Insert a table cell"),
+        description: () => msg("Insert a table cell")
       }),
       tfoot: new NodeCommand(this.host, {
         id: "tfoot",
         label: () => msg("Table Footer"),
         icon: "table-row",
-        description: () => msg("Insert a table footer"),
+        description: () => msg("Insert a table footer")
       }),
       th: new NodeCommand(this.host, {
         id: "th",
         label: () => msg("Table header"),
         icon: "table-row",
-        description: () => msg("Insert a table header row"),
+        description: () => msg("Insert a table header row")
       }),
       thead: new NodeCommand(this.host, {
         id: "thead",
         label: () => msg("Table Head"),
         icon: "table-options",
-        description: () => msg("Insert a table head"),
+        description: () => msg("Insert a table head")
       }),
       tr: new NodeCommand(this.host, {
         id: "tr",
         label: () => msg("Table Row"),
         icon: "table-row",
-        description: () => msg("Insert a table row"),
+        description: () => msg("Insert a table row")
       }),
       canvas: new NodeCommand(this.host, {
         id: "br",
@@ -1538,9 +1612,9 @@ export class CommandController implements ReactiveController {
         icon: "chalkboard",
         group: "canvas",
         description: () => msg("Insert a canvas"),
-        tags: ["node", "container", "advanced"],
+        tags: ["node", "container", "advanced"]
       }),
-      fontSize: new MarkCommand(this.host, {
+      fontSize:  new MarkCommand(this.host, {
         id: "fontSize",
         tags: [],
         label: () => msg("Set font size"),
@@ -1645,7 +1719,7 @@ export class CommandController implements ReactiveController {
         }),
         category: "editor",
         group: "font"
-      }),*/
+      }),*/,
       copy: new Command(this.host, {
         id: "copy",
         label: () => msg("Copy selection"),
@@ -1751,10 +1825,38 @@ export class CommandController implements ReactiveController {
             "Set text style (alignment, indentation, spacing, etc.) of selected elements"
           ),
         category: "editor",
+        tags: [
+          "layout",
+          "css-hyphens",
+          "css-hyphenate-character",
+          "css-hyphenate-limit-chars",
+          "css-letter-spacing",
+          "css-line-break",
+          "css-overflow-wrap",
+          "css-tab-size",
+          "css-text-align",
+          "css-text-align-last",
+          "css-text-indent",
+          "css-text-justify",
+          "css-text-transform",
+          "css-text-wrap",
+          "css-white-space",
+          "css-white-space-collapse",
+          "css-word-break",
+          "css-word-spacing",
+          "css-text-decoration",
+          "css-text-emphasis",
+          "css-text-shadow",
+          "css-text-underline-offset",
+          "css-text-underline-position",
+          "css-quotes",
+          "css-word-wrap",
+          "css-font",
+        ],
       }),
-      marginStyle: new LayoutCommand(this.host, {
-        id: "marginStyle",
-        label: () => msg("Margins"),
+      boxStyle: new LayoutCommand(this.host, {
+        id: "boxStyle",
+        label: () => msg("Size & Spacing"),
         icon: "box-margin",
         description: () => msg("Set the margins of the selected elements"),
       }),
@@ -1842,7 +1944,7 @@ export class CommandController implements ReactiveController {
       }),
       filterStyle: new LayoutCommand(this.host, {
         id: "filterStyle",
-        label: () => msg("Filters"),
+        label: () => msg("Filters & Colors"),
         icon: "filters",
         description: () =>
           msg("Apply filters (blur, invert, etc.) to the selected elements"),

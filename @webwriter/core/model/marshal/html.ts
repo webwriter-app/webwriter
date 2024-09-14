@@ -48,17 +48,18 @@ function createInitializerScript(id: string, tag: string, content: string) {
   `
 }
 
-export async function docToBundle(doc: Node, head: Node, bundle: Environment["bundle"], Path: Environment["Path"], FS: Environment["FS"]) {
-  const html = document.implementation.createHTMLDocument()
+export async function docToBundle(doc: Node, head: Node, bundle?: Environment["bundle"], Path?: Environment["Path"], FS?: Environment["FS"]) {
+  let html = document.implementation.createHTMLDocument()
   const serializer = DOMSerializer.fromSchema(doc.type.schema)
   serializer.serializeFragment(doc.content, {document: html}, html.body)
 
   // Generate bundle
-  html.querySelectorAll(".ww-widget").forEach(w => w.removeAttribute("contenteditable"))
+  const widgets = html.querySelectorAll(".ww-widget")
+  widgets.forEach(w => w.removeAttribute("contenteditable"))
   
   const allImports = Object.fromEntries(Object.values(doc.type.schema.nodes)
     .filter(node => node.spec["widget"])
-    .map(node => [node.spec.tag, node.spec.fullName])
+    .map(node => [node.spec.tag, node.spec.fullName + (!node.spec.legacy? ".js": "")])
   )
 
   const importIDs = [...new Set(Array.from(html.querySelectorAll("*"))
@@ -67,9 +68,26 @@ export async function docToBundle(doc: Node, head: Node, bundle: Environment["bu
     .map(tag => allImports[tag])
   )]
 
-  const {bundleJS, bundleCSS} = await PackageStore.readBundle(importIDs, bundle, Path, FS, true)
-  const js = bundleJS? scopedCustomElementRegistry + ";" +  bundleJS: ""
-  const css = bundleCSS
+  let js; let css
+  if(!importIDs.length) {
+    js = ""
+    css = ""
+  }
+  else if(bundle && Path && FS) {
+    const {bundleJS, bundleCSS} = await PackageStore.readBundle(importIDs, bundle, Path, FS, true)
+    js = bundleJS? scopedCustomElementRegistry + ";" +  bundleJS: ""
+    css = bundleCSS
+  }
+  else {
+    const jsUrl = new URL("https://api.webwriter.app/ww/v1/_bundles")
+    importIDs.forEach(id => jsUrl.searchParams.append("id", id))
+    const bundleJS = await (await fetch(jsUrl)).text()
+    js = bundleJS? scopedCustomElementRegistry + ";" +  bundleJS: ""
+    const cssUrl = new URL("https://api.webwriter.app/ww/v1/_bundles")
+    importIDs.forEach(id => cssUrl.searchParams.append("id", id.replace(".js", ".css")))
+    const bundleCSS = await (await fetch(cssUrl)).text()
+    css = bundleCSS
+  }
   
   // Generate head
   html.head.replaceWith(headSerializer.serializeNode(head))
@@ -92,6 +110,46 @@ export async function docToBundle(doc: Node, head: Node, bundle: Environment["bu
     el.src = await createDataURL(blob)
   }
 
+  // Run serializedCallbacks in iframe
+  const iframe = document.createElement("iframe")
+  try {
+    // Temporarily add bundle to document
+    const clone = html.cloneNode(true) as Document
+
+    const script = clone.createElement("script")
+    script.type = "module"
+    script.text = js
+    script.setAttribute("data-ww-editing", "bundle")
+    clone.head.appendChild(script)
+
+    const style = clone.createElement("style")
+    style.textContent = css ?? ""
+    style.setAttribute("data-ww-editing", "bundle")
+    clone.head.appendChild(style)
+
+    const blob = new Blob([clone.documentElement.outerHTML], {type: "text/html"})
+    const url = URL.createObjectURL(blob)
+    iframe.style.height = "0"
+    iframe.style.visibility = "hidden"
+    iframe.style.position = "fixed"
+    iframe.style.bottom = "0"
+    iframe.style.right = "0"
+    iframe.setAttribute("src", url)
+    const loaded = new Promise(resolve => iframe.addEventListener("load", resolve))
+    document.body.append(iframe)
+    await loaded
+    // iframe.contentDocument!.replaceChild(html.documentElement.cloneNode(true), iframe.contentDocument!.documentElement)
+    for (const widget of Array.from(iframe.contentDocument!.querySelectorAll(".ww-widget"))) {
+      if("serializedCallback" in widget) {
+        (widget.serializedCallback as any)()
+      }
+    }
+    iframe.contentDocument?.querySelectorAll("[data-ww-editing]").forEach(el => el.remove())
+    html = iframe.contentDocument!
+  }
+  finally {
+    iframe.remove()
+  }
   return {html, css, js}
 }
 
@@ -109,13 +167,19 @@ export class HTMLParserSerializer extends ParserSerializer {
       throw new NonHTMLDocumentError(e?.message)
     }
   
+
+    let defaultState = undefined as EditorStateWithHead | undefined
     if(!inputDoc.querySelector("meta[name=generator][content^='webwriter@']")) {
-      throw new NonWebwriterDocumentError("Did not find <meta name='generator'> valid for WebWriter")
+      defaultState = createEditorState({schema})
+//      throw new NonWebwriterDocumentError("Did not find <meta name='generator'> valid for WebWriter")
     }
   
-    const doc = DOMParser.fromSchema(schema).parse(inputDoc.body)
+    let doc = DOMParser.fromSchema(schema).parse(inputDoc.body)
   
     let head = DOMParser.fromSchema(headSchema).parse(inputDoc.head)
+    if(defaultState) {
+      head = defaultState.head$.apply(defaultState.head$.tr.insert(1, head.content)).doc
+    }
     const htmlAttrs = {} as Record<string, string>
     for(let key of inputDoc.documentElement.getAttributeNames()) {
       htmlAttrs[key] = inputDoc.documentElement.getAttribute(key)!
@@ -125,12 +189,14 @@ export class HTMLParserSerializer extends ParserSerializer {
     const editorState = createEditorState({schema, doc}, head)
     return editorState
   }
-  
-  async serialize(state: EditorStateWithHead) {
-    const {html, js, css} = await docToBundle(state.doc, state.head$.doc, this.Environment.bundle, this.Environment.Path, this.Environment.FS)
+
+  async serializeToDOM(state: EditorStateWithHead) {
+
+    const envArgs = WEBWRITER_ENVIRONMENT.backend === "tauri"? [this.Environment.bundle, this.Environment.Path, this.Environment.FS] as any: []
+    const {html, js, css} = await docToBundle(state.doc, state.head$.doc, ...envArgs)
 
     const script = html.createElement("script")
-    script.type = "text/javascript"
+    script.type = "module"
     script.text = js
     script.setAttribute("data-ww-editing", "bundle")
     html.head.appendChild(script)
@@ -139,7 +205,11 @@ export class HTMLParserSerializer extends ParserSerializer {
     style.textContent = css ?? ""
     style.setAttribute("data-ww-editing", "bundle")
     html.head.appendChild(style)
+    return html
+  }
   
+  async serialize(state: EditorStateWithHead) {
+    const html = await this.serializeToDOM(state)
     return `<!DOCTYPE html>` + html.documentElement.outerHTML
   }
 }

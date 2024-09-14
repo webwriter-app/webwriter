@@ -14,6 +14,8 @@ export class UIStore {
    
    notifications: Notification[] = []
 
+   stickyToolbox = false
+
    // showTextPlaceholder: boolean = false
 
    // showWidgetPreview: boolean = false // TODO: Causes multiple issues

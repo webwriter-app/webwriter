@@ -6,6 +6,8 @@ html {
   --sl-color-danger-300: #fca5a5;
   --sl-color-primary-400: #38bdf8;
   --scrollbar-width: 16px;
+  pointer-events: none;
+  user-select: none;
 }
 
 html:not(:has(:fullscreen)) {
@@ -119,6 +121,8 @@ figure.ProseMirror-selectednode::before {
 }
 
 .ProseMirror {
+  pointer-events: all;
+  user-select: initial;
   position: relative;
   outline: none;
   display: block;
@@ -129,30 +133,28 @@ figure.ProseMirror-selectednode::before {
   box-sizing: border-box;
 }
 
-[data-ww-editing="unknowncustom"] {
+[data-ww-editing^="unknown"] {
   border: 2px solid var(--sl-color-warning-600);
-  padding: 10px;
+  padding: 4px;
   color: var(--sl-color-warning-600);
   text-align: center;
 }
 
-[data-ww-editing="unknowncustom"]::before {
+[data-ww-editing^="unknown"]::before {
   display: inline-block;
-  content: "⚠  Unknown element";
+  content: "⚠  Unknown element <" attr(data-ww-tagname) ">";
   margin-right: 1ch;
   font-size: 1.25rem;
-}
-
-[data-ww-editing="unknowncustom"]::after {
-  content: attr(data-ww-tagname);
-  font-family: monospace;
-  font-weight: bold;
 }
 
 .ww-widget {
   --ww-action-opacity: 1;
   position: relative;
   display: block;
+}
+
+html.ww-key-ctrl body * {
+  cursor: pointer;
 }
 
 .ProseMirror > :not(.ProseMirror-widget) {
@@ -269,7 +271,7 @@ figure.ProseMirror-selectednode::before {
   border-color: var(--sl-color-danger-400);
 }*/
 
-:is(.ww-copying, .ww-cutting, .ww-deleting)::before {
+:is(.ww-copying, .ww-cutting, .ww-deleting, html.ww-key-ctrl body *)::before {
   content: "";
   position: absolute;
   right: -20px;
@@ -281,7 +283,16 @@ figure.ProseMirror-selectednode::before {
   height: 100%;
 }
 
-:is(.ww-cutting)::before {
+html.ww-key-ctrl body * {
+  pointer-events: none;
+}
+
+html.ww-key-ctrl body *::before {
+  pointer-events: all;
+  z-index: unset;
+}
+
+.ww-cutting::before {
   background: var(--sl-color-warning-400);
 }
 
@@ -314,6 +325,7 @@ main:not(:focus-within) .ww-widget.ww-selected {
   outline-color: lightgray;
 }
 
+/*
 body > .ww-widget::after {
   --ww-widget-highlight-color: transparent;
   content: "";
@@ -334,6 +346,7 @@ body > .ww-widget::after {
   cursor: pointer;
   box-sizing: border-box;
 }
+  */
 
 .ww-widget.ww-selected::after {
   --ww-widget-highlight-color: var(--sl-color-primary-400);
@@ -442,24 +455,28 @@ abbr {
   text-decoration: underline 1px dotted currentColor;
 }
 
-:not(:defined)::after {
-  content: "⚠ Element not defined";
-  color: goldenrod;
+:not(:defined):not([data-ww-editing^="unknown"])::after {
+  content: "⚠ Element not defined" !important;
+  color: goldenrod !important;
 }
 
 :is(:empty, :has(.ProseMirror-trailingBreak)) {
   position: relative;
 }
 
-:is(:empty, :has(> .ProseMirror-trailingBreak)):not(
+:is(:empty, :has(> :only-of-type.ProseMirror-trailingBreak)):not(
     .ProseMirror-widget
-  )::after {
+  ):after {
+  font: inherit;
+  text-align: inherit;
   content: var(--ww-placeholder);
+  width: 100%;
   position: absolute;
   left: 0;
   top: 0;
   color: darkgray;
   pointer-events: none;
+  user-select: none;
 }
 
 .ProseMirror-gapcursor::after {
@@ -487,6 +504,14 @@ picture {
   cursor: pointer;
 }
 
+svg {
+  cursor: pointer;
+}
+
+svg * {
+  outline: none !important;
+}
+
 picture:not(:has(img[src]))::after {
   content: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-photo" width="64" height="64" viewBox="0 0 24 24" stroke-width="2" stroke="darkgray" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M15 8h.01" /><path d="M3 6a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v12a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3v-12z" /><path d="M3 16l5 -5c.928 -.893 2.072 -.893 3 0l5 5" /><path d="M14 14l1 -1c.928 -.893 2.072 -.893 3 0l3 3" /></svg>');
 }
@@ -500,7 +525,10 @@ video:not([controls]) {
 }
 
 math:not([display="block"]) {
-  display: inline-block;
+  & * {
+    user-select: none;
+    pointer-events: none;
+  }
 }
 
 math:empty,
@@ -508,14 +536,13 @@ math:has(mtext:only-child) {
   display: inline-block;
   background: lightgray;
   cursor: pointer;
-  height: 0.7rlh;
+  height: 0.75lh;
   aspect-ratio: 1/1;
   padding: 2px;
   line-height: inherit;
   margin: 0 2px;
   position: relative;
-  transform: translateY(0.3lh);
-
+  vertical-align: middle;
   & mtext:is(:empty, :has(.ProseMirror-trailingBreak:only-child)) {
     height: 100%;
   }
@@ -530,6 +557,37 @@ math:has(mtext:only-child)::after {
   width: 100%;
   height: 100%;
   content: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-math" width="100%" height="100%" viewBox="0 0 24 24" stroke-width="2" stroke="darkgray" fill="none" stroke-linecap="round" stroke-linejoin="round" part="svg"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><path d="M19 5h-7l-4 14l-3 -6h-2"></path><path d="M14 13l6 6"></path><path d="M14 19l6 -6"></path></svg>') !important;
+}
+
+svg:empty {
+  background: lightgray;
+}
+
+svg:empty::after {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: inline-block;
+  width: 100%;
+  height: 100%;
+  content: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="darkgray" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-vector"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M3 3m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M17 3m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M17 17m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M3 17m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M5 7l0 10"/><path d="M19 7l0 10"/><path d="M7 5l10 0"/><path d="M7 19l10 0"/></svg>');
+}
+
+table:empty {
+  display: block;
+  background: lightgray;
+  width: 100%;
+  min-height: 100px;
+}
+
+table:empty::after {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: inline-block;
+  width: 100%;
+  height: 100%;
+  content: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="darkgray" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-vector"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M3 3m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M17 3m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M17 17m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M3 17m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M5 7l0 10"/><path d="M19 7l0 10"/><path d="M7 5l10 0"/><path d="M7 19l10 0"/></svg>');
 }
 
 .ProseMirror-gapcursor::after {
@@ -551,14 +609,54 @@ math:has(mtext:only-child)::after {
   background: currentColor;
 }
 
+.ProseMirror-widget {
+  margin-block: 0;
+}
+
+html:has(.ww-fullscreen) {
+  scrollbar-gutter: unset;
+  overflow: hidden;
+}
+
+body:has(.ww-fullscreen) {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  max-width: unset;
+  background: black;
+}
+
+.ww-fullscreen {
+  position: fixed;
+  width: 100%;
+  height: 100%;
+  outline: none !important;
+  margin: 0;
+  box-sizing: border-box;
+  overflow-y: auto;
+  scrollbar-width: thin;
+
+  &::after {
+    display: none;
+  }
+}
+
+body:has(.ww-fullscreen) > :not(.ww-fullscreen) {
+  display: none !important;
+}
+
 @media only screen and (min-width: 1300px) {
   .ww-widget::part(options) {
     position: fixed;
     width: var(--ww-toolbox-action-width);
+    max-width: 400px;
     height: var(--ww-toolbox-action-height);
     left: var(--ww-toolbox-action-x);
     top: var(--ww-toolbox-action-y);
-    overflow: auto;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-gutter: stable;
     padding-top: 5px;
     user-select: none;
     -webkit-user-select: none;

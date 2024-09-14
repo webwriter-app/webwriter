@@ -38,21 +38,28 @@ export class EnvironmentController implements ReactiveController {
   host: ReactiveControllerHost
   api: Environment
   apiReady: Promise<Environment>
+  ready: Promise<void>
+  backend: "tauri" | "node" | "unknown"
 
   constructor(host: ReactiveControllerHost) {
     (this.host = host).addController(this)
   }
 
   async hostConnected() {
-    const backend = detectBackend()
-    this.apiReady = import(`../model/environment/${backend}.ts`)
-		this.api = await this.apiReady
-    globalThis.WEBWRITER_ENVIRONMENT = {
-      backend,
-      fontFamilies: await this.api.getSystemFonts(),
-      language: navigator.language, // @ts-ignore: Defined by Vite
-      dev: Boolean(import.meta.env?.DEV),
-      ...UAParser(navigator.userAgent)
-    }
+    this.ready = new Promise(async resolve => {
+      const backend = detectBackend()
+      if(backend === "tauri") {
+        this.apiReady = import(`../model/environment/${backend}.ts`)
+        this.api = await this.apiReady
+      }
+      globalThis.WEBWRITER_ENVIRONMENT = {
+        backend,
+        fontFamilies: await this?.api?.getSystemFonts(),
+        language: navigator.language, // @ts-ignore: Defined by Vite
+        dev: Boolean(import.meta.env?.DEV),
+        ...UAParser(navigator.userAgent)
+      }
+      resolve()
+    })
   }
 }

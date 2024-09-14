@@ -4,6 +4,7 @@ import { ZodSchema, z } from "zod";
 
 import {
   Environment,
+  Locale,
   Package,
   RootStore,
   StoreKey,
@@ -14,7 +15,6 @@ import { ViewModelMixin } from ".";
 import {
   FileAccount,
   NpmAccount,
-  OpenAIAccount,
   PocketbaseAccount,
 } from "../model/schemas/accounts";
 import { autorun, observe, reaction, when } from "mobx";
@@ -64,31 +64,47 @@ export class SettingsController implements ReactiveController {
   }
 
   async hostConnected() {
-    const { join, appDir } = this.host.environment.api.Path;
-    const { exists, writeFile } = this.host.environment.api.FS;
-    const path = await join(await appDir(), "settings.json");
-    if (!(await exists(path))) {
-      await this.persist();
+    if (!this.host.store.packages.apiBase) {
+      const { join, appDir } = this.host.environment.api.Path;
+      const { exists, writeFile } = this.host.environment.api.FS;
+      const path = await join(await appDir(), "settings.json");
+      if (!(await exists(path))) {
+        await this.persist();
+      }
+      this.host.environment.api.watch(path, async () => {
+        const userSettings = await SettingsController.getUserSettings(
+          this.host.environment.api
+        );
+        this.store.rehydrate(userSettings);
+      });
+    } else {
+      const userSettings = await SettingsController.getUserSettings();
+      userSettings && this.store.rehydrate(userSettings);
+      window.addEventListener("storage", async () => {
+        const userSettings = await SettingsController.getUserSettings();
+        userSettings && this.store.rehydrate(userSettings);
+      });
     }
-    this.host.environment.api.watch(path, async () => {
-      const userSettings = await SettingsController.getUserSettings(
-        this.host.environment.api
-      );
-      this.store.rehydrate(userSettings);
-    });
   }
   hostDisconnected() {}
 
-  static async getUserSettings({ FS, Path }: Environment) {
-    const path = await Path.join(await Path.appDir(), "settings.json");
-    if (await FS.exists(path)) {
-      try {
-        const str = (await FS.readFile(path)) as string;
-        const rawSettings = JSON.parse(str);
-        return this.settingsSchema.parse(rawSettings);
-      } catch (err) {
-        console.error(err);
+  static async getUserSettings(environment?: Environment) {
+    if (environment) {
+      const path = await environment.Path.join(
+        await environment.Path.appDir(),
+        "settings.json"
+      );
+      if (await environment.FS.exists(path)) {
+        try {
+          const str = (await environment.FS.readFile(path)) as string;
+          const rawSettings = JSON.parse(str);
+          return this.settingsSchema.parse(rawSettings);
+        } catch (err) {
+          console.error(err);
+        }
       }
+    } else {
+      return JSON.parse(localStorage.getItem("webwriter_settings") ?? "null");
     }
   }
 
@@ -100,14 +116,53 @@ export class SettingsController implements ReactiveController {
   }
 
   static get specs(): Settings<RootStore, StoreKey> {
+    const languageOptions = [
+      { code: "en", label: msg("English") },
+      { code: "de", label: msg("German") },
+      { code: "zh-hans", label: msg("Chinese (Simplified)") },
+      { code: "es", label: msg("Spanish") },
+      { code: "fr", label: msg("French") },
+      { code: "pt-PT", label: msg("Portuguese") },
+      { code: "ru", label: msg("Russian") },
+      { code: "id", label: msg("Indonesian") },
+      { code: "ja", label: msg("Japanese") },
+      { code: "tr", label: msg("Turkish") },
+      { code: "ko", label: msg("Korean") },
+      { code: "it", label: msg("Italian") },
+      { code: "bg", label: msg("Bulgarian") },
+      { code: "cs", label: msg("Czech") },
+      { code: "da", label: msg("Danish") },
+      { code: "el", label: msg("Greek") },
+      { code: "et", label: msg("Estonian") },
+      { code: "fi", label: msg("Finnish") },
+      { code: "hu", label: msg("Hungarian") },
+      { code: "lt", label: msg("Lithuanian") },
+      { code: "lv", label: msg("Latvian") },
+      { code: "nb", label: msg("Norwegian Bokmål") },
+      { code: "nl", label: msg("Dutch") },
+      { code: "pl", label: msg("Polish") },
+      { code: "ro", label: msg("Romanian") },
+      { code: "sk", label: msg("Slovak") },
+      { code: "sl", label: msg("Slovenian") },
+      { code: "sv", label: msg("Swedish") },
+      { code: "uk", label: msg("Ukrainian") },
+      { code: "pt-BR", label: msg("Portuguese (Brazil)") },
+    ];
     return {
       ui: {
         locale: {
           schema: z
-            .union([
-              z.literal("en").describe("English - " + msg("English")),
-              z.literal("de").describe("Deutsch - " + msg("German")),
-            ])
+            .union(
+              languageOptions.map(({ code, label }) =>
+                z
+                  .literal(code)
+                  .describe(
+                    `${
+                      Locale.getLanguageInfo(code.split("-")[0]).nativeName
+                    } - ${label}`
+                  )
+              ) as any
+            )
             .describe(
               msg("Language for the WebWriter interface and new documents")
             ),
@@ -143,7 +198,7 @@ export class SettingsController implements ReactiveController {
             file: z.record(z.string(), FileAccount.schema),
             pocketbase: z.record(z.string(), PocketbaseAccount.schema),
             npm: z.record(z.string(), NpmAccount.schema),
-            openai: z.record(z.string(), OpenAIAccount.schema),
+            // openai: z.record(z.string(), OpenAIAccount.schema),
           }) as any,
           hidden: true,
         },

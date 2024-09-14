@@ -138,8 +138,8 @@ export type Environment = {
   bundle: (args?: string[], cwd?: string) => Promise<string>,
   search: (text: string, params?: {size?: number, from?: number, quality?: number, popularity?: number, maintenance?: number}, searchEndpoint?: string) => Promise<SearchResults>,
   pm: (command: string, commandArgs?: string[], cwd?: string) => Promise<string>,
-  watch: (paths: string | string[], cb?: (event: {attrs: any, paths: string[], type: {create?: any, modify?: any, remove?: any}}) => void, options?: {recursive?: boolean, delayMs?: number}) => Promise<() => void>
-  getSystemFonts: () => Promise<string[]>,
+  watch: (paths: string | string[], cb?: (event: {attrs: any, paths: string[], type: {create?: any, modify?: any, remove?: any}}) => void, options?: {recursive?: boolean, delayMs?: number}) => Promise<() => void> // wait for FileSystemObserver, shim with polling?
+  getSystemFonts: () => Promise<string[]>, // wait for Local Font Access API?
   createWindow: (url?: string, options?: WindowOptions & {label?: string, hideOnClose?: boolean}) => Promise<void>,
   setWindowCloseBehavior: (behaviors: WindowCloseBehavior[], closeConfirm?: () => Promise<boolean>) => void
   getWindowLabel: () => string,

@@ -1,0 +1,12 @@
+{
+  "name": "@webwriter/build",
+  "version": "1.0.1",
+  "description": "Build helper script for WebWriter packages",
+  "author": "Frederic Salmen <frederic@fsalmen.de>",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "esbuild": "^0.23.1"
+  },
+  "bin": "./build.js"
+}

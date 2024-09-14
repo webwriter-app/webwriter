@@ -106,7 +106,6 @@ export const ContentExpression = Object.assign(z.string().transform<Expression>(
     return value.raw
   },
   resolve(schema: Schema, expression: ParentedExpression, parent?: ParentedExpression, seen=new Map()): ParentedExpression {
-    console.log(expression.raw)
     const {content} = expression
     const representants = {} as Record<string, string>
     schema.spec.nodes.forEach((k, v) => {

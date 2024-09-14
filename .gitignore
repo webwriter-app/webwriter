@@ -17,3 +17,4 @@ test/data
 *.key.pub
 *.code-workspace
 .DS_Store
+.env

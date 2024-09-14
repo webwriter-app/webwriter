@@ -167,7 +167,6 @@ const styleSpec: AttributeSpec & Record<string, any> = {
 }
 
 export function toAttributes(node: Node | Attrs, extraAttrs?: Attrs) {
-  node?.type?.name === "video" && console.log("toAttributes", node)
   const complex = node instanceof Node || node instanceof Mark
   const outputAttrs = {} as Record<string, string>
   const attrs = complex? {...node.attrs, ...extraAttrs}: {...node, ...extraAttrs}
@@ -205,7 +204,7 @@ const deprecatedStyleAttributes = {
 
 const otherDeprecatedAttributes = ["alink", "compact", "link", "size", "value", "vlink"]
 
-export function getAttrs(dom: HTMLElement | string, getDeprecated=true) {
+export function getAttrs(dom: HTMLElement | string, getDeprecated=false) {
   if(typeof dom === "string") {
     return false
   }
@@ -231,7 +230,7 @@ export function getAttrs(dom: HTMLElement | string, getDeprecated=true) {
 }
 
 
-export function HTMLElementSpec({tag, content, marks, group, inline, atom, attrs, selectable, draggable, code, whitespace, definingAsContext, definingForContent, defining, isolating, toDOM, parseDOM, toDebugString, leafText, phrasingContent, selector, ...rest}: NodeSpec & {tag: string, phrasingContent?: boolean, selector?: string}): NodeSpec {
+export function HTMLElementSpec({tag, content, marks, group, inline, atom, attrs, selectable, draggable, code, whitespace, definingAsContext, definingForContent, defining, isolating, toDOM, parseDOM, toDebugString, leafText, selector, contentKind, ...rest}: NodeSpec & {tag: string, selector?: string}): NodeSpec {
   return {
     content,
     marks,
@@ -246,23 +245,22 @@ export function HTMLElementSpec({tag, content, marks, group, inline, atom, attrs
     definingForContent,
     defining,
     isolating,
-    toDOM: toDOM ?? (n => [tag, toAttributes(n), ...(content? [0]: [])]), //@ts-ignore
+    toDOM: toDOM ?? (n => [tag, toAttributes(n), ...(content? [0]: [])]),
     parseDOM: parseDOM ?? [{
       tag: selector ?? tag,
-      getAttrs,
-      ...(true? null: {
-        contentElement: node => {
-          const span = node.ownerDocument!.createElement("span")
-          span.setAttribute("data-ww-editing", "phrase")
-          span.replaceChildren(...Array.from(node.childNodes));
-          (node as HTMLElement).replaceChildren(span)
-          return node
-        }
-      })
+      getAttrs
     }],
     toDebugString,
     leafText,
     ...rest
+  }
+}
+
+export function HTMLElementSpecPair(pair: Record<string, Partial<Parameters<typeof HTMLElementSpec>[0]>>) {
+  const [[name1, value1], [name2, value2]] = Object.entries(pair)
+  return {
+    [name1]: HTMLElementSpec(value1 as any),
+    [name2]: HTMLElementSpec({...(value1 as any), ...value2})
   }
 }
 

@@ -1,9 +1,4 @@
-import {
-  EditorState,
-  Plugin,
-  TextSelection,
-  Transaction,
-} from "prosemirror-state";
+import { EditorState, Plugin, TextSelection } from "prosemirror-state";
 import {
   Schema,
   Node,
@@ -11,9 +6,9 @@ import {
   Attrs,
   DOMSerializer,
   DOMParser,
-  Slice,
 } from "prosemirror-model";
 import { html_beautify as htmlBeautify } from "js-beautify";
+
 import { formatHTMLToPlainText } from "../../../spell-check/htmlparser";
 import {
   applyGrammarSuggestions,
@@ -59,7 +54,6 @@ import { html as cmHTML } from "@codemirror/lang-html";
 import { basicSetup } from "codemirror";
 import { Account, AccountStore } from "./accountstore";
 import { HTMLParserSerializer } from "../marshal/html";
-import { ChatCompletion } from "openai/resources";
 
 export const CODEMIRROR_EXTENSIONS = [basicSetup, cmHTML()];
 
@@ -259,22 +253,32 @@ export class DocumentStore implements Resource {
     }
   }
 
+  previewSrc: string;
+
   /** Open a preview for this document. */
   async preview(serializer = new HTMLParserSerializer(this.Environment)) {
-    const htmlString = await serializer.serialize(this.editorState);
-    if (WEBWRITER_ENVIRONMENT.engine.name === "WebKit") {
-      const suffix = "#ww-preview.html";
-      const ids = (await this.Environment.FS.readdir("/tmp"))
-        .filter((path) => path.endsWith(suffix))
-        .map((path) => path.replace(suffix, ""))
-        .map((prefix) => parseInt(prefix));
-      const nextId = Math.max(0, ...ids) + 1;
-      const previewPath = `/tmp/${nextId}${suffix}`;
-      await this.Environment.FS.writeFile(previewPath, htmlString);
-      //return createWindow(previewPath, {focus: true, label: `p${nextId}`})
-      return this.Environment.Shell.open(previewPath);
-    } else {
-      const blob = new Blob([htmlString], { type: "text/html" });
+    this.ioState = "loadingPreview";
+    try {
+      this.previewSrc && URL.revokeObjectURL(this.previewSrc);
+      const htmlString = await serializer.serialize(this.editorState);
+      if (WEBWRITER_ENVIRONMENT.engine.name === "WebKit") {
+        const suffix = "#ww-preview.html";
+        const ids = (await this.Environment.FS.readdir("/tmp"))
+          .filter((path) => path.endsWith(suffix))
+          .map((path) => path.replace(suffix, ""))
+          .map((prefix) => parseInt(prefix));
+        const nextId = Math.max(0, ...ids) + 1;
+        const previewPath = `/tmp/${nextId}${suffix}`;
+        await this.Environment.FS.writeFile(previewPath, htmlString);
+        //return createWindow(previewPath, {focus: true, label: `p${nextId}`})
+        return this.Environment.Shell.open(previewPath);
+      } else {
+        const blob = new Blob([htmlString], { type: "text/html" });
+        this.previewSrc = URL.createObjectURL(blob);
+        return this.previewSrc;
+      }
+    } finally {
+      this.ioState = "idle";
       const blobURL = URL.createObjectURL(blob);
       open(blobURL, "_blank", "popup");
     }

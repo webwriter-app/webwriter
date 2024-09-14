@@ -1,5 +1,5 @@
 import { Command, EditorState, NodeSelection, TextSelection } from "prosemirror-state";
-import { SchemaPlugin } from ".";
+import { insertBreak, insertWordBreak, SchemaPlugin } from ".";
 import { Node, Attrs } from "prosemirror-model";
 import { baseKeymap, chainCommands, createParagraphNear, deleteSelection, exitCode, joinBackward, joinForward, joinUp, liftEmptyBlock, macBaseKeymap, newlineInCode, selectAll, selectNodeBackward, selectNodeForward, splitBlock } from "prosemirror-commands";
 import { namedNodeMapToObject } from "../../../../utility";
@@ -11,7 +11,7 @@ import virtualCursorCSS from "prosemirror-view/style/prosemirror.css?raw"
 import { HTMLElementSpec } from "../htmlelementspec";
 import { CustomElementName } from "../../packageschema";
 
-import { Step, StepResult } from "prosemirror-transform"
+import { canSplit, Step, StepResult } from "prosemirror-transform"
 
 export const selectParentNode: Command = (state, dispatch, view) => {
   const {selection, doc} = state
@@ -44,12 +44,56 @@ export const selectFirstChildNode: Command = (state, dispatch, view) => {
 }
 
 export const splitParent: Command = (state, dispatch, view) => {
-  const {$from} = state.selection;
-  (dispatch ?? (() => null))(state.tr
-    .deleteSelection()
-    .split($from.pos, Math.min(2, $from.depth))
-  )
-  return true
+  let tr = state.tr.deleteSelection()
+  const pos = tr.selection.anchor
+  const depth = tr.selection.$from.depth
+  try {
+    const grandparent = tr.selection.$from.node(tr.selection.$from.depth - 1)
+    if(true) {
+      tr = tr.split(pos, Math.min(2, depth))
+      let resolved = tr.doc.resolve(tr.doc.resolve(pos).after())
+      if(resolved.node().type.spec.widget) {
+        tr = tr.setNodeAttribute(resolved.pos + 1, "id", `ww-${crypto.randomUUID()}`)
+      }
+      dispatch && dispatch(tr)
+      return true 
+    }
+    else {
+      return false
+    }
+  }
+  catch {
+    return false
+  }
+}
+
+export const splitOrBreak: Command = (state, dispatch, view) => {
+  let tr = state.tr.deleteSelection()
+  const pos = tr.selection.anchor
+  const $pos = tr.selection.$anchor
+  if(canSplit(tr.doc, pos) && !$pos.parent.type.spec.isolating) {
+    tr = tr.split(pos)
+    let resolved = tr.doc.resolve(tr.doc.resolve(pos).after())
+    if(resolved.nodeAfter?.type.spec.widget) {
+      tr = tr.setNodeAttribute(resolved.pos + 1, "id", `ww-${crypto.randomUUID()}`)
+    }
+    dispatch && dispatch(tr)
+    return true
+  }
+  else {
+    console.log("inserting break")
+    return insertBreak(state, dispatch, view)
+  }
+}
+
+export const joinUpIfAtStart: Command = (state, dispatch, view) => {
+  const {selection} = state
+  if(selection.empty && selection.$anchor.parentOffset === 0 && selection.$anchor.index(selection.$anchor.depth - 1) === 0) {
+    return joinUp(state, dispatch, view)
+  }
+  else {
+    return false
+  }
 }
 
 export class SetDocAttrsStep extends Step {
@@ -111,8 +155,9 @@ export const basePlugin = () => ({
   nodes: {
     explorable: HTMLElementSpec({
       tag: "body",
-      content: `(p | flow)+`,
-      phrasingContent: true,
+      content: `(p | flow)+`, // mixed
+      draggable: false,
+      selectable: false,
       attrs: {
         onafterprint: {default: undefined},
         onbeforeprint: {default: undefined},
@@ -136,36 +181,60 @@ export const basePlugin = () => ({
     }),
     p: HTMLElementSpec({
       tag: "p",
-      group: "flow palpable",
+      group: "flow palpable containerinline",
       content: "text | phrasing*",
       whitespace: "pre"
     }),
     div: HTMLElementSpec({
-      tag: "div:not(.ww-nodeview)",
+      tag: "div",
+      selector: "div:not(.ww-nodeview)",
       group: "flow palpable",
-      content: "flow*"
+      content: "flow*", // mixed
     }),
     pre: HTMLElementSpec({
       tag: "pre",
-      group: "flow palpable",
+      group: "flow palpable containerinline",
       content: "text | phrasing*",
       whitespace: "pre"
     }),
-    /*unknownElement: {
+    hr: HTMLElementSpec({
+      tag: "hr",
+      group: "flow"
+    }),
+    text: {
+      group: "phrasing containerinline",
+      inline: true
+    },
+    _phrase: HTMLElementSpec({
+      tag: "span",
+      content: "text*",
+      group: "flow",
+      toDOM: () => ["span", {"data-ww-editing": "phrase"}, 0],
+      parseDOM: [{tag: "span[data-ww-editing=phrase]"}]
+    }),
+    br: HTMLElementSpec({
+      tag: "br",
+      selector: "br:not(.ProseMirror-trailingBreak)",
+      group: "phrasing",
+      inline: true,
+      linebreakReplacement: true
+    }),
+    unknownElement: {
       attrs: {
         tagName: {},
         otherAttrs: {default: {}}
       },
+      group: "flow",
       parseDOM: [{
         tag: "*",
         getAttrs: dom => {
-          if(typeof dom === "string") {
+          if(typeof dom === "string" || dom?.tagName === "HTML" || dom?.tagName === "HEAD") {
             return false
           }
           const tagName = dom.tagName.toLowerCase()
-          const unknownBuiltin = dom.constructor.name === "HTMLUnknownElement"
-          const unknownCustom = !window.customElements.get(tagName)
           const knownDashed = ["annotation-xml"].includes(tagName)
+          const unknownBuiltin = dom.constructor.name === "HTMLUnknownElement"
+          const unknownCustom = CustomElementName.safeParse(tagName).success && !window.customElements.get(tagName) && !knownDashed
           if((unknownBuiltin || unknownCustom) && !knownDashed) {
             return {tagName, otherAttrs: namedNodeMapToObject(dom.attributes)}
           }
@@ -175,10 +244,10 @@ export const basePlugin = () => ({
       }],
       toDOM: node => [node.attrs.tagName, {
         ...node.attrs.otherAttrs,
-        "data-ww-editing": CustomElementName.safeParse(node.attrs.tagName).success? "unknowncustom": "unknownbuiltin",
+        "data-ww-editing": CustomElementName.safeParse(node.attrs.tagName).success && node.attrs.tagName !== "annotation-xml"? "unknowncustom": "unknownbuiltin",
         "data-ww-tagname": node.attrs.tagName
       }]
-    },*/
+    },
   },
   topNode: "explorable",
   keymap: {
@@ -186,19 +255,22 @@ export const basePlugin = () => ({
       newlineInCode,
       createParagraphNear,
       liftEmptyBlock,
-      splitBlock
+      splitOrBreak
     ),
     "Mod-Enter": chainCommands(
       splitParent,
+      createParagraphNear,
       exitCode
     ),
+    "alt-Enter": insertBreak,
+    "alt-shift-Enter": insertWordBreak,
     "Backspace": chainCommands(
       deleteSelection,
       joinBackward,
       selectNodeBackward
     ),
     "Mod-Backspace": chainCommands(
-      joinUp,
+      joinUpIfAtStart,
       deleteSelection,
       joinBackward,
       selectNodeBackward

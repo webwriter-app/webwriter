@@ -31,6 +31,7 @@ export class Configurator extends LitElement {
 
       sl-tab-group {
         height: 100%;
+        overflow-x: hidden;
       }
 
       sl-tab-group::part(nav) {

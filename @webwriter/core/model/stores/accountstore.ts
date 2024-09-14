@@ -156,7 +156,10 @@ export class AccountStore {
     );
   }
 
-  clientFromURL(url: URL) {
+  clientFromURL(url: URL | FileSystemFileHandle) {
+    if (url instanceof FileSystemFileHandle) {
+      return this.getClient("file", "file");
+    }
     return this.clientTriples
       .map(([_, __, client]) => client)
       .filter((client) => "isClientURL" in client)
@@ -171,7 +174,14 @@ export class AccountStore {
     return `${triple[0]} ${triple[1]}`;
   }
 
-  parserSerializerFromURL(url: URL) {
+  parserSerializerFromURL(url: URL | FileSystemFileHandle) {
+    if (url instanceof FileSystemFileHandle) {
+      const ext = getFileExtension(url.name);
+      const PS = Object.values(marshal).find((PS) =>
+        (PS.extensions as any).includes(ext)
+      );
+      return PS ? new PS(this.Environment) : undefined;
+    }
     const mediaType = url.searchParams.get("mediatype");
     if (url.protocol === "file:") {
       const ext = getFileExtension(url.pathname);

@@ -148,20 +148,38 @@ export const listPlugin = () => ({
   nodes: {
     ol: HTMLElementSpec({
       tag: "ol",
-      group: "flow palpable",
+      group: "flow palpable containerblock",
       content: "li+" // (li | scriptsupporting)*
     }),
   
     ul: HTMLElementSpec({
       tag: "ul",
-      group: "flow palpable",
+      group: "flow palpable containerinline",
       content: "li+" // (li | scriptsupporting)*
     }),
-    
+    menu: HTMLElementSpec({
+      tag: "menu",
+      group: "flow palpable containerinline",
+      content: "li+" // (li | scriptsupporting)*
+    }),
     li: HTMLElementSpec({
       tag: "li",
-      content: "(p | flow)+"
+      group: "containerblock",
+      content: "(p | flow)+" // mixed
     }),
+    dl: HTMLElementSpec({
+      tag: "dl",
+      group: "flow",
+      content: "(dt+ dd+)* | div+"
+    }),
+    dt: HTMLElementSpec({
+      tag: "dt",
+      content: "flow*"
+    }),
+    dd: HTMLElementSpec({
+      tag: "dd",
+      content: "flow*"
+    })
   },
   keymap: {
     "Enter": (state, dispatch, view) => {

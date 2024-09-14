@@ -21,10 +21,10 @@ import {customElement, property} from "lit/decorators.js"
 export default class CoolWidget extends LitElementWw {
 
   @property({attribute: true})
-  value: string
+  accessor value: string
 
   @property({attribute: true})
-  placeholder: string
+  accessor placeholder: string
 
   static get styles() {
     return css`

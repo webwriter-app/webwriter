@@ -36,19 +36,20 @@ export class RootStore {
   Path: Environment["Path"]
   Dialog: Environment["Dialog"]
 
-  constructor({corePackages, schema, FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, getSystemFonts, createWindow, setWindowCloseBehavior, getWindowLabel, checkUpdate, installUpdate, settings, initializePackages}: AllOptions) {
+  constructor({corePackages, apiBase, FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, getSystemFonts, createWindow, setWindowCloseBehavior, getWindowLabel, checkUpdate, installUpdate, settings, initializePackages}: AllOptions) {
     const onBundleChange = this.onBundleChange
     this.FS = FS
     this.Path = Path
     this.Dialog = Dialog
     this.ui = new UIStore({...settings?.ui})
-    this.packages = new PackageStore({...settings?.packages, corePackages, FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, onBundleChange, getSystemFonts, createWindow, setWindowCloseBehavior, getWindowLabel, checkUpdate, installUpdate, initializePackages})
+    this.packages = new PackageStore({...settings?.packages, corePackages, FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, onBundleChange, getSystemFonts, createWindow, setWindowCloseBehavior, getWindowLabel, checkUpdate, installUpdate, initializePackages, apiBase})
     this.accounts = new AccountStore({FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, getSystemFonts, createWindow, setWindowCloseBehavior, getWindowLabel, checkUpdate, installUpdate, }, settings?.accounts.accounts)
     this.document = new DocumentStore({...settings?.document, lang: this.ui.locale, defaultAccount: this.accounts.getAccount("file")}, {FS, Path, Shell, HTTP, OS, Dialog, bundle, search, pm, watch, getSystemFonts, createWindow, setWindowCloseBehavior, getWindowLabel, checkUpdate, installUpdate}, this.accounts)
   }
 
   onBundleChange = (packages: Package[]) => {
     this.document.updateSchema(createEditorStateConfig(packages).schema)
+    console.log(this.document.editorState.schema.nodes)
   }
 
   get<S extends StoreKey, K extends keyof RootStore[S]>(storeKey: S, key: K) {
@@ -72,7 +73,12 @@ export class RootStore {
     try {
       const settings = schema.parse(this)
       const contents = JSON.stringify(settings, undefined, 2)
-      await this.FS.writeFile(path, contents)
+      if(this.packages.apiBase) {
+        localStorage.setItem("webwriter_settings", contents)
+      }
+      else {
+        await this.FS.writeFile(path, contents)
+      }
     }
     catch(cause: any) {
       throw new Error(`Could not save settings on file system: ${cause}`, {cause})

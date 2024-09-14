@@ -19,14 +19,14 @@ const PROTOCOL_ICONS = {
 @localized()
 @customElement("ww-head")
 export class Head extends LitElement {
-  @property({ type: String, attribute: true })
-  filename: string;
+  @property({ type: String, attribute: false })
+  filename?: string | URL | FileSystemFileHandle;
 
   @property({ type: Boolean, attribute: true, reflect: true })
   pendingChanges: boolean = false;
 
   @property({ type: String, attribute: true, reflect: true })
-  ioState: "idle" | "loading" | "saving" = "idle";
+  ioState: "idle" | "loading" | "saving" | "loadingPreview" = "idle";
 
   @property({ type: Array, attribute: false })
   documentCommands: Command[] = [];
@@ -91,25 +91,26 @@ export class Head extends LitElement {
   `;
 
   IconicURL = () => {
-    let unsaved = !this.filename;
-    let url: string | URL = this.filename;
-    try {
-      url = new URL(this.filename);
-    } catch (e) {}
     let iconName, filename, prettyFilename;
-    if (unsaved) {
+    if (!this.filename) {
       filename = this.emptyFilename;
-    } else if (url instanceof URL) {
-      iconName = (PROTOCOL_ICONS as any)[url.protocol.slice(0, -1)];
+    } else if (this.filename instanceof URL) {
+      iconName = (PROTOCOL_ICONS as any)[this.filename.protocol.slice(0, -1)];
       filename =
-        url.searchParams.get("filename") ??
-        url.pathname.slice(url.pathname.lastIndexOf("/") + 1).split("#")[0];
+        this.filename.searchParams.get("filename") ??
+        this.filename.pathname
+          .slice(this.filename.pathname.lastIndexOf("/") + 1)
+          .split("#")[0];
+      prettyFilename = filename.replace(/\_[a-zA-Z0-9]{10}\.[a-zA-Z0-9]+/, "");
+    } else if (this.filename instanceof FileSystemFileHandle) {
+      iconName = (PROTOCOL_ICONS as any).file;
+      filename = this.filename.name;
       prettyFilename = filename.replace(/\_[a-zA-Z0-9]{10}\.[a-zA-Z0-9]+/, "");
     } else {
-      filename = url;
+      filename = this.filename;
     }
     return html`
-      ${!unsaved ? html`<sl-icon name=${iconName}></sl-icon>` : null}
+      ${this.filename ? html`<sl-icon name=${iconName}></sl-icon>` : null}
       <span id="filename">
         <span title=${filename}>${prettyFilename ?? filename}</span>
         <span

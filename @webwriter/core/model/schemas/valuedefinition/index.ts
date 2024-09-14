@@ -626,7 +626,7 @@ function parseCSSPropertySpecs(specs: CSSPropertySpecs, syntaxes?: CSSSyntaxes) 
   }))
 }
 
-function parseValueDefinition(str: string, cache?: Record<string, ValueDefinition>, name?: string) {
+export function parseValueDefinition(str: string, cache?: Record<string, ValueDefinition>, name?: string) {
   const tree = parser.parse(str)
   let root = undefined as ValueDefinition | undefined
   let parent = undefined as ValueDefinition["parent"]

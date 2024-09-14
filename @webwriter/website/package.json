@@ -1,7 +1,7 @@
 {
 	"name": "@webwriter/website",
 	"type": "module",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"scripts": {
 		"dev": "npm-run-all -pr start start-backend",
 		"start": "astro dev",
@@ -42,6 +42,8 @@
 		"octokit": "^3.2.1",
 		"pocketbase": "^0.21.3",
 		"redefine-custom-elements": "^0.1.3",
+		"rehype-autolink-headings": "^7.1.0",
+		"rehype-slug": "^6.0.0",
 		"spdx-license-list": "^6.6.0",
 		"swup": "^3.0.6",
 		"ua-parser-js": "^1.0.35"

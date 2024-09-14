@@ -2,7 +2,6 @@ import {LitElement, PropertyDeclaration} from "lit"
 import { property } from "lit/decorators.js"
 import { ScopedElementsMixin } from '@open-wc/scoped-elements/lit-element.js';
 
-
 interface BaseOptionDeclaration<TypeHint=any> extends PropertyDeclaration<TypeHint> {
   type?: TypeHint
   label?: Record<string, string>
@@ -76,9 +75,42 @@ export type OptionDeclaration =
 | ColorOptionDeclaration
 | SelectOptionDeclaration
 
-export function option(decl: OptionDeclaration = {type: "string"}) {
-  return (target: LitElementWw, key: string | symbol) => {
-    target.constructor["options"] = {...target.constructor["options"], [key]: decl}
+export interface ActionDeclaration {
+  label?: Record<string, string>
+  placeholder?: Record<string, string>
+  description?: Record<string, string>
+}
+
+export function option<This extends LitElementWw, Return>(decl: OptionDeclaration = {type: "string"}) {
+  return (target: ClassAccessorDecoratorTarget<This, Return>, context: ClassAccessorDecoratorContext<This, Return>) => {
+    function init(this: This) {
+      this.constructor["options"] = {...this.constructor["options"], [context.name]: decl}
+    }
+    context.addInitializer(init)
+  }
+}
+
+export function action<This extends LitElementWw, Args extends any[], Return>(decl?: ActionDeclaration) {
+  return (target: (this: This, ...args: Args) => Return, context: ClassMethodDecoratorContext<This, (this: This, ...args: Args) => Return> | ClassAccessorDecoratorContext<This, Return>) => {
+    function init(this: This) {
+      this.constructor["actions"] = {...this.constructor["actions"], [context.name]: decl}
+    }
+    context.addInitializer(init)
+    function func(this: This, ...args: any[]) {
+      this._inTransaction = true
+      try {
+        return target.apply(this, args)
+      }
+      finally {
+        this._inTransaction = false
+      }
+    }
+    if(context.kind === "method") {
+      return func
+    }
+    else {
+      context.access.set(this, func as any)
+    }
   }
 }
 
@@ -88,15 +120,22 @@ export class LitElementWw extends ScopedElementsMixin(LitElement) {
   static shadowRootOptions = {...LitElement.shadowRootOptions}
 
   static readonly options: Record<string, OptionDeclaration> = {}
+  static readonly actions: Record<string, ActionDeclaration> = {}
 
   /** Declare attributes as options. Used by WebWriter to auto-generate input fields to modify these attributes. As the name suggests, this is mostly suited to simple attributes (boolean, string, etc.). Use a getter here (`get options() {...}`) to dynamically change options depending on the state of the widget.*/
   readonly options: Record<string, OptionDeclaration>
 
+  /** Declare methods as actions. Used by WebWriter to treat all DOM changes triggered by the method as a single change (as a transaction).*/
+  readonly actions: Record<string, ActionDeclaration> = {}
+
   /** [HTML global attribute] Editing state of the widget. If ="true" or ="", the widget should allow user interaction changing the widget itself. Else, prevent all such user interactions. */
-  @property({type: String, attribute: true, reflect: true}) contentEditable!: string
+  @property({type: String, attribute: true, reflect: true}) accessor contentEditable!: string
 
   /** [HTML global attribute] Language of the widget, allowing presentation changes for each language.*/
-  @property({type: String, attribute: true, reflect: true}) lang!: string
+  @property({type: String, attribute: true, reflect: true}) accessor lang!: string
+
+  /** @internal */
+  _inTransaction = false
 
   connectedCallback(): void {
     super.connectedCallback()
