@@ -23,7 +23,7 @@ import {
   // diff,
   // matchSpellingSuggestions,
 } from "../../../spell-check/text-tokenizer";
-import { fetchGrammarCorrection } from "../../../spell-check/fetchers/openai-fetcher";
+import { fetchGrammarCorrection } from "../../../spell-check/fetchers/correction-fetcher";
 
 import {
   createEditorState,
@@ -60,7 +60,7 @@ import { basicSetup } from "codemirror";
 import { Account, AccountStore } from "./accountstore";
 import { HTMLParserSerializer } from "../marshal/html";
 import { ChatCompletion } from "openai/resources";
-import { OpenAIAccount } from "../schemas/accounts";
+import { LLMAccount, OpenAIAccount } from "../schemas/accounts";
 
 export const CODEMIRROR_EXTENSIONS = [basicSetup, cmHTML()];
 
@@ -300,13 +300,20 @@ export class DocumentStore implements Resource {
     const text = formatHTMLToPlainText(html);
 
     // get apiKey
-    const openAiAccount: OpenAIAccount = this.accounts.getAccount(
-      "openai"
-    ) as OpenAIAccount;
-    const apiKey = openAiAccount.apikey;
+    const llmAccount: LLMAccount = this.accounts.getAccount(
+      "llm"
+    ) as LLMAccount;
+    const apiKey = llmAccount.data.apiKey;
+    const company = llmAccount.data.company;
+    const model = llmAccount.data.model;
 
     // send text to spellchecker
-    const res = await fetchGrammarCorrection(text, apiKey);
+    const res = await fetchGrammarCorrection(text, apiKey, company, model);
+    if (!res) {
+      console.error("no response from spellchecker!");
+      return;
+    }
+
     const correctedText = res.choices[0].message.content;
     if (!correctedText) {
       console.error("no corrected text!");

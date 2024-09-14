@@ -7,7 +7,7 @@ import { ChatCompletionMessageParam, ChatCompletion } from "openai/resources";
 
 // const apiKey = "sk-proj-l0h8DtCp5fCopl3EU0yZT3BlbkFJpk5WRkI7cON1yRsR52Rj";
 // const apiKey =
-const model = "gpt-4o-mini";
+// const model = "gpt-4o-mini";
 const instructionMessage: ChatCompletionMessageParam = {
   role: "system",
   content: [
@@ -24,9 +24,10 @@ const openai = new OpenAI({
   dangerouslyAllowBrowser: true,
 });
 
-function fetchChatCompletion(
+function fetchOpenAIChatCompletion(
   messages: ChatCompletionMessageParam[],
-  apiKey: string
+  apiKey: string,
+  model: string
 ): APIPromise<ChatCompletion> {
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY environment variable is not defined.");
@@ -49,14 +50,7 @@ function fetchChatCompletion(
   });
 }
 
-function fetchGrammarCorrection(
-  text: string,
-  apiKey: string
-): APIPromise<ChatCompletion> {
-  return fetchChatCompletion([{ role: "user", content: text }], apiKey);
-}
-
 async function validateOpenAIApiKey(apiKey: string): Promise<boolean> {
   return true;
 }
-export { fetchGrammarCorrection, validateOpenAIApiKey };
+export { fetchOpenAIChatCompletion, validateOpenAIApiKey };

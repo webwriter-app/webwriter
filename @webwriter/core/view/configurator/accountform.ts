@@ -334,9 +334,9 @@ export class LLMAccountForm extends LitElement {
   }
 
   static llmData = {
-    OpenAI: ["gpt-3.5-turbo", "gpt-4", "gpt-4-32k"],
+    OpenAI: ["gpt-4o", "gpt-4o-mini"],
     Google: ["gemini-1.5-flash", "gemini-1.5-pro"],
-    Anthropic: ["claude-3-opus", "claude-3-sonnet", "claude-3-haiku"],
+    Anthropic: ["claude-3-haiku", "claude-3.5-sonnet"],
   };
 
   @query("form")

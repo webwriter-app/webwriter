@@ -409,8 +409,7 @@ export class AccountManager extends LitElement {
       if (!accountData) {
         return;
       }
-      submitButton.loading = true;
-      // validate key
+
       console.log("handleLLMSubmit", accountData);
       const llmAccount = this.app.store.accounts.getAccount("llm");
       const newAccount = new LLMAccount({
@@ -422,7 +421,6 @@ export class AccountManager extends LitElement {
       console.log("newAccount", newAccount);
       this.app.store.accounts.updateAccount(newAccount);
       await this.app.settings.persist();
-      submitButton.loading = false;
     }
   };
 
