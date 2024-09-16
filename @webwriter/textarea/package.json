@@ -1,8 +1,10 @@
 {
   "name": "@webwriter/textarea",
-  "version": "1.21.0",
+  "version": "1.21.1",
   "description": "Let the user enter text",
-  "keywords": ["webwriter-widget"],
+  "keywords": [
+    "webwriter-widget"
+  ],
   "license": "MIT",
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "scripts": {
