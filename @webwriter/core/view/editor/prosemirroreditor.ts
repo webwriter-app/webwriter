@@ -152,6 +152,9 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
 	contentScript: string
 
   @property({type: String, attribute: false})
+	contentScriptSrc: string
+
+  @property({type: String, attribute: false})
 	bundleID: string
 
   @property({attribute: false})
@@ -159,6 +162,9 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
 
 	@property({type: String, attribute: false})
 	contentStyle: string
+
+  @property({type: String, attribute: false})
+	contentStyleSrc: string
 
   @property({type: String, attribute: true})
   placeholder: string
@@ -358,19 +364,20 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
       await this.importString(contentScript)
     }
     else {
-      const importMap = !this.importMap? "": `<script type="importmap" data-ww-editing>${JSON.stringify(this.importMap.toJSON(), undefined, 2)}</script>`
-      const scriptIds = !this.importMap? []: Object.keys(this.importMap.imports).filter(k => k.endsWith(".js"))
+      // const importMap = !this.importMap? "": `<script type="importmap" data-ww-editing>${JSON.stringify(this.importMap.toJSON(), undefined, 2)}</script>`
+      const scriptUrls = !this.importMap? []: Object.keys(this.importMap.imports).filter(k => k.endsWith(".js")).map(k => this.importMap.resolve(k))
       const styleUrls = !this.importMap? []: Object.keys(this.importMap.imports).filter(k => k.endsWith(".css")).map(k => this.importMap.resolve(k))
       const scripts = [
         `<script type="module" data-ww-editing>${scopedCustomElementRegistry}</script>`,
         `<script type="module" data-ww-editing>${this.contentScript}</script>`,
-        ...scriptIds.map(id => `<script blocking="render" type="module" async data-ww-editing>import "${id}"</script>`)
+        ...scriptUrls.map(src => `<script blocking="render" type="module" async data-ww-editing src=${src}></script>`)
       ]
       const styles = [
         `<style data-ww-editing>${this.contentStyle}</style>`,
         ...styleUrls.map(src => `<style data-ww-editing src=${src}></style>`)
       ]
-      const template = `<html><head><meta charset="utf-8">${[importMap, ...scripts, ...styles].join("")}</head><body></body></html>`
+      // this.head.insertAdjacentHTML("beforeend", [importMap, ...scripts, ...styles].join(""))
+      const template = `<!DOCTYPE html><html><head><meta charset="utf-8">${[...scripts, ...styles].join("")}</head><body></body></html>`
       const blob = new Blob([template], {type: "text/html"})
       const url = URL.createObjectURL(blob)
       const loaded = new Promise(resolve => this.iframe.addEventListener("load", resolve))
