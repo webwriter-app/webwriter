@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/core",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "description": "Core functionality of WebWriter",
   "browser": "index.html",
   "type": "module",
@@ -17,7 +17,7 @@
     "@codemirror/view": "^6.21.4",
     "@isomorphic-git/lightning-fs": "^4.6.0",
     "@jspm/core": "^2.0.1",
-    "@jspm/generator": "^2.2.0",
+    "@jspm/generator": "^2.3.0",
     "@lit/localize": "^0.12.2",
     "@open-wc/lit-helpers": "^0.7.0",
     "@open-wc/scoped-elements": "^3.0.5",
