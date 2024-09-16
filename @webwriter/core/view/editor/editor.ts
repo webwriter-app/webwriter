@@ -1148,8 +1148,6 @@ export class ExplorableEditor extends LitElement {
 				.decorations=${this.decorations}
 				.contentScript=${this.bundleJS}
 				.contentStyle=${this.bundleCSS}
-        .contentScriptSrc=${this.app.store.packages.bundleJSURL.href}
-        .contentStyleSrc=${this.app.store.packages.bundleCSSURL.href}
 				.shouldBeEditable=${this.shouldBeEditable}
 				.handleDOMEvents=${this.handleDOMEvents}
         .transformPastedHTML=${this.transformPastedHTML}
