@@ -36,7 +36,7 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
       this.icons = new IconController(this)
       this.environment = new EnvironmentController(this)
       await this.environment.ready
-      if ('serviceWorker' in navigator && WEBWRITER_ENVIRONMENT.backend !== "tauri") {
+      if ('serviceWorker' in navigator && window.isSecureContext && WEBWRITER_ENVIRONMENT.backend !== "tauri") {
         const registration = await navigator.serviceWorker.register(
           // @ts-ignore
           import.meta.env.MODE === 'production' ? '/bundleservice.js' : '/dev-sw.js?dev-sw', // @ts-ignore
@@ -46,7 +46,7 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
         if(worker) {
           await Promise.race([
             new Promise(resolve => worker.addEventListener("statechange", e => worker.state === "activated"? resolve: null)),
-            new Promise(r => setTimeout(r, 5000))
+            new Promise(r => setTimeout(r, 3000))
           ])
         }
       }

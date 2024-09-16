@@ -333,7 +333,6 @@ export class Compiler {
     }
     if (args.kind === 'import-statement') {
       let url = importMap.resolve(args.path, args.resolveDir.slice(1) + "/")
-      console.log(args.path, args.resolveDir, url)
       return { path: "/" + url}
     }
     throw Error('not resolvable')
@@ -401,14 +400,14 @@ async function getPackages(ids: string[]) {
     if(resp instanceof Error) {
       throw resp
     }
-    _ids = resp.objects.map(obj => obj.package.name).map(name => `${name}/package.json`)
+    _ids = resp.objects.map(obj => obj.package).map(({name, version}) => `${name}@${version}/package.json`)
   }
   const pkgs = (await Promise.allSettled(_ids.map(id => getAsset(id).then(resp => resp.json())))).filter(result => result.status === "fulfilled").map(result => result.value)
   return new Response(new Blob([JSON.stringify(pkgs)], {type: "application/json"}))
 }
 
 async function getImportmap(ids: string[] | Record<string, any>[]) {
-  let _ids = [] as string[]
+  let _ids = [] as string[]; let assets = {} as Record<string, string>
   const forPackage = typeof ids[0] === "object"
   if(!forPackage) {
     _ids = [...ids] as string[]
@@ -417,19 +416,29 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
     // const pkgIds = ids.map(id => id.startsWith("@")? id.slice(1).split("/").slice(0, 2).join("/"): id.split("/")[0])
     // const pkgs = await Promise.all(pkgIds.map(id => getAsset(`${id}/package.json`).then(resp => resp.json()))) as any[]
     const pkgs = ids as Record<string, any>[]
-    _ids = pkgs.flatMap(pkg => Object.keys(pkg.exports).filter(k => k.startsWith(".")).map(k => pkg.name + k.slice(1)))
-    _ids = _ids.flatMap(id => id.endsWith(".*")? [id.slice(0, -2) + ".js", id.slice(0, -2) + ".css"]: [id])
-    console.log(_ids)
+    assets = Object.fromEntries(pkgs.flatMap(pkg => {
+      return Object.keys(pkg.exports)
+        .filter(k => k.startsWith("./") && (k.endsWith(".html") || k.endsWith(".css") || k.endsWith(".*")))
+        .map(k => [
+          pkg.name + (k.endsWith(".*")? k.slice(1, -2) + ".css": k.slice(1)),
+          new URL(pkg.name + (pkg.exports[k]?.default ?? pkg.exports[k]).slice(1), CDN_URL).href
+        ])
+    }))
+    _ids = pkgs.flatMap(pkg => Object.keys(pkg.exports).filter(k => k.startsWith("./")).map(k => pkg.name + k.slice(1))).filter(id => id.endsWith(".*")).map(id => id.slice(0, -2) + ".js")
   }
   const generator = new Generator({cache: false, defaultProvider: "jsdelivr"})
   let allLinked = false
   do {
     try {
-      await generator.install(_ids)
+      await generator.link(_ids)
+      Object.entries(assets).forEach(([id, url]) => {
+        generator.map.set(id, url)
+      })
+      console.log(generator.map)
       allLinked = true
     }
     catch(err: any) {
-      const regexMatch = /resolving (.+) imported/g.exec(err.message)
+      const regexMatch = / imported from /g.exec(err.message)
       if(err.code === "MODULE_NOT_FOUND" && regexMatch) {
         console.warn(`Excluding faulty package ${regexMatch[1]}: ${err.message}`)
         _ids = _ids.filter(id => id !== regexMatch[1])
@@ -444,7 +453,6 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
 }
 
 async function getBundle(ids: string[], importMap: ImportMap, options?: esbuild.BuildOptions) {
-  console.log(importMap)
   const jsIds = ids.filter(id => id.endsWith(".js") || id.endsWith(".mjs"))
   const cssIds = ids.filter(id => id.endsWith(".css"))
   if(jsIds.length && cssIds.length) {
@@ -547,15 +555,21 @@ async function respond<T extends Action["collection"]>(action: Action<T>) {
     return getAsset(action.ids[0])
   }
   else if(action.collection === "importmaps") {
-    const mapResponse = await getImportmap(action.args.forPackage === "true"? pkgs: action.ids)
+    const mapResponse = await getImportmap(action.args.pkg === "true"? pkgs: action.ids)
     cache.put(url, mapResponse.clone())
     return mapResponse
   }
   else if(action.collection === "bundles") {
-    const mapResponse = await respond({collection: "importmaps", ids: action.ids, args: {}})
+    const mapResponse = await respond({collection: "importmaps", ids: action.ids, args: {pkg: "true"}})
     const map: IImportMap = await mapResponse.json()
-    const importMap = new ImportMap({map, mapUrl: new URL("http://localhost:5173"), rootUrl: null})
-    const bundleResponse = await getBundle(action.ids, importMap)
+    const importMap = new ImportMap({map, mapUrl: new URL("http://localhost"), rootUrl: null})
+    let ids = action.ids
+    if(action.args.pkg === "true") {
+      ids = action.args.type === "css"
+        ? Object.keys(importMap.imports).filter(k => k.endsWith(".css"))
+        : Object.keys(importMap.imports).filter(k => k.endsWith(".js"))
+    }
+    const bundleResponse = await getBundle(ids, importMap)
     cache.put(url, bundleResponse.clone())
     return bundleResponse
   }
@@ -569,7 +583,6 @@ async function getFetchResponse(e: FetchEvent) {
   let action
   try {
     action = urlToAction(url)
-    console.log(url, action)
   }
   catch(err: any) {
     return new Response(null, {status: 400, statusText: err?.message})

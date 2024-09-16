@@ -393,8 +393,11 @@ export class PackageStore {
   }
 
   async updateImportMap(ids: string[]=this.installedPackages) {
+    if(!ids.length) {
+      return
+    }
     const url = new URL("_importmaps", this.apiBase)
-    url.searchParams.append("forPackage", "true")
+    url.searchParams.append("pkg", "true")
     ids.forEach(id => url.searchParams.append("id", id))
     const map = ids.length? await (await fetch(url)).json(): undefined
     this.importMap = new ImportMap({map})
@@ -681,24 +684,42 @@ export class PackageStore {
         final.push(pkg.extend({latest, installed: true}))
       }
       final = final.concat(available)
+      this.packages = Object.fromEntries(final.map(pkg => [pkg.name, pkg]))
     }
     else {
       final = available.map(pkg => pkg.extend({installed: this.installedPackages.includes(pkg.name)})).sort((a, b) => Number(!!b.installed) - Number(!!a.installed))
       await this.updateImportMap()
       this.bundleID = PackageStore.computeBundleID(this.installedPackages, false);
       (this.onBundleChange ?? (() => null))(final.filter(pkg => pkg.installed))
+      this.packages = Object.fromEntries(final.map(pkg => [pkg.name, pkg]))
     }
     this.searchIndex.removeAll()
     this.searchIndex.addAll(final)
-    this.packages = Object.fromEntries(final.map(pkg => [pkg.name, pkg]))
     this.loading = false
+  }
+
+  get bundleJSURL() {
+    const url = new URL("_bundles", this.apiBase)
+    this.installed.forEach(pkg => url.searchParams.append("id", pkg.id))
+    url.searchParams.append("pkg", "true")
+    return url
+  }
+
+  get bundleCSSURL() {
+    const url = new URL("_bundles", this.apiBase)
+    this.installed.forEach(pkg => url.searchParams.append("id", pkg.id))
+    url.searchParams.append("type", "css")
+    url.searchParams.append("pkg", "true")
+    return url
   }
 
   private async fetchAvailable() {
     let rawPkgs: any[] = []
     if(this.apiBase) {
       const resp = await fetch(new URL("_packages", this.apiBase))
-      rawPkgs = await resp.json()
+      if(resp.ok) {
+        rawPkgs = await resp.json()
+      }
     }
     else {
       try {
@@ -900,7 +921,6 @@ export class PackageStore {
   widgetImportIDs(pkgs: Package[]) {
     return pkgs.flatMap(pkg => {
       const widgets = pkg?.widgets ?? {}
-      console.log(widgets)
       return Object.keys(widgets).map(k => pkg.id + k.slice(1) + ".js")
     })
   }
