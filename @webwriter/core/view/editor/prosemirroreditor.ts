@@ -152,9 +152,6 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
 	contentScript: string
 
   @property({type: String, attribute: false})
-	contentScriptSrc: string
-
-  @property({type: String, attribute: false})
 	bundleID: string
 
   @property({attribute: false})
@@ -162,9 +159,6 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
 
 	@property({type: String, attribute: false})
 	contentStyle: string
-
-  @property({type: String, attribute: false})
-	contentStyleSrc: string
 
   @property({type: String, attribute: true})
   placeholder: string
