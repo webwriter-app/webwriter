@@ -213,13 +213,49 @@ export class DocumentStore implements Resource {
   ) {
     this.ioState = "saving";
     try {
-      const saveUrl = saveAs || !this.url ? undefined : this.url;
-      const data = await serializer.serialize(this.editorState);
-      const url = await client.saveDocument(data, saveUrl, filename);
-      if (url) {
-        this.lastSavedState = this.editorState;
-        this.url = url;
-        return url;
+      let newUrlOrHandle: URL | FileSystemFileHandle | undefined =
+        saveAs || !this.url ? undefined : this.url;
+      let newSerializer = serializer;
+      if (!newUrlOrHandle && "pickSave" in client) {
+        newUrlOrHandle = await client.pickSave();
+        if (!newUrlOrHandle) {
+          return;
+        } else if (newUrlOrHandle instanceof FileSystemFileHandle) {
+          const handle = newUrlOrHandle;
+          console.log(handle);
+          const foundPs = getParserSerializerByExtension(handle.name);
+          newSerializer = foundPs ? new foundPs(this.Environment) : serializer;
+          newSerializer =
+            "serialize" in newSerializer ? newSerializer : this.serializer;
+          const data = await newSerializer.serialize!(this.editorState);
+          const returnedHandle = (await client.saveDocument(
+            data,
+            handle,
+            filename
+          )) as FileSystemFileHandle;
+          if (returnedHandle) {
+            this.lastSavedState = this.editorState;
+            this.url = returnedHandle;
+            return returnedHandle;
+          }
+        } else {
+          const newUrl = newUrlOrHandle;
+          const foundPs = getParserSerializerByExtension(newUrl?.pathname);
+          newSerializer = foundPs ? new foundPs(this.Environment) : serializer;
+          newSerializer =
+            "serialize" in newSerializer ? newSerializer : this.serializer;
+          const data = await newSerializer.serialize!(this.editorState);
+          const url = (await client.saveDocument(
+            data,
+            newUrl,
+            filename
+          )) as URL;
+          if (url) {
+            this.lastSavedState = this.editorState;
+            this.url = url;
+            return url;
+          }
+        }
       }
     } catch (err) {
       throw err;

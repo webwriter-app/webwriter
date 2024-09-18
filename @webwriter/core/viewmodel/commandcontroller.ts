@@ -590,6 +590,38 @@ export class CommandController implements ReactiveController {
     return this.queryCommands({ id: "deleteDocument" })[0];
   }
 
+  @Memoize() get preventedShortcuts() {
+    const ctrlKey = ["ctrl", "control", "^"];
+    const altKey = ["alt", "option", "⌥"];
+    const shiftKey = ["shift", "⇧"];
+    const metaKey = ["command", "⌘"];
+    const modifiers = [...ctrlKey, ...altKey, ...shiftKey, ...metaKey];
+    return Object.values(this.commands)
+      .filter((cmd) => cmd.shortcut && !cmd.allowDefault)
+      .map((cmd) => cmd.shortcut)
+      .map((code) => {
+        const parts = code.split("+");
+        const ctrl = parts.some((part) => ctrlKey.includes(part.toLowerCase()));
+        const alt = parts.some((part) => altKey.includes(part.toLowerCase()));
+        const shift = parts.some((part) =>
+          shiftKey.includes(part.toLowerCase())
+        );
+        const meta = parts.some((part) => metaKey.includes(part.toLowerCase()));
+        const key = parts.find(
+          (part) => !modifiers.includes(part.toLowerCase())
+        );
+        return [
+          ctrl ? "ctrl" : undefined,
+          alt ? "alt" : undefined,
+          shift ? "shift" : undefined,
+          meta ? "meta" : undefined,
+          key,
+        ]
+          .filter((k) => k)
+          .join("+");
+      });
+  }
+
   /*
   get priorityContainerCommands() {
     const commands = this.containerCommands
@@ -623,6 +655,7 @@ export class CommandController implements ReactiveController {
         icon: "device-floppy",
         description: () => msg("Save the active document"),
         shortcut: "ctrl+s",
+        allowDefault: false,
         run: async (host, options) => {
           if (
             host.store.accounts.size === 1 ||
@@ -635,6 +668,7 @@ export class CommandController implements ReactiveController {
               options?.client,
               options?.filename
             );
+            console.log(url);
             if (url) {
               host.dialog = undefined;
             }

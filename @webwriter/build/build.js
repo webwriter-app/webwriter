@@ -6,6 +6,7 @@ import * as fs from "fs"
 const scriptExtensions = [".js", ".mjs", ".cjs"]
 
 // Plugin to only resolve internal dependencies and non-ES-Module files
+// Disabled for now - CJS cross-compatibility issues
 const widgetPlugin = pkg => ({
   name: "esbuild-plugin-webwriter-widget",
   setup(build) {
@@ -31,7 +32,9 @@ const widgetKeys = Object.keys(pkg?.exports ?? {}).filter(k => k.startsWith("./w
 await esbuild.build({
   write: true,
   bundle: true,
-  plugins: [widgetPlugin(pkg)],
+  plugins: [
+    //widgetPlugin(pkg)
+  ],
   entryPoints: widgetKeys.map(k => ({out: pkg.exports[k].default.replace(".*", ""), in: pkg.exports[k].source})),
   outdir: ".",
   target: "es2022",

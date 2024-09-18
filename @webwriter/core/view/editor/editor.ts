@@ -74,12 +74,14 @@ export class ExplorableEditor extends LitElement {
 
 	insertMember = async (pkgID: string, insertableName: string) => {
     const state = this.pmEditor.state
-    const members = this.app.store.packages.members as any
+    const name =  (pkgID.startsWith("@")? "@": "") + pkgID.split("@")[pkgID.startsWith("@")? 1: 0]
+    console.log(name)
+    const members = this.app.store.packages.getPackageMembers(name)
     if(insertableName.startsWith("./snippets/")) {
-      const source = members[pkgID][insertableName].source
+      const source = members[insertableName].source
       let htmlStr = source
       if(!source) {
-        const url = new URL("@" + pkgID.split("@").slice(0, 2).join("") + insertableName.slice(1), this.app.store.packages.apiBase)
+        const url = this.app.store.packages.importMap.resolve("@" + pkgID.split("@").slice(0, 2).join("") + insertableName.slice(1) + ".html")
         htmlStr = await (await fetch(url, {headers: {"Accept": "text/html"}})).text()
       }
       const tagNames = this.app.store.packages.widgetTagNames
@@ -779,10 +781,10 @@ export class ExplorableEditor extends LitElement {
       if(this.app.store.ui.stickyToolbox) {
         this.positionStyle = css`
           body {
-            --ww-toolbox-action-x: ${this.toolboxX - iframeOffsetX};
-            --ww-toolbox-action-y: ${this.toolboxY + this.toolboxHeight - iframeOffsetY};
-            --ww-toolbox-action-width: ${docWidth - rightEdge - 40};
-            --ww-toolbox-action-height: ${docHeight + -this.toolboxY + -this.toolboxHeight}
+            --ww-toolbox-action-x: ${this.toolboxX - iframeOffsetX}px;
+            --ww-toolbox-action-y: ${this.toolboxY + this.toolboxHeight - iframeOffsetY}px;
+            --ww-toolbox-action-width: ${docWidth - rightEdge - 40}px;
+            --ww-toolbox-action-height: ${docHeight + -this.toolboxY + -this.toolboxHeight}px
           }
         `
       }
@@ -792,10 +794,10 @@ export class ExplorableEditor extends LitElement {
         const toolboxWidth = this.toolbox.offsetWidth
         this.positionStyle = css`
           body {
-            --ww-toolbox-action-x: ${toolboxX};
-            --ww-toolbox-action-y: ${toolboxY + this.toolboxHeight};
-            --ww-toolbox-action-width: ${toolboxWidth - 20};
-            --ww-toolbox-action-height: ${docHeight + -toolboxY + -this.toolboxHeight - 20}
+            --ww-toolbox-action-x: ${toolboxX}px;
+            --ww-toolbox-action-y: ${toolboxY + this.toolboxHeight}px;
+            --ww-toolbox-action-width: ${toolboxWidth - 20}px;
+            --ww-toolbox-action-height: ${docHeight + -toolboxY + -this.toolboxHeight - 20}px
           }
         `
       }
@@ -1151,7 +1153,8 @@ export class ExplorableEditor extends LitElement {
 				.shouldBeEditable=${this.shouldBeEditable}
 				.handleDOMEvents=${this.handleDOMEvents}
         .transformPastedHTML=${this.transformPastedHTML}
-        .windowListeners=${this.windowListeners}>
+        .windowListeners=${this.windowListeners}
+        .preventedShortcuts=${this.app.commands.preventedShortcuts}>
 			</pm-editor>
 		`
 	}
@@ -1255,6 +1258,16 @@ export class ExplorableEditor extends LitElement {
 		`
 	}
 
+  prefetchAllMembers(name: string, id: string) {
+    if(!this.app.store.packages.installedPackages.includes(name)) {
+      return
+    }
+    const members = this.app.store.packages.getPackageMembers(name)
+    const ids = Object.keys(members).filter(k => !k.startsWith("./widgets/")).map(relPath => name + relPath.slice(1) + ".html")
+    const urls = ids.map(id => this.app.store.packages.importMap.resolve(id))
+    return Promise.allSettled(urls.map(url => fetch(url)))
+  }
+
 	Palette = () => {
 		return html`
 			<ww-palette
@@ -1262,14 +1275,13 @@ export class ExplorableEditor extends LitElement {
         .editorState=${this.editorState}
 				part="editor-toolbox"
 				@ww-insert=${(e: any) => this.insertMember(e.detail.pkgID, e.detail.name)}
-				@ww-mousein-widget-add=${(e: CustomEvent) => {
+				@ww-mouseenter-insertable=${(e: CustomEvent) => {
+          if(WEBWRITER_ENVIRONMENT.backend !== "tauri") {
+            this.prefetchAllMembers(e.detail.name, e.detail.id)
+          }
 				}}
-				@ww-mouseout-widget-add=${() => {
-					const previewEl = this.pmEditor.document.querySelector("#ww_preview")
-					if(previewEl && this.stateBeforePreview && this.showWidgetPreview) {
-						this.pmEditor.updateState(this.stateBeforePreview)
-						this.pmEditor.focus()
-					}
+				@ww-mouseleave-insertable=${() => {
+
 				}}
         @ww-add-widget=${(e: CustomEvent) => {
           const name = e.detail.name

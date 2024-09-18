@@ -1,6 +1,6 @@
 {
   "name": "webwriter",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "description": "Web-based authoring tool for explorables",
   "scripts": {
     "lerna": "lerna",
@@ -12,6 +12,7 @@
     "make-app-icon": "tauri icon ./@webwriter/core/app-icon.png",
     "predev-core": "npm-run-all -pc preparestatic build-localization",
     "dev-core": "npm run vite -- @webwriter/core --force",
+    "devbuild-core": "npm run build-core && http-server ./@webwriter/core/dist",
     "predev-desktop": "tauri -V",
     "dev-desktop": "npm-run-all -pr dev-core \"tauri dev -- -c ./@webwriter/app-desktop/src-tauri/tauri.conf.json\"",
     "dev-cloud": "npm run -w @webwriter/app-cloud dev",
@@ -64,6 +65,7 @@
     "bootstrap-icons": "^1.10.3",
     "deepl-node": "^1.13.0",
     "fs-extra": "^11.2.0",
+    "http-server": "^14.1.1",
     "jsdom": "^24.1.1",
     "mocha": "^10.2.0",
     "npm": "^10.7.0",

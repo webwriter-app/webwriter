@@ -87,12 +87,12 @@ export class Palette extends LitElement {
 		this.dispatchEvent(new CustomEvent("ww-watch-widget", {composed: true, bubbles: true, detail: {name}}))
 	}
 
-	emitMouseInWidgetAdd = (name: string) => {
-		this.dispatchEvent(new CustomEvent("ww-mousein-widget-add", {composed: true, bubbles: true, detail: {name}}))
+	emitMouseenterInsertable = (name: string, id: string) => {
+		this.dispatchEvent(new CustomEvent("ww-mouseenter-insertable", {composed: true, bubbles: true, detail: {name, id}}))
 	}
 
-	emitMouseOutWidgetAdd = (name: string) => {
-		this.dispatchEvent(new CustomEvent("ww-mouseout-widget-add", {composed: true, bubbles: true, detail: {name}}))
+	emitMouseleaveInsertable = (name: string, id: string) => {
+		this.dispatchEvent(new CustomEvent("ww-mouseleave-insertable", {composed: true, bubbles: true, detail: {name, id}}))
 	}
 
 	emitClose = () => {
@@ -747,33 +747,18 @@ export class Palette extends LitElement {
     ).join("\n")
 	}
 
-	handleMouseInWidgetAdd = (pkg: Package | Command) => {
-    const isLeaf = "name" in pkg
-		if(isLeaf && this.showWidgetPreview) {
-			this.addingWidget = pkg.name
-			this.widgetAddInterval = setInterval(async () => {
-				this.widgetAddProgress = Math.min(150, this.widgetAddProgress + 15)
-				if(this.widgetAddProgress === 150) {
-					clearInterval(this.widgetAddInterval)
-          isLeaf
-            ? this.emitMouseInWidgetAdd(unscopePackageName(this.addingWidget!))
-            : (pkg as Command).run()
-				}
-			}, 50)
-		}
+	handleMouseenterInsertable = (pkg: Package | Command) => {
+    this.emitMouseenterInsertable("name" in pkg? pkg.name: pkg.id, pkg.id)
 	}
 
-	handleMouseOutWidgetAdd = (name: string) => {
-		this.widgetAddProgress = 0
-		this.addingWidget = null
+	handleMouseleaveInsertable = (pkg: Package | Command) => {
     this.dropdownOpen = null
-		clearInterval(this.widgetAddInterval)
-		this.emitMouseOutWidgetAdd(name)
+    this.emitMouseleaveInsertable("name" in pkg? pkg.name: pkg.id, pkg.id)
 	}
 
   ContainerCard = (cmds: Command[]) => {
     const cmd = cmds[0]
-    return html`<sl-card id=${cmd.group ?? cmd.id} class=${classMap({"package-card": true, "container-card": true, "multiple": cmds.length > 1})} ?inert=${cmd.disabled} @click=${() => this.handleClickCard(cmd)} @mouseenter=${() => this.handleMouseInWidgetAdd(cmd)} @mouseleave=${() => this.handleMouseOutWidgetAdd(unscopePackageName(cmd.id))}>
+    return html`<sl-card id=${cmd.group ?? cmd.id} class=${classMap({"package-card": true, "container-card": true, "multiple": cmds.length > 1})} ?inert=${cmd.disabled} @click=${() => this.handleClickCard(cmd)} @mouseenter=${() => this.handleMouseenterInsertable(cmd)} @mouseleave=${() => this.handleMouseleaveInsertable(cmd)}>
 		<sl-tooltip placement="left-start" class="package-tooltip" hoist trigger="hover">
 			<span class="title">
 			  <sl-icon class="container-icon" name=${cmd.icon ?? "square"}></sl-icon>
@@ -811,11 +796,12 @@ export class Palette extends LitElement {
     const changing = adding || removing || updating
     const found = name in this.searchResults
     const error = packages.getPackageIssues(pkg.id).length
-    const insertables = packages.members[pkg.id]? Object.values(filterObject(packages.members[pkg.id], (_, ms) => !(ms as any).uninsertable) as unknown as Record<string, MemberSettings>): []
+    const members = packages.getPackageMembers(pkg.name)
+    const insertables = members? Object.values(filterObject(members, (_, ms) => !(ms as any).uninsertable) as unknown as Record<string, MemberSettings>): []
     const pkgEditingSettings = !packageEditingSettings? undefined: {name: undefined, label: undefined, ...packageEditingSettings}
     const {name: firstName, label: firstLabel} =  pkgEditingSettings ?? insertables[0] ?? {}
     const otherInsertables = insertables.slice(1)
-    return html`<sl-card id=${pkg.id} @contextmenu=${(e: any) => {this.contextPkg = pkg; e.preventDefault()}} data-package-name=${name} @mouseenter=${() => this.handleMouseInWidgetAdd(pkg)} @mouseleave=${() => {this.handleMouseOutWidgetAdd(unscopePackageName(name))}} class=${classMap({"package-card": true, "block-card": true, installed: !!installed, error, adding, removing, updating, outdated, watching: !!watching, found, local: !!localPath, multiple: insertables.length > 1})} ?inert=${changing}>
+    return html`<sl-card id=${pkg.id} @contextmenu=${(e: any) => {this.contextPkg = pkg; e.preventDefault()}} data-package-name=${name} @mouseenter=${() => this.handleMouseenterInsertable(pkg)} @mouseleave=${() => this.handleMouseleaveInsertable(pkg)} class=${classMap({"package-card": true, "block-card": true, installed: !!installed, error, adding, removing, updating, outdated, watching: !!watching, found, local: !!localPath, multiple: insertables.length > 1})} ?inert=${changing}>
 		<sl-tooltip placement="left-start" class="package-tooltip" hoist trigger="hover">
 			<span class="title" @click=${() => this.handleClickCard(pkg, firstName)}>${firstLabel?._ ?? prettifyPackageName(pkg.name)}</span>
       <span slot="content">
@@ -845,7 +831,7 @@ export class Palette extends LitElement {
     const {id, label} = cmd
     return html`<sl-card class=${classMap({"package-card": true, "inline-card": true})}>
 		<sl-tooltip placement="left-start" class="package-tooltip" hoist trigger="hover">
-			<span @click=${() => this.handleClickCard(cmd)} class="title" @mouseenter=${() => this.handleMouseInWidgetAdd(cmd)} @mouseleave=${() => this.handleMouseOutWidgetAdd(unscopePackageName(id))}>
+			<span @click=${() => this.handleClickCard(cmd)} class="title" @mouseenter=${() => this.handleMouseenterInsertable(cmd)} @mouseleave=${() => this.handleMouseleaveInsertable(cmd)}>
 			  <sl-icon class="container-icon" name=${cmd?.icon ?? "square"}></sl-icon>
 			</span>
       <span slot="content">

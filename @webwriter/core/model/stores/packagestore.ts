@@ -393,8 +393,11 @@ export class PackageStore {
   }
 
   async updateImportMap(ids: string[]=this.installedPackages) {
+    if(!ids.length) {
+      return
+    }
     const url = new URL("_importmaps", this.apiBase)
-    url.searchParams.append("forPackage", "true")
+    url.searchParams.append("pkg", "true")
     ids.forEach(id => url.searchParams.append("id", id))
     const map = ids.length? await (await fetch(url)).json(): undefined
     this.importMap = new ImportMap({map})
@@ -681,24 +684,42 @@ export class PackageStore {
         final.push(pkg.extend({latest, installed: true}))
       }
       final = final.concat(available)
+      this.packages = Object.fromEntries(final.map(pkg => [pkg.name, pkg]))
     }
     else {
       final = available.map(pkg => pkg.extend({installed: this.installedPackages.includes(pkg.name)})).sort((a, b) => Number(!!b.installed) - Number(!!a.installed))
       await this.updateImportMap()
       this.bundleID = PackageStore.computeBundleID(this.installedPackages, false);
       (this.onBundleChange ?? (() => null))(final.filter(pkg => pkg.installed))
+      this.packages = Object.fromEntries(final.map(pkg => [pkg.name, pkg]))
     }
     this.searchIndex.removeAll()
     this.searchIndex.addAll(final)
-    this.packages = Object.fromEntries(final.map(pkg => [pkg.name, pkg]))
     this.loading = false
+  }
+
+  get bundleJSURL() {
+    const url = new URL("_bundles", this.apiBase)
+    this.installed.forEach(pkg => url.searchParams.append("id", pkg.id))
+    url.searchParams.append("pkg", "true")
+    return url
+  }
+
+  get bundleCSSURL() {
+    const url = new URL("_bundles", this.apiBase)
+    this.installed.forEach(pkg => url.searchParams.append("id", pkg.id))
+    url.searchParams.append("type", "css")
+    url.searchParams.append("pkg", "true")
+    return url
   }
 
   private async fetchAvailable() {
     let rawPkgs: any[] = []
     if(this.apiBase) {
       const resp = await fetch(new URL("_packages", this.apiBase))
-      rawPkgs = await resp.json()
+      if(resp.ok) {
+        rawPkgs = await resp.json()
+      }
     }
     else {
       try {
@@ -837,30 +858,37 @@ export class PackageStore {
     return Object.values(this.packages).filter(pkg => !pkg.installed)
   }
 
-  get members() {
-    const members = {} as Record<string, Record<string, MemberSettings>>
-    for(const pkg of this.packagesList) {
-      members[pkg.id] = {} as any
-      for(const [name, member] of Object.entries(pkg?.members ?? {})) {
-        const isWidget = name.startsWith("./widgets/")
-        const isSnippet = name.startsWith("./snippets/")
-        const isSnippetWithWidget = isSnippet && name.replace("./snippets/", "./widgets/") in members[pkg.id]
-        const defaultLabel = name.replace(/\.\/\w+\//, "").split("-").slice(isSnippetWithWidget || isWidget? 1: 0).map(capitalizeWord).join(" ");
-        (members as any)[pkg.id][name] = {...member, name, label: {_: defaultLabel, ...member.label}}
+
+
+  getPackageMembers(name: string, filter?: "widgets" | "snippets" | "themes") {
+    const pkg = this.packages[name]
+    const members = {} as any
+    for(const [memberName, member] of Object.entries(pkg?.members ?? {})) {
+      const is = {
+        widgets: memberName.startsWith("./widgets/"),
+        snippets: memberName.startsWith("./snippets/"),
+        themes: memberName.startsWith("./themes/") 
+      }
+      const defaultLabel = memberName.replace(/\.\/\w+\//, "").split("-").slice(is.widgets? 1: 0).map(capitalizeWord).join(" ");
+      if(!filter || is[filter]) {
+        members[memberName] = {...member, name: memberName, label: {_: defaultLabel, ...member.label}}
       }
     }
     return members
   }
 
   get widgets() {
+    return Object.fromEntries(Object.keys(this.packages).map(name => [name, this.getPackageMembers(name, "widgets")]))
     return Object.fromEntries(Object.entries(this.members).map(([k, v]) => [k, filterObject(v, vk => vk.startsWith("./widgets/"))]))
   }
 
   get snippets() {
+    return Object.fromEntries(Object.keys(this.packages).map(name => [name, this.getPackageMembers(name, "snippets")]))
     return Object.fromEntries(Object.entries(this.members).map(([k, v]) => [k, filterObject(v, vk => vk.startsWith("./snippets/"))]))
   }
 
   get themes() {
+    return Object.fromEntries(Object.keys(this.packages).map(name => [name, this.getPackageMembers(name, "themes")]))
     return Object.fromEntries(Object.entries(this.members).map(([k, v]) => [k, filterObject(v, vk => vk.startsWith("./themes/"))]))
   }
 
@@ -872,19 +900,6 @@ export class PackageStore {
       }
     }
     return allThemes
-  }
-
-  get insertables() {
-    const result = {} as Record<string, MemberSettings>
-    for(const [pkgName, pkgMembers] of Object.entries(this.members)) {
-      for(const [memberName, memberSettings] of Object.entries(pkgMembers)) {
-        if(!(memberSettings as WidgetEditingSettings)?.uninsertable) {
-          result[`${pkgName}${memberName.slice(1)}`] = memberSettings
-        }
-      }
-    }
-    return result
-    return Object.fromEntries(Object.entries(merge(this.snippets, this.widgets, this.themes)).map(([k, v]) => [k, Object.values(v).filter((v: any) => !v.uninsertable)]))
   }
 
   get installedWidgetUrls() {
@@ -900,7 +915,6 @@ export class PackageStore {
   widgetImportIDs(pkgs: Package[]) {
     return pkgs.flatMap(pkg => {
       const widgets = pkg?.widgets ?? {}
-      console.log(widgets)
       return Object.keys(widgets).map(k => pkg.id + k.slice(1) + ".js")
     })
   }

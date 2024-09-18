@@ -15,7 +15,10 @@ export default defineConfig({
             settings: fileURLToPath(new URL("./settings.html", import.meta.url)),
             worker: fileURLToPath(new URL("./viewmodel/services/bundleservice.ts", import.meta.url))
           },
-        }
+        },
+    },
+    esbuild: {
+      dropLabels: ["DEV"]
     },
     plugins: [
       lezer({exportName: "parser"}),
