@@ -74,9 +74,11 @@ export class ExplorableEditor extends LitElement {
 
 	insertMember = async (pkgID: string, insertableName: string) => {
     const state = this.pmEditor.state
-    const members = this.app.store.packages.members as any
+    const name =  (pkgID.startsWith("@")? "@": "") + pkgID.split("@")[pkgID.startsWith("@")? 1: 0]
+    console.log(name)
+    const members = this.app.store.packages.getPackageMembers(name)
     if(insertableName.startsWith("./snippets/")) {
-      const source = members[pkgID][insertableName].source
+      const source = members[insertableName].source
       let htmlStr = source
       if(!source) {
         const url = this.app.store.packages.importMap.resolve("@" + pkgID.split("@").slice(0, 2).join("") + insertableName.slice(1) + ".html")
@@ -1151,7 +1153,8 @@ export class ExplorableEditor extends LitElement {
 				.shouldBeEditable=${this.shouldBeEditable}
 				.handleDOMEvents=${this.handleDOMEvents}
         .transformPastedHTML=${this.transformPastedHTML}
-        .windowListeners=${this.windowListeners}>
+        .windowListeners=${this.windowListeners}
+        .preventedShortcuts=${this.app.commands.preventedShortcuts}>
 			</pm-editor>
 		`
 	}
@@ -1259,7 +1262,7 @@ export class ExplorableEditor extends LitElement {
     if(!this.app.store.packages.installedPackages.includes(name)) {
       return
     }
-    const members = this.app.store.packages.members[id]
+    const members = this.app.store.packages.getPackageMembers(name)
     const ids = Object.keys(members).filter(k => !k.startsWith("./widgets/")).map(relPath => name + relPath.slice(1) + ".html")
     const urls = ids.map(id => this.app.store.packages.importMap.resolve(id))
     return Promise.allSettled(urls.map(url => fetch(url)))

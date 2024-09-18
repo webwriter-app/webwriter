@@ -858,30 +858,37 @@ export class PackageStore {
     return Object.values(this.packages).filter(pkg => !pkg.installed)
   }
 
-  get members() {
-    const members = {} as Record<string, Record<string, MemberSettings>>
-    for(const pkg of this.packagesList) {
-      members[pkg.id] = {} as any
-      for(const [name, member] of Object.entries(pkg?.members ?? {})) {
-        const isWidget = name.startsWith("./widgets/")
-        const isSnippet = name.startsWith("./snippets/")
-        const isSnippetWithWidget = isSnippet && name.replace("./snippets/", "./widgets/") in members[pkg.id]
-        const defaultLabel = name.replace(/\.\/\w+\//, "").split("-").slice(isSnippetWithWidget || isWidget? 1: 0).map(capitalizeWord).join(" ");
-        (members as any)[pkg.id][name] = {...member, name, label: {_: defaultLabel, ...member.label}}
+
+
+  getPackageMembers(name: string, filter?: "widgets" | "snippets" | "themes") {
+    const pkg = this.packages[name]
+    const members = {} as any
+    for(const [memberName, member] of Object.entries(pkg?.members ?? {})) {
+      const is = {
+        widgets: memberName.startsWith("./widgets/"),
+        snippets: memberName.startsWith("./snippets/"),
+        themes: memberName.startsWith("./themes/") 
+      }
+      const defaultLabel = memberName.replace(/\.\/\w+\//, "").split("-").slice(is.widgets? 1: 0).map(capitalizeWord).join(" ");
+      if(!filter || is[filter]) {
+        members[memberName] = {...member, name: memberName, label: {_: defaultLabel, ...member.label}}
       }
     }
     return members
   }
 
   get widgets() {
+    return Object.fromEntries(Object.keys(this.packages).map(name => [name, this.getPackageMembers(name, "widgets")]))
     return Object.fromEntries(Object.entries(this.members).map(([k, v]) => [k, filterObject(v, vk => vk.startsWith("./widgets/"))]))
   }
 
   get snippets() {
+    return Object.fromEntries(Object.keys(this.packages).map(name => [name, this.getPackageMembers(name, "snippets")]))
     return Object.fromEntries(Object.entries(this.members).map(([k, v]) => [k, filterObject(v, vk => vk.startsWith("./snippets/"))]))
   }
 
   get themes() {
+    return Object.fromEntries(Object.keys(this.packages).map(name => [name, this.getPackageMembers(name, "themes")]))
     return Object.fromEntries(Object.entries(this.members).map(([k, v]) => [k, filterObject(v, vk => vk.startsWith("./themes/"))]))
   }
 
@@ -893,19 +900,6 @@ export class PackageStore {
       }
     }
     return allThemes
-  }
-
-  get insertables() {
-    const result = {} as Record<string, MemberSettings>
-    for(const [pkgName, pkgMembers] of Object.entries(this.members)) {
-      for(const [memberName, memberSettings] of Object.entries(pkgMembers)) {
-        if(!(memberSettings as WidgetEditingSettings)?.uninsertable) {
-          result[`${pkgName}${memberName.slice(1)}`] = memberSettings
-        }
-      }
-    }
-    return result
-    return Object.fromEntries(Object.entries(merge(this.snippets, this.widgets, this.themes)).map(([k, v]) => [k, Object.values(v).filter((v: any) => !v.uninsertable)]))
   }
 
   get installedWidgetUrls() {

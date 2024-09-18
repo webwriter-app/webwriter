@@ -11,6 +11,7 @@ import scopedCustomElementRegistry from "@webcomponents/scoped-custom-element-re
 import {ImportMap} from "@jspm/import-map"
 import {Generator} from "@jspm/generator"
 import { ifDefined } from "lit/directives/if-defined.js"
+import hotkeys from "hotkeys-js"
 
 type IProsemirrorEditor = 
   & Omit<DirectEditorProps, "attributes" | "editable">
@@ -165,6 +166,10 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
 
   @property({type: Object, attribute: false})
   windowListeners: Partial<Record<keyof WindowEventMap, any>> = {}
+
+  
+  @property({type: Array, attribute: false})
+  preventedShortcuts: string[] = []
 
   get editable(): boolean {
     return this?.view.editable as any
@@ -351,6 +356,33 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
   @property({attribute: true})
   accessor url: string
 
+  createScript(src: string) {
+    const script = this.document.createElement("script")
+    script.src = src
+    script.async = true
+    script.type = "module"
+    script.setAttribute("blocking", "render")
+    script.toggleAttribute("data-ww-editing")
+    return script
+  }
+
+  createScriptInline(textContent: string) {
+    const script = this.document.createElement("script")
+    script.textContent = textContent
+    script.type = "module"
+    script.toggleAttribute("data-ww-editing")
+    return script
+  }
+
+  createStyleLink(href: string) {
+    const link = this.document.createElement("link")
+    link.rel = "stylesheet"
+    link.href = href
+    link.setAttribute("blocking", "render")
+    link.toggleAttribute("data-ww-editing")
+    return link
+  }
+
   async initializeIFrame() {
     this.iframe = this.shadowRoot?.querySelector("iframe") as any
     if(WEBWRITER_ENVIRONMENT.backend === "tauri") {
@@ -358,9 +390,17 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
       await this.importString(contentScript)
     }
     else {
-      // const importMap = !this.importMap? "": `<script type="importmap" data-ww-editing>${JSON.stringify(this.importMap.toJSON(), undefined, 2)}</script>`
+      const importMap = !this.importMap? "": `<script type="importmap" data-ww-editing>${JSON.stringify(this.importMap.toJSON(), undefined, 2)}</script>`
       const scriptUrls = !this.importMap? []: Object.keys(this.importMap.imports).filter(k => k.endsWith(".js")).map(k => this.importMap.resolve(k))
       const styleUrls = !this.importMap? []: Object.keys(this.importMap.imports).filter(k => k.endsWith(".css")).map(k => this.importMap.resolve(k))
+      const scripts = [
+        this.createScriptInline(scopedCustomElementRegistry),
+        ...scriptUrls.map(url => this.createScript(url))
+      ]
+      const styles = styleUrls.map(url => this.createStyleLink(url))
+      this.head.insertAdjacentHTML("beforeend", importMap)
+      this.head.append(...scripts, ...styles)
+      /*
       const scripts = [
         `<script type="module" data-ww-editing>${scopedCustomElementRegistry}</script>`,
         `<script type="module" data-ww-editing>${this.contentScript}</script>`,
@@ -376,7 +416,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
       const url = URL.createObjectURL(blob)
       const loaded = new Promise(resolve => this.iframe.addEventListener("load", resolve))
       this.window.location.href = url
-      await loaded
+      await loaded*/
     }
     this.document.documentElement.spellcheck = false
     this.window.console = console
@@ -435,6 +475,14 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
       this.document.documentElement.toggleAttribute("data-dragover", false)
       e.stopPropagation()
       e.preventDefault()
+    })
+
+    this.window.addEventListener("keydown", e => {
+      const keyExpr = [e.ctrlKey? "ctrl": null, e.altKey? "alt": null, e.shiftKey? "shift": null, e.metaKey? "meta": null, e.key].filter(k => k).join("+")
+      console.log(keyExpr, this.preventedShortcuts)
+      if(this.preventedShortcuts.includes(keyExpr)) {
+        e.preventDefault()
+      }
     })
 
     if(WEBWRITER_ENVIRONMENT.engine.name === "WebKit") {

@@ -421,7 +421,7 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
         .filter(k => k.startsWith("./") && (k.endsWith(".html") || k.endsWith(".css") || k.endsWith(".*")))
         .map(k => [
           pkg.name + (k.endsWith(".*")? k.slice(1, -2) + ".css": k.slice(1)),
-          new URL(pkg.name + (pkg.exports[k]?.default ?? pkg.exports[k]).slice(1), CDN_URL).href
+          new URL(pkg.name + (pkg.exports[k]?.default ?? pkg.exports[k]).slice(1), CDN_URL).href.replace(".*", ".css")
         ])
     }))
     _ids = pkgs.flatMap(pkg => Object.keys(pkg.exports).filter(k => k.startsWith("./")).map(k => pkg.name + k.slice(1))).filter(id => id.endsWith(".*")).map(id => id.slice(0, -2) + ".js")
@@ -434,7 +434,6 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
       Object.entries(assets).forEach(([id, url]) => {
         generator.map.set(id, url)
       })
-      console.log(generator.map)
       allLinked = true
     }
     catch(err: any) {
@@ -477,7 +476,7 @@ async function getBundle(ids: string[], importMap: ImportMap, options?: esbuild.
     }
   }
   else if(cssIds.length) {
-    const cssSources = await Promise.all(ids.map(async id => {
+    const cssSources = await Promise.all(cssIds.map(async id => {
       const url = importMap.resolve(id)
       const response = await fetch(url)
       return response.text()

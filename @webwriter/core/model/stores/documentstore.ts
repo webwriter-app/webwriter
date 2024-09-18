@@ -157,12 +157,12 @@ export class DocumentStore implements Resource {
         }
         else if(newUrlOrHandle instanceof FileSystemFileHandle) {
           const handle = newUrlOrHandle
+          console.log(handle)
           const foundPs = getParserSerializerByExtension(handle.name)
           newSerializer = foundPs? new foundPs(this.Environment): serializer
           newSerializer = "serialize" in newSerializer? newSerializer: this.serializer
           const data = await newSerializer.serialize!(this.editorState)
           const returnedHandle = await client.saveDocument(data, handle, filename) as FileSystemFileHandle
-          console.log(returnedHandle)
           if(returnedHandle) {
             this.lastSavedState = this.editorState
             this.url = returnedHandle
