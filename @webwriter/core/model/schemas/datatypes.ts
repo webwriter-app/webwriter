@@ -112,7 +112,13 @@ export class SemVer extends NodeSemVer {
     return this.compare(other) === 0
   } 
   
-  toString = () => this.raw; toJSON = () => this.toString()
+  toString() {
+    const prerelease = this.prerelease.length? `-${this.prerelease.join(".")}`: ""
+    const build = this.build.length? `+${this.build.join(".")}`: ""
+    return `${this.major}.${this.minor}.${this.patch}${prerelease}${build}`
+  }
+  
+  toJSON = () => this.toString()
 }
 
 export class SemVerRange extends NodeSemVerRange {

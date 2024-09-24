@@ -68,16 +68,16 @@ export class RootStore {
   }
 
   async persist(schema: ZodSchema<StoreSlice<RootStore>>, settingsPath?: string) {
-    const {appDir, join} = this.Path
-    const path = settingsPath ?? await join(await appDir(), "settings.json")
     try {
       const settings = schema.parse(this)
       const contents = JSON.stringify(settings, undefined, 2)
-      if(this.packages.apiBase) {
-        localStorage.setItem("webwriter_settings", contents)
+      if(WEBWRITER_ENVIRONMENT.backend === "tauri") {
+        const {appDir, join} = this.Path
+        const path = settingsPath ?? await join(await appDir(), "settings.json")
+        await this.FS.writeFile(path, contents)
       }
       else {
-        await this.FS.writeFile(path, contents)
+        localStorage.setItem("webwriter_settings", contents)
       }
     }
     catch(cause: any) {

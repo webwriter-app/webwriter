@@ -239,7 +239,7 @@ export function deleteHeadElement(headState: EditorState,  matcher: Matcher) {
     }
   })
   const resolved = headState.doc.resolve(existingPos!)
-  const tr = headState.tr.delete(resolved.pos, resolved.pos + existingNode!?.nodeSize ?? 1)
+  const tr = headState.tr.delete(resolved.pos, resolved.pos + (existingNode!?.nodeSize ?? 1))
   return headState.apply(tr)
 }
 

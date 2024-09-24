@@ -3,11 +3,12 @@ const worker = self as unknown as ServiceWorkerGlobalScope
 import * as esbuild from "esbuild-wasm"
 import PathBrowserifyEsm from "path-browserify-esm" // @ts-ignore
 import wasmURL from "esbuild-wasm/esbuild.wasm?url"
-import {Generator} from "@jspm/generator"
+import {Generator, Provider} from "@jspm/generator"
 import {ImportMap, IImportMap} from "@jspm/import-map"
 import {BuildOptions} from "esbuild-wasm"
 import { PackageConfig } from "@jspm/generator/lib/install/package"
 import {parseUrlPkg, pkgToUrl} from "@jspm/generator/lib/providers/jsdelivr"
+import { SemVer } from "semver"
 
 const commaSeparatedArrays = [
   'conditions',
@@ -387,9 +388,66 @@ const extensions: any = {
 const compiler = new Compiler({wasmURL})
 const CDN_URL = "https://cdn.jsdelivr.net/npm/"
 const API_URL = "https://api.webwriter.app/ww/v1/"
+const exactPkgRegEx = /^((?:@[^\/\\%@]+\/)?[^.\/\\%@][^\/\\%@]*)@([^\/]+)(\/.*)?$/
+
+const filesystem: Provider = {
+  async pkgToUrl(pkg, layer) {
+    return `${API_URL}${pkg.name}@${pkg.version}/`
+  },
+  parseUrlPkg(url) {
+    if(url.startsWith(API_URL)) {
+      const path = url.slice(API_URL.length)
+      const [_, name, version] = path.match(exactPkgRegEx) || []
+      return {registry: "npm", name, version}
+    }
+    else {
+      return null
+    }
+  },
+  async resolveLatestTarget({registry, name}) {
+    return {registry, name, version: "0.0.0-local"}
+  }
+}
+
+async function getLocalHandle(id: string): Promise<FileSystemDirectoryHandle> {
+  const db = indexedDB.open("webwriter", 1)
+  await new Promise(r => db.addEventListener("success", r))
+  const tx = db.result.transaction("handles", "readwrite")
+  const store = tx.objectStore("handles")
+  const req = store.get(id)
+  return new Promise(r => req.addEventListener("success", () => {
+    db.result.close()
+    r(req.result.handle)
+  }))
+}
+
 
 async function getAsset(id: string) {
-  return fetch(new URL(id, CDN_URL))
+  const scoped = id.startsWith("@")
+  const parts = id.split("/")
+  const version = parts[scoped? 1: 0].split("@").at(-1)!
+  const semver = new SemVer(version)
+  if(semver.prerelease.includes("local")) {
+    const pkgId = parts.slice(0, scoped? 2: 1).join("/")
+    const pathParts = parts.slice(scoped? 2: 1)
+    const handle = await getLocalHandle(pkgId)
+    let directory = handle
+    let file: File
+    for(const [i, part] of pathParts.entries()) {
+      if(i === pathParts.length - 1) {
+        const fileHandle = await directory.getFileHandle(part)
+        file = await fileHandle.getFile()
+      }
+      else {
+        directory = await directory.getDirectoryHandle(part)
+      }
+    }
+    console.log(file!)
+    return new Response(file!)
+  }
+  else {
+    return fetch(new URL(id, CDN_URL))
+  }
 }
 
 async function getPackages(ids: string[]) {
@@ -402,12 +460,22 @@ async function getPackages(ids: string[]) {
     }
     _ids = resp.objects.map(obj => obj.package).map(({name, version}) => `${name}@${version}/package.json`)
   }
-  const pkgs = (await Promise.allSettled(_ids.map(id => getAsset(id).then(resp => resp.json())))).filter(result => result.status === "fulfilled").map(result => result.value)
+  const pkgs = (await Promise.allSettled(_ids.map(async id => {
+    const resp = await getAsset(id)
+    const json = await resp.json()
+    const version = new SemVer(json.version)
+    version.prerelease = [...version.prerelease, "local"]
+    return {...json, version: String(version)}  
+  })))
+    .filter(result => result.status === "fulfilled")
+    .map(result => result.value)
+    
   return new Response(new Blob([JSON.stringify(pkgs)], {type: "application/json"}))
 }
 
 async function getImportmap(ids: string[] | Record<string, any>[]) {
   let _ids = [] as string[]; let assets = {} as Record<string, string>
+  let localIds
   const forPackage = typeof ids[0] === "object"
   if(!forPackage) {
     _ids = [...ids] as string[]
@@ -417,20 +485,39 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
     // const pkgs = await Promise.all(pkgIds.map(id => getAsset(`${id}/package.json`).then(resp => resp.json()))) as any[]
     const pkgs = ids as Record<string, any>[]
     assets = Object.fromEntries(pkgs.flatMap(pkg => {
+      const version = new SemVer(pkg.version)
+      const isLocal = version.prerelease.includes("local")
+      const pkgId = `${pkg.name}@${pkg.version}`
       return Object.keys(pkg.exports)
         .filter(k => k.startsWith("./") && (k.endsWith(".html") || k.endsWith(".css") || k.endsWith(".*")))
         .map(k => [
-          pkg.name + (k.endsWith(".*")? k.slice(1, -2) + ".css": k.slice(1)),
-          new URL(pkg.name + (pkg.exports[k]?.default ?? pkg.exports[k]).slice(1), CDN_URL).href.replace(".*", ".css")
+          pkgId + (k.endsWith(".*")? k.slice(1, -2) + ".css": k.slice(1)),
+          new URL(pkgId + (pkg.exports[k]?.default ?? pkg.exports[k]).slice(1), isLocal? API_URL: CDN_URL).href.replace(".*", ".css")
         ])
     }))
-    _ids = pkgs.flatMap(pkg => Object.keys(pkg.exports).filter(k => k.startsWith("./")).map(k => pkg.name + k.slice(1))).filter(id => id.endsWith(".*")).map(id => id.slice(0, -2) + ".js")
+    _ids = pkgs
+      .filter(pkg => !(new SemVer(pkg.version).prerelease.includes("local")))
+      .flatMap(pkg => Object.keys(pkg.exports)
+        .filter(k => k.startsWith("./"))
+        .map(k => `${pkg.name}@${pkg.version}` + k.slice(1))
+      )
+      .filter(id => id.endsWith(".*"))
+      .map(id => id.slice(0, -2) + ".js")
+    localIds = pkgs
+      .filter(pkg => (new SemVer(pkg.version).prerelease.includes("local")))
+      .flatMap(pkg => Object.keys(pkg.exports)
+        .filter(k => k.startsWith("./"))
+        .map(k => `${pkg.name}@${pkg.version}` + k.slice(1))
+      )
+      .filter(id => id.endsWith(".*"))
+      .map(id => id.slice(0, -2) + ".js")
   }
   const generator = new Generator({cache: false, defaultProvider: "jsdelivr"})
   let allLinked = false
   do {
     try {
-      await generator.link(_ids)
+      console.log(_ids)
+      await generator.install(_ids)
       Object.entries(assets).forEach(([id, url]) => {
         generator.map.set(id, url)
       })
@@ -448,7 +535,33 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
       }
     }
   } while(_ids.length && !allLinked)
-  return new Response(new Blob([JSON.stringify(generator.map.toJSON())], {type: "application/json"}))
+  let map = generator.map
+  if(localIds) {
+    const localGenerator = new Generator({cache: false, inputMap: map, customProviders: {filesystem}, defaultProvider: "filesystem"})
+    let allLinkedLocal = false
+    do {
+      try {
+        await localGenerator.link(localIds)
+        Object.entries(assets).forEach(([id, url]) => {
+          localGenerator.map.set(id, url)
+        })
+        allLinked = true
+      }
+      catch(err: any) {
+        const regexMatch = / imported from /g.exec(err.message)
+        if(err.code === "MODULE_NOT_FOUND" && regexMatch) {
+          console.warn(`Excluding faulty package ${regexMatch[1]}: ${err.message}`)
+          localIds = localIds.filter(id => id !== regexMatch[1])
+        }
+        else {
+          console.error(err)
+          return new Response(null, {status: 500})
+        }
+      }
+    } while(localIds.length && !allLinked)
+    map = localGenerator.map
+  }
+  return new Response(new Blob([JSON.stringify(map.toJSON())], {type: "application/json"}))
 }
 
 async function getBundle(ids: string[], importMap: ImportMap, options?: esbuild.BuildOptions) {
@@ -542,7 +655,15 @@ async function respond<T extends Action["collection"]>(action: Action<T>) {
   else {
     pkgs = await pkgsResponse.json()
   }
-  const versionedIds = action.ids.map((id, i) => id.replace(pkgs[i].name!, pkgs[i].name! + "@" + pkgs[i].version!))
+  const versionedIds = action.ids.map((id, i) => {
+    const bare = !(id.startsWith("@")? id.slice(1).split("/")[1]: id.split("/")[0]).includes("@")
+    if(!bare) {
+      return id
+    }
+    else {
+      return id.replace(pkgs[i].name!, pkgs[i].name! + "@" + pkgs[i].version!)
+    }
+  })
   const url = actionToUrl({...action, ids: versionedIds})
   const cachedResponse = await caches.match(url)
   if(cachedResponse) {

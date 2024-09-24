@@ -72,16 +72,14 @@ export class ExplorableEditor extends LitElement {
 		return range(n).map(k => `ww_${(floor + k).toString(36)}`)
 	}
 
-	insertMember = async (pkgID: string, insertableName: string) => {
+	insertMember = async (id: string, insertableName: string) => {
     const state = this.pmEditor.state
-    const name =  (pkgID.startsWith("@")? "@": "") + pkgID.split("@")[pkgID.startsWith("@")? 1: 0]
-    console.log(name)
-    const members = this.app.store.packages.getPackageMembers(name)
+    const members = this.app.store.packages.getPackageMembers(id)
     if(insertableName.startsWith("./snippets/")) {
       const source = members[insertableName].source
       let htmlStr = source
       if(!source) {
-        const url = this.app.store.packages.importMap.resolve("@" + pkgID.split("@").slice(0, 2).join("") + insertableName.slice(1) + ".html")
+        const url = this.app.store.packages.importMap.resolve("@" + id.split("@").slice(0, 2).join("") + insertableName.slice(1) + ".html")
         htmlStr = await (await fetch(url, {headers: {"Accept": "text/html"}})).text()
       }
       const tagNames = this.app.store.packages.widgetTagNames
@@ -143,7 +141,7 @@ export class ExplorableEditor extends LitElement {
     }
     else if(insertableName.startsWith("./themes/")) {
       const old = this.app.store.document.themeName
-      const toInsert = pkgID + insertableName.slice(1)
+      const toInsert = id + insertableName.slice(1)
       const value = old === toInsert? "base": toInsert
       const allThemes = this.app.store.packages.allThemes as any
       this.app.store.document.setHead(upsertHeadElement(
@@ -1298,7 +1296,9 @@ export class ExplorableEditor extends LitElement {
         @ww-watch-widget=${async (e: CustomEvent) => {
           const name = e.detail.name
           await this.app.store.packages.toggleWatch(name)
-          this.app.settings.setAndPersist("packages", "watching", this.app.store.packages.watching)
+          if(WEBWRITER_ENVIRONMENT.backend === "tauri") {
+            this.app.settings.setAndPersist("packages", "watching", this.app.store.packages.watching)
+          }
         }}
 				.packages=${this.packages}
 				tabindex="-1"

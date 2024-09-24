@@ -48,8 +48,8 @@ Some { ("{" Min { number } "}") | "{" Min { number } "," Max { number } "}" }
 OneOrMoreCommaSeparated { "#" (ZeroOrMore | OneOrMore | ZeroOrOne | Some)? }
 
 @tokens {
-  or { "|" }
-  andor { "||" }
+  // or { "|" }
+  // andor { "||" }
 
   Identifier { $[a-zA-Z0-9_\-]+ }
   literalString { "," | "." | "(" | ")" | "/" }

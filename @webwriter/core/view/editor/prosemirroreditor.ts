@@ -146,7 +146,6 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
   @property({attribute: false})
   dispatchTransaction: IProsemirrorEditor["dispatchTransaction"]
 
-  @property({state: true, attribute: false})
   private view: EditorView
 
   @property({type: String, attribute: false})
@@ -479,7 +478,6 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
 
     this.window.addEventListener("keydown", e => {
       const keyExpr = [e.ctrlKey? "ctrl": null, e.altKey? "alt": null, e.shiftKey? "shift": null, e.metaKey? "meta": null, e.key].filter(k => k).join("+")
-      console.log(keyExpr, this.preventedShortcuts)
       if(this.preventedShortcuts.includes(keyExpr)) {
         e.preventDefault()
       }
@@ -490,8 +488,6 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
       sheet.replaceSync(`html { margin-left: var(--scrollbar-width) !important }`)
       this.document.adoptedStyleSheets = [...this.document.adoptedStyleSheets, sheet]
     }
-    
-    this.loaded = true
   }
 
   iframe: EditorIFrameElement
@@ -561,7 +557,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
   }
 
   @property({attribute: true, type: Boolean, reflect: true})
-  loaded: boolean = false
+  loaded: boolean = true
   
 
   render() {

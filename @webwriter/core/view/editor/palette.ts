@@ -6,7 +6,7 @@ import { ifDefined } from "lit/directives/if-defined.js"
 import { EditorState, Command as PmCommand } from "prosemirror-state"
 import {Directive, PartInfo, directive, ElementPart} from "lit/directive.js"
 
-import { MemberSettings, Package, watch } from "../../model"
+import { MemberSettings, Package, SemVer, watch } from "../../model"
 import { unscopePackageName, prettifyPackageName, camelCaseToSpacedCase, filterObject } from "../../utility"
 import { SlDropdown, SlInput, SlMenu, SlPopup, SlProgressBar } from "@shoelace-style/shoelace"
 import { Command } from "../../viewmodel"
@@ -722,7 +722,7 @@ export class Palette extends LitElement {
     const hasIssues = this.app.store.packages.getPackageIssues(pkg.id).length
 		if(isLeaf) {
       if(!pkg.installed) {
-        this.emitAddWidget(pkg.name)
+        this.emitAddWidget(pkg.id)
       }
       else if(hasIssues) {
         this.errorPkg = pkg
@@ -788,15 +788,15 @@ export class Palette extends LitElement {
   dropdownOpen: string | null = null
 
 	BlockCard = (pkg: Package) => {
-    const {watching, name, version, installed, outdated, localPath, packageEditingSettings} = pkg
+    const {watching, id, name, version, installed, outdated, localPath, packageEditingSettings} = pkg
     const {packages} = this.app.store
-    const adding = !!packages.adding[name]
-    const removing = !!packages.removing[name]
-    const updating = !!packages.updating[name]
+    const adding = !!packages.adding[id]
+    const removing = !!packages.removing[id]
+    const updating = !!packages.updating[id]
     const changing = adding || removing || updating
     const found = name in this.searchResults
     const error = packages.getPackageIssues(pkg.id).length
-    const members = packages.getPackageMembers(pkg.name)
+    const members = packages.getPackageMembers(pkg.id)
     const insertables = members? Object.values(filterObject(members, (_, ms) => !(ms as any).uninsertable) as unknown as Record<string, MemberSettings>): []
     const pkgEditingSettings = !packageEditingSettings? undefined: {name: undefined, label: undefined, ...packageEditingSettings}
     const {name: firstName, label: firstLabel} =  pkgEditingSettings ?? insertables[0] ?? {}
@@ -809,10 +809,10 @@ export class Palette extends LitElement {
         <div>${pkg.description || msg("No description provided")}</div>
       </span>
       <aside class="manage-controls">
-        <ww-button variant="icon" class="watch-button manage" icon=${watching? "bolt-filled": "bolt"} @click=${(e: any) => {this.emitWatchWidget(pkg.name); e.stopPropagation()}}></ww-button>
+        <ww-button variant="icon" class="watch-button manage" icon=${watching? "bolt-filled": "bolt"} @click=${(e: any) => {this.emitWatchWidget(pkg.id); e.stopPropagation()}}></ww-button>
         <!--<ww-button variant="icon" class="error-button" icon="bug" @click=${() => this.errorPkg = pkg}></ww-button>-->
-        <ww-button title=${msg("Update this widget package")} class="manage update" variant="icon" icon="download" @click=${(e: any) => {this.emitUpdateWidget(pkg.name); e.stopPropagation()}}></ww-button>
-        <ww-button title=${pkg.installed? msg("Remove this widget package"): msg("Install this widget package")} class="manage pin" variant="icon" icon=${pkg.installed? "trash": "download"} @click=${(e: any) => {!pkg.installed? this.emitAddWidget(pkg.name): this.emitRemoveWidget(pkg.name); e.stopPropagation()}}></ww-button>
+        <ww-button title=${msg("Update this widget package")} class="manage update" variant="icon" icon="download" @click=${(e: any) => {this.emitUpdateWidget(pkg.id); e.stopPropagation()}}></ww-button>
+        <ww-button title=${pkg.installed? msg("Remove this widget package"): msg("Install this widget package")} class="manage pin" variant="icon" icon=${pkg.installed? "trash": "download"} @click=${(e: any) => {!pkg.installed? this.emitAddWidget(pkg.id): this.emitRemoveWidget(pkg.id); e.stopPropagation()}}></ww-button>
       </aside>
       <ww-button variant="icon" class="dropdown-trigger" icon=${this.dropdownOpen !== pkg.id? "chevron-down": "chevron-up"} @click=${(e: any) => this.dropdownOpen = this.dropdownOpen? null: pkg.id} @mouseenter=${() => this.dropdownOpen = pkg.id}></ww-button>
       <sl-popup flip anchor=${pkg.id} class="other-insertables" strategy="fixed" placement="bottom-end" sync="width" ?active=${this.dropdownOpen === pkg.id} auto-size="both" auto-size-padding=${1}>
@@ -947,7 +947,9 @@ export class Palette extends LitElement {
 
   submitLocalPackage = async (e: Event) => {
     const packageForm = e.target as PackageForm
-    const pkg = new Package(packageForm.value, packageForm.editingState)
+    const version = new SemVer(packageForm.value.version)
+    version.prerelease = ["local"]
+    const pkg = new Package({...packageForm.value, version}, packageForm.editingState)
     const options = this.packageFormMode === "edit"
       ? {
         mergePackage: true
@@ -962,17 +964,29 @@ export class Palette extends LitElement {
     if(packageForm.changed) {
       await this.app.store.packages.writeLocal(pkg.localPath!, pkg, options)
     }
-    await this.app.store.packages.add(`file://${pkg.localPath!}`, pkg.name)
+    if(WEBWRITER_ENVIRONMENT.backend === "tauri") {
+      await this.app.store.packages.add(`file://${pkg.localPath!}`, pkg.name)
+    }
+    else {
+      await this.app.store.packages.add(packageForm.directoryHandle!, pkg.id)
+    }
     if(packageForm.editingState.watching) {
-      this.emitWatchWidget(pkg.name)
+      this.emitWatchWidget(pkg.id)
     } 
     this.packageForm.reset()
   }
 
   async handlePackageFormPickPath(e: CustomEvent) {
-    let localPath = await this.app.store.Dialog.promptRead({directory: true}) as string
-    this.packageForm.localPath = localPath ?? this.packageForm.localPath
-    this.handlePackageFormChangeField(new CustomEvent("ww-change-field", {detail: {name: "localPath", valid: true}}))
+    if(WEBWRITER_ENVIRONMENT.backend === "tauri") {
+      let localPath = await this.app.store.Dialog.promptRead({directory: true}) as string
+      this.packageForm.localPath = localPath ?? this.packageForm.localPath
+      this.handlePackageFormChangeField(new CustomEvent("ww-change-field", {detail: {name: "localPath", valid: true}}))
+    }
+    else {
+      this.packageForm.directoryHandle = await (window as any).showDirectoryPicker({mode: "readwrite", startIn: "documents"})
+      this.handlePackageFormChangeField(new CustomEvent("ww-change-field", {detail: {name: "localPath", valid: true}}))
+      this.packageForm.localPath = this.packageForm.directoryHandle!.name
+    }
   }
 
   async handlePackageFormChangeField(e: CustomEvent) {
@@ -980,20 +994,25 @@ export class Palette extends LitElement {
       this.fillPackageFormWithLocal()
     }
     else if(e.detail.name === "localPath" && this.packageFormMode === "create" && e.detail.valid) {
-      const basename = await this.app.store.Path.basename(this.packageForm.localPath)
-      const dirname = await this.app.store.Path.basename(await this.app.store.Path.dirname(this.packageForm.localPath))
-      const possibleName = `@${dirname.replace("@", "")}/${basename}`
-      this.packageForm.name = this.packageForm.name || possibleName
+      if(WEBWRITER_ENVIRONMENT.backend === "tauri") {
+        const basename = await this.app.store.Path.basename(this.packageForm.localPath)
+        const dirname = await this.app.store.Path.basename(await this.app.store.Path.dirname(this.packageForm.localPath))
+        const possibleName = `@${dirname.replace("@", "")}/${basename}`
+        this.packageForm.name = this.packageForm.name || possibleName
+      }
+      else {
+        const possibleName = this.packageForm.directoryHandle!.name
+        this.packageForm.name = this.packageForm.name || possibleName
+      }
     }
   }
 
   async fillPackageFormWithLocal() {
     try {
       const pkgKeys = ["name", "license", "version", "author", "keywords"] as const
-      const localPath = this.packageForm.localPath
       let pkg: Package
       try {
-        pkg = await this.app.store.packages.readLocal(localPath)
+        pkg = await this.app.store.packages.readLocal(WEBWRITER_ENVIRONMENT.backend === "tauri"? this.packageForm.localPath: this.packageForm.directoryHandle!)
       }
       catch(err) {
         console.error(err)
@@ -1039,7 +1058,7 @@ export class Palette extends LitElement {
 
   ErrorDialog() {
     const issues = this.errorPkg? this.app.store.packages.getPackageIssues(this.errorPkg.id): []
-    return html`<sl-dialog ?open=${!!this.errorPkg} @sl-after-hide=${() => this.errorPkg = undefined} label=${msg("Error importing ") + this.errorPkg?.name ?? ""}>
+    return html`<sl-dialog ?open=${!!this.errorPkg} @sl-after-hide=${() => this.errorPkg = undefined} label=${msg("Error importing ") + (this.errorPkg?.name ?? "")}>
       ${issues.map(issue => html`
         <div class="error-pane">
           <b>${issue.message}</b>
@@ -1073,7 +1092,7 @@ export class Palette extends LitElement {
       ${this.app.commands.groupedContainerCommands.map(this.Card)}
       ${this.ClipboardCard()}
       ${this.packagesInSearchOrder.map(this.Card)}
-      ${!this.app.store.packages.apiBase? this.AddLocalPackageButton(): null}
+      ${this.AddLocalPackageButton()}
       ${this.LocalPackageDialog()}
       ${this.ErrorDialog()}
     `

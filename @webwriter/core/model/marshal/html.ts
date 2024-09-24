@@ -1,10 +1,6 @@
-import { readTextFile, removeFile, writeTextFile } from '@tauri-apps/api/fs'
 import {Node, DOMSerializer} from "prosemirror-model"
-import { join, appDir } from '@tauri-apps/api/path'
-import { EditorState } from 'prosemirror-state'
 import {Schema, DOMParser} from "prosemirror-model"
 
-import { createElementWithAttributes, namedNodeMapToObject, unscopePackageName } from "../../utility"
 import { EditorStateWithHead, PackageStore, createEditorState, headSchema, headSerializer } from '..'
 import { Environment } from '../environment'
 import scopedCustomElementRegistry from "@webcomponents/scoped-custom-element-registry/src/scoped-custom-element-registry.js?raw"

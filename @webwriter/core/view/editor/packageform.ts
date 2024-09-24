@@ -1,4 +1,4 @@
-import { LitElement, html, css } from "lit"
+import { LitElement, html, css, PropertyValues } from "lit"
 import { customElement, property, query } from "lit/decorators.js"
 import { localized, msg, str } from "@lit/localize"
 import spdxLicenseList from "spdx-license-list"
@@ -35,9 +35,9 @@ export class PackageForm extends LitElement {
   @property({type: String, attribute: true, reflect: true})
   localPath: string = PackageForm.defaults.localPath
 
-  @property({type: Boolean, state: true, attribute: true, reflect: true})
+  @property({type: Boolean, attribute: true, reflect: true})
   get noPath() {
-    return !this.localPath
+    return !this.localPath && !this.directoryHandle
   }
 
   @property({attribute: false})
@@ -69,6 +69,9 @@ export class PackageForm extends LitElement {
 
   @property({type: Boolean, attribute: true})
   loading = false
+
+  @property({type: String, attribute: true, converter: {toAttribute: (value: FileSystemDirectoryHandle) => value?.name}})
+  directoryHandle?: FileSystemDirectoryHandle 
 
   @query("form")
   form: HTMLFormElement
@@ -162,6 +165,7 @@ export class PackageForm extends LitElement {
     Object.keys(PackageForm.defaults).forEach(key => {
       (this as any)[key] = (toDefaults? PackageForm.defaults: this.defaultValue as any)[key]
     })
+    this.directoryHandle = undefined
     this.changed = false
     this.requestUpdate()
   }
@@ -204,13 +208,15 @@ export class PackageForm extends LitElement {
   }
 
   render() {
+    console.log(this.directoryHandle)
     return html`<form @sl-change=${this.handleFieldChange} ?inert=${this.loading}>
       <ww-pathinput
-        .value=${this.localPath ?? ""}
+        .value=${(this.localPath || this.directoryHandle?.name) ?? ""}
         required
         name="localPath"
         label="Local Path"
         help-text=${msg("Directory where package.json is located")}
+        ?inputdisabled=${!!this.directoryHandle}
       ></ww-pathinput>
       <ww-npmnameinput
         value=${this.name}
