@@ -6,7 +6,7 @@ import "@shoelace-style/shoelace/dist/themes/light.css"
 import IconPlus from "bootstrap-icons/icons/plus.svg"
 import SlButton from "@shoelace-style/shoelace/dist/components/button/button.component.js"
 import SlIcon from "@shoelace-style/shoelace/dist/components/icon/icon.component.js"
-import { WebwriterPairingItem } from "./webwriter-pairing-item"
+import type { WebwriterPairingItem } from "./webwriter-pairing-item"
 
 declare global {interface HTMLElementTagNameMap {
   "webwriter-pairing": WebwriterPairing;

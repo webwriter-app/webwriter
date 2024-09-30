@@ -844,6 +844,10 @@ export class  Toolbox extends LitElement {
           }
         }
       }
+      
+      .context-toolbox {
+        width: 100%;
+      }
 
       /*
       @media only screen and (min-width: 1830px) {

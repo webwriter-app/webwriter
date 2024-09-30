@@ -10,7 +10,14 @@ import IconPlus from "bootstrap-icons/icons/plus.svg"
 
 import { WebwriterOrderItem } from "./webwriter-order-item"
 import { ifDefined } from "lit/directives/if-defined.js"
-import { shuffle } from "./webwriter-choice"
+
+export function shuffle<T>(a: T[]) {
+  for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
 
 declare global {interface HTMLElementTagNameMap {
   "webwriter-order": WebwriterOrder;

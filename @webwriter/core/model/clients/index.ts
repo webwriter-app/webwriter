@@ -341,7 +341,7 @@ export class PocketbaseClient implements DocumentClient, AuthenticationClient {
 
   isClientURL(url: URL) {
     const originMatches = new URL(this.account.url).origin === url.origin
-    const usernameMatches = this.account.id === decodeURIComponent(url.username)
+    const usernameMatches = this.account.email === decodeURIComponent(url.username)
     return originMatches && usernameMatches
   }
 

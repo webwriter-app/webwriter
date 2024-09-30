@@ -8,10 +8,15 @@ import { keyed } from "lit/directives/keyed.js"
 import { headSerializer, toAttributes } from "../../model"
 import {DOMSerializer} from "prosemirror-model"
 import scopedCustomElementRegistry from "@webcomponents/scoped-custom-element-registry/src/scoped-custom-element-registry.js?raw"
+import redefineCustomElements from "redefine-custom-elements?raw"
 import {ImportMap} from "@jspm/import-map"
 import {Generator} from "@jspm/generator"
 import { ifDefined } from "lit/directives/if-defined.js"
 import hotkeys from "hotkeys-js"
+
+const scopedCustomElementRegistryBlob = new Blob([scopedCustomElementRegistry], {type: "text/javascript"})
+
+const scopedCustomElementRegistryUrl = URL.createObjectURL(scopedCustomElementRegistryBlob)
 
 type IProsemirrorEditor = 
   & Omit<DirectEditorProps, "attributes" | "editable">
@@ -209,7 +214,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
 
   someProp = (...args: Parameters<typeof this.view.someProp>) => this.view?.someProp(...args)
 
-  hasFocus = (...args: Parameters<typeof this.view.hasFocus>) => this.view?.hasFocus(...args)
+  hasFocus = (...args: Parameters<typeof this.view.hasFocus>) => !!this.document.querySelector(".ProseMirror")?.matches(".ProseMirror-focused")
 
   focus = (...args: Parameters<typeof this.view.focus>) => this.view?.focus(...args)
 
@@ -272,7 +277,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
       this.view?.destroy()
       this.view = new EditorView({mount: this.body}, this.directProps)
     }
-    else {
+    else if(!this.url) {
       try {
         this.view?.setProps(this.directProps)
       }
@@ -355,12 +360,13 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
   @property({attribute: true})
   accessor url: string
 
-  createScript(src: string) {
+  createScript(src: string, defer=true, async=true) {
     const script = this.document.createElement("script")
     script.src = src
-    script.async = true
+    script.defer = defer
+    script.async = async
     script.type = "module"
-    script.setAttribute("blocking", "render")
+    // script.setAttribute("blocking", "render")
     script.toggleAttribute("data-ww-editing")
     return script
   }
@@ -389,13 +395,21 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
       await this.importString(contentScript)
     }
     else {
+      const scopedRegistryScript = this.createScript(scopedCustomElementRegistryUrl, false, false)
+      const loaded = new Promise(r => scopedRegistryScript.addEventListener("load", r))
+      this.head.append(scopedRegistryScript)
+      await loaded
+      /*const define = this.window.customElements.define
+      this.window.customElements.define = (name, Constructor, options) => {
+        console.log("defining", name, this.window.customElements.get(name))
+        if(!this.window.customElements.get(name)) {
+          define.call(this.window.customElements, name, Constructor, options)
+        }
+      }*/
       const importMap = !this.importMap? "": `<script type="importmap" data-ww-editing>${JSON.stringify(this.importMap.toJSON(), undefined, 2)}</script>`
       const scriptUrls = !this.importMap? []: Object.keys(this.importMap.imports).filter(k => k.endsWith(".js")).map(k => this.importMap.resolve(k))
       const styleUrls = !this.importMap? []: Object.keys(this.importMap.imports).filter(k => k.endsWith(".css")).map(k => this.importMap.resolve(k))
-      const scripts = [
-        this.createScriptInline(scopedCustomElementRegistry),
-        ...scriptUrls.map(url => this.createScript(url))
-      ]
+      const scripts = scriptUrls.map(url => this.createScript(url, false, false))
       const styles = styleUrls.map(url => this.createStyleLink(url))
       this.head.insertAdjacentHTML("beforeend", importMap)
       this.head.append(...scripts, ...styles)

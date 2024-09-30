@@ -208,7 +208,6 @@ export class PackageForm extends LitElement {
   }
 
   render() {
-    console.log(this.directoryHandle)
     return html`<form @sl-change=${this.handleFieldChange} ?inert=${this.loading}>
       <ww-pathinput
         .value=${(this.localPath || this.directoryHandle?.name) ?? ""}

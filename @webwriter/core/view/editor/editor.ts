@@ -79,7 +79,7 @@ export class ExplorableEditor extends LitElement {
       const source = members[insertableName].source
       let htmlStr = source
       if(!source) {
-        const url = this.app.store.packages.importMap.resolve("@" + id.split("@").slice(0, 2).join("") + insertableName.slice(1) + ".html")
+        const url = this.app.store.packages.importMap.resolve(id + insertableName.slice(1) + ".html")
         htmlStr = await (await fetch(url, {headers: {"Accept": "text/html"}})).text()
       }
       const tagNames = this.app.store.packages.widgetTagNames
@@ -735,7 +735,10 @@ export class ExplorableEditor extends LitElement {
     const rightEdge = docWidth - (docWidth - bodyWidth) / 2
     const iframeOffsetX = iframeEl?.getBoundingClientRect().x
     const iframeOffsetY = iframeEl?.getBoundingClientRect().y
-		if(mode === "popup" && this.selection && this.activeElement && iframeEl) {
+    if(!this.selection || !this.activeElement || !docEl || !iframeEl || !this.toolbox) {
+      return
+    }
+		else if(mode === "popup") {
 			const {y: yMin} = await computePosition(iframeEl, this.toolbox, {
 				placement:  "right-start",
 				strategy: "absolute",
@@ -760,7 +763,7 @@ export class ExplorableEditor extends LitElement {
 				yMax
 			))
 		}
-		else if(mode === "right" && this.selection && this.activeElement && docEl) {
+		else if(mode === "right") {
 			const {y} = await computePosition(this.activeElement, this.toolbox, {
 				placement:  "right-start",
 				strategy: "fixed",
@@ -1257,11 +1260,11 @@ export class ExplorableEditor extends LitElement {
 	}
 
   prefetchAllMembers(name: string, id: string) {
-    if(!this.app.store.packages.installedPackages.includes(name)) {
+    if(!this.app.store.packages.installedPackages.includes(id)) {
       return
     }
-    const members = this.app.store.packages.getPackageMembers(name)
-    const ids = Object.keys(members).filter(k => !k.startsWith("./widgets/")).map(relPath => name + relPath.slice(1) + ".html")
+    const members = this.app.store.packages.getPackageMembers(id)
+    const ids = Object.keys(members).filter(k => !k.startsWith("./widgets/")).map(relPath => id + relPath.slice(1) + ".html")
     const urls = ids.map(id => this.app.store.packages.importMap.resolve(id))
     return Promise.allSettled(urls.map(url => fetch(url)))
   }
@@ -1313,8 +1316,8 @@ export class ExplorableEditor extends LitElement {
       <main part="base">
         ${this.sourceMode? this.CodeEditor(): [
           this.CoreEditor(),
-          !this.pmEditor?.isFullscreen? this.Toolbox(): null,
-          !this.pmEditor?.isFullscreen? this.Palette(): null
+          !this.pmEditor?.isFullscreen && !this.previewMode? this.Toolbox(): null,
+          !this.pmEditor?.isFullscreen && !this.previewMode? this.Palette(): null
         ]}
         <!--<ww-debugoverlay .editorState=${this.editorState} .activeElement=${this.activeElement}></ww-debugoverlay>-->
       </main>

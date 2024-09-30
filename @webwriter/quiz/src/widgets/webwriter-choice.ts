@@ -12,7 +12,7 @@ import SlRadioGroup from "@shoelace-style/shoelace/dist/components/radio-group/r
 
 import IconPlusSquare from "bootstrap-icons/icons/plus-square.svg"
 import IconPlusCircle from "bootstrap-icons/icons/plus-circle.svg"
-import { WebwriterChoiceItem } from "./webwriter-choice-item.js"
+import type { WebwriterChoiceItem } from "./webwriter-choice-item.js"
 import "@shoelace-style/shoelace/dist/themes/light.css"
 import MiniMasonry from "minimasonry"
 

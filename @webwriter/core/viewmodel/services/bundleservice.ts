@@ -10,6 +10,13 @@ import { PackageConfig } from "@jspm/generator/lib/install/package"
 import {parseUrlPkg, pkgToUrl} from "@jspm/generator/lib/providers/jsdelivr"
 import { SemVer } from "semver"
 
+
+SemVer.prototype.toString = function(this) {
+  const prerelease = this.prerelease.length? `-${this.prerelease.join(".")}`: ""
+  const build = this.build.length? `+${this.build.join(".")}`: ""
+  return `${this.major}.${this.minor}.${this.patch}${prerelease}${build}`
+}
+
 const commaSeparatedArrays = [
   'conditions',
   'dropLabels',
@@ -392,13 +399,13 @@ const exactPkgRegEx = /^((?:@[^\/\\%@]+\/)?[^.\/\\%@][^\/\\%@]*)@([^\/]+)(\/.*)?
 
 const filesystem: Provider = {
   async pkgToUrl(pkg, layer) {
-    return `${API_URL}${pkg.name}@${pkg.version}/`
+    return `${API_URL}${pkg.name}@0.0.0-local/`
   },
   parseUrlPkg(url) {
     if(url.startsWith(API_URL)) {
       const path = url.slice(API_URL.length)
       const [_, name, version] = path.match(exactPkgRegEx) || []
-      return {registry: "npm", name, version}
+      return {registry: "npm", name, version: "0.0.0-local"}
     }
     else {
       return null
@@ -425,12 +432,13 @@ async function getLocalHandle(id: string): Promise<FileSystemDirectoryHandle> {
 async function getAsset(id: string) {
   const scoped = id.startsWith("@")
   const parts = id.split("/")
+  const name = (scoped? "@": "") + parts.slice(0, 2).join("/").split("@").at(scoped? 1: 0)!
   const version = parts[scoped? 1: 0].split("@").at(-1)!
   const semver = new SemVer(version)
   if(semver.prerelease.includes("local")) {
     const pkgId = parts.slice(0, scoped? 2: 1).join("/")
     const pathParts = parts.slice(scoped? 2: 1)
-    const handle = await getLocalHandle(pkgId)
+    const handle = await getLocalHandle(name)
     let directory = handle
     let file: File
     for(const [i, part] of pathParts.entries()) {
@@ -442,7 +450,6 @@ async function getAsset(id: string) {
         directory = await directory.getDirectoryHandle(part)
       }
     }
-    console.log(file!)
     return new Response(file!)
   }
   else {
@@ -463,8 +470,11 @@ async function getPackages(ids: string[]) {
   const pkgs = (await Promise.allSettled(_ids.map(async id => {
     const resp = await getAsset(id)
     const json = await resp.json()
+    const isLocal = new SemVer(id.split("/")[1].split("@").at(-1)!).prerelease.includes("local")
     const version = new SemVer(json.version)
-    version.prerelease = [...version.prerelease, "local"]
+    if(isLocal) {
+      version.prerelease = [...version.prerelease, "local"]
+    }
     return {...json, version: String(version)}  
   })))
     .filter(result => result.status === "fulfilled")
@@ -474,8 +484,9 @@ async function getPackages(ids: string[]) {
 }
 
 async function getImportmap(ids: string[] | Record<string, any>[]) {
-  let _ids = [] as string[]; let assets = {} as Record<string, string>
-  let localIds
+  let localIds: string[] = []
+  let _ids: string[] = []
+  let assets: Record<string, string> = {}
   const forPackage = typeof ids[0] === "object"
   if(!forPackage) {
     _ids = [...ids] as string[]
@@ -495,28 +506,26 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
           new URL(pkgId + (pkg.exports[k]?.default ?? pkg.exports[k]).slice(1), isLocal? API_URL: CDN_URL).href.replace(".*", ".css")
         ])
     }))
-    _ids = pkgs
+    _ids = Array.from(new Set(pkgs
       .filter(pkg => !(new SemVer(pkg.version).prerelease.includes("local")))
       .flatMap(pkg => Object.keys(pkg.exports)
-        .filter(k => k.startsWith("./"))
-        .map(k => `${pkg.name}@${pkg.version}` + k.slice(1))
+        .filter(k => k.startsWith("./") && k.endsWith(".*"))
+        .map(k => pkg.name + "@" + pkg.version + k.slice(1, -2) + ".js")
       )
-      .filter(id => id.endsWith(".*"))
-      .map(id => id.slice(0, -2) + ".js")
-    localIds = pkgs
+    ))
+    localIds = Array.from(new Set(pkgs
       .filter(pkg => (new SemVer(pkg.version).prerelease.includes("local")))
       .flatMap(pkg => Object.keys(pkg.exports)
-        .filter(k => k.startsWith("./"))
-        .map(k => `${pkg.name}@${pkg.version}` + k.slice(1))
+        .filter(k => k.startsWith("./") && k.endsWith(".*"))
+        .map(k => pkg.name + "@" + pkg.version + k.slice(1, -2) + ".js")
       )
-      .filter(id => id.endsWith(".*"))
-      .map(id => id.slice(0, -2) + ".js")
+    ))
   }
-  const generator = new Generator({cache: false, defaultProvider: "jsdelivr"})
+  const resolutions = forPackage? Object.fromEntries((ids as Record<string, any>[]).map(pkg => [pkg.name, pkg.version])): undefined
+  const generator = new Generator({cache: false, defaultProvider: "jsdelivr", resolutions})
   let allLinked = false
   do {
     try {
-      console.log(_ids)
       await generator.install(_ids)
       Object.entries(assets).forEach(([id, url]) => {
         generator.map.set(id, url)
@@ -535,13 +544,17 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
       }
     }
   } while(_ids.length && !allLinked)
-  let map = generator.map
-  if(localIds) {
-    const localGenerator = new Generator({cache: false, inputMap: map, customProviders: {filesystem}, defaultProvider: "filesystem"})
+  let map = new ImportMap({mapUrl: "https://localhost:5173"})
+  for(const [key, value] of Object.entries(generator.map.imports)) {
+    const name = key.split("/").slice(0, 2).join("/")
+    map.set(!name.slice(1).includes("@")? key.replace(name, name + "@" + resolutions[name]): key, value)
+  }
+  if(localIds.length) {
+    const localGenerator = new Generator({cache: false, inputMap: map, customProviders: {filesystem}, defaultProvider: "filesystem", resolutions})
     let allLinkedLocal = false
     do {
       try {
-        await localGenerator.link(localIds)
+        await localGenerator.install(localIds)
         Object.entries(assets).forEach(([id, url]) => {
           localGenerator.map.set(id, url)
         })
@@ -558,8 +571,12 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
           return new Response(null, {status: 500})
         }
       }
-    } while(localIds.length && !allLinked)
-    map = localGenerator.map
+    } while(localIds.length && !allLinkedLocal)
+    map = new ImportMap({mapUrl: "https://localhost:5173"})
+    for(const [key, value] of Object.entries(localGenerator.map.imports)) {
+      const name = key.split("/").slice(0, 2).join("/")
+      map.set(!name.slice(1).includes("@")? key.replace(name, name + "@" + resolutions[name]): key, value)
+    }
   }
   return new Response(new Blob([JSON.stringify(map.toJSON())], {type: "application/json"}))
 }
@@ -571,10 +588,11 @@ async function getBundle(ids: string[], importMap: ImportMap, options?: esbuild.
     return new Response(null, {status: 400, statusText: "Can't bundle .css and .js/.mjs files together, request those bundles separately"})
   }
   else if(jsIds.length) {
-    const opts = {...parseEsbuildOptions(ids.join(" ")), ...options}
+    const stdin = {contents: ids.map(id => `import "${id}"`).join(";")}
+    const opts = {stdin, ...options}
     let result: esbuild.BuildResult
     try {
-      result = await compiler.compile({target: "es2022", format: "esm", conditions: ["source"], ...opts}, importMap)
+      result = await compiler.compile({target: "es2022", format: "esm", conditions: ["source"], bundle: true, ...opts}, importMap)
     }
     catch(err: any) {
       console.error(err)

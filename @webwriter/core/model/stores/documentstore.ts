@@ -145,42 +145,43 @@ export class DocumentStore implements Resource {
   }
 
   /** Saves a resource on an external file system. */
-  async save(saveAs=false, serializer=this.serializer, client=this.client, filename=this.provisionalTitle) {
+  async save(saveAs=false, serializer=this.serializer, client=this.client, filename=this.provisionalTitle, url?: URL) {
     this.ioState = "saving"
+    console.log(saveAs, serializer, client, filename, url)
     try {
-      let newUrlOrHandle: URL | FileSystemFileHandle | undefined = saveAs || !this.url? undefined: this.url
+      let newUrlOrHandle: URL | FileSystemFileHandle | undefined = saveAs? url: url ?? this.url
       let newSerializer = serializer
+      console.log(newUrlOrHandle, newSerializer)
       if(!newUrlOrHandle && "pickSave" in client) {
         newUrlOrHandle = await client.pickSave()
-        if(!newUrlOrHandle) {
-          return
+      }
+      if(!newUrlOrHandle) {
+        return
+      }
+      if(newUrlOrHandle instanceof FileSystemFileHandle) {
+        const handle = newUrlOrHandle
+        const foundPs = getParserSerializerByExtension(handle.name)
+        newSerializer = foundPs? new foundPs(this.Environment): serializer
+        newSerializer = "serialize" in newSerializer? newSerializer: this.serializer
+        const data = await newSerializer.serialize!(this.editorState)
+        const returnedHandle = await client.saveDocument(data, handle, filename) as FileSystemFileHandle
+        if(returnedHandle) {
+          this.lastSavedState = this.editorState
+          this.url = returnedHandle
+          return returnedHandle
         }
-        else if(newUrlOrHandle instanceof FileSystemFileHandle) {
-          const handle = newUrlOrHandle
-          console.log(handle)
-          const foundPs = getParserSerializerByExtension(handle.name)
-          newSerializer = foundPs? new foundPs(this.Environment): serializer
-          newSerializer = "serialize" in newSerializer? newSerializer: this.serializer
-          const data = await newSerializer.serialize!(this.editorState)
-          const returnedHandle = await client.saveDocument(data, handle, filename) as FileSystemFileHandle
-          if(returnedHandle) {
-            this.lastSavedState = this.editorState
-            this.url = returnedHandle
-            return returnedHandle
-          }
-        }
-        else {
-          const newUrl = newUrlOrHandle
-          const foundPs = getParserSerializerByExtension(newUrl?.pathname)
-          newSerializer = foundPs? new foundPs(this.Environment): serializer
-          newSerializer = "serialize" in newSerializer? newSerializer: this.serializer
-          const data = await newSerializer.serialize!(this.editorState)
-          const url = await client.saveDocument(data, newUrl, filename) as URL
-          if(url) {
-            this.lastSavedState = this.editorState
-            this.url = url
-            return url
-          }
+      }
+      else {
+        const newUrl = newUrlOrHandle
+        const foundPs = getParserSerializerByExtension(newUrl?.pathname)
+        newSerializer = foundPs? new foundPs(this.Environment): serializer
+        newSerializer = "serialize" in newSerializer? newSerializer: this.serializer
+        const data = await newSerializer.serialize!(this.editorState)
+        const url = await client.saveDocument(data, newUrl, filename) as URL
+        if(url) {
+          this.lastSavedState = this.editorState
+          this.url = url
+          return url
         }
       }
     }
@@ -500,7 +501,7 @@ export class DocumentStore implements Resource {
   }
 
   get client() {
-    const file = this.accounts.getClient("file", "file")!  
+    const file = this.accounts.getClient("file", "file")!
     return this.url? this.accounts.clientFromURL(this.url) ?? file: file 
   }
 

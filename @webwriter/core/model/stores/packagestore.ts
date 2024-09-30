@@ -409,7 +409,7 @@ export class PackageStore {
   searchIndex = new MiniSearch<Package>({
     fields: ["id", "name", "description", "version", "keywords"],
     extractField: (doc, fieldName) => (fieldName === "keywords"? doc?.keywords?.join(", "): String(doc[fieldName as keyof typeof doc])) ?? "",
-    idField: "name"
+    idField: "id"
   })
 
   searchPackages = (query: string) => {
@@ -468,7 +468,7 @@ export class PackageStore {
           const text = await file.text()
           const pkg = new Package({...JSON.parse(text)})
           pkg.version.prerelease = [...pkg.version.prerelease, "local"]
-          await this.putLocalHandle(pkg.id, handle)
+          await this.putLocalHandle(pkg.name, handle)
           return pkg
         }))
         this.updateImportMap([...this.installedPackages, ...pkgs.map(pkg => pkg.id)])
@@ -746,15 +746,16 @@ export class PackageStore {
       this.packages = Object.fromEntries(final.map(pkg => [pkg.id, pkg]))
     }
     else {
-      const localIds = this.installedPackages.filter(id => !available.some(pkg => pkg.id === id))
-      const local = (await Promise.all(localIds.map(id => fetch(new URL(id + "/package.json", this.apiBase)).then(resp => resp.json()))))
+      const localIds = this.installedPackages.filter(id => Package.fromID(id).version.prerelease.includes("local"))
+      let local = (await Promise.all(localIds.map(id => fetch(new URL(id + "/package.json", this.apiBase)).then(resp => resp.json()))))
         .map(json => {
           const version = new SemVer(json.version)
           version.prerelease = [...version.prerelease, "local"]
-          return new Package({...json, installed: true, localPath: "", version})
+          return new Package({...json, version, installed: true, localPath: ""}, {installed: true})
         })
-      console.log(local)
+      local = await Promise.all(local.map(async pkg => pkg.extend({members: await this.readPackageMembers(pkg)})))
       final = available.map(pkg => pkg.extend({installed: this.installedPackages.includes(pkg.id)})).sort((a, b) => Number(!!b.installed) - Number(!!a.installed))
+      final = [...local, ...final]
       await this.updateImportMap()
       this.bundleID = PackageStore.computeBundleID(this.installedPackages, false);
       (this.onBundleChange ?? (() => null))(final.filter(pkg => pkg.installed))

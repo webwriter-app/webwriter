@@ -82,7 +82,6 @@ export class AccountStore {
   }
 
   updateAccount<T extends AccountTypeId>(value: Account<T>) {
-    console.log(value)
     const type = AccountStore.getAccountTypeId(value)
     if(type in this.accounts) {
       this.accounts[type][value.id] = value

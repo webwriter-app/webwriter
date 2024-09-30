@@ -20,7 +20,7 @@ import IconSearch from "bootstrap-icons/icons/search.svg"
 import IconGrid3x3Gap from "bootstrap-icons/icons/grid-3x3-gap.svg"
 
 import "@shoelace-style/shoelace/dist/themes/light.css"
-import { WebwriterTask } from "./webwriter-task.js"
+import type { WebwriterTask } from "./webwriter-task.js"
 
 
 function shuffle<T>(a: T[]) {

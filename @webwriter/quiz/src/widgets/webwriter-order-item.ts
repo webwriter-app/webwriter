@@ -5,17 +5,9 @@ import {customElement, property, query} from "lit/decorators.js"
 
 import SlIconButton from "@shoelace-style/shoelace/dist/components/icon-button/icon-button.component.js"
 
-import IconArrowsMove from "bootstrap-icons/icons/arrows-move.svg"
 import IconArrowUp from "bootstrap-icons/icons/arrow-up.svg"
 import IconArrowDown from "bootstrap-icons/icons/arrow-down.svg"
-import IconTrash from "bootstrap-icons/icons/trash.svg"
 import "@shoelace-style/shoelace/dist/themes/light.css"
-import { keyed } from "lit/directives/keyed.js"
-import { ifDefined } from "lit/directives/if-defined.js"
-
-import IconX from "bootstrap-icons/icons/x.svg"
-import IconCheck from "bootstrap-icons/icons/check.svg"
-import { shuffle } from "./webwriter-choice"
 
 declare global {interface HTMLElementTagNameMap {
   "webwriter-order-item": WebwriterOrderItem;

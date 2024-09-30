@@ -550,9 +550,9 @@ export class CommandController implements ReactiveController {
         shortcut: "ctrl+s",
         allowDefault: false,
         run: async (host, options) => {
+          console.log(options)
           if(host.store.accounts.size === 1 || (options?.client && options?.serializer) || host.store.document.url) {
-            const url = await host.store.document.save(options?.saveAs, options?.serializer, options?.client, options?.filename)
-            console.log(url)
+            const url = await host.store.document.save(options?.saveAs, options?.serializer, options?.client, options?.filename, options?.url)
             if(url) {
               host.dialog = undefined
             }
@@ -632,7 +632,7 @@ export class CommandController implements ReactiveController {
         shortcut: "ctrl+z",
         run: host => host.activeEditor?.undo(),
         category: "editor",
-        disabled: host => host.store.document.undoDepth === 0
+        disabled: host => host.store.document.undoDepth === 0 || !!host.activeEditor?.previewMode
       }),
       redo: new Command(this.host, {
         id: "redo",
@@ -643,7 +643,7 @@ export class CommandController implements ReactiveController {
         shortcut: "ctrl+y",
         run: host => host.activeEditor?.redo(),
         category: "editor",
-        disabled: host => host.store.document.redoDepth === 0
+        disabled: host => host.store.document.redoDepth === 0 || !!host.activeEditor?.previewMode
       }),
       toggleSourceMode: new Command(this.host, {
         id: "toggleSourceMode",
