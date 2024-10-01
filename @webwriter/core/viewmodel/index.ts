@@ -37,7 +37,7 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
       this.environment = new EnvironmentController(this)
       await this.environment.ready
       if(WEBWRITER_ENVIRONMENT.engine.name === "Gecko") {
-        document.body.innerHTML = `<div style="text-align: center; padding: 2rem;">Sorry! WebWriter is currently not supported in your browser for technical reasons. We are working on a solution. An up-to-date version of Chrome, Edge, Firefox, or Safari should work.</div>`
+        document.body.innerHTML = `<div style="text-align: center; padding: 2rem;">Sorry! WebWriter is currently not supported in your browser for technical reasons. We are working on a solution. An up-to-date version of Chrome, Edge, or Safari should work.</div>`
         return
       }
       if ('serviceWorker' in navigator && window.isSecureContext && WEBWRITER_ENVIRONMENT.backend !== "tauri") {
