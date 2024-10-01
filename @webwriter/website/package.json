@@ -30,7 +30,7 @@
 		"@swup/preload-plugin": "^2.1.0",
 		"@swup/slide-theme": "^1.0.5",
 		"@webcomponents/template-shadowroot": "^0.2.1",
-		"astro": "^4.1.2",
+		"astro": "^4.15.10",
 		"astro-seo": "^0.7.2",
 		"bootstrap-icons": "^1.10.5",
 		"codemirror": "^6.0.1",
