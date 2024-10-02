@@ -720,11 +720,11 @@ export class Palette extends LitElement {
 	`
 
 	private handleClickCard(pkg: Package | Command, snippetName?: string) {
-    if(!snippetName) {
+    const isLeaf = "name" in pkg
+    if(!snippetName && isLeaf) {
       this.dropdownOpen = pkg.id
       return
     }
-    const isLeaf = "name" in pkg
     const hasIssues = this.app.store.packages.getPackageIssues(pkg.id).length
 		if(isLeaf) {
       if(!pkg.installed) {
