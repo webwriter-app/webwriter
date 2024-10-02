@@ -9,17 +9,6 @@ import {
 } from "prosemirror-model";
 import { html_beautify as htmlBeautify } from "js-beautify";
 
-import { formatHTMLToPlainText } from "../../../spell-check/htmlparser";
-import {
-  applyGrammarSuggestions,
-  diffTokens,
-  matchDiffs,
-  tokenizeText,
-  // diff,
-  // matchSpellingSuggestions,
-} from "../../../spell-check/text-tokenizer";
-import { fetchGrammarCorrection } from "../../../spell-check/openai-fetcher";
-
 import {
   createEditorState,
   createWindow,
@@ -40,7 +29,7 @@ import {
   idle,
   range,
 } from "../../utility";
-import marshal from "../marshal";
+import marshal, { getParserSerializerByExtension } from "../marshal";
 import { redoDepth, undoDepth } from "prosemirror-history";
 import {
   undo as cmUndo,
@@ -54,13 +43,14 @@ import { html as cmHTML } from "@codemirror/lang-html";
 import { basicSetup } from "codemirror";
 import { Account, AccountStore } from "./accountstore";
 import { HTMLParserSerializer } from "../marshal/html";
+import { ParserSerializer } from "../marshal/parserserializer";
 
 export const CODEMIRROR_EXTENSIONS = [basicSetup, cmHTML()];
 
 type FileFormat = keyof typeof marshal;
 
 type Resource = {
-  url?: URL;
+  url?: URL | FileSystemFileHandle;
   editorState: EditorStateWithHead;
 };
 
@@ -90,13 +80,13 @@ export class DocumentStore implements Resource {
     "https://ga.jspm.io",
   ] as const;
 
-  url?: URL;
+  url?: URL | FileSystemFileHandle;
   editorState: EditorStateWithHead;
   codeState: CmEditorState | null = null;
   lastSavedState: EditorStateWithHead;
   initialState: EditorStateWithHead;
 
-  ioState: "idle" | "saving" | "loading" = "idle";
+  ioState: "idle" | "saving" | "loading" | "loadingPreview" = "idle";
 
   constructor(
     { schema, url, editorState, lang }: Options,
@@ -207,7 +197,7 @@ export class DocumentStore implements Resource {
   /** Saves a resource on an external file system. */
   async save(
     saveAs = false,
-    serializer = this.parserSerializer,
+    serializer = this.serializer,
     client = this.client,
     filename = this.provisionalTitle
   ) {
@@ -267,17 +257,31 @@ export class DocumentStore implements Resource {
   /** Loads a resource from an external file system. */
   async load(
     url: Resource["url"] | undefined = undefined,
-    parser = this.parserSerializer,
+    parser = this.parser,
     client = this.client,
     schema = this.editorState.schema
   ) {
     this.ioState = "loading";
     try {
-      const data = await client.loadDocument(url);
+      let newUrl = url;
+      let newParser = parser;
+      if (!url && "pickLoad" in client) {
+        newUrl = await client.pickLoad();
+        if (!newUrl) {
+          return;
+        }
+        const foundPs = getParserSerializerByExtension(
+          newUrl instanceof FileSystemFileHandle
+            ? newUrl.name
+            : newUrl?.pathname
+        );
+        newParser = foundPs ? new foundPs(this.Environment) : parser;
+      }
+      const data = await client.loadDocument(newUrl as any);
       if (!data) {
         return;
       }
-      const editorState = await parser.parse(data as string, schema);
+      const editorState = await newParser.parse(data as string, schema);
       this.editorState = this.lastSavedState = editorState;
       if (this.codeState) {
         this.deriveCodeState();
@@ -297,79 +301,12 @@ export class DocumentStore implements Resource {
     try {
       this.previewSrc && URL.revokeObjectURL(this.previewSrc);
       const htmlString = await serializer.serialize(this.editorState);
-      if (WEBWRITER_ENVIRONMENT.engine.name === "WebKit") {
-        const suffix = "#ww-preview.html";
-        const ids = (await this.Environment.FS.readdir("/tmp"))
-          .filter((path) => path.endsWith(suffix))
-          .map((path) => path.replace(suffix, ""))
-          .map((prefix) => parseInt(prefix));
-        const nextId = Math.max(0, ...ids) + 1;
-        const previewPath = `/tmp/${nextId}${suffix}`;
-        await this.Environment.FS.writeFile(previewPath, htmlString);
-        //return createWindow(previewPath, {focus: true, label: `p${nextId}`})
-        return this.Environment.Shell.open(previewPath);
-      } else {
-        const blob = new Blob([htmlString], { type: "text/html" });
-        this.previewSrc = URL.createObjectURL(blob);
-        return this.previewSrc;
-      }
+      const blob = new Blob([htmlString], { type: "text/html" });
+      this.previewSrc = URL.createObjectURL(blob);
+      return this.previewSrc;
     } finally {
       this.ioState = "idle";
-      const blobURL = URL.createObjectURL(blob);
-      open(blobURL, "_blank", "popup");
     }
-  }
-
-  isSpellchecking = false;
-
-  /** Does a spell check on the document text */
-  async spellcheck() {
-    this.isSpellchecking = true;
-    // get raw editor html
-    const state = this.editorState;
-    const serializer = DOMSerializer.fromSchema(state.schema);
-    const dom = serializer.serializeNode(state.doc) as HTMLElement;
-    const html = htmlBeautify(dom.outerHTML, {
-      indent_size: 2,
-      wrap_attributes: "force-aligned",
-      inline_custom_elements: false,
-    });
-
-    // get plain text
-    const text = formatHTMLToPlainText(html);
-    console.log("spellchecking:", text);
-
-    // send text to spellchecker
-    const res = await fetchGrammarCorrection(text);
-    console.log("spellcheck response:", res);
-    const correctedText = res.choices[0].message.content;
-    if (!correctedText) {
-      console.error("no corrected text!");
-      return;
-    }
-    console.log("corrected:", correctedText);
-
-    // tokenize both texts
-    const originalTokens = tokenizeText(text);
-    const correctedTokens = tokenizeText(correctedText);
-
-    // get token differences
-    const diffs = diffTokens(originalTokens, correctedTokens);
-    console.log(diffs);
-    const suggestions = matchDiffs(diffs);
-    console.log("suggestions:", suggestions);
-
-    // highlight differences in content using transactions
-
-    const transaction = applyGrammarSuggestions(state, suggestions);
-
-    // Create a new EditorStateWithHead applying the transaction
-    const newState = this.editorState.apply(transaction) as EditorStateWithHead;
-    newState["head$"] = this.editorState["head$"];
-
-    // Update the editorState
-    this.editorState = newState;
-    this.isSpellchecking = false;
   }
 
   get empty() {
@@ -676,7 +613,6 @@ export class DocumentStore implements Resource {
 
   get client() {
     const file = this.accounts.getClient("file", "file")!;
-    console.log(this.url);
     return this.url ? this.accounts.clientFromURL(this.url) ?? file : file;
   }
 
@@ -685,5 +621,14 @@ export class DocumentStore implements Resource {
     return this.url
       ? this.accounts.parserSerializerFromURL(this.url) ?? html
       : html;
+  }
+
+  get parser() {
+    return this.parserSerializer;
+  }
+
+  get serializer() {
+    const html = new HTMLParserSerializer(this.Environment);
+    return "serialize" in this.parserSerializer ? this.parserSerializer : html;
   }
 }
