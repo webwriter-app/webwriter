@@ -2,6 +2,10 @@
 
 import * as esbuild from "esbuild"
 import * as fs from "fs"
+import * as process from "process"
+
+const isDev = process.argv[2] === "dev"
+const isPreview = process.argv[2] === "preview"
 
 const scriptExtensions = [".js", ".mjs", ".cjs"]
 
@@ -15,6 +19,7 @@ const widgetPlugin = pkg => ({
       const isDependency = deps.some(dep => args.path.startsWith(dep))
       const isScript = scriptExtensions.some(ext => args.path.endsWith(ext))
       const isBare = !args.path.split("/").at(-1)?.includes(".")
+      const isLocal = !args.path.split("/").at(-1)?.includes(".")
       return {external: isDependency && (isScript || isBare)}
     })
   }
@@ -29,7 +34,8 @@ if(!fs.existsSync("./.npmignore")) {
 // Build with WebWriter's default options for building. Builds every `package.exports` entry of the form `"./my-widget.*": {"source": "./src/my-widget.ts", "default": "./dist/my-widget.*"} -> this should build `my-widget.js` and `my-widget.css` from the specified source into the dist directory.
 const pkg = JSON.parse(fs.readFileSync("./package.json", "utf8"))
 const widgetKeys = Object.keys(pkg?.exports ?? {}).filter(k => k.startsWith("./widgets/"))
-await esbuild.build({
+
+const config = {
   write: true,
   bundle: true,
   plugins: [
@@ -81,4 +87,26 @@ await esbuild.build({
     ".otf": "dataurl",
     ".pdf": "dataurl",
   }
-})
+}
+
+if(isDev) {
+  let ctx = await esbuild.context(config)
+  await ctx.watch()
+}
+else if(isPreview) {
+  const rawKey = process.argv[3]
+  const key = `./widgets/${rawKey}.*`
+  const path = pkg.exports[key].default.replace(".*", "")
+  const contents = `
+    <script src="https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry"></script>
+    <script defer src="${rawKey + ".js"}" type="module"></script>
+    <link rel="stylesheet" href="${rawKey + ".css"}" type="text/css">
+    <${rawKey}></${rawKey}>
+  `
+  fs.writeFileSync("./dist/index.html", contents, "utf8")
+  let ctx = await esbuild.context(config)
+  await ctx.serve({servedir: "."})
+}
+else {
+  await esbuild.build(config)
+}

@@ -1,10 +1,6 @@
-import { readTextFile, removeFile, writeTextFile } from '@tauri-apps/api/fs'
 import {Node, DOMSerializer} from "prosemirror-model"
-import { join, appDir } from '@tauri-apps/api/path'
-import { EditorState } from 'prosemirror-state'
 import {Schema, DOMParser} from "prosemirror-model"
 
-import { createElementWithAttributes, namedNodeMapToObject, unscopePackageName } from "../../utility"
 import { EditorStateWithHead, PackageStore, createEditorState, headSchema, headSerializer } from '..'
 import { Environment } from '../environment'
 import scopedCustomElementRegistry from "@webcomponents/scoped-custom-element-registry/src/scoped-custom-element-registry.js?raw"
@@ -82,13 +78,13 @@ export async function docToBundle(doc: Node, head: Node, bundle?: Environment["b
     const jsUrl = new URL("https://api.webwriter.app/ww/v1/_bundles")
     jsUrl.searchParams.append("pkg", "true")
     importIDs.forEach(id => jsUrl.searchParams.append("id", id))
+    console.log(jsUrl.href)
     const bundleJS = await (await fetch(jsUrl)).text()
-    js = bundleJS? scopedCustomElementRegistry + ";" +  bundleJS: ""
+    js = bundleJS? scopedCustomElementRegistry + ";" +  `(function () {${bundleJS}})();`: ""
     const cssUrl = new URL("https://api.webwriter.app/ww/v1/_bundles")
     cssUrl.searchParams.append("pkg", "true")
     cssUrl.searchParams.append("type", "css")
     importIDs.forEach(id => cssUrl.searchParams.append("id", id.replace(".js", ".css").replace(".*", ".css")))
-    console.log(cssUrl)
     const bundleCSS = await (await fetch(cssUrl)).text()
     css = bundleCSS
   }
@@ -201,6 +197,7 @@ export class HTMLParserSerializer extends ParserSerializer {
 
     const script = html.createElement("script")
     script.type = "module"
+    // script.defer = true
     script.text = js
     script.setAttribute("data-ww-editing", "bundle")
     html.head.appendChild(script)

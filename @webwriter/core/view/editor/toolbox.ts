@@ -159,7 +159,7 @@ export class  Toolbox extends LitElement {
   )
 
   get isActiveElementContainer() {
-    return !this.activeElement?.classList?.contains("ww-widget") ?? false
+    return !this.activeElement?.classList?.contains("ww-widget")
   }
 
   get isActiveElementWidget() {
@@ -843,6 +843,10 @@ export class  Toolbox extends LitElement {
             color: var(--sl-color-blue-200);
           }
         }
+      }
+      
+      .context-toolbox {
+        width: 100%;
       }
 
       /*

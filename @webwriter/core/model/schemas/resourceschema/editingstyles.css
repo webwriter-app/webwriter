@@ -646,6 +646,10 @@ body:has(.ww-fullscreen) > :not(.ww-fullscreen) {
   display: none !important;
 }
 
+.ww-widget:is(:fullscreen, .ww-fullscreen)::part(options) {
+  display: none !important;
+}
+
 @media only screen and (min-width: 1300px) {
   .ww-widget::part(options) {
     position: fixed;

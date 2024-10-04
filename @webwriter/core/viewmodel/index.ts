@@ -36,6 +36,10 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
       this.icons = new IconController(this)
       this.environment = new EnvironmentController(this)
       await this.environment.ready
+      if(WEBWRITER_ENVIRONMENT.engine.name === "Gecko") {
+        document.body.innerHTML = `<div style="text-align: center; padding: 2rem;">Sorry! WebWriter is currently not supported in your browser for technical reasons. We are working on a solution. An up-to-date version of Chrome, Edge, or Safari should work.</div>`
+        return
+      }
       if ('serviceWorker' in navigator && window.isSecureContext && WEBWRITER_ENVIRONMENT.backend !== "tauri") {
         const registration = await navigator.serviceWorker.register(
           // @ts-ignore
@@ -50,10 +54,6 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
           ])
         }
       }
-      /*else {
-        document.body.innerHTML = `<div style="text-align: center; padding: 2rem;">Sorry! WebWriter is currently not supported in your browser for <a href="https://caniuse.com/mdn-javascript_statements_import_service_worker_support">technical reasons</a>. An up-to-date version of Chrome, Edge, Firefox, or Safari should work.</div>`
-        return
-      }*/
       const isSettingsWindow = this.environment?.api?.getWindowLabel() === "settings"
       const userSettings = await SettingsController.getUserSettings(this.environment.api)
       this.store = StoreController(new RootStore({settings: userSettings, corePackages: CORE_PACKAGES, ...this.environment.api, initializePackages: !isSettingsWindow, apiBase: WEBWRITER_ENVIRONMENT.backend === "tauri"? undefined: "https://api.webwriter.app/ww/v1/"}), this)

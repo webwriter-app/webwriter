@@ -22,6 +22,7 @@ type Options = {
 type PmQueueTask = {
   command: "install" | "add" | "remove" | "update",
   parameters: string[],
+  handle?: FileSystemDirectoryHandle,
   cwd?: string,
   name?: string
 }
@@ -71,7 +72,8 @@ export class PackageStore {
   importMap: ImportMap
 
   set installedPackages(value: string[]) {
-    const valueUnique = Array.from(new Set(value))
+    let valueUnique = Array.from(new Set(value))
+    valueUnique = valueUnique.filter(a => !valueUnique.some(b => b !== a && b.startsWith("@" + a.split("@")[1])))
     localStorage.setItem("webwriter_installedPackages", JSON.stringify(valueUnique))
   }
 
@@ -96,6 +98,8 @@ export class PackageStore {
   updateOnStartup = true
 
   apiBase: string
+
+  private db = indexedDB.open("webwriter", 1)
 
   private static async readFileIfExists(path: string, FS: Environment["FS"]): Promise<string | undefined> {
     return await FS.exists(path)? await FS.readFile(path) as string: undefined
@@ -321,6 +325,26 @@ export class PackageStore {
         this.watching = options.watching ?? this.watching
       })()
     }
+    else {
+      this.db.addEventListener("upgradeneeded", () => {
+        this.db.result.createObjectStore("handles", {keyPath: "id"})
+      })
+    }
+  }
+
+  async putLocalHandle(id: string, handle: FileSystemDirectoryHandle) {
+    const tx = this.db.result.transaction("handles", "readwrite")
+    const store = tx.objectStore("handles")
+    const done = new Promise(r => tx.addEventListener("complete", r))
+    store.put({id, handle})
+    return done
+  }
+
+  async getLocalHandle(id: string) {
+    const tx = this.db.result.transaction("handles", "readwrite")
+    const store = tx.objectStore("handles")
+    const req = store.get(id)
+    return new Promise(r => req.addEventListener("success", () => r(req.result.handle)))
   }
 
   FS: Environment["FS"]
@@ -378,14 +402,14 @@ export class PackageStore {
     this.issues[id] = [...this.getPackageIssues(id), ...issues]
   }
 
-  get importingName() {
-    return Object.keys(this.adding).find(name => this.adding[name] && !(name in this.packages))
+  get importingId() {
+    return Object.keys(this.adding).find(id => this.adding[id] && !(id in this.packages))
   }
 
   searchIndex = new MiniSearch<Package>({
     fields: ["id", "name", "description", "version", "keywords"],
     extractField: (doc, fieldName) => (fieldName === "keywords"? doc?.keywords?.join(", "): String(doc[fieldName as keyof typeof doc])) ?? "",
-    idField: "name"
+    idField: "id"
   })
 
   searchPackages = (query: string) => {
@@ -393,11 +417,16 @@ export class PackageStore {
   }
 
   async updateImportMap(ids: string[]=this.installedPackages) {
-    if(!ids.length) {
-      return
-    }
     const url = new URL("_importmaps", this.apiBase)
     url.searchParams.append("pkg", "true")
+    /*
+    const nonlocalIds = ids.filter(id => {
+      const version = id.split("@")[2]
+      return !(new SemVer(version)).prerelease.includes("local")
+    })
+    const localIds = ids.filter(id =>!nonlocalIds.includes(id))
+    nonlocalIds.forEach(id => url.searchParams.append("id", id))
+    */
     ids.forEach(id => url.searchParams.append("id", id))
     const map = ids.length? await (await fetch(url)).json(): undefined
     this.importMap = new ImportMap({map})
@@ -405,7 +434,8 @@ export class PackageStore {
   }
 
   pmQueue = cargoQueue(async (tasks: PmQueueTask[]) => {
-    const toAdd = tasks.filter(t => t.command === "add" && !t.name).flatMap(t => t.parameters)
+    const toAdd = tasks.filter(t => t.command === "add" && !t.name && !t.handle).flatMap(t => t.parameters)
+    const toAddLocal = tasks.filter(t => t.command === "add" && t.handle).flatMap(t => ({handle: t.handle!, name: t.name}))
     const toRemove = tasks.filter(t => t.command === "remove").flatMap(t => t.parameters)
     const toUpdate = tasks.filter(t => t.command === "update").flatMap(t => t.parameters)
     const toLink = tasks.filter(t => t.command === "add" && t.name)
@@ -428,6 +458,27 @@ export class PackageStore {
       finally {
         await this.load()
         this.adding = {...this.adding, ...Object.fromEntries(toAdd.map(name => [names[name], false]))}
+      }
+    }
+    if(toAddLocal.length > 0) {
+      try {
+        const pkgs = await Promise.all(toAddLocal.map(async ({handle, name}) => {
+          const pkgHandle = await handle.getFileHandle("package.json")
+          const file = await pkgHandle.getFile()
+          const text = await file.text()
+          const pkg = new Package({...JSON.parse(text)})
+          pkg.version.prerelease = [...pkg.version.prerelease, "local"]
+          await this.putLocalHandle(pkg.name, handle)
+          return pkg
+        }))
+        this.updateImportMap([...this.installedPackages, ...pkgs.map(pkg => pkg.id)])
+      }
+      catch(err) {
+        console.error(err)
+      }
+      finally {
+        await this.load()
+        this.adding = {...this.adding, ...Object.fromEntries(toAddLocal.map(({name}) => [name, false]))}
       }
     }
     if(toLink.length > 0) {
@@ -576,9 +627,17 @@ export class PackageStore {
     return this.FS.writeFile(await this.rootPackageJsonPath, JSON.stringify(pkg, undefined, 2))
   }
 
-  async add(url: string, name?: string) {
-    this.adding = {...this.adding, [name ?? url]: true}
-    return this.pmQueue.push({command: "add", parameters: [url], cwd: await this.appDir, name})
+  async add(urlOrHandle: string | FileSystemDirectoryHandle, name?: string) {
+    if(typeof urlOrHandle === "string") {
+      const url = urlOrHandle
+      this.adding = {...this.adding, [name ?? url]: true}
+      return this.pmQueue.push({command: "add", parameters: [url], cwd: await this.appDir, name})
+    }
+    else {
+      const handle = urlOrHandle
+      this.adding = {...this.adding, [name ?? handle.name]: true}
+      return this.pmQueue.push({command: "add", parameters: [], handle, cwd: await this.appDir, name})
+    }
   }
 
   async remove(name: string) {
@@ -589,7 +648,7 @@ export class PackageStore {
   async update(name?: string) {
     this.updating = name
       ? {...this.updating, [name]: true}
-      : Object.fromEntries(this.packagesList.filter(pkg => pkg.installed).map(pkg => [pkg.name, true]))
+      : Object.fromEntries(this.packagesList.filter(pkg => pkg.installed).map(pkg => [pkg.id, true]))
     return this.pmQueue.push({command: "update", parameters: name? [name, "--latest"]: ["--latest"], cwd: await this.appDir})
   }
 
@@ -676,22 +735,31 @@ export class PackageStore {
         }
       }
       for(const pkg of installed) {
-        const aPkg = available.find(a => a.name === pkg.name)
+        const aPkg = available.find(a => a.id === pkg.id)
         if(aPkg) {
-          available = available.filter(a => a.name !== pkg.name)
+          available = available.filter(a => a.name !== pkg.id)
         }
         const latest = aPkg?.version
         final.push(pkg.extend({latest, installed: true}))
       }
       final = final.concat(available)
-      this.packages = Object.fromEntries(final.map(pkg => [pkg.name, pkg]))
+      this.packages = Object.fromEntries(final.map(pkg => [pkg.id, pkg]))
     }
     else {
-      final = available.map(pkg => pkg.extend({installed: this.installedPackages.includes(pkg.name)})).sort((a, b) => Number(!!b.installed) - Number(!!a.installed))
+      const localIds = this.installedPackages.filter(id => Package.fromID(id).version.prerelease.includes("local"))
+      let local = (await Promise.all(localIds.map(id => fetch(new URL(id + "/package.json", this.apiBase)).then(resp => resp.json()))))
+        .map(json => {
+          const version = new SemVer(json.version)
+          version.prerelease = [...version.prerelease, "local"]
+          return new Package({...json, version, installed: true, localPath: ""}, {installed: true})
+        })
+      local = await Promise.all(local.map(async pkg => pkg.extend({members: await this.readPackageMembers(pkg)})))
+      final = available.map(pkg => pkg.extend({installed: this.installedPackages.includes(pkg.id)})).sort((a, b) => Number(!!b.installed) - Number(!!a.installed))
+      final = [...local, ...final]
       await this.updateImportMap()
       this.bundleID = PackageStore.computeBundleID(this.installedPackages, false);
       (this.onBundleChange ?? (() => null))(final.filter(pkg => pkg.installed))
-      this.packages = Object.fromEntries(final.map(pkg => [pkg.name, pkg]))
+      this.packages = Object.fromEntries(final.map(pkg => [pkg.id, pkg]))
     }
     this.searchIndex.removeAll()
     this.searchIndex.addAll(final)
@@ -771,7 +839,7 @@ export class PackageStore {
       // this.appendPackageIssues(id, cause as Error)
     }
     const members = await this.readPackageMembers(pkgJson, pkgRootPath)
-    return new Package(pkgJson, {installed: true, watching: this.watching[pkgJson.name], localPath, members, lastLoaded: Date.now()})
+    return new Package(pkgJson, {installed: true, watching: this.watching[pkgJson.id], localPath, members, lastLoaded: Date.now()})
   }
 
   private async readPackageMembers(pkg: Package, path?: string) {
@@ -860,8 +928,8 @@ export class PackageStore {
 
 
 
-  getPackageMembers(name: string, filter?: "widgets" | "snippets" | "themes") {
-    const pkg = this.packages[name]
+  getPackageMembers(id: string, filter?: "widgets" | "snippets" | "themes") {
+    const pkg = this.packages[id]
     const members = {} as any
     for(const [memberName, member] of Object.entries(pkg?.members ?? {})) {
       const is = {
@@ -878,18 +946,18 @@ export class PackageStore {
   }
 
   get widgets() {
-    return Object.fromEntries(Object.keys(this.packages).map(name => [name, this.getPackageMembers(name, "widgets")]))
-    return Object.fromEntries(Object.entries(this.members).map(([k, v]) => [k, filterObject(v, vk => vk.startsWith("./widgets/"))]))
+    return Object.fromEntries(Object.keys(this.packages).map(id => [id, this.getPackageMembers(id, "widgets")]))
+    // return Object.fromEntries(Object.entries(this.members).map(([k, v]) => [k, filterObject(v, vk => vk.startsWith("./widgets/"))]))
   }
 
   get snippets() {
-    return Object.fromEntries(Object.keys(this.packages).map(name => [name, this.getPackageMembers(name, "snippets")]))
-    return Object.fromEntries(Object.entries(this.members).map(([k, v]) => [k, filterObject(v, vk => vk.startsWith("./snippets/"))]))
+    return Object.fromEntries(Object.keys(this.packages).map(id => [id, this.getPackageMembers(id, "snippets")]))
+    // return Object.fromEntries(Object.entries(this.members).map(([k, v]) => [k, filterObject(v, vk => vk.startsWith("./snippets/"))]))
   }
 
   get themes() {
-    return Object.fromEntries(Object.keys(this.packages).map(name => [name, this.getPackageMembers(name, "themes")]))
-    return Object.fromEntries(Object.entries(this.members).map(([k, v]) => [k, filterObject(v, vk => vk.startsWith("./themes/"))]))
+    return Object.fromEntries(Object.keys(this.packages).map(id => [id, this.getPackageMembers(id, "themes")]))
+    // return Object.fromEntries(Object.entries(this.members).map(([k, v]) => [k, filterObject(v, vk => vk.startsWith("./themes/"))]))
   }
 
   get allThemes() {
@@ -903,7 +971,7 @@ export class PackageStore {
   }
 
   get installedWidgetUrls() {
-    return this.apiBase? this.installed.flatMap(pkg => Object.keys(pkg?.widgets ?? {}).flatMap(k => new URL(pkg.name + k.slice(1), this.apiBase).href)): []
+    return this.apiBase? this.installed.flatMap(pkg => Object.keys(pkg?.widgets ?? {}).flatMap(k => new URL(pkg.id + k.slice(1), this.apiBase).href)): []
   }
 
   get widgetTagNames() {
@@ -959,16 +1027,30 @@ export class PackageStore {
   }
 
   /** Reads a local package directory, returning the package config. */
-  async readLocal(path: string) {
-    const resolvedPath = await this.Path.resolve(path)
-    const pkgJsonPath = await this.Path.join(resolvedPath, "package.json")
-    const exists = await this.FS.exists(pkgJsonPath)
-    if(!exists) {
-      throw Error("No package found under " + pkgJsonPath)
+  async readLocal(pathOrHandle: string | FileSystemDirectoryHandle) {
+    let pkgString: string
+    if(typeof pathOrHandle === "string") {
+      const resolvedPath = await this.Path.resolve(pathOrHandle)
+      const pkgJsonPath = await this.Path.join(resolvedPath, "package.json")
+      const exists = await this.FS.exists(pkgJsonPath)
+      if(!exists) {
+        throw Error("No package found under " + pkgJsonPath)
+      }
+      pkgString = await this.FS.readFile(pkgJsonPath) as string
     }
-    const pkgString = await this.FS.readFile(pkgJsonPath) as string
+    else {
+      let pkgJsonHandle
+      try {
+        pkgJsonHandle = await pathOrHandle.getFileHandle("package.json")
+      }
+      catch(err) {
+        throw Error("No package found under " + pathOrHandle.name)
+      }
+      const file = await pkgJsonHandle.getFile()
+      pkgString = await file.text()
+    }
     try {
-      return new Package(JSON.parse(pkgString))
+      return new Package(JSON.parse(pkgString!))
     }
     catch(cause) {
       throw new PackageJsonIssue(`Error parsing package.json: ${cause}`, {cause})

@@ -30,7 +30,7 @@
 		"@swup/preload-plugin": "^2.1.0",
 		"@swup/slide-theme": "^1.0.5",
 		"@webcomponents/template-shadowroot": "^0.2.1",
-		"astro": "^4.1.2",
+		"astro": "^4.15.10",
 		"astro-seo": "^0.7.2",
 		"bootstrap-icons": "^1.10.5",
 		"codemirror": "^6.0.1",
@@ -44,6 +44,7 @@
 		"redefine-custom-elements": "^0.1.3",
 		"rehype-autolink-headings": "^7.1.0",
 		"rehype-slug": "^6.0.0",
+		"sharp": "^0.33.5",
 		"spdx-license-list": "^6.6.0",
 		"swup": "^3.0.6",
 		"ua-parser-js": "^1.0.35"

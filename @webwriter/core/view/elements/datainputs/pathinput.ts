@@ -1,4 +1,4 @@
-import { html, css, render } from "lit";
+import { html, css, render, PropertyValues } from "lit";
 import { DataInput } from ".";
 import { customElement, property } from "lit/decorators.js";
 import { SlInput } from "@shoelace-style/shoelace";
@@ -25,10 +25,13 @@ type PickPathHandler = (options?: PickPathOptions) => Promise<null | string | st
 export class PathInput extends SlInput implements DataInput {
 
   @property({type: Boolean, attribute: true})
-  directory: boolean = false
+  inputDisabled: boolean = false
 
   @property({type: Boolean, attribute: true})
   recursive: boolean = false
+
+  @property({type: Boolean, attribute: true})
+  directory: boolean = false
 
   @property({reflect: true})
   autocomplete = "off"
@@ -51,6 +54,13 @@ export class PathInput extends SlInput implements DataInput {
     :host([data-invalid]:not(:focus-within)) [part=input] {
       color: var(--sl-color-danger-600) !important;
     }
+
+    :host([inputdisabled]) [part=input] {
+      background: var(--sl-color-gray-100);
+      margin-right: 1ch;
+      cursor: not-allowed;
+      font-style: italic;
+    }
   `]
 
   handleClickPickPath = async () => {
@@ -60,6 +70,12 @@ export class PathInput extends SlInput implements DataInput {
   firstUpdated(): void {
     const container = this.shadowRoot?.querySelector("slot[name=suffix]")
     container && container.children.length === 0 && render(this.Suffix(), container as HTMLElement)
+  }
+
+  protected updated(_changedProperties: PropertyValues): void {
+    if(_changedProperties.has("inputDisabled")) {
+      this.input.disabled = this.inputDisabled
+    }
   }
 
   Suffix() {

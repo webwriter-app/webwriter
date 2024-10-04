@@ -36,7 +36,7 @@ export function widgetSpec(tag: string, settings: WidgetEditingSettings, pkg: Pa
     content: settings.content? String(settings.content).replaceAll("-", "_"): undefined,
     group: widgetGroup(settings),
     tag,
-    fullName: `${pkg.name}/widgets/${tag}`,
+    fullName: `${pkg.id}/widgets/${tag}`,
     package: pkg,
     attrs: widgetAttrs(),
     toDebugString: widgetToDebugString(),
