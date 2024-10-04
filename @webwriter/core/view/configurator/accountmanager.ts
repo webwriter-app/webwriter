@@ -76,7 +76,7 @@ export class AccountManager extends LitElement {
   static llmData = {
     OpenAI: ["gpt-3.5-turbo", "gpt-4o", "gpt-4o-mini"],
     Google: ["gemini-1.5-flash", "gemini-1.5-pro"],
-    Anthropic: ["claude-3.5-sonnet", "claude-3.5-haiku"],
+    Anthropic: ["claude-3-5-sonnet-20240620", "claude-3-5-haiku-20240307"],
   };
 
   static styles = css`
