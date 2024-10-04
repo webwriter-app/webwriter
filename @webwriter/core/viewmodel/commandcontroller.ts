@@ -1869,6 +1869,27 @@ export class CommandController implements ReactiveController {
         category: "editor",
         tags: ["element"],
       }),
+      grammar_check: new Command(this.host, {
+        id: "grammar_check",
+        label: () => msg("Spell Check"),
+        tags: ["general"],
+        icon: (host) =>
+          host.store.document.isSpellchecking ? "loader-2" : "spell-check",
+
+        description: () => msg("Checks the document for grammar errors"),
+        shortcut: "ctrl+g",
+        run: async (host) => {
+          host.store.document.isSpellchecking = true;
+          try {
+            await host.store.document.spellcheck();
+          } finally {
+            host.store.document.isSpellchecking = false;
+          }
+        },
+        category: "editor",
+        disabled: (host) =>
+          host.activeEditor!.sourceMode || host.store.document.isSpellchecking,
+      }),
       textStyle: new LayoutCommand(this.host, {
         id: "textStyle",
         label: () => msg("Text Style"),
