@@ -8,10 +8,16 @@ import { classMap } from "lit/directives/class-map.js";
 import { styleMap } from "lit/directives/style-map.js";
 import { ifDefined } from "lit/directives/if-defined.js";
 import { Account, AccountTypeId } from "../../model/stores/accountstore";
-import { NpmAccountForm, PocketbaseAccountForm } from "./accountform";
+import {
+  LLMAccountForm,
+  NpmAccountForm,
+  OpenAIAccountForm,
+  PocketbaseAccountForm,
+} from "./accountform";
 import { APPICON, App, Button, Settings } from "..";
 import {
   FileAccount,
+  LLMAccount,
   NpmAccount,
   OpenAIAccount,
   PocketbaseAccount,
@@ -33,6 +39,7 @@ export class AccountManager extends LitElement {
       pocketbase: "webwriter-app-icon",
       npm: "brand-npm",
       openai: "brand-openai",
+      llm: "brand-openai",
     } as const;
   }
 
@@ -42,6 +49,7 @@ export class AccountManager extends LitElement {
       pocketbase: "WebWriter Cloud",
       npm: "Package Registry",
       openai: "OpenAI",
+      llm: "Grammar LLM",
     } as const;
   }
 
@@ -59,10 +67,29 @@ export class AccountManager extends LitElement {
       openai: msg(
         "OpenAI accounts allow you to use the OpenAI API to generate text and other content."
       ),
+      llm: msg(
+        "Grammar LLM accounts allow you to use the Grammar LLM API to correct grammar in text."
+      ),
     } as const;
   }
 
+  static llmData = {
+    OpenAI: ["gpt-3.5-turbo", "gpt-4o", "gpt-4o-mini"],
+    Google: ["gemini-1.5-flash", "gemini-1.5-pro"],
+    Anthropic: ["claude-3-5-sonnet-20240620", "claude-3-5-haiku-20240307"],
+  };
+
   static styles = css`
+    .llm-account-form {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .button-group {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+    }
     :host {
       display: flex;
       flex-direction: column;
@@ -168,21 +195,27 @@ export class AccountManager extends LitElement {
         ></sl-input>
       </sl-card>`;
     },
+    // @meeting
     openai: (account?: OpenAIAccount) => {
       return html`<sl-card class="account-card-oai">
         <sl-input
+          name="apikey"
           size="small"
+          class="openai-form"
           placeholder=${msg("None")}
           label=${msg("OpenAI API Key")}
-          value=${ifDefined(account?.apikey)}
+          value=${ifDefined(
+            account?.apikey
+              ? account.apikey.slice(0, 10) +
+                  "*".repeat(account.apikey.length - 10)
+              : undefined
+          )}
           @sl-change=${(e: any) =>
-            this.handleFileAccountChange("apikey", e.target.value)}
+            this.handleApiKeyChange("apikey", e.target.value)}
         ></sl-input>
-        <ww-button slot="footer" variant="primary" @click=${this.saveOpenAI}>
-          ${msg("Save")}
-        </ww-button>
       </sl-card>`;
     },
+
     pocketbase: (account?: PocketbaseAccount) => {
       const pending = !account;
       const isSignedIn = Boolean(
@@ -253,6 +286,24 @@ export class AccountManager extends LitElement {
         </ww-pocketbase-account-form>
       </sl-card>`;
     },
+    llm: (account?: LLMAccount) => {
+      const pending = !account;
+      return html`<sl-card
+        class=${classMap({
+          "pending-account-card": pending,
+          "account-card": true,
+        })}
+      >
+        ${this.AccountHeader(account)}
+        <ww-llm-account-form
+          class="account-form"
+          size="small"
+          @ww-cancel=${this.handleCancel}
+          @submit=${this.handleLLMSubmit}
+          .value=${account?.data ?? undefined}
+        ></ww-llm-account-form>
+      </sl-card>`;
+    },
     npm: (account?: NpmAccount) => {
       const pending = !account;
       return html`<sl-card
@@ -314,7 +365,6 @@ export class AccountManager extends LitElement {
         ${Object.values(accounts).map((account) =>
           this.accountCards[type](account as any)
         )}
-        ${this.accountCards["openai"]()}
         ${type === "file"
           ? undefined
           : html`
@@ -332,6 +382,48 @@ export class AccountManager extends LitElement {
     </div>`;
   }
 
+  handleLLMCompanyChange(e: CustomEvent, account?: LLMAccount) {
+    const company = (e.target as HTMLSelectElement).value;
+    console.log("handleLLMCompanyChange", company);
+  }
+
+  handleLLMModelChange(e: CustomEvent, account?: LLMAccount) {
+    const model = (e.target as HTMLSelectElement).value;
+    console.log("handleLLMModelChange", model);
+  }
+
+  handleLLMApiKeyChange(e: CustomEvent, account?: LLMAccount) {
+    const key = (e.target as HTMLInputElement).value;
+    console.log("handleLLMApiKeyChange", key);
+  }
+
+  handleLLMSubmit = async (e: Event) => {
+    const form = e.target as LLMAccountForm;
+
+    if (form.checkValidity()) {
+      const submitButton = form.parentElement!.querySelector(
+        ".submit-button"
+      ) as Button;
+
+      const accountData = form.value;
+      if (!accountData) {
+        return;
+      }
+
+      console.log("handleLLMSubmit", accountData);
+      const llmAccount = this.app.store.accounts.getAccount("llm");
+      const newAccount = new LLMAccount({
+        ...llmAccount,
+        company: accountData.company,
+        model: accountData.model,
+        apiKey: accountData.apiKey,
+      } as any);
+      console.log("newAccount", newAccount);
+      this.app.store.accounts.updateAccount(newAccount);
+      await this.app.settings.persist();
+    }
+  };
+
   async handleFileAccountChange(key: string, value: string) {
     const fileAccount = this.app.store.accounts.getAccount("file");
     const newAccount = new FileAccount({ ...fileAccount, [key]: value } as any);
@@ -339,17 +431,16 @@ export class AccountManager extends LitElement {
     await this.app.settings.persist();
   }
 
-  saveOpenAI = async (e: SubmitEvent) => {
-    e.preventDefault();
-    const form = e.target as HTMLElement;
-    const apikey = form.querySelector("sl-input") as SlInput;
-    console.log(apikey.value);
-    const account = new OpenAIAccount({ apikey: "test" });
-    this.app.store.accounts.addAccount(account);
+  async handleApiKeyChange(key: string, value: string) {
+    console.log("handleApiKeyChange", key, value);
+    const openAiAccount = this.app.store.accounts.getAccount("openai");
+    const newAccount = new OpenAIAccount({
+      ...openAiAccount,
+      [key]: value,
+    } as any);
+    this.app.store.accounts.updateAccount(newAccount);
     await this.app.settings.persist();
-
-    this.requestUpdate();
-  };
+  }
 
   handleSubmit = async (e: SubmitEvent) => {
     e.preventDefault();
@@ -440,7 +531,7 @@ export class AccountManager extends LitElement {
   render() {
     const accounts = this.app.store.accounts.accounts;
     const types = Object.keys(accounts).filter(
-      (k) => k === "pocketbase"
+      (k) => k === "pocketbase" || k === "llm"
     ) as AccountTypeId[];
     return html` ${types.map((t) => this.AccountsPane(t, accounts[t]))} `;
   }

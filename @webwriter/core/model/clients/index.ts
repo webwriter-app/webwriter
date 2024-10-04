@@ -4,7 +4,9 @@ import { Environment } from "../environment";
 import {
   Account,
   FileAccount,
+  LLMAccount,
   NpmAccount,
+  OpenAIAccount,
   PocketbaseAccount,
 } from "../schemas/accounts";
 import PocketBase, {
@@ -99,6 +101,14 @@ export interface AnalyticsClient extends Client {
 
 export interface ApiKeyClient extends Client {
   getApiKey(): string;
+  account: OpenAIAccount;
+}
+
+export interface LLMApiClient extends Client {
+  getModel(): string;
+  getCompany(): string;
+  getApiKey(): string;
+  account: LLMAccount;
 }
 
 export interface AuthenticationClient extends Client {
@@ -178,11 +188,15 @@ export class FileClient implements DocumentClient {
   }
 }
 
+// @meeting
 export class OpenAIClient implements ApiKeyClient {
-  constructor(readonly account: Account, readonly Environment: Environment) {}
+  constructor(
+    readonly account: OpenAIAccount,
+    readonly Environment: Environment
+  ) {}
 
   getApiKey() {
-    return "test";
+    return this.account.apikey;
   }
 }
 
@@ -266,6 +280,24 @@ class PocketbaseAuthStore extends BaseAuthStore {
   }
 }
 
+export class LLMClient implements LLMApiClient {
+  constructor(
+    readonly account: LLMAccount,
+    readonly Environment: Environment
+  ) {}
+
+  getModel() {
+    return this.account.model;
+  }
+
+  getCompany() {
+    return this.account.company;
+  }
+
+  getApiKey() {
+    return this.account.apiKey;
+  }
+}
 export class PocketbaseClient implements DocumentClient, AuthenticationClient {
   #pocketbase: PocketBase;
 
@@ -425,4 +457,6 @@ export default {
   file: FileClient,
   pocketbase: PocketbaseClient,
   npm: NpmClient,
+  openai: OpenAIClient,
+  llm: LLMClient,
 };

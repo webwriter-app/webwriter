@@ -161,7 +161,6 @@ export const grammarPlugin = (): SchemaPlugin => {
           const { state } = view;
           const { doc } = state;
           const range = doc.resolve(pos);
-
           const mark = range.marks().find((m) => m.type.name === "grammar");
           if (mark) {
             let start = pos,
@@ -179,11 +178,9 @@ export const grammarPlugin = (): SchemaPlugin => {
               }
               return true;
             });
-
             const correctedText =
               mark.attrs.corrected || "No correction available";
             showTooltip(view, correctedText, start, end);
-
             return true;
           }
           removeTooltip();

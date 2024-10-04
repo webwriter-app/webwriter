@@ -1,3 +1,6 @@
+import { EditorStateWithHead } from "../core/model";
+import { DOMSerializer } from "prosemirror-model";
+
 export function formatHTMLToPlainText(html: string): string {
   // Create a DOM parser to parse the HTML string
   const parser = new DOMParser();
@@ -50,26 +53,3 @@ export function formatHTMLToPlainText(html: string): string {
     .replace(/\n\s*\n/g, "\n\n") // Replace multiple line breaks with a single double line break
     .trim(); // Trim leading and trailing whitespace
 }
-
-// Example usage
-const htmlInput = `
-<body>
-  <h1>Test Dokument</h1>
-  <p>Normaler Text <b>Bold</b> <i>Italic</i></p>
-  <p></p>
-  <p><span>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nulla mattis leo nisi, vel malesuada magna lacinia sit amet. Phasellus porta eu diam at dignissim. Cras faucibus lobortis posuere. Mauris turpis lacus, vestibulum eget odio vel, ultricies laoreet lectus. Nullam accumsan feugiat ex. Nunc ac erat nec magna pulvinar facilisis. Nam et mi at libero eleifend luctus sed ac urna. Nunc porttitor, ipsum ac dapibus pellentesque, est purus vulputate sem, nec dapibus leo neque posuere tellus. Quisque bibendum lectus quis lacus eleifend, placerat facilisis sapien iaculis. Quisque viverra lacinia eros, non tempor sapien malesuada eu.</span></p>
-  <webwriter-slides class="ww-widget ww-v0.1.1">
-    <webwriter-slide class="ww-widget ww-v0.1.1" active="">
-      <h1>Slides</h1>
-      <p></p>
-      <p>Slide 1 Text&nbsp;</p>
-    </webwriter-slide>
-    <webwriter-slide class="ww-widget ww-v0.1.1">
-      <p>Slide 2 Text</p>
-    </webwriter-slide>
-  </webwriter-slides>
-  <p></p>
-</body>
-`;
-
-console.log(formatHTMLToPlainText(htmlInput));

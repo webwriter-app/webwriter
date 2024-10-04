@@ -8,6 +8,16 @@ import {
   DOMParser,
 } from "prosemirror-model";
 import { html_beautify as htmlBeautify } from "js-beautify";
+import { formatHTMLToPlainText } from "../../../spell-check/htmlparser";
+import {
+  applyGrammarSuggestions,
+  diffTokens,
+  matchDiffs,
+  tokenizeText,
+  // diff,
+  // matchSpellingSuggestions,
+} from "../../../spell-check/text-tokenizer";
+import { fetchGrammarCorrection } from "../../../spell-check/fetchers/correction-fetcher";
 
 import {
   createEditorState,
@@ -43,7 +53,9 @@ import { html as cmHTML } from "@codemirror/lang-html";
 import { basicSetup } from "codemirror";
 import { Account, AccountStore } from "./accountstore";
 import { HTMLParserSerializer } from "../marshal/html";
+import { ChatCompletion } from "openai/resources";
 import { ParserSerializer } from "../marshal/parserserializer";
+import { LLMAccount, OpenAIAccount } from "../schemas/accounts";
 
 export const CODEMIRROR_EXTENSIONS = [basicSetup, cmHTML()];
 
@@ -193,7 +205,6 @@ export class DocumentStore implements Resource {
     const state = this.editorState.apply(this.editorState.tr);
     this.set(Object.assign(state, { head$ }));
   }
-
   /** Saves a resource on an external file system. */
   async save(
     saveAs = false,
@@ -253,7 +264,6 @@ export class DocumentStore implements Resource {
       this.ioState = "idle";
     }
   }
-
   /** Loads a resource from an external file system. */
   async load(
     url: Resource["url"] | undefined = undefined,
@@ -307,6 +317,68 @@ export class DocumentStore implements Resource {
     } finally {
       this.ioState = "idle";
     }
+  }
+
+  isSpellchecking = false;
+
+  /** Does a spell check on the document text */
+  async spellcheck() {
+    this.isSpellchecking = true;
+    // get raw editor html
+    const state = this.editorState;
+    const serializer = DOMSerializer.fromSchema(state.schema);
+    const dom = serializer.serializeNode(state.doc) as HTMLElement;
+    const html = htmlBeautify(dom.outerHTML, {
+      indent_size: 2,
+      wrap_attributes: "force-aligned",
+      inline_custom_elements: false,
+    });
+
+    // get plain text
+    const text = formatHTMLToPlainText(html);
+
+    // get apiKey
+    const llmAccount: LLMAccount = this.accounts.getAccount(
+      "llm"
+    ) as LLMAccount;
+    const apiKey = llmAccount.data.apiKey;
+    const company = llmAccount.data.company;
+    const model = llmAccount.data.model;
+
+    // send text to spellchecker
+    const res = await fetchGrammarCorrection(text, apiKey, company, model);
+    if (!res) {
+      console.error("no response from spellchecker!");
+      return;
+    }
+
+    const correctedText = res.choices[0].message.content;
+    if (!correctedText) {
+      console.error("no corrected text!");
+      return;
+    }
+    console.log("original:", text, "corrected:", correctedText);
+
+    // tokenize both texts
+    const originalTokens = tokenizeText(text);
+    const correctedTokens = tokenizeText(correctedText);
+
+    // get token differences
+    const diffs = diffTokens(originalTokens, correctedTokens);
+    console.log(diffs);
+    const suggestions = matchDiffs(diffs);
+    console.log("suggestions:", suggestions);
+
+    // highlight differences in content using transactions
+    const transaction = applyGrammarSuggestions(state, suggestions);
+
+    // Create a new EditorStateWithHead applying the transaction
+    const newState = this.editorState.apply(transaction) as EditorStateWithHead;
+    newState["head$"] = this.editorState["head$"];
+
+    // Update the editorState
+    this.editorState = newState;
+    this.isSpellchecking = false;
   }
 
   get empty() {

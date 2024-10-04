@@ -83,7 +83,7 @@ export function diffTokens(
       i--;
     }
   }
-
+  console.log("uncompressed diff:", diff);
   const compressedDiff = compressDiffTokens(diff);
 
   return compressedDiff;
