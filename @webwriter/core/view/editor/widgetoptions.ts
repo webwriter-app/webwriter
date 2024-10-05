@@ -5,6 +5,7 @@ import { localized } from "@lit/localize"
 
 import { OptionDeclaration, BooleanOptionDeclaration, ColorOptionDeclaration, DateOptionDeclaration, DatetimeLocalOptionDeclaration, EmailOptionDeclaration, NumberOptionDeclaration, ObjectOptionDeclaration, PasswordOptionDeclaration, SelectOptionDeclaration, StringOptionDeclaration, TelOptionDeclaration, TimeOptionDeclaration, UrlOptionDeclaration, LitElementWw, ActionDeclaration, } from "@webwriter/lit"
 import { camelCaseToSpacedCase, capitalizeWord, emitCustomEvent } from "../../utility"
+import { EditorState } from "prosemirror-state"
 
 function getLocalized(localizationObj?: Record<string, string>) {
   const obj = localizationObj ?? {}
@@ -31,6 +32,9 @@ export class WidgetOptions extends LitElement {
 
   @property({attribute: false})
   widget: HTMLElement | LitElement | LitElementWw
+
+  @property({attribute: false})
+  editorState: EditorState
 
   get options() {
     const proto = this.widget.constructor
@@ -90,11 +94,11 @@ export class WidgetOptions extends LitElement {
   }
 
   setWidgetAttribute(el: HTMLElement, key: string, value?: string | boolean) {
-    typeof value === "boolean" || value === undefined
+    /*typeof value === "boolean" || value === undefined
       ? el.toggleAttribute(key, !!value)
       : el.setAttribute(key, value)
-    el.children.length? el.ownerDocument.body.focus(): el.focus()
-    // this.dispatchEvent(new CustomEvent("ww-set-attribute", {bubbles: true, composed: true, detail: {el, key, value}}))
+    el.children.length? el.ownerDocument.body.focus(): el.focus()*/
+    this.dispatchEvent(new CustomEvent("ww-set-attribute", {bubbles: true, composed: true, detail: {el, key, value}}))
   }
 
   BooleanOption(attr: string, decl: BooleanOptionDeclaration) {
@@ -111,6 +115,7 @@ export class WidgetOptions extends LitElement {
   InputOption(attr: string, decl: StringOptionDeclaration | NumberOptionDeclaration | DateOptionDeclaration | DatetimeLocalOptionDeclaration | EmailOptionDeclaration | PasswordOptionDeclaration |TelOptionDeclaration | TimeOptionDeclaration | UrlOptionDeclaration) {
     const value = this.widget?.getAttribute(attr) ?? undefined
     const type = (typeof decl.type === "string"? decl.type: decl.type?.name.toLowerCase().replace("string", "text")) ?? "text"
+    console.log(attr, value)
     return html`<sl-input
       @sl-change=${(e: any) => this.setWidgetAttribute(this.widget, attr, e.target.value)}
       size="small"

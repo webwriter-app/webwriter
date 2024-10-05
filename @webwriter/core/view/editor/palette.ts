@@ -721,7 +721,7 @@ export class Palette extends LitElement {
 
 	private handleClickCard(pkg: Package | Command, snippetName?: string) {
     const isLeaf = "name" in pkg
-    if(!snippetName && isLeaf) {
+    if(!snippetName && isLeaf && !this.managing) {
       this.dropdownOpen = pkg.id
       return
     }

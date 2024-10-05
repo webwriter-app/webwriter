@@ -49,7 +49,6 @@ export class RootStore {
 
   onBundleChange = (packages: Package[]) => {
     this.document.updateSchema(createEditorStateConfig(packages).schema)
-    console.log(this.document.editorState.schema.nodes)
   }
 
   get<S extends StoreKey, K extends keyof RootStore[S]>(storeKey: S, key: K) {

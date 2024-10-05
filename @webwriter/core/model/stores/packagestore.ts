@@ -742,7 +742,7 @@ export class PackageStore {
         const latest = aPkg?.version
         final.push(pkg.extend({latest, installed: true}))
       }
-      final = final.concat(available)
+      final = final.concat(available.filter(pkg => !final.some(finalPkg => finalPkg.name === pkg.name)))
       this.packages = Object.fromEntries(final.map(pkg => [pkg.id, pkg]))
     }
     else {

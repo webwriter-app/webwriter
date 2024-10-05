@@ -75,6 +75,7 @@ export class ExplorableEditor extends LitElement {
 	insertMember = async (id: string, insertableName: string) => {
     const state = this.pmEditor.state
     const members = this.app.store.packages.getPackageMembers(id)
+    let insertedRootPos: number | undefined = undefined
     if(insertableName.startsWith("./snippets/")) {
       const source = members[insertableName].source
       let htmlStr = source
@@ -91,9 +92,10 @@ export class ExplorableEditor extends LitElement {
       const ids = this.getAvailableWidgetIDs(widgetsInTemplate.length)
       ids.forEach((id, i) => widgetsInTemplate[i].id = id)
       */
+      const emptyParagraphActive = this.activeElement?.tagName === "P" && !this.activeElement.textContent && !this.activeElement.querySelector(":not(br)")
       const slice = parser.parseSlice(template.content)
       let tr = this.pmEditor.state.tr.deleteSelection()
-      const insertPos = Math.max(tr.selection.anchor - 1, 0)
+      const insertPos = Math.max(tr.selection.anchor - (emptyParagraphActive? 1: 0), 0)
       tr = tr.insert(insertPos, slice.content)
       // Find new selection: It should be as deep as possible into the first branch of the inserted slice. If the deepest node found is a textblock, make a TextSelection at the start of it. Otherwise, make a NodeSelection of it.
       let selection: Selection | null = null
@@ -114,30 +116,19 @@ export class ExplorableEditor extends LitElement {
         tr = tr.setSelection(selection).scrollIntoView()
       }
       this.pmEditor.dispatch(tr)
-      if(widgetPos !== -1) {
-        setTimeout(() => {
-          const widget = this.pmEditor.nodeDOM(widgetPos) as HTMLElement
-          widget.focus()
-        }, 0)
-      }
-      else {
-        this.pmEditor.focus()
-      }
-      
+      insertedRootPos = widgetPos
     }
     else if(insertableName.startsWith("./widgets/")) {
       const tagName = insertableName.replace("./widgets/", "")
       const nodeName = tagName.replaceAll("-", "_")
       const nodeType = this.pmEditor.state.schema.nodes[nodeName]
-      const node = nodeType.createAndFill()
+      const node = nodeType.createAndFill({id: `ww-${crypto.randomUUID()}`})
       const state = this.pmEditor.state
-      const insertPos = Math.max(state.selection.anchor - 1, 0)
+      const emptyParagraphActive = this.activeElement?.tagName === "P" && !this.activeElement.textContent && !this.activeElement.querySelector(":not(br)")
+      const insertPos = Math.max(state.selection.anchor + (emptyParagraphActive? -1: 0), 0)
       let tr = state.tr.insert(insertPos, node!)
       this.pmEditor.dispatch(tr)
-      setTimeout(() => {
-        const widget = this.pmEditor.nodeDOM(insertPos) as HTMLElement
-        widget?.focus()
-      }, 0)
+      insertedRootPos = insertPos
     }
     else if(insertableName.startsWith("./themes/")) {
       const old = this.app.store.document.themeName
@@ -160,7 +151,20 @@ export class ExplorableEditor extends LitElement {
       )
       this.pmEditor.pasteHTML(htmlStrs.join("\n"))
     }
+    await Promise.race([
+      new Promise(r => setTimeout(r)),
+      new Promise(r => setTimeout(r, 5000))
+    ])
+    if(insertedRootPos !== undefined) {
+      const insertedRoot = this.pmEditor.nodeDOM(insertedRootPos) as HTMLElement
+      if(insertedRoot) {
+        this.initializedElements.add(insertedRoot.id)
+        insertedRoot.focus()
+      }
+    }
 	}
+
+  initializedElements = new Set<string>()
 
 	constructor() {
 		super()
@@ -349,7 +353,7 @@ export class ExplorableEditor extends LitElement {
         (node: Node, view: EditorViewController, getPos: () => number) => new (nodeViews as any)[k](node, view, getPos),
       ])
       const widgetViewEntries = widgetKeys
-      .map(key => [key, (node: Node, view: EditorViewController, getPos: () => number) => new WidgetView(node, view, getPos)])
+      .map(key => [key, (node: Node, view: EditorViewController, getPos: () => number) => new WidgetView(node, view, getPos, this.initializedElements)])
 			this.cachedNodeViews = Object.fromEntries([...elementViewEntries, ...nodeViewEntries, ...widgetViewEntries])
 			return this.cachedNodeViews
 		}

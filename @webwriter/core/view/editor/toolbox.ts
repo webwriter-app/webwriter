@@ -1392,7 +1392,7 @@ export class  Toolbox extends LitElement {
       return this.ListToolbox(el as HTMLOListElement | HTMLUListElement)
     }
     else if(this.app.store.packages.widgetTagNames.includes(tag)) {
-      return html`<ww-widget-options .widget=${el} @ww-focus-editor=${() => this.app.activeEditor?.focus()}></ww-widget-options>`
+      return html`<ww-widget-options .widget=${el} .editorState=${this.editorState} @ww-focus-editor=${() => this.app.activeEditor?.focus()}></ww-widget-options>`
     }
     else if(["math"].includes(tag)) {
       return this.MathToolbox(el)

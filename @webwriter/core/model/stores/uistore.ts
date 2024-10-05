@@ -4,6 +4,15 @@ type Notification = {
    message: string
 }
 
+export abstract class PackageError extends Error {}
+export class PackageMetadataError extends PackageError {}
+export class PackageImportError extends PackageError {}
+export class PackageRuntimeError extends PackageError {}
+
+export abstract class ManagementError extends Error {}
+
+export abstract class EditorError extends Error {}
+
 export class UIStore {
 
    constructor(options: any) {

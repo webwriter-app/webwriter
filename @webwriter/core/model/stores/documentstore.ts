@@ -147,11 +147,9 @@ export class DocumentStore implements Resource {
   /** Saves a resource on an external file system. */
   async save(saveAs=false, serializer=this.serializer, client=this.client, filename=this.provisionalTitle, url?: URL) {
     this.ioState = "saving"
-    console.log(saveAs, serializer, client, filename, url)
     try {
       let newUrlOrHandle: URL | FileSystemFileHandle | undefined = saveAs? url: url ?? this.url
       let newSerializer = serializer
-      console.log(newUrlOrHandle, newSerializer)
       if(!newUrlOrHandle && "pickSave" in client) {
         newUrlOrHandle = await client.pickSave()
       }
