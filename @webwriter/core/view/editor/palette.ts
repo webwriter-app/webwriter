@@ -1103,7 +1103,7 @@ export class Palette extends LitElement {
       ${this.app.commands.groupedContainerCommands.map(this.Card)}
       ${this.ClipboardCard()}
       ${this.packagesInSearchOrder.map(this.Card)}
-      ${null && this.AddLocalPackageButton()}
+      ${WEBWRITER_ENVIRONMENT.backend === "tauri" && this.AddLocalPackageButton()}
       ${this.LocalPackageDialog()}
       ${this.ErrorDialog()}
     `
