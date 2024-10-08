@@ -721,7 +721,7 @@ export class Palette extends LitElement {
 
 	private handleClickCard(pkg: Package | Command, snippetName?: string) {
     const isLeaf = "name" in pkg
-    if(!snippetName && isLeaf) {
+    if(!snippetName && isLeaf && !this.managing) {
       this.dropdownOpen = pkg.id
       return
     }
@@ -1103,7 +1103,7 @@ export class Palette extends LitElement {
       ${this.app.commands.groupedContainerCommands.map(this.Card)}
       ${this.ClipboardCard()}
       ${this.packagesInSearchOrder.map(this.Card)}
-      ${null && this.AddLocalPackageButton()}
+      ${WEBWRITER_ENVIRONMENT.backend === "tauri" && this.AddLocalPackageButton()}
       ${this.LocalPackageDialog()}
       ${this.ErrorDialog()}
     `

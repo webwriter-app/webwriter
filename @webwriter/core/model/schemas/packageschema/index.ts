@@ -174,7 +174,8 @@ export const WidgetEditingSettings = z.object({
 
 export type SnippetEditingSettings = z.infer<typeof SnippetEditingSettings>
 export const SnippetEditingSettings = z.object({
-  label: z.record(z.string()).optional()
+  label: z.record(z.string()).optional(),
+  type: z.enum(["example"]).optional()
 })
 
 export type ThemeEditingSettings = z.infer<typeof ThemeEditingSettings>

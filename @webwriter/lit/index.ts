@@ -131,8 +131,18 @@ export class LitElementWw extends ScopedElementsMixin(LitElement) {
   /** [HTML global attribute] Editing state of the widget. If ="true" or ="", the widget should allow user interaction changing the widget itself. Else, prevent all such user interactions. */
   @property({type: String, attribute: true, reflect: true}) accessor contentEditable!: string
 
+  #lang: string = ""
+
+  get lang() {
+    return (this.closest("[lang]") as HTMLElement)?.lang ?? this.#lang
+  }
+
   /** [HTML global attribute] Language of the widget, allowing presentation changes for each language.*/
-  @property({type: String, attribute: true, reflect: true}) accessor lang!: string
+  @property({type: String, attribute: true, reflect: true})
+  set lang(value) {
+    this.#lang = value
+    this.requestUpdate("lang")
+  }
 
   /** @internal */
   _inTransaction = false

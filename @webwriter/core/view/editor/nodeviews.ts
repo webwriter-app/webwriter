@@ -47,13 +47,13 @@ export class WidgetView implements NodeView {
 
   // static existingWidgets = new Set()
 
-	constructor(node: Node, view: EditorViewController, getPos: () => number) {
+	constructor(node: Node, view: EditorViewController, getPos: () => number, readonly initializedElements: Set<string>) {
 		this.node = node
 		this.view = view
     this.getPos = getPos
     // const existingDom = this.view.dom.querySelector(`#${this.node.attrs.id}`)
     this.dom = this.contentDOM = this.createDOM()
-    this.dom.toggleAttribute("contenteditable", true)
+    // this.dom.toggleAttribute("contenteditable", true)
     /*
     WidgetView.existingWidgets.add(this.dom)
     if(existingDom) {
@@ -112,10 +112,24 @@ export class WidgetView implements NodeView {
       })
       // dom.addEventListener("selectstart", e => e.preventDefault())
     }
+    dom.toggleAttribute("contenteditable", true)
     return dom
   }
 
   inTransaction = false
+  isMutating = false
+
+  get widgetIdPath() {
+    const ids = [this.dom.id]
+    let el = this.dom
+    while(el.parentElement && el.parentElement.tagName !== "BODY") {
+      el = el.parentElement
+      if(el.id?.startsWith("ww-")) {
+        ids.push(el.id)
+      }
+    }
+    return ids
+  }
 
   update(node: Node, decorations: readonly Decoration[], innerDecorations: DecorationSource) {
     const oldName = this.node.type.name
@@ -123,8 +137,11 @@ export class WidgetView implements NodeView {
     if(oldName !== name) {
       return false
     }
+    if(this.isMutating) {
+      this.node = node
+      return true
+    }
     this.node = node
-    return true
     const dom = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node, {document: this.view.dom.ownerDocument}) as HTMLElement
     dom.toggleAttribute("contenteditable", true)
     const newAttrs = dom.getAttributeNames()
@@ -133,26 +150,7 @@ export class WidgetView implements NodeView {
     (this.view as any).domObserver.stop()
     toRemove.forEach(attr => this.dom.removeAttribute(attr))
     newAttrs.forEach(attr => this.dom.setAttribute(attr, dom.getAttribute(attr)!));
-    this.node = node
-    return true
-    const oldNodeAttrs = {...this.node.attrs, _: undefined, data: undefined, ...this.node.attrs._, ...this.node.attrs.data}
-    const newNodeAttrs = {...node.attrs, _: undefined, data: undefined, ...node.attrs._, ...node.attrs.data}
-    if(!sameMembers(oldNodeAttrs, newNodeAttrs)) {
-      const oldKeys = Object.keys(oldNodeAttrs)
-      const newKeys = Object.keys(newNodeAttrs)
-      const toRemove = oldKeys.filter(key => !newKeys.includes(key))
-      toRemove.forEach(key => this.dom.removeAttribute(key))
-      console.log(toRemove, Object.fromEntries(newKeys.map(k => [k, newNodeAttrs[k]])))
-      newKeys.forEach(key => {
-        if(newNodeAttrs[key] === undefined || newNodeAttrs[key] === false || newNodeAttrs[key] === null && oldNodeAttrs[key] !== undefined) {
-          this.dom.removeAttribute(key)
-        }
-        else if(newNodeAttrs[key] !== undefined) {
-          this.dom.setAttribute(key, newNodeAttrs[key])
-        }
-      })
-    }
-    this.node = node
+    (this.view as any).domObserver.start()
     return true
   }
 
@@ -186,6 +184,7 @@ export class WidgetView implements NodeView {
     if((type as any) === "selection") {
       return false
     }
+    this.isMutating = true
     if(type === "childList") {
       (this.view as any).domObserver.stop()
       for(const node of [...Array.from(addedNodes), ...Array.from(removedNodes)]) {
@@ -194,75 +193,29 @@ export class WidgetView implements NodeView {
         }
       }
       readDOMChange(this.view as any, this.getPos(), this.getPos() + this.node.nodeSize, true, Array.from(addedNodes));
-      /*
-      const {doc, sel, from, to} = parseBetween(this.view, this.getPos(), this.getPos() + this.node.nodeSize)
-      let tr = this.view.state.tr, oldDoc = this.view.state.doc
-      tr = tr.replaceWith(Math.max(from - 1, 0), Math.min(to + 1, oldDoc.nodeSize - 2), doc)
-      if(sel) {
-        tr = tr.setSelection(TextSelection.create(tr.doc, sel.anchor, sel?.head))
-      }
-      this.view.updateState(this.view.state.apply(tr) as EditorStateWithHead)
-      this.view.domObserver.start()*/
       (this.view as any).domObserver.start()
-      return true
-      // this.view.updateState(this.view.state.apply(this.view.state.tr.setSelection(new TextSelection(this.view.state.doc.resolve(0)))) as any)
-      // Array.from(this.lastMutation?.removedNodes ?? []).some(node => Array.from(mutation?.addedNodes ?? []).some(added => added === node))
-      /*
-      const insertionPos = previousSibling? this.view.posAtDOM(previousSibling, 0): 0
-      const nodesToInsert = Array.from(addedNodes).map(node => parser.parse(node, {topNode: this.node}))
-      let tr = this.view.state.tr
-      tr = tr.insert(insertionPos, nodesToInsert)
-      this.view.dispatch(tr)
-      const pos = this.getPos()
-      // let tr = this.view.state.tr
-      const parser = DOMParser.fromSchema(this.view.state.schema)
-      // const sel = this.view.dom.ownerDocument.getSelection()
-      const anchor = this.view.posAtDOM(sel!.anchorNode!, 0) + 2
-      const focus = this.view.posAtDOM(sel!.focusNode!, 0) + 2
-      const node = parser.parse(target, {topNode: this.node})
-      tr = tr.replaceWith(pos, pos + this.node.nodeSize, node)
-      tr = tr.setSelection(this.view.state.selection.getBookmark().resolve(tr.doc))
-      this.view.dispatch(tr)
-      */
-      /*
-      const max = tr.doc.nodeSize - 2
-      const $anchor = tr.doc.resolve(Math.min(max, anchor))
-      const $focus = tr.doc.resolve(Math.min(max, focus))
-      const selection = new TextSelection($anchor, $focus)
-      tr = tr.setSelection(selection)
-      /*
-      let tr = this.view.state.tr
-      const parser = DOMParser.fromSchema(this.view.state.schema)
-      if(addedNodes.length) {
-        const fragment = Array.from(addedNodes)
-          .map(node => parser.parseSlice(node, {topNode: this.node}))
-          .map(slice => slice.content)
-          .reduce((acc, val) => acc.append(val), Fragment.empty)
-        let pos = previousSibling? this.view.posAtDOM(previousSibling, 0): this.getPos() + 1
-        if(previousSibling) {
-          let previousNode = this.view.state.doc.resolve(pos).node()
-          pos += previousNode.nodeSize - 1
-        }
-        console.log(this.node, "inserting", fragment, "at", pos)
-        tr = tr.insert(pos, fragment)
-      }
-      if(removedNodes.length) {
-        let start = previousSibling? this.view.posAtDOM(previousSibling, 0): this.getPos() + 1
-        if(previousSibling) {
-          let previousNode = this.view.state.doc.resolve(start).node()
-          start += previousNode.nodeSize - 1
-        }
-        let end = nextSibling? this.view.posAtDOM(nextSibling, 0): this.getPos() + this.node.nodeSize - 1
-        tr = tr.delete(start, end)
-      }
-      this.view.dispatch(tr)*/
+      setTimeout(() => this.isMutating = false)
       return true
     }
     else if(attr && !attrUnchanged) {
       const builtinAttr = attr in globalHTMLAttributes
       const dataAttr = attr.startsWith("data-")
       let tr = this.view.state.tr
-      if(builtinAttr) {
+      if(attr === "class") {
+        const oldClasses = oldValue!.trim().split(" ")
+        const newClasses = value!.trim().split(" ")
+        const removedClasses = oldClasses.filter(v => !newClasses.includes(v) && !v.startsWith("ww-"))
+        const addedClasses = newClasses.filter(v => !oldClasses.includes(v) && !v.startsWith("ww-")) 
+        if(removedClasses.length || addedClasses.length) {
+          const final = newClasses.filter(v => !v.startsWith("ww-"))
+          tr = tr.setNodeAttribute(this.getPos(), attr, final)  
+        }
+        else {
+          this.isMutating = false
+          return true
+        }
+      }
+      else if(builtinAttr) {
         tr = tr.setNodeAttribute(this.getPos(), attr, value)
       }
       else if(dataAttr) {
@@ -273,28 +226,14 @@ export class WidgetView implements NodeView {
         const _ = {...this.node.attrs._, [attr]: value}
         tr = tr.setNodeAttribute(this.getPos(), "_", _)
       }
+      if(this.widgetIdPath.some(id => !this.initializedElements.has(id))) {
+        tr = tr.setMeta("addToHistory", false)
+      }
       this.view.dispatch(tr)
+      setTimeout(() => this.isMutating = false)
       return true
     }
     return attrUnchanged
-    const dom = target as HTMLElement
-    const domAttrs = getAttrs(dom)
-    const allAttrs = filterObject({...domAttrs, data: undefined}, (k, v) => !!v)
-    const flatNodeAttrs = filterObject({...this.node.attrs, data: undefined, _: undefined, ...this.node.attrs._}, (k, v) => v)
-		if(type === "attributes") {
-      if(!shallowCompare(allAttrs, flatNodeAttrs)) {
-        const otherAttrs = filterObject(domAttrs, k => !(k in globalHTMLAttributes))
-        const allAttrs = {...domAttrs, _: otherAttrs}
-        const tr = this.view.state.tr.setNodeMarkup(this.getPos(), undefined, allAttrs)
-        this.view.dispatch(tr)
-        return false
-      }
-      return true
-		}
-		else if(type === "childList") {
-      return false
-		}
-		return true
 	}
 
 	stopEvent(e: Event) {

@@ -209,6 +209,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
 
   updateState = (...args: Parameters<typeof this.view.updateState>) => {
     this?.view.updateState(...args)
+    // console.log(...args)
     this.dispatchEvent(new CustomEvent("update", {composed: true, bubbles: true, detail: {editorState: this.view.state}}))
   }
 
@@ -386,6 +387,13 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
     link.setAttribute("blocking", "render")
     link.toggleAttribute("data-ww-editing")
     return link
+  }
+
+  async initializePreviewFrame() {
+    const iframe = this.shadowRoot?.querySelector("iframe")
+    for(const el of Array.from(iframe?.contentDocument?.body.querySelectorAll("a") ?? [])) {
+      el.target = "_blank"
+    }
   }
 
   async initializeIFrame() {
@@ -575,6 +583,6 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
   
 
   render() {
-    return keyed(this.bundleID + String(this.url), html`<iframe part="iframe" src=${ifDefined(this.url)}></iframe>`)
+    return keyed(this.bundleID + String(this.url), html`<iframe part="iframe" src=${ifDefined(this.url)} @load=${() => this.initializePreviewFrame()}></iframe>`)
   }
 }
