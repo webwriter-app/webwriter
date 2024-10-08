@@ -1881,6 +1881,7 @@ export class CommandController implements ReactiveController {
           await host.store.document.spellcheck();
         },
         category: "editor",
+        active: (host) => host.store.document.ioState === "grammarActive",
         disabled: (host) =>
           host.activeEditor!.sourceMode ||
           host.store.document.ioState === "loadingGrammar",

@@ -13,6 +13,7 @@ import {
   applyGrammarSuggestions,
   diffTokens,
   matchDiffs,
+  removeGrammarSuggestions,
   tokenizeText,
   // diff,
   // matchSpellingSuggestions,
@@ -98,8 +99,13 @@ export class DocumentStore implements Resource {
   lastSavedState: EditorStateWithHead;
   initialState: EditorStateWithHead;
 
-  ioState: "idle" | "saving" | "loading" | "loadingPreview" | "loadingGrammar" =
-    "idle";
+  ioState:
+    | "idle"
+    | "saving"
+    | "loading"
+    | "loadingPreview"
+    | "loadingGrammar"
+    | "grammarActive" = "idle";
 
   constructor(
     { schema, url, editorState, lang }: Options,
@@ -322,6 +328,24 @@ export class DocumentStore implements Resource {
 
   /** Does a spell check on the document text */
   async spellcheck() {
+    if (this.ioState === "grammarActive") {
+      // Remove all existing grammar marks
+      const state = this.editorState;
+      const transaction = removeGrammarSuggestions(state);
+
+      // Create a new EditorStateWithHead applying the transaction
+      const newState = this.editorState.apply(
+        transaction
+      ) as EditorStateWithHead;
+      newState["head$"] = this.editorState["head$"];
+
+      // Update the editorState
+      this.editorState = newState;
+
+      this.ioState = "idle";
+      return;
+    }
+
     this.ioState = "loadingGrammar";
 
     // get raw editor html
@@ -378,7 +402,12 @@ export class DocumentStore implements Resource {
 
     // Update the editorState
     this.editorState = newState;
-    this.ioState = "idle";
+
+    if (suggestions.length > 0) {
+      this.ioState = "grammarActive";
+    } else {
+      this.ioState = "idle";
+    }
   }
 
   get empty() {

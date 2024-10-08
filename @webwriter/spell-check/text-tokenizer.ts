@@ -145,7 +145,16 @@ export function matchDiffs(diff: DiffToken[]): Suggestion[] {
   }
   return suggestions;
 }
-
+export function removeGrammarSuggestions(
+  editorState: EditorState
+): Transaction {
+  // Remove all existing grammar marks
+  return editorState.tr.removeMark(
+    0,
+    editorState.doc.content.size,
+    editorState.schema.marks.grammar
+  );
+}
 export function applyGrammarSuggestions(
   editorState: EditorState,
   suggestions: Suggestion[]
@@ -163,16 +172,13 @@ export function applyGrammarSuggestions(
 
     switch (suggestion.type) {
       case "replace":
-        tr = tr
-          // .removeMark(from, to, editorState.schema.marks.grammar)
-          .addMark(
-            from,
-            to,
-            editorState.schema.marks.grammar.create({
-              corrected: suggestion.corrected.value,
-            })
-          );
-
+        tr = tr.addMark(
+          from,
+          to,
+          editorState.schema.marks.grammar.create({
+            corrected: suggestion.corrected.value,
+          })
+        );
         break;
       case "insert":
         tr = tr.addMark(
@@ -182,7 +188,7 @@ export function applyGrammarSuggestions(
             corrected: suggestion.corrected.value,
           })
         );
-
+        break;
       case "delete":
         tr = tr.addMark(
           from,

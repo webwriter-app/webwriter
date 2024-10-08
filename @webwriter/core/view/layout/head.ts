@@ -26,8 +26,13 @@ export class Head extends LitElement {
   pendingChanges: boolean = false;
 
   @property({ type: String, attribute: true, reflect: true })
-  ioState: "idle" | "loading" | "saving" | "loadingPreview" | "loadingGrammar" =
-    "idle";
+  ioState:
+    | "idle"
+    | "loading"
+    | "saving"
+    | "loadingPreview"
+    | "loadingGrammar"
+    | "grammarActive" = "idle";
 
   @property({ type: Array, attribute: false })
   documentCommands: Command[] = [];
@@ -117,7 +122,7 @@ export class Head extends LitElement {
         <span
           title=${msg("This explorable has unsaved changes.")}
           id="pending-indicator"
-          >${this.ioState === "idle"
+          >${this.ioState === "idle" || this.ioState === "grammarActive"
             ? "*"
             : html`<sl-spinner></sl-spinner>`}</span
         >
