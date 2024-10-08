@@ -26,7 +26,8 @@ export class Head extends LitElement {
   pendingChanges: boolean = false;
 
   @property({ type: String, attribute: true, reflect: true })
-  ioState: "idle" | "loading" | "saving" | "loadingPreview" = "idle";
+  ioState: "idle" | "loading" | "saving" | "loadingPreview" | "loadingGrammar" =
+    "idle";
 
   @property({ type: Array, attribute: false })
   documentCommands: Command[] = [];

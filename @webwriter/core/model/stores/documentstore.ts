@@ -98,7 +98,8 @@ export class DocumentStore implements Resource {
   lastSavedState: EditorStateWithHead;
   initialState: EditorStateWithHead;
 
-  ioState: "idle" | "saving" | "loading" | "loadingPreview" = "idle";
+  ioState: "idle" | "saving" | "loading" | "loadingPreview" | "loadingGrammar" =
+    "idle";
 
   constructor(
     { schema, url, editorState, lang }: Options,
@@ -323,7 +324,8 @@ export class DocumentStore implements Resource {
 
   /** Does a spell check on the document text */
   async spellcheck() {
-    this.isSpellchecking = true;
+    this.ioState = "loadingGrammar";
+
     // get raw editor html
     const state = this.editorState;
     const serializer = DOMSerializer.fromSchema(state.schema);
@@ -378,7 +380,7 @@ export class DocumentStore implements Resource {
 
     // Update the editorState
     this.editorState = newState;
-    this.isSpellchecking = false;
+    this.ioState = "idle";
   }
 
   get empty() {

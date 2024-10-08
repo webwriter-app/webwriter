@@ -553,7 +553,15 @@
 'spaceKey': `Erdvė`,
 'tabKey': `⭾ Skirtukas`,
 'upKey': `↑ Į viršų`,
+'s6dc3339b268508dd': `Spell Check`,
+'s5c1501691641b359': `Checks the document for grammar errors`,
+'s7cb4e55c59663b1c': `Company`,
+'s5da52af9b083c29a': `Model`,
+'s9781a5bb3fcb26a3': `Select a company first`,
+'s15d0c0657c1ee08c': `API Key`,
+'s25dd7b138bd1ea5e': `apikey`,
 's60a4538660593aef': `OpenAI accounts allow you to use the OpenAI API to generate text and other content.`,
+'s429bd646f1cf8bc6': `Grammar LLM accounts allow you to use the Grammar LLM API to correct grammar in text.`,
 's82a13785572f0760': `OpenAI API Key`,
     };
   
