@@ -42,12 +42,14 @@ const BUNDLE_LOADER_MAP = {
 
 const BUNDLE_LOADER_OPTIONS = Object.entries(BUNDLE_LOADER_MAP).flatMap(([loader, exts]) => exts.map(ext => `--loader:${ext}=${loader}`))
 
-export class ServiceIssue extends Error {}
-export class ReadWriteIssue extends Error {}
-export class InstallIssue extends Error {}
-export class UninstallIssue extends Error {}
-export class UpdateIssue extends Error {}
-export class BundleIssue extends Error {
+
+export class PackageIssue extends Error {}
+export class ServiceIssue extends PackageIssue {}
+export class ReadWriteIssue extends PackageIssue {}
+export class InstallIssue extends PackageIssue {}
+export class UninstallIssue extends PackageIssue {}
+export class UpdateIssue extends PackageIssue {}
+export class BundleIssue extends PackageIssue {
 
   stack?: string
   id?: string
