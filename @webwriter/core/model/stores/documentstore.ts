@@ -358,9 +358,31 @@ export class DocumentStore implements Resource {
       inline_custom_elements: false,
     });
 
-    // get plain text
-    const text = formatHTMLToPlainText(html);
+    const selection = this.editorState.selection;
+    console.log("selection:", selection);
 
+    // Get plain text, either from selection or full document
+    let text: string;
+    let selectionStart: number | null = null;
+    let selectionEnd: number | null = null;
+
+    if (!selection.empty) {
+      const selectionFragment = selection.content().content;
+      console.log("selectionFragment:", selectionFragment);
+
+      // Create a temporary div to hold the selection content
+      const tempDiv = document.createElement("div");
+      serializer.serializeFragment(selectionFragment, { document }, tempDiv);
+
+      // Use formatHTMLToPlainText for the selection
+      text = formatHTMLToPlainText(tempDiv.innerHTML);
+
+      selectionStart = selection.from;
+      selectionEnd = selection.to;
+    } else {
+      // Use formatHTMLToPlainText for the full document
+      text = formatHTMLToPlainText(html);
+    }
     // get apiKey
     const llmAccount: LLMAccount = this.accounts.getAccount(
       "llm"
@@ -392,6 +414,13 @@ export class DocumentStore implements Resource {
     console.log(diffs);
     const suggestions = matchDiffs(diffs);
     console.log("suggestions:", suggestions);
+
+    // If there was a selection, adjust suggestion positions
+    if (selectionStart !== null && selectionEnd !== null) {
+      suggestions.forEach((suggestion) => {
+        suggestion.original.position += selectionStart - 1;
+      });
+    }
 
     // highlight differences in content using transactions
     const transaction = applyGrammarSuggestions(state, suggestions);

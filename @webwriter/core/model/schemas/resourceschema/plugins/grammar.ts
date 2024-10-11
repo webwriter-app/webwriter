@@ -11,7 +11,8 @@ export const grammarPlugin = (): SchemaPlugin => {
 
   function showTooltip(
     view: EditorView,
-    text: string,
+    correctedText: string,
+    incorrectText: string,
     start: number,
     end: number
   ) {
@@ -48,19 +49,30 @@ export const grammarPlugin = (): SchemaPlugin => {
     tooltip.appendChild(corner);
 
     const textSpan = document.createElement("span");
-    textSpan.textContent = text;
+    if (correctedText) {
+      textSpan.textContent = correctedText;
+      textSpan.addEventListener("mouseover", () => {
+        textSpan.style.color = "#4CAF50"; // Green color on hover
+      });
+    } else {
+      textSpan.textContent = incorrectText;
+      textSpan.style.textDecoration = "line-through";
+      textSpan.addEventListener("mouseover", () => {
+        textSpan.style.color = "#FF5722"; // Red color on hover
+      });
+    }
     textSpan.style.fontSize = "16px";
     textSpan.style.marginRight = "10px";
     textSpan.style.fontFamily = "sans-serif";
     textSpan.style.cursor = "pointer";
     textSpan.style.transition = "color 0.1s ease";
-    textSpan.addEventListener("mouseover", () => {
-      textSpan.style.color = "#4CAF50"; // Green color on hover
-    });
+
     textSpan.addEventListener("mouseout", () => {
       textSpan.style.color = "white";
     });
-    textSpan.addEventListener("click", handleCorrectionClick);
+    textSpan.addEventListener("click", () =>
+      handleCorrectionClick(correctedText)
+    );
     tooltip.appendChild(textSpan);
 
     const dismissButton = document.createElement("span");
@@ -79,14 +91,11 @@ export const grammarPlugin = (): SchemaPlugin => {
     dismissButton.addEventListener("click", handleDismiss);
     tooltip.appendChild(dismissButton);
 
-    textSpan.addEventListener("click", handleCorrectionClick);
-
     // Create a container for the tooltip that's a child of the editor
     const tooltipContainer = document.createElement("div");
     tooltipContainer.style.position = "absolute";
     tooltipContainer.style.top = "0";
     tooltipContainer.style.left = "0";
-    // tooltipContainer.style.width = "100%";
     tooltipContainer.style.height = "0";
     tooltipContainer.style.overflow = "visible";
     tooltipContainer.style.pointerEvents = "none"; // Allow clicks to pass through
@@ -170,20 +179,25 @@ export const grammarPlugin = (): SchemaPlugin => {
     }
   }
 
-  function handleCorrectionClick(event: MouseEvent) {
-    event.preventDefault();
-    event.stopPropagation();
-
-    if (activeView && activeRange && currentTooltip) {
+  function handleCorrectionClick(correctedText: string) {
+    if (activeView && activeRange) {
       const { from, to } = activeRange;
-      const correctedText =
-        currentTooltip.querySelector("span")?.textContent || "";
 
-      activeView.dispatch(
-        activeView.state.tr
-          .removeMark(from, to, activeView.state.schema.marks.grammar)
-          .insertText(correctedText, from, to)
-      );
+      if (correctedText) {
+        // If there's a correction, replace with the corrected text
+        activeView.dispatch(
+          activeView.state.tr
+            .removeMark(from, to, activeView.state.schema.marks.grammar)
+            .insertText(correctedText, from, to)
+        );
+      } else {
+        // If there's no correction, just remove the marked text
+        activeView.dispatch(
+          activeView.state.tr
+            .removeMark(from, to, activeView.state.schema.marks.grammar)
+            .delete(from, to)
+        );
+      }
 
       removeTooltip();
     }
@@ -293,6 +307,7 @@ export const grammarPlugin = (): SchemaPlugin => {
           if (mark) {
             let start = pos,
               end = pos;
+            let incorrectText = "";
             doc.nodesBetween(0, doc.content.size, (node, nodeStart) => {
               if (
                 node.isInline &&
@@ -301,14 +316,14 @@ export const grammarPlugin = (): SchemaPlugin => {
                 if (nodeStart <= pos && nodeStart + node.nodeSize > pos) {
                   start = nodeStart;
                   end = nodeStart + node.nodeSize;
+                  incorrectText = node.text || "";
                   return false;
                 }
               }
               return true;
             });
-            const correctedText =
-              mark.attrs.corrected || "No correction available";
-            showTooltip(view, correctedText, start, end);
+            const correctedText = mark.attrs.corrected || "";
+            showTooltip(view, correctedText, incorrectText, start, end);
             return true;
           }
           removeTooltip();

@@ -181,13 +181,23 @@ export function applyGrammarSuggestions(
         );
         break;
       case "insert":
+        // tr = tr.addMark(
+        //   from,
+        //   from,
+        //   editorState.schema.marks.grammar.create({
+        //     corrected: suggestion.corrected.value,
+        //   })
+        // );
+
+        tr = tr.insertText(suggestion.corrected.value, from + 1);
         tr = tr.addMark(
-          from,
           from + 1,
+          from + suggestion.corrected.value.length + 1,
           editorState.schema.marks.grammar.create({
             corrected: suggestion.corrected.value,
           })
         );
+
         break;
       case "delete":
         tr = tr.addMark(
