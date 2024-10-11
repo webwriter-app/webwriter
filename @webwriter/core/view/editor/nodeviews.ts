@@ -4,7 +4,7 @@ import { DOMParser, DOMSerializer, Fragment, Node, ResolvedPos, Slice, TagParseR
 import {LitElement, html, render} from "lit"
 
 import { EditorStateWithHead, getAttrs, globalHTMLAttributes, toAttributes } from "../../model"
-import {EditorViewController} from "."
+import {EditorViewController, ExplorableEditor} from "."
 import { selectParentNode } from "prosemirror-commands"
 import { filterObject, sameMembers, shallowCompare, browser } from "../../utility"
 import { readDOMChange } from "./prosemirror-view/domchange"
@@ -47,7 +47,7 @@ export class WidgetView implements NodeView {
 
   // static existingWidgets = new Set()
 
-	constructor(node: Node, view: EditorViewController, getPos: () => number, readonly initializedElements: Set<string>) {
+	constructor(node: Node, view: EditorViewController, getPos: () => number, readonly editor: ExplorableEditor) {
 		this.node = node
 		this.view = view
     this.getPos = getPos
@@ -117,7 +117,6 @@ export class WidgetView implements NodeView {
   }
 
   inTransaction = false
-  isMutating = false
 
   get widgetIdPath() {
     const ids = [this.dom.id]
@@ -137,7 +136,7 @@ export class WidgetView implements NodeView {
     if(oldName !== name) {
       return false
     }
-    if(this.isMutating) {
+    if(!this.editor.executingCommand) {
       this.node = node
       return true
     }
@@ -184,7 +183,6 @@ export class WidgetView implements NodeView {
     if((type as any) === "selection") {
       return false
     }
-    this.isMutating = true
     if(type === "childList") {
       (this.view as any).domObserver.stop()
       for(const node of [...Array.from(addedNodes), ...Array.from(removedNodes)]) {
@@ -194,7 +192,6 @@ export class WidgetView implements NodeView {
       }
       readDOMChange(this.view as any, this.getPos(), this.getPos() + this.node.nodeSize, true, Array.from(addedNodes));
       (this.view as any).domObserver.start()
-      setTimeout(() => this.isMutating = false)
       return true
     }
     else if(attr && !attrUnchanged) {
@@ -211,7 +208,6 @@ export class WidgetView implements NodeView {
           tr = tr.setNodeAttribute(this.getPos(), attr, final)  
         }
         else {
-          this.isMutating = false
           return true
         }
       }
@@ -226,11 +222,10 @@ export class WidgetView implements NodeView {
         const _ = {...this.node.attrs._, [attr]: value}
         tr = tr.setNodeAttribute(this.getPos(), "_", _)
       }
-      if(this.widgetIdPath.some(id => !this.initializedElements.has(id))) {
+      if(this.widgetIdPath.some(id => !this.editor.initializedElements.has(id))) {
         tr = tr.setMeta("addToHistory", false)
       }
       this.view.dispatch(tr)
-      setTimeout(() => this.isMutating = false)
       return true
     }
     return attrUnchanged

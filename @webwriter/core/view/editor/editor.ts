@@ -58,9 +58,20 @@ export class ExplorableEditor extends LitElement {
   @property({attribute: false})
   app: App
 
+  executingCommand = false
+
 	exec = (command: PmCommand) => {
-		command(this.pmEditor.state, this.pmEditor.dispatch, this.pmEditor as any)
-		this.pmEditor.focus()
+    this.executingCommand = true
+    try {
+      command(this.pmEditor.state, this.pmEditor.dispatch, this.pmEditor as any)
+      this.pmEditor.focus()
+    }
+    catch(err) {
+      throw err
+    }
+    finally {
+      this.executingCommand = false
+    }
 	}
 
   execInCodeEditor = (command: CmCommand) => command({state: this.cmEditor.state, dispatch: this.cmEditor.dispatch})
@@ -353,7 +364,7 @@ export class ExplorableEditor extends LitElement {
         (node: Node, view: EditorViewController, getPos: () => number) => new (nodeViews as any)[k](node, view, getPos),
       ])
       const widgetViewEntries = widgetKeys
-      .map(key => [key, (node: Node, view: EditorViewController, getPos: () => number) => new WidgetView(node, view, getPos, this.initializedElements)])
+      .map(key => [key, (node: Node, view: EditorViewController, getPos: () => number) => new WidgetView(node, view, getPos, this)])
 			this.cachedNodeViews = Object.fromEntries([...elementViewEntries, ...nodeViewEntries, ...widgetViewEntries])
 			return this.cachedNodeViews
 		}
@@ -862,44 +873,46 @@ export class ExplorableEditor extends LitElement {
   shouldBeEditable = (state: EditorState) => !this.ownerDocument.fullscreenElement
 
   setNodeAttribute(el: HTMLElement, key: string, value?: string | boolean, tag?: string) {
-    
-    const pos = this.pmEditor.posAtDOM(el, 0, 1) - 1
-    const resolved = this.editorState.doc.resolve(pos)
-    const node = resolved.nodeAfter ?? resolved.nodeBefore
-    const builtinAttr = key in (this.editorState.schema.nodes[node!.type.name].spec.attrs ?? {})
-    const dataAttr = key.startsWith("data-")
-    let v = value
-    if(value === true) {
-      v = ""
-    }
-    else if(value === false) {
-      v = undefined
-    }
-    let tr = this.editorState.tr
-    if(builtinAttr) {
-      tr = tr.setNodeMarkup(
-        pos,
-        tag? this.editorState.schema.nodes[tag]: undefined,
-        {...node!.attrs, [key]: v}
-      )
-      // tr.setNodeAttribute(pos, key, v)
-    }
-    else if(dataAttr) {
-      tr = tr.setNodeMarkup(
-        pos,
-        tag? this.editorState.schema.nodes[tag]: undefined,
-        {...node!.attrs, data: {...node!.attrs.data, [key]: v}}
-      )
-    }
-    else {
-      tr = tr.setNodeMarkup(
-        pos,
-        tag? this.editorState.schema.nodes[tag]: undefined,
-        {...node!.attrs, _: {...node!.attrs._, [key]: v}}
-      )
-    }
-    this.pmEditor.dispatch(tr)
-    this.pmEditor.focus()
+    this.exec((state, dispatch, view) => {     
+      const pos = this.pmEditor.posAtDOM(el, 0, 1) - 1
+      const resolved = state.doc.resolve(pos)
+      const node = resolved.nodeAfter ?? resolved.nodeBefore
+      const builtinAttr = key in (state.schema.nodes[node!.type.name].spec.attrs ?? {})
+      const dataAttr = key.startsWith("data-")
+      let v = value
+      if(value === true) {
+        v = ""
+      }
+      else if(value === false) {
+        v = undefined
+      }
+      let tr = state.tr
+      if(builtinAttr) {
+        tr = tr.setNodeMarkup(
+          pos,
+          tag? state.schema.nodes[tag]: undefined,
+          {...node!.attrs, [key]: v}
+        )
+        // tr.setNodeAttribute(pos, key, v)
+      }
+      else if(dataAttr) {
+        tr = tr.setNodeMarkup(
+          pos,
+          tag? state.schema.nodes[tag]: undefined,
+          {...node!.attrs, data: {...node!.attrs.data, [key]: v}}
+        )
+      }
+      else {
+        tr = tr.setNodeMarkup(
+          pos,
+          tag? state.schema.nodes[tag]: undefined,
+          {...node!.attrs, _: {...node!.attrs._, [key]: v}}
+        )
+      }
+      this.pmEditor.dispatch(tr)
+      this.pmEditor.focus()
+      return true
+    })
   }
 
   handleDOMEvents = {
