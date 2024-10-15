@@ -148,12 +148,34 @@ export function matchDiffs(diff: DiffToken[]): Suggestion[] {
 export function removeGrammarSuggestions(
   editorState: EditorState
 ): Transaction {
-  // Remove all existing grammar marks
-  return editorState.tr.removeMark(
-    0,
-    editorState.doc.content.size,
-    editorState.schema.marks.grammar
-  );
+  const { tr, doc, schema } = editorState;
+  const grammarMark = schema.marks.grammar;
+
+  // We'll use this to track positions as we potentially delete content
+  let offset = 0;
+
+  doc.descendants((node, pos) => {
+    if (node.isInline) {
+      const mark = node.marks.find((m) => m.type === grammarMark);
+      if (mark) {
+        const from = pos + offset;
+        const to = from + node.nodeSize;
+
+        if (mark.attrs.isInsert) {
+          // For insertions, delete the content
+          tr.delete(from, to);
+          // Update offset to account for deleted content
+          offset -= to - from;
+        } else {
+          // For corrections, just remove the mark
+          tr.removeMark(from, to, grammarMark);
+        }
+      }
+    }
+    return true;
+  });
+
+  return tr;
 }
 export function applyGrammarSuggestions(
   editorState: EditorState,
