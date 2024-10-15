@@ -361,10 +361,11 @@ export class AccountManager extends LitElement {
         </sl-tooltip>
       </h2>
       <div class="accounts-list">
-        ${Object.values(accounts).map((account) =>
-          this.accountCards[type](account as any)
-        )}
-        ${type === "file"
+        ${Object.values(accounts).map((account) => {
+          console.log(!!accounts[type]);
+          return this.accountCards[type](account as any);
+        })}
+        ${type === "file" || !!accounts[type]
           ? undefined
           : html`
               ${this.pendingAccount?.type === type
