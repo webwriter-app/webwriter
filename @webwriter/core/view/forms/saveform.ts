@@ -453,24 +453,26 @@ export class SaveForm extends LitElement {
         .value=${this.clientName}
         @sl-change=${this.handleLocationChange}
       >
-        ${this.clients.map(
-          ([protocol, name, client]) => html`<sl-radio-button
-            variant="neutral"
-            size="large"
-            class="location"
-            .value=${`${protocol} ${name}`}
-            ?data-isfile=${protocol === "file"}
-          >
-            <sl-icon
-              name=${(SaveForm.protocolIcons as any)[protocol]}
-              class="location-icon"
-            ></sl-icon>
-            <span class="location-label"
-              >${(SaveForm.protocolLabels as any)[protocol]}</span
+        ${this.clients
+          // .filter((client) => true) //filter out llm clients
+          .map(
+            ([protocol, name, client]) => html`<sl-radio-button
+              variant="neutral"
+              size="large"
+              class="location"
+              .value=${`${protocol} ${name}`}
+              ?data-isfile=${protocol === "file"}
             >
-            <span class="location-identity">${client?.account?.id}</span>
-          </sl-radio-button>`
-        )}
+              <sl-icon
+                name=${(SaveForm.protocolIcons as any)[protocol]}
+                class="location-icon"
+              ></sl-icon>
+              <span class="location-label"
+                >${(SaveForm.protocolLabels as any)[protocol]}</span
+              >
+              <span class="location-identity">${client?.account?.id}</span>
+            </sl-radio-button>`
+          )}
       </sl-radio-group>
       ${this.client.searchDocuments && !this.client.saveDocument
         ? this.Tree()

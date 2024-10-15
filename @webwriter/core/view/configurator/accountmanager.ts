@@ -327,7 +327,6 @@ export class AccountManager extends LitElement {
 
   AccountHeader<T extends AccountTypeId>(account?: Account<T>) {
     return html`<div class="account-header" slot="header">
-      <b class="account-label">${account?.id}</b>
       <sl-icon-button
         name="x"
         title=${!account ? msg("Cancel") : msg("Remove this account")}

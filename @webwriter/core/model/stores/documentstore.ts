@@ -57,6 +57,7 @@ import { HTMLParserSerializer } from "../marshal/html";
 import { ChatCompletion } from "openai/resources";
 import { ParserSerializer } from "../marshal/parserserializer";
 import { LLMAccount, OpenAIAccount } from "../schemas/accounts";
+import { msg } from "@lit/localize";
 
 export const CODEMIRROR_EXTENSIONS = [basicSetup, cmHTML()];
 
@@ -328,10 +329,103 @@ export class DocumentStore implements Resource {
 
   /** Does a spell check on the document text */
   async spellcheck() {
-    if (this.ioState === "grammarActive") {
-      // Remove all existing grammar marks
+    try {
+      if (this.ioState === "grammarActive") {
+        // Remove all existing grammar marks
+        const state = this.editorState;
+        const transaction = removeGrammarSuggestions(state);
+
+        // Create a new EditorStateWithHead applying the transaction
+        const newState = this.editorState.apply(
+          transaction
+        ) as EditorStateWithHead;
+        newState["head$"] = this.editorState["head$"];
+
+        // Update the editorState
+        this.editorState = newState;
+
+        this.ioState = "idle";
+        return;
+      }
+
+      this.ioState = "loadingGrammar";
+
+      // get raw editor html
       const state = this.editorState;
-      const transaction = removeGrammarSuggestions(state);
+      const serializer = DOMSerializer.fromSchema(state.schema);
+      const dom = serializer.serializeNode(state.doc) as HTMLElement;
+      const html = htmlBeautify(dom.outerHTML, {
+        indent_size: 2,
+        wrap_attributes: "force-aligned",
+        inline_custom_elements: false,
+      });
+
+      const selection = this.editorState.selection;
+      console.log("selection:", selection);
+
+      // Get plain text, either from selection or full document
+      let text: string;
+      let selectionStart: number | null = null;
+      let selectionEnd: number | null = null;
+
+      if (!selection.empty) {
+        const selectionFragment = selection.content().content;
+        console.log("selectionFragment:", selectionFragment);
+
+        // Create a temporary div to hold the selection content
+        const tempDiv = document.createElement("div");
+        serializer.serializeFragment(selectionFragment, { document }, tempDiv);
+
+        // Use formatHTMLToPlainText for the selection
+        text = formatHTMLToPlainText(tempDiv.innerHTML);
+
+        selectionStart = selection.from;
+        selectionEnd = selection.to;
+      } else {
+        // Use formatHTMLToPlainText for the full document
+        text = formatHTMLToPlainText(html);
+      }
+      // get apiKey
+      const llmAccount: LLMAccount = this.accounts.getAccount(
+        "llm"
+      ) as LLMAccount;
+      const apiKey = llmAccount.data.apiKey;
+      const company = llmAccount.data.company;
+      const model = llmAccount.data.model;
+
+      // send text to spellchecker
+      const res = await fetchGrammarCorrection(text, apiKey, company, model);
+      if (!res) {
+        console.error("no response from spellchecker!");
+        return;
+      }
+
+      const correctedText = res.choices[0].message.content;
+      if (!correctedText) {
+        console.error("no corrected text!");
+        return;
+      }
+      console.log("original:", text, "corrected:", correctedText);
+
+      // tokenize both texts
+      const originalTokens = tokenizeText(text);
+      const correctedTokens = tokenizeText(correctedText);
+
+      // get token differences
+      const diffs = diffTokens(originalTokens, correctedTokens);
+      console.log(diffs);
+      const suggestions = matchDiffs(diffs);
+      console.log("suggestions:", suggestions);
+
+      // If there was a selection, adjust suggestion positions
+      if (selectionStart !== null && selectionEnd !== null) {
+        suggestions.forEach((suggestion) => {
+          suggestion.original.position += selectionStart - 1;
+        });
+      }
+
+      // highlight differences in content using transactions
+      const transaction = applyGrammarSuggestions(state, suggestions);
 
       // Create a new EditorStateWithHead applying the transaction
       const newState = this.editorState.apply(
@@ -342,100 +436,15 @@ export class DocumentStore implements Resource {
       // Update the editorState
       this.editorState = newState;
 
+      if (suggestions.length > 0) {
+        this.ioState = "grammarActive";
+      } else {
+        this.ioState = "idle";
+      }
+    } catch (error: any) {
       this.ioState = "idle";
+      console.error(error.message);
       return;
-    }
-
-    this.ioState = "loadingGrammar";
-
-    // get raw editor html
-    const state = this.editorState;
-    const serializer = DOMSerializer.fromSchema(state.schema);
-    const dom = serializer.serializeNode(state.doc) as HTMLElement;
-    const html = htmlBeautify(dom.outerHTML, {
-      indent_size: 2,
-      wrap_attributes: "force-aligned",
-      inline_custom_elements: false,
-    });
-
-    const selection = this.editorState.selection;
-    console.log("selection:", selection);
-
-    // Get plain text, either from selection or full document
-    let text: string;
-    let selectionStart: number | null = null;
-    let selectionEnd: number | null = null;
-
-    if (!selection.empty) {
-      const selectionFragment = selection.content().content;
-      console.log("selectionFragment:", selectionFragment);
-
-      // Create a temporary div to hold the selection content
-      const tempDiv = document.createElement("div");
-      serializer.serializeFragment(selectionFragment, { document }, tempDiv);
-
-      // Use formatHTMLToPlainText for the selection
-      text = formatHTMLToPlainText(tempDiv.innerHTML);
-
-      selectionStart = selection.from;
-      selectionEnd = selection.to;
-    } else {
-      // Use formatHTMLToPlainText for the full document
-      text = formatHTMLToPlainText(html);
-    }
-    // get apiKey
-    const llmAccount: LLMAccount = this.accounts.getAccount(
-      "llm"
-    ) as LLMAccount;
-    const apiKey = llmAccount.data.apiKey;
-    const company = llmAccount.data.company;
-    const model = llmAccount.data.model;
-
-    // send text to spellchecker
-    const res = await fetchGrammarCorrection(text, apiKey, company, model);
-    if (!res) {
-      console.error("no response from spellchecker!");
-      return;
-    }
-
-    const correctedText = res.choices[0].message.content;
-    if (!correctedText) {
-      console.error("no corrected text!");
-      return;
-    }
-    console.log("original:", text, "corrected:", correctedText);
-
-    // tokenize both texts
-    const originalTokens = tokenizeText(text);
-    const correctedTokens = tokenizeText(correctedText);
-
-    // get token differences
-    const diffs = diffTokens(originalTokens, correctedTokens);
-    console.log(diffs);
-    const suggestions = matchDiffs(diffs);
-    console.log("suggestions:", suggestions);
-
-    // If there was a selection, adjust suggestion positions
-    if (selectionStart !== null && selectionEnd !== null) {
-      suggestions.forEach((suggestion) => {
-        suggestion.original.position += selectionStart - 1;
-      });
-    }
-
-    // highlight differences in content using transactions
-    const transaction = applyGrammarSuggestions(state, suggestions);
-
-    // Create a new EditorStateWithHead applying the transaction
-    const newState = this.editorState.apply(transaction) as EditorStateWithHead;
-    newState["head$"] = this.editorState["head$"];
-
-    // Update the editorState
-    this.editorState = newState;
-
-    if (suggestions.length > 0) {
-      this.ioState = "grammarActive";
-    } else {
-      this.ioState = "idle";
     }
   }
 
