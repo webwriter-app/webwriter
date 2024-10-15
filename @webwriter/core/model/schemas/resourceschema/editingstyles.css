@@ -426,6 +426,16 @@ body > .ww-widget::after {
   transition: background-color 0.1s ease;
 }
 
+.grammar-insert {
+  color: dimgrey;
+  border-bottom: lightgreen 2px solid;
+}
+
+.grammar-insert:hover {
+  background-color: rgba(0, 255, 0, 0.2);
+  transition: background-color 0.1s ease;
+}
+
 table .ProseMirror-gapcursor {
   border: 2px dashed var(--sl-color-primary-600);
   display: table-cell;

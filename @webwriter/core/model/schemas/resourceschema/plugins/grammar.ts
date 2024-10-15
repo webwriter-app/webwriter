@@ -8,13 +8,15 @@ export const grammarPlugin = (): SchemaPlugin => {
   let currentTooltip: HTMLElement | null = null;
   let activeView: EditorView | null = null;
   let activeRange: { from: number; to: number } | null = null;
+  let isActiveInsert: boolean = false;
 
   function showTooltip(
     view: EditorView,
     correctedText: string,
     incorrectText: string,
     start: number,
-    end: number
+    end: number,
+    isInsert: boolean
   ) {
     removeTooltip();
 
@@ -52,7 +54,7 @@ export const grammarPlugin = (): SchemaPlugin => {
     if (correctedText) {
       textSpan.textContent = correctedText;
       textSpan.addEventListener("mouseover", () => {
-        textSpan.style.color = "#4CAF50"; // Green color on hover
+        textSpan.style.color = "#4CAF50";
       });
     } else {
       textSpan.textContent = incorrectText;
@@ -106,6 +108,7 @@ export const grammarPlugin = (): SchemaPlugin => {
     currentTooltip = tooltip;
     activeView = view;
     activeRange = { from: start, to: end };
+    isActiveInsert = isInsert;
 
     updateTooltipPosition();
   }
@@ -210,13 +213,23 @@ export const grammarPlugin = (): SchemaPlugin => {
     if (activeView && activeRange) {
       const { from, to } = activeRange;
 
-      activeView.dispatch(
-        activeView.state.tr.removeMark(
-          from,
-          to,
-          activeView.state.schema.marks.grammar
-        )
-      );
+      if (isActiveInsert) {
+        // For insertions, remove the mark and delete the text
+        activeView.dispatch(
+          activeView.state.tr
+            .removeMark(from, to, activeView.state.schema.marks.grammar)
+            .delete(from, to)
+        );
+      } else {
+        // For corrections, just remove the mark
+        activeView.dispatch(
+          activeView.state.tr.removeMark(
+            from,
+            to,
+            activeView.state.schema.marks.grammar
+          )
+        );
+      }
 
       removeTooltip();
     }
@@ -236,13 +249,14 @@ export const grammarPlugin = (): SchemaPlugin => {
         toDOM: (node) => [
           "gr",
           {
-            class: "grammar-mark",
+            class: node.attrs.isInsert ? "grammar-insert" : "grammar-mark",
             corrected: node.attrs.corrected,
           },
           0,
         ],
         attrs: {
           corrected: { default: null },
+          isInsert: { default: false },
         },
         inclusive: false,
       } as MarkSpec,
@@ -308,6 +322,7 @@ export const grammarPlugin = (): SchemaPlugin => {
             let start = pos,
               end = pos;
             let incorrectText = "";
+            let isInsert = false;
             doc.nodesBetween(0, doc.content.size, (node, nodeStart) => {
               if (
                 node.isInline &&
@@ -317,13 +332,21 @@ export const grammarPlugin = (): SchemaPlugin => {
                   start = nodeStart;
                   end = nodeStart + node.nodeSize;
                   incorrectText = node.text || "";
+                  isInsert = mark.attrs.isInsert;
                   return false;
                 }
               }
               return true;
             });
             const correctedText = mark.attrs.corrected || "";
-            showTooltip(view, correctedText, incorrectText, start, end);
+            showTooltip(
+              view,
+              correctedText,
+              incorrectText,
+              start,
+              end,
+              isInsert
+            );
             return true;
           }
           removeTooltip();
