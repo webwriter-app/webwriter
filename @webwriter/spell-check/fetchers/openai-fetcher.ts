@@ -5,15 +5,26 @@ import { ChatCompletionMessageParam, ChatCompletion } from "openai/resources";
 // @meeting
 // const apiKey = process.env.OPENAI_API_KEY;
 
-// const apiKey = "sk-proj-l0h8DtCp5fCopl3EU0yZT3BlbkFJpk5WRkI7cON1yRsR52Rj";
-// const apiKey =
+//  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
 // const model = "gpt-4o-mini";
 const instructionMessage: ChatCompletionMessageParam = {
   role: "system",
   content: [
     {
       type: "text",
-      text: "You are a language model assistant helping a user with grammar correction. The user provides text, and you return just the corrected version of the text. If the text is unintelligible or already correct, you should return the original text.",
+      // text: "You are a language model assistant helping a user with grammar correction. The user provides text, and you return just the corrected version of the text. If the text is unintelligible or already correct, you should return the original text.",
+      text: `
+      You are a highly skilled proofreader and editor. Your task is to correct spelling and grammar mistakes in the following text snippet. Follow these guidelines:
+      
+      1. Correct any spelling errors or grammatical mistakes you find.
+      2. Maintain as much of the original text as possible. Only make changes where necessary for correctness.
+      3. If the text is completely unintelligible, return it unchanged.
+      4. Remember that this is an excerpt from a larger text. Do not attempt to correct or complete words that may be cut off at the beginning or end of the snippet.
+      5. Do not add any explanations or comments. Simply return the corrected text.
+      6. If no corrections are needed, return the original text unchanged.
+      
+      Here's the text to check and correct:
+`,
     },
   ],
 };
