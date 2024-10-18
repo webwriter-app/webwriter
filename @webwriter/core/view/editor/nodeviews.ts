@@ -242,7 +242,6 @@ export class WidgetView implements NodeView {
     this.emitWidgetInteract(e)
     const isDenied = atomDenyList.some(E => typeof E === "string"? E === e.type: e instanceof E)
     const isAllowed = atomAllowList.some(E => typeof E === "string"? E === e.type: e instanceof E)
-    console.log(e, isDenied && !isAllowed)
     return isDenied && !isAllowed
 	}
 
