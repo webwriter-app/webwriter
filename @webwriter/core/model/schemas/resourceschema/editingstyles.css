@@ -10,6 +10,7 @@ html {
   --scrollbar-width: 16px;
   pointer-events: none;
   user-select: none;
+  -webkit-user-select: none;
 }
 
 html:not(:has(:fullscreen)) {
@@ -125,6 +126,7 @@ figure.ProseMirror-selectednode::before {
 .ProseMirror {
   pointer-events: all;
   user-select: initial;
+  -webkit-user-select: initial;
   position: relative;
   outline: none;
   display: block;
@@ -155,7 +157,7 @@ figure.ProseMirror-selectednode::before {
   display: block;
 }
 
-html.ww-key-ctrl body * {
+html:is(.ww-key-ctrl, .ww-key-meta) body * {
   cursor: pointer;
 }
 
@@ -214,7 +216,7 @@ html.ww-key-ctrl body * {
   border-color: var(--sl-color-danger-400);
 }*/
 
-:is(.ww-copying, .ww-cutting, .ww-deleting, html.ww-key-ctrl body *)::before {
+:is(.ww-copying, .ww-cutting, .ww-deleting, html:is(.ww-key-ctrl, .ww-key-meta) body *)::before {
   content: "";
   position: absolute;
   right: -20px;
@@ -226,11 +228,11 @@ html.ww-key-ctrl body * {
   height: 100%;
 }
 
-html.ww-key-ctrl body * {
+html:is(.ww-key-ctrl, .ww-key-meta) body * {
   pointer-events: none;
 }
 
-html.ww-key-ctrl body *::before {
+html:is(.ww-key-ctrl, .ww-key-meta) body *::before {
   pointer-events: all;
   z-index: unset;
 }
@@ -404,6 +406,7 @@ abbr {
   color: darkgray;
   pointer-events: none;
   user-select: none;
+  -webkit-user-select: none;
 }
 
 .ProseMirror-gapcursor::after {
@@ -454,6 +457,7 @@ video:not([controls]) {
 math:not([display=block]) {
   & * {
     user-select: none;
+    -webkit-user-select: none;
     pointer-events: none;
   }
 }
