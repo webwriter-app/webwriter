@@ -168,13 +168,17 @@ export class WidgetView implements NodeView {
   }
   
   handleWidgetClick(e: MouseEvent) {
-    if(e.offsetX > this.dom.offsetWidth || e.ctrlKey) {
+    if(e.ctrlKey || e.metaKey) {
       this.selectFocused()
       // e.preventDefault()
       // e.stopImmediatePropagation()
     }
     this.emitWidgetClick(e)
   }
+
+  /*setSelection(anchor: number, head: number, root: Document | ShadowRoot) {
+    console.log(anchor, head, root)
+  }*/
 
 	ignoreMutation(mutation: MutationRecord) {
     const {type, target, attributeName: attr, oldValue, addedNodes, removedNodes, previousSibling, nextSibling, attributeNamespace} = mutation
@@ -234,10 +238,11 @@ export class WidgetView implements NodeView {
 	stopEvent(e: Event) {
     const window = this.dom.ownerDocument.defaultView!
     const atomDenyList = [window.UIEvent, window.ClipboardEvent]
-    const atomAllowList = [window.FocusEvent, window.DragEvent, "contextmenu"]
+    const atomAllowList = [window.FocusEvent, window.DragEvent, window.MouseEvent, "contextmenu"]
     this.emitWidgetInteract(e)
     const isDenied = atomDenyList.some(E => typeof E === "string"? E === e.type: e instanceof E)
     const isAllowed = atomAllowList.some(E => typeof E === "string"? E === e.type: e instanceof E)
+    console.log(e, isDenied && !isAllowed)
     return isDenied && !isAllowed
 	}
 
