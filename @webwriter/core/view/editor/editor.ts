@@ -926,7 +926,7 @@ export class ExplorableEditor extends LitElement {
       this.dispatchEvent(new KeyboardEvent(ev.type, ev))
     },
     "selectstart": (_: any, ev: Event) => {
-
+      console.log("selectstart")
     },
     "ww-widget-interact": (_: any, ev: KeyboardEvent) => {
       this.updateDocumentElementClasses(ev, true)
