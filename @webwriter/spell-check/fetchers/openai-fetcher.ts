@@ -30,7 +30,6 @@ const instructionMessage: ChatCompletionMessageParam = {
 };
 
 const openai = new OpenAI({
-  // apiKey: apiKey,
   apiKey: "placeholder",
   dangerouslyAllowBrowser: true,
 });
