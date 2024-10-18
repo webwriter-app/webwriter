@@ -1884,7 +1884,9 @@ export class CommandController implements ReactiveController {
         active: (host) => host.store.document.ioState === "grammarActive",
         disabled: (host) =>
           host.activeEditor!.sourceMode ||
-          host.store.document.ioState === "loadingGrammar",
+          host.store.document.ioState === "loadingGrammar" ||
+          (host.store.document.lang !== "en" &&
+            host.store.document.lang !== "de"),
         loading: (host) => host.store.document.ioState === "loadingGrammar",
       }),
       textStyle: new LayoutCommand(this.host, {

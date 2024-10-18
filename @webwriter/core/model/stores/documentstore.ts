@@ -385,6 +385,7 @@ export class DocumentStore implements Resource {
         // Use formatHTMLToPlainText for the full document
         text = formatHTMLToPlainText(html);
       }
+
       // get apiKey
       const llmAccount: LLMAccount = this.accounts.getAccount(
         "llm"
@@ -393,8 +394,18 @@ export class DocumentStore implements Resource {
       const company = llmAccount.data.company;
       const model = llmAccount.data.model;
 
+      // get document language
+      const language = this.head.doc.attrs?.htmlAttrs?.lang;
+      console.log("language:", language);
+
       // send text to spellchecker
-      const res = await fetchGrammarCorrection(text, apiKey, company, model);
+      const res = await fetchGrammarCorrection(
+        text,
+        apiKey,
+        company,
+        model,
+        language
+      );
       if (!res) {
         console.error("no response from spellchecker!");
         return;

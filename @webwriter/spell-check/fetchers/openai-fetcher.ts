@@ -35,6 +35,7 @@ const openai = new OpenAI({
 });
 
 function fetchOpenAIChatCompletion(
+  systemPrompt: string,
   messages: ChatCompletionMessageParam[],
   apiKey: string,
   model: string
@@ -49,7 +50,18 @@ function fetchOpenAIChatCompletion(
   return openai.chat.completions.create({
     model: model,
     temperature: 0,
-    messages: [instructionMessage, ...messages],
+    messages: [
+      {
+        role: "system",
+        content: [
+          {
+            type: "text",
+            text: systemPrompt,
+          },
+        ],
+      },
+      ...messages,
+    ],
     max_tokens: 1024,
     top_p: 1,
     frequency_penalty: 0,

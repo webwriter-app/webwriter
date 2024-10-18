@@ -132,19 +132,13 @@ export const grammarPlugin = (): SchemaPlugin => {
 
     // Position the tooltip horizontally
     const leftPosition =
-      centerX - tooltipRect.width / 2 - editorRect.left + editorLeftMargin;
+      centerX - tooltipRect.width / 2 - editorRect.left + editorLeftMargin + 15;
     currentTooltip.style.left = `${Math.max(0, leftPosition)}px`;
 
     // Position the tooltip vertically
     const topPosition =
       start_coords.top - tooltipRect.height - 15 - editorRect.top;
     currentTooltip.style.top = `${Math.max(0, topPosition)}px`;
-
-    // Ensure the tooltip doesn't go off-screen to the right
-    const rightEdge = leftPosition + tooltipRect.width;
-    if (rightEdge > editorRect.width) {
-      currentTooltip.style.left = `${editorRect.width - tooltipRect.width}px`;
-    }
   }
 
   function removeTooltip() {
@@ -258,7 +252,7 @@ export const grammarPlugin = (): SchemaPlugin => {
           corrected: { default: null },
           isInsert: { default: false },
         },
-        inclusive: false,
+        inclusive: true,
       } as MarkSpec,
     },
     plugin: new Plugin({
@@ -299,46 +293,55 @@ export const grammarPlugin = (): SchemaPlugin => {
           const { state } = view;
           const { doc } = state;
 
-          const range = doc.resolve(pos);
-          let mark = range.marks().find((m) => m.type.name === "grammar");
+          // Function to find grammar mark at a given position
+          const findGrammarMarkAtPos = (pos: number) => {
+            const resolvedPos = doc.resolve(pos);
+            return resolvedPos.marks().find((m) => m.type.name === "grammar");
+          };
 
-          if (!mark) {
-            // try positions before and after the click
-            const rangeBefore = doc.resolve(Math.max(0, pos - 1));
-            const rangeAfter = doc.resolve(Math.min(doc.content.size, pos + 1));
+          // Check the clicked position and surrounding positions
+          let mark = findGrammarMarkAtPos(pos);
+          let start = pos,
+            end = pos;
 
-            mark = rangeBefore.marks().find((m) => m.type.name === "grammar");
-            if (mark) {
-              pos = Math.max(0, pos - 1);
-            } else {
-              mark = rangeAfter.marks().find((m) => m.type.name === "grammar");
-              if (mark) {
-                pos = Math.min(doc.content.size, pos + 1);
-              }
-            }
-          }
+          console.log(mark, pos);
+
+          // if (!mark) {
+          //   // Check one position before
+          //   mark = findGrammarMarkAtPos(Math.max(0, pos - 1));
+          //   console.log("start", start, "end", end);
+          //   if (mark) {
+          //     pos = Math.max(0, pos - 1);
+          //   } else {
+          //     // Check one position after
+          //     mark = findGrammarMarkAtPos(Math.min(doc.content.size, pos + 1));
+          //     if (mark) {
+          //       pos = Math.min(doc.content.size, pos + 1);
+          //     }
+          //   }
+          // }
 
           if (mark) {
-            let start = pos,
-              end = pos;
-            let incorrectText = "";
-            let isInsert = false;
-            doc.nodesBetween(0, doc.content.size, (node, nodeStart) => {
-              if (
-                node.isInline &&
-                node.marks.some((m) => m.type.name === "grammar")
-              ) {
-                if (nodeStart <= pos && nodeStart + node.nodeSize > pos) {
+            // Find the full range of the marked text
+            doc.nodesBetween(
+              Math.max(0, pos - 1),
+              Math.min(doc.content.size, pos + 2),
+              (node, nodeStart) => {
+                if (
+                  node.isInline &&
+                  node.marks.some((m) => m.type.name === "grammar")
+                ) {
                   start = nodeStart;
                   end = nodeStart + node.nodeSize;
-                  incorrectText = node.text || "";
-                  isInsert = mark.attrs.isInsert;
                   return false;
                 }
+                return true;
               }
-              return true;
-            });
+            );
+            const incorrectText = doc.textBetween(start, end);
+            const isInsert = mark.attrs.isInsert;
             const correctedText = mark.attrs.corrected || "";
+
             showTooltip(
               view,
               correctedText,
@@ -349,6 +352,7 @@ export const grammarPlugin = (): SchemaPlugin => {
             );
             return true;
           }
+
           removeTooltip();
           return false;
         },

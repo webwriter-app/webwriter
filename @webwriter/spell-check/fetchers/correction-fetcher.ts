@@ -17,7 +17,7 @@ import { fetchGeminiChatCompletion } from "./google-fetcher";
   */
 }
 
-const instructionMessage = `
+const instructionMessageEN = `
       You are a highly skilled proofreader and editor. Your task is to correct spelling and grammar mistakes in the following text snippet. Follow these guidelines:
       
       1. Correct any spelling errors or grammatical mistakes you find.
@@ -30,15 +30,43 @@ const instructionMessage = `
       Here's the text to check and correct:
 `;
 
+const instructionMessageDE = `
+ Sie sind ein hochqualifizierter Korrekturleser und Redakteur. Ihre Aufgabe ist es, Rechtschreib- und Grammatikfehler in dem folgenden Textausschnitt zu korrigieren. Befolgen Sie diese Richtlinien:
+      
+      1. Korrigieren Sie alle Rechtschreib- und Grammatikfehler, die Sie finden.
+      2. Behalten Sie den Originaltext so weit wie möglich bei. Nehmen Sie nur dort Änderungen vor, wo es für die Korrektheit notwendig ist.
+      3. Wenn der Text völlig unverständlich ist, senden Sie ihn unverändert zurück.
+      4. Denken Sie daran, dass es sich um einen Auszug aus einem größeren Text handelt. Versuchen Sie nicht, Wörter zu korrigieren oder zu vervollständigen, die am Anfang oder Ende des Auszugs abgeschnitten sind.
+      5. Fügen Sie keine Erklärungen oder Kommentare hinzu. Geben Sie einfach den korrigierten Text zurück.
+      6. Wenn keine Korrekturen erforderlich sind, senden Sie den Originaltext unverändert zurück.
+      
+      Hier ist der zu prüfende und zu korrigierende Text:
+`;
+
+const fetchInstructionMessage = (language: string): string => {
+  switch (language) {
+    case "en":
+      return instructionMessageEN;
+    case "de":
+      return instructionMessageDE;
+    default:
+      return instructionMessageEN;
+  }
+};
+
 export function fetchGrammarCorrection(
   text: string,
   apiKey: string,
   company: string,
-  model: string
+  model: string,
+  language: string
 ): any | void {
+  const instructionMessage = fetchInstructionMessage(language);
+
   switch (company) {
     case "OpenAI":
       return fetchOpenAIChatCompletion(
+        instructionMessage,
         [{ role: "user", content: text }],
         apiKey,
         model
