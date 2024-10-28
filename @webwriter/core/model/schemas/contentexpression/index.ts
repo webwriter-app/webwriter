@@ -137,7 +137,7 @@ export const ContentExpression = Object.assign(z.string().transform<Expression>(
         parent
       }
       seen.set(expression.raw, result)
-      return seen.get(expression.raw) ?? Object.assign(result, {content: content.map(c => ContentExpression.resolve(schema, c, result, seen))})
+      return Object.assign(result, {content: content.map(c => ContentExpression.resolve(schema, c, result, seen))})
     }
     else {
       return expression
