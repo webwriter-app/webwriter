@@ -356,6 +356,10 @@ body > .ww-widget::after {
   text-align: left;
 }
 
+body > p:first-child {
+  margin-top: 0;
+}
+
 table .ProseMirror-gapcursor {
   border: 2px dashed var(--sl-color-primary-600);
   display: table-cell;
@@ -412,7 +416,6 @@ abbr {
 .ProseMirror-gapcursor::after {
   z-index: 2147483647;
 }
-
 
 
 iframe:not([src]), picture:not(:has(img[src])), video:not([src]):not(:has(track[src])) {
@@ -527,6 +530,15 @@ table:empty::after {
   margin-top: -0.4em;
   background: currentColor;
 }
+
+/*
+body:not(:has(:not(.ProseMirror-gapcursor))) .ProseMirror-gapcursor::after {
+  clip-path: none;
+  width: 2px;
+  height: 1.25em;
+  margin: 0;
+  margin-top: 20px;
+}*/
 
 .ProseMirror-widget {
   margin-block: 0;

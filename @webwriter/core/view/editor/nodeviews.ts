@@ -96,7 +96,7 @@ export class WidgetView implements NodeView {
     // console.log("recreate DOM of", "<" + this.node.type.name + ">")
 		const dom = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node, {document: this.view.dom.ownerDocument}) as HTMLElement
     if(!ignoreListeners) {
-      dom.addEventListener("focus", e => this.selectFocused(), {passive: true})
+      dom.addEventListener("focus", e => this.select(), {passive: true})
       dom.addEventListener("mouseenter", e => this.emitWidgetMouseenter(e), {passive: true})
       dom.addEventListener("mouseleave", e => this.emitWidgetMouseleave(e), {passive: true})
       dom.addEventListener("keydown", e => this.emitWidgetInteract(e), {passive: true})
@@ -157,7 +157,9 @@ export class WidgetView implements NodeView {
     return Array.from(this.dom.shadowRoot?.querySelectorAll("slot") ?? [])
   }
 
-  selectFocused() {
+
+
+  select() {
     const pos = this.getPos()
     if(pos === undefined) {
       return
@@ -169,11 +171,16 @@ export class WidgetView implements NodeView {
   
   handleWidgetClick(e: MouseEvent) {
     if(e.ctrlKey || e.metaKey) {
-      this.selectFocused()
+      this.select()
       // e.preventDefault()
       // e.stopImmediatePropagation()
     }
     this.emitWidgetClick(e)
+  }
+  
+  /*
+  selectNode() {
+    console.log("selectNode")
   }
 
   /*setSelection(anchor: number, head: number, root: Document | ShadowRoot) {
@@ -237,12 +244,20 @@ export class WidgetView implements NodeView {
 
 	stopEvent(e: Event) {
     const window = this.dom.ownerDocument.defaultView!
-    const atomDenyList = [window.UIEvent, window.ClipboardEvent]
-    const atomAllowList = [window.FocusEvent, window.DragEvent, window.MouseEvent, "contextmenu"]
+    const selectList = ["mousedown", "touchstart"]
     this.emitWidgetInteract(e)
-    const isDenied = atomDenyList.some(E => typeof E === "string"? E === e.type: e instanceof E)
-    const isAllowed = atomAllowList.some(E => typeof E === "string"? E === e.type: e instanceof E)
-    return isDenied && !isAllowed
+    const shouldSelect = selectList.some(E => typeof E === "string"? E === e.type: e instanceof E)
+    if((this.node.isAtom && shouldSelect) || e instanceof window.MouseEvent && (e.ctrlKey || e.metaKey)) {
+      this.select()
+    }
+    const fromShadowDOM = (e.composedPath()[0] as HTMLElement)?.getRootNode()
+    const isControlMetaClick = (e instanceof window.KeyboardEvent && (e.ctrlKey || e.metaKey))
+    const isContextMenu = e.type === "contextmenu"
+    const shouldBePropagated = (e as any)["shouldPropagate"] || this.node.type.spec.propagateEvents?.includes(e.type)
+    if(shouldBePropagated) {
+      (e as any)["shouldPropagate"] = true
+    }
+    return fromShadowDOM && !isControlMetaClick && !isContextMenu && !shouldBePropagated
 	}
 
 	emitWidgetFocus = () => this.dom.dispatchEvent(new CustomEvent("ww-widget-focus", {

@@ -88,7 +88,7 @@ export function fitIntoNode(node: Node, content: Node[]): Node {
     const fragment = Fragment.fromArray(content)
     fragment.descendants(contentNode => {
       for(const [i, value] of values.entries()) {
-        if(value.type === "NodeExpression" && (contentNode.type.name === value?.node)) {
+        if((value.type === "NodeExpression" && (contentNode.type.name === value?.node))) {
           const childPath = []
           let activeValue: ParentedExpression = value
           while(activeValue.parent) {
@@ -147,8 +147,8 @@ export function wrapSelection(type: string | NodeType, attrs?: Attrs) {
     }
     // selection.$anchor.parent.canReplaceWith(selection.$from.index(), selection.$to.index(), nodeType)
     else if(!nodeType.isInline && !nodeType.isLeaf) {
-      from = selection.$from?.before(selection.$from.depth)!
-      to = selection.$from?.after(selection.$from.depth)!
+      from = selection.$from.pos === 0? 0: selection.$from?.before(selection.$from.depth)
+      to = selection.$from.pos === 0? 0: selection.$from?.after(selection.$from.depth)!
       const wrappingSelection = TextSelection.create(state.doc, from, to)
       slice = wrappingSelection.content()
     }
@@ -161,19 +161,18 @@ export function wrapSelection(type: string | NodeType, attrs?: Attrs) {
     range(n).forEach(i => content.push(slice.content.child(i)))
     const newNode = fitIntoNode(nodeType.create(attrs)!, content)
     let tr = state.tr.replaceRangeWith(from, to, newNode)
-    /*
+    let newStart: number; let newEnd: number
     tr.doc.nodesBetween(0, tr.doc.content.size - 1, (node, start) => {
       if(node === newNode) {
         newStart = start
         newEnd = start + node.content.size + 1
       }
     })
-    if(newStart !== null && newEnd !== null) {
+    if(newStart! !== null && newEnd! !== null) {
       // tr = tr.setSelection(new TextSelection(tr.doc.resolve(newStart), tr.doc.resolve(newEnd)))
-      const s = new NodeSelection(tr.doc.resolve(newStart))
+      const s = new NodeSelection(tr.doc.resolve(newStart!))
       tr = tr.setSelection(new TextSelection(s.$from, s.$to))
     }
-    */
     return dispatch(tr)
   }
   )

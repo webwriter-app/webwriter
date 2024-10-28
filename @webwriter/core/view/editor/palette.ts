@@ -665,7 +665,7 @@ export class Palette extends LitElement {
       }
 
       #package-search:not(:focus-within)[data-invalid] {
-        width: 3ch !important;
+        width: 2.125ch !important;
       }
       
       #package-search:is(:focus-within, :not([data-invalid])) {
@@ -818,8 +818,8 @@ export class Palette extends LitElement {
       <aside class="manage-controls">
         <ww-button variant="icon" class="watch-button manage" icon=${watching? "bolt-filled": "bolt"} @click=${(e: any) => {this.emitWatchWidget(pkg.id); e.stopPropagation()}}></ww-button>
         <!--<ww-button variant="icon" class="error-button" icon="bug" @click=${() => this.errorPkg = pkg}></ww-button>-->
-        <ww-button title=${msg("Update this widget package")} class="manage update" variant="icon" icon="download"  @focusin=${e => {e.preventDefault(); e.stopPropagation()}} @click=${(e: any) => {this.emitUpdateWidget(pkg.id); e.stopPropagation(); e.preventDefault()}}></ww-button>
-        <ww-button title=${pkg.installed? msg("Remove this widget package"): msg("Install this widget package")} class="manage pin" @focusin=${e => {e.preventDefault(); e.stopPropagation()}} variant="icon" icon=${pkg.installed? "trash": "download"} @click=${(e: any) => {!pkg.installed? this.emitAddWidget(pkg.id): this.emitRemoveWidget(pkg.id); e.stopPropagation(); e.preventDefault()}}></ww-button>
+        <ww-button title=${msg("Update this widget package")} class="manage update" variant="icon" icon="download"  @focusin=${(e: any) => {e.preventDefault(); e.stopPropagation()}} @click=${(e: any) => {this.emitUpdateWidget(pkg.id); e.stopPropagation(); e.preventDefault()}}></ww-button>
+        <ww-button title=${pkg.installed? msg("Remove this widget package"): msg("Install this widget package")} class="manage pin" @focusin=${(e: any) => {e.preventDefault(); e.stopPropagation()}} variant="icon" icon=${pkg.installed? "trash": "download"} @click=${(e: any) => {!pkg.installed? this.emitAddWidget(pkg.id): this.emitRemoveWidget(pkg.id); e.stopPropagation(); e.preventDefault()}}></ww-button>
       </aside>
       <ww-button variant="icon" class="dropdown-trigger" icon=${this.dropdownOpen !== pkg.id? "chevron-down": "chevron-up"} @click=${(e: any) => this.dropdownOpen = this.dropdownOpen? null: pkg.id} @mouseenter=${() => this.dropdownOpen = pkg.id}></ww-button>
       <sl-popup flip anchor=${pkg.id} class="other-insertables" strategy="fixed" placement="bottom-end" sync="width" ?active=${this.dropdownOpen === pkg.id} auto-size="both" auto-size-padding=${1}>
