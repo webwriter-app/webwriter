@@ -1,6 +1,6 @@
 {
   "name": "webwriter",
-  "version": "0.12.4",
+  "version": "0.12.5",
   "description": "Web-based authoring tool for explorables",
   "scripts": {
     "lerna": "lerna",
