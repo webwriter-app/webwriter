@@ -217,7 +217,10 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
 
   hasFocus = (...args: Parameters<typeof this.view.hasFocus>) => !!this.document.querySelector(".ProseMirror")?.matches(".ProseMirror-focused")
 
-  focus = (...args: Parameters<typeof this.view.focus>) => this.view?.focus(...args)
+  focus = (...args: Parameters<typeof this.view.focus>) => {
+    this.iframe.focus()
+    this.view?.focus(...args)
+  }
 
   posAtCoords = (...args: Parameters<typeof this.view.posAtCoords>) => this?.view.posAtCoords(...args)
 
@@ -277,6 +280,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
       await this.initializeIFrame()
       this.view?.destroy()
       this.view = new EditorView({mount: this.body}, this.directProps)
+      this.focus()
     }
     else if(!this.url) {
       try {

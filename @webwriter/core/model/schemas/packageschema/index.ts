@@ -169,7 +169,8 @@ export const WidgetEditingSettings = z.object({
   parts: z.array(z.string()).optional(),
   cssCustomProperties: z.record(CSSCustomPropertyName, z.string()).optional(),
   label: z.record(z.string()).optional(),
-  uninsertable: z.boolean().optional()
+  uninsertable: z.boolean().optional(),
+  propagateEvents: z.array(z.string()).optional()
 })
 
 export type SnippetEditingSettings = z.infer<typeof SnippetEditingSettings>
