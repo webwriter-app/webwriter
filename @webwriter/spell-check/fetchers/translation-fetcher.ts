@@ -18,16 +18,7 @@ import { fetchGeminiChatCompletion } from "./google-fetcher";
 }
 
 const instructionMessageEN = `
-      You are a highly skilled proofreader and editor. Your task is to correct spelling and grammar mistakes in the following text snippet. Follow these guidelines:
-      
-      1. Correct any spelling errors or grammatical mistakes you find.
-      2. Maintain as much of the original text as possible. Only make changes where necessary for correctness.
-      3. If the text is completely unintelligible, return it unchanged.
-      4. Remember that this is an excerpt from a larger text. Do not attempt to correct or complete words that may be cut off at the beginning or end of the snippet.
-      5. Do not add any explanations or comments. Simply return the corrected text.
-      6. If no corrections are needed, return the original text unchanged.
-      
-      Here's the text to check and correct:
+      Translate this text to the following language:
 `;
 
 const instructionMessageDE = `
@@ -44,18 +35,12 @@ const instructionMessageDE = `
 `;
 
 const fetchInstructionMessage = (language: string): string => {
-  console.log("language", language);
-  switch (language) {
-    case "en":
-      return instructionMessageEN;
-    case "de":
-      return instructionMessageDE;
-    default:
-      return instructionMessageEN;
-  }
+  return `
+      Translate this text to the following language:${language}. Return only the translated text. Ignore the html tags. 
+`;
 };
 
-export function fetchGrammarCorrection(
+export function fetchTranslation(
   text: string,
   apiKey: string,
   company: string,

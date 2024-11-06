@@ -19,6 +19,7 @@ import {
   // matchSpellingSuggestions,
 } from "../../../spell-check/text-tokenizer";
 import { fetchGrammarCorrection } from "../../../spell-check/fetchers/correction-fetcher";
+import { fetchTranslation } from "../../../spell-check/fetchers/translation-fetcher";
 
 import {
   createEditorState,
@@ -106,7 +107,8 @@ export class DocumentStore implements Resource {
     | "loading"
     | "loadingPreview"
     | "loadingGrammar"
-    | "grammarActive" = "idle";
+    | "grammarActive"
+    | "loadingTranslation" = "idle";
 
   constructor(
     { schema, url, editorState, lang }: Options,
@@ -325,8 +327,71 @@ export class DocumentStore implements Resource {
     }
   }
 
-  isSpellchecking = false;
+  async translate() {
+    this.ioState = "loadingTranslation";
 
+    try {
+      const state = this.editorState;
+      const serializer = DOMSerializer.fromSchema(state.schema);
+      const selection = state.selection;
+
+      // Variables to store content for translation
+      let textToTranslate: string;
+      let selectionStart: number | null = null;
+      let selectionEnd: number | null = null;
+
+      // Get the full document content
+      const dom = serializer.serializeNode(state.doc) as HTMLElement;
+      textToTranslate = htmlBeautify(dom.outerHTML, {
+        indent_size: 2,
+        wrap_attributes: "force-aligned",
+        inline_custom_elements: false,
+      });
+
+      // Get API configuration
+      const llmAccount: LLMAccount = this.accounts.getAccount(
+        "llm"
+      ) as LLMAccount;
+      const apiKey = llmAccount.data.apiKey;
+      const company = llmAccount.data.company;
+      const model = llmAccount.data.model;
+      const language = this.head.doc.attrs?.htmlAttrs?.lang;
+
+      // Get translation
+      const res = await fetchTranslation(
+        textToTranslate,
+        apiKey,
+        company,
+        model,
+        language
+      );
+
+      if (!res) {
+        console.error("No response from translation service!");
+        return;
+      }
+
+      const translatedHTML = res.choices[0].message.content;
+
+      // Handle full document translation
+      const newDoc = new window.DOMParser().parseFromString(
+        translatedHTML,
+        "text/html"
+      );
+      const newEditorState = createEditorState({
+        schema: this.editorState.schema,
+        doc: DOMParser.fromSchema(this.editorState.schema).parse(newDoc),
+      });
+      newEditorState["head$"] = this.editorState["head$"];
+      this.editorState = newEditorState;
+    } catch (error) {
+      console.error("Translation error:", error);
+    } finally {
+      this.ioState = "idle";
+    }
+  }
+
+  isSpellchecking = false;
   /** Does a spell check on the document text */
   async spellcheck() {
     try {

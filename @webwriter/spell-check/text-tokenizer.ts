@@ -203,10 +203,18 @@ export function applyGrammarSuggestions(
         );
         break;
       case "insert":
-        tr = tr.insertText(suggestion.corrected.value, from + 1);
+        console.log(
+          "inserting",
+          suggestion.corrected.value,
+          "at",
+          from,
+          "in",
+          tr.doc.toString()
+        );
+        tr = tr.insertText(suggestion.corrected.value, from);
         tr = tr.addMark(
-          from + 1,
-          from + suggestion.corrected.value.length + 1,
+          from,
+          from + suggestion.corrected.value.length,
           editorState.schema.marks.grammar.create({
             corrected: suggestion.corrected.value,
             isInsert: true,

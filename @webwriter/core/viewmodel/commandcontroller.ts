@@ -1889,6 +1889,24 @@ export class CommandController implements ReactiveController {
             host.store.document.lang !== "de"),
         loading: (host) => host.store.document.ioState === "loadingGrammar",
       }),
+      translate: new Command(this.host, {
+        id: "translate",
+        label: () => msg("Translate"),
+        tags: ["general"],
+        icon: "translate",
+
+        description: () => msg("Checks the document for grammar errors"),
+        shortcut: "ctrl+g",
+        run: async (host) => {
+          await host.store.document.translate();
+        },
+        category: "editor",
+        disabled: (host) =>
+          host.activeEditor!.sourceMode ||
+          host.store.document.ioState === "loadingTranslation",
+
+        loading: (host) => host.store.document.ioState === "loadingTranslation",
+      }),
       textStyle: new LayoutCommand(this.host, {
         id: "textStyle",
         label: () => msg("Text Style"),

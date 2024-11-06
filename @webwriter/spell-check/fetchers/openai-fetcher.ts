@@ -46,22 +46,23 @@ function fetchOpenAIChatCompletion(
 
   openai.apiKey = apiKey;
 
-  console.log("fetchChatCompletion", [instructionMessage, ...messages]);
+  const messageFinal = [
+    {
+      role: "system",
+      content: [
+        {
+          type: "text",
+          text: systemPrompt,
+        },
+      ],
+    },
+    ...messages,
+  ];
+  console.log("fetchChatCompletion", messageFinal);
   return openai.chat.completions.create({
     model: model,
     temperature: 0,
-    messages: [
-      {
-        role: "system",
-        content: [
-          {
-            type: "text",
-            text: systemPrompt,
-          },
-        ],
-      },
-      ...messages,
-    ],
+    messages: messageFinal,
     max_tokens: 1024,
     top_p: 1,
     frequency_penalty: 0,

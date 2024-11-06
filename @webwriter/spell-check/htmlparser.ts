@@ -53,3 +53,7 @@ export function formatHTMLToPlainText(html: string): string {
     .replace(/\n\s*\n/g, "\n\n") // Replace multiple line breaks with a single double line break
     .trim(); // Trim leading and trailing whitespace
 }
+
+const replaceLineBreaks = (text: string): string => {
+  return text.replace(/\n/g, "<br>");
+};
