@@ -161,6 +161,10 @@ export class Palette extends LitElement {
 
     .package-card {
 
+      &.local {
+        font-style: italic;
+      }
+
       &::part(base) {
         --padding: 10px;
         min-width: 180px;
@@ -236,6 +240,7 @@ export class Palette extends LitElement {
       & .package-tooltip {
         --show-delay: 750;
         --max-width: 200px;
+        word-wrap: break-word;
       }
 
       & .package-tooltip::part(base__arrow) {
@@ -286,7 +291,7 @@ export class Palette extends LitElement {
         color: var(--sl-color-primary-600);
       }
 
-      &:not(.installed):hover {
+      &:not(.installed):not(.error):hover {
         color: var(--sl-color-success-700);
       }
 
@@ -325,7 +330,7 @@ export class Palette extends LitElement {
         color: var(--sl-color-danger-700) !important;
       }
 
-      &:not(.installed) .pin::part(base):hover, &:not(.installed):has(.pin:hover) .title {
+      &:not(.installed):not(.error) .pin::part(base):hover, &:not(.installed):has(.pin:hover) .title {
         color: var(--sl-color-success-700) !important;
       }
 
@@ -333,7 +338,7 @@ export class Palette extends LitElement {
         color: var(--sl-color-warning-700) !important;
       }
 
-      &:not(.installed):hover :is(.title, .pin::part(base):hover) {
+      &:not(.installed):not(.error):hover :is(.title, .pin::part(base):hover) {
         color: var(--sl-color-success-700) !important;
       }
 
@@ -565,6 +570,11 @@ export class Palette extends LitElement {
         box-shadow: none;
       }
 
+      &[data-disabled] {
+        cursor: not-allowed;
+        opacity: 0.75;
+      }
+
       &::part(body) {
         display: flex;
         flex-direction: row;
@@ -639,6 +649,14 @@ export class Palette extends LitElement {
         }
 
         &:not(:hover) .manage {
+          display: none;
+        }
+
+        &.error {
+          cursor: help;
+        }
+
+        &.error .pin {
           display: none;
         }
         
@@ -727,11 +745,11 @@ export class Palette extends LitElement {
     }
     const hasIssues = this.app.store.packages.getPackageIssues(pkg.id).length
 		if(isLeaf) {
-      if(!pkg.installed) {
-        this.emitAddWidget(pkg.id)
-      }
-      else if(hasIssues) {
+      if(hasIssues) {
         this.errorPkg = pkg
+      }
+      else if(!pkg.installed) {
+        this.emitAddWidget(pkg.id)
       }
       else {
         this.emitInsert(pkg.id, snippetName!)
@@ -813,13 +831,13 @@ export class Palette extends LitElement {
 			<span class="title" @click=${() => this.handleClickCard(pkg, firstName)}>${firstLabel?._ ?? prettifyPackageName(pkg.name)}</span>
       <span slot="content">
         <b><code>${name} ${version}</code></b>
-        <div>${pkg.description || msg("No description provided")}</div>
+        <div>${pkg.description || (error? "- " + msg("Error reading this package") + " -": null) || msg("No description provided")}</div>
       </span>
       <aside class="manage-controls">
-        <ww-button variant="icon" class="watch-button manage" icon=${watching? "bolt-filled": "bolt"} @click=${(e: any) => {this.emitWatchWidget(pkg.id); e.stopPropagation()}}></ww-button>
+        <!--<ww-button variant="icon" class="watch-button manage" icon=${watching? "bolt-filled": "bolt"} @click=${(e: any) => {this.emitWatchWidget(pkg.id); e.stopPropagation()}}></ww-button>-->
         <!--<ww-button variant="icon" class="error-button" icon="bug" @click=${() => this.errorPkg = pkg}></ww-button>-->
         <ww-button title=${msg("Update this widget package")} class="manage update" variant="icon" icon="download"  @focusin=${(e: any) => {e.preventDefault(); e.stopPropagation()}} @click=${(e: any) => {this.emitUpdateWidget(pkg.id); e.stopPropagation(); e.preventDefault()}}></ww-button>
-        <ww-button title=${pkg.installed? msg("Remove this widget package"): msg("Install this widget package")} class="manage pin" @focusin=${(e: any) => {e.preventDefault(); e.stopPropagation()}} variant="icon" icon=${pkg.installed? "trash": "download"} @click=${(e: any) => {!pkg.installed? this.emitAddWidget(pkg.id): this.emitRemoveWidget(pkg.id); e.stopPropagation(); e.preventDefault()}}></ww-button>
+        <ww-button title=${pkg.installed? msg("Remove this widget package"): msg("Install this widget package")} class="manage pin" @focusin=${(e: any) => {e.preventDefault(); e.stopPropagation()}} variant="icon" icon=${pkg.installed? "trash": "download"} @click=${(e: any) => {!pkg.installed? !error && this.emitAddWidget(pkg.id): this.emitRemoveWidget(pkg.id); e.stopPropagation(); e.preventDefault()}}></ww-button>
       </aside>
       <ww-button variant="icon" class="dropdown-trigger" icon=${this.dropdownOpen !== pkg.id? "chevron-down": "chevron-up"} @click=${(e: any) => this.dropdownOpen = this.dropdownOpen? null: pkg.id} @mouseenter=${() => this.dropdownOpen = pkg.id}></ww-button>
       <sl-popup flip anchor=${pkg.id} class="other-insertables" strategy="fixed" placement="bottom-end" sync="width" ?active=${this.dropdownOpen === pkg.id} auto-size="both" auto-size-padding=${1}>
@@ -887,10 +905,10 @@ export class Palette extends LitElement {
 
   PackageToolbar() {
     return html`<div id="package-toolbar">
-      <sl-input id="package-search" required type="search" size="small" @sl-input=${this.handleSearchInput} @focus=${() => this.managing = true} clearable>
+      <sl-input id="package-search" placeholder=${!this.app.store.packages.installed.length? msg("Find packages..."): ""} required type="search" size="small" @sl-input=${this.handleSearchInput} @focus=${() => this.managing = true} clearable>
         <sl-icon slot="prefix" name="search" @click=${(e: any) => this.packageSearch.focus()}></sl-icon>
       </sl-input>
-      <ww-button title=${msg("Manage packages")} .issues=${this.app.store.packages.managementIssues} id="package-button" variant="icon" icon="packages" @click=${(e: any) => {this.managing = !this.managing; this.managing && this.app.store.packages.load()}}>
+      <ww-button title=${msg("Reload packages")} .issues=${this.app.store.packages.managementIssues} id="package-button" variant="icon" icon="packages" @click=${(e: any) => {this.managing = !this.managing; this.managing && this.app.store.packages.load()}}>
         ${!this.app.store.packages.loading? null: html`
           <sl-spinner id="packages-spinner"></sl-spinner>
         `}
@@ -900,7 +918,8 @@ export class Palette extends LitElement {
 
   AddLocalPackageButton() {
     const importingName = this.app.store.packages.importingName
-    return html`<sl-card id="add-local" class=${classMap({"package-card": true})} @click=${() => this.packageFormMode = "create"} ?inert=${!!importingName}>
+    const disabled = !this.app.store.accounts.getClient("file", "file")?.fileSystemSupported
+    return html`<sl-card id="add-local" class=${classMap({"package-card": true})} @click=${() => !disabled && (this.packageFormMode = "create")} ?inert=${!!importingName} ?data-disabled=${disabled} title=${disabled? "This is a feature for developers. It only works in Chromium-based browsers with the File System Access API enabled (Chrome, Edge, etc.).": ""}>
       <sl-icon name="plus"></sl-icon>
       <div>${importingName? prettifyPackageName(importingName): msg(" Create/import")}</div>
       <sl-progress-bar ?indeterminate=${!!importingName}></sl-progress-bar>
@@ -1065,7 +1084,7 @@ export class Palette extends LitElement {
 
   ErrorDialog() {
     const issues = this.errorPkg? this.app.store.packages.getPackageIssues(this.errorPkg.id): []
-    return html`<sl-dialog ?open=${!!this.errorPkg} @sl-after-hide=${() => this.errorPkg = undefined} label=${msg("Error importing ") + (this.errorPkg?.name ?? "")}>
+    return html`<sl-dialog ?open=${!!this.errorPkg} @sl-after-hide=${() => this.errorPkg = undefined} label=${msg("Error with ") + (this.errorPkg?.id ?? "")}>
       ${issues.map(issue => html`
         <div class="error-pane">
           <b>${issue.message}</b>
@@ -1103,7 +1122,7 @@ export class Palette extends LitElement {
       ${this.app.commands.groupedContainerCommands.map(this.Card)}
       ${this.ClipboardCard()}
       ${this.packagesInSearchOrder.map(this.Card)}
-      ${WEBWRITER_ENVIRONMENT.backend === "tauri"? this.AddLocalPackageButton(): null}
+      ${this.AddLocalPackageButton()}
       ${this.LocalPackageDialog()}
       ${this.ErrorDialog()}
     `

@@ -2,6 +2,7 @@ import {z} from "zod"
 import {Schema} from "prosemirror-model"
 
 import {parser} from "./index.grammar"
+import { filterObject } from "../../../utility"
 
 function treeLog(tree: any, expr?: string) {
   let depth = -1
@@ -113,7 +114,9 @@ export const ContentExpression = Object.assign(z.string().transform<Expression>(
       if(v.group) {
         const groups = v.group.trim().split(" ")
         for(const group of groups) {
-          representants[group] = k
+          if(!representants[group]) {
+            representants[group] = k
+          }
         }
       }
     })
@@ -132,14 +135,20 @@ export const ContentExpression = Object.assign(z.string().transform<Expression>(
       return Object.assign(result, {content: nodeContent? [nodeContent]: undefined}) as any
     }
     else if(Array.isArray(content)) {
-      const result = {
-        ...expression as Exclude<Expression, SimpleExpression>,
-        parent
+      let result: any
+      try {
+        result = {
+          ...expression as Exclude<Expression, SimpleExpression>,
+          parent
+        }
+        return seen.get(expression.raw) ?? Object.assign(result, {content: content.map(c => ContentExpression.resolve(schema, c, result, seen))})
       }
-      seen.set(expression.raw, result)
-      return Object.assign(result, {content: content.map(c => ContentExpression.resolve(schema, c, result, seen))})
+      finally {
+        !seen.get(expression.raw) && seen.set(expression.raw, result)
+      }
     }
     else {
+      seen.set(expression.raw, expression)
       return expression
     }
   },

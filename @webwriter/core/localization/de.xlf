@@ -1454,10 +1454,6 @@
   <source>Install this widget package</source>
   <target state="final">Dieses Paket installieren</target>
 </trans-unit>
-<trans-unit id="s985f2db57913324b">
-  <source>Manage packages</source>
-  <target state="final">Pakete verwalten</target>
-</trans-unit>
 <trans-unit id="scdf536b65be39ec5">
   <source> Create/import</source>
   <target state="final">Neu/Import</target>
@@ -1473,10 +1469,6 @@
 <trans-unit id="sd2addf69477cd4b4">
   <source>Import package</source>
   <target state="final">Paket importieren</target>
-</trans-unit>
-<trans-unit id="s7de0061f53ba7472">
-  <source>Error importing </source>
-  <target state="final">Fehler beim Importieren</target>
 </trans-unit>
 <trans-unit id="s812cbda653daaeba">
   <source>This feature is not implemented yet</source>
@@ -2061,6 +2053,24 @@
 <trans-unit id="s7d8103f6f06f83d6">
   <source>Padding</source>
   <target>Innenabstand</target>
+</trans-unit>
+<trans-unit id="s9295089d0ecc35ff">
+  <source>Advanced: Show with versions like 0.x.x in the package manager</source>
+</trans-unit>
+<trans-unit id="s71a0549fd71219c9">
+  <source>Show unstable packages</source>
+</trans-unit>
+<trans-unit id="s0de0febab8a4beaf">
+  <source>Error reading this package</source>
+</trans-unit>
+<trans-unit id="s69a49786a8009f43">
+  <source>Find packages...</source>
+</trans-unit>
+<trans-unit id="s5e2cba97c0d971bd">
+  <source>Reload packages</source>
+</trans-unit>
+<trans-unit id="s7aaf0c06e69600f1">
+  <source>Error with </source>
 </trans-unit>
 </body>
 </file>

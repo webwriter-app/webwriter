@@ -1,7 +1,7 @@
 import {ReactiveController} from "lit"
 import Hotkeys from "hotkeys-js"
 
-import { CSSPropertySpecs, EditorStateWithHead, INDIVIDUAL_FILTERS, RootStore, getActiveAttributes, getActiveBlockAttributes, getActiveMarks, getStyleValues, hasActiveNode, setAttributeOnSelectedBlocks, setDocAttributes, themes, toggleOrUpdateMark, wrapSelection} from "../model"
+import { CSSPropertySpecs, EditorStateWithHead, RootStore, getActiveAttributes, getActiveBlockAttributes, getActiveMarks, getStyleValues, hasActiveNode, setAttributeOnSelectedBlocks, setDocAttributes, themes, toggleOrUpdateMark, wrapSelection} from "../model"
 import { App } from "../view"
 import { msg } from "@lit/localize"
 import hotkeys from "hotkeys-js"
@@ -327,6 +327,7 @@ export class NodeCommand<SPEC extends NodeCommandSpec = NodeCommandSpec> extends
   }
   run(options?: any, e?: Event) {
     const {exec, editorState} = this.host.activeEditor ?? {exec: () => {}}
+    this.host.activeEditor!.editingStatus = undefined
     return super.run(options, e, (host, attrs) => exec(wrapSelection(this.id, {...attrs, ...this.spec.defaultAttrs})))
   }
   get active() {
@@ -550,7 +551,6 @@ export class CommandController implements ReactiveController {
         shortcut: "ctrl+s",
         allowDefault: false,
         run: async (host, options) => {
-          console.log(options)
           if(host.store.accounts.size === 1 || (options?.client && options?.serializer) || host.store.document.url) {
             const url = await host.store.document.save(options?.saveAs, options?.serializer, options?.client, options?.filename, options?.url)
             if(url) {
@@ -1597,7 +1597,7 @@ export class CommandController implements ReactiveController {
         description: () => msg("Copy the selection"),
         shortcut: "ctrl+c",
         icon: "copy",
-        run: host => host.activeEditor?.copy(),
+        run: host => {host.activeEditor?.copy(); host.activeEditor!.editingStatus = undefined},
         preview: host => host.activeEditor!.editingStatus = host.activeEditor?.editingStatus !== "copying"? "copying": undefined,
         category: "editor",
         tags: ["element"],
@@ -1609,7 +1609,7 @@ export class CommandController implements ReactiveController {
         description: () => msg("Cut the selection"),
         shortcut: "ctrl+x",
         icon: "cut",
-        run: host => host.activeEditor?.cut(),
+        run: host => {host.activeEditor?.cut(); host.activeEditor!.editingStatus = undefined},
         preview: host => host.activeEditor!.editingStatus = host.activeEditor?.editingStatus !== "cutting"? "cutting": undefined,
         category: "editor",
         tags: ["element"],
@@ -1621,7 +1621,7 @@ export class CommandController implements ReactiveController {
         description: () => msg("Cut the selection"),
         shortcut: "ctrl+v",
         icon: "clipboard",
-        run: host => host.activeEditor?.paste(),
+        run: host => {host.activeEditor?.paste(); host.activeEditor!.editingStatus = undefined},
         preview: host => host.activeEditor!.editingStatus = host.activeEditor?.editingStatus !== "pasting"? "pasting": undefined,
         category: "editor",
         fixedShortcut: true
@@ -1632,7 +1632,7 @@ export class CommandController implements ReactiveController {
         description: () => msg("Delete the selection"),
         shortcut: "del",
         icon: "trash",
-        run: host => host.activeEditor?.delete(),
+        run: host => {host.activeEditor?.delete(); host.activeEditor!.editingStatus = undefined},
         preview: host => host.activeEditor!.editingStatus = host.activeEditor?.editingStatus !== "deleting"? "deleting": undefined,
         category: "editor",
         tags: ["element"],

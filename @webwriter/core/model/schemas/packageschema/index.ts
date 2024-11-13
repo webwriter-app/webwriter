@@ -192,6 +192,56 @@ export const PackageEditingSettings = z.object({
 
 })
 
+type ExportSuffixes = typeof EXPORT_SUFFIXES
+const EXPORT_SUFFIXES = {
+  "widgets": "*",
+  "snippets": "html",
+  "themes": "css"
+} as const
+
+type WebWriterExports<
+  Type extends "widgets" | "snippets" | "themes",
+  Name extends string
+> = {
+  [Property in `./${Type}/${Name}.*`]: `./${Type}/${Name}.${ExportSuffixes[Type]}` | {default: `./${Type}/${Name}.${ExportSuffixes[Type]}`, [key: string]: string}
+}
+
+type ModuleExports = Record<string, string | Record<string, string>>
+
+type PackageExports = WebWriterExports<"widgets" | "snippets" | "themes", string> & ModuleExports
+const PackageExports = z.any().superRefine((val, ctx) => {
+  if(!["string", "object"].includes(typeof val) || Array.isArray(val)) {
+    ctx.addIssue({code: z.ZodIssueCode.invalid_type, expected: "object", received: Array.isArray(val)? "array": typeof val, fatal: true, message: `Invalid type for package.exports. Expected 'object' but received ${Array.isArray(val)? "array": typeof val}`})
+    return z.NEVER
+  }
+  for(const [key, value] of Object.entries(val)) {
+    let path: string
+    if(typeof value === "string") {
+      path = value
+    }
+    else if(typeof value === "object" && value && "default" in value && (typeof value.default === "string" || value.default === null)) {
+      if(value.default === null) {
+        continue
+      }
+      path = value.default
+    }
+    else {
+      ctx.addIssue({code: z.ZodIssueCode.invalid_type, expected: "object", received: Array.isArray(val)? "array": typeof val, fatal: true, message: `Invalid export value package.exports["${key}"]: ${JSON.stringify(value ?? null)}`})
+      return z.NEVER
+    }
+    if(["./widgets/", "./snippets/", "./themes/"].some(prefix => key.startsWith(prefix))) {
+      const type = key.split("/")[1] as keyof ExportSuffixes
+      const suffix = EXPORT_SUFFIXES[type]
+      if(!path.endsWith(suffix)) {
+        ctx.addIssue({code: z.ZodIssueCode.invalid_type, expected: "object", received: Array.isArray(val)? "array": typeof val, fatal: true, message: `Invalid ending for type ${type} in '${path}'. Should be '${suffix}'`})
+        return z.NEVER
+      }
+    }
+  }
+  return val as PackageExports
+});
+
+
 export type EditingSettings = WidgetEditingSettings | SnippetEditingSettings | ThemeEditingSettings
 
 export type EditingConfig = z.infer<typeof EditingConfig>
@@ -253,11 +303,9 @@ export class Package {
     publishConfig: z.record(Json).optional(),
     workspaces: z.string().array().optional(),
     type: z.literal("commonjs").or(z.literal("module")).optional(),
-    exports: Json.optional(),
+    exports: PackageExports.optional(),
     imports: z.record(z.string().startsWith("#"), z.record(z.string())).optional(),
     editingConfig: EditingConfig.optional(),
-    // customElements: CustomElementsManifest.optional()
-    localPaths: z.record(z.string()).optional(),
     lastLoaded: z.number().optional()
   })
 
@@ -305,7 +353,7 @@ export class Package {
   }
 
   get id() {
-    return `${this.name}@${this.version}${this.localPath? `-local${this.lastLoaded ?? ""}`: ""}`
+    return `${this.name}@${this.version}`
   }
 
   get nameParts() {

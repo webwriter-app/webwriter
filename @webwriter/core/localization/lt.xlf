@@ -1031,17 +1031,13 @@
         <target>Užfiksuoti</target>
       </trans-unit>
       <trans-unit id="s2b8f50c64be440f7">
-        <source>Select 
-          <x id="0" equiv-text="${this.mediaType}"/>...
-        </source>
+        <source>Select <x id="0" equiv-text="${this.mediaType}"/>...</source>
         <target>Pasirinkite 
           <x id="0" equiv-text="${this.mediaType}"/>... 
         </target>
       </trans-unit>
       <trans-unit id="s739544d0c858c633">
-        <source>Or drop 
-          <x id="0" equiv-text="${this.mediaType}"/> here
-        </source>
+        <source>Or drop <x id="0" equiv-text="${this.mediaType}"/> here</source>
         <target>Arba atsisakykite 
           <x id="0" equiv-text="${this.mediaType}"/> čia 
         </target>
@@ -1139,10 +1135,7 @@
         <target>Šis raktažodis reikalingas valdikliams</target>
       </trans-unit>
       <trans-unit id="h64cd12550420f6f1">
-        <source>Generate a 
-          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
-          <x id="1" equiv-text="&lt;/code&gt;"/> file
-        </source>
+        <source>Generate a <x id="0" equiv-text="&lt;code&gt;"/>LICENSE<x id="1" equiv-text="&lt;/code&gt;"/> file</source>
         <target>Sukurti 
           <x id="0" equiv-text="&lt;code&gt;"/>LICENCIJA 
           <x id="1" equiv-text="&lt;/code&gt;"/> failą 
@@ -1177,17 +1170,13 @@
         <target>Peržiūrėti klaidą</target>
       </trans-unit>
       <trans-unit id="h75b0cad9d9e80648">
-        <source>Stop watching files at 
-          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/>.
-        </source>
+        <source>Stop watching files at <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/>.</source>
         <target>Nustokite žiūrėti failus adresu 
           <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/>. 
         </target>
       </trans-unit>
       <trans-unit id="h0a75a995d1672be1">
-        <source>Start watching files at 
-          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/> and reload the package if a file is changed.
-        </source>
+        <source>Start watching files at <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/> and reload the package if a file is changed.</source>
         <target>Pradėkite žiūrėti failus adresu 
           <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/> ir iš naujo
           įkelti paketą, jei failas pasikeičia. 
@@ -1673,10 +1662,6 @@
         <source>Install this widget package</source>
         <target>Įdiekite šį valdiklių paketą</target>
       </trans-unit>
-      <trans-unit id="s985f2db57913324b">
-        <source>Manage packages</source>
-        <target>Tvarkyti paketus</target>
-      </trans-unit>
       <trans-unit id="scdf536b65be39ec5">
         <source> Create/import</source>
         <target> Sukurti / importuoti</target>
@@ -1692,10 +1677,6 @@
       <trans-unit id="sd2addf69477cd4b4">
         <source>Import package</source>
         <target>Importo paketas</target>
-      </trans-unit>
-      <trans-unit id="s7de0061f53ba7472">
-        <source>Error importing </source>
-        <target>Klaida importuojant </target>
       </trans-unit>
       <trans-unit id="s00065e45db8c0441">
         <source>See developer tools for more details</source>
@@ -1866,18 +1847,14 @@
         <target>Klaida jungiantis</target>
       </trans-unit>
       <trans-unit id="sf52d840949a980d1">
-        <source>
-          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           bus ištrintas visam laikui. Ar tikrai? 
         </target>
       </trans-unit>
       <trans-unit id="s9b7cd8860c8fc922">
-        <source>
-          <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           bus perrašytas. Ar esate tikri? 
@@ -1916,9 +1893,7 @@
         <target>Nepalaikomas savybės tipas '${desc.type}' (apdorojama kaip JSON)</target>
       </trans-unit>
       <trans-unit id="sa00df4e39c72d3b4">
-        <source>
-          <x id="0" equiv-text="${desc.widget}"/> is not supported
-        </source>
+        <source><x id="0" equiv-text="${desc.widget}"/> is not supported</source>
         <target>
           <x id="0" equiv-text="${desc.widget}"/> nepalaikomas 
         </target>
@@ -2106,6 +2081,30 @@
       <trans-unit id="s7d8103f6f06f83d6">
         <source>Padding</source>
         <target>Paminkštinimas</target>
+      </trans-unit>
+      <trans-unit id="s9295089d0ecc35ff">
+        <source>Advanced: Show with versions like 0.x.x in the package manager</source>
+        <target>Išplėstinis: Rodyti su tokiomis versijomis kaip 0.x.x paketo tvarkyklėje</target>
+      </trans-unit>
+      <trans-unit id="s71a0549fd71219c9">
+        <source>Show unstable packages</source>
+        <target>Rodyti nestabilius paketus</target>
+      </trans-unit>
+      <trans-unit id="s0de0febab8a4beaf">
+        <source>Error reading this package</source>
+        <target>Klaida skaitant šį paketą</target>
+      </trans-unit>
+      <trans-unit id="s69a49786a8009f43">
+        <source>Find packages...</source>
+        <target>Raskite paketus...</target>
+      </trans-unit>
+      <trans-unit id="s5e2cba97c0d971bd">
+        <source>Reload packages</source>
+        <target>Pakuočių perkrovimas</target>
+      </trans-unit>
+      <trans-unit id="s7aaf0c06e69600f1">
+        <source>Error with </source>
+        <target>Klaida su </target>
       </trans-unit>
     </body>
   </file>

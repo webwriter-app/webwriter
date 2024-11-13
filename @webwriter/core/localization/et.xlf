@@ -1032,17 +1032,13 @@
         <target>Capture</target>
       </trans-unit>
       <trans-unit id="s2b8f50c64be440f7">
-        <source>Select 
-          <x id="0" equiv-text="${this.mediaType}"/>...
-        </source>
+        <source>Select <x id="0" equiv-text="${this.mediaType}"/>...</source>
         <target>Valige 
           <x id="0" equiv-text="${this.mediaType}"/>... 
         </target>
       </trans-unit>
       <trans-unit id="s739544d0c858c633">
-        <source>Or drop 
-          <x id="0" equiv-text="${this.mediaType}"/> here
-        </source>
+        <source>Or drop <x id="0" equiv-text="${this.mediaType}"/> here</source>
         <target>Või tilkuda 
           <x id="0" equiv-text="${this.mediaType}"/> siia 
         </target>
@@ -1140,10 +1136,7 @@
         <target>See märksõna on vajalik vidinate jaoks</target>
       </trans-unit>
       <trans-unit id="h64cd12550420f6f1">
-        <source>Generate a 
-          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
-          <x id="1" equiv-text="&lt;/code&gt;"/> file
-        </source>
+        <source>Generate a <x id="0" equiv-text="&lt;code&gt;"/>LICENSE<x id="1" equiv-text="&lt;/code&gt;"/> file</source>
         <target>Genereeri 
           <x id="0" equiv-text="&lt;code&gt;"/>LITSENTSI 
           <x id="1" equiv-text="&lt;/code&gt;"/> faili 
@@ -1178,17 +1171,13 @@
         <target>Vaata viga</target>
       </trans-unit>
       <trans-unit id="h75b0cad9d9e80648">
-        <source>Stop watching files at 
-          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/>.
-        </source>
+        <source>Stop watching files at <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/>.</source>
         <target>Lõpeta failide vaatamine aadressil 
           <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/>. 
         </target>
       </trans-unit>
       <trans-unit id="h0a75a995d1672be1">
-        <source>Start watching files at 
-          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/> and reload the package if a file is changed.
-        </source>
+        <source>Start watching files at <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/> and reload the package if a file is changed.</source>
         <target>Alusta failide vaatamist aadressil 
           <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/> ja laadige
           pakett uuesti, kui mõni fail muutub. 
@@ -1674,10 +1663,6 @@
         <source>Install this widget package</source>
         <target>Paigaldage see vidinapakett</target>
       </trans-unit>
-      <trans-unit id="s985f2db57913324b">
-        <source>Manage packages</source>
-        <target>Pakettide haldamine</target>
-      </trans-unit>
       <trans-unit id="scdf536b65be39ec5">
         <source> Create/import</source>
         <target> Luua/importida</target>
@@ -1693,10 +1678,6 @@
       <trans-unit id="sd2addf69477cd4b4">
         <source>Import package</source>
         <target>Impordipakett</target>
-      </trans-unit>
-      <trans-unit id="s7de0061f53ba7472">
-        <source>Error importing </source>
-        <target>Viga importimisel </target>
       </trans-unit>
       <trans-unit id="s00065e45db8c0441">
         <source>See developer tools for more details</source>
@@ -1867,18 +1848,14 @@
         <target>Ühendamise viga</target>
       </trans-unit>
       <trans-unit id="sf52d840949a980d1">
-        <source>
-          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           kustutatakse lõplikult. Kas olete kindel? 
         </target>
       </trans-unit>
       <trans-unit id="s9b7cd8860c8fc922">
-        <source>
-          <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           kirjutatakse üle. Kas olete kindel? 
@@ -1917,9 +1894,7 @@
         <target>Toetamata omaduse tüüp '${desc.type}' (töötlemine JSON-ina)</target>
       </trans-unit>
       <trans-unit id="sa00df4e39c72d3b4">
-        <source>
-          <x id="0" equiv-text="${desc.widget}"/> is not supported
-        </source>
+        <source><x id="0" equiv-text="${desc.widget}"/> is not supported</source>
         <target>
           <x id="0" equiv-text="${desc.widget}"/> ei ole toetatud 
         </target>
@@ -2107,6 +2082,30 @@
       <trans-unit id="s7d8103f6f06f83d6">
         <source>Padding</source>
         <target>Pehmendus</target>
+      </trans-unit>
+      <trans-unit id="s9295089d0ecc35ff">
+        <source>Advanced: Show with versions like 0.x.x in the package manager</source>
+        <target>Edasijõudnud: Näita paketihalduri versioonidega nagu 0.x.x</target>
+      </trans-unit>
+      <trans-unit id="s71a0549fd71219c9">
+        <source>Show unstable packages</source>
+        <target>Näita ebastabiilseid pakette</target>
+      </trans-unit>
+      <trans-unit id="s0de0febab8a4beaf">
+        <source>Error reading this package</source>
+        <target>Viga selle paketi lugemisel</target>
+      </trans-unit>
+      <trans-unit id="s69a49786a8009f43">
+        <source>Find packages...</source>
+        <target>Leia paketid...</target>
+      </trans-unit>
+      <trans-unit id="s5e2cba97c0d971bd">
+        <source>Reload packages</source>
+        <target>Pakettide ümberlaadimine</target>
+      </trans-unit>
+      <trans-unit id="s7aaf0c06e69600f1">
+        <source>Error with </source>
+        <target>Viga koos </target>
       </trans-unit>
     </body>
   </file>

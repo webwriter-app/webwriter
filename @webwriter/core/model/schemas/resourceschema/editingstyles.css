@@ -544,6 +544,19 @@ body:not(:has(:not(.ProseMirror-gapcursor))) .ProseMirror-gapcursor::after {
   margin-block: 0;
 }
 
+.ProseMirror-hideselection .ww-widget *::selection {
+   background: initial;
+}
+.ProseMirror-hideselection .ww-widget *::-moz-selection {
+  background: initial;
+}
+.ProseMirror-hideselection .ww-widget {
+  caret-color: initial;
+}
+.ProseMirror-hideselection .ProseMirror-gapcursor {
+  display: block;
+}
+
 html:has(.ww-fullscreen) {
   scrollbar-gutter: unset;
   overflow: hidden;

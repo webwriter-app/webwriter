@@ -3,11 +3,10 @@
   "sourceLocale": "en",
   "targetLocales": ["de", "bg", "cs", "da", "nl", "et", "fi", "fr", "el", "hu", "it", "lv", "lt", "nb", "pl", "pt-PT", "ro", "ru", "sk", "sl", "es", "sv", "tr", "uk", "pt-BR", "ko", "ja", "id", "zh-hans"],
   "tsConfig": "./tsconfig.json",
-
   "output": {
     "mode": "runtime",
     "outputDir": "./localization/generated",
-    "localeCodesModule": "./@webwriter/core/localization/generated/locales.ts"
+    "localeCodesModule": "./@webwriter/core/localization/generated/locales.ts",
   },
 
   "interchange": {

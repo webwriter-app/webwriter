@@ -135,6 +135,10 @@ export class SettingsController implements ReactiveController {
             .describe(msg("Language for the WebWriter interface and new documents")),
           label: msg("Language")
         },
+        showUnstable: {
+          schema: z.boolean().describe(msg("Advanced: Show with versions like 0.x.x in the package manager")),
+          label: msg("Show unstable packages")
+        },
         /*showTextPlaceholder: {
           schema: z
             .boolean()

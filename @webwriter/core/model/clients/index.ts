@@ -20,8 +20,14 @@ function writeFileDownload(uri: string, name?: string) {
 }
 
 async function readFileInput() {
-  return new Promise<string | Uint8Array | undefined>(async resolve => {
-    const file = await pickFileInput()
+  return new Promise<string | Uint8Array | undefined>(async (resolve, reject) => {
+    let file: File
+    try {
+      file = await pickFileInput()
+    }
+    catch(err) {
+      return reject(new Error("User cancelled"))
+    }
     const reader = new FileReader()
     reader.readAsText(file)
     reader.addEventListener("load", () => typeof reader.result === "string"? resolve(reader.result!): resolve(new Uint8Array(reader.result!)))
@@ -31,13 +37,14 @@ async function readFileInput() {
 async function pickFileInput() {
   const input = document.createElement("input")
   input.type = "file"
-  return new Promise<File>(resolve => {
+  return new Promise<File>((resolve, reject) => {
     input.addEventListener("change", () => {
       if(input.files && input.files.length && input.files.item(0)) {
         const file = input.files.item(0)!
         resolve(file)
       }
     })
+    input.addEventListener("cancel", reject)
     input.click()
   })
 }
@@ -105,6 +112,18 @@ export interface AuthenticationClient extends Client {
 export class FileClient implements DocumentClient {
   constructor(readonly account: FileAccount, readonly Environment?: Environment) {}
 
+  get fileSystemSupported() {
+    return "createWritable" in FileSystemFileHandle.prototype
+  }
+
+  get showOpenFilePickerSupported() {
+    return "showOpenFilePicker" in window
+  }
+
+  get showSaveFilePickerSupported() {
+    return "showSaveFilePicker" in window
+  }
+
   async saveDocument(doc: string | Uint8Array, url?: string | URL | FileSystemFileHandle, title?: string) {
     if(WEBWRITER_ENVIRONMENT.backend === "tauri" && this.Environment && (!url || !(url instanceof FileSystemFileHandle))) {
       const {OS, FS} = this.Environment
@@ -119,7 +138,7 @@ export class FileClient implements DocumentClient {
       return urlObj
     }
     else {
-      if("createWritable" in FileSystemFileHandle.prototype) {
+      if(this.fileSystemSupported && this.showSaveFilePickerSupported) {
         const handle = url as FileSystemFileHandle ?? await this.pickSave() as FileSystemFileHandle | undefined
         const writable = await handle.createWritable()
         await writable.write(doc)
@@ -147,7 +166,7 @@ export class FileClient implements DocumentClient {
       let data = await FS.readFile(path, binary? "binary": "utf8")
       return data
     }
-    else if("showOpenFilePicker" in window) {
+    else if(this.showOpenFilePickerSupported) {
       const handle = url as FileSystemFileHandle ?? await this.pickLoad() as FileSystemFileHandle | undefined
       if(!handle) {
         return
@@ -160,7 +179,7 @@ export class FileClient implements DocumentClient {
       })
     }
     else if(url) {
-      throw Error("Not supported in your browser (try Chrome or Edge)")
+      throw Error("Not supported in your browser or permissions for File System Access API are missing (try Chrome or Edge)")
     }
     else {
       return readFileInput()
@@ -172,7 +191,7 @@ export class FileClient implements DocumentClient {
       const path = await this.Environment.Dialog.promptWrite({filters, defaultPath}) as null | string ?? undefined
       return path? new URL(path, "file://"): undefined
     }
-    else if("showSaveFilePicker" in window) {
+    else if(this.showSaveFilePickerSupported) {
       try {
         let handle: FileSystemFileHandle = await (window as any).showSaveFilePicker({startIn: "documents", types: filters.map(filter => ({description: filter.name, accept: filter.types}))})
         handle = Array.isArray(handle)? handle[0]: handle
@@ -188,7 +207,7 @@ export class FileClient implements DocumentClient {
       }
     }
     else {
-      throw Error("Not supported in your browser (try Chrome or Edge)")
+      throw Error("Not supported in your browser or permissions for File System Access API are missing (try Chrome or Edge)")
     }
   }
 
@@ -214,7 +233,7 @@ export class FileClient implements DocumentClient {
         }
       }
       else {
-        throw Error("Not supported in your browser")
+        throw Error("Not supported in your browser or permissions for File System Access API are missing (try Chrome or Edge)")
       }
     }
   }
