@@ -1,13 +1,17 @@
 {
   "name": "@webwriter/build",
-  "version": "1.1.0",
+  "version": "1.2.3",
   "description": "Build helper script for WebWriter packages",
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "license": "MIT",
   "type": "module",
   "dependencies": {
     "@webcomponents/scoped-custom-element-registry": "^0.0.9",
-    "esbuild": "^0.23.1"
+    "deepl-node": "^1.14.0",
+    "dotenv": "^16.4.5",
+    "esbuild": "^0.24.0",
+    "jsdom": "^25.0.1",
+    "xliff": "^6.2.1"
   },
   "bin": "./build.js"
 }

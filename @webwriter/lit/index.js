@@ -759,14 +759,24 @@ var _lang_dec, _contentEditable_dec, _a, _init, _contentEditable, _lang;
 var LitElementWw = class extends (_a = ScopedElementsMixin2(h3), _contentEditable_dec = [n4({ type: String, attribute: true, reflect: true })], _lang_dec = [n4({ type: String, attribute: true, reflect: true })], _a) {
   constructor() {
     super(...arguments);
+    __runInitializers(_init, 5, this);
     /** Declare attributes as options. Used by WebWriter to auto-generate input fields to modify these attributes. As the name suggests, this is mostly suited to simple attributes (boolean, string, etc.). Use a getter here (`get options() {...}`) to dynamically change options depending on the state of the widget.*/
     __publicField(this, "options");
     /** Declare methods as actions. Used by WebWriter to treat all DOM changes triggered by the method as a single change (as a transaction).*/
     __publicField(this, "actions", {});
+    /** Add `@lit/localize` support. This should be the return value of `configureLocalization`. */
+    __publicField(this, "localize");
     __privateAdd(this, _contentEditable, __runInitializers(_init, 8, this)), __runInitializers(_init, 11, this);
-    __privateAdd(this, _lang, __runInitializers(_init, 12, this)), __runInitializers(_init, 15, this);
+    __privateAdd(this, _lang, "");
     /** @internal */
     __publicField(this, "_inTransaction", false);
+  }
+  get lang() {
+    return this.parentElement?.closest("[lang]")?.lang ?? __privateGet(this, _lang);
+  }
+  set lang(value) {
+    __privateSet(this, _lang, value);
+    this.localize.setLocale(value).finally(() => this.requestUpdate("lang"));
   }
   connectedCallback() {
     super.connectedCallback();
@@ -777,9 +787,16 @@ _init = __decoratorStart(_a);
 _contentEditable = new WeakMap();
 _lang = new WeakMap();
 __decorateElement(_init, 4, "contentEditable", _contentEditable_dec, LitElementWw, _contentEditable);
-__decorateElement(_init, 4, "lang", _lang_dec, LitElementWw, _lang);
+__decorateElement(_init, 3, "lang", _lang_dec, LitElementWw);
 __decoratorMetadata(_init, LitElementWw);
 __publicField(LitElementWw, "shadowRootOptions", { ...h3.shadowRootOptions });
+/** Register the classes of custom elements to use in the Shadow DOM here. DO NOT register any additional elements globally.
+ * @example
+ * import SlButton from "@shoelace-style/shoelace/dist/components/button/button.component.js"
+ * ...
+ *   static scopedElements = {"sl-button": SlButton}
+ **/
+__publicField(LitElementWw, "scopedElements", {});
 __publicField(LitElementWw, "options", {});
 __publicField(LitElementWw, "actions", {});
 export {
