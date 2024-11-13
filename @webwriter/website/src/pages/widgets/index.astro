@@ -10,7 +10,7 @@ function calculateOrder(widget: any) {
 
 function prettifyWidgetName(name: string) {
     let result = name.replace(/^@.+\//g, "")
-    result = result[0].toUpperCase() + result.slice(1)
+    result = result.split("-").map(s => s[0].toUpperCase() + s.slice(1)).join(" ")
     return result
 }
 
