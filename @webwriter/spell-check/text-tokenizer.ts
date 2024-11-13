@@ -77,6 +77,16 @@ export function diffTokens(
       j--;
     } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
       diff.unshift({ type: "insert", token: correctedTokens[j - 1] });
+
+      // diff.unshift({
+      //   type: "insert",
+      //   token: {
+      //     type: correctedTokens[j - 1].type,
+      //     value: correctedTokens[j - 1].value,
+      //     position:
+      //       originalTokens[j - 2].position + originalTokens[j - 2].value.length,
+      //   },
+      // });
       j--;
     } else {
       diff.unshift({ type: "delete", token: originalTokens[i - 1] });
@@ -101,6 +111,16 @@ function compressDiffTokens(diff: DiffToken[]): DiffToken[] {
       lastToken = token;
     }
   }
+
+  // account for correct insertions
+  compressedDiff.forEach((diff, i) => {
+    if (diff.type === "unchanged") {
+      const nextDiff = compressedDiff[i + 1];
+      if (nextDiff?.type === "insert") {
+        nextDiff.token.position = diff.token.position + diff.token.value.length;
+      }
+    }
+  });
 
   return compressedDiff;
 }
@@ -203,23 +223,23 @@ export function applyGrammarSuggestions(
         );
         break;
       case "insert":
-        console.log(
-          "inserting",
-          suggestion.corrected.value,
-          "at",
-          from,
-          "in",
-          tr.doc.toString()
-        );
-        tr = tr.insertText(suggestion.corrected.value, from);
-        tr = tr.addMark(
-          from,
-          from + suggestion.corrected.value.length,
-          editorState.schema.marks.grammar.create({
-            corrected: suggestion.corrected.value,
-            isInsert: true,
-          })
-        );
+        // console.log(
+        //   "inserting",
+        //   suggestion.corrected.value,
+        //   "at",
+        //   from,
+        //   "in",
+        //   tr.doc.toString()
+        // );
+        // tr = tr.insertText(suggestion.corrected.value, from);
+        // tr = tr.addMark(
+        //   from,
+        //   from + suggestion.corrected.value.length,
+        //   editorState.schema.marks.grammar.create({
+        //     corrected: suggestion.corrected.value,
+        //     isInsert: true,
+        //   })
+        // );
 
         break;
       case "delete":
@@ -230,6 +250,21 @@ export function applyGrammarSuggestions(
         );
         break;
     }
+  }
+
+  // apply inserts
+  const insertions = sortedSuggestions.filter((s) => s.type === "insert");
+  for (const suggestion of insertions) {
+    const from = suggestion.original.position + 1;
+    tr = tr.insertText(suggestion.corrected.value, from);
+    tr = tr.addMark(
+      from,
+      from + suggestion.corrected.value.length,
+      editorState.schema.marks.grammar.create({
+        corrected: suggestion.corrected.value,
+        isInsert: true,
+      })
+    );
   }
 
   return tr;

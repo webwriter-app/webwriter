@@ -554,6 +554,7 @@
 'upKey': `↑ Nahoru`,
 's6dc3339b268508dd': `Spell Check`,
 's5c1501691641b359': `Checks the document for grammar errors`,
+'sfa847f22cbd9bff5': `Translate`,
 's7cb4e55c59663b1c': `Company`,
 's5da52af9b083c29a': `Model`,
 's9781a5bb3fcb26a3': `Select a company first`,
