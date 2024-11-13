@@ -6,7 +6,6 @@ import {
   FileAccount,
   LLMAccount,
   NpmAccount,
-  OpenAIAccount,
   PocketbaseAccount,
 } from "../schemas/accounts";
 import PocketBase, {
@@ -157,11 +156,6 @@ export interface PackageClient extends Client {
 
 export interface AnalyticsClient extends Client {
   pushStatements(): void;
-}
-
-export interface ApiKeyClient extends Client {
-  getApiKey(): string;
-  account: OpenAIAccount;
 }
 
 export interface LLMApiClient extends Client {
@@ -369,18 +363,6 @@ export class FileClient implements DocumentClient {
 
   isClientURL(url: URL) {
     return url.protocol === "file:";
-  }
-}
-
-// @meeting
-export class OpenAIClient implements ApiKeyClient {
-  constructor(
-    readonly account: OpenAIAccount,
-    readonly Environment: Environment
-  ) {}
-
-  getApiKey() {
-    return this.account.apikey;
   }
 }
 
@@ -641,6 +623,5 @@ export default {
   file: FileClient,
   pocketbase: PocketbaseClient,
   npm: NpmClient,
-  openai: OpenAIClient,
   llm: LLMClient,
 };

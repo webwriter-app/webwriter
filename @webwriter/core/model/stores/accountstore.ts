@@ -1,18 +1,11 @@
 import { filterObject, getFileExtension } from "../../utility";
-import {
-  FileClient,
-  LLMClient,
-  NpmClient,
-  OpenAIClient,
-  PocketbaseClient,
-} from "../clients";
+import { FileClient, LLMClient, NpmClient, PocketbaseClient } from "../clients";
 import { Environment } from "../environment";
 import marshal from "../marshal";
 import {
   FileAccount,
   NpmAccount,
   PocketbaseAccount,
-  OpenAIAccount,
   LLMAccount,
 } from "../schemas/accounts";
 
@@ -31,7 +24,6 @@ export class AccountStore {
     file: FileAccount,
     npm: NpmAccount,
     pocketbase: PocketbaseAccount,
-    openai: OpenAIAccount,
     llm: LLMAccount,
   } as const;
 
@@ -39,7 +31,7 @@ export class AccountStore {
     file: FileClient,
     npm: NpmClient,
     pocketbase: PocketbaseClient,
-    openai: OpenAIClient,
+
     llm: LLMClient,
   } as const;
 
@@ -64,7 +56,7 @@ export class AccountStore {
     } as Record<string, FileAccount>,
     pocketbase: {} as Record<string, PocketbaseAccount>,
     npm: {} as Record<string, NpmAccount>,
-    openai: {} as Record<string, OpenAIAccount>,
+
     llm: {} as Record<string, LLMAccount>,
   };
 
@@ -90,7 +82,7 @@ export class AccountStore {
     ) as { file: { [k: string]: FileClient } } & Partial<{
       npm: Record<string, NpmClient>;
       pocketbase: Record<string, PocketbaseClient>;
-      openai: Record<string, OpenAIClient>;
+
       llm: Record<string, LLMClient>;
     }>;
   }

@@ -6,7 +6,7 @@ import { fetchGeminiChatCompletion } from "./google-fetcher";
 
 {
   /*
- ### Prompt redesign ###
+ ### Prompt design ###
 
  I want the model to:
   * correct snippets of text for spelling and grammar mistakes
@@ -55,6 +55,9 @@ const fetchInstructionMessage = (language: string): string => {
   }
 };
 
+/**
+ * Fetch text correction from different AI providers.
+ */
 export function fetchGrammarCorrection(
   text: string,
   apiKey: string,

@@ -1,6 +1,3 @@
-import { EditorStateWithHead } from "../core/model";
-import { DOMSerializer } from "prosemirror-model";
-
 export function formatHTMLToPlainText(html: string): string {
   // Create a DOM parser to parse the HTML string
   const parser = new DOMParser();

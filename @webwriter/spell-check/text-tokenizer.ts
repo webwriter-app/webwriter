@@ -13,8 +13,7 @@ type Token = {
 
 export function tokenizeText(text: string): Token[] {
   const tokens: Token[] = [];
-  // Updated regex to treat contractions and possessives as single words
-  const regex = /(\w+(?:['’-]\w+)*|[^\w\s]|\s+)/g;
+  const regex = /(\w+(?:['’-]\w+)*|[^\w\s]|\s+)/g; // regex to match words, punctuation, and spaces
   let match;
 
   while ((match = regex.exec(text)) !== null) {
@@ -40,6 +39,11 @@ type DiffToken = {
   type: "insert" | "delete" | "unchanged";
   token: Token;
 };
+
+/*
+ * Given two arrays of tokens, return a list of diff tokens that represent the
+ * differences between the two arrays.
+ */
 
 export function diffTokens(
   originalTokens: Token[],
@@ -77,16 +81,6 @@ export function diffTokens(
       j--;
     } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
       diff.unshift({ type: "insert", token: correctedTokens[j - 1] });
-
-      // diff.unshift({
-      //   type: "insert",
-      //   token: {
-      //     type: correctedTokens[j - 1].type,
-      //     value: correctedTokens[j - 1].value,
-      //     position:
-      //       originalTokens[j - 2].position + originalTokens[j - 2].value.length,
-      //   },
-      // });
       j--;
     } else {
       diff.unshift({ type: "delete", token: originalTokens[i - 1] });
@@ -112,7 +106,7 @@ function compressDiffTokens(diff: DiffToken[]): DiffToken[] {
     }
   }
 
-  // account for correct insertions
+  // account for correct insertion positions
   compressedDiff.forEach((diff, i) => {
     if (diff.type === "unchanged") {
       const nextDiff = compressedDiff[i + 1];
@@ -130,6 +124,11 @@ type Suggestion = {
   original: Token;
   corrected: Token;
 };
+
+/*
+ * Given a list of diff tokens, return a list of suggestions that can be applied
+ * to the original text to correct it.
+ */
 
 export function matchDiffs(diff: DiffToken[]): Suggestion[] {
   const suggestions: Suggestion[] = [];
@@ -165,6 +164,10 @@ export function matchDiffs(diff: DiffToken[]): Suggestion[] {
   }
   return suggestions;
 }
+
+/*
+ * creates a Transaction that removes all grammar Marks from the document
+ */
 export function removeGrammarSuggestions(
   editorState: EditorState
 ): Transaction {
@@ -197,6 +200,10 @@ export function removeGrammarSuggestions(
 
   return tr;
 }
+
+/*
+ * creates a Transaction that applies the given grammar suggestions to the document
+ */
 export function applyGrammarSuggestions(
   editorState: EditorState,
   suggestions: Suggestion[]
@@ -223,24 +230,15 @@ export function applyGrammarSuggestions(
         );
         break;
       case "insert":
-        // console.log(
-        //   "inserting",
-        //   suggestion.corrected.value,
-        //   "at",
-        //   from,
-        //   "in",
-        //   tr.doc.toString()
-        // );
-        // tr = tr.insertText(suggestion.corrected.value, from);
-        // tr = tr.addMark(
-        //   from,
-        //   from + suggestion.corrected.value.length,
-        //   editorState.schema.marks.grammar.create({
-        //     corrected: suggestion.corrected.value,
-        //     isInsert: true,
-        //   })
-        // );
-
+        tr = tr.insertText(suggestion.corrected.value, from);
+        tr = tr.addMark(
+          from,
+          from + suggestion.corrected.value.length,
+          editorState.schema.marks.grammar.create({
+            corrected: suggestion.corrected.value,
+            isInsert: true,
+          })
+        );
         break;
       case "delete":
         tr = tr.addMark(
@@ -250,21 +248,6 @@ export function applyGrammarSuggestions(
         );
         break;
     }
-  }
-
-  // apply inserts
-  const insertions = sortedSuggestions.filter((s) => s.type === "insert");
-  for (const suggestion of insertions) {
-    const from = suggestion.original.position + 1;
-    tr = tr.insertText(suggestion.corrected.value, from);
-    tr = tr.addMark(
-      from,
-      from + suggestion.corrected.value.length,
-      editorState.schema.marks.grammar.create({
-        corrected: suggestion.corrected.value,
-        isInsert: true,
-      })
-    );
   }
 
   return tr;

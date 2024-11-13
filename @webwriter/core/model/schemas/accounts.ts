@@ -1,10 +1,6 @@
 import { z } from "zod";
 
-export type Account =
-  | NpmAccount
-  | PocketbaseAccount
-  | OpenAIAccount
-  | LLMAccount;
+export type Account = NpmAccount | PocketbaseAccount | LLMAccount;
 
 export interface NpmAccount
   extends z.infer<(typeof NpmAccount)["objectSchema"]> {}
@@ -134,31 +130,6 @@ export class FileAccount {
 
   constructor(
     value: z.input<(typeof FileAccount)["objectSchema"]> | FileAccount
-  ) {
-    return Object.assign(this, value);
-  }
-}
-
-// @meeting
-export interface OpenAIAccount
-  extends z.infer<(typeof OpenAIAccount)["objectSchema"]> {}
-export class OpenAIAccount {
-  static readonly key = "openai" as const;
-
-  static objectSchema = z.object({
-    apikey: z.string(),
-  });
-
-  get id() {
-    return "openai" as const;
-  }
-
-  static schema = OpenAIAccount.objectSchema
-    .transform((x) => new OpenAIAccount(x))
-    .or(z.instanceof(OpenAIAccount));
-
-  constructor(
-    value: z.input<(typeof OpenAIAccount)["objectSchema"]> | OpenAIAccount
   ) {
     return Object.assign(this, value);
   }

@@ -11,7 +11,6 @@ import { Account, AccountTypeId } from "../../model/stores/accountstore";
 import {
   LLMAccountForm,
   NpmAccountForm,
-  OpenAIAccountForm,
   PocketbaseAccountForm,
 } from "./accountform";
 import { APPICON, App, Button, Settings } from "..";
@@ -19,7 +18,6 @@ import {
   FileAccount,
   LLMAccount,
   NpmAccount,
-  OpenAIAccount,
   PocketbaseAccount,
 } from "../../model/schemas/accounts";
 import { SlCard, SlInput } from "@shoelace-style/shoelace";
@@ -38,7 +36,7 @@ export class AccountManager extends LitElement {
       file: "signature",
       pocketbase: "webwriter-app-icon",
       npm: "brand-npm",
-      openai: "brand-openai",
+
       llm: "brand-openai",
     } as const;
   }
@@ -48,7 +46,7 @@ export class AccountManager extends LitElement {
       file: "Signature",
       pocketbase: "WebWriter Cloud",
       npm: "Package Registry",
-      openai: "OpenAI",
+
       llm: "Grammar LLM",
     } as const;
   }
@@ -64,9 +62,7 @@ export class AccountManager extends LitElement {
       npm: msg(
         "Package registry accounts are intended for developers and allow you to configure one or more registries"
       ),
-      openai: msg(
-        "OpenAI accounts allow you to use the OpenAI API to generate text and other content."
-      ),
+
       llm: msg(
         "Grammar LLM accounts allow you to use the Grammar LLM API to correct grammar in text."
       ),
@@ -192,26 +188,6 @@ export class AccountManager extends LitElement {
           value=${ifDefined(account?.email)}
           @sl-change=${(e: any) =>
             this.handleFileAccountChange("email", e.target.value)}
-        ></sl-input>
-      </sl-card>`;
-    },
-    // @meeting
-    openai: (account?: OpenAIAccount) => {
-      return html`<sl-card class="account-card-oai">
-        <sl-input
-          name="apikey"
-          size="small"
-          class="openai-form"
-          placeholder=${msg("None")}
-          label=${msg("OpenAI API Key")}
-          value=${ifDefined(
-            account?.apikey
-              ? account.apikey.slice(0, 10) +
-                  "*".repeat(account.apikey.length - 10)
-              : undefined
-          )}
-          @sl-change=${(e: any) =>
-            this.handleApiKeyChange("apikey", e.target.value)}
         ></sl-input>
       </sl-card>`;
     },
@@ -427,17 +403,6 @@ export class AccountManager extends LitElement {
   async handleFileAccountChange(key: string, value: string) {
     const fileAccount = this.app.store.accounts.getAccount("file");
     const newAccount = new FileAccount({ ...fileAccount, [key]: value } as any);
-    this.app.store.accounts.updateAccount(newAccount);
-    await this.app.settings.persist();
-  }
-
-  async handleApiKeyChange(key: string, value: string) {
-    console.log("handleApiKeyChange", key, value);
-    const openAiAccount = this.app.store.accounts.getAccount("openai");
-    const newAccount = new OpenAIAccount({
-      ...openAiAccount,
-      [key]: value,
-    } as any);
     this.app.store.accounts.updateAccount(newAccount);
     await this.app.settings.persist();
   }

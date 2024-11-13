@@ -17,7 +17,6 @@ import {
   LLMAccount,
   NpmAccount,
   PocketbaseAccount,
-  OpenAIAccount,
 } from "../model/schemas/accounts";
 import { autorun, observe, reaction, when } from "mobx";
 
@@ -171,8 +170,14 @@ export class SettingsController implements ReactiveController {
           label: msg("Language"),
         },
         showUnstable: {
-          schema: z.boolean().describe(msg("Advanced: Show with versions like 0.x.x in the package manager")),
-          label: msg("Show unstable packages")
+          schema: z
+            .boolean()
+            .describe(
+              msg(
+                "Advanced: Show with versions like 0.x.x in the package manager"
+              )
+            ),
+          label: msg("Show unstable packages"),
         },
         /*showTextPlaceholder: {
           schema: z
@@ -204,7 +209,6 @@ export class SettingsController implements ReactiveController {
             file: z.record(z.string(), FileAccount.schema),
             pocketbase: z.record(z.string(), PocketbaseAccount.schema),
             npm: z.record(z.string(), NpmAccount.schema),
-            openai: z.record(z.string(), OpenAIAccount.schema),
             llm: z.record(z.string(), LLMAccount.schema),
           }) as any,
           hidden: true,
