@@ -8,12 +8,17 @@ import SlButton from "@shoelace-style/shoelace/dist/components/button/button.com
 import SlIcon from "@shoelace-style/shoelace/dist/components/icon/icon.component.js"
 import type { WebwriterPairingItem } from "./webwriter-pairing-item"
 
+import LOCALIZE from "../../localization/generated"
+import {msg} from "@lit/localize"
+
 declare global {interface HTMLElementTagNameMap {
   "webwriter-pairing": WebwriterPairing;
 }}
 
 @customElement("webwriter-pairing")
 export class WebwriterPairing extends LitElementWw {
+
+  localize = LOCALIZE
 
   static shadowRootOptions = {...LitElementWw.shadowRootOptions, slotAssignment: "manual" as const}
 

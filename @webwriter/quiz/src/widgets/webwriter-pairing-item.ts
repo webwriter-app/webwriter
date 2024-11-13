@@ -3,12 +3,17 @@ import {LitElementWw, option} from "@webwriter/lit"
 import {customElement, property} from "lit/decorators.js"
 import "@shoelace-style/shoelace/dist/themes/light.css"
 
+import LOCALIZE from "../../localization/generated"
+import {msg} from "@lit/localize"
+
 declare global {interface HTMLElementTagNameMap {
   "webwriter-pairing-item": WebwriterPairingItem;
 }}
 
 @customElement("webwriter-pairing-item")
 export class WebwriterPairingItem extends LitElementWw {
+
+  localize = LOCALIZE
 
   tabIndex = -1
 

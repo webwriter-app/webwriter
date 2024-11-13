@@ -1,0 +1,54 @@
+<xliff xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:oasis:names:tc:xliff:document:1.2 http://docs.oasis-open.org/xliff/v1.2/os/xliff-core-1.2-strict.xsd" xmlns="urn:oasis:names:tc:xliff:document:1.2" version="1.2">
+  <file original="lit-localize-inputs" datatype="plaintext" source-language="en" target-language="hu">
+    <body>
+      <trans-unit id="s4802e47fe2e95134">
+        <source>Option</source>
+        <target>Opció</target>
+      </trans-unit>
+      <trans-unit id="s85ea99fb52be3385">
+        <source>True</source>
+        <target>Igaz</target>
+      </trans-unit>
+      <trans-unit id="s7254ca27b16ae2d8">
+        <source>False</source>
+        <target>Hamis</target>
+      </trans-unit>
+      <trans-unit id="s159928724265eb05">
+        <source>Add Option</source>
+        <target>Opció hozzáadása</target>
+      </trans-unit>
+      <trans-unit id="sc56e9323f076a11e">
+        <source>Text to add gaps to</source>
+        <target>Hézagok hozzáadására szolgáló szöveg</target>
+      </trans-unit>
+      <trans-unit id="s80dc9f56411917df">
+        <source>Text to Highlight</source>
+        <target>Kiemelendő szöveg</target>
+      </trans-unit>
+      <trans-unit id="s1b23c41934894f30">
+        <source>Explanation</source>
+        <target>Magyarázat</target>
+      </trans-unit>
+      <trans-unit id="sd26e8d4eef55e341">
+        <source>Check your answers</source>
+        <target>Ellenőrizze válaszait</target>
+      </trans-unit>
+      <trans-unit id="scd1dd6ff53d0d01a">
+        <source>Try again</source>
+        <target>Próbálja újra</target>
+      </trans-unit>
+      <trans-unit id="sb3d4f79d9d8b71e5">
+        <source>Submit</source>
+        <target>Küldje be a</target>
+      </trans-unit>
+      <trans-unit id="s255857544a9d5ec0">
+        <source>Reset</source>
+        <target>Reset</target>
+      </trans-unit>
+      <trans-unit id="s54393bfa280ea55b">
+        <source>Prompt</source>
+        <target>Prompt</target>
+      </trans-unit>
+    </body>
+  </file>
+</xliff>

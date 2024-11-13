@@ -6,14 +6,16 @@
   ],
   "description": "Add interactive tasks (multiple choice, order, free text, highlighting, or speech input). Make a quiz out of multiple tasks.",
   "scripts": {
-    "prepublishOnly": "npx @webwriter/build"
+    "prepublishOnly": "npx @webwriter/build",
+    "dev": "npx @webwriter/build dev",
+    "localize": "lit-localize extract && npx @webwriter/build localize && lit-localize build"
   },
   "license": "MIT",
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "dependencies": {
     "@shoelace-style/shoelace": "^2.13.1",
     "@shopify/draggable": "^1.1.3",
-    "@webwriter/lit": "^2.0.0",
+    "@webwriter/lit": "^2.1.2",
     "bootstrap-icons": "^1.11.3",
     "interactjs": "^1.10.26",
     "lit": "^3.2.0",
@@ -21,6 +23,8 @@
     "sortablejs": "^1.15.2"
   },
   "devDependencies": {
+    "@lit/localize": "^0.12.2",
+    "@lit/localize-tools": "^0.8.0",
     "@types/minimasonry": "^1.3.5",
     "@types/sortablejs": "^1.15.7"
   },

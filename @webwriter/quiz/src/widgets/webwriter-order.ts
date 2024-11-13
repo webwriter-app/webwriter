@@ -11,6 +11,9 @@ import IconPlus from "bootstrap-icons/icons/plus.svg"
 import { WebwriterOrderItem } from "./webwriter-order-item"
 import { ifDefined } from "lit/directives/if-defined.js"
 
+import LOCALIZE from "../../localization/generated"
+import {msg} from "@lit/localize"
+
 export function shuffle<T>(a: T[]) {
   for (let i = a.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -25,6 +28,8 @@ declare global {interface HTMLElementTagNameMap {
 
 @customElement("webwriter-order")
 export class WebwriterOrder extends LitElementWw {
+
+  localize = LOCALIZE
 
   static scopedElements = {
     "sl-button": SlButton,
@@ -261,7 +266,7 @@ export class WebwriterOrder extends LitElementWw {
 
   
   reportSolution() {
-    this.solution.forEach((id, i) => this.querySelector(`#${id}`).validOrder = i)
+    this.solution.forEach((id, i) => (this.querySelector(`#${id}`) as any).validOrder = i)
   }
 
   reset() {
@@ -273,7 +278,7 @@ export class WebwriterOrder extends LitElementWw {
     return html`
       <slot id="items-slot" @webwriter-clear-drop-preview=${this.clearDropPreviews}></slot>
       <sl-button size="small" id="add-option" class="author-only" @click=${() => this.addItem()}>
-        <sl-icon src=${IconPlus}></sl-icon><span>Add Option</span>
+        <sl-icon src=${IconPlus}></sl-icon><span>${msg("Add Option")}</span>
       </sl-button>
     `
   }

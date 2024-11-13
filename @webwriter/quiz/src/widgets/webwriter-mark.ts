@@ -6,6 +6,9 @@ import "@shoelace-style/shoelace/dist/themes/light.css"
 
 import SlIconButton from "@shoelace-style/shoelace/dist/components/icon-button/icon-button.component.js"
 
+import LOCALIZE from "../../localization/generated"
+import {msg} from "@lit/localize"
+
 /**
  * @param {!Node} node
  * @param {boolean=} optimized
@@ -144,9 +147,6 @@ const Step = class {
     }
 };
 
-import IconHighlighter from "bootstrap-icons/icons/highlighter.svg"
-import IconHighlighterFill from "../lib/highlighter-fill.svg"
-
 function getCaretPositionFromPoint(e: PointerEvent) {
   let range: Range | null;
   let textNode: Text;
@@ -225,9 +225,9 @@ declare global {interface HTMLElementTagNameMap {
 @customElement("webwriter-mark")
 export class WebwriterMark extends LitElementWw {
 
-  static shadowRootOptions = {...LitElementWw.shadowRootOptions, delegatesFocus: false}
+  localize = LOCALIZE
 
-  static localization = {}
+  static shadowRootOptions = {...LitElementWw.shadowRootOptions, delegatesFocus: false}
 
   // @ts-ignore: Experimental API
   static highlightValue = new Highlight()
@@ -241,9 +241,6 @@ export class WebwriterMark extends LitElementWw {
     // @ts-ignore: Experimental API
     CSS.highlights.set("webwriter-mark-value", this.highlightValue)
   }
-
-  msg = (str: string) => this.lang in WebwriterMark.localization? WebwriterMark.localization[this.lang][str] ?? str: str
-
   
   static scopedElements = {
     "sl-icon-button": SlIconButton
@@ -429,7 +426,7 @@ export class WebwriterMark extends LitElementWw {
 
   render() {
     return html`
-      <slot style=${styleMap({"--ww-placeholder": `"${this.msg("Text to Highlight")}"`})} ?data-empty=${!this.textContent} @click=${this.handleHighlight} @contextmenu=${this.handleHighlight}></slot>
+      <slot style=${styleMap({"--ww-placeholder": `"${msg("Text to Highlight")}"`})} ?data-empty=${!this.textContent} @click=${this.handleHighlight} @contextmenu=${this.handleHighlight}></slot>
     `
   }
 }

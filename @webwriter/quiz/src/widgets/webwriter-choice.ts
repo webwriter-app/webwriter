@@ -16,6 +16,9 @@ import type { WebwriterChoiceItem } from "./webwriter-choice-item.js"
 import "@shoelace-style/shoelace/dist/themes/light.css"
 import MiniMasonry from "minimasonry"
 
+import LOCALIZE from "../../localization/generated"
+import {msg} from "@lit/localize"
+
 
 export function shuffle<T>(a: T[]) {
   for (let i = a.length - 1; i > 0; i--) {
@@ -31,6 +34,8 @@ declare global {interface HTMLElementTagNameMap {
 
 @customElement("webwriter-choice")
 export class WebwriterChoice extends LitElementWw {
+
+  localize = LOCALIZE
 
   @property({type: String, attribute: true, reflect: true})
   @option({
@@ -294,8 +299,8 @@ export class WebwriterChoice extends LitElementWw {
       ${this.mode === "truefalse"
         ? html`
           <sl-radio-group>
-            <sl-radio-button value="true">True</sl-radio-button>
-            <sl-radio-button value="false">False</sl-radio-button>
+            <sl-radio-button value="true">${msg("True")}</sl-radio-button>
+            <sl-radio-button value="false">${msg("False")}</sl-radio-button>
           </sl-radio-group>
         `
         : html`
@@ -303,7 +308,7 @@ export class WebwriterChoice extends LitElementWw {
         `
       }
       <sl-button size="small" id="add-option" class="author-only" @click=${() => this.addItem()}>
-        <sl-icon src=${this.mode === "multiple"? IconPlusSquare: IconPlusCircle}></sl-icon><span>Add Option</span>
+        <sl-icon src=${this.mode === "multiple"? IconPlusSquare: IconPlusCircle}></sl-icon><span>${msg("Add Option")}</span>
       </sl-button>
     `
   }

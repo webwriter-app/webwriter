@@ -22,6 +22,9 @@ import IconGrid3x3Gap from "bootstrap-icons/icons/grid-3x3-gap.svg"
 import "@shoelace-style/shoelace/dist/themes/light.css"
 import type { WebwriterTask } from "./webwriter-task.js"
 
+import LOCALIZE from "../../localization/generated"
+import {msg} from "@lit/localize"
+
 
 function shuffle<T>(a: T[]) {
   for (let i = a.length - 1; i > 0; i--) {
@@ -38,26 +41,24 @@ declare global {interface HTMLElementTagNameMap {
 @customElement("webwriter-quiz")
 export class WebwriterQuiz extends LitElementWw {
 
-  static localization = {}
-
-  msg = (str: string) => this.lang in WebwriterQuiz.localization? WebwriterQuiz.localization[this.lang][str] ?? str: str
+  localize = LOCALIZE
 
   get answerTypes() {
     return {
       "webwriter-choice": {
-        label: this.msg("Choice"),
+        label: msg("Choice"),
         icon: IconUIChecksGrid
       },
       "webwriter-order": {
-        label: this.msg("Order"),
+        label: msg("Order"),
         icon: Icon123
       },
       "webwriter-text": {
-        label: this.msg("Text"),
+        label: msg("Text"),
         icon: IconCardText
       },
       "webwriter-mark": {
-        label: this.msg("Mark"),
+        label: msg("Mark"),
         icon: IconHighlighter
       },/*
       "webwriter-pairing": {
@@ -69,7 +70,7 @@ export class WebwriterQuiz extends LitElementWw {
         icon: IconBodyText
       },*/
       "webwriter-speech": {
-        label: this.msg("Speech"),
+        label: msg("Speech"),
         //advanced: true,
         icon: IconMic
       },
@@ -254,8 +255,8 @@ export class WebwriterQuiz extends LitElementWw {
     return html`
       <slot ?inert=${this.submitted} @ww-answer-change=${() => this.requestUpdate()}></slot>
         <sl-button-group class="user-only user-actions">
-          <sl-button id="submit" @click=${this.handleSubmit}>Submit</sl-button>
-          <sl-button ?disabled=${!this.isChanged} id="reset" @click=${this.handleReset}>Reset</sl-button>
+          <sl-button id="submit" @click=${this.handleSubmit}>${msg("Submit")}</sl-button>
+          <sl-button ?disabled=${!this.isChanged} id="reset" @click=${this.handleReset}>${msg("Reset")}</sl-button>
         </sl-button-group>
       <sl-button-group class="author-only">
         ${basicAnswerTypes.map(k => html`

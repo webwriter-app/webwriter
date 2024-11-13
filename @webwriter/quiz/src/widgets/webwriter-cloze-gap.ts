@@ -14,6 +14,9 @@ import { property } from "lit/decorators/property.js"
 import { queryAsync } from "lit/decorators/query-async.js"
 import "@shoelace-style/shoelace/dist/themes/light.css"
 
+import LOCALIZE from "../../localization/generated"
+import {msg} from "@lit/localize"
+
 declare global {interface HTMLElementTagNameMap {
   "webwriter-cloze-gap": WebwriterClozeGap;
 }}
@@ -21,7 +24,7 @@ declare global {interface HTMLElementTagNameMap {
 @customElement("webwriter-cloze-gap")
 export class WebwriterClozeGap extends LitElementWw {
 
-  static localization = {}
+  localize = LOCALIZE
 
   @property({type: Array, attribute: true, reflect: true})
   accessor solution: string[]
@@ -31,13 +34,9 @@ export class WebwriterClozeGap extends LitElementWw {
 
   @property({type: Array, attribute: true, reflect: true})
   accessor distraction: string[] = []
-
   
   @property({type: Boolean, attribute: true, reflect: true})
   accessor showOptions = false
-
-  msg = (str: string) => this.lang in WebwriterClozeGap.localization? WebwriterClozeGap.localization[this.lang][str] ?? str: str
-
   
   static scopedElements = {
     "ww-combobox": Combobox,

@@ -10,6 +10,9 @@ import IconTextarea from "bootstrap-icons/icons/textarea.svg"
 import { WebwriterClozeGap } from "./webwriter-cloze-gap.js"
 import "@shoelace-style/shoelace/dist/themes/light.css"
 
+import LOCALIZE from "../../localization/generated"
+import {msg} from "@lit/localize"
+
 declare global {interface HTMLElementTagNameMap {
   "webwriter-cloze": WebwriterCloze;
 }}
@@ -17,12 +20,9 @@ declare global {interface HTMLElementTagNameMap {
 @customElement("webwriter-cloze")
 export class WebwriterCloze extends LitElementWw {
 
+  localize = LOCALIZE
+
   static shadowRootOptions: ShadowRootInit = {...LitElementWw.shadowRootOptions, delegatesFocus: false}
-
-  static localization = {}
-
-  msg = (str: string) => this.lang in WebwriterCloze.localization? WebwriterCloze.localization[this.lang][str] ?? str: str
-
   
   static scopedElements = {
     "sl-icon-button": SlIconButton
@@ -129,7 +129,7 @@ export class WebwriterCloze extends LitElementWw {
 
   render() {
     return html`
-      <slot style=${styleMap({"--placeholder": `"${this.msg("Text to add gaps to")}"`})} ?data-empty=${!this.textContent.trim() && !this.querySelectorAll("& > p *:not(br)").length}></slot>
+      <slot style=${styleMap({"--placeholder": `"${msg("Text to add gaps to")}"`})} ?data-empty=${!this.textContent.trim() && !this.querySelectorAll("& > p *:not(br)").length}></slot>
       <sl-icon-button class="author-only" id="add-gap" src=${IconTextarea} @click=${this.toggleGap}></sl-icon-button>
     `
   }

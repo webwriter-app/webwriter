@@ -13,6 +13,8 @@ import { keyed } from "lit/directives/keyed.js"
 import IconX from "bootstrap-icons/icons/x.svg"
 import IconCheck from "bootstrap-icons/icons/check.svg"
 
+import LOCALIZE from "../../localization/generated"
+import {msg} from "@lit/localize"
 
 declare global {interface HTMLElementTagNameMap {
   "webwriter-choice-item": WebwriterChoiceItem;
@@ -21,9 +23,7 @@ declare global {interface HTMLElementTagNameMap {
 @customElement("webwriter-choice-item")
 export class WebwriterChoiceItem extends LitElementWw {
 
-  static localization = {}
-
-  msg = (str: string) => this.lang in WebwriterChoiceItem.localization? WebwriterChoiceItem.localization[this.lang][str] ?? str: str
+  localize = LOCALIZE
 
   @property({type: Boolean, attribute: false})
   accessor active = false
@@ -244,7 +244,7 @@ export class WebwriterChoiceItem extends LitElementWw {
     return keyed(this.layout, html`
       ${this.valid !== undefined && (this.active || !this.active && this.valid)? html`<sl-icon class="solution user-only" ?data-valid=${this.valid} src=${this.valid? IconCheck: IconX}></sl-icon>`: null}
       <sl-checkbox class=${classMap({valid: this.valid, active: this.active})} exportparts="base, control, label" @click=${this.handleClick} @sl-change=${this.handleChange} ?checked=${this.isContentEditable? this.valid: this.active}>
-        <slot part="slot" style=${styleMap({"--ww-placeholder": `"${this.msg("Option")}"`})}></slot>
+        <slot part="slot" style=${styleMap({"--ww-placeholder": `"${msg("Option")}"`})}></slot>
       </sl-checkbox>
     `)
   }

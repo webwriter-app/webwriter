@@ -18,6 +18,12 @@ import IconPatchQuestionFill from "bootstrap-icons/icons/patch-question-fill.svg
 import IconPatchCheck from "bootstrap-icons/icons/patch-check.svg"
 import IconPatchCheckFill from "bootstrap-icons/icons/patch-check-fill.svg"
 
+import "@shoelace-style/shoelace/dist/themes/light.css"
+import { WebwriterTaskExplainer } from "./webwriter-task-explainer"
+
+import LOCALIZE from "../../localization/generated"
+import {msg} from "@lit/localize"
+
 async function arrayBufferToDataUrl(buffer: ArrayBuffer | Uint8Array) {
   return new Promise(r => {
     const reader = new FileReader()
@@ -56,8 +62,6 @@ function getKey(keyMaterial: CryptoKey, salt: ArrayBufferView) {
   )
 }
 
-import "@shoelace-style/shoelace/dist/themes/light.css"
-import { WebwriterTaskExplainer } from "./webwriter-task-explainer"
 function romanOrdinal(num: number, capitalize=false) {
   let roman = {
     m: 1000,
@@ -107,6 +111,8 @@ declare global {interface HTMLElementTagNameMap {
 @customElement("webwriter-task")
 export class WebwriterTask extends LitElementWw {
 
+  localize = LOCALIZE
+
   static localization = {}
 
   static scopedElements = {
@@ -119,8 +125,6 @@ export class WebwriterTask extends LitElementWw {
     "sl-tab": SlTab,
     "sl-tab-panel": SlTabPanel
   }
-
-  msg = (str: string) => this.lang in WebwriterTask.localization? WebwriterTask.localization[this.lang][str] ?? str: str
 
   static styles = css`
     :host {
@@ -386,7 +390,6 @@ export class WebwriterTask extends LitElementWw {
 
   async #encodeSolution() {
     const value = this.answer.solution as any
-    console.log(value)
     let keyMaterial = await getKeyMaterial(this.password)
     let salt = window.crypto.getRandomValues(new Uint8Array(16))
     let iv = window.crypto.getRandomValues(new Uint8Array(12))
@@ -531,12 +534,12 @@ export class WebwriterTask extends LitElementWw {
       <slot @ww-answer-change=${this.handleAnswerChange} @slotchange=${this.handleSlotChange} ?inert=${this.submitted}></slot>
       <sl-tab-group id="explainer-group" placement="end" ?data-empty=${!this.explainers.length} ?data-single=${this.explainers.length === 1}>
         ${this.explainers.map((explainer, i) => html`<sl-tab ?active=${this.activeExplainer === explainer.id} slot="nav" @click=${() => this.selectExplainer(explainer.id)}>${this.explainerLabels[explainer.id] ?? explainer.id}</sl-tab>`)}
-        <slot name="explainer" style=${styleMap({"--ww-placeholder": `"${this.msg("Explanation")}"`})}></slot>
+        <slot name="explainer" style=${styleMap({"--ww-placeholder": `"${msg("Explanation")}"`})}></slot>
       </sl-tab-group>
       ${!this.directSubmit || !this.answer?.reportSolution? null: html`
         <sl-button-group class="user-only user-actions">
-          <sl-button id="submit" @click=${this.handleSubmit}>Check your answers</sl-button>
-          <sl-button ?disabled=${!this.isChanged && !this.submitted} id="reset" class="user-only" @click=${this.handleReset}>Try again</sl-button>
+          <sl-button id="submit" @click=${this.handleSubmit}>${msg("Check your answers")}</sl-button>
+          <sl-button ?disabled=${!this.isChanged && !this.submitted} id="reset" class="user-only" @click=${this.handleReset}>${msg("Try again")}</sl-button>
         </sl-button-group>
       `}
     `
