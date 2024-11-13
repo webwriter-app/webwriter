@@ -12,7 +12,7 @@ const RECOMMENDED_LICENSES = ["MIT", "ISC", "Apache-2.0", "BSD-2-Clause", "BSD-3
 @customElement("ww-package-form")
 export class PackageForm extends LitElement {
 
-  static optionKeys = ["generateLicense", "enableLiveReload", "preset", "localPath"] as const
+  static optionKeys = ["generateLicense", "preset", "localPath"] as const
 
   static get defaults() {return {
     name: "",
@@ -22,7 +22,6 @@ export class PackageForm extends LitElement {
     author: new Person(""),
     keywords: ["webwriter-widget"],
     generateLicense: true,
-    enableLiveReload: true,
     preset: "lit",
   }}
 
@@ -223,7 +222,7 @@ export class PackageForm extends LitElement {
         label="Package Name"
         ?validateAvailability=${!this.isImport}
         validateWebWriterPackageName
-        help-text=${msg("Both the tag of your widget and the name of your NPM package")}
+        help-text=${msg("The name of your package. Must be scoped, e.g. `@org/pkg`. ")}
       ></ww-npmnameinput>
       <ww-semverinput
         .value=${this.version as any}
@@ -274,11 +273,6 @@ export class PackageForm extends LitElement {
           name="generateLicense"
           ?checked=${this.generateLicense}>
           ${msg(html`Generate a <code>LICENSE</code> file`)}
-        </sl-checkbox>
-        <sl-checkbox
-          name="enableLiveReload"
-          ?checked=${this.enableLiveReload}>
-          ${msg("Enable live reload")}
         </sl-checkbox>
       </div>
       <footer id="form-buttons">

@@ -6,6 +6,7 @@ import { chainCommands, createParagraphNear, deleteSelection, joinBackward, join
 import {Node, NodeType, Attrs, Slice, Fragment} from "prosemirror-model"
 import { ContentExpression, ParentedExpression } from "../../contentexpression";
 import { HTMLElementSpec } from "../htmlelementspec";
+import { GapCursor } from "prosemirror-gapcursor";
 
 
 export function getActiveAttributes(state: EditorState, key: string) {
@@ -146,7 +147,7 @@ export function wrapSelection(type: string | NodeType, attrs?: Attrs) {
       slice = selection.content()
     }
     // selection.$anchor.parent.canReplaceWith(selection.$from.index(), selection.$to.index(), nodeType)
-    else if(!nodeType.isInline && !nodeType.isLeaf) {
+    else if(!nodeType.isInline && !nodeType.isLeaf && !(selection instanceof GapCursor)) {
       from = selection.$from.pos === 0? 0: selection.$from?.before(selection.$from.depth)
       to = selection.$from.pos === 0? 0: selection.$from?.after(selection.$from.depth)!
       const wrappingSelection = TextSelection.create(state.doc, from, to)
@@ -168,10 +169,11 @@ export function wrapSelection(type: string | NodeType, attrs?: Attrs) {
         newEnd = start + node.content.size + 1
       }
     })
-    if(newStart! !== null && newEnd! !== null) {
+    if(newStart! != null && newEnd! != null) {
       // tr = tr.setSelection(new TextSelection(tr.doc.resolve(newStart), tr.doc.resolve(newEnd)))
-      const s = new NodeSelection(tr.doc.resolve(newStart!))
-      tr = tr.setSelection(new TextSelection(s.$from, s.$to))
+      const s = NodeSelection.findFrom(tr.doc.resolve(newStart!), 1)!
+      tr = tr.setSelection(s)
+      // tr = tr.setSelection(TextSelection(s.$from, s.$to))
     }
     return dispatch(tr)
   }

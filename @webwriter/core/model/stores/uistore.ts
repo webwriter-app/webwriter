@@ -29,6 +29,8 @@ export class UIStore {
 
    // showWidgetPreview: boolean = false // TODO: Causes multiple issues
 
+   showUnstable = false
+
    keymap: Record<string, {shortcut: string}> = {}
 
    enqueueNotification(notification: Notification) {

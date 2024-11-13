@@ -1050,7 +1050,6 @@ export class ExplorableEditor extends LitElement {
       // If no previous element, only check next element. If no next element, check only previous element.
       // Otherwise, use the default behavior
       const sel = this.coordsToSelection(ev.y, ev.x)
-
       if(sel instanceof AllSelection) {
         const tr = this.editorState.tr.setSelection(sel)
         this.pmEditor.dispatch(tr)
@@ -1075,6 +1074,10 @@ export class ExplorableEditor extends LitElement {
     "ww-widget-interact": (_: any, ev: KeyboardEvent) => {
       this.updateDocumentElementClasses(ev, true)
     },
+    "focus": (_:any, ev: FocusEvent) => {
+      ev.preventDefault()
+      return true
+    },
     /*
     "ww-widget-focus": (_: any, ev: CustomEvent) => {
       ev.detail.widget?.focus()
@@ -1091,10 +1094,6 @@ export class ExplorableEditor extends LitElement {
       const {widget} = ev.detail
       // widget.focus()
      widget.focus()
-    },
-    "focus": (_:any, ev: FocusEvent) => {
-      this.updatePosition()
-      this.dispatchEvent(new Event("focus", ev))
     },
     "blur": (_:any, ev: FocusEvent) => {
       const node = ev.target as HTMLElement

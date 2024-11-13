@@ -3,9 +3,9 @@ import { customElement, property, queryAsync } from "lit/decorators.js"
 import { DirectEditorProps, EditorView } from "prosemirror-view"
 import { localized } from "@lit/localize"
 import { EditorState, Transaction } from "prosemirror-state"
-import { pickObject, sameMembers } from "../../utility"
+import { idle, pickObject, sameMembers } from "../../utility"
 import { keyed } from "lit/directives/keyed.js"
-import { headSerializer, toAttributes } from "../../model"
+import { headSerializer, SemVer, toAttributes } from "../../model"
 import {DOMSerializer} from "prosemirror-model"
 import scopedCustomElementRegistry from "@webcomponents/scoped-custom-element-registry/src/scoped-custom-element-registry.js?raw"
 import redefineCustomElements from "redefine-custom-elements?raw"
@@ -384,6 +384,13 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
     return script
   }
 
+  createStyleInline(textContent: string) {
+    const style = this.document.createElement("style")
+    style.textContent = textContent
+    style.toggleAttribute("data-ww-editing")
+    return style
+  }
+
   createStyleLink(href: string) {
     const link = this.document.createElement("link")
     link.rel = "stylesheet"
@@ -419,12 +426,56 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
         }
       }*/
       const importMap = !this.importMap? "": `<script type="importmap" data-ww-editing>${JSON.stringify(this.importMap.toJSON(), undefined, 2)}</script>`
-      const scriptUrls = !this.importMap? []: Object.keys(this.importMap.imports).filter(k => k.endsWith(".js")).map(k => this.importMap.resolve(k))
-      const styleUrls = !this.importMap? []: Object.keys(this.importMap.imports).filter(k => k.endsWith(".css")).map(k => this.importMap.resolve(k))
+      const scriptUrls = !this.importMap? []: Object.keys(this.importMap.imports)
+        .filter(k => k.endsWith(".js"))
+        .filter(k => {
+          const [scope, versionedName] = k.split("/")
+          const [name, version] = versionedName.split("@")
+          return !(new SemVer(version)).prerelease.includes("local")
+        })
+        .map(k => this.importMap.resolve(k))
+      const localScriptUrls = !this.importMap? []: Object.keys(this.importMap.imports)
+        .filter(k => k.endsWith(".js"))
+        .filter(k => {
+          const [scope, versionedName] = k.split("/")
+          const [name, version] = versionedName.split("@")
+          return (new SemVer(version)).prerelease.includes("local")
+        })
+        .map(k => this.importMap.resolve(k))
+      const styleUrls = !this.importMap? []: Object.keys(this.importMap.imports)
+        .filter(k => k.endsWith(".css"))
+        .filter(k => {
+          const [scope, versionedName] = k.split("/")
+          const [name, version] = versionedName.split("@")
+          return !(new SemVer(version)).prerelease.includes("local")
+        })
+        .map(k => this.importMap.resolve(k))
+      const localStyleUrls = !this.importMap? []: Object.keys(this.importMap.imports)
+        .filter(k => k.endsWith(".css"))
+        .filter(k => {
+          const [scope, versionedName] = k.split("/")
+          const [name, version] = versionedName.split("@")
+          return (new SemVer(version)).prerelease.includes("local")
+        })
+        .map(k => this.importMap.resolve(k))
       const scripts = scriptUrls.map(url => this.createScript(url, false, false))
+      const localScripts = await Promise.all(localScriptUrls.map(async url => {
+        return this.createScriptInline(await (await fetch(url)).text())
+      }))
       const styles = styleUrls.map(url => this.createStyleLink(url))
+      const localStyles = await Promise.all(localScriptUrls.map(async url => {
+        return this.createStyleInline(await (await fetch(url)).text())
+      }))
+
+      // need to inline local scripts/styles due to issues with chromium: https://issues.chromium.org/issues/40703966,https://issues.chromium.org/issues/41411856 
+
       this.head.insertAdjacentHTML("beforeend", importMap)
-      this.head.append(...scripts, ...styles)
+      // console.log(await fetch("https://api.webwriter.app/ww/v1/@webwriter/textarea@0.0.0-local/dist/widgets/webwriter-textarea.js"))
+      // console.log(await fetch("https://api.webwriter.app/ww/v1/@webwriter/quiz@1.0.5/dist/widgets/webwriter-text.js"))
+      this.head.append(...scripts, ...styles, ...localScripts, ...localStyles)
+      // this.head.append(this.createScriptInline(`console.log(await fetch("https://api.webwriter.app/ww/v1/@webwriter/textarea@0.0.0-local/dist/widgets/webwriter-textarea.js"))`))
+      // console.log("ORIGIN", window.origin, this.window.origin)
+      // console.log(await this.window.navigator.serviceWorker.getRegistrations())
       /*
       const scripts = [
         `<script type="module" data-ww-editing>${scopedCustomElementRegistry}</script>`,

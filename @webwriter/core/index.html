@@ -36,6 +36,23 @@
         animation: load 1.5s infinite ease;
         user-select: none;
       }
+      body:has(#load-local) #icon {
+        animation: none !important;
+      }
+      #load-local {
+        position: fixed;
+        top: calc(50% + 20px + 75px);
+        height: 75px;
+        left: 40%;
+        width: 20%;
+        font-size: 1.2rem;
+        padding: 0.25rem;
+        cursor: pointer;
+        &:not(:hover):not(:active) {
+          border: 2px solid darkgray;
+          background: white;
+        }
+      }
       ww-app {
         z-index: 10;
       }

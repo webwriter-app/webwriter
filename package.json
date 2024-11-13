@@ -1,6 +1,6 @@
 {
   "name": "webwriter",
-  "version": "0.12.5",
+  "version": "0.13.0",
   "description": "Web-based authoring tool for explorables",
   "scripts": {
     "lerna": "lerna",
@@ -84,7 +84,7 @@
     "@astrojs/turbolinks": "^0.2.2",
     "@google-ai/generativelanguage": "^2.7.0",
     "@google/generative-ai": "^0.21.0",
-    "@jspm/generator": "^2.3.1",
+    "@jspm/generator": "^2.4.1",
     "@webwriter/lit": "^1.6.3",
     "astro": "^4.11.0",
     "astro-seo": "^0.8.4",

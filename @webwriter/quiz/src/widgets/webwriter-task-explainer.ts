@@ -4,12 +4,17 @@ import {customElement, property} from "lit/decorators.js"
 import "@shoelace-style/shoelace/dist/themes/light.css"
 import { styleMap } from "lit/directives/style-map.js";
 
+import LOCALIZE from "../../localization/generated"
+import {msg} from "@lit/localize"
+
 declare global {interface HTMLElementTagNameMap {
   "webwriter-task-explainer": WebwriterTaskExplainer;
 }}
 
 @customElement("webwriter-task-explainer")
 export class WebwriterTaskExplainer extends LitElementWw {
+
+  localize = LOCALIZE
 
   @property({type: Boolean, attribute: true, reflect: true})
   accessor active = false

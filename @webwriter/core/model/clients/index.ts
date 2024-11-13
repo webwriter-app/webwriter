@@ -26,19 +26,79 @@ import {
 } from "../schemas";
 import marshal from "../marshal";
 import { Schema } from "prosemirror-model";
+import { toJS } from "mobx";
 
-const BINARY_EXTENSIONS = Object.entries(marshal).flatMap(([k, v]) =>
-  v.isBinary ? v.extensions : []
-);
-const ALL_FILTER = {
-  name: "Explorable",
-  extensions: Object.values(marshal).flatMap((v) => v.extensions),
-};
-export const INDIVIDUAL_FILTERS = Object.entries(marshal).map(([k, v]) => ({
-  name: "Explorable",
-  extensions: v.extensions as unknown as string[],
-}));
-const FILTERS = [ALL_FILTER, ...INDIVIDUAL_FILTERS];
+function writeFileDownload(uri: string, name?: string) {
+  const a = document.createElement("a");
+  name && a.setAttribute("download", name);
+  a.style.display = "none";
+  a.href = uri;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+async function readFileInput() {
+  return new Promise<string | Uint8Array | undefined>(
+    async (resolve, reject) => {
+      let file: File;
+      try {
+        file = await pickFileInput();
+      } catch (err) {
+        return reject(new Error("User cancelled"));
+      }
+      const reader = new FileReader();
+      reader.readAsText(file);
+      reader.addEventListener("load", () =>
+        typeof reader.result === "string"
+          ? resolve(reader.result!)
+          : resolve(new Uint8Array(reader.result!))
+      );
+    }
+  );
+}
+
+async function pickFileInput() {
+  const input = document.createElement("input");
+  input.type = "file";
+  return new Promise<File>((resolve, reject) => {
+    input.addEventListener("change", () => {
+      if (input.files && input.files.length && input.files.item(0)) {
+        const file = input.files.item(0)!;
+        resolve(file);
+      }
+    });
+    input.addEventListener("cancel", reject);
+    input.click();
+  });
+}
+
+const SAVE_FILTERS = [
+  ...Object.entries(marshal)
+    .filter(([k, v]) => !v.isParseOnly)
+    .map(([k, v]) => ({
+      name: "Explorable",
+      extensions: v.extensions as unknown as string[],
+      types: { [k]: v.extensions.map((ext) => "." + ext) },
+    })),
+];
+const LOAD_FILTERS = [
+  {
+    name: "Explorable",
+    extensions: Object.values(marshal).flatMap((v) => v.extensions),
+    types: Object.fromEntries(
+      Object.keys(marshal).map((k) => [
+        k,
+        (marshal as any)[k].extensions.map((ext: string) => "." + ext),
+      ])
+    ),
+  },
+  ...Object.entries(marshal).map(([k, v]) => ({
+    name: "Explorable",
+    extensions: v.extensions as unknown as string[],
+    types: { [k]: v.extensions.map((ext) => "." + ext) },
+  })),
+];
 
 type FileFormat = keyof typeof marshal;
 
@@ -128,59 +188,183 @@ export interface AuthenticationClient extends Client {
 export class FileClient implements DocumentClient {
   constructor(
     readonly account: FileAccount,
-    readonly Environment: Environment
+    readonly Environment?: Environment
   ) {}
+
+  get fileSystemSupported() {
+    return "createWritable" in FileSystemFileHandle.prototype;
+  }
+
+  get showOpenFilePickerSupported() {
+    return "showOpenFilePicker" in window;
+  }
+
+  get showSaveFilePickerSupported() {
+    return "showSaveFilePicker" in window;
+  }
 
   async saveDocument(
     doc: string | Uint8Array,
-    url?: string | URL,
+    url?: string | URL | FileSystemFileHandle,
     title?: string
   ) {
-    const { OS, FS } = this.Environment;
-    const binary = doc instanceof Uint8Array;
-    const urlObj = url ? new URL(url) : await this.pickSave(undefined, title);
-    if (!urlObj) {
-      return;
+    if (
+      WEBWRITER_ENVIRONMENT.backend === "tauri" &&
+      this.Environment &&
+      (!url || !(url instanceof FileSystemFileHandle))
+    ) {
+      const { OS, FS } = this.Environment;
+      const binary = doc instanceof Uint8Array;
+      const urlObj = url
+        ? new URL(url)
+        : ((await this.pickSave(undefined, title)) as URL | undefined);
+      if (!urlObj) {
+        return;
+      }
+      let path = decodeURI(urlObj.pathname).slice(1);
+      path = ["darwin", "linux"].includes(await OS.platform())
+        ? "/" + path
+        : path;
+      await FS.writeFile(path, doc, binary ? "binary" : "utf8");
+      return urlObj;
+    } else {
+      if (this.fileSystemSupported && this.showSaveFilePickerSupported) {
+        const handle =
+          (url as FileSystemFileHandle) ??
+          ((await this.pickSave()) as FileSystemFileHandle | undefined);
+        const writable = await handle.createWritable();
+        await writable.write(doc);
+        await writable.close();
+        return handle;
+      } else {
+        const blob = new Blob([doc]);
+        const url = URL.createObjectURL(blob);
+        writeFileDownload(url, "explorable.html");
+        URL.revokeObjectURL(url);
+      }
     }
-    let path = decodeURI(urlObj.pathname).slice(1);
-    path = ["darwin", "linux"].includes(await OS.platform())
-      ? "/" + path
-      : path;
-    await FS.writeFile(path, doc, binary ? "binary" : "utf8");
-    return urlObj;
   }
 
-  async loadDocument(url?: string | URL, binary = false) {
-    const { OS, FS } = this.Environment;
-    const urlObj = url ? new URL(url) : await this.pickLoad();
-    if (!urlObj) {
-      return;
+  async loadDocument(
+    url?: string | FileSystemFileHandle | URL,
+    binary = false
+  ) {
+    if (
+      WEBWRITER_ENVIRONMENT.backend === "tauri" &&
+      this.Environment &&
+      !(url instanceof FileSystemFileHandle)
+    ) {
+      const { OS, FS } = this.Environment;
+      const urlObj = url
+        ? new URL(url)
+        : ((await this.pickLoad()) as URL | undefined);
+      if (!urlObj) {
+        return;
+      }
+      let path = decodeURI(urlObj.pathname).slice(1);
+      path = ["darwin", "linux"].includes(await OS.platform())
+        ? "/" + path
+        : path;
+      let data = await FS.readFile(path, binary ? "binary" : "utf8");
+      return data;
+    } else if (this.showOpenFilePickerSupported) {
+      const handle =
+        (url as FileSystemFileHandle) ??
+        ((await this.pickLoad()) as FileSystemFileHandle | undefined);
+      if (!handle) {
+        return;
+      }
+      const file = await handle.getFile();
+      const reader = new FileReader();
+      reader.readAsText(file);
+      return new Promise<string | Uint8Array>((resolve) => {
+        reader.addEventListener("load", () =>
+          typeof reader.result === "string"
+            ? resolve(reader.result!)
+            : resolve(new Uint8Array(reader.result!))
+        );
+      });
+    } else if (url) {
+      throw Error(
+        "Not supported in your browser or permissions for File System Access API are missing (try Chrome or Edge)"
+      );
+    } else {
+      return readFileInput();
     }
-    let path = decodeURI(urlObj.pathname).slice(1);
-    path = ["darwin", "linux"].includes(await OS.platform())
-      ? "/" + path
-      : path;
-    let data = await FS.readFile(path, binary ? "binary" : "utf8");
-    return data;
   }
 
   async pickSave(
-    filters: DialogFilter[] = INDIVIDUAL_FILTERS,
+    filters: typeof SAVE_FILTERS = SAVE_FILTERS,
     defaultPath?: string
   ) {
-    const path =
-      ((await this.Environment.Dialog.promptWrite({ filters, defaultPath })) as
-        | null
-        | string) ?? undefined;
-    return path ? new URL(path, "file://") : undefined;
+    if (WEBWRITER_ENVIRONMENT.backend === "tauri" && this.Environment) {
+      const path =
+        ((await this.Environment.Dialog.promptWrite({
+          filters,
+          defaultPath,
+        })) as null | string) ?? undefined;
+      return path ? new URL(path, "file://") : undefined;
+    } else if (this.showSaveFilePickerSupported) {
+      try {
+        let handle: FileSystemFileHandle = await (
+          window as any
+        ).showSaveFilePicker({
+          startIn: "documents",
+          types: filters.map((filter) => ({
+            description: filter.name,
+            accept: filter.types,
+          })),
+        });
+        handle = Array.isArray(handle) ? handle[0] : handle;
+        return handle;
+      } catch (err) {
+        if ((err as Error)?.name === "AbortError") {
+          return undefined;
+        } else {
+          throw err;
+        }
+      }
+    } else {
+      throw Error(
+        "Not supported in your browser or permissions for File System Access API are missing (try Chrome or Edge)"
+      );
+    }
   }
 
-  async pickLoad(filters: DialogFilter[] = FILTERS) {
-    const path =
-      ((await this.Environment.Dialog.promptRead({ filters })) as
-        | null
-        | string) ?? undefined;
-    return path ? new URL(path, "file://") : undefined;
+  async pickLoad(filters: typeof LOAD_FILTERS = LOAD_FILTERS) {
+    if (WEBWRITER_ENVIRONMENT.backend === "tauri" && this.Environment) {
+      const path =
+        ((await this.Environment.Dialog.promptRead({ filters })) as
+          | null
+          | string) ?? undefined;
+      return path ? new URL(path, "file://") : undefined;
+    } else {
+      if ("showOpenFilePicker" in window) {
+        try {
+          let handle: FileSystemFileHandle = await (
+            window as any
+          ).showOpenFilePicker({
+            startIn: "documents",
+            types: filters.map((filter) => ({
+              description: filter.name,
+              accept: filter.types,
+            })),
+          });
+          handle = Array.isArray(handle) ? handle[0] : handle;
+          return handle;
+        } catch (err) {
+          if ((err as Error)?.name === "AbortError") {
+            return undefined;
+          } else {
+            throw err;
+          }
+        }
+      } else {
+        throw Error(
+          "Not supported in your browser or permissions for File System Access API are missing (try Chrome or Edge)"
+        );
+      }
+    }
   }
 
   isClientURL(url: URL) {

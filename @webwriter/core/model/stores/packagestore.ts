@@ -10,6 +10,7 @@ import {version as appVersion} from "../../package.json"
 import { licenses, presets } from "../templates"
 import { toJS } from "mobx"
 import { ImportMap } from "@jspm/import-map"
+import { msg } from "@lit/localize"
 
 type Options = {
   corePackages?: Package["name"][]
@@ -283,8 +284,8 @@ export class PackageStore {
     })
   }
 
-  static computeBundleID(importIDs: string[], production=false) {
-    return importIDs.join(";") + (production? " !PROD": "")
+  static computeBundleID(importIDs: string[], production=false, lastLoaded?: number) {
+    return importIDs.join(";") + (production? " !PROD": "") + (lastLoaded? `!${lastLoaded}`: "")
   }
 
   /** Create a hash value to identify a bundle. The hash is deterministically computed from the packages' names and versions. This allows for caching of existing bundles. */
@@ -340,13 +341,6 @@ export class PackageStore {
     const done = new Promise(r => tx.addEventListener("complete", r))
     store.put({id, handle})
     return done
-  }
-
-  async getLocalHandle(id: string) {
-    const tx = this.db.result.transaction("handles", "readwrite")
-    const store = tx.objectStore("handles")
-    const req = store.get(id)
-    return new Promise(r => req.addEventListener("success", () => r(req.result.handle)))
   }
 
   FS: Environment["FS"]
@@ -441,101 +435,101 @@ export class PackageStore {
     const toRemove = tasks.filter(t => t.command === "remove").flatMap(t => t.parameters)
     const toUpdate = tasks.filter(t => t.command === "update").flatMap(t => t.parameters)
     const toLink = tasks.filter(t => t.command === "add" && t.name)
-    if(toAdd.length > 0) {
-      const names = Object.fromEntries(toAdd.map(key => [
-        key,
-        !key.startsWith("file://")? key: tasks.find(t => t.parameters.includes(key))!.name!
-      ]))
-      try {
-        if(!this.apiBase) {
-          await this.pm("add", toAdd, await this.appDir)
-        }
-        else {
-          await this.updateImportMap([...this.installedPackages, ...toAdd])
-        }
-      }
-      catch(err) {
-        console.error(err)
-      }
-      finally {
-        await this.load()
-        this.adding = {...this.adding, ...Object.fromEntries(toAdd.map(name => [names[name], false]))}
-      }
-    }
-    if(toAddLocal.length > 0) {
-      try {
-        const pkgs = await Promise.all(toAddLocal.map(async ({handle, name}) => {
-          const pkgHandle = await handle.getFileHandle("package.json")
-          const file = await pkgHandle.getFile()
-          const text = await file.text()
-          const pkg = new Package({...JSON.parse(text)})
-          pkg.version.prerelease = [...pkg.version.prerelease, "local"]
-          await this.putLocalHandle(pkg.name, handle)
-          return pkg
-        }))
-        this.updateImportMap([...this.installedPackages, ...pkgs.map(pkg => pkg.id)])
-      }
-      catch(err) {
-        console.error(err)
-      }
-      finally {
-        await this.load()
-        this.adding = {...this.adding, ...Object.fromEntries(toAddLocal.map(({name}) => [name, false]))}
-      }
-    }
-    if(toLink.length > 0) {
-      const pkg = (await this.readRootPackageJson())!
-      pkg.localPaths = {
-        ...pkg?.localPaths,
-        ...Object.fromEntries(toLink.map(t => [t.name!, t.parameters[0]!.replace("file:\/\/", "")])
-        )
-      }
-      await this.updateLocalLinks(pkg.localPaths)
-      for(const key of Object.keys(pkg.localPaths)) {
+    try {
+      if(toRemove.length > 0) {
         try {
-          await this.pm("link", [key, "--save"], await this.appDir)
+          if(!this.apiBase) {
+            await this.pm("remove", toRemove, await this.appDir)
+            await this.updateLocalLinks()
+          }
+          else {
+            await this.updateImportMap(this.installedPackages.filter(id => !toRemove.includes(id)))
+          }
         }
         catch(err) {
           console.error(err)
         }
         finally {
-          await this.load()
-          this.adding = {...this.adding, ...Object.fromEntries(toLink.map(task => [task.name, false]))}
+          this.removing = {...this.removing, ...Object.fromEntries(toRemove.map(name => [name, false]))}
         }
       }
-      const updatedPkg = (await this.readRootPackageJson())!
-      updatedPkg.localPaths = pkg.localPaths
-      await this.writeRootPackageJson(updatedPkg)
+      if(toAdd.length > 0) {
+        const names = Object.fromEntries(toAdd.map(key => [
+          key,
+          !key.startsWith("file://")? key: tasks.find(t => t.parameters.includes(key))!.name!
+        ]))
+        try {
+          if(!this.apiBase) {
+            await this.pm("add", toAdd, await this.appDir)
+          }
+          else {
+            await this.updateImportMap([...this.installedPackages, ...toAdd])
+          }
+        }
+        catch(err) {
+          console.error(err)
+        }
+        finally {
+          this.adding = {...this.adding, ...Object.fromEntries(toAdd.map(name => [names[name], false]))}
+        }
+      }
+      if(toAddLocal.length > 0) {
+        try {
+          const pkgs = await Promise.all(toAddLocal.map(async ({handle, name}) => {
+            const pkgHandle = await handle.getFileHandle("package.json")
+            const file = await pkgHandle.getFile()
+            const text = await file.text()
+            const pkg = new Package({...JSON.parse(text)})
+            pkg.version.prerelease = [...pkg.version.prerelease, "local"]
+            await this.putLocalHandle(pkg.name, handle)
+            return pkg
+          }))
+          this.updateImportMap([...this.installedPackages, ...pkgs.map(pkg => pkg.id)])
+        }
+        catch(err) {
+          console.error(err)
+        }
+        finally {
+          this.adding = {...this.adding, ...Object.fromEntries(toAddLocal.map(({name}) => [name, false]))}
+        }
+      }
+      if(toLink.length > 0) {
+        const pkg = (await this.readRootPackageJson())!
+        pkg.localPaths = {
+          ...pkg?.localPaths,
+          ...Object.fromEntries(toLink.map(t => [t.name!, t.parameters[0]!.replace("file:\/\/", "")])
+          )
+        }
+        await this.updateLocalLinks(pkg.localPaths)
+        for(const key of Object.keys(pkg.localPaths)) {
+          try {
+            await this.pm("link", [key, "--save"], await this.appDir)
+          }
+          catch(err) {
+            console.error(err)
+          }
+          finally {
+            this.adding = {...this.adding, ...Object.fromEntries(toLink.map(task => [task.name, false]))}
+          }
+        }
+        const updatedPkg = (await this.readRootPackageJson())!
+        updatedPkg.localPaths = pkg.localPaths
+        await this.writeRootPackageJson(updatedPkg)
+      }
+      if(toUpdate.length > 0) {
+        try {
+          await this.pm("update", toUpdate, await this.appDir)
+        }
+        catch(err) {
+          console.error(err)
+        }
+        finally {
+          this.updating = {...this.updating, ...Object.fromEntries(toUpdate.map(name => [name, false]))}
+        }
+      }
     }
-    if(toRemove.length > 0) {
-      try {
-        if(!this.apiBase) {
-          await this.pm("remove", toRemove, await this.appDir)
-          await this.updateLocalLinks()
-        }
-        else {
-          await this.updateImportMap(this.installedPackages.filter(id => !toRemove.includes(id)))
-        }
-      }
-      catch(err) {
-        console.error(err)
-      }
-      finally {
-        await this.load()
-        this.removing = {...this.removing, ...Object.fromEntries(toRemove.map(name => [name, false]))}
-      }
-    }
-    if(toUpdate.length > 0) {
-      try {
-        await this.pm("update", toUpdate, await this.appDir)
-      }
-      catch(err) {
-        console.error(err)
-      }
-      finally {
-        await this.load()
-        this.updating = {...this.updating, ...Object.fromEntries(toUpdate.map(name => [name, false]))}
-      }
+    finally {
+      await this.load()
     }
   })
 
@@ -630,6 +624,17 @@ export class PackageStore {
   }
 
   async add(urlOrHandle: string | FileSystemDirectoryHandle, name?: string) {
+    const id = typeof urlOrHandle === "string"? urlOrHandle: name!
+    const pkg = Package.fromID(id)
+    const matchingPkg = this.installed.find(match => pkg.name === match.name)
+    const cancelled = matchingPkg && !confirm(`Installing ${id} requires uninstalling ${matchingPkg.id}. Do you want to continue?`)
+    if(matchingPkg && cancelled) {
+      return
+    }
+    else if(matchingPkg && !cancelled) {
+      await new Promise(async r => this.pmQueue.push({command: "remove", parameters: [matchingPkg.id], cwd: await this.appDir, name: matchingPkg.id}, r))
+    }
+
     if(typeof urlOrHandle === "string") {
       const url = urlOrHandle
       this.adding = {...this.adding, [name ?? url]: true}
@@ -700,8 +705,11 @@ export class PackageStore {
     }
   }
 
+  lastLoaded: number
+
   /** Reads local packages from disk, importing them, and/or fetches available packages from the configured registry.*/
   async load() {
+    this.lastLoaded = Date.now()
     this.loading = true
     this.issues = {}
     if(!this.apiBase) {
@@ -718,7 +726,7 @@ export class PackageStore {
       const importable = installed.filter(pkg => !this.getPackageIssues(pkg.id)?.length)
       const importableVersionMap = Object.fromEntries(importable.map(pkg => [pkg.name, pkg.id]))
       const importIDs = this.widgetImportIDs(importable)
-      const newID = PackageStore.computeBundleID(importIDs, false)
+      const newID = PackageStore.computeBundleID(importIDs, false, importable.some(pkg => pkg.localPath)? this.lastLoaded: undefined)
       if(newID !== this.bundleID) {
         try {
           const {bundleJS, bundleCSS, errors} = await PackageStore.readBundle(importIDs, this.bundle, this.Path, this.FS)
@@ -753,13 +761,14 @@ export class PackageStore {
         .map(json => {
           const version = new SemVer(json.version)
           version.prerelease = [...version.prerelease, "local"]
-          return new Package({...json, version, installed: true, localPath: ""}, {installed: true})
+          return new Package({...json, version}, {installed: true, localPath: "hidden"})
         })
       local = await Promise.all(local.map(async pkg => pkg.extend({members: await this.readPackageMembers(pkg)})))
+      await this.updateLocalWatchIntervals(local)
       final = available.map(pkg => pkg.extend({installed: this.installedPackages.includes(pkg.id)})).sort((a, b) => Number(!!b.installed) - Number(!!a.installed))
       final = [...local, ...final]
       await this.updateImportMap()
-      this.bundleID = PackageStore.computeBundleID(this.installedPackages, false);
+      this.bundleID = PackageStore.computeBundleID(this.installedPackages, false, final.some(pkg => pkg.localPath)? this.lastLoaded: undefined);
       (this.onBundleChange ?? (() => null))(final.filter(pkg => pkg.installed))
       this.packages = Object.fromEntries(final.map(pkg => [pkg.id, pkg]))
     }
@@ -801,7 +810,28 @@ export class PackageStore {
       }
     }
     const members = await Promise.all(rawPkgs.map(async pkg => this.readPackageMembers(pkg)))
-    return rawPkgs.map((pkg, i) => new Package(pkg, {members: members[i]}))
+    return rawPkgs.map((pkg, i) => {
+      try {
+        return new Package(pkg, {members: members[i]})
+      }
+      catch(err) {
+        const parseIssues = JSON.parse((err as any)?.message)
+        const errors = parseIssues.map((raw: any) => {
+          let issueSection = pkg
+          let key = undefined
+          for(const part of raw.path) {
+            key = part
+            issueSection = issueSection[part]
+          }
+          const cause = (key? `"${key}": `: "") + JSON.stringify(issueSection, undefined, 2)
+          const issue = new InstallIssue(raw.message, {cause})
+          issue.stack = undefined
+          return issue
+        })
+        this.appendPackageIssues(`${pkg.name}@${pkg.version}`, ...errors)
+        return new Package({name: pkg.name, version: pkg.version})
+      }
+    }).filter(pkg => pkg)
   }
 
   private async fetchInstalled() {
@@ -928,7 +958,9 @@ export class PackageStore {
     return Object.values(this.packages).filter(pkg => !pkg.installed)
   }
 
-
+  get local() {
+    return Object.values(this.packages).filter(pkg => pkg.localPath)
+  }
 
   getPackageMembers(id: string, filter?: "widgets" | "snippets" | "themes") {
     const pkg = this.packages[id]
@@ -992,6 +1024,9 @@ export class PackageStore {
   /** Toggles watching on a single named package.*/
   async toggleWatch(name: string, forceValue?: boolean) {
     await this.initialized
+    if(this.apiBase) {
+      return
+    }
     const pkg = this.packages[name]
     if(!pkg) {
       return 
@@ -1028,6 +1063,34 @@ export class PackageStore {
     }
   }
 
+  async resolveRelativeLocalPath(path: string, handle: FileSystemDirectoryHandle) {
+    const parts = path.split("/").slice(1)
+    let directory = handle
+    let file: File
+    for(const [i, part] of parts.entries()) {
+      if(i === parts.length - 1) {
+        const fileHandle = await directory.getFileHandle(part)
+        file = await fileHandle.getFile()
+      }
+      else {
+        directory = await directory.getDirectoryHandle(part)
+      }
+    }
+    return file!
+  }
+
+  async getLocalHandle(id: string): Promise<FileSystemDirectoryHandle> {
+    const db = indexedDB.open("webwriter")
+    await new Promise(r => db.addEventListener("success", r))
+    const tx = db.result.transaction("handles", "readwrite")
+    const store = tx.objectStore("handles")
+    const req = store.get(id)
+    return new Promise(r => req.addEventListener("success", async () => {
+      db.result.close()
+      r(req.result.handle)
+    }))
+  }
+
   /** Reads a local package directory, returning the package config. */
   async readLocal(pathOrHandle: string | FileSystemDirectoryHandle) {
     let pkgString: string
@@ -1051,11 +1114,54 @@ export class PackageStore {
       const file = await pkgJsonHandle.getFile()
       pkgString = await file.text()
     }
+    let pkg
     try {
-      return new Package(JSON.parse(pkgString!))
+      pkg = new Package(JSON.parse(pkgString!))
     }
     catch(cause) {
       throw new PackageJsonIssue(`Error parsing package.json: ${cause}`, {cause})
+    }
+    return pkg
+  }
+
+  watchLocalIntervals: Record<string, number> = {}
+
+  async updateLocalWatchIntervals(pkgs: Package[], ms=250) {
+    // Each interval, poll package.json AND all exports (including pairs of .js & .css):
+    //   If any file is newer than the last load time, trigger a reload (unless we are already reloading)
+    const oldNames = Object.keys(this.watchLocalIntervals)
+    const newNames = pkgs.map(pkg => pkg.name)
+    const toRemove = oldNames.filter(name => !newNames.includes(name))
+    const toAdd = newNames.filter(id => !oldNames.includes(id))
+    for(const name of toRemove) {
+      clearInterval(this.watchLocalIntervals[name])
+    }
+    for(const name of toAdd) {
+      const handle = await this.getLocalHandle(name)
+      this.watchLocalIntervals[name] = setInterval(async () => {
+        const pkgJsonFile = await (await handle.getFileHandle("package.json")).getFile()
+        if(pkgJsonFile.lastModified >= this.lastLoaded) {
+          return this.load()
+        } 
+        let pkgString = await pkgJsonFile.text()
+        let pkg
+        try {
+          pkg = new Package(JSON.parse(pkgString!))
+        }
+        catch(cause) {
+          return
+        }
+        const exports = pkg?.exports
+        const exportPaths = Object.keys(exports as any)
+          .filter(k => k.startsWith("./widgets/") || k.startsWith("./snippets/") || k.startsWith("./themes/"))
+          .map(k => typeof (exports as any)[k] !== "string"? (exports as any)[k]?.default as string: (exports as any)[k] as string)
+          .flatMap(k => !k.endsWith(".*")? [k]: [k.slice(0, -2) + ".js", k.slice(0, -2) + ".css"])
+        const exportedFiles = await Promise.all(exportPaths.map(path => this.resolveRelativeLocalPath(path, handle)))
+        if(exportedFiles.some(file => file.lastModified >= this.lastLoaded)) {
+          return this.load()
+        }
+  
+      }, ms) as unknown as number
     }
   }
 

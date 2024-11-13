@@ -119,6 +119,14 @@ export class LitElementWw extends ScopedElementsMixin(LitElement) {
 
   static shadowRootOptions = {...LitElement.shadowRootOptions}
 
+  /** Register the classes of custom elements to use in the Shadow DOM here. DO NOT register any additional elements globally.
+   * @example
+   * import SlButton from "@shoelace-style/shoelace/dist/components/button/button.component.js"
+   * ...
+   *   static scopedElements = {"sl-button": SlButton}
+   **/
+  static scopedElements = {}
+
   static readonly options: Record<string, OptionDeclaration> = {}
   static readonly actions: Record<string, ActionDeclaration> = {}
 
@@ -128,20 +136,23 @@ export class LitElementWw extends ScopedElementsMixin(LitElement) {
   /** Declare methods as actions. Used by WebWriter to treat all DOM changes triggered by the method as a single change (as a transaction).*/
   readonly actions: Record<string, ActionDeclaration> = {}
 
+  /** Add `@lit/localize` support. This should be the return value of `configureLocalization`. */
+  localize: {getLocale: () => string, setLocale: (locale: string) => Promise<void>}
+
   /** [HTML global attribute] Editing state of the widget. If ="true" or ="", the widget should allow user interaction changing the widget itself. Else, prevent all such user interactions. */
   @property({type: String, attribute: true, reflect: true}) accessor contentEditable!: string
 
   #lang: string = ""
 
   get lang() {
-    return (this.closest("[lang]") as HTMLElement)?.lang ?? this.#lang
+    return (this.parentElement?.closest("[lang]") as HTMLElement)?.lang ?? this.#lang
   }
 
   /** [HTML global attribute] Language of the widget, allowing presentation changes for each language.*/
   @property({type: String, attribute: true, reflect: true})
   set lang(value) {
     this.#lang = value
-    this.requestUpdate("lang")
+    this.localize.setLocale(value).finally(() => this.requestUpdate("lang"))
   }
 
   /** @internal */

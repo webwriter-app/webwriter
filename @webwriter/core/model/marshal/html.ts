@@ -76,9 +76,7 @@ export async function docToBundle(doc: Node, head: Node, bundle?: Environment["b
   }
   else {
     const jsUrl = new URL("https://api.webwriter.app/ww/v1/_bundles")
-    jsUrl.searchParams.append("pkg", "true")
     importIDs.forEach(id => jsUrl.searchParams.append("id", id))
-    console.log(jsUrl.href)
     const bundleJS = await (await fetch(jsUrl)).text()
     js = bundleJS? scopedCustomElementRegistry + ";" +  `(function () {${bundleJS}})();`: ""
     const cssUrl = new URL("https://api.webwriter.app/ww/v1/_bundles")

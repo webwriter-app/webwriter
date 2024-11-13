@@ -229,10 +229,18 @@ export class DocumentStore implements Resource {
         ? url
         : url ?? this.url;
       let newSerializer = serializer;
-      if (!newUrlOrHandle && "pickSave" in client) {
+      if (
+        !newUrlOrHandle &&
+        "pickSave" in client &&
+        client.showSaveFilePickerSupported
+      ) {
         newUrlOrHandle = await client.pickSave();
       }
-      if (!newUrlOrHandle) {
+      if (
+        !newUrlOrHandle &&
+        "pickSave" in client &&
+        client.showSaveFilePickerSupported
+      ) {
         return;
       }
       if (newUrlOrHandle instanceof FileSystemFileHandle) {
@@ -254,7 +262,9 @@ export class DocumentStore implements Resource {
         }
       } else {
         const newUrl = newUrlOrHandle;
-        const foundPs = getParserSerializerByExtension(newUrl?.pathname);
+        const foundPs = getParserSerializerByExtension(
+          newUrl?.pathname ?? "file.html"
+        );
         newSerializer = foundPs ? new foundPs(this.Environment) : serializer;
         newSerializer =
           "serialize" in newSerializer ? newSerializer : this.serializer;
@@ -283,7 +293,7 @@ export class DocumentStore implements Resource {
     try {
       let newUrl = url;
       let newParser = parser;
-      if (!url && "pickLoad" in client) {
+      if (!url && "pickLoad" in client && client.showOpenFilePickerSupported) {
         newUrl = await client.pickLoad();
         if (!newUrl) {
           return;

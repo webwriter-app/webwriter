@@ -7,12 +7,17 @@ import SlTextarea from "@shoelace-style/shoelace/dist/components/textarea/textar
 import SlInput from "@shoelace-style/shoelace/dist/components/input/input.component.js"
 import "@shoelace-style/shoelace/dist/themes/light.css"
 
+import LOCALIZE from "../../localization/generated"
+import {msg} from "@lit/localize"
+
 declare global {interface HTMLElementTagNameMap {
   "webwriter-text": WebwriterText;
 }}
 
 @customElement("webwriter-text")
 export class WebwriterText extends LitElementWw {
+
+  localize = LOCALIZE
 
   @property({type: String, attribute: true, reflect: true})
   @option({

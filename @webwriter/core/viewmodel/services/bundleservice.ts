@@ -3,11 +3,10 @@ const worker = self as unknown as ServiceWorkerGlobalScope
 import * as esbuild from "esbuild-wasm"
 import PathBrowserifyEsm from "path-browserify-esm" // @ts-ignore
 import wasmURL from "esbuild-wasm/esbuild.wasm?url"
-import {Generator, Provider} from "@jspm/generator"
+import {Generator, Provider, setFetch, fetch as jspmFetch} from "@jspm/generator"
 import {ImportMap, IImportMap} from "@jspm/import-map"
 import {BuildOptions} from "esbuild-wasm"
 import { PackageConfig } from "@jspm/generator/lib/install/package"
-import {parseUrlPkg, pkgToUrl} from "@jspm/generator/lib/providers/jsdelivr"
 import { SemVer } from "semver"
 
 
@@ -369,7 +368,7 @@ export class Compiler {
     options.loader
     const url = args.path.slice(1)
     const extname = Path.extname(args.path)
-    const response = await fetch(url)
+    const response = await fetchOrFS(url)
     if(!response.ok) {
       throw Error(`Could not fetch ${url}`)
     }
@@ -417,12 +416,12 @@ const filesystem: Provider = {
 }
 
 async function getLocalHandle(id: string): Promise<FileSystemDirectoryHandle> {
-  const db = indexedDB.open("webwriter", 1)
+  const db = indexedDB.open("webwriter")
   await new Promise(r => db.addEventListener("success", r))
   const tx = db.result.transaction("handles", "readwrite")
   const store = tx.objectStore("handles")
   const req = store.get(id)
-  return new Promise(r => req.addEventListener("success", () => {
+  return new Promise(r => req.addEventListener("success", async () => {
     db.result.close()
     r(req.result.handle)
   }))
@@ -450,7 +449,7 @@ async function getAsset(id: string) {
         directory = await directory.getDirectoryHandle(part)
       }
     }
-    return new Response(file!)
+    return new Response(file!, {headers: {"Access-Control-Allow-Origin": "*"}})
   }
   else {
     return fetch(new URL(id, CDN_URL))
@@ -527,9 +526,6 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
   do {
     try {
       await generator.install(_ids)
-      Object.entries(assets).forEach(([id, url]) => {
-        generator.map.set(id, url)
-      })
       allLinked = true
     }
     catch(err: any) {
@@ -555,10 +551,7 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
     do {
       try {
         await localGenerator.install(localIds)
-        Object.entries(assets).forEach(([id, url]) => {
-          localGenerator.map.set(id, url)
-        })
-        allLinked = true
+        allLinkedLocal = true
       }
       catch(err: any) {
         const regexMatch = / imported from /g.exec(err.message)
@@ -574,10 +567,13 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
     } while(localIds.length && !allLinkedLocal)
     map = new ImportMap({mapUrl: "https://localhost:5173"})
     for(const [key, value] of Object.entries(localGenerator.map.imports)) {
-      const name = key.split("/").slice(0, 2).join("/")
+      const name = key.split("/").slice(0, 2).join("/") 
       map.set(!name.slice(1).includes("@")? key.replace(name, name + "@" + resolutions[name]): key, value)
     }
   }
+  Object.entries(assets).forEach(([id, url]) => {
+    map.set(id, url)
+  })
   return new Response(new Blob([JSON.stringify(map.toJSON())], {type: "application/json"}))
 }
 
@@ -609,7 +605,7 @@ async function getBundle(ids: string[], importMap: ImportMap, options?: esbuild.
   else if(cssIds.length) {
     const cssSources = await Promise.all(cssIds.map(async id => {
       const url = importMap.resolve(id)
-      const response = await fetch(url)
+      const response = await fetchOrFS(url)
       return response.text()
     }))
     const css = cssSources.join("\n")
@@ -716,11 +712,11 @@ async function respond<T extends Action["collection"]>(action: Action<T>) {
   }
 }
 
-async function getFetchResponse(e: FetchEvent) {
-  const url = new URL(e.request.url)
+async function getFetchResponse(url: string | URL) {
+  const _url = new URL(url)
   let action
   try {
-    action = urlToAction(url)
+    action = urlToAction(_url)
   }
   catch(err: any) {
     return new Response(null, {status: 400, statusText: err?.message})
@@ -744,7 +740,8 @@ worker.addEventListener("fetch", e => {
   const shouldIntercept = url.hostname === "api.webwriter.app" && url.pathname.startsWith("/ww/v1/")
   if(shouldIntercept) {
     try {
-      e.respondWith(getFetchResponse(e) as any)
+      const response = getFetchResponse(url) as any
+      e.respondWith(response)
     }
     catch(err: any) {
       console.error(err)
@@ -752,6 +749,32 @@ worker.addEventListener("fetch", e => {
     }
   }
 })
+
+worker.addEventListener("error", function(e) {
+  console.error(e.filename, e.lineno, e.colno, e.message);
+});
+
+const bundleserviceFetch = (req: RequestInfo | URL, ...args: any[]) => {
+  const url = new URL(req instanceof Request? req.url: req)
+  const shouldIntercept = url.hostname === "api.webwriter.app" && url.pathname.startsWith("/ww/v1/")
+  if(shouldIntercept) {
+    return getFetchResponse(url)
+  }
+  else {
+    return fetch(req, ...args)
+  }
+}
+
+type FetchImpl = typeof globalThis.fetch & {
+  text: (url: URL | string, ...args: any[]) => Promise<string | null>,
+  arrayBuffer: (url: URL | string, ...args: any[]) => Promise<ArrayBuffer | null>,
+}
+const fetchOrFS: FetchImpl = Object.assign(bundleserviceFetch, {
+  text: (url: URL | string, ...args: any[]) => bundleserviceFetch(url, ...args).then(r => r.text()),
+  arrayBuffer: (url: URL | string, ...args: any[]) => bundleserviceFetch(url, ...args).then(r => r.arrayBuffer())
+})
+
+setFetch(fetchOrFS)
 
 /** API api.webwriter.app/bundle/
  * GET ·/[Package ID]/[Widget Path] {Accept: [TYPE]}  -> widget content/style
@@ -761,7 +784,7 @@ worker.addEventListener("fetch", e => {
  */
 
 /** Search using npm's registry API (https://github.com/npm/registry/blob/master/docs/REGISTRY-API.md). Uses the registry API since the CLI doesn't support search qualifiers such as tags. */
-export async function search(text: string, params?: {size?: number, quality?: number, popularity?: number, maintenance?: number}, searchEndpoint="https://registry.npmjs.com/-/v1/search") {
+async function search(text: string, params?: {size?: number, quality?: number, popularity?: number, maintenance?: number}, searchEndpoint="https://registry.npmjs.com/-/v1/search") {
   const allParams = {text, ...{size: 250, ...params}}
   const baseURL = new URL(searchEndpoint)
   Object.entries(allParams).forEach(([k, v]) => v? baseURL.searchParams.append(k, v.toString()): null)

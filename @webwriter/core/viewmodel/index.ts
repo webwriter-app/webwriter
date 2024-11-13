@@ -14,6 +14,18 @@ import { msg } from "@lit/localize"
 import { WINDOW_OPTIONS } from "./commandcontroller"
 import { idle } from "../utility"
 
+async function getAllLocalHandles(): Promise<FileSystemDirectoryHandle[]> {
+  const db = indexedDB.open("webwriter")
+  await new Promise(r => db.addEventListener("success", r))
+  const tx = db.result.transaction("handles", "readwrite")
+  const store = tx.objectStore("handles")
+  const req = store.getAll()
+  return new Promise(r => req.addEventListener("success", async () => {
+    db.result.close()
+    r(req.result.map(entry => entry.handle))
+  }))
+}
+
 const CORE_PACKAGES = ["@open-wc/scoped-elements"] as string[]
 
 type LitElementConstructor = typeof LitElement
@@ -69,7 +81,6 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
           const url = new URL(openUrl)
           const parser = this.store.accounts.parserSerializerFromURL(url)
           const client = this.store.accounts.clientFromURL(url)
-          console.log(url, parser, client)
           this.store.document.load(url, parser, client)
         }
         const {join, appDir} = this.environment.api.Path
@@ -85,6 +96,22 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
           return ""
         }
       })
+      if(WEBWRITER_ENVIRONMENT.engine.name === "Blink") {
+        const localHandles = await getAllLocalHandles()
+        const localPermissions = await Promise.all(localHandles.map(handle => (handle as any).queryPermission({mode: "readwrite"})))
+        if(localPermissions.some((perm: any) => perm !== "granted")) {
+          const button = document.createElement("button")
+          button.textContent = "Load local packages"
+          button.id = "load-local"
+          button.title = "It is neccessary to re-grant permissions for each local package folder ONCE due to the way your browser works."
+          document.body.append(button)
+          await new Promise(r => button.addEventListener("click", async () => {
+            await Promise.all(localHandles.map(handle => (handle as any).requestPermission({mode: "readwrite"})))
+            r(undefined)
+          }))
+          button.remove()
+        } 
+      }
       await this.store.packages.load()
       this.requestUpdate()
       this.initializing = false

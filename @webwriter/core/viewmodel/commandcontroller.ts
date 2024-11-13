@@ -4,7 +4,6 @@ import Hotkeys from "hotkeys-js";
 import {
   CSSPropertySpecs,
   EditorStateWithHead,
-  INDIVIDUAL_FILTERS,
   RootStore,
   getActiveAttributes,
   getActiveBlockAttributes,
@@ -401,6 +400,7 @@ export class NodeCommand<
   }
   run(options?: any, e?: Event) {
     const { exec, editorState } = this.host.activeEditor ?? { exec: () => {} };
+    this.host.activeEditor!.editingStatus = undefined;
     return super.run(options, e, (host, attrs) =>
       exec(wrapSelection(this.id, { ...attrs, ...this.spec.defaultAttrs }))
     );
@@ -676,9 +676,9 @@ export class CommandController implements ReactiveController {
               options?.saveAs,
               options?.serializer,
               options?.client,
-              options?.filename
+              options?.filename,
+              options?.url
             );
-            console.log(url);
             if (url) {
               host.dialog = undefined;
             }
@@ -1779,7 +1779,10 @@ export class CommandController implements ReactiveController {
         description: () => msg("Copy the selection"),
         shortcut: "ctrl+c",
         icon: "copy",
-        run: (host) => host.activeEditor?.copy(),
+        run: (host) => {
+          host.activeEditor?.copy();
+          host.activeEditor!.editingStatus = undefined;
+        },
         preview: (host) =>
           (host.activeEditor!.editingStatus =
             host.activeEditor?.editingStatus !== "copying"
@@ -1795,7 +1798,10 @@ export class CommandController implements ReactiveController {
         description: () => msg("Cut the selection"),
         shortcut: "ctrl+x",
         icon: "cut",
-        run: (host) => host.activeEditor?.cut(),
+        run: (host) => {
+          host.activeEditor?.cut();
+          host.activeEditor!.editingStatus = undefined;
+        },
         preview: (host) =>
           (host.activeEditor!.editingStatus =
             host.activeEditor?.editingStatus !== "cutting"
@@ -1811,7 +1817,10 @@ export class CommandController implements ReactiveController {
         description: () => msg("Cut the selection"),
         shortcut: "ctrl+v",
         icon: "clipboard",
-        run: (host) => host.activeEditor?.paste(),
+        run: (host) => {
+          host.activeEditor?.paste();
+          host.activeEditor!.editingStatus = undefined;
+        },
         preview: (host) =>
           (host.activeEditor!.editingStatus =
             host.activeEditor?.editingStatus !== "pasting"
@@ -1826,7 +1835,10 @@ export class CommandController implements ReactiveController {
         description: () => msg("Delete the selection"),
         shortcut: "del",
         icon: "trash",
-        run: (host) => host.activeEditor?.delete(),
+        run: (host) => {
+          host.activeEditor?.delete();
+          host.activeEditor!.editingStatus = undefined;
+        },
         preview: (host) =>
           (host.activeEditor!.editingStatus =
             host.activeEditor?.editingStatus !== "deleting"

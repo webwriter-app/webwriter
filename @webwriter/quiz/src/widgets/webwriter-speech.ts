@@ -21,8 +21,13 @@ declare global {interface HTMLElementTagNameMap {
   "webwriter-speech": WebwriterSpeech;
 }}
 
+import LOCALIZE from "../../localization/generated"
+import {msg} from "@lit/localize"
+
 @customElement("webwriter-speech")
 export class WebwriterSpeech extends LitElementWw {
+
+  localize = LOCALIZE
 
   static scopedElements = {
     "sl-button": SlButton,

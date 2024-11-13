@@ -9,6 +9,9 @@ import IconArrowUp from "bootstrap-icons/icons/arrow-up.svg"
 import IconArrowDown from "bootstrap-icons/icons/arrow-down.svg"
 import "@shoelace-style/shoelace/dist/themes/light.css"
 
+import LOCALIZE from "../../localization/generated"
+import {msg} from "@lit/localize"
+
 declare global {interface HTMLElementTagNameMap {
   "webwriter-order-item": WebwriterOrderItem;
 }}
@@ -24,7 +27,7 @@ function exchangeElements<A extends Node, B extends Node>(a: A, b: B) {
 @customElement("webwriter-order-item")
 export class WebwriterOrderItem extends LitElementWw {
 
-  static localization = {}
+  localize = LOCALIZE
 
   static scopedElements = {
     "sl-icon-button": SlIconButton
@@ -32,8 +35,6 @@ export class WebwriterOrderItem extends LitElementWw {
 
   @property({attribute: true, reflect: true, converter: {toAttribute: (v: boolean) => v? "true": "false", fromAttribute: (attr: string) => attr === "true"}})
   accessor draggable = true
-
-  msg = (str: string) => this.lang in WebwriterOrderItem.localization? WebwriterOrderItem.localization[this.lang][str] ?? str: str
 
   get elementIndex() {
     return Array.from(this.parentElement?.children ?? []).indexOf(this)
@@ -421,7 +422,7 @@ export class WebwriterOrderItem extends LitElementWw {
     return html`<ol part="base" start=${this.elementIndex + 1}>
       ${this.layout === "list"? solution: null}
       <li id="main-li">
-        <slot id="content" style=${styleMap({"--ww-placeholder": `"${this.msg("Option")}"`, "--offset": `${this.contentSlotEl?.offsetLeft + 1}px`})}></slot>
+        <slot id="content" style=${styleMap({"--ww-placeholder": `"${msg("Option")}"`, "--offset": `${this.contentSlotEl?.offsetLeft + 1}px`})}></slot>
       </li>
       <div id="order-buttons" part="order-buttons" draggable="false">
         <sl-icon-button ?disabled=${!this.previousElementSibling} id="up" class="order-button user-only" src=${IconArrowUp} @click=${this.handleClick} @mouseup=${() => this.draggable = true}></sl-icon-button>

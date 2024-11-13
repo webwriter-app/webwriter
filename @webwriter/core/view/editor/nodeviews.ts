@@ -8,6 +8,7 @@ import {EditorViewController, ExplorableEditor} from "."
 import { selectParentNode } from "prosemirror-commands"
 import { filterObject, sameMembers, shallowCompare, browser } from "../../utility"
 import { readDOMChange } from "./prosemirror-view/domchange"
+import { GapCursor } from "prosemirror-gapcursor"
 
 
 
@@ -146,10 +147,22 @@ export class WidgetView implements NodeView {
     const newAttrs = dom.getAttributeNames()
     const oldAttrs = this.dom.getAttributeNames()
     const toRemove = oldAttrs.filter(attr => !newAttrs.includes(attr));
-    (this.view as any).domObserver.stop()
+    // (this.view as any).domObserver.stop()
     toRemove.forEach(attr => this.dom.removeAttribute(attr))
-    newAttrs.forEach(attr => this.dom.setAttribute(attr, dom.getAttribute(attr)!));
-    (this.view as any).domObserver.start()
+    newAttrs.forEach(attr => {
+      if(attr === "class") {
+        const oldClasses = Array.from(this.dom.classList)
+        const newClasses = Array.from(dom.classList)
+        const classesToRemove = oldClasses.filter(cls => !newClasses.includes(cls) && !cls.startsWith("ProseMirror-") && !cls.startsWith("ww-"))
+        const classesToAdd = newClasses.filter(cls => !oldClasses.includes(cls))
+        classesToRemove.forEach(cls => this.dom.classList.remove(cls))
+        classesToAdd.forEach(cls => this.dom.classList.add(cls))
+      }
+      else {
+        this.dom.setAttribute(attr, dom.getAttribute(attr)!)
+      }
+    });
+    // (this.view as any).domObserver.start()
     return true
   }
 
@@ -165,8 +178,12 @@ export class WidgetView implements NodeView {
       return
     }
     const $pos = this.view.state.doc.resolve(pos)
-    const tr = this.view.state.tr.setSelection(new NodeSelection($pos))
-    this.view.dispatch(tr)
+    const sel = new NodeSelection($pos)
+    const oldSel = this.view.state.selection
+    if(oldSel.from !== sel.from || oldSel.to !== sel.to) {
+      let tr = this.view.state.tr.setSelection(sel)
+      this.view.dispatch(tr)
+    }
   }
   
   handleWidgetClick(e: MouseEvent) {

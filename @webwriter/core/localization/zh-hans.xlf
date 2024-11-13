@@ -1030,17 +1030,13 @@
         <target>捕获</target>
       </trans-unit>
       <trans-unit id="s2b8f50c64be440f7">
-        <source>Select 
-          <x id="0" equiv-text="${this.mediaType}"/>...
-        </source>
+        <source>Select <x id="0" equiv-text="${this.mediaType}"/>...</source>
         <target>选择 
           <x id="0" equiv-text="${this.mediaType}"/>... 
         </target>
       </trans-unit>
       <trans-unit id="s739544d0c858c633">
-        <source>Or drop 
-          <x id="0" equiv-text="${this.mediaType}"/> here
-        </source>
+        <source>Or drop <x id="0" equiv-text="${this.mediaType}"/> here</source>
         <target>或点击 
           <x id="0" equiv-text="${this.mediaType}"/> 这里 
         </target>
@@ -1138,10 +1134,7 @@
         <target>小部件需要使用该关键字</target>
       </trans-unit>
       <trans-unit id="h64cd12550420f6f1">
-        <source>Generate a 
-          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
-          <x id="1" equiv-text="&lt;/code&gt;"/> file
-        </source>
+        <source>Generate a <x id="0" equiv-text="&lt;code&gt;"/>LICENSE<x id="1" equiv-text="&lt;/code&gt;"/> file</source>
         <target>生成 
           <x id="0" equiv-text="&lt;code&gt;"/>许可证 
           <x id="1" equiv-text="&lt;/code&gt;"/>
@@ -1177,18 +1170,14 @@
         <target>查看错误</target>
       </trans-unit>
       <trans-unit id="h75b0cad9d9e80648">
-        <source>Stop watching files at 
-          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/>.
-        </source>
+        <source>Stop watching files at <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/>.</source>
         <target>在 
           <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/>
           .
         </target>
       </trans-unit>
       <trans-unit id="h0a75a995d1672be1">
-        <source>Start watching files at 
-          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/> and reload the package if a file is changed.
-        </source>
+        <source>Start watching files at <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/> and reload the package if a file is changed.</source>
         <target>开始监视文件 
           <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/>
           处开始监视文件，并在文件发生变化时重新加载软件包。 
@@ -1666,10 +1655,6 @@
         <source>Install this widget package</source>
         <target>安装该小工具包</target>
       </trans-unit>
-      <trans-unit id="s985f2db57913324b">
-        <source>Manage packages</source>
-        <target>管理软件包</target>
-      </trans-unit>
       <trans-unit id="scdf536b65be39ec5">
         <source> Create/import</source>
         <target>创建/导入</target>
@@ -1685,10 +1670,6 @@
       <trans-unit id="sd2addf69477cd4b4">
         <source>Import package</source>
         <target>导入软件包</target>
-      </trans-unit>
-      <trans-unit id="s7de0061f53ba7472">
-        <source>Error importing </source>
-        <target>导入错误 </target>
       </trans-unit>
       <trans-unit id="s00065e45db8c0441">
         <source>See developer tools for more details</source>
@@ -1859,18 +1840,14 @@
         <target>连接错误</target>
       </trans-unit>
       <trans-unit id="sf52d840949a980d1">
-        <source>
-          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           将被永久删除。你确定吗？ 
         </target>
       </trans-unit>
       <trans-unit id="s9b7cd8860c8fc922">
-        <source>
-          <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           将被覆盖。你确定吗？ 
@@ -1909,9 +1886,7 @@
         <target>不支持属性类型"${desc.type}"（以 JSON 格式处理）</target>
       </trans-unit>
       <trans-unit id="sa00df4e39c72d3b4">
-        <source>
-          <x id="0" equiv-text="${desc.widget}"/> is not supported
-        </source>
+        <source><x id="0" equiv-text="${desc.widget}"/> is not supported</source>
         <target>
           <x id="0" equiv-text="${desc.widget}"/> 不支持 
         </target>
@@ -2099,6 +2074,30 @@
       <trans-unit id="s7d8103f6f06f83d6">
         <source>Padding</source>
         <target>衬垫</target>
+      </trans-unit>
+      <trans-unit id="s9295089d0ecc35ff">
+        <source>Advanced: Show with versions like 0.x.x in the package manager</source>
+        <target>高级：在软件包管理器中显示 0.x.x 等版本</target>
+      </trans-unit>
+      <trans-unit id="s71a0549fd71219c9">
+        <source>Show unstable packages</source>
+        <target>显示不稳定软件包</target>
+      </trans-unit>
+      <trans-unit id="s0de0febab8a4beaf">
+        <source>Error reading this package</source>
+        <target>读取此软件包时出错</target>
+      </trans-unit>
+      <trans-unit id="s69a49786a8009f43">
+        <source>Find packages...</source>
+        <target>查找套餐...</target>
+      </trans-unit>
+      <trans-unit id="s5e2cba97c0d971bd">
+        <source>Reload packages</source>
+        <target>重新加载软件包</target>
+      </trans-unit>
+      <trans-unit id="s7aaf0c06e69600f1">
+        <source>Error with </source>
+        <target>错误与 </target>
       </trans-unit>
     </body>
   </file>

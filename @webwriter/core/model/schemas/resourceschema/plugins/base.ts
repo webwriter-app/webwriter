@@ -81,7 +81,6 @@ export const splitOrBreak: Command = (state, dispatch, view) => {
     return true
   }
   else {
-    console.log("inserting break")
     return insertBreak(state, dispatch, view)
   }
 }
@@ -155,7 +154,7 @@ export const basePlugin = () => ({
   nodes: {
     explorable: HTMLElementSpec({
       tag: "body",
-      content: `p ((p | flow)* p)?`, // mixed
+      content: `(p | flow)*`, // mixed
       draggable: false,
       selectable: false,
       attrs: {
