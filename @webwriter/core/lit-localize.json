@@ -6,7 +6,7 @@
   "output": {
     "mode": "runtime",
     "outputDir": "./localization/generated",
-    "localeCodesModule": "./@webwriter/core/localization/generated/locales.ts",
+    "localeCodesModule": "./@webwriter/core/localization/generated/locales.ts"
   },
 
   "interchange": {
