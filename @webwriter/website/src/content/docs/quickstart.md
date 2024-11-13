@@ -19,7 +19,7 @@ Get started by developing your widget inside WebWriter.
 Open WebWriter. Toggle the package managing mode (three boxes icon on the left). Then click the "Create/import" button. Choose a directory where your package will be located. The dialog will help you pick a valid package/widget name. Once you are done, confirm to create the package. In some cases, you need to reload the packages afterwards by clicking the three boxes icon again.
 
 ### Step 2: Set up automatic rebuilding
-WebWriter automatically detects changes in the build of your package, triggering a reload. If you use the "Lit" template, you can run `npm run dev` in your project root, meaning the package will be rebuilt automatically if your source code changes.
+WebWriter automatically detects changes in the build of your package, triggering a reload. If you use the "Lit" template, you can run `npm run dev` (or `npx @webwriter/build dev`) in your project root, meaning the package will be rebuilt automatically if your source code changes.
 
 ### Step 3: Edit your widget
 In your chosen package directory, you can find your widget's files. If you chose the default "Lit" template, there will be a file `widgets/my-widget.ts` (named after your package) containing a basic scaffold for your widget. Try changing the code. Once you save your changes, WebWriter should automatically reload your widget so you see your changes immediately. Otherwise, toggling package managing mode (as described above) should also achieve this.
