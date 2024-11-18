@@ -12,7 +12,7 @@ dist
 _site
 test/data
 *.lnk
-*/**/_localization/generated
+*/**/localization/generated
 *.key
 *.key.pub
 *.code-workspace
