@@ -1881,12 +1881,12 @@ export class CommandController implements ReactiveController {
         run: host => {host.activeEditor!.pin(); host.activeEditor!.editingStatus = undefined},
         category: "editor",
         tags: ["element"],
-      }),
+      }),/*
       grammar_check: new Command(this.host, {
         id: "grammar_check",
         label: () => msg("Spell Check"),
         tags: ["general"],
-        icon: "spell-check",
+        icon: "text-spellcheck",
 
         description: () => msg("Checks the document for grammar errors"),
         shortcut: "ctrl+g",
@@ -1906,9 +1906,9 @@ export class CommandController implements ReactiveController {
         id: "translate",
         label: () => msg("Translate"),
         tags: ["general"],
-        icon: "translate",
+        icon: "language",
 
-        description: () => msg("Checks the document for grammar errors"),
+        description: () => msg("Translates part of the document"),
         shortcut: "ctrl+g",
         run: async (host) => {
           await host.store.document.translate();
@@ -1919,7 +1919,7 @@ export class CommandController implements ReactiveController {
           host.store.document.ioState === "loadingTranslation",
 
         loading: (host) => host.store.document.ioState === "loadingTranslation",
-      }),
+      }),*/
       textStyle: new LayoutCommand(this.host, {
         id: "textStyle",
         label: () => msg("Text Style"),
