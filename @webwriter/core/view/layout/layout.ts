@@ -60,6 +60,7 @@ export class Layout extends LitElement {
       min-height: 50px;
       grid-column: 2 / 4;
       grid-row: 1;
+      z-index: 12;
     }
 
     nav {
@@ -79,6 +80,7 @@ export class Layout extends LitElement {
       overflow-y: visible;
       grid-column: 5 / 7;
       grid-row: 1;
+      z-index: 12;
     }
 
     slot[name=main]::slotted(:not([data-active]):not(#initializingPlaceholder)) {
