@@ -1,5 +1,3 @@
-
-
 html {
   background: var(--sl-color-gray-100);
   overflow-y: scroll;
@@ -74,7 +72,7 @@ html::-webkit-scrollbar-button:vertical:single-button:increment:disabled {
 
 a:not([href]) {
   text-decoration: underline;
-  color: #0000EE;
+  color: #0000ee;
 }
 
 body {
@@ -137,14 +135,14 @@ figure.ProseMirror-selectednode::before {
   box-sizing: border-box;
 }
 
-[data-ww-editing^=unknown] {
+[data-ww-editing^="unknown"] {
   border: 2px solid var(--sl-color-warning-600);
   padding: 4px;
   color: var(--sl-color-warning-600);
   text-align: center;
 }
 
-[data-ww-editing^=unknown]::before {
+[data-ww-editing^="unknown"]::before {
   display: inline-block;
   content: "⚠  Unknown element <" attr(data-ww-tagname) ">";
   margin-right: 1ch;
@@ -160,7 +158,6 @@ figure.ProseMirror-selectednode::before {
 html:is(.ww-key-ctrl, .ww-key-meta) body * {
   cursor: pointer;
 }
-
 
 .ProseMirror > :not(.ProseMirror-widget) {
   position: relative;
@@ -179,7 +176,67 @@ html:is(.ww-key-ctrl, .ww-key-meta) body * {
   width: 20px;
 }*/
 
-.ProseMirror *:not(:is(a, abbr, b, bdi, bdo, cite, code, data, del, dfn, em, i, ins, kbd, q, ruby, s, samp, small, span, strong, sub, sup, time, u, var, mtext, annotation, annotation-xml, maction, merror, mfrac, mi, mmultiscripts, mn, mo, mover, mpadded, mphantom, mprescripts, mroot, mrow, ms, mspace, msqrt, mstyle, msub, msubsup, msup, mtable, mtd, mtr, munder, munderover, none, semantics)):hover {
+.ProseMirror
+  *:not(
+    :is(
+        a,
+        abbr,
+        b,
+        bdi,
+        bdo,
+        cite,
+        code,
+        data,
+        del,
+        dfn,
+        em,
+        i,
+        ins,
+        kbd,
+        q,
+        ruby,
+        s,
+        samp,
+        small,
+        span,
+        strong,
+        sub,
+        sup,
+        time,
+        u,
+        var,
+        mtext,
+        annotation,
+        annotation-xml,
+        maction,
+        merror,
+        mfrac,
+        mi,
+        mmultiscripts,
+        mn,
+        mo,
+        mover,
+        mpadded,
+        mphantom,
+        mprescripts,
+        mroot,
+        mrow,
+        ms,
+        mspace,
+        msqrt,
+        mstyle,
+        msub,
+        msubsup,
+        msup,
+        mtable,
+        mtd,
+        mtr,
+        munder,
+        munderover,
+        none,
+        semantics
+      )
+  ):hover {
   outline: 1px dotted var(--sl-color-gray-400);
   outline-offset: 2px;
 }
@@ -216,7 +273,12 @@ html:is(.ww-key-ctrl, .ww-key-meta) body * {
   border-color: var(--sl-color-danger-400);
 }*/
 
-:is(.ww-copying, .ww-cutting, .ww-deleting, html:is(.ww-key-ctrl, .ww-key-meta) body *)::before {
+:is(
+    .ww-copying,
+    .ww-cutting,
+    .ww-deleting,
+    html:is(.ww-key-ctrl, .ww-key-meta) body *
+  )::before {
   content: "";
   position: absolute;
   right: -20px;
@@ -266,7 +328,6 @@ html:is(.ww-key-ctrl, .ww-key-meta) body *::before {
   outline: 4px dashed var(--sl-color-primary-400);
 }
 
-
 main:not(:focus-within) .ww-widget.ww-selected {
   outline-color: lightgray;
 }
@@ -279,7 +340,15 @@ body > .ww-widget::after {
   left: calc(100%);
   top: 1px;
   width: 20px;
-  background: linear-gradient(to right, transparent 0% , transparent 40%, var(--ww-widget-highlight-color) 40% , var(--ww-widget-highlight-color) 60%, transparent 60%, transparent 100%);
+  background: linear-gradient(
+    to right,
+    transparent 0%,
+    transparent 40%,
+    var(--ww-widget-highlight-color) 40%,
+    var(--ww-widget-highlight-color) 60%,
+    transparent 60%,
+    transparent 100%
+  );
   height: calc(100% - 2px);
   cursor: pointer;
   box-sizing: border-box;
@@ -297,7 +366,6 @@ body > .ww-widget::after {
 .ww-widget:is(.ww-cutting, .ww-copying)::after {
   --ww-widget-highlight-color: var(--sl-color-warning-400);
 }
-
 
 .ww-widget:hover::after {
   --ww-widget-highlight-color: var(--sl-color-primary-200);
@@ -318,7 +386,7 @@ body > .ww-widget::after {
 .ProseMirror::before {
   color: darkgray;
   position: absolute;
-  content: '⠀';
+  content: "⠀";
   pointer-events: none;
   user-select: none;
   -webkit-user-select: none;
@@ -356,6 +424,25 @@ body > .ww-widget::after {
   text-align: left;
 }
 
+.grammar-mark {
+  border-bottom: red 2px solid;
+}
+
+.grammar-mark:hover {
+  background-color: rgba(255, 0, 0, 0.2);
+  transition: background-color 0.1s ease;
+}
+
+.grammar-insert {
+  color: dimgrey;
+  border-bottom: rgb(255, 234, 0) 2px solid;
+}
+
+.grammar-insert:hover {
+  background-color: rgba(242, 255, 0, 0.288);
+  transition: background-color 0.1s ease;
+}
+
 body > p:first-child {
   margin-top: 0;
 }
@@ -389,17 +476,18 @@ abbr {
   text-decoration: underline 1px dotted currentColor;
 }
 
-:not(:defined):not([data-ww-editing^=unknown])::after {
+:not(:defined):not([data-ww-editing^="unknown"])::after {
   content: "⚠ Element not defined" !important;
   color: goldenrod !important;
 }
 
-:is(:empty, :has( .ProseMirror-trailingBreak)) {
+:is(:empty, :has(.ProseMirror-trailingBreak)) {
   position: relative;
 }
 
-
-:is(:empty, :has(> :only-of-type.ProseMirror-trailingBreak)):not(.ProseMirror-widget):after {
+:is(:empty, :has(> :only-of-type.ProseMirror-trailingBreak)):not(
+    .ProseMirror-widget
+  ):after {
   font: inherit;
   text-align: inherit;
   content: var(--ww-placeholder);
@@ -417,8 +505,9 @@ abbr {
   z-index: 2147483647;
 }
 
-
-iframe:not([src]), picture:not(:has(img[src])), video:not([src]):not(:has(track[src])) {
+iframe:not([src]),
+picture:not(:has(img[src])),
+video:not([src]):not(:has(track[src])) {
   background: lightgray;
   position: relative;
 }
@@ -457,7 +546,7 @@ video:not([controls]) {
   display: unset !important;
 }
 
-math:not([display=block]) {
+math:not([display="block"]) {
   & * {
     user-select: none;
     -webkit-user-select: none;
@@ -465,7 +554,8 @@ math:not([display=block]) {
   }
 }
 
-math:empty, math:has(mtext:only-child) {
+math:empty,
+math:has(mtext:only-child) {
   display: inline-block;
   background: lightgray;
   cursor: pointer;
@@ -481,7 +571,8 @@ math:empty, math:has(mtext:only-child) {
   }
 }
 
-math:empty::after, math:has(mtext:only-child)::after {
+math:empty::after,
+math:has(mtext:only-child)::after {
   position: absolute;
   top: 0;
   left: 0;
@@ -525,7 +616,17 @@ table:empty::after {
 .ProseMirror-gapcursor::after {
   width: 1em;
   height: 1em;
-  clip-path: polygon(26% 50%, 0 16%, 3% 13%, 30% 48%, 100% 48%, 100% 52%, 30% 52%, 3% 87%, 0 84%);;
+  clip-path: polygon(
+    26% 50%,
+    0 16%,
+    3% 13%,
+    30% 48%,
+    100% 48%,
+    100% 52%,
+    30% 52%,
+    3% 87%,
+    0 84%
+  );
   margin-left: -0.4em;
   margin-top: -0.4em;
   background: currentColor;
@@ -595,7 +696,6 @@ body:has(.ww-fullscreen) > :not(.ww-fullscreen) {
 }
 
 @media only screen and (min-width: 1300px) {
-
   .ww-widget::part(options) {
     position: fixed;
     width: var(--ww-toolbox-action-width);
@@ -637,5 +737,5 @@ body:has(.ww-fullscreen) > :not(.ww-fullscreen) {
 
   .ProseMirror[data-empty]::before {
     display: none;
-  } 
+  }
 }
