@@ -666,6 +666,7 @@ export class ExplorableEditor extends LitElement {
 		this.editorState = this.pmEditor.state as EditorStateWithHead
     this.dispatchEvent(new Event("change"))
 		this.updatePosition()
+    this.updateDocumentElementClasses(null, true)
 	}
 
 	get isInNarrowLayout() {
@@ -1062,6 +1063,9 @@ export class ExplorableEditor extends LitElement {
     },*/
     "mousedown": (_: any, ev: MouseEvent) => {
       this.isPrimaryMouseDown = true
+      if(ev.button !== 0) {
+        return true
+      }
       // Generalize: If clicked top is in a margin, create GapCursor between
       // In margin if top is between end of previous element and start of next element
       // If no previous element, only check next element. If no next element, check only previous element.
@@ -1287,16 +1291,16 @@ export class ExplorableEditor extends LitElement {
       return
     }
     const toRemove = [
-      !e.ctrlKey && "ww-key-ctrl",
-      !e.altKey && "ww-key-alt",
-      !e.shiftKey && "ww-key-shift",
-      !e.metaKey && "ww-key-meta"
+      !e?.ctrlKey && "ww-key-ctrl",
+      !e?.altKey && "ww-key-alt",
+      !e?.shiftKey && "ww-key-shift",
+      !e?.metaKey && "ww-key-meta"
     ].filter(k => k) as string[]
     const toAdd = [
-      e.ctrlKey && "ww-key-ctrl",
-      e.altKey && "ww-key-alt",
-      e.shiftKey && "ww-key-shift",
-      e.metaKey && "ww-key-meta"
+      e?.ctrlKey && "ww-key-ctrl",
+      e?.altKey && "ww-key-alt",
+      e?.shiftKey && "ww-key-shift",
+      e?.metaKey && "ww-key-meta"
     ].filter(k => k) as string[]
     toRemove.length && this.pmEditor?.documentElement.classList.remove(...toRemove)
     !removeOnly && toAdd.length && this.pmEditor?.documentElement.classList.add(...toAdd)
@@ -1334,7 +1338,6 @@ export class ExplorableEditor extends LitElement {
         @fullscreenchange=${() => this.requestUpdate()}
 				.scrollMargin=${20}
 				scrollThreshold=${20}
-				placeholder=${this.showTextPlaceholder && !this.previewMode? msg("Enter content here..."): ""}
 				.state=${this.editorState}
         .importMap=${this.app.store.packages.importMap}
 				.nodeViews=${this.nodeViews}
@@ -1434,14 +1437,9 @@ export class ExplorableEditor extends LitElement {
         @ww-remove-mark=${(e: any) => {
           this.exec(removeMark(e.detail.markType))
         }}
-        @ww-hover-breadcrumb=${(e: any) => {
-          
-        }}
         @ww-click-breadcrumb=${(e: any) => {
           this.selectElementInEditor(e.detail.element)
         }}
-				@ww-mouse-enter-delete-widget=${(e: CustomEvent) => this.deletingWidget = e.detail.widget}
-				@ww-mouse-leave-delete-widget=${(e: CustomEvent) => this.deletingWidget = null}
 				@ww-click-name=${(e: CustomEvent) => {
 					this.activeElement?.scrollIntoView({behavior: "smooth", block: "center"})
 					!e.detail.widget? this.pmEditor?.focus(): e.detail.widget.focus()
