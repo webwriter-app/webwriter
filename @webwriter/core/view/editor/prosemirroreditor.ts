@@ -275,6 +275,9 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
   }
 
   async initialize() {
+    if(this.url) {
+      return this.initializePreviewFrame()
+    }
     await this.initializeIFrame()
     this.view?.destroy()
     this.view = new EditorView({mount: this.body}, this.directProps)
