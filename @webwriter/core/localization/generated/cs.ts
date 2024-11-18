@@ -80,6 +80,7 @@
 's0cf10c4f40588f8d': `Nadpis tabulky`,
 's0dc452999c129e15': `Povolit živé načítání`,
 's0de0febab8a4beaf': `Chyba při čtení tohoto balíčku`,
+'s0de0febab8a4beaf': `Chyba při čtení tohoto balíčku`,
 's0e4862e87c7d53ce': `Označit výběr jako citaci`,
 's0f350bc4e538e3ea': `Slova`,
 's106b274b5af798e5': `Věty`,
@@ -555,8 +556,5 @@
 'spaceKey': `Prostor`,
 'tabKey': `⭾ Karta`,
 'upKey': `↑ Nahoru`,
-'sd5cf95145e4d89ca': `Unpin this snippet`,
-'s02106cc2ef0e7578': `New pin...`,
-'s2f8da2cb5f236588': `The name of your package. Must be scoped, e.g. \`@org/pkg\`. `,
     };
   
