@@ -655,7 +655,11 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
   @property({attribute: true, type: Boolean, reflect: true})
   loaded: boolean = true
 
+  get documentLang() {
+    return this?.document?.documentElement?.lang
+  }
+
   render() {
-    return keyed(this.bundleID + String(this.url), html`<iframe part="iframe" src=${ifDefined(this.url)} @load=${() => this.initialize()}></iframe>`)
+    return keyed(this.bundleID + String(this.url) + String(this.documentLang), html`<iframe part="iframe" src=${ifDefined(this.url)} @load=${() => this.initialize()}></iframe>`)
   }
 }

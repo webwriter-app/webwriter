@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/lit",
-  "version": "2.1.3",
+  "version": "2.1.5",
   "description": "Base classes for widget components with lit (WebWriter)",
   "publishConfig": {
     "access": "public"

@@ -145,7 +145,7 @@ export class LitElementWw extends ScopedElementsMixin(LitElement) {
   #lang: string = ""
 
   get lang() {
-    return (this.parentElement?.closest("[lang]") as HTMLElement)?.lang ?? this.#lang
+    return (this.#lang || (this.parentElement?.closest("[lang]") as HTMLElement)?.lang) ?? ""
   }
 
   /** [HTML global attribute] Language of the widget, allowing presentation changes for each language.*/
@@ -160,6 +160,7 @@ export class LitElementWw extends ScopedElementsMixin(LitElement) {
 
   connectedCallback(): void {
     super.connectedCallback()
+    this.localize.setLocale(this.lang).finally(() => this.requestUpdate())
     this.getAttributeNames().forEach(k => this.setAttribute(k, this.getAttribute(k)))
   }
 }

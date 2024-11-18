@@ -772,7 +772,7 @@ var LitElementWw = class extends (_a = ScopedElementsMixin2(h3), _contentEditabl
     __publicField(this, "_inTransaction", false);
   }
   get lang() {
-    return this.parentElement?.closest("[lang]")?.lang ?? __privateGet(this, _lang);
+    return (__privateGet(this, _lang) || this.parentElement?.closest("[lang]")?.lang) ?? "";
   }
   set lang(value) {
     __privateSet(this, _lang, value);
@@ -780,6 +780,7 @@ var LitElementWw = class extends (_a = ScopedElementsMixin2(h3), _contentEditabl
   }
   connectedCallback() {
     super.connectedCallback();
+    this.localize.setLocale(this.lang).finally(() => this.requestUpdate());
     this.getAttributeNames().forEach((k2) => this.setAttribute(k2, this.getAttribute(k2)));
   }
 };
