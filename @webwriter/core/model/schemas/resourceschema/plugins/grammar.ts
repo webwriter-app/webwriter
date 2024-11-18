@@ -304,8 +304,6 @@ export const grammarPlugin = (): SchemaPlugin => {
           let start = pos,
             end = pos;
 
-          console.log(mark, pos);
-
           // if (!mark) {
           //   // Check one position before
           //   mark = findGrammarMarkAtPos(Math.max(0, pos - 1));
