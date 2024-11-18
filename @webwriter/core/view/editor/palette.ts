@@ -120,6 +120,9 @@ export class Palette extends LitElement {
   @property({type: Boolean, attribute: true, reflect: true})
   managing = false
 
+  @property({type: String, attribute: true, reflect: true})
+  editingStatus: string
+
 	widgetAddInterval: any
 	
 	@query(".package-card:hover sl-progress-bar")
@@ -270,7 +273,7 @@ export class Palette extends LitElement {
       }
     }
 
-    .block-card {
+    .block-card, .snippet-card {
       order: 1;
       grid-column: span 6;
 
@@ -279,7 +282,7 @@ export class Palette extends LitElement {
         position: relative;
       }
 
-      &:not(.installed):not(:hover) {
+      &:not(.installed):not(.snippet-card):not(:hover) {
         color: var(--sl-color-gray-400);
         &::part(base) {
           background: var(--sl-color-gray-50);
@@ -287,11 +290,11 @@ export class Palette extends LitElement {
         }
       }
 
-      &.installed:not(.error) .title:hover {
+      &:is(.installed, .snippet-card):not(.error) .title:hover {
         color: var(--sl-color-primary-600);
       }
 
-      &:not(.installed):not(.error):hover {
+      &:not(.installed):not(.error):not(.snippet-card):hover {
         color: var(--sl-color-success-700);
       }
 
@@ -330,16 +333,20 @@ export class Palette extends LitElement {
         color: var(--sl-color-danger-700) !important;
       }
 
-      &:not(.installed):not(.error) .pin::part(base):hover, &:not(.installed):has(.pin:hover) .title {
+      &:not(.installed):not(.error):not(.snippet-card) .pin::part(base):hover, &:not(.installed):has(.pin:hover) .title {
         color: var(--sl-color-success-700) !important;
       }
 
-      & .update::part(base):hover, &:has(.update:hover) .title {
+      & .update::part(base):hover, &:is(:has(.update:hover), :has(.unpin:hover)) .title {
         color: var(--sl-color-warning-700) !important;
       }
 
-      &:not(.installed):not(.error):hover :is(.title, .pin::part(base):hover) {
+      &:not(.installed):not(.error):not(.snippet-card):hover :is(.title, .pin::part(base):hover) {
         color: var(--sl-color-success-700) !important;
+      }
+
+      &.snippet-card .unpin::part(base):hover {
+        color: var(--sl-color-danger-700) !important;
       }
 
       &.adding sl-progress-bar {
@@ -427,6 +434,23 @@ export class Palette extends LitElement {
           width: 20px;
           height: 20px;
         }
+      }
+    }
+
+    .snippet-card {
+      grid-column: span 6;
+    }
+
+    #pin-preview {
+      background: none;
+      font-weight: bold;
+      color: var(--sl-color-primary-700);
+      grid-column: span 6;
+
+      & .title {
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
       }
     }
 
@@ -691,6 +715,10 @@ export class Palette extends LitElement {
       }
     }
 
+    :host([managing]) #package-search {
+      min-width: 200px;
+    }
+
 		
     /*
 
@@ -739,7 +767,10 @@ export class Palette extends LitElement {
 
 	private handleClickCard(pkg: Package | Command, snippetName?: string) {
     const isLeaf = "name" in pkg
-    if(!snippetName && isLeaf && !this.managing) {
+    if(isLeaf && pkg.isSnippet) {
+      return this.emitInsert(pkg.id, "")
+    }
+    else if(!snippetName && isLeaf && !this.managing) {
       this.dropdownOpen = pkg.id
       return
     }
@@ -852,6 +883,17 @@ export class Palette extends LitElement {
 	</sl-card>`
   }
 
+  SnippetCard = (pkg: Package) => {
+    const {name} = pkg
+    return html`<sl-card class=${classMap({"package-card": true, "snippet-card": true})}>
+      <span @click=${() => this.handleClickCard(pkg)} class="title" @mouseenter=${() => this.handleMouseenterInsertable(pkg)} @mouseleave=${() => this.handleMouseleaveInsertable(pkg)}>
+        <span>${prettifyPackageName(name)}</span>
+        <ww-button title=${msg("Unpin this snippet")} ?inert=${!this.managing} class="unpin" variant="icon" icon=${this.managing? "trash": "pinned-filled"}  @focusin=${(e: any) => {e.preventDefault(); e.stopPropagation()}} @click=${(e: any) => {this.app.store.packages.removeSnippet(name.split("-")[1]); e.stopPropagation(); e.preventDefault()}}></ww-button>
+			</span>
+		<sl-progress-bar></sl-progress-bar>
+	</sl-card>`
+  }
+
   InlineCard = (cmd: Command) => {
     const {id, label} = cmd
     return html`<sl-card class=${classMap({"package-card": true, "inline-card": true})}>
@@ -869,6 +911,9 @@ export class Palette extends LitElement {
   }
 
   Card = (cmdOrPkg: Command | Command[] | Package) => {
+    if("name" in cmdOrPkg && cmdOrPkg.isSnippet) {
+      return this.SnippetCard(cmdOrPkg)
+    }
     if("name" in cmdOrPkg) {
       return this.BlockCard(cmdOrPkg)
     }
@@ -1096,6 +1141,17 @@ export class Palette extends LitElement {
     </sl-dialog>`
   }
 
+  PinPreview() {
+    return html`<sl-card id="pin-preview" class=${classMap({"package-card": true})}>
+      <span class="title">
+        ${msg("New pin...")}
+        <ww-button class="unpin" variant="icon" icon="pinned"></ww-button>
+      </span>
+      <sl-progress-bar></sl-progress-bar>
+    </span>
+	</sl-card>`
+  }
+
   protected firstUpdated() {
     this.addEventListener("blur", e => {
       setTimeout(() => {
@@ -1121,6 +1177,7 @@ export class Palette extends LitElement {
       ${this.PackageToolbar()}
       ${this.app.commands.groupedContainerCommands.map(this.Card)}
       ${this.ClipboardCard()}
+      ${this.editingStatus != "pinning"? undefined: this.PinPreview()}
       ${this.packagesInSearchOrder.map(this.Card)}
       ${this.AddLocalPackageButton()}
       ${this.LocalPackageDialog()}

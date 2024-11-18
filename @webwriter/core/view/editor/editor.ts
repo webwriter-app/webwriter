@@ -87,14 +87,19 @@ export class ExplorableEditor extends LitElement {
     const state = this.pmEditor.state
     const members = this.app.store.packages.getPackageMembers(id)
     let insertedRootPos: number | undefined = undefined
-    if(insertableName.startsWith("./snippets/")) {
-      const source = members[insertableName].source
+    if(id.endsWith("-snippet") || insertableName.startsWith("./snippets/")) {
+      const source = members[insertableName]?.source
       let htmlStr = source
-      if(!source) {
+      if(id.endsWith("-snippet")) {
+        const sid = Package.fromID(id).name.split("-")[1]
+        const snippet = await this.app.store.packages.getSnippet(sid)
+        htmlStr = snippet.html
+      }
+      else if(!source) {
         const url = this.app.store.packages.importMap.resolve(id + insertableName.slice(1) + ".html")
         htmlStr = await (await fetch(url, {headers: {"Accept": "text/html"}})).text()
       }
-      const tagNames = this.app.store.packages.widgetTagNames
+      // const tagNames = this.app.store.packages.widgetTagNames
       const parser = DOMParser.fromSchema(state.schema)
       const template = this.pmEditor.document.createElement("template")
       template.innerHTML = htmlStr
@@ -330,6 +335,18 @@ export class ExplorableEditor extends LitElement {
       : this.execInCodeEditor(cmRedo)
   }
 
+  async pin() {
+    const html = this.selectionAsHTML
+    return this.app.store.packages.addSnippet({html})
+  }
+
+  get selectionAsHTML() {
+    const fragment = this.selection.content().content
+    const serializer = DOMSerializer.fromSchema(this.editorState.schema)
+    const dom = serializer.serializeFragment(fragment, {document: this.pmEditor.document}) as DocumentFragment
+    return Array.from(dom.children).map(child => child.outerHTML).join("\n")
+  }
+
 	LinkView = (mark: Mark, view: EditorView, inline: boolean) => {
     const dom = this.pmEditor.document.createElement("a")
     const href = mark.attrs.href
@@ -562,7 +579,7 @@ export class ExplorableEditor extends LitElement {
   }
 
   @property({attribute: false, state: true})
-  editingStatus: undefined | "copying" | "cutting" | "deleting" | "inserting" | "pasting"
+  editingStatus: undefined | "copying" | "cutting" | "deleting" | "inserting" | "pasting" | "pinning"
 
 	decorations = (state: EditorState) => {
     const {from, to, $from} = state.selection
@@ -1481,6 +1498,7 @@ export class ExplorableEditor extends LitElement {
         }}
 				.packages=${this.packages}
 				?showWidgetPreview=${this.showWidgetPreview}
+        editingStatus=${ifDefined(this.editingStatus)}
 			>
     </ww-palette>
 		`

@@ -356,6 +356,10 @@ export class Package {
     return `${this.name}@${this.version}`
   }
 
+  get isSnippet() {
+    return this.version.prerelease.includes("snippet")
+  }
+
   get nameParts() {
     const [scope, name] = this.name.startsWith("@")? this.name.slice(1).split("/"): [undefined, this.name]
     return {scope, name}

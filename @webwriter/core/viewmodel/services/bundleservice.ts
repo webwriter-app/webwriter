@@ -456,6 +456,58 @@ async function getAsset(id: string) {
   }
 }
 
+type Snippet = {html: string, label?: Record<string, string>}
+
+async function getSnippet(id?: string) {
+  const db = indexedDB.open("webwriter")
+  await new Promise(r => db.addEventListener("success", r))
+  const tx = db.result.transaction("snippets", "readonly")
+  const store = tx.objectStore("snippets")
+  const req = id? store.get(parseInt(id)): store.getAll()
+  const snippet = await new Promise(r => req.addEventListener("success", async () => {
+    db.result.close()
+    r(req.result)
+  }))
+  return new Response(new Blob([JSON.stringify(snippet)], {type: "application/json"}))
+}
+async function postSnippet(snippet: Snippet) {
+  const db = indexedDB.open("webwriter")
+  await new Promise(r => db.addEventListener("success", r))
+  const tx = db.result.transaction("snippets", "readwrite")
+  const store = tx.objectStore("snippets")
+  const req = store.add(snippet)
+  const id: string = await new Promise(r => req.addEventListener("success", async () => {
+    db.result.close()
+    r(String(req.result))
+  }))
+  const url = actionToUrl({collection: "snippets", ids: [id], args: {}})
+  return new Response(null, {headers: {"Content-Location": url.href}, status: 201})
+}
+async function putSnippet(id: string, snippet: Snippet) {
+  const db = indexedDB.open("webwriter")
+  await new Promise(r => db.addEventListener("success", r))
+  const tx = db.result.transaction("snippets", "readwrite")
+  const store = tx.objectStore("snippets")
+  const req = store.put(snippet, parseInt(id))
+  await new Promise(r => req.addEventListener("success", async () => {
+    db.result.close()
+    r(String(req.result))
+  }))
+  return new Response(null, {status: 200})
+}
+async function deleteSnippet(id: string) {
+  const db = indexedDB.open("webwriter")
+  await new Promise(r => db.addEventListener("success", r))
+  const tx = db.result.transaction("snippets", "readwrite")
+  const store = tx.objectStore("snippets")
+  const req = store.delete(parseInt(id))
+  await new Promise(r => req.addEventListener("success", async () => {
+    db.result.close()
+    r(req.result)
+  }))
+  return new Response(null, {status: 204})
+}
+
 async function getPackages(ids: string[]) {
   const pkgIds = ids.map(id => id.startsWith("@")? id.split("/").slice(0, 2).join("/"): id.split("/")[0])
   let _ids = pkgIds.map(name => `${name}/package.json`)
@@ -616,13 +668,15 @@ async function getBundle(ids: string[], importMap: ImportMap, options?: esbuild.
   }
 }
 
-type Action<T extends "importmaps" | "bundles" | "packages" | "assets" = "importmaps" | "bundles" | "packages" | "assets"> = {
+type Action<T extends "importmaps" | "bundles" | "packages" | "assets" | "snippets" = "importmaps" | "bundles" | "packages" | "assets" | "snippets"> = {
   collection: T,
+  method?: "HEAD" | "POST" | "PUT" | "DELETE" | "CONNECT" | "OPTIONS" | "TRACE" | "PATCH",
+  content?: any,
   ids: string[],
   args: Record<string, string>
 }
 
-function urlToAction(url: URL) {
+function urlToAction(url: URL, method?: Action["method"], content?: any) {
   const suffix = url.pathname.slice("/ww/v1/".length)
   let collection: Action["collection"]
   if(suffix.startsWith("_importmaps")) {
@@ -633,6 +687,13 @@ function urlToAction(url: URL) {
   }
   else if(suffix.startsWith("_packages")) {
     collection = "packages"
+  }
+  else if(suffix.startsWith("_snippets")) {
+    collection = "snippets"
+    // POST   https://api.webwriter.app/ww/v1/_snippets/
+    // GET    https://api.webwriter.app/ww/v1/_snippets/<id>
+    // PUT    https://api.webwriter.app/ww/v1/_snippets/<id>
+    // DELETE https://api.webwriter.app/ww/v1/_snippets/<id>
   }
   else if(suffix.startsWith("_")) {
     throw Error(`Unsupported collection type ${suffix}`)
@@ -650,7 +711,7 @@ function urlToAction(url: URL) {
   }
   url.searchParams.delete("id")
   const args = Object.fromEntries(url.searchParams.entries())
-  return {collection, ids, args}
+  return {collection, method, ids, args, content}
 }
 
 function actionToUrl<T extends Action["collection"]>(action: Action<T>) {
@@ -669,7 +730,7 @@ async function respond<T extends Action["collection"]>(action: Action<T>) {
   else {
     pkgs = await pkgsResponse.json()
   }
-  const versionedIds = action.ids.map((id, i) => {
+  const versionedIds = action.collection === "snippets"? action.ids: action.ids.map((id, i) => {
     const bare = !(id.startsWith("@")? id.slice(1).split("/")[1]: id.split("/")[0]).includes("@")
     if(!bare) {
       return id
@@ -707,16 +768,38 @@ async function respond<T extends Action["collection"]>(action: Action<T>) {
     cache.put(url, bundleResponse.clone())
     return bundleResponse
   }
+  else if(action.collection === "snippets") {
+    if(!action.method) {
+      return getSnippet(action.ids[0])
+    }
+    else if(action.method === "POST" && !action.ids.length) {
+      return postSnippet(action.content)
+    }
+    else if(action.method === "PUT" && action.ids.length === 1) {
+      return putSnippet(action.ids[0], action.content)
+    }
+    else if(action.method === "DELETE" && action.ids.length === 1) {
+      return deleteSnippet(action.ids[0])
+    }
+    else {
+      throw Error(`Unsupported request: ${JSON.stringify(action)}`)
+    }
+  }
   else {
     throw Error(`Unknown collection "${action.collection}"`)
   }
 }
 
-async function getFetchResponse(url: string | URL) {
+async function getFetchResponse(url: string | URL, method?: Action["method"], request?: Request) {
   const _url = new URL(url)
+  let content: any = undefined
+  try {
+    content = await request?.json()
+  }
+  catch(err: any) {}
   let action
   try {
-    action = urlToAction(_url)
+    action = urlToAction(_url, method, content)
   }
   catch(err: any) {
     return new Response(null, {status: 400, statusText: err?.message})
@@ -737,10 +820,11 @@ worker.addEventListener("activate", async (e) => {
 
 worker.addEventListener("fetch", e => {
   const url = new URL(e.request.url)
+  let method = e.request.method === "GET"? undefined: e.request.method
   const shouldIntercept = url.hostname === "api.webwriter.app" && url.pathname.startsWith("/ww/v1/")
   if(shouldIntercept) {
     try {
-      const response = getFetchResponse(url) as any
+      const response = getFetchResponse(url, method as any, e.request) as any
       e.respondWith(response)
     }
     catch(err: any) {

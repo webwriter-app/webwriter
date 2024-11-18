@@ -132,6 +132,18 @@ export class  Toolbox extends LitElement {
     }})
   )
 
+  emitMouseEnterPinSnippet = () => this.dispatchEvent(
+    new CustomEvent("ww-mouse-enter-pin-snippet", {composed: true, bubbles: true, detail: {
+      activeElement: this.activeElement
+    }})
+  )
+
+  emitMouseLeavePinSnippet = () => this.dispatchEvent(
+    new CustomEvent("ww-mouse-leave-pin-snippet", {composed: true, bubbles: true, detail: {
+      activeElement: this.activeElement
+    }})
+  )
+
   emitMarkFieldInput = (markType: string, key: string, value: string | number | boolean) => this.dispatchEvent(
     new CustomEvent("ww-mark-field-input", {composed: true, bubbles: true, detail: {
       element: this.activeElement, key, value, markType

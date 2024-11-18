@@ -20,6 +20,12 @@ type Options = {
   apiBase?: string
 } & Environment
 
+type Snippet = {
+  id: string,
+  label?: Record<string, string>,
+  html: string
+}
+
 type PmQueueTask = {
   command: "install" | "add" | "remove" | "update",
   parameters: string[],
@@ -331,6 +337,7 @@ export class PackageStore {
     else {
       this.db.addEventListener("upgradeneeded", () => {
         this.db.result.createObjectStore("handles", {keyPath: "id"})
+        this.db.result.createObjectStore("snippets", {keyPath: "id", autoIncrement: true})
       })
     }
   }
@@ -766,7 +773,11 @@ export class PackageStore {
       local = await Promise.all(local.map(async pkg => pkg.extend({members: await this.readPackageMembers(pkg)})))
       await this.updateLocalWatchIntervals(local)
       final = available.map(pkg => pkg.extend({installed: this.installedPackages.includes(pkg.id)})).sort((a, b) => Number(!!b.installed) - Number(!!a.installed))
-      final = [...local, ...final]
+      const snippetData = await this.getSnippet(undefined)
+      const snippets = snippetData.map(snippet => {
+        return new Package({name: `snippet-${parseInt(snippet.id)}`, version: "0.0.0-snippet", private: true})
+      }).reverse()
+      final = [...snippets, ...local, ...final]
       await this.updateImportMap()
       this.bundleID = PackageStore.computeBundleID(this.installedPackages, false, final.some(pkg => pkg.localPath)? this.lastLoaded: undefined);
       (this.onBundleChange ?? (() => null))(final.filter(pkg => pkg.installed))
@@ -889,7 +900,7 @@ export class PackageStore {
         let source: string | undefined, fullPath: string | undefined
         if((isSnippet || isTheme) && path) {
           try {
-            fullPath = await this.Path.join(path, p)
+            fullPath = await this.Path.join(path, p as any)
           }
           catch(cause) {
             throw new ReadWriteIssue(`Could not join paths '${path}' and '${p}'`, {cause})
@@ -960,6 +971,10 @@ export class PackageStore {
 
   get local() {
     return Object.values(this.packages).filter(pkg => pkg.localPath)
+  }
+
+  get localSnippets() {
+    return Object.values(this.packages).filter(pkg => pkg.isSnippet)
   }
 
   getPackageMembers(id: string, filter?: "widgets" | "snippets" | "themes") {
@@ -1203,5 +1218,29 @@ export class PackageStore {
   async viewAppDir() {
     const appDir = await this.Path.appDir()
     return this.Shell.open(appDir)
+  }
+
+  async getSnippet<T extends string | undefined>(id?: T) {
+    const url = new URL(id? `_snippets/${id}`: "_snippets", this.apiBase)
+    const response = await fetch(url)
+    return response.json() as Promise<T extends undefined? Snippet[]: Snippet>
+  }
+
+  async addSnippet(snippet: Snippet) {
+    const url = new URL("_snippets", this.apiBase)
+    const resp = await fetch(url, {body: new Blob([JSON.stringify(snippet)]), method: "POST"})
+    return this.load()
+  }
+
+  async putSnippet(id: string, snippet: Snippet) {
+    const url = new URL(`_snippets/${id}`, this.apiBase)
+    await fetch(url, {body: new Blob([JSON.stringify(snippet)]), method: "PUT"})
+    return this.load()
+  }
+
+  async removeSnippet(id: string) {
+    const url = new URL(`_snippets/${id}`, this.apiBase)
+    await fetch(url, {method: "DELETE"})
+    return this.load()
   }
 }

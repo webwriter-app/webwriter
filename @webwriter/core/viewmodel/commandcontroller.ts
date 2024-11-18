@@ -1666,8 +1666,9 @@ export class CommandController implements ReactiveController {
         description: () => msg("Pin the selection as a snippet in the palette"),
         shortcut: "ctrl+alt+p",
         icon: "pin",
-        disabled: () => true,
-        run: host => null,
+        disabled: host => !!host.activeEditor?.selection.empty,
+        preview: host => host.activeEditor!.editingStatus = host.activeEditor?.editingStatus !== "pinning"? "pinning": undefined,
+        run: host => {host.activeEditor!.pin(); host.activeEditor!.editingStatus = undefined},
         category: "editor",
         tags: ["element"]
       }),
