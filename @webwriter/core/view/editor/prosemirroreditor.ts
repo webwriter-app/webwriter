@@ -209,7 +209,6 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
 
   updateState = (...args: Parameters<typeof this.view.updateState>) => {
     this?.view.updateState(...args)
-    // console.log(...args)
     this.dispatchEvent(new CustomEvent("update", {composed: true, bubbles: true, detail: {editorState: this.view.state}}))
   }
 
@@ -275,14 +274,21 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
     }
   }
 
-  async updated(previous: Map<string, any>) {
-    if((previous.has("bundleID") || previous.has("url")) && !this.url) {
-      await this.initializeIFrame()
-      this.view?.destroy()
-      this.view = new EditorView({mount: this.body}, this.directProps)
-      this.focus()
+  async initialize() {
+    await this.initializeIFrame()
+    this.view?.destroy()
+    this.view = new EditorView({mount: this.body}, this.directProps)
+    // Fix for Firefox
+    if(!this.view?.dom?.querySelector(":not(br)")) {
+      const p = this.view.dom.ownerDocument.createElement("p")
+      this.view.dom.appendChild(p)
     }
-    else if(!this.url) {
+    this.focus()
+    this.renderHead()
+  }
+
+  async updated(previous: Map<string, any>) {
+    if(!this.url) {
       try {
         this.view?.setProps(this.directProps)
       }
@@ -415,9 +421,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
     }
     else {
       const scopedRegistryScript = this.createScript(scopedCustomElementRegistryUrl, false, false)
-      const loaded = new Promise(r => scopedRegistryScript.addEventListener("load", r))
       this.head.append(scopedRegistryScript)
-      await loaded
       /*const define = this.window.customElements.define
       this.window.customElements.define = (name, Constructor, options) => {
         console.log("defining", name, this.window.customElements.get(name))
@@ -633,11 +637,11 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
     `
   }
 
+
   @property({attribute: true, type: Boolean, reflect: true})
   loaded: boolean = true
-  
 
   render() {
-    return keyed(this.bundleID + String(this.url), html`<iframe part="iframe" src=${ifDefined(this.url)} @load=${() => this.initializePreviewFrame()}></iframe>`)
+    return keyed(this.bundleID + String(this.url), html`<iframe part="iframe" src=${ifDefined(this.url)} @load=${() => this.initialize()}></iframe>`)
   }
 }

@@ -48,15 +48,16 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
       this.icons = new IconController(this)
       this.environment = new EnvironmentController(this)
       await this.environment.ready
+      /*
       if(WEBWRITER_ENVIRONMENT.engine.name === "Gecko") {
         document.body.innerHTML = `<div style="text-align: center; padding: 2rem;">Sorry! WebWriter is currently not supported in your browser for technical reasons. We are working on a solution. An up-to-date version of Chrome, Edge, or Safari should work.</div>`
         return
-      }
+      }*/
       if ('serviceWorker' in navigator && window.isSecureContext && WEBWRITER_ENVIRONMENT.backend !== "tauri") {
         const registration = await navigator.serviceWorker.register(
           // @ts-ignore
           import.meta.env.MODE === 'production' ? '/bundleservice.js' : '/dev-sw.js?dev-sw', // @ts-ignore
-          { type: "module", scope: "/" }
+          { type: WEBWRITER_ENVIRONMENT.engine.name === "Gecko"? "classic": "module", scope: "/" }
         )
         const worker = registration.installing
         if(worker) {
