@@ -209,6 +209,13 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
 
   updateState = (...args: Parameters<typeof this.view.updateState>) => {
     this?.view.updateState(...args)
+    // Fix for Firefox
+    if(!this.view?.dom?.querySelector(":not(br)")) {
+      (this.view as any).domObserver.stop();
+      const p = this.document.createElement("p");
+      this.body.appendChild(p);
+      (this.view as any).domObserver.start()
+    }
     this.dispatchEvent(new CustomEvent("update", {composed: true, bubbles: true, detail: {editorState: this.view.state}}))
   }
 
@@ -278,25 +285,29 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
     if(this.url) {
       return this.initializePreviewFrame()
     }
-    await this.initializeIFrame()
     this.view?.destroy()
-    this.view = new EditorView({mount: this.body}, this.directProps)
+    await this.initializeIFrame()
     // Fix for Firefox
-    if(!this.view?.dom?.querySelector(":not(br)")) {
-      const p = this.view.dom.ownerDocument.createElement("p")
-      this.view.dom.appendChild(p)
+    if(!this.body.querySelector(":not(br)")) {
+      const p = this.document.createElement("p")
+      this.body.appendChild(p)
     }
+    this.view = new EditorView({mount: this.body}, this.directProps)
     this.focus()
     this.renderHead()
   }
 
   async updated(previous: Map<string, any>) {
+    if(!this.head) {
+      return
+    }
     if(!this.url) {
       try {
         this.view?.setProps(this.directProps)
       }
       catch(err: any) {
-        if(err.message !== "Cannot read properties of null (reading 'focusNode')") {
+        const ignoreMessages = ["Cannot read properties of null (reading 'focusNode')", "c is null"] 
+        if(!ignoreMessages.includes(err?.message)) {
           throw err
         }
       }

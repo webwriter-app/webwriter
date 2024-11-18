@@ -963,7 +963,7 @@ export class Palette extends LitElement {
 
   AddLocalPackageButton() {
     const importingName = this.app.store.packages.importingName
-    const disabled = !this.app.store.accounts.getClient("file", "file")?.fileSystemSupported
+    const disabled = !this.app.store.accounts.getClient("file", "file")?.showOpenFilePickerSupported
     return html`<sl-card id="add-local" class=${classMap({"package-card": true})} @click=${() => !disabled && (this.packageFormMode = "create")} ?inert=${!!importingName} ?data-disabled=${disabled} title=${disabled? "This is a feature for developers. It only works in Chromium-based browsers with the File System Access API enabled (Chrome, Edge, etc.).": ""}>
       <sl-icon name="plus"></sl-icon>
       <div>${importingName? prettifyPackageName(importingName): msg(" Create/import")}</div>
