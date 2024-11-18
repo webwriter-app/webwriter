@@ -133,7 +133,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
 
   set state(state) {
     try {
-      this.view? this.view.updateState(state): this.initialState = state 
+      this.view && !this.view.isDestroyed? this.view.updateState(state): this.initialState = state 
     }
     catch(err: any) {
       if(err.message !== "Cannot read properties of null (reading 'focusNode')") {
@@ -200,7 +200,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
   }
 
   get isDestroyed() {
-    return this.view.isDestroyed
+    return this.view?.isDestroyed
   }
 
   updateProps = (...args: Parameters<typeof this.view.update>) => this.view?.update(...args)
@@ -298,7 +298,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
   }
 
   async updated(previous: Map<string, any>) {
-    if(!this.head) {
+    if(!this.view?.docView) {
       return
     }
     if(!this.url) {

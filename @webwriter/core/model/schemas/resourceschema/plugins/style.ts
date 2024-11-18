@@ -41,6 +41,9 @@ export function parseStyleAttrs(dom: HTMLElement | string) {
 }
 
 export function getStyleValues(state: EditorState, view: EditorView & {window: Window}, key: string) {
+  if(!view || view.isDestroyed) {
+    return []
+  }
   const values = new Set<string>()
   const sel = view.dom.ownerDocument.getSelection()!
   let fragment = state.selection.content().content

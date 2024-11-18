@@ -675,7 +675,7 @@ export class ExplorableEditor extends LitElement {
 
 	get activeElement(): HTMLElement | null {
 			const {selection} = this
-      if(!this.pmEditor) {
+      if(!this.pmEditor || this.pmEditor.isDestroyed) {
         return null
       }
       if(selection instanceof GapCursor) {
