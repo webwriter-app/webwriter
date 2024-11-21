@@ -2,48 +2,99 @@
 import Layout from '@layouts/Layout.astro'
 import LinkButton from "@components/LinkButton.astro"
 import iconUrl from "@assets/app-icon.svg?url"
+import { getLocaleByPath, pathHasLocale } from 'astro:i18n'
+import {msgResolver} from "../localize"
+
+const lang = Astro.currentLocale!
+const translations = {
+  "WebWriter is currently in alpha. It is only intended for developers. You will encounter bugs when using it.": {
+    "de": "WebWriter ist gerade in der Alpha-Phase. Es ist nur für Entwickler gedacht. Bugs bei der Nutzung sind zu erwarten."
+  },
+  "Make It": {
+    "de": "Mach es"
+  },
+  "Explorable!": {
+    "de": "Explorable!"
+  },
+  "Learn more": {
+    "de": "Erfahre mehr"
+  },
+  "Get started": {
+    "de": "Ausprobieren"
+  },
+  "WebWriter allows you to create beautiful digital worksheets with ease - we call them explorables. Mix text, images, videos, and interactive content. Write, paste, or record content. Share your worksheet online or offline.": {
+    "de": "WebWriter ermöglicht es, digitale Arbeitsblätter mühelos zu erstellen - wir nennen sie Explorables. Kombiniere Text, Bilder, Videos und sogar interaktive Inhalte durch Schreiben, Einfügen oder Aufnehmen. Teile dein Arbeitsblatt online oder offline."
+  },
+  "Explorables are the new worksheets": {
+    "de": "Explorables sind die neuen Arbeitsblätter"
+  },
+  "Spice up your worksheets! Add a video, a quiz or even an interactive map, all with a click.": {
+    "de": "Verbessere deine Arbeitsblätter! Füge ein Video, Quiz, oder sogar eine interaktive Karte hinzu, alles mit einem Klick."
+  },
+  "Easy to use": {
+    "de": "Leicht zu nutzen"
+  },
+  "No coding, just clicking. Work directly on your explorable and always see what your students will see.": {
+    "de": "Kein Coding, nur Klicken. Arbeite direkt an deinem Explorable."
+  },
+  "...": {
+    "de": "..."
+  },
+  "...": {
+    "de": "..."
+  },
+  "Share any way you want": {
+    "de": "Teile, wie du willst"
+  },
+  "Share your explorable with a link or QR code, or as a file for an LMS such as Moodle.": {
+    "de": "Teile dein Explorable mit einem Link, als QR Code oder als Datei - im Web, in einem LMS wie Moodle, oder per USB-Stick."
+  }
+}
+
+const msg = msgResolver(translations, lang)
+
 ---
 
 <Layout>
     <div class="card primary">
-        <span class="tagline"><span>Digital worksheets</span><br><span> made easy!</span></span>
+        <span class="tagline"><span>{msg("Make It")}</span><br><span> {msg("Explorable!")}</span></span>
         <div class="action-buttons">
-            <LinkButton href="#description">Learn more</LinkButton>
-            <LinkButton href="/get_started">Get started</LinkButton>
+            <LinkButton href="#description">{msg("Learn more")}</LinkButton>
+            <LinkButton href="https://run.webwriter.app">{msg("Get started")}</LinkButton>
         </div>
     </div>
     <div id="banner-alpha">
-      <div>WebWriter is currently in alpha. It is only intended for developers. You will encounter bugs when using it. The list of features below is a roadmap and only partially available in WebWriter right now. </div>
+      <div>{msg("WebWriter is currently in alpha. It is only intended for developers. You will encounter bugs when using it.")}</div>
     </div>
     <div id="description" class="description">
       <img class="icon" src={iconUrl} alt="WebWriter Icon" width={100} height={100} />
-      <p>WebWriter allows you to create beautiful digital worksheets with ease. Mix text, images, videos, and interactive content. Share your worksheet on your website or LMS and get live feedback from students.</p>
+      <p>{msg("WebWriter allows you to create beautiful digital worksheets with ease - we call them explorables. Mix text, images, videos, and interactive content. Write, paste, or record content. Share your worksheet online or offline.")}</p>
     </div>
     <div class="pane">
       <div class="pane-text">
-        <h2>Worksheets, new and improved</h2>
-        <p>Spice up your worksheets! Add a video, a quiz or even an interactive map, all with a click.</p>
+        <h2>{msg("Explorables are the new worksheets")}</h2>
+        <p>{msg("Spice up your worksheets! Add a video, a quiz or even an interactive map, all with a click.")}</p>
       </div>
       <div class="icon bi-file-earmark-text-fill"></div>
     </div>
     <div class="pane">
       <div class="pane-text">
-        <h2>Easy to learn</h2>
-        <p>Start simple by writing text, like a paper worksheet. Later, you can add images and even videos. Better still: You can add interactive widgets.</p>
-      </div>
-      <div class="icon bi-mortarboard-fill"></div>
-    </div>
-    <div class="pane">
-      <div class="pane-text">
-        <h2>Simple to use</h2>
-        <p>WebWriter's interface is simple to use. You work directly on the worksheet and always see what your student will see.</p>
+        <h2>{msg("Easy to use")}</h2>
+        <p>{msg("No coding, just clicking. Work directly on your explorable and always see what your students will see.")}</p>
       </div>
       <div class="icon bi-hand-index-fill"></div>
     </div>
+    <!--<div class="pane">
+      <div class="pane-text">
+        <h2>{msg("...")}</h2>
+        <p>{msg("...")}</p>
+      </div>
+      <div class="icon bi-hand-index-fill"></div>
+    </div>-->
     <div class="pane">
       <div class="pane-text">
-        <h2>Publish any way you want</h2>
-        <p>Share your sheet with a link or QR code, or as a file for an LMS such as Moodle. WebWriter fits into any system.</p>
+        <h2>{msg("Share any way you want")}</h2>
+        <p>{msg("Share your explorable with a link or QR code, or as a file for an LMS such as Moodle.")}</p>
       </div>
       <div class="icon bi-share-fill"></div>
     </div>
@@ -192,7 +243,7 @@ import iconUrl from "@assets/app-icon.svg?url"
     }
 
     #banner-alpha > * {
-      max-width: 800px;
+      max-width: 1000px;
       text-align: center
     }
 

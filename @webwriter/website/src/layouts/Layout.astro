@@ -3,6 +3,23 @@ import "@shoelace-style/shoelace/dist/themes/light.css"
 import {EmailAddress} from "@components/EmailAddress"
 import iconUrl from "@assets/app-icon.svg?url"
 
+import {msgResolver} from "../localize"
+
+const lang = Astro.currentLocale!
+const translations = {
+  "docs": {"de": "Dokumentation"},
+  "widgets": {"de": "Widgets"},
+  "about": {"de": "Über uns"},
+  "get_started": {"de": "Ausprobieren"},
+  "Get Started": {"de": "Ausprobieren"},
+  "Features": {"de": "Funktionen"},
+  "© Frederic Salmen. All rights reserved.": {"de": "© Frederic Salmen. Alle Rechte vorbehalten."},
+  "Legal Notice": {"de": "Impressum"},
+  "Pages": {"de": "Seiten"}
+}
+
+const msg = msgResolver(translations, lang)
+
 export interface Props {
 	title?: string;
 }
@@ -16,13 +33,15 @@ function capitalize(str: string) {
 }
 
 const pageFiles = (await Astro.glob("../pages/**/*.astro")).filter(page => !page.url?.endsWith("]") && !page.url?.endsWith("404") && !page?.url?.endsWith("legal_notice") && !page?.url?.endsWith("dashboard") && page.url)
-const pageUrls = pageFiles.map(page => page.url ?? "")
+const pageUrls = pageFiles
+  .map(page => page.url ?? "")
+  .map(url => getRelativeLocaleUrl(Astro.currentLocale!, url))
 const pageOrder = ["", "docs", "widgets", "about", "get_started"]
 const pages = pageUrls
 	.map(relUrl => {
-		let id = relUrl?.split("/").at(-1) as string
+		let id = relUrl?.split("/").at(-2) as string
     const rootLocation = relUrl?.split("/").at(1) as string
-		let name = id? id.split("_").map(capitalize).join(" "): "Features"
+		let name = id? msg(id).split("_").map(capitalize).join(" "): msg("Features")
     let active = rootLocation === pathname.split("/")?.at(1)
     let urlObj = new URL(Astro.request.url); urlObj.pathname = relUrl
     let url = urlObj.href
@@ -31,13 +50,15 @@ const pages = pageUrls
 	.sort((a, b) => {
 		return pageOrder.indexOf(a.id) - pageOrder.indexOf(b.id)
 	})
-
 const rootActive = pathname === "/"
 const getStartedActive = pathname === "/get_started"
 
 import "bootstrap-icons/font/bootstrap-icons.css"
 
 import { SEO } from "astro-seo";
+import LanguagePicker from "@components/LanguagePicker.astro";
+import { getRelativeLocaleUrl } from "astro:i18n";
+
 ---
 
 <!DOCTYPE html>
@@ -58,9 +79,9 @@ import { SEO } from "astro-seo";
 	</head>
 	<body>
 		<header id="layout-header">
-      <a data-swup-preload href="/" class="logo">
+      <a data-swup-preload href={getRelativeLocaleUrl(Astro.currentLocale!)} class="logo">
         <img src={iconUrl} alt="WebWriter Icon" width={40} height={40} />
-        <span class="logo-text">WebWriter <sup>Alpha</sup></span>
+        <span class="logo-text">{msg("WebWriter")} <sup>{msg("Alpha")}</sup></span>
       </a>
 			<nav>
         <label class="menu-toggle bi-list" for="menu-toggle"></label>
@@ -70,10 +91,10 @@ import { SEO } from "astro-seo";
 					{page.name}
 				</a></li>))}
 			</ol>
-      <a class="dashboard" href="/dashboard">
+      <a class="dashboard" href={getRelativeLocaleUrl(Astro.currentLocale!, "/dashboard")}>
         <div class="icon bi-person-circle"></div>
       </a>
-      <a data-swup-preload class="get_started" draggable="false" data-active={getStartedActive} href="https://run.webwriter.app">Get Started</a>
+      <a data-swup-preload class="get_started" draggable="false" data-active={getStartedActive} href="https://run.webwriter.app">{msg("Get Started")}</a>
     </nav>
 		</header>
 		<main id="swup">
@@ -84,15 +105,15 @@ import { SEO } from "astro-seo";
         <div class="logo">
           <img id="icon-footer" src={iconUrl} alt="WebWriter Icon" width={40} height={40} />
           <span class="logo-text">
-            <span>WebWriter</span>
+            <span>{msg("WebWriter")}</span>
             <EmailAddress class="contact" client:only="lit" />
           </span>
         </div>
-        <div>© 2023 Frederic Salmen. All rights reserved.</div>
-        <a data-swup-preload class="legal_notice" draggable="false" href="/legal_notice">Legal Notice</a>
+        <div>{msg("© Frederic Salmen. All rights reserved.")}</div>
+        <a data-swup-preload class="legal_notice" draggable="false" href={getRelativeLocaleUrl(Astro.currentLocale!, "/legal_notice")}>{msg("Legal Notice")}</a>
       </div>
       <div class="sitemap-card">
-        <h2>Pages</h2>
+        <h2>{msg("Pages")}</h2>
         <nav><ol>
           {pages.map(page => (<li><a data-swup-preload draggable="false" href={page.url}>
             {page.name}
@@ -100,12 +121,15 @@ import { SEO } from "astro-seo";
         </ol></nav>
       </div>
       <div class="sitemap-card">
-        <h2>Community</h2>
+        <h2>{msg("Community")}</h2>
         <nav><ol>
           <li><a href="https://github.com/webwriter-app">GitHub</a></li>
           <li><a href="https://learntech.rwth-aachen.de">LearnTech RWTH Aachen</a></li>
           <li><a href="https://explorabl.es">Explorables</a></li>
         </ol></nav>
+      </div>
+      <div class="settings-card">
+        <LanguagePicker></LanguagePicker>
       </div>
 		</footer>
 	</body>
@@ -124,7 +148,7 @@ import { SEO } from "astro-seo";
       document.body.setAttribute("data-status", "signedin")
       const dashHeader = document.querySelector("#dash h1")
       const user = pocketbase.authStore.model as {email: string}
-      dashHeader && (dashHeader.textContent = `Welcome, ${user.email}`)
+      dashHeader && (dashHeader.textContent = `${user.email}`)
     }
   }
   pocketbase.authStore.onChange((token, model) => updateUserUI())

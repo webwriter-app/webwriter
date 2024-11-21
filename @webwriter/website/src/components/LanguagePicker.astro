@@ -1,0 +1,34 @@
+---
+import { getRelativeLocaleUrl } from "astro:i18n"
+import {languages, getLocalizedURL} from "../localize"
+
+---
+<ul class="lang-options">
+  {Object.entries(languages).map(([l, labels]) => (
+    <li id={l} class="lang-option">
+      <a href={getLocalizedURL(Astro.url, l)}>
+        <span class="lang-icon">{labels._}</span> 
+        <span>{labels[l as keyof typeof languages]} ({labels["en"]})</span>
+        </a>
+    </li>
+  ))}
+</ul>
+
+<style scoped>
+    .lang-options {
+        list-style: none;
+    }
+
+    .lang-option a {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 1ch;
+    }
+
+    .lang-icon {
+        font-size: 2rem;
+        -webkit-text-stroke: 4px white;
+    }
+    
+</style>

@@ -2,17 +2,30 @@
 import Layout from '../layouts/Layout.astro';
 import {Content as AboutContent} from '../content/about.md';
 import LinkButton from '@components/LinkButton.astro';
+
+import {msgResolver} from "../localize"
+
+const lang = Astro.currentLocale!
+const translations = {
+  "About": {"de": "Über uns"},
+  "WebWriter is a tool for creating explorables. Explorables mix text with multimedia and interactive content and can also be thought of as digital worksheets.": {"de": "WebWriter ist ein Werkzeug zum Erstellen von Explorables. Explorables mischen multimodale und interaktive Inhalte - man kann sie sich als interaktive Arbeitsblätter vorstellen."},
+  "Learn more...": {"de": "Erfahre mehr..."},
+  "Dissertation Project": {"de": "Dissertationsprojekt"},
+  "WebWriter is the product of a dissertation project at RWTH Aachen University's Learning Technologies Research Group.": {"de": "WebWriter ist das Produkt einer Dissertation im Lehr- und Forschungsgebiet Learning Technologies der RWTH Aachen."},
+}
+
+const msg = msgResolver(translations, lang)
 ---
 
 <Layout title="About">
     <div id="about-base">
-        <h1><span>About</span></h1>
+        <h1><span>{msg("About")}</span></h1>
 
-        <h2>Explorables</h2>
-        <p>WebWriter is a tool for creating explorables. Explorables mix text with multimedia and interactive content and can also be thought of as digital worksheets. <a class="learn-more" href="https://explorabl.es/">Learn more...</a></p>
+        <h2>{msg("Explorables")}</h2>
+        <p>{msg("WebWriter is a tool for creating explorables. Explorables mix text with multimedia and interactive content and can also be thought of as digital worksheets.")} <a class="learn-more" href="https://explorabl.es/">{msg("Learn more...")}</a></p>
 
-        <h2>Dissertation Project</h2>
-        <p>WebWriter is the product of a dissertation project at RWTH Aachen University's Learning Technologies Research Group. <a class="learn-more" href="https://learntech.rwth-aachen.de/cms/LearnTech/Forschung/Laufende-Dissertationen/~ybguz/Frederic-Salmen/?lidx=1">Learn more...</a></p>
+        <h2>{msg("Dissertation Project")}</h2>
+        <p>{msg("WebWriter is the product of a dissertation project at RWTH Aachen University's Learning Technologies Research Group.")} <a class="learn-more" href="https://learntech.rwth-aachen.de/cms/LearnTech/Forschung/Laufende-Dissertationen/~ybguz/Frederic-Salmen/?lidx=1">{msg("Learn more...")}</a></p>
     </div>
 </Layout>
 

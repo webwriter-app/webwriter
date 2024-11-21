@@ -7,7 +7,7 @@ title: Explorables
 # Explorables
 WebWriter is built to edit explorables, which are...
 - **open**, conformant with OER principles allowing easy reuse
-- **multimedia**, combining many media types such as text, audio, video, etc.
+- **multimodal**, combining many media types such as text, audio, video, etc.
 - **interactive**, allowing users to interact and receive feedback
 - **web based**, built with client-side web standards and deployable on the web
 - **file oriented**, available as all-in-one, standalone, offline-capable files

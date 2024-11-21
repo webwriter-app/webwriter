@@ -21,5 +21,15 @@ export default defineConfig({
           },
         }]
       ]
+    },
+    i18n: {
+      defaultLocale: "en",
+      locales: ["en", "de"],
+      fallback: {
+        "de": "en"
+      },
+      routing: {
+        fallbackType: "rewrite"
+      }
     }
 });

@@ -1,30 +1,46 @@
 ---
 import Layout from "../layouts/Layout.astro";
+
+import {msgResolver} from "../localize"
+
+const lang = Astro.currentLocale!
+const translations = {
+  "Set your password": {"de": "Passwort setzen"},
+  "Password": {"de": "Passwort"},
+  "Confirm password": {"de": "Passwort bestätigen"},
+  "Welcome": {"de": "Willkommen"},
+  "Sign out": {"de": "Abmelden"},
+  "Sign in": {"de": "Anmelden"},
+  "Registration is not available as webwriter.app accounts are currently invitation only.": {"de": "Registrierung ist nicht verfügbar, da webwriter.app-Accounts aktuell nur per Einladung erhältlich sind."},
+  "Login": {"de": "Anmelden"}
+}
+
+const msg = msgResolver(translations, lang)
 ---
 
 <Layout title="Dashboard">
   <div id="dashboard-base" data-status="loading">
     <div id="setpassword" class="auth-card">
-      <h1>Set your password</h1>
+      <h1>{msg("Set your password")}</h1>
       <form id="setpassword-form" action="/" method="post">
-        <label for="password">Password</label>
+        <label for="password">{msg("Password")}</label>
         <input type="password" name="password" id="password" required />
-        <button type="submit">Confirm password</button>
+        <button type="submit">{msg("Confirm password")}</button>
       </form>
     </div>
     <div id="dash" class="auth-card">
-      <h1>Welcome</h1>
-      <button id="signout-button">Sign out</button>
+      <h1>{msg("Welcome")}</h1>
+      <button id="signout-button">{msg("Sign out")}</button>
     </div>
     <div id="signin" class="auth-card">
-      <h1>Sign in</h1>
-      <div class="banner">Registration is not available as webwriter.app accounts are currently invitation only.</div>
+      <h1>{msg("Sign in")}</h1>
+      <div class="banner">{msg("Registration is not available as webwriter.app accounts are currently invitation only.")}</div>
       <form id="signin-form">
-        <label for="email">Email</label>
+        <label for="email">{msg("Email")}</label>
         <input type="email" name="email" id="email" required />
-        <label for="password">Password</label>
+        <label for="password">{msg("Password")}</label>
         <input type="password" name="password" id="password" required />
-        <button type="submit">Login</button>
+        <button type="submit">{msg("Login")}</button>
       </form>
     </div>
   </div>
