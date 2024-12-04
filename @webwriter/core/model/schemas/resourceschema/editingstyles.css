@@ -9,10 +9,7 @@ html {
   pointer-events: none;
   user-select: none;
   -webkit-user-select: none;
-}
-
-html:not(:has(:fullscreen)) {
-  scrollbar-gutter: stable both-edges;
+  padding-left: var(--scrollbar-width);
 }
 
 html::-webkit-scrollbar {

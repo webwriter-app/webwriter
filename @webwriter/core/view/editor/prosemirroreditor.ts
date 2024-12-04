@@ -303,7 +303,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
     }
     if(!this.url) {
       try {
-        this.view?.setProps(this.directProps)
+        this.view.setProps(this.directProps)
       }
       catch(err: any) {
         const ignoreMessages = ["Cannot read properties of null (reading 'focusNode')", "c is null"] 
@@ -313,6 +313,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
       }
     }
     if((this.state as any)?.head$ && (!previous.get("state")?.head$ || !previous.get("state")?.head$.doc.eq((this.state as any)?.head$.doc)) && !this.url) {
+      console.log(3)
       this.renderHead()
     }
     
@@ -577,12 +578,12 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
         e.preventDefault()
       }
     })
-
+    /*
     if(WEBWRITER_ENVIRONMENT.engine.name === "WebKit") {
       const sheet = new this.window.CSSStyleSheet()
       sheet.replaceSync(`html { margin-left: var(--scrollbar-width) !important }`)
       this.document.adoptedStyleSheets = [...this.document.adoptedStyleSheets, sheet]
-    }
+    }*/
   }
 
   iframe: EditorIFrameElement
@@ -660,6 +661,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
   }
 
   render() {
-    return keyed(this.bundleID + String(this.url) + String(this.documentLang), html`<iframe part="iframe" src=${ifDefined(this.url)} @load=${() => this.initialize()}></iframe>`)
+    // this.documentLang
+    return keyed(this.bundleID + String(this.url), html`<iframe part="iframe" src=${ifDefined(this.url)} @load=${() => this.initialize()}></iframe>`)
   }
 }
