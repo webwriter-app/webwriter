@@ -265,9 +265,10 @@ export class SaveForm extends LitElement {
   combobox: Combobox;
 
   Tree() {
+    console.log("Tree")
     return html`<sl-card class="tree">
       <header slot="header">
-        <span>${msg("Files of ")}<b>${this.client.account.id}</b></span>
+        <span>${msg("Files of ")}<b>${this.client.account.id ?? this.client.account.email}</b></span>
         <ww-button
           variant="icon"
           icon="refresh"
@@ -323,7 +324,7 @@ export class SaveForm extends LitElement {
             </sl-tree-item>`
           : null}
       </sl-tree>
-      ${this.mode === "save" && !this.client.saveDocument
+      ${this.mode === "save"
         ? html`
             ${this.Filename()}
             <sl-icon-button
@@ -470,11 +471,11 @@ export class SaveForm extends LitElement {
               <span class="location-label"
                 >${(SaveForm.protocolLabels as any)[protocol]}</span
               >
-              <span class="location-identity">${client?.account?.id}</span>
+              <span class="location-identity">${client?.account?.id ?? client?.account?.email}</span>
             </sl-radio-button>`
           )}
       </sl-radio-group>
-      ${this.client.searchDocuments && !this.client.saveDocument
+      ${this.client.searchDocuments
         ? this.Tree()
         : null}
       <footer>
