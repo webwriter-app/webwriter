@@ -306,7 +306,8 @@ export class Package {
     exports: PackageExports.optional(),
     imports: z.record(z.string().startsWith("#"), z.record(z.string())).optional(),
     editingConfig: EditingConfig.optional(),
-    lastLoaded: z.number().optional()
+    lastLoaded: z.number().optional(),
+    trusted: z.boolean().optional()
   })
 
   static objectSchema = this.coreObjectSchema
@@ -327,13 +328,14 @@ export class Package {
 
   static coreKeys = Object.keys(this.coreObjectSchema.shape) as unknown as keyof typeof this.coreObjectSchema.shape
 
-  constructor(pkg: Package | z.input<typeof Package.objectSchema> & Record<string, any>, editingState?: Partial<Pick<Package, "watching" | "localPath" | "installed" | "latest" | "members" | "lastLoaded">>) {
+  constructor(pkg: Package | z.input<typeof Package.objectSchema> & Record<string, any>, editingState?: Partial<Pick<Package, "watching" | "localPath" | "installed" | "latest" | "members" | "lastLoaded" | "trusted">>) {
     return pkg instanceof Package
       ? Object.assign(pkg, editingState)
       : Object.assign(Package.schema.parse(pkg), editingState)
   }
 
   watching?: boolean = false
+  trusted?: boolean = false
   localPath?: string
   lastLoaded?: number
   installed?: boolean

@@ -478,6 +478,13 @@ abbr {
   color: goldenrod !important;
 }
 
+:not(:defined) {
+  display: block;
+  min-height: 1.75rem;
+  cursor: pointer;
+  caret-color: transparent !important;
+}
+
 :is(:empty, :has(.ProseMirror-trailingBreak)) {
   position: relative;
 }

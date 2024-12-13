@@ -1,5 +1,5 @@
 import { msg } from "@lit/localize"
-import { LitElement, Part, PropertyValueMap, css, html, noChange } from "lit"
+import { LitElement, Part, PropertyValueMap, PropertyValues, css, html, noChange } from "lit"
 import { customElement, property, query } from "lit/decorators.js"
 import { classMap } from "lit/directives/class-map.js"
 import { ifDefined } from "lit/directives/if-defined.js"
@@ -7,7 +7,7 @@ import { EditorState, Command as PmCommand } from "prosemirror-state"
 import {Directive, PartInfo, directive, ElementPart} from "lit/directive.js"
 
 import { MemberSettings, Package, SemVer, watch } from "../../model"
-import { unscopePackageName, prettifyPackageName, camelCaseToSpacedCase, filterObject } from "../../utility"
+import { unscopePackageName, prettifyPackageName, camelCaseToSpacedCase, filterObject, sameMembers } from "../../utility"
 import { SlDropdown, SlInput, SlMenu, SlPopup, SlProgressBar } from "@shoelace-style/shoelace"
 import { Command } from "../../viewmodel"
 import { App, PackageForm } from ".."
@@ -1032,14 +1032,23 @@ export class Palette extends LitElement {
         mergePackage: true
       }
     this.packageFormMode = undefined
-    if(packageForm.changed) {
+    if(packageForm.changed && WEBWRITER_ENVIRONMENT.backend === "tauri") {
       await this.app.store.packages.writeLocal(pkg.localPath!, pkg, options)
     }
+    else if(packageForm.changed && WEBWRITER_ENVIRONMENT.backend !== "tauri") {
+      const unlocalVersion = new SemVer(pkg.version)
+      unlocalVersion.prerelease = unlocalVersion.prerelease.filter(v => v !== "local")
+      await this.app.store.packages.writeLocal(packageForm.directoryHandle!, pkg.extend({version: unlocalVersion}), options)
+      this.packageForm.reset()
+      return
+    }
+
     if(WEBWRITER_ENVIRONMENT.backend === "tauri") {
       await this.app.store.packages.add(`file://${pkg.localPath!}`, pkg.name)
     }
     else {
-      await this.app.store.packages.add(packageForm.directoryHandle!, pkg.id)
+      let directoryHandle = packageForm.directoryHandle
+      await this.app.store.packages.add(directoryHandle!, pkg.id)
     }
     if(packageForm.editingState.watching) {
       this.emitWatchWidget(pkg.id)
@@ -1170,6 +1179,28 @@ export class Palette extends LitElement {
         this.managing = false
       }
     })
+  }
+
+  protected updated(changed: PropertyValues) {
+    if(changed.has("packages")) {
+      const prevIds = changed.get("packages")?.map((pkg: Package) => pkg.id + (pkg.installed? "!installed": "")) ?? []
+      const ids = this.packages.map(pkg => pkg.id + (pkg.installed? "!installed": ""))
+      const isAdd = ids.filter(id => id.endsWith("!installed")).length > prevIds.filter((id: string) => id.endsWith("!installed")).length
+      const firstChangedId = ids.find((id, i) => prevIds[i] !== id)?.split("!")[0]
+      if(firstChangedId && isAdd) {
+        const el = this.shadowRoot!.querySelector("#" + CSS.escape(firstChangedId))! as HTMLElement
+        el.scrollIntoView({behavior: "smooth", block: "center", inline: "center"})
+        return
+        const elTop = el.getBoundingClientRect().top
+        const elLeft = el.getBoundingClientRect().left
+        const heightOffset = this.shadowRoot!.getElementById("package-toolbar")!.getBoundingClientRect().height
+        let top = elTop + heightOffset
+        const widthOffset = this.shadowRoot!.getElementById("package-toolbar")!.getBoundingClientRect().width
+        let left = el.getBoundingClientRect().left + widthOffset
+        console.log({elTop, elLeft, top, left})
+        this.scrollTo({left, top, behavior: "smooth"})
+      }
+    }
   }
 
 	render() {

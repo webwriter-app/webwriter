@@ -265,7 +265,6 @@ export class SaveForm extends LitElement {
   combobox: Combobox;
 
   Tree() {
-    console.log("Tree")
     return html`<sl-card class="tree">
       <header slot="header">
         <span>${msg("Files of ")}<b>${this.client.account.id ?? this.client.account.email}</b></span>

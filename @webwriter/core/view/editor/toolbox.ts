@@ -1317,7 +1317,18 @@ export class  Toolbox extends LitElement {
         : html`<sl-menu-item>${content}</sl-menu-item>`
     }
     else {
-      return html``
+      const content = html`<ww-button
+        title=${elementName}
+        variant="icon"
+        icon="alert-square"
+        @click=${() => this.emitClickBreadcrumb(el)}
+        @hover=${() => this.emitHoverBreadcrumb(el)}
+      >
+        ${!isLast? null: prettifyPackageName(elementName, "all", true)}
+      </ww-button>`
+      return !menuItem
+        ? html`<sl-breadcrumb-item>${content}${separator}</sl-breadcrumb-item>`
+        : html`<sl-menu-item>${content}</sl-menu-item>`
     }
   }
 

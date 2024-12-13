@@ -442,11 +442,21 @@ async function getAsset(id: string) {
     let file: File
     for(const [i, part] of pathParts.entries()) {
       if(i === pathParts.length - 1) {
-        const fileHandle = await directory.getFileHandle(part)
-        file = await fileHandle.getFile()
+        try {
+          const fileHandle = await directory.getFileHandle(part)
+          file = await fileHandle.getFile()
+        }
+        catch(err) {
+          return new Response(null, {status: 404, statusText: "404: Local file not found"})
+        }
       }
       else {
-        directory = await directory.getDirectoryHandle(part)
+        try {
+          directory = await directory.getDirectoryHandle(part)
+        }
+        catch(err) {
+          return new Response(null, {status: 404, statusText: "404: Local directory not found"})
+        }
       }
     }
     return new Response(file!, {headers: {"Access-Control-Allow-Origin": "*"}})
@@ -568,7 +578,7 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
       .filter(pkg => (new SemVer(pkg.version).prerelease.includes("local")))
       .flatMap(pkg => Object.keys(pkg.exports)
         .filter(k => k.startsWith("./") && k.endsWith(".*"))
-        .map(k => pkg.name + "@" + pkg.version + k.slice(1, -2) + ".js")
+        .map(k => pkg.name + "@0.0.0-local" + k.slice(1, -2) + ".js")
       )
     ))
   }
@@ -597,6 +607,7 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
     const name = key.split("/").slice(0, 2).join("/")
     map.set(!name.slice(1).includes("@")? key.replace(name, name + "@" + resolutions[name]): key, value)
   }
+  console.log(localIds)
   if(localIds.length) {
     const localGenerator = new Generator({cache: false, inputMap: map, customProviders: {filesystem}, defaultProvider: "filesystem", resolutions})
     let allLinkedLocal = false
@@ -607,9 +618,14 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
       }
       catch(err: any) {
         const regexMatch = / imported from /g.exec(err.message)
+        const notFoundMatch = /Unable to analyze (https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&//=]*)) imported from/g.exec(err.message)
         if(err.code === "MODULE_NOT_FOUND" && regexMatch) {
           console.warn(`Excluding faulty package ${regexMatch[1]}: ${err.message}`)
           localIds = localIds.filter(id => id !== regexMatch[1])
+        }
+        else if(err.cause.name === "NotFoundError" && notFoundMatch) {
+          const faultyPkgID = (new URL(notFoundMatch[1])).pathname.split("/").slice(3, 5).join("/")
+          localIds = localIds.filter(id => !id.startsWith(faultyPkgID))
         }
         else {
           console.error(err)
@@ -751,7 +767,9 @@ async function respond<T extends Action["collection"]>(action: Action<T>) {
   }
   else if(action.collection === "importmaps") {
     const mapResponse = await getImportmap(action.args.pkg === "true"? pkgs: action.ids)
-    cache.put(url, mapResponse.clone())
+    if(!versionedIds.some(id => id.split("/")[0].split("@")[1].endsWith("-local"))) {
+      cache.put(url, mapResponse.clone()) 
+    }
     return mapResponse
   }
   else if(action.collection === "bundles") {
@@ -893,3 +911,15 @@ async function search(text: string, params?: {size?: number, quality?: number, p
   } while(from < total)
   return {objects, total, time}
 }
+
+/*
+if(path.endsWith(".css")) {
+  return null
+}
+else if(path.endsWith(".html")) {
+  throw new Error(`Exported snippet not found at '${path}'. Check that your package.json is correct. https://webwriter.app/docs/quickstart/`)
+}
+else if(path.endsWith(".js")) {
+  throw new Error(`Exported widget bundle not found at '${path}'. Check that your package.json is correct and that you bundled your widget, for example with '@webwriter/build'. https://webwriter.app/docs/quickstart/`)
+}
+*/

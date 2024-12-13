@@ -80,6 +80,10 @@ export class PackageStore {
 
   importMap: ImportMap
 
+  static allowedOrgs = [
+    "@webwriter"
+  ]
+
   set installedPackages(value: string[]) {
     let valueUnique = Array.from(new Set(value))
     valueUnique = valueUnique.filter(a => !valueUnique.some(b => b !== a && b.startsWith("@" + a.split("@")[1])))
@@ -436,6 +440,45 @@ export class PackageStore {
     this.installedPackages = ids
   }
 
+  async checkForMissingMembers(pkgs: Package[]) {
+    const ids = pkgs.map(pkg => pkg.id)
+    /*
+    const expectedIds = pkgs.flatMap(pkg => 
+      Object.keys(pkg.exports)
+        .filter(k => k.startsWith("./widgets/") || k.startsWith("./snippets/") || k.startsWith("./themes/"))
+        .flatMap(k => k.endsWith(".*")? [pkg.id + k.slice(1, -1) + "js", pkg.id + k.slice(1, -1) + "css"]: [pkg.id + k.slice(1)])
+    )
+    const availableIds = Object.keys(this.importMap.imports).filter(id => ids.some(toCheck => id.startsWith(toCheck)))
+    const missingIds = expectedIds.filter(id => !availableIds.includes(id))
+    for(const id of missingIds) {
+      const pkgId = id.split("/").slice(0, 2).join("/")
+      const type = id.split("/")[2].slice(0, -1)
+      const issue = new BundleIssue(`Missing ${type} '${id}'. Did you create an importable bundle, for example with 'npx @webwriter/dev'? https://webwriter.app/docs/quickstart/`)
+      this.appendPackageIssues(pkgId, issue)
+    }
+    console.log(this.importMap)
+    return */
+    const idsToCheck = Object.keys(this.importMap.imports).filter(id => ids.some(toCheck => id.startsWith(toCheck)))
+    return Promise.all(idsToCheck.map(async id => {
+      const url = this.importMap.resolve(id)
+      try {
+        const result = await fetch(url)
+        if(!result.ok) throw Error("Failed to fetch")
+      } catch(err) {
+        const pkgId = id.split("/").slice(0, 2).join("/")
+        if(id.split("/")[2] === "widgets" && url.endsWith(".css")) {
+          return
+        }
+        else {
+          const type = id.split("/")[2].slice(0, -1)
+          const issue = new BundleIssue(`Missing ${type} '${id}'. Did you create an importable bundle, for example with 'npx @webwriter/build dev'? https://webwriter.app/docs/quickstart/`)
+          this.appendPackageIssues(pkgId, issue)
+          console.error(issue)
+        }
+      }
+    }))
+  }
+
   pmQueue = cargoQueue(async (tasks: PmQueueTask[]) => {
     const toAdd = tasks.filter(t => t.command === "add" && !t.name && !t.handle).flatMap(t => t.parameters)
     const toAddLocal = tasks.filter(t => t.command === "add" && t.handle).flatMap(t => ({handle: t.handle!, name: t.name}))
@@ -494,6 +537,10 @@ export class PackageStore {
           this.updateImportMap([...this.installedPackages, ...pkgs.map(pkg => pkg.id)])
         }
         catch(err) {
+          if(err instanceof Error && err.name === "NotFoundError") {
+            console.error("No package.json found in selected directory", {cause: err})
+            return
+          }
           console.error(err)
         }
         finally {
@@ -782,6 +829,7 @@ export class PackageStore {
       this.bundleID = PackageStore.computeBundleID(this.installedPackages, false, final.some(pkg => pkg.localPath)? this.lastLoaded: undefined);
       (this.onBundleChange ?? (() => null))(final.filter(pkg => pkg.installed))
       this.packages = Object.fromEntries(final.map(pkg => [pkg.id, pkg]))
+      await this.checkForMissingMembers(this.installed)
     }
     this.searchIndex.removeAll()
     this.searchIndex.addAll(final)
@@ -822,8 +870,9 @@ export class PackageStore {
     }
     const members = await Promise.all(rawPkgs.map(async pkg => this.readPackageMembers(pkg)))
     return rawPkgs.map((pkg, i) => {
+      const trusted = PackageStore.allowedOrgs.some(org => pkg.name.startsWith(`${org}/`))
       try {
-        return new Package(pkg, {members: members[i]})
+        return new Package(pkg, {members: members[i], trusted})
       }
       catch(err) {
         const parseIssues = JSON.parse((err as any)?.message)
@@ -840,7 +889,7 @@ export class PackageStore {
           return issue
         })
         this.appendPackageIssues(`${pkg.name}@${pkg.version}`, ...errors)
-        return new Package({name: pkg.name, version: pkg.version})
+        return new Package({name: pkg.name, version: pkg.version}, {trusted})
       }
     }).filter(pkg => pkg)
   }
@@ -911,7 +960,7 @@ export class PackageStore {
             }
           }
           catch(cause) {
-            // throw new ReadWriteIssue(`Could not read file ${fullPath}`, {cause})
+            throw new ReadWriteIssue(`Could not read file ${fullPath}`, {cause})
           }
         }
         members[name] = {name, legacy: !rawName.endsWith(".*"), ...memberSettings, ...(source? {source}: undefined)}
@@ -1171,8 +1220,16 @@ export class PackageStore {
           .filter(k => k.startsWith("./widgets/") || k.startsWith("./snippets/") || k.startsWith("./themes/"))
           .map(k => typeof (exports as any)[k] !== "string"? (exports as any)[k]?.default as string: (exports as any)[k] as string)
           .flatMap(k => !k.endsWith(".*")? [k]: [k.slice(0, -2) + ".js", k.slice(0, -2) + ".css"])
-        const exportedFiles = await Promise.all(exportPaths.map(path => this.resolveRelativeLocalPath(path, handle)))
-        if(exportedFiles.some(file => file.lastModified >= this.lastLoaded)) {
+        const exportedFiles = (await Promise.all(exportPaths.map(async path => {
+          try {
+            return await this.resolveRelativeLocalPath(path, handle)
+          }
+          catch {
+            return null
+          }
+
+        }))).filter(file => file)
+        if(exportedFiles.some(file => file!.lastModified >= this.lastLoaded)) {
           return this.load()
         }
   
@@ -1181,9 +1238,7 @@ export class PackageStore {
   }
 
   /** Write a given package to a directory, creating files as neccessary. If `force` is false, abort if existing files are found. */
-  async writeLocal(path: string, pkg: Package, {extraFiles = {} as Record<string, string>, mergePackage=false, overwrite=false, preset="none", generateLicense=false}) {
-    const resolvedPath = await this.Path.resolve(path)
-
+  async writeLocal(pathOrHandle: string | FileSystemDirectoryHandle, pkg: Package, {extraFiles = {} as Record<string, string>, mergePackage=false, overwrite=false, preset="none", generateLicense=false}) {
     let allExtraFiles = {...extraFiles}
     if(preset && preset in presets) {
       allExtraFiles = {...allExtraFiles, ...(presets as any)[String(preset)](pkg)}
@@ -1191,27 +1246,46 @@ export class PackageStore {
     if(generateLicense && String(pkg.license) in licenses) {
       allExtraFiles = {...allExtraFiles, ...(licenses as any)[String(pkg.license)](pkg)}
     }
-    await Promise.all(Object.keys(allExtraFiles).map(async fileName => {
-      const extraPath  = await this.Path.join(resolvedPath, fileName)
-      const extraPathDir = await this.Path.dirname(extraPath)
-      const extraExists = await this.FS.exists(extraPath)
-      const extraDirExists = await this.FS.exists(extraPathDir)
-      if(extraExists && !overwrite) {
-        throw Error("Existing extra file found under " + extraPath)
+
+    if(pathOrHandle instanceof FileSystemDirectoryHandle) {
+      const root = pathOrHandle
+      await Promise.all(Object.keys(allExtraFiles).map(async path => {
+        return writeFile(root, path, allExtraFiles[path], true, overwrite)
+      }))
+      const existingPkgFile = await readFile(root, "package.json")
+      if(existingPkgFile && !mergePackage) {
+        throw Error(`Existing package.json file found in '${root.name}'`)
       }
-      if(!extraDirExists) {
-        await this.FS.mkdir(extraPathDir)
-      }
-      return this.FS.writeFile(extraPath, allExtraFiles[fileName])
-    }))
-    const pkgJsonPath = await this.Path.join(resolvedPath, "package.json")
-    const exists = await this.FS.exists(pkgJsonPath)
-    if(exists && !mergePackage) {
-      throw Error("Existing package.json file found under " + pkgJsonPath)
+      const existingPkg = existingPkgFile? new Package(JSON.parse(await existingPkgFile.text())): null
+      const newPkg = existingPkg? existingPkg.extend(pkg): pkg
+      await writeFile(root, "package.json", JSON.stringify(newPkg), true, true)
+      await this.add(root, newPkg.id)
     }
-    const existingPkg = exists? new Package(JSON.parse(await this.FS.readFile(pkgJsonPath) as string)): null
-    const newPkg = existingPkg? existingPkg.extend(pkg): pkg
-    await this.FS.writeFile(pkgJsonPath, JSON.stringify(newPkg, undefined, 2))
+    else {
+      const resolvedPath = await this.Path.resolve(pathOrHandle)
+      await Promise.all(Object.keys(allExtraFiles).map(async fileName => {
+        const extraPath  = await this.Path.join(resolvedPath, fileName)
+        const extraPathDir = await this.Path.dirname(extraPath)
+        const extraExists = await this.FS.exists(extraPath)
+        const extraDirExists = await this.FS.exists(extraPathDir)
+        if(extraExists && !overwrite) {
+          throw Error("Existing extra file found under " + extraPath)
+        }
+        if(!extraDirExists) {
+          await this.FS.mkdir(extraPathDir)
+        }
+        return this.FS.writeFile(extraPath, allExtraFiles[fileName])
+      }))
+      const pkgJsonPath = await this.Path.join(resolvedPath, "package.json")
+      const exists = await this.FS.exists(pkgJsonPath)
+      if(exists && !mergePackage) {
+        throw Error("Existing package.json file found under " + pkgJsonPath)
+      }
+      const existingPkg = exists? new Package(JSON.parse(await this.FS.readFile(pkgJsonPath) as string)): null
+      const newPkg = existingPkg? existingPkg.extend(pkg): pkg
+      await this.FS.writeFile(pkgJsonPath, JSON.stringify(newPkg, undefined, 2))
+    }
+
   }
 
   /** Uses the provided system shell to open the app directory. */
@@ -1243,4 +1317,54 @@ export class PackageStore {
     await fetch(url, {method: "DELETE"})
     return this.load()
   }
+}
+
+async function writeFile(root: FileSystemDirectoryHandle, path: string, content: string | Blob | BufferSource, ensurePath=false, overwrite=false) {
+  const pathParts = path.split("/")
+  let directory = root
+  for(const [i, part] of pathParts.entries()) {
+    if(i === pathParts.length - 1) {
+      let fileHandle
+      try {
+        fileHandle = await directory.getFileHandle(part)
+      } catch {}
+      if(fileHandle && !overwrite) {
+        throw Error("Found existing file, and 'overwrite' is false")
+      }
+      else {
+        fileHandle = await directory.getFileHandle(part, {create: true})
+        const writable = await fileHandle.createWritable()
+        await writable.write(content)
+        await writable.close()
+      }
+    }
+    else {
+      directory = await directory.getDirectoryHandle(part, {create: ensurePath})
+    }
+  }
+}
+
+async function readFile(root: FileSystemDirectoryHandle, path: string) {
+  const pathParts = path.split("/")
+  let directory = root
+  for(const [i, part] of pathParts.entries()) {
+    if(i === pathParts.length - 1) {
+      try {
+        const fileHandle = await directory.getFileHandle(part)
+        return fileHandle.getFile()
+      }
+      catch(err) {
+        return null
+      }
+    }
+    else {
+      try {
+        directory = await directory.getDirectoryHandle(part)
+      }
+      catch(err) {
+        return null
+      }
+    }
+  }
+  return null
 }

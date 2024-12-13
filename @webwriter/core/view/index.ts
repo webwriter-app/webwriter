@@ -258,6 +258,7 @@ export class App extends ViewModelMixin(LitElement) {
     if (this.initializing) {
       return null;
     }
+    const {showUnknown, showUnstable} = this.store.ui
     const {
       changed,
       set,
@@ -270,6 +271,7 @@ export class App extends ViewModelMixin(LitElement) {
       inMemory,
     } = this.store.document;
     const { packagesList, bundleJS, bundleCSS, bundleID } = this.store.packages;
+    const filteredPackages = packagesList.filter(pkg => pkg.localPath || (!pkg.version.lt("1.0.0") || showUnstable) && (pkg.trusted || showUnknown) || pkg.version.prerelease.includes("snippet"))
     const { locale } = this.store.ui;
     const { open } = this.environment?.api?.Shell ?? window.open;
     const {
@@ -319,7 +321,7 @@ export class App extends ViewModelMixin(LitElement) {
           .codeState=${codeState}
           @update=${(e: any) => set(e.detail.editorState)}
           @ww-open=${(e: any) => open(e.detail.url)}
-          .packages=${packagesList}
+          .packages=${filteredPackages}
           ?loadingPackages=${false}
           ?controlsVisible=${!this.foldOpen}
           lang=${locale}

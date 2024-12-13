@@ -20,7 +20,7 @@ const interpolateTemplate = (template: string, pkg: Package) => {
   const defaultElementName = `${scope}-${name}`
 
   const replacementMap: Record<string, string> = {
-    "____classname____": [scope ?? "", name].map(capitalizeWord).join("") || "MyWidget",
+    "____classname____": [scope ?? "", ...name.split("-")].map(capitalizeWord).join("") || "MyWidget",
     "____year____": String(new Date().getFullYear())
   }
   for (const [key, value] of Object.entries(pkg.toJSON())) {
