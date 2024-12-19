@@ -288,12 +288,11 @@ export class KeymapManager extends LitElement {
 
 
   render() {
-    const groupedEntries = groupBy(Object.entries(this.commands), ([key, entry]) => entry.category)
+    const groupedEntries = groupBy(Object.entries(this.commands).filter(([key, entry]) => entry.shortcut), ([key, entry]) => entry.category)
     return html`<div class="base" part="base">
       ${Object.keys(groupedEntries).map(key => html`
         <h2 class="group-title">${this.categoryLabels[key] ?? key}</h2>
         ${groupedEntries[key]
-          .filter(([key, entry]) => entry.shortcut)
           .map(([key, entry]) => this.KeyInput(key, entry))
         }
       `)}
