@@ -1,16 +1,11 @@
-import {z} from "zod"
-import { cargoQueue, map } from "async"
+import { cargoQueue } from "async"
 import MiniSearch from "minisearch"
-import merge from "lodash.merge"
 
-import { capitalizeWord, escapeRegex, filterObject, hashCode, unscopePackageName } from "../../utility"
-import { Environment, WatchEvent } from "../environment"
-import { CustomElementsManifest, ManifestCustomElementDeclaration, ManifestDeclaration, ManifestPropertyLike, MemberSettings, NpmName, Package, SemVer, SnippetEditingSettings, ThemeEditingSettings, WidgetEditingSettings, themes } from ".."
+import { capitalizeWord, filterObject, hashCode, unscopePackageName } from "#utility"
+import { CustomElementsManifest, ManifestCustomElementDeclaration, ManifestDeclaration, ManifestPropertyLike, MemberSettings, Package, SemVer, themes } from ".."
 import {version as appVersion} from "../../package.json"
 import { licenses, presets } from "../templates"
-import { toJS } from "mobx"
 import { ImportMap } from "@jspm/import-map"
-import { msg } from "@lit/localize"
 
 type Options = {
   corePackages?: Package["name"][]
@@ -18,7 +13,7 @@ type Options = {
   watching?: Record<string, boolean>,
   initializePackages?: boolean,
   apiBase?: string
-} & Environment
+}
 
 type Snippet = {
   id: string,
@@ -114,170 +109,9 @@ export class PackageStore {
 
   private db = indexedDB.open("webwriter", 1)
 
-  private static async readFileIfExists(path: string, FS: Environment["FS"]): Promise<string | undefined> {
-    return await FS.exists(path)? await FS.readFile(path) as string: undefined
-  }
-
   private static isLocalImportID(id: string) {
     const match = id.match(SemVer.pattern)
     return match? (new SemVer(match[0]).prerelease[0] as any)?.includes("local"): undefined
-  }
-
-  private static async bundlePath(importIDs: string[], Path: Environment["Path"], FS: Environment["FS"], production=false) {
-    const includesLocal = importIDs.some(this.isLocalImportID)
-    const hash = PackageStore.computeBundleHash(importIDs, production)
-    const appDir = await Path.appDir()
-    const jsPath = await Path.join(appDir, "bundlecache", `${hash}.bundle.js`)
-    const jsPathRelative = ["bundlecache", `${hash}.bundle.js`].join("/")
-    const cssPath = await Path.join(appDir, "bundlecache", `${hash}.bundle.css`)
-    const cssPathRelative = ["bundlecache", `${hash}.bundle.css`].join("/")
-    const entryPath = await Path.join(appDir, "bundlecache", `${hash}.js`)
-    const entryPathRelative = ["bundlecache", `${hash}.js`].join("/")
-    const metaPath = await Path.join(appDir, "bundlecache", `${hash}.meta.json`)
-    const metaPathRelative = ["bundlecache", `${hash}.meta.json`].join("/")
-    return {
-      hash,
-      jsExists: !includesLocal && await FS.exists(jsPath),
-      jsPath,
-      jsPathRelative,
-      cssExists: !includesLocal && await FS.exists(cssPath),
-      cssPath,
-      cssPathRelative,
-      entryPath,
-      entryPathRelative,
-      metaExists: !includesLocal && await FS.exists(metaPath),
-      metaPath,
-      metaPathRelative,
-    }
-  }
-
-  static async readBundle(importIDs: string[], bundle: Environment["bundle"], Path: Environment["Path"], FS: Environment["FS"], production=false) {
-    if(importIDs.length === 0) {
-      return {bundleID: "", bundleJS: "", bundleCSS: "", errors: [] as BundleIssue[]}
-    }
-    let appDir
-    try {
-       appDir = await Path.appDir()
-    }
-    catch(cause) {
-      throw new ReadWriteIssue("Could not read path of app directory: " + String(cause), {cause})
-    }
-
-    const bundlecacheDir = await Path.join(appDir, "bundlecache")
-    if(!(await FS.exists(bundlecacheDir))) {
-      await FS.mkdir(bundlecacheDir)
-    }
-
-    type BundleData = Awaited<ReturnType<typeof this.bundlePath>> & {bundleID?: string, bundleJS?: string, bundleCSS?: string, importIDs: string[], meta?: {errors: BundleIssue[], cssSize?: number, jsSize?: number, imports: {path: string, kind: string, external?: boolean}[], exports: string[]}}
-
-    const hasUncached = (entry: BundleData) => !entry.metaExists || this.isLocalImportID(entry.bundleID!)
-
-    const writeEntrypoint = async (entry: BundleData) => {
-      const entryCode = entry.importIDs
-      .map(id => id.replace(new RegExp(`@` + `(local|${SemVer.pattern.source})`, "g"), ""))
-      .map(k => `import "${k}"`)
-      .join(";")
-      try {
-        await FS.writeFile(entry.entryPath, entryCode)
-      }
-      catch(cause) {
-        throw new ReadWriteIssue(`Could not create entrypoint file ${entry.entryPath}:\n${cause}`, {cause})
-      }
-    }
- 
-    const options = (entries: BundleData[]) => [
-      ...entries.map(entry => entry.entryPathRelative),
-      ...PackageStore.bundleOptions,
-      ...(!production? PackageStore.developmentBundleOptions: PackageStore.productionBundleOptions) 
-    ]
-    let errors: BundleIssue[] = []
-
-    const esbuildErrorsToBundleIssues = (rawCause: string) => {
-      return rawCause
-        .split("\n")
-        .slice(0, -2)
-        .join("\n")
-        .split("X [ERROR] ")
-        .filter(err => err)
-        .map(str => {
-          const [message, afterPart] = str.trim().split("\n\n")
-          const [location, display] = (afterPart ?? "").trim().split(":\n")
-          const nameRegex = /(@[a-z0-9-~][a-z0-9-._~]*\/)[a-z0-9-~][a-z0-9-._~]*/g
-          const lineRegex = /\d+ │ .*\n/
-          const line = display?.match(lineRegex)![0].trim()
-          const id = (location?.replace("node_modules/","").match(nameRegex) ?? [])[0]
-          return new BundleIssue(message, {cause: line, stack: location, id})
-        })
-    }
-
-    const writeMeta = async (bundleData: BundleData[]) => {
-      const {metaPath, metaExists} = await this.bundlePath(bundleData.flatMap(entry => entry.importIDs), Path, FS, production)
-      const buildMeta = JSON.parse((await this.readFileIfExists(metaPath, FS)) ?? "null")
-      await Promise.all(bundleData.map(entry => {
-        const entryErrors = errors.filter(e => entry.bundleID?.startsWith(e.id!))
-        const entryBuildMetaJS = buildMeta && entry.jsPathRelative in buildMeta? buildMeta?.outputs[entry.jsPathRelative]: {}
-        const entryBuildMetaCSS = buildMeta && entry.cssPathRelative in buildMeta? buildMeta?.outputs[entry.cssPathRelative]: {}
-        const entryMeta = {
-          errors: entryErrors,
-          cssSize: entryBuildMetaCSS?.bytes,
-          jsSize: entryBuildMetaJS?.bytes,
-          imports: entryBuildMetaJS?.imports,
-          exports: entryBuildMetaJS?.exports
-        }
-        return FS.writeFile(entry.metaPath, JSON.stringify(entryMeta))
-      }))
-      if(await FS.exists(metaPath)) {
-        await FS.unlink(metaPath)
-      }
-    }
-
-    const bundleData = (await Promise.all(importIDs.map(async id => {
-      const bundleID = PackageStore.computeBundleID([id], production)
-      const bundleStatus = await this.bundlePath([id], Path, FS, production)
-      const meta = JSON.parse((await this.readFileIfExists(bundleStatus.metaPath, FS)) ?? "null") as BundleData["meta"]
-      return {bundleID, importIDs: [id], ...bundleStatus, meta}
-    }))) as BundleData[]
-     
-    const toBundleSingle = bundleData.filter(hasUncached)
-    if(toBundleSingle.length) {
-      try {
-        await Promise.all(toBundleSingle.map(entry => writeEntrypoint(entry)))
-        await bundle(options(toBundleSingle), appDir)
-      }
-      catch(rawCause) {
-        if(typeof rawCause === "string") {
-          errors = esbuildErrorsToBundleIssues(rawCause)
-        }
-        else throw rawCause
-      }
-      try {
-        await writeMeta(toBundleSingle)
-      }
-      catch(err) {
-        console.error(err)
-      }
-    }
-    const importIDsNoErrors = importIDs.filter(id => {
-      const currentError = errors.some(err => id.startsWith(err.id!))
-      const storedError = bundleData.some(entry => !this.isLocalImportID(id) && entry.importIDs.includes(id) && (entry.meta?.errors.length ?? 0) > 0)
-      return !currentError && !storedError
-    })
-    const compositeWithoutErrors = {
-      importIDs: importIDsNoErrors,
-      bundleID: PackageStore.computeBundleID(importIDsNoErrors, production),
-      ...(await this.bundlePath(importIDsNoErrors, Path, FS, production)),
-    }
-    if(hasUncached(compositeWithoutErrors)) {
-      await writeEntrypoint(compositeWithoutErrors)
-      await bundle(options([compositeWithoutErrors]), appDir)
-    }
-    await writeMeta([compositeWithoutErrors])
-    return {
-      ...compositeWithoutErrors,
-      bundleJS: await this.readFileIfExists(compositeWithoutErrors.jsPath, FS),
-      bundleCSS: await this.readFileIfExists(compositeWithoutErrors.cssPath,FS),
-      errors
-    }
   }
 
 
@@ -328,22 +162,10 @@ export class PackageStore {
 
   constructor(options: Options) {
     Object.assign(this, options)
-    if(!this.apiBase) {
-      this.appDir = this.Path.appDir()
-      this.rootPackageJsonPath = this.appDir.then(dir => this.Path.join(dir, "package.json"))
-      this.localPathsPath = this.appDir.then(dir => this.Path.join(dir, "localpaths.json"))
-      this.initialized = options.initializePackages? this.initialize(): Promise.resolve();
-      (async () => {
-        await this.initialized
-        this.watching = options.watching ?? this.watching
-      })()
-    }
-    else {
-      this.db.addEventListener("upgradeneeded", () => {
-        this.db.result.createObjectStore("handles", {keyPath: "id"})
-        this.db.result.createObjectStore("snippets", {keyPath: "id", autoIncrement: true})
-      })
-    }
+    this.db.addEventListener("upgradeneeded", () => {
+      this.db.result.createObjectStore("handles", {keyPath: "id"})
+      this.db.result.createObjectStore("snippets", {keyPath: "id", autoIncrement: true})
+    })
   }
 
   async putLocalHandle(id: string, handle: FileSystemDirectoryHandle) {
@@ -354,15 +176,6 @@ export class PackageStore {
     return done
   }
 
-  FS: Environment["FS"]
-  Path: Environment["Path"]
-  Shell: Environment["Shell"]
-  OS: Environment["OS"]
-  Dialog: Environment["Dialog"]
-  bundle: Environment["bundle"]
-  search: Environment["search"]
-  pm: Environment["pm"]
-  watch: Environment["watch"]
   onBundleChange: Options["onBundleChange"]
 
   initialized: Promise<void>
@@ -426,14 +239,6 @@ export class PackageStore {
   async updateImportMap(ids: string[]=this.installedPackages) {
     const url = new URL("_importmaps", this.apiBase)
     url.searchParams.append("pkg", "true")
-    /*
-    const nonlocalIds = ids.filter(id => {
-      const version = id.split("@")[2]
-      return !(new SemVer(version)).prerelease.includes("local")
-    })
-    const localIds = ids.filter(id =>!nonlocalIds.includes(id))
-    nonlocalIds.forEach(id => url.searchParams.append("id", id))
-    */
     ids.forEach(id => url.searchParams.append("id", id))
     const map = ids.length? await (await fetch(url)).json(): undefined
     this.importMap = new ImportMap({map})
@@ -442,22 +247,6 @@ export class PackageStore {
 
   async checkForMissingMembers(pkgs: Package[]) {
     const ids = pkgs.map(pkg => pkg.id)
-    /*
-    const expectedIds = pkgs.flatMap(pkg => 
-      Object.keys(pkg.exports)
-        .filter(k => k.startsWith("./widgets/") || k.startsWith("./snippets/") || k.startsWith("./themes/"))
-        .flatMap(k => k.endsWith(".*")? [pkg.id + k.slice(1, -1) + "js", pkg.id + k.slice(1, -1) + "css"]: [pkg.id + k.slice(1)])
-    )
-    const availableIds = Object.keys(this.importMap.imports).filter(id => ids.some(toCheck => id.startsWith(toCheck)))
-    const missingIds = expectedIds.filter(id => !availableIds.includes(id))
-    for(const id of missingIds) {
-      const pkgId = id.split("/").slice(0, 2).join("/")
-      const type = id.split("/")[2].slice(0, -1)
-      const issue = new BundleIssue(`Missing ${type} '${id}'. Did you create an importable bundle, for example with 'npx @webwriter/dev'? https://webwriter.app/docs/quickstart/`)
-      this.appendPackageIssues(pkgId, issue)
-    }
-    console.log(this.importMap)
-    return */
     const idsToCheck = Object.keys(this.importMap.imports).filter(id => ids.some(toCheck => id.startsWith(toCheck)))
     return Promise.all(idsToCheck.map(async id => {
       const url = this.importMap.resolve(id)
@@ -488,13 +277,7 @@ export class PackageStore {
     try {
       if(toRemove.length > 0) {
         try {
-          if(!this.apiBase) {
-            await this.pm("remove", toRemove, await this.appDir)
-            await this.updateLocalLinks()
-          }
-          else {
-            await this.updateImportMap(this.installedPackages.filter(id => !toRemove.includes(id)))
-          }
+          await this.updateImportMap(this.installedPackages.filter(id => !toRemove.includes(id)))
         }
         catch(err) {
           console.error(err)
@@ -509,12 +292,7 @@ export class PackageStore {
           !key.startsWith("file://")? key: tasks.find(t => t.parameters.includes(key))!.name!
         ]))
         try {
-          if(!this.apiBase) {
-            await this.pm("add", toAdd, await this.appDir)
-          }
-          else {
-            await this.updateImportMap([...this.installedPackages, ...toAdd])
-          }
+          await this.updateImportMap([...this.installedPackages, ...toAdd])
         }
         catch(err) {
           console.error(err)
@@ -547,32 +325,9 @@ export class PackageStore {
           this.adding = {...this.adding, ...Object.fromEntries(toAddLocal.map(({name}) => [name, false]))}
         }
       }
-      if(toLink.length > 0) {
-        const pkg = (await this.readRootPackageJson())!
-        pkg.localPaths = {
-          ...pkg?.localPaths,
-          ...Object.fromEntries(toLink.map(t => [t.name!, t.parameters[0]!.replace("file:\/\/", "")])
-          )
-        }
-        await this.updateLocalLinks(pkg.localPaths)
-        for(const key of Object.keys(pkg.localPaths)) {
-          try {
-            await this.pm("link", [key, "--save"], await this.appDir)
-          }
-          catch(err) {
-            console.error(err)
-          }
-          finally {
-            this.adding = {...this.adding, ...Object.fromEntries(toLink.map(task => [task.name, false]))}
-          }
-        }
-        const updatedPkg = (await this.readRootPackageJson())!
-        updatedPkg.localPaths = pkg.localPaths
-        await this.writeRootPackageJson(updatedPkg)
-      }
       if(toUpdate.length > 0) {
         try {
-          await this.pm("update", toUpdate, await this.appDir)
+          // TODO: Updating
         }
         catch(err) {
           console.error(err)
@@ -610,71 +365,7 @@ export class PackageStore {
   }
   
   async initialize(force=false) {
-    if(this.apiBase) {
-      return this.load()
-    }
-    this.initializing = true
-    const rootExists = await this.FS.exists(await this.rootPackageJsonPath)
-    const appDir = await this.appDir
-    const appDirExists = rootExists || await this.FS.exists(appDir)
-    try {
-      if(!rootExists || force) {
-        await (appDirExists && this.FS.rmdir(appDir))
-        await this.FS.mkdir(appDir)
-        await this.writeRootPackageJson()
-        await this.pm("install", undefined, appDir)
-      }
-
-      await this.load()
-      /*
-      if(this.updateOnStartup) {
-        await this.pm("update", undefined, appDir)
-      }*/
-    }
-    catch(err) {
-      console.error(err)
-      if(await confirm("Error initializing WebWriter. Reset and try again?")) {
-        await this.initialize(true)
-      }
-    }
-    this.initializing = false
-  }
-
-  static get defaultRootPackage() {
-    return new Package({
-      name: "webwriter-root",
-      version: appVersion,
-      private: true,
-      description: "Internal package to manage installed WebWriter packages"
-    })
-  }
-
-  static get tsconfigJson() {
-    return {
-      compilerOptions: {
-        target: "es2022",
-        esModuleInterop: true
-      }
-    }
-  }
-
-  get initialFiles() {
-    return {
-      "package.json": JSON.stringify(PackageStore.defaultRootPackage, undefined, 2),
-      "tsconfig.json": JSON.stringify(PackageStore.tsconfigJson, undefined, 2)
-    }
-  }
-
-  private async readRootPackageJson() {
-    if(!await this.FS.exists(await this.rootPackageJsonPath)) {
-      return undefined
-    }
-    const json = JSON.parse(await this.FS.readFile(await this.rootPackageJsonPath) as string)
-    return new Package(json) as Package & {localPaths: Record<string, string>}
-  }
-
-  private async writeRootPackageJson(pkg: Package = PackageStore.defaultRootPackage) {
-    return this.FS.writeFile(await this.rootPackageJsonPath, JSON.stringify(pkg, undefined, 2))
+    return this.load()
   }
 
   async add(urlOrHandle: string | FileSystemDirectoryHandle, name?: string) {
@@ -716,48 +407,6 @@ export class PackageStore {
   get packagesList() {
     return Object.values(this.packages)
   }
-  
-  private async writeH5Package(url: string | string[]): Promise<string | string[]> {
-    if(Array.isArray(url)) {
-      return Promise.all(url.map(u => this.writeH5Package(u) as Promise<string>))
-    }
-    const {href, pathname, hash} = new URL(url)
-    const urlWithoutHash = href.split("#")[0]
-    const packageName = pathname.split("/").filter(v => v).pop()?.replace(".git", "") as string
-    const appDir = await this.Path.appDir()
-    const dir = appDir + "h5_packages/" + packageName
-    const ref = hash? hash.replace("#", ""): "master"
-    await this.FS.mkdir(dir + "/.git")
-    await this.FS.writeFile(dir + "/.git/config", "", "utf8")
-    // yield call(clone, {fs, http, dir, url: urlWithoutHash, singleBranch: true, ref, depth: 1})
-    const libString = await this.FS.readFile(dir + "/library.json", "utf8") as string
-    const lib = JSON.parse(libString)
-    const pkg = PackageStore.H5PtoPackageJson(packageName, lib)
-    const packageJsonPath = await this.Path.join(dir, "package.json")
-    const indexJsPath = await this.Path.join(dir, "index.js")
-    this.FS.writeFile(packageJsonPath, JSON.stringify(pkg, undefined, 2), "utf8")
-    this.FS.writeFile(indexJsPath, "export default null", "utf8")
-    return dir
-  }
-
-  async updateLocalLinks(dependencies?: Record<string, string>) {
-    if(dependencies) {
-      for(const path of Object.values(dependencies)) {
-        await this.pm("link", undefined, path)
-      }
-    }
-    else {
-      const pkg = await this.readRootPackageJson()
-      if(pkg?.localPaths) {
-        const deps = pkg?.dependencies ?? {}
-        pkg.localPaths = filterObject(pkg.localPaths, k => k in deps)
-        for(const path of Object.values(pkg.localPaths)) {
-          await this.pm("link", undefined, path)
-        }
-        this.writeRootPackageJson(pkg)
-      } 
-    }
-  }
 
   lastLoaded: number
 
@@ -766,71 +415,29 @@ export class PackageStore {
     this.lastLoaded = Date.now()
     this.loading = true
     this.issues = {}
-    if(!this.apiBase) {
-      await this.updateLocalLinks()
-    }
     
-    let [installed, available] = await Promise.all([
-      this.apiBase? []: this.fetchInstalled(),
-      this.fetchAvailable()
-    ])
-
+    let available = await this.fetchAvailable()
     let final: Package[] = []
-    if(!this.apiBase) {
-      const importable = installed.filter(pkg => !this.getPackageIssues(pkg.id)?.length)
-      const importableVersionMap = Object.fromEntries(importable.map(pkg => [pkg.name, pkg.id]))
-      const importIDs = this.widgetImportIDs(importable)
-      const newID = PackageStore.computeBundleID(importIDs, false, importable.some(pkg => pkg.localPath)? this.lastLoaded: undefined)
-      if(newID !== this.bundleID) {
-        try {
-          const {bundleJS, bundleCSS, errors} = await PackageStore.readBundle(importIDs, this.bundle, this.Path, this.FS)
-          this.bundleID = newID
-          for(const err of errors) {
-            this.appendPackageIssues(importableVersionMap[err.id as any], err)
-            console.error(err.message)
-          }
-          this.bundleJS = bundleJS!
-          this.bundleCSS = bundleCSS!;
-          (this.onBundleChange ?? (() => null))(importable)
-        }
-        catch(rawErr) {
-          throw rawErr
-          this.appendManagementIssues(new BundleIssue(rawErr as string))
-        }
-      }
-      for(const pkg of installed) {
-        const aPkg = available.find(a => a.id === pkg.id)
-        if(aPkg) {
-          available = available.filter(a => a.name !== pkg.id)
-        }
-        const latest = aPkg?.version
-        final.push(pkg.extend({latest, installed: true}))
-      }
-      final = final.concat(available.filter(pkg => !final.some(finalPkg => finalPkg.name === pkg.name)))
-      this.packages = Object.fromEntries(final.map(pkg => [pkg.id, pkg]))
-    }
-    else {
-      const localIds = this.installedPackages.filter(id => Package.fromID(id).version.prerelease.includes("local"))
-      let local = (await Promise.all(localIds.map(id => fetch(new URL(id + "/package.json", this.apiBase)).then(resp => resp.json()))))
-        .map(json => {
-          const version = new SemVer(json.version)
-          version.prerelease = [...version.prerelease, "local"]
-          return new Package({...json, version}, {installed: true, localPath: "hidden"})
-        })
-      local = await Promise.all(local.map(async pkg => pkg.extend({members: await this.readPackageMembers(pkg)})))
-      await this.updateLocalWatchIntervals(local)
-      final = available.map(pkg => pkg.extend({installed: this.installedPackages.includes(pkg.id)})).sort((a, b) => Number(!!b.installed) - Number(!!a.installed))
-      const snippetData = await this.getSnippet(undefined)
-      const snippets = snippetData.map(snippet => {
-        return new Package({name: `snippet-${parseInt(snippet.id)}`, version: "0.0.0-snippet", private: true})
-      }).reverse()
-      final = [...snippets, ...local, ...final]
-      await this.updateImportMap()
-      this.bundleID = PackageStore.computeBundleID(this.installedPackages, false, final.some(pkg => pkg.localPath)? this.lastLoaded: undefined);
-      (this.onBundleChange ?? (() => null))(final.filter(pkg => pkg.installed))
-      this.packages = Object.fromEntries(final.map(pkg => [pkg.id, pkg]))
-      await this.checkForMissingMembers(this.installed)
-    }
+    const localIds = this.installedPackages.filter(id => Package.fromID(id).version.prerelease.includes("local"))
+    let local = (await Promise.all(localIds.map(id => fetch(new URL(id + "/package.json", this.apiBase)).then(resp => resp.json()))))
+      .map(json => {
+        const version = new SemVer(json.version)
+        version.prerelease = [...version.prerelease, "local"]
+        return new Package({...json, version}, {installed: true, localPath: "hidden"})
+      })
+    local = await Promise.all(local.map(async pkg => pkg.extend({members: await this.readPackageMembers(pkg)})))
+    await this.updateLocalWatchIntervals(local)
+    final = available.map(pkg => pkg.extend({installed: this.installedPackages.includes(pkg.id)})).sort((a, b) => Number(!!b.installed) - Number(!!a.installed))
+    const snippetData = await this.getSnippet(undefined)
+    const snippets = snippetData.map(snippet => {
+      return new Package({name: `snippet-${parseInt(snippet.id)}`, version: "0.0.0-snippet", private: true})
+    }).reverse()
+    final = [...snippets, ...local, ...final]
+    await this.updateImportMap()
+    this.bundleID = PackageStore.computeBundleID(this.installedPackages, false, final.some(pkg => pkg.localPath)? this.lastLoaded: undefined);
+    (this.onBundleChange ?? (() => null))(final.filter(pkg => pkg.installed))
+    this.packages = Object.fromEntries(final.map(pkg => [pkg.id, pkg]))
+    await this.checkForMissingMembers(this.installed)
     this.searchIndex.removeAll()
     this.searchIndex.addAll(final)
     this.loading = false
@@ -853,20 +460,9 @@ export class PackageStore {
 
   private async fetchAvailable() {
     let rawPkgs: any[] = []
-    if(this.apiBase) {
-      const resp = await fetch(new URL("_packages", this.apiBase))
-      if(resp.ok) {
-        rawPkgs = await resp.json()
-      }
-    }
-    else {
-      try {
-        const {objects} = await this.search("keywords:webwriter-widget")
-        rawPkgs = objects.map(obj => obj["package"])
-      }
-      catch(cause) {
-        this.appendManagementIssues(new ServiceIssue("Could not run search", {cause}))
-      }
+    const resp = await fetch(new URL("_packages", this.apiBase))
+    if(resp.ok) {
+      rawPkgs = await resp.json()
     }
     const members = await Promise.all(rawPkgs.map(async pkg => this.readPackageMembers(pkg)))
     return rawPkgs.map((pkg, i) => {
@@ -894,47 +490,12 @@ export class PackageStore {
     }).filter(pkg => pkg)
   }
 
-  private async fetchInstalled() {
-    const appDir = await this.appDir;
-    let pkgJsonPaths = {} as Record<string, string>, localPaths = {} as Record<string, string>
-    try {
-      const pkg = await this.readRootPackageJson()
-      const dependencies = pkg?.dependencies ?? {}
-      localPaths = pkg?.localPaths ?? {}
-      pkgJsonPaths = Object.fromEntries(await Promise.all(Object.keys(dependencies).map(async k => [k, await this.Path.join(appDir, "node_modules", k, "package.json")])))
-    }
-    catch(cause) {
-      this.appendManagementIssues(new ReadWriteIssue("Could not read installed package.json files", {cause}))
-    }
-    const pkgs = await Promise.all(Object.entries(pkgJsonPaths).map(([k, jsonPath]) => this.readPackage(jsonPath, localPaths[k])))
-    return pkgs
-  }
-
   private async validateInstalled(pkgs: Package[]) {
     // Warn for packages without exports
     // Warn for packages that register extra custom elements
   }
 
-  private async readPackage(jsonPath: string, localPath?: string) {
-    const pkgRootPath = jsonPath.slice(0, -("package.json".length))
-    const pkgString = await this.FS.readFile(jsonPath) as string
-    let pkgJson = {} as any
-    try {
-      pkgJson = JSON.parse(pkgString)
-    }
-    catch(cause) {
-      const nameRegex = /"name":\s*".*"/g
-      const versionRegex = /"version":\s*".*"/g
-      const name = nameRegex.exec(pkgString)
-      const version = versionRegex.exec(pkgString)
-      const id = `${name}@${version}`
-      // this.appendPackageIssues(id, cause as Error)
-    }
-    const members = await this.readPackageMembers(pkgJson, pkgRootPath)
-    return new Package(pkgJson, {installed: true, watching: this.watching[pkgJson.id], localPath, members, lastLoaded: Date.now()})
-  }
-
-  private async readPackageMembers(pkg: Package, path?: string) {
+  private async readPackageMembers(pkg: Package) {
     const exports = pkg.exports ?? {}
     const editingConfig = pkg?.editingConfig ?? {}
 
@@ -946,68 +507,11 @@ export class PackageStore {
       const isTheme = name.split("/").at(-2) === "themes"
       if(isWidget || isSnippet || isTheme) {
         const memberSettings = editingConfig[name]
-        let source: string | undefined, fullPath: string | undefined
-        if((isSnippet || isTheme) && path) {
-          try {
-            fullPath = await this.Path.join(path, p as any)
-          }
-          catch(cause) {
-            throw new ReadWriteIssue(`Could not join paths '${path}' and '${p}'`, {cause})
-          }
-          try {
-            if(!this.apiBase) {
-              source = await this.FS.readFile(fullPath) as string
-            }
-          }
-          catch(cause) {
-            throw new ReadWriteIssue(`Could not read file ${fullPath}`, {cause})
-          }
-        }
+        let source: string | undefined
         members[name] = {name, legacy: !rawName.endsWith(".*"), ...memberSettings, ...(source? {source}: undefined)}
       }
     }
     return members
-  }
-
-  /*
-  private async readAnalysis(pkg: Package, path: string) {
-    const relativeManifestPath = typeof pkg.customElements === "string"? pkg.customElements: undefined
-    const cemPath = await this.Path.join(await this.appDir, "node_modules", ".bin", "cem")
-    if(!relativeManifestPath) {
-      const exports = pkg.exports ?? {}
-      const widgetKeys = Object.keys(exports).filter(k => k.startsWith("./widgets/"))
-      const globs = widgetKeys.map(k => `"${k}"`).join(" ")
-      const webComponentLib = this.sniffWebComponentLibrary(pkg)
-      const opts = [cemPath, "analyze", webComponentLib? `--${webComponentLib}`: "", `--globs ${globs}`]
-      await this.pm("exec", opts, path)
-    }
-    const manifestPath = relativeManifestPath
-      ? await this.Path.resolve(relativeManifestPath)
-      : path + "custom-elements.json"
-    const str = await this.FS.readFile(manifestPath, "utf8") as string
-    return JSON.parse(str) as CustomElementsManifest
-  }*/
-
-  private sniffWebComponentLibrary(pkg: Package): undefined | "litelement" | "fast" | "stencil" | "catalyst" {
-    const depNames = [
-      ...Object.keys(pkg.dependencies ?? {}),
-      ...Object.keys(pkg.devDependencies ?? {})
-    ] 
-    if(depNames.includes("lit")) {
-      return "litelement"
-    }
-    else if(depNames.includes("@microsoft/fast-element")) {
-      return "fast"
-    }
-    else if(depNames.includes("@stencil/core")) {
-      return "stencil"
-    }
-    else if(depNames.includes("@github/catalyst")) {
-      return "catalyst"
-    }
-    else {
-      return undefined
-    }
   }
 
   get installed() {
@@ -1095,36 +599,10 @@ export class PackageStore {
     if(!pkg) {
       return 
     }
-    const watching = forceValue ?? !pkg?.watching
-    if(watching && pkg?.localPath) {
-      this.unwatchCallbacks[name] = await this.watch(pkg.localPath, async (e) => {
-        if(!this.loading) {
-          this.load()
-        }
-      }, {recursive: true})
-    }
-    else {
-      (this.unwatchCallbacks[name] ?? (() => {}))()
-      delete this.unwatchCallbacks[name]
-    }
+    const watching = forceValue ?? !pkg?.watching;
+    (this.unwatchCallbacks[name] ?? (() => {}))()
+    delete this.unwatchCallbacks[name]
     this.packages = {...this.packages, [name]: pkg.extend({watching})}
-  }
-
-  /** Open the entrypoint file of the package.*/
-  async open(name: string) {
-    if(!(name in this.packages)) {
-      throw Error(`Package ${name} not found`)
-    }
-    const pkg = this.packages[name]
-    if(pkg.main || pkg.browser) {
-      const main = pkg.main ?? pkg.browser
-      const appDir = await this.Path.appDir()
-      const path = await this.Path.join(appDir, "node_modules", name, main!)
-      return this.Shell.open(path)
-    }
-    else {
-      throw Error(`No main file configured for package ${name}`)
-    }
   }
 
   async resolveRelativeLocalPath(path: string, handle: FileSystemDirectoryHandle) {
@@ -1156,28 +634,17 @@ export class PackageStore {
   }
 
   /** Reads a local package directory, returning the package config. */
-  async readLocal(pathOrHandle: string | FileSystemDirectoryHandle) {
+  async readLocal(handle: FileSystemDirectoryHandle) {
     let pkgString: string
-    if(typeof pathOrHandle === "string") {
-      const resolvedPath = await this.Path.resolve(pathOrHandle)
-      const pkgJsonPath = await this.Path.join(resolvedPath, "package.json")
-      const exists = await this.FS.exists(pkgJsonPath)
-      if(!exists) {
-        throw Error("No package found under " + pkgJsonPath)
-      }
-      pkgString = await this.FS.readFile(pkgJsonPath) as string
+    let pkgJsonHandle
+    try {
+      pkgJsonHandle = await handle.getFileHandle("package.json")
     }
-    else {
-      let pkgJsonHandle
-      try {
-        pkgJsonHandle = await pathOrHandle.getFileHandle("package.json")
-      }
-      catch(err) {
-        throw Error("No package found under " + pathOrHandle.name)
-      }
-      const file = await pkgJsonHandle.getFile()
-      pkgString = await file.text()
+    catch(err) {
+      throw Error("No package found under " + handle.name)
     }
+    const file = await pkgJsonHandle.getFile()
+    pkgString = await file.text()
     let pkg
     try {
       pkg = new Package(JSON.parse(pkgString!))
@@ -1238,7 +705,7 @@ export class PackageStore {
   }
 
   /** Write a given package to a directory, creating files as neccessary. If `force` is false, abort if existing files are found. */
-  async writeLocal(pathOrHandle: string | FileSystemDirectoryHandle, pkg: Package, {extraFiles = {} as Record<string, string>, mergePackage=false, overwrite=false, preset="none", generateLicense=false}) {
+  async writeLocal(handle: FileSystemDirectoryHandle, pkg: Package, {extraFiles = {} as Record<string, string>, mergePackage=false, overwrite=false, preset="none", generateLicense=false}) {
     let allExtraFiles = {...extraFiles}
     if(preset && preset in presets) {
       allExtraFiles = {...allExtraFiles, ...(presets as any)[String(preset)](pkg)}
@@ -1246,52 +713,18 @@ export class PackageStore {
     if(generateLicense && String(pkg.license) in licenses) {
       allExtraFiles = {...allExtraFiles, ...(licenses as any)[String(pkg.license)](pkg)}
     }
-
-    if(pathOrHandle instanceof FileSystemDirectoryHandle) {
-      const root = pathOrHandle
-      await Promise.all(Object.keys(allExtraFiles).map(async path => {
-        return writeFile(root, path, allExtraFiles[path], true, overwrite)
-      }))
-      const existingPkgFile = await readFile(root, "package.json")
-      if(existingPkgFile && !mergePackage) {
-        throw Error(`Existing package.json file found in '${root.name}'`)
-      }
-      const existingPkg = existingPkgFile? new Package(JSON.parse(await existingPkgFile.text())): null
-      const newPkg = existingPkg? existingPkg.extend(pkg): pkg
-      await writeFile(root, "package.json", JSON.stringify(newPkg), true, true)
-      await this.add(root, newPkg.id)
+    const root = handle
+    await Promise.all(Object.keys(allExtraFiles).map(async path => {
+      return writeFile(root, path, allExtraFiles[path], true, overwrite)
+    }))
+    const existingPkgFile = await readFile(root, "package.json")
+    if(existingPkgFile && !mergePackage) {
+      throw Error(`Existing package.json file found in '${root.name}'`)
     }
-    else {
-      const resolvedPath = await this.Path.resolve(pathOrHandle)
-      await Promise.all(Object.keys(allExtraFiles).map(async fileName => {
-        const extraPath  = await this.Path.join(resolvedPath, fileName)
-        const extraPathDir = await this.Path.dirname(extraPath)
-        const extraExists = await this.FS.exists(extraPath)
-        const extraDirExists = await this.FS.exists(extraPathDir)
-        if(extraExists && !overwrite) {
-          throw Error("Existing extra file found under " + extraPath)
-        }
-        if(!extraDirExists) {
-          await this.FS.mkdir(extraPathDir)
-        }
-        return this.FS.writeFile(extraPath, allExtraFiles[fileName])
-      }))
-      const pkgJsonPath = await this.Path.join(resolvedPath, "package.json")
-      const exists = await this.FS.exists(pkgJsonPath)
-      if(exists && !mergePackage) {
-        throw Error("Existing package.json file found under " + pkgJsonPath)
-      }
-      const existingPkg = exists? new Package(JSON.parse(await this.FS.readFile(pkgJsonPath) as string)): null
-      const newPkg = existingPkg? existingPkg.extend(pkg): pkg
-      await this.FS.writeFile(pkgJsonPath, JSON.stringify(newPkg, undefined, 2))
-    }
-
-  }
-
-  /** Uses the provided system shell to open the app directory. */
-  async viewAppDir() {
-    const appDir = await this.Path.appDir()
-    return this.Shell.open(appDir)
+    const existingPkg = existingPkgFile? new Package(JSON.parse(await existingPkgFile.text())): null
+    const newPkg = existingPkg? existingPkg.extend(pkg): pkg
+    await writeFile(root, "package.json", JSON.stringify(newPkg), true, true)
+    await this.add(root, newPkg.id)
   }
 
   async getSnippet<T extends string | undefined>(id?: T) {

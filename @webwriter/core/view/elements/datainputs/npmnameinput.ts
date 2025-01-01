@@ -1,11 +1,11 @@
 import { html, css, render, PropertyValueMap } from "lit";
-import { DataInput } from ".";
 import { customElement, property } from "lit/decorators.js";
 import { SlInput } from "@shoelace-style/shoelace";
-import { localized, msg } from "@lit/localize";
-import { CustomElementName, NpmName, WebWriterPackageName } from "../../../model";
-import { unscopePackageName } from "../../../utility";
-import { ZodError } from "zod";
+import { localized } from "@lit/localize";
+
+import { DataInput } from "./datainput";
+import { CustomElementName, NpmName, WebWriterPackageName } from "#model";
+import { unscopePackageName } from "#utility";
 
 
 @localized()

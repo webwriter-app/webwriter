@@ -5,12 +5,12 @@
   "tsConfig": "./tsconfig.json",
   "output": {
     "mode": "runtime",
-    "outputDir": "./localization/generated",
-    "localeCodesModule": "./@webwriter/core/localization/generated/locales.ts"
+    "outputDir": "./viewmodel/localizationcontroller/localization/generated",
+    "localeCodesModule": "./@webwriter/core/viewmodel/localizationcontroller/localization/locales.ts"
   },
 
   "interchange": {
     "format": "xliff",
-    "xliffDir": "./localization"
+    "xliffDir": "./viewmodel/localizationcontroller/localization"
   } 
 }

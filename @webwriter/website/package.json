@@ -15,9 +15,7 @@
 	},
 	"dependencies": {
 		"@astrojs/lit": "^4.0.1",
-		"@astrojs/prefetch": "^0.4.1",
 		"@astrojs/sitemap": "^3.0.4",
-		"@astrojs/turbolinks": "^0.2.2",
 		"@codemirror/lang-html": "^6.4.3",
 		"@codemirror/state": "^6.2.0",
 		"@octokit/rest": "^19.0.7",

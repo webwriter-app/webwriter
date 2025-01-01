@@ -1,15 +1,9 @@
-import { html, css, render, PropertyValueMap, ComplexAttributeConverter } from "lit";
-import { DataInput, schemaConverter } from ".";
+import { html, css, render, PropertyValueMap } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import { SlInput, SlOption } from "@shoelace-style/shoelace";
-import { localized, msg } from "@lit/localize";
-import { CustomElementName, NpmName, License } from "../../../model";
-import { unscopePackageName } from "../../../utility";
-import { ZodError, ZodSchema, z } from "zod";
-import { Combobox } from "../combobox";
 
-
-
+import { DataInput } from "./datainput";
+import { License } from "#model";
+import { Combobox } from "#view";
 
 @customElement("ww-licenseinput")
 export class LicenseInput extends Combobox implements DataInput {

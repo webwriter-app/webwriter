@@ -1,13 +1,9 @@
-import { filterObject, getFileExtension } from "../../utility";
-import { FileClient, LLMClient, NpmClient, PocketbaseClient } from "../clients";
-import { Environment } from "../environment";
-import marshal from "../marshal";
-import {
-  FileAccount,
-  NpmAccount,
-  PocketbaseAccount,
-  LLMAccount,
-} from "../schemas/accounts";
+import { getFileExtension } from "#utility";
+import { FileClient } from "../clients/file"
+import { LLMClient } from "../clients/llm"
+import { PocketbaseClient } from "../clients/pocketbase"
+import { FileAccount, PocketbaseAccount, LLMAccount } from "../schemas/account"
+import { marshal } from "#model"
 
 type AccountsMap = AccountStore["accounts"];
 export type AccountTypeId = keyof AccountStore["accounts"];
@@ -17,21 +13,17 @@ export type Client<T extends AccountTypeId = AccountTypeId> = InstanceType<
   (typeof AccountStore)["clients"][T]
 >;
 
-// @meeting
 /** Handles accounts. */
 export class AccountStore {
   static accountType = {
     file: FileAccount,
-    npm: NpmAccount,
     pocketbase: PocketbaseAccount,
     llm: LLMAccount,
   } as const;
 
   static clients = {
     file: FileClient,
-    npm: NpmClient,
     pocketbase: PocketbaseClient,
-
     llm: LLMClient,
   } as const;
 
@@ -44,7 +36,6 @@ export class AccountStore {
   }
 
   constructor(
-    readonly Environment: Environment,
     accounts?: AccountStore["accounts"]
   ) {
     this.accounts = accounts ?? this.accounts;
@@ -55,8 +46,6 @@ export class AccountStore {
       file: new FileAccount({}),
     } as Record<string, FileAccount>,
     pocketbase: {} as Record<string, PocketbaseAccount>,
-    npm: {} as Record<string, NpmAccount>,
-
     llm: {} as Record<string, LLMAccount>,
   };
 
@@ -80,7 +69,6 @@ export class AccountStore {
         ),
       ])
     ) as { file: { [k: string]: FileClient } } & Partial<{
-      npm: Record<string, NpmClient>;
       pocketbase: Record<string, PocketbaseClient>;
 
       llm: Record<string, LLMClient>;
@@ -114,7 +102,6 @@ export class AccountStore {
   }
 
   updateAccount<T extends AccountTypeId>(value: Account<T>) {
-    console.log(value);
     const type = AccountStore.getAccountTypeId(value);
     if (type in this.accounts) {
       this.accounts[type][value.id] = value;
@@ -141,8 +128,7 @@ export class AccountStore {
     const client = account
       ? (new AccountStore.clients[type](
           account,
-          this.Environment,
-          async (newAccount) => this.updateAccount(newAccount)
+          async (newAccount: Account) => this.updateAccount(newAccount)
         ) as Client<T>)
       : undefined;
     return client;
@@ -179,7 +165,7 @@ export class AccountStore {
       const PS = Object.values(marshal).find((PS) =>
         (PS.extensions as any).includes(ext)
       );
-      return PS ? new PS(this.Environment) : undefined;
+      return PS ? new PS() : undefined;
     }
     const mediaType = url.searchParams.get("mediatype");
     if (url.protocol === "file:") {
@@ -187,10 +173,10 @@ export class AccountStore {
       const PS = Object.values(marshal).find((PS) =>
         (PS.extensions as any).includes(ext)
       );
-      return PS ? new PS(this.Environment) : undefined;
+      return PS ? new PS() : undefined;
     }
     if ((mediaType ?? "") in marshal) {
-      return new marshal[mediaType as keyof typeof marshal](this.Environment);
+      return new marshal[mediaType as keyof typeof marshal]();
     } else {
       return undefined;
     }

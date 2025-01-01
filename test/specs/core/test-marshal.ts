@@ -1,1 +1,0 @@
-// Load several example documents

@@ -11,9 +11,9 @@ export default defineConfig({
         sourcemap: true,
         rollupOptions: {
           input: {
-            app: fileURLToPath(new URL("./index.html", import.meta.url)),
+            app: fileURLToPath(new URL("./view/app/index.html", import.meta.url)),
             settings: fileURLToPath(new URL("./settings.html", import.meta.url)),
-            worker: fileURLToPath(new URL("./viewmodel/services/bundleservice.ts", import.meta.url))
+            worker: fileURLToPath(new URL("./viewmodel/apicontroller/index.service.ts", import.meta.url))
           },
         },
     },
@@ -23,8 +23,8 @@ export default defineConfig({
     plugins: [
       lezer({exportName: "parser"}),
       VitePWA({
-        srcDir: "./viewmodel/services",
-        filename: "bundleservice.ts",
+        srcDir: "./viewmodel/apicontroller",
+        filename: "index.service.ts",
         strategies: "injectManifest",
         injectRegister: false,
         manifest: false,

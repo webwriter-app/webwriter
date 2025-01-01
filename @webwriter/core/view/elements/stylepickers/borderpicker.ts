@@ -1,7 +1,7 @@
 import { LitElement, html, css } from "lit"
 import { customElement, property } from "lit/decorators.js"
 import { localized, msg } from "@lit/localize"
-import { filterObject } from "../../../utility"
+import { filterObject } from "../../../model/utility"
 
 type CSSValue<T extends string> = "initial" | "inherit" | "unset" | "revert" | "revert-layer" | T
 

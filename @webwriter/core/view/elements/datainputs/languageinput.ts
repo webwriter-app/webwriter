@@ -1,11 +1,9 @@
-import { html, css, render, PropertyValueMap } from "lit";
-import { DataInput } from ".";
+import { html, css, render } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import { Locale } from "../../../model";
-import { Combobox } from "../combobox";
 
-
-
+import { DataInput } from "./datainput";
+import { Combobox } from "../ui/combobox";
+import { Locale } from "#model";
 
 @customElement("ww-languageinput")
 export class LanguageInput extends Combobox implements DataInput {

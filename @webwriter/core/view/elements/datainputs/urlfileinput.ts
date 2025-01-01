@@ -1,9 +1,9 @@
-import { LitElement, html, css, CSSResultArray, CSSResult, PropertyValueMap } from "lit"
-import { customElement, property, query, queryAssignedElements } from "lit/decorators.js"
+import { html, css, CSSResultArray, CSSResult } from "lit"
+import { customElement, property, query } from "lit/decorators.js"
 import { localized, msg } from "@lit/localize"
-import { DataInput } from "."
-import { SlInput, SlOption } from "@shoelace-style/shoelace"
+import { SlInput } from "@shoelace-style/shoelace"
 
+import { DataInput } from "./datainput"
 
 @localized()
 @customElement("ww-urlfileinput")

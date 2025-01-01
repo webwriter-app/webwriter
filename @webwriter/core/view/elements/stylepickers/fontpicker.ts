@@ -1,7 +1,7 @@
 import { LitElement, html, css } from "lit"
 import { customElement, property, query } from "lit/decorators.js"
 import { localized, msg } from "@lit/localize"
-import { range } from "../../../utility"
+import { range } from "../../../model/utility"
 import { ifDefined } from "lit/directives/if-defined.js"
 import { classMap } from "lit/directives/class-map.js"
 

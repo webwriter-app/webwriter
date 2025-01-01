@@ -1,9 +1,9 @@
 import { html, css, render, PropertyValues } from "lit";
-import { DataInput } from ".";
 import { customElement, property } from "lit/decorators.js";
 import { SlInput } from "@shoelace-style/shoelace";
 import { localized, msg } from "@lit/localize";
 
+import { DataInput } from "./datainput";
 
 const windowsPathPattern = /^(?<ParentPath>(?:[a-zA-Z]:|\\\\[^\<\>:"\/\\|?*]+\\[^\<\>:"\/\\|?*]+)\\(?:[^\<\>:"\/\\|?*]+\\)*)(?<BaseName>[^\<\>:"\/\\|?*]*?)/
 const unixPathPattern = /[^\0]+/

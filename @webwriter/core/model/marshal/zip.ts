@@ -69,11 +69,11 @@ export class ZipParserSerializer extends ParserSerializer {
     const zip = new JSZip()
     await zip.loadAsync(data)
     const htmlString = await zip.file("index.html")?.async("string") ?? ""
-    const htmlParserSerializer = new HTMLParserSerializer(this.Environment)
+    const htmlParserSerializer = new HTMLParserSerializer()
     return htmlParserSerializer.parse(htmlString, schema)
   }
   async serialize(state: EditorStateWithHead) {
-    const {html, js, css} = await docToBundle(state.doc, state.head$.doc, this.Environment.bundle, this.Environment.Path, this.Environment.FS)
+    const {html, js, css} = await docToBundle(state.doc, state.head$.doc)
 
     const zip = new JSZip()
   

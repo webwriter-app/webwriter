@@ -7,21 +7,11 @@ export * from "./boxpicker"
 
 import {LitElement, html} from "lit"
 import {property} from "lit/decorators.js"
-import { CSSPropertySpecs } from "../../../model/schemas/resourceschema/cssspec"
-import { filterObject } from "../../../utility"
-import { ValueDefinition } from "../../../model/schemas/valuedefinition"
+import { CSSPropertySpecs } from "../../../model/schemas/cssvaluedefinition.data"
+import { filterObject } from "../../../model/utility"
+import { CSSValueDefinition, ICSSValueDefinition } from "../../../model/schemas/cssvaluedefinition"
 import { ifDefined } from "lit/directives/if-defined.js"
 
-/*
-
-type CSSStyleDeclarationAPIKeys = "cssFloat" | "cssText" | "length" | "parentRule" | "getPropertyCSSValue" | "getPropertyPriority" | "getPropertyValue" | "item" | "removeProperty" | "setProperty" | number
-
-export type StyleMap = Partial<Omit<CSSStyleDeclaration, CSSStyleDeclarationAPIKeys>>
-*/
-
-
-// Style Pickers
-// Style picker mixin
 
 export function StyleForm<T extends readonly (keyof CSSPropertySpecs)[]>(superClass: typeof LitElement, keys: T, allSpecs=CSSPropertySpecs) {
   return class extends superClass {
@@ -73,21 +63,85 @@ export function StyleForm<T extends readonly (keyof CSSPropertySpecs)[]>(superCl
     public get validationMessage(): string {
       return this._internals.validationMessage;
     }
-  
-    PropertyFields = () => keys.map(k => {
-      const spec = allSpecs[k]
-      return html``
-    })
-  
-    render(): ReturnType<LitElement["render"]> {
-      return this.PropertyFields()
+
+    updateValidity(newValue: string) {
+      
     }
+  }
+}
+
+
+/** Input a CSS value of the specified type. If `syntax` is set, it is used to provide an appropriate input and validation. Else, if `syntax` is not set, but `name` is a known CSS property name, automatically use that property's syntax. Otherwise, fall back to a normal text input. */
+export class StyleInput extends LitElement {
+  static formAssociated = true
+  protected _internals: ElementInternals
+
+  constructor() {
+    super()
+    this._internals = this.attachInternals()
+  }
+
+  @property({type: String, attribute: true, reflect: true})
+  name: string
+
+  @property({type: String, attribute: true, reflect: true})
+  syntax: string
+
+  @property({type: String, attribute: true, reflect: true})
+  label: string
+
+  _value: string
+
+  get value() {
+    return this._value
+  }
+
+  @property({type: String, attribute: true})
+  set value(v: typeof this._value) {
+    const oldValue = this._value
+    this._value = v
+    const formData = Object.entries(v).reduce((acc: FormData, [k, v]) => {
+      acc.set(k, v as any)
+      return acc
+    }, new FormData())
+    this._internals.setFormValue(formData)
+    this.requestUpdate("value", oldValue)
+  }
+
+  @property({attribute: false, state: true})
+  private pos = 0
+
+  get valueDefinition() {
+    return (this.syntax? CSSValueDefinition.parse(this.syntax): null) ?? CSSValueDefinition.CSSPropertySpecs[this.name as keyof typeof CSSValueDefinition.CSSPropertySpecs].syntaxTree ?? undefined
+  }
+
+  public checkValidity(): boolean {
+    return this._internals.checkValidity();
+  }
+  
+  public reportValidity(): boolean {
+    return this._internals.reportValidity();
+  }
+  
+  public get validity(): ValidityState {
+    return this._internals.validity;
+  }
+  
+  public get validationMessage(): string {
+    return this._internals.validationMessage;
+  }
+
+
+
+  render() {
+    // 
+    return 
   }
 }
 
 class StylePropertyField extends LitElement {
 
-  static complexTypes = ["Alternation", "Subset", "OrderedSequence", "UnorderedSequence"] as const satisfies ValueDefinition["type"][]
+  static complexTypes = ["Alternation", "Subset", "OrderedSequence", "UnorderedSequence"] as const satisfies ICSSValueDefinition["type"][]
 
   static unitPattern = {
     "custom-ident": /abc/,
@@ -127,19 +181,24 @@ class StylePropertyField extends LitElement {
   name: string
 
   @property({type: String, attribute: true, reflect: true})
+  syntax: string
+
+  @property({type: String, attribute: true, reflect: true})
   label: string
 
-  @property({type: Object, attribute: false})
-  valueDefinition: ValueDefinition
+  get valueDefinition() {
+    return (this.syntax? CSSValueDefinition.parse(this.syntax): null) ?? CSSValueDefinition.CSSPropertySpecs[this.name as keyof typeof CSSValueDefinition.CSSPropertySpecs].syntaxTree ?? undefined
+  }
 
   @property({type: String, attribute: true})
   value: string
 
-  @property({type: Array, attribute: false, state: true})
-  activePath: number[]
 
-  Select(def: ValueDefinition = this.valueDefinition) {
-    if(def.type === "Literal") {
+  Select(def: ICSSValueDefinition | undefined = this.valueDefinition) {
+    if(!def) {
+      return html`<sl-input type="text"></sl-input>`
+    }
+    else if(def.type === "Literal") {
       return html`<span>${def.content}</span>`
     }
     else if(def.type === "DataType" && ["custom-ident", "dashed-ident", "string"].includes(def.content)) {
@@ -172,10 +231,6 @@ class StylePropertyField extends LitElement {
     else if(def.type === "DataType" && def.content === "position") {
       return html`<ww-combobox></ww-combobox>`
     }
-    else if(def.type === "OrderedSequence") {}
-    else if(def.type === "UnorderedSequence") {}
-    else if(def.type === "Alternation") {}
-    else if(def.type === "Subset") {}
   }
 
   // State machine approach:

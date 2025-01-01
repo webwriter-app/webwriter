@@ -1,6 +1,5 @@
 import {Node, Schema} from "prosemirror-model"
 
-import { Environment } from "../environment"
 import {docToBundle} from "./html"
 import JSZip from "jszip"
 import {html, render} from "lit"
@@ -396,9 +395,9 @@ export async function parse(data: string, schema: Schema) {
   }
 }
 
-export async function serialize(explorable: Node, head: Node, bundle: Environment["bundle"], Path: Environment["Path"], FS: Environment["FS"]) {
+export async function serialize(explorable: Node, head: Node) {
   
-  const {html, js, css} = await docToBundle(explorable, head, bundle, Path, FS)
+  const {html, js, css} = await docToBundle(explorable, head)
 
   const script = html.createElement("script")
   script.type = "text/javascript"

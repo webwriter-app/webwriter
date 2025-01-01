@@ -8,11 +8,9 @@ export * from "./storecontroller"
 export * from "./environmentcontroller"
 export * from "./iconcontroller"
 
-import {StoreController, EnvironmentController, CommandController, LocalizationController, NotificationController, SettingsController, IconController} from "."
-import { FileClient, PackageStore, RootStore } from "../model"
+import {StoreController, EnvironmentController, CommandController, LocalizationController, NotificationController, SettingsController, IconController} from "#viewmodel"
+import { RootStore } from "#model"
 import { msg } from "@lit/localize"
-import { WINDOW_OPTIONS } from "./commandcontroller"
-import { idle } from "../utility"
 
 async function getAllLocalHandles(): Promise<FileSystemDirectoryHandle[]> {
   const db = indexedDB.open("webwriter")
@@ -48,14 +46,8 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
       this.icons = new IconController(this)
       this.environment = new EnvironmentController(this)
       await this.environment.ready
-      /*
-      if(WEBWRITER_ENVIRONMENT.engine.name === "Gecko") {
-        document.body.innerHTML = `<div style="text-align: center; padding: 2rem;">Sorry! WebWriter is currently not supported in your browser for technical reasons. We are working on a solution. An up-to-date version of Chrome, Edge, or Safari should work.</div>`
-        return
-      }*/
       if ('serviceWorker' in navigator && window.isSecureContext && WEBWRITER_ENVIRONMENT.backend !== "tauri") {
-        const registration = await navigator.serviceWorker.register(
-          // @ts-ignore
+        const registration = await navigator.serviceWorker.register( // @ts-ignore
           import.meta.env.MODE === 'production' ? '/bundleservice.js' : '/dev-sw.js?dev-sw', // @ts-ignore
           { type: WEBWRITER_ENVIRONMENT.engine.name === "Gecko"? "classic": "module", scope: "/" }
         )
@@ -67,30 +59,12 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
           ])
         }
       }
-      const isSettingsWindow = this.environment?.api?.getWindowLabel() === "settings"
-      const userSettings = await SettingsController.getUserSettings(this.environment.api)
-      this.store = StoreController(new RootStore({settings: userSettings, corePackages: CORE_PACKAGES, ...this.environment.api, initializePackages: !isSettingsWindow, apiBase: WEBWRITER_ENVIRONMENT.backend === "tauri"? undefined: "https://api.webwriter.app/ww/v1/"}), this)
+      const userSettings = await SettingsController.getUserSettings()
+      this.store = StoreController(new RootStore({settings: userSettings, corePackages: CORE_PACKAGES, initializePackages: true, apiBase: "https://api.webwriter.app/ww/v1/"}), this)
       this.settings = new SettingsController(this, this.store)
       this.localization = new LocalizationController(this, this.store)
       this.commands = new CommandController(this as any, this.store)
       this.notifications = new NotificationController(this, this.store)
-      if(!this.store.packages.apiBase) {
-        this.initializeWindow()
-        await this.store.packages.initialized
-        const openUrl = new URL(window.location.href).searchParams.get("open")
-        if(openUrl) {
-          const url = new URL(openUrl)
-          const parser = this.store.accounts.parserSerializerFromURL(url)
-          const client = this.store.accounts.clientFromURL(url)
-          this.store.document.load(url, parser, client)
-        }
-        const {join, appDir} = this.environment.api.Path
-        await this.store.packages.initialized
-        const packageJsonPath = await join(await appDir(), "package.json")
-        this.environment.api.watch(packageJsonPath, (e) => {
-          !this.store.packages.initializing && !this.store.packages.loading && this.store.packages.load()
-        })
-      }
       window.addEventListener("beforeunload", e => {
         if(this.store.document.changed) {
           e.preventDefault()
@@ -120,30 +94,4 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
       resolve(undefined)
     })
 	}
-
-  confirmWindowClose = async () => {
-    return !this.store.document.changed || await this.environment.api.Dialog.confirm(
-      msg("You have unsaved changes. Are you sure you want to leave and discard them?"),
-      {type: "warning"}
-    )
-  }
-
-  async initializeWindow() {
-    const label = this.environment.api.getWindowLabel()
-    if(label === "main") {
-      try {
-        // await this.environment.api.createWindow("settings.html", {...WINDOW_OPTIONS, title: `${msg("Settings")} - WebWriter`, visible: false, label: "settings"})
-        this.environment.api.setWindowCloseBehavior(["closeAllIfLastVisible", "closeOthersOnReload"], this.confirmWindowClose)
-      }
-      catch(err) {
-        console.log(err)
-      }
-    }
-    else if(label === "settings") {
-      this.environment.api.setWindowCloseBehavior(["hideOnCloseUnlessLast"])
-    }
-    else {
-      this.environment.api.setWindowCloseBehavior(["closeAllIfLastVisible"], this.confirmWindowClose)
-    }
-  }
 }

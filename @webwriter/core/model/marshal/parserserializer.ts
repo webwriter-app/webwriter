@@ -1,5 +1,4 @@
 import { Schema } from "prosemirror-model"
-import { Environment } from "../environment"
 import { EditorStateWithHead } from "../schemas"
 
 export interface ParserSerializer {
@@ -11,8 +10,6 @@ export abstract class ParserSerializer {
   static readonly isParseOnly: boolean = false
   static readonly extensions: ReadonlyArray<string> = []
   static readonly mediaType: string
-
-  constructor(readonly Environment: Environment) {}
 
   abstract parse(data: string, schema: Schema): Promise<EditorStateWithHead>
 }

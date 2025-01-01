@@ -10,7 +10,7 @@ const {join} = require("path")
 const DO_NOT_TRANSLATE = ["de"]
 
 async function main() {
-  const dirPath = "./@webwriter/core/localization"
+  const dirPath = "./@webwriter/core/viewmodel/localizationcontroller/localization"
   const dir = await readdir(dirPath)
   const paths = dir
     .filter(relPath => relPath.endsWith(".xlf") && !DO_NOT_TRANSLATE.some(code => relPath.endsWith(`${code}.xlf`)))

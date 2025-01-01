@@ -1,0 +1,82 @@
+@top CSSValueDefinition { expression }
+
+
+expression { simpleExpression | complexExpression | groupExpression }
+
+simpleExpression { Literal | stringExpression | PropertyReference | DataType }
+
+complexExpression { OrderedSequence | UnorderedSequence | Subset | Alternation | FunctionCall }
+
+groupExpression {
+  Group<simpleExpression | complexExpression>
+}
+
+stringExpression {
+  (string | String { literalString }) quantifier?
+}
+
+Literal { 
+  Identifier quantifier?
+}
+
+PropertyReference { 
+  "<'" Identifier "'>" quantifier?
+}
+
+DataType { 
+  "<" Identifier Range? ">" quantifier?
+}
+
+FunctionCall {
+  Identifier "(" expression ")"
+}
+
+OrderedSequence { list<simpleExpression | groupExpression | FunctionCall, ""> }
+
+UnorderedSequence { list<simpleExpression | groupExpression | OrderedSequence | FunctionCall, "&&"> }
+
+Subset { list<simpleExpression | groupExpression | OrderedSequence | UnorderedSequence | FunctionCall, "||"> }
+
+Alternation { list<simpleExpression | groupExpression | OrderedSequence | UnorderedSequence | Subset | FunctionCall, "|"> }
+
+list<expr, sep> { expr (sep expr)+ }
+Group<expr> {"[" expr "]" (Required | quantifier)?}
+
+Range { "[" Start { number | dimension | neginf } "," End { number | dimension | posinf } "]"}
+
+dimension { number unit }
+
+quantifier[@isGroup=Quantifier] { ZeroOrMore | OneOrMore | ZeroOrOne | Some | OneOrMoreCommaSeparated }
+
+ZeroOrMore { "*" }
+OneOrMore { "+" }
+ZeroOrOne { "?" }
+Some { ("{" Min { number } "}") | "{" Min { number } "," Max { number } "}" }
+OneOrMoreCommaSeparated { "#" (ZeroOrMore | OneOrMore | ZeroOrOne | Some)? }
+
+@tokens {
+  // or { "|" }
+  // andor { "||" }
+
+  Identifier { $[a-zA-Z0-9_\-]+ "()"? }
+  literalString { "," | "." | "/" }
+  whitespace { $[ \n\r\t]}
+  Required { "!" }
+  number { @digit+ }
+  neginf { "-∞" }
+  posinf { "∞" | "+∞" }
+  unit { $[a-zA-Z] $[a-zA-Z]* }
+}
+
+@local tokens {
+  stringEndSingle { "'" }
+  stringEndDouble { '"' }
+  stringEscape { "\\" _ }
+  @else String
+}
+
+@skip {} {
+  string { ("'" (String | stringEscape)* stringEndSingle) | ('"' (String | stringEscape)* stringEndDouble) }
+}
+
+@skip { whitespace }

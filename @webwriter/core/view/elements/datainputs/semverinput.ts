@@ -1,10 +1,10 @@
 import { html, css, render, PropertyValueMap } from "lit";
-import { DataInput, schemaConverter } from ".";
 import { customElement, property } from "lit/decorators.js";
 import { SlInput } from "@shoelace-style/shoelace";
-import { localized, msg } from "@lit/localize";
-import { SemVer } from "../../../model";
-import { ZodError } from "zod";
+import { localized } from "@lit/localize";
+
+import { DataInput, schemaConverter } from "./datainput";
+import { SemVer } from "#model";
 
 
 @localized()
@@ -116,7 +116,7 @@ export class SemverInput extends SlInput implements DataInput {
 
   changeVersion(id: "major" | "minor" | "patch", decrement=false) {
     if(this.value instanceof SemVer) {
-      this.value = this.value.increment(id, decrement)
+      this.value = decrement? this.value.dec(id): this.value.inc(id)
       this.dispatchEvent(new CustomEvent("sl-change", {bubbles: true, composed: true}))
     }
   }

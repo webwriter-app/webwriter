@@ -2,7 +2,6 @@ import {Node, DOMSerializer} from "prosemirror-model"
 import {Schema, DOMParser} from "prosemirror-model"
 
 import { EditorStateWithHead, PackageStore, createEditorState, headSchema, headSerializer } from '..'
-import { Environment } from '../environment'
 import scopedCustomElementRegistry from "@webcomponents/scoped-custom-element-registry/src/scoped-custom-element-registry.js?raw"
 import { ParserSerializer } from './parserserializer'
 
@@ -44,7 +43,7 @@ function createInitializerScript(id: string, tag: string, content: string) {
   `
 }
 
-export async function docToBundle(doc: Node, head: Node, bundle?: Environment["bundle"], Path?: Environment["Path"], FS?: Environment["FS"]) {
+export async function docToBundle(doc: Node, head: Node) {
   let html = document.implementation.createHTMLDocument()
   const serializer = DOMSerializer.fromSchema(doc.type.schema)
   serializer.serializeFragment(doc.content, {document: html}, html.body)
@@ -68,11 +67,6 @@ export async function docToBundle(doc: Node, head: Node, bundle?: Environment["b
   if(!importIDs.length) {
     js = ""
     css = ""
-  }
-  else if(bundle && Path && FS) {
-    const {bundleJS, bundleCSS} = await PackageStore.readBundle(importIDs, bundle, Path, FS, true)
-    js = bundleJS? scopedCustomElementRegistry + ";" +  bundleJS: ""
-    css = bundleCSS
   }
   else {
     const jsUrl = new URL("https://api.webwriter.app/ww/v1/_bundles")
@@ -190,8 +184,7 @@ export class HTMLParserSerializer extends ParserSerializer {
 
   async serializeToDOM(state: EditorStateWithHead) {
 
-    const envArgs = WEBWRITER_ENVIRONMENT.backend === "tauri"? [this.Environment.bundle, this.Environment.Path, this.Environment.FS] as any: []
-    const {html, js, css} = await docToBundle(state.doc, state.head$.doc, ...envArgs)
+    const {html, js, css} = await docToBundle(state.doc, state.head$.doc)
 
     const script = html.createElement("script")
     script.type = "module"

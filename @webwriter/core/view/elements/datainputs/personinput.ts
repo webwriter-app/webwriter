@@ -1,9 +1,10 @@
-import { html, css, render, PropertyValueMap } from "lit";
-import { DataInput, schemaConverter } from ".";
+import { html, css, render } from "lit";
 import { customElement, property, query } from "lit/decorators.js";
 import { SlInput } from "@shoelace-style/shoelace";
 import { localized, msg } from "@lit/localize";
-import { Person } from "../../../model";
+
+import { DataInput, schemaConverter } from "./datainput";
+import { Person } from "#model";
 
 
 

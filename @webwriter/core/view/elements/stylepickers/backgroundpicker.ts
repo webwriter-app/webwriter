@@ -1,13 +1,12 @@
 import { LitElement, html, css } from "lit"
 import { customElement, property } from "lit/decorators.js"
 import { localized, msg } from "@lit/localize"
-import { StyleForm } from "."
 
 const props = ["background", "background-attachment", "background-clip", "background-color", "background-image", "background-origin", "background-position", "background-repeat", "background-size", "background-position-x", "background-position-y"] as const
 
 @localized()
 @customElement("ww-backgroundpicker")
-export class BackgroundPicker extends StyleForm(LitElement, props) {
+export class BackgroundPicker extends LitElement {
 
 	static get styles() {
 		return css`

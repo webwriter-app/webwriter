@@ -1,46 +1,21 @@
 import { EditorState, Plugin, TextSelection } from "prosemirror-state";
-import {
-  Schema,
-  Node,
-  NodeType,
-  Attrs,
-  DOMSerializer,
-  DOMParser,
-} from "prosemirror-model";
+import { Schema, Node, NodeType, Attrs, DOMSerializer, DOMParser } from "prosemirror-model";
 import { html_beautify as htmlBeautify } from "js-beautify";
-import { formatHTMLToPlainText } from "../../../spell-check/htmlparser";
-import {
-  applyGrammarSuggestions,
-  diffTokens,
-  matchDiffs,
-  removeGrammarSuggestions,
-  tokenizeText,
-  // diff,
-  // matchSpellingSuggestions,
-} from "../../../spell-check/text-tokenizer";
-import { fetchGrammarCorrection } from "../../../spell-check/fetchers/correction-fetcher";
-import { fetchTranslation } from "../../../spell-check/fetchers/translation-fetcher";
+import { applyGrammarSuggestions, diffTokens, matchDiffs, removeGrammarSuggestions, tokenizeText, fetchGrammarCorrection, fetchTranslation } from "#model/clients/llm.js";
 
 import {
   createEditorState,
-  createWindow,
-  DocumentClient,
   EditorStateWithHead,
-  Environment,
   getActiveMarks,
   getHeadElement,
   Package,
-  PackageStore,
-  setHeadAttributes,
   upsertHeadElement,
 } from "..";
 import {
-  filterObject,
-  getFileExtension,
   groupBy,
-  idle,
   range,
-} from "../../utility";
+  formatHTMLToPlainText
+} from "#utility";
 import marshal, { getParserSerializerByExtension } from "../marshal";
 import { redoDepth, undoDepth } from "prosemirror-history";
 import {
@@ -55,9 +30,8 @@ import { html as cmHTML } from "@codemirror/lang-html";
 import { basicSetup } from "codemirror";
 import { Account, AccountStore } from "./accountstore";
 import { HTMLParserSerializer } from "../marshal/html";
-import { ChatCompletion } from "openai/resources";
 import { ParserSerializer } from "../marshal/parserserializer";
-import { LLMAccount, OpenAIAccount } from "../schemas/accounts";
+import { LLMAccount, } from "../schemas/account";
 import { msg } from "@lit/localize";
 
 export const CODEMIRROR_EXTENSIONS = [basicSetup, cmHTML()];
@@ -112,7 +86,6 @@ export class DocumentStore implements Resource {
 
   constructor(
     { schema, url, editorState, lang }: Options,
-    readonly Environment: Environment,
     readonly accounts: AccountStore
   ) {
     this.editorState =
@@ -246,13 +219,13 @@ export class DocumentStore implements Resource {
       if (newUrlOrHandle instanceof FileSystemFileHandle) {
         const handle = newUrlOrHandle;
         const foundPs = getParserSerializerByExtension(handle.name);
-        newSerializer = foundPs ? new foundPs(this.Environment) : serializer;
+        newSerializer = foundPs ? new foundPs() : serializer;
         newSerializer =
           "serialize" in newSerializer ? newSerializer : this.serializer;
         const data = await newSerializer.serialize!(this.editorState);
         const returnedHandle = (await client.saveDocument(
           data,
-          handle,
+          handle as any,
           filename
         )) as FileSystemFileHandle;
         if (returnedHandle) {
@@ -265,7 +238,7 @@ export class DocumentStore implements Resource {
         const foundPs = getParserSerializerByExtension(
           newUrl?.pathname ?? "file.html"
         );
-        newSerializer = foundPs ? new foundPs(this.Environment) : serializer;
+        newSerializer = foundPs ? new foundPs() : serializer;
         newSerializer =
           "serialize" in newSerializer ? newSerializer : this.serializer;
         const data = await newSerializer.serialize!(this.editorState);
@@ -298,12 +271,8 @@ export class DocumentStore implements Resource {
         if (!newUrl) {
           return;
         }
-        const foundPs = getParserSerializerByExtension(
-          newUrl instanceof FileSystemFileHandle
-            ? newUrl.name
-            : newUrl?.pathname
-        );
-        newParser = foundPs ? new foundPs(this.Environment) : parser;
+        const foundPs = getParserSerializerByExtension(newUrl.name);
+        newParser = foundPs ? new foundPs() : parser;
       }
       const data = await client.loadDocument(newUrl as any);
       if (!data) {
@@ -324,7 +293,7 @@ export class DocumentStore implements Resource {
   previewSrc: string;
 
   /** Open a preview for this document. */
-  async preview(serializer = new HTMLParserSerializer(this.Environment)) {
+  async preview(serializer = new HTMLParserSerializer()) {
     this.ioState = "loadingPreview";
     try {
       this.previewSrc && URL.revokeObjectURL(this.previewSrc);
@@ -401,7 +370,6 @@ export class DocumentStore implements Resource {
     }
   }
 
-  isSpellchecking = false;
   /** Does a spell check on the document text */
   async spellcheck() {
     try {
@@ -436,7 +404,6 @@ export class DocumentStore implements Resource {
       });
 
       const selection = this.editorState.selection;
-      console.log("selection:", selection);
 
       // Get plain text, either from selection or full document
       let text: string;
@@ -445,7 +412,6 @@ export class DocumentStore implements Resource {
 
       if (!selection.empty) {
         const selectionFragment = selection.content().content;
-        console.log("selectionFragment:", selectionFragment);
 
         // Create a temporary div to hold the selection content
         const tempDiv = document.createElement("div");
@@ -471,7 +437,6 @@ export class DocumentStore implements Resource {
 
       // get document language
       const language = this.head.doc.attrs?.htmlAttrs?.lang;
-      console.log("language:", language);
 
       // send text to spellchecker
       const res = await fetchGrammarCorrection(
@@ -491,7 +456,6 @@ export class DocumentStore implements Resource {
         console.error("no corrected text!");
         return;
       }
-      console.log("original:", text, "corrected:", correctedText);
 
       // tokenize both texts
       const originalTokens = tokenizeText(text);
@@ -505,7 +469,7 @@ export class DocumentStore implements Resource {
 
       // If there was a selection, adjust suggestion positions
       if (selectionStart !== null && selectionEnd !== null) {
-        suggestions.forEach((suggestion) => {
+        suggestions.forEach((suggestion: any) => {
           suggestion.original.position += selectionStart - 1;
         });
       }
@@ -842,7 +806,7 @@ export class DocumentStore implements Resource {
   }
 
   get parserSerializer() {
-    const html = new HTMLParserSerializer(this.Environment);
+    const html = new HTMLParserSerializer();
     return this.url
       ? this.accounts.parserSerializerFromURL(this.url) ?? html
       : html;
@@ -853,7 +817,7 @@ export class DocumentStore implements Resource {
   }
 
   get serializer() {
-    const html = new HTMLParserSerializer(this.Environment);
+    const html = new HTMLParserSerializer();
     return "serialize" in this.parserSerializer ? this.parserSerializer : html;
   }
 }

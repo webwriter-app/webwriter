@@ -1,4 +1,4 @@
-import { capitalizeWord, unscopePackageName } from "../../utility"
+import { capitalizeWord, unscopePackageName } from "../utility"
 import { Package } from "../schemas"
 
 import litWidget from "./presets/lit/widgets/webwriter-widget.ts?raw" 
