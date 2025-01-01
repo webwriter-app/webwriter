@@ -32,6 +32,7 @@ export class UIStore {
    showUnstable = false
    showUnknown = false
    showSourceEditor = false
+   resetOnInitialize = false
 
    keymap: Record<string, {shortcut: string}> = {}
 

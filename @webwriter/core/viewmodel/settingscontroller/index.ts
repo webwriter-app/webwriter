@@ -163,6 +163,16 @@ export class SettingsController implements ReactiveController {
             ),
           label: msg("Show source editing commands"),
         },
+        resetOnInitialize: {
+          schema: z
+            .boolean()
+            .describe(
+              msg(
+                "Advanced: Reset all WebWriter data each time the page is loaded - for debugging purposes."
+              )
+            ),
+          label: msg("Reset all app data on page load"),
+        },
         /*showTextPlaceholder: {
           schema: z
             .boolean()

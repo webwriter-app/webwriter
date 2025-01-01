@@ -6,6 +6,7 @@ import { CustomElementsManifest, ManifestCustomElementDeclaration, ManifestDecla
 import {version as appVersion} from "../../package.json"
 import { licenses, presets } from "../templates"
 import { ImportMap } from "@jspm/import-map"
+import { toJS } from "mobx"
 
 type Options = {
   corePackages?: Package["name"][]
@@ -74,6 +75,8 @@ export class Warning extends Error {}
 export class PackageStore {
 
   importMap: ImportMap
+
+  resetOnInitialize = false
 
   static allowedOrgs = [
     "@webwriter"
@@ -364,20 +367,60 @@ export class PackageStore {
     return Object.fromEntries(Object.keys(this.packages).map(name => [unscopePackageName(name), this.packages[name]]))
   }
   
-  async initialize(force=false) {
+  async initialize() {
+    if(this.resetOnInitialize) {
+      try {
+        await this.reset()
+      }
+      catch(err) {
+        console.error(err)
+      }
+    }
     return this.load()
+  }
+
+  async reset() {
+    const resetOnInitialize = this.resetOnInitialize
+    
+    localStorage.clear()
+    sessionStorage.clear()
+    
+    const cacheKeys = await caches.keys()
+    await Promise.all(cacheKeys.map(key => caches.delete(key)))
+
+    const db = indexedDB.open("webwriter", 1)
+    await new Promise(r => db.addEventListener("success", r))
+    if(db.result.objectStoreNames.contains("handles")) {
+      const tx = db.result.transaction("handles", "readwrite")
+      const store = tx.objectStore("handles")
+      store.clear()
+    }
+    db.result.close()
+
+    /*await new Promise((resolve, reject) => {
+      const req = indexedDB?.deleteDatabase("webwriter")
+      req.addEventListener("success", resolve)
+      req.addEventListener("error", reject)
+      req.addEventListener("blocked", reject)
+    })*/
+    
+    if(resetOnInitialize) {
+      localStorage.setItem("webwriter_settings", JSON.stringify({ui: {resetOnInitialize: true}}))
+    }
   }
 
   async add(urlOrHandle: string | FileSystemDirectoryHandle, name?: string) {
     const id = typeof urlOrHandle === "string"? urlOrHandle: name!
     const pkg = Package.fromID(id)
     const matchingPkg = this.installed.find(match => pkg.name === match.name)
-    const cancelled = matchingPkg && !confirm(`Installing ${id} requires uninstalling ${matchingPkg.id}. Do you want to continue?`)
-    if(matchingPkg && cancelled) {
-      return
-    }
-    else if(matchingPkg && !cancelled) {
-      await new Promise(async r => this.pmQueue.push({command: "remove", parameters: [matchingPkg.id], cwd: await this.appDir, name: matchingPkg.id}, r))
+    if(matchingPkg) {
+      const cancelled = !confirm(`Installing ${id} requires uninstalling ${matchingPkg.id}. Do you want to continue?`)
+      if(cancelled) {
+        return
+      }
+      else {
+        await new Promise(async r => this.pmQueue.push({command: "remove", parameters: [matchingPkg.id], cwd: await this.appDir, name: matchingPkg.id}, r))
+      }
     }
 
     if(typeof urlOrHandle === "string") {
@@ -622,7 +665,7 @@ export class PackageStore {
   }
 
   async getLocalHandle(id: string): Promise<FileSystemDirectoryHandle> {
-    const db = indexedDB.open("webwriter")
+    const db = indexedDB.open("webwriter", 1)
     await new Promise(r => db.addEventListener("success", r))
     const tx = db.result.transaction("handles", "readwrite")
     const store = tx.objectStore("handles")

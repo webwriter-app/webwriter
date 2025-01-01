@@ -29,8 +29,8 @@ export class RootStore {
   constructor({corePackages, apiBase, settings, initializePackages}: AllOptions) {
     const onBundleChange = this.onBundleChange
     this.ui = new UIStore({...settings?.ui})
-    this.packages = new PackageStore({...settings?.packages, corePackages, initializePackages, apiBase})
-    this.accounts = new AccountStore(settings?.accounts.accounts)
+    this.packages = new PackageStore({...settings?.packages, corePackages, initializePackages, apiBase, resetOnInitialize: this.ui.resetOnInitialize, onBundleChange})
+    this.accounts = new AccountStore(settings?.accounts?.accounts)
     this.document = new DocumentStore({...settings?.document, lang: this.ui.locale, defaultAccount: this.accounts.getAccount("file")}, this.accounts)
   }
 

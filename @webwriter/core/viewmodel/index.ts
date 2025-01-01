@@ -87,7 +87,7 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
           button.remove()
         } 
       }
-      await this.store.packages.load()
+      await this.store.packages.initialize()
       this.requestUpdate()
       this.initializing = false
       document.body.classList.add("loaded")
