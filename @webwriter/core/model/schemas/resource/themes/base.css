@@ -121,3 +121,7 @@ svg {
   aspect-ratio: 16/9;
   width: 100%;
 }
+
+table {
+  width: 100%;
+}
