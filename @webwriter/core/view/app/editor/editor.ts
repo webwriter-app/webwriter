@@ -326,7 +326,8 @@ export class ExplorableEditor extends LitElement {
 
   async pin() {
     const html = this.selectionAsHTML
-    return this.app.store.packages.addSnippet({id: "snippet", html})
+    await this.app.store.packages.addSnippet({id: "snippet", html})
+    this.editingStatus = undefined
   }
 
   get selectionAsHTML() {
