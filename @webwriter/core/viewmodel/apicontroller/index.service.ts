@@ -488,7 +488,7 @@ async function postSnippet(snippet: Snippet) {
   const req = store.add(snippet)
   const id: string = await new Promise((resolve, reject) => {
     req.addEventListener("success", async () => {
-    db.result.close()
+      db.result.close()
       resolve(String(req.result))
     })
     req.addEventListener("error", reject)
@@ -759,7 +759,16 @@ async function respond<T extends Action["collection"]>(action: Action<T>) {
   })
   const url = actionToUrl({...action, ids: versionedIds})
   const cachedResponse = await caches.match(url)
-  if(cachedResponse) {
+  const idsContainLocal = versionedIds.some(v => {
+    try {
+      let ver = new SemVer(v.slice(1).split("/").at(1)?.split("@").at(1)!)
+      return ver.prerelease.includes("local")
+    }
+    catch {
+      return false
+    }
+  })
+  if(cachedResponse && !idsContainLocal) {
     return cachedResponse
   }
   const cache = await caches.open("ww/v1")
