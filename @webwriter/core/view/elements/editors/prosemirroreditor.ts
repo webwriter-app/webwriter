@@ -481,7 +481,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
         return this.createScriptInline(await (await fetch(url)).text())
       }))
       const styles = styleUrls.map(url => this.createStyleLink(url))
-      const localStyles = await Promise.all(localScriptUrls.map(async url => {
+      const localStyles = await Promise.all(localStyleUrls.map(async url => {
         return this.createStyleInline(await (await fetch(url)).text())
       }))
 
