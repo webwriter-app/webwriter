@@ -180,7 +180,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
   }
 
   get dom() {
-    return this.view.dom
+    return this.view?.dom
   }
 
   get dragging() {
