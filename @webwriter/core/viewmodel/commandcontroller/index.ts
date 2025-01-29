@@ -1303,7 +1303,7 @@ export class CommandController implements ReactiveController {
         shortcut: "alt+shift+m",
         tags: ["mark", "advanced"],
       }),
-            strong: new MarkCommand(this.host, {
+      strong: new MarkCommand(this.host, {
         id: "strong",
         label: () => msg("Strong Importance"),
         description: () => msg("Mark the selection as strongly important"),
@@ -2007,7 +2007,7 @@ export class CommandController implements ReactiveController {
             host.activeEditor?.editingStatus !== "cutting"
               ? "cutting"
               : undefined),
-        disabled: host => host.activeEditor!.isGapSelected,
+        disabled: host =>  host.activeEditor!.selection.empty,
         category: "editor",
         tags: ["element"],
         fixedShortcut: true,
@@ -2045,7 +2045,7 @@ export class CommandController implements ReactiveController {
             host.activeEditor?.editingStatus !== "deleting"
               ? "deleting"
               : undefined),
-        disabled: host => host.activeEditor!.isGapSelected,
+        disabled: host =>  host.activeEditor!.selection.empty,
         category: "editor",
         tags: ["element"],
         fixedShortcut: true,
