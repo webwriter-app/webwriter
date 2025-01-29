@@ -619,9 +619,9 @@ export class NodeCommand<
   run(options?: any, e?: Event) {
     const { exec, editorState } = this.host.activeEditor ?? { exec: () => {} };
     this.host.activeEditor!.editingStatus = undefined;
-    return super.run(options, e, (host, attrs) =>
+    return super.run(options, e, this.spec.run ?? ((host, attrs) =>
       exec(wrapSelection(this.id, { ...attrs, ...this.spec.defaultAttrs }))
-    );
+    ));
   }
   get active() {
     return this.spec.active
