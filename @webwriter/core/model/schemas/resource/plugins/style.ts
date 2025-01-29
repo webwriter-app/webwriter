@@ -41,7 +41,7 @@ export function parseStyleAttrs(dom: HTMLElement | string) {
 }
 
 export function getStyleValues(state: EditorState, view: EditorView & {window: Window}, key: string) {
-  if(!view || view.isDestroyed) {
+  if(!view || view.isDestroyed || !view.dom) {
     return []
   }
   const values = new Set<string>()
