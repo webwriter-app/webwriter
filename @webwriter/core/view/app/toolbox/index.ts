@@ -1283,6 +1283,22 @@ export class  Toolbox extends LitElement {
     </div>`
   }
 
+  SVGToolbox(el: SVGSVGElement & HTMLElement) {
+    return html`<div class="svg-toolbox">
+      <ww-urlfileinput size="small" id="svg-src" placeholder=${msg("SVG file")} mediaType="image/svg+xml" @sl-change=${async (e: any) => el.outerHTML = await e.target.getValueAsText()}>
+        <span slot="label">
+          ${msg("Source")}
+          <sl-tooltip>
+            <sl-icon-button name="info-circle"></sl-icon-button>
+            <div class="embeddings-explainer" slot="content">
+              <p>${msg("WebWriter can embed SVG directly in the document.")}</p>
+            </div>
+          </sl-tooltip>
+        </span>
+      </ww-urlfileinput>
+    </div>`
+  }
+
 
 
   ActiveInlineFields = () => {
@@ -1555,6 +1571,9 @@ export class  Toolbox extends LitElement {
     }
     else if(["math"].includes(tag)) {
       return this.MathToolbox(el)
+    }
+else if(["svg"].includes(tag)) {
+      return this.SVGToolbox(el as SVGSVGElement & HTMLElement)
     }
   }
 
