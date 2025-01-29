@@ -1160,7 +1160,7 @@ export class Palette extends LitElement {
       const firstChangedId = ids.find((id, i) => prevIds[i] !== id)?.split("!")[0]
       if(firstChangedId && isAdd) {
         const el = this.shadowRoot!.querySelector("#" + CSS.escape(firstChangedId))! as HTMLElement
-        el.scrollIntoView({behavior: "smooth", block: "center", inline: "center"})
+        el?.scrollIntoView({behavior: "smooth", block: "center", inline: "center"})
         return
         const elTop = el.getBoundingClientRect().top
         const elLeft = el.getBoundingClientRect().left
