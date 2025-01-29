@@ -484,11 +484,15 @@ async function postSnippet(snippet: Snippet) {
   await new Promise(r => db.addEventListener("success", r))
   const tx = db.result.transaction("snippets", "readwrite")
   const store = tx.objectStore("snippets")
+  delete (snippet as any).id
   const req = store.add(snippet)
-  const id: string = await new Promise(r => req.addEventListener("success", async () => {
+  const id: string = await new Promise((resolve, reject) => {
+    req.addEventListener("success", async () => {
     db.result.close()
-    r(String(req.result))
-  }))
+      resolve(String(req.result))
+    })
+    req.addEventListener("error", reject)
+  })
   const url = actionToUrl({collection: "snippets", ids: [id], args: {}})
   return new Response(null, {headers: {"Content-Location": url.href}, status: 201})
 }
@@ -606,7 +610,6 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
     const name = key.split("/").slice(0, 2).join("/")
     map.set(!name.slice(1).includes("@")? key.replace(name, name + "@" + resolutions[name]): key, value)
   }
-  console.log(localIds)
   if(localIds.length) {
     const localGenerator = new Generator({cache: false, inputMap: map, customProviders: {filesystem}, defaultProvider: "filesystem", resolutions})
     let allLinkedLocal = false
