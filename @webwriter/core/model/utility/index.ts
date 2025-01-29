@@ -47,6 +47,15 @@ export function camelCaseToSpacedCase(str: string, capitalize=true, separator=" 
 }
 
 /**
+ * Converts a kebab cased string ("my-foo") to a camel cased string ("myFoo").
+ * @param str A kebap cased string
+ */
+export function kebapCaseToCamelCase(str: string) {
+  const parts = str.split("-")
+  return parts[0] + parts.slice(1).map(p => capitalizeWord(p)).join("")
+}
+
+/**
  * Returns the unscoped name of the given npm package name. ("@foo/bar" -> "bar")
  * @param name Scoped package name.
  */
