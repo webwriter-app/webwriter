@@ -48,12 +48,12 @@ export function createEditorStateConfig(packages: Package[]) {
     formPlugin(),
     modalPlugin(),
     stylePlugin(),
-    tablePlugin(),
     mathPlugin(),
     phrasingPlugin(),
     svgPlugin(),
     // deprecatedPlugin(),
     widgetPlugin(packages),
+    tablePlugin(),
     basePlugin(),
     grammarPlugin(),
   ]);
@@ -100,7 +100,7 @@ const ResourceSchema = z.object({
         value: z.any(),
         schema: z.instanceof(Schema),
       })
-      .transform(async ({ value, schema }) => {
+      .transform(async ({ value, schema }) => { // @ts-ignore
         for (const parse of Object.values(marshal).map(({ parse }) => parse)) {
           try {
             return await parse(value, schema);

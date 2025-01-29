@@ -859,6 +859,44 @@ export class  Toolbox extends LitElement {
         width: 100%;
       }
 
+      .table-toolbox {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr;
+        grid-template-rows: 1fr;
+        border: 2px solid var(--sl-color-primary-800);
+        border-radius: var(--sl-border-radius-medium);
+        padding: 2px;
+        color: var(--sl-color-primary-800);
+        position: relative;
+        margin-top: 0.5em;
+
+        & .table-label {
+          position: absolute;
+          top: -0.8em;
+          left: 3px;
+          background: #f4f4f5;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 0.75rem;
+          padding: 0 3px;
+          gap: 3px;
+
+          & sl-icon {
+            width: 1.1em;
+            height: 1.1em;
+          }
+        }
+      }
+
+      .style-picker:not([data-active]) {
+        display: none;
+      }
+
+      .pickers-popup:not([data-active]) {
+        display: none;
+      }
+
       /*
       @media only screen and (min-width: 1830px) {
         :host {
@@ -1023,6 +1061,25 @@ export class  Toolbox extends LitElement {
         <ww-button variant="icon" ${spreadProps(clearFormattingCommand.toObject())} @click=${() => clearFormattingCommand.run()}></ww-button>
         <span>${msg("Text")}</span>
       </span>
+    </div>`
+  }
+
+  TableToolbox = (el: HTMLTableElement) => {
+    const commands = this.app.commands.tableCommands.filter(cmd => !cmd.tags?.includes("advanced"))
+    return html`<div class="table-toolbox">
+      <span class="table-label">
+        <sl-icon name="table"></sl-icon>
+        <span>${msg("Table")}</span>
+      </span>
+      ${commands.map(v => html`<ww-button
+          ${spreadProps(v.toObject())}
+          tabindex=${0}
+          name=${v.icon ?? "circle-fill"}
+          @click=${() => v.run()}
+          variant="icon"
+        ></ww-button>
+        `
+      )}
     </div>`
   }
 
@@ -1247,8 +1304,38 @@ export class  Toolbox extends LitElement {
     let el = this.activeElement
     const ancestors = [] as HTMLElement[]
     while(el) {
-      const tagsToExclude = ["HTML", "BODY", "BR", "WBR", ...this.app.commands.markCommands.map(cmd => cmd.id)].map(k => k.toUpperCase())
-      if(!(tagsToExclude.includes(el.tagName)) && !(el.classList.contains("ProseMirror-widget"))) {
+      const tagsToExclude = [
+        "html",
+        "br",
+        "wbr",
+        ...this.app.commands.markCommands.map(cmd => cmd.id),
+        ...MATHML_TAGS
+      ]
+      if(!(tagsToExclude.includes(el.tagName.toLowerCase())) && !(el.classList.contains("ProseMirror-widget"))) {
+        ancestors.unshift(el)
+      }
+      el = el.parentElement
+    }
+    return ancestors
+  }
+
+  get activeElementPathSimple() {
+    let el = this.activeElement
+    const ancestors = [] as HTMLElement[]
+    while(el) {
+      const tagsToExclude = [
+        "html",
+        "br",
+        "wbr",
+        "td",
+        "tr",
+        "thead",
+        "tbody",
+        "tfoot",
+        ...this.app.commands.markCommands.map(cmd => cmd.id),
+        ...MATHML_TAGS
+      ]
+      if(!(tagsToExclude.includes(el.tagName.toLowerCase())) && !(el.classList.contains("ProseMirror-widget"))) {
         ancestors.unshift(el)
       }
       el = el.parentElement
@@ -1258,25 +1345,35 @@ export class  Toolbox extends LitElement {
 
   get activeElementSiblings() {
     let el = this.activeElement
-    const tagsToExclude = ["HTML", "BODY", "BR", "WBR", ...this.app.commands.markCommands.map(cmd => cmd.id)].map(k => k.toUpperCase())
-    return Array.from(el?.parentElement?.children ?? [])
-      .filter(child => !tagsToExclude.includes(child.tagName) && child !== el)
+    return this.filterChildren(el?.parentElement?.children ?? [], el?.tagName.toLowerCase())
   }
 
   isCustomElement(el: Element) {
     return !!el.ownerDocument.defaultView?.customElements.get(el.tagName.toLowerCase())
   }
 
+  private filterChildren(children: HTMLCollection | HTMLElement[], tag?: string) {
+    if(tag && ["svg", "table", "math"].includes(tag)) {
+      return []
+    }
+    return (Array.isArray(children)? children: Array.from(children))
+      .filter(child => !child.classList.contains("ProseMirror-trailingBreak") && !child.classList.contains("ProseMirror-widget"))
+      .filter(child => ![
+        "thead",
+        "tbody",
+        "tfoot",
+        ...MATHML_TAGS,
+        ...this.app.commands.markCommands.map(cmd => cmd.id),
+      ].includes(child.tagName.toLowerCase()))
+  }
 
-  ElementBreadcrumbItem(el: Element, isLast=false, menuItem=false): TemplateResult {
+  ElementBreadcrumbItem(el: Element, isLast=false, menuItem=false, hideSeparator=false): TemplateResult {
     const elementName = el.tagName.toLowerCase()
     const isCustomElement = this.isCustomElement(el)
     const isCommandEl = elementName in this.app.commands.commands
-    const children = Array.from(el.children)
-      .filter(child => !child.classList.contains("ProseMirror-trailingBreak"))
-      .filter(child => !["br", "wbr", "a", "abbr", "b", "bdi", "bdo", "cite", "code", "data", "del", "dfn", "em", "i", "ins", "kbd", "q", "ruby", "s", "samp", "small", "span", "strong", "sub", "sup", "time", "u", "var"].includes(child.tagName.toLowerCase()))
+    const children = this.filterChildren(el.children, el?.tagName.toLowerCase())
 
-    const separator = menuItem? null: html`<sl-dropdown slot="separator" class="children-dropdown" ?data-empty=${children.length === 0}>
+    const separator = menuItem || hideSeparator? null: html`<sl-dropdown slot="separator" class="children-dropdown" ?data-empty=${children.length === 0}>
       <ww-button
         class="separator-button"
         variant="icon"
@@ -1414,6 +1511,10 @@ export class  Toolbox extends LitElement {
     }*/
     else if(["ul", "ol"].includes(tag)) {
       return this.ListToolbox(el as HTMLOListElement | HTMLUListElement)
+    }
+
+    else if(tag === "table") {
+      return this.TableToolbox(el as HTMLTableElement)
     }
     else if(this.app.store.packages.widgetTagNames.includes(tag)) {
       return html`<ww-widget-options .widget=${el} .editorState=${this.editorState} @ww-focus-editor=${() => this.app.activeEditor?.focus()}></ww-widget-options>`

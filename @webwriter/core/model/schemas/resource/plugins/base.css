@@ -305,7 +305,7 @@ html:is(.ww-key-ctrl, .ww-key-meta) body * {
     .ww-cutting,
     .ww-deleting,
     html:is(.ww-key-ctrl, .ww-key-meta) body *
-  )::before {
+  ):not(html):not(tr)::before {
   content: "";
   position: absolute;
   right: -20px;
@@ -470,27 +470,69 @@ body > .ww-widget::after {
   transition: background-color 0.1s ease;
 }
 
-body > p:first-child {
-  margin-top: 0;
+body > .ProseMirror-gapcursor:first-child {
+  margin-bottom: 0;
 }
 
-table .ProseMirror-gapcursor {
-  border: 2px dashed var(--sl-color-primary-600);
-  display: table-cell;
-  min-width: 1em;
-  padding: 3px 5px;
-  vertical-align: top;
-  box-sizing: border-box;
-  position: relative;
-  height: 100%;
+table, tbody, tr {
+  overflow: visible !important;
 }
 
-table .ProseMirror-gapcursor::after {
-  border-top: none;
-  border-left: 1px solid black;
-  width: 2px;
-  height: 1em;
-  position: static;
+table tr {
+  overflow: visible;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0.0;
+}
+}
+table :is(thead, tbody, tfoot) > tr:has(+ .ProseMirror-gapcursor) {
+  anchor-name: --table-row;
+} 
+
+table :is(thead, tbody, tfoot) > .ProseMirror-gapcursor {
+  display: inline;
+  position: absolute;
+  top: anchor(--table-row top);
+  right: anchor(--table-row right);
+  height: -1px;
+  position-anchor: --table-row;
+
+  &::after {
+    display: block;
+    content: "";
+    height: calc(1lh + 6px);
+    width: 2px;
+    background: currentColor;
+    z-index: 10;
+    animation: blink 1s step-end 0s infinite;
+    clip-path: unset;
+    margin-left: 2px;
+    margin-top: 2px;
+}
+}
+
+.ProseMirror-gapcursor + tr td {
+  border-top: none !important;
+}
+
+table .selectedCell {
+  background: var(--sl-color-primary-200) !important;
+}
+
+tr {
+  container-type: inline-size;
+  container-name: table-row;
+}
+
+td:is(:empty, :has(.ProseMirror-trailingBreak)) {
+  height: 1lh;
+  aspect-ratio: 1;
+}
+
+thead, tbody, tfoot {
+  border-left: none !important;
 }
 
 .ProseMirror ::selection:not(.ProseMirror-selectednode) {

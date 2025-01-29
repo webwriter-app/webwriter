@@ -7,6 +7,7 @@ import hotkeys from "hotkeys-js";
 import { CSSPropertySpecs, RootStore, getActiveMarks, getStyleValues, setDocAttributes, toggleOrUpdateMark, wrapSelection } from "#model";
 import { App } from "#view";
 import { groupBy } from "#utility";
+import { addColumnAfter, addColumnBefore, addRowAfter, addRowBefore, deleteColumn, deleteRow, removeRow } from "@massifrg/prosemirror-tables-sections";
 
 export const WINDOW_OPTIONS = {
   fileDropEnabled: false,
@@ -1104,6 +1105,14 @@ export class CommandController implements ReactiveController {
         shortcut: "alt+shift+v",
         tags: ["mark", "advanced"],
       }),
+      span: new MarkCommand(this.host, {
+        id: "span",
+        label: () => msg("Span"),
+        description: () => msg("Mark the selection as a span"),
+        icon: "rectangle",
+        shortcut: "alt+shift+x",
+        tags: ["mark", "advanced"],
+      }),
       p: new NodeCommand(this.host, {
         id: "p",
         label: () => msg("Paragraph"),
@@ -1201,7 +1210,7 @@ export class CommandController implements ReactiveController {
         description: () => msg("Insert a list (ordered)"),
         group: "list",
         tags: ["node", "container"],
-      }),
+      }),/*
       dl: new NodeCommand(this.host, {
         id: "dl",
         label: () => msg("Description List"),
@@ -1210,7 +1219,7 @@ export class CommandController implements ReactiveController {
           msg("Insert a description list (glossary, term list)"),
         group: "list",
         tags: ["node", "container"],
-      }),
+      }),*/
       details: new NodeCommand(this.host, {
         id: "details",
         label: () => msg("Details"),
@@ -1224,7 +1233,7 @@ export class CommandController implements ReactiveController {
         label: () => msg("Summary"),
         icon: "circle-letter-s",
         description: () => msg("Insert summary"),
-      }),
+      }),/*
       button: new NodeCommand(this.host, {
         id: "button",
         label: () => msg("Button"),
@@ -1316,19 +1325,20 @@ export class CommandController implements ReactiveController {
         group: "interactive",
         description: () => msg("Insert a progress indicator"),
         tags: ["node", "container"],
-      }),
+      }),*/
       table: new NodeCommand(this.host, {
         id: "table",
         label: () => msg("Table"),
         icon: "table",
         group: "table",
         description: () => msg("Insert a table"),
+        run: host => host.activeEditor!.exec(wrapSelection(["tbody", "td"])),
         tags: ["node", "container"],
       }),
       caption: new NodeCommand(this.host, {
         id: "caption",
         label: () => msg("Table Caption"),
-        icon: "table-alias",
+        icon: "table-options",
         description: () => msg("Insert a table caption"),
       }),
       col: new NodeCommand(this.host, {
@@ -1346,7 +1356,7 @@ export class CommandController implements ReactiveController {
       tbody: new NodeCommand(this.host, {
         id: "tbody",
         label: () => msg("Table Body"),
-        icon: "table",
+        icon: "table-alias",
         description: () => msg("Insert a table body"),
       }),
       td: new NodeCommand(this.host, {
@@ -1358,7 +1368,7 @@ export class CommandController implements ReactiveController {
       tfoot: new NodeCommand(this.host, {
         id: "tfoot",
         label: () => msg("Table Footer"),
-        icon: "table-row",
+        icon: "table-alias",
         description: () => msg("Insert a table footer"),
       }),
       th: new NodeCommand(this.host, {
@@ -1370,7 +1380,7 @@ export class CommandController implements ReactiveController {
       thead: new NodeCommand(this.host, {
         id: "thead",
         label: () => msg("Table Head"),
-        icon: "table-options",
+        icon: "table-alias",
         description: () => msg("Insert a table head"),
       }),
       tr: new NodeCommand(this.host, {
@@ -1616,7 +1626,7 @@ export class CommandController implements ReactiveController {
         label: () => msg("NoScript"),
         icon: "code-off",
         description: () => msg("Insert a NoScript"),
-      }),
+      }),/*
       dialog: new NodeCommand(this.host, {
         id: "dialog",
         label: () => msg("Dialog"),
@@ -1624,7 +1634,7 @@ export class CommandController implements ReactiveController {
         group: "interactive",
         description: () => msg("Insert a dialog"),
         tags: ["node", "container"],
-      }) /*
+      }) */ /*
       canvas: new NodeCommand(this.host, {
         id: "br",
         label: () => msg("Canvas"),
@@ -1632,7 +1642,7 @@ export class CommandController implements ReactiveController {
         group: "canvas",
         description: () => msg("Insert a canvas"),
         tags: ["node", "container"]
-      }),*/,
+      }),*/
       fontSize: new MarkCommand(this.host, {
         id: "fontSize",
         tags: [],
