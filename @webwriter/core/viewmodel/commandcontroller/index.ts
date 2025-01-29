@@ -1800,8 +1800,8 @@ export class CommandController implements ReactiveController {
         description: () => msg("Insert embed"),
         group: "frame"
       }),*/,
-      math_inline: new NodeCommand(this.host, {
-        id: "math_inline",
+      math: new NodeCommand(this.host, {
+        id: "math",
         label: () => msg("Math Formula"),
         icon: "math",
         group: "math",
