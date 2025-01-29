@@ -1,3 +1,5 @@
+import { chainCommands } from "prosemirror-commands"
+import { Command, EditorState } from "prosemirror-state"
 import type { ZodSchema } from "zod"
 
 /**
@@ -483,3 +485,7 @@ export const SpacedListAttributeConverter = {
   toAttribute: (prop: string[]) => prop.length? prop.join(" "): undefined
 }
 
+/** If condition dependent on editor state returns true, chain the commands - else, do nothing. */
+export function chainCommandsIf(condition: (state: EditorState) => boolean, ...commands: Command[]): Command {
+  return (s, d, v) => condition(s) && chainCommands(...commands)(s, d, v)
+}
