@@ -1,3 +1,5 @@
+import { chainCommands } from "prosemirror-commands"
+import { Command, EditorState } from "prosemirror-state"
 import type { ZodSchema } from "zod"
 
 /**
@@ -44,6 +46,15 @@ export function capitalizeWord(s: string) {
 export function camelCaseToSpacedCase(str: string, capitalize=true, separator=" ") {
   const spacedStr = str.replace(/([A-Z][a-z]|[0-9])+/g, separator + "$&")
   return capitalize? spacedStr.replace(/^[a-z]/g, match => match.toUpperCase()): spacedStr.toLowerCase()
+}
+
+/**
+ * Converts a kebab cased string ("my-foo") to a camel cased string ("myFoo").
+ * @param str A kebap cased string
+ */
+export function kebapCaseToCamelCase(str: string) {
+  const parts = str.split("-")
+  return parts[0] + parts.slice(1).map(p => capitalizeWord(p)).join("")
 }
 
 /**
@@ -466,4 +477,15 @@ export function formatHTMLToPlainText(html: string): string {
   return plainText
     .replace(/\n\s*\n/g, "\n\n") // Replace multiple line breaks with a single double line break
     .trim(); // Trim leading and trailing whitespace
+}
+
+/** Lit attribute converter for whitespace-separated lists */
+export const SpacedListAttributeConverter = {
+  fromAttribute: (attr: string) => attr?.split(/\s+/),
+  toAttribute: (prop: string[]) => prop.length? prop.join(" "): undefined
+}
+
+/** If condition dependent on editor state returns true, chain the commands - else, do nothing. */
+export function chainCommandsIf(condition: (state: EditorState) => boolean, ...commands: Command[]): Command {
+  return (s, d, v) => condition(s) && chainCommands(...commands)(s, d, v)
 }

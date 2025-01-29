@@ -72,6 +72,7 @@ export class NotificationController implements ReactiveController {
     "Ignored scripts due to flag.",
     "The main 'lit-element' module entrypoint is deprecated.",
     "Element sl-button scheduled an update (generally because a property was set) after an update completed, causing a new update to be scheduled. This is inefficient and should be avoided unless the next update can only be scheduled as a side effect of the previous update. See https://lit.dev/msg/change-in-update for more information.",
+	"Element sl-icon scheduled an update",
 	"[TAURI] Couldn't find callback id",
   "Element ww-share-form scheduled an update",
   "Element sl-tree-item scheduled an update"

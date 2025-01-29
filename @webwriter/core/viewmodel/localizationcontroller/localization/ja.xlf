@@ -81,10 +81,6 @@
         <source>Opens the settings</source>
         <target>設定を開く</target>
       </trans-unit>
-      <trans-unit id="s9d8b8aa2b404c2c8">
-        <source>Settings</source>
-        <target>設定</target>
-      </trans-unit>
       <trans-unit id="s1f7698c061c208c9">
         <source>Open</source>
         <target>オープン</target>
@@ -433,98 +429,6 @@
         <source>Insert summary</source>
         <target>要約を挿入</target>
       </trans-unit>
-      <trans-unit id="s0312976fe9da5951">
-        <source>Button</source>
-        <target>ボタン</target>
-      </trans-unit>
-      <trans-unit id="sd60c9bbc51375635">
-        <source>Insert a button</source>
-        <target>ボタンを挿入する</target>
-      </trans-unit>
-      <trans-unit id="sdb1595f5c742dfbb">
-        <source>Input</source>
-        <target>インプット</target>
-      </trans-unit>
-      <trans-unit id="s29b24c06315e9343">
-        <source>Insert an input</source>
-        <target>入力を挿入する</target>
-      </trans-unit>
-      <trans-unit id="sfc63e31ac7c956ed">
-        <source>Select</source>
-        <target>選択</target>
-      </trans-unit>
-      <trans-unit id="s531056f039febd39">
-        <source>Insert a select</source>
-        <target>セレクトの挿入</target>
-      </trans-unit>
-      <trans-unit id="sfc00292e778b67e2">
-        <source>Meter</source>
-        <target>メーター</target>
-      </trans-unit>
-      <trans-unit id="s52e0bdc3ee304436">
-        <source>Insert a meter</source>
-        <target>メーターを挿入する</target>
-      </trans-unit>
-      <trans-unit id="s8c7f51cb067644c7">
-        <source>Data List</source>
-        <target>データ一覧</target>
-      </trans-unit>
-      <trans-unit id="sfa59c7777e2a0eeb">
-        <source>Insert a data list</source>
-        <target>データリストを挿入する</target>
-      </trans-unit>
-      <trans-unit id="s7fcb35d23be1e643">
-        <source>Field Set</source>
-        <target>フィールドセット</target>
-      </trans-unit>
-      <trans-unit id="s2d986d31f8d67357">
-        <source>Insert a field set</source>
-        <target>フィールドセットの挿入</target>
-      </trans-unit>
-      <trans-unit id="s5590dbf7e425789d">
-        <source>Label</source>
-        <target>ラベル</target>
-      </trans-unit>
-      <trans-unit id="s21f8a2eaf5a70749">
-        <source>Insert a label</source>
-        <target>ラベルの挿入</target>
-      </trans-unit>
-      <trans-unit id="s4b58c01e2578f5e4">
-        <source>Legend</source>
-        <target>レジェンド</target>
-      </trans-unit>
-      <trans-unit id="s3fd83566dd643d10">
-        <source>Insert a legend</source>
-        <target>凡例の挿入</target>
-      </trans-unit>
-      <trans-unit id="sef75f458d77491af">
-        <source>Option Group</source>
-        <target>オプショングループ</target>
-      </trans-unit>
-      <trans-unit id="sceecdd0bb404bc17">
-        <source>Insert an option group</source>
-        <target>オプショングループを挿入する</target>
-      </trans-unit>
-      <trans-unit id="s4802e47fe2e95134">
-        <source>Option</source>
-        <target>オプション</target>
-      </trans-unit>
-      <trans-unit id="s3cb47df8290fa94c">
-        <source>Insert an option</source>
-        <target>オプションの挿入</target>
-      </trans-unit>
-      <trans-unit id="sfd77270c3f54f664">
-        <source>Output</source>
-        <target>出力</target>
-      </trans-unit>
-      <trans-unit id="se64f418b4e733b6c">
-        <source>Insert an output</source>
-        <target>出力を挿入する</target>
-      </trans-unit>
-      <trans-unit id="s52777d434baeed9b">
-        <source>Insert a progress indicator</source>
-        <target>進捗インジケーターを挿入する</target>
-      </trans-unit>
       <trans-unit id="sa78a67272a4a6f95">
         <source>Math Formula</source>
         <target>数学の公式</target>
@@ -628,14 +532,6 @@
       <trans-unit id="s2d995a37cf5e4995">
         <source>Insert a NoScript</source>
         <target>NoScriptを挿入する</target>
-      </trans-unit>
-      <trans-unit id="sc50d09edf9325339">
-        <source>Dialog</source>
-        <target>ダイアログ</target>
-      </trans-unit>
-      <trans-unit id="sff99962304ac7d25">
-        <source>Insert a dialog</source>
-        <target>ダイアログの挿入</target>
       </trans-unit>
       <trans-unit id="s337a1e9022a8d19f">
         <source>Table</source>
@@ -821,89 +717,9 @@
         <source>Interactivity</source>
         <target>インタラクティブ</target>
       </trans-unit>
-      <trans-unit id="se8bb865aeb8602dc">
-        <source>Set interactivty options for selected elements</source>
-        <target>選択した要素にインタラクティブ・オプションを設定する</target>
-      </trans-unit>
-      <trans-unit id="se25d54a8943385b0">
-        <source>Blending</source>
-        <target>ブレンド</target>
-      </trans-unit>
-      <trans-unit id="sdbdf663c872fb855">
-        <source>Set blending (e.g. opacity) of selected elements</source>
-        <target>選択した要素のブレンド（不透明度など）を設定する</target>
-      </trans-unit>
-      <trans-unit id="s550492e6c28b6628">
-        <source>Display mode</source>
-        <target>表示モード</target>
-      </trans-unit>
-      <trans-unit id="s3c1c59a8fe1ce8af">
-        <source>Set the display mode of the selected elements</source>
-        <target>選択された要素の表示モードを設定する</target>
-      </trans-unit>
-      <trans-unit id="s0c669387c45c4dc6">
-        <source>Fragmentation</source>
-        <target>フラグメンテーション</target>
-      </trans-unit>
-      <trans-unit id="s87c65faff16a53bd">
-        <source>Set fragmentation (behaviour on page/region/column breaks) of selected elements</source>
-        <target>選択した要素の断片化（ページ/領域/列の区切りでの動作）を設定する</target>
-      </trans-unit>
-      <trans-unit id="sebee375c65c0cd58">
-        <source>Image sizing</source>
-        <target>画像サイズ</target>
-      </trans-unit>
-      <trans-unit id="saaf255f484959835">
-        <source>Set image sizing options of selected elements</source>
-        <target>選択した要素の画像サイズオプションを設定する</target>
-      </trans-unit>
-      <trans-unit id="sea7f9a84b82663b8">
-        <source>Column break</source>
-        <target>コラムブレーク</target>
-      </trans-unit>
-      <trans-unit id="s0898264186c682fa">
-        <source>Apply column layout to selected elements</source>
-        <target>選択した要素にカラムレイアウトを適用する</target>
-      </trans-unit>
-      <trans-unit id="s687416d1ea01d0bb">
-        <source>Overflow behavior</source>
-        <target>オーバーフローの動作</target>
-      </trans-unit>
-      <trans-unit id="sa5c062dc12553bbb">
-        <source>Set overflow behaviour of selected elements</source>
-        <target>選択された要素のオーバーフロー動作を設定する</target>
-      </trans-unit>
-      <trans-unit id="s4a14e0d787c30116">
-        <source>Positioning</source>
-        <target>ポジショニング</target>
-      </trans-unit>
-      <trans-unit id="s19d9b0051c5e3b45">
-        <source>Set positioning of selected elements</source>
-        <target>選択した要素の位置を設定する</target>
-      </trans-unit>
-      <trans-unit id="sa559701e1cdc3331">
-        <source>Shaping</source>
-        <target>シェーピング</target>
-      </trans-unit>
-      <trans-unit id="s2dbeef0cb14e4f4d">
-        <source>Set shape of selected elements</source>
-        <target>選択された要素の形状を設定する</target>
-      </trans-unit>
-      <trans-unit id="s04061a8e12259e3f">
-        <source>2D/3D transform</source>
-        <target>2D/3D変換</target>
-      </trans-unit>
-      <trans-unit id="sab4fb4f4ff5b43e4">
-        <source>Apply 2D or 3D transformations to selected elements</source>
-        <target>選択した要素に2Dまたは3Dの変形を適用する</target>
-      </trans-unit>
       <trans-unit id="sf190149f9d8bbb2a">
         <source>Writing mode</source>
         <target>書き込みモード</target>
-      </trans-unit>
-      <trans-unit id="sdedc76f6a0a2583b">
-        <source>Set writing mode options of selected elements</source>
-        <target>選択した要素の書き込みモードオプションを設定する</target>
       </trans-unit>
       <trans-unit id="s762e5704cc84089d">
         <source>Set other style options of selected elements</source>
@@ -969,10 +785,6 @@
         <source>Keyboard shortcuts</source>
         <target>キーボードショートカット</target>
       </trans-unit>
-      <trans-unit id="s91c5921e7b46d4a6">
-        <source>You have unsaved changes. Are you sure you want to leave and discard them?</source>
-        <target>未保存の変更があります。本当に残して破棄しますか？</target>
-      </trans-unit>
       <trans-unit id="s268ecd1cef45a9a8">
         <source>Are you sure?</source>
         <target>本当か？</target>
@@ -1030,13 +842,17 @@
         <target>キャプチャ</target>
       </trans-unit>
       <trans-unit id="s2b8f50c64be440f7">
-        <source>Select <x id="0" equiv-text="${this.mediaType}"/>...</source>
+        <source>Select 
+          <x id="0" equiv-text="${this.mediaType}"/>...
+        </source>
         <target>選択する 
           <x id="0" equiv-text="${this.mediaType}"/>... 
         </target>
       </trans-unit>
       <trans-unit id="s739544d0c858c633">
-        <source>Or drop <x id="0" equiv-text="${this.mediaType}"/> here</source>
+        <source>Or drop 
+          <x id="0" equiv-text="${this.mediaType}"/> here
+        </source>
         <target>または 
           <x id="0" equiv-text="${this.mediaType}"/> ここに 
         </target>
@@ -1045,37 +861,9 @@
         <source>Pick coordinates</source>
         <target>ピック座標</target>
       </trans-unit>
-      <trans-unit id="sded940efcadd8f10">
-        <source>Save your document</source>
-        <target>文書を保存する</target>
-      </trans-unit>
-      <trans-unit id="s6910ed6dbaba4807">
-        <source>Load a document</source>
-        <target>ドキュメントを読み込む</target>
-      </trans-unit>
       <trans-unit id="s8f533296a536965e">
         <source>Save as...</source>
         <target>名前を付けて保存</target>
-      </trans-unit>
-      <trans-unit id="s1f0e5f8acab2f0d3">
-        <source>Load as...</source>
-        <target>ロード・アズ...</target>
-      </trans-unit>
-      <trans-unit id="sa3c9339de23c1752">
-        <source>Format</source>
-        <target>フォーマット</target>
-      </trans-unit>
-      <trans-unit id="s1cf730f96ac4f6b6">
-        <source>On...</source>
-        <target>オン...</target>
-      </trans-unit>
-      <trans-unit id="s13388f2a0641c5a9">
-        <source>From...</source>
-        <target>From...</target>
-      </trans-unit>
-      <trans-unit id="s61e136c0658e27d5">
-        <source>Protocol</source>
-        <target>プロトコル</target>
       </trans-unit>
       <trans-unit id="see2fcaedf9743ec6">
         <source>Location</source>
@@ -1084,10 +872,6 @@
       <trans-unit id="s2ceb11be2290bb1b">
         <source>Cancel</source>
         <target>キャンセル</target>
-      </trans-unit>
-      <trans-unit id="s4f20edb48a6287c9">
-        <source>Load</source>
-        <target>負荷</target>
       </trans-unit>
       <trans-unit id="s851a7deea5984646">
         <source>License as Creative Commons OER?</source>
@@ -1134,7 +918,10 @@
         <target>このキーワードはウィジェットに必要です。</target>
       </trans-unit>
       <trans-unit id="h64cd12550420f6f1">
-        <source>Generate a <x id="0" equiv-text="&lt;code&gt;"/>LICENSE<x id="1" equiv-text="&lt;/code&gt;"/> file</source>
+        <source>Generate a 
+          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
+          <x id="1" equiv-text="&lt;/code&gt;"/> file
+        </source>
         <target>ライセンス 
           <x id="0" equiv-text="&lt;code&gt;"/>ライセンス 
           <x id="1" equiv-text="&lt;/code&gt;"/> ファイル 
@@ -1156,31 +943,6 @@
         <source>Discard and cancel</source>
         <target>破棄してキャンセルする</target>
       </trans-unit>
-      <trans-unit id="sae3629911a62147f">
-        <source>JS Size:</source>
-        <target>JSサイズ：</target>
-      </trans-unit>
-      <trans-unit id="s1357c9b016a9a631">
-        <source>CSS Size:</source>
-        <target>CSSサイズ：</target>
-      </trans-unit>
-      <trans-unit id="sf1ed4eed4de3012e">
-        <source>View error</source>
-        <target>エラーを表示</target>
-      </trans-unit>
-      <trans-unit id="h75b0cad9d9e80648">
-        <source>Stop watching files at <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/>.</source>
-        <target>でファイルの監視を停止する。 
-          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/>. 
-        </target>
-      </trans-unit>
-      <trans-unit id="h0a75a995d1672be1">
-        <source>Start watching files at <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/> and reload the package if a file is changed.</source>
-        <target>でファイルの監視を開始し 
-          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/>
-          でファイルの監視を開始し、ファイルが変更されたらパッケージをリロードする。 
-        </target>
-      </trans-unit>
       <trans-unit id="s8b0432eecbd8b034">
         <source>Update</source>
         <target>更新</target>
@@ -1193,85 +955,9 @@
         <source>Install</source>
         <target>インストール</target>
       </trans-unit>
-      <trans-unit id="sda174a4c93e84ce6">
-        <source>Error importing</source>
-        <target>インポート時のエラー</target>
-      </trans-unit>
-      <trans-unit id="s8cd9849cd37d7753">
-        <source>Either select an existing package directory to install or an empty directory to create a new package.</source>
-        <target>既存のパッケージ・ディレクトリを選択してインストールするか、空のディレクトリを選択して新しいパッケージを作成します。</target>
-      </trans-unit>
-      <trans-unit id="sdb311229f4b5eb3b">
-        <source>Import local package</source>
-        <target>ローカルパッケージのインポート</target>
-      </trans-unit>
-      <trans-unit id="s65f6740a45cea0aa">
-        <source>Create local package</source>
-        <target>ローカルパッケージの作成</target>
-      </trans-unit>
-      <trans-unit id="s12aac40ecd87dc12">
-        <source>View local application directory</source>
-        <target>ローカル・アプリケーション・ディレクトリの表示</target>
-      </trans-unit>
-      <trans-unit id="s815a7e524eda76aa">
-        <source>Reset local application directory</source>
-        <target>ローカル・アプリケーション・ディレクトリのリセット</target>
-      </trans-unit>
-      <trans-unit id="s3a6538ae341633f6">
-        <source>Edit local package</source>
-        <target>ローカルパッケージの編集</target>
-      </trans-unit>
-      <trans-unit id="s9bf0b9da3f509795">
-        <source>Widget Package</source>
-        <target>ウィジェット・パッケージ</target>
-      </trans-unit>
-      <trans-unit id="s8a7fa8a052138aef">
-        <source>Warning:</source>
-        <target>警告だ：</target>
-      </trans-unit>
-      <trans-unit id="sad288b082f4d3521">
-        <source>You seem to be offline. While offline, you can't manage available or outdated packages.</source>
-        <target>オフラインのようです。オフラインの間は、利用可能なパッケージや古いパッケージを管理できません。</target>
-      </trans-unit>
-      <trans-unit id="sed8ec5e3c64fa25d">
-        <source>Total</source>
-        <target>合計</target>
-      </trans-unit>
-      <trans-unit id="s8cfdd110c30d604d">
-        <source>No packages installed or available</source>
-        <target>パッケージがインストールされていない、または利用できない</target>
-      </trans-unit>
-      <trans-unit id="s10e80d4c01c3cc21">
-        <source>Installed</source>
-        <target>設置済み</target>
-      </trans-unit>
-      <trans-unit id="s33b62827f665c461">
-        <source>No packages installed</source>
-        <target>パッケージがインストールされていない</target>
-      </trans-unit>
-      <trans-unit id="sd158a5fc0f062f18">
-        <source>Available</source>
-        <target>利用可能</target>
-      </trans-unit>
-      <trans-unit id="se432a7c0c144d458">
-        <source>No packages available</source>
-        <target>パッケージはありません</target>
-      </trans-unit>
-      <trans-unit id="s76cc1c6d9fab3a2d">
-        <source>Outdated</source>
-        <target>時代遅れ</target>
-      </trans-unit>
-      <trans-unit id="sf9559106e88ee46d">
-        <source>No packages outdated</source>
-        <target>古いパッケージはない</target>
-      </trans-unit>
       <trans-unit id="se9b1fec72ffd8f48">
         <source>Local</source>
         <target>ローカル</target>
-      </trans-unit>
-      <trans-unit id="sc7691fecb3373a42">
-        <source>No local packages</source>
-        <target>現地パッケージなし</target>
       </trans-unit>
       <trans-unit id="keyCommand">
         <source>⌘ Command/Win</source>
@@ -1453,10 +1139,6 @@
         <source>URL</source>
         <target>URL</target>
       </trans-unit>
-      <trans-unit id="s506b6a19d12f414c">
-        <source>Key</source>
-        <target>キー</target>
-      </trans-unit>
       <trans-unit id="sd3f402df8619ddcd">
         <source>This information about you is automatically added to new documents. You can change this for each document in the metadata editor.</source>
         <target>このあなたに関する情報は、新しいドキュメントに自動的に追加されます。この情報はメタデータエディタで各ドキュメントごとに変更することができます。</target>
@@ -1521,10 +1203,6 @@
       <trans-unit id="sf1e79171c4856543">
         <source>Are you sure? This action can't be reversed, all your settings will be deleted and reset.</source>
         <target>よろしいですか？この操作は元に戻せません。すべての設定が削除され、リセットされます。</target>
-      </trans-unit>
-      <trans-unit id="se1b03a74b09ba7f0">
-        <source>App Folder</source>
-        <target>アプリフォルダ</target>
       </trans-unit>
       <trans-unit id="s78789724e789221c">
         <source>Size</source>
@@ -1634,10 +1312,6 @@
         <source>Mixed Content</source>
         <target>ミックスコンテンツ</target>
       </trans-unit>
-      <trans-unit id="s651f3a92741d9520">
-        <source>Everything</source>
-        <target>すべて</target>
-      </trans-unit>
       <trans-unit id="sddc49047f66a64ab">
         <source>No description provided</source>
         <target>説明なし</target>
@@ -1681,10 +1355,6 @@
       <trans-unit id="s35aeaff1425bca9e">
         <source>WebWriter does not support media of type </source>
         <target>WebWriter は、以下のタイプのメディアをサポートしていません。 </target>
-      </trans-unit>
-      <trans-unit id="sb199b34dca0a4cfc">
-        <source>Enter content here...</source>
-        <target>ここにコンテンツを入力...</target>
       </trans-unit>
       <trans-unit id="s99f110d27e30b289">
         <source>Title</source>
@@ -1839,14 +1509,18 @@
         <target>接続エラー</target>
       </trans-unit>
       <trans-unit id="sf52d840949a980d1">
-        <source><x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?</source>
+        <source>
+          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
+        </source>
         <target>
           <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           は永久に削除されます。確かですか？ 
         </target>
       </trans-unit>
       <trans-unit id="s9b7cd8860c8fc922">
-        <source><x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?</source>
+        <source>
+          <x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
+        </source>
         <target>
           <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           は上書きされます。本当ですか？ 
@@ -1885,7 +1559,9 @@
         <target>サポートされていないプロパティ型 '${desc.type}' (JSON として処理)</target>
       </trans-unit>
       <trans-unit id="sa00df4e39c72d3b4">
-        <source><x id="0" equiv-text="${desc.widget}"/> is not supported</source>
+        <source>
+          <x id="0" equiv-text="${desc.widget}"/> is not supported
+        </source>
         <target>
           <x id="0" equiv-text="${desc.widget}"/> がサポートされていない 
         </target>
@@ -2018,26 +1694,6 @@
         <source>Insert a thematic break (usually displayed as a horizontal line)</source>
         <target>テーマの区切りを挿入する（通常は水平線で表示される）</target>
       </trans-unit>
-      <trans-unit id="sc43767deea72e9f3">
-        <source>Description List</source>
-        <target>説明リスト</target>
-      </trans-unit>
-      <trans-unit id="saf312eaeec77a802">
-        <source>Insert a description list (glossary, term list)</source>
-        <target>説明リスト（用語集、用語リスト）の挿入</target>
-      </trans-unit>
-      <trans-unit id="s9abadcc828884d7b">
-        <source>Textarea</source>
-        <target>テキストエリア</target>
-      </trans-unit>
-      <trans-unit id="sf4e0e02a5277ef23">
-        <source>Insert an textarea</source>
-        <target>テキストエリアの挿入</target>
-      </trans-unit>
-      <trans-unit id="sa557ae6bee9148a6">
-        <source>Progress</source>
-        <target>進捗状況</target>
-      </trans-unit>
       <trans-unit id="s4f26e7cb7c0a8318">
         <source>Vector Drawing</source>
         <target>ベクタードローイング</target>
@@ -2046,21 +1702,9 @@
         <source>Insert a vector drawing (SVG)</source>
         <target>ベクター図面（SVG）の挿入</target>
       </trans-unit>
-      <trans-unit id="s029504322b353edf">
-        <source>Size &amp; Spacing</source>
-        <target>サイズと間隔</target>
-      </trans-unit>
       <trans-unit id="sa589e1df65dde0ec">
         <source>Set the size, padding, and margins of the selected elements</source>
         <target>選択した要素のサイズ、パディング、マージンを設定する。</target>
-      </trans-unit>
-      <trans-unit id="sfd54046c9e2030c2">
-        <source>Filters &amp; Colors</source>
-        <target>フィルターとカラー</target>
-      </trans-unit>
-      <trans-unit id="s3db5d66ac9e64eae">
-        <source>Apply filters (blur, invert, etc.) to and set colors for the selected elements</source>
-        <target>選択した要素にフィルター（ぼかし、反転など）を適用し、色を設定する。</target>
       </trans-unit>
       <trans-unit id="s3f1e7a3f2b283d3b">
         <source>Margin</source>
@@ -2073,10 +1717,6 @@
       <trans-unit id="s7d8103f6f06f83d6">
         <source>Padding</source>
         <target>パディング</target>
-      </trans-unit>
-      <trans-unit id="s9295089d0ecc35ff">
-        <source>Advanced: Show with versions like 0.x.x in the package manager</source>
-        <target>高度なパッケージマネージャーで0.x.xのようなバージョンを表示する</target>
       </trans-unit>
       <trans-unit id="s71a0549fd71219c9">
         <source>Show unstable packages</source>
@@ -2097,6 +1737,1641 @@
       <trans-unit id="s7aaf0c06e69600f1">
         <source>Error with </source>
         <target>エラー </target>
+      </trans-unit>
+      <trans-unit id="sd5cf95145e4d89ca">
+        <source>Unpin this snippet</source>
+        <target>このスニペットをアンピンする</target>
+      </trans-unit>
+      <trans-unit id="s02106cc2ef0e7578">
+        <source>New pin...</source>
+        <target>新しいピン...</target>
+      </trans-unit>
+      <trans-unit id="s7cb4e55c59663b1c">
+        <source>Company</source>
+        <target>会社概要</target>
+      </trans-unit>
+      <trans-unit id="s5da52af9b083c29a">
+        <source>Model</source>
+        <target>モデル</target>
+      </trans-unit>
+      <trans-unit id="s9781a5bb3fcb26a3">
+        <source>Select a company first</source>
+        <target>まず会社を選ぶ</target>
+      </trans-unit>
+      <trans-unit id="s15d0c0657c1ee08c">
+        <source>API Key</source>
+        <target>APIキー</target>
+      </trans-unit>
+      <trans-unit id="s429bd646f1cf8bc6">
+        <source>Grammar LLM accounts allow you to use the Grammar LLM API to correct grammar in text.</source>
+        <target>Grammar LLMアカウントでは、Grammar LLM APIを使ってテキストの文法を修正することができます。</target>
+      </trans-unit>
+      <trans-unit id="s1351209ef74ee729">
+        <source>Span all columns</source>
+        <target>すべての列をスパンする</target>
+      </trans-unit>
+      <trans-unit id="sf0cab2483f66aa2e">
+        <source>Custom</source>
+        <target>カスタム</target>
+      </trans-unit>
+      <trans-unit id="s951aa3a6439f1271">
+        <source>List marker</source>
+        <target>リストマーカー</target>
+      </trans-unit>
+      <trans-unit id="sc3f09a9b6fa4fbed">
+        <source>Inside</source>
+        <target>内部</target>
+      </trans-unit>
+      <trans-unit id="s2ba5f4d8f3bd7c57">
+        <source>Order</source>
+        <target>オーダー</target>
+      </trans-unit>
+      <trans-unit id="sdb73788b3c975f16">
+        <source>Auto</source>
+        <target>オート</target>
+      </trans-unit>
+      <trans-unit id="sae1c7f13b7c0c47f">
+        <source>Start</source>
+        <target>スタート</target>
+      </trans-unit>
+      <trans-unit id="sb38d497d992ab4a4">
+        <source>Center</source>
+        <target>センター</target>
+      </trans-unit>
+      <trans-unit id="sd8f923198e0c5c6a">
+        <source>End</source>
+        <target>終了</target>
+      </trans-unit>
+      <trans-unit id="s1749014f3f87fa6a">
+        <source>Stretch</source>
+        <target>ストレッチ</target>
+      </trans-unit>
+      <trans-unit id="s602bbd28dae2c60f">
+        <source>Self start</source>
+        <target>セルフ・スタート</target>
+      </trans-unit>
+      <trans-unit id="s6747dbf4ad6063ba">
+        <source>Self end</source>
+        <target>セルフエンド</target>
+      </trans-unit>
+      <trans-unit id="sebbced89e0db2894">
+        <source>First baseline</source>
+        <target>最初のベースライン</target>
+      </trans-unit>
+      <trans-unit id="s0ee28503778e4c0c">
+        <source>Last baseline</source>
+        <target>最終ベースライン</target>
+      </trans-unit>
+      <trans-unit id="s06743b24499f0035">
+        <source>Anchor center</source>
+        <target>アンカーセンター</target>
+      </trans-unit>
+      <trans-unit id="s1245e2cb9f20197e">
+        <source>Align</source>
+        <target>整列</target>
+      </trans-unit>
+      <trans-unit id="sa3b4c01623211544">
+        <source>Force</source>
+        <target>フォース</target>
+      </trans-unit>
+      <trans-unit id="sef24caccbd4645ef">
+        <source>Flex shrink</source>
+        <target>フレックスシュリンク</target>
+      </trans-unit>
+      <trans-unit id="sbfa01f189a68d3e9">
+        <source>Flex grow</source>
+        <target>フレックス・グロース</target>
+      </trans-unit>
+      <trans-unit id="saced41ddda8b2354">
+        <source>Flex basis</source>
+        <target>フレックス・ベース</target>
+      </trans-unit>
+      <trans-unit id="s44cdba92713de38e">
+        <source>Grid area</source>
+        <target>グリッドエリア</target>
+      </trans-unit>
+      <trans-unit id="s05e9759cfd99c48f">
+        <source>Justify</source>
+        <target>ジャスティファイ</target>
+      </trans-unit>
+      <trans-unit id="s0c4593d81f147042">
+        <source>Baseline</source>
+        <target>ベースライン</target>
+      </trans-unit>
+      <trans-unit id="sc980855a000b76ea">
+        <source>Bottom</source>
+        <target>ボトム</target>
+      </trans-unit>
+      <trans-unit id="s4101ada154a1b958">
+        <source>Middle</source>
+        <target>ミドル</target>
+      </trans-unit>
+      <trans-unit id="s6d02dc19e21eb49c">
+        <source>Top</source>
+        <target>トップ</target>
+      </trans-unit>
+      <trans-unit id="s987abd19fac8cf55">
+        <source>Sub</source>
+        <target>サブ</target>
+      </trans-unit>
+      <trans-unit id="s9095f01a80a91594">
+        <source>Super</source>
+        <target>スーパー</target>
+      </trans-unit>
+      <trans-unit id="sf4b537d4cbd8f5fd">
+        <source>Text top</source>
+        <target>テキストトップ</target>
+      </trans-unit>
+      <trans-unit id="s3fe72792941c18f9">
+        <source>Text bottom</source>
+        <target>テキスト下部</target>
+      </trans-unit>
+      <trans-unit id="s27076e66c5d483ba">
+        <source>Vertical align</source>
+        <target>垂直アライメント</target>
+      </trans-unit>
+      <trans-unit id="sd3c65ef5c380c046">
+        <source>Inset</source>
+        <target>インセット</target>
+      </trans-unit>
+      <trans-unit id="sa5c371b4bb75e590">
+        <source>Left</source>
+        <target>左</target>
+      </trans-unit>
+      <trans-unit id="s366991b9c9287765">
+        <source>Right</source>
+        <target>右</target>
+      </trans-unit>
+      <trans-unit id="s9d167ef77aed79b6">
+        <source>Layer</source>
+        <target>レイヤー</target>
+      </trans-unit>
+      <trans-unit id="sda344aacb837387e">
+        <source>Position in container</source>
+        <target>コンテナ内の位置</target>
+      </trans-unit>
+      <trans-unit id="sf34696c526e810b4">
+        <source>Inline</source>
+        <target>インライン</target>
+      </trans-unit>
+      <trans-unit id="s2b2ae20d26f78ac2">
+        <source>Block</source>
+        <target>ブロック</target>
+      </trans-unit>
+      <trans-unit id="sda5b6fa8b771f996">
+        <source>Float left</source>
+        <target>左フロート</target>
+      </trans-unit>
+      <trans-unit id="s2f0bcdffc92a786b">
+        <source>Float right</source>
+        <target>右フロート</target>
+      </trans-unit>
+      <trans-unit id="s782f286a79cca35d">
+        <source>Relative</source>
+        <target>相対的</target>
+      </trans-unit>
+      <trans-unit id="sa1c6c459b9b5115c">
+        <source>Absolute</source>
+        <target>アブソリュート</target>
+      </trans-unit>
+      <trans-unit id="sf2d5cbc2fe0ad65a">
+        <source>Sticky</source>
+        <target>スティッキー</target>
+      </trans-unit>
+      <trans-unit id="sc1611c0558728a2a">
+        <source>Position</source>
+        <target>ポジション</target>
+      </trans-unit>
+      <trans-unit id="sf7a5f7a7c80c3082">
+        <source>Both</source>
+        <target>両方</target>
+      </trans-unit>
+      <trans-unit id="s5be80ad6b8301710">
+        <source>Inline start</source>
+        <target>インラインスタート</target>
+      </trans-unit>
+      <trans-unit id="sf79e0d78b56444f1">
+        <source>Inline end</source>
+        <target>インラインエンド</target>
+      </trans-unit>
+      <trans-unit id="sb4f1dffbb6be6302">
+        <source>Clear</source>
+        <target>クリア</target>
+      </trans-unit>
+      <trans-unit id="se5dc1e97fb743ade">
+        <source>Spacing</source>
+        <target>スペーシング</target>
+      </trans-unit>
+      <trans-unit id="s83f26d02dd7aa681">
+        <source>Visible</source>
+        <target>可視</target>
+      </trans-unit>
+      <trans-unit id="s886897f2fd4edb99">
+        <source>Hidden</source>
+        <target>ヒドゥン</target>
+      </trans-unit>
+      <trans-unit id="s3e092e9d1ee2c5bb">
+        <source>Clip</source>
+        <target>クリップ</target>
+      </trans-unit>
+      <trans-unit id="s94eb1effbbb6498b">
+        <source>Overflow</source>
+        <target>オーバーフロー</target>
+      </trans-unit>
+      <trans-unit id="s37a8c35f6581da5f">
+        <source>No anchor</source>
+        <target>アンカーなし</target>
+      </trans-unit>
+      <trans-unit id="s2edd6688a65e21f0">
+        <source>Overflow (x)</source>
+        <target>オーバーフロー（x）</target>
+      </trans-unit>
+      <trans-unit id="s2eda5288a65bca1d">
+        <source>Overflow (y)</source>
+        <target>オーバーフロー（y）</target>
+      </trans-unit>
+      <trans-unit id="s5dc77784260a7236">
+        <source>auto</source>
+        <target>オート</target>
+      </trans-unit>
+      <trans-unit id="sf21fb4f4b9e8911f">
+        <source>Width</source>
+        <target>幅</target>
+      </trans-unit>
+      <trans-unit id="s1177237a3e0e548c">
+        <source>Minimum (x)</source>
+        <target>最小値（x）</target>
+      </trans-unit>
+      <trans-unit id="s1173bf7a3e0b74c9">
+        <source>Minimum (y)</source>
+        <target>最小 (y)</target>
+      </trans-unit>
+      <trans-unit id="s7c61118554a0ec36">
+        <source>Maximum (x)</source>
+        <target>最大（x）</target>
+      </trans-unit>
+      <trans-unit id="se79c0a3ac70d8fb3">
+        <source>Asp. ratio (x)</source>
+        <target>アスペクト比（x）</target>
+      </trans-unit>
+      <trans-unit id="se79fae3ac710dc36">
+        <source>Asp. ratio (y)</source>
+        <target>アスペクト比（y）</target>
+      </trans-unit>
+      <trans-unit id="s19daf2f26c19543d">
+        <source>Outline</source>
+        <target>概要</target>
+      </trans-unit>
+      <trans-unit id="sd9ff8e2612e63d50">
+        <source>Border box sizing</source>
+        <target>ボーダーボックスのサイズ調整</target>
+      </trans-unit>
+      <trans-unit id="sc1fff4f356dfb2fb">
+        <source>Transform</source>
+        <target>トランスフォーム</target>
+      </trans-unit>
+      <trans-unit id="s0b1271f50a77dc73">
+        <source>Content box</source>
+        <target>コンテンツボックス</target>
+      </trans-unit>
+      <trans-unit id="s002fa7d1054ed082">
+        <source>Border box</source>
+        <target>ボーダーボックス</target>
+      </trans-unit>
+      <trans-unit id="s74cd20a7aece9b91">
+        <source>Fill box</source>
+        <target>フィルボックス</target>
+      </trans-unit>
+      <trans-unit id="s42721130228841b0">
+        <source>Stroke box</source>
+        <target>ストロークボックス</target>
+      </trans-unit>
+      <trans-unit id="scbc55f622ec078c1">
+        <source>View box</source>
+        <target>ビューボックス</target>
+      </trans-unit>
+      <trans-unit id="sc462bbdd36bcba6b">
+        <source>Reference box</source>
+        <target>リファレンスボックス</target>
+      </trans-unit>
+      <trans-unit id="sc8ac7ef92b95df3f">
+        <source>Move (x)</source>
+        <target>移動（x）</target>
+      </trans-unit>
+      <trans-unit id="sc8b022f92b992bc2">
+        <source>Move (y)</source>
+        <target>移動（y）</target>
+      </trans-unit>
+      <trans-unit id="sc8b39af92b9c2d81">
+        <source>Move (z)</source>
+        <target>移動（z）</target>
+      </trans-unit>
+      <trans-unit id="sf4f3cbd41f002b46">
+        <source>Scale (x)</source>
+        <target>スケール（x）</target>
+      </trans-unit>
+      <trans-unit id="sf4f067d41efd4b83">
+        <source>Scale (y)</source>
+        <target>スケール（y）</target>
+      </trans-unit>
+      <trans-unit id="sf4fa67d41f05a008">
+        <source>Scale (z)</source>
+        <target>スケール（z）</target>
+      </trans-unit>
+      <trans-unit id="sc6578b15b2154365">
+        <source>Rotate (x)</source>
+        <target>回転（x）</target>
+      </trans-unit>
+      <trans-unit id="sc65aff15b2183e58">
+        <source>Rotate (y)</source>
+        <target>回転（y）</target>
+      </trans-unit>
+      <trans-unit id="sc650ff15b20fe9d3">
+        <source>Rotate (z)</source>
+        <target>回転（z）</target>
+      </trans-unit>
+      <trans-unit id="sf5197db2d5f2926a">
+        <source>Rotate</source>
+        <target>回転</target>
+      </trans-unit>
+      <trans-unit id="s430bd5017f42511c">
+        <source>Skew (x)</source>
+        <target>スキュー（x）</target>
+      </trans-unit>
+      <trans-unit id="s430831017f3f0499">
+        <source>Skew (y)</source>
+        <target>スキュー（y）</target>
+      </trans-unit>
+      <trans-unit id="s36b3cefdcb897f15">
+        <source>Perspective</source>
+        <target>パースペクティブ</target>
+      </trans-unit>
+      <trans-unit id="sc52e8b794c0913d6">
+        <source>Perspective origin (x)</source>
+        <target>パースペクティブ原点（x）</target>
+      </trans-unit>
+      <trans-unit id="sc52b67794c06a0d3">
+        <source>Perspective origin (y)</source>
+        <target>パースペクティブ原点（y）</target>
+      </trans-unit>
+      <trans-unit id="saa065776236bfa28">
+        <source>Transform origin (x)</source>
+        <target>原点（x）を変換する</target>
+      </trans-unit>
+      <trans-unit id="saa02e3762368ff35">
+        <source>Transform origin (y)</source>
+        <target>変換原点（y）</target>
+      </trans-unit>
+      <trans-unit id="sa9ff3b762365abe6">
+        <source>Transform origin (z)</source>
+        <target>変換原点 (z)</target>
+      </trans-unit>
+      <trans-unit id="s166bd56d19670a72">
+        <source>Zoom</source>
+        <target>ズーム</target>
+      </trans-unit>
+      <trans-unit id="s680bd4d926cd5a84">
+        <source>Preserve 3D</source>
+        <target>プリザーブ3D</target>
+      </trans-unit>
+      <trans-unit id="s6a31eff1ec4f71ad">
+        <source>Hide backface (3D)</source>
+        <target>バックフェイスを隠す（3D）</target>
+      </trans-unit>
+      <trans-unit id="s2de969afacdaa7a6">
+        <source>Shape</source>
+        <target>形状</target>
+      </trans-unit>
+      <trans-unit id="sd837f42ac7cbfb58">
+        <source>Shape (outside)</source>
+        <target>形状（外側）</target>
+      </trans-unit>
+      <trans-unit id="s86f820d8007d0de4">
+        <source>Shape margin</source>
+        <target>形状マージン</target>
+      </trans-unit>
+      <trans-unit id="s6cfc66b824ea05ba">
+        <source>Crisp edges</source>
+        <target>鮮明なエッジ</target>
+      </trans-unit>
+      <trans-unit id="s7031ca562378bde6">
+        <source>Geometric precision</source>
+        <target>幾何学的精度</target>
+      </trans-unit>
+      <trans-unit id="sd121d3b959b7888d">
+        <source>Optimize speed</source>
+        <target>スピードの最適化</target>
+      </trans-unit>
+      <trans-unit id="sf2de3dbe2108637a">
+        <source>Shape rendering</source>
+        <target>形状レンダリング</target>
+      </trans-unit>
+      <trans-unit id="s5787c6d5b3b5541a">
+        <source>Clip path</source>
+        <target>クリップパス</target>
+      </trans-unit>
+      <trans-unit id="s372fae706048ce41">
+        <source>Even-odd</source>
+        <target>均等奇数</target>
+      </trans-unit>
+      <trans-unit id="s49c560aecfeb8c29">
+        <source>Mask</source>
+        <target>マスク</target>
+      </trans-unit>
+      <trans-unit id="s4fda04cbc245e18b">
+        <source>Alpha</source>
+        <target>アルファ</target>
+      </trans-unit>
+      <trans-unit id="s1dbb9f50e16c92a3">
+        <source>Border radius</source>
+        <target>ボーダー半径</target>
+      </trans-unit>
+      <trans-unit id="s78673a3539cb1915">
+        <source>Top left</source>
+        <target>左上</target>
+      </trans-unit>
+      <trans-unit id="s8b7580c35e2aef87">
+        <source>Top left (y)</source>
+        <target>左上（y）</target>
+      </trans-unit>
+      <trans-unit id="sb0a7e3adf4a125ee">
+        <source>Top right</source>
+        <target>右上</target>
+      </trans-unit>
+      <trans-unit id="s84e4e8ae645b82ac">
+        <source>Top right (y)</source>
+        <target>右上（y）</target>
+      </trans-unit>
+      <trans-unit id="scfcb70f2a15eaf14">
+        <source>Bottom right</source>
+        <target>右下</target>
+      </trans-unit>
+      <trans-unit id="sdbee7e0523a23a42">
+        <source>Bottom right (y)</source>
+        <target>右下（y）</target>
+      </trans-unit>
+      <trans-unit id="sef23dd271edd4a8b">
+        <source>Bottom left</source>
+        <target>左下</target>
+      </trans-unit>
+      <trans-unit id="sd5fd9d11a92f5b1d">
+        <source>Bottom left (y)</source>
+        <target>左下（y）</target>
+      </trans-unit>
+      <trans-unit id="sdf9bc5d9b7f3e3de">
+        <source>Alignment</source>
+        <target>アライメント</target>
+      </trans-unit>
+      <trans-unit id="s626daf42b1ab7df7">
+        <source>Align left</source>
+        <target>左寄せ</target>
+      </trans-unit>
+      <trans-unit id="s13c60cb409e8cb6f">
+        <source>Align center</source>
+        <target>中央揃え</target>
+      </trans-unit>
+      <trans-unit id="sac687b8649989de8">
+        <source>Align right</source>
+        <target>右揃え</target>
+      </trans-unit>
+      <trans-unit id="s8d8643013a7754d1">
+        <source>Align text</source>
+        <target>テキストの整列</target>
+      </trans-unit>
+      <trans-unit id="se06f459fccdc3ce9">
+        <source>Align last text line</source>
+        <target>テキストの最終行を揃える</target>
+      </trans-unit>
+      <trans-unit id="sfaa0a67db5c11f72">
+        <source>Indent first text line</source>
+        <target>テキストの最初の行をインデントする</target>
+      </trans-unit>
+      <trans-unit id="s95de7e1eff6c053e">
+        <source>Horizontal, top-to-bottom</source>
+        <target>水平、上から下へ</target>
+      </trans-unit>
+      <trans-unit id="sd8a345e95668b73b">
+        <source>Vertical, right-to-left</source>
+        <target>縦、右から左</target>
+      </trans-unit>
+      <trans-unit id="s8ffe7abcbed8eb43">
+        <source>Vertical, left-to-right</source>
+        <target>垂直、左から右</target>
+      </trans-unit>
+      <trans-unit id="s986facb3ecc9602c">
+        <source>Sideways, right-to-left</source>
+        <target>横向き、右から左</target>
+      </trans-unit>
+      <trans-unit id="s063fa5a0a4903bf4">
+        <source>Sideways, left-to-right</source>
+        <target>横向き、左から右</target>
+      </trans-unit>
+      <trans-unit id="se96fd76ba1b2975a">
+        <source>Central</source>
+        <target>セントラル</target>
+      </trans-unit>
+      <trans-unit id="sd8ecf227c7c49331">
+        <source>Mathematical</source>
+        <target>数学的</target>
+      </trans-unit>
+      <trans-unit id="se8a94b4effa2033e">
+        <source>Alphabetic</source>
+        <target>アルファベット</target>
+      </trans-unit>
+      <trans-unit id="scec2be75ee985f6c">
+        <source>Ideographic</source>
+        <target>アイデアグラフィック</target>
+      </trans-unit>
+      <trans-unit id="s7ecb1f29332293e5">
+        <source>Alignment baseline</source>
+        <target>アライメント・ベースライン</target>
+      </trans-unit>
+      <trans-unit id="sbf519920c2017d67">
+        <source>Hanging</source>
+        <target>吊り</target>
+      </trans-unit>
+      <trans-unit id="s40f07d7859284a44">
+        <source>Dominant baseline</source>
+        <target>優勢なベースライン</target>
+      </trans-unit>
+      <trans-unit id="sbb86c6c96f598bb8">
+        <source>Mixed</source>
+        <target>ミックス</target>
+      </trans-unit>
+      <trans-unit id="s7b560d8693ed8f42">
+        <source>Upright</source>
+        <target>アップライト</target>
+      </trans-unit>
+      <trans-unit id="s5b517ac216f9ee62">
+        <source>Sideways</source>
+        <target>横</target>
+      </trans-unit>
+      <trans-unit id="s47ebf3a8fb3b10c1">
+        <source>Orientation</source>
+        <target>オリエンテーション</target>
+      </trans-unit>
+      <trans-unit id="sa1647e3b36ec08d7">
+        <source>Combine upright</source>
+        <target>直立を組み合わせる</target>
+      </trans-unit>
+      <trans-unit id="s0ef01c03299bbb83">
+        <source>Decoration</source>
+        <target>デコレーション</target>
+      </trans-unit>
+      <trans-unit id="sc2a24a9dd41a9503">
+        <source>Decoration line</source>
+        <target>装飾ライン</target>
+      </trans-unit>
+      <trans-unit id="sb6ca0a8bb3caae69">
+        <source>Decoration thickness</source>
+        <target>装飾の厚さ</target>
+      </trans-unit>
+      <trans-unit id="sa43800e28be1bdbc">
+        <source>Decoration color</source>
+        <target>デコレーションカラー</target>
+      </trans-unit>
+      <trans-unit id="s89950d86c8004d4b">
+        <source>Skip no overlaps</source>
+        <target>重ならないようにスキップする</target>
+      </trans-unit>
+      <trans-unit id="s5e6a7a0c30d2a270">
+        <source>Skip overlaps (auto)</source>
+        <target>オーバーラップをスキップする（自動）</target>
+      </trans-unit>
+      <trans-unit id="sb628960829e223bb">
+        <source>Skip all overlaps</source>
+        <target>すべてのオーバーラップをスキップする</target>
+      </trans-unit>
+      <trans-unit id="s3d9548e211b958ce">
+        <source>Skip overlaps</source>
+        <target>オーバーラップをスキップする</target>
+      </trans-unit>
+      <trans-unit id="s61ded17ca3f48c82">
+        <source>Underline offset</source>
+        <target>下線オフセット</target>
+      </trans-unit>
+      <trans-unit id="s697400b541fbc3cd">
+        <source>Under</source>
+        <target>アンダー</target>
+      </trans-unit>
+      <trans-unit id="s9219acd5bef6269e">
+        <source>Under left</source>
+        <target>左下</target>
+      </trans-unit>
+      <trans-unit id="sa13f72278add7513">
+        <source>Under right</source>
+        <target>右下</target>
+      </trans-unit>
+      <trans-unit id="s9ab10fbf4c7a7322">
+        <source>Underline position</source>
+        <target>アンダーラインの位置</target>
+      </trans-unit>
+      <trans-unit id="s446a924922651ea0">
+        <source>Text emphasis</source>
+        <target>テキスト強調</target>
+      </trans-unit>
+      <trans-unit id="sd1f81984eeb7c0e8">
+        <source>Fill</source>
+        <target>充填</target>
+      </trans-unit>
+      <trans-unit id="s266935f2447fcd98">
+        <source>Over Left</source>
+        <target>オーバー・レフト</target>
+      </trans-unit>
+      <trans-unit id="s684a16f3c711394d">
+        <source>Over Right</source>
+        <target>オーバー・ライト</target>
+      </trans-unit>
+      <trans-unit id="sb940ade1bd81be7e">
+        <source>Under Left</source>
+        <target>アンダー・レフト</target>
+      </trans-unit>
+      <trans-unit id="s60ff598dfcf2c773">
+        <source>Under Right</source>
+        <target>右下</target>
+      </trans-unit>
+      <trans-unit id="s91093e0b087911ba">
+        <source>Emphasis position</source>
+        <target>重点ポジション</target>
+      </trans-unit>
+      <trans-unit id="sec02109a0dd2a6c8">
+        <source>Emphasis color</source>
+        <target>強調色</target>
+      </trans-unit>
+      <trans-unit id="s497838412cb455f2">
+        <source>Text shadow</source>
+        <target>テキストシャドウ</target>
+      </trans-unit>
+      <trans-unit id="sed86bd0deb2e5372">
+        <source>Transform text</source>
+        <target>テキストを変換する</target>
+      </trans-unit>
+      <trans-unit id="s4b2c143acf931122">
+        <source>Line height</source>
+        <target>ラインの高さ</target>
+      </trans-unit>
+      <trans-unit id="sfb231a52211b133f">
+        <source>No text wrap</source>
+        <target>テキストラップなし</target>
+      </trans-unit>
+      <trans-unit id="sb8a3d4df7d1c5e6b">
+        <source>Balance</source>
+        <target>バランス</target>
+      </trans-unit>
+      <trans-unit id="s27cc88818cc46ff6">
+        <source>Stable</source>
+        <target>安定</target>
+      </trans-unit>
+      <trans-unit id="s3e78ddc9a48a608d">
+        <source>Pretty</source>
+        <target>可愛い</target>
+      </trans-unit>
+      <trans-unit id="s31c06e226322f065">
+        <source>Avoid orphans</source>
+        <target>孤児を避ける</target>
+      </trans-unit>
+      <trans-unit id="scd9cedeb5ece3adb">
+        <source>Hyphenate</source>
+        <target>ハイフン</target>
+      </trans-unit>
+      <trans-unit id="se36c5b1baf5e0660">
+        <source>Anywhere</source>
+        <target>どこでも</target>
+      </trans-unit>
+      <trans-unit id="s80b71fc6f43c5ce1">
+        <source>Loose</source>
+        <target>ルーズ</target>
+      </trans-unit>
+      <trans-unit id="s9ff3121d30f88d52">
+        <source>Normal</source>
+        <target>ノーマル</target>
+      </trans-unit>
+      <trans-unit id="s58bec0ecd4f3ccd4">
+        <source>Strict</source>
+        <target>厳しい</target>
+      </trans-unit>
+      <trans-unit id="s2bad2d24def4aa0b">
+        <source>Line break (CJK lang.)</source>
+        <target>改行（日中韓語）</target>
+      </trans-unit>
+      <trans-unit id="s433ba70286202ceb">
+        <source>Break all</source>
+        <target>すべてを破る</target>
+      </trans-unit>
+      <trans-unit id="sd1cffad290ea5b3b">
+        <source>Keep all</source>
+        <target>すべての</target>
+      </trans-unit>
+      <trans-unit id="s5feaf7fd7ee567c8">
+        <source>Break word</source>
+        <target>休憩ワード</target>
+      </trans-unit>
+      <trans-unit id="s4e361bf8eef3759a">
+        <source>Word break</source>
+        <target>単語の区切り</target>
+      </trans-unit>
+      <trans-unit id="s4993444bfd3f3e5e">
+        <source>Collapse</source>
+        <target>崩壊</target>
+      </trans-unit>
+      <trans-unit id="sa8279f8211b3950d">
+        <source>Preserve breaks and spaces</source>
+        <target>休憩とスペースを守る</target>
+      </trans-unit>
+      <trans-unit id="sa757645ad842da97">
+        <source>Preserve breaks</source>
+        <target>休憩時間の確保</target>
+      </trans-unit>
+      <trans-unit id="s9f1ecdb3061d9cbc">
+        <source>Preserve spaces</source>
+        <target>スペースを守る</target>
+      </trans-unit>
+      <trans-unit id="s8d797888455f4147">
+        <source>Break spaces</source>
+        <target>休憩スペース</target>
+      </trans-unit>
+      <trans-unit id="s95d8e41a64635c7c">
+        <source>White space</source>
+        <target>ホワイトスペース</target>
+      </trans-unit>
+      <trans-unit id="s833bd0422a7ef95d">
+        <source>Tab size</source>
+        <target>タブサイズ</target>
+      </trans-unit>
+      <trans-unit id="s050954cd4ae83304">
+        <source>Word spacing</source>
+        <target>単語間隔</target>
+      </trans-unit>
+      <trans-unit id="sb2cda80610c8d6ea">
+        <source>Space all</source>
+        <target>スペース・オール</target>
+      </trans-unit>
+      <trans-unit id="s4d546f6c87128d5b">
+        <source>Space first</source>
+        <target>スペース・ファースト</target>
+      </trans-unit>
+      <trans-unit id="sab0c57df694a0a09">
+        <source>Trim start</source>
+        <target>トリムスタート</target>
+      </trans-unit>
+      <trans-unit id="s4730c232e7209c40">
+        <source>Trim both</source>
+        <target>トリム</target>
+      </trans-unit>
+      <trans-unit id="sd3eca1e0f4209f6e">
+        <source>Trim all</source>
+        <target>すべてを切り詰める</target>
+      </trans-unit>
+      <trans-unit id="s0a2d91c6720033e9">
+        <source>Text spacing trim</source>
+        <target>文字間隔のトリム</target>
+      </trans-unit>
+      <trans-unit id="s74aa0039a87141e2">
+        <source>Ellipsis</source>
+        <target>エリプシス</target>
+      </trans-unit>
+      <trans-unit id="sd588d17a1b25c220">
+        <source>Text overflow</source>
+        <target>テキストのオーバーフロー</target>
+      </trans-unit>
+      <trans-unit id="s079cf7850d9327f0">
+        <source>Font</source>
+        <target>フォント</target>
+      </trans-unit>
+      <trans-unit id="s61053f0e3ebbd272">
+        <source>normal</source>
+        <target>通常</target>
+      </trans-unit>
+      <trans-unit id="sd7086c4425c53c80">
+        <source>Font family</source>
+        <target>フォントファミリー</target>
+      </trans-unit>
+      <trans-unit id="sa30f1981fd1cd441">
+        <source>Font size</source>
+        <target>文字サイズ</target>
+      </trans-unit>
+      <trans-unit id="sd8ce9e57270b030d">
+        <source>Font stretch</source>
+        <target>フォントストレッチ</target>
+      </trans-unit>
+      <trans-unit id="s789ff24c8f03f1a4">
+        <source>Letter spacing</source>
+        <target>文字間隔</target>
+      </trans-unit>
+      <trans-unit id="s59404f5593c32fdc">
+        <source>Font kerning</source>
+        <target>フォントのカーニング</target>
+      </trans-unit>
+      <trans-unit id="s236ed7ba747099b0">
+        <source>Font weight</source>
+        <target>フォントの太さ</target>
+      </trans-unit>
+      <trans-unit id="s517acbf1f96324f9">
+        <source>Weight</source>
+        <target>重量</target>
+      </trans-unit>
+      <trans-unit id="sd679c8b1bf8cc8a5">
+        <source>Small caps</source>
+        <target>スモールキャップ</target>
+      </trans-unit>
+      <trans-unit id="s7e6570f2f1ae320f">
+        <source>Synthesize typefaces</source>
+        <target>書体を合成する</target>
+      </trans-unit>
+      <trans-unit id="se7fad370d8fb4cec">
+        <source>Optimize legibility</source>
+        <target>読みやすさの最適化</target>
+      </trans-unit>
+      <trans-unit id="s6e288a119281f4c2">
+        <source>Text rendering</source>
+        <target>テキストレンダリング</target>
+      </trans-unit>
+      <trans-unit id="sc5bcf50d1b578d9f">
+        <source>Font feature settings</source>
+        <target>フォント機能の設定</target>
+      </trans-unit>
+      <trans-unit id="s9eefe6e57e4e1661">
+        <source>Font variant</source>
+        <target>フォントバリアント</target>
+      </trans-unit>
+      <trans-unit id="sc8fa0e3de389ef1c">
+        <source>Font size adjust</source>
+        <target>フォントサイズ調整</target>
+      </trans-unit>
+      <trans-unit id="s90f0fbc12e1e2b2f">
+        <source>Font palette</source>
+        <target>フォントパレット</target>
+      </trans-unit>
+      <trans-unit id="sc6da0f4a7e4d710e">
+        <source>Font language override</source>
+        <target>フォント言語のオーバーライド</target>
+      </trans-unit>
+      <trans-unit id="sc275dd00036d16cb">
+        <source>Quotes character</source>
+        <target>引用キャラクター</target>
+      </trans-unit>
+      <trans-unit id="sd03bff50f87f82d4">
+        <source>Hyphenate character</source>
+        <target>ハイフン文字</target>
+      </trans-unit>
+      <trans-unit id="s16f205466761e583">
+        <source>No optical font sizing</source>
+        <target>オプティカル・フォント・サイジングなし</target>
+      </trans-unit>
+      <trans-unit id="s344ea8f4939cdc98">
+        <source>Color</source>
+        <target>カラー</target>
+      </trans-unit>
+      <trans-unit id="s1efbfc3937d565bd">
+        <source>Background</source>
+        <target>背景</target>
+      </trans-unit>
+      <trans-unit id="s3b0ab4b52326316f">
+        <source>Light</source>
+        <target>ライト</target>
+      </trans-unit>
+      <trans-unit id="sac895c732f350ac5">
+        <source>Dark</source>
+        <target>暗い</target>
+      </trans-unit>
+      <trans-unit id="s255c77900f2b5e0f">
+        <source>Color scheme</source>
+        <target>配色</target>
+      </trans-unit>
+      <trans-unit id="sf1045382c1fd9a85">
+        <source>Exact print colors</source>
+        <target>正確な印刷色</target>
+      </trans-unit>
+      <trans-unit id="s1219d97b49650c05">
+        <source>Visibility</source>
+        <target>視認性</target>
+      </trans-unit>
+      <trans-unit id="se2796c5824ec8916">
+        <source>Content visibility</source>
+        <target>コンテンツの可視性</target>
+      </trans-unit>
+      <trans-unit id="sba64d8954d027206">
+        <source>Opacity</source>
+        <target>不透明度</target>
+      </trans-unit>
+      <trans-unit id="sf9929e2d356260c5">
+        <source>Multiply</source>
+        <target>乗算</target>
+      </trans-unit>
+      <trans-unit id="s744d993d03f29851">
+        <source>Screen</source>
+        <target>スクリーン</target>
+      </trans-unit>
+      <trans-unit id="s7ed13ccddb1bf3c3">
+        <source>Overlay</source>
+        <target>オーバーレイ</target>
+      </trans-unit>
+      <trans-unit id="s69fbbdb8ad2a084a">
+        <source>Darken</source>
+        <target>暗くする</target>
+      </trans-unit>
+      <trans-unit id="s27056379e0acfdb0">
+        <source>Lighten</source>
+        <target>明るくする</target>
+      </trans-unit>
+      <trans-unit id="s90f7c1cf501ea0a7">
+        <source>Color dodge</source>
+        <target>カラー・ドッジ</target>
+      </trans-unit>
+      <trans-unit id="sfee1c12daf838935">
+        <source>Color burn</source>
+        <target>カラーバーン</target>
+      </trans-unit>
+      <trans-unit id="s4ad6e9d3c2365c98">
+        <source>Hard light</source>
+        <target>ハードライト</target>
+      </trans-unit>
+      <trans-unit id="s262abbaf1d05f009">
+        <source>Soft light</source>
+        <target>ソフトライト</target>
+      </trans-unit>
+      <trans-unit id="sb67e0e7c0869f982">
+        <source>Difference</source>
+        <target>違い</target>
+      </trans-unit>
+      <trans-unit id="sd88076d2994ee0fb">
+        <source>Exclusion</source>
+        <target>除外</target>
+      </trans-unit>
+      <trans-unit id="s491d2919cd6ec3d9">
+        <source>Hue</source>
+        <target>色相</target>
+      </trans-unit>
+      <trans-unit id="s086e6c267ade2609">
+        <source>Saturation</source>
+        <target>飽和</target>
+      </trans-unit>
+      <trans-unit id="sb8f610a0e8df91fc">
+        <source>Luminosity</source>
+        <target>光度</target>
+      </trans-unit>
+      <trans-unit id="sb905da066c10182c">
+        <source>Plus darker</source>
+        <target>さらに濃い色</target>
+      </trans-unit>
+      <trans-unit id="sf14f9d5f9f6ca342">
+        <source>Plus lighter</source>
+        <target>プラスライター</target>
+      </trans-unit>
+      <trans-unit id="s6d8b3b8047ed378d">
+        <source>Mix blend mode</source>
+        <target>混合ブレンドモード</target>
+      </trans-unit>
+      <trans-unit id="sdd2fc8919a9c3111">
+        <source>Background blend mode</source>
+        <target>背景ブレンドモード</target>
+      </trans-unit>
+      <trans-unit id="sbb55f9f2d69fd327">
+        <source>Backdrop filter</source>
+        <target>背景フィルター</target>
+      </trans-unit>
+      <trans-unit id="sd2ed26defc646d47">
+        <source>Backdrop Filter</source>
+        <target>背景フィルター</target>
+      </trans-unit>
+      <trans-unit id="s7c95876637f6a9d7">
+        <source>Filter</source>
+        <target>フィルター</target>
+      </trans-unit>
+      <trans-unit id="s687e27f036a71b32">
+        <source>Isolate</source>
+        <target>分離</target>
+      </trans-unit>
+      <trans-unit id="sa602e3fd3f2d98fd">
+        <source>Animation</source>
+        <target>アニメーション</target>
+      </trans-unit>
+      <trans-unit id="sf2d96d0eb32cb81f">
+        <source>Animation composition</source>
+        <target>アニメーションの構成</target>
+      </trans-unit>
+      <trans-unit id="s9fc686f7bbd941e2">
+        <source>Transition</source>
+        <target>トランジション</target>
+      </trans-unit>
+      <trans-unit id="sf0e261e04eda82ff">
+        <source>Appearance</source>
+        <target>外観</target>
+      </trans-unit>
+      <trans-unit id="sd66c4767fa3dde28">
+        <source>Accent color</source>
+        <target>アクセントカラー</target>
+      </trans-unit>
+      <trans-unit id="s80a42b81c52d4d8f">
+        <source>Caret color</source>
+        <target>キャレットカラー</target>
+      </trans-unit>
+      <trans-unit id="s3815184eb09f0dcf">
+        <source>Cursor</source>
+        <target>カーソル</target>
+      </trans-unit>
+      <trans-unit id="s1c690963f1e2df00">
+        <source>Platform-specific look</source>
+        <target>プラットフォーム固有の外観</target>
+      </trans-unit>
+      <trans-unit id="sb5e9e1776242b028">
+        <source>Interactions</source>
+        <target>相互作用</target>
+      </trans-unit>
+      <trans-unit id="sf2cbb5e519264e67">
+        <source>Resize both horizontally and vertically</source>
+        <target>水平方向と垂直方向の両方のサイズ変更</target>
+      </trans-unit>
+      <trans-unit id="s7d864465dddbb50d">
+        <source>Allow resizing</source>
+        <target>リサイズを許可する</target>
+      </trans-unit>
+      <trans-unit id="sf6b4934598f7ed10">
+        <source>Allow selection</source>
+        <target>選択を許可する</target>
+      </trans-unit>
+      <trans-unit id="s87cefc710b3567fb">
+        <source>Contain</source>
+        <target>コンテイン</target>
+      </trans-unit>
+      <trans-unit id="sf993bb199fefbe04">
+        <source>All</source>
+        <target>すべて</target>
+      </trans-unit>
+      <trans-unit id="s571a4f19e2f140c7">
+        <source>Pan (x)</source>
+        <target>パン（x）</target>
+      </trans-unit>
+      <trans-unit id="s828b1ecea8715884">
+        <source>Pan (left)</source>
+        <target>パン（左）</target>
+      </trans-unit>
+      <trans-unit id="s40e3826b7f74a3b5">
+        <source>Pan (right)</source>
+        <target>パン（右）</target>
+      </trans-unit>
+      <trans-unit id="s571db319e2f4208a">
+        <source>Pan (y)</source>
+        <target>パン（y）</target>
+      </trans-unit>
+      <trans-unit id="s957787fc6b7ea5c0">
+        <source>Pan (up)</source>
+        <target>パン（上）</target>
+      </trans-unit>
+      <trans-unit id="sc2b734cca2fa643b">
+        <source>Pan (down)</source>
+        <target>パン（下）</target>
+      </trans-unit>
+      <trans-unit id="s03608a32f05eded2">
+        <source>Pinch zoom</source>
+        <target>ピンチズーム</target>
+      </trans-unit>
+      <trans-unit id="s748c0074eff45884">
+        <source>Manipulation</source>
+        <target>マニピュレーション</target>
+      </trans-unit>
+      <trans-unit id="s7de0e28d6c309a4e">
+        <source>Allow touch actions</source>
+        <target>タッチ操作を許可する</target>
+      </trans-unit>
+      <trans-unit id="sc2536e077514accc">
+        <source>Scrolling</source>
+        <target>スクロール</target>
+      </trans-unit>
+      <trans-unit id="s1155ec07a221e739">
+        <source>Scrollbar</source>
+        <target>スクロールバー</target>
+      </trans-unit>
+      <trans-unit id="s5015a8fb33b98872">
+        <source>Thin</source>
+        <target>薄い</target>
+      </trans-unit>
+      <trans-unit id="se95d4e55ea186d9a">
+        <source>Scrollbar color</source>
+        <target>スクロールバーの色</target>
+      </trans-unit>
+      <trans-unit id="s6280bf993915c57a">
+        <source>Scroll margin</source>
+        <target>スクロールマージン</target>
+      </trans-unit>
+      <trans-unit id="s0c27336067c59611">
+        <source>Scroll padding</source>
+        <target>スクロールパディング</target>
+      </trans-unit>
+      <trans-unit id="s4e191bdb4700a6e9">
+        <source>Overscroll (x)</source>
+        <target>オーバースクロール（x）</target>
+      </trans-unit>
+      <trans-unit id="s4e1c7fdb470386ac">
+        <source>Overscroll (y)</source>
+        <target>オーバースクロール</target>
+      </trans-unit>
+      <trans-unit id="s001dd78415a91fa0">
+        <source>Scrollbar gutter</source>
+        <target>スクロールバーの溝</target>
+      </trans-unit>
+      <trans-unit id="sf9ecf969dd4b8164">
+        <source>Both edges</source>
+        <target>両端</target>
+      </trans-unit>
+      <trans-unit id="saf9e5134ba1a7d30">
+        <source>Scroll snap</source>
+        <target>スクロールスナップ</target>
+      </trans-unit>
+      <trans-unit id="sea24bdcaa2bd2dec">
+        <source>Mandatory snap</source>
+        <target>スナップ必須</target>
+      </trans-unit>
+      <trans-unit id="s6787497df07fa97e">
+        <source>May scroll over stops</source>
+        <target>ストップの上にスクロールすることができる</target>
+      </trans-unit>
+      <trans-unit id="s9258280591309342">
+        <source>Scroll snap align (x)</source>
+        <target>スクロールスナップアライメント（x）</target>
+      </trans-unit>
+      <trans-unit id="s92548405912d46bf">
+        <source>Scroll snap align (y)</source>
+        <target>スクロールスナップアライメント (y)</target>
+      </trans-unit>
+      <trans-unit id="s624e31cd4f1b89d4">
+        <source>Smooth scroll</source>
+        <target>スムーズスクロール</target>
+      </trans-unit>
+      <trans-unit id="sb0f3327210fe18fc">
+        <source>Columns</source>
+        <target>コラム</target>
+      </trans-unit>
+      <trans-unit id="sd01178c54f648118">
+        <source>Balance columns</source>
+        <target>バランス・コラム</target>
+      </trans-unit>
+      <trans-unit id="sba88d90cd6c751b3">
+        <source>Column rule</source>
+        <target>コラムルール</target>
+      </trans-unit>
+      <trans-unit id="sd3a288c1094b8a63">
+        <source>Column rule width</source>
+        <target>列のルール幅</target>
+      </trans-unit>
+      <trans-unit id="s3124653c272f054c">
+        <source>Column rule color</source>
+        <target>カラムルールの色</target>
+      </trans-unit>
+      <trans-unit id="s01b56d233c6c5cac">
+        <source>Sectioning</source>
+        <target>セクショニング</target>
+      </trans-unit>
+      <trans-unit id="s68e0e3a2bab7ce3e">
+        <source>Avoid</source>
+        <target>避ける</target>
+      </trans-unit>
+      <trans-unit id="s314a4f7685c8e824">
+        <source>Always</source>
+        <target>常に</target>
+      </trans-unit>
+      <trans-unit id="s4bbff4e008690da1">
+        <source>Avoid page</source>
+        <target>ページを避ける</target>
+      </trans-unit>
+      <trans-unit id="s2e192b19ed15fcf6">
+        <source>Page</source>
+        <target>ページ</target>
+      </trans-unit>
+      <trans-unit id="sae76e25497dcee58">
+        <source>Recto</source>
+        <target>レクト</target>
+      </trans-unit>
+      <trans-unit id="sff3df0c2823ec6e4">
+        <source>Verso</source>
+        <target>ヴァーソ</target>
+      </trans-unit>
+      <trans-unit id="seb19675a580f0628">
+        <source>Avoid column</source>
+        <target>コラムを避ける</target>
+      </trans-unit>
+      <trans-unit id="s9e40e59654c8ad67">
+        <source>Column</source>
+        <target>コラム</target>
+      </trans-unit>
+      <trans-unit id="s565cd5ffb0158c46">
+        <source>Avoid region</source>
+        <target>地域を避ける</target>
+      </trans-unit>
+      <trans-unit id="sb51270e19988f9bd">
+        <source>Region</source>
+        <target>地域</target>
+      </trans-unit>
+      <trans-unit id="s8a29cb39a42f83f3">
+        <source>Break before</source>
+        <target>休憩前</target>
+      </trans-unit>
+      <trans-unit id="se638417c560cfe5c">
+        <source>Break inside</source>
+        <target>内部に侵入</target>
+      </trans-unit>
+      <trans-unit id="s158b6ec6b1fffcb2">
+        <source>Break after</source>
+        <target>休憩</target>
+      </trans-unit>
+      <trans-unit id="sfd0cde85070d2eb2">
+        <source>Flex</source>
+        <target>フレックス</target>
+      </trans-unit>
+      <trans-unit id="sa013e119fec906fb">
+        <source>Row</source>
+        <target>列</target>
+      </trans-unit>
+      <trans-unit id="s9d430adc5be110e9">
+        <source>Row Reverse</source>
+        <target>行 逆</target>
+      </trans-unit>
+      <trans-unit id="saaec15c97a9e4245">
+        <source>Column Reverse</source>
+        <target>カラム・リバース</target>
+      </trans-unit>
+      <trans-unit id="s0d86afa3c6a1e28b">
+        <source>Flex direction</source>
+        <target>フレックス方向</target>
+      </trans-unit>
+      <trans-unit id="s1af8b67d1c85c811">
+        <source>Space between</source>
+        <target>間のスペース</target>
+      </trans-unit>
+      <trans-unit id="s456a8d744313852a">
+        <source>Space around</source>
+        <target>周辺スペース</target>
+      </trans-unit>
+      <trans-unit id="s66765c420ee578e4">
+        <source>Space evenly</source>
+        <target>均等なスペース</target>
+      </trans-unit>
+      <trans-unit id="s97881699a2b21d5b">
+        <source>Row gap</source>
+        <target>列の隙間</target>
+      </trans-unit>
+      <trans-unit id="s1aa1cb63ad44bc6f">
+        <source>Column gap</source>
+        <target>カラム・ギャップ</target>
+      </trans-unit>
+      <trans-unit id="se619a501d1bfe6a5">
+        <source>Wrap</source>
+        <target>ラップ</target>
+      </trans-unit>
+      <trans-unit id="s3ffcdc5db5e7d0c5">
+        <source>Reverse</source>
+        <target>リバース</target>
+      </trans-unit>
+      <trans-unit id="s25e1a07e454c2c11">
+        <source>Grid</source>
+        <target>グリッド</target>
+      </trans-unit>
+      <trans-unit id="s6bd7a02fdf93e653">
+        <source>Align content</source>
+        <target>コンテンツを揃える</target>
+      </trans-unit>
+      <trans-unit id="s35ae5f4e0fa2777b">
+        <source>Custom align</source>
+        <target>カスタムアライメント</target>
+      </trans-unit>
+      <trans-unit id="s6e4c20c6debcd5ca">
+        <source>Custom justify</source>
+        <target>カスタムジャスティファイ</target>
+      </trans-unit>
+      <trans-unit id="se633223a0b88625e">
+        <source>Cell placement</source>
+        <target>セル配置</target>
+      </trans-unit>
+      <trans-unit id="s88676f992b2965db">
+        <source>Stretch cell content</source>
+        <target>セルの内容を伸ばす</target>
+      </trans-unit>
+      <trans-unit id="s71dec51005acc1e4">
+        <source>Row dense</source>
+        <target>列密集</target>
+      </trans-unit>
+      <trans-unit id="s96a045dcade75ad0">
+        <source>Column dense</source>
+        <target>列の密集度</target>
+      </trans-unit>
+      <trans-unit id="sb740eab4afd5a710">
+        <source>Grid auto flow</source>
+        <target>グリッド・オートフロー</target>
+      </trans-unit>
+      <trans-unit id="sa2eff4dad1c119f1">
+        <source>Grid template</source>
+        <target>グリッドテンプレート</target>
+      </trans-unit>
+      <trans-unit id="s13ebd619c8a06a6d">
+        <source>Grid auto rows</source>
+        <target>グリッド自動行</target>
+      </trans-unit>
+      <trans-unit id="scbe537fc38ff4c13">
+        <source>Grid auto columns</source>
+        <target>グリッド自動列</target>
+      </trans-unit>
+      <trans-unit id="sed713f1b916fb469">
+        <source>Border spacing (x)</source>
+        <target>ボーダー間隔 (x)</target>
+      </trans-unit>
+      <trans-unit id="sed74a31b9172942c">
+        <source>Border spacing (y)</source>
+        <target>ボーダー間隔 (y)</target>
+      </trans-unit>
+      <trans-unit id="sc1edebeaef92b7bd">
+        <source>Fixed table layout</source>
+        <target>固定テーブルレイアウト</target>
+      </trans-unit>
+      <trans-unit id="sb59d621e3c93cc27">
+        <source>Shared cell borders</source>
+        <target>共有セルの境界線</target>
+      </trans-unit>
+      <trans-unit id="sa4f137f8619093a5">
+        <source>Caption at bottom</source>
+        <target>下部にキャプション</target>
+      </trans-unit>
+      <trans-unit id="s8a6585c48ea104e9">
+        <source>Hide empty cells</source>
+        <target>空のセルを隠す</target>
+      </trans-unit>
+      <trans-unit id="s49dd67aed00029ef">
+        <source>Math</source>
+        <target>数学</target>
+      </trans-unit>
+      <trans-unit id="sad6be321164d08c8">
+        <source>Compact math</source>
+        <target>コンパクトな数学</target>
+      </trans-unit>
+      <trans-unit id="s6ac62e1c8c66f3bb">
+        <source>Compact superscr.</source>
+        <target>コンパクトなsuperscr.</target>
+      </trans-unit>
+      <trans-unit id="s036d35e03be98d22">
+        <source>Math depth</source>
+        <target>数学の深さ</target>
+      </trans-unit>
+      <trans-unit id="s72f2a02e2a5a4ee3">
+        <source>Media</source>
+        <target>メディア</target>
+      </trans-unit>
+      <trans-unit id="s69d88ef4b2618980">
+        <source>Cover</source>
+        <target>カバー</target>
+      </trans-unit>
+      <trans-unit id="s29a1c26521879b9f">
+        <source>Scale down</source>
+        <target>縮小</target>
+      </trans-unit>
+      <trans-unit id="s0a3ddcba94027d95">
+        <source>Object fit</source>
+        <target>オブジェクトのフィット感</target>
+      </trans-unit>
+      <trans-unit id="s579c69f419b6caef">
+        <source>Smooth</source>
+        <target>スムーズ</target>
+      </trans-unit>
+      <trans-unit id="s741fae02b3dd24f3">
+        <source>Pixelated</source>
+        <target>ピクセル化</target>
+      </trans-unit>
+      <trans-unit id="sa126cf8c627cec1e">
+        <source>Image rendering</source>
+        <target>イメージレンダリング</target>
+      </trans-unit>
+      <trans-unit id="se58467472725ad0c">
+        <source>Image resolution</source>
+        <target>画像解像度</target>
+      </trans-unit>
+      <trans-unit id="sab4d9283896d9422">
+        <source>Snap resolution pixels</source>
+        <target>スナップ解像度ピクセル</target>
+      </trans-unit>
+      <trans-unit id="s0befccf152b6c0a9">
+        <source>Orient from metadata</source>
+        <target>メタデータからのオリエント</target>
+      </trans-unit>
+      <trans-unit id="sea52df2b70a5c10d">
+        <source>Ruby</source>
+        <target>ルビー</target>
+      </trans-unit>
+      <trans-unit id="sa644d580d8a11e60">
+        <source>Ruby alignment</source>
+        <target>ルビー・アライメント</target>
+      </trans-unit>
+      <trans-unit id="sed318ec045c5144f">
+        <source>Over</source>
+        <target>オーバー</target>
+      </trans-unit>
+      <trans-unit id="sc53de149fcaad713">
+        <source>Inter-character</source>
+        <target>キャラクター間</target>
+      </trans-unit>
+      <trans-unit id="s7d27db3c9639c6dd">
+        <source>Alternate</source>
+        <target>代替</target>
+      </trans-unit>
+      <trans-unit id="saad4380b9cc6cefd">
+        <source>Alternate over</source>
+        <target>交互</target>
+      </trans-unit>
+      <trans-unit id="s037b1dc850a89273">
+        <source>Alternate under</source>
+        <target>代替</target>
+      </trans-unit>
+      <trans-unit id="s3a179f6db2972384">
+        <source>Ruby position</source>
+        <target>ルビーのポジション</target>
+      </trans-unit>
+      <trans-unit id="sfcebd18506f1e535">
+        <source>Flow</source>
+        <target>フロー</target>
+      </trans-unit>
+      <trans-unit id="sc6415b50ff928294">
+        <source>List item</source>
+        <target>リスト項目</target>
+      </trans-unit>
+      <trans-unit id="sf0ca10f343249063">
+        <source>Contents</source>
+        <target>内容</target>
+      </trans-unit>
+      <trans-unit id="s1125d159f7e64df5">
+        <source>Display</source>
+        <target>ディスプレイ</target>
+      </trans-unit>
+      <trans-unit id="sca7cfe2bef51b2a5">
+        <source>Root</source>
+        <target>ルート</target>
+      </trans-unit>
+      <trans-unit id="sca7fed2bef53cb99">
+        <source>Role</source>
+        <target>役割</target>
+      </trans-unit>
+      <trans-unit id="sf4849bc200e279ed">
+        <source>Table caption</source>
+        <target>表のキャプション</target>
+      </trans-unit>
+      <trans-unit id="s41f65a763f8e44ab">
+        <source>Table header group</source>
+        <target>テーブル・ヘッダー・グループ</target>
+      </trans-unit>
+      <trans-unit id="s85f9aa6d3ea0e421">
+        <source>Table footer group</source>
+        <target>テーブル・フッター・グループ</target>
+      </trans-unit>
+      <trans-unit id="sc1a155cc25899250">
+        <source>Table row group</source>
+        <target>テーブル行グループ</target>
+      </trans-unit>
+      <trans-unit id="s5b474b5c0ac0c7c4">
+        <source>Table column group</source>
+        <target>テーブル列グループ</target>
+      </trans-unit>
+      <trans-unit id="s68b87d7b61052dc3">
+        <source>Table row</source>
+        <target>テーブルの列</target>
+      </trans-unit>
+      <trans-unit id="s9caf10388ab3562f">
+        <source>Table column</source>
+        <target>表欄</target>
+      </trans-unit>
+      <trans-unit id="s07970793b21351fd">
+        <source>Ruby base container</source>
+        <target>ルビー・ベース・コンテナ</target>
+      </trans-unit>
+      <trans-unit id="s8fad58c831ecf017">
+        <source>Ruby text container</source>
+        <target>ルビー・テキスト・コンテナ</target>
+      </trans-unit>
+      <trans-unit id="sb0f93c1c60c0249a">
+        <source>Ruby base</source>
+        <target>ルビー・ベース</target>
+      </trans-unit>
+      <trans-unit id="sbd35ee879d9cf770">
+        <source>Ruby text</source>
+        <target>ルビーテキスト</target>
+      </trans-unit>
+      <trans-unit id="sea896ed51ad33287">
+        <source>No specific styles available</source>
+        <target>特定のスタイルなし</target>
+      </trans-unit>
+      <trans-unit id="sb71941f552f3504d">
+        <source>Set special value</source>
+        <target>特別な値を設定する</target>
+      </trans-unit>
+      <trans-unit id="scbf29ce484222325">
+        <source></source>
+      </trans-unit>
+      <trans-unit id="sfb68cae41d749423">
+        <source>Initial</source>
+        <target>初回</target>
+      </trans-unit>
+      <trans-unit id="s6b585ba37cdb8260">
+        <source>Inherit</source>
+        <target>継承</target>
+      </trans-unit>
+      <trans-unit id="sb45f9fb4dba6e71a">
+        <source>Unset</source>
+        <target>アンセット</target>
+      </trans-unit>
+      <trans-unit id="sd89a2e529b31ef43">
+        <source>Revert</source>
+        <target>復帰</target>
+      </trans-unit>
+      <trans-unit id="sb741b6e0ca589122">
+        <source>Revert layer</source>
+        <target>リバーターレイヤー</target>
+      </trans-unit>
+      <trans-unit id="s844a76d1843ceb3c">
+        <source>Reset to default</source>
+        <target>デフォルトに戻す</target>
+      </trans-unit>
+      <trans-unit id="s2f8da2cb5f236588">
+        <source>The name of your package. Must be scoped, e.g. `@org/pkg`. </source>
+        <target>パッケージ名。例えば `@org/pkg` のようにスコープされていなければならない。 </target>
+      </trans-unit>
+      <trans-unit id="s840fa49e8989c028">
+        <source>Position/Shape</source>
+        <target>ポジション/形状</target>
+      </trans-unit>
+      <trans-unit id="s2e4818861000b13f">
+        <source>Layout</source>
+        <target>レイアウト</target>
+      </trans-unit>
+      <trans-unit id="s2e39b99cf23606fa">
+        <source>Set the layout of the selected elements</source>
+        <target>選択した要素のレイアウトを設定する</target>
+      </trans-unit>
+      <trans-unit id="seb4e52ef5ec7a7dc">
+        <source>Colors/Effects</source>
+        <target>カラー／エフェクト</target>
+      </trans-unit>
+      <trans-unit id="s105a06836c40fcb4">
+        <source>Set filters, color, and blending of selected elements</source>
+        <target>選択した要素のフィルター、色、ブレンドの設定</target>
+      </trans-unit>
+      <trans-unit id="s7f09197a4814079b">
+        <source>Set interactivity options for selected elements</source>
+        <target>選択した要素にインタラクティブ・オプションを設定する</target>
+      </trans-unit>
+      <trans-unit id="s380d17664bb69531">
+        <source>Insert column before</source>
+        <target>前に列を挿入する</target>
+      </trans-unit>
+      <trans-unit id="s12946ec1b850962c">
+        <source>Insert column after</source>
+        <target>の後に列を挿入する。</target>
+      </trans-unit>
+      <trans-unit id="s0458872c43beadef">
+        <source>Insert row before</source>
+        <target>前の行を挿入する</target>
+      </trans-unit>
+      <trans-unit id="s42ffdab1291fb3de">
+        <source>Insert row after</source>
+        <target>の後に行を挿入する。</target>
+      </trans-unit>
+      <trans-unit id="s77318393dfdb0775">
+        <source>Remove row</source>
+        <target>列の削除</target>
+      </trans-unit>
+      <trans-unit id="sa8b55cab62e439b5">
+        <source>Remove column</source>
+        <target>列の削除</target>
+      </trans-unit>
+      <trans-unit id="s1696c76a23c0834e">
+        <source>Advanced: Show packages with versions like 0.x.x in the package manager</source>
+        <target>高度な0.x.xのようなバージョンのパッケージをパッケージマネージャに表示する。</target>
+      </trans-unit>
+      <trans-unit id="sc2e2a0dbf03723b7">
+        <source>Advanced: Show packages from unknown sources in the package manager (Warning: May be unsafe)</source>
+        <target>高度なソース不明なパッケージをパッケージマネージャに表示する (警告: 安全でない可能性があります)</target>
+      </trans-unit>
+      <trans-unit id="sbff54e740c4086eb">
+        <source>Show unknown packages</source>
+        <target>不明なパッケージを表示する</target>
+      </trans-unit>
+      <trans-unit id="sb19611adbc88f711">
+        <source>Advanced: Show source editing commands, e.g. to show the document's HTML or to add custom styles and scripts.</source>
+        <target>上級者向け：ソース編集コマンドを表示します。例えば、ドキュメントのHTMLを表示したり、カスタムスタイルやスクリプトを追加したりできます。</target>
+      </trans-unit>
+      <trans-unit id="sd452cebf4a0313d1">
+        <source>Show source editing commands</source>
+        <target>ソース編集コマンドの表示</target>
+      </trans-unit>
+      <trans-unit id="s612d62bbc9df3bcc">
+        <source>Advanced: Reset all WebWriter data each time the page is loaded - for debugging purposes.</source>
+        <target>上級者向け：デバッグのために、ページがロードされるたびにすべてのWebWriterデータをリセットします。</target>
+      </trans-unit>
+      <trans-unit id="s4b9d321525eb78ac">
+        <source>Reset all app data on page load</source>
+        <target>ページロード時にすべてのアプリデータをリセット</target>
+      </trans-unit>
+      <trans-unit id="s65ac276544ba33cd">
+        <source>SVG file</source>
+        <target>SVGファイル</target>
+      </trans-unit>
+      <trans-unit id="sf22a3737146ec910">
+        <source>WebWriter can embed SVG directly in the document.</source>
+        <target>WebWriterはドキュメントに直接SVGを埋め込むことができます。</target>
       </trans-unit>
     </body>
   </file>

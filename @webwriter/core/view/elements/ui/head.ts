@@ -63,6 +63,8 @@ export class Head extends LitElement {
       flex-direction: row;
       align-items: center;
       overflow: hidden;
+      padding-top: 2px;
+      padding-bottom: 2px;
     }
 
     #filename :first-child {

@@ -180,7 +180,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
   }
 
   get dom() {
-    return this.view.dom
+    return this.view?.dom
   }
 
   get dragging() {
@@ -313,7 +313,6 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
       }
     }
     if((this.state as any)?.head$ && (!previous.get("state")?.head$ || !previous.get("state")?.head$.doc.eq((this.state as any)?.head$.doc)) && !this.url) {
-      console.log(3)
       this.renderHead()
     }
     
@@ -482,7 +481,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
         return this.createScriptInline(await (await fetch(url)).text())
       }))
       const styles = styleUrls.map(url => this.createStyleLink(url))
-      const localStyles = await Promise.all(localScriptUrls.map(async url => {
+      const localStyles = await Promise.all(localStyleUrls.map(async url => {
         return this.createStyleInline(await (await fetch(url)).text())
       }))
 

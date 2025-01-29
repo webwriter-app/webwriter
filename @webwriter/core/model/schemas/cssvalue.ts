@@ -178,9 +178,9 @@ export class CSSMathValue extends window.CSSMathValue {
   } 
 }
 
-CSSMathValue.parse
-
 export class CSSPercentageValue extends CSSUnitValue {
+
+  static units = ["%"] 
 
   constructor(value: number) {
     super(value, "percent")
@@ -201,6 +201,8 @@ export class CSSPercentageValue extends CSSUnitValue {
 }
 
 export class CSSIntegerValue extends CSSUnitValue {
+
+  static units = []
   
   constructor(value: number) {
     super(value, "number")
@@ -224,6 +226,8 @@ export class CSSIntegerValue extends CSSUnitValue {
 }
 
 export class CSSNumberValue extends CSSUnitValue {
+
+  static units = []
   
   constructor(value: number) {
     super(value, "number")
@@ -244,6 +248,8 @@ export class CSSNumberValue extends CSSUnitValue {
 }
 
 export class CSSFlexValue extends CSSUnitValue {
+
+  static units = ["fr"]
   
   constructor(value: number) {
     super(value, "fr")
@@ -265,7 +271,7 @@ export class CSSFlexValue extends CSSUnitValue {
 
 export class CSSLengthValue extends CSSUnitValue {
 
-  static units = ["cap", "ch", "em", "ex", "ic", "lh", "rcap", "rch", "rem", "rex", "ric", "rlh", "vh", "vw", "vmax", "vmin", "vb", "vi", "cqw", "cqh", "cqi", "cqb", "cqmin", "cqmax", "px", "cm", "mm", "Q", "in", "pc", "pt"] as const
+  static units = ["px", "pt", "cm", "mm", "em", "rem", "ch", "ex", "ic", "lh", "rcap", "rch", "rex", "ric", "rlh", "vh", "vw", "vmax", "vmin", "vb", "vi", "cap", "cqw", "cqh", "cqi", "cqb", "cqmin", "cqmax", "Q", "in", "pc", "pt"] as const
   
   constructor(value: number, unit: typeof CSSLengthValue["units"][number]) {
     super(value, unit)

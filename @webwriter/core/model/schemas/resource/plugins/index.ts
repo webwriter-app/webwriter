@@ -23,7 +23,7 @@ export interface SchemaPlugin<
   nodes?: { [key in N]: NodeSpec };
   marks?: { [key in M]: MarkSpec };
   topNode?: N;
-  plugin?: Plugin<PS>;
+  plugin?: Plugin<PS> | Plugin<PS>[];
   keymap?:
     | ((schema: Schema) => Record<string, Command>)
     | Record<string, Command>;
@@ -82,7 +82,7 @@ export function configFromSchemaPlugins(
     history(),
     gapCursor(),
     // virtualCursor(),
-    ...schemaPlugins.filter((p) => p.plugin).map((p) => p.plugin!),
+    ...schemaPlugins.filter((p) => p.plugin).flatMap((p) => p.plugin!),
   ];
   return { schema, doc, plugins };
 }

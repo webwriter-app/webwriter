@@ -14,7 +14,7 @@ const GENERIC_FONT_FAMILY = [
   "fantasy"
 ]
 
-const WEB_SAFE_FONTS = [
+export const WEB_SAFE_FONTS = [
   {name: '"Arial"', type: "sans-serif"},
   {name: '"Arial Black"', type: "sans-serif"},
   {name: '"Arial Narrow"', type: "sans-serif"},
@@ -28,7 +28,7 @@ const WEB_SAFE_FONTS = [
   {name: '"Courier New"', type: "monospace"}
 ]
 
-const FONT_SIZES = [
+export const FONT_SIZES = [
   8,
   9,
   10,

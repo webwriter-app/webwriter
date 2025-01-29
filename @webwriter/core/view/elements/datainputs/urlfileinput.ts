@@ -463,6 +463,10 @@ export class URLFileInput extends SlInput implements DataInput {
     this.recorder?.stop()
   }
 
+  async getValueAsText() {
+    return !this.value? undefined: await (await fetch(this.value)).text()
+  }
+
   disconnectedCallback(): void {
     super.disconnectedCallback()
     this.stopStream()

@@ -1,4 +1,4 @@
-import {LitElement, html, css, ReactiveController, CSSResult} from "lit"
+import {LitElement, html, css, ReactiveController, CSSResult, PropertyValues} from "lit"
 import {styleMap} from "lit/directives/style-map.js"
 import {customElement, property, query} from "lit/decorators.js"
 import { Decoration, EditorView, DecorationSet } from "prosemirror-view"
@@ -16,9 +16,10 @@ import { WidgetView, nodeViews } from "."
 import { CODEMIRROR_EXTENSIONS, EditorStateWithHead, MediaType, Package, removeMark, upsertHeadElement } from "#model"
 import { range, roundByDPR, sameMembers } from "#utility"
 import { App, Toolbox, Palette, ProsemirrorEditor, CodemirrorEditor } from "#view"
+import { CellSelection } from "@massifrg/prosemirror-tables-sections"
+import { isNodeSelection } from "prosemirror-utils"
 
 class EmbedTooLargeError extends Error {}
-
 
 export class EditorViewController extends EditorView implements ReactiveController {
 	
@@ -215,9 +216,6 @@ export class ExplorableEditor extends LitElement {
 	@property({type: Boolean, attribute: true})
 	showWidgetPreview: boolean = false
 
-	@property({type: Boolean, attribute: true, reflect: true})
-	hoverWidgetAdd: boolean = false
-
   @property({type: Boolean, attribute: true, reflect: true})
 	controlsVisible: boolean = true
 
@@ -328,7 +326,8 @@ export class ExplorableEditor extends LitElement {
 
   async pin() {
     const html = this.selectionAsHTML
-    return this.app.store.packages.addSnippet({id: "snippet", html})
+    await this.app.store.packages.addSnippet({id: "snippet", html})
+    this.editingStatus = undefined
   }
 
   get selectionAsHTML() {
@@ -498,6 +497,10 @@ export class ExplorableEditor extends LitElement {
           height: fit-content;
 				}
 
+        ww-toolbox {
+          background: transparent;
+        }
+
 			}
 
       @media only print {
@@ -593,7 +596,7 @@ export class ExplorableEditor extends LitElement {
       if(this.printing) {
         decorations.push(Decoration.node(pos, pos + node.nodeSize, {class: "ww-beforeprint"}))
       }
-      if(["picture", "audio", "video", "iframe", "table"].includes(node.type.name)) {
+      if(["picture", "audio", "video", "iframe"].includes(node.type.name)) {
         decorations.push(Decoration.widget(pos, (view, getPos) => {
           let el: HTMLElement | undefined = undefined
           // Fix this crutch
@@ -657,12 +660,27 @@ export class ExplorableEditor extends LitElement {
 		this.editorState = this.pmEditor.state as EditorStateWithHead
     this.dispatchEvent(new Event("change"))
 		this.updatePosition()
-    this.updateDocumentElementClasses(undefined, true)
 	}
 
+  protected updated(changed: PropertyValues): void {
+    if(changed.has("editingStatus") || changed.has("editorState")) {
+      this.updateDocumentElementClasses(undefined)
+    }
+  }
+
 	get isInNarrowLayout() {
-		return document.documentElement.offsetWidth <= 1360
+		return document.documentElement.offsetWidth <= 1129
 	}
+
+  get isInWideLayout() {
+    return document.documentElement.offsetWidth > 1360
+  }
+
+  get shiftPaddingStyling() {
+    return this.isInWideLayout
+      ? 27
+      : 34 + Math.max(0, document.documentElement.offsetWidth - 1130)
+  }
 
 	get activeElement(): HTMLElement | null {
 			const {selection} = this
@@ -670,10 +688,13 @@ export class ExplorableEditor extends LitElement {
         return null
       }
       if(selection instanceof GapCursor) {
-        return this.pmEditor.body.querySelector(".ProseMirror-gapcursor")
+        return this.pmEditor?.body?.querySelector(".ProseMirror-gapcursor") ?? null
       }
       else if(selection instanceof AllSelection) {
         return this.pmEditor.body
+      }
+      else if(selection instanceof CellSelection) {
+        return this.pmEditor.domAtPos(selection.$anchorCell.pos, 0)?.node as HTMLElement
       }
 			else if(selection instanceof TextSelection) {
         const node = this.pmEditor.domAtPos(this.selection.anchor, 0)?.node
@@ -810,7 +831,7 @@ export class ExplorableEditor extends LitElement {
       if(this.app.store.ui.stickyToolbox) {
         this.positionStyle = css`
           body {
-            --ww-toolbox-action-x: ${this.toolboxX - iframeOffsetX}px;
+            --ww-toolbox-action-x: ${this.toolboxX - iframeOffsetX + 10}px;
             --ww-toolbox-action-y: ${this.toolboxY + this.toolboxHeight - iframeOffsetY}px;
             --ww-toolbox-action-width: ${docWidth - rightEdge - 40}px;
             --ww-toolbox-action-height: ${docHeight + -this.toolboxY + -this.toolboxHeight}px
@@ -823,7 +844,7 @@ export class ExplorableEditor extends LitElement {
         const toolboxWidth = this.toolbox.offsetWidth
         this.positionStyle = css`
           body {
-            --ww-toolbox-action-x: ${toolboxX}px;
+            --ww-toolbox-action-x: ${toolboxX + 10}px;
             --ww-toolbox-action-y: ${toolboxY + this.toolboxHeight}px;
             --ww-toolbox-action-width: ${toolboxWidth - 20}px;
             --ww-toolbox-action-height: ${docHeight + -toolboxY + -this.toolboxHeight - 20}px
@@ -1002,7 +1023,7 @@ export class ExplorableEditor extends LitElement {
       if(ev.key === "Escape") {
         this.pmEditor.document.exitFullscreen()
       }
-      else if(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(ev.key) && !ev.shiftKey) {
+      else if(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(ev.key) && !ev.shiftKey && !this.activeElement?.closest("table")) {
         const sel = this.nextSelection(["ArrowLeft", "ArrowUp"].includes(ev.key))
         if(sel && !sel.eq(this.editorState.selection)) {
           const tr = this.editorState.tr.setSelection(sel).scrollIntoView()
@@ -1192,11 +1213,18 @@ export class ExplorableEditor extends LitElement {
   private static embedTypes = ["application/pdf"]
 
   private selectElementInEditor(el: HTMLElement) {
-    const pos = Math.max(this.pmEditor.posAtDOM(el, 0) - 1, 0)
-    const selection = NodeSelection.create(this.pmEditor.state.doc, pos)
+    let selection
+    if(el.tagName === "BODY" || el.tagName === "HTML") {
+      selection = new AllSelection(this.pmEditor.state.doc)
+    }
+    else {
+      const pos = Math.max(this.pmEditor.posAtDOM(el, 0) - (el.tagName.includes("-") && !el.children.length? 0: 1), 0)
+      selection = NodeSelection.create(this.pmEditor.state.doc, pos)
+    }
     this.pmEditor.dispatch(this.pmEditor.state.tr.setSelection(selection))
     this.pmEditor.focus()
     el.focus()
+    this.updateDocumentElementClasses()
   }
 
   blobsToElements = async (blobs: Blob[]) => {
@@ -1274,24 +1302,35 @@ export class ExplorableEditor extends LitElement {
     "keyup": (e: any) => this.updateDocumentElementClasses(e, true),
     "mouseup": (e: any) => this.updateDocumentElementClasses(e),
     "mousedown": (e: any) => this.updateDocumentElementClasses(e),
-    "resize": () => this.requestUpdate()
+    "resize": () => this.requestUpdate(),
+    "focus": (e: any) => this.updateDocumentElementClasses(e, true)
   }
 
   updateDocumentElementClasses = (e?: KeyboardEvent | MouseEvent, removeOnly=false) => {
-    if(this.previewMode || this.sourceMode) {
+    if(this.previewMode || this.sourceMode || !this.pmEditor?.documentElement) {
       return
     }
     const toRemove = [
       !e?.ctrlKey && "ww-key-ctrl",
       !e?.altKey && "ww-key-alt",
       !e?.shiftKey && "ww-key-shift",
-      !e?.metaKey && "ww-key-meta"
+      !e?.metaKey && "ww-key-meta",
+      !this.isAllSelected && "ww-all-selected",
+      !this.app.store.document.empty && "ww-empty",
+      this.editingStatus !== "copying" && `ww-copying`,
+      this.editingStatus !== "cutting" && `ww-cutting`,
+      this.editingStatus !== "deleting" && `ww-deleting`,
+      this.editingStatus !== "inserting" && `ww-inserting`,
+      this.editingStatus !== "pinning" && `ww-pinning`,
     ].filter(k => k) as string[]
     const toAdd = [
       e?.ctrlKey && "ww-key-ctrl",
       e?.altKey && "ww-key-alt",
       e?.shiftKey && "ww-key-shift",
-      e?.metaKey && "ww-key-meta"
+      e?.metaKey && "ww-key-meta",
+      this.isAllSelected && "ww-all-selected",
+      this.app.store.document.empty && "ww-empty",
+      this.editingStatus && `ww-${this.editingStatus}`
     ].filter(k => k) as string[]
     toRemove.length && this.pmEditor?.documentElement.classList.remove(...toRemove)
     !removeOnly && toAdd.length && this.pmEditor?.documentElement.classList.add(...toAdd)
@@ -1301,7 +1340,12 @@ export class ExplorableEditor extends LitElement {
     return html.replaceAll(/style=["']?((?:.(?!["']?\s+(?:\S+)=|\s*\/?[>"']))+.)["']?/g, "")
   }
 
-  handleEditorFocus = () => this.requestUpdate()
+  handleEditorFocus = () => {
+    this.requestUpdate()
+    this.toolbox && (this.toolbox.activeLayoutCommand = undefined)
+    this.palette && (this.palette.managing = false)
+    this.editingStatus = undefined
+  }
 
   handleDoubleClick = (view: EditorView, pos: number, e: MouseEvent) => {
     if(this.selection instanceof GapCursor) {
@@ -1415,6 +1459,7 @@ export class ExplorableEditor extends LitElement {
         class=${this.toolboxMode}
 				style=${styleMap(this.toolboxStyle)}
 				.activeElement=${activeElement}
+        .shiftPaddingStyling=${this.shiftPaddingStyling}
 				@ww-delete-widget=${(e: any) => this.deleteWidget(e.detail.widget)}
 				@ww-mark-field-input=${(e: any) => {
 					const {from, to} = this.editorState.selection
@@ -1436,7 +1481,13 @@ export class ExplorableEditor extends LitElement {
 					!e.detail.widget? this.pmEditor?.focus(): e.detail.widget.focus()
 				}}
         @ww-set-attribute=${(e: CustomEvent) => this.setNodeAttribute(e.detail.el, e.detail.key, e.detail.value, e.detail.tag)}
-        @ww-set-style=${(e: CustomEvent) => e.detail.el.style[e.detail.key] = e.detail.value}
+        @ww-set-style=${(e: CustomEvent) => {
+          if(!isNodeSelection(this.selection) && !this.isAllSelected) {
+            this.pmEditor.dispatch(this.editorState.tr.setSelection(NodeSelection.create(this.editorState.doc, this.editorState.selection.$anchor.before())))
+          }
+          Object.assign(e.detail.el.style, e.detail.style)
+          // this.pmEditor.focus()
+        }}
 			></ww-toolbox>
 		`
 	}
@@ -1498,7 +1549,7 @@ export class ExplorableEditor extends LitElement {
       <main part="base">
         ${this.sourceMode? this.CodeEditor(): [
           this.CoreEditor(),
-          !this.pmEditor?.isFullscreen && !this.previewMode && !(this.editorState.doc.content.size === 0)? this.Toolbox(): null,
+          !this.pmEditor?.isFullscreen && !this.previewMode? this.Toolbox(): null,
           !this.pmEditor?.isFullscreen && !this.previewMode? this.Palette(): null
         ]}
         <!--<ww-debugoverlay .editorState=${this.editorState} .activeElement=${this.activeElement}></ww-debugoverlay>-->

@@ -129,9 +129,15 @@ export const ContentExpression = Object.assign(z.string().transform<Expression>(
         parent
       }
       seen.set(expression.raw, result)
-      const nodeContent = node.spec.content
-        ? seen.get(node.spec.content) ?? ContentExpression.resolve(schema, ContentExpression.parse(node.spec.content), result as any, seen)
-        : undefined
+      const seenContent = node.spec.content && seen.get(node.spec.content)
+      let nodeContent = undefined
+      if(!seenContent && node.spec.content) {
+        seen.set(node.spec.content, result)
+        nodeContent = ContentExpression.resolve(schema, ContentExpression.parse(node.spec.content), result as any, seen)
+      }
+      else {
+        nodeContent = seen.get(node.spec.content)
+      }
       return Object.assign(result, {content: nodeContent? [nodeContent]: undefined}) as any
     }
     else if(Array.isArray(content)) {
@@ -152,11 +158,18 @@ export const ContentExpression = Object.assign(z.string().transform<Expression>(
       return expression
     }
   },
-  values(expression: ParentedExpression): ParentedExpression[] {
+  values(expression: ParentedExpression, seen=new WeakSet()): ParentedExpression[] {
     const {content} = expression
-    const values = !content || typeof content === "string"
-      ? []
-      : content.flatMap(c => ContentExpression.values(c))
+    let values
+    if(seen.has(expression)) {
+      values = [] as any
+    } 
+    else {
+      seen.add(expression)
+      values = !content || typeof content === "string"
+        ? []
+        : content.flatMap(c => ContentExpression.values(c, seen))
+    }
     return [expression, ...values]
   }
 })

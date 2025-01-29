@@ -5,247 +5,151 @@ export * from "./lineheightpicker"
 export * from "./backgroundpicker"
 export * from "./boxpicker"
 
-import {LitElement, html} from "lit"
+import {LitElement, PropertyValues, html} from "lit"
 import {property} from "lit/decorators.js"
 import { CSSPropertySpecs } from "../../../model/schemas/cssvaluedefinition.data"
 import { filterObject } from "../../../model/utility"
 import { CSSValueDefinition, ICSSValueDefinition } from "../../../model/schemas/cssvaluedefinition"
 import { ifDefined } from "lit/directives/if-defined.js"
+import { SlCheckbox, SlColorPicker, SlRadioGroup, SlRange, SlSelect, SlSwitch } from "@shoelace-style/shoelace"
+import { Combobox } from "../ui/combobox"
+import { CSSNumericInput } from "../datainputs/cssnumericinput"
+import { CSSPropertyInput } from "../datainputs/csspropertyinput"
+import { CSSBorderRadiusInput } from "../datainputs/cssborderradiusinput"
+import { CSSLineTypeInput } from "../datainputs/csslinetypeinput"
 
 
-export function StyleForm<T extends readonly (keyof CSSPropertySpecs)[]>(superClass: typeof LitElement, keys: T, allSpecs=CSSPropertySpecs) {
-  return class extends superClass {
-
-    static formAssociated = true
-    protected static stylePropertySpecs = filterObject(allSpecs, k => k in keys) as unknown as Pick<typeof allSpecs, T[number]>
-  
-    protected _internals: ElementInternals
-    protected _value: {[Property in T[number]]: string}
-  
-    constructor() {
-      super()
-      this._internals = this.attachInternals()
-    }
-  
-    get value() {
-      return this._value
-    }
-  
-    set value(v: typeof this._value) {
-      const oldValue = this._value
-      this._value = v
-      const formData = Object.entries(v).reduce((acc: FormData, [k, v]) => {
-        acc.set(k, v as any)
-        return acc
-      }, new FormData())
-      this._internals.setFormValue(formData)
-      this.requestUpdate("value", oldValue)
-    }
-  
-    setValueField(k: T[number], v: string) {
-      const oldValue = this._value[k]
-      this._value[k] = v
-      this.requestUpdate(k, oldValue)
-    }
-  
-    public checkValidity(): boolean {
-      return this._internals.checkValidity();
-    }
-    
-    public reportValidity(): boolean {
-      return this._internals.reportValidity();
-    }
-    
-    public get validity(): ValidityState {
-      return this._internals.validity;
-    }
-    
-    public get validationMessage(): string {
-      return this._internals.validationMessage;
-    }
-
-    updateValidity(newValue: string) {
-      
-    }
-  }
+function createCSSStyleDeclaration(text: string = ""): CSSStyleDeclaration {
+  const sheet = new CSSStyleSheet()
+  sheet.insertRule(`*{${text}}`)
+  return (sheet.cssRules.item(0) as CSSStyleRule).style
 }
 
+export abstract class LitPickerElement<T extends keyof CSSPropertySpecs = keyof CSSPropertySpecs> extends LitElement {
 
-/** Input a CSS value of the specified type. If `syntax` is set, it is used to provide an appropriate input and validation. Else, if `syntax` is not set, but `name` is a known CSS property name, automatically use that property's syntax. Otherwise, fall back to a normal text input. */
-export class StyleInput extends LitElement {
-  static formAssociated = true
-  protected _internals: ElementInternals
+  handlers: Record<string, (target?: HTMLElement) => void> = {}
 
-  constructor() {
-    super()
-    this._internals = this.attachInternals()
+  get emptyValue() {
+    return createCSSStyleDeclaration()
   }
 
-  @property({type: String, attribute: true, reflect: true})
-  name: string
+  propertyNames: Readonly<Array<T>> = []
 
-  @property({type: String, attribute: true, reflect: true})
-  syntax: string
+  // key: "" - no value
+  // key: "inherit" | "unset" | ...
+  #value: CSSStyleDeclaration = this.emptyValue
 
-  @property({type: String, attribute: true, reflect: true})
-  label: string
-
-  _value: string
-
-  get value() {
-    return this._value
+  @property({attribute: false})
+  get value(): Record<T, string> {
+    return Object.fromEntries(this.propertyNames.map(name => [name, this.#value.getPropertyValue(name)])) as Record<T, string>
   }
 
-  @property({type: String, attribute: true})
-  set value(v: typeof this._value) {
-    const oldValue = this._value
-    this._value = v
-    const formData = Object.entries(v).reduce((acc: FormData, [k, v]) => {
-      acc.set(k, v as any)
-      return acc
-    }, new FormData())
-    this._internals.setFormValue(formData)
-    this.requestUpdate("value", oldValue)
+  get empty() {
+    return Object.values(this.value).every(v => !v)
   }
 
-  @property({attribute: false, state: true})
-  private pos = 0
-
-  get valueDefinition() {
-    return (this.syntax? CSSValueDefinition.parse(this.syntax): null) ?? CSSValueDefinition.CSSPropertySpecs[this.name as keyof typeof CSSValueDefinition.CSSPropertySpecs].syntaxTree ?? undefined
-  }
-
-  public checkValidity(): boolean {
-    return this._internals.checkValidity();
-  }
-  
-  public reportValidity(): boolean {
-    return this._internals.reportValidity();
-  }
-  
-  public get validity(): ValidityState {
-    return this._internals.validity;
-  }
-  
-  public get validationMessage(): string {
-    return this._internals.validationMessage;
-  }
-
-
-
-  render() {
-    // 
-    return 
-  }
-}
-
-class StylePropertyField extends LitElement {
-
-  static complexTypes = ["Alternation", "Subset", "OrderedSequence", "UnorderedSequence"] as const satisfies ICSSValueDefinition["type"][]
-
-  static unitPattern = {
-    "custom-ident": /abc/,
-    "dashed-ident": /abc/
-  }
-
-  static unitMin = {
-    "resolution": "0",
-    "flex": "0"
-  } as const satisfies Record<string, string>
-
-  static unitMax = {
-
-  } as const satisfies Record<string, string>
-
-  static unitStep = {
-    "integer": "1"
-  } as const satisfies Record<string, string>
-
-  static unitSuffixes = {
-    "percentage": ["%"],
-    "length": ["em", "rem", "ex", "rex", "cap", "rcap", "ch", "rch", "ic", "ric", "lh", "rlh", "vw", "vh", "vi", "vb", "vmin", "vmax", "cm", "mm", "Q", "in", "pt", "pc", "px"],
-    "angle": ["deg", "grad", "rad", "turn"],
-    "time": ["s", "ms"],
-    "frequency": ["Hz", "kHz"],
-    "resolution": ["dpi", "dpcm", "dppx"],
-    "length-percentage": ["%", "em", "rem", "ex", "rex", "cap", "rcap", "ch", "rch", "ic", "ric", "lh", "rlh", "vw", "vh", "vi", "vb", "vmin", "vmax", "cm", "mm", "Q", "in", "pt", "pc", "px"],
-    "frequency-percentage": ["%", "Hz", "kHz"],
-    "angle-percentage": ["%", "deg", "grad", "rad", "turn"],
-    "time-percentage": ["%", "s", "ms"],
-    "flex": ["fr"],
-    "alpha-value": ["", "%"],
-    "hue": ["", "deg", "grad", "rad", "turn"],
-  } as const satisfies Record<string, string[]>
-
-  @property({type: String, attribute: true, reflect: true})
-  name: string
-
-  @property({type: String, attribute: true, reflect: true})
-  syntax: string
-
-  @property({type: String, attribute: true, reflect: true})
-  label: string
-
-  get valueDefinition() {
-    return (this.syntax? CSSValueDefinition.parse(this.syntax): null) ?? CSSValueDefinition.CSSPropertySpecs[this.name as keyof typeof CSSValueDefinition.CSSPropertySpecs].syntaxTree ?? undefined
-  }
-
-  @property({type: String, attribute: true})
-  value: string
-
-
-  Select(def: ICSSValueDefinition | undefined = this.valueDefinition) {
-    if(!def) {
-      return html`<sl-input type="text"></sl-input>`
+  set value(v: Record<T, string> | CSSStyleDeclaration) {
+    if(!v) {
+      this.#value = this.emptyValue
     }
-    else if(def.type === "Literal") {
-      return html`<span>${def.content}</span>`
+    else if("getPropertyValue" in v) {
+      this.#value = v
     }
-    else if(def.type === "DataType" && ["custom-ident", "dashed-ident", "string"].includes(def.content)) {
-      return html`<sl-input
-        type="text"
-        pattern=${ifDefined((StylePropertyField.unitPattern as any)[def.content])}
-      ></sl-input>`
+    else {
+      this.propertyNames.forEach(name => name in v? this.#value.setProperty(name, v[name]): undefined)
     }
-    else if(def.type === "DataType" && def.content === "url") {
-      return html`<sl-input
-        type="url"
-        pattern=${ifDefined((StylePropertyField.unitPattern as any)[def.content])}
-      ></sl-input>`
+    this.requestUpdate("value")
+  }
+
+  protected setPartialValue(name: T, value: string) {
+    this.#value.setProperty(name, value)
+    this.requestUpdate("value")
+  }
+
+  @property({attribute: false})
+  computedValue?: CSSStyleDeclaration = undefined
+
+  protected getCurrentValue(name: T) {
+    const isGlobal = !["custom", "none"].includes(this.getGlobalValue(name))
+    return isGlobal || !this.value[name]
+      ? this.computedValue?.getPropertyValue(name) ?? ""
+      : this.value[name]
+  }
+
+  protected getGlobalValue(name: T): "initial" | "inherit" | "unset" | "revert" | "revert-layer" | "custom" | "none" {
+    return ["initial", "inherit", "unset", "revert", "revert-layer"].includes(this.value[name])
+      ? this.value[name] as "initial" | "inherit" | "unset" | "revert" | "revert-layer"
+      : (this.value[name]? "custom": "none")
+  }
+
+  restore(name: T) {
+    if(name in this.handlers) {
+      this.handlers[name]()
     }
-    else if(def.type === "DataType" && ["integer", "number", "percentage", "flex", "length", "angle", "time", "frequency", "resolution", "length-percentage", "frequency-percentage", "angle-percentage", "time-percentage", "hue"].includes(def.content)) {
-      return html`<sl-input type="number"></sl-input>`
-    }
-    else if(def.type === "DataType" && def.content === "alpha-value") {
-      return html`<sl-input type="number"></sl-input>`
-    }
-    else if(def.type === "DataType" && def.content === "ratio") {
-      return html`<sl-input type="number"></sl-input> / <sl-input type="number"></sl-input>`
-    }
-    else if(def.type === "DataType" && def.content === "color") {
-      return html`<sl-color-picker></sl-color-picker>`
-    }
-    else if(def.type === "DataType" && def.content === "image") {
-      return html`<ww-urlfileinput></ww-urlfileinput>` // TODO gradients
-    }
-    else if(def.type === "DataType" && def.content === "position") {
-      return html`<ww-combobox></ww-combobox>`
+    else {
+      this.#value.removeProperty(name)
     }
   }
 
-  // State machine approach:
-  // construct state machine from 
-
-  render() {
-    return html`
-      <div>${this.label ?? this.name}</div>
-      ${this.Select()}
-      <div>
-        <div>initial</div>
-        <div>inherit</div>
-        <div>revert</div>
-        <div>unset</div>
-      </div>
-    `
+  restoreAll() { // fix this
+    this.#value = this.emptyValue
   }
+
+  protected getInputValue(name: string, el?: HTMLElement) {
+    const target = el ?? this.shadowRoot!.querySelector(`[name="${name}"]:not([data-inactive])`) as HTMLElement & {name: string, value: any}
+    const globalInput = (target.querySelector("css-global-input") as HTMLElement & {value: string}) ?? (target.parentElement!.querySelector("css-global-input") as HTMLElement & {value: string})
+    return !globalInput || ["custom", "none"].includes(globalInput.value)
+      ? (target as any).value
+      : globalInput.value
+  }
+
+  protected resolveChange = (name: T, el?: HTMLElement, value?: string) => {
+    const target = el ?? this.shadowRoot!.querySelector(`[name="${name}"]:not([data-inactive])`) as HTMLElement
+    const globalInput = (target?.querySelector("css-global-input") as HTMLElement & {value: string}) ?? (target?.parentElement!.querySelector("css-global-input") as HTMLElement & {value: string})
+    
+    if(globalInput) {
+      globalInput.value = "custom"
+    }
+
+    if(name in this.handlers && !value) {
+      this.handlers[name](target)
+    }
+    else if(name in CSSPropertySpecs && [SlRadioGroup, SlSelect, Combobox, SlColorPicker, CSSNumericInput, CSSPropertyInput, CSSBorderRadiusInput, CSSLineTypeInput, SlRange].some(cls => target instanceof cls)) {
+      this.#value.setProperty(name, value ?? String(this.getInputValue(name, el)))
+    }
+    else if(name in CSSPropertySpecs && [SlCheckbox, SlSwitch].some(cls => target instanceof cls)) {
+      const defaultValue = target.dataset.defaultvalue!
+      const otherValue = target.dataset.othervalue!
+      let v = value ?? ((target as any).checked? otherValue: defaultValue)
+      this.#value.setProperty(name, v)
+    }
+    else {
+      throw Error("Unknown key: " + name)
+    }
+  }
+
+  handleChange = (e: {target: HTMLElement & {name: string, value: any, defaultValue?: string}}) => {
+    this.resolveChange(e.target.name as T)
+    this.requestUpdate("value")
+    this.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+  }
+
+  handleRestore(name: T) {
+    this.restore(name)
+    this.requestUpdate("value")
+    this.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+  }
+
+  firstUpdated(_changedProperties: PropertyValues): void {
+    super.firstUpdated(_changedProperties)
+    const inputs: Array<HTMLElement & {name: string, value: any}> = Array.from(this.shadowRoot?.querySelectorAll(":not(sl-icon)[name]") ?? [])
+    inputs?.forEach(input => {
+      (input as any).addEventListener("sl-change", this.handleChange);
+      (input as any).addEventListener("change", this.handleChange);
+      ((input as any).querySelector("css-global-input") ?? (input as any).parentElement!.querySelector("css-global-input"))?.addEventListener("ww-restore", () => this.handleRestore((input as any).name));
+    })
+  }
+
+  @property({type: Boolean, attribute: true, reflect: true})  
+  advanced = false
 }

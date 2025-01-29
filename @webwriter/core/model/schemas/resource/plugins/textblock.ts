@@ -1,11 +1,10 @@
 import { EditorState, NodeSelection, TextSelection } from "prosemirror-state";
-import { SchemaPlugin, parseStyleAttrs, serializeStyleAttrs, styleAttrs } from ".";
-import { ProsemirrorEditor } from "../../../../view/app";
-import { camelCaseToSpacedCase, range } from "../../../utility";
-import { chainCommands, createParagraphNear, deleteSelection, joinBackward, joinTextblockBackward, joinUp, lift, liftEmptyBlock, selectParentNode } from "prosemirror-commands";
+import { SchemaPlugin, styleAttrs } from ".";
+import { ProsemirrorEditor } from "#view/index.js";
+import { camelCaseToSpacedCase, range } from "#utility";
+import { chainCommands } from "prosemirror-commands";
 import {Node, NodeType, Attrs, Slice, Fragment} from "prosemirror-model"
-import { ContentExpression, ParentedExpression } from "../../contentexpression";
-import { HTMLElementSpec } from "../htmlelementspec";
+import { ContentExpression, ParentedExpression } from "#model";
 import { GapCursor } from "prosemirror-gapcursor";
 
 
@@ -136,10 +135,11 @@ export function fillNode(type: NodeType, attrs?: Attrs): Node {
   return node.copy(content)
 }
 
-export function wrapSelection(type: string | NodeType, attrs?: Attrs) {
+export function wrapSelection(type: string | NodeType | (string | NodeType)[], attrs?: Attrs) {
   return chainCommands((state: EditorState, dispatch: any) => {
     const {selection} = state
-    const nodeType = typeof type === "string"? state.schema.nodes[type]: type
+    const allTypes = Array.isArray(type)? type.map(t => typeof t === "string"? state.schema.nodes[t]: t): [typeof type === "string"? state.schema.nodes[type]: type]
+    const firstType = allTypes[0]
     let from: number, to: number, slice: Slice
     if(!selection.empty) {
       from = selection.from
@@ -147,7 +147,7 @@ export function wrapSelection(type: string | NodeType, attrs?: Attrs) {
       slice = selection.content()
     }
     // selection.$anchor.parent.canReplaceWith(selection.$from.index(), selection.$to.index(), nodeType)
-    else if(!nodeType.isInline && !nodeType.isLeaf && !(selection instanceof GapCursor)) {
+    else if(!firstType.isInline && !firstType.isLeaf && !(selection instanceof GapCursor)) {
       from = selection.$from.pos === 0? 0: selection.$from?.before(selection.$from.depth)
       to = selection.$from.pos === 0? 0: selection.$from?.after(selection.$from.depth)!
       const wrappingSelection = TextSelection.create(state.doc, from, to)
@@ -160,8 +160,16 @@ export function wrapSelection(type: string | NodeType, attrs?: Attrs) {
     let content = [] as Node[]
     const n = slice.content.childCount
     range(n).forEach(i => content.push(slice.content.child(i)))
-    const newNode = fitIntoNode(nodeType.create(attrs)!, content)
-    let tr = state.tr.replaceRangeWith(from, to, newNode)
+    let newNode: Node | undefined
+    for(const type of allTypes.slice().reverse()) {
+      if(!newNode) {
+        newNode = fitIntoNode(type.create(attrs)!, content)
+      }
+      else {
+        newNode = fitIntoNode(type.create(), [newNode])
+      }
+    }
+    let tr = state.tr.replaceRangeWith(from, to, newNode!)
     let newStart: number; let newEnd: number
     tr.doc.nodesBetween(0, tr.doc.content.size - 1, (node, start) => {
       if(node === newNode) {
@@ -171,8 +179,10 @@ export function wrapSelection(type: string | NodeType, attrs?: Attrs) {
     })
     if(newStart! != null && newEnd! != null) {
       // tr = tr.setSelection(new TextSelection(tr.doc.resolve(newStart), tr.doc.resolve(newEnd)))
-      const s = NodeSelection.findFrom(tr.doc.resolve(newStart!), 1)!
-      tr = tr.setSelection(s)
+      const s = NodeSelection.findFrom(tr.doc.resolve(newStart!), 1)
+      if(s) {
+        tr = tr.setSelection(s)
+      }
       // tr = tr.setSelection(TextSelection(s.$from, s.$to))
     }
     return dispatch(tr)

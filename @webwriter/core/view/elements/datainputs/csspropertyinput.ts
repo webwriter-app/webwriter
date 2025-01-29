@@ -46,11 +46,20 @@ export class CSSPropertyInput extends LitElement {
         color: darkgreen;
         font-weight: bold;
       }
+
+      slot[name=label] {
+        display: flex;
+        align-items: center;
+      }
+
+      :host([size=small]) slot[name=label] {
+        font-size: var(--sl-font-size-small);
+      }
     `
   }
 
   get #label() {
-    return this.label ?? CSSPropertyInput.labels[this.name] ?? this.name.split("-").map(capitalizeWord).join(" ")
+    return this.label ?? CSSPropertyInput.labels[this.name] ?? this.name?.split("-").map(capitalizeWord).join(" ")
   }
 
   CSSValueInput(value: CSSStyleValue) {
@@ -84,7 +93,8 @@ export class CSSPropertyInput extends LitElement {
   }
 
   CSSPlaintextInput() {
-    return html`<ww-combobox ?suggestions=${this.isLiteralAlternation}  size="small" .value=${this.value} label=${this.#label} @sl-change=${this.handleChange}>
+    return html`<ww-combobox ?suggestions=${this.isLiteralAlternation} size="small" .value=${this.value} @sl-change=${this.handleChange}>
+      <slot name="label" slot="label" part="label">${this.#label}</slot>
       ${this.options.map(opt => html`<sl-option value=${opt}>${opt}</sl-option>`)}
     </ww-combobox>`
   }

@@ -81,10 +81,6 @@
         <source>Opens the settings</source>
         <target>打开设置</target>
       </trans-unit>
-      <trans-unit id="s9d8b8aa2b404c2c8">
-        <source>Settings</source>
-        <target>设置</target>
-      </trans-unit>
       <trans-unit id="s1f7698c061c208c9">
         <source>Open</source>
         <target>开放</target>
@@ -433,98 +429,6 @@
         <source>Insert summary</source>
         <target>插入摘要</target>
       </trans-unit>
-      <trans-unit id="s0312976fe9da5951">
-        <source>Button</source>
-        <target>按钮</target>
-      </trans-unit>
-      <trans-unit id="sd60c9bbc51375635">
-        <source>Insert a button</source>
-        <target>插入按钮</target>
-      </trans-unit>
-      <trans-unit id="sdb1595f5c742dfbb">
-        <source>Input</source>
-        <target>输入</target>
-      </trans-unit>
-      <trans-unit id="s29b24c06315e9343">
-        <source>Insert an input</source>
-        <target>插入输入</target>
-      </trans-unit>
-      <trans-unit id="sfc63e31ac7c956ed">
-        <source>Select</source>
-        <target>选择</target>
-      </trans-unit>
-      <trans-unit id="s531056f039febd39">
-        <source>Insert a select</source>
-        <target>插入选择</target>
-      </trans-unit>
-      <trans-unit id="sfc00292e778b67e2">
-        <source>Meter</source>
-        <target>仪表</target>
-      </trans-unit>
-      <trans-unit id="s52e0bdc3ee304436">
-        <source>Insert a meter</source>
-        <target>插入仪表</target>
-      </trans-unit>
-      <trans-unit id="s8c7f51cb067644c7">
-        <source>Data List</source>
-        <target>数据列表</target>
-      </trans-unit>
-      <trans-unit id="sfa59c7777e2a0eeb">
-        <source>Insert a data list</source>
-        <target>插入数据列表</target>
-      </trans-unit>
-      <trans-unit id="s7fcb35d23be1e643">
-        <source>Field Set</source>
-        <target>实地设置</target>
-      </trans-unit>
-      <trans-unit id="s2d986d31f8d67357">
-        <source>Insert a field set</source>
-        <target>插入字段集</target>
-      </trans-unit>
-      <trans-unit id="s5590dbf7e425789d">
-        <source>Label</source>
-        <target>标签</target>
-      </trans-unit>
-      <trans-unit id="s21f8a2eaf5a70749">
-        <source>Insert a label</source>
-        <target>插入标签</target>
-      </trans-unit>
-      <trans-unit id="s4b58c01e2578f5e4">
-        <source>Legend</source>
-        <target>图例</target>
-      </trans-unit>
-      <trans-unit id="s3fd83566dd643d10">
-        <source>Insert a legend</source>
-        <target>插入图例</target>
-      </trans-unit>
-      <trans-unit id="sef75f458d77491af">
-        <source>Option Group</source>
-        <target>选项组</target>
-      </trans-unit>
-      <trans-unit id="sceecdd0bb404bc17">
-        <source>Insert an option group</source>
-        <target>插入选项组</target>
-      </trans-unit>
-      <trans-unit id="s4802e47fe2e95134">
-        <source>Option</source>
-        <target>选项</target>
-      </trans-unit>
-      <trans-unit id="s3cb47df8290fa94c">
-        <source>Insert an option</source>
-        <target>插入选项</target>
-      </trans-unit>
-      <trans-unit id="sfd77270c3f54f664">
-        <source>Output</source>
-        <target>输出</target>
-      </trans-unit>
-      <trans-unit id="se64f418b4e733b6c">
-        <source>Insert an output</source>
-        <target>插入输出</target>
-      </trans-unit>
-      <trans-unit id="s52777d434baeed9b">
-        <source>Insert a progress indicator</source>
-        <target>插入进度指示器</target>
-      </trans-unit>
       <trans-unit id="sa78a67272a4a6f95">
         <source>Math Formula</source>
         <target>数学公式</target>
@@ -628,14 +532,6 @@
       <trans-unit id="s2d995a37cf5e4995">
         <source>Insert a NoScript</source>
         <target>插入 NoScript</target>
-      </trans-unit>
-      <trans-unit id="sc50d09edf9325339">
-        <source>Dialog</source>
-        <target>对话框</target>
-      </trans-unit>
-      <trans-unit id="sff99962304ac7d25">
-        <source>Insert a dialog</source>
-        <target>插入对话框</target>
       </trans-unit>
       <trans-unit id="s337a1e9022a8d19f">
         <source>Table</source>
@@ -821,89 +717,9 @@
         <source>Interactivity</source>
         <target>互动性</target>
       </trans-unit>
-      <trans-unit id="se8bb865aeb8602dc">
-        <source>Set interactivty options for selected elements</source>
-        <target>为选定元素设置交互选项</target>
-      </trans-unit>
-      <trans-unit id="se25d54a8943385b0">
-        <source>Blending</source>
-        <target>混合</target>
-      </trans-unit>
-      <trans-unit id="sdbdf663c872fb855">
-        <source>Set blending (e.g. opacity) of selected elements</source>
-        <target>设置所选元素的混合（如不透明度</target>
-      </trans-unit>
-      <trans-unit id="s550492e6c28b6628">
-        <source>Display mode</source>
-        <target>显示模式</target>
-      </trans-unit>
-      <trans-unit id="s3c1c59a8fe1ce8af">
-        <source>Set the display mode of the selected elements</source>
-        <target>设置所选元素的显示模式</target>
-      </trans-unit>
-      <trans-unit id="s0c669387c45c4dc6">
-        <source>Fragmentation</source>
-        <target>碎片化</target>
-      </trans-unit>
-      <trans-unit id="s87c65faff16a53bd">
-        <source>Set fragmentation (behaviour on page/region/column breaks) of selected elements</source>
-        <target>设置所选元素的碎裂（页面/区域/列中断时的行为</target>
-      </trans-unit>
-      <trans-unit id="sebee375c65c0cd58">
-        <source>Image sizing</source>
-        <target>图像大小</target>
-      </trans-unit>
-      <trans-unit id="saaf255f484959835">
-        <source>Set image sizing options of selected elements</source>
-        <target>设置选定元素的图像大小选项</target>
-      </trans-unit>
-      <trans-unit id="sea7f9a84b82663b8">
-        <source>Column break</source>
-        <target>分栏</target>
-      </trans-unit>
-      <trans-unit id="s0898264186c682fa">
-        <source>Apply column layout to selected elements</source>
-        <target>将列布局应用于所选元素</target>
-      </trans-unit>
-      <trans-unit id="s687416d1ea01d0bb">
-        <source>Overflow behavior</source>
-        <target>溢出行为</target>
-      </trans-unit>
-      <trans-unit id="sa5c062dc12553bbb">
-        <source>Set overflow behaviour of selected elements</source>
-        <target>设置所选元素的溢出行为</target>
-      </trans-unit>
-      <trans-unit id="s4a14e0d787c30116">
-        <source>Positioning</source>
-        <target>定位</target>
-      </trans-unit>
-      <trans-unit id="s19d9b0051c5e3b45">
-        <source>Set positioning of selected elements</source>
-        <target>设置选定元素的定位</target>
-      </trans-unit>
-      <trans-unit id="sa559701e1cdc3331">
-        <source>Shaping</source>
-        <target>塑形</target>
-      </trans-unit>
-      <trans-unit id="s2dbeef0cb14e4f4d">
-        <source>Set shape of selected elements</source>
-        <target>设置选定元素的形状</target>
-      </trans-unit>
-      <trans-unit id="s04061a8e12259e3f">
-        <source>2D/3D transform</source>
-        <target>二维/三维变换</target>
-      </trans-unit>
-      <trans-unit id="sab4fb4f4ff5b43e4">
-        <source>Apply 2D or 3D transformations to selected elements</source>
-        <target>对选定元素应用 2D 或 3D 变换</target>
-      </trans-unit>
       <trans-unit id="sf190149f9d8bbb2a">
         <source>Writing mode</source>
         <target>书写模式</target>
-      </trans-unit>
-      <trans-unit id="sdedc76f6a0a2583b">
-        <source>Set writing mode options of selected elements</source>
-        <target>设置所选元素的书写模式选项</target>
       </trans-unit>
       <trans-unit id="s762e5704cc84089d">
         <source>Set other style options of selected elements</source>
@@ -969,10 +785,6 @@
         <source>Keyboard shortcuts</source>
         <target>键盘快捷键</target>
       </trans-unit>
-      <trans-unit id="s91c5921e7b46d4a6">
-        <source>You have unsaved changes. Are you sure you want to leave and discard them?</source>
-        <target>您有未保存的更改。您确定要离开并丢弃它们吗？</target>
-      </trans-unit>
       <trans-unit id="s268ecd1cef45a9a8">
         <source>Are you sure?</source>
         <target>你确定吗？</target>
@@ -1030,13 +842,17 @@
         <target>捕获</target>
       </trans-unit>
       <trans-unit id="s2b8f50c64be440f7">
-        <source>Select <x id="0" equiv-text="${this.mediaType}"/>...</source>
+        <source>Select 
+          <x id="0" equiv-text="${this.mediaType}"/>...
+        </source>
         <target>选择 
           <x id="0" equiv-text="${this.mediaType}"/>... 
         </target>
       </trans-unit>
       <trans-unit id="s739544d0c858c633">
-        <source>Or drop <x id="0" equiv-text="${this.mediaType}"/> here</source>
+        <source>Or drop 
+          <x id="0" equiv-text="${this.mediaType}"/> here
+        </source>
         <target>或点击 
           <x id="0" equiv-text="${this.mediaType}"/> 这里 
         </target>
@@ -1045,37 +861,9 @@
         <source>Pick coordinates</source>
         <target>选择坐标</target>
       </trans-unit>
-      <trans-unit id="sded940efcadd8f10">
-        <source>Save your document</source>
-        <target>保存文档</target>
-      </trans-unit>
-      <trans-unit id="s6910ed6dbaba4807">
-        <source>Load a document</source>
-        <target>加载文件</target>
-      </trans-unit>
       <trans-unit id="s8f533296a536965e">
         <source>Save as...</source>
         <target>另存为...</target>
-      </trans-unit>
-      <trans-unit id="s1f0e5f8acab2f0d3">
-        <source>Load as...</source>
-        <target>加载为...</target>
-      </trans-unit>
-      <trans-unit id="sa3c9339de23c1752">
-        <source>Format</source>
-        <target>格式</target>
-      </trans-unit>
-      <trans-unit id="s1cf730f96ac4f6b6">
-        <source>On...</source>
-        <target>在...</target>
-      </trans-unit>
-      <trans-unit id="s13388f2a0641c5a9">
-        <source>From...</source>
-        <target>从...</target>
-      </trans-unit>
-      <trans-unit id="s61e136c0658e27d5">
-        <source>Protocol</source>
-        <target>规程</target>
       </trans-unit>
       <trans-unit id="see2fcaedf9743ec6">
         <source>Location</source>
@@ -1084,10 +872,6 @@
       <trans-unit id="s2ceb11be2290bb1b">
         <source>Cancel</source>
         <target>取消</target>
-      </trans-unit>
-      <trans-unit id="s4f20edb48a6287c9">
-        <source>Load</source>
-        <target>载荷</target>
       </trans-unit>
       <trans-unit id="s851a7deea5984646">
         <source>License as Creative Commons OER?</source>
@@ -1134,7 +918,10 @@
         <target>小部件需要使用该关键字</target>
       </trans-unit>
       <trans-unit id="h64cd12550420f6f1">
-        <source>Generate a <x id="0" equiv-text="&lt;code&gt;"/>LICENSE<x id="1" equiv-text="&lt;/code&gt;"/> file</source>
+        <source>Generate a 
+          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
+          <x id="1" equiv-text="&lt;/code&gt;"/> file
+        </source>
         <target>生成 
           <x id="0" equiv-text="&lt;code&gt;"/>许可证 
           <x id="1" equiv-text="&lt;/code&gt;"/>
@@ -1157,32 +944,6 @@
         <source>Discard and cancel</source>
         <target>丢弃和取消</target>
       </trans-unit>
-      <trans-unit id="sae3629911a62147f">
-        <source>JS Size:</source>
-        <target>JS 尺寸：</target>
-      </trans-unit>
-      <trans-unit id="s1357c9b016a9a631">
-        <source>CSS Size:</source>
-        <target>CSS 大小：</target>
-      </trans-unit>
-      <trans-unit id="sf1ed4eed4de3012e">
-        <source>View error</source>
-        <target>查看错误</target>
-      </trans-unit>
-      <trans-unit id="h75b0cad9d9e80648">
-        <source>Stop watching files at <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/>.</source>
-        <target>在 
-          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/>
-          .
-        </target>
-      </trans-unit>
-      <trans-unit id="h0a75a995d1672be1">
-        <source>Start watching files at <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/> and reload the package if a file is changed.</source>
-        <target>开始监视文件 
-          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/>
-          处开始监视文件，并在文件发生变化时重新加载软件包。 
-        </target>
-      </trans-unit>
       <trans-unit id="s8b0432eecbd8b034">
         <source>Update</source>
         <target>更新</target>
@@ -1195,85 +956,9 @@
         <source>Install</source>
         <target>安装</target>
       </trans-unit>
-      <trans-unit id="sda174a4c93e84ce6">
-        <source>Error importing</source>
-        <target>导入错误</target>
-      </trans-unit>
-      <trans-unit id="s8cd9849cd37d7753">
-        <source>Either select an existing package directory to install or an empty directory to create a new package.</source>
-        <target>要么选择一个现有软件包目录进行安装，要么选择一个空目录创建一个新软件包。</target>
-      </trans-unit>
-      <trans-unit id="sdb311229f4b5eb3b">
-        <source>Import local package</source>
-        <target>导入本地软件包</target>
-      </trans-unit>
-      <trans-unit id="s65f6740a45cea0aa">
-        <source>Create local package</source>
-        <target>创建本地软件包</target>
-      </trans-unit>
-      <trans-unit id="s12aac40ecd87dc12">
-        <source>View local application directory</source>
-        <target>查看本地应用程序目录</target>
-      </trans-unit>
-      <trans-unit id="s815a7e524eda76aa">
-        <source>Reset local application directory</source>
-        <target>重置本地应用程序目录</target>
-      </trans-unit>
-      <trans-unit id="s3a6538ae341633f6">
-        <source>Edit local package</source>
-        <target>编辑本地软件包</target>
-      </trans-unit>
-      <trans-unit id="s9bf0b9da3f509795">
-        <source>Widget Package</source>
-        <target>小工具包</target>
-      </trans-unit>
-      <trans-unit id="s8a7fa8a052138aef">
-        <source>Warning:</source>
-        <target>警告</target>
-      </trans-unit>
-      <trans-unit id="sad288b082f4d3521">
-        <source>You seem to be offline. While offline, you can't manage available or outdated packages.</source>
-        <target>您似乎处于离线状态。脱机时，您无法管理可用或过时的软件包。</target>
-      </trans-unit>
-      <trans-unit id="sed8ec5e3c64fa25d">
-        <source>Total</source>
-        <target>总计</target>
-      </trans-unit>
-      <trans-unit id="s8cfdd110c30d604d">
-        <source>No packages installed or available</source>
-        <target>未安装或未提供软件包</target>
-      </trans-unit>
-      <trans-unit id="s10e80d4c01c3cc21">
-        <source>Installed</source>
-        <target>已安装</target>
-      </trans-unit>
-      <trans-unit id="s33b62827f665c461">
-        <source>No packages installed</source>
-        <target>未安装软件包</target>
-      </trans-unit>
-      <trans-unit id="sd158a5fc0f062f18">
-        <source>Available</source>
-        <target>可用</target>
-      </trans-unit>
-      <trans-unit id="se432a7c0c144d458">
-        <source>No packages available</source>
-        <target>无套餐</target>
-      </trans-unit>
-      <trans-unit id="s76cc1c6d9fab3a2d">
-        <source>Outdated</source>
-        <target>过时</target>
-      </trans-unit>
-      <trans-unit id="sf9559106e88ee46d">
-        <source>No packages outdated</source>
-        <target>没有过时的软件包</target>
-      </trans-unit>
       <trans-unit id="se9b1fec72ffd8f48">
         <source>Local</source>
         <target>当地</target>
-      </trans-unit>
-      <trans-unit id="sc7691fecb3373a42">
-        <source>No local packages</source>
-        <target>无本地套餐</target>
       </trans-unit>
       <trans-unit id="keyCommand">
         <source>⌘ Command/Win</source>
@@ -1455,10 +1140,6 @@
         <source>URL</source>
         <target>网址</target>
       </trans-unit>
-      <trans-unit id="s506b6a19d12f414c">
-        <source>Key</source>
-        <target>钥匙</target>
-      </trans-unit>
       <trans-unit id="sd3f402df8619ddcd">
         <source>This information about you is automatically added to new documents. You can change this for each document in the metadata editor.</source>
         <target>有关您的这些信息会自动添加到新文档中。您可以在元数据编辑器中对每个文档进行更改。</target>
@@ -1522,10 +1203,6 @@
       <trans-unit id="sf1e79171c4856543">
         <source>Are you sure? This action can't be reversed, all your settings will be deleted and reset.</source>
         <target>你确定吗？此操作无法逆转，您的所有设置都将被删除和重置。</target>
-      </trans-unit>
-      <trans-unit id="se1b03a74b09ba7f0">
-        <source>App Folder</source>
-        <target>应用程序文件夹</target>
       </trans-unit>
       <trans-unit id="s78789724e789221c">
         <source>Size</source>
@@ -1635,10 +1312,6 @@
         <source>Mixed Content</source>
         <target>混合内容</target>
       </trans-unit>
-      <trans-unit id="s651f3a92741d9520">
-        <source>Everything</source>
-        <target>一切</target>
-      </trans-unit>
       <trans-unit id="sddc49047f66a64ab">
         <source>No description provided</source>
         <target>未提供说明</target>
@@ -1682,10 +1355,6 @@
       <trans-unit id="s35aeaff1425bca9e">
         <source>WebWriter does not support media of type </source>
         <target>WebWriter 不支持 </target>
-      </trans-unit>
-      <trans-unit id="sb199b34dca0a4cfc">
-        <source>Enter content here...</source>
-        <target>在此输入内容...</target>
       </trans-unit>
       <trans-unit id="s99f110d27e30b289">
         <source>Title</source>
@@ -1840,14 +1509,18 @@
         <target>连接错误</target>
       </trans-unit>
       <trans-unit id="sf52d840949a980d1">
-        <source><x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?</source>
+        <source>
+          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
+        </source>
         <target>
           <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           将被永久删除。你确定吗？ 
         </target>
       </trans-unit>
       <trans-unit id="s9b7cd8860c8fc922">
-        <source><x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?</source>
+        <source>
+          <x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
+        </source>
         <target>
           <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           将被覆盖。你确定吗？ 
@@ -1886,7 +1559,9 @@
         <target>不支持属性类型"${desc.type}"（以 JSON 格式处理）</target>
       </trans-unit>
       <trans-unit id="sa00df4e39c72d3b4">
-        <source><x id="0" equiv-text="${desc.widget}"/> is not supported</source>
+        <source>
+          <x id="0" equiv-text="${desc.widget}"/> is not supported
+        </source>
         <target>
           <x id="0" equiv-text="${desc.widget}"/> 不支持 
         </target>
@@ -2019,26 +1694,6 @@
         <source>Insert a thematic break (usually displayed as a horizontal line)</source>
         <target>插入主题分隔线（通常显示为一条水平线）</target>
       </trans-unit>
-      <trans-unit id="sc43767deea72e9f3">
-        <source>Description List</source>
-        <target>说明列表</target>
-      </trans-unit>
-      <trans-unit id="saf312eaeec77a802">
-        <source>Insert a description list (glossary, term list)</source>
-        <target>插入说明列表（词汇表、术语表）</target>
-      </trans-unit>
-      <trans-unit id="s9abadcc828884d7b">
-        <source>Textarea</source>
-        <target>文本区域</target>
-      </trans-unit>
-      <trans-unit id="sf4e0e02a5277ef23">
-        <source>Insert an textarea</source>
-        <target>插入文本区域</target>
-      </trans-unit>
-      <trans-unit id="sa557ae6bee9148a6">
-        <source>Progress</source>
-        <target>进展情况</target>
-      </trans-unit>
       <trans-unit id="s4f26e7cb7c0a8318">
         <source>Vector Drawing</source>
         <target>矢量绘图</target>
@@ -2047,21 +1702,9 @@
         <source>Insert a vector drawing (SVG)</source>
         <target>插入矢量图 (SVG)</target>
       </trans-unit>
-      <trans-unit id="s029504322b353edf">
-        <source>Size &amp; Spacing</source>
-        <target>尺寸和间距</target>
-      </trans-unit>
       <trans-unit id="sa589e1df65dde0ec">
         <source>Set the size, padding, and margins of the selected elements</source>
         <target>设置所选元素的大小、衬垫和边距</target>
-      </trans-unit>
-      <trans-unit id="sfd54046c9e2030c2">
-        <source>Filters &amp; Colors</source>
-        <target>滤镜和颜色</target>
-      </trans-unit>
-      <trans-unit id="s3db5d66ac9e64eae">
-        <source>Apply filters (blur, invert, etc.) to and set colors for the selected elements</source>
-        <target>为所选元素应用滤镜（模糊、反转等）并设置颜色</target>
       </trans-unit>
       <trans-unit id="s3f1e7a3f2b283d3b">
         <source>Margin</source>
@@ -2074,10 +1717,6 @@
       <trans-unit id="s7d8103f6f06f83d6">
         <source>Padding</source>
         <target>衬垫</target>
-      </trans-unit>
-      <trans-unit id="s9295089d0ecc35ff">
-        <source>Advanced: Show with versions like 0.x.x in the package manager</source>
-        <target>高级：在软件包管理器中显示 0.x.x 等版本</target>
       </trans-unit>
       <trans-unit id="s71a0549fd71219c9">
         <source>Show unstable packages</source>
@@ -2098,6 +1737,1641 @@
       <trans-unit id="s7aaf0c06e69600f1">
         <source>Error with </source>
         <target>错误与 </target>
+      </trans-unit>
+      <trans-unit id="sd5cf95145e4d89ca">
+        <source>Unpin this snippet</source>
+        <target>取消收藏此片段</target>
+      </trans-unit>
+      <trans-unit id="s02106cc2ef0e7578">
+        <source>New pin...</source>
+        <target>新别针...</target>
+      </trans-unit>
+      <trans-unit id="s7cb4e55c59663b1c">
+        <source>Company</source>
+        <target>公司名称</target>
+      </trans-unit>
+      <trans-unit id="s5da52af9b083c29a">
+        <source>Model</source>
+        <target>模型</target>
+      </trans-unit>
+      <trans-unit id="s9781a5bb3fcb26a3">
+        <source>Select a company first</source>
+        <target>首先选择一家公司</target>
+      </trans-unit>
+      <trans-unit id="s15d0c0657c1ee08c">
+        <source>API Key</source>
+        <target>API 密钥</target>
+      </trans-unit>
+      <trans-unit id="s429bd646f1cf8bc6">
+        <source>Grammar LLM accounts allow you to use the Grammar LLM API to correct grammar in text.</source>
+        <target>语法 LLM 账户允许您使用语法 LLM API 来纠正文本中的语法。</target>
+      </trans-unit>
+      <trans-unit id="s1351209ef74ee729">
+        <source>Span all columns</source>
+        <target>跨所有列</target>
+      </trans-unit>
+      <trans-unit id="sf0cab2483f66aa2e">
+        <source>Custom</source>
+        <target>定制</target>
+      </trans-unit>
+      <trans-unit id="s951aa3a6439f1271">
+        <source>List marker</source>
+        <target>列表标记</target>
+      </trans-unit>
+      <trans-unit id="sc3f09a9b6fa4fbed">
+        <source>Inside</source>
+        <target>内部</target>
+      </trans-unit>
+      <trans-unit id="s2ba5f4d8f3bd7c57">
+        <source>Order</source>
+        <target>订购</target>
+      </trans-unit>
+      <trans-unit id="sdb73788b3c975f16">
+        <source>Auto</source>
+        <target>汽车</target>
+      </trans-unit>
+      <trans-unit id="sae1c7f13b7c0c47f">
+        <source>Start</source>
+        <target>开始</target>
+      </trans-unit>
+      <trans-unit id="sb38d497d992ab4a4">
+        <source>Center</source>
+        <target>中心</target>
+      </trans-unit>
+      <trans-unit id="sd8f923198e0c5c6a">
+        <source>End</source>
+        <target>结束</target>
+      </trans-unit>
+      <trans-unit id="s1749014f3f87fa6a">
+        <source>Stretch</source>
+        <target>拉伸</target>
+      </trans-unit>
+      <trans-unit id="s602bbd28dae2c60f">
+        <source>Self start</source>
+        <target>自启动</target>
+      </trans-unit>
+      <trans-unit id="s6747dbf4ad6063ba">
+        <source>Self end</source>
+        <target>自结束</target>
+      </trans-unit>
+      <trans-unit id="sebbced89e0db2894">
+        <source>First baseline</source>
+        <target>第一条基线</target>
+      </trans-unit>
+      <trans-unit id="s0ee28503778e4c0c">
+        <source>Last baseline</source>
+        <target>最后基线</target>
+      </trans-unit>
+      <trans-unit id="s06743b24499f0035">
+        <source>Anchor center</source>
+        <target>锚定中心</target>
+      </trans-unit>
+      <trans-unit id="s1245e2cb9f20197e">
+        <source>Align</source>
+        <target>对齐</target>
+      </trans-unit>
+      <trans-unit id="sa3b4c01623211544">
+        <source>Force</source>
+        <target>部队</target>
+      </trans-unit>
+      <trans-unit id="sef24caccbd4645ef">
+        <source>Flex shrink</source>
+        <target>柔性收缩</target>
+      </trans-unit>
+      <trans-unit id="sbfa01f189a68d3e9">
+        <source>Flex grow</source>
+        <target>灵活增长</target>
+      </trans-unit>
+      <trans-unit id="saced41ddda8b2354">
+        <source>Flex basis</source>
+        <target>灵活基础</target>
+      </trans-unit>
+      <trans-unit id="s44cdba92713de38e">
+        <source>Grid area</source>
+        <target>网格区域</target>
+      </trans-unit>
+      <trans-unit id="s05e9759cfd99c48f">
+        <source>Justify</source>
+        <target>说明理由</target>
+      </trans-unit>
+      <trans-unit id="s0c4593d81f147042">
+        <source>Baseline</source>
+        <target>基线</target>
+      </trans-unit>
+      <trans-unit id="sc980855a000b76ea">
+        <source>Bottom</source>
+        <target>底部</target>
+      </trans-unit>
+      <trans-unit id="s4101ada154a1b958">
+        <source>Middle</source>
+        <target>中层</target>
+      </trans-unit>
+      <trans-unit id="s6d02dc19e21eb49c">
+        <source>Top</source>
+        <target>返回顶部</target>
+      </trans-unit>
+      <trans-unit id="s987abd19fac8cf55">
+        <source>Sub</source>
+        <target>字幕</target>
+      </trans-unit>
+      <trans-unit id="s9095f01a80a91594">
+        <source>Super</source>
+        <target>超级</target>
+      </trans-unit>
+      <trans-unit id="sf4b537d4cbd8f5fd">
+        <source>Text top</source>
+        <target>文本顶部</target>
+      </trans-unit>
+      <trans-unit id="s3fe72792941c18f9">
+        <source>Text bottom</source>
+        <target>文本底部</target>
+      </trans-unit>
+      <trans-unit id="s27076e66c5d483ba">
+        <source>Vertical align</source>
+        <target>垂直对齐</target>
+      </trans-unit>
+      <trans-unit id="sd3c65ef5c380c046">
+        <source>Inset</source>
+        <target>内页</target>
+      </trans-unit>
+      <trans-unit id="sa5c371b4bb75e590">
+        <source>Left</source>
+        <target>左侧</target>
+      </trans-unit>
+      <trans-unit id="s366991b9c9287765">
+        <source>Right</source>
+        <target>对</target>
+      </trans-unit>
+      <trans-unit id="s9d167ef77aed79b6">
+        <source>Layer</source>
+        <target>层数</target>
+      </trans-unit>
+      <trans-unit id="sda344aacb837387e">
+        <source>Position in container</source>
+        <target>在集装箱中的位置</target>
+      </trans-unit>
+      <trans-unit id="sf34696c526e810b4">
+        <source>Inline</source>
+        <target>内联</target>
+      </trans-unit>
+      <trans-unit id="s2b2ae20d26f78ac2">
+        <source>Block</source>
+        <target>街区</target>
+      </trans-unit>
+      <trans-unit id="sda5b6fa8b771f996">
+        <source>Float left</source>
+        <target>向左浮动</target>
+      </trans-unit>
+      <trans-unit id="s2f0bcdffc92a786b">
+        <source>Float right</source>
+        <target>向右浮动</target>
+      </trans-unit>
+      <trans-unit id="s782f286a79cca35d">
+        <source>Relative</source>
+        <target>相关</target>
+      </trans-unit>
+      <trans-unit id="sa1c6c459b9b5115c">
+        <source>Absolute</source>
+        <target>绝对</target>
+      </trans-unit>
+      <trans-unit id="sf2d5cbc2fe0ad65a">
+        <source>Sticky</source>
+        <target>粘贴</target>
+      </trans-unit>
+      <trans-unit id="sc1611c0558728a2a">
+        <source>Position</source>
+        <target>职位</target>
+      </trans-unit>
+      <trans-unit id="sf7a5f7a7c80c3082">
+        <source>Both</source>
+        <target>两者</target>
+      </trans-unit>
+      <trans-unit id="s5be80ad6b8301710">
+        <source>Inline start</source>
+        <target>内联启动</target>
+      </trans-unit>
+      <trans-unit id="sf79e0d78b56444f1">
+        <source>Inline end</source>
+        <target>内联端</target>
+      </trans-unit>
+      <trans-unit id="sb4f1dffbb6be6302">
+        <source>Clear</source>
+        <target>清晰</target>
+      </trans-unit>
+      <trans-unit id="se5dc1e97fb743ade">
+        <source>Spacing</source>
+        <target>间距</target>
+      </trans-unit>
+      <trans-unit id="s83f26d02dd7aa681">
+        <source>Visible</source>
+        <target>可见</target>
+      </trans-unit>
+      <trans-unit id="s886897f2fd4edb99">
+        <source>Hidden</source>
+        <target>隐藏</target>
+      </trans-unit>
+      <trans-unit id="s3e092e9d1ee2c5bb">
+        <source>Clip</source>
+        <target>夹子</target>
+      </trans-unit>
+      <trans-unit id="s94eb1effbbb6498b">
+        <source>Overflow</source>
+        <target>溢出</target>
+      </trans-unit>
+      <trans-unit id="s37a8c35f6581da5f">
+        <source>No anchor</source>
+        <target>无锚</target>
+      </trans-unit>
+      <trans-unit id="s2edd6688a65e21f0">
+        <source>Overflow (x)</source>
+        <target>溢出 (x)</target>
+      </trans-unit>
+      <trans-unit id="s2eda5288a65bca1d">
+        <source>Overflow (y)</source>
+        <target>溢出 (y)</target>
+      </trans-unit>
+      <trans-unit id="s5dc77784260a7236">
+        <source>auto</source>
+        <target>汽车</target>
+      </trans-unit>
+      <trans-unit id="sf21fb4f4b9e8911f">
+        <source>Width</source>
+        <target>宽度</target>
+      </trans-unit>
+      <trans-unit id="s1177237a3e0e548c">
+        <source>Minimum (x)</source>
+        <target>最小值 (x)</target>
+      </trans-unit>
+      <trans-unit id="s1173bf7a3e0b74c9">
+        <source>Minimum (y)</source>
+        <target>最小值 (y)</target>
+      </trans-unit>
+      <trans-unit id="s7c61118554a0ec36">
+        <source>Maximum (x)</source>
+        <target>最大值 (x)</target>
+      </trans-unit>
+      <trans-unit id="se79c0a3ac70d8fb3">
+        <source>Asp. ratio (x)</source>
+        <target>比例 (x)</target>
+      </trans-unit>
+      <trans-unit id="se79fae3ac710dc36">
+        <source>Asp. ratio (y)</source>
+        <target>比率 (y)</target>
+      </trans-unit>
+      <trans-unit id="s19daf2f26c19543d">
+        <source>Outline</source>
+        <target>概要</target>
+      </trans-unit>
+      <trans-unit id="sd9ff8e2612e63d50">
+        <source>Border box sizing</source>
+        <target>边框大小</target>
+      </trans-unit>
+      <trans-unit id="sc1fff4f356dfb2fb">
+        <source>Transform</source>
+        <target>变革</target>
+      </trans-unit>
+      <trans-unit id="s0b1271f50a77dc73">
+        <source>Content box</source>
+        <target>内容箱</target>
+      </trans-unit>
+      <trans-unit id="s002fa7d1054ed082">
+        <source>Border box</source>
+        <target>边框框</target>
+      </trans-unit>
+      <trans-unit id="s74cd20a7aece9b91">
+        <source>Fill box</source>
+        <target>填充箱</target>
+      </trans-unit>
+      <trans-unit id="s42721130228841b0">
+        <source>Stroke box</source>
+        <target>冲程箱</target>
+      </trans-unit>
+      <trans-unit id="scbc55f622ec078c1">
+        <source>View box</source>
+        <target>查看盒子</target>
+      </trans-unit>
+      <trans-unit id="sc462bbdd36bcba6b">
+        <source>Reference box</source>
+        <target>参考箱</target>
+      </trans-unit>
+      <trans-unit id="sc8ac7ef92b95df3f">
+        <source>Move (x)</source>
+        <target>移动 (x)</target>
+      </trans-unit>
+      <trans-unit id="sc8b022f92b992bc2">
+        <source>Move (y)</source>
+        <target>移动 (y)</target>
+      </trans-unit>
+      <trans-unit id="sc8b39af92b9c2d81">
+        <source>Move (z)</source>
+        <target>移动 (z)</target>
+      </trans-unit>
+      <trans-unit id="sf4f3cbd41f002b46">
+        <source>Scale (x)</source>
+        <target>刻度 (x)</target>
+      </trans-unit>
+      <trans-unit id="sf4f067d41efd4b83">
+        <source>Scale (y)</source>
+        <target>刻度（y）</target>
+      </trans-unit>
+      <trans-unit id="sf4fa67d41f05a008">
+        <source>Scale (z)</source>
+        <target>刻度 (z)</target>
+      </trans-unit>
+      <trans-unit id="sc6578b15b2154365">
+        <source>Rotate (x)</source>
+        <target>旋转 (x)</target>
+      </trans-unit>
+      <trans-unit id="sc65aff15b2183e58">
+        <source>Rotate (y)</source>
+        <target>旋转（y）</target>
+      </trans-unit>
+      <trans-unit id="sc650ff15b20fe9d3">
+        <source>Rotate (z)</source>
+        <target>旋转 (z)</target>
+      </trans-unit>
+      <trans-unit id="sf5197db2d5f2926a">
+        <source>Rotate</source>
+        <target>旋转</target>
+      </trans-unit>
+      <trans-unit id="s430bd5017f42511c">
+        <source>Skew (x)</source>
+        <target>偏斜 (x)</target>
+      </trans-unit>
+      <trans-unit id="s430831017f3f0499">
+        <source>Skew (y)</source>
+        <target>偏斜 (y)</target>
+      </trans-unit>
+      <trans-unit id="s36b3cefdcb897f15">
+        <source>Perspective</source>
+        <target>视角</target>
+      </trans-unit>
+      <trans-unit id="sc52e8b794c0913d6">
+        <source>Perspective origin (x)</source>
+        <target>透视原点 (x)</target>
+      </trans-unit>
+      <trans-unit id="sc52b67794c06a0d3">
+        <source>Perspective origin (y)</source>
+        <target>透视原点 (y)</target>
+      </trans-unit>
+      <trans-unit id="saa065776236bfa28">
+        <source>Transform origin (x)</source>
+        <target>变换原点 (x)</target>
+      </trans-unit>
+      <trans-unit id="saa02e3762368ff35">
+        <source>Transform origin (y)</source>
+        <target>变换原点 (y)</target>
+      </trans-unit>
+      <trans-unit id="sa9ff3b762365abe6">
+        <source>Transform origin (z)</source>
+        <target>变换原点 (z)</target>
+      </trans-unit>
+      <trans-unit id="s166bd56d19670a72">
+        <source>Zoom</source>
+        <target>放大</target>
+      </trans-unit>
+      <trans-unit id="s680bd4d926cd5a84">
+        <source>Preserve 3D</source>
+        <target>保存 3D</target>
+      </trans-unit>
+      <trans-unit id="s6a31eff1ec4f71ad">
+        <source>Hide backface (3D)</source>
+        <target>隐藏背影（3D）</target>
+      </trans-unit>
+      <trans-unit id="s2de969afacdaa7a6">
+        <source>Shape</source>
+        <target>形状</target>
+      </trans-unit>
+      <trans-unit id="sd837f42ac7cbfb58">
+        <source>Shape (outside)</source>
+        <target>形状（外部）</target>
+      </trans-unit>
+      <trans-unit id="s86f820d8007d0de4">
+        <source>Shape margin</source>
+        <target>形状边缘</target>
+      </trans-unit>
+      <trans-unit id="s6cfc66b824ea05ba">
+        <source>Crisp edges</source>
+        <target>边缘清晰</target>
+      </trans-unit>
+      <trans-unit id="s7031ca562378bde6">
+        <source>Geometric precision</source>
+        <target>几何精度</target>
+      </trans-unit>
+      <trans-unit id="sd121d3b959b7888d">
+        <source>Optimize speed</source>
+        <target>优化速度</target>
+      </trans-unit>
+      <trans-unit id="sf2de3dbe2108637a">
+        <source>Shape rendering</source>
+        <target>形状渲染</target>
+      </trans-unit>
+      <trans-unit id="s5787c6d5b3b5541a">
+        <source>Clip path</source>
+        <target>剪辑路径</target>
+      </trans-unit>
+      <trans-unit id="s372fae706048ce41">
+        <source>Even-odd</source>
+        <target>偶数</target>
+      </trans-unit>
+      <trans-unit id="s49c560aecfeb8c29">
+        <source>Mask</source>
+        <target>面罩</target>
+      </trans-unit>
+      <trans-unit id="s4fda04cbc245e18b">
+        <source>Alpha</source>
+        <target>阿尔法</target>
+      </trans-unit>
+      <trans-unit id="s1dbb9f50e16c92a3">
+        <source>Border radius</source>
+        <target>边界半径</target>
+      </trans-unit>
+      <trans-unit id="s78673a3539cb1915">
+        <source>Top left</source>
+        <target>左上角</target>
+      </trans-unit>
+      <trans-unit id="s8b7580c35e2aef87">
+        <source>Top left (y)</source>
+        <target>左上方 (y)</target>
+      </trans-unit>
+      <trans-unit id="sb0a7e3adf4a125ee">
+        <source>Top right</source>
+        <target>右上角</target>
+      </trans-unit>
+      <trans-unit id="s84e4e8ae645b82ac">
+        <source>Top right (y)</source>
+        <target>右上 (y)</target>
+      </trans-unit>
+      <trans-unit id="scfcb70f2a15eaf14">
+        <source>Bottom right</source>
+        <target>右下角</target>
+      </trans-unit>
+      <trans-unit id="sdbee7e0523a23a42">
+        <source>Bottom right (y)</source>
+        <target>右下方 (y)</target>
+      </trans-unit>
+      <trans-unit id="sef23dd271edd4a8b">
+        <source>Bottom left</source>
+        <target>左下角</target>
+      </trans-unit>
+      <trans-unit id="sd5fd9d11a92f5b1d">
+        <source>Bottom left (y)</source>
+        <target>左下方 (y)</target>
+      </trans-unit>
+      <trans-unit id="sdf9bc5d9b7f3e3de">
+        <source>Alignment</source>
+        <target>对齐</target>
+      </trans-unit>
+      <trans-unit id="s626daf42b1ab7df7">
+        <source>Align left</source>
+        <target>向左对齐</target>
+      </trans-unit>
+      <trans-unit id="s13c60cb409e8cb6f">
+        <source>Align center</source>
+        <target>对齐中心</target>
+      </trans-unit>
+      <trans-unit id="sac687b8649989de8">
+        <source>Align right</source>
+        <target>向右对齐</target>
+      </trans-unit>
+      <trans-unit id="s8d8643013a7754d1">
+        <source>Align text</source>
+        <target>对齐文本</target>
+      </trans-unit>
+      <trans-unit id="se06f459fccdc3ce9">
+        <source>Align last text line</source>
+        <target>对齐最后一行文本</target>
+      </trans-unit>
+      <trans-unit id="sfaa0a67db5c11f72">
+        <source>Indent first text line</source>
+        <target>缩进第一行文字</target>
+      </trans-unit>
+      <trans-unit id="s95de7e1eff6c053e">
+        <source>Horizontal, top-to-bottom</source>
+        <target>水平，从上到下</target>
+      </trans-unit>
+      <trans-unit id="sd8a345e95668b73b">
+        <source>Vertical, right-to-left</source>
+        <target>垂直，从右到左</target>
+      </trans-unit>
+      <trans-unit id="s8ffe7abcbed8eb43">
+        <source>Vertical, left-to-right</source>
+        <target>垂直，从左到右</target>
+      </trans-unit>
+      <trans-unit id="s986facb3ecc9602c">
+        <source>Sideways, right-to-left</source>
+        <target>侧向，从右向左</target>
+      </trans-unit>
+      <trans-unit id="s063fa5a0a4903bf4">
+        <source>Sideways, left-to-right</source>
+        <target>侧向，从左到右</target>
+      </trans-unit>
+      <trans-unit id="se96fd76ba1b2975a">
+        <source>Central</source>
+        <target>中部</target>
+      </trans-unit>
+      <trans-unit id="sd8ecf227c7c49331">
+        <source>Mathematical</source>
+        <target>数学</target>
+      </trans-unit>
+      <trans-unit id="se8a94b4effa2033e">
+        <source>Alphabetic</source>
+        <target>字母</target>
+      </trans-unit>
+      <trans-unit id="scec2be75ee985f6c">
+        <source>Ideographic</source>
+        <target>表意</target>
+      </trans-unit>
+      <trans-unit id="s7ecb1f29332293e5">
+        <source>Alignment baseline</source>
+        <target>对齐基线</target>
+      </trans-unit>
+      <trans-unit id="sbf519920c2017d67">
+        <source>Hanging</source>
+        <target>悬挂</target>
+      </trans-unit>
+      <trans-unit id="s40f07d7859284a44">
+        <source>Dominant baseline</source>
+        <target>主导基线</target>
+      </trans-unit>
+      <trans-unit id="sbb86c6c96f598bb8">
+        <source>Mixed</source>
+        <target>混合型</target>
+      </trans-unit>
+      <trans-unit id="s7b560d8693ed8f42">
+        <source>Upright</source>
+        <target>直立式</target>
+      </trans-unit>
+      <trans-unit id="s5b517ac216f9ee62">
+        <source>Sideways</source>
+        <target>侧面</target>
+      </trans-unit>
+      <trans-unit id="s47ebf3a8fb3b10c1">
+        <source>Orientation</source>
+        <target>定向</target>
+      </trans-unit>
+      <trans-unit id="sa1647e3b36ec08d7">
+        <source>Combine upright</source>
+        <target>结合直立式</target>
+      </trans-unit>
+      <trans-unit id="s0ef01c03299bbb83">
+        <source>Decoration</source>
+        <target>装饰</target>
+      </trans-unit>
+      <trans-unit id="sc2a24a9dd41a9503">
+        <source>Decoration line</source>
+        <target>装饰线</target>
+      </trans-unit>
+      <trans-unit id="sb6ca0a8bb3caae69">
+        <source>Decoration thickness</source>
+        <target>装饰厚度</target>
+      </trans-unit>
+      <trans-unit id="sa43800e28be1bdbc">
+        <source>Decoration color</source>
+        <target>装饰色</target>
+      </trans-unit>
+      <trans-unit id="s89950d86c8004d4b">
+        <source>Skip no overlaps</source>
+        <target>跳过不重叠</target>
+      </trans-unit>
+      <trans-unit id="s5e6a7a0c30d2a270">
+        <source>Skip overlaps (auto)</source>
+        <target>跳过重叠（自动）</target>
+      </trans-unit>
+      <trans-unit id="sb628960829e223bb">
+        <source>Skip all overlaps</source>
+        <target>跳过所有重叠</target>
+      </trans-unit>
+      <trans-unit id="s3d9548e211b958ce">
+        <source>Skip overlaps</source>
+        <target>跳过重叠</target>
+      </trans-unit>
+      <trans-unit id="s61ded17ca3f48c82">
+        <source>Underline offset</source>
+        <target>下划线偏移</target>
+      </trans-unit>
+      <trans-unit id="s697400b541fbc3cd">
+        <source>Under</source>
+        <target>根据</target>
+      </trans-unit>
+      <trans-unit id="s9219acd5bef6269e">
+        <source>Under left</source>
+        <target>左下</target>
+      </trans-unit>
+      <trans-unit id="sa13f72278add7513">
+        <source>Under right</source>
+        <target>右侧</target>
+      </trans-unit>
+      <trans-unit id="s9ab10fbf4c7a7322">
+        <source>Underline position</source>
+        <target>下划线位置</target>
+      </trans-unit>
+      <trans-unit id="s446a924922651ea0">
+        <source>Text emphasis</source>
+        <target>文字强调</target>
+      </trans-unit>
+      <trans-unit id="sd1f81984eeb7c0e8">
+        <source>Fill</source>
+        <target>填写</target>
+      </trans-unit>
+      <trans-unit id="s266935f2447fcd98">
+        <source>Over Left</source>
+        <target>左上方</target>
+      </trans-unit>
+      <trans-unit id="s684a16f3c711394d">
+        <source>Over Right</source>
+        <target>右上角</target>
+      </trans-unit>
+      <trans-unit id="sb940ade1bd81be7e">
+        <source>Under Left</source>
+        <target>左下方</target>
+      </trans-unit>
+      <trans-unit id="s60ff598dfcf2c773">
+        <source>Under Right</source>
+        <target>右下</target>
+      </trans-unit>
+      <trans-unit id="s91093e0b087911ba">
+        <source>Emphasis position</source>
+        <target>强调位置</target>
+      </trans-unit>
+      <trans-unit id="sec02109a0dd2a6c8">
+        <source>Emphasis color</source>
+        <target>强调色</target>
+      </trans-unit>
+      <trans-unit id="s497838412cb455f2">
+        <source>Text shadow</source>
+        <target>文字阴影</target>
+      </trans-unit>
+      <trans-unit id="sed86bd0deb2e5372">
+        <source>Transform text</source>
+        <target>转换文本</target>
+      </trans-unit>
+      <trans-unit id="s4b2c143acf931122">
+        <source>Line height</source>
+        <target>线条高度</target>
+      </trans-unit>
+      <trans-unit id="sfb231a52211b133f">
+        <source>No text wrap</source>
+        <target>无文字换行</target>
+      </trans-unit>
+      <trans-unit id="sb8a3d4df7d1c5e6b">
+        <source>Balance</source>
+        <target>平衡</target>
+      </trans-unit>
+      <trans-unit id="s27cc88818cc46ff6">
+        <source>Stable</source>
+        <target>稳定</target>
+      </trans-unit>
+      <trans-unit id="s3e78ddc9a48a608d">
+        <source>Pretty</source>
+        <target>漂亮</target>
+      </trans-unit>
+      <trans-unit id="s31c06e226322f065">
+        <source>Avoid orphans</source>
+        <target>避免孤儿</target>
+      </trans-unit>
+      <trans-unit id="scd9cedeb5ece3adb">
+        <source>Hyphenate</source>
+        <target>连字符</target>
+      </trans-unit>
+      <trans-unit id="se36c5b1baf5e0660">
+        <source>Anywhere</source>
+        <target>任何地方</target>
+      </trans-unit>
+      <trans-unit id="s80b71fc6f43c5ce1">
+        <source>Loose</source>
+        <target>松散</target>
+      </trans-unit>
+      <trans-unit id="s9ff3121d30f88d52">
+        <source>Normal</source>
+        <target>正常</target>
+      </trans-unit>
+      <trans-unit id="s58bec0ecd4f3ccd4">
+        <source>Strict</source>
+        <target>严格</target>
+      </trans-unit>
+      <trans-unit id="s2bad2d24def4aa0b">
+        <source>Line break (CJK lang.)</source>
+        <target>换行（中日韩语言）</target>
+      </trans-unit>
+      <trans-unit id="s433ba70286202ceb">
+        <source>Break all</source>
+        <target>打破所有</target>
+      </trans-unit>
+      <trans-unit id="sd1cffad290ea5b3b">
+        <source>Keep all</source>
+        <target>保留所有</target>
+      </trans-unit>
+      <trans-unit id="s5feaf7fd7ee567c8">
+        <source>Break word</source>
+        <target>断字</target>
+      </trans-unit>
+      <trans-unit id="s4e361bf8eef3759a">
+        <source>Word break</source>
+        <target>断字</target>
+      </trans-unit>
+      <trans-unit id="s4993444bfd3f3e5e">
+        <source>Collapse</source>
+        <target>崩溃</target>
+      </trans-unit>
+      <trans-unit id="sa8279f8211b3950d">
+        <source>Preserve breaks and spaces</source>
+        <target>保留间歇和空间</target>
+      </trans-unit>
+      <trans-unit id="sa757645ad842da97">
+        <source>Preserve breaks</source>
+        <target>保留休息时间</target>
+      </trans-unit>
+      <trans-unit id="s9f1ecdb3061d9cbc">
+        <source>Preserve spaces</source>
+        <target>保护空间</target>
+      </trans-unit>
+      <trans-unit id="s8d797888455f4147">
+        <source>Break spaces</source>
+        <target>休息空间</target>
+      </trans-unit>
+      <trans-unit id="s95d8e41a64635c7c">
+        <source>White space</source>
+        <target>白色空间</target>
+      </trans-unit>
+      <trans-unit id="s833bd0422a7ef95d">
+        <source>Tab size</source>
+        <target>标签尺寸</target>
+      </trans-unit>
+      <trans-unit id="s050954cd4ae83304">
+        <source>Word spacing</source>
+        <target>字距</target>
+      </trans-unit>
+      <trans-unit id="sb2cda80610c8d6ea">
+        <source>Space all</source>
+        <target>全部空间</target>
+      </trans-unit>
+      <trans-unit id="s4d546f6c87128d5b">
+        <source>Space first</source>
+        <target>空间第一</target>
+      </trans-unit>
+      <trans-unit id="sab0c57df694a0a09">
+        <source>Trim start</source>
+        <target>修整启动</target>
+      </trans-unit>
+      <trans-unit id="s4730c232e7209c40">
+        <source>Trim both</source>
+        <target>同时修剪</target>
+      </trans-unit>
+      <trans-unit id="sd3eca1e0f4209f6e">
+        <source>Trim all</source>
+        <target>全部修剪</target>
+      </trans-unit>
+      <trans-unit id="s0a2d91c6720033e9">
+        <source>Text spacing trim</source>
+        <target>文字间距修剪</target>
+      </trans-unit>
+      <trans-unit id="s74aa0039a87141e2">
+        <source>Ellipsis</source>
+        <target>省略号</target>
+      </trans-unit>
+      <trans-unit id="sd588d17a1b25c220">
+        <source>Text overflow</source>
+        <target>文本溢出</target>
+      </trans-unit>
+      <trans-unit id="s079cf7850d9327f0">
+        <source>Font</source>
+        <target>字体</target>
+      </trans-unit>
+      <trans-unit id="s61053f0e3ebbd272">
+        <source>normal</source>
+        <target>正常</target>
+      </trans-unit>
+      <trans-unit id="sd7086c4425c53c80">
+        <source>Font family</source>
+        <target>字体系列</target>
+      </trans-unit>
+      <trans-unit id="sa30f1981fd1cd441">
+        <source>Font size</source>
+        <target>字体大小</target>
+      </trans-unit>
+      <trans-unit id="sd8ce9e57270b030d">
+        <source>Font stretch</source>
+        <target>字体拉伸</target>
+      </trans-unit>
+      <trans-unit id="s789ff24c8f03f1a4">
+        <source>Letter spacing</source>
+        <target>字母间距</target>
+      </trans-unit>
+      <trans-unit id="s59404f5593c32fdc">
+        <source>Font kerning</source>
+        <target>字体字距</target>
+      </trans-unit>
+      <trans-unit id="s236ed7ba747099b0">
+        <source>Font weight</source>
+        <target>字体重量</target>
+      </trans-unit>
+      <trans-unit id="s517acbf1f96324f9">
+        <source>Weight</source>
+        <target>重量</target>
+      </trans-unit>
+      <trans-unit id="sd679c8b1bf8cc8a5">
+        <source>Small caps</source>
+        <target>小帽子</target>
+      </trans-unit>
+      <trans-unit id="s7e6570f2f1ae320f">
+        <source>Synthesize typefaces</source>
+        <target>合成字体</target>
+      </trans-unit>
+      <trans-unit id="se7fad370d8fb4cec">
+        <source>Optimize legibility</source>
+        <target>优化可读性</target>
+      </trans-unit>
+      <trans-unit id="s6e288a119281f4c2">
+        <source>Text rendering</source>
+        <target>文本渲染</target>
+      </trans-unit>
+      <trans-unit id="sc5bcf50d1b578d9f">
+        <source>Font feature settings</source>
+        <target>字体功能设置</target>
+      </trans-unit>
+      <trans-unit id="s9eefe6e57e4e1661">
+        <source>Font variant</source>
+        <target>字体变体</target>
+      </trans-unit>
+      <trans-unit id="sc8fa0e3de389ef1c">
+        <source>Font size adjust</source>
+        <target>调整字体大小</target>
+      </trans-unit>
+      <trans-unit id="s90f0fbc12e1e2b2f">
+        <source>Font palette</source>
+        <target>字体调色板</target>
+      </trans-unit>
+      <trans-unit id="sc6da0f4a7e4d710e">
+        <source>Font language override</source>
+        <target>字体语言覆盖</target>
+      </trans-unit>
+      <trans-unit id="sc275dd00036d16cb">
+        <source>Quotes character</source>
+        <target>引语字符</target>
+      </trans-unit>
+      <trans-unit id="sd03bff50f87f82d4">
+        <source>Hyphenate character</source>
+        <target>连字符</target>
+      </trans-unit>
+      <trans-unit id="s16f205466761e583">
+        <source>No optical font sizing</source>
+        <target>无光学字体大小</target>
+      </trans-unit>
+      <trans-unit id="s344ea8f4939cdc98">
+        <source>Color</source>
+        <target>颜色</target>
+      </trans-unit>
+      <trans-unit id="s1efbfc3937d565bd">
+        <source>Background</source>
+        <target>背景介绍</target>
+      </trans-unit>
+      <trans-unit id="s3b0ab4b52326316f">
+        <source>Light</source>
+        <target>灯光</target>
+      </trans-unit>
+      <trans-unit id="sac895c732f350ac5">
+        <source>Dark</source>
+        <target>黑暗</target>
+      </trans-unit>
+      <trans-unit id="s255c77900f2b5e0f">
+        <source>Color scheme</source>
+        <target>配色方案</target>
+      </trans-unit>
+      <trans-unit id="sf1045382c1fd9a85">
+        <source>Exact print colors</source>
+        <target>准确的打印颜色</target>
+      </trans-unit>
+      <trans-unit id="s1219d97b49650c05">
+        <source>Visibility</source>
+        <target>可见性</target>
+      </trans-unit>
+      <trans-unit id="se2796c5824ec8916">
+        <source>Content visibility</source>
+        <target>内容可见性</target>
+      </trans-unit>
+      <trans-unit id="sba64d8954d027206">
+        <source>Opacity</source>
+        <target>不透明度</target>
+      </trans-unit>
+      <trans-unit id="sf9929e2d356260c5">
+        <source>Multiply</source>
+        <target>乘法</target>
+      </trans-unit>
+      <trans-unit id="s744d993d03f29851">
+        <source>Screen</source>
+        <target>屏幕</target>
+      </trans-unit>
+      <trans-unit id="s7ed13ccddb1bf3c3">
+        <source>Overlay</source>
+        <target>覆盖层</target>
+      </trans-unit>
+      <trans-unit id="s69fbbdb8ad2a084a">
+        <source>Darken</source>
+        <target>变暗</target>
+      </trans-unit>
+      <trans-unit id="s27056379e0acfdb0">
+        <source>Lighten</source>
+        <target>减轻</target>
+      </trans-unit>
+      <trans-unit id="s90f7c1cf501ea0a7">
+        <source>Color dodge</source>
+        <target>色彩闪躲</target>
+      </trans-unit>
+      <trans-unit id="sfee1c12daf838935">
+        <source>Color burn</source>
+        <target>颜色灼伤</target>
+      </trans-unit>
+      <trans-unit id="s4ad6e9d3c2365c98">
+        <source>Hard light</source>
+        <target>硬光</target>
+      </trans-unit>
+      <trans-unit id="s262abbaf1d05f009">
+        <source>Soft light</source>
+        <target>柔光</target>
+      </trans-unit>
+      <trans-unit id="sb67e0e7c0869f982">
+        <source>Difference</source>
+        <target>差异</target>
+      </trans-unit>
+      <trans-unit id="sd88076d2994ee0fb">
+        <source>Exclusion</source>
+        <target>排除</target>
+      </trans-unit>
+      <trans-unit id="s491d2919cd6ec3d9">
+        <source>Hue</source>
+        <target>色调</target>
+      </trans-unit>
+      <trans-unit id="s086e6c267ade2609">
+        <source>Saturation</source>
+        <target>饱和度</target>
+      </trans-unit>
+      <trans-unit id="sb8f610a0e8df91fc">
+        <source>Luminosity</source>
+        <target>亮度</target>
+      </trans-unit>
+      <trans-unit id="sb905da066c10182c">
+        <source>Plus darker</source>
+        <target>加深色</target>
+      </trans-unit>
+      <trans-unit id="sf14f9d5f9f6ca342">
+        <source>Plus lighter</source>
+        <target>外加打火机</target>
+      </trans-unit>
+      <trans-unit id="s6d8b3b8047ed378d">
+        <source>Mix blend mode</source>
+        <target>混合混合模式</target>
+      </trans-unit>
+      <trans-unit id="sdd2fc8919a9c3111">
+        <source>Background blend mode</source>
+        <target>背景混合模式</target>
+      </trans-unit>
+      <trans-unit id="sbb55f9f2d69fd327">
+        <source>Backdrop filter</source>
+        <target>背景板过滤器</target>
+      </trans-unit>
+      <trans-unit id="sd2ed26defc646d47">
+        <source>Backdrop Filter</source>
+        <target>背景墙过滤器</target>
+      </trans-unit>
+      <trans-unit id="s7c95876637f6a9d7">
+        <source>Filter</source>
+        <target>过滤器</target>
+      </trans-unit>
+      <trans-unit id="s687e27f036a71b32">
+        <source>Isolate</source>
+        <target>隔离</target>
+      </trans-unit>
+      <trans-unit id="sa602e3fd3f2d98fd">
+        <source>Animation</source>
+        <target>动画</target>
+      </trans-unit>
+      <trans-unit id="sf2d96d0eb32cb81f">
+        <source>Animation composition</source>
+        <target>动画构成</target>
+      </trans-unit>
+      <trans-unit id="s9fc686f7bbd941e2">
+        <source>Transition</source>
+        <target>过渡</target>
+      </trans-unit>
+      <trans-unit id="sf0e261e04eda82ff">
+        <source>Appearance</source>
+        <target>外观</target>
+      </trans-unit>
+      <trans-unit id="sd66c4767fa3dde28">
+        <source>Accent color</source>
+        <target>点缀色</target>
+      </trans-unit>
+      <trans-unit id="s80a42b81c52d4d8f">
+        <source>Caret color</source>
+        <target>刻度线颜色</target>
+      </trans-unit>
+      <trans-unit id="s3815184eb09f0dcf">
+        <source>Cursor</source>
+        <target>光标</target>
+      </trans-unit>
+      <trans-unit id="s1c690963f1e2df00">
+        <source>Platform-specific look</source>
+        <target>特定平台外观</target>
+      </trans-unit>
+      <trans-unit id="sb5e9e1776242b028">
+        <source>Interactions</source>
+        <target>互动</target>
+      </trans-unit>
+      <trans-unit id="sf2cbb5e519264e67">
+        <source>Resize both horizontally and vertically</source>
+        <target>水平和垂直调整大小</target>
+      </trans-unit>
+      <trans-unit id="s7d864465dddbb50d">
+        <source>Allow resizing</source>
+        <target>允许调整大小</target>
+      </trans-unit>
+      <trans-unit id="sf6b4934598f7ed10">
+        <source>Allow selection</source>
+        <target>允许选择</target>
+      </trans-unit>
+      <trans-unit id="s87cefc710b3567fb">
+        <source>Contain</source>
+        <target>包含</target>
+      </trans-unit>
+      <trans-unit id="sf993bb199fefbe04">
+        <source>All</source>
+        <target>全部</target>
+      </trans-unit>
+      <trans-unit id="s571a4f19e2f140c7">
+        <source>Pan (x)</source>
+        <target>平移 (x)</target>
+      </trans-unit>
+      <trans-unit id="s828b1ecea8715884">
+        <source>Pan (left)</source>
+        <target>平移（左）</target>
+      </trans-unit>
+      <trans-unit id="s40e3826b7f74a3b5">
+        <source>Pan (right)</source>
+        <target>平移（右）</target>
+      </trans-unit>
+      <trans-unit id="s571db319e2f4208a">
+        <source>Pan (y)</source>
+        <target>潘 (y)</target>
+      </trans-unit>
+      <trans-unit id="s957787fc6b7ea5c0">
+        <source>Pan (up)</source>
+        <target>平移（向上）</target>
+      </trans-unit>
+      <trans-unit id="sc2b734cca2fa643b">
+        <source>Pan (down)</source>
+        <target>平移（向下）</target>
+      </trans-unit>
+      <trans-unit id="s03608a32f05eded2">
+        <source>Pinch zoom</source>
+        <target>缩放</target>
+      </trans-unit>
+      <trans-unit id="s748c0074eff45884">
+        <source>Manipulation</source>
+        <target>操纵</target>
+      </trans-unit>
+      <trans-unit id="s7de0e28d6c309a4e">
+        <source>Allow touch actions</source>
+        <target>允许触摸操作</target>
+      </trans-unit>
+      <trans-unit id="sc2536e077514accc">
+        <source>Scrolling</source>
+        <target>滚动</target>
+      </trans-unit>
+      <trans-unit id="s1155ec07a221e739">
+        <source>Scrollbar</source>
+        <target>滚动条</target>
+      </trans-unit>
+      <trans-unit id="s5015a8fb33b98872">
+        <source>Thin</source>
+        <target>薄型</target>
+      </trans-unit>
+      <trans-unit id="se95d4e55ea186d9a">
+        <source>Scrollbar color</source>
+        <target>滚动条颜色</target>
+      </trans-unit>
+      <trans-unit id="s6280bf993915c57a">
+        <source>Scroll margin</source>
+        <target>滚动边距</target>
+      </trans-unit>
+      <trans-unit id="s0c27336067c59611">
+        <source>Scroll padding</source>
+        <target>滚动填充</target>
+      </trans-unit>
+      <trans-unit id="s4e191bdb4700a6e9">
+        <source>Overscroll (x)</source>
+        <target>过卷 (x)</target>
+      </trans-unit>
+      <trans-unit id="s4e1c7fdb470386ac">
+        <source>Overscroll (y)</source>
+        <target>过卷 (y)</target>
+      </trans-unit>
+      <trans-unit id="s001dd78415a91fa0">
+        <source>Scrollbar gutter</source>
+        <target>滚动条沟槽</target>
+      </trans-unit>
+      <trans-unit id="sf9ecf969dd4b8164">
+        <source>Both edges</source>
+        <target>两条边</target>
+      </trans-unit>
+      <trans-unit id="saf9e5134ba1a7d30">
+        <source>Scroll snap</source>
+        <target>滚动按钮</target>
+      </trans-unit>
+      <trans-unit id="sea24bdcaa2bd2dec">
+        <source>Mandatory snap</source>
+        <target>强制抓拍</target>
+      </trans-unit>
+      <trans-unit id="s6787497df07fa97e">
+        <source>May scroll over stops</source>
+        <target>可滚动停靠站</target>
+      </trans-unit>
+      <trans-unit id="s9258280591309342">
+        <source>Scroll snap align (x)</source>
+        <target>滚动快照对齐 (x)</target>
+      </trans-unit>
+      <trans-unit id="s92548405912d46bf">
+        <source>Scroll snap align (y)</source>
+        <target>滚动快照对齐（y）</target>
+      </trans-unit>
+      <trans-unit id="s624e31cd4f1b89d4">
+        <source>Smooth scroll</source>
+        <target>平滑滚动</target>
+      </trans-unit>
+      <trans-unit id="sb0f3327210fe18fc">
+        <source>Columns</source>
+        <target>专栏</target>
+      </trans-unit>
+      <trans-unit id="sd01178c54f648118">
+        <source>Balance columns</source>
+        <target>平衡栏</target>
+      </trans-unit>
+      <trans-unit id="sba88d90cd6c751b3">
+        <source>Column rule</source>
+        <target>栏目规则</target>
+      </trans-unit>
+      <trans-unit id="sd3a288c1094b8a63">
+        <source>Column rule width</source>
+        <target>列规则宽度</target>
+      </trans-unit>
+      <trans-unit id="s3124653c272f054c">
+        <source>Column rule color</source>
+        <target>列规则颜色</target>
+      </trans-unit>
+      <trans-unit id="s01b56d233c6c5cac">
+        <source>Sectioning</source>
+        <target>分段</target>
+      </trans-unit>
+      <trans-unit id="s68e0e3a2bab7ce3e">
+        <source>Avoid</source>
+        <target>避免</target>
+      </trans-unit>
+      <trans-unit id="s314a4f7685c8e824">
+        <source>Always</source>
+        <target>始终如一</target>
+      </trans-unit>
+      <trans-unit id="s4bbff4e008690da1">
+        <source>Avoid page</source>
+        <target>避免页面</target>
+      </trans-unit>
+      <trans-unit id="s2e192b19ed15fcf6">
+        <source>Page</source>
+        <target>页次</target>
+      </trans-unit>
+      <trans-unit id="sae76e25497dcee58">
+        <source>Recto</source>
+        <target>直面</target>
+      </trans-unit>
+      <trans-unit id="sff3df0c2823ec6e4">
+        <source>Verso</source>
+        <target>Verso</target>
+      </trans-unit>
+      <trans-unit id="seb19675a580f0628">
+        <source>Avoid column</source>
+        <target>避免专栏</target>
+      </trans-unit>
+      <trans-unit id="s9e40e59654c8ad67">
+        <source>Column</source>
+        <target>专栏</target>
+      </trans-unit>
+      <trans-unit id="s565cd5ffb0158c46">
+        <source>Avoid region</source>
+        <target>避免区域</target>
+      </trans-unit>
+      <trans-unit id="sb51270e19988f9bd">
+        <source>Region</source>
+        <target>地区</target>
+      </trans-unit>
+      <trans-unit id="s8a29cb39a42f83f3">
+        <source>Break before</source>
+        <target>休息前</target>
+      </trans-unit>
+      <trans-unit id="se638417c560cfe5c">
+        <source>Break inside</source>
+        <target>打入内部</target>
+      </trans-unit>
+      <trans-unit id="s158b6ec6b1fffcb2">
+        <source>Break after</source>
+        <target>之后休息</target>
+      </trans-unit>
+      <trans-unit id="sfd0cde85070d2eb2">
+        <source>Flex</source>
+        <target>灵活</target>
+      </trans-unit>
+      <trans-unit id="sa013e119fec906fb">
+        <source>Row</source>
+        <target>行</target>
+      </trans-unit>
+      <trans-unit id="s9d430adc5be110e9">
+        <source>Row Reverse</source>
+        <target>反向行</target>
+      </trans-unit>
+      <trans-unit id="saaec15c97a9e4245">
+        <source>Column Reverse</source>
+        <target>立柱反向</target>
+      </trans-unit>
+      <trans-unit id="s0d86afa3c6a1e28b">
+        <source>Flex direction</source>
+        <target>弯曲方向</target>
+      </trans-unit>
+      <trans-unit id="s1af8b67d1c85c811">
+        <source>Space between</source>
+        <target>之间的空间</target>
+      </trans-unit>
+      <trans-unit id="s456a8d744313852a">
+        <source>Space around</source>
+        <target>周围空间</target>
+      </trans-unit>
+      <trans-unit id="s66765c420ee578e4">
+        <source>Space evenly</source>
+        <target>均匀的空间</target>
+      </trans-unit>
+      <trans-unit id="s97881699a2b21d5b">
+        <source>Row gap</source>
+        <target>行间距</target>
+      </trans-unit>
+      <trans-unit id="s1aa1cb63ad44bc6f">
+        <source>Column gap</source>
+        <target>立柱间隙</target>
+      </trans-unit>
+      <trans-unit id="se619a501d1bfe6a5">
+        <source>Wrap</source>
+        <target>包装</target>
+      </trans-unit>
+      <trans-unit id="s3ffcdc5db5e7d0c5">
+        <source>Reverse</source>
+        <target>反向</target>
+      </trans-unit>
+      <trans-unit id="s25e1a07e454c2c11">
+        <source>Grid</source>
+        <target>网格</target>
+      </trans-unit>
+      <trans-unit id="s6bd7a02fdf93e653">
+        <source>Align content</source>
+        <target>调整内容</target>
+      </trans-unit>
+      <trans-unit id="s35ae5f4e0fa2777b">
+        <source>Custom align</source>
+        <target>自定义对齐</target>
+      </trans-unit>
+      <trans-unit id="s6e4c20c6debcd5ca">
+        <source>Custom justify</source>
+        <target>自定义证明</target>
+      </trans-unit>
+      <trans-unit id="se633223a0b88625e">
+        <source>Cell placement</source>
+        <target>单元位置</target>
+      </trans-unit>
+      <trans-unit id="s88676f992b2965db">
+        <source>Stretch cell content</source>
+        <target>拉伸单元格内容</target>
+      </trans-unit>
+      <trans-unit id="s71dec51005acc1e4">
+        <source>Row dense</source>
+        <target>行列密集</target>
+      </trans-unit>
+      <trans-unit id="s96a045dcade75ad0">
+        <source>Column dense</source>
+        <target>立柱密集</target>
+      </trans-unit>
+      <trans-unit id="sb740eab4afd5a710">
+        <source>Grid auto flow</source>
+        <target>电网自动流量</target>
+      </trans-unit>
+      <trans-unit id="sa2eff4dad1c119f1">
+        <source>Grid template</source>
+        <target>网格模板</target>
+      </trans-unit>
+      <trans-unit id="s13ebd619c8a06a6d">
+        <source>Grid auto rows</source>
+        <target>网格自动行</target>
+      </trans-unit>
+      <trans-unit id="scbe537fc38ff4c13">
+        <source>Grid auto columns</source>
+        <target>网格自动列</target>
+      </trans-unit>
+      <trans-unit id="sed713f1b916fb469">
+        <source>Border spacing (x)</source>
+        <target>边界间距 (x)</target>
+      </trans-unit>
+      <trans-unit id="sed74a31b9172942c">
+        <source>Border spacing (y)</source>
+        <target>边界间距（y）</target>
+      </trans-unit>
+      <trans-unit id="sc1edebeaef92b7bd">
+        <source>Fixed table layout</source>
+        <target>固定表格布局</target>
+      </trans-unit>
+      <trans-unit id="sb59d621e3c93cc27">
+        <source>Shared cell borders</source>
+        <target>共享单元边界</target>
+      </trans-unit>
+      <trans-unit id="sa4f137f8619093a5">
+        <source>Caption at bottom</source>
+        <target>底部说明</target>
+      </trans-unit>
+      <trans-unit id="s8a6585c48ea104e9">
+        <source>Hide empty cells</source>
+        <target>隐藏空单元格</target>
+      </trans-unit>
+      <trans-unit id="s49dd67aed00029ef">
+        <source>Math</source>
+        <target>数学</target>
+      </trans-unit>
+      <trans-unit id="sad6be321164d08c8">
+        <source>Compact math</source>
+        <target>紧凑型数学</target>
+      </trans-unit>
+      <trans-unit id="s6ac62e1c8c66f3bb">
+        <source>Compact superscr.</source>
+        <target>紧凑型超级扫描仪</target>
+      </trans-unit>
+      <trans-unit id="s036d35e03be98d22">
+        <source>Math depth</source>
+        <target>数学深度</target>
+      </trans-unit>
+      <trans-unit id="s72f2a02e2a5a4ee3">
+        <source>Media</source>
+        <target>媒体</target>
+      </trans-unit>
+      <trans-unit id="s69d88ef4b2618980">
+        <source>Cover</source>
+        <target>封面</target>
+      </trans-unit>
+      <trans-unit id="s29a1c26521879b9f">
+        <source>Scale down</source>
+        <target>缩小规模</target>
+      </trans-unit>
+      <trans-unit id="s0a3ddcba94027d95">
+        <source>Object fit</source>
+        <target>物体配合</target>
+      </trans-unit>
+      <trans-unit id="s579c69f419b6caef">
+        <source>Smooth</source>
+        <target>光滑</target>
+      </trans-unit>
+      <trans-unit id="s741fae02b3dd24f3">
+        <source>Pixelated</source>
+        <target>像素化</target>
+      </trans-unit>
+      <trans-unit id="sa126cf8c627cec1e">
+        <source>Image rendering</source>
+        <target>图像渲染</target>
+      </trans-unit>
+      <trans-unit id="se58467472725ad0c">
+        <source>Image resolution</source>
+        <target>图像分辨率</target>
+      </trans-unit>
+      <trans-unit id="sab4d9283896d9422">
+        <source>Snap resolution pixels</source>
+        <target>抓拍分辨率像素</target>
+      </trans-unit>
+      <trans-unit id="s0befccf152b6c0a9">
+        <source>Orient from metadata</source>
+        <target>从元数据中定向</target>
+      </trans-unit>
+      <trans-unit id="sea52df2b70a5c10d">
+        <source>Ruby</source>
+        <target>红宝石</target>
+      </trans-unit>
+      <trans-unit id="sa644d580d8a11e60">
+        <source>Ruby alignment</source>
+        <target>红宝石对齐</target>
+      </trans-unit>
+      <trans-unit id="sed318ec045c5144f">
+        <source>Over</source>
+        <target>完毕</target>
+      </trans-unit>
+      <trans-unit id="sc53de149fcaad713">
+        <source>Inter-character</source>
+        <target>字符间</target>
+      </trans-unit>
+      <trans-unit id="s7d27db3c9639c6dd">
+        <source>Alternate</source>
+        <target>备用</target>
+      </trans-unit>
+      <trans-unit id="saad4380b9cc6cefd">
+        <source>Alternate over</source>
+        <target>备用</target>
+      </trans-unit>
+      <trans-unit id="s037b1dc850a89273">
+        <source>Alternate under</source>
+        <target>下的候补</target>
+      </trans-unit>
+      <trans-unit id="s3a179f6db2972384">
+        <source>Ruby position</source>
+        <target>红宝石位置</target>
+      </trans-unit>
+      <trans-unit id="sfcebd18506f1e535">
+        <source>Flow</source>
+        <target>流量</target>
+      </trans-unit>
+      <trans-unit id="sc6415b50ff928294">
+        <source>List item</source>
+        <target>列表项目</target>
+      </trans-unit>
+      <trans-unit id="sf0ca10f343249063">
+        <source>Contents</source>
+        <target>目录</target>
+      </trans-unit>
+      <trans-unit id="s1125d159f7e64df5">
+        <source>Display</source>
+        <target>显示屏</target>
+      </trans-unit>
+      <trans-unit id="sca7cfe2bef51b2a5">
+        <source>Root</source>
+        <target>根</target>
+      </trans-unit>
+      <trans-unit id="sca7fed2bef53cb99">
+        <source>Role</source>
+        <target>角色</target>
+      </trans-unit>
+      <trans-unit id="sf4849bc200e279ed">
+        <source>Table caption</source>
+        <target>表格标题</target>
+      </trans-unit>
+      <trans-unit id="s41f65a763f8e44ab">
+        <source>Table header group</source>
+        <target>表头组</target>
+      </trans-unit>
+      <trans-unit id="s85f9aa6d3ea0e421">
+        <source>Table footer group</source>
+        <target>表格页脚组</target>
+      </trans-unit>
+      <trans-unit id="sc1a155cc25899250">
+        <source>Table row group</source>
+        <target>表格行组</target>
+      </trans-unit>
+      <trans-unit id="s5b474b5c0ac0c7c4">
+        <source>Table column group</source>
+        <target>表格列组</target>
+      </trans-unit>
+      <trans-unit id="s68b87d7b61052dc3">
+        <source>Table row</source>
+        <target>表列</target>
+      </trans-unit>
+      <trans-unit id="s9caf10388ab3562f">
+        <source>Table column</source>
+        <target>表列</target>
+      </trans-unit>
+      <trans-unit id="s07970793b21351fd">
+        <source>Ruby base container</source>
+        <target>Ruby 基本容器</target>
+      </trans-unit>
+      <trans-unit id="s8fad58c831ecf017">
+        <source>Ruby text container</source>
+        <target>Ruby 文本容器</target>
+      </trans-unit>
+      <trans-unit id="sb0f93c1c60c0249a">
+        <source>Ruby base</source>
+        <target>红宝石底座</target>
+      </trans-unit>
+      <trans-unit id="sbd35ee879d9cf770">
+        <source>Ruby text</source>
+        <target>红宝石文本</target>
+      </trans-unit>
+      <trans-unit id="sea896ed51ad33287">
+        <source>No specific styles available</source>
+        <target>无特定款式</target>
+      </trans-unit>
+      <trans-unit id="sb71941f552f3504d">
+        <source>Set special value</source>
+        <target>设置特殊值</target>
+      </trans-unit>
+      <trans-unit id="scbf29ce484222325">
+        <source></source>
+      </trans-unit>
+      <trans-unit id="sfb68cae41d749423">
+        <source>Initial</source>
+        <target>初始</target>
+      </trans-unit>
+      <trans-unit id="s6b585ba37cdb8260">
+        <source>Inherit</source>
+        <target>继承</target>
+      </trans-unit>
+      <trans-unit id="sb45f9fb4dba6e71a">
+        <source>Unset</source>
+        <target>未设置</target>
+      </trans-unit>
+      <trans-unit id="sd89a2e529b31ef43">
+        <source>Revert</source>
+        <target>返回</target>
+      </trans-unit>
+      <trans-unit id="sb741b6e0ca589122">
+        <source>Revert layer</source>
+        <target>还原层</target>
+      </trans-unit>
+      <trans-unit id="s844a76d1843ceb3c">
+        <source>Reset to default</source>
+        <target>重置为默认值</target>
+      </trans-unit>
+      <trans-unit id="s2f8da2cb5f236588">
+        <source>The name of your package. Must be scoped, e.g. `@org/pkg`. </source>
+        <target>软件包名称。必须有作用域，例如 `@org/pkg`。 </target>
+      </trans-unit>
+      <trans-unit id="s840fa49e8989c028">
+        <source>Position/Shape</source>
+        <target>位置/形状</target>
+      </trans-unit>
+      <trans-unit id="s2e4818861000b13f">
+        <source>Layout</source>
+        <target>布局</target>
+      </trans-unit>
+      <trans-unit id="s2e39b99cf23606fa">
+        <source>Set the layout of the selected elements</source>
+        <target>设置所选元素的布局</target>
+      </trans-unit>
+      <trans-unit id="seb4e52ef5ec7a7dc">
+        <source>Colors/Effects</source>
+        <target>色彩/效果</target>
+      </trans-unit>
+      <trans-unit id="s105a06836c40fcb4">
+        <source>Set filters, color, and blending of selected elements</source>
+        <target>设置所选元素的滤镜、颜色和混合效果</target>
+      </trans-unit>
+      <trans-unit id="s7f09197a4814079b">
+        <source>Set interactivity options for selected elements</source>
+        <target>为选定元素设置交互性选项</target>
+      </trans-unit>
+      <trans-unit id="s380d17664bb69531">
+        <source>Insert column before</source>
+        <target>之前插入列</target>
+      </trans-unit>
+      <trans-unit id="s12946ec1b850962c">
+        <source>Insert column after</source>
+        <target>在</target>
+      </trans-unit>
+      <trans-unit id="s0458872c43beadef">
+        <source>Insert row before</source>
+        <target>在</target>
+      </trans-unit>
+      <trans-unit id="s42ffdab1291fb3de">
+        <source>Insert row after</source>
+        <target>在</target>
+      </trans-unit>
+      <trans-unit id="s77318393dfdb0775">
+        <source>Remove row</source>
+        <target>删除行</target>
+      </trans-unit>
+      <trans-unit id="sa8b55cab62e439b5">
+        <source>Remove column</source>
+        <target>删除栏目</target>
+      </trans-unit>
+      <trans-unit id="s1696c76a23c0834e">
+        <source>Advanced: Show packages with versions like 0.x.x in the package manager</source>
+        <target>高级：在软件包管理器中显示版本为 0.x.x 的软件包</target>
+      </trans-unit>
+      <trans-unit id="sc2e2a0dbf03723b7">
+        <source>Advanced: Show packages from unknown sources in the package manager (Warning: May be unsafe)</source>
+        <target>高级：在软件包管理器中显示未知来源的软件包（警告：可能不安全）</target>
+      </trans-unit>
+      <trans-unit id="sbff54e740c4086eb">
+        <source>Show unknown packages</source>
+        <target>显示未知软件包</target>
+      </trans-unit>
+      <trans-unit id="sb19611adbc88f711">
+        <source>Advanced: Show source editing commands, e.g. to show the document's HTML or to add custom styles and scripts.</source>
+        <target>高级：显示源代码编辑命令，例如显示文档的 HTML 或添加自定义样式和脚本。</target>
+      </trans-unit>
+      <trans-unit id="sd452cebf4a0313d1">
+        <source>Show source editing commands</source>
+        <target>显示源编辑命令</target>
+      </trans-unit>
+      <trans-unit id="s612d62bbc9df3bcc">
+        <source>Advanced: Reset all WebWriter data each time the page is loaded - for debugging purposes.</source>
+        <target>高级：每次加载页面时重置所有 WebWriter 数据 - 用于调试。</target>
+      </trans-unit>
+      <trans-unit id="s4b9d321525eb78ac">
+        <source>Reset all app data on page load</source>
+        <target>在页面加载时重置所有应用程序数据</target>
+      </trans-unit>
+      <trans-unit id="s65ac276544ba33cd">
+        <source>SVG file</source>
+        <target>SVG 文件</target>
+      </trans-unit>
+      <trans-unit id="sf22a3737146ec910">
+        <source>WebWriter can embed SVG directly in the document.</source>
+        <target>WebWriter 可以直接在文档中嵌入 SVG。</target>
       </trans-unit>
     </body>
   </file>

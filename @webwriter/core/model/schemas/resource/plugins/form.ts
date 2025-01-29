@@ -17,6 +17,7 @@ export const formPlugin = () => ({
         tag: "button",
         content: "phrasing*",
         group: "flow interactive listed labelable submittable formassociated palpable inlinecontainer",
+        atom: true,
         attrs: {
           autofocus: {default: undefined},
           disabled: {default: undefined},
@@ -34,6 +35,7 @@ export const formPlugin = () => ({
       input: HTMLElementSpec({
         tag: "input",
         group: "flow listed submittable resettable formassociated labelable palpable",
+        atom: true,
         attrs: {
           accept: {default: undefined},
           alt: {default: undefined},
@@ -71,6 +73,7 @@ export const formPlugin = () => ({
       textarea: HTMLElementSpec({
         tag: "textarea",
         group: "flow listed submittable resettable formassociated labelable palpable",
+        atom: true,
         attrs: {
           autocapitalize: {default: undefined},
           autocomplete: {default: undefined},
@@ -96,6 +99,7 @@ export const formPlugin = () => ({
       select: {
         tag: "select",
         group: "flow interactive listed labelable resettable submittable formassociated",
+        atom: true,
         attrs: {
           autocomplete: {default: undefined},
           autofocus: {default: undefined},
@@ -113,6 +117,7 @@ export const formPlugin = () => ({
       meter: {
         tag: "meter",
         group: "flow labelable palpable",
+        atom: true,
         content: "phrasing*",
         attrs: {
           value: {default: undefined},
@@ -218,6 +223,7 @@ export const formPlugin = () => ({
         tag: "progress",
         group: "flow labelable palpable containerinline",
         content: "phrasing*",
+        atom: true,
         attrs: {
           max: {default: undefined},
           value: {default: undefined}

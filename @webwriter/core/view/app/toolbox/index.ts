@@ -9,12 +9,14 @@ import { Command, LayoutCommand } from "#viewmodel"
 import { spreadProps } from "@open-wc/lit-helpers"
 
 import { ifDefined } from "lit/directives/if-defined.js"
-import { App, URLFileInput } from "#view"
+import { App, URLFileInput, TextPicker } from "#view"
 import { AllSelection, EditorState, TextSelection } from "prosemirror-state"
 import {GapCursor} from "prosemirror-gapcursor"
 // @ts-ignore
 import {render as latexToMathML} from "temml/dist/temml.cjs"
-import { SlColorPicker } from "@shoelace-style/shoelace"
+import { SlColorPicker, SlTree } from "@shoelace-style/shoelace"
+import { CSSPropertySpecs, MATHML_TAGS } from "#model/index.js"
+import { LitPickerElement } from "#view/elements/stylepickers/index.js"
 
 
 
@@ -109,6 +111,12 @@ export class  Toolbox extends LitElement {
 
   @property({attribute: false})
   activeLayoutCommand: LayoutCommand | undefined
+
+  @property({type: Boolean})
+  activeLayoutAdvanced = false
+
+  @property({type: Boolean})
+  activeOutline = false
 
   emitDeleteWidget = () => this.dispatchEvent(
     new CustomEvent("ww-delete-widget", {composed: true, bubbles: true, detail: {
@@ -207,16 +215,18 @@ export class  Toolbox extends LitElement {
         -webkit-user-select: none;
         font-size: 0.95rem;
         align-items: flex-start;
-        padding-left: 10px;
+        padding-left: 9px;
+        margin-left: 1px;
         padding-bottom: 1ch;
         overflow: visible;
         scrollbar-width: thin;
         box-sizing: border-box;
         position: relative;
+        min-width: 250px;
       }
 
       :host > * {
-        max-width: 200px;
+        max-width: 230px;
       }
 
       #name:hover {
@@ -250,8 +260,24 @@ export class  Toolbox extends LitElement {
       .layout-command[data-active] {
         border: 2px solid var(--sl-color-gray-600);
         border-radius: 5px;
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
+        z-index: 100;
         background: white;
         position: relative;
+        &::after {
+          content: "";
+          display: block;
+          position: absolute;
+          width: 100%;
+          height: 4px;
+          left: -2px;
+          bottom: -4px;
+          background: white;
+          z-index: 1000;
+          border-left: inherit;
+          border-right: inherit;
+        }
       }
 
       .inline-commands:not(.more-inline-commands).applied {
@@ -518,7 +544,7 @@ export class  Toolbox extends LitElement {
       }
 
       .pickers-popup::part(popup) {
-        z-index: 1;
+        z-index: 10;
         border: 2px solid var(--sl-color-gray-600);
         padding: 10px;
         padding-right: 5px;
@@ -527,6 +553,15 @@ export class  Toolbox extends LitElement {
         background: white;
         overflow-y: auto;
         scrollbar-width: thin;
+        width: 230px;
+        box-sizing: border-box;
+        margin-top: -2px;
+        display: flex;
+        flex-direction: column;
+        gap: 0.375rem;
+        min-width: 230px;
+        overflow-x: clip;
+        overflow-y: scroll;
       }
 
       .pickers-popup > h3 {
@@ -535,11 +570,13 @@ export class  Toolbox extends LitElement {
         align-items: center;
         color: var(--sl-color-gray-600);
         margin: 0;
-        padding: 15px 0;
+        margin-left: -10px;
+        padding: 10px 0;
+        padding-left: 10px;
         position: sticky;
         top: 0;
         left: 0;
-        z-index: 1;
+        z-index: 10;
         background: white;
 
         & > sl-icon {
@@ -683,6 +720,22 @@ export class  Toolbox extends LitElement {
 
       #element-breadcrumb::part(base) {
         border-bottom: 2px solid var(--sl-color-gray-600);
+      }
+
+      #element-breadcrumb sl-tree-item {
+        --indent-size: var(--sl-spacing-small);
+      }
+
+      #element-breadcrumb sl-tree-item[data-selected] > sl-breadcrumb-item > ww-button::part(label) {
+        text-decoration: 2px underline var(--sl-color-primary-400);
+      }
+
+      #element-breadcrumb sl-tree-item::part(expand-button) {
+        padding: 0;
+      }
+
+      #element-breadcrumb sl-tree-item::part(item--selected) {
+        border-color: transparent;
       }
 
       #element-breadcrumb sl-breadcrumb-item ww-button::part(base)
@@ -857,6 +910,44 @@ export class  Toolbox extends LitElement {
         width: 100%;
       }
 
+      .table-toolbox {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr;
+        grid-template-rows: 1fr;
+        border: 2px solid var(--sl-color-primary-800);
+        border-radius: var(--sl-border-radius-medium);
+        padding: 2px;
+        color: var(--sl-color-primary-800);
+        position: relative;
+        margin-top: 0.5em;
+
+        & .table-label {
+          position: absolute;
+          top: -0.8em;
+          left: 3px;
+          background: #f4f4f5;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 0.75rem;
+          padding: 0 3px;
+          gap: 3px;
+
+          & sl-icon {
+            width: 1.1em;
+            height: 1.1em;
+          }
+        }
+      }
+
+      .style-picker:not([data-active]) {
+        display: none;
+      }
+
+      .pickers-popup:not([data-active]) {
+        display: none;
+      }
+
       /*
       @media only screen and (min-width: 1830px) {
         :host {
@@ -874,6 +965,10 @@ export class  Toolbox extends LitElement {
           gap: 0.5rem;
         }
       }*/
+
+      .inline-toolbox:not([data-active]) {
+        display: none;
+      }
       
     `
   }
@@ -901,7 +996,7 @@ export class  Toolbox extends LitElement {
     `
 	})
 
-  LayoutCommands = (el: HTMLElement, advanced=false) => this.app.commands.layoutCommands.filter(cmd => advanced? cmd.tags?.includes("advanced"): !cmd.tags?.includes("advanced")).map(v => {
+  LayoutCommands = (advanced=false) => this.app.commands.layoutCommands.filter(cmd => advanced? cmd.tags?.includes("advanced"): !cmd.tags?.includes("advanced")).map(v => {
 
     const classes = {
       "block-command": true,
@@ -912,46 +1007,45 @@ export class  Toolbox extends LitElement {
     }
 
 		return html`
-    <span id=${v.id} class=${classMap(classes)} ?data-active=${v === this.activeLayoutCommand}>
+    <span id=${v.id} class=${classMap(classes)} ?data-active=${v === this.activeLayoutCommand && !this.gapSelected}>
       <ww-button
         ${spreadProps(v.toObject())}
         tabindex=${0}
         name=${v.icon ?? "circle-fill"}
-        @click=${() => v.run()}
+        @click=${() => {v.run(); this.activeLayoutAdvanced = false}}
         variant="icon"
       ></ww-button>
     </span>
     `
 	})
 
-  Pickers = (el: HTMLElement, activeLayoutCommand?: LayoutCommand) => {
-    if(!activeLayoutCommand) {
-      return undefined
-    }
-    let properties: TemplateResult[] | TemplateResult
-    if(activeLayoutCommand.id === "boxStyl") {
-      properties = html`<ww-box-picker></ww-box-picker>`
-    }
-    else {
-      properties = activeLayoutCommand.cssProperties.map(name => html`<ww-css-property-input name=${name} plaintext value=${(el.style as any)[name]}></ww-css-property-input>`)
-    }
-    return html`<sl-popup class="pickers-popup" shift strategy="fixed" auto-size="both" auto-size-padding=${10} active anchor=${activeLayoutCommand.id} .autoSizeBoundary=${document.body} placement="bottom-start" @change=${(e: any) => this.emitSetStyle(el, e.target.name, e.target.value)}>
+  Pickers = (activeLayoutCommand?: LayoutCommand) => {
+    const properties = html`
+      <ww-box-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "boxStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${(e: any) => this.emitSetStyle(this.activeElement!, e.target.value)} .value=${this.activeElement? this.activeElement!.style as any: undefined} .computedValue=${this.activeElement? this.app.activeEditor?.pmEditor.window.getComputedStyle(this.activeElement): undefined}></ww-box-picker>
+      <ww-layout-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "layoutStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${(e: any) => this.emitSetStyle(this.activeElement!, e.target.value)} .value=${this.activeElement? this.activeElement!.style as any: undefined} .computedValue=${this.activeElement? this.app.activeEditor?.pmEditor.window.getComputedStyle(this.activeElement): undefined}></ww-layout-picker>
+      <ww-text-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "textStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${(e: any) => this.emitSetStyle(this.activeElement!, e.target.value)} .value=${this.activeElement? this.activeElement!.style as any: undefined} .computedValue=${this.activeElement? this.app.activeEditor?.pmEditor.window.getComputedStyle(this.activeElement): undefined}></ww-text-picker>
+      <ww-blending-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "blendingStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${(e: any) => this.emitSetStyle(this.activeElement!, e.target.value)} .value=${this.activeElement? this.activeElement!.style as any: undefined} .computedValue=${this.activeElement? this.app.activeEditor?.pmEditor.window.getComputedStyle(this.activeElement): undefined}></ww-blending-picker>
+      <ww-interactivity-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "interactivityStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${(e: any) => this.emitSetStyle(this.activeElement!, e.target.value)} .value=${this.activeElement? this.activeElement!.style as any: undefined} .computedValue=${this.activeElement? this.app.activeEditor?.pmEditor.window.getComputedStyle(this.activeElement): undefined}></ww-interactivity-picker>
+      <ww-miscellaneous-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "miscellaneousStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${(e: any) => this.emitSetStyle(this.activeElement!, e.target.value)} .value=${this.activeElement? this.activeElement!.style as any: undefined} .computedValue=${this.activeElement? this.app.activeEditor?.pmEditor.window.getComputedStyle(this.activeElement): undefined}></ww-miscellaneous-picker>`
+    return html`<sl-popup class="pickers-popup" ?data-active=${this.activeLayoutCommand && !this.gapSelected} shift strategy="fixed" auto-size="both" active anchor=${ifDefined(activeLayoutCommand?.id)} .autoSizeBoundary=${document.body} shift-padding=${this.shiftPaddingStyling} placement="bottom-start">
       <h3>
-        <sl-icon name=${activeLayoutCommand?.icon ?? ""}></sl-icon>
+        <!--<sl-icon name=${activeLayoutCommand?.icon ?? ""}></sl-icon>-->
         <span>${activeLayoutCommand?.label}</span>
-        <sl-icon-button name="x" @click=${() => this.activeLayoutCommand = undefined}></sl-icon-button>
+        <sl-icon-button name=${this.activeLayoutAdvanced? "badge-filled": "badge"} @click=${() => this.activeLayoutAdvanced = !this.activeLayoutAdvanced} style="margin-left: 0.5ch;"></sl-icon-button>
+        <sl-icon-button name="restore" style="margin-left: 0.25ch;" @click=${() => this.emitSetStyle(this.activeElement!, (this.shadowRoot!.querySelector(".picker[data-active]") as LitPickerElement).emptyValue as any)}></sl-icon-button>
+        <sl-icon-button name="x" @click=${() => {this.activeLayoutCommand = undefined; this.activeLayoutAdvanced = false}}></sl-icon-button>
       </h3>
       ${properties}
     </sl-popup>`
   }
 
-  ElementCommands = (el: HTMLElement) => this.app.commands.elementCommands.map(cmd => {
+  ElementCommands = () => this.app.commands.elementCommands.map(cmd => {
     return html`
       <ww-button
         ${spreadProps(cmd.toObject())}
         tabindex=${0}
         name=${cmd.icon ?? "circle-fill"}
-        @click=${() => cmd.run()}
+        @click=${() => {cmd.run(); cmd.preview()}}
         @mouseenter=${() => cmd.preview()}
         @mouseleave=${() => cmd.preview()}
         variant="icon"
@@ -959,28 +1053,28 @@ export class  Toolbox extends LitElement {
   `
   })
 
-  BlockToolbox = (el: HTMLElement) => {
+  BlockToolbox = (el: HTMLElement | null) => {
     const advancedApplied = false
     return html`<div class="block-toolbox">
       <div class="block-options">
         ${this.ElementBreadcrumb()}
         <div part="block-commands">
-          ${this.ElementCommands(el)}
-          ${this.LayoutCommands(el, false)}
-          <span class=${classMap({"block-command": true, "applied": advancedApplied})}>
+          ${this.ElementCommands()}
+          ${this.LayoutCommands(false)}
+          <!--<span class=${classMap({"block-command": true, "applied": advancedApplied})}>
             <ww-button
               tabindex=${0}
-              title=${this.advancedInline? msg("Hide advanced styling"): msg("Show advanced styling")}
+              title=${this.advancedStyling? msg("Hide advanced styling"): msg("Show advanced styling")}
               icon=${this.advancedStyling? "chevron-down": "chevron-left"}
               @click=${(e: any) => this.advancedStyling = !this.advancedStyling}
               variant="icon"
             ></ww-button>
           </span>
-          ${this.LayoutCommands(el, true)}
+          ${this.LayoutCommands(true)}-->
         </div>
       </div>
     </div>
-    ${this.Pickers(el, this.activeLayoutCommand)}`
+    ${this.Pickers(this.activeLayoutCommand)}`
   }
 
   @property({type: Boolean, attribute: true, reflect: true})
@@ -989,12 +1083,15 @@ export class  Toolbox extends LitElement {
   @property({type: Boolean, attribute: true, reflect: true})
   advancedStyling = false
 
+  @property({type: Number, attribute: true, reflect: true})
+  shiftPaddingStyling = 0
+
   InlineToolbox = () => {
     const {fontFamilyCommand, fontSizeCommand, clearFormattingCommand} = this.app.commands
     const fontFamilies = fontFamilyCommand.value
     const fontSizes = fontSizeCommand.value
     const advancedApplied = this.app.commands.markCommands.some(v => v.tags?.includes("advanced") && v.active)
-    return html`<div class="inline-toolbox">
+    return html`<div class="inline-toolbox" ?data-active=${this.textSelected}>
       <ww-fontpicker
         .fontFamilies=${fontFamilies}
         .fontSizes=${fontSizes}
@@ -1018,6 +1115,25 @@ export class  Toolbox extends LitElement {
         <ww-button variant="icon" ${spreadProps(clearFormattingCommand.toObject())} @click=${() => clearFormattingCommand.run()}></ww-button>
         <span>${msg("Text")}</span>
       </span>
+    </div>`
+  }
+
+  TableToolbox = (el: HTMLTableElement) => {
+    const commands = this.app.commands.tableCommands.filter(cmd => !cmd.tags?.includes("advanced"))
+    return html`<div class="table-toolbox">
+      <span class="table-label">
+        <sl-icon name="table"></sl-icon>
+        <span>${msg("Table")}</span>
+      </span>
+      ${commands.map(v => html`<ww-button
+          ${spreadProps(v.toObject())}
+          tabindex=${0}
+          name=${v.icon ?? "circle-fill"}
+          @click=${() => v.run()}
+          variant="icon"
+        ></ww-button>
+        `
+      )}
     </div>`
   }
 
@@ -1120,8 +1236,8 @@ export class  Toolbox extends LitElement {
     this.dispatchEvent(new CustomEvent("ww-set-attribute", {bubbles: true, composed: true, detail: {el, key, value, tag}}))
   }
 
-  emitSetStyle(el: Element, key: string, value: string) {
-    this.dispatchEvent(new CustomEvent("ww-set-style", {bubbles: true, composed: true, detail: {el, key, value}}))
+  emitSetStyle(el: Element, style: Record<keyof CSSPropertySpecs, string>) {
+    this.dispatchEvent(new CustomEvent("ww-set-style", {bubbles: true, composed: true, detail: {el, style}}))
   }
 
   DetailsToolbox(el: HTMLDetailsElement) {
@@ -1187,6 +1303,22 @@ export class  Toolbox extends LitElement {
     </div>`
   }
 
+  SVGToolbox(el: SVGSVGElement & HTMLElement) {
+    return html`<div class="svg-toolbox">
+      <ww-urlfileinput size="small" id="svg-src" placeholder=${msg("SVG file")} mediaType="image/svg+xml" @sl-change=${async (e: any) => el.outerHTML = await e.target.getValueAsText()}>
+        <span slot="label">
+          ${msg("Source")}
+          <sl-tooltip>
+            <sl-icon-button name="info-circle"></sl-icon-button>
+            <div class="embeddings-explainer" slot="content">
+              <p>${msg("WebWriter can embed SVG directly in the document.")}</p>
+            </div>
+          </sl-tooltip>
+        </span>
+      </ww-urlfileinput>
+    </div>`
+  }
+
 
 
   ActiveInlineFields = () => {
@@ -1242,8 +1374,38 @@ export class  Toolbox extends LitElement {
     let el = this.activeElement
     const ancestors = [] as HTMLElement[]
     while(el) {
-      const tagsToExclude = ["HTML", "BODY", "BR", "WBR", ...this.app.commands.markCommands.map(cmd => cmd.id)].map(k => k.toUpperCase())
-      if(!(tagsToExclude.includes(el.tagName)) && !(el.classList.contains("ProseMirror-widget"))) {
+      const tagsToExclude = [
+        "html",
+        "br",
+        "wbr",
+        ...this.app.commands.markCommands.map(cmd => cmd.id),
+        ...MATHML_TAGS
+      ]
+      if(!(tagsToExclude.includes(el.tagName.toLowerCase())) && !(el.classList.contains("ProseMirror-widget"))) {
+        ancestors.unshift(el)
+      }
+      el = el.parentElement
+    }
+    return ancestors
+  }
+
+  get activeElementPathSimple() {
+    let el = this.activeElement
+    const ancestors = [] as HTMLElement[]
+    while(el) {
+      const tagsToExclude = [
+        "html",
+        "br",
+        "wbr",
+        "td",
+        "tr",
+        "thead",
+        "tbody",
+        "tfoot",
+        ...this.app.commands.markCommands.map(cmd => cmd.id),
+        ...MATHML_TAGS
+      ]
+      if(!(tagsToExclude.includes(el.tagName.toLowerCase())) && !(el.classList.contains("ProseMirror-widget"))) {
         ancestors.unshift(el)
       }
       el = el.parentElement
@@ -1253,25 +1415,35 @@ export class  Toolbox extends LitElement {
 
   get activeElementSiblings() {
     let el = this.activeElement
-    const tagsToExclude = ["HTML", "BODY", "BR", "WBR", ...this.app.commands.markCommands.map(cmd => cmd.id)].map(k => k.toUpperCase())
-    return Array.from(el?.parentElement?.children ?? [])
-      .filter(child => !tagsToExclude.includes(child.tagName) && child !== el)
+    return this.filterChildren(el?.parentElement?.children ?? [], el?.tagName.toLowerCase())
   }
 
   isCustomElement(el: Element) {
     return !!el.ownerDocument.defaultView?.customElements.get(el.tagName.toLowerCase())
   }
 
+  private filterChildren(children: HTMLCollection | HTMLElement[], tag?: string) {
+    if(tag && ["svg", "table", "math"].includes(tag)) {
+      return []
+    }
+    return (Array.isArray(children)? children: Array.from(children))
+      .filter(child => !child.classList.contains("ProseMirror-trailingBreak") && !child.classList.contains("ProseMirror-widget"))
+      .filter(child => ![
+        "thead",
+        "tbody",
+        "tfoot",
+        ...MATHML_TAGS,
+        ...this.app.commands.markCommands.map(cmd => cmd.id),
+      ].includes(child.tagName.toLowerCase()))
+  }
 
-  ElementBreadcrumbItem(el: Element, isLast=false, menuItem=false): TemplateResult {
+  ElementBreadcrumbItem(el: Element, isLast=false, menuItem=false, hideSeparator=false): TemplateResult {
     const elementName = el.tagName.toLowerCase()
     const isCustomElement = this.isCustomElement(el)
     const isCommandEl = elementName in this.app.commands.commands
-    const children = Array.from(el.children)
-      .filter(child => !child.classList.contains("ProseMirror-trailingBreak"))
-      .filter(child => !["br", "wbr", "a", "abbr", "b", "bdi", "bdo", "cite", "code", "data", "del", "dfn", "em", "i", "ins", "kbd", "q", "ruby", "s", "samp", "small", "span", "strong", "sub", "sup", "time", "u", "var"].includes(child.tagName.toLowerCase()))
+    const children = this.filterChildren(el.children, el?.tagName.toLowerCase())
 
-    const separator = menuItem? null: html`<sl-dropdown slot="separator" class="children-dropdown" ?data-empty=${children.length === 0}>
+    const separator = menuItem || hideSeparator? null: html`<sl-dropdown slot="separator" class="children-dropdown" ?data-empty=${children.length === 0}>
       <ww-button
         class="separator-button"
         variant="icon"
@@ -1312,6 +1484,20 @@ export class  Toolbox extends LitElement {
         ${separator}</sl-breadcrumb-item>`
         : html`<sl-menu-item>${content}</sl-menu-item>`
     }
+    else if(el.tagName === "BODY") {
+      const content = html`<ww-button
+        title=${elementName}
+        variant="icon"
+        icon="file"
+        @click=${() => this.emitClickBreadcrumb(el)}
+        @hover=${() => this.emitHoverBreadcrumb(el)}
+      >
+        ${!isLast? null: msg("Document")}
+      </ww-button>`
+      return !menuItem
+        ? html`<sl-breadcrumb-item>${content}${separator}</sl-breadcrumb-item>`
+        : html`<sl-menu-item>${content}</sl-menu-item>`
+    }
     else {
       const content = html`<ww-button
         title=${elementName}
@@ -1329,17 +1515,20 @@ export class  Toolbox extends LitElement {
   }
 
   ElementBreadcrumb() {
-    if(this.allSelected) {
-      return html`<sl-breadcrumb id="element-breadcrumb">
-        <ww-button @click=${() => this.app.activeEditor?.focus()} variant="icon"><i>${msg("Everything")}</i></ww-button>
-      </sl-breadcrumb>`
-    }
-    const els = this.activeElementPath
-    return html`<sl-breadcrumb id="element-breadcrumb">
+    const els = this.activeElementPathSimple
+    const breadcrumbPath = html`
       ${els.map((el, i) => this.ElementBreadcrumbItem(el, i === els.length - 1))}
       ${this.gapSelected? html`
-        <ww-button @click=${() => this.app.activeEditor?.focus()} variant="icon"><i>${msg("Gap")}</i></ww-button>
+        <ww-button @click=${() => this.app.activeEditor?.focus()} variant="icon" icon="minus"></ww-button>
       `: null}
+    `
+    return html`<sl-breadcrumb id="element-breadcrumb">
+      <sl-tree>
+        <sl-tree-item ?data-selected=${this.activeElement === this.app.activeEditor!.pmEditor.document.body} @sl-expand=${(e: any) => e.target.parentElement instanceof SlTree && (this.activeOutline = true)} @sl-collapse=${(e: any) => e.target.parentElement instanceof SlTree && (this.activeOutline = false)}>
+          ${this.activeOutline? this.ElementBreadcrumbItem(this.app.activeEditor!.pmEditor.document.body, true, false, true): breadcrumbPath}
+          ${this.ElementTree(undefined, true)}
+        </sl-tree-item>
+      </sl-tree>
     </sl-breadcrumb>`
 
     /*
@@ -1393,6 +1582,11 @@ export class  Toolbox extends LitElement {
     */
   }
 
+  ElementTree(root: HTMLElement=this.app.activeEditor!.pmEditor.document.body, unwrapped=false): TemplateResult {
+    const content = html`${this.filterChildren(root.children, root?.tagName.toLowerCase()).map(child => this.ElementTree(child as HTMLElement))}`
+    return unwrapped? content: html`<sl-tree-item ?data-selected=${this.activeElement === root}>${this.ElementBreadcrumbItem(root, true, false, true)}${content}</sl-tree-item>`
+  }
+
   ContextToolbox(el: HTMLElement) {
     const tag = el.tagName.toLowerCase()
     if(["figure", "figcaption", "img", "source", "track", "picture", "audio", "video", "object", "embed", "iframe", "portal"].includes(tag)) {
@@ -1410,24 +1604,26 @@ export class  Toolbox extends LitElement {
     else if(["ul", "ol"].includes(tag)) {
       return this.ListToolbox(el as HTMLOListElement | HTMLUListElement)
     }
+
+    else if(tag === "table") {
+      return this.TableToolbox(el as HTMLTableElement)
+    }
     else if(this.app.store.packages.widgetTagNames.includes(tag)) {
       return html`<ww-widget-options .widget=${el} .editorState=${this.editorState} @ww-focus-editor=${() => this.app.activeEditor?.focus()}></ww-widget-options>`
     }
     else if(["math"].includes(tag)) {
       return this.MathToolbox(el)
     }
+    else if(["svg"].includes(tag)) {
+      return this.SVGToolbox(el as SVGSVGElement & HTMLElement)
+    }
   }
 
   render() {
-    if(this.activeElement) {
       return html`
         ${this.BlockToolbox(this.activeElement)}
         <aside class="context-toolbox">${this.activeElementPath.map(el => this.ContextToolbox(el))}</aside>
-        ${this.textSelected? this.InlineToolbox(): null}
+        ${this.InlineToolbox()}
       `
-    }
-    else {
-      return null
-    }
   }
 }

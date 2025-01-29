@@ -81,10 +81,6 @@
         <source>Opens the settings</source>
         <target>Ανοίγει τις ρυθμίσεις</target>
       </trans-unit>
-      <trans-unit id="s9d8b8aa2b404c2c8">
-        <source>Settings</source>
-        <target>Ρυθμίσεις</target>
-      </trans-unit>
       <trans-unit id="s1f7698c061c208c9">
         <source>Open</source>
         <target>Ανοίξτε το</target>
@@ -433,98 +429,6 @@
         <source>Insert summary</source>
         <target>Εισαγωγή περίληψης</target>
       </trans-unit>
-      <trans-unit id="s0312976fe9da5951">
-        <source>Button</source>
-        <target>Κουμπί</target>
-      </trans-unit>
-      <trans-unit id="sd60c9bbc51375635">
-        <source>Insert a button</source>
-        <target>Εισαγωγή ενός κουμπιού</target>
-      </trans-unit>
-      <trans-unit id="sdb1595f5c742dfbb">
-        <source>Input</source>
-        <target>Είσοδος</target>
-      </trans-unit>
-      <trans-unit id="s29b24c06315e9343">
-        <source>Insert an input</source>
-        <target>Εισαγωγή εισόδου</target>
-      </trans-unit>
-      <trans-unit id="sfc63e31ac7c956ed">
-        <source>Select</source>
-        <target>Επιλέξτε</target>
-      </trans-unit>
-      <trans-unit id="s531056f039febd39">
-        <source>Insert a select</source>
-        <target>Εισάγετε μια επιλογή</target>
-      </trans-unit>
-      <trans-unit id="sfc00292e778b67e2">
-        <source>Meter</source>
-        <target>Μετρητής</target>
-      </trans-unit>
-      <trans-unit id="s52e0bdc3ee304436">
-        <source>Insert a meter</source>
-        <target>Τοποθετήστε έναν μετρητή</target>
-      </trans-unit>
-      <trans-unit id="s8c7f51cb067644c7">
-        <source>Data List</source>
-        <target>Κατάλογος δεδομένων</target>
-      </trans-unit>
-      <trans-unit id="sfa59c7777e2a0eeb">
-        <source>Insert a data list</source>
-        <target>Εισαγωγή μιας λίστας δεδομένων</target>
-      </trans-unit>
-      <trans-unit id="s7fcb35d23be1e643">
-        <source>Field Set</source>
-        <target>Σύνολο πεδίων</target>
-      </trans-unit>
-      <trans-unit id="s2d986d31f8d67357">
-        <source>Insert a field set</source>
-        <target>Εισαγωγή ενός συνόλου πεδίων</target>
-      </trans-unit>
-      <trans-unit id="s5590dbf7e425789d">
-        <source>Label</source>
-        <target>Ετικέτα</target>
-      </trans-unit>
-      <trans-unit id="s21f8a2eaf5a70749">
-        <source>Insert a label</source>
-        <target>Εισαγωγή ετικέτας</target>
-      </trans-unit>
-      <trans-unit id="s4b58c01e2578f5e4">
-        <source>Legend</source>
-        <target>Υπόμνημα</target>
-      </trans-unit>
-      <trans-unit id="s3fd83566dd643d10">
-        <source>Insert a legend</source>
-        <target>Εισαγωγή λεζάντας</target>
-      </trans-unit>
-      <trans-unit id="sef75f458d77491af">
-        <source>Option Group</source>
-        <target>Ομάδα επιλογών</target>
-      </trans-unit>
-      <trans-unit id="sceecdd0bb404bc17">
-        <source>Insert an option group</source>
-        <target>Εισαγωγή ομάδας επιλογών</target>
-      </trans-unit>
-      <trans-unit id="s4802e47fe2e95134">
-        <source>Option</source>
-        <target>Επιλογή</target>
-      </trans-unit>
-      <trans-unit id="s3cb47df8290fa94c">
-        <source>Insert an option</source>
-        <target>Εισαγωγή μιας επιλογής</target>
-      </trans-unit>
-      <trans-unit id="sfd77270c3f54f664">
-        <source>Output</source>
-        <target>Έξοδος</target>
-      </trans-unit>
-      <trans-unit id="se64f418b4e733b6c">
-        <source>Insert an output</source>
-        <target>Εισαγωγή εξόδου</target>
-      </trans-unit>
-      <trans-unit id="s52777d434baeed9b">
-        <source>Insert a progress indicator</source>
-        <target>Εισαγωγή δείκτη προόδου</target>
-      </trans-unit>
       <trans-unit id="sa78a67272a4a6f95">
         <source>Math Formula</source>
         <target>Μαθηματική φόρμουλα</target>
@@ -628,14 +532,6 @@
       <trans-unit id="s2d995a37cf5e4995">
         <source>Insert a NoScript</source>
         <target>Εισαγωγή ενός NoScript</target>
-      </trans-unit>
-      <trans-unit id="sc50d09edf9325339">
-        <source>Dialog</source>
-        <target>Διάλογος</target>
-      </trans-unit>
-      <trans-unit id="sff99962304ac7d25">
-        <source>Insert a dialog</source>
-        <target>Εισαγωγή διαλόγου</target>
       </trans-unit>
       <trans-unit id="s337a1e9022a8d19f">
         <source>Table</source>
@@ -821,90 +717,9 @@
         <source>Interactivity</source>
         <target>Διαδραστικότητα</target>
       </trans-unit>
-      <trans-unit id="se8bb865aeb8602dc">
-        <source>Set interactivty options for selected elements</source>
-        <target>Ορισμός επιλογών διαδραστικότητας για επιλεγμένα στοιχεία</target>
-      </trans-unit>
-      <trans-unit id="se25d54a8943385b0">
-        <source>Blending</source>
-        <target>Ανάμειξη</target>
-      </trans-unit>
-      <trans-unit id="sdbdf663c872fb855">
-        <source>Set blending (e.g. opacity) of selected elements</source>
-        <target>Ορισμός ανάμειξης (π.χ. αδιαφάνεια) επιλεγμένων στοιχείων</target>
-      </trans-unit>
-      <trans-unit id="s550492e6c28b6628">
-        <source>Display mode</source>
-        <target>Λειτουργία οθόνης</target>
-      </trans-unit>
-      <trans-unit id="s3c1c59a8fe1ce8af">
-        <source>Set the display mode of the selected elements</source>
-        <target>Ρύθμιση του τρόπου εμφάνισης των επιλεγμένων στοιχείων</target>
-      </trans-unit>
-      <trans-unit id="s0c669387c45c4dc6">
-        <source>Fragmentation</source>
-        <target>Κατακερματισμός</target>
-      </trans-unit>
-      <trans-unit id="s87c65faff16a53bd">
-        <source>Set fragmentation (behaviour on page/region/column breaks) of selected elements</source>
-        <target>Ορισμός κατακερματισμού (συμπεριφορά σε διαλείμματα σελίδας/περιοχής/στήλης)
-          επιλεγμένων στοιχείων</target>
-      </trans-unit>
-      <trans-unit id="sebee375c65c0cd58">
-        <source>Image sizing</source>
-        <target>Μεγέθυνση εικόνας</target>
-      </trans-unit>
-      <trans-unit id="saaf255f484959835">
-        <source>Set image sizing options of selected elements</source>
-        <target>Ορισμός επιλογών μεγέθους εικόνας επιλεγμένων στοιχείων</target>
-      </trans-unit>
-      <trans-unit id="sea7f9a84b82663b8">
-        <source>Column break</source>
-        <target>Διάλειμμα στήλης</target>
-      </trans-unit>
-      <trans-unit id="s0898264186c682fa">
-        <source>Apply column layout to selected elements</source>
-        <target>Εφαρμογή διάταξης στηλών σε επιλεγμένα στοιχεία</target>
-      </trans-unit>
-      <trans-unit id="s687416d1ea01d0bb">
-        <source>Overflow behavior</source>
-        <target>Συμπεριφορά υπερχείλισης</target>
-      </trans-unit>
-      <trans-unit id="sa5c062dc12553bbb">
-        <source>Set overflow behaviour of selected elements</source>
-        <target>Ορισμός συμπεριφοράς υπερχείλισης επιλεγμένων στοιχείων</target>
-      </trans-unit>
-      <trans-unit id="s4a14e0d787c30116">
-        <source>Positioning</source>
-        <target>Τοποθέτηση</target>
-      </trans-unit>
-      <trans-unit id="s19d9b0051c5e3b45">
-        <source>Set positioning of selected elements</source>
-        <target>Ορισμός τοποθέτησης επιλεγμένων στοιχείων</target>
-      </trans-unit>
-      <trans-unit id="sa559701e1cdc3331">
-        <source>Shaping</source>
-        <target>Διαμόρφωση</target>
-      </trans-unit>
-      <trans-unit id="s2dbeef0cb14e4f4d">
-        <source>Set shape of selected elements</source>
-        <target>Ορισμός σχήματος επιλεγμένων στοιχείων</target>
-      </trans-unit>
-      <trans-unit id="s04061a8e12259e3f">
-        <source>2D/3D transform</source>
-        <target>Μετασχηματισμός 2D/3D</target>
-      </trans-unit>
-      <trans-unit id="sab4fb4f4ff5b43e4">
-        <source>Apply 2D or 3D transformations to selected elements</source>
-        <target>Εφαρμόστε 2D ή 3D μετασχηματισμούς σε επιλεγμένα στοιχεία</target>
-      </trans-unit>
       <trans-unit id="sf190149f9d8bbb2a">
         <source>Writing mode</source>
         <target>Λειτουργία εγγραφής</target>
-      </trans-unit>
-      <trans-unit id="sdedc76f6a0a2583b">
-        <source>Set writing mode options of selected elements</source>
-        <target>Ορισμός επιλογών λειτουργίας εγγραφής επιλεγμένων στοιχείων</target>
       </trans-unit>
       <trans-unit id="s762e5704cc84089d">
         <source>Set other style options of selected elements</source>
@@ -970,11 +785,6 @@
         <source>Keyboard shortcuts</source>
         <target>Συντομεύσεις πληκτρολογίου</target>
       </trans-unit>
-      <trans-unit id="s91c5921e7b46d4a6">
-        <source>You have unsaved changes. Are you sure you want to leave and discard them?</source>
-        <target>Έχετε μη αποθηκευμένες αλλαγές. Είστε σίγουροι ότι θέλετε να τις εγκαταλείψετε και
-          να τις απορρίψετε;</target>
-      </trans-unit>
       <trans-unit id="s268ecd1cef45a9a8">
         <source>Are you sure?</source>
         <target>Είσαι σίγουρος;</target>
@@ -1032,13 +842,17 @@
         <target>Σύλληψη</target>
       </trans-unit>
       <trans-unit id="s2b8f50c64be440f7">
-        <source>Select <x id="0" equiv-text="${this.mediaType}"/>...</source>
+        <source>Select 
+          <x id="0" equiv-text="${this.mediaType}"/>...
+        </source>
         <target>Επιλέξτε 
           <x id="0" equiv-text="${this.mediaType}"/>... 
         </target>
       </trans-unit>
       <trans-unit id="s739544d0c858c633">
-        <source>Or drop <x id="0" equiv-text="${this.mediaType}"/> here</source>
+        <source>Or drop 
+          <x id="0" equiv-text="${this.mediaType}"/> here
+        </source>
         <target>Ή ρίξτε 
           <x id="0" equiv-text="${this.mediaType}"/> εδώ 
         </target>
@@ -1047,37 +861,9 @@
         <source>Pick coordinates</source>
         <target>Επιλέξτε συντεταγμένες</target>
       </trans-unit>
-      <trans-unit id="sded940efcadd8f10">
-        <source>Save your document</source>
-        <target>Αποθηκεύστε το έγγραφό σας</target>
-      </trans-unit>
-      <trans-unit id="s6910ed6dbaba4807">
-        <source>Load a document</source>
-        <target>Φόρτωση εγγράφου</target>
-      </trans-unit>
       <trans-unit id="s8f533296a536965e">
         <source>Save as...</source>
         <target>Αποθήκευση ως...</target>
-      </trans-unit>
-      <trans-unit id="s1f0e5f8acab2f0d3">
-        <source>Load as...</source>
-        <target>Φορτώστε ως...</target>
-      </trans-unit>
-      <trans-unit id="sa3c9339de23c1752">
-        <source>Format</source>
-        <target>Μορφή</target>
-      </trans-unit>
-      <trans-unit id="s1cf730f96ac4f6b6">
-        <source>On...</source>
-        <target>Στο...</target>
-      </trans-unit>
-      <trans-unit id="s13388f2a0641c5a9">
-        <source>From...</source>
-        <target>Από...</target>
-      </trans-unit>
-      <trans-unit id="s61e136c0658e27d5">
-        <source>Protocol</source>
-        <target>Πρωτόκολλο</target>
       </trans-unit>
       <trans-unit id="see2fcaedf9743ec6">
         <source>Location</source>
@@ -1086,10 +872,6 @@
       <trans-unit id="s2ceb11be2290bb1b">
         <source>Cancel</source>
         <target>Ακύρωση</target>
-      </trans-unit>
-      <trans-unit id="s4f20edb48a6287c9">
-        <source>Load</source>
-        <target>Φορτίο</target>
       </trans-unit>
       <trans-unit id="s851a7deea5984646">
         <source>License as Creative Commons OER?</source>
@@ -1136,7 +918,10 @@
         <target>Αυτή η λέξη-κλειδί απαιτείται για τα widgets</target>
       </trans-unit>
       <trans-unit id="h64cd12550420f6f1">
-        <source>Generate a <x id="0" equiv-text="&lt;code&gt;"/>LICENSE<x id="1" equiv-text="&lt;/code&gt;"/> file</source>
+        <source>Generate a 
+          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
+          <x id="1" equiv-text="&lt;/code&gt;"/> file
+        </source>
         <target>Δημιουργήστε ένα 
           <x id="0" equiv-text="&lt;code&gt;"/>LICENSE 
           <x id="1" equiv-text="&lt;/code&gt;"/> αρχείο 
@@ -1158,31 +943,6 @@
         <source>Discard and cancel</source>
         <target>Απορρίψτε και ακυρώστε</target>
       </trans-unit>
-      <trans-unit id="sae3629911a62147f">
-        <source>JS Size:</source>
-        <target>Μέγεθος JS:</target>
-      </trans-unit>
-      <trans-unit id="s1357c9b016a9a631">
-        <source>CSS Size:</source>
-        <target>CSS Μέγεθος:</target>
-      </trans-unit>
-      <trans-unit id="sf1ed4eed4de3012e">
-        <source>View error</source>
-        <target>Προβολή σφάλματος</target>
-      </trans-unit>
-      <trans-unit id="h75b0cad9d9e80648">
-        <source>Stop watching files at <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/>.</source>
-        <target>Σταματήστε να παρακολουθείτε αρχεία στο 
-          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/>. 
-        </target>
-      </trans-unit>
-      <trans-unit id="h0a75a995d1672be1">
-        <source>Start watching files at <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/> and reload the package if a file is changed.</source>
-        <target>Ξεκινήστε να παρακολουθείτε αρχεία στο 
-          <x id="0" equiv-text="&lt;b&gt;&lt;code&gt;${localPath}&lt;/code&gt;&lt;/b&gt;"/> και να
-          επαναφορτώσετε το πακέτο αν ένα αρχείο αλλάξει. 
-        </target>
-      </trans-unit>
       <trans-unit id="s8b0432eecbd8b034">
         <source>Update</source>
         <target>Ενημέρωση</target>
@@ -1195,87 +955,9 @@
         <source>Install</source>
         <target>Εγκαταστήστε το</target>
       </trans-unit>
-      <trans-unit id="sda174a4c93e84ce6">
-        <source>Error importing</source>
-        <target>Σφάλμα εισαγωγής</target>
-      </trans-unit>
-      <trans-unit id="s8cd9849cd37d7753">
-        <source>Either select an existing package directory to install or an empty directory to create a new package.</source>
-        <target>Επιλέξτε είτε έναν υπάρχοντα κατάλογο πακέτων για εγκατάσταση είτε έναν κενό
-          κατάλογο για να δημιουργήσετε ένα νέο πακέτο.</target>
-      </trans-unit>
-      <trans-unit id="sdb311229f4b5eb3b">
-        <source>Import local package</source>
-        <target>Εισαγωγή τοπικού πακέτου</target>
-      </trans-unit>
-      <trans-unit id="s65f6740a45cea0aa">
-        <source>Create local package</source>
-        <target>Δημιουργία τοπικού πακέτου</target>
-      </trans-unit>
-      <trans-unit id="s12aac40ecd87dc12">
-        <source>View local application directory</source>
-        <target>Προβολή τοπικού καταλόγου εφαρμογών</target>
-      </trans-unit>
-      <trans-unit id="s815a7e524eda76aa">
-        <source>Reset local application directory</source>
-        <target>Επαναφορά τοπικού καταλόγου εφαρμογών</target>
-      </trans-unit>
-      <trans-unit id="s3a6538ae341633f6">
-        <source>Edit local package</source>
-        <target>Επεξεργασία τοπικού πακέτου</target>
-      </trans-unit>
-      <trans-unit id="s9bf0b9da3f509795">
-        <source>Widget Package</source>
-        <target>Πακέτο Widget</target>
-      </trans-unit>
-      <trans-unit id="s8a7fa8a052138aef">
-        <source>Warning:</source>
-        <target>Προειδοποίηση:</target>
-      </trans-unit>
-      <trans-unit id="sad288b082f4d3521">
-        <source>You seem to be offline. While offline, you can't manage available or outdated packages.</source>
-        <target>Φαίνεται ότι είστε εκτός σύνδεσης. Ενώ είστε εκτός σύνδεσης, δεν μπορείτε να
-          διαχειριστείτε διαθέσιμα ή ξεπερασμένα πακέτα.</target>
-      </trans-unit>
-      <trans-unit id="sed8ec5e3c64fa25d">
-        <source>Total</source>
-        <target>Σύνολο</target>
-      </trans-unit>
-      <trans-unit id="s8cfdd110c30d604d">
-        <source>No packages installed or available</source>
-        <target>Δεν υπάρχουν εγκατεστημένα ή διαθέσιμα πακέτα</target>
-      </trans-unit>
-      <trans-unit id="s10e80d4c01c3cc21">
-        <source>Installed</source>
-        <target>Εγκατεστημένο</target>
-      </trans-unit>
-      <trans-unit id="s33b62827f665c461">
-        <source>No packages installed</source>
-        <target>Δεν έχουν εγκατασταθεί πακέτα</target>
-      </trans-unit>
-      <trans-unit id="sd158a5fc0f062f18">
-        <source>Available</source>
-        <target>Διαθέσιμο</target>
-      </trans-unit>
-      <trans-unit id="se432a7c0c144d458">
-        <source>No packages available</source>
-        <target>Δεν υπάρχουν διαθέσιμα πακέτα</target>
-      </trans-unit>
-      <trans-unit id="s76cc1c6d9fab3a2d">
-        <source>Outdated</source>
-        <target>Ξεπερασμένο</target>
-      </trans-unit>
-      <trans-unit id="sf9559106e88ee46d">
-        <source>No packages outdated</source>
-        <target>Δεν υπάρχουν πακέτα ξεπερασμένα</target>
-      </trans-unit>
       <trans-unit id="se9b1fec72ffd8f48">
         <source>Local</source>
         <target>Τοπικό</target>
-      </trans-unit>
-      <trans-unit id="sc7691fecb3373a42">
-        <source>No local packages</source>
-        <target>Δεν υπάρχουν τοπικά πακέτα</target>
       </trans-unit>
       <trans-unit id="keyCommand">
         <source>⌘ Command/Win</source>
@@ -1457,10 +1139,6 @@
         <source>URL</source>
         <target>URL</target>
       </trans-unit>
-      <trans-unit id="s506b6a19d12f414c">
-        <source>Key</source>
-        <target>Βασικό</target>
-      </trans-unit>
       <trans-unit id="sd3f402df8619ddcd">
         <source>This information about you is automatically added to new documents. You can change this for each document in the metadata editor.</source>
         <target>Αυτές οι πληροφορίες για εσάς προστίθενται αυτόματα στα νέα έγγραφα. Μπορείτε να τις
@@ -1530,10 +1208,6 @@
         <source>Are you sure? This action can't be reversed, all your settings will be deleted and reset.</source>
         <target>Είσαι σίγουρος; Αυτή η ενέργεια δεν μπορεί να αντιστραφεί, όλες οι ρυθμίσεις σας θα
           διαγραφούν και θα μηδενιστούν.</target>
-      </trans-unit>
-      <trans-unit id="se1b03a74b09ba7f0">
-        <source>App Folder</source>
-        <target>Φάκελος εφαρμογών</target>
       </trans-unit>
       <trans-unit id="s78789724e789221c">
         <source>Size</source>
@@ -1644,10 +1318,6 @@
         <source>Mixed Content</source>
         <target>Μικτό περιεχόμενο</target>
       </trans-unit>
-      <trans-unit id="s651f3a92741d9520">
-        <source>Everything</source>
-        <target>Τα πάντα</target>
-      </trans-unit>
       <trans-unit id="sddc49047f66a64ab">
         <source>No description provided</source>
         <target>Δεν παρέχεται περιγραφή</target>
@@ -1691,10 +1361,6 @@
       <trans-unit id="s35aeaff1425bca9e">
         <source>WebWriter does not support media of type </source>
         <target>Το WebWriter δεν υποστηρίζει μέσα τύπου </target>
-      </trans-unit>
-      <trans-unit id="sb199b34dca0a4cfc">
-        <source>Enter content here...</source>
-        <target>Εισάγετε το περιεχόμενο εδώ...</target>
       </trans-unit>
       <trans-unit id="s99f110d27e30b289">
         <source>Title</source>
@@ -1849,14 +1515,18 @@
         <target>Σφάλμα σύνδεσης</target>
       </trans-unit>
       <trans-unit id="sf52d840949a980d1">
-        <source><x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?</source>
+        <source>
+          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
+        </source>
         <target>
           <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           θα διαγραφούν οριστικά. Είστε σίγουροι; 
         </target>
       </trans-unit>
       <trans-unit id="s9b7cd8860c8fc922">
-        <source><x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?</source>
+        <source>
+          <x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
+        </source>
         <target>
           <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           θα αντικατασταθεί. Είστε σίγουροι; 
@@ -1895,7 +1565,9 @@
         <target>Μη υποστηριζόμενος τύπος ιδιότητας '${desc.type}' (επεξεργασία ως JSON)</target>
       </trans-unit>
       <trans-unit id="sa00df4e39c72d3b4">
-        <source><x id="0" equiv-text="${desc.widget}"/> is not supported</source>
+        <source>
+          <x id="0" equiv-text="${desc.widget}"/> is not supported
+        </source>
         <target>
           <x id="0" equiv-text="${desc.widget}"/> δεν υποστηρίζεται 
         </target>
@@ -2028,26 +1700,6 @@
         <source>Insert a thematic break (usually displayed as a horizontal line)</source>
         <target>Εισάγετε ένα θεματικό διάλειμμα (συνήθως εμφανίζεται ως οριζόντια γραμμή)</target>
       </trans-unit>
-      <trans-unit id="sc43767deea72e9f3">
-        <source>Description List</source>
-        <target>Λίστα περιγραφής</target>
-      </trans-unit>
-      <trans-unit id="saf312eaeec77a802">
-        <source>Insert a description list (glossary, term list)</source>
-        <target>Εισαγωγή καταλόγου περιγραφής (γλωσσάριο, κατάλογος όρων)</target>
-      </trans-unit>
-      <trans-unit id="s9abadcc828884d7b">
-        <source>Textarea</source>
-        <target>Περιοχή κειμένου</target>
-      </trans-unit>
-      <trans-unit id="sf4e0e02a5277ef23">
-        <source>Insert an textarea</source>
-        <target>Εισαγωγή μιας περιοχής κειμένου</target>
-      </trans-unit>
-      <trans-unit id="sa557ae6bee9148a6">
-        <source>Progress</source>
-        <target>Πρόοδος</target>
-      </trans-unit>
       <trans-unit id="s4f26e7cb7c0a8318">
         <source>Vector Drawing</source>
         <target>Διανυσματικό σχέδιο</target>
@@ -2056,21 +1708,9 @@
         <source>Insert a vector drawing (SVG)</source>
         <target>Εισαγωγή διανυσματικού σχεδίου (SVG)</target>
       </trans-unit>
-      <trans-unit id="s029504322b353edf">
-        <source>Size &amp; Spacing</source>
-        <target>Μέγεθος &amp; απόσταση</target>
-      </trans-unit>
       <trans-unit id="sa589e1df65dde0ec">
         <source>Set the size, padding, and margins of the selected elements</source>
         <target>Ορίστε το μέγεθος, το padding και τα περιθώρια των επιλεγμένων στοιχείων</target>
-      </trans-unit>
-      <trans-unit id="sfd54046c9e2030c2">
-        <source>Filters &amp; Colors</source>
-        <target>Φίλτρα &amp; χρώματα</target>
-      </trans-unit>
-      <trans-unit id="s3db5d66ac9e64eae">
-        <source>Apply filters (blur, invert, etc.) to and set colors for the selected elements</source>
-        <target>Εφαρμογή φίλτρων (θόλωση, αντιστροφή κ.λπ.) και ορισμός χρωμάτων για τα επιλεγμένα στοιχεία</target>
       </trans-unit>
       <trans-unit id="s3f1e7a3f2b283d3b">
         <source>Margin</source>
@@ -2083,10 +1723,6 @@
       <trans-unit id="s7d8103f6f06f83d6">
         <source>Padding</source>
         <target>γεμίζω</target>
-      </trans-unit>
-      <trans-unit id="s9295089d0ecc35ff">
-        <source>Advanced: Show with versions like 0.x.x in the package manager</source>
-        <target>Προχωρημένο: x.x στο διαχειριστή πακέτων</target>
       </trans-unit>
       <trans-unit id="s71a0549fd71219c9">
         <source>Show unstable packages</source>
@@ -2107,6 +1743,1641 @@
       <trans-unit id="s7aaf0c06e69600f1">
         <source>Error with </source>
         <target>Σφάλμα με </target>
+      </trans-unit>
+      <trans-unit id="sd5cf95145e4d89ca">
+        <source>Unpin this snippet</source>
+        <target>Ξεκαρφιτσώστε αυτό το απόσπασμα</target>
+      </trans-unit>
+      <trans-unit id="s02106cc2ef0e7578">
+        <source>New pin...</source>
+        <target>Νέα καρφίτσα...</target>
+      </trans-unit>
+      <trans-unit id="s7cb4e55c59663b1c">
+        <source>Company</source>
+        <target>Εταιρεία</target>
+      </trans-unit>
+      <trans-unit id="s5da52af9b083c29a">
+        <source>Model</source>
+        <target>Μοντέλο</target>
+      </trans-unit>
+      <trans-unit id="s9781a5bb3fcb26a3">
+        <source>Select a company first</source>
+        <target>Επιλέξτε πρώτα μια εταιρεία</target>
+      </trans-unit>
+      <trans-unit id="s15d0c0657c1ee08c">
+        <source>API Key</source>
+        <target>Κλειδί API</target>
+      </trans-unit>
+      <trans-unit id="s429bd646f1cf8bc6">
+        <source>Grammar LLM accounts allow you to use the Grammar LLM API to correct grammar in text.</source>
+        <target>Οι λογαριασμοί Grammar LLM σας επιτρέπουν να χρησιμοποιείτε το API Grammar LLM για να διορθώνετε τη γραμματική στο κείμενο.</target>
+      </trans-unit>
+      <trans-unit id="s1351209ef74ee729">
+        <source>Span all columns</source>
+        <target>Εκτείνετε όλες τις στήλες</target>
+      </trans-unit>
+      <trans-unit id="sf0cab2483f66aa2e">
+        <source>Custom</source>
+        <target>Προσαρμοσμένο</target>
+      </trans-unit>
+      <trans-unit id="s951aa3a6439f1271">
+        <source>List marker</source>
+        <target>Δείκτης λίστας</target>
+      </trans-unit>
+      <trans-unit id="sc3f09a9b6fa4fbed">
+        <source>Inside</source>
+        <target>Μέσα στο</target>
+      </trans-unit>
+      <trans-unit id="s2ba5f4d8f3bd7c57">
+        <source>Order</source>
+        <target>Παραγγελία</target>
+      </trans-unit>
+      <trans-unit id="sdb73788b3c975f16">
+        <source>Auto</source>
+        <target>Auto</target>
+      </trans-unit>
+      <trans-unit id="sae1c7f13b7c0c47f">
+        <source>Start</source>
+        <target>Έναρξη</target>
+      </trans-unit>
+      <trans-unit id="sb38d497d992ab4a4">
+        <source>Center</source>
+        <target>Κέντρο</target>
+      </trans-unit>
+      <trans-unit id="sd8f923198e0c5c6a">
+        <source>End</source>
+        <target>Τέλος</target>
+      </trans-unit>
+      <trans-unit id="s1749014f3f87fa6a">
+        <source>Stretch</source>
+        <target>Stretch</target>
+      </trans-unit>
+      <trans-unit id="s602bbd28dae2c60f">
+        <source>Self start</source>
+        <target>Αυτοεκκίνηση</target>
+      </trans-unit>
+      <trans-unit id="s6747dbf4ad6063ba">
+        <source>Self end</source>
+        <target>Αυτο τέλος</target>
+      </trans-unit>
+      <trans-unit id="sebbced89e0db2894">
+        <source>First baseline</source>
+        <target>Πρώτη γραμμή βάσης</target>
+      </trans-unit>
+      <trans-unit id="s0ee28503778e4c0c">
+        <source>Last baseline</source>
+        <target>Τελευταία γραμμή βάσης</target>
+      </trans-unit>
+      <trans-unit id="s06743b24499f0035">
+        <source>Anchor center</source>
+        <target>Κέντρο άγκυρας</target>
+      </trans-unit>
+      <trans-unit id="s1245e2cb9f20197e">
+        <source>Align</source>
+        <target>Ευθυγράμμιση</target>
+      </trans-unit>
+      <trans-unit id="sa3b4c01623211544">
+        <source>Force</source>
+        <target>Δύναμη</target>
+      </trans-unit>
+      <trans-unit id="sef24caccbd4645ef">
+        <source>Flex shrink</source>
+        <target>Συρρίκνωση Flex</target>
+      </trans-unit>
+      <trans-unit id="sbfa01f189a68d3e9">
+        <source>Flex grow</source>
+        <target>Flex grow</target>
+      </trans-unit>
+      <trans-unit id="saced41ddda8b2354">
+        <source>Flex basis</source>
+        <target>Βάση ευελιξίας</target>
+      </trans-unit>
+      <trans-unit id="s44cdba92713de38e">
+        <source>Grid area</source>
+        <target>Περιοχή πλέγματος</target>
+      </trans-unit>
+      <trans-unit id="s05e9759cfd99c48f">
+        <source>Justify</source>
+        <target>Δικαιολογήστε το</target>
+      </trans-unit>
+      <trans-unit id="s0c4593d81f147042">
+        <source>Baseline</source>
+        <target>Βασική γραμμή</target>
+      </trans-unit>
+      <trans-unit id="sc980855a000b76ea">
+        <source>Bottom</source>
+        <target>Κάτω μέρος</target>
+      </trans-unit>
+      <trans-unit id="s4101ada154a1b958">
+        <source>Middle</source>
+        <target>Μέση</target>
+      </trans-unit>
+      <trans-unit id="s6d02dc19e21eb49c">
+        <source>Top</source>
+        <target>Κορυφή</target>
+      </trans-unit>
+      <trans-unit id="s987abd19fac8cf55">
+        <source>Sub</source>
+        <target>Υπο</target>
+      </trans-unit>
+      <trans-unit id="s9095f01a80a91594">
+        <source>Super</source>
+        <target>Σούπερ</target>
+      </trans-unit>
+      <trans-unit id="sf4b537d4cbd8f5fd">
+        <source>Text top</source>
+        <target>Κείμενο επάνω</target>
+      </trans-unit>
+      <trans-unit id="s3fe72792941c18f9">
+        <source>Text bottom</source>
+        <target>Κείμενο κάτω</target>
+      </trans-unit>
+      <trans-unit id="s27076e66c5d483ba">
+        <source>Vertical align</source>
+        <target>Κάθετη ευθυγράμμιση</target>
+      </trans-unit>
+      <trans-unit id="sd3c65ef5c380c046">
+        <source>Inset</source>
+        <target>Ενσωματωμένο</target>
+      </trans-unit>
+      <trans-unit id="sa5c371b4bb75e590">
+        <source>Left</source>
+        <target>Αριστερά</target>
+      </trans-unit>
+      <trans-unit id="s366991b9c9287765">
+        <source>Right</source>
+        <target>Δεξιά</target>
+      </trans-unit>
+      <trans-unit id="s9d167ef77aed79b6">
+        <source>Layer</source>
+        <target>Στρώμα</target>
+      </trans-unit>
+      <trans-unit id="sda344aacb837387e">
+        <source>Position in container</source>
+        <target>Θέση στο δοχείο</target>
+      </trans-unit>
+      <trans-unit id="sf34696c526e810b4">
+        <source>Inline</source>
+        <target>Inline</target>
+      </trans-unit>
+      <trans-unit id="s2b2ae20d26f78ac2">
+        <source>Block</source>
+        <target>Μπλοκ</target>
+      </trans-unit>
+      <trans-unit id="sda5b6fa8b771f996">
+        <source>Float left</source>
+        <target>Πλεύση αριστερά</target>
+      </trans-unit>
+      <trans-unit id="s2f0bcdffc92a786b">
+        <source>Float right</source>
+        <target>Πλεύση δεξιά</target>
+      </trans-unit>
+      <trans-unit id="s782f286a79cca35d">
+        <source>Relative</source>
+        <target>Σχετικό</target>
+      </trans-unit>
+      <trans-unit id="sa1c6c459b9b5115c">
+        <source>Absolute</source>
+        <target>Απόλυτη</target>
+      </trans-unit>
+      <trans-unit id="sf2d5cbc2fe0ad65a">
+        <source>Sticky</source>
+        <target>Sticky</target>
+      </trans-unit>
+      <trans-unit id="sc1611c0558728a2a">
+        <source>Position</source>
+        <target>Θέση</target>
+      </trans-unit>
+      <trans-unit id="sf7a5f7a7c80c3082">
+        <source>Both</source>
+        <target>Και οι δύο</target>
+      </trans-unit>
+      <trans-unit id="s5be80ad6b8301710">
+        <source>Inline start</source>
+        <target>Ενδογραμμική εκκίνηση</target>
+      </trans-unit>
+      <trans-unit id="sf79e0d78b56444f1">
+        <source>Inline end</source>
+        <target>Τέλος γραμμής</target>
+      </trans-unit>
+      <trans-unit id="sb4f1dffbb6be6302">
+        <source>Clear</source>
+        <target>Σαφής</target>
+      </trans-unit>
+      <trans-unit id="se5dc1e97fb743ade">
+        <source>Spacing</source>
+        <target>Απόσταση</target>
+      </trans-unit>
+      <trans-unit id="s83f26d02dd7aa681">
+        <source>Visible</source>
+        <target>Ορατό</target>
+      </trans-unit>
+      <trans-unit id="s886897f2fd4edb99">
+        <source>Hidden</source>
+        <target>Κρυφό</target>
+      </trans-unit>
+      <trans-unit id="s3e092e9d1ee2c5bb">
+        <source>Clip</source>
+        <target>Κλιπ</target>
+      </trans-unit>
+      <trans-unit id="s94eb1effbbb6498b">
+        <source>Overflow</source>
+        <target>Υπερχείλιση</target>
+      </trans-unit>
+      <trans-unit id="s37a8c35f6581da5f">
+        <source>No anchor</source>
+        <target>Χωρίς άγκυρα</target>
+      </trans-unit>
+      <trans-unit id="s2edd6688a65e21f0">
+        <source>Overflow (x)</source>
+        <target>Υπερχείλιση (x)</target>
+      </trans-unit>
+      <trans-unit id="s2eda5288a65bca1d">
+        <source>Overflow (y)</source>
+        <target>Υπερχείλιση (y)</target>
+      </trans-unit>
+      <trans-unit id="s5dc77784260a7236">
+        <source>auto</source>
+        <target>auto</target>
+      </trans-unit>
+      <trans-unit id="sf21fb4f4b9e8911f">
+        <source>Width</source>
+        <target>Πλάτος</target>
+      </trans-unit>
+      <trans-unit id="s1177237a3e0e548c">
+        <source>Minimum (x)</source>
+        <target>Ελάχιστο (x)</target>
+      </trans-unit>
+      <trans-unit id="s1173bf7a3e0b74c9">
+        <source>Minimum (y)</source>
+        <target>Ελάχιστο (y)</target>
+      </trans-unit>
+      <trans-unit id="s7c61118554a0ec36">
+        <source>Maximum (x)</source>
+        <target>Μέγιστο (x)</target>
+      </trans-unit>
+      <trans-unit id="se79c0a3ac70d8fb3">
+        <source>Asp. ratio (x)</source>
+        <target>Αναλογία Asp. (x)</target>
+      </trans-unit>
+      <trans-unit id="se79fae3ac710dc36">
+        <source>Asp. ratio (y)</source>
+        <target>Αναλογία Asp. (y)</target>
+      </trans-unit>
+      <trans-unit id="s19daf2f26c19543d">
+        <source>Outline</source>
+        <target>Περίγραμμα</target>
+      </trans-unit>
+      <trans-unit id="sd9ff8e2612e63d50">
+        <source>Border box sizing</source>
+        <target>Διαστασιολόγηση πλαισίου συνόρων</target>
+      </trans-unit>
+      <trans-unit id="sc1fff4f356dfb2fb">
+        <source>Transform</source>
+        <target>Μετασχηματισμός</target>
+      </trans-unit>
+      <trans-unit id="s0b1271f50a77dc73">
+        <source>Content box</source>
+        <target>Κουτί περιεχομένου</target>
+      </trans-unit>
+      <trans-unit id="s002fa7d1054ed082">
+        <source>Border box</source>
+        <target>Πλαίσιο πλαισίου</target>
+      </trans-unit>
+      <trans-unit id="s74cd20a7aece9b91">
+        <source>Fill box</source>
+        <target>Πλαίσιο συμπλήρωσης</target>
+      </trans-unit>
+      <trans-unit id="s42721130228841b0">
+        <source>Stroke box</source>
+        <target>Κουτί εγκεφαλικού επεισοδίου</target>
+      </trans-unit>
+      <trans-unit id="scbc55f622ec078c1">
+        <source>View box</source>
+        <target>Προβολή κουτιού</target>
+      </trans-unit>
+      <trans-unit id="sc462bbdd36bcba6b">
+        <source>Reference box</source>
+        <target>Πλαίσιο αναφοράς</target>
+      </trans-unit>
+      <trans-unit id="sc8ac7ef92b95df3f">
+        <source>Move (x)</source>
+        <target>Μετακίνηση (x)</target>
+      </trans-unit>
+      <trans-unit id="sc8b022f92b992bc2">
+        <source>Move (y)</source>
+        <target>Μετακίνηση (y)</target>
+      </trans-unit>
+      <trans-unit id="sc8b39af92b9c2d81">
+        <source>Move (z)</source>
+        <target>Μετακίνηση (z)</target>
+      </trans-unit>
+      <trans-unit id="sf4f3cbd41f002b46">
+        <source>Scale (x)</source>
+        <target>Κλίμακα (x)</target>
+      </trans-unit>
+      <trans-unit id="sf4f067d41efd4b83">
+        <source>Scale (y)</source>
+        <target>Κλίμακα (y)</target>
+      </trans-unit>
+      <trans-unit id="sf4fa67d41f05a008">
+        <source>Scale (z)</source>
+        <target>Κλίμακα (z)</target>
+      </trans-unit>
+      <trans-unit id="sc6578b15b2154365">
+        <source>Rotate (x)</source>
+        <target>Περιστροφή (x)</target>
+      </trans-unit>
+      <trans-unit id="sc65aff15b2183e58">
+        <source>Rotate (y)</source>
+        <target>Περιστροφή (y)</target>
+      </trans-unit>
+      <trans-unit id="sc650ff15b20fe9d3">
+        <source>Rotate (z)</source>
+        <target>Περιστροφή (z)</target>
+      </trans-unit>
+      <trans-unit id="sf5197db2d5f2926a">
+        <source>Rotate</source>
+        <target>Περιστροφή</target>
+      </trans-unit>
+      <trans-unit id="s430bd5017f42511c">
+        <source>Skew (x)</source>
+        <target>Κλίση (x)</target>
+      </trans-unit>
+      <trans-unit id="s430831017f3f0499">
+        <source>Skew (y)</source>
+        <target>Κλίση (y)</target>
+      </trans-unit>
+      <trans-unit id="s36b3cefdcb897f15">
+        <source>Perspective</source>
+        <target>Προοπτική</target>
+      </trans-unit>
+      <trans-unit id="sc52e8b794c0913d6">
+        <source>Perspective origin (x)</source>
+        <target>Προοπτική αρχή (x)</target>
+      </trans-unit>
+      <trans-unit id="sc52b67794c06a0d3">
+        <source>Perspective origin (y)</source>
+        <target>Προοπτική προέλευσης (y)</target>
+      </trans-unit>
+      <trans-unit id="saa065776236bfa28">
+        <source>Transform origin (x)</source>
+        <target>Μετασχηματισμός προέλευσης (x)</target>
+      </trans-unit>
+      <trans-unit id="saa02e3762368ff35">
+        <source>Transform origin (y)</source>
+        <target>Προέλευση μετασχηματισμού (y)</target>
+      </trans-unit>
+      <trans-unit id="sa9ff3b762365abe6">
+        <source>Transform origin (z)</source>
+        <target>Προέλευση μετασχηματισμού (z)</target>
+      </trans-unit>
+      <trans-unit id="s166bd56d19670a72">
+        <source>Zoom</source>
+        <target>Ζουμ</target>
+      </trans-unit>
+      <trans-unit id="s680bd4d926cd5a84">
+        <source>Preserve 3D</source>
+        <target>Διατήρηση 3D</target>
+      </trans-unit>
+      <trans-unit id="s6a31eff1ec4f71ad">
+        <source>Hide backface (3D)</source>
+        <target>Απόκρυψη πίσω όψης (3D)</target>
+      </trans-unit>
+      <trans-unit id="s2de969afacdaa7a6">
+        <source>Shape</source>
+        <target>Σχήμα</target>
+      </trans-unit>
+      <trans-unit id="sd837f42ac7cbfb58">
+        <source>Shape (outside)</source>
+        <target>Σχήμα (εξωτερικά)</target>
+      </trans-unit>
+      <trans-unit id="s86f820d8007d0de4">
+        <source>Shape margin</source>
+        <target>Περιθώριο σχήματος</target>
+      </trans-unit>
+      <trans-unit id="s6cfc66b824ea05ba">
+        <source>Crisp edges</source>
+        <target>Τραγανές άκρες</target>
+      </trans-unit>
+      <trans-unit id="s7031ca562378bde6">
+        <source>Geometric precision</source>
+        <target>Γεωμετρική ακρίβεια</target>
+      </trans-unit>
+      <trans-unit id="sd121d3b959b7888d">
+        <source>Optimize speed</source>
+        <target>Βελτιστοποίηση της ταχύτητας</target>
+      </trans-unit>
+      <trans-unit id="sf2de3dbe2108637a">
+        <source>Shape rendering</source>
+        <target>Απεικόνιση σχήματος</target>
+      </trans-unit>
+      <trans-unit id="s5787c6d5b3b5541a">
+        <source>Clip path</source>
+        <target>Διαδρομή κλιπ</target>
+      </trans-unit>
+      <trans-unit id="s372fae706048ce41">
+        <source>Even-odd</source>
+        <target>Even-odd</target>
+      </trans-unit>
+      <trans-unit id="s49c560aecfeb8c29">
+        <source>Mask</source>
+        <target>Μάσκα</target>
+      </trans-unit>
+      <trans-unit id="s4fda04cbc245e18b">
+        <source>Alpha</source>
+        <target>Alpha</target>
+      </trans-unit>
+      <trans-unit id="s1dbb9f50e16c92a3">
+        <source>Border radius</source>
+        <target>Ακτίνα συνόρων</target>
+      </trans-unit>
+      <trans-unit id="s78673a3539cb1915">
+        <source>Top left</source>
+        <target>Επάνω αριστερά</target>
+      </trans-unit>
+      <trans-unit id="s8b7580c35e2aef87">
+        <source>Top left (y)</source>
+        <target>Επάνω αριστερά (y)</target>
+      </trans-unit>
+      <trans-unit id="sb0a7e3adf4a125ee">
+        <source>Top right</source>
+        <target>Επάνω δεξιά</target>
+      </trans-unit>
+      <trans-unit id="s84e4e8ae645b82ac">
+        <source>Top right (y)</source>
+        <target>Επάνω δεξιά (y)</target>
+      </trans-unit>
+      <trans-unit id="scfcb70f2a15eaf14">
+        <source>Bottom right</source>
+        <target>Κάτω δεξιά</target>
+      </trans-unit>
+      <trans-unit id="sdbee7e0523a23a42">
+        <source>Bottom right (y)</source>
+        <target>Κάτω δεξιά (y)</target>
+      </trans-unit>
+      <trans-unit id="sef23dd271edd4a8b">
+        <source>Bottom left</source>
+        <target>Κάτω αριστερά</target>
+      </trans-unit>
+      <trans-unit id="sd5fd9d11a92f5b1d">
+        <source>Bottom left (y)</source>
+        <target>Κάτω αριστερά (y)</target>
+      </trans-unit>
+      <trans-unit id="sdf9bc5d9b7f3e3de">
+        <source>Alignment</source>
+        <target>Ευθυγράμμιση</target>
+      </trans-unit>
+      <trans-unit id="s626daf42b1ab7df7">
+        <source>Align left</source>
+        <target>Ευθυγράμμιση αριστερά</target>
+      </trans-unit>
+      <trans-unit id="s13c60cb409e8cb6f">
+        <source>Align center</source>
+        <target>Ευθυγράμμιση στο κέντρο</target>
+      </trans-unit>
+      <trans-unit id="sac687b8649989de8">
+        <source>Align right</source>
+        <target>Ευθυγράμμιση δεξιά</target>
+      </trans-unit>
+      <trans-unit id="s8d8643013a7754d1">
+        <source>Align text</source>
+        <target>Ευθυγράμμιση κειμένου</target>
+      </trans-unit>
+      <trans-unit id="se06f459fccdc3ce9">
+        <source>Align last text line</source>
+        <target>Ευθυγράμμιση της τελευταίας γραμμής κειμένου</target>
+      </trans-unit>
+      <trans-unit id="sfaa0a67db5c11f72">
+        <source>Indent first text line</source>
+        <target>Εσοχή πρώτης γραμμής κειμένου</target>
+      </trans-unit>
+      <trans-unit id="s95de7e1eff6c053e">
+        <source>Horizontal, top-to-bottom</source>
+        <target>Οριζόντια, από πάνω προς τα κάτω</target>
+      </trans-unit>
+      <trans-unit id="sd8a345e95668b73b">
+        <source>Vertical, right-to-left</source>
+        <target>Κάθετα, από δεξιά προς τα αριστερά</target>
+      </trans-unit>
+      <trans-unit id="s8ffe7abcbed8eb43">
+        <source>Vertical, left-to-right</source>
+        <target>Κάθετα, από αριστερά προς τα δεξιά</target>
+      </trans-unit>
+      <trans-unit id="s986facb3ecc9602c">
+        <source>Sideways, right-to-left</source>
+        <target>Πλάγια, από δεξιά προς τα αριστερά</target>
+      </trans-unit>
+      <trans-unit id="s063fa5a0a4903bf4">
+        <source>Sideways, left-to-right</source>
+        <target>Πλάγια, από αριστερά προς τα δεξιά</target>
+      </trans-unit>
+      <trans-unit id="se96fd76ba1b2975a">
+        <source>Central</source>
+        <target>Κεντρικό</target>
+      </trans-unit>
+      <trans-unit id="sd8ecf227c7c49331">
+        <source>Mathematical</source>
+        <target>Μαθηματικά</target>
+      </trans-unit>
+      <trans-unit id="se8a94b4effa2033e">
+        <source>Alphabetic</source>
+        <target>Αλφαβητικό</target>
+      </trans-unit>
+      <trans-unit id="scec2be75ee985f6c">
+        <source>Ideographic</source>
+        <target>Ιδεογραφικό</target>
+      </trans-unit>
+      <trans-unit id="s7ecb1f29332293e5">
+        <source>Alignment baseline</source>
+        <target>Βασική γραμμή ευθυγράμμισης</target>
+      </trans-unit>
+      <trans-unit id="sbf519920c2017d67">
+        <source>Hanging</source>
+        <target>Κρεμαστό</target>
+      </trans-unit>
+      <trans-unit id="s40f07d7859284a44">
+        <source>Dominant baseline</source>
+        <target>Κυρίαρχη βασική γραμμή</target>
+      </trans-unit>
+      <trans-unit id="sbb86c6c96f598bb8">
+        <source>Mixed</source>
+        <target>Μικτή</target>
+      </trans-unit>
+      <trans-unit id="s7b560d8693ed8f42">
+        <source>Upright</source>
+        <target>Όρθια</target>
+      </trans-unit>
+      <trans-unit id="s5b517ac216f9ee62">
+        <source>Sideways</source>
+        <target>Πλευρικά</target>
+      </trans-unit>
+      <trans-unit id="s47ebf3a8fb3b10c1">
+        <source>Orientation</source>
+        <target>Προσανατολισμός</target>
+      </trans-unit>
+      <trans-unit id="sa1647e3b36ec08d7">
+        <source>Combine upright</source>
+        <target>Συνδυάστε όρθια</target>
+      </trans-unit>
+      <trans-unit id="s0ef01c03299bbb83">
+        <source>Decoration</source>
+        <target>Διακόσμηση</target>
+      </trans-unit>
+      <trans-unit id="sc2a24a9dd41a9503">
+        <source>Decoration line</source>
+        <target>Γραμμή διακόσμησης</target>
+      </trans-unit>
+      <trans-unit id="sb6ca0a8bb3caae69">
+        <source>Decoration thickness</source>
+        <target>Πάχος διακόσμησης</target>
+      </trans-unit>
+      <trans-unit id="sa43800e28be1bdbc">
+        <source>Decoration color</source>
+        <target>Χρώμα διακόσμησης</target>
+      </trans-unit>
+      <trans-unit id="s89950d86c8004d4b">
+        <source>Skip no overlaps</source>
+        <target>Παράλειψη χωρίς επικαλύψεις</target>
+      </trans-unit>
+      <trans-unit id="s5e6a7a0c30d2a270">
+        <source>Skip overlaps (auto)</source>
+        <target>Παράλειψη επικαλύψεων (auto)</target>
+      </trans-unit>
+      <trans-unit id="sb628960829e223bb">
+        <source>Skip all overlaps</source>
+        <target>Παραλείψτε όλες τις επικαλύψεις</target>
+      </trans-unit>
+      <trans-unit id="s3d9548e211b958ce">
+        <source>Skip overlaps</source>
+        <target>Παράλειψη επικαλύψεων</target>
+      </trans-unit>
+      <trans-unit id="s61ded17ca3f48c82">
+        <source>Underline offset</source>
+        <target>Μετατόπιση υπογράμμισης</target>
+      </trans-unit>
+      <trans-unit id="s697400b541fbc3cd">
+        <source>Under</source>
+        <target>Κάτω από το</target>
+      </trans-unit>
+      <trans-unit id="s9219acd5bef6269e">
+        <source>Under left</source>
+        <target>Κάτω από αριστερά</target>
+      </trans-unit>
+      <trans-unit id="sa13f72278add7513">
+        <source>Under right</source>
+        <target>Κάτω από το δικαίωμα</target>
+      </trans-unit>
+      <trans-unit id="s9ab10fbf4c7a7322">
+        <source>Underline position</source>
+        <target>Θέση υπογράμμισης</target>
+      </trans-unit>
+      <trans-unit id="s446a924922651ea0">
+        <source>Text emphasis</source>
+        <target>Υπογράμμιση κειμένου</target>
+      </trans-unit>
+      <trans-unit id="sd1f81984eeb7c0e8">
+        <source>Fill</source>
+        <target>Συμπλήρωση</target>
+      </trans-unit>
+      <trans-unit id="s266935f2447fcd98">
+        <source>Over Left</source>
+        <target>Πάνω από αριστερά</target>
+      </trans-unit>
+      <trans-unit id="s684a16f3c711394d">
+        <source>Over Right</source>
+        <target>Over Right</target>
+      </trans-unit>
+      <trans-unit id="sb940ade1bd81be7e">
+        <source>Under Left</source>
+        <target>Κάτω από Αριστερά</target>
+      </trans-unit>
+      <trans-unit id="s60ff598dfcf2c773">
+        <source>Under Right</source>
+        <target>Κάτω από το δικαίωμα</target>
+      </trans-unit>
+      <trans-unit id="s91093e0b087911ba">
+        <source>Emphasis position</source>
+        <target>Θέση έμφασης</target>
+      </trans-unit>
+      <trans-unit id="sec02109a0dd2a6c8">
+        <source>Emphasis color</source>
+        <target>Έμφαση χρώμα</target>
+      </trans-unit>
+      <trans-unit id="s497838412cb455f2">
+        <source>Text shadow</source>
+        <target>Σκιά κειμένου</target>
+      </trans-unit>
+      <trans-unit id="sed86bd0deb2e5372">
+        <source>Transform text</source>
+        <target>Μετασχηματισμός κειμένου</target>
+      </trans-unit>
+      <trans-unit id="s4b2c143acf931122">
+        <source>Line height</source>
+        <target>Ύψος γραμμής</target>
+      </trans-unit>
+      <trans-unit id="sfb231a52211b133f">
+        <source>No text wrap</source>
+        <target>Δεν υπάρχει αναδίπλωση κειμένου</target>
+      </trans-unit>
+      <trans-unit id="sb8a3d4df7d1c5e6b">
+        <source>Balance</source>
+        <target>Υπόλοιπο</target>
+      </trans-unit>
+      <trans-unit id="s27cc88818cc46ff6">
+        <source>Stable</source>
+        <target>Σταθερό</target>
+      </trans-unit>
+      <trans-unit id="s3e78ddc9a48a608d">
+        <source>Pretty</source>
+        <target>Αρκετά</target>
+      </trans-unit>
+      <trans-unit id="s31c06e226322f065">
+        <source>Avoid orphans</source>
+        <target>Αποφύγετε τα ορφανά</target>
+      </trans-unit>
+      <trans-unit id="scd9cedeb5ece3adb">
+        <source>Hyphenate</source>
+        <target>Συνδυασμός</target>
+      </trans-unit>
+      <trans-unit id="se36c5b1baf5e0660">
+        <source>Anywhere</source>
+        <target>Οπουδήποτε</target>
+      </trans-unit>
+      <trans-unit id="s80b71fc6f43c5ce1">
+        <source>Loose</source>
+        <target>Χαλαρό</target>
+      </trans-unit>
+      <trans-unit id="s9ff3121d30f88d52">
+        <source>Normal</source>
+        <target>Κανονικό</target>
+      </trans-unit>
+      <trans-unit id="s58bec0ecd4f3ccd4">
+        <source>Strict</source>
+        <target>Αυστηρό</target>
+      </trans-unit>
+      <trans-unit id="s2bad2d24def4aa0b">
+        <source>Line break (CJK lang.)</source>
+        <target>Διακοπή γραμμής (γλώσσα CJK)</target>
+      </trans-unit>
+      <trans-unit id="s433ba70286202ceb">
+        <source>Break all</source>
+        <target>Σπάστε όλα</target>
+      </trans-unit>
+      <trans-unit id="sd1cffad290ea5b3b">
+        <source>Keep all</source>
+        <target>Κρατήστε όλα τα</target>
+      </trans-unit>
+      <trans-unit id="s5feaf7fd7ee567c8">
+        <source>Break word</source>
+        <target>Λέξη σπασίματος</target>
+      </trans-unit>
+      <trans-unit id="s4e361bf8eef3759a">
+        <source>Word break</source>
+        <target>Σπάσιμο λέξης</target>
+      </trans-unit>
+      <trans-unit id="s4993444bfd3f3e5e">
+        <source>Collapse</source>
+        <target>Κατάρρευση</target>
+      </trans-unit>
+      <trans-unit id="sa8279f8211b3950d">
+        <source>Preserve breaks and spaces</source>
+        <target>Διατήρηση διαλειμμάτων και χώρων</target>
+      </trans-unit>
+      <trans-unit id="sa757645ad842da97">
+        <source>Preserve breaks</source>
+        <target>Διατηρήστε τα διαλείμματα</target>
+      </trans-unit>
+      <trans-unit id="s9f1ecdb3061d9cbc">
+        <source>Preserve spaces</source>
+        <target>Διατήρηση χώρων</target>
+      </trans-unit>
+      <trans-unit id="s8d797888455f4147">
+        <source>Break spaces</source>
+        <target>Χώροι διαλείμματος</target>
+      </trans-unit>
+      <trans-unit id="s95d8e41a64635c7c">
+        <source>White space</source>
+        <target>Λευκός χώρος</target>
+      </trans-unit>
+      <trans-unit id="s833bd0422a7ef95d">
+        <source>Tab size</source>
+        <target>Μέγεθος καρτέλας</target>
+      </trans-unit>
+      <trans-unit id="s050954cd4ae83304">
+        <source>Word spacing</source>
+        <target>Απόσταση λέξεων</target>
+      </trans-unit>
+      <trans-unit id="sb2cda80610c8d6ea">
+        <source>Space all</source>
+        <target>Χώρος όλα</target>
+      </trans-unit>
+      <trans-unit id="s4d546f6c87128d5b">
+        <source>Space first</source>
+        <target>Πρώτα το διάστημα</target>
+      </trans-unit>
+      <trans-unit id="sab0c57df694a0a09">
+        <source>Trim start</source>
+        <target>Έναρξη trim</target>
+      </trans-unit>
+      <trans-unit id="s4730c232e7209c40">
+        <source>Trim both</source>
+        <target>Κόψτε και τα δύο</target>
+      </trans-unit>
+      <trans-unit id="sd3eca1e0f4209f6e">
+        <source>Trim all</source>
+        <target>Περικόψτε όλα</target>
+      </trans-unit>
+      <trans-unit id="s0a2d91c6720033e9">
+        <source>Text spacing trim</source>
+        <target>Περικοπή διαστήματος κειμένου</target>
+      </trans-unit>
+      <trans-unit id="s74aa0039a87141e2">
+        <source>Ellipsis</source>
+        <target>Ellipsis</target>
+      </trans-unit>
+      <trans-unit id="sd588d17a1b25c220">
+        <source>Text overflow</source>
+        <target>Υπερχείλιση κειμένου</target>
+      </trans-unit>
+      <trans-unit id="s079cf7850d9327f0">
+        <source>Font</source>
+        <target>Γραμματοσειρά</target>
+      </trans-unit>
+      <trans-unit id="s61053f0e3ebbd272">
+        <source>normal</source>
+        <target>κανονικό</target>
+      </trans-unit>
+      <trans-unit id="sd7086c4425c53c80">
+        <source>Font family</source>
+        <target>Οικογένεια γραμματοσειρών</target>
+      </trans-unit>
+      <trans-unit id="sa30f1981fd1cd441">
+        <source>Font size</source>
+        <target>Μέγεθος γραμματοσειράς</target>
+      </trans-unit>
+      <trans-unit id="sd8ce9e57270b030d">
+        <source>Font stretch</source>
+        <target>Τέντωμα γραμματοσειράς</target>
+      </trans-unit>
+      <trans-unit id="s789ff24c8f03f1a4">
+        <source>Letter spacing</source>
+        <target>Απόσταση γραμμάτων</target>
+      </trans-unit>
+      <trans-unit id="s59404f5593c32fdc">
+        <source>Font kerning</source>
+        <target>Κέρνινγκ γραμματοσειράς</target>
+      </trans-unit>
+      <trans-unit id="s236ed7ba747099b0">
+        <source>Font weight</source>
+        <target>Βάρος γραμματοσειράς</target>
+      </trans-unit>
+      <trans-unit id="s517acbf1f96324f9">
+        <source>Weight</source>
+        <target>Βάρος</target>
+      </trans-unit>
+      <trans-unit id="sd679c8b1bf8cc8a5">
+        <source>Small caps</source>
+        <target>Μικρές κεφαλαιοποιήσεις</target>
+      </trans-unit>
+      <trans-unit id="s7e6570f2f1ae320f">
+        <source>Synthesize typefaces</source>
+        <target>Σύνθεση γραμματοσειρών</target>
+      </trans-unit>
+      <trans-unit id="se7fad370d8fb4cec">
+        <source>Optimize legibility</source>
+        <target>Βελτιστοποίηση της αναγνωσιμότητας</target>
+      </trans-unit>
+      <trans-unit id="s6e288a119281f4c2">
+        <source>Text rendering</source>
+        <target>Απεικόνιση κειμένου</target>
+      </trans-unit>
+      <trans-unit id="sc5bcf50d1b578d9f">
+        <source>Font feature settings</source>
+        <target>Ρυθμίσεις λειτουργίας γραμματοσειράς</target>
+      </trans-unit>
+      <trans-unit id="s9eefe6e57e4e1661">
+        <source>Font variant</source>
+        <target>Παραλλαγή γραμματοσειράς</target>
+      </trans-unit>
+      <trans-unit id="sc8fa0e3de389ef1c">
+        <source>Font size adjust</source>
+        <target>Προσαρμογή μεγέθους γραμματοσειράς</target>
+      </trans-unit>
+      <trans-unit id="s90f0fbc12e1e2b2f">
+        <source>Font palette</source>
+        <target>Παλέτα γραμματοσειρών</target>
+      </trans-unit>
+      <trans-unit id="sc6da0f4a7e4d710e">
+        <source>Font language override</source>
+        <target>Παράκαμψη γλώσσας γραμματοσειράς</target>
+      </trans-unit>
+      <trans-unit id="sc275dd00036d16cb">
+        <source>Quotes character</source>
+        <target>Αποσπάσματα χαρακτήρα</target>
+      </trans-unit>
+      <trans-unit id="sd03bff50f87f82d4">
+        <source>Hyphenate character</source>
+        <target>Χαρακτήρας με παύλα</target>
+      </trans-unit>
+      <trans-unit id="s16f205466761e583">
+        <source>No optical font sizing</source>
+        <target>Δεν υπάρχει οπτικό μέγεθος γραμματοσειράς</target>
+      </trans-unit>
+      <trans-unit id="s344ea8f4939cdc98">
+        <source>Color</source>
+        <target>Χρώμα</target>
+      </trans-unit>
+      <trans-unit id="s1efbfc3937d565bd">
+        <source>Background</source>
+        <target>Ιστορικό</target>
+      </trans-unit>
+      <trans-unit id="s3b0ab4b52326316f">
+        <source>Light</source>
+        <target>Φως</target>
+      </trans-unit>
+      <trans-unit id="sac895c732f350ac5">
+        <source>Dark</source>
+        <target>Σκούρο</target>
+      </trans-unit>
+      <trans-unit id="s255c77900f2b5e0f">
+        <source>Color scheme</source>
+        <target>Χρωματικός συνδυασμός</target>
+      </trans-unit>
+      <trans-unit id="sf1045382c1fd9a85">
+        <source>Exact print colors</source>
+        <target>Ακριβή χρώματα εκτύπωσης</target>
+      </trans-unit>
+      <trans-unit id="s1219d97b49650c05">
+        <source>Visibility</source>
+        <target>Ορατότητα</target>
+      </trans-unit>
+      <trans-unit id="se2796c5824ec8916">
+        <source>Content visibility</source>
+        <target>Ορατότητα περιεχομένου</target>
+      </trans-unit>
+      <trans-unit id="sba64d8954d027206">
+        <source>Opacity</source>
+        <target>Αδιαφάνεια</target>
+      </trans-unit>
+      <trans-unit id="sf9929e2d356260c5">
+        <source>Multiply</source>
+        <target>Πολλαπλασιάστε</target>
+      </trans-unit>
+      <trans-unit id="s744d993d03f29851">
+        <source>Screen</source>
+        <target>Οθόνη</target>
+      </trans-unit>
+      <trans-unit id="s7ed13ccddb1bf3c3">
+        <source>Overlay</source>
+        <target>Επικάλυψη</target>
+      </trans-unit>
+      <trans-unit id="s69fbbdb8ad2a084a">
+        <source>Darken</source>
+        <target>Σκοτεινιάστε</target>
+      </trans-unit>
+      <trans-unit id="s27056379e0acfdb0">
+        <source>Lighten</source>
+        <target>Φωτίστε το</target>
+      </trans-unit>
+      <trans-unit id="s90f7c1cf501ea0a7">
+        <source>Color dodge</source>
+        <target>Χρώμα dodge</target>
+      </trans-unit>
+      <trans-unit id="sfee1c12daf838935">
+        <source>Color burn</source>
+        <target>Κάψιμο χρώματος</target>
+      </trans-unit>
+      <trans-unit id="s4ad6e9d3c2365c98">
+        <source>Hard light</source>
+        <target>Σκληρό φως</target>
+      </trans-unit>
+      <trans-unit id="s262abbaf1d05f009">
+        <source>Soft light</source>
+        <target>Απαλό φως</target>
+      </trans-unit>
+      <trans-unit id="sb67e0e7c0869f982">
+        <source>Difference</source>
+        <target>Διαφορά</target>
+      </trans-unit>
+      <trans-unit id="sd88076d2994ee0fb">
+        <source>Exclusion</source>
+        <target>Αποκλεισμός</target>
+      </trans-unit>
+      <trans-unit id="s491d2919cd6ec3d9">
+        <source>Hue</source>
+        <target>Απόχρωση</target>
+      </trans-unit>
+      <trans-unit id="s086e6c267ade2609">
+        <source>Saturation</source>
+        <target>Κορεσμός</target>
+      </trans-unit>
+      <trans-unit id="sb8f610a0e8df91fc">
+        <source>Luminosity</source>
+        <target>Φωτεινότητα</target>
+      </trans-unit>
+      <trans-unit id="sb905da066c10182c">
+        <source>Plus darker</source>
+        <target>Πλέον πιο σκούρα</target>
+      </trans-unit>
+      <trans-unit id="sf14f9d5f9f6ca342">
+        <source>Plus lighter</source>
+        <target>Συν αναπτήρα</target>
+      </trans-unit>
+      <trans-unit id="s6d8b3b8047ed378d">
+        <source>Mix blend mode</source>
+        <target>Λειτουργία ανάμειξης Mix</target>
+      </trans-unit>
+      <trans-unit id="sdd2fc8919a9c3111">
+        <source>Background blend mode</source>
+        <target>Λειτουργία ανάμειξης φόντου</target>
+      </trans-unit>
+      <trans-unit id="sbb55f9f2d69fd327">
+        <source>Backdrop filter</source>
+        <target>Φίλτρο φόντου</target>
+      </trans-unit>
+      <trans-unit id="sd2ed26defc646d47">
+        <source>Backdrop Filter</source>
+        <target>Φίλτρο φόντου</target>
+      </trans-unit>
+      <trans-unit id="s7c95876637f6a9d7">
+        <source>Filter</source>
+        <target>Φίλτρο</target>
+      </trans-unit>
+      <trans-unit id="s687e27f036a71b32">
+        <source>Isolate</source>
+        <target>Απομόνωση</target>
+      </trans-unit>
+      <trans-unit id="sa602e3fd3f2d98fd">
+        <source>Animation</source>
+        <target>Animation</target>
+      </trans-unit>
+      <trans-unit id="sf2d96d0eb32cb81f">
+        <source>Animation composition</source>
+        <target>Σύνθεση animation</target>
+      </trans-unit>
+      <trans-unit id="s9fc686f7bbd941e2">
+        <source>Transition</source>
+        <target>Μετάβαση</target>
+      </trans-unit>
+      <trans-unit id="sf0e261e04eda82ff">
+        <source>Appearance</source>
+        <target>Εμφάνιση</target>
+      </trans-unit>
+      <trans-unit id="sd66c4767fa3dde28">
+        <source>Accent color</source>
+        <target>Χρώμα έμφασης</target>
+      </trans-unit>
+      <trans-unit id="s80a42b81c52d4d8f">
+        <source>Caret color</source>
+        <target>Χρώμα Caret</target>
+      </trans-unit>
+      <trans-unit id="s3815184eb09f0dcf">
+        <source>Cursor</source>
+        <target>Δρομέας</target>
+      </trans-unit>
+      <trans-unit id="s1c690963f1e2df00">
+        <source>Platform-specific look</source>
+        <target>Ειδική εμφάνιση πλατφόρμας</target>
+      </trans-unit>
+      <trans-unit id="sb5e9e1776242b028">
+        <source>Interactions</source>
+        <target>Αλληλεπιδράσεις</target>
+      </trans-unit>
+      <trans-unit id="sf2cbb5e519264e67">
+        <source>Resize both horizontally and vertically</source>
+        <target>Αλλαγή μεγέθους τόσο οριζόντια όσο και κάθετα</target>
+      </trans-unit>
+      <trans-unit id="s7d864465dddbb50d">
+        <source>Allow resizing</source>
+        <target>Επιτρέψτε την αλλαγή μεγέθους</target>
+      </trans-unit>
+      <trans-unit id="sf6b4934598f7ed10">
+        <source>Allow selection</source>
+        <target>Επιτρέψτε την επιλογή</target>
+      </trans-unit>
+      <trans-unit id="s87cefc710b3567fb">
+        <source>Contain</source>
+        <target>Περιέχει</target>
+      </trans-unit>
+      <trans-unit id="sf993bb199fefbe04">
+        <source>All</source>
+        <target>Όλα</target>
+      </trans-unit>
+      <trans-unit id="s571a4f19e2f140c7">
+        <source>Pan (x)</source>
+        <target>Pan (x)</target>
+      </trans-unit>
+      <trans-unit id="s828b1ecea8715884">
+        <source>Pan (left)</source>
+        <target>Pan (αριστερά)</target>
+      </trans-unit>
+      <trans-unit id="s40e3826b7f74a3b5">
+        <source>Pan (right)</source>
+        <target>Pan (δεξιά)</target>
+      </trans-unit>
+      <trans-unit id="s571db319e2f4208a">
+        <source>Pan (y)</source>
+        <target>Pan (y)</target>
+      </trans-unit>
+      <trans-unit id="s957787fc6b7ea5c0">
+        <source>Pan (up)</source>
+        <target>Pan (επάνω)</target>
+      </trans-unit>
+      <trans-unit id="sc2b734cca2fa643b">
+        <source>Pan (down)</source>
+        <target>Pan (κάτω)</target>
+      </trans-unit>
+      <trans-unit id="s03608a32f05eded2">
+        <source>Pinch zoom</source>
+        <target>Ζουμ με τσίμπημα</target>
+      </trans-unit>
+      <trans-unit id="s748c0074eff45884">
+        <source>Manipulation</source>
+        <target>Χειραγώγηση</target>
+      </trans-unit>
+      <trans-unit id="s7de0e28d6c309a4e">
+        <source>Allow touch actions</source>
+        <target>Επιτρέψτε ενέργειες αφής</target>
+      </trans-unit>
+      <trans-unit id="sc2536e077514accc">
+        <source>Scrolling</source>
+        <target>Κύλιση</target>
+      </trans-unit>
+      <trans-unit id="s1155ec07a221e739">
+        <source>Scrollbar</source>
+        <target>Γραμμή κύλισης</target>
+      </trans-unit>
+      <trans-unit id="s5015a8fb33b98872">
+        <source>Thin</source>
+        <target>Λεπτό</target>
+      </trans-unit>
+      <trans-unit id="se95d4e55ea186d9a">
+        <source>Scrollbar color</source>
+        <target>Χρώμα γραμμής κύλισης</target>
+      </trans-unit>
+      <trans-unit id="s6280bf993915c57a">
+        <source>Scroll margin</source>
+        <target>Περιθώριο κύλισης</target>
+      </trans-unit>
+      <trans-unit id="s0c27336067c59611">
+        <source>Scroll padding</source>
+        <target>Μαξιλάρι κύλισης</target>
+      </trans-unit>
+      <trans-unit id="s4e191bdb4700a6e9">
+        <source>Overscroll (x)</source>
+        <target>Overscroll (x)</target>
+      </trans-unit>
+      <trans-unit id="s4e1c7fdb470386ac">
+        <source>Overscroll (y)</source>
+        <target>Overscroll (y)</target>
+      </trans-unit>
+      <trans-unit id="s001dd78415a91fa0">
+        <source>Scrollbar gutter</source>
+        <target>Κοπή γραμμής κύλισης</target>
+      </trans-unit>
+      <trans-unit id="sf9ecf969dd4b8164">
+        <source>Both edges</source>
+        <target>Και οι δύο άκρες</target>
+      </trans-unit>
+      <trans-unit id="saf9e5134ba1a7d30">
+        <source>Scroll snap</source>
+        <target>Κλείσιμο κύλισης</target>
+      </trans-unit>
+      <trans-unit id="sea24bdcaa2bd2dec">
+        <source>Mandatory snap</source>
+        <target>Υποχρεωτικό snap</target>
+      </trans-unit>
+      <trans-unit id="s6787497df07fa97e">
+        <source>May scroll over stops</source>
+        <target>Μπορεί να μετακινηθεί πάνω από στάσεις</target>
+      </trans-unit>
+      <trans-unit id="s9258280591309342">
+        <source>Scroll snap align (x)</source>
+        <target>Ευθυγράμμιση κύλισης (x)</target>
+      </trans-unit>
+      <trans-unit id="s92548405912d46bf">
+        <source>Scroll snap align (y)</source>
+        <target>Ευθυγράμμιση κύλισης (y)</target>
+      </trans-unit>
+      <trans-unit id="s624e31cd4f1b89d4">
+        <source>Smooth scroll</source>
+        <target>Ομαλή κύλιση</target>
+      </trans-unit>
+      <trans-unit id="sb0f3327210fe18fc">
+        <source>Columns</source>
+        <target>Στήλες</target>
+      </trans-unit>
+      <trans-unit id="sd01178c54f648118">
+        <source>Balance columns</source>
+        <target>Στήλες ισορροπίας</target>
+      </trans-unit>
+      <trans-unit id="sba88d90cd6c751b3">
+        <source>Column rule</source>
+        <target>Κανόνας στήλης</target>
+      </trans-unit>
+      <trans-unit id="sd3a288c1094b8a63">
+        <source>Column rule width</source>
+        <target>Πλάτος κανόνα στήλης</target>
+      </trans-unit>
+      <trans-unit id="s3124653c272f054c">
+        <source>Column rule color</source>
+        <target>Χρώμα κανόνα στήλης</target>
+      </trans-unit>
+      <trans-unit id="s01b56d233c6c5cac">
+        <source>Sectioning</source>
+        <target>Διαχωρισμός</target>
+      </trans-unit>
+      <trans-unit id="s68e0e3a2bab7ce3e">
+        <source>Avoid</source>
+        <target>Αποφύγετε το</target>
+      </trans-unit>
+      <trans-unit id="s314a4f7685c8e824">
+        <source>Always</source>
+        <target>Πάντα</target>
+      </trans-unit>
+      <trans-unit id="s4bbff4e008690da1">
+        <source>Avoid page</source>
+        <target>Αποφύγετε τη σελίδα</target>
+      </trans-unit>
+      <trans-unit id="s2e192b19ed15fcf6">
+        <source>Page</source>
+        <target>Σελίδα</target>
+      </trans-unit>
+      <trans-unit id="sae76e25497dcee58">
+        <source>Recto</source>
+        <target>Recto</target>
+      </trans-unit>
+      <trans-unit id="sff3df0c2823ec6e4">
+        <source>Verso</source>
+        <target>Verso</target>
+      </trans-unit>
+      <trans-unit id="seb19675a580f0628">
+        <source>Avoid column</source>
+        <target>Αποφύγετε τη στήλη</target>
+      </trans-unit>
+      <trans-unit id="s9e40e59654c8ad67">
+        <source>Column</source>
+        <target>Στήλη</target>
+      </trans-unit>
+      <trans-unit id="s565cd5ffb0158c46">
+        <source>Avoid region</source>
+        <target>Αποφύγετε την περιοχή</target>
+      </trans-unit>
+      <trans-unit id="sb51270e19988f9bd">
+        <source>Region</source>
+        <target>Περιοχή</target>
+      </trans-unit>
+      <trans-unit id="s8a29cb39a42f83f3">
+        <source>Break before</source>
+        <target>Διάλειμμα πριν</target>
+      </trans-unit>
+      <trans-unit id="se638417c560cfe5c">
+        <source>Break inside</source>
+        <target>Διάλειμμα μέσα</target>
+      </trans-unit>
+      <trans-unit id="s158b6ec6b1fffcb2">
+        <source>Break after</source>
+        <target>Διάλειμμα μετά</target>
+      </trans-unit>
+      <trans-unit id="sfd0cde85070d2eb2">
+        <source>Flex</source>
+        <target>Flex</target>
+      </trans-unit>
+      <trans-unit id="sa013e119fec906fb">
+        <source>Row</source>
+        <target>Σειρά</target>
+      </trans-unit>
+      <trans-unit id="s9d430adc5be110e9">
+        <source>Row Reverse</source>
+        <target>Αντίστροφη σειρά</target>
+      </trans-unit>
+      <trans-unit id="saaec15c97a9e4245">
+        <source>Column Reverse</source>
+        <target>Αντίστροφη στήλη</target>
+      </trans-unit>
+      <trans-unit id="s0d86afa3c6a1e28b">
+        <source>Flex direction</source>
+        <target>Κατεύθυνση Flex</target>
+      </trans-unit>
+      <trans-unit id="s1af8b67d1c85c811">
+        <source>Space between</source>
+        <target>Διάστημα μεταξύ</target>
+      </trans-unit>
+      <trans-unit id="s456a8d744313852a">
+        <source>Space around</source>
+        <target>Χώρος γύρω από</target>
+      </trans-unit>
+      <trans-unit id="s66765c420ee578e4">
+        <source>Space evenly</source>
+        <target>Χώρος ομοιόμορφα</target>
+      </trans-unit>
+      <trans-unit id="s97881699a2b21d5b">
+        <source>Row gap</source>
+        <target>Διάκενο γραμμής</target>
+      </trans-unit>
+      <trans-unit id="s1aa1cb63ad44bc6f">
+        <source>Column gap</source>
+        <target>Διάκενο στήλης</target>
+      </trans-unit>
+      <trans-unit id="se619a501d1bfe6a5">
+        <source>Wrap</source>
+        <target>Wrap</target>
+      </trans-unit>
+      <trans-unit id="s3ffcdc5db5e7d0c5">
+        <source>Reverse</source>
+        <target>Αντίστροφη</target>
+      </trans-unit>
+      <trans-unit id="s25e1a07e454c2c11">
+        <source>Grid</source>
+        <target>Πλέγμα</target>
+      </trans-unit>
+      <trans-unit id="s6bd7a02fdf93e653">
+        <source>Align content</source>
+        <target>Ευθυγράμμιση περιεχομένου</target>
+      </trans-unit>
+      <trans-unit id="s35ae5f4e0fa2777b">
+        <source>Custom align</source>
+        <target>Προσαρμοσμένη ευθυγράμμιση</target>
+      </trans-unit>
+      <trans-unit id="s6e4c20c6debcd5ca">
+        <source>Custom justify</source>
+        <target>Προσαρμοσμένη δικαιολογήστε</target>
+      </trans-unit>
+      <trans-unit id="se633223a0b88625e">
+        <source>Cell placement</source>
+        <target>Τοποθέτηση κυττάρων</target>
+      </trans-unit>
+      <trans-unit id="s88676f992b2965db">
+        <source>Stretch cell content</source>
+        <target>Τεντώστε το περιεχόμενο του κελιού</target>
+      </trans-unit>
+      <trans-unit id="s71dec51005acc1e4">
+        <source>Row dense</source>
+        <target>Σειρά πυκνή</target>
+      </trans-unit>
+      <trans-unit id="s96a045dcade75ad0">
+        <source>Column dense</source>
+        <target>Στήλη πυκνή</target>
+      </trans-unit>
+      <trans-unit id="sb740eab4afd5a710">
+        <source>Grid auto flow</source>
+        <target>Αυτόματη ροή πλέγματος</target>
+      </trans-unit>
+      <trans-unit id="sa2eff4dad1c119f1">
+        <source>Grid template</source>
+        <target>Πρότυπο πλέγματος</target>
+      </trans-unit>
+      <trans-unit id="s13ebd619c8a06a6d">
+        <source>Grid auto rows</source>
+        <target>Αυτόματες γραμμές πλέγματος</target>
+      </trans-unit>
+      <trans-unit id="scbe537fc38ff4c13">
+        <source>Grid auto columns</source>
+        <target>Αυτόματες στήλες πλέγματος</target>
+      </trans-unit>
+      <trans-unit id="sed713f1b916fb469">
+        <source>Border spacing (x)</source>
+        <target>Απόσταση συνόρων (x)</target>
+      </trans-unit>
+      <trans-unit id="sed74a31b9172942c">
+        <source>Border spacing (y)</source>
+        <target>Απόσταση συνόρων (y)</target>
+      </trans-unit>
+      <trans-unit id="sc1edebeaef92b7bd">
+        <source>Fixed table layout</source>
+        <target>Σταθερή διάταξη πίνακα</target>
+      </trans-unit>
+      <trans-unit id="sb59d621e3c93cc27">
+        <source>Shared cell borders</source>
+        <target>Κοινά όρια κελιών</target>
+      </trans-unit>
+      <trans-unit id="sa4f137f8619093a5">
+        <source>Caption at bottom</source>
+        <target>Λεζάντα στο κάτω μέρος</target>
+      </trans-unit>
+      <trans-unit id="s8a6585c48ea104e9">
+        <source>Hide empty cells</source>
+        <target>Απόκρυψη κενών κελιών</target>
+      </trans-unit>
+      <trans-unit id="s49dd67aed00029ef">
+        <source>Math</source>
+        <target>Μαθηματικά</target>
+      </trans-unit>
+      <trans-unit id="sad6be321164d08c8">
+        <source>Compact math</source>
+        <target>Συμπαγή μαθηματικά</target>
+      </trans-unit>
+      <trans-unit id="s6ac62e1c8c66f3bb">
+        <source>Compact superscr.</source>
+        <target>Compact superscr.</target>
+      </trans-unit>
+      <trans-unit id="s036d35e03be98d22">
+        <source>Math depth</source>
+        <target>Μαθηματικό βάθος</target>
+      </trans-unit>
+      <trans-unit id="s72f2a02e2a5a4ee3">
+        <source>Media</source>
+        <target>Μέσα ενημέρωσης</target>
+      </trans-unit>
+      <trans-unit id="s69d88ef4b2618980">
+        <source>Cover</source>
+        <target>Εξώφυλλο</target>
+      </trans-unit>
+      <trans-unit id="s29a1c26521879b9f">
+        <source>Scale down</source>
+        <target>Κλιμάκωση προς τα κάτω</target>
+      </trans-unit>
+      <trans-unit id="s0a3ddcba94027d95">
+        <source>Object fit</source>
+        <target>Εφαρμογή αντικειμένου</target>
+      </trans-unit>
+      <trans-unit id="s579c69f419b6caef">
+        <source>Smooth</source>
+        <target>Ομαλή</target>
+      </trans-unit>
+      <trans-unit id="s741fae02b3dd24f3">
+        <source>Pixelated</source>
+        <target>Pixelated</target>
+      </trans-unit>
+      <trans-unit id="sa126cf8c627cec1e">
+        <source>Image rendering</source>
+        <target>Απεικόνιση εικόνας</target>
+      </trans-unit>
+      <trans-unit id="se58467472725ad0c">
+        <source>Image resolution</source>
+        <target>Ανάλυση εικόνας</target>
+      </trans-unit>
+      <trans-unit id="sab4d9283896d9422">
+        <source>Snap resolution pixels</source>
+        <target>Εικονοστοιχεία ανάλυσης Snap</target>
+      </trans-unit>
+      <trans-unit id="s0befccf152b6c0a9">
+        <source>Orient from metadata</source>
+        <target>Προσανατολισμός από μεταδεδομένα</target>
+      </trans-unit>
+      <trans-unit id="sea52df2b70a5c10d">
+        <source>Ruby</source>
+        <target>Ruby</target>
+      </trans-unit>
+      <trans-unit id="sa644d580d8a11e60">
+        <source>Ruby alignment</source>
+        <target>Ευθυγράμμιση Ruby</target>
+      </trans-unit>
+      <trans-unit id="sed318ec045c5144f">
+        <source>Over</source>
+        <target>Πάνω από</target>
+      </trans-unit>
+      <trans-unit id="sc53de149fcaad713">
+        <source>Inter-character</source>
+        <target>Μεταξύ χαρακτήρων</target>
+      </trans-unit>
+      <trans-unit id="s7d27db3c9639c6dd">
+        <source>Alternate</source>
+        <target>Εναλλακτική</target>
+      </trans-unit>
+      <trans-unit id="saad4380b9cc6cefd">
+        <source>Alternate over</source>
+        <target>Εναλλαγή πάνω από</target>
+      </trans-unit>
+      <trans-unit id="s037b1dc850a89273">
+        <source>Alternate under</source>
+        <target>Εναλλακτική λύση στο πλαίσιο</target>
+      </trans-unit>
+      <trans-unit id="s3a179f6db2972384">
+        <source>Ruby position</source>
+        <target>Θέση Ruby</target>
+      </trans-unit>
+      <trans-unit id="sfcebd18506f1e535">
+        <source>Flow</source>
+        <target>Ροή</target>
+      </trans-unit>
+      <trans-unit id="sc6415b50ff928294">
+        <source>List item</source>
+        <target>Στοιχείο λίστας</target>
+      </trans-unit>
+      <trans-unit id="sf0ca10f343249063">
+        <source>Contents</source>
+        <target>Περιεχόμενα</target>
+      </trans-unit>
+      <trans-unit id="s1125d159f7e64df5">
+        <source>Display</source>
+        <target>Εμφάνιση</target>
+      </trans-unit>
+      <trans-unit id="sca7cfe2bef51b2a5">
+        <source>Root</source>
+        <target>Ρίζα</target>
+      </trans-unit>
+      <trans-unit id="sca7fed2bef53cb99">
+        <source>Role</source>
+        <target>Ρόλος</target>
+      </trans-unit>
+      <trans-unit id="sf4849bc200e279ed">
+        <source>Table caption</source>
+        <target>Λεζάντα πίνακα</target>
+      </trans-unit>
+      <trans-unit id="s41f65a763f8e44ab">
+        <source>Table header group</source>
+        <target>Ομάδα επικεφαλίδων πίνακα</target>
+      </trans-unit>
+      <trans-unit id="s85f9aa6d3ea0e421">
+        <source>Table footer group</source>
+        <target>Ομάδα υποσέλιδων πίνακα</target>
+      </trans-unit>
+      <trans-unit id="sc1a155cc25899250">
+        <source>Table row group</source>
+        <target>Ομάδα γραμμών πίνακα</target>
+      </trans-unit>
+      <trans-unit id="s5b474b5c0ac0c7c4">
+        <source>Table column group</source>
+        <target>Ομάδα στηλών πίνακα</target>
+      </trans-unit>
+      <trans-unit id="s68b87d7b61052dc3">
+        <source>Table row</source>
+        <target>Σειρά πίνακα</target>
+      </trans-unit>
+      <trans-unit id="s9caf10388ab3562f">
+        <source>Table column</source>
+        <target>Στήλη πίνακα</target>
+      </trans-unit>
+      <trans-unit id="s07970793b21351fd">
+        <source>Ruby base container</source>
+        <target>Δοχείο βάσης Ruby</target>
+      </trans-unit>
+      <trans-unit id="s8fad58c831ecf017">
+        <source>Ruby text container</source>
+        <target>Δοχείο κειμένου Ruby</target>
+      </trans-unit>
+      <trans-unit id="sb0f93c1c60c0249a">
+        <source>Ruby base</source>
+        <target>Βάση Ruby</target>
+      </trans-unit>
+      <trans-unit id="sbd35ee879d9cf770">
+        <source>Ruby text</source>
+        <target>Κείμενο Ruby</target>
+      </trans-unit>
+      <trans-unit id="sea896ed51ad33287">
+        <source>No specific styles available</source>
+        <target>Δεν υπάρχουν διαθέσιμα συγκεκριμένα στυλ</target>
+      </trans-unit>
+      <trans-unit id="sb71941f552f3504d">
+        <source>Set special value</source>
+        <target>Ορισμός ειδικής τιμής</target>
+      </trans-unit>
+      <trans-unit id="scbf29ce484222325">
+        <source></source>
+      </trans-unit>
+      <trans-unit id="sfb68cae41d749423">
+        <source>Initial</source>
+        <target>Αρχικό</target>
+      </trans-unit>
+      <trans-unit id="s6b585ba37cdb8260">
+        <source>Inherit</source>
+        <target>Κληρονόμος</target>
+      </trans-unit>
+      <trans-unit id="sb45f9fb4dba6e71a">
+        <source>Unset</source>
+        <target>Μη ρυθμισμένο</target>
+      </trans-unit>
+      <trans-unit id="sd89a2e529b31ef43">
+        <source>Revert</source>
+        <target>Επιστροφή</target>
+      </trans-unit>
+      <trans-unit id="sb741b6e0ca589122">
+        <source>Revert layer</source>
+        <target>Στρώμα αναστροφής</target>
+      </trans-unit>
+      <trans-unit id="s844a76d1843ceb3c">
+        <source>Reset to default</source>
+        <target>Επαναφορά στην προεπιλογή</target>
+      </trans-unit>
+      <trans-unit id="s2f8da2cb5f236588">
+        <source>The name of your package. Must be scoped, e.g. `@org/pkg`. </source>
+        <target>Το όνομα του πακέτου σας. Πρέπει να έχει εμβέλεια, π.χ. `@org/pkg`. </target>
+      </trans-unit>
+      <trans-unit id="s840fa49e8989c028">
+        <source>Position/Shape</source>
+        <target>Θέση/Σχήμα</target>
+      </trans-unit>
+      <trans-unit id="s2e4818861000b13f">
+        <source>Layout</source>
+        <target>Διάταξη</target>
+      </trans-unit>
+      <trans-unit id="s2e39b99cf23606fa">
+        <source>Set the layout of the selected elements</source>
+        <target>Ορισμός της διάταξης των επιλεγμένων στοιχείων</target>
+      </trans-unit>
+      <trans-unit id="seb4e52ef5ec7a7dc">
+        <source>Colors/Effects</source>
+        <target>Χρώματα/Εφέ</target>
+      </trans-unit>
+      <trans-unit id="s105a06836c40fcb4">
+        <source>Set filters, color, and blending of selected elements</source>
+        <target>Ορισμός φίλτρων, χρώματος και ανάμειξης επιλεγμένων στοιχείων</target>
+      </trans-unit>
+      <trans-unit id="s7f09197a4814079b">
+        <source>Set interactivity options for selected elements</source>
+        <target>Ορισμός επιλογών διαδραστικότητας για επιλεγμένα στοιχεία</target>
+      </trans-unit>
+      <trans-unit id="s380d17664bb69531">
+        <source>Insert column before</source>
+        <target>Εισαγωγή στήλης πριν</target>
+      </trans-unit>
+      <trans-unit id="s12946ec1b850962c">
+        <source>Insert column after</source>
+        <target>Εισαγωγή στήλης μετά</target>
+      </trans-unit>
+      <trans-unit id="s0458872c43beadef">
+        <source>Insert row before</source>
+        <target>Εισαγωγή γραμμής πριν</target>
+      </trans-unit>
+      <trans-unit id="s42ffdab1291fb3de">
+        <source>Insert row after</source>
+        <target>Εισαγωγή γραμμής μετά</target>
+      </trans-unit>
+      <trans-unit id="s77318393dfdb0775">
+        <source>Remove row</source>
+        <target>Αφαίρεση γραμμής</target>
+      </trans-unit>
+      <trans-unit id="sa8b55cab62e439b5">
+        <source>Remove column</source>
+        <target>Αφαίρεση στήλης</target>
+      </trans-unit>
+      <trans-unit id="s1696c76a23c0834e">
+        <source>Advanced: Show packages with versions like 0.x.x in the package manager</source>
+        <target>Προχωρημένο: Εμφάνιση πακέτων με εκδόσεις όπως 0.x.x στο διαχειριστή πακέτων</target>
+      </trans-unit>
+      <trans-unit id="sc2e2a0dbf03723b7">
+        <source>Advanced: Show packages from unknown sources in the package manager (Warning: May be unsafe)</source>
+        <target>Προχωρημένο: (Προειδοποίηση: Μπορεί να μην είναι ασφαλές)</target>
+      </trans-unit>
+      <trans-unit id="sbff54e740c4086eb">
+        <source>Show unknown packages</source>
+        <target>Εμφάνιση άγνωστων πακέτων</target>
+      </trans-unit>
+      <trans-unit id="sb19611adbc88f711">
+        <source>Advanced: Show source editing commands, e.g. to show the document's HTML or to add custom styles and scripts.</source>
+        <target>Προχωρημένο: Εμφάνιση εντολών επεξεργασίας πηγής, π.χ. για να εμφανίσετε την HTML του εγγράφου ή να προσθέσετε προσαρμοσμένα στυλ και σενάρια.</target>
+      </trans-unit>
+      <trans-unit id="sd452cebf4a0313d1">
+        <source>Show source editing commands</source>
+        <target>Εμφάνιση εντολών επεξεργασίας πηγής</target>
+      </trans-unit>
+      <trans-unit id="s612d62bbc9df3bcc">
+        <source>Advanced: Reset all WebWriter data each time the page is loaded - for debugging purposes.</source>
+        <target>Προχωρημένο: Επαναφορά όλων των δεδομένων του WebWriter κάθε φορά που φορτώνεται η σελίδα - για σκοπούς εντοπισμού σφαλμάτων.</target>
+      </trans-unit>
+      <trans-unit id="s4b9d321525eb78ac">
+        <source>Reset all app data on page load</source>
+        <target>Επαναφορά όλων των δεδομένων της εφαρμογής κατά τη φόρτωση της σελίδας</target>
+      </trans-unit>
+      <trans-unit id="s65ac276544ba33cd">
+        <source>SVG file</source>
+        <target>Αρχείο SVG</target>
+      </trans-unit>
+      <trans-unit id="sf22a3737146ec910">
+        <source>WebWriter can embed SVG directly in the document.</source>
+        <target>Το WebWriter μπορεί να ενσωματώσει SVG απευθείας στο έγγραφο.</target>
       </trans-unit>
     </body>
   </file>

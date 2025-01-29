@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/core",
-  "version": "0.13.2",
+  "version": "1.0.0",
   "description": "Core functionality of WebWriter",
   "browser": "index.html",
   "type": "module",
@@ -32,6 +32,7 @@
     "@jspm/core": "^2.0.1",
     "@jspm/generator": "^2.4.1",
     "@lit/localize": "^0.12.2",
+    "@massifrg/prosemirror-tables-sections": "^0.6.3",
     "@open-wc/lit-helpers": "^0.7.0",
     "@open-wc/scoped-elements": "^3.0.5",
     "@shoelace-style/shoelace": "^2.17.1",
@@ -117,7 +118,7 @@
     "mocha": "^11.0.1",
     "package-json-type": "^1.0.3",
     "vite": "^6.0.6",
-    "vite-plugin-pwa": "^0.20.2",
+    "vite-plugin-pwa": "^0.21.1",
     "wdio-vscode-service": "^6.1.2",
     "wdio-wait-for": "^3.0.11"
   }
