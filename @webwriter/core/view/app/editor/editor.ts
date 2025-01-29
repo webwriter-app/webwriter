@@ -1,4 +1,4 @@
-import {LitElement, html, css, ReactiveController, CSSResult} from "lit"
+import {LitElement, html, css, ReactiveController, CSSResult, PropertyValues} from "lit"
 import {styleMap} from "lit/directives/style-map.js"
 import {customElement, property, query} from "lit/decorators.js"
 import { Decoration, EditorView, DecorationSet } from "prosemirror-view"
@@ -20,7 +20,6 @@ import { CellSelection } from "@massifrg/prosemirror-tables-sections"
 import { isNodeSelection } from "prosemirror-utils"
 
 class EmbedTooLargeError extends Error {}
-
 
 export class EditorViewController extends EditorView implements ReactiveController {
 	
@@ -216,9 +215,6 @@ export class ExplorableEditor extends LitElement {
 
 	@property({type: Boolean, attribute: true})
 	showWidgetPreview: boolean = false
-
-	@property({type: Boolean, attribute: true, reflect: true})
-	hoverWidgetAdd: boolean = false
 
   @property({type: Boolean, attribute: true, reflect: true})
 	controlsVisible: boolean = true
@@ -1520,7 +1516,7 @@ export class ExplorableEditor extends LitElement {
       <main part="base">
         ${this.sourceMode? this.CodeEditor(): [
           this.CoreEditor(),
-          !this.pmEditor?.isFullscreen && !this.previewMode && !(this.editorState.doc.content.size === 0)? this.Toolbox(): null,
+          !this.pmEditor?.isFullscreen && !this.previewMode? this.Toolbox(): null,
           !this.pmEditor?.isFullscreen && !this.previewMode? this.Palette(): null
         ]}
         <!--<ww-debugoverlay .editorState=${this.editorState} .activeElement=${this.activeElement}></ww-debugoverlay>-->

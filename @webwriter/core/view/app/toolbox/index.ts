@@ -722,6 +722,22 @@ export class  Toolbox extends LitElement {
         border-bottom: 2px solid var(--sl-color-gray-600);
       }
 
+      #element-breadcrumb sl-tree-item {
+        --indent-size: var(--sl-spacing-small);
+      }
+
+      #element-breadcrumb sl-tree-item[data-selected] > sl-breadcrumb-item > ww-button::part(label) {
+        text-decoration: 2px underline var(--sl-color-primary-400);
+      }
+
+      #element-breadcrumb sl-tree-item::part(expand-button) {
+        padding: 0;
+      }
+
+      #element-breadcrumb sl-tree-item::part(item--selected) {
+        border-color: transparent;
+      }
+
       #element-breadcrumb sl-breadcrumb-item ww-button::part(base)
       {
         display: flex;
@@ -949,6 +965,10 @@ export class  Toolbox extends LitElement {
           gap: 0.5rem;
         }
       }*/
+
+      .inline-toolbox:not([data-active]) {
+        display: none;
+      }
       
     `
   }
@@ -976,7 +996,7 @@ export class  Toolbox extends LitElement {
     `
 	})
 
-  LayoutCommands = (el: HTMLElement, advanced=false) => this.app.commands.layoutCommands.filter(cmd => advanced? cmd.tags?.includes("advanced"): !cmd.tags?.includes("advanced")).map(v => {
+  LayoutCommands = (advanced=false) => this.app.commands.layoutCommands.filter(cmd => advanced? cmd.tags?.includes("advanced"): !cmd.tags?.includes("advanced")).map(v => {
 
     const classes = {
       "block-command": true,
@@ -987,12 +1007,12 @@ export class  Toolbox extends LitElement {
     }
 
 		return html`
-    <span id=${v.id} class=${classMap(classes)} ?data-active=${v === this.activeLayoutCommand}>
+    <span id=${v.id} class=${classMap(classes)} ?data-active=${v === this.activeLayoutCommand && !this.gapSelected}>
       <ww-button
         ${spreadProps(v.toObject())}
         tabindex=${0}
         name=${v.icon ?? "circle-fill"}
-        @click=${() => v.run()}
+        @click=${() => {v.run(); this.activeLayoutAdvanced = false}}
         variant="icon"
       ></ww-button>
     </span>
@@ -1019,13 +1039,13 @@ export class  Toolbox extends LitElement {
     </sl-popup>`
   }
 
-  ElementCommands = (el: HTMLElement) => this.app.commands.elementCommands.map(cmd => {
+  ElementCommands = () => this.app.commands.elementCommands.map(cmd => {
     return html`
       <ww-button
         ${spreadProps(cmd.toObject())}
         tabindex=${0}
         name=${cmd.icon ?? "circle-fill"}
-        @click=${() => cmd.run()}
+        @click=${() => {cmd.run(); cmd.preview()}}
         @mouseenter=${() => cmd.preview()}
         @mouseleave=${() => cmd.preview()}
         variant="icon"
@@ -1033,7 +1053,7 @@ export class  Toolbox extends LitElement {
   `
   })
 
-  BlockToolbox = (el: HTMLElement) => {
+  BlockToolbox = (el: HTMLElement | null) => {
     const advancedApplied = false
     return html`<div class="block-toolbox">
       <div class="block-options">
@@ -1071,7 +1091,7 @@ export class  Toolbox extends LitElement {
     const fontFamilies = fontFamilyCommand.value
     const fontSizes = fontSizeCommand.value
     const advancedApplied = this.app.commands.markCommands.some(v => v.tags?.includes("advanced") && v.active)
-    return html`<div class="inline-toolbox">
+    return html`<div class="inline-toolbox" ?data-active=${this.textSelected}>
       <ww-fontpicker
         .fontFamilies=${fontFamilies}
         .fontSizes=${fontSizes}
@@ -1464,6 +1484,20 @@ export class  Toolbox extends LitElement {
         ${separator}</sl-breadcrumb-item>`
         : html`<sl-menu-item>${content}</sl-menu-item>`
     }
+    else if(el.tagName === "BODY") {
+      const content = html`<ww-button
+        title=${elementName}
+        variant="icon"
+        icon="file"
+        @click=${() => this.emitClickBreadcrumb(el)}
+        @hover=${() => this.emitHoverBreadcrumb(el)}
+      >
+        ${!isLast? null: msg("Document")}
+      </ww-button>`
+      return !menuItem
+        ? html`<sl-breadcrumb-item>${content}${separator}</sl-breadcrumb-item>`
+        : html`<sl-menu-item>${content}</sl-menu-item>`
+    }
     else {
       const content = html`<ww-button
         title=${elementName}
@@ -1481,17 +1515,20 @@ export class  Toolbox extends LitElement {
   }
 
   ElementBreadcrumb() {
-    if(this.allSelected) {
-      return html`<sl-breadcrumb id="element-breadcrumb">
-        <ww-button @click=${() => this.app.activeEditor?.focus()} variant="icon"><i>${msg("Everything")}</i></ww-button>
-      </sl-breadcrumb>`
-    }
-    const els = this.activeElementPath
-    return html`<sl-breadcrumb id="element-breadcrumb">
+    const els = this.activeElementPathSimple
+    const breadcrumbPath = html`
       ${els.map((el, i) => this.ElementBreadcrumbItem(el, i === els.length - 1))}
       ${this.gapSelected? html`
-        <ww-button @click=${() => this.app.activeEditor?.focus()} variant="icon"><i>${msg("Gap")}</i></ww-button>
+        <ww-button @click=${() => this.app.activeEditor?.focus()} variant="icon" icon="minus"></ww-button>
       `: null}
+    `
+    return html`<sl-breadcrumb id="element-breadcrumb">
+      <sl-tree>
+        <sl-tree-item ?data-selected=${this.activeElement === this.app.activeEditor!.pmEditor.document.body} @sl-expand=${(e: any) => e.target.parentElement instanceof SlTree && (this.activeOutline = true)} @sl-collapse=${(e: any) => e.target.parentElement instanceof SlTree && (this.activeOutline = false)}>
+          ${this.activeOutline? this.ElementBreadcrumbItem(this.app.activeEditor!.pmEditor.document.body, true, false, true): breadcrumbPath}
+          ${this.ElementTree(undefined, true)}
+        </sl-tree-item>
+      </sl-tree>
     </sl-breadcrumb>`
 
     /*
@@ -1545,6 +1582,11 @@ export class  Toolbox extends LitElement {
     */
   }
 
+  ElementTree(root: HTMLElement=this.app.activeEditor!.pmEditor.document.body, unwrapped=false): TemplateResult {
+    const content = html`${this.filterChildren(root.children, root?.tagName.toLowerCase()).map(child => this.ElementTree(child as HTMLElement))}`
+    return unwrapped? content: html`<sl-tree-item ?data-selected=${this.activeElement === root}>${this.ElementBreadcrumbItem(root, true, false, true)}${content}</sl-tree-item>`
+  }
+
   ContextToolbox(el: HTMLElement) {
     const tag = el.tagName.toLowerCase()
     if(["figure", "figcaption", "img", "source", "track", "picture", "audio", "video", "object", "embed", "iframe", "portal"].includes(tag)) {
@@ -1572,21 +1614,16 @@ export class  Toolbox extends LitElement {
     else if(["math"].includes(tag)) {
       return this.MathToolbox(el)
     }
-else if(["svg"].includes(tag)) {
+    else if(["svg"].includes(tag)) {
       return this.SVGToolbox(el as SVGSVGElement & HTMLElement)
     }
   }
 
   render() {
-    if(this.activeElement) {
       return html`
         ${this.BlockToolbox(this.activeElement)}
         <aside class="context-toolbox">${this.activeElementPath.map(el => this.ContextToolbox(el))}</aside>
-        ${this.textSelected? this.InlineToolbox(): null}
+        ${this.InlineToolbox()}
       `
-    }
-    else {
-      return null
-    }
   }
 }
