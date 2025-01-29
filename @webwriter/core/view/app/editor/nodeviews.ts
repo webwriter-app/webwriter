@@ -131,7 +131,7 @@ export class WidgetView implements NodeView {
     if(oldName !== name) {
       return false
     }
-    if(!this.editor.executingCommand) {
+    if(!this.editor.executingCommand || node.eq(this.node)) {
       this.node = node
       return true
     }
