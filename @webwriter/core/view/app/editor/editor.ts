@@ -16,6 +16,8 @@ import { WidgetView, nodeViews } from "."
 import { CODEMIRROR_EXTENSIONS, EditorStateWithHead, MediaType, Package, removeMark, upsertHeadElement } from "#model"
 import { range, roundByDPR, sameMembers } from "#utility"
 import { App, Toolbox, Palette, ProsemirrorEditor, CodemirrorEditor } from "#view"
+import { CellSelection } from "@massifrg/prosemirror-tables-sections"
+import { isNodeSelection } from "prosemirror-utils"
 
 class EmbedTooLargeError extends Error {}
 
@@ -685,6 +687,9 @@ export class ExplorableEditor extends LitElement {
       else if(selection instanceof AllSelection) {
         return this.pmEditor.body
       }
+      else if(selection instanceof CellSelection) {
+        return this.pmEditor.domAtPos(selection.$anchorCell.pos, 0)?.node as HTMLElement
+      }
 			else if(selection instanceof TextSelection) {
         const node = this.pmEditor.domAtPos(this.selection.anchor, 0)?.node
         return node?.nodeType === window.Node.TEXT_NODE? node.parentElement: node as HTMLElement
@@ -1012,7 +1017,7 @@ export class ExplorableEditor extends LitElement {
       if(ev.key === "Escape") {
         this.pmEditor.document.exitFullscreen()
       }
-      else if(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(ev.key) && !ev.shiftKey) {
+      else if(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(ev.key) && !ev.shiftKey && !this.activeElement?.closest("table")) {
         const sel = this.nextSelection(["ArrowLeft", "ArrowUp"].includes(ev.key))
         if(sel && !sel.eq(this.editorState.selection)) {
           const tr = this.editorState.tr.setSelection(sel).scrollIntoView()
@@ -1447,7 +1452,13 @@ export class ExplorableEditor extends LitElement {
 					!e.detail.widget? this.pmEditor?.focus(): e.detail.widget.focus()
 				}}
         @ww-set-attribute=${(e: CustomEvent) => this.setNodeAttribute(e.detail.el, e.detail.key, e.detail.value, e.detail.tag)}
-        @ww-set-style=${(e: CustomEvent) => e.detail.el.style[e.detail.key] = e.detail.value}
+        @ww-set-style=${(e: CustomEvent) => {
+          if(!isNodeSelection(this.selection) && !this.isAllSelected) {
+            this.pmEditor.dispatch(this.editorState.tr.setSelection(NodeSelection.create(this.editorState.doc, this.editorState.selection.$anchor.before())))
+          }
+          Object.assign(e.detail.el.style, e.detail.style)
+          // this.pmEditor.focus()
+        }}
 			></ww-toolbox>
 		`
 	}

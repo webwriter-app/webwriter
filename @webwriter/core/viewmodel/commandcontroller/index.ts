@@ -20,6 +20,244 @@ export const WINDOW_OPTIONS = {
   minHeight: 600,
 };
 
+export const PICKER_COMMAND_PROPERTIES = {
+  
+  boxStyle: [
+    "position",
+    "clear",
+    "margin",
+    "margin-top",
+    "margin-left",
+    "margin-right",
+    "margin-bottom",
+    "border",
+    "border-color",
+    "border-style",
+    "border-width",
+    "border-top",
+    "border-top-color",
+    "border-top-style",
+    "border-top-width",
+    "border-left",
+    "border-left-color",
+    "border-left-style",
+    "border-left-width",
+    "border-right",
+    "border-right-color",
+    "border-right-style",
+    "border-right-width",
+    "border-bottom",
+    "border-bottom-color",
+    "border-bottom-style",
+    "border-bottom-width",
+    "border-radius",
+    "padding",
+    "padding-top",
+    "padding-left",
+    "padding-right",
+    "padding-bottom",
+    "width",
+    "height",
+    "min-width",
+    "min-height",
+    "max-width",
+    "max-height",
+    "aspect-ratio",
+    "outline",
+    "outline-width",
+    "outline-color",
+    "outline-style",
+    "box-sizing",
+    "transform",
+    "transform-box",
+    "translate",
+    "scale",
+    "rotate",
+    "perspective",
+    "perspective-origin",
+    "transform-origin",
+    "zoom",
+    "transform-style",
+    "backface-visibility",
+    "shape-outside",
+    "shape-image-threshold",
+    "shape-margin",
+    "shape-rendering",
+    "clip-path",
+    "clip-rule",
+    "mask",
+    "mask-type",
+    "list-style-type",
+    "list-style-position",
+    "order",
+    "align-self",
+    "justify-self",
+    "flex-grow",
+    "flex-shrink",
+    "flex-basis",
+    "column-span",
+    "grid-area",
+    "vertical-align",
+    "inset",
+    "top",
+    "left",
+    "bottom",
+    "right",
+    "z-index",
+    "overflow",
+    "overflow-x",
+    "overflow-y",
+    "overflow-anchor",
+    "float",
+    "display"
+  ] as const,
+  
+  layoutStyle: [
+    "display",
+    "flex-direction",
+    "row-gap",
+    "column-gap",
+    "flex-wrap",
+    "align-content",
+    "justify-content",
+    "align-items",
+    "justify-items",
+    // "place-items",
+    // "place-content",
+    "grid-auto-flow",
+    "grid-auto-rows",
+    "grid-auto-columns",
+    "grid-template",
+    "border-spacing",
+    "table-layout",
+    "border-collapse",
+    "caption-side",
+    "empty-cells",
+    "vertical-align",
+    "object-fit",
+    "object-position",
+    "image-rendering",
+    "image-resolution",
+    "image-orientation",
+    "math-style",
+    "math-shift",
+    "math-depth",
+    "ruby-align",
+    "ruby-position",
+    "column-count",
+    "column-width",
+    "column-gap",
+    "column-fill",
+    "column-rule-style",
+    "column-rule-width",
+    "column-rule-color",
+    "break-before",
+    "break-inside",
+    "break-after"
+  ] as const,
+  
+  blendingStyle: [
+    "color",
+    "background",
+    "background-color",
+    "color-scheme",
+    "print-color-adjust",
+    "visibility",
+    "content-visibility",
+    "opacity",
+    "mix-blend-mode",
+    "background-blend-mode",
+    "backdrop-filter",
+    "filter",
+    "isolation"
+  ] as const,
+  
+  textStyle: [
+    "text-align",
+    "text-align-last",
+    "text-indent",
+    "writing-mode",
+    "alignment-baseline",
+    "dominant-baseline",
+    "text-orientation",
+    "text-combine-upright",
+    "text-decoration-line",
+    "text-decoration-style",
+    "text-decoration-thickness",
+    "text-decoration-color",
+    "text-decoration-skip-ink",
+    "text-underline-offset",
+    "text-underline-position",
+    "text-emphasis",
+    "text-emphasis-position",
+    "text-emphasis-style",
+    "text-emphasis-color",
+    "text-shadow",
+    "text-transform",
+    "line-height",
+    "text-wrap",
+    "text-wrap-mode",
+    "text-wrap-style",
+    "hyphens",
+    "line-break",
+    "word-break",
+    "white-space-collapse",
+    "tab-size",
+    "word-spacing",
+    "text-spacing-trim",
+    "text-overflow",
+    "font-family",
+    "font-size",
+    "font-stretch",
+    "letter-spacing",
+    "font-kerning",
+    "font-weight",
+    "font-style",
+    "font-synthesis",
+    "text-rendering",
+    "font-feature-settings",
+    "font-variant",
+    "font-size-adjust",
+    "font-palette",
+    "font-language-override",
+    "quotes",
+    "hyphenate-character",
+    "font-optical-sizing"
+  ] as const,
+  
+  interactivityStyle: [
+    "animation",
+    "animation-composition",
+    "transition",
+    "accent–color",
+    "caret–color",
+    "cursor",
+    "appearance",
+    "resize",
+    "user-select",
+    "touch-action",
+    "scrollbar-width",
+    "scrollbar-color",
+    "scroll-margin",
+    "scroll-margin-top",
+    "scroll-margin-left",
+    "scroll-margin-right",
+    "scroll-margin-bottom",
+    "scroll-padding",
+    "scroll-padding-top",
+    "scroll-padding-left",
+    "scroll-padding-right",
+    "scroll-padding-bottom",
+    "overscroll-behavior-x",
+    "overscroll-behavior-y",
+    "scrollbar-gutter",
+    "scroll-snap-type",
+    "scroll-snap-stop",
+    "scroll-snap-align",
+    "scroll-behavior"
+  ] as const
+} as const
+
 type FieldEntry = {
   type: "string" | "number" | "boolean";
   placeholder?: string;
@@ -439,9 +677,6 @@ export class MarkCommand<
 export class LayoutCommand<
   SPEC extends CommandSpec = CommandSpec
 > extends Command<SPEC> {
-  #cssProperties = this.tags
-    .filter((tag) => tag.startsWith("css-"))
-    .map((tag) => tag.slice(4));
 
   get tags() {
     return this.spec.tags ?? ["layout"];
@@ -463,17 +698,9 @@ export class LayoutCommand<
       );
     }
   }
-  get active() {
-    return (
-      this.host.store.document.getActiveAttributeValue(this.id) !== undefined
-    );
-  }
-  get value() {
-    return this.host.store.document.getActiveAttributeValue(this.id);
-  }
 
-  get cssProperties() {
-    return this.#cssProperties as (keyof CSSPropertySpecs)[];
+  get active() {
+    return Boolean((PICKER_COMMAND_PROPERTIES as any)[this.id]?.some((name: string) => this.host.activeEditor?.activeElement?.style.getPropertyValue(name)))
   }
 }
 
@@ -566,6 +793,10 @@ export class CommandController implements ReactiveController {
 
   @Memoize() get elementCommands() {
     return this.queryCommands({ tags: ["element"] });
+  }
+
+  @Memoize() get tableCommands() {
+    return this.queryCommands({ tags: ["table"] });
   }
 
   @Memoize() get saveCommand() {
@@ -1899,6 +2130,69 @@ export class CommandController implements ReactiveController {
 
         loading: (host) => host.store.document.ioState === "loadingTranslation",
       }),*/
+      boxStyle: new LayoutCommand(this.host, {
+        id: "boxStyle",
+        label: () => msg("Position/Shape"),
+        icon: "box-margin",
+        description: () =>
+          msg("Set the size, padding, and margins of the selected elements"), // "css-border-collapse"
+        tags: ["layout"],
+        active: host => PICKER_COMMAND_PROPERTIES.boxStyle.some(name => host.activeEditor?.activeElement?.style.getPropertyValue(name)),
+        disabled: host => host.activeEditor!.isGapSelected,
+      }),
+      layoutStyle: new LayoutCommand(this.host, {
+        // + flex/grid/table/list container options
+        id: "layoutStyle",
+        label: () => msg("Layout"),
+        icon: "layout",
+        description: () => msg("Set the layout of the selected elements"),
+        category: "editor",
+        tags: [
+          "layout",
+          "css-display",
+          "css-flex-direction",
+          "css-flex-flow",
+          "css-flex-wrap",
+          "css-grid",
+          "css-gap",
+          "css-place-content",
+          "css-place-items",
+          "css-border-collapse",
+          "css-border-spacing",
+          "css-caption-side",
+          "css-empty-cells",
+          "css-table-layout",
+          "css-list-style",
+          "css-box-decoration-break",
+          "css-columns",
+          "css-column-rule",
+          "css-column-gap",
+          "css-image-orientation",
+          "css-image-rendering",
+          "css-image-resolution",
+          "css-object-fit",
+          "css-object-position",
+          "css-place-self",
+          "css-vertical-align",
+          "css-inset",
+          "css-float",
+          "css-clear",
+          "css-position",
+          "css-z-index",
+          "css-order",
+          "css-page",
+          "css-break-before",
+          "css-break-inside",
+          "css-break-after",
+          "css-orphans",
+          "css-widows",
+          "css-column-fill",
+          "css-column-span",
+          "css-flex",
+          "css-grid-area",
+        ],
+        disabled: host => host.activeEditor!.isGapSelected,
+      }),
       textStyle: new LayoutCommand(this.host, {
         id: "textStyle",
         label: () => msg("Text Style"),
@@ -1943,37 +2237,32 @@ export class CommandController implements ReactiveController {
           "css-ruby-align",
           "css-ruby-position",
         ],
+        active: host => PICKER_COMMAND_PROPERTIES.textStyle.some(name => host.activeEditor?.activeElement?.style.getPropertyValue(name)),
         disabled: host => host.activeEditor!.isGapSelected,
       }),
-      boxStyle: new LayoutCommand(this.host, {
-        id: "boxStyle",
-        label: () => msg("Size & Spacing"),
-        icon: "box-margin",
+      blendingStyle: new LayoutCommand(this.host, {
+        // + opacity
+        id: "blendingStyle",
+        label: () => msg("Colors/Effects"),
+        icon: "brightness",
         description: () =>
-          msg("Set the size, padding, and margins of the selected elements"), // "css-border-collapse"
+          msg("Set filters, color, and blending of selected elements"),
+        category: "editor",
         tags: [
           "layout",
-          "css-box-sizing",
-          "css-min-width",
-          "css-width",
-          "css-max-width",
-          "css-min-height",
-          "css-height",
-          "css-max-height",
-          "css-padding",
-          "css-margin",
-          "css-margin-trim",
-          "css-aspect-ratio",
+          "css-color",
+          "css-color-scheme",
+          "css-opacity",
+          "css-visibility",
+          "css-content-visibility",
+          "css-isolation",
+          "css-mix-blend-mode",
+          "css-background-blend-mode",
+          "css-filter",
+          "css-backdrop-filter",
           "css-background",
           "css-background-position-x",
           "css-background-position-y",
-          "css-border-left",
-          "css-border-right",
-          "css-border-top",
-          "css-border-bottom",
-          "css-box-shadow",
-          "css-border-radius",
-          "css-border-image",
         ],
         disabled: host => host.activeEditor!.isGapSelected,
       }),
@@ -1982,74 +2271,28 @@ export class CommandController implements ReactiveController {
         label: () => msg("Interactivity"),
         icon: "hand-click",
         description: () =>
-          msg("Set interactivty options for selected elements"),
+          msg("Set interactivity options for selected elements"),
         category: "editor",
         tags: [
           "layout",
-          "advanced",
           "css-accent-color",
           "css-appearance",
           "css-caret-color",
           "css-cursor",
-          "css-outline",
-          "css-outline-offset",
           "css-pointer-events",
           "css-resize",
           "css-user-select",
           "css-touch-action",
-        ],
-        disabled: host => host.activeEditor!.isGapSelected,
-      }),
-      blendingStyle: new LayoutCommand(this.host, {
-        // + opacity
-        id: "blendingStyle",
-        label: () => msg("Filters & Color"),
-        icon: "brightness",
-        description: () =>
-          msg("Set filters, color, and blending of selected elements"),
-        category: "editor",
-        tags: [
-          "layout",
-          "advanced",
-          "css-color",
-          "css-color-scheme",
-          "css-opacity",
-          "css-visibility",
-          "css-isolation",
-          "css-mix-blend-mode",
-          "css-background-blend-mode",
-          "css-filter",
-          "css-backdrop-filter",
-        ],
-        disabled: host => host.activeEditor!.isGapSelected,
-      }),
-      displayStyle: new LayoutCommand(this.host, {
-        // + flex/grid/table/list container options
-        id: "displayStyle",
-        label: () => msg("Layout"),
-        icon: "layout",
-        description: () => msg("Set the layout of the selected elements"),
-        category: "editor",
-        tags: [
-          "layout",
-          "css-display",
-          "css-flex-direction",
-          "css-flex-flow",
-          "css-flex-wrap",
-          "css-grid",
-          "css-gap",
-          "css-place-content",
-          "css-place-items",
-          "css-border-collapse",
-          "css-border-spacing",
-          "css-caption-side",
-          "css-empty-cells",
-          "css-table-layout",
-          "css-list-style",
-          "css-box-decoration-break",
-          "css-columns",
-          "css-column-rule",
-          "css-column-gap",
+          "css-scroll-behavior",
+          "css-scroll-margin",
+          "css-scroll-padding",
+          "css-scrollbar-gutter",
+          "css-scrollbar-width",
+          "css-scrollbar-color",
+          "css-overscroll-behavior",
+          "css-scroll-snap-align",
+          "css-scroll-snap-stop",
+          "css-scroll-snap-type",
         ],
         disabled: host => host.activeEditor!.isGapSelected,
       }),
@@ -2088,7 +2331,7 @@ export class CommandController implements ReactiveController {
           "css-widows",
         ],
       }),*/
-      imageStyle: new LayoutCommand(this.host, {
+      /*imageStyle: new LayoutCommand(this.host, {
         // only on replaced elements
         id: "imageStyle",
         label: () => msg("Image sizing"),
@@ -2105,7 +2348,7 @@ export class CommandController implements ReactiveController {
           "css-object-position",
         ],
         disabled: host => host.activeEditor!.isGapSelected,
-      }),
+      }),*/
       /*columnStyle: new LayoutCommand(this.host, {
         id: "columnStyle",
         label: () => msg("Column break"),
@@ -2122,7 +2365,7 @@ export class CommandController implements ReactiveController {
           "css-column-span",
         ],
       }),*/
-      positionStyle: new LayoutCommand(this.host, {
+      /*positionStyle: new LayoutCommand(this.host, {
         id: "positionStyle",
         label: () => msg("Positioning"),
         icon: "box-align-bottom-right",
@@ -2130,6 +2373,7 @@ export class CommandController implements ReactiveController {
         category: "editor",
         tags: [
           "layout",
+          "advanced",
           "css-place-self",
           "css-vertical-align",
           "css-inset",
@@ -2147,8 +2391,8 @@ export class CommandController implements ReactiveController {
           "css-column-span",
         ],
         disabled: host => host.activeEditor!.isGapSelected,
-      }),
-      overflowStyle: new LayoutCommand(this.host, {
+      }),*/
+      /*overflowStyle: new LayoutCommand(this.host, {
         // + overscroll, scrollbars styling
         id: "overflowStyle",
         label: () => msg("Overflow behavior"),
@@ -2172,8 +2416,8 @@ export class CommandController implements ReactiveController {
           "css-scroll-snap-type",
         ],
         disabled: host => host.activeEditor!.isGapSelected,
-      }),
-      shapeStyle: new LayoutCommand(this.host, {
+      }),*/
+      /*shapeStyle: new LayoutCommand(this.host, {
         // + mask
         id: "shapeStyle",
         label: () => msg("Shaping"),
@@ -2195,8 +2439,8 @@ export class CommandController implements ReactiveController {
           "css-grid-area",
         ],
         disabled: host => host.activeEditor!.isGapSelected,
-      }),
-      transformStyle: new LayoutCommand(this.host, {
+      }),*/
+      /*transformStyle: new LayoutCommand(this.host, {
         id: "transformStyle",
         label: () => msg("2D/3D transform"),
         icon: "transform-point",
@@ -2219,7 +2463,7 @@ export class CommandController implements ReactiveController {
           "css-translate",
         ],
         disabled: host => host.activeEditor!.isGapSelected,
-      }),
+      }),*/
       /*writingModeStyle: new LayoutCommand(this.host, {
         // + ruby layout
         id: "writingModeStyle",
@@ -2248,24 +2492,16 @@ export class CommandController implements ReactiveController {
         category: "editor",
         tags: [
           "layout",
-          "advanced",
-          "css-all",
+          "css-custom",/*
           "css-contain",
           "css-container",
-          "css-content-visibility",
           "css-content",
           "css-counter-increment",
           "css-counter-reset",
           "css-counter-set",
           "css-will-change",
           "css-paint-order",
-          "css-text-rendering",
-          "css-print-color-adjust",
-          "css-transition",
-          "css-animation",
-          "css-animation-composition",
-          "css-offset",
-          "css-page",
+          "css-print-color-adjust"*/
         ],
         disabled: host => host.activeEditor!.isGapSelected,
       }),
@@ -2284,6 +2520,54 @@ export class CommandController implements ReactiveController {
           host.activeEditor?.exec(setDocAttributes(options)),
         category: "miscellaneous",
       }),
+      insertTableColumnBefore: new Command(this.host, {
+        id: "insertTableColumnBefore",
+        icon: "column-insert-left",
+        label: () => msg("Insert column before"),
+        run: (host) => host.activeEditor?.exec(addColumnBefore),
+        category: "editor",
+        tags: ["table"] 
+      }),
+      insertTableColumnAfter: new Command(this.host, {
+        id: "insertTableColumnAfter",
+        icon: "column-insert-right",
+        label: () => msg("Insert column after"),
+        run: (host) => host.activeEditor?.exec(addColumnAfter),
+        category: "editor",
+        tags: ["table"] 
+      }),
+      insertTableRowBefore: new Command(this.host, {
+        id: "insertTableRowBefore",
+        icon: "row-insert-top",
+        label: () => msg("Insert row before"),
+        run: (host) => host.activeEditor?.exec(addRowBefore),
+        category: "editor",
+        tags: ["table"]
+      }),
+      insertTableRowAfter: new Command(this.host, {
+        id: "insertTableRowAfter",
+        icon: "row-insert-bottom",
+        label: () => msg("Insert row after"),
+        run: (host) => host.activeEditor?.exec(addRowAfter),
+        category: "editor",
+        tags: ["table"] 
+      }),
+      removeRow: new Command(this.host, {
+        id: "removeRow",
+        icon: "row-remove",
+        label: () => msg("Remove row"),
+        run: (host) => host.activeEditor?.exec(deleteRow),
+        category: "editor",
+        tags: ["table"] 
+      }),
+      removeColumn: new Command(this.host, {
+        id: "removeColumn",
+        icon: "column-remove",
+        label: () => msg("Remove column"),
+        run: (host) => host.activeEditor?.exec(deleteColumn),
+        category: "editor",
+        tags: ["table"] 
+      })
     } as const satisfies Record<string, Command>;
   }
 

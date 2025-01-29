@@ -9,12 +9,14 @@ import { Command, LayoutCommand } from "#viewmodel"
 import { spreadProps } from "@open-wc/lit-helpers"
 
 import { ifDefined } from "lit/directives/if-defined.js"
-import { App, URLFileInput } from "#view"
+import { App, URLFileInput, TextPicker } from "#view"
 import { AllSelection, EditorState, TextSelection } from "prosemirror-state"
 import {GapCursor} from "prosemirror-gapcursor"
 // @ts-ignore
 import {render as latexToMathML} from "temml/dist/temml.cjs"
-import { SlColorPicker } from "@shoelace-style/shoelace"
+import { SlColorPicker, SlTree } from "@shoelace-style/shoelace"
+import { CSSPropertySpecs, MATHML_TAGS } from "#model/index.js"
+import { LitPickerElement } from "#view/elements/stylepickers/index.js"
 
 
 
@@ -109,6 +111,12 @@ export class  Toolbox extends LitElement {
 
   @property({attribute: false})
   activeLayoutCommand: LayoutCommand | undefined
+
+  @property({type: Boolean})
+  activeLayoutAdvanced = false
+
+  @property({type: Boolean})
+  activeOutline = false
 
   emitDeleteWidget = () => this.dispatchEvent(
     new CustomEvent("ww-delete-widget", {composed: true, bubbles: true, detail: {
@@ -252,8 +260,24 @@ export class  Toolbox extends LitElement {
       .layout-command[data-active] {
         border: 2px solid var(--sl-color-gray-600);
         border-radius: 5px;
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
+        z-index: 100;
         background: white;
         position: relative;
+        &::after {
+          content: "";
+          display: block;
+          position: absolute;
+          width: 100%;
+          height: 4px;
+          left: -2px;
+          bottom: -4px;
+          background: white;
+          z-index: 1000;
+          border-left: inherit;
+          border-right: inherit;
+        }
       }
 
       .inline-commands:not(.more-inline-commands).applied {
@@ -520,7 +544,7 @@ export class  Toolbox extends LitElement {
       }
 
       .pickers-popup::part(popup) {
-        z-index: 1;
+        z-index: 10;
         border: 2px solid var(--sl-color-gray-600);
         padding: 10px;
         padding-right: 5px;
@@ -529,6 +553,15 @@ export class  Toolbox extends LitElement {
         background: white;
         overflow-y: auto;
         scrollbar-width: thin;
+        width: 230px;
+        box-sizing: border-box;
+        margin-top: -2px;
+        display: flex;
+        flex-direction: column;
+        gap: 0.375rem;
+        min-width: 230px;
+        overflow-x: clip;
+        overflow-y: scroll;
       }
 
       .pickers-popup > h3 {
@@ -537,11 +570,13 @@ export class  Toolbox extends LitElement {
         align-items: center;
         color: var(--sl-color-gray-600);
         margin: 0;
-        padding: 15px 0;
+        margin-left: -10px;
+        padding: 10px 0;
+        padding-left: 10px;
         position: sticky;
         top: 0;
         left: 0;
-        z-index: 1;
+        z-index: 10;
         background: white;
 
         & > sl-icon {
@@ -964,22 +999,21 @@ export class  Toolbox extends LitElement {
     `
 	})
 
-  Pickers = (el: HTMLElement, activeLayoutCommand?: LayoutCommand) => {
-    if(!activeLayoutCommand) {
-      return undefined
-    }
-    let properties: TemplateResult[] | TemplateResult
-    if(activeLayoutCommand.id === "boxStyl") {
-      properties = html`<ww-box-picker></ww-box-picker>`
-    }
-    else {
-      properties = activeLayoutCommand.cssProperties.map(name => html`<ww-css-property-input name=${name} plaintext value=${(el.style as any)[name]}></ww-css-property-input>`)
-    }
-    return html`<sl-popup class="pickers-popup" shift strategy="fixed" auto-size="both" auto-size-padding=${10} active anchor=${activeLayoutCommand.id} .autoSizeBoundary=${document.body} placement="bottom-start" @change=${(e: any) => this.emitSetStyle(el, e.target.name, e.target.value)}>
+  Pickers = (activeLayoutCommand?: LayoutCommand) => {
+    const properties = html`
+      <ww-box-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "boxStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${(e: any) => this.emitSetStyle(this.activeElement!, e.target.value)} .value=${this.activeElement? this.activeElement!.style as any: undefined} .computedValue=${this.activeElement? this.app.activeEditor?.pmEditor.window.getComputedStyle(this.activeElement): undefined}></ww-box-picker>
+      <ww-layout-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "layoutStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${(e: any) => this.emitSetStyle(this.activeElement!, e.target.value)} .value=${this.activeElement? this.activeElement!.style as any: undefined} .computedValue=${this.activeElement? this.app.activeEditor?.pmEditor.window.getComputedStyle(this.activeElement): undefined}></ww-layout-picker>
+      <ww-text-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "textStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${(e: any) => this.emitSetStyle(this.activeElement!, e.target.value)} .value=${this.activeElement? this.activeElement!.style as any: undefined} .computedValue=${this.activeElement? this.app.activeEditor?.pmEditor.window.getComputedStyle(this.activeElement): undefined}></ww-text-picker>
+      <ww-blending-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "blendingStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${(e: any) => this.emitSetStyle(this.activeElement!, e.target.value)} .value=${this.activeElement? this.activeElement!.style as any: undefined} .computedValue=${this.activeElement? this.app.activeEditor?.pmEditor.window.getComputedStyle(this.activeElement): undefined}></ww-blending-picker>
+      <ww-interactivity-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "interactivityStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${(e: any) => this.emitSetStyle(this.activeElement!, e.target.value)} .value=${this.activeElement? this.activeElement!.style as any: undefined} .computedValue=${this.activeElement? this.app.activeEditor?.pmEditor.window.getComputedStyle(this.activeElement): undefined}></ww-interactivity-picker>
+      <ww-miscellaneous-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "miscellaneousStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${(e: any) => this.emitSetStyle(this.activeElement!, e.target.value)} .value=${this.activeElement? this.activeElement!.style as any: undefined} .computedValue=${this.activeElement? this.app.activeEditor?.pmEditor.window.getComputedStyle(this.activeElement): undefined}></ww-miscellaneous-picker>`
+    return html`<sl-popup class="pickers-popup" ?data-active=${this.activeLayoutCommand && !this.gapSelected} shift strategy="fixed" auto-size="both" active anchor=${ifDefined(activeLayoutCommand?.id)} .autoSizeBoundary=${document.body} shift-padding=${this.shiftPaddingStyling} placement="bottom-start">
       <h3>
-        <sl-icon name=${activeLayoutCommand?.icon ?? ""}></sl-icon>
+        <!--<sl-icon name=${activeLayoutCommand?.icon ?? ""}></sl-icon>-->
         <span>${activeLayoutCommand?.label}</span>
-        <sl-icon-button name="x" @click=${() => this.activeLayoutCommand = undefined}></sl-icon-button>
+        <sl-icon-button name=${this.activeLayoutAdvanced? "badge-filled": "badge"} @click=${() => this.activeLayoutAdvanced = !this.activeLayoutAdvanced} style="margin-left: 0.5ch;"></sl-icon-button>
+        <sl-icon-button name="restore" style="margin-left: 0.25ch;" @click=${() => this.emitSetStyle(this.activeElement!, (this.shadowRoot!.querySelector(".picker[data-active]") as LitPickerElement).emptyValue as any)}></sl-icon-button>
+        <sl-icon-button name="x" @click=${() => {this.activeLayoutCommand = undefined; this.activeLayoutAdvanced = false}}></sl-icon-button>
       </h3>
       ${properties}
     </sl-popup>`
@@ -1005,22 +1039,22 @@ export class  Toolbox extends LitElement {
       <div class="block-options">
         ${this.ElementBreadcrumb()}
         <div part="block-commands">
-          ${this.ElementCommands(el)}
-          ${this.LayoutCommands(el, false)}
-          <span class=${classMap({"block-command": true, "applied": advancedApplied})}>
+          ${this.ElementCommands()}
+          ${this.LayoutCommands(false)}
+          <!--<span class=${classMap({"block-command": true, "applied": advancedApplied})}>
             <ww-button
               tabindex=${0}
-              title=${this.advancedInline? msg("Hide advanced styling"): msg("Show advanced styling")}
+              title=${this.advancedStyling? msg("Hide advanced styling"): msg("Show advanced styling")}
               icon=${this.advancedStyling? "chevron-down": "chevron-left"}
               @click=${(e: any) => this.advancedStyling = !this.advancedStyling}
               variant="icon"
             ></ww-button>
           </span>
-          ${this.LayoutCommands(el, true)}
+          ${this.LayoutCommands(true)}-->
         </div>
       </div>
     </div>
-    ${this.Pickers(el, this.activeLayoutCommand)}`
+    ${this.Pickers(this.activeLayoutCommand)}`
   }
 
   @property({type: Boolean, attribute: true, reflect: true})
@@ -1182,8 +1216,8 @@ export class  Toolbox extends LitElement {
     this.dispatchEvent(new CustomEvent("ww-set-attribute", {bubbles: true, composed: true, detail: {el, key, value, tag}}))
   }
 
-  emitSetStyle(el: Element, key: string, value: string) {
-    this.dispatchEvent(new CustomEvent("ww-set-style", {bubbles: true, composed: true, detail: {el, key, value}}))
+  emitSetStyle(el: Element, style: Record<keyof CSSPropertySpecs, string>) {
+    this.dispatchEvent(new CustomEvent("ww-set-style", {bubbles: true, composed: true, detail: {el, style}}))
   }
 
   DetailsToolbox(el: HTMLDetailsElement) {
