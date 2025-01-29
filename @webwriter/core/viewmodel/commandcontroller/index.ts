@@ -1303,15 +1303,7 @@ export class CommandController implements ReactiveController {
         shortcut: "alt+shift+m",
         tags: ["mark", "advanced"],
       }),
-      span: new MarkCommand(this.host, {
-        id: "span",
-        label: () => msg("Span"),
-        description: () => msg("Mark the selection as a span"),
-        icon: "rectangle",
-        shortcut: "alt+shift+x",
-        tags: ["mark", "advanced"],
-      }),
-      strong: new MarkCommand(this.host, {
+            strong: new MarkCommand(this.host, {
         id: "strong",
         label: () => msg("Strong Importance"),
         description: () => msg("Mark the selection as strongly important"),
