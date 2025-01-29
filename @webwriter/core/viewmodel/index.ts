@@ -43,22 +43,22 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
     this.initialized = new Promise(async resolve => {
       super.connectedCallback()
       this.initializing = true
-      this.icons = new IconController(this)
       this.environment = new EnvironmentController(this)
       await this.environment.ready
-      if ('serviceWorker' in navigator && window.isSecureContext && WEBWRITER_ENVIRONMENT.backend !== "tauri") {
+      if ('serviceWorker' in navigator && window.isSecureContext) {
         const registration = await navigator.serviceWorker.register( // @ts-ignore
           import.meta.env.MODE === 'production' ? '/bundleservice.js' : '/dev-sw.js?dev-sw', // @ts-ignore
           { type: WEBWRITER_ENVIRONMENT.engine.name === "Gecko"? "classic": "module", scope: "/" }
         )
-        const worker = registration.installing
+        /*const worker = registration.installing
         if(worker) {
           await Promise.race([
             new Promise(resolve => worker.addEventListener("statechange", e => worker.state === "activated"? resolve: null)),
             new Promise(r => setTimeout(r, 3000))
           ])
-        }
+        }*/
       }
+      this.icons = new IconController(this)
       const userSettings = await SettingsController.getUserSettings()
       this.store = StoreController(new RootStore({settings: userSettings, corePackages: CORE_PACKAGES, initializePackages: true, apiBase: "https://api.webwriter.app/ww/v1/"}), this)
       this.settings = new SettingsController(this, this.store)
