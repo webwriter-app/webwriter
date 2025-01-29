@@ -10,7 +10,7 @@
     "make-app-icon": "tauri icon ./@webwriter/core/app-icon.png",
     "extract-localization": "lit-localize extract --config ./@webwriter/core/lit-localize.json",
     "build-localization": "lit-localize build --config ./@webwriter/core/lit-localize.json",
-    "autolocalize": "node --env-file=.env ./scripts/autolocalize.js",
+    "autolocalize": "node --env-file=./.env ./scripts/autolocalize.js",
     "prestart": "npm-run-all -pc preparestatic build-localization",
     "dev-docs": "bundle exec jekyll serve -s ./docs",
     "prebuild": "npm-run-all -p preparestatic build-localization",
