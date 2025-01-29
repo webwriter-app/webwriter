@@ -1,11 +1,10 @@
 import { EditorState, NodeSelection, TextSelection } from "prosemirror-state";
-import { SchemaPlugin, parseStyleAttrs, serializeStyleAttrs, styleAttrs } from ".";
-import { ProsemirrorEditor } from "../../../../view/app";
-import { camelCaseToSpacedCase, range } from "../../../utility";
-import { chainCommands, createParagraphNear, deleteSelection, joinBackward, joinTextblockBackward, joinUp, lift, liftEmptyBlock, selectParentNode } from "prosemirror-commands";
+import { SchemaPlugin, styleAttrs } from ".";
+import { ProsemirrorEditor } from "#view/index.js";
+import { camelCaseToSpacedCase, range } from "#utility";
+import { chainCommands } from "prosemirror-commands";
 import {Node, NodeType, Attrs, Slice, Fragment} from "prosemirror-model"
-import { ContentExpression, ParentedExpression } from "../../contentexpression";
-import { HTMLElementSpec } from "../htmlelementspec";
+import { ContentExpression, ParentedExpression } from "#model";
 import { GapCursor } from "prosemirror-gapcursor";
 
 
