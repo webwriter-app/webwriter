@@ -499,8 +499,8 @@ export class DocumentStore implements Resource {
   }
 
   get empty() {
-    const defaultState = createEditorState({ schema: this.editorState.schema });
-    return this.editorState.doc.eq(defaultState.doc);
+
+    return !this.editorState.doc.content.size || this.editorState.doc.eq(createEditorState({ schema: this.editorState.schema }).doc);
   }
 
   get inMemory() {
