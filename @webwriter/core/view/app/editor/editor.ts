@@ -497,6 +497,10 @@ export class ExplorableEditor extends LitElement {
           height: fit-content;
 				}
 
+        ww-toolbox {
+          background: transparent;
+        }
+
 			}
 
       @media only print {
