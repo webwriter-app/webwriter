@@ -313,7 +313,6 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
       }
     }
     if((this.state as any)?.head$ && (!previous.get("state")?.head$ || !previous.get("state")?.head$.doc.eq((this.state as any)?.head$.doc)) && !this.url) {
-      console.log(3)
       this.renderHead()
     }
     
