@@ -139,6 +139,9 @@ export class Combobox extends SlInput implements DataInput {
       padding-right: 0;
       background: white;
     }
+    :host([size=small]) label {
+      font-size: var(--sl-input-label-font-size-small); 
+    }
 
     :host(:not([inputDisabled]):not([disabled])) {
       cursor: text;
