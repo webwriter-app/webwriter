@@ -660,8 +660,13 @@ export class ExplorableEditor extends LitElement {
 		this.editorState = this.pmEditor.state as EditorStateWithHead
     this.dispatchEvent(new Event("change"))
 		this.updatePosition()
-    this.updateDocumentElementClasses(undefined, true)
 	}
+
+  protected updated(changed: PropertyValues): void {
+    if(changed.has("editingStatus") || changed.has("editorState")) {
+      this.updateDocumentElementClasses(undefined)
+    }
+  }
 
 	get isInNarrowLayout() {
 		return document.documentElement.offsetWidth <= 1129
@@ -675,7 +680,7 @@ export class ExplorableEditor extends LitElement {
     return this.isInWideLayout
       ? 27
       : 34 + Math.max(0, document.documentElement.offsetWidth - 1130)
-	}
+  }
 
 	get activeElement(): HTMLElement | null {
 			const {selection} = this
@@ -683,7 +688,7 @@ export class ExplorableEditor extends LitElement {
         return null
       }
       if(selection instanceof GapCursor) {
-        return this.pmEditor.body.querySelector(".ProseMirror-gapcursor")
+        return this.pmEditor?.body?.querySelector(".ProseMirror-gapcursor") ?? null
       }
       else if(selection instanceof AllSelection) {
         return this.pmEditor.body
@@ -1208,11 +1213,18 @@ export class ExplorableEditor extends LitElement {
   private static embedTypes = ["application/pdf"]
 
   private selectElementInEditor(el: HTMLElement) {
-    const pos = Math.max(this.pmEditor.posAtDOM(el, 0) - 1, 0)
-    const selection = NodeSelection.create(this.pmEditor.state.doc, pos)
+    let selection
+    if(el.tagName === "BODY" || el.tagName === "HTML") {
+      selection = new AllSelection(this.pmEditor.state.doc)
+    }
+    else {
+      const pos = Math.max(this.pmEditor.posAtDOM(el, 0) - (el.tagName.includes("-") && !el.children.length? 0: 1), 0)
+      selection = NodeSelection.create(this.pmEditor.state.doc, pos)
+    }
     this.pmEditor.dispatch(this.pmEditor.state.tr.setSelection(selection))
     this.pmEditor.focus()
     el.focus()
+    this.updateDocumentElementClasses()
   }
 
   blobsToElements = async (blobs: Blob[]) => {
@@ -1290,24 +1302,35 @@ export class ExplorableEditor extends LitElement {
     "keyup": (e: any) => this.updateDocumentElementClasses(e, true),
     "mouseup": (e: any) => this.updateDocumentElementClasses(e),
     "mousedown": (e: any) => this.updateDocumentElementClasses(e),
-    "resize": () => this.requestUpdate()
+    "resize": () => this.requestUpdate(),
+    "focus": (e: any) => this.updateDocumentElementClasses(e, true)
   }
 
   updateDocumentElementClasses = (e?: KeyboardEvent | MouseEvent, removeOnly=false) => {
-    if(this.previewMode || this.sourceMode) {
+    if(this.previewMode || this.sourceMode || !this.pmEditor?.documentElement) {
       return
     }
     const toRemove = [
       !e?.ctrlKey && "ww-key-ctrl",
       !e?.altKey && "ww-key-alt",
       !e?.shiftKey && "ww-key-shift",
-      !e?.metaKey && "ww-key-meta"
+      !e?.metaKey && "ww-key-meta",
+      !this.isAllSelected && "ww-all-selected",
+      !this.app.store.document.empty && "ww-empty",
+      this.editingStatus !== "copying" && `ww-copying`,
+      this.editingStatus !== "cutting" && `ww-cutting`,
+      this.editingStatus !== "deleting" && `ww-deleting`,
+      this.editingStatus !== "inserting" && `ww-inserting`,
+      this.editingStatus !== "pinning" && `ww-pinning`,
     ].filter(k => k) as string[]
     const toAdd = [
       e?.ctrlKey && "ww-key-ctrl",
       e?.altKey && "ww-key-alt",
       e?.shiftKey && "ww-key-shift",
-      e?.metaKey && "ww-key-meta"
+      e?.metaKey && "ww-key-meta",
+      this.isAllSelected && "ww-all-selected",
+      this.app.store.document.empty && "ww-empty",
+      this.editingStatus && `ww-${this.editingStatus}`
     ].filter(k => k) as string[]
     toRemove.length && this.pmEditor?.documentElement.classList.remove(...toRemove)
     !removeOnly && toAdd.length && this.pmEditor?.documentElement.classList.add(...toAdd)
@@ -1317,7 +1340,12 @@ export class ExplorableEditor extends LitElement {
     return html.replaceAll(/style=["']?((?:.(?!["']?\s+(?:\S+)=|\s*\/?[>"']))+.)["']?/g, "")
   }
 
-  handleEditorFocus = () => this.requestUpdate()
+  handleEditorFocus = () => {
+    this.requestUpdate()
+    this.toolbox && (this.toolbox.activeLayoutCommand = undefined)
+    this.palette && (this.palette.managing = false)
+    this.editingStatus = undefined
+  }
 
   handleDoubleClick = (view: EditorView, pos: number, e: MouseEvent) => {
     if(this.selection instanceof GapCursor) {
