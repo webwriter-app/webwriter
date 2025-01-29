@@ -1063,14 +1063,13 @@ export class CommandController implements ReactiveController {
           } else if (!options?.parser || !options?.client) {
             host.dialog = "open";
             return;
-          } else if (
-            !options?.url &&
-            !this.host.store.document.sameAsInitial &&
-            !this.store.packages.apiBase
-          ) {
-            const url = await options.client.pickLoad();
+          } else {
+            let url = options.url
+            if(!options.url) {
+              url = await options.client.pickLoad();
+            }
             const data = await host.store.document.load(
-              options.url,
+              url,
               options.parser,
               options.client
             );
