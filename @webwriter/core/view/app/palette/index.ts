@@ -144,7 +144,6 @@ export class Palette extends LitElement {
       grid-auto-rows: 40px;
       max-width: 500px;
       margin-left: auto;
-      padding-right: 10px;
       padding-bottom: 5px;
       gap: 4px;
       grid-auto-flow: row dense;
@@ -153,6 +152,7 @@ export class Palette extends LitElement {
       overflow-x: hidden;
       position: relative;
       scrollbar-width: thin;
+      scrollbar-gutter: stable;
       box-sizing: border-box;
     }
 
@@ -707,14 +707,14 @@ export class Palette extends LitElement {
       #package-search:not(:focus-within)[data-invalid] {
         width: 2.125ch !important;
       }
+
+      :host([managing]) #package-search {
+        min-width: 200px;
+      }
       
       #package-search:is(:focus-within, :not([data-invalid])) {
         min-width: 200px;
       }
-    }
-
-    :host([managing]) #package-search {
-      min-width: 200px;
     }
 
 		
