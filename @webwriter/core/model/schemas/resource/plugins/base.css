@@ -485,7 +485,7 @@ table tr {
 @keyframes blink {
   50% {
     opacity: 0.0;
-}
+  }
 }
 table :is(thead, tbody, tfoot) > tr:has(+ .ProseMirror-gapcursor) {
   anchor-name: --table-row;
@@ -510,7 +510,7 @@ table :is(thead, tbody, tfoot) > .ProseMirror-gapcursor {
     clip-path: unset;
     margin-left: 2px;
     margin-top: 2px;
-}
+  }
 }
 
 .ProseMirror-gapcursor + tr td {
@@ -540,6 +540,16 @@ thead, tbody, tfoot {
   color: var(--sl-color-gray-100);
   z-index: 2147483647;
 }
+
+html.ww-cutting ::selection {
+  background-color: var(--sl-color-warning-300);
+}
+
+
+html.ww-deleting ::selection {
+  background-color: var(--sl-color-danger-300);
+}
+
 
 abbr {
   text-decoration: underline 1px dotted currentColor;
