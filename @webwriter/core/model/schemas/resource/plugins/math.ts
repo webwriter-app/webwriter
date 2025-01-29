@@ -46,7 +46,7 @@ export function MathMLElementSpec({tag, content, marks, group, inline, atom, att
   }
 }
 
-const MATHML_TAGS = [
+export const MATHML_TAGS = [
   "mtext",
   "annotation",
   "annotation-xml",
