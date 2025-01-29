@@ -1447,6 +1447,7 @@ export class CommandController implements ReactiveController {
         label: () => msg("Details"),
         icon: "circle-chevron-right",
         description: () => msg("Insert details"),
+        run: host => host.activeEditor!.exec(wrapSelection("summary")),
         group: "interactive",
         tags: ["node", "container"],
       }),
