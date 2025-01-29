@@ -15,7 +15,7 @@
     "dev-docs": "bundle exec jekyll serve -s ./docs",
     "prebuild": "npm-run-all -p preparestatic build-localization",
     "build": "npm run vite -- build @webwriter/core",
-    "devbuild": "npm run build-core && http-server ./@webwriter/core/dist",
+    "devbuild": "npm run build && http-server ./@webwriter/core/dist",
     "vite": "vite"
   },
   "repository": {
