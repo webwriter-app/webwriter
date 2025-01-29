@@ -67,6 +67,30 @@ html::-webkit-scrollbar-button:vertical:single-button:increment:disabled {
   outline: none;
 }
 
+html.ww-all-selected:not(.ww-empty) {
+  & body {
+    border: 1px solid var(--sl-color-primary-400);
+
+    &::after {
+      content: "";
+      display: block;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--sl-color-primary-400);
+      opacity: 10%;
+      pointer-events: none;
+    }
+  }
+
+  & ::selection {
+    background: transparent !important;
+    caret-color: transparent !important;
+  }
+}
+
 a:not([href]) {
   text-decoration: underline;
   color: #0000ee;
