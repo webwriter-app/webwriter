@@ -476,3 +476,10 @@ export function formatHTMLToPlainText(html: string): string {
     .replace(/\n\s*\n/g, "\n\n") // Replace multiple line breaks with a single double line break
     .trim(); // Trim leading and trailing whitespace
 }
+
+/** Lit attribute converter for whitespace-separated lists */
+export const SpacedListAttributeConverter = {
+  fromAttribute: (attr: string) => attr?.split(/\s+/),
+  toAttribute: (prop: string[]) => prop.length? prop.join(" "): undefined
+}
+
