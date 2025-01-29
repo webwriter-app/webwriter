@@ -207,16 +207,18 @@ export class  Toolbox extends LitElement {
         -webkit-user-select: none;
         font-size: 0.95rem;
         align-items: flex-start;
-        padding-left: 10px;
+        padding-left: 9px;
+        margin-left: 1px;
         padding-bottom: 1ch;
         overflow: visible;
         scrollbar-width: thin;
         box-sizing: border-box;
         position: relative;
+        min-width: 250px;
       }
 
       :host > * {
-        max-width: 200px;
+        max-width: 230px;
       }
 
       #name:hover {
@@ -988,6 +990,9 @@ export class  Toolbox extends LitElement {
 
   @property({type: Boolean, attribute: true, reflect: true})
   advancedStyling = false
+
+  @property({type: Number, attribute: true, reflect: true})
+  shiftPaddingStyling = 0
 
   InlineToolbox = () => {
     const {fontFamilyCommand, fontSizeCommand, clearFormattingCommand} = this.app.commands

@@ -47,12 +47,19 @@ export class Layout extends LitElement {
 
   static styles = css`
     :host {
+      --ww-left-margin-width: 1fr;
       display: grid;
-      grid-template-columns: 16px 1fr 80px minmax(auto, 680px) 80px 1fr 16px;
+      grid-template-columns: 16px minmax(auto, var(--ww-left-margin-width)) 80px minmax(auto, 680px) 80px 1fr 16px;
       grid-template-rows: minmax(50px, max-content) max-content 1fr;
       align-items: flex-start;
       height: 100vh;
       width: 100vw;
+    }
+
+    @media only screen and (min-width: 1130px) and (max-width: 1360px) {
+      :host {
+        --ww-left-margin-width: 0px;
+      }
     }
 
     

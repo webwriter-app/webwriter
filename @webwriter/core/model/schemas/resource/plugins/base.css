@@ -107,6 +107,12 @@ body {
   caret-color: currentColor;
 }
 
+@media screen and (min-width: 1130px) and (max-width: 1360px) {
+  body {
+    margin-left: 0;
+  }
+}
+
 figure:hover {
   position: relative;
 }
@@ -731,7 +737,7 @@ body:has(.ww-fullscreen) > :not(.ww-fullscreen) {
   display: none !important;
 }
 
-@media only screen and (min-width: 1300px) {
+@media only screen and (min-width: 1130px) {
   .ww-widget::part(options) {
     position: fixed;
     width: var(--ww-toolbox-action-width);

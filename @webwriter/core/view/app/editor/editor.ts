@@ -661,7 +661,17 @@ export class ExplorableEditor extends LitElement {
 	}
 
 	get isInNarrowLayout() {
-		return document.documentElement.offsetWidth <= 1360
+		return document.documentElement.offsetWidth <= 1129
+	}
+
+  get isInWideLayout() {
+    return document.documentElement.offsetWidth > 1360
+  }
+
+  get shiftPaddingStyling() {
+    return this.isInWideLayout
+      ? 27
+      : 34 + Math.max(0, document.documentElement.offsetWidth - 1130)
 	}
 
 	get activeElement(): HTMLElement | null {
@@ -810,7 +820,7 @@ export class ExplorableEditor extends LitElement {
       if(this.app.store.ui.stickyToolbox) {
         this.positionStyle = css`
           body {
-            --ww-toolbox-action-x: ${this.toolboxX - iframeOffsetX}px;
+            --ww-toolbox-action-x: ${this.toolboxX - iframeOffsetX + 10}px;
             --ww-toolbox-action-y: ${this.toolboxY + this.toolboxHeight - iframeOffsetY}px;
             --ww-toolbox-action-width: ${docWidth - rightEdge - 40}px;
             --ww-toolbox-action-height: ${docHeight + -this.toolboxY + -this.toolboxHeight}px
@@ -823,7 +833,7 @@ export class ExplorableEditor extends LitElement {
         const toolboxWidth = this.toolbox.offsetWidth
         this.positionStyle = css`
           body {
-            --ww-toolbox-action-x: ${toolboxX}px;
+            --ww-toolbox-action-x: ${toolboxX + 10}px;
             --ww-toolbox-action-y: ${toolboxY + this.toolboxHeight}px;
             --ww-toolbox-action-width: ${toolboxWidth - 20}px;
             --ww-toolbox-action-height: ${docHeight + -toolboxY + -this.toolboxHeight - 20}px
@@ -1415,6 +1425,7 @@ export class ExplorableEditor extends LitElement {
         class=${this.toolboxMode}
 				style=${styleMap(this.toolboxStyle)}
 				.activeElement=${activeElement}
+        .shiftPaddingStyling=${this.shiftPaddingStyling}
 				@ww-delete-widget=${(e: any) => this.deleteWidget(e.detail.widget)}
 				@ww-mark-field-input=${(e: any) => {
 					const {from, to} = this.editorState.selection
