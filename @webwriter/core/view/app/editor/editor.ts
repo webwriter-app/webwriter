@@ -596,7 +596,7 @@ export class ExplorableEditor extends LitElement {
       if(this.printing) {
         decorations.push(Decoration.node(pos, pos + node.nodeSize, {class: "ww-beforeprint"}))
       }
-      if(["picture", "audio", "video", "iframe", "table"].includes(node.type.name)) {
+      if(["picture", "audio", "video", "iframe"].includes(node.type.name)) {
         decorations.push(Decoration.widget(pos, (view, getPos) => {
           let el: HTMLElement | undefined = undefined
           // Fix this crutch
