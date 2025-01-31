@@ -3,6 +3,11 @@ import {parser} from "./cssvalue.grammar"
 import { MediaType } from "#model"
 import { CSSValueDefinition, treeLog } from "./cssvaluedefinition"
 
+if(!("CSSMathValue" in window)) { // @ts-ignore: Hotfix until CSS Typed OM is supported in Gecko
+  window.CSSMathValue = window.CSSTransformValue = window.CSSUnitValue = window.CSSKeywordValue = class {
+
+  }
+}
 
 function cssFunc(name: string, args: (CSSStyleValue | string | undefined)[], separator=" ") {
   return `${name}(${args.filter(a=>a).map(a => a!.toString()).join(separator)})`
