@@ -226,7 +226,7 @@ export class BoxPicker extends LitPickerElement<(typeof PICKER_COMMAND_PROPERTIE
 
   get transformValue() {
     const v = this.getCurrentValue("transform")
-    return !v? undefined: CSSTransformValue.parse(v)
+    return !v || navigator.userAgent.search(/gecko/i)>0? undefined: CSSTransformValue.parse(v)
   }
 
   updateTransformComponent(v: string, remove=false) { // DEBUG
@@ -1297,6 +1297,11 @@ export class BoxPicker extends LitPickerElement<(typeof PICKER_COMMAND_PROPERTIE
   }
 
 	render() {
-    return [this.PositionPane(), this.BoxPane(), this.TransformPane(), this.ShapePane()]
+    return [
+      this.PositionPane(),
+      this.BoxPane(),
+      navigator.userAgent.search(/gecko/i)>0? undefined: this.TransformPane(),
+      this.ShapePane()
+    ]
   }
 }
