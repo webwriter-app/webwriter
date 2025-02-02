@@ -720,6 +720,7 @@ export class  Toolbox extends LitElement {
 
       #element-breadcrumb::part(base) {
         border-bottom: 2px solid var(--sl-color-gray-600);
+        min-height: 45px;
       }
 
       #element-breadcrumb sl-tree-item {
