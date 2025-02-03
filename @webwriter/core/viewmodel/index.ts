@@ -11,6 +11,8 @@ export * from "./iconcontroller"
 import {StoreController, EnvironmentController, CommandController, LocalizationController, NotificationController, SettingsController, IconController} from "#viewmodel"
 import { RootStore } from "#model"
 import { msg } from "@lit/localize"
+import posthog from "posthog-js"
+import { idle } from "#model/utility/index.js"
 
 async function getAllLocalHandles(): Promise<FileSystemDirectoryHandle[]> {
   const db = indexedDB.open("webwriter")
@@ -65,6 +67,15 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
       this.localization = new LocalizationController(this, this.store)
       this.commands = new CommandController(this as any, this.store)
       this.notifications = new NotificationController(this, this.store)
+      if(this.store.ui.authoringAnalytics) {
+        await Promise.race([
+          idle(15000),
+          new Promise (r => posthog.init(
+            'phc_V2cc746TcRUY7xTnU3YA2nLv95sCvHJEZ0A1laH8d2Q',
+            { api_host: 'https://eu.i.posthog.com', loaded: r },
+          ))
+        ])
+      }
       window.addEventListener("beforeunload", e => {
         if(this.store.document.changed) {
           e.preventDefault()

@@ -3378,6 +3378,26 @@
         <source>WebWriter can embed SVG directly in the document.</source>
         <target>WebWriter saab SVG-dokumenti otse dokumenti sisse põimida.</target>
       </trans-unit>
+      <trans-unit id="s3437e0d9899e7ae1">
+        <source>Send telemetry data about your usage of WebWriter.</source>
+        <target>Saatke telemeetriaandmeid WebWriteri kasutamise kohta.</target>
+      </trans-unit>
+      <trans-unit id="s80570196a9ce6d11">
+        <source>Enable telemetry</source>
+        <target>Telemeetria lubamine</target>
+      </trans-unit>
+      <trans-unit id="sb66e2181a7b5738a">
+        <source>By enabling telemetry, you allow for data collection and retention according to our</source>
+        <target>Telemeetria lubamisega lubate andmete kogumist ja säilitamist vastavalt meie</target>
+      </trans-unit>
+      <trans-unit id="sbc6953a36ced943f">
+        <source>privacy policy</source>
+        <target>privaatsuspoliitika</target>
+      </trans-unit>
+      <trans-unit id="sb85774dc5d18ff0f">
+        <source>Confirm</source>
+        <target>Kinnitage</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

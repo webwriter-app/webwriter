@@ -866,6 +866,8 @@
 'spaceKey': `Space`,
 'tabKey': `⭾ Tab`,
 'upKey': `↑ Нагоре`,
+'s2ed1628c281b0c1d': `Send anonymous telemetry data to WebWriter.`,
+'s80570196a9ce6d11': `Enable telemetry`,
 'scbf29ce484222325': ``,
     };
   
