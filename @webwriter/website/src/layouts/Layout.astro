@@ -32,7 +32,7 @@ function capitalize(str: string) {
   return str[0].toUpperCase() + str.slice(1)
 }
 
-const pageFiles = (await Astro.glob("../pages/**/*.astro")).filter(page => !page.url?.endsWith("]") && !page.url?.endsWith("404") && !page?.url?.endsWith("legal_notice") && !page?.url?.endsWith("dashboard") && page.url)
+const pageFiles = (await Astro.glob("../pages/**/*.astro")).filter(page => !page.url?.endsWith("]") && !page.url?.endsWith("404") && !page?.url?.endsWith("legal_notice")  && !page?.url?.endsWith("privacy") && !page?.url?.endsWith("dashboard") && page.url)
 const pageUrls = pageFiles
   .map(page => page.url ?? "")
   .map(url => getRelativeLocaleUrl(Astro.currentLocale!, url))
@@ -111,6 +111,7 @@ import { getRelativeLocaleUrl } from "astro:i18n";
         </div>
         <div>{msg("© Frederic Salmen. All rights reserved.")}</div>
         <a data-swup-preload class="legal_notice" draggable="false" href={getRelativeLocaleUrl(Astro.currentLocale!, "/legal_notice")}>{msg("Legal Notice")}</a>
+        <a class="privacy_policy" draggable="false" href={getRelativeLocaleUrl(Astro.currentLocale!, "/privacy")}>{msg("Privacy policy")}</a>
       </div>
       <div class="sitemap-card">
         <h2>{msg("Pages")}</h2>

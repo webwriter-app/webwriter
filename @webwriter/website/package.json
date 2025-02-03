@@ -9,7 +9,7 @@
 		"build": "astro build",
 		"preview": "astro preview",
 		"astro": "astro",
-		"start-backend": "pocketbase serve",
+		"start-backend": "./pocketbase serve",
 		"installwidgets": "node scripts/installwidgets",
 		"getreleases": "node scripts/getreleases"
 	},

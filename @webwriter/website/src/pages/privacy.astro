@@ -1,0 +1,52 @@
+---
+import Layout from '../layouts/Layout.astro';
+import {Content} from '@content/misc/privacy.md';
+
+---
+
+<Layout title="Privacy Policy">
+    <div id="privacy-base">
+        <Content />
+    </div>
+</Layout>
+
+<style is:global>
+    #privacy-base {
+        padding: 2rem;
+        padding-top: 0;
+    }
+
+    #privacy-base :is(h1, h2, h3, h4, h5, h6) a {
+        text-decoration: none;
+        color: inherit;
+    }
+
+    #privacy-base h1 {
+        display: flex;
+        background: var(--sl-color-gray-950);
+        padding: 1rem 2rem;
+        margin-top: 0;
+        color: white;
+    }
+
+    #privacy-base p {
+        margin-bottom: 1rem;
+        margin-top: 0.5rem;
+        font-size: 1.25rem;
+        line-height: 1.5;
+        text-align: justify;
+    }
+
+    #privacy-base h1 span {
+        background: var(--sl-color-gray-950);
+        color: var(--sl-color-gray-50);
+        padding: 0.5rem 1rem;
+    }
+
+    #privacy-base h2 {
+        background: var(--sl-color-gray-950);
+        color: var(--sl-color-gray-50);
+        padding: 0.5rem 1rem;
+        margin-bottom: 0.1rem;
+    }
+</style>
