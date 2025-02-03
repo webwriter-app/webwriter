@@ -47,7 +47,7 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
       await this.environment.ready
       if ('serviceWorker' in navigator && window.isSecureContext) {
         const registration = await navigator.serviceWorker.register( // @ts-ignore
-          import.meta.env.MODE === 'production' ? '/bundleservice.js' : '/dev-sw.js?dev-sw', // @ts-ignore
+          import.meta.env.MODE === 'production' ? '/index.service.js' : '/dev-sw.js?dev-sw', // @ts-ignore
           { type: WEBWRITER_ENVIRONMENT.engine.name === "Gecko"? "classic": "module", scope: "/" }
         )
         /*const worker = registration.installing
