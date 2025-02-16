@@ -9,7 +9,7 @@ export * from "./environmentcontroller"
 export * from "./iconcontroller"
 
 import {StoreController, EnvironmentController, CommandController, LocalizationController, NotificationController, SettingsController, IconController} from "#viewmodel"
-import { RootStore } from "#model"
+import { HTTPClient, RootStore } from "#model"
 import { msg } from "@lit/localize"
 import posthog from "posthog-js"
 import { idle } from "#model/utility/index.js"
@@ -99,6 +99,19 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
         } 
       }
       await this.store.packages.initialize()
+      const locationUrl = new URL(location.href)
+      const src = locationUrl.searchParams.get("src")
+      if(src) {
+        await this.store.document.load(
+          new URL(decodeURIComponent(src)),
+          undefined,
+          (new HTTPClient()) as any,
+          undefined,
+          false
+        )
+        locationUrl.searchParams.delete("src")
+        history.replaceState({}, "", locationUrl)
+      }
       this.requestUpdate()
       this.initializing = false
       document.body.classList.add("loaded")
