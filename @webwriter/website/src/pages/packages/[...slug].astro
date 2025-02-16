@@ -1,0 +1,89 @@
+---
+import Layout from '@layouts/Layout.astro'
+import allWidgets from "@resources/packages.json"
+import WidgetPlayground from "@components/packageplayground.vue"
+
+const pathname = new URL(Astro.request.url).pathname
+// 1. Generate a new path for every collection entry
+export async function getStaticPaths() {
+    const widgetNames = allWidgets.map(widget => widget.name)
+    const widgetUrls = widgetNames.map(name => `widgets/${encodeURI(name)}`)
+  const entries = widgetUrls.map((url, i) => ({
+    params: {slug: url.replace("widgets/", "")}, props: allWidgets[i],
+  }))
+  return entries
+}
+// 2. When it's time to render, you can get the entry directly from the prop
+const { name, description, author, contributors, version, keywords: rawKeywords, license, exports, editingConfig, snippets } = Astro.props;
+
+export type Person = {name: string, email?: string, url?: string}
+export type Repository = {type: "git", url: string, directory?: string, provider?: string}
+type NpmPerson = Pick<Person, "email" | "url"> & {username: string} 
+
+function parsePerson(value: string | Person | Person[] | NpmPerson) {
+    const personRegex = /^([^<(]+?)?[ \t]*(?:<([^>(]+?)>)?[ \t]*(?:\(([^)]+?)\)|$)/gm
+    if(typeof value === "string") {
+        const [_, name, email, url] = Array.from(value.matchAll(personRegex))[0]
+        return {name, email, url}
+    }
+    else if(value && "username" in value) {
+        return {name: value.username, email: value.email, url: value.url}
+    }
+    else {
+        return value
+    }
+}
+
+function invertObject<T extends {}>(obj: T) {
+    return Object.fromEntries(Object.entries(obj).map(([k, v]) => [v, k]))
+}
+
+function parseRepository(value: string | Repository | undefined) {
+    const resolvedProtocol = {
+        "github": "https://github.com/",
+        "gist": "https://gist.github.com/",
+        "bitbucket": "https://bitbucket.org/",
+        "gitlab": "https://gitlab.com/",
+        "none": undefined,
+        "https": "https:",
+        "http": "http:"
+    }
+    const providers = invertObject(resolvedProtocol)
+    if(typeof value === "string") {
+        const urlObj = new URL(value)
+        const protocol = resolvedProtocol[urlObj.protocol.slice(0, -1) as keyof typeof resolvedProtocol]
+        const url = protocol + urlObj.href.replace(urlObj.protocol, "")
+        const provider = providers[Object.keys(providers).find(k => url.startsWith(k)) ?? "none"]
+        return {type: "git", url, provider}
+    }
+    else {
+        const provider = providers[Object.keys(providers).find(k => value?.url.startsWith(k)) ?? "none"]
+        if(value?.url && value.url.startsWith("git@")) {
+            const urlObj = new URL(value.url.replace("git@", ""))
+            const url = `https://${urlObj.protocol.slice(0, -1)}/${urlObj.pathname}`
+            return {...value, url, provider}
+        }
+        else {
+            return {...value, provider}
+        }
+    }
+}
+
+let people = [parsePerson(author), ...(contributors ?? []).map(parsePerson)]
+    .filter(x => x)
+const keywords = rawKeywords.filter(kw => kw !== "webwriter-widget")
+
+
+function prettifyWidgetName(name: string) {
+    let result = name.replaceAll(/^@.+\//g, "").replaceAll(/^.+-/g, "")
+    result = result[0].toUpperCase() + result.slice(1)
+    return result
+}
+
+// import "../../resources/widgets.js"
+---
+
+
+<Layout title="Widgets">
+    <WidgetPlayground client:only="vue"  license={license} keywords={keywords} version={version} people={people} name={name} description={description} exports={exports} editingConfig={editingConfig} snippets={snippets}></WidgetPlayground>
+</Layout>
