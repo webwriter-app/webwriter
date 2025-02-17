@@ -13,6 +13,7 @@ import { history } from "prosemirror-history";
 import { chainCommands } from "prosemirror-commands";
 import { createVirtualCursor as virtualCursor } from "prosemirror-virtual-cursor";
 import { head } from "../head";
+import { reactKeys } from "@handlewithcare/react-prosemirror";
 
 export interface SchemaPlugin<
   N extends string = string,
@@ -81,6 +82,7 @@ export function configFromSchemaPlugins(
     inputRules({ rules: schemaPlugins.flatMap((p) => p.inputRules ?? []) }),
     history(),
     gapCursor(),
+    reactKeys(),
     // virtualCursor(),
     ...schemaPlugins.filter((p) => p.plugin).flatMap((p) => p.plugin!),
   ];

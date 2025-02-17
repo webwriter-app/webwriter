@@ -40,6 +40,7 @@
   "devDependencies": {
     "@tabler/icons": "^3.3.0",
     "@tauri-apps/cli": "^1.6.0",
+    "@types/react-dom": "^19.0.3",
     "@types/semver": "^7.3.13",
     "@wagnerflo/cc-icons": "^1.2.1",
     "@wdio/cli": "^9.4.5",
@@ -54,5 +55,10 @@
     "vite": "^5.4.2",
     "xliff": "^6.2.1",
     "zod-to-json-schema": "^3.23.0"
+  },
+  "dependencies": {
+    "@handlewithcare/react-prosemirror": "^2.2.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   }
 }

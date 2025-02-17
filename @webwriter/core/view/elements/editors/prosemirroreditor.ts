@@ -13,6 +13,14 @@ import {ImportMap} from "@jspm/import-map"
 import {Generator} from "@jspm/generator"
 import { ifDefined } from "lit/directives/if-defined.js"
 import hotkeys from "hotkeys-js"
+import { createElement, StrictMode, use, useEffect, useRef, useState } from 'react';
+import { createRoot, Root } from "react-dom/client"
+import {
+  ProseMirror as ReactProseMirror,
+  ProseMirrorDoc as ReactProseMirrorDoc,
+  reactKeys,
+  useEditorEffect
+} from "@handlewithcare/react-prosemirror";
 
 const scopedCustomElementRegistryBlob = new Blob([scopedCustomElementRegistry], {type: "text/javascript"})
 
@@ -127,21 +135,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
   scrollMargin: IProsemirrorEditor["scrollMargin"]
 
   @property({attribute: false})
-  get state(): IProsemirrorEditor["state"] {
-    return this.view?.state
-  }
-
-  set state(state) {
-    try {
-      this.view && !this.view.isDestroyed? this.view.updateState(state): this.initialState = state 
-    }
-    catch(err: any) {
-      if(err.message !== "Cannot read properties of null (reading 'focusNode')") {
-        throw err
-      }
-    }
-    this.requestUpdate("state", this.state)
-  }
+  state: IProsemirrorEditor["state"]
 
   private initialState: IProsemirrorEditor["state"]
 
@@ -150,8 +144,6 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
 
   @property({attribute: false})
   dispatchTransaction: IProsemirrorEditor["dispatchTransaction"]
-
-  private view: EditorView
 
   @property({type: String, attribute: false})
 	contentScript: string
@@ -266,19 +258,39 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
 
   get directProps(): DirectEditorProps {
     return {
-      ...pickObject(this, ["handleDOMEvents", "handleKeyDown", "handleKeyPress", "handleTextInput", "handleClickOn", "handleClick", "handleDoubleClickOn", "handleDoubleClick", "handleTripleClickOn", "handleTripleClick", "handlePaste", "handleDrop", "handleScrollToSelection", "createSelectionBetween", "domParser", "transformPastedHTML", "clipboardParser", "transformPastedText", "clipboardTextParser", "transformPasted", "transformCopied", "nodeViews", "markViews", "clipboardSerializer", "clipboardTextSerializer", "decorations", "scrollThreshold", "scrollMargin"]),
+      ...pickObject(this, ["handleDOMEvents", "handleKeyDown", "handleKeyPress", "handleTextInput", "handleClickOn", "handleClick", "handleDoubleClickOn", "handleDoubleClick", "handleTripleClickOn", "handleTripleClick", "handlePaste", "handleDrop", "handleScrollToSelection", "createSelectionBetween", "domParser", "transformPastedHTML", "clipboardParser", "transformPastedText", "clipboardTextParser", "transformPasted", "transformCopied", "clipboardSerializer", "clipboardTextSerializer", "decorations", "scrollThreshold", "scrollMargin"]),
       editable: this.shouldBeEditable,
-      state: this.state ?? this.initialState,
+      // customNodeViews: this.nodeViews,
       attributes: {
         "data-iframe-height": "",
         "data-placeholder": this.placeholder ?? "",
         ...this.pmAttributes
       },
-      dispatchTransaction: (tr: Transaction) => {
-        const editorState = this.view.state.apply(tr)
-        this.updateState(editorState)
-      }
     }
+  }
+
+  reactRoot: Root
+  view: EditorView
+
+  ViewComponent = () => {
+    const [state, setEditorState] = useState(this.state ?? this.initialState)
+    return createElement(ReactProseMirror, {
+      ...this.directProps,
+      state,
+      dispatchTransaction: (tr: Transaction) => {
+        let newState: any
+        setEditorState(s => newState = s.apply(tr))
+        this.dispatchEvent(new CustomEvent("update", {composed: true, bubbles: true, detail: {editorState: newState}}))
+      },
+      handleDOMEvents: {
+        "focus": (view: any) => {
+          this.view = view
+          this.dispatchEvent(new CustomEvent("ww-initialized"))
+        }
+      }
+    } as any,
+      createElement(ReactProseMirrorDoc, {as: createElement("body")})
+    )
   }
 
   async initialize() {
@@ -292,8 +304,12 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
       const p = this.document.createElement("p")
       this.body.appendChild(p)
     }
-    this.view = new EditorView({mount: this.body}, this.directProps)
-    this.focus()
+    const initialized = new Promise(resolve => this.addEventListener("ww-initialized", resolve))
+    this.reactRoot = createRoot(this.documentElement)
+    this.reactRoot.render(createElement(this.ViewComponent))
+    await initialized
+    // this.view = new EditorView({mount: this.body}, this.directProps)
+    // this.focus()
     this.renderHead()
   }
 
