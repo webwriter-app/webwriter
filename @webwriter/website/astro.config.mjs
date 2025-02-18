@@ -34,9 +34,7 @@ export default defineConfig({
     },
     redirects: {
       "/news": "/news/1",
-      "/de/news": "/de/news/1",
-      "/news/1/[...slug]": "/news/[...slug]",
-      "/de/news/1/[...slug]": "/de/news/[...slug]",
+      "/de/news": "/de/news/1"
     },
     experimental: {
       svg: true
