@@ -68,6 +68,7 @@
     "parsimmon": "^1.18.1",
     "path-browserify-esm": "^1.0.6",
     "pocketbase": "^0.21.3",
+    "posthog-js": "^1.215.1",
     "prosemirror-commands": "^1.6.2",
     "prosemirror-dropcursor": "^1.8.1",
     "prosemirror-example-setup": "^1.2.3",

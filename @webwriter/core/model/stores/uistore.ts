@@ -1,3 +1,5 @@
+import posthog from "posthog-js"
+
 
 type Notification = {
    variant?: "primary" | "success" | "neutral" | "warning" | "danger",
@@ -24,6 +26,22 @@ export class UIStore {
    notifications: Notification[] = []
 
    stickyToolbox = false
+
+   #authoringAnalytics = false
+
+   get authoringAnalytics() {
+      return this.#authoringAnalytics
+   }
+
+   set authoringAnalytics(v) {
+      this.#authoringAnalytics = v
+      if(v) {
+        posthog.startSessionRecording()
+      }
+      else {
+         posthog.stopSessionRecording()
+      }
+   }
 
    // showTextPlaceholder: boolean = false
 

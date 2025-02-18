@@ -61,7 +61,8 @@ export class NotificationController implements ReactiveController {
 		"You are trying to re-register the",
 		"Uncaught TypeError: Failed to execute 'unobserve' on 'ResizeObserver'",
     "Option values cannot include a space. All spaces have been replaced with underscores.",
-    "Uncaught TypeError: Cannot read properties of null (reading 'anchorNode')"
+    "Uncaught TypeError: Cannot read properties of null (reading 'anchorNode')",
+	"Uncaught TypeError: e.toLowerCase is not a function"
 	]
 
 	warningsToIgnore = [

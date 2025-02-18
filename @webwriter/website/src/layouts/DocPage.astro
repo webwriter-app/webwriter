@@ -7,6 +7,7 @@ const allDocs = (await getCollection('docs'))
     .sort((a, b) => a.data.order - b.data.order)
     .map(doc => ({...doc, level: new Set(doc.slug.split("/")).size}))
 
+console.log(allDocs.map(doc => doc.slug))
 const categories = new Set(allDocs.reduce((acc, doc) => {
   return doc.slug.includes("/")? [...acc, doc.slug.split("/")[0]]: acc
 }, [] as string[]))
@@ -37,9 +38,9 @@ const docActive = allDocs.map((doc, i) =>{
               <a data-swup-preload href="/docs">Documentation</a>
           </h3>
           <ol>
-              {allDocs.map((doc, i) => <li class="doc-link" data-level={doc.level} data-hasconfig={allDocs.some(cdoc => cdoc.data.configFor === doc.slug)} data-isconfig={!!doc.data.configFor}>
-                <a data-active={docActive[i]} data-swup-preload href={docUrls[i]}>{doc.data.title}</a>
-                <a data-active={docActive[allDocs.findIndex(cdoc => cdoc.data.configFor === doc.slug)]} class="config-link" href={docUrls[allDocs.findIndex(cdoc => cdoc.data.configFor === doc.slug)]}>Config</a>
+              {allDocs.map((doc, i) => <li class="doc-link" data-level={doc.level} data-hasconfig={allDocs.some(cdoc => cdoc.data.configFor === doc.slug)? true: undefined} data-isconfig={doc.data.configFor? true: undefined}>
+                <a data-active={docActive[i]? true: undefined} href={docUrls[i]}>{doc.data.title}</a>
+                <a data-active={docActive[allDocs.findIndex(cdoc => cdoc.data.configFor === doc.slug)]? true: undefined} class="config-link" href={docUrls[allDocs.findIndex(cdoc => cdoc.data.configFor === doc.slug)]}>Config</a>
               </li>)}
           </ol>
           <label id="closeDocsNav" for="docsNavInput" class="bi-x" ></label>
@@ -105,6 +106,7 @@ const docActive = allDocs.map((doc, i) =>{
         padding: 0 2px;
         margin-right: 1rem;
         cursor: pointer;
+        z-index: 1000;
     }
 
     #docsNavToggle:hover {
@@ -226,7 +228,7 @@ const docActive = allDocs.map((doc, i) =>{
       margin-left: 1ch;
     }
 
-    @media (max-width: 1000px) {
+    @media (max-width: 800px) {
 
         #docsNavToggle {
             display: block;
@@ -246,7 +248,7 @@ const docActive = allDocs.map((doc, i) =>{
 
         #docsNavInput:checked ~ #docsNav {
             display: block;
-            background: var(--sl-color-gray-50);
+            background: white;
             position: fixed;
             top: calc(60px + 2.6rem);
             left: -1rem;

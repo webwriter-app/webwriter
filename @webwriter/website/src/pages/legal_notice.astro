@@ -1,15 +1,22 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import {Impressum} from '@components/Impressum';
+import Impressum from '@components/impressum.vue';
 
 ---
 
 <Layout title="Legal Notice">
-  <Impressum client:only="lit" />
+  <Impressum
+    client:only="vue"
+    name="Frederic Salmen"
+    address="Ahornstr. 55, 52074 Aachen"
+    local="contact"
+    domain="webwriter.app"
+    phone="+49 241 80 21967"
+  />
 </Layout>
 
 <style is:global>
-  ww-impressum #text {
+  #text {
     margin: 2rem;
   }
 </style>

@@ -14,4 +14,4 @@ export function getLocalizedURL(url: URL | string, lang: string) {
     )
 }
 
-export const msgResolver = (translations: Record<string, Record<string, string>>, lang: string) => (str: string) => (translations[str]?.[lang] ?? str)
+export const msgResolver = (translations: Record<string, Record<string, string>>, lang: string) => (str: string, id?: string) => (translations[id ?? str]?.[lang] ?? str)

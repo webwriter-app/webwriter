@@ -1,6 +1,6 @@
 ---
 import "@shoelace-style/shoelace/dist/themes/light.css"
-import {EmailAddress} from "@components/EmailAddress"
+import EmailAddress from "@components/emailadress.vue"
 import iconUrl from "@assets/app-icon.svg?url"
 
 import {msgResolver} from "../localize"
@@ -8,14 +8,14 @@ import {msgResolver} from "../localize"
 const lang = Astro.currentLocale!
 const translations = {
   "docs": {"de": "Dokumentation"},
-  "widgets": {"de": "Widgets"},
   "about": {"de": "Über uns"},
-  "get_started": {"de": "Ausprobieren"},
-  "Get Started": {"de": "Ausprobieren"},
+  "get_started": {"de": "Starten"},
+  "Get Started": {"de": "Starten"},
   "Features": {"de": "Funktionen"},
   "© Frederic Salmen. All rights reserved.": {"de": "© Frederic Salmen. Alle Rechte vorbehalten."},
   "Legal Notice": {"de": "Impressum"},
-  "Pages": {"de": "Seiten"}
+  "Pages": {"de": "Seiten"},
+
 }
 
 const msg = msgResolver(translations, lang)
@@ -32,11 +32,11 @@ function capitalize(str: string) {
   return str[0].toUpperCase() + str.slice(1)
 }
 
-const pageFiles = (await Astro.glob("../pages/**/*.astro")).filter(page => !page.url?.endsWith("]") && !page.url?.endsWith("404") && !page?.url?.endsWith("legal_notice") && !page?.url?.endsWith("dashboard") && page.url)
+const pageFiles = (await Astro.glob("../pages/**/*.astro")).filter(page => !page.url?.endsWith("]") && !page.url?.endsWith("404") && !page?.url?.endsWith("legal_notice")  && !page?.url?.endsWith("privacy") && !page?.url?.endsWith("dashboard") && !page?.url?.endsWith("get_started")  && page.url)
 const pageUrls = pageFiles
   .map(page => page.url ?? "")
   .map(url => getRelativeLocaleUrl(Astro.currentLocale!, url))
-const pageOrder = ["", "docs", "widgets", "about", "get_started"]
+const pageOrder = ["", "news", "explorables", "packages", "docs", "about", "get_started"]
 const pages = pageUrls
 	.map(relUrl => {
 		let id = relUrl?.split("/").at(-2) as string
@@ -70,6 +70,10 @@ import { getRelativeLocaleUrl } from "astro:i18n";
 		<link rel="sitemap" href="/sitemap-index.xml" />
 		<meta name="generator" content={Astro.generator} />
     <link rel="icon" href="/assets/app-icon.svg">
+    <script>
+      import "@webcomponents/scoped-custom-element-registry"
+      import "@shoelace-style/shoelace/dist/components/icon/icon.js"
+    </script>
     <SEO
       title={title}
       titleTemplate="%s | WebWriter"
@@ -81,20 +85,20 @@ import { getRelativeLocaleUrl } from "astro:i18n";
 		<header id="layout-header">
       <a data-swup-preload href={getRelativeLocaleUrl(Astro.currentLocale!)} class="logo">
         <img src={iconUrl} alt="WebWriter Icon" width={40} height={40} />
-        <span class="logo-text">{msg("WebWriter")} <sup>{msg("Alpha")}</sup></span>
+        <span class="logo-text">{msg("WebWriter")}</span>
       </a>
 			<nav>
         <label class="menu-toggle bi-list" for="menu-toggle"></label>
         <input id="menu-toggle" type="checkbox" class="bi-list">
         <ol class="menu">
-				{pages.filter(page => page.id !== "get_started").map(page => (<li><a  data-swup-preload class={page.id} data-active={page.active} draggable="false" href={page.url}>
+				{pages.filter(page => page.id !== "get_started").map(page => (<li><a  data-swup-preload class={page.id} data-active={page.active? true: undefined} draggable="false" href={page.url}>
 					{page.name}
 				</a></li>))}
 			</ol>
       <a class="dashboard" href={getRelativeLocaleUrl(Astro.currentLocale!, "/dashboard")}>
         <div class="icon bi-person-circle"></div>
       </a>
-      <a data-swup-preload class="get_started" draggable="false" data-active={getStartedActive} href="https://run.webwriter.app">{msg("Get Started")}</a>
+      <a data-swup-preload class="get_started" draggable="false"  href="https://run.webwriter.app">{msg("Get Started")}</a>
     </nav>
 		</header>
 		<main id="swup">
@@ -106,11 +110,12 @@ import { getRelativeLocaleUrl } from "astro:i18n";
           <img id="icon-footer" src={iconUrl} alt="WebWriter Icon" width={40} height={40} />
           <span class="logo-text">
             <span>{msg("WebWriter")}</span>
-            <EmailAddress class="contact" client:only="lit" />
+            <EmailAddress class:list={["contact"]} client:only="vue" local="contact" domain="webwriter.app" />
           </span>
         </div>
         <div>{msg("© Frederic Salmen. All rights reserved.")}</div>
         <a data-swup-preload class="legal_notice" draggable="false" href={getRelativeLocaleUrl(Astro.currentLocale!, "/legal_notice")}>{msg("Legal Notice")}</a>
+        <a class="privacy_policy" draggable="false" href={getRelativeLocaleUrl(Astro.currentLocale!, "/privacy")}>{msg("Privacy policy")}</a>
       </div>
       <div class="sitemap-card">
         <h2>{msg("Pages")}</h2>
@@ -124,7 +129,7 @@ import { getRelativeLocaleUrl } from "astro:i18n";
         <h2>{msg("Community")}</h2>
         <nav><ol>
           <li><a href="https://github.com/webwriter-app">GitHub</a></li>
-          <li><a href="https://learntech.rwth-aachen.de">LearnTech RWTH Aachen</a></li>
+          <li><a href="https://learntech.rwth-aachen.de">LearnTech</a></li>
           <li><a href="https://explorabl.es">Explorables</a></li>
         </ol></nav>
       </div>
@@ -147,8 +152,8 @@ import { getRelativeLocaleUrl } from "astro:i18n";
     else {
       document.body.setAttribute("data-status", "signedin")
       const dashHeader = document.querySelector("#dash h1")
-      const user = pocketbase.authStore.model as {email: string}
-      dashHeader && (dashHeader.textContent = `${user.email}`)
+      const user = pocketbase.authStore.record
+      dashHeader && (dashHeader.textContent = `${user!.email}`)
     }
   }
   pocketbase.authStore.onChange((token, model) => updateUserUI())
@@ -219,7 +224,7 @@ import { getRelativeLocaleUrl } from "astro:i18n";
 		background: var(--background-color);
     box-sizing: border-box;
     color: var(--sl-color-gray-900);
-    z-index: 10;
+    z-index: 10000000;
 	}
 
 	#layout-header ol {
@@ -231,7 +236,7 @@ import { getRelativeLocaleUrl } from "astro:i18n";
 		gap: 0.1rem 2rem;
     padding-left: 0;
 		align-items: center;
-		font-size: 1rem;
+		font-size: min(max(0.8rem, 1.5vw), 1rem);
     font-weight: bold;
     font-family: system-ui;
 	}
@@ -242,7 +247,6 @@ import { getRelativeLocaleUrl } from "astro:i18n";
 		list-style-type: none;
 		padding: 0;
 		margin: 0;
-    margin-left: 0.5rem;
 		gap: 0.25rem;
 		font-size: 0.9rem;
   }
@@ -389,13 +393,76 @@ import { getRelativeLocaleUrl } from "astro:i18n";
     opacity: 0;
   }
 
-  @media (max-width: 800px) {
+  @media only screen and (min-width: 500px) and (max-width: 800px) {
     .logo-text {
       display: none;
     }
 
     footer h2, footer .logo {
       font-size: 1rem;
+    }
+
+    footer {
+      position: relative;
+    }
+
+    .lang-options {
+      display: flex;
+      flex-direction: column;
+      list-style-type: none;
+      padding-left: 0;
+      justify-content: end;
+      position: absolute;
+      gap: 0.1rem;
+      bottom: 2rem;
+      right: 2rem;
+
+      & li {
+        font-size: 0.75rem;
+        height: 1.5rem;
+      }
+    }
+  }
+
+  @media only screen and (max-width: 499px) {
+
+    .logo-text {
+      display: none;
+    }
+
+    footer h2, footer .logo {
+      font-size: 1rem;
+    }
+
+    footer {
+      flex-wrap: wrap;
+      height: calc(100vh - 70px);
+      padding: 1rem;
+      justify-content: start;
+    }
+
+    .lang-options {
+      display: flex;
+      list-style-type: none;
+      padding-left: 0;
+      justify-content: center;
+    }
+
+    .imprint {
+      flex-direction: row;
+      flex-wrap: wrap;
+    }
+
+    #layout-header {
+      gap: 1rem;
+      padding: 0 1rem;
+      & a:not(.dashboard) {
+        font-size: 1rem;
+      }
+    }
+
+    .get_started {
+      display: none;
     }
   }
 

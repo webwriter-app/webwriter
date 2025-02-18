@@ -1,0 +1,225 @@
+---
+import Layout from "@layouts/Layout.astro"
+
+import { getCollection, render } from 'astro:content';
+
+export async function getStaticPaths({ paginate }: any) {
+  const pages = await getCollection("news", ({data}) => !data?.draft)
+  return paginate(pages, {pageSize: 3})
+}
+  // All paginated data is passed on the "page" prop
+  const { page } = Astro.props;
+---
+
+<Layout title="News">
+    <div id="news">
+        <header>
+          <h1>News</h1>
+        </header>
+        {(page as any).data.map(async (entry: any) => {
+          const { Content } = await entry.render()
+          return <div class="news-article">
+            <h1>
+              <a href={entry.slug}>{entry.data.title}</a>
+              <span class="date">{new Date(entry.data.date).toLocaleDateString()}</span>
+            </h1>
+            <Content />
+          </div>
+        })}
+        <nav class="pagination">
+          <a class="prev" href={(page as any).url.prev}>❮</a>
+          <span class="current">{(page as any).currentPage} / {Math.ceil((page as any).total / (page as any).size)}</span>
+          <a class="next" href={(page as any).url.next}>❯</a>
+        </nav>
+    </div>
+</Layout>
+
+<style is:global>
+    #news {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+        height: 100%;
+        padding-bottom: 15px;
+    }
+
+    #news header {
+        --s: 350px; /* control the size */
+        --c: var(--sl-color-primary-500); /* first color */
+        --_g: #0000 8%,var(--c) 0 17%,#0000 0 58%;
+        background: 
+            linear-gradient(135deg,#0000 20.5%,var(--c) 0 29.5%,#0000 0) 0 calc(var(--s)/4),
+            linear-gradient( 45deg,var(--_g)) calc(var(--s)/2) 0,
+            linear-gradient(135deg,var(--_g),var(--c) 0 67%,#0000 0),        
+            linear-gradient( 45deg,var(--_g),var(--c) 0 67%,#0000 0 83%,var(--c) 0 92%,#0000 0),
+            var(--sl-color-primary-600); /* second color */
+        background-size: var(--s) var(--s);
+        z-index -10 !important;
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+        height: 50px;
+        box-sizing: border-box;
+        margin-top: 1rem;
+    }
+
+    #news header h1 {
+        display: inline-flex;
+        align-items: center;
+        background: var(--sl-color-gray-950);
+        color: var(--sl-color-gray-50);
+        word-wrap: nowrap;
+        flex-shrink: 0;
+        height: 110%;
+        margin: 0;
+        position: relative;
+        top: -5%;
+        left: 0;
+        margin-left: 2rem;
+        box-sizing: border-box;
+        padding: 1rem 2rem;
+    }
+
+    #news header p {
+        display: inline-flex;
+        align-items: center;
+        background: var(--sl-color-gray-950);
+        color: var(--sl-color-gray-50);
+        padding: 0.1rem 0.5rem;
+        margin-right: 2rem;
+    }
+
+    @media (max-width: 800px) {
+        #news header p {
+            display: none;
+        }
+    }
+
+    #docsNav {
+        width: 225px;
+        border: 2px solid var(--sl-color-gray-950);
+        border-radius: 10px;
+        padding: 0.5rem 1rem;
+        margin-left: 2rem;
+        margin-right: 1.5rem;
+        margin-top: 0;
+        flex-shrink: 0;
+        position: sticky;
+        top: calc(70px + 1rem);
+        left: 0;
+        box-sizing: border-box;
+        background: white;
+        margin-bottom: 2rem;
+    }
+
+    .news-article img {
+      margin: auto;
+      display: block;
+      width: 100%;
+      height: auto;
+      aspect-ratio: auto;
+      background: var(--background-color);
+    }
+
+    .news-article {
+        max-width: min(1000px, 100vw);
+        padding: 2rem;
+        padding-top: 0;
+        box-sizing: border-box;
+        z-index: 0;
+        margin: 10px auto;
+        background: white;
+        border: 2px solid black;
+    }
+
+    .news-article a {
+        color: var(--sl-color-primary-600);
+        text-decoration: none;
+    }
+
+    .news-article a:hover {
+        text-decoration: underline;
+    }
+
+    .news-article pre {
+        padding: 1rem;
+        overflow-x: auto !important;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .news-article th {
+        text-align: left;
+        white-space: nowrap;
+        padding-right: 1ch;
+    }
+
+    .news-article table {
+        border-top: 2px solid var(--sl-color-gray-950);
+        border-bottom: 2px solid var(--sl-color-gray-950);
+        margin: 0 2ch;
+        display: block;
+        overflow-x: auto;
+    }
+
+    .news-article :is(h1, h2, h3, h4, h5, h6) a {
+      color: inherit;
+    }
+
+    .news-article :is(h1, h2, h3, h4, h5, h6) {
+        font-family: var(--sl-font-sans);
+        margin-bottom: 0.5rem;
+    }
+
+    .news-article h1 {
+        font-size: 2.5rem;
+        margin-top: 0;
+        text-decoration: underline 4px solid var(--sl-color-gray-950);
+        position: relative;
+        margin-right: 0;
+        background: var(--sl-color-gray-950);
+        padding: 0.5rem;
+        color: var(--sl-color-gray-50);
+        margin-bottom: 2rem;
+        margin-left: 0;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+    }
+
+    .news-article .date {
+      font-size: 1.25rem;
+      margin-left: auto;
+      padding-right: 1ch;
+    }
+
+    .news-article h2 {
+        text-decoration: underline 2px solid var(--sl-color-gray-950);
+        margin-top: 2.5rem;
+    }
+
+    .news-article p {
+        margin-top: 0.1rem;
+    }
+
+    .pagination {
+      display: flex;
+      justify-content: center;
+      gap: 1ch;
+      font-weight: bold;
+      color: var(--sl-color-gray-800);
+      margin-top: auto;
+    }
+
+    .pagination a {
+      text-decoration: none;
+      color: inherit;
+      user-select: none;
+    }
+
+    .pagination a:not([href]) {
+      color: var(--sl-color-gray-500);
+      cursor: not-allowed;
+    }
+
+</style>

@@ -1,5 +1,5 @@
 import { msg } from "@lit/localize";
-import { ReactiveController, ReactiveControllerHost } from "lit";
+import { html, ReactiveController, ReactiveControllerHost, TemplateResult } from "lit";
 import { ZodSchema, z } from "zod";
 
 import {
@@ -27,6 +27,7 @@ export type SettingSpec<T = any> = {
   label?: string;
   advanced?: boolean;
   hidden?: boolean;
+  confirmation?: TemplateResult
 };
 
 export const keymapSchema = z
@@ -62,9 +63,11 @@ export class SettingsController implements ReactiveController {
   async hostConnected() {
     const userSettings = await SettingsController.getUserSettings();
     userSettings && this.store.rehydrate(userSettings);
-    window.addEventListener("storage", async () => {
-      const userSettings = await SettingsController.getUserSettings();
-      userSettings && this.store.rehydrate(userSettings);
+    window.addEventListener("storage", async (e: StorageEvent) => {
+      if(e.key?.startsWith("webwriter_")) {
+        const userSettings = await SettingsController.getUserSettings()
+        userSettings && this.store.rehydrate(userSettings)
+      }
     });
   }
   hostDisconnected() {}
@@ -172,6 +175,19 @@ export class SettingsController implements ReactiveController {
               )
             ),
           label: msg("Reset all app data on page load"),
+        },
+        authoringAnalytics: {
+          schema: z
+            .boolean()
+            .describe(
+              msg(
+                "Send telemetry data about your usage of WebWriter."
+              )
+            ),
+          label: msg("Enable telemetry"),
+          confirmation: html`
+            <p>${msg("By enabling telemetry, you allow for data collection and retention according to our")} <a target="_blank" href="https://webwriter.app/privacy">${msg("privacy policy")}</a></p>
+          `
         },
         /*showTextPlaceholder: {
           schema: z

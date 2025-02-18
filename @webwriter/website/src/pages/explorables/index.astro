@@ -1,0 +1,148 @@
+---
+import Layout from "@layouts/Layout.astro"
+import { msgResolver } from "src/localize"
+
+const lang = Astro.currentLocale!
+const translations = {
+  "View examples of explorables created with WebWriter.": {
+    "de": "Beispiele für Explorables, die mit WebWriter erstellt wurden."
+  }
+}
+
+const msg = msgResolver(translations, lang)
+
+---
+
+<Layout title="Explorables">
+    <script>
+        import "@webcomponents/scoped-custom-element-registry"
+        import '@shoelace-style/shoelace/dist/components/carousel/carousel.js';
+        import '@shoelace-style/shoelace/dist/components/carousel-item/carousel-item.js';
+        import "@shoelace-style/shoelace/dist/themes/light.css"
+        import "https://cdn.jsdelivr.net/npm/@webwriter/map/dist/widgets/webwriter-map.js"
+        import "https://cdn.jsdelivr.net/npm/@webwriter/code/dist/widgets/ww-code-javascript.js"
+        import "https://cdn.jsdelivr.net/npm/@webwriter/automaton/dist/widgets/webwriter-automaton.js" 
+        import "https://cdn.jsdelivr.net/npm/@webwriter/quiz/dist/widgets/webwriter-task.js"
+        import "https://cdn.jsdelivr.net/npm/@webwriter/quiz/dist/widgets/webwriter-task-prompt.js"
+        import "https://cdn.jsdelivr.net/npm/@webwriter/quiz/dist/widgets/webwriter-task-hint.js"
+        import "https://cdn.jsdelivr.net/npm/@webwriter/quiz/dist/widgets/webwriter-choice.js"
+        import "https://cdn.jsdelivr.net/npm/@webwriter/quiz/dist/widgets/webwriter-choice-item.js"
+        import "https://cdn.jsdelivr.net/npm/@webwriter/block-based-code/dist/webwriter-block-based-code.js"
+      </script>
+    <div id="explorables-base">
+      <header>
+        <h1>Explorables</h1>
+        <p>{msg("View examples of explorables created with WebWriter.")}</p>
+    </header>
+      <sl-carousel pagination navigation loop autoplay-interval="10000">
+        <sl-carousel-item>
+          <iframe loading="lazy" src="examples/nw.html"></iframe>
+        </sl-carousel-item>
+        <sl-carousel-item>
+          <iframe loading="lazy" src="examples/math.html"></iframe>
+        </sl-carousel-item>
+        <sl-carousel-item>
+          <iframe loading="lazy" src="examples/cs.html"></iframe>
+        </sl-carousel-item>
+        <sl-carousel-item>
+          <iframe loading="lazy" src="examples/geography.html"></iframe>
+        </sl-carousel-item>
+      </sl-carousel>
+    </div>
+</Layout>
+
+<style is:global>
+
+  html:has(#explorables-base) {
+    scrollbar-width: none;
+  }
+
+  body:has(#explorables-base) > main {
+    height: calc(100vh - 70px);
+  }
+
+  #explorables-base header {
+    --s: 350px; /* control the size */
+    --c: var(--sl-color-primary-500); /* first color */
+    --_g: #0000 8%,var(--c) 0 17%,#0000 0 58%;
+    background: 
+      linear-gradient(135deg,#0000 20.5%,var(--c) 0 29.5%,#0000 0) 0 calc(var(--s)/4),
+      linear-gradient( 45deg,var(--_g)) calc(var(--s)/2) 0,
+      linear-gradient(135deg,var(--_g),var(--c) 0 67%,#0000 0),        
+      linear-gradient( 45deg,var(--_g),var(--c) 0 67%,#0000 0 83%,var(--c) 0 92%,#0000 0),
+      var(--sl-color-primary-600); /* second color */
+    background-size: var(--s) var(--s);
+    z-index -10 !important;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    height: 55px;
+    box-sizing: border-box;
+    margin-top: 1rem;
+  }
+
+  #explorables-base {
+    height: 100%;
+  }
+
+  #explorables-base header h1 {
+    display: inline-flex;
+    align-items: center;
+    background: var(--sl-color-gray-950);
+    color: var(--sl-color-gray-50);
+    word-wrap: nowrap;
+    flex-shrink: 0;
+    height: 110%;
+    margin: 0;
+    position: relative;
+    top: -5%;
+    left: 0;
+    margin-left: 2rem;
+    box-sizing: border-box;
+    padding: 1rem 2rem;
+  }
+
+  #explorables-base header p {
+    display: inline-flex;
+    align-items: center;
+    background: var(--sl-color-gray-950);
+    color: var(--sl-color-gray-50);
+    padding: 0.1rem 0.5rem;
+    margin-right: 2rem;
+  }
+
+  @media (max-width: 800px) {
+    #explorables-base header p {
+      display: none;
+    }
+  }
+
+  #explorables-base sl-carousel {
+    width: 100%;
+    max-width: 900px;
+    height: 100%;
+    --aspect-ratio: 9/16;
+    aspect-ratio: 9/16;
+    border: none;
+    box-sizing: border-box;
+    padding-bottom: 1rem;
+    margin: 0 auto;
+    padding-bottom: 100px;
+  }
+
+  #explorables-base sl-carousel-item {
+    width: 100%;
+    height: 95%;
+    border: none;
+    box-sizing: border-box;
+    max-width: 900px;
+  }
+
+  #explorables-base iframe {
+    width: 100%;
+    height: 95%;
+    border: none;
+    box-sizing: border-box;
+  }
+
+</style>

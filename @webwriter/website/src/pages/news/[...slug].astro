@@ -1,0 +1,25 @@
+---
+import { getCollection } from 'astro:content';
+import DocPage from "@layouts/DocPage.astro"
+import Layout from '@layouts/Layout.astro';
+
+export async function getStaticPaths() {
+  const allDocs = await getCollection('news');
+  const paths = allDocs.map(entry => ({
+    params: { slug: (entry as any).slug }, props: { entry },
+  }))
+  return paths
+}
+const { entry } = Astro.props;
+const { Content } = await (entry as any).render();
+---
+
+<Layout title={entry.data.title}>
+  <div class="news-article">
+    <h1>
+      <a>{entry.data.title}</a>
+      <span class="date">{new Date(entry.data.date).toLocaleDateString()}</span>
+    </h1>
+    <Content />
+  </div>
+</Layout>
