@@ -1,6 +1,19 @@
 ---
 import Layout from "@layouts/Layout.astro"
 import allPackages from "@resources/packages.json"
+import { msgResolver } from "src/localize"
+
+const lang = Astro.currentLocale!
+const translations = {
+  "Try any of WebWriter's widget packages in this gallery.": {
+    "de": "Probiere Widget-Packages von WebWriter aus."
+  },
+  "No description": {
+    "de": "Keine Beschreibung"
+  }
+}
+
+const msg = msgResolver(translations, lang)
 
 function calculateOrder(widget: any) {
     let weight = 0
@@ -23,7 +36,7 @@ const prettyPkgNames = pkgNames.map(prettifyPackageName)
 <Layout title="Packages">
     <header id="packages-header">
         <h1>Packages</h1>
-        <p>Try any of WebWriter's widget packages in this gallery.</p>
+        <p>{msg("Try any of WebWriter's widget packages in this gallery.")}</p>
     </header>
     <div id="base">
         {pkgs.map((pkg, i) => <div class:list={["package-card", {official: pkg.name.startsWith("@webwriter/")}]}>
@@ -31,7 +44,7 @@ const prettyPkgNames = pkgNames.map(prettifyPackageName)
                 <div class="pretty-package-name">{prettyPkgNames[i]}</div>
                 <div class="package-name">{pkg.name}</div>
             </a>
-            <span>{(pkg.description && pkg.description.length > 100? pkg?.description?.slice(0, 110).trim() + "...": pkg.description) || <i>No description</i>}</span>
+            <span>{(pkg.description && pkg.description.length > 100? pkg?.description?.slice(0, 110).trim() + "...": pkg.description) || <i>{msg("No description")}</i>}</span>
         </div>)}
     </div>
 </Layout>

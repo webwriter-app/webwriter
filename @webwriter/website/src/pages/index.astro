@@ -52,15 +52,93 @@ const translations = {
   "...": {
     "de": "..."
   },
-  "...": {
-    "de": "..."
-  },
   "Share any way you want": {
     "de": "Teile, wie du willst"
   },
   "Share your explorable with a link or QR code, or as a file for an LMS such as Moodle.": {
     "de": "Teile dein Explorable mit einem Link, als QR Code oder als Datei - im Web, in einem LMS wie Moodle, oder per USB-Stick."
-  }
+  },
+  "All the media": {
+    "de": "Alle Medien"
+  },
+  "Mix text, images, audio and video. Drag n' drop or paste from any source or record your own.": {
+    "de": "Text, Bilder, Audio und Video kombinieren. Einfügen aus beliebigen Quellen, oder selbst aufnehmen."
+  },
+  "Text": {
+    "de": "Text"
+  },
+  "Write all kinds of text with formatting and links.": {
+    "de": "Beliebige Texte mit Formatierung und Links schreiben."
+  },
+  "Images": {
+    "de": "Bilder"
+  },
+  "Insert images like diagrams or illustrations. Capture part of your screen or snap a picture.": {
+    "de": "Füge Bilder wie Diagramme oder Illustrationen ein. Nimm Teile deines Bildschirms auf oder schieß ein Foto."
+  },
+  "Videos": {
+    "de": "Videos"
+  },
+  "Add learning videos from the web or record your own with a screen recording or a camera.": {
+    "de": "Füge Lernvideos aus dem Web hinzu oder nimm mit deinem Gerät eigene Videos auf."
+  },
+  "Audio": {
+    "de": "Audio"
+  },
+  "Add files like music or recordings from the web. Make your own with a microphone.": {
+    "de": "Füge Musik oder Audioaufnahmen aus dem Web hinzu. Mach deine eigenen Aufnahmen mit einem Mikrofon."
+  },
+  "Interactive widgets": {
+    "de": "Interaktive Widgets"
+  },
+  "Add a quiz, a simulation, or even an interactive map, all with a click. Configure them for your needs.": {
+    "de": "Füge ein Quiz, eine Simulation oder sogar eine interaktive Karte hinzu, alles mit einem Klick. Passe die Widgets für deine Zwecke weiter an."
+  },
+  "Map": {
+    "de": "Map"
+  },
+  "Add a geographical map in which you can zoom and move around in.": {
+    "de": "Füge eine geografische Karte hinzu, die sich zoomen und bewegen lässt."
+  },
+  "Automaton": {
+    "de": "Automaton"
+  },
+  "Build and simulate automata from Computer Science.": {
+    "de": "Konstruiere und simuliere Automaten aus der Informatik."
+  },
+  "Block based code": {
+    "de": "Block based code"
+  },
+  "Implement block-based programs in a Scratch-like environment.": {
+    "de": "Implementiere blockbasierte Programme in einer Scratch-artigen Umgebung."
+  },
+  "Quiz": {
+    "de": "Quiz"
+  },
+  "Make quizzes with automatic answer checking, including multiple choice, ordering, and highlighting.": {
+    "de": "Erstelle Quizzes mit automatischer Überprüfung, Multiple Choice, Ordnen, und Markieren."
+  },
+  "Code": {
+    "de": "Code"
+  },
+  "Write and run code in different programming languages including Python and JS.": {
+    "de": "Schreibe und führe Code in verschiedenen Programmiersprachen aus (z.B. Python und JS)."
+  },
+  "Explorable explanations": {
+    "de": "Explorables - Digitale Arbeitsblätter"
+  },
+  "Combine text, media, and widgets into explorables, the new worksheets.": {
+    "de": "Kombiniere Text, Medien und Widgets als Explorables - die neuen Arbeitsblätter."
+  },
+  "Try it out!": {
+    "de": "Ausprobieren"
+  },
+  "Preview. For the full app, click": {
+    "de": "Vorschau. Für die volle App, klicke"
+  },
+  "here": {
+    "de": "hier"
+  },
 }
 
 const msg = msgResolver(translations, lang)
@@ -91,15 +169,15 @@ const latestNews = allNews.at(-1)
     import '@shoelace-style/shoelace/dist/components/carousel-item/carousel-item.js';
     import "@shoelace-style/shoelace/dist/themes/light.css"
 
-    if(!isMobile()) {
-      import("https://cdn.jsdelivr.net/npm/@webwriter/map/dist/widgets/webwriter-map.js")
-      import("https://cdn.jsdelivr.net/npm/@webwriter/code/dist/widgets/ww-code-javascript.js")
-      import("https://cdn.jsdelivr.net/npm/@webwriter/automaton/dist/widgets/webwriter-automaton.js")
-      import("https://cdn.jsdelivr.net/npm/@webwriter/quiz/dist/widgets/webwriter-task.js")
-      import("https://cdn.jsdelivr.net/npm/@webwriter/quiz/dist/widgets/webwriter-task-prompt.js")
-      import("https://cdn.jsdelivr.net/npm/@webwriter/quiz/dist/widgets/webwriter-task-hint.js")
-      import("https://cdn.jsdelivr.net/npm/@webwriter/quiz/dist/widgets/webwriter-choice.js")
-      import("https://cdn.jsdelivr.net/npm/@webwriter/quiz/dist/widgets/webwriter-choice-item.js")
+    if(!isMobile()) { // @ts-ignore
+      import("https://cdn.jsdelivr.net/npm/@webwriter/map/dist/widgets/webwriter-map.js") // @ts-ignore
+      import("https://cdn.jsdelivr.net/npm/@webwriter/code/dist/widgets/ww-code-javascript.js") // @ts-ignore
+      import("https://cdn.jsdelivr.net/npm/@webwriter/automaton/dist/widgets/webwriter-automaton.js") // @ts-ignore
+      import("https://cdn.jsdelivr.net/npm/@webwriter/quiz/dist/widgets/webwriter-task.js") // @ts-ignore
+      import("https://cdn.jsdelivr.net/npm/@webwriter/quiz/dist/widgets/webwriter-task-prompt.js") // @ts-ignore
+      import("https://cdn.jsdelivr.net/npm/@webwriter/quiz/dist/widgets/webwriter-task-hint.js") // @ts-ignore
+      import("https://cdn.jsdelivr.net/npm/@webwriter/quiz/dist/widgets/webwriter-choice.js") // @ts-ignore
+      import("https://cdn.jsdelivr.net/npm/@webwriter/quiz/dist/widgets/webwriter-choice-item.js") // @ts-ignore
       import("https://cdn.jsdelivr.net/npm/@webwriter/block-based-code/dist/webwriter-block-based-code.js")
     }
 
@@ -165,28 +243,28 @@ const latestNews = allNews.at(-1)
                 </li>
               </ol>
             </div>
-            <figcaption>Write all kinds of <b>text</b> with formatting and links.</figcaption>
+            <figcaption><b>{msg("Text")}</b>: {msg("Write all kinds of text with formatting and links.")}</figcaption>
           </figure>
         </sl-carousel-item>
         <sl-carousel-item>
           <figure>
             <ImageIcon class="mobile" size="108"></ImageIcon>
             <img class="desktop" src="https://upload.wikimedia.org/wikipedia/commons/d/d2/Pythagorean.svg">
-            <figcaption>Insert <b>images</b> like diagrams or illustrations. Capture part of your screen or snap a picture.</figcaption>
+            <figcaption><b>{msg("Images")}</b>: {msg("Insert images like diagrams or illustrations. Capture part of your screen or snap a picture.")}</figcaption>
           </figure>
         </sl-carousel-item>
         <sl-carousel-item>
           <figure>
             <VideoIcon class="mobile" size="108"></VideoIcon>
             <iframe class="desktop" width="475" height="275" src="https://www.youtube.com/embed/wjZofJX0v4M?si=pqIWhLKhyV9lnzBA" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
-            <figcaption>Add learning <b>videos</b> from the web or record your own with a screen recording or a camera.</figcaption>
+            <figcaption><b>{msg("Videos")}</b>: {msg("Add learning videos from the web or record your own with a screen recording or a camera.")}</figcaption>
           </figure>
         </sl-carousel-item>
         <sl-carousel-item>
           <figure>
             <AudioIcon class="mobile" size="108"></AudioIcon>
             <audio class="desktop" src="https://tile.loc.gov/storage-services/media/afc/cal/afc1986022_sr14a01.mp3" controls></audio>
-            <figcaption>Add <b>audio</b> files like music or recording from the web. Make your own with a microphone.</figcaption>
+            <figcaption><b>{msg("Audio")}</b>: {msg("Add files like music or recordings from the web. Make your own with a microphone.")}</figcaption>
           </figure>
         </sl-carousel-item>
       </sl-carousel>
@@ -201,14 +279,14 @@ const latestNews = allNews.at(-1)
           <figure>
             <webwriter-map class="desktop"></webwriter-map>
             <MapIcon class="mobile" size="108"></MapIcon>
-            <figcaption><b>Map</b>: Add a geographical map in which you can zoom and move around in.</figcaption>
+            <figcaption><b>{msg("Map")}</b>: {msg("Add a geographical map in which you can zoom and move around in.")}</figcaption>
           </figure>
         </sl-carousel-item>
         <sl-carousel-item>
           <figure>
             <AutomatonIcon class="mobile" size="108"></AutomatonIcon>
             <webwriter-automaton class="desktop" nodes='[{"id":"1d027ee9-10a5-44ed-82db-56f75f27c817","label":"q1","x":-220,"y":-106,"initial":true},{"id":"f9445c8a-b577-4da1-9efc-f8dc0723e2b2","label":"q2","x":-2,"y":-110},{"id":"df4d3c23-c3b7-4ad4-ae76-ad457ec6dd88","label":"q3","x":-218,"y":108,"final":true},{"id":"eb3e35cd-b6be-4287-ab23-b31dad121d15","label":"q4","x":-7,"y":109,"final":true}]' transitions='[{"id":"a7eefd06-1404-46c4-98c5-b534da394897","from":"1d027ee9-10a5-44ed-82db-56f75f27c817","to":"f9445c8a-b577-4da1-9efc-f8dc0723e2b2","symbols":["a"],"label":"a"},{"id":"468211a6-2801-40c9-a5b8-44f5ce67856e","from":"f9445c8a-b577-4da1-9efc-f8dc0723e2b2","to":"eb3e35cd-b6be-4287-ab23-b31dad121d15","symbols":["a"],"label":"a"},{"id":"33b325d1-c428-4ad1-89b6-b5c7a2039b36","from":"eb3e35cd-b6be-4287-ab23-b31dad121d15","to":"df4d3c23-c3b7-4ad4-ae76-ad457ec6dd88","symbols":["a"],"label":"a"},{"id":"e46e61d0-365a-473f-805a-70c4bf2a725d","from":"f9445c8a-b577-4da1-9efc-f8dc0723e2b2","to":"df4d3c23-c3b7-4ad4-ae76-ad457ec6dd88","symbols":["b"],"label":"b"},{"id":"3ffed4af-a4b6-4028-ae27-5061fc470b01","from":"df4d3c23-c3b7-4ad4-ae76-ad457ec6dd88","to":"1d027ee9-10a5-44ed-82db-56f75f27c817","symbols":["a","b"],"label":"a, b"},{"id":"f9d7c091-53cd-4080-8fec-3ff6506e565a","from":"eb3e35cd-b6be-4287-ab23-b31dad121d15","to":"eb3e35cd-b6be-4287-ab23-b31dad121d15","symbols":["b"],"label":"b"},{"id":"eadd57cc-8269-4a08-b6ca-ecf9a113ae91","from":"1d027ee9-10a5-44ed-82db-56f75f27c817","to":"1d027ee9-10a5-44ed-82db-56f75f27c817","symbols":["b"],"label":"b"}]'></webwriter-automaton>
-            <figcaption><b>Automaton</b>: Build and simulate automata from Computer Science.</figcaption>
+            <figcaption><b>{msg("Automaton")}</b>: {msg("Build and simulate automata from Computer Science.")}</figcaption>
           </figure>
         </sl-carousel-item>
         <sl-carousel-item>
@@ -220,7 +298,7 @@ const latestNews = allNews.at(-1)
             stagetype="canvas"
             selectedblocks="[&quot;controls:forever&quot;,&quot;controls:if&quot;,&quot;controls:if_else&quot;,&quot;controls:repeat&quot;,&quot;controls:stop&quot;,&quot;controls:wait&quot;,&quot;looks:set_color&quot;,&quot;motions:get_x&quot;,&quot;motions:get_y&quot;,&quot;motions:move&quot;,&quot;motions:rotate&quot;,&quot;motions:set_rotation&quot;,&quot;motions:set_x&quot;,&quot;motions:set_xy&quot;,&quot;motions:set_y&quot;,&quot;operators:absolute&quot;,&quot;operators:and&quot;,&quot;operators:divide&quot;,&quot;operators:equal&quot;,&quot;operators:greater&quot;,&quot;operators:multiply&quot;,&quot;operators:not&quot;,&quot;operators:or&quot;,&quot;operators:smaller&quot;,&quot;operators:subtract&quot;,&quot;operators:sum&quot;,&quot;variables&quot;]"
             editorstate="{&quot;blocks&quot;:{&quot;languageVersion&quot;:0,&quot;blocks&quot;:[{&quot;type&quot;:&quot;events:when_start_clicked&quot;,&quot;id&quot;:&quot;qPL+a=;G*hk{^D+OY=@2&quot;,&quot;x&quot;:310,&quot;y&quot;:-129,&quot;inputs&quot;:{&quot;SUBSTACK&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;motions:set_xy&quot;,&quot;id&quot;:&quot;`mb4UrTU-.Jj~sw%9}xM&quot;,&quot;inputs&quot;:{&quot;X&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;u[F}(`LZpz@4@?V*cL{d&quot;,&quot;fields&quot;:{&quot;NUM&quot;:400}}},&quot;Y&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;ioO_+[e+f[-Oe1a$#1TY&quot;,&quot;fields&quot;:{&quot;NUM&quot;:300}}}},&quot;next&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;variables_set&quot;,&quot;id&quot;:&quot;*!n9kmd7mvy(L@=W^)rZ&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;WrvugZAADY^C~:DXvBQ=&quot;}},&quot;inputs&quot;:{&quot;VALUE&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;29-/jZvI%?*#5~oEbeb^&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}}}},&quot;next&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;variables_set&quot;,&quot;id&quot;:&quot;G83RB|@xNSN81NrHpQ3g&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;aq;O$#Dya1kjko[!i3(-&quot;}},&quot;inputs&quot;:{&quot;VALUE&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;!YJQc%=gI?Z%B0]f3%3K&quot;,&quot;fields&quot;:{&quot;NUM&quot;:10}}}},&quot;next&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;variables_set&quot;,&quot;id&quot;:&quot;Y_~LGC4XzbSO@3Z$08K{&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;|@yg{YQ(yYtoX?DCM}*/&quot;}},&quot;inputs&quot;:{&quot;VALUE&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;O]wQO+}%EGdnk!i2()1B&quot;,&quot;fields&quot;:{&quot;NUM&quot;:10}}}},&quot;next&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;controls:forever&quot;,&quot;id&quot;:&quot;mjdTjw+y]zo~5Q-o_@.F&quot;,&quot;inputs&quot;:{&quot;SUBSTACK&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;motions:set_xy&quot;,&quot;id&quot;:&quot;.odtxpP9hHgv`Co]h-d*&quot;,&quot;inputs&quot;:{&quot;X&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;]1jf{!K]*lYqF)1~N0*^&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;operators:sum&quot;,&quot;id&quot;:&quot;/JX5hIsLyDA*QA]/?=;H&quot;,&quot;inputs&quot;:{&quot;A&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;yqP|~BAe/p#qUE|Tff1o&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;motions:get_x&quot;,&quot;id&quot;:&quot;EgBtLqkZ1TiLmnA2gNwB&quot;}},&quot;B&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;yLf:cNWkg?x9=}Rp*}zU&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;variables_get&quot;,&quot;id&quot;:&quot;iZA1xA9yNyONs~V+8Uf}&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;aq;O$#Dya1kjko[!i3(-&quot;}}}}}}},&quot;Y&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;TorhtFO~u0As@)TxhbsG&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;operators:sum&quot;,&quot;id&quot;:&quot;*v5rJxMxA6;noQGL|z%6&quot;,&quot;inputs&quot;:{&quot;A&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;`6|JBAB4OZ5PWGJug}2J&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;motions:get_y&quot;,&quot;id&quot;:&quot;3/{t1a1:K[.]/rX@h6Ln&quot;}},&quot;B&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;s2ynqrGRg7q}L@VkS[?{&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;variables_get&quot;,&quot;id&quot;:&quot;701Ss)}e.=0~e`+oI-u{&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;|@yg{YQ(yYtoX?DCM}*/&quot;}}}}}}}},&quot;next&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;controls:if&quot;,&quot;id&quot;:&quot;wCoFuz$}}y=VZ2~ov@PY&quot;,&quot;inputs&quot;:{&quot;CONDITION&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;operators:or&quot;,&quot;id&quot;:&quot;dfx{2gfA9}=?nMYaG:N=&quot;,&quot;inputs&quot;:{&quot;A&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;operators:greater&quot;,&quot;id&quot;:&quot;(()reuEwRM?T%r1$=6R,&quot;,&quot;inputs&quot;:{&quot;A&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;%B*Uojt~x*%ca@8{Pu#M&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;motions:get_x&quot;,&quot;id&quot;:&quot;vH0A8UuC[%/crgp@eQ0L&quot;}},&quot;B&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;Z`4kZ`w9pvH9|I@~}A;`&quot;,&quot;fields&quot;:{&quot;NUM&quot;:800}}}}}},&quot;B&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;operators:smaller&quot;,&quot;id&quot;:&quot;rp];I;@_$0o~50`Fl?VB&quot;,&quot;inputs&quot;:{&quot;A&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;L5p`*ZVPaPm$:|Y@-^E%&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;motions:get_x&quot;,&quot;id&quot;:&quot;vd_0.Bi=R-BIBD0yg2H`&quot;}},&quot;B&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;BfXLH6HNQ7z6JfQCuCYk&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}}}}}}}}},&quot;SUBSTACK&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;variables_set&quot;,&quot;id&quot;:&quot;BY)AJa27a:jU6iHo$Q`2&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;aq;O$#Dya1kjko[!i3(-&quot;}},&quot;inputs&quot;:{&quot;VALUE&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;operators:subtract&quot;,&quot;id&quot;:&quot;X-*nb=5EycTh]PG9|2v9&quot;,&quot;inputs&quot;:{&quot;A&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;7D@Zw1gW(z4CvA=y.LbD&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}}},&quot;B&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;8erT7=F6OhJ=cxF;zpO(&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;variables_get&quot;,&quot;id&quot;:&quot;/^o,4?FwnM4-YYEq}ag[&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;aq;O$#Dya1kjko[!i3(-&quot;}}}}}}}},&quot;next&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;variables_set&quot;,&quot;id&quot;:&quot;r*q?bttd}2N%X-mhCdDS&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;WrvugZAADY^C~:DXvBQ=&quot;}},&quot;inputs&quot;:{&quot;VALUE&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;operators:sum&quot;,&quot;id&quot;:&quot;5sD`3H_|I]L$`efSkr,e&quot;,&quot;inputs&quot;:{&quot;A&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;e9%E%FiMX*hXp/0U6/t~&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;variables_get&quot;,&quot;id&quot;:&quot;4]v`BTkCK(g!Rde_=rc,&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;WrvugZAADY^C~:DXvBQ=&quot;}}}},&quot;B&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;oY1+;Ul!x=lE6iJIGXMh&quot;,&quot;fields&quot;:{&quot;NUM&quot;:20}}}}}}}}}}}},&quot;next&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;controls:if&quot;,&quot;id&quot;:&quot;aCrS/2?ACz^Q-ydg5kqk&quot;,&quot;inputs&quot;:{&quot;CONDITION&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;operators:or&quot;,&quot;id&quot;:&quot;:]@Gxd`~${SFG6hUic7J&quot;,&quot;inputs&quot;:{&quot;A&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;operators:greater&quot;,&quot;id&quot;:&quot;6cZo2lC:~NGKe:bHb%FK&quot;,&quot;inputs&quot;:{&quot;A&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;%B*Uojt~x*%ca@8{Pu#M&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;motions:get_y&quot;,&quot;id&quot;:&quot;G}!r:So(]R}/ta@#qwzy&quot;}},&quot;B&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;8CaCsJ@j_H`d;[o=#YK$&quot;,&quot;fields&quot;:{&quot;NUM&quot;:600}}}}}},&quot;B&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;operators:smaller&quot;,&quot;id&quot;:&quot;_mbw(j[vl`zBCmi#]x};&quot;,&quot;inputs&quot;:{&quot;A&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;L5p`*ZVPaPm$:|Y@-^E%&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;motions:get_y&quot;,&quot;id&quot;:&quot;_YP|g@7Olah-~HEru|88&quot;}},&quot;B&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;k1:%tSk?%bkVbW;+saNX&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}}}}}}}}},&quot;SUBSTACK&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;variables_set&quot;,&quot;id&quot;:&quot;j7y=zN[U+8FWOa!5IIUt&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;|@yg{YQ(yYtoX?DCM}*/&quot;}},&quot;inputs&quot;:{&quot;VALUE&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;operators:subtract&quot;,&quot;id&quot;:&quot;V{N:kp%D0)Fu(m5d^t0#&quot;,&quot;inputs&quot;:{&quot;A&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;@uBm26e?]oua!MU^O9!x&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}}},&quot;B&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;8erT7=F6OhJ=cxF;zpO(&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;variables_get&quot;,&quot;id&quot;:&quot;@{#F[C:bOL{`m^?5fq*e&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;|@yg{YQ(yYtoX?DCM}*/&quot;}}}}}}}},&quot;next&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;variables_set&quot;,&quot;id&quot;:&quot;.{h$A~u$f7(`v*ZU%L])&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;WrvugZAADY^C~:DXvBQ=&quot;}},&quot;inputs&quot;:{&quot;VALUE&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;operators:sum&quot;,&quot;id&quot;:&quot;_#38.48lS)DU*cdqesBO&quot;,&quot;inputs&quot;:{&quot;A&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;5`jTRoclYxyDY`73uE3R&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;variables_get&quot;,&quot;id&quot;:&quot;7Jm.*$4odPy%oiyPo@!)&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;WrvugZAADY^C~:DXvBQ=&quot;}}}},&quot;B&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;H|v[tk#XyJbi320PSt(E&quot;,&quot;fields&quot;:{&quot;NUM&quot;:20}}}}}}}}}}}},&quot;next&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;looks:set_color&quot;,&quot;id&quot;:&quot;F=Dlsz^gCAIdhHh!}RtP&quot;,&quot;inputs&quot;:{&quot;COLOR&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;;Z~ULw^0m`0Z2ot{KK|#&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;variables_get&quot;,&quot;id&quot;:&quot;WT)a*2dfK-{^K6FO`7Z(&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;WrvugZAADY^C~:DXvBQ=&quot;}}}}}}}}}}}}}}}}}}}}}}}}}}]},&quot;variables&quot;:[{&quot;name&quot;:&quot;xSpeed&quot;,&quot;id&quot;:&quot;aq;O$#Dya1kjko[!i3(-&quot;},{&quot;name&quot;:&quot;ySpeed&quot;,&quot;id&quot;:&quot;|@yg{YQ(yYtoX?DCM}*/&quot;},{&quot;name&quot;:&quot;color&quot;,&quot;id&quot;:&quot;WrvugZAADY^C~:DXvBQ=&quot;}]}" usableblocks="[&quot;controls:wait&quot;,&quot;controls:repeat&quot;,&quot;controls:forever&quot;,&quot;controls:if&quot;,&quot;controls:if_else&quot;,&quot;controls:stop&quot;,&quot;operators:sum&quot;,&quot;operators:subtract&quot;,&quot;operators:multiply&quot;,&quot;operators:divide&quot;,&quot;operators:greater&quot;,&quot;operators:smaller&quot;,&quot;operators:equal&quot;,&quot;operators:and&quot;,&quot;operators:or&quot;,&quot;operators:not&quot;,&quot;operators:absolute&quot;,&quot;variables&quot;,&quot;motions:move&quot;,&quot;motions:rotate&quot;,&quot;motions:set_rotation&quot;,&quot;motions:set_x&quot;,&quot;motions:set_y&quot;,&quot;motions:set_xy&quot;,&quot;motions:get_x&quot;,&quot;motions:get_y&quot;,&quot;looks:set_color&quot;]"></webwriter-block-based-code>
-            <figcaption><b>Block based code</b>: Implement block-based programs in a Scratch-like environment.</figcaption>
+            <figcaption><b>{msg("Block based code")}</b>: {msg("Implement block-based programs in a Scratch-like environment.")}</figcaption>
           </figure>
         </sl-carousel-item>
         <sl-carousel-item>
@@ -235,12 +313,12 @@ const latestNews = allNews.at(-1)
   <webwriter-task-prompt class="ww-widget ww-v1.0.5"
                      id="ww-cef98355-4735-4389-a838-e00adef4a0c3"
                      slot="prompt">
-  <p>In biology, what do we call the process of plants using light to create chemical energy?</p>
+  <p>{msg("In biology, what do we call the process of plants using light to create chemical energy?")}</p>
   </webwriter-task-prompt>
   <webwriter-task-hint class="ww-widget ww-v1.0.5"
                    id="ww-3d1ab425-4823-4555-9bca-c5dd1ab029f2"
                    slot="hint">
-  <p>Consider the parts of the words. Do you know them from somewhere else?</p>
+  <p>{msg("Consider the parts of the words. Do you know them from somewhere else?")}</p>
   </webwriter-task-hint>
   <webwriter-choice class="ww-widget ww-v1.0.5"
                 id="ww-48a8b858-2315-4ffe-ab45-8a4dee3abb05"
@@ -248,31 +326,31 @@ const latestNews = allNews.at(-1)
   <webwriter-choice-item class="ww-widget ww-v1.0.5"
                        id="ww-c9d353ed-c627-4563-a059-bbfc378d9208"
                        layout="list">
-  <p>Photosynthesis</p>
+  <p>{msg("Photosynthesis")}</p>
   </webwriter-choice-item>
   <webwriter-choice-item class="ww-widget ww-v1.0.5"
                        id="ww-0c8fd7bf-60d2-4f6d-8a7d-1e1e208945db"
                        layout="list">
-  <p>Mitosis</p>
+  <p>{msg("Mitosis")}</p>
   </webwriter-choice-item>
   <webwriter-choice-item class="ww-widget ww-v1.0.5"
                        id="ww-9b9bc520-dc36-49b4-ad9c-23cbf105451b"
                        layout="list">
-  <p>Meiosis</p>
+  <p>{msg("Meiosis")}</p>
   </webwriter-choice-item>
   <webwriter-choice-item class="ww-widget ww-v1.0.5"
                        id="ww-11f73be6-b208-44b9-bacb-3c9f00a7971b"
                        layout="list">
-  <p>Fermentation</p>
+  <p>{msg("Fermentation")}</p>
   </webwriter-choice-item>
   </webwriter-choice>
   </webwriter-task>
-  <figcaption><b>Quiz</b>: Make quizzes with automatic answer checking, including multiple choice, ordering, and highlighting. </figcaption>
+  <figcaption><b>{msg("Quiz")}</b>: {msg("Make quizzes with automatic answer checking, including multiple choice, ordering, and highlighting.")} </figcaption>
   </figure>
           </sl-carousel-item>
           <sl-carousel-item>
             <figure>
-            <CodeIcon size="108"></CodeIcon>
+            <CodeIcon class="mobile" size="108"></CodeIcon>
             <webwriter-code-javascript id="aff937c7-bec6-4c5c-a637-edb0221c7d94"
             class="ww-widget ww-v2.0.7 desktop"
             lockedlines="[]"
@@ -293,7 +371,7 @@ const latestNews = allNews.at(-1)
             executioncount="1"
             globalexecution="true"
             results="[{&quot;color&quot;:&quot;inherit&quot;,&quot;text&quot;:&quot;120&quot;}]"></webwriter-code-javascript>
-            <figcaption><b>Code</b>: Write and run code in different programming languages including Python and JS.</figcaption>
+            <figcaption><b>{msg("Code")}</b>: {msg("Write and run code in different programming languages including Python and JS.")}</figcaption>
           </figure>
         </sl-carousel-item>
       </sl-carousel>
@@ -314,6 +392,9 @@ const latestNews = allNews.at(-1)
         <sl-carousel-item>
           <iframe class="desktop" loading="lazy" src="explorables/examples/cs.html"></iframe>
         </sl-carousel-item>
+        <sl-carousel-item>
+          <iframe class="desktop" loading="lazy" src="explorables/examples/geography.html"></iframe>
+        </sl-carousel-item>
       </sl-carousel>
     </div>
     <div id="usability" class="pane">
@@ -332,8 +413,8 @@ const latestNews = allNews.at(-1)
     <div id="webwriter-preview" class="pane">
       <div class="pane-text">
         <h2>{msg("Try it out!")}</h2>
-        <p class="desktop">Preview. For the full app, click <a href="https://run.webwriter.app/">here</a></p>
-        <p class="mobile">WebWriter is not available on mobile yet. Visit this site with a desktop device or sign up <a href="dashboard">here</a>  to be notified when it is ready for mobile.</p>
+        <p class="desktop">{msg("Preview. For the full app, click")} <a href="https://run.webwriter.app/">{msg("here")}</a></p>
+        <p class="mobile">{msg("WebWriter is not available on mobile yet. Visit this site with a desktop device or sign up")} <a href="dashboard">{msg("here")}</a> {msg("to be notified when it is ready for mobile.")}</p>
       </div>
       <iframe src="https://run.webwriter.app" loading="lazy"></iframe>
     </div>
@@ -341,6 +422,11 @@ const latestNews = allNews.at(-1)
 </Layout>
 
 <style is:global>
+
+  * {
+    -webkit-font-smoothing: always;
+    font-smooth: always;
+  }
 
   html:has(#landing) {
     overflow: hidden;

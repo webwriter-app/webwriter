@@ -33,7 +33,7 @@ export default defineConfig({
       }
     },
     redirects: {
-      "/news": "/news/1"
+
     },
     experimental: {
       svg: true

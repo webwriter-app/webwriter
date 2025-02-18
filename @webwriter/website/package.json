@@ -10,7 +10,8 @@
 		"preview": "astro preview",
 		"astro": "astro",
 		"start-backend": "./pocketbase serve",
-		"installpackages": "node scripts/installpackages"
+		"installpackages": "node scripts/installpackages",
+		"localizeexplorables": "node --env-file=../../.env scripts/localizeexplorables"
 	},
 	"dependencies": {
 		"@astrojs/sitemap": "^3.2.1",
@@ -20,7 +21,6 @@
 		"@octokit/rest": "^19.0.7",
 		"@shoelace-style/shoelace": "^2.20.0",
 		"@tabler/icons": "^3.30.0",
-		"@vueuse/core": "^12.5.0",
 		"@webcomponents/scoped-custom-element-registry": "^0.0.9",
 		"@webcomponents/template-shadowroot": "^0.2.1",
 		"astro": "^5.2.5",
@@ -29,13 +29,10 @@
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
 		"codemirror": "^6.0.1",
-		"embla-carousel-vue": "^8.5.2",
 		"fs-extra": "^11.1.1",
-		"lucide-vue-next": "^0.475.0",
 		"medium-zoom": "^1.1.0",
 		"octokit": "^3.2.1",
 		"pocketbase": "^0.25.1",
-		"radix-vue": "^1.9.13",
 		"rehype-autolink-headings": "^7.1.0",
 		"rehype-slug": "^6.0.0",
 		"sharp": "^0.33.5",

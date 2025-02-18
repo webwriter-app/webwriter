@@ -1,5 +1,15 @@
 ---
 import Layout from "@layouts/Layout.astro"
+import { msgResolver } from "src/localize"
+
+const lang = Astro.currentLocale!
+const translations = {
+  "View examples of explorables created with WebWriter.": {
+    "de": "Beispiele für Explorables, die mit WebWriter erstellt wurden."
+  }
+}
+
+const msg = msgResolver(translations, lang)
 
 ---
 
@@ -22,7 +32,7 @@ import Layout from "@layouts/Layout.astro"
     <div id="explorables-base">
       <header>
         <h1>Explorables</h1>
-        <p>View examples of explorables created with WebWriter.</p>
+        <p>{msg("View examples of explorables created with WebWriter.")}</p>
     </header>
       <sl-carousel pagination navigation loop autoplay-interval="10000">
         <sl-carousel-item>
@@ -33,6 +43,9 @@ import Layout from "@layouts/Layout.astro"
         </sl-carousel-item>
         <sl-carousel-item>
           <iframe loading="lazy" src="examples/cs.html"></iframe>
+        </sl-carousel-item>
+        <sl-carousel-item>
+          <iframe loading="lazy" src="examples/geography.html"></iframe>
         </sl-carousel-item>
       </sl-carousel>
     </div>
