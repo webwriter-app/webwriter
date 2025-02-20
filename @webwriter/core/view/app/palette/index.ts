@@ -11,6 +11,7 @@ import { MemberSettings, Package, SemVer } from "#model"
 import { prettifyPackageName, filterObject } from "#utility"
 import { Command } from "#viewmodel"
 import { App, PackageForm } from "#view"
+import { spreadProps } from "@open-wc/lit-helpers"
 
 
 // https://github.com/lit/lit-element/issues/1099#issuecomment-731614025
@@ -114,6 +115,9 @@ export class Palette extends LitElement {
 
 	@property({type: Boolean})
 	showWidgetPreview: boolean
+
+  @property({type: Boolean})
+	forceToolboxPopup: boolean = false
 
   @property({type: Boolean, attribute: true, reflect: true})
   managing = false
@@ -717,6 +721,23 @@ export class Palette extends LitElement {
       }
     }
 
+    @media only screen and (min-width: 1130px) {
+      #toggleToolbox {
+        display: none;
+      }
+    }
+
+    #toggleToolbox[data-active] {
+      background: var(--sl-color-primary-200);
+      border-radius: 100%;
+    }
+
+    #toggleToolbox {
+      width: 30px;
+      height: 30px;
+      align-self: center;
+    }
+
 		
     /*
 
@@ -1132,6 +1153,11 @@ export class Palette extends LitElement {
 	</sl-card>`
   }
 
+  ToolboxToggle() {
+    const [cmd] = this.app.commands.queryCommands("toggleToolbox")
+    return html`<ww-button variant="icon" ${spreadProps(cmd.toObject())} @click=${() => cmd.run()} ?data-active=${cmd.active}></ww-button>`
+  }
+
   protected firstUpdated() {
     this.addEventListener("blur", e => {
       setTimeout(() => {
@@ -1177,6 +1203,7 @@ export class Palette extends LitElement {
 	render() {
     return html`
       ${this.PackageToolbar()}
+      ${this.ToolboxToggle()}
       ${this.app.commands.groupedContainerCommands.map(this.Card)}
       ${this.ClipboardCard()}
       ${this.editingStatus != "pinning"? undefined: this.PinPreview()}
