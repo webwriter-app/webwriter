@@ -1,6 +1,6 @@
 {
   "name": "webwriter",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Web-based authoring tool for explorables",
   "scripts": {
     "start": "npm run vite -- @webwriter/core",
