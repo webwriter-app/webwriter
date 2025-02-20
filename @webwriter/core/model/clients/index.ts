@@ -1,19 +1,20 @@
 import { Account, LLMAccount, Package } from "#schemas";
-import { FileClient, LLMClient, PocketbaseClient } from "#model";
+import { FileClient, LLMClient, PocketbaseClient, HTTPClient } from "#model";
 
 export * from "./file";
 export * from "./llm";
 export * from "./pocketbase";
+export * from "./http"
 
 export interface Client {
-  readonly account: Account;
+  readonly account?: Account;
 }
 
 export interface DocumentClient extends Client {
   /** Whether a given URL could be serviced by this client (same origin and username).*/
   isClientURL(url: URL): boolean;
   /** Save a document `doc` in the given `format` at the given `url`. If no `url` is provided, let the configured storage handle the specific location. If no format is provided, assume `html`. Returns the URL of the saved document. */
-  saveDocument(
+  saveDocument?(
     doc: string | Uint8Array,
     url?: URL | string,
     filename?: string
@@ -85,4 +86,5 @@ export default {
   file: FileClient,
   pocketbase: PocketbaseClient,
   llm: LLMClient,
+  http: HTTPClient
 };

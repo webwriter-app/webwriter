@@ -1,12 +1,12 @@
 import { defineConfig } from 'astro/config'
 import sitemap from '@astrojs/sitemap'
-import lit from '@astrojs/lit'
 import rehypeSlug from 'rehype-slug'
 import rehypeAutolinkHeadings from "rehype-autolink-headings"
+import vue from "@astrojs/vue"
 
 // https://astro.build/config
 export default defineConfig({
-    integrations: [sitemap(), lit()],
+    integrations: [sitemap(), vue({devtools: true, appEntrypoint: '/src/pages/_app'})],
     site: "https://webwriter.app",
     markdown: {
       rehypePlugins: [
@@ -31,5 +31,12 @@ export default defineConfig({
       routing: {
         fallbackType: "rewrite"
       }
+    },
+    redirects: {
+      "/news": "/news/1",
+      "/de/news": "/de/news/1"
+    },
+    experimental: {
+      svg: true
     }
 });

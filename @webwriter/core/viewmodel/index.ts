@@ -9,8 +9,10 @@ export * from "./environmentcontroller"
 export * from "./iconcontroller"
 
 import {StoreController, EnvironmentController, CommandController, LocalizationController, NotificationController, SettingsController, IconController} from "#viewmodel"
-import { RootStore } from "#model"
+import { HTTPClient, RootStore } from "#model"
 import { msg } from "@lit/localize"
+import posthog from "posthog-js"
+import { idle } from "#model/utility/index.js"
 
 async function getAllLocalHandles(): Promise<FileSystemDirectoryHandle[]> {
   const db = indexedDB.open("webwriter")
@@ -47,7 +49,7 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
       await this.environment.ready
       if ('serviceWorker' in navigator && window.isSecureContext) {
         const registration = await navigator.serviceWorker.register( // @ts-ignore
-          import.meta.env.MODE === 'production' ? '/bundleservice.js' : '/dev-sw.js?dev-sw', // @ts-ignore
+          import.meta.env.MODE === 'production' ? '/index.service.js' : '/dev-sw.js?dev-sw', // @ts-ignore
           { type: WEBWRITER_ENVIRONMENT.engine.name === "Gecko"? "classic": "module", scope: "/" }
         )
         /*const worker = registration.installing
@@ -65,6 +67,15 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
       this.localization = new LocalizationController(this, this.store)
       this.commands = new CommandController(this as any, this.store)
       this.notifications = new NotificationController(this, this.store)
+      if(this.store.ui.authoringAnalytics) {
+        await Promise.race([
+          idle(15000),
+          new Promise (r => posthog.init(
+            'phc_V2cc746TcRUY7xTnU3YA2nLv95sCvHJEZ0A1laH8d2Q',
+            { api_host: 'https://eu.i.posthog.com', loaded: r },
+          ))
+        ])
+      }
       window.addEventListener("beforeunload", e => {
         if(this.store.document.changed) {
           e.preventDefault()
@@ -88,6 +99,19 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
         } 
       }
       await this.store.packages.initialize()
+      const locationUrl = new URL(location.href)
+      const src = locationUrl.searchParams.get("src")
+      if(src) {
+        await this.store.document.load(
+          new URL(decodeURIComponent(src)),
+          undefined,
+          (new HTTPClient()) as any,
+          undefined,
+          false
+        )
+        locationUrl.searchParams.delete("src")
+        history.replaceState({}, "", locationUrl)
+      }
       this.requestUpdate()
       this.initializing = false
       document.body.classList.add("loaded")

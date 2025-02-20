@@ -98,6 +98,16 @@ export class Head extends LitElement {
       --icon-size: 20px;
       flex-shrink: 0;
     }
+
+    :host(.intro-target) * {
+      animation: blink-color 1.5s linear infinite;
+    } 
+
+    @keyframes blink-color {
+      50% {
+        color: var(--sl-color-primary-600);
+      }
+    }
   `;
 
   IconicURL = () => {

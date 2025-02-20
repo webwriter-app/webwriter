@@ -3346,6 +3346,114 @@
   <source>WebWriter can embed SVG directly in the document.</source>
   <target>WebWriter kann SVGs direkt im Dokument einbetten.</target>
 </trans-unit>
+<trans-unit id="s3437e0d9899e7ae1">
+  <source>Send telemetry data about your usage of WebWriter.</source>
+  <target>Sende Telemetrie-Daten über deine WebWriter-Nutzung.</target>
+</trans-unit>
+<trans-unit id="s80570196a9ce6d11">
+  <source>Enable telemetry</source>
+  <target>Telemetrie aktivieren</target>
+</trans-unit>
+<trans-unit id="sb66e2181a7b5738a">
+  <source>By enabling telemetry, you allow for data collection and retention according to our</source>
+  <target>Indem du Telemetrie aktivierst, erlaubst du Datensammlung und -speicherung entsprechend unser</target>
+</trans-unit>
+<trans-unit id="sbc6953a36ced943f">
+  <source>privacy policy</source>
+  <target>Datenschutzrichtlinie</target>
+</trans-unit>
+<trans-unit id="sb85774dc5d18ff0f">
+  <source>Confirm</source>
+  <target>Bestätigen</target>
+</trans-unit>
+<trans-unit id="s3649bacefe731bf6">
+  <source>Toggle Toolbox</source>
+  <target>Toolbox umschalten</target>
+</trans-unit>
+<trans-unit id="s542fcefa0bbaed86">
+  <source>Open or close the toolbox (only on narrow screens, otherwise, the toolbox is always visible on the side).</source>
+  <target>Öffnet oder schließt die Toolbox (nur für schmale Bildschirme, ansonsten immer sichtbar)</target>
+</trans-unit>
+<trans-unit id="se9ac05f36b004eb0">
+  <source>Hide the introductory tour. Disable so the tour is shown again.</source>
+  <target>Verstecke die Einführung. Deaktivieren, damit die Einführung wieder angezeigt wird.</target>
+</trans-unit>
+<trans-unit id="sf2ab37af0abc55ef">
+  <source>Hide intro tour</source>
+  <target>Einführung verstecken</target>
+</trans-unit>
+<trans-unit id="s75109f5307578a61">
+  <source>Welcome to WebWriter</source>
+  <target>Willkommen bei WebWriter</target>
+</trans-unit>
+<trans-unit id="s1d10d2058d8ca8dd">
+  <source>Want a short, guided tour?</source>
+  <target>Möchtest du eine kurze Einführung?</target>
+</trans-unit>
+<trans-unit id="s3bdad99768e11911">
+  <source>Explorable</source>
+  <target>Explorable</target>
+</trans-unit>
+<trans-unit id="s0db05bd7ba6fff96">
+  <source>Your explorable document. You can write text and copy/paste, edit, etc. here.</source>
+  <target>Dein Explorable-Dokument. Du kannst Text schreiben, kopieren/einfügen, bearbeiten, usw.</target>
+</trans-unit>
+<trans-unit id="sc8af536e2084ade0">
+  <source>Palette</source>
+  <target>Palette</target>
+</trans-unit>
+<trans-unit id="s0b24d08ea349b455">
+  <source>Everything you can insert. At the start are non-interactive elements like lists or images, next are interactive elements called widgets. You can get new ones by clicking the search bar.</source>
+  <target>Alles, was du einfügen kannst. Vorn sind nicht interaktive Elemente wie Listen oder Bilder, es folgen interaktive Elemente, die Widgets genannt werden. Du kannst neue Widgets finden, indem du in die Suchleiste klickst.</target>
+</trans-unit>
+<trans-unit id="s24949d7adbb5a098">
+  <source>Toolbox</source>
+  <target>Toolbox</target>
+</trans-unit>
+<trans-unit id="s806f84eb0ace116e">
+  <source>See what you have selected and change it. Copy, cut, paste, pin, or make layout changes. Offers different options depending on your selection, i.e. formatting for text.</source>
+  <target>Sehe deine aktuelle Auswahl und verändere sie. Kopieren, Ausschneiden, Einfügen, Anpinnen, oder Layout-Änderungen sind möglich. Bietet je nach Auswahl unterschiedliche Optionen, z.B. Formatierung für Text.</target>
+</trans-unit>
+<trans-unit id="seaaaeb09e3b4e78b">
+  <source>Editing commands</source>
+  <target>Editor-Befehle</target>
+</trans-unit>
+<trans-unit id="s8d83386457e91813">
+  <source>Undo/redo your changes or preview from the learner's perspective.</source>
+  <target>Änderungen rückgängig machen, wiederholen, oder die Vorschau aus Lernerperspektive aktivieren.</target>
+</trans-unit>
+<trans-unit id="s0e6ea8870dbddab2">
+  <source>Document commands</source>
+  <target>Dokument-Befehle</target>
+</trans-unit>
+<trans-unit id="s0448f1059fa01720">
+  <source>Save, share or print your explorable. Edit information such as the title, language or license.</source>
+  <target>Speichere, teile oder drucke das Explorable. Bearbeite Informationen wie den Titel, die Sprache, oder die Lizenz.</target>
+</trans-unit>
+<trans-unit id="s0c4b2e98d4ab7f5a">
+  <source>App commands</source>
+  <target>App-Befehle</target>
+</trans-unit>
+<trans-unit id="sa172190ea21f9b1c">
+  <source>Access the settings, open an explorable or create a new one.</source>
+  <target>Greif auf die Einstellungen zu, öffne ein Explorable oder erstelle ein neues.</target>
+</trans-unit>
+<trans-unit id="s4cc8391f172c0cdf">
+  <source>Dismiss tour</source>
+  <target>Einführung beenden</target>
+</trans-unit>
+<trans-unit id="s575e795c45e2d97e">
+  <source>Go back</source>
+  <target>Zurück</target>
+</trans-unit>
+<trans-unit id="sa778acc33947c7b8">
+  <source>Finish tour</source>
+  <target>Einführung beenden</target>
+</trans-unit>
+<trans-unit id="s81ecf2d4386b8e84">
+  <source>Continue</source>
+  <target>Weiter</target>
+</trans-unit>
 </body>
 </file>
 </xliff>

@@ -5,12 +5,14 @@ import { customElement, property, query } from "lit/decorators.js";
 import { localized, msg } from "@lit/localize";
 import { SlAlert } from "@shoelace-style/shoelace";
 import scopedCustomElementsRegistryString from "@webcomponents/scoped-custom-element-registry/scoped-custom-element-registry.min.js?raw";
+import { querySelectorDeep } from "query-selector-shadow-dom"
 
 import { escapeHTML } from "#utility";
 import { ViewModelMixin } from "#viewmodel";
 import { ExplorableEditor, SaveForm } from "#view";
 
 import appIconString from "../assets/app-icon.svg?raw";
+import { ifDefined } from "lit/directives/if-defined.js";
 
 export const APPICON = `data:image/svg+xml;base64,${btoa(appIconString)}`;
 
@@ -39,6 +41,87 @@ export class App extends ViewModelMixin(LitElement) {
       e.preventDefault();
     });
   }
+
+  @property({type: String})
+  activeHelp: keyof App["helpSequence"] | null = Object.keys(this.helpSequence)[0] as keyof App["helpSequence"]
+
+  get activeHelpSpec() {
+    return this.activeHelp? this.helpSequence[this.activeHelp]: undefined
+  }
+
+  nextHelp(backwards=false) {
+    const i = !this.activeHelp? -1: Object.keys(this.helpSequence).indexOf(this.activeHelp)
+    if(!backwards && i + 1 >= Object.keys(this.helpSequence).length) {
+      return this.endHelp()
+    }
+    const oldTargetEl = querySelectorDeep(this.helpSequence[this.activeHelp!].selector, this)
+    oldTargetEl!.classList.remove("intro-target")
+    this.activeHelp = Object.keys(this.helpSequence)[backwards? i - 1: i + 1] as keyof App["helpSequence"]
+    Object.keys(query)
+    if(this.helpSequence[this.activeHelp].highlight) {
+      const targetEl = querySelectorDeep(this.helpSequence[this.activeHelp].selector, this)
+      targetEl?.classList.add("intro-target")
+    }
+  }
+
+  endHelp() {
+    this.activeHelp = null
+    Object.values(this.helpSequence).map(({selector}) => querySelectorDeep(selector, this)).forEach(el => el?.classList.remove("intro-target"))
+    this.settings.setAndPersist("ui", "hideIntro", true)
+  }
+
+  get helpSequence() {return {
+    "welcome": {
+      selector: "ww-head",
+      title: msg("Welcome to WebWriter"),
+      description: msg("Want a short, guided tour?"),
+      icon: "info-square-rounded",
+      highlight: false
+    },
+    "explorable": {
+      selector: "ww-head",
+      title: msg("Explorable"),
+      description: msg("Your explorable document. You can write text and copy/paste, edit, etc. here."),
+      icon: "notes",
+      distance: 300,
+      highlight: false
+    },
+    "palette": {
+      selector: "ww-palette",
+      title: msg("Palette"),
+      description: msg("Everything you can insert. At the start are non-interactive elements like lists or images, next are interactive elements called widgets. You can get new ones by clicking the search bar."),
+      icon: "palette",
+      highlight: true
+    },
+    "toolbox": {
+      selector: this.activeEditor?.isInNarrowLayout? "ww-button#toggleToolbox": "ww-toolbox",
+      title: msg("Toolbox"),
+      description: msg("See what you have selected and change it. Copy, cut, paste, pin, or make layout changes. Offers different options depending on your selection, i.e. formatting for text."),
+      icon: "tools",
+      highlight: true
+    },
+    "editing-commands": {
+      selector: "#header-right",
+      title: msg("Editing commands"),
+      description: msg("Undo/redo your changes or preview from the learner's perspective."),
+      icon: "command",
+      highlight: true
+    },
+    "document-commands": {
+      selector: "ww-head[slot=nav]",
+      title: msg("Document commands"),
+      description: msg("Save, share or print your explorable. Edit information such as the title, language or license."),
+      icon: "command",
+      highlight: true
+    },
+    "app-commands": {
+      selector: "#header-left",
+      title: msg("App commands"),
+      description: msg("Access the settings, open an explorable or create a new one."),
+      icon: "command",
+      highlight: true
+    },
+  }}
 
   static get styles() {
     return css`
@@ -201,6 +284,54 @@ export class App extends ViewModelMixin(LitElement) {
         }
       }
 
+      #intro-tour {
+
+        &::part(popup) {
+          max-width: 400px;
+          padding: 10px;
+          display: flex;
+          flex-direction: column;
+          gap: 15px;
+          background: white;
+          border: 2px solid var(--sl-color-gray-800);
+          box-shadow: 5px 5px 15px 5px rgba(0, 0, 0, 0.25);
+          border-radius: 5px;
+          z-index: 10000000;
+          transition: top 0.25s linear, left 0.25s ease-in;
+        }
+
+        & .intro-tour-title {
+          margin: 0;
+          display: flex;
+          align-items: center;
+          gap: 0.5ch;
+          font-size: 1.25rem;
+        }
+
+        & .intro-tour-description {
+          font-size: 1rem;
+          line-height: 1.25rem;
+          text-align: justify;
+        }
+
+        & .intro-tour-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 10px;
+        }
+      }
+
+      .intro-target * {
+        animation: blink-color 1.5s linear infinite;
+      }
+
+      @keyframes blink-color {
+        50% {
+          color: var(--sl-color-primary-600);
+        }
+      }
+
+
       @media only screen and (max-width: 1300px) {
         :host(:not(.noResources)) #settings-button .text {
           display: none;
@@ -277,7 +408,8 @@ export class App extends ViewModelMixin(LitElement) {
         ${spreadProps(editHead.toObject())}
         @click=${() => editHead.run()}
       ></ww-button>
-    </ww-head>`;
+    </ww-head>
+    `;
     const metaeditor = this.store
       ? html`<ww-metaeditor
           .app=${this}
@@ -362,6 +494,27 @@ export class App extends ViewModelMixin(LitElement) {
     const nextNotification = dequeueNotification();
     nextNotification &&
       this.notify(nextNotification).then(() => this.requestUpdate());
+  }
+
+  IntroTour() {
+    const anchor = !this.activeHelpSpec
+      ? null
+      : querySelectorDeep(this.activeHelpSpec.selector)
+    return anchor? html`<sl-popup id="intro-tour" shift-padding="20" placement="bottom" flip shift strategy="fixed" ?active=${!!this.activeHelp && !this.store?.ui.hideIntro} .anchor=${anchor} distance=${ifDefined(this.activeHelpSpec? (this.activeHelpSpec as any)?.distance: undefined)}>
+      <h2 class="intro-tour-title">
+        <sl-icon class="intro-tour-icon" name=${ifDefined(!this.activeHelpSpec? undefined: this.activeHelpSpec.icon)}></sl-icon>
+        ${!this.activeHelpSpec? null: this.activeHelpSpec.title}
+        <ww-button variant="icon" icon="x" style="margin-left: auto;" @click=${this.endHelp}></ww-button>
+      </h2>
+      <div class="intro-tour-description">${!this.activeHelpSpec? null: this.activeHelpSpec.description}</div>
+      <div class="intro-tour-actions">
+        ${this.activeHelp === Object.keys(this.helpSequence).at(-1)? null: html`<ww-button variant="neutral" size="small" @click=${this.endHelp} outline>${msg("Dismiss tour")}</ww-button>`}
+        ${this.activeHelp === Object.keys(this.helpSequence).at(0)? null: html`<ww-button variant="primary" outline size="small" @click=${() => this.nextHelp(true)}>${msg("Go back")}</ww-button>`}
+        <ww-button variant="primary" size="small" @click=${() => this.nextHelp()}>
+          ${this.activeHelp === Object.keys(this.helpSequence).at(-1)? msg("Finish tour"): msg("Continue")}
+        </ww-button>
+      </div>
+    </sl-popup>`: null
   }
 
   closeDialog = () => {
@@ -476,6 +629,7 @@ export class App extends ViewModelMixin(LitElement) {
       <div
         style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1000000; pointer-events: none;"
       ></div>
+      ${this.IntroTour()}
       ${this.Dialog()} `;
   }
 }

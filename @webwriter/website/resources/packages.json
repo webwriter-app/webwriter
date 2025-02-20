@@ -1,0 +1,1649 @@
+[
+  {
+    "name": "@webwriter/neural-network",
+    "version": "1.0.3",
+    "author": "Christian Koch",
+    "license": "MIT",
+    "type": "module",
+    "description": "Deep learning visualization for feed-forward networks with custom datasets, training and prediction.",
+    "exports": {
+      "./widgets/webwriter-neural-network.*": {
+        "source": "./src/app.ts",
+        "default": "./dist/webwriter-neural-network.*"
+      }
+    },
+    "files": [
+      "dist",
+      "src"
+    ],
+    "keywords": [
+      "webwriter-widget"
+    ],
+    "scripts": {
+      "start": "vite preview",
+      "create": "vite build --config vite.config.js && copyfiles index.html ./dist",
+      "prepublishOnly": "npx @webwriter/build"
+    },
+    "dependencies": {
+      "@lit/context": "^1.1.2",
+      "@shoelace-style/shoelace": "^2.6.0",
+      "@tensorflow/tfjs": "^4.2.0",
+      "@tensorflow/tfjs-vis": "^1.5.1",
+      "@types/cytoscape": "^3.21.6",
+      "@webcomponents/scoped-custom-element-registry": "^0.0.9",
+      "@webwriter/create-widget": "^0.4.2",
+      "@webwriter/lit": "^2.0.0",
+      "bootstrap-icons": "^1.11.3",
+      "colorsea": "^1.2.2",
+      "cytoscape": "^3.30.2",
+      "lit": "^3.2.0"
+    },
+    "devDependencies": {
+      "@babel/plugin-proposal-decorators": "^7.24.7",
+      "@types/wicg-file-system-access": "^2023.10.5",
+      "@typescript-eslint/eslint-plugin": "^8.2.0",
+      "@typescript-eslint/parser": "^8.2.0",
+      "@vitejs/plugin-react": "^4.3.1",
+      "copyfiles": "^2.4.1",
+      "eslint": "^9.9.0",
+      "eslint-plugin-lit": "^1.14.0",
+      "eslint-plugin-wc": "^2.1.1",
+      "prettier": "^3.3.3",
+      "typescript": "^5.5.4",
+      "vite": "^5.4.2",
+      "vite-plugin-static-copy": "^1.0.6"
+    },
+    "optionalDependencies": {
+      "@rollup/rollup-win32-x64-msvc": "4.20.0"
+    },
+    "snippets": {}
+  },
+  {
+    "name": "@webwriter/chemdraw",
+    "version": "2.0.6",
+    "description": "Draw chemical molecules. Add custom highlighting and text descriptions.",
+    "type": "module",
+    "keywords": [
+      "webwriter-widget"
+    ],
+    "exports": {
+      "./widgets/webwriter-chemdraw.*": {
+        "source": "./index.ts",
+        "default": "./dist/webwriter-chemdraw.*"
+      },
+      "./widgets/webwriter-periodic-table.*": {
+        "source": "./components/PeriodicTable.ts",
+        "default": "./dist/webwriter-periodic-table.*"
+      },
+      "./package.json": "./package.json"
+    },
+    "author": "Raphael Thelen <raphael.thelen@rwth-aachen.de>",
+    "license": "MIT",
+    "scripts": {
+      "prepublishOnly": "npx @webwriter/build",
+      "preview": "npx @webwriter/build preview webwriter-chemdraw"
+    },
+    "dependencies": {
+      "@shoelace-style/shoelace": "^2.15.0",
+      "@webwriter/lit": "^2.0.0",
+      "lit": "^3.1.3"
+    },
+    "devDependencies": {
+      "typescript": "^5.6.2"
+    },
+    "snippets": {}
+  },
+  {
+    "name": "@webwriter/code",
+    "version": "2.0.7",
+    "keywords": [
+      "webwriter-widget",
+      "code",
+      "js",
+      "html",
+      "css"
+    ],
+    "license": "MIT",
+    "author": "",
+    "contributors": [
+      "Erik Viere",
+      "Jorik van Genuchten"
+    ],
+    "description": "Write and run code as a code cell. Supports several languages (HTML/CSS/JS, TypeScript, Python).",
+    "exports": {
+      "./widgets/webwriter-code-dummy.*": {
+        "source": "./src/html/ww-code-html.ts",
+        "default": "./dist/widgets/ww-code-html.*"
+      },
+      "./widgets/webwriter-code-html.*": {
+        "source": "./src/html/ww-code-html.ts",
+        "default": "./dist/widgets/ww-code-html.*"
+      },
+      "./widgets/webwriter-code-javascript.*": {
+        "source": "./src/javascript/ww-code-javascript.ts",
+        "default": "./dist/widgets/ww-code-javascript.*"
+      },
+      "./widgets/webwriter-code-typescript.*": {
+        "source": "./src/typescript/ww-code-typescript.ts",
+        "default": "./dist/widgets/ww-code-typescript.*"
+      },
+      "./widgets/webwriter-code-python.*": {
+        "source": "./src/python/ww-code-python.ts",
+        "default": "./dist/widgets/ww-code-python.*"
+      },
+      "./widgets/webwriter-code-webassembly.*": {
+        "source": "./src/webassembly/ww-code-webassembly.ts",
+        "default": "./dist/widgets/ww-code-webassembly.*"
+      },
+      "./package.json": "./package.json"
+    },
+    "editingConfig": {
+      ".": {
+        "label": {
+          "_": "Code"
+        }
+      },
+      "./widgets/webwriter-code-html": {
+        "label": {
+          "_": "HTML"
+        }
+      },
+      "./widgets/webwriter-code-javascript": {
+        "label": {
+          "_": "JavaScript"
+        }
+      },
+      "./widgets/webwriter-code-typescript": {
+        "label": {
+          "_": "TypeScript"
+        }
+      },
+      "./widgets/webwriter-code-python": {
+        "label": {
+          "_": "Python"
+        }
+      },
+      "./widgets/webwriter-code-webassembly": {
+        "label": {
+          "_": "WebAssembly"
+        }
+      }
+    },
+    "scripts": {
+      "prepublishOnly": "npx @webwriter/build"
+    },
+    "dependencies": {
+      "@codemirror/autocomplete": ">=6.10.2 <7.0.0-0",
+      "@codemirror/commands": ">=6.3.0 <7.0.0-0",
+      "@codemirror/lang-css": ">=6.2.1 <7.0.0-0",
+      "@codemirror/lang-html": ">=6.4.6 <7.0.0-0",
+      "@codemirror/lang-javascript": ">=6.2.1 <7.0.0-0",
+      "@codemirror/lang-python": ">=6.1.3 <7.0.0-0",
+      "@codemirror/lang-wast": ">=6.0.1 <7.0.0-0",
+      "@codemirror/language": ">=6.9.1 <7.0.0-0",
+      "@codemirror/search": ">=6.5.4 <7.0.0-0",
+      "@codemirror/state": ">=6.3.0 <7.0.0-0",
+      "@codemirror/theme-one-dark": ">=6.1.2 <7.0.0-0",
+      "@codemirror/view": ">=6.21.3 <7.0.0-0",
+      "@replit/codemirror-indentation-markers": ">=6.5.0 <7.0.0-0",
+      "@shoelace-style/shoelace": ">=2.9.0 <3.0.0-0",
+      "@webwriter/lit": "^2.0.0",
+      "binaryen": ">=116.0.0 <117.0.0-0",
+      "codemirror-readonly-ranges": ">=0.1.0-alpha.1 <0.2.0-0",
+      "lit": ">=3.0.0 <4.0.0-0",
+      "range-analyzer": ">=0.1.1-alpha.2 <0.2.0-0",
+      "tslib": ">=2.6.2 <3.0.0-0",
+      "typescript": ">=4.9.5 <5.0.0-0",
+      "uuid": "^9.0.1"
+    },
+    "devDependencies": {
+      "@types/node": ">=18.7.21 <19.0.0-0",
+      "@types/uuid": "^9.0.8",
+      "@typescript-eslint/eslint-plugin": ">=5.38.1 <6.0.0-0",
+      "eslint": ">=8.24.0 <9.0.0-0",
+      "eslint-config-standard-with-typescript": ">=23.0.0 <24.0.0-0",
+      "eslint-plugin-import": ">=2.26.0 <3.0.0-0",
+      "eslint-plugin-n": ">=15.3.0 <16.0.0-0",
+      "eslint-plugin-promise": ">=6.0.1 <7.0.0-0",
+      "vite": ">=3.0.0 <4.0.0-0"
+    },
+    "type": "module",
+    "snippets": {}
+  },
+  {
+    "name": "@webwriter/slides",
+    "version": "2.0.1",
+    "description": "WORK IN PROGRESS: Present content as a sequence of screens (slides, tabs, etc.).",
+    "keywords": [
+      "webwriter-widget"
+    ],
+    "scripts": {
+      "prepublishOnly": "npx @webwriter/build"
+    },
+    "license": "MIT",
+    "author": "",
+    "dependencies": {
+      "@shoelace-style/shoelace": "^2.12.0",
+      "@webwriter/lit": "^2.0.0",
+      "bootstrap-icons": "^1.11.3",
+      "lit": "^3.2.0"
+    },
+    "exports": {
+      "./widgets/webwriter-slides.*": {
+        "source": "./src/widgets/webwriter-slides.ts",
+        "default": "./dist/widgets/webwriter-slides.*"
+      },
+      "./widgets/webwriter-slide.*": {
+        "source": "./src/widgets/webwriter-slide.ts",
+        "default": "./dist/widgets/webwriter-slide.*"
+      },
+      "./package.json": "./package.json"
+    },
+    "editingConfig": {
+      "./widgets/webwriter-slides": {
+        "definingAsContext": true,
+        "definingForContent": true,
+        "content": "webwriter-slide+"
+      },
+      "./widgets/webwriter-slide": {
+        "definingAsContext": true,
+        "definingForContent": true,
+        "content": "p | flow*",
+        "uninsertable": true
+      }
+    },
+    "devDependencies": {
+      "@webwriter/build": "^1.0.1"
+    },
+    "snippets": {}
+  },
+  {
+    "name": "@webwriter/phet-simulation",
+    "version": "1.0.3",
+    "keywords": [
+      "webwriter-widget"
+    ],
+    "license": "MIT",
+    "author": "Frederic Salmen <frederic@fsalmen.de>",
+    "exports": {
+      "./snippets/center-and-variability.html": "./snippets/center-and-variability.html",
+      "./snippets/build-a-nucleus.html": "./snippets/build-a-nucleus.html",
+      "./snippets/keplers-laws.html": "./snippets/keplers-laws.html",
+      "./snippets/sound-waves.html": "./snippets/sound-waves.html",
+      "./snippets/quadrilateral.html": "./snippets/quadrilateral.html",
+      "./snippets/my-solar-system.html": "./snippets/my-solar-system.html",
+      "./snippets/calculus-grapher.html": "./snippets/calculus-grapher.html",
+      "./snippets/number-compare.html": "./snippets/number-compare.html",
+      "./snippets/number-play.html": "./snippets/number-play.html",
+      "./snippets/greenhouse-effect.html": "./snippets/greenhouse-effect.html",
+      "./snippets/geometric-optics-basics.html": "./snippets/geometric-optics-basics.html",
+      "./snippets/mean-share-and-balance.html": "./snippets/mean-share-and-balance.html",
+      "./snippets/geometric-optics.html": "./snippets/geometric-optics.html",
+      "./snippets/density.html": "./snippets/density.html",
+      "./snippets/circuit-construction-kit-ac.html": "./snippets/circuit-construction-kit-ac.html",
+      "./snippets/circuit-construction-kit-ac-virtual-lab.html": "./snippets/circuit-construction-kit-ac-virtual-lab.html",
+      "./snippets/normal-modes.html": "./snippets/normal-modes.html",
+      "./snippets/fourier-making-waves.html": "./snippets/fourier-making-waves.html",
+      "./snippets/number-line-distance.html": "./snippets/number-line-distance.html",
+      "./snippets/ratio-and-proportion.html": "./snippets/ratio-and-proportion.html",
+      "./snippets/collision-lab.html": "./snippets/collision-lab.html",
+      "./snippets/number-line-operations.html": "./snippets/number-line-operations.html",
+      "./snippets/energy-skate-park.html": "./snippets/energy-skate-park.html",
+      "./snippets/build-a-molecule.html": "./snippets/build-a-molecule.html",
+      "./snippets/natural-selection.html": "./snippets/natural-selection.html",
+      "./snippets/number-line-integers.html": "./snippets/number-line-integers.html",
+      "./snippets/vector-addition-equations.html": "./snippets/vector-addition-equations.html",
+      "./snippets/vector-addition.html": "./snippets/vector-addition.html",
+      "./snippets/curve-fitting.html": "./snippets/curve-fitting.html",
+      "./snippets/gravity-force-lab-basics.html": "./snippets/gravity-force-lab-basics.html",
+      "./snippets/waves-intro.html": "./snippets/waves-intro.html",
+      "./snippets/diffusion.html": "./snippets/diffusion.html",
+      "./snippets/gases-intro.html": "./snippets/gases-intro.html",
+      "./snippets/gas-properties.html": "./snippets/gas-properties.html",
+      "./snippets/blackbody-spectrum.html": "./snippets/blackbody-spectrum.html",
+      "./snippets/masses-and-springs-basics.html": "./snippets/masses-and-springs-basics.html",
+      "./snippets/energy-forms-and-changes.html": "./snippets/energy-forms-and-changes.html",
+      "./snippets/wave-interference.html": "./snippets/wave-interference.html",
+      "./snippets/fractions-mixed-numbers.html": "./snippets/fractions-mixed-numbers.html",
+      "./snippets/fractions-intro.html": "./snippets/fractions-intro.html",
+      "./snippets/build-a-fraction.html": "./snippets/build-a-fraction.html",
+      "./snippets/fractions-equality.html": "./snippets/fractions-equality.html",
+      "./snippets/coulombs-law.html": "./snippets/coulombs-law.html",
+      "./snippets/graphing-quadratics.html": "./snippets/graphing-quadratics.html",
+      "./snippets/masses-and-springs.html": "./snippets/masses-and-springs.html",
+      "./snippets/equality-explorer-two-variables.html": "./snippets/equality-explorer-two-variables.html",
+      "./snippets/equality-explorer-basics.html": "./snippets/equality-explorer-basics.html",
+      "./snippets/equality-explorer.html": "./snippets/equality-explorer.html",
+      "./snippets/area-model-algebra.html": "./snippets/area-model-algebra.html",
+      "./snippets/area-model-decimals.html": "./snippets/area-model-decimals.html",
+      "./snippets/area-model-multiplication.html": "./snippets/area-model-multiplication.html",
+      "./snippets/area-model-introduction.html": "./snippets/area-model-introduction.html",
+      "./snippets/gene-expression-essentials.html": "./snippets/gene-expression-essentials.html",
+      "./snippets/capacitor-lab-basics.html": "./snippets/capacitor-lab-basics.html",
+      "./snippets/circuit-construction-kit-dc-virtual-lab.html": "./snippets/circuit-construction-kit-dc-virtual-lab.html",
+      "./snippets/circuit-construction-kit-dc.html": "./snippets/circuit-construction-kit-dc.html",
+      "./snippets/pendulum-lab.html": "./snippets/pendulum-lab.html",
+      "./snippets/projectile-motion.html": "./snippets/projectile-motion.html",
+      "./snippets/molecule-polarity.html": "./snippets/molecule-polarity.html",
+      "./snippets/expression-exchange.html": "./snippets/expression-exchange.html",
+      "./snippets/graphing-slope-intercept.html": "./snippets/graphing-slope-intercept.html",
+      "./snippets/function-builder-basics.html": "./snippets/function-builder-basics.html",
+      "./snippets/proportion-playground.html": "./snippets/proportion-playground.html",
+      "./snippets/unit-rates.html": "./snippets/unit-rates.html",
+      "./snippets/make-a-ten.html": "./snippets/make-a-ten.html",
+      "./snippets/states-of-matter-basics.html": "./snippets/states-of-matter-basics.html",
+      "./snippets/states-of-matter.html": "./snippets/states-of-matter.html",
+      "./snippets/gravity-and-orbits.html": "./snippets/gravity-and-orbits.html",
+      "./snippets/plinko-probability.html": "./snippets/plinko-probability.html",
+      "./snippets/atomic-interactions.html": "./snippets/atomic-interactions.html",
+      "./snippets/charges-and-fields.html": "./snippets/charges-and-fields.html",
+      "./snippets/rutherford-scattering.html": "./snippets/rutherford-scattering.html",
+      "./snippets/function-builder.html": "./snippets/function-builder.html",
+      "./snippets/isotopes-and-atomic-mass.html": "./snippets/isotopes-and-atomic-mass.html",
+      "./snippets/neuron.html": "./snippets/neuron.html",
+      "./snippets/trig-tour.html": "./snippets/trig-tour.html",
+      "./snippets/bending-light.html": "./snippets/bending-light.html",
+      "./snippets/arithmetic.html": "./snippets/arithmetic.html",
+      "./snippets/hookes-law.html": "./snippets/hookes-law.html",
+      "./snippets/molecules-and-light.html": "./snippets/molecules-and-light.html",
+      "./snippets/least-squares-regression.html": "./snippets/least-squares-regression.html",
+      "./snippets/molecule-shapes.html": "./snippets/molecule-shapes.html",
+      "./snippets/molecule-shapes-basics.html": "./snippets/molecule-shapes-basics.html",
+      "./snippets/reactants-products-and-leftovers.html": "./snippets/reactants-products-and-leftovers.html",
+      "./snippets/energy-skate-park-basics.html": "./snippets/energy-skate-park-basics.html",
+      "./snippets/faradays-law.html": "./snippets/faradays-law.html",
+      "./snippets/ph-scale-basics.html": "./snippets/ph-scale-basics.html",
+      "./snippets/area-builder.html": "./snippets/area-builder.html",
+      "./snippets/wave-on-a-string.html": "./snippets/wave-on-a-string.html",
+      "./snippets/color-vision.html": "./snippets/color-vision.html",
+      "./snippets/ph-scale.html": "./snippets/ph-scale.html",
+      "./snippets/balancing-chemical-equations.html": "./snippets/balancing-chemical-equations.html",
+      "./snippets/graphing-lines.html": "./snippets/graphing-lines.html",
+      "./snippets/fraction-matcher.html": "./snippets/fraction-matcher.html",
+      "./snippets/balancing-act.html": "./snippets/balancing-act.html",
+      "./snippets/acid-base-solutions.html": "./snippets/acid-base-solutions.html",
+      "./snippets/under-pressure.html": "./snippets/under-pressure.html",
+      "./snippets/friction.html": "./snippets/friction.html",
+      "./snippets/forces-and-motion-basics.html": "./snippets/forces-and-motion-basics.html",
+      "./snippets/john-travoltage.html": "./snippets/john-travoltage.html",
+      "./snippets/concentration.html": "./snippets/concentration.html",
+      "./snippets/gravity-force-lab.html": "./snippets/gravity-force-lab.html",
+      "./snippets/balloons-and-static-electricity.html": "./snippets/balloons-and-static-electricity.html",
+      "./snippets/beers-law-lab.html": "./snippets/beers-law-lab.html",
+      "./snippets/molarity.html": "./snippets/molarity.html",
+      "./snippets/ohms-law.html": "./snippets/ohms-law.html",
+      "./snippets/resistance-in-a-wire.html": "./snippets/resistance-in-a-wire.html",
+      "./snippets/build-an-atom.html": "./snippets/build-an-atom.html"
+    },
+    "editingConfig": {
+      ".": {
+        "label": {
+          "_": "PhET Simulation"
+        }
+      },
+      "./snippets/center-and-variability": {
+        "label": {
+          "_": "Center and Variability"
+        }
+      },
+      "./snippets/build-a-nucleus": {
+        "label": {
+          "_": "Build a Nucleus"
+        }
+      },
+      "./snippets/keplers-laws": {
+        "label": {
+          "_": "Kepler's Laws"
+        }
+      },
+      "./snippets/sound-waves": {
+        "label": {
+          "_": "Sound Waves"
+        }
+      },
+      "./snippets/quadrilateral": {
+        "label": {
+          "_": "Quadrilateral"
+        }
+      },
+      "./snippets/my-solar-system": {
+        "label": {
+          "_": "My Solar System"
+        }
+      },
+      "./snippets/calculus-grapher": {
+        "label": {
+          "_": "Calculus Grapher"
+        }
+      },
+      "./snippets/number-compare": {
+        "label": {
+          "_": "Number Compare"
+        }
+      },
+      "./snippets/number-play": {
+        "label": {
+          "_": "Number Play"
+        }
+      },
+      "./snippets/greenhouse-effect": {
+        "label": {
+          "_": "Greenhouse Effect"
+        }
+      },
+      "./snippets/geometric-optics-basics": {
+        "label": {
+          "_": "Geometric Optics: Basics"
+        }
+      },
+      "./snippets/mean-share-and-balance": {
+        "label": {
+          "_": "Mean: Share and Balance"
+        }
+      },
+      "./snippets/geometric-optics": {
+        "label": {
+          "_": "Geometric Optics"
+        }
+      },
+      "./snippets/density": {
+        "label": {
+          "_": "Density"
+        }
+      },
+      "./snippets/circuit-construction-kit-ac": {
+        "label": {
+          "_": "Circuit Construction Kit: AC"
+        }
+      },
+      "./snippets/circuit-construction-kit-ac-virtual-lab": {
+        "label": {
+          "_": "Circuit Construction Kit: AC - Virtual Lab"
+        }
+      },
+      "./snippets/normal-modes": {
+        "label": {
+          "_": "Normal Modes"
+        }
+      },
+      "./snippets/fourier-making-waves": {
+        "label": {
+          "_": "Fourier: Making Waves"
+        }
+      },
+      "./snippets/number-line-distance": {
+        "label": {
+          "_": "Number Line: Distance"
+        }
+      },
+      "./snippets/ratio-and-proportion": {
+        "label": {
+          "_": "Ratio and Proportion"
+        }
+      },
+      "./snippets/collision-lab": {
+        "label": {
+          "_": "Collision Lab"
+        }
+      },
+      "./snippets/number-line-operations": {
+        "label": {
+          "_": "Number Line: Operations"
+        }
+      },
+      "./snippets/energy-skate-park": {
+        "label": {
+          "_": "Energy Skate Park"
+        }
+      },
+      "./snippets/build-a-molecule": {
+        "label": {
+          "_": "Build a Molecule"
+        }
+      },
+      "./snippets/natural-selection": {
+        "label": {
+          "_": "Natural Selection"
+        }
+      },
+      "./snippets/number-line-integers": {
+        "label": {
+          "_": "Number Line: Integers"
+        }
+      },
+      "./snippets/vector-addition-equations": {
+        "label": {
+          "_": "Vector Addition: Equations"
+        }
+      },
+      "./snippets/vector-addition": {
+        "label": {
+          "_": "Vector Addition"
+        }
+      },
+      "./snippets/curve-fitting": {
+        "label": {
+          "_": "Curve Fitting"
+        }
+      },
+      "./snippets/gravity-force-lab-basics": {
+        "label": {
+          "_": "Gravity Force Lab: Basics"
+        }
+      },
+      "./snippets/waves-intro": {
+        "label": {
+          "_": "Waves Intro"
+        }
+      },
+      "./snippets/diffusion": {
+        "label": {
+          "_": "Diffusion"
+        }
+      },
+      "./snippets/gases-intro": {
+        "label": {
+          "_": "Gases Intro"
+        }
+      },
+      "./snippets/gas-properties": {
+        "label": {
+          "_": "Gas Properties"
+        }
+      },
+      "./snippets/blackbody-spectrum": {
+        "label": {
+          "_": "Blackbody Spectrum"
+        }
+      },
+      "./snippets/masses-and-springs-basics": {
+        "label": {
+          "_": "Masses and Springs: Basics"
+        }
+      },
+      "./snippets/energy-forms-and-changes": {
+        "label": {
+          "_": "Energy Forms and Changes"
+        }
+      },
+      "./snippets/wave-interference": {
+        "label": {
+          "_": "Wave Interference"
+        }
+      },
+      "./snippets/fractions-mixed-numbers": {
+        "label": {
+          "_": "Fractions: Mixed Numbers"
+        }
+      },
+      "./snippets/fractions-intro": {
+        "label": {
+          "_": "Fractions: Intro"
+        }
+      },
+      "./snippets/build-a-fraction": {
+        "label": {
+          "_": "Build a Fraction"
+        }
+      },
+      "./snippets/fractions-equality": {
+        "label": {
+          "_": "Fractions: Equality"
+        }
+      },
+      "./snippets/coulombs-law": {
+        "label": {
+          "_": "Coulomb's Law"
+        }
+      },
+      "./snippets/graphing-quadratics": {
+        "label": {
+          "_": "Graphing Quadratics"
+        }
+      },
+      "./snippets/masses-and-springs": {
+        "label": {
+          "_": "Masses and Springs"
+        }
+      },
+      "./snippets/equality-explorer-two-variables": {
+        "label": {
+          "_": "Equality Explorer: Two Variables"
+        }
+      },
+      "./snippets/equality-explorer-basics": {
+        "label": {
+          "_": "Equality Explorer: Basics"
+        }
+      },
+      "./snippets/equality-explorer": {
+        "label": {
+          "_": "Equality Explorer"
+        }
+      },
+      "./snippets/area-model-algebra": {
+        "label": {
+          "_": "Area Model Algebra"
+        }
+      },
+      "./snippets/area-model-decimals": {
+        "label": {
+          "_": "Area Model Decimals"
+        }
+      },
+      "./snippets/area-model-multiplication": {
+        "label": {
+          "_": "Area Model Multiplication"
+        }
+      },
+      "./snippets/area-model-introduction": {
+        "label": {
+          "_": "Area Model Introduction"
+        }
+      },
+      "./snippets/gene-expression-essentials": {
+        "label": {
+          "_": "Gene Expression Essentials"
+        }
+      },
+      "./snippets/capacitor-lab-basics": {
+        "label": {
+          "_": "Capacitor Lab: Basics"
+        }
+      },
+      "./snippets/circuit-construction-kit-dc-virtual-lab": {
+        "label": {
+          "_": "Circuit Construction Kit: DC - Virtual Lab"
+        }
+      },
+      "./snippets/circuit-construction-kit-dc": {
+        "label": {
+          "_": "Circuit Construction Kit: DC"
+        }
+      },
+      "./snippets/pendulum-lab": {
+        "label": {
+          "_": "Pendulum Lab"
+        }
+      },
+      "./snippets/projectile-motion": {
+        "label": {
+          "_": "Projectile Motion"
+        }
+      },
+      "./snippets/molecule-polarity": {
+        "label": {
+          "_": "Molecule Polarity"
+        }
+      },
+      "./snippets/expression-exchange": {
+        "label": {
+          "_": "Expression Exchange"
+        }
+      },
+      "./snippets/graphing-slope-intercept": {
+        "label": {
+          "_": "Graphing Slope-Intercept"
+        }
+      },
+      "./snippets/function-builder-basics": {
+        "label": {
+          "_": "Function Builder: Basics"
+        }
+      },
+      "./snippets/proportion-playground": {
+        "label": {
+          "_": "Proportion Playground"
+        }
+      },
+      "./snippets/unit-rates": {
+        "label": {
+          "_": "Unit Rates"
+        }
+      },
+      "./snippets/make-a-ten": {
+        "label": {
+          "_": "Make a Ten"
+        }
+      },
+      "./snippets/states-of-matter-basics": {
+        "label": {
+          "_": "States of Matter: Basics"
+        }
+      },
+      "./snippets/states-of-matter": {
+        "label": {
+          "_": "States of Matter"
+        }
+      },
+      "./snippets/gravity-and-orbits": {
+        "label": {
+          "_": "Gravity and Orbits"
+        }
+      },
+      "./snippets/plinko-probability": {
+        "label": {
+          "_": "Plinko Probability"
+        }
+      },
+      "./snippets/atomic-interactions": {
+        "label": {
+          "_": "Atomic Interactions"
+        }
+      },
+      "./snippets/charges-and-fields": {
+        "label": {
+          "_": "Charges and Fields"
+        }
+      },
+      "./snippets/rutherford-scattering": {
+        "label": {
+          "_": "Rutherford Scattering"
+        }
+      },
+      "./snippets/function-builder": {
+        "label": {
+          "_": "Function Builder"
+        }
+      },
+      "./snippets/isotopes-and-atomic-mass": {
+        "label": {
+          "_": "Isotopes and Atomic Mass"
+        }
+      },
+      "./snippets/neuron": {
+        "label": {
+          "_": "Neuron"
+        }
+      },
+      "./snippets/trig-tour": {
+        "label": {
+          "_": "Trig Tour"
+        }
+      },
+      "./snippets/bending-light": {
+        "label": {
+          "_": "Bending Light"
+        }
+      },
+      "./snippets/arithmetic": {
+        "label": {
+          "_": "Arithmetic"
+        }
+      },
+      "./snippets/hookes-law": {
+        "label": {
+          "_": "Hooke's Law"
+        }
+      },
+      "./snippets/molecules-and-light": {
+        "label": {
+          "_": "Molecules and Light"
+        }
+      },
+      "./snippets/least-squares-regression": {
+        "label": {
+          "_": "Least-Squares Regression"
+        }
+      },
+      "./snippets/molecule-shapes": {
+        "label": {
+          "_": "Molecule Shapes"
+        }
+      },
+      "./snippets/molecule-shapes-basics": {
+        "label": {
+          "_": "Molecule Shapes: Basics"
+        }
+      },
+      "./snippets/reactants-products-and-leftovers": {
+        "label": {
+          "_": "Reactants, Products and Leftovers"
+        }
+      },
+      "./snippets/energy-skate-park-basics": {
+        "label": {
+          "_": "Energy Skate Park: Basics"
+        }
+      },
+      "./snippets/faradays-law": {
+        "label": {
+          "_": "Faraday's Law"
+        }
+      },
+      "./snippets/ph-scale-basics": {
+        "label": {
+          "_": "pH Scale: Basics"
+        }
+      },
+      "./snippets/area-builder": {
+        "label": {
+          "_": "Area Builder"
+        }
+      },
+      "./snippets/wave-on-a-string": {
+        "label": {
+          "_": "Wave on a String"
+        }
+      },
+      "./snippets/color-vision": {
+        "label": {
+          "_": "Color Vision"
+        }
+      },
+      "./snippets/ph-scale": {
+        "label": {
+          "_": "pH Scale"
+        }
+      },
+      "./snippets/balancing-chemical-equations": {
+        "label": {
+          "_": "Balancing Chemical Equations"
+        }
+      },
+      "./snippets/graphing-lines": {
+        "label": {
+          "_": "Graphing Lines"
+        }
+      },
+      "./snippets/fraction-matcher": {
+        "label": {
+          "_": "Fraction Matcher"
+        }
+      },
+      "./snippets/balancing-act": {
+        "label": {
+          "_": "Balancing Act"
+        }
+      },
+      "./snippets/acid-base-solutions": {
+        "label": {
+          "_": "Acid-Base Solutions"
+        }
+      },
+      "./snippets/under-pressure": {
+        "label": {
+          "_": "Under Pressure"
+        }
+      },
+      "./snippets/friction": {
+        "label": {
+          "_": "Friction"
+        }
+      },
+      "./snippets/forces-and-motion-basics": {
+        "label": {
+          "_": "Forces and Motion: Basics"
+        }
+      },
+      "./snippets/john-travoltage": {
+        "label": {
+          "_": "John Travoltage"
+        }
+      },
+      "./snippets/concentration": {
+        "label": {
+          "_": "Concentration"
+        }
+      },
+      "./snippets/gravity-force-lab": {
+        "label": {
+          "_": "Gravity Force Lab"
+        }
+      },
+      "./snippets/balloons-and-static-electricity": {
+        "label": {
+          "_": "Balloons and Static Electricity"
+        }
+      },
+      "./snippets/beers-law-lab": {
+        "label": {
+          "_": "Beer's Law Lab"
+        }
+      },
+      "./snippets/molarity": {
+        "label": {
+          "_": "Molarity"
+        }
+      },
+      "./snippets/ohms-law": {
+        "label": {
+          "_": "Ohm's Law"
+        }
+      },
+      "./snippets/resistance-in-a-wire": {
+        "label": {
+          "_": "Resistance in a Wire"
+        }
+      },
+      "./snippets/build-an-atom": {
+        "label": {
+          "_": "Build an Atom"
+        }
+      }
+    },
+    "snippets": {
+      "./snippets/center-and-variability.html": "<iframe src=\"https://phet.colorado.edu/sims/html/center-and-variability/latest/center-and-variability_all.html\"></iframe>",
+      "./snippets/build-a-nucleus.html": "<iframe src=\"https://phet.colorado.edu/sims/html/build-a-nucleus/latest/build-a-nucleus_all.html\"></iframe>",
+      "./snippets/keplers-laws.html": "<iframe src=\"https://phet.colorado.edu/sims/html/keplers-laws/latest/keplers-laws_all.html\"></iframe>",
+      "./snippets/sound-waves.html": "<iframe src=\"https://phet.colorado.edu/sims/html/sound-waves/latest/sound-waves_all.html\"></iframe>",
+      "./snippets/quadrilateral.html": "<iframe src=\"https://phet.colorado.edu/sims/html/quadrilateral/latest/quadrilateral_all.html\"></iframe>",
+      "./snippets/my-solar-system.html": "<iframe src=\"https://phet.colorado.edu/sims/html/my-solar-system/latest/my-solar-system_all.html\"></iframe>",
+      "./snippets/calculus-grapher.html": "<iframe src=\"https://phet.colorado.edu/sims/html/calculus-grapher/latest/calculus-grapher_all.html\"></iframe>",
+      "./snippets/number-compare.html": "<iframe src=\"https://phet.colorado.edu/sims/html/number-compare/latest/number-compare_all.html\"></iframe>",
+      "./snippets/number-play.html": "<iframe src=\"https://phet.colorado.edu/sims/html/number-play/latest/number-play_all.html\"></iframe>",
+      "./snippets/greenhouse-effect.html": "<iframe src=\"https://phet.colorado.edu/sims/html/greenhouse-effect/latest/greenhouse-effect_all.html\"></iframe>",
+      "./snippets/geometric-optics-basics.html": "<iframe src=\"https://phet.colorado.edu/sims/html/geometric-optics-basics/latest/geometric-optics-basics_all.html\"></iframe>",
+      "./snippets/mean-share-and-balance.html": "<iframe src=\"https://phet.colorado.edu/sims/html/mean-share-and-balance/latest/mean-share-and-balance_all.html\"></iframe>",
+      "./snippets/geometric-optics.html": "<iframe src=\"https://phet.colorado.edu/sims/html/geometric-optics/latest/geometric-optics_all.html\"></iframe>",
+      "./snippets/density.html": "<iframe src=\"https://phet.colorado.edu/sims/html/density/latest/density_all.html\"></iframe>",
+      "./snippets/circuit-construction-kit-ac.html": "<iframe src=\"https://phet.colorado.edu/sims/html/circuit-construction-kit-ac/latest/circuit-construction-kit-ac_all.html\"></iframe>",
+      "./snippets/circuit-construction-kit-ac-virtual-lab.html": "<iframe src=\"https://phet.colorado.edu/sims/html/circuit-construction-kit-ac-virtual-lab/latest/circuit-construction-kit-ac-virtual-lab_all.html\"></iframe>",
+      "./snippets/normal-modes.html": "<iframe src=\"https://phet.colorado.edu/sims/html/normal-modes/latest/normal-modes_all.html\"></iframe>",
+      "./snippets/fourier-making-waves.html": "<iframe src=\"https://phet.colorado.edu/sims/html/fourier-making-waves/latest/fourier-making-waves_all.html\"></iframe>",
+      "./snippets/number-line-distance.html": "<iframe src=\"https://phet.colorado.edu/sims/html/number-line-distance/latest/number-line-distance_all.html\"></iframe>",
+      "./snippets/ratio-and-proportion.html": "<iframe src=\"https://phet.colorado.edu/sims/html/ratio-and-proportion/latest/ratio-and-proportion_all.html\"></iframe>",
+      "./snippets/collision-lab.html": "<iframe src=\"https://phet.colorado.edu/sims/html/collision-lab/latest/collision-lab_all.html\"></iframe>",
+      "./snippets/number-line-operations.html": "<iframe src=\"https://phet.colorado.edu/sims/html/number-line-operations/latest/number-line-operations_all.html\"></iframe>",
+      "./snippets/energy-skate-park.html": "<iframe src=\"https://phet.colorado.edu/sims/html/energy-skate-park/latest/energy-skate-park_all.html\"></iframe>",
+      "./snippets/build-a-molecule.html": "<iframe src=\"https://phet.colorado.edu/sims/html/build-a-molecule/latest/build-a-molecule_all.html\"></iframe>",
+      "./snippets/natural-selection.html": "<iframe src=\"https://phet.colorado.edu/sims/html/natural-selection/latest/natural-selection_all.html\"></iframe>",
+      "./snippets/number-line-integers.html": "<iframe src=\"https://phet.colorado.edu/sims/html/number-line-integers/latest/number-line-integers_all.html\"></iframe>",
+      "./snippets/vector-addition-equations.html": "<iframe src=\"https://phet.colorado.edu/sims/html/vector-addition-equations/latest/vector-addition-equations_all.html\"></iframe>",
+      "./snippets/vector-addition.html": "<iframe src=\"https://phet.colorado.edu/sims/html/vector-addition/latest/vector-addition_all.html\"></iframe>",
+      "./snippets/curve-fitting.html": "<iframe src=\"https://phet.colorado.edu/sims/html/curve-fitting/latest/curve-fitting_all.html\"></iframe>",
+      "./snippets/gravity-force-lab-basics.html": "<iframe src=\"https://phet.colorado.edu/sims/html/gravity-force-lab-basics/latest/gravity-force-lab-basics_all.html\"></iframe>",
+      "./snippets/waves-intro.html": "<iframe src=\"https://phet.colorado.edu/sims/html/waves-intro/latest/waves-intro_all.html\"></iframe>",
+      "./snippets/diffusion.html": "<iframe src=\"https://phet.colorado.edu/sims/html/diffusion/latest/diffusion_all.html\"></iframe>",
+      "./snippets/gases-intro.html": "<iframe src=\"https://phet.colorado.edu/sims/html/gases-intro/latest/gases-intro_all.html\"></iframe>",
+      "./snippets/gas-properties.html": "<iframe src=\"https://phet.colorado.edu/sims/html/gas-properties/latest/gas-properties_all.html\"></iframe>",
+      "./snippets/blackbody-spectrum.html": "<iframe src=\"https://phet.colorado.edu/sims/html/blackbody-spectrum/latest/blackbody-spectrum_all.html\"></iframe>",
+      "./snippets/masses-and-springs-basics.html": "<iframe src=\"https://phet.colorado.edu/sims/html/masses-and-springs-basics/latest/masses-and-springs-basics_all.html\"></iframe>",
+      "./snippets/energy-forms-and-changes.html": "<iframe src=\"https://phet.colorado.edu/sims/html/energy-forms-and-changes/latest/energy-forms-and-changes_all.html\"></iframe>",
+      "./snippets/wave-interference.html": "<iframe src=\"https://phet.colorado.edu/sims/html/wave-interference/latest/wave-interference_all.html\"></iframe>",
+      "./snippets/fractions-mixed-numbers.html": "<iframe src=\"https://phet.colorado.edu/sims/html/fractions-mixed-numbers/latest/fractions-mixed-numbers_all.html\"></iframe>",
+      "./snippets/fractions-intro.html": "<iframe src=\"https://phet.colorado.edu/sims/html/fractions-intro/latest/fractions-intro_all.html\"></iframe>",
+      "./snippets/build-a-fraction.html": "<iframe src=\"https://phet.colorado.edu/sims/html/build-a-fraction/latest/build-a-fraction_all.html\"></iframe>",
+      "./snippets/fractions-equality.html": "<iframe src=\"https://phet.colorado.edu/sims/html/fractions-equality/latest/fractions-equality_all.html\"></iframe>",
+      "./snippets/coulombs-law.html": "<iframe src=\"https://phet.colorado.edu/sims/html/coulombs-law/latest/coulombs-law_all.html\"></iframe>",
+      "./snippets/graphing-quadratics.html": "<iframe src=\"https://phet.colorado.edu/sims/html/graphing-quadratics/latest/graphing-quadratics_all.html\"></iframe>",
+      "./snippets/masses-and-springs.html": "<iframe src=\"https://phet.colorado.edu/sims/html/masses-and-springs/latest/masses-and-springs_all.html\"></iframe>",
+      "./snippets/equality-explorer-two-variables.html": "<iframe src=\"https://phet.colorado.edu/sims/html/equality-explorer-two-variables/latest/equality-explorer-two-variables_all.html\"></iframe>",
+      "./snippets/equality-explorer-basics.html": "<iframe src=\"https://phet.colorado.edu/sims/html/equality-explorer-basics/latest/equality-explorer-basics_all.html\"></iframe>",
+      "./snippets/equality-explorer.html": "<iframe src=\"https://phet.colorado.edu/sims/html/equality-explorer/latest/equality-explorer_all.html\"></iframe>",
+      "./snippets/area-model-algebra.html": "<iframe src=\"https://phet.colorado.edu/sims/html/area-model-algebra/latest/area-model-algebra_all.html\"></iframe>",
+      "./snippets/area-model-decimals.html": "<iframe src=\"https://phet.colorado.edu/sims/html/area-model-decimals/latest/area-model-decimals_all.html\"></iframe>",
+      "./snippets/area-model-multiplication.html": "<iframe src=\"https://phet.colorado.edu/sims/html/area-model-multiplication/latest/area-model-multiplication_all.html\"></iframe>",
+      "./snippets/area-model-introduction.html": "<iframe src=\"https://phet.colorado.edu/sims/html/area-model-introduction/latest/area-model-introduction_all.html\"></iframe>",
+      "./snippets/gene-expression-essentials.html": "<iframe src=\"https://phet.colorado.edu/sims/html/gene-expression-essentials/latest/gene-expression-essentials_all.html\"></iframe>",
+      "./snippets/capacitor-lab-basics.html": "<iframe src=\"https://phet.colorado.edu/sims/html/capacitor-lab-basics/latest/capacitor-lab-basics_all.html\"></iframe>",
+      "./snippets/circuit-construction-kit-dc-virtual-lab.html": "<iframe src=\"https://phet.colorado.edu/sims/html/circuit-construction-kit-dc-virtual-lab/latest/circuit-construction-kit-dc-virtual-lab_all.html\"></iframe>",
+      "./snippets/circuit-construction-kit-dc.html": "<iframe src=\"https://phet.colorado.edu/sims/html/circuit-construction-kit-dc/latest/circuit-construction-kit-dc_all.html\"></iframe>",
+      "./snippets/pendulum-lab.html": "<iframe src=\"https://phet.colorado.edu/sims/html/pendulum-lab/latest/pendulum-lab_all.html\"></iframe>",
+      "./snippets/projectile-motion.html": "<iframe src=\"https://phet.colorado.edu/sims/html/projectile-motion/latest/projectile-motion_all.html\"></iframe>",
+      "./snippets/molecule-polarity.html": "<iframe src=\"https://phet.colorado.edu/sims/html/molecule-polarity/latest/molecule-polarity_all.html\"></iframe>",
+      "./snippets/expression-exchange.html": "<iframe src=\"https://phet.colorado.edu/sims/html/expression-exchange/latest/expression-exchange_all.html\"></iframe>",
+      "./snippets/graphing-slope-intercept.html": "<iframe src=\"https://phet.colorado.edu/sims/html/graphing-slope-intercept/latest/graphing-slope-intercept_all.html\"></iframe>",
+      "./snippets/function-builder-basics.html": "<iframe src=\"https://phet.colorado.edu/sims/html/function-builder-basics/latest/function-builder-basics_all.html\"></iframe>",
+      "./snippets/proportion-playground.html": "<iframe src=\"https://phet.colorado.edu/sims/html/proportion-playground/latest/proportion-playground_all.html\"></iframe>",
+      "./snippets/unit-rates.html": "<iframe src=\"https://phet.colorado.edu/sims/html/unit-rates/latest/unit-rates_all.html\"></iframe>",
+      "./snippets/make-a-ten.html": "<iframe src=\"https://phet.colorado.edu/sims/html/make-a-ten/latest/make-a-ten_all.html\"></iframe>",
+      "./snippets/states-of-matter-basics.html": "<iframe src=\"https://phet.colorado.edu/sims/html/states-of-matter-basics/latest/states-of-matter-basics_all.html\"></iframe>",
+      "./snippets/states-of-matter.html": "<iframe src=\"https://phet.colorado.edu/sims/html/states-of-matter/latest/states-of-matter_all.html\"></iframe>",
+      "./snippets/gravity-and-orbits.html": "<iframe src=\"https://phet.colorado.edu/sims/html/gravity-and-orbits/latest/gravity-and-orbits_all.html\"></iframe>",
+      "./snippets/plinko-probability.html": "<iframe src=\"https://phet.colorado.edu/sims/html/plinko-probability/latest/plinko-probability_all.html\"></iframe>",
+      "./snippets/atomic-interactions.html": "<iframe src=\"https://phet.colorado.edu/sims/html/atomic-interactions/latest/atomic-interactions_all.html\"></iframe>",
+      "./snippets/charges-and-fields.html": "<iframe src=\"https://phet.colorado.edu/sims/html/charges-and-fields/latest/charges-and-fields_all.html\"></iframe>",
+      "./snippets/rutherford-scattering.html": "<iframe src=\"https://phet.colorado.edu/sims/html/rutherford-scattering/latest/rutherford-scattering_all.html\"></iframe>",
+      "./snippets/function-builder.html": "<iframe src=\"https://phet.colorado.edu/sims/html/function-builder/latest/function-builder_all.html\"></iframe>",
+      "./snippets/isotopes-and-atomic-mass.html": "<iframe src=\"https://phet.colorado.edu/sims/html/isotopes-and-atomic-mass/latest/isotopes-and-atomic-mass_all.html\"></iframe>",
+      "./snippets/neuron.html": "<iframe src=\"https://phet.colorado.edu/sims/html/neuron/latest/neuron_all.html\"></iframe>",
+      "./snippets/trig-tour.html": "<iframe src=\"https://phet.colorado.edu/sims/html/trig-tour/latest/trig-tour_all.html\"></iframe>",
+      "./snippets/bending-light.html": "<iframe src=\"https://phet.colorado.edu/sims/html/bending-light/latest/bending-light_all.html\"></iframe>",
+      "./snippets/arithmetic.html": "<iframe src=\"https://phet.colorado.edu/sims/html/arithmetic/latest/arithmetic_all.html\"></iframe>",
+      "./snippets/hookes-law.html": "<iframe src=\"https://phet.colorado.edu/sims/html/hookes-law/latest/hookes-law_all.html\"></iframe>",
+      "./snippets/molecules-and-light.html": "<iframe src=\"https://phet.colorado.edu/sims/html/molecules-and-light/latest/molecules-and-light_all.html\"></iframe>",
+      "./snippets/least-squares-regression.html": "<iframe src=\"https://phet.colorado.edu/sims/html/least-squares-regression/latest/least-squares-regression_all.html\"></iframe>",
+      "./snippets/molecule-shapes.html": "<iframe src=\"https://phet.colorado.edu/sims/html/molecule-shapes/latest/molecule-shapes_all.html\"></iframe>",
+      "./snippets/molecule-shapes-basics.html": "<iframe src=\"https://phet.colorado.edu/sims/html/molecule-shapes-basics/latest/molecule-shapes-basics_all.html\"></iframe>",
+      "./snippets/reactants-products-and-leftovers.html": "<iframe src=\"https://phet.colorado.edu/sims/html/reactants-products-and-leftovers/latest/reactants-products-and-leftovers_all.html\"></iframe>",
+      "./snippets/energy-skate-park-basics.html": "<iframe src=\"https://phet.colorado.edu/sims/html/energy-skate-park-basics/latest/energy-skate-park-basics_all.html\"></iframe>",
+      "./snippets/faradays-law.html": "<iframe src=\"https://phet.colorado.edu/sims/html/faradays-law/latest/faradays-law_all.html\"></iframe>",
+      "./snippets/ph-scale-basics.html": "<iframe src=\"https://phet.colorado.edu/sims/html/ph-scale-basics/latest/ph-scale-basics_all.html\"></iframe>",
+      "./snippets/area-builder.html": "<iframe src=\"https://phet.colorado.edu/sims/html/area-builder/latest/area-builder_all.html\"></iframe>",
+      "./snippets/wave-on-a-string.html": "<iframe src=\"https://phet.colorado.edu/sims/html/wave-on-a-string/latest/wave-on-a-string_all.html\"></iframe>",
+      "./snippets/color-vision.html": "<iframe src=\"https://phet.colorado.edu/sims/html/color-vision/latest/color-vision_all.html\"></iframe>",
+      "./snippets/ph-scale.html": "<iframe src=\"https://phet.colorado.edu/sims/html/ph-scale/latest/ph-scale_all.html\"></iframe>",
+      "./snippets/balancing-chemical-equations.html": "<iframe src=\"https://phet.colorado.edu/sims/html/balancing-chemical-equations/latest/balancing-chemical-equations_all.html\"></iframe>",
+      "./snippets/graphing-lines.html": "<iframe src=\"https://phet.colorado.edu/sims/html/graphing-lines/latest/graphing-lines_all.html\"></iframe>",
+      "./snippets/fraction-matcher.html": "<iframe src=\"https://phet.colorado.edu/sims/html/fraction-matcher/latest/fraction-matcher_all.html\"></iframe>",
+      "./snippets/balancing-act.html": "<iframe src=\"https://phet.colorado.edu/sims/html/balancing-act/latest/balancing-act_all.html\"></iframe>",
+      "./snippets/acid-base-solutions.html": "<iframe src=\"https://phet.colorado.edu/sims/html/acid-base-solutions/latest/acid-base-solutions_all.html\"></iframe>",
+      "./snippets/under-pressure.html": "<iframe src=\"https://phet.colorado.edu/sims/html/under-pressure/latest/under-pressure_all.html\"></iframe>",
+      "./snippets/friction.html": "<iframe src=\"https://phet.colorado.edu/sims/html/friction/latest/friction_all.html\"></iframe>",
+      "./snippets/forces-and-motion-basics.html": "<iframe src=\"https://phet.colorado.edu/sims/html/forces-and-motion-basics/latest/forces-and-motion-basics_all.html\"></iframe>",
+      "./snippets/john-travoltage.html": "<iframe src=\"https://phet.colorado.edu/sims/html/john-travoltage/latest/john-travoltage_all.html\"></iframe>",
+      "./snippets/concentration.html": "<iframe src=\"https://phet.colorado.edu/sims/html/concentration/latest/concentration_all.html\"></iframe>",
+      "./snippets/gravity-force-lab.html": "<iframe src=\"https://phet.colorado.edu/sims/html/gravity-force-lab/latest/gravity-force-lab_all.html\"></iframe>",
+      "./snippets/balloons-and-static-electricity.html": "<iframe src=\"https://phet.colorado.edu/sims/html/balloons-and-static-electricity/latest/balloons-and-static-electricity_all.html\"></iframe>",
+      "./snippets/beers-law-lab.html": "<iframe src=\"https://phet.colorado.edu/sims/html/beers-law-lab/latest/beers-law-lab_all.html\"></iframe>",
+      "./snippets/molarity.html": "<iframe src=\"https://phet.colorado.edu/sims/html/molarity/latest/molarity_all.html\"></iframe>",
+      "./snippets/ohms-law.html": "<iframe src=\"https://phet.colorado.edu/sims/html/ohms-law/latest/ohms-law_all.html\"></iframe>",
+      "./snippets/resistance-in-a-wire.html": "<iframe src=\"https://phet.colorado.edu/sims/html/resistance-in-a-wire/latest/resistance-in-a-wire_all.html\"></iframe>",
+      "./snippets/build-an-atom.html": "<iframe src=\"https://phet.colorado.edu/sims/html/build-an-atom/latest/build-an-atom_all.html\"></iframe>"
+    }
+  },
+  {
+    "name": "@webwriter/quiz",
+    "version": "1.0.5",
+    "keywords": [
+      "webwriter-widget"
+    ],
+    "description": "Add interactive tasks (multiple choice, order, free text, highlighting, or speech input). Make a quiz out of multiple tasks.",
+    "scripts": {
+      "prepublishOnly": "npx @webwriter/build"
+    },
+    "license": "MIT",
+    "author": "Frederic Salmen <frederic@fsalmen.de>",
+    "dependencies": {
+      "@shoelace-style/shoelace": "^2.13.1",
+      "@shopify/draggable": "^1.1.3",
+      "@webwriter/lit": "^2.0.0",
+      "bootstrap-icons": "^1.11.3",
+      "interactjs": "^1.10.26",
+      "lit": "^3.2.0",
+      "minimasonry": "^1.3.2",
+      "sortablejs": "^1.15.2"
+    },
+    "devDependencies": {
+      "@types/minimasonry": "^1.3.5",
+      "@types/sortablejs": "^1.15.7"
+    },
+    "peerDependencies": {
+      "@webwriter/phet-simulation": "^1.0.0"
+    },
+    "exports": {
+      "./widgets/webwriter-quiz.*": {
+        "source": "./src/widgets/webwriter-quiz.ts",
+        "default": "./dist/widgets/webwriter-quiz.*"
+      },
+      "./snippets/choice.html": "./src/snippets/choice.html",
+      "./snippets/order.html": "./src/snippets/order.html",
+      "./snippets/text.html": "./src/snippets/text.html",
+      "./snippets/mark.html": "./src/snippets/mark.html",
+      "./snippets/speech.html": "./src/snippets/speech.html",
+      "./widgets/webwriter-task.*": {
+        "source": "./src/widgets/webwriter-task.ts",
+        "default": "./dist/widgets/webwriter-task.*"
+      },
+      "./widgets/webwriter-task-prompt.*": {
+        "source": "./src/widgets/webwriter-task-prompt.ts",
+        "default": "./dist/widgets/webwriter-task-prompt.*"
+      },
+      "./widgets/webwriter-task-hint.*": {
+        "source": "./src/widgets/webwriter-task-hint.ts",
+        "default": "./dist/widgets/webwriter-task-hint.*"
+      },
+      "./widgets/webwriter-task-explainer.*": {
+        "source": "./src/widgets/webwriter-task-explainer.ts",
+        "default": "./dist/widgets/webwriter-task-explainer.*"
+      },
+      "./widgets/webwriter-choice.*": {
+        "source": "./src/widgets/webwriter-choice.ts",
+        "default": "./dist/widgets/webwriter-choice.*"
+      },
+      "./widgets/webwriter-choice-item.*": {
+        "source": "./src/widgets/webwriter-choice-item.ts",
+        "default": "./dist/widgets/webwriter-choice-item.*"
+      },
+      "./widgets/webwriter-order.*": {
+        "source": "./src/widgets/webwriter-order.ts",
+        "default": "./dist/widgets/webwriter-order.*"
+      },
+      "./widgets/webwriter-order-item.*": {
+        "source": "./src/widgets/webwriter-order-item.ts",
+        "default": "./dist/widgets/webwriter-order-item.*"
+      },
+      "./widgets/webwriter-pairing.*": {
+        "source": "./src/widgets/webwriter-pairing.ts",
+        "default": "./dist/widgets/webwriter-pairing.*"
+      },
+      "./widgets/webwriter-pairing-item.*": {
+        "source": "./src/widgets/webwriter-pairing-item.ts",
+        "default": "./dist/widgets/webwriter-pairing-item.*"
+      },
+      "./widgets/webwriter-text.*": {
+        "source": "./src/widgets/webwriter-text.ts",
+        "default": "./dist/widgets/webwriter-text.*"
+      },
+      "./widgets/webwriter-mark.*": {
+        "source": "./src/widgets/webwriter-mark.ts",
+        "default": "./dist/widgets/webwriter-mark.*"
+      },
+      "./widgets/webwriter-speech.*": {
+        "source": "./src/widgets/webwriter-speech.ts",
+        "default": "./dist/widgets/webwriter-speech.*"
+      },
+      "./widgets/webwriter-cloze.*": {
+        "source": "./src/widgets/webwriter-cloze.ts",
+        "default": "./dist/widgets/webwriter-cloze.*"
+      },
+      "./widgets/webwriter-cloze-gap.*": {
+        "source": "./src/widgets/webwriter-cloze-gap.ts",
+        "default": "./dist/widgets/webwriter-cloze-gap.*"
+      },
+      "./package.json": "./package.json"
+    },
+    "editingConfig": {
+      "./widgets/webwriter-choice-item": {
+        "group": "",
+        "content": "(p | flow)+",
+        "uninsertable": true,
+        "draggable": false,
+        "selectable": false,
+        "isolating": false
+      },
+      "./widgets/webwriter-choice": {
+        "group": "answer",
+        "content": "webwriter-choice-item+",
+        "uninsertable": true
+      },
+      "./widgets/webwriter-order-item": {
+        "group": "",
+        "content": "(p | flow)+",
+        "uninsertable": true,
+        "draggable": true,
+        "selectable": false,
+        "isolating": false
+      },
+      "./widgets/webwriter-order": {
+        "group": "answer",
+        "content": "webwriter-order-item+",
+        "uninsertable": true
+      },
+      "./widgets/webwriter-pairing": {
+        "group": "answer",
+        "content": "webwriter-pairing-item+",
+        "uninsertable": true,
+        "isolating": true
+      },
+      "./widgets/webwriter-pairing-item": {
+        "group": "",
+        "content": "picture | flow",
+        "uninsertable": true,
+        "draggable": true,
+        "isolating": true
+      },
+      "./widgets/webwriter-text": {
+        "group": "answer",
+        "uninsertable": true
+      },
+      "./widgets/webwriter-mark": {
+        "group": "answer inlinecontainer",
+        "content": "(text | br | wbr)*",
+        "isolating": true,
+        "defining": true,
+        "marks": "",
+        "uninsertable": true
+      },
+      "./widgets/webwriter-speech": {
+        "group": "answer",
+        "uninsertable": true
+      },
+      "./widgets/webwriter-cloze": {
+        "group": "answer",
+        "content": "p",
+        "uninsertable": true,
+        "isolating": true
+      },
+      "./widgets/webwriter-cloze-gap": {
+        "group": "phrasing",
+        "inline": true,
+        "atom": true,
+        "uninsertable": true,
+        "isolating": false
+      },
+      "./widgets/webwriter-task": {
+        "content": "webwriter-task-prompt webwriter-task-hint? answer webwriter-task-explainer*",
+        "uninsertable": true,
+        "isolating": true
+      },
+      "./widgets/webwriter-task-prompt": {
+        "group": "",
+        "defining": true,
+        "content": "(p | flow)+",
+        "uninsertable": true
+      },
+      "./widgets/webwriter-task-hint": {
+        "group": "containerinline",
+        "defining": true,
+        "content": "p",
+        "isolating": true,
+        "uninsertable": true
+      },
+      "./widgets/webwriter-task-explainer": {
+        "group": "",
+        "defining": true,
+        "isolating": true,
+        "content": "(p | flow)+",
+        "uninsertable": true
+      },
+      "./widgets/webwriter-quiz": {
+        "content": "webwriter-task*"
+      }
+    },
+    "snippets": {
+      "./snippets/choice.html": "<webwriter-task>\n  <webwriter-task-prompt slot=\"prompt\"><p></p></webwriter-task-prompt>\n  <webwriter-choice>\n    <webwriter-choice-item>\n      <p></p>\n    </webwriter-choice-item>\n  </webwriter-choice>\n</webwriter-task>",
+      "./snippets/order.html": "<webwriter-task>\n  <webwriter-task-prompt slot=\"prompt\"><p></p></webwriter-task-prompt>\n  <webwriter-order>\n    <webwriter-order-item>\n      <p></p>\n    </webwriter-order-item>\n  </webwriter-order>\n</webwriter-task>",
+      "./snippets/text.html": "<webwriter-task>\n  <webwriter-task-prompt slot=\"prompt\"><p></p></webwriter-task-prompt>\n  <webwriter-text></webwriter-text>\n</webwriter-task>",
+      "./snippets/mark.html": "<webwriter-task>\n  <webwriter-task-prompt slot=\"prompt\"><p></p></webwriter-task-prompt>\n  <webwriter-mark><p></p></webwriter-mark>\n</webwriter-task>",
+      "./snippets/speech.html": "<webwriter-task>\n  <webwriter-task-prompt slot=\"prompt\"><p></p></webwriter-task-prompt>\n  <webwriter-speech></webwriter-speech>\n</webwriter-task>"
+    }
+  },
+  {
+    "name": "@webwriter/network",
+    "version": "2.0.2",
+    "description": "Visualization of network topologies. Can represent different kinds of networks.",
+    "keywords": [
+      "webwriter-widget"
+    ],
+    "license": "MIT",
+    "author": "Jorik van Genuchten",
+    "scripts": {
+      "prepublishOnly": "npx @webwriter/build"
+    },
+    "dependencies": {
+      "@shoelace-style/shoelace": "^2.16.0",
+      "@types/cytoscape": "^3.21.7",
+      "@types/node": "^18.19.47",
+      "@webwriter/lit": "^2.0.0",
+      "cytoscape": "^3.30.2",
+      "cytoscape-compound-drag-and-drop": "^1.1.0",
+      "cytoscape-context-menus": "^4.2.1",
+      "cytoscape-edgehandles": "^4.0.1",
+      "cytoscape-node-html-label": "^1.2.2",
+      "konva": "7.0.3",
+      "lit": "^3.2.0",
+      "uuid": "^9.0.1"
+    },
+    "devDependencies": {
+      "@babel/code-frame": "^7.24.7",
+      "jest": "^29.7.0",
+      "jest-environment-jsdom": "^29.7.0",
+      "ts-jest": "^29.2.5",
+      "typescript": "^4.9.5",
+      "vite": "^3.2.10"
+    },
+    "exports": {
+      "./widgets/ww-network.*": {
+        "source": "./src/index.ts",
+        "default": "./dist/widgets/ww-network.*"
+      },
+      "./snippets/simple-network.html": "./snippets/simple-network.html",
+      "./snippets/complex-network.html": "./snippets/complex-network.html",
+      "./snippets/triple-network.html": "./snippets/triple-network.html",
+      "./package.json": "./package.json"
+    },
+    "snippets": {
+      "./snippets/simple-network.html": "<ww-network class=\"ww-widget ww-v0.0.1\" screen=\"medium\"\r\n    componets=\"[{&quot;id&quot;:&quot;host0&quot;,&quot;name&quot;:&quot;host0&quot;,&quot;color&quot;:&quot;#70e6af&quot;,&quot;type&quot;:&quot;mobile&quot;,&quot;x&quot;:-264.024454782425,&quot;y&quot;:-139.11977229410817,&quot;ports&quot;:[{&quot;name&quot;:&quot;eth0&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;cf:e4:ff:e3:c7:3c&quot;,&quot;ip4&quot;:&quot;1.1.1.2&quot;,&quot;ip6&quot;:&quot;0:0:0:0:0:0:0:1&quot;}],&quot;portLinks&quot;:[&quot;graphEdge0&quot;]},{&quot;id&quot;:&quot;host1&quot;,&quot;name&quot;:&quot;host1&quot;,&quot;color&quot;:&quot;#70e6af&quot;,&quot;type&quot;:&quot;mobile&quot;,&quot;x&quot;:-265.3690426555197,&quot;y&quot;:-86.70307088274684,&quot;ports&quot;:[{&quot;name&quot;:&quot;eth0&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;5b:bc:85:54:b1:50&quot;,&quot;ip4&quot;:&quot;1.1.1.3&quot;,&quot;ip6&quot;:&quot;0:0:0:0:0:0:0:1&quot;}],&quot;portLinks&quot;:[&quot;graphEdge1&quot;]},{&quot;id&quot;:&quot;host2&quot;,&quot;name&quot;:&quot;host2&quot;,&quot;color&quot;:&quot;#70e6af&quot;,&quot;type&quot;:&quot;mobile&quot;,&quot;x&quot;:-266.7730997393322,&quot;y&quot;:-41.39349743794498,&quot;ports&quot;:[{&quot;name&quot;:&quot;eth0&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;c4:66:09:72:53:f1&quot;,&quot;ip4&quot;:&quot;1.1.1.4&quot;,&quot;ip6&quot;:&quot;0:0:0:0:0:0:0:1&quot;}],&quot;portLinks&quot;:[&quot;graphEdge2&quot;]},{&quot;id&quot;:&quot;host3&quot;,&quot;name&quot;:&quot;host3&quot;,&quot;color&quot;:&quot;#70e6af&quot;,&quot;type&quot;:&quot;mobile&quot;,&quot;x&quot;:-271.14214239485204,&quot;y&quot;:97.96498557170715,&quot;ports&quot;:[{&quot;name&quot;:&quot;eth0&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;be:13:39:f6:bf:12&quot;,&quot;ip4&quot;:&quot;1.1.1.7&quot;,&quot;ip6&quot;:&quot;0:0:0:0:0:0:0:1&quot;}],&quot;portLinks&quot;:[&quot;graphEdge7&quot;]},{&quot;id&quot;:&quot;host4&quot;,&quot;name&quot;:&quot;host4&quot;,&quot;color&quot;:&quot;#70e6af&quot;,&quot;type&quot;:&quot;mobile&quot;,&quot;x&quot;:-269.095317511683,&quot;y&quot;:141.72585791982698,&quot;ports&quot;:[{&quot;name&quot;:&quot;eth0&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;e9:62:11:30:a9:28&quot;,&quot;ip4&quot;:&quot;1.1.1.6&quot;,&quot;ip6&quot;:&quot;0:0:0:0:0:0:0:1&quot;}],&quot;portLinks&quot;:[&quot;graphEdge6&quot;]},{&quot;id&quot;:&quot;host5&quot;,&quot;name&quot;:&quot;host5&quot;,&quot;color&quot;:&quot;#70e6af&quot;,&quot;type&quot;:&quot;mobile&quot;,&quot;x&quot;:-273.21467286945494,&quot;y&quot;:185.89287203344048,&quot;ports&quot;:[{&quot;name&quot;:&quot;eth0&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;7d:4d:80:06:75:bc&quot;,&quot;ip4&quot;:&quot;1.1.1.5&quot;,&quot;ip6&quot;:&quot;0:0:0:0:0:0:0:1&quot;}],&quot;portLinks&quot;:[&quot;graphEdge5&quot;]},{&quot;id&quot;:&quot;switch0&quot;,&quot;name&quot;:&quot;switch0&quot;,&quot;color&quot;:&quot;#70e6af&quot;,&quot;type&quot;:&quot;switch&quot;,&quot;x&quot;:-230.0354313646289,&quot;y&quot;:29.928720334405767,&quot;ports&quot;:[{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;b6:3d:a8:94:24:93&quot;},{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;f9:dd:75:d8:4e:ba&quot;},{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;fc:16:6d:1e:f2:a2&quot;}],&quot;portLinks&quot;:[&quot;graphEdge4&quot;,&quot;graphEdge3&quot;,&quot;&quot;]},{&quot;id&quot;:&quot;switch1&quot;,&quot;name&quot;:&quot;switch1&quot;,&quot;color&quot;:&quot;#70e6af&quot;,&quot;type&quot;:&quot;switch&quot;,&quot;x&quot;:18.738085311039605,&quot;y&quot;:-76.21383899678261,&quot;ports&quot;:[{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;77:c8:f7:2a:b4:3f&quot;},{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;06:12:e7:dd:6f:1f&quot;},{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;40:43:77:2c:1f:0f&quot;},{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;29:6b:77:1e:83:b2&quot;}],&quot;portLinks&quot;:[&quot;graphEdge0&quot;,&quot;graphEdge1&quot;,&quot;graphEdge2&quot;,&quot;graphEdge3&quot;]},{&quot;id&quot;:&quot;switch2&quot;,&quot;name&quot;:&quot;switch2&quot;,&quot;color&quot;:&quot;#70e6af&quot;,&quot;type&quot;:&quot;switch&quot;,&quot;x&quot;:9.441156193786467,&quot;y&quot;:129.86925112368783,&quot;ports&quot;:[{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;44:cd:14:5e:9d:2a&quot;},{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;5f:65:4e:3a:c6:bb&quot;},{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;b5:cf:0f:1f:06:70&quot;},{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;fc:07:e0:ef:eb:7b&quot;}],&quot;portLinks&quot;:[&quot;graphEdge5&quot;,&quot;graphEdge4&quot;,&quot;graphEdge7&quot;,&quot;graphEdge6&quot;]}]\"\r\n    connections=\"[{&quot;id&quot;:&quot;graphEdge0&quot;,&quot;from&quot;:&quot;host0&quot;,&quot;to&quot;:&quot;switch1&quot;,&quot;inPort&quot;:1,&quot;outPort&quot;:1,&quot;color&quot;:&quot;#70e6af&quot;},{&quot;id&quot;:&quot;graphEdge1&quot;,&quot;from&quot;:&quot;switch1&quot;,&quot;to&quot;:&quot;host1&quot;,&quot;inPort&quot;:2,&quot;outPort&quot;:1,&quot;color&quot;:&quot;#70e6af&quot;},{&quot;id&quot;:&quot;graphEdge2&quot;,&quot;from&quot;:&quot;host2&quot;,&quot;to&quot;:&quot;switch1&quot;,&quot;inPort&quot;:1,&quot;outPort&quot;:3,&quot;color&quot;:&quot;#70e6af&quot;},{&quot;id&quot;:&quot;graphEdge3&quot;,&quot;from&quot;:&quot;switch1&quot;,&quot;to&quot;:&quot;switch0&quot;,&quot;inPort&quot;:4,&quot;outPort&quot;:2,&quot;color&quot;:&quot;#70e6af&quot;},{&quot;id&quot;:&quot;graphEdge4&quot;,&quot;from&quot;:&quot;switch0&quot;,&quot;to&quot;:&quot;switch2&quot;,&quot;inPort&quot;:1,&quot;outPort&quot;:2,&quot;color&quot;:&quot;#70e6af&quot;},{&quot;id&quot;:&quot;graphEdge5&quot;,&quot;from&quot;:&quot;switch2&quot;,&quot;to&quot;:&quot;host5&quot;,&quot;inPort&quot;:1,&quot;outPort&quot;:1,&quot;color&quot;:&quot;#70e6af&quot;},{&quot;id&quot;:&quot;graphEdge6&quot;,&quot;from&quot;:&quot;switch2&quot;,&quot;to&quot;:&quot;host4&quot;,&quot;inPort&quot;:4,&quot;outPort&quot;:1,&quot;color&quot;:&quot;#70e6af&quot;},{&quot;id&quot;:&quot;graphEdge7&quot;,&quot;from&quot;:&quot;switch2&quot;,&quot;to&quot;:&quot;host3&quot;,&quot;inPort&quot;:3,&quot;outPort&quot;:1,&quot;color&quot;:&quot;#70e6af&quot;}]\"\r\n    networks=\"[{&quot;id&quot;:&quot;net0&quot;,&quot;componets&quot;:[&quot;host5&quot;,&quot;host4&quot;,&quot;host3&quot;,&quot;host2&quot;,&quot;host1&quot;,&quot;host0&quot;,&quot;switch2&quot;,&quot;switch1&quot;,&quot;switch0&quot;],&quot;gateways&quot;:[],&quot;name&quot;:&quot;1.1.1.0 /24&quot;,&quot;netmask&quot;:&quot;255.255.255.0&quot;,&quot;bitmask&quot;:24,&quot;address&quot;:&quot;1.1.1.0&quot;,&quot;color&quot;:&quot;#70e6af&quot;,&quot;x&quot;:-107.67840763215357,&quot;y&quot;:-8.405099424653159}]\"\r\n    contenteditable=\"\"></ww-network>",
+      "./snippets/complex-network.html": "<ww-network class=\"ww-widget ww-v0.0.1 ww-selected\" contenteditable=\"\" screen=\"medium\" componets=\"[{&quot;id&quot;:&quot;host0&quot;,&quot;name&quot;:&quot;host0&quot;,&quot;color&quot;:&quot;#70e6af&quot;,&quot;type&quot;:&quot;mobile&quot;,&quot;x&quot;:-306.024454782425,&quot;y&quot;:-136.11977229410817,&quot;ports&quot;:[{&quot;name&quot;:&quot;eth0&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;cf:e4:ff:e3:c7:3c&quot;,&quot;ip4&quot;:&quot;1.1.1.2&quot;,&quot;ip6&quot;:&quot;0:0:0:0:0:0:0:1&quot;}],&quot;portLinks&quot;:[&quot;graphEdge0&quot;],&quot;defaultGateway&quot;:[&quot;router2&quot;,1]},{&quot;id&quot;:&quot;host1&quot;,&quot;name&quot;:&quot;host1&quot;,&quot;color&quot;:&quot;#70e6af&quot;,&quot;type&quot;:&quot;mobile&quot;,&quot;x&quot;:-307.3690426555197,&quot;y&quot;:-83.70307088274684,&quot;ports&quot;:[{&quot;name&quot;:&quot;eth0&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;5b:bc:85:54:b1:50&quot;,&quot;ip4&quot;:&quot;1.1.1.3&quot;,&quot;ip6&quot;:&quot;0:0:0:0:0:0:0:1&quot;}],&quot;portLinks&quot;:[&quot;graphEdge1&quot;],&quot;defaultGateway&quot;:[&quot;router3&quot;,1]},{&quot;id&quot;:&quot;host2&quot;,&quot;name&quot;:&quot;host2&quot;,&quot;color&quot;:&quot;#70e6af&quot;,&quot;type&quot;:&quot;mobile&quot;,&quot;x&quot;:-308.7730997393322,&quot;y&quot;:-38.39349743794498,&quot;ports&quot;:[{&quot;name&quot;:&quot;eth0&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;c4:66:09:72:53:f1&quot;,&quot;ip4&quot;:&quot;1.1.1.4&quot;,&quot;ip6&quot;:&quot;0:0:0:0:0:0:0:1&quot;}],&quot;portLinks&quot;:[&quot;graphEdge2&quot;],&quot;defaultGateway&quot;:[&quot;router2&quot;,1]},{&quot;id&quot;:&quot;host3&quot;,&quot;name&quot;:&quot;host3&quot;,&quot;color&quot;:&quot;#70e6af&quot;,&quot;type&quot;:&quot;mobile&quot;,&quot;x&quot;:-313.14214239485204,&quot;y&quot;:100.96498557170713,&quot;ports&quot;:[{&quot;name&quot;:&quot;eth0&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;be:13:39:f6:bf:12&quot;,&quot;ip4&quot;:&quot;1.1.1.7&quot;,&quot;ip6&quot;:&quot;0:0:0:0:0:0:0:1&quot;}],&quot;portLinks&quot;:[&quot;graphEdge7&quot;],&quot;defaultGateway&quot;:[&quot;router2&quot;,1]},{&quot;id&quot;:&quot;host4&quot;,&quot;name&quot;:&quot;host4&quot;,&quot;color&quot;:&quot;#70e6af&quot;,&quot;type&quot;:&quot;mobile&quot;,&quot;x&quot;:-311.095317511683,&quot;y&quot;:144.72585791982698,&quot;ports&quot;:[{&quot;name&quot;:&quot;eth0&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;e9:62:11:30:a9:28&quot;,&quot;ip4&quot;:&quot;1.1.1.6&quot;,&quot;ip6&quot;:&quot;0:0:0:0:0:0:0:1&quot;}],&quot;portLinks&quot;:[&quot;graphEdge6&quot;],&quot;defaultGateway&quot;:[&quot;router3&quot;,1]},{&quot;id&quot;:&quot;host5&quot;,&quot;name&quot;:&quot;host5&quot;,&quot;color&quot;:&quot;#70e6af&quot;,&quot;type&quot;:&quot;mobile&quot;,&quot;x&quot;:-315.21467286945494,&quot;y&quot;:188.89287203344048,&quot;ports&quot;:[{&quot;name&quot;:&quot;eth0&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;7d:4d:80:06:75:bc&quot;,&quot;ip4&quot;:&quot;1.1.1.5&quot;,&quot;ip6&quot;:&quot;0:0:0:0:0:0:0:1&quot;}],&quot;portLinks&quot;:[&quot;graphEdge5&quot;],&quot;defaultGateway&quot;:[&quot;router2&quot;,1]},{&quot;id&quot;:&quot;switch0&quot;,&quot;name&quot;:&quot;switch0&quot;,&quot;color&quot;:&quot;#20b2aa&quot;,&quot;type&quot;:&quot;switch&quot;,&quot;x&quot;:-272.0354313646289,&quot;y&quot;:32.92872033440577,&quot;ports&quot;:[{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;b6:3d:a8:94:24:93&quot;},{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;f9:dd:75:d8:4e:ba&quot;},{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;fc:16:6d:1e:f2:a2&quot;},{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;28:d9:3b:6e:21:db&quot;}],&quot;portLinks&quot;:[&quot;graphEdge4&quot;,&quot;graphEdge3&quot;,&quot;graphEdge25&quot;,&quot;graphEdge26&quot;]},{&quot;id&quot;:&quot;switch1&quot;,&quot;name&quot;:&quot;switch1&quot;,&quot;color&quot;:&quot;#20b2aa&quot;,&quot;type&quot;:&quot;switch&quot;,&quot;x&quot;:-23.261914688960374,&quot;y&quot;:-73.21383899678261,&quot;ports&quot;:[{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;77:c8:f7:2a:b4:3f&quot;},{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;06:12:e7:dd:6f:1f&quot;},{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;40:43:77:2c:1f:0f&quot;},{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;29:6b:77:1e:83:b2&quot;}],&quot;portLinks&quot;:[&quot;graphEdge0&quot;,&quot;graphEdge1&quot;,&quot;graphEdge2&quot;,&quot;graphEdge3&quot;]},{&quot;id&quot;:&quot;switch2&quot;,&quot;name&quot;:&quot;switch2&quot;,&quot;color&quot;:&quot;#20b2aa&quot;,&quot;type&quot;:&quot;switch&quot;,&quot;x&quot;:-32.55884380621352,&quot;y&quot;:132.86925112368783,&quot;ports&quot;:[{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;44:cd:14:5e:9d:2a&quot;},{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;5f:65:4e:3a:c6:bb&quot;},{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;b5:cf:0f:1f:06:70&quot;},{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;fc:07:e0:ef:eb:7b&quot;}],&quot;portLinks&quot;:[&quot;graphEdge5&quot;,&quot;graphEdge4&quot;,&quot;graphEdge7&quot;,&quot;graphEdge6&quot;]},{&quot;id&quot;:&quot;accessPoint0&quot;,&quot;name&quot;:&quot;accessPoint0&quot;,&quot;color&quot;:&quot;#ff6347&quot;,&quot;type&quot;:&quot;accesspoint&quot;,&quot;x&quot;:487.99999999999994,&quot;y&quot;:168,&quot;ports&quot;:[{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;a5:ba:57:96:67:83&quot;},{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;wireless&quot;,&quot;mac&quot;:&quot;58:49:50:be:bb:0e&quot;},{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;wireless&quot;,&quot;mac&quot;:&quot;86:24:88:d7:45:81&quot;}],&quot;portLinks&quot;:[&quot;graphEdge16&quot;,&quot;graphEdge9&quot;,&quot;graphEdge8&quot;]},{&quot;id&quot;:&quot;accessPoint1&quot;,&quot;name&quot;:&quot;accessPoint1&quot;,&quot;color&quot;:&quot;#ff6347&quot;,&quot;type&quot;:&quot;accesspoint&quot;,&quot;x&quot;:525,&quot;y&quot;:-120,&quot;ports&quot;:[{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;10:76:d5:03:1b:99&quot;},{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;wireless&quot;,&quot;mac&quot;:&quot;d6:44:3f:02:e5:b5&quot;},{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;wireless&quot;,&quot;mac&quot;:&quot;42:c3:00:99:aa:fc&quot;}],&quot;portLinks&quot;:[&quot;graphEdge14&quot;,&quot;graphEdge13&quot;,&quot;graphEdge12&quot;]},{&quot;id&quot;:&quot;accessPoint2&quot;,&quot;name&quot;:&quot;accessPoint2&quot;,&quot;color&quot;:&quot;#ff6347&quot;,&quot;type&quot;:&quot;accesspoint&quot;,&quot;x&quot;:528,&quot;y&quot;:28.000000000000007,&quot;ports&quot;:[{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;d8:83:bb:59:9c:e6&quot;},{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;wireless&quot;,&quot;mac&quot;:&quot;cb:dd:77:e6:e0:5d&quot;},{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;wireless&quot;,&quot;mac&quot;:&quot;8a:ef:10:1b:a6:be&quot;}],&quot;portLinks&quot;:[&quot;graphEdge15&quot;,&quot;graphEdge11&quot;,&quot;graphEdge10&quot;]},{&quot;id&quot;:&quot;switch3&quot;,&quot;name&quot;:&quot;switch3&quot;,&quot;color&quot;:&quot;#ff6347&quot;,&quot;type&quot;:&quot;switch&quot;,&quot;x&quot;:318.99999999999994,&quot;y&quot;:29.000000000000007,&quot;ports&quot;:[{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;66:75:73:c9:54:f4&quot;},{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;91:69:0f:3f:1b:f5&quot;},{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;32:0f:90:06:c9:cf&quot;},{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;a6:cb:65:2f:51:d9&quot;},{&quot;name&quot;:&quot;port&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;c9:6f:4f:94:dc:19&quot;}],&quot;portLinks&quot;:[&quot;graphEdge14&quot;,&quot;graphEdge15&quot;,&quot;graphEdge16&quot;,&quot;graphEdge22&quot;,&quot;graphEdge21&quot;]},{&quot;id&quot;:&quot;host6&quot;,&quot;name&quot;:&quot;host6&quot;,&quot;color&quot;:&quot;#ffa07a&quot;,&quot;type&quot;:&quot;mobile&quot;,&quot;x&quot;:723,&quot;y&quot;:188,&quot;ports&quot;:[{&quot;name&quot;:&quot;eth0&quot;,&quot;type&quot;:&quot;wireless&quot;,&quot;mac&quot;:&quot;6f:45:7c:f1:0d:0a&quot;,&quot;ip4&quot;:&quot;2.2.2.8&quot;,&quot;ip6&quot;:&quot;0:0:0:0:0:0:0:1&quot;}],&quot;portLinks&quot;:[&quot;graphEdge8&quot;],&quot;defaultGateway&quot;:[&quot;router3&quot;,2]},{&quot;id&quot;:&quot;host7&quot;,&quot;name&quot;:&quot;host7&quot;,&quot;color&quot;:&quot;#ffa07a&quot;,&quot;type&quot;:&quot;mobile&quot;,&quot;x&quot;:727,&quot;y&quot;:126,&quot;ports&quot;:[{&quot;name&quot;:&quot;eth0&quot;,&quot;type&quot;:&quot;wireless&quot;,&quot;mac&quot;:&quot;26:75:ec:0c:e1:56&quot;,&quot;ip4&quot;:&quot;2.2.2.7&quot;,&quot;ip6&quot;:&quot;0:0:0:0:0:0:0:1&quot;}],&quot;portLinks&quot;:[&quot;graphEdge9&quot;],&quot;defaultGateway&quot;:[&quot;router2&quot;,2]},{&quot;id&quot;:&quot;host8&quot;,&quot;name&quot;:&quot;host8&quot;,&quot;color&quot;:&quot;#ffa07a&quot;,&quot;type&quot;:&quot;mobile&quot;,&quot;x&quot;:733,&quot;y&quot;:7.000000000000007,&quot;ports&quot;:[{&quot;name&quot;:&quot;eth0&quot;,&quot;type&quot;:&quot;wireless&quot;,&quot;mac&quot;:&quot;72:a0:da:97:54:80&quot;,&quot;ip4&quot;:&quot;2.2.2.5&quot;,&quot;ip6&quot;:&quot;0:0:0:0:0:0:0:1&quot;}],&quot;portLinks&quot;:[&quot;graphEdge11&quot;],&quot;defaultGateway&quot;:[&quot;router2&quot;,2]},{&quot;id&quot;:&quot;host9&quot;,&quot;name&quot;:&quot;host9&quot;,&quot;color&quot;:&quot;#ffa07a&quot;,&quot;type&quot;:&quot;mobile&quot;,&quot;x&quot;:743,&quot;y&quot;:-143,&quot;ports&quot;:[{&quot;name&quot;:&quot;eth0&quot;,&quot;type&quot;:&quot;wireless&quot;,&quot;mac&quot;:&quot;c9:c2:3c:d9:31:76&quot;,&quot;ip4&quot;:&quot;2.2.2.2&quot;,&quot;ip6&quot;:&quot;0:0:0:0:0:0:0:1&quot;}],&quot;portLinks&quot;:[&quot;graphEdge12&quot;],&quot;defaultGateway&quot;:[&quot;router3&quot;,2]},{&quot;id&quot;:&quot;host10&quot;,&quot;name&quot;:&quot;host10&quot;,&quot;color&quot;:&quot;#ffa07a&quot;,&quot;type&quot;:&quot;mobile&quot;,&quot;x&quot;:739,&quot;y&quot;:61.00000000000001,&quot;ports&quot;:[{&quot;name&quot;:&quot;eth0&quot;,&quot;type&quot;:&quot;wireless&quot;,&quot;mac&quot;:&quot;e9:9e:e2:57:fa:33&quot;,&quot;ip4&quot;:&quot;2.2.2.6&quot;,&quot;ip6&quot;:&quot;0:0:0:0:0:0:0:1&quot;}],&quot;portLinks&quot;:[&quot;graphEdge10&quot;],&quot;defaultGateway&quot;:[&quot;router3&quot;,2]},{&quot;id&quot;:&quot;host11&quot;,&quot;name&quot;:&quot;host11&quot;,&quot;color&quot;:&quot;#ffa07a&quot;,&quot;type&quot;:&quot;mobile&quot;,&quot;x&quot;:737,&quot;y&quot;:-77,&quot;ports&quot;:[{&quot;name&quot;:&quot;eth0&quot;,&quot;type&quot;:&quot;wireless&quot;,&quot;mac&quot;:&quot;92:a0:ea:87:e4:5e&quot;,&quot;ip4&quot;:&quot;2.2.2.3&quot;,&quot;ip6&quot;:&quot;0:0:0:0:0:0:0:1&quot;}],&quot;portLinks&quot;:[&quot;graphEdge13&quot;],&quot;defaultGateway&quot;:[&quot;router2&quot;,2]},{&quot;id&quot;:&quot;router2&quot;,&quot;name&quot;:&quot;router2&quot;,&quot;color&quot;:&quot;#70e6af&quot;,&quot;type&quot;:&quot;router&quot;,&quot;x&quot;:90.09115103448259,&quot;y&quot;:130.3149500314911,&quot;ports&quot;:[{&quot;name&quot;:&quot;port-1&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;d4:9b:19:ee:97:d8&quot;,&quot;ip4&quot;:&quot;1.1.1.129&quot;,&quot;ip6&quot;:&quot;0:0:0:0:0:0:0:1&quot;},{&quot;name&quot;:&quot;port-2&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;8b:29:d9:d0:ab:20&quot;,&quot;ip4&quot;:&quot;2.2.2.129&quot;,&quot;ip6&quot;:&quot;0:0:0:0:0:0:0:1&quot;}],&quot;portLinks&quot;:[&quot;graphEdge26&quot;,&quot;graphEdge22&quot;]},{&quot;id&quot;:&quot;router3&quot;,&quot;name&quot;:&quot;router3&quot;,&quot;color&quot;:&quot;#70e6af&quot;,&quot;type&quot;:&quot;router&quot;,&quot;x&quot;:87.13880979032402,&quot;y&quot;:-34.51026973810133,&quot;ports&quot;:[{&quot;name&quot;:&quot;port-1&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;16:ad:d4:e8:fd:b1&quot;,&quot;ip4&quot;:&quot;1.1.1.128&quot;,&quot;ip6&quot;:&quot;0:0:0:0:0:0:0:1&quot;},{&quot;name&quot;:&quot;port-2&quot;,&quot;type&quot;:&quot;ethernet&quot;,&quot;mac&quot;:&quot;41:e2:d9:78:b1:0d&quot;,&quot;ip4&quot;:&quot;2.2.2.128&quot;,&quot;ip6&quot;:&quot;0:0:0:0:0:0:0:1&quot;}],&quot;portLinks&quot;:[&quot;graphEdge25&quot;,&quot;graphEdge21&quot;]}]\" connections=\"[{&quot;id&quot;:&quot;graphEdge0&quot;,&quot;from&quot;:&quot;host0&quot;,&quot;to&quot;:&quot;switch1&quot;,&quot;inPort&quot;:1,&quot;outPort&quot;:1,&quot;color&quot;:&quot;#70e6af&quot;},{&quot;id&quot;:&quot;graphEdge1&quot;,&quot;from&quot;:&quot;switch1&quot;,&quot;to&quot;:&quot;host1&quot;,&quot;inPort&quot;:2,&quot;outPort&quot;:1,&quot;color&quot;:&quot;#70e6af&quot;},{&quot;id&quot;:&quot;graphEdge2&quot;,&quot;from&quot;:&quot;host2&quot;,&quot;to&quot;:&quot;switch1&quot;,&quot;inPort&quot;:1,&quot;outPort&quot;:3,&quot;color&quot;:&quot;#70e6af&quot;},{&quot;id&quot;:&quot;graphEdge3&quot;,&quot;from&quot;:&quot;switch1&quot;,&quot;to&quot;:&quot;switch0&quot;,&quot;inPort&quot;:4,&quot;outPort&quot;:2,&quot;color&quot;:&quot;#70e6af&quot;},{&quot;id&quot;:&quot;graphEdge4&quot;,&quot;from&quot;:&quot;switch0&quot;,&quot;to&quot;:&quot;switch2&quot;,&quot;inPort&quot;:1,&quot;outPort&quot;:2,&quot;color&quot;:&quot;#70e6af&quot;},{&quot;id&quot;:&quot;graphEdge5&quot;,&quot;from&quot;:&quot;switch2&quot;,&quot;to&quot;:&quot;host5&quot;,&quot;inPort&quot;:1,&quot;outPort&quot;:1,&quot;color&quot;:&quot;#70e6af&quot;},{&quot;id&quot;:&quot;graphEdge6&quot;,&quot;from&quot;:&quot;switch2&quot;,&quot;to&quot;:&quot;host4&quot;,&quot;inPort&quot;:4,&quot;outPort&quot;:1,&quot;color&quot;:&quot;#70e6af&quot;},{&quot;id&quot;:&quot;graphEdge7&quot;,&quot;from&quot;:&quot;switch2&quot;,&quot;to&quot;:&quot;host3&quot;,&quot;inPort&quot;:3,&quot;outPort&quot;:1,&quot;color&quot;:&quot;#70e6af&quot;},{&quot;id&quot;:&quot;graphEdge8&quot;,&quot;from&quot;:&quot;host6&quot;,&quot;to&quot;:&quot;accessPoint0&quot;,&quot;inPort&quot;:1,&quot;outPort&quot;:3,&quot;color&quot;:&quot;#ffa07a&quot;},{&quot;id&quot;:&quot;graphEdge9&quot;,&quot;from&quot;:&quot;accessPoint0&quot;,&quot;to&quot;:&quot;host7&quot;,&quot;inPort&quot;:2,&quot;outPort&quot;:1,&quot;color&quot;:&quot;#ffa07a&quot;},{&quot;id&quot;:&quot;graphEdge10&quot;,&quot;from&quot;:&quot;accessPoint2&quot;,&quot;to&quot;:&quot;host10&quot;,&quot;inPort&quot;:3,&quot;outPort&quot;:1,&quot;color&quot;:&quot;#ffa07a&quot;},{&quot;id&quot;:&quot;graphEdge11&quot;,&quot;from&quot;:&quot;accessPoint2&quot;,&quot;to&quot;:&quot;host8&quot;,&quot;inPort&quot;:2,&quot;outPort&quot;:1,&quot;color&quot;:&quot;#ffa07a&quot;},{&quot;id&quot;:&quot;graphEdge12&quot;,&quot;from&quot;:&quot;accessPoint1&quot;,&quot;to&quot;:&quot;host9&quot;,&quot;inPort&quot;:3,&quot;outPort&quot;:1,&quot;color&quot;:&quot;#70e6af&quot;},{&quot;id&quot;:&quot;graphEdge13&quot;,&quot;from&quot;:&quot;accessPoint1&quot;,&quot;to&quot;:&quot;host11&quot;,&quot;inPort&quot;:2,&quot;outPort&quot;:1,&quot;color&quot;:&quot;#ffa07a&quot;},{&quot;id&quot;:&quot;graphEdge14&quot;,&quot;from&quot;:&quot;accessPoint1&quot;,&quot;to&quot;:&quot;switch3&quot;,&quot;inPort&quot;:1,&quot;outPort&quot;:1,&quot;color&quot;:&quot;#70e6af&quot;},{&quot;id&quot;:&quot;graphEdge15&quot;,&quot;from&quot;:&quot;switch3&quot;,&quot;to&quot;:&quot;accessPoint2&quot;,&quot;inPort&quot;:2,&quot;outPort&quot;:1,&quot;color&quot;:&quot;#ffa07a&quot;},{&quot;id&quot;:&quot;graphEdge16&quot;,&quot;from&quot;:&quot;switch3&quot;,&quot;to&quot;:&quot;accessPoint0&quot;,&quot;inPort&quot;:3,&quot;outPort&quot;:1,&quot;color&quot;:&quot;#ffa07a&quot;},{&quot;id&quot;:&quot;graphEdge25&quot;,&quot;from&quot;:&quot;switch0&quot;,&quot;to&quot;:&quot;router3&quot;,&quot;inPort&quot;:3,&quot;outPort&quot;:1,&quot;color&quot;:&quot;#70e6af&quot;},{&quot;id&quot;:&quot;graphEdge26&quot;,&quot;from&quot;:&quot;switch0&quot;,&quot;to&quot;:&quot;router2&quot;,&quot;inPort&quot;:4,&quot;outPort&quot;:1,&quot;color&quot;:&quot;#70e6af&quot;},{&quot;id&quot;:&quot;graphEdge21&quot;,&quot;from&quot;:&quot;router3&quot;,&quot;to&quot;:&quot;switch3&quot;,&quot;inPort&quot;:2,&quot;outPort&quot;:5,&quot;color&quot;:&quot;#70e6af&quot;},{&quot;id&quot;:&quot;graphEdge22&quot;,&quot;from&quot;:&quot;router2&quot;,&quot;to&quot;:&quot;switch3&quot;,&quot;inPort&quot;:2,&quot;outPort&quot;:4,&quot;color&quot;:&quot;#70e6af&quot;}]\" networks=\"[{&quot;id&quot;:&quot;net0&quot;,&quot;componets&quot;:[&quot;host5&quot;,&quot;host4&quot;,&quot;host3&quot;,&quot;host2&quot;,&quot;host1&quot;,&quot;host0&quot;,&quot;switch2&quot;,&quot;switch1&quot;,&quot;switch0&quot;],&quot;gateways&quot;:[&quot;router2&quot;,&quot;router3&quot;],&quot;name&quot;:&quot;1.1.1.0 /24&quot;,&quot;netmask&quot;:&quot;255.255.255.0&quot;,&quot;bitmask&quot;:24,&quot;address&quot;:&quot;1.1.1.0&quot;,&quot;color&quot;:&quot;#70e6af&quot;,&quot;x&quot;:-165.23829377920765,&quot;y&quot;:34.386549869666155,&quot;currentDefaultGateway&quot;:&quot;router3&quot;},{&quot;id&quot;:&quot;net1&quot;,&quot;componets&quot;:[&quot;accessPoint1&quot;,&quot;accessPoint2&quot;,&quot;accessPoint0&quot;,&quot;switch3&quot;,&quot;host11&quot;,&quot;host10&quot;,&quot;host9&quot;,&quot;host8&quot;,&quot;host7&quot;,&quot;host6&quot;],&quot;gateways&quot;:[&quot;router3&quot;,&quot;router2&quot;],&quot;netmask&quot;:&quot;255.255.255.0&quot;,&quot;bitmask&quot;:24,&quot;color&quot;:&quot;#ffa07a&quot;,&quot;x&quot;:527,&quot;y&quot;:30.5,&quot;name&quot;:&quot;2.2.2.0 /24&quot;,&quot;address&quot;:&quot;2.2.2.0&quot;,&quot;currentDefaultGateway&quot;:&quot;router2&quot;}]\"></ww-network>",
+      "./snippets/triple-network.html": "<ww-network class='ww-widget ww-v0.0.1' contenteditable='' screen='medium' componets='[{\"id\":\"host0\",\"name\":\"host0\",\"color\":\"#70e6af\",\"type\":\"mobile\",\"x\":-306.024454782425,\"y\":-136.11977229410817,\"ports\":[{\"name\":\"eth0\",\"type\":\"ethernet\",\"mac\":\"cf:e4:ff:e3:c7:3c\",\"ip4\":\"1.1.1.2\",\"ip6\":\"0:0:0:0:0:0:0:1\"}],\"portLinks\":[\"graphEdge0\"],\"defaultGateway\":[\"router2\",1]},{\"id\":\"host1\",\"name\":\"host1\",\"color\":\"#70e6af\",\"type\":\"mobile\",\"x\":-307.3690426555197,\"y\":-83.70307088274684,\"ports\":[{\"name\":\"eth0\",\"type\":\"ethernet\",\"mac\":\"5b:bc:85:54:b1:50\",\"ip4\":\"1.1.1.3\",\"ip6\":\"0:0:0:0:0:0:0:1\"}],\"portLinks\":[\"graphEdge1\"],\"defaultGateway\":[\"router3\",1]},{\"id\":\"host2\",\"name\":\"host2\",\"color\":\"#70e6af\",\"type\":\"mobile\",\"x\":-308.7730997393322,\"y\":-38.39349743794498,\"ports\":[{\"name\":\"eth0\",\"type\":\"ethernet\",\"mac\":\"c4:66:09:72:53:f1\",\"ip4\":\"1.1.1.4\",\"ip6\":\"0:0:0:0:0:0:0:1\"}],\"portLinks\":[\"graphEdge2\"],\"defaultGateway\":[\"router2\",1]},{\"id\":\"host3\",\"name\":\"host3\",\"color\":\"#70e6af\",\"type\":\"mobile\",\"x\":-313.14214239485204,\"y\":100.96498557170713,\"ports\":[{\"name\":\"eth0\",\"type\":\"ethernet\",\"mac\":\"be:13:39:f6:bf:12\",\"ip4\":\"1.1.1.7\",\"ip6\":\"0:0:0:0:0:0:0:1\"}],\"portLinks\":[\"graphEdge7\"],\"defaultGateway\":[\"router2\",1]},{\"id\":\"host4\",\"name\":\"host4\",\"color\":\"#70e6af\",\"type\":\"mobile\",\"x\":-311.095317511683,\"y\":144.72585791982698,\"ports\":[{\"name\":\"eth0\",\"type\":\"ethernet\",\"mac\":\"e9:62:11:30:a9:28\",\"ip4\":\"1.1.1.6\",\"ip6\":\"0:0:0:0:0:0:0:1\"}],\"portLinks\":[\"graphEdge6\"],\"defaultGateway\":[\"router3\",1]},{\"id\":\"host5\",\"name\":\"host5\",\"color\":\"#70e6af\",\"type\":\"mobile\",\"x\":-315.21467286945494,\"y\":188.89287203344048,\"ports\":[{\"name\":\"eth0\",\"type\":\"ethernet\",\"mac\":\"7d:4d:80:06:75:bc\",\"ip4\":\"1.1.1.5\",\"ip6\":\"0:0:0:0:0:0:0:1\"}],\"portLinks\":[\"graphEdge5\"],\"defaultGateway\":[\"router2\",1]},{\"id\":\"switch0\",\"name\":\"switch0\",\"color\":\"#20b2aa\",\"type\":\"switch\",\"x\":-272.0354313646289,\"y\":32.92872033440577,\"ports\":[{\"name\":\"port\",\"type\":\"ethernet\",\"mac\":\"b6:3d:a8:94:24:93\"},{\"name\":\"port\",\"type\":\"ethernet\",\"mac\":\"f9:dd:75:d8:4e:ba\"},{\"name\":\"port\",\"type\":\"ethernet\",\"mac\":\"fc:16:6d:1e:f2:a2\"},{\"name\":\"port\",\"type\":\"ethernet\",\"mac\":\"28:d9:3b:6e:21:db\"}],\"portLinks\":[\"graphEdge4\",\"graphEdge3\",\"graphEdge25\",\"graphEdge26\"]},{\"id\":\"switch1\",\"name\":\"switch1\",\"color\":\"#20b2aa\",\"type\":\"switch\",\"x\":-23.261914688960374,\"y\":-73.21383899678261,\"ports\":[{\"name\":\"port\",\"type\":\"ethernet\",\"mac\":\"77:c8:f7:2a:b4:3f\"},{\"name\":\"port\",\"type\":\"ethernet\",\"mac\":\"06:12:e7:dd:6f:1f\"},{\"name\":\"port\",\"type\":\"ethernet\",\"mac\":\"40:43:77:2c:1f:0f\"},{\"name\":\"port\",\"type\":\"ethernet\",\"mac\":\"29:6b:77:1e:83:b2\"}],\"portLinks\":[\"graphEdge0\",\"graphEdge1\",\"graphEdge2\",\"graphEdge3\"]},{\"id\":\"switch2\",\"name\":\"switch2\",\"color\":\"#20b2aa\",\"type\":\"switch\",\"x\":-32.55884380621352,\"y\":132.86925112368783,\"ports\":[{\"name\":\"port\",\"type\":\"ethernet\",\"mac\":\"44:cd:14:5e:9d:2a\"},{\"name\":\"port\",\"type\":\"ethernet\",\"mac\":\"5f:65:4e:3a:c6:bb\"},{\"name\":\"port\",\"type\":\"ethernet\",\"mac\":\"b5:cf:0f:1f:06:70\"},{\"name\":\"port\",\"type\":\"ethernet\",\"mac\":\"fc:07:e0:ef:eb:7b\"}],\"portLinks\":[\"graphEdge5\",\"graphEdge4\",\"graphEdge7\",\"graphEdge6\"]},{\"id\":\"accessPoint0\",\"name\":\"accessPoint0\",\"color\":\"#ff6347\",\"type\":\"accesspoint\",\"x\":487.99999999999994,\"y\":168,\"ports\":[{\"name\":\"port\",\"type\":\"ethernet\",\"mac\":\"a5:ba:57:96:67:83\"},{\"name\":\"port\",\"type\":\"wireless\",\"mac\":\"58:49:50:be:bb:0e\"},{\"name\":\"port\",\"type\":\"wireless\",\"mac\":\"86:24:88:d7:45:81\"}],\"portLinks\":[\"graphEdge16\",\"graphEdge9\",\"graphEdge8\"]},{\"id\":\"accessPoint1\",\"name\":\"accessPoint1\",\"color\":\"#ff6347\",\"type\":\"accesspoint\",\"x\":525,\"y\":-120,\"ports\":[{\"name\":\"port\",\"type\":\"ethernet\",\"mac\":\"10:76:d5:03:1b:99\"},{\"name\":\"port\",\"type\":\"wireless\",\"mac\":\"d6:44:3f:02:e5:b5\"},{\"name\":\"port\",\"type\":\"wireless\",\"mac\":\"42:c3:00:99:aa:fc\"}],\"portLinks\":[\"graphEdge14\",\"graphEdge13\",\"graphEdge12\"]},{\"id\":\"accessPoint2\",\"name\":\"accessPoint2\",\"color\":\"#ff6347\",\"type\":\"accesspoint\",\"x\":528,\"y\":28.000000000000007,\"ports\":[{\"name\":\"port\",\"type\":\"ethernet\",\"mac\":\"d8:83:bb:59:9c:e6\"},{\"name\":\"port\",\"type\":\"wireless\",\"mac\":\"cb:dd:77:e6:e0:5d\"},{\"name\":\"port\",\"type\":\"wireless\",\"mac\":\"8a:ef:10:1b:a6:be\"}],\"portLinks\":[\"graphEdge15\",\"graphEdge11\",\"graphEdge10\"]},{\"id\":\"switch3\",\"name\":\"switch3\",\"color\":\"#ff6347\",\"type\":\"switch\",\"x\":318.99999999999994,\"y\":29.000000000000007,\"ports\":[{\"name\":\"port\",\"type\":\"ethernet\",\"mac\":\"66:75:73:c9:54:f4\"},{\"name\":\"port\",\"type\":\"ethernet\",\"mac\":\"91:69:0f:3f:1b:f5\"},{\"name\":\"port\",\"type\":\"ethernet\",\"mac\":\"32:0f:90:06:c9:cf\"},{\"name\":\"port\",\"type\":\"ethernet\",\"mac\":\"a6:cb:65:2f:51:d9\"},{\"name\":\"port\",\"type\":\"ethernet\",\"mac\":\"c9:6f:4f:94:dc:19\"},{\"name\":\"port\",\"type\":\"ethernet\",\"mac\":\"7d:2c:ca:1b:d4:ca\"}],\"portLinks\":[\"graphEdge14\",\"graphEdge15\",\"graphEdge16\",\"graphEdge22\",\"graphEdge21\",\"graphEdge28\"]},{\"id\":\"host6\",\"name\":\"host6\",\"color\":\"#ffa07a\",\"type\":\"mobile\",\"x\":723,\"y\":188,\"ports\":[{\"name\":\"eth0\",\"type\":\"wireless\",\"mac\":\"6f:45:7c:f1:0d:0a\",\"ip4\":\"2.2.2.8\",\"ip6\":\"0:0:0:0:0:0:0:1\"}],\"portLinks\":[\"graphEdge8\"],\"defaultGateway\":[\"router3\",2]},{\"id\":\"host7\",\"name\":\"host7\",\"color\":\"#ffa07a\",\"type\":\"mobile\",\"x\":727,\"y\":126,\"ports\":[{\"name\":\"eth0\",\"type\":\"wireless\",\"mac\":\"26:75:ec:0c:e1:56\",\"ip4\":\"2.2.2.7\",\"ip6\":\"0:0:0:0:0:0:0:1\"}],\"portLinks\":[\"graphEdge9\"],\"defaultGateway\":[\"router2\",2]},{\"id\":\"host8\",\"name\":\"host8\",\"color\":\"#ffa07a\",\"type\":\"mobile\",\"x\":733,\"y\":7.000000000000007,\"ports\":[{\"name\":\"eth0\",\"type\":\"wireless\",\"mac\":\"72:a0:da:97:54:80\",\"ip4\":\"2.2.2.5\",\"ip6\":\"0:0:0:0:0:0:0:1\"}],\"portLinks\":[\"graphEdge11\"],\"defaultGateway\":[\"router2\",2]},{\"id\":\"host9\",\"name\":\"host9\",\"color\":\"#ffa07a\",\"type\":\"mobile\",\"x\":743,\"y\":-143,\"ports\":[{\"name\":\"eth0\",\"type\":\"wireless\",\"mac\":\"c9:c2:3c:d9:31:76\",\"ip4\":\"2.2.2.2\",\"ip6\":\"0:0:0:0:0:0:0:1\"}],\"portLinks\":[\"graphEdge12\"],\"defaultGateway\":[\"router3\",2]},{\"id\":\"host10\",\"name\":\"host10\",\"color\":\"#ffa07a\",\"type\":\"mobile\",\"x\":739,\"y\":61.00000000000001,\"ports\":[{\"name\":\"eth0\",\"type\":\"wireless\",\"mac\":\"e9:9e:e2:57:fa:33\",\"ip4\":\"2.2.2.6\",\"ip6\":\"0:0:0:0:0:0:0:1\"}],\"portLinks\":[\"graphEdge10\"],\"defaultGateway\":[\"router3\",2]},{\"id\":\"host11\",\"name\":\"host11\",\"color\":\"#ffa07a\",\"type\":\"mobile\",\"x\":737,\"y\":-77,\"ports\":[{\"name\":\"eth0\",\"type\":\"wireless\",\"mac\":\"92:a0:ea:87:e4:5e\",\"ip4\":\"2.2.2.3\",\"ip6\":\"0:0:0:0:0:0:0:1\"}],\"portLinks\":[\"graphEdge13\"],\"defaultGateway\":[\"router2\",2]},{\"id\":\"router2\",\"name\":\"router2\",\"color\":\"#70e6af\",\"type\":\"router\",\"x\":90.09115103448259,\"y\":130.3149500314911,\"ports\":[{\"name\":\"port-1\",\"type\":\"ethernet\",\"mac\":\"d4:9b:19:ee:97:d8\",\"ip4\":\"1.1.1.129\",\"ip6\":\"0:0:0:0:0:0:0:1\"},{\"name\":\"port-2\",\"type\":\"ethernet\",\"mac\":\"8b:29:d9:d0:ab:20\",\"ip4\":\"2.2.2.129\",\"ip6\":\"0:0:0:0:0:0:0:1\"}],\"portLinks\":[\"graphEdge26\",\"graphEdge22\"]},{\"id\":\"router3\",\"name\":\"router3\",\"color\":\"#70e6af\",\"type\":\"router\",\"x\":87.13880979032402,\"y\":-34.51026973810133,\"ports\":[{\"name\":\"port-1\",\"type\":\"ethernet\",\"mac\":\"16:ad:d4:e8:fd:b1\",\"ip4\":\"1.1.1.128\",\"ip6\":\"0:0:0:0:0:0:0:1\"},{\"name\":\"port-2\",\"type\":\"ethernet\",\"mac\":\"41:e2:d9:78:b1:0d\",\"ip4\":\"2.2.2.128\",\"ip6\":\"0:0:0:0:0:0:0:1\"}],\"portLinks\":[\"graphEdge25\",\"graphEdge21\"]},{\"id\":\"host12\",\"name\":\"host12\",\"color\":\"#9cb6d6\",\"type\":\"mobile\",\"x\":409.9794829623035,\"y\":-359.74848037032285,\"ports\":[{\"name\":\"eth0\",\"type\":\"ethernet\",\"mac\":\"e6:39:22:0c:69:89\",\"ip4\":\"3.3.3.3\",\"ip6\":\"0:0:0:0:0:0:0:1\"}],\"portLinks\":[\"graphEdge24\"],\"defaultGateway\":[\"router4\",2]},{\"id\":\"host13\",\"name\":\"host13\",\"color\":\"#9cb6d6\",\"type\":\"mobile\",\"x\":-106.00510558897061,\"y\":-349.41602766110276,\"ports\":[{\"name\":\"eth0\",\"type\":\"ethernet\",\"mac\":\"b6:36:3f:d3:87:ec\",\"ip4\":\"3.3.3.2\",\"ip6\":\"0:0:0:0:0:0:0:1\"}],\"portLinks\":[\"graphEdge23\"],\"defaultGateway\":[\"router4\",2]},{\"id\":\"switch4\",\"name\":\"switch4\",\"color\":\"#9cb6d6\",\"type\":\"switch\",\"x\":157.5914514458515,\"y\":-347.53235475994165,\"ports\":[{\"name\":\"port\",\"type\":\"ethernet\",\"mac\":\"b5:d8:94:4c:72:65\"},{\"name\":\"port\",\"type\":\"ethernet\",\"mac\":\"b2:9d:86:25:2b:78\"},{\"name\":\"port\",\"type\":\"ethernet\",\"mac\":\"69:b4:79:32:cb:33\"}],\"portLinks\":[\"graphEdge23\",\"graphEdge24\",\"graphEdge27\"]},{\"id\":\"router4\",\"name\":\"router4\",\"color\":\"#70e6af\",\"type\":\"router\",\"x\":156.1606325186277,\"y\":-118.7498383987141,\"ports\":[{\"name\":\"port-2\",\"type\":\"ethernet\",\"mac\":\"d4:fc:7f:c6:74:3f\",\"ip4\":\"2.2.2.120\",\"ip6\":\"0:0:0:0:0:0:0:1\"},{\"name\":\"port-3\",\"type\":\"ethernet\",\"mac\":\"fe:89:c9:f5:82:02\",\"ip4\":\"3.3.3.120\",\"ip6\":\"0:0:0:0:0:0:0:1\"}],\"portLinks\":[\"graphEdge28\",\"graphEdge27\"]}]' connections='[{\"id\":\"graphEdge0\",\"from\":\"host0\",\"to\":\"switch1\",\"inPort\":1,\"outPort\":1,\"color\":\"#70e6af\"},{\"id\":\"graphEdge1\",\"from\":\"switch1\",\"to\":\"host1\",\"inPort\":2,\"outPort\":1,\"color\":\"#70e6af\"},{\"id\":\"graphEdge2\",\"from\":\"host2\",\"to\":\"switch1\",\"inPort\":1,\"outPort\":3,\"color\":\"#70e6af\"},{\"id\":\"graphEdge3\",\"from\":\"switch1\",\"to\":\"switch0\",\"inPort\":4,\"outPort\":2,\"color\":\"#70e6af\"},{\"id\":\"graphEdge4\",\"from\":\"switch0\",\"to\":\"switch2\",\"inPort\":1,\"outPort\":2,\"color\":\"#70e6af\"},{\"id\":\"graphEdge5\",\"from\":\"switch2\",\"to\":\"host5\",\"inPort\":1,\"outPort\":1,\"color\":\"#70e6af\"},{\"id\":\"graphEdge6\",\"from\":\"switch2\",\"to\":\"host4\",\"inPort\":4,\"outPort\":1,\"color\":\"#70e6af\"},{\"id\":\"graphEdge7\",\"from\":\"switch2\",\"to\":\"host3\",\"inPort\":3,\"outPort\":1,\"color\":\"#70e6af\"},{\"id\":\"graphEdge8\",\"from\":\"host6\",\"to\":\"accessPoint0\",\"inPort\":1,\"outPort\":3,\"color\":\"#ffa07a\"},{\"id\":\"graphEdge9\",\"from\":\"accessPoint0\",\"to\":\"host7\",\"inPort\":2,\"outPort\":1,\"color\":\"#ffa07a\"},{\"id\":\"graphEdge10\",\"from\":\"accessPoint2\",\"to\":\"host10\",\"inPort\":3,\"outPort\":1,\"color\":\"#ffa07a\"},{\"id\":\"graphEdge11\",\"from\":\"accessPoint2\",\"to\":\"host8\",\"inPort\":2,\"outPort\":1,\"color\":\"#ffa07a\"},{\"id\":\"graphEdge12\",\"from\":\"accessPoint1\",\"to\":\"host9\",\"inPort\":3,\"outPort\":1,\"color\":\"#70e6af\"},{\"id\":\"graphEdge13\",\"from\":\"accessPoint1\",\"to\":\"host11\",\"inPort\":2,\"outPort\":1,\"color\":\"#ffa07a\"},{\"id\":\"graphEdge14\",\"from\":\"accessPoint1\",\"to\":\"switch3\",\"inPort\":1,\"outPort\":1,\"color\":\"#70e6af\"},{\"id\":\"graphEdge15\",\"from\":\"switch3\",\"to\":\"accessPoint2\",\"inPort\":2,\"outPort\":1,\"color\":\"#ffa07a\"},{\"id\":\"graphEdge16\",\"from\":\"switch3\",\"to\":\"accessPoint0\",\"inPort\":3,\"outPort\":1,\"color\":\"#ffa07a\"},{\"id\":\"graphEdge25\",\"from\":\"switch0\",\"to\":\"router3\",\"inPort\":3,\"outPort\":1,\"color\":\"#70e6af\"},{\"id\":\"graphEdge26\",\"from\":\"switch0\",\"to\":\"router2\",\"inPort\":4,\"outPort\":1,\"color\":\"#70e6af\"},{\"id\":\"graphEdge21\",\"from\":\"router3\",\"to\":\"switch3\",\"inPort\":2,\"outPort\":5,\"color\":\"#70e6af\"},{\"id\":\"graphEdge22\",\"from\":\"router2\",\"to\":\"switch3\",\"inPort\":2,\"outPort\":4,\"color\":\"#70e6af\"},{\"id\":\"graphEdge23\",\"from\":\"host13\",\"to\":\"switch4\",\"inPort\":1,\"outPort\":1,\"color\":\"#70e6af\"},{\"id\":\"graphEdge24\",\"from\":\"host12\",\"to\":\"switch4\",\"inPort\":1,\"outPort\":2,\"color\":\"#70e6af\"},{\"id\":\"graphEdge27\",\"from\":\"switch4\",\"to\":\"router4\",\"inPort\":3,\"outPort\":2,\"color\":\"#70e6af\"},{\"id\":\"graphEdge28\",\"from\":\"router4\",\"to\":\"switch3\",\"inPort\":1,\"outPort\":6,\"color\":\"#70e6af\"}]' networks='[{\"id\":\"net0\",\"componets\":[\"host5\",\"host4\",\"host3\",\"host2\",\"host1\",\"host0\",\"switch2\",\"switch1\",\"switch0\"],\"gateways\":[\"router2\",\"router3\"],\"name\":\"1.1.1.0 /24\",\"netmask\":\"255.255.255.0\",\"bitmask\":24,\"address\":\"1.1.1.0\",\"color\":\"#70e6af\",\"x\":-165.23829377920765,\"y\":34.386549869666155,\"currentDefaultGateway\":\"router3\"},{\"id\":\"net1\",\"componets\":[\"accessPoint1\",\"accessPoint2\",\"accessPoint0\",\"switch3\",\"host11\",\"host10\",\"host9\",\"host8\",\"host7\",\"host6\"],\"gateways\":[\"router3\",\"router2\",\"router4\"],\"netmask\":\"255.255.255.0\",\"bitmask\":24,\"color\":\"#ffa07a\",\"x\":527,\"y\":30.5,\"name\":\"2.2.2.0 /24\",\"address\":\"2.2.2.0\",\"currentDefaultGateway\":\"router2\"},{\"id\":\"net2\",\"componets\":[\"host13\",\"host12\",\"switch4\"],\"gateways\":[\"router4\"],\"name\":\"3.3.3.0 /24\",\"netmask\":\"255.255.255.0\",\"bitmask\":24,\"address\":\"3.3.3.0\",\"color\":\"#9cb6d6\",\"x\":163.1124134133794,\"y\":-354.77805157343886,\"currentDefaultGateway\":\"router4\"}]'></ww-network>"
+    }
+  },
+  {
+    "name": "@webwriter/chemlab",
+    "type": "module",
+    "version": "0.2.1",
+    "description": "Prepare virtual laboratory environments for various topics in chemistry. Includes the building of molecules as well as applications for electrochemistry and acid/base theory.",
+    "keywords": [
+      "webwriter-widget"
+    ],
+    "license": "MIT",
+    "author": "Robin Kreft",
+    "main": "./index.ts",
+    "exports": {
+      "./widgets/webwriter-chemlab.*": {
+        "source": "./webwriter-chemlab.ts",
+        "default": "./dist/widgets/webwriter-chemlab.*"
+      },
+      "./snippets/Beispiel-Titration.html": "./snippets/Beispiel-Titration.html",
+      "./snippets/Beispiel-Batterie.html": "./snippets/Beispiel-Batterie.html",
+      "./*": {
+        "source": "./*",
+        "default": null
+      }
+    },
+    "scripts": {},
+    "dependencies": {
+      "@shoelace-style/shoelace": "^2.15.1",
+      "@webwriter/lit": "^2.0.0",
+      "@webwriter/wui": "^0.0.2",
+      "chart.js": "^4.4.4",
+      "chemlib": "^0.2.2",
+      "lit": "^3.1.4",
+      "pixi.js": "^7.4.2",
+      "unique-names-generator": "^4.7.1"
+    },
+    "devDependencies": {
+      "typescript": "^5.4.5",
+      "vite": "^5.2.13"
+    },
+    "snippets": {
+      "./snippets/Beispiel-Titration.html": "<webwriter-chemlab\r\n    availablemolecules=\"[{&quot;formula&quot;:&quot;OH2&quot;,&quot;atoms&quot;:[&quot;oxygen&quot;,&quot;hydrogen&quot;,&quot;hydrogen&quot;],&quot;bonds&quot;:[&quot;0-1:covalent:1&quot;,&quot;0-2:covalent:1&quot;]},{&quot;formula&quot;:&quot;NaOH&quot;,&quot;atoms&quot;:[&quot;sodium&quot;,&quot;oxygen&quot;,&quot;hydrogen&quot;],&quot;bonds&quot;:[&quot;0-1:acidbase:1&quot;,&quot;1-2:covalent:1&quot;]},{&quot;formula&quot;:&quot;HCl&quot;,&quot;atoms&quot;:[&quot;hydrogen&quot;,&quot;chlorine&quot;],&quot;bonds&quot;:[&quot;0-1:acidbase:1&quot;]},{&quot;formula&quot;:&quot;NaCl&quot;,&quot;atoms&quot;:[&quot;sodium&quot;,&quot;chlorine&quot;],&quot;bonds&quot;:[&quot;0-1:ionic:1&quot;]}]\"\r\n    availablemixtures=\"[{&quot;name&quot;:&quot;Salzsäure1M&quot;,&quot;content&quot;:[&quot;OH2:55.410&quot;,&quot;HCl:1&quot;]},{&quot;name&quot;:&quot;Natronlauge1M&quot;,&quot;content&quot;:[&quot;OH2:55.410&quot;,&quot;NaOH:1&quot;]}]\"\r\n    availablecomponents=\"[{&quot;type&quot;:&quot;Beaker&quot;,&quot;content&quot;:&quot;Salzsäure1M&quot;,&quot;vol&quot;:0.01,&quot;pos&quot;:[512,505.390625],&quot;voltage&quot;:&quot;&quot;,&quot;current&quot;:&quot;&quot;,&quot;material&quot;:&quot;&quot;,&quot;connections&quot;:[],&quot;id&quot;:0},{&quot;type&quot;:&quot;Burette&quot;,&quot;content&quot;:&quot;Natronlauge1M&quot;,&quot;vol&quot;:0.02,&quot;pos&quot;:[510,212.390625],&quot;voltage&quot;:&quot;&quot;,&quot;current&quot;:&quot;&quot;,&quot;material&quot;:&quot;&quot;,&quot;connections&quot;:[],&quot;id&quot;:1}]\"\r\n    panelvariant=\"1\"\r\n    invcomponents=\"\"\r\n    enablexapi=\"false\"\r\n    xapikey=\"\"></webwriter-chemlab>",
+      "./snippets/Beispiel-Batterie.html": "<webwriter-chemlab\r\navailablemolecules=\"[{&quot;formula&quot;:&quot;OH2&quot;,&quot;atoms&quot;:[&quot;oxygen&quot;,&quot;hydrogen&quot;,&quot;hydrogen&quot;],&quot;bonds&quot;:[&quot;0-1:covalent:1&quot;,&quot;0-2:covalent:1&quot;]},{&quot;formula&quot;:&quot;Cu&quot;,&quot;atoms&quot;:[&quot;copper&quot;],&quot;bonds&quot;:[]},{&quot;formula&quot;:&quot;Zn&quot;,&quot;atoms&quot;:[&quot;zinc&quot;],&quot;bonds&quot;:[]},{&quot;formula&quot;:&quot;Cu2+Cl22-&quot;,&quot;atoms&quot;:[&quot;copper&quot;,&quot;chlorine&quot;,&quot;chlorine&quot;],&quot;bonds&quot;:[&quot;0-1:ionic:1&quot;,&quot;0-2:ionic:1&quot;]},{&quot;formula&quot;:&quot;Zn2+Cl22-&quot;,&quot;atoms&quot;:[&quot;zinc&quot;,&quot;chlorine&quot;,&quot;chlorine&quot;],&quot;bonds&quot;:[&quot;0-1:ionic:1&quot;,&quot;0-2:ionic:1&quot;]}]\"\r\navailablemixtures=\"[{&quot;name&quot;:&quot;Kupferlösung1M&quot;,&quot;content&quot;:[&quot;Cu2+Cl22-:1&quot;,&quot;OH2:55.541&quot;]},{&quot;name&quot;:&quot;Zinklösung1M&quot;,&quot;content&quot;:[&quot;Zn2+Cl22-:1&quot;,&quot;OH2:55.541&quot;]}]\"\r\navailablecomponents=\"[{&quot;type&quot;:&quot;Beaker&quot;,&quot;content&quot;:&quot;Kupferlösung1M&quot;,&quot;vol&quot;:0.2,&quot;pos&quot;:[146,500.390625],&quot;voltage&quot;:&quot;&quot;,&quot;current&quot;:&quot;&quot;,&quot;material&quot;:&quot;&quot;,&quot;connections&quot;:[],&quot;id&quot;:0},{&quot;type&quot;:&quot;Beaker&quot;,&quot;content&quot;:&quot;Zinklösung1M&quot;,&quot;vol&quot;:0.2,&quot;pos&quot;:[625,513.390625],&quot;voltage&quot;:&quot;&quot;,&quot;current&quot;:&quot;&quot;,&quot;material&quot;:&quot;&quot;,&quot;connections&quot;:[],&quot;id&quot;:1},{&quot;type&quot;:&quot;Electrode&quot;,&quot;content&quot;:&quot;&quot;,&quot;vol&quot;:null,&quot;pos&quot;:[145,376.390625],&quot;voltage&quot;:&quot;&quot;,&quot;current&quot;:&quot;&quot;,&quot;material&quot;:&quot;Cu&quot;,&quot;connections&quot;:[4],&quot;id&quot;:2},{&quot;type&quot;:&quot;Electrode&quot;,&quot;content&quot;:&quot;&quot;,&quot;vol&quot;:null,&quot;pos&quot;:[623,391.390625],&quot;voltage&quot;:&quot;&quot;,&quot;current&quot;:&quot;&quot;,&quot;material&quot;:&quot;Zn&quot;,&quot;connections&quot;:[4],&quot;id&quot;:3},{&quot;type&quot;:&quot;Voltmeter&quot;,&quot;content&quot;:&quot;&quot;,&quot;vol&quot;:null,&quot;pos&quot;:[376,102.390625],&quot;voltage&quot;:&quot;&quot;,&quot;current&quot;:&quot;&quot;,&quot;material&quot;:&quot;&quot;,&quot;connections&quot;:[2,3],&quot;id&quot;:4}]\"\r\npanelvariant=\"1\"\r\ninvcomponents=\"\"\r\nenablexapi=\"false\"\r\nxapikey=\"\">\r\n</webwriter-chemlab>"
+    }
+  },
+  {
+    "name": "@webwriter/flowchart",
+    "version": "2.0.1",
+    "description": "Create programming flowcharts with interactive tasks. Translate flowcharts into natural language or pseudo code.",
+    "keywords": [
+      "webwriter-widget"
+    ],
+    "license": "MIT",
+    "author": "Kevin Lu",
+    "scripts": {
+      "prepublishOnly": "npx @webwriter/build"
+    },
+    "dependencies": {
+      "@webwriter/lit": "^2.0.0",
+      "axios": ">=1.4.0 <2.0.0-0",
+      "dotenv": ">=16.1.4 <17.0.0-0",
+      "lit": ">=3.0.0 <4.0.0-0",
+      "uuid": ">=9.0.0 <10.0.0-0"
+    },
+    "devDependencies": {
+      "typescript": ">=4.8.4 <5.0.0-0",
+      "vite": ">=3.1.6 <4.0.0-0"
+    },
+    "exports": {
+      "./widgets/webwriter-flowchart.*": {
+        "source": "./index.ts",
+        "default": "./dist/widgets/webwriter-flowchart.*"
+      },
+      "./package.json": "./package.json"
+    },
+    "snippets": {}
+  },
+  {
+    "name": "@webwriter/map",
+    "version": "2.0.3",
+    "description": "Geographical map with different terrain options including custom tiling, and GeoJSON support.",
+    "keywords": [
+      "webwriter-widget"
+    ],
+    "license": "MIT",
+    "author": "Jorik van Genuchten",
+    "contributors": [
+      "Jorik van Genuchten"
+    ],
+    "scripts": {
+      "prepublishOnly": "npx @webwriter/build"
+    },
+    "dependencies": {
+      "@fortawesome/fontawesome-free": "^6.4.2",
+      "@shoelace-style/shoelace": ">=2.4.0 <3.0.0-0",
+      "@webwriter/lit": "^2.0.0",
+      "fa-icons": ">=0.2.0 <0.3.0-0",
+      "jimp": "0.22.7",
+      "leaflet": "^1.9.4",
+      "lit": ">=3.0.0 <4.0.0-0"
+    },
+    "devDependencies": {
+      "typescript": ">=4.8.4 <5.0.0-0",
+      "vite": ">=3.1.6 <4.0.0-0"
+    },
+    "exports": {
+      "./widgets/webwriter-map.*": {
+        "source": "./index.ts",
+        "default": "./dist/widgets/webwriter-map.*"
+      },
+      "./package.json": "./package.json"
+    },
+    "snippets": {}
+  },
+  {
+    "name": "@webwriter/block-based-code",
+    "version": "1.5.6",
+    "description": "Write block-based code (e.g. Scratch) and run it.",
+    "license": "MIT",
+    "author": "Philipp Lentzen",
+    "keywords": [
+      "webwriter-widget"
+    ],
+    "scripts": {
+      "build": "node scripts/esbuild.config.mjs",
+      "dev": "NODE_ENV=development node scripts/esbuild.config.mjs",
+      "lint:fix": "eslint --fix .",
+      "pre-release": "release-it --config scripts/release-it.config.ts --preRelease=rc",
+      "release": "release-it --config scripts/release-it.config.ts"
+    },
+    "exports": {
+      "./widgets/webwriter-block-based-code.*": {
+        "source": "./widgets/webwriter-block-based-code.ts",
+        "default": "./dist/webwriter-block-based-code.*"
+      },
+      "./snippets/bouncing-dvd.html": "./snippets/dvd.html",
+      "./package.json": "./package.json"
+    },
+    "files": [
+      "dist",
+      "snippets"
+    ],
+    "dependencies": {
+      "@blockly/continuous-toolbox": "^6.0.2",
+      "@blockly/plugin-cross-tab-copy-paste": "^6.0.8",
+      "@lit/task": "^1.0.1",
+      "@shoelace-style/shoelace": "^2.15.1",
+      "@tabler/icons": "^3.6.0",
+      "@webwriter/lit": "^2.0.0",
+      "blockly": "^11.1.0",
+      "highlight.js": "^11.10.0",
+      "lit": "^3.1.4",
+      "lodash": "^4.17.21",
+      "pixi.js": "^8.1.6"
+    },
+    "devDependencies": {
+      "@release-it/conventional-changelog": "^8.0.1",
+      "@types/lodash": "^4.17.6",
+      "esbuild": "^0.23.1",
+      "eslint": "^8.57.0",
+      "eslint-config-airbnb-base": "^15.0.0",
+      "eslint-config-airbnb-typescript": "^18.0.0",
+      "eslint-plugin-import": "^2.29.1",
+      "release-it": "^17.6.0"
+    },
+    "snippets": {
+      "./snippets/bouncing-dvd.html": "<webwriter-block-based-code class=\"ww-widget\"\n                  readonly=\"0\"\n                  stagetype=\"canvas\"\n                  selectedblocks=\"[&quot;controls:forever&quot;,&quot;controls:if&quot;,&quot;controls:if_else&quot;,&quot;controls:repeat&quot;,&quot;controls:stop&quot;,&quot;controls:wait&quot;,&quot;looks:set_color&quot;,&quot;motions:get_x&quot;,&quot;motions:get_y&quot;,&quot;motions:move&quot;,&quot;motions:rotate&quot;,&quot;motions:set_rotation&quot;,&quot;motions:set_x&quot;,&quot;motions:set_xy&quot;,&quot;motions:set_y&quot;,&quot;operators:absolute&quot;,&quot;operators:and&quot;,&quot;operators:divide&quot;,&quot;operators:equal&quot;,&quot;operators:greater&quot;,&quot;operators:multiply&quot;,&quot;operators:not&quot;,&quot;operators:or&quot;,&quot;operators:smaller&quot;,&quot;operators:subtract&quot;,&quot;operators:sum&quot;,&quot;variables&quot;]\"\n                  editorstate=\"{&quot;blocks&quot;:{&quot;languageVersion&quot;:0,&quot;blocks&quot;:[{&quot;type&quot;:&quot;events:when_start_clicked&quot;,&quot;id&quot;:&quot;qPL+a=;G*hk{^D+OY=@2&quot;,&quot;x&quot;:310,&quot;y&quot;:-129,&quot;inputs&quot;:{&quot;SUBSTACK&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;motions:set_xy&quot;,&quot;id&quot;:&quot;`mb4UrTU-.Jj~sw%9}xM&quot;,&quot;inputs&quot;:{&quot;X&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;u[F}(`LZpz@4@?V*cL{d&quot;,&quot;fields&quot;:{&quot;NUM&quot;:400}}},&quot;Y&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;ioO_+[e+f[-Oe1a$#1TY&quot;,&quot;fields&quot;:{&quot;NUM&quot;:300}}}},&quot;next&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;variables_set&quot;,&quot;id&quot;:&quot;*!n9kmd7mvy(L@=W^)rZ&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;WrvugZAADY^C~:DXvBQ=&quot;}},&quot;inputs&quot;:{&quot;VALUE&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;29-/jZvI%?*#5~oEbeb^&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}}}},&quot;next&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;variables_set&quot;,&quot;id&quot;:&quot;G83RB|@xNSN81NrHpQ3g&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;aq;O$#Dya1kjko[!i3(-&quot;}},&quot;inputs&quot;:{&quot;VALUE&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;!YJQc%=gI?Z%B0]f3%3K&quot;,&quot;fields&quot;:{&quot;NUM&quot;:10}}}},&quot;next&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;variables_set&quot;,&quot;id&quot;:&quot;Y_~LGC4XzbSO@3Z$08K{&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;|@yg{YQ(yYtoX?DCM}*/&quot;}},&quot;inputs&quot;:{&quot;VALUE&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;O]wQO+}%EGdnk!i2()1B&quot;,&quot;fields&quot;:{&quot;NUM&quot;:10}}}},&quot;next&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;controls:forever&quot;,&quot;id&quot;:&quot;mjdTjw+y]zo~5Q-o_@.F&quot;,&quot;inputs&quot;:{&quot;SUBSTACK&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;motions:set_xy&quot;,&quot;id&quot;:&quot;.odtxpP9hHgv`Co]h-d*&quot;,&quot;inputs&quot;:{&quot;X&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;]1jf{!K]*lYqF)1~N0*^&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;operators:sum&quot;,&quot;id&quot;:&quot;/JX5hIsLyDA*QA]/?=;H&quot;,&quot;inputs&quot;:{&quot;A&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;yqP|~BAe/p#qUE|Tff1o&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;motions:get_x&quot;,&quot;id&quot;:&quot;EgBtLqkZ1TiLmnA2gNwB&quot;}},&quot;B&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;yLf:cNWkg?x9=}Rp*}zU&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;variables_get&quot;,&quot;id&quot;:&quot;iZA1xA9yNyONs~V+8Uf}&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;aq;O$#Dya1kjko[!i3(-&quot;}}}}}}},&quot;Y&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;TorhtFO~u0As@)TxhbsG&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;operators:sum&quot;,&quot;id&quot;:&quot;*v5rJxMxA6;noQGL|z%6&quot;,&quot;inputs&quot;:{&quot;A&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;`6|JBAB4OZ5PWGJug}2J&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;motions:get_y&quot;,&quot;id&quot;:&quot;3/{t1a1:K[.]/rX@h6Ln&quot;}},&quot;B&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;s2ynqrGRg7q}L@VkS[?{&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;variables_get&quot;,&quot;id&quot;:&quot;701Ss)}e.=0~e`+oI-u{&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;|@yg{YQ(yYtoX?DCM}*/&quot;}}}}}}}},&quot;next&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;controls:if&quot;,&quot;id&quot;:&quot;wCoFuz$}}y=VZ2~ov@PY&quot;,&quot;inputs&quot;:{&quot;CONDITION&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;operators:or&quot;,&quot;id&quot;:&quot;dfx{2gfA9}=?nMYaG:N=&quot;,&quot;inputs&quot;:{&quot;A&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;operators:greater&quot;,&quot;id&quot;:&quot;(()reuEwRM?T%r1$=6R,&quot;,&quot;inputs&quot;:{&quot;A&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;%B*Uojt~x*%ca@8{Pu#M&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;motions:get_x&quot;,&quot;id&quot;:&quot;vH0A8UuC[%/crgp@eQ0L&quot;}},&quot;B&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;Z`4kZ`w9pvH9|I@~}A;`&quot;,&quot;fields&quot;:{&quot;NUM&quot;:800}}}}}},&quot;B&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;operators:smaller&quot;,&quot;id&quot;:&quot;rp];I;@_$0o~50`Fl?VB&quot;,&quot;inputs&quot;:{&quot;A&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;L5p`*ZVPaPm$:|Y@-^E%&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;motions:get_x&quot;,&quot;id&quot;:&quot;vd_0.Bi=R-BIBD0yg2H`&quot;}},&quot;B&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;BfXLH6HNQ7z6JfQCuCYk&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}}}}}}}}},&quot;SUBSTACK&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;variables_set&quot;,&quot;id&quot;:&quot;BY)AJa27a:jU6iHo$Q`2&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;aq;O$#Dya1kjko[!i3(-&quot;}},&quot;inputs&quot;:{&quot;VALUE&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;operators:subtract&quot;,&quot;id&quot;:&quot;X-*nb=5EycTh]PG9|2v9&quot;,&quot;inputs&quot;:{&quot;A&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;7D@Zw1gW(z4CvA=y.LbD&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}}},&quot;B&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;8erT7=F6OhJ=cxF;zpO(&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;variables_get&quot;,&quot;id&quot;:&quot;/^o,4?FwnM4-YYEq}ag[&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;aq;O$#Dya1kjko[!i3(-&quot;}}}}}}}},&quot;next&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;variables_set&quot;,&quot;id&quot;:&quot;r*q?bttd}2N%X-mhCdDS&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;WrvugZAADY^C~:DXvBQ=&quot;}},&quot;inputs&quot;:{&quot;VALUE&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;operators:sum&quot;,&quot;id&quot;:&quot;5sD`3H_|I]L$`efSkr,e&quot;,&quot;inputs&quot;:{&quot;A&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;e9%E%FiMX*hXp/0U6/t~&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;variables_get&quot;,&quot;id&quot;:&quot;4]v`BTkCK(g!Rde_=rc,&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;WrvugZAADY^C~:DXvBQ=&quot;}}}},&quot;B&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;oY1+;Ul!x=lE6iJIGXMh&quot;,&quot;fields&quot;:{&quot;NUM&quot;:20}}}}}}}}}}}},&quot;next&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;controls:if&quot;,&quot;id&quot;:&quot;aCrS/2?ACz^Q-ydg5kqk&quot;,&quot;inputs&quot;:{&quot;CONDITION&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;operators:or&quot;,&quot;id&quot;:&quot;:]@Gxd`~${SFG6hUic7J&quot;,&quot;inputs&quot;:{&quot;A&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;operators:greater&quot;,&quot;id&quot;:&quot;6cZo2lC:~NGKe:bHb%FK&quot;,&quot;inputs&quot;:{&quot;A&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;%B*Uojt~x*%ca@8{Pu#M&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;motions:get_y&quot;,&quot;id&quot;:&quot;G}!r:So(]R}/ta@#qwzy&quot;}},&quot;B&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;8CaCsJ@j_H`d;[o=#YK$&quot;,&quot;fields&quot;:{&quot;NUM&quot;:600}}}}}},&quot;B&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;operators:smaller&quot;,&quot;id&quot;:&quot;_mbw(j[vl`zBCmi#]x};&quot;,&quot;inputs&quot;:{&quot;A&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;L5p`*ZVPaPm$:|Y@-^E%&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;motions:get_y&quot;,&quot;id&quot;:&quot;_YP|g@7Olah-~HEru|88&quot;}},&quot;B&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;k1:%tSk?%bkVbW;+saNX&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}}}}}}}}},&quot;SUBSTACK&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;variables_set&quot;,&quot;id&quot;:&quot;j7y=zN[U+8FWOa!5IIUt&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;|@yg{YQ(yYtoX?DCM}*/&quot;}},&quot;inputs&quot;:{&quot;VALUE&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;operators:subtract&quot;,&quot;id&quot;:&quot;V{N:kp%D0)Fu(m5d^t0#&quot;,&quot;inputs&quot;:{&quot;A&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;@uBm26e?]oua!MU^O9!x&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}}},&quot;B&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;8erT7=F6OhJ=cxF;zpO(&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;variables_get&quot;,&quot;id&quot;:&quot;@{#F[C:bOL{`m^?5fq*e&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;|@yg{YQ(yYtoX?DCM}*/&quot;}}}}}}}},&quot;next&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;variables_set&quot;,&quot;id&quot;:&quot;.{h$A~u$f7(`v*ZU%L])&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;WrvugZAADY^C~:DXvBQ=&quot;}},&quot;inputs&quot;:{&quot;VALUE&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;operators:sum&quot;,&quot;id&quot;:&quot;_#38.48lS)DU*cdqesBO&quot;,&quot;inputs&quot;:{&quot;A&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;5`jTRoclYxyDY`73uE3R&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;variables_get&quot;,&quot;id&quot;:&quot;7Jm.*$4odPy%oiyPo@!)&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;WrvugZAADY^C~:DXvBQ=&quot;}}}},&quot;B&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;H|v[tk#XyJbi320PSt(E&quot;,&quot;fields&quot;:{&quot;NUM&quot;:20}}}}}}}}}}}},&quot;next&quot;:{&quot;block&quot;:{&quot;type&quot;:&quot;looks:set_color&quot;,&quot;id&quot;:&quot;F=Dlsz^gCAIdhHh!}RtP&quot;,&quot;inputs&quot;:{&quot;COLOR&quot;:{&quot;shadow&quot;:{&quot;type&quot;:&quot;math:number&quot;,&quot;id&quot;:&quot;;Z~ULw^0m`0Z2ot{KK|#&quot;,&quot;fields&quot;:{&quot;NUM&quot;:0}},&quot;block&quot;:{&quot;type&quot;:&quot;variables_get&quot;,&quot;id&quot;:&quot;WT)a*2dfK-{^K6FO`7Z(&quot;,&quot;fields&quot;:{&quot;VAR&quot;:{&quot;id&quot;:&quot;WrvugZAADY^C~:DXvBQ=&quot;}}}}}}}}}}}}}}}}}}}}}}}}}}]},&quot;variables&quot;:[{&quot;name&quot;:&quot;xSpeed&quot;,&quot;id&quot;:&quot;aq;O$#Dya1kjko[!i3(-&quot;},{&quot;name&quot;:&quot;ySpeed&quot;,&quot;id&quot;:&quot;|@yg{YQ(yYtoX?DCM}*/&quot;},{&quot;name&quot;:&quot;color&quot;,&quot;id&quot;:&quot;WrvugZAADY^C~:DXvBQ=&quot;}]}\"></webwriter-blocks>"
+    }
+  },
+  {
+    "name": "@webwriter/automaton",
+    "version": "2.0.1",
+    "keywords": [
+      "webwriter-widget"
+    ],
+    "license": "MIT",
+    "author": "Jorik van Genuchten",
+    "description": "Build, visualize and interactive automata of different kinds (DFA, NFA, PDA).",
+    "scripts": {
+      "prepublishOnly": "npx @webwriter/build"
+    },
+    "dependencies": {
+      "@shoelace-style/shoelace": "^2.13.1",
+      "@webwriter/lit": "^2.0.0",
+      "lit": "^3.2.0",
+      "lodash": "^4.17.21",
+      "randexp": "^0.5.3",
+      "uuid": "^9.0.1",
+      "vis-data": "^7.1.9",
+      "vis-network": "^9.1.9"
+    },
+    "devDependencies": {
+      "@types/lodash": "^4.17.4",
+      "@types/uuid": "^9.0.7"
+    },
+    "exports": {
+      "./widgets/webwriter-automaton.*": {
+        "source": "./src/index.ts",
+        "default": "./dist/widgets/webwriter-automaton.*"
+      },
+      "./snippets/dfa-simple.html": "./snippets/dfa/example-simple.html",
+      "./snippets/dfa-complex.html": "./snippets/dfa/example-complex.html",
+      "./snippets/nfa-simple.html": "./snippets/nfa/example-simple.html",
+      "./snippets/nfa-complex.html": "./snippets/nfa/example-complex.html",
+      "./snippets/pda-simple.html": "./snippets/pda/example-simple.html",
+      "./snippets/pda-complex.html": "./snippets/pda/example-complex.html"
+    },
+    "editingConfig": {
+      "./widgets/webwriter-automaton": {
+        "label": {
+          "de": "Automat",
+          "en": "Automaton"
+        }
+      },
+      "./snippets/example": {
+        "label": {
+          "de": "Beispiel",
+          "en": "Example"
+        }
+      },
+      "./snippets/dfa-simple": {
+        "label": {
+          "de": "DFA Einfach",
+          "en": "DFA Simple"
+        }
+      },
+      "./snippets/dfa-complex": {
+        "label": {
+          "de": "DFA Komplex",
+          "en": "DFA Complex"
+        }
+      },
+      "./snippets/nfa-simple": {
+        "label": {
+          "de": "NFA Einfach",
+          "en": "NFA Simple"
+        }
+      },
+      "./snippets/nfa-complex": {
+        "label": {
+          "de": "NFA Komplex",
+          "en": "NFA Complex"
+        }
+      },
+      "./snippets/pda-simple": {
+        "label": {
+          "de": "PDA Einfach",
+          "en": "PDA Simple"
+        }
+      },
+      "./snippets/pda-complex": {
+        "label": {
+          "de": "PDA Komplex",
+          "en": "PDA Complex"
+        }
+      }
+    },
+    "snippets": {
+      "./snippets/dfa-simple.html": "<webwriter-automaton nodes='[{\"id\":\"2caa051b-74ce-4304-86ad-06472ea6b45d\",\"label\":\"q1\",\"x\":-2439,\"y\":2380,\"initial\":true},{\"id\":\"0d671cc7-4d5a-430b-9026-a0ca8a2b7658\",\"label\":\"q2\",\"x\":-2296,\"y\":2380,\"initial\":false}]' transitions='[{\"id\":\"01364ee3-7c3a-472f-8164-f1dd3a84de39\",\"from\":\"2caa051b-74ce-4304-86ad-06472ea6b45d\",\"to\":\"0d671cc7-4d5a-430b-9026-a0ca8a2b7658\",\"symbols\":[\"a\"],\"label\":\"a\"},{\"id\":\"9ade8fb1-1bc3-42d9-8b72-d91ca610f100\",\"from\":\"0d671cc7-4d5a-430b-9026-a0ca8a2b7658\",\"to\":\"0d671cc7-4d5a-430b-9026-a0ca8a2b7658\",\"symbols\":[\"a\"],\"label\":\"a\"}]'></webwriter-automaton>",
+      "./snippets/dfa-complex.html": "<webwriter-automaton nodes='[{\"id\":\"1d027ee9-10a5-44ed-82db-56f75f27c817\",\"label\":\"q1\",\"x\":-220,\"y\":-106,\"initial\":true},{\"id\":\"f9445c8a-b577-4da1-9efc-f8dc0723e2b2\",\"label\":\"q2\",\"x\":-2,\"y\":-110},{\"id\":\"df4d3c23-c3b7-4ad4-ae76-ad457ec6dd88\",\"label\":\"q3\",\"x\":-218,\"y\":108,\"final\":true},{\"id\":\"eb3e35cd-b6be-4287-ab23-b31dad121d15\",\"label\":\"q4\",\"x\":-7,\"y\":109,\"final\":true}]' transitions='[{\"id\":\"a7eefd06-1404-46c4-98c5-b534da394897\",\"from\":\"1d027ee9-10a5-44ed-82db-56f75f27c817\",\"to\":\"f9445c8a-b577-4da1-9efc-f8dc0723e2b2\",\"symbols\":[\"a\"],\"label\":\"a\"},{\"id\":\"468211a6-2801-40c9-a5b8-44f5ce67856e\",\"from\":\"f9445c8a-b577-4da1-9efc-f8dc0723e2b2\",\"to\":\"eb3e35cd-b6be-4287-ab23-b31dad121d15\",\"symbols\":[\"a\"],\"label\":\"a\"},{\"id\":\"33b325d1-c428-4ad1-89b6-b5c7a2039b36\",\"from\":\"eb3e35cd-b6be-4287-ab23-b31dad121d15\",\"to\":\"df4d3c23-c3b7-4ad4-ae76-ad457ec6dd88\",\"symbols\":[\"a\"],\"label\":\"a\"},{\"id\":\"e46e61d0-365a-473f-805a-70c4bf2a725d\",\"from\":\"f9445c8a-b577-4da1-9efc-f8dc0723e2b2\",\"to\":\"df4d3c23-c3b7-4ad4-ae76-ad457ec6dd88\",\"symbols\":[\"b\"],\"label\":\"b\"},{\"id\":\"3ffed4af-a4b6-4028-ae27-5061fc470b01\",\"from\":\"df4d3c23-c3b7-4ad4-ae76-ad457ec6dd88\",\"to\":\"1d027ee9-10a5-44ed-82db-56f75f27c817\",\"symbols\":[\"a\",\"b\"],\"label\":\"a, b\"},{\"id\":\"f9d7c091-53cd-4080-8fec-3ff6506e565a\",\"from\":\"eb3e35cd-b6be-4287-ab23-b31dad121d15\",\"to\":\"eb3e35cd-b6be-4287-ab23-b31dad121d15\",\"symbols\":[\"b\"],\"label\":\"b\"},{\"id\":\"eadd57cc-8269-4a08-b6ca-ecf9a113ae91\",\"from\":\"1d027ee9-10a5-44ed-82db-56f75f27c817\",\"to\":\"1d027ee9-10a5-44ed-82db-56f75f27c817\",\"symbols\":[\"b\"],\"label\":\"b\"}]'></webwriter-automaton>",
+      "./snippets/nfa-simple.html": "<webwriter-automaton nodes='[{\"id\":\"1aaa26fe-e982-4d1b-ace9-043db9263431\",\"label\":\"q1\",\"x\":-148,\"y\":-33,\"initial\":true},{\"id\":\"2b54610b-9df4-441c-9c70-145e5f144abe\",\"label\":\"q2\",\"x\":31,\"y\":-32}]' transitions='[{\"id\":\"f397674b-03aa-4326-ab7e-09cffb2063b3\",\"from\":\"1aaa26fe-e982-4d1b-ace9-043db9263431\",\"to\":\"2b54610b-9df4-441c-9c70-145e5f144abe\",\"symbols\":[\"\"],\"label\":\"ε\"},{\"id\":\"b3c6f6b3-4490-48c3-837e-5c1cd7840f8f\",\"from\":\"1aaa26fe-e982-4d1b-ace9-043db9263431\",\"to\":\"1aaa26fe-e982-4d1b-ace9-043db9263431\",\"symbols\":[\"a\"],\"label\":\"a\"},{\"id\":\"ae1e0a59-743e-4c86-a9a1-6e5e6d390c47\",\"from\":\"2b54610b-9df4-441c-9c70-145e5f144abe\",\"to\":\"2b54610b-9df4-441c-9c70-145e5f144abe\",\"symbols\":[\"b\"],\"label\":\"b\"}]' type=\"nfa\"></webwriter-automaton>",
+      "./snippets/nfa-complex.html": "<webwriter-automaton nodes='[{\"id\":\"1aaa26fe-e982-4d1b-ace9-043db9263431\",\"label\":\"q1\",\"x\":-165,\"y\":66,\"initial\":true},{\"id\":\"2b54610b-9df4-441c-9c70-145e5f144abe\",\"label\":\"q2\",\"x\":2,\"y\":63,\"final\":true},{\"id\":\"a7110a7c-d889-40e1-8f9a-c5a499cc9e86\",\"label\":\"q3\",\"x\":-165,\"y\":-86},{\"id\":\"7d7003af-8408-4ee2-8b9b-47497d17272c\",\"label\":\"q4\",\"x\":8,\"y\":-88,\"initial\":false},{\"id\":\"b1eb5c5e-a8bc-47a0-8233-6e5fbe3417d7\",\"label\":\"q5\",\"x\":-156,\"y\":233},{\"id\":\"f4a7c667-6481-49c6-8910-0d04832ae534\",\"label\":\"q6\",\"x\":1,\"y\":235}]' transitions='[{\"id\":\"f397674b-03aa-4326-ab7e-09cffb2063b3\",\"from\":\"1aaa26fe-e982-4d1b-ace9-043db9263431\",\"to\":\"2b54610b-9df4-441c-9c70-145e5f144abe\",\"symbols\":[\"\"],\"label\":\"ε\"},{\"id\":\"ae1e0a59-743e-4c86-a9a1-6e5e6d390c47\",\"from\":\"2b54610b-9df4-441c-9c70-145e5f144abe\",\"to\":\"2b54610b-9df4-441c-9c70-145e5f144abe\",\"symbols\":[\"b\"],\"label\":\"b\"},{\"id\":\"ae3115ac-08b5-4061-b6b1-e3924bd92854\",\"from\":\"1aaa26fe-e982-4d1b-ace9-043db9263431\",\"to\":\"a7110a7c-d889-40e1-8f9a-c5a499cc9e86\",\"symbols\":[\"a\"],\"label\":\"a\"},{\"id\":\"f4c9e602-007f-4c64-81a6-6e627949b5b3\",\"from\":\"a7110a7c-d889-40e1-8f9a-c5a499cc9e86\",\"to\":\"7d7003af-8408-4ee2-8b9b-47497d17272c\",\"symbols\":[\"a\"],\"label\":\"a\"},{\"id\":\"7a5592d1-e34c-48c4-89c5-86e257fc1623\",\"from\":\"7d7003af-8408-4ee2-8b9b-47497d17272c\",\"to\":\"1aaa26fe-e982-4d1b-ace9-043db9263431\",\"symbols\":[\"b\"],\"label\":\"b\"},{\"id\":\"8f203542-6a17-4991-a527-6db0b81a1548\",\"from\":\"2b54610b-9df4-441c-9c70-145e5f144abe\",\"to\":\"b1eb5c5e-a8bc-47a0-8233-6e5fbe3417d7\",\"symbols\":[\"a\"],\"label\":\"a\"},{\"id\":\"77a58817-8beb-4011-a833-bd737e05aac5\",\"from\":\"b1eb5c5e-a8bc-47a0-8233-6e5fbe3417d7\",\"to\":\"f4a7c667-6481-49c6-8910-0d04832ae534\",\"symbols\":[\"b\"],\"label\":\"b\"},{\"id\":\"30e025c7-03cf-44c9-805d-f11ad0d3eca8\",\"from\":\"f4a7c667-6481-49c6-8910-0d04832ae534\",\"to\":\"2b54610b-9df4-441c-9c70-145e5f144abe\",\"symbols\":[\"a\"],\"label\":\"a\"}]' type=\"nfa\"></webwriter-automaton>",
+      "./snippets/pda-simple.html": "<webwriter-automaton nodes='[{\"id\":\"eecc612a-bd4d-4451-a007-156cf5dae29d\",\"label\":\"q1\",\"x\":-185,\"y\":-39,\"initial\":true},{\"id\":\"67699a3e-47cc-4af5-9126-1613847455e3\",\"label\":\"q2\",\"x\":36,\"y\":-40},{\"id\":\"bf41cb44-70c2-4aad-88ab-d6d26d44e522\",\"label\":\"q3\",\"x\":194,\"y\":-41,\"final\":true}]' transitions='[{\"id\":\"564fc9f3-3c09-45bb-9602-6edff6c2f653\",\"from\":\"eecc612a-bd4d-4451-a007-156cf5dae29d\",\"to\":\"67699a3e-47cc-4af5-9126-1613847455e3\",\"symbols\":[\"\"],\"label\":\"ε,X|X\",\"stackOperations\":[{\"symbol\":\"\",\"operation\":\"none\"}]},{\"id\":\"2aa74415-59d0-4793-a143-8d9d676a835c\",\"from\":\"67699a3e-47cc-4af5-9126-1613847455e3\",\"to\":\"bf41cb44-70c2-4aad-88ab-d6d26d44e522\",\"symbols\":[\"\"],\"label\":\"ε,Γ₀|Γ₀\",\"stackOperations\":[{\"operation\":\"empty\",\"symbol\":\"\"}]},{\"id\":\"ee1ed28a-3868-4b32-897a-7ef5db951e71\",\"from\":\"67699a3e-47cc-4af5-9126-1613847455e3\",\"to\":\"67699a3e-47cc-4af5-9126-1613847455e3\",\"symbols\":[\"a\",\"b\"],\"label\":\"a,a|ε\\nb,b|ε\",\"stackOperations\":[{\"operation\":\"pop\",\"symbol\":\"a\"},{\"operation\":\"pop\",\"symbol\":\"b\"}]},{\"id\":\"d0e3fe90-abb0-402a-822f-5aafd1cbcb73\",\"from\":\"eecc612a-bd4d-4451-a007-156cf5dae29d\",\"to\":\"eecc612a-bd4d-4451-a007-156cf5dae29d\",\"symbols\":[\"a\",\"b\"],\"label\":\"a,X|aX\\nb,X|bX\",\"stackOperations\":[{\"operation\":\"push\",\"symbol\":\"a\"},{\"operation\":\"push\",\"symbol\":\"b\"}]}]' type=\"pda\"></webwriter-automaton>",
+      "./snippets/pda-complex.html": "<webwriter-automaton class=\"ww-widget ww-v0.8.0 ww-selected\" contenteditable=\"\" nodes=\"[{&quot;id&quot;:&quot;999c24f4-8d13-4096-9523-0cd437283ae4&quot;,&quot;label&quot;:&quot;q1&quot;,&quot;x&quot;:-207,&quot;y&quot;:-91,&quot;initial&quot;:true},{&quot;id&quot;:&quot;bb514fa6-ad1f-4b01-aad3-24ed0a02f25f&quot;,&quot;label&quot;:&quot;q2&quot;,&quot;x&quot;:47,&quot;y&quot;:-92},{&quot;id&quot;:&quot;7f1cc623-0392-47b3-b2e1-50fb0125e2e6&quot;,&quot;label&quot;:&quot;q3&quot;,&quot;x&quot;:49,&quot;y&quot;:103},{&quot;id&quot;:&quot;9ce855f1-8cc7-4ed6-8d7e-b6ac4601080f&quot;,&quot;label&quot;:&quot;q4&quot;,&quot;x&quot;:-201,&quot;y&quot;:102,&quot;final&quot;:true}]\" transitions=\"[{&quot;id&quot;:&quot;f3847e57-83ad-4d10-9dc0-ed609835d195&quot;,&quot;from&quot;:&quot;999c24f4-8d13-4096-9523-0cd437283ae4&quot;,&quot;to&quot;:&quot;bb514fa6-ad1f-4b01-aad3-24ed0a02f25f&quot;,&quot;symbols&quot;:[&quot;&quot;],&quot;label&quot;:&quot;ε,X|$X&quot;,&quot;stackOperations&quot;:[{&quot;operation&quot;:&quot;push&quot;,&quot;symbol&quot;:&quot;$&quot;,&quot;condition&quot;:&quot;&quot;}]},{&quot;id&quot;:&quot;38c138c6-12cf-4f22-9aed-7cb60d77ef28&quot;,&quot;from&quot;:&quot;bb514fa6-ad1f-4b01-aad3-24ed0a02f25f&quot;,&quot;to&quot;:&quot;bb514fa6-ad1f-4b01-aad3-24ed0a02f25f&quot;,&quot;symbols&quot;:[&quot;0&quot;,&quot;1&quot;],&quot;label&quot;:&quot;0,X|0X\\n1,X|1X&quot;,&quot;stackOperations&quot;:[{&quot;operation&quot;:&quot;push&quot;,&quot;symbol&quot;:&quot;0&quot;},{&quot;operation&quot;:&quot;push&quot;,&quot;symbol&quot;:&quot;1&quot;}]},{&quot;id&quot;:&quot;23e0ad59-29a0-4f90-bb6f-d61937eedd9e&quot;,&quot;from&quot;:&quot;bb514fa6-ad1f-4b01-aad3-24ed0a02f25f&quot;,&quot;to&quot;:&quot;7f1cc623-0392-47b3-b2e1-50fb0125e2e6&quot;,&quot;symbols&quot;:[&quot;&quot;],&quot;label&quot;:&quot;ε,X|X&quot;,&quot;stackOperations&quot;:[{&quot;operation&quot;:&quot;none&quot;,&quot;symbol&quot;:&quot;&quot;}]},{&quot;id&quot;:&quot;7cb6d54e-84e1-4ace-8e66-8effba1e10a3&quot;,&quot;from&quot;:&quot;7f1cc623-0392-47b3-b2e1-50fb0125e2e6&quot;,&quot;to&quot;:&quot;7f1cc623-0392-47b3-b2e1-50fb0125e2e6&quot;,&quot;symbols&quot;:[&quot;0&quot;,&quot;1&quot;],&quot;label&quot;:&quot;0,0|ε\\n1,1|ε&quot;,&quot;stackOperations&quot;:[{&quot;operation&quot;:&quot;pop&quot;,&quot;symbol&quot;:&quot;0&quot;},{&quot;operation&quot;:&quot;pop&quot;,&quot;symbol&quot;:&quot;1&quot;}]},{&quot;id&quot;:&quot;fd883ac9-4700-4e27-a1db-3827eef76b3f&quot;,&quot;from&quot;:&quot;7f1cc623-0392-47b3-b2e1-50fb0125e2e6&quot;,&quot;to&quot;:&quot;9ce855f1-8cc7-4ed6-8d7e-b6ac4601080f&quot;,&quot;symbols&quot;:[&quot;&quot;],&quot;label&quot;:&quot;ε,$|ε&quot;,&quot;stackOperations&quot;:[{&quot;operation&quot;:&quot;pop&quot;,&quot;symbol&quot;:&quot;$&quot;}]}]\" type=\"pda\" testlanguage=\"\" testwords=\"[]\" permissions=\"777\"></webwriter-automaton>"
+    }
+  },
+  {
+    "name": "@webwriter/geometry-cloze",
+    "version": "2.0.1",
+    "keywords": [
+      "webwriter-widget"
+    ],
+    "license": "MIT",
+    "author": {
+      "name": "Florin Große",
+      "url": "https://der-grosse.de"
+    },
+    "description": "Create and view geometry exercises with coloring, styling and labeling options.",
+    "scripts": {
+      "prepublishOnly": "npx @webwriter/build"
+    },
+    "dependencies": {
+      "@shoelace-style/shoelace": "^2.14.0",
+      "@webcomponents/scoped-custom-element-registry": "^0.0.9",
+      "@webwriter/lit": "^2.0.0",
+      "lit": "^3.1.1"
+    },
+    "devDependencies": {
+      "prettier": "^3.1.0",
+      "typescript": "^5.0.2",
+      "vite": "^4.4.5"
+    },
+    "type": "module",
+    "packageManager": "pnpm@8.0.0+",
+    "exports": {
+      "./widgets/ww-geometry-cloze.*": {
+        "source": "./src/ww-geometry-cloze.ts",
+        "default": "./dist/widgets/ww-geometry-cloze.*"
+      },
+      "./snippets/geometry-cloze.html": "./src/snippets/polygon.html",
+      "./snippets/polygon.html": "./src/snippets/polygon2.html",
+      "./snippets/right-triangle.html": "./src/snippets/triangle.html",
+      "./package.json": "./package.json"
+    },
+    "editingConfig": {
+      "./snippets/geometry-cloze": {
+        "label": {
+          "en": "Polygon"
+        }
+      },
+      "./snippets/polygon": {
+        "label": {
+          "en": "Polygon"
+        }
+      },
+      "./snippets/right-triangle": {
+        "label": {
+          "en": "Right Triangle"
+        }
+      },
+      "./widgets/ww-geometry-cloze": {
+        "label": {
+          "en": "Geometry Cloze"
+        }
+      }
+    },
+    "snippets": {
+      "./snippets/geometry-cloze.html": "<ww-geometry-cloze\r\n  elements='[{\"_type\":\"element\",\"id\":22,\"children\":[{\"_type\":\"point\",\"id\":1,\"selected\":false,\"x\":200,\"y\":200},{\"_type\":\"line\",\"id\":3,\"selected\":false,\"start\":{\"x\":200,\"y\":200,\"id\":1},\"end\":{\"x\":500,\"y\":200,\"id\":2}},{\"_type\":\"point\",\"id\":2,\"selected\":false,\"x\":500,\"y\":200},{\"_type\":\"line\",\"id\":5,\"selected\":false,\"start\":{\"x\":500,\"y\":200,\"id\":2},\"end\":{\"x\":600,\"y\":300,\"id\":4}},{\"_type\":\"point\",\"id\":4,\"selected\":false,\"x\":600,\"y\":300},{\"_type\":\"line\",\"id\":7,\"selected\":false,\"start\":{\"x\":600,\"y\":300,\"id\":4},\"end\":{\"x\":500,\"y\":500,\"id\":6}},{\"_type\":\"point\",\"id\":6,\"selected\":false,\"x\":500,\"y\":500},{\"_type\":\"line\",\"id\":9,\"selected\":false,\"start\":{\"x\":500,\"y\":500,\"id\":6},\"end\":{\"x\":200,\"y\":500,\"id\":8}},{\"_type\":\"point\",\"id\":8,\"selected\":false,\"x\":200,\"y\":500},{\"_type\":\"line\",\"id\":10,\"selected\":false,\"start\":{\"x\":200,\"y\":500,\"id\":8},\"end\":{\"x\":200,\"y\":200,\"id\":1}}],\"selected\":false,\"closed\":true}]'\r\n  mode=\"select\"\r\n  snap\r\n  showgrid></ww-geometry-cloze>\r\n",
+      "./snippets/polygon.html": "<ww-geometry-cloze\r\n  elements='[{\"_type\":\"element\",\"id\":22,\"children\":[{\"_type\":\"point\",\"id\":1,\"x\":150,\"y\":150},{\"_type\":\"line\",\"id\":3,\"showLabel\":true,\"start\":{\"x\":150,\"y\":150,\"id\":1},\"end\":{\"x\":600,\"y\":150,\"id\":2}},{\"_type\":\"point\",\"id\":2,\"x\":600,\"y\":150},{\"_type\":\"line\",\"id\":25,\"showLabel\":true,\"labelColor\":\"#2563eb\",\"labelStyle\":\"name\",\"labelName\":\"b\",\"start\":{\"x\":600,\"y\":150,\"id\":2},\"end\":{\"x\":600,\"y\":250,\"id\":23}},{\"_type\":\"point\",\"id\":23,\"x\":600,\"y\":250},{\"_type\":\"line\",\"id\":26,\"showLabel\":true,\"start\":{\"x\":600,\"y\":250,\"id\":23},\"end\":{\"x\":400,\"y\":250,\"id\":4}},{\"_type\":\"point\",\"id\":4,\"x\":400,\"y\":250},{\"_type\":\"line\",\"id\":7,\"showLabel\":true,\"start\":{\"x\":400,\"y\":250,\"id\":4},\"end\":{\"x\":400,\"y\":400,\"id\":6}},{\"_type\":\"point\",\"id\":6,\"x\":400,\"y\":400},{\"_type\":\"line\",\"id\":33,\"start\":{\"x\":400,\"y\":400,\"id\":6},\"end\":{\"x\":500,\"y\":400,\"id\":31}},{\"_type\":\"point\",\"id\":31,\"x\":500,\"y\":400},{\"_type\":\"line\",\"id\":34,\"showLabel\":true,\"start\":{\"x\":500,\"y\":400,\"id\":31},\"end\":{\"x\":500,\"y\":550,\"id\":8}},{\"_type\":\"point\",\"id\":8,\"x\":500,\"y\":550},{\"_type\":\"line\",\"id\":29,\"showLabel\":true,\"labelColor\":\"#2563eb\",\"labelStyle\":\"name\",\"labelName\":\"a\",\"start\":{\"x\":500,\"y\":550,\"id\":8},\"end\":{\"x\":150,\"y\":550,\"id\":27}},{\"_type\":\"point\",\"id\":27,\"x\":150,\"y\":550},{\"_type\":\"line\",\"id\":30,\"showLabel\":true,\"start\":{\"x\":150,\"y\":550,\"id\":27},\"end\":{\"x\":150,\"y\":150,\"id\":1}}],\"closed\":true},{\"_type\":\"divider-line\",\"id\":60,\"children\":[{\"_type\":\"point\",\"id\":58,\"stroke\":\"transparent\",\"fill\":\"#00000050\",\"x\":400,\"y\":250},{\"_type\":\"point\",\"id\":59,\"stroke\":\"transparent\",\"fill\":\"#00000050\",\"x\":400,\"y\":150}],\"stroke\":\"#00000050\",\"dashed\":true,\"start\":{\"x\":400,\"y\":250,\"id\":58},\"end\":{\"x\":400,\"y\":150,\"id\":59}},{\"_type\":\"divider-line\",\"id\":63,\"children\":[{\"_type\":\"point\",\"id\":61,\"stroke\":\"transparent\",\"fill\":\"#00000050\",\"x\":400,\"y\":400},{\"_type\":\"point\",\"id\":62,\"stroke\":\"transparent\",\"fill\":\"#00000050\",\"x\":400,\"y\":550}],\"stroke\":\"#00000050\",\"dashed\":true,\"start\":{\"x\":400,\"y\":400,\"id\":61},\"end\":{\"x\":400,\"y\":550,\"id\":62}}]'\r\n  mode=\"select\"\r\n  snap\r\n  showgrid></ww-geometry-cloze>\r\n",
+      "./snippets/right-triangle.html": "<ww-geometry-cloze\r\n  elements='[{\"_type\":\"element\",\"id\":25,\"children\":[{\"_type\":\"point\",\"id\":24,\"showLabel\":true,\"x\":100,\"y\":250},{\"_type\":\"line\",\"id\":28,\"showLabel\":true,\"start\":{\"x\":100,\"y\":250,\"id\":24},\"end\":{\"x\":600,\"y\":250,\"id\":27}},{\"_type\":\"point\",\"id\":27,\"showLabel\":true,\"x\":600,\"y\":250},{\"_type\":\"line\",\"id\":31,\"start\":{\"x\":600,\"y\":250,\"id\":27},\"end\":{\"x\":600,\"y\":400,\"id\":30}},{\"_type\":\"point\",\"id\":30,\"x\":600,\"y\":400},{\"_type\":\"line\",\"id\":33,\"start\":{\"x\":100,\"y\":250,\"id\":24},\"end\":{\"x\":600,\"y\":400,\"id\":30}}],\"closed\":true}]'\r\n  mode=\"select\"\r\n  snap\r\n  abstractrightangle></ww-geometry-cloze>\r\n"
+    }
+  },
+  {
+    "name": "@webwriter/logic-circuit",
+    "description": "Create and simulate circuits with logic gates (AND, OR, XOR, etc.).",
+    "version": "1.0.0",
+    "keywords": [
+      "webwriter-widget"
+    ],
+    "license": "MIT",
+    "author": "Lukas Schneider",
+    "dependencies": {
+      "@shoelace-style/shoelace": "^2.13.1",
+      "@webwriter/lit": "^2",
+      "lit": "^3.1.2"
+    },
+    "scripts": {
+      "prepublishOnly": "npx @webwriter/build",
+      "preview": "npx @webwriter/build preview webwriter-logic-circuit"
+    },
+    "exports": {
+      "./widgets/webwriter-logic-circuit.*": {
+        "source": "./widgets/webwriter-logic-circuit.ts",
+        "default": "./dist/webwriter-logic-circuit.*"
+      }
+    },
+    "snippets": {}
+  }
+]

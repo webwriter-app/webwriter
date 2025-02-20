@@ -3374,6 +3374,114 @@
         <source>WebWriter can embed SVG directly in the document.</source>
         <target>WebWriter는 문서에 SVG를 직접 삽입할 수 있습니다.</target>
       </trans-unit>
+      <trans-unit id="s3437e0d9899e7ae1">
+        <source>Send telemetry data about your usage of WebWriter.</source>
+        <target>WebWriter 사용에 대한 원격 분석 데이터를 전송합니다.</target>
+      </trans-unit>
+      <trans-unit id="s80570196a9ce6d11">
+        <source>Enable telemetry</source>
+        <target>원격 분석 사용</target>
+      </trans-unit>
+      <trans-unit id="sb66e2181a7b5738a">
+        <source>By enabling telemetry, you allow for data collection and retention according to our</source>
+        <target>원격 측정을 사용하도록 설정하면 다음과 같이 데이터를 수집하고 보관할 수 있습니다.</target>
+      </trans-unit>
+      <trans-unit id="sbc6953a36ced943f">
+        <source>privacy policy</source>
+        <target>개인정보 보호정책</target>
+      </trans-unit>
+      <trans-unit id="sb85774dc5d18ff0f">
+        <source>Confirm</source>
+        <target>확인</target>
+      </trans-unit>
+      <trans-unit id="s3649bacefe731bf6">
+        <source>Toggle Toolbox</source>
+        <target>도구 상자 토글</target>
+      </trans-unit>
+      <trans-unit id="s542fcefa0bbaed86">
+        <source>Open or close the toolbox (only on narrow screens, otherwise, the toolbox is always visible on the side).</source>
+        <target>도구 상자를 열거나 닫습니다(좁은 화면에서만, 그렇지 않으면 도구 상자가 항상 측면에 표시됨).</target>
+      </trans-unit>
+      <trans-unit id="se9ac05f36b004eb0">
+        <source>Hide the introductory tour. Disable so the tour is shown again.</source>
+        <target>소개 둘러보기를 숨깁니다. 비활성화하면 둘러보기가 다시 표시됩니다.</target>
+      </trans-unit>
+      <trans-unit id="sf2ab37af0abc55ef">
+        <source>Hide intro tour</source>
+        <target>인트로 투어 숨기기</target>
+      </trans-unit>
+      <trans-unit id="s75109f5307578a61">
+        <source>Welcome to WebWriter</source>
+        <target>웹라이터에 오신 것을 환영합니다.</target>
+      </trans-unit>
+      <trans-unit id="s1d10d2058d8ca8dd">
+        <source>Want a short, guided tour?</source>
+        <target>짧은 가이드 투어를 원하시나요?</target>
+      </trans-unit>
+      <trans-unit id="s3bdad99768e11911">
+        <source>Explorable</source>
+        <target>탐색 가능</target>
+      </trans-unit>
+      <trans-unit id="s0db05bd7ba6fff96">
+        <source>Your explorable document. You can write text and copy/paste, edit, etc. here.</source>
+        <target>탐색 가능한 문서입니다. 여기에서 텍스트를 작성하고 복사/붙여넣기, 편집 등을 할 수 있습니다.</target>
+      </trans-unit>
+      <trans-unit id="sc8af536e2084ade0">
+        <source>Palette</source>
+        <target>팔레트</target>
+      </trans-unit>
+      <trans-unit id="s0b24d08ea349b455">
+        <source>Everything you can insert. At the start are non-interactive elements like lists or images, next are interactive elements called widgets. You can get new ones by clicking the search bar.</source>
+        <target>삽입할 수 있는 모든 것. 처음에는 목록이나 이미지와 같은 비대화형 요소가 있고, 그 다음에는 위젯이라는 대화형 요소가 있습니다. 검색창을 클릭하면 새로운 위젯을 찾을 수 있습니다.</target>
+      </trans-unit>
+      <trans-unit id="s24949d7adbb5a098">
+        <source>Toolbox</source>
+        <target>도구 상자</target>
+      </trans-unit>
+      <trans-unit id="s806f84eb0ace116e">
+        <source>See what you have selected and change it. Copy, cut, paste, pin, or make layout changes. Offers different options depending on your selection, i.e. formatting for text.</source>
+        <target>선택한 내용을 확인하고 변경합니다. 복사, 잘라내기, 붙여넣기, 고정 또는 레이아웃 변경을 수행합니다. 텍스트 서식 등 선택 항목에 따라 다양한 옵션을 제공합니다.</target>
+      </trans-unit>
+      <trans-unit id="seaaaeb09e3b4e78b">
+        <source>Editing commands</source>
+        <target>편집 명령</target>
+      </trans-unit>
+      <trans-unit id="s8d83386457e91813">
+        <source>Undo/redo your changes or preview from the learner's perspective.</source>
+        <target>변경 사항을 실행 취소/다시 실행하거나 학습자의 관점에서 미리 보기를 할 수 있습니다.</target>
+      </trans-unit>
+      <trans-unit id="s0e6ea8870dbddab2">
+        <source>Document commands</source>
+        <target>문서 명령</target>
+      </trans-unit>
+      <trans-unit id="s0448f1059fa01720">
+        <source>Save, share or print your explorable. Edit information such as the title, language or license.</source>
+        <target>탐색기를 저장, 공유 또는 인쇄합니다. 제목, 언어 또는 라이선스 등의 정보를 편집합니다.</target>
+      </trans-unit>
+      <trans-unit id="s0c4b2e98d4ab7f5a">
+        <source>App commands</source>
+        <target>앱 명령</target>
+      </trans-unit>
+      <trans-unit id="sa172190ea21f9b1c">
+        <source>Access the settings, open an explorable or create a new one.</source>
+        <target>설정에 액세스하여 탐색기를 열거나 새 탐색기를 만듭니다.</target>
+      </trans-unit>
+      <trans-unit id="s4cc8391f172c0cdf">
+        <source>Dismiss tour</source>
+        <target>투어 종료</target>
+      </trans-unit>
+      <trans-unit id="s575e795c45e2d97e">
+        <source>Go back</source>
+        <target>뒤로 가기</target>
+      </trans-unit>
+      <trans-unit id="sa778acc33947c7b8">
+        <source>Finish tour</source>
+        <target>투어 완료</target>
+      </trans-unit>
+      <trans-unit id="s81ecf2d4386b8e84">
+        <source>Continue</source>
+        <target>계속하기</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

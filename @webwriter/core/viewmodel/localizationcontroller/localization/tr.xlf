@@ -3377,6 +3377,114 @@
         <source>WebWriter can embed SVG directly in the document.</source>
         <target>WebWriter SVG'yi doğrudan belgeye gömebilir.</target>
       </trans-unit>
+      <trans-unit id="s3437e0d9899e7ae1">
+        <source>Send telemetry data about your usage of WebWriter.</source>
+        <target>WebWriter kullanımınız hakkında telemetri verileri gönderin.</target>
+      </trans-unit>
+      <trans-unit id="s80570196a9ce6d11">
+        <source>Enable telemetry</source>
+        <target>Telemetriyi etkinleştir</target>
+      </trans-unit>
+      <trans-unit id="sb66e2181a7b5738a">
+        <source>By enabling telemetry, you allow for data collection and retention according to our</source>
+        <target>Telemetri özelliğini etkinleştirerek, veri toplama ve saklama işlemlerine izin vermiş olursunuz.</target>
+      </trans-unit>
+      <trans-unit id="sbc6953a36ced943f">
+        <source>privacy policy</source>
+        <target>GİZLİLİK POLİTİKASI</target>
+      </trans-unit>
+      <trans-unit id="sb85774dc5d18ff0f">
+        <source>Confirm</source>
+        <target>Onaylayın</target>
+      </trans-unit>
+      <trans-unit id="s3649bacefe731bf6">
+        <source>Toggle Toolbox</source>
+        <target>Araç Kutusunu Değiştir</target>
+      </trans-unit>
+      <trans-unit id="s542fcefa0bbaed86">
+        <source>Open or close the toolbox (only on narrow screens, otherwise, the toolbox is always visible on the side).</source>
+        <target>Araç kutusunu açın veya kapatın (yalnızca dar ekranlarda, aksi takdirde araç kutusu her zaman yan tarafta görünür).</target>
+      </trans-unit>
+      <trans-unit id="se9ac05f36b004eb0">
+        <source>Hide the introductory tour. Disable so the tour is shown again.</source>
+        <target>Tanıtım turunu gizleyin. Turun tekrar gösterilmesi için devre dışı bırakın.</target>
+      </trans-unit>
+      <trans-unit id="sf2ab37af0abc55ef">
+        <source>Hide intro tour</source>
+        <target>Giriş turunu gizle</target>
+      </trans-unit>
+      <trans-unit id="s75109f5307578a61">
+        <source>Welcome to WebWriter</source>
+        <target>WebWriter'a Hoş Geldiniz</target>
+      </trans-unit>
+      <trans-unit id="s1d10d2058d8ca8dd">
+        <source>Want a short, guided tour?</source>
+        <target>Kısa, rehberli bir tur ister misiniz?</target>
+      </trans-unit>
+      <trans-unit id="s3bdad99768e11911">
+        <source>Explorable</source>
+        <target>Keşfedilebilir</target>
+      </trans-unit>
+      <trans-unit id="s0db05bd7ba6fff96">
+        <source>Your explorable document. You can write text and copy/paste, edit, etc. here.</source>
+        <target>Keşfedilebilir belgeniz. Buraya metin yazabilir ve kopyala/yapıştır, düzenleme vb. yapabilirsiniz.</target>
+      </trans-unit>
+      <trans-unit id="sc8af536e2084ade0">
+        <source>Palette</source>
+        <target>Palet</target>
+      </trans-unit>
+      <trans-unit id="s0b24d08ea349b455">
+        <source>Everything you can insert. At the start are non-interactive elements like lists or images, next are interactive elements called widgets. You can get new ones by clicking the search bar.</source>
+        <target>Ekleyebileceğiniz her şey. En başta listeler veya resimler gibi etkileşimli olmayan öğeler, daha sonra widget adı verilen etkileşimli öğeler bulunur. Arama çubuğuna tıklayarak yenilerini edinebilirsiniz.</target>
+      </trans-unit>
+      <trans-unit id="s24949d7adbb5a098">
+        <source>Toolbox</source>
+        <target>Araç Kutusu</target>
+      </trans-unit>
+      <trans-unit id="s806f84eb0ace116e">
+        <source>See what you have selected and change it. Copy, cut, paste, pin, or make layout changes. Offers different options depending on your selection, i.e. formatting for text.</source>
+        <target>Neyi seçtiğinizi görün ve değiştirin. Kopyalayın, kesin, yapıştırın, sabitleyin veya düzen değişiklikleri yapın. Seçiminize bağlı olarak farklı seçenekler sunar, örneğin metin için biçimlendirme.</target>
+      </trans-unit>
+      <trans-unit id="seaaaeb09e3b4e78b">
+        <source>Editing commands</source>
+        <target>Düzenleme komutları</target>
+      </trans-unit>
+      <trans-unit id="s8d83386457e91813">
+        <source>Undo/redo your changes or preview from the learner's perspective.</source>
+        <target>Değişikliklerinizi geri alın/yineleyin veya öğrencinin bakış açısından önizleme yapın.</target>
+      </trans-unit>
+      <trans-unit id="s0e6ea8870dbddab2">
+        <source>Document commands</source>
+        <target>Belge komutları</target>
+      </trans-unit>
+      <trans-unit id="s0448f1059fa01720">
+        <source>Save, share or print your explorable. Edit information such as the title, language or license.</source>
+        <target>Keşfedilebilir dosyanızı kaydedin, paylaşın veya yazdırın. Başlık, dil veya lisans gibi bilgileri düzenleyin.</target>
+      </trans-unit>
+      <trans-unit id="s0c4b2e98d4ab7f5a">
+        <source>App commands</source>
+        <target>Uygulama komutları</target>
+      </trans-unit>
+      <trans-unit id="sa172190ea21f9b1c">
+        <source>Access the settings, open an explorable or create a new one.</source>
+        <target>Ayarlara erişin, bir keşfedilebilir açın veya yeni bir tane oluşturun.</target>
+      </trans-unit>
+      <trans-unit id="s4cc8391f172c0cdf">
+        <source>Dismiss tour</source>
+        <target>Turu sonlandırın</target>
+      </trans-unit>
+      <trans-unit id="s575e795c45e2d97e">
+        <source>Go back</source>
+        <target>Geri dön</target>
+      </trans-unit>
+      <trans-unit id="sa778acc33947c7b8">
+        <source>Finish tour</source>
+        <target>Turu bitirin</target>
+      </trans-unit>
+      <trans-unit id="s81ecf2d4386b8e84">
+        <source>Continue</source>
+        <target>Devam et</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

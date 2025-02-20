@@ -1,6 +1,6 @@
-import { localized } from "@lit/localize"
+import { localized, msg } from "@lit/localize"
 import { SlCheckbox, SlSelect, SlTabGroup } from "@shoelace-style/shoelace"
-import { html, css, LitElement } from "lit"
+import { html, css, LitElement, TemplateResult } from "lit"
 import { customElement, property, query } from "lit/decorators.js"
 import { ZodBoolean, ZodLiteral, ZodSchema, ZodUnion } from "zod"
 
@@ -21,6 +21,9 @@ export class Configurator extends LitElement {
 
   @property()
   activeTab: string | null 
+
+  @property({type: String})
+  confirmingOption: string | undefined
 
   static get styles() {
     return css`
@@ -100,26 +103,32 @@ export class Configurator extends LitElement {
         gap: 1rem;
         margin-right: var(--sl-spacing-small);
       }
+
+      label {
+        cursor: pointer;
+      }
     `
   }
 
-  static SettingGroup(key: string, specs: Record<string, SettingSpec>, values: Record<string, any>, onChange: (groupKey: string, key: string, value: any) => any, label: string) {
+  SettingGroup(key: string, specs: Record<string, SettingSpec>, values: Record<string, any>, onChange: (groupKey: string, key: string, value: any) => any, label: string) {
     const keys = Object.keys(specs).filter(k => !specs[k]?.hidden)
     return keys.length === 0? null: html`
       <sl-tab slot="nav" panel=${key}>
         ${label}
       </sl-tab>
       <sl-tab-panel class="setting-group" name=${key}>
-        ${keys.map(k => Configurator.Setting(key, k, specs[k].schema, values[k], onChange, specs[k].label ?? k))}
+        ${keys.map(k => this.Setting(key, k, specs[k].schema, values[k], onChange, specs[k].label ?? k, specs[k].confirmation))}
       </sl-tab-panel>
     `
   }
 
-  static Setting(groupKey: string, key: string, schema: ZodSchema, value: any, onChange: (groupKey: string, key: string, value: any) => any, label: string) {
+  Setting(groupKey: string, key: string, schema: ZodSchema, value: any, onChange: (groupKey: string, key: string, value: any) => any, label: string, confirmation?: TemplateResult) {
+    const id = groupKey + "." + key
     if(schema instanceof ZodUnion && schema._def.options.every((opt: ZodSchema) => opt instanceof ZodLiteral)) {
       const options = schema._def.options as ZodLiteral<any>[]
-      return html`<sl-select value=${value} @sl-change=${(e: Event) => onChange(groupKey, key, (e.target as SlSelect).value)}>
-        <label slot="label">
+      return html`<sl-select
+        id=${id} value=${value} @sl-change=${(e: Event) => onChange(groupKey, key, (e.target as SlSelect).value)}>
+        <label slot="label" for=${id}>
           ${key === "locale" && html`<sl-icon name="language"></sl-icon>`}
           ${label}
         </label>
@@ -133,13 +142,42 @@ export class Configurator extends LitElement {
     }
     else if(schema instanceof ZodBoolean) {
       return html`<sl-checkbox
+        id=${id}
         ?checked=${value}
-        @sl-change=${(e: Event) => onChange(groupKey, key, (e.target as SlCheckbox).checked)}
-        
+        @sl-change=${(e: Event) => {
+          onChange(groupKey, key, (e.target as SlCheckbox).checked)
+        }}
+        @click=${(e: PointerEvent) => {
+          const checked = (this.shadowRoot!.getElementById(id) as SlCheckbox).checked
+          console.log(checked)
+          if(confirmation && !checked) {
+            e.preventDefault()
+            this.confirmingOption = id
+          }
+          else if(confirmation && checked) {
+            e.preventDefault()
+            setTimeout(() => {
+              (this.shadowRoot!.getElementById(id) as SlCheckbox).checked = false
+              onChange(groupKey, key, false)
+            })
+          }
+        }}
       >
-        <label>${label}</label><br>
+        <label for=${id}>${label}</label><br>
         <span class="help-text">${schema.description}</span>
-      </sl-checkbox>`
+      </sl-checkbox>
+      ${!confirmation? null: html`
+        <sl-dialog label=${label} ?open=${id === this.confirmingOption} @sl-hide=${() => this.confirmingOption = undefined}>
+          ${confirmation}
+          <sl-button variant="primary" style="float: right; margin-left: 0.5ch;" @click=${() => {
+            this.confirmingOption = undefined;
+            (this.shadowRoot!.getElementById(id) as SlCheckbox).checked = true
+            onChange(groupKey, key, true)
+            this.requestUpdate()
+          }}>${msg("Confirm")}</sl-button>
+          <sl-button variant="neutral" style="float: right" @click=${() => this.confirmingOption = undefined}>${msg("Cancel")}</sl-button>
+        </sl-dialog>
+      `}`
     }
     else {
       return html`${key}`
@@ -158,7 +196,7 @@ export class Configurator extends LitElement {
     const keys = Object.keys(this.specs)
     return html`
       <sl-tab-group>
-        ${keys.map(k => Configurator.SettingGroup(k, this.specs[k], this.values[k], this.emitChange, this.specLabels[k]))}
+        ${keys.map(k => this.SettingGroup(k, this.specs[k], this.values[k], this.emitChange, this.specLabels[k]))}
         <sl-tab slot="nav" panel="post-a" @click=${() => this.tabGroup.show("post-a")}>
           <slot name="post-tab-a"></slot>
         </sl-tab>

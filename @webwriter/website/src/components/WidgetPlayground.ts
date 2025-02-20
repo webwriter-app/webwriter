@@ -1,4 +1,4 @@
-import { LitElement, html, css, PropertyValueMap } from "lit";
+import { LitElement, html, css, type PropertyValueMap } from "lit";
 import { customElement, property, query, queryAsync } from "lit/decorators.js";
 import { ifDefined } from "lit/directives/if-defined.js";
 import {minimalSetup, EditorView, basicSetup,} from "codemirror"
@@ -26,7 +26,7 @@ import PRINTER from "bootstrap-icons/icons/printer.svg?raw"
 import LAYOUT_SIDEBAR_INSET_REVERSE from "bootstrap-icons/icons/layout-sidebar-inset-reverse.svg?raw"
 const ICON = (x: string) => html`<img class="icon" src=${"data:image/svg+xml;utf8," + x}>`
 
-import {IFrameObject, IFramePage, iframeResizer} from "iframe-resizer"
+import {iframeResizer} from "iframe-resizer"
 import iframeResizerContentRaw from "iframe-resizer/js/iframeResizer.contentWindow.min.js?raw"
 import type { SyntaxNodeRef } from "@lezer/common";
 
@@ -78,9 +78,6 @@ export class WidgetPlayground extends LitElement {
   homepage: string | undefined
 
   @property({attribute: true})
-  widgetSrc: string | undefined
-
-  @property({attribute: true})
   prettyName: string | undefined
 
   @property({attribute: true})
@@ -92,13 +89,13 @@ export class WidgetPlayground extends LitElement {
   @property({attribute: true})
   license: string | undefined = "UNLICENSED"
 
-  @property({attribute: true})
+  @property({type: Object, attribute: true})
   bundleSize: {js: number, css: number} | undefined
   
-  @property({attribute: true})
+  @property({type: Number, attribute: true})
   installSize: number | undefined
 
-  @property({type: Object, attribute: false})
+  @property({type: Array, attribute: false})
   people: Person[] = []
 
   @property({type: Object, attribute: false})
@@ -107,8 +104,11 @@ export class WidgetPlayground extends LitElement {
   @property({type: Object, attribute: false})
   links: Record<string, string> = {}
 
-  @property({type: Object, attribute: false})
+  @property({type: Array, attribute: false})
   keywords: string[] = []
+
+  @property({type: Object, attribute: false})
+  exports: Record<string, string | Record<string, string>> = {}
 
   @property({attribute: true, type: String, reflect: true}) // @ts-ignore
   contentEditable: string
@@ -479,6 +479,7 @@ export class WidgetPlayground extends LitElement {
     `
   }
 
+  /*
   @query("iframe") // @ts-ignore
   iframe: HTMLIFrameElement
 
@@ -487,6 +488,7 @@ export class WidgetPlayground extends LitElement {
 
   get srcdoc() {
     const tag = this.name?.replaceAll(/^@.+\//g, "")
+
     return `<html>
       <head>
         <script id="widgetsrc" type="text/javascript" src=${this.widgetSrc + ".js"}></script>
@@ -555,9 +557,9 @@ export class WidgetPlayground extends LitElement {
 
   set innerMarkup(value: string) { // @ts-ignore
     this.observer.disconnect()
-    this.body.innerHTML = value
-    this.observer.observe(this.body as HTMLElement, {childList: true, subtree: true, attributes: true})
-  }
+    this.body!.innerHTML = value
+    this.observer!.observe(this.body as HTMLElement, {childList: true, subtree: true, attributes: true})
+  }*/
 
   static providerIcon = {
     "none": ICON(GIT),
@@ -582,15 +584,16 @@ export class WidgetPlayground extends LitElement {
   @query("#style")
   innerStyleNode: HTMLElement | undefined
 
-  observer: MutationObserver
+  observer?: MutationObserver
 
+  /*
   evalScript = (e: Event) => {
     const i = parseInt((e.currentTarget as HTMLElement).getAttribute("data-i") as string)
     const {body, window} = this
     window.eval(body?.querySelectorAll("script").item(i).innerHTML ?? "")
   }
 
-  protected async firstUpdated(_changedProperties: PropertyValueMap<any> | Map<PropertyKey, unknown>) {
+  protected async firstUpdated(changed: PropertyValueMap<any>) {
     await this.iframeReady
     await new Promise(r => setTimeout(r, 1000))
     let language = new Compartment
@@ -638,13 +641,14 @@ export class WidgetPlayground extends LitElement {
       }))
     })
     this.observer.observe(this.body as HTMLElement, {childList: true, subtree: true, attributes: true})
-  }
+  }*/
 
   disconnectedCallback(): void {
-    this.observer.disconnect()
+    this.observer!.disconnect()
   }
 
   render() {
+    return html`hello`
     const people = this.people.map((person, i) => html`<a class="person" href=${"mailto:" + person.email} title=${i === 0? "Author of the widget": "Contributor to the widget"}>${person.name}</a>${this.people.length === 1 || i === this.people.length? "": ", "}`)
     return !this.name? undefined: html`<main>
       <header>
@@ -698,7 +702,8 @@ export class WidgetPlayground extends LitElement {
         </label>
         <div class="sideline"></div>
       </div>
-      <iframe id="preview" srcdoc=${this.srcdoc}></iframe>
+      <main id="preview">
+      </main>
       <div id="editor">
         <nav>
           <button class="tab" data-target="#markup" @click=${(e: any) => this.activeTab = e.target.getAttribute("data-target")} ?data-active=${this.activeTab === "#markup"}>Live Code</button>

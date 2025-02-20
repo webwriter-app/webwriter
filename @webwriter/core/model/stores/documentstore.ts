@@ -242,7 +242,8 @@ export class DocumentStore implements Resource {
         newSerializer =
           "serialize" in newSerializer ? newSerializer : this.serializer;
         const data = await newSerializer.serialize!(this.editorState);
-        const url = (await client.saveDocument(data, newUrl, filename)) as URL;
+        const saveClient = "saveDocument" in client? client: this.accounts.getClient("file", "file")!
+        const url = (await saveClient.saveDocument(data, "saveDocument" in client? newUrl: undefined, filename)) as URL;
         if (url) {
           this.lastSavedState = this.editorState;
           this.url = url;
@@ -260,8 +261,10 @@ export class DocumentStore implements Resource {
     url: Resource["url"] | undefined = undefined,
     parser = this.parser,
     client = this.client,
-    schema = this.editorState.schema
+    schema = this.editorState.schema,
+    setUrl = true
   ) {
+    console.log(url)
     this.ioState = "loading";
     try {
       let newUrl = url;
@@ -275,6 +278,7 @@ export class DocumentStore implements Resource {
         newParser = foundPs ? new foundPs() : parser;
       }
       const data = await client.loadDocument(newUrl as any);
+      console.log(data)
       if (!data) {
         return;
       }
@@ -283,7 +287,7 @@ export class DocumentStore implements Resource {
       if (this.codeState) {
         this.deriveCodeState();
       }
-      this.url = url;
+      this.url = setUrl? url: this.url;
       return data;
     } finally {
       this.ioState = "idle";

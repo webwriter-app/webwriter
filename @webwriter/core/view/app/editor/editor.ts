@@ -1427,13 +1427,10 @@ export class ExplorableEditor extends LitElement {
       justifySelf: "start",
       alignSelf: "start"
     }
-		else if(!this.toolboxY) return {
-			display: "none"
-		}
 		else if(toolboxMode === "popup") return {
 			position: "absolute",
-			left: `${this.toolboxX}px`,
-			top: `${this.toolboxY}px`,
+			left: `${this.toolboxX ?? 40}px`,
+			top: `${this.toolboxY ?? 20}px`,
 			border: "1px solid lightgray",
 			padding: "12px",
 			boxShadow: "var(--sl-shadow-medium)",
@@ -1514,6 +1511,7 @@ export class ExplorableEditor extends LitElement {
 	Palette = () => {
 		return html`
 			<ww-palette
+        .forceToolboxPopup=${!!this.forceToolboxPopup}
         .app=${this.app}
         .editorState=${this.editorState}
 				part="editor-toolbox"

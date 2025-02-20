@@ -6,12 +6,6 @@ import {customElement, property, query, queryAssignedElements} from "lit/decorat
 @customElement("ww-layout")
 export class Layout extends LitElement {
 
-  @property({type: Boolean, attribute: true})
-  drawerLeftOpen: boolean = false
-
-  @property({type: Boolean, attribute: true})
-  drawerRightOpen: boolean = false
-
   @property({type: Boolean, attribute: true, reflect: true})
   foldOpen: boolean = false
 
@@ -24,22 +18,10 @@ export class Layout extends LitElement {
   render() {
     return html`
       <slot name="header-left"></slot>
-      <sl-drawer placement="start" part="drawer-left" ?open=${this.drawerLeftOpen} exportparts="header: drawer-left-header, header-actions: drawer-left-header-actions, title: drawer-left-title, body: drawer-left-body, footer: drawer-left-footer" @sl-show=${(e: Event) => e.target === e.currentTarget && this.emitShowDrawer()} @sl-hide=${(e: Event) => e.target === e.currentTarget && this.emitHideDrawer()}>
-        <slot name="drawer-left-body"></slot>
-        <slot name="drawer-left-label" slot="label"></slot>
-        <slot name="drawer-left-header-actions" slot="header-actions"></slot>
-        <slot name="drawer-left-footer" slot="footer"></slot>
-      </sl-drawer>
       <nav>
         <slot name="nav"></slot>
       </nav>
-      <slot name="header-right" ?open=${this.drawerRightOpen}></slot>
-      <sl-drawer placement="end" part="drawer-right" ?open=${this.drawerRightOpen} exportparts="header: drawer-right-header, header-actions: drawer-right-header-actions, title: drawer-right-title, body: drawer-right-body, footer: drawer-right-footer" @sl-show=${(e: Event) => e.target === e.currentTarget && this.emitShowDrawer()} @sl-hide=${(e: Event) => e.target === e.currentTarget && this.emitHideDrawer()}>
-        <slot name="drawer-right-body"></slot>
-        <slot name="drawer-right-label" slot="label"></slot>
-        <slot name="drawer-right-header-actions" slot="header-actions"></slot>
-        <slot name="drawer-right-footer" slot="footer"></slot>
-      </sl-drawer>
+      <slot name="header-right"></slot>
       <slot name="fold"></slot>
       <slot name="main"></slot>
     `
@@ -163,12 +145,4 @@ export class Layout extends LitElement {
 
   @queryAssignedElements({slot: "main"})
   panels: HTMLElement[] | null
-
-  emitShowDrawer = () => this.dispatchEvent(
-    new CustomEvent("ww-show-drawer", {composed: true, bubbles: true})
-  )
-
-  emitHideDrawer = () => this.dispatchEvent(
-    new CustomEvent("ww-hide-drawer", {composed: true, bubbles: true})
-  )
 }

@@ -3378,6 +3378,114 @@
         <source>WebWriter can embed SVG directly in the document.</source>
         <target>"WebWriter" gali įterpti SVG tiesiai į dokumentą.</target>
       </trans-unit>
+      <trans-unit id="s3437e0d9899e7ae1">
+        <source>Send telemetry data about your usage of WebWriter.</source>
+        <target>Siųsti telemetrinius duomenis apie "WebWriter" naudojimą.</target>
+      </trans-unit>
+      <trans-unit id="s80570196a9ce6d11">
+        <source>Enable telemetry</source>
+        <target>Įjungti telemetriją</target>
+      </trans-unit>
+      <trans-unit id="sb66e2181a7b5738a">
+        <source>By enabling telemetry, you allow for data collection and retention according to our</source>
+        <target>Įjungdami telemetriją, leidžiate rinkti ir saugoti duomenis pagal mūsų</target>
+      </trans-unit>
+      <trans-unit id="sbc6953a36ced943f">
+        <source>privacy policy</source>
+        <target>privatumo politika</target>
+      </trans-unit>
+      <trans-unit id="sb85774dc5d18ff0f">
+        <source>Confirm</source>
+        <target>Patvirtinkite</target>
+      </trans-unit>
+      <trans-unit id="s3649bacefe731bf6">
+        <source>Toggle Toolbox</source>
+        <target>Įrankių dėžutės perjungimas</target>
+      </trans-unit>
+      <trans-unit id="s542fcefa0bbaed86">
+        <source>Open or close the toolbox (only on narrow screens, otherwise, the toolbox is always visible on the side).</source>
+        <target>Atidarykite arba uždarykite įrankių dėžutę (tik siauruose ekranuose, kitu atveju įrankių dėžutė visada matoma šone).</target>
+      </trans-unit>
+      <trans-unit id="se9ac05f36b004eb0">
+        <source>Hide the introductory tour. Disable so the tour is shown again.</source>
+        <target>Paslėpti įvadinę ekskursiją. Išjungti, kad ekskursija vėl būtų rodoma.</target>
+      </trans-unit>
+      <trans-unit id="sf2ab37af0abc55ef">
+        <source>Hide intro tour</source>
+        <target>Paslėpti įvadinį turą</target>
+      </trans-unit>
+      <trans-unit id="s75109f5307578a61">
+        <source>Welcome to WebWriter</source>
+        <target>Sveiki atvykę į "WebWriter</target>
+      </trans-unit>
+      <trans-unit id="s1d10d2058d8ca8dd">
+        <source>Want a short, guided tour?</source>
+        <target>Norite trumpos ekskursijos su gidu?</target>
+      </trans-unit>
+      <trans-unit id="s3bdad99768e11911">
+        <source>Explorable</source>
+        <target>Tyrinėjamas</target>
+      </trans-unit>
+      <trans-unit id="s0db05bd7ba6fff96">
+        <source>Your explorable document. You can write text and copy/paste, edit, etc. here.</source>
+        <target>Jūsų tyrinėjamas dokumentas. Čia galite rašyti tekstą, jį kopijuoti ir įklijuoti, redaguoti ir t. t.</target>
+      </trans-unit>
+      <trans-unit id="sc8af536e2084ade0">
+        <source>Palette</source>
+        <target>Paletė</target>
+      </trans-unit>
+      <trans-unit id="s0b24d08ea349b455">
+        <source>Everything you can insert. At the start are non-interactive elements like lists or images, next are interactive elements called widgets. You can get new ones by clicking the search bar.</source>
+        <target>Viskas, ką galite įterpti. Pradžioje yra neinteraktyvūs elementai, pavyzdžiui, sąrašai ar paveikslėliai, o toliau - interaktyvūs elementai, vadinami valdikliais. Naujų galite gauti spustelėję paieškos juostą.</target>
+      </trans-unit>
+      <trans-unit id="s24949d7adbb5a098">
+        <source>Toolbox</source>
+        <target>Įrankių dėžutė</target>
+      </trans-unit>
+      <trans-unit id="s806f84eb0ace116e">
+        <source>See what you have selected and change it. Copy, cut, paste, pin, or make layout changes. Offers different options depending on your selection, i.e. formatting for text.</source>
+        <target>Peržiūrėkite, ką pasirinkote, ir pakeiskite. Kopijuokite, iškirpkite, įklijuokite, prisekite arba pakeiskite išdėstymą. Siūlomos skirtingos parinktys, priklausomai nuo jūsų pasirinkimo, t. y. teksto formatavimas.</target>
+      </trans-unit>
+      <trans-unit id="seaaaeb09e3b4e78b">
+        <source>Editing commands</source>
+        <target>Redagavimo komandos</target>
+      </trans-unit>
+      <trans-unit id="s8d83386457e91813">
+        <source>Undo/redo your changes or preview from the learner's perspective.</source>
+        <target>Atšaukite / pakartokite pakeitimus arba peržiūrėkite juos iš besimokančiojo perspektyvos.</target>
+      </trans-unit>
+      <trans-unit id="s0e6ea8870dbddab2">
+        <source>Document commands</source>
+        <target>Dokumentų komandos</target>
+      </trans-unit>
+      <trans-unit id="s0448f1059fa01720">
+        <source>Save, share or print your explorable. Edit information such as the title, language or license.</source>
+        <target>Išsaugokite, bendrinkite arba atsispausdinkite savo tyrinėjamąjį objektą. Redaguokite informaciją, pavyzdžiui, pavadinimą, kalbą ar licenciją.</target>
+      </trans-unit>
+      <trans-unit id="s0c4b2e98d4ab7f5a">
+        <source>App commands</source>
+        <target>Programėlės komandos</target>
+      </trans-unit>
+      <trans-unit id="sa172190ea21f9b1c">
+        <source>Access the settings, open an explorable or create a new one.</source>
+        <target>Prisijunkite prie nustatymų, atidarykite tyrinėjamąjį objektą arba sukurkite naują.</target>
+      </trans-unit>
+      <trans-unit id="s4cc8391f172c0cdf">
+        <source>Dismiss tour</source>
+        <target>Atleisti ekskursiją</target>
+      </trans-unit>
+      <trans-unit id="s575e795c45e2d97e">
+        <source>Go back</source>
+        <target>Grįžti atgal</target>
+      </trans-unit>
+      <trans-unit id="sa778acc33947c7b8">
+        <source>Finish tour</source>
+        <target>Baigti kelionę</target>
+      </trans-unit>
+      <trans-unit id="s81ecf2d4386b8e84">
+        <source>Continue</source>
+        <target>Tęsti</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

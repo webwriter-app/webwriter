@@ -979,7 +979,16 @@ export class  Toolbox extends LitElement {
           padding: var(--sl-spacing-small);
         }
       }
-      
+          
+      :host(.intro-target) * {
+        animation: blink-color 1.5s linear infinite;
+      } 
+
+      @keyframes blink-color {
+        50% {
+          color: var(--sl-color-primary-600);
+        }
+      }
     `
   }
   
