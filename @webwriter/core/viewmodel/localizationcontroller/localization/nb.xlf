@@ -3398,6 +3398,94 @@
         <source>Confirm</source>
         <target>Bekreft</target>
       </trans-unit>
+      <trans-unit id="s3649bacefe731bf6">
+        <source>Toggle Toolbox</source>
+        <target>Veksle verktøykasse</target>
+      </trans-unit>
+      <trans-unit id="s542fcefa0bbaed86">
+        <source>Open or close the toolbox (only on narrow screens, otherwise, the toolbox is always visible on the side).</source>
+        <target>Åpne eller lukk verktøykassen (kun på smale skjermer, ellers er verktøykassen alltid synlig på siden).</target>
+      </trans-unit>
+      <trans-unit id="se9ac05f36b004eb0">
+        <source>Hide the introductory tour. Disable so the tour is shown again.</source>
+        <target>Skjul introduksjonsturen. Deaktiver slik at omvisningen vises igjen.</target>
+      </trans-unit>
+      <trans-unit id="sf2ab37af0abc55ef">
+        <source>Hide intro tour</source>
+        <target>Skjul intro-tur</target>
+      </trans-unit>
+      <trans-unit id="s75109f5307578a61">
+        <source>Welcome to WebWriter</source>
+        <target>Velkommen til WebWriter</target>
+      </trans-unit>
+      <trans-unit id="s1d10d2058d8ca8dd">
+        <source>Want a short, guided tour?</source>
+        <target>Vil du ha en kort, guidet omvisning?</target>
+      </trans-unit>
+      <trans-unit id="s3bdad99768e11911">
+        <source>Explorable</source>
+        <target>Utforskbar</target>
+      </trans-unit>
+      <trans-unit id="s0db05bd7ba6fff96">
+        <source>Your explorable document. You can write text and copy/paste, edit, etc. here.</source>
+        <target>Ditt utforskbare dokument. Her kan du skrive tekst og kopiere/lim inn, redigere osv.</target>
+      </trans-unit>
+      <trans-unit id="sc8af536e2084ade0">
+        <source>Palette</source>
+        <target>Palett</target>
+      </trans-unit>
+      <trans-unit id="s0b24d08ea349b455">
+        <source>Everything you can insert. At the start are non-interactive elements like lists or images, next are interactive elements called widgets. You can get new ones by clicking the search bar.</source>
+        <target>Alt du kan sette inn. Først kommer ikke-interaktive elementer som lister eller bilder, deretter kommer interaktive elementer som kalles widgeter. Du kan hente nye ved å klikke på søkefeltet.</target>
+      </trans-unit>
+      <trans-unit id="s24949d7adbb5a098">
+        <source>Toolbox</source>
+        <target>Verktøykasse</target>
+      </trans-unit>
+      <trans-unit id="s806f84eb0ace116e">
+        <source>See what you have selected and change it. Copy, cut, paste, pin, or make layout changes. Offers different options depending on your selection, i.e. formatting for text.</source>
+        <target>Se hva du har valgt, og endre det. Kopier, klipp ut, lim inn, fest eller gjør layoutendringer. Tilbyr ulike alternativer avhengig av hva du har valgt, f.eks. formatering av tekst.</target>
+      </trans-unit>
+      <trans-unit id="seaaaeb09e3b4e78b">
+        <source>Editing commands</source>
+        <target>Redigeringskommandoer</target>
+      </trans-unit>
+      <trans-unit id="s8d83386457e91813">
+        <source>Undo/redo your changes or preview from the learner's perspective.</source>
+        <target>Angre/gjenopprett endringene dine eller forhåndsvis fra elevens perspektiv.</target>
+      </trans-unit>
+      <trans-unit id="s0e6ea8870dbddab2">
+        <source>Document commands</source>
+        <target>Dokumentkommandoer</target>
+      </trans-unit>
+      <trans-unit id="s0448f1059fa01720">
+        <source>Save, share or print your explorable. Edit information such as the title, language or license.</source>
+        <target>Lagre, del eller skriv ut det utforskbare. Rediger informasjon som tittel, språk eller lisens.</target>
+      </trans-unit>
+      <trans-unit id="s0c4b2e98d4ab7f5a">
+        <source>App commands</source>
+        <target>App-kommandoer</target>
+      </trans-unit>
+      <trans-unit id="sa172190ea21f9b1c">
+        <source>Access the settings, open an explorable or create a new one.</source>
+        <target>Åpne innstillingene, åpne en utforskbar eller opprett en ny.</target>
+      </trans-unit>
+      <trans-unit id="s4cc8391f172c0cdf">
+        <source>Dismiss tour</source>
+        <target>Avslutt turen</target>
+      </trans-unit>
+      <trans-unit id="s575e795c45e2d97e">
+        <source>Go back</source>
+        <target>Gå tilbake</target>
+      </trans-unit>
+      <trans-unit id="sa778acc33947c7b8">
+        <source>Finish tour</source>
+        <target>Avslutt turen</target>
+      </trans-unit>
+      <trans-unit id="s81ecf2d4386b8e84">
+        <source>Continue</source>
+        <target>Fortsett</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

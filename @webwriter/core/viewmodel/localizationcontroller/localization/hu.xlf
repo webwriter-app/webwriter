@@ -3398,6 +3398,94 @@
         <source>Confirm</source>
         <target>Megerősítés</target>
       </trans-unit>
+      <trans-unit id="s3649bacefe731bf6">
+        <source>Toggle Toolbox</source>
+        <target>Eszköztár kapcsoló</target>
+      </trans-unit>
+      <trans-unit id="s542fcefa0bbaed86">
+        <source>Open or close the toolbox (only on narrow screens, otherwise, the toolbox is always visible on the side).</source>
+        <target>Az eszköztár megnyitása vagy bezárása (csak keskeny képernyőkön, egyébként az eszköztár mindig látható az oldalon).</target>
+      </trans-unit>
+      <trans-unit id="se9ac05f36b004eb0">
+        <source>Hide the introductory tour. Disable so the tour is shown again.</source>
+        <target>Rejtse el a bevezető túrát. Letiltás, így a túra ismét megjelenik.</target>
+      </trans-unit>
+      <trans-unit id="sf2ab37af0abc55ef">
+        <source>Hide intro tour</source>
+        <target>Rejtsd el az intro túrát</target>
+      </trans-unit>
+      <trans-unit id="s75109f5307578a61">
+        <source>Welcome to WebWriter</source>
+        <target>Üdvözöljük a WebWriter</target>
+      </trans-unit>
+      <trans-unit id="s1d10d2058d8ca8dd">
+        <source>Want a short, guided tour?</source>
+        <target>Rövid, vezetett túrát szeretne?</target>
+      </trans-unit>
+      <trans-unit id="s3bdad99768e11911">
+        <source>Explorable</source>
+        <target>Felfedezhető</target>
+      </trans-unit>
+      <trans-unit id="s0db05bd7ba6fff96">
+        <source>Your explorable document. You can write text and copy/paste, edit, etc. here.</source>
+        <target>Az Ön feltárható dokumentuma. Ide írhatsz szöveget és másolhatsz/beilleszthetsz, szerkeszthetsz stb.</target>
+      </trans-unit>
+      <trans-unit id="sc8af536e2084ade0">
+        <source>Palette</source>
+        <target>Paletta</target>
+      </trans-unit>
+      <trans-unit id="s0b24d08ea349b455">
+        <source>Everything you can insert. At the start are non-interactive elements like lists or images, next are interactive elements called widgets. You can get new ones by clicking the search bar.</source>
+        <target>Minden, amit be tudsz illeszteni. Az elején a nem interaktív elemek, mint a listák vagy képek, majd az interaktív elemek, az úgynevezett widgetek következnek. Újakat a keresősávra kattintva szerezhetsz be.</target>
+      </trans-unit>
+      <trans-unit id="s24949d7adbb5a098">
+        <source>Toolbox</source>
+        <target>Szerszámosláda</target>
+      </trans-unit>
+      <trans-unit id="s806f84eb0ace116e">
+        <source>See what you have selected and change it. Copy, cut, paste, pin, or make layout changes. Offers different options depending on your selection, i.e. formatting for text.</source>
+        <target>Nézze meg, hogy mit választott ki, és változtassa meg. Másolás, kivágás, beillesztés, kitűzés, vagy elrendezési módosítások. Különböző lehetőségeket kínál a kijelöléstől függően, pl. a szöveg formázása.</target>
+      </trans-unit>
+      <trans-unit id="seaaaeb09e3b4e78b">
+        <source>Editing commands</source>
+        <target>Szerkesztési parancsok</target>
+      </trans-unit>
+      <trans-unit id="s8d83386457e91813">
+        <source>Undo/redo your changes or preview from the learner's perspective.</source>
+        <target>Visszavonhatja/visszacsinálhatja a változtatásokat, vagy megtekintheti az előnézetet a tanuló szemszögéből.</target>
+      </trans-unit>
+      <trans-unit id="s0e6ea8870dbddab2">
+        <source>Document commands</source>
+        <target>Dokumentum parancsok</target>
+      </trans-unit>
+      <trans-unit id="s0448f1059fa01720">
+        <source>Save, share or print your explorable. Edit information such as the title, language or license.</source>
+        <target>Mentsd el, oszd meg vagy nyomtasd ki a felfedezhető anyagot. Szerkesztheti az olyan információkat, mint a cím, a nyelv vagy a licenc.</target>
+      </trans-unit>
+      <trans-unit id="s0c4b2e98d4ab7f5a">
+        <source>App commands</source>
+        <target>Alkalmazás parancsok</target>
+      </trans-unit>
+      <trans-unit id="sa172190ea21f9b1c">
+        <source>Access the settings, open an explorable or create a new one.</source>
+        <target>Lépjen be a beállításokba, nyisson meg egy felfedezhetőt, vagy hozzon létre egy újat.</target>
+      </trans-unit>
+      <trans-unit id="s4cc8391f172c0cdf">
+        <source>Dismiss tour</source>
+        <target>Túra befejezése</target>
+      </trans-unit>
+      <trans-unit id="s575e795c45e2d97e">
+        <source>Go back</source>
+        <target>Menj vissza</target>
+      </trans-unit>
+      <trans-unit id="sa778acc33947c7b8">
+        <source>Finish tour</source>
+        <target>Befejezni a túrát</target>
+      </trans-unit>
+      <trans-unit id="s81ecf2d4386b8e84">
+        <source>Continue</source>
+        <target>Folytatás</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

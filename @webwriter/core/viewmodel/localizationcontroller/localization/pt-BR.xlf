@@ -3390,6 +3390,94 @@
         <source>Confirm</source>
         <target>Confirmar</target>
       </trans-unit>
+      <trans-unit id="s3649bacefe731bf6">
+        <source>Toggle Toolbox</source>
+        <target>Alternar caixa de ferramentas</target>
+      </trans-unit>
+      <trans-unit id="s542fcefa0bbaed86">
+        <source>Open or close the toolbox (only on narrow screens, otherwise, the toolbox is always visible on the side).</source>
+        <target>Abra ou feche a caixa de ferramentas (somente em telas estreitas, caso contrário, a caixa de ferramentas estará sempre visível na lateral).</target>
+      </trans-unit>
+      <trans-unit id="se9ac05f36b004eb0">
+        <source>Hide the introductory tour. Disable so the tour is shown again.</source>
+        <target>Ocultar o tour introdutório. Desativar para que o tour seja mostrado novamente.</target>
+      </trans-unit>
+      <trans-unit id="sf2ab37af0abc55ef">
+        <source>Hide intro tour</source>
+        <target>Ocultar tour de introdução</target>
+      </trans-unit>
+      <trans-unit id="s75109f5307578a61">
+        <source>Welcome to WebWriter</source>
+        <target>Bem-vindo ao WebWriter</target>
+      </trans-unit>
+      <trans-unit id="s1d10d2058d8ca8dd">
+        <source>Want a short, guided tour?</source>
+        <target>Deseja um passeio curto e guiado?</target>
+      </trans-unit>
+      <trans-unit id="s3bdad99768e11911">
+        <source>Explorable</source>
+        <target>Explorável</target>
+      </trans-unit>
+      <trans-unit id="s0db05bd7ba6fff96">
+        <source>Your explorable document. You can write text and copy/paste, edit, etc. here.</source>
+        <target>Seu documento explorável. Você pode escrever texto e copiar/colar, editar etc. aqui.</target>
+      </trans-unit>
+      <trans-unit id="sc8af536e2084ade0">
+        <source>Palette</source>
+        <target>Paleta</target>
+      </trans-unit>
+      <trans-unit id="s0b24d08ea349b455">
+        <source>Everything you can insert. At the start are non-interactive elements like lists or images, next are interactive elements called widgets. You can get new ones by clicking the search bar.</source>
+        <target>Tudo o que você pode inserir. No início estão os elementos não interativos, como listas ou imagens, e depois os elementos interativos chamados widgets. Você pode obter novos elementos clicando na barra de pesquisa.</target>
+      </trans-unit>
+      <trans-unit id="s24949d7adbb5a098">
+        <source>Toolbox</source>
+        <target>Caixa de ferramentas</target>
+      </trans-unit>
+      <trans-unit id="s806f84eb0ace116e">
+        <source>See what you have selected and change it. Copy, cut, paste, pin, or make layout changes. Offers different options depending on your selection, i.e. formatting for text.</source>
+        <target>Veja o que você selecionou e altere-o. Copiar, recortar, colar, fixar ou fazer alterações no layout. Oferece diferentes opções dependendo de sua seleção, ou seja, formatação de texto.</target>
+      </trans-unit>
+      <trans-unit id="seaaaeb09e3b4e78b">
+        <source>Editing commands</source>
+        <target>Comandos de edição</target>
+      </trans-unit>
+      <trans-unit id="s8d83386457e91813">
+        <source>Undo/redo your changes or preview from the learner's perspective.</source>
+        <target>Desfaça/refaça suas alterações ou visualize a partir da perspectiva do aluno.</target>
+      </trans-unit>
+      <trans-unit id="s0e6ea8870dbddab2">
+        <source>Document commands</source>
+        <target>Comandos de documentos</target>
+      </trans-unit>
+      <trans-unit id="s0448f1059fa01720">
+        <source>Save, share or print your explorable. Edit information such as the title, language or license.</source>
+        <target>Salve, compartilhe ou imprima seu explorável. Edite informações como o título, o idioma ou a licença.</target>
+      </trans-unit>
+      <trans-unit id="s0c4b2e98d4ab7f5a">
+        <source>App commands</source>
+        <target>Comandos do aplicativo</target>
+      </trans-unit>
+      <trans-unit id="sa172190ea21f9b1c">
+        <source>Access the settings, open an explorable or create a new one.</source>
+        <target>Acesse as configurações, abra um explorável ou crie um novo.</target>
+      </trans-unit>
+      <trans-unit id="s4cc8391f172c0cdf">
+        <source>Dismiss tour</source>
+        <target>Dispensar a turnê</target>
+      </trans-unit>
+      <trans-unit id="s575e795c45e2d97e">
+        <source>Go back</source>
+        <target>Voltar</target>
+      </trans-unit>
+      <trans-unit id="sa778acc33947c7b8">
+        <source>Finish tour</source>
+        <target>Concluir a turnê</target>
+      </trans-unit>
+      <trans-unit id="s81ecf2d4386b8e84">
+        <source>Continue</source>
+        <target>Continuar</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

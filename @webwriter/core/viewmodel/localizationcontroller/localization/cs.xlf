@@ -3397,6 +3397,94 @@
         <source>Confirm</source>
         <target>Potvrďte</target>
       </trans-unit>
+      <trans-unit id="s3649bacefe731bf6">
+        <source>Toggle Toolbox</source>
+        <target>Přepínač Toolbox</target>
+      </trans-unit>
+      <trans-unit id="s542fcefa0bbaed86">
+        <source>Open or close the toolbox (only on narrow screens, otherwise, the toolbox is always visible on the side).</source>
+        <target>Otevření nebo zavření sady nástrojů (pouze na úzkých obrazovkách, jinak je sada nástrojů vždy viditelná na boku).</target>
+      </trans-unit>
+      <trans-unit id="se9ac05f36b004eb0">
+        <source>Hide the introductory tour. Disable so the tour is shown again.</source>
+        <target>Skrýt úvodní prohlídku. Zakázat, aby se prohlídka znovu zobrazila.</target>
+      </trans-unit>
+      <trans-unit id="sf2ab37af0abc55ef">
+        <source>Hide intro tour</source>
+        <target>Skrýt úvodní prohlídku</target>
+      </trans-unit>
+      <trans-unit id="s75109f5307578a61">
+        <source>Welcome to WebWriter</source>
+        <target>Vítejte ve WebWriteru</target>
+      </trans-unit>
+      <trans-unit id="s1d10d2058d8ca8dd">
+        <source>Want a short, guided tour?</source>
+        <target>Chcete krátkou prohlídku s průvodcem?</target>
+      </trans-unit>
+      <trans-unit id="s3bdad99768e11911">
+        <source>Explorable</source>
+        <target>Prozkoumatelné</target>
+      </trans-unit>
+      <trans-unit id="s0db05bd7ba6fff96">
+        <source>Your explorable document. You can write text and copy/paste, edit, etc. here.</source>
+        <target>Váš zkoumatelný dokument. Můžete zde psát text a kopírovat/vkládat, upravovat atd.</target>
+      </trans-unit>
+      <trans-unit id="sc8af536e2084ade0">
+        <source>Palette</source>
+        <target>Paleta</target>
+      </trans-unit>
+      <trans-unit id="s0b24d08ea349b455">
+        <source>Everything you can insert. At the start are non-interactive elements like lists or images, next are interactive elements called widgets. You can get new ones by clicking the search bar.</source>
+        <target>Vše, co lze vložit. Na začátku jsou neinteraktivní prvky, jako jsou seznamy nebo obrázky, další jsou interaktivní prvky zvané widgety. Nové můžete získat kliknutím na vyhledávací panel.</target>
+      </trans-unit>
+      <trans-unit id="s24949d7adbb5a098">
+        <source>Toolbox</source>
+        <target>Toolbox</target>
+      </trans-unit>
+      <trans-unit id="s806f84eb0ace116e">
+        <source>See what you have selected and change it. Copy, cut, paste, pin, or make layout changes. Offers different options depending on your selection, i.e. formatting for text.</source>
+        <target>Podívejte se, co jste vybrali, a změňte to. Kopírujte, vyjměte, vložte, připněte nebo změňte rozvržení. Nabízí různé možnosti v závislosti na výběru, tj. formátování textu.</target>
+      </trans-unit>
+      <trans-unit id="seaaaeb09e3b4e78b">
+        <source>Editing commands</source>
+        <target>Příkazy pro úpravy</target>
+      </trans-unit>
+      <trans-unit id="s8d83386457e91813">
+        <source>Undo/redo your changes or preview from the learner's perspective.</source>
+        <target>Vrátit/opravit změny nebo náhled z pohledu žáka.</target>
+      </trans-unit>
+      <trans-unit id="s0e6ea8870dbddab2">
+        <source>Document commands</source>
+        <target>Příkazy dokumentu</target>
+      </trans-unit>
+      <trans-unit id="s0448f1059fa01720">
+        <source>Save, share or print your explorable. Edit information such as the title, language or license.</source>
+        <target>Uložte, sdílejte nebo vytiskněte svůj průzkumník. Upravte informace, jako je název, jazyk nebo licence.</target>
+      </trans-unit>
+      <trans-unit id="s0c4b2e98d4ab7f5a">
+        <source>App commands</source>
+        <target>Příkazy aplikace</target>
+      </trans-unit>
+      <trans-unit id="sa172190ea21f9b1c">
+        <source>Access the settings, open an explorable or create a new one.</source>
+        <target>Přejděte do nastavení, otevřete průzkumnou položku nebo vytvořte novou.</target>
+      </trans-unit>
+      <trans-unit id="s4cc8391f172c0cdf">
+        <source>Dismiss tour</source>
+        <target>Ukončit prohlídku</target>
+      </trans-unit>
+      <trans-unit id="s575e795c45e2d97e">
+        <source>Go back</source>
+        <target>Vrátit se zpět</target>
+      </trans-unit>
+      <trans-unit id="sa778acc33947c7b8">
+        <source>Finish tour</source>
+        <target>Dokončení prohlídky</target>
+      </trans-unit>
+      <trans-unit id="s81ecf2d4386b8e84">
+        <source>Continue</source>
+        <target>Pokračovat</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>
