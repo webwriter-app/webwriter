@@ -166,6 +166,16 @@ export class SettingsController implements ReactiveController {
             ),
           label: msg("Show source editing commands"),
         },
+        hideIntro: {
+          schema: z
+            .boolean()
+            .describe(
+              msg(
+                "Hide the introductory tour. Disable so the tour is shown again."
+              )
+            ),
+          label: msg("Hide intro tour"),
+        },
         resetOnInitialize: {
           schema: z
             .boolean()

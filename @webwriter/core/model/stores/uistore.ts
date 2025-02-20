@@ -27,6 +27,8 @@ export class UIStore {
 
    stickyToolbox = false
 
+   hideIntro = false
+
    #authoringAnalytics = false
 
    get authoringAnalytics() {

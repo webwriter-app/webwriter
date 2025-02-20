@@ -1,6 +1,6 @@
 {
   "name": "webwriter",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Web-based authoring tool for explorables",
   "scripts": {
     "start": "npm run vite -- @webwriter/core",
@@ -38,7 +38,7 @@
     "@webwriter/*"
   ],
   "devDependencies": {
-    "@tabler/icons": "^3.3.0",
+    "@tabler/icons": "^3.30.0",
     "@tauri-apps/cli": "^1.6.0",
     "@types/semver": "^7.3.13",
     "@wagnerflo/cc-icons": "^1.2.1",

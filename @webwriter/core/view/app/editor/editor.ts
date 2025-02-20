@@ -473,6 +473,12 @@ export class ExplorableEditor extends LitElement {
         display: none !important;
       }
 
+      @media only screen and (min-width: 1131px) {
+        ww-toolbox::part(close-button) {
+          display: none;
+        }
+			}
+
 			@media only screen and (max-width: 1360px) {
 				ww-palette {
 					grid-column: 1 / 8;
@@ -1421,13 +1427,10 @@ export class ExplorableEditor extends LitElement {
       justifySelf: "start",
       alignSelf: "start"
     }
-		else if(!this.toolboxY) return {
-			display: "none"
-		}
 		else if(toolboxMode === "popup") return {
 			position: "absolute",
-			left: `${this.toolboxX}px`,
-			top: `${this.toolboxY}px`,
+			left: `${this.toolboxX ?? 40}px`,
+			top: `${this.toolboxY ?? 20}px`,
 			border: "1px solid lightgray",
 			padding: "12px",
 			boxShadow: "var(--sl-shadow-medium)",
@@ -1480,6 +1483,9 @@ export class ExplorableEditor extends LitElement {
 					this.activeElement?.scrollIntoView({behavior: "smooth", block: "center"})
 					!e.detail.widget? this.pmEditor?.focus(): e.detail.widget.focus()
 				}}
+        @ww-close=${(e: CustomEvent) => {
+          this.forceToolboxPopup = false
+        }}
         @ww-set-attribute=${(e: CustomEvent) => this.setNodeAttribute(e.detail.el, e.detail.key, e.detail.value, e.detail.tag)}
         @ww-set-style=${(e: CustomEvent) => {
           if(!isNodeSelection(this.selection) && !this.isAllSelected) {
@@ -1505,6 +1511,7 @@ export class ExplorableEditor extends LitElement {
 	Palette = () => {
 		return html`
 			<ww-palette
+        .forceToolboxPopup=${!!this.forceToolboxPopup}
         .app=${this.app}
         .editorState=${this.editorState}
 				part="editor-toolbox"

@@ -2506,6 +2506,17 @@ export class CommandController implements ReactiveController {
         category: "miscellaneous",
         fixedShortcut: true,
       }),
+      toggleToolbox: new Command(this.host, {
+        id: "toggleToolbox",
+        label: () => msg("Toggle Toolbox"),
+        icon: "tools",
+        description: () => msg("Open or close the toolbox (only on narrow screens, otherwise, the toolbox is always visible on the side)."),
+        run: host => {host.activeEditor!.forceToolboxPopup = !host.activeEditor!.forceToolboxPopup; host.activeEditor?.palette.requestUpdate()},
+        active: host => !!host.activeEditor!.forceToolboxPopup,
+        shortcut: "contextmenu",
+        category: "miscellaneous",
+        fixedShortcut: true,
+      }),
       setDocAttrs: new Command(this.host, {
         id: "setDocAttrs",
         run: (host, options) =>

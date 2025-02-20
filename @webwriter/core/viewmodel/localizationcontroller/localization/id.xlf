@@ -3398,6 +3398,94 @@
         <source>Confirm</source>
         <target>Konfirmasi</target>
       </trans-unit>
+      <trans-unit id="s3649bacefe731bf6">
+        <source>Toggle Toolbox</source>
+        <target>Alihkan Kotak Alat</target>
+      </trans-unit>
+      <trans-unit id="s542fcefa0bbaed86">
+        <source>Open or close the toolbox (only on narrow screens, otherwise, the toolbox is always visible on the side).</source>
+        <target>Membuka atau menutup kotak alat (hanya pada layar yang sempit, jika tidak, kotak alat selalu terlihat di samping).</target>
+      </trans-unit>
+      <trans-unit id="se9ac05f36b004eb0">
+        <source>Hide the introductory tour. Disable so the tour is shown again.</source>
+        <target>Menyembunyikan tur pengantar. Nonaktifkan agar tur ditampilkan lagi.</target>
+      </trans-unit>
+      <trans-unit id="sf2ab37af0abc55ef">
+        <source>Hide intro tour</source>
+        <target>Sembunyikan tur pengenalan</target>
+      </trans-unit>
+      <trans-unit id="s75109f5307578a61">
+        <source>Welcome to WebWriter</source>
+        <target>Selamat datang di WebWriter</target>
+      </trans-unit>
+      <trans-unit id="s1d10d2058d8ca8dd">
+        <source>Want a short, guided tour?</source>
+        <target>Ingin tur singkat dengan pemandu?</target>
+      </trans-unit>
+      <trans-unit id="s3bdad99768e11911">
+        <source>Explorable</source>
+        <target>Dapat dieksplorasi</target>
+      </trans-unit>
+      <trans-unit id="s0db05bd7ba6fff96">
+        <source>Your explorable document. You can write text and copy/paste, edit, etc. here.</source>
+        <target>Dokumen Anda yang dapat dieksplorasi. Anda dapat menulis teks dan menyalin/menempel, mengedit, dll. di sini.</target>
+      </trans-unit>
+      <trans-unit id="sc8af536e2084ade0">
+        <source>Palette</source>
+        <target>Palet</target>
+      </trans-unit>
+      <trans-unit id="s0b24d08ea349b455">
+        <source>Everything you can insert. At the start are non-interactive elements like lists or images, next are interactive elements called widgets. You can get new ones by clicking the search bar.</source>
+        <target>Segala sesuatu yang bisa Anda sisipkan. Pada awalnya adalah elemen non-interaktif seperti daftar atau gambar, selanjutnya adalah elemen interaktif yang disebut widget. Anda bisa mendapatkan yang baru dengan mengklik bilah pencarian.</target>
+      </trans-unit>
+      <trans-unit id="s24949d7adbb5a098">
+        <source>Toolbox</source>
+        <target>Kotak peralatan</target>
+      </trans-unit>
+      <trans-unit id="s806f84eb0ace116e">
+        <source>See what you have selected and change it. Copy, cut, paste, pin, or make layout changes. Offers different options depending on your selection, i.e. formatting for text.</source>
+        <target>Lihat apa yang telah Anda pilih dan ubahlah. Menyalin, memotong, menempel, menyematkan, atau membuat perubahan tata letak. Menawarkan pilihan yang berbeda tergantung pada pilihan Anda, misalnya pemformatan teks.</target>
+      </trans-unit>
+      <trans-unit id="seaaaeb09e3b4e78b">
+        <source>Editing commands</source>
+        <target>Perintah pengeditan</target>
+      </trans-unit>
+      <trans-unit id="s8d83386457e91813">
+        <source>Undo/redo your changes or preview from the learner's perspective.</source>
+        <target>Batalkan/ulang perubahan Anda atau lihat pratinjau dari sudut pandang pelajar.</target>
+      </trans-unit>
+      <trans-unit id="s0e6ea8870dbddab2">
+        <source>Document commands</source>
+        <target>Perintah dokumen</target>
+      </trans-unit>
+      <trans-unit id="s0448f1059fa01720">
+        <source>Save, share or print your explorable. Edit information such as the title, language or license.</source>
+        <target>Menyimpan, membagikan, atau mencetak hasil eksplorasi Anda. Mengedit informasi seperti judul, bahasa, atau lisensi.</target>
+      </trans-unit>
+      <trans-unit id="s0c4b2e98d4ab7f5a">
+        <source>App commands</source>
+        <target>Perintah aplikasi</target>
+      </trans-unit>
+      <trans-unit id="sa172190ea21f9b1c">
+        <source>Access the settings, open an explorable or create a new one.</source>
+        <target>Mengakses pengaturan, membuka pengaturan yang dapat dieksplorasi atau membuat pengaturan baru.</target>
+      </trans-unit>
+      <trans-unit id="s4cc8391f172c0cdf">
+        <source>Dismiss tour</source>
+        <target>Bubarkan tur</target>
+      </trans-unit>
+      <trans-unit id="s575e795c45e2d97e">
+        <source>Go back</source>
+        <target>Kembali.</target>
+      </trans-unit>
+      <trans-unit id="sa778acc33947c7b8">
+        <source>Finish tour</source>
+        <target>Selesaikan tur</target>
+      </trans-unit>
+      <trans-unit id="s81ecf2d4386b8e84">
+        <source>Continue</source>
+        <target>Lanjutkan</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

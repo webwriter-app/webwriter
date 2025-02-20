@@ -2,7 +2,7 @@ import { LitElement, TemplateResult, css, html } from "lit"
 import { customElement, property, query, queryAll } from "lit/decorators.js"
 
 
-import { prettifyPackageName, unscopePackageName } from "#utility"
+import { emitCustomEvent, prettifyPackageName, unscopePackageName } from "#utility"
 import { classMap } from "lit/directives/class-map.js"
 import { localized, msg } from "@lit/localize"
 import { Command, LayoutCommand } from "#viewmodel"
@@ -720,6 +720,7 @@ export class  Toolbox extends LitElement {
 
       #element-breadcrumb::part(base) {
         border-bottom: 2px solid var(--sl-color-gray-600);
+        min-height: 45px;
       }
 
       #element-breadcrumb sl-tree-item {
@@ -969,7 +970,25 @@ export class  Toolbox extends LitElement {
       .inline-toolbox:not([data-active]) {
         display: none;
       }
-      
+
+      #close-button {
+        position: absolute;
+        right: 0;
+        top: 0;
+        &::part(base) {
+          padding: var(--sl-spacing-small);
+        }
+      }
+          
+      :host(.intro-target) * {
+        animation: blink-color 1.5s linear infinite;
+      } 
+
+      @keyframes blink-color {
+        50% {
+          color: var(--sl-color-primary-600);
+        }
+      }
     `
   }
   
@@ -1624,6 +1643,7 @@ export class  Toolbox extends LitElement {
         ${this.BlockToolbox(this.activeElement)}
         <aside class="context-toolbox">${this.activeElementPath.map(el => this.ContextToolbox(el))}</aside>
         ${this.InlineToolbox()}
+        <sl-icon-button name="x" id="close-button" part="close-button" @click=${() => emitCustomEvent(this, "ww-close")}></sl-icon-button>
       `
   }
 }
