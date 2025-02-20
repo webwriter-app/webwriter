@@ -782,6 +782,16 @@ export class Palette extends LitElement {
 		}
 
     */
+
+    :host(.intro-target) *, .intro-target {
+      animation: blink-color 1.5s linear infinite;
+    } 
+
+    @keyframes blink-color {
+      50% {
+        color: var(--sl-color-primary-600);
+      }
+    }
 	`
 
 	private handleClickCard(pkg: Package | Command, snippetName?: string) {

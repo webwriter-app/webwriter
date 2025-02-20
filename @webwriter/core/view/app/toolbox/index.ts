@@ -969,6 +969,16 @@ export class  Toolbox extends LitElement {
       .inline-toolbox:not([data-active]) {
         display: none;
       }
+
+      :host(.intro-target) * {
+        animation: blink-color 1.5s linear infinite;
+      } 
+
+      @keyframes blink-color {
+        50% {
+          color: var(--sl-color-primary-600);
+        }
+      }
       
     `
   }
