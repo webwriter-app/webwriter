@@ -473,6 +473,12 @@ export class ExplorableEditor extends LitElement {
         display: none !important;
       }
 
+      @media only screen and (min-width: 1131px) {
+        ww-toolbox::part(close-button) {
+          display: none;
+        }
+			}
+
 			@media only screen and (max-width: 1360px) {
 				ww-palette {
 					grid-column: 1 / 8;
@@ -1477,6 +1483,9 @@ export class ExplorableEditor extends LitElement {
 					this.activeElement?.scrollIntoView({behavior: "smooth", block: "center"})
 					!e.detail.widget? this.pmEditor?.focus(): e.detail.widget.focus()
 				}}
+        @ww-close=${(e: CustomEvent) => {
+          this.forceToolboxPopup = false
+        }}
         @ww-set-attribute=${(e: CustomEvent) => this.setNodeAttribute(e.detail.el, e.detail.key, e.detail.value, e.detail.tag)}
         @ww-set-style=${(e: CustomEvent) => {
           if(!isNodeSelection(this.selection) && !this.isAllSelected) {
