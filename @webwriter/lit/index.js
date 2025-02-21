@@ -776,11 +776,11 @@ var LitElementWw = class extends (_a = ScopedElementsMixin2(h3), _contentEditabl
   }
   set lang(value) {
     __privateSet(this, _lang, value);
-    this.localize.setLocale(value).finally(() => this.requestUpdate("lang"));
+    this.localize?.setLocale(value).finally(() => this.requestUpdate("lang"));
   }
   connectedCallback() {
     super.connectedCallback();
-    this.localize.setLocale(this.lang).finally(() => this.requestUpdate());
+    this.localize?.setLocale(this.lang).finally(() => this.requestUpdate());
     this.getAttributeNames().forEach((k2) => this.setAttribute(k2, this.getAttribute(k2)));
   }
 };

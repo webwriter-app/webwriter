@@ -152,7 +152,7 @@ export class LitElementWw extends ScopedElementsMixin(LitElement) {
   @property({type: String, attribute: true, reflect: true})
   set lang(value) {
     this.#lang = value
-    this.localize.setLocale(value).finally(() => this.requestUpdate("lang"))
+    this.localize?.setLocale(value).finally(() => this.requestUpdate("lang"))
   }
 
   /** @internal */
@@ -160,7 +160,7 @@ export class LitElementWw extends ScopedElementsMixin(LitElement) {
 
   connectedCallback(): void {
     super.connectedCallback()
-    this.localize.setLocale(this.lang).finally(() => this.requestUpdate())
+    this.localize?.setLocale(this.lang).finally(() => this.requestUpdate())
     this.getAttributeNames().forEach(k => this.setAttribute(k, this.getAttribute(k)))
   }
 }
