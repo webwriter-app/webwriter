@@ -22,7 +22,7 @@ export class BackupController implements ReactiveController {
   pendingBackup: number | undefined
   parserSerializer = new HTMLParserSerializer()
 
-  updatePool: EditorStateWithHead[] = []
+  latestChange: EditorStateWithHead | undefined
 
   async hostConnected() {
     this.host.addEventListener("update", (e: any) => this.requestBackup(e.detail.editorState), {passive: true})
@@ -32,13 +32,13 @@ export class BackupController implements ReactiveController {
     if(!this.store.ui.autosave) {
       return
     }
-    this.updatePool.push(state)
+    this.latestChange = state
     if(!this.pendingBackup) {
       this.pendingBackup = setTimeout(async () => {
-        const length = this.updatePool.length
-        const last = this.updatePool.at(-1)!
-        await this.backup(last)
-        this.updatePool = this.updatePool.slice(length)
+        if(this.latestChange) {
+          await this.backup(this.latestChange)
+        }
+        this.latestChange = undefined
         this.pendingBackup = undefined
       }, 1000) as unknown as number
     }
