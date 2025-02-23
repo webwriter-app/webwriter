@@ -7,8 +7,9 @@ export * from "./settingscontroller"
 export * from "./storecontroller"
 export * from "./environmentcontroller"
 export * from "./iconcontroller"
+export * from "./backupcontroller"
 
-import {StoreController, EnvironmentController, CommandController, LocalizationController, NotificationController, SettingsController, IconController} from "#viewmodel"
+import {StoreController, EnvironmentController, CommandController, LocalizationController, NotificationController, SettingsController, IconController, BackupController} from "#viewmodel"
 import { HTTPClient, RootStore } from "#model"
 import { msg } from "@lit/localize"
 import posthog from "posthog-js"
@@ -37,6 +38,7 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
 	notifications: NotificationController
 	settings: SettingsController
   icons: IconController
+  backups: BackupController
 
   initialized: Promise<void>
   initializing: boolean = false
@@ -67,6 +69,7 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
       this.localization = new LocalizationController(this, this.store)
       this.commands = new CommandController(this as any, this.store)
       this.notifications = new NotificationController(this, this.store)
+      this.backups = new BackupController(this as any, this.store)
       if(this.store.ui.authoringAnalytics) {
         await Promise.race([
           idle(15000),
@@ -111,6 +114,14 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
         )
         locationUrl.searchParams.delete("src")
         history.replaceState({}, "", locationUrl)
+      }
+      if(!isSettings) {
+        try {
+          await this.backups.restore()
+        }
+        catch(err) {
+          console.error(err)
+        }
       }
       this.requestUpdate()
       this.initializing = false
