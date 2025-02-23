@@ -43,10 +43,35 @@ function createInitializerScript(id: string, tag: string, content: string) {
   `
 }
 
-export async function docToBundle(doc: Node, head: Node) {
+export async function docToBundle(doc: Node, head: Node, noDeps=false) {
   let html = document.implementation.createHTMLDocument()
   const serializer = DOMSerializer.fromSchema(doc.type.schema)
   serializer.serializeFragment(doc.content, {document: html}, html.body)
+
+  // Generate head
+  html.head.replaceWith(headSerializer.serializeNode(head))
+  for(let [key, value] of Object.entries(head.attrs.htmlAttrs ?? {})) {
+    html.documentElement.setAttribute(key, value as string)
+  }
+
+  // Minify theme CSS
+  for(let styleEl of Array.from(html.querySelectorAll("head > style"))) {
+    styleEl.textContent = styleEl.textContent?.replaceAll("\n", "") ?? null
+  }
+
+  // Embed media elements
+  const mediaElements = html.body.querySelectorAll(":is(img, source, embed, audio, video)") as NodeListOf<HTMLSourceElement | HTMLImageElement>
+  for(const [i, el] of Array.from(mediaElements).entries()) {
+    if(!el.src || !el.src.startsWith("blob:")) {
+      continue
+    }
+    const blob = await (await fetch(el.src)).blob()
+    el.src = await createDataURL(blob)
+  }
+
+  if(noDeps) {
+    return {html}
+  }
 
   // Generate bundle
   const widgets = html.querySelectorAll(".ww-widget")
@@ -79,27 +104,6 @@ export async function docToBundle(doc: Node, head: Node) {
     importIDs.forEach(id => cssUrl.searchParams.append("id", id.replace(".js", ".css").replace(".*", ".css")))
     const bundleCSS = await (await fetch(cssUrl)).text()
     css = bundleCSS
-  }
-  
-  // Generate head
-  html.head.replaceWith(headSerializer.serializeNode(head))
-  for(let [key, value] of Object.entries(head.attrs.htmlAttrs ?? {})) {
-    html.documentElement.setAttribute(key, value as string)
-  }
-
-  // Minify theme CSS
-  for(let styleEl of Array.from(html.querySelectorAll("head > style"))) {
-    styleEl.textContent = styleEl.textContent?.replaceAll("\n", "") ?? null
-  }
-
-  // Embed media elements
-  const mediaElements = html.body.querySelectorAll(":is(img, source, embed, audio, video)") as NodeListOf<HTMLSourceElement | HTMLImageElement>
-  for(const [i, el] of Array.from(mediaElements).entries()) {
-    if(!el.src || !el.src.startsWith("blob:")) {
-      continue
-    }
-    const blob = await (await fetch(el.src)).blob()
-    el.src = await createDataURL(blob)
   }
 
   // Run serializedCallbacks in iframe
@@ -182,26 +186,31 @@ export class HTMLParserSerializer extends ParserSerializer {
     return editorState
   }
 
-  async serializeToDOM(state: EditorStateWithHead) {
+  async serializeToDOM(state: EditorStateWithHead, noDeps=false) {
 
-    const {html, js, css} = await docToBundle(state.doc, state.head$.doc)
+    const {html, js, css} = await docToBundle(state.doc, state.head$.doc, noDeps)
 
-    const script = html.createElement("script")
-    script.type = "module"
-    // script.defer = true
-    script.text = js
-    script.setAttribute("data-ww-editing", "bundle")
-    html.head.appendChild(script)
+    if(js) {
+      const script = html.createElement("script")
+      script.type = "module"
+      // script.defer = true
+      script.text = js
+      script.setAttribute("data-ww-editing", "bundle")
+      html.head.appendChild(script)
+    }
   
-    const style = html.createElement("style")
-    style.textContent = css ?? ""
-    style.setAttribute("data-ww-editing", "bundle")
-    html.head.appendChild(style)
+    if(css) {
+      const style = html.createElement("style")
+      style.textContent = css ?? ""
+      style.setAttribute("data-ww-editing", "bundle")
+      html.head.appendChild(style)
+    }
+    
     return html
   }
   
-  async serialize(state: EditorStateWithHead) {
-    const html = await this.serializeToDOM(state)
+  async serialize(state: EditorStateWithHead, noDeps=false) {
+    const html = await this.serializeToDOM(state, noDeps)
     return `<!DOCTYPE html>` + html.documentElement.outerHTML
   }
 }

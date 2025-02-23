@@ -14,7 +14,6 @@ const formats = {
 export default formats
 
 export function getParserSerializerByExtension(pathname: string) {
-  console.log(pathname)
   const ext = getFileExtension(pathname)
   return Object.values(formats).find((ps: any) => ps.extensions.includes(ext))
 }
