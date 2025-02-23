@@ -136,6 +136,16 @@ export class SettingsController implements ReactiveController {
             ),
           label: msg("Language"),
         },
+        autosave: {
+          schema: z
+            .boolean()
+            .describe(
+              msg(
+                "Backup changes to the current document automatically. Changes are restored when WebWriter is reloaded."
+              )
+            ),
+          label: msg("Autosave"),
+        },
         showUnstable: {
           schema: z
             .boolean()

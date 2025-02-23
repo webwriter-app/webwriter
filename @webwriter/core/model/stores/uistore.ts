@@ -53,6 +53,7 @@ export class UIStore {
    showUnknown = false
    showSourceEditor = false
    resetOnInitialize = false
+   autosave = true
 
    keymap: Record<string, {shortcut: string}> = {}
 
