@@ -327,7 +327,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
     for(let attr of this.documentElement.getAttributeNames()) {
       this.documentElement.removeAttribute(attr)
     }
-    for(let [key, value] of Object.entries(toAttributes(headState.doc.attrs.htmlAttrs ?? {}))) {
+    for(let [key, value] of Object.entries(toAttributes({}, headState.doc.attrs.htmlAttrs ?? {}))) {
       this.documentElement.setAttribute(key, value as string)
     }
     for(let attr of this.body.getAttributeNames()) {
