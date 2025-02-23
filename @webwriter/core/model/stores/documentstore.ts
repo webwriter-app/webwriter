@@ -264,7 +264,6 @@ export class DocumentStore implements Resource {
     schema = this.editorState.schema,
     setUrl = true
   ) {
-    console.log(url)
     this.ioState = "loading";
     try {
       let newUrl = url;
@@ -278,7 +277,6 @@ export class DocumentStore implements Resource {
         newParser = foundPs ? new foundPs() : parser;
       }
       const data = await client.loadDocument(newUrl as any);
-      console.log(data)
       if (!data) {
         return;
       }
@@ -287,7 +285,7 @@ export class DocumentStore implements Resource {
       if (this.codeState) {
         this.deriveCodeState();
       }
-      this.url = setUrl? url: this.url;
+      this.url = setUrl? newUrl: this.url;
       return data;
     } finally {
       this.ioState = "idle";
