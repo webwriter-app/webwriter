@@ -123,6 +123,10 @@ export class DocumentStore implements Resource {
     );
   }
 
+  get id() {
+    return this.editorState.head$.doc?.attrs?.htmlAttrs?.id
+  }
+
   get lastSavedCodeState() {
     return DocumentStore.editorToCodeState(this.lastSavedState);
   }
