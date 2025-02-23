@@ -1077,6 +1077,12 @@ export class CommandController implements ReactiveController {
               host.dialog = undefined;
             }
           }
+          try {
+            await host.backups.restore()
+          }
+          catch(err) {
+            console.error(err)
+          }
         },
         category: "app",
       }),
