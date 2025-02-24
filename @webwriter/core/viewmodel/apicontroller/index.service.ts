@@ -501,7 +501,7 @@ async function putSnippet(id: string, snippet: Snippet) {
   await new Promise(r => db.addEventListener("success", r))
   const tx = db.result.transaction("snippets", "readwrite")
   const store = tx.objectStore("snippets")
-  const req = store.put(snippet, parseInt(id))
+  const req = store.put(snippet)
   await new Promise(r => req.addEventListener("success", async () => {
     db.result.close()
     r(String(req.result))

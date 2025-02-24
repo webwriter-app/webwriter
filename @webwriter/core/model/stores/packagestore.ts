@@ -17,7 +17,7 @@ type Options = {
 }
 
 type Snippet = {
-  id: string,
+  id: number,
   label?: Record<string, string>,
   html: string
 }
@@ -472,9 +472,13 @@ export class PackageStore {
     await this.updateLocalWatchIntervals(local)
     final = available.map(pkg => pkg.extend({installed: this.installedPackages.includes(pkg.id)})).sort((a, b) => Number(!!b.installed) - Number(!!a.installed))
     const snippetData = await this.getSnippet(undefined)
-    const snippets = snippetData.map(snippet => {
-      return new Package({name: `snippet-${parseInt(snippet.id)}`, version: "0.0.0-snippet", private: true})
-    }).reverse()
+    const snippets = snippetData.map(({id, label, html}) => new Package({
+      name: `snippet-${id}`,
+      version: "0.0.0-snippet",
+      private: true,
+      html,
+      editingConfig: {".": {label}}
+    })).reverse()
     final = [...snippets, ...local, ...final]
     await this.updateImportMap()
     this.bundleID = PackageStore.computeBundleID(this.installedPackages, false, final.some(pkg => pkg.localPath)? this.lastLoaded: undefined);

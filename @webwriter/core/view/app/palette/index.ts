@@ -441,6 +441,36 @@ export class Palette extends LitElement {
 
     .snippet-card {
       grid-column: span 6;
+
+      & .snippet-label, & .title {
+        justify-content: space-between;
+      }
+
+      & .snippet-label::part(base) {
+        border: none;
+        align-items: center;
+        height: calc(var(--sl-input-height-small) - 6px);
+        background: none;
+        margin-left: -2px;
+      }
+
+      & .snippet-label::part(input) {
+        padding-left: 2px;
+        font-size: 0.9rem;
+        color: black;
+      }
+
+      & .unpin:not(:hover)::part(base) {
+        color: black !important;
+      }
+    }
+
+    :host(:not([managing])) {
+      & .snippet-label::part(base) {
+        cursor: pointer;
+        opacity: 1;
+        user-select: none;
+      }
     }
 
     #pin-preview {
@@ -912,11 +942,18 @@ export class Palette extends LitElement {
 	</sl-card>`
   }
 
-  SnippetCard = (pkg: Package) => {
-    const {name} = pkg
+  @property({type: String})
+  editingID: string
+
+  SnippetCard = (pkg: Package & {_: {html: string}}) => {
+    const {name, editingConfig, _: {html: snippetHtml}} = pkg
+    const label = (editingConfig ?? {})["."]?.label?._ ?? prettifyPackageName(name)
     return html`<sl-card class=${classMap({"package-card": true, "snippet-card": true})}>
       <span @click=${() => this.handleClickCard(pkg)} class="title" @mouseenter=${() => this.handleMouseenterInsertable(pkg)} @mouseleave=${() => this.handleMouseleaveInsertable(pkg)}>
-        <span>${prettifyPackageName(name)}</span>
+        ${this.managing
+          ? html`<sl-input style=${`width: ${label.length}ch`} class="snippet-label" size="small" type="text" value=${label} @focusin=${(e: any) => {e.preventDefault(); e.stopPropagation()}} @click=${(e: any) => {e.preventDefault(); e.stopPropagation()}} @sl-change=${(e: any) => {this.app.store.packages.putSnippet(name, {id: parseInt(name.split("-").at(-1)!), html: snippetHtml, label: {_: e.target.value}}); this.blur()}}></sl-input>`
+          : html`<span class="snippet-label">${label}</span>`
+        }
         <ww-button title=${msg("Unpin this snippet")} ?inert=${!this.managing} class="unpin" variant="icon" icon=${this.managing? "trash": "pinned-filled"}  @focusin=${(e: any) => {e.preventDefault(); e.stopPropagation()}} @click=${(e: any) => {this.app.store.packages.removeSnippet(name.split("-")[1]); e.stopPropagation(); e.preventDefault()}}></ww-button>
 			</span>
 		<sl-progress-bar></sl-progress-bar>
@@ -941,7 +978,7 @@ export class Palette extends LitElement {
 
   Card = (cmdOrPkg: Command | Command[] | Package) => {
     if("name" in cmdOrPkg && cmdOrPkg.isSnippet) {
-      return this.SnippetCard(cmdOrPkg)
+      return this.SnippetCard(cmdOrPkg as any)
     }
     if("name" in cmdOrPkg) {
       return this.BlockCard(cmdOrPkg)
