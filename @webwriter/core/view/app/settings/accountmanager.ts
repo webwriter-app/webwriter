@@ -465,7 +465,7 @@ export class AccountManager extends LitElement {
   render() {
     const accounts = this.app.store.accounts.accounts;
     const types = Object.keys(accounts).filter(
-      (k) => k === "pocketbase" || k === "llm"
+      (k) => k === "pocketbase"
     ) as AccountTypeId[];
     return html` ${types.map((t) => this.AccountsPane(t, (accounts as any)[t]))} `;
   }
