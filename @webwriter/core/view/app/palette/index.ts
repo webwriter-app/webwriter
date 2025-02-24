@@ -685,7 +685,6 @@ export class Palette extends LitElement {
         max-width: unset;
         overflow-x: scroll;
         scrollbar-width: thin;
-        padding-left: 5px;
         // overflow-y: hidden;
       }
 
@@ -736,6 +735,10 @@ export class Palette extends LitElement {
       }
       #add-local {
         margin-right: 1ch;
+      }
+
+      #package-toolbar {
+        padding-left: 5px;
       }
 
       #package-search:not(:focus-within)[data-invalid] {
