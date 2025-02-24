@@ -11,7 +11,7 @@ import { Button } from "../../elements/ui/button"
 import { SlCard, SlInput } from "@shoelace-style/shoelace";
 import { ClientResponseError } from "pocketbase";
 
-import APPICON from "../../assets/app-icon-transparent.svg?raw"
+import APPICON from "../../assets/app-icon-transparent.svg"
 
 @localized()
 @customElement("ww-account-manager")
