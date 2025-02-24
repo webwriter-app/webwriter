@@ -1007,7 +1007,7 @@ export class CommandController implements ReactiveController {
           host.requestUpdate();
         },
         category: "editor",
-        disabled: (host) => host.activeEditor!.previewMode,
+        disabled: (host) => host.activeEditor!.previewMode || !host.store.ui.showSourceEditor,
         active: (host) => Boolean(host.activeEditor!.sourceMode),
       }),
       togglePreviewMode: new Command(this.host, {
