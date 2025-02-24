@@ -2130,18 +2130,17 @@ export class CommandController implements ReactiveController {
       }),*/
       boxStyle: new LayoutCommand(this.host, {
         id: "boxStyle",
-        label: () => msg("Position/Shape"),
+        label: () => WEBWRITER_ENVIRONMENT.engine.name === "Gecko"? msg("This feature is unavailable in Firefox. It is available in Chrome or Edge."): msg("Position/Shape"),
         icon: "box-margin",
-        description: () =>
-          msg("Set the size, padding, and margins of the selected elements"), // "css-border-collapse"
+        description: () => msg("Set the size, padding, and margins of the selected elements"), // "css-border-collapse"
         tags: ["layout"],
         active: host => PICKER_COMMAND_PROPERTIES.boxStyle.some(name => host.activeEditor?.activeElement?.style.getPropertyValue(name)),
-        disabled: host => host.activeEditor!.isGapSelected,
+        disabled: host => host.activeEditor!.isGapSelected || WEBWRITER_ENVIRONMENT.engine.name === "Gecko",
       }),
       layoutStyle: new LayoutCommand(this.host, {
         // + flex/grid/table/list container options
         id: "layoutStyle",
-        label: () => msg("Layout"),
+        label: () => WEBWRITER_ENVIRONMENT.engine.name === "Gecko"? msg("This feature is unavailable in Firefox. It is available in Chrome or Edge."): msg("Layout"),
         icon: "layout",
         description: () => msg("Set the layout of the selected elements"),
         category: "editor",
@@ -2189,16 +2188,13 @@ export class CommandController implements ReactiveController {
           "css-flex",
           "css-grid-area",
         ],
-        disabled: host => host.activeEditor!.isGapSelected,
+        disabled: host => host.activeEditor!.isGapSelected || WEBWRITER_ENVIRONMENT.engine.name === "Gecko",
       }),
       textStyle: new LayoutCommand(this.host, {
         id: "textStyle",
-        label: () => msg("Text Style"),
+        label: () => WEBWRITER_ENVIRONMENT.engine.name === "Gecko"? msg("This feature is unavailable in Firefox. It is available in Chrome or Edge."):msg("Text Style"),
         icon: "align-left",
-        description: () =>
-          msg(
-            "Set text style (alignment, indentation, spacing, etc.) of selected elements"
-          ),
+        description: () => msg("Set text style (alignment, indentation, spacing, etc.) of selected elements"),
         category: "editor",
         tags: [
           "layout",
@@ -2236,15 +2232,14 @@ export class CommandController implements ReactiveController {
           "css-ruby-position",
         ],
         active: host => PICKER_COMMAND_PROPERTIES.textStyle.some(name => host.activeEditor?.activeElement?.style.getPropertyValue(name)),
-        disabled: host => host.activeEditor!.isGapSelected,
+        disabled: host => host.activeEditor!.isGapSelected || WEBWRITER_ENVIRONMENT.engine.name === "Gecko",
       }),
       blendingStyle: new LayoutCommand(this.host, {
         // + opacity
         id: "blendingStyle",
-        label: () => msg("Colors/Effects"),
+        label: () => WEBWRITER_ENVIRONMENT.engine.name === "Gecko"? msg("This feature is unavailable in Firefox. It is available in Chrome or Edge."): msg("Colors/Effects"),
         icon: "brightness",
-        description: () =>
-          msg("Set filters, color, and blending of selected elements"),
+        description: () => msg("Set filters, color, and blending of selected elements"),
         category: "editor",
         tags: [
           "layout",
@@ -2262,14 +2257,13 @@ export class CommandController implements ReactiveController {
           "css-background-position-x",
           "css-background-position-y",
         ],
-        disabled: host => host.activeEditor!.isGapSelected,
+        disabled: host => host.activeEditor!.isGapSelected || WEBWRITER_ENVIRONMENT.engine.name === "Gecko",
       }),
       interactivityStyle: new LayoutCommand(this.host, {
         id: "interactivityStyle",
-        label: () => msg("Interactivity"),
+        label: () => WEBWRITER_ENVIRONMENT.engine.name === "Gecko"? msg("This feature is unavailable in Firefox. It is available in Chrome or Edge."): msg("Interactivity"),
         icon: "hand-click",
-        description: () =>
-          msg("Set interactivity options for selected elements"),
+        description: () => msg("Set interactivity options for selected elements"),
         category: "editor",
         tags: [
           "layout",
@@ -2292,7 +2286,7 @@ export class CommandController implements ReactiveController {
           "css-scroll-snap-stop",
           "css-scroll-snap-type",
         ],
-        disabled: host => host.activeEditor!.isGapSelected,
+        disabled: host => host.activeEditor!.isGapSelected || WEBWRITER_ENVIRONMENT.engine.name === "Gecko",
       }),
       /*filterStyle: new LayoutCommand(this.host, {
         id: "filterStyle",
@@ -2484,7 +2478,7 @@ export class CommandController implements ReactiveController {
       miscellaneousStyle: new LayoutCommand(this.host, {
         // --custom and all
         id: "miscellaneousStyle",
-        label: () => msg("Miscellaneous"),
+        label: () => WEBWRITER_ENVIRONMENT.engine.name === "Gecko"? msg("This feature is unavailable in Firefox. It is available in Chrome or Edge."): msg("Miscellaneous"),
         icon: "dots-circle-horizontal",
         description: () => msg("Set other style options of selected elements"),
         category: "editor",
@@ -2501,7 +2495,7 @@ export class CommandController implements ReactiveController {
           "css-paint-order",
           "css-print-color-adjust"*/
         ],
-        disabled: host => host.activeEditor!.isGapSelected,
+        disabled: host => host.activeEditor!.isGapSelected || WEBWRITER_ENVIRONMENT.engine.name === "Gecko",
       }),
       toggleDevTools: new Command(this.host, {
         id: "toggleDevTools",
