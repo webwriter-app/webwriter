@@ -473,7 +473,7 @@ export class ExplorableEditor extends LitElement {
         display: none !important;
       }
 
-      @media only screen and (min-width: 1131px) {
+      @media only screen and (min-width: 1130px) {
         ww-toolbox::part(close-button) {
           display: none;
         }
