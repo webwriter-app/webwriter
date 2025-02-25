@@ -15,7 +15,7 @@ import {GapCursor} from "prosemirror-gapcursor"
 // @ts-ignore
 import {render as latexToMathML} from "temml/dist/temml.cjs"
 import { SlColorPicker, SlTree } from "@shoelace-style/shoelace"
-import { CSSPropertySpecs, MATHML_TAGS } from "#model/index.js"
+import { CSSPropertySpecs, MATHML_TAGS, Package } from "#model/index.js"
 import { LitPickerElement } from "#view/elements/stylepickers/index.js"
 
 
@@ -1475,10 +1475,13 @@ export class  Toolbox extends LitElement {
     </sl-dropdown>`
 
     if(isCustomElement) {
+      const pkg = Package.fromElement(el as HTMLElement)
+      const icon = pkg? this.app.store.packages.packageIcons[pkg.id]: undefined
       const content = html`<ww-button
         title=${elementName}
         variant="icon"
         icon="package"
+        src=${ifDefined(icon)}
         @click=${() => this.emitClickBreadcrumb(el)}
         @hover=${() => this.emitHoverBreadcrumb(el)}
       >
