@@ -667,7 +667,7 @@ export class Palette extends LitElement {
       }
     }
 
-    @media only screen and (max-width: 1360px) {
+    @media only screen and (max-width: 1380px) {
       :host {
 				display: flex;
 				flex-direction: row;

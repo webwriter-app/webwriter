@@ -479,7 +479,7 @@ export class ExplorableEditor extends LitElement {
         }
 			}
 
-			@media only screen and (max-width: 1360px) {
+			@media only screen and (max-width: 1380px) {
 				ww-palette {
 					grid-column: 1 / 8;
 					grid-row: 2;
@@ -495,7 +495,7 @@ export class ExplorableEditor extends LitElement {
         }
 			}
 
-			@media only screen and (min-width: 1361px) {
+			@media only screen and (min-width: 1381px) {
 				ww-palette {
           padding-left: 5px;
 					grid-column: 2;
@@ -679,7 +679,7 @@ export class ExplorableEditor extends LitElement {
 	}
 
   get isInWideLayout() {
-    return document.documentElement.offsetWidth > 1360
+    return document.documentElement.offsetWidth > 1380
   }
 
   get shiftPaddingStyling() {
