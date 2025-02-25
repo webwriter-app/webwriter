@@ -45,7 +45,7 @@ export class ISCEDF2013 {
     .min("iscedf2013-".length + 2)
     .max("iscedf2013-".length + 4)
     .transform(str => {
-      const code = str.slice("iscedf2013-".length + 1)
+      const code = str.slice("iscedf2013-".length)
       return {
         broad: code.slice(0, 2),
         narrow: code.length >= 3? code.slice(0, 3): undefined,
@@ -88,7 +88,7 @@ export class ISCED2011 {
     .min("isced2011-".length + 1)
     .max("isced2011-".length + 2)
     .transform(str => {
-      const code = str.slice("isced2011-".length + 1)
+      const code = str.slice("isced2011-".length)
       return {
         level: code.at(0),
         programme: code.length == 2? code: undefined 
