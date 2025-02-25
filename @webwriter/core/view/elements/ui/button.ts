@@ -35,6 +35,9 @@ export class Button extends LitElement {
   @property({type: String, attribute: true, reflect: true})
   icon: string
 
+  @property({type: String, attribute: true, reflect: true})
+  src: string
+
   @property({type: String, attribute: true})
   category: string
 
@@ -210,7 +213,7 @@ export class Button extends LitElement {
   }
 
   render() {
-    const {id, variant, size, caret, disabled, loading, outline, pill, circle, type, name, value, href, target, rel, download} = this
+    const {id, variant, size, caret, disabled, loading, outline, pill, circle, type, name, value, href, target, rel, download, src} = this
     const {placement, skidding, hoist} = this.tooltipOptions
     return html`<sl-tooltip hoist placement=${ifDefined(placement)} skidding=${ifDefined(skidding)} ?open=${this.confirming} ?disabled=${!this.confirm} trigger=${this.issues.length? "hover": "manual"} @mouseleave=${() => this.confirming = false} @click=${(e: any) => {
       if(this.confirm) {
@@ -220,7 +223,7 @@ export class Button extends LitElement {
     }}>
       <sl-button part="button" title=${ifDefined(this.titleText)} variant=${variant === "icon"? "text": variant} ${spreadProps({size, caret, disabled, loading, outline, pill, circle, type, name, value, href, target, rel, download})} exportparts="base, prefix, label, suffix, caret">
         <slot name="prefix" slot=${this.icon? "prefix": ""}>
-          <sl-icon part="icon" name=${this.icon}></sl-icon>
+          <sl-icon part="icon" name=${this.src? "": this.icon} src=${this.src}></sl-icon>
         </slot>
         <slot>
         </slot>
