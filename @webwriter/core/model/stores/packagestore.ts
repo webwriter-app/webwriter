@@ -194,6 +194,7 @@ export class PackageStore {
   bundleID: string = ""
 
   packages: Record<string, Package> = {}
+  packageIcons: Record<string, string> = {}
 
   adding: Record<string, boolean> = {}
   removing: Record<string, boolean> = {}
@@ -484,6 +485,7 @@ export class PackageStore {
     this.bundleID = PackageStore.computeBundleID(this.installedPackages, false, final.some(pkg => pkg.localPath)? this.lastLoaded: undefined);
     (this.onBundleChange ?? (() => null))(final.filter(pkg => pkg.installed))
     this.packages = Object.fromEntries(final.map(pkg => [pkg.id, pkg]))
+    Promise.all(final.map(async pkg => [pkg.id, await this.getIconDataUrl(pkg.id)])).then(result => this.packageIcons = Object.fromEntries(result))
     await this.checkForMissingMembers(this.installed)
     this.searchIndex.removeAll()
     this.searchIndex.addAll(final)
@@ -796,6 +798,28 @@ export class PackageStore {
     const url = new URL(`_snippets/${id}`, this.apiBase)
     await fetch(url, {method: "DELETE"})
     return this.load()
+  }
+
+  getIconUrl(id: string) {
+    const iconPath = this.packages[id].iconPath
+    return !iconPath? undefined: new URL(`${id}${iconPath.slice(1)}`, this.apiBase)
+  }
+
+  async getIconDataUrl(id: string) {
+    const url = this.getIconUrl(id)
+    if(!url) {
+      return undefined
+    }
+    try {
+      const reader = new FileReader()
+      const response = await fetch(url)
+      const result = new Promise(r => reader.addEventListener("load", () => r(reader.result)))
+      reader.readAsDataURL(await response.blob())
+      return result
+    }
+    catch {
+      return undefined
+    }
   }
 }
 

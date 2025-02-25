@@ -13,6 +13,8 @@ import { Command } from "#viewmodel"
 import { App, PackageForm } from "#view"
 import { spreadProps } from "@open-wc/lit-helpers"
 
+import IconPackage from "@tabler/icons/outline/package.svg"
+
 
 // https://github.com/lit/lit-element/issues/1099#issuecomment-731614025
 class FlipDirective extends Directive {
@@ -190,6 +192,7 @@ export class Palette extends LitElement {
 
       & .title {
         display: flex;
+        gap: 0.5ch;
         flex-direction: row;
         align-items: center;
         font-size: 0.9rem;
@@ -206,6 +209,13 @@ export class Palette extends LitElement {
           width: calc(100%);
           display: block;
           box-sizing: border-box;
+        }
+
+        & .package-icon {
+          font-size: 1.25rem;
+          width: 24px;
+          height: 24px;
+          filter: grayscale(1);
         }
       }
 
@@ -290,14 +300,25 @@ export class Palette extends LitElement {
           background: var(--sl-color-gray-50);
           box-shadow: none;
         }
+        & .package-icon {
+          opacity: 0.5;
+        }
       }
 
       &:is(.installed, .snippet-card):not(.error) .title:hover {
         color: var(--sl-color-primary-600);
+
+        & .package-icon {
+          filter: grayscale(1) invert(33%) sepia(98%) saturate(869%) hue-rotate(169deg) brightness(101%) contrast(102%);
+        }
       }
 
       &:not(.installed):not(.error):not(.snippet-card):hover {
         color: var(--sl-color-success-700);
+
+        & .package-icon {
+          filter: grayscale(1) invert(34%) sepia(12%) saturate(4549%) hue-rotate(99deg) brightness(101%) contrast(84%);
+        }
       }
 
       &:not(.outdated) .update {
@@ -325,14 +346,16 @@ export class Palette extends LitElement {
         padding: 2px;
       }
 
-      & 
-
       & .pin::part(base) {
         padding: 0;
       }
 
       &.installed .pin::part(base):hover, &.installed:has(.pin:hover) .title {
         color: var(--sl-color-danger-700) !important;
+
+        & .package-icon {
+          filter: grayscale(1) invert(11%) sepia(98%) saturate(3672%) hue-rotate(352deg) brightness(107%) contrast(92%);
+        }
       }
 
       &:not(.installed):not(.error):not(.snippet-card) .pin::part(base):hover, &:not(.installed):has(.pin:hover) .title {
@@ -908,6 +931,7 @@ export class Palette extends LitElement {
 	BlockCard = (pkg: Package) => {
     const {watching, id, name, version, installed, outdated, localPath, packageEditingSettings} = pkg
     const {packages} = this.app.store
+    const iconUrl = packages.packageIcons[id]
     const adding = !!packages.adding[id]
     const removing = !!packages.removing[id]
     const updating = !!packages.updating[id]
@@ -921,7 +945,10 @@ export class Palette extends LitElement {
     const otherInsertables = insertables.slice(1)
     return html`<sl-card id=${pkg.id} @contextmenu=${(e: any) => {this.contextPkg = pkg; e.preventDefault()}} data-package-name=${name} @mouseenter=${() => this.handleMouseenterInsertable(pkg)} @mouseleave=${() => this.handleMouseleaveInsertable(pkg)} class=${classMap({"package-card": true, "block-card": true, installed: !!installed, error, adding, removing, updating, outdated, watching: !!watching, found, local: !!localPath, multiple: insertables.length > 1})} ?inert=${changing}>
 		<sl-tooltip placement="left-start" class="package-tooltip" hoist trigger="hover">
-			<span class="title" @click=${() => this.handleClickCard(pkg, firstName)}>${firstLabel?._ ?? prettifyPackageName(pkg.name)}</span>
+			<span class="title" @click=${() => this.handleClickCard(pkg, firstName)}>
+        <img class="package-icon" src=${iconUrl? iconUrl: IconPackage}>
+        ${firstLabel?._ ?? prettifyPackageName(pkg.name)}
+      </span>
       <span slot="content">
         <b><code>${name} ${version}</code></b>
         <div>${pkg.description || (error? "- " + msg("Error reading this package") + " -": null) || msg("No description provided")}</div>

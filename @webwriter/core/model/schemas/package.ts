@@ -447,6 +447,10 @@ export class Package {
     return filterObject(this.members, k => k.split("/").at(-2) === "themes")
   }
 
+  get iconPath() {
+    return this.exports["./icon"]
+  }
+
   get packageEditingSettings(): EditingSettings | undefined {
     return (this?.editingConfig as any ?? {})["."]
   }
