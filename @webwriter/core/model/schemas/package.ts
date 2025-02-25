@@ -375,6 +375,20 @@ export class Package {
     return new Package({name: id.slice(0, i), version: id.slice(i + 1)})
   }
 
+  static fromElement(el: HTMLElement) {
+    if(!el.tagName.includes("-")) {
+      return undefined
+    }
+    const [org, ...parts] = el.tagName.toLowerCase().split("-")
+    const name = `@${org}/${parts.join("-")}`
+    const versionCls = Array.from(el.classList).find(cls => cls.startsWith("ww-v"))
+    if(!versionCls) {
+      return undefined
+    }
+    const version = new SemVer(versionCls.slice("ww-v".length))
+    return new Package({name, version})
+  }
+
   static coreKeys = Object.keys(this.coreObjectSchema.shape) as unknown as keyof typeof this.coreObjectSchema.shape
 
   constructor(pkg: Package | z.input<typeof Package.objectSchema> & Record<string, any>, editingState?: Partial<Pick<Package, "watching" | "localPath" | "installed" | "latest" | "members" | "lastLoaded" | "trusted">>) {
