@@ -2,7 +2,6 @@ import { ReactiveController } from "lit";
 import Hotkeys from "hotkeys-js";
 import { Memoize } from "typescript-memoize";
 import { msg } from "@lit/localize";
-import hotkeys from "hotkeys-js";
 
 import { CSSPropertySpecs, RootStore, getActiveMarks, getStyleValues, setDocAttributes, toggleOrUpdateMark, wrapSelection } from "#model";
 import { App } from "#view";
@@ -402,7 +401,10 @@ export type CommandSpec<
 > = {
   id: ID;
   /** Keyboard shortcut for the command. */
-  shortcut?: string;
+  shortcut?: {
+    "pc": string,
+    "mac": string
+  } | string;
   /** Rough categorization of the command. */
   category?: string;
   /** Grouping for exclusive commands. */
@@ -458,9 +460,24 @@ export class Command<SPEC extends CommandSpec = CommandSpec>
   get id() {
     return this.spec.id;
   }
+
+  private get osShortcut() {
+    const isMac = WEBWRITER_ENVIRONMENT.os.name === "Mac OS"
+    if(!this.spec.shortcut) {
+      return undefined
+    }
+    else if(typeof this.spec.shortcut === "string") {
+      const modKey = isMac? "cmd": "ctrl"
+      return this.spec.shortcut.replaceAll("mod", modKey).replaceAll("Mod", modKey)
+    }
+    else {
+      return isMac? this.spec.shortcut?.mac: this.spec.shortcut?.pc
+    }
+  }
+
   /** Keyboard shortcut for the command. */
   get shortcut() {
-    return this.configuredShortcut ?? this.spec.shortcut;
+    return this.configuredShortcut ?? this.osShortcut
   }
   set shortcut(value: string) {
     if (this.fixedShortcut) {
@@ -473,7 +490,7 @@ export class Command<SPEC extends CommandSpec = CommandSpec>
   }
 
   assignShortcut = (newShortcut: string, oldShortcut?: string) => {
-    oldShortcut && hotkeys.unbind(oldShortcut);
+    oldShortcut && Hotkeys.unbind(oldShortcut);
     Hotkeys(newShortcut, (e) => this.run(undefined, e));
   };
 
@@ -815,7 +832,7 @@ export class CommandController implements ReactiveController {
     const ctrlKey = ["ctrl", "control", "^"];
     const altKey = ["alt", "option", "⌥"];
     const shiftKey = ["shift", "⇧"];
-    const metaKey = ["command", "⌘"];
+    const metaKey = ["cmd", "command", "⌘"];
     const modifiers = [...ctrlKey, ...altKey, ...shiftKey, ...metaKey];
     return Object.values(this.commands)
       .filter((cmd) => cmd.shortcut && !cmd.allowDefault)
@@ -875,7 +892,7 @@ export class CommandController implements ReactiveController {
         label: () => msg("Save"),
         icon: "device-floppy",
         description: () => msg("Save the active document"),
-        shortcut: "ctrl+s",
+        shortcut: "mod+s",
         allowDefault: false,
         run: async (host, options) => {
           if (
@@ -907,7 +924,7 @@ export class CommandController implements ReactiveController {
         label: () => msg("Save As"),
         icon: "file-export",
         description: () => msg("Save the active document as a copy"),
-        shortcut: "ctrl+shift+s",
+        shortcut: "mod+shift+s",
         run: async (host, options) => {
           if (host.store.accounts.size === 1) {
             const url = await host.store.document.save(true);
@@ -946,7 +963,7 @@ export class CommandController implements ReactiveController {
         label: () => msg("Share"),
         icon: "share",
         description: () => msg("Share the active document"),
-        shortcut: "ctrl+l",
+        shortcut: "mod+l",
         run: (host) => (host.dialog = "share"),
         category: "document",
         disabled: (host) =>
@@ -959,7 +976,7 @@ export class CommandController implements ReactiveController {
         label: () => msg("Print"),
         icon: "printer",
         description: () => msg("Print the active document"),
-        shortcut: "ctrl+p",
+        shortcut: "mod+p",
         run: (host) => {
           host.activeEditor?.pmEditor.window.focus();
           host.activeEditor?.pmEditor.iframe.contentWindow.print();
@@ -973,7 +990,7 @@ export class CommandController implements ReactiveController {
         label: () => msg("Undo"),
         icon: "arrow-back-up",
         description: () => msg("Undo the last change in the active document"),
-        shortcut: "ctrl+z",
+        shortcut: "mod+z",
         run: (host) => host.activeEditor?.undo(),
         category: "editor",
         disabled: (host) => host.store.document.undoDepth === 0,
@@ -985,7 +1002,7 @@ export class CommandController implements ReactiveController {
         icon: "arrow-forward-up",
         description: () =>
           msg("Redo the last undone change in the active document"),
-        shortcut: "ctrl+y",
+        shortcut: "mod+y",
         run: (host) => host.activeEditor?.redo(),
         category: "editor",
         disabled: (host) => host.store.document.redoDepth === 0,
@@ -996,7 +1013,7 @@ export class CommandController implements ReactiveController {
         label: () => msg("Edit source"),
         icon: "code",
         description: () => msg("Edit the HTML of the document directly"),
-        shortcut: "ctrl+u",
+        shortcut: "mod+u",
         run: (host) => {
           if (host.activeEditor!.sourceMode) {
             host.store.document.deriveEditorState();
@@ -1015,7 +1032,7 @@ export class CommandController implements ReactiveController {
         label: () => msg("Preview"),
         icon: "eye",
         description: () => msg("Toggles the preview for the active document"),
-        shortcut: "ctrl+b",
+        shortcut: "mod+b",
         run: async (host) => {
           if (!host.activeEditor!.previewMode) {
             host.activeEditor!.previewSrc = await host.store.document.preview();
@@ -1037,17 +1054,17 @@ export class CommandController implements ReactiveController {
         label: () => msg("Edit Metadata"),
         icon: "chevron-right",
         description: () => msg("Toggles the metadata editor"),
-        shortcut: "ctrl+h",
+        shortcut: "mod+h",
         run: (host) => (host.foldOpen = !host.foldOpen),
         category: "document",
-        disabled: (host) => host.activeEditor!.sourceMode,
+        disabled: (host) => host.activeEditor!.sourceMode || !!host.activeEditor?.previewMode,
       }),
       openSettings: new Command(this.host, {
         id: "openSettings",
         label: () => msg("Open Settings"),
         icon: "settings-filled",
         description: () => msg("Opens the settings"),
-        shortcut: "ctrl+i",
+        shortcut: "mod+i",
         run: (host) => open("./settings.html", undefined, "popup"),
         category: "app",
       }),
@@ -1055,7 +1072,7 @@ export class CommandController implements ReactiveController {
         id: "open",
         label: () => msg("Open"),
         icon: "file-symlink",
-        shortcut: "ctrl+o",
+        shortcut: "mod+o",
         description: () => msg("Open a document"),
         run: async (host, options) => {
           if (host.store.accounts.size === 1) {
@@ -1091,7 +1108,7 @@ export class CommandController implements ReactiveController {
         label: () => msg("Create"),
         icon: "file-plus",
         description: () => msg("Create a new document"),
-        shortcut: "ctrl+n",
+        shortcut: "mod+n",
         run: (host) => window.open("."),
         category: "app",
       }),
@@ -1101,7 +1118,7 @@ export class CommandController implements ReactiveController {
         tags: ["active"],
         icon: "file-x",
         description: () => msg("Close the active document"),
-        shortcut: "ctrl+w",
+        shortcut: "mod+w",
         run: () => this.store.resources.discard(),
         category: "document"
       }),*/
@@ -1982,7 +1999,7 @@ export class CommandController implements ReactiveController {
         id: "copy",
         label: () => msg("Copy selection"),
         description: () => msg("Copy the selection"),
-        shortcut: "ctrl+c",
+        shortcut: "mod+c",
         icon: "copy",
         run: (host) => {
           host.activeEditor?.copy();
@@ -2002,7 +2019,7 @@ export class CommandController implements ReactiveController {
         id: "cut",
         label: () => msg("Cut selection"),
         description: () => msg("Cut the selection"),
-        shortcut: "ctrl+x",
+        shortcut: "mod+x",
         icon: "cut",
         run: (host) => {
           host.activeEditor?.cut();
@@ -2022,7 +2039,7 @@ export class CommandController implements ReactiveController {
         id: "paste",
         label: () => msg("Cut element"),
         description: () => msg("Cut the selection"),
-        shortcut: "ctrl+v",
+        shortcut: "mod+v",
         icon: "clipboard",
         run: (host) => {
           host.activeEditor?.paste();
@@ -2060,7 +2077,7 @@ export class CommandController implements ReactiveController {
         id: "inspect",
         label: () => msg("Inspect selection"),
         description: () => msg("Inspect the selection"),
-        shortcut: "ctrl+alt+y",
+        shortcut: "mod+alt+y",
         icon: "info-square",
         run: (host) => host.activeEditor?.inspect(),
         disabled: host => true, // || host.activeEditor!.isGapSelected,
@@ -2071,7 +2088,7 @@ export class CommandController implements ReactiveController {
         id: "edit",
         label: () => msg("Edit selection"),
         description: () => msg("Edit the selection"),
-        shortcut: "ctrl+alt+a",
+        shortcut: "mod+alt+a",
         icon: "edit",
         disabled: host =>  true, // || host.activeEditor!.isGapSelected,
         run: (host) => host.activeEditor?.edit(),
@@ -2082,7 +2099,7 @@ export class CommandController implements ReactiveController {
         id: "pinSelection",
         label: () => msg("Pin selection"),
         description: () => msg("Pin the selection as a snippet in the palette"),
-        shortcut: "ctrl+alt+p",
+        shortcut: "mod+alt+p",
         icon: "pin",
         disabled: host => host.activeEditor!.selection.empty || host.activeEditor!.isGapSelected,
         preview: host => host.activeEditor!.editingStatus = host.activeEditor?.editingStatus !== "pinning"? "pinning": undefined,
@@ -2097,7 +2114,7 @@ export class CommandController implements ReactiveController {
         icon: "text-spellcheck",
 
         description: () => msg("Checks the document for grammar errors"),
-        shortcut: "ctrl+g",
+        shortcut: "mod+g",
         run: async (host) => {
           await host.store.document.spellcheck();
         },
@@ -2117,7 +2134,7 @@ export class CommandController implements ReactiveController {
         icon: "language",
 
         description: () => msg("Translates part of the document"),
-        shortcut: "ctrl+g",
+        shortcut: "mod+g",
         run: async (host) => {
           await host.store.document.translate();
         },
