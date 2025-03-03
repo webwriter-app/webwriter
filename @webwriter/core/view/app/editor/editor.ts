@@ -637,7 +637,7 @@ export class ExplorableEditor extends LitElement {
             extraDiv.style.width = `${width}px`
             extraDiv.style.height = `${height}px`
           }).observe(el)
-          this.pmEditor.document.addEventListener("scroll", () => {
+          this.pmEditor.document?.addEventListener("scroll", () => {
             const {top, left, width, height} = (el ?? extraDiv).getBoundingClientRect()
             extraDiv.style.top = `${top}px`
             extraDiv.style.left = `${left}px`
