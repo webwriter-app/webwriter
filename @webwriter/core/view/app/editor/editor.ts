@@ -1521,9 +1521,11 @@ export class ExplorableEditor extends LitElement {
 		return html`
 			<ww-palette
         .forceToolboxPopup=${!!this.forceToolboxPopup}
+        ?isInNarrowLayout=${this.isInNarrowLayout}
         .app=${this.app}
         .editorState=${this.editorState}
 				part="editor-toolbox"
+        ?data-no-scrollbar-gutter=${this.palette?.offsetWidth - this.palette?.clientWidth === 0}
 				@ww-insert=${(e: any) => this.insertMember(e.detail.pkgID, e.detail.name)}
 				@ww-mouseenter-insertable=${(e: CustomEvent) => {
           if(WEBWRITER_ENVIRONMENT.backend !== "tauri") {

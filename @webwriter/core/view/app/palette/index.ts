@@ -166,6 +166,10 @@ export class Palette extends LitElement {
       box-sizing: border-box;
     }
 
+    :host([data-no-scrollbar-gutter]) {
+      padding-right: 11px;
+    }
+
     .inline-commands-wrapper {
       display: contents;
     }
