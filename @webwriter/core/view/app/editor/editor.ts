@@ -1497,15 +1497,25 @@ export class ExplorableEditor extends LitElement {
         }}
         @ww-set-attribute=${(e: CustomEvent) => this.setNodeAttribute(e.detail.el, e.detail.key, e.detail.value, e.detail.tag)}
         @ww-set-style=${(e: CustomEvent) => {
-          if(!isNodeSelection(this.selection) && !this.isAllSelected) {
-            this.pmEditor.dispatch(this.editorState.tr.setSelection(NodeSelection.create(this.editorState.doc, this.editorState.selection.$anchor.before())))
-          }
-          Object.assign(e.detail.el.style, e.detail.style)
+          this.topLevelElementsInSelection.forEach(el => Object.assign(el.style, e.detail.style))
           // this.pmEditor.focus()
         }}
 			></ww-toolbox>
 		`
 	}
+
+  get topLevelElementsInSelection() {
+    if(this.selection instanceof NodeSelection) {
+      return [this.activeElement!]
+    }
+    const result = [] as HTMLElement[]
+    this.selection.content().content.descendants((node, pos) => {
+      const el = this.pmEditor.nodeDOM(pos) as HTMLElement
+      result.push(el)
+      return false
+    })
+    return result
+  }
 
   prefetchAllMembers(name: string, id: string) {
     if(!this.app.store.packages.installedPackages.includes(id)) {
