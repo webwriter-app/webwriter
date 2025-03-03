@@ -772,7 +772,7 @@ export class PackageStore {
     }
     const existingPkg = existingPkgFile? new Package(JSON.parse(await existingPkgFile.text())): null
     const newPkg = existingPkg? existingPkg.extend(pkg): pkg
-    await writeFile(root, "package.json", JSON.stringify(newPkg), true, true)
+    await writeFile(root, "package.json", JSON.stringify(newPkg, undefined, 4), true, true)
     await this.add(root, newPkg.id)
   }
 
