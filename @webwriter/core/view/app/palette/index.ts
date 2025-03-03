@@ -125,6 +125,9 @@ export class Palette extends LitElement {
   @property({type: Boolean, attribute: true, reflect: true})
   managing = false
 
+  @property({type: Boolean, attribute: true, reflect: true})
+  isInNarrowLayout = false
+
   @property({type: String, attribute: true, reflect: true})
   editingStatus: string
 
