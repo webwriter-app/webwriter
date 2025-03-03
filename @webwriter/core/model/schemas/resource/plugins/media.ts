@@ -4,7 +4,7 @@ import mime from "mime/lite"
 import {Node, NodeSpec} from "prosemirror-model"
 
 import { MediaType } from "#model"
-import { HTMLElementSpec, HTMLElementSpecPair } from "../htmlelementspec";
+import { getAttrs, HTMLElementSpec, HTMLElementSpecPair } from "../htmlelementspec";
 
 /**
  * Top-level media elements are parsed into figures.
@@ -94,6 +94,37 @@ export const mediaPlugin = () => ({
       .map(mediaNodeEntry)
       .map(([k, v]) => [k, HTMLElementSpec({tag: v.rootTag, ...v})])
     ),*/
+
+    img_source: HTMLElementSpec({
+      tag: "img",
+      group: "flow embedded palpable interactive", // phrasing
+      parseDOM: [{
+        tag: "img",
+        getAttrs: node => node.parentElement?.tagName === "PICTURE"? getAttrs(node): false,
+        context: "picture//"
+      }],
+      selectable: false,
+      attrs: {
+        alt: {default: undefined},
+        crossorigin: {default: undefined},
+        anonymous: {default: undefined},
+        "use-credentials": {default: undefined},
+        decoding: {default: undefined},
+        sync: {default: undefined},
+        async: {default: undefined},
+        auto: {default: undefined},
+        elementtiming: {default: undefined},
+        fetchpriority: {default: undefined},
+        height: {default: undefined},
+        ismap: {default: undefined},
+        loading: {default: undefined},
+        referrerpolicy: {default: undefined},
+        sizes: {default: undefined},
+        src: {default: undefined},
+        srcset: {default: undefined},
+        usemap: {default: undefined}
+      }
+    }),
     ...HTMLElementSpecPair({
       img: {
         tag: "img",
@@ -123,6 +154,7 @@ export const mediaPlugin = () => ({
     }),
     source: HTMLElementSpec({
       tag: "source",
+      selectable: false,
       attrs: {
         type: {default: undefined},
         src: {default: undefined},
@@ -135,6 +167,7 @@ export const mediaPlugin = () => ({
     }),
     track: HTMLElementSpec({
       tag: "track",
+      selectable: false,
       attrs: {
         default: {default: undefined},
         kind: {default: undefined},
@@ -147,7 +180,7 @@ export const mediaPlugin = () => ({
       picture: {
         tag: "picture",
         group: "flow embedded containerblock",
-        content: "(source | scriptsupporting)* img",
+        content: "(source | scriptsupporting)* img_source",
         atom: true
       },
       picture_inline: {inline: true, group: "phrasing containerblock"}
@@ -265,22 +298,11 @@ export const mediaPlugin = () => ({
       fencedframe_inline: {inline: true, group: "phrasing"}
     }),
     ...HTMLElementSpecPair({
-      portal: {
-        tag: "portal",
-        group: "flow embedded",
-        atom: true,
-        attrs: {
-          referrerpolicy: {default: undefined},
-          src: {default: undefined},
-        }
-      },
-      portal_inline: {inline: true, group: "phrasing"}
-    }),
-    ...HTMLElementSpecPair({
       script: {
         tag: "script",
         group: "metadata scriptsupporting containerinline",
         content: "text?",
+        selectable: false,
         attrs: {
           async: {default: undefined as undefined | boolean},
           crossorigin: {default: undefined as undefined | string},
@@ -301,6 +323,7 @@ export const mediaPlugin = () => ({
         tag: "style",
         group: "metadata containerinline",
         content: "text?",
+        selectable: false,
         attrs: {
           media: {default: undefined},
           nonce: {default: undefined},
@@ -314,7 +337,8 @@ export const mediaPlugin = () => ({
       template: {
         tag: "template",
         group: "metadata scriptsupporting containerblock",
-        content: "flow*"
+        content: "flow*",
+        selectable: false,
       },
       template_inline: {inline: true, group: "phrasing containerinline"}
     }),
@@ -323,6 +347,7 @@ export const mediaPlugin = () => ({
         tag: "slot",
         group: "containerblock",
         content: "flow*",
+        selectable: false,
         attrs: {
           name: {default: undefined},
         }
@@ -342,6 +367,7 @@ export const mediaPlugin = () => ({
         tag: "map",
         group: "flow containerblock",
         content: "flow*",
+        selectable: false,
         attrs: {
           name: {default: undefined}
         }
@@ -352,6 +378,7 @@ export const mediaPlugin = () => ({
       area: {
         tag: "area",
         group: "flow",
+        selectable: false,
         attrs: {
           alt: {default: undefined},
           coords: {default: undefined},
