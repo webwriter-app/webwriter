@@ -651,7 +651,7 @@ export class Palette extends LitElement {
     }
 
     #add-local {
-      order: 10000;
+      order: 1000001;
       grid-column: span 6;
       user-select: none;
 
@@ -987,12 +987,13 @@ export class Palette extends LitElement {
 	BlockCard = (pkg: Package) => {
     const {watching, id, name, version, installed, outdated, localPath, packageEditingSettings} = pkg
     const {packages} = this.app.store
+    const order = Object.keys(this.searchResults).indexOf(id) + 1 || 1000000
     const iconUrl = packages.packageIcons[id]
     const adding = !!packages.adding[id]
     const removing = !!packages.removing[id]
     const updating = !!packages.updating[id]
     const changing = adding || removing || updating
-    const found = name in this.searchResults
+    const found = id in this.searchResults
     const error = packages.getPackageIssues(pkg.id).length
     const members = packages.getPackageMembers(pkg.id)
     const insertables = members? Object.values(filterObject(members, (_, ms) => !(ms as any).uninsertable) as unknown as Record<string, MemberSettings>): []
@@ -1090,8 +1091,8 @@ export class Palette extends LitElement {
 
   get packagesInSearchOrder() {
     return [...this.packages].sort((a, b) => {
-      const aScore = this.searchResults[a.name]?.score ?? 0
-      const bScore = this.searchResults[b.name]?.score ?? 0
+      const aScore = this.searchResults[a.id]?.score ?? 0
+      const bScore = this.searchResults[b.id]?.score ?? 0
       return bScore - aScore
     })
   }
@@ -1546,7 +1547,7 @@ export class Palette extends LitElement {
       ${this.app.commands.groupedContainerCommands.map(this.Card)}
       ${this.ClipboardCard()}
       ${this.editingStatus != "pinning"? undefined: this.PinPreview()}
-      ${this.packagesInSearchOrder.map(this.Card)}
+      ${this.packages.map(this.Card)}
       ${this.AddLocalPackageButton()}
       ${this.LocalPackageDialog()}
       ${this.ErrorDialog()}
