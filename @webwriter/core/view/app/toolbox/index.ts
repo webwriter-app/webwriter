@@ -721,6 +721,11 @@ export class  Toolbox extends LitElement {
       #element-breadcrumb::part(base) {
         border-bottom: 2px solid var(--sl-color-gray-600);
         min-height: 45px;
+        width: 100%;
+      }
+
+      #element-breadcrumb sl-tree {
+        width: 100%;
       }
 
       #element-breadcrumb sl-tree-item {
@@ -737,6 +742,11 @@ export class  Toolbox extends LitElement {
 
       #element-breadcrumb sl-tree-item::part(item--selected) {
         border-color: transparent;
+      }
+
+      #element-breadcrumb sl-tree-item::part(label) {
+        width: 100%;
+        flex-wrap: wrap;
       }
 
       #element-breadcrumb sl-breadcrumb-item ww-button::part(base)
@@ -909,6 +919,9 @@ export class  Toolbox extends LitElement {
       
       .context-toolbox {
         width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
       }
 
       .table-toolbox {
@@ -1457,13 +1470,15 @@ export class  Toolbox extends LitElement {
       ].includes(child.tagName.toLowerCase()))
   }
 
+  @property({attribute: false})
+  childrenDropdownActiveElement: Element | null = null
+
   ElementBreadcrumbItem(el: Element, isLast=false, menuItem=false, hideSeparator=false): TemplateResult {
     const elementName = el.tagName.toLowerCase()
     const isCustomElement = this.isCustomElement(el)
     const isCommandEl = elementName in this.app.commands.commands
     const children = this.filterChildren(el.children, el?.tagName.toLowerCase())
-
-    const separator = menuItem || hideSeparator? null: html`<sl-dropdown slot="separator" class="children-dropdown" ?data-empty=${children.length === 0}>
+    const separator = menuItem || hideSeparator? null: html`<sl-dropdown ?open=${this.childrenDropdownActiveElement === el} @sl-show=${() => this.childrenDropdownActiveElement = el} @sl-after-hide=${() => this.childrenDropdownActiveElement = null} slot="separator" class="children-dropdown" ?data-empty=${children.length === 0}>
       <ww-button
         class="separator-button"
         variant="icon"
