@@ -993,7 +993,7 @@ export class CommandController implements ReactiveController {
         shortcut: "mod+z",
         run: (host) => host.activeEditor?.undo(),
         category: "editor",
-        disabled: (host) => host.store.document.undoDepth === 0,
+        disabled: (host) => host.store.document.undoDepth === 0 || !!host.activeEditor?.previewMode,
       }),
       redo: new Command(this.host, {
         id: "redo",
@@ -1005,7 +1005,7 @@ export class CommandController implements ReactiveController {
         shortcut: "mod+y",
         run: (host) => host.activeEditor?.redo(),
         category: "editor",
-        disabled: (host) => host.store.document.redoDepth === 0,
+        disabled: (host) => host.store.document.redoDepth === 0 || !!host.activeEditor?.previewMode,
       }),
       toggleSourceMode: new Command(this.host, {
         id: "toggleSourceMode",
