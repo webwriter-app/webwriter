@@ -1,4 +1,4 @@
-import { Decoration, DecorationSource, NodeView } from "prosemirror-view"
+import { Decoration, DecorationSource, NodeView, ViewMutationRecord } from "prosemirror-view"
 import { NodeSelection } from "prosemirror-state"
 import { DOMSerializer, Node } from "prosemirror-model"
 
@@ -198,13 +198,13 @@ export class WidgetView implements NodeView {
     console.log(anchor, head, root)
   }*/
 
-	ignoreMutation(mutation: MutationRecord) {
+	ignoreMutation(mutation: ViewMutationRecord) {
+    if(mutation.type === "selection") {
+      return false
+    }
     const {type, target, attributeName: attr, oldValue, addedNodes, removedNodes, previousSibling, nextSibling, attributeNamespace} = mutation
     const value = attr? this.dom.getAttribute(attr): null
     const attrUnchanged = !!(attr && (value === oldValue))
-    if((type as any) === "selection") {
-      return false
-    }
     if(type === "childList") {
       (this.view as any).domObserver.stop()
       for(const node of [...Array.from(addedNodes), ...Array.from(removedNodes)]) {
