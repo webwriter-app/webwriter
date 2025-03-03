@@ -1,4 +1,4 @@
-import { msg } from "@lit/localize"
+import { localized, msg } from "@lit/localize"
 import { LitElement, PropertyValues, css, html, noChange } from "lit"
 import { customElement, property, query } from "lit/decorators.js"
 import { classMap } from "lit/directives/class-map.js"
@@ -62,6 +62,7 @@ class FlipDirective extends Directive {
   }
 }
 
+@localized()
 @customElement("ww-palette")
 export class Palette extends LitElement {
 
