@@ -281,6 +281,8 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
     }
   }
 
+  firstInitialized = true
+
   async initialize() {
     if(this.url) {
       return this.initializePreviewFrame()
@@ -293,8 +295,10 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
       this.body.appendChild(p)
     }
     this.view = new EditorView({mount: this.body}, this.directProps)
-    this.focus()
+    // this.focus()
     this.renderHead()
+    emitCustomEvent(this, "ww-initialized", {first: this.firstInitialized})
+    this.firstInitialized = false
   }
 
   async updated(previous: Map<string, any>) {

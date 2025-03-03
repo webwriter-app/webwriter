@@ -1346,9 +1346,16 @@ export class ExplorableEditor extends LitElement {
     return html.replaceAll(/style=["']?((?:.(?!["']?\s+(?:\S+)=|\s*\/?[>"']))+.)["']?/g, "")
   }
 
+  handleEditorInitialized = (e: CustomEvent) => {
+    if(e.detail.first) {
+      this.handleEditorFocus()
+    }
+  }
+
   handleEditorFocus = () => {
     this.requestUpdate()
     this.toolbox && (this.toolbox.activeLayoutCommand = undefined)
+    this.toolbox && (this.toolbox.childrenDropdownActiveElement = null)
     this.palette && (this.palette.managing = false)
     this.editingStatus = undefined
   }
@@ -1377,6 +1384,7 @@ export class ExplorableEditor extends LitElement {
 				@update=${this.handleUpdate}
         @focus=${this.handleEditorFocus}
         @fullscreenchange=${() => this.requestUpdate()}
+        @ww-initialized=${this.handleEditorInitialized}
 				.scrollMargin=${20}
 				scrollThreshold=${20}
 				.state=${this.editorState}
@@ -1464,6 +1472,7 @@ export class ExplorableEditor extends LitElement {
 				.activeElement=${activeElement}
         .shiftPaddingStyling=${this.shiftPaddingStyling}
 				@ww-delete-widget=${(e: any) => this.deleteWidget(e.detail.widget)}
+        @sl-after-open=${() => this.requestUpdate()}
 				@ww-mark-field-input=${(e: any) => {
 					const {from, to} = this.editorState.selection
 					const markType = this.editorState.schema.marks[e.detail.markType]
