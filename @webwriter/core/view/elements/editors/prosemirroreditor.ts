@@ -3,7 +3,7 @@ import { customElement, property, queryAsync } from "lit/decorators.js"
 import { DirectEditorProps, EditorView } from "prosemirror-view"
 import { localized } from "@lit/localize"
 import { EditorState, Transaction } from "prosemirror-state"
-import { idle, pickObject, sameMembers } from "../../../model/utility"
+import { emitCustomEvent, idle, pickObject, sameMembers } from "../../../model/utility"
 import { keyed } from "lit/directives/keyed.js"
 import { headSerializer, SemVer, toAttributes } from "../../../model"
 import {DOMSerializer} from "prosemirror-model"
@@ -210,7 +210,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
   updateState = (...args: Parameters<typeof this.view.updateState>) => {
     this?.view.updateState(...args)
     // Fix for Firefox
-    if(!this.view?.dom?.querySelector(":not(br)")) {
+    if(WEBWRITER_ENVIRONMENT.engine.name === "Gecko" && !this.view?.dom?.querySelector(":not(br)")) {
       (this.view as any).domObserver.stop();
       const p = this.document.createElement("p");
       this.body.appendChild(p);
@@ -290,7 +290,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
     this.view?.destroy()
     await this.initializeIFrame()
     // Fix for Firefox
-    if(!this.body.querySelector(":not(br)")) {
+    if(WEBWRITER_ENVIRONMENT.engine.name === "Gecko" && !this.body.querySelector(":not(br)")) {
       const p = this.document.createElement("p")
       this.body.appendChild(p)
     }
