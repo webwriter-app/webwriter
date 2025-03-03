@@ -564,6 +564,10 @@ export class Palette extends LitElement {
         &::part(input) {
           width: 100%;
         }
+
+        &:not(:focus-within) #filter-button {
+          display: none;
+        }
       }
 
       & #package-button {
@@ -1104,7 +1108,11 @@ export class Palette extends LitElement {
     return html`<div id="package-toolbar">
       <sl-input id="package-search" placeholder=${!this.app.store.packages.installed.length? msg("Find packages..."): ""} required type="search" size="small" @sl-input=${this.handleSearchInput} @focus=${() => this.managing = true} clearable>
         <sl-icon slot="prefix" name="search" @click=${(e: any) => this.packageSearch.focus()}></sl-icon>
+        <!--<ww-button id="filter-button" variant="icon" slot="suffix" icon="filter" @click=${(e: any) => this.packageSearch.focus()}></ww-button>-->
       </sl-input>
+      <sl-popup id="filters-popup" anchor="package-search">
+        ${this.SearchFilters()}
+      </sl-popup>
       <ww-button title=${msg("Reload packages")} .issues=${this.app.store.packages.managementIssues} id="package-button" variant="icon" icon="packages" @click=${(e: any) => {this.managing = !this.managing; this.managing && this.app.store.packages.load()}}>
         ${!this.app.store.packages.loading? null: html`
           <sl-spinner id="packages-spinner"></sl-spinner>
