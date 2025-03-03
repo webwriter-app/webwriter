@@ -51,10 +51,10 @@ export class ISCEDF2013 {
         narrow: code.length >= 3? code.slice(0, 3): undefined,
         detailed: code.length >= 4? code.slice(0, 4): undefined,
       }
-    }))
-    .pipe(ISCEDF2013.objectSchema)
+    })
+    .pipe(ISCEDF2013.objectSchema))
     .or(ISCEDF2013.objectSchema)
-    .transform(x => new ISCEDF2013(x))
+    // .transform(x => new ISCEDF2013(x))
 
   constructor(input: string | z.input<typeof ISCEDF2013["objectSchema"]> | ISCEDF2013) {
     return input instanceof ISCEDF2013
@@ -93,10 +93,10 @@ export class ISCED2011 {
         level: code.at(0),
         programme: code.length == 2? code: undefined 
       }
-    }))
-    .pipe(ISCED2011.objectSchema)
+    })
+    .pipe(ISCED2011.objectSchema))
     .or(ISCED2011.objectSchema)
-    .transform(x => new ISCED2011(x))
+    // .transform(x => new ISCED2011(x))
 
   constructor(input: string | z.input<typeof ISCED2011["objectSchema"]> | ISCED2011) {
     return input instanceof ISCED2011
