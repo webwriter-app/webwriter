@@ -47,27 +47,27 @@ Each WebWriter package must have the `webwriter-widget` keyword so it can be fou
 ```json
 {
   // ...
-  "keywords": ["webwriter-widget", "widget-online", "widget-lang-en", "widget-lang-de", "contextual", "isced2011-1", "iscedf2013-05", "map", "historical"]
+  "keywords": ["webwriter-widget", "widget-online", "widget-lang-en", "widget-lang-de", "widget-contextual", "isced2011-1", "iscedf2013-05", "map", "historical"]
 }
 ```
 
 #### Technical info
 - `widget-online` / `widget-online-edit` / `widget-online-use`: Specify that widgets of this package need to be online to function (e.g. a world map fetching map data from OpenStreetMap), or that the widgets only need to online when editing / when using.
-- `widget-lang-[IETF language tag]`: Specify the languages the widgets are available in as an [IETF language tag](https://en.wikipedia.org/wiki/IETF_language_tag) (e.g. `widget-lang-en`, `widget-lang-de` for a widget in English and German).
+- `widget-lang-[IETF language tag]`: Specify the languages the widgets are available in as an [IETF language tag](https://en.wikipedia.org/wiki/IETF_language_tag) (e.g. `widget-lang-en`, `widget-lang-de` for a widget in English and German). The first language that appears in the list is considered the primary language.
 
 #### Widget type
 Following [Daniel Churchill's "Towards a useful classification of learning objects"](https://link.springer.com/content/pdf/10.1007/s11423-006-9000-y.pdf), WebWriter recognizes 6 widget types. Multiple types may apply:
-- `presentational`: Arrangement of content for a topic (e.g. a slide show)
-- `practional`: Exercises with feedback, serious games, etc. that allow practice and learning (e.g. a quiz)
-- `simulational`: Representation of some real-life system or process (e.g. a physics sandbox for mechanics)
-- `conceptual`: Representation of an abstract concept or multiple related concepts (e.g. GeoGebra for analysis and geometry)
-- `informational`: Organized display of information (e.g. a periodic table)
-- `contextual`: Live or example data from authentic scenarios (e.g. a historical atlas)
+- `widget-presentational`: Arrangement of content for a topic (e.g. a slide show)
+- `widget-practical`: Exercises with feedback, serious games, etc. that allow practice and learning (e.g. a quiz)
+- `widget-simulational`: Representation of some real-life system or process (e.g. a physics sandbox for mechanics)
+- `widget-conceptual`: Representation of an abstract concept or multiple related concepts (e.g. GeoGebra for analysis and geometry)
+- `widget-informational`: Organized display of information (e.g. a periodic table)
+- `widget-contextual`: Live or example data from authentic scenarios (e.g. a historical atlas)
 
 #### Education programmes (ISCED 2011)
 Some packages are aimed at specific education programmes (e.g. a learning technology like Scratch is mainly aimed at lower secondary education). You can use the ISCED 2011 taxonomy to add education programmes to your package.
 
-You can use any level of code. You should add all that apply. If you add a more specific code, the other fields are implied (e.g. if you have `"isced2011-65"`, you do not need to add `-6`). The general codes available are:
+You can use any level of code. You should add all that apply. If you add a more specific code, the other fields are implied (e.g. if you have `"isced2011-65"`, you do not need to add `-6`). If you add both `isced2011-2` and `isced2011-3`, it is summarized as "secondary education". If you add `isced2011-5` to `isced2011-8`, it is summarized as "higher education". The general codes available are:
 - `"isced2011-0"`: Early childhood education
 - `"isced2011-1"`: Primary education
 - `"isced2011-2"`: Lower secondary education
@@ -152,7 +152,11 @@ The `description` is a short text describing the widget in English. This is show
 The editing config allows you to configure how WebWriter treats your widget, snippet, or theme when editing. More details are found on the respective pages for [widgets](../widgets/configuring), [snippets](../snippets/configuring), and [themes](../themes/configuring).
 
 #### Global config options
-Using the key `.`, you can make a few global settings. With `label`, you can provide an alternative package name in different languages. If this label is provided, WebWriter shows this label in the place where the first insertable member of the package usually goes. This is good for packages which are just collections of snippets, for example - where there is no primary widget that should be preferred.
+Using the key `.`, you can make a few global settings. 
+
+With `editingConfig -> label`, you can provide an alternative package name in different languages. If this label is provided, WebWriter shows this label in the place where the first insertable member of the package usually goes. This is good for packages which are just collections of snippets, for example - where there is no primary widget that should be preferred.
+
+With `editingConfig -> description`, you can provide translations of the package description (since the standard `description` field is usually only in English). This description is shown to users and takes precedence over the standard `description` field.
 
 ```json
 {
@@ -162,6 +166,9 @@ Using the key `.`, you can make a few global settings. With `label`, you can pro
       "label": {
         "_": "COOL Package",
         "de": "SUPER-Paket"
+      },
+      "description": {
+        "de": "Tolle Inhalte erstellen und simulieren."
       }
     }
   }
