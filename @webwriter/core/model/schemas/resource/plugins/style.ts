@@ -50,8 +50,8 @@ export function getStyleValues(state: EditorState, view: EditorView & {window: W
   fragment = fragment.addToEnd(state.selection.$anchor.node())
   fragment.descendants((node, pos, parent) => {
     const dom = view.nodeDOM(pos)
-    if(dom instanceof Element && sel) {
-      const marked = [dom, ...Array.from(dom.children)]
+    if(sel && dom?.nodeType === 1) {
+      const marked = [dom, ...Array.from((dom as Element).children)]
         .filter(el => sel.containsNode(el, true) || sel.isCollapsed && sel.anchorNode?.parentElement === el)
         .map(el => (el as any).style[key])
         .filter(k => k)
@@ -63,7 +63,6 @@ export function getStyleValues(state: EditorState, view: EditorView & {window: W
     state.storedMarks
       ?.filter(mark => mark.type.name === markName)
       ?.forEach(mark => values.add(mark.attrs.value))
-    
   }
   return [...values]
 }
