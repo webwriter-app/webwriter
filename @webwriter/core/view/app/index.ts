@@ -619,8 +619,8 @@ export class App extends ViewModelMixin(LitElement) {
         openTab
         activeTabName=${String(this.store?.document.url)}
         @click=${() =>
-          this.activeEditor?.pmEditor?.document.fullscreenElement &&
-          this.activeEditor?.pmEditor?.document.exitFullscreen()}
+          this.activeEditor?.pmEditor?.document?.fullscreenElement &&
+          this.activeEditor?.pmEditor?.document?.exitFullscreen()}
         ?loading=${this.initializing}
         ?foldOpen=${this.foldOpen}
       >
