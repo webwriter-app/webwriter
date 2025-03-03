@@ -60,8 +60,10 @@ More details can be found in the [esbuild documentation on CSS](https://esbuild.
 ## Text
 Any text file with the `.txt` extension can be imported as a string.
 
+Additionally, xou can prefix any import with the protocol `inline:` to import the text content of the referenced file as a string.
+
 ```js
-import string from './myfile.txt'
+import string from './myfile.txt' // or 'inline:./myscript.js'
 console.log(string)
 ```
 
