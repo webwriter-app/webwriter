@@ -6,6 +6,7 @@ import * as process from "process"
 import * as child_process from "child_process"
 import {localize} from "./localize.js"
 import 'dotenv/config'
+import esbuildPluginInlineImport from "esbuild-plugin-inline-import"
 
 const scriptExtensions = [".js", ".mjs", ".cjs"]
 
@@ -55,6 +56,7 @@ async function main() {
     write: true,
     bundle: true,
     plugins: [
+      esbuildPluginInlineImport()
       //widgetPlugin(pkg)
     ],
     entryPoints: widgetKeys.map(k => ({out: pkg.exports[k].default.replace(".*", ""), in: pkg.exports[k].source})),

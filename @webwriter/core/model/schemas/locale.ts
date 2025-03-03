@@ -30,7 +30,7 @@ export class Locale {
     })
     .pipe(Locale.objectSchema))
     .or(Locale.objectSchema)
-    .transform(x => new Locale(x))
+    // .transform(x => new Locale(x))
 
   static keys = ["language", "extlang", "script", "region", "variant", "extension", "privateUse"] as const
 

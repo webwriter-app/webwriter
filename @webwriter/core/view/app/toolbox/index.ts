@@ -15,7 +15,7 @@ import {GapCursor} from "prosemirror-gapcursor"
 // @ts-ignore
 import {render as latexToMathML} from "temml/dist/temml.cjs"
 import { SlColorPicker, SlTree } from "@shoelace-style/shoelace"
-import { CSSPropertySpecs, MATHML_TAGS } from "#model/index.js"
+import { CSSPropertySpecs, MATHML_TAGS, Package } from "#model/index.js"
 import { LitPickerElement } from "#view/elements/stylepickers/index.js"
 
 
@@ -721,6 +721,11 @@ export class  Toolbox extends LitElement {
       #element-breadcrumb::part(base) {
         border-bottom: 2px solid var(--sl-color-gray-600);
         min-height: 45px;
+        width: 100%;
+      }
+
+      #element-breadcrumb sl-tree {
+        width: 100%;
       }
 
       #element-breadcrumb sl-tree-item {
@@ -737,6 +742,11 @@ export class  Toolbox extends LitElement {
 
       #element-breadcrumb sl-tree-item::part(item--selected) {
         border-color: transparent;
+      }
+
+      #element-breadcrumb sl-tree-item::part(label) {
+        width: 100%;
+        flex-wrap: wrap;
       }
 
       #element-breadcrumb sl-breadcrumb-item ww-button::part(base)
@@ -909,6 +919,9 @@ export class  Toolbox extends LitElement {
       
       .context-toolbox {
         width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
       }
 
       .table-toolbox {
@@ -1114,6 +1127,7 @@ export class  Toolbox extends LitElement {
       <ww-fontpicker
         .fontFamilies=${fontFamilies}
         .fontSizes=${fontSizes}
+        defaultFontSize=${ifDefined(this.activeElement? getComputedStyle(this.activeElement).fontSize: undefined)}
         recommendedOnly
         @ww-change-font-family=${(e: any) =>fontFamilyCommand.run(e.detail)}
         @ww-change-font-size=${(e: any) => fontSizeCommand.run(e.detail)}
@@ -1442,7 +1456,7 @@ export class  Toolbox extends LitElement {
   }
 
   private filterChildren(children: HTMLCollection | HTMLElement[], tag?: string) {
-    if(tag && ["svg", "table", "math"].includes(tag)) {
+    if(tag && ["svg", "table", "math", "picture", "audio", "video"].includes(tag)) {
       return []
     }
     return (Array.isArray(children)? children: Array.from(children))
@@ -1456,13 +1470,15 @@ export class  Toolbox extends LitElement {
       ].includes(child.tagName.toLowerCase()))
   }
 
+  @property({attribute: false})
+  childrenDropdownActiveElement: Element | null = null
+
   ElementBreadcrumbItem(el: Element, isLast=false, menuItem=false, hideSeparator=false): TemplateResult {
     const elementName = el.tagName.toLowerCase()
     const isCustomElement = this.isCustomElement(el)
     const isCommandEl = elementName in this.app.commands.commands
     const children = this.filterChildren(el.children, el?.tagName.toLowerCase())
-
-    const separator = menuItem || hideSeparator? null: html`<sl-dropdown slot="separator" class="children-dropdown" ?data-empty=${children.length === 0}>
+    const separator = menuItem || hideSeparator? null: html`<sl-dropdown ?open=${this.childrenDropdownActiveElement === el} @sl-show=${() => this.childrenDropdownActiveElement = el} @sl-after-hide=${() => this.childrenDropdownActiveElement = null} slot="separator" class="children-dropdown" ?data-empty=${children.length === 0}>
       <ww-button
         class="separator-button"
         variant="icon"
@@ -1475,10 +1491,13 @@ export class  Toolbox extends LitElement {
     </sl-dropdown>`
 
     if(isCustomElement) {
+      const pkg = Package.fromElement(el as HTMLElement)
+      const icon = pkg? this.app.store.packages.packageIcons[pkg.id]: undefined
       const content = html`<ww-button
         title=${elementName}
         variant="icon"
         icon="package"
+        src=${ifDefined(icon)}
         @click=${() => this.emitClickBreadcrumb(el)}
         @hover=${() => this.emitHoverBreadcrumb(el)}
       >

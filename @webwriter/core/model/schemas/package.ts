@@ -3,6 +3,8 @@ import {z} from "zod"
 import { License } from "./license"
 import {SemVer, SemVerRange} from "./semver"
 import { filterObject } from "#utility";
+import { ISCED2011, ISCEDF2013 } from "./isced";
+import { Locale } from "./locale";
 
 export * from "./customelementsmanifest"
 
@@ -375,6 +377,20 @@ export class Package {
     return new Package({name: id.slice(0, i), version: id.slice(i + 1)})
   }
 
+  static fromElement(el: HTMLElement) {
+    if(!el.tagName.includes("-")) {
+      return undefined
+    }
+    const [org, ...parts] = el.tagName.toLowerCase().split("-")
+    const name = `@${org}/${parts.join("-")}`
+    const versionCls = Array.from(el.classList).find(cls => cls.startsWith("ww-v"))
+    if(!versionCls) {
+      return undefined
+    }
+    const version = new SemVer(versionCls.slice("ww-v".length))
+    return new Package({name, version})
+  }
+
   static coreKeys = Object.keys(this.coreObjectSchema.shape) as unknown as keyof typeof this.coreObjectSchema.shape
 
   constructor(pkg: Package | z.input<typeof Package.objectSchema> & Record<string, any>, editingState?: Partial<Pick<Package, "watching" | "localPath" | "installed" | "latest" | "members" | "lastLoaded" | "trusted">>) {
@@ -445,6 +461,84 @@ export class Package {
 
   get themes() {
     return filterObject(this.members, k => k.split("/").at(-2) === "themes")
+  }
+
+  get iconPath() {
+    return this.exports?.["./icon"]
+  }
+
+  get programmes() {
+    const result = [] as ISCED2011[]
+    this.keywords?.forEach(kw => {try {result.push(new ISCED2011(kw))} catch (err) {}})
+    return result.sort((a, b) => {
+      if (a.level < b.level) return -1;
+      if (a.level > b.level) return 1;
+      else return 0;
+    })
+  }
+
+  get coversSecondaryEducation() {
+    const programmes = this.programmes
+    return programmes.find(pg => pg.level === "2") && programmes.find(pg => pg.level === "3")
+  }
+
+  get coversHigherEducation() {
+    const programmes = this.programmes
+    return programmes.find(pg => pg.level === "5") && programmes.find(pg => pg.level === "6") && programmes.find(pg => pg.level === "7") && programmes.find(pg => pg.level === "8")
+  }
+
+  get minProgramme() {
+    return this.programmes.at(0)
+  }
+
+  get maxProgramme() {
+    return this.programmes.at(-1)
+  }
+
+  get broadFieldCodes() {
+    const allFields = [] as ISCEDF2013[]
+    this.keywords?.forEach(kw => {try {allFields.push(new ISCEDF2013(kw))} catch {}})
+    const result = Array.from(new Set(allFields.map(field => field.broad)))
+    return result.sort()
+  }
+
+  get locales() {
+    return this.keywords?.filter(kw => kw.startsWith("widget-lang-")).map(kw => {
+      try {return new Locale(kw.slice("widget-lang-".length))} catch {return undefined as never}
+    }).filter(locale => locale) ?? []
+  }
+
+  get widgetTypes() {
+    return this.keywords?.filter(kw => ["widget-presentational", "widget-practical", "widget-simulational", "widget-conceptual", "widget-informational", "widget-contextual"].includes(kw)).map(kw => kw.slice("widget-".length)) as ("presentational" | "practical" | "simulational" | "conceptual" | "informational" | "contextual")[]
+  }
+
+  get widgetOnlineStatus(): "never" | "edit" | "use" | "always" {
+    if(this.keywords?.includes("widget-online")) {
+      return "always"
+    }
+    else if(this.keywords?.includes("widget-online-edit")) {
+      return "edit"
+    }
+    else if(this.keywords?.includes("widget-online-use")) {
+      return "use"
+    }
+    else {
+      return "never"
+    }
+  }
+
+  private isStandardKeyword(kw: string) {
+    let isProgramme = false; try {new ISCED2011(kw); isProgramme = true} catch {}
+    let isField = false; try {new ISCEDF2013(kw); isField = true} catch {}
+    const isWidgetType = ["widget-presentational", "widget-practical", "widget-simulational", "widget-conceptual", "widget-informational", "widget-contextual"].includes(kw)
+    const isWidgetLang = kw.startsWith("widget-lang-")
+    const isWidgetOnlineStatus = ["widget-online", "widget-online-edit", "widget-online-use"].includes(kw)
+    const isWebWriterMarker = kw === "webwriter-widget"
+    return isProgramme || isField || isWidgetType || isWidgetLang || isWidgetOnlineStatus || isWebWriterMarker
+  }
+
+  get nonstandardKeywords() {
+    return this.keywords?.filter(kw => !this.isStandardKeyword(kw))
   }
 
   get packageEditingSettings(): EditingSettings | undefined {

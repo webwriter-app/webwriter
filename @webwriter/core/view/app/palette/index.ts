@@ -1,4 +1,4 @@
-import { msg } from "@lit/localize"
+import { localized, msg } from "@lit/localize"
 import { LitElement, PropertyValues, css, html, noChange } from "lit"
 import { customElement, property, query } from "lit/decorators.js"
 import { classMap } from "lit/directives/class-map.js"
@@ -7,11 +7,14 @@ import { EditorState } from "prosemirror-state"
 import {Directive, PartInfo, directive, ElementPart} from "lit/directive.js"
 import { SlInput, SlPopup, SlProgressBar } from "@shoelace-style/shoelace"
 
-import { MemberSettings, Package, SemVer } from "#model"
+import { Locale, MemberSettings, Package, SemVer } from "#model"
 import { prettifyPackageName, filterObject } from "#utility"
 import { Command } from "#viewmodel"
 import { App, PackageForm } from "#view"
 import { spreadProps } from "@open-wc/lit-helpers"
+
+import IconPackage from "@tabler/icons/outline/package.svg"
+import { styleMap } from "lit/directives/style-map.js"
 
 
 // https://github.com/lit/lit-element/issues/1099#issuecomment-731614025
@@ -60,6 +63,7 @@ class FlipDirective extends Directive {
   }
 }
 
+@localized()
 @customElement("ww-palette")
 export class Palette extends LitElement {
 
@@ -122,6 +126,9 @@ export class Palette extends LitElement {
   @property({type: Boolean, attribute: true, reflect: true})
   managing = false
 
+  @property({type: Boolean, attribute: true, reflect: true})
+  isInNarrowLayout = false
+
   @property({type: String, attribute: true, reflect: true})
   editingStatus: string
 
@@ -160,6 +167,10 @@ export class Palette extends LitElement {
       box-sizing: border-box;
     }
 
+    :host([data-no-scrollbar-gutter]) {
+      padding-right: 11px;
+    }
+
     .inline-commands-wrapper {
       display: contents;
     }
@@ -190,6 +201,7 @@ export class Palette extends LitElement {
 
       & .title {
         display: flex;
+        gap: 0.5ch;
         flex-direction: row;
         align-items: center;
         font-size: 0.9rem;
@@ -206,6 +218,13 @@ export class Palette extends LitElement {
           width: calc(100%);
           display: block;
           box-sizing: border-box;
+        }
+
+        & .package-icon {
+          font-size: 1.25rem;
+          width: 24px;
+          height: 24px;
+          filter: grayscale(1);
         }
       }
 
@@ -244,7 +263,7 @@ export class Palette extends LitElement {
 
       & .package-tooltip {
         --show-delay: 750;
-        --max-width: 200px;
+        --max-width: 400px;
         word-wrap: break-word;
       }
 
@@ -258,6 +277,12 @@ export class Palette extends LitElement {
         border: 2px solid var(--sl-color-gray-400);
         color: var(--sl-color-gray-950);
         z-index: 100000;
+      }
+
+      & .package-tooltip > [slot=content] {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
       }
     }
     
@@ -290,14 +315,25 @@ export class Palette extends LitElement {
           background: var(--sl-color-gray-50);
           box-shadow: none;
         }
+        & .package-icon {
+          opacity: 0.5;
+        }
       }
 
       &:is(.installed, .snippet-card):not(.error) .title:hover {
         color: var(--sl-color-primary-600);
+
+        & .package-icon {
+          filter: grayscale(1) invert(33%) sepia(98%) saturate(869%) hue-rotate(169deg) brightness(101%) contrast(102%);
+        }
       }
 
       &:not(.installed):not(.error):not(.snippet-card):hover {
         color: var(--sl-color-success-700);
+
+        & .package-icon {
+          filter: grayscale(1) invert(34%) sepia(12%) saturate(4549%) hue-rotate(99deg) brightness(101%) contrast(84%);
+        }
       }
 
       &:not(.outdated) .update {
@@ -325,14 +361,16 @@ export class Palette extends LitElement {
         padding: 2px;
       }
 
-      & 
-
       & .pin::part(base) {
         padding: 0;
       }
 
       &.installed .pin::part(base):hover, &.installed:has(.pin:hover) .title {
         color: var(--sl-color-danger-700) !important;
+
+        & .package-icon {
+          filter: grayscale(1) invert(11%) sepia(98%) saturate(3672%) hue-rotate(352deg) brightness(107%) contrast(92%);
+        }
       }
 
       &:not(.installed):not(.error):not(.snippet-card) .pin::part(base):hover, &:not(.installed):has(.pin:hover) .title {
@@ -441,6 +479,36 @@ export class Palette extends LitElement {
 
     .snippet-card {
       grid-column: span 6;
+
+      & .snippet-label, & .title {
+        justify-content: space-between;
+      }
+
+      & .snippet-label::part(base) {
+        border: none;
+        align-items: center;
+        height: calc(var(--sl-input-height-small) - 6px);
+        background: none;
+        margin-left: -2px;
+      }
+
+      & .snippet-label::part(input) {
+        padding-left: 2px;
+        font-size: 0.9rem;
+        color: black;
+      }
+
+      & .unpin:not(:hover)::part(base) {
+        color: black !important;
+      }
+    }
+
+    :host(:not([managing])) {
+      & .snippet-label::part(base) {
+        cursor: pointer;
+        opacity: 1;
+        user-select: none;
+      }
     }
 
     #pin-preview {
@@ -495,6 +563,10 @@ export class Palette extends LitElement {
 
         &::part(input) {
           width: 100%;
+        }
+
+        &:not(:focus-within) #filter-button {
+          display: none;
         }
       }
 
@@ -583,7 +655,7 @@ export class Palette extends LitElement {
     }
 
     #add-local {
-      order: 10000;
+      order: 1000001;
       grid-column: span 6;
       user-select: none;
 
@@ -637,7 +709,7 @@ export class Palette extends LitElement {
       }
     }
 
-    @media only screen and (max-width: 1360px) {
+    @media only screen and (max-width: 1380px) {
       :host {
 				display: flex;
 				flex-direction: row;
@@ -655,7 +727,6 @@ export class Palette extends LitElement {
         max-width: unset;
         overflow-x: scroll;
         scrollbar-width: thin;
-        padding-left: 5px;
         // overflow-y: hidden;
       }
 
@@ -708,6 +779,10 @@ export class Palette extends LitElement {
         margin-right: 1ch;
       }
 
+      #package-toolbar {
+        padding-left: 5px;
+      }
+
       #package-search:not(:focus-within)[data-invalid] {
         width: 2.125ch !important;
       }
@@ -736,6 +811,47 @@ export class Palette extends LitElement {
       width: 30px;
       height: 30px;
       align-self: center;
+    }
+
+    .package-keywords {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+
+    .package-keyword {
+      border: 1px solid var(--sl-color-gray-950);
+      border-radius: 5px;
+      background: var(--sl-color-gray-200);
+      padding: 0 5px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.9em;
+
+      & sl-icon {
+        font-size: 20px;
+      }
+
+      &.package-programme {
+        background: var(--sl-color-green-100);
+      }
+
+      &.package-field {
+        background: white;
+      }
+
+      &.package-widget-type {
+        background: var(--sl-color-orange-100);
+      }
+
+      &.package-online-status {
+        background: var(--sl-color-blue-100);
+      }
+
+      &.package-locale {
+        background: var(--sl-color-red-100);
+      }
     }
 
 		
@@ -875,23 +991,27 @@ export class Palette extends LitElement {
 	BlockCard = (pkg: Package) => {
     const {watching, id, name, version, installed, outdated, localPath, packageEditingSettings} = pkg
     const {packages} = this.app.store
+    const order = Object.keys(this.searchResults).indexOf(id) + 1 || 1000000
+    const iconUrl = packages.packageIcons[id]
     const adding = !!packages.adding[id]
     const removing = !!packages.removing[id]
     const updating = !!packages.updating[id]
     const changing = adding || removing || updating
-    const found = name in this.searchResults
+    const found = id in this.searchResults
     const error = packages.getPackageIssues(pkg.id).length
     const members = packages.getPackageMembers(pkg.id)
     const insertables = members? Object.values(filterObject(members, (_, ms) => !(ms as any).uninsertable) as unknown as Record<string, MemberSettings>): []
     const pkgEditingSettings = !packageEditingSettings? undefined: {name: undefined, label: undefined, ...packageEditingSettings}
-    const {name: firstName, label: firstLabel} =  pkgEditingSettings ?? insertables[0] ?? {}
+    const {name: firstName, label: firstLabel} =  (pkgEditingSettings?.label? pkgEditingSettings: undefined) ?? insertables[0] ?? {}
     const otherInsertables = insertables.slice(1)
-    return html`<sl-card id=${pkg.id} @contextmenu=${(e: any) => {this.contextPkg = pkg; e.preventDefault()}} data-package-name=${name} @mouseenter=${() => this.handleMouseenterInsertable(pkg)} @mouseleave=${() => this.handleMouseleaveInsertable(pkg)} class=${classMap({"package-card": true, "block-card": true, installed: !!installed, error, adding, removing, updating, outdated, watching: !!watching, found, local: !!localPath, multiple: insertables.length > 1})} ?inert=${changing}>
-		<sl-tooltip placement="left-start" class="package-tooltip" hoist trigger="hover">
-			<span class="title" @click=${() => this.handleClickCard(pkg, firstName)}>${firstLabel?._ ?? prettifyPackageName(pkg.name)}</span>
+    return html`<sl-card id=${pkg.id} @contextmenu=${(e: any) => {this.contextPkg = pkg; e.preventDefault()}} data-package-name=${name} @mouseenter=${() => this.handleMouseenterInsertable(pkg)} @mouseleave=${() => this.handleMouseleaveInsertable(pkg)} class=${classMap({"package-card": true, "block-card": true, installed: !!installed, error, adding, removing, updating, outdated, watching: !!watching, found, local: !!localPath, multiple: insertables.length > 1})} style=${styleMap({order})} ?inert=${changing}>
+		<sl-tooltip flip flip-fallback-placements="right-start top" placement="left-start" class="package-tooltip" hoist trigger="hover">
+			<span class="title" @click=${() => this.handleClickCard(pkg, firstName)}>
+        <img class="package-icon" src=${iconUrl? iconUrl: IconPackage}>
+        ${firstLabel?._ ?? prettifyPackageName(pkg.name)}
+      </span>
       <span slot="content">
-        <b><code>${name} ${version}</code></b>
-        <div>${pkg.description || (error? "- " + msg("Error reading this package") + " -": null) || msg("No description provided")}</div>
+        ${this.PackageDescription(pkg, !!error)}
       </span>
       <aside class="manage-controls">
         <!--<ww-button variant="icon" class="watch-button manage" icon=${watching? "bolt-filled": "bolt"} @click=${(e: any) => {this.emitWatchWidget(pkg.id); e.stopPropagation()}}></ww-button>-->
@@ -912,11 +1032,18 @@ export class Palette extends LitElement {
 	</sl-card>`
   }
 
-  SnippetCard = (pkg: Package) => {
-    const {name} = pkg
+  @property({type: String})
+  editingID: string
+
+  SnippetCard = (pkg: Package & {_: {html: string}}) => {
+    const {name, editingConfig, _: {html: snippetHtml}} = pkg
+    const label = (editingConfig ?? {})["."]?.label?._ ?? prettifyPackageName(name)
     return html`<sl-card class=${classMap({"package-card": true, "snippet-card": true})}>
       <span @click=${() => this.handleClickCard(pkg)} class="title" @mouseenter=${() => this.handleMouseenterInsertable(pkg)} @mouseleave=${() => this.handleMouseleaveInsertable(pkg)}>
-        <span>${prettifyPackageName(name)}</span>
+        ${this.managing
+          ? html`<sl-input style=${`width: ${label.length}ch`} class="snippet-label" size="small" type="text" value=${label} @focusin=${(e: any) => {e.preventDefault(); e.stopPropagation()}} @click=${(e: any) => {e.preventDefault(); e.stopPropagation()}} @sl-change=${(e: any) => {this.app.store.packages.putSnippet(name, {id: parseInt(name.split("-").at(-1)!), html: snippetHtml, label: {_: e.target.value}}); this.blur()}}></sl-input>`
+          : html`<span class="snippet-label">${label}</span>`
+        }
         <ww-button title=${msg("Unpin this snippet")} ?inert=${!this.managing} class="unpin" variant="icon" icon=${this.managing? "trash": "pinned-filled"}  @focusin=${(e: any) => {e.preventDefault(); e.stopPropagation()}} @click=${(e: any) => {this.app.store.packages.removeSnippet(name.split("-")[1]); e.stopPropagation(); e.preventDefault()}}></ww-button>
 			</span>
 		<sl-progress-bar></sl-progress-bar>
@@ -941,7 +1068,7 @@ export class Palette extends LitElement {
 
   Card = (cmdOrPkg: Command | Command[] | Package) => {
     if("name" in cmdOrPkg && cmdOrPkg.isSnippet) {
-      return this.SnippetCard(cmdOrPkg)
+      return this.SnippetCard(cmdOrPkg as any)
     }
     if("name" in cmdOrPkg) {
       return this.BlockCard(cmdOrPkg)
@@ -968,8 +1095,8 @@ export class Palette extends LitElement {
 
   get packagesInSearchOrder() {
     return [...this.packages].sort((a, b) => {
-      const aScore = this.searchResults[a.name]?.score ?? 0
-      const bScore = this.searchResults[b.name]?.score ?? 0
+      const aScore = this.searchResults[a.id]?.score ?? 0
+      const bScore = this.searchResults[b.id]?.score ?? 0
       return bScore - aScore
     })
   }
@@ -981,13 +1108,224 @@ export class Palette extends LitElement {
     return html`<div id="package-toolbar">
       <sl-input id="package-search" placeholder=${!this.app.store.packages.installed.length? msg("Find packages..."): ""} required type="search" size="small" @sl-input=${this.handleSearchInput} @focus=${() => this.managing = true} clearable>
         <sl-icon slot="prefix" name="search" @click=${(e: any) => this.packageSearch.focus()}></sl-icon>
+        <!--<ww-button id="filter-button" variant="icon" slot="suffix" icon="filter" @click=${(e: any) => this.packageSearch.focus()}></ww-button>-->
       </sl-input>
+      <sl-popup id="filters-popup" anchor="package-search">
+        ${this.SearchFilters()}
+      </sl-popup>
       <ww-button title=${msg("Reload packages")} .issues=${this.app.store.packages.managementIssues} id="package-button" variant="icon" icon="packages" @click=${(e: any) => {this.managing = !this.managing; this.managing && this.app.store.packages.load()}}>
         ${!this.app.store.packages.loading? null: html`
           <sl-spinner id="packages-spinner"></sl-spinner>
         `}
       </ww-button>
     </div>`
+  }
+
+  private get programmeLabels() {
+    return {
+      "0": msg("Preschool") ,
+      "1": msg("Primary school"),
+      "2": msg("Middle school"),
+      "3": msg("High school"),
+      "4": msg("Vocational cert."),
+      "5": msg("Associate deg."),
+      "6": msg("Bachelor's"),
+      "7": msg("Master's"),
+      "8": msg("Doctorate"),
+      "9": msg("Misc. ed."),
+      "2-4": msg("Secondary ed."),
+      "5-8": msg("Higher ed."),
+    }
+  }
+
+  private get programmeIcons() {
+    return {
+      "0": "horse-toy",
+      "1": "backpack",
+      "2": "backpack",
+      "3": "backpack",
+      "4": "backpack",
+      "5": "school",
+      "6": "school",
+      "7": "school",
+      "8": "school",
+      "9": "book-2",
+      "2-4": "backpack",
+      "5-8": "school",
+    }
+  }
+
+  private get fieldLabels() {
+    return {
+      "00": msg("Generic"),
+      "01": msg("Education"),
+      "02": msg("Humanities"),
+      "03": msg("Social sciences"),
+      "04": msg("Business"),
+      "05": msg("Natural sciences"),
+      "06": msg("ICT"),
+      "07": msg("Engineering"),
+      "08": msg("Food production"),
+      "09": msg("Health"),
+      "10": msg("Services"),
+      "99": msg("Other fields")
+    }
+  }
+
+  private get fieldIcons() {
+    return {
+      "00": "book",
+      "01": "chalkboard",
+      "02": "brush",
+      "03": "news",
+      "04": "briefcase",
+      "05": "microscope",
+      "06": "cpu",
+      "07": "tool",
+      "08": "tractor",
+      "09": "heartbeat",
+      "10": "building-store",
+      "99": "books"
+    }
+  }
+
+  private get widgetTypeLabels() {
+    return {
+      "presentational": msg("Presentation"),
+      "practical": msg("Practice"),
+      "simulational": msg("Simulation"),
+      "conceptual": msg("Concept"),
+      "informational": msg("Information"),
+      "contextual": msg("Context")
+    }
+  }
+
+  private get widgetTypeIcons() {
+    return {
+      "presentational": "alert-square",
+      "practical": "help-square",
+      "simulational": "square-chevron-right",
+      "conceptual": "square-dot",
+      "informational": "info-square",
+      "contextual": "square-asterisk"
+    }
+  }
+
+  PackageKeyword(kw: string) {
+    return html`<span class="package-keyword">${kw}</span>`
+  }
+
+  ProgrammeTag(code?: keyof Palette["programmeLabels"]) {
+    return !code? undefined: html`
+      <span class="package-keyword package-programme">
+        <sl-icon name=${this.programmeIcons[code]}></sl-icon>
+        <span>${this.programmeLabels[code]}</span>
+      </span>
+    `
+  }
+
+  PackageProgramme(pkg: Package) {
+    if(!pkg.minProgramme || !pkg.maxProgramme) {
+      return undefined
+    }
+    else {
+      return [
+        this.ProgrammeTag(pkg.programmes.find(pg => pg.level === "0")?.level),
+        this.ProgrammeTag(pkg.programmes.find(pg => pg.level === "1")?.level),
+        ...(pkg.coversSecondaryEducation? [this.ProgrammeTag("2-4")]: [
+          this.ProgrammeTag(pkg.programmes.find(pg => pg.level === "2")?.level),
+          this.ProgrammeTag(pkg.programmes.find(pg => pg.level === "3")?.level),
+          this.ProgrammeTag(pkg.programmes.find(pg => pg.level === "4")?.level)
+        ]),
+        ...(pkg.coversHigherEducation? [this.ProgrammeTag("5-8")]: [
+          this.ProgrammeTag(pkg.programmes.find(pg => pg.level === "5")?.level),
+          this.ProgrammeTag(pkg.programmes.find(pg => pg.level === "6")?.level),
+          this.ProgrammeTag(pkg.programmes.find(pg => pg.level === "7")?.level),
+          this.ProgrammeTag(pkg.programmes.find(pg => pg.level === "8")?.level),
+        ]),
+      ]
+    }
+  }
+
+  PackageOnlineStatus(pkg: Package) {
+    let label = ""
+    if(pkg.widgetOnlineStatus === "always") {
+      label = msg("Online only")
+    }
+    else if(pkg.widgetOnlineStatus === "edit") {
+      label = msg("Online when editing")
+    }
+    else if(pkg.widgetOnlineStatus === "use") {
+      label = msg("Online when using")
+    }
+    else {
+      return undefined
+    }
+    return html`<span class="package-keyword package-online-status">
+      <sl-icon name="wifi"></sl-icon>
+      ${label}
+    </span>`
+  }
+
+  PackageFields(pkg: Package) {
+    return pkg.broadFieldCodes.map(code => html`
+      <span class="package-keyword package-field">
+        <sl-icon name=${this.fieldIcons[code]}></sl-icon>
+        <span>${this.fieldLabels[code]}</span>
+      </span>
+    `)
+  }
+
+  PackageLocales(pkg: Package) {
+    if(!pkg.locales.length) {
+      return undefined
+    }
+    const userLangs = Array.from(new Set(navigator.languages.map(lang => new Locale(lang).language)))
+    const relevantLocales = pkg.locales.filter(locale => userLangs.includes(locale.language))
+    const otherLocales = pkg.locales.filter(locale => !userLangs.includes(locale.language))
+    return html`<span class="package-keyword package-locale">
+      <sl-icon name="language"></sl-icon>
+      ${relevantLocales.map(locale => Locale.getLanguageInfo(locale.language)).map(info => info.name).join(", ")}
+      ${otherLocales.length? html`<sup>+${otherLocales.length}</sup>`: undefined}
+    </span>`
+  }
+
+  PackageWidgetTypes(pkg: Package) {
+    return pkg.widgetTypes?.map(type => {
+      return html`<span class="package-keyword package-widget-type">
+        <sl-icon name=${this.widgetTypeIcons[type]}></sl-icon>
+        <span>${this.widgetTypeLabels[type]}</span>
+      </span>`
+    })
+  }
+
+  PackageDescription(pkg: Package, error=false) {
+    const {name, version} = pkg
+    const v = new SemVer(String(version))
+    const description = (pkg?.editingConfig as any)?.["."]?.description?.[this.app.store.ui.locale] ?? pkg.description
+    v.prerelease = v.prerelease.filter(part => part !== "local")
+    return html`
+      <b class="package-title"><code>${name} ${v}</code></b>
+      <div class="package-description">${description || (error? "- " + msg("Error reading this package") + " -": null) || msg("No description provided")}</div>
+      <div class="package-keywords">
+        ${this.PackageWidgetTypes(pkg)}
+        ${this.PackageLocales(pkg)}
+        ${this.PackageFields(pkg)}
+        ${this.PackageOnlineStatus(pkg)}
+        ${this.PackageProgramme(pkg)}
+        ${pkg.nonstandardKeywords?.map(kw => this.PackageKeyword(kw))}
+      </div>
+    `
+  }
+
+  SearchFilters() { // online, language, type, programme, field
+    return html`
+      <sl-button-group>
+        <sl-button size="small">
+          <sl-icon></sl-icon>
+        </sl-button>
+      </sl-button-group>
+    `
   }
 
   AddLocalPackageButton() {
@@ -1217,7 +1555,7 @@ export class Palette extends LitElement {
       ${this.app.commands.groupedContainerCommands.map(this.Card)}
       ${this.ClipboardCard()}
       ${this.editingStatus != "pinning"? undefined: this.PinPreview()}
-      ${this.packagesInSearchOrder.map(this.Card)}
+      ${this.packages.map(this.Card)}
       ${this.AddLocalPackageButton()}
       ${this.LocalPackageDialog()}
       ${this.ErrorDialog()}

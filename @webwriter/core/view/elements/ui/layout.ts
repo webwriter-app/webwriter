@@ -38,7 +38,7 @@ export class Layout extends LitElement {
       width: 100vw;
     }
 
-    @media only screen and (min-width: 1130px) and (max-width: 1360px) {
+    @media only screen and (min-width: 1130px) and (max-width: 1380px) {
       :host {
         --ww-left-margin-width: 0px;
       }

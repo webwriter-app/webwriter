@@ -10,6 +10,18 @@ import { promises as fs } from "fs"
 import {join} from "path"
 
 export async function localize() {
+  
+}
+
+export async function localizePackageJson() {
+
+}
+
+export async function localizeSnippets() {
+
+}
+
+export async function localizeWidgets() {
   const litLocalizePath = "./lit-localize.json"
   let litLocalize
   try {

@@ -256,7 +256,10 @@ export const tablePlugin = () => ({
     //columnResizing(),
     new Plugin({
       ...tableEditing({allowTableNodeSelection: true}).spec,
-      handleKeyDown: undefined
+      props: {
+        ...tableEditing({allowTableNodeSelection: true}).spec.props,
+        handleKeyDown: undefined
+      }
     })
   ],
   keymap: {

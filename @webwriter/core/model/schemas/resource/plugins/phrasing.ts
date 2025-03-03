@@ -205,12 +205,6 @@ export const phrasingPlugin = () => ({
       tag: "small",
       group: "phrasing"
     }),
-    span: HTMLMarkSpec({
-      tag: "span",
-      group: "phrasing",
-      parseDOM: [{tag: "span:not([data-ww-editing=phrase])"}],
-      excludes: ""
-    }),
     strong: HTMLMarkSpec({
       tag: "strong",
       group: "phrasing"
@@ -248,9 +242,7 @@ export const phrasingPlugin = () => ({
           if(typeof dom === "string") {
             return false
           }
-          const decl = new CSSStyleDeclaration()
-          decl.fontSize = "1pt"
-          return dom.style.length === decl.length? {value: dom.style.fontSize}: false
+          return dom.style.length === 1 && dom.style.fontSize? {value: dom.style.fontSize}: false
         }}
       ]
     }),
@@ -264,9 +256,7 @@ export const phrasingPlugin = () => ({
           if(typeof dom === "string") {
             return false
           }
-          const decl = new CSSStyleDeclaration()
-          decl.fontFamily = "Monospace"
-          return dom.style.length === decl.length? {value: dom.style.fontFamily}: false
+          return dom.style.length === 1 && dom.style.fontFamily? {value: dom.style.fontFamily}: false
         }}
       ]
     }),
@@ -280,9 +270,7 @@ export const phrasingPlugin = () => ({
           if(typeof dom === "string") {
             return false
           }
-          const decl = new CSSStyleDeclaration()
-          decl.color = "green"
-          return dom.style.length === decl.length? {value: dom.style.color}: false
+          return dom.style.length === 1 && dom.style.color? {value: dom.style.color}: false
         }}
       ]
     }),
@@ -296,11 +284,15 @@ export const phrasingPlugin = () => ({
           if(typeof dom === "string") {
             return false
           }
-          const decl = new CSSStyleDeclaration()
-          decl.background = "green"
-          return dom.style.length === decl.length? {value: dom.style.background}: false
+          return dom.style.length === 1 && dom.style.background? {value: dom.style.background}: false
         }}
       ]
+    }),
+    span: HTMLMarkSpec({
+      tag: "span",
+      group: "phrasing",
+      parseDOM: [{tag: "span:not([data-ww-editing=phrase])"}],
+      excludes: ""
     }),
   },
   inputRules: [

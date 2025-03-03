@@ -17,7 +17,7 @@ type Options = {
 }
 
 type Snippet = {
-  id: string,
+  id: number,
   label?: Record<string, string>,
   html: string
 }
@@ -194,6 +194,7 @@ export class PackageStore {
   bundleID: string = ""
 
   packages: Record<string, Package> = {}
+  packageIcons: Record<string, string> = {}
 
   adding: Record<string, boolean> = {}
   removing: Record<string, boolean> = {}
@@ -472,14 +473,19 @@ export class PackageStore {
     await this.updateLocalWatchIntervals(local)
     final = available.map(pkg => pkg.extend({installed: this.installedPackages.includes(pkg.id)})).sort((a, b) => Number(!!b.installed) - Number(!!a.installed))
     const snippetData = await this.getSnippet(undefined)
-    const snippets = snippetData.map(snippet => {
-      return new Package({name: `snippet-${parseInt(snippet.id)}`, version: "0.0.0-snippet", private: true})
-    }).reverse()
+    const snippets = snippetData.map(({id, label, html}) => new Package({
+      name: `snippet-${id}`,
+      version: "0.0.0-snippet",
+      private: true,
+      html,
+      editingConfig: {".": {label}}
+    })).reverse()
     final = [...snippets, ...local, ...final]
     await this.updateImportMap()
     this.bundleID = PackageStore.computeBundleID(this.installedPackages, false, final.some(pkg => pkg.localPath)? this.lastLoaded: undefined);
     (this.onBundleChange ?? (() => null))(final.filter(pkg => pkg.installed))
     this.packages = Object.fromEntries(final.map(pkg => [pkg.id, pkg]))
+    Promise.all(final.map(async pkg => [pkg.id, await this.getIconDataUrl(pkg.id)])).then(result => this.packageIcons = Object.fromEntries(result))
     await this.checkForMissingMembers(this.installed)
     this.searchIndex.removeAll()
     this.searchIndex.addAll(final)
@@ -766,7 +772,7 @@ export class PackageStore {
     }
     const existingPkg = existingPkgFile? new Package(JSON.parse(await existingPkgFile.text())): null
     const newPkg = existingPkg? existingPkg.extend(pkg): pkg
-    await writeFile(root, "package.json", JSON.stringify(newPkg), true, true)
+    await writeFile(root, "package.json", JSON.stringify(newPkg, undefined, 4), true, true)
     await this.add(root, newPkg.id)
   }
 
@@ -792,6 +798,28 @@ export class PackageStore {
     const url = new URL(`_snippets/${id}`, this.apiBase)
     await fetch(url, {method: "DELETE"})
     return this.load()
+  }
+
+  getIconUrl(id: string) {
+    const iconPath = this.packages[id].iconPath
+    return !iconPath? undefined: new URL(`${id}${iconPath.slice(1)}`, this.apiBase)
+  }
+
+  async getIconDataUrl(id: string) {
+    const url = this.getIconUrl(id)
+    if(!url) {
+      return undefined
+    }
+    try {
+      const reader = new FileReader()
+      const response = await fetch(url)
+      const result = new Promise(r => reader.addEventListener("load", () => r(reader.result)))
+      reader.readAsDataURL(await response.blob())
+      return result
+    }
+    catch {
+      return undefined
+    }
   }
 }
 

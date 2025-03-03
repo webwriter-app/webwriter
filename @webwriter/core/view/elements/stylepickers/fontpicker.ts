@@ -15,15 +15,15 @@ const GENERIC_FONT_FAMILY = [
 ]
 
 export const WEB_SAFE_FONTS = [
-  {name: '"Arial"', type: "sans-serif"},
+  {name: 'Arial', type: "sans-serif"},
   {name: '"Arial Black"', type: "sans-serif"},
   {name: '"Arial Narrow"', type: "sans-serif"},
-  {name: '"Tahoma"', type: "sans-serif"},
+  {name: 'Tahoma', type: "sans-serif"},
   {name: '"Trebuchet MS"', type: "sans-serif"},
-  {name: '"Verdana"', type: "sans-serif"},
-  {name: '"Georgia"', type: "serif"},
+  {name: 'Verdana', type: "sans-serif"},
+  {name: 'Georgia', type: "serif"},
   {name: '"Lucida Bright"', type: "serif"},
-  {name: '"Palatino"', type: "serif"},
+  {name: 'Palatino', type: "serif"},
   {name: '"Times New Roman"', type: "serif"},
   {name: '"Courier New"', type: "monospace"}
 ]
@@ -320,7 +320,26 @@ export class FontPicker extends LitElement {
   } 
 
   getNextFontSize(backwards=false) {
-    return String(parseInt(this.fontSize ?? "0") + (backwards? 1: -1))
+    let value
+    if(this.fontSize === "DEFAULT") {
+      value = this.defaultFontSize
+    }
+    else if(this.fontSize === "INDEFINITE") {
+      value = this.fontSizes.at(-1) as string
+    }
+    else {
+      value = (this.fontSize ?? this.defaultFontSize ?? "18pt") as string
+    }
+    const valueAsInt = parseInt(value)
+    const iNextLarger = FONT_SIZES.findIndex(size => valueAsInt < size)
+    const exactMatch = FONT_SIZES.includes(valueAsInt)
+    const exactMatchLast = FONT_SIZES.at(-1) === valueAsInt
+    const next = backwards
+      ? valueAsInt > FONT_SIZES.at(-1)!
+        ? FONT_SIZES.at(-1)
+        : (exactMatchLast? FONT_SIZES.at(-2): FONT_SIZES[exactMatch? iNextLarger - 2: iNextLarger - 1] ?? FONT_SIZES.at(0)!) 
+      : FONT_SIZES[iNextLarger] ?? FONT_SIZES.at(-1)!
+    return `${next}pt`
   }
 
   @property({type: Boolean, state: true})
@@ -351,8 +370,8 @@ export class FontPicker extends LitElement {
           ${size}pt
         </sl-option>`)}
       </ww-combobox>
-      <ww-button size="small" variant="icon" disabled @click=${(e: any) => this.fontSize = this.getNextFontSize()} icon="text-decrease"></ww-button>
-      <ww-button size="small" variant="icon" disabled @click=${(e: any) => this.fontSize = this.getNextFontSize(true)} icon="text-increase"></ww-button>
+      <ww-button size="small" variant="icon" @click=${(e: any) => this.changeFontSize(this.getNextFontSize(true))} icon="text-decrease"></ww-button>
+      <ww-button size="small" variant="icon" @click=${(e: any) => this.changeFontSize(this.getNextFontSize())} icon="text-increase"></ww-button>
       <!--
       <ww-button variant="icon" icon="dash-square"></ww-button>
       <ww-button variant="icon" icon="plus-square"></ww-button>

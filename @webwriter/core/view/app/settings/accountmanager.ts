@@ -11,7 +11,7 @@ import { Button } from "../../elements/ui/button"
 import { SlCard, SlInput } from "@shoelace-style/shoelace";
 import { ClientResponseError } from "pocketbase";
 
-import APPICON from "../../assets/app-icon-transparent.svg?raw"
+import APPICON from "../../assets/app-icon-transparent.svg"
 
 @localized()
 @customElement("ww-account-manager")
@@ -465,7 +465,7 @@ export class AccountManager extends LitElement {
   render() {
     const accounts = this.app.store.accounts.accounts;
     const types = Object.keys(accounts).filter(
-      (k) => k === "pocketbase" || k === "llm"
+      (k) => k === "pocketbase"
     ) as AccountTypeId[];
     return html` ${types.map((t) => this.AccountsPane(t, (accounts as any)[t]))} `;
   }

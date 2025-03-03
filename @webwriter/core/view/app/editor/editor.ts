@@ -326,7 +326,7 @@ export class ExplorableEditor extends LitElement {
 
   async pin() {
     const html = this.selectionAsHTML
-    await this.app.store.packages.addSnippet({id: "snippet", html})
+    await this.app.store.packages.addSnippet({id: 0, html})
     this.editingStatus = undefined
   }
 
@@ -473,13 +473,13 @@ export class ExplorableEditor extends LitElement {
         display: none !important;
       }
 
-      @media only screen and (min-width: 1131px) {
+      @media only screen and (min-width: 1130px) {
         ww-toolbox::part(close-button) {
           display: none;
         }
 			}
 
-			@media only screen and (max-width: 1360px) {
+			@media only screen and (max-width: 1380px) {
 				ww-palette {
 					grid-column: 1 / 8;
 					grid-row: 2;
@@ -495,7 +495,7 @@ export class ExplorableEditor extends LitElement {
         }
 			}
 
-			@media only screen and (min-width: 1361px) {
+			@media only screen and (min-width: 1381px) {
 				ww-palette {
           padding-left: 5px;
 					grid-column: 2;
@@ -637,7 +637,7 @@ export class ExplorableEditor extends LitElement {
             extraDiv.style.width = `${width}px`
             extraDiv.style.height = `${height}px`
           }).observe(el)
-          this.pmEditor.document.addEventListener("scroll", () => {
+          this.pmEditor.document?.addEventListener("scroll", () => {
             const {top, left, width, height} = (el ?? extraDiv).getBoundingClientRect()
             extraDiv.style.top = `${top}px`
             extraDiv.style.left = `${left}px`
@@ -679,7 +679,7 @@ export class ExplorableEditor extends LitElement {
 	}
 
   get isInWideLayout() {
-    return document.documentElement.offsetWidth > 1360
+    return document.documentElement.offsetWidth > 1380
   }
 
   get shiftPaddingStyling() {
@@ -1346,9 +1346,16 @@ export class ExplorableEditor extends LitElement {
     return html.replaceAll(/style=["']?((?:.(?!["']?\s+(?:\S+)=|\s*\/?[>"']))+.)["']?/g, "")
   }
 
+  handleEditorInitialized = (e: CustomEvent) => {
+    if(e.detail.first) {
+      this.handleEditorFocus()
+    }
+  }
+
   handleEditorFocus = () => {
     this.requestUpdate()
     this.toolbox && (this.toolbox.activeLayoutCommand = undefined)
+    this.toolbox && (this.toolbox.childrenDropdownActiveElement = null)
     this.palette && (this.palette.managing = false)
     this.editingStatus = undefined
   }
@@ -1377,6 +1384,7 @@ export class ExplorableEditor extends LitElement {
 				@update=${this.handleUpdate}
         @focus=${this.handleEditorFocus}
         @fullscreenchange=${() => this.requestUpdate()}
+        @ww-initialized=${this.handleEditorInitialized}
 				.scrollMargin=${20}
 				scrollThreshold=${20}
 				.state=${this.editorState}
@@ -1464,6 +1472,7 @@ export class ExplorableEditor extends LitElement {
 				.activeElement=${activeElement}
         .shiftPaddingStyling=${this.shiftPaddingStyling}
 				@ww-delete-widget=${(e: any) => this.deleteWidget(e.detail.widget)}
+        @sl-after-open=${() => this.requestUpdate()}
 				@ww-mark-field-input=${(e: any) => {
 					const {from, to} = this.editorState.selection
 					const markType = this.editorState.schema.marks[e.detail.markType]
@@ -1488,15 +1497,25 @@ export class ExplorableEditor extends LitElement {
         }}
         @ww-set-attribute=${(e: CustomEvent) => this.setNodeAttribute(e.detail.el, e.detail.key, e.detail.value, e.detail.tag)}
         @ww-set-style=${(e: CustomEvent) => {
-          if(!isNodeSelection(this.selection) && !this.isAllSelected) {
-            this.pmEditor.dispatch(this.editorState.tr.setSelection(NodeSelection.create(this.editorState.doc, this.editorState.selection.$anchor.before())))
-          }
-          Object.assign(e.detail.el.style, e.detail.style)
+          this.topLevelElementsInSelection.forEach(el => Object.assign(el.style, e.detail.style))
           // this.pmEditor.focus()
         }}
 			></ww-toolbox>
 		`
 	}
+
+  get topLevelElementsInSelection() {
+    if(this.selection instanceof NodeSelection) {
+      return [this.activeElement!]
+    }
+    const result = [] as HTMLElement[]
+    this.selection.content().content.descendants((node, pos) => {
+      const el = this.pmEditor.nodeDOM(pos) as HTMLElement
+      result.push(el)
+      return false
+    })
+    return result
+  }
 
   prefetchAllMembers(name: string, id: string) {
     if(!this.app.store.packages.installedPackages.includes(id)) {
@@ -1512,9 +1531,11 @@ export class ExplorableEditor extends LitElement {
 		return html`
 			<ww-palette
         .forceToolboxPopup=${!!this.forceToolboxPopup}
+        ?isInNarrowLayout=${this.isInNarrowLayout}
         .app=${this.app}
         .editorState=${this.editorState}
 				part="editor-toolbox"
+        ?data-no-scrollbar-gutter=${this.palette?.offsetWidth - this.palette?.clientWidth === 0}
 				@ww-insert=${(e: any) => this.insertMember(e.detail.pkgID, e.detail.name)}
 				@ww-mouseenter-insertable=${(e: CustomEvent) => {
           if(WEBWRITER_ENVIRONMENT.backend !== "tauri") {
