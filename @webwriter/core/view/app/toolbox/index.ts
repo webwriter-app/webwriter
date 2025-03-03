@@ -1114,6 +1114,7 @@ export class  Toolbox extends LitElement {
       <ww-fontpicker
         .fontFamilies=${fontFamilies}
         .fontSizes=${fontSizes}
+        defaultFontSize=${ifDefined(this.activeElement? getComputedStyle(this.activeElement).fontSize: undefined)}
         recommendedOnly
         @ww-change-font-family=${(e: any) =>fontFamilyCommand.run(e.detail)}
         @ww-change-font-size=${(e: any) => fontSizeCommand.run(e.detail)}
