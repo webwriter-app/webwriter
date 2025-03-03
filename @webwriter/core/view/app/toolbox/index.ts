@@ -1456,7 +1456,7 @@ export class  Toolbox extends LitElement {
   }
 
   private filterChildren(children: HTMLCollection | HTMLElement[], tag?: string) {
-    if(tag && ["svg", "table", "math"].includes(tag)) {
+    if(tag && ["svg", "table", "math", "picture", "audio", "video"].includes(tag)) {
       return []
     }
     return (Array.isArray(children)? children: Array.from(children))
