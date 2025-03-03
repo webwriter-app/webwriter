@@ -1455,16 +1455,7 @@ export class CommandController implements ReactiveController {
         description: () => msg("Insert a list (ordered)"),
         group: "list",
         tags: ["node", "container"],
-      }),/*
-      dl: new NodeCommand(this.host, {
-        id: "dl",
-        label: () => msg("Description List"),
-        icon: "list-letters",
-        description: () =>
-          msg("Insert a description list (glossary, term list)"),
-        group: "list",
-        tags: ["node", "container"],
-      }),*/
+      }),
       details: new NodeCommand(this.host, {
         id: "details",
         label: () => msg("Details"),
@@ -1479,99 +1470,7 @@ export class CommandController implements ReactiveController {
         label: () => msg("Summary"),
         icon: "circle-letter-s",
         description: () => msg("Insert summary"),
-      }),/*
-      button: new NodeCommand(this.host, {
-        id: "button",
-        label: () => msg("Button"),
-        icon: "square-f1",
-        group: "interactive",
-        description: () => msg("Insert a button"),
-        tags: ["node", "container"],
       }),
-      input: new NodeCommand(this.host, {
-        id: "input",
-        label: () => msg("Input"),
-        icon: "forms",
-        group: "interactive",
-        description: () => msg("Insert an input"),
-        tags: ["node", "container"],
-      }),
-      textarea: new NodeCommand(this.host, {
-        id: "textarea",
-        label: () => msg("Textarea"),
-        icon: "forms",
-        group: "interactive",
-        description: () => msg("Insert an textarea"),
-        tags: ["node", "container"],
-      }),
-      select: new NodeCommand(this.host, {
-        id: "select",
-        label: () => msg("Select"),
-        icon: "select",
-        group: "interactive",
-        description: () => msg("Insert a select"),
-        tags: ["node", "container"],
-      }),
-      meter: new NodeCommand(this.host, {
-        id: "meter",
-        label: () => msg("Meter"),
-        icon: "progress",
-        group: "interactive",
-        description: () => msg("Insert a meter"),
-        tags: ["node", "container"],
-      }),
-      datalist: new NodeCommand(this.host, {
-        id: "datalist",
-        label: () => msg("Data List"),
-        icon: "stack-2",
-        description: () => msg("Insert a data list"),
-      }),
-      fieldset: new NodeCommand(this.host, {
-        id: "fieldset",
-        label: () => msg("Field Set"),
-        icon: "forms",
-        description: () => msg("Insert a field set"),
-      }),
-      label: new NodeCommand(this.host, {
-        id: "label",
-        label: () => msg("Label"),
-        icon: "capsule-horizontal",
-        description: () => msg("Insert a label"),
-      }),
-      legend: new NodeCommand(this.host, {
-        id: "legend",
-        label: () => msg("Legend"),
-        icon: "tags",
-        description: () => msg("Insert a legend"),
-      }),
-      optgroup: new NodeCommand(this.host, {
-        id: "optgroup",
-        label: () => msg("Option Group"),
-        icon: "circles",
-        description: () => msg("Insert an option group"),
-      }),
-      option: new NodeCommand(this.host, {
-        id: "option",
-        label: () => msg("Option"),
-        icon: "circle",
-        description: () => msg("Insert an option"),
-      }),
-      output: new NodeCommand(this.host, {
-        id: "output",
-        label: () => msg("Output"),
-        icon: "clipboard-text",
-        group: "interactive",
-        description: () => msg("Insert an output"),
-        tags: ["node", "container"],
-      }),
-      progress: new NodeCommand(this.host, {
-        id: "progress",
-        label: () => msg("Progress"),
-        icon: "progress",
-        group: "interactive",
-        description: () => msg("Insert a progress indicator"),
-        tags: ["node", "container"],
-      }),*/
       table: new NodeCommand(this.host, {
         id: "table",
         label: () => msg("Table"),
@@ -1634,117 +1533,7 @@ export class CommandController implements ReactiveController {
         label: () => msg("Table Row"),
         icon: "table-row",
         description: () => msg("Insert a table row"),
-      }) /*
-      blockquote: new NodeCommand(this.host, {
-        id: "blockquote",
-        label: () => msg("Blockquote"),
-        icon: "blockquote",
-        description: () => msg("Insert a blockquote"),
-        group: "semanticsection",
-        tags: ["node", "container"]
       }),
-      figure: new NodeCommand(this.host, {
-        id: "figure",
-        label: () => msg("Figure"),
-        icon: "layout-bottombar",
-        description: () => msg("Insert a figure"),
-        group: "semanticsection",
-        tags: ["node", "container"]
-      }),  
-      article: new NodeCommand(this.host, {
-        id: "article",
-        label: () => msg("Article"),
-        icon: "article",
-        description: () => msg("Insert an article"),
-        group: "semanticsection",
-        tags: ["node", "container"]
-      }),
-      aside: new NodeCommand(this.host, {
-        id: "aside",
-        label: () => msg("Aside"),
-        icon: "notes",
-        description: () => msg("Insert an aside"),
-        group: "semanticsection",
-        tags: ["node", "container"]
-      }),
-      nav: new NodeCommand(this.host, {
-        id: "nav",
-        label: () => msg("Navigation"),
-        icon: "directions",
-        description: () => msg("Insert a navigation"),
-        group: "semanticsection",
-        tags: ["node", "container"]
-      }),
-      section: new NodeCommand(this.host, {
-        id: "section",
-        label: () => msg("Section"),
-        icon: "section-sign",
-        description: () => msg("Insert a section"),
-        group: "semanticsection",
-        tags: ["node", "container"]
-      }),
-      header: new NodeCommand(this.host, {
-        id: "header",
-        label: () => msg("Header"),
-        icon: "layout-navbar",
-        description: () => msg("Insert a header"),
-        group: "semanticsection",
-        tags: ["node", "container"]
-      }),
-      footer: new NodeCommand(this.host, {
-        id: "footer",
-        label: () => msg("Footer"),
-        icon: "layout-bottombar",
-        description: () => msg("Insert a footer"),
-        group: "semanticsection",
-        tags: ["node", "container"]
-      }),
-      main: new NodeCommand(this.host, {
-        id: "main",
-        label: () => msg("Main"),
-        icon: "news",
-        description: () => msg("Insert a main"),
-        group: "semanticsection",
-        tags: ["node", "container"]
-      }),
-      search: new NodeCommand(this.host, {
-        id: "search",
-        label: () => msg("Search"),
-        icon: "list-search",
-        description: () => msg("Insert a search"),
-        group: "semanticsection",
-        tags: ["node", "container"]
-      }),
-      address: new NodeCommand(this.host, {
-        id: "address",
-        label: () => msg("Address"),
-        icon: "address-book",
-        description: () => msg("Insert an address"),
-        group: "semanticsection",
-        tags: ["node", "container"]
-      }), 
-      form: new NodeCommand(this.host, {
-        id: "form",
-        label: () => msg("Form"),
-        icon: "forms",
-        group: "semanticsection",
-        description: () => msg("Insert a form"),
-        tags: ["node", "container"]
-      }),
-      div: new NodeCommand(this.host, {
-        id: "div",
-        label: () => msg("Division"),
-        icon: "square",
-        group: "semanticsection",
-        description: () => msg("Insert a division"),
-        tags: ["node", "container"]
-      }),
-      figcaption: new NodeCommand(this.host, {
-        id: "figcaption",
-        label: () => msg("Figure Caption"),
-        icon: "text-caption",
-        description: () => msg("Insert a figure caption")
-      }),*/,
       picture: new NodeCommand(this.host, {
         id: "picture",
         label: () => msg("Picture"),
@@ -1752,15 +1541,7 @@ export class CommandController implements ReactiveController {
         group: "image",
         description: () => msg("Insert a picture"),
         tags: ["node", "container"],
-      }) /*
-      img: new NodeCommand(this.host, {
-        id: "img",
-        label: () => msg("Image"),
-        icon: "photo",
-        group: "image",
-        description: () => msg("Insert an image"),
-        tags: ["node", "container"]
-      }),*/,
+      }),
       svg: new NodeCommand(this.host, {
         id: "svg",
         label: () => msg("Vector Drawing"),
@@ -1806,23 +1587,7 @@ export class CommandController implements ReactiveController {
         description: () => msg("Insert a website (as an inline frame)"),
         tags: ["node", "container"],
         group: "frame",
-      }) /*
-      object: new NodeCommand(this.host, {
-        id: "object",
-        label: () => msg("Object"),
-        icon: "frame",
-        tags: ["node", "container"],
-        description: () => msg("Insert object"),
-        group: "frame"
       }),
-      embed: new NodeCommand(this.host, {
-        id: "embed",
-        label: () => msg("Embed"),
-        icon: "frame",
-        tags: ["node", "container"],
-        description: () => msg("Insert embed"),
-        group: "frame"
-      }),*/,
       math: new NodeCommand(this.host, {
         id: "math",
         label: () => msg("Math Formula"),
@@ -1872,23 +1637,7 @@ export class CommandController implements ReactiveController {
         label: () => msg("NoScript"),
         icon: "code-off",
         description: () => msg("Insert a NoScript"),
-      }),/*
-      dialog: new NodeCommand(this.host, {
-        id: "dialog",
-        label: () => msg("Dialog"),
-        icon: "app-window",
-        group: "interactive",
-        description: () => msg("Insert a dialog"),
-        tags: ["node", "container"],
-      }) */ /*
-      canvas: new NodeCommand(this.host, {
-        id: "br",
-        label: () => msg("Canvas"),
-        icon: "chalkboard",
-        group: "canvas",
-        description: () => msg("Insert a canvas"),
-        tags: ["node", "container"]
-      }),*/
+      }),
       fontSize: new MarkCommand(this.host, {
         id: "fontSize",
         tags: [],
@@ -1970,31 +1719,6 @@ export class CommandController implements ReactiveController {
           (host.activeEditor!.editorState.selection.empty &&
             !host.activeEditor!.editorState.storedMarks?.length),
       }),
-      /*
-      incrementFontSize: new Command(this.host, {
-        id: "incrementFontSize",
-        tags: ["font", "color"],
-        label: () => msg("Increment font size"),
-        icon: "text-increase",
-        description: () => msg("Increment the selection's font size"),
-        run: () => this.commands.fontSize.run({ //@ts-ignore
-          value: `${parseInt(commands.fontSize.value()) + 1}pt`
-        }),
-        category: "editor",
-        group: "font"
-      }),
-      decrementFontSize: new Command(this.host, {
-        id: "decrementFontSize",
-        tags: ["font"],
-        label: () => msg("Decrement font size"),
-        icon: "text-decrease",
-        description: () => msg("Decrement the selection's font size"),
-        run: () => this.commands.fontSize.run({
-          value: `${Math.max(0, parseInt(this.commands.fontSize.value()) - 1)}pt`
-        }),
-        category: "editor",
-        group: "font"
-      }),*/
       copy: new Command(this.host, {
         id: "copy",
         label: () => msg("Copy selection"),
@@ -2519,7 +2243,7 @@ export class CommandController implements ReactiveController {
         label: () => msg("Toggle Dev Tools"),
         icon: "terminal",
         description: () => msg("Open the developer tools"),
-        shortcut: "ctrl+shift+i",
+        shortcut: "mod+shift+i",
         category: "miscellaneous",
         fixedShortcut: true,
       }),
@@ -2587,6 +2311,239 @@ export class CommandController implements ReactiveController {
         run: (host) => host.activeEditor?.exec(deleteColumn),
         category: "editor",
         tags: ["table"] 
+      }),
+      li: new NodeCommand(this.host, {
+        id: "li",
+        label: () => msg("List item"),
+        icon: "point"
+      }),
+      area: new NodeCommand(this.host, {
+        id: "area",
+        label: () => msg("Clickable area"),
+        icon: "click"
+      }),
+      map: new NodeCommand(this.host, {
+        id: "map",
+        label: () => msg("Clickable map"),
+        icon: "click"
+      }),
+      dd: new NodeCommand(this.host, {
+        id: "dd",
+        label: () => msg("Definition list item"),
+        icon: "label"
+      }),
+      dt: new NodeCommand(this.host, {
+        id: "dt",
+        label: () => msg("Definition list term"),
+        icon: "label"
+      }),
+      fencedframe: new NodeCommand(this.host, {
+        id: "fencedframe",
+        label: () => msg("Fenced Website"),
+        icon: "world-www"
+      }),
+      menu: new NodeCommand(this.host, {
+        id: "menu",
+        label: () => msg("Menu"),
+        icon: "click"
+      }),
+      object: new NodeCommand(this.host, {
+        id: "object",
+        label: () => msg("Object"),
+        icon: "frame",
+        description: () => msg("Insert object")
+      }),
+      embed: new NodeCommand(this.host, {
+        id: "embed",
+        label: () => msg("Embed"),
+        icon: "frame",
+        description: () => msg("Insert embed")
+      }),
+      dialog: new NodeCommand(this.host, {
+        id: "dialog",
+        label: () => msg("Dialog"),
+        icon: "app-window",
+        description: () => msg("Insert a dialog")
+      }),
+      canvas: new NodeCommand(this.host, {
+        id: "br",
+        label: () => msg("Canvas"),
+        icon: "chalkboard",
+        description: () => msg("Insert a canvas")
+      }),
+      img: new NodeCommand(this.host, {
+        id: "img",
+        label: () => msg("Image"),
+        icon: "photo",
+        description: () => msg("Insert an image")
+      }),
+      dl: new NodeCommand(this.host, {
+        id: "dl",
+        label: () => msg("Description List"),
+        icon: "list-letters",
+        description: () => msg("Insert a description list (glossary, term list)"),
+      }),
+      button: new NodeCommand(this.host, {
+        id: "button",
+        label: () => msg("Button"),
+        icon: "square-f1",
+        description: () => msg("Insert a button")
+      }),
+      input: new NodeCommand(this.host, {
+        id: "input",
+        label: () => msg("Input"),
+        icon: "forms",
+        description: () => msg("Insert an input")
+      }),
+      textarea: new NodeCommand(this.host, {
+        id: "textarea",
+        label: () => msg("Textarea"),
+        icon: "forms",
+        description: () => msg("Insert an textarea")
+      }),
+      select: new NodeCommand(this.host, {
+        id: "select",
+        label: () => msg("Select"),
+        icon: "select",
+        description: () => msg("Insert a select")
+      }),
+      meter: new NodeCommand(this.host, {
+        id: "meter",
+        label: () => msg("Meter"),
+        icon: "progress",
+        description: () => msg("Insert a meter")
+      }),
+      datalist: new NodeCommand(this.host, {
+        id: "datalist",
+        label: () => msg("Data List"),
+        icon: "stack-2",
+        description: () => msg("Insert a data list"),
+      }),
+      fieldset: new NodeCommand(this.host, {
+        id: "fieldset",
+        label: () => msg("Field Set"),
+        icon: "forms",
+        description: () => msg("Insert a field set"),
+      }),
+      label: new NodeCommand(this.host, {
+        id: "label",
+        label: () => msg("Label"),
+        icon: "capsule-horizontal",
+        description: () => msg("Insert a label"),
+      }),
+      legend: new NodeCommand(this.host, {
+        id: "legend",
+        label: () => msg("Legend"),
+        icon: "tags",
+        description: () => msg("Insert a legend"),
+      }),
+      optgroup: new NodeCommand(this.host, {
+        id: "optgroup",
+        label: () => msg("Option Group"),
+        icon: "circles",
+        description: () => msg("Insert an option group"),
+      }),
+      option: new NodeCommand(this.host, {
+        id: "option",
+        label: () => msg("Option"),
+        icon: "circle",
+        description: () => msg("Insert an option"),
+      }),
+      output: new NodeCommand(this.host, {
+        id: "output",
+        label: () => msg("Output"),
+        icon: "clipboard-text",
+        description: () => msg("Insert an output")
+      }),
+      progress: new NodeCommand(this.host, {
+        id: "progress",
+        label: () => msg("Progress"),
+        icon: "progress",
+        description: () => msg("Insert a progress indicator")
+      }),
+      blockquote: new NodeCommand(this.host, {
+        id: "blockquote",
+        label: () => msg("Blockquote"),
+        icon: "blockquote",
+        description: () => msg("Insert a blockquote")
+      }),
+      figure: new NodeCommand(this.host, {
+        id: "figure",
+        label: () => msg("Figure"),
+        icon: "layout-bottombar",
+        description: () => msg("Insert a figure")
+      }),  
+      article: new NodeCommand(this.host, {
+        id: "article",
+        label: () => msg("Article"),
+        icon: "article",
+        description: () => msg("Insert an article")
+      }),
+      aside: new NodeCommand(this.host, {
+        id: "aside",
+        label: () => msg("Aside"),
+        icon: "notes",
+        description: () => msg("Insert an aside")
+      }),
+      nav: new NodeCommand(this.host, {
+        id: "nav",
+        label: () => msg("Navigation"),
+        icon: "directions",
+        description: () => msg("Insert a navigation")
+      }),
+      section: new NodeCommand(this.host, {
+        id: "section",
+        label: () => msg("Section"),
+        icon: "section-sign",
+        description: () => msg("Insert a section")
+      }),
+      header: new NodeCommand(this.host, {
+        id: "header",
+        label: () => msg("Header"),
+        icon: "layout-navbar",
+        description: () => msg("Insert a header")
+      }),
+      footer: new NodeCommand(this.host, {
+        id: "footer",
+        label: () => msg("Footer"),
+        icon: "layout-bottombar",
+        description: () => msg("Insert a footer")
+      }),
+      main: new NodeCommand(this.host, {
+        id: "main",
+        label: () => msg("Main"),
+        icon: "news",
+        description: () => msg("Insert a main")
+      }),
+      search: new NodeCommand(this.host, {
+        id: "search",
+        label: () => msg("Search"),
+        icon: "list-search",
+        description: () => msg("Insert a search")
+      }),
+      address: new NodeCommand(this.host, {
+        id: "address",
+        label: () => msg("Address"),
+        icon: "address-book",
+        description: () => msg("Insert an address")
+      }), 
+      form: new NodeCommand(this.host, {
+        id: "form",
+        label: () => msg("Form"),
+        icon: "forms",
+        description: () => msg("Insert a form")
+      }),
+      div: new NodeCommand(this.host, {
+        id: "div",
+        label: () => msg("Division"),
+        icon: "square",
+        description: () => msg("Insert a division")
+      }),
+      figcaption: new NodeCommand(this.host, {
+        id: "figcaption",
+        label: () => msg("Figure Caption"),
+        icon: "text-caption",
+        description: () => msg("Insert a figure caption")
       })
     } as const satisfies Record<string, Command>;
   }
