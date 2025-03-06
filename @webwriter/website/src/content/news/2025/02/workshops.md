@@ -39,6 +39,6 @@ Melden Sie sich bis zum 14.03.2025 per Mail:
 [salmen@informatik.rwth-aachen.de](mailto:salmen@informatik.rwth-aachen.de?subject=WebWriter%20Workshop%20Teilnahme&amp;body=Hallo%20Herr%20Salmen%2C%0A%0Ahiermit%20m%C3%B6chte%20ich%20mich%20f%C3%BCr%20den%20Workshop%20am%20%5B20.03%2F22.03%5D%20anmelden.%20Ich%20bin%20%5BLehrkraft%2FStudentIn%2FDozentIn%5D%20mit%20den%20F%C3%A4chern%20%5BF%C3%A4cher%5D%20an%20%5BSchule%20oder%20Hochschule%5D.%0A%0AViele%20Gr%C3%BC%C3%9Fe%0A%5BIhr%20Name%5D)\
 Eine kurze, formlose Mail mit dem gewünschten Termin, Ihrem Namen, Ihren Fächern und ggf. Ihrer Schule reicht zur Anmeldung.
 
-Bei Bedarf können wir eine unterschriebene Teilnahmebescheinigung ausstellen. Unser Angebot ist auch auf der [Lehrerfortbildungs-Suchmaschine des Ministeriums für Schule und Bildung NRW](http://www.suche.lehrerfortbildung.nrw.de/) zu finden, für die wir akkreditiert sind.
+Bei Bedarf können wir eine unterschriebene Teilnahmebescheinigung ausstellen. Unser Angebot ist auch auf der [Lehrerfortbildungs-Suchmaschine des Ministeriums für Schule und Bildung NRW](https://suche.lehrerfortbildung.schulministerium.nrw.de/search?begin_date=&term=WebWriter&selSem=1) zu finden, für die wir akkreditiert sind.
 
 **Die Teilnehmerzahl ist begrenzt, melden Sie sich daher am besten zeitnah!**
