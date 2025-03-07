@@ -126,7 +126,7 @@ export class MiscelleousPicker extends LitPickerElement {
   render() {
     return html`<section>
       <div id="placeholder">${msg("No specific styles available")}</div>
-      <ww-css-property-input size="small" class="advanced">
+      <ww-css-property-input style="display: none" size="small" class="advanced">
         <css-global-input slot="label">
             <ww-combobox size="small" placeholder="property-name">
                 ${Object.keys(CSSPropertySpecs).filter(k => !k.startsWith("-")).map(key => html`<sl-option value=${key}>${key}</sl-option>`)}
