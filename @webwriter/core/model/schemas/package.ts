@@ -381,10 +381,10 @@ export class Package {
     if(!el.tagName.includes("-")) {
       return undefined
     }
-    const [org, ...parts] = el.tagName.toLowerCase().split("-")
-    const name = `@${org}/${parts.join("-")}`
     const versionCls = Array.from(el.classList).find(cls => cls.startsWith("ww-v"))
-    if(!versionCls) {
+    const pkgCls = Array.from(el.classList).find(cls => cls.startsWith("ww-pkg-"))
+    const name = pkgCls?.slice("ww-pkg-".length)
+    if(!name || !versionCls) {
       return undefined
     }
     const version = new SemVer(versionCls.slice("ww-v".length))
