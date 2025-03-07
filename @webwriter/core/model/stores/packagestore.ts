@@ -110,7 +110,7 @@ export class PackageStore {
 
   apiBase: string
 
-  private db = indexedDB.open("webwriter", 1)
+  private db: IDBOpenDBRequest | null = null
 
   private static isLocalImportID(id: string) {
     const match = id.match(SemVer.pattern)
@@ -165,13 +165,19 @@ export class PackageStore {
 
   constructor(options: Options) {
     Object.assign(this, options)
-    this.db.addEventListener("upgradeneeded", () => {
-      this.db.result.createObjectStore("handles", {keyPath: "id"})
-      this.db.result.createObjectStore("snippets", {keyPath: "id", autoIncrement: true})
-    })
+    this.db = indexedDB.open("webwriter", 1)
+    this.db.addEventListener("upgradeneeded", this.prepareDBs)
+  }
+
+  prepareDBs(this: IDBOpenDBRequest) {
+    this.result.createObjectStore("handles", {keyPath: "id"})
+    this.result.createObjectStore("snippets", {keyPath: "id", autoIncrement: true})
   }
 
   async putLocalHandle(id: string, handle: FileSystemDirectoryHandle) {
+    if(!this.db) {
+      return Promise.reject("DB is not initialized")
+    }
     const tx = this.db.result.transaction("handles", "readwrite")
     const store = tx.objectStore("handles")
     const done = new Promise(r => tx.addEventListener("complete", r))
@@ -472,6 +478,7 @@ export class PackageStore {
 
   /** Reads local packages from disk, importing them, and/or fetches available packages from the configured registry.*/
   async load() {
+    await 0;
     this.lastLoaded = Date.now()
     this.loading = true
     this.issues = {}
