@@ -1156,7 +1156,6 @@ export class Palette extends LitElement {
 
   private get fieldLabels() {
     return {
-      "00": msg("Generic"),
       "01": msg("Education"),
       "02": msg("Humanities"),
       "03": msg("Social sciences"),
@@ -1167,13 +1166,13 @@ export class Palette extends LitElement {
       "08": msg("Food production"),
       "09": msg("Health"),
       "10": msg("Services"),
-      "99": msg("Other fields")
+      "99": msg("Other fields"),
+      "all": msg("All fields")
     }
   }
 
   private get fieldIcons() {
     return {
-      "00": "book",
       "01": "chalkboard",
       "02": "brush",
       "03": "news",
@@ -1184,7 +1183,8 @@ export class Palette extends LitElement {
       "08": "tractor",
       "09": "heartbeat",
       "10": "building-store",
-      "99": "books"
+      "99": "book",
+      "all": "books"
     }
   }
 
@@ -1267,7 +1267,9 @@ export class Palette extends LitElement {
   }
 
   PackageFields(pkg: Package) {
-    return pkg.broadFieldCodes.map(code => html`
+    const includesAllFields = (["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"] as const).every(code => pkg.broadFieldCodes.includes(code))
+    const codes = includesAllFields? ["all"] as const: pkg.broadFieldCodes
+    return codes.map(code => html`
       <span class="package-keyword package-field">
         <sl-icon name=${this.fieldIcons[code]}></sl-icon>
         <span>${this.fieldLabels[code]}</span>

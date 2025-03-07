@@ -3806,10 +3806,6 @@
   <source>Higher ed.</source>
   <target>Höhere Bild.</target>
 </trans-unit>
-<trans-unit id="sc3c74f5273df459a">
-  <source>Generic</source>
-  <target>Generisch</target>
-</trans-unit>
 <trans-unit id="s1d19244f549ec535">
   <source>Education</source>
   <target>Bildung</target>
@@ -4341,6 +4337,10 @@
 <trans-unit id="sd5be6f6d85fc0c9b">
   <source>Zulu</source>
   <target>Zulu</target>
+</trans-unit>
+<trans-unit id="sa50d3c35533f1d99">
+  <source>All fields</source>
+  <target>Alle Felder</target>
 </trans-unit>
 </body>
 </file>

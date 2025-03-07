@@ -842,17 +842,13 @@
         <target>Capture</target>
       </trans-unit>
       <trans-unit id="s2b8f50c64be440f7">
-        <source>Select 
-          <x id="0" equiv-text="${this.mediaType}"/>...
-        </source>
+        <source>Select <x id="0" equiv-text="${this.mediaType}"/>...</source>
         <target>Sélectionner 
           <x id="0" equiv-text="${this.mediaType}"/>...
         </target>
       </trans-unit>
       <trans-unit id="s739544d0c858c633">
-        <source>Or drop 
-          <x id="0" equiv-text="${this.mediaType}"/> here
-        </source>
+        <source>Or drop <x id="0" equiv-text="${this.mediaType}"/> here</source>
         <target>Ou déposer 
           <x id="0" equiv-text="${this.mediaType}"/> ici
         </target>
@@ -918,10 +914,7 @@
         <target>Ce mot-clé est nécessaire pour les widgets</target>
       </trans-unit>
       <trans-unit id="h64cd12550420f6f1">
-        <source>Generate a 
-          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
-          <x id="1" equiv-text="&lt;/code&gt;"/> file
-        </source>
+        <source>Generate a <x id="0" equiv-text="&lt;code&gt;"/>LICENSE<x id="1" equiv-text="&lt;/code&gt;"/> file</source>
         <target>Générer une 
           <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
           <x id="1" equiv-text="&lt;/code&gt;"/> fichier
@@ -1508,17 +1501,13 @@
         <target>Erreur de connexion</target>
       </trans-unit>
       <trans-unit id="sf52d840949a980d1">
-        <source>
-          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> sera définitivement supprimée. Vous êtes sûr de vous ?
         </target>
       </trans-unit>
       <trans-unit id="s9b7cd8860c8fc922">
-        <source>
-          <x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> sera écrasé. Vous êtes sûr de vous ?
         </target>
@@ -1556,9 +1545,7 @@
         <target>Type de propriété non pris en charge "${desc.type}" (traitement en tant que JSON)</target>
       </trans-unit>
       <trans-unit id="sa00df4e39c72d3b4">
-        <source>
-          <x id="0" equiv-text="${desc.widget}"/> is not supported
-        </source>
+        <source><x id="0" equiv-text="${desc.widget}"/> is not supported</source>
         <target>
           <x id="0" equiv-text="${desc.widget}"/> n'est pas pris en charge
         </target>
@@ -3830,10 +3817,6 @@
         <source>Higher ed.</source>
         <target>Enseignement supérieur.</target>
       </trans-unit>
-      <trans-unit id="sc3c74f5273df459a">
-        <source>Generic</source>
-        <target>Générique</target>
-      </trans-unit>
       <trans-unit id="s1d19244f549ec535">
         <source>Education</source>
         <target>L'éducation</target>
@@ -4366,6 +4349,9 @@
         <source>Zulu</source>
         <target>Zoulou</target>
       </trans-unit>
+<trans-unit id="sa50d3c35533f1d99">
+  <source>All fields</source>
+</trans-unit>
     </body>
   </file>
 </xliff>

@@ -842,17 +842,13 @@
         <target>Capture</target>
       </trans-unit>
       <trans-unit id="s2b8f50c64be440f7">
-        <source>Select 
-          <x id="0" equiv-text="${this.mediaType}"/>...
-        </source>
+        <source>Select <x id="0" equiv-text="${this.mediaType}"/>...</source>
         <target>Valige 
           <x id="0" equiv-text="${this.mediaType}"/>... 
         </target>
       </trans-unit>
       <trans-unit id="s739544d0c858c633">
-        <source>Or drop 
-          <x id="0" equiv-text="${this.mediaType}"/> here
-        </source>
+        <source>Or drop <x id="0" equiv-text="${this.mediaType}"/> here</source>
         <target>Või tilkuda 
           <x id="0" equiv-text="${this.mediaType}"/> siia 
         </target>
@@ -918,10 +914,7 @@
         <target>See märksõna on vajalik vidinate jaoks</target>
       </trans-unit>
       <trans-unit id="h64cd12550420f6f1">
-        <source>Generate a 
-          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
-          <x id="1" equiv-text="&lt;/code&gt;"/> file
-        </source>
+        <source>Generate a <x id="0" equiv-text="&lt;code&gt;"/>LICENSE<x id="1" equiv-text="&lt;/code&gt;"/> file</source>
         <target>Genereeri 
           <x id="0" equiv-text="&lt;code&gt;"/>LITSENTSI 
           <x id="1" equiv-text="&lt;/code&gt;"/> faili 
@@ -1514,18 +1507,14 @@
         <target>Ühendamise viga</target>
       </trans-unit>
       <trans-unit id="sf52d840949a980d1">
-        <source>
-          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           kustutatakse lõplikult. Kas olete kindel? 
         </target>
       </trans-unit>
       <trans-unit id="s9b7cd8860c8fc922">
-        <source>
-          <x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           kirjutatakse üle. Kas olete kindel? 
@@ -1564,9 +1553,7 @@
         <target>Toetamata omaduse tüüp '${desc.type}' (töötlemine JSON-ina)</target>
       </trans-unit>
       <trans-unit id="sa00df4e39c72d3b4">
-        <source>
-          <x id="0" equiv-text="${desc.widget}"/> is not supported
-        </source>
+        <source><x id="0" equiv-text="${desc.widget}"/> is not supported</source>
         <target>
           <x id="0" equiv-text="${desc.widget}"/> ei ole toetatud 
         </target>
@@ -3838,10 +3825,6 @@
         <source>Higher ed.</source>
         <target>Kõrgemad haridusasutused.</target>
       </trans-unit>
-      <trans-unit id="sc3c74f5273df459a">
-        <source>Generic</source>
-        <target>Üldine</target>
-      </trans-unit>
       <trans-unit id="s1d19244f549ec535">
         <source>Education</source>
         <target>Haridus</target>
@@ -4374,6 +4357,9 @@
         <source>Zulu</source>
         <target>Zulu</target>
       </trans-unit>
+<trans-unit id="sa50d3c35533f1d99">
+  <source>All fields</source>
+</trans-unit>
     </body>
   </file>
 </xliff>

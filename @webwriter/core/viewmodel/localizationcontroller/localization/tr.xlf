@@ -842,17 +842,13 @@
         <target>Yakalama</target>
       </trans-unit>
       <trans-unit id="s2b8f50c64be440f7">
-        <source>Select 
-          <x id="0" equiv-text="${this.mediaType}"/>...
-        </source>
+        <source>Select <x id="0" equiv-text="${this.mediaType}"/>...</source>
         <target>Seçiniz 
           <x id="0" equiv-text="${this.mediaType}"/>... 
         </target>
       </trans-unit>
       <trans-unit id="s739544d0c858c633">
-        <source>Or drop 
-          <x id="0" equiv-text="${this.mediaType}"/> here
-        </source>
+        <source>Or drop <x id="0" equiv-text="${this.mediaType}"/> here</source>
         <target>Ya da bırak 
           <x id="0" equiv-text="${this.mediaType}"/> Burada 
         </target>
@@ -918,10 +914,7 @@
         <target>Bu anahtar sözcük widget'lar için gereklidir</target>
       </trans-unit>
       <trans-unit id="h64cd12550420f6f1">
-        <source>Generate a 
-          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
-          <x id="1" equiv-text="&lt;/code&gt;"/> file
-        </source>
+        <source>Generate a <x id="0" equiv-text="&lt;code&gt;"/>LICENSE<x id="1" equiv-text="&lt;/code&gt;"/> file</source>
         <target>Oluşturmak 
           <x id="0" equiv-text="&lt;code&gt;"/>LİSANS 
           <x id="1" equiv-text="&lt;/code&gt;"/> dosya 
@@ -1513,18 +1506,14 @@
         <target>Bağlantı hatası</target>
       </trans-unit>
       <trans-unit id="sf52d840949a980d1">
-        <source>
-          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           kalıcı olarak silinecektir. Emin misiniz? 
         </target>
       </trans-unit>
       <trans-unit id="s9b7cd8860c8fc922">
-        <source>
-          <x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           üzerine yazılacaktır. Emin misiniz? 
@@ -1563,9 +1552,7 @@
         <target>Desteklenmeyen özellik türü '${desc.type}' (JSON olarak işleniyor)</target>
       </trans-unit>
       <trans-unit id="sa00df4e39c72d3b4">
-        <source>
-          <x id="0" equiv-text="${desc.widget}"/> is not supported
-        </source>
+        <source><x id="0" equiv-text="${desc.widget}"/> is not supported</source>
         <target>
           <x id="0" equiv-text="${desc.widget}"/> desteklenmiyor 
         </target>
@@ -3837,10 +3824,6 @@
         <source>Higher ed.</source>
         <target>Yüksek eğitim.</target>
       </trans-unit>
-      <trans-unit id="sc3c74f5273df459a">
-        <source>Generic</source>
-        <target>Jenerik</target>
-      </trans-unit>
       <trans-unit id="s1d19244f549ec535">
         <source>Education</source>
         <target>Eğitim</target>
@@ -4373,6 +4356,9 @@
         <source>Zulu</source>
         <target>Zulu</target>
       </trans-unit>
+<trans-unit id="sa50d3c35533f1d99">
+  <source>All fields</source>
+</trans-unit>
     </body>
   </file>
 </xliff>
