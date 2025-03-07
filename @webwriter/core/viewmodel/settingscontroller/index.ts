@@ -80,6 +80,7 @@ export class SettingsController implements ReactiveController {
     return {
       ui: msg("General"),
       document: msg("Document"),
+      packages: msg("Packages")
     };
   }
 
@@ -146,26 +147,6 @@ export class SettingsController implements ReactiveController {
             ),
           label: msg("Autosave"),
         },
-        showUnstable: {
-          schema: z
-            .boolean()
-            .describe(
-              msg(
-                "Advanced: Show packages with versions like 0.x.x in the package manager"
-              )
-            ),
-          label: msg("Show unstable packages"),
-        },
-        showUnknown: {
-          schema: z
-            .boolean()
-            .describe(
-              msg(
-                "Advanced: Show packages from unknown sources in the package manager (Warning: May be unsafe)"
-              )
-            ),
-          label: msg("Show unknown packages"),
-        },
         showSourceEditor: {
           schema: z
             .boolean()
@@ -231,6 +212,26 @@ export class SettingsController implements ReactiveController {
         watching: {
           schema: z.record(z.string(), z.boolean()),
           hidden: true,
+        },
+        showUnstable: {
+          schema: z
+            .boolean()
+            .describe(
+              msg(
+                "Advanced: Show packages with versions like 0.x.x in the package manager"
+              )
+            ),
+          label: msg("Show unstable packages"),
+        },
+        showUnknown: {
+          schema: z
+            .boolean()
+            .describe(
+              msg(
+                "Advanced: Show packages from unknown sources in the package manager (Warning: May be unsafe)"
+              )
+            ),
+          label: msg("Show unknown packages"),
         },
       },
       accounts: {

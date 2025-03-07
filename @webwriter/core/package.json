@@ -31,6 +31,7 @@
     "@isomorphic-git/lightning-fs": "^4.6.0",
     "@jspm/core": "^2.0.1",
     "@jspm/generator": "^2.4.1",
+    "@lit-labs/signals": "^0.1.2",
     "@lit/localize": "^0.12.2",
     "@massifrg/prosemirror-tables-sections": "^0.6.3",
     "@open-wc/lit-helpers": "^0.7.0",

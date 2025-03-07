@@ -1,6 +1,6 @@
 import { LitElement, TemplateResult, css, html } from "lit"
 import { customElement, property, query, queryAll } from "lit/decorators.js"
-
+import {cache} from 'lit/directives/cache.js';
 
 import { emitCustomEvent, prettifyPackageName, unscopePackageName } from "#utility"
 import { classMap } from "lit/directives/class-map.js"
@@ -17,6 +17,7 @@ import {render as latexToMathML} from "temml/dist/temml.cjs"
 import { SlColorPicker, SlTree } from "@shoelace-style/shoelace"
 import { CSSPropertySpecs, MATHML_TAGS, Package } from "#model/index.js"
 import { LitPickerElement } from "#view/elements/stylepickers/index.js"
+import { findParentNodeClosestToPos } from "prosemirror-utils";
 
 
 
@@ -1086,7 +1087,7 @@ export class  Toolbox extends LitElement {
   })
 
   BlockToolbox = (el: HTMLElement | null) => {
-    const advancedApplied = false
+    const advancedApplied = findParentNodeClosestToPos
     return html`<div class="block-toolbox">
       <div class="block-options">
         ${this.ElementBreadcrumb()}
@@ -1106,7 +1107,7 @@ export class  Toolbox extends LitElement {
         </div>
       </div>
     </div>
-    ${this.Pickers(this.activeLayoutCommand)}`
+    ${cache(this.activeLayoutCommand? this.Pickers(this.activeLayoutCommand): undefined)}`
   }
 
   @property({type: Boolean, attribute: true, reflect: true})

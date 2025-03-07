@@ -15,6 +15,7 @@ import { spreadProps } from "@open-wc/lit-helpers"
 
 import IconPackage from "@tabler/icons/outline/package.svg"
 import { styleMap } from "lit/directives/style-map.js"
+import { guard } from "lit/directives/guard.js"
 
 
 // https://github.com/lit/lit-element/issues/1099#issuecomment-731614025
@@ -70,6 +71,12 @@ export class Palette extends LitElement {
   @property({attribute: false})
   app: App
 
+  @property({attribute: false})
+  loading = false
+
+  @property({attribute: false})
+  packageIcons = {}
+
 	emitInsert = (pkgID: string, name: string) => {
 		this.dispatchEvent(new CustomEvent("ww-insert", {composed: true, bubbles: true, detail: {pkgID, name}}))
 	}
@@ -102,8 +109,8 @@ export class Palette extends LitElement {
 		this.dispatchEvent(new CustomEvent("ww-close", {composed: true, bubbles: true}))
 	}
 
-	@property({type: Array, attribute: false})
-	packages: Package[] = []
+  @property({attribute: false})
+  changingID = ""
 
   @property({type: Object, attribute: false})
   editorState: EditorState
@@ -1093,14 +1100,6 @@ export class Palette extends LitElement {
     this.searchResults = Object.fromEntries(this.app.store.packages.searchPackages(query).map(r => [r.id, r]))
   }
 
-  get packagesInSearchOrder() {
-    return [...this.packages].sort((a, b) => {
-      const aScore = this.searchResults[a.id]?.score ?? 0
-      const bScore = this.searchResults[b.id]?.score ?? 0
-      return bScore - aScore
-    })
-  }
-
   @query("#package-search")
   packageSearch: SlInput
 
@@ -1529,7 +1528,7 @@ export class Palette extends LitElement {
   protected updated(changed: PropertyValues) {
     if(changed.has("packages")) {
       const prevIds = changed.get("packages")?.map((pkg: Package) => pkg.id + (pkg.installed? "!installed": "")) ?? []
-      const ids = this.packages.map(pkg => pkg.id + (pkg.installed? "!installed": ""))
+      const ids = this.app.store.packages.packagesList.map(pkg => pkg.id + (pkg.installed? "!installed": ""))
       const isAdd = ids.filter(id => id.endsWith("!installed")).length > prevIds.filter((id: string) => id.endsWith("!installed")).length
       const firstChangedId = ids.find((id, i) => prevIds[i] !== id)?.split("!")[0]
       if(firstChangedId && isAdd) {
@@ -1555,7 +1554,7 @@ export class Palette extends LitElement {
       ${this.app.commands.groupedContainerCommands.map(this.Card)}
       ${this.ClipboardCard()}
       ${this.editingStatus != "pinning"? undefined: this.PinPreview()}
-      ${this.packages.map(this.Card)}
+      ${guard([...this.app.store.packages.filteredPackages, this.app.store.packages.changingID, this.dropdownOpen, ], () => this.app.store.packages.filteredPackages.map(this.Card))}
       ${this.AddLocalPackageButton()}
       ${this.LocalPackageDialog()}
       ${this.ErrorDialog()}

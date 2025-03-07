@@ -46,6 +46,9 @@ export class ExplorableEditor extends LitElement {
   @property({attribute: false})
   app: App
 
+  @property({attribute: false})
+  changingID = ""
+
   executingCommand = false
 
 	exec = (command: PmCommand) => {
@@ -193,9 +196,6 @@ export class ExplorableEditor extends LitElement {
 
   @property({type: Boolean, state: true})
 	printing = false
-
-	@property({type: Array, attribute: false})
-	packages: Package[]
 
 	@property({type: String})
 	appendBlockType: string
@@ -1532,7 +1532,10 @@ export class ExplorableEditor extends LitElement {
 			<ww-palette
         .forceToolboxPopup=${!!this.forceToolboxPopup}
         ?isInNarrowLayout=${this.isInNarrowLayout}
+        .loading=${this.loadingPackages}
+        .changingID=${this.app.store.packages.changingID}
         .app=${this.app}
+        .packageIcons=${this.app.store.packages.packageIcons}
         .editorState=${this.editorState}
 				part="editor-toolbox"
         ?data-no-scrollbar-gutter=${this.palette?.offsetWidth - this.palette?.clientWidth === 0}
@@ -1564,7 +1567,6 @@ export class ExplorableEditor extends LitElement {
             this.app.settings.setAndPersist("packages", "watching", this.app.store.packages.watching)
           }
         }}
-				.packages=${this.packages}
 				?showWidgetPreview=${this.showWidgetPreview}
         editingStatus=${ifDefined(this.editingStatus)}
 			>

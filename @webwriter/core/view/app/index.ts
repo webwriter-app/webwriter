@@ -13,6 +13,7 @@ import { ExplorableEditor, SaveForm } from "#view";
 
 import appIconString from "../assets/app-icon.svg?raw";
 import { ifDefined } from "lit/directives/if-defined.js";
+import { cache } from "lit/directives/cache.js";
 
 export const APPICON = `data:image/svg+xml;base64,${btoa(appIconString)}`;
 
@@ -375,7 +376,6 @@ export class App extends ViewModelMixin(LitElement) {
     if (this.initializing) {
       return null;
     }
-    const {showUnknown, showUnstable} = this.store.ui
     const {
       changed,
       set,
@@ -384,11 +384,9 @@ export class App extends ViewModelMixin(LitElement) {
       editorState,
       codeState,
       ioState,
-      provisionalTitle,
-      inMemory,
+      filename,
     } = this.store.document;
-    const { packagesList, bundleJS, bundleCSS, bundleID } = this.store.packages;
-    const filteredPackages = packagesList.filter(pkg => pkg.localPath || (!pkg.version.lt("1.0.0") || showUnstable) && (pkg.trusted || showUnknown) || pkg.version.prerelease.includes("snippet"))
+    const { bundleJS, bundleCSS, bundleID, changingID } = this.store.packages;
     const { locale } = this.store.ui;
     const {
       documentCommands,
@@ -400,7 +398,7 @@ export class App extends ViewModelMixin(LitElement) {
       )}
       ioState=${ioState}
       slot="nav"
-      .filename=${inMemory && provisionalTitle ? provisionalTitle : url}
+      .filename=${filename}
       ?pendingChanges=${changed}
     >
       <ww-button
@@ -434,12 +432,12 @@ export class App extends ViewModelMixin(LitElement) {
           .bundleJS=${bundleJS || scopedCustomElementsRegistryString}
           .bundleCSS=${bundleCSS}
           .bundleID=${bundleID}
+          .changingID=${changingID}
           .editorState=${editorState}
           .codeState=${codeState}
           @update=${(e: any) => set(e.detail.editorState)}
           @ww-open=${(e: any) => open(e.detail.url)}
-          .packages=${filteredPackages}
-          ?loadingPackages=${false}
+          ?loadingPackages=${this.store.packages.loading}
           ?controlsVisible=${!this.foldOpen}
           lang=${locale}
         >
@@ -629,7 +627,7 @@ export class App extends ViewModelMixin(LitElement) {
       <div
         style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1000000; pointer-events: none;"
       ></div>
-      ${this.IntroTour()}
+      ${cache(this.store?.ui?.hideIntro? undefined: this.IntroTour())}
       ${this.Dialog()} `;
   }
 }
