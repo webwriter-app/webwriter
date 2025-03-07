@@ -1021,7 +1021,7 @@ export class ExplorableEditor extends LitElement {
     }
   }
 
-  isPrimaryMouseDown = false
+  gapDragSelectionAnchor?: number
 
   handleDOMEvents = {
     "keydown": (_: any, ev: KeyboardEvent) => {
@@ -1068,7 +1068,7 @@ export class ExplorableEditor extends LitElement {
     },
 
     "mouseup": (_: any, ev: MouseEvent) => {
-      this.isPrimaryMouseDown = false
+      this.gapDragSelectionAnchor = undefined
     },
     /*"mousemove": (_: any, ev: MouseEvent) => {
       const isInGapSelection = this.selection instanceof GapCursor
@@ -1079,8 +1079,17 @@ export class ExplorableEditor extends LitElement {
         this.pmEditor.dispatch(tr)
       }
     },*/
+    "mousemove": (_: any, ev: MouseEvent) => {
+      if(this.gapDragSelectionAnchor !== undefined) {
+        const {pos} = this.pmEditor.posAtCoords({left: ev.x, top: ev.y}) ?? {}
+        if(pos !== undefined) {
+          const sel = TextSelection.create(this.editorState.doc, this.gapDragSelectionAnchor, pos)
+          const tr = this.editorState.tr.setSelection(sel)
+          this.pmEditor.dispatch(tr)
+        }
+      }
+    },
     "mousedown": (_: any, ev: MouseEvent) => {
-      this.isPrimaryMouseDown = true
       if(ev.button !== 0) {
         return true
       }
@@ -1097,17 +1106,25 @@ export class ExplorableEditor extends LitElement {
         return true
       }
       else if(sel && !sel.eq(this.selection)) {
+        if(sel instanceof GapCursor) {
+          this.gapDragSelectionAnchor = sel.anchor
+        }
         const tr = this.editorState.tr.setSelection(sel)
         this.pmEditor.dispatch(tr)
         this.pmEditor.focus()
         ev.preventDefault()
         return true
       }
-      else {
+      else if(!(sel instanceof GapCursor)) {
         const sel = TextSelection.near(this.selection.$anchor)
         const tr = this.editorState.tr.setSelection(sel)
         this.pmEditor.dispatch(tr)
         return false
+      }
+      else {
+        this.gapDragSelectionAnchor = sel.anchor
+        ev.preventDefault()
+        return true
       }
     },
     "ww-widget-interact": (_: any, ev: KeyboardEvent) => {
@@ -1300,7 +1317,8 @@ export class ExplorableEditor extends LitElement {
 
   windowListeners: Partial<Record<keyof WindowEventMap, any>> = {
     "beforeprint": () => this.printing = true,
-    "afterprint": () => this.printing = false
+    "afterprint": () => this.printing = false,
+    "mouseup": () => this.gapDragSelectionAnchor = undefined
   }
 
   globalListeners: Partial<Record<keyof WindowEventMap, any>> = {
