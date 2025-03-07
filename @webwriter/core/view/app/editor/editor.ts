@@ -1082,7 +1082,7 @@ export class ExplorableEditor extends LitElement {
     "mousemove": (_: any, ev: MouseEvent) => {
       if(this.gapDragSelectionAnchor !== undefined) {
         const {pos} = this.pmEditor.posAtCoords({left: ev.x, top: ev.y}) ?? {}
-        if(pos !== undefined) {
+        if(pos !== undefined && pos !== this.gapDragSelectionAnchor) {
           const sel = TextSelection.create(this.editorState.doc, this.gapDragSelectionAnchor, pos)
           const tr = this.editorState.tr.setSelection(sel)
           this.pmEditor.dispatch(tr)
