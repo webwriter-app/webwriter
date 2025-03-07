@@ -470,6 +470,9 @@ type Snippet = {html: string, label?: Record<string, string>}
 async function getSnippet(id?: string) {
   const db = indexedDB.open("webwriter")
   await new Promise(r => db.addEventListener("success", r))
+  if(!db.result.objectStoreNames.contains("snippets")) {
+    return new Response(new Blob(["[]"], {type: "application/json"}))
+  }
   const tx = db.result.transaction("snippets", "readonly")
   const store = tx.objectStore("snippets")
   const req = id? store.get(parseInt(id)): store.getAll()
