@@ -1554,7 +1554,7 @@ export class Palette extends LitElement {
       ${this.app.commands.groupedContainerCommands.map(this.Card)}
       ${this.ClipboardCard()}
       ${this.editingStatus != "pinning"? undefined: this.PinPreview()}
-      ${guard([...this.app.store.packages.filteredPackages, this.app.store.packages.changingID, this.dropdownOpen, ], () => this.app.store.packages.filteredPackages.map(this.Card))}
+      ${guard([...this.app.store.packages.filteredPackages, this.app.store.packages.changingID, this.dropdownOpen, this.searchResults], () => this.app.store.packages.filteredPackages.map(this.Card))}
       ${this.AddLocalPackageButton()}
       ${this.LocalPackageDialog()}
       ${this.ErrorDialog()}

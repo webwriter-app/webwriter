@@ -247,7 +247,7 @@ export class PackageStore {
     idField: "id"
   })
 
-  searchPackages = (query: string) => {
+  searchPackages(query: string) {
     return this.searchIndex.search(query, {boost: {id: 5, name: 4, keywords: 3, version: 2, description: 1}, prefix: true, fuzzy: 1})
   }
 
