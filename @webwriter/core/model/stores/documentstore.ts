@@ -118,9 +118,13 @@ export class DocumentStore implements Resource {
 
   get sameAsInitial() {
     return (
-      JSON.stringify(this.editorState.doc) ===
-      JSON.stringify(this.initialState.doc)
+      JSON.stringify(this.editorState?.doc) ===
+      JSON.stringify(this.initialState?.doc)
     );
+  }
+
+  get filename() {
+    return this.inMemory && this.provisionalTitle ? this.provisionalTitle : this.url
   }
 
   get id() {
@@ -746,7 +750,7 @@ export class DocumentStore implements Resource {
   }
 
   get lang() {
-    return this.head.doc.attrs.htmlAttrs?.lang ?? navigator.language;
+    return this.head?.doc.attrs.htmlAttrs?.lang ?? navigator.language;
   }
 
   set lang(value: string) {

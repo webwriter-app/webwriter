@@ -29,14 +29,14 @@ export class UIStore {
 
    hideIntro = false
 
-   #authoringAnalytics = false
+   _authoringAnalytics = false
 
    get authoringAnalytics() {
-      return this.#authoringAnalytics
+      return this._authoringAnalytics
    }
 
    set authoringAnalytics(v) {
-      this.#authoringAnalytics = v
+      this._authoringAnalytics = v
       if(v) {
         posthog.startSessionRecording()
       }
@@ -49,8 +49,6 @@ export class UIStore {
 
    // showWidgetPreview: boolean = false // TODO: Causes multiple issues
 
-   showUnstable = false
-   showUnknown = false
    showSourceEditor = false
    resetOnInitialize = false
    autosave = true

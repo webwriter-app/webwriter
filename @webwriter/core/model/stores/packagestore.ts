@@ -74,7 +74,7 @@ export class Warning extends Error {}
 /** Handles packages. Packages are node (npm) packages which contain widgets. The PackageStore can also create bundles from packages, which can for example be imported by the runtime editor or embedded by serializers. Additionally, the PackageStore can open or clear the app directory which stores the packages. */
 export class PackageStore {
 
-  importMap: ImportMap
+  importMap: ImportMap = new ImportMap({})
 
   resetOnInitialize = false
 
@@ -185,9 +185,6 @@ export class PackageStore {
   loading: boolean = false
   initializing: boolean = false
   resetting: boolean = false
-  appDir: Promise<string>
-  rootPackageJsonPath: Promise<string>
-  localPathsPath: Promise<string>
 
   bundleJS: string = ""
   bundleCSS: string = ""
@@ -201,6 +198,14 @@ export class PackageStore {
   updating: Record<string, boolean> = {}
 
   issues: Record<string, Error[]> & {_?: Error[]} = {}
+
+  get changingID() {
+    return [
+      ...Object.keys(this.adding).filter(k => this.adding[k]).map(k => `+${k}`),
+      ...Object.keys(this.removing).filter(k => this.removing[k]).map(k => `-${k}`),
+      ...Object.keys(this.updating).filter(k => this.updating[k]).map(k => `^${k}`),
+    ].join(" ")
+  }
 
   get managementIssues() {
     return this.issues._ ?? []
@@ -272,7 +277,7 @@ export class PackageStore {
     }))
   }
 
-  pmQueue = cargoQueue(async (tasks: PmQueueTask[]) => {
+  async processTasks(tasks: PmQueueTask[]) {
     const toAdd = tasks.filter(t => t.command === "add" && !t.name && !t.handle).flatMap(t => t.parameters)
     const toAddLocal = tasks.filter(t => t.command === "add" && t.handle).flatMap(t => ({handle: t.handle!, name: t.name}))
     const toRemove = tasks.filter(t => t.command === "remove").flatMap(t => t.parameters)
@@ -344,7 +349,11 @@ export class PackageStore {
     finally {
       await this.load()
     }
-  })
+  }
+
+  get pmQueue() {
+    return cargoQueue(this.processTasks)
+  }
 
   private unwatchCallbacks: Record<string, CallableFunction> = {}
 
@@ -406,6 +415,7 @@ export class PackageStore {
     })*/
     
     if(resetOnInitialize) {
+      console.log("reset")
       localStorage.setItem("webwriter_settings", JSON.stringify({ui: {resetOnInitialize: true}}))
     }
   }
@@ -420,39 +430,45 @@ export class PackageStore {
         return
       }
       else {
-        await new Promise(async r => this.pmQueue.push({command: "remove", parameters: [matchingPkg.id], cwd: await this.appDir, name: matchingPkg.id}, r))
+        await new Promise(async r => this.pmQueue.push({command: "remove", parameters: [matchingPkg.id], name: matchingPkg.id}, r))
       }
     }
 
     if(typeof urlOrHandle === "string") {
       const url = urlOrHandle
       this.adding = {...this.adding, [name ?? url]: true}
-      return this.pmQueue.push({command: "add", parameters: [url], cwd: await this.appDir, name})
+      return this.pmQueue.push({command: "add", parameters: [url], name})
     }
     else {
       const handle = urlOrHandle
       this.adding = {...this.adding, [name ?? handle.name]: true}
-      return this.pmQueue.push({command: "add", parameters: [], handle, cwd: await this.appDir, name})
+      return this.pmQueue.push({command: "add", parameters: [], handle, name})
     }
   }
 
   async remove(name: string) {
     this.removing = {...this.removing, [name]: true}
-    return this.pmQueue.push({command: "remove", parameters: [name], cwd: await this.appDir})
+    return this.pmQueue.push({command: "remove", parameters: [name]})
   }
 
   async update(name?: string) {
     this.updating = name
       ? {...this.updating, [name]: true}
       : Object.fromEntries(this.packagesList.filter(pkg => pkg.installed).map(pkg => [pkg.id, true]))
-    return this.pmQueue.push({command: "update", parameters: name? [name, "--latest"]: ["--latest"], cwd: await this.appDir})
+    return this.pmQueue.push({command: "update", parameters: name? [name, "--latest"]: ["--latest"]})
   }
 
   get packagesList() {
     return Object.values(this.packages)
   }
 
-  lastLoaded: number
+  get filteredPackages() {
+    return this.packagesList.filter(pkg => pkg.localPath || (!pkg.version.lt("1.0.0") || this.showUnstable) && (pkg.trusted || this.showUnknown) || pkg.version.prerelease.includes("snippet"))
+  }
+
+  lastLoaded: number = 0
+  showUnstable: boolean = false
+  showUnknown: boolean = false
 
   /** Reads local packages from disk, importing them, and/or fetches available packages from the configured registry.*/
   async load() {
@@ -485,7 +501,7 @@ export class PackageStore {
     this.bundleID = PackageStore.computeBundleID(this.installedPackages, false, final.some(pkg => pkg.localPath)? this.lastLoaded: undefined);
     (this.onBundleChange ?? (() => null))(final.filter(pkg => pkg.installed))
     this.packages = Object.fromEntries(final.map(pkg => [pkg.id, pkg]))
-    Promise.all(final.map(async pkg => [pkg.id, await this.getIconDataUrl(pkg.id)])).then(result => this.packageIcons = Object.fromEntries(result))
+    await Promise.all(final.map(async pkg => [pkg.id, await this.getIconDataUrl(pkg.id)])).then(result => this.packageIcons = Object.fromEntries(result))
     await this.checkForMissingMembers(this.installed)
     this.searchIndex.removeAll()
     this.searchIndex.addAll(final)

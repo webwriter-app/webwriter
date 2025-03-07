@@ -41,7 +41,7 @@ export class AccountStore {
     this.accounts = accounts ?? this.accounts;
   }
 
-  #accounts = {
+  _accounts = {
     file: {
       file: new FileAccount({}),
     } as Record<string, FileAccount>,
@@ -50,11 +50,11 @@ export class AccountStore {
   };
 
   get accounts() {
-    return this.#accounts;
+    return this._accounts;
   }
 
   set accounts(value) {
-    this.#accounts = value;
+    this._accounts = value;
   }
 
   get clients() {
