@@ -4,7 +4,7 @@ import {ifDefined} from "lit/directives/if-defined.js"
 import { localized } from "@lit/localize"
 
 import { OptionDeclaration, BooleanOptionDeclaration, ColorOptionDeclaration, DateOptionDeclaration, DatetimeLocalOptionDeclaration, EmailOptionDeclaration, NumberOptionDeclaration, ObjectOptionDeclaration, PasswordOptionDeclaration, SelectOptionDeclaration, StringOptionDeclaration, TelOptionDeclaration, TimeOptionDeclaration, UrlOptionDeclaration, LitElementWw, ActionDeclaration, } from "@webwriter/lit"
-import { camelCaseToSpacedCase, capitalizeWord, emitCustomEvent } from "../../model/utility"
+import { camelCaseToSpacedCase, capitalizeWord, emitCustomEvent } from "#utility"
 import { EditorState } from "prosemirror-state"
 
 function getLocalized(localizationObj?: Record<string, string>) {

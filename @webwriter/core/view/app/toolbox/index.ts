@@ -18,6 +18,7 @@ import { SlColorPicker, SlTree } from "@shoelace-style/shoelace"
 import { CSSPropertySpecs, MATHML_TAGS, Package } from "#model/index.js"
 import { LitPickerElement } from "#view/elements/stylepickers/index.js"
 import { findParentNodeClosestToPos } from "prosemirror-utils";
+import "./widgetoptions"
 
 
 
