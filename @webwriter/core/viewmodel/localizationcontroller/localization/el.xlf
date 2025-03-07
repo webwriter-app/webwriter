@@ -3923,6 +3923,458 @@
         <source>Online when using</source>
         <target>Σε απευθείας σύνδεση όταν χρησιμοποιείτε</target>
       </trans-unit>
+      <trans-unit id="s3ae67088bbefba98">
+        <source>Packages</source>
+        <target>Πακέτα</target>
+      </trans-unit>
+      <trans-unit id="s8a28bad9290d4761">
+        <source>Oromo</source>
+        <target>Oromo</target>
+      </trans-unit>
+      <trans-unit id="s4634541f5056a546">
+        <source>Abkhazian</source>
+        <target>Αμπχαζία</target>
+      </trans-unit>
+      <trans-unit id="s59b20e8af32606ed">
+        <source>Afar</source>
+        <target>Afar</target>
+      </trans-unit>
+      <trans-unit id="sd2ef82b8ea877c6d">
+        <source>Afrikaans</source>
+        <target>Afrikaans</target>
+      </trans-unit>
+      <trans-unit id="s2f4d4bfbc466d91f">
+        <source>Albanian</source>
+        <target>Αλβανικά</target>
+      </trans-unit>
+      <trans-unit id="sb43db07b24da018a">
+        <source>Amharic</source>
+        <target>Αμχαρικά</target>
+      </trans-unit>
+      <trans-unit id="sb884fa76bfc55429">
+        <source>Arabic</source>
+        <target>Αραβικά</target>
+      </trans-unit>
+      <trans-unit id="scc56b218a2689c42">
+        <source>Armenian</source>
+        <target>Αρμένιοι</target>
+      </trans-unit>
+      <trans-unit id="sa2cba871f6cdd99f">
+        <source>Assamese</source>
+        <target>Assamese</target>
+      </trans-unit>
+      <trans-unit id="scf95dcb12a950a5c">
+        <source>Aymara</source>
+        <target>Aymara</target>
+      </trans-unit>
+      <trans-unit id="s9cf68f87b8e6122f">
+        <source>Azerbaijani</source>
+        <target>Αζερμπαϊτζάν</target>
+      </trans-unit>
+      <trans-unit id="s17bfaaa4e7528bc7">
+        <source>Bashkir</source>
+        <target>Μπασκίρ</target>
+      </trans-unit>
+      <trans-unit id="se39c065efa467782">
+        <source>Basque</source>
+        <target>Βάσκοι</target>
+      </trans-unit>
+      <trans-unit id="sf2bdb0b4d7b9c039">
+        <source>Bengali</source>
+        <target>Μπενγκάλι</target>
+      </trans-unit>
+      <trans-unit id="sf0c8e2b013e5ff18">
+        <source>Bhutani</source>
+        <target>Bhutani</target>
+      </trans-unit>
+      <trans-unit id="s181ef198cf83ec3a">
+        <source>Bihari</source>
+        <target>Bihari</target>
+      </trans-unit>
+      <trans-unit id="s543c237e8c895ce8">
+        <source>Bislama</source>
+        <target>Bislama</target>
+      </trans-unit>
+      <trans-unit id="s93f083e654a45715">
+        <source>Breton</source>
+        <target>Μπρέτον</target>
+      </trans-unit>
+      <trans-unit id="sbd72dc858de95ce8">
+        <source>Burmese</source>
+        <target>Βιρμανίας</target>
+      </trans-unit>
+      <trans-unit id="s1e9c2c654732cc5f">
+        <source>Byelorussian</source>
+        <target>Λευκορωσία</target>
+      </trans-unit>
+      <trans-unit id="s545ee1f373f249cf">
+        <source>Cambodian</source>
+        <target>Καμπότζη</target>
+      </trans-unit>
+      <trans-unit id="s1f2b49c1bca2035d">
+        <source>Catalan</source>
+        <target>Καταλανικά</target>
+      </trans-unit>
+      <trans-unit id="s0e44968489e076a8">
+        <source>Chinese</source>
+        <target>Κινέζικα</target>
+      </trans-unit>
+      <trans-unit id="s20deffeecf2699fb">
+        <source>Corsican</source>
+        <target>Κορσική</target>
+      </trans-unit>
+      <trans-unit id="s45518abd911471d0">
+        <source>Croatian</source>
+        <target>Κροατικά</target>
+      </trans-unit>
+      <trans-unit id="s0a6cb8d42cdb0c4a">
+        <source>Esperanto</source>
+        <target>Εσπεράντο</target>
+      </trans-unit>
+      <trans-unit id="s536695196d0b6dc3">
+        <source>Faeroese</source>
+        <target>Φερόες</target>
+      </trans-unit>
+      <trans-unit id="sd1f10284eeb17b25">
+        <source>Fiji</source>
+        <target>Φίτζι</target>
+      </trans-unit>
+      <trans-unit id="s61c017f6d5c303af">
+        <source>Frisian</source>
+        <target>Frisian</target>
+      </trans-unit>
+      <trans-unit id="s990d0e0fa2ab00b5">
+        <source>Galician</source>
+        <target>Γαλικία</target>
+      </trans-unit>
+      <trans-unit id="sdc70d81cf6c28533">
+        <source>Georgian</source>
+        <target>Γεωργιανή</target>
+      </trans-unit>
+      <trans-unit id="s99229574e5692f19">
+        <source>Greenlandic</source>
+        <target>Γροιλανδική</target>
+      </trans-unit>
+      <trans-unit id="s1feab14d837eadb0">
+        <source>Guarani</source>
+        <target>Guarani</target>
+      </trans-unit>
+      <trans-unit id="s3f43ef2eaa1ec486">
+        <source>Gujarati</source>
+        <target>Γκουτζαράτι</target>
+      </trans-unit>
+      <trans-unit id="s9fbe26cfd7845469">
+        <source>Hausa</source>
+        <target>Χάουσα</target>
+      </trans-unit>
+      <trans-unit id="s6b61f8abf89586be">
+        <source>Hebrew</source>
+        <target>Εβραϊκά</target>
+      </trans-unit>
+      <trans-unit id="sb6b268120592dc53">
+        <source>Hindi</source>
+        <target>Χίντι</target>
+      </trans-unit>
+      <trans-unit id="sec2da4aa7a02b925">
+        <source>Icelandic</source>
+        <target>Ισλανδική</target>
+      </trans-unit>
+      <trans-unit id="s9d54869be6794a9f">
+        <source>Interlingua</source>
+        <target>Interlingua</target>
+      </trans-unit>
+      <trans-unit id="s9d54829be67943d3">
+        <source>Interlingue</source>
+        <target>Interlingue</target>
+      </trans-unit>
+      <trans-unit id="s62b857f5b6693742">
+        <source>Inupiak</source>
+        <target>Inupiak</target>
+      </trans-unit>
+      <trans-unit id="sf5e76f774beb33c2">
+        <source>Inuktitut</source>
+        <target>Inuktitut</target>
+      </trans-unit>
+      <trans-unit id="s33c18d5a4cbffa2a">
+        <source>Irish</source>
+        <target>Ιρλανδική</target>
+      </trans-unit>
+      <trans-unit id="s21d723a1dbcd89c8">
+        <source>Javanese</source>
+        <target>Τζαβανέζικα</target>
+      </trans-unit>
+      <trans-unit id="s1f8e59d0624842ff">
+        <source>Kannada</source>
+        <target>Κανάντα</target>
+      </trans-unit>
+      <trans-unit id="s81c3d8809658b951">
+        <source>Kashmiri</source>
+        <target>Κασμίρι</target>
+      </trans-unit>
+      <trans-unit id="s01b16a926920908b">
+        <source>Kazakh</source>
+        <target>Καζακστάν</target>
+      </trans-unit>
+      <trans-unit id="s81cf65c5a46dea08">
+        <source>Kinyarwanda</source>
+        <target>Kinyarwanda</target>
+      </trans-unit>
+      <trans-unit id="s5bba2ac2e53bd1fd">
+        <source>Kirghiz</source>
+        <target>Kirghiz</target>
+      </trans-unit>
+      <trans-unit id="sab726d2db7e6b93d">
+        <source>Kirundi</source>
+        <target>Κιρούντι</target>
+      </trans-unit>
+      <trans-unit id="sb4e003a459464d85">
+        <source>Kurdish</source>
+        <target>Κούρδος</target>
+      </trans-unit>
+      <trans-unit id="s69b12144dbb6544d">
+        <source>Laothian</source>
+        <target>Λαοθιανή</target>
+      </trans-unit>
+      <trans-unit id="sb70c17f7899f9b01">
+        <source>Latin</source>
+        <target>Λατινικά</target>
+      </trans-unit>
+      <trans-unit id="sff303daee4dd9f7b">
+        <source>Lingala</source>
+        <target>Lingala</target>
+      </trans-unit>
+      <trans-unit id="s441b20a8a50e36b4">
+        <source>Macedonian</source>
+        <target>Μακεδονικό</target>
+      </trans-unit>
+      <trans-unit id="sf3c4da68b08a2590">
+        <source>Malagasy</source>
+        <target>Μαδαγασκάρη</target>
+      </trans-unit>
+      <trans-unit id="sc7eb080b96e244df">
+        <source>Malay</source>
+        <target>Μαλαισία</target>
+      </trans-unit>
+      <trans-unit id="s0dad143dff0079fc">
+        <source>Malayalam</source>
+        <target>Malayalam</target>
+      </trans-unit>
+      <trans-unit id="scabe6ecee5e01fd2">
+        <source>Maltese</source>
+        <target>Μαλτέζικα</target>
+      </trans-unit>
+      <trans-unit id="sae9c790b88be7eb9">
+        <source>Maori</source>
+        <target>Μαορί</target>
+      </trans-unit>
+      <trans-unit id="s2e969a451b4955d1">
+        <source>Marathi</source>
+        <target>Μαράθι</target>
+      </trans-unit>
+      <trans-unit id="s5a356677b61a6b7e">
+        <source>Moldavian</source>
+        <target>Μολδαβική</target>
+      </trans-unit>
+      <trans-unit id="s0f17f32919661cff">
+        <source>Mongolian</source>
+        <target>Μογγολικά</target>
+      </trans-unit>
+      <trans-unit id="s9e8d3665edde89a6">
+        <source>Nauru</source>
+        <target>Ναούρου</target>
+      </trans-unit>
+      <trans-unit id="sad190f86451081c0">
+        <source>Nepali</source>
+        <target>Νεπάλ</target>
+      </trans-unit>
+      <trans-unit id="se0a782a8be8e018b">
+        <source>Norwegian</source>
+        <target>Νορβηγικό</target>
+      </trans-unit>
+      <trans-unit id="s7a99528e7b64635a">
+        <source>Occitan</source>
+        <target>Οξιτανικά</target>
+      </trans-unit>
+      <trans-unit id="s9c11f2d9335d8bd1">
+        <source>Oriya</source>
+        <target>Oriya</target>
+      </trans-unit>
+      <trans-unit id="s54cbfaf2a8da7818">
+        <source>Pashto</source>
+        <target>Παστού</target>
+      </trans-unit>
+      <trans-unit id="sa40fd43756fa8913">
+        <source>Persian</source>
+        <target>Περσικό</target>
+      </trans-unit>
+      <trans-unit id="s74b9781bacfcc87c">
+        <source>Punjabi</source>
+        <target>Punjabi</target>
+      </trans-unit>
+      <trans-unit id="s49ad24935b14e3df">
+        <source>Quechua</source>
+        <target>Quechua</target>
+      </trans-unit>
+      <trans-unit id="s960d3a90ac199368">
+        <source>Rhaeto-Romanian</source>
+        <target>Ρετο-Ρουμανικά</target>
+      </trans-unit>
+      <trans-unit id="s19abee1277c9bca2">
+        <source>Samoan</source>
+        <target>Σαμόα</target>
+      </trans-unit>
+      <trans-unit id="s006f872a5b7f5279">
+        <source>Sangro</source>
+        <target>Sangro</target>
+      </trans-unit>
+      <trans-unit id="sbfff51feacf30196">
+        <source>Sanskrit</source>
+        <target>Σανσκριτικά</target>
+      </trans-unit>
+      <trans-unit id="s1c65f5004a07dcfa">
+        <source>Scots Gaelic</source>
+        <target>Σκωτσέζικα γαελικά</target>
+      </trans-unit>
+      <trans-unit id="sf955eff73fb6b573">
+        <source>Serbian</source>
+        <target>Σέρβικα</target>
+      </trans-unit>
+      <trans-unit id="s7995733bf97c01cc">
+        <source>Serbo-Croatian</source>
+        <target>Σερβοκροατικά</target>
+      </trans-unit>
+      <trans-unit id="scc5ba32e0de06744">
+        <source>Sesotho</source>
+        <target>Sesotho</target>
+      </trans-unit>
+      <trans-unit id="s08e12ade32ef8125">
+        <source>Setswana</source>
+        <target>Setswana</target>
+      </trans-unit>
+      <trans-unit id="sb6434faf698b02a2">
+        <source>Shona</source>
+        <target>Shona</target>
+      </trans-unit>
+      <trans-unit id="sb31cdff08b1c5a50">
+        <source>Sindhi</source>
+        <target>Sindhi</target>
+      </trans-unit>
+      <trans-unit id="se308836a594808b6">
+        <source>Singhalese</source>
+        <target>Singhalese</target>
+      </trans-unit>
+      <trans-unit id="sce8a4e3f7c98482d">
+        <source>Siswati</source>
+        <target>Siswati</target>
+      </trans-unit>
+      <trans-unit id="s978522fbc9577a7e">
+        <source>Somali</source>
+        <target>Σομαλοί</target>
+      </trans-unit>
+      <trans-unit id="sa477cb1825dceb3b">
+        <source>Sudanese</source>
+        <target>Σουδανός</target>
+      </trans-unit>
+      <trans-unit id="sbe90de083557ef3e">
+        <source>Swahili</source>
+        <target>Σουαχίλι</target>
+      </trans-unit>
+      <trans-unit id="sae098810f946ca7c">
+        <source>Tagalog</source>
+        <target>Ταγκαλόγκ</target>
+      </trans-unit>
+      <trans-unit id="s7b9994904c4f5b54">
+        <source>Tajik</source>
+        <target>Τατζικιστάν</target>
+      </trans-unit>
+      <trans-unit id="s7136449045eff28c">
+        <source>Tamil</source>
+        <target>Ταμίλ</target>
+      </trans-unit>
+      <trans-unit id="sae9d739068eee2c5">
+        <source>Tatar</source>
+        <target>Τατάρ</target>
+      </trans-unit>
+      <trans-unit id="s47a8f6dfb38b9701">
+        <source>Telugu</source>
+        <target>Telugu</target>
+      </trans-unit>
+      <trans-unit id="s4ffac3fb33a2ee9b">
+        <source>Thai</source>
+        <target>Ταϊλάνδης</target>
+      </trans-unit>
+      <trans-unit id="s5623aa2f83b05c76">
+        <source>Tibetan</source>
+        <target>Θιβέτ</target>
+      </trans-unit>
+      <trans-unit id="sbb15d427ee1aa676">
+        <source>Tigrinya</source>
+        <target>Tigrinya</target>
+      </trans-unit>
+      <trans-unit id="sbb34f2e3aa40af4e">
+        <source>Tonga</source>
+        <target>Τόνγκα</target>
+      </trans-unit>
+      <trans-unit id="s04c939a414fdab21">
+        <source>Tsonga</source>
+        <target>Tsonga</target>
+      </trans-unit>
+      <trans-unit id="sc0ceaa9843510f67">
+        <source>Turkmen</source>
+        <target>Τουρκμενιστάν</target>
+      </trans-unit>
+      <trans-unit id="s6d1df519e235a6cf">
+        <source>Twi</source>
+        <target>Twi</target>
+      </trans-unit>
+      <trans-unit id="s2e66bf8b833858f3">
+        <source>Uigur</source>
+        <target>Uigur</target>
+      </trans-unit>
+      <trans-unit id="s9ca757effd747da9">
+        <source>Urdu</source>
+        <target>Ουρντού</target>
+      </trans-unit>
+      <trans-unit id="sb4f0310e6787d098">
+        <source>Uzbek</source>
+        <target>Ουζμπεκιστάν</target>
+      </trans-unit>
+      <trans-unit id="s6d60d595cb5070da">
+        <source>Vietnamese</source>
+        <target>Βιετναμέζικα</target>
+      </trans-unit>
+      <trans-unit id="sb657bfe93338dc8b">
+        <source>Volapuk</source>
+        <target>Volapuk</target>
+      </trans-unit>
+      <trans-unit id="sf2e08a945e9194d4">
+        <source>Welch</source>
+        <target>Welch</target>
+      </trans-unit>
+      <trans-unit id="s86ca34c5287a2f38">
+        <source>Wolof</source>
+        <target>Wolof</target>
+      </trans-unit>
+      <trans-unit id="sa4e5b39489ecf31a">
+        <source>Xhosa</source>
+        <target>Xhosa</target>
+      </trans-unit>
+      <trans-unit id="s63dfc5b1c1c27849">
+        <source>Yiddish</source>
+        <target>Γίντις</target>
+      </trans-unit>
+      <trans-unit id="se1312d6528f9a259">
+        <source>Yoruba</source>
+        <target>Γιορούμπα</target>
+      </trans-unit>
+      <trans-unit id="s3f299e83cbf52fba">
+        <source>Zhuang</source>
+        <target>Zhuang</target>
+      </trans-unit>
+      <trans-unit id="sd5be6f6d85fc0c9b">
+        <source>Zulu</source>
+        <target>Ζουλού</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

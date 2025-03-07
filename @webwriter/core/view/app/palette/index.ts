@@ -9,7 +9,7 @@ import { SlInput, SlPopup, SlProgressBar } from "@shoelace-style/shoelace"
 
 import { Locale, MemberSettings, Package, SemVer } from "#model"
 import { prettifyPackageName, filterObject } from "#utility"
-import { Command } from "#viewmodel"
+import { Command, SettingsController } from "#viewmodel"
 import { App, PackageForm } from "#view"
 import { spreadProps } from "@open-wc/lit-helpers"
 
@@ -1279,12 +1279,12 @@ export class Palette extends LitElement {
     if(!pkg.locales.length) {
       return undefined
     }
-    const userLangs = Array.from(new Set(navigator.languages.map(lang => new Locale(lang).language)))
+    const userLangs = [...new Set(navigator.languages.map(lang => new Locale(lang).language)), this.app.store.ui.locale, this.app.store.document.lang]
     const relevantLocales = pkg.locales.filter(locale => userLangs.includes(locale.language))
     const otherLocales = pkg.locales.filter(locale => !userLangs.includes(locale.language))
     return html`<span class="package-keyword package-locale">
       <sl-icon name="language"></sl-icon>
-      ${relevantLocales.map(locale => Locale.getLanguageInfo(locale.language)).map(info => info.name).join(", ")}
+      ${relevantLocales.map(locale => (SettingsController.languageOptions as any)[locale.language]?.label).join(", ")}
       ${otherLocales.length? html`<sup>+${otherLocales.length}</sup>`: undefined}
     </span>`
   }
@@ -1554,7 +1554,7 @@ export class Palette extends LitElement {
       ${this.app.commands.groupedContainerCommands.map(this.Card)}
       ${this.ClipboardCard()}
       ${this.editingStatus != "pinning"? undefined: this.PinPreview()}
-      ${guard([...this.app.store.packages.filteredPackages, this.app.store.packages.changingID, this.dropdownOpen, this.searchResults], () => this.app.store.packages.filteredPackages.map(this.Card))}
+      ${guard([...this.app.store.packages.filteredPackages, this.app.store.packages.changingID, this.dropdownOpen, this.searchResults, this.app.store.ui.locale, this.app.store.document.lang, this.managing], () => this.app.store.packages.filteredPackages.map(this.Card))}
       ${this.AddLocalPackageButton()}
       ${this.LocalPackageDialog()}
       ${this.ErrorDialog()}
