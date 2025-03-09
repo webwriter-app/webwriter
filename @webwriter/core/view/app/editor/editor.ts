@@ -1083,12 +1083,15 @@ export class ExplorableEditor extends LitElement {
       if(this.gapDragSelectionAnchor !== undefined) {
         const {pos} = this.pmEditor.posAtCoords({left: ev.x, top: ev.y}) ?? {}
         if(pos !== undefined && pos !== this.gapDragSelectionAnchor) {
-          const sel = TextSelection.create(this.editorState.doc, this.gapDragSelectionAnchor, pos)
-          const endPos = TextSelection.create(this.editorState.doc, pos)
-          if(!findParentNode(node => node.type.name === "math")(endPos) && !(endPos.$anchor.nodeAfter?.type.name === "math")) {
-            const tr = this.editorState.tr.setSelection(sel)
-            this.pmEditor.dispatch(tr)
+          try {
+            const sel = TextSelection.create(this.editorState.doc, this.gapDragSelectionAnchor, pos)
+            const endPos = TextSelection.create(this.editorState.doc, pos)
+            if(!findParentNode(node => node.type.name === "math")(endPos) && !(endPos.$anchor.nodeAfter?.type.name === "math")) {
+              const tr = this.editorState.tr.setSelection(sel)
+              this.pmEditor.dispatch(tr)
+            }
           }
+          catch(err) {}
         }
       }
     },
