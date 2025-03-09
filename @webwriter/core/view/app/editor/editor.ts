@@ -17,7 +17,7 @@ import { CODEMIRROR_EXTENSIONS, EditorStateWithHead, MediaType, Package, removeM
 import { range, roundByDPR, sameMembers } from "#utility"
 import { App, Toolbox, Palette, ProsemirrorEditor, CodemirrorEditor } from "#view"
 import { CellSelection } from "@massifrg/prosemirror-tables-sections"
-import { isNodeSelection } from "prosemirror-utils"
+import { findParentNode, findPositionOfNodeBefore, isNodeSelection } from "prosemirror-utils"
 
 class EmbedTooLargeError extends Error {}
 
@@ -995,7 +995,7 @@ export class ExplorableEditor extends LitElement {
     const afterNotElement = !(nodeAfter instanceof this.pmEditor.window.Element) && nodeAfter !== null
     const betweenEmpty = (!nodeBefore || nodeBefore?.nodeName === "P" && !nodeBefore.textContent) && (!nodeAfter || nodeAfter?.nodeName === "P" && !nodeAfter.textContent)
     if(parent.isTextblock || beforeNotElement || afterNotElement || betweenEmpty) {
-      return null
+      return parent.isTextblock? TextSelection.near($pos): null
     }
     const beforeBottom = nodeBefore? nodeBefore.getBoundingClientRect().bottom: 0
     const afterTop = nodeAfter? nodeAfter.getBoundingClientRect().top: Infinity
@@ -1006,7 +1006,7 @@ export class ExplorableEditor extends LitElement {
       return TextSelection.near($pos)
     }
     else {
-      return null
+      return TextSelection.near($pos)
     }
   }
 
@@ -1084,8 +1084,11 @@ export class ExplorableEditor extends LitElement {
         const {pos} = this.pmEditor.posAtCoords({left: ev.x, top: ev.y}) ?? {}
         if(pos !== undefined && pos !== this.gapDragSelectionAnchor) {
           const sel = TextSelection.create(this.editorState.doc, this.gapDragSelectionAnchor, pos)
-          const tr = this.editorState.tr.setSelection(sel)
-          this.pmEditor.dispatch(tr)
+          const endPos = TextSelection.create(this.editorState.doc, pos)
+          if(!findParentNode(node => node.type.name === "math")(endPos) && !(endPos.$anchor.nodeAfter?.type.name === "math")) {
+            const tr = this.editorState.tr.setSelection(sel)
+            this.pmEditor.dispatch(tr)
+          }
         }
       }
     },
@@ -1105,24 +1108,22 @@ export class ExplorableEditor extends LitElement {
         ev.preventDefault()
         return true
       }
-      else if(sel && !sel.eq(this.selection)) {
-        if(sel instanceof GapCursor) {
-          this.gapDragSelectionAnchor = sel.anchor
+      else if(sel) {
+        if(!(sel instanceof GapCursor) && (findParentNode(node => node.type.name === "math")(sel) || (sel.$anchor.nodeAfter?.type.name === "math"))) {
+          for(let i = 1; i < sel.$anchor.depth; i++) {
+            if(sel.$anchor.node(i).type.name === "math") {
+              const newSel = NodeSelection.create(this.editorState.doc, sel.$anchor.before(i))
+              const tr = this.editorState.tr.setSelection(newSel)
+              this.pmEditor.dispatch(tr)
+            }
+          }
+          ev.preventDefault()
+          return true
         }
+        this.gapDragSelectionAnchor = sel.anchor
         const tr = this.editorState.tr.setSelection(sel)
         this.pmEditor.dispatch(tr)
         this.pmEditor.focus()
-        ev.preventDefault()
-        return true
-      }
-      else if(!(sel instanceof GapCursor)) {
-        const sel = TextSelection.near(this.selection.$anchor)
-        const tr = this.editorState.tr.setSelection(sel)
-        this.pmEditor.dispatch(tr)
-        return false
-      }
-      else {
-        this.gapDragSelectionAnchor = sel.anchor
         ev.preventDefault()
         return true
       }
