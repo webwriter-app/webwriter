@@ -261,16 +261,6 @@ export class SettingsController implements ReactiveController {
             ),
           label: msg("Autosave"),
         },
-        showSourceEditor: {
-          schema: z
-            .boolean()
-            .describe(
-              msg(
-                "Advanced: Show source editing commands, e.g. to show the document's HTML or to add custom styles and scripts."
-              )
-            ),
-          label: msg("Show source editing commands"),
-        },
         hideIntro: {
           schema: z
             .boolean()
@@ -280,6 +270,16 @@ export class SettingsController implements ReactiveController {
               )
             ),
           label: msg("Hide intro tour"),
+        },
+        showSourceEditor: {
+          schema: z
+            .boolean()
+            .describe(
+              msg(
+                "Advanced: Show source editing commands, e.g. to show the document's HTML or to add custom styles and scripts."
+              )
+            ),
+          label: msg("Show source editing commands"),
         },
         /*resetOnInitialize: {
           schema: z
