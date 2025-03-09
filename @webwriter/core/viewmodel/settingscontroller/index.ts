@@ -271,6 +271,19 @@ export class SettingsController implements ReactiveController {
             ),
           label: msg("Hide intro tour"),
         },
+        authoringAnalytics: {
+          schema: z
+            .boolean()
+            .describe(
+              msg(
+                "Send telemetry data about your usage of WebWriter."
+              )
+            ),
+          label: msg("Enable telemetry"),
+          confirmation: html`
+            <p>${msg("By enabling telemetry, you allow for data collection and retention according to our")} <a target="_blank" href="https://webwriter.app/privacy">${msg("privacy policy")}</a></p>
+          `
+        },
         showSourceEditor: {
           schema: z
             .boolean()
@@ -291,19 +304,7 @@ export class SettingsController implements ReactiveController {
             ),
           label: msg("Reset all app data on page load"),
         },*/
-        authoringAnalytics: {
-          schema: z
-            .boolean()
-            .describe(
-              msg(
-                "Send telemetry data about your usage of WebWriter."
-              )
-            ),
-          label: msg("Enable telemetry"),
-          confirmation: html`
-            <p>${msg("By enabling telemetry, you allow for data collection and retention according to our")} <a target="_blank" href="https://webwriter.app/privacy">${msg("privacy policy")}</a></p>
-          `
-        },
+
         /*showTextPlaceholder: {
           schema: z
             .boolean()
