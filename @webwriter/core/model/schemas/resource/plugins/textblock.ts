@@ -135,7 +135,7 @@ export function fillNode(type: NodeType, attrs?: Attrs): Node {
   return node.copy(content)
 }
 
-export function wrapSelection(type: string | NodeType | (string | NodeType)[], attrs?: Attrs) {
+export function wrapSelection(type: string | NodeType | (string | NodeType)[], attrs?: Attrs, replaceOnly=false) {
   return chainCommands((state: EditorState, dispatch: any) => {
     const {selection} = state
     const allTypes = Array.isArray(type)? type.map(t => typeof t === "string"? state.schema.nodes[t]: t): [typeof type === "string"? state.schema.nodes[type]: type]
@@ -159,7 +159,7 @@ export function wrapSelection(type: string | NodeType | (string | NodeType)[], a
     }
     let content = [] as Node[]
     const n = slice.content.childCount
-    range(n).forEach(i => content.push(slice.content.child(i)))
+    !replaceOnly && range(n).forEach(i => content.push(slice.content.child(i)))
     let newNode: Node | undefined
     for(const type of allTypes.slice().reverse()) {
       if(!newNode) {
