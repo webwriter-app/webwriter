@@ -281,7 +281,7 @@ export class SettingsController implements ReactiveController {
             ),
           label: msg("Hide intro tour"),
         },
-        resetOnInitialize: {
+        /*resetOnInitialize: {
           schema: z
             .boolean()
             .describe(
@@ -290,7 +290,7 @@ export class SettingsController implements ReactiveController {
               )
             ),
           label: msg("Reset all app data on page load"),
-        },
+        },*/
         authoringAnalytics: {
           schema: z
             .boolean()
