@@ -9,7 +9,7 @@ import { SlInput, SlPopup, SlProgressBar } from "@shoelace-style/shoelace"
 
 import { Locale, MemberSettings, Package, SemVer } from "#model"
 import { prettifyPackageName, filterObject } from "#utility"
-import { Command } from "#viewmodel"
+import { Command, SettingsController } from "#viewmodel"
 import { App, PackageForm } from "#view"
 import { spreadProps } from "@open-wc/lit-helpers"
 
@@ -1156,7 +1156,6 @@ export class Palette extends LitElement {
 
   private get fieldLabels() {
     return {
-      "00": msg("Generic"),
       "01": msg("Education"),
       "02": msg("Humanities"),
       "03": msg("Social sciences"),
@@ -1167,13 +1166,13 @@ export class Palette extends LitElement {
       "08": msg("Food production"),
       "09": msg("Health"),
       "10": msg("Services"),
-      "99": msg("Other fields")
+      "99": msg("Other fields"),
+      "all": msg("All fields")
     }
   }
 
   private get fieldIcons() {
     return {
-      "00": "book",
       "01": "chalkboard",
       "02": "brush",
       "03": "news",
@@ -1184,7 +1183,8 @@ export class Palette extends LitElement {
       "08": "tractor",
       "09": "heartbeat",
       "10": "building-store",
-      "99": "books"
+      "99": "book",
+      "all": "books"
     }
   }
 
@@ -1267,7 +1267,9 @@ export class Palette extends LitElement {
   }
 
   PackageFields(pkg: Package) {
-    return pkg.broadFieldCodes.map(code => html`
+    const includesAllFields = (["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"] as const).every(code => pkg.broadFieldCodes.includes(code))
+    const codes = includesAllFields? ["all"] as const: pkg.broadFieldCodes
+    return codes.map(code => html`
       <span class="package-keyword package-field">
         <sl-icon name=${this.fieldIcons[code]}></sl-icon>
         <span>${this.fieldLabels[code]}</span>
@@ -1279,12 +1281,12 @@ export class Palette extends LitElement {
     if(!pkg.locales.length) {
       return undefined
     }
-    const userLangs = Array.from(new Set(navigator.languages.map(lang => new Locale(lang).language)))
+    const userLangs = [...new Set(navigator.languages.map(lang => new Locale(lang).language)), this.app.store.ui.locale, this.app.store.document.lang]
     const relevantLocales = pkg.locales.filter(locale => userLangs.includes(locale.language))
     const otherLocales = pkg.locales.filter(locale => !userLangs.includes(locale.language))
     return html`<span class="package-keyword package-locale">
       <sl-icon name="language"></sl-icon>
-      ${relevantLocales.map(locale => Locale.getLanguageInfo(locale.language)).map(info => info.name).join(", ")}
+      ${relevantLocales.map(locale => (SettingsController.languageOptions as any)[locale.language]?.label).join(", ")}
       ${otherLocales.length? html`<sup>+${otherLocales.length}</sup>`: undefined}
     </span>`
   }
@@ -1554,7 +1556,7 @@ export class Palette extends LitElement {
       ${this.app.commands.groupedContainerCommands.map(this.Card)}
       ${this.ClipboardCard()}
       ${this.editingStatus != "pinning"? undefined: this.PinPreview()}
-      ${guard([...this.app.store.packages.filteredPackages, this.app.store.packages.changingID, this.dropdownOpen, ], () => this.app.store.packages.filteredPackages.map(this.Card))}
+      ${guard([...this.app.store.packages.filteredPackages, this.app.store.packages.changingID, this.dropdownOpen, this.searchResults, this.app.store.ui.locale, this.app.store.document.lang, this.managing], () => this.app.store.packages.filteredPackages.map(this.Card))}
       ${this.AddLocalPackageButton()}
       ${this.LocalPackageDialog()}
       ${this.ErrorDialog()}

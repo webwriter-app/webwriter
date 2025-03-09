@@ -843,17 +843,13 @@
         <target>Cattura</target>
       </trans-unit>
       <trans-unit id="s2b8f50c64be440f7">
-        <source>Select 
-          <x id="0" equiv-text="${this.mediaType}"/>...
-        </source>
+        <source>Select <x id="0" equiv-text="${this.mediaType}"/>...</source>
         <target>Selezionare 
           <x id="0" equiv-text="${this.mediaType}"/>... 
         </target>
       </trans-unit>
       <trans-unit id="s739544d0c858c633">
-        <source>Or drop 
-          <x id="0" equiv-text="${this.mediaType}"/> here
-        </source>
+        <source>Or drop <x id="0" equiv-text="${this.mediaType}"/> here</source>
         <target>Oppure lasciate un messaggio 
           <x id="0" equiv-text="${this.mediaType}"/> qui 
         </target>
@@ -919,10 +915,7 @@
         <target>Questa parola chiave è necessaria per i widget</target>
       </trans-unit>
       <trans-unit id="h64cd12550420f6f1">
-        <source>Generate a 
-          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
-          <x id="1" equiv-text="&lt;/code&gt;"/> file
-        </source>
+        <source>Generate a <x id="0" equiv-text="&lt;code&gt;"/>LICENSE<x id="1" equiv-text="&lt;/code&gt;"/> file</source>
         <target>Generare un 
           <x id="0" equiv-text="&lt;code&gt;"/>LICENZA 
           <x id="1" equiv-text="&lt;/code&gt;"/> file 
@@ -1515,18 +1508,14 @@
         <target>Errore di connessione</target>
       </trans-unit>
       <trans-unit id="sf52d840949a980d1">
-        <source>
-          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           sarà eliminato in modo permanente. Ne è sicuro? 
         </target>
       </trans-unit>
       <trans-unit id="s9b7cd8860c8fc922">
-        <source>
-          <x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           sarà sovrascritto. Ne è sicuro? 
@@ -1565,9 +1554,7 @@
         <target>Tipo di proprietà non supportato '${desc.type}' (elaborazione come JSON)</target>
       </trans-unit>
       <trans-unit id="sa00df4e39c72d3b4">
-        <source>
-          <x id="0" equiv-text="${desc.widget}"/> is not supported
-        </source>
+        <source><x id="0" equiv-text="${desc.widget}"/> is not supported</source>
         <target>
           <x id="0" equiv-text="${desc.widget}"/> non è supportato 
         </target>
@@ -3839,10 +3826,6 @@
         <source>Higher ed.</source>
         <target>Istruzione superiore.</target>
       </trans-unit>
-      <trans-unit id="sc3c74f5273df459a">
-        <source>Generic</source>
-        <target>Generico</target>
-      </trans-unit>
       <trans-unit id="s1d19244f549ec535">
         <source>Education</source>
         <target>Istruzione</target>
@@ -3923,6 +3906,461 @@
         <source>Online when using</source>
         <target>Online quando si utilizza</target>
       </trans-unit>
+      <trans-unit id="s3ae67088bbefba98">
+        <source>Packages</source>
+        <target>Pacchetti</target>
+      </trans-unit>
+      <trans-unit id="s8a28bad9290d4761">
+        <source>Oromo</source>
+        <target>Oromo</target>
+      </trans-unit>
+      <trans-unit id="s4634541f5056a546">
+        <source>Abkhazian</source>
+        <target>Abcaso</target>
+      </trans-unit>
+      <trans-unit id="s59b20e8af32606ed">
+        <source>Afar</source>
+        <target>Afar</target>
+      </trans-unit>
+      <trans-unit id="sd2ef82b8ea877c6d">
+        <source>Afrikaans</source>
+        <target>Afrikaans</target>
+      </trans-unit>
+      <trans-unit id="s2f4d4bfbc466d91f">
+        <source>Albanian</source>
+        <target>Albanese</target>
+      </trans-unit>
+      <trans-unit id="sb43db07b24da018a">
+        <source>Amharic</source>
+        <target>Amarico</target>
+      </trans-unit>
+      <trans-unit id="sb884fa76bfc55429">
+        <source>Arabic</source>
+        <target>Arabo</target>
+      </trans-unit>
+      <trans-unit id="scc56b218a2689c42">
+        <source>Armenian</source>
+        <target>Armeno</target>
+      </trans-unit>
+      <trans-unit id="sa2cba871f6cdd99f">
+        <source>Assamese</source>
+        <target>Assamese</target>
+      </trans-unit>
+      <trans-unit id="scf95dcb12a950a5c">
+        <source>Aymara</source>
+        <target>Aymara</target>
+      </trans-unit>
+      <trans-unit id="s9cf68f87b8e6122f">
+        <source>Azerbaijani</source>
+        <target>Azerbaigian</target>
+      </trans-unit>
+      <trans-unit id="s17bfaaa4e7528bc7">
+        <source>Bashkir</source>
+        <target>Bashkir</target>
+      </trans-unit>
+      <trans-unit id="se39c065efa467782">
+        <source>Basque</source>
+        <target>Basco</target>
+      </trans-unit>
+      <trans-unit id="sf2bdb0b4d7b9c039">
+        <source>Bengali</source>
+        <target>Bengalese</target>
+      </trans-unit>
+      <trans-unit id="sf0c8e2b013e5ff18">
+        <source>Bhutani</source>
+        <target>Bhutani</target>
+      </trans-unit>
+      <trans-unit id="s181ef198cf83ec3a">
+        <source>Bihari</source>
+        <target>Bihari</target>
+      </trans-unit>
+      <trans-unit id="s543c237e8c895ce8">
+        <source>Bislama</source>
+        <target>Bislama</target>
+      </trans-unit>
+      <trans-unit id="s93f083e654a45715">
+        <source>Breton</source>
+        <target>Bretone</target>
+      </trans-unit>
+      <trans-unit id="sbd72dc858de95ce8">
+        <source>Burmese</source>
+        <target>Birmano</target>
+      </trans-unit>
+      <trans-unit id="s1e9c2c654732cc5f">
+        <source>Byelorussian</source>
+        <target>Bielorusso</target>
+      </trans-unit>
+      <trans-unit id="s545ee1f373f249cf">
+        <source>Cambodian</source>
+        <target>Cambogiano</target>
+      </trans-unit>
+      <trans-unit id="s1f2b49c1bca2035d">
+        <source>Catalan</source>
+        <target>Catalano</target>
+      </trans-unit>
+      <trans-unit id="s0e44968489e076a8">
+        <source>Chinese</source>
+        <target>Cinese</target>
+      </trans-unit>
+      <trans-unit id="s20deffeecf2699fb">
+        <source>Corsican</source>
+        <target>Corso</target>
+      </trans-unit>
+      <trans-unit id="s45518abd911471d0">
+        <source>Croatian</source>
+        <target>Croato</target>
+      </trans-unit>
+      <trans-unit id="s0a6cb8d42cdb0c4a">
+        <source>Esperanto</source>
+        <target>Esperanto</target>
+      </trans-unit>
+      <trans-unit id="s536695196d0b6dc3">
+        <source>Faeroese</source>
+        <target>Faerese</target>
+      </trans-unit>
+      <trans-unit id="sd1f10284eeb17b25">
+        <source>Fiji</source>
+        <target>Figi</target>
+      </trans-unit>
+      <trans-unit id="s61c017f6d5c303af">
+        <source>Frisian</source>
+        <target>Frisone</target>
+      </trans-unit>
+      <trans-unit id="s990d0e0fa2ab00b5">
+        <source>Galician</source>
+        <target>Galiziano</target>
+      </trans-unit>
+      <trans-unit id="sdc70d81cf6c28533">
+        <source>Georgian</source>
+        <target>Georgiano</target>
+      </trans-unit>
+      <trans-unit id="s99229574e5692f19">
+        <source>Greenlandic</source>
+        <target>Groenlandese</target>
+      </trans-unit>
+      <trans-unit id="s1feab14d837eadb0">
+        <source>Guarani</source>
+        <target>Guarani</target>
+      </trans-unit>
+      <trans-unit id="s3f43ef2eaa1ec486">
+        <source>Gujarati</source>
+        <target>Gujarati</target>
+      </trans-unit>
+      <trans-unit id="s9fbe26cfd7845469">
+        <source>Hausa</source>
+        <target>Hausa</target>
+      </trans-unit>
+      <trans-unit id="s6b61f8abf89586be">
+        <source>Hebrew</source>
+        <target>Ebraico</target>
+      </trans-unit>
+      <trans-unit id="sb6b268120592dc53">
+        <source>Hindi</source>
+        <target>Hindi</target>
+      </trans-unit>
+      <trans-unit id="sec2da4aa7a02b925">
+        <source>Icelandic</source>
+        <target>Islandese</target>
+      </trans-unit>
+      <trans-unit id="s9d54869be6794a9f">
+        <source>Interlingua</source>
+        <target>Interlingua</target>
+      </trans-unit>
+      <trans-unit id="s9d54829be67943d3">
+        <source>Interlingue</source>
+        <target>Interlingua</target>
+      </trans-unit>
+      <trans-unit id="s62b857f5b6693742">
+        <source>Inupiak</source>
+        <target>Inupiak</target>
+      </trans-unit>
+      <trans-unit id="sf5e76f774beb33c2">
+        <source>Inuktitut</source>
+        <target>Inuktitut</target>
+      </trans-unit>
+      <trans-unit id="s33c18d5a4cbffa2a">
+        <source>Irish</source>
+        <target>Irlandese</target>
+      </trans-unit>
+      <trans-unit id="s21d723a1dbcd89c8">
+        <source>Javanese</source>
+        <target>Giavanese</target>
+      </trans-unit>
+      <trans-unit id="s1f8e59d0624842ff">
+        <source>Kannada</source>
+        <target>Kannada</target>
+      </trans-unit>
+      <trans-unit id="s81c3d8809658b951">
+        <source>Kashmiri</source>
+        <target>Kashmiri</target>
+      </trans-unit>
+      <trans-unit id="s01b16a926920908b">
+        <source>Kazakh</source>
+        <target>Kazako</target>
+      </trans-unit>
+      <trans-unit id="s81cf65c5a46dea08">
+        <source>Kinyarwanda</source>
+        <target>Kinyarwanda</target>
+      </trans-unit>
+      <trans-unit id="s5bba2ac2e53bd1fd">
+        <source>Kirghiz</source>
+        <target>Kirghizistan</target>
+      </trans-unit>
+      <trans-unit id="sab726d2db7e6b93d">
+        <source>Kirundi</source>
+        <target>Kirundi</target>
+      </trans-unit>
+      <trans-unit id="sb4e003a459464d85">
+        <source>Kurdish</source>
+        <target>Curdo</target>
+      </trans-unit>
+      <trans-unit id="s69b12144dbb6544d">
+        <source>Laothian</source>
+        <target>Laotiano</target>
+      </trans-unit>
+      <trans-unit id="sb70c17f7899f9b01">
+        <source>Latin</source>
+        <target>Latino</target>
+      </trans-unit>
+      <trans-unit id="sff303daee4dd9f7b">
+        <source>Lingala</source>
+        <target>Lingala</target>
+      </trans-unit>
+      <trans-unit id="s441b20a8a50e36b4">
+        <source>Macedonian</source>
+        <target>Macedone</target>
+      </trans-unit>
+      <trans-unit id="sf3c4da68b08a2590">
+        <source>Malagasy</source>
+        <target>Malgascio</target>
+      </trans-unit>
+      <trans-unit id="sc7eb080b96e244df">
+        <source>Malay</source>
+        <target>Malese</target>
+      </trans-unit>
+      <trans-unit id="s0dad143dff0079fc">
+        <source>Malayalam</source>
+        <target>Malayalam</target>
+      </trans-unit>
+      <trans-unit id="scabe6ecee5e01fd2">
+        <source>Maltese</source>
+        <target>Maltese</target>
+      </trans-unit>
+      <trans-unit id="sae9c790b88be7eb9">
+        <source>Maori</source>
+        <target>Maori</target>
+      </trans-unit>
+      <trans-unit id="s2e969a451b4955d1">
+        <source>Marathi</source>
+        <target>Marathi</target>
+      </trans-unit>
+      <trans-unit id="s5a356677b61a6b7e">
+        <source>Moldavian</source>
+        <target>Moldavo</target>
+      </trans-unit>
+      <trans-unit id="s0f17f32919661cff">
+        <source>Mongolian</source>
+        <target>Mongolo</target>
+      </trans-unit>
+      <trans-unit id="s9e8d3665edde89a6">
+        <source>Nauru</source>
+        <target>Nauru</target>
+      </trans-unit>
+      <trans-unit id="sad190f86451081c0">
+        <source>Nepali</source>
+        <target>Nepalese</target>
+      </trans-unit>
+      <trans-unit id="se0a782a8be8e018b">
+        <source>Norwegian</source>
+        <target>Norvegese</target>
+      </trans-unit>
+      <trans-unit id="s7a99528e7b64635a">
+        <source>Occitan</source>
+        <target>Occitano</target>
+      </trans-unit>
+      <trans-unit id="s9c11f2d9335d8bd1">
+        <source>Oriya</source>
+        <target>Oriya</target>
+      </trans-unit>
+      <trans-unit id="s54cbfaf2a8da7818">
+        <source>Pashto</source>
+        <target>Pashto</target>
+      </trans-unit>
+      <trans-unit id="sa40fd43756fa8913">
+        <source>Persian</source>
+        <target>Persiano</target>
+      </trans-unit>
+      <trans-unit id="s74b9781bacfcc87c">
+        <source>Punjabi</source>
+        <target>Punjabi</target>
+      </trans-unit>
+      <trans-unit id="s49ad24935b14e3df">
+        <source>Quechua</source>
+        <target>Quechua</target>
+      </trans-unit>
+      <trans-unit id="s960d3a90ac199368">
+        <source>Rhaeto-Romanian</source>
+        <target>Retoromano</target>
+      </trans-unit>
+      <trans-unit id="s19abee1277c9bca2">
+        <source>Samoan</source>
+        <target>Samoano</target>
+      </trans-unit>
+      <trans-unit id="s006f872a5b7f5279">
+        <source>Sangro</source>
+        <target>Sangro</target>
+      </trans-unit>
+      <trans-unit id="sbfff51feacf30196">
+        <source>Sanskrit</source>
+        <target>Sanscrito</target>
+      </trans-unit>
+      <trans-unit id="s1c65f5004a07dcfa">
+        <source>Scots Gaelic</source>
+        <target>Gaelico scozzese</target>
+      </trans-unit>
+      <trans-unit id="sf955eff73fb6b573">
+        <source>Serbian</source>
+        <target>Serbo</target>
+      </trans-unit>
+      <trans-unit id="s7995733bf97c01cc">
+        <source>Serbo-Croatian</source>
+        <target>Serbo-croato</target>
+      </trans-unit>
+      <trans-unit id="scc5ba32e0de06744">
+        <source>Sesotho</source>
+        <target>Sesotho</target>
+      </trans-unit>
+      <trans-unit id="s08e12ade32ef8125">
+        <source>Setswana</source>
+        <target>Setswana</target>
+      </trans-unit>
+      <trans-unit id="sb6434faf698b02a2">
+        <source>Shona</source>
+        <target>Shona</target>
+      </trans-unit>
+      <trans-unit id="sb31cdff08b1c5a50">
+        <source>Sindhi</source>
+        <target>Sindhi</target>
+      </trans-unit>
+      <trans-unit id="se308836a594808b6">
+        <source>Singhalese</source>
+        <target>Cingalese</target>
+      </trans-unit>
+      <trans-unit id="sce8a4e3f7c98482d">
+        <source>Siswati</source>
+        <target>Siswati</target>
+      </trans-unit>
+      <trans-unit id="s978522fbc9577a7e">
+        <source>Somali</source>
+        <target>Somalo</target>
+      </trans-unit>
+      <trans-unit id="sa477cb1825dceb3b">
+        <source>Sudanese</source>
+        <target>Sudanese</target>
+      </trans-unit>
+      <trans-unit id="sbe90de083557ef3e">
+        <source>Swahili</source>
+        <target>Swahili</target>
+      </trans-unit>
+      <trans-unit id="sae098810f946ca7c">
+        <source>Tagalog</source>
+        <target>Tagalog</target>
+      </trans-unit>
+      <trans-unit id="s7b9994904c4f5b54">
+        <source>Tajik</source>
+        <target>Tajik</target>
+      </trans-unit>
+      <trans-unit id="s7136449045eff28c">
+        <source>Tamil</source>
+        <target>Tamil</target>
+      </trans-unit>
+      <trans-unit id="sae9d739068eee2c5">
+        <source>Tatar</source>
+        <target>Tatar</target>
+      </trans-unit>
+      <trans-unit id="s47a8f6dfb38b9701">
+        <source>Telugu</source>
+        <target>Telugu</target>
+      </trans-unit>
+      <trans-unit id="s4ffac3fb33a2ee9b">
+        <source>Thai</source>
+        <target>Thailandese</target>
+      </trans-unit>
+      <trans-unit id="s5623aa2f83b05c76">
+        <source>Tibetan</source>
+        <target>Tibetano</target>
+      </trans-unit>
+      <trans-unit id="sbb15d427ee1aa676">
+        <source>Tigrinya</source>
+        <target>Tigrino</target>
+      </trans-unit>
+      <trans-unit id="sbb34f2e3aa40af4e">
+        <source>Tonga</source>
+        <target>Tonga</target>
+      </trans-unit>
+      <trans-unit id="s04c939a414fdab21">
+        <source>Tsonga</source>
+        <target>Tsonga</target>
+      </trans-unit>
+      <trans-unit id="sc0ceaa9843510f67">
+        <source>Turkmen</source>
+        <target>Turcomanni</target>
+      </trans-unit>
+      <trans-unit id="s6d1df519e235a6cf">
+        <source>Twi</source>
+        <target>Twi</target>
+      </trans-unit>
+      <trans-unit id="s2e66bf8b833858f3">
+        <source>Uigur</source>
+        <target>Uigur</target>
+      </trans-unit>
+      <trans-unit id="s9ca757effd747da9">
+        <source>Urdu</source>
+        <target>Urdu</target>
+      </trans-unit>
+      <trans-unit id="sb4f0310e6787d098">
+        <source>Uzbek</source>
+        <target>Uzbeko</target>
+      </trans-unit>
+      <trans-unit id="s6d60d595cb5070da">
+        <source>Vietnamese</source>
+        <target>Vietnamita</target>
+      </trans-unit>
+      <trans-unit id="sb657bfe93338dc8b">
+        <source>Volapuk</source>
+        <target>Volapuk</target>
+      </trans-unit>
+      <trans-unit id="sf2e08a945e9194d4">
+        <source>Welch</source>
+        <target>Welch</target>
+      </trans-unit>
+      <trans-unit id="s86ca34c5287a2f38">
+        <source>Wolof</source>
+        <target>Wolof</target>
+      </trans-unit>
+      <trans-unit id="sa4e5b39489ecf31a">
+        <source>Xhosa</source>
+        <target>Xhosa</target>
+      </trans-unit>
+      <trans-unit id="s63dfc5b1c1c27849">
+        <source>Yiddish</source>
+        <target>Yiddish</target>
+      </trans-unit>
+      <trans-unit id="se1312d6528f9a259">
+        <source>Yoruba</source>
+        <target>Yoruba</target>
+      </trans-unit>
+      <trans-unit id="s3f299e83cbf52fba">
+        <source>Zhuang</source>
+        <target>Zhuang</target>
+      </trans-unit>
+      <trans-unit id="sd5be6f6d85fc0c9b">
+        <source>Zulu</source>
+        <target>Zulu</target>
+      </trans-unit>
+<trans-unit id="sa50d3c35533f1d99">
+  <source>All fields</source>
+</trans-unit>
     </body>
   </file>
 </xliff>

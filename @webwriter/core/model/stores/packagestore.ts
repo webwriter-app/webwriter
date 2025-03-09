@@ -247,7 +247,7 @@ export class PackageStore {
     idField: "id"
   })
 
-  searchPackages = (query: string) => {
+  searchPackages(query: string) {
     return this.searchIndex.search(query, {boost: {id: 5, name: 4, keywords: 3, version: 2, description: 1}, prefix: true, fuzzy: 1})
   }
 
@@ -382,22 +382,24 @@ export class PackageStore {
   get widgetPackageMap(): Record<string, Package> {
     return Object.fromEntries(Object.keys(this.packages).map(name => [unscopePackageName(name), this.packages[name]]))
   }
+
+  hasReset = false
   
-  async initialize() {
-    if(this.resetOnInitialize) {
-      try {
+  async initialize(): Promise<void> {
+    try {
+      return this.load()
+    }
+    catch(err) {
+      console.error(err)
+      if(!this.hasReset) {
         await this.reset()
-      }
-      catch(err) {
-        console.error(err)
+        return this.initialize()
       }
     }
-    return this.load()
   }
 
   async reset() {
-    const resetOnInitialize = this.resetOnInitialize
-    
+    this.hasReset = true
     localStorage.clear()
     sessionStorage.clear()
     
@@ -411,6 +413,11 @@ export class PackageStore {
       const store = tx.objectStore("handles")
       store.clear()
     }
+    if(db.result.objectStoreNames.contains("snippets")) {
+      const tx = db.result.transaction("snippets", "readwrite")
+      const store = tx.objectStore("snippets")
+      store.clear()
+    }
     db.result.close()
 
     /*await new Promise((resolve, reject) => {
@@ -419,11 +426,6 @@ export class PackageStore {
       req.addEventListener("error", reject)
       req.addEventListener("blocked", reject)
     })*/
-    
-    if(resetOnInitialize) {
-      console.log("reset")
-      localStorage.setItem("webwriter_settings", JSON.stringify({ui: {resetOnInitialize: true}}))
-    }
   }
 
   async add(urlOrHandle: string | FileSystemDirectoryHandle, name?: string) {

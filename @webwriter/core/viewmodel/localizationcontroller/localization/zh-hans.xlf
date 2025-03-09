@@ -1,5 +1,5 @@
 <xliff xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:oasis:names:tc:xliff:document:1.2 http://docs.oasis-open.org/xliff/v1.2/os/xliff-core-1.2-strict.xsd" xmlns="urn:oasis:names:tc:xliff:document:1.2" version="1.2">
-  <file original="lit-localize-inputs" datatype="plaintext" source-language="en" target-language="zh-hans">
+  <file original="lit-localize-inputs" datatype="plaintext" source-language="en" target-language="zh-Hans">
     <body>
       <trans-unit id="sa311a24c1471a974">
         <source>Document</source>
@@ -842,17 +842,13 @@
         <target>捕获</target>
       </trans-unit>
       <trans-unit id="s2b8f50c64be440f7">
-        <source>Select 
-          <x id="0" equiv-text="${this.mediaType}"/>...
-        </source>
+        <source>Select <x id="0" equiv-text="${this.mediaType}"/>...</source>
         <target>选择 
           <x id="0" equiv-text="${this.mediaType}"/>... 
         </target>
       </trans-unit>
       <trans-unit id="s739544d0c858c633">
-        <source>Or drop 
-          <x id="0" equiv-text="${this.mediaType}"/> here
-        </source>
+        <source>Or drop <x id="0" equiv-text="${this.mediaType}"/> here</source>
         <target>或点击 
           <x id="0" equiv-text="${this.mediaType}"/> 这里 
         </target>
@@ -918,10 +914,7 @@
         <target>小部件需要使用该关键字</target>
       </trans-unit>
       <trans-unit id="h64cd12550420f6f1">
-        <source>Generate a 
-          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
-          <x id="1" equiv-text="&lt;/code&gt;"/> file
-        </source>
+        <source>Generate a <x id="0" equiv-text="&lt;code&gt;"/>LICENSE<x id="1" equiv-text="&lt;/code&gt;"/> file</source>
         <target>生成 
           <x id="0" equiv-text="&lt;code&gt;"/>许可证 
           <x id="1" equiv-text="&lt;/code&gt;"/>
@@ -1509,18 +1502,14 @@
         <target>连接错误</target>
       </trans-unit>
       <trans-unit id="sf52d840949a980d1">
-        <source>
-          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           将被永久删除。你确定吗？ 
         </target>
       </trans-unit>
       <trans-unit id="s9b7cd8860c8fc922">
-        <source>
-          <x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           将被覆盖。你确定吗？ 
@@ -1559,9 +1548,7 @@
         <target>不支持属性类型"${desc.type}"（以 JSON 格式处理）</target>
       </trans-unit>
       <trans-unit id="sa00df4e39c72d3b4">
-        <source>
-          <x id="0" equiv-text="${desc.widget}"/> is not supported
-        </source>
+        <source><x id="0" equiv-text="${desc.widget}"/> is not supported</source>
         <target>
           <x id="0" equiv-text="${desc.widget}"/> 不支持 
         </target>
@@ -3833,10 +3820,6 @@
         <source>Higher ed.</source>
         <target>高等教育</target>
       </trans-unit>
-      <trans-unit id="sc3c74f5273df459a">
-        <source>Generic</source>
-        <target>通用型</target>
-      </trans-unit>
       <trans-unit id="s1d19244f549ec535">
         <source>Education</source>
         <target>教育</target>
@@ -3917,6 +3900,461 @@
         <source>Online when using</source>
         <target>在线使用时</target>
       </trans-unit>
+      <trans-unit id="s3ae67088bbefba98">
+        <source>Packages</source>
+        <target>套餐</target>
+      </trans-unit>
+      <trans-unit id="s8a28bad9290d4761">
+        <source>Oromo</source>
+        <target>奥罗莫语</target>
+      </trans-unit>
+      <trans-unit id="s4634541f5056a546">
+        <source>Abkhazian</source>
+        <target>阿布哈兹语</target>
+      </trans-unit>
+      <trans-unit id="s59b20e8af32606ed">
+        <source>Afar</source>
+        <target>阿法尔</target>
+      </trans-unit>
+      <trans-unit id="sd2ef82b8ea877c6d">
+        <source>Afrikaans</source>
+        <target>南非语</target>
+      </trans-unit>
+      <trans-unit id="s2f4d4bfbc466d91f">
+        <source>Albanian</source>
+        <target>阿尔巴尼亚语</target>
+      </trans-unit>
+      <trans-unit id="sb43db07b24da018a">
+        <source>Amharic</source>
+        <target>阿姆哈拉语</target>
+      </trans-unit>
+      <trans-unit id="sb884fa76bfc55429">
+        <source>Arabic</source>
+        <target>阿拉伯语</target>
+      </trans-unit>
+      <trans-unit id="scc56b218a2689c42">
+        <source>Armenian</source>
+        <target>亚美尼亚语</target>
+      </trans-unit>
+      <trans-unit id="sa2cba871f6cdd99f">
+        <source>Assamese</source>
+        <target>阿萨姆语</target>
+      </trans-unit>
+      <trans-unit id="scf95dcb12a950a5c">
+        <source>Aymara</source>
+        <target>艾马拉语</target>
+      </trans-unit>
+      <trans-unit id="s9cf68f87b8e6122f">
+        <source>Azerbaijani</source>
+        <target>阿塞拜疆</target>
+      </trans-unit>
+      <trans-unit id="s17bfaaa4e7528bc7">
+        <source>Bashkir</source>
+        <target>巴什基尔</target>
+      </trans-unit>
+      <trans-unit id="se39c065efa467782">
+        <source>Basque</source>
+        <target>巴斯克语</target>
+      </trans-unit>
+      <trans-unit id="sf2bdb0b4d7b9c039">
+        <source>Bengali</source>
+        <target>孟加拉语</target>
+      </trans-unit>
+      <trans-unit id="sf0c8e2b013e5ff18">
+        <source>Bhutani</source>
+        <target>布塔尼</target>
+      </trans-unit>
+      <trans-unit id="s181ef198cf83ec3a">
+        <source>Bihari</source>
+        <target>比哈里</target>
+      </trans-unit>
+      <trans-unit id="s543c237e8c895ce8">
+        <source>Bislama</source>
+        <target>比斯拉马</target>
+      </trans-unit>
+      <trans-unit id="s93f083e654a45715">
+        <source>Breton</source>
+        <target>布列塔尼</target>
+      </trans-unit>
+      <trans-unit id="sbd72dc858de95ce8">
+        <source>Burmese</source>
+        <target>缅甸语</target>
+      </trans-unit>
+      <trans-unit id="s1e9c2c654732cc5f">
+        <source>Byelorussian</source>
+        <target>白俄罗斯语</target>
+      </trans-unit>
+      <trans-unit id="s545ee1f373f249cf">
+        <source>Cambodian</source>
+        <target>柬埔寨</target>
+      </trans-unit>
+      <trans-unit id="s1f2b49c1bca2035d">
+        <source>Catalan</source>
+        <target>加泰罗尼亚语</target>
+      </trans-unit>
+      <trans-unit id="s0e44968489e076a8">
+        <source>Chinese</source>
+        <target>中文</target>
+      </trans-unit>
+      <trans-unit id="s20deffeecf2699fb">
+        <source>Corsican</source>
+        <target>科西嘉</target>
+      </trans-unit>
+      <trans-unit id="s45518abd911471d0">
+        <source>Croatian</source>
+        <target>克罗地亚语</target>
+      </trans-unit>
+      <trans-unit id="s0a6cb8d42cdb0c4a">
+        <source>Esperanto</source>
+        <target>世界语</target>
+      </trans-unit>
+      <trans-unit id="s536695196d0b6dc3">
+        <source>Faeroese</source>
+        <target>法罗群岛</target>
+      </trans-unit>
+      <trans-unit id="sd1f10284eeb17b25">
+        <source>Fiji</source>
+        <target>斐济</target>
+      </trans-unit>
+      <trans-unit id="s61c017f6d5c303af">
+        <source>Frisian</source>
+        <target>弗里斯兰语</target>
+      </trans-unit>
+      <trans-unit id="s990d0e0fa2ab00b5">
+        <source>Galician</source>
+        <target>加利西亚语</target>
+      </trans-unit>
+      <trans-unit id="sdc70d81cf6c28533">
+        <source>Georgian</source>
+        <target>格鲁吉亚语</target>
+      </trans-unit>
+      <trans-unit id="s99229574e5692f19">
+        <source>Greenlandic</source>
+        <target>格林兰</target>
+      </trans-unit>
+      <trans-unit id="s1feab14d837eadb0">
+        <source>Guarani</source>
+        <target>瓜拉尼语</target>
+      </trans-unit>
+      <trans-unit id="s3f43ef2eaa1ec486">
+        <source>Gujarati</source>
+        <target>古吉拉特语</target>
+      </trans-unit>
+      <trans-unit id="s9fbe26cfd7845469">
+        <source>Hausa</source>
+        <target>豪萨语</target>
+      </trans-unit>
+      <trans-unit id="s6b61f8abf89586be">
+        <source>Hebrew</source>
+        <target>希伯来文</target>
+      </trans-unit>
+      <trans-unit id="sb6b268120592dc53">
+        <source>Hindi</source>
+        <target>北印度语</target>
+      </trans-unit>
+      <trans-unit id="sec2da4aa7a02b925">
+        <source>Icelandic</source>
+        <target>冰岛</target>
+      </trans-unit>
+      <trans-unit id="s9d54869be6794a9f">
+        <source>Interlingua</source>
+        <target>Interlingua</target>
+      </trans-unit>
+      <trans-unit id="s9d54829be67943d3">
+        <source>Interlingue</source>
+        <target>Interlingue</target>
+      </trans-unit>
+      <trans-unit id="s62b857f5b6693742">
+        <source>Inupiak</source>
+        <target>伊努皮亚克</target>
+      </trans-unit>
+      <trans-unit id="sf5e76f774beb33c2">
+        <source>Inuktitut</source>
+        <target>因纽特语</target>
+      </trans-unit>
+      <trans-unit id="s33c18d5a4cbffa2a">
+        <source>Irish</source>
+        <target>爱尔兰</target>
+      </trans-unit>
+      <trans-unit id="s21d723a1dbcd89c8">
+        <source>Javanese</source>
+        <target>爪哇语</target>
+      </trans-unit>
+      <trans-unit id="s1f8e59d0624842ff">
+        <source>Kannada</source>
+        <target>卡纳达语</target>
+      </trans-unit>
+      <trans-unit id="s81c3d8809658b951">
+        <source>Kashmiri</source>
+        <target>克什米尔语</target>
+      </trans-unit>
+      <trans-unit id="s01b16a926920908b">
+        <source>Kazakh</source>
+        <target>哈萨克</target>
+      </trans-unit>
+      <trans-unit id="s81cf65c5a46dea08">
+        <source>Kinyarwanda</source>
+        <target>基尼亚卢旺达语</target>
+      </trans-unit>
+      <trans-unit id="s5bba2ac2e53bd1fd">
+        <source>Kirghiz</source>
+        <target>吉尔吉斯</target>
+      </trans-unit>
+      <trans-unit id="sab726d2db7e6b93d">
+        <source>Kirundi</source>
+        <target>基隆迪文</target>
+      </trans-unit>
+      <trans-unit id="sb4e003a459464d85">
+        <source>Kurdish</source>
+        <target>库尔德语</target>
+      </trans-unit>
+      <trans-unit id="s69b12144dbb6544d">
+        <source>Laothian</source>
+        <target>老挝</target>
+      </trans-unit>
+      <trans-unit id="sb70c17f7899f9b01">
+        <source>Latin</source>
+        <target>拉丁语</target>
+      </trans-unit>
+      <trans-unit id="sff303daee4dd9f7b">
+        <source>Lingala</source>
+        <target>林加拉语</target>
+      </trans-unit>
+      <trans-unit id="s441b20a8a50e36b4">
+        <source>Macedonian</source>
+        <target>马其顿</target>
+      </trans-unit>
+      <trans-unit id="sf3c4da68b08a2590">
+        <source>Malagasy</source>
+        <target>马达加斯加</target>
+      </trans-unit>
+      <trans-unit id="sc7eb080b96e244df">
+        <source>Malay</source>
+        <target>马来语</target>
+      </trans-unit>
+      <trans-unit id="s0dad143dff0079fc">
+        <source>Malayalam</source>
+        <target>拉雅拉姆语</target>
+      </trans-unit>
+      <trans-unit id="scabe6ecee5e01fd2">
+        <source>Maltese</source>
+        <target>马耳他</target>
+      </trans-unit>
+      <trans-unit id="sae9c790b88be7eb9">
+        <source>Maori</source>
+        <target>毛利人</target>
+      </trans-unit>
+      <trans-unit id="s2e969a451b4955d1">
+        <source>Marathi</source>
+        <target>马拉地语</target>
+      </trans-unit>
+      <trans-unit id="s5a356677b61a6b7e">
+        <source>Moldavian</source>
+        <target>摩尔多瓦</target>
+      </trans-unit>
+      <trans-unit id="s0f17f32919661cff">
+        <source>Mongolian</source>
+        <target>蒙古语</target>
+      </trans-unit>
+      <trans-unit id="s9e8d3665edde89a6">
+        <source>Nauru</source>
+        <target>瑙鲁</target>
+      </trans-unit>
+      <trans-unit id="sad190f86451081c0">
+        <source>Nepali</source>
+        <target>尼泊尔</target>
+      </trans-unit>
+      <trans-unit id="se0a782a8be8e018b">
+        <source>Norwegian</source>
+        <target>挪威语</target>
+      </trans-unit>
+      <trans-unit id="s7a99528e7b64635a">
+        <source>Occitan</source>
+        <target>奥克语</target>
+      </trans-unit>
+      <trans-unit id="s9c11f2d9335d8bd1">
+        <source>Oriya</source>
+        <target>奥里雅语</target>
+      </trans-unit>
+      <trans-unit id="s54cbfaf2a8da7818">
+        <source>Pashto</source>
+        <target>普什图语</target>
+      </trans-unit>
+      <trans-unit id="sa40fd43756fa8913">
+        <source>Persian</source>
+        <target>波斯语</target>
+      </trans-unit>
+      <trans-unit id="s74b9781bacfcc87c">
+        <source>Punjabi</source>
+        <target>旁遮普语</target>
+      </trans-unit>
+      <trans-unit id="s49ad24935b14e3df">
+        <source>Quechua</source>
+        <target>克丘亚语</target>
+      </trans-unit>
+      <trans-unit id="s960d3a90ac199368">
+        <source>Rhaeto-Romanian</source>
+        <target>雷托-罗马尼亚语</target>
+      </trans-unit>
+      <trans-unit id="s19abee1277c9bca2">
+        <source>Samoan</source>
+        <target>萨摩亚人</target>
+      </trans-unit>
+      <trans-unit id="s006f872a5b7f5279">
+        <source>Sangro</source>
+        <target>Sangro</target>
+      </trans-unit>
+      <trans-unit id="sbfff51feacf30196">
+        <source>Sanskrit</source>
+        <target>梵文</target>
+      </trans-unit>
+      <trans-unit id="s1c65f5004a07dcfa">
+        <source>Scots Gaelic</source>
+        <target>苏格兰盖尔语</target>
+      </trans-unit>
+      <trans-unit id="sf955eff73fb6b573">
+        <source>Serbian</source>
+        <target>塞尔维亚语</target>
+      </trans-unit>
+      <trans-unit id="s7995733bf97c01cc">
+        <source>Serbo-Croatian</source>
+        <target>塞尔维亚-克罗地亚语</target>
+      </trans-unit>
+      <trans-unit id="scc5ba32e0de06744">
+        <source>Sesotho</source>
+        <target>塞索托语</target>
+      </trans-unit>
+      <trans-unit id="s08e12ade32ef8125">
+        <source>Setswana</source>
+        <target>塞茨瓦纳语</target>
+      </trans-unit>
+      <trans-unit id="sb6434faf698b02a2">
+        <source>Shona</source>
+        <target>肖娜</target>
+      </trans-unit>
+      <trans-unit id="sb31cdff08b1c5a50">
+        <source>Sindhi</source>
+        <target>信德语</target>
+      </trans-unit>
+      <trans-unit id="se308836a594808b6">
+        <source>Singhalese</source>
+        <target>僧伽罗语</target>
+      </trans-unit>
+      <trans-unit id="sce8a4e3f7c98482d">
+        <source>Siswati</source>
+        <target>西斯瓦蒂</target>
+      </trans-unit>
+      <trans-unit id="s978522fbc9577a7e">
+        <source>Somali</source>
+        <target>索马里</target>
+      </trans-unit>
+      <trans-unit id="sa477cb1825dceb3b">
+        <source>Sudanese</source>
+        <target>苏丹</target>
+      </trans-unit>
+      <trans-unit id="sbe90de083557ef3e">
+        <source>Swahili</source>
+        <target>斯瓦希里语</target>
+      </trans-unit>
+      <trans-unit id="sae098810f946ca7c">
+        <source>Tagalog</source>
+        <target>菲律宾语</target>
+      </trans-unit>
+      <trans-unit id="s7b9994904c4f5b54">
+        <source>Tajik</source>
+        <target>塔吉克语</target>
+      </trans-unit>
+      <trans-unit id="s7136449045eff28c">
+        <source>Tamil</source>
+        <target>梵语</target>
+      </trans-unit>
+      <trans-unit id="sae9d739068eee2c5">
+        <source>Tatar</source>
+        <target>鞑靼</target>
+      </trans-unit>
+      <trans-unit id="s47a8f6dfb38b9701">
+        <source>Telugu</source>
+        <target>泰卢固语</target>
+      </trans-unit>
+      <trans-unit id="s4ffac3fb33a2ee9b">
+        <source>Thai</source>
+        <target>泰语</target>
+      </trans-unit>
+      <trans-unit id="s5623aa2f83b05c76">
+        <source>Tibetan</source>
+        <target>藏语</target>
+      </trans-unit>
+      <trans-unit id="sbb15d427ee1aa676">
+        <source>Tigrinya</source>
+        <target>提格里尼亚语</target>
+      </trans-unit>
+      <trans-unit id="sbb34f2e3aa40af4e">
+        <source>Tonga</source>
+        <target>汤加</target>
+      </trans-unit>
+      <trans-unit id="s04c939a414fdab21">
+        <source>Tsonga</source>
+        <target>宗加</target>
+      </trans-unit>
+      <trans-unit id="sc0ceaa9843510f67">
+        <source>Turkmen</source>
+        <target>土库曼</target>
+      </trans-unit>
+      <trans-unit id="s6d1df519e235a6cf">
+        <source>Twi</source>
+        <target>特维</target>
+      </trans-unit>
+      <trans-unit id="s2e66bf8b833858f3">
+        <source>Uigur</source>
+        <target>维吾尔族</target>
+      </trans-unit>
+      <trans-unit id="s9ca757effd747da9">
+        <source>Urdu</source>
+        <target>烏爾都語</target>
+      </trans-unit>
+      <trans-unit id="sb4f0310e6787d098">
+        <source>Uzbek</source>
+        <target>乌兹别克</target>
+      </trans-unit>
+      <trans-unit id="s6d60d595cb5070da">
+        <source>Vietnamese</source>
+        <target>越南语</target>
+      </trans-unit>
+      <trans-unit id="sb657bfe93338dc8b">
+        <source>Volapuk</source>
+        <target>沃拉普克</target>
+      </trans-unit>
+      <trans-unit id="sf2e08a945e9194d4">
+        <source>Welch</source>
+        <target>韦尔奇</target>
+      </trans-unit>
+      <trans-unit id="s86ca34c5287a2f38">
+        <source>Wolof</source>
+        <target>沃洛夫语</target>
+      </trans-unit>
+      <trans-unit id="sa4e5b39489ecf31a">
+        <source>Xhosa</source>
+        <target>科萨语</target>
+      </trans-unit>
+      <trans-unit id="s63dfc5b1c1c27849">
+        <source>Yiddish</source>
+        <target>意第绪语</target>
+      </trans-unit>
+      <trans-unit id="se1312d6528f9a259">
+        <source>Yoruba</source>
+        <target>伊博语</target>
+      </trans-unit>
+      <trans-unit id="s3f299e83cbf52fba">
+        <source>Zhuang</source>
+        <target>庄</target>
+      </trans-unit>
+      <trans-unit id="sd5be6f6d85fc0c9b">
+        <source>Zulu</source>
+        <target>祖鲁语</target>
+      </trans-unit>
+<trans-unit id="sa50d3c35533f1d99">
+  <source>All fields</source>
+</trans-unit>
     </body>
   </file>
 </xliff>

@@ -440,7 +440,7 @@ export type CommandSpec<
 export type NodeCommandSpec<
   ID extends string = string,
   T extends FieldRecord = FieldRecord
-> = CommandSpec<ID, T> & { defaultAttrs?: Record<string, any> };
+> = CommandSpec<ID, T> & { defaultAttrs?: Record<string, any>, replaceOnly?: boolean };
 
 export class Command<SPEC extends CommandSpec = CommandSpec>
   implements ReactiveController
@@ -637,7 +637,7 @@ export class NodeCommand<
     const { exec, editorState } = this.host.activeEditor ?? { exec: () => {} };
     this.host.activeEditor!.editingStatus = undefined;
     return super.run(options, e, this.spec.run ?? ((host, attrs) =>
-      exec(wrapSelection(this.id, { ...attrs, ...this.spec.defaultAttrs }))
+      exec(wrapSelection(this.id, { ...attrs, ...this.spec.defaultAttrs }, this.spec.replaceOnly))
     ));
   }
   get active() {
@@ -1595,6 +1595,7 @@ export class CommandController implements ReactiveController {
         group: "math",
         description: () => msg("Insert a math formula"),
         tags: ["node", "container"],
+        replaceOnly: true
       }),
       portal: new NodeCommand(this.host, {
         id: "portal",
@@ -1724,6 +1725,7 @@ export class CommandController implements ReactiveController {
         label: () => msg("Copy selection"),
         description: () => msg("Copy the selection"),
         shortcut: "mod+c",
+        allowDefault: true,
         icon: "copy",
         run: (host) => {
           host.activeEditor?.copy();
@@ -1744,6 +1746,7 @@ export class CommandController implements ReactiveController {
         label: () => msg("Cut selection"),
         description: () => msg("Cut the selection"),
         shortcut: "mod+x",
+        allowDefault: true,
         icon: "cut",
         run: (host) => {
           host.activeEditor?.cut();
@@ -1764,6 +1767,7 @@ export class CommandController implements ReactiveController {
         label: () => msg("Cut element"),
         description: () => msg("Cut the selection"),
         shortcut: "mod+v",
+        allowDefault: true,
         icon: "clipboard",
         run: (host) => {
           host.activeEditor?.paste();

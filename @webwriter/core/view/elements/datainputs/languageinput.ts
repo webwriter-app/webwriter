@@ -4,6 +4,7 @@ import { customElement, property } from "lit/decorators.js";
 import { DataInput } from "./datainput";
 import { Combobox } from "../ui/combobox";
 import { Locale } from "#model";
+import { SettingsController } from "#viewmodel/index.js";
 
 @customElement("ww-languageinput")
 export class LanguageInput extends Combobox implements DataInput {
@@ -43,12 +44,12 @@ export class LanguageInput extends Combobox implements DataInput {
   ready = false
 
 
-  firstUpdated() {
+  updated() {
     this.ready = true
     const container = this.shadowRoot?.querySelector("slot:not([name])") as HTMLElement
-    const infos = Locale.languageInfos
-    container && render(infos.map(({code, name, nativeName}) => html`
-      <sl-option value=${code}>${name} (${nativeName})</sl-option>
+    const infos = SettingsController.languageOptions
+    container && render(Object.entries(infos).map(([code, {label}]) => html`
+      <sl-option value=${code}>${label} (${Locale.getLanguageInfo(code.split("-")[0]).nativeName})</sl-option>
     `), container)
   }
 }

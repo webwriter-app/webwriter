@@ -118,7 +118,7 @@ function widgetToDebugString() {
 }
 
 function widgetBaseClasses(pkg: Package) {
-  return ["ww-widget", `ww-v${pkg.version}`]
+  return ["ww-widget", `ww-v${pkg.version}`, `ww-pkg-${pkg.name}`]
 }
 
 function widgetToDOM(pkg: Package, hasContent: boolean) {

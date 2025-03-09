@@ -17,7 +17,7 @@ import { CODEMIRROR_EXTENSIONS, EditorStateWithHead, MediaType, Package, removeM
 import { range, roundByDPR, sameMembers } from "#utility"
 import { App, Toolbox, Palette, ProsemirrorEditor, CodemirrorEditor } from "#view"
 import { CellSelection } from "@massifrg/prosemirror-tables-sections"
-import { isNodeSelection } from "prosemirror-utils"
+import { findParentNode, findPositionOfNodeBefore, isNodeSelection } from "prosemirror-utils"
 
 class EmbedTooLargeError extends Error {}
 
@@ -995,7 +995,7 @@ export class ExplorableEditor extends LitElement {
     const afterNotElement = !(nodeAfter instanceof this.pmEditor.window.Element) && nodeAfter !== null
     const betweenEmpty = (!nodeBefore || nodeBefore?.nodeName === "P" && !nodeBefore.textContent) && (!nodeAfter || nodeAfter?.nodeName === "P" && !nodeAfter.textContent)
     if(parent.isTextblock || beforeNotElement || afterNotElement || betweenEmpty) {
-      return null
+      return parent.isTextblock? TextSelection.near($pos): null
     }
     const beforeBottom = nodeBefore? nodeBefore.getBoundingClientRect().bottom: 0
     const afterTop = nodeAfter? nodeAfter.getBoundingClientRect().top: Infinity
@@ -1006,7 +1006,7 @@ export class ExplorableEditor extends LitElement {
       return TextSelection.near($pos)
     }
     else {
-      return null
+      return TextSelection.near($pos)
     }
   }
 
@@ -1021,7 +1021,7 @@ export class ExplorableEditor extends LitElement {
     }
   }
 
-  isPrimaryMouseDown = false
+  gapDragSelectionAnchor?: number
 
   handleDOMEvents = {
     "keydown": (_: any, ev: KeyboardEvent) => {
@@ -1041,7 +1041,7 @@ export class ExplorableEditor extends LitElement {
           return false
         }
       }
-      else if(this.selection instanceof NodeSelection && this.selection.node.type.spec.widget && !ev.ctrlKey) {
+      else if(this.selection instanceof NodeSelection && this.selection.node.type.spec.widget && !ev.ctrlKey && !ev.metaKey) {
         ev.preventDefault()
         return true
       }
@@ -1068,7 +1068,7 @@ export class ExplorableEditor extends LitElement {
     },
 
     "mouseup": (_: any, ev: MouseEvent) => {
-      this.isPrimaryMouseDown = false
+      this.gapDragSelectionAnchor = undefined
     },
     /*"mousemove": (_: any, ev: MouseEvent) => {
       const isInGapSelection = this.selection instanceof GapCursor
@@ -1079,36 +1079,61 @@ export class ExplorableEditor extends LitElement {
         this.pmEditor.dispatch(tr)
       }
     },*/
+    "mousemove": (_: any, ev: MouseEvent) => {
+      if(this.gapDragSelectionAnchor !== undefined) {
+        const {pos} = this.pmEditor.posAtCoords({left: ev.x, top: ev.y}) ?? {}
+        if(pos !== undefined && pos !== this.gapDragSelectionAnchor) {
+          try {
+            const sel = TextSelection.create(this.editorState.doc, this.gapDragSelectionAnchor, pos)
+            const endPos = TextSelection.create(this.editorState.doc, pos)
+            if(!findParentNode(node => node.type.name === "math")(endPos) && !(endPos.$anchor.nodeAfter?.type.name === "math")) {
+              const tr = this.editorState.tr.setSelection(sel)
+              this.pmEditor.dispatch(tr)
+            }
+          }
+          catch(err) {}
+        }
+      }
+    },
     "mousedown": (_: any, ev: MouseEvent) => {
-      this.isPrimaryMouseDown = true
       if(ev.button !== 0) {
         return true
       }
-      // Generalize: If clicked top is in a margin, create GapCursor between
-      // In margin if top is between end of previous element and start of next element
-      // If no previous element, only check next element. If no next element, check only previous element.
-      // Otherwise, use the default behavior
-      const sel = this.coordsToSelection(ev.y, ev.x)
-      if(sel instanceof AllSelection) {
-        const tr = this.editorState.tr.setSelection(sel)
-        this.pmEditor.dispatch(tr)
-        this.pmEditor.focus()
-        ev.preventDefault()
-        return true
+      else if(ev.detail === 1) {
+        const sel = this.coordsToSelection(ev.y, ev.x)
+        if(sel instanceof AllSelection) {
+          const tr = this.editorState.tr.setSelection(sel)
+          this.pmEditor.dispatch(tr)
+          this.pmEditor.focus()
+          ev.preventDefault()
+          return true
+        }
+        else if(sel) {
+          if(!(sel instanceof GapCursor) && (findParentNode(node => node.type.name === "math")(sel) || (sel.$anchor.nodeAfter?.type.name === "math"))) {
+            for(let i = 1; i < sel.$anchor.depth; i++) {
+              if(sel.$anchor.node(i).type.name === "math") {
+                const newSel = NodeSelection.create(this.editorState.doc, sel.$anchor.before(i))
+                const tr = this.editorState.tr.setSelection(newSel)
+                this.pmEditor.dispatch(tr)
+              }
+            }
+            ev.preventDefault()
+            return true
+          }
+          this.gapDragSelectionAnchor = sel.anchor
+          const tr = this.editorState.tr.setSelection(sel)
+          this.pmEditor.dispatch(tr)
+          this.pmEditor.focus()
+          ev.preventDefault()
+          return true
+        }
       }
-      else if(sel && !sel.eq(this.selection)) {
-        const tr = this.editorState.tr.setSelection(sel)
-        this.pmEditor.dispatch(tr)
-        this.pmEditor.focus()
-        ev.preventDefault()
-        return true
-      }
-      else {
-        const sel = TextSelection.near(this.selection.$anchor)
-        const tr = this.editorState.tr.setSelection(sel)
-        this.pmEditor.dispatch(tr)
+      else if(ev.detail === 2) {
         return false
       }
+      else if(ev.detail === 3) {
+        return false
+      }  
     },
     "ww-widget-interact": (_: any, ev: KeyboardEvent) => {
       this.updateDocumentElementClasses(ev, true)
@@ -1300,7 +1325,8 @@ export class ExplorableEditor extends LitElement {
 
   windowListeners: Partial<Record<keyof WindowEventMap, any>> = {
     "beforeprint": () => this.printing = true,
-    "afterprint": () => this.printing = false
+    "afterprint": () => this.printing = false,
+    "mouseup": () => this.gapDragSelectionAnchor = undefined
   }
 
   globalListeners: Partial<Record<keyof WindowEventMap, any>> = {

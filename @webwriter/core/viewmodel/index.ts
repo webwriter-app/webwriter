@@ -18,6 +18,9 @@ import { idle } from "#model/utility/index.js"
 async function getAllLocalHandles(): Promise<FileSystemDirectoryHandle[]> {
   const db = indexedDB.open("webwriter")
   await new Promise(r => db.addEventListener("success", r))
+  if(!db.result.objectStoreNames.contains("handles")) {
+    return []
+  }
   const tx = db.result.transaction("handles", "readwrite")
   const store = tx.objectStore("handles")
   const req = store.getAll()

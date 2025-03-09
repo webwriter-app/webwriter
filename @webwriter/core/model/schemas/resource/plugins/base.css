@@ -632,7 +632,7 @@ video:not([controls]) {
   display: unset !important;
 }
 
-math:not([display="block"]) {
+math {
   & * {
     user-select: none;
     -webkit-user-select: none;
@@ -641,7 +641,7 @@ math:not([display="block"]) {
 }
 
 math:empty,
-math:has(mtext:only-child) {
+math:has(mtext br:only-child) {
   display: inline-block;
   background: lightgray;
   cursor: pointer;
@@ -658,7 +658,7 @@ math:has(mtext:only-child) {
 }
 
 math:empty::after,
-math:has(mtext:only-child)::after {
+math:has(mtext br:only-child)::after {
   position: absolute;
   top: 0;
   left: 0;
