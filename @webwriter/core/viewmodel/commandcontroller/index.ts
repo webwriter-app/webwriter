@@ -1725,6 +1725,7 @@ export class CommandController implements ReactiveController {
         label: () => msg("Copy selection"),
         description: () => msg("Copy the selection"),
         shortcut: "mod+c",
+        allowDefault: true,
         icon: "copy",
         run: (host) => {
           host.activeEditor?.copy();
@@ -1745,6 +1746,7 @@ export class CommandController implements ReactiveController {
         label: () => msg("Cut selection"),
         description: () => msg("Cut the selection"),
         shortcut: "mod+x",
+        allowDefault: true,
         icon: "cut",
         run: (host) => {
           host.activeEditor?.cut();
@@ -1765,6 +1767,7 @@ export class CommandController implements ReactiveController {
         label: () => msg("Cut element"),
         description: () => msg("Cut the selection"),
         shortcut: "mod+v",
+        allowDefault: true,
         icon: "clipboard",
         run: (host) => {
           host.activeEditor?.paste();

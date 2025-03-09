@@ -1041,7 +1041,7 @@ export class ExplorableEditor extends LitElement {
           return false
         }
       }
-      else if(this.selection instanceof NodeSelection && this.selection.node.type.spec.widget && !ev.ctrlKey) {
+      else if(this.selection instanceof NodeSelection && this.selection.node.type.spec.widget && !ev.ctrlKey && !ev.metaKey) {
         ev.preventDefault()
         return true
       }
