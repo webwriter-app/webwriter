@@ -293,7 +293,7 @@ export class URLFileInput extends SlInput implements DataInput {
       this.handleInputChange()
       this.reportValidity()
     }
-    else if(e.key === "Backspace" && this.input.value?.length === 0) {
+    else if(e.key === "Backspace" && this.input.value?.length === 0 && this.value) {
       this.value = ""
       this.handleInputChange()
     }
