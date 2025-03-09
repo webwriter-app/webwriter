@@ -1099,37 +1099,41 @@ export class ExplorableEditor extends LitElement {
       if(ev.button !== 0) {
         return true
       }
-      // Generalize: If clicked top is in a margin, create GapCursor between
-      // In margin if top is between end of previous element and start of next element
-      // If no previous element, only check next element. If no next element, check only previous element.
-      // Otherwise, use the default behavior
-      const sel = this.coordsToSelection(ev.y, ev.x)
-      if(sel instanceof AllSelection) {
-        const tr = this.editorState.tr.setSelection(sel)
-        this.pmEditor.dispatch(tr)
-        this.pmEditor.focus()
-        ev.preventDefault()
-        return true
-      }
-      else if(sel) {
-        if(!(sel instanceof GapCursor) && (findParentNode(node => node.type.name === "math")(sel) || (sel.$anchor.nodeAfter?.type.name === "math"))) {
-          for(let i = 1; i < sel.$anchor.depth; i++) {
-            if(sel.$anchor.node(i).type.name === "math") {
-              const newSel = NodeSelection.create(this.editorState.doc, sel.$anchor.before(i))
-              const tr = this.editorState.tr.setSelection(newSel)
-              this.pmEditor.dispatch(tr)
-            }
-          }
+      else if(ev.detail === 1) {
+        const sel = this.coordsToSelection(ev.y, ev.x)
+        if(sel instanceof AllSelection) {
+          const tr = this.editorState.tr.setSelection(sel)
+          this.pmEditor.dispatch(tr)
+          this.pmEditor.focus()
           ev.preventDefault()
           return true
         }
-        this.gapDragSelectionAnchor = sel.anchor
-        const tr = this.editorState.tr.setSelection(sel)
-        this.pmEditor.dispatch(tr)
-        this.pmEditor.focus()
-        ev.preventDefault()
-        return true
+        else if(sel) {
+          if(!(sel instanceof GapCursor) && (findParentNode(node => node.type.name === "math")(sel) || (sel.$anchor.nodeAfter?.type.name === "math"))) {
+            for(let i = 1; i < sel.$anchor.depth; i++) {
+              if(sel.$anchor.node(i).type.name === "math") {
+                const newSel = NodeSelection.create(this.editorState.doc, sel.$anchor.before(i))
+                const tr = this.editorState.tr.setSelection(newSel)
+                this.pmEditor.dispatch(tr)
+              }
+            }
+            ev.preventDefault()
+            return true
+          }
+          this.gapDragSelectionAnchor = sel.anchor
+          const tr = this.editorState.tr.setSelection(sel)
+          this.pmEditor.dispatch(tr)
+          this.pmEditor.focus()
+          ev.preventDefault()
+          return true
+        }
       }
+      else if(ev.detail === 2) {
+        return false
+      }
+      else if(ev.detail === 3) {
+        return false
+      }  
     },
     "ww-widget-interact": (_: any, ev: KeyboardEvent) => {
       this.updateDocumentElementClasses(ev, true)
