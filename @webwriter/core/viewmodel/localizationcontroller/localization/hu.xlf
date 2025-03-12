@@ -842,13 +842,17 @@
         <target>Capture</target>
       </trans-unit>
       <trans-unit id="s2b8f50c64be440f7">
-        <source>Select <x id="0" equiv-text="${this.mediaType}"/>...</source>
+        <source>Select 
+          <x id="0" equiv-text="${this.mediaType}"/>...
+        </source>
         <target>Válassza ki a címet. 
           <x id="0" equiv-text="${this.mediaType}"/>... 
         </target>
       </trans-unit>
       <trans-unit id="s739544d0c858c633">
-        <source>Or drop <x id="0" equiv-text="${this.mediaType}"/> here</source>
+        <source>Or drop 
+          <x id="0" equiv-text="${this.mediaType}"/> here
+        </source>
         <target>Vagy ejtsd 
           <x id="0" equiv-text="${this.mediaType}"/> itt 
         </target>
@@ -914,7 +918,10 @@
         <target>Ez a kulcsszó szükséges a widgetekhez</target>
       </trans-unit>
       <trans-unit id="h64cd12550420f6f1">
-        <source>Generate a <x id="0" equiv-text="&lt;code&gt;"/>LICENSE<x id="1" equiv-text="&lt;/code&gt;"/> file</source>
+        <source>Generate a 
+          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
+          <x id="1" equiv-text="&lt;/code&gt;"/> file
+        </source>
         <target>Generáljon egy 
           <x id="0" equiv-text="&lt;code&gt;"/>LICENSE 
           <x id="1" equiv-text="&lt;/code&gt;"/> fájlt 
@@ -1257,14 +1264,6 @@
         <source>Text</source>
         <target>Szöveg</target>
       </trans-unit>
-      <trans-unit id="s67d6d8f179e655df">
-        <source>Hide advanced styling</source>
-        <target>Speciális stílus elrejtése</target>
-      </trans-unit>
-      <trans-unit id="s84e5eb4dc1ad9d98">
-        <source>Show advanced styling</source>
-        <target>Speciális stílus megjelenítése</target>
-      </trans-unit>
       <trans-unit id="s29acfd2778e8c377">
         <source>Hide advanced text formatting</source>
         <target>Speciális szövegformázás elrejtése</target>
@@ -1507,14 +1506,18 @@
         <target>Csatlakozási hiba</target>
       </trans-unit>
       <trans-unit id="sf52d840949a980d1">
-        <source><x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?</source>
+        <source>
+          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
+        </source>
         <target>
           <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           véglegesen törlésre kerül. Biztos vagy benne? 
         </target>
       </trans-unit>
       <trans-unit id="s9b7cd8860c8fc922">
-        <source><x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?</source>
+        <source>
+          <x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
+        </source>
         <target>
           <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           felülírásra kerül. Biztos vagy benne? 
@@ -1553,7 +1556,9 @@
         <target>Nem támogatott tulajdonságtípus '${desc.type}' (JSON-ként történő feldolgozás)</target>
       </trans-unit>
       <trans-unit id="sa00df4e39c72d3b4">
-        <source><x id="0" equiv-text="${desc.widget}"/> is not supported</source>
+        <source>
+          <x id="0" equiv-text="${desc.widget}"/> is not supported
+        </source>
         <target>
           <x id="0" equiv-text="${desc.widget}"/> nem támogatott 
         </target>
@@ -3349,14 +3354,6 @@
         <source>Show source editing commands</source>
         <target>Forrásszerkesztési parancsok megjelenítése</target>
       </trans-unit>
-      <trans-unit id="s612d62bbc9df3bcc">
-        <source>Advanced: Reset all WebWriter data each time the page is loaded - for debugging purposes.</source>
-        <target>Haladó: Az összes WebWriter-adat visszaállítása minden egyes oldal betöltésekor - hibakeresés céljából.</target>
-      </trans-unit>
-      <trans-unit id="s4b9d321525eb78ac">
-        <source>Reset all app data on page load</source>
-        <target>Az alkalmazás összes adatának visszaállítása az oldal betöltésekor</target>
-      </trans-unit>
       <trans-unit id="s65ac276544ba33cd">
         <source>SVG file</source>
         <target>SVG fájl</target>
@@ -4357,9 +4354,30 @@
         <source>Zulu</source>
         <target>Zulu</target>
       </trans-unit>
-<trans-unit id="sa50d3c35533f1d99">
-  <source>All fields</source>
-</trans-unit>
+      <trans-unit id="sa50d3c35533f1d99">
+        <source>All fields</source>
+        <target>Minden mező</target>
+      </trans-unit>
+      <trans-unit id="s323dcde72b850272">
+        <source>Public access</source>
+        <target>Nyilvános hozzáférés</target>
+      </trans-unit>
+      <trans-unit id="s7ae49e142487766c">
+        <source>Community access</source>
+        <target>Közösségi hozzáférés</target>
+      </trans-unit>
+      <trans-unit id="sfa49a5bb1a5d353e">
+        <source>Private access</source>
+        <target>Privát hozzáférés</target>
+      </trans-unit>
+      <trans-unit id="sd0864ea6cb6ef22e">
+        <source>Community</source>
+        <target>Közösség</target>
+      </trans-unit>
+      <trans-unit id="sdd1ff479d04ac140">
+        <source>Public</source>
+        <target>Nyilvános</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>
