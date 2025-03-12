@@ -557,14 +557,14 @@ export class App extends ViewModelMixin(LitElement) {
           this.commands.saveCommand.run({
             client: e.target.client,
             serializer: e.target.parserSerializer,
-            filename: e.target.filename,
+            metadata: e.target.metadata,
             url: e.target.url,
             saveAs: !e.target.url,
           })}
         ?loading=${this.store.document.ioState !== "idle"}
         .url=${this.store.document.url}
         .clientName=${this.store.document.url
-          ? this.store.accounts.clientNameFromURL(this.store.document.url as URL)
+          ? this.store.accounts.clientNameFromURL(this.store.document.url as URL) ?? "file file"
           : "file file"}
       ></ww-save-form>`;
     } else if (this.dialog === "share") {

@@ -1,4 +1,4 @@
-import { marshal, FileAccount } from "#model"
+import { marshal, FileAccount, DocumentMetadata } from "#model"
 
 function writeFileDownload(uri: string, name?: string) {
     const a = document.createElement("a");
@@ -92,11 +92,14 @@ export class FileClient implements DocumentClient {
     get showSaveFilePickerSupported() {
       return "showSaveFilePicker" in window;
     }
+
+    get id() {
+      return this.account.id ?? this.account.email
+    }
   
     async saveDocument(
       doc: string | Uint8Array,
-      url?: string | URL | FileSystemFileHandle,
-      title?: string
+      url?: string | URL | FileSystemFileHandle
     ) {
       if (this.fileSystemSupported && this.showSaveFilePickerSupported) {
         const handle =
@@ -105,7 +108,7 @@ export class FileClient implements DocumentClient {
         const writable = await handle.createWritable();
         await writable.write(doc);
         await writable.close();
-        return handle;
+        return {url: handle, metadata: {filename: handle.name}};
       } else {
         const blob = new Blob([doc]);
         const url = URL.createObjectURL(blob);
@@ -127,11 +130,11 @@ export class FileClient implements DocumentClient {
         const file = await handle.getFile();
         const reader = new FileReader();
         reader.readAsText(file);
-        return new Promise<string | Uint8Array>((resolve) => {
+        return new Promise<{content: string | Uint8Array}>((resolve) => {
           reader.addEventListener("load", () =>
             typeof reader.result === "string"
-              ? resolve(reader.result!)
-              : resolve(new Uint8Array(reader.result!))
+              ? resolve({content: reader.result!})
+              : resolve({content: new Uint8Array(reader.result!)})
           );
         });
       } else if (url) {
@@ -139,7 +142,7 @@ export class FileClient implements DocumentClient {
           "Not supported in your browser or permissions for File System Access API are missing (try Chrome or Edge)"
         );
       } else {
-        return readFileInput();
+        return {content: readFileInput()};
       }
     }
   

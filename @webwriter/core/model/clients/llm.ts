@@ -6,6 +6,10 @@ export class LLMClient implements LLMApiClient {
         readonly account: LLMAccount
     ) {}
 
+    get id() {
+      return this.account.id
+    }
+
     getModel() {
         return this.account.model;
     }

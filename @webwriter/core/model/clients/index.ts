@@ -10,17 +10,23 @@ export interface Client {
   readonly account?: Account;
 }
 
+export interface DocumentMetadata {
+  access?: "public" | "community" | "private"
+  filename?: string,
+  [k: string]: any
+}
+
 export interface DocumentClient extends Client {
   /** Whether a given URL could be serviced by this client (same origin and username).*/
   isClientURL(url: URL): boolean;
-  /** Save a document `doc` in the given `format` at the given `url`. If no `url` is provided, let the configured storage handle the specific location. If no format is provided, assume `html`. Returns the URL of the saved document. */
+  /** Save a document `doc` in the given `format` at the given `url`. If no `url` is provided, let the configured storage handle the specific location. Optionally provide `metadata` . Returns the URL of the saved document. */
   saveDocument?(
     doc: string | Uint8Array,
     url?: URL | string,
-    filename?: string
-  ): Promise<FileSystemFileHandle | URL | undefined>;
+    metadata?: DocumentMetadata
+  ): Promise<{url: FileSystemFileHandle | URL, metadata?: DocumentMetadata} | undefined>;
   /** Load a document from the given `url` in the configured storage. If no `url` is provided, let the configured storage handle the specific location.*/
-  loadDocument(url?: FileSystemFileHandle | URL | string): Promise<string | Uint8Array | undefined>;
+  loadDocument(url?: FileSystemFileHandle | URL | string): Promise<{content: string | Uint8Array, metadata?: DocumentMetadata} | undefined>;
   /** Delete a document at the given URL. */
   deleteDocument?(url: FileSystemFileHandle | URL): Promise<boolean>;
   /** Search the documents of configured storage. If no `options` are provided, return all documents. */
@@ -32,7 +38,7 @@ export interface DocumentClient extends Client {
     expand?: string;
     fields?: string;
     skipTotal?: boolean;
-  }): Promise<URL[]>;
+  }): Promise<{url: URL, metadata?: DocumentMetadata}[]>;
   /** Pick a location for saving in the configured storage. Returns the location as a URL. */
   pickSave?(): Promise<FileSystemFileHandle | URL | undefined>;
   /** Pick a document from the configured storage. Returns the location as a URL. */

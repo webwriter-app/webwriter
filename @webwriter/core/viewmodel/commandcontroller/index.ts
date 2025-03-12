@@ -904,7 +904,7 @@ export class CommandController implements ReactiveController {
               options?.saveAs,
               options?.serializer,
               options?.client,
-              options?.filename,
+              options?.metadata,
               options?.url
             );
             if (url) {
