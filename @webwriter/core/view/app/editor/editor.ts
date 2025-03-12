@@ -1433,6 +1433,9 @@ export class ExplorableEditor extends LitElement {
 	}
 
   CodeEditor = () => {
+    if(!this.codeState) {
+      return null
+    }
     return html`<cm-editor
       .state=${this.codeState}
       .extensions=${CODEMIRROR_EXTENSIONS}
