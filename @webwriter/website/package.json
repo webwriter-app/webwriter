@@ -3,7 +3,7 @@
 	"type": "module",
 	"version": "0.3.0",
 	"scripts": {
-		"dev": "npm-run-all -pr start",
+		"dev": "npm-run-all -pr start start-backend",
 		"start": "astro dev",
 		"prebuild": "npm run installpackages",
 		"build": "astro build",
