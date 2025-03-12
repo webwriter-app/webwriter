@@ -1,4 +1,5 @@
 ---
+import ExplorablesList from "@components/explorableslist.vue"
 import Layout from "@layouts/Layout.astro"
 import { msgResolver } from "src/localize"
 
@@ -34,7 +35,8 @@ const msg = msgResolver(translations, lang)
         <h1>Explorables</h1>
         <p>{msg("View examples of explorables created with WebWriter.")}</p>
     </header>
-      <sl-carousel pagination navigation loop autoplay-interval="10000">
+    <ExplorablesList client:only="vue"></ExplorablesList>
+      <!--<sl-carousel pagination navigation loop autoplay-interval="10000">
         <sl-carousel-item>
           <iframe loading="lazy" src="examples/nw.html"></iframe>
         </sl-carousel-item>
@@ -47,7 +49,7 @@ const msg = msgResolver(translations, lang)
         <sl-carousel-item>
           <iframe loading="lazy" src="examples/geography.html"></iframe>
         </sl-carousel-item>
-      </sl-carousel>
+      </sl-carousel>-->
     </div>
 </Layout>
 
@@ -58,7 +60,7 @@ const msg = msgResolver(translations, lang)
   }
 
   body:has(#explorables-base) > main {
-    height: calc(100vh - 70px);
+    /*height: calc(100vh - 70px);*/
   }
 
   #explorables-base header {
