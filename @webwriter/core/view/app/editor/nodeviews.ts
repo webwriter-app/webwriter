@@ -465,7 +465,10 @@ export class ElementView implements NodeView {
       this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node, {document: this.view.dom.ownerDocument}) as HTMLElement
     }
 
-    ignoreMutation(mutation: MutationRecord) {
+    ignoreMutation(mutation: ViewMutationRecord) {
+      if(mutation.type === "selection") {
+        return true
+      }
       const {type, target, attributeName: attr, oldValue, addedNodes, removedNodes, previousSibling, nextSibling, attributeNamespace} = mutation
       const value = attr? this.dom.getAttribute(attr): null
       const attrUnchanged = !!(attr && (value === oldValue))

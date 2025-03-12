@@ -1088,23 +1088,12 @@ export class  Toolbox extends LitElement {
   })
 
   BlockToolbox = (el: HTMLElement | null) => {
-    const advancedApplied = findParentNodeClosestToPos
     return html`<div class="block-toolbox">
       <div class="block-options">
         ${this.ElementBreadcrumb()}
         <div part="block-commands">
           ${this.ElementCommands()}
           ${this.LayoutCommands(false)}
-          <!--<span class=${classMap({"block-command": true, "applied": advancedApplied})}>
-            <ww-button
-              tabindex=${0}
-              title=${this.advancedStyling? msg("Hide advanced styling"): msg("Show advanced styling")}
-              icon=${this.advancedStyling? "chevron-down": "chevron-left"}
-              @click=${(e: any) => this.advancedStyling = !this.advancedStyling}
-              variant="icon"
-            ></ww-button>
-          </span>
-          ${this.LayoutCommands(true)}-->
         </div>
       </div>
     </div>

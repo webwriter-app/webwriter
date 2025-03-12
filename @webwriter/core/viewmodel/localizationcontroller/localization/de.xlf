@@ -1390,14 +1390,6 @@
   <source>Background Clip</source>
   <target state="final">Hintergrund-Clipping</target>
 </trans-unit>
-<trans-unit id="s67d6d8f179e655df">
-  <source>Hide advanced styling</source>
-  <target state="final">Fortgeschrittene Stil-Optionen verstecken</target>
-</trans-unit>
-<trans-unit id="s84e5eb4dc1ad9d98">
-  <source>Show advanced styling</source>
-  <target state="final">Fortgeschrittene Stil-Optionen zeigen</target>
-</trans-unit>
 <trans-unit id="s29acfd2778e8c377">
   <source>Hide advanced text formatting</source>
   <target state="final">Fortgeschrittene Text-Optionen verstecken</target>
@@ -3330,14 +3322,6 @@
   <source>Show source editing commands</source>
   <target>Zeige Quelltext-Befehle</target>
 </trans-unit>
-<trans-unit id="s612d62bbc9df3bcc">
-  <source>Advanced: Reset all WebWriter data each time the page is loaded - for debugging purposes.</source>
-  <target>Fortgeschritten: Setze alle WebWriter-Daten zurück, wenn die Seite neu geladen wird (Debugging)</target>
-</trans-unit>
-<trans-unit id="s4b9d321525eb78ac">
-  <source>Reset all app data on page load</source>
-  <target>Setze alle App-Daten beim Neuladen zurück</target>
-</trans-unit>
 <trans-unit id="s65ac276544ba33cd">
   <source>SVG file</source>
   <target>SVG-Datei</target>
@@ -4341,6 +4325,26 @@
 <trans-unit id="sa50d3c35533f1d99">
   <source>All fields</source>
   <target>Alle Felder</target>
+</trans-unit>
+<trans-unit id="s323dcde72b850272">
+  <source>Public access</source>
+  <target>Öffentlich zugänglich</target>
+</trans-unit>
+<trans-unit id="s7ae49e142487766c">
+  <source>Community access</source>
+  <target>In Community zugänglich</target>
+</trans-unit>
+<trans-unit id="sfa49a5bb1a5d353e">
+  <source>Private access</source>
+  <target>Privat zugänglich</target>
+</trans-unit>
+<trans-unit id="sd0864ea6cb6ef22e">
+  <source>Community</source>
+  <target>Community</target>
+</trans-unit>
+<trans-unit id="sdd1ff479d04ac140">
+  <source>Public</source>
+  <target>Öffentlich</target>
 </trans-unit>
 </body>
 </file>

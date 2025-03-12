@@ -4,7 +4,7 @@ import { localized, msg, str } from "@lit/localize";
 import { Combobox } from "#view";
 import { emitCustomEvent, idle } from "#utility";
 
-import {marshal, clients, DocumentClient} from "#model"
+import {marshal, clients, DocumentClient, DocumentMetadata} from "#model"
 
 // @accounts
 
@@ -148,6 +148,10 @@ export class SaveForm extends LitElement {
         & .delete {
           margin-left: auto;
           width: 10%;
+
+          &[disabled] {
+            visibility: hidden;
+          }
         }
 
         & .no-documents {
@@ -204,16 +208,39 @@ export class SaveForm extends LitElement {
         flex-grow: 1;
       }
 
+      .header-title {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 0.5ch;
+      }
+
+      #filter {
+        display: inline-block;
+        &::part(combobox) {
+          border: none;
+          padding: var(--sl-spacing-2x-small);
+        }
+      }
+
       footer {
         display: flex;
         justify-content: flex-end;
         gap: 1ch;
+      }
+
+      [hidden] {
+        display: none;
       }
     `;
   }
 
   @property({ type: String, attribute: true, reflect: true })
   filename = "Unnamed.html";
+
+  get metadata() {
+    return {filename: this.filename, access: this.filterWithDefault}
+  }
 
   @property({ type: String, attribute: true, reflect: true })
   format: keyof typeof marshal = "text/html";
@@ -244,18 +271,70 @@ export class SaveForm extends LitElement {
     } as const;
   }
 
-  documents: URL[] = [];
+  static get accessIcons() {
+    return {
+      "public": "world",
+      "community": "users-group",
+      "private": "lock"
+    }
+  }
+
+  static get accessLabels() {
+    return {
+      "public": msg("Public access"),
+      "community": msg("Community access"),
+      "private": msg("Private access")
+    }
+  }
+
+  @property({attribute: false})
+  documents: {url: URL, metadata?: DocumentMetadata}[] = [];
 
   @property({ type: Object, attribute: true, reflect: true })
   url: URL | FileSystemFileHandle | undefined;
 
+  @property()
+  filter: "private" | "community" | "public"
+
   @query("ww-combobox[name=filename]")
   combobox: Combobox;
 
+  get filterWithDefault() {
+    return this.filter ?? (this.mode === "save"? "community": "private")
+  }
+
+  get filteredDocuments() {
+    return this.documents.filter(({url, metadata}) => {
+      if(this.filterWithDefault === "private" && this.mode === "open") {
+        return metadata?.owner === (this.client.account as any)?.model.id
+      }
+      else if(this.filterWithDefault === "private") {
+        return metadata?.owner === (this.client.account as any)?.model.id && metadata?.access === "private"
+      }
+      else if(this.filterWithDefault === "community" && this.mode === "open") {
+        return metadata?.owner !== (this.client.account as any)?.model.id && metadata?.access === "community"
+      }
+      else if(this.filterWithDefault === "community" && this.mode === "save") {
+        return metadata?.owner === (this.client.account as any)?.model.id && metadata?.access === "community"
+      }
+      else if(this.filterWithDefault === "public" && this.mode === "open") {
+        return metadata?.access === "public"
+      }
+      else if(this.filterWithDefault === "public" && this.mode === "save") {
+        return metadata?.owner === (this.client.account as any)?.model.id && metadata?.access === "public"
+      }
+    })
+  }
+
   Tree() {
+    const selectFilter = html`<sl-select id="filter" size="small" value=${this.filterWithDefault} @sl-change=${(e: any) => this.filter = e.target.value}>
+      <sl-option value="private">${this.client.account?.id ?? (this.client.account as any).email}</sl-option>
+      <sl-option value="community">${msg("Community")}</sl-option>
+      <sl-option value="public">${msg("Public")}</sl-option>
+    </sl-select>`
     return html`<sl-card class="tree">
       <header slot="header">
-        <span>${msg("Files of ")}<b>${this.client.account.id ?? (this.client.account as any).email}</b></span>
+        <span class="header-title">${msg("Files of ")} ${selectFilter}</span>
         <ww-button
           variant="icon"
           icon="refresh"
@@ -271,8 +350,8 @@ export class SaveForm extends LitElement {
             ? new URL(e.detail.selection[0].id)
             : undefined)}
       >
-        ${this.documents.map(
-          (url) => html`<sl-tree-item
+        ${this.filteredDocuments.map(
+          ({url, metadata}) => html`<sl-tree-item
             id=${String(url)}
             ?selected=${String(url) === String(this.url)}
             @dblclick=${() => !this.loading && this.handleConfirm()}
@@ -282,6 +361,7 @@ export class SaveForm extends LitElement {
                 .get("filename")
                 ?.replace(/\_\w{10}\.(\w+)/, ".$1")}</span
             >
+            <sl-icon name=${metadata?.access? SaveForm.accessIcons[metadata?.access]: ""} title=${metadata?.access? SaveForm.accessLabels[metadata?.access]: ""}></sl-icon>
             <sl-format-date
               class="updated"
               date=${url.searchParams.get("updated") ?? ""}
@@ -294,6 +374,7 @@ export class SaveForm extends LitElement {
             <sl-icon-button
               name="trash"
               class="delete"
+              ?disabled=${metadata?.owner !== (this.client.account as any)?.model.id}
               @click=${() => this.handleDeleteDocument(url)}
             ></sl-icon-button>
           </sl-tree-item>`

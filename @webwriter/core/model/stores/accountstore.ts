@@ -154,9 +154,9 @@ export class AccountStore {
   clientNameFromURL(url: URL) {
     const triple =
       this.clientTriples.find(
-        ([type, id, client]) => client === this.clientFromURL(url)
+        ([_, id, __]) => id === this.clientFromURL(url)?.id
       ) ?? [];
-    return `${triple[0]} ${triple[1]}`;
+    return triple.length? `${triple[0]} ${triple[1]}`: undefined;
   }
 
   parserSerializerFromURL(url: URL | FileSystemFileHandle) {

@@ -5,6 +5,7 @@ import { applyGrammarSuggestions, diffTokens, matchDiffs, removeGrammarSuggestio
 
 import {
   createEditorState,
+  DocumentMetadata,
   EditorStateWithHead,
   getActiveMarks,
   getHeadElement,
@@ -70,6 +71,7 @@ export class DocumentStore implements Resource {
   ] as const;
 
   url?: URL | FileSystemFileHandle;
+  metadata?: DocumentMetadata
   editorState: EditorStateWithHead;
   codeState: CmEditorState | null = null;
   lastSavedState: EditorStateWithHead;
@@ -201,7 +203,7 @@ export class DocumentStore implements Resource {
     saveAs = false,
     serializer = this.serializer,
     client = this.client,
-    filename = this.provisionalTitle,
+    {filename = this.provisionalTitle, access = "community"}: DocumentMetadata = this.metadata ?? {},
     url?: URL
   ) {
     this.ioState = "saving";
@@ -231,14 +233,15 @@ export class DocumentStore implements Resource {
         newSerializer =
           "serialize" in newSerializer ? newSerializer : this.serializer;
         const data = await newSerializer.serialize!(this.editorState);
-        const returnedHandle = (await client.saveDocument(
+        const {url: returnedHandle, metadata} = (await client.saveDocument(
           data,
           handle as any,
-          filename
-        )) as FileSystemFileHandle;
+          {filename, access}
+        )) ?? {};
         if (returnedHandle) {
           this.lastSavedState = this.editorState;
           this.url = returnedHandle;
+          this.metadata = metadata
           return returnedHandle;
         }
       } else {
@@ -251,10 +254,11 @@ export class DocumentStore implements Resource {
           "serialize" in newSerializer ? newSerializer : this.serializer;
         const data = await newSerializer.serialize!(this.editorState);
         const saveClient = "saveDocument" in client? client: this.accounts.getClient("file", "file")!
-        const url = (await saveClient.saveDocument(data, "saveDocument" in client? newUrl: undefined, filename)) as URL;
+        const {url, metadata} = (await saveClient.saveDocument(data, "saveDocument" in client? newUrl: undefined, {filename, access})) ?? {};
         if (url) {
           this.lastSavedState = this.editorState;
           this.url = url;
+          this.metadata = metadata
           return url;
         }
       }
@@ -288,7 +292,7 @@ export class DocumentStore implements Resource {
       if (!data) {
         return;
       }
-      const editorState = await newParser.parse(data as string, schema);
+      const editorState = await newParser.parse(data.content as string, schema);
       this.editorState = this.lastSavedState = editorState;
       if (this.codeState) {
         this.deriveCodeState();

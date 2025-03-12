@@ -1,6 +1,6 @@
 import PocketBase, {AuthModel, BaseAuthStore, RecordModel} from "pocketbase";
 import { PocketbaseAccount } from "#schemas";
-import { AuthenticationClient, DocumentClient } from ".";
+import { AuthenticationClient, DocumentClient, DocumentMetadata } from ".";
 
 class PocketbaseAuthStore extends BaseAuthStore {
     constructor(
@@ -98,6 +98,10 @@ class PocketbaseAuthStore extends BaseAuthStore {
       url.searchParams.set("apitype", "pocketbase");
       return url;
     }
+
+    get id() {
+      return this.account.id ?? this.account.email
+    }
   
     private idFromURL(url: string | URL) {
       return new URL(url).pathname.split("/").at(-1);
@@ -125,17 +129,22 @@ class PocketbaseAuthStore extends BaseAuthStore {
     }) {
       await this.signIn({ cookie: this.account.token });
       const docs = this.#pocketbase.collection("documents");
-      const results = await docs.getList(options.page, options.perPage, options);
-      return results.items.map((item) => this.recordModelToURL(item));
+      const results = await docs.getList(options.page, options.perPage, {expand: "owner", ...options});
+      const final = results.items.map((item) => ({
+        url: this.recordModelToURL(item),
+        metadata: {access: item.access, owner: item.owner}
+      }));
+      // console.log(final)
+      return final
     }
   
     async saveDocument(
       doc: string | Uint8Array,
       url?: string | URL,
-      filename?: string
+      metadata?: DocumentMetadata
     ) {
       const resolvedFilename =
-        filename ||
+        metadata?.filename ||
         (url
           ? new URL(url).searchParams
               .get("filename")
@@ -145,6 +154,7 @@ class PocketbaseAuthStore extends BaseAuthStore {
       const docs = this.#pocketbase.collection("documents");
       const formData = new FormData();
       formData.append("owner", this.#pocketbase.authStore.model!.id);
+      formData.append("access", metadata?.access ?? "community")
       if (url) {
         const urlObj = new URL(url);
         const id = urlObj.pathname.split("/").at(-1)!;
@@ -157,12 +167,12 @@ class PocketbaseAuthStore extends BaseAuthStore {
         const updated = await this.#pocketbase
           .collection("documents")
           .update(id, formData);
-        return this.recordModelToURL(updated);
+        return {url: this.recordModelToURL(updated), metadata: {filename: resolvedFilename, access: updated.access}};
       } else {
         const file = new File([doc], resolvedFilename);
         formData.append("file", file);
         const model = await docs.create(formData);
-        return this.recordModelToURL(model);
+        return {url: this.recordModelToURL(model), metadata: {filename: resolvedFilename, access: model.access}};
       }
     }
   
@@ -174,11 +184,12 @@ class PocketbaseAuthStore extends BaseAuthStore {
       const id = this.idFromURL(url)!;
       const filename = this.filenameFromURL(url)!;
       const record = await this.#pocketbase.collection("documents").getOne(id);
+      const {access, owner} = record
       const fileURL = this.#pocketbase.files.getUrl(record, filename);
       const response = await fetch(fileURL);
       const blob = await response.blob();
       const content = await blob.text();
-      return content;
+      return {content, metadata: {access, owner}};
     }
   
     async deleteDocument(url: FileSystemFileHandle | URL) {
