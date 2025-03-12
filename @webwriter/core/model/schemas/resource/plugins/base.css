@@ -12,6 +12,11 @@ html {
   padding-left: var(--scrollbar-width);
 }
 
+html.sl-scroll-lock {
+  scrollbar-gutter: auto !important;
+  --sl-scroll-lock-size: var(--scrollbar-width) !important;
+}
+
 html::-webkit-scrollbar {
   width: var(--scrollbar-width);
 }
