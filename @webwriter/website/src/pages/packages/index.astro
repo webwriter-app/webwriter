@@ -29,6 +29,7 @@ function prettifyPackageName(name: string) {
 
 const pkgs = allPackages.sort((a, b) => calculateOrder(b) - calculateOrder(a))
 const pkgNames = pkgs.map(pkg => pkg.name)
+const descriptions = pkgs.map(pkg => (pkg.editingConfig as any)?.["."]?.description?.[lang] ?? pkg.description)
 const pkgUrls = pkgNames.map(name => `/packages/${encodeURI(name)}`)
 const prettyPkgNames = pkgNames.map(prettifyPackageName)
 ---
@@ -44,7 +45,7 @@ const prettyPkgNames = pkgNames.map(prettifyPackageName)
                 <div class="pretty-package-name">{prettyPkgNames[i]}</div>
                 <div class="package-name">{pkg.name}</div>
             </a>
-            <span>{(pkg.description && pkg.description.length > 100? pkg?.description?.slice(0, 110).trim() + "...": pkg.description) || <i>{msg("No description")}</i>}</span>
+            <span style="width: 100%; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical">{descriptions[i] || <i>{msg("No description")}</i>}</span>
         </div>)}
     </div>
 </Layout>
