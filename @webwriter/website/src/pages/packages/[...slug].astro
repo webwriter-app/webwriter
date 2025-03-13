@@ -70,7 +70,7 @@ function parseRepository(value: string | Repository | undefined) {
 }
 
 let people = [parsePerson(author), ...(contributors ?? []).map(parsePerson)]
-    .filter(x => x)
+    .filter(x => (x as any)?.name)
 const keywords = rawKeywords.filter(kw => kw !== "webwriter-widget")
 
 
