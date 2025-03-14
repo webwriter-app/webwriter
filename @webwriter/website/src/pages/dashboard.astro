@@ -55,6 +55,8 @@ const msg = msgResolver(translations, lang)
     ev.preventDefault()
     const credentials = Object.fromEntries(new FormData(signinForm).entries()) as Record<string, string>
     await pocketbase.collection("users").authWithPassword(credentials.email, credentials.password)
+    const cookie = pocketbase.authStore.exportToCookie({httpOnly: undefined, path: undefined, secure: true, maxAge: 1209600, sameSite: "Strict", domain: "run.webwriter.app"})
+    document.cookie = cookie
   })
   /*
   const setpasswordForm = (document.querySelector("#setpassword form") as HTMLFormElement)
