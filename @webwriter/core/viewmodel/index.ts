@@ -113,7 +113,7 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
         const cookie = getCookie("pb_auth")
         if(cookie) {
           const {token, record} = JSON.parse(decodeURIComponent(cookie))
-          cookie && this.store.accounts.addAccount(new PocketbaseAccount({token, email: record.email, id: record.email, url: this.store.packages.apiBase, model: record}))
+          cookie && this.store.accounts.addAccount(new PocketbaseAccount({token, email: record.email, url: this.store.packages.apiBase, model: record}))
         }
       }
       catch(err) {
