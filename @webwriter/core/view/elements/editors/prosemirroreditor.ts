@@ -136,7 +136,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
       this.view && !this.view.isDestroyed? this.view.updateState(state): this.initialState = state 
     }
     catch(err: any) {
-      if(err.message !== "Cannot read properties of null (reading 'focusNode')") {
+      if(err.message !== "Cannot read properties of null (reading 'focusNode')" && err.message !== "Cannot read properties of null (reading 'extend')") {
         throw err
       }
     }
