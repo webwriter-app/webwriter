@@ -10,7 +10,7 @@ export * from "./iconcontroller"
 export * from "./backupcontroller"
 
 import {StoreController, EnvironmentController, CommandController, LocalizationController, NotificationController, SettingsController, IconController, BackupController} from "#viewmodel"
-import { HTTPClient, RootStore } from "#model"
+import { HTTPClient, PocketbaseAccount, RootStore } from "#model"
 import { msg } from "@lit/localize"
 import posthog from "posthog-js"
 import { idle } from "#model/utility/index.js"
@@ -103,6 +103,21 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
           }))
           button.remove()
         } 
+      }
+      function getCookie(name: string) {
+        function escape(s: string) { return s.replace(/([.*+?\^$(){}|\[\]\/\\])/g, '\\$1'); }
+        var match = document.cookie.match(RegExp('(?:^|;\\s*)' + escape(name) + '=([^;]*)'));
+        return match ? match[1] : null;
+      }
+      try {
+        const cookie = getCookie("pb_auth")
+        if(cookie) {
+          const {token, record} = JSON.parse(decodeURIComponent(cookie))
+          cookie && this.store.accounts.addAccount(new PocketbaseAccount({token, email: record.email, id: record.email, url: this.store.packages.apiBase, model: record}))
+        }
+      }
+      catch(err) {
+        console.error("Error reading cookie", err)
       }
       await this.store.packages.initialize()
       const locationUrl = new URL(location.href)

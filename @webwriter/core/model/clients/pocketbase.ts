@@ -2,11 +2,6 @@ import PocketBase, {AuthModel, BaseAuthStore, RecordModel} from "pocketbase";
 import { PocketbaseAccount } from "#schemas";
 import { AuthenticationClient, DocumentClient, DocumentMetadata } from ".";
 
-function getCookie(name: string) {
-  function escape(s: string) { return s.replace(/([.*+?\^$(){}|\[\]\/\\])/g, '\\$1'); }
-  var match = document.cookie.match(RegExp('(?:^|;\\s*)' + escape(name) + '=([^;]*)'));
-  return match ? match[1] : null;
-}
 
 class PocketbaseAuthStore extends BaseAuthStore {
     constructor(
@@ -57,9 +52,6 @@ class PocketbaseAuthStore extends BaseAuthStore {
         account.url,
         new PocketbaseAuthStore(account, onChangeAccount)
       );
-      const cookie = getCookie("pb_auth")
-      console.log(cookie)
-      cookie && this.#pocketbase.authStore.loadFromCookie(cookie)
     }
   
     async signIn(options?: {
