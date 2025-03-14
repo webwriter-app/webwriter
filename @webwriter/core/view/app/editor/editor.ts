@@ -1085,14 +1085,20 @@ export class ExplorableEditor extends LitElement {
         const {pos} = this.pmEditor.posAtCoords({left: ev.x, top: ev.y}) ?? {}
         if(pos !== undefined && pos !== this.gapDragSelectionAnchor) {
           try {
-            const sel = TextSelection.create(this.editorState.doc, this.gapDragSelectionAnchor, pos)
             const endPos = TextSelection.create(this.editorState.doc, pos)
+            const {node: tableNode} = findParentNode(node => node.type.name === "table")(TextSelection.create(this.editorState.doc, this.gapDragSelectionAnchor)) ?? {}
+            if(tableNode) {
+              return false
+            }
             if(!findParentNode(node => node.type.name === "math")(endPos) && !(endPos.$anchor.nodeAfter?.type.name === "math")) {
+              const sel = TextSelection.create(this.editorState.doc, this.gapDragSelectionAnchor, pos)
               const tr = this.editorState.tr.setSelection(sel)
               this.pmEditor.dispatch(tr)
             }
           }
-          catch(err) {}
+          catch(err) {
+            console.error(err)
+          }
         }
       }
     },
@@ -1102,7 +1108,12 @@ export class ExplorableEditor extends LitElement {
       }
       else if(ev.detail === 1) {
         const sel = this.coordsToSelection(ev.y, ev.x)
-        if(sel instanceof AllSelection) {
+        // const {node: maybeOldTableNode} = findParentNode(node => node.type.name === "table")(this.selection) ?? {}
+        const {node: maybeNewTableNode} = sel? findParentNode(node => node.type.name === "table")(sel) ?? {}: {}
+        if(maybeNewTableNode && !(this.selection instanceof CellSelection) && !(this.selection instanceof GapCursor) && !(this.selection instanceof NodeSelection)) {
+          return false
+        }
+        else if(sel instanceof AllSelection) {
           const tr = this.editorState.tr.setSelection(sel)
           this.pmEditor.dispatch(tr)
           this.pmEditor.focus()
