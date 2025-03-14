@@ -1053,7 +1053,8 @@ export class ExplorableEditor extends LitElement {
 
     },
     "selectstart": (_: any, ev: Event) => {
-      if(this.selection instanceof NodeSelection) {
+      const targetInWidget = (ev.target as HTMLElement).closest?.(".ww-widget")
+      if(this.selection instanceof NodeSelection || (this.isGapSelected && targetInWidget)) {
         const selection = TextSelection.near(this.selection.$anchor)
         const tr = this.editorState.tr.setSelection(selection)
         this.pmEditor.dispatch(tr)
