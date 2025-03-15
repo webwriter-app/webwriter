@@ -292,13 +292,10 @@ export class PackageStore {
     try {
       if(toRemove.length > 0) {
         try {
-          await this.updateImportMap(this.installedPackages.filter(id => !toRemove.includes(id)))
+          this.installedPackages = this.installedPackages.filter(id => !toRemove.includes(id))
         }
         catch(err) {
           console.error(err)
-        }
-        finally {
-          this.removing = {...this.removing, ...Object.fromEntries(toRemove.map(name => [name, false]))}
         }
       }
       if(toAdd.length > 0) {
@@ -307,13 +304,10 @@ export class PackageStore {
           !key.startsWith("file://")? key: tasks.find(t => t.parameters.includes(key))!.name!
         ]))
         try {
-          await this.updateImportMap([...this.installedPackages, ...toAdd])
+          this.installedPackages = [...this.installedPackages, ...toAdd]
         }
         catch(err) {
           console.error(err)
-        }
-        finally {
-          this.adding = {...this.adding, ...Object.fromEntries(toAdd.map(name => [names[name], false]))}
         }
       }
       if(toAddLocal.length > 0) {
@@ -327,7 +321,7 @@ export class PackageStore {
             await this.putLocalHandle(pkg.name, handle)
             return pkg
           }))
-          this.updateImportMap([...this.installedPackages, ...pkgs.map(pkg => pkg.id)])
+          this.installedPackages = [...this.installedPackages, ...pkgs.map(pkg => pkg.id)]
         }
         catch(err) {
           if(err instanceof Error && err.name === "NotFoundError") {
@@ -335,9 +329,6 @@ export class PackageStore {
             return
           }
           console.error(err)
-        }
-        finally {
-          this.adding = {...this.adding, ...Object.fromEntries(toAddLocal.map(({name}) => [name, false]))}
         }
       }
       if(toUpdate.length > 0) {
@@ -347,13 +338,13 @@ export class PackageStore {
         catch(err) {
           console.error(err)
         }
-        finally {
-          this.updating = {...this.updating, ...Object.fromEntries(toUpdate.map(name => [name, false]))}
-        }
       }
     }
     finally {
       await this.load()
+      this.removing = {...this.removing, ...Object.fromEntries(toRemove.map(name => [name, false]))}
+      this.adding = {...this.adding, ...Object.fromEntries(toAdd.map(name => [name, false]))}
+      this.updating = {...this.updating, ...Object.fromEntries(toUpdate.map(name => [name, false]))}
     }
   }
 

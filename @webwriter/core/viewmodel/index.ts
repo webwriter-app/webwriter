@@ -52,6 +52,14 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
       this.initializing = true
       this.environment = new EnvironmentController(this)
       await this.environment.ready
+
+      if(WEBWRITER_ENVIRONMENT.engine.name === "Gecko") {
+        document.body.innerHTML = `<div style="text-align: center; padding: 2rem;">
+          <p>Sorry! WebWriter is currently not supported in your browser for technical reasons. We are working to support all modern browsers. An up-to-date version of Chrome, Edge, or Safari should work.</p>
+          <p>Entschuldigung! WebWriter wird aus technischen Gründen in Ihrem Browser bisher nicht unterstützt. Wir arbeiten daran, alle modernen Browser zu unterstützen. Bis dahin sollte eine aktuelle Version von Chrome, Edge oder Safari funktionieren.</p>
+        </div>`
+        return
+      }
       if ('serviceWorker' in navigator && window.isSecureContext) {
         const registration = await navigator.serviceWorker.register( // @ts-ignore
           import.meta.env.MODE === 'production' ? '/index.service.js' : '/dev-sw.js?dev-sw', // @ts-ignore

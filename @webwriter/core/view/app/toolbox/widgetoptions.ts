@@ -115,7 +115,6 @@ export class WidgetOptions extends LitElement {
   InputOption(attr: string, decl: StringOptionDeclaration | NumberOptionDeclaration | DateOptionDeclaration | DatetimeLocalOptionDeclaration | EmailOptionDeclaration | PasswordOptionDeclaration |TelOptionDeclaration | TimeOptionDeclaration | UrlOptionDeclaration) {
     const value = this.widget?.getAttribute(attr) ?? undefined
     const type = (typeof decl.type === "string"? decl.type: decl.type?.name.toLowerCase().replace("string", "text")) ?? "text"
-    console.log(attr, value)
     return html`<sl-input
       @sl-change=${(e: any) => this.setWidgetAttribute(this.widget, attr, e.target.value)}
       size="small"

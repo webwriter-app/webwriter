@@ -381,6 +381,13 @@ export class DetailsView implements NodeView {
         }
       }
     })
+    this.dom.addEventListener("toggle", () => {
+      if(Array.from(this.dom.children).some(el => el.matches("summary:only-child"))) {
+        const p = this.dom.ownerDocument.createElement("p")
+        this.dom.append(p)
+        this.dom.ownerDocument.getSelection()?.setBaseAndExtent(p, 0, p, 0)
+      }
+    })
 	}
 }
 
