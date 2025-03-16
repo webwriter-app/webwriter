@@ -1086,12 +1086,12 @@ export class ExplorableEditor extends LitElement {
         if(pos !== undefined && pos !== this.gapDragSelectionAnchor) {
           try {
             const endPos = TextSelection.create(this.editorState.doc, pos)
-            const {node: tableNode} = findParentNode(node => node.type.name === "table")(TextSelection.create(this.editorState.doc, this.gapDragSelectionAnchor)) ?? {}
+            const {node: tableNode} = findParentNode(node => node.type.name === "table")(TextSelection.create(this.editorState.doc, Math.min(this.gapDragSelectionAnchor, this.editorState.doc.nodeSize - 2))) ?? {}
             if(tableNode) {
               return false
             }
             if(!findParentNode(node => node.type.name === "math")(endPos) && !(endPos.$anchor.nodeAfter?.type.name === "math")) {
-              const sel = TextSelection.create(this.editorState.doc, this.gapDragSelectionAnchor, pos)
+              const sel = TextSelection.create(this.editorState.doc, Math.min(this.gapDragSelectionAnchor, this.editorState.doc.nodeSize - 2), pos)
               const tr = this.editorState.tr.setSelection(sel)
               this.pmEditor.dispatch(tr)
             }
