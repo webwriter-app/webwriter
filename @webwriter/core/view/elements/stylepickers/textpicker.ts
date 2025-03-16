@@ -456,7 +456,7 @@ export class TextPicker extends LitPickerElement<(typeof PICKER_COMMAND_PROPERTI
       <h2 class="advanced">${msg("Font")}</h2>
       <ww-combobox size="small" name="font-family" suggestions placeholder=${msg("normal")} value=${this.getCurrentValue("font-family")}>
         <sl-option value="">${msg("Normal")}</sl-option>
-        ${WEB_SAFE_FONTS.map(v => html`<sl-option value=${v.name}>${v.name.slice(1, -1)}</sl-option>`)}
+        ${WEB_SAFE_FONTS.map(v => html`<sl-option value=${v.name}>${v.name.startsWith('"')? v.name.slice(1, -1): v.name}</sl-option>`)}
         <css-global-input slot="label" ?disabled=${!this.advanced}  value=${this.getGlobalValue("font-family")}>${msg("Font family")}</css-global-input>
       </ww-combobox>
       <css-numeric-input size="small" name="font-size" type="length percentage" min="0" placeholder=${msg("normal")} value=${this.getCurrentValue("font-size") || "medium"}>
