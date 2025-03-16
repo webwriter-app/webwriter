@@ -1103,7 +1103,10 @@ export class ExplorableEditor extends LitElement {
       }
     },
     "mousedown": (_: any, ev: MouseEvent) => {
-      if(ev.button !== 0) {
+      if(ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.altKey) {
+        return false
+      }
+      else if(ev.button !== 0) {
         return true
       }
       else if(ev.detail === 1) {
