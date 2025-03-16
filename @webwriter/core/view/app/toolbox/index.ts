@@ -1025,7 +1025,7 @@ export class  Toolbox extends LitElement {
         @click=${(e: any) => v.run({value: e.target.parentElement.querySelector("sl-color-picker").value})}
         variant="icon"
       ></ww-button>
-      <sl-color-picker value=${v.value}></sl-color-picker>
+      <sl-color-picker value=${v.value} @sl-change=${(e: any) => v.run({value: e.target.value})}></sl-color-picker>
     </span>
     `
 	})
