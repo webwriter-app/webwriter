@@ -1108,6 +1108,8 @@ export class  Toolbox extends LitElement {
   })
 
   BlockToolbox = (el: HTMLElement | null) => {
+    const isFirst = this.#firstBlockToolboxRender
+    this.#firstBlockToolboxRender = false
     return html`<div class="block-toolbox">
       <div class="block-options">
         ${this.ElementBreadcrumb()}
@@ -1117,8 +1119,10 @@ export class  Toolbox extends LitElement {
         </div>
       </div>
     </div>
-    ${cache(this.activeLayoutCommand? this.Pickers(this.activeLayoutCommand): undefined)}`
+    ${cache(this.activeLayoutCommand || isFirst? this.Pickers(this.activeLayoutCommand): undefined)}`
   }
+
+  #firstBlockToolboxRender = true
 
   @property({type: Boolean, attribute: true, reflect: true})
   advancedInline = false
