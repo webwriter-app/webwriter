@@ -638,6 +638,7 @@ video:not([controls]) {
 }
 
 math {
+  cursor: pointer;
   & * {
     user-select: none;
     -webkit-user-select: none;
