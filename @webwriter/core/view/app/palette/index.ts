@@ -269,7 +269,7 @@ export class Palette extends LitElement {
       }
 
       & .package-tooltip {
-        --show-delay: 750;
+        --show-delay: 1000;
         --max-width: 400px;
         word-wrap: break-word;
       }
@@ -1012,7 +1012,7 @@ export class Palette extends LitElement {
     const {name: firstName, label: firstLabel} =  (pkgEditingSettings?.label? pkgEditingSettings: undefined) ?? insertables[0] ?? {}
     const otherInsertables = insertables.slice(1)
     return html`<sl-card id=${pkg.id} @contextmenu=${(e: any) => {this.contextPkg = pkg; e.preventDefault()}} data-package-name=${name} @mouseenter=${() => this.handleMouseenterInsertable(pkg)} @mouseleave=${() => this.handleMouseleaveInsertable(pkg)} class=${classMap({"package-card": true, "block-card": true, installed: !!installed, error, adding, removing, updating, outdated, watching: !!watching, found, local: !!localPath, multiple: insertables.length > 1})} style=${styleMap({order})} ?inert=${changing}>
-		<sl-tooltip flip flip-fallback-placements="right-start top" placement="left-start" class="package-tooltip" hoist trigger="hover">
+		<sl-tooltip placement="top" class="package-tooltip" hoist trigger="hover">
 			<span class="title" @click=${() => this.handleClickCard(pkg, firstName)}>
         <img class="package-icon" src=${iconUrl? iconUrl: IconPackage}>
         ${firstLabel?._ ?? prettifyPackageName(pkg.name)}
