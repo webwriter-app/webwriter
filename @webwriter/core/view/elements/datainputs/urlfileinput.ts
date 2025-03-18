@@ -296,8 +296,6 @@ export class URLFileInput extends SlInput implements DataInput {
     else if(e.key === "Backspace" && this.input.value?.length === 0 && this.value) {
       this.value = ""
       this.handleInputChange()
-    }
-    if(this.value) {
       e.preventDefault()
     }
   }
