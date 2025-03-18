@@ -1,4 +1,4 @@
-import { EditorState, NodeSelection, TextSelection } from "prosemirror-state";
+import { AllSelection, EditorState, NodeSelection, TextSelection } from "prosemirror-state";
 import { SchemaPlugin, styleAttrs } from ".";
 import { ProsemirrorEditor } from "#view/index.js";
 import { camelCaseToSpacedCase, range } from "#utility";
@@ -179,7 +179,7 @@ export function wrapSelection(type: string | NodeType | (string | NodeType)[], a
     })
     if(newStart! != null && newEnd! != null) {
       // tr = tr.setSelection(new TextSelection(tr.doc.resolve(newStart), tr.doc.resolve(newEnd)))
-      const s = NodeSelection.findFrom(tr.doc.resolve(newStart!), 1)
+      const s = state.selection instanceof AllSelection? GapCursor.atEnd(tr.doc): NodeSelection.findFrom(tr.doc.resolve(newStart!), 1)
       if(s) {
         tr = tr.setSelection(s)
       }
