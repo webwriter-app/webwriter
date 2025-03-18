@@ -20,7 +20,23 @@ import { LitPickerElement } from "#view/elements/stylepickers/index.js"
 import { findParentNodeClosestToPos } from "prosemirror-utils";
 import "./widgetoptions"
 
+import ar from "emoji-picker-element/i18n/ar"
+import de from "emoji-picker-element/i18n/de"
+import en from "emoji-picker-element/i18n/en"
+import es from "emoji-picker-element/i18n/es"
+import fr from "emoji-picker-element/i18n/fr"
+import id from "emoji-picker-element/i18n/id"
+import it from "emoji-picker-element/i18n/it"
+import ja from "emoji-picker-element/i18n/ja"
+import nl from "emoji-picker-element/i18n/nl"
+import pl from "emoji-picker-element/i18n/pl"
+import pt_BR from "emoji-picker-element/i18n/pt_BR"
+import pt_PT from "emoji-picker-element/i18n/pt_PT"
+import ru from "emoji-picker-element/i18n/ru_RU"
+import tr from "emoji-picker-element/i18n/tr"
+import zh_hans from "emoji-picker-element/i18n/zh_CN"
 
+const emojiPickerTranslations = {ar, de, en, es, fr, id, it, ja, nl, pl, pt_BR, pt_PT, ru, tr, zh_hans}
 
 @localized()
 @customElement("ww-toolbox")
@@ -119,6 +135,10 @@ export class  Toolbox extends LitElement {
 
   @property({type: Boolean})
   activeOutline = false
+
+  @property({type: Boolean})
+  activeEmojiInput = false
+
 
   emitDeleteWidget = () => this.dispatchEvent(
     new CustomEvent("ww-delete-widget", {composed: true, bubbles: true, detail: {
@@ -307,7 +327,7 @@ export class  Toolbox extends LitElement {
       }
 
       .color:hover sl-color-picker::part(trigger)::before, .color:hover sl-color-picker::part(trigger) {
-        height: 20px;
+        height: 12px;
         border-bottom: none;
       } 
 
@@ -643,45 +663,21 @@ export class  Toolbox extends LitElement {
         grid-row: 2;
       }
 
-      #inline-toolbox-label {
-        position: absolute;
-        top: 0;
-        right: 5px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        gap: 1ch;
-        color: var(--sl-color-gray-800);
-        min-width: calc(33% - 8px);
-        
-        & span {
-          border-bottom: 2px solid var(--sl-color-gray-600);
-        }
-      }
-
-      #inline-toolbox-label sl-icon {
-        height: 1em;
-        width: 1em;
-      }
-
       .inline-toolbox ww-fontpicker {
         grid-column: span 4;
         grid-row: span 2;
         order: 0;
       }
 
+
       .inline-toolbox .inline-commands.color {
-        height: min-content;
+        order: 0;
+        height: 32px;
         width: min-content;
         overflow: visible;
-        grid-row: span 2;
-        order: 1;
         justify-content: flex-start;
         flex-direction: column-reverse;
-        align-self: flex-end;
-        justify-self: flex-end;
+        justify-self: center;
       }
 
       .inline-toolbox .inline-field-group {
@@ -709,6 +705,7 @@ export class  Toolbox extends LitElement {
 
       .inline-toolbox .inline-commands {
         order: 2;
+        justify-content: center;
       }
 
       .block-options {
@@ -994,10 +991,20 @@ export class  Toolbox extends LitElement {
           padding: var(--sl-spacing-small);
         }
       }
+
+      #emoji-trigger {
+        border: 2px solid transparent;
+      }
+
+      #emoji-trigger[data-active] {
+        background: var(--sl-color-primary-200);
+        border-radius: 4px;
+        border: 2px solid var(--sl-color-gray-800);
+      }
           
       :host(.intro-target) * {
         animation: blink-color 1.5s linear infinite;
-      } 
+      }
 
       @keyframes blink-color {
         50% {
@@ -1086,7 +1093,7 @@ export class  Toolbox extends LitElement {
         <!--<sl-icon name=${activeLayoutCommand?.icon ?? ""}></sl-icon>-->
         <span>${activeLayoutCommand?.label}</span>
         <sl-icon-button name=${this.activeLayoutAdvanced? "badge-filled": "badge"} @click=${() => this.activeLayoutAdvanced = !this.activeLayoutAdvanced} style="margin-left: 0.5ch;"></sl-icon-button>
-        <sl-icon-button name="restore" style="margin-left: 0.25ch;" @click=${() => this.emitSetStyle(this.activeElement!, (this.shadowRoot!.querySelector(".picker[data-active]") as LitPickerElement).emptyValue as any)}></sl-icon-button>
+        <sl-icon-button name="restore" style="margin-left: 0.25ch;" @click=${() => this.emitSetStyle(this.activeElement!, (this.shadowRoot!.querySelector(".style-picker[data-active]") as LitPickerElement).emptyValue as any)}></sl-icon-button>
         <sl-icon-button name="x" @click=${() => {this.activeLayoutCommand = undefined; this.activeLayoutAdvanced = false}}></sl-icon-button>
       </h3>
       ${properties}
@@ -1147,6 +1154,8 @@ export class  Toolbox extends LitElement {
         @ww-change-font-family=${(e: any) =>fontFamilyCommand.run(e.detail)}
         @ww-change-font-size=${(e: any) => fontSizeCommand.run(e.detail)}
       ></ww-fontpicker>
+      <ww-button class="icon" variant="icon" icon="mood-happy" id="emoji-trigger" ?data-active=${this.activeEmojiInput} @click=${() => this.activeEmojiInput = !this.activeEmojiInput}></ww-button>
+      <ww-button variant="icon" ${spreadProps(clearFormattingCommand.toObject())} @click=${() => clearFormattingCommand.run()}></ww-button>
       ${this.MarkCommands()}
       <span class=${classMap({"more-inline-commands": true, "inline-commands": true, "applied": advancedApplied})}>
         <ww-button
@@ -1157,12 +1166,11 @@ export class  Toolbox extends LitElement {
           variant="icon"
         ></ww-button>
       </span>
-    ${this.MarkCommands(true)}
+      <sl-popup ?active=${this.activeEmojiInput} anchor="emoji-trigger" placement="right" flip flip-fallback-placements="bottom">
+        <emoji-picker .i18n=${(emojiPickerTranslations as any)?.[this.app.store.ui.locale] ?? emojiPickerTranslations.en} locale=${this.app.store.ui.locale} @emoji-click=${(e: any) => this.emitInsertText(e.detail.unicode)}></emoji-picker>
+      </sl-popup>
+      ${this.MarkCommands(true)}
       ${this.ActiveInlineFields()}
-      <span id="inline-toolbox-label">
-        <ww-button variant="icon" ${spreadProps(clearFormattingCommand.toObject())} @click=${() => clearFormattingCommand.run()}></ww-button>
-        <span>${msg("Text")}</span>
-      </span>
     </div>`
   }
 
@@ -1286,6 +1294,10 @@ export class  Toolbox extends LitElement {
 
   emitSetStyle(el: Element, style: Record<keyof CSSPropertySpecs, string>) {
     this.dispatchEvent(new CustomEvent("ww-set-style", {bubbles: true, composed: true, detail: {el, style}}))
+  }
+
+  emitInsertText(text: string) {
+    this.dispatchEvent(new CustomEvent("ww-insert-text", {bubbles: true, composed: true, detail: {text}}))
   }
 
   DetailsToolbox(el: HTMLDetailsElement) {

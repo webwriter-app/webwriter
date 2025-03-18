@@ -45,6 +45,7 @@
     "buffer": "^6.0.3",
     "codemirror": "^6.0.1",
     "colorjs.io": "^0.5.0",
+    "emoji-picker-element": "^1.26.1",
     "esbuild-wasm": "^0.23.1",
     "hotkeys-js": "^3.10.0",
     "iframe-resizer": "^4.3.2",
