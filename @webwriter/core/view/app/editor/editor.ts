@@ -175,6 +175,13 @@ export class ExplorableEditor extends LitElement {
     }
 	}
 
+  insertText(text: string) {
+    const tr = this.pmEditor.state.tr
+    tr.replaceSelectionWith(this.pmEditor.state.schema.text(text))
+    this.pmEditor.dispatch(tr)
+    this.pmEditor.focus()
+  }
+
   initializedElements = new Set<string>()
 
 	constructor() {
@@ -1544,6 +1551,7 @@ export class ExplorableEditor extends LitElement {
           this.topLevelElementsInSelection.forEach(el => Object.assign(el.style, e.detail.style))
           // this.pmEditor.focus()
         }}
+        @ww-insert-text=${(e: any) => this.insertText(e.detail.text)}
 			></ww-toolbox>
 		`
 	}
