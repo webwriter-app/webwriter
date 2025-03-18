@@ -330,12 +330,28 @@ html:is(.ww-key-ctrl, .ww-key-meta) body *::before {
   z-index: unset;
 }
 
-.ww-cutting::before {
-  background: var(--sl-color-warning-400);
+.ww-copying {
+  outline-color: var(--sl-color-primary-700) !important;
+
+  &::before {
+    background: var(--sl-color-primary-400) !important;
+  }
 }
 
-.ww-deleting::before {
-  background: var(--sl-color-danger-400);
+.ww-cutting {
+  outline-color: var(--sl-color-warning-500) !important;
+
+  &::before {
+    background: var(--sl-color-warning-400) !important;
+  }
+}
+
+.ww-deleting {
+  outline-color: var(--sl-color-danger-600) !important;
+
+  &::before {
+    background: var(--sl-color-danger-400) !important;
+  }
 }
 
 .ww-selected-inner::before {
@@ -539,19 +555,23 @@ thead, tbody, tfoot {
   border-left: none !important;
 }
 
-.ProseMirror ::selection:not(.ProseMirror-selectednode) {
-  background-color: var(--sl-color-primary-400);
-  color: var(--sl-color-gray-100);
+::selection {
+  background: var(--sl-color-primary-200) !important;
   z-index: 2147483647;
 }
 
+:is(picture, img, math:is(:empty,
+:has(mtext br:only-child))) ::selection {
+  background: transparent !important;
+}
+
 html.ww-cutting ::selection {
-  background-color: var(--sl-color-warning-300);
+  background: var(--sl-color-warning-300) !important;
 }
 
 
 html.ww-deleting ::selection {
-  background-color: var(--sl-color-danger-300);
+  background: var(--sl-color-danger-300) !important;
 }
 
 
@@ -736,25 +756,19 @@ body:not(:has(:not(.ProseMirror-gapcursor))) .ProseMirror-gapcursor::after {
   margin-block: 0;
 }
 
-.ProseMirror-hideselection .ww-widget *::selection {
-   background: initial;
-}
-.ProseMirror-hideselection .ww-widget *::-moz-selection {
-  background: initial;
-}
 .ProseMirror-hideselection .ww-widget {
-  caret-color: initial;
+  caret-color: initial !important;
 }
 .ProseMirror-hideselection .ProseMirror-gapcursor {
   display: block;
 }
 
 body:has(.Prosemirror-gapcursor) :is(*::selection, *::-moz-selection) {
-  display: none;
+  display: none !important;
 }
 
 body:has(.Prosemirror-gapcursor) .ww-widget {
-  caret-color: transparent;
+  caret-color: transparent !important;
 }
 
 html:has(.ww-fullscreen) {
