@@ -171,7 +171,6 @@ export class CSSNumericInput extends LitElement {
       if(this.valueInput.value.trim()) {
         const localized = parseLocaleNumber(this.valueInput.value)
         const parsed = CSSNumericValue.parse(String(localized)) as CSSUnitValue
-        console.log(localized)
         this.value = new CSSUnitValue(parsed.value, parsed.unit !== "number" || !this.units.length? parsed.unit: this.unitInput.value as string)
       }
       else {
