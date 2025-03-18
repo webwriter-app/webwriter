@@ -5,6 +5,8 @@ import { LitPickerElement } from "."
 import { PICKER_COMMAND_PROPERTIES } from "#viewmodel/index.js"
 import { CSSTransformValue } from "#model/index.js"
 import { kebapCaseToCamelCase } from "#model/utility/index.js"
+import { CSSLineTypeInput } from "../datainputs/csslinetypeinput"
+import { CSSNumericInput } from "../datainputs/cssnumericinput"
 
 type DisplayOutside = "inline" | "block"
 type DisplayInside = "flow" | "flow-root" | "table" | "flex" | "grid" | "ruby" | "math"
@@ -231,7 +233,6 @@ export class BoxPicker extends LitPickerElement<(typeof PICKER_COMMAND_PROPERTIE
 
   updateTransformComponent(v: string, remove=false) { // DEBUG
     const changeTransforms = Array.from(CSSTransformValue.parse(v))
-    console.log(changeTransforms)
     let transforms = Array.from(this.transformValue ?? [])
     for(const value of changeTransforms) {
       const i = transforms.findIndex(t => t.constructor === value.constructor)
@@ -292,6 +293,17 @@ export class BoxPicker extends LitPickerElement<(typeof PICKER_COMMAND_PROPERTIE
     }
     else if(name.startsWith("perspective")) {
       return String(transforms.find(t => t instanceof CSSPerspective)?.length ?? "")
+    }
+  }
+
+  handleBorderWidthChange(e: any) {
+    if(e.target instanceof CSSNumericInput && e.target.value.value !== 0) {
+      const lineTypeInput = e.target.querySelector("css-line-type-input") as CSSLineTypeInput
+      if(lineTypeInput.value === "none") {
+        lineTypeInput.value = "solid"
+        this.resolveChange(lineTypeInput.name as any, lineTypeInput, "solid")
+      }
+      // this.handleChange()
     }
   }
   
@@ -660,10 +672,10 @@ export class BoxPicker extends LitPickerElement<(typeof PICKER_COMMAND_PROPERTIE
       styleName = direction? `border-${direction}-style` as const: "border-style"
     }
     return html`<div class="border-style-group" slot="label">
-      <sl-color-picker slot="label" size="small" name="border-color" hoist name=${colorName as any} @click=${(e: any) => {e.stopImmediatePropagation(); e.preventDefault()}} value=${this.getCurrentValue(colorName as any)}></sl-color-picker>
-      <css-line-type-input name=${styleName as any} @click=${(e: any) => {e.stopImmediatePropagation(); e.preventDefault()}} value=${this.getCurrentValue(styleName as any) || "solid"}></css-line-type-input>
+      <sl-color-picker slot="label" size="small" name="border-color" hoist name=${colorName as any} @click=${(e: any) => {e.stopImmediatePropagation(); e.preventDefault()}} value=${this.getCurrentValue(colorName as any, direction === "outline")}></sl-color-picker>
+      <css-line-type-input name=${styleName as any} @click=${(e: any) => {e.stopImmediatePropagation(); e.preventDefault()}} value=${this.getCurrentValue(styleName as any, direction === "outline") || "solid"}></css-line-type-input>
       ${!direction? html`
-        <css-border-radius-input name="border-radius" value=${this.getCurrentValue("border-radius")} @click=${(e: any) => {e.stopImmediatePropagation(); e.preventDefault()}}></css-border-radius-input>
+        <css-border-radius-input name="border-radius" value=${this.getCurrentValue("border-radius", direction === "outline")} @click=${(e: any) => {e.stopImmediatePropagation(); e.preventDefault()}}></css-border-radius-input>
       `: undefined}
     </div>`
   } 
@@ -1070,7 +1082,7 @@ export class BoxPicker extends LitPickerElement<(typeof PICKER_COMMAND_PROPERTIE
         <css-global-input value=${this.getGlobalValue("margin-bottom")} slot="label" ?disabled=${!this.advanced}>${msg("Bottom")}</css-global-input>
         </css-numeric-input>
       </div>
-      <div class="spacing-group" id="border" ?data-open=${this.activeSpacing === "border"}>
+      <div class="spacing-group" id="border" ?data-open=${this.activeSpacing === "border"} @change=${this.handleBorderWidthChange}>
         <css-numeric-input name="border-width" type="length percentage" value=${this.getCurrentValue("border-width") || "0px"} placeholder=${this.getCurrentValue("border-width").split(/\s+/).length > 1? "*": ""}>
           <sl-icon-button name=${this.activeSpacing === "border"? "chevron-down": "chevron-right"} slot="label" @click=${() => this.activeSpacing = this.activeSpacing === "border"? undefined: "border"}></sl-icon-button>
           <css-global-input value=${this.getGlobalValue("border")} slot="label" ?disabled=${!this.advanced}>${msg("Border")}</css-global-input>
@@ -1140,7 +1152,7 @@ export class BoxPicker extends LitPickerElement<(typeof PICKER_COMMAND_PROPERTIE
           <css-global-input value=${this.getGlobalValue("aspect-ratio")} slot="label" ?disabled=${!this.advanced}>${msg("Asp. ratio (y)")}</css-global-input>
         </css-numeric-input>
       </div>
-      <css-numeric-input class="advanced" name="outline-width" type="length percentage" value=${this.getCurrentValue("outline-width") || "0px"}>
+      <css-numeric-input class="advanced" name="outline-width" type="length percentage" value=${this.getCurrentValue("outline-width", true) || "0px"}>
         <css-global-input value=${this.getGlobalValue("outline-width")} slot="label" ?disabled=${!this.advanced}>${msg("Outline")}</css-global-input>
         <span slot="label">
           ${this.BorderStyleGroup("outline")}
