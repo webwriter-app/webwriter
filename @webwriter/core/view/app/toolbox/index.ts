@@ -1053,14 +1053,34 @@ export class  Toolbox extends LitElement {
     `
 	})
 
+  get computedStyleOfActiveElement() {
+    if(!this.activeElement) {
+      return undefined
+    }
+    else {
+      return this.app.activeEditor?.pmEditor.window.getComputedStyle(this.activeElement)
+    }
+  }
+
+  get styleOfActiveElement() {
+    if(!this.activeElement) {
+      return undefined
+    }
+    else {
+      return this.activeElement.style
+    }
+  }
+
+  handleStyleChange = (e: any) => this.emitSetStyle(this.activeElement!, e.target.value)
+
   Pickers = (activeLayoutCommand?: LayoutCommand) => {
     const properties = html`
-      <ww-box-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "boxStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${(e: any) => this.emitSetStyle(this.activeElement!, e.target.value)} .value=${this.activeElement? this.activeElement!.style as any: undefined} .computedValue=${this.activeElement? this.app.activeEditor?.pmEditor.window.getComputedStyle(this.activeElement): undefined}></ww-box-picker>
-      <ww-layout-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "layoutStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${(e: any) => this.emitSetStyle(this.activeElement!, e.target.value)} .value=${this.activeElement? this.activeElement!.style as any: undefined} .computedValue=${this.activeElement? this.app.activeEditor?.pmEditor.window.getComputedStyle(this.activeElement): undefined}></ww-layout-picker>
-      <ww-text-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "textStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${(e: any) => this.emitSetStyle(this.activeElement!, e.target.value)} .value=${this.activeElement? this.activeElement!.style as any: undefined} .computedValue=${this.activeElement? this.app.activeEditor?.pmEditor.window.getComputedStyle(this.activeElement): undefined}></ww-text-picker>
-      <ww-blending-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "blendingStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${(e: any) => this.emitSetStyle(this.activeElement!, e.target.value)} .value=${this.activeElement? this.activeElement!.style as any: undefined} .computedValue=${this.activeElement? this.app.activeEditor?.pmEditor.window.getComputedStyle(this.activeElement): undefined}></ww-blending-picker>
-      <ww-interactivity-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "interactivityStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${(e: any) => this.emitSetStyle(this.activeElement!, e.target.value)} .value=${this.activeElement? this.activeElement!.style as any: undefined} .computedValue=${this.activeElement? this.app.activeEditor?.pmEditor.window.getComputedStyle(this.activeElement): undefined}></ww-interactivity-picker>
-      <ww-miscellaneous-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "miscellaneousStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${(e: any) => this.emitSetStyle(this.activeElement!, e.target.value)} .value=${this.activeElement? this.activeElement!.style as any: undefined} .computedValue=${this.activeElement? this.app.activeEditor?.pmEditor.window.getComputedStyle(this.activeElement): undefined}></ww-miscellaneous-picker>`
+      <ww-box-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "boxStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement} .computedValue=${this.computedStyleOfActiveElement}></ww-box-picker>
+      <ww-layout-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "layoutStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement} .computedValue=${this.computedStyleOfActiveElement}></ww-layout-picker>
+      <ww-text-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "textStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement} .computedValue=${this.computedStyleOfActiveElement}></ww-text-picker>
+      <ww-blending-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "blendingStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement} .computedValue=${this.computedStyleOfActiveElement}></ww-blending-picker>
+      <ww-interactivity-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "interactivityStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement} .computedValue=${this.computedStyleOfActiveElement}></ww-interactivity-picker>
+      <ww-miscellaneous-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "miscellaneousStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement} .computedValue=${this.computedStyleOfActiveElement}></ww-miscellaneous-picker>`
     return html`<sl-popup class="pickers-popup" ?data-active=${this.activeLayoutCommand && !this.gapSelected} shift strategy="fixed" auto-size="both" active anchor=${ifDefined(activeLayoutCommand?.id)} .autoSizeBoundary=${document.body} shift-padding=${this.shiftPaddingStyling} placement="bottom-start">
       <h3>
         <!--<sl-icon name=${activeLayoutCommand?.icon ?? ""}></sl-icon>-->
