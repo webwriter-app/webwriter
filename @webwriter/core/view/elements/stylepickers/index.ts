@@ -69,10 +69,10 @@ export abstract class LitPickerElement<T extends keyof CSSPropertySpecs = keyof 
   @property({attribute: false})
   computedValue?: CSSStyleDeclaration = undefined
 
-  protected getCurrentValue(name: T) {
+  protected getCurrentValue(name: T, noComputed=false) {
     const isGlobal = !["custom", "none"].includes(this.getGlobalValue(name))
     return isGlobal || !this.value[name]
-      ? this.computedValue?.getPropertyValue(name) ?? ""
+      ? (!noComputed? this.computedValue?.getPropertyValue(name): undefined) ?? ""
       : this.value[name]
   }
 

@@ -1,4 +1,5 @@
 import "@shoelace-style/shoelace/dist/themes/light.css";
+import 'emoji-picker-element';
 import { spreadProps } from "@open-wc/lit-helpers";
 import { LitElement, html, css } from "lit";
 import { customElement, property, query } from "lit/decorators.js";

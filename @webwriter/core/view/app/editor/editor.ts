@@ -134,9 +134,18 @@ export class ExplorableEditor extends LitElement {
       const node = nodeType.createAndFill({id})
       const state = this.pmEditor.state
       const emptyParagraphActive = this.activeElement?.tagName === "P" && !this.activeElement.textContent && !this.activeElement.querySelector(":not(br)")
+      const emptyDoc = this.editorState.doc.content.size === 0
       const insertPos = Math.max(state.selection.anchor + (emptyParagraphActive? -1: 0), 0)
       let tr = state.tr.insert(insertPos, node!)
-      tr.setSelection(NodeSelection.near(tr.doc.resolve(emptyParagraphActive? insertPos + 2: insertPos)))
+      if(this.isGapSelected) {
+        tr = tr.setSelection(NodeSelection.create(tr.doc, this.selection.from))
+      }
+      else if(this.isAllSelected || emptyDoc) {
+        tr = tr.setSelection(NodeSelection.create(tr.doc, 0))
+      }
+      else {
+        tr = tr.setSelection(NodeSelection.near(tr.doc.resolve(emptyParagraphActive? insertPos + 2: insertPos)))
+      }
       this.pmEditor.dispatch(tr)
       this.pmEditor.focus()
       insertedRootPos = insertPos
@@ -174,6 +183,13 @@ export class ExplorableEditor extends LitElement {
       }
     }
 	}
+
+  insertText(text: string) {
+    const tr = this.pmEditor.state.tr
+    tr.replaceSelectionWith(this.pmEditor.state.schema.text(text))
+    this.pmEditor.dispatch(tr)
+    this.pmEditor.focus()
+  }
 
   initializedElements = new Set<string>()
 
@@ -275,6 +291,10 @@ export class ExplorableEditor extends LitElement {
 	get isTextSelected() {
 		return this.selection instanceof TextSelection || this.selection instanceof AllSelection
 	}
+
+  get isNodeSelected() {
+    return this.selection instanceof NodeSelection
+  }
 
 	get isWidgetSelected() {
 		return this.selection instanceof NodeSelection && this.selection.node.type.spec["widget"]
@@ -613,12 +633,13 @@ export class ExplorableEditor extends LitElement {
           const extraDiv = view.dom.ownerDocument.createElement("div")
           extraDiv.classList.add("ww-nodeview")
           if(isSelectedNode || isSelectedInner) {
-            extraDiv.classList.add(`ww-${this.editingStatus}`)
+            this.editingStatus && extraDiv.classList.add(`ww-${this.editingStatus}`)
+            isSelectedInner && extraDiv.classList.add("ww-selected-inner")
           }
           extraDiv.style.display = "block"
           extraDiv.style.position = "fixed"
           extraDiv.style.zIndex = "2147483647"
-          extraDiv.style.pointerEvents = view.state.selection.from === pos? "none": "auto"
+          extraDiv.style.pointerEvents = view.state.selection instanceof NodeSelection && view.state.selection.from === pos? "none": "auto"
           extraDiv.addEventListener("mousedown", (e) => {
             const nodeSelection = view.state.selection instanceof NodeSelection
             if((view.state.selection.from !== pos) || !nodeSelection) {
@@ -670,7 +691,7 @@ export class ExplorableEditor extends LitElement {
 
   protected updated(changed: PropertyValues): void {
     if(changed.has("editingStatus") || changed.has("editorState")) {
-      this.updateDocumentElementClasses(undefined)
+      this.updateDocumentElementClasses()
     }
   }
 
@@ -999,11 +1020,12 @@ export class ExplorableEditor extends LitElement {
     }
     const beforeBottom = nodeBefore? nodeBefore.getBoundingClientRect().bottom: 0
     const afterTop = nodeAfter? nodeAfter.getBoundingClientRect().top: Infinity
-    if(beforeBottom < top && top < afterTop) {
-      return new GapCursor($pos)
+    const {top: lastTop} = this.pmEditor.coordsAtPos(this.editorState.doc.nodeSize - 2)
+    if(top > lastTop) {
+      return new GapCursor(this.editorState.doc.resolve(this.editorState.doc.nodeSize - 2))
     }
-    else if(!this.editorState.doc.textContent) {
-      return TextSelection.near($pos)
+    else if(beforeBottom < top && top < afterTop) {
+      return new GapCursor($pos)
     }
     else {
       return TextSelection.near($pos)
@@ -1053,12 +1075,6 @@ export class ExplorableEditor extends LitElement {
 
     },
     "selectstart": (_: any, ev: Event) => {
-      const targetInWidget = (ev.target as HTMLElement).closest?.(".ww-widget")
-      if(this.selection instanceof NodeSelection || (this.isGapSelected && targetInWidget)) {
-        const selection = TextSelection.near(this.selection.$anchor)
-        const tr = this.editorState.tr.setSelection(selection)
-        this.pmEditor.dispatch(tr)
-      }
       return false
       if(this.selection instanceof GapCursor && ev.target !== this.pmEditor.body && ev.target === this.lastEditorElement) {
         const selection = new TextSelection(this.editorState.doc.resolve(this.editorState.doc.nodeSize - 2))
@@ -1083,15 +1099,22 @@ export class ExplorableEditor extends LitElement {
     "mousemove": (_: any, ev: MouseEvent) => {
       if(this.gapDragSelectionAnchor !== undefined) {
         const {pos} = this.pmEditor.posAtCoords({left: ev.x, top: ev.y}) ?? {}
+        const isAtEnd = this.gapDragSelectionAnchor >= this.editorState.doc.nodeSize - 2
+        const {top: lastTop} = this.pmEditor.coordsAtPos(this.editorState.doc.nodeSize - 2)
         if(pos !== undefined && pos !== this.gapDragSelectionAnchor) {
           try {
             const endPos = TextSelection.create(this.editorState.doc, pos)
-            const {node: tableNode} = findParentNode(node => node.type.name === "table")(TextSelection.create(this.editorState.doc, this.gapDragSelectionAnchor)) ?? {}
+            const {node: tableNode} = findParentNode(node => node.type.name === "table")(TextSelection.create(this.editorState.doc, Math.min(this.gapDragSelectionAnchor, this.editorState.doc.nodeSize - 2))) ?? {}
             if(tableNode) {
               return false
             }
-            if(!findParentNode(node => node.type.name === "math")(endPos) && !(endPos.$anchor.nodeAfter?.type.name === "math")) {
-              const sel = TextSelection.create(this.editorState.doc, this.gapDragSelectionAnchor, pos)
+            else if(ev.y > lastTop && isAtEnd) {
+              const sel = new GapCursor(this.editorState.doc.resolve(this.editorState.doc.nodeSize - 2))
+              const tr = this.editorState.tr.setSelection(sel)
+              this.pmEditor.dispatch(tr)
+            }
+            else if(!findParentNode(node => ["math", "math_inline"].includes(node.type.name))(endPos) && !(["math", "math_inline"].includes(endPos.$anchor.nodeAfter?.type.name as any))) {
+              const sel = TextSelection.create(this.editorState.doc, Math.min(this.gapDragSelectionAnchor, this.editorState.doc.nodeSize - 2), pos)
               const tr = this.editorState.tr.setSelection(sel)
               this.pmEditor.dispatch(tr)
             }
@@ -1103,11 +1126,17 @@ export class ExplorableEditor extends LitElement {
       }
     },
     "mousedown": (_: any, ev: MouseEvent) => {
-      if(ev.button !== 0) {
+      if(ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.altKey) {
+        return false
+      }
+      else if(ev.button !== 0) {
         return true
       }
       else if(ev.detail === 1) {
         const sel = this.coordsToSelection(ev.y, ev.x)
+        if(!sel) {
+          return true
+        }
         // const {node: maybeOldTableNode} = findParentNode(node => node.type.name === "table")(this.selection) ?? {}
         const {node: maybeNewTableNode} = sel? findParentNode(node => node.type.name === "table")(sel) ?? {}: {}
         if(maybeNewTableNode && !(this.selection instanceof CellSelection) && !(this.selection instanceof GapCursor) && !(this.selection instanceof NodeSelection)) {
@@ -1121,9 +1150,9 @@ export class ExplorableEditor extends LitElement {
           return true
         }
         else if(sel) {
-          if(!(sel instanceof GapCursor) && (findParentNode(node => node.type.name === "math")(sel) || (sel.$anchor.nodeAfter?.type.name === "math"))) {
+          if(!(sel instanceof GapCursor) && (findParentNode(node => ["math", "math_inline"].includes(node.type.name))(sel) || (["math", "math_inline"].includes(sel.$anchor.nodeAfter?.type.name as any)))) {
             for(let i = 1; i < sel.$anchor.depth; i++) {
-              if(sel.$anchor.node(i).type.name === "math") {
+              if(["math", "math_inline"].includes(sel.$anchor.node(i).type.name)) {
                 const newSel = NodeSelection.create(this.editorState.doc, sel.$anchor.before(i))
                 const tr = this.editorState.tr.setSelection(newSel)
                 this.pmEditor.dispatch(tr)
@@ -1140,12 +1169,18 @@ export class ExplorableEditor extends LitElement {
           return true
         }
       }
-      else if(ev.detail === 2) {
+      else if(ev.detail === 2 && !this.isGapSelected) {
         return false
       }
-      else if(ev.detail === 3) {
+      else if(ev.detail === 3 && !this.isGapSelected) {
         return false
-      }  
+      }
+      else {
+        return true
+      }
+    },
+    "ww-widget-click": (_: any, ev: CustomEvent) => {
+      // return this.handleDOMEvents["mousedown"](_, ev.detail.relatedEvent)
     },
     "ww-widget-interact": (_: any, ev: KeyboardEvent) => {
       this.updateDocumentElementClasses(ev, true)
@@ -1267,7 +1302,7 @@ export class ExplorableEditor extends LitElement {
     this.pmEditor.dispatch(this.pmEditor.state.tr.setSelection(selection))
     this.pmEditor.focus()
     el.focus()
-    this.updateDocumentElementClasses()
+    // this.updateDocumentElementClasses()
   }
 
   blobsToElements = async (blobs: Blob[]) => {
@@ -1342,23 +1377,23 @@ export class ExplorableEditor extends LitElement {
   }
 
   globalListeners: Partial<Record<keyof WindowEventMap, any>> = {
-    "keydown": (e: any) => this.updateDocumentElementClasses(e),
-    "keyup": (e: any) => this.updateDocumentElementClasses(e, true),
+    "keydown": (e: any) => this.updateDocumentElementClasses(e, undefined, false),
+    "keyup": (e: any) => this.updateDocumentElementClasses(e, true, false),
     "mouseup": (e: any) => this.updateDocumentElementClasses(e),
     "mousedown": (e: any) => this.updateDocumentElementClasses(e),
     "resize": () => this.requestUpdate(),
     "focus": (e: any) => this.updateDocumentElementClasses(e, true)
   }
 
-  updateDocumentElementClasses = (e?: KeyboardEvent | MouseEvent, removeOnly=false) => {
+  updateDocumentElementClasses = (e?: KeyboardEvent | MouseEvent, removeOnly=false, ignoreKbd=true) => {
     if(this.previewMode || this.sourceMode || !this.pmEditor?.documentElement) {
       return
     }
     const toRemove = [
-      !e?.ctrlKey && "ww-key-ctrl",
-      !e?.altKey && "ww-key-alt",
-      !e?.shiftKey && "ww-key-shift",
-      !e?.metaKey && "ww-key-meta",
+      !e?.ctrlKey && !ignoreKbd && "ww-key-ctrl",
+      !e?.altKey && !ignoreKbd && "ww-key-alt",
+      !e?.shiftKey && !ignoreKbd && "ww-key-shift",
+      !e?.metaKey && !ignoreKbd && "ww-key-meta",
       !this.isAllSelected && "ww-all-selected",
       !this.app.store.document.empty && "ww-empty",
       this.editingStatus !== "copying" && `ww-copying`,
@@ -1394,6 +1429,7 @@ export class ExplorableEditor extends LitElement {
     this.requestUpdate()
     this.toolbox && (this.toolbox.activeLayoutCommand = undefined)
     this.toolbox && (this.toolbox.childrenDropdownActiveElement = null)
+    this.toolbox && (this.toolbox.activeEmojiInput = false)
     this.palette && (this.palette.managing = false)
     this.editingStatus = undefined
   }
@@ -1410,7 +1446,6 @@ export class ExplorableEditor extends LitElement {
   }
 
   createSelectionBetween(view: EditorView, anchor: ResolvedPos, head: ResolvedPos) {
-
   }
 
 	CoreEditor = () => {
@@ -1541,6 +1576,7 @@ export class ExplorableEditor extends LitElement {
           this.topLevelElementsInSelection.forEach(el => Object.assign(el.style, e.detail.style))
           // this.pmEditor.focus()
         }}
+        @ww-insert-text=${(e: any) => this.insertText(e.detail.text)}
 			></ww-toolbox>
 		`
 	}

@@ -1,7 +1,7 @@
 import { LitElement, html, css } from "lit"
 import { customElement, property, query } from "lit/decorators.js"
 import { CSSAngleValue, CSSColorValue, CSSIntegerValue, CSSLengthValue, CSSNumberValue, CSSPercentageValue, CSSPropertySpecs, CSSResolutionValue, CSSTimeValue, CSSValueDefinition, ICSSValueDefinition } from "#model"
-import { capitalizeWord, SpacedListAttributeConverter } from "#utility"
+import { capitalizeWord, parseLocaleNumber, SpacedListAttributeConverter } from "#utility"
 import { Combobox } from "#view"
 import { SlInput, SlSelect } from "@shoelace-style/shoelace"
 
@@ -169,7 +169,8 @@ export class CSSNumericInput extends LitElement {
   handleChange = () => {
     try {
       if(this.valueInput.value.trim()) {
-        const parsed = CSSNumericValue.parse(this.valueInput.value) as CSSUnitValue
+        const localized = parseLocaleNumber(this.valueInput.value)
+        const parsed = CSSNumericValue.parse(String(localized)) as CSSUnitValue
         this.value = new CSSUnitValue(parsed.value, parsed.unit !== "number" || !this.units.length? parsed.unit: this.unitInput.value as string)
       }
       else {
@@ -186,9 +187,14 @@ export class CSSNumericInput extends LitElement {
     </sl-select>`
   }
 
+  get localizedValue() {
+    const v = Intl.NumberFormat(this.lang || document?.documentElement?.lang || navigator.language || "en").format(this.value?.value)
+    return v === "NaN"? "": v
+  }
+
   Input() {
     const step = this.step ?? ((this.type as NumericValueClass[]).some(t => t === CSSIntegerValue)? 1: 0.1)
-    return html`<sl-input part="input" id="value" size="small" type="text" value=${this.value?.value} @sl-change=${this.handleChange} placeholder=${this.placeholder} exportparts="base, form-control, form-control-label, form-control-input, form-control-help-text, combobox, prefix, suffix, display-input, listbox, tags, tag, tag__base, tag__content, tag__remove-button, tag__remove-button__base, clear-button, expand-icon">
+    return html`<sl-input part="input" id="value" size="small" type="text" value=${this.localizedValue} @sl-change=${this.handleChange} placeholder=${this.placeholder} exportparts="base, form-control, form-control-label, form-control-input, form-control-help-text, combobox, prefix, suffix, display-input, listbox, tags, tag, tag__base, tag__content, tag__remove-button, tag__remove-button__base, clear-button, expand-icon">
       ${this.querySelector("[slot=prefix]")
         ? html`<slot name="prefix" slot="prefix"></slot>`
         : undefined

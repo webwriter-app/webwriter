@@ -1589,7 +1589,8 @@ export class CommandController implements ReactiveController {
         group: "frame",
       }),
       math: new NodeCommand(this.host, {
-        id: "math",
+        tag: "math_inline",
+        id: "math_inline",
         label: () => msg("Math Formula"),
         icon: "math",
         group: "math",

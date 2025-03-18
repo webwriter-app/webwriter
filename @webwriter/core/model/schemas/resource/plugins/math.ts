@@ -89,7 +89,7 @@ const MATHML_CONTENT = "(" + MATHML_TAGS
 
 export const mathPlugin = () => ({
   nodes: {
-    ...HTMLElementSpecPair({
+/*    ...HTMLElementSpecPair({
       math: {
         tag: "math",
         group: "flow",
@@ -99,8 +99,18 @@ export const mathPlugin = () => ({
       },
       math_inline: {
         group: "phrasing",
-        inline: true
+        inline: true,
+        atom: true,
+        
       }
+    }),*/
+    "math_inline": HTMLElementSpec({
+      tag: "math",
+      group: "phrasing",
+      content: MATHML_CONTENT,
+      atom: true,
+      toDOM: n => [`http://www.w3.org/1998/Math/MathML math`, toAttributes(n), 0],
+      inline: true,
     }),
     "annotationMathML": MathMLElementSpec({
       tag: "annotation",

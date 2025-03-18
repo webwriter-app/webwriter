@@ -489,3 +489,14 @@ export const SpacedListAttributeConverter = {
 export function chainCommandsIf(condition: (state: EditorState) => boolean, ...commands: Command[]): Command {
   return (s, d, v) => condition(s) && chainCommands(...commands)(s, d, v)
 }
+
+/** Parse a number string as a float, taking into account the decimal and thousand separator for the given locale.  */
+export function parseLocaleNumber(str: string, locale=(document?.documentElement?.lang ?? navigator.language ?? "en")) {
+  var thousandSeparator = Intl.NumberFormat(locale).format(11111).replace(/\p{Number}/gu, '');
+  var decimalSeparator = Intl.NumberFormat(locale).format(1.1).replace(/\p{Number}/gu, '');
+
+  return parseFloat(str
+      .replace(new RegExp('\\' + thousandSeparator, 'g'), '')
+      .replace(new RegExp('\\' + decimalSeparator), '.')
+  );
+}

@@ -11,14 +11,17 @@ export class CSSLineTypeInput extends LitElement {
     "double": "equal",
     "dotted": "line-dotted",
     "dashed": "line-dashed",
-    "wavy": "arrow-wave-right-up"
+    "wavy": "arrow-wave-right-up",
+    "none": ""
   }
 
   @property({type: String, attribute: true, reflect: true})
   name: string
   
   @property({type: String, attribute: true, reflect: true})
-  value: "solid" | "double" | "dotted" | "dashed" | "wavy" = "solid"
+  value: "solid" | "double" | "dotted" | "dashed" | "wavy" | "none" = "none"
+
+  defaultValue = "none"
 
   @property({type: String, attribute: true, reflect: true})
   label: string

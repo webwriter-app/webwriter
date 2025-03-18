@@ -1900,7 +1900,7 @@
 </trans-unit>
 <trans-unit id="sf2d5cbc2fe0ad65a">
   <source>Sticky</source>
-  <target>TODO</target>
+  <target>Angeheftet</target>
 </trans-unit>
 <trans-unit id="sc1611c0558728a2a">
   <source>Position</source>
@@ -1984,7 +1984,7 @@
 </trans-unit>
 <trans-unit id="s19daf2f26c19543d">
   <source>Outline</source>
-  <target>TODO</target>
+  <target>Umrandung</target>
 </trans-unit>
 <trans-unit id="sd9ff8e2612e63d50">
   <source>Border box sizing</source>
@@ -3544,11 +3544,11 @@
 </trans-unit>
 <trans-unit id="s9abadcc828884d7b">
   <source>Textarea</source>
-  <target>TODO</target>
+  <target>Textfeld</target>
 </trans-unit>
 <trans-unit id="sf4e0e02a5277ef23">
   <source>Insert an textarea</source>
-  <target>TODO</target>
+  <target>Textfeld einfügen</target>
 </trans-unit>
 <trans-unit id="sfc63e31ac7c956ed">
   <source>Select</source>
@@ -3576,11 +3576,11 @@
 </trans-unit>
 <trans-unit id="s7fcb35d23be1e643">
   <source>Field Set</source>
-  <target>TODO</target>
+  <target>Formularbereich</target>
 </trans-unit>
 <trans-unit id="s2d986d31f8d67357">
   <source>Insert a field set</source>
-  <target>TODO</target>
+  <target>Formularbereich einfügen</target>
 </trans-unit>
 <trans-unit id="s5590dbf7e425789d">
   <source>Label</source>
@@ -4252,11 +4252,11 @@
 </trans-unit>
 <trans-unit id="s5623aa2f83b05c76">
   <source>Tibetan</source>
-  <target>TODO</target>
+  <target>Tibetanisch</target>
 </trans-unit>
 <trans-unit id="sbb15d427ee1aa676">
   <source>Tigrinya</source>
-  <target>TODO</target>
+  <target>Tigrinya</target>
 </trans-unit>
 <trans-unit id="sbb34f2e3aa40af4e">
   <source>Tonga</source>

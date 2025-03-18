@@ -105,7 +105,7 @@ export class WidgetView implements NodeView {
           e.preventDefault()
         }
       })
-      // dom.addEventListener("selectstart", e => e.preventDefault())
+      dom.addEventListener("mousedown", e => this.emitWidgetClick(e))
     }
     dom.toggleAttribute("contenteditable", true)
     return dom
@@ -262,13 +262,16 @@ export class WidgetView implements NodeView {
       this.select()
     }
     const fromShadowDOM = (e.composedPath()[0] as HTMLElement)?.getRootNode()
+    // TODO: Improve into a more solid solution
+    const isFlowContainer = Boolean(this.node.type.spec.content && /^flow\*|flow\+|\(flow\)\*|\(flow\)\+|\(flow\s*\|\s*p\s*\)(\*|\+)?|\(p\s*\|\s*flow\s*\)(\*|\+)?|p\s*\|\s*flow\s*(\*|\+)?|flow\s*\|\s*p\s*(\*|\+)?$/g.test(this.node.type.spec.content.trim()))
+    const isTextblockOrInline = this.node.isTextblock || this.node.isInline
     const isControlMetaClick = (e instanceof window.KeyboardEvent && (e.ctrlKey || e.metaKey))
     const isContextMenu = e.type === "contextmenu"
-    const shouldBePropagated = (e as any)["shouldPropagate"] || this.node.type.spec.propagateEvents?.includes(e.type)
+    const shouldBePropagated = (e as any)["shouldPropagate"] || this.node.type.spec.propagateEvents?.includes(e.type) || isFlowContainer || isTextblockOrInline 
     if(shouldBePropagated) {
       (e as any)["shouldPropagate"] = true
     }
-    return fromShadowDOM && !isControlMetaClick && !isContextMenu && !shouldBePropagated
+    return fromShadowDOM && !isFlowContainer && !isTextblockOrInline && !isControlMetaClick && !isContextMenu && !shouldBePropagated
 	}
 
 	emitWidgetFocus = () => this.dom.dispatchEvent(new CustomEvent("ww-widget-focus", {
@@ -306,38 +309,67 @@ export class WidgetView implements NodeView {
 
 }
 
-export class AudioView implements NodeView {
+export class ElementView implements NodeView {
   node: Node
-	view: EditorViewController
-	getPos: () => number
-	dom: HTMLElement
-  contentDOM?: HTMLElement 
+  view: EditorViewController
+  getPos: () => number
+  dom: HTMLElement
+  contentDOM?: HTMLElement
 
-	constructor(node: Node, view: EditorViewController, getPos: () => number) {
-		this.node = node
-		this.view = view
+  constructor(node: Node, view: EditorViewController, getPos: () => number) {
+    this.node = node
+    this.view = view
     this.getPos = getPos
     this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node, {document: this.view.dom.ownerDocument}) as HTMLElement
-	}
+  }
 
-  
-
+  ignoreMutation(mutation: ViewMutationRecord) {
+    if(mutation.type === "selection") {
+      return true
+    }
+    const {type, target, attributeName: attr, oldValue, addedNodes, removedNodes, previousSibling, nextSibling, attributeNamespace} = mutation
+    const value = attr? this.dom.getAttribute(attr): null
+    const attrUnchanged = !!(attr && (value === oldValue))
+    if(attr && !attrUnchanged) {
+      const builtinAttr = attr in globalHTMLAttributes
+      const dataAttr = attr.startsWith("data-")
+      let tr = this.view.state.tr
+      if(attr === "class") {
+        const oldClasses = oldValue!.trim().split(" ")
+        const newClasses = value!.trim().split(" ")
+        const removedClasses = oldClasses.filter(v => !newClasses.includes(v) && !v.startsWith("ww-"))
+        const addedClasses = newClasses.filter(v => !oldClasses.includes(v) && !v.startsWith("ww-")) 
+        if(removedClasses.length || addedClasses.length) {
+          const final = newClasses.filter(v => !v.startsWith("ww-"))
+          tr = tr.setNodeAttribute(this.getPos(), attr, final)  
+        }
+        else {
+          return true
+        }
+      }
+      else if(builtinAttr) {
+        tr = tr.setNodeAttribute(this.getPos(), attr, value)
+      }
+      else if(dataAttr) {
+        const data = {...this.node.attrs.data, [attr]: value}
+        tr = tr.setNodeAttribute(this.getPos(), "data", data)
+      }
+      else {
+        const _ = {...this.node.attrs._, [attr]: value}
+        tr = tr.setNodeAttribute(this.getPos(), "_", _)
+      }
+      this.view.dispatch(tr)
+      return true
+    }
+    return attrUnchanged
+  }
 }
 
-export class VideoView implements NodeView {
-  node: Node
-	view: EditorViewController
-	getPos: () => number
-	dom: HTMLElement
-  contentDOM?: HTMLElement 
+export class ImageView extends ElementView {}
 
-	constructor(node: Node, view: EditorViewController, getPos: () => number) {
-		this.node = node
-		this.view = view
-    this.getPos = getPos
-    this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node, {document: this.view.dom.ownerDocument}) as HTMLElement
-	}
-}
+export class AudioView extends ElementView implements NodeView {}
+
+export class VideoView extends ElementView implements NodeView {}
 
 export class UnknownElementView implements NodeView {
   node: Node
@@ -355,7 +387,7 @@ export class UnknownElementView implements NodeView {
 
 }
 
-export class DetailsView implements NodeView {
+export class DetailsView extends ElementView implements NodeView {
   node: Node
 	view: EditorViewController
 	getPos: () => number
@@ -363,10 +395,7 @@ export class DetailsView implements NodeView {
   contentDOM?: HTMLElement 
 
 	constructor(node: Node, view: EditorViewController, getPos: () => number) {
-		this.node = node
-		this.view = view
-    this.getPos = getPos
-    this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node, {document: this.view.dom.ownerDocument}) as HTMLDetailsElement
+    super(node, view, getPos)
     this.dom.addEventListener("mousedown", e => {
       const el = e.target as HTMLElement
       if(el.tagName === "SUMMARY") {
@@ -391,7 +420,7 @@ export class DetailsView implements NodeView {
 	}
 }
 
-export class IFrameView implements NodeView {
+export class IFrameView extends ElementView implements NodeView {
   node: Node
 	view: EditorViewController
 	getPos: () => number
@@ -401,10 +430,7 @@ export class IFrameView implements NodeView {
   
 
   constructor(node: Node, view: EditorViewController, getPos: () => number) {
-		this.node = node
-		this.view = view
-    this.getPos = getPos
-    this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node, {document: this.view.dom.ownerDocument}) as HTMLIFrameElement
+    super(node, view, getPos)
     this.dom.addEventListener("focus", () => this.selectFocused())
     this.dom.addEventListener("load", e => {
       // this.dom.contentDocument?.addEventListener("click", () => this.dom.focus())
@@ -427,7 +453,7 @@ export class IFrameView implements NodeView {
   }
 }
 
-export class MathView implements NodeView {
+export class MathView extends ElementView implements NodeView {
   node: Node
 	view: EditorViewController
 	getPos: () => number
@@ -446,10 +472,7 @@ export class MathView implements NodeView {
   
 
   constructor(node: Node, view: EditorViewController, getPos: () => number) {
-		this.node = node
-		this.view = view
-    this.getPos = getPos
-    this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node, {document: this.view.dom.ownerDocument}) as MathMLElement & HTMLElement
+    super(node, view, getPos)
     this.dom.addEventListener("selectstart", (e: any) => e.preventDefault())
 	}
 
@@ -458,54 +481,12 @@ export class MathView implements NodeView {
   }
 }
 
-export class ElementView implements NodeView {
-    node: Node
-    view: EditorViewController
-    getPos: () => number
-    dom: HTMLElement
-    contentDOM?: HTMLElement
-  
-    constructor(node: Node, view: EditorViewController, getPos: () => number) {
-      this.node = node
-      this.view = view
-      this.getPos = getPos
-      this.dom = this.contentDOM = DOMSerializer.fromSchema(this.node.type.schema).serializeNode(this.node, {document: this.view.dom.ownerDocument}) as HTMLElement
-    }
-
-    ignoreMutation(mutation: ViewMutationRecord) {
-      if(mutation.type === "selection") {
-        return true
-      }
-      const {type, target, attributeName: attr, oldValue, addedNodes, removedNodes, previousSibling, nextSibling, attributeNamespace} = mutation
-      const value = attr? this.dom.getAttribute(attr): null
-      const attrUnchanged = !!(attr && (value === oldValue))
-      if(attr && !attrUnchanged) {
-        const builtinAttr = attr in globalHTMLAttributes
-        const dataAttr = attr.startsWith("data-")
-        let tr = this.view.state.tr
-        if(builtinAttr) {
-          tr = tr.setNodeAttribute(this.getPos(), attr, value)
-        }
-        else if(dataAttr) {
-          const data = {...this.node.attrs.data, [attr]: value}
-          tr = tr.setNodeAttribute(this.getPos(), "data", data)
-        }
-        else {
-          const _ = {...this.node.attrs._, [attr]: value}
-          tr = tr.setNodeAttribute(this.getPos(), "_", _)
-        }
-        this.view.dispatch(tr)
-        return true
-      }
-      return attrUnchanged
-    }
-}
-
-
 export const nodeViews = {
   "_widget": WidgetView,
   "audio": AudioView,
   "audio_inline": AudioView,
+  "picture": ImageView,
+  "picture_inline": ImageView,
   "video": VideoView,
   "video_inline": VideoView,
   "details": DetailsView,
