@@ -267,11 +267,16 @@ export class WidgetView implements NodeView {
     const isTextblockOrInline = this.node.isTextblock || this.node.isInline
     const isControlMetaClick = (e instanceof window.KeyboardEvent && (e.ctrlKey || e.metaKey))
     const isContextMenu = e.type === "contextmenu"
-    const shouldBePropagated = (e as any)["shouldPropagate"] || this.node.type.spec.propagateEvents?.includes(e.type) || isFlowContainer || isTextblockOrInline 
+    const isFromInsideOptions = e.composedPath().some(el => {
+      const isPartOptions = (el as HTMLElement)?.getAttribute?.("part") === "options"
+      const isInShadowDOMOfWidget = (el as HTMLElement).parentNode?.host?.classList.contains("ww-widget")
+      return isPartOptions && isInShadowDOMOfWidget
+    })
+    const shouldBePropagated = (e as any)["shouldPropagate"] || this.node.type.spec.propagateEvents?.includes(e.type) || ((isFlowContainer || isTextblockOrInline) && !isFromInsideOptions)
     if(shouldBePropagated) {
       (e as any)["shouldPropagate"] = true
     }
-    return fromShadowDOM && !isFlowContainer && !isTextblockOrInline && !isControlMetaClick && !isContextMenu && !shouldBePropagated
+    return isFromInsideOptions || (fromShadowDOM && !isFlowContainer && !isTextblockOrInline && !isControlMetaClick && !isContextMenu && !shouldBePropagated)
 	}
 
 	emitWidgetFocus = () => this.dom.dispatchEvent(new CustomEvent("ww-widget-focus", {
