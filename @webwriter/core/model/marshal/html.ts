@@ -75,7 +75,11 @@ export async function docToBundle(doc: Node, head: Node, noDeps=false) {
 
   // Generate bundle
   const widgets = html.querySelectorAll(".ww-widget")
-  widgets.forEach(w => w.removeAttribute("contenteditable"))
+  widgets.forEach(w => {
+    w.removeAttribute("contenteditable")
+    w.removeAttribute("data-ww-editing")
+    w.removeAttribute("data-ww-tagname")
+  })
   
   const allImports = Object.fromEntries(Object.values(doc.type.schema.nodes)
     .filter(node => node.spec["widget"])

@@ -167,14 +167,14 @@ figure.ProseMirror-selectednode::before {
   box-sizing: border-box;
 }
 
-[data-ww-editing^="unknown"] {
+[data-ww-editing^="unknown"]:not(:defined) {
   border: 2px solid var(--sl-color-warning-600);
   padding: 4px;
   color: var(--sl-color-warning-600);
   text-align: center;
 }
 
-[data-ww-editing^="unknown"]::before {
+[data-ww-editing^="unknown"]:not(:defined)::before {
   display: inline-block;
   content: "⚠  Unknown element <" attr(data-ww-tagname) ">";
   margin-right: 1ch;
