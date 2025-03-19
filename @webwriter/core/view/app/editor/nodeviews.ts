@@ -128,7 +128,7 @@ export class WidgetView implements NodeView {
   update(node: Node, decorations: readonly Decoration[], innerDecorations: DecorationSource) {
     const oldName = this.node.type.name
     const name = node.type.name
-    if(oldName !== name) {
+    if(oldName !== name || this.node.attrs.id !== node.attrs.id) {
       return false
     }
     if(!this.editor.executingCommand || node.eq(this.node)) {
