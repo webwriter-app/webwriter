@@ -443,7 +443,7 @@ body > .ww-widget::after {
   position: relative;
 }
 
-:is(h1, h2, h3, h4, h5, h6)[data-empty]::before {
+:is(h1, h2, h3, h4, h5, h6):is(:empty, :has(.ProseMirror-trailingBreak:only-child))::before {
   content: attr(data-placeholder);
   position: absolute;
   top: 0;
