@@ -209,6 +209,14 @@ export const basePlugin = () => ({
       toDOM: () => ["span", {"data-ww-editing": "phrase"}, 0],
       parseDOM: [{tag: "span[data-ww-editing=phrase]"}]
     }),
+    _inlineblock: HTMLElementSpec({
+      tag: "span",
+      content: "flow*",
+      group: "phrasing",
+      inline: true,
+      toDOM: () => ["span", {"data-ww-editing": "phrase"}, 0],
+      parseDOM: [{tag: "span[data-ww-editing=phrase]"}]
+    }),
     br: HTMLElementSpec({
       tag: "br",
       selector: "br:not(.ProseMirror-trailingBreak)",
