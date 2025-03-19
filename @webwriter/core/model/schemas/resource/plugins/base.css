@@ -824,7 +824,7 @@ body:has(.ww-fullscreen) > :not(.ww-fullscreen) {
     -webkit-user-select: none;
   }
 
-  .ww-widget:not(.ww-selected)::part(options) {
+  .ww-widget:not(.ww-selected):not(.ww-selected-text-within:not(:has(.ww-widget.ww-selected-text-within)))::part(options) {
     display: none;
   }
 }

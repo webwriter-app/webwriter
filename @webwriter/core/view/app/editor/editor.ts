@@ -606,14 +606,20 @@ export class ExplorableEditor extends LitElement {
     const decorations = [] as Decoration[]
     state.doc.descendants((node, pos, parent, index) => {
       const name = node.type.name
-      const selectionEndsInNode = pos <= to && to <= pos + node.nodeSize
-      const selectionStartsInNode = pos <= from && from <= pos + node.nodeSize
+      const selectionEndsInNode = pos <= to && to < pos + node.nodeSize
+      const selectionStartsInNode = pos < from && from <= pos + node.nodeSize
       const selectionWrapsNode = from <= pos && pos + node.nodeSize <= to
       const deletingPos = this.deletingWidget? this.pmEditor.posAtDOM(this.deletingWidget, 0) - 1: -1
       const isSelectedInner = selectionWrapsNode && this.isTextSelected
       const isSelectedNode = state.selection instanceof NodeSelection && state.selection.node === node
-      if(isSelectedNode || isSelectedInner && node.type.spec.selectable) {
-        decorations.push(Decoration.node(pos, pos + node.nodeSize, {class: isSelectedInner? "ww-selected-inner": "ww-selected"}))
+      const textLikeSelectionInside = (state.selection instanceof TextSelection || state.selection instanceof GapCursor) && selectionStartsInNode && selectionEndsInNode
+      if(isSelectedNode || isSelectedInner && node.type.spec.selectable || textLikeSelectionInside) {
+        const classes = [
+          textLikeSelectionInside && "ww-selected-text-within",
+          isSelectedInner && "ww-selected-inner",
+          isSelectedNode && "ww-selected"
+        ].filter(cls => cls)
+        decorations.push(Decoration.node(pos, pos + node.nodeSize, {class: classes.join(" ")}))
         this.editingStatus && decorations.push(Decoration.node(pos, pos + node.nodeSize, {class: `ww-${this.editingStatus}`}))
       }
       if(node.isInline || name === "_phrase") {
