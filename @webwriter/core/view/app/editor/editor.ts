@@ -1188,8 +1188,8 @@ export class ExplorableEditor extends LitElement {
     "ww-widget-click": (_: any, ev: CustomEvent) => {
       // return this.handleDOMEvents["mousedown"](_, ev.detail.relatedEvent)
     },
-    "ww-widget-interact": (_: any, ev: KeyboardEvent) => {
-      this.updateDocumentElementClasses(ev, true)
+    "ww-widget-interact": (_: any, ev: CustomEvent) => {
+      this.updateDocumentElementClasses(ev.detail.relatedEvent, true,ev.detail.relatedEvent?.metaKey)
     },
     "focus": (_:any, ev: FocusEvent) => {
       ev.preventDefault()
