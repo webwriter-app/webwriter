@@ -1282,7 +1282,7 @@ export class Palette extends LitElement {
       return undefined
     }
     const userLangs = [...new Set(navigator.languages.map(lang => new Locale(lang).language)), this.app.store.ui.locale, this.app.store.document.lang]
-    const relevantLocales = pkg.locales.filter(locale => userLangs.includes(locale.language))
+    const relevantLocales = pkg.locales.filter(locale => userLangs.some(lang => locale.language.startsWith(lang.split("-").at(0)!)))
     const otherLocales = pkg.locales.filter(locale => !userLangs.includes(locale.language))
     return html`<span class="package-keyword package-locale">
       <sl-icon name="language"></sl-icon>
