@@ -53,6 +53,7 @@ const pkgs = (await Promise.allSettled(pkgResults.map(async result => {
   .filter(pkg => pkg)
 
 fs.writeFileSync("resources/packages.json", JSON.stringify(pkgs, undefined, 2), "utf8")
+fs.writeFileSync("public/webwriter-package-ids.json", JSON.stringify(pkgs.map(pkg => `${pkg.name}@${pkg.version}`), undefined, 2), "utf8")
 
 /*
 

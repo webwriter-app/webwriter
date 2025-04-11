@@ -1,0 +1,20 @@
+[
+  "@webwriter/quiz@1.1.3",
+  "@webwriter/neural-network@1.1.3",
+  "@webwriter/slides@2.0.7",
+  "@webwriter/geometry-cloze@2.0.6",
+  "@webwriter/chemdraw@2.1.0",
+  "@webwriter/flowchart@2.0.8",
+  "@webwriter/phet-simulation@1.0.7",
+  "@webwriter/branching-scenario@1.2.0",
+  "@webwriter/interactive-video@2.1.2",
+  "@webwriter/code@2.1.2",
+  "@webwriter/map@2.0.9",
+  "@webwriter/network@2.0.6",
+  "@webwriter/automaton@2.0.5",
+  "@webwriter/timeline@1.0.4",
+  "@webwriter/logic-circuit@1.1.3",
+  "@webwriter/chemlab@1.0.7",
+  "@webwriter/block-based-code@1.6.3",
+  "@webwriter/geogebra@1.0.1"
+]

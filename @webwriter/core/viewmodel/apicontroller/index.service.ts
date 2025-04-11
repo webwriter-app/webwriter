@@ -528,11 +528,7 @@ async function getPackages(ids: string[]) {
   const pkgIds = ids.map(id => id.startsWith("@")? id.split("/").slice(0, 2).join("/"): id.split("/")[0])
   let _ids = pkgIds.map(name => `${name}/package.json`)
   if(!_ids.length) {
-    const resp = await search("keywords:webwriter-widget")
-    if(resp instanceof Error) {
-      throw resp
-    }
-    _ids = resp.objects.map(obj => obj.package).map(({name, version}) => `${name}@${version}/package.json`)
+    _ids = (await getMergedPackageIDs()).map(id => `${id}/package.json`)
   }
   const pkgs = (await Promise.allSettled(_ids.map(async id => {
     const resp = await getAsset(id)
@@ -892,6 +888,50 @@ const fetchOrFS: FetchImpl = Object.assign(bundleserviceFetch, {
 
 setFetch(fetchOrFS)
 
+async function getMergedPackageIDs(regs=["https://registry.npmjs.com/-/v1/search"], lists=["https://webwriter.app/webwriter-package-ids.json"], orgs=[]) {
+  const results = await Promise.allSettled([
+    ...lists.map(getListPackageIDs),
+    ...orgs.map(getOrganizationPackageIDs),
+    ...regs.map(getRegistryPackageIDs),
+  ])
+  const ids = results.filter(r => r.status === "fulfilled").flatMap(r => r.value)
+  return Object.values(Object.fromEntries(ids.map(id => [id.slice(1).split("@").at(0), id])))
+}
+
+async function getRegistryPackageIDs(reg="https://registry.npmjs.com/-/v1/search") {
+  const {objects} = await search("keyword:webwriter-widget", undefined, reg)
+  return objects.map(obj => obj.package).map(({name, version}) => `${name}@${version}`)
+}
+
+async function getOrganizationPackageIDs(org="https://api.github.com/orgs/webwriter-app") {
+  const nextPattern = /(?<=<)([\S]*)(?=>; rel="Next")/i;
+  let nextURL: URL | undefined = new URL(`${org}/packages?per_page=100`)
+  let objects: any[] = []
+  do {
+    const result: Response = await fetch(nextURL)
+    if(result.ok) {
+      const body = await result.json()
+      const link: string | undefined = result.headers.get("link")?.match(nextPattern)![0]
+      objects = objects.concat(body)
+      nextURL = link? new URL(link): undefined
+    }
+    else {
+      throw new Error(`${result.status} ${result.statusText}`)
+    }
+  } while(nextURL)
+  return objects.filter(obj => obj.package_type === "npm" && obj.keywords?.includes("webwriter-widget")).map(({name, version}) => `${name}@${version}`)
+}
+
+async function getListPackageIDs(list="https://webwriter.app/webwriter-package-ids.json") {
+  const result: Response = await fetch(list)
+  if(result.ok) {
+    return result.json()
+  }
+  else {
+    throw new Error(`${result.status} ${result.statusText}`)
+  }
+}
+
 /** API api.webwriter.app/bundle/
  * GET ·/[Package ID]/[Widget Path] {Accept: [TYPE]}  -> widget content/style
  * GET ·/_bundle?w=[Package ID]/[Widget Path]&w=... {Accept: [TYPE]} -> bundle
@@ -920,7 +960,7 @@ async function search(text: string, params?: {size?: number, quality?: number, p
       objects = objects.concat(body.objects)
     }
     else {
-      return new Error(`${result.status} ${result.statusText}`)
+      throw new Error(`${result.status} ${result.statusText}`)
     }
   } while(from < total)
   return {objects, total, time}
