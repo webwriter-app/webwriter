@@ -5,6 +5,7 @@ import * as fs from "fs"
 import * as process from "process"
 import * as child_process from "child_process"
 import {localize} from "./localize.js"
+import {document} from "./document.js"
 import 'dotenv/config'
 import esbuildPluginInlineImport from "esbuild-plugin-inline-import"
 
@@ -32,13 +33,28 @@ async function main() {
   const isDev = process.argv[2] === "dev"
   const isPreview = process.argv[2] === "preview"
   const isLocalize = process.argv[2] === "localize"
+  const isDocument = process.argv[2] === "document"
+  const force = process.argv.slice(2).includes("-y") || process.argv.slice(2).includes("--yes")
   if(isLocalize) {
     try {
-      await localize()
+      console.log("\nLocalizing...")
+      await localize(force)
       return
     }
     catch(err) {
       console.error(err?.message ?? String(err))
+      return
+    }
+  }
+  else if(isDocument) {
+    try {
+      console.log("\nDocumenting...")
+      await document()
+      return
+    }
+    catch(err) {
+      console.error(err?.message ?? String(err))
+      return
     }
   }
 
@@ -116,9 +132,10 @@ async function main() {
     const key = `./widgets/${rawKey}.*`
     const path = pkg.exports[key].default.replace(".*", "")
     const contents = `
+      <base href="/">
       <script src="https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry"></script>
-      <script defer src="${rawKey + ".js"}" type="module"></script>
-      <link rel="stylesheet" href="${rawKey + ".css"}" type="text/css">
+      <script defer src="${path + ".js"}" type="module"></script>
+      <link rel="stylesheet" href="${path + ".css"}" type="text/css">
       <${rawKey}></${rawKey}>
     `
     fs.writeFileSync("./dist/index.html", contents, "utf8")
