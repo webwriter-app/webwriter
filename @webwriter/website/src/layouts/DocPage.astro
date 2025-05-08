@@ -2,12 +2,11 @@
 import { getCollection } from 'astro:content';
 import Layout from "@layouts/Layout.astro"
 
-const allDocs = (await getCollection('docs'))
-    .filter(doc => doc.slug !== "index")
-    .sort((a, b) => a.data.order - b.data.order)
-    .map(doc => ({...doc, level: new Set(doc.slug.split("/")).size}))
+const allDocs: any[] = (await getCollection('docs'))
+    .filter((doc: any) => doc.slug !== "index" && !doc.data.hidden)
+    .sort((a: any, b: any) => a.data.order - b.data.order)
+    .map((doc: any) => ({...doc, level: new Set(doc.slug.split("/")).size}))
 
-console.log(allDocs.map(doc => doc.slug))
 const categories = new Set(allDocs.reduce((acc, doc) => {
   return doc.slug.includes("/")? [...acc, doc.slug.split("/")[0]]: acc
 }, [] as string[]))
@@ -58,7 +57,7 @@ const docActive = allDocs.map((doc, i) =>{
         border-radius: 10px;
         padding: 0.5rem 1rem;
         margin-left: 2rem;
-        margin-right: 1.5rem;
+        margin-right: 0cap;
         margin-top: 0;
         flex-shrink: 0;
         position: sticky;
@@ -98,8 +97,8 @@ const docActive = allDocs.map((doc, i) =>{
         top: 60px;
         left: 0;
         font-size: 1.5rem;
-        width: 35px;
-        height: 35px;
+        width: 30px;
+        height: 30px;
         box-sizing: border-box;
         background: var(--sl-color-gray-950);
         color: var(--sl-color-gray-50);
@@ -228,7 +227,7 @@ const docActive = allDocs.map((doc, i) =>{
       margin-left: 1ch;
     }
 
-    @media (max-width: 800px) {
+    @media (max-width: 880px) {
 
         #docsNavToggle {
             display: block;
@@ -266,6 +265,10 @@ const docActive = allDocs.map((doc, i) =>{
 
 <style is:global>
 
+    html {
+      scroll-padding-top: 70px;
+    }
+
     .doc-article img {
       margin: auto;
       display: block;
@@ -276,12 +279,15 @@ const docActive = allDocs.map((doc, i) =>{
     }
 
     article {
-        max-width: min(700px, 100vw);
         padding-left: 3rem;
         padding-right: 2rem;
         padding-bottom: 2.5rem;
         box-sizing: border-box;
         z-index: 0;
+        flex-basis: 700px;
+        flex-grow: 1;
+        flex-shrink: 1;
+        max-width: 700px;
     }
 
     article a {
