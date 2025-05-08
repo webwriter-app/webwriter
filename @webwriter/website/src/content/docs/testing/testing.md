@@ -1,9 +1,9 @@
 ---
-order: 1000
-title: "Testing & Debugging"
+order: 700
+title: "Testing"
 ---
 
-# Testing & Debugging
+# Testing
 
 WebWriter includes several features to support testing and debugging.
 

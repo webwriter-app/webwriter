@@ -4,10 +4,10 @@ order: 306
 ---
 
 # Printing
-Sometimes, users and authors may want to fall back to printed versions of Explorables.
+Sometimes, authors may want to fall back to printed versions of explorables.
 
 
-## class `ww-beforeprint`: Provide a simplified printable view
+## class `ww-beforeprint`: Provide a printable view
 Before an explorable is printed, the `ww-beforeprint` class is applied to each widget. Widget developers can use this to prepare the widget display for printing.
 
 For example, we could let the interactive textarea become simply a box with a black outline where (paper) users can write text:

@@ -7,7 +7,7 @@ order: 307
 Widgets may use different external assets such as images (or even audio and video), WebAssembly files, custom resources, and so on. This section shows how to use some of the most common types of assets in a widget.
 
 ## How assets are handled in WebWriter
-When a widget is loaded into WebWriter (by installing a package), WebWriter bundles the package using [`esbuild`](https://esbuild.github.io/) and imports the resulting bundle. This means that a widget may include any [type of asset that `esbuild` allows](https://esbuild.github.io/content-types/). Bundling is used again when the author saves the explorable, as all widgets are combined into a single, minimal bundle and the bundle source is embedded into the explorable. 
+When a package is built using `@webwriter/build`, it is bundled using [`esbuild`](https://esbuild.github.io/). This means that a widget may include any [type of asset that `esbuild` allows](https://esbuild.github.io/content-types/). 
 
 ## JS
 JS is the default asset type. It can be the entry point of your widget with `"exports": {... "./widgets/my-widget": "./widgets/my-widget.js"}` configured in `package.json`. Any files imported in your entry point are also bundled (this applies recursively) according to normal bundler behavior.

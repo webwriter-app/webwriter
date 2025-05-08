@@ -1,9 +1,9 @@
 ---
-order: 1000
-title: "Evaluating Widgets"
+order: 100
+title: "Designing"
 type: "explainer"
 ---
-# Evaluating Widgets
+# Designing Packages
 There are different criteria for what makes a good widget. This guide outlines a few to help you improve your widget's design.
 
 ## Functionality Checklist

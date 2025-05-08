@@ -1,5 +1,5 @@
 ---
-order: 202
+order: 800
 title: "Publishing"
 ---
 # Publishing
@@ -61,7 +61,7 @@ npm publish
 ```
 
 ## Testing your package
-First off, your package should be available on [`npm`, try searching for it](https://www.npmjs.com/). If it is, start WebWriter, then open the Package Manager. Under 'Available', your package can be installed.
+First off, your package should be available on [`npm`, try searching for it](https://www.npmjs.com/). If it is, start WebWriter, then view the available packages and install yours.
 
 ## Notes & Troubleshooting
 - When publishing a new version, you need to increment the version in your `package.json`, as well.

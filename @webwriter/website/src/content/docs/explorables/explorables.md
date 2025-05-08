@@ -1,6 +1,7 @@
 ---
 order: 100
 title: Explorables
+hidden: true
 ---
 
 

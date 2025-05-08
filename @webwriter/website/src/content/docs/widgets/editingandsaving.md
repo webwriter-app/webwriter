@@ -71,6 +71,3 @@ export default class CoolWidget extends LitElementWw {
 
 ### How can I test this?
 Use the "Preview" function. This will show you the explorable as it would appear when saved, specifically removing the `contentEditable` attribute from all widgets.
-
-## Separate editor widget
-Not supported yet

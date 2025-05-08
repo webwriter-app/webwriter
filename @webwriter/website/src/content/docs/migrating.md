@@ -1,5 +1,6 @@
 ---
-order: 1001
+order: 9999
+hidden: true
 title: "Migrating from Alpha"
 ---
 
