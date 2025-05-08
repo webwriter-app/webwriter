@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/lit",
-  "version": "2.1.6",
+  "version": "2.1.8",
   "description": "Base classes for widget components with lit (WebWriter)",
   "publishConfig": {
     "access": "public"
@@ -17,7 +17,7 @@
   },
   "gitHead": "0fd0c30304aba6738f14ee1ec687b3d4614f7c60",
   "peerDependencies": {
-    "lit": "^3.2.0"
+    "lit": "^3.3.0"
   },
   "devDependencies": {
     "esbuild": "^0.23.1"

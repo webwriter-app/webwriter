@@ -117,15 +117,13 @@ export function action<This extends LitElementWw, Args extends any[], Return>(de
 /**Minimal base class for a WebWriter widget implemented in Lit. Implements the core properties required by WebWriter, initializes the component when loaded and provides a Scoped Custom Element Registry (@open-wc/scoped-elements) to help with namespace conflicts when using other components in this widget. */
 export class LitElementWw extends ScopedElementsMixin(LitElement) {
 
-  static shadowRootOptions = {...LitElement.shadowRootOptions}
-
   /** Register the classes of custom elements to use in the Shadow DOM here. DO NOT register any additional elements globally.
    * @example
    * import SlButton from "@shoelace-style/shoelace/dist/components/button/button.component.js"
    * ...
    *   static scopedElements = {"sl-button": SlButton}
    **/
-  static scopedElements = {}
+  protected static scopedElements = {}
 
   static readonly options: Record<string, OptionDeclaration> = {}
   static readonly actions: Record<string, ActionDeclaration> = {}
@@ -137,7 +135,7 @@ export class LitElementWw extends ScopedElementsMixin(LitElement) {
   readonly actions: Record<string, ActionDeclaration> = {}
 
   /** Add `@lit/localize` support. This should be the return value of `configureLocalization`. */
-  localize: {getLocale: () => string, setLocale: (locale: string) => Promise<void>}
+  protected localize: {getLocale: () => string, setLocale: (locale: string) => Promise<void>}
 
   /** [HTML global attribute] Editing state of the widget. If ="true" or ="", the widget should allow user interaction changing the widget itself. Else, prevent all such user interactions. */
   @property({type: String, attribute: true, reflect: true}) accessor contentEditable!: string
