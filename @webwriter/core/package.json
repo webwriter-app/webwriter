@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/core",
-  "version": "1.6.3",
+  "version": "1.7.0",
   "description": "Core functionality of WebWriter",
   "browser": "index.html",
   "type": "module",
