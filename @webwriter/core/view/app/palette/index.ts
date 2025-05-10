@@ -1030,7 +1030,7 @@ export class Palette extends LitElement {
       <sl-popup flip anchor=${pkg.id} class="other-insertables" strategy="fixed" placement="bottom-end" sync="width" ?active=${this.dropdownOpen === pkg.id} auto-size="both" auto-size-padding=${1}>
         <sl-menu class="other-insertables-menu">
           ${otherInsertables.map(v => html`<sl-menu-item class=${classMap({"applied-theme": pkg.id + v.name.slice(1) === this.app.store.document.themeName})} @click=${() => this.handleClickCard(pkg, v.name)}>
-            ${v.label!._}
+            ${v.label?.[this.app.store.ui.locale] ?? v.label!._}
           </sl-menu-item>`)}
         </sl-menu>
       </sl-popup>

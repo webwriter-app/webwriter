@@ -14,7 +14,7 @@ import { ifDefined } from "lit/directives/if-defined.js"
 
 import { WidgetView, nodeViews } from "."
 import { CODEMIRROR_EXTENSIONS, EditorStateWithHead, MediaType, Package, removeMark, upsertHeadElement } from "#model"
-import { range, roundByDPR, sameMembers } from "#utility"
+import { range, roundByDPR, sameMembers, textNodesUnder } from "#utility"
 import { App, Toolbox, Palette, ProsemirrorEditor, CodemirrorEditor } from "#view"
 import { CellSelection } from "@massifrg/prosemirror-tables-sections"
 import { findParentNode, findPositionOfNodeBefore, isNodeSelection } from "prosemirror-utils"
@@ -94,6 +94,21 @@ export class ExplorableEditor extends LitElement {
       const parser = DOMParser.fromSchema(state.schema)
       const template = this.pmEditor.document.createElement("template")
       template.innerHTML = htmlStr
+      // Apply translations if available
+      const translations = (JSON.parse(template.content.querySelector("script.snippet-localization")?.innerHTML ?? "null")) as null | Record<`${string}#${string}`, Record<string, string>>
+      if(translations) {
+        const lang = this.app.store.ui.locale
+        const textNodes = textNodesUnder(template.content as any)
+        const counts: Record<string, number> = {}
+        for(const textNode of textNodes) {
+          const text = textNode.textContent!
+          counts[text] = (counts[text] ?? 0) + 1
+          const translation = translations[`${text}#${counts[text]}`]?.[lang]
+          if(translation) {
+            textNode.textContent = translation
+          }
+        }
+      }
       /*
       const widgetsInTemplate = Array.from(template.content.querySelectorAll("*")).filter(el => tagNames.includes(el.tagName.toLowerCase()))
       const ids = this.getAvailableWidgetIDs(widgetsInTemplate.length)

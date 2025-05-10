@@ -500,3 +500,40 @@ export function parseLocaleNumber(str: string, locale=(document?.documentElement
       .replace(new RegExp('\\' + decimalSeparator), '.')
   );
 }
+
+export function textNodesUnder(el: Element) {
+  const children = []
+  const walker = el.ownerDocument.createTreeWalker(el, 4)
+  while(walker.nextNode()) {
+    children.push(walker.currentNode)
+  }
+  return children as Text[]
+}
+
+
+export function isObject(item: any) {
+  return Boolean(item && typeof item === 'object' && !Array.isArray(item));
+}
+
+/**
+ * Deep merge two objects.
+ * @param target
+ * @param ...sources
+ */
+export function mergeDeep<T extends object, S extends object>(target: T, ...sources: S[]): T & S {
+  if (!sources.length) return target as any;
+  const source = sources.shift();
+
+  if (isObject(target) && isObject(source)) {
+    for (const key in source) {
+      if (isObject((source as any)[key])) {
+        if (!(target as any)[key]) Object.assign(target, { [key]: {} });
+        mergeDeep((target as any)[key], (source as any)[key]);
+      } else {
+        Object.assign(target, { [key]: (source as any)[key] });
+      }
+    }
+  }
+
+  return mergeDeep(target, ...sources) as T & S;
+}

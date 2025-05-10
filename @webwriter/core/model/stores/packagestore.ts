@@ -1,7 +1,7 @@
 import { cargoQueue } from "async"
 import MiniSearch from "minisearch"
 
-import { capitalizeWord, filterObject, hashCode, unscopePackageName } from "#utility"
+import { capitalizeWord, filterObject, hashCode, mergeDeep, unscopePackageName } from "#utility"
 import { CustomElementsManifest, ManifestCustomElementDeclaration, ManifestDeclaration, ManifestPropertyLike, MemberSettings, Package, SemVer, themes } from ".."
 import {version as appVersion} from "../../package.json"
 import { licenses, presets } from "../templates"
@@ -485,7 +485,10 @@ export class PackageStore {
         version.prerelease = [...version.prerelease, "local"]
         return new Package({...json, version}, {installed: true, localPath: "hidden"})
       })
-    local = await Promise.all(local.map(async pkg => pkg.extend({members: await this.readPackageMembers(pkg)})))
+    local = await Promise.all(local
+      .map(async pkg => pkg.extend({editingConfig: await this.readEditingConfig(pkg)}))
+      .map(async pkg => (await pkg).extend({members: await this.readPackageMembers(await pkg)}))
+    )
     await this.updateLocalWatchIntervals(local)
     final = available.map(pkg => pkg.extend({installed: this.installedPackages.includes(pkg.id)})).sort((a, b) => Number(!!b.installed) - Number(!!a.installed))
     const snippetData = await this.getSnippet(undefined)
@@ -529,11 +532,12 @@ export class PackageStore {
     if(resp.ok) {
       rawPkgs = await resp.json()
     }
-    const members = await Promise.all(rawPkgs.map(async pkg => this.readPackageMembers(pkg)))
+    const editingConfigs = await Promise.all(rawPkgs.map(async pkg => this.readEditingConfig(pkg)))
+    const members = await Promise.all(rawPkgs.map(async (pkg, i) => this.readPackageMembers({...pkg, editingConfig: editingConfigs[i]})))
     return rawPkgs.map((pkg, i) => {
       const trusted = PackageStore.allowedOrgs.some(org => pkg.name.startsWith(`${org}/`))
       try {
-        return new Package(pkg, {members: members[i], trusted})
+        return new Package({...pkg, editingConfig: editingConfigs[i]}, {members: members[i], trusted})
       }
       catch(err) {
         const parseIssues = JSON.parse((err as any)?.message)
@@ -560,9 +564,25 @@ export class PackageStore {
     // Warn for packages that register extra custom elements
   }
 
+  private async readEditingConfig(pkg: Package): Promise<Package["editingConfig"]> {
+    let _pkg = new Package(pkg)
+    const exports = _pkg.exports ?? {}
+    let externalEditingConfig
+    if("./editing-config.json" in exports) {
+      try {
+        const resp = await fetch(new URL(_pkg.id + exports["./editing-config.json"].slice(1), this.apiBase))
+        externalEditingConfig = JSON.parse(await resp.text())
+      }
+      catch(err) {
+        console.error(`Error reading external editing config: ${(err as Error).message}`)
+      }
+    }
+    return mergeDeep(externalEditingConfig ?? {}, pkg?.editingConfig ?? {})
+  }
+
   private async readPackageMembers(pkg: Package) {
-    const exports = pkg.exports ?? {}
-    const editingConfig = pkg?.editingConfig ?? {}
+    let _pkg = new Package(pkg)
+    const exports = _pkg.exports ?? {}
 
     const members = {} as Record<string, MemberSettings>
     for(const [rawName, p] of Object.entries(exports)) {
@@ -571,9 +591,9 @@ export class PackageStore {
       const isSnippet = name.split("/").at(-2) === "snippets"
       const isTheme = name.split("/").at(-2) === "themes"
       if(isWidget || isSnippet || isTheme) {
-        const memberSettings = editingConfig[name]
+        const memberSettings = pkg.editingConfig?.[name]
         let source: string | undefined
-        members[name] = {name, legacy: !rawName.endsWith(".*"), ...memberSettings, ...(source? {source}: undefined)}
+        members[name] = {name, legacy: isWidget && !rawName.endsWith(".*"), ...memberSettings, ...(source? {source}: undefined)}
       }
     }
     return members
