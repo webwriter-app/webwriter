@@ -4,7 +4,11 @@ import {exec as execSync} from "child_process"
 import {promisify} from "util"
 import { promises as fs } from "fs"
 import {join} from "path"
-import selfPkg from "./package.json" assert { type: "json" }
+
+const selfPkg = {
+  name: "@webwriter/build",
+  version: "1.4.1"
+}
 
 const exec = promisify(execSync)
 
