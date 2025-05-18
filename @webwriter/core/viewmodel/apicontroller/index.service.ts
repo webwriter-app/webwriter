@@ -550,20 +550,35 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
   let localIds: string[] = []
   let _ids: string[] = []
   let assets: Record<string, string> = {}
+  let pkgs: Record<string, any>[] = []
   const forPackage = typeof ids[0] === "object"
   if(!forPackage) {
-    _ids = [...ids] as string[]
+    // _ids = [...ids] as string[]
+    pkgs = (ids as string[]).map(id => {
+      const [idPart, path] = [id.split("/").slice(0, 2).join("/"), id.split("/").slice(2).join("/")]
+      const [_, rawName, version] = idPart.split("@")
+      const name = "@" + rawName
+      return {id, name, version, path}
+    })
+    _ids = Array.from(new Set(pkgs
+      .filter(pkg => !(new SemVer(pkg.version).prerelease.includes("local")))
+      .map(pkg => pkg.id)
+    ))
+    localIds = Array.from(new Set(pkgs
+      .filter(pkg => new SemVer(pkg.version).prerelease.includes("local"))
+      .map(pkg => pkg.name + "@0.0.0-local/" + pkg.path)
+    ))
   }
   else {
     // const pkgIds = ids.map(id => id.startsWith("@")? id.slice(1).split("/").slice(0, 2).join("/"): id.split("/")[0])
     // const pkgs = await Promise.all(pkgIds.map(id => getAsset(`${id}/package.json`).then(resp => resp.json()))) as any[]
-    const pkgs = ids as Record<string, any>[]
+    pkgs = ids as Record<string, any>[]
     assets = Object.fromEntries(pkgs.flatMap(pkg => {
       const version = new SemVer(pkg.version)
       const isLocal = version.prerelease.includes("local")
       const pkgId = `${pkg.name}@${pkg.version}`
       return Object.keys(pkg.exports)
-        .filter(k => k.startsWith("./") && (k.endsWith(".html") || k.endsWith(".css") || k.endsWith(".*")))
+        .filter(k => k.startsWith("./") && (k.endsWith(".html") || k.endsWith(".css") || k.endsWith(".*")) && !k.startsWith("./tests/"))
         .map(k => [
           pkgId + (k.endsWith(".*")? k.slice(1, -2) + ".css": k.slice(1)),
           new URL(pkgId + (pkg.exports[k]?.default ?? pkg.exports[k]).slice(1), isLocal? API_URL: CDN_URL).href.replace(".*", ".css")
@@ -572,19 +587,19 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
     _ids = Array.from(new Set(pkgs
       .filter(pkg => !(new SemVer(pkg.version).prerelease.includes("local")))
       .flatMap(pkg => Object.keys(pkg.exports)
-        .filter(k => k.startsWith("./") && k.endsWith(".*"))
+        .filter(k => k.startsWith("./") && k.endsWith(".*") && !k.startsWith("./tests/"))
         .map(k => pkg.name + "@" + pkg.version + k.slice(1, -2) + ".js")
       )
     ))
     localIds = Array.from(new Set(pkgs
       .filter(pkg => (new SemVer(pkg.version).prerelease.includes("local")))
       .flatMap(pkg => Object.keys(pkg.exports)
-        .filter(k => k.startsWith("./") && k.endsWith(".*"))
+        .filter(k => k.startsWith("./") && k.endsWith(".*") && !k.startsWith("./tests/"))
         .map(k => pkg.name + "@0.0.0-local" + k.slice(1, -2) + ".js")
       )
     ))
   }
-  const resolutions = forPackage? Object.fromEntries((ids as Record<string, any>[]).map(pkg => [pkg.name, pkg.version])): undefined
+  const resolutions = Object.fromEntries(pkgs.map(pkg => [pkg.name, pkg.version]))
   const generator = new Generator({cache: false, defaultProvider: "jsdelivr", resolutions})
   let allLinked = false
   do {
@@ -623,10 +638,12 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
         if(err.code === "MODULE_NOT_FOUND" && regexMatch) {
           console.warn(`Excluding faulty package ${regexMatch[1]}: ${err.message}`)
           localIds = localIds.filter(id => id !== regexMatch[1])
+          allLinkedLocal = true
         }
-        else if(err.cause.name === "NotFoundError" && notFoundMatch) {
+        else if(err?.cause?.name === "NotFoundError" && notFoundMatch) {
           const faultyPkgID = (new URL(notFoundMatch[1])).pathname.split("/").slice(3, 5).join("/")
           localIds = localIds.filter(id => !id.startsWith(faultyPkgID))
+          allLinkedLocal = true
         }
         else {
           console.error(err)
