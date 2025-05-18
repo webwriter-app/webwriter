@@ -1,0 +1,4391 @@
+<xliff xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:oasis:names:tc:xliff:document:1.2 http://docs.oasis-open.org/xliff/v1.2/os/xliff-core-1.2-strict.xsd" xmlns="urn:oasis:names:tc:xliff:document:1.2" version="1.2">
+  <file original="lit-localize-inputs" datatype="plaintext" source-language="en" target-language="zh-Hant">
+    <body>
+      <trans-unit id="sa311a24c1471a974">
+        <source>Document</source>
+        <target>文件</target>
+      </trans-unit>
+      <trans-unit id="sf9f2c719a04066ec">
+        <source>App</source>
+        <target>應用程式</target>
+      </trans-unit>
+      <trans-unit id="sa75b95980cd80e78">
+        <source>Editor</source>
+        <target>編輯</target>
+      </trans-unit>
+      <trans-unit id="s2a75c946ef4dcab7">
+        <source>Miscellaneous</source>
+        <target>雜項</target>
+      </trans-unit>
+      <trans-unit id="s33f85f24c0f5f008">
+        <source>Save</source>
+        <target>節省</target>
+      </trans-unit>
+      <trans-unit id="s0c883713b83616a8">
+        <source>Save the active document</source>
+        <target>儲存使用中的文件</target>
+      </trans-unit>
+      <trans-unit id="s8670e5ad3bf0dcf8">
+        <source>Save As</source>
+        <target>另存新檔</target>
+      </trans-unit>
+      <trans-unit id="s38980f98cb07ceb8">
+        <source>Save the active document as a copy</source>
+        <target>將使用中的文件儲存為副本</target>
+      </trans-unit>
+      <trans-unit id="sa37fee6a52d18063">
+        <source>Delete document</source>
+        <target>刪除文件</target>
+      </trans-unit>
+      <trans-unit id="sf64a8229a8136552">
+        <source>Delete a document</source>
+        <target>刪除文件</target>
+      </trans-unit>
+      <trans-unit id="s2df075aface0dab8">
+        <source>Share</source>
+        <target>分享</target>
+      </trans-unit>
+      <trans-unit id="sb7fb7568f6883ab8">
+        <source>Share the active document</source>
+        <target>分享使用中的文件</target>
+      </trans-unit>
+      <trans-unit id="seec6798afe90ffc8">
+        <source>Print</source>
+        <target>列印</target>
+      </trans-unit>
+      <trans-unit id="s600fd23c9ce971e8">
+        <source>Print the active document</source>
+        <target>列印使用中的文件</target>
+      </trans-unit>
+      <trans-unit id="s8f4be9f086eb530f">
+        <source>Undo</source>
+        <target>撤銷</target>
+      </trans-unit>
+      <trans-unit id="s7beb1e77e82363eb">
+        <source>Undo the last change in the active document</source>
+        <target>撤消活動文件中的最後變更</target>
+      </trans-unit>
+      <trans-unit id="s7417792bbe720149">
+        <source>Redo</source>
+        <target>重做</target>
+      </trans-unit>
+      <trans-unit id="s640bc7710d0143ce">
+        <source>Redo the last undone change in the active document</source>
+        <target>在使用中的文件中重做上次未完成的變更</target>
+      </trans-unit>
+      <trans-unit id="se6297163cac9d276">
+        <source>Edit source</source>
+        <target>編輯來源</target>
+      </trans-unit>
+      <trans-unit id="s281d957112b10f12">
+        <source>Edit the HTML of the document directly</source>
+        <target>直接編輯文件的 HTML</target>
+      </trans-unit>
+      <trans-unit id="s2474e7fb1aec9f05">
+        <source>Test</source>
+        <target>測試</target>
+      </trans-unit>
+      <trans-unit id="sc546f489f9c0cced">
+        <source>Toggles the test mode for the active document</source>
+        <target>切換作用中文件的測試模式</target>
+      </trans-unit>
+      <trans-unit id="s417b90913e05bc17">
+        <source>Preview</source>
+        <target>預覽</target>
+      </trans-unit>
+      <trans-unit id="safc6f203342d09e2">
+        <source>Toggles the preview for the active document</source>
+        <target>切換使用中文件的預覽</target>
+      </trans-unit>
+      <trans-unit id="s10f3845975a0351e">
+        <source>Edit Metadata</source>
+        <target>編輯元資料</target>
+      </trans-unit>
+      <trans-unit id="sea6e7291e27ec53f">
+        <source>Toggles the metadata editor</source>
+        <target>切換元資料編輯器</target>
+      </trans-unit>
+      <trans-unit id="s70178e04a3b691b6">
+        <source>Open Settings</source>
+        <target>開啟設定</target>
+      </trans-unit>
+      <trans-unit id="s0816468df86e4036">
+        <source>Opens the settings</source>
+        <target>開啟設定</target>
+      </trans-unit>
+      <trans-unit id="s1f7698c061c208c9">
+        <source>Open</source>
+        <target>開啟</target>
+      </trans-unit>
+      <trans-unit id="s16f2f1c2c516d307">
+        <source>Open a document</source>
+        <target>開啟文件</target>
+      </trans-unit>
+      <trans-unit id="s382a2aa3984474dd">
+        <source>Create</source>
+        <target>建立</target>
+      </trans-unit>
+      <trans-unit id="s64dc1fc7e3db45c9">
+        <source>Create a new document</source>
+        <target>建立新文件</target>
+      </trans-unit>
+      <trans-unit id="sd10fdbe6caf9a998">
+        <source>Line Break</source>
+        <target>換行</target>
+      </trans-unit>
+      <trans-unit id="sbefb6064cba01844">
+        <source>Insert a line break</source>
+        <target>插入換行符</target>
+      </trans-unit>
+      <trans-unit id="s410c465a5993f82d">
+        <source>Line Break Opportunity</source>
+        <target>換行機會</target>
+      </trans-unit>
+      <trans-unit id="s8df30fe2a50d3479">
+        <source>Insert a line break opportunity</source>
+        <target>插入換行機會</target>
+      </trans-unit>
+      <trans-unit id="sf7c0eba7c822e3d6">
+        <source>Bold</source>
+        <target>粗體</target>
+      </trans-unit>
+      <trans-unit id="sb9e9a7dd45966756">
+        <source>Mark the selection as bold</source>
+        <target>將選擇標記為粗體</target>
+      </trans-unit>
+      <trans-unit id="s523eb9043213ff0d">
+        <source>Italic</source>
+        <target>斜體</target>
+      </trans-unit>
+      <trans-unit id="s92f846b9be2e8e8d">
+        <source>Mark the selection as italic</source>
+        <target>將選取標示為斜體</target>
+      </trans-unit>
+      <trans-unit id="sb206d700d26b14ff">
+        <source>Underline</source>
+        <target>底線</target>
+      </trans-unit>
+      <trans-unit id="s09c3f1d21de14ae1">
+        <source>Mark the selection as underlined</source>
+        <target>將選擇標記為下劃線</target>
+      </trans-unit>
+      <trans-unit id="s99b38e000175cc84">
+        <source>Strikethrough</source>
+        <target>刪除線</target>
+      </trans-unit>
+      <trans-unit id="s0396202b716732ec">
+        <source>Mark the selection as struck through</source>
+        <target>標記選擇已通過</target>
+      </trans-unit>
+      <trans-unit id="s3cf89cb47fdde7e9">
+        <source>Link</source>
+        <target>連結</target>
+      </trans-unit>
+      <trans-unit id="sf8e82313fa411494">
+        <source>Mark the selection as a link</source>
+        <target>將選擇標記為連結</target>
+      </trans-unit>
+      <trans-unit id="sdf946172dfa0328f">
+        <source>Superscript</source>
+        <target>上標</target>
+      </trans-unit>
+      <trans-unit id="saf3da7c95cb17260">
+        <source>Mark the selection as a superscript</source>
+        <target>將選取標記為上標記</target>
+      </trans-unit>
+      <trans-unit id="s587ac858dd80f6fa">
+        <source>Subscript</source>
+        <target>下標</target>
+      </trans-unit>
+      <trans-unit id="sc5cb39478b9b7625">
+        <source>Mark the selection as a subscript</source>
+        <target>將選取標記為下標</target>
+      </trans-unit>
+      <trans-unit id="s3643189d1abbb7f4">
+        <source>Code</source>
+        <target>代碼</target>
+      </trans-unit>
+      <trans-unit id="sf86bd4d2982f3b74">
+        <source>Mark the selection as code</source>
+        <target>將選擇標記為代碼</target>
+      </trans-unit>
+      <trans-unit id="sd29dc07235eea0f5">
+        <source>Quotation</source>
+        <target>報價</target>
+      </trans-unit>
+      <trans-unit id="s0e4862e87c7d53ce">
+        <source>Mark the selection as a quotation</source>
+        <target>將選取標記為引文</target>
+      </trans-unit>
+      <trans-unit id="sfb9b6edb0ed378c9">
+        <source>Citation Source</source>
+        <target>引用來源</target>
+      </trans-unit>
+      <trans-unit id="s4a894f57eba1cf1e">
+        <source>Keyboard Shortcut</source>
+        <target>鍵盤捷徑</target>
+      </trans-unit>
+      <trans-unit id="s41c724f0698148e9">
+        <source>Mark the selection as a keyboard shortcut</source>
+        <target>將選取標記為鍵盤快捷鍵</target>
+      </trans-unit>
+      <trans-unit id="s0ca5c0460199cba1">
+        <source>Abbreviation</source>
+        <target>縮寫</target>
+      </trans-unit>
+      <trans-unit id="s2206c42e5b835e6e">
+        <source>Mark the selection as an abbreviation</source>
+        <target>將選擇標記為縮寫</target>
+      </trans-unit>
+      <trans-unit id="sf67571992e7dc88e">
+        <source>Full Term</source>
+        <target>全期</target>
+      </trans-unit>
+      <trans-unit id="s1dfb744260fb3a01">
+        <source>Bidirectional Isolate</source>
+        <target>雙向隔離</target>
+      </trans-unit>
+      <trans-unit id="sa39c7ac1d37f3bce">
+        <source>Mark the selection as a 'bidirectional isolate'</source>
+        <target>將選取標記為「雙向隔離</target>
+      </trans-unit>
+      <trans-unit id="s4c402ff5355fd310">
+        <source>Bidirectional Override</source>
+        <target>雙向覆寫</target>
+      </trans-unit>
+      <trans-unit id="s02ab1ea8e5100fc1">
+        <source>Mark the selection as a 'bidirectional override'</source>
+        <target>將選擇標記為「雙向覆寫</target>
+      </trans-unit>
+      <trans-unit id="se62385ac082368d2">
+        <source>Mark the selection as a citation source</source>
+        <target>將選取標記為引用來源</target>
+      </trans-unit>
+      <trans-unit id="s36a194e38d653a26">
+        <source>Data Annotation</source>
+        <target>資料註釋</target>
+      </trans-unit>
+      <trans-unit id="s5a1a0898baf20675">
+        <source>Mark the selection with a data annotation</source>
+        <target>使用資料註釋標記選取</target>
+      </trans-unit>
+      <trans-unit id="s9d668a34af4128ff">
+        <source>Deletion</source>
+        <target>刪除</target>
+      </trans-unit>
+      <trans-unit id="s1c246045629b0016">
+        <source>Mark the selection as a deletion</source>
+        <target>將選取標記為刪除</target>
+      </trans-unit>
+      <trans-unit id="s94653c76b2d86a04">
+        <source>Defined Term</source>
+        <target>定義期限</target>
+      </trans-unit>
+      <trans-unit id="s1082e1649793dca9">
+        <source>Mark the selection as a defined term</source>
+        <target>將選擇標記為定義詞</target>
+      </trans-unit>
+      <trans-unit id="s92b177e579ef7b97">
+        <source>Emphasis</source>
+        <target>強調</target>
+      </trans-unit>
+      <trans-unit id="s782eac2b3e80323d">
+        <source>Mark the selection as emphasized</source>
+        <target>將選擇標記為強調</target>
+      </trans-unit>
+      <trans-unit id="s50489ffb1bde152e">
+        <source>Insertion</source>
+        <target>插入</target>
+      </trans-unit>
+      <trans-unit id="sd1a78e667a1a139f">
+        <source>Mark the selection as an insertion</source>
+        <target>將選取標記為插入</target>
+      </trans-unit>
+      <trans-unit id="s3d6a732c792ccb9e">
+        <source>Ruby Annotation</source>
+        <target>Ruby 註釋</target>
+      </trans-unit>
+      <trans-unit id="sdf62e305e1594805">
+        <source>Mark the selection with a ruby annotation</source>
+        <target>以 ruby 註解標記選取區</target>
+      </trans-unit>
+      <trans-unit id="s474f0eec369d02a4">
+        <source>Sample Output</source>
+        <target>樣本輸出</target>
+      </trans-unit>
+      <trans-unit id="sf21c1f60c7515f44">
+        <source>Mark the selection as sample output</source>
+        <target>將選擇標記為樣本輸出</target>
+      </trans-unit>
+      <trans-unit id="s4eace13b3ed74187">
+        <source>Side Comment</source>
+        <target>側面評論</target>
+      </trans-unit>
+      <trans-unit id="s864b0e6270e97246">
+        <source>Mark the selection as a side comment</source>
+        <target>將選擇標記為旁注</target>
+      </trans-unit>
+      <trans-unit id="s7bdf0fd5b014d36c">
+        <source>Strong Importance</source>
+        <target>強大的重要性</target>
+      </trans-unit>
+      <trans-unit id="s550839f3e4e205bb">
+        <source>Mark the selection as strongly important</source>
+        <target>將選擇標記為非常重要</target>
+      </trans-unit>
+      <trans-unit id="s3d3efd1e19bdcfb4">
+        <source>Date/Time Annotation</source>
+        <target>日期/時間註釋</target>
+      </trans-unit>
+      <trans-unit id="s47e257ae643b5851">
+        <source>Mark the selection as a date/time annotation</source>
+        <target>將選取標記為日期/時間註釋</target>
+      </trans-unit>
+      <trans-unit id="sec2557a35b702525">
+        <source>Variable</source>
+        <target>可變</target>
+      </trans-unit>
+      <trans-unit id="sf59c9081d106dd9c">
+        <source>Mark the selection as a variable</source>
+        <target>將選擇標記為變數</target>
+      </trans-unit>
+      <trans-unit id="sb60bc1250aad44c1">
+        <source>Span</source>
+        <target>跨度</target>
+      </trans-unit>
+      <trans-unit id="s0a7db790db1fc45c">
+        <source>Mark the selection as a span</source>
+        <target>將選取標記為跨距</target>
+      </trans-unit>
+      <trans-unit id="s599dcd2472c75c19">
+        <source>Paragraph</source>
+        <target>段落</target>
+      </trans-unit>
+      <trans-unit id="s5b8cc9bb61ddce15">
+        <source>Insert a paragraph</source>
+        <target>插入段落</target>
+      </trans-unit>
+      <trans-unit id="s6f84199e62584905">
+        <source>Preformatted Text</source>
+        <target>預先格式化的文字</target>
+      </trans-unit>
+      <trans-unit id="sb3ba3276ae93627c">
+        <source>Insert a preformatted text block</source>
+        <target>插入預先格式化的文字區塊</target>
+      </trans-unit>
+      <trans-unit id="s55905c735052d295">
+        <source>Thematic Break</source>
+        <target>主題休息</target>
+      </trans-unit>
+      <trans-unit id="s936aa0b239679585">
+        <source>Insert a thematic break (usually displayed as a horizontal line)</source>
+        <target>插入主題中斷 (通常顯示為水平線)</target>
+      </trans-unit>
+      <trans-unit id="s2f2044f2431a32d5">
+        <source>Heading</source>
+        <target>標題</target>
+      </trans-unit>
+      <trans-unit id="s29f21c34494d614d">
+        <source>Insert a heading (level 1)</source>
+        <target>插入標題（第 1 級）</target>
+      </trans-unit>
+      <trans-unit id="sbc5f2e81604bb667">
+        <source>Heading 2</source>
+        <target>標題 2</target>
+      </trans-unit>
+      <trans-unit id="s29ee7434494a0dfe">
+        <source>Insert a heading (level 2)</source>
+        <target>插入標題（第 2 級）</target>
+      </trans-unit>
+      <trans-unit id="sbc5f2d81604bb4b4">
+        <source>Heading 3</source>
+        <target>標題 3</target>
+      </trans-unit>
+      <trans-unit id="s29eb103449472e3b">
+        <source>Insert a heading (level 3)</source>
+        <target>插入標題（第 3 級）</target>
+      </trans-unit>
+      <trans-unit id="sbc5f2c81604bb301">
+        <source>Heading 4</source>
+        <target>標題 4</target>
+      </trans-unit>
+      <trans-unit id="s2a031834495bcdb4">
+        <source>Insert a heading (level 4)</source>
+        <target>插入標題（第 4 級）</target>
+      </trans-unit>
+      <trans-unit id="sbc5f2b81604bb14e">
+        <source>Heading 5</source>
+        <target>標題 5</target>
+      </trans-unit>
+      <trans-unit id="s29ff743449588131">
+        <source>Insert a heading (level 5)</source>
+        <target>插入標題（第 5 級）</target>
+      </trans-unit>
+      <trans-unit id="sbc5f2a81604baf9b">
+        <source>Heading 6</source>
+        <target>標題 6</target>
+      </trans-unit>
+      <trans-unit id="s29fbfc3449557f72">
+        <source>Insert a heading (level 6)</source>
+        <target>插入標題（第 6 級）</target>
+      </trans-unit>
+      <trans-unit id="sec8b0b6c729816b6">
+        <source>Heading Group</source>
+        <target>標題組</target>
+      </trans-unit>
+      <trans-unit id="s4d528b416ac8dee2">
+        <source>Insert a heading group</source>
+        <target>插入標題群組</target>
+      </trans-unit>
+      <trans-unit id="s3d249bb480032121">
+        <source>List</source>
+        <target>清單</target>
+      </trans-unit>
+      <trans-unit id="s0978fb5ba3145996">
+        <source>Insert a list (unordered)</source>
+        <target>插入清單（無序）</target>
+      </trans-unit>
+      <trans-unit id="s377e24af9628c37e">
+        <source>Ordered List</source>
+        <target>排序清單</target>
+      </trans-unit>
+      <trans-unit id="sdb711380a28fec75">
+        <source>Insert a list (ordered)</source>
+        <target>插入清單 (有序)</target>
+      </trans-unit>
+      <trans-unit id="s355b21b89ce5d9c5">
+        <source>Details</source>
+        <target>詳細資訊</target>
+      </trans-unit>
+      <trans-unit id="sb6103872073d369e">
+        <source>Insert details</source>
+        <target>插入詳細資訊</target>
+      </trans-unit>
+      <trans-unit id="sc9474bf7a0668d73">
+        <source>Summary</source>
+        <target>摘要</target>
+      </trans-unit>
+      <trans-unit id="sec30fbb20f102670">
+        <source>Insert summary</source>
+        <target>插入摘要</target>
+      </trans-unit>
+      <trans-unit id="s337a1e9022a8d19f">
+        <source>Table</source>
+        <target>表格</target>
+      </trans-unit>
+      <trans-unit id="s88a62d29529948fb">
+        <source>Insert a table</source>
+        <target>插入表格</target>
+      </trans-unit>
+      <trans-unit id="s0cf10c4f40588f8d">
+        <source>Table Caption</source>
+        <target>表格說明</target>
+      </trans-unit>
+      <trans-unit id="s0c11e479416c8421">
+        <source>Insert a table caption</source>
+        <target>插入表格標題</target>
+      </trans-unit>
+      <trans-unit id="s613c6ff83883c04f">
+        <source>Table Column</source>
+        <target>表列</target>
+      </trans-unit>
+      <trans-unit id="sd52660ee947ca58b">
+        <source>Insert a table column</source>
+        <target>插入表格欄位</target>
+      </trans-unit>
+      <trans-unit id="s8517ae4da104b004">
+        <source>Table Column Group</source>
+        <target>表列群組</target>
+      </trans-unit>
+      <trans-unit id="s28b6246ce616a548">
+        <source>Insert a table column group</source>
+        <target>插入表格列群</target>
+      </trans-unit>
+      <trans-unit id="s21d61916eb8d137d">
+        <source>Table Body</source>
+        <target>表體</target>
+      </trans-unit>
+      <trans-unit id="s156647179b21d351">
+        <source>Insert a table body</source>
+        <target>插入表格正文</target>
+      </trans-unit>
+      <trans-unit id="sb616811735bfbafd">
+        <source>Table cell</source>
+        <target>表格單元</target>
+      </trans-unit>
+      <trans-unit id="s9faf26107ed49fb9">
+        <source>Insert a table cell</source>
+        <target>插入表格儲存格</target>
+      </trans-unit>
+      <trans-unit id="sa7af797a46c7d09a">
+        <source>Table Footer</source>
+        <target>表格頁尾</target>
+      </trans-unit>
+      <trans-unit id="sc252a4e091763606">
+        <source>Insert a table footer</source>
+        <target>插入表格頁腳</target>
+      </trans-unit>
+      <trans-unit id="sb68e83cda6c85af8">
+        <source>Table header</source>
+        <target>表頭</target>
+      </trans-unit>
+      <trans-unit id="s8f29e48d6b9a1aa8">
+        <source>Insert a table header row</source>
+        <target>插入表格標題行</target>
+      </trans-unit>
+      <trans-unit id="s153bc3c3aa39587b">
+        <source>Table Head</source>
+        <target>桌頭</target>
+      </trans-unit>
+      <trans-unit id="s5d18ca4c3111be6f">
+        <source>Insert a table head</source>
+        <target>插入表頭</target>
+      </trans-unit>
+      <trans-unit id="s52af5d7ac34c2163">
+        <source>Table Row</source>
+        <target>表列</target>
+      </trans-unit>
+      <trans-unit id="s1988d71ef8060edf">
+        <source>Insert a table row</source>
+        <target>插入表格行</target>
+      </trans-unit>
+      <trans-unit id="s5ed03bb1f3a15949">
+        <source>Picture</source>
+        <target>圖片</target>
+      </trans-unit>
+      <trans-unit id="s93566b84230af4f5">
+        <source>Insert a picture</source>
+        <target>插入圖片</target>
+      </trans-unit>
+      <trans-unit id="s4f26e7cb7c0a8318">
+        <source>Vector Drawing</source>
+        <target>向量繪圖</target>
+      </trans-unit>
+      <trans-unit id="sfbbab09dbe553571">
+        <source>Insert a vector drawing (SVG)</source>
+        <target>插入向量繪圖 (SVG)</target>
+      </trans-unit>
+      <trans-unit id="s5f43af3669b1e098">
+        <source>Source</source>
+        <target>來源</target>
+      </trans-unit>
+      <trans-unit id="sa7dc6b8ef3f595dc">
+        <source>Insert a source</source>
+        <target>插入來源</target>
+      </trans-unit>
+      <trans-unit id="s9e85800d3700e31c">
+        <source>Track</source>
+        <target>軌跡</target>
+      </trans-unit>
+      <trans-unit id="sf39736a666dbb038">
+        <source>Insert a track</source>
+        <target>插入音軌</target>
+      </trans-unit>
+      <trans-unit id="s08e6bd98452e6bb9">
+        <source>Audio</source>
+        <target>音訊</target>
+      </trans-unit>
+      <trans-unit id="s96532132a29dd542">
+        <source>Insert audio</source>
+        <target>插入音訊</target>
+      </trans-unit>
+      <trans-unit id="s85186a61e0d55bac">
+        <source>Video</source>
+        <target>視訊</target>
+      </trans-unit>
+      <trans-unit id="s9e28faa598332e2b">
+        <source>Insert video</source>
+        <target>插入視訊</target>
+      </trans-unit>
+      <trans-unit id="s82665b2ffabc9c0a">
+        <source>Website</source>
+        <target>網站</target>
+      </trans-unit>
+      <trans-unit id="sc3998b77d72c2932">
+        <source>Insert a website (as an inline frame)</source>
+        <target>插入網站（作為內嵌框架）</target>
+      </trans-unit>
+      <trans-unit id="sa78a67272a4a6f95">
+        <source>Math Formula</source>
+        <target>數學公式</target>
+      </trans-unit>
+      <trans-unit id="saaad98061a20ac39">
+        <source>Insert a math formula</source>
+        <target>插入數學公式</target>
+      </trans-unit>
+      <trans-unit id="s4802bb8eb52fbdeb">
+        <source>Portal</source>
+        <target>入口網站</target>
+      </trans-unit>
+      <trans-unit id="sd4368b12645d3c0f">
+        <source>Insert a portal</source>
+        <target>插入入口網站</target>
+      </trans-unit>
+      <trans-unit id="s9565553d163fc92a">
+        <source>Script</source>
+        <target>腳本</target>
+      </trans-unit>
+      <trans-unit id="sbf00e1ee999ea94e">
+        <source>Insert a script</source>
+        <target>插入腳本</target>
+      </trans-unit>
+      <trans-unit id="s7f326a142e856656">
+        <source>Style</source>
+        <target>風格</target>
+      </trans-unit>
+      <trans-unit id="s6dfb502188a8c7c2">
+        <source>Insert a style</source>
+        <target>插入樣式</target>
+      </trans-unit>
+      <trans-unit id="se47baf2fd16b9d2b">
+        <source>Template</source>
+        <target>範本</target>
+      </trans-unit>
+      <trans-unit id="s7b4ba250601b8667">
+        <source>Insert a template</source>
+        <target>插入範本</target>
+      </trans-unit>
+      <trans-unit id="s919e1724f589c9b1">
+        <source>Slot</source>
+        <target>插槽</target>
+      </trans-unit>
+      <trans-unit id="s32911e52ee8ac745">
+        <source>Insert a slot</source>
+        <target>插入插槽</target>
+      </trans-unit>
+      <trans-unit id="sbbe639e3a3ed95d1">
+        <source>NoScript</source>
+        <target>NoScript</target>
+      </trans-unit>
+      <trans-unit id="s2d995a37cf5e4995">
+        <source>Insert a NoScript</source>
+        <target>插入 NoScript</target>
+      </trans-unit>
+      <trans-unit id="sb0d4f0f7993cf085">
+        <source>Set font size</source>
+        <target>設定字型大小</target>
+      </trans-unit>
+      <trans-unit id="s37fa3b9cd51c2dfd">
+        <source>Sets the selection's font size</source>
+        <target>設定選取的字型大小</target>
+      </trans-unit>
+      <trans-unit id="s9e3dbb678150edd4">
+        <source>Set font family</source>
+        <target>設定字型族</target>
+      </trans-unit>
+      <trans-unit id="s1626a7e10a9f9dcc">
+        <source>Sets the selection's font family</source>
+        <target>設定選取的字型</target>
+      </trans-unit>
+      <trans-unit id="sb1494c08c8c720d1">
+        <source>Set text color</source>
+        <target>設定文字顏色</target>
+      </trans-unit>
+      <trans-unit id="se1f5bb0386c88f96">
+        <source>Sets the color of the selected text</source>
+        <target>設定選取文字的顏色</target>
+      </trans-unit>
+      <trans-unit id="sa65d4ad99f1d8c06">
+        <source>Set text background</source>
+        <target>設定文字背景</target>
+      </trans-unit>
+      <trans-unit id="s34f724979a124c50">
+        <source>Sets the background color of the selected text</source>
+        <target>設定選取文字的背景顏色</target>
+      </trans-unit>
+      <trans-unit id="se219da7b1e955c65">
+        <source>Clear formatting</source>
+        <target>格式清晰</target>
+      </trans-unit>
+      <trans-unit id="s256ab831a48c941c">
+        <source>Removes all text formatting from the selection</source>
+        <target>移除選取的所有文字格式</target>
+      </trans-unit>
+      <trans-unit id="s621ad19d35ba7742">
+        <source>Copy selection</source>
+        <target>複製選擇</target>
+      </trans-unit>
+      <trans-unit id="s365280e16a8ea32d">
+        <source>Copy the selection</source>
+        <target>複製選取</target>
+      </trans-unit>
+      <trans-unit id="s73cb20c838e761e1">
+        <source>Cut selection</source>
+        <target>切割選擇</target>
+      </trans-unit>
+      <trans-unit id="s8e715248c3a78446">
+        <source>Cut the selection</source>
+        <target>剪切選擇</target>
+      </trans-unit>
+      <trans-unit id="s13ef8ca26ca8861b">
+        <source>Cut element</source>
+        <target>切割元件</target>
+      </trans-unit>
+      <trans-unit id="s2ced8e8fafb499f6">
+        <source>Delete element</source>
+        <target>刪除元件</target>
+      </trans-unit>
+      <trans-unit id="s3eca5a034978754b">
+        <source>Delete the selection</source>
+        <target>刪除選擇</target>
+      </trans-unit>
+      <trans-unit id="s95c161f68e5180a5">
+        <source>Inspect selection</source>
+        <target>檢查選擇</target>
+      </trans-unit>
+      <trans-unit id="s4c1535f316305a2a">
+        <source>Inspect the selection</source>
+        <target>檢查選擇</target>
+      </trans-unit>
+      <trans-unit id="sbba0156f795d8c07">
+        <source>Edit selection</source>
+        <target>編輯選擇</target>
+      </trans-unit>
+      <trans-unit id="sbd181cd54b8402a4">
+        <source>Edit the selection</source>
+        <target>編輯選擇</target>
+      </trans-unit>
+      <trans-unit id="s06634274f19b0572">
+        <source>Pin selection</source>
+        <target>針腳選擇</target>
+      </trans-unit>
+      <trans-unit id="sa53c5cb03a8fda50">
+        <source>Pin the selection as a snippet in the palette</source>
+        <target>將選取區釘選為調色板中的片段</target>
+      </trans-unit>
+      <trans-unit id="sf14c35392ec7bf10">
+        <source>This feature is unavailable in Firefox. It is available in Chrome or Edge.</source>
+        <target>此功能在 Firefox 中不可用。在 Chrome 或 Edge 中則可用。</target>
+      </trans-unit>
+      <trans-unit id="s840fa49e8989c028">
+        <source>Position/Shape</source>
+        <target>位置/形狀</target>
+      </trans-unit>
+      <trans-unit id="sa589e1df65dde0ec">
+        <source>Set the size, padding, and margins of the selected elements</source>
+        <target>設定選取元素的大小、padding 及 margins</target>
+      </trans-unit>
+      <trans-unit id="s2e4818861000b13f">
+        <source>Layout</source>
+        <target>佈局</target>
+      </trans-unit>
+      <trans-unit id="s2e39b99cf23606fa">
+        <source>Set the layout of the selected elements</source>
+        <target>設定選取元素的佈局</target>
+      </trans-unit>
+      <trans-unit id="s5c63af7695445fcf">
+        <source>Text Style</source>
+        <target>文字樣式</target>
+      </trans-unit>
+      <trans-unit id="sc8d2c7f6c33a2b32">
+        <source>Set text style (alignment, indentation, spacing, etc.) of selected elements</source>
+        <target>設定選取元素的文字樣式（對齊、縮排、間距等</target>
+      </trans-unit>
+      <trans-unit id="seb4e52ef5ec7a7dc">
+        <source>Colors/Effects</source>
+        <target>顏色/效果</target>
+      </trans-unit>
+      <trans-unit id="s105a06836c40fcb4">
+        <source>Set filters, color, and blending of selected elements</source>
+        <target>設定選取元素的濾鏡、顏色和混合效果</target>
+      </trans-unit>
+      <trans-unit id="s7060970b5ed20a58">
+        <source>Interactivity</source>
+        <target>互動性</target>
+      </trans-unit>
+      <trans-unit id="s7f09197a4814079b">
+        <source>Set interactivity options for selected elements</source>
+        <target>為選取的元素設定互動性選項</target>
+      </trans-unit>
+      <trans-unit id="s762e5704cc84089d">
+        <source>Set other style options of selected elements</source>
+        <target>設定選取元素的其他樣式選項</target>
+      </trans-unit>
+      <trans-unit id="s83420ad7b6a14db5">
+        <source>Toggle Dev Tools</source>
+        <target>切換開發工具</target>
+      </trans-unit>
+      <trans-unit id="s7af555180b30a947">
+        <source>Open the developer tools</source>
+        <target>開啟開發者工具</target>
+      </trans-unit>
+      <trans-unit id="s3649bacefe731bf6">
+        <source>Toggle Toolbox</source>
+        <target>切換工具箱</target>
+      </trans-unit>
+      <trans-unit id="s542fcefa0bbaed86">
+        <source>Open or close the toolbox (only on narrow screens, otherwise, the toolbox is always visible on the side).</source>
+        <target>開啟或關閉工具箱（僅適用於窄螢幕，否則工具箱總是在側邊可見）。</target>
+      </trans-unit>
+      <trans-unit id="s380d17664bb69531">
+        <source>Insert column before</source>
+        <target>之前插入欄位</target>
+      </trans-unit>
+      <trans-unit id="s12946ec1b850962c">
+        <source>Insert column after</source>
+        <target>在</target>
+      </trans-unit>
+      <trans-unit id="s0458872c43beadef">
+        <source>Insert row before</source>
+        <target>在</target>
+      </trans-unit>
+      <trans-unit id="s42ffdab1291fb3de">
+        <source>Insert row after</source>
+        <target>在</target>
+      </trans-unit>
+      <trans-unit id="s77318393dfdb0775">
+        <source>Remove row</source>
+        <target>移除行</target>
+      </trans-unit>
+      <trans-unit id="sa8b55cab62e439b5">
+        <source>Remove column</source>
+        <target>移除欄位</target>
+      </trans-unit>
+      <trans-unit id="sc6415b50ff928294">
+        <source>List item</source>
+        <target>清單項目</target>
+      </trans-unit>
+      <trans-unit id="sc24bda3c061fddf8">
+        <source>Clickable area</source>
+        <target>可點選區域</target>
+      </trans-unit>
+      <trans-unit id="s5068560b8d39663d">
+        <source>Clickable map</source>
+        <target>點選地圖</target>
+      </trans-unit>
+      <trans-unit id="s814d528c8af55807">
+        <source>Definition list item</source>
+        <target>定義清單項</target>
+      </trans-unit>
+      <trans-unit id="s9c8df9626d152d5a">
+        <source>Definition list term</source>
+        <target>定義清單詞彙</target>
+      </trans-unit>
+      <trans-unit id="s07808b0ca6da8fef">
+        <source>Fenced Website</source>
+        <target>圍欄網站</target>
+      </trans-unit>
+      <trans-unit id="s6d8c02aee480af7a">
+        <source>Menu</source>
+        <target>選單</target>
+      </trans-unit>
+      <trans-unit id="s730182ad28374cda">
+        <source>Object</source>
+        <target>物件</target>
+      </trans-unit>
+      <trans-unit id="s123bea44f38abccf">
+        <source>Insert object</source>
+        <target>插入物件</target>
+      </trans-unit>
+      <trans-unit id="scace301a88231cce">
+        <source>Embed</source>
+        <target>嵌入</target>
+      </trans-unit>
+      <trans-unit id="s91c5ed7769d00b65">
+        <source>Insert embed</source>
+        <target>插入嵌入</target>
+      </trans-unit>
+      <trans-unit id="sc50d09edf9325339">
+        <source>Dialog</source>
+        <target>對話</target>
+      </trans-unit>
+      <trans-unit id="sff99962304ac7d25">
+        <source>Insert a dialog</source>
+        <target>插入對話框</target>
+      </trans-unit>
+      <trans-unit id="s9ffe1bbe64712bf1">
+        <source>Canvas</source>
+        <target>帆布</target>
+      </trans-unit>
+      <trans-unit id="sa7dbe35b758c138d">
+        <source>Insert a canvas</source>
+        <target>插入畫布</target>
+      </trans-unit>
+      <trans-unit id="s3d93f9ea0c5a13fa">
+        <source>Image</source>
+        <target>圖片</target>
+      </trans-unit>
+      <trans-unit id="s8bc4affa761aa8a2">
+        <source>Insert an image</source>
+        <target>插入圖片</target>
+      </trans-unit>
+      <trans-unit id="sc43767deea72e9f3">
+        <source>Description List</source>
+        <target>說明清單</target>
+      </trans-unit>
+      <trans-unit id="saf312eaeec77a802">
+        <source>Insert a description list (glossary, term list)</source>
+        <target>插入描述清單（詞彙表、術語清單）</target>
+      </trans-unit>
+      <trans-unit id="s0312976fe9da5951">
+        <source>Button</source>
+        <target>按鈕</target>
+      </trans-unit>
+      <trans-unit id="sd60c9bbc51375635">
+        <source>Insert a button</source>
+        <target>插入按鈕</target>
+      </trans-unit>
+      <trans-unit id="sdb1595f5c742dfbb">
+        <source>Input</source>
+        <target>輸入</target>
+      </trans-unit>
+      <trans-unit id="s29b24c06315e9343">
+        <source>Insert an input</source>
+        <target>插入輸入</target>
+      </trans-unit>
+      <trans-unit id="s9abadcc828884d7b">
+        <source>Textarea</source>
+        <target>文字區域</target>
+      </trans-unit>
+      <trans-unit id="sf4e0e02a5277ef23">
+        <source>Insert an textarea</source>
+        <target>插入文字區域</target>
+      </trans-unit>
+      <trans-unit id="sfc63e31ac7c956ed">
+        <source>Select</source>
+        <target>選擇</target>
+      </trans-unit>
+      <trans-unit id="s531056f039febd39">
+        <source>Insert a select</source>
+        <target>插入選擇</target>
+      </trans-unit>
+      <trans-unit id="sfc00292e778b67e2">
+        <source>Meter</source>
+        <target>電錶</target>
+      </trans-unit>
+      <trans-unit id="s52e0bdc3ee304436">
+        <source>Insert a meter</source>
+        <target>插入計量表</target>
+      </trans-unit>
+      <trans-unit id="s8c7f51cb067644c7">
+        <source>Data List</source>
+        <target>資料清單</target>
+      </trans-unit>
+      <trans-unit id="sfa59c7777e2a0eeb">
+        <source>Insert a data list</source>
+        <target>插入資料清單</target>
+      </trans-unit>
+      <trans-unit id="s7fcb35d23be1e643">
+        <source>Field Set</source>
+        <target>領域集</target>
+      </trans-unit>
+      <trans-unit id="s2d986d31f8d67357">
+        <source>Insert a field set</source>
+        <target>插入欄位集</target>
+      </trans-unit>
+      <trans-unit id="s5590dbf7e425789d">
+        <source>Label</source>
+        <target>標籤</target>
+      </trans-unit>
+      <trans-unit id="s21f8a2eaf5a70749">
+        <source>Insert a label</source>
+        <target>插入標籤</target>
+      </trans-unit>
+      <trans-unit id="s4b58c01e2578f5e4">
+        <source>Legend</source>
+        <target>圖例</target>
+      </trans-unit>
+      <trans-unit id="s3fd83566dd643d10">
+        <source>Insert a legend</source>
+        <target>插入圖例</target>
+      </trans-unit>
+      <trans-unit id="sef75f458d77491af">
+        <source>Option Group</source>
+        <target>選項組</target>
+      </trans-unit>
+      <trans-unit id="sceecdd0bb404bc17">
+        <source>Insert an option group</source>
+        <target>插入選項群組</target>
+      </trans-unit>
+      <trans-unit id="s4802e47fe2e95134">
+        <source>Option</source>
+        <target>選項</target>
+      </trans-unit>
+      <trans-unit id="s3cb47df8290fa94c">
+        <source>Insert an option</source>
+        <target>插入選項</target>
+      </trans-unit>
+      <trans-unit id="sfd77270c3f54f664">
+        <source>Output</source>
+        <target>輸出</target>
+      </trans-unit>
+      <trans-unit id="se64f418b4e733b6c">
+        <source>Insert an output</source>
+        <target>插入輸出</target>
+      </trans-unit>
+      <trans-unit id="sa557ae6bee9148a6">
+        <source>Progress</source>
+        <target>進展</target>
+      </trans-unit>
+      <trans-unit id="s52777d434baeed9b">
+        <source>Insert a progress indicator</source>
+        <target>插入進度指標</target>
+      </trans-unit>
+      <trans-unit id="s35c3125c7750681e">
+        <source>Blockquote</source>
+        <target>區塊引用</target>
+      </trans-unit>
+      <trans-unit id="sa492a51a707930fa">
+        <source>Insert a blockquote</source>
+        <target>插入小引</target>
+      </trans-unit>
+      <trans-unit id="s5432ad3c84273229">
+        <source>Figure</source>
+        <target>圖</target>
+      </trans-unit>
+      <trans-unit id="sf486ca1fdbe08645">
+        <source>Insert a figure</source>
+        <target>插入圖形</target>
+      </trans-unit>
+      <trans-unit id="se16c5e66886fbc59">
+        <source>Article</source>
+        <target>文章</target>
+      </trans-unit>
+      <trans-unit id="s3f7e097a9b2e6181">
+        <source>Insert an article</source>
+        <target>插入文章</target>
+      </trans-unit>
+      <trans-unit id="sadd352cc7f6f2307">
+        <source>Aside</source>
+        <target>旁邊</target>
+      </trans-unit>
+      <trans-unit id="s743f778233e42a3f">
+        <source>Insert an aside</source>
+        <target>插入旁白</target>
+      </trans-unit>
+      <trans-unit id="s07e6118e838b2e23">
+        <source>Navigation</source>
+        <target>導航</target>
+      </trans-unit>
+      <trans-unit id="s0a799f583098cadf">
+        <source>Insert a navigation</source>
+        <target>插入導覽</target>
+      </trans-unit>
+      <trans-unit id="scc1db59d292cbc4c">
+        <source>Section</source>
+        <target>章節</target>
+      </trans-unit>
+      <trans-unit id="s22a2348c46a912a0">
+        <source>Insert a section</source>
+        <target>插入區段</target>
+      </trans-unit>
+      <trans-unit id="s75d83fc3f0cfab40">
+        <source>Header</source>
+        <target>標頭</target>
+      </trans-unit>
+      <trans-unit id="sa5c80e623459ffe4">
+        <source>Insert a header</source>
+        <target>插入標頭</target>
+      </trans-unit>
+      <trans-unit id="scf932a8577057752">
+        <source>Footer</source>
+        <target>頁尾</target>
+      </trans-unit>
+      <trans-unit id="sa352d168b262aa06">
+        <source>Insert a footer</source>
+        <target>插入頁腳</target>
+      </trans-unit>
+      <trans-unit id="s49e763aed00877a8">
+        <source>Main</source>
+        <target>主頁</target>
+      </trans-unit>
+      <trans-unit id="s8247d32213e35f24">
+        <source>Insert a main</source>
+        <target>插入主</target>
+      </trans-unit>
+      <trans-unit id="s5d929ff1619ac0c9">
+        <source>Search</source>
+        <target>搜尋</target>
+      </trans-unit>
+      <trans-unit id="sbb85a407d730e13d">
+        <source>Insert a search</source>
+        <target>插入搜尋</target>
+      </trans-unit>
+      <trans-unit id="sfcdd8e672c75b713">
+        <source>Address</source>
+        <target>地址</target>
+      </trans-unit>
+      <trans-unit id="s429dd933ba95549b">
+        <source>Insert an address</source>
+        <target>插入地址</target>
+      </trans-unit>
+      <trans-unit id="s07aa10850d9ddcc7">
+        <source>Form</source>
+        <target>形式</target>
+      </trans-unit>
+      <trans-unit id="s84e9c7f8785ca60b">
+        <source>Insert a form</source>
+        <target>插入表格</target>
+      </trans-unit>
+      <trans-unit id="s3b3ea038c5d3bb06">
+        <source>Division</source>
+        <target>部門</target>
+      </trans-unit>
+      <trans-unit id="se6cdad455e2d8c02">
+        <source>Insert a division</source>
+        <target>插入除法</target>
+      </trans-unit>
+      <trans-unit id="sa5df1bcdba46c3fb">
+        <source>Figure Caption</source>
+        <target>圖片說明</target>
+      </trans-unit>
+      <trans-unit id="s33c1450d2822bb0f">
+        <source>Insert a figure caption</source>
+        <target>插入圖表說明</target>
+      </trans-unit>
+      <trans-unit id="s8688d74dd3716d6e">
+        <source>Keyboard shortcuts for commands</source>
+        <target>命令的鍵盤捷徑</target>
+      </trans-unit>
+      <trans-unit id="sc3ac225273c8316b">
+        <source>General</source>
+        <target>一般</target>
+      </trans-unit>
+      <trans-unit id="s3ae67088bbefba98">
+        <source>Packages</source>
+        <target>套裝</target>
+      </trans-unit>
+      <trans-unit id="s8a28bad9290d4761">
+        <source>Oromo</source>
+        <target>奧羅莫語</target>
+      </trans-unit>
+      <trans-unit id="s4634541f5056a546">
+        <source>Abkhazian</source>
+        <target>阿布哈兹语</target>
+      </trans-unit>
+      <trans-unit id="s59b20e8af32606ed">
+        <source>Afar</source>
+        <target>阿法爾</target>
+      </trans-unit>
+      <trans-unit id="sd2ef82b8ea877c6d">
+        <source>Afrikaans</source>
+        <target>南非語</target>
+      </trans-unit>
+      <trans-unit id="s2f4d4bfbc466d91f">
+        <source>Albanian</source>
+        <target>阿爾巴尼亞語</target>
+      </trans-unit>
+      <trans-unit id="sb43db07b24da018a">
+        <source>Amharic</source>
+        <target>阿姆哈拉語</target>
+      </trans-unit>
+      <trans-unit id="sb884fa76bfc55429">
+        <source>Arabic</source>
+        <target>阿拉伯語</target>
+      </trans-unit>
+      <trans-unit id="scc56b218a2689c42">
+        <source>Armenian</source>
+        <target>亞美尼亞語</target>
+      </trans-unit>
+      <trans-unit id="sa2cba871f6cdd99f">
+        <source>Assamese</source>
+        <target>阿薩姆語</target>
+      </trans-unit>
+      <trans-unit id="scf95dcb12a950a5c">
+        <source>Aymara</source>
+        <target>艾瑪語</target>
+      </trans-unit>
+      <trans-unit id="s9cf68f87b8e6122f">
+        <source>Azerbaijani</source>
+        <target>阿塞拜疆語</target>
+      </trans-unit>
+      <trans-unit id="s17bfaaa4e7528bc7">
+        <source>Bashkir</source>
+        <target>巴什基爾</target>
+      </trans-unit>
+      <trans-unit id="se39c065efa467782">
+        <source>Basque</source>
+        <target>巴斯克語</target>
+      </trans-unit>
+      <trans-unit id="sf2bdb0b4d7b9c039">
+        <source>Bengali</source>
+        <target>孟加拉語</target>
+      </trans-unit>
+      <trans-unit id="sf0c8e2b013e5ff18">
+        <source>Bhutani</source>
+        <target>Bhutani</target>
+      </trans-unit>
+      <trans-unit id="s181ef198cf83ec3a">
+        <source>Bihari</source>
+        <target>Bihari</target>
+      </trans-unit>
+      <trans-unit id="s543c237e8c895ce8">
+        <source>Bislama</source>
+        <target>Bislama</target>
+      </trans-unit>
+      <trans-unit id="s93f083e654a45715">
+        <source>Breton</source>
+        <target>布列塔尼</target>
+      </trans-unit>
+      <trans-unit id="sffa395f64ec6ac36">
+        <source>Bulgarian</source>
+        <target>保加利亞語</target>
+      </trans-unit>
+      <trans-unit id="sbd72dc858de95ce8">
+        <source>Burmese</source>
+        <target>緬甸語</target>
+      </trans-unit>
+      <trans-unit id="s1e9c2c654732cc5f">
+        <source>Byelorussian</source>
+        <target>白俄羅斯語</target>
+      </trans-unit>
+      <trans-unit id="s545ee1f373f249cf">
+        <source>Cambodian</source>
+        <target>柬埔寨</target>
+      </trans-unit>
+      <trans-unit id="s1f2b49c1bca2035d">
+        <source>Catalan</source>
+        <target>加泰羅尼亞語</target>
+      </trans-unit>
+      <trans-unit id="s0e44968489e076a8">
+        <source>Chinese</source>
+        <target>中文</target>
+      </trans-unit>
+      <trans-unit id="s20deffeecf2699fb">
+        <source>Corsican</source>
+        <target>科西嘉</target>
+      </trans-unit>
+      <trans-unit id="s45518abd911471d0">
+        <source>Croatian</source>
+        <target>克羅地亞語</target>
+      </trans-unit>
+      <trans-unit id="sc94e314312a8900c">
+        <source>Czech</source>
+        <target>捷克語</target>
+      </trans-unit>
+      <trans-unit id="sd9c21e5f60d6bdd8">
+        <source>Danish</source>
+        <target>丹麥語</target>
+      </trans-unit>
+      <trans-unit id="s95d56e58f816d211">
+        <source>Dutch</source>
+        <target>荷蘭語</target>
+      </trans-unit>
+      <trans-unit id="s4caed5b7a7e5d89b">
+        <source>English</source>
+        <target>英語</target>
+      </trans-unit>
+      <trans-unit id="s0a6cb8d42cdb0c4a">
+        <source>Esperanto</source>
+        <target>世界語</target>
+      </trans-unit>
+      <trans-unit id="sa6607436f60ccc1a">
+        <source>Estonian</source>
+        <target>愛沙尼亞語</target>
+      </trans-unit>
+      <trans-unit id="s536695196d0b6dc3">
+        <source>Faeroese</source>
+        <target>Faeroese</target>
+      </trans-unit>
+      <trans-unit id="sd1f10284eeb17b25">
+        <source>Fiji</source>
+        <target>斐濟</target>
+      </trans-unit>
+      <trans-unit id="sc98b103772de63f4">
+        <source>Finnish</source>
+        <target>芬蘭語</target>
+      </trans-unit>
+      <trans-unit id="s75a27f43413e02c5">
+        <source>French</source>
+        <target>法語</target>
+      </trans-unit>
+      <trans-unit id="s61c017f6d5c303af">
+        <source>Frisian</source>
+        <target>弗里斯語</target>
+      </trans-unit>
+      <trans-unit id="s990d0e0fa2ab00b5">
+        <source>Galician</source>
+        <target>加利西亞語</target>
+      </trans-unit>
+      <trans-unit id="sdc70d81cf6c28533">
+        <source>Georgian</source>
+        <target>喬治亞語</target>
+      </trans-unit>
+      <trans-unit id="s63e71d20d1eaca93">
+        <source>German</source>
+        <target>德國</target>
+      </trans-unit>
+      <trans-unit id="scf00d48fd5953a03">
+        <source>Greek</source>
+        <target>希臘語</target>
+      </trans-unit>
+      <trans-unit id="s99229574e5692f19">
+        <source>Greenlandic</source>
+        <target>格林蘭語</target>
+      </trans-unit>
+      <trans-unit id="s1feab14d837eadb0">
+        <source>Guarani</source>
+        <target>瓜拉尼語</target>
+      </trans-unit>
+      <trans-unit id="s3f43ef2eaa1ec486">
+        <source>Gujarati</source>
+        <target>古吉拉特語</target>
+      </trans-unit>
+      <trans-unit id="s9fbe26cfd7845469">
+        <source>Hausa</source>
+        <target>豪薩語</target>
+      </trans-unit>
+      <trans-unit id="s6b61f8abf89586be">
+        <source>Hebrew</source>
+        <target>希伯來文</target>
+      </trans-unit>
+      <trans-unit id="sb6b268120592dc53">
+        <source>Hindi</source>
+        <target>北印度語</target>
+      </trans-unit>
+      <trans-unit id="sda9254d1f1228e1a">
+        <source>Hungarian</source>
+        <target>匈牙利語</target>
+      </trans-unit>
+      <trans-unit id="sec2da4aa7a02b925">
+        <source>Icelandic</source>
+        <target>冰島</target>
+      </trans-unit>
+      <trans-unit id="seb8982ae8c3cdcc5">
+        <source>Indonesian</source>
+        <target>印尼語</target>
+      </trans-unit>
+      <trans-unit id="s9d54869be6794a9f">
+        <source>Interlingua</source>
+        <target>Interlingua</target>
+      </trans-unit>
+      <trans-unit id="s9d54829be67943d3">
+        <source>Interlingue</source>
+        <target>互聯網</target>
+      </trans-unit>
+      <trans-unit id="s62b857f5b6693742">
+        <source>Inupiak</source>
+        <target>Inupiak</target>
+      </trans-unit>
+      <trans-unit id="sf5e76f774beb33c2">
+        <source>Inuktitut</source>
+        <target>伊努克提圖語</target>
+      </trans-unit>
+      <trans-unit id="s33c18d5a4cbffa2a">
+        <source>Irish</source>
+        <target>愛爾蘭</target>
+      </trans-unit>
+      <trans-unit id="sd48cc52117f4d68b">
+        <source>Italian</source>
+        <target>義大利語</target>
+      </trans-unit>
+      <trans-unit id="sdd35b688281b6dea">
+        <source>Japanese</source>
+        <target>日本語</target>
+      </trans-unit>
+      <trans-unit id="s21d723a1dbcd89c8">
+        <source>Javanese</source>
+        <target>爪哇語</target>
+      </trans-unit>
+      <trans-unit id="s1f8e59d0624842ff">
+        <source>Kannada</source>
+        <target>卡納達語</target>
+      </trans-unit>
+      <trans-unit id="s81c3d8809658b951">
+        <source>Kashmiri</source>
+        <target>克什米爾</target>
+      </trans-unit>
+      <trans-unit id="s01b16a926920908b">
+        <source>Kazakh</source>
+        <target>哈薩克語</target>
+      </trans-unit>
+      <trans-unit id="s81cf65c5a46dea08">
+        <source>Kinyarwanda</source>
+        <target>基尼亞文達語</target>
+      </trans-unit>
+      <trans-unit id="s5bba2ac2e53bd1fd">
+        <source>Kirghiz</source>
+        <target>吉爾吉斯</target>
+      </trans-unit>
+      <trans-unit id="sab726d2db7e6b93d">
+        <source>Kirundi</source>
+        <target>基隆迪文</target>
+      </trans-unit>
+      <trans-unit id="s94d61907ee22a8c1">
+        <source>Korean</source>
+        <target>韓語</target>
+      </trans-unit>
+      <trans-unit id="sb4e003a459464d85">
+        <source>Kurdish</source>
+        <target>庫爾德語</target>
+      </trans-unit>
+      <trans-unit id="s69b12144dbb6544d">
+        <source>Laothian</source>
+        <target>寮國</target>
+      </trans-unit>
+      <trans-unit id="sb70c17f7899f9b01">
+        <source>Latin</source>
+        <target>拉丁語</target>
+      </trans-unit>
+      <trans-unit id="sd3dcb76f7b28adb8">
+        <source>Latvian</source>
+        <target>拉脫維亞語</target>
+      </trans-unit>
+      <trans-unit id="sff303daee4dd9f7b">
+        <source>Lingala</source>
+        <target>林加拉語</target>
+      </trans-unit>
+      <trans-unit id="sb2dc787b0983ebc6">
+        <source>Lithuanian</source>
+        <target>立陶宛語</target>
+      </trans-unit>
+      <trans-unit id="s441b20a8a50e36b4">
+        <source>Macedonian</source>
+        <target>馬其頓語</target>
+      </trans-unit>
+      <trans-unit id="sf3c4da68b08a2590">
+        <source>Malagasy</source>
+        <target>馬拉加斯加</target>
+      </trans-unit>
+      <trans-unit id="sc7eb080b96e244df">
+        <source>Malay</source>
+        <target>馬來語</target>
+      </trans-unit>
+      <trans-unit id="s0dad143dff0079fc">
+        <source>Malayalam</source>
+        <target>馬拉雅拉姆語</target>
+      </trans-unit>
+      <trans-unit id="scabe6ecee5e01fd2">
+        <source>Maltese</source>
+        <target>馬耳他</target>
+      </trans-unit>
+      <trans-unit id="sae9c790b88be7eb9">
+        <source>Maori</source>
+        <target>毛利人</target>
+      </trans-unit>
+      <trans-unit id="s2e969a451b4955d1">
+        <source>Marathi</source>
+        <target>馬拉提語</target>
+      </trans-unit>
+      <trans-unit id="s5a356677b61a6b7e">
+        <source>Moldavian</source>
+        <target>摩爾達維亞</target>
+      </trans-unit>
+      <trans-unit id="s0f17f32919661cff">
+        <source>Mongolian</source>
+        <target>蒙古語</target>
+      </trans-unit>
+      <trans-unit id="s9e8d3665edde89a6">
+        <source>Nauru</source>
+        <target>諾魯</target>
+      </trans-unit>
+      <trans-unit id="sad190f86451081c0">
+        <source>Nepali</source>
+        <target>尼泊爾</target>
+      </trans-unit>
+      <trans-unit id="se0a782a8be8e018b">
+        <source>Norwegian</source>
+        <target>挪威語</target>
+      </trans-unit>
+      <trans-unit id="s7a99528e7b64635a">
+        <source>Occitan</source>
+        <target>奧克蘭語</target>
+      </trans-unit>
+      <trans-unit id="s9c11f2d9335d8bd1">
+        <source>Oriya</source>
+        <target>奧里婭語</target>
+      </trans-unit>
+      <trans-unit id="s54cbfaf2a8da7818">
+        <source>Pashto</source>
+        <target>普什圖語</target>
+      </trans-unit>
+      <trans-unit id="sa40fd43756fa8913">
+        <source>Persian</source>
+        <target>波斯語</target>
+      </trans-unit>
+      <trans-unit id="s03f49e598ffb11cc">
+        <source>Polish</source>
+        <target>波蘭語</target>
+      </trans-unit>
+      <trans-unit id="scf932840a69dbb7c">
+        <source>Portuguese</source>
+        <target>葡萄牙語</target>
+      </trans-unit>
+      <trans-unit id="s74b9781bacfcc87c">
+        <source>Punjabi</source>
+        <target>旁遮普語</target>
+      </trans-unit>
+      <trans-unit id="s49ad24935b14e3df">
+        <source>Quechua</source>
+        <target>克丘亞語</target>
+      </trans-unit>
+      <trans-unit id="s960d3a90ac199368">
+        <source>Rhaeto-Romanian</source>
+        <target>雷托羅馬語</target>
+      </trans-unit>
+      <trans-unit id="sc1aa1f6051b7102a">
+        <source>Romanian</source>
+        <target>羅馬尼亞語</target>
+      </trans-unit>
+      <trans-unit id="sa30c12014e955946">
+        <source>Russian</source>
+        <target>俄語</target>
+      </trans-unit>
+      <trans-unit id="s19abee1277c9bca2">
+        <source>Samoan</source>
+        <target>薩摩亞人</target>
+      </trans-unit>
+      <trans-unit id="s006f872a5b7f5279">
+        <source>Sangro</source>
+        <target>Sangro</target>
+      </trans-unit>
+      <trans-unit id="sbfff51feacf30196">
+        <source>Sanskrit</source>
+        <target>梵文</target>
+      </trans-unit>
+      <trans-unit id="s1c65f5004a07dcfa">
+        <source>Scots Gaelic</source>
+        <target>蘇格蘭蓋爾語</target>
+      </trans-unit>
+      <trans-unit id="sf955eff73fb6b573">
+        <source>Serbian</source>
+        <target>塞爾維亞語</target>
+      </trans-unit>
+      <trans-unit id="s7995733bf97c01cc">
+        <source>Serbo-Croatian</source>
+        <target>塞爾維亞-克羅地亞語</target>
+      </trans-unit>
+      <trans-unit id="scc5ba32e0de06744">
+        <source>Sesotho</source>
+        <target>塞索托語</target>
+      </trans-unit>
+      <trans-unit id="s08e12ade32ef8125">
+        <source>Setswana</source>
+        <target>塞茨瓦納語</target>
+      </trans-unit>
+      <trans-unit id="sb6434faf698b02a2">
+        <source>Shona</source>
+        <target>Shona</target>
+      </trans-unit>
+      <trans-unit id="sb31cdff08b1c5a50">
+        <source>Sindhi</source>
+        <target>信德語</target>
+      </trans-unit>
+      <trans-unit id="se308836a594808b6">
+        <source>Singhalese</source>
+        <target>僧伽羅語</target>
+      </trans-unit>
+      <trans-unit id="sce8a4e3f7c98482d">
+        <source>Siswati</source>
+        <target>Siswati</target>
+      </trans-unit>
+      <trans-unit id="se0cda6b80a1bb50f">
+        <source>Slovak</source>
+        <target>斯洛伐克語</target>
+      </trans-unit>
+      <trans-unit id="se96d43a515b8451c">
+        <source>Slovenian</source>
+        <target>斯洛文尼亞語</target>
+      </trans-unit>
+      <trans-unit id="s978522fbc9577a7e">
+        <source>Somali</source>
+        <target>索馬里</target>
+      </trans-unit>
+      <trans-unit id="sf1868dc19e3917bb">
+        <source>Spanish</source>
+        <target>西班牙語</target>
+      </trans-unit>
+      <trans-unit id="sa477cb1825dceb3b">
+        <source>Sudanese</source>
+        <target>蘇丹人</target>
+      </trans-unit>
+      <trans-unit id="sbe90de083557ef3e">
+        <source>Swahili</source>
+        <target>斯瓦希里語</target>
+      </trans-unit>
+      <trans-unit id="sae185e6af80ec81e">
+        <source>Swedish</source>
+        <target>瑞典語</target>
+      </trans-unit>
+      <trans-unit id="sae098810f946ca7c">
+        <source>Tagalog</source>
+        <target>他加祿語</target>
+      </trans-unit>
+      <trans-unit id="s7b9994904c4f5b54">
+        <source>Tajik</source>
+        <target>塔吉克語</target>
+      </trans-unit>
+      <trans-unit id="s7136449045eff28c">
+        <source>Tamil</source>
+        <target>梵語</target>
+      </trans-unit>
+      <trans-unit id="sae9d739068eee2c5">
+        <source>Tatar</source>
+        <target>鞑靼</target>
+      </trans-unit>
+      <trans-unit id="s47a8f6dfb38b9701">
+        <source>Telugu</source>
+        <target>泰盧固語</target>
+      </trans-unit>
+      <trans-unit id="s4ffac3fb33a2ee9b">
+        <source>Thai</source>
+        <target>泰語</target>
+      </trans-unit>
+      <trans-unit id="s5623aa2f83b05c76">
+        <source>Tibetan</source>
+        <target>藏語</target>
+      </trans-unit>
+      <trans-unit id="sbb15d427ee1aa676">
+        <source>Tigrinya</source>
+        <target>提格里尼亞語</target>
+      </trans-unit>
+      <trans-unit id="sbb34f2e3aa40af4e">
+        <source>Tonga</source>
+        <target>湯加</target>
+      </trans-unit>
+      <trans-unit id="s04c939a414fdab21">
+        <source>Tsonga</source>
+        <target>宗加</target>
+      </trans-unit>
+      <trans-unit id="s9d2d00982edafabb">
+        <source>Turkish</source>
+        <target>土耳其語</target>
+      </trans-unit>
+      <trans-unit id="sc0ceaa9843510f67">
+        <source>Turkmen</source>
+        <target>土庫曼</target>
+      </trans-unit>
+      <trans-unit id="s6d1df519e235a6cf">
+        <source>Twi</source>
+        <target>Twi</target>
+      </trans-unit>
+      <trans-unit id="s2e66bf8b833858f3">
+        <source>Uigur</source>
+        <target>維吾爾</target>
+      </trans-unit>
+      <trans-unit id="sc4ee3e4ee994dafd">
+        <source>Ukrainian</source>
+        <target>烏克蘭</target>
+      </trans-unit>
+      <trans-unit id="s9ca757effd747da9">
+        <source>Urdu</source>
+        <target>烏爾都語</target>
+      </trans-unit>
+      <trans-unit id="sb4f0310e6787d098">
+        <source>Uzbek</source>
+        <target>烏茲別克</target>
+      </trans-unit>
+      <trans-unit id="s6d60d595cb5070da">
+        <source>Vietnamese</source>
+        <target>越南語</target>
+      </trans-unit>
+      <trans-unit id="sb657bfe93338dc8b">
+        <source>Volapuk</source>
+        <target>沃拉普克</target>
+      </trans-unit>
+      <trans-unit id="sf2e08a945e9194d4">
+        <source>Welch</source>
+        <target>韋爾奇</target>
+      </trans-unit>
+      <trans-unit id="s86ca34c5287a2f38">
+        <source>Wolof</source>
+        <target>沃洛夫語</target>
+      </trans-unit>
+      <trans-unit id="sa4e5b39489ecf31a">
+        <source>Xhosa</source>
+        <target>科薩語</target>
+      </trans-unit>
+      <trans-unit id="s63dfc5b1c1c27849">
+        <source>Yiddish</source>
+        <target>意第緒語</target>
+      </trans-unit>
+      <trans-unit id="se1312d6528f9a259">
+        <source>Yoruba</source>
+        <target>伊博語</target>
+      </trans-unit>
+      <trans-unit id="s3f299e83cbf52fba">
+        <source>Zhuang</source>
+        <target>莊</target>
+      </trans-unit>
+      <trans-unit id="sd5be6f6d85fc0c9b">
+        <source>Zulu</source>
+        <target>祖魯語</target>
+      </trans-unit>
+      <trans-unit id="sdef34fe08bb28b09">
+        <source>Chinese (Simplified)</source>
+        <target>簡體中文</target>
+      </trans-unit>
+      <trans-unit id="s5941292bb77281ab">
+        <source>Norwegian Bokmål</source>
+        <target>挪威文</target>
+      </trans-unit>
+      <trans-unit id="s082869038c117fe5">
+        <source>Portuguese (Brazil)</source>
+        <target>葡萄牙語（巴西）</target>
+      </trans-unit>
+      <trans-unit id="se25e4f2cb77b8be8">
+        <source>Language for the WebWriter interface and new documents</source>
+        <target>WebWriter 介面和新文件的語言</target>
+      </trans-unit>
+      <trans-unit id="sefcf950b3cc4fc3b">
+        <source>Language</source>
+        <target>語言</target>
+      </trans-unit>
+      <trans-unit id="s690da6b432987c6f">
+        <source>Backup changes to the current document automatically. Changes are restored when WebWriter is reloaded.</source>
+        <target>自動備份目前文件的變更。重新載入 WebWriter 時，會還原變更。</target>
+      </trans-unit>
+      <trans-unit id="s888c71e8fcb916d3">
+        <source>Autosave</source>
+        <target>自動儲存</target>
+      </trans-unit>
+      <trans-unit id="se9ac05f36b004eb0">
+        <source>Hide the introductory tour. Disable so the tour is shown again.</source>
+        <target>隱藏導覽。停用，以便再次顯示導覽。</target>
+      </trans-unit>
+      <trans-unit id="sf2ab37af0abc55ef">
+        <source>Hide intro tour</source>
+        <target>隱藏導覽</target>
+      </trans-unit>
+      <trans-unit id="s3437e0d9899e7ae1">
+        <source>Send telemetry data about your usage of WebWriter.</source>
+        <target>傳送關於您使用 WebWriter 的遙測資料。</target>
+      </trans-unit>
+      <trans-unit id="s80570196a9ce6d11">
+        <source>Enable telemetry</source>
+        <target>啟用遙測</target>
+      </trans-unit>
+      <trans-unit id="sb66e2181a7b5738a">
+        <source>By enabling telemetry, you allow for data collection and retention according to our</source>
+        <target>啟用遙測功能，即表示您允許根據我們的規定收集和保留資料。</target>
+      </trans-unit>
+      <trans-unit id="sbc6953a36ced943f">
+        <source>privacy policy</source>
+        <target>隱私權政策</target>
+      </trans-unit>
+      <trans-unit id="sb19611adbc88f711">
+        <source>Advanced: Show source editing commands, e.g. to show the document's HTML or to add custom styles and scripts.</source>
+        <target>進階：顯示來源編輯指令，例如顯示文件的 HTML 或新增自訂樣式和指令碼。</target>
+      </trans-unit>
+      <trans-unit id="sd452cebf4a0313d1">
+        <source>Show source editing commands</source>
+        <target>顯示來源編輯指令</target>
+      </trans-unit>
+      <trans-unit id="se3b4c857f91f80d7">
+        <source>Keyboard shortcuts</source>
+        <target>鍵盤捷徑</target>
+      </trans-unit>
+      <trans-unit id="s1696c76a23c0834e">
+        <source>Advanced: Show packages with versions like 0.x.x in the package manager</source>
+        <target>進階：在套件管理員中顯示版本如 0.x.x 的套件</target>
+      </trans-unit>
+      <trans-unit id="s71a0549fd71219c9">
+        <source>Show unstable packages</source>
+        <target>顯示不穩定的套件</target>
+      </trans-unit>
+      <trans-unit id="sc2e2a0dbf03723b7">
+        <source>Advanced: Show packages from unknown sources in the package manager (Warning: May be unsafe)</source>
+        <target>進階：在套件管理員中顯示來自未知來源的套件 (警告：可能不安全)</target>
+      </trans-unit>
+      <trans-unit id="sbff54e740c4086eb">
+        <source>Show unknown packages</source>
+        <target>顯示未知套件</target>
+      </trans-unit>
+      <trans-unit id="s9df571714a1efb44">
+        <source>An autosaved version of this explorable is available. Load it?</source>
+        <target>此探索項的自動儲存版本可用。載入嗎？</target>
+      </trans-unit>
+      <trans-unit id="s75109f5307578a61">
+        <source>Welcome to WebWriter</source>
+        <target>歡迎來到 WebWriter</target>
+      </trans-unit>
+      <trans-unit id="s1d10d2058d8ca8dd">
+        <source>Want a short, guided tour?</source>
+        <target>想要短程導覽嗎？</target>
+      </trans-unit>
+      <trans-unit id="s3bdad99768e11911">
+        <source>Explorable</source>
+        <target>可探索</target>
+      </trans-unit>
+      <trans-unit id="s0db05bd7ba6fff96">
+        <source>Your explorable document. You can write text and copy/paste, edit, etc. here.</source>
+        <target>您的可探索文件。您可以在此寫入文字並複製/貼上、編輯等。</target>
+      </trans-unit>
+      <trans-unit id="sc8af536e2084ade0">
+        <source>Palette</source>
+        <target>調色板</target>
+      </trans-unit>
+      <trans-unit id="s0b24d08ea349b455">
+        <source>Everything you can insert. At the start are non-interactive elements like lists or images, next are interactive elements called widgets. You can get new ones by clicking the search bar.</source>
+        <target>所有您可以插入的東西。一開始是列表或圖片等非互動式元素，接下來是稱為 widget 的互動式元素。您可以按一下搜尋列取得新的元件。</target>
+      </trans-unit>
+      <trans-unit id="s24949d7adbb5a098">
+        <source>Toolbox</source>
+        <target>工具箱</target>
+      </trans-unit>
+      <trans-unit id="s806f84eb0ace116e">
+        <source>See what you have selected and change it. Copy, cut, paste, pin, or make layout changes. Offers different options depending on your selection, i.e. formatting for text.</source>
+        <target>查看您所選取的內容，並進行更改。複製、剪下、貼上、釘上或進行版面變更。根據您的選取提供不同的選項，例如文字的格式。</target>
+      </trans-unit>
+      <trans-unit id="seaaaeb09e3b4e78b">
+        <source>Editing commands</source>
+        <target>編輯指令</target>
+      </trans-unit>
+      <trans-unit id="s8d83386457e91813">
+        <source>Undo/redo your changes or preview from the learner's perspective.</source>
+        <target>撤消/重做您的變更或從學習者的角度預覽。</target>
+      </trans-unit>
+      <trans-unit id="s0e6ea8870dbddab2">
+        <source>Document commands</source>
+        <target>文件指令</target>
+      </trans-unit>
+      <trans-unit id="s0448f1059fa01720">
+        <source>Save, share or print your explorable. Edit information such as the title, language or license.</source>
+        <target>儲存、分享或列印您的探索成果。編輯標題、語言或許可證等資訊。</target>
+      </trans-unit>
+      <trans-unit id="s0c4b2e98d4ab7f5a">
+        <source>App commands</source>
+        <target>應用程式指令</target>
+      </trans-unit>
+      <trans-unit id="sa172190ea21f9b1c">
+        <source>Access the settings, open an explorable or create a new one.</source>
+        <target>存取設定、開啟可探索物件或建立新的可探索物件。</target>
+      </trans-unit>
+      <trans-unit id="s4cc8391f172c0cdf">
+        <source>Dismiss tour</source>
+        <target>取消參觀</target>
+      </trans-unit>
+      <trans-unit id="s575e795c45e2d97e">
+        <source>Go back</source>
+        <target>返回</target>
+      </trans-unit>
+      <trans-unit id="sa778acc33947c7b8">
+        <source>Finish tour</source>
+        <target>完成導覽</target>
+      </trans-unit>
+      <trans-unit id="s81ecf2d4386b8e84">
+        <source>Continue</source>
+        <target>繼續</target>
+      </trans-unit>
+      <trans-unit id="s8f533296a536965e">
+        <source>Save as...</source>
+        <target>另存新檔...</target>
+      </trans-unit>
+      <trans-unit id="s3a5ca02f282d247e">
+        <source>Share...</source>
+        <target>分享...</target>
+      </trans-unit>
+      <trans-unit id="sda2d76b976502a8d">
+        <source>Open...</source>
+        <target>開啟...</target>
+      </trans-unit>
+      <trans-unit id="sb26035b596566abf">
+        <source>Unnamed</source>
+        <target>未命名</target>
+      </trans-unit>
+      <trans-unit id="s812cbda653daaeba">
+        <source>This feature is not implemented yet</source>
+        <target>此功能尚未實作</target>
+      </trans-unit>
+      <trans-unit id="s35aeaff1425bca9e">
+        <source>WebWriter does not support media of type </source>
+        <target>WebWriter 不支援類型為 </target>
+      </trans-unit>
+      <trans-unit id="s99f110d27e30b289">
+        <source>Title</source>
+        <target>標題</target>
+      </trans-unit>
+      <trans-unit id="sef73fe18e351eb35">
+        <source>Keywords</source>
+        <target>關鍵字</target>
+      </trans-unit>
+      <trans-unit id="s63d894b1ddb06289">
+        <source>Description</source>
+        <target>說明</target>
+      </trans-unit>
+      <trans-unit id="s01d32b35baa3b676">
+        <source>Author</source>
+        <target>作者</target>
+      </trans-unit>
+      <trans-unit id="s17597a8bb4810524">
+        <source>License</source>
+        <target>許可證</target>
+      </trans-unit>
+      <trans-unit id="sdc48456f9a27ae02">
+        <source>Generator</source>
+        <target>發電機</target>
+      </trans-unit>
+      <trans-unit id="s8d342ecaa9e75b9b">
+        <source>Relationship</source>
+        <target>關係</target>
+      </trans-unit>
+      <trans-unit id="sef49aec68fd1dc66">
+        <source>Name</source>
+        <target>名稱</target>
+      </trans-unit>
+      <trans-unit id="s4ea0f21fc2a338a1">
+        <source>Move up</source>
+        <target>上移</target>
+      </trans-unit>
+      <trans-unit id="sb233557012dcb328">
+        <source>Move down</source>
+        <target>下移</target>
+      </trans-unit>
+      <trans-unit id="s3d09398e555ee5f9">
+        <source>Advanced Options</source>
+        <target>進階選項</target>
+      </trans-unit>
+      <trans-unit id="s17fb3f4805f4f4b9">
+        <source>Remove field</source>
+        <target>移除欄位</target>
+      </trans-unit>
+      <trans-unit id="sa6f8d27bca557059">
+        <source>Move meta/link/style elements up/down into this element</source>
+        <target>將元/連結/樣式元素上移/下移到此元素中</target>
+      </trans-unit>
+      <trans-unit id="s6dadeaaee49d6d18">
+        <source>Meta</source>
+        <target>Meta</target>
+      </trans-unit>
+      <trans-unit id="s252a52330d32b900">
+        <source>Metadata</source>
+        <target>元資料</target>
+      </trans-unit>
+      <trans-unit id="s6827930ef1aeaf99">
+        <source>Base URL</source>
+        <target>基本 URL</target>
+      </trans-unit>
+      <trans-unit id="s1ca22ce85e074da5">
+        <source>Pragma</source>
+        <target>Pragma</target>
+      </trans-unit>
+      <trans-unit id="s064339c229374050">
+        <source>Encoding</source>
+        <target>編碼</target>
+      </trans-unit>
+      <trans-unit id="saab875d8cfcfe712">
+        <source>Theme</source>
+        <target>主題</target>
+      </trans-unit>
+      <trans-unit id="sa417644bef21a9aa">
+        <source>Unnamed Theme</source>
+        <target>未命名主題</target>
+      </trans-unit>
+      <trans-unit id="saa33768e03c45fc8">
+        <source>File Size</source>
+        <target>檔案大小</target>
+      </trans-unit>
+      <trans-unit id="s3f06e9abb6ebcb79">
+        <source>Characters</source>
+        <target>人物</target>
+      </trans-unit>
+      <trans-unit id="s0f350bc4e538e3ea">
+        <source>Words</source>
+        <target>詞彙</target>
+      </trans-unit>
+      <trans-unit id="s106b274b5af798e5">
+        <source>Sentences</source>
+        <target>句子</target>
+      </trans-unit>
+      <trans-unit id="s97aa76056a81bd36">
+        <source>Metrics</source>
+        <target>指標</target>
+      </trans-unit>
+      <trans-unit id="s94d2eee44b292567">
+        <source>Toggle advanced options</source>
+        <target>切換進階選項</target>
+      </trans-unit>
+      <trans-unit id="s98977a87d1b93941">
+        <source>Reset information, styles and scripts</source>
+        <target>重設資訊、樣式和指令碼</target>
+      </trans-unit>
+      <trans-unit id="s543906d1db8b2283">
+        <source>Edit </source>
+        <target>編輯 </target>
+      </trans-unit>
+      <trans-unit id="sddc49047f66a64ab">
+        <source>No description provided</source>
+        <target>未提供說明</target>
+      </trans-unit>
+      <trans-unit id="s1641ab440bf4daa4">
+        <source>Update this widget package</source>
+        <target>更新此 widget 套件</target>
+      </trans-unit>
+      <trans-unit id="sbd40f40cbadd38d5">
+        <source>Remove this widget package</source>
+        <target>移除此 widget 套件</target>
+      </trans-unit>
+      <trans-unit id="s54897f2764b0e4d0">
+        <source>Install this widget package</source>
+        <target>安裝此 widget 套件</target>
+      </trans-unit>
+      <trans-unit id="sd5cf95145e4d89ca">
+        <source>Unpin this snippet</source>
+        <target>取消釘選此片段</target>
+      </trans-unit>
+      <trans-unit id="s69a49786a8009f43">
+        <source>Find packages...</source>
+        <target>尋找套裝...</target>
+      </trans-unit>
+      <trans-unit id="s5e2cba97c0d971bd">
+        <source>Reload packages</source>
+        <target>重新載入套件</target>
+      </trans-unit>
+      <trans-unit id="s30cce87854901922">
+        <source>Preschool</source>
+        <target>學前教育</target>
+      </trans-unit>
+      <trans-unit id="s9485af2e7cd9418f">
+        <source>Primary school</source>
+        <target>小學</target>
+      </trans-unit>
+      <trans-unit id="seaecc8267bad6234">
+        <source>Middle school</source>
+        <target>中學</target>
+      </trans-unit>
+      <trans-unit id="s69311c4e25074fb3">
+        <source>High school</source>
+        <target>高中</target>
+      </trans-unit>
+      <trans-unit id="sab5e7d2a069a2951">
+        <source>Vocational cert.</source>
+        <target>職業證書</target>
+      </trans-unit>
+      <trans-unit id="s1d5c7b28e8b50d6d">
+        <source>Associate deg.</source>
+        <target>副學士</target>
+      </trans-unit>
+      <trans-unit id="s7edbe0b213199995">
+        <source>Bachelor's</source>
+        <target>學士</target>
+      </trans-unit>
+      <trans-unit id="sfe6e758ad2603c1d">
+        <source>Master's</source>
+        <target>碩士</target>
+      </trans-unit>
+      <trans-unit id="sb60dd9d23d31ee66">
+        <source>Doctorate</source>
+        <target>博士學位</target>
+      </trans-unit>
+      <trans-unit id="s4ac1ad6ecd6bd810">
+        <source>Misc. ed.</source>
+        <target>Misc. ed.</target>
+      </trans-unit>
+      <trans-unit id="s67c2b60a506a09e4">
+        <source>Secondary ed.</source>
+        <target>Secondary ed.</target>
+      </trans-unit>
+      <trans-unit id="sd5bf67958b08b4cf">
+        <source>Higher ed.</source>
+        <target>高等教育。</target>
+      </trans-unit>
+      <trans-unit id="s1d19244f549ec535">
+        <source>Education</source>
+        <target>教育</target>
+      </trans-unit>
+      <trans-unit id="sbe3c60c65f129daa">
+        <source>Humanities</source>
+        <target>人文學科</target>
+      </trans-unit>
+      <trans-unit id="s5e53415a6d5719ad">
+        <source>Social sciences</source>
+        <target>社會科學</target>
+      </trans-unit>
+      <trans-unit id="s233ae776268cd44b">
+        <source>Business</source>
+        <target>業務</target>
+      </trans-unit>
+      <trans-unit id="s736904f276fbd441">
+        <source>Natural sciences</source>
+        <target>自然科學</target>
+      </trans-unit>
+      <trans-unit id="s41322d19c928c603">
+        <source>ICT</source>
+        <target>ICT</target>
+      </trans-unit>
+      <trans-unit id="s5c2a1a52c0389c30">
+        <source>Engineering</source>
+        <target>工程設計</target>
+      </trans-unit>
+      <trans-unit id="s5e9e8e4d21bafedc">
+        <source>Food production</source>
+        <target>食品生產</target>
+      </trans-unit>
+      <trans-unit id="sbaf0a7c417e388af">
+        <source>Health</source>
+        <target>健康資訊</target>
+      </trans-unit>
+      <trans-unit id="sf55d634dcc743595">
+        <source>Services</source>
+        <target>服務</target>
+      </trans-unit>
+      <trans-unit id="s6fb3053e7244d326">
+        <source>Other fields</source>
+        <target>其他領域</target>
+      </trans-unit>
+      <trans-unit id="sa50d3c35533f1d99">
+        <source>All fields</source>
+        <target>所有領域</target>
+      </trans-unit>
+      <trans-unit id="s5c1ecf88259b79f9">
+        <source>Presentation</source>
+        <target>簡報</target>
+      </trans-unit>
+      <trans-unit id="s5d87c1e588f48d90">
+        <source>Practice</source>
+        <target>實踐</target>
+      </trans-unit>
+      <trans-unit id="s7ede1c55e35ce9d6">
+        <source>Simulation</source>
+        <target>模擬</target>
+      </trans-unit>
+      <trans-unit id="s886c5db2a5579873">
+        <source>Concept</source>
+        <target>概念</target>
+      </trans-unit>
+      <trans-unit id="s1eaccbf2d6af8ab5">
+        <source>Information</source>
+        <target>資訊</target>
+      </trans-unit>
+      <trans-unit id="s63e03c70f67ebf9c">
+        <source>Context</source>
+        <target>內容</target>
+      </trans-unit>
+      <trans-unit id="s83c15613b6f6f3c8">
+        <source>Online only</source>
+        <target>僅限線上</target>
+      </trans-unit>
+      <trans-unit id="s18d5c44aae3dc82a">
+        <source>Online when editing</source>
+        <target>編輯時線上</target>
+      </trans-unit>
+      <trans-unit id="sd05a155fe09c2866">
+        <source>Online when using</source>
+        <target>線上使用時</target>
+      </trans-unit>
+      <trans-unit id="s0de0febab8a4beaf">
+        <source>Error reading this package</source>
+        <target>讀取此套件時出錯</target>
+      </trans-unit>
+      <trans-unit id="scdf536b65be39ec5">
+        <source> Create/import</source>
+        <target>建立/匯入</target>
+      </trans-unit>
+      <trans-unit id="sf2514d5dc78b1654">
+        <source>Insert widget</source>
+        <target>插入 Widget</target>
+      </trans-unit>
+      <trans-unit id="sbc5bb5bb74d141b9">
+        <source>Uninstall</source>
+        <target>解除安裝</target>
+      </trans-unit>
+      <trans-unit id="s6196153c4b0c1ea0">
+        <source>Install</source>
+        <target>安裝</target>
+      </trans-unit>
+      <trans-unit id="s8b0432eecbd8b034">
+        <source>Update</source>
+        <target>更新</target>
+      </trans-unit>
+      <trans-unit id="s1857db526dc4dcdd">
+        <source>Create package</source>
+        <target>建立套件</target>
+      </trans-unit>
+      <trans-unit id="sd2addf69477cd4b4">
+        <source>Import package</source>
+        <target>匯入套件</target>
+      </trans-unit>
+      <trans-unit id="s7aaf0c06e69600f1">
+        <source>Error with </source>
+        <target>錯誤與 </target>
+      </trans-unit>
+      <trans-unit id="s00065e45db8c0441">
+        <source>See developer tools for more details</source>
+        <target>如需詳細資訊，請參閱開發人員工具</target>
+      </trans-unit>
+      <trans-unit id="s02106cc2ef0e7578">
+        <source>New pin...</source>
+        <target>新的針腳...</target>
+      </trans-unit>
+      <trans-unit id="sb85774dc5d18ff0f">
+        <source>Confirm</source>
+        <target>確認</target>
+      </trans-unit>
+      <trans-unit id="s2ceb11be2290bb1b">
+        <source>Cancel</source>
+        <target>取消</target>
+      </trans-unit>
+      <trans-unit id="keyCommand">
+        <source>⌘ Command/Win</source>
+        <target>命令/贏</target>
+      </trans-unit>
+      <trans-unit id="keyShift">
+        <source>⇧ Shift</source>
+        <target>⇧ 移位</target>
+      </trans-unit>
+      <trans-unit id="keyControl">
+        <source>^ Control</source>
+        <target>^ 控制</target>
+      </trans-unit>
+      <trans-unit id="keyOption">
+        <source>⌥ Option/Alt</source>
+        <target>⌥ 選項/Alt</target>
+      </trans-unit>
+      <trans-unit id="s2692bc028fed91f1">
+        <source>⇪ Caps Lock</source>
+        <target>大寫鎖定</target>
+      </trans-unit>
+      <trans-unit id="backspaceKey">
+        <source>⟵</source>
+        <target>⟵</target>
+      </trans-unit>
+      <trans-unit id="tabKey">
+        <source>⭾ Tab</source>
+        <target>⭾ Tab</target>
+      </trans-unit>
+      <trans-unit id="clearKey">
+        <source>⎚ Clear</source>
+        <target>⎚ 清除</target>
+      </trans-unit>
+      <trans-unit id="enterKey">
+        <source>↩ Enter</source>
+        <target>輸入</target>
+      </trans-unit>
+      <trans-unit id="escapeKey">
+        <source>⎋ Escape</source>
+        <target>逃脫</target>
+      </trans-unit>
+      <trans-unit id="spaceKey">
+        <source>Space</source>
+        <target>空間</target>
+      </trans-unit>
+      <trans-unit id="upKey">
+        <source>↑ Up</source>
+        <target>↑ 向上</target>
+      </trans-unit>
+      <trans-unit id="downKey">
+        <source>↓ Down</source>
+        <target>↓ 向下</target>
+      </trans-unit>
+      <trans-unit id="leftKey">
+        <source>← Left</source>
+        <target>← 左邊</target>
+      </trans-unit>
+      <trans-unit id="rightKey">
+        <source>→ Right</source>
+        <target>→ 對</target>
+      </trans-unit>
+      <trans-unit id="homeKey">
+        <source>⤒ Home</source>
+        <target>⤒ 首頁</target>
+      </trans-unit>
+      <trans-unit id="endKey">
+        <source>⤓ End</source>
+        <target>⤓ 結束</target>
+      </trans-unit>
+      <trans-unit id="pageupKey">
+        <source>▲ Pageup</source>
+        <target>▲ 向上翻頁</target>
+      </trans-unit>
+      <trans-unit id="pagedownKey">
+        <source>▼ Pagedown</source>
+        <target>▼ 分頁</target>
+      </trans-unit>
+      <trans-unit id="deleteKey">
+        <source>⌦ Delete</source>
+        <target>⌦ 刪除</target>
+      </trans-unit>
+      <trans-unit id="f1Key">
+        <source>F1</source>
+        <target>F1</target>
+      </trans-unit>
+      <trans-unit id="f2Key">
+        <source>F2</source>
+        <target>F2</target>
+      </trans-unit>
+      <trans-unit id="f3Key">
+        <source>F3</source>
+        <target>F3</target>
+      </trans-unit>
+      <trans-unit id="f4Key">
+        <source>F4</source>
+        <target>F4</target>
+      </trans-unit>
+      <trans-unit id="f5Key">
+        <source>F5</source>
+        <target>F5</target>
+      </trans-unit>
+      <trans-unit id="f6Key">
+        <source>F6</source>
+        <target>F6</target>
+      </trans-unit>
+      <trans-unit id="f7Key">
+        <source>F7</source>
+        <target>F7</target>
+      </trans-unit>
+      <trans-unit id="f8Key">
+        <source>F8</source>
+        <target>F8</target>
+      </trans-unit>
+      <trans-unit id="f9Key">
+        <source>F9</source>
+        <target>F9</target>
+      </trans-unit>
+      <trans-unit id="f10Key">
+        <source>F10</source>
+        <target>F10</target>
+      </trans-unit>
+      <trans-unit id="f11Key">
+        <source>F11</source>
+        <target>F11</target>
+      </trans-unit>
+      <trans-unit id="f12Key">
+        <source>F12</source>
+        <target>F12</target>
+      </trans-unit>
+      <trans-unit id="f13Key">
+        <source>F13</source>
+        <target>F13</target>
+      </trans-unit>
+      <trans-unit id="f14Key">
+        <source>F14</source>
+        <target>F14</target>
+      </trans-unit>
+      <trans-unit id="f15Key">
+        <source>F15</source>
+        <target>F15</target>
+      </trans-unit>
+      <trans-unit id="f16Key">
+        <source>F16</source>
+        <target>F16</target>
+      </trans-unit>
+      <trans-unit id="f17Key">
+        <source>F17</source>
+        <target>F17</target>
+      </trans-unit>
+      <trans-unit id="f18Key">
+        <source>F18</source>
+        <target>F18</target>
+      </trans-unit>
+      <trans-unit id="f19Key">
+        <source>F19</source>
+        <target>F19</target>
+      </trans-unit>
+      <trans-unit id="s7dea785045c3cc74">
+        <source>Press new key combination...</source>
+        <target>按下新的組合鍵...</target>
+      </trans-unit>
+      <trans-unit id="s46d4abe6255cb9e1">
+        <source>Reassign shortcut</source>
+        <target>重新指定捷徑</target>
+      </trans-unit>
+      <trans-unit id="sd1f44f1a8bc20e67">
+        <source>Email</source>
+        <target>電子郵件</target>
+      </trans-unit>
+      <trans-unit id="sf6e1665c7022a1f8">
+        <source>Password</source>
+        <target>密碼</target>
+      </trans-unit>
+      <trans-unit id="s151bc2eea7a032a4">
+        <source>-unchanged-</source>
+        <target>-unchanged-</target>
+      </trans-unit>
+      <trans-unit id="s7cb4e55c59663b1c">
+        <source>Company</source>
+        <target>公司簡介</target>
+      </trans-unit>
+      <trans-unit id="s5da52af9b083c29a">
+        <source>Model</source>
+        <target>型號</target>
+      </trans-unit>
+      <trans-unit id="s9781a5bb3fcb26a3">
+        <source>Select a company first</source>
+        <target>先選擇公司</target>
+      </trans-unit>
+      <trans-unit id="s15d0c0657c1ee08c">
+        <source>API Key</source>
+        <target>API 金鑰</target>
+      </trans-unit>
+      <trans-unit id="s268ecd1cef45a9a8">
+        <source>Are you sure?</source>
+        <target>你確定嗎？</target>
+      </trans-unit>
+      <trans-unit id="sd3f402df8619ddcd">
+        <source>This information about you is automatically added to new documents. You can change this for each document in the metadata editor.</source>
+        <target>這些關於您的資訊會自動加入新的文件中。您可以在 metadata 編輯器中針對每個文件變更這些資訊。</target>
+      </trans-unit>
+      <trans-unit id="s90105521fcc40453">
+        <source>WebWriter Cloud accounts allow you store documents online and share them with your students. Add an account here and it will be available as a location for saving, loading, sharing and opening documents.</source>
+        <target>WebWriter Cloud 帳戶可讓您線上儲存文件，並與學生分享。在此新增一個帳戶，它就可以作為儲存、載入、分享和開啟文件的位置。</target>
+      </trans-unit>
+      <trans-unit id="s2712dc5641a33226">
+        <source>Package registry accounts are intended for developers and allow you to configure one or more registries</source>
+        <target>套件註冊表帳戶專為開發者設定，可讓您設定一個或多個註冊表</target>
+      </trans-unit>
+      <trans-unit id="s429bd646f1cf8bc6">
+        <source>Grammar LLM accounts allow you to use the Grammar LLM API to correct grammar in text.</source>
+        <target>Grammar LLM 帳戶可讓您使用 Grammar LLM API 來修正文字中的文法。</target>
+      </trans-unit>
+      <trans-unit id="s669b18c6d2d9c95b">
+        <source>None</source>
+        <target>無</target>
+      </trans-unit>
+      <trans-unit id="s7cfe12cd14df9950">
+        <source>Sign out</source>
+        <target>登出</target>
+      </trans-unit>
+      <trans-unit id="s5e27738a2e8eb763">
+        <source>Sign in</source>
+        <target>登入</target>
+      </trans-unit>
+      <trans-unit id="sf28903d4ca0ddcfc">
+        <source>Remove this account</source>
+        <target>移除此帳號</target>
+      </trans-unit>
+      <trans-unit id="sb85b1e36579852a6">
+        <source>Invalid email or password</source>
+        <target>無效的電子郵件或密碼</target>
+      </trans-unit>
+      <trans-unit id="s6988ab5d47593a26">
+        <source>You have the latest version of WebWriter.</source>
+        <target>您擁有最新版本的 WebWriter。</target>
+      </trans-unit>
+      <trans-unit id="saf440a0a592f2835">
+        <source>Update to</source>
+        <target>更新為</target>
+      </trans-unit>
+      <trans-unit id="s564d1648b1ceee9f">
+        <source>Up to date</source>
+        <target>到目前為止</target>
+      </trans-unit>
+      <trans-unit id="sf6673729c03ae999">
+        <source>Reset WebWriter</source>
+        <target>重設 WebWriter</target>
+      </trans-unit>
+      <trans-unit id="sf1e79171c4856543">
+        <source>Are you sure? This action can't be reversed, all your settings will be deleted and reset.</source>
+        <target>您確定嗎？這個動作無法逆轉，您所有的設定都會被刪除並重設。</target>
+      </trans-unit>
+      <trans-unit id="s0bdca49248ba4820">
+        <source>Shortcuts</source>
+        <target>捷徑</target>
+      </trans-unit>
+      <trans-unit id="se48bd9e6c2a3109d">
+        <source>Accounts</source>
+        <target>帳戶</target>
+      </trans-unit>
+      <trans-unit id="s78789724e789221c">
+        <source>Size</source>
+        <target>尺寸</target>
+      </trans-unit>
+      <trans-unit id="s1b4a36fce2456660">
+        <source>Font Family</source>
+        <target>字型家族</target>
+      </trans-unit>
+      <trans-unit id="s11326fd2590f4e5e">
+        <source>Default</source>
+        <target>預設</target>
+      </trans-unit>
+      <trans-unit id="s9c356016f81585f6">
+        <source>Background Color</source>
+        <target>背景顏色</target>
+      </trans-unit>
+      <trans-unit id="s1f74bdf32b51a5fc">
+        <source>Background Image</source>
+        <target>背景圖片</target>
+      </trans-unit>
+      <trans-unit id="s927d796559f49439">
+        <source>Background Origin</source>
+        <target>背景起源</target>
+      </trans-unit>
+      <trans-unit id="s1637c7d1a30629e2">
+        <source>Border Box</source>
+        <target>邊框</target>
+      </trans-unit>
+      <trans-unit id="scd15088c39fe9edf">
+        <source>Padding Box</source>
+        <target>襯墊盒</target>
+      </trans-unit>
+      <trans-unit id="s1db591f5a54dbfd3">
+        <source>Content Box</source>
+        <target>內容盒</target>
+      </trans-unit>
+      <trans-unit id="sa01e7bf33563ef72">
+        <source>Background Attachment</source>
+        <target>背景附件</target>
+      </trans-unit>
+      <trans-unit id="sd319aae1401f1e19">
+        <source>Fixed</source>
+        <target>固定式</target>
+      </trans-unit>
+      <trans-unit id="se9b1fec72ffd8f48">
+        <source>Local</source>
+        <target>當地</target>
+      </trans-unit>
+      <trans-unit id="sa7698b3d20a6d1ec">
+        <source>Scroll</source>
+        <target>捲軸</target>
+      </trans-unit>
+      <trans-unit id="s89bca7498f20e041">
+        <source>Background Clip</source>
+        <target>背景剪輯</target>
+      </trans-unit>
+      <trans-unit id="s2492f5fb1b05b45e">
+        <source>Text</source>
+        <target>正文</target>
+      </trans-unit>
+      <trans-unit id="s1351209ef74ee729">
+        <source>Span all columns</source>
+        <target>跨越所有欄位</target>
+      </trans-unit>
+      <trans-unit id="sf0cab2483f66aa2e">
+        <source>Custom</source>
+        <target>自訂</target>
+      </trans-unit>
+      <trans-unit id="s951aa3a6439f1271">
+        <source>List marker</source>
+        <target>清單標記</target>
+      </trans-unit>
+      <trans-unit id="sc3f09a9b6fa4fbed">
+        <source>Inside</source>
+        <target>內部</target>
+      </trans-unit>
+      <trans-unit id="s2ba5f4d8f3bd7c57">
+        <source>Order</source>
+        <target>訂購</target>
+      </trans-unit>
+      <trans-unit id="sdb73788b3c975f16">
+        <source>Auto</source>
+        <target>自動</target>
+      </trans-unit>
+      <trans-unit id="sae1c7f13b7c0c47f">
+        <source>Start</source>
+        <target>開始</target>
+      </trans-unit>
+      <trans-unit id="sb38d497d992ab4a4">
+        <source>Center</source>
+        <target>中心</target>
+      </trans-unit>
+      <trans-unit id="sd8f923198e0c5c6a">
+        <source>End</source>
+        <target>結束</target>
+      </trans-unit>
+      <trans-unit id="s1749014f3f87fa6a">
+        <source>Stretch</source>
+        <target>拉伸</target>
+      </trans-unit>
+      <trans-unit id="s602bbd28dae2c60f">
+        <source>Self start</source>
+        <target>自行啟動</target>
+      </trans-unit>
+      <trans-unit id="s6747dbf4ad6063ba">
+        <source>Self end</source>
+        <target>自結</target>
+      </trans-unit>
+      <trans-unit id="sebbced89e0db2894">
+        <source>First baseline</source>
+        <target>第一個基線</target>
+      </trans-unit>
+      <trans-unit id="s0ee28503778e4c0c">
+        <source>Last baseline</source>
+        <target>最後基線</target>
+      </trans-unit>
+      <trans-unit id="s06743b24499f0035">
+        <source>Anchor center</source>
+        <target>錨點中心</target>
+      </trans-unit>
+      <trans-unit id="s1245e2cb9f20197e">
+        <source>Align</source>
+        <target>對齊</target>
+      </trans-unit>
+      <trans-unit id="sa3b4c01623211544">
+        <source>Force</source>
+        <target>動力</target>
+      </trans-unit>
+      <trans-unit id="sef24caccbd4645ef">
+        <source>Flex shrink</source>
+        <target>柔性收縮</target>
+      </trans-unit>
+      <trans-unit id="sbfa01f189a68d3e9">
+        <source>Flex grow</source>
+        <target>彈性成長</target>
+      </trans-unit>
+      <trans-unit id="saced41ddda8b2354">
+        <source>Flex basis</source>
+        <target>彈性基礎</target>
+      </trans-unit>
+      <trans-unit id="s44cdba92713de38e">
+        <source>Grid area</source>
+        <target>網格區域</target>
+      </trans-unit>
+      <trans-unit id="s05e9759cfd99c48f">
+        <source>Justify</source>
+        <target>證明</target>
+      </trans-unit>
+      <trans-unit id="s0c4593d81f147042">
+        <source>Baseline</source>
+        <target>基線</target>
+      </trans-unit>
+      <trans-unit id="sc980855a000b76ea">
+        <source>Bottom</source>
+        <target>底部</target>
+      </trans-unit>
+      <trans-unit id="s4101ada154a1b958">
+        <source>Middle</source>
+        <target>中間</target>
+      </trans-unit>
+      <trans-unit id="s6d02dc19e21eb49c">
+        <source>Top</source>
+        <target>回頂端</target>
+      </trans-unit>
+      <trans-unit id="s987abd19fac8cf55">
+        <source>Sub</source>
+        <target>次級</target>
+      </trans-unit>
+      <trans-unit id="s9095f01a80a91594">
+        <source>Super</source>
+        <target>超級</target>
+      </trans-unit>
+      <trans-unit id="sf4b537d4cbd8f5fd">
+        <source>Text top</source>
+        <target>文字頂端</target>
+      </trans-unit>
+      <trans-unit id="s3fe72792941c18f9">
+        <source>Text bottom</source>
+        <target>文字底部</target>
+      </trans-unit>
+      <trans-unit id="s27076e66c5d483ba">
+        <source>Vertical align</source>
+        <target>垂直對齊</target>
+      </trans-unit>
+      <trans-unit id="sd3c65ef5c380c046">
+        <source>Inset</source>
+        <target>內頁</target>
+      </trans-unit>
+      <trans-unit id="sa5c371b4bb75e590">
+        <source>Left</source>
+        <target>左邊</target>
+      </trans-unit>
+      <trans-unit id="s366991b9c9287765">
+        <source>Right</source>
+        <target>對</target>
+      </trans-unit>
+      <trans-unit id="s9d167ef77aed79b6">
+        <source>Layer</source>
+        <target>層數</target>
+      </trans-unit>
+      <trans-unit id="sda344aacb837387e">
+        <source>Position in container</source>
+        <target>在集裝箱中的位置</target>
+      </trans-unit>
+      <trans-unit id="sf34696c526e810b4">
+        <source>Inline</source>
+        <target>內嵌</target>
+      </trans-unit>
+      <trans-unit id="s2b2ae20d26f78ac2">
+        <source>Block</source>
+        <target>塊</target>
+      </trans-unit>
+      <trans-unit id="sda5b6fa8b771f996">
+        <source>Float left</source>
+        <target>向左浮動</target>
+      </trans-unit>
+      <trans-unit id="s2f0bcdffc92a786b">
+        <source>Float right</source>
+        <target>向右浮動</target>
+      </trans-unit>
+      <trans-unit id="s782f286a79cca35d">
+        <source>Relative</source>
+        <target>相對</target>
+      </trans-unit>
+      <trans-unit id="sa1c6c459b9b5115c">
+        <source>Absolute</source>
+        <target>絕對</target>
+      </trans-unit>
+      <trans-unit id="sf2d5cbc2fe0ad65a">
+        <source>Sticky</source>
+        <target>黏貼</target>
+      </trans-unit>
+      <trans-unit id="sc1611c0558728a2a">
+        <source>Position</source>
+        <target>職位</target>
+      </trans-unit>
+      <trans-unit id="sf7a5f7a7c80c3082">
+        <source>Both</source>
+        <target>兩者</target>
+      </trans-unit>
+      <trans-unit id="s5be80ad6b8301710">
+        <source>Inline start</source>
+        <target>線上啟動</target>
+      </trans-unit>
+      <trans-unit id="sf79e0d78b56444f1">
+        <source>Inline end</source>
+        <target>直列末端</target>
+      </trans-unit>
+      <trans-unit id="sb4f1dffbb6be6302">
+        <source>Clear</source>
+        <target>清除</target>
+      </trans-unit>
+      <trans-unit id="se5dc1e97fb743ade">
+        <source>Spacing</source>
+        <target>間距</target>
+      </trans-unit>
+      <trans-unit id="s83f26d02dd7aa681">
+        <source>Visible</source>
+        <target>可見</target>
+      </trans-unit>
+      <trans-unit id="s886897f2fd4edb99">
+        <source>Hidden</source>
+        <target>隱藏</target>
+      </trans-unit>
+      <trans-unit id="s3e092e9d1ee2c5bb">
+        <source>Clip</source>
+        <target>夾子</target>
+      </trans-unit>
+      <trans-unit id="s94eb1effbbb6498b">
+        <source>Overflow</source>
+        <target>溢出</target>
+      </trans-unit>
+      <trans-unit id="s37a8c35f6581da5f">
+        <source>No anchor</source>
+        <target>無錨</target>
+      </trans-unit>
+      <trans-unit id="s2edd6688a65e21f0">
+        <source>Overflow (x)</source>
+        <target>溢出 (x)</target>
+      </trans-unit>
+      <trans-unit id="s2eda5288a65bca1d">
+        <source>Overflow (y)</source>
+        <target>溢出 (y)</target>
+      </trans-unit>
+      <trans-unit id="s3f1e7a3f2b283d3b">
+        <source>Margin</source>
+        <target>邊際利潤</target>
+      </trans-unit>
+      <trans-unit id="s9370dc6afa716b57">
+        <source>Border</source>
+        <target>邊界</target>
+      </trans-unit>
+      <trans-unit id="s7d8103f6f06f83d6">
+        <source>Padding</source>
+        <target>襯墊</target>
+      </trans-unit>
+      <trans-unit id="s5dc77784260a7236">
+        <source>auto</source>
+        <target>自動</target>
+      </trans-unit>
+      <trans-unit id="sf21fb4f4b9e8911f">
+        <source>Width</source>
+        <target>寬度</target>
+      </trans-unit>
+      <trans-unit id="sffdadf0a576fd802">
+        <source>Height</source>
+        <target>高度</target>
+      </trans-unit>
+      <trans-unit id="s1177237a3e0e548c">
+        <source>Minimum (x)</source>
+        <target>最小值 (x)</target>
+      </trans-unit>
+      <trans-unit id="s1173bf7a3e0b74c9">
+        <source>Minimum (y)</source>
+        <target>最小值 (y)</target>
+      </trans-unit>
+      <trans-unit id="s7c61118554a0ec36">
+        <source>Maximum (x)</source>
+        <target>最大值 (x)</target>
+      </trans-unit>
+      <trans-unit id="se79c0a3ac70d8fb3">
+        <source>Asp. ratio (x)</source>
+        <target>比率 (x)</target>
+      </trans-unit>
+      <trans-unit id="se79fae3ac710dc36">
+        <source>Asp. ratio (y)</source>
+        <target>比率 (y)</target>
+      </trans-unit>
+      <trans-unit id="s19daf2f26c19543d">
+        <source>Outline</source>
+        <target>概要</target>
+      </trans-unit>
+      <trans-unit id="sd9ff8e2612e63d50">
+        <source>Border box sizing</source>
+        <target>邊框大小</target>
+      </trans-unit>
+      <trans-unit id="sc1fff4f356dfb2fb">
+        <source>Transform</source>
+        <target>變形</target>
+      </trans-unit>
+      <trans-unit id="s0b1271f50a77dc73">
+        <source>Content box</source>
+        <target>內容盒</target>
+      </trans-unit>
+      <trans-unit id="s002fa7d1054ed082">
+        <source>Border box</source>
+        <target>邊框</target>
+      </trans-unit>
+      <trans-unit id="s74cd20a7aece9b91">
+        <source>Fill box</source>
+        <target>填充方塊</target>
+      </trans-unit>
+      <trans-unit id="s42721130228841b0">
+        <source>Stroke box</source>
+        <target>行程箱</target>
+      </trans-unit>
+      <trans-unit id="scbc55f622ec078c1">
+        <source>View box</source>
+        <target>檢視盒子</target>
+      </trans-unit>
+      <trans-unit id="sc462bbdd36bcba6b">
+        <source>Reference box</source>
+        <target>參考方塊</target>
+      </trans-unit>
+      <trans-unit id="sc8ac7ef92b95df3f">
+        <source>Move (x)</source>
+        <target>移動 (x)</target>
+      </trans-unit>
+      <trans-unit id="sc8b022f92b992bc2">
+        <source>Move (y)</source>
+        <target>移動 (y)</target>
+      </trans-unit>
+      <trans-unit id="sc8b39af92b9c2d81">
+        <source>Move (z)</source>
+        <target>移動 (z)</target>
+      </trans-unit>
+      <trans-unit id="sf4f3cbd41f002b46">
+        <source>Scale (x)</source>
+        <target>刻度 (x)</target>
+      </trans-unit>
+      <trans-unit id="sf4f067d41efd4b83">
+        <source>Scale (y)</source>
+        <target>刻度 (y)</target>
+      </trans-unit>
+      <trans-unit id="sf4fa67d41f05a008">
+        <source>Scale (z)</source>
+        <target>刻度 (z)</target>
+      </trans-unit>
+      <trans-unit id="sc6578b15b2154365">
+        <source>Rotate (x)</source>
+        <target>旋轉 (x)</target>
+      </trans-unit>
+      <trans-unit id="sc65aff15b2183e58">
+        <source>Rotate (y)</source>
+        <target>旋轉 (y)</target>
+      </trans-unit>
+      <trans-unit id="sc650ff15b20fe9d3">
+        <source>Rotate (z)</source>
+        <target>旋轉 (z)</target>
+      </trans-unit>
+      <trans-unit id="sf5197db2d5f2926a">
+        <source>Rotate</source>
+        <target>旋轉</target>
+      </trans-unit>
+      <trans-unit id="s430bd5017f42511c">
+        <source>Skew (x)</source>
+        <target>偏斜 (x)</target>
+      </trans-unit>
+      <trans-unit id="s430831017f3f0499">
+        <source>Skew (y)</source>
+        <target>偏斜 (y)</target>
+      </trans-unit>
+      <trans-unit id="s36b3cefdcb897f15">
+        <source>Perspective</source>
+        <target>視野</target>
+      </trans-unit>
+      <trans-unit id="sc52e8b794c0913d6">
+        <source>Perspective origin (x)</source>
+        <target>透視原點 (x)</target>
+      </trans-unit>
+      <trans-unit id="sc52b67794c06a0d3">
+        <source>Perspective origin (y)</source>
+        <target>透視原點 (y)</target>
+      </trans-unit>
+      <trans-unit id="saa065776236bfa28">
+        <source>Transform origin (x)</source>
+        <target>變換原點 (x)</target>
+      </trans-unit>
+      <trans-unit id="saa02e3762368ff35">
+        <source>Transform origin (y)</source>
+        <target>變換原點 (y)</target>
+      </trans-unit>
+      <trans-unit id="sa9ff3b762365abe6">
+        <source>Transform origin (z)</source>
+        <target>變換原點 (z)</target>
+      </trans-unit>
+      <trans-unit id="s166bd56d19670a72">
+        <source>Zoom</source>
+        <target>縮放</target>
+      </trans-unit>
+      <trans-unit id="s680bd4d926cd5a84">
+        <source>Preserve 3D</source>
+        <target>保存 3D</target>
+      </trans-unit>
+      <trans-unit id="s6a31eff1ec4f71ad">
+        <source>Hide backface (3D)</source>
+        <target>隱藏背面 (3D)</target>
+      </trans-unit>
+      <trans-unit id="s2de969afacdaa7a6">
+        <source>Shape</source>
+        <target>形狀</target>
+      </trans-unit>
+      <trans-unit id="sd837f42ac7cbfb58">
+        <source>Shape (outside)</source>
+        <target>形狀（外部）</target>
+      </trans-unit>
+      <trans-unit id="s86f820d8007d0de4">
+        <source>Shape margin</source>
+        <target>形狀邊界</target>
+      </trans-unit>
+      <trans-unit id="s6cfc66b824ea05ba">
+        <source>Crisp edges</source>
+        <target>清晰的邊緣</target>
+      </trans-unit>
+      <trans-unit id="s7031ca562378bde6">
+        <source>Geometric precision</source>
+        <target>幾何精度</target>
+      </trans-unit>
+      <trans-unit id="sd121d3b959b7888d">
+        <source>Optimize speed</source>
+        <target>優化速度</target>
+      </trans-unit>
+      <trans-unit id="sf2de3dbe2108637a">
+        <source>Shape rendering</source>
+        <target>形狀渲染</target>
+      </trans-unit>
+      <trans-unit id="s5787c6d5b3b5541a">
+        <source>Clip path</source>
+        <target>剪輯路徑</target>
+      </trans-unit>
+      <trans-unit id="s372fae706048ce41">
+        <source>Even-odd</source>
+        <target>偶數</target>
+      </trans-unit>
+      <trans-unit id="s49c560aecfeb8c29">
+        <source>Mask</source>
+        <target>面罩</target>
+      </trans-unit>
+      <trans-unit id="s4fda04cbc245e18b">
+        <source>Alpha</source>
+        <target>阿爾法</target>
+      </trans-unit>
+      <trans-unit id="s1dbb9f50e16c92a3">
+        <source>Border radius</source>
+        <target>邊界半徑</target>
+      </trans-unit>
+      <trans-unit id="s78673a3539cb1915">
+        <source>Top left</source>
+        <target>左上方</target>
+      </trans-unit>
+      <trans-unit id="s8b7580c35e2aef87">
+        <source>Top left (y)</source>
+        <target>左上方 (y)</target>
+      </trans-unit>
+      <trans-unit id="sb0a7e3adf4a125ee">
+        <source>Top right</source>
+        <target>右上方</target>
+      </trans-unit>
+      <trans-unit id="s84e4e8ae645b82ac">
+        <source>Top right (y)</source>
+        <target>右上方 (y)</target>
+      </trans-unit>
+      <trans-unit id="scfcb70f2a15eaf14">
+        <source>Bottom right</source>
+        <target>右下方</target>
+      </trans-unit>
+      <trans-unit id="sdbee7e0523a23a42">
+        <source>Bottom right (y)</source>
+        <target>右下方 (y)</target>
+      </trans-unit>
+      <trans-unit id="sef23dd271edd4a8b">
+        <source>Bottom left</source>
+        <target>左下方</target>
+      </trans-unit>
+      <trans-unit id="sd5fd9d11a92f5b1d">
+        <source>Bottom left (y)</source>
+        <target>左下方 (y)</target>
+      </trans-unit>
+      <trans-unit id="s29acfd2778e8c377">
+        <source>Hide advanced text formatting</source>
+        <target>隱藏進階文字格式</target>
+      </trans-unit>
+      <trans-unit id="s1a1acc902e6668e0">
+        <source>Show advanced text formatting</source>
+        <target>顯示進階文字格式</target>
+      </trans-unit>
+      <trans-unit id="s61eacb19db252f5e">
+        <source>URL</source>
+        <target>網址</target>
+      </trans-unit>
+      <trans-unit id="s4fd2e638aabb0bb3">
+        <source>WebWriter supports embedding many different sources. Simply paste a link to content from:</source>
+        <target>WebWriter 支援嵌入許多不同的來源。只要貼上來自以下來源的內容連結即可：</target>
+      </trans-unit>
+      <trans-unit id="sa79167651dce1e80">
+        <source>Alternate text</source>
+        <target>替代文本</target>
+      </trans-unit>
+      <trans-unit id="sa8bbe0197d31b423">
+        <source>Short description</source>
+        <target>簡短說明</target>
+      </trans-unit>
+      <trans-unit id="seccd05955adb76bc">
+        <source>Poster</source>
+        <target>海報</target>
+      </trans-unit>
+      <trans-unit id="s42e470ef1d707a28">
+        <source>Autoplay</source>
+        <target>自動播放</target>
+      </trans-unit>
+      <trans-unit id="s83cd32b685ccc9b7">
+        <source>Controls</source>
+        <target>控制裝置</target>
+      </trans-unit>
+      <trans-unit id="s4efee5b48a4593cb">
+        <source>Loop</source>
+        <target>迴圈</target>
+      </trans-unit>
+      <trans-unit id="se0f67eae944f8f94">
+        <source>Mute</source>
+        <target>靜音</target>
+      </trans-unit>
+      <trans-unit id="s65ac276544ba33cd">
+        <source>SVG file</source>
+        <target>SVG 檔案</target>
+      </trans-unit>
+      <trans-unit id="sf22a3737146ec910">
+        <source>WebWriter can embed SVG directly in the document.</source>
+        <target>WebWriter 可以直接在文件中嵌入 SVG。</target>
+      </trans-unit>
+      <trans-unit id="se036b53f145441cd">
+        <source>Mixed Content</source>
+        <target>混合內容</target>
+      </trans-unit>
+      <trans-unit id="sb7c77d0415de05cf">
+        <source>Run tests</source>
+        <target>執行測試</target>
+      </trans-unit>
+      <trans-unit id="s4dcb9315f6527f9c">
+        <source>Run on reload</source>
+        <target>重新載入時執行</target>
+      </trans-unit>
+      <trans-unit id="sb430f5b4824de0d3">
+        <source>Choose a layout</source>
+        <target>選擇佈局</target>
+      </trans-unit>
+      <trans-unit id="seaf97719986faf4f">
+        <source>Gap</source>
+        <target>縫隙</target>
+      </trans-unit>
+      <trans-unit id="sab55faae8e165407">
+        <source>Padding&lt;br&gt; like gap</source>
+        <target>襯墊&lt;br&gt; 如間隙</target>
+      </trans-unit>
+      <trans-unit id="se58f06c2b0583ff7">
+        <source>Pick coordinates</source>
+        <target>選取座標</target>
+      </trans-unit>
+      <trans-unit id="sdf9bc5d9b7f3e3de">
+        <source>Alignment</source>
+        <target>對齊</target>
+      </trans-unit>
+      <trans-unit id="s626daf42b1ab7df7">
+        <source>Align left</source>
+        <target>向左對齊</target>
+      </trans-unit>
+      <trans-unit id="s13c60cb409e8cb6f">
+        <source>Align center</source>
+        <target>對齊中心</target>
+      </trans-unit>
+      <trans-unit id="sac687b8649989de8">
+        <source>Align right</source>
+        <target>向右對齊</target>
+      </trans-unit>
+      <trans-unit id="s8d8643013a7754d1">
+        <source>Align text</source>
+        <target>對齊文字</target>
+      </trans-unit>
+      <trans-unit id="se06f459fccdc3ce9">
+        <source>Align last text line</source>
+        <target>對齊最後一行文字</target>
+      </trans-unit>
+      <trans-unit id="sfaa0a67db5c11f72">
+        <source>Indent first text line</source>
+        <target>縮排第一行文字</target>
+      </trans-unit>
+      <trans-unit id="s95de7e1eff6c053e">
+        <source>Horizontal, top-to-bottom</source>
+        <target>水平，從上至下</target>
+      </trans-unit>
+      <trans-unit id="sd8a345e95668b73b">
+        <source>Vertical, right-to-left</source>
+        <target>垂直、從右至左</target>
+      </trans-unit>
+      <trans-unit id="s8ffe7abcbed8eb43">
+        <source>Vertical, left-to-right</source>
+        <target>垂直、從左至右</target>
+      </trans-unit>
+      <trans-unit id="s986facb3ecc9602c">
+        <source>Sideways, right-to-left</source>
+        <target>側向，由右至左</target>
+      </trans-unit>
+      <trans-unit id="s063fa5a0a4903bf4">
+        <source>Sideways, left-to-right</source>
+        <target>側向，從左至右</target>
+      </trans-unit>
+      <trans-unit id="sf190149f9d8bbb2a">
+        <source>Writing mode</source>
+        <target>寫入模式</target>
+      </trans-unit>
+      <trans-unit id="se96fd76ba1b2975a">
+        <source>Central</source>
+        <target>中央區</target>
+      </trans-unit>
+      <trans-unit id="sd8ecf227c7c49331">
+        <source>Mathematical</source>
+        <target>數學</target>
+      </trans-unit>
+      <trans-unit id="se8a94b4effa2033e">
+        <source>Alphabetic</source>
+        <target>字母</target>
+      </trans-unit>
+      <trans-unit id="scec2be75ee985f6c">
+        <source>Ideographic</source>
+        <target>表意文字</target>
+      </trans-unit>
+      <trans-unit id="s7ecb1f29332293e5">
+        <source>Alignment baseline</source>
+        <target>對齊基線</target>
+      </trans-unit>
+      <trans-unit id="sbf519920c2017d67">
+        <source>Hanging</source>
+        <target>懸掛</target>
+      </trans-unit>
+      <trans-unit id="s40f07d7859284a44">
+        <source>Dominant baseline</source>
+        <target>主導基線</target>
+      </trans-unit>
+      <trans-unit id="sbb86c6c96f598bb8">
+        <source>Mixed</source>
+        <target>混合</target>
+      </trans-unit>
+      <trans-unit id="s7b560d8693ed8f42">
+        <source>Upright</source>
+        <target>直立式</target>
+      </trans-unit>
+      <trans-unit id="s5b517ac216f9ee62">
+        <source>Sideways</source>
+        <target>側向</target>
+      </trans-unit>
+      <trans-unit id="s47ebf3a8fb3b10c1">
+        <source>Orientation</source>
+        <target>導覽</target>
+      </trans-unit>
+      <trans-unit id="sa1647e3b36ec08d7">
+        <source>Combine upright</source>
+        <target>結合直立式</target>
+      </trans-unit>
+      <trans-unit id="s0ef01c03299bbb83">
+        <source>Decoration</source>
+        <target>裝飾</target>
+      </trans-unit>
+      <trans-unit id="sc2a24a9dd41a9503">
+        <source>Decoration line</source>
+        <target>裝飾線</target>
+      </trans-unit>
+      <trans-unit id="sb6ca0a8bb3caae69">
+        <source>Decoration thickness</source>
+        <target>裝飾厚度</target>
+      </trans-unit>
+      <trans-unit id="sa43800e28be1bdbc">
+        <source>Decoration color</source>
+        <target>裝飾顏色</target>
+      </trans-unit>
+      <trans-unit id="s89950d86c8004d4b">
+        <source>Skip no overlaps</source>
+        <target>跳過不重疊</target>
+      </trans-unit>
+      <trans-unit id="s5e6a7a0c30d2a270">
+        <source>Skip overlaps (auto)</source>
+        <target>跳過重疊（自動）</target>
+      </trans-unit>
+      <trans-unit id="sb628960829e223bb">
+        <source>Skip all overlaps</source>
+        <target>跳過所有重疊</target>
+      </trans-unit>
+      <trans-unit id="s3d9548e211b958ce">
+        <source>Skip overlaps</source>
+        <target>跳過重疊</target>
+      </trans-unit>
+      <trans-unit id="s61ded17ca3f48c82">
+        <source>Underline offset</source>
+        <target>底線偏移</target>
+      </trans-unit>
+      <trans-unit id="s697400b541fbc3cd">
+        <source>Under</source>
+        <target>根據</target>
+      </trans-unit>
+      <trans-unit id="s9219acd5bef6269e">
+        <source>Under left</source>
+        <target>左下方</target>
+      </trans-unit>
+      <trans-unit id="sa13f72278add7513">
+        <source>Under right</source>
+        <target>右下方</target>
+      </trans-unit>
+      <trans-unit id="s9ab10fbf4c7a7322">
+        <source>Underline position</source>
+        <target>底線位置</target>
+      </trans-unit>
+      <trans-unit id="s446a924922651ea0">
+        <source>Text emphasis</source>
+        <target>文字強調</target>
+      </trans-unit>
+      <trans-unit id="sd1f81984eeb7c0e8">
+        <source>Fill</source>
+        <target>填寫</target>
+      </trans-unit>
+      <trans-unit id="s266935f2447fcd98">
+        <source>Over Left</source>
+        <target>左上方</target>
+      </trans-unit>
+      <trans-unit id="s684a16f3c711394d">
+        <source>Over Right</source>
+        <target>右上方</target>
+      </trans-unit>
+      <trans-unit id="sb940ade1bd81be7e">
+        <source>Under Left</source>
+        <target>左下方</target>
+      </trans-unit>
+      <trans-unit id="s60ff598dfcf2c773">
+        <source>Under Right</source>
+        <target>右下方</target>
+      </trans-unit>
+      <trans-unit id="s91093e0b087911ba">
+        <source>Emphasis position</source>
+        <target>重點位置</target>
+      </trans-unit>
+      <trans-unit id="sec02109a0dd2a6c8">
+        <source>Emphasis color</source>
+        <target>強調顏色</target>
+      </trans-unit>
+      <trans-unit id="s497838412cb455f2">
+        <source>Text shadow</source>
+        <target>文字陰影</target>
+      </trans-unit>
+      <trans-unit id="sed86bd0deb2e5372">
+        <source>Transform text</source>
+        <target>轉換文字</target>
+      </trans-unit>
+      <trans-unit id="s4b2c143acf931122">
+        <source>Line height</source>
+        <target>線高度</target>
+      </trans-unit>
+      <trans-unit id="sfb231a52211b133f">
+        <source>No text wrap</source>
+        <target>無文字換行</target>
+      </trans-unit>
+      <trans-unit id="sb8a3d4df7d1c5e6b">
+        <source>Balance</source>
+        <target>平衡</target>
+      </trans-unit>
+      <trans-unit id="s27cc88818cc46ff6">
+        <source>Stable</source>
+        <target>穩定</target>
+      </trans-unit>
+      <trans-unit id="s3e78ddc9a48a608d">
+        <source>Pretty</source>
+        <target>漂亮</target>
+      </trans-unit>
+      <trans-unit id="s31c06e226322f065">
+        <source>Avoid orphans</source>
+        <target>避免孤兒</target>
+      </trans-unit>
+      <trans-unit id="scd9cedeb5ece3adb">
+        <source>Hyphenate</source>
+        <target>連字</target>
+      </trans-unit>
+      <trans-unit id="se36c5b1baf5e0660">
+        <source>Anywhere</source>
+        <target>任何地方</target>
+      </trans-unit>
+      <trans-unit id="s80b71fc6f43c5ce1">
+        <source>Loose</source>
+        <target>鬆散</target>
+      </trans-unit>
+      <trans-unit id="s9ff3121d30f88d52">
+        <source>Normal</source>
+        <target>正常</target>
+      </trans-unit>
+      <trans-unit id="s58bec0ecd4f3ccd4">
+        <source>Strict</source>
+        <target>嚴格</target>
+      </trans-unit>
+      <trans-unit id="s2bad2d24def4aa0b">
+        <source>Line break (CJK lang.)</source>
+        <target>換行 (CJK 語言)</target>
+      </trans-unit>
+      <trans-unit id="s433ba70286202ceb">
+        <source>Break all</source>
+        <target>打破所有</target>
+      </trans-unit>
+      <trans-unit id="sd1cffad290ea5b3b">
+        <source>Keep all</source>
+        <target>保留所有</target>
+      </trans-unit>
+      <trans-unit id="s5feaf7fd7ee567c8">
+        <source>Break word</source>
+        <target>斷字</target>
+      </trans-unit>
+      <trans-unit id="s4e361bf8eef3759a">
+        <source>Word break</source>
+        <target>斷字</target>
+      </trans-unit>
+      <trans-unit id="s4993444bfd3f3e5e">
+        <source>Collapse</source>
+        <target>崩潰</target>
+      </trans-unit>
+      <trans-unit id="sa8279f8211b3950d">
+        <source>Preserve breaks and spaces</source>
+        <target>保留休息與空間</target>
+      </trans-unit>
+      <trans-unit id="sa757645ad842da97">
+        <source>Preserve breaks</source>
+        <target>保留休息時間</target>
+      </trans-unit>
+      <trans-unit id="s9f1ecdb3061d9cbc">
+        <source>Preserve spaces</source>
+        <target>保存空間</target>
+      </trans-unit>
+      <trans-unit id="s8d797888455f4147">
+        <source>Break spaces</source>
+        <target>休息空間</target>
+      </trans-unit>
+      <trans-unit id="s95d8e41a64635c7c">
+        <source>White space</source>
+        <target>白色空間</target>
+      </trans-unit>
+      <trans-unit id="s833bd0422a7ef95d">
+        <source>Tab size</source>
+        <target>標籤大小</target>
+      </trans-unit>
+      <trans-unit id="s050954cd4ae83304">
+        <source>Word spacing</source>
+        <target>字距</target>
+      </trans-unit>
+      <trans-unit id="sb2cda80610c8d6ea">
+        <source>Space all</source>
+        <target>全部空間</target>
+      </trans-unit>
+      <trans-unit id="s4d546f6c87128d5b">
+        <source>Space first</source>
+        <target>空間第一</target>
+      </trans-unit>
+      <trans-unit id="sab0c57df694a0a09">
+        <source>Trim start</source>
+        <target>修整開始</target>
+      </trans-unit>
+      <trans-unit id="s4730c232e7209c40">
+        <source>Trim both</source>
+        <target>同時修整</target>
+      </trans-unit>
+      <trans-unit id="sd3eca1e0f4209f6e">
+        <source>Trim all</source>
+        <target>全部修剪</target>
+      </trans-unit>
+      <trans-unit id="s0a2d91c6720033e9">
+        <source>Text spacing trim</source>
+        <target>文字間距修剪</target>
+      </trans-unit>
+      <trans-unit id="s74aa0039a87141e2">
+        <source>Ellipsis</source>
+        <target>橢圓</target>
+      </trans-unit>
+      <trans-unit id="sd588d17a1b25c220">
+        <source>Text overflow</source>
+        <target>文字溢出</target>
+      </trans-unit>
+      <trans-unit id="s079cf7850d9327f0">
+        <source>Font</source>
+        <target>字型</target>
+      </trans-unit>
+      <trans-unit id="s61053f0e3ebbd272">
+        <source>normal</source>
+        <target>正常</target>
+      </trans-unit>
+      <trans-unit id="sd7086c4425c53c80">
+        <source>Font family</source>
+        <target>字型系列</target>
+      </trans-unit>
+      <trans-unit id="sa30f1981fd1cd441">
+        <source>Font size</source>
+        <target>字型大小</target>
+      </trans-unit>
+      <trans-unit id="sd8ce9e57270b030d">
+        <source>Font stretch</source>
+        <target>字型拉伸</target>
+      </trans-unit>
+      <trans-unit id="s789ff24c8f03f1a4">
+        <source>Letter spacing</source>
+        <target>字母間距</target>
+      </trans-unit>
+      <trans-unit id="s59404f5593c32fdc">
+        <source>Font kerning</source>
+        <target>字體邊緣</target>
+      </trans-unit>
+      <trans-unit id="s236ed7ba747099b0">
+        <source>Font weight</source>
+        <target>字體重量</target>
+      </trans-unit>
+      <trans-unit id="s517acbf1f96324f9">
+        <source>Weight</source>
+        <target>重量</target>
+      </trans-unit>
+      <trans-unit id="sd679c8b1bf8cc8a5">
+        <source>Small caps</source>
+        <target>小型帽</target>
+      </trans-unit>
+      <trans-unit id="s7e6570f2f1ae320f">
+        <source>Synthesize typefaces</source>
+        <target>合成字型</target>
+      </trans-unit>
+      <trans-unit id="se7fad370d8fb4cec">
+        <source>Optimize legibility</source>
+        <target>優化可讀性</target>
+      </trans-unit>
+      <trans-unit id="s6e288a119281f4c2">
+        <source>Text rendering</source>
+        <target>文字渲染</target>
+      </trans-unit>
+      <trans-unit id="sc5bcf50d1b578d9f">
+        <source>Font feature settings</source>
+        <target>字型功能設定</target>
+      </trans-unit>
+      <trans-unit id="s9eefe6e57e4e1661">
+        <source>Font variant</source>
+        <target>字型變異</target>
+      </trans-unit>
+      <trans-unit id="sc8fa0e3de389ef1c">
+        <source>Font size adjust</source>
+        <target>字型大小調整</target>
+      </trans-unit>
+      <trans-unit id="s90f0fbc12e1e2b2f">
+        <source>Font palette</source>
+        <target>字型調色板</target>
+      </trans-unit>
+      <trans-unit id="sc6da0f4a7e4d710e">
+        <source>Font language override</source>
+        <target>覆寫字型語言</target>
+      </trans-unit>
+      <trans-unit id="sc275dd00036d16cb">
+        <source>Quotes character</source>
+        <target>引用字元</target>
+      </trans-unit>
+      <trans-unit id="sd03bff50f87f82d4">
+        <source>Hyphenate character</source>
+        <target>連字符</target>
+      </trans-unit>
+      <trans-unit id="s16f205466761e583">
+        <source>No optical font sizing</source>
+        <target>無光學字型大小</target>
+      </trans-unit>
+      <trans-unit id="s344ea8f4939cdc98">
+        <source>Color</source>
+        <target>顏色</target>
+      </trans-unit>
+      <trans-unit id="s1efbfc3937d565bd">
+        <source>Background</source>
+        <target>背景資料</target>
+      </trans-unit>
+      <trans-unit id="s3b0ab4b52326316f">
+        <source>Light</source>
+        <target>燈光</target>
+      </trans-unit>
+      <trans-unit id="sac895c732f350ac5">
+        <source>Dark</source>
+        <target>黑暗</target>
+      </trans-unit>
+      <trans-unit id="s255c77900f2b5e0f">
+        <source>Color scheme</source>
+        <target>顏色方案</target>
+      </trans-unit>
+      <trans-unit id="sf1045382c1fd9a85">
+        <source>Exact print colors</source>
+        <target>精確的印刷顏色</target>
+      </trans-unit>
+      <trans-unit id="s1219d97b49650c05">
+        <source>Visibility</source>
+        <target>能見度</target>
+      </trans-unit>
+      <trans-unit id="se2796c5824ec8916">
+        <source>Content visibility</source>
+        <target>內容可見性</target>
+      </trans-unit>
+      <trans-unit id="sba64d8954d027206">
+        <source>Opacity</source>
+        <target>不透明度</target>
+      </trans-unit>
+      <trans-unit id="sf9929e2d356260c5">
+        <source>Multiply</source>
+        <target>相乘</target>
+      </trans-unit>
+      <trans-unit id="s744d993d03f29851">
+        <source>Screen</source>
+        <target>螢幕</target>
+      </trans-unit>
+      <trans-unit id="s7ed13ccddb1bf3c3">
+        <source>Overlay</source>
+        <target>覆蓋</target>
+      </trans-unit>
+      <trans-unit id="s69fbbdb8ad2a084a">
+        <source>Darken</source>
+        <target>變暗</target>
+      </trans-unit>
+      <trans-unit id="s27056379e0acfdb0">
+        <source>Lighten</source>
+        <target>減輕</target>
+      </trans-unit>
+      <trans-unit id="s90f7c1cf501ea0a7">
+        <source>Color dodge</source>
+        <target>顏色躲避</target>
+      </trans-unit>
+      <trans-unit id="sfee1c12daf838935">
+        <source>Color burn</source>
+        <target>燒色</target>
+      </trans-unit>
+      <trans-unit id="s4ad6e9d3c2365c98">
+        <source>Hard light</source>
+        <target>硬光</target>
+      </trans-unit>
+      <trans-unit id="s262abbaf1d05f009">
+        <source>Soft light</source>
+        <target>柔光</target>
+      </trans-unit>
+      <trans-unit id="sb67e0e7c0869f982">
+        <source>Difference</source>
+        <target>差異</target>
+      </trans-unit>
+      <trans-unit id="sd88076d2994ee0fb">
+        <source>Exclusion</source>
+        <target>排除</target>
+      </trans-unit>
+      <trans-unit id="s491d2919cd6ec3d9">
+        <source>Hue</source>
+        <target>色調</target>
+      </trans-unit>
+      <trans-unit id="s086e6c267ade2609">
+        <source>Saturation</source>
+        <target>飽和度</target>
+      </trans-unit>
+      <trans-unit id="sb8f610a0e8df91fc">
+        <source>Luminosity</source>
+        <target>亮度</target>
+      </trans-unit>
+      <trans-unit id="sb905da066c10182c">
+        <source>Plus darker</source>
+        <target>加上深色</target>
+      </trans-unit>
+      <trans-unit id="sf14f9d5f9f6ca342">
+        <source>Plus lighter</source>
+        <target>加輕</target>
+      </trans-unit>
+      <trans-unit id="s6d8b3b8047ed378d">
+        <source>Mix blend mode</source>
+        <target>混合混合模式</target>
+      </trans-unit>
+      <trans-unit id="sdd2fc8919a9c3111">
+        <source>Background blend mode</source>
+        <target>背景混合模式</target>
+      </trans-unit>
+      <trans-unit id="sbb55f9f2d69fd327">
+        <source>Backdrop filter</source>
+        <target>背景濾鏡</target>
+      </trans-unit>
+      <trans-unit id="sd2ed26defc646d47">
+        <source>Backdrop Filter</source>
+        <target>背景濾鏡</target>
+      </trans-unit>
+      <trans-unit id="s7c95876637f6a9d7">
+        <source>Filter</source>
+        <target>過濾器</target>
+      </trans-unit>
+      <trans-unit id="s687e27f036a71b32">
+        <source>Isolate</source>
+        <target>隔離</target>
+      </trans-unit>
+      <trans-unit id="sa602e3fd3f2d98fd">
+        <source>Animation</source>
+        <target>動畫</target>
+      </trans-unit>
+      <trans-unit id="sf2d96d0eb32cb81f">
+        <source>Animation composition</source>
+        <target>動畫構圖</target>
+      </trans-unit>
+      <trans-unit id="s9fc686f7bbd941e2">
+        <source>Transition</source>
+        <target>過渡</target>
+      </trans-unit>
+      <trans-unit id="sf0e261e04eda82ff">
+        <source>Appearance</source>
+        <target>外觀</target>
+      </trans-unit>
+      <trans-unit id="sd66c4767fa3dde28">
+        <source>Accent color</source>
+        <target>重點顏色</target>
+      </trans-unit>
+      <trans-unit id="s80a42b81c52d4d8f">
+        <source>Caret color</source>
+        <target>鍵盤顏色</target>
+      </trans-unit>
+      <trans-unit id="s3815184eb09f0dcf">
+        <source>Cursor</source>
+        <target>游標</target>
+      </trans-unit>
+      <trans-unit id="s1c690963f1e2df00">
+        <source>Platform-specific look</source>
+        <target>特定平台外觀</target>
+      </trans-unit>
+      <trans-unit id="sb5e9e1776242b028">
+        <source>Interactions</source>
+        <target>互動</target>
+      </trans-unit>
+      <trans-unit id="sf2cbb5e519264e67">
+        <source>Resize both horizontally and vertically</source>
+        <target>調整水平與垂直大小</target>
+      </trans-unit>
+      <trans-unit id="s7d864465dddbb50d">
+        <source>Allow resizing</source>
+        <target>允許調整大小</target>
+      </trans-unit>
+      <trans-unit id="sf6b4934598f7ed10">
+        <source>Allow selection</source>
+        <target>允許選擇</target>
+      </trans-unit>
+      <trans-unit id="s87cefc710b3567fb">
+        <source>Contain</source>
+        <target>包含</target>
+      </trans-unit>
+      <trans-unit id="sf993bb199fefbe04">
+        <source>All</source>
+        <target>全部</target>
+      </trans-unit>
+      <trans-unit id="s571a4f19e2f140c7">
+        <source>Pan (x)</source>
+        <target>平移 (x)</target>
+      </trans-unit>
+      <trans-unit id="s828b1ecea8715884">
+        <source>Pan (left)</source>
+        <target>Pan (左)</target>
+      </trans-unit>
+      <trans-unit id="s40e3826b7f74a3b5">
+        <source>Pan (right)</source>
+        <target>Pan (右)</target>
+      </trans-unit>
+      <trans-unit id="s571db319e2f4208a">
+        <source>Pan (y)</source>
+        <target>Pan (y)</target>
+      </trans-unit>
+      <trans-unit id="s957787fc6b7ea5c0">
+        <source>Pan (up)</source>
+        <target>平移（向上）</target>
+      </trans-unit>
+      <trans-unit id="sc2b734cca2fa643b">
+        <source>Pan (down)</source>
+        <target>平移（向下）</target>
+      </trans-unit>
+      <trans-unit id="s03608a32f05eded2">
+        <source>Pinch zoom</source>
+        <target>縮放</target>
+      </trans-unit>
+      <trans-unit id="s748c0074eff45884">
+        <source>Manipulation</source>
+        <target>操縱</target>
+      </trans-unit>
+      <trans-unit id="s7de0e28d6c309a4e">
+        <source>Allow touch actions</source>
+        <target>允許觸控操作</target>
+      </trans-unit>
+      <trans-unit id="sc2536e077514accc">
+        <source>Scrolling</source>
+        <target>捲動</target>
+      </trans-unit>
+      <trans-unit id="s1155ec07a221e739">
+        <source>Scrollbar</source>
+        <target>捲動條</target>
+      </trans-unit>
+      <trans-unit id="s5015a8fb33b98872">
+        <source>Thin</source>
+        <target>薄型</target>
+      </trans-unit>
+      <trans-unit id="se95d4e55ea186d9a">
+        <source>Scrollbar color</source>
+        <target>捲動列顏色</target>
+      </trans-unit>
+      <trans-unit id="s6280bf993915c57a">
+        <source>Scroll margin</source>
+        <target>捲動邊距</target>
+      </trans-unit>
+      <trans-unit id="s0c27336067c59611">
+        <source>Scroll padding</source>
+        <target>捲動填充</target>
+      </trans-unit>
+      <trans-unit id="s4e191bdb4700a6e9">
+        <source>Overscroll (x)</source>
+        <target>過卷 (x)</target>
+      </trans-unit>
+      <trans-unit id="s4e1c7fdb470386ac">
+        <source>Overscroll (y)</source>
+        <target>過卷 (y)</target>
+      </trans-unit>
+      <trans-unit id="s001dd78415a91fa0">
+        <source>Scrollbar gutter</source>
+        <target>捲動條溝槽</target>
+      </trans-unit>
+      <trans-unit id="sf9ecf969dd4b8164">
+        <source>Both edges</source>
+        <target>兩邊</target>
+      </trans-unit>
+      <trans-unit id="saf9e5134ba1a7d30">
+        <source>Scroll snap</source>
+        <target>捲動按鈕</target>
+      </trans-unit>
+      <trans-unit id="sea24bdcaa2bd2dec">
+        <source>Mandatory snap</source>
+        <target>強制按鈕</target>
+      </trans-unit>
+      <trans-unit id="s6787497df07fa97e">
+        <source>May scroll over stops</source>
+        <target>可在停止點上捲動</target>
+      </trans-unit>
+      <trans-unit id="s9258280591309342">
+        <source>Scroll snap align (x)</source>
+        <target>捲動快速對齊 (x)</target>
+      </trans-unit>
+      <trans-unit id="s92548405912d46bf">
+        <source>Scroll snap align (y)</source>
+        <target>捲動快速對齊 (y)</target>
+      </trans-unit>
+      <trans-unit id="s624e31cd4f1b89d4">
+        <source>Smooth scroll</source>
+        <target>平順捲動</target>
+      </trans-unit>
+      <trans-unit id="sb0f3327210fe18fc">
+        <source>Columns</source>
+        <target>欄位</target>
+      </trans-unit>
+      <trans-unit id="sd01178c54f648118">
+        <source>Balance columns</source>
+        <target>平衡欄</target>
+      </trans-unit>
+      <trans-unit id="sba88d90cd6c751b3">
+        <source>Column rule</source>
+        <target>欄位規則</target>
+      </trans-unit>
+      <trans-unit id="sd3a288c1094b8a63">
+        <source>Column rule width</source>
+        <target>欄位規則寬度</target>
+      </trans-unit>
+      <trans-unit id="s3124653c272f054c">
+        <source>Column rule color</source>
+        <target>列規則顏色</target>
+      </trans-unit>
+      <trans-unit id="s01b56d233c6c5cac">
+        <source>Sectioning</source>
+        <target>分段</target>
+      </trans-unit>
+      <trans-unit id="s68e0e3a2bab7ce3e">
+        <source>Avoid</source>
+        <target>避免</target>
+      </trans-unit>
+      <trans-unit id="s314a4f7685c8e824">
+        <source>Always</source>
+        <target>永遠</target>
+      </trans-unit>
+      <trans-unit id="s4bbff4e008690da1">
+        <source>Avoid page</source>
+        <target>避免頁面</target>
+      </trans-unit>
+      <trans-unit id="s2e192b19ed15fcf6">
+        <source>Page</source>
+        <target>頁數</target>
+      </trans-unit>
+      <trans-unit id="sae76e25497dcee58">
+        <source>Recto</source>
+        <target>直線</target>
+      </trans-unit>
+      <trans-unit id="sff3df0c2823ec6e4">
+        <source>Verso</source>
+        <target>Verso</target>
+      </trans-unit>
+      <trans-unit id="seb19675a580f0628">
+        <source>Avoid column</source>
+        <target>避免列</target>
+      </trans-unit>
+      <trans-unit id="s9e40e59654c8ad67">
+        <source>Column</source>
+        <target>專欄</target>
+      </trans-unit>
+      <trans-unit id="s565cd5ffb0158c46">
+        <source>Avoid region</source>
+        <target>避免區域</target>
+      </trans-unit>
+      <trans-unit id="sb51270e19988f9bd">
+        <source>Region</source>
+        <target>地區</target>
+      </trans-unit>
+      <trans-unit id="s8a29cb39a42f83f3">
+        <source>Break before</source>
+        <target>休息前</target>
+      </trans-unit>
+      <trans-unit id="se638417c560cfe5c">
+        <source>Break inside</source>
+        <target>闖入</target>
+      </trans-unit>
+      <trans-unit id="s158b6ec6b1fffcb2">
+        <source>Break after</source>
+        <target>休息後</target>
+      </trans-unit>
+      <trans-unit id="sfd0cde85070d2eb2">
+        <source>Flex</source>
+        <target>彈性</target>
+      </trans-unit>
+      <trans-unit id="sa013e119fec906fb">
+        <source>Row</source>
+        <target>行數</target>
+      </trans-unit>
+      <trans-unit id="s9d430adc5be110e9">
+        <source>Row Reverse</source>
+        <target>行逆轉</target>
+      </trans-unit>
+      <trans-unit id="saaec15c97a9e4245">
+        <source>Column Reverse</source>
+        <target>列反向</target>
+      </trans-unit>
+      <trans-unit id="s0d86afa3c6a1e28b">
+        <source>Flex direction</source>
+        <target>彈性方向</target>
+      </trans-unit>
+      <trans-unit id="s1af8b67d1c85c811">
+        <source>Space between</source>
+        <target>間距</target>
+      </trans-unit>
+      <trans-unit id="s456a8d744313852a">
+        <source>Space around</source>
+        <target>周圍空間</target>
+      </trans-unit>
+      <trans-unit id="s66765c420ee578e4">
+        <source>Space evenly</source>
+        <target>空間均勻</target>
+      </trans-unit>
+      <trans-unit id="s97881699a2b21d5b">
+        <source>Row gap</source>
+        <target>行間隙</target>
+      </trans-unit>
+      <trans-unit id="s1aa1cb63ad44bc6f">
+        <source>Column gap</source>
+        <target>列間隙</target>
+      </trans-unit>
+      <trans-unit id="se619a501d1bfe6a5">
+        <source>Wrap</source>
+        <target>包裝</target>
+      </trans-unit>
+      <trans-unit id="s3ffcdc5db5e7d0c5">
+        <source>Reverse</source>
+        <target>反向</target>
+      </trans-unit>
+      <trans-unit id="s25e1a07e454c2c11">
+        <source>Grid</source>
+        <target>網格</target>
+      </trans-unit>
+      <trans-unit id="s6bd7a02fdf93e653">
+        <source>Align content</source>
+        <target>對齊內容</target>
+      </trans-unit>
+      <trans-unit id="s35ae5f4e0fa2777b">
+        <source>Custom align</source>
+        <target>自訂對齊</target>
+      </trans-unit>
+      <trans-unit id="s6e4c20c6debcd5ca">
+        <source>Custom justify</source>
+        <target>自訂合理化</target>
+      </trans-unit>
+      <trans-unit id="se633223a0b88625e">
+        <source>Cell placement</source>
+        <target>單元位置</target>
+      </trans-unit>
+      <trans-unit id="s88676f992b2965db">
+        <source>Stretch cell content</source>
+        <target>拉伸儲存格內容</target>
+      </trans-unit>
+      <trans-unit id="s71dec51005acc1e4">
+        <source>Row dense</source>
+        <target>行列密集</target>
+      </trans-unit>
+      <trans-unit id="s96a045dcade75ad0">
+        <source>Column dense</source>
+        <target>立柱密集</target>
+      </trans-unit>
+      <trans-unit id="sb740eab4afd5a710">
+        <source>Grid auto flow</source>
+        <target>網格自動流量</target>
+      </trans-unit>
+      <trans-unit id="sa2eff4dad1c119f1">
+        <source>Grid template</source>
+        <target>網格模板</target>
+      </trans-unit>
+      <trans-unit id="s13ebd619c8a06a6d">
+        <source>Grid auto rows</source>
+        <target>網格自動行列</target>
+      </trans-unit>
+      <trans-unit id="scbe537fc38ff4c13">
+        <source>Grid auto columns</source>
+        <target>網格自動列</target>
+      </trans-unit>
+      <trans-unit id="sed713f1b916fb469">
+        <source>Border spacing (x)</source>
+        <target>邊界間距 (x)</target>
+      </trans-unit>
+      <trans-unit id="sed74a31b9172942c">
+        <source>Border spacing (y)</source>
+        <target>邊界間距 (y)</target>
+      </trans-unit>
+      <trans-unit id="sc1edebeaef92b7bd">
+        <source>Fixed table layout</source>
+        <target>固定的表格佈局</target>
+      </trans-unit>
+      <trans-unit id="sb59d621e3c93cc27">
+        <source>Shared cell borders</source>
+        <target>共用儲存格邊界</target>
+      </trans-unit>
+      <trans-unit id="sa4f137f8619093a5">
+        <source>Caption at bottom</source>
+        <target>底部標題</target>
+      </trans-unit>
+      <trans-unit id="s8a6585c48ea104e9">
+        <source>Hide empty cells</source>
+        <target>隱藏空儲存格</target>
+      </trans-unit>
+      <trans-unit id="s49dd67aed00029ef">
+        <source>Math</source>
+        <target>數學</target>
+      </trans-unit>
+      <trans-unit id="sad6be321164d08c8">
+        <source>Compact math</source>
+        <target>緊湊型數學</target>
+      </trans-unit>
+      <trans-unit id="s6ac62e1c8c66f3bb">
+        <source>Compact superscr.</source>
+        <target>緊湊型 superscr.</target>
+      </trans-unit>
+      <trans-unit id="s036d35e03be98d22">
+        <source>Math depth</source>
+        <target>數學深度</target>
+      </trans-unit>
+      <trans-unit id="s72f2a02e2a5a4ee3">
+        <source>Media</source>
+        <target>媒體</target>
+      </trans-unit>
+      <trans-unit id="s69d88ef4b2618980">
+        <source>Cover</source>
+        <target>封面</target>
+      </trans-unit>
+      <trans-unit id="s29a1c26521879b9f">
+        <source>Scale down</source>
+        <target>縮小規模</target>
+      </trans-unit>
+      <trans-unit id="s0a3ddcba94027d95">
+        <source>Object fit</source>
+        <target>物件配合</target>
+      </trans-unit>
+      <trans-unit id="s579c69f419b6caef">
+        <source>Smooth</source>
+        <target>光滑</target>
+      </trans-unit>
+      <trans-unit id="s741fae02b3dd24f3">
+        <source>Pixelated</source>
+        <target>像素化</target>
+      </trans-unit>
+      <trans-unit id="sa126cf8c627cec1e">
+        <source>Image rendering</source>
+        <target>影像渲染</target>
+      </trans-unit>
+      <trans-unit id="se58467472725ad0c">
+        <source>Image resolution</source>
+        <target>影像解析度</target>
+      </trans-unit>
+      <trans-unit id="sab4d9283896d9422">
+        <source>Snap resolution pixels</source>
+        <target>擷取解析度像素</target>
+      </trans-unit>
+      <trans-unit id="s0befccf152b6c0a9">
+        <source>Orient from metadata</source>
+        <target>來自元資料</target>
+      </trans-unit>
+      <trans-unit id="sea52df2b70a5c10d">
+        <source>Ruby</source>
+        <target>紅寶石</target>
+      </trans-unit>
+      <trans-unit id="sa644d580d8a11e60">
+        <source>Ruby alignment</source>
+        <target>紅寶石對齊</target>
+      </trans-unit>
+      <trans-unit id="sed318ec045c5144f">
+        <source>Over</source>
+        <target>結束</target>
+      </trans-unit>
+      <trans-unit id="sc53de149fcaad713">
+        <source>Inter-character</source>
+        <target>字元間</target>
+      </trans-unit>
+      <trans-unit id="s7d27db3c9639c6dd">
+        <source>Alternate</source>
+        <target>候選</target>
+      </trans-unit>
+      <trans-unit id="saad4380b9cc6cefd">
+        <source>Alternate over</source>
+        <target>交替覆蓋</target>
+      </trans-unit>
+      <trans-unit id="s037b1dc850a89273">
+        <source>Alternate under</source>
+        <target>下的替代</target>
+      </trans-unit>
+      <trans-unit id="s3a179f6db2972384">
+        <source>Ruby position</source>
+        <target>紅寶石位置</target>
+      </trans-unit>
+      <trans-unit id="sfcebd18506f1e535">
+        <source>Flow</source>
+        <target>流量</target>
+      </trans-unit>
+      <trans-unit id="sf0ca10f343249063">
+        <source>Contents</source>
+        <target>內容</target>
+      </trans-unit>
+      <trans-unit id="s1125d159f7e64df5">
+        <source>Display</source>
+        <target>顯示器</target>
+      </trans-unit>
+      <trans-unit id="sca7cfe2bef51b2a5">
+        <source>Root</source>
+        <target>根</target>
+      </trans-unit>
+      <trans-unit id="sca7fed2bef53cb99">
+        <source>Role</source>
+        <target>角色</target>
+      </trans-unit>
+      <trans-unit id="sf4849bc200e279ed">
+        <source>Table caption</source>
+        <target>表格說明</target>
+      </trans-unit>
+      <trans-unit id="s41f65a763f8e44ab">
+        <source>Table header group</source>
+        <target>表頭群組</target>
+      </trans-unit>
+      <trans-unit id="s85f9aa6d3ea0e421">
+        <source>Table footer group</source>
+        <target>表格頁腳群組</target>
+      </trans-unit>
+      <trans-unit id="sc1a155cc25899250">
+        <source>Table row group</source>
+        <target>表格行群</target>
+      </trans-unit>
+      <trans-unit id="s5b474b5c0ac0c7c4">
+        <source>Table column group</source>
+        <target>表列群組</target>
+      </trans-unit>
+      <trans-unit id="s68b87d7b61052dc3">
+        <source>Table row</source>
+        <target>表列</target>
+      </trans-unit>
+      <trans-unit id="s9caf10388ab3562f">
+        <source>Table column</source>
+        <target>表列</target>
+      </trans-unit>
+      <trans-unit id="s07970793b21351fd">
+        <source>Ruby base container</source>
+        <target>Ruby 基本容器</target>
+      </trans-unit>
+      <trans-unit id="s8fad58c831ecf017">
+        <source>Ruby text container</source>
+        <target>Ruby 文字容器</target>
+      </trans-unit>
+      <trans-unit id="sb0f93c1c60c0249a">
+        <source>Ruby base</source>
+        <target>紅寶石底座</target>
+      </trans-unit>
+      <trans-unit id="sbd35ee879d9cf770">
+        <source>Ruby text</source>
+        <target>Ruby 文字</target>
+      </trans-unit>
+      <trans-unit id="sea896ed51ad33287">
+        <source>No specific styles available</source>
+        <target>無特定款式</target>
+      </trans-unit>
+      <trans-unit id="s2b8f50c64be440f7">
+        <source>Select 
+          <x id="0" equiv-text="${this.mediaType}"/>...
+        </source>
+        <target>選擇 
+          <x id="0" equiv-text="${this.mediaType}"/>...
+        </target>
+      </trans-unit>
+      <trans-unit id="s739544d0c858c633">
+        <source>Or drop 
+          <x id="0" equiv-text="${this.mediaType}"/> here
+        </source>
+        <target>或 
+          <x id="0" equiv-text="${this.mediaType}"/> 這裡
+        </target>
+      </trans-unit>
+      <trans-unit id="s851a7deea5984646">
+        <source>License as Creative Commons OER?</source>
+        <target>授權為 Creative Commons OER？</target>
+      </trans-unit>
+      <trans-unit id="s2540844a4bc4d9ba">
+        <source>Require attribution?</source>
+        <target>要求歸屬？</target>
+      </trans-unit>
+      <trans-unit id="sb0a974028c99ca6d">
+        <source>Allow adaptations?</source>
+        <target>允許調整？</target>
+      </trans-unit>
+      <trans-unit id="s77e594ddcc10c774">
+        <source>Allow commercial use?</source>
+        <target>允許商業使用？</target>
+      </trans-unit>
+      <trans-unit id="sa645d315510dc09e">
+        <source>Choose path from disk</source>
+        <target>從磁碟選擇路徑</target>
+      </trans-unit>
+      <trans-unit id="seabae79729c4b2ad">
+        <source>Toggle email</source>
+        <target>切換電子郵件</target>
+      </trans-unit>
+      <trans-unit id="s34dcda3b0f9d5a98">
+        <source>Toggle url</source>
+        <target>切換網址</target>
+      </trans-unit>
+      <trans-unit id="sc3cfee84dbbf36ae">
+        <source>Local File</source>
+        <target>本地檔案</target>
+      </trans-unit>
+      <trans-unit id="s9896529e5cb20558">
+        <source>External File</source>
+        <target>外部檔案</target>
+      </trans-unit>
+      <trans-unit id="s7e0b179d4d1414eb">
+        <source>Enter link</source>
+        <target>輸入連結</target>
+      </trans-unit>
+      <trans-unit id="sbe4a7c8f231739b3">
+        <source>or paste/drop/pick file</source>
+        <target>或貼上/刪除/選取檔案</target>
+      </trans-unit>
+      <trans-unit id="s8a4ff2bd9c13498c">
+        <source>Record</source>
+        <target>記錄</target>
+      </trans-unit>
+      <trans-unit id="s1a5230a71d9285c1">
+        <source>Capture</source>
+        <target>擷取</target>
+      </trans-unit>
+      <trans-unit id="sb71941f552f3504d">
+        <source>Set special value</source>
+        <target>設定特殊值</target>
+      </trans-unit>
+      <trans-unit id="scbf29ce484222325">
+        <source></source>
+      </trans-unit>
+      <trans-unit id="sfb68cae41d749423">
+        <source>Initial</source>
+        <target>初始</target>
+      </trans-unit>
+      <trans-unit id="s6b585ba37cdb8260">
+        <source>Inherit</source>
+        <target>繼承</target>
+      </trans-unit>
+      <trans-unit id="sb45f9fb4dba6e71a">
+        <source>Unset</source>
+        <target>未設定</target>
+      </trans-unit>
+      <trans-unit id="sd89a2e529b31ef43">
+        <source>Revert</source>
+        <target>回復</target>
+      </trans-unit>
+      <trans-unit id="sb741b6e0ca589122">
+        <source>Revert layer</source>
+        <target>還原層</target>
+      </trans-unit>
+      <trans-unit id="s844a76d1843ceb3c">
+        <source>Reset to default</source>
+        <target>重設為預設值</target>
+      </trans-unit>
+      <trans-unit id="sbba865d4b437944f">
+        <source>Attribute</source>
+        <target>屬性</target>
+      </trans-unit>
+      <trans-unit id="s16b9446e3a70e1f4">
+        <source>Attributes</source>
+        <target>屬性</target>
+      </trans-unit>
+      <trans-unit id="sf471ec2496f904cc">
+        <source>Discard changes</source>
+        <target>捨棄變更</target>
+      </trans-unit>
+      <trans-unit id="s418f2020fe996832">
+        <source>Confirm changes</source>
+        <target>確認變更</target>
+      </trans-unit>
+      <trans-unit id="s3914cb410fca44d4">
+        <source>Import</source>
+        <target>進口</target>
+      </trans-unit>
+      <trans-unit id="sb66beca1e766dcb3">
+        <source>Apply and import</source>
+        <target>申請與匯入</target>
+      </trans-unit>
+      <trans-unit id="sed17285cd25d6389">
+        <source>Directory where package.json is located</source>
+        <target>package.json 所在目錄</target>
+      </trans-unit>
+      <trans-unit id="s2f8da2cb5f236588">
+        <source>The name of your package. Must be scoped, e.g. `@org/pkg`. </source>
+        <target>您的套件名稱。必須有範圍，例如 `@org/pkg`。 </target>
+      </trans-unit>
+      <trans-unit id="s342b0cabfa672822">
+        <source>Help the user find your widget</source>
+        <target>幫助使用者找到您的 Widget</target>
+      </trans-unit>
+      <trans-unit id="sfdeef3dccf409f81">
+        <source>This keyword is required for widgets</source>
+        <target>這個關鍵字是 widget 必須的</target>
+      </trans-unit>
+      <trans-unit id="h64cd12550420f6f1">
+        <source>Generate a 
+          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
+          <x id="1" equiv-text="&lt;/code&gt;"/> file
+        </source>
+        <target>產生 
+          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
+          <x id="1" equiv-text="&lt;/code&gt;"/> 檔案
+        </target>
+      </trans-unit>
+      <trans-unit id="s255857544a9d5ec0">
+        <source>Reset</source>
+        <target>重設</target>
+      </trans-unit>
+      <trans-unit id="s2591806d7b222591">
+        <source>Reset changes</source>
+        <target>重設變更</target>
+      </trans-unit>
+      <trans-unit id="s445b8acb9206db6e">
+        <source>Discard and cancel</source>
+        <target>捨棄並取消</target>
+      </trans-unit>
+      <trans-unit id="s731678e227a20559">
+        <source>This Device</source>
+        <target>此裝置</target>
+      </trans-unit>
+      <trans-unit id="s71940c32987f675f">
+        <source>WebWriter Cloud</source>
+        <target>WebWriter 雲端</target>
+      </trans-unit>
+      <trans-unit id="s323dcde72b850272">
+        <source>Public access</source>
+        <target>公共存取</target>
+      </trans-unit>
+      <trans-unit id="s7ae49e142487766c">
+        <source>Community access</source>
+        <target>社區存取</target>
+      </trans-unit>
+      <trans-unit id="sfa49a5bb1a5d353e">
+        <source>Private access</source>
+        <target>私人存取</target>
+      </trans-unit>
+      <trans-unit id="sd0864ea6cb6ef22e">
+        <source>Community</source>
+        <target>社區</target>
+      </trans-unit>
+      <trans-unit id="sdd1ff479d04ac140">
+        <source>Public</source>
+        <target>公眾</target>
+      </trans-unit>
+      <trans-unit id="s99a990f3841ad283">
+        <source>Files of </source>
+        <target>檔案 </target>
+      </trans-unit>
+      <trans-unit id="s3eb6d1e6e79ed7c4">
+        <source>No documents found</source>
+        <target>未找到任何文件</target>
+      </trans-unit>
+      <trans-unit id="s4e2562fe3990e621">
+        <source>Error connecting</source>
+        <target>連接錯誤</target>
+      </trans-unit>
+      <trans-unit id="sf52d840949a980d1">
+        <source>
+          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
+        </source>
+        <target>
+          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> 將被永久刪除。您確定嗎？
+        </target>
+      </trans-unit>
+      <trans-unit id="s9b7cd8860c8fc922">
+        <source>
+          <x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
+        </source>
+        <target>
+          <x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> 將被覆寫。您確定嗎？
+        </target>
+      </trans-unit>
+      <trans-unit id="see2fcaedf9743ec6">
+        <source>Location</source>
+        <target>地點</target>
+      </trans-unit>
+      <trans-unit id="sfdb1e4d90981a535">
+        <source>Share this document</source>
+        <target>分享此文件</target>
+      </trans-unit>
+      <trans-unit id="s1c3fc313a9184670">
+        <source>Public Link</source>
+        <target>公開連結</target>
+      </trans-unit>
+      <trans-unit id="sc28864200d2a3799">
+        <source>Copy QR Code as image</source>
+        <target>複製 QR 碼為影像</target>
+      </trans-unit>
+      <trans-unit id="sfc815c9078bba30a">
+        <source>Download QR Code as image</source>
+        <target>將 QR 代碼下載為影像</target>
+      </trans-unit>
+      <trans-unit id="s4cb38675a21b2c98">
+        <source>Unsupported property type '${desc.type}' (processing as JSON)</source>
+        <target>不支援的屬性類型 '${desc.type}' (以 JSON 格式處理)</target>
+      </trans-unit>
+      <trans-unit id="sa00df4e39c72d3b4">
+        <source>
+          <x id="0" equiv-text="${desc.widget}"/> is not supported
+        </source>
+        <target>
+          <x id="0" equiv-text="${desc.widget}"/> 不支援
+        </target>
+      </trans-unit>
+      <trans-unit id="sf65df67a03bebe4b">
+        <source>Required for this widget</source>
+        <target>此 widget 必須使用</target>
+      </trans-unit>
+      <trans-unit id="s8a9eb438abac7c6a">
+        <source>Labels</source>
+        <target>標籤</target>
+      </trans-unit>
+      <trans-unit id="sba509fd8ed61d1d5">
+        <source>Unsaved File</source>
+        <target>未儲存的檔案</target>
+      </trans-unit>
+      <trans-unit id="sef00c258bc1ecf1e">
+        <source>This explorable has unsaved changes.</source>
+        <target>此探索程式有未保存的變更。</target>
+      </trans-unit>
+      <trans-unit id="sb8f855b49234b81b">
+        <source>Apply</source>
+        <target>申請</target>
+      </trans-unit>
+      <trans-unit id="sc74e3567875ce255">
+        <source>Both the tag of your widget and the name of your NPM package</source>
+        <target>您的 widget 的標籤和 NPM 套件的名稱</target>
+      </trans-unit>
+      <trans-unit id="s0dc452999c129e15">
+        <source>Enable live reload</source>
+        <target>啟用即時重新載入</target>
+      </trans-unit>
+    </body>
+  </file>
+</xliff>

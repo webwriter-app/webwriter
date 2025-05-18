@@ -249,9 +249,11 @@ export const headParser = DOMParser.fromSchema(headSchema)
 
 export type EditorStateWithHead =  EditorState & {"head$": EditorState}
 
+const key = new PluginKey("head")
+
 export function head(styles: string[], scripts: string[]) {
   return new Plugin({
-    key: new PluginKey("head"),
+    key,
     state: {
       init(config, instance) {
         return initialHeadState()
@@ -283,8 +285,10 @@ export function head(styles: string[], scripts: string[]) {
 
       return {
         update(view: EditorView & {state: EditorStateWithHead}, prevState: EditorStateWithHead) {
-          if(!view.state.head$.doc.eq(prevState.head$.doc)) {
-            const headDOM = headSerializer.serializeNode(view.state.head$.doc)
+          const head$ = view.state.head$
+          const prevHead$ = prevState.head$
+          if(!head$.doc.eq(prevHead$.doc)) {
+            const headDOM = headSerializer.serializeNode(head$.doc)
             headDOM.childNodes.forEach(node => head.appendChild(node))
           }
         },

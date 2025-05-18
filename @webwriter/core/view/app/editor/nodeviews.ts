@@ -269,7 +269,7 @@ export class WidgetView implements NodeView {
     const isContextMenu = e.type === "contextmenu"
     const isFromInsideOptions = e.composedPath().some(el => {
       const isPartOptions = (el as HTMLElement)?.getAttribute?.("part") === "options"
-      const isInShadowDOMOfWidget = (el as HTMLElement).parentNode?.host?.classList.contains("ww-widget")
+      const isInShadowDOMOfWidget = (el as any).parentNode?.host?.classList.contains("ww-widget")
       return isPartOptions && isInShadowDOMOfWidget
     })
     const shouldBePropagated = (e as any)["shouldPropagate"] || this.node.type.spec.propagateEvents?.includes(e.type) || ((isFlowContainer || isTextblockOrInline) && !isFromInsideOptions)

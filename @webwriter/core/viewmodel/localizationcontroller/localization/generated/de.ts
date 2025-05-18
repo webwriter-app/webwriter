@@ -1095,5 +1095,10 @@
 'spaceKey': `Leertaste`,
 'tabKey': `⭾ Tab`,
 'upKey': `↑ Hoch`,
+'s2474e7fb1aec9f05': `Test`,
+'sc546f489f9c0cced': `Toggles the test mode for the active document`,
+'s2739460e44320108': `Chinese (Traditional)`,
+'sb7c77d0415de05cf': `Run tests`,
+'s4dcb9315f6527f9c': `Run on reload`,
     };
   

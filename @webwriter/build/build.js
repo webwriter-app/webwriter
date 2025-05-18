@@ -64,9 +64,10 @@ async function main() {
   }
 
 
-  // Build with WebWriter's default options for building. Builds every `package.exports` entry of the form `"./my-widget.*": {"source": "./src/my-widget.ts", "default": "./dist/my-widget.*"} -> this should build `my-widget.js` and `my-widget.css` from the specified source into the dist directory.
+  // Build with WebWriter's default options for building. Builds every `package.exports` entry of the form `"./widgets/my-widget.*": {"source": "./src/my-widget.ts", "default": "./dist/my-widget.*"} -> this should build `my-widget.js` and `my-widget.css` from the specified source into the dist directory.
   const pkg = JSON.parse(fs.readFileSync("./package.json", "utf8"))
-  const widgetKeys = Object.keys(pkg?.exports ?? {}).filter(k => k.startsWith("./widgets/"))
+  const buildableKeys = Object.keys(pkg?.exports ?? {}).filter(k => k.startsWith("./widgets/"))
+  const testKeys = Object.keys(pkg?.exports ?? {}).filter(k => k.startsWith("./tests/"))
 
   const config = {
     write: true,
@@ -75,7 +76,7 @@ async function main() {
       esbuildPluginInlineImport()
       //widgetPlugin(pkg)
     ],
-    entryPoints: widgetKeys.map(k => ({out: pkg.exports[k].default.replace(".*", ""), in: pkg.exports[k].source})),
+    entryPoints: buildableKeys.map(k => ({out: pkg.exports[k].default.replace(".*", "").replace(".js", ""), in: pkg.exports[k].source})),
     outdir: ".",
     target: "es2022",
     format: "esm",
@@ -124,7 +125,12 @@ async function main() {
   }
 
   if(isDev) {
-    let ctx = await esbuild.context(config)
+    const devConfig = {
+      ...config,
+      sourcemap: "inline",
+      entryPoints: [...testKeys, ...buildableKeys].map(k => ({out: pkg.exports[k].default.replace(".*", "").replace(".js", ""), in: pkg.exports[k].source})),
+    }
+    let ctx = await esbuild.context(devConfig)
     await ctx.watch()
   }
   else if(isPreview) {

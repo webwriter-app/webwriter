@@ -1,6 +1,7 @@
 import { chainCommands } from "prosemirror-commands"
 import { Command, EditorState } from "prosemirror-state"
 import type { ZodSchema } from "zod"
+export {set} from "lodash"
 
 /**
  * Escapes HTML reserved characters (&, <, >, ", ') with HTML entities.
@@ -222,7 +223,7 @@ export function range(a: number, b?: number) {
   return [...Array((b ?? a*2) - a).keys()].map(x => x + (b? a: 0))
 }
 
-export {default as groupBy} from "lodash.groupby"
+export {groupBy} from "lodash"
 
 
 let ELEMENT_RE = /[\w-]+/g,
@@ -536,4 +537,12 @@ export function mergeDeep<T extends object, S extends object>(target: T, ...sour
   }
 
   return mergeDeep(target, ...sources) as T & S;
+}
+
+
+export function deepUpdate<T extends object>(obj: T, path: string[], value: any) {
+  const [head, ...rest] = path
+  !rest.length // @ts-ignore
+      ? obj[head] = value // @ts-ignore
+      : deepUpdate(obj[head], rest, value);
 }

@@ -387,22 +387,21 @@ export class App extends ViewModelMixin(LitElement) {
       ioState,
       filename,
     } = this.store.document;
-    const { bundleJS, bundleCSS, bundleID, changingID } = this.store.packages;
+    const { bundleID, testBundleID, changingID, testState, setTestState } = this.store.packages;
     const { locale } = this.store.ui;
     const {
       documentCommands,
       commands: { setDocAttrs, editHead },
     } = this.commands;
     const head = html`<ww-head
-      .documentCommands=${documentCommands.filter(
-        (cmd) => cmd.id !== "editHead"
-      )}
+      .documentCommands=${documentCommands.filter(cmd => cmd.id !== "editHead")}
       ioState=${ioState}
       slot="nav"
-      .filename=${filename}
-      ?pendingChanges=${changed}
+      .filename=${this.activeEditor?.mode === "test"? this.store.packages?.testBundleID?.split("!").at(0): filename}
+      ?pendingChanges=${this.activeEditor?.mode !== "test" && changed}
     >
       <ww-button
+        style=${this.activeEditor?.mode === "test"? "display: none": ""}
         variant="icon"
         ${spreadProps(editHead.toObject())}
         @click=${() => editHead.run()}
@@ -430,13 +429,13 @@ export class App extends ViewModelMixin(LitElement) {
           docID=${String(url)}
           data-active
           @focus=${() => (this.foldOpen = false)}
-          .bundleJS=${bundleJS || scopedCustomElementsRegistryString}
-          .bundleCSS=${bundleCSS}
-          .bundleID=${bundleID}
+          .bundleID=${testBundleID ?? bundleID}
           .changingID=${changingID}
           .editorState=${editorState}
           .codeState=${codeState}
-          @update=${(e: any) => set(e.detail.editorState)}
+          .testState=${testState}
+          .testStatus=${this.store.packages.testStatus}
+          @update=${(e: any) => this.activeEditor?.mode === "test"? setTestState(e.detail.editorState): set(e.detail.editorState)}
           @ww-open=${(e: any) => open(e.detail.url)}
           ?loadingPackages=${this.store.packages.loading}
           ?controlsVisible=${!this.foldOpen}
@@ -471,7 +470,7 @@ export class App extends ViewModelMixin(LitElement) {
     }
     const { queryCommands } = this.commands;
     return html`<div id="header-right" slot="header-right">
-      ${queryCommands({ category: "editor", tags: ["general"] }).filter(cmd => cmd.id !== "toggleSourceMode" || this.store.ui.showSourceEditor).map(
+      ${queryCommands({ category: "editor", tags: ["general"] }).filter(cmd => cmd.id !== "toggleSourceMode" && cmd.id !== "toggleTestMode" || this.store.ui.showSourceEditor).map(
         (v) => html`
           <ww-button
             variant="icon"

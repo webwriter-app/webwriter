@@ -226,6 +226,7 @@ export class SettingsController implements ReactiveController {
       "za": { label: msg("Zhuang") },
       "zu": { label: msg("Zulu") },
       "zh-hans": { label: msg("Chinese (Simplified)") },
+      "zh-hant": { label: msg("Chinese (Traditional)") },
       "pt-PT": { label: msg("Portuguese") },
       "nb": { label: msg("Norwegian Bokmål") },
       "pt-BR": { label: msg("Portuguese (Brazil)") },

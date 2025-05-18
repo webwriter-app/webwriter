@@ -314,7 +314,7 @@ export const WebWriterPackageName = z.string()
   .pipe(NpmName)
 
 
-export type MemberSettings = {name: string, legacy: boolean} & ((SnippetEditingSettings | ThemeEditingSettings) & {source: string} | WidgetEditingSettings)
+export type MemberSettings = {name: string, path: string, legacy: boolean} & ((SnippetEditingSettings | ThemeEditingSettings) & {source: string} | WidgetEditingSettings)
 
 
 export interface Package extends z.infer<typeof Package.objectSchema> {}
