@@ -248,6 +248,8 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
 
   dispatch = (...args: Parameters<typeof this.view.dispatch>) => this.view?.dispatch(...args)
 
+  serializeForClipboard = (...args: Parameters<typeof this.view.serializeForClipboard>) => this.view?.serializeForClipboard(...args)
+
   /*
   shouldUpdate(changed: Map<string, any>) {
 		return !(
@@ -266,7 +268,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
 
   get directProps(): DirectEditorProps {
     return {
-      ...pickObject(this, ["handleDOMEvents", "handleKeyDown", "handleKeyPress", "handleTextInput", "handleClickOn", "handleClick", "handleDoubleClickOn", "handleDoubleClick", "handleTripleClickOn", "handleTripleClick", "handlePaste", "handleDrop", "handleScrollToSelection", "createSelectionBetween", "domParser", "transformPastedHTML", "clipboardParser", "transformPastedText", "clipboardTextParser", "transformPasted", "transformCopied", "nodeViews", "markViews", "clipboardSerializer", "clipboardTextSerializer", "decorations", "scrollThreshold", "scrollMargin"]),
+      ...pickObject(this, ["handleDOMEvents", "handleKeyDown", "handleKeyPress", "handleTextInput", "handleClickOn", "handleClick", "handleDoubleClickOn", "handleDoubleClick", "handleTripleClickOn", "handleTripleClick", "handlePaste", "handleDrop", "handleScrollToSelection", "createSelectionBetween", "domParser", "transformPastedHTML", "clipboardParser", "transformPastedText", "clipboardTextParser", "transformPasted", "transformCopied", "nodeViews", "markViews", "clipboardSerializer", "clipboardTextSerializer", "serializeForClipboard", "decorations", "scrollThreshold", "scrollMargin"]),
       editable: this.shouldBeEditable,
       state: this.state ?? this.initialState,
       attributes: {
