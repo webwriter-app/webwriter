@@ -4379,6 +4379,22 @@
         <source>Public</source>
         <target>Δημόσιο</target>
       </trans-unit>
+      <trans-unit id="s2474e7fb1aec9f05">
+        <source>Test</source>
+        <target>Δοκιμή</target>
+      </trans-unit>
+      <trans-unit id="sc546f489f9c0cced">
+        <source>Toggles the test mode for the active document</source>
+        <target>Αλλάζει τη λειτουργία δοκιμής για το ενεργό έγγραφο.</target>
+      </trans-unit>
+      <trans-unit id="sb7c77d0415de05cf">
+        <source>Run tests</source>
+        <target>Εκτέλεση δοκιμών</target>
+      </trans-unit>
+      <trans-unit id="s4dcb9315f6527f9c">
+        <source>Run on reload</source>
+        <target>Εκτέλεση κατά την επαναφόρτωση</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

@@ -4377,6 +4377,22 @@
         <source>Public</source>
         <target>Kamu</target>
       </trans-unit>
+      <trans-unit id="s2474e7fb1aec9f05">
+        <source>Test</source>
+        <target>Test</target>
+      </trans-unit>
+      <trans-unit id="sc546f489f9c0cced">
+        <source>Toggles the test mode for the active document</source>
+        <target>Etkin belge için test modunu değiştirir</target>
+      </trans-unit>
+      <trans-unit id="sb7c77d0415de05cf">
+        <source>Run tests</source>
+        <target>Testleri çalıştırın</target>
+      </trans-unit>
+      <trans-unit id="s4dcb9315f6527f9c">
+        <source>Run on reload</source>
+        <target>Yeniden yüklemede çalıştır</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>
