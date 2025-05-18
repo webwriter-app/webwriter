@@ -916,7 +916,7 @@ export class CommandController implements ReactiveController {
         },
         category: "document",
         disabled: (host) =>
-          host.activeEditor!.sourceMode ||
+          host.activeEditor!.mode !== "edit" ||
           host.store.document.ioState !== "idle",
       }),
       saveAs: new Command(this.host, {
@@ -937,7 +937,7 @@ export class CommandController implements ReactiveController {
         },
         category: "document",
         disabled: (host) =>
-          host.activeEditor!.sourceMode ||
+          host.activeEditor!.mode !== "edit" ||
           host.store.document.ioState !== "idle",
       }),
       deleteDocument: new Command(this.host, {
@@ -967,7 +967,7 @@ export class CommandController implements ReactiveController {
         run: (host) => (host.dialog = "share"),
         category: "document",
         disabled: (host) =>
-          host.activeEditor!.sourceMode ||
+          host.activeEditor!.mode === "source" ||
           host.store.accounts.size === 1 ||
           !("getSharingURLForDocument" in (host.store.document.client ?? {})),
       }),
@@ -982,7 +982,7 @@ export class CommandController implements ReactiveController {
           host.activeEditor?.pmEditor.iframe.contentWindow.print();
         },
         category: "document",
-        disabled: (host) => host.activeEditor!.sourceMode,
+        disabled: (host) => host.activeEditor!.mode !== "edit",
       }),
       undo: new Command(this.host, {
         id: "undo",
@@ -993,7 +993,7 @@ export class CommandController implements ReactiveController {
         shortcut: "mod+z",
         run: (host) => host.activeEditor?.undo(),
         category: "editor",
-        disabled: (host) => host.store.document.undoDepth === 0 || !!host.activeEditor?.previewMode,
+        disabled: (host) => host.store.document.undoDepth === 0 || host.activeEditor!.mode === "preview",
       }),
       redo: new Command(this.host, {
         id: "redo",
@@ -1005,7 +1005,7 @@ export class CommandController implements ReactiveController {
         shortcut: "mod+y",
         run: (host) => host.activeEditor?.redo(),
         category: "editor",
-        disabled: (host) => host.store.document.redoDepth === 0 || !!host.activeEditor?.previewMode,
+        disabled: (host) => host.store.document.redoDepth === 0 || host.activeEditor!.mode === "preview",
       }),
       toggleSourceMode: new Command(this.host, {
         id: "toggleSourceMode",
@@ -1015,38 +1015,61 @@ export class CommandController implements ReactiveController {
         description: () => msg("Edit the HTML of the document directly"),
         shortcut: "mod+u",
         run: (host) => {
-          if (host.activeEditor!.sourceMode) {
+          if (host.activeEditor!.mode === "source") {
             host.store.document.deriveEditorState();
+            host.activeEditor!.mode = "edit"
           } else {
             host.store.document.deriveCodeState();
+            host.activeEditor!.mode = "source"
           }
-          host.activeEditor!.sourceMode = !host.activeEditor!.sourceMode;
           host.requestUpdate();
         },
         category: "editor",
-        disabled: (host) => host.activeEditor!.previewMode || !host.store.ui.showSourceEditor,
-        active: (host) => Boolean(host.activeEditor!.sourceMode),
+        disabled: (host) => !host.store.ui.showSourceEditor,
+        active: (host) => host.activeEditor!.mode === "source",
+      }),
+      toggleTestMode: new Command(this.host, {
+        id: "toggleTestMode",
+        label: () => msg("Test"),
+        icon: "checklist",
+        description: () => msg("Toggles the test mode for the active document"),
+        shortcut: "mod+alt+b",
+        run: async (host) => {
+          if(host.activeEditor!.mode !== "test") {
+            await host.store.packages.loadTestEnvironment()
+          }
+          else {
+            host.store.packages.testState = undefined
+            host.store.packages.testBundleID = undefined
+          }
+          host.activeEditor!.mode = host.activeEditor!.mode === "test"? "edit": "test"
+          host.requestUpdate();
+        },
+        category: "editor",
+        tags: ["general"],
+        disabled: (host) => host.store.document.ioState === "loadingPreview",
+        loading: (host) => host.store.packages.testLoading,
+        active: (host) => host.activeEditor!.mode === "test"
       }),
       togglePreviewMode: new Command(this.host, {
-        id: "preview",
+        id: "togglePreviewMode",
         label: () => msg("Preview"),
         icon: "eye",
         description: () => msg("Toggles the preview for the active document"),
         shortcut: "mod+b",
         run: async (host) => {
-          if (!host.activeEditor!.previewMode) {
+          if (host.activeEditor!.mode !== "preview") {
             host.activeEditor!.previewSrc = await host.store.document.preview();
+            host.activeEditor!.mode = "preview"
           } else {
-            host.activeEditor!.previewSrc = undefined;
+            host.activeEditor!.mode = "edit"
           }
           host.requestUpdate();
         },
         category: "editor",
         tags: ["general"],
-        disabled: (host) =>
-          host.activeEditor!.sourceMode ||
-          host.store.document.ioState === "loadingPreview",
-        active: (host) => Boolean(host.activeEditor!.previewMode),
+        disabled: (host) => host.store.document.ioState === "loadingPreview",
+        active: (host) => host.activeEditor!.mode === "preview",
         loading: (host) => host.store.document.ioState === "loadingPreview",
       }),
       editHead: new Command(this.host, {
@@ -1057,7 +1080,7 @@ export class CommandController implements ReactiveController {
         shortcut: "mod+h",
         run: (host) => (host.foldOpen = !host.foldOpen),
         category: "document",
-        disabled: (host) => host.activeEditor!.sourceMode || !!host.activeEditor?.previewMode,
+        disabled: (host) => host.activeEditor!.mode !== "edit",
       }),
       openSettings: new Command(this.host, {
         id: "openSettings",
@@ -1101,6 +1124,7 @@ export class CommandController implements ReactiveController {
             console.error(err)
           }
         },
+        disabled: host => host.activeEditor!.mode !== "edit",
         category: "app",
       }),
       create: new Command(this.host, {

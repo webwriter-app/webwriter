@@ -312,7 +312,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
         this.view.setProps(this.directProps)
       }
       catch(err: any) {
-        const ignoreMessages = ["Cannot read properties of null (reading 'focusNode')", "c is null"] 
+        const ignoreMessages = ["Cannot read properties of null (reading 'focusNode')", "c is null", "Cannot read properties of null (reading 'extend')"] 
         if(!ignoreMessages.includes(err?.message)) {
           throw err
         }
@@ -327,6 +327,9 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
   renderHead() {
     const headState = (this.state as any).head$ as EditorState
     const newHead = headSerializer.serializeNode(headState.doc)
+    if(!this.head) {
+      return
+    }
     const editingElements = this.head.querySelectorAll("[data-ww-editing]")
     editingElements.forEach(el => newHead.appendChild(el))
     this.head.replaceWith(newHead)
@@ -435,95 +438,30 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
 
   async initializeIFrame() {
     this.iframe = this.shadowRoot?.querySelector("iframe") as any
-    if(WEBWRITER_ENVIRONMENT.backend === "tauri") {
-      const {contentScript} = this
-      await this.importString(contentScript)
-    }
-    else {
-      const scopedRegistryScript = this.createScript(scopedCustomElementRegistryUrl, false, false)
-      this.head.append(scopedRegistryScript)
-      /*const define = this.window.customElements.define
-      this.window.customElements.define = (name, Constructor, options) => {
-        console.log("defining", name, this.window.customElements.get(name))
-        if(!this.window.customElements.get(name)) {
-          define.call(this.window.customElements, name, Constructor, options)
-        }
-      }*/
-      const importMap = !this.importMap? "": `<script type="importmap" data-ww-editing>${JSON.stringify(this.importMap.toJSON(), undefined, 2)}</script>`
-      const scriptUrls = !this.importMap? []: Object.keys(this.importMap.imports)
-        .filter(k => k.endsWith(".js"))
-        .filter(k => {
-          const [scope, versionedName] = k.split("/")
-          const [name, version] = versionedName.split("@")
-          return !(new SemVer(version)).prerelease.includes("local")
-        })
-        .map(k => this.importMap.resolve(k))
-      const localScriptUrls = !this.importMap? []: Object.keys(this.importMap.imports)
-        .filter(k => k.endsWith(".js"))
-        .filter(k => {
-          const [scope, versionedName] = k.split("/")
-          const [name, version] = versionedName.split("@")
-          return (new SemVer(version)).prerelease.includes("local")
-        })
-        .map(k => this.importMap.resolve(k))
-      const styleUrls = !this.importMap? []: Object.keys(this.importMap.imports)
-        .filter(k => k.endsWith(".css"))
-        .filter(k => {
-          const [scope, versionedName] = k.split("/")
-          const [name, version] = versionedName.split("@")
-          return !(new SemVer(version)).prerelease.includes("local")
-        })
-        .map(k => this.importMap.resolve(k))
-      const localStyleUrls = !this.importMap? []: Object.keys(this.importMap.imports)
-        .filter(k => k.endsWith(".css"))
-        .filter(k => {
-          const [scope, versionedName] = k.split("/")
-          const [name, version] = versionedName.split("@")
-          return (new SemVer(version)).prerelease.includes("local")
-        })
-        .map(k => this.importMap.resolve(k))
-      const scripts = scriptUrls.map(url => this.createScript(url, false, false))
-      const localScripts = await Promise.all(localScriptUrls.map(async url => {
-        return this.createScriptInline(await (await fetch(url)).text())
-      }))
-      const styles = styleUrls.map(url => this.createStyleLink(url))
-      const localStyles = await Promise.all(localStyleUrls.map(async url => {
-        return this.createStyleInline(await (await fetch(url)).text())
-      }))
+    
+    // Scoped custom elements polyfill injection
+    const scopedRegistryScript = this.createScript(scopedCustomElementRegistryUrl, false, false)
+    this.head.append(scopedRegistryScript)
+    
+    // Dependency injection
+    const importMap = !this.importMap? "": `<script type="importmap" data-ww-editing>${JSON.stringify(this.importMap.toJSON(), undefined, 2)}</script>`
+    const scriptUrls = !this.importMap? []: Object.keys(this.importMap.imports)
+      .filter(k => k.endsWith(".js"))
+      .map(k => this.importMap.resolve(k))
+    const styleUrls = !this.importMap? []: Object.keys(this.importMap.imports)
+      .filter(k => k.endsWith(".css"))
+      .map(k => this.importMap.resolve(k))
+    const scripts = scriptUrls.map(url => this.createScript(url, false, false))
+    const styles = styleUrls.map(url => this.createStyleLink(url))
+    this.head.insertAdjacentHTML("beforeend", importMap)
+    this.head.append(...scripts, ...styles)
 
-      // need to inline local scripts/styles due to issues with chromium: https://issues.chromium.org/issues/40703966,https://issues.chromium.org/issues/41411856 
-
-      this.head.insertAdjacentHTML("beforeend", importMap)
-      // console.log(await fetch("https://api.webwriter.app/ww/v1/@webwriter/textarea@0.0.0-local/dist/widgets/webwriter-textarea.js"))
-      // console.log(await fetch("https://api.webwriter.app/ww/v1/@webwriter/quiz@1.0.5/dist/widgets/webwriter-text.js"))
-      this.head.append(...scripts, ...styles, ...localScripts, ...localStyles)
-      // this.head.append(this.createScriptInline(`console.log(await fetch("https://api.webwriter.app/ww/v1/@webwriter/textarea@0.0.0-local/dist/widgets/webwriter-textarea.js"))`))
-      // console.log("ORIGIN", window.origin, this.window.origin)
-      // console.log(await this.window.navigator.serviceWorker.getRegistrations())
-      /*
-      const scripts = [
-        `<script type="module" data-ww-editing>${scopedCustomElementRegistry}</script>`,
-        `<script type="module" data-ww-editing>${this.contentScript}</script>`,
-        ...scriptUrls.map(src => `<script blocking="render" type="module" async data-ww-editing src=${src}></script>`)
-      ]
-      const styles = [
-        `<style data-ww-editing>${this.contentStyle}</style>`,
-        ...styleUrls.map(src => `<style data-ww-editing src=${src}></style>`)
-      ]
-      // this.head.insertAdjacentHTML("beforeend", [importMap, ...scripts, ...styles].join(""))
-      const template = `<!DOCTYPE html><html><head><meta charset="utf-8">${[...scripts, ...styles].join("")}</head><body></body></html>`
-      const blob = new Blob([template], {type: "text/html"})
-      const url = URL.createObjectURL(blob)
-      const loaded = new Promise(resolve => this.iframe.addEventListener("load", resolve))
-      this.window.location.href = url
-      await loaded*/
-    }
+    // Custom editor behavior
     this.document.documentElement.spellcheck = false
     this.window.console = console
     this.window.onerror = window.onerror
     this.window.onunhandledrejection = window.onunhandledrejection
     this.window.addEventListener("focus", () => this.dispatchEvent(new Event("focus", {bubbles: true, composed: true})))
-    // const requestFullscreen = this.window.Element.prototype.requestFullscreen
     const toggleFullscreen = this.toggleFullscreen
     this.window.Element.prototype.requestFullscreen = async function(options) {
       this.classList.add("ww-fullscreen")
@@ -576,19 +514,12 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
       e.stopPropagation()
       e.preventDefault()
     })
-
     this.window.addEventListener("keydown", e => {
       const keyExpr = [e.ctrlKey? "ctrl": null, e.altKey? "alt": null, e.shiftKey? "shift": null, e.metaKey? "meta": null, e.key].filter(k => k).join("+")
       if(this.preventedShortcuts.includes(keyExpr)) {
         e.preventDefault()
       }
     })
-    /*
-    if(WEBWRITER_ENVIRONMENT.engine.name === "WebKit") {
-      const sheet = new this.window.CSSStyleSheet()
-      sheet.replaceSync(`html { margin-left: var(--scrollbar-width) !important }`)
-      this.document.adoptedStyleSheets = [...this.document.adoptedStyleSheets, sheet]
-    }*/
   }
 
   iframe: EditorIFrameElement
@@ -666,7 +597,6 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
   }
 
   render() {
-    // this.documentLang
-    return keyed(this.bundleID + String(this.url), html`<iframe part="iframe" src=${ifDefined(this.url)} @load=${() => this.initialize()}></iframe>`)
+    return keyed(this.bundleID + String(this.url), html`<iframe part="iframe" src=${ifDefined(this.url)} @load=${() => this.initialize()} srcdoc=${ifDefined(!this.url? "": undefined)}></iframe>`)
   }
 }

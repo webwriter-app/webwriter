@@ -49,6 +49,9 @@ export class ExplorableEditor extends LitElement {
   @property({attribute: false})
   changingID = ""
 
+  @property({attribute: false})
+  testStatus: any
+
   executingCommand = false
 
 	exec = (command: PmCommand) => {
@@ -149,7 +152,7 @@ export class ExplorableEditor extends LitElement {
       const node = nodeType.createAndFill({id})
       const state = this.pmEditor.state
       const emptyParagraphActive = this.activeElement?.tagName === "P" && !this.activeElement.textContent && !this.activeElement.querySelector(":not(br)")
-      const emptyDoc = this.editorState.doc.content.size === 0
+      const emptyDoc = this.state.doc.content.size === 0
       const insertPos = Math.max(state.selection.anchor + (emptyParagraphActive? -1: 0), 0)
       let tr = state.tr.insert(insertPos, node!)
       if(this.isGapSelected) {
@@ -171,10 +174,10 @@ export class ExplorableEditor extends LitElement {
       const value = old === toInsert? "base": toInsert
       const allThemes = this.app.store.packages.allThemes as any
       this.app.store.document.setHead(upsertHeadElement(
-        this.editorState.head$,
+        this.state.head$,
         "style",
         {data: {"data-ww-theme": value}},
-        this.editorState.head$.schema.text(allThemes[value].source),
+        this.state.head$.schema.text(allThemes[value].source),
         node => node.attrs?.data && node.attrs.data["data-ww-theme"] !== undefined
       )) 
     }
@@ -216,6 +219,22 @@ export class ExplorableEditor extends LitElement {
 	@property({type: Object, attribute: false})
 	editorState: EditorStateWithHead
 
+  @property({attribute: false})
+  testState: EditorStateWithHead
+
+  get state() {
+    return this.testState ?? this.editorState
+  }
+
+  set state(value: EditorStateWithHead) {
+    if(this.mode === "test") {
+      this.testState = value
+    }
+    else {
+      this.editorState = value
+    }
+  }
+
   @property({type: Object, attribute: false})
 	codeState: CmEditorState
 
@@ -231,18 +250,28 @@ export class ExplorableEditor extends LitElement {
 	@property({type: String})
 	appendBlockType: string
 
-  @property({type: Boolean, attribute: true, reflect: true})
-	sourceMode = false
+  #mode: "edit" | "source" | "test" | "preview" = "edit"
 
-  @property({attribute: false, state: true})
+  @property({type: String, attribute: true, reflect: true})
+  get mode() {
+    return this.#mode
+  }
+
+  set mode(value) {
+    const prev = this.#mode
+    if(prev === "preview") {
+      this.previewSrc = undefined
+      this.loadingPreview = false
+    }
+    else if(prev === "test") {
+      this.app.store.packages.testPkg = undefined
+    }
+    this.#mode = value
+  }
+
   previewSrc?: string 
 
-  @property({type: Boolean})
-  loadingPreview: boolean = false 
-  
-	get previewMode() {
-    return !!this.previewSrc
-  }
+  loadingPreview: boolean = false
 
 	@property({type: Boolean, attribute: true})
 	showWidgetPreview: boolean = false
@@ -254,13 +283,7 @@ export class ExplorableEditor extends LitElement {
 	showTextPlaceholder: boolean = true
 
 	@property({type: String, attribute: false})
-	bundleJS: string
-
-	@property({type: String, attribute: false})
 	bundleID: string
-
-	@property({type: String, attribute: false})
-	bundleCSS: string
 
 	@property({type: Number, state: true})
 	toolboxX: number
@@ -300,7 +323,7 @@ export class ExplorableEditor extends LitElement {
   }
 
 	get selection() {
-		return this.editorState.selection
+		return this.state.selection
 	}
 
 	get isTextSelected() {
@@ -324,7 +347,7 @@ export class ExplorableEditor extends LitElement {
   }
 
 	get selectionY() {
-		return this.pmEditor.coordsAtPos(this.editorState.selection.anchor).top
+		return this.pmEditor.coordsAtPos(this.state.selection.anchor).top
 	}
 
   get codeEditorValue() {
@@ -348,13 +371,13 @@ export class ExplorableEditor extends LitElement {
 	}
 
   undo() {
-    !this.sourceMode
+    this.mode !== "source"
       ? this.exec(undo)
       : this.execInCodeEditor(cmUndo)
   }
 
   redo() {
-    !this.sourceMode
+    this.mode !== "source"
       ? this.exec(redo)
       : this.execInCodeEditor(cmRedo)
   }
@@ -367,7 +390,7 @@ export class ExplorableEditor extends LitElement {
 
   get selectionAsHTML() {
     const fragment = this.selection.content().content
-    const serializer = DOMSerializer.fromSchema(this.editorState.schema)
+    const serializer = DOMSerializer.fromSchema(this.state.schema)
     const dom = serializer.serializeFragment(fragment, {document: this.pmEditor.document}) as DocumentFragment
     return Array.from(dom.children).map(child => child.outerHTML).join("\n")
   }
@@ -380,7 +403,7 @@ export class ExplorableEditor extends LitElement {
       .forEach(([k, v]) => dom.setAttribute(k, v))
     dom.addEventListener("click", e => {
       e.preventDefault()
-      this.previewMode && this.emitOpen(href)
+      this.mode === "preview" && this.emitOpen(href)
     })
     return {dom}
 	}
@@ -389,7 +412,7 @@ export class ExplorableEditor extends LitElement {
 
 
 	private get nodeViews() {
-    const {nodes} = this.editorState.schema
+    const {nodes} = this.state.schema
 		const cached = this.cachedNodeViews
 		const cachedKeys = Object.keys(cached ?? {})
 		const widgetKeys = Object.entries(nodes)
@@ -540,6 +563,10 @@ export class ExplorableEditor extends LitElement {
 
         ww-toolbox {
           background: transparent;
+        }
+
+        ww-toolbox[testmode] {
+            height: 100%;
         }
 
 			}
@@ -705,13 +732,18 @@ export class ExplorableEditor extends LitElement {
 	}
 	
 	handleUpdate = () => {
-		this.editorState = this.pmEditor.state as EditorStateWithHead
+    if(this.mode === "test") {
+      this.testState = this.pmEditor.state as EditorStateWithHead
+    }
+    else {
+      this.state = this.pmEditor.state as EditorStateWithHead
+    }
     this.dispatchEvent(new Event("change"))
 		this.updatePosition()
 	}
 
   protected updated(changed: PropertyValues): void {
-    if(changed.has("editingStatus") || changed.has("editorState")) {
+    if(changed.has("editingStatus") || changed.has("editorState") || changed.has("testState")) {
       this.updateDocumentElementClasses()
     }
   }
@@ -768,7 +800,7 @@ export class ExplorableEditor extends LitElement {
     alert(msg("This feature is not implemented yet"))
   }
   copy() {
-    const serializer = this.pmEditor.clipboardSerializer ?? DOMSerializer.fromSchema(this.editorState.schema)
+    const serializer = this.pmEditor.clipboardSerializer ?? DOMSerializer.fromSchema(this.state.schema)
     const fragment = this.selection.content().content
     const documentFragment = serializer.serializeFragment(fragment, {document: this.pmEditor.document}) as DocumentFragment
     const dom = this.pmEditor.document.createElement("div")
@@ -782,7 +814,7 @@ export class ExplorableEditor extends LitElement {
   }
 
   delete() {
-    const tr = this.editorState.tr.deleteSelection()
+    const tr = this.state.tr.deleteSelection()
     this.pmEditor.dispatch(tr)
   }
 
@@ -796,7 +828,7 @@ export class ExplorableEditor extends LitElement {
 
 
 	get activeNode(): Node | null {
-		return this.getActiveNodeInState(this.editorState)
+		return this.getActiveNodeInState(this.state)
 	}
 
 	getActiveNodeInState(state: EditorState): Node | null {
@@ -832,7 +864,7 @@ export class ExplorableEditor extends LitElement {
     const rightEdge = docWidth - (docWidth - bodyWidth) / 2
     const iframeOffsetX = iframeEl?.getBoundingClientRect().x
     const iframeOffsetY = iframeEl?.getBoundingClientRect().y
-    if(!this.selection || !this.activeElement || !docEl || !iframeEl || !this.toolbox || !this.editorState.doc.content.size) {
+    if(!this.selection || !this.activeElement || !docEl || !iframeEl || !this.toolbox || !this.state.doc.content.size) {
       return
     }
 		else if(mode === "popup") {
@@ -1011,14 +1043,14 @@ export class ExplorableEditor extends LitElement {
     // Else if at edge of inline node, cycle inside/outside of node
     // Else use default behavior
 
-    if(!this.editorState.doc.content.size) {
-      return new AllSelection(this.editorState.doc)
+    if(!this.state.doc.content.size) {
+      return new AllSelection(this.state.doc)
     }
     const {pos, inside} = this.pmEditor.posAtCoords({top, left}) ?? {}
     if(pos === undefined) {
       return null
     }
-    const $pos = this.editorState.doc.resolve(pos)
+    const $pos = this.state.doc.resolve(pos)
     /*
     const {top: firstTop} = (this.pmEditor.nodeDOM(0) as HTMLElement)?.getBoundingClientRect() ?? {}
     const lastPos = this.editorState.doc.content.size - (this.editorState.doc.lastChild?.nodeSize ?? 0)
@@ -1041,9 +1073,9 @@ export class ExplorableEditor extends LitElement {
     }
     const beforeBottom = nodeBefore? nodeBefore.getBoundingClientRect().bottom: 0
     const afterTop = nodeAfter? nodeAfter.getBoundingClientRect().top: Infinity
-    const {top: lastTop} = this.pmEditor.coordsAtPos(this.editorState.doc.nodeSize - 2)
+    const {top: lastTop} = this.pmEditor.coordsAtPos(this.state.doc.nodeSize - 2)
     if(top > lastTop) {
-      return new GapCursor(this.editorState.doc.resolve(this.editorState.doc.nodeSize - 2))
+      return new GapCursor(this.state.doc.resolve(this.state.doc.nodeSize - 2))
     }
     else if(beforeBottom < top && top < afterTop) {
       return new GapCursor($pos)
@@ -1054,9 +1086,9 @@ export class ExplorableEditor extends LitElement {
   }
 
   nextSelection(backwards=false): Selection | null {
-    const $pos = backwards? this.editorState.selection.$from: this.editorState.selection.$to
-    if($pos.parentOffset === (backwards? 0: $pos.node().nodeSize - 2) && !(this.editorState.selection instanceof GapCursor)) {
-      const $nextPos = this.editorState.doc.resolve(backwards? Math.max($pos.pos - 1, 0): Math.min($pos.pos + 1, this.editorState.doc.nodeSize - 2))
+    const $pos = backwards? this.state.selection.$from: this.state.selection.$to
+    if($pos.parentOffset === (backwards? 0: $pos.node().nodeSize - 2) && !(this.state.selection instanceof GapCursor)) {
+      const $nextPos = this.state.doc.resolve(backwards? Math.max($pos.pos - 1, 0): Math.min($pos.pos + 1, this.state.doc.nodeSize - 2))
       return new GapCursor($nextPos)
     }
     else {
@@ -1074,8 +1106,8 @@ export class ExplorableEditor extends LitElement {
       }
       else if(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(ev.key) && !ev.shiftKey && !this.activeElement?.closest("table")) {
         const sel = this.nextSelection(["ArrowLeft", "ArrowUp"].includes(ev.key))
-        if(sel && !sel.eq(this.editorState.selection)) {
-          const tr = this.editorState.tr.setSelection(sel).scrollIntoView()
+        if(sel && !sel.eq(this.state.selection)) {
+          const tr = this.state.tr.setSelection(sel).scrollIntoView()
           this.pmEditor.dispatch(tr)
           ev.preventDefault()
           return false
@@ -1120,23 +1152,23 @@ export class ExplorableEditor extends LitElement {
     "mousemove": (_: any, ev: MouseEvent) => {
       if(this.gapDragSelectionAnchor !== undefined) {
         const {pos} = this.pmEditor.posAtCoords({left: ev.x, top: ev.y}) ?? {}
-        const isAtEnd = this.gapDragSelectionAnchor >= this.editorState.doc.nodeSize - 2
-        const {top: lastTop} = this.pmEditor.coordsAtPos(this.editorState.doc.nodeSize - 2)
+        const isAtEnd = this.gapDragSelectionAnchor >= this.state.doc.nodeSize - 2
+        const {top: lastTop} = this.pmEditor.coordsAtPos(this.state.doc.nodeSize - 2)
         if(pos !== undefined && pos !== this.gapDragSelectionAnchor) {
           try {
-            const endPos = TextSelection.create(this.editorState.doc, pos)
-            const {node: tableNode} = findParentNode(node => node.type.name === "table")(TextSelection.create(this.editorState.doc, Math.min(this.gapDragSelectionAnchor, this.editorState.doc.nodeSize - 2))) ?? {}
+            const endPos = TextSelection.create(this.state.doc, pos)
+            const {node: tableNode} = findParentNode(node => node.type.name === "table")(TextSelection.create(this.state.doc, Math.min(this.gapDragSelectionAnchor, this.state.doc.nodeSize - 2))) ?? {}
             if(tableNode) {
               return false
             }
             else if(ev.y > lastTop && isAtEnd) {
-              const sel = new GapCursor(this.editorState.doc.resolve(this.editorState.doc.nodeSize - 2))
-              const tr = this.editorState.tr.setSelection(sel)
+              const sel = new GapCursor(this.state.doc.resolve(this.state.doc.nodeSize - 2))
+              const tr = this.state.tr.setSelection(sel)
               this.pmEditor.dispatch(tr)
             }
             else if(!findParentNode(node => ["math", "math_inline"].includes(node.type.name))(endPos) && !(["math", "math_inline"].includes(endPos.$anchor.nodeAfter?.type.name as any))) {
-              const sel = TextSelection.create(this.editorState.doc, Math.min(this.gapDragSelectionAnchor, this.editorState.doc.nodeSize - 2), pos)
-              const tr = this.editorState.tr.setSelection(sel)
+              const sel = TextSelection.create(this.state.doc, Math.min(this.gapDragSelectionAnchor, this.state.doc.nodeSize - 2), pos)
+              const tr = this.state.tr.setSelection(sel)
               this.pmEditor.dispatch(tr)
             }
           }
@@ -1164,7 +1196,7 @@ export class ExplorableEditor extends LitElement {
           return false
         }
         else if(sel instanceof AllSelection) {
-          const tr = this.editorState.tr.setSelection(sel)
+          const tr = this.state.tr.setSelection(sel)
           this.pmEditor.dispatch(tr)
           this.pmEditor.focus()
           ev.preventDefault()
@@ -1174,8 +1206,8 @@ export class ExplorableEditor extends LitElement {
           if(!(sel instanceof GapCursor) && (findParentNode(node => ["math", "math_inline"].includes(node.type.name))(sel) || (["math", "math_inline"].includes(sel.$anchor.nodeAfter?.type.name as any)))) {
             for(let i = 1; i < sel.$anchor.depth; i++) {
               if(["math", "math_inline"].includes(sel.$anchor.node(i).type.name)) {
-                const newSel = NodeSelection.create(this.editorState.doc, sel.$anchor.before(i))
-                const tr = this.editorState.tr.setSelection(newSel)
+                const newSel = NodeSelection.create(this.state.doc, sel.$anchor.before(i))
+                const tr = this.state.tr.setSelection(newSel)
                 this.pmEditor.dispatch(tr)
               }
             }
@@ -1183,7 +1215,7 @@ export class ExplorableEditor extends LitElement {
             return true
           }
           this.gapDragSelectionAnchor = sel.anchor
-          const tr = this.editorState.tr.setSelection(sel)
+          const tr = this.state.tr.setSelection(sel)
           this.pmEditor.dispatch(tr)
           this.pmEditor.focus()
           ev.preventDefault()
@@ -1205,6 +1237,9 @@ export class ExplorableEditor extends LitElement {
     },
     "ww-widget-interact": (_: any, ev: CustomEvent) => {
       this.updateDocumentElementClasses(ev.detail.relatedEvent, true,ev.detail.relatedEvent?.metaKey)
+    },
+    "ww-test-update": (_: any, ev: CustomEvent) => {
+
     },
     "focus": (_:any, ev: FocusEvent) => {
       ev.preventDefault()
@@ -1391,10 +1426,11 @@ export class ExplorableEditor extends LitElement {
     }
   }
 
-  windowListeners: Partial<Record<keyof WindowEventMap, any>> = {
+  windowListeners: Partial<Record<keyof WindowEventMap | "test-update", any>> = {
     "beforeprint": () => this.printing = true,
     "afterprint": () => this.printing = false,
-    "mouseup": () => this.gapDragSelectionAnchor = undefined
+    "mouseup": () => this.gapDragSelectionAnchor = undefined,
+    "test-update": (e: any) => this.app.store.packages.processTestUpdate(e.detail)
   }
 
   globalListeners: Partial<Record<keyof WindowEventMap, any>> = {
@@ -1407,7 +1443,7 @@ export class ExplorableEditor extends LitElement {
   }
 
   updateDocumentElementClasses = (e?: KeyboardEvent | MouseEvent, removeOnly=false, ignoreKbd=true) => {
-    if(this.previewMode || this.sourceMode || !this.pmEditor?.documentElement) {
+    if(this.mode === "preview" || this.mode === "source" || !this.pmEditor?.documentElement) {
       return
     }
     const toRemove = [
@@ -1481,16 +1517,14 @@ export class ExplorableEditor extends LitElement {
         @ww-initialized=${this.handleEditorInitialized}
 				.scrollMargin=${20}
 				scrollThreshold=${20}
-				.state=${this.editorState}
-        .importMap=${this.app.store.packages.importMap}
+				.state=${this.state}
+        .importMap=${this.mode === "test"? this.app.store.packages.testImportMap: this.app.store.packages.importMap}
 				.nodeViews=${this.nodeViews}
 				.markViews=${this.markViews}
 				.handleKeyDown=${this.handleKeyDown}
         .handleDoubleClick=${this.handleDoubleClick}
         .handleTripleClick=${this.handleTripleClick}
 				.decorations=${this.decorations}
-				.contentScript=${this.bundleJS}
-				.contentStyle=${this.bundleCSS}
 				.shouldBeEditable=${this.shouldBeEditable}
 				.handleDOMEvents=${this.handleDOMEvents}
         .transformPastedHTML=${this.transformPastedHTML}
@@ -1517,8 +1551,9 @@ export class ExplorableEditor extends LitElement {
 	forceToolboxPopup: boolean | null = null
 
 	get toolboxMode(): "popup" | "right" | "hidden" {
-		const {isInNarrowLayout, hasNonEmptySelection, isWidgetSelected, forceToolboxPopup, isTextSelected} = this
-		if(isInNarrowLayout && (forceToolboxPopup)) return "popup"
+		const {isInNarrowLayout, forceToolboxPopup} = this
+    const isFullscreen = this.pmEditor?.isFullscreen
+		if((isInNarrowLayout || isFullscreen) && forceToolboxPopup) return "popup"
 		else if(!isInNarrowLayout) return "right"
 		else return "hidden"
 	}
@@ -1554,6 +1589,29 @@ export class ExplorableEditor extends LitElement {
 		}
 	}
 
+  get topLevelElementsInSelection() {
+    if(this.selection instanceof NodeSelection) {
+      return [this.activeElement!]
+    }
+    const result = [] as HTMLElement[]
+    this.selection.content().content.descendants((node, pos) => {
+      const el = this.pmEditor.nodeDOM(pos) as HTMLElement
+      result.push(el)
+      return false
+    })
+    return result
+  }
+
+  prefetchAllMembers(name: string, id: string) {
+    if(!this.app.store.packages.installedPackages.includes(id) || this.mode !== "edit") {
+      return
+    }
+    const members = this.app.store.packages.getPackageMembers(id)
+    const ids = Object.keys(members).filter(k => k.startsWith("./snippets/")).map(relPath => id + relPath.slice(1) + ".html")
+    const urls = ids.map(id => this.app.store.packages.importMap.resolve(id))
+    return Promise.allSettled(urls.map(url => fetch(url)))
+  }
+
 	Toolbox = () => {
 		const {activeElement} = this
     
@@ -1563,18 +1621,20 @@ export class ExplorableEditor extends LitElement {
 		return html`
 			<ww-toolbox
         .app=${this.app}
-        .editorState=${this.editorState}
+        .editorState=${this.state}
         class=${this.toolboxMode}
 				style=${styleMap(this.toolboxStyle)}
 				.activeElement=${activeElement}
         .shiftPaddingStyling=${this.shiftPaddingStyling}
+        .testMode=${this.mode === "test"}
+        .testStatus=${this.app.store.packages.testStatus}
 				@ww-delete-widget=${(e: any) => this.deleteWidget(e.detail.widget)}
         @sl-after-open=${() => this.requestUpdate()}
 				@ww-mark-field-input=${(e: any) => {
-					const {from, to} = this.editorState.selection
-					const markType = this.editorState.schema.marks[e.detail.markType]
+					const {from, to} = this.state.selection
+					const markType = this.state.schema.marks[e.detail.markType]
 					const {key, value} = e.detail
-					const tr = this.editorState.tr
+					const tr = this.state.tr
 						.removeMark(from, to, markType)
 						.addMark(from, to, markType.create({[key]: value}))
 					this.pmEditor.dispatch(tr)
@@ -1602,39 +1662,17 @@ export class ExplorableEditor extends LitElement {
 		`
 	}
 
-  get topLevelElementsInSelection() {
-    if(this.selection instanceof NodeSelection) {
-      return [this.activeElement!]
-    }
-    const result = [] as HTMLElement[]
-    this.selection.content().content.descendants((node, pos) => {
-      const el = this.pmEditor.nodeDOM(pos) as HTMLElement
-      result.push(el)
-      return false
-    })
-    return result
-  }
-
-  prefetchAllMembers(name: string, id: string) {
-    if(!this.app.store.packages.installedPackages.includes(id)) {
-      return
-    }
-    const members = this.app.store.packages.getPackageMembers(id)
-    const ids = Object.keys(members).filter(k => !k.startsWith("./widgets/")).map(relPath => id + relPath.slice(1) + ".html")
-    const urls = ids.map(id => this.app.store.packages.importMap.resolve(id))
-    return Promise.allSettled(urls.map(url => fetch(url)))
-  }
-
 	Palette = () => {
 		return html`
 			<ww-palette
         .forceToolboxPopup=${!!this.forceToolboxPopup}
         ?isInNarrowLayout=${this.isInNarrowLayout}
         .loading=${this.loadingPackages}
+        .testMode=${this.mode === "test"}
         .changingID=${this.app.store.packages.changingID}
         .app=${this.app}
         .packageIcons=${this.app.store.packages.packageIcons}
-        .editorState=${this.editorState}
+        .editorState=${this.state}
 				part="editor-toolbox"
         ?data-no-scrollbar-gutter=${this.palette?.offsetWidth - this.palette?.clientWidth === 0}
 				@ww-insert=${(e: any) => this.insertMember(e.detail.pkgID, e.detail.name)}
@@ -1672,14 +1710,26 @@ export class ExplorableEditor extends LitElement {
 		`
 	}
 
+  Main = () => {
+    if(this.mode === "edit" || this.mode === "test") {
+      return [
+        this.CoreEditor(),
+        !this.pmEditor?.isFullscreen? this.Toolbox(): null,
+        !this.pmEditor?.isFullscreen? this.Palette(): null
+      ]
+    }
+    else if(this.mode === "source") {
+      return this.CodeEditor()
+    }
+    else if(this.mode === "preview") {
+      return this.CoreEditor()
+    }
+  }
+
 	render() {
 		return html`
       <main part="base">
-        ${this.sourceMode? this.CodeEditor(): [
-          this.CoreEditor(),
-          !this.pmEditor?.isFullscreen && !this.previewMode? this.Toolbox(): null,
-          !this.pmEditor?.isFullscreen && !this.previewMode? this.Palette(): null
-        ]}
+        ${this.Main()}
         <!--<ww-debugoverlay .editorState=${this.editorState} .activeElement=${this.activeElement}></ww-debugoverlay>-->
       </main>
     ` 
