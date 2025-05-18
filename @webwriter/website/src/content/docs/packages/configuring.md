@@ -112,7 +112,7 @@ You can use as many codes as you want. You can use broad, narrow or detailed fie
 ### `exports` (partially required)
 The `exports` field is an object mapping an exported name to a file path. For WebWriter to be able to import a package member, it needs to be exported correctly.
 
-There are four types of exports: Widgets, snippets, themes, and metadata (icon, custom elements manifest, external editing config). Widgets and snippets are shown as insertable elements in WebWriter in order of the `exports`. Themes appear as options in the metadata editor. Metadata exports are described below.
+There are five types of exports: Widgets, tests, snippets, themes, and metadata (icon, custom elements manifest, external editing config). Widgets and snippets are shown as insertable elements in WebWriter in order of the `exports`. Themes appear as options in the metadata editor. Metadata exports are described below.
 
 Each should be exported according to the following example:
 
@@ -126,6 +126,10 @@ Each should be exported according to the following example:
     "./widgets/awesome-widget.*": {
       "source": "./src/widgets/awesome-widget.ts",
       "default": "./dist/widgets/awesome-widget.*"
+    },
+    "./tests/functionality.*": {
+      "source": "./tests/functionality.test.ts",
+      "default": "./dist/tests/functionality.*"
     },
     "./snippets/awesome-snippet.html": "./src/snippets/awesome-snippet.html",
     "./themes/awesome-theme.html": "./src/themes/awesome-theme.css",
