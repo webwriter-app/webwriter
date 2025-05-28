@@ -1,0 +1,109 @@
+---
+order: 305.2
+title: "Behavior"
+---
+
+import VideoCard from "../../../../components/VideoCard.vue";
+
+# Behavior
+
+All widgets should follow the behavior guidelines outlined in this document, which define how users can interact with the widget and how the widget responds to user input.
+
+## Canvas
+
+A canvas user interface provides a freeform, potentially zoomable and pannable space where users can place, move, and interact with visual elements without being confined to a rigid layout or structure. It gives users the full control over the positioning and scale of elements, mimicking a physical sheet of paper or a whiteboard.
+
+### Terminology
+
+-   **Canvas**: Describes the entire area where the user can place and manipulate elements.
+-   **Viewport**: The visible area of the canvas that the user can see at any given time.
+-   **Element**: Any object or component that can be placed on the canvas, such as shapes, text, images, or other widgets.
+
+### Features
+
+In its most basic form, a canvas user interface consists of just a black space where users can add, move, and delete elements. To improve usability, the following features can also be implemented:
+
+### Panning
+
+Panning translates the viewport in a direction based on the user's input. Scrollbars should be used to indicate the current position of the viewport and allow users to navigate the canvas, but only be visible when needed.
+
+<VideoCard client:idle videoSrc="/videos/ui_pan_mouse.webm" title="Panning with a mouse ">
+	On platforms with mouse input, users can pan the canvas by either dragging with their middle mouse button
+	or by clicking and dragging with the left mouse button while holding down the `Shift` key.
+
+    Additionally, users can use the scroll wheel to pan vertically.
+
+</VideoCard>
+
+<VideoCard client:idle videoSrc="/videos/ui_pan_touch.webm" title="Panning with touch">
+	On platforms with touch input, users can pan the canvas by dragging with one finger on an empty
+	area of the canvas. Make sure to emulate the native touch scrolling behavior, such as inertia
+	and momentum scrolling, as seen in the example on the left.
+
+    Additionally, users can use the two-finger pinch gesture to pan the canvas along the center pointer
+    between the pinch points.
+
+</VideoCard>
+
+### Zooming
+
+Zooming allows users to change the scale of the canvas, enabling them to view elements in more detail or get an overview of a larger area.
+
+If zooming is implemented, it must be limited to a specific range to prevent users from zooming in too far or out too far.
+
+Additionally, it is recommended to provide a zoom level indicator, such as a percentage in addition to the zoom controls, to make users aware that they can zoom in and out.
+
+<VideoCard client:idle videoSrc="/videos/ui_zoom_mouse.webm" title="Zooming with a mouse">
+	On platforms with mouse input, users can zoom in and out by scrolling the mouse wheel while
+	holding down the `Ctrl` key. Ensure that the zooming is centered around the mouse cursor
+	position.
+	{}
+	Trackpad users can also use the pinch-to-zoom gesture to zoom in and out.
+</VideoCard>
+
+<VideoCard client:idle videoSrc="/videos/ui_zoom_touch.webm" title="Zooming with touch">
+	On platforms with touch input, users can zoom in and out using pinch-to-zoom gestures. Ensure
+	that the position of the center point between the two pinch points stays fixes while zooming, so
+	that the user can zoom in and out on a specific area of the canvas.
+</VideoCard>
+
+### Multi-Element Selection
+
+Multi-element selection allows users to select multiple elements on the canvas at once, enabling them to manipulate or group them together.
+
+<VideoCard
+	client:idle
+	videoSrc="/videos/ui_select_mouse.webm"
+	title="Selecting elements with a mouse"
+>
+	On platforms with mouse input, users can click and drag on an empty area of the canvas to create
+	a selection box that selects all elements within the box.
+	{}
+	Alternatively, users can click on individual elements while holding down the `Shift` key to
+	select multiple elements one by one.
+</VideoCard>
+
+<VideoCard
+	client:idle
+	videoSrc="/videos/ui_select_touch.webm"
+	title="Selecting elements with touch"
+>
+	On platforms with touch input, users can hold down one finger on an empty area of the canvas
+	until an indicator appears, then drag to create a selection box that selects all elements within
+	the box.
+</VideoCard>
+
+### Connecting Elements
+
+Connecting elements allows users to create relationships between different elements on the canvas. Example use cases include connecting nodes in a flowchart or connecting input and output ports in a circuit diagram.
+
+On all platforms, users start connecting an element by dragging from a visually distinct connection point (e.g., a circle or square).
+
+As the user drags, a preview of the connection line should be displayed that follows the user's cursor or finger. Additionally, nearby connection points on other elements should be highlighted to indicate potential connection targets.
+
+Once the user releases the mouse button or lifts their finger, the connection is established if a valid target was selected. If no valid target was selected, the connection should be canceled.
+
+<VideoCard client:idle videoSrc="/videos/ui_connect_nodes.webm" title="Node connection example">
+	The example on the left shows how users can create a connection between two nodes by dragging
+	from the output port of one node to the input port of another node.
+</VideoCard>
