@@ -8,6 +8,7 @@ import {localize} from "./localize.js"
 import {document} from "./document.js"
 import 'dotenv/config'
 import esbuildPluginInlineImport from "esbuild-plugin-inline-import"
+import esbuildPluginInlineWorker from "esbuild-plugin-inline-worker";
 
 const scriptExtensions = [".js", ".mjs", ".cjs"]
 
@@ -73,7 +74,8 @@ async function main() {
     write: true,
     bundle: true,
     plugins: [
-      esbuildPluginInlineImport()
+      esbuildPluginInlineImport(),
+	  esbuildPluginInlineWorker()
       //widgetPlugin(pkg)
     ],
     entryPoints: buildableKeys.map(k => ({out: pkg.exports[k].default.replace(".*", "").replace(".js", ""), in: pkg.exports[k].source})),

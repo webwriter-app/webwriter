@@ -13,6 +13,7 @@
     "dotenv": "^16.4.5",
     "esbuild": "^0.25.4",
     "esbuild-plugin-inline-import": "^1.1.0",
+    "esbuild-plugin-inline-worker": "^0.1.1",
     "jsdom": "^25.0.1",
     "xliff": "^6.2.1"
   },
