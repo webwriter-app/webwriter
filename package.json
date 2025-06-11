@@ -18,6 +18,7 @@
     "devbuild": "npm run build && http-server ./@webwriter/core/dist",
     "vite": "vite"
   },
+  "packageManager": "^pnpm@10.0.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/salmenf/webwriter.git"
