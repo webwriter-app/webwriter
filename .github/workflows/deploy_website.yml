@@ -26,7 +26,7 @@ jobs:
         with:
           path: './@webwriter/website'
           node-version: 20
-          package-manager: npm
+          package-manager: pnpm
 
   deploy:
     needs: build
