@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/build",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "description": "Build helper script for WebWriter packages",
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "license": "MIT",
@@ -12,7 +12,7 @@
     "@webcomponents/scoped-custom-element-registry": "^0.0.9",
     "deepl-node": "^1.14.0",
     "dotenv": "^16.4.5",
-    "esbuild": "^0.25.4",
+    "esbuild": "^0.25.5",
     "esbuild-plugin-inline-import": "^1.1.0",
     "jsdom": "^25.0.1",
     "mime-types": "^3.0.1",
