@@ -96,6 +96,20 @@ As shown in the example, this approach is most useful for using multiple small a
 
 Larger media assets such as most video and audio files are not intended to be part of a widget's source. Since these assets would be bundled into every explorable that includes the widget, they would massively increase the widget's size, and slow down both authoring and usage of the explorable.
 
+## Web Workers
+Web workers are supported. To import a web worker, bundling its code and getting as a string, prefix the worker path with `worker:`. The worker code supports the same features and assets as the main file (TypeScript, assets, etc.). 
+
+**foo.worker.ts** or **foo.worker.js**
+```js
+postMessage("hello from worker")
+```
+
+**mywidget.ts**
+```js
+import MyWorkerRaw from "worker:./foo.worker"
+const worker = new Worker(URL.createObjectURL(new Blob([MyWorkerRaw])))
+```
+
 ## WebAssembly
 WebAssembly is not supported yet.
 

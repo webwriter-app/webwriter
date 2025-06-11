@@ -3,11 +3,11 @@
 import * as esbuild from "esbuild"
 import * as fs from "fs"
 import * as process from "process"
-import * as child_process from "child_process"
 import {localize} from "./localize.js"
 import {document} from "./document.js"
 import 'dotenv/config'
 import esbuildPluginInlineImport from "esbuild-plugin-inline-import"
+import { inlineWorkerPlugin } from "@aidenlx/esbuild-plugin-inline-worker"
 
 const scriptExtensions = [".js", ".mjs", ".cjs"]
 
@@ -69,11 +69,11 @@ async function main() {
   const buildableKeys = Object.keys(pkg?.exports ?? {}).filter(k => k.startsWith("./widgets/"))
   const testKeys = Object.keys(pkg?.exports ?? {}).filter(k => k.startsWith("./tests/"))
 
-  const config = {
+  const baseConfig = {
     write: true,
     bundle: true,
     plugins: [
-      esbuildPluginInlineImport()
+      esbuildPluginInlineImport(),
       //widgetPlugin(pkg)
     ],
     entryPoints: buildableKeys.map(k => ({out: pkg.exports[k].default.replace(".*", "").replace(".js", ""), in: pkg.exports[k].source})),
@@ -123,6 +123,11 @@ async function main() {
       ".pdf": "dataurl",
     }
   }
+
+  const config = {...baseConfig, plugins: [
+    ...baseConfig.plugins,
+    inlineWorkerPlugin({watch: isDev, buildOptions: () => baseConfig})
+  ]}
 
   if(isDev) {
     const devConfig = {

@@ -1,11 +1,12 @@
 {
   "name": "@webwriter/build",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Build helper script for WebWriter packages",
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "license": "MIT",
   "type": "module",
   "dependencies": {
+    "@aidenlx/esbuild-plugin-inline-worker": "^1.0.1",
     "@custom-elements-manifest/analyzer": "^0.10.4",
     "@lit/localize-tools": "^0.8.0",
     "@webcomponents/scoped-custom-element-registry": "^0.0.9",
@@ -14,6 +15,7 @@
     "esbuild": "^0.25.4",
     "esbuild-plugin-inline-import": "^1.1.0",
     "jsdom": "^25.0.1",
+    "mime-types": "^3.0.1",
     "xliff": "^6.2.1"
   },
   "exports": {
