@@ -2,8 +2,7 @@
 Copies shoelace icons into static directory.
 */
 
-const { existsSync, mkdirSync } = require('fs')
-const fse = require('fs-extra')
+const { existsSync, mkdirSync, cpSync } = require('node:fs')
 const path = require('path')
 const process = require("process")
 
@@ -18,9 +17,9 @@ const STATIC_ICONS_OUTLINE_PATH = path.join(STATIC_PATH, "assets", "icons", "out
 
 async function main() {
   !existsSync(STATIC_ICONS_PATH) && mkdirSync(STATIC_ICONS_PATH, {recursive: true})
-  fse.copySync(ICONS_PATH, STATIC_ICONS_PATH)
-  fse.copySync(CC_PATH, STATIC_ICONS_OUTLINE_PATH)
-  fse.copySync(ASSETS_PATH, STATIC_ASSETS_PATH)
+  cpSync(ICONS_PATH, STATIC_ICONS_PATH, {recursive: true})
+  cpSync(CC_PATH, STATIC_ICONS_OUTLINE_PATH, {recursive: true})
+  cpSync(ASSETS_PATH, STATIC_ASSETS_PATH, {recursive: true})
 }
 
 main().catch((e) => {

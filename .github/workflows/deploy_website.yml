@@ -6,9 +6,6 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '0 */12 * * *'
-  workflow_run:
-    workflows: ['Build & Release Desktop']
-    types: [completed]
 
 permissions:
   contents: read
@@ -26,7 +23,7 @@ jobs:
         with:
           path: './@webwriter/website'
           node-version: 20
-          package-manager: pnpm
+          package-manager: bun
 
   deploy:
     needs: build

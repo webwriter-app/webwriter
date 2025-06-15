@@ -4,7 +4,7 @@ const js2xliff = require('xliff/js2xliff')
 const jsToXliff12 = require('xliff/jsToXliff12')
 const deepl = require("deepl-node")
 const {JSDOM} = require("jsdom")
-const { readFile, writeFile, readdir, remove, exists } = require("fs-extra")
+const { readFile, writeFile, readdir, unlink: remove } = require("node:fs/promises")
 const {join} = require("path")
 
 const DO_NOT_TRANSLATE = ["de"]
@@ -52,12 +52,14 @@ async function translateXLIFFDocument(path) {
     console.error(err)
   }
   finally {
-    if(tempPath && await exists(tempPath)) {
+    try {
       await remove(tempPath)
     }
-    if(targetPath && await exists(targetPath)) {
+    catch {}
+    try {
       await remove(targetPath)
     }
+    catch {}
   }
 }
 
