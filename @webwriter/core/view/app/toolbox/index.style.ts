@@ -30,6 +30,7 @@ sl-icon {
 
 :host > * {
   max-width: 230px;
+  grid-column: 1;
 }
 
 #name:hover {
@@ -441,7 +442,6 @@ div[part=block-commands] #name {
   position: relative;
   gap: 4px;
   grid-column: 1;
-  grid-row: 2;
 }
 
 .inline-toolbox ww-fontpicker {

@@ -110,18 +110,16 @@ export function replaceCommentNodes(html: Document) {
     }
     else { // is node-level (normal)
       let el: HTMLElement
-      const isFirstChild = node.parentElement?.firstChild === node
+      /*const isFirstChild = node.parentElement?.firstChild === node
       const isLastChild = node.parentElement?.lastChild === node
       if(isFirstChild || isLastChild) {
         text = isLastChild? serializeComment({...parseComment(text), position: "beforeend"}): text
         el = node.parentElement!
-      }
-      else {
-        text = serializeComment({...parseComment(text), position: "beforebegin"})
-        el = node.nextElementSibling as HTMLElement
-      }
-      const i = Math.max(...el.getAttributeNames().filter(k => k.startsWith("data-ww-comment-")).map(k => parseInt(k.slice("data-ww-comment-".length))), -1) + 1
-      el.setAttribute(`data-ww-comment-${i}`, text)
+      }*/
+      text = serializeComment({...parseComment(text)})
+      el = node.parentElement as HTMLElement
+      const i = Math.max(...(el?.getAttributeNames() ?? []).filter(k => k.startsWith("data-ww-comment-")).map(k => parseInt(k.slice("data-ww-comment-".length))), -1) + 1
+      el?.setAttribute(`data-ww-comment-${i}`, text)
     }
   }
   comments.forEach(c => c.remove())

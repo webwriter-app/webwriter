@@ -491,6 +491,10 @@ import {css} from "lit"; export default css`
   font-size: 0.9rem;
 }
 
+#semantic-mark-card {
+  grid-row: span 1;
+}
+
 #clipboard-card {
 
   grid-row: span 2;

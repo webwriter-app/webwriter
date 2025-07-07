@@ -633,12 +633,28 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
         allLinkedLocal = true
       }
       catch(err: any) {
-        const regexMatch = / imported from /g.exec(err.message)
+        const regexMatch = /Module not found (https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&//=]*)) imported from /g.exec(err.message)
         const notFoundMatch = /Unable to analyze (https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&//=]*)) imported from/g.exec(err.message)
-        if(err.code === "MODULE_NOT_FOUND" && regexMatch) {
-          console.warn(`Excluding faulty package ${regexMatch[1]}: ${err.message}`)
-          localIds = localIds.filter(id => id !== regexMatch[1])
-          allLinkedLocal = true
+        if((err.code === "MODULE_NOT_FOUND" || err.message.startsWith("Module not found ")) && regexMatch) {
+          const fullPath = regexMatch[1].slice(API_URL.length)
+          const id = fullPath.split("/").slice(0, 2).join("/")
+          const pkgName = "@" + id.slice(1).split("@")[0]
+          const path = "./" + fullPath.split("/").slice(2).join("/")
+          const pkg = pkgs.find(pkg => pkg.name === pkgName)!
+          const name = Object.keys(pkg.exports).find(k => {
+            const exportedPath =  pkg.exports[k]?.default ?? pkg.exports[k]
+            if(exportedPath.endsWith(".*")) {
+              return exportedPath.slice(0, -2) === path.slice(0, path.lastIndexOf("."))
+            }
+            else {
+              return exportedPath === path
+            }
+          })!
+          let fullId = id + name.slice(1)
+          fullId = fullId.endsWith(".*")? fullId.slice(0, -2) + path.slice(path.lastIndexOf(".")): fullId
+          console.warn(`Excluding faulty package ${fullId}: ${err.message}`)
+          localIds = localIds.filter(lid => lid !== fullId)
+          // allLinkedLocal = true
         }
         else if(err?.cause?.name === "NotFoundError" && notFoundMatch) {
           const faultyPkgID = (new URL(notFoundMatch[1])).pathname.split("/").slice(3, 5).join("/")
@@ -651,7 +667,7 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
         }
       }
     } while(localIds.length && !allLinkedLocal)
-    map = new ImportMap({mapUrl: "https://localhost:5173"})
+    // map = new ImportMap({mapUrl: "https://localhost:5173"})
     for(const [key, value] of Object.entries(localGenerator.map.imports)) {
       const name = key.split("/").slice(0, 2).join("/") 
       map.set(!name.slice(1).includes("@")? key.replace(name, name + "@" + resolutions[name]): key, value)

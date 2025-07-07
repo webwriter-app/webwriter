@@ -1,6 +1,7 @@
 import { LitElement, TemplateResult, css, html } from "lit"
 import { customElement, property, query, queryAll } from "lit/decorators.js"
 import {cache} from 'lit/directives/cache.js';
+import { MathMLToLaTeX } from "mathml-to-latex"
 
 import { emitCustomEvent, prettifyPackageName, unscopePackageName } from "#utility"
 import { classMap } from "lit/directives/class-map.js"
@@ -9,12 +10,12 @@ import { Command, LayoutCommand } from "#viewmodel"
 import { spreadProps } from "@open-wc/lit-helpers"
 
 import { ifDefined } from "lit/directives/if-defined.js"
-import { App, URLFileInput, TextPicker } from "#view"
-import { AllSelection, EditorState, TextSelection } from "prosemirror-state"
+import { App, URLFileInput, TextPicker, Button } from "#view"
+import { AllSelection, EditorState, NodeSelection, TextSelection } from "prosemirror-state"
 import {GapCursor} from "prosemirror-gapcursor"
 // @ts-ignore
 import {render as latexToMathML} from "temml/dist/temml.cjs"
-import { SlColorPicker, SlTree } from "@shoelace-style/shoelace"
+import { SlColorPicker, SlTextarea, SlTree } from "@shoelace-style/shoelace"
 import { CSSPropertySpecs, MATHML_TAGS, Package, PackageStore, TEST_RESULT, TestNode, TestResult } from "#model/index.js"
 import { LitPickerElement } from "#view/elements/stylepickers/index.js"
 import { findParentNodeClosestToPos } from "prosemirror-utils";
@@ -516,6 +517,10 @@ export class  Toolbox extends LitElement {
     this.dispatchEvent(new CustomEvent("ww-insert-text", {bubbles: true, composed: true, detail: {text}}))
   }
 
+  emitSetHeadingLevel(el: HTMLHeadingElement, level: "h1" | "h2" | "h3" | "h4" | "h5" | "h6") {
+    this.dispatchEvent(new CustomEvent("ww-set-heading-level", {bubbles: true, composed: true, detail: {el, level}}))
+  }
+
   DetailsToolbox(el: HTMLDetailsElement) {
     return html`<div class="details-toolbox">
       <sl-switch id="open" size="small" ?checked=${el.open} @sl-change=${() => this.emitSetAttribute(el, "open", !el.open? "": undefined)}>${msg("Open")}</sl-switch>
@@ -526,9 +531,11 @@ export class  Toolbox extends LitElement {
     const tag = el.tagName.toLowerCase()
     return html`<div class="heading-toolbox">
       <sl-radio-group value=${tag} size="small" @sl-change=${(e: any) => {
+        return this.emitSetHeadingLevel(el, e.target.value)
         const newEl = el.ownerDocument.createElement(e.target.value) as HTMLHeadingElement
         el.getAttributeNames().forEach(k => newEl.setAttribute(k, el.getAttribute(k)!))
         newEl.replaceChildren(...Array.from(el.childNodes))
+        el.append("empty")
         el.replaceWith(newEl)
       }}>
         <sl-radio-button value="h1"><sl-icon name="h-1"></sl-icon></sl-radio-button>
@@ -571,11 +578,28 @@ export class  Toolbox extends LitElement {
     </div>`
   }
 
+  handleMathChange = (el: MathMLElement & HTMLElement, e: any) => {
+    try {
+      latexToMathML(e.target.value, el, {annotate: true, throwOnError: true});
+    }
+    catch(err) {
+
+    }
+    this.app.activeEditor?.focus();
+    this.app.activeEditor!.selectElementInEditor(el)
+  }
+
+  getMathValue = (el: MathMLElement & HTMLElement) => {
+    const annotations = Array.from(el.querySelectorAll("annotation[encoding='application/x-tex']"))
+    return annotations.reduce((acc, el) => acc + el.textContent, "") || MathMLToLaTeX.convert(el.outerHTML)
+  }
+
   MathToolbox(el: MathMLElement & HTMLElement) {
     return html`<div class="math-toolbox">
-      <sl-input id="math-input" size="small" label="TeX" placeholder=${"\\sqrt{a^2 + b^2}"} @sl-change=${(e: any) => latexToMathML(e.target.value, el)}>
-        <sl-icon-button slot="suffix" name="corner-down-left"></sl-icon-button>
-      </sl-input>
+      <sl-textarea autocapitalize="off" autocomplete="off" autocorrect="off" resize="none" value=${this.getMathValue(el)} id="math-input" size="small" placeholder=${"\\sqrt{a^2 + b^2}"} @keydown=${(e: any) => e.key === "Enter" && e.target.blur()} @sl-change=${(e: any) => this.handleMathChange(el, e)}>
+        <span slot="label">${msg("TeX Formula")}</span>
+        <sl-icon-button slot="label" name="corner-down-left" style="margin-left: auto;"></sl-icon-button>
+      </sl-textarea>
     </div>`
   }
 

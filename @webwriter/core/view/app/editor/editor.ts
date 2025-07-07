@@ -767,9 +767,15 @@ export class ExplorableEditor extends LitElement {
 	
 	handleUpdate = () => {
     if(this.mode === "test") {
+      if(!this.state.selection.eq(this.pmEditor.state.selection)) {
+        this.handleSelectionChange()
+      }
       this.testState = this.pmEditor.state as EditorStateWithHead
     }
     else {
+      if(!this.state.selection.eq(this.pmEditor.state.selection)) {
+        this.handleSelectionChange()
+      }
       this.state = this.pmEditor.state as EditorStateWithHead
     }
     this.dispatchEvent(new Event("change"))
@@ -1021,6 +1027,18 @@ export class ExplorableEditor extends LitElement {
 
   shouldBeEditable = (state: EditorState) => !this.ownerDocument.fullscreenElement
 
+  setHeadingLevel(el: HTMLHeadingElement, level: "h1" | "h2" | "h3" | "h4" | "h5" | "h6") {
+    this.exec((state, dispatch, view) => {
+      if(!["h1", "h2", "h3", "h4", "h5", "h6"].includes(state.selection.$anchor.node().type.name)) {
+        return false
+      }
+      const pos = view!.posAtDOM(el, 0) - 1
+      const type = state.schema.nodes[level]
+      dispatch && dispatch(this.state.tr.setNodeMarkup(pos, type))
+      return true
+    })
+  }
+
   setNodeAttribute(el: HTMLElement, key: string, value?: string | boolean, tag?: string) {
     this.exec((state, dispatch, view) => {     
       const pos = this.pmEditor.posAtDOM(el, 0, 1) - 1
@@ -1238,6 +1256,10 @@ export class ExplorableEditor extends LitElement {
         }
         // const {node: maybeOldTableNode} = findParentNode(node => node.type.name === "table")(this.selection) ?? {}
         const {node: maybeNewTableNode} = sel? findParentNode(node => node.type.name === "table")(sel) ?? {}: {}
+        const {node: maybeMathNode} = sel? findParentNode(node => node.type.name === "math_inline" || node.type.name === "math")(sel) ?? {}: {}
+        if(maybeMathNode) {
+          return false
+        }
         if(maybeNewTableNode && !(this.selection instanceof CellSelection) && !(this.selection instanceof GapCursor) && !(this.selection instanceof NodeSelection)) {
           return false
         }
@@ -1392,7 +1414,7 @@ export class ExplorableEditor extends LitElement {
   private static mediaTypes = ["image", "audio", "video"]
   private static embedTypes = ["application/pdf"]
 
-  private selectElementInEditor(el: HTMLElement) {
+  selectElementInEditor(el: HTMLElement) {
     let selection
     if(el.tagName === "BODY" || el.tagName === "HTML") {
       selection = new AllSelection(this.pmEditor.state.doc)
@@ -1484,7 +1506,7 @@ export class ExplorableEditor extends LitElement {
     "keyup": (e: any) => this.updateDocumentElementClasses(e, true, false),
     "mouseup": (e: any) => this.updateDocumentElementClasses(e),
     "mousedown": (e: any) => this.updateDocumentElementClasses(e),
-    "resize": () => this.requestUpdate(),
+    "resize": () => {this.requestUpdate(); this.updatePosition()},
     "focus": (e: any) => this.updateDocumentElementClasses(e, true)
   }
 
@@ -1504,6 +1526,7 @@ export class ExplorableEditor extends LitElement {
       this.editingStatus !== "deleting" && `ww-deleting`,
       this.editingStatus !== "inserting" && `ww-inserting`,
       this.editingStatus !== "pinning" && `ww-pinning`,
+      this.editingStatus !== "commenting" && `ww-commenting`
     ].filter(k => k) as string[]
     const toAdd = [
       e?.ctrlKey && "ww-key-ctrl",
@@ -1526,6 +1549,7 @@ export class ExplorableEditor extends LitElement {
     if(e.detail.first) {
       this.handleEditorFocus()
     }
+    this.updatePosition()
   }
 
   handleEditorFocus = () => {
@@ -1702,6 +1726,7 @@ export class ExplorableEditor extends LitElement {
           this.forceToolboxPopup = false
         }}
         @ww-set-attribute=${(e: CustomEvent) => this.setNodeAttribute(e.detail.el, e.detail.key, e.detail.value, e.detail.tag)}
+        @ww-set-heading-level=${(e: CustomEvent) => this.setHeadingLevel(e.detail.el, e.detail.level)}
         @ww-set-style=${(e: CustomEvent) => {
           this.topLevelElementsInSelection.forEach(el => Object.assign(el.style, e.detail.style))
           // this.pmEditor.focus()

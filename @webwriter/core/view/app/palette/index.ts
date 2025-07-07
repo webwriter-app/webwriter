@@ -283,13 +283,48 @@ export class Palette extends LitElement {
 	</sl-card>`
   }
 
+  SemanticMarkCard = () => {
+    const cmds = this.app.commands.semanticMarkCommands
+    if(!cmds.length) {
+      return null
+    }
+    const cmd = cmds[0]
+    return html`<sl-card id="semantic-mark-card" class=${classMap({"package-card": true, "container-card": true, "multiple": cmds.length > 1})} ?inert=${cmd.disabled} @click=${() => this.handleClickCard(cmd)} @mouseenter=${() => this.handleMouseenterInsertable(cmd)} @mouseleave=${() => this.handleMouseleaveInsertable(cmd)}>
+      <sl-tooltip placement="left-start" class="package-tooltip" hoist trigger="hover">
+        <span class="title">
+          <sl-icon class="container-icon" name=${cmd.icon ?? "square"}></sl-icon>
+          <ww-button variant="icon" class="dropdown-trigger" icon=${this.dropdownOpen !== cmd.group? "chevron-down": "chevron-up"} @click=${(e: any) => this.dropdownOpen = this.dropdownOpen? null: cmd.group!} @mouseenter=${() => this.dropdownOpen = cmd.group!}></ww-button>
+        </span>
+        <span slot="content">
+          <b><code>${cmd.label}</code></b>
+          <div>${cmd.description || msg("No description provided")}</div>
+        </span>
+      </sl-tooltip>
+      <sl-popup flip anchor=${cmd.group ?? cmd.id} class="other-insertables" strategy="fixed" placement="bottom-start" ?active=${this.dropdownOpen === cmd.group} auto-size="both" auto-size-padding=${1}>
+          <sl-menu class="other-insertables-menu">
+            ${cmds.map(c => html`<sl-menu-item class="sub-command" @click=${(e: any) => {this.handleClickCard(c); e.stopPropagation()}}>
+              <sl-checkbox size="small"></sl-checkbox>
+              <sl-icon class="container-icon" name=${c.icon ?? "square"}></sl-icon>
+              ${c.label}
+            </sl-menu-item>`)}
+          </sl-menu>
+        </sl-popup>
+        <sl-progress-bar></sl-progress-bar>
+    </sl-card>`
+  }
+
   @property({type: String})
   editingID: string
+
+  focusSnippetTitle(id?: string) {
+    const selector = !id? ".snippet-card sl-input": `#${id} sl-input`
+    return (this.shadowRoot?.querySelector(selector) as any)?.focus()
+  }
 
   SnippetCard = (pkg: Package & {_: {html: string}}) => {
     const {name, editingConfig, _: {html: snippetHtml}} = pkg
     const label = (editingConfig ?? {})["."]?.label?._ ?? prettifyPackageName(name)
-    return html`<sl-card class=${classMap({"package-card": true, "snippet-card": true})}>
+    return html`<sl-card id=${pkg.id} class=${classMap({"package-card": true, "snippet-card": true})}>
       <span @click=${() => this.handleClickCard(pkg)} class="title" @mouseenter=${() => this.handleMouseenterInsertable(pkg)} @mouseleave=${() => this.handleMouseleaveInsertable(pkg)}>
         ${this.managing
           ? html`<sl-input style=${`width: ${label.length}ch`} class="snippet-label" size="small" type="text" value=${label} @focusin=${(e: any) => {e.preventDefault(); e.stopPropagation()}} @click=${(e: any) => {e.preventDefault(); e.stopPropagation()}} @sl-change=${(e: any) => {this.app.store.packages.putSnippet(name, {id: parseInt(name.split("-").at(-1)!), html: snippetHtml, label: {_: e.target.value}}); this.blur()}}></sl-input>`
@@ -347,9 +382,18 @@ export class Palette extends LitElement {
   @query("#package-search")
   packageSearch: SlInput
 
+  get searchPlaceholder() {
+    if(!this.app.store.packages.installed.length || !this.packageSearch?.value && this.packageSearch?.matches(":focus-within")) {
+      return msg("Find packages...")
+    }
+    else {
+      return ""
+    }
+  }
+
   PackageToolbar() {
-    return html`<div id="package-toolbar">
-      <sl-input id="package-search" placeholder=${!this.app.store.packages.installed.length? msg("Find packages..."): ""} required type="search" size="small" @sl-input=${this.handleSearchInput} @focus=${() => this.managing = true} clearable>
+    return html`<div id="package-toolbar" >
+      <sl-input id="package-search" autocomplete="off" placeholder=${this.searchPlaceholder} required type="search" size="small" @sl-input=${this.handleSearchInput} @focus=${() => this.managing = true} clearable>
         <sl-icon slot="prefix" name="search" @click=${(e: any) => this.packageSearch.focus()}></sl-icon>
         <!--<ww-button id="filter-button" variant="icon" slot="suffix" icon="filter" @click=${(e: any) => this.packageSearch.focus()}></ww-button>-->
       </sl-input>
@@ -587,7 +631,6 @@ export class Palette extends LitElement {
   ClipboardCard() {
     return html`<sl-card id="clipboard-card" class=${classMap({"package-card": true})} @click=${() => this.emitInsert("@webwriter/core", "clipboard")}>
       <sl-icon name="clipboard"></sl-icon>
-      <sl-progress-bar></sl-progress-bar>
     </span>
 	</sl-card>`
   }
@@ -648,8 +691,8 @@ export class Palette extends LitElement {
     unlocalVersion.prerelease = unlocalVersion.prerelease.filter(v => v !== "local")
     await this.app.store.packages.writeLocal(packageForm.directoryHandle!, pkg.extend({version: unlocalVersion}), options)
     this.packageForm.reset()
-    let directoryHandle = packageForm.directoryHandle
-    await this.app.store.packages.add(directoryHandle!, pkg.id)
+    // let directoryHandle = packageForm.directoryHandle
+    // await this.app.store.packages.add(directoryHandle!, pkg.id)
     if(packageForm.editingState.watching) {
       this.emitWatchWidget(pkg.id)
     } 
@@ -769,6 +812,7 @@ export class Palette extends LitElement {
         this.managing = false
       }
     })
+    this.app.activeEditor!.requestUpdate()
   }
 
   protected updated(changed: PropertyValues) {
@@ -799,6 +843,7 @@ export class Palette extends LitElement {
       ${this.ToolboxToggle()}
       ${this.app.commands.groupedContainerCommands.map(this.Card)}
       ${this.ClipboardCard()}
+      ${this.SemanticMarkCard()}
       ${this.editingStatus != "pinning"? undefined: this.PinPreview()}
       ${guard([...this.app.store.packages.filteredPackages, this.app.store.packages.changingID, this.dropdownOpen, this.searchResults, this.app.store.ui.locale, this.app.store.document.lang, this.managing], () => this.app.store.packages.filteredPackages.map(this.Card))}
       ${this.AddLocalPackageButton()}
