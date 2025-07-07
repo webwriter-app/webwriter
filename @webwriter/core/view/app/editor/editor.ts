@@ -3,7 +3,7 @@ import {styleMap} from "lit/directives/style-map.js"
 import {customElement, property, query} from "lit/decorators.js"
 import { Decoration, EditorView, DecorationSet } from "prosemirror-view"
 import { EditorState, Command as PmCommand, NodeSelection, TextSelection, AllSelection, Selection } from "prosemirror-state"
-import { Node, Mark, DOMParser, DOMSerializer, ResolvedPos} from "prosemirror-model"
+import { Node, Mark, DOMParser, DOMSerializer, ResolvedPos, Fragment} from "prosemirror-model"
 import { localized, msg, str } from "@lit/localize"
 import {computePosition, shift} from '@floating-ui/dom'
 import { undo, redo } from "prosemirror-history"
@@ -17,7 +17,8 @@ import { CODEMIRROR_EXTENSIONS, EditorStateWithHead, MediaType, Package, removeM
 import { range, roundByDPR, sameMembers, textNodesUnder } from "#utility"
 import { App, Toolbox, Palette, ProsemirrorEditor, CodemirrorEditor } from "#view"
 import { CellSelection } from "@massifrg/prosemirror-tables-sections"
-import { findParentNode, findPositionOfNodeBefore, isNodeSelection } from "prosemirror-utils"
+import { findParentNode, findPositionOfNodeBefore, hasParentNode, isNodeSelection } from "prosemirror-utils"
+import { addComment, CommentData, commentView, deleteComment, updateComment } from "#model/schemas/resource/comment.js"
 
 class EmbedTooLargeError extends Error {}
 
@@ -77,6 +78,32 @@ export class ExplorableEditor extends LitElement {
 		return range(n).map(k => `ww_${(floor + k).toString(36)}`)
 	}
 
+  // Check whether inserting fragment at pos violates content constraints
+  private checkConstraints(pos: number, fragment: Fragment): boolean {
+    // standard constraints: no descendants of same type, no non-textblock descendants except at <body> level 
+    const emptyParagraphActive = this.activeElement?.tagName === "P" && !this.activeElement.textContent && !this.activeElement.querySelector(":not(br)")
+    const insertPos = Math.max(this.state.selection.anchor + (emptyParagraphActive? -1: 0), 0)
+    let domAtInsertPos = this.pmEditor.domAtPos(insertPos, -1).node as HTMLElement
+    domAtInsertPos = domAtInsertPos.nodeType === 3? domAtInsertPos.parentNode! as HTMLElement: domAtInsertPos
+    // for each ancestor node, check if any part of the fragment would violate the constraints
+    return !hasParentNode(ancestor => {
+      let violatingDescendant = false
+      fragment.descendants(descendant => {
+        if(violatingDescendant) {
+          return false
+        }
+        const isInvalidNested = !descendant.isLeaf && !descendant.isTextblock && !ancestor.type.spec.allowContainerNesting
+        const isInvalidReflexive = !ancestor.type.spec.allowReflexiveNesting && descendant.type.name === ancestor.type.name
+        violatingDescendant = isInvalidNested || isInvalidReflexive
+        if(violatingDescendant) {
+          return false
+        }
+      })
+      return violatingDescendant
+    })(TextSelection.create(this.state.doc, insertPos))
+    // if((!nodeType.spec.allowReflexive && domAtInsertPos.closest(tagName)) || hasParentNode(node => !node.isTextblock && !node.type.spec.allowContainerNesting)(TextSelection.create(state.doc, insertPos))) {
+  }
+
 	insertMember = async (id: string, insertableName: string) => {
     const state = this.pmEditor.state
     const members = this.app.store.packages.getPackageMembers(id)
@@ -121,6 +148,9 @@ export class ExplorableEditor extends LitElement {
       const slice = parser.parseSlice(template.content)
       let tr = this.pmEditor.state.tr.deleteSelection()
       const insertPos = Math.max(tr.selection.anchor - (emptyParagraphActive? 1: 0), 0)
+      if(!this.checkConstraints(insertPos, slice.content)) {
+        return
+      }
       tr = tr.insert(insertPos, slice.content)
       // Find new selection: It should be as deep as possible into the first branch of the inserted slice. If the deepest node found is a textblock, make a TextSelection at the start of it. Otherwise, make a NodeSelection of it.
       let selection: Selection | null = null
@@ -154,6 +184,9 @@ export class ExplorableEditor extends LitElement {
       const emptyParagraphActive = this.activeElement?.tagName === "P" && !this.activeElement.textContent && !this.activeElement.querySelector(":not(br)")
       const emptyDoc = this.state.doc.content.size === 0
       const insertPos = Math.max(state.selection.anchor + (emptyParagraphActive? -1: 0), 0)
+      if(!this.checkConstraints(insertPos, Fragment.from(node))) {
+        return
+      }
       let tr = state.tr.insert(insertPos, node!)
       if(this.isGapSelected) {
         tr = tr.setSelection(NodeSelection.create(tr.doc, this.selection.from))
@@ -448,7 +481,8 @@ export class ExplorableEditor extends LitElement {
 		}
 		else {
 			this.cachedMarkViews = {
-				link: this.LinkView
+				link: this.LinkView,
+        _comment: commentView
 			}
 			return this.cachedMarkViews
 		}
@@ -641,7 +675,7 @@ export class ExplorableEditor extends LitElement {
   }
 
   @property({attribute: false, state: true})
-  editingStatus: undefined | "copying" | "cutting" | "deleting" | "inserting" | "pasting" | "pinning"
+  editingStatus: undefined | "copying" | "cutting" | "deleting" | "inserting" | "pasting" | "pinning" | "commenting"
 
 	decorations = (state: EditorState) => {
     const {from, to, $from} = state.selection
@@ -733,9 +767,15 @@ export class ExplorableEditor extends LitElement {
 	
 	handleUpdate = () => {
     if(this.mode === "test") {
+      if(!this.state.selection.eq(this.pmEditor.state.selection)) {
+        this.handleSelectionChange()
+      }
       this.testState = this.pmEditor.state as EditorStateWithHead
     }
     else {
+      if(!this.state.selection.eq(this.pmEditor.state.selection)) {
+        this.handleSelectionChange()
+      }
       this.state = this.pmEditor.state as EditorStateWithHead
     }
     this.dispatchEvent(new Event("change"))
@@ -987,6 +1027,18 @@ export class ExplorableEditor extends LitElement {
 
   shouldBeEditable = (state: EditorState) => !this.ownerDocument.fullscreenElement
 
+  setHeadingLevel(el: HTMLHeadingElement, level: "h1" | "h2" | "h3" | "h4" | "h5" | "h6") {
+    this.exec((state, dispatch, view) => {
+      if(!["h1", "h2", "h3", "h4", "h5", "h6"].includes(state.selection.$anchor.node().type.name)) {
+        return false
+      }
+      const pos = view!.posAtDOM(el, 0) - 1
+      const type = state.schema.nodes[level]
+      dispatch && dispatch(this.state.tr.setNodeMarkup(pos, type))
+      return true
+    })
+  }
+
   setNodeAttribute(el: HTMLElement, key: string, value?: string | boolean, tag?: string) {
     this.exec((state, dispatch, view) => {     
       const pos = this.pmEditor.posAtDOM(el, 0, 1) - 1
@@ -1028,6 +1080,18 @@ export class ExplorableEditor extends LitElement {
       this.pmEditor.focus()
       return true
     })
+  }
+
+  addComment() {
+    this.exec(addComment())
+  }
+
+  updateComment(id: string, change: Partial<CommentData>, i=0) {
+    this.exec(updateComment(id, change, i))
+  }
+
+  deleteComment(id: string, i=0) {
+    this.exec(deleteComment(id, i))
   }
 
   get firstEditorElement() {
@@ -1192,6 +1256,10 @@ export class ExplorableEditor extends LitElement {
         }
         // const {node: maybeOldTableNode} = findParentNode(node => node.type.name === "table")(this.selection) ?? {}
         const {node: maybeNewTableNode} = sel? findParentNode(node => node.type.name === "table")(sel) ?? {}: {}
+        const {node: maybeMathNode} = sel? findParentNode(node => node.type.name === "math_inline" || node.type.name === "math")(sel) ?? {}: {}
+        if(maybeMathNode) {
+          return false
+        }
         if(maybeNewTableNode && !(this.selection instanceof CellSelection) && !(this.selection instanceof GapCursor) && !(this.selection instanceof NodeSelection)) {
           return false
         }
@@ -1346,7 +1414,7 @@ export class ExplorableEditor extends LitElement {
   private static mediaTypes = ["image", "audio", "video"]
   private static embedTypes = ["application/pdf"]
 
-  private selectElementInEditor(el: HTMLElement) {
+  selectElementInEditor(el: HTMLElement) {
     let selection
     if(el.tagName === "BODY" || el.tagName === "HTML") {
       selection = new AllSelection(this.pmEditor.state.doc)
@@ -1438,7 +1506,7 @@ export class ExplorableEditor extends LitElement {
     "keyup": (e: any) => this.updateDocumentElementClasses(e, true, false),
     "mouseup": (e: any) => this.updateDocumentElementClasses(e),
     "mousedown": (e: any) => this.updateDocumentElementClasses(e),
-    "resize": () => this.requestUpdate(),
+    "resize": () => {this.requestUpdate(); this.updatePosition()},
     "focus": (e: any) => this.updateDocumentElementClasses(e, true)
   }
 
@@ -1458,6 +1526,7 @@ export class ExplorableEditor extends LitElement {
       this.editingStatus !== "deleting" && `ww-deleting`,
       this.editingStatus !== "inserting" && `ww-inserting`,
       this.editingStatus !== "pinning" && `ww-pinning`,
+      this.editingStatus !== "commenting" && `ww-commenting`
     ].filter(k => k) as string[]
     const toAdd = [
       e?.ctrlKey && "ww-key-ctrl",
@@ -1480,11 +1549,15 @@ export class ExplorableEditor extends LitElement {
     if(e.detail.first) {
       this.handleEditorFocus()
     }
+    this.updatePosition()
   }
 
   handleEditorFocus = () => {
-    this.requestUpdate()
-    this.toolbox && (this.toolbox.activeLayoutCommand = undefined)
+    this.editingStatus = undefined
+  }
+
+  handleSelectionChange = () => {
+    this.toolbox && this.toolbox.activeLayoutCommand?.id !== "_comment" && (this.toolbox.activeLayoutCommand = undefined)
     this.toolbox && (this.toolbox.childrenDropdownActiveElement = null)
     this.toolbox && (this.toolbox.activeEmojiInput = false)
     this.palette && (this.palette.managing = false)
@@ -1653,11 +1726,15 @@ export class ExplorableEditor extends LitElement {
           this.forceToolboxPopup = false
         }}
         @ww-set-attribute=${(e: CustomEvent) => this.setNodeAttribute(e.detail.el, e.detail.key, e.detail.value, e.detail.tag)}
+        @ww-set-heading-level=${(e: CustomEvent) => this.setHeadingLevel(e.detail.el, e.detail.level)}
         @ww-set-style=${(e: CustomEvent) => {
           this.topLevelElementsInSelection.forEach(el => Object.assign(el.style, e.detail.style))
           // this.pmEditor.focus()
         }}
         @ww-insert-text=${(e: any) => this.insertText(e.detail.text)}
+        @ww-add-comment=${(e: any) => this.addComment()}
+        @ww-update-comment=${(e: any) => this.updateComment(e.detail.id, e.detail.change, e.detail.i)}
+        @ww-delete-comment=${(e: any) => this.deleteComment(e.detail.id, e.detail.i)}
 			></ww-toolbox>
 		`
 	}

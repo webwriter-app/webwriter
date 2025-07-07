@@ -111,6 +111,7 @@ export const mathPlugin = () => ({
       atom: true,
       toDOM: n => [`http://www.w3.org/1998/Math/MathML math`, toAttributes(n), 0],
       inline: true,
+      selectable: true
     }),
     "annotationMathML": MathMLElementSpec({
       tag: "annotation",

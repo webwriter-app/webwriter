@@ -266,7 +266,8 @@ html:is(.ww-key-ctrl, .ww-key-meta) body * {
         munder,
         munderover,
         none,
-        semantics
+        semantics,
+        comment-
       )
   ):hover {
   outline: 1px dotted var(--sl-color-gray-400);
@@ -277,7 +278,7 @@ html:is(.ww-key-ctrl, .ww-key-meta) body * {
   outline-offset: 2px;
 }
 
-.ProseMirror *:not(.ww-inline).ww-selected:hover {
+.ProseMirror *:is(:not(.ww-inline), math).ww-selected:hover {
   outline: 2px dotted var(--sl-color-primary-400);
   outline-offset: 2px;
 }
@@ -309,6 +310,7 @@ html:is(.ww-key-ctrl, .ww-key-meta) body * {
     .ww-copying,
     .ww-cutting,
     .ww-deleting,
+    .ww-commenting,
     html:is(.ww-key-ctrl, .ww-key-meta) body *
   ):not(html):not(tr)::before {
   content: "";
@@ -343,6 +345,14 @@ html:is(.ww-key-ctrl, .ww-key-meta) body *::before {
 
   &::before {
     background: var(--sl-color-warning-400) !important;
+  }
+}
+
+.ww-commenting {
+  outline-color: hsla(50, 100%, 50%, 100%) !important;
+
+  &::before {
+    background: hsla(50, 100%, 50%, 60%) !important;
   }
 }
 
@@ -560,8 +570,12 @@ thead, tbody, tfoot {
   z-index: 2147483647;
 }
 
+iframe.ww-selected ::selection {
+  background: transparent !important;
+}
+
 :is(picture, img, math:is(:empty,
-:has(mtext br:only-child))) ::selection {
+:has(mtext:only-child br:only-child))) ::selection {
   background: transparent !important;
 }
 
@@ -574,17 +588,21 @@ html.ww-deleting ::selection {
   background: var(--sl-color-danger-300) !important;
 }
 
+html.ww-commenting ::selection {
+  background: hsla(50, 100%, 50%, 60%) !important;
+}
+
 
 abbr {
   text-decoration: underline 1px dotted currentColor;
 }
 
-:not(:defined):not([data-ww-editing^="unknown"])::after {
+:not(:defined):not([data-ww-editing^="unknown"]):not(comment-)::after {
   content: "⚠ Element not defined" !important;
   color: goldenrod !important;
 }
 
-:not(:defined) {
+:not(:defined):not(comment-) {
   display: block;
   min-height: 1.75rem;
   cursor: pointer;
@@ -665,8 +683,16 @@ math {
   }
 }
 
+math.ww-selected-inner {
+  background: var(--sl-color-primary-200);
+}
+
+math.ww-selected ::selection {
+  background: transparent !important;
+}
+
 math:empty,
-math:has(mtext br:only-child) {
+math:has(> mtext:only-child br:only-child) {
   display: inline-block;
   background: lightgray;
   cursor: pointer;
@@ -683,7 +709,7 @@ math:has(mtext br:only-child) {
 }
 
 math:empty::after,
-math:has(mtext br:only-child)::after {
+math:has(> mtext:only-child br:only-child)::after {
   position: absolute;
   top: 0;
   left: 0;
@@ -756,19 +782,15 @@ body:not(:has(:not(.ProseMirror-gapcursor))) .ProseMirror-gapcursor::after {
   margin-block: 0;
 }
 
-.ProseMirror-hideselection .ww-widget {
-  caret-color: initial !important;
+.ProseMirror-hideselection .ww-widget:not(:has(.ProseMirror-gapcursor)) {
+  caret-color: initial;
 }
 .ProseMirror-hideselection .ProseMirror-gapcursor {
   display: block;
 }
 
-body:has(.Prosemirror-gapcursor) :is(*::selection, *::-moz-selection) {
+body:has(.ProseMirror-gapcursor) :is(*::selection, *::-moz-selection) {
   display: none !important;
-}
-
-body:has(.Prosemirror-gapcursor) .ww-widget {
-  caret-color: transparent !important;
 }
 
 html:has(.ww-fullscreen) {
@@ -807,6 +829,28 @@ body:has(.ww-fullscreen) > :not(.ww-fullscreen) {
 .ww-widget:is(:fullscreen, .ww-fullscreen)::part(options) {
   display: none !important;
 }
+
+comment- {
+  background: hsla(50, 100%, 50%, 60%);
+  border-radius: 2px;
+}
+
+comment-::selection {
+  background: hsla(50, 100%, 50%, 60%) !important;
+}
+
+[data-ww-comment-0]:not(.ww-selected) {
+  outline: 1px solid hsla(50, 100%, 50%, 60%);
+}
+
+[data-ww-comment-0].ww-selected {
+  outline-color: hsla(50, 100%, 50%, 100%);
+}
+
+[data-ww-comment-0].ww-selected:hover {
+  outline: 2px dotted hsla(50, 100%, 50%, 100%) !important;
+}
+
 
 @media only screen and (min-width: 1130px) {
   .ww-widget::part(options) {

@@ -122,6 +122,10 @@ export class PackageStore {
     return JSON.parse(localStorage.getItem("webwriter_installedPackages") ?? "[]")
   }
 
+  get installedPackagesAsPkg() {
+    return this.installedPackages.map(id => Package.fromID(id))
+  }
+
   static get bundleOptions()  {return [
     "--bundle",
     `--outdir=./bundlecache`,
@@ -295,22 +299,22 @@ export class PackageStore {
 
   async checkForMissingMembers(pkgs: Package[]) {
     const ids = pkgs.map(pkg => pkg.id)
-    const idsToCheck = Object.keys(this.importMap.imports).filter(id => ids.some(toCheck => id.startsWith(toCheck)))
-    return Promise.all(idsToCheck.map(async id => {
-      const url = this.importMap.resolve(id)
+    let settings = Object.fromEntries(ids.map(id => [id, this.getPackageMembers(id)]))
+    const membersToCheck = ids
+      .flatMap(id => Object.values(settings[id]).map(v => [id, v] as [string, MemberSettings]))
+      .flatMap(([id, v]) => v.url?.endsWith(".*")? [[id, {...v, url: v.url?.slice(0, -2) + ".js"}], [id, {...v, url: v.url?.slice(0, -2) + ".css"}]]: [[id, v]]) as [string, MemberSettings][]
+    return Promise.all(membersToCheck.map(async ([id, settings]) => {
       try {
-        const result = await fetch(url)
+        const result = await fetch(settings.url!)
         if(!result.ok) throw Error("Failed to fetch")
       } catch(err) {
         const pkgId = id.split("/").slice(0, 2).join("/")
-        if(id.split("/")[2] === "widgets" && url.endsWith(".css")) {
+        if(settings.name.split("/")[1] === "widgets" && settings.url?.endsWith(".css")) {
           return
         }
         else {
-          const type = id.split("/")[2].slice(0, -1)
-          const issue = new BundleIssue(`Missing ${type} '${id}'. Did you create an importable bundle, for example with 'npx @webwriter/build dev'? https://webwriter.app/docs/quickstart/`)
+          const issue = new BundleIssue(`Missing bundle file expected at '${settings.url?.slice(this.apiBase.length)}'. Did you create an importable bundle, for example with 'npx @webwriter/build dev'? https://webwriter.app/docs/quickstart/`)
           this.appendPackageIssues(pkgId, issue)
-          console.error(issue)
         }
       }
     }))
@@ -321,7 +325,6 @@ export class PackageStore {
     const toAddLocal = tasks.filter(t => t.command === "add" && t.handle).flatMap(t => ({handle: t.handle!, name: t.name}))
     const toRemove = tasks.filter(t => t.command === "remove").flatMap(t => t.parameters)
     const toUpdate = tasks.filter(t => t.command === "update").flatMap(t => t.parameters)
-    const toLink = tasks.filter(t => t.command === "add" && t.name)
     try {
       if(toRemove.length > 0) {
         try {
@@ -332,10 +335,6 @@ export class PackageStore {
         }
       }
       if(toAdd.length > 0) {
-        const names = Object.fromEntries(toAdd.map(key => [
-          key,
-          !key.startsWith("file://")? key: tasks.find(t => t.parameters.includes(key))!.name!
-        ]))
         try {
           this.installedPackages = [...this.installedPackages, ...toAdd]
         }
@@ -366,7 +365,12 @@ export class PackageStore {
       }
       if(toUpdate.length > 0) {
         try {
-          // TODO: Updating
+          const latestIDs = toUpdate
+            .map(id => Package.fromID(id))
+            .map(pkg => this.installed.find(ipkg => ipkg.name === pkg.name))
+            .filter(pkg => pkg?.latest)
+            .map(pkg => `${pkg!.name}@${pkg!.latest}`)
+          this.installedPackages = [...this.installedPackages.filter(id => !toUpdate.includes(id)), ...latestIDs]
         }
         catch(err) {
           console.error(err)
@@ -376,7 +380,7 @@ export class PackageStore {
     finally {
       await this.load()
       this.removing = {...this.removing, ...Object.fromEntries(toRemove.map(name => [name, false]))}
-      this.adding = {...this.adding, ...Object.fromEntries(toAdd.map(name => [name, false]))}
+      this.adding = {...this.adding, ...Object.fromEntries([...toAdd.map(name => [name, false]), ...toAddLocal.map(({name}) => [name + "-local", false])])}
       this.updating = {...this.updating, ...Object.fromEntries(toUpdate.map(name => [name, false]))}
     }
   }
@@ -454,10 +458,15 @@ export class PackageStore {
 
   async add(urlOrHandle: string | FileSystemDirectoryHandle, name?: string) {
     const id = typeof urlOrHandle === "string"? urlOrHandle: name!
-    const pkg = Package.fromID(id)
+    let pkg = Package.fromID(id)
+    if(typeof urlOrHandle !== "string") {
+      const version = pkg.version
+      version.prerelease = [...version.prerelease, "local"]
+      pkg = new Package({...pkg, version})
+    }
     const matchingPkg = this.installed.find(match => pkg.name === match.name)
     if(matchingPkg) {
-      const cancelled = !confirm(`Installing ${id} requires uninstalling ${matchingPkg.id}. Do you want to continue?`)
+      const cancelled = !confirm(`Installing ${pkg.id} requires uninstalling ${matchingPkg.id}. Do you want to continue?`)
       if(cancelled) {
         return
       }
@@ -468,12 +477,12 @@ export class PackageStore {
 
     if(typeof urlOrHandle === "string") {
       const url = urlOrHandle
-      this.adding = {...this.adding, [name ?? url]: true}
+      this.adding = {...this.adding, [pkg.id ?? url]: true}
       return this.pmQueue.push({command: "add", parameters: [url], name})
     }
     else {
       const handle = urlOrHandle
-      this.adding = {...this.adding, [name ?? handle.name]: true}
+      this.adding = {...this.adding, [pkg.id ?? handle.name]: true}
       return this.pmQueue.push({command: "add", parameters: [], handle, name})
     }
   }
@@ -483,11 +492,11 @@ export class PackageStore {
     return this.pmQueue.push({command: "remove", parameters: [name]})
   }
 
-  async update(name?: string) {
+  async update(name: string) {
     this.updating = name
       ? {...this.updating, [name]: true}
       : Object.fromEntries(this.packagesList.filter(pkg => pkg.installed).map(pkg => [pkg.id, true]))
-    return this.pmQueue.push({command: "update", parameters: name? [name, "--latest"]: ["--latest"]})
+    return this.pmQueue.push({command: "update", parameters: [name]})
   }
 
   get packagesList() {
@@ -524,7 +533,7 @@ export class PackageStore {
       .map(async pkg => (await pkg).extend({members: await this.readPackageMembers(await pkg)}))
     )
     await this.updateLocalWatchIntervals(local)
-    final = available.map(pkg => pkg.extend({installed: this.installedPackages.includes(pkg.id)})).sort((a, b) => Number(!!b.installed) - Number(!!a.installed))
+    final = available.map(pkg => pkg.extend({installed: !!this.installedPackagesAsPkg.find(ipkg => ipkg.name === pkg.name && !ipkg.version.prerelease.includes("local")), ...this.installedPackagesAsPkg.find(ipkg => ipkg.name === pkg.name && !ipkg.version.prerelease.includes("local"))? {version:  this.installedPackagesAsPkg.find(ipkg => ipkg.name === pkg.name && !ipkg.version.prerelease.includes("local"))!.version}: undefined, latest: pkg.version})).sort((a, b) => Number(!!b.installed) - Number(!!a.installed))
     const snippetData = await this.getSnippet(undefined)
     const snippets = snippetData.map(({id, label, html}) => new Package({
       name: `snippet-${id}`,
@@ -973,7 +982,7 @@ export class PackageStore {
 
   async loadTestEnvironment(value?: string, createState=true) {
     this.testLoading = true
-    let id = value ?? this.local.at(0)!.id
+    let id = value ?? this.local.at(0)?.id
     if(id) {
       const testIDs = Object.values(this.getPackageMembers(id, "tests")).map(test => id + test.name.slice(1))
       this.testStatus = Object.fromEntries(testIDs.map(id => [id, "idle"]))

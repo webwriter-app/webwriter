@@ -1,9 +1,13 @@
 
 import {NodeType, Fragment, Slice, NodeRange} from "prosemirror-model"
-import {EditorState, Transaction, Selection, NodeSelection, TextSelection} from "prosemirror-state"
-import { SchemaPlugin } from ".";
+import {EditorState, Transaction, Selection, NodeSelection, TextSelection, Command} from "prosemirror-state"
+import { joinUpIfAtStart, SchemaPlugin, splitParent } from ".";
 import { HTMLElementSpec } from "../htmlelementspec";
 import { canSplit, canJoin, liftTarget, ReplaceAroundStep } from "prosemirror-transform";
+import { EditorView } from "prosemirror-view";
+import { chainCommands, joinBackward, joinForward, joinUp, lift, selectNodeBackward, selectNodeForward } from "prosemirror-commands";
+import { chainCommandsIf } from "#model/utility/index.js";
+import { deleteGroupBackward } from "@codemirror/commands";
 
 
 export function splitListItem(state: EditorState, dispatch?: (tr: Transaction) => void) {
@@ -143,6 +147,44 @@ export function sinkListItem(state: EditorState, dispatch: (tr: Transaction) => 
   return true
 }
 
+const splitListItemCustom = (state: EditorState, dispatch?: (tr: Transaction) => void, view?: EditorView) => {
+  const {$to, empty} = state.selection
+  const grandparent = $to.node(-1)
+  const isParentLi = grandparent?.type.name === "li"
+  const isParentDt = $to.node(-1)?.type.name === "dt"
+  const isParentDd = $to.node(-1)?.type.name === "dd"
+  
+  if(empty && !$to.node().textContent) {
+    return liftListItem(state, dispatch)
+  }
+  // empty dt -> dt
+  // dt -> split into dt
+  // empty dd -> dt
+  // dd -> split into dd
+  else if(isParentLi && $to.parentOffset === $to.parent.content.size) {
+    const li = state.schema.nodes["li"].createAndFill()!
+    let tr = state.tr
+    tr = tr.insert($to.pos + 1, li)
+    tr = tr.setSelection(TextSelection.create(tr.doc, $to.pos + 3))
+    dispatch && dispatch(tr)
+    return true
+  }
+  else {
+    return splitListItem(state, dispatch)
+  }
+}
+
+
+const isInDefinitionTerm = (state: EditorState) => state.selection.$to.node(-1)?.type.name === "dt"
+const isInDefinitionItem = (state: EditorState) => state.selection.$to.node(-1)?.type.name === "dd"
+const isInLastEmptyDefinitionTermOrItem = (state: EditorState) => (isInDefinitionTerm(state) || isInDefinitionItem(state)) && state.selection.$to.node()?.type.name === "p" && state.selection.$to.node().content.size === 0 && !state.selection.$to.indexAfter()
+
+
+const joinParentBackward: (nodeType: string) => Command = (nodeType) => (state, dispatch?, view?) => {
+  const edge = state.selection.$from.before()
+  state.tr.insert(edge, state.schema.node(nodeType))
+  return true
+}
 
 export const listPlugin = () => ({
   nodes: {
@@ -182,26 +224,28 @@ export const listPlugin = () => ({
     })
   },
   keymap: {
-    "Enter": (state, dispatch, view) => {
-      const {$to, empty} = state.selection
-      const grandparent = $to.node(-1)
-      const isParentLi = grandparent?.type.name === "li"
-      if(empty && !$to.node().textContent) {
-        return liftListItem(state, dispatch)
-      }
-      else if(isParentLi && $to.parentOffset === $to.parent.content.size) {
-        const li = state.schema.nodes["li"].createAndFill()!
-        let tr = state.tr
-        tr = tr.insert($to.pos + 1, li)
-        tr = tr.setSelection(TextSelection.create(tr.doc, $to.pos + 3))
+    "Enter": chainCommands(
+      splitListItemCustom,
+      /*chainCommandsIf(isInLastEmptyDefinitionTermOrItem, (state, dispatch) => {
+        let tr = state.tr.delete(state.selection.$from.before(), state.selection.$from.after())
+        const pos = state.selection.$to.after(-1)
+        tr.insert(pos, state.schema.nodes["p"].create())
+        tr.setSelection(TextSelection.create(tr.doc, pos))
         dispatch && dispatch(tr)
         return true
-      }
-      else {
-        return splitListItem(state, dispatch)
-      }
-    },
-    "Tab": sinkListItem,
+      }),*/
+      chainCommandsIf(isInDefinitionTerm, splitParent("dd")),
+      chainCommandsIf(isInDefinitionItem, splitParent("dt")),
+    ),
+    "Backspace": chainCommands(
+      chainCommandsIf(isInDefinitionTerm, joinParentBackward("dt")),
+      chainCommandsIf(isInDefinitionItem, joinParentBackward("dd"))
+    ),
+    "Mod-Backspace": chainCommands(
+      chainCommandsIf(isInDefinitionTerm, joinUpIfAtStart),
+      chainCommandsIf(isInDefinitionItem, joinUpIfAtStart)
+    ),
+    "Tab": sinkListItem, // extend to sink dl: If in dt
     "shift-Tab": liftListItemInList
   }
 } as SchemaPlugin)

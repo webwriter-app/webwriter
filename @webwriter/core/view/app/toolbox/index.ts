@@ -1,6 +1,7 @@
 import { LitElement, TemplateResult, css, html } from "lit"
 import { customElement, property, query, queryAll } from "lit/decorators.js"
 import {cache} from 'lit/directives/cache.js';
+import { MathMLToLaTeX } from "mathml-to-latex"
 
 import { emitCustomEvent, prettifyPackageName, unscopePackageName } from "#utility"
 import { classMap } from "lit/directives/class-map.js"
@@ -9,12 +10,12 @@ import { Command, LayoutCommand } from "#viewmodel"
 import { spreadProps } from "@open-wc/lit-helpers"
 
 import { ifDefined } from "lit/directives/if-defined.js"
-import { App, URLFileInput, TextPicker } from "#view"
-import { AllSelection, EditorState, TextSelection } from "prosemirror-state"
+import { App, URLFileInput, TextPicker, Button } from "#view"
+import { AllSelection, EditorState, NodeSelection, TextSelection } from "prosemirror-state"
 import {GapCursor} from "prosemirror-gapcursor"
 // @ts-ignore
 import {render as latexToMathML} from "temml/dist/temml.cjs"
-import { SlColorPicker, SlTree } from "@shoelace-style/shoelace"
+import { SlColorPicker, SlTextarea, SlTree } from "@shoelace-style/shoelace"
 import { CSSPropertySpecs, MATHML_TAGS, Package, PackageStore, TEST_RESULT, TestNode, TestResult } from "#model/index.js"
 import { LitPickerElement } from "#view/elements/stylepickers/index.js"
 import { findParentNodeClosestToPos } from "prosemirror-utils";
@@ -36,6 +37,8 @@ import pt_PT from "emoji-picker-element/i18n/pt_PT"
 import ru from "emoji-picker-element/i18n/ru_RU"
 import tr from "emoji-picker-element/i18n/tr"
 import zh_hans from "emoji-picker-element/i18n/zh_CN"
+import { Mark } from "prosemirror-model";
+import { canAddCommentThread, CommentData } from "#model/schemas/resource/comment.js";
 
 const emojiPickerTranslations = {ar, de, en, es, fr, id, it, ja, nl, pl, pt_BR, pt_PT, ru, tr, zh_hans}
 
@@ -129,7 +132,7 @@ export class  Toolbox extends LitElement {
   activeElement: HTMLElement | null
 
   @property({attribute: false})
-  activeLayoutCommand: LayoutCommand | undefined
+  activeLayoutCommand: LayoutCommand | {id: "_comment"} | undefined
 
   @property({attribute: false})
   testStatus: any
@@ -288,21 +291,25 @@ export class  Toolbox extends LitElement {
 
   handleStyleChange = (e: any) => this.emitSetStyle(this.activeElement!, e.target.value)
 
-  Pickers = (activeLayoutCommand?: LayoutCommand) => {
+  Pickers = (activeLayoutCommand?: Toolbox["activeLayoutCommand"]) => {
     const properties = html`
       <ww-box-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "boxStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement} .computedValue=${this.computedStyleOfActiveElement}></ww-box-picker>
       <ww-layout-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "layoutStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement} .computedValue=${this.computedStyleOfActiveElement}></ww-layout-picker>
       <ww-text-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "textStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement} .computedValue=${this.computedStyleOfActiveElement}></ww-text-picker>
       <ww-blending-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "blendingStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement} .computedValue=${this.computedStyleOfActiveElement}></ww-blending-picker>
       <ww-interactivity-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "interactivityStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement} .computedValue=${this.computedStyleOfActiveElement}></ww-interactivity-picker>
-      <ww-miscellaneous-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "miscellaneousStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement} .computedValue=${this.computedStyleOfActiveElement}></ww-miscellaneous-picker>`
+      <ww-miscellaneous-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "miscellaneousStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement} .computedValue=${this.computedStyleOfActiveElement}></ww-miscellaneous-picker>
+      <div class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "_comment"}>
+        ${this.CommentToolbox(this.app.commands.commands.comment.value)}
+      </div>`
     return html`<sl-popup class="pickers-popup" ?data-active=${this.activeLayoutCommand && !this.gapSelected} shift strategy="fixed" auto-size="both" active anchor=${ifDefined(activeLayoutCommand?.id)} .autoSizeBoundary=${document.body} shift-padding=${this.shiftPaddingStyling} placement="bottom-start">
       <h3>
-        <!--<sl-icon name=${activeLayoutCommand?.icon ?? ""}></sl-icon>-->
-        <span>${activeLayoutCommand?.label}</span>
-        <sl-icon-button name=${this.activeLayoutAdvanced? "badge-filled": "badge"} @click=${() => this.activeLayoutAdvanced = !this.activeLayoutAdvanced} style="margin-left: 0.5ch;"></sl-icon-button>
-        <sl-icon-button name="restore" style="margin-left: 0.25ch;" @click=${() => this.emitSetStyle(this.activeElement!, (this.shadowRoot!.querySelector(".style-picker[data-active]") as LitPickerElement).emptyValue as any)}></sl-icon-button>
-        <sl-icon-button name="x" @click=${() => {this.activeLayoutCommand = undefined; this.activeLayoutAdvanced = false}}></sl-icon-button>
+        <span>${activeLayoutCommand?.id === "_comment"? msg("Comments"): (activeLayoutCommand as any)?.label}</span>
+        ${activeLayoutCommand?.id === "_comment"? null: html`
+          <sl-icon-button name=${this.activeLayoutAdvanced? "badge-filled": "badge"} @click=${() => this.activeLayoutAdvanced = !this.activeLayoutAdvanced} style="margin-left: 0.5ch;"></sl-icon-button>
+          <sl-icon-button name="restore" style="margin-left: 0.25ch;" @click=${() => this.emitSetStyle(this.activeElement!, (this.shadowRoot!.querySelector(".style-picker[data-active]") as LitPickerElement).emptyValue as any)}></sl-icon-button>
+        `}
+        <sl-icon-button name="x" @click=${() => {this.activeLayoutCommand = undefined; this.activeLayoutAdvanced = false}}></sl-icon-button>  
       </h3>
       ${properties}
     </sl-popup>`
@@ -312,6 +319,8 @@ export class  Toolbox extends LitElement {
     return html`
       <ww-button
         ${spreadProps(cmd.toObject())}
+        class=${"block-command" + (cmd.active? " applied": "")}
+        ?data-active=${cmd.id === "_comment" && this.activeLayoutCommand?.id === "_comment"}
         tabindex=${0}
         name=${cmd.icon ?? "circle-fill"}
         @click=${() => {cmd.run(); cmd.preview()}}
@@ -491,7 +500,7 @@ export class  Toolbox extends LitElement {
         <sl-switch size="small" ?checked=${conEl?.hasAttribute("autoplay") ?? false} id="autoplay" ?data-hidden=${!isAudioVideo}>${msg("Autoplay")}</sl-switch>
         <sl-switch size="small" ?checked=${conEl?.hasAttribute("controls") ?? false} id="controls" ?data-hidden=${!isAudioVideo}>${msg("Controls")}</sl-switch>
         <sl-switch size="small" ?checked=${conEl?.hasAttribute("loop") ?? false} id="loop" ?data-hidden=${!isAudioVideo}>${msg("Loop")}</sl-switch>
-        <sl-switch size="small" ?checked=${conEl?.hasAttribute("mute") ?? false} id="mute" ?data-hidden=${!isAudioVideo}>${msg("Mute")}</sl-switch>
+        <sl-switch size="small" ?checked=${conEl?.hasAttribute("muted") ?? false} id="muted" ?data-hidden=${!isAudioVideo}>${msg("Mute")}</sl-switch>
       </aside>
     </div>`
   }
@@ -508,6 +517,10 @@ export class  Toolbox extends LitElement {
     this.dispatchEvent(new CustomEvent("ww-insert-text", {bubbles: true, composed: true, detail: {text}}))
   }
 
+  emitSetHeadingLevel(el: HTMLHeadingElement, level: "h1" | "h2" | "h3" | "h4" | "h5" | "h6") {
+    this.dispatchEvent(new CustomEvent("ww-set-heading-level", {bubbles: true, composed: true, detail: {el, level}}))
+  }
+
   DetailsToolbox(el: HTMLDetailsElement) {
     return html`<div class="details-toolbox">
       <sl-switch id="open" size="small" ?checked=${el.open} @sl-change=${() => this.emitSetAttribute(el, "open", !el.open? "": undefined)}>${msg("Open")}</sl-switch>
@@ -518,9 +531,11 @@ export class  Toolbox extends LitElement {
     const tag = el.tagName.toLowerCase()
     return html`<div class="heading-toolbox">
       <sl-radio-group value=${tag} size="small" @sl-change=${(e: any) => {
+        return this.emitSetHeadingLevel(el, e.target.value)
         const newEl = el.ownerDocument.createElement(e.target.value) as HTMLHeadingElement
         el.getAttributeNames().forEach(k => newEl.setAttribute(k, el.getAttribute(k)!))
         newEl.replaceChildren(...Array.from(el.childNodes))
+        el.append("empty")
         el.replaceWith(newEl)
       }}>
         <sl-radio-button value="h1"><sl-icon name="h-1"></sl-icon></sl-radio-button>
@@ -563,11 +578,28 @@ export class  Toolbox extends LitElement {
     </div>`
   }
 
+  handleMathChange = (el: MathMLElement & HTMLElement, e: any) => {
+    try {
+      latexToMathML(e.target.value, el, {annotate: true, throwOnError: true});
+    }
+    catch(err) {
+
+    }
+    this.app.activeEditor?.focus();
+    this.app.activeEditor!.selectElementInEditor(el)
+  }
+
+  getMathValue = (el: MathMLElement & HTMLElement) => {
+    const annotations = Array.from(el.querySelectorAll("annotation[encoding='application/x-tex']"))
+    return annotations.reduce((acc, el) => acc + el.textContent, "") || MathMLToLaTeX.convert(el.outerHTML)
+  }
+
   MathToolbox(el: MathMLElement & HTMLElement) {
     return html`<div class="math-toolbox">
-      <sl-input id="math-input" size="small" label="TeX" placeholder=${"\\sqrt{a^2 + b^2}"} @sl-change=${(e: any) => latexToMathML(e.target.value, el)}>
-        <sl-icon-button slot="suffix" name="corner-down-left"></sl-icon-button>
-      </sl-input>
+      <sl-textarea autocapitalize="off" autocomplete="off" autocorrect="off" resize="none" value=${this.getMathValue(el)} id="math-input" size="small" placeholder=${"\\sqrt{a^2 + b^2}"} @keydown=${(e: any) => e.key === "Enter" && e.target.blur()} @sl-change=${(e: any) => this.handleMathChange(el, e)}>
+        <span slot="label">${msg("TeX Formula")}</span>
+        <sl-icon-button slot="label" name="corner-down-left" style="margin-left: auto;"></sl-icon-button>
+      </sl-textarea>
     </div>`
   }
 
@@ -646,6 +678,7 @@ export class  Toolbox extends LitElement {
         "html",
         "br",
         "wbr",
+        "comment-",
         ...this.app.commands.markCommands.map(cmd => cmd.id),
         ...MATHML_TAGS
       ]
@@ -670,6 +703,7 @@ export class  Toolbox extends LitElement {
         "thead",
         "tbody",
         "tfoot",
+        "comment-",
         ...this.app.commands.markCommands.map(cmd => cmd.id),
         ...MATHML_TAGS
       ]
@@ -697,9 +731,15 @@ export class  Toolbox extends LitElement {
     return (Array.isArray(children)? children: Array.from(children))
       .filter(child => !child.classList.contains("ProseMirror-trailingBreak") && !child.classList.contains("ProseMirror-widget"))
       .filter(child => ![
+        "html",
+        "br",
+        "wbr",
+        "td",
+        "tr",
         "thead",
         "tbody",
         "tfoot",
+        "comment-",
         ...MATHML_TAGS,
         ...this.app.commands.markCommands.map(cmd => cmd.id),
       ].includes(child.tagName.toLowerCase()))
@@ -837,6 +877,72 @@ export class  Toolbox extends LitElement {
     else if(["svg"].includes(tag)) {
       return this.SVGToolbox(el as SVGSVGElement & HTMLElement)
     }
+  }
+
+  handleAddComment = () => {
+    emitCustomEvent(this, "ww-add-comment")
+  }
+
+  handleUpdateComment = (el: SlTextarea | null, id: string | number, i=0) => {
+    emitCustomEvent(this, "ww-update-comment", {id, i, change: {content: el?.value ?? "", email: (this.app.store.accounts.getAccount("pocketbase") as any)?.email, changed: Date.now()}})
+  }
+
+  handleDeleteComment = (id: string | number, i=0) => {
+    emitCustomEvent(this, "ww-delete-comment", {id, i})
+  }
+
+  focusComments(id?: string, last=false) {
+    const selector = `#comment-toolbox ${id? "#" + id: ""} sl-textarea${last? ":last-of-type": ""}`;
+    (this.shadowRoot?.querySelector(selector) as SlTextarea).focus()
+  }
+
+  handleCommentKeydown = (e: KeyboardEvent) => {
+    const el = e.target as SlTextarea
+    if(e.key === "Enter" && !e.altKey) {
+      e.preventDefault();
+      el.blur()
+    }
+    else if(e.key === "Enter" && e.altKey) {
+      e.preventDefault();
+      const pos = el.input.selectionStart
+      const endPos = el.input.selectionEnd
+      const size = endPos - pos
+      const str = size? el.value.slice(0, pos) + el.value.slice(endPos): el.value
+      el.value = str.slice(0, pos) + "\n" + str.slice(pos)
+      setTimeout(() => el.input.selectionStart = el.input.selectionEnd = pos + 1)
+    }
+  }
+
+  CommentToolbox(commentMarks: Mark[]) {
+    const sel = this.app.activeEditor?.state.selection
+    const pos = sel?.from
+    const threads: Array<[string, CommentData[]]> = [
+      ...commentMarks.map(mark => [mark.attrs.id, mark.attrs.content]),
+      ...(sel instanceof NodeSelection && Array.isArray(sel.node.attrs["=comment"])? [["node", sel.node.attrs["=comment"]]] as any: [])
+    ]
+    return html`<div id="comment-toolbox">
+      ${threads.map(([id, content]) => html`
+        ${content.map((data: CommentData, i: number) => html`
+          <sl-textarea @keydown=${this.handleCommentKeydown} class="comment" ?data-first=${i === 0} size="small" resize="auto" rows="1" value=${data.content} @sl-change=${(e: any) => !e.target.value? this.handleDeleteComment(id === "node"? pos!: id, i): this.handleUpdateComment(e.target, id === "node"? pos!: id, i)}>
+            <span class="comment-title" slot="label">
+              <span title=${data.email ?? ""}>${`${data.name ?? data.email ?? msg("Anonymous")}${data.email && data.name? " (" + data.email + ")": ""}`}</span>
+              <span>
+                <sl-relative-time numeric="always" title=${Intl.DateTimeFormat(undefined, {dateStyle: "full", timeStyle: "medium"}).format(data.changed ?? Date.now())} format="narrow" sync .date=${new Date(data.changed ?? Date.now())}></sl-relative-time>
+                <ww-button variant="icon" icon="x" @click=${() => this.handleDeleteComment(id === "node"? pos!: id, i)}></ww-button>
+              </span>
+            </span>
+          </span>
+        </sl-textarea>
+        `)}  
+        <ww-button ?disabled=${!content.at(-1)?.content} class="comment-add" icon="arrow-back-up" size="small" outline @click=${() => {
+          this.handleUpdateComment(null, id === "node"? pos!: id, content.length)
+          // setTimeout(() => this.focusComments(mark.attrs.id, true))
+        }}>${msg("Reply")}</ww-button>
+      `)}
+      ${threads.length && threads.every(([id]) => id === "node")? undefined: html`
+        <ww-button ?disabled=${!canAddCommentThread(this.app.activeEditor!.state)} icon="message-2-plus" @click=${() => this.handleAddComment()}>${msg("New thread")}</ww-button>  
+      `}
+    </div>`
   }
 
   TestNode(key: string, node: any): TemplateResult {

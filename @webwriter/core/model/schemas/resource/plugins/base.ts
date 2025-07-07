@@ -1,13 +1,14 @@
 import { Command, EditorState, NodeSelection, TextSelection } from "prosemirror-state";
 import { insertBreak, insertWordBreak, SchemaPlugin } from ".";
-import { Node, Attrs } from "prosemirror-model";
-import { chainCommands, createParagraphNear, deleteSelection, exitCode, joinBackward, joinForward, joinUp, liftEmptyBlock, newlineInCode, selectAll, selectNodeBackward, selectNodeForward } from "prosemirror-commands";
+import { Node, Attrs, Mark, MarkSpec, NodeType } from "prosemirror-model";
+import { chainCommands, createParagraphNear, deleteSelection, exitCode, joinBackward, joinForward, joinUp, liftEmptyBlock, newlineInCode, selectAll, selectNodeBackward, selectNodeForward, toggleMark } from "prosemirror-commands";
 import { namedNodeMapToObject } from "#utility";
 import pmGapcursorCSS from "prosemirror-gapcursor/style/gapcursor.css?raw"
 import pmCSS from "prosemirror-view/style/prosemirror.css?raw"
 import editingCSS from "./base.css?raw"
 import shoelaceCSS from "@shoelace-style/shoelace/dist/themes/light.css?raw"
 import { CustomElementName, HTMLElementSpec } from "#model";
+import { commentMarkSpec } from "../comment";
 
 import { canSplit, Step, StepResult } from "prosemirror-transform"
 
@@ -41,24 +42,19 @@ export const selectFirstChildNode: Command = (state, dispatch, view) => {
   return true
 }
 
-export const splitParent: Command = (state, dispatch, view) => {
+export const splitParent: (typeAfter?: string) => Command = (typeAfter?) => (state, dispatch, view) => {
   let tr = state.tr.deleteSelection()
   const pos = tr.selection.anchor
   const depth = tr.selection.$from.depth
   try {
-    const grandparent = tr.selection.$from.node(tr.selection.$from.depth - 1)
-    if(true) {
-      tr = tr.split(pos, Math.min(2, depth))
-      let resolved = tr.doc.resolve(tr.doc.resolve(pos).after())
-      if(resolved.node().type.spec.widget) {
-        tr = tr.setNodeAttribute(resolved.pos + 1, "id", `ww-${crypto.randomUUID()}`)
-      }
-      dispatch && dispatch(tr)
-      return true 
+    const node = tr.selection.$anchor.node()
+    tr = tr.split(pos, Math.min(2, depth), typeAfter? [{type: state.schema.nodes[typeAfter]}, {type: node.type, attrs: node.attrs}]: undefined)
+    let resolved = tr.doc.resolve(tr.doc.resolve(pos).after())
+    if(resolved.node().type.spec.widget) {
+      tr = tr.setNodeAttribute(resolved.pos + 1, "id", `ww-${crypto.randomUUID()}`)
     }
-    else {
-      return false
-    }
+    dispatch && dispatch(tr)
+    return true
   }
   catch {
     return false
@@ -138,7 +134,7 @@ export class SetDocAttrsStep extends Step {
 
 export function getDocAttribute(state: EditorState, key: string, asArray=true): string {
   const attr = state.doc.attrs.meta[key]
-  return attr == null || Array.isArray(attr) || !asArray? attr: [attr]
+  return attr == null || Array.isArray(attr) || !asArray? attr: [attr] as any
 }
 
 export function setDocAttributes(attrs: Record<string, any>): Command {
@@ -255,6 +251,9 @@ export const basePlugin = () => ({
     },
   },
   topNode: "explorable",
+  marks: {
+    _comment: commentMarkSpec,
+  },
   keymap: {
     "Enter": chainCommands(
       newlineInCode,
@@ -263,7 +262,7 @@ export const basePlugin = () => ({
       splitOrBreak
     ),
     "Mod-Enter": chainCommands(
-      splitParent,
+      splitParent(),
       createParagraphNear,
       exitCode
     ),

@@ -101,6 +101,7 @@ function widgetGroup(settings: WidgetEditingSettings) {
 function widgetAttrs() {
   return {
     ...globalHTMLAttributes,
+    "=comment": {default: undefined},
     _: {default: {}}
   }
 }
@@ -151,7 +152,7 @@ function getWidgetAttrs(dom: HTMLElement | string) {
 
 function widgetParseDOM(tag: string, pkg: Package) {
   return [{tag, getAttrs: (dom: string | HTMLElement) => {
-    let builtinAttrs = filterObject(getAttrs(dom), k => k in globalHTMLAttributes) as Record<string, any>
+    let builtinAttrs = filterObject(getAttrs(dom), k => k in globalHTMLAttributes || k === "=comment") as Record<string, any>
     if(!("id" in builtinAttrs)) {
       builtinAttrs.id = `ww-${crypto.randomUUID()}`
     }

@@ -401,21 +401,21 @@ export class DetailsView extends ElementView implements NodeView {
 
 	constructor(node: Node, view: EditorViewController, getPos: () => number) {
     super(node, view, getPos)
-    this.dom.addEventListener("mousedown", e => {
+    const summary = this.dom.querySelector("summary")
+    this.dom.addEventListener("click", e => {
       const el = e.target as HTMLElement
       if(el.tagName === "SUMMARY") {
+        e.preventDefault(); e.stopImmediatePropagation()
         const range = el.ownerDocument.createRange()
         range.selectNodeContents(el)
         const rangeRect = range.getBoundingClientRect()
         const ignoreX = rangeRect.left
         if(e.clientX <= ignoreX) {
           this.view.dispatch(this.view.state.tr.setNodeAttribute(this.getPos(), "open", !this.node.attrs.open))
-          e.stopImmediatePropagation()
-          e.preventDefault()
         }
       }
     })
-    this.dom.addEventListener("toggle", () => {
+    this.dom.addEventListener("toggle", (e: Event) => {
       if(Array.from(this.dom.children).some(el => el.matches("summary:only-child"))) {
         const p = this.dom.ownerDocument.createElement("p")
         this.dom.append(p)

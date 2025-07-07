@@ -30,7 +30,7 @@ import { EditorState as CmEditorState } from "@codemirror/state";
 import { html as cmHTML } from "@codemirror/lang-html";
 import { basicSetup } from "codemirror";
 import { Account, AccountStore } from "./accountstore";
-import { HTMLParserSerializer } from "../marshal/html";
+import { HTMLParserSerializer, replaceCommentElements, replaceCommentNodes } from "../marshal/html";
 import { ParserSerializer } from "../marshal/parserserializer";
 import { LLMAccount, } from "../schemas/account";
 import { msg } from "@lit/localize";
@@ -652,6 +652,7 @@ export class DocumentStore implements Resource {
   static editorToCodeState(state: EditorStateWithHead) {
     const serializer = DOMSerializer.fromSchema(state.schema);
     const dom = serializer.serializeNode(state.doc) as HTMLElement;
+    replaceCommentElements(dom)
     const html = htmlBeautify(dom.outerHTML, {
       indent_size: 2,
       wrap_attributes: "force-aligned",
@@ -670,6 +671,7 @@ export class DocumentStore implements Resource {
     const { schema, plugins, head$ } = editorState;
     const value = codeState.doc.toString();
     const dom = new window.DOMParser().parseFromString(value, "text/html");
+    replaceCommentNodes(dom)
     const doc = DOMParser.fromSchema(editorState.schema).parse(dom);
     return createEditorState({ schema, doc, plugins }, head$.doc);
   }

@@ -7,6 +7,8 @@ import { CSSPropertySpecs, RootStore, getActiveMarks, getStyleValues, setDocAttr
 import { App } from "#view";
 import { groupBy } from "#utility";
 import { addColumnAfter, addColumnBefore, addRowAfter, addRowBefore, deleteColumn, deleteRow, removeRow } from "@massifrg/prosemirror-tables-sections";
+import { addComment } from "#model/schemas/resource/comment.js";
+import { NodeSelection, TextSelection } from "prosemirror-state";
 
 export const WINDOW_OPTIONS = {
   fileDropEnabled: false,
@@ -772,6 +774,12 @@ export class CommandController implements ReactiveController {
     );
   }
 
+  @Memoize() get semanticMarkCommands() {
+    return this.queryCommands({ tags: ["semanticmark"] }).filter(
+      (cmd) => !cmd.tags?.includes("advanced")
+    );
+  }
+
   @Memoize() get layoutCommands() {
     return this.queryCommands({ tags: ["layout"] });
   }
@@ -1007,27 +1015,6 @@ export class CommandController implements ReactiveController {
         category: "editor",
         disabled: (host) => host.store.document.redoDepth === 0 || host.activeEditor!.mode === "preview",
       }),
-      toggleSourceMode: new Command(this.host, {
-        id: "toggleSourceMode",
-        tags: ["general"],
-        label: () => msg("Edit source"),
-        icon: "code",
-        description: () => msg("Edit the HTML of the document directly"),
-        shortcut: "mod+u",
-        run: (host) => {
-          if (host.activeEditor!.mode === "source") {
-            host.store.document.deriveEditorState();
-            host.activeEditor!.mode = "edit"
-          } else {
-            host.store.document.deriveCodeState();
-            host.activeEditor!.mode = "source"
-          }
-          host.requestUpdate();
-        },
-        category: "editor",
-        disabled: (host) => !host.store.ui.showSourceEditor,
-        active: (host) => host.activeEditor!.mode === "source",
-      }),
       toggleTestMode: new Command(this.host, {
         id: "toggleTestMode",
         label: () => msg("Test"),
@@ -1047,9 +1034,30 @@ export class CommandController implements ReactiveController {
         },
         category: "editor",
         tags: ["general"],
-        disabled: (host) => host.store.document.ioState === "loadingPreview",
+        disabled: (host) => host.store.document.ioState === "loadingPreview" || !host.store.packages.local.length,
         loading: (host) => host.store.packages.testLoading,
         active: (host) => host.activeEditor!.mode === "test"
+      }),
+      toggleSourceMode: new Command(this.host, {
+        id: "toggleSourceMode",
+        tags: ["general"],
+        label: () => msg("Edit source"),
+        icon: "code",
+        description: () => msg("Edit the HTML of the document directly"),
+        shortcut: "mod+u",
+        run: async (host) => {
+          if (host.activeEditor!.mode === "source") {
+            host.store.document.deriveEditorState();
+            host.activeEditor!.mode = "edit"
+          } else {
+            host.store.document.deriveCodeState();
+            host.activeEditor!.mode = "source"
+          }
+          host.requestUpdate();
+        },
+        category: "editor",
+        disabled: (host) => !host.store.ui.showSourceEditor,
+        active: (host) => host.activeEditor!.mode === "source",
       }),
       togglePreviewMode: new Command(this.host, {
         id: "togglePreviewMode",
@@ -1826,17 +1834,6 @@ export class CommandController implements ReactiveController {
         tags: ["element"],
         fixedShortcut: true,
       }),
-      inspect: new Command(this.host, {
-        id: "inspect",
-        label: () => msg("Inspect selection"),
-        description: () => msg("Inspect the selection"),
-        shortcut: "mod+alt+y",
-        icon: "info-square",
-        run: (host) => host.activeEditor?.inspect(),
-        disabled: host => true, // || host.activeEditor!.isGapSelected,
-        category: "editor",
-        tags: ["element"],
-      }),
       edit: new Command(this.host, {
         id: "edit",
         label: () => msg("Edit selection"),
@@ -1856,10 +1853,38 @@ export class CommandController implements ReactiveController {
         icon: "pin",
         disabled: host => host.activeEditor!.selection.empty || host.activeEditor!.isGapSelected,
         preview: host => host.activeEditor!.editingStatus = host.activeEditor?.editingStatus !== "pinning"? "pinning": undefined,
-        run: host => {host.activeEditor!.pin(); host.activeEditor!.editingStatus = undefined},
+        run: async host => {host.activeEditor!.palette.managing= true; await host.activeEditor!.pin(); host.activeEditor!.palette.focusSnippetTitle()},
         category: "editor",
         tags: ["element"],
-      }),/*
+      }),
+      comment: new Command(this.host, {
+        id: "_comment",
+        label: () => msg("Comment selection"),
+        description: () => msg("Comment selection"),
+        shortcut: "mod+alt+c",
+        icon: "message",
+        preview: (host) =>
+          (host.activeEditor!.editingStatus =
+            host.activeEditor?.editingStatus !== "commenting"
+              ? "commenting"
+              : undefined),
+        run: host => {
+          console.log(host.activeEditor!.selection?.node?.attrs)
+          if(!host.store.document.activeMarkMap["_comment"] && !(host.activeEditor!.selection instanceof NodeSelection && host.activeEditor!.selection.node.attrs["=comment"])) {
+            host.activeEditor!.exec(addComment((host.store.accounts.getAccount("pocketbase") as any)?.email))
+          }
+          host.activeEditor!.toolbox.activeLayoutCommand = host.activeEditor!.toolbox.activeLayoutCommand?.id !== "_comment"? {id: "_comment", label: ""}: undefined
+          if(host.activeEditor!.toolbox.activeLayoutCommand) {
+            setTimeout(() => host.activeEditor!.toolbox.focusComments())
+          }
+        },
+        disabled: host => !host.store.document.activeMarkMap["_comment"] && !(host.activeEditor!.selection instanceof NodeSelection && host.activeEditor!.selection.node.attrs["=comment"]) && !(host.activeEditor?.selection instanceof TextSelection && !host.activeEditor?.selection.empty || host.activeEditor?.selection instanceof NodeSelection), // || host.activeEditor!.isGapSelected,
+        value: host => getActiveMarks(host.activeEditor!.state, false).filter(mark => mark.type.name === "_comment"),
+        active: host => !!host.store.document.activeMarkMap["_comment"] || host.activeEditor!.selection instanceof NodeSelection && host.activeEditor!.selection.node.attrs["=comment"],
+        category: "editor",
+        tags: ["element"],
+      }),
+      /*
       grammar_check: new Command(this.host, {
         id: "grammar_check",
         label: () => msg("Spell Check"),
@@ -2358,12 +2383,12 @@ export class CommandController implements ReactiveController {
       }),
       dd: new NodeCommand(this.host, {
         id: "dd",
-        label: () => msg("Definition list item"),
+        label: () => msg("Definition item"),
         icon: "label"
       }),
       dt: new NodeCommand(this.host, {
         id: "dt",
-        label: () => msg("Definition list term"),
+        label: () => msg("Definition term"),
         icon: "label"
       }),
       fencedframe: new NodeCommand(this.host, {
@@ -2374,7 +2399,9 @@ export class CommandController implements ReactiveController {
       menu: new NodeCommand(this.host, {
         id: "menu",
         label: () => msg("Menu"),
-        icon: "click"
+        icon: "adjustments-horizontal",
+        // group: "list",
+        // tags: ["node", "container"],
       }),
       object: new NodeCommand(this.host, {
         id: "object",
@@ -2411,6 +2438,8 @@ export class CommandController implements ReactiveController {
         label: () => msg("Description List"),
         icon: "list-letters",
         description: () => msg("Insert a description list (glossary, term list)"),
+        // group: "list",
+        // tags: ["node", "container"],
       }),
       button: new NodeCommand(this.host, {
         id: "button",
@@ -2490,83 +2519,95 @@ export class CommandController implements ReactiveController {
         icon: "progress",
         description: () => msg("Insert a progress indicator")
       }),
-      blockquote: new NodeCommand(this.host, {
-        id: "blockquote",
-        label: () => msg("Blockquote"),
-        icon: "blockquote",
-        description: () => msg("Insert a blockquote")
+      div: new MarkCommand(this.host, {
+        id: "div",
+        label: () => msg("Group"),
+        icon: "section-sign",
+        description: () => msg("Insert a group"),
+        // tags: ["semanticmark"]
       }),
-      figure: new NodeCommand(this.host, {
-        id: "figure",
-        label: () => msg("Figure"),
-        icon: "layout-bottombar",
-        description: () => msg("Insert a figure")
-      }),  
-      article: new NodeCommand(this.host, {
-        id: "article",
-        label: () => msg("Article"),
-        icon: "article",
-        description: () => msg("Insert an article")
-      }),
-      aside: new NodeCommand(this.host, {
-        id: "aside",
-        label: () => msg("Aside"),
-        icon: "notes",
-        description: () => msg("Insert an aside")
-      }),
-      nav: new NodeCommand(this.host, {
-        id: "nav",
-        label: () => msg("Navigation"),
-        icon: "directions",
-        description: () => msg("Insert a navigation")
-      }),
-      section: new NodeCommand(this.host, {
+      section: new MarkCommand(this.host, {
         id: "section",
         label: () => msg("Section"),
         icon: "section-sign",
-        description: () => msg("Insert a section")
+        description: () => msg("Insert a section"),
+        // tags: ["semanticmark"]
       }),
-      header: new NodeCommand(this.host, {
+      figure: new MarkCommand(this.host, {
+        id: "figure",
+        label: () => msg("Figure"),
+        icon: "layout-bottombar",
+        description: () => msg("Insert a figure"),
+        // tags: ["semanticmark"]
+      }),  
+      article: new MarkCommand(this.host, {
+        id: "article",
+        label: () => msg("Article"),
+        icon: "article",
+        description: () => msg("Insert an article"),
+        // tags: ["semanticmark"]
+      }),
+      header: new MarkCommand(this.host, {
         id: "header",
         label: () => msg("Header"),
         icon: "layout-navbar",
-        description: () => msg("Insert a header")
+        description: () => msg("Insert a header"),
+        // tags: ["semanticmark"]
+      }),
+      main: new MarkCommand(this.host, {
+        id: "main",
+        label: () => msg("Main"),
+        icon: "news",
+        description: () => msg("Insert a main"),
+        // tags: ["semanticmark"]
+      }),
+      aside: new MarkCommand(this.host, {
+        id: "aside",
+        label: () => msg("Aside"),
+        icon: "notes",
+        description: () => msg("Insert an aside"),
+        // tags: ["semanticmark"]
       }),
       footer: new NodeCommand(this.host, {
         id: "footer",
         label: () => msg("Footer"),
         icon: "layout-bottombar",
-        description: () => msg("Insert a footer")
+        description: () => msg("Insert a footer"),
+        // tags: ["semanticmark"]
       }),
-      main: new NodeCommand(this.host, {
-        id: "main",
-        label: () => msg("Main"),
-        icon: "news",
-        description: () => msg("Insert a main")
+      nav: new MarkCommand(this.host, {
+        id: "nav",
+        label: () => msg("Navigation"),
+        icon: "directions",
+        description: () => msg("Insert a navigation"),
+        // tags: ["semanticmark"]
       }),
-      search: new NodeCommand(this.host, {
+      blockquote: new MarkCommand(this.host, {
+        id: "blockquote",
+        label: () => msg("Blockquote"),
+        icon: "blockquote",
+        description: () => msg("Insert a blockquote"),
+        // tags: ["semanticmark"]
+      }),
+      search: new MarkCommand(this.host, {
         id: "search",
         label: () => msg("Search"),
         icon: "list-search",
-        description: () => msg("Insert a search")
+        description: () => msg("Insert a search"),
+        // tags: ["semanticmark"]
       }),
-      address: new NodeCommand(this.host, {
+      address: new MarkCommand(this.host, {
         id: "address",
         label: () => msg("Address"),
         icon: "address-book",
-        description: () => msg("Insert an address")
+        description: () => msg("Insert an address"),
+        // tags: ["semanticmark"]
       }), 
       form: new NodeCommand(this.host, {
         id: "form",
         label: () => msg("Form"),
         icon: "forms",
         description: () => msg("Insert a form")
-      }),
-      div: new NodeCommand(this.host, {
-        id: "div",
-        label: () => msg("Division"),
-        icon: "square",
-        description: () => msg("Insert a division")
       }),
       figcaption: new NodeCommand(this.host, {
         id: "figcaption",

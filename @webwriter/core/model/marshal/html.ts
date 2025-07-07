@@ -4,6 +4,7 @@ import {Schema, DOMParser} from "prosemirror-model"
 import { EditorStateWithHead, PackageStore, createEditorState, headSchema, headSerializer } from '..'
 import scopedCustomElementRegistry from "@webcomponents/scoped-custom-element-registry/src/scoped-custom-element-registry.js?raw"
 import { ParserSerializer } from './parserserializer'
+import { parseComment, serializeComment, serializeCommentElement } from "#model/schemas/resource/comment.js"
 
 class NonHTMLDocumentError extends Error {}
 class NonWebwriterDocumentError extends Error {}
@@ -26,6 +27,102 @@ function uInt8ToBase64(bytes: Uint8Array) {
       binary += String.fromCharCode( bytes[ i ] );
   }
   return window.btoa( binary );
+}
+
+function formatHtml(html: string) {
+  var tab = '\t';
+  var result = '';
+  var indent= '';
+
+  html.split(/>\s*</).forEach(function(element: string) {
+    if (element.match( /^\/\w/ )) {
+      indent = indent.substring(tab.length);
+    }
+
+    result += indent + '<' + element + '>\r\n';
+
+    if (element.match( /^<?\w[^>]*[^\/]$/ ) && !element.startsWith("input")  ) { 
+      indent += tab;              
+    }
+  });
+
+  return result.substring(1, result.length-3);
+}
+
+export function replaceCommentElements(html: Document | HTMLElement) {
+  // Replace placeholder comment elements with comment nodes
+  const commentElements = html.querySelectorAll("comment-")
+  const seenIds = new Set()
+  commentElements.forEach(el => {
+    const commentsHtml = serializeCommentElement(el as HTMLElement)
+    const id = el.getAttribute("data-id")
+    const isFirst = !seenIds.has(id)
+    seenIds.add(id)
+    el.insertAdjacentHTML("beforebegin", isFirst? commentsHtml: `<!--id☛${id}-->`)
+    el.insertAdjacentHTML("afterend", `<!--id☛${id}♦♦-->`)
+    el.replaceWith(...Array.from(el.childNodes))
+  })
+  const nodeCommentElements = html.querySelectorAll("[data-ww-comment-0]")
+  nodeCommentElements.forEach(el => {
+    const commentsHtml = serializeCommentElement(el as HTMLElement)
+    el.getAttributeNames().filter(k => k.startsWith("data-ww-comment-")).forEach(k => el.removeAttribute(k))
+    el.insertAdjacentHTML("afterbegin", commentsHtml)
+  })
+}
+
+export function replaceCommentNodes(html: Document) {
+  // Transform comments into comment- elements
+  const walker = html.createTreeWalker(html.body, NodeFilter.SHOW_COMMENT)
+  const comments: Comment[] = []
+  const commentElements: HTMLElement[] = []
+  while(walker.nextNode()) {
+    const node = walker.currentNode as Comment
+    let text = node.textContent!
+    comments.push(node)
+    if((node.previousSibling as HTMLElement).tagName === "COMMENT-") { // if prev is comment- element
+      const comment = node.previousSibling as HTMLElement
+      const index = Math.max(...comment.getAttributeNames()
+        .filter(name => name.startsWith("data-content-"))
+        .map(name => parseInt(name.slice("data-content-".length)))) + 1
+      comment.setAttribute(`data-content-${index}`, node.textContent!)
+    }
+    else if(text.startsWith("id☛") && text.endsWith("♦♦") && !text.endsWith("\\♦♦")) { // if is closing
+      const id = text.slice("id☛".length, -"♦♦".length)
+      const opener = commentElements.find(c => c.getAttribute("data-id") === id)
+      if(opener) {
+        const range = new Range()
+        range.setStartAfter(opener)
+        range.setEndBefore(node)
+        range.surroundContents(opener)
+      }
+      else {
+        console.log(`Opening comment for ${id} not found`)
+      }
+    }
+    else if(text.startsWith("id☛")) { // is opening
+      const comment = html.createElement("comment-")
+      const isPartial = text.startsWith("id☛") && !text.includes("♦")
+      const id = parseComment(text).id
+      !isPartial && comment.setAttribute("data-content-0", text)
+      id && comment.setAttribute("data-id", id)
+      node.replaceWith(comment, node)
+      commentElements.unshift(comment)
+    }
+    else { // is node-level (normal)
+      let el: HTMLElement
+      /*const isFirstChild = node.parentElement?.firstChild === node
+      const isLastChild = node.parentElement?.lastChild === node
+      if(isFirstChild || isLastChild) {
+        text = isLastChild? serializeComment({...parseComment(text), position: "beforeend"}): text
+        el = node.parentElement!
+      }*/
+      text = serializeComment({...parseComment(text)})
+      el = node.parentElement as HTMLElement
+      const i = Math.max(...(el?.getAttributeNames() ?? []).filter(k => k.startsWith("data-ww-comment-")).map(k => parseInt(k.slice("data-ww-comment-".length))), -1) + 1
+      el?.setAttribute(`data-ww-comment-${i}`, text)
+    }
+  }
+  comments.forEach(c => c.remove())
 }
 
 // Abysmal performance on save, replace with esbuild Base64 process? https://esbuild.github.io/content-types/#base64
@@ -68,6 +165,8 @@ export async function docToBundle(doc: Node, head: Node, noDeps=false) {
     const blob = await (await fetch(el.src)).blob()
     el.src = await createDataURL(blob)
   }
+
+  replaceCommentElements(html)
 
   if(noDeps) {
     return {html}
@@ -173,6 +272,8 @@ export class HTMLParserSerializer extends ParserSerializer {
       defaultState = createEditorState({schema})
 //      throw new NonWebwriterDocumentError("Did not find <meta name='generator'> valid for WebWriter")
     }
+
+    replaceCommentNodes(inputDoc)
   
     let doc = DOMParser.fromSchema(schema).parse(inputDoc.body)
   
@@ -215,6 +316,7 @@ export class HTMLParserSerializer extends ParserSerializer {
   
   async serialize(state: EditorStateWithHead, noDeps=false) {
     const html = await this.serializeToDOM(state, noDeps)
-    return `<!DOCTYPE html>` + html.documentElement.outerHTML
+    return `<!DOCTYPE html>` + formatHtml(html.documentElement.outerHTML)
+
   }
 }

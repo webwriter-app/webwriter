@@ -1,10 +1,10 @@
 import { SchemaPlugin} from ".";
-import { HTMLElementSpec } from "../htmlelementspec";
+import { HTMLElementSpec, HTMLMarkSpec } from "../htmlelementspec";
 
 
 
 export const sectionPlugin = () => ({
-  nodes: { // "body" belongs here but is handled especially since it is the root node for ProseMirror
+  nodes: {
     figure: HTMLElementSpec({
       tag: "figure",
       group: "flow palpable containerblock",
@@ -14,56 +14,68 @@ export const sectionPlugin = () => ({
       tag: "figcaption",
       group: "containerinline",
       content: "phrasing*"
-    }),
-    article: HTMLElementSpec({
+    })
+  },
+  marks: { // "body" belongs here but is handled especially since it is the root node for ProseMirror
+    article: HTMLMarkSpec({
       tag: "article",
-      group: "flow sectioning palpable containerblock",
-      content: "flow*" // mixed
+      group: "flow sectioning _semanticsection",
+      content: "flow*", // mixed
+      excludes: ""
     }),
-    aside: HTMLElementSpec({
+    aside: HTMLMarkSpec({
       tag: "aside",
-      group: "flow sectioning palpable containerblock",
-      content: "flow*" // mixed
+      group: "flow sectioning palpable _semanticsection",
+      content: "flow*", // mixed
+      excludes: ""
     }),
-    nav: HTMLElementSpec({
+    nav: HTMLMarkSpec({
       tag: "nav",
-      group: "flow sectioning palpable containerblock",
-      content: "flow*" // mixed
+      group: "flow sectioning palpable _semanticsection",
+      content: "flow*", // mixed
+      excludes: ""
     }),
-    section: HTMLElementSpec({
+    section: HTMLMarkSpec({
       tag: "section",
-      group: "flow sectioning palpable containerblock",
-      content: "flow*" // mixed
+      group: "flow sectioning palpable _semanticsection",
+      content: "flow*", // mixed
+      excludes: ""
     }),
-    header: HTMLElementSpec({
+    header: HTMLMarkSpec({
       tag: "header",
-      group: "flow palpable containerblock",
-      content: "flow*" // mixed
+      group: "flow palpable _semanticsection",
+      content: "flow*", // mixed
+      excludes: ""
     }),
-    footer: HTMLElementSpec({
+    footer: HTMLMarkSpec({
       tag: "footer",
-      group: "flow palpable containerblock",
-      content: "flow*" // mixed
+      group: "flow palpable _semanticsection",
+      content: "flow*", // mixed
+      excludes: ""
     }),
-    main: HTMLElementSpec({
+    main: HTMLMarkSpec({
       tag: "main",
-      group: "flow palpable containerblock",
-      content: "flow*" // mixed
+      group: "flow palpable _semanticsection",
+      content: "flow*", // mixed
+      excludes: ""
     }),
-    search: HTMLElementSpec({
+    search: HTMLMarkSpec({
       tag: "search",
-      group: "flow palpable containerblock",
-      content: "flow*" // mixed
+      group: "flow palpable _semanticsection",
+      content: "flow*", // mixed
+      excludes: ""
     }),
-    address: HTMLElementSpec({
+    address: HTMLMarkSpec({
       tag: "address",
-      group: "flow palpable containerblock",
-      content: "(flow | embedded | interactive)*" // mixed
+      group: "flow palpable _semanticsection",
+      content: "flow*", // mixed
+      excludes: ""
     }),  
-    blockquote: HTMLElementSpec({
+    blockquote: HTMLMarkSpec({
       tag: "blockquote",
-      group: "flow containerblock",
-      content: "flow*" // mixed
+      group: "flow _semanticsection",
+      content: "flow*", // mixed
+      excludes: ""
     })
   }
 } as SchemaPlugin)
