@@ -2,6 +2,7 @@
 
 import * as esbuild from "esbuild"
 import * as fs from "fs"
+import * as path from "path"
 import * as process from "process"
 import {localize} from "./localize.js"
 import {document} from "./document.js"
@@ -25,7 +26,38 @@ const widgetPlugin = pkg => ({
       return {external: isDependency && (isScript || isBare)}
     })
   }
-}) 
+})
+
+const wasmPlugin = {
+  name: 'wasm',
+  setup(build) {
+    build.onResolve({ filter: /\.wasm$/ }, args => {
+      if (args.namespace === 'wasm-stub') {
+        return {
+          path: args.path,
+          namespace: 'wasm-binary',
+        }
+      }
+      if (args.resolveDir === '') {
+        return
+      }
+      return {
+        path: path.isAbsolute(args.path) ? args.path : path.join(args.resolveDir, args.path),
+        namespace: 'wasm-stub',
+      }
+    })
+    build.onLoad({ filter: /.*/, namespace: 'wasm-stub' }, async (args) => ({
+      contents: `import wasm from ${JSON.stringify(args.path)}
+        export default (imports) =>
+          WebAssembly.instantiate(wasm, imports).then(
+            result => result.instance.exports)`,
+    }))
+    build.onLoad({ filter: /.*/, namespace: 'wasm-binary' }, async (args) => ({
+      contents: await fs.promises.readFile(args.path),
+      loader: 'binary',
+    }))
+  },
+}
 
 
 
@@ -74,7 +106,8 @@ async function main() {
     bundle: true,
     plugins: [
       esbuildPluginInlineImport(),
-      //widgetPlugin(pkg)
+      // wasmPlugin()
+      // widgetPlugin(pkg)
     ],
     entryPoints: buildableKeys.map(k => ({out: pkg.exports[k].default.replace(".*", "").replace(".js", ""), in: pkg.exports[k].source})),
     outdir: ".",
@@ -121,6 +154,7 @@ async function main() {
       ".ttf": "dataurl",
       ".otf": "dataurl",
       ".pdf": "dataurl",
+      ".wasm": "dataurl"
     }
   }
 
