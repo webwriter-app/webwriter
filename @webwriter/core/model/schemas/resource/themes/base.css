@@ -125,3 +125,21 @@ svg {
 table {
   width: 100%;
 }
+
+math {
+  math-style: compact;
+}
+
+dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+
+  & dt {
+    grid-column: 1;
+    justify-self: end;
+  }
+
+  & dd {
+    grid-column: 2;
+  }
+}

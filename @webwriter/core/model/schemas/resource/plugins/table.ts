@@ -220,7 +220,7 @@ export const tablePlugin = () => ({
       ...table_cell,
       tag: "td",
       group: "sectioningroot containerblock",
-      content: "phrasing*", // mixed
+      content: "p | flow*", // mixed
       allowGapCursor: true
     }),
     tfoot: HTMLElementSpec({
@@ -278,8 +278,8 @@ export const tablePlugin = () => ({
         return true
       } 
     ),
-    "mod-Enter": splitCell,
-    "mod-Shift-Enter": splitParent,
+    // "mod-Enter": splitCell,
+    // "mod-Shift-Enter": splitParent,
     "Backspace": chainCommands(
       joinTable,
       chainCommandsIf(tableSelected, deleteTable),

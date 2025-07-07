@@ -278,7 +278,7 @@ html:is(.ww-key-ctrl, .ww-key-meta) body * {
   outline-offset: 2px;
 }
 
-.ProseMirror *:not(.ww-inline).ww-selected:hover {
+.ProseMirror *:is(:not(.ww-inline), math).ww-selected:hover {
   outline: 2px dotted var(--sl-color-primary-400);
   outline-offset: 2px;
 }
@@ -570,8 +570,12 @@ thead, tbody, tfoot {
   z-index: 2147483647;
 }
 
+iframe.ww-selected ::selection {
+  background: transparent !important;
+}
+
 :is(picture, img, math:is(:empty,
-:has(mtext br:only-child))) ::selection {
+:has(mtext:only-child br:only-child))) ::selection {
   background: transparent !important;
 }
 
@@ -688,7 +692,7 @@ math.ww-selected ::selection {
 }
 
 math:empty,
-math:has(mtext br:only-child) {
+math:has(> mtext:only-child br:only-child) {
   display: inline-block;
   background: lightgray;
   cursor: pointer;
@@ -705,7 +709,7 @@ math:has(mtext br:only-child) {
 }
 
 math:empty::after,
-math:has(mtext br:only-child)::after {
+math:has(> mtext:only-child br:only-child)::after {
   position: absolute;
   top: 0;
   left: 0;
@@ -778,19 +782,15 @@ body:not(:has(:not(.ProseMirror-gapcursor))) .ProseMirror-gapcursor::after {
   margin-block: 0;
 }
 
-.ProseMirror-hideselection .ww-widget {
-  caret-color: initial !important;
+.ProseMirror-hideselection .ww-widget:not(:has(.ProseMirror-gapcursor)) {
+  caret-color: initial;
 }
 .ProseMirror-hideselection .ProseMirror-gapcursor {
   display: block;
 }
 
-body:has(.Prosemirror-gapcursor) :is(*::selection, *::-moz-selection) {
+body:has(.ProseMirror-gapcursor) :is(*::selection, *::-moz-selection) {
   display: none !important;
-}
-
-body:has(.Prosemirror-gapcursor) .ww-widget {
-  caret-color: transparent !important;
 }
 
 html:has(.ww-fullscreen) {
