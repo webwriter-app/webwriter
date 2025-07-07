@@ -3,7 +3,7 @@ import {styleMap} from "lit/directives/style-map.js"
 import {customElement, property, query} from "lit/decorators.js"
 import { Decoration, EditorView, DecorationSet } from "prosemirror-view"
 import { EditorState, Command as PmCommand, NodeSelection, TextSelection, AllSelection, Selection } from "prosemirror-state"
-import { Node, Mark, DOMParser, DOMSerializer, ResolvedPos} from "prosemirror-model"
+import { Node, Mark, DOMParser, DOMSerializer, ResolvedPos, Fragment} from "prosemirror-model"
 import { localized, msg, str } from "@lit/localize"
 import {computePosition, shift} from '@floating-ui/dom'
 import { undo, redo } from "prosemirror-history"
@@ -17,7 +17,8 @@ import { CODEMIRROR_EXTENSIONS, EditorStateWithHead, MediaType, Package, removeM
 import { range, roundByDPR, sameMembers, textNodesUnder } from "#utility"
 import { App, Toolbox, Palette, ProsemirrorEditor, CodemirrorEditor } from "#view"
 import { CellSelection } from "@massifrg/prosemirror-tables-sections"
-import { findParentNode, findPositionOfNodeBefore, isNodeSelection } from "prosemirror-utils"
+import { findParentNode, findPositionOfNodeBefore, hasParentNode, isNodeSelection } from "prosemirror-utils"
+import { addComment, CommentData, commentView, deleteComment, updateComment } from "#model/schemas/resource/comment.js"
 
 class EmbedTooLargeError extends Error {}
 
@@ -448,7 +449,8 @@ export class ExplorableEditor extends LitElement {
 		}
 		else {
 			this.cachedMarkViews = {
-				link: this.LinkView
+				link: this.LinkView,
+        _comment: commentView
 			}
 			return this.cachedMarkViews
 		}
@@ -641,7 +643,7 @@ export class ExplorableEditor extends LitElement {
   }
 
   @property({attribute: false, state: true})
-  editingStatus: undefined | "copying" | "cutting" | "deleting" | "inserting" | "pasting" | "pinning"
+  editingStatus: undefined | "copying" | "cutting" | "deleting" | "inserting" | "pasting" | "pinning" | "commenting"
 
 	decorations = (state: EditorState) => {
     const {from, to, $from} = state.selection
@@ -1028,6 +1030,18 @@ export class ExplorableEditor extends LitElement {
       this.pmEditor.focus()
       return true
     })
+  }
+
+  addComment() {
+    this.exec(addComment())
+  }
+
+  updateComment(id: string, change: Partial<CommentData>, i=0) {
+    this.exec(updateComment(id, change, i))
+  }
+
+  deleteComment(id: string, i=0) {
+    this.exec(deleteComment(id, i))
   }
 
   get firstEditorElement() {
@@ -1483,8 +1497,11 @@ export class ExplorableEditor extends LitElement {
   }
 
   handleEditorFocus = () => {
-    this.requestUpdate()
-    this.toolbox && (this.toolbox.activeLayoutCommand = undefined)
+    this.editingStatus = undefined
+  }
+
+  handleSelectionChange = () => {
+    this.toolbox && this.toolbox.activeLayoutCommand?.id !== "_comment" && (this.toolbox.activeLayoutCommand = undefined)
     this.toolbox && (this.toolbox.childrenDropdownActiveElement = null)
     this.toolbox && (this.toolbox.activeEmojiInput = false)
     this.palette && (this.palette.managing = false)
@@ -1658,6 +1675,9 @@ export class ExplorableEditor extends LitElement {
           // this.pmEditor.focus()
         }}
         @ww-insert-text=${(e: any) => this.insertText(e.detail.text)}
+        @ww-add-comment=${(e: any) => this.addComment()}
+        @ww-update-comment=${(e: any) => this.updateComment(e.detail.id, e.detail.change, e.detail.i)}
+        @ww-delete-comment=${(e: any) => this.deleteComment(e.detail.id, e.detail.i)}
 			></ww-toolbox>
 		`
 	}

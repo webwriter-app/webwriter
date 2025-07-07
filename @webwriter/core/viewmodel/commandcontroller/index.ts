@@ -7,6 +7,8 @@ import { CSSPropertySpecs, RootStore, getActiveMarks, getStyleValues, setDocAttr
 import { App } from "#view";
 import { groupBy } from "#utility";
 import { addColumnAfter, addColumnBefore, addRowAfter, addRowBefore, deleteColumn, deleteRow, removeRow } from "@massifrg/prosemirror-tables-sections";
+import { addComment } from "#model/schemas/resource/comment.js";
+import { NodeSelection, TextSelection } from "prosemirror-state";
 
 export const WINDOW_OPTIONS = {
   fileDropEnabled: false,
@@ -1826,17 +1828,6 @@ export class CommandController implements ReactiveController {
         tags: ["element"],
         fixedShortcut: true,
       }),
-      inspect: new Command(this.host, {
-        id: "inspect",
-        label: () => msg("Inspect selection"),
-        description: () => msg("Inspect the selection"),
-        shortcut: "mod+alt+y",
-        icon: "info-square",
-        run: (host) => host.activeEditor?.inspect(),
-        disabled: host => true, // || host.activeEditor!.isGapSelected,
-        category: "editor",
-        tags: ["element"],
-      }),
       edit: new Command(this.host, {
         id: "edit",
         label: () => msg("Edit selection"),
@@ -1859,7 +1850,35 @@ export class CommandController implements ReactiveController {
         run: host => {host.activeEditor!.pin(); host.activeEditor!.editingStatus = undefined},
         category: "editor",
         tags: ["element"],
-      }),/*
+      }),
+      comment: new Command(this.host, {
+        id: "_comment",
+        label: () => msg("Comment selection"),
+        description: () => msg("Comment selection"),
+        shortcut: "mod+alt+c",
+        icon: "message",
+        preview: (host) =>
+          (host.activeEditor!.editingStatus =
+            host.activeEditor?.editingStatus !== "commenting"
+              ? "commenting"
+              : undefined),
+        run: host => {
+          console.log(host.activeEditor!.selection?.node?.attrs)
+          if(!host.store.document.activeMarkMap["_comment"] && !(host.activeEditor!.selection instanceof NodeSelection && host.activeEditor!.selection.node.attrs["=comment"])) {
+            host.activeEditor!.exec(addComment((host.store.accounts.getAccount("pocketbase") as any)?.email))
+          }
+          host.activeEditor!.toolbox.activeLayoutCommand = host.activeEditor!.toolbox.activeLayoutCommand?.id !== "_comment"? {id: "_comment", label: ""}: undefined
+          if(host.activeEditor!.toolbox.activeLayoutCommand) {
+            setTimeout(() => host.activeEditor!.toolbox.focusComments())
+          }
+        },
+        disabled: host => !host.store.document.activeMarkMap["_comment"] && !(host.activeEditor!.selection instanceof NodeSelection && host.activeEditor!.selection.node.attrs["=comment"]) && !(host.activeEditor?.selection instanceof TextSelection && !host.activeEditor?.selection.empty || host.activeEditor?.selection instanceof NodeSelection), // || host.activeEditor!.isGapSelected,
+        value: host => getActiveMarks(host.activeEditor!.state, false).filter(mark => mark.type.name === "_comment"),
+        active: host => !!host.store.document.activeMarkMap["_comment"] || host.activeEditor!.selection instanceof NodeSelection && host.activeEditor!.selection.node.attrs["=comment"],
+        category: "editor",
+        tags: ["element"],
+      }),
+      /*
       grammar_check: new Command(this.host, {
         id: "grammar_check",
         label: () => msg("Spell Check"),

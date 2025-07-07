@@ -479,7 +479,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
     const createElement = this.document.createElement
     this.document.createElement = function(tagName: string, options: ElementCreationOptions) {
       const el = createElement.call(this, tagName, options)
-      if(tagName.includes("-")) {
+      if(tagName.includes("-") && tagName !== "comment-") {
         el.id = "ww-" + crypto.randomUUID()
       }
       return el

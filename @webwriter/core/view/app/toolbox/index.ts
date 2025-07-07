@@ -36,6 +36,8 @@ import pt_PT from "emoji-picker-element/i18n/pt_PT"
 import ru from "emoji-picker-element/i18n/ru_RU"
 import tr from "emoji-picker-element/i18n/tr"
 import zh_hans from "emoji-picker-element/i18n/zh_CN"
+import { Mark } from "prosemirror-model";
+import { canAddCommentThread, CommentData } from "#model/schemas/resource/comment.js";
 
 const emojiPickerTranslations = {ar, de, en, es, fr, id, it, ja, nl, pl, pt_BR, pt_PT, ru, tr, zh_hans}
 
@@ -129,7 +131,7 @@ export class  Toolbox extends LitElement {
   activeElement: HTMLElement | null
 
   @property({attribute: false})
-  activeLayoutCommand: LayoutCommand | undefined
+  activeLayoutCommand: LayoutCommand | {id: "_comment"} | undefined
 
   @property({attribute: false})
   testStatus: any
@@ -288,21 +290,25 @@ export class  Toolbox extends LitElement {
 
   handleStyleChange = (e: any) => this.emitSetStyle(this.activeElement!, e.target.value)
 
-  Pickers = (activeLayoutCommand?: LayoutCommand) => {
+  Pickers = (activeLayoutCommand?: Toolbox["activeLayoutCommand"]) => {
     const properties = html`
       <ww-box-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "boxStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement} .computedValue=${this.computedStyleOfActiveElement}></ww-box-picker>
       <ww-layout-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "layoutStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement} .computedValue=${this.computedStyleOfActiveElement}></ww-layout-picker>
       <ww-text-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "textStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement} .computedValue=${this.computedStyleOfActiveElement}></ww-text-picker>
       <ww-blending-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "blendingStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement} .computedValue=${this.computedStyleOfActiveElement}></ww-blending-picker>
       <ww-interactivity-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "interactivityStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement} .computedValue=${this.computedStyleOfActiveElement}></ww-interactivity-picker>
-      <ww-miscellaneous-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "miscellaneousStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement} .computedValue=${this.computedStyleOfActiveElement}></ww-miscellaneous-picker>`
+      <ww-miscellaneous-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "miscellaneousStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement} .computedValue=${this.computedStyleOfActiveElement}></ww-miscellaneous-picker>
+      <div class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "_comment"}>
+        ${this.CommentToolbox(this.app.commands.commands.comment.value)}
+      </div>`
     return html`<sl-popup class="pickers-popup" ?data-active=${this.activeLayoutCommand && !this.gapSelected} shift strategy="fixed" auto-size="both" active anchor=${ifDefined(activeLayoutCommand?.id)} .autoSizeBoundary=${document.body} shift-padding=${this.shiftPaddingStyling} placement="bottom-start">
       <h3>
-        <!--<sl-icon name=${activeLayoutCommand?.icon ?? ""}></sl-icon>-->
-        <span>${activeLayoutCommand?.label}</span>
-        <sl-icon-button name=${this.activeLayoutAdvanced? "badge-filled": "badge"} @click=${() => this.activeLayoutAdvanced = !this.activeLayoutAdvanced} style="margin-left: 0.5ch;"></sl-icon-button>
-        <sl-icon-button name="restore" style="margin-left: 0.25ch;" @click=${() => this.emitSetStyle(this.activeElement!, (this.shadowRoot!.querySelector(".style-picker[data-active]") as LitPickerElement).emptyValue as any)}></sl-icon-button>
-        <sl-icon-button name="x" @click=${() => {this.activeLayoutCommand = undefined; this.activeLayoutAdvanced = false}}></sl-icon-button>
+        <span>${activeLayoutCommand?.id === "_comment"? msg("Comments"): (activeLayoutCommand as any)?.label}</span>
+        ${activeLayoutCommand?.id === "_comment"? null: html`
+          <sl-icon-button name=${this.activeLayoutAdvanced? "badge-filled": "badge"} @click=${() => this.activeLayoutAdvanced = !this.activeLayoutAdvanced} style="margin-left: 0.5ch;"></sl-icon-button>
+          <sl-icon-button name="restore" style="margin-left: 0.25ch;" @click=${() => this.emitSetStyle(this.activeElement!, (this.shadowRoot!.querySelector(".style-picker[data-active]") as LitPickerElement).emptyValue as any)}></sl-icon-button>
+        `}
+        <sl-icon-button name="x" @click=${() => {this.activeLayoutCommand = undefined; this.activeLayoutAdvanced = false}}></sl-icon-button>  
       </h3>
       ${properties}
     </sl-popup>`
@@ -312,6 +318,8 @@ export class  Toolbox extends LitElement {
     return html`
       <ww-button
         ${spreadProps(cmd.toObject())}
+        class=${"block-command" + (cmd.active? " applied": "")}
+        ?data-active=${cmd.id === "_comment" && this.activeLayoutCommand?.id === "_comment"}
         tabindex=${0}
         name=${cmd.icon ?? "circle-fill"}
         @click=${() => {cmd.run(); cmd.preview()}}
@@ -491,7 +499,7 @@ export class  Toolbox extends LitElement {
         <sl-switch size="small" ?checked=${conEl?.hasAttribute("autoplay") ?? false} id="autoplay" ?data-hidden=${!isAudioVideo}>${msg("Autoplay")}</sl-switch>
         <sl-switch size="small" ?checked=${conEl?.hasAttribute("controls") ?? false} id="controls" ?data-hidden=${!isAudioVideo}>${msg("Controls")}</sl-switch>
         <sl-switch size="small" ?checked=${conEl?.hasAttribute("loop") ?? false} id="loop" ?data-hidden=${!isAudioVideo}>${msg("Loop")}</sl-switch>
-        <sl-switch size="small" ?checked=${conEl?.hasAttribute("mute") ?? false} id="mute" ?data-hidden=${!isAudioVideo}>${msg("Mute")}</sl-switch>
+        <sl-switch size="small" ?checked=${conEl?.hasAttribute("muted") ?? false} id="muted" ?data-hidden=${!isAudioVideo}>${msg("Mute")}</sl-switch>
       </aside>
     </div>`
   }
@@ -646,6 +654,7 @@ export class  Toolbox extends LitElement {
         "html",
         "br",
         "wbr",
+        "comment-",
         ...this.app.commands.markCommands.map(cmd => cmd.id),
         ...MATHML_TAGS
       ]
@@ -670,6 +679,7 @@ export class  Toolbox extends LitElement {
         "thead",
         "tbody",
         "tfoot",
+        "comment-",
         ...this.app.commands.markCommands.map(cmd => cmd.id),
         ...MATHML_TAGS
       ]
@@ -697,9 +707,15 @@ export class  Toolbox extends LitElement {
     return (Array.isArray(children)? children: Array.from(children))
       .filter(child => !child.classList.contains("ProseMirror-trailingBreak") && !child.classList.contains("ProseMirror-widget"))
       .filter(child => ![
+        "html",
+        "br",
+        "wbr",
+        "td",
+        "tr",
         "thead",
         "tbody",
         "tfoot",
+        "comment-",
         ...MATHML_TAGS,
         ...this.app.commands.markCommands.map(cmd => cmd.id),
       ].includes(child.tagName.toLowerCase()))
@@ -837,6 +853,72 @@ export class  Toolbox extends LitElement {
     else if(["svg"].includes(tag)) {
       return this.SVGToolbox(el as SVGSVGElement & HTMLElement)
     }
+  }
+
+  handleAddComment = () => {
+    emitCustomEvent(this, "ww-add-comment")
+  }
+
+  handleUpdateComment = (el: SlTextarea | null, id: string | number, i=0) => {
+    emitCustomEvent(this, "ww-update-comment", {id, i, change: {content: el?.value ?? "", email: (this.app.store.accounts.getAccount("pocketbase") as any)?.email, changed: Date.now()}})
+  }
+
+  handleDeleteComment = (id: string | number, i=0) => {
+    emitCustomEvent(this, "ww-delete-comment", {id, i})
+  }
+
+  focusComments(id?: string, last=false) {
+    const selector = `#comment-toolbox ${id? "#" + id: ""} sl-textarea${last? ":last-of-type": ""}`;
+    (this.shadowRoot?.querySelector(selector) as SlTextarea).focus()
+  }
+
+  handleCommentKeydown = (e: KeyboardEvent) => {
+    const el = e.target as SlTextarea
+    if(e.key === "Enter" && !e.altKey) {
+      e.preventDefault();
+      el.blur()
+    }
+    else if(e.key === "Enter" && e.altKey) {
+      e.preventDefault();
+      const pos = el.input.selectionStart
+      const endPos = el.input.selectionEnd
+      const size = endPos - pos
+      const str = size? el.value.slice(0, pos) + el.value.slice(endPos): el.value
+      el.value = str.slice(0, pos) + "\n" + str.slice(pos)
+      setTimeout(() => el.input.selectionStart = el.input.selectionEnd = pos + 1)
+    }
+  }
+
+  CommentToolbox(commentMarks: Mark[]) {
+    const sel = this.app.activeEditor?.state.selection
+    const pos = sel?.from
+    const threads: Array<[string, CommentData[]]> = [
+      ...commentMarks.map(mark => [mark.attrs.id, mark.attrs.content]),
+      ...(sel instanceof NodeSelection && Array.isArray(sel.node.attrs["=comment"])? [["node", sel.node.attrs["=comment"]]] as any: [])
+    ]
+    return html`<div id="comment-toolbox">
+      ${threads.map(([id, content]) => html`
+        ${content.map((data: CommentData, i: number) => html`
+          <sl-textarea @keydown=${this.handleCommentKeydown} class="comment" ?data-first=${i === 0} size="small" resize="auto" rows="1" value=${data.content} @sl-change=${(e: any) => !e.target.value? this.handleDeleteComment(id === "node"? pos!: id, i): this.handleUpdateComment(e.target, id === "node"? pos!: id, i)}>
+            <span class="comment-title" slot="label">
+              <span title=${data.email ?? ""}>${`${data.name ?? data.email ?? msg("Anonymous")}${data.email && data.name? " (" + data.email + ")": ""}`}</span>
+              <span>
+                <sl-relative-time numeric="always" title=${Intl.DateTimeFormat(undefined, {dateStyle: "full", timeStyle: "medium"}).format(data.changed ?? Date.now())} format="narrow" sync .date=${new Date(data.changed ?? Date.now())}></sl-relative-time>
+                <ww-button variant="icon" icon="x" @click=${() => this.handleDeleteComment(id === "node"? pos!: id, i)}></ww-button>
+              </span>
+            </span>
+          </span>
+        </sl-textarea>
+        `)}  
+        <ww-button ?disabled=${!content.at(-1)?.content} class="comment-add" icon="arrow-back-up" size="small" outline @click=${() => {
+          this.handleUpdateComment(null, id === "node"? pos!: id, content.length)
+          // setTimeout(() => this.focusComments(mark.attrs.id, true))
+        }}>${msg("Reply")}</ww-button>
+      `)}
+      ${threads.length && threads.every(([id]) => id === "node")? undefined: html`
+        <ww-button ?disabled=${!canAddCommentThread(this.app.activeEditor!.state)} icon="message-2-plus" @click=${() => this.handleAddComment()}>${msg("New thread")}</ww-button>  
+      `}
+    </div>`
   }
 
   TestNode(key: string, node: any): TemplateResult {

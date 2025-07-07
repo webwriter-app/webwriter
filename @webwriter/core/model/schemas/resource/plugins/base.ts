@@ -255,6 +255,9 @@ export const basePlugin = () => ({
     },
   },
   topNode: "explorable",
+  marks: {
+    _comment: commentMarkSpec,
+  },
   keymap: {
     "Enter": chainCommands(
       newlineInCode,

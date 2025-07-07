@@ -1,5 +1,6 @@
 import {Node, Mark, NodeSpec, MarkSpec, AttributeSpec, Attrs} from "prosemirror-model"
 import { z } from "zod"
+import { parseComment, serializeComment } from "./comment"
 
 export const eventHTMLAttributes = {
   onabort: {default: undefined},
@@ -173,7 +174,12 @@ export function toAttributes(node: Node | Attrs, extraAttrs?: Attrs) {
   const attrSpec: (k: string) => AttributeSpec & {private?: boolean} | undefined = (k: string) => complex? (node.type?.spec?.attrs ?? {})[k]: {}
   for (const [k, v] of Object.entries(attrs)) {
     const spec = attrSpec(k)
-    if(k !== "data" && v !== null && v !== undefined && v !== false && (spec?.default !== v) && !spec?.private) {
+    if(k === "=comment" && v) {
+      for(let i = 0; i < v.length; i++) {
+        outputAttrs[`data-ww-comment-${i}`] = serializeComment(v[i], true)
+      }
+    }
+    else if(k !== "data" && v !== null && v !== undefined && v !== false && (spec?.default !== v) && !spec?.private) {
       outputAttrs[k] = Array.isArray(v)? v.join(" "): v 
     }
     else if(k === "data") {
@@ -215,7 +221,17 @@ export function getAttrs(dom: HTMLElement | string, getDeprecated=false) {
     const attrs = {data: {} as Record<string, string>} as Record<string, any>
     for(const k of dom.getAttributeNames()) {
       const v = dom.getAttribute(k)!
-      if(k.startsWith("data-") && k !== "data-ww-editing") {
+      if(k.startsWith("data-ww-comment-")) {
+        const comment = parseComment(v)
+        if(!attrs["=comment"]) {
+          attrs["=comment"] = [comment]
+        }
+        else {
+          const i = parseInt(k.slice("data-ww-comment-".length))
+          attrs["=comment"][i] = comment
+        }
+      }
+      else if(k.startsWith("data-") && k !== "data-ww-editing") {
         attrs.data[k] = Array.isArray(v)? v.split(" "): v
       }
       else if(getDeprecated && k in deprecatedStyleAttributes) {
@@ -225,6 +241,9 @@ export function getAttrs(dom: HTMLElement | string, getDeprecated=false) {
         attrs[k] = Array.isArray(v)? v.split(" "): v
       }
     }
+    if(attrs["=comment"]) {
+      attrs["=comment"] = Object.values(attrs["=comment"])
+    }
     return attrs
   }
 }
@@ -233,11 +252,11 @@ export function getAttrs(dom: HTMLElement | string, getDeprecated=false) {
 export function HTMLElementSpec({tag, content, marks, group, inline, atom, attrs, selectable, draggable, code, whitespace, definingAsContext, definingForContent, defining, isolating, toDOM, parseDOM, toDebugString, leafText, selector, contentKind, ...rest}: NodeSpec & {tag: string, selector?: string}): NodeSpec {
   return {
     content,
-    marks,
+    marks: marks ?? "_comment phrasing",
     group,
     inline,
     atom,
-    attrs: {...globalHTMLAttributes, ...attrs},
+    attrs: {...globalHTMLAttributes, "=comment": {default: undefined}, ...attrs},
     selectable,
     draggable,
     code,

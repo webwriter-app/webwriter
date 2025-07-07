@@ -60,7 +60,7 @@ sl-icon-button::part(base) {
   display: none;
 }
 
-.layout-command[data-active] {
+:is(.layout-command, #_comment)[data-active]:not([disabled]) {
   border: 2px solid var(--sl-color-gray-600);
   border-radius: 5px;
   border-bottom-left-radius: 0;
@@ -702,6 +702,69 @@ ww-fontpicker[inert], .inline-commands.color[inert] {
   display: flex;
   flex-direction: column;
   gap: 5px;
+}
+
+#comment-toolbox {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5ch;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding: 4px;
+  box-sizing: border-box;
+
+  --sl-input-focus-ring-color: hsla(50, 100%, 50%, 30%);
+  --sl-input-border-color-focus: hsla(50, 100%, 50%, 100%);
+
+  & sl-textarea::part(form-control-label) {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  & .comment:not(:focus-within):not(:hover) ww-button {
+    display: none;
+  }
+
+  & .comment-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    gap: 0.5ch;
+    font-size: 0.7rem;
+    color: var(--sl-color-gray-600);
+    position: relative;
+
+    & ww-button {
+      position: absolute;
+      right: 0;
+      top: 100%;
+      margin-top: 8px;
+      z-index: 10;
+    }
+
+    & ww-button::part(icon) {
+      font-size: 0.5rem;
+      width: 16px;
+      height: 16px;
+    }
+  }
+
+  & .comment-add {
+    margin-left: 2ch;
+  }
+
+  & sl-textarea::part(textarea) {
+    font-size: 0.75rem;
+  }
+
+  & sl-textarea:not([data-first]) {
+    margin-left: 2ch;
+  }
 }
 
 .table-toolbox {

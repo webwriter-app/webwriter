@@ -20,6 +20,26 @@ export function getActiveMarks(state: EditorState, includeStored=true) {
 	return Array.from(marks)
 }
 
+export function findMark(doc: Node, predicate: (mark: Mark, index: number, all: readonly Mark[]) => boolean) {
+  let markPos = { start: -1, end: -1 };
+  let mark: Mark
+  doc.descendants((node, pos, parent, index) => {
+        // stop recursing if result is found
+    if (markPos.start > -1) {
+      return false;
+    }
+    const markMatch = node.marks.find(predicate)
+    if (markPos.start === -1 && markMatch) {
+      markPos = {
+        start: pos,
+        end: pos + Math.max(node.textContent.length, 1),
+      };
+      mark = markMatch
+    }
+  })
+  return {mark: mark!, ...markPos}
+}
+
 export const findMarkPosition = (mark: Mark | MarkType, doc: Node) => {
   let markPos = { start: -1, end: -1 };
   doc.descendants((node, pos) => {
@@ -48,9 +68,23 @@ export const insertWordBreak: Command = (state, dispatch=()=>{}, view) => {
   return true
 }
 
-export function toggleOrUpdateMark(mark: string, attrs: any = {}, forceUpdate=false) {
+export function updateMark(mark: Mark, attrs: any = {}, from?: number, to?: number) {
   return (state: EditorState, dispatch: any) => {
-    const {from, to, empty} = state.selection
+    from = from ?? state.selection.from
+    to = to ?? state.selection.to
+    const newMark = mark.type.create(attrs)
+    return dispatch(state.tr
+      .removeMark(from, to, mark)
+      .addMark(from, to, newMark)
+    )
+  }
+}
+
+export function toggleOrUpdateMark(mark: string, attrs: any = {}, forceUpdate=false, from?: number, to?: number) {
+  return (state: EditorState, dispatch: any) => {
+    const {empty} = state.selection
+    from = from ?? state.selection.from
+    to = to ?? state.selection.to
     const markType = mark in state.schema.marks? state.schema.marks[mark]: state.schema.marks["span"]
     const newMark = markType.create(attrs)
     const correspondingMark = getActiveMarks(state, true).find(m => m.type.name === mark)
