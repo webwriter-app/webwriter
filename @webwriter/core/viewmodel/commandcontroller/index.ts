@@ -2524,84 +2524,84 @@ export class CommandController implements ReactiveController {
         label: () => msg("Group"),
         icon: "section-sign",
         description: () => msg("Insert a group"),
-        // tags: ["semanticmark"]
+        tags: []
       }),
       section: new MarkCommand(this.host, {
         id: "section",
         label: () => msg("Section"),
         icon: "section-sign",
         description: () => msg("Insert a section"),
-        // tags: ["semanticmark"]
+        tags: []
       }),
       figure: new MarkCommand(this.host, {
         id: "figure",
         label: () => msg("Figure"),
         icon: "layout-bottombar",
         description: () => msg("Insert a figure"),
-        // tags: ["semanticmark"]
+        tags: []
       }),  
       article: new MarkCommand(this.host, {
         id: "article",
         label: () => msg("Article"),
         icon: "article",
         description: () => msg("Insert an article"),
-        // tags: ["semanticmark"]
+        tags: []
       }),
       header: new MarkCommand(this.host, {
         id: "header",
         label: () => msg("Header"),
         icon: "layout-navbar",
         description: () => msg("Insert a header"),
-        // tags: ["semanticmark"]
+        tags: []
       }),
       main: new MarkCommand(this.host, {
         id: "main",
         label: () => msg("Main"),
         icon: "news",
         description: () => msg("Insert a main"),
-        // tags: ["semanticmark"]
+        tags: []
       }),
       aside: new MarkCommand(this.host, {
         id: "aside",
         label: () => msg("Aside"),
         icon: "notes",
         description: () => msg("Insert an aside"),
-        // tags: ["semanticmark"]
+        tags: []
       }),
       footer: new NodeCommand(this.host, {
         id: "footer",
         label: () => msg("Footer"),
         icon: "layout-bottombar",
         description: () => msg("Insert a footer"),
-        // tags: ["semanticmark"]
+        tags: []
       }),
       nav: new MarkCommand(this.host, {
         id: "nav",
         label: () => msg("Navigation"),
         icon: "directions",
         description: () => msg("Insert a navigation"),
-        // tags: ["semanticmark"]
+        tags: []
       }),
       blockquote: new MarkCommand(this.host, {
         id: "blockquote",
         label: () => msg("Blockquote"),
         icon: "blockquote",
         description: () => msg("Insert a blockquote"),
-        // tags: ["semanticmark"]
+        tags: []
       }),
       search: new MarkCommand(this.host, {
         id: "search",
         label: () => msg("Search"),
         icon: "list-search",
         description: () => msg("Insert a search"),
-        // tags: ["semanticmark"]
+        tags: []
       }),
       address: new MarkCommand(this.host, {
         id: "address",
         label: () => msg("Address"),
         icon: "address-book",
         description: () => msg("Insert an address"),
-        // tags: ["semanticmark"]
+        tags: []
       }), 
       form: new NodeCommand(this.host, {
         id: "form",
