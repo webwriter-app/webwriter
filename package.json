@@ -1,18 +1,16 @@
 {
   "name": "webwriter",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "repository": {
     "type": "git",
     "url": "https://github.com/salmenf/webwriter.git"
   },
-  "packageManager": "^bun@1.2.16",
   "devDependencies": {
     "@lezer/generator": "^1.7.3",
     "@tabler/icons": "^3.30.0",
     "@types/semver": "^7.3.13",
     "@wagnerflo/cc-icons": "^1.2.1",
-    "@wdio/cli": "^9.12.7",
     "bootstrap-icons": "^1.10.3",
     "bun": "^1.2.16",
     "deepl-node": "^1.13.0",
@@ -24,6 +22,7 @@
     "vite-plugin-pwa": "^1.0.0",
     "xliff": "^6.2.1",
     "zod-to-json-schema": "^3.23.0"
+
   },
   "description": "Web-based authoring tool for explorables",
   "keywords": [
@@ -37,6 +36,7 @@
     "interactive"
   ],
   "license": "UNLICENSED",
+  "packageManager": "^bun@1.2.16",
   "scripts": {
     "start": "bun run vite -- @webwriter/core",
     "test": "bunx wdio run ./@webwriter/core/wdio.conf.ts",
