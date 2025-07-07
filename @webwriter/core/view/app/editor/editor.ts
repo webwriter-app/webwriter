@@ -78,6 +78,32 @@ export class ExplorableEditor extends LitElement {
 		return range(n).map(k => `ww_${(floor + k).toString(36)}`)
 	}
 
+  // Check whether inserting fragment at pos violates content constraints
+  private checkConstraints(pos: number, fragment: Fragment): boolean {
+    // standard constraints: no descendants of same type, no non-textblock descendants except at <body> level 
+    const emptyParagraphActive = this.activeElement?.tagName === "P" && !this.activeElement.textContent && !this.activeElement.querySelector(":not(br)")
+    const insertPos = Math.max(this.state.selection.anchor + (emptyParagraphActive? -1: 0), 0)
+    let domAtInsertPos = this.pmEditor.domAtPos(insertPos, -1).node as HTMLElement
+    domAtInsertPos = domAtInsertPos.nodeType === 3? domAtInsertPos.parentNode! as HTMLElement: domAtInsertPos
+    // for each ancestor node, check if any part of the fragment would violate the constraints
+    return !hasParentNode(ancestor => {
+      let violatingDescendant = false
+      fragment.descendants(descendant => {
+        if(violatingDescendant) {
+          return false
+        }
+        const isInvalidNested = !descendant.isLeaf && !descendant.isTextblock && !ancestor.type.spec.allowContainerNesting
+        const isInvalidReflexive = !ancestor.type.spec.allowReflexiveNesting && descendant.type.name === ancestor.type.name
+        violatingDescendant = isInvalidNested || isInvalidReflexive
+        if(violatingDescendant) {
+          return false
+        }
+      })
+      return violatingDescendant
+    })(TextSelection.create(this.state.doc, insertPos))
+    // if((!nodeType.spec.allowReflexive && domAtInsertPos.closest(tagName)) || hasParentNode(node => !node.isTextblock && !node.type.spec.allowContainerNesting)(TextSelection.create(state.doc, insertPos))) {
+  }
+
 	insertMember = async (id: string, insertableName: string) => {
     const state = this.pmEditor.state
     const members = this.app.store.packages.getPackageMembers(id)
@@ -122,6 +148,9 @@ export class ExplorableEditor extends LitElement {
       const slice = parser.parseSlice(template.content)
       let tr = this.pmEditor.state.tr.deleteSelection()
       const insertPos = Math.max(tr.selection.anchor - (emptyParagraphActive? 1: 0), 0)
+      if(!this.checkConstraints(insertPos, slice.content)) {
+        return
+      }
       tr = tr.insert(insertPos, slice.content)
       // Find new selection: It should be as deep as possible into the first branch of the inserted slice. If the deepest node found is a textblock, make a TextSelection at the start of it. Otherwise, make a NodeSelection of it.
       let selection: Selection | null = null
@@ -155,6 +184,9 @@ export class ExplorableEditor extends LitElement {
       const emptyParagraphActive = this.activeElement?.tagName === "P" && !this.activeElement.textContent && !this.activeElement.querySelector(":not(br)")
       const emptyDoc = this.state.doc.content.size === 0
       const insertPos = Math.max(state.selection.anchor + (emptyParagraphActive? -1: 0), 0)
+      if(!this.checkConstraints(insertPos, Fragment.from(node))) {
+        return
+      }
       let tr = state.tr.insert(insertPos, node!)
       if(this.isGapSelected) {
         tr = tr.setSelection(NodeSelection.create(tr.doc, this.selection.from))
