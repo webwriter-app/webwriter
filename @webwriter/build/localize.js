@@ -182,14 +182,21 @@ export async function localizeSnippets(force=false) {
     await fs.mkdir(join(outputDir, "snippets"))
   }
   await Promise.all(targetLocales.map(async l => {
-    let xliff2
+    let xliff2, path
     try {
-      const path = join(outputDir, "snippets", `${l}.xliff`)
+      path = join(outputDir, "snippets", `${l}.xliff`)
       xliff2 = await fs.readFile(path, "utf8")
     } catch {}
     const snippetValues = {}
     if(xliff2) {
-      const xliff2Js = await xliff2js(xliff2)
+      let xliff2Js
+      try {
+        xliff2Js = await xliff2js(xliff2)
+      }
+      catch {
+        console.warn(`Snippet localization file at '${path}' empty or malformed, skipping.`)
+        return
+      }
       snippetKeys.forEach(sk => {
         const ids = Object.keys(xliff2Js.resources?.[sk] ?? {})
         snippetValues[sk] = {...snippetValues[sk], ...Object.fromEntries(ids.map(id => [id, xliff2Js.resources[sk][id].target]))}
@@ -207,7 +214,14 @@ export async function localizeSnippets(force=false) {
   await Promise.all(targetLocales.map(async l => {
     const path = join(outputDir, "snippets", `${l}.xliff`)
     const xliff2 = await fs.readFile(path, "utf8")
-    const xliff2Js = await xliff2js(xliff2)
+    let xliff2Js
+    try {
+      xliff2Js = await xliff2js(xliff2)
+    }
+    catch {
+      console.warn(`Snippet localization file at '${path}' empty or malformed, skipping.`)
+      return
+    }
     snippetKeys.forEach(sk => {
       const ids = Object.keys(xliff2Js.resources?.[sk] ?? {})
       json[sk] = {...json[sk], ...Object.fromEntries(ids.map(id => [id, {...json[sk]?.[id], [l]: xliff2Js.resources[sk][id].target}]))}
@@ -249,7 +263,7 @@ function htmlToUnits(html) {
   const dom = JSDOM.fragment(html)
   dom.querySelectorAll("math").forEach(math => math.remove())
   dom.querySelector(".snippet-localization")?.remove()
-  const texts = textNodesUnder(dom).map(node => node.textContent.trim()).filter(text => text)
+  const texts = textNodesUnder(dom).map(node => node.textContent.trim())?.filter(text => text)
   const counts = Object.fromEntries(texts.map(text => [text, 0]))
   const textsWithIds = texts.map(text => {
     counts[text]++
