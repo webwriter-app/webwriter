@@ -175,6 +175,22 @@ The allowed content of the widget. Should be a content expression (see below).  
 }
 ```
 
+#### `editingConfig[...].warningIgnorePattern` &  `editingConfig[...].errorIgnorePattern`
+When warnings and errors originate from a widget, the default behavior in WebWriter is to show an toast notification and log to the console. With these properties, you can filter out certain warnings or errors. This is useful in case you import external modules that emit warnings or errors you cannot control, but wish to ignore. For both settings, the value should be a regular expression - if a match to the regular expression is found in the warning/error, it is ignored (no toast notification and no logging). Note that the regular expression is specified as a string, and you need to take care to properly escape sequences.
+```json
+{
+  // ...
+  "editingConfig": {
+    // ...
+    "./widgets/awesome-widget": {
+      // ...
+      "warningIgnorePattern": "unimportant", // warning contains "unimportant"
+      "errorIgnorePattern": "^\\[tensorflow\\]" // error starts with "[tensorflow]"
+    }
+  }
+}
+```
+
 ##### Content expressions
 The value of the `content` field should be a [ProseMirror content expression](https://prosemirror.net/docs/guide/#schema.content_expressions). These use a similar syntax to regular expressions:
 - **`[ELEMENT NAME]`** means a single element, e.g. `p` is a content expression meaning the widget must have exactly one child element which is `<p>`.
