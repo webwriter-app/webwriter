@@ -48,7 +48,7 @@
     "prestart": "bun run preparestatic && bun run build-localization",
     "dev-docs": "bundle exec jekyll serve -s ./docs",
     "prebuild": "bun run prestart",
-    "build": "bun run vite -- build @webwriter/core",
+    "build": "bun install && bun run vite -- build @webwriter/core",
     "devbuild": "bun run build && http-server ./@webwriter/core/dist",
     "start-site": "astro dev",
     "prebuild-site": "bun run installpackages",
