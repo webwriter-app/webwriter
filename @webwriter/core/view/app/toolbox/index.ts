@@ -13,6 +13,7 @@ import { ifDefined } from "lit/directives/if-defined.js"
 import { App, URLFileInput, TextPicker, Button } from "#view"
 import { AllSelection, EditorState, NodeSelection, TextSelection } from "prosemirror-state"
 import {GapCursor} from "prosemirror-gapcursor"
+import {AIToolboxWidget} from "#view/app/toolbox/ai-widget";
 // @ts-ignore
 import {render as latexToMathML} from "temml/dist/temml.cjs"
 import { SlColorPicker, SlTextarea, SlTree } from "@shoelace-style/shoelace"
@@ -20,6 +21,7 @@ import { CSSPropertySpecs, MATHML_TAGS, Package, PackageStore, TEST_RESULT, Test
 import { LitPickerElement } from "#view/elements/stylepickers/index.js"
 import { findParentNodeClosestToPos } from "prosemirror-utils";
 import "./widgetoptions"
+import "./ai-widget"
 import styles from "./index.style"
 
 import ar from "emoji-picker-element/i18n/ar"
@@ -1002,7 +1004,9 @@ export class  Toolbox extends LitElement {
         ${this.BlockToolbox(this.activeElement)}
         <aside class="context-toolbox">${this.activeElementPath.map(el => this.ContextToolbox(el))}</aside>
         ${this.InlineToolbox()}
-        <sl-icon-button name="x" id="close-button" part="close-button" @click=${() => emitCustomEvent(this, "ww-close")}></sl-icon-button>
+        <ww-ai-toolbox-widget .app=${this.app}></ww-ai-toolbox-widget>
+        <sl-icon-button name="x" id="close-button" part="close-button"
+                        @click=${() => emitCustomEvent(this, "ww-close")}></sl-icon-button>
       `
   }
 }
