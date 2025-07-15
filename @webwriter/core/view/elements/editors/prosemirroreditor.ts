@@ -355,26 +355,6 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
     this.body.spellcheck = false
   }
 
-  getUpdatedProps(previous: Map<string, any> = new Map()) {
-    const changedEntries = [...previous.keys()].map(k => [k, (this as any)[k]])
-    const changedProps = Object.fromEntries(changedEntries) as DirectEditorProps
-    return {
-      ...changedProps, 
-      editable: this.shouldBeEditable,
-      state: this.state ?? this.initialState,
-      attributes: {
-        "data-iframe-height": "",
-        "data-placeholder": this.placeholder ?? "",
-        ...this.pmAttributes
-      },
-      dispatchTransaction: (tr: Transaction) => {
-        const editorState = this.view.state.apply(tr)
-        this.updateState(editorState)
-      }
-    
-    }
-  }
-
   static eventsToRedispatch = ["dragenter", "dragleave"]
 
   redispatch(e: Event) {
@@ -457,7 +437,6 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
     this.head.append(...scripts, ...styles)
 
     // Custom editor behavior
-    this.document.documentElement.spellcheck = false
     this.window.console = console
     this.window.onerror = window.onerror
     this.window.onunhandledrejection = window.onunhandledrejection
