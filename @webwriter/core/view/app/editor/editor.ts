@@ -1546,7 +1546,7 @@ export class ExplorableEditor extends LitElement {
   }
 
   handleEditorInitialized = (e: CustomEvent) => {
-    if(e.detail.first) {
+    if(e.detail?.first) {
       this.handleEditorFocus()
     }
     this.updatePosition()
