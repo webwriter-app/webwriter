@@ -228,9 +228,9 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
     this.view?.focus(...args)
   }
 
-  posAtCoords = (...args: Parameters<typeof this.view.posAtCoords>) => this?.view.posAtCoords(...args)
+  posAtCoords = (...args: Parameters<typeof this.view.posAtCoords>) => this.view?.posAtCoords(...args)
 
-  coordsAtPos = (...args: Parameters<typeof this.view.coordsAtPos>) => this?.view.coordsAtPos(...args)
+  coordsAtPos = (...args: Parameters<typeof this.view.coordsAtPos>) => this.view?.coordsAtPos(...args)
 
   domAtPos = (...args: Parameters<typeof this.view.domAtPos>) => this.view?.domAtPos(...args)
 

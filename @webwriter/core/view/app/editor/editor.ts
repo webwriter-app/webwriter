@@ -1110,7 +1110,7 @@ export class ExplorableEditor extends LitElement {
     if(!this.state.doc.content.size) {
       return new AllSelection(this.state.doc)
     }
-    const {pos, inside} = this.pmEditor.posAtCoords({top, left}) ?? {}
+    const {pos, inside} = this.pmEditor?.posAtCoords({top, left}) ?? {}
     if(pos === undefined) {
       return null
     }
