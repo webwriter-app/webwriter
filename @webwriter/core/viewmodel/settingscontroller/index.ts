@@ -15,6 +15,8 @@ import {
   PocketbaseAccount,
 } from "#model/schemas/account.js"
 
+console.log(allLocales)
+
 type OmitFunctions<T> = Pick<
   T,
   {
