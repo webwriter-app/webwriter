@@ -123,7 +123,7 @@ export const coreHTMLAttributes = {
   autofocus: {default: undefined},
   class: {default: undefined},
   contenteditable: {default: undefined},
-  data: {default: {}},
+  data: {default: undefined},
   dir: {default: undefined},
   draggable: {default: undefined},
   enterkeyhint: {default: undefined},
@@ -182,7 +182,7 @@ export function toAttributes(node: Node | Attrs, extraAttrs?: Attrs) {
     else if(k !== "data" && v !== null && v !== undefined && v !== false && (spec?.default !== v) && !spec?.private) {
       outputAttrs[k] = Array.isArray(v)? v.join(" "): v 
     }
-    else if(k === "data") {
+    else if(k === "data" && v) {
       for(const [dk, dv] of Object.entries(v)) {
         outputAttrs[dk] = Array.isArray(dv)? v.join(" "): dv as string
       }
@@ -218,7 +218,7 @@ export function getAttrs(dom: HTMLElement | string, getDeprecated=false) {
     return false
   }
   else {
-    const attrs = {data: {} as Record<string, string>} as Record<string, any>
+    const attrs = {} as Record<string, any>
     for(const k of dom.getAttributeNames()) {
       const v = dom.getAttribute(k)!
       if(k.startsWith("data-ww-comment-")) {
@@ -232,6 +232,9 @@ export function getAttrs(dom: HTMLElement | string, getDeprecated=false) {
         }
       }
       else if(k.startsWith("data-") && k !== "data-ww-editing") {
+        if(!attrs.data) {
+          attrs.data = {}
+        }
         attrs.data[k] = Array.isArray(v)? v.split(" "): v
       }
       else if(getDeprecated && k in deprecatedStyleAttributes) {
