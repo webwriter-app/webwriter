@@ -1,12 +1,12 @@
 {
   "$schema": "https://raw.githubusercontent.com/lit/lit/main/packages/localize-tools/config.schema.json",
   "sourceLocale": "en",
-  "targetLocales": ["de", "ar", "bg", "cs", "da", "nl", "et", "fi", "fr", "el", "hu", "it", "lv", "lt", "nb", "pl", "pt-PT", "ro", "ru", "sk", "sl", "es", "sv", "tr", "uk", "pt-BR", "ko", "ja", "id", "zh-hans", "zh-hant"],
+  "targetLocales": ["de", "ar", "bg", "cs", "da", "nl", "et", "fi", "fr", "el", "hu", "it", "lv", "lt", "nb", "pl", "pt-PT", "ro", "ru", "sk", "sl", "es", "sv", "tr", "uk", "pt-BR", "ko", "ja", "id", "zh-Hans", "zh-Hant"],
   "tsConfig": "./tsconfig.json",
   "output": {
     "mode": "runtime",
     "outputDir": "./viewmodel/localizationcontroller/localization/generated",
-    "localeCodesModule": "./@webwriter/core/viewmodel/localizationcontroller/localization/locales.ts"
+    "localeCodesModule": "./@webwriter/core/viewmodel/localizationcontroller/localization/generated/locales.ts"
   },
 
   "interchange": {

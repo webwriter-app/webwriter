@@ -57,6 +57,38 @@
         <source>Print the active document</source>
         <target>打印活动文档</target>
       </trans-unit>
+      <trans-unit id="s8f4be9f086eb530f">
+        <source>Undo</source>
+        <target>撤消</target>
+      </trans-unit>
+      <trans-unit id="s7beb1e77e82363eb">
+        <source>Undo the last change in the active document</source>
+        <target>撤销活动文档中的最后一次更改</target>
+      </trans-unit>
+      <trans-unit id="s7417792bbe720149">
+        <source>Redo</source>
+        <target>重做</target>
+      </trans-unit>
+      <trans-unit id="s640bc7710d0143ce">
+        <source>Redo the last undone change in the active document</source>
+        <target>重做活动文档中上次未完成的更改</target>
+      </trans-unit>
+      <trans-unit id="s2474e7fb1aec9f05">
+        <source>Test</source>
+        <target>测试</target>
+      </trans-unit>
+      <trans-unit id="sc546f489f9c0cced">
+        <source>Toggles the test mode for the active document</source>
+        <target>切换活动文档的测试模式</target>
+      </trans-unit>
+      <trans-unit id="se6297163cac9d276">
+        <source>Edit source</source>
+        <target>编辑来源</target>
+      </trans-unit>
+      <trans-unit id="s281d957112b10f12">
+        <source>Edit the HTML of the document directly</source>
+        <target>直接编辑文档的 HTML</target>
+      </trans-unit>
       <trans-unit id="s417b90913e05bc17">
         <source>Preview</source>
         <target>预览</target>
@@ -127,7 +159,7 @@
       </trans-unit>
       <trans-unit id="s92f846b9be2e8e8d">
         <source>Mark the selection as italic</source>
-        <target>将选中内容标记为斜体</target>
+        <target>将选择标记为斜体</target>
       </trans-unit>
       <trans-unit id="sb206d700d26b14ff">
         <source>Underline</source>
@@ -144,6 +176,14 @@
       <trans-unit id="s0396202b716732ec">
         <source>Mark the selection as struck through</source>
         <target>标记选择已通过</target>
+      </trans-unit>
+      <trans-unit id="s3cf89cb47fdde7e9">
+        <source>Link</source>
+        <target>链接</target>
+      </trans-unit>
+      <trans-unit id="sf8e82313fa411494">
+        <source>Mark the selection as a link</source>
+        <target>将选择标记为链接</target>
       </trans-unit>
       <trans-unit id="sdf946172dfa0328f">
         <source>Superscript</source>
@@ -168,14 +208,6 @@
       <trans-unit id="sf86bd4d2982f3b74">
         <source>Mark the selection as code</source>
         <target>将选择标记为代码</target>
-      </trans-unit>
-      <trans-unit id="s3cf89cb47fdde7e9">
-        <source>Link</source>
-        <target>链接</target>
-      </trans-unit>
-      <trans-unit id="sf8e82313fa411494">
-        <source>Mark the selection as a link</source>
-        <target>将选择标记为链接</target>
       </trans-unit>
       <trans-unit id="sd29dc07235eea0f5">
         <source>Quotation</source>
@@ -293,14 +325,6 @@
         <source>Mark the selection as a side comment</source>
         <target>将选择标记为旁注</target>
       </trans-unit>
-      <trans-unit id="sb60bc1250aad44c1">
-        <source>Span</source>
-        <target>跨度</target>
-      </trans-unit>
-      <trans-unit id="s0a7db790db1fc45c">
-        <source>Mark the selection as a span</source>
-        <target>将选区标记为跨度</target>
-      </trans-unit>
       <trans-unit id="s7bdf0fd5b014d36c">
         <source>Strong Importance</source>
         <target>非常重要</target>
@@ -325,6 +349,14 @@
         <source>Mark the selection as a variable</source>
         <target>将选择标记为变量</target>
       </trans-unit>
+      <trans-unit id="sb60bc1250aad44c1">
+        <source>Span</source>
+        <target>跨度</target>
+      </trans-unit>
+      <trans-unit id="s0a7db790db1fc45c">
+        <source>Mark the selection as a span</source>
+        <target>将选区标记为跨度</target>
+      </trans-unit>
       <trans-unit id="s599dcd2472c75c19">
         <source>Paragraph</source>
         <target>段落</target>
@@ -340,6 +372,14 @@
       <trans-unit id="sb3ba3276ae93627c">
         <source>Insert a preformatted text block</source>
         <target>插入预设格式的文本块</target>
+      </trans-unit>
+      <trans-unit id="s55905c735052d295">
+        <source>Thematic Break</source>
+        <target>专题休息</target>
+      </trans-unit>
+      <trans-unit id="s936aa0b239679585">
+        <source>Insert a thematic break (usually displayed as a horizontal line)</source>
+        <target>插入主题分隔线（通常显示为一条水平线）</target>
       </trans-unit>
       <trans-unit id="s2f2044f2431a32d5">
         <source>Heading</source>
@@ -429,110 +469,6 @@
         <source>Insert summary</source>
         <target>插入摘要</target>
       </trans-unit>
-      <trans-unit id="sa78a67272a4a6f95">
-        <source>Math Formula</source>
-        <target>数学公式</target>
-      </trans-unit>
-      <trans-unit id="saaad98061a20ac39">
-        <source>Insert a math formula</source>
-        <target>插入数学公式</target>
-      </trans-unit>
-      <trans-unit id="s5f43af3669b1e098">
-        <source>Source</source>
-        <target>资料来源</target>
-      </trans-unit>
-      <trans-unit id="sa7dc6b8ef3f595dc">
-        <source>Insert a source</source>
-        <target>插入信号源</target>
-      </trans-unit>
-      <trans-unit id="s9e85800d3700e31c">
-        <source>Track</source>
-        <target>轨道</target>
-      </trans-unit>
-      <trans-unit id="sf39736a666dbb038">
-        <source>Insert a track</source>
-        <target>插入音轨</target>
-      </trans-unit>
-      <trans-unit id="s5ed03bb1f3a15949">
-        <source>Picture</source>
-        <target>图片</target>
-      </trans-unit>
-      <trans-unit id="s93566b84230af4f5">
-        <source>Insert a picture</source>
-        <target>插入图片</target>
-      </trans-unit>
-      <trans-unit id="s08e6bd98452e6bb9">
-        <source>Audio</source>
-        <target>音频</target>
-      </trans-unit>
-      <trans-unit id="s96532132a29dd542">
-        <source>Insert audio</source>
-        <target>插入音频</target>
-      </trans-unit>
-      <trans-unit id="s85186a61e0d55bac">
-        <source>Video</source>
-        <target>视频</target>
-      </trans-unit>
-      <trans-unit id="s9e28faa598332e2b">
-        <source>Insert video</source>
-        <target>插入视频</target>
-      </trans-unit>
-      <trans-unit id="s82665b2ffabc9c0a">
-        <source>Website</source>
-        <target>网站</target>
-      </trans-unit>
-      <trans-unit id="sc3998b77d72c2932">
-        <source>Insert a website (as an inline frame)</source>
-        <target>插入网站（作为内联框架）</target>
-      </trans-unit>
-      <trans-unit id="s4802bb8eb52fbdeb">
-        <source>Portal</source>
-        <target>门户网站</target>
-      </trans-unit>
-      <trans-unit id="sd4368b12645d3c0f">
-        <source>Insert a portal</source>
-        <target>插入门户网站</target>
-      </trans-unit>
-      <trans-unit id="s9565553d163fc92a">
-        <source>Script</source>
-        <target>脚本</target>
-      </trans-unit>
-      <trans-unit id="sbf00e1ee999ea94e">
-        <source>Insert a script</source>
-        <target>插入脚本</target>
-      </trans-unit>
-      <trans-unit id="s7f326a142e856656">
-        <source>Style</source>
-        <target>风格</target>
-      </trans-unit>
-      <trans-unit id="s6dfb502188a8c7c2">
-        <source>Insert a style</source>
-        <target>插入样式</target>
-      </trans-unit>
-      <trans-unit id="se47baf2fd16b9d2b">
-        <source>Template</source>
-        <target>模板</target>
-      </trans-unit>
-      <trans-unit id="s7b4ba250601b8667">
-        <source>Insert a template</source>
-        <target>插入模板</target>
-      </trans-unit>
-      <trans-unit id="s919e1724f589c9b1">
-        <source>Slot</source>
-        <target>插槽</target>
-      </trans-unit>
-      <trans-unit id="s32911e52ee8ac745">
-        <source>Insert a slot</source>
-        <target>插入插槽</target>
-      </trans-unit>
-      <trans-unit id="sbbe639e3a3ed95d1">
-        <source>NoScript</source>
-        <target>NoScript</target>
-      </trans-unit>
-      <trans-unit id="s2d995a37cf5e4995">
-        <source>Insert a NoScript</source>
-        <target>插入 NoScript</target>
-      </trans-unit>
       <trans-unit id="s337a1e9022a8d19f">
         <source>Table</source>
         <target>表格</target>
@@ -613,6 +549,118 @@
         <source>Insert a table row</source>
         <target>插入表格行</target>
       </trans-unit>
+      <trans-unit id="s5ed03bb1f3a15949">
+        <source>Picture</source>
+        <target>图片</target>
+      </trans-unit>
+      <trans-unit id="s93566b84230af4f5">
+        <source>Insert a picture</source>
+        <target>插入图片</target>
+      </trans-unit>
+      <trans-unit id="s4f26e7cb7c0a8318">
+        <source>Vector Drawing</source>
+        <target>矢量绘图</target>
+      </trans-unit>
+      <trans-unit id="sfbbab09dbe553571">
+        <source>Insert a vector drawing (SVG)</source>
+        <target>插入矢量图 (SVG)</target>
+      </trans-unit>
+      <trans-unit id="s5f43af3669b1e098">
+        <source>Source</source>
+        <target>资料来源</target>
+      </trans-unit>
+      <trans-unit id="sa7dc6b8ef3f595dc">
+        <source>Insert a source</source>
+        <target>插入信号源</target>
+      </trans-unit>
+      <trans-unit id="s9e85800d3700e31c">
+        <source>Track</source>
+        <target>轨道</target>
+      </trans-unit>
+      <trans-unit id="sf39736a666dbb038">
+        <source>Insert a track</source>
+        <target>插入音轨</target>
+      </trans-unit>
+      <trans-unit id="s08e6bd98452e6bb9">
+        <source>Audio</source>
+        <target>音频</target>
+      </trans-unit>
+      <trans-unit id="s96532132a29dd542">
+        <source>Insert audio</source>
+        <target>插入音频</target>
+      </trans-unit>
+      <trans-unit id="s85186a61e0d55bac">
+        <source>Video</source>
+        <target>视频</target>
+      </trans-unit>
+      <trans-unit id="s9e28faa598332e2b">
+        <source>Insert video</source>
+        <target>插入视频</target>
+      </trans-unit>
+      <trans-unit id="s82665b2ffabc9c0a">
+        <source>Website</source>
+        <target>网站</target>
+      </trans-unit>
+      <trans-unit id="sc3998b77d72c2932">
+        <source>Insert a website (as an inline frame)</source>
+        <target>插入网站（作为内联框架）</target>
+      </trans-unit>
+      <trans-unit id="sa78a67272a4a6f95">
+        <source>Math Formula</source>
+        <target>数学公式</target>
+      </trans-unit>
+      <trans-unit id="saaad98061a20ac39">
+        <source>Insert a math formula</source>
+        <target>插入数学公式</target>
+      </trans-unit>
+      <trans-unit id="s4802bb8eb52fbdeb">
+        <source>Portal</source>
+        <target>门户网站</target>
+      </trans-unit>
+      <trans-unit id="sd4368b12645d3c0f">
+        <source>Insert a portal</source>
+        <target>插入门户网站</target>
+      </trans-unit>
+      <trans-unit id="s9565553d163fc92a">
+        <source>Script</source>
+        <target>脚本</target>
+      </trans-unit>
+      <trans-unit id="sbf00e1ee999ea94e">
+        <source>Insert a script</source>
+        <target>插入脚本</target>
+      </trans-unit>
+      <trans-unit id="s7f326a142e856656">
+        <source>Style</source>
+        <target>风格</target>
+      </trans-unit>
+      <trans-unit id="s6dfb502188a8c7c2">
+        <source>Insert a style</source>
+        <target>插入样式</target>
+      </trans-unit>
+      <trans-unit id="se47baf2fd16b9d2b">
+        <source>Template</source>
+        <target>模板</target>
+      </trans-unit>
+      <trans-unit id="s7b4ba250601b8667">
+        <source>Insert a template</source>
+        <target>插入模板</target>
+      </trans-unit>
+      <trans-unit id="s919e1724f589c9b1">
+        <source>Slot</source>
+        <target>插槽</target>
+      </trans-unit>
+      <trans-unit id="s32911e52ee8ac745">
+        <source>Insert a slot</source>
+        <target>插入插槽</target>
+      </trans-unit>
+      <trans-unit id="sbbe639e3a3ed95d1">
+        <source>NoScript</source>
+        <target>NoScript</target>
+      </trans-unit>
+      <trans-unit id="s2d995a37cf5e4995">
+        <source>Insert a NoScript</source>
+        <target>插入 NoScript</target>
+      </trans-unit>
       <trans-unit id="sb0d4f0f7993cf085">
         <source>Set font size</source>
         <target>设置字体大小</target>
@@ -635,7 +683,7 @@
       </trans-unit>
       <trans-unit id="se1f5bb0386c88f96">
         <source>Sets the color of the selected text</source>
-        <target>设置选中文字的颜色</target>
+        <target>设置所选文字的颜色</target>
       </trans-unit>
       <trans-unit id="sa65d4ad99f1d8c06">
         <source>Set text background</source>
@@ -681,14 +729,6 @@
         <source>Delete the selection</source>
         <target>删除选择</target>
       </trans-unit>
-      <trans-unit id="s95c161f68e5180a5">
-        <source>Inspect selection</source>
-        <target>检查选择</target>
-      </trans-unit>
-      <trans-unit id="s4c1535f316305a2a">
-        <source>Inspect the selection</source>
-        <target>检查选择</target>
-      </trans-unit>
       <trans-unit id="sbba0156f795d8c07">
         <source>Edit selection</source>
         <target>编辑选择</target>
@@ -705,6 +745,30 @@
         <source>Pin the selection as a snippet in the palette</source>
         <target>将选区作为片段固定在调色板上</target>
       </trans-unit>
+      <trans-unit id="s0dc07f97c821463c">
+        <source>Comment selection</source>
+        <target>评论选择</target>
+      </trans-unit>
+      <trans-unit id="sf14c35392ec7bf10">
+        <source>This feature is unavailable in Firefox. It is available in Chrome or Edge.</source>
+        <target>此功能在 Firefox 中不可用。在 Chrome 浏览器或 Edge 浏览器中可用。</target>
+      </trans-unit>
+      <trans-unit id="s840fa49e8989c028">
+        <source>Position/Shape</source>
+        <target>位置/形状</target>
+      </trans-unit>
+      <trans-unit id="sa589e1df65dde0ec">
+        <source>Set the size, padding, and margins of the selected elements</source>
+        <target>设置所选元素的大小、衬垫和边距</target>
+      </trans-unit>
+      <trans-unit id="s2e4818861000b13f">
+        <source>Layout</source>
+        <target>布局</target>
+      </trans-unit>
+      <trans-unit id="s2e39b99cf23606fa">
+        <source>Set the layout of the selected elements</source>
+        <target>设置所选元素的布局</target>
+      </trans-unit>
       <trans-unit id="s5c63af7695445fcf">
         <source>Text Style</source>
         <target>文本样式</target>
@@ -713,41 +777,25 @@
         <source>Set text style (alignment, indentation, spacing, etc.) of selected elements</source>
         <target>设置选定元素的文本样式（对齐、缩进、间距等</target>
       </trans-unit>
+      <trans-unit id="seb4e52ef5ec7a7dc">
+        <source>Colors/Effects</source>
+        <target>色彩/效果</target>
+      </trans-unit>
+      <trans-unit id="s105a06836c40fcb4">
+        <source>Set filters, color, and blending of selected elements</source>
+        <target>设置所选元素的滤镜、颜色和混合效果</target>
+      </trans-unit>
       <trans-unit id="s7060970b5ed20a58">
         <source>Interactivity</source>
         <target>互动性</target>
       </trans-unit>
-      <trans-unit id="sf190149f9d8bbb2a">
-        <source>Writing mode</source>
-        <target>书写模式</target>
+      <trans-unit id="s7f09197a4814079b">
+        <source>Set interactivity options for selected elements</source>
+        <target>为选定元素设置交互性选项</target>
       </trans-unit>
       <trans-unit id="s762e5704cc84089d">
         <source>Set other style options of selected elements</source>
         <target>设置所选元素的其他样式选项</target>
-      </trans-unit>
-      <trans-unit id="se6297163cac9d276">
-        <source>Edit source</source>
-        <target>编辑来源</target>
-      </trans-unit>
-      <trans-unit id="s281d957112b10f12">
-        <source>Edit the HTML of the document directly</source>
-        <target>直接编辑文档的 HTML</target>
-      </trans-unit>
-      <trans-unit id="s8f4be9f086eb530f">
-        <source>Undo</source>
-        <target>撤消</target>
-      </trans-unit>
-      <trans-unit id="s7beb1e77e82363eb">
-        <source>Undo the last change in the active document</source>
-        <target>撤销活动文档中的最后一次更改</target>
-      </trans-unit>
-      <trans-unit id="s7417792bbe720149">
-        <source>Redo</source>
-        <target>重做</target>
-      </trans-unit>
-      <trans-unit id="s640bc7710d0143ce">
-        <source>Redo the last undone change in the active document</source>
-        <target>重做活动文档中上次未完成的更改</target>
       </trans-unit>
       <trans-unit id="s83420ad7b6a14db5">
         <source>Toggle Dev Tools</source>
@@ -757,6 +805,330 @@
         <source>Open the developer tools</source>
         <target>打开开发者工具</target>
       </trans-unit>
+      <trans-unit id="s3649bacefe731bf6">
+        <source>Toggle Toolbox</source>
+        <target>切换工具箱</target>
+      </trans-unit>
+      <trans-unit id="s542fcefa0bbaed86">
+        <source>Open or close the toolbox (only on narrow screens, otherwise, the toolbox is always visible on the side).</source>
+        <target>打开或关闭工具箱（仅适用于窄屏幕，否则工具箱始终在侧面可见）。</target>
+      </trans-unit>
+      <trans-unit id="s380d17664bb69531">
+        <source>Insert column before</source>
+        <target>之前插入列</target>
+      </trans-unit>
+      <trans-unit id="s12946ec1b850962c">
+        <source>Insert column after</source>
+        <target>在</target>
+      </trans-unit>
+      <trans-unit id="s0458872c43beadef">
+        <source>Insert row before</source>
+        <target>在</target>
+      </trans-unit>
+      <trans-unit id="s42ffdab1291fb3de">
+        <source>Insert row after</source>
+        <target>在</target>
+      </trans-unit>
+      <trans-unit id="s77318393dfdb0775">
+        <source>Remove row</source>
+        <target>删除行</target>
+      </trans-unit>
+      <trans-unit id="sa8b55cab62e439b5">
+        <source>Remove column</source>
+        <target>删除栏目</target>
+      </trans-unit>
+      <trans-unit id="sc6415b50ff928294">
+        <source>List item</source>
+        <target>列表项目</target>
+      </trans-unit>
+      <trans-unit id="sc24bda3c061fddf8">
+        <source>Clickable area</source>
+        <target>可点击区域</target>
+      </trans-unit>
+      <trans-unit id="s5068560b8d39663d">
+        <source>Clickable map</source>
+        <target>可点击地图</target>
+      </trans-unit>
+      <trans-unit id="s780099588362f80f">
+        <source>Definition item</source>
+        <target>定义项目</target>
+      </trans-unit>
+      <trans-unit id="s105540b7756c0232">
+        <source>Definition term</source>
+        <target>定义术语</target>
+      </trans-unit>
+      <trans-unit id="s07808b0ca6da8fef">
+        <source>Fenced Website</source>
+        <target>围栏网站</target>
+      </trans-unit>
+      <trans-unit id="s6d8c02aee480af7a">
+        <source>Menu</source>
+        <target>菜单</target>
+      </trans-unit>
+      <trans-unit id="s730182ad28374cda">
+        <source>Object</source>
+        <target>对象</target>
+      </trans-unit>
+      <trans-unit id="s123bea44f38abccf">
+        <source>Insert object</source>
+        <target>插入对象</target>
+      </trans-unit>
+      <trans-unit id="scace301a88231cce">
+        <source>Embed</source>
+        <target>嵌入</target>
+      </trans-unit>
+      <trans-unit id="s91c5ed7769d00b65">
+        <source>Insert embed</source>
+        <target>插入嵌入</target>
+      </trans-unit>
+      <trans-unit id="sc50d09edf9325339">
+        <source>Dialog</source>
+        <target>对话框</target>
+      </trans-unit>
+      <trans-unit id="sff99962304ac7d25">
+        <source>Insert a dialog</source>
+        <target>插入对话框</target>
+      </trans-unit>
+      <trans-unit id="s9ffe1bbe64712bf1">
+        <source>Canvas</source>
+        <target>帆布</target>
+      </trans-unit>
+      <trans-unit id="sa7dbe35b758c138d">
+        <source>Insert a canvas</source>
+        <target>插入画布</target>
+      </trans-unit>
+      <trans-unit id="s3d93f9ea0c5a13fa">
+        <source>Image</source>
+        <target>图片</target>
+      </trans-unit>
+      <trans-unit id="s8bc4affa761aa8a2">
+        <source>Insert an image</source>
+        <target>插入图像</target>
+      </trans-unit>
+      <trans-unit id="sc43767deea72e9f3">
+        <source>Description List</source>
+        <target>说明列表</target>
+      </trans-unit>
+      <trans-unit id="saf312eaeec77a802">
+        <source>Insert a description list (glossary, term list)</source>
+        <target>插入说明列表（词汇表、术语表）</target>
+      </trans-unit>
+      <trans-unit id="s0312976fe9da5951">
+        <source>Button</source>
+        <target>按钮</target>
+      </trans-unit>
+      <trans-unit id="sd60c9bbc51375635">
+        <source>Insert a button</source>
+        <target>插入按钮</target>
+      </trans-unit>
+      <trans-unit id="sdb1595f5c742dfbb">
+        <source>Input</source>
+        <target>输入</target>
+      </trans-unit>
+      <trans-unit id="s29b24c06315e9343">
+        <source>Insert an input</source>
+        <target>插入输入</target>
+      </trans-unit>
+      <trans-unit id="s9abadcc828884d7b">
+        <source>Textarea</source>
+        <target>文本区域</target>
+      </trans-unit>
+      <trans-unit id="sf4e0e02a5277ef23">
+        <source>Insert an textarea</source>
+        <target>插入文本区域</target>
+      </trans-unit>
+      <trans-unit id="sfc63e31ac7c956ed">
+        <source>Select</source>
+        <target>选择</target>
+      </trans-unit>
+      <trans-unit id="s531056f039febd39">
+        <source>Insert a select</source>
+        <target>插入选择</target>
+      </trans-unit>
+      <trans-unit id="sfc00292e778b67e2">
+        <source>Meter</source>
+        <target>仪表</target>
+      </trans-unit>
+      <trans-unit id="s52e0bdc3ee304436">
+        <source>Insert a meter</source>
+        <target>插入仪表</target>
+      </trans-unit>
+      <trans-unit id="s8c7f51cb067644c7">
+        <source>Data List</source>
+        <target>数据列表</target>
+      </trans-unit>
+      <trans-unit id="sfa59c7777e2a0eeb">
+        <source>Insert a data list</source>
+        <target>插入数据列表</target>
+      </trans-unit>
+      <trans-unit id="s7fcb35d23be1e643">
+        <source>Field Set</source>
+        <target>实地设置</target>
+      </trans-unit>
+      <trans-unit id="s2d986d31f8d67357">
+        <source>Insert a field set</source>
+        <target>插入字段集</target>
+      </trans-unit>
+      <trans-unit id="s5590dbf7e425789d">
+        <source>Label</source>
+        <target>标签</target>
+      </trans-unit>
+      <trans-unit id="s21f8a2eaf5a70749">
+        <source>Insert a label</source>
+        <target>插入标签</target>
+      </trans-unit>
+      <trans-unit id="s4b58c01e2578f5e4">
+        <source>Legend</source>
+        <target>图例</target>
+      </trans-unit>
+      <trans-unit id="s3fd83566dd643d10">
+        <source>Insert a legend</source>
+        <target>插入图例</target>
+      </trans-unit>
+      <trans-unit id="sef75f458d77491af">
+        <source>Option Group</source>
+        <target>选项组</target>
+      </trans-unit>
+      <trans-unit id="sceecdd0bb404bc17">
+        <source>Insert an option group</source>
+        <target>插入选项组</target>
+      </trans-unit>
+      <trans-unit id="s4802e47fe2e95134">
+        <source>Option</source>
+        <target>选项</target>
+      </trans-unit>
+      <trans-unit id="s3cb47df8290fa94c">
+        <source>Insert an option</source>
+        <target>插入选项</target>
+      </trans-unit>
+      <trans-unit id="sfd77270c3f54f664">
+        <source>Output</source>
+        <target>输出</target>
+      </trans-unit>
+      <trans-unit id="se64f418b4e733b6c">
+        <source>Insert an output</source>
+        <target>插入输出</target>
+      </trans-unit>
+      <trans-unit id="sa557ae6bee9148a6">
+        <source>Progress</source>
+        <target>进展情况</target>
+      </trans-unit>
+      <trans-unit id="s52777d434baeed9b">
+        <source>Insert a progress indicator</source>
+        <target>插入进度指示器</target>
+      </trans-unit>
+      <trans-unit id="s98b1cb8fb62909ec">
+        <source>Group</source>
+        <target>组别</target>
+      </trans-unit>
+      <trans-unit id="s151349210ac1d2d8">
+        <source>Insert a group</source>
+        <target>插入组</target>
+      </trans-unit>
+      <trans-unit id="scc1db59d292cbc4c">
+        <source>Section</source>
+        <target>部门</target>
+      </trans-unit>
+      <trans-unit id="s22a2348c46a912a0">
+        <source>Insert a section</source>
+        <target>插入章节</target>
+      </trans-unit>
+      <trans-unit id="s5432ad3c84273229">
+        <source>Figure</source>
+        <target>图</target>
+      </trans-unit>
+      <trans-unit id="sf486ca1fdbe08645">
+        <source>Insert a figure</source>
+        <target>插入数字</target>
+      </trans-unit>
+      <trans-unit id="se16c5e66886fbc59">
+        <source>Article</source>
+        <target>文章</target>
+      </trans-unit>
+      <trans-unit id="s3f7e097a9b2e6181">
+        <source>Insert an article</source>
+        <target>插入文章</target>
+      </trans-unit>
+      <trans-unit id="s75d83fc3f0cfab40">
+        <source>Header</source>
+        <target>页眉</target>
+      </trans-unit>
+      <trans-unit id="sa5c80e623459ffe4">
+        <source>Insert a header</source>
+        <target>插入页眉</target>
+      </trans-unit>
+      <trans-unit id="s49e763aed00877a8">
+        <source>Main</source>
+        <target>主页</target>
+      </trans-unit>
+      <trans-unit id="s8247d32213e35f24">
+        <source>Insert a main</source>
+        <target>插入主</target>
+      </trans-unit>
+      <trans-unit id="sadd352cc7f6f2307">
+        <source>Aside</source>
+        <target>旁白</target>
+      </trans-unit>
+      <trans-unit id="s743f778233e42a3f">
+        <source>Insert an aside</source>
+        <target>插入旁白</target>
+      </trans-unit>
+      <trans-unit id="scf932a8577057752">
+        <source>Footer</source>
+        <target>页脚</target>
+      </trans-unit>
+      <trans-unit id="sa352d168b262aa06">
+        <source>Insert a footer</source>
+        <target>插入页脚</target>
+      </trans-unit>
+      <trans-unit id="s07e6118e838b2e23">
+        <source>Navigation</source>
+        <target>导航</target>
+      </trans-unit>
+      <trans-unit id="s0a799f583098cadf">
+        <source>Insert a navigation</source>
+        <target>插入导航</target>
+      </trans-unit>
+      <trans-unit id="s35c3125c7750681e">
+        <source>Blockquote</source>
+        <target>整段引用</target>
+      </trans-unit>
+      <trans-unit id="sa492a51a707930fa">
+        <source>Insert a blockquote</source>
+        <target>插入楷体引号</target>
+      </trans-unit>
+      <trans-unit id="s5d929ff1619ac0c9">
+        <source>Search</source>
+        <target>搜索</target>
+      </trans-unit>
+      <trans-unit id="sbb85a407d730e13d">
+        <source>Insert a search</source>
+        <target>插入搜索</target>
+      </trans-unit>
+      <trans-unit id="sfcdd8e672c75b713">
+        <source>Address</source>
+        <target>地址</target>
+      </trans-unit>
+      <trans-unit id="s429dd933ba95549b">
+        <source>Insert an address</source>
+        <target>插入地址</target>
+      </trans-unit>
+      <trans-unit id="s07aa10850d9ddcc7">
+        <source>Form</source>
+        <target>形式</target>
+      </trans-unit>
+      <trans-unit id="s84e9c7f8785ca60b">
+        <source>Insert a form</source>
+        <target>插入表格</target>
+      </trans-unit>
+      <trans-unit id="sa5df1bcdba46c3fb">
+        <source>Figure Caption</source>
+        <target>图表说明</target>
+      </trans-unit>
+      <trans-unit id="s33c1450d2822bb0f">
+        <source>Insert a figure caption</source>
+        <target>插入图表标题</target>
+      </trans-unit>
       <trans-unit id="s8688d74dd3716d6e">
         <source>Keyboard shortcuts for commands</source>
         <target>命令的键盘快捷键</target>
@@ -765,13 +1137,581 @@
         <source>General</source>
         <target>一般情况</target>
       </trans-unit>
+      <trans-unit id="s3ae67088bbefba98">
+        <source>Packages</source>
+        <target>套餐</target>
+      </trans-unit>
+      <trans-unit id="s8a28bad9290d4761">
+        <source>Oromo</source>
+        <target>奥罗莫语</target>
+      </trans-unit>
+      <trans-unit id="s4634541f5056a546">
+        <source>Abkhazian</source>
+        <target>阿布哈兹语</target>
+      </trans-unit>
+      <trans-unit id="s59b20e8af32606ed">
+        <source>Afar</source>
+        <target>阿法尔</target>
+      </trans-unit>
+      <trans-unit id="sd2ef82b8ea877c6d">
+        <source>Afrikaans</source>
+        <target>南非语</target>
+      </trans-unit>
+      <trans-unit id="s2f4d4bfbc466d91f">
+        <source>Albanian</source>
+        <target>阿尔巴尼亚语</target>
+      </trans-unit>
+      <trans-unit id="sb43db07b24da018a">
+        <source>Amharic</source>
+        <target>阿姆哈拉语</target>
+      </trans-unit>
+      <trans-unit id="sb884fa76bfc55429">
+        <source>Arabic</source>
+        <target>阿拉伯语</target>
+      </trans-unit>
+      <trans-unit id="scc56b218a2689c42">
+        <source>Armenian</source>
+        <target>亚美尼亚语</target>
+      </trans-unit>
+      <trans-unit id="sa2cba871f6cdd99f">
+        <source>Assamese</source>
+        <target>阿萨姆语</target>
+      </trans-unit>
+      <trans-unit id="scf95dcb12a950a5c">
+        <source>Aymara</source>
+        <target>艾马拉语</target>
+      </trans-unit>
+      <trans-unit id="s9cf68f87b8e6122f">
+        <source>Azerbaijani</source>
+        <target>阿塞拜疆</target>
+      </trans-unit>
+      <trans-unit id="s17bfaaa4e7528bc7">
+        <source>Bashkir</source>
+        <target>巴什基尔</target>
+      </trans-unit>
+      <trans-unit id="se39c065efa467782">
+        <source>Basque</source>
+        <target>巴斯克语</target>
+      </trans-unit>
+      <trans-unit id="sf2bdb0b4d7b9c039">
+        <source>Bengali</source>
+        <target>孟加拉语</target>
+      </trans-unit>
+      <trans-unit id="sf0c8e2b013e5ff18">
+        <source>Bhutani</source>
+        <target>布塔尼</target>
+      </trans-unit>
+      <trans-unit id="s181ef198cf83ec3a">
+        <source>Bihari</source>
+        <target>比哈里</target>
+      </trans-unit>
+      <trans-unit id="s543c237e8c895ce8">
+        <source>Bislama</source>
+        <target>比斯拉马</target>
+      </trans-unit>
+      <trans-unit id="s93f083e654a45715">
+        <source>Breton</source>
+        <target>布列塔尼</target>
+      </trans-unit>
+      <trans-unit id="sffa395f64ec6ac36">
+        <source>Bulgarian</source>
+        <target>保加利亚语</target>
+      </trans-unit>
+      <trans-unit id="sbd72dc858de95ce8">
+        <source>Burmese</source>
+        <target>缅甸语</target>
+      </trans-unit>
+      <trans-unit id="s1e9c2c654732cc5f">
+        <source>Byelorussian</source>
+        <target>白俄罗斯语</target>
+      </trans-unit>
+      <trans-unit id="s545ee1f373f249cf">
+        <source>Cambodian</source>
+        <target>柬埔寨</target>
+      </trans-unit>
+      <trans-unit id="s1f2b49c1bca2035d">
+        <source>Catalan</source>
+        <target>加泰罗尼亚语</target>
+      </trans-unit>
+      <trans-unit id="s0e44968489e076a8">
+        <source>Chinese</source>
+        <target>中文</target>
+      </trans-unit>
+      <trans-unit id="s20deffeecf2699fb">
+        <source>Corsican</source>
+        <target>科西嘉</target>
+      </trans-unit>
+      <trans-unit id="s45518abd911471d0">
+        <source>Croatian</source>
+        <target>克罗地亚语</target>
+      </trans-unit>
+      <trans-unit id="sc94e314312a8900c">
+        <source>Czech</source>
+        <target>捷克语</target>
+      </trans-unit>
+      <trans-unit id="sd9c21e5f60d6bdd8">
+        <source>Danish</source>
+        <target>丹麦语</target>
+      </trans-unit>
+      <trans-unit id="s95d56e58f816d211">
+        <source>Dutch</source>
+        <target>荷兰语</target>
+      </trans-unit>
       <trans-unit id="s4caed5b7a7e5d89b">
         <source>English</source>
         <target>英语</target>
       </trans-unit>
+      <trans-unit id="s0a6cb8d42cdb0c4a">
+        <source>Esperanto</source>
+        <target>世界语</target>
+      </trans-unit>
+      <trans-unit id="sa6607436f60ccc1a">
+        <source>Estonian</source>
+        <target>爱沙尼亚语</target>
+      </trans-unit>
+      <trans-unit id="s536695196d0b6dc3">
+        <source>Faeroese</source>
+        <target>法罗群岛</target>
+      </trans-unit>
+      <trans-unit id="sd1f10284eeb17b25">
+        <source>Fiji</source>
+        <target>斐济</target>
+      </trans-unit>
+      <trans-unit id="sc98b103772de63f4">
+        <source>Finnish</source>
+        <target>芬兰语</target>
+      </trans-unit>
+      <trans-unit id="s75a27f43413e02c5">
+        <source>French</source>
+        <target>法语</target>
+      </trans-unit>
+      <trans-unit id="s61c017f6d5c303af">
+        <source>Frisian</source>
+        <target>弗里斯兰语</target>
+      </trans-unit>
+      <trans-unit id="s990d0e0fa2ab00b5">
+        <source>Galician</source>
+        <target>加利西亚语</target>
+      </trans-unit>
+      <trans-unit id="sdc70d81cf6c28533">
+        <source>Georgian</source>
+        <target>格鲁吉亚语</target>
+      </trans-unit>
       <trans-unit id="s63e71d20d1eaca93">
         <source>German</source>
         <target>德国</target>
+      </trans-unit>
+      <trans-unit id="scf00d48fd5953a03">
+        <source>Greek</source>
+        <target>希腊文</target>
+      </trans-unit>
+      <trans-unit id="s99229574e5692f19">
+        <source>Greenlandic</source>
+        <target>格林兰</target>
+      </trans-unit>
+      <trans-unit id="s1feab14d837eadb0">
+        <source>Guarani</source>
+        <target>瓜拉尼语</target>
+      </trans-unit>
+      <trans-unit id="s3f43ef2eaa1ec486">
+        <source>Gujarati</source>
+        <target>古吉拉特语</target>
+      </trans-unit>
+      <trans-unit id="s9fbe26cfd7845469">
+        <source>Hausa</source>
+        <target>豪萨语</target>
+      </trans-unit>
+      <trans-unit id="s6b61f8abf89586be">
+        <source>Hebrew</source>
+        <target>希伯来文</target>
+      </trans-unit>
+      <trans-unit id="sb6b268120592dc53">
+        <source>Hindi</source>
+        <target>北印度语</target>
+      </trans-unit>
+      <trans-unit id="sda9254d1f1228e1a">
+        <source>Hungarian</source>
+        <target>匈牙利语</target>
+      </trans-unit>
+      <trans-unit id="sec2da4aa7a02b925">
+        <source>Icelandic</source>
+        <target>冰岛</target>
+      </trans-unit>
+      <trans-unit id="seb8982ae8c3cdcc5">
+        <source>Indonesian</source>
+        <target>印尼语</target>
+      </trans-unit>
+      <trans-unit id="s9d54869be6794a9f">
+        <source>Interlingua</source>
+        <target>Interlingua</target>
+      </trans-unit>
+      <trans-unit id="s9d54829be67943d3">
+        <source>Interlingue</source>
+        <target>Interlingue</target>
+      </trans-unit>
+      <trans-unit id="s62b857f5b6693742">
+        <source>Inupiak</source>
+        <target>伊努皮亚克</target>
+      </trans-unit>
+      <trans-unit id="sf5e76f774beb33c2">
+        <source>Inuktitut</source>
+        <target>因纽特语</target>
+      </trans-unit>
+      <trans-unit id="s33c18d5a4cbffa2a">
+        <source>Irish</source>
+        <target>爱尔兰</target>
+      </trans-unit>
+      <trans-unit id="sd48cc52117f4d68b">
+        <source>Italian</source>
+        <target>意大利语</target>
+      </trans-unit>
+      <trans-unit id="sdd35b688281b6dea">
+        <source>Japanese</source>
+        <target>日语</target>
+      </trans-unit>
+      <trans-unit id="s21d723a1dbcd89c8">
+        <source>Javanese</source>
+        <target>爪哇语</target>
+      </trans-unit>
+      <trans-unit id="s1f8e59d0624842ff">
+        <source>Kannada</source>
+        <target>卡纳达语</target>
+      </trans-unit>
+      <trans-unit id="s81c3d8809658b951">
+        <source>Kashmiri</source>
+        <target>克什米尔语</target>
+      </trans-unit>
+      <trans-unit id="s01b16a926920908b">
+        <source>Kazakh</source>
+        <target>哈萨克</target>
+      </trans-unit>
+      <trans-unit id="s81cf65c5a46dea08">
+        <source>Kinyarwanda</source>
+        <target>基尼亚卢旺达语</target>
+      </trans-unit>
+      <trans-unit id="s5bba2ac2e53bd1fd">
+        <source>Kirghiz</source>
+        <target>吉尔吉斯</target>
+      </trans-unit>
+      <trans-unit id="sab726d2db7e6b93d">
+        <source>Kirundi</source>
+        <target>基隆迪文</target>
+      </trans-unit>
+      <trans-unit id="s94d61907ee22a8c1">
+        <source>Korean</source>
+        <target>韩语</target>
+      </trans-unit>
+      <trans-unit id="sb4e003a459464d85">
+        <source>Kurdish</source>
+        <target>库尔德语</target>
+      </trans-unit>
+      <trans-unit id="s69b12144dbb6544d">
+        <source>Laothian</source>
+        <target>老挝</target>
+      </trans-unit>
+      <trans-unit id="sb70c17f7899f9b01">
+        <source>Latin</source>
+        <target>拉丁语</target>
+      </trans-unit>
+      <trans-unit id="sd3dcb76f7b28adb8">
+        <source>Latvian</source>
+        <target>拉脱维亚语</target>
+      </trans-unit>
+      <trans-unit id="sff303daee4dd9f7b">
+        <source>Lingala</source>
+        <target>林加拉语</target>
+      </trans-unit>
+      <trans-unit id="sb2dc787b0983ebc6">
+        <source>Lithuanian</source>
+        <target>立陶宛语</target>
+      </trans-unit>
+      <trans-unit id="s441b20a8a50e36b4">
+        <source>Macedonian</source>
+        <target>马其顿</target>
+      </trans-unit>
+      <trans-unit id="sf3c4da68b08a2590">
+        <source>Malagasy</source>
+        <target>马达加斯加</target>
+      </trans-unit>
+      <trans-unit id="sc7eb080b96e244df">
+        <source>Malay</source>
+        <target>马来语</target>
+      </trans-unit>
+      <trans-unit id="s0dad143dff0079fc">
+        <source>Malayalam</source>
+        <target>拉雅拉姆语</target>
+      </trans-unit>
+      <trans-unit id="scabe6ecee5e01fd2">
+        <source>Maltese</source>
+        <target>马耳他</target>
+      </trans-unit>
+      <trans-unit id="sae9c790b88be7eb9">
+        <source>Maori</source>
+        <target>毛利人</target>
+      </trans-unit>
+      <trans-unit id="s2e969a451b4955d1">
+        <source>Marathi</source>
+        <target>马拉地语</target>
+      </trans-unit>
+      <trans-unit id="s5a356677b61a6b7e">
+        <source>Moldavian</source>
+        <target>摩尔多瓦</target>
+      </trans-unit>
+      <trans-unit id="s0f17f32919661cff">
+        <source>Mongolian</source>
+        <target>蒙古语</target>
+      </trans-unit>
+      <trans-unit id="s9e8d3665edde89a6">
+        <source>Nauru</source>
+        <target>瑙鲁</target>
+      </trans-unit>
+      <trans-unit id="sad190f86451081c0">
+        <source>Nepali</source>
+        <target>尼泊尔</target>
+      </trans-unit>
+      <trans-unit id="se0a782a8be8e018b">
+        <source>Norwegian</source>
+        <target>挪威语</target>
+      </trans-unit>
+      <trans-unit id="s7a99528e7b64635a">
+        <source>Occitan</source>
+        <target>奥克语</target>
+      </trans-unit>
+      <trans-unit id="s9c11f2d9335d8bd1">
+        <source>Oriya</source>
+        <target>奥里雅语</target>
+      </trans-unit>
+      <trans-unit id="s54cbfaf2a8da7818">
+        <source>Pashto</source>
+        <target>普什图语</target>
+      </trans-unit>
+      <trans-unit id="sa40fd43756fa8913">
+        <source>Persian</source>
+        <target>波斯语</target>
+      </trans-unit>
+      <trans-unit id="s03f49e598ffb11cc">
+        <source>Polish</source>
+        <target>波兰语</target>
+      </trans-unit>
+      <trans-unit id="scf932840a69dbb7c">
+        <source>Portuguese</source>
+        <target>葡萄牙语</target>
+      </trans-unit>
+      <trans-unit id="s74b9781bacfcc87c">
+        <source>Punjabi</source>
+        <target>旁遮普语</target>
+      </trans-unit>
+      <trans-unit id="s49ad24935b14e3df">
+        <source>Quechua</source>
+        <target>克丘亚语</target>
+      </trans-unit>
+      <trans-unit id="s960d3a90ac199368">
+        <source>Rhaeto-Romanian</source>
+        <target>雷托-罗马尼亚语</target>
+      </trans-unit>
+      <trans-unit id="sc1aa1f6051b7102a">
+        <source>Romanian</source>
+        <target>罗马尼亚语</target>
+      </trans-unit>
+      <trans-unit id="sa30c12014e955946">
+        <source>Russian</source>
+        <target>俄罗斯</target>
+      </trans-unit>
+      <trans-unit id="s19abee1277c9bca2">
+        <source>Samoan</source>
+        <target>萨摩亚人</target>
+      </trans-unit>
+      <trans-unit id="s006f872a5b7f5279">
+        <source>Sangro</source>
+        <target>Sangro</target>
+      </trans-unit>
+      <trans-unit id="sbfff51feacf30196">
+        <source>Sanskrit</source>
+        <target>梵文</target>
+      </trans-unit>
+      <trans-unit id="s1c65f5004a07dcfa">
+        <source>Scots Gaelic</source>
+        <target>苏格兰盖尔语</target>
+      </trans-unit>
+      <trans-unit id="sf955eff73fb6b573">
+        <source>Serbian</source>
+        <target>塞尔维亚语</target>
+      </trans-unit>
+      <trans-unit id="s7995733bf97c01cc">
+        <source>Serbo-Croatian</source>
+        <target>塞尔维亚-克罗地亚语</target>
+      </trans-unit>
+      <trans-unit id="scc5ba32e0de06744">
+        <source>Sesotho</source>
+        <target>塞索托语</target>
+      </trans-unit>
+      <trans-unit id="s08e12ade32ef8125">
+        <source>Setswana</source>
+        <target>塞茨瓦纳语</target>
+      </trans-unit>
+      <trans-unit id="sb6434faf698b02a2">
+        <source>Shona</source>
+        <target>肖娜</target>
+      </trans-unit>
+      <trans-unit id="sb31cdff08b1c5a50">
+        <source>Sindhi</source>
+        <target>信德语</target>
+      </trans-unit>
+      <trans-unit id="se308836a594808b6">
+        <source>Singhalese</source>
+        <target>僧伽罗语</target>
+      </trans-unit>
+      <trans-unit id="sce8a4e3f7c98482d">
+        <source>Siswati</source>
+        <target>西斯瓦蒂</target>
+      </trans-unit>
+      <trans-unit id="se0cda6b80a1bb50f">
+        <source>Slovak</source>
+        <target>斯</target>
+      </trans-unit>
+      <trans-unit id="se96d43a515b8451c">
+        <source>Slovenian</source>
+        <target>斯洛文尼亚语</target>
+      </trans-unit>
+      <trans-unit id="s978522fbc9577a7e">
+        <source>Somali</source>
+        <target>索马里</target>
+      </trans-unit>
+      <trans-unit id="sf1868dc19e3917bb">
+        <source>Spanish</source>
+        <target>西班牙语</target>
+      </trans-unit>
+      <trans-unit id="sa477cb1825dceb3b">
+        <source>Sudanese</source>
+        <target>苏丹</target>
+      </trans-unit>
+      <trans-unit id="sbe90de083557ef3e">
+        <source>Swahili</source>
+        <target>斯瓦希里语</target>
+      </trans-unit>
+      <trans-unit id="sae185e6af80ec81e">
+        <source>Swedish</source>
+        <target>瑞典语</target>
+      </trans-unit>
+      <trans-unit id="sae098810f946ca7c">
+        <source>Tagalog</source>
+        <target>菲律宾语</target>
+      </trans-unit>
+      <trans-unit id="s7b9994904c4f5b54">
+        <source>Tajik</source>
+        <target>塔吉克语</target>
+      </trans-unit>
+      <trans-unit id="s7136449045eff28c">
+        <source>Tamil</source>
+        <target>梵语</target>
+      </trans-unit>
+      <trans-unit id="sae9d739068eee2c5">
+        <source>Tatar</source>
+        <target>鞑靼</target>
+      </trans-unit>
+      <trans-unit id="s47a8f6dfb38b9701">
+        <source>Telugu</source>
+        <target>泰卢固语</target>
+      </trans-unit>
+      <trans-unit id="s4ffac3fb33a2ee9b">
+        <source>Thai</source>
+        <target>泰语</target>
+      </trans-unit>
+      <trans-unit id="s5623aa2f83b05c76">
+        <source>Tibetan</source>
+        <target>藏语</target>
+      </trans-unit>
+      <trans-unit id="sbb15d427ee1aa676">
+        <source>Tigrinya</source>
+        <target>提格里尼亚语</target>
+      </trans-unit>
+      <trans-unit id="sbb34f2e3aa40af4e">
+        <source>Tonga</source>
+        <target>汤加</target>
+      </trans-unit>
+      <trans-unit id="s04c939a414fdab21">
+        <source>Tsonga</source>
+        <target>宗加</target>
+      </trans-unit>
+      <trans-unit id="s9d2d00982edafabb">
+        <source>Turkish</source>
+        <target>土耳其语</target>
+      </trans-unit>
+      <trans-unit id="sc0ceaa9843510f67">
+        <source>Turkmen</source>
+        <target>土库曼</target>
+      </trans-unit>
+      <trans-unit id="s6d1df519e235a6cf">
+        <source>Twi</source>
+        <target>特维</target>
+      </trans-unit>
+      <trans-unit id="s2e66bf8b833858f3">
+        <source>Uigur</source>
+        <target>维吾尔族</target>
+      </trans-unit>
+      <trans-unit id="sc4ee3e4ee994dafd">
+        <source>Ukrainian</source>
+        <target>乌克兰</target>
+      </trans-unit>
+      <trans-unit id="s9ca757effd747da9">
+        <source>Urdu</source>
+        <target>烏爾都語</target>
+      </trans-unit>
+      <trans-unit id="sb4f0310e6787d098">
+        <source>Uzbek</source>
+        <target>乌兹别克</target>
+      </trans-unit>
+      <trans-unit id="s6d60d595cb5070da">
+        <source>Vietnamese</source>
+        <target>越南语</target>
+      </trans-unit>
+      <trans-unit id="sb657bfe93338dc8b">
+        <source>Volapuk</source>
+        <target>沃拉普克</target>
+      </trans-unit>
+      <trans-unit id="sf2e08a945e9194d4">
+        <source>Welch</source>
+        <target>韦尔奇</target>
+      </trans-unit>
+      <trans-unit id="s86ca34c5287a2f38">
+        <source>Wolof</source>
+        <target>沃洛夫语</target>
+      </trans-unit>
+      <trans-unit id="sa4e5b39489ecf31a">
+        <source>Xhosa</source>
+        <target>科萨语</target>
+      </trans-unit>
+      <trans-unit id="s63dfc5b1c1c27849">
+        <source>Yiddish</source>
+        <target>意第绪语</target>
+      </trans-unit>
+      <trans-unit id="se1312d6528f9a259">
+        <source>Yoruba</source>
+        <target>伊博语</target>
+      </trans-unit>
+      <trans-unit id="s3f299e83cbf52fba">
+        <source>Zhuang</source>
+        <target>庄</target>
+      </trans-unit>
+      <trans-unit id="sd5be6f6d85fc0c9b">
+        <source>Zulu</source>
+        <target>祖鲁语</target>
+      </trans-unit>
+      <trans-unit id="sdef34fe08bb28b09">
+        <source>Chinese (Simplified)</source>
+        <target>简体中文</target>
+      </trans-unit>
+      <trans-unit id="s2739460e44320108">
+        <source>Chinese (Traditional)</source>
+        <target>中文（繁体）</target>
+      </trans-unit>
+      <trans-unit id="s5941292bb77281ab">
+        <source>Norwegian Bokmål</source>
+        <target>挪威语</target>
+      </trans-unit>
+      <trans-unit id="s082869038c117fe5">
+        <source>Portuguese (Brazil)</source>
+        <target>葡萄牙语（巴西）</target>
       </trans-unit>
       <trans-unit id="se25e4f2cb77b8be8">
         <source>Language for the WebWriter interface and new documents</source>
@@ -781,172 +1721,449 @@
         <source>Language</source>
         <target>语言</target>
       </trans-unit>
+      <trans-unit id="s690da6b432987c6f">
+        <source>Backup changes to the current document automatically. Changes are restored when WebWriter is reloaded.</source>
+        <target>自动备份对当前文档的更改。当重新加载 WebWriter 时，更改会被恢复。</target>
+      </trans-unit>
+      <trans-unit id="s888c71e8fcb916d3">
+        <source>Autosave</source>
+        <target>自动保存</target>
+      </trans-unit>
+      <trans-unit id="se9ac05f36b004eb0">
+        <source>Hide the introductory tour. Disable so the tour is shown again.</source>
+        <target>隐藏导览。禁用，以便再次显示导览。</target>
+      </trans-unit>
+      <trans-unit id="sf2ab37af0abc55ef">
+        <source>Hide intro tour</source>
+        <target>隐藏导览</target>
+      </trans-unit>
+      <trans-unit id="s3437e0d9899e7ae1">
+        <source>Send telemetry data about your usage of WebWriter.</source>
+        <target>发送有关您使用 WebWriter 的遥测数据。</target>
+      </trans-unit>
+      <trans-unit id="s80570196a9ce6d11">
+        <source>Enable telemetry</source>
+        <target>启用遥测</target>
+      </trans-unit>
+      <trans-unit id="sb66e2181a7b5738a">
+        <source>By enabling telemetry, you allow for data collection and retention according to our</source>
+        <target>启用遥测功能即表示您允许根据我们的以下规定收集和保留数据</target>
+      </trans-unit>
+      <trans-unit id="sbc6953a36ced943f">
+        <source>privacy policy</source>
+        <target>隐私政策</target>
+      </trans-unit>
+      <trans-unit id="sb19611adbc88f711">
+        <source>Advanced: Show source editing commands, e.g. to show the document's HTML or to add custom styles and scripts.</source>
+        <target>高级：显示源代码编辑命令，例如显示文档的 HTML 或添加自定义样式和脚本。</target>
+      </trans-unit>
+      <trans-unit id="sd452cebf4a0313d1">
+        <source>Show source editing commands</source>
+        <target>显示源编辑命令</target>
+      </trans-unit>
       <trans-unit id="se3b4c857f91f80d7">
         <source>Keyboard shortcuts</source>
         <target>键盘快捷键</target>
       </trans-unit>
-      <trans-unit id="s268ecd1cef45a9a8">
-        <source>Are you sure?</source>
-        <target>你确定吗？</target>
+      <trans-unit id="s1696c76a23c0834e">
+        <source>Advanced: Show packages with versions like 0.x.x in the package manager</source>
+        <target>高级：在软件包管理器中显示版本为 0.x.x 的软件包</target>
       </trans-unit>
-      <trans-unit id="sb430f5b4824de0d3">
-        <source>Choose a layout</source>
-        <target>选择布局</target>
+      <trans-unit id="s71a0549fd71219c9">
+        <source>Show unstable packages</source>
+        <target>显示不稳定软件包</target>
       </trans-unit>
-      <trans-unit id="seaf97719986faf4f">
-        <source>Gap</source>
-        <target>差距</target>
+      <trans-unit id="sc2e2a0dbf03723b7">
+        <source>Advanced: Show packages from unknown sources in the package manager (Warning: May be unsafe)</source>
+        <target>高级：在软件包管理器中显示未知来源的软件包（警告：可能不安全）</target>
       </trans-unit>
-      <trans-unit id="sffdadf0a576fd802">
-        <source>Height</source>
-        <target>高度</target>
+      <trans-unit id="sbff54e740c4086eb">
+        <source>Show unknown packages</source>
+        <target>显示未知软件包</target>
       </trans-unit>
-      <trans-unit id="sab55faae8e165407">
-        <source>Padding&lt;br&gt; like gap</source>
-        <target>填充&lt;br&gt; 如间隙</target>
+      <trans-unit id="s9df571714a1efb44">
+        <source>An autosaved version of this explorable is available. Load it?</source>
+        <target>该探索任务的自动保存版本可用。加载它？</target>
       </trans-unit>
-      <trans-unit id="sa645d315510dc09e">
-        <source>Choose path from disk</source>
-        <target>从磁盘选择路径</target>
+      <trans-unit id="s75109f5307578a61">
+        <source>Welcome to WebWriter</source>
+        <target>欢迎访问 WebWriter</target>
       </trans-unit>
-      <trans-unit id="seabae79729c4b2ad">
-        <source>Toggle email</source>
-        <target>切换电子邮件</target>
+      <trans-unit id="s1d10d2058d8ca8dd">
+        <source>Want a short, guided tour?</source>
+        <target>想在导游的带领下进行短途旅行？</target>
       </trans-unit>
-      <trans-unit id="s34dcda3b0f9d5a98">
-        <source>Toggle url</source>
-        <target>切换网址</target>
+      <trans-unit id="s3bdad99768e11911">
+        <source>Explorable</source>
+        <target>可探索</target>
       </trans-unit>
-      <trans-unit id="sc3cfee84dbbf36ae">
-        <source>Local File</source>
-        <target>本地文件</target>
+      <trans-unit id="s0db05bd7ba6fff96">
+        <source>Your explorable document. You can write text and copy/paste, edit, etc. here.</source>
+        <target>您的可探索文档。您可以在这里撰写文字，并进行复制/粘贴、编辑等操作。</target>
       </trans-unit>
-      <trans-unit id="s9896529e5cb20558">
-        <source>External File</source>
-        <target>外部文件</target>
+      <trans-unit id="sc8af536e2084ade0">
+        <source>Palette</source>
+        <target>调色板</target>
       </trans-unit>
-      <trans-unit id="s7e0b179d4d1414eb">
-        <source>Enter link</source>
-        <target>输入链接</target>
+      <trans-unit id="s0b24d08ea349b455">
+        <source>Everything you can insert. At the start are non-interactive elements like lists or images, next are interactive elements called widgets. You can get new ones by clicking the search bar.</source>
+        <target>你可以插入任何东西。首先是列表或图片等非交互式元素，然后是称为小部件的交互式元素。点击搜索栏可以获得新的小工具。</target>
       </trans-unit>
-      <trans-unit id="sbe4a7c8f231739b3">
-        <source>or paste/drop/pick file</source>
-        <target>或粘贴/删除/选取文件</target>
+      <trans-unit id="s24949d7adbb5a098">
+        <source>Toolbox</source>
+        <target>工具箱</target>
       </trans-unit>
-      <trans-unit id="s8a4ff2bd9c13498c">
-        <source>Record</source>
-        <target>记录</target>
+      <trans-unit id="s806f84eb0ace116e">
+        <source>See what you have selected and change it. Copy, cut, paste, pin, or make layout changes. Offers different options depending on your selection, i.e. formatting for text.</source>
+        <target>查看所选内容并进行更改。复制、剪切、粘贴、固定或更改布局。根据所选内容提供不同的选项，如文本格式。</target>
       </trans-unit>
-      <trans-unit id="s1a5230a71d9285c1">
-        <source>Capture</source>
-        <target>捕获</target>
+      <trans-unit id="seaaaeb09e3b4e78b">
+        <source>Editing commands</source>
+        <target>编辑命令</target>
       </trans-unit>
-      <trans-unit id="s2b8f50c64be440f7">
-        <source>Select 
-          <x id="0" equiv-text="${this.mediaType}"/>...
-        </source>
-        <target>选择 
-          <x id="0" equiv-text="${this.mediaType}"/>... 
-        </target>
+      <trans-unit id="s8d83386457e91813">
+        <source>Undo/redo your changes or preview from the learner's perspective.</source>
+        <target>撤销/重做更改，或从学习者的角度预览。</target>
       </trans-unit>
-      <trans-unit id="s739544d0c858c633">
-        <source>Or drop 
-          <x id="0" equiv-text="${this.mediaType}"/> here
-        </source>
-        <target>或点击 
-          <x id="0" equiv-text="${this.mediaType}"/> 这里 
-        </target>
+      <trans-unit id="s0e6ea8870dbddab2">
+        <source>Document commands</source>
+        <target>文件命令</target>
       </trans-unit>
-      <trans-unit id="se58f06c2b0583ff7">
-        <source>Pick coordinates</source>
-        <target>选择坐标</target>
+      <trans-unit id="s0448f1059fa01720">
+        <source>Save, share or print your explorable. Edit information such as the title, language or license.</source>
+        <target>保存、共享或打印您的可探索内容。编辑标题、语言或许可证等信息。</target>
+      </trans-unit>
+      <trans-unit id="s0c4b2e98d4ab7f5a">
+        <source>App commands</source>
+        <target>应用程序命令</target>
+      </trans-unit>
+      <trans-unit id="sa172190ea21f9b1c">
+        <source>Access the settings, open an explorable or create a new one.</source>
+        <target>访问设置，打开一个可探索项目或创建一个新项目。</target>
+      </trans-unit>
+      <trans-unit id="s4cc8391f172c0cdf">
+        <source>Dismiss tour</source>
+        <target>解散参观</target>
+      </trans-unit>
+      <trans-unit id="s575e795c45e2d97e">
+        <source>Go back</source>
+        <target>返回</target>
+      </trans-unit>
+      <trans-unit id="sa778acc33947c7b8">
+        <source>Finish tour</source>
+        <target>结束游览</target>
+      </trans-unit>
+      <trans-unit id="s81ecf2d4386b8e84">
+        <source>Continue</source>
+        <target>继续</target>
       </trans-unit>
       <trans-unit id="s8f533296a536965e">
         <source>Save as...</source>
         <target>另存为...</target>
       </trans-unit>
-      <trans-unit id="see2fcaedf9743ec6">
-        <source>Location</source>
-        <target>地点</target>
+      <trans-unit id="s3a5ca02f282d247e">
+        <source>Share...</source>
+        <target>分享...</target>
       </trans-unit>
-      <trans-unit id="s2ceb11be2290bb1b">
-        <source>Cancel</source>
-        <target>取消</target>
+      <trans-unit id="sda2d76b976502a8d">
+        <source>Open...</source>
+        <target>打开...</target>
       </trans-unit>
-      <trans-unit id="s851a7deea5984646">
-        <source>License as Creative Commons OER?</source>
-        <target>作为知识共享开放式教育资源许可使用？</target>
+      <trans-unit id="sb26035b596566abf">
+        <source>Unnamed</source>
+        <target>未命名</target>
       </trans-unit>
-      <trans-unit id="s2540844a4bc4d9ba">
-        <source>Require attribution?</source>
-        <target>要求署名？</target>
+      <trans-unit id="s812cbda653daaeba">
+        <source>This feature is not implemented yet</source>
+        <target>此功能尚未实施</target>
       </trans-unit>
-      <trans-unit id="sb0a974028c99ca6d">
-        <source>Allow adaptations?</source>
-        <target>允许调整？</target>
+      <trans-unit id="s35aeaff1425bca9e">
+        <source>WebWriter does not support media of type </source>
+        <target>WebWriter 不支持 </target>
       </trans-unit>
-      <trans-unit id="s77e594ddcc10c774">
-        <source>Allow commercial use?</source>
-        <target>允许商业使用？</target>
+      <trans-unit id="s99f110d27e30b289">
+        <source>Title</source>
+        <target>标题</target>
       </trans-unit>
-      <trans-unit id="sb8f855b49234b81b">
-        <source>Apply</source>
-        <target>申请</target>
+      <trans-unit id="sef73fe18e351eb35">
+        <source>Keywords</source>
+        <target>关键词</target>
       </trans-unit>
-      <trans-unit id="sb66beca1e766dcb3">
-        <source>Apply and import</source>
-        <target>申请和导入</target>
+      <trans-unit id="s63d894b1ddb06289">
+        <source>Description</source>
+        <target>说明</target>
       </trans-unit>
-      <trans-unit id="s3914cb410fca44d4">
-        <source>Import</source>
-        <target>进口</target>
+      <trans-unit id="s01d32b35baa3b676">
+        <source>Author</source>
+        <target>作者</target>
       </trans-unit>
-      <trans-unit id="sed17285cd25d6389">
-        <source>Directory where package.json is located</source>
-        <target>package.json 所在的目录</target>
+      <trans-unit id="s17597a8bb4810524">
+        <source>License</source>
+        <target>许可证</target>
       </trans-unit>
-      <trans-unit id="sc74e3567875ce255">
-        <source>Both the tag of your widget and the name of your NPM package</source>
-        <target>小部件的标记和 NPM 软件包的名称</target>
+      <trans-unit id="sdc48456f9a27ae02">
+        <source>Generator</source>
+        <target>发电机</target>
       </trans-unit>
-      <trans-unit id="s342b0cabfa672822">
-        <source>Help the user find your widget</source>
-        <target>帮助用户找到您的小工具</target>
+      <trans-unit id="s8d342ecaa9e75b9b">
+        <source>Relationship</source>
+        <target>关系</target>
       </trans-unit>
-      <trans-unit id="sfdeef3dccf409f81">
-        <source>This keyword is required for widgets</source>
-        <target>小部件需要使用该关键字</target>
+      <trans-unit id="sef49aec68fd1dc66">
+        <source>Name</source>
+        <target>名称</target>
       </trans-unit>
-      <trans-unit id="h64cd12550420f6f1">
-        <source>Generate a 
-          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
-          <x id="1" equiv-text="&lt;/code&gt;"/> file
-        </source>
-        <target>生成 
-          <x id="0" equiv-text="&lt;code&gt;"/>许可证 
-          <x id="1" equiv-text="&lt;/code&gt;"/>
-          文件 
-        </target>
+      <trans-unit id="s4ea0f21fc2a338a1">
+        <source>Move up</source>
+        <target>向上移动</target>
       </trans-unit>
-      <trans-unit id="s0dc452999c129e15">
-        <source>Enable live reload</source>
-        <target>启用实时重载</target>
+      <trans-unit id="sb233557012dcb328">
+        <source>Move down</source>
+        <target>下移</target>
       </trans-unit>
-      <trans-unit id="s255857544a9d5ec0">
-        <source>Reset</source>
-        <target>重置</target>
+      <trans-unit id="s3d09398e555ee5f9">
+        <source>Advanced Options</source>
+        <target>高级选项</target>
       </trans-unit>
-      <trans-unit id="s2591806d7b222591">
-        <source>Reset changes</source>
-        <target>重置更改</target>
+      <trans-unit id="s17fb3f4805f4f4b9">
+        <source>Remove field</source>
+        <target>删除字段</target>
       </trans-unit>
-      <trans-unit id="s445b8acb9206db6e">
-        <source>Discard and cancel</source>
-        <target>丢弃和取消</target>
+      <trans-unit id="sa6f8d27bca557059">
+        <source>Move meta/link/style elements up/down into this element</source>
+        <target>将元/链接/样式元素上移/下移到该元素中</target>
       </trans-unit>
-      <trans-unit id="s8b0432eecbd8b034">
-        <source>Update</source>
-        <target>更新</target>
+      <trans-unit id="s6dadeaaee49d6d18">
+        <source>Meta</source>
+        <target>梅塔</target>
+      </trans-unit>
+      <trans-unit id="s252a52330d32b900">
+        <source>Metadata</source>
+        <target>元数据</target>
+      </trans-unit>
+      <trans-unit id="s6827930ef1aeaf99">
+        <source>Base URL</source>
+        <target>基本 URL</target>
+      </trans-unit>
+      <trans-unit id="s1ca22ce85e074da5">
+        <source>Pragma</source>
+        <target>Pragma</target>
+      </trans-unit>
+      <trans-unit id="s064339c229374050">
+        <source>Encoding</source>
+        <target>编码</target>
+      </trans-unit>
+      <trans-unit id="saab875d8cfcfe712">
+        <source>Theme</source>
+        <target>主题</target>
+      </trans-unit>
+      <trans-unit id="sa417644bef21a9aa">
+        <source>Unnamed Theme</source>
+        <target>未命名主题</target>
+      </trans-unit>
+      <trans-unit id="saa33768e03c45fc8">
+        <source>File Size</source>
+        <target>文件大小</target>
+      </trans-unit>
+      <trans-unit id="s3f06e9abb6ebcb79">
+        <source>Characters</source>
+        <target>人物</target>
+      </trans-unit>
+      <trans-unit id="s0f350bc4e538e3ea">
+        <source>Words</source>
+        <target>字数</target>
+      </trans-unit>
+      <trans-unit id="s106b274b5af798e5">
+        <source>Sentences</source>
+        <target>句子</target>
+      </trans-unit>
+      <trans-unit id="s97aa76056a81bd36">
+        <source>Metrics</source>
+        <target>衡量标准</target>
+      </trans-unit>
+      <trans-unit id="s94d2eee44b292567">
+        <source>Toggle advanced options</source>
+        <target>切换高级选项</target>
+      </trans-unit>
+      <trans-unit id="s98977a87d1b93941">
+        <source>Reset information, styles and scripts</source>
+        <target>重置信息、样式和脚本</target>
+      </trans-unit>
+      <trans-unit id="s543906d1db8b2283">
+        <source>Edit </source>
+        <target>编辑 </target>
+      </trans-unit>
+      <trans-unit id="sddc49047f66a64ab">
+        <source>No description provided</source>
+        <target>未提供说明</target>
+      </trans-unit>
+      <trans-unit id="s1641ab440bf4daa4">
+        <source>Update this widget package</source>
+        <target>更新此小部件软件包</target>
+      </trans-unit>
+      <trans-unit id="sbd40f40cbadd38d5">
+        <source>Remove this widget package</source>
+        <target>删除此 widget 软件包</target>
+      </trans-unit>
+      <trans-unit id="s54897f2764b0e4d0">
+        <source>Install this widget package</source>
+        <target>安装该小工具包</target>
+      </trans-unit>
+      <trans-unit id="sd5cf95145e4d89ca">
+        <source>Unpin this snippet</source>
+        <target>取消收藏此片段</target>
+      </trans-unit>
+      <trans-unit id="s69a49786a8009f43">
+        <source>Find packages...</source>
+        <target>查找套餐...</target>
+      </trans-unit>
+      <trans-unit id="s5e2cba97c0d971bd">
+        <source>Reload packages</source>
+        <target>重新加载软件包</target>
+      </trans-unit>
+      <trans-unit id="s30cce87854901922">
+        <source>Preschool</source>
+        <target>学前教育</target>
+      </trans-unit>
+      <trans-unit id="s9485af2e7cd9418f">
+        <source>Primary school</source>
+        <target>小学</target>
+      </trans-unit>
+      <trans-unit id="seaecc8267bad6234">
+        <source>Middle school</source>
+        <target>中学</target>
+      </trans-unit>
+      <trans-unit id="s69311c4e25074fb3">
+        <source>High school</source>
+        <target>高中</target>
+      </trans-unit>
+      <trans-unit id="sab5e7d2a069a2951">
+        <source>Vocational cert.</source>
+        <target>职业证书</target>
+      </trans-unit>
+      <trans-unit id="s1d5c7b28e8b50d6d">
+        <source>Associate deg.</source>
+        <target>副学士学位</target>
+      </trans-unit>
+      <trans-unit id="s7edbe0b213199995">
+        <source>Bachelor's</source>
+        <target>学士</target>
+      </trans-unit>
+      <trans-unit id="sfe6e758ad2603c1d">
+        <source>Master's</source>
+        <target>硕士</target>
+      </trans-unit>
+      <trans-unit id="sb60dd9d23d31ee66">
+        <source>Doctorate</source>
+        <target>博士学位</target>
+      </trans-unit>
+      <trans-unit id="s4ac1ad6ecd6bd810">
+        <source>Misc. ed.</source>
+        <target>Misc. ed.</target>
+      </trans-unit>
+      <trans-unit id="s67c2b60a506a09e4">
+        <source>Secondary ed.</source>
+        <target>中学教育</target>
+      </trans-unit>
+      <trans-unit id="sd5bf67958b08b4cf">
+        <source>Higher ed.</source>
+        <target>高等教育</target>
+      </trans-unit>
+      <trans-unit id="s1d19244f549ec535">
+        <source>Education</source>
+        <target>教育</target>
+      </trans-unit>
+      <trans-unit id="sbe3c60c65f129daa">
+        <source>Humanities</source>
+        <target>人文科学</target>
+      </trans-unit>
+      <trans-unit id="s5e53415a6d5719ad">
+        <source>Social sciences</source>
+        <target>社会科学</target>
+      </trans-unit>
+      <trans-unit id="s233ae776268cd44b">
+        <source>Business</source>
+        <target>商业</target>
+      </trans-unit>
+      <trans-unit id="s736904f276fbd441">
+        <source>Natural sciences</source>
+        <target>自然科学</target>
+      </trans-unit>
+      <trans-unit id="s41322d19c928c603">
+        <source>ICT</source>
+        <target>信息和通信技术</target>
+      </trans-unit>
+      <trans-unit id="s5c2a1a52c0389c30">
+        <source>Engineering</source>
+        <target>工程学</target>
+      </trans-unit>
+      <trans-unit id="s5e9e8e4d21bafedc">
+        <source>Food production</source>
+        <target>食品生产</target>
+      </trans-unit>
+      <trans-unit id="sbaf0a7c417e388af">
+        <source>Health</source>
+        <target>健康</target>
+      </trans-unit>
+      <trans-unit id="sf55d634dcc743595">
+        <source>Services</source>
+        <target>服务</target>
+      </trans-unit>
+      <trans-unit id="s6fb3053e7244d326">
+        <source>Other fields</source>
+        <target>其他领域</target>
+      </trans-unit>
+      <trans-unit id="sa50d3c35533f1d99">
+        <source>All fields</source>
+        <target>所有领域</target>
+      </trans-unit>
+      <trans-unit id="s5c1ecf88259b79f9">
+        <source>Presentation</source>
+        <target>介绍</target>
+      </trans-unit>
+      <trans-unit id="s5d87c1e588f48d90">
+        <source>Practice</source>
+        <target>实践</target>
+      </trans-unit>
+      <trans-unit id="s7ede1c55e35ce9d6">
+        <source>Simulation</source>
+        <target>模拟</target>
+      </trans-unit>
+      <trans-unit id="s886c5db2a5579873">
+        <source>Concept</source>
+        <target>概念</target>
+      </trans-unit>
+      <trans-unit id="s1eaccbf2d6af8ab5">
+        <source>Information</source>
+        <target>信息</target>
+      </trans-unit>
+      <trans-unit id="s63e03c70f67ebf9c">
+        <source>Context</source>
+        <target>背景</target>
+      </trans-unit>
+      <trans-unit id="s83c15613b6f6f3c8">
+        <source>Online only</source>
+        <target>仅限在线</target>
+      </trans-unit>
+      <trans-unit id="s18d5c44aae3dc82a">
+        <source>Online when editing</source>
+        <target>编辑时在线</target>
+      </trans-unit>
+      <trans-unit id="sd05a155fe09c2866">
+        <source>Online when using</source>
+        <target>在线使用时</target>
+      </trans-unit>
+      <trans-unit id="s0de0febab8a4beaf">
+        <source>Error reading this package</source>
+        <target>读取此软件包时出错</target>
+      </trans-unit>
+      <trans-unit id="scdf536b65be39ec5">
+        <source> Create/import</source>
+        <target>创建/导入</target>
+      </trans-unit>
+      <trans-unit id="sf2514d5dc78b1654">
+        <source>Insert widget</source>
+        <target>插入小部件</target>
       </trans-unit>
       <trans-unit id="sbc5bb5bb74d141b9">
         <source>Uninstall</source>
@@ -956,9 +2173,37 @@
         <source>Install</source>
         <target>安装</target>
       </trans-unit>
-      <trans-unit id="se9b1fec72ffd8f48">
-        <source>Local</source>
-        <target>当地</target>
+      <trans-unit id="s8b0432eecbd8b034">
+        <source>Update</source>
+        <target>更新</target>
+      </trans-unit>
+      <trans-unit id="s1857db526dc4dcdd">
+        <source>Create package</source>
+        <target>创建软件包</target>
+      </trans-unit>
+      <trans-unit id="sd2addf69477cd4b4">
+        <source>Import package</source>
+        <target>导入软件包</target>
+      </trans-unit>
+      <trans-unit id="s7aaf0c06e69600f1">
+        <source>Error with </source>
+        <target>错误与 </target>
+      </trans-unit>
+      <trans-unit id="s00065e45db8c0441">
+        <source>See developer tools for more details</source>
+        <target>详情请查看开发人员工具</target>
+      </trans-unit>
+      <trans-unit id="s02106cc2ef0e7578">
+        <source>New pin...</source>
+        <target>新别针...</target>
+      </trans-unit>
+      <trans-unit id="sb85774dc5d18ff0f">
+        <source>Confirm</source>
+        <target>确认</target>
+      </trans-unit>
+      <trans-unit id="s2ceb11be2290bb1b">
+        <source>Cancel</source>
+        <target>取消</target>
       </trans-unit>
       <trans-unit id="keyCommand">
         <source>⌘ Command/Win</source>
@@ -1136,9 +2381,25 @@
         <source>-unchanged-</source>
         <target>-unchanged-</target>
       </trans-unit>
-      <trans-unit id="s61eacb19db252f5e">
-        <source>URL</source>
-        <target>网址</target>
+      <trans-unit id="s7cb4e55c59663b1c">
+        <source>Company</source>
+        <target>公司名称</target>
+      </trans-unit>
+      <trans-unit id="s5da52af9b083c29a">
+        <source>Model</source>
+        <target>模型</target>
+      </trans-unit>
+      <trans-unit id="s9781a5bb3fcb26a3">
+        <source>Select a company first</source>
+        <target>首先选择一家公司</target>
+      </trans-unit>
+      <trans-unit id="s15d0c0657c1ee08c">
+        <source>API Key</source>
+        <target>API 密钥</target>
+      </trans-unit>
+      <trans-unit id="s268ecd1cef45a9a8">
+        <source>Are you sure?</source>
+        <target>你确定吗？</target>
       </trans-unit>
       <trans-unit id="sd3f402df8619ddcd">
         <source>This information about you is automatically added to new documents. You can change this for each document in the metadata editor.</source>
@@ -1152,13 +2413,13 @@
         <source>Package registry accounts are intended for developers and allow you to configure one or more registries</source>
         <target>软件包注册表账户面向开发人员，允许您配置一个或多个注册表</target>
       </trans-unit>
+      <trans-unit id="s429bd646f1cf8bc6">
+        <source>Grammar LLM accounts allow you to use the Grammar LLM API to correct grammar in text.</source>
+        <target>语法 LLM 账户允许您使用语法 LLM API 来纠正文本中的语法。</target>
+      </trans-unit>
       <trans-unit id="s669b18c6d2d9c95b">
         <source>None</source>
         <target>无</target>
-      </trans-unit>
-      <trans-unit id="sef49aec68fd1dc66">
-        <source>Name</source>
-        <target>名称</target>
       </trans-unit>
       <trans-unit id="s7cfe12cd14df9950">
         <source>Sign out</source>
@@ -1175,14 +2436,6 @@
       <trans-unit id="sb85b1e36579852a6">
         <source>Invalid email or password</source>
         <target>电子邮件或密码无效</target>
-      </trans-unit>
-      <trans-unit id="s0bdca49248ba4820">
-        <source>Shortcuts</source>
-        <target>捷径</target>
-      </trans-unit>
-      <trans-unit id="se48bd9e6c2a3109d">
-        <source>Accounts</source>
-        <target>账户</target>
       </trans-unit>
       <trans-unit id="s6988ab5d47593a26">
         <source>You have the latest version of WebWriter.</source>
@@ -1203,6 +2456,14 @@
       <trans-unit id="sf1e79171c4856543">
         <source>Are you sure? This action can't be reversed, all your settings will be deleted and reset.</source>
         <target>你确定吗？此操作无法逆转，您的所有设置都将被删除和重置。</target>
+      </trans-unit>
+      <trans-unit id="s0bdca49248ba4820">
+        <source>Shortcuts</source>
+        <target>捷径</target>
+      </trans-unit>
+      <trans-unit id="se48bd9e6c2a3109d">
+        <source>Accounts</source>
+        <target>账户</target>
       </trans-unit>
       <trans-unit id="s78789724e789221c">
         <source>Size</source>
@@ -1248,6 +2509,10 @@
         <source>Fixed</source>
         <target>固定式</target>
       </trans-unit>
+      <trans-unit id="se9b1fec72ffd8f48">
+        <source>Local</source>
+        <target>当地</target>
+      </trans-unit>
       <trans-unit id="sa7698b3d20a6d1ec">
         <source>Scroll</source>
         <target>卷轴</target>
@@ -1259,504 +2524,6 @@
       <trans-unit id="s2492f5fb1b05b45e">
         <source>Text</source>
         <target>文本</target>
-      </trans-unit>
-      <trans-unit id="s29acfd2778e8c377">
-        <source>Hide advanced text formatting</source>
-        <target>隐藏高级文本格式</target>
-      </trans-unit>
-      <trans-unit id="s1a1acc902e6668e0">
-        <source>Show advanced text formatting</source>
-        <target>显示高级文本格式</target>
-      </trans-unit>
-      <trans-unit id="s4fd2e638aabb0bb3">
-        <source>WebWriter supports embedding many different sources. Simply paste a link to content from:</source>
-        <target>WebWriter 支持嵌入多种不同来源的内容。只需粘贴以下内容的链接即可：</target>
-      </trans-unit>
-      <trans-unit id="sa79167651dce1e80">
-        <source>Alternate text</source>
-        <target>备用文本</target>
-      </trans-unit>
-      <trans-unit id="sa8bbe0197d31b423">
-        <source>Short description</source>
-        <target>简要说明</target>
-      </trans-unit>
-      <trans-unit id="seccd05955adb76bc">
-        <source>Poster</source>
-        <target>海报</target>
-      </trans-unit>
-      <trans-unit id="s42e470ef1d707a28">
-        <source>Autoplay</source>
-        <target>自动播放</target>
-      </trans-unit>
-      <trans-unit id="s83cd32b685ccc9b7">
-        <source>Controls</source>
-        <target>控制装置</target>
-      </trans-unit>
-      <trans-unit id="s4efee5b48a4593cb">
-        <source>Loop</source>
-        <target>循环</target>
-      </trans-unit>
-      <trans-unit id="se0f67eae944f8f94">
-        <source>Mute</source>
-        <target>静音</target>
-      </trans-unit>
-      <trans-unit id="se036b53f145441cd">
-        <source>Mixed Content</source>
-        <target>混合内容</target>
-      </trans-unit>
-      <trans-unit id="sddc49047f66a64ab">
-        <source>No description provided</source>
-        <target>未提供说明</target>
-      </trans-unit>
-      <trans-unit id="s1641ab440bf4daa4">
-        <source>Update this widget package</source>
-        <target>更新此小部件软件包</target>
-      </trans-unit>
-      <trans-unit id="sbd40f40cbadd38d5">
-        <source>Remove this widget package</source>
-        <target>删除此 widget 软件包</target>
-      </trans-unit>
-      <trans-unit id="s54897f2764b0e4d0">
-        <source>Install this widget package</source>
-        <target>安装该小工具包</target>
-      </trans-unit>
-      <trans-unit id="scdf536b65be39ec5">
-        <source> Create/import</source>
-        <target>创建/导入</target>
-      </trans-unit>
-      <trans-unit id="sf2514d5dc78b1654">
-        <source>Insert widget</source>
-        <target>插入小部件</target>
-      </trans-unit>
-      <trans-unit id="s1857db526dc4dcdd">
-        <source>Create package</source>
-        <target>创建软件包</target>
-      </trans-unit>
-      <trans-unit id="sd2addf69477cd4b4">
-        <source>Import package</source>
-        <target>导入软件包</target>
-      </trans-unit>
-      <trans-unit id="s00065e45db8c0441">
-        <source>See developer tools for more details</source>
-        <target>更多详情，请参阅开发人员工具</target>
-      </trans-unit>
-      <trans-unit id="s812cbda653daaeba">
-        <source>This feature is not implemented yet</source>
-        <target>此功能尚未实施</target>
-      </trans-unit>
-      <trans-unit id="s35aeaff1425bca9e">
-        <source>WebWriter does not support media of type </source>
-        <target>WebWriter 不支持 </target>
-      </trans-unit>
-      <trans-unit id="s99f110d27e30b289">
-        <source>Title</source>
-        <target>标题</target>
-      </trans-unit>
-      <trans-unit id="sef73fe18e351eb35">
-        <source>Keywords</source>
-        <target>关键词</target>
-      </trans-unit>
-      <trans-unit id="s63d894b1ddb06289">
-        <source>Description</source>
-        <target>说明</target>
-      </trans-unit>
-      <trans-unit id="s01d32b35baa3b676">
-        <source>Author</source>
-        <target>作者</target>
-      </trans-unit>
-      <trans-unit id="s17597a8bb4810524">
-        <source>License</source>
-        <target>许可证</target>
-      </trans-unit>
-      <trans-unit id="sdc48456f9a27ae02">
-        <source>Generator</source>
-        <target>发电机</target>
-      </trans-unit>
-      <trans-unit id="s8d342ecaa9e75b9b">
-        <source>Relationship</source>
-        <target>关系</target>
-      </trans-unit>
-      <trans-unit id="s4ea0f21fc2a338a1">
-        <source>Move up</source>
-        <target>向上移动</target>
-      </trans-unit>
-      <trans-unit id="sb233557012dcb328">
-        <source>Move down</source>
-        <target>下移</target>
-      </trans-unit>
-      <trans-unit id="s3d09398e555ee5f9">
-        <source>Advanced Options</source>
-        <target>高级选项</target>
-      </trans-unit>
-      <trans-unit id="s17fb3f4805f4f4b9">
-        <source>Remove field</source>
-        <target>删除字段</target>
-      </trans-unit>
-      <trans-unit id="sa6f8d27bca557059">
-        <source>Move meta/link/style elements up/down into this element</source>
-        <target>将元/链接/样式元素上移/下移到该元素中</target>
-      </trans-unit>
-      <trans-unit id="s6dadeaaee49d6d18">
-        <source>Meta</source>
-        <target>梅塔</target>
-      </trans-unit>
-      <trans-unit id="s252a52330d32b900">
-        <source>Metadata</source>
-        <target>元数据</target>
-      </trans-unit>
-      <trans-unit id="s6827930ef1aeaf99">
-        <source>Base URL</source>
-        <target>基本 URL</target>
-      </trans-unit>
-      <trans-unit id="s1ca22ce85e074da5">
-        <source>Pragma</source>
-        <target>Pragma</target>
-      </trans-unit>
-      <trans-unit id="s064339c229374050">
-        <source>Encoding</source>
-        <target>编码</target>
-      </trans-unit>
-      <trans-unit id="saab875d8cfcfe712">
-        <source>Theme</source>
-        <target>主题</target>
-      </trans-unit>
-      <trans-unit id="sa417644bef21a9aa">
-        <source>Unnamed Theme</source>
-        <target>未命名主题</target>
-      </trans-unit>
-      <trans-unit id="saa33768e03c45fc8">
-        <source>File Size</source>
-        <target>文件大小</target>
-      </trans-unit>
-      <trans-unit id="s3f06e9abb6ebcb79">
-        <source>Characters</source>
-        <target>人物</target>
-      </trans-unit>
-      <trans-unit id="s0f350bc4e538e3ea">
-        <source>Words</source>
-        <target>字数</target>
-      </trans-unit>
-      <trans-unit id="s106b274b5af798e5">
-        <source>Sentences</source>
-        <target>句子</target>
-      </trans-unit>
-      <trans-unit id="s97aa76056a81bd36">
-        <source>Metrics</source>
-        <target>衡量标准</target>
-      </trans-unit>
-      <trans-unit id="s94d2eee44b292567">
-        <source>Toggle advanced options</source>
-        <target>切换高级选项</target>
-      </trans-unit>
-      <trans-unit id="s98977a87d1b93941">
-        <source>Reset information, styles and scripts</source>
-        <target>重置信息、样式和脚本</target>
-      </trans-unit>
-      <trans-unit id="s543906d1db8b2283">
-        <source>Edit </source>
-        <target>编辑 </target>
-      </trans-unit>
-      <trans-unit id="sbba865d4b437944f">
-        <source>Attribute</source>
-        <target>属性</target>
-      </trans-unit>
-      <trans-unit id="s16b9446e3a70e1f4">
-        <source>Attributes</source>
-        <target>属性</target>
-      </trans-unit>
-      <trans-unit id="sf471ec2496f904cc">
-        <source>Discard changes</source>
-        <target>放弃更改</target>
-      </trans-unit>
-      <trans-unit id="s418f2020fe996832">
-        <source>Confirm changes</source>
-        <target>确认更改</target>
-      </trans-unit>
-      <trans-unit id="sba509fd8ed61d1d5">
-        <source>Unsaved File</source>
-        <target>未保存的文件</target>
-      </trans-unit>
-      <trans-unit id="sef00c258bc1ecf1e">
-        <source>This explorable has unsaved changes.</source>
-        <target>该可探索项目有未保存的更改。</target>
-      </trans-unit>
-      <trans-unit id="s731678e227a20559">
-        <source>This Device</source>
-        <target>该设备</target>
-      </trans-unit>
-      <trans-unit id="s71940c32987f675f">
-        <source>WebWriter Cloud</source>
-        <target>WebWriter 云</target>
-      </trans-unit>
-      <trans-unit id="s99a990f3841ad283">
-        <source>Files of </source>
-        <target>文件 </target>
-      </trans-unit>
-      <trans-unit id="s3eb6d1e6e79ed7c4">
-        <source>No documents found</source>
-        <target>未找到文件</target>
-      </trans-unit>
-      <trans-unit id="s4e2562fe3990e621">
-        <source>Error connecting</source>
-        <target>连接错误</target>
-      </trans-unit>
-      <trans-unit id="sf52d840949a980d1">
-        <source>
-          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
-        </source>
-        <target>
-          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
-          将被永久删除。你确定吗？ 
-        </target>
-      </trans-unit>
-      <trans-unit id="s9b7cd8860c8fc922">
-        <source>
-          <x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
-        </source>
-        <target>
-          <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
-          将被覆盖。你确定吗？ 
-        </target>
-      </trans-unit>
-      <trans-unit id="sfdb1e4d90981a535">
-        <source>Share this document</source>
-        <target>分享本文件</target>
-      </trans-unit>
-      <trans-unit id="s1c3fc313a9184670">
-        <source>Public Link</source>
-        <target>公共链接</target>
-      </trans-unit>
-      <trans-unit id="sc28864200d2a3799">
-        <source>Copy QR Code as image</source>
-        <target>复制 QR 码为图片</target>
-      </trans-unit>
-      <trans-unit id="sfc815c9078bba30a">
-        <source>Download QR Code as image</source>
-        <target>将 QR 码下载为图像</target>
-      </trans-unit>
-      <trans-unit id="s3a5ca02f282d247e">
-        <source>Share...</source>
-        <target>分享...</target>
-      </trans-unit>
-      <trans-unit id="sda2d76b976502a8d">
-        <source>Open...</source>
-        <target>打开...</target>
-      </trans-unit>
-      <trans-unit id="sb26035b596566abf">
-        <source>Unnamed</source>
-        <target>未命名</target>
-      </trans-unit>
-      <trans-unit id="s4cb38675a21b2c98">
-        <source>Unsupported property type '${desc.type}' (processing as JSON)</source>
-        <target>不支持属性类型"${desc.type}"（以 JSON 格式处理）</target>
-      </trans-unit>
-      <trans-unit id="sa00df4e39c72d3b4">
-        <source>
-          <x id="0" equiv-text="${desc.widget}"/> is not supported
-        </source>
-        <target>
-          <x id="0" equiv-text="${desc.widget}"/> 不支持 
-        </target>
-      </trans-unit>
-      <trans-unit id="sf65df67a03bebe4b">
-        <source>Required for this widget</source>
-        <target>本小部件必填</target>
-      </trans-unit>
-      <trans-unit id="s8a9eb438abac7c6a">
-        <source>Labels</source>
-        <target>标签</target>
-      </trans-unit>
-      <trans-unit id="sdef34fe08bb28b09">
-        <source>Chinese (Simplified)</source>
-        <target>简体中文</target>
-      </trans-unit>
-      <trans-unit id="sf1868dc19e3917bb">
-        <source>Spanish</source>
-        <target>西班牙语</target>
-      </trans-unit>
-      <trans-unit id="s75a27f43413e02c5">
-        <source>French</source>
-        <target>法语</target>
-      </trans-unit>
-      <trans-unit id="scf932840a69dbb7c">
-        <source>Portuguese</source>
-        <target>葡萄牙语</target>
-      </trans-unit>
-      <trans-unit id="sa30c12014e955946">
-        <source>Russian</source>
-        <target>俄罗斯</target>
-      </trans-unit>
-      <trans-unit id="seb8982ae8c3cdcc5">
-        <source>Indonesian</source>
-        <target>印尼语</target>
-      </trans-unit>
-      <trans-unit id="sdd35b688281b6dea">
-        <source>Japanese</source>
-        <target>日语</target>
-      </trans-unit>
-      <trans-unit id="s9d2d00982edafabb">
-        <source>Turkish</source>
-        <target>土耳其语</target>
-      </trans-unit>
-      <trans-unit id="s94d61907ee22a8c1">
-        <source>Korean</source>
-        <target>韩语</target>
-      </trans-unit>
-      <trans-unit id="sd48cc52117f4d68b">
-        <source>Italian</source>
-        <target>意大利语</target>
-      </trans-unit>
-      <trans-unit id="sffa395f64ec6ac36">
-        <source>Bulgarian</source>
-        <target>保加利亚语</target>
-      </trans-unit>
-      <trans-unit id="sc94e314312a8900c">
-        <source>Czech</source>
-        <target>捷克语</target>
-      </trans-unit>
-      <trans-unit id="sd9c21e5f60d6bdd8">
-        <source>Danish</source>
-        <target>丹麦语</target>
-      </trans-unit>
-      <trans-unit id="scf00d48fd5953a03">
-        <source>Greek</source>
-        <target>希腊文</target>
-      </trans-unit>
-      <trans-unit id="sa6607436f60ccc1a">
-        <source>Estonian</source>
-        <target>爱沙尼亚语</target>
-      </trans-unit>
-      <trans-unit id="sc98b103772de63f4">
-        <source>Finnish</source>
-        <target>芬兰语</target>
-      </trans-unit>
-      <trans-unit id="sda9254d1f1228e1a">
-        <source>Hungarian</source>
-        <target>匈牙利语</target>
-      </trans-unit>
-      <trans-unit id="sb2dc787b0983ebc6">
-        <source>Lithuanian</source>
-        <target>立陶宛语</target>
-      </trans-unit>
-      <trans-unit id="sd3dcb76f7b28adb8">
-        <source>Latvian</source>
-        <target>拉脱维亚语</target>
-      </trans-unit>
-      <trans-unit id="s5941292bb77281ab">
-        <source>Norwegian Bokmål</source>
-        <target>挪威语</target>
-      </trans-unit>
-      <trans-unit id="s95d56e58f816d211">
-        <source>Dutch</source>
-        <target>荷兰语</target>
-      </trans-unit>
-      <trans-unit id="s03f49e598ffb11cc">
-        <source>Polish</source>
-        <target>波兰语</target>
-      </trans-unit>
-      <trans-unit id="sc1aa1f6051b7102a">
-        <source>Romanian</source>
-        <target>罗马尼亚语</target>
-      </trans-unit>
-      <trans-unit id="se0cda6b80a1bb50f">
-        <source>Slovak</source>
-        <target>斯</target>
-      </trans-unit>
-      <trans-unit id="se96d43a515b8451c">
-        <source>Slovenian</source>
-        <target>斯洛文尼亚语</target>
-      </trans-unit>
-      <trans-unit id="sae185e6af80ec81e">
-        <source>Swedish</source>
-        <target>瑞典语</target>
-      </trans-unit>
-      <trans-unit id="sc4ee3e4ee994dafd">
-        <source>Ukrainian</source>
-        <target>乌克兰</target>
-      </trans-unit>
-      <trans-unit id="s082869038c117fe5">
-        <source>Portuguese (Brazil)</source>
-        <target>葡萄牙语（巴西）</target>
-      </trans-unit>
-      <trans-unit id="s55905c735052d295">
-        <source>Thematic Break</source>
-        <target>专题休息</target>
-      </trans-unit>
-      <trans-unit id="s936aa0b239679585">
-        <source>Insert a thematic break (usually displayed as a horizontal line)</source>
-        <target>插入主题分隔线（通常显示为一条水平线）</target>
-      </trans-unit>
-      <trans-unit id="s4f26e7cb7c0a8318">
-        <source>Vector Drawing</source>
-        <target>矢量绘图</target>
-      </trans-unit>
-      <trans-unit id="sfbbab09dbe553571">
-        <source>Insert a vector drawing (SVG)</source>
-        <target>插入矢量图 (SVG)</target>
-      </trans-unit>
-      <trans-unit id="sa589e1df65dde0ec">
-        <source>Set the size, padding, and margins of the selected elements</source>
-        <target>设置所选元素的大小、衬垫和边距</target>
-      </trans-unit>
-      <trans-unit id="s3f1e7a3f2b283d3b">
-        <source>Margin</source>
-        <target>保证金</target>
-      </trans-unit>
-      <trans-unit id="s9370dc6afa716b57">
-        <source>Border</source>
-        <target>边境</target>
-      </trans-unit>
-      <trans-unit id="s7d8103f6f06f83d6">
-        <source>Padding</source>
-        <target>衬垫</target>
-      </trans-unit>
-      <trans-unit id="s71a0549fd71219c9">
-        <source>Show unstable packages</source>
-        <target>显示不稳定软件包</target>
-      </trans-unit>
-      <trans-unit id="s0de0febab8a4beaf">
-        <source>Error reading this package</source>
-        <target>读取此软件包时出错</target>
-      </trans-unit>
-      <trans-unit id="s69a49786a8009f43">
-        <source>Find packages...</source>
-        <target>查找套餐...</target>
-      </trans-unit>
-      <trans-unit id="s5e2cba97c0d971bd">
-        <source>Reload packages</source>
-        <target>重新加载软件包</target>
-      </trans-unit>
-      <trans-unit id="s7aaf0c06e69600f1">
-        <source>Error with </source>
-        <target>错误与 </target>
-      </trans-unit>
-      <trans-unit id="sd5cf95145e4d89ca">
-        <source>Unpin this snippet</source>
-        <target>取消收藏此片段</target>
-      </trans-unit>
-      <trans-unit id="s02106cc2ef0e7578">
-        <source>New pin...</source>
-        <target>新别针...</target>
-      </trans-unit>
-      <trans-unit id="s7cb4e55c59663b1c">
-        <source>Company</source>
-        <target>公司名称</target>
-      </trans-unit>
-      <trans-unit id="s5da52af9b083c29a">
-        <source>Model</source>
-        <target>模型</target>
-      </trans-unit>
-      <trans-unit id="s9781a5bb3fcb26a3">
-        <source>Select a company first</source>
-        <target>首先选择一家公司</target>
-      </trans-unit>
-      <trans-unit id="s15d0c0657c1ee08c">
-        <source>API Key</source>
-        <target>API 密钥</target>
-      </trans-unit>
-      <trans-unit id="s429bd646f1cf8bc6">
-        <source>Grammar LLM accounts allow you to use the Grammar LLM API to correct grammar in text.</source>
-        <target>语法 LLM 账户允许您使用语法 LLM API 来纠正文本中的语法。</target>
       </trans-unit>
       <trans-unit id="s1351209ef74ee729">
         <source>Span all columns</source>
@@ -1816,7 +2583,7 @@
       </trans-unit>
       <trans-unit id="s06743b24499f0035">
         <source>Anchor center</source>
-        <target>锚定中心</target>
+        <target>锚固中心</target>
       </trans-unit>
       <trans-unit id="s1245e2cb9f20197e">
         <source>Align</source>
@@ -1982,6 +2749,18 @@
         <source>Overflow (y)</source>
         <target>溢出 (y)</target>
       </trans-unit>
+      <trans-unit id="s3f1e7a3f2b283d3b">
+        <source>Margin</source>
+        <target>保证金</target>
+      </trans-unit>
+      <trans-unit id="s9370dc6afa716b57">
+        <source>Border</source>
+        <target>边境</target>
+      </trans-unit>
+      <trans-unit id="s7d8103f6f06f83d6">
+        <source>Padding</source>
+        <target>衬垫</target>
+      </trans-unit>
       <trans-unit id="s5dc77784260a7236">
         <source>auto</source>
         <target>汽车</target>
@@ -1989,6 +2768,10 @@
       <trans-unit id="sf21fb4f4b9e8911f">
         <source>Width</source>
         <target>宽度</target>
+      </trans-unit>
+      <trans-unit id="sffdadf0a576fd802">
+        <source>Height</source>
+        <target>高度</target>
       </trans-unit>
       <trans-unit id="s1177237a3e0e548c">
         <source>Minimum (x)</source>
@@ -2210,6 +2993,106 @@
         <source>Bottom left (y)</source>
         <target>左下方 (y)</target>
       </trans-unit>
+      <trans-unit id="sdc12d4d35420eeb7">
+        <source>Comments</source>
+        <target>评论</target>
+      </trans-unit>
+      <trans-unit id="s29acfd2778e8c377">
+        <source>Hide advanced text formatting</source>
+        <target>隐藏高级文本格式</target>
+      </trans-unit>
+      <trans-unit id="s1a1acc902e6668e0">
+        <source>Show advanced text formatting</source>
+        <target>显示高级文本格式</target>
+      </trans-unit>
+      <trans-unit id="s61eacb19db252f5e">
+        <source>URL</source>
+        <target>网址</target>
+      </trans-unit>
+      <trans-unit id="s4fd2e638aabb0bb3">
+        <source>WebWriter supports embedding many different sources. Simply paste a link to content from:</source>
+        <target>WebWriter 支持嵌入多种不同来源的内容。只需粘贴以下内容的链接即可：</target>
+      </trans-unit>
+      <trans-unit id="sa79167651dce1e80">
+        <source>Alternate text</source>
+        <target>备用文本</target>
+      </trans-unit>
+      <trans-unit id="sa8bbe0197d31b423">
+        <source>Short description</source>
+        <target>简要说明</target>
+      </trans-unit>
+      <trans-unit id="seccd05955adb76bc">
+        <source>Poster</source>
+        <target>海报</target>
+      </trans-unit>
+      <trans-unit id="s42e470ef1d707a28">
+        <source>Autoplay</source>
+        <target>自动播放</target>
+      </trans-unit>
+      <trans-unit id="s83cd32b685ccc9b7">
+        <source>Controls</source>
+        <target>控制装置</target>
+      </trans-unit>
+      <trans-unit id="s4efee5b48a4593cb">
+        <source>Loop</source>
+        <target>循环</target>
+      </trans-unit>
+      <trans-unit id="se0f67eae944f8f94">
+        <source>Mute</source>
+        <target>静音</target>
+      </trans-unit>
+      <trans-unit id="s74540c1b595a229c">
+        <source>TeX Formula</source>
+        <target>TeX 公式</target>
+      </trans-unit>
+      <trans-unit id="s65ac276544ba33cd">
+        <source>SVG file</source>
+        <target>SVG 文件</target>
+      </trans-unit>
+      <trans-unit id="sf22a3737146ec910">
+        <source>WebWriter can embed SVG directly in the document.</source>
+        <target>WebWriter 可以直接在文档中嵌入 SVG。</target>
+      </trans-unit>
+      <trans-unit id="se036b53f145441cd">
+        <source>Mixed Content</source>
+        <target>混合内容</target>
+      </trans-unit>
+      <trans-unit id="sc221faca1ecb4aee">
+        <source>Anonymous</source>
+        <target>匿名</target>
+      </trans-unit>
+      <trans-unit id="s0b7ae9543c001867">
+        <source>Reply</source>
+        <target>答复</target>
+      </trans-unit>
+      <trans-unit id="s52fb1524cb25d7ab">
+        <source>New thread</source>
+        <target>新主题</target>
+      </trans-unit>
+      <trans-unit id="sb7c77d0415de05cf">
+        <source>Run tests</source>
+        <target>运行测试</target>
+      </trans-unit>
+      <trans-unit id="s4dcb9315f6527f9c">
+        <source>Run on reload</source>
+        <target>重新加载时运行</target>
+      </trans-unit>
+      <trans-unit id="sb430f5b4824de0d3">
+        <source>Choose a layout</source>
+        <target>选择布局</target>
+      </trans-unit>
+      <trans-unit id="seaf97719986faf4f">
+        <source>Gap</source>
+        <target>差距</target>
+      </trans-unit>
+      <trans-unit id="sab55faae8e165407">
+        <source>Padding&lt;br&gt; like gap</source>
+        <target>填充&lt;br&gt; 如间隙</target>
+      </trans-unit>
+      <trans-unit id="se58f06c2b0583ff7">
+        <source>Pick coordinates</source>
+        <target>选择坐标</target>
+      </trans-unit>
       <trans-unit id="sdf9bc5d9b7f3e3de">
         <source>Alignment</source>
         <target>对齐</target>
@@ -2257,6 +3140,10 @@
       <trans-unit id="s063fa5a0a4903bf4">
         <source>Sideways, left-to-right</source>
         <target>侧向，从左到右</target>
+      </trans-unit>
+      <trans-unit id="sf190149f9d8bbb2a">
+        <source>Writing mode</source>
+        <target>书写模式</target>
       </trans-unit>
       <trans-unit id="se96fd76ba1b2975a">
         <source>Central</source>
@@ -2384,7 +3271,7 @@
       </trans-unit>
       <trans-unit id="s91093e0b087911ba">
         <source>Emphasis position</source>
-        <target>强调位置</target>
+        <target>重点位置</target>
       </trans-unit>
       <trans-unit id="sec02109a0dd2a6c8">
         <source>Emphasis color</source>
@@ -2796,7 +3683,7 @@
       </trans-unit>
       <trans-unit id="s828b1ecea8715884">
         <source>Pan (left)</source>
-        <target>平移（左）</target>
+        <target>平底锅（左）</target>
       </trans-unit>
       <trans-unit id="s40e3826b7f74a3b5">
         <source>Pan (right)</source>
@@ -3140,7 +4027,7 @@
       </trans-unit>
       <trans-unit id="s0befccf152b6c0a9">
         <source>Orient from metadata</source>
-        <target>从元数据中定向</target>
+        <target>从元数据定向</target>
       </trans-unit>
       <trans-unit id="sea52df2b70a5c10d">
         <source>Ruby</source>
@@ -3177,10 +4064,6 @@
       <trans-unit id="sfcebd18506f1e535">
         <source>Flow</source>
         <target>流量</target>
-      </trans-unit>
-      <trans-unit id="sc6415b50ff928294">
-        <source>List item</source>
-        <target>列表项目</target>
       </trans-unit>
       <trans-unit id="sf0ca10f343249063">
         <source>Contents</source>
@@ -3246,12 +4129,73 @@
         <source>No specific styles available</source>
         <target>无特定款式</target>
       </trans-unit>
+      <trans-unit id="s2b8f50c64be440f7">
+        <source>Select <x id="0" equiv-text="${this.mediaType}"/>...</source>
+        <target>选择 
+          <x id="0" equiv-text="${this.mediaType}"/>...
+        </target>
+      </trans-unit>
+      <trans-unit id="s739544d0c858c633">
+        <source>Or drop <x id="0" equiv-text="${this.mediaType}"/> here</source>
+        <target>或点击 
+          <x id="0" equiv-text="${this.mediaType}"/> 这里
+        </target>
+      </trans-unit>
+      <trans-unit id="s851a7deea5984646">
+        <source>License as Creative Commons OER?</source>
+        <target>以知识共享开放式教育资源的形式授权？</target>
+      </trans-unit>
+      <trans-unit id="s2540844a4bc4d9ba">
+        <source>Require attribution?</source>
+        <target>要求署名？</target>
+      </trans-unit>
+      <trans-unit id="sb0a974028c99ca6d">
+        <source>Allow adaptations?</source>
+        <target>允许调整？</target>
+      </trans-unit>
+      <trans-unit id="s77e594ddcc10c774">
+        <source>Allow commercial use?</source>
+        <target>允许商业使用？</target>
+      </trans-unit>
+      <trans-unit id="sa645d315510dc09e">
+        <source>Choose path from disk</source>
+        <target>从磁盘选择路径</target>
+      </trans-unit>
+      <trans-unit id="seabae79729c4b2ad">
+        <source>Toggle email</source>
+        <target>切换电子邮件</target>
+      </trans-unit>
+      <trans-unit id="s34dcda3b0f9d5a98">
+        <source>Toggle url</source>
+        <target>切换网址</target>
+      </trans-unit>
+      <trans-unit id="sc3cfee84dbbf36ae">
+        <source>Local File</source>
+        <target>本地文件</target>
+      </trans-unit>
+      <trans-unit id="s9896529e5cb20558">
+        <source>External File</source>
+        <target>外部文件</target>
+      </trans-unit>
+      <trans-unit id="s7e0b179d4d1414eb">
+        <source>Enter link</source>
+        <target>输入链接</target>
+      </trans-unit>
+      <trans-unit id="sbe4a7c8f231739b3">
+        <source>or paste/drop/pick file</source>
+        <target>或粘贴/删除/选取文件</target>
+      </trans-unit>
+      <trans-unit id="s8a4ff2bd9c13498c">
+        <source>Record</source>
+        <target>记录</target>
+      </trans-unit>
+      <trans-unit id="s1a5230a71d9285c1">
+        <source>Capture</source>
+        <target>捕获</target>
+      </trans-unit>
       <trans-unit id="sb71941f552f3504d">
         <source>Set special value</source>
         <target>设置特殊值</target>
-      </trans-unit>
-      <trans-unit id="scbf29ce484222325">
-        <source></source>
       </trans-unit>
       <trans-unit id="sfb68cae41d749423">
         <source>Initial</source>
@@ -3277,1081 +4221,72 @@
         <source>Reset to default</source>
         <target>重置为默认值</target>
       </trans-unit>
+      <trans-unit id="sbba865d4b437944f">
+        <source>Attribute</source>
+        <target>属性</target>
+      </trans-unit>
+      <trans-unit id="s16b9446e3a70e1f4">
+        <source>Attributes</source>
+        <target>属性</target>
+      </trans-unit>
+      <trans-unit id="sf471ec2496f904cc">
+        <source>Discard changes</source>
+        <target>放弃更改</target>
+      </trans-unit>
+      <trans-unit id="s418f2020fe996832">
+        <source>Confirm changes</source>
+        <target>确认更改</target>
+      </trans-unit>
+      <trans-unit id="s3914cb410fca44d4">
+        <source>Import</source>
+        <target>进口</target>
+      </trans-unit>
+      <trans-unit id="sb66beca1e766dcb3">
+        <source>Apply and import</source>
+        <target>申请和导入</target>
+      </trans-unit>
+      <trans-unit id="sed17285cd25d6389">
+        <source>Directory where package.json is located</source>
+        <target>package.json 所在的目录</target>
+      </trans-unit>
       <trans-unit id="s2f8da2cb5f236588">
         <source>The name of your package. Must be scoped, e.g. `@org/pkg`. </source>
         <target>软件包名称。必须有作用域，例如 `@org/pkg`。 </target>
       </trans-unit>
-      <trans-unit id="s840fa49e8989c028">
-        <source>Position/Shape</source>
-        <target>位置/形状</target>
-      </trans-unit>
-      <trans-unit id="s2e4818861000b13f">
-        <source>Layout</source>
-        <target>布局</target>
-      </trans-unit>
-      <trans-unit id="s2e39b99cf23606fa">
-        <source>Set the layout of the selected elements</source>
-        <target>设置所选元素的布局</target>
-      </trans-unit>
-      <trans-unit id="seb4e52ef5ec7a7dc">
-        <source>Colors/Effects</source>
-        <target>色彩/效果</target>
-      </trans-unit>
-      <trans-unit id="s105a06836c40fcb4">
-        <source>Set filters, color, and blending of selected elements</source>
-        <target>设置所选元素的滤镜、颜色和混合效果</target>
-      </trans-unit>
-      <trans-unit id="s7f09197a4814079b">
-        <source>Set interactivity options for selected elements</source>
-        <target>为选定元素设置交互性选项</target>
-      </trans-unit>
-      <trans-unit id="s380d17664bb69531">
-        <source>Insert column before</source>
-        <target>之前插入列</target>
-      </trans-unit>
-      <trans-unit id="s12946ec1b850962c">
-        <source>Insert column after</source>
-        <target>在</target>
-      </trans-unit>
-      <trans-unit id="s0458872c43beadef">
-        <source>Insert row before</source>
-        <target>在</target>
-      </trans-unit>
-      <trans-unit id="s42ffdab1291fb3de">
-        <source>Insert row after</source>
-        <target>在</target>
-      </trans-unit>
-      <trans-unit id="s77318393dfdb0775">
-        <source>Remove row</source>
-        <target>删除行</target>
-      </trans-unit>
-      <trans-unit id="sa8b55cab62e439b5">
-        <source>Remove column</source>
-        <target>删除栏目</target>
-      </trans-unit>
-      <trans-unit id="s1696c76a23c0834e">
-        <source>Advanced: Show packages with versions like 0.x.x in the package manager</source>
-        <target>高级：在软件包管理器中显示版本为 0.x.x 的软件包</target>
-      </trans-unit>
-      <trans-unit id="sc2e2a0dbf03723b7">
-        <source>Advanced: Show packages from unknown sources in the package manager (Warning: May be unsafe)</source>
-        <target>高级：在软件包管理器中显示未知来源的软件包（警告：可能不安全）</target>
-      </trans-unit>
-      <trans-unit id="sbff54e740c4086eb">
-        <source>Show unknown packages</source>
-        <target>显示未知软件包</target>
-      </trans-unit>
-      <trans-unit id="sb19611adbc88f711">
-        <source>Advanced: Show source editing commands, e.g. to show the document's HTML or to add custom styles and scripts.</source>
-        <target>高级：显示源代码编辑命令，例如显示文档的 HTML 或添加自定义样式和脚本。</target>
-      </trans-unit>
-      <trans-unit id="sd452cebf4a0313d1">
-        <source>Show source editing commands</source>
-        <target>显示源编辑命令</target>
-      </trans-unit>
-      <trans-unit id="s65ac276544ba33cd">
-        <source>SVG file</source>
-        <target>SVG 文件</target>
-      </trans-unit>
-      <trans-unit id="sf22a3737146ec910">
-        <source>WebWriter can embed SVG directly in the document.</source>
-        <target>WebWriter 可以直接在文档中嵌入 SVG。</target>
-      </trans-unit>
-      <trans-unit id="s3437e0d9899e7ae1">
-        <source>Send telemetry data about your usage of WebWriter.</source>
-        <target>发送有关您使用 WebWriter 的遥测数据。</target>
-      </trans-unit>
-      <trans-unit id="s80570196a9ce6d11">
-        <source>Enable telemetry</source>
-        <target>启用遥测</target>
-      </trans-unit>
-      <trans-unit id="sb66e2181a7b5738a">
-        <source>By enabling telemetry, you allow for data collection and retention according to our</source>
-        <target>启用遥测功能即表示您允许根据我们的以下规定收集和保留数据</target>
-      </trans-unit>
-      <trans-unit id="sbc6953a36ced943f">
-        <source>privacy policy</source>
-        <target>隐私政策</target>
-      </trans-unit>
-      <trans-unit id="sb85774dc5d18ff0f">
-        <source>Confirm</source>
-        <target>确认</target>
-      </trans-unit>
-      <trans-unit id="s3649bacefe731bf6">
-        <source>Toggle Toolbox</source>
-        <target>切换工具箱</target>
-      </trans-unit>
-      <trans-unit id="s542fcefa0bbaed86">
-        <source>Open or close the toolbox (only on narrow screens, otherwise, the toolbox is always visible on the side).</source>
-        <target>打开或关闭工具箱（仅适用于窄屏幕，否则工具箱始终在侧面可见）。</target>
-      </trans-unit>
-      <trans-unit id="se9ac05f36b004eb0">
-        <source>Hide the introductory tour. Disable so the tour is shown again.</source>
-        <target>隐藏导览。禁用，以便再次显示导览。</target>
-      </trans-unit>
-      <trans-unit id="sf2ab37af0abc55ef">
-        <source>Hide intro tour</source>
-        <target>隐藏导览</target>
-      </trans-unit>
-      <trans-unit id="s75109f5307578a61">
-        <source>Welcome to WebWriter</source>
-        <target>欢迎访问 WebWriter</target>
-      </trans-unit>
-      <trans-unit id="s1d10d2058d8ca8dd">
-        <source>Want a short, guided tour?</source>
-        <target>想在导游的带领下进行短途旅行？</target>
-      </trans-unit>
-      <trans-unit id="s3bdad99768e11911">
-        <source>Explorable</source>
-        <target>可探索</target>
-      </trans-unit>
-      <trans-unit id="s0db05bd7ba6fff96">
-        <source>Your explorable document. You can write text and copy/paste, edit, etc. here.</source>
-        <target>您的可探索文档。您可以在这里撰写文字，并进行复制/粘贴、编辑等操作。</target>
-      </trans-unit>
-      <trans-unit id="sc8af536e2084ade0">
-        <source>Palette</source>
-        <target>调色板</target>
-      </trans-unit>
-      <trans-unit id="s0b24d08ea349b455">
-        <source>Everything you can insert. At the start are non-interactive elements like lists or images, next are interactive elements called widgets. You can get new ones by clicking the search bar.</source>
-        <target>你可以插入任何东西。首先是列表或图片等非交互式元素，然后是称为小部件的交互式元素。点击搜索栏可以获得新的小工具。</target>
-      </trans-unit>
-      <trans-unit id="s24949d7adbb5a098">
-        <source>Toolbox</source>
-        <target>工具箱</target>
-      </trans-unit>
-      <trans-unit id="s806f84eb0ace116e">
-        <source>See what you have selected and change it. Copy, cut, paste, pin, or make layout changes. Offers different options depending on your selection, i.e. formatting for text.</source>
-        <target>查看所选内容并进行更改。复制、剪切、粘贴、固定或更改布局。根据所选内容提供不同的选项，如文本格式。</target>
-      </trans-unit>
-      <trans-unit id="seaaaeb09e3b4e78b">
-        <source>Editing commands</source>
-        <target>编辑命令</target>
-      </trans-unit>
-      <trans-unit id="s8d83386457e91813">
-        <source>Undo/redo your changes or preview from the learner's perspective.</source>
-        <target>撤销/重做更改，或从学习者的角度预览。</target>
-      </trans-unit>
-      <trans-unit id="s0e6ea8870dbddab2">
-        <source>Document commands</source>
-        <target>文件命令</target>
-      </trans-unit>
-      <trans-unit id="s0448f1059fa01720">
-        <source>Save, share or print your explorable. Edit information such as the title, language or license.</source>
-        <target>保存、共享或打印您的可探索内容。编辑标题、语言或许可证等信息。</target>
-      </trans-unit>
-      <trans-unit id="s0c4b2e98d4ab7f5a">
-        <source>App commands</source>
-        <target>应用程序命令</target>
-      </trans-unit>
-      <trans-unit id="sa172190ea21f9b1c">
-        <source>Access the settings, open an explorable or create a new one.</source>
-        <target>进入设置，打开一个可探索项目或创建一个新项目。</target>
-      </trans-unit>
-      <trans-unit id="s4cc8391f172c0cdf">
-        <source>Dismiss tour</source>
-        <target>解散参观</target>
-      </trans-unit>
-      <trans-unit id="s575e795c45e2d97e">
-        <source>Go back</source>
-        <target>返回</target>
-      </trans-unit>
-      <trans-unit id="sa778acc33947c7b8">
-        <source>Finish tour</source>
-        <target>结束游览</target>
-      </trans-unit>
-      <trans-unit id="s81ecf2d4386b8e84">
-        <source>Continue</source>
-        <target>继续</target>
-      </trans-unit>
-      <trans-unit id="sf14c35392ec7bf10">
-        <source>This feature is unavailable in Firefox. It is available in Chrome or Edge.</source>
-        <target>此功能在 Firefox 中不可用。在 Chrome 浏览器或 Edge 浏览器中可用。</target>
-      </trans-unit>
-      <trans-unit id="s690da6b432987c6f">
-        <source>Backup changes to the current document automatically. Changes are restored when WebWriter is reloaded.</source>
-        <target>自动备份对当前文档的更改。当重新加载 WebWriter 时，更改会被恢复。</target>
-      </trans-unit>
-      <trans-unit id="s888c71e8fcb916d3">
-        <source>Autosave</source>
-        <target>自动保存</target>
-      </trans-unit>
-      <trans-unit id="s9df571714a1efb44">
-        <source>An autosaved version of this explorable is available. Load it?</source>
-        <target>该探索任务的自动保存版本可用。加载它？</target>
-      </trans-unit>
-      <trans-unit id="sc24bda3c061fddf8">
-        <source>Clickable area</source>
-        <target>可点击区域</target>
-      </trans-unit>
-      <trans-unit id="s5068560b8d39663d">
-        <source>Clickable map</source>
-        <target>可点击地图</target>
-      </trans-unit>
-      <trans-unit id="s814d528c8af55807">
-        <source>Definition list item</source>
-        <target>定义列表项目</target>
-      </trans-unit>
-      <trans-unit id="s9c8df9626d152d5a">
-        <source>Definition list term</source>
-        <target>定义清单术语</target>
-      </trans-unit>
-      <trans-unit id="s07808b0ca6da8fef">
-        <source>Fenced Website</source>
-        <target>围栏网站</target>
-      </trans-unit>
-      <trans-unit id="s6d8c02aee480af7a">
-        <source>Menu</source>
-        <target>菜单</target>
-      </trans-unit>
-      <trans-unit id="s730182ad28374cda">
-        <source>Object</source>
-        <target>对象</target>
-      </trans-unit>
-      <trans-unit id="s123bea44f38abccf">
-        <source>Insert object</source>
-        <target>插入对象</target>
-      </trans-unit>
-      <trans-unit id="scace301a88231cce">
-        <source>Embed</source>
-        <target>嵌入</target>
-      </trans-unit>
-      <trans-unit id="s91c5ed7769d00b65">
-        <source>Insert embed</source>
-        <target>插入嵌入</target>
-      </trans-unit>
-      <trans-unit id="sc50d09edf9325339">
-        <source>Dialog</source>
-        <target>对话框</target>
-      </trans-unit>
-      <trans-unit id="sff99962304ac7d25">
-        <source>Insert a dialog</source>
-        <target>插入对话框</target>
-      </trans-unit>
-      <trans-unit id="s9ffe1bbe64712bf1">
-        <source>Canvas</source>
-        <target>帆布</target>
-      </trans-unit>
-      <trans-unit id="sa7dbe35b758c138d">
-        <source>Insert a canvas</source>
-        <target>插入画布</target>
-      </trans-unit>
-      <trans-unit id="s3d93f9ea0c5a13fa">
-        <source>Image</source>
-        <target>图片</target>
-      </trans-unit>
-      <trans-unit id="s8bc4affa761aa8a2">
-        <source>Insert an image</source>
-        <target>插入图像</target>
-      </trans-unit>
-      <trans-unit id="sc43767deea72e9f3">
-        <source>Description List</source>
-        <target>说明列表</target>
-      </trans-unit>
-      <trans-unit id="saf312eaeec77a802">
-        <source>Insert a description list (glossary, term list)</source>
-        <target>插入说明列表（词汇表、术语表）</target>
-      </trans-unit>
-      <trans-unit id="s0312976fe9da5951">
-        <source>Button</source>
-        <target>按钮</target>
-      </trans-unit>
-      <trans-unit id="sd60c9bbc51375635">
-        <source>Insert a button</source>
-        <target>插入按钮</target>
-      </trans-unit>
-      <trans-unit id="sdb1595f5c742dfbb">
-        <source>Input</source>
-        <target>输入</target>
-      </trans-unit>
-      <trans-unit id="s29b24c06315e9343">
-        <source>Insert an input</source>
-        <target>插入输入</target>
-      </trans-unit>
-      <trans-unit id="s9abadcc828884d7b">
-        <source>Textarea</source>
-        <target>文本区域</target>
-      </trans-unit>
-      <trans-unit id="sf4e0e02a5277ef23">
-        <source>Insert an textarea</source>
-        <target>插入文本区域</target>
-      </trans-unit>
-      <trans-unit id="sfc63e31ac7c956ed">
-        <source>Select</source>
-        <target>选择</target>
-      </trans-unit>
-      <trans-unit id="s531056f039febd39">
-        <source>Insert a select</source>
-        <target>插入选择</target>
-      </trans-unit>
-      <trans-unit id="sfc00292e778b67e2">
-        <source>Meter</source>
-        <target>仪表</target>
-      </trans-unit>
-      <trans-unit id="s52e0bdc3ee304436">
-        <source>Insert a meter</source>
-        <target>插入仪表</target>
-      </trans-unit>
-      <trans-unit id="s8c7f51cb067644c7">
-        <source>Data List</source>
-        <target>数据列表</target>
-      </trans-unit>
-      <trans-unit id="sfa59c7777e2a0eeb">
-        <source>Insert a data list</source>
-        <target>插入数据列表</target>
-      </trans-unit>
-      <trans-unit id="s7fcb35d23be1e643">
-        <source>Field Set</source>
-        <target>实地设置</target>
-      </trans-unit>
-      <trans-unit id="s2d986d31f8d67357">
-        <source>Insert a field set</source>
-        <target>插入字段集</target>
-      </trans-unit>
-      <trans-unit id="s5590dbf7e425789d">
-        <source>Label</source>
-        <target>标签</target>
-      </trans-unit>
-      <trans-unit id="s21f8a2eaf5a70749">
-        <source>Insert a label</source>
-        <target>插入标签</target>
-      </trans-unit>
-      <trans-unit id="s4b58c01e2578f5e4">
-        <source>Legend</source>
-        <target>图例</target>
-      </trans-unit>
-      <trans-unit id="s3fd83566dd643d10">
-        <source>Insert a legend</source>
-        <target>插入图例</target>
-      </trans-unit>
-      <trans-unit id="sef75f458d77491af">
-        <source>Option Group</source>
-        <target>选项组</target>
-      </trans-unit>
-      <trans-unit id="sceecdd0bb404bc17">
-        <source>Insert an option group</source>
-        <target>插入选项组</target>
-      </trans-unit>
-      <trans-unit id="s4802e47fe2e95134">
-        <source>Option</source>
-        <target>选项</target>
-      </trans-unit>
-      <trans-unit id="s3cb47df8290fa94c">
-        <source>Insert an option</source>
-        <target>插入选项</target>
-      </trans-unit>
-      <trans-unit id="sfd77270c3f54f664">
-        <source>Output</source>
-        <target>输出</target>
-      </trans-unit>
-      <trans-unit id="se64f418b4e733b6c">
-        <source>Insert an output</source>
-        <target>插入输出</target>
-      </trans-unit>
-      <trans-unit id="sa557ae6bee9148a6">
-        <source>Progress</source>
-        <target>进展情况</target>
-      </trans-unit>
-      <trans-unit id="s52777d434baeed9b">
-        <source>Insert a progress indicator</source>
-        <target>插入进度指示器</target>
-      </trans-unit>
-      <trans-unit id="s35c3125c7750681e">
-        <source>Blockquote</source>
-        <target>整段引用</target>
-      </trans-unit>
-      <trans-unit id="sa492a51a707930fa">
-        <source>Insert a blockquote</source>
-        <target>插入楷体引号</target>
-      </trans-unit>
-      <trans-unit id="s5432ad3c84273229">
-        <source>Figure</source>
-        <target>图</target>
-      </trans-unit>
-      <trans-unit id="sf486ca1fdbe08645">
-        <source>Insert a figure</source>
-        <target>插入数字</target>
-      </trans-unit>
-      <trans-unit id="se16c5e66886fbc59">
-        <source>Article</source>
-        <target>文章</target>
-      </trans-unit>
-      <trans-unit id="s3f7e097a9b2e6181">
-        <source>Insert an article</source>
-        <target>插入文章</target>
-      </trans-unit>
-      <trans-unit id="sadd352cc7f6f2307">
-        <source>Aside</source>
-        <target>旁白</target>
-      </trans-unit>
-      <trans-unit id="s743f778233e42a3f">
-        <source>Insert an aside</source>
-        <target>插入旁白</target>
-      </trans-unit>
-      <trans-unit id="s07e6118e838b2e23">
-        <source>Navigation</source>
-        <target>导航</target>
-      </trans-unit>
-      <trans-unit id="s0a799f583098cadf">
-        <source>Insert a navigation</source>
-        <target>插入导航</target>
-      </trans-unit>
-      <trans-unit id="scc1db59d292cbc4c">
-        <source>Section</source>
-        <target>部门</target>
-      </trans-unit>
-      <trans-unit id="s22a2348c46a912a0">
-        <source>Insert a section</source>
-        <target>插入章节</target>
-      </trans-unit>
-      <trans-unit id="s75d83fc3f0cfab40">
-        <source>Header</source>
-        <target>页眉</target>
-      </trans-unit>
-      <trans-unit id="sa5c80e623459ffe4">
-        <source>Insert a header</source>
-        <target>插入页眉</target>
-      </trans-unit>
-      <trans-unit id="scf932a8577057752">
-        <source>Footer</source>
-        <target>页脚</target>
-      </trans-unit>
-      <trans-unit id="sa352d168b262aa06">
-        <source>Insert a footer</source>
-        <target>插入页脚</target>
-      </trans-unit>
-      <trans-unit id="s49e763aed00877a8">
-        <source>Main</source>
-        <target>主页</target>
-      </trans-unit>
-      <trans-unit id="s8247d32213e35f24">
-        <source>Insert a main</source>
-        <target>插入主</target>
-      </trans-unit>
-      <trans-unit id="s5d929ff1619ac0c9">
-        <source>Search</source>
-        <target>搜索</target>
-      </trans-unit>
-      <trans-unit id="sbb85a407d730e13d">
-        <source>Insert a search</source>
-        <target>插入搜索</target>
-      </trans-unit>
-      <trans-unit id="sfcdd8e672c75b713">
-        <source>Address</source>
-        <target>地址</target>
-      </trans-unit>
-      <trans-unit id="s429dd933ba95549b">
-        <source>Insert an address</source>
-        <target>插入地址</target>
-      </trans-unit>
-      <trans-unit id="s07aa10850d9ddcc7">
-        <source>Form</source>
-        <target>形式</target>
-      </trans-unit>
-      <trans-unit id="s84e9c7f8785ca60b">
-        <source>Insert a form</source>
-        <target>插入表格</target>
-      </trans-unit>
-      <trans-unit id="s3b3ea038c5d3bb06">
-        <source>Division</source>
-        <target>分部</target>
-      </trans-unit>
-      <trans-unit id="se6cdad455e2d8c02">
-        <source>Insert a division</source>
-        <target>插入除法</target>
-      </trans-unit>
-      <trans-unit id="sa5df1bcdba46c3fb">
-        <source>Figure Caption</source>
-        <target>图表说明</target>
-      </trans-unit>
-      <trans-unit id="s33c1450d2822bb0f">
-        <source>Insert a figure caption</source>
-        <target>插入图表标题</target>
-      </trans-unit>
-      <trans-unit id="s30cce87854901922">
-        <source>Preschool</source>
-        <target>学前教育</target>
-      </trans-unit>
-      <trans-unit id="s9485af2e7cd9418f">
-        <source>Primary school</source>
-        <target>小学</target>
-      </trans-unit>
-      <trans-unit id="seaecc8267bad6234">
-        <source>Middle school</source>
-        <target>中学</target>
-      </trans-unit>
-      <trans-unit id="s69311c4e25074fb3">
-        <source>High school</source>
-        <target>高中</target>
-      </trans-unit>
-      <trans-unit id="sab5e7d2a069a2951">
-        <source>Vocational cert.</source>
-        <target>职业证书</target>
-      </trans-unit>
-      <trans-unit id="s1d5c7b28e8b50d6d">
-        <source>Associate deg.</source>
-        <target>副学士学位</target>
-      </trans-unit>
-      <trans-unit id="s7edbe0b213199995">
-        <source>Bachelor's</source>
-        <target>学士</target>
-      </trans-unit>
-      <trans-unit id="sfe6e758ad2603c1d">
-        <source>Master's</source>
-        <target>硕士</target>
-      </trans-unit>
-      <trans-unit id="sb60dd9d23d31ee66">
-        <source>Doctorate</source>
-        <target>博士学位</target>
-      </trans-unit>
-      <trans-unit id="s4ac1ad6ecd6bd810">
-        <source>Misc. ed.</source>
-        <target>Misc. ed.</target>
-      </trans-unit>
-      <trans-unit id="s67c2b60a506a09e4">
-        <source>Secondary ed.</source>
-        <target>中学教育</target>
-      </trans-unit>
-      <trans-unit id="sd5bf67958b08b4cf">
-        <source>Higher ed.</source>
-        <target>高等教育</target>
-      </trans-unit>
-      <trans-unit id="s1d19244f549ec535">
-        <source>Education</source>
-        <target>教育</target>
-      </trans-unit>
-      <trans-unit id="sbe3c60c65f129daa">
-        <source>Humanities</source>
-        <target>人文科学</target>
-      </trans-unit>
-      <trans-unit id="s5e53415a6d5719ad">
-        <source>Social sciences</source>
-        <target>社会科学</target>
-      </trans-unit>
-      <trans-unit id="s233ae776268cd44b">
-        <source>Business</source>
-        <target>商业</target>
-      </trans-unit>
-      <trans-unit id="s736904f276fbd441">
-        <source>Natural sciences</source>
-        <target>自然科学</target>
-      </trans-unit>
-      <trans-unit id="s41322d19c928c603">
-        <source>ICT</source>
-        <target>信息和通信技术</target>
-      </trans-unit>
-      <trans-unit id="s5c2a1a52c0389c30">
-        <source>Engineering</source>
-        <target>工程学</target>
-      </trans-unit>
-      <trans-unit id="s5e9e8e4d21bafedc">
-        <source>Food production</source>
-        <target>食品生产</target>
-      </trans-unit>
-      <trans-unit id="sbaf0a7c417e388af">
-        <source>Health</source>
-        <target>健康</target>
-      </trans-unit>
-      <trans-unit id="sf55d634dcc743595">
-        <source>Services</source>
-        <target>服务</target>
-      </trans-unit>
-      <trans-unit id="s6fb3053e7244d326">
-        <source>Other fields</source>
-        <target>其他领域</target>
-      </trans-unit>
-      <trans-unit id="s5c1ecf88259b79f9">
-        <source>Presentation</source>
-        <target>介绍</target>
-      </trans-unit>
-      <trans-unit id="s5d87c1e588f48d90">
-        <source>Practice</source>
-        <target>实践</target>
-      </trans-unit>
-      <trans-unit id="s7ede1c55e35ce9d6">
-        <source>Simulation</source>
-        <target>模拟</target>
-      </trans-unit>
-      <trans-unit id="s886c5db2a5579873">
-        <source>Concept</source>
-        <target>概念</target>
-      </trans-unit>
-      <trans-unit id="s1eaccbf2d6af8ab5">
-        <source>Information</source>
-        <target>信息</target>
-      </trans-unit>
-      <trans-unit id="s63e03c70f67ebf9c">
-        <source>Context</source>
-        <target>背景</target>
-      </trans-unit>
-      <trans-unit id="s83c15613b6f6f3c8">
-        <source>Online only</source>
-        <target>仅限在线</target>
-      </trans-unit>
-      <trans-unit id="s18d5c44aae3dc82a">
-        <source>Online when editing</source>
-        <target>编辑时在线</target>
-      </trans-unit>
-      <trans-unit id="sd05a155fe09c2866">
-        <source>Online when using</source>
-        <target>在线使用时</target>
-      </trans-unit>
-      <trans-unit id="s3ae67088bbefba98">
-        <source>Packages</source>
-        <target>套餐</target>
-      </trans-unit>
-      <trans-unit id="s8a28bad9290d4761">
-        <source>Oromo</source>
-        <target>奥罗莫语</target>
-      </trans-unit>
-      <trans-unit id="s4634541f5056a546">
-        <source>Abkhazian</source>
-        <target>阿布哈兹语</target>
-      </trans-unit>
-      <trans-unit id="s59b20e8af32606ed">
-        <source>Afar</source>
-        <target>阿法尔</target>
-      </trans-unit>
-      <trans-unit id="sd2ef82b8ea877c6d">
-        <source>Afrikaans</source>
-        <target>南非语</target>
-      </trans-unit>
-      <trans-unit id="s2f4d4bfbc466d91f">
-        <source>Albanian</source>
-        <target>阿尔巴尼亚语</target>
-      </trans-unit>
-      <trans-unit id="sb43db07b24da018a">
-        <source>Amharic</source>
-        <target>阿姆哈拉语</target>
-      </trans-unit>
-      <trans-unit id="sb884fa76bfc55429">
-        <source>Arabic</source>
-        <target>阿拉伯语</target>
-      </trans-unit>
-      <trans-unit id="scc56b218a2689c42">
-        <source>Armenian</source>
-        <target>亚美尼亚语</target>
-      </trans-unit>
-      <trans-unit id="sa2cba871f6cdd99f">
-        <source>Assamese</source>
-        <target>阿萨姆语</target>
-      </trans-unit>
-      <trans-unit id="scf95dcb12a950a5c">
-        <source>Aymara</source>
-        <target>艾马拉语</target>
-      </trans-unit>
-      <trans-unit id="s9cf68f87b8e6122f">
-        <source>Azerbaijani</source>
-        <target>阿塞拜疆</target>
-      </trans-unit>
-      <trans-unit id="s17bfaaa4e7528bc7">
-        <source>Bashkir</source>
-        <target>巴什基尔</target>
-      </trans-unit>
-      <trans-unit id="se39c065efa467782">
-        <source>Basque</source>
-        <target>巴斯克语</target>
-      </trans-unit>
-      <trans-unit id="sf2bdb0b4d7b9c039">
-        <source>Bengali</source>
-        <target>孟加拉语</target>
-      </trans-unit>
-      <trans-unit id="sf0c8e2b013e5ff18">
-        <source>Bhutani</source>
-        <target>布塔尼</target>
-      </trans-unit>
-      <trans-unit id="s181ef198cf83ec3a">
-        <source>Bihari</source>
-        <target>比哈里</target>
-      </trans-unit>
-      <trans-unit id="s543c237e8c895ce8">
-        <source>Bislama</source>
-        <target>比斯拉马</target>
-      </trans-unit>
-      <trans-unit id="s93f083e654a45715">
-        <source>Breton</source>
-        <target>布列塔尼</target>
-      </trans-unit>
-      <trans-unit id="sbd72dc858de95ce8">
-        <source>Burmese</source>
-        <target>缅甸语</target>
-      </trans-unit>
-      <trans-unit id="s1e9c2c654732cc5f">
-        <source>Byelorussian</source>
-        <target>白俄罗斯语</target>
-      </trans-unit>
-      <trans-unit id="s545ee1f373f249cf">
-        <source>Cambodian</source>
-        <target>柬埔寨</target>
-      </trans-unit>
-      <trans-unit id="s1f2b49c1bca2035d">
-        <source>Catalan</source>
-        <target>加泰罗尼亚语</target>
-      </trans-unit>
-      <trans-unit id="s0e44968489e076a8">
-        <source>Chinese</source>
-        <target>中文</target>
-      </trans-unit>
-      <trans-unit id="s20deffeecf2699fb">
-        <source>Corsican</source>
-        <target>科西嘉</target>
-      </trans-unit>
-      <trans-unit id="s45518abd911471d0">
-        <source>Croatian</source>
-        <target>克罗地亚语</target>
-      </trans-unit>
-      <trans-unit id="s0a6cb8d42cdb0c4a">
-        <source>Esperanto</source>
-        <target>世界语</target>
-      </trans-unit>
-      <trans-unit id="s536695196d0b6dc3">
-        <source>Faeroese</source>
-        <target>法罗群岛</target>
-      </trans-unit>
-      <trans-unit id="sd1f10284eeb17b25">
-        <source>Fiji</source>
-        <target>斐济</target>
-      </trans-unit>
-      <trans-unit id="s61c017f6d5c303af">
-        <source>Frisian</source>
-        <target>弗里斯兰语</target>
-      </trans-unit>
-      <trans-unit id="s990d0e0fa2ab00b5">
-        <source>Galician</source>
-        <target>加利西亚语</target>
-      </trans-unit>
-      <trans-unit id="sdc70d81cf6c28533">
-        <source>Georgian</source>
-        <target>格鲁吉亚语</target>
-      </trans-unit>
-      <trans-unit id="s99229574e5692f19">
-        <source>Greenlandic</source>
-        <target>格林兰</target>
-      </trans-unit>
-      <trans-unit id="s1feab14d837eadb0">
-        <source>Guarani</source>
-        <target>瓜拉尼语</target>
-      </trans-unit>
-      <trans-unit id="s3f43ef2eaa1ec486">
-        <source>Gujarati</source>
-        <target>古吉拉特语</target>
-      </trans-unit>
-      <trans-unit id="s9fbe26cfd7845469">
-        <source>Hausa</source>
-        <target>豪萨语</target>
-      </trans-unit>
-      <trans-unit id="s6b61f8abf89586be">
-        <source>Hebrew</source>
-        <target>希伯来文</target>
-      </trans-unit>
-      <trans-unit id="sb6b268120592dc53">
-        <source>Hindi</source>
-        <target>北印度语</target>
-      </trans-unit>
-      <trans-unit id="sec2da4aa7a02b925">
-        <source>Icelandic</source>
-        <target>冰岛</target>
-      </trans-unit>
-      <trans-unit id="s9d54869be6794a9f">
-        <source>Interlingua</source>
-        <target>Interlingua</target>
-      </trans-unit>
-      <trans-unit id="s9d54829be67943d3">
-        <source>Interlingue</source>
-        <target>Interlingue</target>
-      </trans-unit>
-      <trans-unit id="s62b857f5b6693742">
-        <source>Inupiak</source>
-        <target>伊努皮亚克</target>
-      </trans-unit>
-      <trans-unit id="sf5e76f774beb33c2">
-        <source>Inuktitut</source>
-        <target>因纽特语</target>
-      </trans-unit>
-      <trans-unit id="s33c18d5a4cbffa2a">
-        <source>Irish</source>
-        <target>爱尔兰</target>
-      </trans-unit>
-      <trans-unit id="s21d723a1dbcd89c8">
-        <source>Javanese</source>
-        <target>爪哇语</target>
-      </trans-unit>
-      <trans-unit id="s1f8e59d0624842ff">
-        <source>Kannada</source>
-        <target>卡纳达语</target>
-      </trans-unit>
-      <trans-unit id="s81c3d8809658b951">
-        <source>Kashmiri</source>
-        <target>克什米尔语</target>
-      </trans-unit>
-      <trans-unit id="s01b16a926920908b">
-        <source>Kazakh</source>
-        <target>哈萨克</target>
-      </trans-unit>
-      <trans-unit id="s81cf65c5a46dea08">
-        <source>Kinyarwanda</source>
-        <target>基尼亚卢旺达语</target>
-      </trans-unit>
-      <trans-unit id="s5bba2ac2e53bd1fd">
-        <source>Kirghiz</source>
-        <target>吉尔吉斯</target>
-      </trans-unit>
-      <trans-unit id="sab726d2db7e6b93d">
-        <source>Kirundi</source>
-        <target>基隆迪文</target>
-      </trans-unit>
-      <trans-unit id="sb4e003a459464d85">
-        <source>Kurdish</source>
-        <target>库尔德语</target>
-      </trans-unit>
-      <trans-unit id="s69b12144dbb6544d">
-        <source>Laothian</source>
-        <target>老挝</target>
-      </trans-unit>
-      <trans-unit id="sb70c17f7899f9b01">
-        <source>Latin</source>
-        <target>拉丁语</target>
-      </trans-unit>
-      <trans-unit id="sff303daee4dd9f7b">
-        <source>Lingala</source>
-        <target>林加拉语</target>
-      </trans-unit>
-      <trans-unit id="s441b20a8a50e36b4">
-        <source>Macedonian</source>
-        <target>马其顿</target>
-      </trans-unit>
-      <trans-unit id="sf3c4da68b08a2590">
-        <source>Malagasy</source>
-        <target>马达加斯加</target>
-      </trans-unit>
-      <trans-unit id="sc7eb080b96e244df">
-        <source>Malay</source>
-        <target>马来语</target>
-      </trans-unit>
-      <trans-unit id="s0dad143dff0079fc">
-        <source>Malayalam</source>
-        <target>拉雅拉姆语</target>
-      </trans-unit>
-      <trans-unit id="scabe6ecee5e01fd2">
-        <source>Maltese</source>
-        <target>马耳他</target>
-      </trans-unit>
-      <trans-unit id="sae9c790b88be7eb9">
-        <source>Maori</source>
-        <target>毛利人</target>
-      </trans-unit>
-      <trans-unit id="s2e969a451b4955d1">
-        <source>Marathi</source>
-        <target>马拉地语</target>
-      </trans-unit>
-      <trans-unit id="s5a356677b61a6b7e">
-        <source>Moldavian</source>
-        <target>摩尔多瓦</target>
-      </trans-unit>
-      <trans-unit id="s0f17f32919661cff">
-        <source>Mongolian</source>
-        <target>蒙古语</target>
-      </trans-unit>
-      <trans-unit id="s9e8d3665edde89a6">
-        <source>Nauru</source>
-        <target>瑙鲁</target>
-      </trans-unit>
-      <trans-unit id="sad190f86451081c0">
-        <source>Nepali</source>
-        <target>尼泊尔</target>
-      </trans-unit>
-      <trans-unit id="se0a782a8be8e018b">
-        <source>Norwegian</source>
-        <target>挪威语</target>
-      </trans-unit>
-      <trans-unit id="s7a99528e7b64635a">
-        <source>Occitan</source>
-        <target>奥克语</target>
-      </trans-unit>
-      <trans-unit id="s9c11f2d9335d8bd1">
-        <source>Oriya</source>
-        <target>奥里雅语</target>
-      </trans-unit>
-      <trans-unit id="s54cbfaf2a8da7818">
-        <source>Pashto</source>
-        <target>普什图语</target>
-      </trans-unit>
-      <trans-unit id="sa40fd43756fa8913">
-        <source>Persian</source>
-        <target>波斯语</target>
-      </trans-unit>
-      <trans-unit id="s74b9781bacfcc87c">
-        <source>Punjabi</source>
-        <target>旁遮普语</target>
-      </trans-unit>
-      <trans-unit id="s49ad24935b14e3df">
-        <source>Quechua</source>
-        <target>克丘亚语</target>
-      </trans-unit>
-      <trans-unit id="s960d3a90ac199368">
-        <source>Rhaeto-Romanian</source>
-        <target>雷托-罗马尼亚语</target>
-      </trans-unit>
-      <trans-unit id="s19abee1277c9bca2">
-        <source>Samoan</source>
-        <target>萨摩亚人</target>
-      </trans-unit>
-      <trans-unit id="s006f872a5b7f5279">
-        <source>Sangro</source>
-        <target>Sangro</target>
-      </trans-unit>
-      <trans-unit id="sbfff51feacf30196">
-        <source>Sanskrit</source>
-        <target>梵文</target>
-      </trans-unit>
-      <trans-unit id="s1c65f5004a07dcfa">
-        <source>Scots Gaelic</source>
-        <target>苏格兰盖尔语</target>
-      </trans-unit>
-      <trans-unit id="sf955eff73fb6b573">
-        <source>Serbian</source>
-        <target>塞尔维亚语</target>
-      </trans-unit>
-      <trans-unit id="s7995733bf97c01cc">
-        <source>Serbo-Croatian</source>
-        <target>塞尔维亚-克罗地亚语</target>
-      </trans-unit>
-      <trans-unit id="scc5ba32e0de06744">
-        <source>Sesotho</source>
-        <target>塞索托语</target>
-      </trans-unit>
-      <trans-unit id="s08e12ade32ef8125">
-        <source>Setswana</source>
-        <target>塞茨瓦纳语</target>
-      </trans-unit>
-      <trans-unit id="sb6434faf698b02a2">
-        <source>Shona</source>
-        <target>肖娜</target>
-      </trans-unit>
-      <trans-unit id="sb31cdff08b1c5a50">
-        <source>Sindhi</source>
-        <target>信德语</target>
-      </trans-unit>
-      <trans-unit id="se308836a594808b6">
-        <source>Singhalese</source>
-        <target>僧伽罗语</target>
-      </trans-unit>
-      <trans-unit id="sce8a4e3f7c98482d">
-        <source>Siswati</source>
-        <target>西斯瓦蒂</target>
-      </trans-unit>
-      <trans-unit id="s978522fbc9577a7e">
-        <source>Somali</source>
-        <target>索马里</target>
-      </trans-unit>
-      <trans-unit id="sa477cb1825dceb3b">
-        <source>Sudanese</source>
-        <target>苏丹</target>
-      </trans-unit>
-      <trans-unit id="sbe90de083557ef3e">
-        <source>Swahili</source>
-        <target>斯瓦希里语</target>
-      </trans-unit>
-      <trans-unit id="sae098810f946ca7c">
-        <source>Tagalog</source>
-        <target>菲律宾语</target>
-      </trans-unit>
-      <trans-unit id="s7b9994904c4f5b54">
-        <source>Tajik</source>
-        <target>塔吉克语</target>
-      </trans-unit>
-      <trans-unit id="s7136449045eff28c">
-        <source>Tamil</source>
-        <target>梵语</target>
-      </trans-unit>
-      <trans-unit id="sae9d739068eee2c5">
-        <source>Tatar</source>
-        <target>鞑靼</target>
-      </trans-unit>
-      <trans-unit id="s47a8f6dfb38b9701">
-        <source>Telugu</source>
-        <target>泰卢固语</target>
-      </trans-unit>
-      <trans-unit id="s4ffac3fb33a2ee9b">
-        <source>Thai</source>
-        <target>泰语</target>
-      </trans-unit>
-      <trans-unit id="s5623aa2f83b05c76">
-        <source>Tibetan</source>
-        <target>藏语</target>
-      </trans-unit>
-      <trans-unit id="sbb15d427ee1aa676">
-        <source>Tigrinya</source>
-        <target>提格里尼亚语</target>
-      </trans-unit>
-      <trans-unit id="sbb34f2e3aa40af4e">
-        <source>Tonga</source>
-        <target>汤加</target>
-      </trans-unit>
-      <trans-unit id="s04c939a414fdab21">
-        <source>Tsonga</source>
-        <target>宗加</target>
-      </trans-unit>
-      <trans-unit id="sc0ceaa9843510f67">
-        <source>Turkmen</source>
-        <target>土库曼</target>
-      </trans-unit>
-      <trans-unit id="s6d1df519e235a6cf">
-        <source>Twi</source>
-        <target>特维</target>
-      </trans-unit>
-      <trans-unit id="s2e66bf8b833858f3">
-        <source>Uigur</source>
-        <target>维吾尔族</target>
-      </trans-unit>
-      <trans-unit id="s9ca757effd747da9">
-        <source>Urdu</source>
-        <target>烏爾都語</target>
-      </trans-unit>
-      <trans-unit id="sb4f0310e6787d098">
-        <source>Uzbek</source>
-        <target>乌兹别克</target>
-      </trans-unit>
-      <trans-unit id="s6d60d595cb5070da">
-        <source>Vietnamese</source>
-        <target>越南语</target>
-      </trans-unit>
-      <trans-unit id="sb657bfe93338dc8b">
-        <source>Volapuk</source>
-        <target>沃拉普克</target>
-      </trans-unit>
-      <trans-unit id="sf2e08a945e9194d4">
-        <source>Welch</source>
-        <target>韦尔奇</target>
-      </trans-unit>
-      <trans-unit id="s86ca34c5287a2f38">
-        <source>Wolof</source>
-        <target>沃洛夫语</target>
-      </trans-unit>
-      <trans-unit id="sa4e5b39489ecf31a">
-        <source>Xhosa</source>
-        <target>科萨语</target>
-      </trans-unit>
-      <trans-unit id="s63dfc5b1c1c27849">
-        <source>Yiddish</source>
-        <target>意第绪语</target>
-      </trans-unit>
-      <trans-unit id="se1312d6528f9a259">
-        <source>Yoruba</source>
-        <target>伊博语</target>
-      </trans-unit>
-      <trans-unit id="s3f299e83cbf52fba">
-        <source>Zhuang</source>
-        <target>庄</target>
-      </trans-unit>
-      <trans-unit id="sd5be6f6d85fc0c9b">
-        <source>Zulu</source>
-        <target>祖鲁语</target>
-      </trans-unit>
-      <trans-unit id="sa50d3c35533f1d99">
-        <source>All fields</source>
-        <target>所有领域</target>
+      <trans-unit id="s342b0cabfa672822">
+        <source>Help the user find your widget</source>
+        <target>帮助用户找到您的小工具</target>
+      </trans-unit>
+      <trans-unit id="sfdeef3dccf409f81">
+        <source>This keyword is required for widgets</source>
+        <target>小部件需要使用该关键字</target>
+      </trans-unit>
+      <trans-unit id="h64cd12550420f6f1">
+        <source>Generate a <x id="0" equiv-text="&lt;code&gt;"/>LICENSE<x id="1" equiv-text="&lt;/code&gt;"/> file</source>
+        <target>生成 
+          <x id="0" equiv-text="&lt;code&gt;"/>许可证
+          <x id="1" equiv-text="&lt;/code&gt;"/> 文件
+        </target>
+      </trans-unit>
+      <trans-unit id="s255857544a9d5ec0">
+        <source>Reset</source>
+        <target>重置</target>
+      </trans-unit>
+      <trans-unit id="s2591806d7b222591">
+        <source>Reset changes</source>
+        <target>重置更改</target>
+      </trans-unit>
+      <trans-unit id="s445b8acb9206db6e">
+        <source>Discard and cancel</source>
+        <target>丢弃和取消</target>
+      </trans-unit>
+      <trans-unit id="s731678e227a20559">
+        <source>This Device</source>
+        <target>该设备</target>
+      </trans-unit>
+      <trans-unit id="s71940c32987f675f">
+        <source>WebWriter Cloud</source>
+        <target>WebWriter 云</target>
       </trans-unit>
       <trans-unit id="s323dcde72b850272">
         <source>Public access</source>
@@ -4373,21 +4308,87 @@
         <source>Public</source>
         <target>公众</target>
       </trans-unit>
-      <trans-unit id="s2474e7fb1aec9f05">
-        <source>Test</source>
-        <target>测试</target>
+      <trans-unit id="s99a990f3841ad283">
+        <source>Files of </source>
+        <target>文件 </target>
       </trans-unit>
-      <trans-unit id="sc546f489f9c0cced">
-        <source>Toggles the test mode for the active document</source>
-        <target>切换活动文档的测试模式</target>
+      <trans-unit id="s3eb6d1e6e79ed7c4">
+        <source>No documents found</source>
+        <target>未找到文件</target>
       </trans-unit>
-      <trans-unit id="sb7c77d0415de05cf">
-        <source>Run tests</source>
-        <target>运行测试</target>
+      <trans-unit id="s4e2562fe3990e621">
+        <source>Error connecting</source>
+        <target>连接错误</target>
       </trans-unit>
-      <trans-unit id="s4dcb9315f6527f9c">
-        <source>Run on reload</source>
-        <target>重新加载时运行</target>
+      <trans-unit id="sf52d840949a980d1">
+        <source><x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?</source>
+        <target>
+          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> 将被永久删除。你确定吗？
+        </target>
+      </trans-unit>
+      <trans-unit id="s9b7cd8860c8fc922">
+        <source><x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?</source>
+        <target>
+          <x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> 将被覆盖。你确定吗？
+        </target>
+      </trans-unit>
+      <trans-unit id="see2fcaedf9743ec6">
+        <source>Location</source>
+        <target>地点</target>
+      </trans-unit>
+      <trans-unit id="sfdb1e4d90981a535">
+        <source>Share this document</source>
+        <target>分享本文件</target>
+      </trans-unit>
+      <trans-unit id="s1c3fc313a9184670">
+        <source>Public Link</source>
+        <target>公共链接</target>
+      </trans-unit>
+      <trans-unit id="sc28864200d2a3799">
+        <source>Copy QR Code as image</source>
+        <target>复制 QR 码为图片</target>
+      </trans-unit>
+      <trans-unit id="sfc815c9078bba30a">
+        <source>Download QR Code as image</source>
+        <target>将 QR 码下载为图像</target>
+      </trans-unit>
+      <trans-unit id="s4cb38675a21b2c98">
+        <source>Unsupported property type '${desc.type}' (processing as JSON)</source>
+        <target>不支持属性类型"${desc.type}"（以 JSON 格式处理）</target>
+      </trans-unit>
+      <trans-unit id="sa00df4e39c72d3b4">
+        <source><x id="0" equiv-text="${desc.widget}"/> is not supported</source>
+        <target>
+          <x id="0" equiv-text="${desc.widget}"/> 不支持
+        </target>
+      </trans-unit>
+      <trans-unit id="sf65df67a03bebe4b">
+        <source>Required for this widget</source>
+        <target>本小部件必填</target>
+      </trans-unit>
+      <trans-unit id="s8a9eb438abac7c6a">
+        <source>Labels</source>
+        <target>标签</target>
+      </trans-unit>
+      <trans-unit id="sba509fd8ed61d1d5">
+        <source>Unsaved File</source>
+        <target>未保存的文件</target>
+      </trans-unit>
+      <trans-unit id="sef00c258bc1ecf1e">
+        <source>This explorable has unsaved changes.</source>
+        <target>该可探索项目有未保存的更改。</target>
+      </trans-unit>
+      <trans-unit id="sb8f855b49234b81b">
+        <source>Apply</source>
+        <target>申请</target>
+      </trans-unit>
+      <trans-unit id="sc74e3567875ce255">
+        <source>Both the tag of your widget and the name of your NPM package</source>
+        <target>小部件的标签和 NPM 软件包的名称</target>
+      </trans-unit>
+      <trans-unit id="s0dc452999c129e15">
+        <source>Enable live reload</source>
+        <target>启用实时重载</target>
       </trans-unit>
     </body>
   </file>

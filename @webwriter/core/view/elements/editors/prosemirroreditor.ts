@@ -5,7 +5,7 @@ import { localized } from "@lit/localize"
 import { EditorState, Transaction } from "prosemirror-state"
 import { emitCustomEvent, idle, pickObject, sameMembers } from "../../../model/utility"
 import { keyed } from "lit/directives/keyed.js"
-import { headSerializer, SemVer, toAttributes } from "../../../model"
+import { headEqual, headSerializer, SemVer, toAttributes } from "../../../model"
 import {DOMSerializer} from "prosemirror-model"
 import scopedCustomElementRegistry from "@webcomponents/scoped-custom-element-registry/src/scoped-custom-element-registry.js?raw"
 import redefineCustomElements from "redefine-custom-elements?raw"
@@ -228,9 +228,9 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
     this.view?.focus(...args)
   }
 
-  posAtCoords = (...args: Parameters<typeof this.view.posAtCoords>) => this?.view.posAtCoords(...args)
+  posAtCoords = (...args: Parameters<typeof this.view.posAtCoords>) => this.view?.posAtCoords(...args)
 
-  coordsAtPos = (...args: Parameters<typeof this.view.coordsAtPos>) => this?.view.coordsAtPos(...args)
+  coordsAtPos = (...args: Parameters<typeof this.view.coordsAtPos>) => this.view?.coordsAtPos(...args)
 
   domAtPos = (...args: Parameters<typeof this.view.domAtPos>) => this.view?.domAtPos(...args)
 
@@ -318,7 +318,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
         }
       }
     }
-    if((this.state as any)?.head$ && (!previous.get("state")?.head$ || !previous.get("state")?.head$.doc.eq((this.state as any)?.head$.doc)) && !this.url) {
+    if(previous.get("state")?.head$ && !headEqual(previous.get("state")?.head$, (this.state as any).head$) && !this.url) {
       this.renderHead()
     }
     
@@ -353,26 +353,6 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
       }
     }
     this.body.spellcheck = false
-  }
-
-  getUpdatedProps(previous: Map<string, any> = new Map()) {
-    const changedEntries = [...previous.keys()].map(k => [k, (this as any)[k]])
-    const changedProps = Object.fromEntries(changedEntries) as DirectEditorProps
-    return {
-      ...changedProps, 
-      editable: this.shouldBeEditable,
-      state: this.state ?? this.initialState,
-      attributes: {
-        "data-iframe-height": "",
-        "data-placeholder": this.placeholder ?? "",
-        ...this.pmAttributes
-      },
-      dispatchTransaction: (tr: Transaction) => {
-        const editorState = this.view.state.apply(tr)
-        this.updateState(editorState)
-      }
-    
-    }
   }
 
   static eventsToRedispatch = ["dragenter", "dragleave"]
@@ -457,7 +437,6 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
     this.head.append(...scripts, ...styles)
 
     // Custom editor behavior
-    this.document.documentElement.spellcheck = false
     this.window.console = console
     this.window.onerror = window.onerror
     this.window.onunhandledrejection = window.onunhandledrejection

@@ -681,14 +681,6 @@
         <source>Delete the selection</source>
         <target>Изтриване на избора</target>
       </trans-unit>
-      <trans-unit id="s95c161f68e5180a5">
-        <source>Inspect selection</source>
-        <target>Проверка на избора</target>
-      </trans-unit>
-      <trans-unit id="s4c1535f316305a2a">
-        <source>Inspect the selection</source>
-        <target>Проверка на избора</target>
-      </trans-unit>
       <trans-unit id="sbba0156f795d8c07">
         <source>Edit selection</source>
         <target>Редактиране на избора</target>
@@ -843,17 +835,13 @@
         <target>Улавяне</target>
       </trans-unit>
       <trans-unit id="s2b8f50c64be440f7">
-        <source>Select 
-          <x id="0" equiv-text="${this.mediaType}"/>...
-        </source>
+        <source>Select <x id="0" equiv-text="${this.mediaType}"/>...</source>
         <target>Изберете 
           <x id="0" equiv-text="${this.mediaType}"/>... 
         </target>
       </trans-unit>
       <trans-unit id="s739544d0c858c633">
-        <source>Or drop 
-          <x id="0" equiv-text="${this.mediaType}"/> here
-        </source>
+        <source>Or drop <x id="0" equiv-text="${this.mediaType}"/> here</source>
         <target>Или да отпадне 
           <x id="0" equiv-text="${this.mediaType}"/> тук 
         </target>
@@ -919,10 +907,7 @@
         <target>Тази ключова дума е задължителна за джаджите</target>
       </trans-unit>
       <trans-unit id="h64cd12550420f6f1">
-        <source>Generate a 
-          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
-          <x id="1" equiv-text="&lt;/code&gt;"/> file
-        </source>
+        <source>Generate a <x id="0" equiv-text="&lt;code&gt;"/>LICENSE<x id="1" equiv-text="&lt;/code&gt;"/> file</source>
         <target>Генериране на 
           <x id="0" equiv-text="&lt;code&gt;"/>LICENSE 
           <x id="1" equiv-text="&lt;/code&gt;"/> файл 
@@ -1507,18 +1492,14 @@
         <target>Грешка при свързването</target>
       </trans-unit>
       <trans-unit id="sf52d840949a980d1">
-        <source>
-          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           ще бъдат изтрити завинаги. Сигурни ли сте? 
         </target>
       </trans-unit>
       <trans-unit id="s9b7cd8860c8fc922">
-        <source>
-          <x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           ще бъдат презаписани. Сигурни ли сте? 
@@ -1557,9 +1538,7 @@
         <target>Неподдържан тип на свойството '${desc.type}' (обработва се като JSON)</target>
       </trans-unit>
       <trans-unit id="sa00df4e39c72d3b4">
-        <source>
-          <x id="0" equiv-text="${desc.widget}"/> is not supported
-        </source>
+        <source><x id="0" equiv-text="${desc.widget}"/> is not supported</source>
         <target>
           <x id="0" equiv-text="${desc.widget}"/> не се поддържа 
         </target>
@@ -3256,9 +3235,6 @@
         <source>Set special value</source>
         <target>Задаване на специална стойност</target>
       </trans-unit>
-      <trans-unit id="scbf29ce484222325">
-        <source></source>
-      </trans-unit>
       <trans-unit id="sfb68cae41d749423">
         <source>Initial</source>
         <target>Първоначален</target>
@@ -3494,14 +3470,6 @@
       <trans-unit id="s5068560b8d39663d">
         <source>Clickable map</source>
         <target>Кликваща карта</target>
-      </trans-unit>
-      <trans-unit id="s814d528c8af55807">
-        <source>Definition list item</source>
-        <target>Елемент от списъка с определения</target>
-      </trans-unit>
-      <trans-unit id="s9c8df9626d152d5a">
-        <source>Definition list term</source>
-        <target>Списък с определения Термин</target>
       </trans-unit>
       <trans-unit id="s07808b0ca6da8fef">
         <source>Fenced Website</source>
@@ -3758,14 +3726,6 @@
       <trans-unit id="s84e9c7f8785ca60b">
         <source>Insert a form</source>
         <target>Вмъкване на формуляр</target>
-      </trans-unit>
-      <trans-unit id="s3b3ea038c5d3bb06">
-        <source>Division</source>
-        <target>Отдел</target>
-      </trans-unit>
-      <trans-unit id="se6cdad455e2d8c02">
-        <source>Insert a division</source>
-        <target>Поставяне на деление</target>
       </trans-unit>
       <trans-unit id="sa5df1bcdba46c3fb">
         <source>Figure Caption</source>
@@ -4394,6 +4354,50 @@
       <trans-unit id="s4dcb9315f6527f9c">
         <source>Run on reload</source>
         <target>Изпълнява се при презареждане</target>
+      </trans-unit>
+      <trans-unit id="s0dc07f97c821463c">
+        <source>Comment selection</source>
+        <target>Избор на коментар</target>
+      </trans-unit>
+      <trans-unit id="s780099588362f80f">
+        <source>Definition item</source>
+        <target>Позиция за дефиниция</target>
+      </trans-unit>
+      <trans-unit id="s105540b7756c0232">
+        <source>Definition term</source>
+        <target>Термин за дефиниция</target>
+      </trans-unit>
+      <trans-unit id="s98b1cb8fb62909ec">
+        <source>Group</source>
+        <target>Група</target>
+      </trans-unit>
+      <trans-unit id="s151349210ac1d2d8">
+        <source>Insert a group</source>
+        <target>Вмъкване на група</target>
+      </trans-unit>
+      <trans-unit id="s2739460e44320108">
+        <source>Chinese (Traditional)</source>
+        <target>Китайски (традиционен)</target>
+      </trans-unit>
+      <trans-unit id="sdc12d4d35420eeb7">
+        <source>Comments</source>
+        <target>Коментари</target>
+      </trans-unit>
+      <trans-unit id="s74540c1b595a229c">
+        <source>TeX Formula</source>
+        <target>Формула на TeX</target>
+      </trans-unit>
+      <trans-unit id="sc221faca1ecb4aee">
+        <source>Anonymous</source>
+        <target>Анонимен</target>
+      </trans-unit>
+      <trans-unit id="s0b7ae9543c001867">
+        <source>Reply</source>
+        <target>Отговор</target>
+      </trans-unit>
+      <trans-unit id="s52fb1524cb25d7ab">
+        <source>New thread</source>
+        <target>Нова тема</target>
       </trans-unit>
     </body>
   </file>

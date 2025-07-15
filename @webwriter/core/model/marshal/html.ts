@@ -5,6 +5,7 @@ import { EditorStateWithHead, PackageStore, createEditorState, headSchema, headS
 import scopedCustomElementRegistry from "@webcomponents/scoped-custom-element-registry/src/scoped-custom-element-registry.js?raw"
 import { ParserSerializer } from './parserserializer'
 import { parseComment, serializeComment, serializeCommentElement } from "#model/schemas/resource/comment.js"
+import { html_beautify } from "js-beautify"
 
 class NonHTMLDocumentError extends Error {}
 class NonWebwriterDocumentError extends Error {}
@@ -27,26 +28,6 @@ function uInt8ToBase64(bytes: Uint8Array) {
       binary += String.fromCharCode( bytes[ i ] );
   }
   return window.btoa( binary );
-}
-
-function formatHtml(html: string) {
-  var tab = '\t';
-  var result = '';
-  var indent= '';
-
-  html.split(/>\s*</).forEach(function(element: string) {
-    if (element.match( /^\/\w/ )) {
-      indent = indent.substring(tab.length);
-    }
-
-    result += indent + '<' + element + '>\r\n';
-
-    if (element.match( /^<?\w[^>]*[^\/]$/ ) && !element.startsWith("input")  ) { 
-      indent += tab;              
-    }
-  });
-
-  return result.substring(1, result.length-3);
 }
 
 export function replaceCommentElements(html: Document | HTMLElement) {
@@ -140,7 +121,7 @@ function createInitializerScript(id: string, tag: string, content: string) {
   `
 }
 
-export async function docToBundle(doc: Node, head: Node, noDeps=false) {
+export async function docToBundle(doc: Node, head: Node, noDeps=false, minify=false) {
   let html = document.implementation.createHTMLDocument()
   const serializer = DOMSerializer.fromSchema(doc.type.schema)
   serializer.serializeFragment(doc.content, {document: html}, html.body)
@@ -152,8 +133,10 @@ export async function docToBundle(doc: Node, head: Node, noDeps=false) {
   }
 
   // Minify theme CSS
-  for(let styleEl of Array.from(html.querySelectorAll("head > style"))) {
-    styleEl.textContent = styleEl.textContent?.replaceAll("\n", "") ?? null
+  if(minify) {
+    for(let styleEl of Array.from(html.querySelectorAll("head > style"))) {
+      styleEl.textContent = styleEl.textContent?.replaceAll("\n", "") ?? null
+    }
   }
 
   // Embed media elements
@@ -198,12 +181,14 @@ export async function docToBundle(doc: Node, head: Node, noDeps=false) {
   }
   else {
     const jsUrl = new URL("https://api.webwriter.app/ww/v1/_bundles")
+    minify && jsUrl.searchParams.append("minify", "true")
     importIDs.forEach(id => jsUrl.searchParams.append("id", id))
     const bundleJS = await (await fetch(jsUrl)).text()
     js = bundleJS? scopedCustomElementRegistry + ";" +  `(function () {${bundleJS}})();`: ""
     const cssUrl = new URL("https://api.webwriter.app/ww/v1/_bundles")
     cssUrl.searchParams.append("pkg", "true")
     cssUrl.searchParams.append("type", "css")
+    minify && cssUrl.searchParams.append("minify", "true")
     importIDs.forEach(id => cssUrl.searchParams.append("id", id.replace(".js", ".css").replace(".*", ".css")))
     const bundleCSS = await (await fetch(cssUrl)).text()
     css = bundleCSS
@@ -291,9 +276,9 @@ export class HTMLParserSerializer extends ParserSerializer {
     return editorState
   }
 
-  async serializeToDOM(state: EditorStateWithHead, noDeps=false) {
+  async serializeToDOM(state: EditorStateWithHead, noDeps=false, minify=false) {
 
-    const {html, js, css} = await docToBundle(state.doc, state.head$.doc, noDeps)
+    const {html, js, css} = await docToBundle(state.doc, state.head$.doc, noDeps, minify)
 
     if(js) {
       const script = html.createElement("script")
@@ -314,9 +299,9 @@ export class HTMLParserSerializer extends ParserSerializer {
     return html
   }
   
-  async serialize(state: EditorStateWithHead, noDeps=false) {
-    const html = await this.serializeToDOM(state, noDeps)
-    return `<!DOCTYPE html>` + formatHtml(html.documentElement.outerHTML)
+  async serialize(state: EditorStateWithHead, noDeps=false, minify=false) {
+    const html = await this.serializeToDOM(state, noDeps, minify)
+    return `<!DOCTYPE html>` + html_beautify(html.documentElement.outerHTML, {content_unformatted: ["pre", "script", "style"]})
 
   }
 }

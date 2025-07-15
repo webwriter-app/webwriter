@@ -13,7 +13,7 @@ export class CSSGlobalInput extends LitElement {
   static get labels() {
     return {
         "none": msg("Set special value"),
-        "custom": msg(""),
+        "custom": msg("Custom"),
         "initial": msg("Initial"),
         "inherit": msg("Inherit"),
         "unset": msg("Unset"),

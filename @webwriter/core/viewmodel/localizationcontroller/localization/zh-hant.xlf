@@ -73,14 +73,6 @@
         <source>Redo the last undone change in the active document</source>
         <target>在使用中的文件中重做上次未完成的變更</target>
       </trans-unit>
-      <trans-unit id="se6297163cac9d276">
-        <source>Edit source</source>
-        <target>編輯來源</target>
-      </trans-unit>
-      <trans-unit id="s281d957112b10f12">
-        <source>Edit the HTML of the document directly</source>
-        <target>直接編輯文件的 HTML</target>
-      </trans-unit>
       <trans-unit id="s2474e7fb1aec9f05">
         <source>Test</source>
         <target>測試</target>
@@ -88,6 +80,14 @@
       <trans-unit id="sc546f489f9c0cced">
         <source>Toggles the test mode for the active document</source>
         <target>切換作用中文件的測試模式</target>
+      </trans-unit>
+      <trans-unit id="se6297163cac9d276">
+        <source>Edit source</source>
+        <target>編輯來源</target>
+      </trans-unit>
+      <trans-unit id="s281d957112b10f12">
+        <source>Edit the HTML of the document directly</source>
+        <target>直接編輯文件的 HTML</target>
       </trans-unit>
       <trans-unit id="s417b90913e05bc17">
         <source>Preview</source>
@@ -729,14 +729,6 @@
         <source>Delete the selection</source>
         <target>刪除選擇</target>
       </trans-unit>
-      <trans-unit id="s95c161f68e5180a5">
-        <source>Inspect selection</source>
-        <target>檢查選擇</target>
-      </trans-unit>
-      <trans-unit id="s4c1535f316305a2a">
-        <source>Inspect the selection</source>
-        <target>檢查選擇</target>
-      </trans-unit>
       <trans-unit id="sbba0156f795d8c07">
         <source>Edit selection</source>
         <target>編輯選擇</target>
@@ -752,6 +744,10 @@
       <trans-unit id="sa53c5cb03a8fda50">
         <source>Pin the selection as a snippet in the palette</source>
         <target>將選取區釘選為調色板中的片段</target>
+      </trans-unit>
+      <trans-unit id="s0dc07f97c821463c">
+        <source>Comment selection</source>
+        <target>評論選擇</target>
       </trans-unit>
       <trans-unit id="sf14c35392ec7bf10">
         <source>This feature is unavailable in Firefox. It is available in Chrome or Edge.</source>
@@ -853,13 +849,13 @@
         <source>Clickable map</source>
         <target>點選地圖</target>
       </trans-unit>
-      <trans-unit id="s814d528c8af55807">
-        <source>Definition list item</source>
-        <target>定義清單項</target>
+      <trans-unit id="s780099588362f80f">
+        <source>Definition item</source>
+        <target>定義項目</target>
       </trans-unit>
-      <trans-unit id="s9c8df9626d152d5a">
-        <source>Definition list term</source>
-        <target>定義清單詞彙</target>
+      <trans-unit id="s105540b7756c0232">
+        <source>Definition term</source>
+        <target>定義詞</target>
       </trans-unit>
       <trans-unit id="s07808b0ca6da8fef">
         <source>Fenced Website</source>
@@ -1021,13 +1017,21 @@
         <source>Insert a progress indicator</source>
         <target>插入進度指標</target>
       </trans-unit>
-      <trans-unit id="s35c3125c7750681e">
-        <source>Blockquote</source>
-        <target>區塊引用</target>
+      <trans-unit id="s98b1cb8fb62909ec">
+        <source>Group</source>
+        <target>集團</target>
       </trans-unit>
-      <trans-unit id="sa492a51a707930fa">
-        <source>Insert a blockquote</source>
-        <target>插入小引</target>
+      <trans-unit id="s151349210ac1d2d8">
+        <source>Insert a group</source>
+        <target>插入群組</target>
+      </trans-unit>
+      <trans-unit id="scc1db59d292cbc4c">
+        <source>Section</source>
+        <target>章節</target>
+      </trans-unit>
+      <trans-unit id="s22a2348c46a912a0">
+        <source>Insert a section</source>
+        <target>插入區段</target>
       </trans-unit>
       <trans-unit id="s5432ad3c84273229">
         <source>Figure</source>
@@ -1045,30 +1049,6 @@
         <source>Insert an article</source>
         <target>插入文章</target>
       </trans-unit>
-      <trans-unit id="sadd352cc7f6f2307">
-        <source>Aside</source>
-        <target>旁邊</target>
-      </trans-unit>
-      <trans-unit id="s743f778233e42a3f">
-        <source>Insert an aside</source>
-        <target>插入旁白</target>
-      </trans-unit>
-      <trans-unit id="s07e6118e838b2e23">
-        <source>Navigation</source>
-        <target>導航</target>
-      </trans-unit>
-      <trans-unit id="s0a799f583098cadf">
-        <source>Insert a navigation</source>
-        <target>插入導覽</target>
-      </trans-unit>
-      <trans-unit id="scc1db59d292cbc4c">
-        <source>Section</source>
-        <target>章節</target>
-      </trans-unit>
-      <trans-unit id="s22a2348c46a912a0">
-        <source>Insert a section</source>
-        <target>插入區段</target>
-      </trans-unit>
       <trans-unit id="s75d83fc3f0cfab40">
         <source>Header</source>
         <target>標頭</target>
@@ -1076,6 +1056,22 @@
       <trans-unit id="sa5c80e623459ffe4">
         <source>Insert a header</source>
         <target>插入標頭</target>
+      </trans-unit>
+      <trans-unit id="s49e763aed00877a8">
+        <source>Main</source>
+        <target>主頁</target>
+      </trans-unit>
+      <trans-unit id="s8247d32213e35f24">
+        <source>Insert a main</source>
+        <target>插入主</target>
+      </trans-unit>
+      <trans-unit id="sadd352cc7f6f2307">
+        <source>Aside</source>
+        <target>旁邊</target>
+      </trans-unit>
+      <trans-unit id="s743f778233e42a3f">
+        <source>Insert an aside</source>
+        <target>插入旁白</target>
       </trans-unit>
       <trans-unit id="scf932a8577057752">
         <source>Footer</source>
@@ -1085,13 +1081,21 @@
         <source>Insert a footer</source>
         <target>插入頁腳</target>
       </trans-unit>
-      <trans-unit id="s49e763aed00877a8">
-        <source>Main</source>
-        <target>主頁</target>
+      <trans-unit id="s07e6118e838b2e23">
+        <source>Navigation</source>
+        <target>導航</target>
       </trans-unit>
-      <trans-unit id="s8247d32213e35f24">
-        <source>Insert a main</source>
-        <target>插入主</target>
+      <trans-unit id="s0a799f583098cadf">
+        <source>Insert a navigation</source>
+        <target>插入導覽</target>
+      </trans-unit>
+      <trans-unit id="s35c3125c7750681e">
+        <source>Blockquote</source>
+        <target>區塊引用</target>
+      </trans-unit>
+      <trans-unit id="sa492a51a707930fa">
+        <source>Insert a blockquote</source>
+        <target>插入小引</target>
       </trans-unit>
       <trans-unit id="s5d929ff1619ac0c9">
         <source>Search</source>
@@ -1116,14 +1120,6 @@
       <trans-unit id="s84e9c7f8785ca60b">
         <source>Insert a form</source>
         <target>插入表格</target>
-      </trans-unit>
-      <trans-unit id="s3b3ea038c5d3bb06">
-        <source>Division</source>
-        <target>部門</target>
-      </trans-unit>
-      <trans-unit id="se6cdad455e2d8c02">
-        <source>Insert a division</source>
-        <target>插入除法</target>
       </trans-unit>
       <trans-unit id="sa5df1bcdba46c3fb">
         <source>Figure Caption</source>
@@ -1705,6 +1701,10 @@
         <source>Chinese (Simplified)</source>
         <target>簡體中文</target>
       </trans-unit>
+      <trans-unit id="s2739460e44320108">
+        <source>Chinese (Traditional)</source>
+        <target>繁體中文</target>
+      </trans-unit>
       <trans-unit id="s5941292bb77281ab">
         <source>Norwegian Bokmål</source>
         <target>挪威文</target>
@@ -1783,7 +1783,7 @@
       </trans-unit>
       <trans-unit id="s9df571714a1efb44">
         <source>An autosaved version of this explorable is available. Load it?</source>
-        <target>此探索項的自動儲存版本可用。載入嗎？</target>
+        <target>此探索區的自動儲存版本可用。載入嗎？</target>
       </trans-unit>
       <trans-unit id="s75109f5307578a61">
         <source>Welcome to WebWriter</source>
@@ -1815,7 +1815,7 @@
       </trans-unit>
       <trans-unit id="s806f84eb0ace116e">
         <source>See what you have selected and change it. Copy, cut, paste, pin, or make layout changes. Offers different options depending on your selection, i.e. formatting for text.</source>
-        <target>查看您所選取的內容，並進行更改。複製、剪下、貼上、釘上或進行版面變更。根據您的選取提供不同的選項，例如文字的格式。</target>
+        <target>查看您選取的內容，並進行更改。複製、剪下、貼上、釘上或進行版面變更。根據您的選取提供不同的選項，例如文字的格式。</target>
       </trans-unit>
       <trans-unit id="seaaaeb09e3b4e78b">
         <source>Editing commands</source>
@@ -2411,7 +2411,7 @@
       </trans-unit>
       <trans-unit id="s2712dc5641a33226">
         <source>Package registry accounts are intended for developers and allow you to configure one or more registries</source>
-        <target>套件註冊表帳戶專為開發者設定，可讓您設定一個或多個註冊表</target>
+        <target>套件註冊表帳戶是為開發人員而設，可讓您設定一個或多個註冊表</target>
       </trans-unit>
       <trans-unit id="s429bd646f1cf8bc6">
         <source>Grammar LLM accounts allow you to use the Grammar LLM API to correct grammar in text.</source>
@@ -2993,6 +2993,10 @@
         <source>Bottom left (y)</source>
         <target>左下方 (y)</target>
       </trans-unit>
+      <trans-unit id="sdc12d4d35420eeb7">
+        <source>Comments</source>
+        <target>評論</target>
+      </trans-unit>
       <trans-unit id="s29acfd2778e8c377">
         <source>Hide advanced text formatting</source>
         <target>隱藏進階文字格式</target>
@@ -3037,6 +3041,10 @@
         <source>Mute</source>
         <target>靜音</target>
       </trans-unit>
+      <trans-unit id="s74540c1b595a229c">
+        <source>TeX Formula</source>
+        <target>TeX 公式</target>
+      </trans-unit>
       <trans-unit id="s65ac276544ba33cd">
         <source>SVG file</source>
         <target>SVG 檔案</target>
@@ -3048,6 +3056,18 @@
       <trans-unit id="se036b53f145441cd">
         <source>Mixed Content</source>
         <target>混合內容</target>
+      </trans-unit>
+      <trans-unit id="sc221faca1ecb4aee">
+        <source>Anonymous</source>
+        <target>匿名</target>
+      </trans-unit>
+      <trans-unit id="s0b7ae9543c001867">
+        <source>Reply</source>
+        <target>答覆</target>
+      </trans-unit>
+      <trans-unit id="s52fb1524cb25d7ab">
+        <source>New thread</source>
+        <target>新主題</target>
       </trans-unit>
       <trans-unit id="sb7c77d0415de05cf">
         <source>Run tests</source>
@@ -3115,7 +3135,7 @@
       </trans-unit>
       <trans-unit id="s986facb3ecc9602c">
         <source>Sideways, right-to-left</source>
-        <target>側向，由右至左</target>
+        <target>側向，從右至左</target>
       </trans-unit>
       <trans-unit id="s063fa5a0a4903bf4">
         <source>Sideways, left-to-right</source>
@@ -3291,7 +3311,7 @@
       </trans-unit>
       <trans-unit id="scd9cedeb5ece3adb">
         <source>Hyphenate</source>
-        <target>連字</target>
+        <target>連字符</target>
       </trans-unit>
       <trans-unit id="se36c5b1baf5e0660">
         <source>Anywhere</source>
@@ -4110,18 +4130,14 @@
         <target>無特定款式</target>
       </trans-unit>
       <trans-unit id="s2b8f50c64be440f7">
-        <source>Select 
-          <x id="0" equiv-text="${this.mediaType}"/>...
-        </source>
+        <source>Select <x id="0" equiv-text="${this.mediaType}"/>...</source>
         <target>選擇 
           <x id="0" equiv-text="${this.mediaType}"/>...
         </target>
       </trans-unit>
       <trans-unit id="s739544d0c858c633">
-        <source>Or drop 
-          <x id="0" equiv-text="${this.mediaType}"/> here
-        </source>
-        <target>或 
+        <source>Or drop <x id="0" equiv-text="${this.mediaType}"/> here</source>
+        <target>或按這裡 
           <x id="0" equiv-text="${this.mediaType}"/> 這裡
         </target>
       </trans-unit>
@@ -4180,9 +4196,6 @@
       <trans-unit id="sb71941f552f3504d">
         <source>Set special value</source>
         <target>設定特殊值</target>
-      </trans-unit>
-      <trans-unit id="scbf29ce484222325">
-        <source></source>
       </trans-unit>
       <trans-unit id="sfb68cae41d749423">
         <source>Initial</source>
@@ -4249,10 +4262,7 @@
         <target>這個關鍵字是 widget 必須的</target>
       </trans-unit>
       <trans-unit id="h64cd12550420f6f1">
-        <source>Generate a 
-          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
-          <x id="1" equiv-text="&lt;/code&gt;"/> file
-        </source>
+        <source>Generate a <x id="0" equiv-text="&lt;code&gt;"/>LICENSE<x id="1" equiv-text="&lt;/code&gt;"/> file</source>
         <target>產生 
           <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
           <x id="1" equiv-text="&lt;/code&gt;"/> 檔案
@@ -4311,17 +4321,13 @@
         <target>連接錯誤</target>
       </trans-unit>
       <trans-unit id="sf52d840949a980d1">
-        <source>
-          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> 將被永久刪除。您確定嗎？
         </target>
       </trans-unit>
       <trans-unit id="s9b7cd8860c8fc922">
-        <source>
-          <x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> 將被覆寫。您確定嗎？
         </target>
@@ -4351,9 +4357,7 @@
         <target>不支援的屬性類型 '${desc.type}' (以 JSON 格式處理)</target>
       </trans-unit>
       <trans-unit id="sa00df4e39c72d3b4">
-        <source>
-          <x id="0" equiv-text="${desc.widget}"/> is not supported
-        </source>
+        <source><x id="0" equiv-text="${desc.widget}"/> is not supported</source>
         <target>
           <x id="0" equiv-text="${desc.widget}"/> 不支援
         </target>

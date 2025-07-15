@@ -825,7 +825,8 @@ async function respond<T extends Action["collection"]>(action: Action<T>) {
         ? Object.keys(importMap.imports).filter(k => k.endsWith(".css"))
         : Object.keys(importMap.imports).filter(k => k.endsWith(".js"))
     }
-    const bundleResponse = await getBundle(ids, importMap)
+    const options = {minify: action.args.minify === "true"}
+    const bundleResponse = await getBundle(ids, importMap, options)
     cache.put(url, bundleResponse.clone())
     return bundleResponse
   }
