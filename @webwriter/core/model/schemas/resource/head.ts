@@ -6,6 +6,8 @@ import {EditorView} from "prosemirror-view"
 import webwriterPackage from "../../../package.json"
 import { themes } from "."
 import { commentMarkSpec } from "./comment";
+import { sameMembers, shallowCompare } from "#model/utility/index.js"
+import { isEqual } from "lodash"
 
 export const headSchemaSpec = {
   topNode: "head",
@@ -256,6 +258,15 @@ export type EditorStateWithHead =  EditorState & {"head$": EditorState}
 
 const key = new PluginKey("head")
 
+export function headEqual(a: EditorState | undefined, b: EditorState | undefined) {
+  if(!a || !b) {
+    return false
+  }
+  const attrsEqual = isEqual(a.doc.attrs, b.doc.attrs)
+  const contentEqual = a.doc.content.eq(b.doc.content)
+  return attrsEqual && contentEqual
+}
+
 export function head(styles: string[], scripts: string[]) {
   return new Plugin({
     key,
@@ -292,13 +303,13 @@ export function head(styles: string[], scripts: string[]) {
         update(view: EditorView & {state: EditorStateWithHead}, prevState: EditorStateWithHead) {
           const head$ = view.state.head$
           const prevHead$ = prevState.head$
-          if(!head$.doc.eq(prevHead$.doc)) {
+          if(!headEqual(head$, prevHead$)) {
             const headDOM = headSerializer.serializeNode(head$.doc)
-            headDOM.childNodes.forEach(node => head.appendChild(node))
+            view.dom.ownerDocument.head.replaceWith(headDOM)
           }
         },
         destroy() {
-          const oldNodes = head.querySelectorAll("[data-ww-editing]")
+          const oldNodes = view.dom.ownerDocument.head.querySelectorAll("[data-ww-editing]")
           oldNodes.forEach(node => node.remove())
         }
       }

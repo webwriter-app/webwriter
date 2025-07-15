@@ -5,7 +5,7 @@ import { localized } from "@lit/localize"
 import { EditorState, Transaction } from "prosemirror-state"
 import { emitCustomEvent, idle, pickObject, sameMembers } from "../../../model/utility"
 import { keyed } from "lit/directives/keyed.js"
-import { headSerializer, SemVer, toAttributes } from "../../../model"
+import { headEqual, headSerializer, SemVer, toAttributes } from "../../../model"
 import {DOMSerializer} from "prosemirror-model"
 import scopedCustomElementRegistry from "@webcomponents/scoped-custom-element-registry/src/scoped-custom-element-registry.js?raw"
 import redefineCustomElements from "redefine-custom-elements?raw"
@@ -318,7 +318,7 @@ export class ProsemirrorEditor extends LitElement implements IProsemirrorEditor 
         }
       }
     }
-    if((this.state as any)?.head$ && (!previous.get("state")?.head$ || !previous.get("state")?.head$.doc.eq((this.state as any)?.head$.doc)) && !this.url) {
+    if(previous.get("state")?.head$ && !headEqual(previous.get("state")?.head$, (this.state as any).head$) && !this.url) {
       this.renderHead()
     }
     
