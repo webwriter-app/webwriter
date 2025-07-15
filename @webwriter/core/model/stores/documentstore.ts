@@ -232,7 +232,7 @@ export class DocumentStore implements Resource {
         newSerializer = foundPs ? new foundPs() : serializer;
         newSerializer =
           "serialize" in newSerializer ? newSerializer : this.serializer;
-        const data = await newSerializer.serialize!(this.editorState);
+        const data = await newSerializer.serialize!(this.editorState, false, true);
         const {url: returnedHandle, metadata} = (await client.saveDocument(
           data,
           handle as any,
@@ -252,7 +252,7 @@ export class DocumentStore implements Resource {
         newSerializer = foundPs ? new foundPs() : serializer;
         newSerializer =
           "serialize" in newSerializer ? newSerializer : this.serializer;
-        const data = await newSerializer.serialize!(this.editorState);
+        const data = await newSerializer.serialize!(this.editorState, false, true);
         const saveClient = "saveDocument" in client? client: this.accounts.getClient("file", "file")!
         const {url, metadata} = (await saveClient.saveDocument(data, "saveDocument" in client? newUrl: undefined, {filename, access})) ?? {};
         if (url) {
@@ -513,8 +513,7 @@ export class DocumentStore implements Resource {
   }
 
   get empty() {
-
-    return !this.editorState.doc.content.size || this.editorState.doc.eq(createEditorState({ schema: this.editorState.schema }).doc);
+    return !this.editorState.doc.textContent && (!this.editorState.doc.content.size || this.editorState.doc.eq(createEditorState({ schema: this.editorState.schema }).doc))
   }
 
   get inMemory() {
