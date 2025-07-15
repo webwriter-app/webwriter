@@ -485,6 +485,25 @@ export class MathView extends ElementView implements NodeView {
     
   }
 }
+/*
+export const WidgetViewReact = forwardRef<HTMLElement, NodeViewComponentProps>(function WidgetViewReact({children, nodeProps: {node, getPos}, ...props}, ref) {
+  const pkg = node.type.spec.package
+  const [tag, attrs] = widgetToDOM(pkg, !node.type.isLeaf)(node)
+  attrs.className = attrs.class
+  delete attrs.class
+  console.log(tag, {...props, ...attrs})
+  return html(tag, {...props, ...attrs, ref}, children)
+})
+
+export const ElementViewReact = forwardRef<HTMLElement, NodeViewComponentProps>(function ElementViewReact({children, nodeProps: {node, getPos}, ...props}, ref) {
+  const pkg = node.type.spec.package
+  const tag = node.type.name
+  const attrs = toAttributes(node)
+  attrs.className = attrs.class
+  delete attrs.class
+  console.log(tag, {...props, ...attrs})
+  return html(tag, {...props, ...attrs, ref}, children)
+})*/
 
 export const nodeViews = {
   "_widget": WidgetView,
