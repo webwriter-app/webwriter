@@ -681,14 +681,6 @@
         <source>Delete the selection</source>
         <target>Brisanje izbora</target>
       </trans-unit>
-      <trans-unit id="s95c161f68e5180a5">
-        <source>Inspect selection</source>
-        <target>Preverjanje izbora</target>
-      </trans-unit>
-      <trans-unit id="s4c1535f316305a2a">
-        <source>Inspect the selection</source>
-        <target>Preverite izbor</target>
-      </trans-unit>
       <trans-unit id="sbba0156f795d8c07">
         <source>Edit selection</source>
         <target>Urejanje izbora</target>
@@ -842,17 +834,13 @@
         <target>Zajem</target>
       </trans-unit>
       <trans-unit id="s2b8f50c64be440f7">
-        <source>Select 
-          <x id="0" equiv-text="${this.mediaType}"/>...
-        </source>
+        <source>Select <x id="0" equiv-text="${this.mediaType}"/>...</source>
         <target>Izberite 
           <x id="0" equiv-text="${this.mediaType}"/>... 
         </target>
       </trans-unit>
       <trans-unit id="s739544d0c858c633">
-        <source>Or drop 
-          <x id="0" equiv-text="${this.mediaType}"/> here
-        </source>
+        <source>Or drop <x id="0" equiv-text="${this.mediaType}"/> here</source>
         <target>Ali pa spustite 
           <x id="0" equiv-text="${this.mediaType}"/> tukaj 
         </target>
@@ -918,10 +906,7 @@
         <target>Ta ključna beseda je potrebna za gradnike</target>
       </trans-unit>
       <trans-unit id="h64cd12550420f6f1">
-        <source>Generate a 
-          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
-          <x id="1" equiv-text="&lt;/code&gt;"/> file
-        </source>
+        <source>Generate a <x id="0" equiv-text="&lt;code&gt;"/>LICENSE<x id="1" equiv-text="&lt;/code&gt;"/> file</source>
         <target>Ustvari 
           <x id="0" equiv-text="&lt;code&gt;"/>LICENCA 
           <x id="1" equiv-text="&lt;/code&gt;"/> datoteko 
@@ -1506,18 +1491,14 @@
         <target>Napaka pri povezovanju</target>
       </trans-unit>
       <trans-unit id="sf52d840949a980d1">
-        <source>
-          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           bodo trajno izbrisani. Ste prepričani? 
         </target>
       </trans-unit>
       <trans-unit id="s9b7cd8860c8fc922">
-        <source>
-          <x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           se prepiše. Ste prepričani? 
@@ -1556,9 +1537,7 @@
         <target>Nepodprta vrsta lastnosti '${desc.type}' (obdelava kot JSON)</target>
       </trans-unit>
       <trans-unit id="sa00df4e39c72d3b4">
-        <source>
-          <x id="0" equiv-text="${desc.widget}"/> is not supported
-        </source>
+        <source><x id="0" equiv-text="${desc.widget}"/> is not supported</source>
         <target>
           <x id="0" equiv-text="${desc.widget}"/> ni podprta. 
         </target>
@@ -3255,9 +3234,6 @@
         <source>Set special value</source>
         <target>Nastavitev posebne vrednosti</target>
       </trans-unit>
-      <trans-unit id="scbf29ce484222325">
-        <source></source>
-      </trans-unit>
       <trans-unit id="sfb68cae41d749423">
         <source>Initial</source>
         <target>Začetni</target>
@@ -3493,14 +3469,6 @@
       <trans-unit id="s5068560b8d39663d">
         <source>Clickable map</source>
         <target>Zemljevid s klikom</target>
-      </trans-unit>
-      <trans-unit id="s814d528c8af55807">
-        <source>Definition list item</source>
-        <target>Element seznama definicij</target>
-      </trans-unit>
-      <trans-unit id="s9c8df9626d152d5a">
-        <source>Definition list term</source>
-        <target>Seznam definicij izraz</target>
       </trans-unit>
       <trans-unit id="s07808b0ca6da8fef">
         <source>Fenced Website</source>
@@ -3757,14 +3725,6 @@
       <trans-unit id="s84e9c7f8785ca60b">
         <source>Insert a form</source>
         <target>Vstavljanje obrazca</target>
-      </trans-unit>
-      <trans-unit id="s3b3ea038c5d3bb06">
-        <source>Division</source>
-        <target>Oddelek</target>
-      </trans-unit>
-      <trans-unit id="se6cdad455e2d8c02">
-        <source>Insert a division</source>
-        <target>Vstavite delitev</target>
       </trans-unit>
       <trans-unit id="sa5df1bcdba46c3fb">
         <source>Figure Caption</source>
@@ -4393,6 +4353,50 @@
       <trans-unit id="s4dcb9315f6527f9c">
         <source>Run on reload</source>
         <target>Zaženi ob ponovnem nalaganju</target>
+      </trans-unit>
+      <trans-unit id="s0dc07f97c821463c">
+        <source>Comment selection</source>
+        <target>Izbor komentarjev</target>
+      </trans-unit>
+      <trans-unit id="s780099588362f80f">
+        <source>Definition item</source>
+        <target>Postavka definicije</target>
+      </trans-unit>
+      <trans-unit id="s105540b7756c0232">
+        <source>Definition term</source>
+        <target>Opredelitev pojma</target>
+      </trans-unit>
+      <trans-unit id="s98b1cb8fb62909ec">
+        <source>Group</source>
+        <target>Skupina</target>
+      </trans-unit>
+      <trans-unit id="s151349210ac1d2d8">
+        <source>Insert a group</source>
+        <target>Vstavljanje skupine</target>
+      </trans-unit>
+      <trans-unit id="s2739460e44320108">
+        <source>Chinese (Traditional)</source>
+        <target>kitajščina (tradicionalna)</target>
+      </trans-unit>
+      <trans-unit id="sdc12d4d35420eeb7">
+        <source>Comments</source>
+        <target>Komentarji</target>
+      </trans-unit>
+      <trans-unit id="s74540c1b595a229c">
+        <source>TeX Formula</source>
+        <target>Formula TeX</target>
+      </trans-unit>
+      <trans-unit id="sc221faca1ecb4aee">
+        <source>Anonymous</source>
+        <target>Anonimni</target>
+      </trans-unit>
+      <trans-unit id="s0b7ae9543c001867">
+        <source>Reply</source>
+        <target>Odgovori</target>
+      </trans-unit>
+      <trans-unit id="s52fb1524cb25d7ab">
+        <source>New thread</source>
+        <target>Nova nit</target>
       </trans-unit>
     </body>
   </file>

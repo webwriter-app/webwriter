@@ -681,14 +681,6 @@
         <source>Delete the selection</source>
         <target>선택 항목 삭제</target>
       </trans-unit>
-      <trans-unit id="s95c161f68e5180a5">
-        <source>Inspect selection</source>
-        <target>선택 항목 검사</target>
-      </trans-unit>
-      <trans-unit id="s4c1535f316305a2a">
-        <source>Inspect the selection</source>
-        <target>선택 항목 검사</target>
-      </trans-unit>
       <trans-unit id="sbba0156f795d8c07">
         <source>Edit selection</source>
         <target>선택 항목 편집</target>
@@ -842,17 +834,13 @@
         <target>캡처</target>
       </trans-unit>
       <trans-unit id="s2b8f50c64be440f7">
-        <source>Select 
-          <x id="0" equiv-text="${this.mediaType}"/>...
-        </source>
+        <source>Select <x id="0" equiv-text="${this.mediaType}"/>...</source>
         <target>선택 
           <x id="0" equiv-text="${this.mediaType}"/>... 
         </target>
       </trans-unit>
       <trans-unit id="s739544d0c858c633">
-        <source>Or drop 
-          <x id="0" equiv-text="${this.mediaType}"/> here
-        </source>
+        <source>Or drop <x id="0" equiv-text="${this.mediaType}"/> here</source>
         <target>또는 
           <x id="0" equiv-text="${this.mediaType}"/> 여기 
         </target>
@@ -918,10 +906,7 @@
         <target>이 키워드는 위젯에 필요합니다.</target>
       </trans-unit>
       <trans-unit id="h64cd12550420f6f1">
-        <source>Generate a 
-          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
-          <x id="1" equiv-text="&lt;/code&gt;"/> file
-        </source>
+        <source>Generate a <x id="0" equiv-text="&lt;code&gt;"/>LICENSE<x id="1" equiv-text="&lt;/code&gt;"/> file</source>
         <target>생성 
           <x id="0" equiv-text="&lt;code&gt;"/>라이선스 
           <x id="1" equiv-text="&lt;/code&gt;"/>
@@ -1502,18 +1487,14 @@
         <target>연결 오류</target>
       </trans-unit>
       <trans-unit id="sf52d840949a980d1">
-        <source>
-          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> 은
           영구적으로 삭제됩니다. 확실하신가요? 
         </target>
       </trans-unit>
       <trans-unit id="s9b7cd8860c8fc922">
-        <source>
-          <x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           를 덮어씁니다. 확실하신가요? 
@@ -1552,9 +1533,7 @@
         <target>지원되지 않는 속성 유형 '${desc.type}'(JSON으로 처리)</target>
       </trans-unit>
       <trans-unit id="sa00df4e39c72d3b4">
-        <source>
-          <x id="0" equiv-text="${desc.widget}"/> is not supported
-        </source>
+        <source><x id="0" equiv-text="${desc.widget}"/> is not supported</source>
         <target>
           <x id="0" equiv-text="${desc.widget}"/> 는 지원되지 않습니다. 
         </target>
@@ -3251,9 +3230,6 @@
         <source>Set special value</source>
         <target>특수 값 설정</target>
       </trans-unit>
-      <trans-unit id="scbf29ce484222325">
-        <source></source>
-      </trans-unit>
       <trans-unit id="sfb68cae41d749423">
         <source>Initial</source>
         <target>이니셜</target>
@@ -3489,14 +3465,6 @@
       <trans-unit id="s5068560b8d39663d">
         <source>Clickable map</source>
         <target>클릭 가능한 지도</target>
-      </trans-unit>
-      <trans-unit id="s814d528c8af55807">
-        <source>Definition list item</source>
-        <target>정의 목록 항목</target>
-      </trans-unit>
-      <trans-unit id="s9c8df9626d152d5a">
-        <source>Definition list term</source>
-        <target>정의 목록 용어</target>
       </trans-unit>
       <trans-unit id="s07808b0ca6da8fef">
         <source>Fenced Website</source>
@@ -3753,14 +3721,6 @@
       <trans-unit id="s84e9c7f8785ca60b">
         <source>Insert a form</source>
         <target>양식 삽입</target>
-      </trans-unit>
-      <trans-unit id="s3b3ea038c5d3bb06">
-        <source>Division</source>
-        <target>부서</target>
-      </trans-unit>
-      <trans-unit id="se6cdad455e2d8c02">
-        <source>Insert a division</source>
-        <target>나누기 삽입</target>
       </trans-unit>
       <trans-unit id="sa5df1bcdba46c3fb">
         <source>Figure Caption</source>
@@ -4389,6 +4349,50 @@
       <trans-unit id="s4dcb9315f6527f9c">
         <source>Run on reload</source>
         <target>다시 로드 시 실행</target>
+      </trans-unit>
+      <trans-unit id="s0dc07f97c821463c">
+        <source>Comment selection</source>
+        <target>댓글 선택</target>
+      </trans-unit>
+      <trans-unit id="s780099588362f80f">
+        <source>Definition item</source>
+        <target>정의 항목</target>
+      </trans-unit>
+      <trans-unit id="s105540b7756c0232">
+        <source>Definition term</source>
+        <target>정의 용어</target>
+      </trans-unit>
+      <trans-unit id="s98b1cb8fb62909ec">
+        <source>Group</source>
+        <target>그룹</target>
+      </trans-unit>
+      <trans-unit id="s151349210ac1d2d8">
+        <source>Insert a group</source>
+        <target>그룹 삽입</target>
+      </trans-unit>
+      <trans-unit id="s2739460e44320108">
+        <source>Chinese (Traditional)</source>
+        <target>중국어(번체)</target>
+      </trans-unit>
+      <trans-unit id="sdc12d4d35420eeb7">
+        <source>Comments</source>
+        <target>댓글</target>
+      </trans-unit>
+      <trans-unit id="s74540c1b595a229c">
+        <source>TeX Formula</source>
+        <target>TeX 공식</target>
+      </trans-unit>
+      <trans-unit id="sc221faca1ecb4aee">
+        <source>Anonymous</source>
+        <target>익명</target>
+      </trans-unit>
+      <trans-unit id="s0b7ae9543c001867">
+        <source>Reply</source>
+        <target>답글</target>
+      </trans-unit>
+      <trans-unit id="s52fb1524cb25d7ab">
+        <source>New thread</source>
+        <target>새 스레드</target>
       </trans-unit>
     </body>
   </file>
