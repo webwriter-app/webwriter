@@ -1,7 +1,7 @@
 import {LitElement, css, html} from "lit";
 import {customElement, property} from "lit/decorators.js";
 import {App} from "#view";
-import {basePlugin, toolFriendlyNames} from "#model";
+import {basePlugin, generateWidgetDocumentation, toolFriendlyNames} from "#model";
 
 @customElement("ww-ai-toolbox-widget")
 export class AIToolboxWidget extends LitElement {
@@ -163,7 +163,6 @@ export class AIToolboxWidget extends LitElement {
     }
 
     render() {
-        console.log(this.app.store)
         return html`
             <div class="ai-container">
                 <span class="ai-label">
