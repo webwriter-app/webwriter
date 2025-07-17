@@ -67,7 +67,7 @@ export class AIToolboxWidget extends LitElement {
             align-self: flex-start;
             border-bottom-left-radius: 4px;
         }
-        
+
         .function-call {
             font-size: 0.65rem;
         }
@@ -136,15 +136,6 @@ export class AIToolboxWidget extends LitElement {
     }
 
     async handleSend() {
-        const view = this.app.activeEditor.pmEditor
-        const { state } = view
-        const endPos = state.doc.content.size
-        const pType = state.schema.nodes.p
-        const p = pType.createAndFill()
-        if (!p) return
-        const tr = state.tr.insert(endPos, p)
-        view.dispatch(tr)
-
         const input = this.renderRoot?.getElementById('chatInput') as HTMLInputElement;
         if (input) {
             const query = input.value.trim();
@@ -159,13 +150,7 @@ export class AIToolboxWidget extends LitElement {
                 input.value = "";
 
                 // generate a response and call the request update function for every update in the chat
-                const response = await this.app.store.ai.generateResponse(() => this.requestUpdate());
-                if (response) {
-                    const { state } = view
-                    const paragraphPos = endPos + 1 // after the opening tag of the paragraph
-                    const tr = state.tr.insertText(response, paragraphPos)
-                    view.dispatch(tr)
-                }
+                this.app.store.ai.generateResponse(() => this.requestUpdate(), this.app);
             }
         }
     }
@@ -220,18 +205,20 @@ export class AIToolboxWidget extends LitElement {
                                 `;
                             case "assistant":
                                 // if it is a tool call or multiple
-                                if (msg["tool_calls"]) 
-                                    return msg["tool_calls"].map(call => {
-                                        return html`<div class="function-call">${toolFriendlyNames[call.function.name]}</div>`
-                                    })
-                                  
-                                // If it is normal content  
-                                return html`
+
+                                const toolsContent = msg["tool_calls"] ? msg["tool_calls"].map(call => {
+                                    return html`
+                                        <div class="function-call">${toolFriendlyNames[call.function.name]}</div>`
+                                }) : null;
+
+                                const content = msg.content ? html`
                                     <div class="chat-bubble ai">
                                         <div class="chat-sender">WebWriter AI</div>
                                         ${msg.content}
-                                    </div>
-                                `
+                                    </div>` : null;
+
+                                // If it is normal content  
+                                return html`${toolsContent} ${content}`;
                         }
                     })}
                 </div>

@@ -1,3 +1,5 @@
+import {DOMParser} from "prosemirror-model";
+
 export const INTERMEDIATE_PROMPT = `
 You are the assistant in the application WebWriter. The application WebWriter is a writing tool that allows users to create and edit interactive documents or explorables.  It is your task to help the user with their writing tasks. You can answer questions, provide suggestions, and assist with various writing-related tasks.
 
@@ -21,28 +23,34 @@ const toolDefinitions = [
     {
         "type": "function",
         "function": {
-            "name": "get_current_weather",
-            "description": "Get the weather in a given location",
+            "name": "insert_at_bottom",
+            "description": "Insert some html at the bottom of the document",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "location": {
+                    "content": {
                         "type": "string",
-                        "description": "The city and state, e.g., San Francisco, CA"
+                        "description": "The html to insert at the bottom of the document"
                     },
-                    "unit": {
-                        "type": "string",
-                        "enum": ["celsius", "fahrenheit"]
-                    }
                 },
-                "required": ["location"]
+                "required": ["content"]
             }
         }
-    }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_document",
+            "description": "Read the current document content",
+            "parameters": {}
+        }
+    },
+
 ];
 
 export const toolFriendlyNames = {
-    "get_current_weather": "Wetter abfragen..."
+    "insert_at_bottom": "Text hinzufügen...",
+    "read_document": "Dokument lesen...",
 }
 
 export class AIStore {
@@ -55,7 +63,38 @@ export class AIStore {
 
 
     toolResolvers = {
-        get_current_weather: () => "The weather is cloudy with a temperature between 10 and 20 degrees Celsius",
+        insert_at_bottom: (app, {content}: { text: string }) => {
+            const view = app.activeEditor.pmEditor;
+            const {state} = view;
+            const endPos = state.doc.content.size;
+
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = content;
+
+            const parser = DOMParser.fromSchema(state.schema);
+            const contentNode = parser.parse(tempDiv);
+
+            if (!contentNode) return;
+
+            const tr = state.tr.insert(endPos, contentNode.content);
+            view.dispatch(tr);
+            return {
+                success: true,
+                message: `HTML content has been inserted at the bottom of the document.`,
+            };
+        },
+        read_document: (app) => {
+            const view = app.activeEditor.pmEditor;
+            const {state} = view;
+
+            // Convert the ProseMirror document to HTML
+            const htmlContent = view.dom.innerHTML;
+
+            return {
+                success: true,
+                content: htmlContent,
+            };
+        }
     }
 
 
@@ -63,7 +102,7 @@ export class AIStore {
         this.chatMessages.push(message);
     }
 
-    async generateResponse(updateCallback: () => void): Promise<string | undefined> {
+    async generateResponse(updateCallback: () => void, app): Promise<string | undefined> {
 
         let isResponseToHuman = false;
 
@@ -103,7 +142,21 @@ export class AIStore {
                     const callFunction = toolCall.function.name
                     const callArguments = JSON.parse(toolCall.function.arguments);
 
-                    const result = this.toolResolvers[callFunction].apply(this, [callArguments]);
+                    let result = {};
+
+                    try {
+                        result = {
+                            ...this.toolResolvers[callFunction].apply(this, [app, callArguments]) || {},
+                            success: true,
+                        };
+
+                    } catch (e) {
+                        console.error(`Error resolving tool call ${callFunction}:`, e);
+                        result = {
+                            success: false,
+                            message: `Error resolving tool call ${callFunction}: ${e.message}`,
+                        };
+                    }
 
                     return {
                         role: "tool",
