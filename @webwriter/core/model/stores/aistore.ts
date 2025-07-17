@@ -17,44 +17,119 @@ Always be proactive to help the user with their writing tasks. If you see an opp
 
 `
 
+const toolDefinitions = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_current_weather",
+            "description": "Get the weather in a given location",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": "The city and state, e.g., San Francisco, CA"
+                    },
+                    "unit": {
+                        "type": "string",
+                        "enum": ["celsius", "fahrenheit"]
+                    }
+                },
+                "required": ["location"]
+            }
+        }
+    }
+];
+
+export const toolFriendlyNames = {
+    "get_current_weather": "Wetter abfragen..."
+}
+
 export class AIStore {
 
-    constructor(options: any) {
-        Object.assign(this, options);
+    chatMessages: { role: 'user' | 'assistant' | 'system' | 'tool'; content: string; timestamp: Date }[] = [{
+        role: "system",
+        content: INTERMEDIATE_PROMPT,
+        timestamp: new Date(),
+    }];
+
+
+    toolResolvers = {
+        get_current_weather: () => "The weather is cloudy with a temperature between 10 and 20 degrees Celsius",
     }
 
-    chatMessages: { sender: 'user' | 'assistant' | 'system'; content: string; timestamp: Date }[] = [];
 
-    addMessage(message: { sender: 'user' | 'assistant' | 'system'; content: string; timestamp: Date }) {
+    addMessage(message: { role: 'user' | 'assistant' | 'system' | 'tool'; content: string; timestamp: Date }) {
         this.chatMessages.push(message);
     }
 
-    async generateResponse(): Promise<string> {
+    async generateResponse(updateCallback: () => void): Promise<string | undefined> {
 
-        const response = await fetch("http://localhost:11434/api/chat", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({
-                model: "llama3.2:latest",
-                messages: this.chatMessages.map(msg => ({sender: msg.sender, content: msg.content})),
-                stream: false,
-            }),
-        });
+        let isResponseToHuman = false;
 
-        const data = await response.json();
+        while (!isResponseToHuman) {
 
-        if (!response.ok || !data?.done) {
-            throw new Error(`Error generating response: ${data?.error || 'Unknown error'}`);
+            /* request from openai api */
+            const response = await fetch("http://localhost:8090/api/chat", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    messages: this.chatMessages,
+                    tools: toolDefinitions,
+                    tool_choice: "auto"
+                }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || !data?.success) {
+                throw new Error(`Error generating response: ${data?.error || 'Unknown error'}`);
+            }
+
+            const lastMessage = data?.lastMessage
+
+            // Add the newly generated message to the array
+            this.addMessage({
+                ...lastMessage, timestamp: new Date(),
+            });
+
+            updateCallback();
+
+            // check if the response is a tool call
+            if (lastMessage["tool_calls"]?.length > 0) {
+                const toolCalls = lastMessage["tool_calls"];
+
+                const resolvedToolCalls = toolCalls.map(toolCall => {
+                    const callFunction = toolCall.function.name
+                    const callArguments = JSON.parse(toolCall.function.arguments);
+
+                    const result = this.toolResolvers[callFunction].apply(this, [callArguments]);
+
+                    return {
+                        role: "tool",
+                        "tool_call_id": toolCall.id,
+                        content: JSON.stringify(result),
+                        timestamp: new Date(),
+                    }
+                })
+
+                // ToDo: what about the additional attributes not in type definition?
+                this.chatMessages = this.chatMessages.concat(resolvedToolCalls);
+            } else {
+
+                /* we have a response without tool requests */
+                isResponseToHuman = true;
+
+                updateCallback();
+
+                return this.chatMessages.at(-1)?.content;
+            }
         }
 
-        const message = data.message.content;
-        this.addMessage({
-            sender: 'assistant',
-            content: message,
-            timestamp: new Date(),
-        });
+        // this.app.activeEditor.pmEditor.dispatch()
 
-        return message;
+        // if we get here, there must have been a mistake
+        throw new Error("Unable to generate message")
     }
 
     clearMessages() {

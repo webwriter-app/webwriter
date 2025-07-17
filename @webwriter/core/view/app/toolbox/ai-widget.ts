@@ -1,6 +1,7 @@
 import {LitElement, css, html} from "lit";
 import {customElement, property} from "lit/decorators.js";
 import {App} from "#view";
+import {basePlugin, toolFriendlyNames} from "#model";
 
 @customElement("ww-ai-toolbox-widget")
 export class AIToolboxWidget extends LitElement {
@@ -66,6 +67,10 @@ export class AIToolboxWidget extends LitElement {
             align-self: flex-start;
             border-bottom-left-radius: 4px;
         }
+        
+        .function-call {
+            font-size: 0.65rem;
+        }
 
         .chat-sender {
             font-size: 0.65rem;
@@ -130,23 +135,37 @@ export class AIToolboxWidget extends LitElement {
         super();
     }
 
-    handleSend() {
+    async handleSend() {
+        const view = this.app.activeEditor.pmEditor
+        const { state } = view
+        const endPos = state.doc.content.size
+        const pType = state.schema.nodes.p
+        const p = pType.createAndFill()
+        if (!p) return
+        const tr = state.tr.insert(endPos, p)
+        view.dispatch(tr)
+
         const input = this.renderRoot?.getElementById('chatInput') as HTMLInputElement;
         if (input) {
             const query = input.value.trim();
             if (query) {
                 this.app.store.ai.addMessage({
                     timestamp: new Date(),
-                    sender: "user",
+                    role: "user",
                     content: query
                 });
                 this.requestUpdate()
 
-                // Here you would typically call the AI service to get a response
                 input.value = "";
 
-                this.app.store.ai.generateResponse().then(() => this.requestUpdate());
-
+                // generate a response and call the request update function for every update in the chat
+                const response = await this.app.store.ai.generateResponse(() => this.requestUpdate());
+                if (response) {
+                    const { state } = view
+                    const paragraphPos = endPos + 1 // after the opening tag of the paragraph
+                    const tr = state.tr.insertText(response, paragraphPos)
+                    view.dispatch(tr)
+                }
             }
         }
     }
@@ -157,7 +176,6 @@ export class AIToolboxWidget extends LitElement {
             this.handleSend();
         }
     }
-
 
     render() {
         console.log(this.app.store)
@@ -187,12 +205,35 @@ export class AIToolboxWidget extends LitElement {
                     WebWriter AI</span>
                 <!-- main chat container -->
                 <div class="chat-container" id="chatContainer">
-                    ${this.app.store.ai.chatMessages.map(msg => html`
-                        <div class="chat-bubble ${msg.sender === 'user' ? 'user' : 'ai'}">
-                            <div class="chat-sender">${msg.sender === 'user' ? 'Du' : 'AI'}</div>
-                            ${msg.content}
-                        </div>
-                    `)}
+                    ${this.app.store.ai.chatMessages.map(msg => {
+                        switch (msg.role) {
+                            case "system":
+                                return null;
+                            case "tool":
+                                return null;
+                            case "user":
+                                return html`
+                                    <div class="chat-bubble user">
+                                        <div class="chat-sender">Du</div>
+                                        ${msg.content}
+                                    </div>
+                                `;
+                            case "assistant":
+                                // if it is a tool call or multiple
+                                if (msg["tool_calls"]) 
+                                    return msg["tool_calls"].map(call => {
+                                        return html`<div class="function-call">${toolFriendlyNames[call.function.name]}</div>`
+                                    })
+                                  
+                                // If it is normal content  
+                                return html`
+                                    <div class="chat-bubble ai">
+                                        <div class="chat-sender">WebWriter AI</div>
+                                        ${msg.content}
+                                    </div>
+                                `
+                        }
+                    })}
                 </div>
                 <form class="chat-input-row" @submit="${(e: Event) => {
                     e.preventDefault();
