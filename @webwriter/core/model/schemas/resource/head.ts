@@ -304,8 +304,11 @@ export function head(styles: string[], scripts: string[]) {
           const head$ = view.state.head$
           const prevHead$ = prevState.head$
           if(!headEqual(head$, prevHead$)) {
+            const head = view.dom.ownerDocument.head
             const headDOM = headSerializer.serializeNode(head$.doc)
-            view.dom.ownerDocument.head.replaceWith(headDOM)
+            const oldNodes = head.querySelectorAll("[data-ww-editing]")
+            oldNodes.forEach(node => headDOM.appendChild(node))
+            head.replaceWith(headDOM)
           }
         },
         destroy() {
