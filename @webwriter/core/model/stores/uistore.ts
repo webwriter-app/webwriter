@@ -52,6 +52,7 @@ export class UIStore {
    showSourceEditor = false
    resetOnInitialize = false
    autosave = true
+   propagateLang = true
 
    keymap: Record<string, {shortcut: string}> = {}
 

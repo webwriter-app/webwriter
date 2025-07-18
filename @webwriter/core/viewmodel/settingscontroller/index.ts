@@ -254,6 +254,16 @@ export class SettingsController implements ReactiveController {
             ),
           label: msg("Language"),
         },
+        propagateLang: {
+          schema: z
+            .boolean()
+            .describe(
+              msg(
+                "When the document language is changed, update all widgets' languages accordingly."
+              )
+            ),
+          label: msg("Update language across document"),
+        },  
         autosave: {
           schema: z
             .boolean()

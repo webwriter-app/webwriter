@@ -9,7 +9,7 @@ import { SlDropdown } from "@shoelace-style/shoelace"
 
 import { App, URLFileInput } from "#view"
 import { License, Locale, Person, ThemeEditingSettings, deleteHeadElement, getHeadElement, getHeadElementAll, initialHeadState, moveHeadElement, upsertHeadElement } from "#model"
-import { capitalizeWord } from "#utility"
+import { capitalizeWord, emitCustomEvent } from "#utility"
 
 type Field<T=any> = {
   name: string,
@@ -617,6 +617,9 @@ export class MetaEditor extends LitElement {
       ))
       if(name === "language") {
         this.updateState(upsertHeadElement(this.head$, "head", {htmlAttrs: {...this.head$.doc.attrs.htmlAttrs, lang: value}}, undefined, node => node.type.name === "head"))
+        if(this.app.store.ui.propagateLang) {
+          emitCustomEvent(this, "ww-update-lang", {value}) 
+        }
       }
     }
     else if(element === "link") {
