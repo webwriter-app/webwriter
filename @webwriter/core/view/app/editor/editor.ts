@@ -104,6 +104,10 @@ export class ExplorableEditor extends LitElement {
     // if((!nodeType.spec.allowReflexive && domAtInsertPos.closest(tagName)) || hasParentNode(node => !node.isTextblock && !node.type.spec.allowContainerNesting)(TextSelection.create(state.doc, insertPos))) {
   }
 
+  updateWidgetsLang(value: string) {
+    this.pmEditor.body.querySelectorAll(".ww-widget").forEach(el => (el as HTMLElement).lang = value)
+  }
+
 	insertMember = async (id: string, insertableName: string) => {
     const state = this.pmEditor.state
     const members = this.app.store.packages.getPackageMembers(id)

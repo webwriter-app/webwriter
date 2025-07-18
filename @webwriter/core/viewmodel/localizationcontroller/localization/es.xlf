@@ -835,13 +835,17 @@
         <target>Capture</target>
       </trans-unit>
       <trans-unit id="s2b8f50c64be440f7">
-        <source>Select <x id="0" equiv-text="${this.mediaType}"/>...</source>
+        <source>Select 
+          <x id="0" equiv-text="${this.mediaType}"/>...
+        </source>
         <target>Seleccione 
           <x id="0" equiv-text="${this.mediaType}"/>... 
         </target>
       </trans-unit>
       <trans-unit id="s739544d0c858c633">
-        <source>Or drop <x id="0" equiv-text="${this.mediaType}"/> here</source>
+        <source>Or drop 
+          <x id="0" equiv-text="${this.mediaType}"/> here
+        </source>
         <target>O deje 
           <x id="0" equiv-text="${this.mediaType}"/> aquí 
         </target>
@@ -907,7 +911,10 @@
         <target>Esta palabra clave es necesaria para los widgets</target>
       </trans-unit>
       <trans-unit id="h64cd12550420f6f1">
-        <source>Generate a <x id="0" equiv-text="&lt;code&gt;"/>LICENSE<x id="1" equiv-text="&lt;/code&gt;"/> file</source>
+        <source>Generate a 
+          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
+          <x id="1" equiv-text="&lt;/code&gt;"/> file
+        </source>
         <target>Generar una 
           <x id="0" equiv-text="&lt;code&gt;"/>LICENCIA 
           <x id="1" equiv-text="&lt;/code&gt;"/> archivo 
@@ -1492,14 +1499,18 @@
         <target>Error de conexión</target>
       </trans-unit>
       <trans-unit id="sf52d840949a980d1">
-        <source><x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?</source>
+        <source>
+          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
+        </source>
         <target>
           <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           se borrará permanentemente. ¿Está seguro? 
         </target>
       </trans-unit>
       <trans-unit id="s9b7cd8860c8fc922">
-        <source><x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?</source>
+        <source>
+          <x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
+        </source>
         <target>
           <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           se sobrescribirá. ¿Está seguro? 
@@ -1538,7 +1549,9 @@
         <target>Tipo de propiedad '${desc.type}' no admitido (procesamiento como JSON)</target>
       </trans-unit>
       <trans-unit id="sa00df4e39c72d3b4">
-        <source><x id="0" equiv-text="${desc.widget}"/> is not supported</source>
+        <source>
+          <x id="0" equiv-text="${desc.widget}"/> is not supported
+        </source>
         <target>
           <x id="0" equiv-text="${desc.widget}"/> no es compatible 
         </target>
@@ -4398,6 +4411,14 @@
       <trans-unit id="s52fb1524cb25d7ab">
         <source>New thread</source>
         <target>Nuevo hilo</target>
+      </trans-unit>
+      <trans-unit id="s4ce8cc041a628847">
+        <source>When the document language is changed, update all widgets' languages accordingly.</source>
+        <target>Cuando se cambia el idioma del documento, se actualizan los idiomas de todos los widgets en consecuencia.</target>
+      </trans-unit>
+      <trans-unit id="s3bc203a3f8a6409c">
+        <source>Update language across document</source>
+        <target>Actualizar el lenguaje en todo el documento</target>
       </trans-unit>
     </body>
   </file>

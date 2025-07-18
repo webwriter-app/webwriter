@@ -4130,13 +4130,17 @@
         <target>无特定款式</target>
       </trans-unit>
       <trans-unit id="s2b8f50c64be440f7">
-        <source>Select <x id="0" equiv-text="${this.mediaType}"/>...</source>
+        <source>Select 
+          <x id="0" equiv-text="${this.mediaType}"/>...
+        </source>
         <target>选择 
           <x id="0" equiv-text="${this.mediaType}"/>...
         </target>
       </trans-unit>
       <trans-unit id="s739544d0c858c633">
-        <source>Or drop <x id="0" equiv-text="${this.mediaType}"/> here</source>
+        <source>Or drop 
+          <x id="0" equiv-text="${this.mediaType}"/> here
+        </source>
         <target>或点击 
           <x id="0" equiv-text="${this.mediaType}"/> 这里
         </target>
@@ -4262,7 +4266,10 @@
         <target>小部件需要使用该关键字</target>
       </trans-unit>
       <trans-unit id="h64cd12550420f6f1">
-        <source>Generate a <x id="0" equiv-text="&lt;code&gt;"/>LICENSE<x id="1" equiv-text="&lt;/code&gt;"/> file</source>
+        <source>Generate a 
+          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
+          <x id="1" equiv-text="&lt;/code&gt;"/> file
+        </source>
         <target>生成 
           <x id="0" equiv-text="&lt;code&gt;"/>许可证
           <x id="1" equiv-text="&lt;/code&gt;"/> 文件
@@ -4321,13 +4328,17 @@
         <target>连接错误</target>
       </trans-unit>
       <trans-unit id="sf52d840949a980d1">
-        <source><x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?</source>
+        <source>
+          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
+        </source>
         <target>
           <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> 将被永久删除。你确定吗？
         </target>
       </trans-unit>
       <trans-unit id="s9b7cd8860c8fc922">
-        <source><x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?</source>
+        <source>
+          <x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
+        </source>
         <target>
           <x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> 将被覆盖。你确定吗？
         </target>
@@ -4357,7 +4368,9 @@
         <target>不支持属性类型"${desc.type}"（以 JSON 格式处理）</target>
       </trans-unit>
       <trans-unit id="sa00df4e39c72d3b4">
-        <source><x id="0" equiv-text="${desc.widget}"/> is not supported</source>
+        <source>
+          <x id="0" equiv-text="${desc.widget}"/> is not supported
+        </source>
         <target>
           <x id="0" equiv-text="${desc.widget}"/> 不支持
         </target>
@@ -4389,6 +4402,14 @@
       <trans-unit id="s0dc452999c129e15">
         <source>Enable live reload</source>
         <target>启用实时重载</target>
+      </trans-unit>
+      <trans-unit id="s4ce8cc041a628847">
+        <source>When the document language is changed, update all widgets' languages accordingly.</source>
+        <target>文档语言更改后，所有部件的语言也会相应更新。</target>
+      </trans-unit>
+      <trans-unit id="s3bc203a3f8a6409c">
+        <source>Update language across document</source>
+        <target>更新整个文件的语言</target>
       </trans-unit>
     </body>
   </file>

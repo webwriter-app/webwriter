@@ -417,6 +417,7 @@ export class App extends ViewModelMixin(LitElement) {
           @ww-change-body-attrs=${(e: any) =>
             setDocAttrs.run(e.target.bodyAttrs)}
           @ww-update=${(e: any) => setHead(e.detail.state)}
+          @ww-update-lang=${(e: any) => this.activeEditor?.updateWidgetsLang(e.detail.value)}
           @ww-click-tab=${(e: any) => (this.foldOpen = true)}
           slot="fold"
         >

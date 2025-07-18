@@ -835,13 +835,17 @@
         <target>Захват</target>
       </trans-unit>
       <trans-unit id="s2b8f50c64be440f7">
-        <source>Select <x id="0" equiv-text="${this.mediaType}"/>...</source>
+        <source>Select 
+          <x id="0" equiv-text="${this.mediaType}"/>...
+        </source>
         <target>Выберите 
           <x id="0" equiv-text="${this.mediaType}"/>... 
         </target>
       </trans-unit>
       <trans-unit id="s739544d0c858c633">
-        <source>Or drop <x id="0" equiv-text="${this.mediaType}"/> here</source>
+        <source>Or drop 
+          <x id="0" equiv-text="${this.mediaType}"/> here
+        </source>
         <target>Или опустите 
           <x id="0" equiv-text="${this.mediaType}"/> сюда 
         </target>
@@ -907,7 +911,10 @@
         <target>Это ключевое слово необходимо для виджетов</target>
       </trans-unit>
       <trans-unit id="h64cd12550420f6f1">
-        <source>Generate a <x id="0" equiv-text="&lt;code&gt;"/>LICENSE<x id="1" equiv-text="&lt;/code&gt;"/> file</source>
+        <source>Generate a 
+          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
+          <x id="1" equiv-text="&lt;/code&gt;"/> file
+        </source>
         <target>Создать 
           <x id="0" equiv-text="&lt;code&gt;"/>LICENSE 
           <x id="1" equiv-text="&lt;/code&gt;"/> файл 
@@ -1492,14 +1499,18 @@
         <target>Ошибка при подключении</target>
       </trans-unit>
       <trans-unit id="sf52d840949a980d1">
-        <source><x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?</source>
+        <source>
+          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
+        </source>
         <target>
           <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           будут удалены навсегда. Вы уверены? 
         </target>
       </trans-unit>
       <trans-unit id="s9b7cd8860c8fc922">
-        <source><x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?</source>
+        <source>
+          <x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
+        </source>
         <target>
           <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           будет перезаписана. Вы уверены? 
@@ -1538,7 +1549,9 @@
         <target>Неподдерживаемый тип свойства '${desc.type}' (обработка как JSON)</target>
       </trans-unit>
       <trans-unit id="sa00df4e39c72d3b4">
-        <source><x id="0" equiv-text="${desc.widget}"/> is not supported</source>
+        <source>
+          <x id="0" equiv-text="${desc.widget}"/> is not supported
+        </source>
         <target>
           <x id="0" equiv-text="${desc.widget}"/> не поддерживается 
         </target>
@@ -4398,6 +4411,14 @@
       <trans-unit id="s52fb1524cb25d7ab">
         <source>New thread</source>
         <target>Новая нить</target>
+      </trans-unit>
+      <trans-unit id="s4ce8cc041a628847">
+        <source>When the document language is changed, update all widgets' languages accordingly.</source>
+        <target>При изменении языка документа обновляйте языки всех виджетов.</target>
+      </trans-unit>
+      <trans-unit id="s3bc203a3f8a6409c">
+        <source>Update language across document</source>
+        <target>Обновление языка во всем документе</target>
       </trans-unit>
     </body>
   </file>

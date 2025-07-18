@@ -302,7 +302,8 @@ export class PackageStore {
     let settings = Object.fromEntries(ids.map(id => [id, this.getPackageMembers(id)]))
     const membersToCheck = ids
       .flatMap(id => Object.values(settings[id]).map(v => [id, v] as [string, MemberSettings]))
-      .flatMap(([id, v]) => v.url?.endsWith(".*")? [[id, {...v, url: v.url?.slice(0, -2) + ".js"}], [id, {...v, url: v.url?.slice(0, -2) + ".css"}]]: [[id, v]]) as [string, MemberSettings][]
+      .flatMap(([id, v]) => v.url?.endsWith(".*")? [[id, {...v, url: v.url?.slice(0, -2) + ".js"}], [id, {...v, url: v.url?.slice(0, -2) + ".css"}]]: [[id, v]])
+      .filter(([id, v]) => pkgs.find(pkg => pkg.id === id)?.localPath || !(v as MemberSettings).name.startsWith("./tests/")) as [string, MemberSettings][]
     return Promise.all(membersToCheck.map(async ([id, settings]) => {
       try {
         const result = await fetch(settings.url!)
@@ -519,7 +520,8 @@ export class PackageStore {
     this.loading = true
     this.issues = {}
     
-    let available = await this.fetchAvailable()
+    let available = await this.fetchPackages()
+    let installed = !this.installedPackages.length? []: (await this.fetchPackages(true)).map(pkg => pkg.extend({installed: true, latest: available.find(apkg => pkg.name === apkg.name)?.version})).filter(pkg => !pkg.version.prerelease.includes("local"))
     let final: Package[] = []
     const localIds = this.installedPackages.filter(id => Package.fromID(id).version.prerelease.includes("local"))
     let local = (await Promise.all(localIds.map(id => fetch(new URL(id + "/package.json", this.apiBase)).then(resp => resp.json()))))
@@ -532,8 +534,9 @@ export class PackageStore {
       .map(async pkg => pkg.extend({editingConfig: await this.readEditingConfig(pkg)}))
       .map(async pkg => (await pkg).extend({members: await this.readPackageMembers(await pkg)}))
     )
+    available = available.filter(pkg => !installed.some(ipkg => ipkg.name === pkg.name) && !local.some(lpkg => lpkg.name === pkg.name))
     await this.updateLocalWatchIntervals(local)
-    final = available.map(pkg => pkg.extend({installed: !!this.installedPackagesAsPkg.find(ipkg => ipkg.name === pkg.name && !ipkg.version.prerelease.includes("local")), ...this.installedPackagesAsPkg.find(ipkg => ipkg.name === pkg.name && !ipkg.version.prerelease.includes("local"))? {version:  this.installedPackagesAsPkg.find(ipkg => ipkg.name === pkg.name && !ipkg.version.prerelease.includes("local"))!.version}: undefined, latest: pkg.version})).sort((a, b) => Number(!!b.installed) - Number(!!a.installed))
+    // available.map(pkg => pkg.extend({installed: !!this.installedPackagesAsPkg.find(ipkg => ipkg.name === pkg.name && !ipkg.version.prerelease.includes("local")), ...this.installedPackagesAsPkg.find(ipkg => ipkg.name === pkg.name && !ipkg.version.prerelease.includes("local"))? {version:  this.installedPackagesAsPkg.find(ipkg => ipkg.name === pkg.name && !ipkg.version.prerelease.includes("local"))!.version}: undefined, latest: pkg.version}))
     const snippetData = await this.getSnippet(undefined)
     const snippets = snippetData.map(({id, label, html}) => new Package({
       name: `snippet-${id}`,
@@ -542,7 +545,7 @@ export class PackageStore {
       html,
       editingConfig: {".": {label}}
     })).reverse()
-    final = [...snippets, ...local, ...final]
+    final = [...snippets, ...local, ...installed, ...available]
     await this.updateImportMap()
     this.bundleID = PackageStore.computeBundleID(this.installedPackages, false, final.some(pkg => pkg.localPath)? this.lastLoaded: undefined);
     (this.onBundleChange ?? (() => null))(final.filter(pkg => pkg.installed))
@@ -569,9 +572,13 @@ export class PackageStore {
     return url
   }
 
-  private async fetchAvailable() {
+  private async fetchPackages(installedOnly=false) {
     let rawPkgs: any[] = []
-    const resp = await fetch(new URL("_packages", this.apiBase))
+    let url = new URL("_packages", this.apiBase)
+    if(installedOnly) {
+      this.installedPackages.forEach(id => url.searchParams.append("id", id))
+    }
+    const resp = await fetch(url)
     if(resp.ok) {
       rawPkgs = await resp.json()
     }

@@ -834,13 +834,17 @@
         <target>Capture</target>
       </trans-unit>
       <trans-unit id="s2b8f50c64be440f7">
-        <source>Select <x id="0" equiv-text="${this.mediaType}"/>...</source>
+        <source>Select 
+          <x id="0" equiv-text="${this.mediaType}"/>...
+        </source>
         <target>Atlasiet 
           <x id="0" equiv-text="${this.mediaType}"/>... 
         </target>
       </trans-unit>
       <trans-unit id="s739544d0c858c633">
-        <source>Or drop <x id="0" equiv-text="${this.mediaType}"/> here</source>
+        <source>Or drop 
+          <x id="0" equiv-text="${this.mediaType}"/> here
+        </source>
         <target>Vai nomest 
           <x id="0" equiv-text="${this.mediaType}"/> šeit 
         </target>
@@ -906,7 +910,10 @@
         <target>Šis atslēgas vārds ir nepieciešams logrīkiem.</target>
       </trans-unit>
       <trans-unit id="h64cd12550420f6f1">
-        <source>Generate a <x id="0" equiv-text="&lt;code&gt;"/>LICENSE<x id="1" equiv-text="&lt;/code&gt;"/> file</source>
+        <source>Generate a 
+          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
+          <x id="1" equiv-text="&lt;/code&gt;"/> file
+        </source>
         <target>Izveidot 
           <x id="0" equiv-text="&lt;code&gt;"/>LICENCIJA 
           <x id="1" equiv-text="&lt;/code&gt;"/> failu 
@@ -1491,14 +1498,18 @@
         <target>Kļūda, savienojot</target>
       </trans-unit>
       <trans-unit id="sf52d840949a980d1">
-        <source><x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?</source>
+        <source>
+          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
+        </source>
         <target>
           <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           tiks dzēsts uz visiem laikiem. Vai esat pārliecināts? 
         </target>
       </trans-unit>
       <trans-unit id="s9b7cd8860c8fc922">
-        <source><x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?</source>
+        <source>
+          <x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
+        </source>
         <target>
           <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           tiks pārrakstīts. Vai esat pārliecināts? 
@@ -1537,7 +1548,9 @@
         <target>Neatbalstīts īpašības tips '${desc.type}' (apstrāde kā JSON)</target>
       </trans-unit>
       <trans-unit id="sa00df4e39c72d3b4">
-        <source><x id="0" equiv-text="${desc.widget}"/> is not supported</source>
+        <source>
+          <x id="0" equiv-text="${desc.widget}"/> is not supported
+        </source>
         <target>
           <x id="0" equiv-text="${desc.widget}"/> nav atbalstīta 
         </target>
@@ -4397,6 +4410,14 @@
       <trans-unit id="s52fb1524cb25d7ab">
         <source>New thread</source>
         <target>Jauns pavediens</target>
+      </trans-unit>
+      <trans-unit id="s4ce8cc041a628847">
+        <source>When the document language is changed, update all widgets' languages accordingly.</source>
+        <target>Ja tiek mainīta dokumenta valoda, attiecīgi tiek atjauninātas visu logrīku valodas.</target>
+      </trans-unit>
+      <trans-unit id="s3bc203a3f8a6409c">
+        <source>Update language across document</source>
+        <target>Atjaunināt valodu visā dokumentā</target>
       </trans-unit>
     </body>
   </file>

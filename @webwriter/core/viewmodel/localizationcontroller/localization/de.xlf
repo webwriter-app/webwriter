@@ -4378,6 +4378,14 @@
   <source>New thread</source>
   <target>Neuer Thread</target>
 </trans-unit>
+<trans-unit id="s4ce8cc041a628847">
+  <source>When the document language is changed, update all widgets' languages accordingly.</source>
+  <target>Wenn sich die Sprache des Dokuments ändert, aktualisiere alle Widgets entsprechend.</target>
+</trans-unit>
+<trans-unit id="s3bc203a3f8a6409c">
+  <source>Update language across document</source>
+  <target>Sprache im gesamten Dokument ändern</target>
+</trans-unit>
 </body>
 </file>
 </xliff>
