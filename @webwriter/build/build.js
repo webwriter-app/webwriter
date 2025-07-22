@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 
+import { inlineWorkerPlugin } from "@aidenlx/esbuild-plugin-inline-worker"
+import 'dotenv/config'
 import * as esbuild from "esbuild"
+import esbuildPluginInlineImport from "esbuild-plugin-inline-import"
 import * as fs from "fs"
 import * as path from "path"
 import * as process from "process"
-import {localize} from "./localize.js"
-import {document} from "./document.js"
-import 'dotenv/config'
-import esbuildPluginInlineImport from "esbuild-plugin-inline-import"
-import { inlineWorkerPlugin } from "@aidenlx/esbuild-plugin-inline-worker"
+import { document } from "./document.js"
+import { localize } from "./localize.js"
 
 const scriptExtensions = [".js", ".mjs", ".cjs"]
 
@@ -66,7 +66,9 @@ async function main() {
   const isPreview = process.argv[2] === "preview"
   const isLocalize = process.argv[2] === "localize"
   const isDocument = process.argv[2] === "document"
+  const isBuild = !isDev && !isPreview && !isLocalize && !isDocument
   const force = process.argv.slice(2).includes("-y") || process.argv.slice(2).includes("--yes")
+  const metafile = process.argv.slice(2).find(arg => arg.startsWith("--metafile="))?.substring("--metafile=".length) ?? null
   if(isLocalize) {
     try {
       console.log("\nLocalizing...")
@@ -110,6 +112,7 @@ async function main() {
       // widgetPlugin(pkg)
     ],
     entryPoints: buildableKeys.map(k => ({out: pkg.exports[k].default.replace(".*", "").replace(".js", ""), in: pkg.exports[k].source})),
+	metafile: isBuild && metafile != null,
     outdir: ".",
     target: "es2022",
     format: "esm",
@@ -188,7 +191,13 @@ async function main() {
     await ctx.serve({servedir: "."})
   }
   else {
-    await esbuild.build(config)
+    const result = await esbuild.build(config)
+	if (result.metafile && metafile != null) {
+	  const metafilePath = path.resolve("./dist", metafile)
+	  fs.mkdirSync(path.dirname(metafilePath), { recursive: true })
+	  fs.writeFileSync(metafilePath, JSON.stringify(result.metafile), "utf8")
+	  console.log(`Metafile written to ${metafilePath}`)
+	}
   }
 
 } main()
