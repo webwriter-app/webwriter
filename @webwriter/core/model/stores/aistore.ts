@@ -1,12 +1,12 @@
-import {DOMParser} from "prosemirror-model";
-import {App} from "#view";
+import {DOMParser, Slice} from "prosemirror-model";
+import {App, ProsemirrorEditor} from "#view";
 
 export const PROMPT = `
 You are the assistant in the application WebWriter. The application WebWriter is a writing tool that allows users to create and edit interactive documents or explorables.  It is your task to help the user with their writing tasks. You can answer questions, provide suggestions, and assist with various writing-related tasks.
 
 In general, you should be helpful, friendly, and professional. You should not provide any personal opinions or engage in discussions that are not related to writing tasks. You should respond in the language of the user, which is determined by the language of the input text. 
 
-The content is given and written in HTML format. Besides the default HTML tags, there are some custom tags that are used to create interactive elements. These tags are custom web components that are registered in the application. You MUST request the documentation for these custom tags before using any of them. Make sure to use the exact name with the correct "@organization/widget" syntax for the request. Make sure to only use them as specified in the documentation and snippets and follow the editingConfig details on how the elements should be used. Towards, the user, refer to them as "widgets". You are not allowed to create any HTML that has capabilities beyond the ones provided by these custom widgets except basic HTML tags like p, h1, h2, span, etc. You can use these basic HTML tags to structure the content, but you should not use any custom attributes or properties that are not supported by the custom widgets. 
+The content is given and written in HTML format. Besides the default HTML tags, there are some custom tags that are used to create interactive elements. These tags are custom web components that are registered in the application. You MUST request the documentation for these custom tags before using any of them. Make sure to use the exact name with the correct "@organization/widget" syntax for the request. Make sure to only use them as specified in the documentation and snippets and only use elements standalone if they are meant to be used standalone, indicated by the 'uninsertable' property. You MUST follow the rules on how the custom elements might be used regarding nesting. Towards, the user, refer to them as "widgets". You are not allowed to create any HTML that has capabilities beyond the ones provided by these custom widgets except basic HTML tags like p, h1, h2, span, etc. You can use these basic HTML tags to structure the content, but you should not use any custom attributes or properties that are not supported by the custom widgets. 
 
 Make sure to always insert the content in the location that makes most sense for the content. If there is uncertainty where the user would want the content, you MUST ask the user for clarification in any case. Many types of content do not make sense to be inserted at the bottom of the document, so you SHOULD NOT do that unless the user explicitly asks for it. If you are unsure where to insert the content, ask the user for clarification even in the case
 
@@ -224,37 +224,53 @@ export class AIStore {
             const view = app.activeEditor.pmEditor;
             const {state} = view;
 
-            // Find the element to replace
             const elementToReplace = view.dom.querySelector(query);
             if (!elementToReplace) {
-                return {
-                    success: false,
-                    message: `No element found matching the query: ${query}`,
-                };
+                return {success: false, message: `No element found matching query: ${query}`};
             }
 
-            // Create a temporary div to parse the new content
+            function findNodeAndPosFromDOM(view: ProsemirrorEditor, domNode: Node): {
+                node: any,
+                startPos: number
+            } | null {
+                const pos = view.posAtDOM(domNode, -1);
+                let $pos = view.state.doc.resolve(pos);
+                let node = null;
+                let startPos = pos;
+
+                // Traverse up to find the matching node type
+                for (let depth = $pos.depth; depth >= 0; depth--) {
+                    const candidate = $pos.node(depth);
+                    const candidatePos = depth > 0 ? $pos.before(depth) : 0;
+                    const candidateDOM = view.nodeDOM(candidatePos);
+
+                    if (candidateDOM === domNode) {
+                        node = candidate;
+                        startPos = candidatePos;
+                        break;
+                    }
+                }
+
+                return node ? {node, startPos} : null;
+            }
+
+            // Sicheres Extrahieren von Node und Startposition
+            const found = findNodeAndPosFromDOM(view, elementToReplace);
+            if (!found) {
+                return {success: false, message: "Could not find corresponding PM node for DOM element."};
+            }
+
+            const {node, startPos} = found;
+            const endPos = startPos + node.nodeSize;
+
+            // Closed Slice vorbereiten
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = newContent;
-
-            // Parse the new content into a ProseMirror node
             const parser = DOMParser.fromSchema(state.schema);
-            const newNode = parser.parse(tempDiv);
+            const slice = new Slice(parser.parseSlice(tempDiv).content, 0, 0);
 
-            if (!newNode) {
-                return {
-                    success: false,
-                    message: `Failed to parse the new content.`,
-                };
-            }
-
-            // Create a transaction to replace the content
-            const pos = view.posAtDOM(elementToReplace, 0);
-            const resolvedPos = state.doc.resolve(pos);
-            const nodeSize = resolvedPos.nodeAfter?.nodeSize || elementToReplace.textContent.length;
-
-            const slice = parser.parseSlice(tempDiv);
-            const tr = state.tr.replace(pos, pos + nodeSize, slice);
+            // Ersetzen
+            const tr = state.tr.replace(startPos, endPos, slice);
             view.dispatch(tr);
 
             return {
@@ -291,7 +307,7 @@ export class AIStore {
             }
 
             // Create a transaction to insert the content at the end of the selected element
-            const pos = view.posAtDOM(elementToInsertInto, 0) + elementToInsertInto.textContent.length + 1; // +1 to insert at the end of the element
+            const pos = view.posAtDOM(elementToInsertInto, elementToInsertInto.childNodes.length);
             const tr = state.tr.insert(pos, newNode.content);
             view.dispatch(tr);
 
@@ -326,14 +342,13 @@ export class AIStore {
         });
 
         // Generate a system message on the current state of the document and the available modules
+        // ToDo: Only give simplified HTML content, not the full HTML document to reduce token usage
         this.addMessage({
             role: "system",
             content: `Current document content:\n\n${app.activeEditor.pmEditor.dom.innerHTML}\n\nAvailable modules:\n\n${generateListOfModules(app)}`,
             timestamp: new Date(),
             isUpdate: true,
         });
-
-        // ToDo:
 
         let isResponseToHuman = false;
 
@@ -346,7 +361,8 @@ export class AIStore {
                 body: JSON.stringify({
                     messages: this.chatMessages,
                     tools: toolDefinitions,
-                    tool_choice: "auto"
+                    tool_choice: "auto",
+                    max_tokens: 32768,
                 }),
             });
 
