@@ -2,6 +2,9 @@ import {LitElement, css, html} from "lit";
 import {customElement, property} from "lit/decorators.js";
 import {App} from "#view";
 import {basePlugin, generateWidgetDocumentation, toolFriendlyNames} from "#model";
+import {marked} from "marked";
+import {unsafeHTML} from 'lit/directives/unsafe-html.js';
+
 
 @customElement("ww-ai-toolbox-widget")
 export class AIToolboxWidget extends LitElement {
@@ -52,6 +55,15 @@ export class AIToolboxWidget extends LitElement {
             box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
             word-break: break-word;
             display: inline-block;
+        }
+        
+        .chat-bubble p {
+            margin: 0;
+            margin-bottom: 10px;
+        }
+        
+        .chat-bubble ol {
+            padding-left: 25px;
         }
 
         .chat-bubble.user {
@@ -213,10 +225,10 @@ export class AIToolboxWidget extends LitElement {
                                 const content = msg.content ? html`
                                     <div class="chat-bubble ai">
                                         <div class="chat-sender">WebWriter AI</div>
-                                        ${msg.content}
+                                        ${unsafeHTML(marked.parse(msg.content))}
                                     </div>` : null;
 
-                                // If it is normal content  
+                                // Combine both types
                                 return html`${toolsContent} ${content}`;
                         }
                     })}
