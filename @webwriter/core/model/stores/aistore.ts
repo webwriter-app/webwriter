@@ -95,8 +95,8 @@ const toolDefinitions = [
                         description: "The CSS selector for the element of the document to insert the content into. If the query matches multiple elements, the first one will be used."
                     },
                     content: {
-                        type: "string",
-                        description: "The HTML to insert into the selected element, which MUST be a valid HTML string. This content will be appended to the end of the innerHTML of the selected element. ",
+                        "type": "string",
+                        "description": "The HTML to insert into the selected element, which MUST be a valid HTML string. This content will be appended to the end of the innerHTML of the selected element. ",
                     },
                 },
                 required: ["query", "content"]
@@ -229,29 +229,17 @@ export class AIStore {
                 return {success: false, message: `No element found matching query: ${query}`};
             }
 
-            function findNodeAndPosFromDOM(view: ProsemirrorEditor, domNode: Node): {
-                node: any,
-                startPos: number
-            } | null {
-                const pos = view.posAtDOM(domNode, -1);
-                let $pos = view.state.doc.resolve(pos);
-                let node = null;
-                let startPos = pos;
-
-                // Traverse up to find the matching node type
-                for (let depth = $pos.depth; depth >= 0; depth--) {
-                    const candidate = $pos.node(depth);
-                    const candidatePos = depth > 0 ? $pos.before(depth) : 0;
-                    const candidateDOM = view.nodeDOM(candidatePos);
-
-                    if (candidateDOM === domNode) {
-                        node = candidate;
-                        startPos = candidatePos;
-                        break;
-                    }
+            function findNodeAndPosFromDOM(view: ProsemirrorEditor, domNode: Node): { node: any, startPos: number } | null {
+                const pos = view.posAtDOM(domNode, 0);
+                if (pos === 0) {
+                    return null;
                 }
-
-                return node ? {node, startPos} : null;
+                const $pos = view.state.doc.resolve(pos);
+                const node = $pos.nodeAfter;
+                if (node) {
+                    return { node, startPos: pos };
+                }
+                return null;
             }
 
             // Sicheres Extrahieren von Node und Startposition
@@ -321,8 +309,8 @@ export class AIStore {
     addMessage({role, content, isUpdate = false, timestamp, tool_calls = null}: {
         role: 'user' | 'assistant' | 'system' | 'tool';
         content: string;
-        timestamp: Date,
-        isUpdate: boolean,
+        timestamp: Date;
+        isUpdate: boolean;
         tool_calls?: any | null
     }) {
         this.chatMessages.push({role, content, isUpdate, timestamp, tool_calls});
