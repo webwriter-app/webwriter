@@ -1,4 +1,5 @@
 import {SchemaPlugin} from ".";
+import {HTMLElementSpec} from "../htmlelementspec";
 import {Plugin, PluginKey, Transaction} from "prosemirror-state";
 import {Decoration, DecorationSet} from "prosemirror-view";
 import {Slice} from "prosemirror-model";
@@ -12,6 +13,7 @@ interface Suggestion {
 }
 
 interface AIState {
+    decorations: DecorationSet;
     suggestions: Suggestion[];
 }
 
@@ -25,82 +27,121 @@ export const aiPlugin = () => ({
     plugin: new Plugin<AIState>({
         key: aiPluginKey,
         state: {
-            init(): AIState {
-                return {suggestions: []};
+            init(_, __): AIState {
+                return {
+                    decorations: DecorationSet.empty,
+                    suggestions: [],
+                };
             },
-            apply(tr, state): AIState {
-                const suggestions = state.suggestions
-                    .map(s => ({...s, from: tr.mapping.map(s.from), to: tr.mapping.map(s.to)}))
-                    .filter(s => s.from < s.to);
+            apply(tr, state, oldState, newState): AIState {
+                let {suggestions, decorations} = state;
+
+                // Map existing suggestions and decorations through the transaction's mapping
+                decorations = decorations.map(tr.mapping, tr.doc);
+                suggestions = suggestions.map(suggestion => {
+                    return {
+                        ...suggestion,
+                        from: tr.mapping.map(suggestion.from),
+                        to: tr.mapping.map(suggestion.to),
+                    };
+                }).filter(suggestion => suggestion.from < suggestion.to);
+
+
                 const action = tr.getMeta(aiPluginKey);
-                if (action?.add) {
-                    const {from, to, originalContent} = action.add;
-                    return {suggestions: [...suggestions, {id: createSuggestionId(tr), from, to, originalContent}]};
-                } else if (action?.remove) {
-                    return {suggestions: suggestions.filter(s => s.id !== action.remove.id)};
+
+                if (action) {
+                    if (action.add) {
+                        const {from, to, originalContent} = action.add;
+                        const id = createSuggestionId(tr);
+                        const newSuggestion: Suggestion = {id, from, to, originalContent};
+
+                        const decoNode = Decoration.inline(from, to, {
+                            class: "ai-suggestion",
+                            "data-suggestion-id": id
+                        });
+
+                        const buttonWrapper = document.createElement('div');
+                        buttonWrapper.className = 'ai-suggestion-buttons';
+                        buttonWrapper.dataset.suggestionId = id;
+
+                        const acceptButton = document.createElement('button');
+                        acceptButton.innerHTML = 'Accept';
+                        acceptButton.onclick = () => {
+                            // Logic will be handled in handleDOMEvents
+                        };
+
+                        const rejectButton = document.createElement('button');
+                        rejectButton.innerHTML = 'Reject';
+                        rejectButton.onclick = () => {
+                            // Logic will be handled in handleDOMEvents
+                        };
+
+                        buttonWrapper.appendChild(acceptButton);
+                        buttonWrapper.appendChild(rejectButton);
+
+                        const decoWidget = Decoration.widget(to, buttonWrapper, {
+                            id: id,
+                            side: 1
+                        });
+
+                        decorations = decorations.add(tr.doc, [decoNode, decoWidget]);
+                        suggestions = [...suggestions, newSuggestion];
+
+                    } else if (action.remove) {
+                        const {id} = action.remove;
+                        const suggestionToRemove = suggestions.find(s => s.id === id);
+                        if (suggestionToRemove) {
+                            suggestions = suggestions.filter(s => s.id !== id);
+                            const decosToRemove = decorations.find(null, null, (spec) => {
+                                console.log(spec, id)
+
+                                return spec.id === id || spec['data-suggestion-id'] === id;
+                            });
+                            decorations = decorations.remove(decosToRemove);
+                            console.log(decorations, decosToRemove)
+                        }
+                    }
                 }
-                return {suggestions};
+
+                return {suggestions, decorations};
             }
         },
         props: {
-            decorations(editorState) {
-                const state = aiPluginKey.getState(editorState);
-
-                /* Create decorations for each suggestion */
-                const decorations = state?.suggestions.flatMap(s => {
-
-                    /* Inline decoration for the "this is a suggestion" highlighting */
-                    const inline = Decoration.inline(s.from, s.to, {
-                        class: 'ai-suggestion',
-                        'data-suggestion-id': s.id
-                    });
-
-                    /* Widget decoration for the accept/reject buttons */
-                    const wrapper = document.createElement('div');
-                    wrapper.className = 'ai-suggestion-buttons';
-                    wrapper.dataset.suggestionId = s.id;
-                    const btnA = document.createElement('button');
-                    btnA.textContent = 'Accept';
-                    btnA.dataset.action = 'Accept';
-                    const btnR = document.createElement('button');
-                    btnR.textContent = 'Reject';
-                    btnR.dataset.action = 'Reject';
-
-                    wrapper.append(btnA, btnR);
-
-                    /* Create a widget decoration that wraps the buttons */
-                    const widget = Decoration.widget(s.to, wrapper, {id: s.id, side: 1});
-                    return [inline, widget];
-                }) || [];
-
-                /* Return a DecorationSet containing all the decorations */
-                return DecorationSet.create(editorState.doc, decorations);
+            decorations(state) {
+                return aiPluginKey.getState(state)?.decorations || DecorationSet.empty;
             },
-            handleClickOn(view, _pos, _node, _nodePos, event: MouseEvent) {
-                const target = event.target as HTMLElement;
+            handleDOMEvents: {
+                click: (view, event: MouseEvent) => {
+                    const target = event.target as HTMLElement;
+                    if (target.tagName === 'BUTTON' && target.closest('.ai-suggestion-buttons')) {
+                        const buttonText = target.textContent;
+                        const suggestionId = target.closest<HTMLElement>('.ai-suggestion-buttons')?.dataset.suggestionId;
 
-                /* If the click is not on a button within the AI suggestion buttons, ignore it */
-                if (!(target.tagName === 'BUTTON' && target.closest('.ai-suggestion-buttons')))
+                        if (!suggestionId) return false;
+
+                        const aiState = aiPluginKey.getState(view.state);
+                        const suggestion = aiState?.suggestions.find(s => s.id === suggestionId);
+
+                        if (!suggestion) return false;
+
+                        if (buttonText === 'Accept') {
+                            const tr = view.state.tr.setMeta(aiPluginKey, {remove: {id: suggestionId}});
+                            setTimeout(() => view.dispatch(tr), 0);
+
+                        } else if (buttonText === 'Reject') {
+                            const { from, to, originalContent } = suggestion;
+                            const tr = view.state.tr.replaceWith(from, to, originalContent.content);
+                            tr.setMeta('addToHistory', false);
+                            tr.setMeta(aiPluginKey, {remove: {id: suggestionId}});
+                            setTimeout(() => view.dispatch(tr), 0);
+
+                        }
+                        return true;
+                    }
                     return false;
-
-                const action = target.dataset.action;
-                const id = target.closest<HTMLDivElement>('.ai-suggestion-buttons')?.dataset.suggestionId!;
-                const state = aiPluginKey.getState(view.state);
-                const suggestion = state?.suggestions.find(s => s.id === id);
-
-                /* If no suggestion is found, ignore the click */
-                if (!suggestion) return false;
-
-                if (action === 'Accept') {
-                    view.dispatch(view.state.tr.setMeta(aiPluginKey, {remove: {id}}));
-                } else if (action === 'Reject') {
-                    const tr = view.state.tr.replaceWith(suggestion.from, suggestion.to, suggestion.originalContent.content);
-                    tr.setMeta('addToHistory', false).setMeta(aiPluginKey, {remove: {id}});
-                    view.dispatch(tr);
                 }
-                return true;
             }
         }
     }),
     styles: [css]
-}) as SchemaPlugin;
+} as SchemaPlugin);
