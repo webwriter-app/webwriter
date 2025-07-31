@@ -4,6 +4,7 @@ import {App} from "#view";
 import {basePlugin, generateWidgetDocumentation, toolFriendlyNames} from "#model";
 import {marked} from "marked";
 import {unsafeHTML} from 'lit/directives/unsafe-html.js';
+import {triggerAISuggestionForSelection} from "#viewmodel/aicontroller";
 
 
 @customElement("ww-ai-toolbox-widget")
@@ -163,6 +164,8 @@ export class AIToolboxWidget extends LitElement {
 
                 // generate a response and call the request update function for every update in the chat
                 this.app.store.ai.generateResponse(() => this.requestUpdate(), this.app);
+            } else {
+                triggerAISuggestionForSelection(this.app.activeEditor?.pmEditor).then(console.log)
             }
         }
     }

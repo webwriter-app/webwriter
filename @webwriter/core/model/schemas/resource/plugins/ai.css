@@ -1,0 +1,26 @@
+.ai-suggestion {
+  background-color: rgba(0, 100, 255, 0.1);
+  border-left: 3px solid rgba(0, 100, 255, 0.4);
+  border-radius: 2px;
+}
+
+.ai-suggestion-buttons {
+  display: inline-block;
+  margin-left: 8px;
+  user-select: none;
+}
+
+.ai-suggestion-buttons button {
+  background-color: #f0f0f0;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 2px 8px;
+  margin-right: 4px;
+  cursor: pointer;
+  font-size: 0.8em;
+}
+
+.ai-suggestion-buttons button:hover {
+  background-color: #e0e0e0;
+}
+
