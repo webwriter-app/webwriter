@@ -342,10 +342,12 @@ export class AIStore {
 
         while (!isResponseToHuman) {
 
+            const authKey = localStorage["webwriter_authKey"]
+
             /* request from openai api */
             const response = await fetch("http://localhost:8090/api/chat", {
                 method: "POST",
-                headers: {"Content-Type": "application/json"},
+                headers: {"Content-Type": "application/json", "Authorization": authKey},
                 body: JSON.stringify({
                     messages: this.chatMessages,
                     tools: toolDefinitions,
