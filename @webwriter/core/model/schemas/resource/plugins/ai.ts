@@ -44,7 +44,7 @@ export const aiPlugin = () => ({
                         from: tr.mapping.map(suggestion.from),
                         to: tr.mapping.map(suggestion.to),
                     };
-                }).filter(suggestion => suggestion.from < suggestion.to);
+                });
 
 
                 const action = tr.getMeta(aiPluginKey);
@@ -100,6 +100,9 @@ export const aiPlugin = () => ({
                     }
                 }
 
+                // Filter out invalid suggestions at the end
+                suggestions = suggestions.filter(suggestion => suggestion.from < suggestion.to);
+
                 return {suggestions, decorations};
             }
         },
@@ -130,8 +133,7 @@ export const aiPlugin = () => ({
                             const tr = view.state.tr.replaceWith(from, to, originalContent.content);
                             tr.setMeta('addToHistory', false);
                             tr.setMeta(aiPluginKey, {remove: {id: suggestionId}});
-                            setTimeout(() => view.dispatch(tr), 0);
-
+                            view.dispatch(tr);
                         }
                         return true;
                     }

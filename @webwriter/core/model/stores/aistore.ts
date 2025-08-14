@@ -1,5 +1,9 @@
 import {DOMParser, Slice} from "prosemirror-model";
 import {App, ProsemirrorEditor} from "#view";
+import { EditorView } from "prosemirror-view";
+import { Node as ProseMirrorNode } from "prosemirror-model";
+import { aiPluginKey } from "../../model/schemas/resource/plugins/ai";
+
 
 export const PROMPT = `
 You are the assistant in the application WebWriter. The application WebWriter is a writing tool that allows users to create and edit interactive documents or explorables.  It is your task to help the user with their writing tasks. You can answer questions, provide suggestions, and assist with various writing-related tasks.
@@ -114,6 +118,47 @@ export const toolFriendlyNames = {
     "insert_into_element": "Inhalt einfügen..."
 }
 
+/**
+ * Ersetzt einen Inhaltsbereich durch einen AI-Vorschlag und hebt ihn hervor.
+ *
+ * @param view Die Editor-Ansicht.
+ * @param from Die Startposition der zu ersetzenden Stelle.
+ * @param to Die Endposition der zu ersetzenden Stelle.
+ * @param newContent Der neue Knoten (oder die Knoten), der als Vorschlag eingefügt werden soll.
+ */
+export function suggestChange(view: EditorView, from: number, to: number, newContent: ProseMirrorNode | ProseMirrorNode[]) {
+    const { state } = view;
+
+    // 1. Den ursprünglichen Inhalt für eine mögliche Wiederherstellung speichern.
+    const originalContent = state.doc.slice(from, to);
+
+    // 2. Eine Transaktion erstellen, die den Inhalt ersetzt.
+    let tr = state.tr.replaceWith(from, to, newContent);
+
+    // Die neue Endposition nach dem Einfügen des Inhalts berechnen.
+    const newContentSize = Array.isArray(newContent)
+        ? newContent.reduce((size, node) => size + node.nodeSize, 0)
+        : newContent.nodeSize;
+    const newTo = from + newContentSize;
+
+    // 3. Die Metadaten für das AI-Plugin hinzufügen, um die Dekoration zu erstellen.
+    //    Wir übergeben den ursprünglichen Inhalt, damit das Plugin ihn speichern kann.
+    tr = tr.setMeta(aiPluginKey, {
+        add: {
+            from: from,
+            to: newTo,
+            originalContent: originalContent
+        }
+    });
+
+    // Diese Änderung soll zunächst nicht in der Undo-History landen.
+    // Erst nach dem Akzeptieren wird sie zu einem normalen Edit-Schritt.
+    tr = tr.setMeta('addToHistory', false);
+
+    // 4. Die Transaktion ausführen.
+    view.dispatch(tr);
+}
+
 export function generateListOfModules(app: App) {
     return app.store.packages.installed.map(p => p.name + ": " + p.description).join("\n");
 }
@@ -195,11 +240,12 @@ export class AIStore {
 
             if (!contentNode) return;
 
-            const tr = state.tr.insert(endPos, contentNode.content);
-            view.dispatch(tr);
+            // Use suggestChange to propose the insertion instead of applying it directly
+            suggestChange(view, endPos, endPos, contentNode.content.content);
+
             return {
                 success: true,
-                message: `HTML content has been inserted at the bottom of the document.`,
+                message: `HTML content has been suggested at the bottom of the document.`,
             };
         },
         read_document: (app: App) => {
