@@ -1,26 +1,116 @@
+/* Markierung des vorgeschlagenen Inhalts */
 .ai-suggestion {
-  background-color: rgba(0, 100, 255, 0.1);
-  border-left: 3px solid rgba(0, 100, 255, 0.4);
+  background: linear-gradient(90deg, rgba(0, 106, 255, 0.10), rgba(0, 106, 255, 0.06));
+  border-left: 3px solid rgba(0, 106, 255, 0.45);
   border-radius: 2px;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.04);
 }
 
+/* Container für Badge und Buttons */
 .ai-suggestion-buttons {
-  display: inline-block;
-  margin-left: 8px;
+  display: inline-flex;
+  align-items: center;
+  padding-left: 8px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  border-radius: 999px;
   user-select: none;
+  backdrop-filter: saturate(150%) blur(6px);
+  margin-left: 8px;
 }
 
-.ai-suggestion-buttons button {
-  background-color: #f0f0f0;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  padding: 2px 8px;
-  margin-right: 4px;
+/* KI-Badge */
+.ai-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  padding: 0 8px;
+  margin-right: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #0B5FFF;
+  background: rgba(11,95,255,0.05);
+  border: 1px solid rgba(11,95,255,0.25);
+  border-radius: 999px;
+}
+
+/* Buttons */
+.ai-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  background: #f7f8fa;
+  color: #1f2937;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
   cursor: pointer;
-  font-size: 0.8em;
+  transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease;
+  flex: 1;
+  justify-content: center;
+  height: 32px;
+  border-radius: 0;
 }
 
-.ai-suggestion-buttons button:hover {
-  background-color: #e0e0e0;
+.ai-btn:hover { background: #eef1f5; }
+.ai-btn:active { transform: translateY(0.5px); }
+.ai-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(11,95,255,0.4); }
+
+/* Primär-Button: Annehmen - nur links abgerundet */
+.ai-accept {
+  background: #16a34a;
+  color: white;
+  box-shadow: 0 1px 2px rgba(22, 163, 74, 0.35), inset 0 -1px 0 rgba(0,0,0,0.05);
+  border-top-left-radius: 999px;
+  border-bottom-left-radius: 999px;
+}
+.ai-accept:hover { background: #149043; }
+.ai-accept:focus-visible { box-shadow: 0 0 0 2px rgba(34,197,94,0.45); }
+
+/* Sekundär/Danger-Button: Verwerfen - nur rechts abgerundet */
+.ai-reject {
+  background: transparent;
+  color: #dc2626;
+  border-color: rgba(220, 38, 38, 0.35);
+  border-top-right-radius: 999px;
+  border-bottom-right-radius: 999px;
+}
+.ai-reject:hover { background: rgba(220, 38, 38, 0.06); }
+.ai-reject:focus-visible { box-shadow: 0 0 0 2px rgba(220,38,38,0.35); }
+
+/* Icon-Grundstil */
+.ai-icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  color: currentColor;
+  /* Icons via mask, damit Farbe geerbt wird */
+  background-color: currentColor;
 }
 
+/* Check-Icon */
+.ai-icon-check {
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6L9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6L9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+/* X-Icon */
+.ai-icon-x {
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 6L6 18M6 6l12 12'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 6L6 18M6 6l12 12'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+/* Label im Button */
+.ai-btn-label { white-space: nowrap; }
+
+/* Kompakter bei sehr schmalen Breiten: Text ausblenden, nur Icons zeigen */
+@media (max-width: 420px) {
+  .ai-btn-label { display: none; }
+  .ai-btn { padding: 0 8px; }
+}

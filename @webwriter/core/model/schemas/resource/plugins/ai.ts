@@ -1,5 +1,4 @@
 import {SchemaPlugin} from ".";
-import {HTMLElementSpec} from "../htmlelementspec";
 import {Plugin, PluginKey, Transaction} from "prosemirror-state";
 import {Decoration, DecorationSet} from "prosemirror-view";
 import {Slice} from "prosemirror-model";
@@ -33,7 +32,7 @@ export const aiPlugin = () => ({
                     suggestions: [],
                 };
             },
-            apply(tr, state, oldState, newState): AIState {
+            apply(tr, state, _oldState, _newState): AIState {
                 let {suggestions, decorations} = state;
 
                 // Map existing suggestions and decorations through the transaction's mapping
@@ -64,18 +63,36 @@ export const aiPlugin = () => ({
                         buttonWrapper.className = 'ai-suggestion-buttons';
                         buttonWrapper.dataset.suggestionId = id;
 
+                        // Badge to indicate AI/KI suggestion
+                        const badge = document.createElement('span');
+                        badge.className = 'ai-badge';
+                        badge.textContent = 'WebWriter AI Vorschlag';
+                        badge.setAttribute('title', 'KI-Vorschlag');
+
                         const acceptButton = document.createElement('button');
-                        acceptButton.innerHTML = 'Accept';
+                        acceptButton.type = 'button';
+                        acceptButton.className = 'ai-btn ai-accept';
+                        acceptButton.setAttribute('title', 'Vorschlag übernehmen');
+                        acceptButton.setAttribute('aria-label', 'Vorschlag übernehmen');
+                        acceptButton.dataset.action = 'accept';
+                        acceptButton.innerHTML = '<span class="ai-icon ai-icon-check"></span><span class="ai-btn-label">Annehmen</span>';
                         acceptButton.onclick = () => {
                             // Logic will be handled in handleDOMEvents
                         };
 
                         const rejectButton = document.createElement('button');
-                        rejectButton.innerHTML = 'Reject';
+                        rejectButton.type = 'button';
+                        rejectButton.className = 'ai-btn ai-reject';
+                        rejectButton.setAttribute('title', 'Vorschlag verwerfen');
+                        rejectButton.setAttribute('aria-label', 'Vorschlag verwerfen');
+                        rejectButton.dataset.action = 'reject';
+                        rejectButton.innerHTML = '<span class="ai-icon ai-icon-x"></span><span class="ai-btn-label">Verwerfen</span>';
                         rejectButton.onclick = () => {
                             // Logic will be handled in handleDOMEvents
                         };
 
+                        // Append in order: badge + buttons
+                        buttonWrapper.appendChild(badge);
                         buttonWrapper.appendChild(acceptButton);
                         buttonWrapper.appendChild(rejectButton);
 
@@ -113,30 +130,35 @@ export const aiPlugin = () => ({
             handleDOMEvents: {
                 click: (view, event: MouseEvent) => {
                     const target = event.target as HTMLElement;
-                    if (target.tagName === 'BUTTON' && target.closest('.ai-suggestion-buttons')) {
-                        const buttonText = target.textContent;
-                        const suggestionId = target.closest<HTMLElement>('.ai-suggestion-buttons')?.dataset.suggestionId;
+                    // Support clicks on icon/spans inside the button as well
+                    const buttonEl = target.closest('button');
+                    const wrapper = target.closest<HTMLElement>('.ai-suggestion-buttons');
+                    if (!buttonEl || !wrapper) return false;
 
-                        if (!suggestionId) return false;
+                    const suggestionId = wrapper.dataset.suggestionId;
+                    if (!suggestionId) return false;
 
-                        const aiState = aiPluginKey.getState(view.state);
-                        const suggestion = aiState?.suggestions.find(s => s.id === suggestionId);
+                    const aiState = aiPluginKey.getState(view.state);
+                    const suggestion = aiState?.suggestions.find(s => s.id === suggestionId);
+                    if (!suggestion) return false;
 
-                        if (!suggestion) return false;
+                    const action = (buttonEl as HTMLButtonElement).dataset.action || buttonEl.textContent?.trim().toLowerCase();
 
-                        if (buttonText === 'Accept') {
-                            const tr = view.state.tr.setMeta(aiPluginKey, {remove: {id: suggestionId}});
-                            setTimeout(() => view.dispatch(tr), 0);
-
-                        } else if (buttonText === 'Reject') {
-                            const { from, to, originalContent } = suggestion;
-                            const tr = view.state.tr.replaceWith(from, to, originalContent.content);
-                            tr.setMeta('addToHistory', false);
-                            tr.setMeta(aiPluginKey, {remove: {id: suggestionId}});
-                            view.dispatch(tr);
-                        }
+                    if (action === 'accept' || action === 'annehmen') {
+                        const tr = view.state.tr.setMeta(aiPluginKey, {remove: {id: suggestionId}});
+                        setTimeout(() => view.dispatch(tr), 0);
                         return true;
                     }
+
+                    if (action === 'reject' || action === 'verwerfen') {
+                        const { from, to, originalContent } = suggestion;
+                        const tr = view.state.tr.replaceWith(from, to, originalContent.content);
+                        tr.setMeta('addToHistory', false);
+                        tr.setMeta(aiPluginKey, {remove: {id: suggestionId}});
+                        view.dispatch(tr);
+                        return true;
+                    }
+
                     return false;
                 }
             }
