@@ -54,12 +54,38 @@ export const aiPlugin = () => ({
                         const id = createSuggestionId(tr);
                         const newSuggestion: Suggestion = {id, from, to, originalContent};
 
-                        const decoNode = Decoration.inline(from, to, {
-                            class: "ai-suggestion",
-                            "data-suggestion-id": id,
-                        }, { id });
+                        // Entscheide, ob inline (Textbereich) oder node (Blockbereich) dekoriert werden soll
+                        const $from = tr.doc.resolve(from);
+                        const $to = tr.doc.resolve(to);
+                        const isSingleTextblockRange = $from.sameParent($to) && $from.parent.isTextblock && from !== to;
 
-                        // Erzeuge das Widget per Factory-Funktion und mit eindeutigem key, damit kein DOM zwischen Suggestions recycelt wird
+                        const decos: Decoration[] = [];
+
+                        if (isSingleTextblockRange) {
+                            // Inline-Decoration für reine Textbereiche im selben Textblock
+                            const decoInline = Decoration.inline(from, to, {
+                                class: "ai-suggestion",
+                                "data-suggestion-id": id,
+                            }, { id });
+                            decos.push(decoInline);
+                        } else {
+                            // Node-Decorations für blockige Bereiche (z. B. mehrere/ganze Blöcke oder Einfügen am Dokumentende)
+                            tr.doc.nodesBetween(from, to, (node, pos) => {
+                                if (node.isBlock) {
+                                    const decoNode = Decoration.node(pos, pos + node.nodeSize, {
+                                        class: "ai-suggestion",
+                                        "data-suggestion-id": id,
+                                    }, { id });
+                                    decos.push(decoNode);
+                                    // Bei Block-Knoten reicht es, den Knoten selbst zu markieren
+                                    return false;
+                                }
+                                return true;
+                            });
+                        }
+
+                        // Widget erzeugen. Für blockige Bereiche side:-1, damit es am Ende sichtbar bleibt (insb. am Dokumentende)
+                        const widgetSide = isSingleTextblockRange ? 1 : -1;
                         const decoWidget = Decoration.widget(to, () => {
                             const buttonWrapper = document.createElement('div');
                             buttonWrapper.className = 'ai-suggestion-buttons';
@@ -93,10 +119,10 @@ export const aiPlugin = () => ({
                         }, {
                             id: id,
                             key: id,
-                            side: 1
+                            side: widgetSide
                         });
 
-                        decorations = decorations.add(tr.doc, [decoNode, decoWidget]);
+                        decorations = decorations.add(tr.doc, [...decos, decoWidget]);
                         suggestions = [...suggestions, newSuggestion];
 
                     } else if (action.remove) {

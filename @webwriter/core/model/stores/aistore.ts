@@ -1,6 +1,5 @@
-import {DOMParser, Slice} from "prosemirror-model";
+import {DOMParser} from "prosemirror-model";
 import {App, ProsemirrorEditor} from "#view";
-import { EditorView } from "prosemirror-view";
 import { Node as ProseMirrorNode } from "prosemirror-model";
 import { aiPluginKey } from "../../model/schemas/resource/plugins/ai";
 
@@ -100,7 +99,7 @@ const toolDefinitions = [
                     },
                     content: {
                         "type": "string",
-                        "description": "The HTML to insert into the selected element, which MUST be a valid HTML string. This content will be appended to the end of the innerHTML of the selected element. ",
+                        "description": "The HTML to insert into the selected element, which MUST be a VALID HTML string. DO NOT USE HTML THAT IS NOT VALID BY ITSELF. This content will be appended to the end of the innerHTML of the selected element. ",
                     },
                 },
                 required: ["query", "content"]
@@ -121,38 +120,37 @@ export const toolFriendlyNames = {
 /**
  * Ersetzt einen Inhaltsbereich durch einen AI-Vorschlag und hebt ihn hervor.
  *
- * @param view Die Editor-Ansicht.
- * @param from Die Startposition der zu ersetzenden Stelle.
- * @param to Die Endposition der zu ersetzenden Stelle.
- * @param newContent Der neue Knoten (oder die Knoten), der als Vorschlag eingefügt werden soll.
+ * @param view Die Editor-Ansicht (Wrapper).
+ * @param from Startposition.
+ * @param to Endposition.
+ * @param newContent Knoten, die als Vorschlag eingefügt werden.
  */
-export function suggestChange(view: EditorView, from: number, to: number, newContent: ProseMirrorNode | ProseMirrorNode[]) {
-   const { state } = view;
+export function suggestChange(view: ProsemirrorEditor | any, from: number, to: number, newContent: ProseMirrorNode | ProseMirrorNode[]) {
+   const state = (view as any).state;
 
-    // 1. Den ursprünglichen Inhalt für eine mögliche Wiederherstellung speichern.
+    // Ursprünglichen Inhalt speichern (auch wenn from==to, ergibt ein leeres Slice)
     const originalContent = state.doc.slice(from, to);
 
-    // 2. Eine Transaktion erstellen, die den Inhalt ersetzt.
+    // Inhalt ersetzen/einfügen
     let tr = state.tr.replaceWith(from, to, newContent);
 
-    // Die neue Endposition nach dem Einfügen des Inhalts berechnen.
+    // Neue Endposition berechnen
     const newContentSize = Array.isArray(newContent)
         ? newContent.reduce((size, node) => size + node.nodeSize, 0)
         : newContent.nodeSize;
     const newTo = from + newContentSize;
 
-    // 3. Die Metadaten für das AI-Plugin hinzufügen, um die Dekoration zu erstellen.
-    //    Wir übergeben den ursprünglichen Inhalt, damit das Plugin ihn speichern kann.
+    // Metadaten für AI-Plugin
     tr = tr.setMeta(aiPluginKey, {
         add: {
-            from: from,
+            from,
             to: newTo,
-            originalContent: originalContent
+            originalContent
         }
     });
     tr = tr.setMeta('addToHistory', false);
 
-    view.dispatch(tr);
+    (view as any).dispatch(tr);
 }
 
 export function generateListOfModules(app: App) {
@@ -223,21 +221,27 @@ export class AIStore {
     /* The toolResolvers are functions that are called when a tool is requested by the AI, corresponding to the functions defined for the AI above */
     toolResolvers = {
         insert_at_bottom: (app: App, {content}: { content: string }) => {
-            const view = app.activeEditor.pmEditor;
-            const {state} = view;
-            const endPos = state.doc.content.size;
+            const editor = app.activeEditor?.pmEditor as ProsemirrorEditor | undefined;
+            if (!editor) {
+                return { success: false, message: 'No active editor available.' };
+            }
+            const endPos = (editor as any).state.doc.content.size;
 
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = content;
 
-            // might break if the content schema does not match, https://prosemirror.net/docs/ref/#model.DOMParser.parseSlice
-            const parser = DOMParser.fromSchema(state.schema);
-            const contentNode = parser.parse(tempDiv);
+            const parser = DOMParser.fromSchema((editor as any).state.schema);
+            const slice = parser.parseSlice(tempDiv);
+            const nodes: ProseMirrorNode[] = [];
+            for (let i = 0; i < slice.content.childCount; i++) {
+                nodes.push(slice.content.child(i)!);
+            }
+            if (nodes.length === 0) {
+                return { success: false, message: 'No valid content to insert.' };
+            }
 
-            if (!contentNode) return;
-
-            // Use suggestChange to propose the insertion instead of applying it directly
-            suggestChange(view, endPos, endPos, contentNode.content);
+            // Vorschlag am Dokumentende (from==to==endPos)
+            suggestChange(editor, endPos, endPos, nodes);
 
             return {
                 success: true,
@@ -245,11 +249,12 @@ export class AIStore {
             };
         },
         read_document: (app: App) => {
-            const view = app.activeEditor.pmEditor;
-            const {state} = view;
+            const editor = app.activeEditor?.pmEditor as ProsemirrorEditor | undefined;
+            if (!editor) {
+                return { success: false, message: 'No active editor available.' };
+            }
 
-            // Convert the ProseMirror document to HTML
-            const htmlContent = view.dom.innerHTML;
+            const htmlContent = (editor as any).dom.innerHTML;
 
             return {
                 success: true,
@@ -263,10 +268,12 @@ export class AIStore {
             }
         },
         replace_in_document: (app: App, {query, newContent}: { query: string, newContent: string }) => {
-            const view = app.activeEditor.pmEditor;
-            const {state} = view;
+            const editor = app.activeEditor?.pmEditor as ProsemirrorEditor | undefined;
+            if (!editor) {
+                return { success: false, message: 'No active editor available.' };
+            }
 
-            const elementToReplace = view.dom.querySelector(query);
+            const elementToReplace = (editor as any).dom.querySelector(query) as Element | null;
             if (!elementToReplace) {
                 return {success: false, message: `No element found matching query: ${query}`};
             }
@@ -277,10 +284,9 @@ export class AIStore {
                     domNode = domNode.parentNode;
                 }
 
-                // 1) Primär: Von einer Position im Knoten aus nach oben laufen und via nodeDOM matchen
+                // 1) Primär: Position ermitteln und nach oben laufen
                 let innerPos: number | null = null;
                 try {
-                    // @ts-ignore: prosemirror-view bias Argument
                     innerPos = (view as any).posAtDOM(domNode, 0, -1);
                 } catch {}
 
@@ -288,7 +294,6 @@ export class AIStore {
                     const $pos = (view as any).state.doc.resolve(innerPos);
                     for (let depth = $pos.depth; depth >= 1; depth--) {
                         const startPos = $pos.before(depth);
-                        // @ts-ignore Zugriff auf EditorView-API über Wrapper
                         const dom = (view as any).nodeDOM(startPos) as Node | null;
                         if (dom && (dom === domNode || dom.contains(domNode) || domNode.contains(dom))) {
                             const node = $pos.node(depth);
@@ -297,7 +302,7 @@ export class AIStore {
                     }
                 }
 
-                // 2) Fallback: exakte Position VOR dem Element über dessen Eltern und Index bestimmen
+                // 2) Fallback: Position VOR domNode bestimmen
                 const parent = domNode.parentNode;
                 if (!parent) return null;
                 const index = Array.prototype.indexOf.call(parent.childNodes, domNode);
@@ -305,7 +310,6 @@ export class AIStore {
 
                 let posBefore: number;
                 try {
-                    // @ts-ignore: prosemirror-view bias Argument
                     posBefore = (view as any).posAtDOM(parent, index, -1);
                 } catch {
                     return null;
@@ -320,7 +324,7 @@ export class AIStore {
             }
 
             // Sicheres Extrahieren von Node und Startposition
-            const found = findNodeAndPosFromDOM(view, elementToReplace);
+            const found = findNodeAndPosFromDOM(editor, elementToReplace);
             if (!found) {
                 return {success: false, message: "Could not find corresponding PM node for DOM element."};
             }
@@ -328,20 +332,18 @@ export class AIStore {
             const {node, startPos} = found;
             const endPos = startPos + node.nodeSize;
 
-            // Closed Slice vorbereiten und als Vorschlag einfügen
+            // Slice vorbereiten und als Vorschlag einfügen
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = newContent;
-            const parser = DOMParser.fromSchema(state.schema);
+            const parser = DOMParser.fromSchema((editor as any).state.schema);
             const slice = parser.parseSlice(tempDiv);
 
-            // Fragment-Inhalt in Node-Array umwandeln
             const nodes: ProseMirrorNode[] = [];
             for (let i = 0; i < slice.content.childCount; i++) {
                 nodes.push(slice.content.child(i)!);
             }
 
-            // Suggestion mit Slice-Knoten erstellen
-            suggestChange(view, startPos, endPos, nodes);
+            suggestChange(editor, startPos, endPos, nodes);
 
             return {
                 success: true,
@@ -349,11 +351,12 @@ export class AIStore {
             };
         },
         insert_into_element: (app: App, {query, content}: { query: string, content: string }) => {
-            const view = app.activeEditor.pmEditor;
-            const {state} = view;
+            const editor = app.activeEditor?.pmEditor as ProsemirrorEditor | undefined;
+            if (!editor) {
+                return { success: false, message: 'No active editor available.' };
+            }
 
-            // Find the element to insert into
-            const elementToInsertInto = view.dom.querySelector(query);
+            const elementToInsertInto = (editor as any).dom.querySelector(query) as Element | null;
             if (!elementToInsertInto) {
                 return {
                     success: false,
@@ -361,23 +364,19 @@ export class AIStore {
                 };
             }
 
-            // Create a temporary div to parse the content
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = content;
 
-            // Parse the content into a ProseMirror Slice
-            const parser = DOMParser.fromSchema(state.schema);
+            const parser = DOMParser.fromSchema((editor as any).state.schema);
             const slice = parser.parseSlice(tempDiv);
 
-            // Convert Slice content to ProseMirrorNode array
             const nodes: ProseMirrorNode[] = [];
             for (let i = 0; i < slice.content.childCount; i++) {
                 nodes.push(slice.content.child(i)!);
             }
 
-            // Determine insertion position and suggest change
-            const pos = view.posAtDOM(elementToInsertInto, elementToInsertInto.childNodes.length);
-            suggestChange(view, pos, pos, nodes);
+            const pos = (editor as any).posAtDOM(elementToInsertInto, elementToInsertInto.childNodes.length);
+            suggestChange(editor, pos, pos, nodes);
 
             return {
                 success: true,
@@ -409,11 +408,12 @@ export class AIStore {
             isUpdate: true
         });
 
-        // Generate a system message on the current state of the document and the available modules
-        // ToDo: Only give simplified HTML content, not the full HTML document to reduce token usage
+        // Aktuellen Dokumentzustand hinzufügen (robust bei fehlendem Editor)
+        const editorDom = app.activeEditor?.pmEditor?.dom as HTMLElement | undefined;
+        const currentHtml = editorDom ? editorDom.innerHTML : "";
         this.addMessage({
             role: "system",
-            content: `Current document content:\n\n${app.activeEditor.pmEditor.dom.innerHTML}\n\nAvailable modules:\n\n${generateListOfModules(app)}`,
+            content: `Current document content:\n\n${currentHtml}\n\nAvailable modules:\n\n${generateListOfModules(app)}`,
             timestamp: new Date(),
             isUpdate: true,
         });
@@ -455,25 +455,30 @@ export class AIStore {
 
             // check if the response is a tool call
             if (lastMessage["tool_calls"]?.length > 0) {
-                const toolCalls = lastMessage["tool_calls"];
+                const toolCalls = lastMessage["tool_calls"] as any[];
 
-                const resolvedToolCalls = await Promise.all(toolCalls.map(async toolCall => {
-                    const callFunction = toolCall.function.name
-                    const callArguments = JSON.parse(toolCall.function.arguments);
+                const resolvedToolCalls = await Promise.all(toolCalls.map(async (toolCall: any) => {
+                    const callFunction = toolCall.function.name as string;
+                    const callArguments = JSON.parse(toolCall.function.arguments || '{}');
 
-                    let result = {};
+                    let result: any = {};
 
                     try {
-                        result = {
-                            ...(await this.toolResolvers[callFunction].apply(this, [app, callArguments])) || {},
-                            success: true,
-                        };
-
+                        const fn = (this.toolResolvers as any)[callFunction];
+                        if (typeof fn !== 'function') {
+                            result = { success: false, message: `Unknown tool: ${callFunction}` };
+                        } else {
+                            result = {
+                                ...(await fn.apply(this, [app, callArguments])) || {},
+                                success: true,
+                            };
+                        }
                     } catch (e) {
+                        const err: any = e;
                         console.error(`Error resolving tool call ${callFunction}:`, e);
                         result = {
                             success: false,
-                            message: `Error resolving tool call ${callFunction}: ${e.message}`,
+                            message: `Error resolving tool call ${callFunction}: ${err?.message ?? String(e)}`,
                         };
                     }
 
