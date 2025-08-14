@@ -34,12 +34,8 @@ export function suggestChange(view: EditorView, from: number, to: number, newCon
             originalContent: originalContent
         }
     });
-
-    // Diese Änderung soll zunächst nicht in der Undo-History landen.
-    // Erst nach dem Akzeptieren wird sie zu einem normalen Edit-Schritt.
     tr = tr.setMeta('addToHistory', false);
 
-    // 4. Die Transaktion ausführen.
     view.dispatch(tr);
 }
 

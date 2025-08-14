@@ -127,7 +127,7 @@ export const toolFriendlyNames = {
  * @param newContent Der neue Knoten (oder die Knoten), der als Vorschlag eingefügt werden soll.
  */
 export function suggestChange(view: EditorView, from: number, to: number, newContent: ProseMirrorNode | ProseMirrorNode[]) {
-    const { state } = view;
+   const { state } = view;
 
     // 1. Den ursprünglichen Inhalt für eine mögliche Wiederherstellung speichern.
     const originalContent = state.doc.slice(from, to);
@@ -150,12 +150,8 @@ export function suggestChange(view: EditorView, from: number, to: number, newCon
             originalContent: originalContent
         }
     });
-
-    // Diese Änderung soll zunächst nicht in der Undo-History landen.
-    // Erst nach dem Akzeptieren wird sie zu einem normalen Edit-Schritt.
     tr = tr.setMeta('addToHistory', false);
 
-    // 4. Die Transaktion ausführen.
     view.dispatch(tr);
 }
 
@@ -241,7 +237,7 @@ export class AIStore {
             if (!contentNode) return;
 
             // Use suggestChange to propose the insertion instead of applying it directly
-            suggestChange(view, endPos, endPos, contentNode.content.content);
+            suggestChange(view, endPos, endPos, contentNode.content);
 
             return {
                 success: true,
@@ -276,15 +272,50 @@ export class AIStore {
             }
 
             function findNodeAndPosFromDOM(view: ProsemirrorEditor, domNode: Node): { node: any, startPos: number } | null {
-                const pos = view.posAtDOM(domNode, 0);
-                if (pos === 0) {
+                // Normalisiere Textknoten auf deren Elternelement
+                if (domNode.nodeType === Node.TEXT_NODE && domNode.parentNode) {
+                    domNode = domNode.parentNode;
+                }
+
+                // 1) Primär: Von einer Position im Knoten aus nach oben laufen und via nodeDOM matchen
+                let innerPos: number | null = null;
+                try {
+                    // @ts-ignore: prosemirror-view bias Argument
+                    innerPos = (view as any).posAtDOM(domNode, 0, -1);
+                } catch {}
+
+                if (innerPos != null) {
+                    const $pos = (view as any).state.doc.resolve(innerPos);
+                    for (let depth = $pos.depth; depth >= 1; depth--) {
+                        const startPos = $pos.before(depth);
+                        // @ts-ignore Zugriff auf EditorView-API über Wrapper
+                        const dom = (view as any).nodeDOM(startPos) as Node | null;
+                        if (dom && (dom === domNode || dom.contains(domNode) || domNode.contains(dom))) {
+                            const node = $pos.node(depth);
+                            return { node, startPos };
+                        }
+                    }
+                }
+
+                // 2) Fallback: exakte Position VOR dem Element über dessen Eltern und Index bestimmen
+                const parent = domNode.parentNode;
+                if (!parent) return null;
+                const index = Array.prototype.indexOf.call(parent.childNodes, domNode);
+                if (index < 0) return null;
+
+                let posBefore: number;
+                try {
+                    // @ts-ignore: prosemirror-view bias Argument
+                    posBefore = (view as any).posAtDOM(parent, index, -1);
+                } catch {
                     return null;
                 }
-                const $pos = view.state.doc.resolve(pos);
-                const node = $pos.nodeAfter;
-                if (node) {
-                    return { node, startPos: pos };
+                const $before = (view as any).state.doc.resolve(posBefore);
+                const nodeAfter = $before.nodeAfter as any;
+                if (nodeAfter) {
+                    return { node: nodeAfter, startPos: posBefore };
                 }
+
                 return null;
             }
 
@@ -297,15 +328,20 @@ export class AIStore {
             const {node, startPos} = found;
             const endPos = startPos + node.nodeSize;
 
-            // Closed Slice vorbereiten
+            // Closed Slice vorbereiten und als Vorschlag einfügen
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = newContent;
             const parser = DOMParser.fromSchema(state.schema);
-            const slice = new Slice(parser.parseSlice(tempDiv).content, 0, 0);
+            const slice = parser.parseSlice(tempDiv);
 
-            // Ersetzen
-            const tr = state.tr.replace(startPos, endPos, slice);
-            view.dispatch(tr);
+            // Fragment-Inhalt in Node-Array umwandeln
+            const nodes: ProseMirrorNode[] = [];
+            for (let i = 0; i < slice.content.childCount; i++) {
+                nodes.push(slice.content.child(i)!);
+            }
+
+            // Suggestion mit Slice-Knoten erstellen
+            suggestChange(view, startPos, endPos, nodes);
 
             return {
                 success: true,
@@ -329,25 +365,23 @@ export class AIStore {
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = content;
 
-            // Parse the content into a ProseMirror node
+            // Parse the content into a ProseMirror Slice
             const parser = DOMParser.fromSchema(state.schema);
-            const newNode = parser.parse(tempDiv);
+            const slice = parser.parseSlice(tempDiv);
 
-            if (!newNode) {
-                return {
-                    success: false,
-                    message: `Failed to parse the content.`,
-                };
+            // Convert Slice content to ProseMirrorNode array
+            const nodes: ProseMirrorNode[] = [];
+            for (let i = 0; i < slice.content.childCount; i++) {
+                nodes.push(slice.content.child(i)!);
             }
 
-            // Create a transaction to insert the content at the end of the selected element
+            // Determine insertion position and suggest change
             const pos = view.posAtDOM(elementToInsertInto, elementToInsertInto.childNodes.length);
-            const tr = state.tr.insert(pos, newNode.content);
-            view.dispatch(tr);
+            suggestChange(view, pos, pos, nodes);
 
             return {
                 success: true,
-                message: `Content has been inserted into the selected element.`,
+                message: `Content suggestion has been created for the selected element.`,
             };
         }
     }

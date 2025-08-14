@@ -59,45 +59,40 @@ export const aiPlugin = () => ({
                             "data-suggestion-id": id,
                         }, { id });
 
-                        const buttonWrapper = document.createElement('div');
-                        buttonWrapper.className = 'ai-suggestion-buttons';
-                        buttonWrapper.dataset.suggestionId = id;
+                        // Erzeuge das Widget per Factory-Funktion und mit eindeutigem key, damit kein DOM zwischen Suggestions recycelt wird
+                        const decoWidget = Decoration.widget(to, () => {
+                            const buttonWrapper = document.createElement('div');
+                            buttonWrapper.className = 'ai-suggestion-buttons';
+                            (buttonWrapper as HTMLElement).dataset.suggestionId = id;
 
-                        // Badge to indicate AI/KI suggestion
-                        const badge = document.createElement('span');
-                        badge.className = 'ai-badge';
-                        badge.textContent = 'WebWriter AI Vorschlag';
-                        badge.setAttribute('title', 'KI-Vorschlag');
+                            const badge = document.createElement('span');
+                            badge.className = 'ai-badge';
+                            badge.textContent = 'WebWriter AI Vorschlag';
+                            badge.setAttribute('title', 'KI-Vorschlag');
 
-                        const acceptButton = document.createElement('button');
-                        acceptButton.type = 'button';
-                        acceptButton.className = 'ai-btn ai-accept';
-                        acceptButton.setAttribute('title', 'Vorschlag übernehmen');
-                        acceptButton.setAttribute('aria-label', 'Vorschlag übernehmen');
-                        acceptButton.dataset.action = 'accept';
-                        acceptButton.innerHTML = '<span class="ai-icon ai-icon-check"></span><span class="ai-btn-label">Annehmen</span>';
-                        acceptButton.onclick = () => {
-                            // Logic will be handled in handleDOMEvents
-                        };
+                            const acceptButton = document.createElement('button');
+                            acceptButton.type = 'button';
+                            acceptButton.className = 'ai-btn ai-accept';
+                            acceptButton.setAttribute('title', 'Vorschlag übernehmen');
+                            acceptButton.setAttribute('aria-label', 'Vorschlag übernehmen');
+                            (acceptButton as HTMLElement).dataset.action = 'accept';
+                            acceptButton.innerHTML = '<span class="ai-icon ai-icon-check"></span><span class="ai-btn-label">Annehmen</span>';
 
-                        const rejectButton = document.createElement('button');
-                        rejectButton.type = 'button';
-                        rejectButton.className = 'ai-btn ai-reject';
-                        rejectButton.setAttribute('title', 'Vorschlag verwerfen');
-                        rejectButton.setAttribute('aria-label', 'Vorschlag verwerfen');
-                        rejectButton.dataset.action = 'reject';
-                        rejectButton.innerHTML = '<span class="ai-icon ai-icon-x"></span><span class="ai-btn-label">Verwerfen</span>';
-                        rejectButton.onclick = () => {
-                            // Logic will be handled in handleDOMEvents
-                        };
+                            const rejectButton = document.createElement('button');
+                            rejectButton.type = 'button';
+                            rejectButton.className = 'ai-btn ai-reject';
+                            rejectButton.setAttribute('title', 'Vorschlag verwerfen');
+                            rejectButton.setAttribute('aria-label', 'Vorschlag verwerfen');
+                            (rejectButton as HTMLElement).dataset.action = 'reject';
+                            rejectButton.innerHTML = '<span class="ai-icon ai-icon-x"></span><span class="ai-btn-label">Verwerfen</span>';
 
-                        // Append in order: badge + buttons
-                        buttonWrapper.appendChild(badge);
-                        buttonWrapper.appendChild(acceptButton);
-                        buttonWrapper.appendChild(rejectButton);
-
-                        const decoWidget = Decoration.widget(to, buttonWrapper, {
+                            buttonWrapper.appendChild(badge);
+                            buttonWrapper.appendChild(acceptButton);
+                            buttonWrapper.appendChild(rejectButton);
+                            return buttonWrapper;
+                        }, {
                             id: id,
+                            key: id,
                             side: 1
                         });
 
@@ -118,7 +113,34 @@ export const aiPlugin = () => ({
                 }
 
                 // Filter out invalid suggestions at the end
-                suggestions = suggestions.filter(suggestion => suggestion.from < suggestion.to);
+                suggestions = suggestions.filter(suggestion => suggestion.from <= suggestion.to);
+
+                // Normalize nested suggestions: keep only the largest (non-contained) suggestions
+                if (suggestions.length > 1) {
+                    const toRemoveIds = new Set<string>();
+                    for (let i = 0; i < suggestions.length; i++) {
+                        const a = suggestions[i];
+                        for (let j = 0; j < suggestions.length; j++) {
+                            if (i === j) continue;
+                            const b = suggestions[j];
+                            // If b is strictly contained within a, mark b for removal
+                            if (a.from <= b.from && a.to >= b.to && (a.from < b.from || a.to > b.to)) {
+                                toRemoveIds.add(b.id);
+                            }
+                        }
+                    }
+
+                    if (toRemoveIds.size) {
+                        // Remove decorations for all suggestions to be removed
+                        const decosToRemove = decorations.find(undefined, undefined, (spec) => {
+                            const sid = (spec.id as string) || (spec['data-suggestion-id'] as string);
+                            return sid ? toRemoveIds.has(sid) : false;
+                        });
+                        decorations = decorations.remove(decosToRemove);
+                        // Keep only suggestions not marked for removal
+                        suggestions = suggestions.filter(s => !toRemoveIds.has(s.id));
+                    }
+                }
 
                 return {suggestions, decorations};
             }
