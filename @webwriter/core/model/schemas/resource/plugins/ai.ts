@@ -57,8 +57,8 @@ export const aiPlugin = () => ({
 
                         const decoNode = Decoration.inline(from, to, {
                             class: "ai-suggestion",
-                            "data-suggestion-id": id
-                        });
+                            "data-suggestion-id": id,
+                        }, { id });
 
                         const buttonWrapper = document.createElement('div');
                         buttonWrapper.className = 'ai-suggestion-buttons';
@@ -92,13 +92,10 @@ export const aiPlugin = () => ({
                         const suggestionToRemove = suggestions.find(s => s.id === id);
                         if (suggestionToRemove) {
                             suggestions = suggestions.filter(s => s.id !== id);
-                            const decosToRemove = decorations.find(null, null, (spec) => {
-                                console.log(spec, id)
-
+                            const decosToRemove = decorations.find(undefined, undefined, (spec) => {
                                 return spec.id === id || spec['data-suggestion-id'] === id;
                             });
                             decorations = decorations.remove(decosToRemove);
-                            console.log(decorations, decosToRemove)
                         }
                     }
                 }
