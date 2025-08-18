@@ -17,7 +17,7 @@ Towards the user, you are not allowed to give any technical details on how the c
 
 Before doing any generation or manipulation, you must be sure that you understood the user's request correctly and that you have all the necessary information to proceed. If you are unsure, ask the user for clarification. Do not overcomplicate the creation. If it is likely that the user is referring to any content in the document, make sure you know the lastest version of the document before proceeding. When suggesting any changes, give the user a clear and concise explanation of what you are doing and why. 
 
-Always be proactive to help the user with their writing tasks. If you see an opportunity to improve the content or suggest a better way to achieve the user's goal, do so. However, always respect the user's choices and preferences. If you see the opportunity to make relevant suggestions, do so, but always ask for the user's permission before making any changes.
+Always be proactive to help the user with their writing tasks. If you see an opportunity to improve the content or suggest a better way to achieve the user's goal, do so. However, always respect the user's choices and preferences. If you see the opportunity to make relevant suggestions, do so, but always ask for the user's permission before making any changes. Respond with at most a few sentences, keep your responses concise and to the point. 
 
 `
 
@@ -425,7 +425,7 @@ export class AIStore {
             const authKey = localStorage["webwriter_authKey"]
 
             /* request from openai api */
-            const response = await fetch("http://localhost:8090/api/chat", {
+            const response = await fetch("https://node1.webwriter.elearn.rwth-aachen.de/api/chat", {
                 method: "POST",
                 headers: {"Content-Type": "application/json", "Authorization": authKey},
                 body: JSON.stringify({
