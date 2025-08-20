@@ -161,16 +161,19 @@ export async function generateWidgetDocumentation(app: App, name: string): Promi
     const pkg = app.store.packages.installed.find(p => p.name === name);
 
     if (!pkg) {
-        // Return a JSON string indicating that the widget was not found.
-        return JSON.stringify({error: `Widget with name ${name} not found.`});
+        // If the package is not found, return an error message
+        return JSON.stringify({error: `Widget with name ${name} not insatlled.`});
     }
+
+    const installedWidgetUrl = app.store.packages.installedWidgetUrls[app.store.packages.installed.indexOf(pkg)].replaceAll(/\/widgets\/.*\/?/gi, "");
 
     const snippetPaths = Object.keys(pkg.exports)
         .filter(key => key.includes("snippets"))
-        .map(key => `https://cdn.jsdelivr.net/npm/${pkg.name}/${pkg.exports[key]}`);
+        .map(key => `${installedWidgetUrl}/${pkg.exports[key]}`);
+
 
     // Fetch the README file from the package's CDN path
-    const readmePath = `https://cdn.jsdelivr.net/npm/${pkg.name}/README.md`;
+    const readmePath = `${installedWidgetUrl}/README.md`;
     let readmeContent = "";
     try {
         const readmeResponse = await fetch(readmePath);
@@ -432,7 +435,8 @@ export class AIStore {
                     messages: this.chatMessages,
                     tools: toolDefinitions,
                     tool_choice: "auto",
-                    max_tokens: 32768,
+                    model: "o4-mini",
+                    max_completion_tokens: 32768,
                 }),
             });
 
