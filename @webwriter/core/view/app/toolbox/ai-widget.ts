@@ -139,6 +139,20 @@ export class AIToolboxWidget extends LitElement {
             width: 16px;
             height: 16px;
         }
+
+        .send-btn[disabled] {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .spinner {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
     `
 
     @property()
@@ -178,6 +192,7 @@ export class AIToolboxWidget extends LitElement {
     }
 
     render() {
+        const loading = this.app.store.ai.loading;
         return html`
             <div class="ai-container">
                 <span class="ai-label">
@@ -236,16 +251,12 @@ export class AIToolboxWidget extends LitElement {
                         }
                     })}
                 </div>
-                <form class="chat-input-row" @submit="${(e: Event) => {
-                    e.preventDefault();
-                    this.handleSend();
-                }}">
-                    <input id="chatInput" class="chat-input" type="text" placeholder="Ask AI..." autocomplete="off"
-                           aria-label="Ask AI" @keydown="${this.handleKeyDown}"/>
-                    <button class="send-btn" type="submit" aria-label="Send message">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-                            <path fill="currentColor" d="m2 21l21-9L2 3v7l15 2l-15 2z"/>
-                        </svg>
+                <form class="chat-input-row" @submit="${(e) => { e.preventDefault(); this.handleSend(); }}">
+                    <input id="chatInput" class="chat-input" type="text" placeholder="Ask AI..." autocomplete="off" aria-label="Ask AI" @keydown="${this.handleKeyDown}" ?disabled=${loading}/>
+                    <button class="send-btn" type="submit" aria-label="Send message" ?disabled=${loading}>
+                        ${loading
+                            ? html`<svg class="spinner" viewBox="0 0 50 50" width="24" height="24"><circle cx="25" cy="25" r="20" fill="none" stroke="white" stroke-width="5"/></svg>`
+                            : html`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="m2 21l21-9L2 3v7l15 2l-15 2z"/></svg>`}
                     </button>
                 </form>
             </div>

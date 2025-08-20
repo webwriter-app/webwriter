@@ -398,117 +398,125 @@ export class AIStore {
         this.chatMessages.push({role, content, isUpdate, timestamp, tool_calls});
     }
 
+    loading: boolean = false;
+
     async generateResponse(updateCallback: () => void, app: App): Promise<string | undefined> {
+        this.loading = true;
+        updateCallback();
+        try {
 
-        // Remove all previous updates from the chat messages
-        this.chatMessages = this.chatMessages.filter(msg => !msg.isUpdate);
+            // Remove all previous updates from the chat messages
+            this.chatMessages = this.chatMessages.filter(msg => !msg.isUpdate);
 
-        // Add the system message with the prompt
-        this.addMessage({
-            role: "system",
-            content: PROMPT,
-            timestamp: new Date(),
-            isUpdate: true
-        });
-
-        // Aktuellen Dokumentzustand hinzufügen (robust bei fehlendem Editor)
-        const editorDom = app.activeEditor?.pmEditor?.dom as HTMLElement | undefined;
-        const currentHtml = editorDom ? editorDom.innerHTML : "";
-        this.addMessage({
-            role: "system",
-            content: `Current document content:\n\n${currentHtml}\n\nAvailable modules:\n\n${generateListOfModules(app)}`,
-            timestamp: new Date(),
-            isUpdate: true,
-        });
-
-        let isResponseToHuman = false;
-
-        while (!isResponseToHuman) {
-
-            const authKey = localStorage["webwriter_authKey"]
-
-            /* request from openai api */
-            const response = await fetch("https://node1.webwriter.elearn.rwth-aachen.de/api/chat", {
-                method: "POST",
-                headers: {"Content-Type": "application/json", "Authorization": authKey},
-                body: JSON.stringify({
-                    messages: this.chatMessages,
-                    tools: toolDefinitions,
-                    tool_choice: "auto",
-                    model: "o4-mini",
-                    max_completion_tokens: 32768,
-                }),
-            });
-
-            const data = await response.json();
-
-            if (!response.ok || !data?.success) {
-                throw new Error(`Error generating response: ${data?.error || 'Unknown error'}`);
-            }
-
-            const lastMessage = data?.lastMessage
-
-            // Add the newly generated message to the array
+            // Add the system message with the prompt
             this.addMessage({
-                ...lastMessage, timestamp: new Date(),
+                role: "system",
+                content: PROMPT,
+                timestamp: new Date(),
+                isUpdate: true
             });
 
-            console.log(lastMessage, this.chatMessages)
+            // Aktuellen Dokumentzustand hinzufügen (robust bei fehlendem Editor)
+            const editorDom = app.activeEditor?.pmEditor?.dom as HTMLElement | undefined;
+            const currentHtml = editorDom ? editorDom.innerHTML : "";
+            this.addMessage({
+                role: "system",
+                content: `Current document content:\n\n${currentHtml}\n\nAvailable modules:\n\n${generateListOfModules(app)}`,
+                timestamp: new Date(),
+                isUpdate: true,
+            });
 
-            updateCallback();
+            let isResponseToHuman = false;
 
-            // check if the response is a tool call
-            if (lastMessage["tool_calls"]?.length > 0) {
-                const toolCalls = lastMessage["tool_calls"] as any[];
+            while (!isResponseToHuman) {
 
-                const resolvedToolCalls = await Promise.all(toolCalls.map(async (toolCall: any) => {
-                    const callFunction = toolCall.function.name as string;
-                    const callArguments = JSON.parse(toolCall.function.arguments || '{}');
+                const authKey = localStorage["webwriter_authKey"]
 
-                    let result: any = {};
+                /* request from openai api */
+                const response = await fetch("https://node1.webwriter.elearn.rwth-aachen.de/api/chat", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json", "Authorization": authKey},
+                    body: JSON.stringify({
+                        messages: this.chatMessages,
+                        tools: toolDefinitions,
+                        tool_choice: "auto",
+                        model: "o4-mini",
+                        max_completion_tokens: 32768,
+                    }),
+                });
 
-                    try {
-                        const fn = (this.toolResolvers as any)[callFunction];
-                        if (typeof fn !== 'function') {
-                            result = { success: false, message: `Unknown tool: ${callFunction}` };
-                        } else {
-                            result = {
-                                ...(await fn.apply(this, [app, callArguments])) || {},
-                                success: true,
-                            };
-                        }
-                    } catch (e) {
-                        const err: any = e;
-                        console.error(`Error resolving tool call ${callFunction}:`, e);
-                        result = {
-                            success: false,
-                            message: `Error resolving tool call ${callFunction}: ${err?.message ?? String(e)}`,
-                        };
-                    }
+                const data = await response.json();
 
-                    return {
-                        role: "tool",
-                        "tool_call_id": toolCall.id,
-                        content: JSON.stringify(result),
-                        timestamp: new Date(),
-                    }
-                }))
+                if (!response.ok || !data?.success) {
+                    throw new Error(`Error generating response: ${data?.error || 'Unknown error'}`);
+                }
 
-                // ToDo: what about the additional attributes not in type definition?
-                this.chatMessages = this.chatMessages.concat(resolvedToolCalls);
-            } else {
+                const lastMessage = data?.lastMessage
 
-                /* we have a response without tool requests */
-                isResponseToHuman = true;
+                // Add the newly generated message to the array
+                this.addMessage({
+                    ...lastMessage, timestamp: new Date(),
+                });
+
+                console.log(lastMessage, this.chatMessages)
 
                 updateCallback();
 
-                return this.chatMessages.at(-1)?.content;
-            }
-        }
+                // check if the response is a tool call
+                if (lastMessage["tool_calls"]?.length > 0) {
+                    const toolCalls = lastMessage["tool_calls"] as any[];
 
-        // if we get here, there must have been a mistake
-        throw new Error("Unable to generate message")
+                    const resolvedToolCalls = await Promise.all(toolCalls.map(async (toolCall: any) => {
+                        const callFunction = toolCall.function.name as string;
+                        const callArguments = JSON.parse(toolCall.function.arguments || '{}');
+
+                        let result: any = {};
+
+                        try {
+                            const fn = (this.toolResolvers as any)[callFunction];
+                            if (typeof fn !== 'function') {
+                                result = { success: false, message: `Unknown tool: ${callFunction}` };
+                            } else {
+                                result = {
+                                    ...(await fn.apply(this, [app, callArguments])) || {},
+                                    success: true,
+                            };
+                            }
+                        } catch (e) {
+                            const err: any = e;
+                            console.error(`Error resolving tool call ${callFunction}:`, e);
+                            result = {
+                                success: false,
+                                message: `Error resolving tool call ${callFunction}: ${err?.message ?? String(e)}`,
+                            };
+                        }
+
+                        return {
+                            role: "tool",
+                            "tool_call_id": toolCall.id,
+                            content: JSON.stringify(result),
+                            timestamp: new Date(),
+                        }
+                    }))
+
+                    // ToDo: what about the additional attributes not in type definition?
+                    this.chatMessages = this.chatMessages.concat(resolvedToolCalls);
+                } else {
+
+                    /* we have a response without tool requests */
+                    isResponseToHuman = true;
+
+                    updateCallback();
+
+                    return this.chatMessages.at(-1)?.content;
+                }
+            }
+
+            // if we get here, there must have been a mistake
+            throw new Error("Unable to generate message")
+        } finally {
+            this.loading = false;
+        }
     }
 
     clearMessages() {
