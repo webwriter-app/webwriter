@@ -1,7 +1,7 @@
 import {SchemaPlugin} from ".";
-import {Plugin, PluginKey, Transaction} from "prosemirror-state";
+import {Plugin, PluginKey, Transaction, EditorState} from "prosemirror-state";
 import {Decoration, DecorationSet} from "prosemirror-view";
-import {Slice} from "prosemirror-model";
+import {Slice, Schema} from "prosemirror-model";
 import css from "./ai.css?raw"
 
 interface Suggestion {
@@ -14,10 +14,172 @@ interface Suggestion {
 interface AIState {
     decorations: DecorationSet;
     suggestions: Suggestion[];
+    didLazyLoad?: boolean;
 }
 
 function createSuggestionId(tr: Transaction): string {
     return `suggestion-${Date.now()}-${tr.time}`;
+}
+
+// Persistenz-Helfer
+const STORAGE_KEY = 'ww-ai-suggestions';
+
+// Typen für die serialisierte Speicherung
+type SerializedSuggestion = {
+    id: string;
+    from: number;
+    to: number;
+    originalContent: any; // Slice JSON
+};
+
+type PersistedData = {
+    docHash: string;
+    suggestions: SerializedSuggestion[];
+};
+
+// FNV-1a Hash-Implementierung für Strings
+function hashStringFNV1a(str: string): string {
+    // 32-bit FNV-1a Hash als hex
+    let h = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++) {
+        h ^= str.charCodeAt(i);
+        // unsigned 32-bit multiply by FNV prime 16777619
+        h = (h >>> 0) * 0x01000193;
+    }
+    return (h >>> 0).toString(16);
+}
+
+// Dokument-Hash basierend auf JSON-Inhalt
+function computeDocHashJSON(doc: { toJSON: () => any }): string {
+    try {
+        const json = JSON.stringify(doc.toJSON());
+        return hashStringFNV1a(json);
+    } catch (_) {
+        return '0';
+    }
+}
+
+// Serialisierung der Vorschläge für die Speicherung
+function serializeSuggestions(suggestions: Suggestion[]): SerializedSuggestion[] {
+    return suggestions.map(s => ({
+        id: s.id,
+        from: s.from,
+        to: s.to,
+        originalContent: s.originalContent.toJSON()
+    }));
+}
+
+// Deserialisierung der Vorschläge aus der Speicherung
+function deserializeSuggestions(schema: Schema, data: SerializedSuggestion[]): Suggestion[] {
+    return data.map(d => ({
+        id: d.id,
+        from: d.from,
+        to: d.to,
+        originalContent: Slice.fromJSON(schema, d.originalContent)
+    }));
+}
+
+// Speichern in den LocalStorage
+function saveToLocalStorage(state: EditorState, suggestions: Suggestion[]) {
+    if (typeof window === 'undefined' || !window.localStorage) { return; }
+    try {
+        const docHash = computeDocHashJSON(state.doc);
+        const payload: PersistedData = {
+            docHash,
+            suggestions: serializeSuggestions(suggestions)
+        };
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    } catch {
+        // Ignorieren
+    }
+}
+
+// Laden aus dem LocalStorage
+function loadFromLocalStorage(state: EditorState): Suggestion[] | null {
+    if (typeof window === 'undefined' || !window.localStorage) { return null; }
+    try {
+        const raw = window.localStorage.getItem(STORAGE_KEY);
+        if (!raw) { return null; }
+        const payload = JSON.parse(raw) as PersistedData;
+        const currentHash = computeDocHashJSON(state.doc);
+        const match = payload?.docHash === currentHash;
+        if (payload && match) {
+            const des = deserializeSuggestions(state.schema, payload.suggestions);
+            return des;
+        }
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+// Erstellen von Dekorationen für einen Vorschlag
+function createDecorationsForSuggestion(doc: any, suggestion: Suggestion): Decoration[] {
+    const { id, from, to } = suggestion;
+    const $from = doc.resolve(from);
+    const $to = doc.resolve(to);
+    const isSingleTextblockRange = $from.sameParent($to) && $from.parent.isTextblock && from !== to;
+
+    const decos: Decoration[] = [];
+
+    if (isSingleTextblockRange) {
+        const decoInline = Decoration.inline(from, to, {
+            class: "ai-suggestion",
+            "data-suggestion-id": id,
+        }, { id });
+        decos.push(decoInline);
+    } else {
+        doc.nodesBetween(from, to, (node: any, pos: number) => {
+            if (node.isBlock) {
+                const decoNode = Decoration.node(pos, pos + node.nodeSize, {
+                    class: "ai-suggestion",
+                    "data-suggestion-id": id,
+                }, { id });
+                decos.push(decoNode);
+                return false;
+            }
+            return true;
+        });
+    }
+
+    const widgetSide = isSingleTextblockRange ? 1 : -1;
+    const decoWidget = Decoration.widget(to, () => {
+        const buttonWrapper = document.createElement('div');
+        buttonWrapper.className = 'ai-suggestion-buttons';
+        (buttonWrapper as HTMLElement).dataset.suggestionId = id;
+
+        const badge = document.createElement('span');
+        badge.className = 'ai-badge';
+        badge.textContent = 'WebWriter AI Vorschlag';
+        badge.setAttribute('title', 'KI-Vorschlag');
+
+        const acceptButton = document.createElement('button');
+        acceptButton.type = 'button';
+        acceptButton.className = 'ai-btn ai-accept';
+        acceptButton.setAttribute('title', 'Vorschlag übernehmen');
+        acceptButton.setAttribute('aria-label', 'Vorschlag übernehmen');
+        (acceptButton as HTMLElement).dataset.action = 'accept';
+        acceptButton.innerHTML = '<span class="ai-icon ai-icon-check"></span><span class="ai-btn-label">Annehmen</span>';
+
+        const rejectButton = document.createElement('button');
+        rejectButton.type = 'button';
+        rejectButton.className = 'ai-btn ai-reject';
+        rejectButton.setAttribute('title', 'Vorschlag verwerfen');
+        rejectButton.setAttribute('aria-label', 'Vorschlag verwerfen');
+        (rejectButton as HTMLElement).dataset.action = 'reject';
+        rejectButton.innerHTML = '<span class="ai-icon ai-icon-x"></span><span class="ai-btn-label">Verwerfen</span>';
+
+        buttonWrapper.appendChild(badge);
+        buttonWrapper.appendChild(acceptButton);
+        buttonWrapper.appendChild(rejectButton);
+        return buttonWrapper;
+    }, {
+        id: id,
+        key: id,
+        side: widgetSide
+    });
+
+    return [...decos, decoWidget];
 }
 
 export const aiPluginKey = new PluginKey<AIState>('ai');
@@ -26,14 +188,26 @@ export const aiPlugin = () => ({
     plugin: new Plugin<AIState>({
         key: aiPluginKey,
         state: {
-            init(_, __): AIState {
+            init(_config, editorState): AIState {
+                const loaded = loadFromLocalStorage(editorState);
+                if (loaded && loaded.length) {
+                    const allDecos: Decoration[] = loaded.flatMap(s => createDecorationsForSuggestion(editorState.doc, s));
+                    return {
+                        decorations: DecorationSet.create(editorState.doc, allDecos),
+                        suggestions: loaded,
+                        didLazyLoad: true,
+                    };
+                }
                 return {
                     decorations: DecorationSet.empty,
                     suggestions: [],
+                    didLazyLoad: false,
                 };
             },
-            apply(tr, state, _oldState, _newState): AIState {
+            apply(tr, state, _oldState, newState): AIState {
                 let {suggestions, decorations} = state;
+                let didLazyLoad = state.didLazyLoad ?? false;
+                let suggestionsChanged = false;
 
                 // Map existing suggestions and decorations through the transaction's mapping
                 decorations = decorations.map(tr.mapping, tr.doc);
@@ -54,76 +228,11 @@ export const aiPlugin = () => ({
                         const id = createSuggestionId(tr);
                         const newSuggestion: Suggestion = {id, from, to, originalContent};
 
-                        // Entscheide, ob inline (Textbereich) oder node (Blockbereich) dekoriert werden soll
-                        const $from = tr.doc.resolve(from);
-                        const $to = tr.doc.resolve(to);
-                        const isSingleTextblockRange = $from.sameParent($to) && $from.parent.isTextblock && from !== to;
-
-                        const decos: Decoration[] = [];
-
-                        if (isSingleTextblockRange) {
-                            // Inline-Decoration für reine Textbereiche im selben Textblock
-                            const decoInline = Decoration.inline(from, to, {
-                                class: "ai-suggestion",
-                                "data-suggestion-id": id,
-                            }, { id });
-                            decos.push(decoInline);
-                        } else {
-                            // Node-Decorations für blockige Bereiche (z. B. mehrere/ganze Blöcke oder Einfügen am Dokumentende)
-                            tr.doc.nodesBetween(from, to, (node, pos) => {
-                                if (node.isBlock) {
-                                    const decoNode = Decoration.node(pos, pos + node.nodeSize, {
-                                        class: "ai-suggestion",
-                                        "data-suggestion-id": id,
-                                    }, { id });
-                                    decos.push(decoNode);
-                                    // Bei Block-Knoten reicht es, den Knoten selbst zu markieren
-                                    return false;
-                                }
-                                return true;
-                            });
-                        }
-
-                        // Widget erzeugen. Für blockige Bereiche side:-1, damit es am Ende sichtbar bleibt (insb. am Dokumentende)
-                        const widgetSide = isSingleTextblockRange ? 1 : -1;
-                        const decoWidget = Decoration.widget(to, () => {
-                            const buttonWrapper = document.createElement('div');
-                            buttonWrapper.className = 'ai-suggestion-buttons';
-                            (buttonWrapper as HTMLElement).dataset.suggestionId = id;
-
-                            const badge = document.createElement('span');
-                            badge.className = 'ai-badge';
-                            badge.textContent = 'WebWriter AI Vorschlag';
-                            badge.setAttribute('title', 'KI-Vorschlag');
-
-                            const acceptButton = document.createElement('button');
-                            acceptButton.type = 'button';
-                            acceptButton.className = 'ai-btn ai-accept';
-                            acceptButton.setAttribute('title', 'Vorschlag übernehmen');
-                            acceptButton.setAttribute('aria-label', 'Vorschlag übernehmen');
-                            (acceptButton as HTMLElement).dataset.action = 'accept';
-                            acceptButton.innerHTML = '<span class="ai-icon ai-icon-check"></span><span class="ai-btn-label">Annehmen</span>';
-
-                            const rejectButton = document.createElement('button');
-                            rejectButton.type = 'button';
-                            rejectButton.className = 'ai-btn ai-reject';
-                            rejectButton.setAttribute('title', 'Vorschlag verwerfen');
-                            rejectButton.setAttribute('aria-label', 'Vorschlag verwerfen');
-                            (rejectButton as HTMLElement).dataset.action = 'reject';
-                            rejectButton.innerHTML = '<span class="ai-icon ai-icon-x"></span><span class="ai-btn-label">Verwerfen</span>';
-
-                            buttonWrapper.appendChild(badge);
-                            buttonWrapper.appendChild(acceptButton);
-                            buttonWrapper.appendChild(rejectButton);
-                            return buttonWrapper;
-                        }, {
-                            id: id,
-                            key: id,
-                            side: widgetSide
-                        });
-
-                        decorations = decorations.add(tr.doc, [...decos, decoWidget]);
+                        // Decorations erzeugen (inline oder node + Widget)
+                        const decos = createDecorationsForSuggestion(tr.doc, newSuggestion);
+                        decorations = decorations.add(tr.doc, decos);
                         suggestions = [...suggestions, newSuggestion];
+                        suggestionsChanged = true;
 
                     } else if (action.remove) {
                         const {id} = action.remove;
@@ -134,6 +243,7 @@ export const aiPlugin = () => ({
                                 return spec.id === id || spec['data-suggestion-id'] === id;
                             });
                             decorations = decorations.remove(decosToRemove);
+                            suggestionsChanged = true;
                         }
                     }
                 }
@@ -165,10 +275,28 @@ export const aiPlugin = () => ({
                         decorations = decorations.remove(decosToRemove);
                         // Keep only suggestions not marked for removal
                         suggestions = suggestions.filter(s => !toRemoveIds.has(s.id));
+                        suggestionsChanged = true;
                     }
                 }
 
-                return {suggestions, decorations};
+                // Lazy-Load einmalig nach Stabilisierung (falls init nichts laden konnte)
+                if (!didLazyLoad && suggestions.length === 0 && !action) {
+                    const lateLoaded = loadFromLocalStorage(newState);
+                    if (lateLoaded && lateLoaded.length) {
+                        const allDecos: Decoration[] = lateLoaded.flatMap(s => createDecorationsForSuggestion(newState.doc, s));
+                        decorations = DecorationSet.create(newState.doc, allDecos);
+                        suggestions = lateLoaded;
+                        didLazyLoad = true;
+                        // Kein sofortiges Speichern nötig; Daten kommen bereits aus Storage
+                    }
+                }
+
+                // Nur bei echten Änderungen speichern
+                if (suggestionsChanged) {
+                    try { saveToLocalStorage(newState, suggestions); } catch {}
+                }
+
+                return {suggestions, decorations, didLazyLoad};
             }
         },
         props: {
