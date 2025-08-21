@@ -142,7 +142,6 @@ function createDecorationsForSuggestion(doc: any, suggestion: Suggestion): Decor
         });
     }
 
-    const widgetSide = isSingleTextblockRange ? 1 : -1;
     const decoWidget = Decoration.widget(to, () => {
         const buttonWrapper = document.createElement('div');
         buttonWrapper.className = 'ai-suggestion-buttons';
@@ -176,7 +175,7 @@ function createDecorationsForSuggestion(doc: any, suggestion: Suggestion): Decor
     }, {
         id: id,
         key: id,
-        side: widgetSide
+        side: 1
     });
 
     return [...decos, decoWidget];
