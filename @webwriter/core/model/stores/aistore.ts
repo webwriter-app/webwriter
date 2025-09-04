@@ -1,15 +1,25 @@
 import {DOMParser} from "prosemirror-model";
 import {App, ProsemirrorEditor} from "#view";
-import { Node as ProseMirrorNode } from "prosemirror-model";
-import { aiPluginKey } from "../../model/schemas/resource/plugins/ai";
+import {Node as ProseMirrorNode} from "prosemirror-model";
+import {aiPluginKey} from "../../model/schemas/resource/plugins/ai";
+import {renderToString as latexToMathML} from "temml/dist/temml.cjs"
 
+class UnauthorizedError extends Error {
+    status: number;
+    constructor(message = "Unauthorized", status = 401) {
+        super(message);
+        this.name = "UnauthorizedError";
+        this.status = status;
+        Object.setPrototypeOf(this, UnauthorizedError.prototype);
+    }
+}
 
 export const PROMPT = `
 You are the assistant in the application WebWriter. The application WebWriter is a writing tool that allows users to create and edit interactive documents or explorables.  It is your task to help the user with their writing tasks. You can answer questions, provide suggestions, and assist with various writing-related tasks.
 
 In general, you should be helpful, friendly, and professional. You should not provide any personal opinions or engage in discussions that are not related to writing tasks. You should respond in the language of the user, which is determined by the language of the input text. 
 
-The content is given and written in HTML format. Besides the default HTML tags, there are some custom tags that are used to create interactive elements. These tags are custom web components that are registered in the application, you MAY NOT load or request them in any way. You MUST request the documentation for these custom tags before using any of them. Make sure to use the exact name with the correct "@organization/widget" syntax for the request. Make sure to only use them as specified in the documentation and snippets and only use elements standalone if they are meant to be used standalone, indicated by the 'uninsertable' property. You MUST follow the rules on how the custom elements might be used regarding nesting. Towards, the user, refer to them as "widgets". You are not allowed to create any HTML that has capabilities beyond the ones provided by these custom widgets except basic HTML tags like p, h1, h2, span, etc. Additionally, you MUST use only MathML to display any kind of mathematical formulas. For bold formatting, use the strong tag. You can use these basic HTML tags to structure the content. You may not use any custom attributes or properties that are not supported by the custom widgets. You cannot install widgets, but you can suggest that the user install them, and then they will be available for you as well. 
+The content is given and written in HTML format. Besides the default HTML tags, there are some custom tags that are used to create interactive elements. These tags are custom web components that are registered in the application, you MAY NOT load or request them in any way. You MUST request the documentation for these custom tags before using any of them. Make sure to use the exact name with the correct "@organization/widget" syntax for the request. Make sure to only use them as specified in the documentation and snippets and only use elements standalone if they are meant to be used standalone, indicated by the 'uninsertable' property. You MUST follow the rules on how the custom elements might be used regarding nesting. Towards, the user, refer to them as "widgets". You are not allowed to create any HTML that has capabilities beyond the ones provided by these custom widgets except basic HTML tags like p, h1, h2, span, etc. Additionally, you MUST use only MathML to display any kind of mathematical formulas. If the mathematical expressions / formulars are complex, use the Latex to MathML function to reduce the likelihood of an error. For bold formatting, use the strong tag. You can use these basic HTML tags to structure the content. You may not use any custom attributes or properties that are not supported by the custom widgets. You cannot install widgets, but you can suggest that the user install them, and then they will be available for you as well. 
 
 Make sure to always insert the content in the location that makes most sense for the content. If there is uncertainty where the user would want the content, you MUST ask the user for clarification in any case. Many types of content do not make sense to be inserted at the bottom of the document, so you SHOULD NOT do that unless the user explicitly asks for it. If you are unsure where to insert the content, ask the user for clarification. If the document is empty, insert the content at the bottom of the document. 
 
@@ -84,6 +94,18 @@ const toolDefinitions = [
     {
         type: "function",
         function: {
+            name: "get_list_of_installable_widgets",
+            description: "Get a list of all installable widgets with their name and description",
+            parameters: {
+                type: "object",
+                properties: {},
+                required: []
+            }
+        }
+    },
+    {
+        type: "function",
+        function: {
             name: "insert_into_element",
             description: "Insert some HTML at the end of the innerHTML of a selected element in the document. This is useful for adding content to specific parts of the document without relying on a replace operation. ",
             parameters: {
@@ -101,6 +123,24 @@ const toolDefinitions = [
                 required: ["query", "content"]
             }
         }
+    },
+    {
+        type: "function",
+        function: {
+            name: "latex_to_mathml",
+            description: "Convert LaTeX math to MathML. You must use this function if you want to insert any more complex math than simple symbols or numbers. You must use MathML for any kind of mathematical formulas. ",
+            parameters: {
+                type: "object",
+                properties: {
+                    latex: {
+                        type: "string",
+                        description: "The LaTeX math string to convert to MathML. This should be a valid LaTeX math string."
+                    },
+                },
+                required: ["latex"]
+            }
+
+        }
     }
 
 ];
@@ -109,7 +149,9 @@ export const toolFriendlyNames = {
     "insert_at_bottom": "Inhalt hinzufügen...",
     "fetch_widget_documentation": "Widget-Dokumentation lesen...",
     "replace_in_document": "Inhalt ersetzen...",
-    "insert_into_element": "Inhalt einfügen..."
+    "insert_into_element": "Inhalt einfügen...",
+    "get_list_of_installable_widgets": "Liste installierbarer Widgets abrufen...",
+    "latex_to_mathml": "Mathe Formel vorbereiten..."
 }
 
 /**
@@ -121,7 +163,7 @@ export const toolFriendlyNames = {
  * @param newContent Knoten, die als Vorschlag eingefügt werden.
  */
 export function suggestChange(view: ProsemirrorEditor | any, from: number, to: number, newContent: ProseMirrorNode | ProseMirrorNode[]) {
-   const state = (view as any).state;
+    const state = (view as any).state;
 
     // Ursprünglichen Inhalt speichern (auch wenn from==to, ergibt ein leeres Slice)
     const originalContent = state.doc.slice(from, to);
@@ -222,7 +264,7 @@ export class AIStore {
         insert_at_bottom: (app: App, {content}: { content: string }) => {
             const editor = app.activeEditor?.pmEditor as ProsemirrorEditor | undefined;
             if (!editor) {
-                return { success: false, message: 'No active editor available.' };
+                return {success: false, message: 'No active editor available.'};
             }
             const endPos = (editor as any).state.doc.content.size;
 
@@ -236,7 +278,7 @@ export class AIStore {
                 nodes.push(slice.content.child(i)!);
             }
             if (nodes.length === 0) {
-                return { success: false, message: 'No valid content to insert.' };
+                return {success: false, message: 'No valid content to insert.'};
             }
 
             // Vorschlag am Dokumentende (from==to==endPos)
@@ -247,18 +289,11 @@ export class AIStore {
                 message: `HTML content has been suggested at the bottom of the document.`,
             };
         },
-        read_document: (app: App) => {
-            const editor = app.activeEditor?.pmEditor as ProsemirrorEditor | undefined;
-            if (!editor) {
-                return { success: false, message: 'No active editor available.' };
-            }
-
-            const htmlContent = (editor as any).dom.innerHTML;
-
+        get_list_of_installable_widgets: (app: App) => {
             return {
                 success: true,
-                content: htmlContent,
-            };
+                content: app.store.packages.available.map(p => ({name: p.name, description: p.description})),
+            }
         },
         fetch_widget_documentation: async (app: App, {widget_name}: { widget_name: string }) => {
             return {
@@ -269,7 +304,7 @@ export class AIStore {
         replace_in_document: (app: App, {query, newContent}: { query: string, newContent: string }) => {
             const editor = app.activeEditor?.pmEditor as ProsemirrorEditor | undefined;
             if (!editor) {
-                return { success: false, message: 'No active editor available.' };
+                return {success: false, message: 'No active editor available.'};
             }
 
             const elementToReplace = (editor as any).dom.querySelector(query) as Element | null;
@@ -277,7 +312,10 @@ export class AIStore {
                 return {success: false, message: `No element found matching query: ${query}`};
             }
 
-            function findNodeAndPosFromDOM(view: ProsemirrorEditor, domNode: Node): { node: any, startPos: number } | null {
+            function findNodeAndPosFromDOM(view: ProsemirrorEditor, domNode: Node): {
+                node: any,
+                startPos: number
+            } | null {
                 // Normalisiere Textknoten auf deren Elternelement
                 if (domNode.nodeType === Node.TEXT_NODE && domNode.parentNode) {
                     domNode = domNode.parentNode;
@@ -287,7 +325,8 @@ export class AIStore {
                 let innerPos: number | null = null;
                 try {
                     innerPos = (view as any).posAtDOM(domNode, 0, -1);
-                } catch {}
+                } catch {
+                }
 
                 if (innerPos != null) {
                     const $pos = (view as any).state.doc.resolve(innerPos);
@@ -296,7 +335,7 @@ export class AIStore {
                         const dom = (view as any).nodeDOM(startPos) as Node | null;
                         if (dom && (dom === domNode || dom.contains(domNode) || domNode.contains(dom))) {
                             const node = $pos.node(depth);
-                            return { node, startPos };
+                            return {node, startPos};
                         }
                     }
                 }
@@ -316,7 +355,7 @@ export class AIStore {
                 const $before = (view as any).state.doc.resolve(posBefore);
                 const nodeAfter = $before.nodeAfter as any;
                 if (nodeAfter) {
-                    return { node: nodeAfter, startPos: posBefore };
+                    return {node: nodeAfter, startPos: posBefore};
                 }
 
                 return null;
@@ -352,7 +391,7 @@ export class AIStore {
         insert_into_element: (app: App, {query, content}: { query: string, content: string }) => {
             const editor = app.activeEditor?.pmEditor as ProsemirrorEditor | undefined;
             if (!editor) {
-                return { success: false, message: 'No active editor available.' };
+                return {success: false, message: 'No active editor available.'};
             }
 
             const elementToInsertInto = (editor as any).dom.querySelector(query) as Element | null;
@@ -380,6 +419,18 @@ export class AIStore {
             return {
                 success: true,
                 message: `Content suggestion has been created for the selected element.`,
+            };
+        },
+        latex_to_mathml: (app: App, {latex}: { latex: string }) => {
+            if (!latex || latex.trim() === "") {
+                return {success: false, message: "Empty LaTeX string provided."};
+            }
+
+            const mathml = latexToMathML(latex);
+            return {
+                success: true,
+                content: mathml,
+                message: "LaTeX has been converted to MathML.",
             };
         }
     }
@@ -444,7 +495,10 @@ export class AIStore {
                 const data = await response.json();
 
                 if (!response.ok || !data?.success) {
-                    throw new Error(`Error generating response: ${data?.error || 'Unknown error'}`);
+                    if (response.status === 401) {
+                        throw new UnauthorizedError();
+                    }
+                    throw new Error(data?.error || `API request failed with status ${response.status}`);
                 }
 
                 const lastMessage = data?.lastMessage
@@ -454,7 +508,7 @@ export class AIStore {
                     ...lastMessage, timestamp: new Date(),
                 });
 
-                console.log(lastMessage, this.chatMessages)
+                console.log(this.chatMessages)
 
                 updateCallback();
 
@@ -471,12 +525,12 @@ export class AIStore {
                         try {
                             const fn = (this.toolResolvers as any)[callFunction];
                             if (typeof fn !== 'function') {
-                                result = { success: false, message: `Unknown tool: ${callFunction}` };
+                                result = {success: false, message: `Unknown tool: ${callFunction}`};
                             } else {
                                 result = {
                                     ...(await fn.apply(this, [app, callArguments])) || {},
                                     success: true,
-                            };
+                                };
                             }
                         } catch (e) {
                             const err: any = e;
@@ -510,8 +564,14 @@ export class AIStore {
 
             // if we get here, there must have been a mistake
             throw new Error("Unable to generate message")
+        } catch (e: any) {
+            if (e instanceof UnauthorizedError)
+                console.error("Not authorized to use the AI service");
+            else
+                console.error("Error generating AI response", e);
         } finally {
             this.loading = false;
+            updateCallback();
         }
     }
 
