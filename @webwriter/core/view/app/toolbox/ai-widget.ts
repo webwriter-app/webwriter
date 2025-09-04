@@ -297,10 +297,14 @@ export class AIToolboxWidget extends LitElement {
     }
 
     updated() {
-        // Scroll chat to bottom on update
-        const chat = this.renderRoot?.getElementById('chatContainer');
-        if (chat) {
-            chat.scrollTop = chat.scrollHeight;
+        // Scroll chat to the top of the last message
+        const chatContainer = this.renderRoot?.getElementById('chatContainer');
+        const lastChild = chatContainer?.lastElementChild as HTMLElement;
+        if (chatContainer && lastChild) {
+            chatContainer.scrollTo({
+                top: lastChild.offsetTop,
+                behavior: 'smooth'
+            });
         }
     }
 }
