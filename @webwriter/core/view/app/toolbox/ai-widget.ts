@@ -146,12 +146,37 @@ export class AIToolboxWidget extends LitElement {
         }
 
         .spinner {
-            animation: spin 1s linear infinite;
+            animation: spin 1.4s linear infinite;
+            /* ensure rotation around center in SVG */
+            transform-origin: 50% 50%;
+            transform-box: fill-box;
+        }
+        .spinner circle {
+            stroke-linecap: round;
+            /* draw only a part of the circle and animate it */
+            stroke-dasharray: 90 150;
+            stroke-dashoffset: 0;
+            animation: dash 1.4s ease-in-out infinite;
         }
 
         @keyframes spin {
             from { transform: rotate(0deg); }
             to { transform: rotate(360deg); }
+        }
+
+        @keyframes dash {
+            0% {
+                stroke-dasharray: 1 200;
+                stroke-dashoffset: 0;
+            }
+            50% {
+                stroke-dasharray: 90 200;
+                stroke-dashoffset: -35px;
+            }
+            100% {
+                stroke-dasharray: 90 200;
+                stroke-dashoffset: -124px;
+            }
         }
     `
 
@@ -252,15 +277,23 @@ export class AIToolboxWidget extends LitElement {
                     })}
                 </div>
                 <form class="chat-input-row" @submit="${(e) => { e.preventDefault(); this.handleSend(); }}">
-                    <input id="chatInput" class="chat-input" type="text" placeholder="Ask AI..." autocomplete="off" aria-label="Ask AI" @keydown="${this.handleKeyDown}" ?disabled=${loading}/>
+                    <input id="chatInput" class="chat-input" type="text" placeholder=${loading ? "AI is thinking..." : "Ask AI..."} autocomplete="off" aria-label="Ask AI" @keydown="${this.handleKeyDown}" ?disabled=${loading}/>
                     <button class="send-btn" type="submit" aria-label="Send message" ?disabled=${loading}>
                         ${loading
                             ? html`<svg class="spinner" viewBox="0 0 50 50" width="24" height="24"><circle cx="25" cy="25" r="20" fill="none" stroke="white" stroke-width="5"/></svg>`
                             : html`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="m2 21l21-9L2 3v7l15 2l-15 2z"/></svg>`}
                     </button>
                 </form>
+                
+                <a @click="${this.showInfoMessage}" style="font-size: 10px; margin-bottom: 0px; text-align: center !important; line-height: 1.2 !important; display: block; margin-top: 10px;">WebWriter AI can help improve your explorable. It may not work perfectly with all widgets and may produce errors. Click to learn more.</a> 
             </div>
         `;
+    }
+
+    showInfoMessage() {
+        const messages = ["WebWriter AI can help improve your explorable by suggesting enhancements to text content. You may as the AI for new content ideas, imrovements, or simplifications. ", "It may not work perfectly with all widgets and could produce errors. Please review AI-generated content for accuracy and appropriateness before publishing.", "Any changes from the AI are not automatically applied to your explorable. You must manually accept the suggestions you want to keep them, if not, you can quickly discard them. "];
+
+        alert(messages.join("\n\n"));
     }
 
     updated() {
