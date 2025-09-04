@@ -44,14 +44,6 @@ const toolDefinitions = [
         }
     },
     {
-        "type": "function",
-        "function": {
-            "name": "read_document",
-            "description": "Read the current document content",
-            "parameters": {}
-        }
-    },
-    {
         type: "function",
         function: {
             name: "replace_in_document",
@@ -115,7 +107,6 @@ const toolDefinitions = [
 
 export const toolFriendlyNames = {
     "insert_at_bottom": "Inhalt hinzufügen...",
-    "read_document": "Dokument lesen...",
     "fetch_widget_documentation": "Widget-Dokumentation lesen...",
     "replace_in_document": "Inhalt ersetzen...",
     "insert_into_element": "Inhalt einfügen..."
