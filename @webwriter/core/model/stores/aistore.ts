@@ -169,14 +169,11 @@ export async function generateWidgetDocumentation(app: App, name: string): Promi
         return JSON.stringify({error: `Widget with name ${name} not insatlled.`});
     }
 
-    const installedWidgetUrl = app.store.packages.installedWidgetUrls[app.store.packages.installed.indexOf(pkg)].replaceAll(/\/widgets\/.*\/?/gi, "");
-
-    console.log("Generating documentation for widget", name, "from", installedWidgetUrl, pkg, app.store.packages.installedWidgetUrls, app.store.packages.installed);
+    const installedWidgetUrl = app.store.packages.packetApiBaseUrl(pkg);
 
     const snippetPaths = Object.keys(pkg.exports)
         .filter(key => key.includes("snippets"))
         .map(key => `${installedWidgetUrl}/${pkg.exports[key]}`);
-
 
     // Fetch the README file from the package's CDN path
     const readmePath = `${installedWidgetUrl}/README.md`;

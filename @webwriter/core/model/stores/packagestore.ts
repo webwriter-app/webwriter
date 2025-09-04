@@ -719,6 +719,10 @@ export class PackageStore {
     return this.apiBase? this.installed.flatMap(pkg => Object.keys(pkg?.widgets ?? {}).flatMap(k => new URL(pkg.id + k.slice(1), this.apiBase).href)): []
   }
 
+  packetApiBaseUrl(pkg: Packet) {
+    return this.apiBase ? new URL(pkg.id, this.apiBase).href : null
+  }
+
   get widgetTagNames() {
     return Object.entries(filterObject(this.widgets, k => this.installed.some(pkg => pkg.id === k)))
       .flatMap(([pkgID, widgetConfig]) => Object.keys(widgetConfig))
