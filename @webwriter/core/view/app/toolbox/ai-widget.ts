@@ -43,7 +43,7 @@ export class AIToolboxWidget extends LitElement {
             flex-direction: column;
             gap: 8px;
             margin-bottom: 8px;
-            max-height: 250px;
+            max-height: 350px;
             overflow-y: auto;
         }
 
@@ -57,12 +57,12 @@ export class AIToolboxWidget extends LitElement {
             word-break: break-word;
             display: inline-block;
         }
-        
+
         .chat-bubble p {
             margin: 0;
             margin-bottom: 10px;
         }
-        
+
         .chat-bubble ol {
             padding-left: 25px;
         }
@@ -105,10 +105,12 @@ export class AIToolboxWidget extends LitElement {
 
         .chat-input {
             flex: 1;
-            padding: 7px 12px;
+            /* Platz für den Senden-Button */
+            padding: 7px 25px 7px 12px;
+            resize: none;
             border-radius: 18px;
             border: none;
-            font-size: 0.92rem;
+            font-size: 0.8rem;
             outline: none;
             background: #f8fafc;
             color: var(--sl-color-primary-900);
@@ -125,7 +127,6 @@ export class AIToolboxWidget extends LitElement {
             color: #fff;
             border: none;
             border-top-left-radius: 50%;
-            border-bottom-left-radius: 50%;
             width: 36px;
             height: 36px;
             display: flex;
@@ -151,6 +152,7 @@ export class AIToolboxWidget extends LitElement {
             transform-origin: 50% 50%;
             transform-box: fill-box;
         }
+
         .spinner circle {
             stroke-linecap: round;
             /* draw only a part of the circle and animate it */
@@ -159,9 +161,30 @@ export class AIToolboxWidget extends LitElement {
             animation: dash 1.4s ease-in-out infinite;
         }
 
+        .example-prompt {
+            text-align: left;
+            background: var(--sl-color-primary-50);
+            border: 1px solid var(--sl-color-primary-200);
+            color: var(--sl-color-primary-900);
+            border-radius: 12px;
+            padding: 8px 12px;
+            font-size: 0.75em;
+            cursor: pointer;
+            transition: background 0.2s;
+            line-break: 1.2;
+        }
+
+        .example-prompt:hover {
+            background: var(--sl-color-primary-100);
+        }
+
         @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
+            from {
+                transform: rotate(0deg);
+            }
+            to {
+                transform: rotate(360deg);
+            }
         }
 
         @keyframes dash {
@@ -188,7 +211,7 @@ export class AIToolboxWidget extends LitElement {
     }
 
     async handleSend() {
-        const input = this.renderRoot?.getElementById('chatInput') as HTMLInputElement;
+        const input = this.renderRoot?.getElementById('chatInput') as HTMLTextAreaElement;
         if (input) {
             const query = input.value.trim();
             if (query) {
@@ -198,10 +221,7 @@ export class AIToolboxWidget extends LitElement {
                     content: query
                 });
                 this.requestUpdate()
-
                 input.value = "";
-
-                // generate a response and call the request update function for every update in the chat
                 this.app.store.ai.generateResponse(() => this.requestUpdate(), this.app);
             } else {
                 triggerAISuggestionForSelection(this.app.activeEditor?.pmEditor).then(console.log)
@@ -210,7 +230,7 @@ export class AIToolboxWidget extends LitElement {
     }
 
     handleKeyDown(event: KeyboardEvent) {
-        if (event.key === "Enter") {
+        if (event.key === "Enter" && !event.shiftKey) {
             event.preventDefault();
             this.handleSend();
         }
@@ -218,6 +238,13 @@ export class AIToolboxWidget extends LitElement {
 
     render() {
         const loading = this.app.store.ai.loading;
+        const chatMessages = this.app.store.ai.chatMessages;
+        const examplePrompts = [
+            "Erstelle ein Übungsblatt zu ...",
+            "Welche Aufgabe würde dazu noch gut passen?",
+            "Ist mein Text einfach und verständlich geschrieben?",
+            "Welche Widgets passen gut zu meinem Inhalt?",
+        ];
         return html`
             <div class="ai-container">
                 <span class="ai-label">
@@ -244,7 +271,15 @@ export class AIToolboxWidget extends LitElement {
                     WebWriter AI</span>
                 <!-- main chat container -->
                 <div class="chat-container" id="chatContainer">
-                    ${this.app.store.ai.chatMessages.map(msg => {
+                    ${chatMessages.length === 0 ? html`
+                        <div style="display: flex; flex-direction: column; gap: 8px; margin: 16px 0;">
+                            ${examplePrompts.map(prompt => html`
+                                <button type="button" class="example-prompt"
+                                        @click="${() => this.insertPrompt(prompt)}">${prompt}
+                                </button>
+                            `)}
+                        </div>
+                    ` : chatMessages.map(msg => {
                         switch (msg.role) {
                             case "system":
                                 return null;
@@ -276,18 +311,25 @@ export class AIToolboxWidget extends LitElement {
                         }
                     })}
                 </div>
-                <form class="chat-input-row" @submit="${(e) => { e.preventDefault(); this.handleSend(); }}">
-                    <input id="chatInput" class="chat-input" type="text" placeholder=${loading ? "AI is thinking..." : "Ask AI..."} autocomplete="off" aria-label="Ask AI" @keydown="${this.handleKeyDown}" ?disabled=${loading}/>
-                    <button class="send-btn" type="submit" aria-label="Send message" ?disabled=${loading}>
+                <form class="chat-input-row" @submit="${(e) => { e.preventDefault(); this.handleSend(); }}" style="position:relative; align-items: flex-end;">
+                    <textarea id="chatInput" class="chat-input" rows="2" placeholder=${loading ? "AI is thinking..." : "Ask AI..."} autocomplete="off" aria-label="Ask AI" @keydown="${this.handleKeyDown}" ?disabled=${loading}></textarea>
+                    <button class="send-btn" type="submit" aria-label="Send message" ?disabled=${loading} style="position:absolute; bottom:0px; right:0px;">
                         ${loading
                             ? html`<svg class="spinner" viewBox="0 0 50 50" width="24" height="24"><circle cx="25" cy="25" r="20" fill="none" stroke="white" stroke-width="5"/></svg>`
                             : html`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="m2 21l21-9L2 3v7l15 2l-15 2z"/></svg>`}
                     </button>
                 </form>
-                
                 <a @click="${this.showInfoMessage}" style="font-size: 10px; margin-bottom: 0px; text-align: center !important; line-height: 1.2 !important; display: block; margin-top: 10px;">WebWriter AI can help improve your explorable. It may not work perfectly with all widgets and may produce errors. Click to learn more.</a> 
             </div>
         `;
+    }
+
+    insertPrompt(prompt: string) {
+        const input = this.renderRoot?.getElementById('chatInput') as HTMLTextAreaElement;
+        if (input) {
+            input.value = prompt;
+            input.focus();
+        }
     }
 
     showInfoMessage() {
