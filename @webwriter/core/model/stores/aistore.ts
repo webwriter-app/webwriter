@@ -5,6 +5,38 @@ import {aiPluginKey} from "../../model/schemas/resource/plugins/ai";
 import {renderToString as latexToMathML} from "temml/dist/temml.cjs"
 import {msg} from "@lit/localize";
 
+// Neue Hilfsfunktion: Ersetzt alle <latex>...</latex> Elemente im gegebenen HTML
+// durch das entsprechende MathML (mittels vorhandener temml-Umwandlung).
+export function transformLatexComponents(html: string): string {
+    if (!html) return html;
+    // Verwende einen temporären Container, um DOM-Elemente zu ersetzen
+    const container = document.createElement('div');
+    container.innerHTML = html;
+
+    const latexEls = Array.from(container.querySelectorAll('latex'));
+    latexEls.forEach(el => {
+        const latex = el.textContent || '';
+        let mathml = '';
+        try {
+            mathml = latexToMathML(latex);
+        } catch (e) {
+            console.error('Error converting LaTeX to MathML:', e);
+            // Fallback: behalte original LaTeX sichtbar, aber markiert
+            mathml = `<span class=\"latex-conversion-error\">${latex}</span>`;
+        }
+
+        const frag = document.createElement('div');
+        frag.innerHTML = mathml;
+        const parent = el.parentNode;
+        if (parent) {
+            while (frag.firstChild) parent.insertBefore(frag.firstChild, el);
+            parent.removeChild(el);
+        }
+    });
+
+    return container.innerHTML;
+}
+
 class UnauthorizedError extends Error {
     status: number;
 
@@ -21,7 +53,7 @@ You are the assistant in the application WebWriter. The application WebWriter is
 
 In general, you should be helpful, friendly, and professional. You should not provide any personal opinions or engage in discussions that are not related to writing tasks. You should respond in the language of the user, which is determined by the language of the input text. 
 
-The content is given and written in HTML format. Besides the default HTML tags, there are some custom tags that are used to create interactive elements. These tags are custom web components that are registered in the application, you MAY NOT load or request them in any way. You MUST request the documentation for these custom tags before using any of them. Make sure to use the exact name with the correct "@organization/widget" syntax for the request. Make sure to only use them as specified in the documentation and snippets and only use elements standalone if they are meant to be used standalone, indicated by the 'uninsertable' property. You MUST follow the rules on how the custom elements might be used regarding nesting. Towards, the user, refer to them as "widgets". You are not allowed to create any HTML that has capabilities beyond the ones provided by these custom widgets except basic HTML tags like p, h1, h2, span, etc. Additionally, you MUST use only MathML to display any kind of mathematical formulas. If the mathematical expressions / formulars are complex, use the Latex to MathML function to reduce the likelihood of an error. For bold formatting, use the b tag, do not use the strong tag. You can use these basic HTML tags to structure the content. You may not use any custom attributes or properties that are not supported by the custom widgets. You cannot install widgets, but you can suggest that the user install them, and then they will be available for you as well. 
+The content is given and written in HTML format. Besides the default HTML tags, there are some custom tags that are used to create interactive elements. These tags are custom web components that are registered in the application, you MAY NOT load or request them in any way. You MUST request the documentation for these custom tags before using any of them. Make sure to use the exact name with the correct "@organization/widget" syntax for the request. Make sure to only use them as specified in the documentation and snippets and only use elements standalone if they are meant to be used standalone, indicated by the 'uninsertable' property. You MUST follow the rules on how the custom elements might be used regarding nesting. Towards, the user, refer to them as "widgets". You are not allowed to create any HTML that has capabilities beyond the ones provided by these custom widgets except basic HTML tags like p, h1, h2, span, etc. Additionally, you MUST use the <latex> web component to display and kind of formulas. Do not use other ways of inserting formulars or math. For bold formatting, use the b tag, do not use the strong tag. You can use these basic HTML tags to structure the content. You may not use any custom attributes or properties that are not supported by the custom widgets. You cannot install widgets, but you can suggest that the user install them, and then they will be available for you as well. 
 
 Make sure to always insert the content in the location that makes most sense for the content. If there is uncertainty where the user would want the content, you MUST ask the user for clarification in any case. Many types of content do not make sense to be inserted at the bottom of the document, so you SHOULD NOT do that unless the user explicitly asks for it. If you are unsure where to insert the content, ask the user for clarification. If the document is empty, insert the content at the bottom of the document. 
 
@@ -125,24 +157,6 @@ const toolDefinitions = [
                 required: ["query", "content"]
             }
         }
-    },
-    {
-        type: "function",
-        function: {
-            name: "latex_to_mathml",
-            description: "Convert LaTeX math to MathML. You must use this function if you want to insert any more complex math than simple symbols or numbers. You must use MathML for any kind of mathematical formulas. ",
-            parameters: {
-                type: "object",
-                properties: {
-                    latex: {
-                        type: "string",
-                        description: "The LaTeX math string to convert to MathML. This should be a valid LaTeX math string."
-                    },
-                },
-                required: ["latex"]
-            }
-
-        }
     }
 
 ];
@@ -152,8 +166,7 @@ export const toolFriendlyNames = {
     "fetch_widget_documentation": msg("Read widget documentation..."),
     "replace_in_document": msg("Replace content..."),
     "insert_into_element": msg("Insert into element..."),
-    "get_list_of_installable_widgets": msg("Get list of installable widgets..."),
-    "latex_to_mathml": msg("Prepare math formula...")
+    "get_list_of_installable_widgets": msg("Get list of installable widgets...")
 }
 
 /**
@@ -332,6 +345,9 @@ export class AIStore {
             }
             const endPos = (editor as any).state.doc.content.size;
 
+            // Transform any <latex> components to MathML before parsing
+            content = transformLatexComponents(content);
+
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = content;
 
@@ -436,7 +452,9 @@ export class AIStore {
 
             // Slice vorbereiten und als Vorschlag einfügen
             const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = newContent;
+            // Transform any <latex> components to MathML before parsing
+            const transformed = transformLatexComponents(newContent);
+            tempDiv.innerHTML = transformed;
             const parser = DOMParser.fromSchema((editor as any).state.schema);
             const slice = parser.parseSlice(tempDiv);
 
@@ -466,6 +484,9 @@ export class AIStore {
                 };
             }
 
+            // Transform any <latex> components to MathML before parsing
+            content = transformLatexComponents(content);
+
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = content;
 
@@ -485,18 +506,6 @@ export class AIStore {
                 message: `Content suggestion has been created for the selected element.`,
             };
         },
-        latex_to_mathml: (app: App, {latex}: { latex: string }) => {
-            if (!latex || latex.trim() === "") {
-                return {success: false, message: "Empty LaTeX string provided."};
-            }
-
-            const mathml = latexToMathML(latex);
-            return {
-                success: true,
-                content: mathml,
-                message: "LaTeX has been converted to MathML.",
-            };
-        }
     }
 
     addMessage({role, content, isUpdate = false, timestamp, tool_calls = null}: {

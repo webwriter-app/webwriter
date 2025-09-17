@@ -300,8 +300,8 @@ export class AIToolboxWidget extends LitElement {
                                 </button>
                             `)}
                         </div>
-                    ` : chatMessages.map(msg => {
-                        switch (msg.role) {
+                    ` : chatMessages.map(chatMessage => {
+                        switch (chatMessage.role) {
                             case "system":
                                 return null;
                             case "tool":
@@ -310,21 +310,21 @@ export class AIToolboxWidget extends LitElement {
                                 return html`
                                     <div class="chat-bubble user">
                                         <div class="chat-sender">${msg("You")}</div>
-                                        ${msg.content}
+                                        ${chatMessage.content}
                                     </div>
                                 `;
                             case "assistant":
                                 // if it is a tool call or multiple
 
-                                const toolsContent = msg["tool_calls"] ? msg["tool_calls"].map(call => {
+                                const toolsContent = chatMessage["tool_calls"] ? chatMessage["tool_calls"].map(call => {
                                     return html`
                                         <div class="function-call">${toolFriendlyNames[call.function.name]}</div>`
                                 }) : null;
 
-                                const content = msg.content ? html`
+                                const content = chatMessage.content ? html`
                                      <div class="chat-bubble ai">
                                         <div class="chat-sender">${msg("WebWriter AI")}</div>
-                                         ${unsafeHTML(marked.parse(msg.content))}
+                                         ${unsafeHTML(marked.parse(chatMessage.content))}
                                      </div>` : null;
 
                                 // Combine both types
