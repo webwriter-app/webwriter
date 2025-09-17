@@ -261,10 +261,10 @@ export class AIToolboxWidget extends LitElement {
         const loading = this.app.store.ai.loading;
         const chatMessages = this.app.store.ai.chatMessages;
         const examplePrompts = [
-            "Erstelle ein Übungsblatt zu ...",
-            "Welche Aufgabe würde dazu noch gut passen?",
-            "Ist mein Text einfach und verständlich geschrieben?",
-            "Welche Widgets passen gut zu meinem Inhalt?",
+            "Create an exercise sheet about ...",
+            "What task would complement this well?",
+            "Is my text simple and easy to understand?",
+            "Which widgets suit my content best?",
         ];
         return html`
             <div class="ai-container">
@@ -309,7 +309,7 @@ export class AIToolboxWidget extends LitElement {
                             case "user":
                                 return html`
                                     <div class="chat-bubble user">
-                                        <div class="chat-sender">Du</div>
+                                        <div class="chat-sender">You</div>
                                         ${msg.content}
                                     </div>
                                 `;

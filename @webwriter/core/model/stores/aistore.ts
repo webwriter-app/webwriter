@@ -147,12 +147,12 @@ const toolDefinitions = [
 ];
 
 export const toolFriendlyNames = {
-    "insert_at_bottom": "Inhalt hinzufügen...",
-    "fetch_widget_documentation": "Widget-Dokumentation lesen...",
-    "replace_in_document": "Inhalt ersetzen...",
-    "insert_into_element": "Inhalt einfügen...",
-    "get_list_of_installable_widgets": "Liste installierbarer Widgets abrufen...",
-    "latex_to_mathml": "Mathe Formel vorbereiten..."
+    "insert_at_bottom": "Insert content...",
+    "fetch_widget_documentation": "Read widget documentation...",
+    "replace_in_document": "Replace content...",
+    "insert_into_element": "Insert into element...",
+    "get_list_of_installable_widgets": "Get list of installable widgets...",
+    "latex_to_mathml": "Prepare math formula..."
 }
 
 /**
@@ -200,7 +200,7 @@ export async function generateWidgetDocumentation(app: App, name: string): Promi
 
     if (!pkg) {
         // If the package is not found, return an error message
-        return JSON.stringify({error: `Widget with name ${name} not insatlled.`});
+        return JSON.stringify({error: `Widget with name ${name} not installed.`});
     }
 
     const installedWidgetUrl = app.store.packages.packetApiBaseUrl(pkg);
