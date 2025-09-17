@@ -578,9 +578,21 @@ export class AIStore {
             // Aktuellen Dokumentzustand hinzufügen (robust bei fehlendem Editor)
             const editorDom = app.activeEditor?.pmEditor?.dom as HTMLElement | undefined;
             const currentHtml = editorDom ? editorDom.innerHTML : "";
+
+            // Remove any attributes that are too long from the HTML to avoid excessive length
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = currentHtml;
+            tempDiv.querySelectorAll('*').forEach(el => {
+                Array.from(el.attributes).forEach(attr => {
+                    if (attr.value.length > 1000) {
+                        el.removeAttribute(attr.name);
+                    }
+                });
+            });
+
             this.addMessage({
                 role: "system",
-                content: (currentHtml ? `Current document content:\n\n${currentHtml}` : 'Document empty') + `\n\nList of installed widgets:\n\n${generateListOfModules(app)}`,
+                content: (currentHtml ? `Current document content:\n\n${tempDiv.innerHTML}` : 'Document empty') + `\n\nList of installed widgets:\n\n${generateListOfModules(app)}`,
                 timestamp: new Date(),
                 isUpdate: true,
             });
