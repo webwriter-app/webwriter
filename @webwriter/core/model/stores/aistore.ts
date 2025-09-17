@@ -229,7 +229,43 @@ export async function generateWidgetDocumentation(app: App, name: string): Promi
             throw new Error(`Failed to fetch custom-elements.json from ${installedWidgetUrl}/custom-elements.json`);
         }
         const customElementsData = await customElementsRequest.json();
-        customElements.push(...customElementsData.modules.map(m => m.declarations).flat())
+        // Transform the raw declarations into a simplified object structure containing only
+        // the information needed to use the elements (safe access to optional fields).
+        const simplified = (customElementsData.modules || [])
+            .flatMap((m: any) => m.declarations || [])
+            .map((decl: any) => {
+                const attributes = (decl.attributes || []).map((a: any) => ({
+                    name: a.name || null,
+                    type: (a.type && (a.type.text || a.type.name)) || null,
+                    description: a.description || null,
+                    default: a.default || null,
+                }));
+
+                const slots = (decl.slots || []).map((s: any) => ({
+                    name: s.name || 'default',
+                    description: s.description || null,
+                }));
+
+                const events = (decl.events || []).map((e: any) => ({
+                    name: e.name || null,
+                    description: e.description || null,
+                    type: (e.type && (e.type.text || e.type.name)) || null,
+                }));
+
+                return {
+                    tagName: decl.tagName || decl.name || null,
+                    name: decl.name || null,
+                    description: decl.description || null,
+                    summary: decl.summary || null,
+                    deprecated: decl.deprecated || false,
+                    attributes,
+                    slots,
+                    events,
+                    source: decl.source || null,
+                };
+            });
+
+        customElements.push(...simplified);
     } catch (e) {
         console.error(`Error fetching custom-elements.json from ${installedWidgetUrl}/custom-elements.json`, e);
     }
@@ -255,9 +291,9 @@ export async function generateWidgetDocumentation(app: App, name: string): Promi
         name: pkg.name,
         author: pkg.author,
         description: pkg.description,
-        editingConfig: pkg.editingConfig,
+        /* editingConfig: pkg.editingConfig, */
         exampleSnippets: snippets.filter(snippet => snippet !== null), // Filter out any null snippets
-        readme: readmeContent,
+        /* readme: readmeContent, */
         customElements
     };
 
