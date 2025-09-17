@@ -3,6 +3,7 @@ import {App, ProsemirrorEditor} from "#view";
 import {Node as ProseMirrorNode} from "prosemirror-model";
 import {aiPluginKey} from "../../model/schemas/resource/plugins/ai";
 import {renderToString as latexToMathML} from "temml/dist/temml.cjs"
+import {msg} from "@lit/localize";
 
 class UnauthorizedError extends Error {
     status: number;
@@ -147,12 +148,12 @@ const toolDefinitions = [
 ];
 
 export const toolFriendlyNames = {
-    "insert_at_bottom": "Insert content...",
-    "fetch_widget_documentation": "Read widget documentation...",
-    "replace_in_document": "Replace content...",
-    "insert_into_element": "Insert into element...",
-    "get_list_of_installable_widgets": "Get list of installable widgets...",
-    "latex_to_mathml": "Prepare math formula..."
+    "insert_at_bottom": msg("Insert content..."),
+    "fetch_widget_documentation": msg("Read widget documentation..."),
+    "replace_in_document": msg("Replace content..."),
+    "insert_into_element": msg("Insert into element..."),
+    "get_list_of_installable_widgets": msg("Get list of installable widgets..."),
+    "latex_to_mathml": msg("Prepare math formula...")
 }
 
 /**
