@@ -141,6 +141,11 @@ export class AIToolboxWidget extends LitElement {
             height: 16px;
         }
 
+        /* Red variant used for active loading and retry state */
+        .send-btn.red {
+            background: var(--sl-color-danger-600);
+        }
+
         .send-btn[disabled] {
             opacity: 0.6;
             cursor: not-allowed;
@@ -210,22 +215,38 @@ export class AIToolboxWidget extends LitElement {
         super();
     }
 
+    handleCancel() {
+        this.app.store.ai.cancelRequest(() => this.requestUpdate());
+    }
+
+    handleRetry() {
+        this.app.store.ai.retryLastRequest(() => this.requestUpdate(), this.app);
+
+        // clean input
+        const input = this.renderRoot?.getElementById('chatInput') as HTMLTextAreaElement;
+        if (input) {
+            input.value = "";
+        }
+    }
+
     async handleSend() {
         const input = this.renderRoot?.getElementById('chatInput') as HTMLTextAreaElement;
         if (input) {
             const query = input.value.trim();
+
             if (query) {
                 this.app.store.ai.addMessage({
                     timestamp: new Date(),
                     role: "user",
-                    content: query
+                    content: query,
+                    tool_calls: null,
+                    isUpdate: null
                 });
-                this.requestUpdate()
-                input.value = "";
-                this.app.store.ai.generateResponse(() => this.requestUpdate(), this.app);
-            } else {
-                triggerAISuggestionForSelection(this.app.activeEditor?.pmEditor).then(console.log)
             }
+
+            this.requestUpdate()
+            input.value = "";
+            this.app.store.ai.generateResponse(() => this.requestUpdate(), this.app);
         }
     }
 
@@ -311,15 +332,40 @@ export class AIToolboxWidget extends LitElement {
                         }
                     })}
                 </div>
-                <form class="chat-input-row" @submit="${(e) => { e.preventDefault(); this.handleSend(); }}" style="position:relative; align-items: flex-end;">
-                    <textarea id="chatInput" class="chat-input" rows="2" placeholder=${loading ? "AI is thinking..." : "Ask AI..."} autocomplete="off" aria-label="Ask AI" @keydown="${this.handleKeyDown}" ?disabled=${loading}></textarea>
-                    <button class="send-btn" type="submit" aria-label="Send message" ?disabled=${loading} style="position:absolute; bottom:0px; right:0px;">
-                        ${loading
-                            ? html`<svg class="spinner" viewBox="0 0 50 50" width="24" height="24"><circle cx="25" cy="25" r="20" fill="none" stroke="white" stroke-width="5"/></svg>`
-                            : html`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="m2 21l21-9L2 3v7l15 2l-15 2z"/></svg>`}
-                    </button>
+                <form class="chat-input-row" @submit="${(e) => {
+                    e.preventDefault();
+                    this.handleSend();
+                }}" style="position:relative; align-items: flex-end;">
+                    <textarea id="chatInput" class="chat-input" rows="2"
+                              placeholder=${loading ? "AI is thinking..." : "Ask AI..."} autocomplete="off"
+                              aria-label="Ask AI" @keydown="${this.handleKeyDown}" ?disabled=${loading}></textarea>
+
+                    <div style="position:absolute; bottom:0px; right:0px; display:flex; gap:6px;">
+                        ${loading ? html`
+                            <button type="button" class="send-btn red" title="Stop" @click="${() => this.handleCancel()}">
+                                <svg class="spinner" viewBox="0 0 50 50" width="20" height="20">
+                                    <circle cx="25" cy="25" r="20" fill="none" stroke="white" stroke-width="5"/>
+                                </svg>
+                            </button>` : this.app.store.ai.canRetry ? html`
+                            <button type="button" class="send-btn red" title="Retry" @click="${() => this.handleRetry()}">
+                                <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                    <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M18 4v6h-6"/>
+                                        <path d="M20 12A8 8 0 1 1 12 4"/>
+                                    </g>
+                                </svg>
+                            </button>` : html`
+                            <button class="send-btn" type="submit" aria-label="Send message">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+                                    <path fill="currentColor" d="m2 21l21-9L2 3v7l15 2l-15 2z"/>
+                                </svg>
+                            </button>`}
+                    </div>
                 </form>
-                <a @click="${this.showInfoMessage}" style="font-size: 10px; margin-bottom: 0px; text-align: center !important; line-height: 1.2 !important; display: block; margin-top: 10px;">WebWriter AI can help improve your explorable. It may not work perfectly with all widgets and may produce errors. Click to learn more.</a> 
+                <a @click="${this.showInfoMessage}"
+                   style="font-size: 10px; margin-bottom: 0px; text-align: center !important; line-height: 1.2 !important; display: block; margin-top: 10px;">WebWriter
+                    AI can help improve your explorable. It may not work perfectly with all widgets and may produce
+                    errors. Click to learn more.</a>
             </div>
         `;
     }

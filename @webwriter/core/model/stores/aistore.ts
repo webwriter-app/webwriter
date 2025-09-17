@@ -312,6 +312,16 @@ export class AIStore {
         tool_calls?: any | null
     }[] = [];
 
+    // Abort controller for the current in-flight request (if any)
+    private currentAbortController: AbortController | null = null;
+
+    // When starting a generation we save a snapshot of messages so we can
+    // restore them if the request is cancelled or if the user retries.
+    private _snapshotForRetry: typeof this.chatMessages | null = null;
+
+    // Internal flag to indicate cancellation requested
+    private _cancelled: boolean = false;
+
     /* The toolResolvers are functions that are called when a tool is requested by the AI, corresponding to the functions defined for the AI above */
     toolResolvers = {
         insert_at_bottom: (app: App, {content}: { content: string }) => {
@@ -500,10 +510,59 @@ export class AIStore {
 
     loading: boolean = false;
 
+    /**
+     * Cancel the current in-progress request, if any. Restores the chatMessages
+     * to the state before the request started and prevents any incoming
+     * responses from being appended.
+     */
+    cancelRequest(updateCallback?: () => void) {
+        this._cancelled = true;
+        try {
+            this.currentAbortController?.abort();
+        } catch (e) {
+            // ignore
+        }
+
+        // Restore snapshot if available (remove any messages added during the request)
+        if (this._snapshotForRetry) {
+            this.chatMessages = this._snapshotForRetry.slice();
+            this._snapshotForRetry = null;
+        }
+
+        this.loading = false;
+        if (updateCallback) updateCallback();
+    }
+
+    /**
+     * Retry the last request that failed or was cancelled. Returns the promise
+     * from generateResponse or undefined if there's nothing to retry.
+     */
+    retryLastRequest(updateCallback: () => void, app: App): Promise<string | undefined> | undefined {
+        if (!this._snapshotForRetry) return undefined;
+        // Restore messages to snapshot and start generation again
+        this.chatMessages = this._snapshotForRetry.slice();
+        // Clear the snapshot now; generateResponse will set it again at start
+        this._snapshotForRetry = null;
+        return this.generateResponse(updateCallback, app);
+    }
+
+    // Public getter used by the UI to determine whether retry is available
+    get canRetry(): boolean {
+        return !!this._snapshotForRetry;
+    }
+
     async generateResponse(updateCallback: () => void, app: App): Promise<string | undefined> {
         this.loading = true;
         updateCallback();
         try {
+
+            // Save a snapshot of the chat prior to starting the request so we
+            // can restore it if the user cancels or if a retry is requested.
+            this._snapshotForRetry = this.chatMessages.slice();
+
+            // Reset cancellation state and prepare an AbortController for the fetch
+            this._cancelled = false;
+            this.currentAbortController = new AbortController();
 
             // Remove all previous updates from the chat messages
             this.chatMessages = this.chatMessages.filter(msg => !msg.isUpdate);
@@ -530,12 +589,19 @@ export class AIStore {
 
             while (!isResponseToHuman) {
 
-                const authKey = localStorage["webwriter_authKey"]
+                // If the request has been cancelled before starting fetch, abort
+                if (this._cancelled) {
+                    // restore snapshot
+                    if (this._snapshotForRetry) this.chatMessages = this._snapshotForRetry.slice();
+                    return undefined;
+                }
 
-                /* request from openai api */
+                const authKey = localStorage.getItem("webwriter_authKey");
+
                 const response = await fetch("https://node1.webwriter.elearn.rwth-aachen.de/api/chat", {
                     method: "POST",
                     headers: {"Content-Type": "application/json", "Authorization": authKey},
+                    signal: this.currentAbortController?.signal,
                     body: JSON.stringify({
                         messages: this.chatMessages,
                         tools: toolDefinitions,
@@ -544,6 +610,12 @@ export class AIStore {
                         max_completion_tokens: 32768,
                     }),
                 });
+
+                // If cancellation happened while the response was in flight, discard
+                if (this._cancelled) {
+                    if (this._snapshotForRetry) this.chatMessages = this._snapshotForRetry.slice();
+                    return undefined;
+                }
 
                 const data = await response.json();
 
@@ -599,8 +671,17 @@ export class AIStore {
                             "tool_call_id": toolCall.id,
                             content: JSON.stringify(result),
                             timestamp: new Date(),
+                            isUpdate: false,
+                            tool_calls: null,
                         }
                     }))
+
+                    // If the request was cancelled while resolving tool calls,
+                    // discard the resolved results and restore snapshot.
+                    if (this._cancelled) {
+                        if (this._snapshotForRetry) this.chatMessages = this._snapshotForRetry.slice();
+                        return undefined;
+                    }
 
                     // ToDo: what about the additional attributes not in type definition?
                     this.chatMessages = this.chatMessages.concat(resolvedToolCalls);
@@ -611,6 +692,11 @@ export class AIStore {
 
                     updateCallback();
 
+                    // Clear the snapshot on successful completion so retry cannot
+                    // accidentally re-run the same request state.
+                    this._snapshotForRetry = null;
+                    this.currentAbortController = null;
+
                     return this.chatMessages.at(-1)?.content;
                 }
             }
@@ -618,12 +704,17 @@ export class AIStore {
             // if we get here, there must have been a mistake
             throw new Error("Unable to generate message")
         } catch (e: any) {
-            if (e instanceof UnauthorizedError)
+            // If the fetch was aborted, treat as cancellation and silently restore
+            if (e && (e.name === 'AbortError' || e.message?.includes('aborted'))) {
+                // already restored snapshot in cancellation branches above
+                console.error('AI request was aborted');
+            } else if (e instanceof UnauthorizedError)
                 console.error("Not authorized to use the AI service");
             else
                 console.error("Error generating AI response", e);
         } finally {
             this.loading = false;
+            this.currentAbortController = null;
             updateCallback();
         }
     }
