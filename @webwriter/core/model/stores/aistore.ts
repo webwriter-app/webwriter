@@ -6,6 +6,7 @@ import {renderToString as latexToMathML} from "temml/dist/temml.cjs"
 
 class UnauthorizedError extends Error {
     status: number;
+
     constructor(message = "Unauthorized", status = 401) {
         super(message);
         this.name = "UnauthorizedError";
@@ -204,9 +205,6 @@ export async function generateWidgetDocumentation(app: App, name: string): Promi
 
     const installedWidgetUrl = app.store.packages.packetApiBaseUrl(pkg);
 
-    const snippetPaths = Object.keys(pkg.exports)
-        .filter(key => key.includes("snippets"))
-        .map(key => `${installedWidgetUrl}/${pkg.exports[key]}`);
 
     // Fetch the README file from the package's CDN path
     const readmePath = `${installedWidgetUrl}/README.md`;
@@ -223,6 +221,22 @@ export async function generateWidgetDocumentation(app: App, name: string): Promi
         console.error(`Error fetching README from ${readmePath}:`, error);
         readmeContent = "No README available for this widget.";
     }
+
+    const customElements = [];
+    try {
+        const customElementsRequest = await fetch(`${installedWidgetUrl}/custom-elements.json`);
+        if (!customElementsRequest.ok) {
+            throw new Error(`Failed to fetch custom-elements.json from ${installedWidgetUrl}/custom-elements.json`);
+        }
+        const customElementsData = await customElementsRequest.json();
+        customElements.push(...customElementsData.modules.map(m => m.declarations).flat())
+    } catch (e) {
+        console.error(`Error fetching custom-elements.json from ${installedWidgetUrl}/custom-elements.json`, e);
+    }
+
+    const snippetPaths = Object.keys(pkg.exports)
+        .filter(key => key.includes("snippets"))
+        .map(key => `${installedWidgetUrl}/${pkg.exports[key]}`);
 
     const snippets = await Promise.all(snippetPaths.map(async (snippetPath) => {
         try {
@@ -244,7 +258,10 @@ export async function generateWidgetDocumentation(app: App, name: string): Promi
         editingConfig: pkg.editingConfig,
         exampleSnippets: snippets.filter(snippet => snippet !== null), // Filter out any null snippets
         readme: readmeContent,
+        customElements
     };
+
+    console.log(documentation)
 
     return JSON.stringify(documentation, null, 2);
 }
