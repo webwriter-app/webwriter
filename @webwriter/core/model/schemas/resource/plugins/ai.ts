@@ -131,10 +131,11 @@ function createDecorationsForSuggestion(doc: any, suggestion: Suggestion): Decor
     } else {
         doc.nodesBetween(from, to, (node: any, pos: number) => {
             if (node.isBlock) {
+                const decoId = `${id}-${pos}`;
                 const decoNode = Decoration.node(pos, pos + node.nodeSize, {
                     class: "ai-suggestion",
-                    "data-suggestion-id": id,
-                }, { id });
+                    "data-suggestion-id": decoId,
+                }, { id: decoId });
                 decos.push(decoNode);
                 return false;
             }
@@ -239,7 +240,7 @@ export const aiPlugin = () => ({
                         if (suggestionToRemove) {
                             suggestions = suggestions.filter(s => s.id !== id);
                             const decosToRemove = decorations.find(undefined, undefined, (spec) => {
-                                return spec.id === id || spec['data-suggestion-id'] === id;
+                                return (spec.id && spec.id.includes(id)) || (spec['data-suggestion-id'] && spec['data-suggestion-id'].includes(id));
                             });
                             decorations = decorations.remove(decosToRemove);
                             suggestionsChanged = true;
