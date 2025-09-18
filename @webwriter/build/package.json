@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/build",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "description": "Build helper script for WebWriter packages",
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "license": "MIT",
