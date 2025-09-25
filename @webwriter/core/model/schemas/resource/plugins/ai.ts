@@ -269,8 +269,15 @@ export const aiPlugin = () => ({
                     if (toRemoveIds.size) {
                         // Remove decorations for all suggestions to be removed
                         const decosToRemove = decorations.find(undefined, undefined, (spec) => {
-                            const sid = (spec.id as string) || (spec['data-suggestion-id'] as string);
-                            return sid ? toRemoveIds.has(sid) : false;
+                            // Get the id of the suggestion from spec.id or spec['data-suggestion-id']
+                            let toRemoveId = spec.id || spec['data-suggestion-id'];
+
+                            // Remove the postfix added for node decorations
+                            if (toRemoveId && toRemoveId.includes('-')) {
+                                toRemoveId = toRemoveId.split('-').slice(0, -1).join('-');
+                            }
+
+                            return toRemoveId && toRemoveIds.has(toRemoveId);
                         });
                         decorations = decorations.remove(decosToRemove);
                         // Keep only suggestions not marked for removal
