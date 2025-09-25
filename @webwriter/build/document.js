@@ -224,7 +224,7 @@ const themeIDs = memberIDs.filter(id => id.startsWith("./themes/"))
 
 const widgetsTemplate = widgetIDs.map(id => widgetMarkdown(pkg, manifest, id)).join("\n\n")
 
-const snippetsTemplate = !snippetIDs.length? "": 
+const snippetsTemplate = !snippetIDs.length? "":
 `## Snippets
 [Snippets](https://webwriter.app/docs/snippets/snippets/) are examples and templates using the package's widgets.
 
@@ -232,7 +232,7 @@ const snippetsTemplate = !snippetIDs.length? "":
 | :--: | :---------: |
 ${snippetIDs.map(id => `| ${id.replace("./snippets/", "").replace(".html", "").split("-").map(part => part[0].toUpperCase() + part.slice(1)).join(" ")} | \`${pkg.name + id.slice(1)}\` |`).join("\n")}`
 
-const themesTemplate = !themeIDs.length? "": 
+const themesTemplate = !themeIDs.length? "":
 `## Themes
 [Themes](https://webwriter.app/docs/themes/themes/) are stylesheets to apply to a whole document.
 
@@ -240,12 +240,12 @@ const themesTemplate = !themeIDs.length? "":
 | :--: | :---------: |
 ${themeIDs.map(id => `| ${id.replace("./themes/", "")} | ${pkg.name + id.slice(1)} |`).join("\n")}`
 
-const prettyName = 
+const prettyName =
   pkg?.editingConfig?.["."]?.label?._ ?? pkg.name.slice(1).split("/")[1].split("-").map(part => part[0].toUpperCase() + part.slice(1)).join(" ")
 
 const description = pkg?.editingConfig?.["."]?.description?._ ?? pkg?.description
 
-const template = 
+const template =
 `# ${prettyName} (\`${pkg.name}@${pkg.version}\`)
 [License: ${pkg.license}](LICENSE) | Version: ${pkg.version}
 
