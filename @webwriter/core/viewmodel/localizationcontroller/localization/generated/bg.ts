@@ -1132,6 +1132,7 @@
 'scc466fb3738544bf': `Is my text simple and easy to understand?`,
 'secf4269bd99a41e4': `Which widgets suit my content best?`,
 'sf544ad71477d4ff8': `WebWriter AI`,
+'scb6a9c1a1757adbc': `You`,
 'se7c14f7bef66c5bb': `AI is thinking...`,
 's16e45b897930024a': `Ask AI...`,
 'sd9c2eb8ad4c45fd4': `Ask AI`,

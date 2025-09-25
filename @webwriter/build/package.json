@@ -7,7 +7,7 @@
   "type": "module",
   "dependencies": {
     "@aidenlx/esbuild-plugin-inline-worker": "^1.0.1",
-    "@custom-elements-manifest/analyzer": "^0.10.4",
+    "@custom-elements-manifest/analyzer": "^0.10.6",
     "@lit/localize-tools": "^0.8.0",
     "@webcomponents/scoped-custom-element-registry": "^0.0.9",
     "deepl-node": "^1.14.0",
