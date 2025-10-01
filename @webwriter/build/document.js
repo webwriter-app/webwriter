@@ -3,6 +3,8 @@
 import {exec as execSync} from "child_process"
 import {promisify} from "util"
 import { promises as fs } from "fs"
+import { join } from "path"
+import { tmpdir } from 'os'
 
 const selfPkg = {
   name: "@webwriter/build",
@@ -25,9 +27,30 @@ async function generateManifest() {
   const pkg = JSON.parse(await fs.readFile("package.json", "utf8"))
   const pkgExports = pkg?.exports ?? {}
   const widgetPaths = Object.keys(pkgExports).filter(k => k.startsWith("./widgets/")).map(k => pkgExports[k]?.source).filter(p => p)
-  const globsPart = widgetPaths.length? `--globs ${widgetPaths.map(p => `"${p}"`).join(" ")}`: ""
-  const {stdout, stderr} = await exec(`npx @custom-elements-manifest/analyzer analyze --litelement ${globsPart}`)
+  const widgetPathsBare = widgetPaths.map(p => p.startsWith("./")? p.slice(2): p)
+  // const globsPart = widgetPaths.length? `--globs ${widgetPaths.map(p => `"${p}"`).join(" ")}`: ""
+  const tempPath = await fs.mkdtemp(join(tmpdir(), "wwbuild-"))
+  let jsdoctagsScript = (await (await fetch("https://cdn.jsdelivr.net/npm/@wc-toolkit/jsdoc-tags@1.1.0")).text());
+  await fs.writeFile(join(tempPath, "jsdoctags.js"), jsdoctagsScript)
+  let inheritanceScript = (await (await fetch("https://cdn.jsdelivr.net/npm/@wc-toolkit/cem-inheritance@1.2.2")).text());
+  inheritanceScript = inheritanceScript.replace(`@wc-toolkit/jsdoc-tags`, `./jsdoctags.js`)
+  await fs.writeFile(join(tempPath, "inheritance.js"), inheritanceScript)
+  const configScript = `
+    import {cemInheritancePlugin} from "./inheritance.js"
+    export default {plugins: [cemInheritancePlugin()]}
+  `
+  const configPath = join(tempPath, "custom-elements-manifest.config.mjs")
+  await fs.writeFile(configPath, configScript)
+  const {stdout, stderr} = await exec(`npx @custom-elements-manifest/analyzer analyze --litelement --config "${configPath}"`)
   stderr? console.error(stderr): console.log(stdout)
+  try {
+    const cem = JSON.parse(await fs.readFile("custom-elements.json", "utf8"))
+    cem.modules = cem.modules.filter(mod => widgetPathsBare.includes(mod.path))
+    await fs.writeFile("custom-elements.json", JSON.stringify(cem, undefined, 2))
+  }
+  catch(err) {
+    console.error(err)
+  }
   console.log("Updating package.json")
   pkg.customElements = "custom-elements.json"
   pkg.exports = {...pkg.exports, "./custom-elements.json": "./custom-elements.json"}
