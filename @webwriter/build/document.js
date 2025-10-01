@@ -230,7 +230,7 @@ const snippetsTemplate = !snippetIDs.length? "":
 
 | Name | Import Path |
 | :--: | :---------: |
-${snippetIDs.map(id => `| ${id.replace("./snippets/", "").replace(".html", "").split("-").map(part => part[0].toUpperCase() + part.slice(1)).join(" ")} | ${pkg.name + id.slice(1)} |`).join("\n")}`
+${snippetIDs.map(id => `| ${id.replace("./snippets/", "").replace(".html", "").split("-").map(part => part[0].toUpperCase() + part.slice(1)).join(" ")} | \`${pkg.name + id.slice(1)}\` |`).join("\n")}`
 
 const themesTemplate = !themeIDs.length? "": 
 `## Themes
