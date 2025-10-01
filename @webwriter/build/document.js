@@ -58,7 +58,7 @@ async function generateManifest() {
 }
 
 function widgetMarkdown(pkg, manifest, id) {
-const pkgExports = pkg.exports
+const pkgExports = pkg?.exports ?? {}
 
 const tag = id.replace("./widgets/", "").slice(0, -2)
 const scriptId = id.slice(0, -1) + "js"
