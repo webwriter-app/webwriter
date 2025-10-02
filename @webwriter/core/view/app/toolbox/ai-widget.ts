@@ -1,7 +1,7 @@
 import {LitElement, css, html} from "lit";
 import {customElement, property} from "lit/decorators.js";
 import {App} from "#view";
-import {basePlugin, generateWidgetDocumentation, toolFriendlyNames} from "#model";
+import {toolFriendlyNames} from "#model";
 import {marked} from "marked";
 import {unsafeHTML} from 'lit/directives/unsafe-html.js';
 import {msg} from "@lit/localize";
@@ -176,7 +176,7 @@ export class AIToolboxWidget extends LitElement {
             font-size: 0.75em;
             cursor: pointer;
             transition: background 0.2s;
-            line-break: 1.2;
+            line-height: 1.2;
         }
 
         .example-prompt:hover {
@@ -223,14 +223,14 @@ export class AIToolboxWidget extends LitElement {
         this.app.store.ai.retryLastRequest(() => this.requestUpdate(), this.app);
 
         // clean input
-        const input = this.renderRoot?.getElementById('chatInput') as HTMLTextAreaElement;
+        const input = this.shadowRoot?.getElementById('chatInput') as HTMLTextAreaElement;
         if (input) {
             input.value = "";
         }
     }
 
     async handleSend() {
-        const input = this.renderRoot?.getElementById('chatInput') as HTMLTextAreaElement;
+        const input = this.shadowRoot?.getElementById('chatInput') as HTMLTextAreaElement;
         if (input) {
             const query = input.value.trim();
 
@@ -240,7 +240,7 @@ export class AIToolboxWidget extends LitElement {
                     role: "user",
                     content: query,
                     tool_calls: null,
-                    isUpdate: null
+                    isUpdate: false
                 });
             }
 
@@ -258,6 +258,38 @@ export class AIToolboxWidget extends LitElement {
     }
 
     render() {
+        if (Object.keys(this.app.store.accounts.accounts.pocketbase).find(k => k.includes("@")) === undefined) {
+            return html`
+                <div class="ai-container">
+                     <span class="ai-label">
+                        <svg xmlns="http://www.w3.org/2000/svg"
+                             xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0,0,256,256"
+                             width="16px" height="16px" fill-rule="nonzero"><g fill="#075985"
+                                                                               fill-rule="nonzero"
+                                                                               stroke="none"
+                                                                               stroke-width="1"
+                                                                               stroke-linecap="butt"
+                                                                               stroke-linejoin="miter"
+                                                                               stroke-miterlimit="10"
+                                                                               stroke-dasharray=""
+                                                                               stroke-dashoffset="0"
+                                                                               font-family="none"
+                                                                               font-weight="none"
+                                                                               font-size="none"
+                                                                               text-anchor="none"
+                                                                               style="mix-blend-mode: normal"><g
+                                transform="scale(10.66667,10.66667)"><path
+                                d="M17.469,9.286l-2.156,-0.957c-1.657,-0.736 -2.976,-2.096 -3.683,-3.801l-0.82,-1.974c-0.152,-0.367 -0.481,-0.55 -0.81,-0.55c-0.329,0 -0.658,0.183 -0.81,0.55l-0.819,1.974c-0.708,1.704 -2.026,3.065 -3.684,3.801l-2.156,0.957c-0.708,0.314 -0.708,1.344 0,1.658l2.226,0.988c1.616,0.717 2.911,2.029 3.631,3.678l0.809,1.852c0.155,0.356 0.479,0.534 0.803,0.534c0.324,0 0.648,-0.178 0.804,-0.534l0.809,-1.852c0.72,-1.648 2.015,-2.961 3.631,-3.678l2.226,-0.988c0.707,-0.314 0.707,-1.344 -0.001,-1.658zM10,14.34c-0.949,-1.882 -2.497,-3.37 -4.408,-4.225c1.931,-0.884 3.478,-2.409 4.408,-4.335c0.93,1.926 2.477,3.451 4.408,4.334c-1.911,0.855 -3.459,2.344 -4.408,4.226z"/><path
+                            d="M18.713,21.125l-0.247,0.565c-0.18,0.414 -0.753,0.414 -0.934,0l-0.247,-0.565c-0.44,-1.008 -1.231,-1.81 -2.219,-2.249l-0.76,-0.337c-0.411,-0.182 -0.411,-0.78 0,-0.962l0.717,-0.319c1.013,-0.45 1.819,-1.282 2.251,-2.324l0.253,-0.611c0.176,-0.426 0.765,-0.426 0.941,0l0.253,0.611c0.432,1.042 1.238,1.874 2.251,2.324l0.717,0.319c0.411,0.182 0.411,0.78 0,0.962l-0.76,0.337c-0.984,0.439 -1.776,1.241 -2.216,2.249z"/></g></g></svg>
+                        ${msg("WebWriter AI")}
+                    </span>
+                    <div style="padding: 16px 0;">
+                        ${msg("To use WebWriter AI, please login in the settings under Accounts with your account first. Please refresh the page after login.")}
+                    </div>
+                </div>
+            `;
+        }
+
         const loading = this.app.store.ai.loading;
         const chatMessages = this.app.store.ai.chatMessages;
         const examplePrompts = [
@@ -316,7 +348,7 @@ export class AIToolboxWidget extends LitElement {
                             case "assistant":
                                 // if it is a tool call or multiple
 
-                                const toolsContent = chatMessage["tool_calls"] ? chatMessage["tool_calls"].map(call => {
+                                const toolsContent = chatMessage["tool_calls"] ? chatMessage["tool_calls"].map((call: any) => {
                                     return html`
                                         <div class="function-call">${toolFriendlyNames[call.function.name]}</div>`
                                 }) : null;
@@ -324,7 +356,7 @@ export class AIToolboxWidget extends LitElement {
                                 const content = chatMessage.content ? html`
                                      <div class="chat-bubble ai">
                                         <div class="chat-sender">${msg("WebWriter AI")}</div>
-                                         ${unsafeHTML(marked.parse(chatMessage.content))}
+                                         ${unsafeHTML(marked.parse(chatMessage.content) as string)}
                                      </div>` : null;
 
                                 // Combine both types
@@ -332,7 +364,7 @@ export class AIToolboxWidget extends LitElement {
                         }
                     })}
                 </div>
-                <form class="chat-input-row" @submit="${(e) => {
+                <form class="chat-input-row" @submit="${(e: SubmitEvent) => {
                     e.preventDefault();
                     this.handleSend();
                 }}" style="position:relative; align-items: flex-end;">
@@ -363,13 +395,13 @@ export class AIToolboxWidget extends LitElement {
                     </div>
                 </form>
                 <a @click="${this.showInfoMessage}"
-                   style="font-size: 10px; margin-bottom: 0px; text-align: center !important; line-height: 1.2 !important; display: block; margin-top: 10px;">${msg("WebWriter AI can help improve your explorable. It may not work perfectly with all widgets and may produce errors. Click to learn more.")}</a>
+                   style="font-size: 10px; margin-bottom: 0; text-align: center !important; line-height: 1.2 !important; display: block; margin-top: 10px;">${msg("WebWriter AI can help improve your explorable. It may not work perfectly with all widgets and may produce errors. Click to learn more.")}</a>
             </div>
         `;
     }
 
     insertPrompt(prompt: string) {
-        const input = this.renderRoot?.getElementById('chatInput') as HTMLTextAreaElement;
+        const input = this.shadowRoot?.getElementById('chatInput') as HTMLTextAreaElement;
         if (input) {
             input.value = prompt;
             input.focus();
@@ -388,7 +420,7 @@ export class AIToolboxWidget extends LitElement {
 
     updated() {
         // Scroll chat to the top of the last message
-        const chatContainer = this.renderRoot?.getElementById('chatContainer');
+        const chatContainer = this.shadowRoot?.getElementById('chatContainer');
         const lastChild = chatContainer?.lastElementChild as HTMLElement;
         if (chatContainer && lastChild) {
             chatContainer.scrollTo({
