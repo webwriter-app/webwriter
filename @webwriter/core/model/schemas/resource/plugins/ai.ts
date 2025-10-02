@@ -81,7 +81,9 @@ function deserializeSuggestions(schema: Schema, data: SerializedSuggestion[]): S
 
 // Speichern in den LocalStorage
 function saveToLocalStorage(state: EditorState, suggestions: Suggestion[]) {
-    if (typeof window === 'undefined' || !window.localStorage) { return; }
+    if (typeof window === 'undefined' || !window.localStorage) {
+        return;
+    }
     try {
         const docHash = computeDocHashJSON(state.doc);
         const payload: PersistedData = {
@@ -96,10 +98,14 @@ function saveToLocalStorage(state: EditorState, suggestions: Suggestion[]) {
 
 // Laden aus dem LocalStorage
 function loadFromLocalStorage(state: EditorState): Suggestion[] | null {
-    if (typeof window === 'undefined' || !window.localStorage) { return null; }
+    if (typeof window === 'undefined' || !window.localStorage) {
+        return null;
+    }
     try {
         const raw = window.localStorage.getItem(STORAGE_KEY);
-        if (!raw) { return null; }
+        if (!raw) {
+            return null;
+        }
         const payload = JSON.parse(raw) as PersistedData;
         const currentHash = computeDocHashJSON(state.doc);
         const match = payload?.docHash === currentHash;
@@ -115,7 +121,7 @@ function loadFromLocalStorage(state: EditorState): Suggestion[] | null {
 
 // Erstellen von Dekorationen für einen Vorschlag
 function createDecorationsForSuggestion(doc: any, suggestion: Suggestion): Decoration[] {
-    const { id, from, to } = suggestion;
+    const {id, from, to} = suggestion;
     const $from = doc.resolve(from);
     const $to = doc.resolve(to);
     const isSingleTextblockRange = $from.sameParent($to) && $from.parent.isTextblock && from !== to;
@@ -126,7 +132,7 @@ function createDecorationsForSuggestion(doc: any, suggestion: Suggestion): Decor
         const decoInline = Decoration.inline(from, to, {
             class: "ai-suggestion",
             "data-suggestion-id": id,
-        }, { id });
+        }, {id});
         decos.push(decoInline);
     } else {
         doc.nodesBetween(from, to, (node: any, pos: number) => {
@@ -135,7 +141,7 @@ function createDecorationsForSuggestion(doc: any, suggestion: Suggestion): Decor
                 const decoNode = Decoration.node(pos, pos + node.nodeSize, {
                     class: "ai-suggestion",
                     "data-suggestion-id": decoId,
-                }, { id: decoId });
+                }, {id: decoId});
                 decos.push(decoNode);
                 return false;
             }
@@ -259,8 +265,17 @@ export const aiPlugin = () => ({
                         for (let j = 0; j < suggestions.length; j++) {
                             if (i === j) continue;
                             const b = suggestions[j];
+
+                            // If the ranges are identical, keep the one added first (lower index)
+                            if (a.from === b.from && a.to === b.to) {
+                                if (i < j) {
+                                    toRemoveIds.add(b.id);
+                                }
+                                continue;
+                            }
+
                             // If b is strictly contained within a, mark b for removal
-                            if (a.from <= b.from && a.to >= b.to && (a.from < b.from || a.to > b.to)) {
+                            if (a.from <= b.from && a.to >= b.to) {
                                 toRemoveIds.add(b.id);
                             }
                         }
@@ -273,7 +288,7 @@ export const aiPlugin = () => ({
                             let toRemoveId = spec.id || spec['data-suggestion-id'];
 
                             // Remove the postfix added for node decorations
-                            if (toRemoveId && toRemoveId.includes('-')) {
+                            if (toRemoveId && toRemoveId.endsWith('-')) {
                                 toRemoveId = toRemoveId.split('-').slice(0, -1).join('-');
                             }
 
@@ -300,7 +315,10 @@ export const aiPlugin = () => ({
 
                 // Nur bei echten Änderungen speichern
                 if (suggestionsChanged) {
-                    try { saveToLocalStorage(newState, suggestions); } catch {}
+                    try {
+                        saveToLocalStorage(newState, suggestions);
+                    } catch {
+                    }
                 }
 
                 return {suggestions, decorations, didLazyLoad};
@@ -334,7 +352,7 @@ export const aiPlugin = () => ({
                     }
 
                     if (action === 'reject' || action === 'verwerfen') {
-                        const { from, to, originalContent } = suggestion;
+                        const {from, to, originalContent} = suggestion;
                         const tr = view.state.tr.replaceWith(from, to, originalContent.content);
                         tr.setMeta('addToHistory', false);
                         tr.setMeta(aiPluginKey, {remove: {id: suggestionId}});
