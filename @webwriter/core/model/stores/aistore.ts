@@ -618,7 +618,13 @@ export class AIStore {
                     return undefined;
                 }
 
-                const authKey = localStorage.getItem("webwriter_authKey");
+                const pocketBaseAccounts = app.store.accounts.accounts.pocketbase;
+                const name = Object.keys(pocketBaseAccounts)[0];
+                const token = pocketBaseAccounts[name]?.token;
+                if (!token) {
+                    throw new UnauthorizedError("No PocketBase token available");
+                }
+                const authKey = `Bearer ${token}`;
 
                 const response = await fetch("https://node1.webwriter.elearn.rwth-aachen.de/api/chat", {
                     method: "POST",

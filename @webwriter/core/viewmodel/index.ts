@@ -75,7 +75,7 @@ export const ViewModelMixin = (cls: LitElementConstructor, isSettings=false) => 
       }
       this.icons = new IconController(this)
       const userSettings = await SettingsController.getUserSettings()
-      this.store = StoreController(new RootStore({settings: userSettings, corePackages: CORE_PACKAGES, initializePackages: true, apiBase: "https://api.webwriter.app/ww/v1/"}), this)
+      this.store = StoreController(new RootStore({settings: userSettings, corePackages: CORE_PACKAGES, initializePackages: true, apiBase: "https://node1.webwriter.elearn.rwth-aachen.de/ww/v1/"}), this)
       this.settings = new SettingsController(this, this.store)
       this.localization = new LocalizationController(this, this.store)
       this.commands = new CommandController(this as any, this.store)
