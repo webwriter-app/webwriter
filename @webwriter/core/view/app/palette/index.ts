@@ -579,6 +579,18 @@ export class Palette extends LitElement {
     </span>`
   }
 
+  PackageAITested(pkg: Package) {
+    const tested = pkg.keywords?.includes("ww-ai-tested")
+    if(!tested) {
+      return undefined
+    }
+
+    return html`<span class="package-keyword package-ww-ai-tested">
+      <sl-icon name="robot"></sl-icon>
+      <span>${msg("WebWriter AI Kompartibel")}</span>
+    </span>`
+  }
+
   PackageWidgetTypes(pkg: Package) {
     return pkg.widgetTypes?.map(type => {
       return html`<span class="package-keyword package-widget-type">
@@ -602,6 +614,7 @@ export class Palette extends LitElement {
         ${this.PackageFields(pkg)}
         ${this.PackageOnlineStatus(pkg)}
         ${this.PackageProgramme(pkg)}
+        ${this.PackageAITested(pkg)}
         ${pkg.nonstandardKeywords?.map(kw => this.PackageKeyword(kw))}
       </div>
     `
