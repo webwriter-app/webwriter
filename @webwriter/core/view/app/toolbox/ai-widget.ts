@@ -32,6 +32,22 @@ export class AIToolboxWidget extends LitElement {
             gap: 3px;
         }
 
+        .ai-delete-button {
+            position: absolute;
+            right: 0;
+            top: 0;
+            background: rgba(244, 244, 245, 0.75);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-left: 2px solid var(--sl-color-primary-800);
+            border-bottom: 2px solid var(--sl-color-primary-800);
+            border-bottom-left-radius: 10px;
+            width: 30px;
+            height: 30px;
+            transition: all 250ms ease-in;
+        }
+
         input {
             width: 100%;
             padding: 8px;
@@ -142,6 +158,7 @@ export class AIToolboxWidget extends LitElement {
         }
 
         /* Red variant used for active loading and retry state */
+
         .send-btn.red {
             background: var(--sl-color-danger-600);
         }
@@ -257,6 +274,15 @@ export class AIToolboxWidget extends LitElement {
         }
     }
 
+    handleDeleteChat(e) {
+        // Confirm deletion
+        if (confirm(msg("Are you sure you want to clear the chat history? This action cannot be undone."))) {
+            this.handleCancel();
+            this.app.store.ai.clearMessages();
+            this.requestUpdate();
+        }
+    }
+
     render() {
         if (Object.keys(this.app.store.accounts.accounts.pocketbase).find(k => k.includes("@")) === undefined) {
             return html`
@@ -280,7 +306,7 @@ export class AIToolboxWidget extends LitElement {
                                                                                style="mix-blend-mode: normal"><g
                                 transform="scale(10.66667,10.66667)"><path
                                 d="M17.469,9.286l-2.156,-0.957c-1.657,-0.736 -2.976,-2.096 -3.683,-3.801l-0.82,-1.974c-0.152,-0.367 -0.481,-0.55 -0.81,-0.55c-0.329,0 -0.658,0.183 -0.81,0.55l-0.819,1.974c-0.708,1.704 -2.026,3.065 -3.684,3.801l-2.156,0.957c-0.708,0.314 -0.708,1.344 0,1.658l2.226,0.988c1.616,0.717 2.911,2.029 3.631,3.678l0.809,1.852c0.155,0.356 0.479,0.534 0.803,0.534c0.324,0 0.648,-0.178 0.804,-0.534l0.809,-1.852c0.72,-1.648 2.015,-2.961 3.631,-3.678l2.226,-0.988c0.707,-0.314 0.707,-1.344 -0.001,-1.658zM10,14.34c-0.949,-1.882 -2.497,-3.37 -4.408,-4.225c1.931,-0.884 3.478,-2.409 4.408,-4.335c0.93,1.926 2.477,3.451 4.408,4.334c-1.911,0.855 -3.459,2.344 -4.408,4.226z"/><path
-                            d="M18.713,21.125l-0.247,0.565c-0.18,0.414 -0.753,0.414 -0.934,0l-0.247,-0.565c-0.44,-1.008 -1.231,-1.81 -2.219,-2.249l-0.76,-0.337c-0.411,-0.182 -0.411,-0.78 0,-0.962l0.717,-0.319c1.013,-0.45 1.819,-1.282 2.251,-2.324l0.253,-0.611c0.176,-0.426 0.765,-0.426 0.941,0l0.253,0.611c0.432,1.042 1.238,1.874 2.251,2.324l0.717,0.319c0.411,0.182 0.411,0.78 0,0.962l-0.76,0.337c-0.984,0.439 -1.776,1.241 -2.216,2.249z"/></g></g></svg>
+                                d="M18.713,21.125l-0.247,0.565c-0.18,0.414 -0.753,0.414 -0.934,0l-0.247,-0.565c-0.44,-1.008 -1.231,-1.81 -2.219,-2.249l-0.76,-0.337c-0.411,-0.182 -0.411,-0.78 0,-0.962l0.717,-0.319c1.013,-0.45 1.819,-1.282 2.251,-2.324l0.253,-0.611c0.176,-0.426 0.765,-0.426 0.941,0l0.253,0.611c0.432,1.042 1.238,1.874 2.251,2.324l0.717,0.319c0.411,0.182 0.411,0.78 0,0.962l-0.76,0.337c-0.984,0.439 -1.776,1.241 -2.216,2.249z"/></g></g></svg>
                         ${msg("WebWriter AI")}
                     </span>
                     <div style="padding: 16px 0;">
@@ -321,7 +347,17 @@ export class AIToolboxWidget extends LitElement {
                             transform="scale(10.66667,10.66667)"><path
                             d="M17.469,9.286l-2.156,-0.957c-1.657,-0.736 -2.976,-2.096 -3.683,-3.801l-0.82,-1.974c-0.152,-0.367 -0.481,-0.55 -0.81,-0.55c-0.329,0 -0.658,0.183 -0.81,0.55l-0.819,1.974c-0.708,1.704 -2.026,3.065 -3.684,3.801l-2.156,0.957c-0.708,0.314 -0.708,1.344 0,1.658l2.226,0.988c1.616,0.717 2.911,2.029 3.631,3.678l0.809,1.852c0.155,0.356 0.479,0.534 0.803,0.534c0.324,0 0.648,-0.178 0.804,-0.534l0.809,-1.852c0.72,-1.648 2.015,-2.961 3.631,-3.678l2.226,-0.988c0.707,-0.314 0.707,-1.344 -0.001,-1.658zM10,14.34c-0.949,-1.882 -2.497,-3.37 -4.408,-4.225c1.931,-0.884 3.478,-2.409 4.408,-4.335c0.93,1.926 2.477,3.451 4.408,4.334c-1.911,0.855 -3.459,2.344 -4.408,4.226z"/><path
                             d="M18.713,21.125l-0.247,0.565c-0.18,0.414 -0.753,0.414 -0.934,0l-0.247,-0.565c-0.44,-1.008 -1.231,-1.81 -2.219,-2.249l-0.76,-0.337c-0.411,-0.182 -0.411,-0.78 0,-0.962l0.717,-0.319c1.013,-0.45 1.819,-1.282 2.251,-2.324l0.253,-0.611c0.176,-0.426 0.765,-0.426 0.941,0l0.253,0.611c0.432,1.042 1.238,1.874 2.251,2.324l0.717,0.319c0.411,0.182 0.411,0.78 0,0.962l-0.76,0.337c-0.984,0.439 -1.776,1.241 -2.216,2.249z"/></g></g></svg> 
-                    ${msg("WebWriter AI")}</span>
+                    ${msg("WebWriter AI")}
+                </span>
+
+                <!-- delete button -->
+                ${chatMessages.length > 0 ? html`
+                    <span class="ai-delete-button">
+                        <sl-icon-button name="trash" label=${msg("Clear chat history")}
+                                        @click="${this.handleDeleteChat}"></sl-icon-button>
+                    </span>
+                ` : null}
+
                 <!-- main chat container -->
                 <div class="chat-container" id="chatContainer">
                     ${chatMessages.length === 0 ? html`
@@ -354,10 +390,10 @@ export class AIToolboxWidget extends LitElement {
                                 }) : null;
 
                                 const content = chatMessage.content ? html`
-                                     <div class="chat-bubble ai">
+                                    <div class="chat-bubble ai">
                                         <div class="chat-sender">${msg("WebWriter AI")}</div>
-                                         ${unsafeHTML(marked.parse(chatMessage.content) as string)}
-                                     </div>` : null;
+                                        ${unsafeHTML(marked.parse(chatMessage.content) as string)}
+                                    </div>` : null;
 
                                 // Combine both types
                                 return html`${toolsContent} ${content}`;
@@ -370,18 +406,22 @@ export class AIToolboxWidget extends LitElement {
                 }}" style="position:relative; align-items: flex-end;">
                     <textarea id="chatInput" class="chat-input" rows="2"
                               placeholder=${loading ? msg("AI is thinking...") : msg("Ask AI...")} autocomplete="off"
-                              aria-label=${msg("Ask AI")} @keydown="${this.handleKeyDown}" ?disabled=${loading}></textarea>
+                              aria-label=${msg("Ask AI")} @keydown="${this.handleKeyDown}"
+                              ?disabled=${loading}></textarea>
 
                     <div style="position:absolute; bottom:0px; right:0px; display:flex; gap:6px;">
                         ${loading ? html`
-                            <button type="button" class="send-btn red" title=${msg("Stop")} @click="${() => this.handleCancel()}">
+                            <button type="button" class="send-btn red" title=${msg("Stop")}
+                                    @click="${() => this.handleCancel()}">
                                 <svg class="spinner" viewBox="0 0 50 50" width="20" height="20">
                                     <circle cx="25" cy="25" r="20" fill="none" stroke="white" stroke-width="5"/>
                                 </svg>
                             </button>` : this.app.store.ai.canRetry ? html`
-                            <button type="button" class="send-btn red" title=${msg("Retry")} @click="${() => this.handleRetry()}">
+                            <button type="button" class="send-btn red" title=${msg("Retry")}
+                                    @click="${() => this.handleRetry()}">
                                 <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                                    <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                       stroke-linejoin="round">
                                         <path d="M18 4v6h-6"/>
                                         <path d="M20 12A8 8 0 1 1 12 4"/>
                                     </g>
