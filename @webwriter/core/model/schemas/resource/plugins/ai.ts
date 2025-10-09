@@ -2,6 +2,7 @@ import {SchemaPlugin} from ".";
 import {Plugin, PluginKey, Transaction, EditorState} from "prosemirror-state";
 import {Decoration, DecorationSet} from "prosemirror-view";
 import {Slice, Schema} from "prosemirror-model";
+import {ReplaceStep} from "prosemirror-transform";
 import css from "./ai.css?raw"
 
 interface Suggestion {
@@ -110,8 +111,7 @@ function loadFromLocalStorage(state: EditorState): Suggestion[] | null {
         const currentHash = computeDocHashJSON(state.doc);
         const match = payload?.docHash === currentHash;
         if (payload && match) {
-            const des = deserializeSuggestions(state.schema, payload.suggestions);
-            return des;
+            return deserializeSuggestions(state.schema, payload.suggestions);
         }
         return null;
     } catch {
@@ -149,7 +149,9 @@ function createDecorationsForSuggestion(doc: any, suggestion: Suggestion): Decor
         });
     }
 
-    const decoWidget = Decoration.widget(to, () => {
+    const widgetPos = $to.after($from.depth);
+
+    const decoWidget = Decoration.widget(widgetPos, () => {
         const buttonWrapper = document.createElement('div');
         buttonWrapper.className = 'ai-suggestion-buttons';
         (buttonWrapper as HTMLElement).dataset.suggestionId = id;
@@ -215,6 +217,21 @@ export const aiPlugin = () => ({
                 let didLazyLoad = state.didLazyLoad ?? false;
                 let suggestionsChanged = false;
 
+                const deletedSuggestionIds = new Set<string>();
+                if (tr.docChanged) {
+                    tr.steps.forEach(step => {
+                        if (step instanceof ReplaceStep && step.from < step.to) {
+                            const deletedFrom = step.from;
+                            const deletedTo = step.to;
+                            suggestions.forEach(suggestion => {
+                                if (suggestion.from >= deletedFrom && suggestion.to <= deletedTo) {
+                                    deletedSuggestionIds.add(suggestion.id);
+                                }
+                            });
+                        }
+                    });
+                }
+
                 // Map existing suggestions and decorations through the transaction's mapping
                 decorations = decorations.map(tr.mapping, tr.doc);
                 suggestions = suggestions.map(suggestion => {
@@ -227,6 +244,30 @@ export const aiPlugin = () => ({
 
 
                 const action = tr.getMeta(aiPluginKey);
+
+                if (deletedSuggestionIds.size > 0) {
+                    const originalSuggestions = suggestions;
+                    suggestions = suggestions.filter(s => !deletedSuggestionIds.has(s.id));
+                    if (originalSuggestions.length !== suggestions.length) {
+                        suggestionsChanged = true;
+                    }
+                }
+
+                if (tr.docChanged && !suggestionsChanged) {
+                    const originalSuggestions = suggestions;
+                    // Fallback: Filter out suggestions whose range has become empty or invalid.
+                    suggestions = suggestions.filter(suggestion => suggestion.from < suggestion.to);
+
+                    if (originalSuggestions.length !== suggestions.length) {
+                        suggestionsChanged = true;
+                    }
+                }
+
+                if (suggestionsChanged) {
+                    // Rebuild decorations since some suggestions were removed.
+                    const allDecos: Decoration[] = suggestions.flatMap(s => createDecorationsForSuggestion(tr.doc, s));
+                    decorations = DecorationSet.create(tr.doc, allDecos);
+                }
 
                 if (action) {
                     if (action.add) {
@@ -254,8 +295,8 @@ export const aiPlugin = () => ({
                     }
                 }
 
-                // Filter out invalid suggestions at the end
-                suggestions = suggestions.filter(suggestion => suggestion.from <= suggestion.to);
+                // Final check to filter out invalid suggestions.
+                suggestions = suggestions.filter(suggestion => suggestion.from < suggestion.to);
 
                 // Normalize nested suggestions: keep only the largest (non-contained) suggestions
                 if (suggestions.length > 1) {
