@@ -587,7 +587,7 @@ export class Palette extends LitElement {
 
     return html`<span class="package-keyword package-ww-ai-tested">
       <sl-icon name="robot"></sl-icon>
-      <span>${msg("WebWriter AI Kompartibel")}</span>
+      <span>${msg("WebWriter AI Compatible")}</span>
     </span>`
   }
 

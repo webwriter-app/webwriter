@@ -122,7 +122,7 @@ export class AIToolboxWidget extends LitElement {
         .chat-input {
             flex: 1;
             /* Platz für den Senden-Button */
-            padding: 7px 25px 7px 12px;
+            padding: 7px 40px 7px 12px;
             resize: none;
             border-radius: 18px;
             border: none;
