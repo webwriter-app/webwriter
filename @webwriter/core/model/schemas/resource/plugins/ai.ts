@@ -149,7 +149,8 @@ function createDecorationsForSuggestion(doc: any, suggestion: Suggestion): Decor
         });
     }
 
-    const widgetPos = $to.after($from.depth);
+    const isTopLevel = $from.depth === 0;
+    const widgetPos = isTopLevel ? to : $to.after($from.depth);
 
     const decoWidget = Decoration.widget(widgetPos, () => {
         const buttonWrapper = document.createElement('div');
@@ -190,6 +191,40 @@ function createDecorationsForSuggestion(doc: any, suggestion: Suggestion): Decor
     return [...decos, decoWidget];
 }
 
+function normalizeSuggestions(suggestions: Suggestion[]): Suggestion[] {
+    if (suggestions.length <= 1) {
+        return suggestions;
+    }
+
+    const toRemoveIds = new Set<string>();
+    for (let i = 0; i < suggestions.length; i++) {
+        const a = suggestions[i];
+        for (let j = 0; j < suggestions.length; j++) {
+            if (i === j) continue;
+            const b = suggestions[j];
+
+            // If the ranges are identical, keep the one added first (lower index)
+            if (a.from === b.from && a.to === b.to) {
+                if (i < j) {
+                    toRemoveIds.add(b.id);
+                }
+                continue;
+            }
+
+            // If b is strictly contained within a, mark b for removal
+            if (a.from <= b.from && a.to >= b.to) {
+                toRemoveIds.add(b.id);
+            }
+        }
+    }
+
+    if (toRemoveIds.size > 0) {
+        return suggestions.filter(s => !toRemoveIds.has(s.id));
+    }
+
+    return suggestions;
+}
+
 export const aiPluginKey = new PluginKey<AIState>('ai');
 
 export const aiPlugin = () => ({
@@ -217,14 +252,16 @@ export const aiPlugin = () => ({
                 let didLazyLoad = state.didLazyLoad ?? false;
                 let suggestionsChanged = false;
 
+                const initialSuggestions = [...suggestions];
+
+                // 1. Identify suggestions deleted by a replace step
                 const deletedSuggestionIds = new Set<string>();
                 if (tr.docChanged) {
                     tr.steps.forEach(step => {
                         if (step instanceof ReplaceStep && step.from < step.to) {
-                            const deletedFrom = step.from;
-                            const deletedTo = step.to;
                             suggestions.forEach(suggestion => {
-                                if (suggestion.from >= deletedFrom && suggestion.to <= deletedTo) {
+                                // Check if the suggestion is fully contained in the deleted range
+                                if (suggestion.from >= step.from && suggestion.to <= step.to) {
                                     deletedSuggestionIds.add(suggestion.id);
                                 }
                             });
@@ -232,129 +269,62 @@ export const aiPlugin = () => ({
                     });
                 }
 
-                // Map existing suggestions and decorations through the transaction's mapping
-                decorations = decorations.map(tr.mapping, tr.doc);
-                suggestions = suggestions.map(suggestion => {
-                    return {
+                // 2. Map remaining suggestions through the transaction
+                if (tr.docChanged) {
+                    suggestions = suggestions.map(suggestion => ({
                         ...suggestion,
                         from: tr.mapping.map(suggestion.from),
                         to: tr.mapping.map(suggestion.to),
-                    };
-                });
+                    }));
+                }
 
+                // 3. Filter out explicitly deleted and collapsed suggestions
+                suggestions = suggestions.filter(s => !deletedSuggestionIds.has(s.id) && s.from < s.to);
 
+                // 4. Handle actions
                 const action = tr.getMeta(aiPluginKey);
-
-                if (deletedSuggestionIds.size > 0) {
-                    const originalSuggestions = suggestions;
-                    suggestions = suggestions.filter(s => !deletedSuggestionIds.has(s.id));
-                    if (originalSuggestions.length !== suggestions.length) {
-                        suggestionsChanged = true;
-                    }
-                }
-
-                if (tr.docChanged && !suggestionsChanged) {
-                    const originalSuggestions = suggestions;
-                    // Fallback: Filter out suggestions whose range has become empty or invalid.
-                    suggestions = suggestions.filter(suggestion => suggestion.from < suggestion.to);
-
-                    if (originalSuggestions.length !== suggestions.length) {
-                        suggestionsChanged = true;
-                    }
-                }
-
-                if (suggestionsChanged) {
-                    // Rebuild decorations since some suggestions were removed.
-                    const allDecos: Decoration[] = suggestions.flatMap(s => createDecorationsForSuggestion(tr.doc, s));
-                    decorations = DecorationSet.create(tr.doc, allDecos);
-                }
-
                 if (action) {
                     if (action.add) {
                         const {from, to, originalContent} = action.add;
                         const id = createSuggestionId(tr);
                         const newSuggestion: Suggestion = {id, from, to, originalContent};
-
-                        // Decorations erzeugen (inline oder node + Widget)
-                        const decos = createDecorationsForSuggestion(tr.doc, newSuggestion);
-                        decorations = decorations.add(tr.doc, decos);
-                        suggestions = [...suggestions, newSuggestion];
-                        suggestionsChanged = true;
-
+                        suggestions.push(newSuggestion);
                     } else if (action.remove) {
                         const {id} = action.remove;
-                        const suggestionToRemove = suggestions.find(s => s.id === id);
-                        if (suggestionToRemove) {
-                            suggestions = suggestions.filter(s => s.id !== id);
-                            const decosToRemove = decorations.find(undefined, undefined, (spec) => {
-                                return (spec.id && spec.id.includes(id)) || (spec['data-suggestion-id'] && spec['data-suggestion-id'].includes(id));
-                            });
-                            decorations = decorations.remove(decosToRemove);
-                            suggestionsChanged = true;
-                        }
+                        suggestions = suggestions.filter(s => s.id !== id);
                     }
                 }
 
-                // Final check to filter out invalid suggestions.
-                suggestions = suggestions.filter(suggestion => suggestion.from < suggestion.to);
+                // 5. Normalize suggestions (e.g., remove nested ones)
+                suggestions = normalizeSuggestions(suggestions);
 
-                // Normalize nested suggestions: keep only the largest (non-contained) suggestions
-                if (suggestions.length > 1) {
-                    const toRemoveIds = new Set<string>();
-                    for (let i = 0; i < suggestions.length; i++) {
-                        const a = suggestions[i];
-                        for (let j = 0; j < suggestions.length; j++) {
-                            if (i === j) continue;
-                            const b = suggestions[j];
-
-                            // If the ranges are identical, keep the one added first (lower index)
-                            if (a.from === b.from && a.to === b.to) {
-                                if (i < j) {
-                                    toRemoveIds.add(b.id);
-                                }
-                                continue;
-                            }
-
-                            // If b is strictly contained within a, mark b for removal
-                            if (a.from <= b.from && a.to >= b.to) {
-                                toRemoveIds.add(b.id);
-                            }
-                        }
-                    }
-
-                    if (toRemoveIds.size) {
-                        // Remove decorations for all suggestions to be removed
-                        const decosToRemove = decorations.find(undefined, undefined, (spec) => {
-                            // Get the id of the suggestion from spec.id or spec['data-suggestion-id']
-                            let toRemoveId = spec.id || spec['data-suggestion-id'];
-
-                            // Remove the postfix added for node decorations
-                            if (toRemoveId && toRemoveId.endsWith('-')) {
-                                toRemoveId = toRemoveId.split('-').slice(0, -1).join('-');
-                            }
-
-                            return toRemoveId && toRemoveIds.has(toRemoveId);
-                        });
-                        decorations = decorations.remove(decosToRemove);
-                        // Keep only suggestions not marked for removal
-                        suggestions = suggestions.filter(s => !toRemoveIds.has(s.id));
-                        suggestionsChanged = true;
-                    }
+                // 6. Compare initial and final suggestions to see if anything changed
+                if (initialSuggestions.length !== suggestions.length || !initialSuggestions.every((s, i) => s.id === suggestions[i]?.id)) {
+                    suggestionsChanged = true;
                 }
 
-                // Lazy-Load einmalig nach Stabilisierung (falls init nichts laden konnte)
+                // 7. Rebuild decorations if the suggestions list has changed
+                if (suggestionsChanged) {
+                    const allDecos = suggestions.flatMap(s => createDecorationsForSuggestion(newState.doc, s));
+                    decorations = DecorationSet.create(newState.doc, allDecos);
+                } else if (tr.docChanged) {
+                    // If only positions changed, just map the existing decorations
+                    decorations = decorations.map(tr.mapping, tr.doc);
+                }
+
+                // Lazy-Load once after stabilization (if init couldn't load)
                 if (!didLazyLoad && suggestions.length === 0 && !action) {
                     const lateLoaded = loadFromLocalStorage(newState);
                     if (lateLoaded && lateLoaded.length) {
-                        const allDecos: Decoration[] = lateLoaded.flatMap(s => createDecorationsForSuggestion(newState.doc, s));
-                        decorations = DecorationSet.create(newState.doc, allDecos);
                         suggestions = lateLoaded;
+                        const allDecos = suggestions.flatMap(s => createDecorationsForSuggestion(newState.doc, s));
+                        decorations = DecorationSet.create(newState.doc, allDecos);
                         didLazyLoad = true;
-                        // Kein sofortiges Speichern nötig; Daten kommen bereits aus Storage
+                        // No need to save immediately; data is already from storage
                     }
                 }
 
-                // Nur bei echten Änderungen speichern
+                // Save to local storage only on actual changes
                 if (suggestionsChanged) {
                     try {
                         saveToLocalStorage(newState, suggestions);
