@@ -8,7 +8,7 @@ import { tmpdir } from 'os'
 
 const selfPkg = {
   name: "@webwriter/build",
-  version: "1.9.0"
+  version: "1.9.1"
 }
 
 const exec = promisify(execSync)
@@ -241,7 +241,7 @@ const themesTemplate = !themeIDs.length? "":
 ${themeIDs.map(id => `| ${id.replace("./themes/", "")} | ${pkg.name + id.slice(1)} |`).join("\n")}`
 
 const prettyName = 
-  pkg?.editingConfig?.["."]?.label?._ ?? pkg.name.slice(1).split("/")[1].split("-").map(part => part[0].toUpperCase() + part.slice(1))
+  pkg?.editingConfig?.["."]?.label?._ ?? pkg.name.slice(1).split("/")[1].split("-").map(part => part[0].toUpperCase() + part.slice(1)).join(" ")
 
 const description = pkg?.editingConfig?.["."]?.description?._ ?? pkg?.description
 

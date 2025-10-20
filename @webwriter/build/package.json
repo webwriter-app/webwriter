@@ -1,6 +1,6 @@
 {
   "name": "@webwriter/build",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "description": "Developer tools for WebWriter packages (build process, documentation, localization)",
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "license": "MIT",
