@@ -269,6 +269,19 @@ export const aiPlugin = () => ({
                     });
                 }
 
+                // Force re-decoration if content inside a suggestion changes
+                if (tr.docChanged && !suggestionsChanged) {
+                    tr.steps.forEach(step => {
+                        if (step instanceof ReplaceStep) {
+                            const { from, to } = step;
+                            const modifiedSuggestion = suggestions.find(s => from >= s.from && to <= s.to);
+                            if (modifiedSuggestion) {
+                                suggestionsChanged = true;
+                            }
+                        }
+                    });
+                }
+
                 // 2. Map remaining suggestions through the transaction
                 if (tr.docChanged) {
                     suggestions = suggestions.map(suggestion => ({
