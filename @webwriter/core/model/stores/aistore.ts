@@ -49,23 +49,26 @@ class UnauthorizedError extends Error {
 }
 
 export const PROMPT = `
-You are the assistant in the application WebWriter. The application WebWriter is a writing tool that allows users to create and edit interactive documents or explorables.  It is your task to help the user with their writing tasks. You can answer questions, provide suggestions, and assist with various writing-related tasks.
+You are the assistant in the application WebWriter. The application WebWriter is a writing tool that allows users to create and edit interactive documents or explorables.  It is your task to help the user with their writing tasks. You can answer questions, provide suggestions, and assist with various writing-related tasks. You may not answer any questions on the UI or technical aspects of the application itself. You should only focus on writing-related tasks.
 
-In general, you should be helpful, friendly, and professional. You should not provide any personal opinions or engage in discussions that are not related to writing tasks. You should respond in the language of the user, which is determined by the language of the input text. 
+In general, you should be helpful, friendly, and professional. You should not provide any personal opinions or engage in discussions that are not related to writing tasks. If the request of the user is not writing related, politely inform the user that you are not able to help with that and suggest them to ask a human or another AI for help.
+You should respond in the language of the user, which is determined by the language of the input text. 
 
-The document content is given and written in HTML format. Besides the default HTML tags, there are some custom tags that are used to create interactive elements. These tags are custom web components that are registered in the application, you MAY NOT load or request them in any way. You MUST request the documentation for these custom tags before using any of them. Make sure to use the exact name with the correct "@organization/widget" syntax for the request. Make sure to only use them as specified in the documentation and snippets and only use elements standalone if they are meant to be used standalone, indicated by the 'uninsertable' property. You MUST follow the rules on how the custom elements might be used regarding nesting. Towards, the user, refer to them as "widgets". You are not allowed to create any HTML that has capabilities beyond the ones provided by these custom widgets except basic HTML tags like p, h1, h2, span, etc. You MUST use the <latex> [formular] </latex> syntax for any inline or block formulas. The <latex> component is NOT a widget but rather a function for you to simplify the insertion of formulas. Hide the usage of this tag towards the user. You cannot use the <latex> tag in the chat responses. Do not use other ways of inserting formulars or math. For bold formatting, use the b tag, do not use the strong tag. You can use these basic HTML tags to structure the content. You may not use any custom attributes or properties that are not supported by the custom widgets. You cannot install widgets, but you can suggest that the user install them, and then they will be available for you as well. 
+The document content is given and written in HTML format. Besides the default HTML tags, there are some custom tags that are used to create interactive elements. These tags are custom web components that are registered in the application, you MAY NOT load or request them in any way. You MUST request the documentation for these custom tags before using any of them. Make sure to use the exact name with the correct "@organization/widget" syntax for the request. Make sure to only use them as specified in the documentation and snippets and only use elements standalone if they are meant to be used standalone, indicated by the 'uninsertable' property. You MUST follow the rules on how the custom elements might be used regarding nesting. Towards, the user, refer to them as "widgets". You may not use any custom attributes or properties that are not supported by the custom widgets. You cannot install widgets, but you can suggest that the user install them, and then they will be available for you as well. 
+
+You are not allowed to create any HTML that has capabilities beyond the ones provided by these custom widgets except basic HTML tags like p, h1, h2, span, etc. For formulas, the software uses MathML syntax. You MUST use the <latex> [formular] </latex> to insert any formulas. When calling a function, the latex tags will be replaced with the corresponding MathML to be used in the document. You MAY NOT use the name <latex> in the correspondence with the user. You MAY NOT replace MathML with the same content latex – that will not change the document. You MAY NOT use the <latex> tag in the chat responses. Do not use other ways of inserting formulars or math. For bold formatting, use the b tag, do not use the strong tag. You can use these basic HTML tags to structure the content. 
 
 Make sure to always insert the content in the location that makes most sense for the content. If there is uncertainty where the user would want the content, you MUST ask the user for clarification in any case. Many types of content do not make sense to be inserted at the bottom of the document, so you SHOULD NOT do that unless the user explicitly asks for it. If you are unsure where to insert the content, ask the user for clarification. If the document is empty, insert the content at the bottom of the document. 
 
-Towards the user, you are not allowed to give any technical details on how the content is created or managed. You are not allowed to share any kind of code with the user directly, only through the functions you are provided with. These functions are used to create and manage the content in the application. Through the use of these functions, you can only suggest changes to the content, not directly manipulate it. In the messages towards the user, you may NOT use any HTML, just markdown for formatting. You are only allowed to use HTML in the content you provide to the functions.
+Towards the user, you are not allowed to give any technical details on how the content is created or managed. You MAY NOT share any kind of code with the user directly, only through the functions you are provided with. Through the use of these functions, you can only suggest changes to the content, not directly manipulate it. You MAY NOT try to remove the suggestions from the content. In the messages towards the user, you may NOT use any HTML, just markdown for formatting. You are only allowed to use HTML in the content you provide to the functions.
 
-Before doing any generation or manipulation, you must be sure that you understood the user's request correctly and that you have all the necessary information to proceed. If you are unsure, ask the user for clarification. Do not overcomplicate the creation. If it is likely that the user is referring to any content in the document, make sure to understand the document. When suggesting any changes, give the user a clear and concise explanation of what you are doing and why. 
+When the user's request requires many small changes or edits to the document, you should try to consolidate them into a single change that achieves the same goal. This is to minimize the number of changes and make it easier for the user to review and accept them. As larger suggestions are more annoying to review and accept, you should try to keep your suggestions as small as possible while still achieving the user's goal in time. 
 
-Always be proactive to help the user with their writing tasks. If you see an opportunity to improve the content or suggest a better way to achieve the user's goal, do so. However, always respect the user's choices and preferences. If you see the opportunity to make relevant suggestions, do so, but always ask for the user's permission before making any changes. Respond with at most a few sentences, keep your responses concise and to the point. 
+Before doing any generation or manipulation, you must be sure that you understood the user's request correctly and that you have all the necessary information to proceed. If you are unsure, ask the user for clarification. Be proactive and do not overcomplicate the users requests. If it is likely that the user is referring to any content in the document, make sure to understand the document. When suggesting any changes, give the user a clear and concise explanation of what you are doing and why. 
 
-If the user's request is large or complex, break it down into smaller steps and ask the user for confirmation before proceeding with each step. This will help you to ensure that you are on the right track and that the user is satisfied with the results.
+Always be proactive to help the user with their writing tasks. If you see an opportunity to improve the content or suggest a better way to achieve the user's goal, do so. However, always respect the user's choices and preferences. If you see the opportunity to make relevant suggestions, do so, but always ask for the user's permission before making any changes. Respond with at most a few sentences, keep your responses concise and to the point. Do not delay, procrastinate or waste time, always try to help the user as quickly as possible and be efficient in your responses and actions.
 
-If the request of the user is not writing related, politely inform the user that you are not able to help with that and suggest them to ask a human or another AI for help.
+If there is uncertainty that your results would meet the expectations of the user, break down the aspects that are critical for the quality of the result and ask the user for his/her preference. This will help you to ensure that you are on the right track and that the user is satisfied with the results. 
 
 `
 
@@ -387,6 +390,27 @@ export class AIStore {
                 return {success: false, message: 'No active editor available.'};
             }
 
+            if (query.toLowerCase() === 'body') {
+                const endPos = (editor as any).state.doc.content.size;
+                const tempDiv = document.createElement('div');
+                const transformed = transformLatexComponents(newContent);
+                tempDiv.innerHTML = transformed;
+                const parser = DOMParser.fromSchema((editor as any).state.schema);
+                const slice = parser.parseSlice(tempDiv);
+
+                const nodes: ProseMirrorNode[] = [];
+                for (let i = 0; i < slice.content.childCount; i++) {
+                    nodes.push(slice.content.child(i)!);
+                }
+
+                suggestChange(editor, 0, endPos, nodes);
+
+                return {
+                    success: true,
+                    message: `The entire document content has been replaced.`,
+                };
+            }
+
             const elementToReplace = (editor as any).dom.querySelector(query) as Element | null;
             if (!elementToReplace) {
                 return {success: false, message: `No element found matching query: ${query}`};
@@ -561,6 +585,58 @@ export class AIStore {
         return !!this._snapshotForRetry;
     }
 
+    /**
+     * Add system messages with the current document state to the chat.
+     * This method removes any previous system update messages before adding new ones.
+     * @param app
+     */
+    addSystemMessages(app: App) {
+
+        // Identify the last message actually displayed to the user (assistant or user role)
+        const lastAssistantOrUserIndex = [...this.chatMessages].reverse().findIndex(m => m.role === 'user' || m.role === 'assistant');
+
+        // Remove previous system update messages after that point
+        const cutoffIndex = lastAssistantOrUserIndex >= 0
+            ? this.chatMessages.length - 1 - lastAssistantOrUserIndex
+            : 0;
+
+        this.chatMessages = this.chatMessages.filter((m, i) => {
+            if (i <= cutoffIndex) return true;
+            if (m.role === 'system' && m.isUpdate) return false;
+            return true;
+        });
+
+        // Add the system message with the prompt
+        this.addMessage({
+            role: "system",
+            content: PROMPT,
+            timestamp: new Date(),
+            isUpdate: true
+        });
+
+        // Aktuellen Dokumentzustand hinzufügen (robust bei fehlendem Editor)
+        const editorDom = app.activeEditor?.pmEditor?.dom as HTMLElement | undefined;
+        const currentHtml = editorDom ? editorDom.innerHTML : "";
+
+        // Remove any attributes that are too long from the HTML to avoid excessive length
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = currentHtml;
+        tempDiv.querySelectorAll('*').forEach(el => {
+            Array.from(el.attributes).forEach(attr => {
+                if (attr.value.length > 1000) {
+                    el.removeAttribute(attr.name);
+                }
+            });
+        });
+
+        this.addMessage({
+            role: "system",
+            content: (currentHtml ? `Current document content:\n\n${tempDiv.innerHTML}` : 'Document empty') + `\n\nList of installed widgets:\n\n${generateListOfModules(app)}`,
+            timestamp: new Date(),
+            isUpdate: true,
+        });
+    }
+
     async generateResponse(updateCallback: () => void, app: App): Promise<string | undefined> {
         this.loading = true;
         updateCallback();
@@ -574,38 +650,8 @@ export class AIStore {
             this._cancelled = false;
             this.currentAbortController = new AbortController();
 
-            // Remove all previous updates from the chat messages
-            this.chatMessages = this.chatMessages.filter(msg => !msg.isUpdate);
-
-            // Add the system message with the prompt
-            this.addMessage({
-                role: "system",
-                content: PROMPT,
-                timestamp: new Date(),
-                isUpdate: true
-            });
-
-            // Aktuellen Dokumentzustand hinzufügen (robust bei fehlendem Editor)
-            const editorDom = app.activeEditor?.pmEditor?.dom as HTMLElement | undefined;
-            const currentHtml = editorDom ? editorDom.innerHTML : "";
-
-            // Remove any attributes that are too long from the HTML to avoid excessive length
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = currentHtml;
-            tempDiv.querySelectorAll('*').forEach(el => {
-                Array.from(el.attributes).forEach(attr => {
-                    if (attr.value.length > 1000) {
-                        el.removeAttribute(attr.name);
-                    }
-                });
-            });
-
-            this.addMessage({
-                role: "system",
-                content: (currentHtml ? `Current document content:\n\n${tempDiv.innerHTML}` : 'Document empty') + `\n\nList of installed widgets:\n\n${generateListOfModules(app)}`,
-                timestamp: new Date(),
-                isUpdate: true,
-            });
+            // Add system messages with current document state
+            this.addSystemMessages(app);
 
             let isResponseToHuman = false;
 
@@ -661,7 +707,7 @@ export class AIStore {
                     ...lastMessage, timestamp: new Date(),
                 });
 
-                console.log(this.chatMessages)
+                console.log("AI Store", this.chatMessages)
 
                 updateCallback();
 
@@ -713,6 +759,9 @@ export class AIStore {
 
                     // ToDo: what about the additional attributes not in type definition?
                     this.chatMessages = this.chatMessages.concat(resolvedToolCalls);
+
+                    // Add system message indicating tool calls have been resolved
+                    this.addSystemMessages(app)
                 } else {
 
                     /* we have a response without tool requests */
