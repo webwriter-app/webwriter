@@ -3106,106 +3106,6 @@
   <source>Orient from metadata</source>
   <target>Bildorientierung aus Metadaten</target>
 </trans-unit>
-<trans-unit id="sea52df2b70a5c10d">
-  <source>Ruby</source>
-  <target>Ruby</target>
-</trans-unit>
-<trans-unit id="sa644d580d8a11e60">
-  <source>Ruby alignment</source>
-  <target>Ruby-Anordnugn</target>
-</trans-unit>
-<trans-unit id="sed318ec045c5144f">
-  <source>Over</source>
-  <target>Darüber</target>
-</trans-unit>
-<trans-unit id="sc53de149fcaad713">
-  <source>Inter-character</source>
-  <target>Zwischen Zeichen</target>
-</trans-unit>
-<trans-unit id="s7d27db3c9639c6dd">
-  <source>Alternate</source>
-  <target>Abwechselnd</target>
-</trans-unit>
-<trans-unit id="saad4380b9cc6cefd">
-  <source>Alternate over</source>
-  <target>Abwechselnd darüber</target>
-</trans-unit>
-<trans-unit id="s037b1dc850a89273">
-  <source>Alternate under</source>
-  <target>Abwechselnd darunter</target>
-</trans-unit>
-<trans-unit id="s3a179f6db2972384">
-  <source>Ruby position</source>
-  <target>Ruby-Position</target>
-</trans-unit>
-<trans-unit id="sfcebd18506f1e535">
-  <source>Flow</source>
-  <target>Fluss</target>
-</trans-unit>
-<trans-unit id="sc6415b50ff928294">
-  <source>List item</source>
-  <target>Listenpunkt</target>
-</trans-unit>
-<trans-unit id="sf0ca10f343249063">
-  <source>Contents</source>
-  <target>Inhalt</target>
-</trans-unit>
-<trans-unit id="s1125d159f7e64df5">
-  <source>Display</source>
-  <target>Anzeige</target>
-</trans-unit>
-<trans-unit id="sca7cfe2bef51b2a5">
-  <source>Root</source>
-  <target>Wurzel</target>
-</trans-unit>
-<trans-unit id="sca7fed2bef53cb99">
-  <source>Role</source>
-  <target>Rolle</target>
-</trans-unit>
-<trans-unit id="sf4849bc200e279ed">
-  <source>Table caption</source>
-  <target>Tabellen-Beschreibung</target>
-</trans-unit>
-<trans-unit id="s41f65a763f8e44ab">
-  <source>Table header group</source>
-  <target>Tabellen-Kopfzeilen-Gruppe</target>
-</trans-unit>
-<trans-unit id="s85f9aa6d3ea0e421">
-  <source>Table footer group</source>
-  <target>Tabellen-Fußzeilen-Gruppe</target>
-</trans-unit>
-<trans-unit id="sc1a155cc25899250">
-  <source>Table row group</source>
-  <target>Tabellen-Zeilen-Gruppe</target>
-</trans-unit>
-<trans-unit id="s5b474b5c0ac0c7c4">
-  <source>Table column group</source>
-  <target>Tabellen-Spalten-Gruppe</target>
-</trans-unit>
-<trans-unit id="s68b87d7b61052dc3">
-  <source>Table row</source>
-  <target>Tabellen-Zeile</target>
-</trans-unit>
-<trans-unit id="s9caf10388ab3562f">
-  <source>Table column</source>
-  <target>Tabellen-Spalte</target>
-</trans-unit>
-<trans-unit id="s07970793b21351fd">
-  <source>Ruby base container</source>
-  <target>Ruby-Basis-Container</target>
-</trans-unit>
-<trans-unit id="s8fad58c831ecf017">
-  <source>Ruby text container</source>
-  <target>Ruby-Text-Container</target>
-</trans-unit>
-<trans-unit id="sb0f93c1c60c0249a">
-  <source>Ruby base</source>
-  <target>Ruby-Basis</target>
-</trans-unit>
-<trans-unit id="sbd35ee879d9cf770">
-  <source>Ruby text</source>
-  <target>Ruby-Text</target>
-</trans-unit>
 <trans-unit id="sea896ed51ad33287">
   <source>No specific styles available</source>
   <target>Keine spezifischen Styles verfügbar</target>
@@ -4082,7 +3982,7 @@
   <source>Maltese</source>
   <target>Maltesisch</target>
 </trans-unit>
-<trans-unit id="sae9c790b88be7eb9">
+<trans-unit id="sa9c790b88be7eb9">
   <source>Maori</source>
   <target>Māori</target>
 </trans-unit>
@@ -4385,6 +4285,107 @@
 <trans-unit id="s3bc203a3f8a6409c">
   <source>Update language across document</source>
   <target>Sprache im gesamten Dokument ändern</target>
+</trans-unit>
+<trans-unit id="s8d660f3376fba2d6">
+  <source>WebWriter AI Compatible</source>
+  <target>WebWriter AI-kompatibel</target>
+</trans-unit>
+<trans-unit id="s838137b16af746c3">
+  <source>Are you sure you want to clear the chat history? This action cannot be undone.</source>
+  <target>Möchten Sie den Chat-Verlauf wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.</target>
+</trans-unit>
+<trans-unit id="sf544ad71477d4ff8">
+  <source>WebWriter AI</source>
+  <target>WebWriter AI</target>
+</trans-unit>
+<trans-unit id="s8348fb959cf65b2c">
+  <source>To use WebWriter AI, please login in the settings under Accounts with your account first. Please refresh the page after login.</source>
+  <target>Um WebWriter AI zu verwenden, melden Sie sich bitte zuerst in den Einstellungen unter "Konten" mit Ihrem Konto an. Bitte aktualisieren Sie die Seite nach der Anmeldung.</target>
+</trans-unit>
+<trans-unit id="se8865daa67c89672">
+  <source>Create an exercise sheet about ...</source>
+  <target>Erstelle ein Übungsblatt über ...</target>
+</trans-unit>
+<trans-unit id="s8cdbc0d41dcc9230">
+  <source>What task would complement this well?</source>
+  <target>Welche Aufgabe würde dies gut ergänzen?</target>
+</trans-unit>
+<trans-unit id="scc466fb3738544bf">
+  <source>Is my text simple and easy to understand?</source>
+  <target>Ist mein Text einfach und leicht verständlich?</target>
+</trans-unit>
+<trans-unit id="secf4269bd99a41e4">
+  <source>Which widgets suit my content best?</source>
+  <target>Welche Widgets passen am besten zu meinem Inhalt?</target>
+</trans-unit>
+<trans-unit id="s3bc387c25520c3d0">
+  <source>Clear chat history</source>
+  <target>Chatverlauf löschen</target>
+</trans-unit>
+<trans-unit id="scb6a9c1a1757adbc">
+  <source>You</source>
+  <target>Du</target>
+</trans-unit>
+<trans-unit id="se7c14f7bef66c5bb">
+  <source>AI is thinking...</source>
+  <target>KI denkt nach...</target>
+</trans-unit>
+<trans-unit id="s16e45b897930024a">
+  <source>Ask AI...</source>
+  <target>KI fragen...</target>
+</trans-unit>
+<trans-unit id="sd9c2eb8ad4c45fd4">
+  <source>Ask AI</source>
+  <target>KI fragen</target>
+</trans-unit>
+<trans-unit id="sd9ad53251f2330a5">
+  <source>Stop</source>
+  <target>Stopp</target>
+</trans-unit>
+<trans-unit id="s2c8189544e3ea679">
+  <source>Retry</source>
+  <target>Wiederholen</target>
+</trans-unit>
+<trans-unit id="sb9e306d8fcfb3c1c">
+  <source>Send message</source>
+  <target>Nachricht senden</target>
+</trans-unit>
+<trans-unit id="s4c98376ea2d302d7">
+  <source>WebWriter AI can help improve your explorable. It may not work perfectly with all widgets and may produce errors. Click to learn more.</source>
+  <target>WebWriter AI kann helfen, Ihr Explorable zu verbessern. Es funktioniert möglicherweise nicht perfekt mit allen Widgets und kann Fehler verursachen. Klicken Sie, um mehr zu erfahren.</target>
+</trans-unit>
+<trans-unit id="s75ae80431286eb97">
+  <source>WebWriter AI can help improve your explorable by suggesting enhancements to text content. You may ask the AI for new content ideas, improvements, or simplifications.</source>
+  <target>WebWriter AI kann helfen, Ihr Explorable zu verbessern, indem es Verbesserungen für Textinhalte vorschlägt. Sie können die KI nach neuen Inhaltsideen, Verbesserungen oder Vereinfachungen fragen.</target>
+</trans-unit>
+<trans-unit id="s0c1a8fb75a68b484">
+  <source>It may not work perfectly with all widgets and could produce errors. Please review AI-generated content for accuracy and appropriateness before publishing.</source>
+  <target>Es funktioniert möglicherweise nicht perfekt mit allen Widgets und kann Fehler verursachen. Bitte überprüfen Sie die von der KI generierten Inhalte auf Richtigkeit und Angemessenheit, bevor Sie sie veröffentlichen.</target>
+</trans-unit>
+<trans-unit id="sb452f6d7a8f3c794">
+  <source>Any changes from the AI are not automatically applied to your explorable. You must manually accept the suggestions you want to keep; otherwise you can quickly discard them.</source>
+  <target>Änderungen von der KI werden nicht automatisch auf Ihr Explorable angewendet. Sie müssen die Vorschläge, die Sie behalten möchten, manuell akzeptieren; andernfalls können Sie sie schnell verwerfen.</target>
+</trans-unit>
+<trans-unit id="sbf7da65f05e91211">
+  <source>Insert content...</source>
+  <target>Inhalt einfügen...</target>
+</trans-unit>
+<trans-unit id="sacdeedb5763e8a55">
+  <source>Read widget documentation...</source>
+  <target>Widget-Dokumentation lesen...</target>
+</trans-unit>
+<trans-unit id="s0670a1c678483b5c">
+  <source>Replace content...</source>
+  <target>Inhalt ersetzen...</target>
+</trans-unit>
+<trans-unit id="sd72cf4022acf3d3c">
+  <source>Insert into element...</source>
+  <target>In Element einfügen...</target>
+</trans-unit>
+<trans-unit id="s2bab699694281d06">
+  <source>Get list of installable widgets...</source>
+  <target>Liste der installierbaren Widgets abrufen...</target>
+</trans-unit>
 </trans-unit>
 </body>
 </file>
