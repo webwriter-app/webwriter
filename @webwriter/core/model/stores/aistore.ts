@@ -235,7 +235,7 @@ export async function generateWidgetDocumentation(app: App, name: string): Promi
         readmeContent = readmeContent.replace(/## Snippets[\s\S]*## Fields/gmi, "## Fields");
 
     } catch (error) {
-        console.error(`Error fetching README from ${readmePath}:`, error);
+        console.info(`Error fetching README from ${readmePath}:`, error);
         readmeContent = "No README available for this widget.";
     }
 
@@ -284,7 +284,7 @@ export async function generateWidgetDocumentation(app: App, name: string): Promi
 
         customElements.push(...simplified);
     } catch (e) {
-        console.error(`Error fetching custom-elements.json from ${installedWidgetUrl}/custom-elements.json`, e);
+        console.info(`Error fetching custom-elements.json from ${installedWidgetUrl}/custom-elements.json`, e);
     }
 
     const snippetPaths = Object.keys(pkg.exports)
@@ -347,6 +347,8 @@ export class AIStore {
                 return {success: false, message: 'No active editor available.'};
             }
             const endPos = (editor as any).state.doc.content.size;
+
+            console.log("Inserting at bottom:", content);
 
             // Transform any <latex> components to MathML before parsing
             content = transformLatexComponents(content);
