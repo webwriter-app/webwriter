@@ -142,6 +142,7 @@ export class ExplorableEditor extends LitElement {
             textNode.textContent = translation
           }
         }
+        template.content.querySelectorAll("script.snippet-localization").forEach(el => el.remove())
       }
       /*
       const widgetsInTemplate = Array.from(template.content.querySelectorAll("*")).filter(el => tagNames.includes(el.tagName.toLowerCase()))
