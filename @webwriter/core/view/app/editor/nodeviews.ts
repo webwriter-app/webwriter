@@ -174,7 +174,7 @@ export class WidgetView implements NodeView {
     const $pos = this.view.state.doc.resolve(pos)
     const sel = new NodeSelection($pos)
     const oldSel = this.view.state.selection
-    if(oldSel.from !== sel.from || oldSel.to !== sel.to) {
+    if(!oldSel.eq(sel)) {
       let tr = this.view.state.tr.setSelection(sel)
       this.view.dispatch(tr)
     }

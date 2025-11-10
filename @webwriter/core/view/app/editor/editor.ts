@@ -94,7 +94,7 @@ export class ExplorableEditor extends LitElement {
         }
         const isInvalidNested = !descendant.isLeaf && !descendant.isTextblock && !ancestor.type.spec.allowContainerNesting
         const isInvalidReflexive = !ancestor.type.spec.allowReflexiveNesting && descendant.type.name === ancestor.type.name
-        violatingDescendant = isInvalidNested || isInvalidReflexive
+        violatingDescendant = isInvalidReflexive
         if(violatingDescendant) {
           return false
         }
@@ -142,6 +142,7 @@ export class ExplorableEditor extends LitElement {
             textNode.textContent = translation
           }
         }
+        template.content.querySelectorAll("script.snippet-localization").forEach(el => el.remove())
       }
       /*
       const widgetsInTemplate = Array.from(template.content.querySelectorAll("*")).filter(el => tagNames.includes(el.tagName.toLowerCase()))

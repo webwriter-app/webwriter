@@ -3,17 +3,18 @@
 import {exec as execSync} from "child_process"
 import {promisify} from "util"
 import { promises as fs } from "fs"
-import {join} from "path"
+import { join } from "path"
+import { tmpdir } from 'os'
 
 const selfPkg = {
   name: "@webwriter/build",
-  version: "1.6.0"
+  version: "1.9.1"
 }
 
 const exec = promisify(execSync)
 
 function tableEscape(str) {
-  return str?.replaceAll("|", "\\|")
+  return str?.replaceAll("|", "\\|")?.replaceAll("\n", "<br>")
 }
 
 export async function document() {
@@ -26,9 +27,30 @@ async function generateManifest() {
   const pkg = JSON.parse(await fs.readFile("package.json", "utf8"))
   const pkgExports = pkg?.exports ?? {}
   const widgetPaths = Object.keys(pkgExports).filter(k => k.startsWith("./widgets/")).map(k => pkgExports[k]?.source).filter(p => p)
-  const globsPart = widgetPaths.length? `--globs ${widgetPaths.map(p => `"${p}"`).join(" ")}`: ""
-  const {stdout, stderr} = await exec(`npx @custom-elements-manifest/analyzer analyze --litelement ${globsPart}`)
+  const widgetPathsBare = widgetPaths.map(p => p.startsWith("./")? p.slice(2): p)
+  // const globsPart = widgetPaths.length? `--globs ${widgetPaths.map(p => `"${p}"`).join(" ")}`: ""
+  const tempPath = await fs.mkdtemp(join(tmpdir(), "wwbuild-"))
+  let jsdoctagsScript = (await (await fetch("https://cdn.jsdelivr.net/npm/@wc-toolkit/jsdoc-tags@1.1.0")).text());
+  await fs.writeFile(join(tempPath, "jsdoctags.js"), jsdoctagsScript)
+  let inheritanceScript = (await (await fetch("https://cdn.jsdelivr.net/npm/@wc-toolkit/cem-inheritance@1.2.2")).text());
+  inheritanceScript = inheritanceScript.replace(`@wc-toolkit/jsdoc-tags`, `./jsdoctags.js`)
+  await fs.writeFile(join(tempPath, "inheritance.js"), inheritanceScript)
+  const configScript = `
+    import {cemInheritancePlugin} from "./inheritance.js"
+    export default {plugins: [cemInheritancePlugin()]}
+  `
+  const configPath = join(tempPath, "custom-elements-manifest.config.mjs")
+  await fs.writeFile(configPath, configScript)
+  const {stdout, stderr} = await exec(`npx @custom-elements-manifest/analyzer analyze --litelement --config "${configPath}"`)
   stderr? console.error(stderr): console.log(stdout)
+  try {
+    const cem = JSON.parse(await fs.readFile("custom-elements.json", "utf8"))
+    cem.modules = cem.modules.filter(mod => widgetPathsBare.includes(mod.path))
+    await fs.writeFile("custom-elements.json", JSON.stringify(cem, undefined, 2))
+  }
+  catch(err) {
+    console.error(err)
+  }
   console.log("Updating package.json")
   pkg.customElements = "custom-elements.json"
   pkg.exports = {...pkg.exports, "./custom-elements.json": "./custom-elements.json"}
@@ -36,7 +58,7 @@ async function generateManifest() {
 }
 
 function widgetMarkdown(pkg, manifest, id) {
-const pkgExports = pkg.exports
+const pkgExports = pkg?.exports ?? {}
 
 const tag = id.replace("./widgets/", "").slice(0, -2)
 const scriptId = id.slice(0, -1) + "js"
@@ -48,16 +70,16 @@ const stylePath = pkgExports[styleId]?.default ?? pkgExports[styleId]
 const styleLocal = [pkg.name, styleId.slice(2)].join("/")
 const styleCDN = new URL(styleLocal, "https://cdn.jsdelivr.net/npm/").href
 
-const editingConfig = pkg?.editingConfig[`./widgets/${tag}`]
+const editingConfig = pkg?.editingConfig?.[`./widgets/${tag}`] ?? {}
 const widgetModule = manifest.modules?.find(mod => mod.exports.some(exp => exp.kind === "custom-element-definition" && exp.name === tag))
 const className = widgetModule.exports.find(exp => exp.kind === "custom-element-definition" && exp.name === tag).declaration.name
 const widgetClass = widgetModule.declarations.find(decl => decl.kind === "class" && decl.name === className)
-const publicFields = widgetClass.members.filter(decl => decl.kind === "field" && (!decl.privacy || decl.privacy === "public"))
+const publicFields = widgetClass?.members?.filter(decl => decl.kind === "field" && (!decl.privacy || decl.privacy === "public")) ?? []
 const excludedMethodNames = [
   "connectedCallback", "disconnectedCallback", "attributeChangedCallback", "adoptedCallback", // standard lifecycle
   "shouldUpdate", "willUpdate", "update", "render", "firstUpdated", "updated" // lit lifecycle
 ]
-const publicMethods = widgetClass.members.filter(decl => decl.kind === "method" && (!decl.privacy || decl.privacy === "public") && !excludedMethodNames.includes(decl.name))
+const publicMethods = widgetClass?.members?.filter(decl => decl.kind === "method" && (!decl.privacy || decl.privacy === "public") && !excludedMethodNames.includes(decl.name)) ?? []
 
 const fieldsTemplate = !publicFields.length? undefined:
 `| Name (Attribute Name) | Type | Description | Default | Reflects |
@@ -73,31 +95,31 @@ ${publicMethods.map(field => `| \`${tableEscape(field.name)}\` | ${tableEscape(f
 
 *[Methods](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Functions/Method_definitions) allow programmatic access to the widget.*`
 
-const slotsTemplate = !widgetClass.slots?.length? undefined:
+const slotsTemplate = !widgetClass?.slots?.length? undefined:
 `| Name | Description | Content Type |
 | :--: | :---------: | :----------: |
-${widgetClass.slots.map(field => `| ${field.name? `\`${tableEscape(field.name)}\``: "*(default)*"} | ${tableEscape(field.description ?? "-")} | ${editingConfig?.content? tableEscape(editingConfig.content): "-"} |`).join("\n")}
+${widgetClass?.slots.map(field => `| ${field.name? `\`${tableEscape(field.name)}\``: "*(default)*"} | ${tableEscape(field.description ?? "-")} | ${editingConfig?.content? tableEscape(editingConfig.content): "-"} |`).join("\n")}
 
 *[Slots](https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_templates_and_slots) define how the content of the widget is rendered.*`
 
-const eventsTemplate = !widgetClass.events?.length? undefined:
+const eventsTemplate = !widgetClass?.events?.length? undefined:
 `| Name | Description |
 | :--: | :---------: |
-${widgetClass.events.map(field => `| ${tableEscape(field.name)} | ${tableEscape(field.description ?? "-")} |`).join("\n")}
+${widgetClass?.events.map(field => `| ${tableEscape(field.name)} | ${tableEscape(field.description ?? "-")} |`).join("\n")}
 
 *[Events](https://developer.mozilla.org/en-US/docs/Web/Events) are dispatched by the widget after certain triggers.*`
 
-const cssPropertiesTemplate = !widgetClass.cssProperties?.length? undefined:
+const cssPropertiesTemplate = !widgetClass?.cssProperties?.length? undefined:
 `| Name | Description |
 | :--: | :---------: |
-${widgetClass.cssProperties.map(field => `| ${tableEscape(field.name)} | ${tableEscape(field.description ?? "-")} |`).join("\n")}
+${widgetClass?.cssProperties.map(field => `| ${tableEscape(field.name)} | ${tableEscape(field.description ?? "-")} |`).join("\n")}
 
 *[Custom CSS properties](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_cascading_variables/Using_CSS_custom_properties) offer defined customization of the widget's style.*`
 
-const cssPartsTemplate = !widgetClass.cssParts?.length? undefined:
+const cssPartsTemplate = !widgetClass?.cssParts?.length? undefined:
 `| Name | Description |
 | :--: | :---------: |
-${widgetClass.cssParts.map(field => `| ${tableEscape(field.name)} | ${tableEscape(field.description ?? "-")} |`).join("\n")}
+${widgetClass?.cssParts.map(field => `| ${tableEscape(field.name)} | ${tableEscape(field.description ?? "-")} |`).join("\n")}
 
 *[CSS parts](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_shadow_parts) allow freely styling internals of the widget with CSS.*`
 
@@ -118,8 +140,8 @@ const templates = {
   "editing config": editingConfigTemplate
 }
 
-const nonemptyNames = Object.keys(templates).filter(k => templates[k])
-const emptyNames = Object.keys(templates).filter(k => !templates[k])
+const nonemptyNames = Object.keys(templates)?.filter(k => templates[k]) ?? []
+const emptyNames = Object.keys(templates)?.filter(k => !templates[k]) ?? []
 
 let emptyTemplate = ""
 if(emptyNames.length >= 2) {
@@ -130,7 +152,7 @@ else if(emptyNames.length === 1) {
 }
 
 return `## \`${className}\` (\`<${tag}>\`)
-${widgetClass.description}
+${widgetClass?.description}
 
 ### Usage
 
@@ -208,7 +230,7 @@ const snippetsTemplate = !snippetIDs.length? "":
 
 | Name | Import Path |
 | :--: | :---------: |
-${snippetIDs.map(id => `| ${id.replace("./snippets/", "").replace(".html", "").split("-").map(part => part[0].toUpperCase() + part.slice(1)).join(" ")} | ${pkg.name + id.slice(1)} |`).join("\n")}`
+${snippetIDs.map(id => `| ${id.replace("./snippets/", "").replace(".html", "").split("-").map(part => part[0].toUpperCase() + part.slice(1)).join(" ")} | \`${pkg.name + id.slice(1)}\` |`).join("\n")}`
 
 const themesTemplate = !themeIDs.length? "": 
 `## Themes
@@ -219,9 +241,9 @@ const themesTemplate = !themeIDs.length? "":
 ${themeIDs.map(id => `| ${id.replace("./themes/", "")} | ${pkg.name + id.slice(1)} |`).join("\n")}`
 
 const prettyName = 
-  pkg?.editingConfig["."]?.label?._ ?? pkg.name.slice(1).split("/")[1].split("-").map(part => part[0].toUpperCase() + part.slice(1))
+  pkg?.editingConfig?.["."]?.label?._ ?? pkg.name.slice(1).split("/")[1].split("-").map(part => part[0].toUpperCase() + part.slice(1)).join(" ")
 
-const description = pkg?.editingConfig["."]?.description?._ ?? pkg?.description
+const description = pkg?.editingConfig?.["."]?.description?._ ?? pkg?.description
 
 const template = 
 `# ${prettyName} (\`${pkg.name}@${pkg.version}\`)

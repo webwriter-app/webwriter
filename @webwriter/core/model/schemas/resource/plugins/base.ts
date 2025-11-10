@@ -148,7 +148,7 @@ export const basePlugin = () => ({
   nodes: {
     explorable: HTMLElementSpec({
       tag: "body",
-      content: `(p | flow)*`, // mixed
+      content: `(p | flow)+`, // mixed
       draggable: false,
       selectable: false,
       attrs: {
