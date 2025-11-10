@@ -814,7 +814,12 @@ export class PackageStore {
       const handle = await this.getLocalHandle(name)
       this.watchLocalIntervals[name] = setInterval(async () => {
         const pkgJsonFile = await (await handle.getFileHandle("package.json")).getFile()
-        if(pkgJsonFile.lastModified >= this.lastLoaded) {
+        let editingConfigFile = undefined
+        try {
+          editingConfigFile = await (await handle.getFileHandle("editing-config.json")).getFile()
+        }
+        catch(err) {}
+        if(pkgJsonFile.lastModified >= this.lastLoaded || editingConfigFile && (editingConfigFile.lastModified >= this.lastLoaded)) {
           return this.load()
         } 
         let pkgString = await pkgJsonFile.text()
