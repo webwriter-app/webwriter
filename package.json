@@ -1,6 +1,6 @@
 {
   "name": "webwriter",
-  "version": "1.9.3",
+  "version": "1.9.4",
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "repository": {
     "type": "git",
@@ -63,8 +63,8 @@
     "@webwriter/*"
   ],
   "overrides": {
-    "prosemirror-model": "^1.25.2",
-    "prosemirror-state": "^1.4.3",
+    "prosemirror-model": "^1.25.4",
+    "prosemirror-state": "^1.4.4",
     "prosemirror-view": "1.39.2",
     "lit": "^3.3.1"
   }
