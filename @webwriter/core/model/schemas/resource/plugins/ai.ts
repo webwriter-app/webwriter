@@ -4,6 +4,8 @@ import {Decoration, DecorationSet} from "prosemirror-view";
 import {Slice, Schema} from "prosemirror-model";
 import {ReplaceStep} from "prosemirror-transform";
 import css from "./ai.css?raw"
+import {msg} from "@lit/localize";
+
 
 interface Suggestion {
     id: string;
@@ -159,24 +161,24 @@ function createDecorationsForSuggestion(doc: any, suggestion: Suggestion): Decor
 
         const badge = document.createElement('span');
         badge.className = 'ai-badge';
-        badge.textContent = 'WebWriter AI Vorschlag';
-        badge.setAttribute('title', 'KI-Vorschlag');
+        badge.textContent = msg('WebWriter AI Suggestion');
+        badge.setAttribute('title', msg('WebWriter AI Suggestion'));
 
         const acceptButton = document.createElement('button');
         acceptButton.type = 'button';
         acceptButton.className = 'ai-btn ai-accept';
-        acceptButton.setAttribute('title', 'Vorschlag übernehmen');
-        acceptButton.setAttribute('aria-label', 'Vorschlag übernehmen');
+        acceptButton.setAttribute('title', msg('Accept suggestion'));
+        acceptButton.setAttribute('aria-label', msg('Accept suggestion'));
         (acceptButton as HTMLElement).dataset.action = 'accept';
-        acceptButton.innerHTML = '<span class="ai-icon ai-icon-check"></span><span class="ai-btn-label">Annehmen</span>';
+        acceptButton.innerHTML = '<span class="ai-icon ai-icon-check"></span><span class="ai-btn-label">' + msg("Accept") + '</span>';
 
         const rejectButton = document.createElement('button');
         rejectButton.type = 'button';
         rejectButton.className = 'ai-btn ai-reject';
-        rejectButton.setAttribute('title', 'Vorschlag verwerfen');
-        rejectButton.setAttribute('aria-label', 'Vorschlag verwerfen');
+        rejectButton.setAttribute('title', msg('Reject suggestion'));
+        rejectButton.setAttribute('aria-label', msg('Reject suggestion'));
         (rejectButton as HTMLElement).dataset.action = 'reject';
-        rejectButton.innerHTML = '<span class="ai-icon ai-icon-x"></span><span class="ai-btn-label">Verwerfen</span>';
+        rejectButton.innerHTML = '<span class="ai-icon ai-icon-x"></span><span class="ai-btn-label">' + msg("Reject") + '</span>';
 
         buttonWrapper.appendChild(badge);
         buttonWrapper.appendChild(acceptButton);

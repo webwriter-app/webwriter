@@ -587,6 +587,7 @@ export class AIStore {
     /**
      * Add system messages with the current document state to the chat.
      * This method removes any previous system update messages before adding new ones.
+     * The system prompt is only added once at the beginning of the chat history.
      * @param app
      */
     addSystemMessages(app: App) {
@@ -605,13 +606,21 @@ export class AIStore {
             return true;
         });
 
-        // Add the system message with the prompt
-        this.addMessage({
-            role: "system",
-            content: PROMPT,
-            timestamp: new Date(),
-            isUpdate: true
-        });
+        // Add the system message with the prompt only if it's not already present at the beginning
+        const hasSystemPrompt = this.chatMessages.length > 0 && 
+                                 this.chatMessages[0].role === 'system' && 
+                                 this.chatMessages[0].content === PROMPT;
+        
+        if (!hasSystemPrompt) {
+            // Insert the system prompt at the beginning
+            this.chatMessages.unshift({
+                role: "system",
+                content: PROMPT,
+                timestamp: new Date(),
+                isUpdate: false,
+                tool_calls: null
+            });
+        }
 
         // Aktuellen Dokumentzustand hinzufügen (robust bei fehlendem Editor)
         const editorDom = app.activeEditor?.pmEditor?.dom as HTMLElement | undefined;

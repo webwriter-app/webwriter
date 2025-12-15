@@ -1130,5 +1130,10 @@
 's8fad58c831ecf017': `Ruby text container`,
 'sb0f93c1c60c0249a': `Ruby base`,
 'sbd35ee879d9cf770': `Ruby text`,
+'s87f8922eeb2dfecc': `WebWriter AI Suggestion`,
+'s9ab2057f0a31be23': `Accept suggestion`,
+'s13be1af9766661e9': `Accept`,
+'s6d359260c09544fe': `Reject suggestion`,
+'s123da0f92f97dd86': `Reject`,
     };
   
