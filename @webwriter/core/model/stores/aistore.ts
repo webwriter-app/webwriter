@@ -735,8 +735,8 @@ export class AIStore {
                                 result = {success: false, message: `Unknown tool: ${callFunction}`};
                             } else {
                                 result = {
-                                    ...(await fn.apply(this, [app, callArguments])) || {},
                                     success: true,
+                                    ...(await fn.apply(this, [app, callArguments])) || {},
                                 };
                             }
                         } catch (e) {
