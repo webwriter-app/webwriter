@@ -229,7 +229,7 @@ export async function generateWidgetDocumentation(app: App, name: string): Promi
             throw new Error(`Failed to fetch README from ${readmePath}`);
         }
         readmeContent = await readmeResponse.text();
-        readmeContent = readmeContent.replace(/## Snippets[\s\S]*## Fields/gmi, "## Fields");
+        readmeContent = readmeContent.includes("@webwriter/build") ? "No relevant README available for this widget." : readmeContent;
 
     } catch (error) {
         console.info(`Error fetching README from ${readmePath}:`, error);
@@ -307,7 +307,7 @@ export async function generateWidgetDocumentation(app: App, name: string): Promi
         description: pkg.description,
         /* editingConfig: pkg.editingConfig, */
         exampleSnippets: snippets.filter(snippet => snippet !== null), // Filter out any null snippets
-        /* readme: readmeContent, */
+        readme: readmeContent,
         customElements
     };
 
