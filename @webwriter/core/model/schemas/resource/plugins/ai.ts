@@ -6,7 +6,9 @@ import {ReplaceStep} from "prosemirror-transform";
 import css from "./ai.css?raw"
 import {msg} from "@lit/localize";
 
-
+/**
+ * Represents an AI suggestion with its position and original content.
+ */
 interface Suggestion {
     id: string;
     from: number;
@@ -14,20 +16,28 @@ interface Suggestion {
     originalContent: Slice;
 }
 
+/**
+ * State of the AI plugin, including decorations and suggestions.
+ */
 interface AIState {
     decorations: DecorationSet;
     suggestions: Suggestion[];
     didLazyLoad?: boolean;
 }
 
+/**
+ * Generates a unique ID for a suggestion based on transaction time.
+ */
 function createSuggestionId(tr: Transaction): string {
     return `suggestion-${Date.now()}-${tr.time}`;
 }
 
-// Persistenz-Helfer
+// Persistence helpers
 const STORAGE_KEY = 'ww-ai-suggestions';
 
-// Typen für die serialisierte Speicherung
+/**
+ * Serialized form of a suggestion for storage.
+ */
 type SerializedSuggestion = {
     id: string;
     from: number;
@@ -35,24 +45,29 @@ type SerializedSuggestion = {
     originalContent: any; // Slice JSON
 };
 
+/**
+ * Data structure for persisted suggestions.
+ */
 type PersistedData = {
     docHash: string;
     suggestions: SerializedSuggestion[];
 };
 
-// FNV-1a Hash-Implementierung für Strings
+/**
+ * FNV-1a hash implementation for strings (32-bit, hex output).
+ */
 function hashStringFNV1a(str: string): string {
-    // 32-bit FNV-1a Hash als hex
     let h = 0x811c9dc5;
     for (let i = 0; i < str.length; i++) {
         h ^= str.charCodeAt(i);
-        // unsigned 32-bit multiply by FNV prime 16777619
         h = (h >>> 0) * 0x01000193;
     }
     return (h >>> 0).toString(16);
 }
 
-// Dokument-Hash basierend auf JSON-Inhalt
+/**
+ * Computes a hash for the document based on its JSON representation.
+ */
 function computeDocHashJSON(doc: { toJSON: () => any }): string {
     try {
         const json = JSON.stringify(doc.toJSON());
@@ -62,7 +77,9 @@ function computeDocHashJSON(doc: { toJSON: () => any }): string {
     }
 }
 
-// Serialisierung der Vorschläge für die Speicherung
+/**
+ * Serializes suggestions for storage.
+ */
 function serializeSuggestions(suggestions: Suggestion[]): SerializedSuggestion[] {
     return suggestions.map(s => ({
         id: s.id,
@@ -72,7 +89,9 @@ function serializeSuggestions(suggestions: Suggestion[]): SerializedSuggestion[]
     }));
 }
 
-// Deserialisierung der Vorschläge aus der Speicherung
+/**
+ * Deserializes suggestions from storage.
+ */
 function deserializeSuggestions(schema: Schema, data: SerializedSuggestion[]): Suggestion[] {
     return data.map(d => ({
         id: d.id,
@@ -82,7 +101,9 @@ function deserializeSuggestions(schema: Schema, data: SerializedSuggestion[]): S
     }));
 }
 
-// Speichern in den LocalStorage
+/**
+ * Saves suggestions to localStorage with document hash.
+ */
 function saveToLocalStorage(state: EditorState, suggestions: Suggestion[]) {
     if (typeof window === 'undefined' || !window.localStorage) {
         return;
@@ -95,11 +116,13 @@ function saveToLocalStorage(state: EditorState, suggestions: Suggestion[]) {
         };
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     } catch {
-        // Ignorieren
+        // Ignore errors
     }
 }
 
-// Laden aus dem LocalStorage
+/**
+ * Loads suggestions from localStorage if document hash matches.
+ */
 function loadFromLocalStorage(state: EditorState): Suggestion[] | null {
     if (typeof window === 'undefined' || !window.localStorage) {
         return null;
@@ -121,7 +144,9 @@ function loadFromLocalStorage(state: EditorState): Suggestion[] | null {
     }
 }
 
-// Erstellen von Dekorationen für einen Vorschlag
+/**
+ * Creates decorations for a single suggestion, including inline/node decorations and action buttons.
+ */
 function createDecorationsForSuggestion(doc: any, suggestion: Suggestion): Decoration[] {
     const {id, from, to} = suggestion;
     const $from = doc.resolve(from);
@@ -193,6 +218,9 @@ function createDecorationsForSuggestion(doc: any, suggestion: Suggestion): Decor
     return [...decos, decoWidget];
 }
 
+/**
+ * Normalizes suggestions by removing duplicates and nested ones.
+ */
 function normalizeSuggestions(suggestions: Suggestion[]): Suggestion[] {
     if (suggestions.length <= 1) {
         return suggestions;
@@ -205,7 +233,7 @@ function normalizeSuggestions(suggestions: Suggestion[]): Suggestion[] {
             if (i === j) continue;
             const b = suggestions[j];
 
-            // If the ranges are identical, keep the one added first (lower index)
+            // If ranges are identical, keep the first one
             if (a.from === b.from && a.to === b.to) {
                 if (i < j) {
                     toRemoveIds.add(b.id);
@@ -213,7 +241,7 @@ function normalizeSuggestions(suggestions: Suggestion[]): Suggestion[] {
                 continue;
             }
 
-            // If b is strictly contained within a, mark b for removal
+            // Remove nested suggestions
             if (a.from <= b.from && a.to >= b.to) {
                 toRemoveIds.add(b.id);
             }
@@ -229,6 +257,9 @@ function normalizeSuggestions(suggestions: Suggestion[]): Suggestion[] {
 
 export const aiPluginKey = new PluginKey<AIState>('ai');
 
+/**
+ * Creates the AI plugin for managing suggestions.
+ */
 export const aiPlugin = () => ({
     plugin: new Plugin<AIState>({
         key: aiPluginKey,
@@ -256,13 +287,12 @@ export const aiPlugin = () => ({
 
                 const initialSuggestions = [...suggestions];
 
-                // 1. Identify suggestions deleted by a replace step
+                // Identify suggestions deleted by replace steps
                 const deletedSuggestionIds = new Set<string>();
                 if (tr.docChanged) {
                     tr.steps.forEach(step => {
                         if (step instanceof ReplaceStep && step.from < step.to) {
                             suggestions.forEach(suggestion => {
-                                // Check if the suggestion is fully contained in the deleted range
                                 if (suggestion.from >= step.from && suggestion.to <= step.to) {
                                     deletedSuggestionIds.add(suggestion.id);
                                 }
@@ -271,7 +301,7 @@ export const aiPlugin = () => ({
                     });
                 }
 
-                // Force re-decoration if content inside a suggestion changes
+                // Force re-decoration if content inside suggestion changes
                 if (tr.docChanged && !suggestionsChanged) {
                     tr.steps.forEach(step => {
                         if (step instanceof ReplaceStep) {
@@ -284,7 +314,7 @@ export const aiPlugin = () => ({
                     });
                 }
 
-                // 2. Map remaining suggestions through the transaction
+                // Map suggestions through transaction
                 if (tr.docChanged) {
                     suggestions = suggestions.map(suggestion => ({
                         ...suggestion,
@@ -293,10 +323,10 @@ export const aiPlugin = () => ({
                     }));
                 }
 
-                // 3. Filter out explicitly deleted and collapsed suggestions
+                // Filter out deleted or collapsed suggestions
                 suggestions = suggestions.filter(s => !deletedSuggestionIds.has(s.id) && s.from < s.to);
 
-                // 4. Handle actions
+                // Handle actions (add/remove)
                 const action = tr.getMeta(aiPluginKey);
                 if (action) {
                     if (action.add) {
@@ -310,24 +340,23 @@ export const aiPlugin = () => ({
                     }
                 }
 
-                // 5. Normalize suggestions (e.g., remove nested ones)
+                // Normalize suggestions
                 suggestions = normalizeSuggestions(suggestions);
 
-                // 6. Compare initial and final suggestions to see if anything changed
+                // Check if suggestions changed
                 if (initialSuggestions.length !== suggestions.length || !initialSuggestions.every((s, i) => s.id === suggestions[i]?.id)) {
                     suggestionsChanged = true;
                 }
 
-                // 7. Rebuild decorations if the suggestions list has changed
+                // Rebuild decorations if needed
                 if (suggestionsChanged) {
                     const allDecos = suggestions.flatMap(s => createDecorationsForSuggestion(newState.doc, s));
                     decorations = DecorationSet.create(newState.doc, allDecos);
                 } else if (tr.docChanged) {
-                    // If only positions changed, just map the existing decorations
                     decorations = decorations.map(tr.mapping, tr.doc);
                 }
 
-                // Lazy-Load once after stabilization (if init couldn't load)
+                // Lazy load if not done yet
                 if (!didLazyLoad && suggestions.length === 0 && !action) {
                     const lateLoaded = loadFromLocalStorage(newState);
                     if (lateLoaded && lateLoaded.length) {
@@ -335,11 +364,10 @@ export const aiPlugin = () => ({
                         const allDecos = suggestions.flatMap(s => createDecorationsForSuggestion(newState.doc, s));
                         decorations = DecorationSet.create(newState.doc, allDecos);
                         didLazyLoad = true;
-                        // No need to save immediately; data is already from storage
                     }
                 }
 
-                // Save to local storage only on actual changes
+                // Save to localStorage on changes
                 if (suggestionsChanged) {
                     try {
                         saveToLocalStorage(newState, suggestions);
@@ -357,7 +385,6 @@ export const aiPlugin = () => ({
             handleDOMEvents: {
                 click: (view, event: MouseEvent) => {
                     const target = event.target as HTMLElement;
-                    // Support clicks on icon/spans inside the button as well
                     const buttonEl = target.closest('button');
                     const wrapper = target.closest<HTMLElement>('.ai-suggestion-buttons');
                     if (!buttonEl || !wrapper) return false;

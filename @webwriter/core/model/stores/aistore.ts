@@ -5,26 +5,39 @@ import {aiPluginKey} from "../../model/schemas/resource/plugins/ai";
 import {renderToString as latexToMathML} from "temml/dist/temml.cjs"
 import {msg} from "@lit/localize";
 
-// Neue Hilfsfunktion: Ersetzt alle <latex>...</latex> Elemente im gegebenen HTML
-// durch das entsprechende MathML (mittels vorhandener temml-Umwandlung).
+/**
+ * Transforms LaTeX components in the given HTML string by converting <latex> elements to MathML.
+ * This function parses the HTML, finds all <latex> tags, converts their LaTeX content to MathML using latexToMathML,
+ * and replaces the elements in place. If conversion fails, it falls back to a span with an error class.
+ *
+ * @param {string} html - The HTML string containing <latex> elements to transform.
+ * @returns {string} The transformed HTML string with <latex> elements replaced by MathML.
+ */
 export function transformLatexComponents(html: string): string {
     if (!html) return html;
-    // Verwende einen temporären Container, um DOM-Elemente zu ersetzen
+
+    // Using a container element to parse the HTML
     const container = document.createElement('div');
     container.innerHTML = html;
 
+    // Find all <latex> elements and replace them
     const latexEls = Array.from(container.querySelectorAll('latex'));
+
+    // Process each <latex> element
     latexEls.forEach(el => {
+
+        // Extract LaTeX content and convert to MathML
         const latex = el.textContent || '';
         let mathml = '';
         try {
             mathml = latexToMathML(latex);
         } catch (e) {
             console.error('Error converting LaTeX to MathML:', e);
-            // Fallback: behalte original LaTeX sichtbar, aber markiert
+            // Fallback: keep the original LaTeX in case of error
             mathml = `<span class=\"latex-conversion-error\">${latex}</span>`;
         }
 
+        // Replace <latex> element with MathML
         const frag = document.createElement('div');
         frag.innerHTML = mathml;
         const parent = el.parentNode;
@@ -37,7 +50,10 @@ export function transformLatexComponents(html: string): string {
     return container.innerHTML;
 }
 
-class UnauthorizedError extends Error {
+/**
+ * Custom error class for unauthorized access to the AI service.
+ */
+export class UnauthorizedError extends Error {
     status: number;
 
     constructor(message = "Unauthorized", status = 401) {
@@ -48,6 +64,7 @@ class UnauthorizedError extends Error {
     }
 }
 
+// WebWriter AI System Prompt
 export const PROMPT = `
 You are the writing assistant in the application WebWriter. In general, you should be helpful, friendly, and professional. The application WebWriter is a writing tool that allows users to create and edit interactive documents or explorables.  It is your task to help the user with their writing tasks. You can answer questions, provide suggestions, and assist with various writing-related tasks. You may not answer any questions on the UI or technical aspects. You should only focus on writing-related tasks. You should not provide any personal opinions or engage in discussions that are not related to writing tasks. If the request of the user is not writing-related, politely inform the user that you are not able to help with that and suggest to ask a human or another AI for help. You should respond in the language of the user, which is determined by the language of the input text. 
 
@@ -68,22 +85,22 @@ Always be proactive to help the user with their writing tasks. If you see an opp
 If there is uncertainty that your results would meet the expectations of the user, break down the aspects that are critical for the quality of the result and ask the user for his/her preference. This will help you to ensure that you are on the right track and that the user is satisfied with the results. 
 
 `
-
+// Tool definitions for the AI to use in the OpenAI function calling format
 const toolDefinitions = [
     {
-        "type": "function",
-        "function": {
-            "name": "insert_at_bottom",
-            "description": "Insert some html at the bottom of the document",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "content": {
-                        "type": "string",
-                        "description": "The html to insert at the bottom of the document"
+        type: "function",
+        function: {
+            name: "insert_at_bottom",
+            description: "Insert some html at the bottom of the document",
+            parameters: {
+                type: "object",
+                properties: {
+                    content: {
+                        type: "string",
+                        description: "The html to insert at the bottom of the document"
                     },
                 },
-                "required": ["content"]
+                required: ["content"]
             }
         }
     },
@@ -158,9 +175,9 @@ const toolDefinitions = [
             }
         }
     }
-
 ];
 
+// Friendly names for the tools to be displayed in the UI
 export const toolFriendlyNames = {
     "insert_at_bottom": msg("Insert content..."),
     "fetch_widget_documentation": msg("Read widget documentation..."),
@@ -170,29 +187,29 @@ export const toolFriendlyNames = {
 }
 
 /**
- * Ersetzt einen Inhaltsbereich durch einen AI-Vorschlag und hebt ihn hervor.
+ * Replace the content in the given range with newContent as a suggestion instead of directly applying the change.
  *
- * @param view Die Editor-Ansicht (Wrapper).
- * @param from Startposition.
- * @param to Endposition.
- * @param newContent Knoten, die als Vorschlag eingefügt werden.
+ * @param view Wrapper of the Editor View
+ * @param from Start Position
+ * @param to End Position
+ * @param newContent New Content to be suggested
  */
 export function suggestChange(view: ProsemirrorEditor | any, from: number, to: number, newContent: ProseMirrorNode | ProseMirrorNode[]) {
     const state = (view as any).state;
 
-    // Ursprünglichen Inhalt speichern (auch wenn from==to, ergibt ein leeres Slice)
+    // Save the original content (even if from==to, results in an empty slice)
     const originalContent = state.doc.slice(from, to);
 
-    // Inhalt ersetzen/einfügen
+    // Replace/insert content
     let tr = state.tr.replaceWith(from, to, newContent);
 
-    // Neue Endposition berechnen
+    // Calculate new end position
     const newContentSize = Array.isArray(newContent)
         ? newContent.reduce((size, node) => size + node.nodeSize, 0)
         : newContent.nodeSize;
     const newTo = from + newContentSize;
 
-    // Metadaten für AI-Plugin
+    // Metadata for AI plugin
     tr = tr.setMeta(aiPluginKey, {
         add: {
             from,
@@ -205,10 +222,76 @@ export function suggestChange(view: ProsemirrorEditor | any, from: number, to: n
     (view as any).dispatch(tr);
 }
 
-export function generateListOfModules(app: App) {
+/**
+ * Generates a list of installed modules in the format "name: description".
+ * @param app - The application instance.
+ * @returns A string containing the list of installed modules.
+ */
+export function generateListOfInstalledWidgets(app: App) {
     return app.store.packages.installed.map(p => p.name + ": " + p.description).join("\n");
 }
 
+/**
+ * Finds the corresponding ProseMirror node and its start position from a given DOM node.
+ * @param view - The ProseMirror editor view.
+ * @param domNode - The DOM node to find the corresponding ProseMirror node for.
+ * @returns An object containing the node and startPos, or null if not found.
+ */
+function findNodeAndPosFromDOM(view: ProsemirrorEditor, domNode: Node): {
+    node: any,
+    startPos: number
+} | null {
+    // Normalize text nodes to their parent element
+    if (domNode.nodeType === Node.TEXT_NODE && domNode.parentNode) {
+        domNode = domNode.parentNode;
+    }
+
+    // 1) Primary: Determine position and traverse upwards
+    let innerPos: number | null = null;
+    try {
+        innerPos = (view as any).posAtDOM(domNode, 0, -1);
+    } catch {
+    }
+
+    if (innerPos != null) {
+        const $pos = (view as any).state.doc.resolve(innerPos);
+        for (let depth = $pos.depth; depth >= 1; depth--) {
+            const startPos = $pos.before(depth);
+            const dom = (view as any).nodeDOM(startPos) as Node | null;
+            if (dom && (dom === domNode || dom.contains(domNode) || domNode.contains(dom))) {
+                const node = $pos.node(depth);
+                return {node, startPos};
+            }
+        }
+    }
+
+    // 2) Fallback: Determine position BEFORE domNode
+    const parent = domNode.parentNode;
+    if (!parent) return null;
+    const index = Array.prototype.indexOf.call(parent.childNodes, domNode);
+    if (index < 0) return null;
+
+    let posBefore: number;
+    try {
+        posBefore = (view as any).posAtDOM(parent, index, -1);
+    } catch {
+        return null;
+    }
+    const $before = (view as any).state.doc.resolve(posBefore);
+    const nodeAfter = $before.nodeAfter as any;
+    if (nodeAfter) {
+        return {node: nodeAfter, startPos: posBefore};
+    }
+
+    return null;
+}
+
+/**
+ * Generates documentation for a specific widget by fetching its README, custom elements, and snippets.
+ * @param app - The application instance.
+ * @param name - The name of the widget.
+ * @returns A promise that resolves to a JSON string containing the widget documentation.
+ */
 export async function generateWidgetDocumentation(app: App, name: string): Promise<string> {
     const pkg = app.store.packages.installed.find(p => p.name === name);
 
@@ -243,6 +326,7 @@ export async function generateWidgetDocumentation(app: App, name: string): Promi
             throw new Error(`Failed to fetch custom-elements.json from ${installedWidgetUrl}/custom-elements.json`);
         }
         const customElementsData = await customElementsRequest.json();
+
         // Transform the raw declarations into a simplified object structure containing only
         // the information needed to use the elements (safe access to optional fields).
         const simplified = (customElementsData.modules || [])
@@ -284,10 +368,12 @@ export async function generateWidgetDocumentation(app: App, name: string): Promi
         console.info(`Error fetching custom-elements.json from ${installedWidgetUrl}/custom-elements.json`, e);
     }
 
+    // Identify snippet paths from the package exports
     const snippetPaths = Object.keys(pkg.exports)
         .filter(key => key.includes("snippets"))
         .map(key => `${installedWidgetUrl}/${pkg.exports[key]}`);
 
+    // Fetch all snippets in parallel
     const snippets = await Promise.all(snippetPaths.map(async (snippetPath) => {
         try {
             const response = await fetch(snippetPath);
@@ -311,7 +397,7 @@ export async function generateWidgetDocumentation(app: App, name: string): Promi
         customElements
     };
 
-    console.log(documentation)
+    console.log("Documentation generated for", pkg.name, documentation);
 
     return JSON.stringify(documentation, null, 2);
 }
@@ -340,12 +426,14 @@ export class AIStore {
     toolResolvers = {
         insert_at_bottom: (app: App, {content}: { content: string }) => {
             const editor = app.activeEditor?.pmEditor as ProsemirrorEditor | undefined;
+
+            // Ensuring there is an active editor
             if (!editor) {
                 return {success: false, message: 'No active editor available.'};
             }
-            const endPos = (editor as any).state.doc.content.size;
 
-            console.log("Inserting at bottom:", content);
+            // Determine the end position of the document
+            const endPos = (editor as any).state.doc.content.size;
 
             // Transform any <latex> components to MathML before parsing
             content = transformLatexComponents(content);
@@ -353,6 +441,7 @@ export class AIStore {
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = content;
 
+            // Parse the HTML content into ProseMirror nodes
             const parser = DOMParser.fromSchema((editor as any).state.schema);
             const slice = parser.parseSlice(tempDiv);
             const nodes: ProseMirrorNode[] = [];
@@ -363,7 +452,7 @@ export class AIStore {
                 return {success: false, message: 'No valid content to insert.'};
             }
 
-            // Vorschlag am Dokumentende (from==to==endPos)
+            // Suggest change at the end of the document
             suggestChange(editor, endPos, endPos, nodes);
 
             return {
@@ -389,6 +478,7 @@ export class AIStore {
                 return {success: false, message: 'No active editor available.'};
             }
 
+            // Special case: replace entire body
             if (query.toLowerCase() === 'body') {
                 const endPos = (editor as any).state.doc.content.size;
                 const tempDiv = document.createElement('div');
@@ -410,70 +500,24 @@ export class AIStore {
                 };
             }
 
+            // Find the element to replace based on the query
             const elementToReplace = (editor as any).dom.querySelector(query) as Element | null;
             if (!elementToReplace) {
                 return {success: false, message: `No element found matching query: ${query}`};
             }
 
-            function findNodeAndPosFromDOM(view: ProsemirrorEditor, domNode: Node): {
-                node: any,
-                startPos: number
-            } | null {
-                // Normalisiere Textknoten auf deren Elternelement
-                if (domNode.nodeType === Node.TEXT_NODE && domNode.parentNode) {
-                    domNode = domNode.parentNode;
-                }
 
-                // 1) Primär: Position ermitteln und nach oben laufen
-                let innerPos: number | null = null;
-                try {
-                    innerPos = (view as any).posAtDOM(domNode, 0, -1);
-                } catch {
-                }
-
-                if (innerPos != null) {
-                    const $pos = (view as any).state.doc.resolve(innerPos);
-                    for (let depth = $pos.depth; depth >= 1; depth--) {
-                        const startPos = $pos.before(depth);
-                        const dom = (view as any).nodeDOM(startPos) as Node | null;
-                        if (dom && (dom === domNode || dom.contains(domNode) || domNode.contains(dom))) {
-                            const node = $pos.node(depth);
-                            return {node, startPos};
-                        }
-                    }
-                }
-
-                // 2) Fallback: Position VOR domNode bestimmen
-                const parent = domNode.parentNode;
-                if (!parent) return null;
-                const index = Array.prototype.indexOf.call(parent.childNodes, domNode);
-                if (index < 0) return null;
-
-                let posBefore: number;
-                try {
-                    posBefore = (view as any).posAtDOM(parent, index, -1);
-                } catch {
-                    return null;
-                }
-                const $before = (view as any).state.doc.resolve(posBefore);
-                const nodeAfter = $before.nodeAfter as any;
-                if (nodeAfter) {
-                    return {node: nodeAfter, startPos: posBefore};
-                }
-
-                return null;
-            }
-
-            // Sicheres Extrahieren von Node und Startposition
+            // Safe extraction of node and start position
             const found = findNodeAndPosFromDOM(editor, elementToReplace);
             if (!found) {
                 return {success: false, message: "Could not find corresponding PM node for DOM element."};
             }
 
+            // Calculate end position
             const {node, startPos} = found;
             const endPos = startPos + node.nodeSize;
 
-            // Slice vorbereiten und als Vorschlag einfügen
+            // Prepare slice and insert as suggestion
             const tempDiv = document.createElement('div');
             // Transform any <latex> components to MathML before parsing
             const transformed = transformLatexComponents(newContent);
@@ -486,6 +530,7 @@ export class AIStore {
                 nodes.push(slice.content.child(i)!);
             }
 
+            // Suggest the change in the editor
             suggestChange(editor, startPos, endPos, nodes);
 
             return {
@@ -541,6 +586,7 @@ export class AIStore {
         this.chatMessages.push({role, content, isUpdate, timestamp, tool_calls});
     }
 
+    // State on whether a request is currently in progress
     loading: boolean = false;
 
     /**
@@ -579,7 +625,10 @@ export class AIStore {
         return this.generateResponse(updateCallback, app);
     }
 
-    // Public getter used by the UI to determine whether retry is available
+    /**
+     * Gets whether a retry is available for the last failed or cancelled request.
+     * @returns True if a snapshot for retry exists, false otherwise.
+     */
     get canRetry(): boolean {
         return !!this._snapshotForRetry;
     }
@@ -607,10 +656,10 @@ export class AIStore {
         });
 
         // Add the system message with the prompt only if it's not already present at the beginning
-        const hasSystemPrompt = this.chatMessages.length > 0 && 
-                                 this.chatMessages[0].role === 'system' && 
-                                 this.chatMessages[0].content === PROMPT;
-        
+        const hasSystemPrompt = this.chatMessages.length > 0 &&
+            this.chatMessages[0].role === 'system' &&
+            this.chatMessages[0].content === PROMPT;
+
         if (!hasSystemPrompt) {
             // Insert the system prompt at the beginning
             this.chatMessages.unshift({
@@ -622,7 +671,7 @@ export class AIStore {
             });
         }
 
-        // Aktuellen Dokumentzustand hinzufügen (robust bei fehlendem Editor)
+        // Add current document state (robust against missing editor)
         const editorDom = app.activeEditor?.pmEditor?.dom as HTMLElement | undefined;
         const currentHtml = editorDom ? editorDom.innerHTML : "";
 
@@ -639,12 +688,33 @@ export class AIStore {
 
         this.addMessage({
             role: "system",
-            content: (currentHtml ? `Current document content:\n\n${tempDiv.innerHTML}` : 'Document empty') + `\n\nList of installed widgets:\n\n${generateListOfModules(app)}`,
+            content: (currentHtml ? `Current document content:\n\n${tempDiv.innerHTML}` : 'Document empty') + `\n\nList of installed widgets:\n\n${generateListOfInstalledWidgets(app)}`,
             timestamp: new Date(),
             isUpdate: true,
         });
     }
 
+    /**
+     * Get the authorization header for PocketBase from the app's stored accounts.
+     * @param app
+     */
+    getAuthHeader(app: App) {
+        const pocketBaseAccounts = app.store.accounts.accounts.pocketbase;
+        const name = Object.keys(pocketBaseAccounts)[0];
+        const token = pocketBaseAccounts[name]?.token;
+        if (!token) {
+            throw new UnauthorizedError("No PocketBase token available");
+        }
+        return `Bearer ${token}`;
+    }
+
+    /**
+     * Generates a response from the AI based on the current chat messages.
+     * Handles tool calls, retries, and updates the chat state.
+     * @param updateCallback - Callback to update the UI after changes.
+     * @param app - The application instance.
+     * @returns A promise that resolves to the AI's response content or undefined if cancelled.
+     */
     async generateResponse(updateCallback: () => void, app: App): Promise<string | undefined> {
         this.loading = true;
         updateCallback();
@@ -663,6 +733,7 @@ export class AIStore {
 
             let isResponseToHuman = false;
 
+            // Function calling loop only breaking when we have a final response to the user
             while (!isResponseToHuman) {
 
                 // If the request has been cancelled before starting fetch, abort
@@ -672,17 +743,10 @@ export class AIStore {
                     return undefined;
                 }
 
-                const pocketBaseAccounts = app.store.accounts.accounts.pocketbase;
-                const name = Object.keys(pocketBaseAccounts)[0];
-                const token = pocketBaseAccounts[name]?.token;
-                if (!token) {
-                    throw new UnauthorizedError("No PocketBase token available");
-                }
-                const authKey = `Bearer ${token}`;
-
+                const authHeader = this.getAuthHeader(app);
                 const response = await fetch("https://node1.webwriter.elearn.rwth-aachen.de/api/chat", {
                     method: "POST",
-                    headers: {"Content-Type": "application/json", "Authorization": authKey},
+                    headers: {"Content-Type": "application/json", "Authorization": authHeader},
                     signal: this.currentAbortController?.signal,
                     body: JSON.stringify({
                         messages: this.chatMessages,
@@ -715,14 +779,14 @@ export class AIStore {
                     ...lastMessage, timestamp: new Date(),
                 });
 
-                console.log("AI Store", this.chatMessages)
-
+                // Notify UI of update
                 updateCallback();
 
                 // check if the response is a tool call
                 if (lastMessage["tool_calls"]?.length > 0) {
                     const toolCalls = lastMessage["tool_calls"] as any[];
 
+                    // For all tool calls, resolve them using the toolResolvers
                     const resolvedToolCalls = await Promise.all(toolCalls.map(async (toolCall: any) => {
                         const callFunction = toolCall.function.name as string;
                         const callArguments = JSON.parse(toolCall.function.arguments || '{}');
@@ -765,10 +829,9 @@ export class AIStore {
                         return undefined;
                     }
 
-                    // ToDo: what about the additional attributes not in type definition?
                     this.chatMessages = this.chatMessages.concat(resolvedToolCalls);
 
-                    // Add system message indicating tool calls have been resolved
+                    // Add system messages for new round of request
                     this.addSystemMessages(app)
                 } else {
 
@@ -804,6 +867,9 @@ export class AIStore {
         }
     }
 
+    /**
+     * Clears all chat messages from the store.
+     */
     clearMessages() {
         this.chatMessages = [];
     }
