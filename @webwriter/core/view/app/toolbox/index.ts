@@ -10,14 +10,14 @@ import { Command, LayoutCommand } from "#viewmodel"
 import { spreadProps } from "@open-wc/lit-helpers"
 
 import { ifDefined } from "lit/directives/if-defined.js"
-import { App, URLFileInput, TextPicker, Button } from "#view"
-import { AllSelection, EditorState, NodeSelection, TextSelection } from "prosemirror-state"
+import { App, URLFileInput, TextPicker } from "#view"
+import { AllSelection, EditorState, TextSelection } from "prosemirror-state"
 import {GapCursor} from "prosemirror-gapcursor"
 import {AIToolboxWidget} from "#view/app/toolbox/ai-widget";
 // @ts-ignore
 import {render as latexToMathML} from "temml/dist/temml.cjs"
-import { SlColorPicker, SlTextarea, SlTree } from "@shoelace-style/shoelace"
-import { CSSPropertySpecs, MATHML_TAGS, Package, PackageStore, TEST_RESULT, TestNode, TestResult } from "#model/index.js"
+import { SlColorPicker, SlTree } from "@shoelace-style/shoelace"
+import { CSSPropertySpecs, MATHML_TAGS, Package } from "#model/index.js"
 import { LitPickerElement } from "#view/elements/stylepickers/index.js"
 import { findParentNodeClosestToPos } from "prosemirror-utils";
 import "./widgetoptions"
