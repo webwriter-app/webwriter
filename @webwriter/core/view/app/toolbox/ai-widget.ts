@@ -232,10 +232,12 @@ export class AIToolboxWidget extends LitElement {
         super();
     }
 
+    // Handle cancel button click
     handleCancel() {
         this.app.store.ai.cancelRequest(() => this.requestUpdate());
     }
 
+    // Handle retry button click
     handleRetry() {
         this.app.store.ai.retryLastRequest(() => this.requestUpdate(), this.app);
 
@@ -246,25 +248,33 @@ export class AIToolboxWidget extends LitElement {
         }
     }
 
+    // Handle send button click or enter key press
     async handleSend() {
         const input = this.shadowRoot?.getElementById('chatInput') as HTMLTextAreaElement;
-        if (input) {
-            const query = input.value.trim();
+        if (!input)
+            return;
 
-            if (query) {
-                this.app.store.ai.addMessage({
-                    timestamp: new Date(),
-                    role: "user",
-                    content: query,
-                    tool_calls: null,
-                    isUpdate: false
-                });
-            }
+        const query = input.value.trim();
+        if (!query)
+            return;
 
-            this.requestUpdate()
-            input.value = "";
-            this.app.store.ai.generateResponse(() => this.requestUpdate(), this.app);
-        }
+        // Add user message to chat
+        this.app.store.ai.addMessage({
+            timestamp: new Date(),
+            role: "user",
+            content: query,
+            tool_calls: null,
+            isUpdate: false
+        });
+
+        // Render update in AI toolbox
+        this.requestUpdate()
+
+        // Clear input field
+        input.value = "";
+
+        // Generate AI response and provide reqeust update callback
+        this.app.store.ai.generateResponse(() => this.requestUpdate(), this.app);
     }
 
     handleKeyDown(event: KeyboardEvent) {
@@ -284,10 +294,12 @@ export class AIToolboxWidget extends LitElement {
     }
 
     render() {
+        // This check makes sure the user is logged in and shows a message if not
         if (Object.keys(this.app.store.accounts.accounts.pocketbase).find(k => k.includes("@")) === undefined) {
             return html`
                 <div class="ai-container">
                      <span class="ai-label">
+                         <!-- WebWriter AI icon from Icons8 -->
                         <svg xmlns="http://www.w3.org/2000/svg"
                              xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0,0,256,256"
                              width="16px" height="16px" fill-rule="nonzero"><g fill="#075985"
@@ -327,7 +339,7 @@ export class AIToolboxWidget extends LitElement {
         return html`
             <div class="ai-container">
                 <span class="ai-label">
-                    <!-- ToDo add credits to <a target="_blank" href="https://icons8.com/icon/GVghUo9qfGPW/ai">AI</a> icon by <a target="_blank" href="https://icons8.com">Icons8</a> -->
+                    <!-- ToDo: add credits to <a target="_blank" href="https://icons8.com/icon/GVghUo9qfGPW/ai">AI</a> icon by <a target="_blank" href="https://icons8.com">Icons8</a> -->
                     <svg xmlns="http://www.w3.org/2000/svg"
                          xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0,0,256,256"
                          width="16px" height="16px" fill-rule="nonzero"><g fill="#075985"
@@ -361,6 +373,8 @@ export class AIToolboxWidget extends LitElement {
                 <!-- main chat container -->
                 <div class="chat-container" id="chatContainer">
                     ${chatMessages.length === 0 ? html`
+
+                        <!-- Show example prompts when no messages exist -->
                         <div style="display: flex; flex-direction: column; gap: 8px; margin: 16px 0;">
                             ${examplePrompts.map(prompt => html`
                                 <button type="button" class="example-prompt"
@@ -368,13 +382,17 @@ export class AIToolboxWidget extends LitElement {
                                 </button>
                             `)}
                         </div>
+
                     ` : chatMessages.map(chatMessage => {
+
+                        // Render different message types
                         switch (chatMessage.role) {
                             case "system":
                                 return null;
                             case "tool":
                                 return null;
                             case "user":
+                                // Simple user message in a chat bubble
                                 return html`
                                     <div class="chat-bubble user">
                                         <div class="chat-sender">${msg("You")}</div>
@@ -382,41 +400,51 @@ export class AIToolboxWidget extends LitElement {
                                     </div>
                                 `;
                             case "assistant":
-                                // if it is a tool call or multiple
 
+                                // if it is one or multiple tool calls, rendem them first
                                 const toolsContent = chatMessage["tool_calls"] ? chatMessage["tool_calls"].map((call: any) => {
                                     return html`
                                         <div class="function-call">${toolFriendlyNames[call.function.name]}</div>`
                                 }) : null;
 
+                                // then render the content if available
                                 const content = chatMessage.content ? html`
                                     <div class="chat-bubble ai">
                                         <div class="chat-sender">${msg("WebWriter AI")}</div>
                                         ${unsafeHTML(marked.parse(chatMessage.content) as string)}
                                     </div>` : null;
 
-                                // Combine both types
+                                // Combine both types; unlikely but possible that both tools and content exist
                                 return html`${toolsContent} ${content}`;
                         }
                     })}
                 </div>
+
+                <!-- input form -->
                 <form class="chat-input-row" @submit="${(e: SubmitEvent) => {
                     e.preventDefault();
                     this.handleSend();
                 }}" style="position:relative; align-items: flex-end;">
+
+                    <!-- Textarea for user input -->
                     <textarea id="chatInput" class="chat-input" rows="2"
                               placeholder=${loading ? msg("AI is thinking...") : msg("Ask AI...")} autocomplete="off"
                               aria-label=${msg("Ask AI")} @keydown="${this.handleKeyDown}"
                               ?disabled=${loading}></textarea>
 
+                    <!-- Send / Cancel / Retry button -->
                     <div style="position:absolute; bottom:0px; right:0px; display:flex; gap:6px;">
                         ${loading ? html`
+
+                            <!-- Cancel button while loading -->
                             <button type="button" class="send-btn red" title=${msg("Stop")}
                                     @click="${() => this.handleCancel()}">
                                 <svg class="spinner" viewBox="0 0 50 50" width="20" height="20">
                                     <circle cx="25" cy="25" r="20" fill="none" stroke="white" stroke-width="5"/>
                                 </svg>
                             </button>` : this.app.store.ai.canRetry ? html`
+
+                            <!-- Retry button on error -->
                             <button type="button" class="send-btn red" title=${msg("Retry")}
                                     @click="${() => this.handleRetry()}">
                                 <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -427,6 +455,8 @@ export class AIToolboxWidget extends LitElement {
                                     </g>
                                 </svg>
                             </button>` : html`
+
+                            <!-- Send button -->
                             <button class="send-btn" type="submit" aria-label=${msg("Send message")}>
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
                                     <path fill="currentColor" d="m2 21l21-9L2 3v7l15 2l-15 2z"/>
@@ -434,12 +464,15 @@ export class AIToolboxWidget extends LitElement {
                             </button>`}
                     </div>
                 </form>
+
+                <!-- Info message / disclosure on AI errors -->
                 <a @click="${this.showInfoMessage}"
                    style="font-size: 10px; margin-bottom: 0; text-align: center !important; line-height: 1.2 !important; display: block; margin-top: 10px;">${msg("WebWriter AI can help improve your explorable. It may not work perfectly with all widgets and may produce errors. Click to learn more.")}</a>
             </div>
         `;
     }
 
+    // Function to insert example prompt into the input field upon clicking the corresponding button
     insertPrompt(prompt: string) {
         const input = this.shadowRoot?.getElementById('chatInput') as HTMLTextAreaElement;
         if (input) {
@@ -448,6 +481,7 @@ export class AIToolboxWidget extends LitElement {
         }
     }
 
+    // Show detailed info message about AI limitations and usage upon clicking the disclosure link
     showInfoMessage() {
         const messages = [
             msg("WebWriter AI can help improve your explorable by suggesting enhancements to text content. You may ask the AI for new content ideas, improvements, or simplifications."),
@@ -458,6 +492,7 @@ export class AIToolboxWidget extends LitElement {
         alert(messages.join("\n\n"));
     }
 
+    // After each update, scroll to the latest message
     updated() {
         // Scroll chat to the top of the last message
         const chatContainer = this.shadowRoot?.getElementById('chatContainer');
