@@ -17,4 +17,3 @@ test/data
 *.code-workspace
 .DS_Store
 .env
-.idea
