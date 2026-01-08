@@ -392,7 +392,7 @@ const extensions: any = {
 }
 const compiler = new Compiler({wasmURL})
 const CDN_URL = "https://cdn.jsdelivr.net/npm/"
-const API_URL = "https://api.webwriter.app/ww/v1/"
+const API_URL = "https://node1.webwriter.elearn.rwth-aachen.de/ww/v1/"
 const exactPkgRegEx = /^((?:@[^\/\\%@]+\/)?[^.\/\\%@][^\/\\%@]*)@([^\/]+)(\/.*)?$/
 
 const filesystem: Provider = {
@@ -740,10 +740,10 @@ function urlToAction(url: URL, method?: Action["method"], content?: any) {
   }
   else if(suffix.startsWith("_snippets")) {
     collection = "snippets"
-    // POST   https://api.webwriter.app/ww/v1/_snippets/
-    // GET    https://api.webwriter.app/ww/v1/_snippets/<id>
-    // PUT    https://api.webwriter.app/ww/v1/_snippets/<id>
-    // DELETE https://api.webwriter.app/ww/v1/_snippets/<id>
+    // POST   https://node1.webwriter.elearn.rwth-aachen.de/ww/v1/_snippets/
+    // GET    https://node1.webwriter.elearn.rwth-aachen.de/ww/v1/_snippets/<id>
+    // PUT    https://node1.webwriter.elearn.rwth-aachen.de/ww/v1/_snippets/<id>
+    // DELETE https://node1.webwriter.elearn.rwth-aachen.de/ww/v1/_snippets/<id>
   }
   else if(suffix.startsWith("_")) {
     throw Error(`Unsupported collection type ${suffix}`)
@@ -883,7 +883,7 @@ worker.addEventListener("activate", async (e) => {
 worker.addEventListener("fetch", e => {
   const url = new URL(e.request.url)
   let method = e.request.method === "GET"? undefined: e.request.method
-  const shouldIntercept = url.hostname === "api.webwriter.app" && url.pathname.startsWith("/ww/v1/")
+  const shouldIntercept = url.hostname === "node1.webwriter.elearn.rwth-aachen.de" && url.pathname.startsWith("/ww/v1/")
   if(shouldIntercept) {
     try {
       const response = getFetchResponse(url, method as any, e.request) as any
@@ -902,7 +902,7 @@ worker.addEventListener("error", function(e) {
 
 const bundleserviceFetch = (req: RequestInfo | URL, ...args: any[]) => {
   const url = new URL(req instanceof Request? req.url: req)
-  const shouldIntercept = url.hostname === "api.webwriter.app" && url.pathname.startsWith("/ww/v1/")
+  const shouldIntercept = url.hostname === "node1.webwriter.elearn.rwth-aachen.de" && url.pathname.startsWith("/ww/v1/")
   if(shouldIntercept) {
     return getFetchResponse(url)
   }
@@ -966,7 +966,7 @@ async function getListPackageIDs(list="https://webwriter.app/webwriter-package-i
   }
 }
 
-/** API api.webwriter.app/bundle/
+/** API node1.webwriter.elearn.rwth-aachen.de/bundle/
  * GET ·/[Package ID]/[Widget Path] {Accept: [TYPE]}  -> widget content/style
  * GET ·/_bundle?w=[Package ID]/[Widget Path]&w=... {Accept: [TYPE]} -> bundle
  * GET ·/[Package ID]/package.json -> package

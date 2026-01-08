@@ -18,7 +18,7 @@ import { filterObject } from "#utility";
 export class PocketbaseAccountForm extends LitElement {
   static get defaults() {
     return {
-      url: "https://api.webwriter.app",
+      url: "https://node1.webwriter.elearn.rwth-aachen.de",
       email: "",
       password: "",
     };

@@ -707,6 +707,10 @@ import {css} from "lit"; export default css`
   &.package-locale {
     background: var(--sl-color-red-100);
   }
+    
+  &.package-ww-ai-tested {
+    background: var(--sl-color-blue-100);
+  }
 }
 
 :host(.intro-target) *, .intro-target {

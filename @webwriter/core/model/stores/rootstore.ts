@@ -1,6 +1,6 @@
 import { ZodSchema } from "zod"
 
-import { Package, PackageStore, DocumentStore, UIStore, createEditorStateConfig } from "#model"
+import {Package, PackageStore, DocumentStore, UIStore, createEditorStateConfig, AIStore} from "#model"
 import { AccountStore } from "#model/stores/accountstore.js"
 
 type StoreOptions<T extends abstract new (...args: any) => any> = ConstructorParameters<T>[0]
@@ -25,6 +25,7 @@ export class RootStore {
   document: DocumentStore
   accounts: AccountStore
   ui: UIStore
+  ai: AIStore
 
   constructor({corePackages, apiBase, settings, initializePackages}: AllOptions) {
     const onBundleChange = this.onBundleChange
@@ -32,6 +33,7 @@ export class RootStore {
     this.packages = new PackageStore({...settings?.packages, corePackages, initializePackages, apiBase, resetOnInitialize: this.ui.resetOnInitialize, onBundleChange})
     this.accounts = new AccountStore(settings?.accounts?.accounts)
     this.document = new DocumentStore({...settings?.document, lang: this.ui.locale, defaultAccount: this.accounts.getAccount("file")}, this.accounts)
+    this.ai = new AIStore();
   }
 
   onBundleChange = (packages: Package[]) => {

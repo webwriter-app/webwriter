@@ -834,17 +834,13 @@
         <target>Fångst</target>
       </trans-unit>
       <trans-unit id="s2b8f50c64be440f7">
-        <source>Select 
-          <x id="0" equiv-text="${this.mediaType}"/>...
-        </source>
+        <source>Select <x id="0" equiv-text="${this.mediaType}"/>...</source>
         <target>Välj 
           <x id="0" equiv-text="${this.mediaType}"/>... 
         </target>
       </trans-unit>
       <trans-unit id="s739544d0c858c633">
-        <source>Or drop 
-          <x id="0" equiv-text="${this.mediaType}"/> here
-        </source>
+        <source>Or drop <x id="0" equiv-text="${this.mediaType}"/> here</source>
         <target>Eller släpp 
           <x id="0" equiv-text="${this.mediaType}"/> här 
         </target>
@@ -910,10 +906,7 @@
         <target>Detta nyckelord är obligatoriskt för widgets</target>
       </trans-unit>
       <trans-unit id="h64cd12550420f6f1">
-        <source>Generate a 
-          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
-          <x id="1" equiv-text="&lt;/code&gt;"/> file
-        </source>
+        <source>Generate a <x id="0" equiv-text="&lt;code&gt;"/>LICENSE<x id="1" equiv-text="&lt;/code&gt;"/> file</source>
         <target>Generera en 
           <x id="0" equiv-text="&lt;code&gt;"/>LICENSE 
           <x id="1" equiv-text="&lt;/code&gt;"/> fil 
@@ -1498,18 +1491,14 @@
         <target>Fel vid anslutning</target>
       </trans-unit>
       <trans-unit id="sf52d840949a980d1">
-        <source>
-          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           kommer att raderas permanent. Är du säker på det? 
         </target>
       </trans-unit>
       <trans-unit id="s9b7cd8860c8fc922">
-        <source>
-          <x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${this.url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/>
           kommer att skrivas över. Är du säker på det? 
@@ -1548,9 +1537,7 @@
         <target>Egenskapstyp som inte stöds '${desc.type}' (bearbetning som JSON)</target>
       </trans-unit>
       <trans-unit id="sa00df4e39c72d3b4">
-        <source>
-          <x id="0" equiv-text="${desc.widget}"/> is not supported
-        </source>
+        <source><x id="0" equiv-text="${desc.widget}"/> is not supported</source>
         <target>
           <x id="0" equiv-text="${desc.widget}"/> stöds inte 
         </target>
@@ -4419,6 +4406,87 @@
         <source>Update language across document</source>
         <target>Uppdatera språket i hela dokumentet</target>
       </trans-unit>
+<trans-unit id="s8d660f3376fba2d6">
+  <source>WebWriter AI Compatible</source>
+</trans-unit>
+<trans-unit id="s838137b16af746c3">
+  <source>Are you sure you want to clear the chat history? This action cannot be undone.</source>
+</trans-unit>
+<trans-unit id="sf544ad71477d4ff8">
+  <source>WebWriter AI</source>
+</trans-unit>
+<trans-unit id="s8348fb959cf65b2c">
+  <source>To use WebWriter AI, please login in the settings under Accounts with your account first. Please refresh the page after login.</source>
+</trans-unit>
+<trans-unit id="se8865daa67c89672">
+  <source>Create an exercise sheet about ...</source>
+</trans-unit>
+<trans-unit id="s8cdbc0d41dcc9230">
+  <source>What task would complement this well?</source>
+</trans-unit>
+<trans-unit id="scc466fb3738544bf">
+  <source>Is my text simple and easy to understand?</source>
+</trans-unit>
+<trans-unit id="secf4269bd99a41e4">
+  <source>Which widgets suit my content best?</source>
+</trans-unit>
+<trans-unit id="s3bc387c25520c3d0">
+  <source>Clear chat history</source>
+</trans-unit>
+<trans-unit id="scb6a9c1a1757adbc">
+  <source>You</source>
+</trans-unit>
+<trans-unit id="se7c14f7bef66c5bb">
+  <source>AI is thinking...</source>
+</trans-unit>
+<trans-unit id="s16e45b897930024a">
+  <source>Ask AI...</source>
+</trans-unit>
+<trans-unit id="sd9c2eb8ad4c45fd4">
+  <source>Ask AI</source>
+</trans-unit>
+<trans-unit id="sd9ad53251f2330a5">
+  <source>Stop</source>
+</trans-unit>
+<trans-unit id="s2c8189544e3ea679">
+  <source>Retry</source>
+</trans-unit>
+<trans-unit id="sb9e306d8fcfb3c1c">
+  <source>Send message</source>
+</trans-unit>
+<trans-unit id="s4c98376ea2d302d7">
+  <source>WebWriter AI can help improve your explorable. It may not work perfectly with all widgets and may produce errors. Click to learn more.</source>
+</trans-unit>
+<trans-unit id="s75ae80431286eb97">
+  <source>WebWriter AI can help improve your explorable by suggesting enhancements to text content. You may ask the AI for new content ideas, improvements, or simplifications.</source>
+</trans-unit>
+<trans-unit id="s0c1a8fb75a68b484">
+  <source>It may not work perfectly with all widgets and could produce errors. Please review AI-generated content for accuracy and appropriateness before publishing.</source>
+</trans-unit>
+<trans-unit id="sb452f6d7a8f3c794">
+  <source>Any changes from the AI are not automatically applied to your explorable. You must manually accept the suggestions you want to keep; otherwise you can quickly discard them.</source>
+</trans-unit>
+<trans-unit id="sbf7da65f05e91211">
+  <source>Insert content...</source>
+</trans-unit>
+<trans-unit id="sacdeedb5763e8a55">
+  <source>Read widget documentation...</source>
+</trans-unit>
+<trans-unit id="s0670a1c678483b5c">
+  <source>Replace content...</source>
+</trans-unit>
+<trans-unit id="sd72cf4022acf3d3c">
+  <source>Insert into element...</source>
+</trans-unit>
+<trans-unit id="s2bab699694281d06">
+  <source>Get list of installable widgets...</source>
+</trans-unit>
+<trans-unit id="s093e0f2668e88b6c">
+  <source>✨ <x id="0" equiv-text="${text.toUpperCase()}"/> ✨ (improved version)</source>
+</trans-unit>
+<trans-unit id="s9e1050b8ca4395db">
+  <source>Please select a text passage first.</source>
+</trans-unit>
     </body>
   </file>
 </xliff>

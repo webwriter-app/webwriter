@@ -59,7 +59,7 @@
     "langchain": "^0.3.2",
     "lit": "^3.2.1",
     "lodash": "^4.17.21",
-    "marked": "^14.0.0",
+    "marked": "^14.1.4",
     "mathml-to-latex": "^1.5.0",
     "mdn-data": "2.13.0",
     "mime": "^3.0.0",

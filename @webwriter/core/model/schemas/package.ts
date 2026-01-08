@@ -536,7 +536,8 @@ export class Package {
     const isWidgetLang = kw.startsWith("widget-lang-")
     const isWidgetOnlineStatus = ["widget-online", "widget-online-edit", "widget-online-use"].includes(kw)
     const isWebWriterMarker = kw === "webwriter-widget"
-    return isProgramme || isField || isWidgetType || isWidgetLang || isWidgetOnlineStatus || isWebWriterMarker
+    const isAIKeyword = kw === "ww-ai-tested"
+    return isProgramme || isField || isWidgetType || isWidgetLang || isWidgetOnlineStatus || isWebWriterMarker || isAIKeyword
   }
 
   get nonstandardKeywords() {

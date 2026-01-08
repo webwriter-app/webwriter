@@ -180,12 +180,12 @@ export async function docToBundle(doc: Node, head: Node, noDeps=false, minify=fa
     css = ""
   }
   else {
-    const jsUrl = new URL("https://api.webwriter.app/ww/v1/_bundles")
+    const jsUrl = new URL("https://node1.webwriter.elearn.rwth-aachen.de/ww/v1/_bundles")
     minify && jsUrl.searchParams.append("minify", "true")
     importIDs.forEach(id => jsUrl.searchParams.append("id", id))
     const bundleJS = await (await fetch(jsUrl)).text()
     js = bundleJS? scopedCustomElementRegistry + ";" +  `(function () {${bundleJS}})();`: ""
-    const cssUrl = new URL("https://api.webwriter.app/ww/v1/_bundles")
+    const cssUrl = new URL("https://node1.webwriter.elearn.rwth-aachen.de/ww/v1/_bundles")
     cssUrl.searchParams.append("pkg", "true")
     cssUrl.searchParams.append("type", "css")
     minify && cssUrl.searchParams.append("minify", "true")

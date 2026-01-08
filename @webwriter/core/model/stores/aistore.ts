@@ -1,0 +1,876 @@
+import {DOMParser} from "prosemirror-model";
+import {App, ProsemirrorEditor} from "#view";
+import {Node as ProseMirrorNode} from "prosemirror-model";
+import {aiPluginKey} from "../../model/schemas/resource/plugins/ai";
+import {renderToString as latexToMathML} from "temml/dist/temml.cjs"
+import {msg} from "@lit/localize";
+
+/**
+ * Transforms LaTeX components in the given HTML string by converting <latex> elements to MathML.
+ * This function parses the HTML, finds all <latex> tags, converts their LaTeX content to MathML using latexToMathML,
+ * and replaces the elements in place. If conversion fails, it falls back to a span with an error class.
+ *
+ * @param {string} html - The HTML string containing <latex> elements to transform.
+ * @returns {string} The transformed HTML string with <latex> elements replaced by MathML.
+ */
+export function transformLatexComponents(html: string): string {
+    if (!html) return html;
+
+    // Using a container element to parse the HTML
+    const container = document.createElement('div');
+    container.innerHTML = html;
+
+    // Find all <latex> elements and replace them
+    const latexEls = Array.from(container.querySelectorAll('latex'));
+
+    // Process each <latex> element
+    latexEls.forEach(el => {
+
+        // Extract LaTeX content and convert to MathML
+        const latex = el.textContent || '';
+        let mathml = '';
+        try {
+            mathml = latexToMathML(latex);
+        } catch (e) {
+            console.error('Error converting LaTeX to MathML:', e);
+            // Fallback: keep the original LaTeX in case of error
+            mathml = `<span class=\"latex-conversion-error\">${latex}</span>`;
+        }
+
+        // Replace <latex> element with MathML
+        const frag = document.createElement('div');
+        frag.innerHTML = mathml;
+        const parent = el.parentNode;
+        if (parent) {
+            while (frag.firstChild) parent.insertBefore(frag.firstChild, el);
+            parent.removeChild(el);
+        }
+    });
+
+    return container.innerHTML;
+}
+
+/**
+ * Custom error class for unauthorized access to the AI service.
+ */
+export class UnauthorizedError extends Error {
+    status: number;
+
+    constructor(message = "Unauthorized", status = 401) {
+        super(message);
+        this.name = "UnauthorizedError";
+        this.status = status;
+        Object.setPrototypeOf(this, UnauthorizedError.prototype);
+    }
+}
+
+// WebWriter AI System Prompt
+export const PROMPT = `
+You are the writing assistant in the application WebWriter. In general, you should be helpful, friendly, and professional. The application WebWriter is a writing tool that allows users to create and edit interactive documents or explorables.  It is your task to help the user with their writing tasks. You can answer questions, provide suggestions, and assist with various writing-related tasks. You may not answer any questions on the UI or technical aspects. You should only focus on writing-related tasks. You should not provide any personal opinions or engage in discussions that are not related to writing tasks. If the request of the user is not writing-related, politely inform the user that you are not able to help with that and suggest to ask a human or another AI for help. You should respond in the language of the user, which is determined by the language of the input text. 
+
+The document content is given and written in HTML format. Besides the default HTML tags, there are some custom tags that are used to create interactive elements. These tags are custom web components that are registered in the application, you MAY NOT load or request them in any way. You MUST request the documentation for these custom tags before using any of them. Make sure to use the exact name with the correct "@organization/widget" syntax for the request. Make sure to only use them as specified in the documentation and snippets and only use elements standalone if they are meant to be used standalone, indicated by the 'uninsertable' property. You MUST follow the rules on how the custom elements might be used regarding nesting. Towards, the user, refer to them as "widgets". You may not use any custom attributes or properties that are not supported by the custom widgets. You cannot install widgets, but you can suggest that the user install them, and then they will be available for you as well. 
+
+You are not allowed to create any HTML that has capabilities beyond the ones provided by these custom widgets except basic HTML tags like p, h1, h2, span, etc. You can use these basic HTML tags to structure the content. For bold formatting, use the b tag; do not use the strong tag. WebWriter displays formulas using the MathML syntax. You MUST use the <latex> [formular] </latex> to insert any formulas. When modifying the document, the latex tags will be automatically replaced with the corresponding MathML to be used in the document. You MAY NOT use the name <latex> in the correspondence with the user; it only refers to an internal shortcut for you to simplify the insertion of formulas. You MAY NOT replace MathML with the same content latex – that will not change the document. You MAY NOT share such internal details like the <latex> tag with the user. Do not use other ways of inserting mathematical formulars. 
+
+Make sure to always insert the content in the location that makes most sense for the content. If there is uncertainty where the user would want the content, you MUST ask the user for clarification. Many types of content do not make sense to be inserted at the bottom of the document, so you SHOULD NOT do that unless the user explicitly asks for it. If the document is empty, insert the content at the bottom of the document. 
+
+Towards the user, you are not allowed to give any technical details on how the content is created or managed. You MAY NOT share any kind of code with the user directly, you may only suggest changes to the document. Through the use of the provided functions, your changes are inserted as suggestions that can be easily accepted or rejected by the user. You MAY NOT try to remove or suggest to remove the suggestions from the content. In the messages towards the user, you may NOT use any HTML, just markdown for formatting. You are only allowed to use HTML in the content you provide to the functions.
+
+When the user's request requires many small changes or edits to the document, you should try to consolidate them into a single change that achieves the same goal. This is to minimize the number of changes and make it easier for the user to review and accept them. As larger suggestions are more annoying to review and accept, you should try to keep your suggestions as small as possible while still achieving the user's goal in time. 
+
+Before doing any generation or manipulation, you must be sure that you understood the user's request correctly and that you have all the necessary information to proceed. If you are unsure, ask the user for clarification. Be proactive and do not overcomplicate the users requests. If it is likely that the user is referring to any content in the document, make sure to understand the document. When suggesting any changes, give the user a clear and concise explanation of what you are doing and why. 
+
+Always be proactive to help the user with their writing tasks. If you see an opportunity to improve the content or suggest a better way to achieve the user's goal, do so. However, always respect the user's choices and preferences. If you see the opportunity to make relevant suggestions, do so but always ask for the user's permission before making any changes. Respond with at most a few sentences, keep your responses concise and to the point. Do not delay, procrastinate or waste time, always try to help the user as quickly as possible and be efficient in your responses and actions.
+
+If there is uncertainty that your results would meet the expectations of the user, break down the aspects that are critical for the quality of the result and ask the user for his/her preference. This will help you to ensure that you are on the right track and that the user is satisfied with the results. 
+
+`
+// Tool definitions for the AI to use in the OpenAI function calling format
+const toolDefinitions = [
+    {
+        type: "function",
+        function: {
+            name: "insert_at_bottom",
+            description: "Insert some html at the bottom of the document",
+            parameters: {
+                type: "object",
+                properties: {
+                    content: {
+                        type: "string",
+                        description: "The html to insert at the bottom of the document"
+                    },
+                },
+                required: ["content"]
+            }
+        }
+    },
+    {
+        type: "function",
+        function: {
+            name: "replace_in_document",
+            description: "Replace part of the document with new content based on a CSS selector",
+            parameters: {
+                type: "object",
+                properties: {
+                    query: {
+                        type: "string",
+                        description: "The CSS selector for the element of the document to be replaced with the new content. If the query matches multiple elements, the first one will be replaced. Only elements within the document body are considered. The query should be a valid CSS selector that matches an element in the document."
+                    },
+                    newContent: {
+                        type: "string",
+                        description: "The new HTML content to replace the matched element with. This should be a valid HTML string."
+                    },
+                },
+                required: ["query", "newContent"]
+            }
+        }
+    },
+    {
+        type: "function",
+        function: {
+            name: "fetch_widget_documentation",
+            description: "Fetch the documentation for a specific widget",
+            parameters: {
+                type: "object",
+                properties: {
+                    widget_name: {
+                        type: "string",
+                        description: "The name of the widget to request documentation for"
+                    },
+                },
+                required: ["widget_name"]
+            }
+        }
+    },
+    {
+        type: "function",
+        function: {
+            name: "get_list_of_installable_widgets",
+            description: "Get a list of all installable widgets with their name and description. This is useful for suggesting widgets to the user that they might want to install.  ",
+            parameters: {
+                type: "object",
+                properties: {},
+                required: []
+            }
+        }
+    },
+    {
+        type: "function",
+        function: {
+            name: "insert_into_element",
+            description: "Insert some HTML at the end of the innerHTML of a selected element in the document. This is useful for adding content to specific parts of the document without relying on a replace operation. ",
+            parameters: {
+                type: "object",
+                properties: {
+                    query: {
+                        type: "string",
+                        description: "The CSS selector for the element of the document to insert the content into. If the query matches multiple elements, the first one will be used."
+                    },
+                    content: {
+                        "type": "string",
+                        "description": "The HTML to insert into the selected element, which MUST be a VALID HTML string. DO NOT USE HTML THAT IS NOT VALID BY ITSELF. This content will be appended to the end of the innerHTML of the selected element. ",
+                    },
+                },
+                required: ["query", "content"]
+            }
+        }
+    }
+];
+
+// Friendly names for the tools to be displayed in the UI
+export const toolFriendlyNames = {
+    "insert_at_bottom": msg("Insert content..."),
+    "fetch_widget_documentation": msg("Read widget documentation..."),
+    "replace_in_document": msg("Replace content..."),
+    "insert_into_element": msg("Insert into element..."),
+    "get_list_of_installable_widgets": msg("Get list of installable widgets...")
+}
+
+/**
+ * Replace the content in the given range with newContent as a suggestion instead of directly applying the change.
+ *
+ * @param view Wrapper of the Editor View
+ * @param from Start Position
+ * @param to End Position
+ * @param newContent New Content to be suggested
+ */
+export function suggestChange(view: ProsemirrorEditor | any, from: number, to: number, newContent: ProseMirrorNode | ProseMirrorNode[]) {
+    const state = (view as any).state;
+
+    // Save the original content (even if from==to, results in an empty slice)
+    const originalContent = state.doc.slice(from, to);
+
+    // Replace/insert content
+    let tr = state.tr.replaceWith(from, to, newContent);
+
+    // Calculate new end position
+    const newContentSize = Array.isArray(newContent)
+        ? newContent.reduce((size, node) => size + node.nodeSize, 0)
+        : newContent.nodeSize;
+    const newTo = from + newContentSize;
+
+    // Metadata for AI plugin
+    tr = tr.setMeta(aiPluginKey, {
+        add: {
+            from,
+            to: newTo,
+            originalContent
+        }
+    });
+    tr = tr.setMeta('addToHistory', false);
+
+    (view as any).dispatch(tr);
+}
+
+/**
+ * Generates a list of installed modules in the format "name: description".
+ * @param app - The application instance.
+ * @returns A string containing the list of installed modules.
+ */
+export function generateListOfInstalledWidgets(app: App) {
+    return app.store.packages.installed.map(p => p.name + ": " + p.description).join("\n");
+}
+
+/**
+ * Finds the corresponding ProseMirror node and its start position from a given DOM node.
+ * @param view - The ProseMirror editor view.
+ * @param domNode - The DOM node to find the corresponding ProseMirror node for.
+ * @returns An object containing the node and startPos, or null if not found.
+ */
+function findNodeAndPosFromDOM(view: ProsemirrorEditor, domNode: Node): {
+    node: any,
+    startPos: number
+} | null {
+    // Normalize text nodes to their parent element
+    if (domNode.nodeType === Node.TEXT_NODE && domNode.parentNode) {
+        domNode = domNode.parentNode;
+    }
+
+    // 1) Primary: Determine position and traverse upwards
+    let innerPos: number | null = null;
+    try {
+        innerPos = (view as any).posAtDOM(domNode, 0, -1);
+    } catch {
+    }
+
+    if (innerPos != null) {
+        const $pos = (view as any).state.doc.resolve(innerPos);
+        for (let depth = $pos.depth; depth >= 1; depth--) {
+            const startPos = $pos.before(depth);
+            const dom = (view as any).nodeDOM(startPos) as Node | null;
+            if (dom && (dom === domNode || dom.contains(domNode) || domNode.contains(dom))) {
+                const node = $pos.node(depth);
+                return {node, startPos};
+            }
+        }
+    }
+
+    // 2) Fallback: Determine position BEFORE domNode
+    const parent = domNode.parentNode;
+    if (!parent) return null;
+    const index = Array.prototype.indexOf.call(parent.childNodes, domNode);
+    if (index < 0) return null;
+
+    let posBefore: number;
+    try {
+        posBefore = (view as any).posAtDOM(parent, index, -1);
+    } catch {
+        return null;
+    }
+    const $before = (view as any).state.doc.resolve(posBefore);
+    const nodeAfter = $before.nodeAfter as any;
+    if (nodeAfter) {
+        return {node: nodeAfter, startPos: posBefore};
+    }
+
+    return null;
+}
+
+/**
+ * Generates documentation for a specific widget by fetching its README, custom elements, and snippets.
+ * @param app - The application instance.
+ * @param name - The name of the widget.
+ * @returns A promise that resolves to a JSON string containing the widget documentation.
+ */
+export async function generateWidgetDocumentation(app: App, name: string): Promise<string> {
+    const pkg = app.store.packages.installed.find(p => p.name === name);
+
+    if (!pkg) {
+        // If the package is not found, return an error message
+        return JSON.stringify({error: `Widget with name ${name} not installed.`});
+    }
+
+    const installedWidgetUrl = app.store.packages.packetApiBaseUrl(pkg);
+
+
+    // Fetch the README file from the package's CDN path
+    const readmePath = `${installedWidgetUrl}/README.md`;
+    let readmeContent = "";
+    try {
+        const readmeResponse = await fetch(readmePath);
+        if (!readmeResponse.ok) {
+            throw new Error(`Failed to fetch README from ${readmePath}`);
+        }
+        readmeContent = await readmeResponse.text();
+        readmeContent = readmeContent.includes("@webwriter/build") ? "No relevant README available for this widget." : readmeContent;
+
+    } catch (error) {
+        console.info(`Error fetching README from ${readmePath}:`, error);
+        readmeContent = "No README available for this widget.";
+    }
+
+    const customElements = [];
+    try {
+        const customElementsRequest = await fetch(`${installedWidgetUrl}/custom-elements.json`);
+        if (!customElementsRequest.ok) {
+            throw new Error(`Failed to fetch custom-elements.json from ${installedWidgetUrl}/custom-elements.json`);
+        }
+        const customElementsData = await customElementsRequest.json();
+
+        // Transform the raw declarations into a simplified object structure containing only
+        // the information needed to use the elements (safe access to optional fields).
+        const simplified = (customElementsData.modules || [])
+            .flatMap((m: any) => m.declarations || [])
+            .map((decl: any) => {
+                const attributes = (decl.attributes || []).map((a: any) => ({
+                    name: a.name || null,
+                    type: (a.type && (a.type.text || a.type.name)) || null,
+                    description: a.description || null,
+                    default: a.default || null,
+                }));
+
+                const slots = (decl.slots || []).map((s: any) => ({
+                    name: s.name || 'default',
+                    description: s.description || null,
+                }));
+
+                const events = (decl.events || []).map((e: any) => ({
+                    name: e.name || null,
+                    description: e.description || null,
+                    type: (e.type && (e.type.text || e.type.name)) || null,
+                }));
+
+                return {
+                    tagName: decl.tagName || decl.name || null,
+                    name: decl.name || null,
+                    description: decl.description || null,
+                    summary: decl.summary || null,
+                    deprecated: decl.deprecated || false,
+                    attributes,
+                    slots,
+                    events,
+                    source: decl.source || null,
+                };
+            });
+
+        customElements.push(...simplified);
+    } catch (e) {
+        console.info(`Error fetching custom-elements.json from ${installedWidgetUrl}/custom-elements.json`, e);
+    }
+
+    // Identify snippet paths from the package exports
+    const snippetPaths = Object.keys(pkg.exports)
+        .filter(key => key.includes("snippets"))
+        .map(key => `${installedWidgetUrl}/${pkg.exports[key]}`);
+
+    // Fetch all snippets in parallel
+    const snippets = await Promise.all(snippetPaths.map(async (snippetPath) => {
+        try {
+            const response = await fetch(snippetPath);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch snippet from ${snippetPath}`);
+            }
+            return await response.text();
+        } catch (error) {
+            console.error(`Error fetching snippet from ${snippetPath}:`, error);
+            return null; // Return null if the snippet cannot be fetched
+        }
+    }));
+
+    const documentation = {
+        name: pkg.name,
+        author: pkg.author,
+        description: pkg.description,
+        /* editingConfig: pkg.editingConfig, */
+        exampleSnippets: snippets.filter(snippet => snippet !== null), // Filter out any null snippets
+        readme: readmeContent,
+        customElements
+    };
+
+    console.log("Documentation generated for", pkg.name, documentation);
+
+    return JSON.stringify(documentation, null, 2);
+}
+
+export class AIStore {
+
+    chatMessages: {
+        role: 'user' | 'assistant' | 'system' | 'tool';
+        content: string;
+        timestamp: Date,
+        isUpdate: boolean,
+        tool_calls?: any | null
+    }[] = [];
+
+    // Abort controller for the current in-flight request (if any)
+    private currentAbortController: AbortController | null = null;
+
+    // When starting a generation we save a snapshot of messages so we can
+    // restore them if the request is cancelled or if the user retries.
+    private _snapshotForRetry: typeof this.chatMessages | null = null;
+
+    // Internal flag to indicate cancellation requested
+    private _cancelled: boolean = false;
+
+    /* The toolResolvers are functions that are called when a tool is requested by the AI, corresponding to the functions defined for the AI above */
+    toolResolvers = {
+        insert_at_bottom: (app: App, {content}: { content: string }) => {
+            const editor = app.activeEditor?.pmEditor as ProsemirrorEditor | undefined;
+
+            // Ensuring there is an active editor
+            if (!editor) {
+                return {success: false, message: 'No active editor available.'};
+            }
+
+            // Determine the end position of the document
+            const endPos = (editor as any).state.doc.content.size;
+
+            // Transform any <latex> components to MathML before parsing
+            content = transformLatexComponents(content);
+
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = content;
+
+            // Parse the HTML content into ProseMirror nodes
+            const parser = DOMParser.fromSchema((editor as any).state.schema);
+            const slice = parser.parseSlice(tempDiv);
+            const nodes: ProseMirrorNode[] = [];
+            for (let i = 0; i < slice.content.childCount; i++) {
+                nodes.push(slice.content.child(i)!);
+            }
+            if (nodes.length === 0) {
+                return {success: false, message: 'No valid content to insert.'};
+            }
+
+            // Suggest change at the end of the document
+            suggestChange(editor, endPos, endPos, nodes);
+
+            return {
+                success: true,
+                message: `HTML content has been suggested at the bottom of the document.`,
+            };
+        },
+        get_list_of_installable_widgets: (app: App) => {
+            return {
+                success: true,
+                content: app.store.packages.available.map(p => ({name: p.name, description: p.description})),
+            }
+        },
+        fetch_widget_documentation: async (app: App, {widget_name}: { widget_name: string }) => {
+            return {
+                success: true,
+                content: await generateWidgetDocumentation(app, widget_name),
+            }
+        },
+        replace_in_document: (app: App, {query, newContent}: { query: string, newContent: string }) => {
+            const editor = app.activeEditor?.pmEditor as ProsemirrorEditor | undefined;
+            if (!editor) {
+                return {success: false, message: 'No active editor available.'};
+            }
+
+            // Special case: replace entire body
+            if (query.toLowerCase() === 'body') {
+                const endPos = (editor as any).state.doc.content.size;
+                const tempDiv = document.createElement('div');
+                const transformed = transformLatexComponents(newContent);
+                tempDiv.innerHTML = transformed;
+                const parser = DOMParser.fromSchema((editor as any).state.schema);
+                const slice = parser.parseSlice(tempDiv);
+
+                const nodes: ProseMirrorNode[] = [];
+                for (let i = 0; i < slice.content.childCount; i++) {
+                    nodes.push(slice.content.child(i)!);
+                }
+
+                suggestChange(editor, 0, endPos, nodes);
+
+                return {
+                    success: true,
+                    message: `The entire document content has been replaced.`,
+                };
+            }
+
+            // Find the element to replace based on the query
+            const elementToReplace = (editor as any).dom.querySelector(query) as Element | null;
+            if (!elementToReplace) {
+                return {success: false, message: `No element found matching query: ${query}`};
+            }
+
+
+            // Safe extraction of node and start position
+            const found = findNodeAndPosFromDOM(editor, elementToReplace);
+            if (!found) {
+                return {success: false, message: "Could not find corresponding PM node for DOM element."};
+            }
+
+            // Calculate end position
+            const {node, startPos} = found;
+            const endPos = startPos + node.nodeSize;
+
+            // Prepare slice and insert as suggestion
+            const tempDiv = document.createElement('div');
+            // Transform any <latex> components to MathML before parsing
+            const transformed = transformLatexComponents(newContent);
+            tempDiv.innerHTML = transformed;
+            const parser = DOMParser.fromSchema((editor as any).state.schema);
+            const slice = parser.parseSlice(tempDiv);
+
+            const nodes: ProseMirrorNode[] = [];
+            for (let i = 0; i < slice.content.childCount; i++) {
+                nodes.push(slice.content.child(i)!);
+            }
+
+            // Suggest the change in the editor
+            suggestChange(editor, startPos, endPos, nodes);
+
+            return {
+                success: true,
+                message: `Element matching query "${query}" has been replaced with new content.`,
+            };
+        },
+        insert_into_element: (app: App, {query, content}: { query: string, content: string }) => {
+            const editor = app.activeEditor?.pmEditor as ProsemirrorEditor | undefined;
+            if (!editor) {
+                return {success: false, message: 'No active editor available.'};
+            }
+
+            const elementToInsertInto = (editor as any).dom.querySelector(query) as Element | null;
+            if (!elementToInsertInto) {
+                return {
+                    success: false,
+                    message: `No element found matching the query: ${query}`,
+                };
+            }
+
+            // Transform any <latex> components to MathML before parsing
+            content = transformLatexComponents(content);
+
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = content;
+
+            const parser = DOMParser.fromSchema((editor as any).state.schema);
+            const slice = parser.parseSlice(tempDiv);
+
+            const nodes: ProseMirrorNode[] = [];
+            for (let i = 0; i < slice.content.childCount; i++) {
+                nodes.push(slice.content.child(i)!);
+            }
+
+            const pos = (editor as any).posAtDOM(elementToInsertInto, elementToInsertInto.childNodes.length);
+            suggestChange(editor, pos, pos, nodes);
+
+            return {
+                success: true,
+                message: `Content suggestion has been created for the selected element.`,
+            };
+        },
+    }
+
+    addMessage({role, content, isUpdate = false, timestamp, tool_calls = null}: {
+        role: 'user' | 'assistant' | 'system' | 'tool';
+        content: string;
+        timestamp: Date;
+        isUpdate: boolean;
+        tool_calls?: any | null
+    }) {
+        this.chatMessages.push({role, content, isUpdate, timestamp, tool_calls});
+    }
+
+    // State on whether a request is currently in progress
+    loading: boolean = false;
+
+    /**
+     * Cancel the current in-progress request, if any. Restores the chatMessages
+     * to the state before the request started and prevents any incoming
+     * responses from being appended.
+     */
+    cancelRequest(updateCallback?: () => void) {
+        this._cancelled = true;
+        try {
+            this.currentAbortController?.abort();
+        } catch (e) {
+            // ignore
+        }
+
+        // Restore snapshot if available (remove any messages added during the request)
+        if (this._snapshotForRetry) {
+            this.chatMessages = this._snapshotForRetry.slice();
+            this._snapshotForRetry = null;
+        }
+
+        this.loading = false;
+        if (updateCallback) updateCallback();
+    }
+
+    /**
+     * Retry the last request that failed or was cancelled. Returns the promise
+     * from generateResponse or undefined if there's nothing to retry.
+     */
+    retryLastRequest(updateCallback: () => void, app: App): Promise<string | undefined> | undefined {
+        if (!this._snapshotForRetry) return undefined;
+        // Restore messages to snapshot and start generation again
+        this.chatMessages = this._snapshotForRetry.slice();
+        // Clear the snapshot now; generateResponse will set it again at start
+        this._snapshotForRetry = null;
+        return this.generateResponse(updateCallback, app);
+    }
+
+    /**
+     * Gets whether a retry is available for the last failed or cancelled request.
+     * @returns True if a snapshot for retry exists, false otherwise.
+     */
+    get canRetry(): boolean {
+        return !!this._snapshotForRetry;
+    }
+
+    /**
+     * Add system messages with the current document state to the chat.
+     * This method removes any previous system update messages before adding new ones.
+     * The system prompt is only added once at the beginning of the chat history.
+     * @param app
+     */
+    addSystemMessages(app: App) {
+
+        // Identify the last message actually displayed to the user (assistant or user role)
+        const lastAssistantOrUserIndex = [...this.chatMessages].reverse().findIndex(m => m.role === 'user' || m.role === 'assistant');
+
+        // Remove previous system update messages after that point
+        const cutoffIndex = lastAssistantOrUserIndex >= 0
+            ? this.chatMessages.length - 1 - lastAssistantOrUserIndex
+            : 0;
+
+        this.chatMessages = this.chatMessages.filter((m, i) => {
+            if (i <= cutoffIndex) return true;
+            if (m.role === 'system' && m.isUpdate) return false;
+            return true;
+        });
+
+        // Add the system message with the prompt only if it's not already present at the beginning
+        const hasSystemPrompt = this.chatMessages.length > 0 &&
+            this.chatMessages[0].role === 'system' &&
+            this.chatMessages[0].content === PROMPT;
+
+        if (!hasSystemPrompt) {
+            // Insert the system prompt at the beginning
+            this.chatMessages.unshift({
+                role: "system",
+                content: PROMPT,
+                timestamp: new Date(),
+                isUpdate: false,
+                tool_calls: null
+            });
+        }
+
+        // Add current document state (robust against missing editor)
+        const editorDom = app.activeEditor?.pmEditor?.dom as HTMLElement | undefined;
+        const currentHtml = editorDom ? editorDom.innerHTML : "";
+
+        // Remove any attributes that are too long from the HTML to avoid excessive length
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = currentHtml;
+        tempDiv.querySelectorAll('*').forEach(el => {
+            Array.from(el.attributes).forEach(attr => {
+                if (attr.value.length > 1000) {
+                    el.removeAttribute(attr.name);
+                }
+            });
+        });
+
+        this.addMessage({
+            role: "system",
+            content: (currentHtml ? `Current document content:\n\n${tempDiv.innerHTML}` : 'Document empty') + `\n\nList of installed widgets:\n\n${generateListOfInstalledWidgets(app)}`,
+            timestamp: new Date(),
+            isUpdate: true,
+        });
+    }
+
+    /**
+     * Get the authorization header for PocketBase from the app's stored accounts.
+     * @param app
+     */
+    getAuthHeader(app: App) {
+        const pocketBaseAccounts = app.store.accounts.accounts.pocketbase;
+        const name = Object.keys(pocketBaseAccounts)[0];
+        const token = pocketBaseAccounts[name]?.token;
+        if (!token) {
+            throw new UnauthorizedError("No PocketBase token available");
+        }
+        return `Bearer ${token}`;
+    }
+
+    /**
+     * Generates a response from the AI based on the current chat messages.
+     * Handles tool calls, retries, and updates the chat state.
+     * @param updateCallback - Callback to update the UI after changes.
+     * @param app - The application instance.
+     * @returns A promise that resolves to the AI's response content or undefined if cancelled.
+     */
+    async generateResponse(updateCallback: () => void, app: App): Promise<string | undefined> {
+        this.loading = true;
+        updateCallback();
+        try {
+
+            // Save a snapshot of the chat prior to starting the request so we
+            // can restore it if the user cancels or if a retry is requested.
+            this._snapshotForRetry = this.chatMessages.slice();
+
+            // Reset cancellation state and prepare an AbortController for the fetch
+            this._cancelled = false;
+            this.currentAbortController = new AbortController();
+
+            // Add system messages with current document state
+            this.addSystemMessages(app);
+
+            let isResponseToHuman = false;
+
+            // Function calling loop only breaking when we have a final response to the user
+            while (!isResponseToHuman) {
+
+                // If the request has been cancelled before starting fetch, abort
+                if (this._cancelled) {
+                    // restore snapshot
+                    if (this._snapshotForRetry) this.chatMessages = this._snapshotForRetry.slice();
+                    return undefined;
+                }
+
+                const authHeader = this.getAuthHeader(app);
+                const response = await fetch("https://node1.webwriter.elearn.rwth-aachen.de/api/chat", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json", "Authorization": authHeader},
+                    signal: this.currentAbortController?.signal,
+                    body: JSON.stringify({
+                        messages: this.chatMessages,
+                        tools: toolDefinitions,
+                        tool_choice: "auto",
+                        model: "o4-mini",
+                        max_completion_tokens: 32768,
+                    }),
+                });
+
+                // If cancellation happened while the response was in flight, discard
+                if (this._cancelled) {
+                    if (this._snapshotForRetry) this.chatMessages = this._snapshotForRetry.slice();
+                    return undefined;
+                }
+
+                const data = await response.json();
+
+                if (!response.ok || !data?.success) {
+                    if (response.status === 401) {
+                        throw new UnauthorizedError();
+                    }
+                    throw new Error(data?.error || `API request failed with status ${response.status}`);
+                }
+
+                const lastMessage = data?.lastMessage
+
+                // Add the newly generated message to the array
+                this.addMessage({
+                    ...lastMessage, timestamp: new Date(),
+                });
+
+                // Notify UI of update
+                updateCallback();
+
+                // check if the response is a tool call
+                if (lastMessage["tool_calls"]?.length > 0) {
+                    const toolCalls = lastMessage["tool_calls"] as any[];
+
+                    // For all tool calls, resolve them using the toolResolvers
+                    const resolvedToolCalls = await Promise.all(toolCalls.map(async (toolCall: any) => {
+                        const callFunction = toolCall.function.name as string;
+                        const callArguments = JSON.parse(toolCall.function.arguments || '{}');
+
+                        let result: any = {};
+
+                        try {
+                            const fn = (this.toolResolvers as any)[callFunction];
+                            if (typeof fn !== 'function') {
+                                result = {success: false, message: `Unknown tool: ${callFunction}`};
+                            } else {
+                                result = {
+                                    success: true,
+                                    ...(await fn.apply(this, [app, callArguments])) || {},
+                                };
+                            }
+                        } catch (e) {
+                            const err: any = e;
+                            console.error(`Error resolving tool call ${callFunction}:`, e);
+                            result = {
+                                success: false,
+                                message: `Error resolving tool call ${callFunction}: ${err?.message ?? String(e)}`,
+                            };
+                        }
+
+                        return {
+                            role: "tool",
+                            "tool_call_id": toolCall.id,
+                            content: JSON.stringify(result),
+                            timestamp: new Date(),
+                            isUpdate: false,
+                            tool_calls: null,
+                        }
+                    }))
+
+                    // If the request was cancelled while resolving tool calls,
+                    // discard the resolved results and restore snapshot.
+                    if (this._cancelled) {
+                        if (this._snapshotForRetry) this.chatMessages = this._snapshotForRetry.slice();
+                        return undefined;
+                    }
+
+                    this.chatMessages = this.chatMessages.concat(resolvedToolCalls);
+
+                    // Add system messages for new round of request
+                    this.addSystemMessages(app)
+                } else {
+
+                    /* we have a response without tool requests */
+                    isResponseToHuman = true;
+
+                    updateCallback();
+
+                    // Clear the snapshot on successful completion so retry cannot
+                    // accidentally re-run the same request state.
+                    this._snapshotForRetry = null;
+                    this.currentAbortController = null;
+
+                    return this.chatMessages.at(-1)?.content;
+                }
+            }
+
+            // if we get here, there must have been a mistake
+            throw new Error("Unable to generate message")
+        } catch (e: any) {
+            // If the fetch was aborted, treat as cancellation and silently restore
+            if (e && (e.name === 'AbortError' || e.message?.includes('aborted'))) {
+                // already restored snapshot in cancellation branches above
+                console.error('AI request was aborted');
+            } else if (e instanceof UnauthorizedError)
+                console.error("Not authorized to use the AI service");
+            else
+                console.error("Error generating AI response", e);
+        } finally {
+            this.loading = false;
+            this.currentAbortController = null;
+            updateCallback();
+        }
+    }
+
+    /**
+     * Clears all chat messages from the store.
+     */
+    clearMessages() {
+        this.chatMessages = [];
+    }
+}
