@@ -7,19 +7,25 @@
     "url": "https://github.com/salmenf/webwriter.git"
   },
   "devDependencies": {
+    "@happy-dom/global-registrator": "^20.8.3",
     "@lezer/generator": "^1.7.3",
     "@tabler/icons": "^3.30.0",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/user-event": "^14.6.1",
     "@types/semver": "^7.3.13",
+    "@vitest/coverage-v8": "4.0.18",
     "@wagnerflo/cc-icons": "^1.2.1",
     "bootstrap-icons": "^1.10.3",
-    "bun": "^1.2.16",
     "deepl-node": "^1.13.0",
     "fs-extra": "^11.2.0",
     "http-server": "^14.1.1",
     "tsx": "^4.9.3",
     "typescript": "^5.7.2",
-    "vite": "^6.3.5",
+    "vite": "^8.0.3",
     "vite-plugin-pwa": "^1.0.0",
+    "vite-plugin-wasm": "^3.6.0",
+    "vitest": "^4.0.18",
     "xliff": "^6.2.1",
     "zod-to-json-schema": "^3.23.0"
   },
@@ -37,8 +43,9 @@
   "license": "UNLICENSED",
   "packageManager": "^bun@1.2.16",
   "scripts": {
-    "start": "bun run vite -- @webwriter/core",
-    "test": "bunx wdio run ./@webwriter/core/wdio.conf.ts",
+    "start": "bun vite -- @webwriter/core",
+    "test": "vitest",
+    "start-local-sync": "HOST=localhost PORT=1234 bunx y-websocket",
     "preparestatic": "bun run ./scripts/preparestatic.js",
     "generate-jsonschema": "tsx ./scripts/generatejsonschema.js --tsconfig ./@webwriter/core/tsconfig.json",
     "extract-localization": "lit-localize extract --config ./@webwriter/core/lit-localize.json",
@@ -67,5 +74,16 @@
     "prosemirror-state": "^1.4.4",
     "prosemirror-view": "1.39.2",
     "lit": "^3.3.1"
+  },
+  "dependencies": {
+    "@y/websocket-server": "^0.1.1",
+    "loro-adaptors": "^0.6.1",
+    "loro-crdt": "^1.10.8",
+    "loro-mirror": "^2.1.0",
+    "loro-protocol": "^0.3.0",
+    "loro-websocket": "^0.6.2",
+    "y-webrtc": "^10.3.0",
+    "y-websocket": "^3.0.0",
+    "yjs": "^13.6.29"
   }
 }

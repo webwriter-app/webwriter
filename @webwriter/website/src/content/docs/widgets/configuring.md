@@ -281,3 +281,5 @@ By default, if no matching snippet is found, a default snippet of the form `<my-
   }
 }
 ```
+
+#### `editingConfig[...].dataType`

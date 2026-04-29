@@ -1127,5 +1127,6 @@
 'spaceKey': `Διάστημα`,
 'tabKey': `⭾ Καρτέλα`,
 'upKey': `↑ Πάνω`,
+'sbc5f2f81604bb81a': `Heading 1`,
     };
   

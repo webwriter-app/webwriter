@@ -701,7 +701,7 @@ async function getBundle(ids: string[], importMap: ImportMap, options?: esbuild.
       return new Response(new Blob([JSON.stringify(result.errors)], {type: "application/json"}), {status: 400, statusText: "Error while bundling"})
     }
     else {
-      return new Response(new Blob([js], {type: "text/javascript"}))
+      return new Response(new Blob([js as any], {type: "text/javascript"}))
     }
   }
   else if(cssIds.length) {
@@ -718,7 +718,7 @@ async function getBundle(ids: string[], importMap: ImportMap, options?: esbuild.
   }
 }
 
-type Action<T extends "importmaps" | "bundles" | "packages" | "assets" | "snippets" = "importmaps" | "bundles" | "packages" | "assets" | "snippets"> = {
+type Action<T extends "importmaps" | "bundles" | "packages" | "assets" | "snippets" | "dictionaries" = "importmaps" | "bundles" | "packages" | "assets" | "snippets" | "dictionaries"> = {
   collection: T,
   method?: "HEAD" | "POST" | "PUT" | "DELETE" | "CONNECT" | "OPTIONS" | "TRACE" | "PATCH",
   content?: any,
@@ -744,6 +744,9 @@ function urlToAction(url: URL, method?: Action["method"], content?: any) {
     // GET    https://api.webwriter.app/ww/v1/_snippets/<id>
     // PUT    https://api.webwriter.app/ww/v1/_snippets/<id>
     // DELETE https://api.webwriter.app/ww/v1/_snippets/<id>
+  }
+  else if(suffix.startsWith("_dictionaries")) {
+    collection = "dictionaries"
   }
   else if(suffix.startsWith("_")) {
     throw Error(`Unsupported collection type ${suffix}`)
@@ -780,7 +783,7 @@ async function respond<T extends Action["collection"]>(action: Action<T>) {
   else {
     pkgs = await pkgsResponse.json()
   }
-  const versionedIds = action.collection === "snippets"? action.ids: action.ids.map((id, i) => {
+  const versionedIds = action.collection === "snippets" || action.collection === "dictionaries"? action.ids: action.ids.map((id, i) => {
     const bare = !(id.startsWith("@")? id.slice(1).split("/")[1]: id.split("/")[0]).includes("@")
     if(!bare) {
       return id
@@ -847,6 +850,9 @@ async function respond<T extends Action["collection"]>(action: Action<T>) {
       throw Error(`Unsupported request: ${JSON.stringify(action)}`)
     }
   }
+  else if(action.collection === "dictionaries") {
+    return getDictionary(action.ids[0])
+  }
   else {
     throw Error(`Unknown collection "${action.collection}"`)
   }
@@ -884,6 +890,7 @@ worker.addEventListener("fetch", e => {
   const url = new URL(e.request.url)
   let method = e.request.method === "GET"? undefined: e.request.method
   const shouldIntercept = url.hostname === "api.webwriter.app" && url.pathname.startsWith("/ww/v1/")
+  url.href.includes("dictionaries") && console.log(url.href)
   if(shouldIntercept) {
     try {
       const response = getFetchResponse(url, method as any, e.request) as any
@@ -964,6 +971,19 @@ async function getListPackageIDs(list="https://webwriter.app/webwriter-package-i
   else {
     throw new Error(`${result.status} ${result.statusText}`)
   }
+}
+
+// en_US/en_US.aff
+async function getDictionary(path: string) {
+  console.log("getDictionary", path)
+  const locale = path.split("/").at(0)!
+  const lang = locale.split("_").at(0)
+  const type = path.split(".").at(-1)
+  let content = type === "aff"
+    ? await import(`../../../../node_modules/dictionary-${lang}/index.aff?inline`)
+    : await import(`../../../../node_modules/dictionary-${lang}/index.dic?inline`)
+  console.log(content)
+  return new Response(content)
 }
 
 /** API api.webwriter.app/bundle/

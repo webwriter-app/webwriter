@@ -636,10 +636,11 @@ export class NodeCommand<
     return this.spec.category ?? "editor";
   }
   run(options?: any, e?: Event) {
-    const { exec, editorState } = this.host.activeEditor ?? { exec: () => {} };
     this.host.activeEditor!.editingStatus = undefined;
-    return super.run(options, e, this.spec.run ?? ((host, attrs) =>
-      exec(wrapSelection(this.id, { ...attrs, ...this.spec.defaultAttrs }, this.spec.replaceOnly))
+    return super.run(options, e, this.spec.run ?? ((host, attrs) => {
+      host.messageEditor({type: "insert", html: `<${this.id}></${this.id}>`, smart: true})
+    }
+      // exec(wrapSelection(this.id, { ...attrs, ...this.spec.defaultAttrs }, this.spec.replaceOnly))
     ));
   }
   get active() {
@@ -999,7 +1000,7 @@ export class CommandController implements ReactiveController {
         icon: "arrow-back-up",
         description: () => msg("Undo the last change in the active document"),
         shortcut: "mod+z",
-        run: (host) => host.activeEditor?.undo(),
+        run: (host) => host.activeEditor?.editing.undo(),
         category: "editor",
         disabled: (host) => host.store.document.undoDepth === 0 || host.activeEditor!.mode === "preview",
       }),
@@ -1011,7 +1012,7 @@ export class CommandController implements ReactiveController {
         description: () =>
           msg("Redo the last undone change in the active document"),
         shortcut: "mod+y",
-        run: (host) => host.activeEditor?.redo(),
+        run: (host) => host.activeEditor?.editing.redo(),
         category: "editor",
         disabled: (host) => host.store.document.redoDepth === 0 || host.activeEditor!.mode === "preview",
       }),
@@ -1761,7 +1762,7 @@ export class CommandController implements ReactiveController {
         allowDefault: true,
         icon: "copy",
         run: (host) => {
-          host.activeEditor?.copy();
+          host.activeEditor?.editing.copy();
           host.activeEditor!.editingStatus = undefined;
         },
         preview: (host) =>
@@ -1769,7 +1770,7 @@ export class CommandController implements ReactiveController {
             host.activeEditor?.editingStatus !== "copying"
               ? "copying"
               : undefined),
-        disabled: host => host.activeEditor!.selection.empty,
+        disabled: host => host.activeEditor!.selection.selection.empty,
         category: "editor",
         tags: ["element"],
         fixedShortcut: true,
@@ -1782,7 +1783,7 @@ export class CommandController implements ReactiveController {
         allowDefault: true,
         icon: "cut",
         run: (host) => {
-          host.activeEditor?.cut();
+          host.activeEditor?.editing.cut();
           host.activeEditor!.editingStatus = undefined;
         },
         preview: (host) =>
@@ -1790,7 +1791,7 @@ export class CommandController implements ReactiveController {
             host.activeEditor?.editingStatus !== "cutting"
               ? "cutting"
               : undefined),
-        disabled: host =>  host.activeEditor!.selection.empty,
+        disabled: host =>  host.activeEditor!.selection.selection.empty,
         category: "editor",
         tags: ["element"],
         fixedShortcut: true,
@@ -1803,7 +1804,7 @@ export class CommandController implements ReactiveController {
         allowDefault: true,
         icon: "clipboard",
         run: (host) => {
-          host.activeEditor?.paste();
+          host.activeEditor?.editing.paste();
           host.activeEditor!.editingStatus = undefined;
         },
         preview: (host) =>
@@ -1821,7 +1822,7 @@ export class CommandController implements ReactiveController {
         shortcut: "del",
         icon: "trash",
         run: (host) => {
-          host.activeEditor?.delete();
+          host.activeEditor?.editing.delete();
           host.activeEditor!.editingStatus = undefined;
         },
         preview: (host) =>
@@ -1829,7 +1830,7 @@ export class CommandController implements ReactiveController {
             host.activeEditor?.editingStatus !== "deleting"
               ? "deleting"
               : undefined),
-        disabled: host =>  host.activeEditor!.selection.empty,
+        disabled: host =>  host.activeEditor!.selection.selection.empty,
         category: "editor",
         tags: ["element"],
         fixedShortcut: true,
@@ -1841,7 +1842,7 @@ export class CommandController implements ReactiveController {
         shortcut: "mod+alt+a",
         icon: "edit",
         disabled: host =>  true, // || host.activeEditor!.isGapSelected,
-        run: (host) => host.activeEditor?.edit(),
+        run: (host) => host.activeEditor?.editing.edit(),
         category: "editor",
         tags: ["element"],
       }),
@@ -1851,9 +1852,9 @@ export class CommandController implements ReactiveController {
         description: () => msg("Pin the selection as a snippet in the palette"),
         shortcut: "mod+alt+p",
         icon: "pin",
-        disabled: host => host.activeEditor!.selection.empty || host.activeEditor!.isGapSelected,
+        disabled: host => host.activeEditor!.selection.selection.empty || host.activeEditor!.selection.isGapSelected,
         preview: host => host.activeEditor!.editingStatus = host.activeEditor?.editingStatus !== "pinning"? "pinning": undefined,
-        run: async host => {host.activeEditor!.palette.managing= true; await host.activeEditor!.pin(); host.activeEditor!.palette.focusSnippetTitle()},
+        run: async host => {host.activeEditor!.palette.managing= true; await host.activeEditor!.editing.pin(); host.activeEditor!.palette.focusSnippetTitle()},
         category: "editor",
         tags: ["element"],
       }),
@@ -1869,7 +1870,6 @@ export class CommandController implements ReactiveController {
               ? "commenting"
               : undefined),
         run: host => {
-          console.log(host.activeEditor!.selection?.node?.attrs)
           if(!host.store.document.activeMarkMap["_comment"] && !(host.activeEditor!.selection instanceof NodeSelection && host.activeEditor!.selection.node.attrs["=comment"])) {
             host.activeEditor!.exec(addComment((host.store.accounts.getAccount("pocketbase") as any)?.email))
           }
@@ -1930,7 +1930,7 @@ export class CommandController implements ReactiveController {
         description: () => msg("Set the size, padding, and margins of the selected elements"), // "css-border-collapse"
         tags: ["layout"],
         active: host => PICKER_COMMAND_PROPERTIES.boxStyle.some(name => host.activeEditor?.activeElement?.style.getPropertyValue(name)),
-        disabled: host => host.activeEditor!.isGapSelected || WEBWRITER_ENVIRONMENT.engine.name === "Gecko",
+        disabled: host => host.activeEditor!.selection.isGapSelected || WEBWRITER_ENVIRONMENT.engine.name === "Gecko",
       }),
       layoutStyle: new LayoutCommand(this.host, {
         // + flex/grid/table/list container options
@@ -1983,7 +1983,7 @@ export class CommandController implements ReactiveController {
           "css-flex",
           "css-grid-area",
         ],
-        disabled: host => host.activeEditor!.isGapSelected || WEBWRITER_ENVIRONMENT.engine.name === "Gecko",
+        disabled: host => host.activeEditor!.selection.isGapSelected || WEBWRITER_ENVIRONMENT.engine.name === "Gecko",
       }),
       textStyle: new LayoutCommand(this.host, {
         id: "textStyle",
@@ -2027,7 +2027,7 @@ export class CommandController implements ReactiveController {
           "css-ruby-position",
         ],
         active: host => PICKER_COMMAND_PROPERTIES.textStyle.some(name => host.activeEditor?.activeElement?.style.getPropertyValue(name)),
-        disabled: host => host.activeEditor!.isGapSelected || WEBWRITER_ENVIRONMENT.engine.name === "Gecko",
+        disabled: host => host.activeEditor!.selection.isGapSelected || WEBWRITER_ENVIRONMENT.engine.name === "Gecko",
       }),
       blendingStyle: new LayoutCommand(this.host, {
         // + opacity
@@ -2052,7 +2052,7 @@ export class CommandController implements ReactiveController {
           "css-background-position-x",
           "css-background-position-y",
         ],
-        disabled: host => host.activeEditor!.isGapSelected || WEBWRITER_ENVIRONMENT.engine.name === "Gecko",
+        disabled: host => host.activeEditor!.selection.isGapSelected || WEBWRITER_ENVIRONMENT.engine.name === "Gecko",
       }),
       interactivityStyle: new LayoutCommand(this.host, {
         id: "interactivityStyle",
@@ -2081,7 +2081,7 @@ export class CommandController implements ReactiveController {
           "css-scroll-snap-stop",
           "css-scroll-snap-type",
         ],
-        disabled: host => host.activeEditor!.isGapSelected || WEBWRITER_ENVIRONMENT.engine.name === "Gecko",
+        disabled: host => host.activeEditor!.selection.isGapSelected || WEBWRITER_ENVIRONMENT.engine.name === "Gecko",
       }),
       /*filterStyle: new LayoutCommand(this.host, {
         id: "filterStyle",
@@ -2290,7 +2290,7 @@ export class CommandController implements ReactiveController {
           "css-paint-order",
           "css-print-color-adjust"*/
         ],
-        disabled: host => host.activeEditor!.isGapSelected || WEBWRITER_ENVIRONMENT.engine.name === "Gecko",
+        disabled: host => host.activeEditor!.selection.isGapSelected || WEBWRITER_ENVIRONMENT.engine.name === "Gecko",
       }),
       toggleDevTools: new Command(this.host, {
         id: "toggleDevTools",

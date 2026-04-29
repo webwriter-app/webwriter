@@ -1126,5 +1126,6 @@
 'spaceKey': `Простір`,
 'tabKey': `⭾ Вкладка`,
 'upKey': `↑ Вгору`,
+'sbc5f2f81604bb81a': `Heading 1`,
     };
   

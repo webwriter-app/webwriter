@@ -6,3 +6,8 @@ declare module '*?raw' {
   const content: string;
   export default content;
 }
+
+declare module '*?bundledstring' {
+  const content: string;
+  export default content;
+}

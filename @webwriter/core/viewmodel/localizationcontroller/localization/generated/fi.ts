@@ -1126,5 +1126,6 @@
 'spaceKey': `Avaruus`,
 'tabKey': `⭾ Tab`,
 'upKey': `↑ Ylös`,
+'sbc5f2f81604bb81a': `Heading 1`,
     };
   

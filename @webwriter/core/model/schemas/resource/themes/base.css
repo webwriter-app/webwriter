@@ -113,8 +113,12 @@ p {
   min-height: 1lh;
 }
 
-body > * {
-  margin-block: 1rem;
+body > *:not(.◆editor-only) {
+
+}
+
+body > .◆gap-caret {
+  padding-bottom: 0.45rem;
 }
 
 svg {

@@ -224,6 +224,7 @@ export const WidgetEditingSettings = z.object({
   propagateEvents: z.array(z.string()).optional(),
   warningIgnorePattern: z.string().optional(),
   errorIgnorePattern: z.string().optional(),
+  dataType: z.string().optional()
 })
 
 export type SnippetEditingSettings = z.infer<typeof SnippetEditingSettings>

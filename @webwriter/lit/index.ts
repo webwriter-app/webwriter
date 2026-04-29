@@ -128,6 +128,8 @@ export class LitElementWw extends ScopedElementsMixin(LitElement) {
   static readonly options: Record<string, OptionDeclaration> = {}
   static readonly actions: Record<string, ActionDeclaration> = {}
 
+  static readonly dataType: string | undefined = undefined
+
   /** Declare attributes as options. Used by WebWriter to auto-generate input fields to modify these attributes. As the name suggests, this is mostly suited to simple attributes (boolean, string, etc.). Use a getter here (`get options() {...}`) to dynamically change options depending on the state of the widget.*/
   readonly options: Record<string, OptionDeclaration>
 
@@ -153,6 +155,32 @@ export class LitElementWw extends ScopedElementsMixin(LitElement) {
     this.localize?.setLocale(value).finally(() => this.requestUpdate("lang"))
   }
 
+  get data() {
+    return this.querySelector(":scope > script[type]").textContent
+  }
+
+  /** Data interface where top-level script children are treated as data containers. */
+  @property()
+  set data(value) {
+    this.setData(this.dataType ?? "text/plain", value)
+  }
+
+  get dataType() {
+    const el: HTMLScriptElement | null = this.querySelector(":scope > script[type]") 
+    return el?.type ?? Object.getPrototypeOf(this)?.dataType
+  }
+
+  /** Replace the data container of the given type with a new one, which has the given value and optionally the given attributes. If no data container is found, create a new one. */
+  setData(type: string, value: string, attrs?: Record<string, string>) {
+    const old = this.querySelector(":scope > script[type]")
+    const current = old? old.cloneNode(true) as HTMLScriptElement: document.createElement("script")
+    current.textContent = value
+    current.type = type
+    Object.keys(attrs ?? {}).forEach(k => current.setAttribute(k, attrs[k]))
+    old? old.replaceWith(current): this.append(current)
+    this.requestUpdate("data")
+  }
+
   /** @internal */
   _inTransaction = false
 
@@ -160,5 +188,6 @@ export class LitElementWw extends ScopedElementsMixin(LitElement) {
     super.connectedCallback()
     this.localize?.setLocale(this.lang).finally(() => this.requestUpdate())
     this.getAttributeNames().forEach(k => this.setAttribute(k, this.getAttribute(k)))
+    this.addEventListener("slotchange", e => this.requestUpdate(), {passive: true})
   }
 }

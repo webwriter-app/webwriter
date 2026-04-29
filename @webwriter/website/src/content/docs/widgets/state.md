@@ -81,3 +81,6 @@ class MyWidget extends LitElementWw {
 
 ## Content
 Content isn't directly part of the widget, but it can interacted with using the Slot API.
+
+### Data Scripts
+As a special type of content, widgets can declare that they support

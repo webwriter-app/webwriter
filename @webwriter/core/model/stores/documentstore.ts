@@ -2,6 +2,13 @@ import { EditorState, Plugin, TextSelection } from "prosemirror-state";
 import { Schema, Node, NodeType, Attrs, DOMSerializer, DOMParser } from "prosemirror-model";
 import { html_beautify as htmlBeautify } from "js-beautify";
 import { applyGrammarSuggestions, diffTokens, matchDiffs, removeGrammarSuggestions, tokenizeText, fetchGrammarCorrection, fetchTranslation } from "#model/clients/llm.js";
+import Typo from "typo-js"
+import {Hunspell, createHunspellFromStrings} from "hunspell-wasm"
+import getHunspellWasm from 'hunspell-wasm/wasm/hunspell.js'
+
+import enAff from "../../../../node_modules/dictionary-en/index.aff?raw"
+import enWords from "../../../../node_modules/dictionary-en/index.dic?raw"
+import { Memoize } from "typescript-memoize";
 
 import {
   createEditorState,
@@ -191,6 +198,7 @@ export class DocumentStore implements Resource {
   /** Sets a new editor state for the given resource. */
   set(editorState: EditorStateWithHead) {
     this.editorState = editorState;
+    // this.getSuggestions().then(suggs => console.log(suggs))
   }
 
   /** Sets a new editor state for the given resource. */
@@ -776,22 +784,56 @@ export class DocumentStore implements Resource {
   }
 
   get graphemes() {
-    const segmenter = new Intl.Segmenter(this.lang, {
-      granularity: "grapheme",
-    });
-    return [...segmenter.segment(this.textContent)];
+    return [...this.grapheSegmenter.segment(this.textContent)];
   }
 
   get words() {
-    const segmenter = new Intl.Segmenter(this.lang, { granularity: "word" });
-    return [...segmenter.segment(this.textContent)];
+    return [...this.wordSegmenter.segment(this.textContent)];
+  }
+
+  @Memoize() static async getSpellChecker(lang: string) {
+    return createHunspellFromStrings(enAff, enWords, lang)
+  }
+
+  @Memoize() static getGraphemeSegmenter(lang: string) {
+    return new Intl.Segmenter(lang, {granularity: "grapheme"})
+  }
+
+  @Memoize() static getWordSegmenter(lang: string) {
+    return new Intl.Segmenter(lang, {granularity: "word"})
+  }
+
+  @Memoize() static getSentenceSegmenter(lang: string) {
+    return new Intl.Segmenter(lang, {granularity: "sentence"})
+  }
+
+  get spellChecker() {
+    return DocumentStore.getSpellChecker(this.lang)
+  }
+
+  get grapheSegmenter() {
+    return DocumentStore.getGraphemeSegmenter(this.lang)
+  }
+
+  get wordSegmenter() {
+    return DocumentStore.getWordSegmenter(this.lang)
+  }
+
+  get sentenceSegmenter() {
+    return DocumentStore.getSentenceSegmenter(this.lang)
+  }
+
+  async getSuggestions(): Promise<{options: string[], start: number, end: number}[]> {
+    const spellChecker = await this.spellChecker
+    return this.words.filter(w => w.isWordLike).map(({segment, index}) => ({
+      options: !spellChecker.testSpelling(segment)? spellChecker.getSpellingSuggestions(segment): [],
+      start: index,
+      end: index + segment.length
+    }))
   }
 
   get sentences() {
-    const segmenter = new Intl.Segmenter(this.lang, {
-      granularity: "sentence",
-    });
-    return [...segmenter.segment(this.textContent)];
+    return [...this.sentenceSegmenter.segment(this.textContent)];
   }
 
   get graphemeCount() {

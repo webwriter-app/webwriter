@@ -1126,5 +1126,6 @@
 'spaceKey': `Kosmos`,
 'tabKey': `⭾ Tab`,
 'upKey': `↑ üles`,
+'sbc5f2f81604bb81a': `Heading 1`,
     };
   

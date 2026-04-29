@@ -82,21 +82,10 @@ export class Palette extends LitElement {
 		this.dispatchEvent(new CustomEvent("ww-insert", {composed: true, bubbles: true, detail: {pkgID, name}}))
 	}
 
-  emitAddWidget = (name: string) => {
-		this.dispatchEvent(new CustomEvent("ww-add-widget", {composed: true, bubbles: true, detail: {name}}))
-	}
-
-  emitUpdateWidget = (name: string) => {
-		this.dispatchEvent(new CustomEvent("ww-update-widget", {composed: true, bubbles: true, detail: {name}}))
-	}
-
-  emitRemoveWidget = (name: string) => {
-		this.dispatchEvent(new CustomEvent("ww-remove-widget", {composed: true, bubbles: true, detail: {name}}))
-	}
-
-  emitWatchWidget = (name: string) => {
-		this.dispatchEvent(new CustomEvent("ww-watch-widget", {composed: true, bubbles: true, detail: {name}}))
-	}
+  handleAddPackage = (name: string) => this.app.store.packages.add(name)
+  handleUpdatePackage = (name: string) => this.app.store.packages.update(name)
+  handleRemovePackage = (name: string) => this.app.store.packages.remove(name)
+  handleWatchPackage = (name: string) => this.app.store.packages.toggleWatch(name)
 
 	emitMouseenterInsertable = (name: string, id: string) => {
 		this.dispatchEvent(new CustomEvent("ww-mouseenter-insertable", {composed: true, bubbles: true, detail: {name, id}}))
@@ -172,7 +161,7 @@ export class Palette extends LitElement {
         this.errorPkg = pkg
       }
       else if(!pkg.installed) {
-        this.emitAddWidget(pkg.id)
+        this.handleAddPackage(pkg.id)
       }
       else {
         this.emitInsert(pkg.id, snippetName!)
@@ -196,12 +185,18 @@ export class Palette extends LitElement {
 	}
 
 	handleMouseenterInsertable = (pkg: Package | Command) => {
-    this.emitMouseenterInsertable("name" in pkg? pkg.name: pkg.id, pkg.id)
+    const id = "name" in pkg? pkg.name: pkg.id
+    if (!this.app.store.packages.installedPackages.includes(id) || this.app.activeEditor!.mode !== "edit") {
+      return
+    }
+    const members = this.app.store.packages.getPackageMembers(id)
+    const ids = Object.keys(members).filter(k => k.startsWith("./snippets/")).map(relPath => id + relPath.slice(1) + ".html")
+    const urls = ids.map(id => this.app.store.packages.importMap.resolve(id))
+    return Promise.allSettled(urls.map(url => fetch(url)))
 	}
 
 	handleMouseleaveInsertable = (pkg: Package | Command) => {
     this.dropdownOpen = null
-    this.emitMouseleaveInsertable("name" in pkg? pkg.name: pkg.id, pkg.id)
 	}
 
   ContainerCard = (cmds: Command[]) => {
@@ -261,10 +256,8 @@ export class Palette extends LitElement {
         ${this.PackageDescription(pkg, !!error)}
       </span>
       <aside class="manage-controls">
-        <!--<ww-button variant="icon" class="watch-button manage" icon=${watching? "bolt-filled": "bolt"} @click=${(e: any) => {this.emitWatchWidget(pkg.id); e.stopPropagation()}}></ww-button>-->
-        <!--<ww-button variant="icon" class="error-button" icon="bug" @click=${() => this.errorPkg = pkg}></ww-button>-->
-        <ww-button title=${msg("Update this widget package")} class="manage update" variant="icon" icon="download"  @focusin=${(e: any) => {e.preventDefault(); e.stopPropagation()}} @click=${(e: any) => {this.emitUpdateWidget(pkg.id); e.stopPropagation(); e.preventDefault()}}></ww-button>
-        <ww-button title=${pkg.installed? msg("Remove this widget package"): msg("Install this widget package")} class="manage pin" @focusin=${(e: any) => {e.preventDefault(); e.stopPropagation()}} variant="icon" icon=${pkg.installed? "trash": "download"} @click=${(e: any) => {!pkg.installed? !error && this.emitAddWidget(pkg.id): this.emitRemoveWidget(pkg.id); e.stopPropagation(); e.preventDefault()}}></ww-button>
+        <ww-button title=${msg("Update this widget package")} class="manage update" variant="icon" icon="download"  @focusin=${(e: any) => {e.preventDefault(); e.stopPropagation()}} @click=${(e: any) => {this.handleUpdatePackage(pkg.id); e.stopPropagation(); e.preventDefault()}}></ww-button>
+        <ww-button title=${pkg.installed? msg("Remove this widget package"): msg("Install this widget package")} class="manage pin" @focusin=${(e: any) => {e.preventDefault(); e.stopPropagation()}} variant="icon" icon=${pkg.installed? "trash": "download"} @click=${(e: any) => {!pkg.installed? !error && this.handleAddPackage(pkg.id): this.handleRemovePackage(pkg.id); e.stopPropagation(); e.preventDefault()}}></ww-button>
       </aside>
       <ww-button variant="icon" class="dropdown-trigger" icon=${this.dropdownOpen !== pkg.id? "chevron-down": "chevron-up"} @click=${(e: any) => this.dropdownOpen = this.dropdownOpen? null: pkg.id} @mouseenter=${() => this.dropdownOpen = pkg.id}></ww-button>
       <sl-popup flip anchor=${pkg.id} class="other-insertables" strategy="fixed" placement="bottom-end" sync="width" ?active=${this.dropdownOpen === pkg.id} auto-size="both" auto-size-padding=${1}>
@@ -276,7 +269,7 @@ export class Palette extends LitElement {
       </sl-popup>
     `
     return html`<sl-card id=${pkg.id} @contextmenu=${(e: any) => {this.contextPkg = pkg; e.preventDefault()}} data-package-name=${name} @mouseenter=${() => this.handleMouseenterInsertable(pkg)} @mouseleave=${() => this.handleMouseleaveInsertable(pkg)} class=${classMap({"package-card": true, "block-card": true, installed: !!installed, error, adding, removing, updating, outdated, watching: !!watching, found, local: !!localPath, multiple: insertables.length > 1})} style=${styleMap({order})} ?inert=${changing}>
-		<sl-tooltip placement="top" class="package-tooltip" hoist trigger=${this.testMode? "manual": "hover"}>
+		<sl-tooltip placement="top" class="package-tooltip" hoist trigger=${this.app.activeEditor!.mode === "test"? "manual": "hover"}>
       ${cardLabel}
 		</sl-tooltip>
 		<sl-progress-bar ?indeterminate=${changing}></sl-progress-bar>
@@ -694,7 +687,7 @@ export class Palette extends LitElement {
     // let directoryHandle = packageForm.directoryHandle
     // await this.app.store.packages.add(directoryHandle!, pkg.id)
     if(packageForm.editingState.watching) {
-      this.emitWatchWidget(pkg.id)
+      this.handleWatchPackage(pkg.id)
     } 
     this.packageForm.reset()
   }
@@ -795,13 +788,6 @@ export class Palette extends LitElement {
   }
 
   protected firstUpdated() {
-    this.addEventListener("blur", e => {
-      setTimeout(() => {
-        if(this.app.activeEditor?.pmEditor.hasFocus()) {
-          this.managing = false
-        }
-      })
-    })
     this.app.addEventListener("keydown", e => {
       if(!e.composedPath().includes(this)) {
         this.managing = false

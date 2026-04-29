@@ -174,6 +174,9 @@ export function toAttributes(node: Node | Attrs, extraAttrs?: Attrs) {
   const attrSpec: (k: string) => AttributeSpec & {private?: boolean} | undefined = (k: string) => complex? (node.type?.spec?.attrs ?? {})[k]: {}
   for (const [k, v] of Object.entries(attrs)) {
     const spec = attrSpec(k)
+    if(k === "=custom") {
+      continue
+    }
     if(k === "=comment" && v) {
       for(let i = 0; i < v.length; i++) {
         outputAttrs[`data-ww-comment-${i}`] = serializeComment(v[i], true)

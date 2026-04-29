@@ -1,12 +1,9 @@
-import {Node, NodeSpec, Schema} from "prosemirror-model"
-import redefineCustomElementsString from "redefine-custom-elements/lib/index.js?raw"
+import {DOMOutputSpec, Node, NodeSpec, Schema} from "prosemirror-model"
 import scopedCustomElementRegistry from "@webcomponents/scoped-custom-element-registry/src/scoped-custom-element-registry.js?raw"
 
-import { filterObject, unscopePackageName } from "../../../utility"
-import { HTMLElementSpec, ManifestClassField, ManifestCustomElementDeclaration, ManifestDeclaration, Package, WidgetEditingSettings } from "../.."
-import { Expression } from "../../contentexpression"
+import { filterObject } from "../../../utility"
+import { Package, WidgetEditingSettings } from "../.."
 import { SchemaPlugin } from ".";
-import { Command } from "prosemirror-state"
 import { globalHTMLAttributes, getAttrs, toAttributes } from "../.."
 
 
@@ -15,14 +12,6 @@ export function createWidget(schema: Schema, name: string, id: string, contentEd
   const nodeType = schema.nodes[name]
   return nodeType.createAndFill({id, contentEditable}, [])
 }
-
-/*
-export function getManifestCustomElements(pkg: Package) {
-  return (pkg.customElements?.modules ?? [])
-    .flatMap(mod => (mod?.declarations ?? []) as ManifestDeclaration[])
-    .filter((decl): decl is ManifestCustomElementDeclaration => "customElement" in decl && !!decl.tagName?.startsWith(pkg.nameParts.scope!))
-}
-*/
 
 export function widgetSpecs(pkg: Package): NodeSpec[] {
   return Object.entries(pkg.widgets)
@@ -34,7 +23,7 @@ export function widgetSpec(tag: string, settings: WidgetEditingSettings, pkg: Pa
     isolating: true,
     selectable: true,
     ...settings,
-    content: settings.content? String(settings.content).replaceAll("-", "_"): undefined,
+    content: widgetContent(settings),
     group: widgetGroup(settings),
     tag,
     fullName: `${pkg.id}/widgets/${tag}`,
@@ -42,53 +31,11 @@ export function widgetSpec(tag: string, settings: WidgetEditingSettings, pkg: Pa
     attrs: widgetAttrs(),
     toDebugString: widgetToDebugString(),
     toDOM: widgetToDOM(pkg, !!settings.content),
-    parseDOM: widgetParseDOM(tag, pkg),
+    parseDOM: widgetParseDOM(tag, pkg, settings),
     leafText: undefined,
     widget: true,
   }
 }
-
-/*
-export function escapePmNodeName(str: string) {
-  return str.replaceAll("-", "_".repeat(214))
-}
-
-export function unescapePmNodeName(str: string) {
-  return str.replaceAll("_".repeat(214), "-")
-}
-
-function widgetContent(pkg: Package, decl: ManifestCustomElementDeclaration) {
-  const slotsField = decl.members?.find(m => m.kind === "field" && m.static && m.name === "slots" && m.default) as ManifestClassField
-  const slots = JSON.parse(slotsField?.default ?? "null") as Record<string, string> | undefined
-
-  const slotMap = Object.fromEntries(Object.keys(slots ?? {}).map(slotName => 
-    [slotName,
-      `${escapePmNodeName(pkg.nameParts.scope!)}_SLOT_${slotName}`
-  ]))
-  const content = slots? `(${Object.keys(slotMap).join(" | ")}) | (${Object.values(slots).join(" | ")})*`: "flow*"
-
-  const slotContentSpecs = Object.entries(slotMap).map(([slot, slotID]) => ({
-    group: "_slotContent",
-    content: (slots ?? {})[slot],
-    toDOM: () => ["div", {class: `ww-slot ww-lift ww-${slotID}`, slot}, 0],
-    parseDOM: [{tag: `div.ww-${slotID}`}]
-  }))
-
-  return {content, slots, atom: !!slots, slotContentSpecs}
-}
-
-function widgetGroup(pkg: Package, decl: ManifestCustomElementDeclaration) {
-  const field = decl.members?.find(m => m.kind === "field" && m.static && m.name === "group" && m.default) as ManifestClassField
-  const group = field?.default ?? ""
-  return "flow widget " + group
-}
-
-function widgetConfig(pkg: Package, decl: ManifestCustomElementDeclaration) {
-  const field = decl.members?.find(m => m.kind === "field" && m.static && m.name === "editingConfig" && m.default) as ManifestClassField
-  const editingConfig = field?.default? JSON.parse(field.default): undefined
-  return editingConfig
-}
-*/
 
 function widgetGroup(settings: WidgetEditingSettings) {
   return Array.from(new Set([
@@ -102,14 +49,19 @@ function widgetAttrs() {
   return {
     ...globalHTMLAttributes,
     "=comment": {default: undefined},
-    _: {default: {}}
+    "=data": {default: undefined},
+    "=custom": {default: {}},
   }
+}
+
+function widgetContent(settings: WidgetEditingSettings) {
+  return settings.content? String(settings.content).replaceAll("-", "_"): undefined
 }
 
 function widgetToDebugString() {
   return (node: Node) => {
-    const normal = filterObject(node.attrs, k => k !== "_")
-    const attrs = Object.entries(normal).concat(Object.entries(node.attrs._))
+    const normal = filterObject(node.attrs, k => !k.startsWith("="))
+    const attrs = Object.entries(normal).concat(Object.entries(node.attrs["=custom"]))
     const attrString = attrs
       .filter(([k, v]) => v !== undefined)
       .map(([k, v]) => `${k}:${JSON.stringify(v)}`)
@@ -124,17 +76,24 @@ function widgetBaseClasses(pkg: Package) {
 
 export function widgetToDOM(pkg: Package, hasContent: boolean) {
   return (node: Node) => {
-    const normalAttrs = filterObject(node.attrs, k => k !== "_")
+    const normalAttrs = filterObject(node.attrs, k => !k.startsWith("="))
     const builtinAttrs = toAttributes(normalAttrs)
     if(!("id" in builtinAttrs)) {
       builtinAttrs.id = `ww-${crypto.randomUUID()}`
     }
-    const widgetAttrs = node.attrs._
+    const widgetAttrs = node.attrs["=custom"]
     const dummyDOM = document.createElement("div")
     dummyDOM.classList.value = builtinAttrs.class ?? ""
     dummyDOM.classList.add(...widgetBaseClasses(pkg))
     const attrsWithClass = {...builtinAttrs,  class: dummyDOM.classList.value, ...widgetAttrs}
-    return [node.type.spec.tag, attrsWithClass, ...(hasContent? [0]: [])] as any
+    let widgetDataContent = [] as any
+    if(node.attrs["=data"]) {
+      const widgetData = node.attrs["=data"]
+      widgetDataContent = widgetData?.type === "text/plain" && !hasContent
+        ? [widgetData?.value]
+        : ["script", {...widgetData, value: undefined}, widgetData?.value]
+    }
+    return [node.type.spec.tag, attrsWithClass, ...(hasContent? [0, ...widgetDataContent]: widgetDataContent)] as any
   }
 }
 
@@ -150,81 +109,52 @@ function getWidgetAttrs(dom: HTMLElement | string) {
   return _
 }
 
-export function widgetParseDOM(tag: string, pkg: Package) {
-  return [{tag, getAttrs: (dom: string | HTMLElement) => {
+function getWidgetData(dom: HTMLElement | string, hasContent: boolean) {
+  if(typeof dom === "string") {
+    return undefined
+  }
+  else if(!hasContent && dom.textContent) {
+    return {
+      value: dom.textContent,
+      type: "text/plain"
+    }
+  }
+  else {
+    const script = dom.querySelector(":scope > script[type]") as HTMLScriptElement
+    if(!script) {
+      return undefined
+    }
+    return {
+      value: script.textContent,
+      type: script.type,
+      attrs: Object.fromEntries(script.getAttributeNames().filter(k => k !== "type").map(k => [k, script.getAttribute(k)!]))
+    }
+  }
+}
+
+export function widgetParseDOM(tag: string, pkg: Package, settings?: WidgetEditingSettings) {
+  let contentProp = {} as any
+  if(settings?.dataType === "text/plain") {
+    contentProp.getContent = (dom: HTMLElement) => dom.textContent
+  }
+  return [{tag, ...contentProp, getAttrs: (dom: string | HTMLElement) => {
     let builtinAttrs = filterObject(getAttrs(dom), k => k in globalHTMLAttributes || k === "=comment") as Record<string, any>
     if(!("id" in builtinAttrs)) {
       builtinAttrs.id = `ww-${crypto.randomUUID()}`
     }
     const widgetAttrs = getWidgetAttrs(dom)
+    const widgetData = getWidgetData(dom, !!settings?.content)
     const dummyDOM = document.createElement("div")
     dummyDOM.classList.value = builtinAttrs.class ?? ""
     dummyDOM.classList.remove(...widgetBaseClasses(pkg))
-    // console.log("parse", {...builtinAttrs, class: dummyDOM.classList.value, _: widgetAttrs})
-    return {...builtinAttrs, class: dummyDOM.classList.value, _: widgetAttrs}
+    return {
+      ...builtinAttrs,
+      class: dummyDOM.classList.value,
+      "=custom": widgetAttrs,
+      "=data": widgetData
+    }
   }}]
 }
-
-/*
-export const customBackspaceCommand = chainCommands(
-  deleteSelection,
-  (state, dispatch, view) => {
-    const nodeBefore = state.doc.resolve(state.selection.$from.before(1)).nodeBefore
-    if(!nodeBefore || !nodeBefore.type.spec["widget"]) {
-      return joinBackward(state, dispatch, view)
-    }
-    return false
-  },
-  (state, dispatch, view) => {
-    const nodeBefore = state.doc.resolve(state.selection.$from.before(1)).nodeBefore
-    if(!nodeBefore || !nodeBefore.type.spec["widget"]) {
-      return selectNodeBackward(state, dispatch, view)
-    }
-    return false
-  }
-)
-
-export const customArrowCommand = (up=false) => chainCommands(
-  (state, dispatch, view) => {
-    const isWidgetNode = state.selection instanceof NodeSelection && state.selection.node.type.spec["widget"] as boolean
-    const hasParagraph = up
-      ? state.selection.$from.nodeBefore?.type.name === "paragraph"
-      : state.selection.$from.nodeAfter?.type.name === "paragraph"
-    if(isWidgetNode && !hasParagraph) {
-      const paragraph = state.schema.nodes.paragraph.create()
-      
-      const insertPos = up? state.selection.$from.pos: state.selection.$to.pos
-      let tr = state.tr.insert(insertPos, paragraph)
-      
-      const selectPos = up? tr.selection.$from.pos - 1: tr.selection.$to.pos + 1
-      const selection = new TextSelection(tr.doc.resolve(selectPos))
-      tr = tr.setSelection(selection)
-      dispatch? dispatch(tr): null
-      return true
-    }
-    else if(isWidgetNode && hasParagraph) {
-      const selectPos = up? state.selection.$from.pos - 1: state.selection.$to.pos + 1
-      const selection = new TextSelection(state.doc.resolve(selectPos))
-      const tr = state.tr.setSelection(selection)
-      dispatch? dispatch(tr): null
-      return true
-    }
-    else {
-      return false
-    }
-
-  },
-)
-
-export const customSelectAllCommand = () => chainCommands(
-  (state, dispatch, view) => {
-    let selection = new TextSelection(TextSelection.atStart(state.doc).$from, TextSelection.atEnd(state.doc).$to)
-    const tr = state.tr.setSelection(selection)
-    dispatch? dispatch(tr): null
-    return false
-  }
-)
-*/
 
 export const widgetPlugin = (packages: Package[]) => ({
   nodes: Object.fromEntries(packages

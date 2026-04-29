@@ -15,6 +15,7 @@ import { ExplorableEditor, SaveForm } from "#view";
 import appIconString from "../assets/app-icon.svg?raw";
 import { ifDefined } from "lit/directives/if-defined.js";
 import { cache } from "lit/directives/cache.js";
+import { EditingAction } from "#view/elements/editors/domeditor/editingaction.js";
 
 export const APPICON = `data:image/svg+xml;base64,${btoa(appIconString)}`;
 
@@ -96,7 +97,7 @@ export class App extends ViewModelMixin(LitElement) {
       highlight: true
     },
     "toolbox": {
-      selector: this.activeEditor?.isInNarrowLayout? "ww-button#toggleToolbox": "ww-toolbox",
+      selector: this.activeEditor?.layout.isInNarrowLayout? "ww-button#toggleToolbox": "ww-toolbox",
       title: msg("Toolbox"),
       description: msg("See what you have selected and change it. Copy, cut, paste, pin, or make layout changes. Offers different options depending on your selection, i.e. formatting for text."),
       icon: "tools",
@@ -394,7 +395,7 @@ export class App extends ViewModelMixin(LitElement) {
       commands: { setDocAttrs, editHead },
     } = this.commands;
     const head = html`<ww-head
-      .documentCommands=${documentCommands.filter(cmd => cmd.id !== "editHead")}
+      .documentCommands=${documentCommands.filter(cmd => cmd.id !== "editHead") as any}
       ioState=${ioState}
       slot="nav"
       .filename=${this.activeEditor?.mode === "test"? this.store.packages?.testBundleID?.split("!").at(0): filename}
@@ -410,14 +411,13 @@ export class App extends ViewModelMixin(LitElement) {
     `;
     const metaeditor = this.store
       ? html`<ww-metaeditor
-          .app=${this}
+          .app=${this as any}
           .editorState=${editorState}
           .head$=${(editorState as any).head$}
           .bodyAttrs=${editorState.doc.attrs}
-          @ww-change-body-attrs=${(e: any) =>
-            setDocAttrs.run(e.target.bodyAttrs)}
+          @ww-change-body-attrs=${(e: any) => setDocAttrs.run(e.target.bodyAttrs)}
           @ww-update=${(e: any) => setHead(e.detail.state)}
-          @ww-update-lang=${(e: any) => this.activeEditor?.updateWidgetsLang(e.detail.value)}
+          @ww-update-lang=${(e: any) => this.activeEditor?.editing.updateWidgetsLang(e.detail.value)}
           @ww-click-tab=${(e: any) => (this.foldOpen = true)}
           slot="fold"
         >
@@ -433,8 +433,8 @@ export class App extends ViewModelMixin(LitElement) {
           .bundleID=${testBundleID ?? bundleID}
           .changingID=${changingID}
           .editorState=${editorState}
-          .codeState=${codeState}
-          .testState=${testState}
+          .codeState=${codeState as any}
+          .testState=${testState as any}
           .testStatus=${this.store.packages.testStatus}
           @update=${(e: any) => this.activeEditor?.mode === "test"? setTestState(e.detail.editorState): set(e.detail.editorState)}
           @ww-open=${(e: any) => open(e.detail.url)}
@@ -562,7 +562,7 @@ export class App extends ViewModelMixin(LitElement) {
             url: e.target.url,
             saveAs: !e.target.url,
           })}
-        ?loading=${this.store.document.ioState !== "idle"}
+        ?loading=${false}
         .url=${this.store.document.url}
         .clientName=${this.store.document.url
           ? this.store.accounts.clientNameFromURL(this.store.document.url as URL) ?? "file file"
@@ -607,6 +607,10 @@ export class App extends ViewModelMixin(LitElement) {
       </div>
       ${content}
     </sl-dialog>`;
+  }
+
+  messageEditor(data: EditingAction) {
+    this.activeEditor!.domEditor.iframe.contentWindow.postMessage(data)
   }
 
   render() {

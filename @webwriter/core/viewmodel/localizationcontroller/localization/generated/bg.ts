@@ -1127,5 +1127,6 @@
 'spaceKey': `Space`,
 'tabKey': `⭾ Tab`,
 'upKey': `↑ Нагоре`,
+'sbc5f2f81604bb81a': `Heading 1`,
     };
   

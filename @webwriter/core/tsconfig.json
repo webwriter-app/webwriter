@@ -1,9 +1,8 @@
 {
     "compilerOptions": {
-        "target": "ES2022",
-        "module": "ES2022",
+        "target": "es2022",
+        "module": "es2022",
         "lib": ["ES2022", "DOM", "WebWorker"],
-        "types": ["@wdio/globals/types", "mocha"],
         "experimentalDecorators": true,
         "esModuleInterop": true,
         "allowSyntheticDefaultImports": true,

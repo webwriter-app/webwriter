@@ -1118,5 +1118,6 @@
 'spaceKey': `L'espace`,
 'tabKey': `⭾ Tab`,
 'upKey': `↑ Vers le haut`,
+'sbc5f2f81604bb81a': `Heading 1`,
     };
   

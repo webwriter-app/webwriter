@@ -1127,5 +1127,6 @@
 'spaceKey': `Космос`,
 'tabKey': `⭾ Вкладка`,
 'upKey': `↑ Вверх`,
+'sbc5f2f81604bb81a': `Heading 1`,
     };
   

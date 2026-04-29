@@ -1125,5 +1125,6 @@
 'spaceKey': `Prostor`,
 'tabKey': `⭾ Karta`,
 'upKey': `↑ Nahoru`,
+'sbc5f2f81604bb81a': `Heading 1`,
     };
   

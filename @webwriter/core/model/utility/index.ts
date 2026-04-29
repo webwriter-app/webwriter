@@ -1,3 +1,5 @@
+import { DirectiveResult } from "lit/async-directive.js"
+import { guard, GuardDirective } from "lit/directives/guard.js"
 import { chainCommands } from "prosemirror-commands"
 import { Command, EditorState } from "prosemirror-state"
 import type { ZodSchema } from "zod"
@@ -546,3 +548,20 @@ export function deepUpdate<T extends object>(obj: T, path: string[], value: any)
       ? obj[head] = value // @ts-ignore
       : deepUpdate(obj[head], rest, value);
 }
+
+export function chainListeners<T extends Record<string, CallableFunction | undefined>>(listenerMaps: (T | undefined)[]) {
+  const result = {} as T
+  for(const listenerMap of listenerMaps) {
+    Object.entries(listenerMap ?? {}).forEach(([k, f]) => {
+      if(k in result && f) {
+        (result as any)[k] = ((result as any)[k] as CallableFunction)() || f()
+      }
+      else {
+        (result as any)[k] = f
+      }
+    })
+  }
+  return result
+}
+
+export const handler = <T extends CallableFunction>(func: T) => func as T

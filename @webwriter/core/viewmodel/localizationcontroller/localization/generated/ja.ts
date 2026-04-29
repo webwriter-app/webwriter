@@ -1121,5 +1121,6 @@
 'spaceKey': `スペース`,
 'tabKey': `⭾ タブ`,
 'upKey': `↑ アップ`,
+'sbc5f2f81604bb81a': `Heading 1`,
     };
   

@@ -1127,5 +1127,6 @@
 'spaceKey': `Spazio`,
 'tabKey': `Scheda`,
 'upKey': `↑ Su`,
+'sbc5f2f81604bb81a': `Heading 1`,
     };
   

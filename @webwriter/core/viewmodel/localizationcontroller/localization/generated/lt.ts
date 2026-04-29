@@ -1126,5 +1126,6 @@
 'spaceKey': `Erdvė`,
 'tabKey': `⭾ Skirtukas`,
 'upKey': `↑ Į viršų`,
+'sbc5f2f81604bb81a': `Heading 1`,
     };
   

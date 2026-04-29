@@ -1126,5 +1126,6 @@
 'spaceKey': `Priestor`,
 'tabKey': `⭾ Karta`,
 'upKey': `↑ Nahor`,
+'sbc5f2f81604bb81a': `Heading 1`,
     };
   

@@ -293,12 +293,12 @@ export class  Toolbox extends LitElement {
 
   Pickers = (activeLayoutCommand?: Toolbox["activeLayoutCommand"]) => {
     const properties = html`
-      <ww-box-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "boxStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement} .computedValue=${this.computedStyleOfActiveElement}></ww-box-picker>
-      <ww-layout-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "layoutStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement} .computedValue=${this.computedStyleOfActiveElement}></ww-layout-picker>
-      <ww-text-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "textStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement} .computedValue=${this.computedStyleOfActiveElement}></ww-text-picker>
-      <ww-blending-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "blendingStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement} .computedValue=${this.computedStyleOfActiveElement}></ww-blending-picker>
-      <ww-interactivity-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "interactivityStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement} .computedValue=${this.computedStyleOfActiveElement}></ww-interactivity-picker>
-      <ww-miscellaneous-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "miscellaneousStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement} .computedValue=${this.computedStyleOfActiveElement}></ww-miscellaneous-picker>
+      <ww-box-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "boxStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement as any} .computedValue=${this.computedStyleOfActiveElement}></ww-box-picker>
+      <ww-layout-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "layoutStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement as any} .computedValue=${this.computedStyleOfActiveElement}></ww-layout-picker>
+      <ww-text-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "textStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement as any} .computedValue=${this.computedStyleOfActiveElement}></ww-text-picker>
+      <ww-blending-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "blendingStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement as any} .computedValue=${this.computedStyleOfActiveElement}></ww-blending-picker>
+      <ww-interactivity-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "interactivityStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement as any} .computedValue=${this.computedStyleOfActiveElement}></ww-interactivity-picker>
+      <ww-miscellaneous-picker class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "miscellaneousStyle"} ?advanced=${this.activeLayoutAdvanced} @change=${this.handleStyleChange} .value=${this.styleOfActiveElement as any} .computedValue=${this.computedStyleOfActiveElement}></ww-miscellaneous-picker>
       <div class="style-picker" ?data-active=${this.activeLayoutCommand?.id === "_comment"}>
         ${this.CommentToolbox(this.app.commands.commands.comment.value)}
       </div>`
@@ -443,7 +443,7 @@ export class  Toolbox extends LitElement {
       this.emitSetAttribute(el, target.id, (target as any).checked? "": undefined)
     }
     else if(target.tagName === "WW-URLFILEINPUT") {
-      let url = (target as URLFileInput).value
+      let url = (target as unknown as URLFileInput).value
       let type = undefined
       for(const spec of Object.values(Toolbox.siteEmbedding)) {
         if(spec.url.test(url)) {
@@ -586,7 +586,7 @@ export class  Toolbox extends LitElement {
 
     }
     this.app.activeEditor?.focus();
-    this.app.activeEditor!.selectElementInEditor(el)
+    this.app.activeEditor!.selection.selectElementInEditor(el)
   }
 
   getMathValue = (el: MathMLElement & HTMLElement) => {

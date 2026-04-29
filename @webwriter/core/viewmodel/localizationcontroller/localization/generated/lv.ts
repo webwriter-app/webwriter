@@ -1126,5 +1126,6 @@
 'spaceKey': `Telpa`,
 'tabKey': `⭾ Cilne`,
 'upKey': `↑ Uz augšu`,
+'sbc5f2f81604bb81a': `Heading 1`,
     };
   

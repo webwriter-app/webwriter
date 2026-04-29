@@ -39,6 +39,7 @@ export * from "./elements/datainputs/csslinetypeinput"
 export * from "./elements/editors/richtexteditor"
 export * from "./elements/editors/codemirroreditor"
 export * from "./elements/editors/prosemirroreditor"
+export * from "./elements/editors/domeditor"
 
 export * from "./elements/forms/attributesform"
 export * from "./elements/forms/packageform"

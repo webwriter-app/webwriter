@@ -1126,5 +1126,6 @@
 'spaceKey': `Prostor`,
 'tabKey': `⭾ Tab`,
 'upKey': `↑ navzgor`,
+'sbc5f2f81604bb81a': `Heading 1`,
     };
   

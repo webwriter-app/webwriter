@@ -1118,5 +1118,6 @@
 'spaceKey': `空间`,
 'tabKey': `⭾ 标签`,
 'upKey': `↑ 向上`,
+'sbc5f2f81604bb81a': `Heading 1`,
     };
   

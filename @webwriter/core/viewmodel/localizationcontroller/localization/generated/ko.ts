@@ -1122,5 +1122,6 @@
 'spaceKey': `공간`,
 'tabKey': `⭾ 탭`,
 'upKey': `↑ Up`,
+'sbc5f2f81604bb81a': `Heading 1`,
     };
   

@@ -1126,5 +1126,6 @@
 'spaceKey': `Ruang`,
 'tabKey': `⭾ Tab`,
 'upKey': `↑ Naik`,
+'sbc5f2f81604bb81a': `Heading 1`,
     };
   

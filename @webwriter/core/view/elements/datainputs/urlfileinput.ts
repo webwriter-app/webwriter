@@ -90,7 +90,7 @@ export class URLFileInput extends SlInput implements DataInput {
   helpText: string
 
   @property({type: String, attribute: true, reflect: true})
-  mediaType: "image" | "audio" | "video"
+  mediaType: string
 
   @property({type: Boolean, attribute: true, reflect: true})
   record = false

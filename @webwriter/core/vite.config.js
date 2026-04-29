@@ -3,6 +3,26 @@ import { defineConfig } from 'vite'
 import { lezer } from '@lezer/generator/rollup'
 import { VitePWA } from "vite-plugin-pwa"
 
+
+const fileRegex = /\?bundledstring$/
+
+const bundleToStringPlugin = () => ({
+  name: 'bundle-to-string',
+
+  transform: {
+    sequential: true,
+    order: "post",
+    filter: fileRegex,
+    handler(src, id) {
+      if(fileRegex.test(id)) {
+        return {
+          code: `export default ${JSON.stringify(src)}`
+        }
+      }
+    },
+  }
+})
+
 export default defineConfig({
     publicDir: "../../static",
     build: {
@@ -13,7 +33,8 @@ export default defineConfig({
           input: {
             app: fileURLToPath(new URL("./index.html", import.meta.url)),
             settings: fileURLToPath(new URL("./settings.html", import.meta.url)),
-            worker: fileURLToPath(new URL("./viewmodel/apicontroller/index.service.ts", import.meta.url))
+            worker: fileURLToPath(new URL("./viewmodel/apicontroller/index.service.ts", import.meta.url)),
+            editor: fileURLToPath(new URL("./editor.html", import.meta.url)),
           },
         },
     },
@@ -37,6 +58,7 @@ export default defineConfig({
         devOptions: {
           enabled: true
         }
-      })
+      }),
+      bundleToStringPlugin()
     ]
 })
