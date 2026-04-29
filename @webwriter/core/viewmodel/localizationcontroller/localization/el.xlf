@@ -4420,6 +4420,14 @@
         <source>Update language across document</source>
         <target>Ενημέρωση της γλώσσας σε όλο το έγγραφο</target>
       </trans-unit>
+      <trans-unit id="s970a11625b845d3c">
+        <source>Advanced: When a bundle inside a package changes and a cloud-saved document is open, automatically save that document (use to debug on remote devices, e.g. mobile)</source>
+        <target>Για προχωρημένους: Όταν αλλάζει ένα πακέτο μέσα σε ένα αρχείο και είναι ανοιχτό ένα έγγραφο που έχει αποθηκευτεί στο cloud, αποθηκεύστε αυτόματα το έγγραφο (χρησιμοποιήστε αυτή τη λειτουργία για τον εντοπισμό σφαλμάτων σε απομακρυσμένες συσκευές, π.χ. κινητά)</target>
+      </trans-unit>
+      <trans-unit id="s373b0ca086cafaab">
+        <source>Autosave cloud on bundle change</source>
+        <target>Αυτόματη αποθήκευση στο cloud κατά την αλλαγή πακέτου</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

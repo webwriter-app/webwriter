@@ -4419,6 +4419,14 @@
         <source>Update language across document</source>
         <target>Оновлення мови в усьому документі</target>
       </trans-unit>
+      <trans-unit id="s970a11625b845d3c">
+        <source>Advanced: When a bundle inside a package changes and a cloud-saved document is open, automatically save that document (use to debug on remote devices, e.g. mobile)</source>
+        <target>Розширені налаштування: Якщо змінюється пакет у складі збірки, а документ, збережений у хмарі, відкрито, автоматично зберігати цей документ (використовується для налагодження на віддалених пристроях, наприклад, мобільних)</target>
+      </trans-unit>
+      <trans-unit id="s373b0ca086cafaab">
+        <source>Autosave cloud on bundle change</source>
+        <target>Автозбереження в хмарі при зміні пакета</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

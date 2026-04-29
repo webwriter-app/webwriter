@@ -359,6 +359,12 @@ export class SettingsController implements ReactiveController {
             ),
           label: msg("Show unknown packages"),
         },
+        autosaveCloudOnBundleChange: {
+          schema: z
+            .boolean()
+            .describe(msg("Advanced: When a bundle inside a package changes and a cloud-saved document is open, automatically save that document (use to debug on remote devices, e.g. mobile)")),
+          label: msg("Autosave cloud on bundle change")
+        },
       },
       accounts: {
         accounts: {

@@ -4386,6 +4386,14 @@
   <source>Update language across document</source>
   <target>Sprache im gesamten Dokument ändern</target>
 </trans-unit>
+<trans-unit id="s970a11625b845d3c">
+  <source>Advanced: When a bundle inside a package changes and a cloud-saved document is open, automatically save that document (use to debug on remote devices, e.g. mobile)</source>
+  <target>Fortgeschritten: Wenn ein Bundle innerhalb eines Pakets sich ändert und ein Cloud-gespeichertes Dokument offen ist, speichere das Dokument automatisch (nutzen für Debugging auf Remote-Geräten, z.B. Mobile)</target>
+</trans-unit>
+<trans-unit id="s373b0ca086cafaab">
+  <source>Autosave cloud on bundle change</source>
+  <target>Bei Bundle-Änderung automatisch in Cloud speichern</target>
+</trans-unit>
 </body>
 </file>
 </xliff>

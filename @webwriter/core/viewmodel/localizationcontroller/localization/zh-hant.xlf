@@ -4411,6 +4411,14 @@
         <source>Update language across document</source>
         <target>更新整個文件的語言</target>
       </trans-unit>
+      <trans-unit id="s970a11625b845d3c">
+        <source>Advanced: When a bundle inside a package changes and a cloud-saved document is open, automatically save that document (use to debug on remote devices, e.g. mobile)</source>
+        <target>進階：當套件內的某個套件發生變更，且雲端儲存的文件處於開啟狀態時，會自動儲存該文件（用於在遠端裝置（例如行動裝置）上進行除錯）</target>
+      </trans-unit>
+      <trans-unit id="s373b0ca086cafaab">
+        <source>Autosave cloud on bundle change</source>
+        <target>在套件變更時自動儲存至雲端</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

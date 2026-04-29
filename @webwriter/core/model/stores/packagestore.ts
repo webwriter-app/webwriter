@@ -103,6 +103,8 @@ export class Warning extends Error {}
 /** Handles packages. Packages are node (npm) packages which contain widgets. The PackageStore can also create bundles from packages, which can for example be imported by the runtime editor or embedded by serializers. Additionally, the PackageStore can open or clear the app directory which stores the packages. */
 export class PackageStore {
 
+  autosaveCloudOnBundleChange = false
+
   importMap: ImportMap = new ImportMap({})
   testImportMap: ImportMap = new ImportMap({})
 
