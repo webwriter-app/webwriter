@@ -36,6 +36,9 @@ export class RootStore {
 
   onBundleChange = (packages: Package[]) => {
     this.document.updateSchema(createEditorStateConfig(packages).schema)
+    if(this.packages.autosaveCloudOnBundleChange && this.document.url instanceof URL) {
+      this.document.save()
+    }
   }
 
   get<S extends StoreKey, K extends keyof RootStore[S]>(storeKey: S, key: K) {

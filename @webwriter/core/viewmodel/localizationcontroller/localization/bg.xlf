@@ -4395,6 +4395,18 @@
         <source>Run on reload</source>
         <target>Изпълнява се при презареждане</target>
       </trans-unit>
+      <trans-unit id="s2739460e44320108">
+        <source>Chinese (Traditional)</source>
+        <target>Китайски (традиционен)</target>
+      </trans-unit>
+      <trans-unit id="s970a11625b845d3c">
+        <source>Advanced: When a bundle inside a package changes and a cloud-saved document is open, automatically save that document (use to debug on remote devices, e.g. mobile)</source>
+        <target>Разширени настройки: Когато пакет в рамките на даден пакет се промени и е отворен документ, запазен в облака, този документ се запазва автоматично (използва се за отстраняване на грешки на отдалечени устройства, например мобилни)</target>
+      </trans-unit>
+      <trans-unit id="s373b0ca086cafaab">
+        <source>Autosave cloud on bundle change</source>
+        <target>Автоматично запазване в облака при промяна на пакета</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

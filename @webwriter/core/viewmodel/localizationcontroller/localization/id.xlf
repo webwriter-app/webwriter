@@ -4394,6 +4394,18 @@
         <source>Run on reload</source>
         <target>Jalankan saat memuat ulang</target>
       </trans-unit>
+      <trans-unit id="s2739460e44320108">
+        <source>Chinese (Traditional)</source>
+        <target>Bahasa Mandarin (Tradisional)</target>
+      </trans-unit>
+      <trans-unit id="s970a11625b845d3c">
+        <source>Advanced: When a bundle inside a package changes and a cloud-saved document is open, automatically save that document (use to debug on remote devices, e.g. mobile)</source>
+        <target>Lanjutan: Jika ada bundel di dalam paket yang berubah dan dokumen yang disimpan di cloud sedang terbuka, simpan dokumen tersebut secara otomatis (digunakan untuk debugging pada perangkat jarak jauh, misalnya perangkat seluler)</target>
+      </trans-unit>
+      <trans-unit id="s373b0ca086cafaab">
+        <source>Autosave cloud on bundle change</source>
+        <target>Penyimpanan otomatis ke cloud saat terjadi perubahan paket</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

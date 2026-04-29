@@ -4395,6 +4395,18 @@
         <source>Run on reload</source>
         <target>Uitvoeren bij herladen</target>
       </trans-unit>
+      <trans-unit id="s2739460e44320108">
+        <source>Chinese (Traditional)</source>
+        <target>Chinees (traditioneel)</target>
+      </trans-unit>
+      <trans-unit id="s970a11625b845d3c">
+        <source>Advanced: When a bundle inside a package changes and a cloud-saved document is open, automatically save that document (use to debug on remote devices, e.g. mobile)</source>
+        <target>Geavanceerd: wanneer een bundel binnen een pakket wordt gewijzigd terwijl een in de cloud opgeslagen document is geopend, wordt dat document automatisch opgeslagen (te gebruiken voor foutopsporing op externe apparaten, zoals mobiele apparaten)</target>
+      </trans-unit>
+      <trans-unit id="s373b0ca086cafaab">
+        <source>Autosave cloud on bundle change</source>
+        <target>Automatisch opslaan in de cloud bij wijziging van de bundel</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

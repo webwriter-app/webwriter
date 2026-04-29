@@ -4394,6 +4394,18 @@
         <source>Run on reload</source>
         <target>Käivita uuesti laadimisel</target>
       </trans-unit>
+      <trans-unit id="s2739460e44320108">
+        <source>Chinese (Traditional)</source>
+        <target>Hiina (traditsiooniline)</target>
+      </trans-unit>
+      <trans-unit id="s970a11625b845d3c">
+        <source>Advanced: When a bundle inside a package changes and a cloud-saved document is open, automatically save that document (use to debug on remote devices, e.g. mobile)</source>
+        <target>Täpsem: Kui paketi sees olev kogu muutub ja pilves salvestatud dokument on avatud, salvestatakse see dokument automaatselt (kasutada kaugseadmetel, nt mobiilseadmetel, veaotsinguks)</target>
+      </trans-unit>
+      <trans-unit id="s373b0ca086cafaab">
+        <source>Autosave cloud on bundle change</source>
+        <target>Automaatne salvestamine pilves paketi muutumisel</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

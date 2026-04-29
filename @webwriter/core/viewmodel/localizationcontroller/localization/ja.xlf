@@ -4389,6 +4389,18 @@
         <source>Run on reload</source>
         <target>リロード時に実行</target>
       </trans-unit>
+      <trans-unit id="s2739460e44320108">
+        <source>Chinese (Traditional)</source>
+        <target>中国語（繁体字）</target>
+      </trans-unit>
+      <trans-unit id="s970a11625b845d3c">
+        <source>Advanced: When a bundle inside a package changes and a cloud-saved document is open, automatically save that document (use to debug on remote devices, e.g. mobile)</source>
+        <target>詳細設定：パッケージ内のバンドルが変更され、クラウドに保存されたドキュメントが開かれている場合、そのドキュメントを自動的に保存します（モバイル端末などのリモートデバイスでのデバッグに使用します）。</target>
+      </trans-unit>
+      <trans-unit id="s373b0ca086cafaab">
+        <source>Autosave cloud on bundle change</source>
+        <target>バンドルの変更時にクラウドへ自動保存</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

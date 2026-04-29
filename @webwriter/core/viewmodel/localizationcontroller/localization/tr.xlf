@@ -4393,6 +4393,18 @@
         <source>Run on reload</source>
         <target>Yeniden yüklemede çalıştır</target>
       </trans-unit>
+      <trans-unit id="s2739460e44320108">
+        <source>Chinese (Traditional)</source>
+        <target>Çince (Geleneksel)</target>
+      </trans-unit>
+      <trans-unit id="s970a11625b845d3c">
+        <source>Advanced: When a bundle inside a package changes and a cloud-saved document is open, automatically save that document (use to debug on remote devices, e.g. mobile)</source>
+        <target>Gelişmiş: Bir paket içindeki bir demet değiştiğinde ve bulutta kaydedilmiş bir belge açıksa, o belgeyi otomatik olarak kaydedin (uzak cihazlarda, örneğin mobil cihazlarda hata ayıklama amacıyla kullanın)</target>
+      </trans-unit>
+      <trans-unit id="s373b0ca086cafaab">
+        <source>Autosave cloud on bundle change</source>
+        <target>Paket değişikliğinde otomatik kaydetme (bulut)</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

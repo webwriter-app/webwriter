@@ -4394,6 +4394,18 @@
         <source>Run on reload</source>
         <target>Palaist pēc atkārtotas ielādes</target>
       </trans-unit>
+      <trans-unit id="s2739460e44320108">
+        <source>Chinese (Traditional)</source>
+        <target>Ķīniešu (tradicionālā rakstība)</target>
+      </trans-unit>
+      <trans-unit id="s970a11625b845d3c">
+        <source>Advanced: When a bundle inside a package changes and a cloud-saved document is open, automatically save that document (use to debug on remote devices, e.g. mobile)</source>
+        <target>Papildu iestatījumi: ja pakotnē esošais kopums mainās un ir atvērts mākonī saglabāts dokuments, šo dokumentu saglabāt automātiski (izmantojams, lai veiktu kļūdu novēršanu attālās ierīcēs, piemēram, mobilajās ierīcēs)</target>
+      </trans-unit>
+      <trans-unit id="s373b0ca086cafaab">
+        <source>Autosave cloud on bundle change</source>
+        <target>Automātiskā saglabāšana mākonī, mainot paketi</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

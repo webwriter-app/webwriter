@@ -4110,17 +4110,13 @@
         <target>لا توجد أنماط محددة متاحة</target>
       </trans-unit>
       <trans-unit id="s2b8f50c64be440f7">
-        <source>Select 
-          <x id="0" equiv-text="${this.mediaType}"/>...
-        </source>
+        <source>Select <x id="0" equiv-text="${this.mediaType}"/>...</source>
         <target>اختر 
           <x id="0" equiv-text="${this.mediaType}"/>...
         </target>
       </trans-unit>
       <trans-unit id="s739544d0c858c633">
-        <source>Or drop 
-          <x id="0" equiv-text="${this.mediaType}"/> here
-        </source>
+        <source>Or drop <x id="0" equiv-text="${this.mediaType}"/> here</source>
         <target>أو أسقط 
           <x id="0" equiv-text="${this.mediaType}"/> هنا
         </target>
@@ -4249,10 +4245,7 @@
         <target>هذه الكلمة الأساسية مطلوبة للأدوات</target>
       </trans-unit>
       <trans-unit id="h64cd12550420f6f1">
-        <source>Generate a 
-          <x id="0" equiv-text="&lt;code&gt;"/>LICENSE
-          <x id="1" equiv-text="&lt;/code&gt;"/> file
-        </source>
+        <source>Generate a <x id="0" equiv-text="&lt;code&gt;"/>LICENSE<x id="1" equiv-text="&lt;/code&gt;"/> file</source>
         <target>إنشاء 
           <x id="0" equiv-text="&lt;code&gt;"/>ترخيص
           <x id="1" equiv-text="&lt;/code&gt;"/> ملف
@@ -4311,17 +4304,13 @@
         <target>خطأ في الاتصال</target>
       </trans-unit>
       <trans-unit id="sf52d840949a980d1">
-        <source>
-          <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> will be deleted permanently. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${url.searchParams.get(&quot;filename&quot;) ?? &quot;This file&quot;}"/> سيتم حذفها نهائيًا. هل أنت متأكد؟
         </target>
       </trans-unit>
       <trans-unit id="s9b7cd8860c8fc922">
-        <source>
-          <x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?
-        </source>
+        <source><x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> will be overwritten. Are you sure?</source>
         <target>
           <x id="0" equiv-text="${(this.url instanceof FileSystemFileHandle ? this.url.name : this.url.searchParams.get(&quot;filename&quot;)) ?? &quot;This file&quot;}"/> سيتم الكتابة فوقها. هل أنت متأكد؟
         </target>
@@ -4351,9 +4340,7 @@
         <target>نوع الخاصية غير المدعوم "${desc.type}" (تتم المعالجة كـ JSON)</target>
       </trans-unit>
       <trans-unit id="sa00df4e39c72d3b4">
-        <source>
-          <x id="0" equiv-text="${desc.widget}"/> is not supported
-        </source>
+        <source><x id="0" equiv-text="${desc.widget}"/> is not supported</source>
         <target>
           <x id="0" equiv-text="${desc.widget}"/> غير مدعوم
         </target>
@@ -4386,6 +4373,15 @@
         <source>Enable live reload</source>
         <target>تمكين إعادة التحميل المباشر</target>
       </trans-unit>
+<trans-unit id="s2739460e44320108">
+  <source>Chinese (Traditional)</source>
+</trans-unit>
+<trans-unit id="s970a11625b845d3c">
+  <source>Advanced: When a bundle inside a package changes and a cloud-saved document is open, automatically save that document (use to debug on remote devices, e.g. mobile)</source>
+</trans-unit>
+<trans-unit id="s373b0ca086cafaab">
+  <source>Autosave cloud on bundle change</source>
+</trans-unit>
     </body>
   </file>
 </xliff>

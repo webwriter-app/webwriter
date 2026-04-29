@@ -4390,6 +4390,18 @@
         <source>Run on reload</source>
         <target>다시 로드 시 실행</target>
       </trans-unit>
+      <trans-unit id="s2739460e44320108">
+        <source>Chinese (Traditional)</source>
+        <target>중국어 (번체)</target>
+      </trans-unit>
+      <trans-unit id="s970a11625b845d3c">
+        <source>Advanced: When a bundle inside a package changes and a cloud-saved document is open, automatically save that document (use to debug on remote devices, e.g. mobile)</source>
+        <target>고급: 패키지 내의 번들이 변경되고 클라우드에 저장된 문서가 열려 있는 경우, 해당 문서를 자동으로 저장합니다(모바일 등 원격 기기에서 디버깅할 때 사용).</target>
+      </trans-unit>
+      <trans-unit id="s373b0ca086cafaab">
+        <source>Autosave cloud on bundle change</source>
+        <target>번들 변경 시 클라우드 자동 저장</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

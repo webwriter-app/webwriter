@@ -4386,6 +4386,18 @@
         <source>Run on reload</source>
         <target>Executar na recarga</target>
       </trans-unit>
+      <trans-unit id="s2739460e44320108">
+        <source>Chinese (Traditional)</source>
+        <target>Chinês (tradicional)</target>
+      </trans-unit>
+      <trans-unit id="s970a11625b845d3c">
+        <source>Advanced: When a bundle inside a package changes and a cloud-saved document is open, automatically save that document (use to debug on remote devices, e.g. mobile)</source>
+        <target>Avançado: Quando um pacote dentro de um pacote maior é alterado e um documento salvo na nuvem estiver aberto, salve automaticamente esse documento (use para depuração em dispositivos remotos, como celulares)</target>
+      </trans-unit>
+      <trans-unit id="s373b0ca086cafaab">
+        <source>Autosave cloud on bundle change</source>
+        <target>Salvar automaticamente na nuvem ao alterar o pacote</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

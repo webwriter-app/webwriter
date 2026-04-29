@@ -4394,6 +4394,18 @@
         <source>Run on reload</source>
         <target>Kør ved genindlæsning</target>
       </trans-unit>
+      <trans-unit id="s2739460e44320108">
+        <source>Chinese (Traditional)</source>
+        <target>Kinesisk (traditionel)</target>
+      </trans-unit>
+      <trans-unit id="s970a11625b845d3c">
+        <source>Advanced: When a bundle inside a package changes and a cloud-saved document is open, automatically save that document (use to debug on remote devices, e.g. mobile)</source>
+        <target>Avanceret: Når et bundt i en pakke ændres, og et dokument, der er gemt i skyen, er åbent, skal dokumentet gemmes automatisk (anvendes til fejlfinding på eksterne enheder, f.eks. mobilenheder)</target>
+      </trans-unit>
+      <trans-unit id="s373b0ca086cafaab">
+        <source>Autosave cloud on bundle change</source>
+        <target>Automatisk gemning i skyen ved ændring af pakke</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

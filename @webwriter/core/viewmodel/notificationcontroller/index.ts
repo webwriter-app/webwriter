@@ -76,6 +76,7 @@ export class NotificationController implements ReactiveController {
 	"Element sl-icon scheduled an update",
 	"[TAURI] Couldn't find callback id",
   "Element ww-share-form scheduled an update",
-  "Element sl-tree-item scheduled an update"
+  "Element sl-tree-item scheduled an update",
+  "Emoji support detection failed"
 	]
 }
