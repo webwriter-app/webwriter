@@ -4420,6 +4420,14 @@
         <source>Update language across document</source>
         <target>Aggiornare la lingua del documento</target>
       </trans-unit>
+      <trans-unit id="s970a11625b845d3c">
+        <source>Advanced: When a bundle inside a package changes and a cloud-saved document is open, automatically save that document (use to debug on remote devices, e.g. mobile)</source>
+        <target>Avanzate: quando un bundle all'interno di un pacchetto viene modificato e un documento salvato su cloud è aperto, salva automaticamente quel documento (da utilizzare per il debug su dispositivi remoti, ad esempio dispositivi mobili)</target>
+      </trans-unit>
+      <trans-unit id="s373b0ca086cafaab">
+        <source>Autosave cloud on bundle change</source>
+        <target>Salvataggio automatico su cloud al cambio di pacchetto</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

@@ -4419,6 +4419,14 @@
         <source>Update language across document</source>
         <target>Aktualizácia jazyka v celom dokumente</target>
       </trans-unit>
+      <trans-unit id="s970a11625b845d3c">
+        <source>Advanced: When a bundle inside a package changes and a cloud-saved document is open, automatically save that document (use to debug on remote devices, e.g. mobile)</source>
+        <target>Pokročilé: Ak sa zmení balík v rámci balíka a je otvorený dokument uložený v cloude, dokument sa automaticky uloží (slúži na ladenie na vzdialených zariadeniach, napr. mobilných)</target>
+      </trans-unit>
+      <trans-unit id="s373b0ca086cafaab">
+        <source>Autosave cloud on bundle change</source>
+        <target>Automatické ukladanie do cloudu pri zmene balíka</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

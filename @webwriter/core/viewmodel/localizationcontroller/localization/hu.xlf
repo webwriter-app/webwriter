@@ -4419,6 +4419,14 @@
         <source>Update language across document</source>
         <target>Nyelvi frissítés az egész dokumentumban</target>
       </trans-unit>
+      <trans-unit id="s970a11625b845d3c">
+        <source>Advanced: When a bundle inside a package changes and a cloud-saved document is open, automatically save that document (use to debug on remote devices, e.g. mobile)</source>
+        <target>Haladó: Ha egy csomagban található köteg megváltozik, és egy felhőbe mentett dokumentum éppen megnyitva van, a rendszer automatikusan elmenti azt a dokumentumot (távoli eszközökön, pl. mobilokon történő hibakereséshez használható)</target>
+      </trans-unit>
+      <trans-unit id="s373b0ca086cafaab">
+        <source>Autosave cloud on bundle change</source>
+        <target>Automatikus mentés a felhőbe a csomagváltáskor</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>
