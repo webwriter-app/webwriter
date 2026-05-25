@@ -615,7 +615,7 @@ abbr {
 
 :is(:empty, :has(> :only-of-type.ProseMirror-trailingBreak)):not(
     .ProseMirror-widget
-  ):after {
+  ):first-child:after {
   font: inherit;
   text-align: inherit;
   content: var(--ww-placeholder);
