@@ -1430,3 +1430,15 @@ comment-::selection {
     display: none;
   }
 }
+
+:is(ul, ol, menu):empty {
+  min-height: 1lh;
+
+  &.◆empty-selected {
+    &::before {
+      content: "";
+      display: list-item;
+      color: gray;
+    }
+  }
+}

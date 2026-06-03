@@ -638,7 +638,7 @@ export class NodeCommand<
   run(options?: any, e?: Event) {
     this.host.activeEditor!.editingStatus = undefined;
     return super.run(options, e, this.spec.run ?? ((host, attrs) => {
-      host.messageEditor({type: "insert", html: `<${this.id}></${this.id}>`, smart: true})
+      host.messageEditor({type: "insert", html: `<${this.id}></${this.id}>`, strict: true})
     }
       // exec(wrapSelection(this.id, { ...attrs, ...this.spec.defaultAttrs }, this.spec.replaceOnly))
     ));

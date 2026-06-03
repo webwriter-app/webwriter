@@ -68,7 +68,7 @@ export class EditingSelection {
   }
 
   static get isGapSelection() {
-    return isElement(this.anchor) && this.isEmpty && !Array.from(this.anchor.childNodes).some(node => isText(node))
+    return isElement(this.anchor) && this.isEmpty && !Array.from(this.anchor.childNodes).some(node => isText(node)) && !this.isEmptySelection
   }
 
   static get isElementSelection() {
@@ -76,11 +76,19 @@ export class EditingSelection {
   }
 
   static get isTextSelection() {
-    return !this.isCrossNodeSelection && this.anchor instanceof Text
+    return !this.isEmptySelection && !this.isCrossNodeSelection && this.anchor instanceof Text
+  }
+
+  static get isEmptySelection() {
+    return  this.anchor && (getContainer(this.anchor).childNodes.length === 0 || getContainer(this.anchor).childNodes.length === 1 && getContainer(this.anchor).childNodes.item(0) instanceof Text && !getContainer(this.anchor).childNodes.item(0).textContent) && this.anchorOffset === 0
   }
 
   static get isCrossNodeSelection() {
     return this.anchor !== this.focus
+  }
+
+  static get isEmptyDocumentSelection() {
+    return this.isEmpty && !document.querySelectorAll("body > :not([contenteditable=false])").length
   }
 
   static get anchor() {
@@ -182,8 +190,9 @@ export class EditingSelection {
     if(this.isElementSelection) {
       return this.selectedElement?.[siblingGetter] ?? null
     }
-    else if(this.isGapSelection) { 
-      return null
+    else if(this.isGapSelection) {
+      const [nodesBefore, nodesAfter] = getSidesOfPoint($.range)
+      return direction === "previous"? getContainer(nodesBefore.at(-1)!): getContainer(nodesAfter.at(0)!)
     }
     else if(this.isTextSelection) {
       return this.anchorContainer?.[siblingGetter]
@@ -241,7 +250,8 @@ export class EditingSelection {
   }
 
   static move(node: Node, offset: number = 0) {
-    this.#selection.setPosition(node, offset)
+    const length = node instanceof Text? node.length: node.childNodes.length
+    this.#selection.setPosition(node, offset < 0? length + 1 + offset: offset)
     window.focus()
   }
 

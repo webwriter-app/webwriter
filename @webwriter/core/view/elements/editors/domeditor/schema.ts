@@ -1,5 +1,5 @@
 import { baseSchema } from "./baseschema"
-import { $, getContainer, getIndexBefore } from "./utility"
+import { $, getContainer, getIndexBefore, getSidesOfPoint } from "./utility"
 
 type ContentRuleTransparent = {
   transparent: true,
@@ -50,7 +50,8 @@ type SchemaEntry = {
   emptyStyle?: Record<string, string>,
   placeholderStyle?: Record<string, string>,
   inseperable?: boolean,
-  defaultNode?: boolean
+  defaultNode?: boolean,
+  contentNamespace?: string
 }
 
 export class Schema {
@@ -67,7 +68,7 @@ export class Schema {
   extend(extensionSchema: Record<string, SchemaEntry>) {
     this.#schema = {...this.#schema, ...extensionSchema}
     this.#nodes = Object.fromEntries(Object.keys(extensionSchema)
-      .filter(k => k !== "#unknowncustomelement")
+      .filter(k => k !== "#unknownelement")
       .map(k => [k, this.create(k)])
     )
     Object.keys(extensionSchema)
@@ -96,7 +97,11 @@ export class Schema {
       return document.createComment("")
     }
     else {
-      return document.createElement(key)
+      return key.includes("|")
+        ? document.createElementNS(
+          this.getNamespaceURL(key.split("|").at(0)!),
+          key.split("|").at(1)!)
+        : document.createElement(key)
     }
   }
 
@@ -104,12 +109,45 @@ export class Schema {
     return Object.keys(this.#schema).filter(k => (this.#schema as any)[k].emptySelector && ((this.#schema as any)[k].placeholderStyle || (this.#schema as any)[k].emptyStyle))
   }
 
-  #getTypeOfNode(node: Node) {
-    if(node instanceof Element && node.tagName.toLowerCase() in this.#schema) {
-      return this.#schema[node.tagName.toLowerCase()]
+  get namespaceTypes(): SchemaEntry & {[k: string]: {contentNamespace: string}} {
+    return Object.fromEntries(Object.entries(this.#schema)
+      .filter(([,v]) => v.contentNamespace)) as any
+  }
+
+  getNamespaceURL(key: string) {
+    return this.namespaceTypes[key].contentNamespace
+  }
+
+  getNamespaceNameOfElement(node: Element) {
+    const {namespaceTypes} = this
+    while(node.parentElement) {
+      node = node.parentElement
+      const k = node.tagName.toLowerCase()
+      if(k in namespaceTypes) return k
     }
-    else if(node instanceof Element && !(node.tagName in this.#schema)) {
-      return this.#schema["#unknowncustomelement"]
+  }
+
+  getNamespaceOfElement(node: Element) {
+    const {namespaceTypes} = this
+    while(node.parentElement) {
+      node = node.parentElement
+      const nsType = namespaceTypes[node.tagName.toLowerCase()]
+      if(nsType) return nsType.contentNamespace!
+    }
+  }
+
+  #getTypeOfNode(node: Node) {
+    if(node instanceof Element) {      
+      const ns = this.getNamespaceNameOfElement(node)
+      if(ns) {
+        return this.#schema[`${ns}|` + node.tagName.toLowerCase()]
+      }
+      else if(node.tagName.toLowerCase() in this.#schema) {
+        return this.#schema[node.tagName.toLowerCase()]
+      }
+      else {
+        return this.#schema["#unknownelement"]
+      }
     }
     else if(node.nodeType === Node.TEXT_NODE) {
       return this.#schema["#text"]
@@ -159,8 +197,8 @@ export class Schema {
     const childNodes = Array.from(container.childNodes)
     const index = childNodes.indexOf(insertee as ChildNode)
     const newChildNodes = [
-      ...childNodes.slice(0, index),
-      ...(!insertee? []: [container.cloneNode()]),
+      ...childNodes.slice(0, index + 1),
+      ...(!insertee? []: [insertee]),
       container.cloneNode(),
       ...childNodes.slice(index + 1)
     ]
@@ -168,15 +206,43 @@ export class Schema {
   }
 
   canWrap(wrapper: Element | string, content: Node[]) {
+    console.log(wrapper, content)
     return this.isContentValid(wrapper, content)
   }
 
-  canLift(container: Element, node: Node) {
-    const content = Array.from(container.childNodes)
-    const i = content.indexOf(node as ChildNode)
-    content.splice(i, 1, ...Array.from(node.childNodes))
-    return this.isContentValid(container, content)
+  getLiftTarget(node: Node, parent:Element|null=node.parentElement, siblings:Node[]=Array.from(node.parentElement?.childNodes ?? [])): [number, Node[]] | null {
+    let grandparent = parent?.parentElement ?? null
+    if (!parent || !grandparent || grandparent.nodeName === "HTML") {
+      return null
+    }
+    else {
+      const parentSchema = this.get(parent)
+      const grandsiblings = Array.from(grandparent.childNodes)
+      const iParent = siblings.indexOf(node as ChildNode)
+      const iGrandparent = grandsiblings.indexOf(parent)
+      const leftChildren = siblings.slice(0, iParent); const rightChildren = siblings.slice(iParent + 1)
+      const wouldSliceInseparable = parentSchema.inseperable && leftChildren.length && rightChildren.length
+      if(wouldSliceInseparable || !this.isContentValid(parent, [...leftChildren, ...rightChildren])) return null;
+      const leftParent = leftChildren.length? parent.cloneNode() as Element: null; leftParent?.append(...leftChildren)
+      const rightParent = rightChildren.length? parent.cloneNode() as Element: null; rightParent?.append(...rightChildren)
+      const liftInsert = [leftParent, node, rightParent].filter(n => n) as Node[]
+      const grandparentContent = [
+        ...grandsiblings.slice(0, iGrandparent),
+        ...liftInsert,
+        ...grandsiblings.slice(iGrandparent + 1)
+      ]
+      if(this.isContentValid(grandparent, grandparentContent)) {
+        return [1, liftInsert]
+      }
+      else {
+        const [k, liftInsert] = this.getLiftTarget(node, grandparent, grandparentContent) ?? []
+        if(!k || !liftInsert) return null;
+        return [1 + k, liftInsert]
+      }
+    }
   }
+
+  
 
   findInvalidNodes(root: Node = document): Element[] {
     const walker = document.createTreeWalker(root)
@@ -195,39 +261,24 @@ export class Schema {
   }
 
   private hasRuleRemainingMin(rule: ContentRule) {
-    if("group" in rule) {
-      return (rule.min ?? 1) < 1
-    }
-    else if("options" in rule) {
-      return rule.options.every(option => (option.min ?? 1) >= 1)
-    }
-    else if("terms" in rule) {
-      return rule.terms.some(term => (term.min ?? 1) < 1)
-    }
-    else if("selector" in rule) {
-      return (rule.min ?? 1) < 1
-    }
-    else {
-      throw TypeError(`Invalid rule '${JSON.stringify(rule)}'`)
-    }
+    return (rule.min ?? 1) >= 1
   }
 
   isContentValid(node: Node | string, content?: Node[], rule=structuredClone(this.getContentRule(node))) {
     let nodeToCheck = typeof node === "string"? this.create(node): node
     
-    if(!(nodeToCheck instanceof Element)) {
-      return true
-    }
-    if(!rule) {
-      return false
-    }
+    if(!(nodeToCheck instanceof Element)) return true;
+    if(!rule) return false;
     const contentToCheck = content ?? Array.from(nodeToCheck.childNodes)
     const everyNodeValid = contentToCheck.every(node => this.isNodeValid(node, rule))
     const hasRemainingMin = this.hasRuleRemainingMin(rule)
-    return everyNodeValid && hasRemainingMin
+    return everyNodeValid && !hasRemainingMin
   }
 
-  isNodeValid(node: Node, rule=structuredClone(this.getContentRule(node))): boolean {
+  isNodeValid(node: Node, rule=structuredClone(this.getContentRule(node.parentElement!))): boolean {
+    if(node instanceof Element && node.getAttribute("contenteditable") === "false") {
+      return true
+    }
     if(!rule) {
       console.error(`${node.nodeName} invalid: No content allowed in parent`)
       return false
@@ -310,6 +361,33 @@ export class Schema {
     }
   }
 
+  fillByRule(
+    containerOrKey: Node | string,
+    rule=structuredClone(this.getContentRule(containerOrKey)), 
+    content: Node[]=containerOrKey instanceof Node? Array.from(containerOrKey.childNodes): []    
+  ) {
+    if(!rule) throw Error("No content allowed in parent according to rule");
+    const container = containerOrKey instanceof Node? containerOrKey: this.create(containerOrKey)
+    if(this.isContentValid(container, content, structuredClone(rule))) return content;
+    let newContent = [] as Node[]
+    let executionCount = 0
+    while((this.hasRuleRemainingMin(rule) || content.length) && executionCount < 10) {
+      executionCount++
+      if(content.length && this.isNodeValid(content.at(0)!, rule)) {
+        newContent = [...newContent, content.shift()!]
+      }
+      else {
+        const validContentTypes = this.findValidContentTypes(container, rule)
+        if(!validContentTypes.length) throw Error("No possible fill for node");
+        const newNode = this.create(validContentTypes.at(0)!)
+        if(this.isNodeValid(newNode, rule)) {
+          newContent = [...newContent, newNode];
+        }
+      }
+    }
+    return newContent
+  }
+
   findValidContentTypes(
     containerOrKey: Node | string,
     rule=structuredClone(this.getContentRule(containerOrKey)), 
@@ -319,13 +397,9 @@ export class Schema {
       return []
     }
 
-    const container = containerOrKey instanceof Node? containerOrKey: document.createElement(containerOrKey)
+    const container = containerOrKey instanceof Node? containerOrKey: this.create(containerOrKey)
 
-    const isValid = this.isContentValid(container, content, rule)
-    if(!isValid) {
-      throw TypeError("Content is invalid")
-    }
-    else if((rule.max ?? 1) < 1) {
+    if((rule.max ?? 1) < 1) {
       return []
     }
     
@@ -379,8 +453,18 @@ export class Schema {
     const index = Array.from(container.childNodes).indexOf(content[0] as ChildNode)
     const slice = Array.from(container.childNodes).slice(0, index)
     const validContentTypes = this.findValidContentTypes(container, undefined, slice)
+    console.log(validContentTypes)
     const wrapperType = validContentTypes.find(k => this.canWrap(k, content))
     return wrapperType? this.create(wrapperType) as HTMLElement: undefined
+  }
+
+  lift(container: Element, node: Node, maxDepth=Infinity) {
+    const siblings = Array.from(container.childNodes)
+    if(!siblings.includes(node as ChildNode)) {
+      throw TypeError("Cannot lift a node that is not a child of the container")
+    }
+    const point = new Range(); point.setStartBefore(node);
+    const [left,right] = getSidesOfPoint(point)
   }
 
   findAlternativeIndex(container: Element, content: Node[]) {
@@ -402,21 +486,23 @@ export class Schema {
     return Array.from(el.childNodes).filter(n => !this.isNodeValid(n))
   }
 
-  getMissingChildTypes(el: Element): string[] {
-    return []
-  }
-
-  fixInvalidContent(el: Element, invalidNodes=this.getInvalidChildNodes(el), missingTypes=this.getMissingChildTypes(el)) {
+  fixInvalidContent(el: Element, invalidNodes=this.getInvalidChildNodes(el)) {
+    if(this.isContentValid(el)) return;
     let newChildNodes = Array.from(el.childNodes) as (Node | Node[] | undefined)[]
     // For every invalid node, attempt: lift, wrap, move & wrap, delete
     for(const invalidNode of invalidNodes) {
       const i = newChildNodes.indexOf(invalidNode as Node)
-      let wrapping, moveIndex
-      if(this.canLift(el, invalidNode)) {
-        newChildNodes[i] = Array.from(invalidNode.childNodes)
-      }
-      else if(wrapping = this.findWrapping(el, [invalidNode])) {
+      let wrapping, liftTarget, moveIndex
+      if(wrapping = this.findWrapping(el, [invalidNode])) {
+        wrapping.append(invalidNode)
         newChildNodes[i] = wrapping
+        
+      }
+      else if(liftTarget=this.getLiftTarget(invalidNode)) {
+        const [depth, replacement] = liftTarget
+        let t = el; let i = 1
+        while(i < depth && t.parentElement) {t = t.parentElement; i++}
+        t.replaceWith(...replacement)
       }
       else if((moveIndex = this.findAlternativeIndex(el, [invalidNode])) !== null) {
         newChildNodes.splice(moveIndex, 0, invalidNode)
@@ -426,22 +512,30 @@ export class Schema {
         newChildNodes[i] = undefined
       }
     }
-    // For every missing node, attempt: fill
-
     newChildNodes = newChildNodes.filter(n => n).flat()
+    
+    // For every still missing node, attempt: fill
+    try {
+      newChildNodes = this.fillByRule(el, undefined, newChildNodes as Node[])
+    }
+    catch(err) {
+      console.error(err)
+    }
 
     // If content is still invalid, remove el
     if(!this.isContentValid(el, newChildNodes as Node[])) {
       return el.remove()
     }
-    else {
+    else { // else apply the new subtree
       el.replaceChildren(...(newChildNodes as Node[]))
       el.normalize()
     }
   }
 
-  checkAndCorrect(root: Node = document) {
-    this.findInvalidNodes(root).forEach(node => this.fixInvalidContent(node as any))
+  checkAndCorrect(root: Node = document.documentElement, deep=false) {
+    if(!(root instanceof Element)) return;
+    this.fixInvalidContent(root)
+    if(deep) root.childNodes.forEach(node => this.checkAndCorrect(node, true));
   }
 
   findValidTypesToInsert(range = $.range): string[] {

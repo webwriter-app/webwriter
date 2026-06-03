@@ -42,7 +42,7 @@ export class DOMEditor {
   features = {
     "dependency": new DependencyFeature(this),
     "history": new HistoryFeature(this),
-    // "manipulation": new ManipulationFeature(this),
+    "manipulation": new ManipulationFeature(this),
     "transformation": new TransformationFeature(this),
     "selection": new SelectionFeature(this),
     "placeholder": new PlaceholderFeature(this),
@@ -98,6 +98,8 @@ export class DOMEditor {
     this.features.transformation.startTransform(el)
   }
 
+  isCorrecting = false
+
   handleMutations(mutations: EditingMutation[]) {
     let filteredMutations = mutations.map(m => {
       if(m.type === "selection" || m.type === "characterData") {
@@ -120,7 +122,27 @@ export class DOMEditor {
         }: null
       }
     }).filter(m => m) as EditingMutation[]
-    filteredMutations.length && this.doc.readDomMutation(filteredMutations)
+    if(!this.isCorrecting) {
+      const possiblyInvalidNodes = Array.from(new Set(filteredMutations.flatMap(mut => {
+        if(mut.type === "childList") {
+          return [mut.target, ...mut.addedNodes]
+        }
+        else if(mut.type === "attributes") {
+          return [mut.target]
+        }
+        else if(mut.type === "characterData") {
+          return [mut.target]
+        }
+      }))).filter(node => node && node.isConnected)
+      if(possiblyInvalidNodes.length) {
+        return
+        this.isCorrecting = true
+        console.log(`Correcting ${possiblyInvalidNodes.map(node => node?.nodeName.toLowerCase()).join(", ")}`)
+        possiblyInvalidNodes.forEach(node => this.schema.checkAndCorrect(node))
+        setTimeout(() => this.isCorrecting = false, 0)
+      }
+    }
+    // filteredMutations.length && this.doc.readDomMutation(filteredMutations)
   }
 
   postAction(action: EditingAction) {
@@ -166,7 +188,7 @@ export class DOMEditor {
 }
 
 // RUN ////////////////////////////////////////////////////////////////////////
-document.body.innerHTML = "<p>hello world</p><p>How are you?</p>"
+document.body.innerHTML = "<p>hello world</p><p>How are you?</p><p>I am great</p><ul><li>test</li></ul>"
 const editor = new DOMEditor()
 /* @ts-ignore */
 window.editor = editor

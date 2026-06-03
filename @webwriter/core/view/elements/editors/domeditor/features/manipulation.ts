@@ -2,21 +2,17 @@ import { DocumentListenerMap, EditorFeature } from "."
 import { $, modifierKeyDown, getContainer, getSidesOfPoint, htmlToFragment, isElement } from "../utility"
 import { SelectionFeature } from "./selection"
 
+type Granularity = "character" | "word" | "line" | "block"
+
 export class ManipulationFeature extends EditorFeature {
 
   actions = {
-    insert: ({html, conformant}: {type: "insert", html: string, conformant?: boolean}) => {
+    insert: ({html, strict}: {type: "insert", html: string, strict?: boolean}) => {
       const frag = htmlToFragment(html)
-      this.insert(frag, conformant)
+      this.insert(frag, 0, strict)
     },
     delete: ({direction}: {type: "delete", direction?: "forward" | "backward"}) => {
       this.delete(direction)
-    },
-    split: ({insertee}: {type: "split", insertee?: string}) => {
-      this.split(insertee? htmlToFragment(insertee): undefined)
-    },
-    join: ({direction}: {type: "split", direction?: "forward" | "backward"}) => {
-      this.join(direction)
     },
     wrap: ({wrapper}: {type: "wrap", wrapper: string}) => {
       this.wrap(htmlToFragment(wrapper))
@@ -47,140 +43,149 @@ export class ManipulationFeature extends EditorFeature {
       if($.isGapSelection && SelectionFeature.gapAnchor) {
         const node = SelectionFeature.gapAnchor.cloneNode()
         this.insert(node)
-        $.selectRange(node, 0)
+        $.move(node)
+      }
+      else if($.commonAncestor.nodeName === "BODY" && $.isEmptyDocumentSelection) {
+        const el = this.editor.schema.create()
+        document.body.prepend(el)
+        $.move(el)
       }
     },
     "keydown": ev => {
-      if(ev.key === "Enter" && modifierKeyDown(ev)) {
-        // split parent
-      }
-      else if(ev.key === "Enter") {
-        // lift empty
-        // split
+      if(ev.key === "Enter") {
         ev.preventDefault()
-        if($.isGapSelection) {
-          const p = document.createElement("p")
-          this.insert(p)
-          $.selectRange(p, 0)
+        if($.isGapSelection && SelectionFeature.gapAnchor) {
+          const el = this.editor.schema.create()
+          document.body.prepend(el)
+          $.move(el)
+        }
+        else if(ev.shiftKey && ev.altKey) {
+          this.insert(document.createElement("wbr"))
+        }
+        else if(ev.shiftKey) {
+          this.insert(document.createElement("br"))
+        }
+        else if(modifierKeyDown(ev)) {
+          this.insert(undefined, 1)
         }
         else {
-          this.split()
+          this.insert(undefined, 0)
         }
       }
-      else if(ev.key === "Backspace" && modifierKeyDown(ev)) {
 
-      }
       else if(ev.key === "Backspace") {
-        if(!$.isEmpty && $.isCrossNodeSelection) {
-          ev.preventDefault()
-          this.join()
+        ev.preventDefault()
+        if(ev.altKey && modifierKeyDown(ev)) {
+          this.delete("backward", "line")
         }
-        else if($.selectedElement === document.body) {
-          const p = document.createElement("p")
-          document.body.replaceChildren(p)
-          $.selectRange(p, 0)
+        else if(ev.altKey) {
+          this.delete("backward", "word")
         }
-        else if(!$.isEmpty) {
-          ev.preventDefault()
-          $.delete()
-        }
-        if($.anchorOffset === 0) {
-          ev.preventDefault()
-          this.join("backward")
+        else if(modifierKeyDown(ev)) {
+          this.delete("backward", "block")
         }
         else {
-          // this.editor.deleteBackward()
+          this.delete("backward", "character")
         }
       }
-      else if(ev.key === "Delete" && modifierKeyDown(ev)) {
-        this
-      }
+
       else if(ev.key === "Delete") {
-        if($.isElementSelection) {
-          $.selectedElement!.remove()
-          ev.preventDefault()
+        ev.preventDefault()
+        if(ev.altKey && modifierKeyDown(ev)) {
+          this.delete("forward", "line")
+        }
+        else if(ev.altKey) {
+          this.delete("forward", "word")
+        }
+        else if(modifierKeyDown(ev)) {
+          this.delete("forward", "block")
+        }
+        else {
+          this.delete("forward", "character")
         }
       }
-      else if(ev.key === "a" && modifierKeyDown(ev)) {
 
-      }
-    }
-  }
-
-  insert(node: Node, conformant=false) {
-    $.delete()
-    if(conformant) {
-      this.#smartInsert(node)
-    }
-    else {
-      $.range.insertNode(node)
-    }
-  }
-
-  delete(direction?: "forward" | "backward", strict=false) {
-    $.delete()
-    if(direction === "forward") {
-
-    }
-    else {
-      $.delete()
-      const container = $.commonAncestor
-      if($.startOffset && container instanceof Text) {
-        const i = $.startOffset
-        const t = container.textContent
-        container.textContent = `${t.slice(0, i-1)}${t.slice(i)}`
-        $.move(container, i-1)
-        return 
-      }
-      else {
-        const prev = container.previousSibling
-        if(!prev || prev.nodeName === "BODY" || prev.nodeName === "HEAD" || prev.nodeName === "HTML") {
-          return
+      else if(ev.key === "Tab") {
+        ev.preventDefault()
+        if(ev.shiftKey) {
+          this.lift(1)
         }
-        $.range.setStartBefore(prev)
-        prev.remove()
+        else {
+          this.wrap()
+        }
       }
     }
   }
-  split(insertee?: Node) {
-    $.delete()
-    const node = $.commonAncestor
-    const container = getContainer(node)
-    if(container === document.body || container === document.documentElement) {
+
+  insert(node?: Node, splitDepth=0, strict=false) {
+    if(true) {
+      node? $.replace(node): $.delete()
+      let locus = $.commonAncestor
+      for(let i = 0; i <= splitDepth; i++) {
+        $.isTextSelection && ($.start! as Text).splitText($.startOffset)
+        let container = getContainer(locus)
+        if(container.nodeName === "BODY" || container.nodeName === "HTML") {continue}
+        const [,right] = getSidesOfPoint($.range)
+        const schema = this.editor.schema.get(container)
+        const next = (strict && schema.inseperable? this.editor.schema.create(): container.cloneNode()) as Element
+        container.after(next)
+        next.append(...right)
+        node? $.move(node, -1): $.move(next, 0)
+      }
       return
     }
-    node instanceof Text && node.splitText($.startOffset)
-    const [_, rightNodes] = getSidesOfPoint($.range)
-    const schema = this.editor.schema.get(container)
-    const newNode = schema.inseperable? this.editor.schema.create() as HTMLElement: container.cloneNode() as Element
-    newNode.append(...rightNodes)
-    container.after(newNode)
-    insertee && container.after(insertee)
-    $.move(insertee ?? newNode, 0)
-    newNode.normalize()
+    else if(node) {
+      this.#smartInsert(node)
+    }
   }
 
-  join(direction?: "forward" | "backward") {
-    return direction === "forward"? this.#joinForward(): this.#joinBackward()
-    const start = $.start
-    const startOffset = $.startOffset
-    const startContainer = getContainer($.start!)
-    const endContainer = getContainer($.end!)
+  delete(direction?: "forward" | "backward", granularity:Granularity="character", strict=false) {
+    if(!$.commonAncestor.textContent && !["HTML", "BODY"].includes($.commonAncestor.nodeName)) {
+      $.delete()
+      const prev = $.commonAncestor.previousSibling as Node
+      ($.commonAncestor as Element | Text).remove()
+      prev && $.move(prev, -1)
+      return
+    }
+    else if($.isEmpty && !$.isGapSelection) {
+      granularity === "block"? $.extend($.commonAncestor, 0): $.extendBy(granularity, direction)
+      $.delete()
+    } 
     $.delete()
-    startContainer.append(...Array.from(endContainer.childNodes))
-    endContainer.remove()
-    startContainer.normalize()
-    $.move(start!, startOffset)
+    if($.isGapSelection && $.elementBefore && $.elementAfter && direction === "backward") {
+      const {elementBefore, elementAfter} = $
+      elementBefore.append(...elementAfter.childNodes)
+      $.move(elementBefore.lastChild!)
+      elementBefore.normalize()
+      elementAfter.remove()
+    }
+    else if($.isGapSelection && $.elementBefore && $.elementAfter && direction === "forward") {
+      const {elementBefore, elementAfter} = $
+      elementAfter.prepend(...elementBefore.childNodes)
+      $.move(elementAfter.lastChild!)
+      elementAfter.normalize()
+      elementBefore.remove()
+    }
   }
 
-  wrap(wrapping: DocumentFragment | Element) {
-    const wrapper = wrapping instanceof DocumentFragment? wrapping.firstElementChild!: wrapping
-    wrapper.append($.slice)
-    $.replace(wrapper)
-    return wrapper
+  wrap(wrapping?: DocumentFragment | Element, strict=false) {
+    if(wrapping) {
+      const wrapper = wrapping instanceof DocumentFragment? wrapping.firstElementChild!: wrapping
+      wrapper.append($.slice)
+      $.replace(wrapper)
+      return wrapper
+    }
+    else {
+      const wrapper = $.elementBefore ?? $.elementAfter
+      if(!wrapper) {
+        return
+      }
+      wrapper.append($.anchorContainer)
+      return wrapper
+    }
   }
 
-  lift(depth=1) {
+  lift(depth=1, strict=false) {
     let parent: HTMLElement = $.commonAncestor as HTMLElement
     const fragment = $.cut()
     for(let i = 0; i < depth; i++) {
@@ -214,39 +219,14 @@ export class ManipulationFeature extends EditorFeature {
     $.nodesBetween.filter(isElement).forEach(n => Object.assign((n as HTMLElement).style, style))
   }
 
-  #joinBackward() {
-    const container = getContainer($.start!)
-    if(!container.previousElementSibling || container.previousElementSibling === document.head) {
-      return
-    }
-    const prevContainer = getContainer(container.previousElementSibling)
-    const childNodes = Array.from(container.childNodes)
-    prevContainer.append(...childNodes)
-    container.remove()
-    $.range.setStartBefore(childNodes[0])
-    $.range.setEndBefore(childNodes[0])
-    prevContainer.normalize()
-  }
-
-  #joinForward() {
-    $.delete()
-    const node = $.commonAncestor
-    const parent = node.parentElement?.tagName === "BODY"? node: node.parentElement!
-    const nextNode = parent.nextSibling
-    if(!nextNode) {return}
-    const childNodes = Array.from(parent.childNodes);
-    (nextNode as Element).prepend(...childNodes);
-    (parent as Element).remove()
-    $.range.setStartBefore(childNodes[0])
-  }
-
   #replaceParent(el: Element) {
-    const parent = $.start?.parentElement
+    const parent = getContainer($.commonAncestor)
     if(parent?.tagName === "HTML" || parent?.tagName === "BODY") {
       throw TypeError("Cannot replace <html> or <body>")
     }
     el.append(...Array.from(parent?.childNodes ?? []))
     parent?.replaceWith(el)
+    $.selectElement(el)
   }
 
   #fragmentToClipboardItem(fragment: DocumentFragment) {
@@ -263,6 +243,7 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   #smartInsert(node: Node) {
+    console.log("smartInsert")
     const container = $.commonAncestor instanceof Element? $.commonAncestor: $.commonAncestor.parentElement
     const siblings = Array.from(container?.childNodes ?? [])
     const insertee = node instanceof DocumentFragment
@@ -281,13 +262,13 @@ export class ManipulationFeature extends EditorFeature {
     const isValidContainer = this.editor.schema.canWrap(insertee, siblings) && this.editor.schema.canReplace(container, insertee)
     const isValidInPlace = this.editor.schema.canInsert(container, insertee, index, index + 1)
     const isValidSplitter = this.editor.schema.canSplit(container, insertee)
-
+    console.log(isVoid, isValidContainer, isValidInPlace, isValidSplitter)
     if($.isEmpty) {
       if(!isVoid && isValidContainer) {
-        this.#replaceParent(node as Element)
+        this.#replaceParent(insertee)
       }
       else if(!isValidInPlace && !isValidContainer && isValidSplitter) {
-        this.split(insertee)
+        this.insert(insertee, 1)
       }
       else if(isValidInPlace) {
         this.insert(node) 
@@ -297,15 +278,12 @@ export class ManipulationFeature extends EditorFeature {
       if(isVoid && isValidInPlace) {
         this.insert(node)
       }
-      else if(isVoid && !isValidInPlace && isValidSplitter) {
-        this.split(insertee)
-      }
       else if(!isValidInPlace && isValidSplitter) {
-        this.split(insertee)
+        this.insert(insertee, 1)
       }
       else if(isValidInPlace) {
         const wrapped = this.wrap(insertee)
-        this.editor.schema.fixInvalidContent(wrapped)
+        this.editor.schema.fixInvalidContent(wrapped!)
       }
     }
   }

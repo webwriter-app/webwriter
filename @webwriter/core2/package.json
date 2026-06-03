@@ -1,0 +1,25 @@
+{
+  "name": "@webwriter/core2",
+  "version": "1.9.4",
+  "description": "Core functionality of WebWriter",
+  "browser": "index.html",
+  "type": "module",
+  "private": true,
+  "author": "Frederic Salmen <frederic@fsalmen.de>",
+  "license": "UNLICENSED",
+  "imports": {
+    "#model/*": "./model/*",
+    "#view/*": "./view/*",
+    "#model": "./model/index.js",
+    "#view": "./view/index.js",
+    "#utility": "./model/utility/index.js"
+  },
+  "dependencies": {
+    "@lit-labs/signals": "^0.3.0",
+    "@lit/task": "^1.0.3",
+    "lit": "^3.3.2",
+    "signal-polyfill": "^0.2.2",
+    "signal-utils": "^0.21.1"
+  },
+  "devDependencies": {}
+}

@@ -248,7 +248,6 @@ export class SharedDOMDoc {
       return
     }
     else if(Array.isArray(mut)) {
-      console.log(mut)
       mut.forEach(mut => this.readDomMutation(mut))
     }
     else if(mut.type === "selection") {

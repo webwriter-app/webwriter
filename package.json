@@ -82,6 +82,8 @@
     "loro-mirror": "^2.1.0",
     "loro-protocol": "^0.3.0",
     "loro-websocket": "^0.6.2",
+    "signal-polyfill": "^0.2.2",
+    "signal-utils": "^0.21.1",
     "y-webrtc": "^10.3.0",
     "y-websocket": "^3.0.0",
     "yjs": "^13.6.29"

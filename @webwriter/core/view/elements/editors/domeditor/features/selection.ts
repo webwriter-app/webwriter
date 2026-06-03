@@ -48,6 +48,24 @@ export class SelectionFeature extends EditorFeature {
         el.removeAttribute("class")
       }
     })
+    document.querySelectorAll(".◆text-selected").forEach(el => {
+      el.classList.remove("◆text-selected")
+      if(!Array.from(el.classList).some(k => k !== "◆" && k.startsWith("◆"))) {
+        el.classList.remove("◆")
+      }
+      if(el.classList.length === 0) {
+        el.removeAttribute("class")
+      }
+    })
+    document.querySelectorAll(".◆empty-selected").forEach(el => {
+      el.classList.remove("◆empty-selected")
+      if(!Array.from(el.classList).some(k => k !== "◆" && k.startsWith("◆"))) {
+        el.classList.remove("◆")
+      }
+      if(el.classList.length === 0) {
+        el.removeAttribute("class")
+      }
+    })
   }
 
   processSelection(inDragSelection=false) {
@@ -70,6 +88,14 @@ export class SelectionFeature extends EditorFeature {
     else if($.isElementSelection && !inDragSelection) {
       const element = sel.anchorNode!.childNodes.item(Math.min(sel.anchorOffset, sel.focusOffset)) as Element
       element.classList.add("◆", "◆element-selected")
+    }
+    else if($.isTextSelection) {
+      const element = getContainer($.commonAncestor)
+      element.classList.add("◆", "◆text-selected")
+    }
+    else if($.isEmptySelection) {
+      const element = getContainer($.commonAncestor)
+      element.classList.add("◆", "◆empty-selected")
     }
   }
 
@@ -171,7 +197,7 @@ export class SelectionFeature extends EditorFeature {
       else {
         this.isInDragSelection = true
         ev.preventDefault()
-        $.selectCoords(ev.x, ev.y)
+        $.selectCoords(ev.x, ev.y, ev.shiftKey)
         this.processSelection(this.isInDragSelection)
       }
     },
