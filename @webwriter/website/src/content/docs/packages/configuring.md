@@ -1,5 +1,5 @@
 ---
-order: 201
+order: 203
 title: Configuring
 configFor: packages/packages
 ---
@@ -112,7 +112,7 @@ You can use as many codes as you want. You can use broad, narrow or detailed fie
 ### `exports` (partially required)
 The `exports` field is an object mapping an exported name to a file path. For WebWriter to be able to import a package member, it needs to be exported correctly.
 
-There are five types of exports: Widgets, tests, snippets, themes, and metadata (icon, custom elements manifest, external editing config). Widgets and snippets are shown as insertable elements in WebWriter in order of the `exports`. Themes appear as options in the metadata editor. Metadata exports are described below.
+There are six types of exports: Widgets, tests, migrations, snippets, themes, and metadata (icon, custom elements manifest, external editing config). Widgets and snippets are shown as insertable elements in WebWriter in order of the `exports`. A migration is a script which is run before a document is loaded, updating outdated content. Themes appear as options in the metadata editor. Metadata exports are described below.
 
 Each should be exported according to the following example:
 
@@ -126,6 +126,10 @@ Each should be exported according to the following example:
     "./widgets/awesome-widget.*": {
       "source": "./src/widgets/awesome-widget.ts",
       "default": "./dist/widgets/awesome-widget.*"
+    },
+    "./migrate.js": {
+      "source": "./src/migrate.ts",
+      "default": "./dist/migrate.js"
     },
     "./tests/functionality.*": {
       "source": "./tests/functionality.test.ts",
