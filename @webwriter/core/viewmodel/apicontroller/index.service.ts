@@ -578,7 +578,7 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
       const isLocal = version.prerelease.includes("local")
       const pkgId = `${pkg.name}@${pkg.version}`
       return Object.keys(pkg.exports)
-        .filter(k => k.startsWith("./") && (k.endsWith(".html") || k.endsWith(".css") || k.endsWith(".*")) && !k.startsWith("./tests/"))
+        .filter(k => k.startsWith("./") && (k.endsWith(".html") || k.endsWith(".css") || k.endsWith(".*")) && !k.startsWith("./tests/") && !k.startsWith("./migrate.js"))
         .map(k => [
           pkgId + (k.endsWith(".*")? k.slice(1, -2) + ".css": k.slice(1)),
           new URL(pkgId + (pkg.exports[k]?.default ?? pkg.exports[k]).slice(1), isLocal? API_URL: CDN_URL).href.replace(".*", ".css")
@@ -587,14 +587,14 @@ async function getImportmap(ids: string[] | Record<string, any>[]) {
     _ids = Array.from(new Set(pkgs
       .filter(pkg => !(new SemVer(pkg.version).prerelease.includes("local")))
       .flatMap(pkg => Object.keys(pkg.exports)
-        .filter(k => k.startsWith("./") && k.endsWith(".*") && !k.startsWith("./tests/"))
+        .filter(k => k.startsWith("./") && k.endsWith(".*") && !k.startsWith("./tests/") && !k.startsWith("./migrate.js"))
         .map(k => pkg.name + "@" + pkg.version + k.slice(1, -2) + ".js")
       )
     ))
     localIds = Array.from(new Set(pkgs
       .filter(pkg => (new SemVer(pkg.version).prerelease.includes("local")))
       .flatMap(pkg => Object.keys(pkg.exports)
-        .filter(k => k.startsWith("./") && k.endsWith(".*") && !k.startsWith("./tests/"))
+        .filter(k => k.startsWith("./") && k.endsWith(".*") && !k.startsWith("./tests/") && !k.startsWith("./migrate.js"))
         .map(k => pkg.name + "@0.0.0-local" + k.slice(1, -2) + ".js")
       )
     ))
@@ -701,7 +701,7 @@ async function getBundle(ids: string[], importMap: ImportMap, options?: esbuild.
       return new Response(new Blob([JSON.stringify(result.errors)], {type: "application/json"}), {status: 400, statusText: "Error while bundling"})
     }
     else {
-      return new Response(new Blob([js], {type: "text/javascript"}))
+      return new Response(new Blob([js as any], {type: "text/javascript"}))
     }
   }
   else if(cssIds.length) {

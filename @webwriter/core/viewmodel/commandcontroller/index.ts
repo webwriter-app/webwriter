@@ -1107,7 +1107,7 @@ export class CommandController implements ReactiveController {
         description: () => msg("Open a document"),
         run: async (host, options) => {
           if (host.store.accounts.size === 1) {
-            await host.store.document.load(options?.url);
+            await host.store.document.load(options?.url, undefined, undefined, undefined, undefined, host.store.packages.migrations);
           } else if (!options?.parser || !options?.client) {
             host.dialog = "open";
             return;
@@ -1119,7 +1119,10 @@ export class CommandController implements ReactiveController {
             const data = await host.store.document.load(
               url,
               options.parser,
-              options.client
+              options.client,
+              undefined,
+              undefined,
+              host.store.packages.migrations
             );
             if (data) {
               host.dialog = undefined;
@@ -1869,7 +1872,6 @@ export class CommandController implements ReactiveController {
               ? "commenting"
               : undefined),
         run: host => {
-          console.log(host.activeEditor!.selection?.node?.attrs)
           if(!host.store.document.activeMarkMap["_comment"] && !(host.activeEditor!.selection instanceof NodeSelection && host.activeEditor!.selection.node.attrs["=comment"])) {
             host.activeEditor!.exec(addComment((host.store.accounts.getAccount("pocketbase") as any)?.email))
           }

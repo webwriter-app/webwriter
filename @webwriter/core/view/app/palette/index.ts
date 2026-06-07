@@ -247,7 +247,7 @@ export class Palette extends LitElement {
     const found = id in this.searchResults
     const error = packages.getPackageIssues(pkg.id).length
     const members = packages.getPackageMembers(pkg.id)
-    const insertables = members? Object.values(filterObject(members, (_, ms) => !(ms as any).uninsertable && !ms.name.startsWith("./tests/")) as unknown as Record<string, MemberSettings>): []
+    const insertables = members? Object.values(filterObject(members, (_, ms) => !(ms as any).uninsertable && !ms.name.startsWith("./tests/"))): []
     const pkgEditingSettings = !packageEditingSettings? undefined: {name: undefined, label: undefined, ...packageEditingSettings}
     const {name: firstName, label: firstLabel} =  (pkgEditingSettings?.label? pkgEditingSettings: undefined) ?? insertables[0] ?? {}
     const otherInsertables = insertables.slice(1)

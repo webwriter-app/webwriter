@@ -4,7 +4,7 @@ import { DOMSerializer, Node } from "prosemirror-model"
 
 import {EditorViewController, ExplorableEditor} from "#view"
 import { readDOMChange } from "./prosemirror-view/domchange"
-import { globalHTMLAttributes } from "#model"
+import { globalHTMLAttributes, SemVer } from "#model"
 
 export function treeLog(tree: Node) {
   let depth = -1
@@ -108,6 +108,14 @@ export class WidgetView implements NodeView {
       dom.addEventListener("mousedown", e => this.emitWidgetClick(e))
     }
     dom.toggleAttribute("contenteditable", true)
+    try {
+      Array.from(dom.classList)
+        .filter(cls => cls.startsWith("ww-v"))
+        .map(cls => [cls, new SemVer(cls.slice("ww-v".length))] as const)
+        .sort(([_, ver1], [__, ver2]) => ver1.lt(ver2)? -1: 1).reverse()
+        .slice(1)
+        .forEach(([cls]) => dom.classList.remove(cls))
+    } catch(err) {console.error(err)}
     return dom
   }
 
@@ -147,7 +155,7 @@ export class WidgetView implements NodeView {
       if(attr === "class") {
         const oldClasses = Array.from(this.dom.classList)
         const newClasses = Array.from(dom.classList)
-        const classesToRemove = oldClasses.filter(cls => !newClasses.includes(cls) && !cls.startsWith("ProseMirror-") && !cls.startsWith("ww-"))
+        const classesToRemove = oldClasses.filter(cls => (!newClasses.includes(cls) && !cls.startsWith("ProseMirror-") && !cls.startsWith("ww-")) || cls.startsWith("ww-v"))
         const classesToAdd = newClasses.filter(cls => !oldClasses.includes(cls))
         classesToRemove.forEach(cls => this.dom.classList.remove(cls))
         classesToAdd.forEach(cls => this.dom.classList.add(cls))
