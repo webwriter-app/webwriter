@@ -454,15 +454,19 @@ export class Package {
   }
 
   get widgets() {
-    return filterObject(this.members, k => k.split("/").at(-2) === "widgets")
+    return filterObject(this.members, k => k.split("/").at(-2) === "widgets") as Record<string, WidgetEditingSettings>
   }
 
   get snippets() {
-    return filterObject(this.members, k => k.split("/").at(-2) === "snippets")
+    return filterObject(this.members, k => k.split("/").at(-2) === "snippets") as Record<string, SnippetEditingSettings>
+  }
+
+  get migratePath(): string | undefined {
+    return this.exports?.["./migrate.js"]?.default ?? this.exports?.["./migrate.js"]
   }
 
   get themes() {
-    return filterObject(this.members, k => k.split("/").at(-2) === "themes")
+    return filterObject(this.members, k => k.split("/").at(-2) === "themes") as Record<string, ThemeEditingSettings>
   }
 
   get iconPath() {

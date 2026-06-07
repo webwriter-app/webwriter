@@ -40,8 +40,8 @@ export const targetLocales = [
   `sv`,
   `tr`,
   `uk`,
-  `zh-Hans`,
-  `zh-Hant`,
+  `zh-hans`,
+  `zh-hant`,
 ] as const;
 
 /**
@@ -78,6 +78,6 @@ export const allLocales = [
   `sv`,
   `tr`,
   `uk`,
-  `zh-Hans`,
-  `zh-Hant`,
+  `zh-hans`,
+  `zh-hant`,
 ] as const;

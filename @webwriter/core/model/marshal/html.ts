@@ -1,7 +1,7 @@
 import {Node, DOMSerializer} from "prosemirror-model"
 import {Schema, DOMParser} from "prosemirror-model"
 
-import { EditorStateWithHead, PackageStore, createEditorState, headSchema, headSerializer } from '..'
+import { EditorStateWithHead, Package, PackageStore, SemVer, createEditorState, headSchema, headSerializer } from '..'
 import scopedCustomElementRegistry from "@webcomponents/scoped-custom-element-registry/src/scoped-custom-element-registry.js?raw"
 import { ParserSerializer } from './parserserializer'
 import { parseComment, serializeComment, serializeCommentElement } from "#model/schemas/resource/comment.js"
@@ -106,6 +106,81 @@ export function replaceCommentNodes(html: Document) {
   comments.forEach(c => c.remove())
 }
 
+function migrateScriptInjected() {
+  let widgets = Array.from(document.body.querySelectorAll(":not(:defined)"))
+    .filter(el => Array.from(el.classList).some(cls => cls.startsWith("ww-pkg-")))
+  let depth = (el: Element) => {
+    let count = 0, currentEl = el; while(currentEl.parentElement) {
+      count++; currentEl = currentEl.parentElement
+    }
+    return count
+  }
+  widgets.sort((a, b) => depth(b) - depth(a))
+  widgets.forEach(el => el.dispatchEvent(new CustomEvent("migrate", {bubbles: true})))
+}
+
+export async function applyMigrations(doc: Document, scripts: Record<string, string>) {
+  const iframe = document.createElement("iframe")
+  try {
+    // Temporarily add bundle to document
+    const clone = doc.cloneNode(true) as Document
+ 
+    let migrateScripts = []
+    for(const [_, scriptUrl] of Object.entries(scripts)) {
+      if(!scriptUrl) continue;
+      const script = clone.createElement("script")
+      migrateScripts.push(script)
+      let response = await fetch(scriptUrl)
+      script.type = "module"
+      script.text = await response.text()
+      script.setAttribute("data-ww-editing", "migrate")
+      clone.head.appendChild(script)
+    }
+
+    const script = clone.createElement("script")
+    script.type = "module"
+    script.text = `(${String(migrateScriptInjected)})()`
+    script.setAttribute("data-ww-editing", "migrate")
+    clone.head.appendChild(script)
+
+    const blob = new Blob([clone.documentElement.outerHTML], {type: "text/html"})
+    const url = URL.createObjectURL(blob)
+    iframe.style.height = "0"
+    iframe.style.visibility = "hidden"
+    iframe.style.position = "fixed"
+    iframe.style.bottom = "0"
+    iframe.style.right = "0"
+    iframe.setAttribute("src", url)
+    const loaded = new Promise(resolve => iframe.addEventListener("load", resolve))
+    document.body.append(iframe)
+    await loaded
+    return iframe.contentDocument!
+  }
+  catch(err) {
+    return doc
+  }
+  finally {
+    iframe.remove()
+  }
+}
+
+function confirmLoadingOutdatedContent(doc: Document, migrations: Record<string, string>) {
+  const currentPkgs = Object.keys(migrations ?? {}).map(name => Package.fromID(name))
+      for(const el of doc.body.querySelectorAll(":not(:defined)")) {
+        const classes = Array.from(el.classList)
+        const pkgName = classes.find(cls => cls.startsWith("ww-pkg-"))?.slice("ww-pkg-".length)
+        if(!pkgName) continue;
+        const matchingPkg = currentPkgs.find(pkg => pkg.name === pkgName)
+        if(!matchingPkg) continue;
+        const majorVersion = parseInt(classes.find(cls => cls.startsWith("ww-v"))?.slice("ww-v".length)!)
+        const latestMajorVersion = matchingPkg.version.major
+        if(majorVersion < latestMajorVersion) {
+          confirm(`Document contains package content that could not be automatically updated and might display incorrectly. Load anyway?`)
+          break;
+        }
+      }
+}
+
 // Abysmal performance on save, replace with esbuild Base64 process? https://esbuild.github.io/content-types/#base64
 
 function createInitializerScript(id: string, tag: string, content: string) {
@@ -194,46 +269,6 @@ export async function docToBundle(doc: Node, head: Node, noDeps=false, minify=fa
     css = bundleCSS
   }
 
-  // Run serializedCallbacks in iframe
-  const iframe = document.createElement("iframe")
-  try {
-    // Temporarily add bundle to document
-    const clone = html.cloneNode(true) as Document
-
-    const script = clone.createElement("script")
-    script.type = "module"
-    script.text = js
-    script.setAttribute("data-ww-editing", "bundle")
-    clone.head.appendChild(script)
-
-    const style = clone.createElement("style")
-    style.textContent = css ?? ""
-    style.setAttribute("data-ww-editing", "bundle")
-    clone.head.appendChild(style)
-
-    const blob = new Blob([clone.documentElement.outerHTML], {type: "text/html"})
-    const url = URL.createObjectURL(blob)
-    iframe.style.height = "0"
-    iframe.style.visibility = "hidden"
-    iframe.style.position = "fixed"
-    iframe.style.bottom = "0"
-    iframe.style.right = "0"
-    iframe.setAttribute("src", url)
-    const loaded = new Promise(resolve => iframe.addEventListener("load", resolve))
-    document.body.append(iframe)
-    await loaded
-    // iframe.contentDocument!.replaceChild(html.documentElement.cloneNode(true), iframe.contentDocument!.documentElement)
-    for (const widget of Array.from(iframe.contentDocument!.querySelectorAll(".ww-widget"))) {
-      if("serializedCallback" in widget) {
-        (widget.serializedCallback as any)()
-      }
-    }
-    iframe.contentDocument?.querySelectorAll("[data-ww-editing]").forEach(el => el.remove())
-    html = iframe.contentDocument!
-  }
-  finally {
-    iframe.remove()
-  }
   return {html, css, js}
 }
 
@@ -242,10 +277,12 @@ export class HTMLParserSerializer extends ParserSerializer {
   static readonly extensions = ["html", "htm"] as const
   static readonly mediaType = "text/html" as const
 
-  async parse(data: string, schema: Schema) {
+  async parse(data: string, schema: Schema, migrations?: Record<string, string>) {
     let inputDoc: Document
     try {
       inputDoc = new globalThis.DOMParser().parseFromString(data, "text/html")
+      const bundleScript = inputDoc.head.querySelector("[data-ww-editing=bundle]")
+      bundleScript?.remove()
     }
     catch(e: any) {
       throw new NonHTMLDocumentError(e?.message)
@@ -255,9 +292,14 @@ export class HTMLParserSerializer extends ParserSerializer {
     let defaultState = undefined as EditorStateWithHead | undefined
     if(!inputDoc.querySelector("meta[name=generator][content^='webwriter@']")) {
       defaultState = createEditorState({schema})
-//      throw new NonWebwriterDocumentError("Did not find <meta name='generator'> valid for WebWriter")
+      // throw new NonWebwriterDocumentError("Did not find <meta name='generator'> valid for WebWriter")
     }
 
+    // Preprocessing (migrations, comments)
+    if(migrations) {
+      inputDoc = await applyMigrations(inputDoc, migrations)
+      confirmLoadingOutdatedContent(inputDoc, migrations)
+    }
     replaceCommentNodes(inputDoc)
   
     let doc = DOMParser.fromSchema(schema).parse(inputDoc.body)

@@ -98,7 +98,7 @@ async function main() {
 
   // Build with WebWriter's default options for building. Builds every `package.exports` entry of the form `"./widgets/my-widget.*": {"source": "./src/my-widget.ts", "default": "./dist/my-widget.*"} -> this should build `my-widget.js` and `my-widget.css` from the specified source into the dist directory.
   const pkg = JSON.parse(fs.readFileSync("./package.json", "utf8"))
-  const buildableKeys = Object.keys(pkg?.exports ?? {}).filter(k => k.startsWith("./widgets/"))
+  const buildableKeys = Object.keys(pkg?.exports ?? {}).filter(k => k.startsWith("./widgets/") || k.startsWith("./migrate.js"))
   const testKeys = Object.keys(pkg?.exports ?? {}).filter(k => k.startsWith("./tests/"))
 
   const baseConfig = {

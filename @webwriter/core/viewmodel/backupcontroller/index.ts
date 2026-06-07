@@ -89,7 +89,7 @@ export class BackupController implements ReactiveController {
     if(filename === "unnamed" || confirm(msg("An autosaved version of this explorable is available. Load it?"))) {
       const file = await fileHandle.getFile()
       const html = await file.text()
-      const doc = await this.parserSerializer.parse(html, this.store.document.editorState.schema)
+      const doc = await this.parserSerializer.parse(html, this.store.document.editorState.schema, this.store.packages.migrations)
       this.store.document.set(doc)
     }
     await this.clear()

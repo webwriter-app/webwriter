@@ -11,5 +11,5 @@ export abstract class ParserSerializer {
   static readonly extensions: ReadonlyArray<string> = []
   static readonly mediaType: string
 
-  abstract parse(data: string, schema: Schema): Promise<EditorStateWithHead>
+  abstract parse(data: string, schema: Schema, migrateScripts?: Record<string, string>): Promise<EditorStateWithHead>
 }

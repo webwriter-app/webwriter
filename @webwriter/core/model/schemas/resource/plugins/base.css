@@ -613,9 +613,9 @@ abbr {
   position: relative;
 }
 
-:is(:empty, :has(> :only-of-type.ProseMirror-trailingBreak)):not(
-    .ProseMirror-widget
-  ):after {
+
+
+:is(:only-child, .ProseMirror-widget + *, :has(+ .ProseMirror-widget)):is(:empty, :has(> :only-of-type.ProseMirror-trailingBreak)):not(.ProseMirror-widget):after {
   font: inherit;
   text-align: inherit;
   content: var(--ww-placeholder);

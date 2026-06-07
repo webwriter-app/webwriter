@@ -589,7 +589,7 @@ export class PackageStore {
     return rawPkgs.map((pkg, i) => {
       const trusted = PackageStore.allowedOrgs.some(org => pkg.name.startsWith(`${org}/`))
       try {
-        return new Package({...pkg, editingConfig: editingConfigs[i]}, {members: members[i], trusted})
+        return new Package({...pkg, editingConfig: editingConfigs[i]}, {members: members[i],  trusted})
       }
       catch(err) {
         const parseIssues = JSON.parse((err as any)?.message)
@@ -643,11 +643,14 @@ export class PackageStore {
       const isWidget = name.split("/").at(-2) === "widgets"
       const isSnippet = name.split("/").at(-2) === "snippets"
       const isTheme = name.split("/").at(-2) === "themes"
+      const isScript = name.split("/").at(-2) === "scripts"
       const isTest = name.split("/").at(-2) === "tests"
-      if(isWidget || isSnippet || isTheme || isTest) {
+      if(isWidget || isSnippet || isTheme || isScript || isTest) {
         const memberSettings = pkg.editingConfig?.[name]
         let source: string | undefined
-        members[name] = {name, path, legacy: isWidget && !rawName.endsWith(".*"), ...memberSettings, ...(source? {source}: undefined)}
+        members[name] = {name, path, legacy: isWidget && !rawName.endsWith(".*"), ...memberSettings, 
+          ...(source? {source}: undefined)
+        }
       }
     }
     return members
@@ -677,15 +680,20 @@ export class PackageStore {
         widgets: memberName.startsWith("./widgets/"),
         snippets: memberName.startsWith("./snippets/"),
         themes: memberName.startsWith("./themes/"),
-        tests: memberName.startsWith("./tests/")
+        tests: memberName.startsWith("./tests/"),
       }
       const defaultLabel = memberName.replace(/\.\/\w+\//, "").split("-").slice(is.widgets? 1: 0).map(capitalizeWord).join(" ");
       const url = `${this.apiBase}${id}${member.path.slice(1)}`
       if(!filter || is[filter]) {
-        members[memberName] = {...member, name: memberName, url, label: {_: defaultLabel, ...member.label}}
+        members[memberName] = {...member, name: memberName, url, label: {_: defaultLabel, ...("label" in member? member.label: {})}}
       }
     }
     return members as Record<string, MemberSettings>
+  }
+
+  getPackageMigrate(id: string) {
+    const migratePath = this.packages[id].migratePath
+    return migratePath? new URL(`./${id}${migratePath.slice(1)}`, this.apiBase).href: undefined
   }
 
   get tests() {
@@ -704,6 +712,11 @@ export class PackageStore {
 
   get themes() {
     return Object.fromEntries(Object.keys(this.packages).map(id => [id, this.getPackageMembers(id, "themes")]))
+    // return Object.fromEntries(Object.entries(this.members).map(([k, v]) => [k, filterObject(v, vk => vk.startsWith("./themes/"))]))
+  }
+
+  get migrations() {
+    return Object.fromEntries(Object.keys(this.packages).map(id => [id, this.getPackageMigrate(id)] as const)) as Record<string, string>
     // return Object.fromEntries(Object.entries(this.members).map(([k, v]) => [k, filterObject(v, vk => vk.startsWith("./themes/"))]))
   }
 

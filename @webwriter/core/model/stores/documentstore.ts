@@ -31,7 +31,6 @@ import { html as cmHTML } from "@codemirror/lang-html";
 import { basicSetup } from "codemirror";
 import { Account, AccountStore } from "./accountstore";
 import { HTMLParserSerializer, replaceCommentElements, replaceCommentNodes } from "../marshal/html";
-import { ParserSerializer } from "../marshal/parserserializer";
 import { LLMAccount, } from "../schemas/account";
 import { msg } from "@lit/localize";
 
@@ -274,7 +273,8 @@ export class DocumentStore implements Resource {
     parser = this.parser,
     client = this.client,
     schema = this.editorState.schema,
-    setUrl = true
+    setUrl = true,
+    migrateScripts?: Record<string, string>
   ) {
     this.ioState = "loading";
     try {
@@ -292,7 +292,7 @@ export class DocumentStore implements Resource {
       if (!data) {
         return;
       }
-      const editorState = await newParser.parse(data.content as string, schema);
+      const editorState = await newParser.parse(data.content as string, schema, migrateScripts);
       this.editorState = this.lastSavedState = editorState;
       if (this.codeState) {
         this.deriveCodeState();
