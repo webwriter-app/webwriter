@@ -10,6 +10,7 @@ WebWriter offers several ways to organize your widget's state.
 
 ## Properties
 Object properties can be used to store any kind of data. WebWriter does not persist properties, so they are lost each time an explorable is saved or reloaded.
+
 **A property `showSuggestions`**
 ```ts
 class MyWidget extends LitElementWw {
@@ -35,6 +36,19 @@ class MyWidget extends LitElementWw {
 You can mark attributes as options. Options are used by WebWriter to auto-generate input fields to modify the corresponding attributes. As the name suggests, this is mostly suited to simple attributes (boolean, string, etc.).
 
 #### Adding static options
+Most options can be implemented as static, not depending on the state of the widget. The recommended way is to use the decorator `@option` from the `@webwriter/lit` package.
+
+**Using the `@option` decorator on a widget property**
+```ts
+class MyWidget extends LitElementWw {
+
+  @property({type: Boolean, attribute: true, reflect: true})
+  @option({type: Boolean, label: {en: "Show suggestions"}})
+  accessor showSuggestions = false
+}
+```
+
+Instead of the decorator syntax, a static `options` property may also be used.
 
 **Using the `options` property on the widget class/constructor**
 ```ts
@@ -49,17 +63,8 @@ class MyWidget extends LitElementWw {
 }
 ```
 
-**Using the `@option` decorator on a widget property**
-```ts
-class MyWidget extends LitElementWw {
-
-  @property({type: Boolean, attribute: true, reflect: true})
-  @option({type: Boolean, label: {en: "Show suggestions"}})
-  accessor showSuggestions = false
-}
-```
-
 #### Adding dynamic options 
+Some options may need to be dynamic, for example because they depend on the state of the widget. In this case, implement an `options` getter instead of using the decorator. Note that this getter is **not static**.
 
 **Adding an `options` getter on the widget instance**
 ```ts
