@@ -131,7 +131,7 @@ export class ExplorableEditor extends LitElement {
       // Apply translations if available
       const translations = (JSON.parse(template.content.querySelector("script.snippet-localization")?.innerHTML ?? "null")) as null | Record<`${string}#${string}`, Record<string, string>>
       if(translations) {
-        const lang = this.app.store.ui.locale
+        const lang = this.app.store.document.lang || this.app.store.ui.locale
         const textNodes = textNodesUnder(template.content as any)
         const counts: Record<string, number> = {}
         for(const textNode of textNodes) {
