@@ -128,11 +128,15 @@ export class LitElementWw extends ScopedElementsMixin(LitElement) {
   static readonly options: Record<string, OptionDeclaration> = {}
   static readonly actions: Record<string, ActionDeclaration> = {}
 
-  /** Declare attributes as options. Used by WebWriter to auto-generate input fields to modify these attributes. As the name suggests, this is mostly suited to simple attributes (boolean, string, etc.). Use a getter here (`get options() {...}`) to dynamically change options depending on the state of the widget.*/
-  readonly options: Record<string, OptionDeclaration>
+  /** Declare attributes as options. Used by WebWriter to auto-generate input fields to modify these attributes. As the name suggests, this is mostly suited to simple attributes (boolean, string, etc.). As this is a getter, you can dynamically change options depending on the state of the widget. */
+  get dynamicOptions(): Record<string, OptionDeclaration> {
+    return {}
+  }
 
-  /** Declare methods as actions. Used by WebWriter to treat all DOM changes triggered by the method as a single change (as a transaction).*/
-  readonly actions: Record<string, ActionDeclaration> = {}
+  /** Declare methods as actions. Used by WebWriter to treat all DOM changes triggered by the method as a single change (as a transaction). As this is a getter, you can dynamically change actions depending on the state of the widget. */
+  get dynamicActions(): Record<string, ActionDeclaration> {
+    return {}
+  }
 
   /** Add `@lit/localize` support. This should be the return value of `configureLocalization`. */
   protected localize: {getLocale: () => string, setLocale: (locale: string) => Promise<void>}
