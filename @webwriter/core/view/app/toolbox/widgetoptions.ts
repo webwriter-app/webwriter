@@ -40,7 +40,7 @@ export class WidgetOptions extends LitElement {
     const proto = this.widget.constructor
     if("options" in proto) {
       const staticOptions = (proto as typeof LitElementWw).options
-      const options = (this.widget as LitElementWw).options
+      const options = (this.widget as LitElementWw).dynamicOptions
       return {...staticOptions, ...options}
     }
     else {
@@ -52,7 +52,7 @@ export class WidgetOptions extends LitElement {
     const proto = this.widget.constructor
     if("actions" in proto) {
       const staticActions = (proto as typeof LitElementWw).actions
-      const actions = (this.widget as LitElementWw).actions
+      const actions = (this.widget as LitElementWw).dynamicActions
       return {...staticActions, ...actions}
     }
     else {
