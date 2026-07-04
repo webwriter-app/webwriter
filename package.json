@@ -43,8 +43,8 @@
   "license": "UNLICENSED",
   "packageManager": "^bun@1.2.16",
   "scripts": {
-    "start": "bun vite -- @webwriter/core",
-    "test": "vitest",
+    "start": "bun vite -- @webwriter/core & vitest",
+    "test": "vitest run --printConsoleTrace=true --silent=false",
     "start-local-sync": "HOST=localhost PORT=1234 bunx y-websocket",
     "preparestatic": "bun run ./scripts/preparestatic.js",
     "generate-jsonschema": "tsx ./scripts/generatejsonschema.js --tsconfig ./@webwriter/core/tsconfig.json",
