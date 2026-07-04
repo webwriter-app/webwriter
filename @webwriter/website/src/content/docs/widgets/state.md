@@ -64,9 +64,9 @@ class MyWidget extends LitElementWw {
 ```
 
 #### Adding dynamic options 
-Some options may need to be dynamic, for example because they depend on the state of the widget. In this case, implement an `options` getter instead of using the decorator. Note that this getter is **not static**.
+Some options may need to be dynamic, for example because they depend on the state of the widget. In this case, implement a `dynamicOptions` getter instead of using the decorator. Note that this getter is **not static**.
 
-**Adding an `options` getter on the widget instance**
+**Adding a `dynamicOptions` getter on the widget instance**
 ```ts
 class MyWidget extends LitElementWw {
 
@@ -76,7 +76,7 @@ class MyWidget extends LitElementWw {
   @property({type: Boolean, attribute: true, reflect: true})
   accessor showSuggestions = false
 
-  get options() {
+  get dynamicOptions() {
     return !this.hasSuggestions? {}: {
       showSuggestions: {type: "boolean", label: {en: "Show suggestions"}}
     }
