@@ -63,6 +63,9 @@ export class ManipulationFeature extends EditorFeature {
       }
     },
     "keydown": ev => {
+      if(this.editor.features.transformation.target) {
+        return
+      }
       if(ev.key === "Enter") {
         ev.preventDefault()
         if($.isGapSelection && SelectionFeature.gapAnchor) {

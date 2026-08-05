@@ -78,7 +78,7 @@ export class TransformationFeature extends EditorFeature {
 
   /** The empty drag image element (hides the browser's drag ghost). */
   get emptyDrag() {
-    return document.getElementById("◆transform-overlay-empty-drag")!
+    return this.overlay.querySelector("#◆transform-overlay-empty-drag")!
   }
 
   /** Creates the feature and adds the position anchor to the editor
@@ -419,29 +419,29 @@ export class TransformationFeature extends EditorFeature {
       reverse = "up-left"
     }
     const id = `◆transform-overlay-scale-${reverse!}`
-    return document.getElementById(id)!
+    return this.overlay.querySelector(`[id="${id}"]`)!
   }
 
   /** Viewport coordinates of the given overlay corner, taking the current
    * rotation into account (measured from the corner scale handles). */
   getRotatedCorner(corner: "nw" | "ne" | "sw" | "se" = "nw") {
     if(corner == "nw") {
-      const el = document.getElementById("◆transform-overlay-scale-up-left")!
+      const el = this.overlay.querySelector("#◆transform-overlay-scale-up-left")!
       const {x, y} = el.getBoundingClientRect()
       return [x + 2.5, y + 2.5]
     }
     else if(corner == "ne") {
-      const el = document.getElementById("◆transform-overlay-scale-up-right")!
+      const el = this.overlay.querySelector("#◆transform-overlay-scale-up-right")!
       const {x, y} = el.getBoundingClientRect()
       return [x + 5, y + 1]
     }
     else if(corner == "sw") {
-      const el = document.getElementById("◆transform-overlay-scale-down-left")!
+      const el = this.overlay.querySelector("#◆transform-overlay-scale-down-left")!
       const {x, y} = el.getBoundingClientRect()
       return [x + 5, y + 1]
     }
     else if(corner == "se") {
-      const el = document.getElementById("◆transform-overlay-scale-down-right")!
+      const el = this.overlay.querySelector("#◆transform-overlay-scale-down-right")!
       const {x, y} = el.getBoundingClientRect()
       return [x + 5, y + 1]
     }
@@ -790,8 +790,7 @@ export class TransformationFeature extends EditorFeature {
   /** The transform overlay element, created lazily and added to the editor
    * appendix on first access. */
   get overlay() {
-    const existing = this.editor.appendix.getElementById("◆transform-overlay")
-    console.log("existing overlay:", existing)
+    const existing = this.editor.appendix.querySelector("#◆transform-overlay")
     if(!existing) {
       const overlay = this.#createOverlay()
       this.editor.addAppendix(overlay)
@@ -841,17 +840,17 @@ export class TransformationFeature extends EditorFeature {
 
   /** The arranger (float) control of the overlay. */
   get arranger() {
-    return document.body.querySelector("#◆transform-overlay-arranger") as HTMLElement
+    return this.overlay.querySelector("#◆transform-overlay-arranger") as HTMLElement
   }
 
   /** The orderer (z-order) control of the overlay. */
   get orderer() {
-    return document.body.querySelector("#◆transform-overlay-orderer") as HTMLElement
+    return this.overlay.querySelector("#◆transform-overlay-orderer") as HTMLElement
   }
 
   /** The position anchor element. */
   get anchor() {
-    return document.body.querySelector("#◆transform-overlay-anchor") as HTMLElement
+    return this.editor.appendix.querySelector("#◆transform-overlay-anchor") as HTMLElement
   }
 
   /** The target's computed style. */
@@ -992,25 +991,24 @@ export class TransformationFeature extends EditorFeature {
       if((ev.key === "Delete" || ev.key === "Backspace") && this.target) {
         this.target.remove()
         this.clearTransform()
+        ev.stopImmediatePropagation()
       }
     },
     "copy": ev => {
       if(!this.target) {return}
       const copy = this.target.cloneNode(true) as HTMLElement
-      copy.querySelectorAll(".◆").forEach(el => {
-        const classes = Array.from(el.classList)
-        el.classList.remove(...classes.filter(cls => cls.startsWith("◆")))
-      })
+      const fragment = document.createDocumentFragment()
+      fragment.append(copy)
+      this.editor.clearEditingArtifacts(fragment)
       const item = new ClipboardItem({"text/html": copy.outerHTML, "text/plain": copy.innerText})
       navigator.clipboard.write([item])
     },
     "cut": ev => {
       if(!this.target) {return}
       const copy = this.target.cloneNode(true) as HTMLElement
-      copy.querySelectorAll(".◆").forEach(el => {
-        const classes = Array.from(el.classList)
-        el.classList.remove(...classes.filter(cls => cls.startsWith("◆")))
-      })
+      const fragment = document.createDocumentFragment()
+      fragment.append(copy)
+      this.editor.clearEditingArtifacts(fragment)
       const item = new ClipboardItem({"text/html": copy.outerHTML, "text/plain": copy.innerText})
       navigator.clipboard.write([item])
       this.target.remove()

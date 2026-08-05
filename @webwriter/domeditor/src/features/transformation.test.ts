@@ -17,10 +17,9 @@ beforeEach(() => {
   document.body.innerHTML = ""
   document.body.className = ""
   document.documentElement.className = ""
-  // Clearing the body removes the editor appendix (which holds the overlay
-  // anchor); a fresh feature instance recreates it. All element getters
-  // resolve through the document, so this instance and the editor's enabled
-  // instance operate on the same elements.
+  // The editor appendix lives in the body's shadow root. All element getters
+  // resolve through that root, so this instance and the editor's enabled
+  // instance operate on the same controls.
   feature = new TransformationFeature(editor)
 })
 
@@ -72,7 +71,7 @@ describe("overlay", () => {
   it("is created lazily and reused", () => {
     const first = feature.overlay
     expect(feature.overlay).toBe(first)
-    expect(document.getElementById("◆transform-overlay")).toBe(first)
+    expect(editor.appendix.querySelector("#◆transform-overlay")).toBe(first)
   })
   it("contains the transform controls", () => {
     const overlay = feature.overlay
@@ -86,9 +85,9 @@ describe("overlay", () => {
 describe("getOppositeScaler()", () => {
   it("returns the diagonally opposite scaler", () => {
     feature.overlay
-    const upLeft = document.getElementById("◆transform-overlay-scale-up-left")!
+    const upLeft = feature.overlay.querySelector("#◆transform-overlay-scale-up-left") as HTMLElement
     expect(feature.getOppositeScaler(upLeft).id).toBe("◆transform-overlay-scale-down-right")
-    const leftLeft = document.getElementById("◆transform-overlay-scale-left-left")!
+    const leftLeft = feature.overlay.querySelector("#◆transform-overlay-scale-left-left") as HTMLElement
     expect(feature.getOppositeScaler(leftLeft).id).toBe("◆transform-overlay-scale-right-right")
   })
 })
@@ -173,12 +172,12 @@ describe("arranger menu", () => {
   it("sets the target's float via the menu buttons", () => {
     const target = el()
     feature.startTransform(target)
-    document.getElementById("◆transform-overlay-float-left")!.click()
+    feature.overlay.querySelector("#◆transform-overlay-float-left")!.dispatchEvent(new MouseEvent("click"))
     expect(target.style.float).toBe("left")
     expect(feature.arranger.getAttribute("data-float")).toBe("left")
-    document.getElementById("◆transform-overlay-float-right")!.click()
+    feature.overlay.querySelector("#◆transform-overlay-float-right")!.dispatchEvent(new MouseEvent("click"))
     expect(target.style.float).toBe("right")
-    document.getElementById("◆transform-overlay-float-none")!.click()
+    feature.overlay.querySelector("#◆transform-overlay-float-none")!.dispatchEvent(new MouseEvent("click"))
     expect(target.style.float).toBe("")
   })
 })
