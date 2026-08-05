@@ -54,7 +54,7 @@ export class SelectionFeature extends EditorFeature {
         el.removeAttribute("class")
       }
     })
-    document.querySelector(".◆gap-caret")?.setAttribute("visibility", "hidden")
+    this.gapCaret?.setAttribute("visibility", "hidden")
     document.querySelectorAll(".◆element-selected").forEach(el => {
       el.classList.remove("◆element-selected")
       if(!Array.from(el.classList).some(k => k !== "◆" && k.startsWith("◆"))) {
@@ -216,7 +216,7 @@ export class SelectionFeature extends EditorFeature {
       }
     },
     "pointerdown": ev => {
-      if(this.hasDoubleClicked || ev.button === 2) {
+      if((isElement(ev.target) && ev.target.closest(".◆editor-only")) || this.hasDoubleClicked || ev.button === 2) {
         return
       }
       if(modifierKeyDown(ev)) {

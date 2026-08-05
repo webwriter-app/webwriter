@@ -164,7 +164,7 @@ export class DOMEditor {
 
   toHTML(innerBody=false) {
     const root = document.cloneNode(true) as Document
-    this.clearEditingArtifacts()
+    this.clearEditingArtifacts(root)
     return innerBody? root.body.innerHTML: root.documentElement.outerHTML
   }
 
