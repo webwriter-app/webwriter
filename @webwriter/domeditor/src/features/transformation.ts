@@ -63,7 +63,6 @@ export class TransformationFeature extends EditorFeature {
   #createEmptyDrag() {
     const el = document.createElement("div")
     el.id = "◆transform-overlay-empty-drag"
-    el.classList.add("◆", "◆editor-only")
     Object.assign(el.style, {
       position: "fixed",
       right: 0,
@@ -93,7 +92,7 @@ export class TransformationFeature extends EditorFeature {
   #createScaler(direction: string) {
     const point = document.createElement("div")
     point.id = `◆transform-overlay-scale-${direction}`
-    point.classList.add("◆", "◆transform-overlay-scale", "◆editor-only")
+    point.classList.add("◆transform-overlay-scale")
     point.draggable = true
     point.addEventListener("dragstart", ev => this.handleScaleStart(ev), {passive: true})
     point.addEventListener("drag", ev => this.handleScaleDrag(ev), {passive: true})
@@ -105,7 +104,7 @@ export class TransformationFeature extends EditorFeature {
   #createRestorer() {
     const restorer = document.createElement("button")
     restorer.id = `◆transform-overlay-restorer`
-    restorer.classList.add("◆", "◆transform-overlay-button", "◆editor-only")
+    restorer.classList.add("◆transform-overlay-button")
     restorer.addEventListener("click", ev => {this.restore(); ev.stopImmediatePropagation()})
     return restorer
   }
@@ -115,7 +114,7 @@ export class TransformationFeature extends EditorFeature {
   #createArranger() {
     const arranger = document.createElement("button")
     arranger.id = `◆transform-overlay-arranger`
-    arranger.classList.add("◆", "◆transform-overlay-button", "◆editor-only")
+    arranger.classList.add("◆transform-overlay-button")
     arranger.addEventListener("click", ev => {
       if(!this.isNarrow) {
         arranger.toggleAttribute("data-open")
@@ -164,21 +163,20 @@ export class TransformationFeature extends EditorFeature {
     const floatNone = document.createElement("button")
     floatNone.id = `◆transform-overlay-float-none`
     floatNone.addEventListener("click", ev => {this.#float = "none"; ev.stopPropagation()})
-    floatNone.classList.add("◆", "◆transform-overlay-button", "◆editor-only")
+    floatNone.classList.add("◆transform-overlay-button")
     
     const floatLeft = document.createElement("button")
     floatLeft.id = `◆transform-overlay-float-left`
     floatLeft.addEventListener("click", ev => {this.#float = "left"; ev.stopPropagation()})
-    floatLeft.classList.add("◆", "◆transform-overlay-button", "◆editor-only")
+    floatLeft.classList.add("◆transform-overlay-button")
     
     const floatRight = document.createElement("button") 
     floatRight.id = `◆transform-overlay-float-right`
     floatRight.addEventListener("click", ev => {this.#float = "right"; ev.stopPropagation()})
-    floatRight.classList.add("◆", "◆transform-overlay-button", "◆editor-only")
+    floatRight.classList.add("◆transform-overlay-button")
     
     const menu = document.createElement("div")
     menu.id = "◆transform-overlay-arranger-menu"
-    menu.classList.add("◆", "◆editor-only")
     menu.append(floatNone, floatLeft, floatRight)
     return menu
   }
@@ -188,7 +186,7 @@ export class TransformationFeature extends EditorFeature {
   #createOrderer() {
     const orderer = document.createElement("button")
     orderer.id = `◆transform-overlay-orderer`
-    orderer.classList.add("◆", "◆transform-overlay-button", "◆editor-only")
+    orderer.classList.add("◆transform-overlay-button")
     orderer.addEventListener("click", ev => {
       if(!this.isNarrow) {
         orderer.toggleAttribute("data-open")
@@ -216,7 +214,7 @@ export class TransformationFeature extends EditorFeature {
       this.moveZ(this.target, true, true)
       ev.stopPropagation()
     })
-    zBack.classList.add("◆", "◆transform-overlay-button", "◆editor-only")
+    zBack.classList.add("◆transform-overlay-button")
     
     const zForward = document.createElement("button")
     zForward.id = `◆transform-overlay-z-forward`
@@ -224,7 +222,7 @@ export class TransformationFeature extends EditorFeature {
       this.moveZ(this.target, true, ev.shiftKey)
       ev.stopPropagation()
     })
-    zForward.classList.add("◆", "◆transform-overlay-button", "◆editor-only")
+    zForward.classList.add("◆transform-overlay-button")
     
     const zBackward = document.createElement("button")
     zBackward.id = `◆transform-overlay-z-backward`
@@ -232,7 +230,7 @@ export class TransformationFeature extends EditorFeature {
       this.moveZ(this.target, false, ev.shiftKey)
       ev.stopPropagation()
     })
-    zBackward.classList.add("◆", "◆transform-overlay-button", "◆editor-only")
+    zBackward.classList.add("◆transform-overlay-button")
 
     const zFront = document.createElement("button")
     zFront.id = `◆transform-overlay-z-front`
@@ -240,11 +238,10 @@ export class TransformationFeature extends EditorFeature {
       this.moveZ(this.target, true, true)
       ev.stopPropagation()
     })
-    zFront.classList.add("◆", "◆transform-overlay-button", "◆editor-only")
+    zFront.classList.add("◆transform-overlay-button")
     
     const menu = document.createElement("div")
     menu.id = "◆transform-overlay-orderer-menu"
-    menu.classList.add("◆", "◆editor-only")
     menu.append(zForward, zBackward)
     return menu
   }
@@ -253,7 +250,7 @@ export class TransformationFeature extends EditorFeature {
   #createRotator() {
     const rotator = document.createElement("div")
     rotator.id = `◆transform-overlay-rotator`
-    rotator.classList.add("◆", "◆transform-overlay-button", "◆editor-only")
+    rotator.classList.add("◆transform-overlay-button")
     rotator.draggable = true
     rotator.addEventListener("dragstart", ev => this.handleRotateStart(ev), {passive: true})
     rotator.addEventListener("drag", ev => this.handleRotateDrag(ev), {passive: true})
@@ -265,7 +262,6 @@ export class TransformationFeature extends EditorFeature {
    * relative/sticky targets; clicking it toggles absolute/relative. */
   #createAnchor() {
     const anchor = document.createElement("div")
-    anchor.classList.add("◆", "◆editor-only")
     anchor.id = `◆transform-overlay-anchor`
     // anchor.draggable = true
     anchor.contentEditable = "false"
@@ -273,7 +269,7 @@ export class TransformationFeature extends EditorFeature {
     anchor.addEventListener("click", ev => {this.toggleAbsoluteRelative(); ev.stopPropagation()})
 
     const sticky = document.createElement("button")
-    sticky.classList.add("◆", "◆transform-overlay-button", "◆editor-only")
+    sticky.classList.add("◆transform-overlay-button")
     sticky.id = `◆transform-overlay-anchor-sticky`
     sticky.addEventListener("click", ev => {this.toggleSticky(); ev.stopPropagation()})
     anchor.appendChild(sticky)
@@ -285,7 +281,6 @@ export class TransformationFeature extends EditorFeature {
    * arranger, orderer); dragging the overlay itself moves the target. */
   #createOverlay() {
     const overlay = document.createElement("div")
-    overlay.classList.add("◆", "◆editor-only")
     overlay.id = "◆transform-overlay"
     overlay.contentEditable = "false"
     overlay.draggable = true
@@ -458,12 +453,12 @@ export class TransformationFeature extends EditorFeature {
   /** Debugging helper: renders colored dots at the given viewport
    * coordinates. */
   #helperDots(...coords: [number, number][]) {
-    document.querySelectorAll(".helper-dot").forEach(el => el.remove())
+    document.querySelectorAll(".◆helper-dot").forEach(el => el.remove())
     coords.forEach(([x, y], i) => {
       const colors = ["purple", "red", "orange"]
       const el = document.createElement("div")
       el.contentEditable = "false"
-      el.classList.add("◆", "◆editor-only", "helper-dot")
+      el.classList.add("◆helper-dot")
       el.style.left = `${x}px`
       el.style.top = `${y}px`
       el.style.position = "fixed"
@@ -616,7 +611,7 @@ export class TransformationFeature extends EditorFeature {
     const x = ev.x - left - (this.#dx || 0)
     const y = ev.y - top - (this.#dy || 0)
     if(!ev.altKey) {
-      const bgEl = document.elementsFromPoint(ev.x, ev.y).find(el => !el.matches(".◆editor-only") && el !== this.target)
+      const bgEl = document.elementsFromPoint(ev.x, ev.y).find(el => el !== this.target)
 
       if(bgEl && bgEl !== document.documentElement && bgEl !== document.body && bgEl !== this.target && getComputedStyle(bgEl).position === "static") {
         const {top, left, bottom} = bgEl.getBoundingClientRect()
@@ -795,7 +790,8 @@ export class TransformationFeature extends EditorFeature {
   /** The transform overlay element, created lazily and added to the editor
    * appendix on first access. */
   get overlay() {
-    const existing = document.getElementById("◆transform-overlay")
+    const existing = this.editor.appendix.getElementById("◆transform-overlay")
+    console.log("existing overlay:", existing)
     if(!existing) {
       const overlay = this.#createOverlay()
       this.editor.addAppendix(overlay)
@@ -879,7 +875,7 @@ export class TransformationFeature extends EditorFeature {
    * elements in the container sequentially. */
   moveZ(el: HTMLElement, forward=true, toFrontOrBack=false, cycle=false) {
     const stackingContainer = findStackingContainer(el)
-    let descendants: (HTMLElement | undefined)[] = getDescendantsInStackingOrder(stackingContainer, ":not(.◆editor-only)")
+    let descendants: (HTMLElement | undefined)[] = getDescendantsInStackingOrder(stackingContainer)
     const n = descendants.length
     const i = descendants.indexOf(el)
     const d = forward? (toFrontOrBack? n: 1): (toFrontOrBack? -n: -1)
@@ -913,7 +909,7 @@ export class TransformationFeature extends EditorFeature {
 
       this.#stackingContainer = findStackingContainer(target)
       this.#stackingContainer.classList.add("◆", "◆transform-stacking-container")
-      this.orderer.setAttribute("data-z-order", String(getZPos(this.target, ":not(.◆editor-only)") + 1))
+      this.orderer.setAttribute("data-z-order", String(getZPos(this.target) + 1))
 
       if(targetRect.width < 120) {
         this.overlay.classList.add("◆transform-overlay-narrow")
@@ -1002,13 +998,8 @@ export class TransformationFeature extends EditorFeature {
       if(!this.target) {return}
       const copy = this.target.cloneNode(true) as HTMLElement
       copy.querySelectorAll(".◆").forEach(el => {
-        if(el.classList.contains("◆editor-only")) {
-          el.remove()
-        }
-        else {
-          const classes = Array.from(el.classList)
-          el.classList.remove(...classes.filter(cls => cls.startsWith("◆")))
-        }
+        const classes = Array.from(el.classList)
+        el.classList.remove(...classes.filter(cls => cls.startsWith("◆")))
       })
       const item = new ClipboardItem({"text/html": copy.outerHTML, "text/plain": copy.innerText})
       navigator.clipboard.write([item])
@@ -1017,13 +1008,8 @@ export class TransformationFeature extends EditorFeature {
       if(!this.target) {return}
       const copy = this.target.cloneNode(true) as HTMLElement
       copy.querySelectorAll(".◆").forEach(el => {
-        if(el.classList.contains("◆editor-only")) {
-          el.remove()
-        }
-        else {
-          const classes = Array.from(el.classList)
-          el.classList.remove(...classes.filter(cls => cls.startsWith("◆")))
-        }
+        const classes = Array.from(el.classList)
+        el.classList.remove(...classes.filter(cls => cls.startsWith("◆")))
       })
       const item = new ClipboardItem({"text/html": copy.outerHTML, "text/plain": copy.innerText})
       navigator.clipboard.write([item])

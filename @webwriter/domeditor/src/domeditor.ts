@@ -151,20 +151,15 @@ export class DOMEditor {
     postMessage(action)
   }
 
-  get #appendix() {
-    let el = document.querySelector("#◆editor-appendix")
-    if(!el) {
-      el = document.createElement("div")
-      el.id = "◆editor-appendix"
-      el.classList.add("◆", "◆editor-only")
-      el.setAttribute("contenteditable", "false")
-      document.body.append(el)
-    }
-    return el
+  get appendix() {
+    const shadowRoot = document.body.shadowRoot ?? document.body.attachShadow({mode: "open"})
+    const slot = shadowRoot.querySelector("slot") ?? document.createElement("slot")
+    shadowRoot.appendChild(slot)
+    return shadowRoot
   }
 
   addAppendix(el: Element) {
-    this.#appendix.append(el)
+    this.appendix.append(el)
   }
 
   toHTML(innerBody=false) {

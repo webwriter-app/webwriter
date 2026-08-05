@@ -29,7 +29,7 @@ export class SelectionFeature extends EditorFeature {
   /** Creates the gap caret element and adds it to the editor appendix. */
   #createGapCaret() {
     const node = document.createElement("div")
-    node.classList.add("◆", "◆editor-only",  "◆gap-caret")
+    node.classList.add("◆gap-caret")
     node.contentEditable = "false"
     this.editor.addAppendix(node)
     return node
@@ -38,7 +38,7 @@ export class SelectionFeature extends EditorFeature {
   /** The gap caret element (shown in gaps between elements), or null if it
    * has not been created yet. */
   get gapCaret() {
-    return document.body.querySelector(".◆gap-caret")
+    return this.editor.appendix.querySelector(".◆gap-caret")
   }
 
   /** Removes all selection marker classes (gap, element, text, empty) from
@@ -172,10 +172,10 @@ export class SelectionFeature extends EditorFeature {
    * subsequent pointerdown handling). */
   hasDoubleClicked = false
 
-  /** Pointer behavior: pointerdown starts a drag selection at the pointer
-   * (modifier-click selects the whole element instead; editor-only elements
-   * are ignored), double/triple click select the word/line, pointerup ends
-   * the drag selection. */
+  /** Pointer behavior: 
+   * pointerdown starts a drag selection at the pointer (modifier-click selects the whole element instead), 
+   * double/triple click select the word/line, 
+   * pointerup ends the drag selection. */
   activeListeners: DocumentListenerMap = {
     "keydown": ev => {
       if(ev.key === "ArrowUp" && ev.altKey) {
@@ -216,7 +216,7 @@ export class SelectionFeature extends EditorFeature {
       }
     },
     "pointerdown": ev => {
-      if(isElement(ev.target) && ev.target.closest(".◆editor-only") || this.hasDoubleClicked || ev.button === 2) {
+      if(this.hasDoubleClicked || ev.button === 2) {
         return
       }
       if(modifierKeyDown(ev)) {

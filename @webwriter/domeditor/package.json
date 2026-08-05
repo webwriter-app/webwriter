@@ -13,6 +13,7 @@
     "vitest": "vitest"
   },
   "dependencies": {
+    "lit": "^3.3.2",
     "y-websocket": "^3.0.0",
     "yjs": "^13.6.31"
   },
