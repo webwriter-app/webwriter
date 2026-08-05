@@ -161,23 +161,27 @@ export class Schema {
 
   /** Resolves a node to its schema entry (see `get()`). */
   #getTypeOfNode(node: Node) {
-    if(node instanceof Element) {      
-      const ns = this.getNamespaceNameOfElement(node)
-      if(ns) {
-        return this.#schema[`${ns}|` + node.tagName.toLowerCase()]
-      }
-      else if(node.tagName.toLowerCase() in this.#schema) {
-        return this.#schema[node.tagName.toLowerCase()]
-      }
-      else {
-        return this.#schema["#unknownelement"]
-      }
+    return this.#schema[this.#getTypeKey(node)]
+  }
+
+  /** Resolves a node to its schema key, including detached namespaced
+   * elements whose namespace cannot be inferred from an ancestor. */
+  #getTypeKey(node: Node) {
+    if(node instanceof Element) {
+      const namespace = this.getNamespaceNameOfElement(node)
+        ?? Object.entries(this.namespaceTypes)
+          .find(([, entry]) => entry.contentNamespace === node.namespaceURI)?.[0]
+      const localName = node.localName || node.tagName.toLowerCase()
+      const key = namespace
+        ? Object.keys(this.#schema).find(key => key.startsWith(`${namespace}|`) && key.split("|")[1].toLowerCase() === localName.toLowerCase()) ?? `${namespace}|${localName}`
+        : localName
+      return namespace || key in this.#schema? key: "#unknownelement"
     }
     else if(node.nodeType === Node.TEXT_NODE) {
-      return this.#schema["#text"]
+      return "#text"
     }
     else if(node.nodeType === Node.COMMENT_NODE) {
-      return this.#schema["#comment"]
+      return "#comment"
     }
     else {
       throw TypeError("Unsupported node type")
@@ -329,7 +333,7 @@ export class Schema {
     else if("options" in rule) {
       const {min, max, options} = rule
       if(options.length === 0) return false;
-      const valid = (max ?? 1) > 0 && options.some(option => this.isNodeValid(node, option))
+      const valid = (max ?? 1) > 0 && options.some(option => this.isNodeValid(node, structuredClone(option)))
       if(valid) {
         rule.min = Math.max(0, (rule.min ?? 1) - 1)
         rule.max = Math.max(0, (rule.max ?? 1) - 1)
@@ -337,9 +341,11 @@ export class Schema {
       } else return false
     }
     else if("group" in rule) {
-      const {min, max, group} = rule
-      const groupMembers = this.getGroupMembers(group)
-      const valid = (max ?? 1) > 0 && groupMembers.some(member => member === node.nodeName.toLowerCase())
+      const {min, max, group, selector} = rule
+      const valid = (max ?? 1) > 0
+        && this.#getTypeKey(node) !== "#unknownelement"
+        && this.getGroupMembers(group).includes(this.#getTypeKey(node))
+        && (!selector || this.testSelectorRule(node, selector))
       if(valid) {
         rule.min = Math.max(0, (rule.min ?? 1) - 1)
         rule.max = Math.max(0, (rule.max ?? 1) - 1)
@@ -349,16 +355,21 @@ export class Schema {
     else if("terms" in rule) {
       const {min, max, terms} = rule
       if(terms.length === 0) return false;
-      const firstUnsatisfied = terms.find(term => (term.max ?? 1) > 0)
-      const valid = (max ?? 1) > 0 && this.isNodeValid(node, firstUnsatisfied)
-      const allSatisfied = terms.every(term => (term.min ?? 1) < 1)
-      if(valid) {
-        if(allSatisfied) {
-          rule.min = Math.max(0, (rule.min ?? 1) - 1)
-          rule.max = Math.max(0, (rule.max ?? 1) - 1)
+      if((max ?? 1) < 1) return false
+      for(const term of terms) {
+        if((term.max ?? 1) < 1) continue
+        const candidate = structuredClone(term)
+        if(this.isNodeValid(node, candidate)) {
+          Object.assign(term, candidate)
+          if(terms.every(term => (term.min ?? 1) < 1)) {
+            rule.min = Math.max(0, (min ?? 1) - 1)
+            rule.max = Math.max(0, (max ?? 1) - 1)
+          }
+          return true
         }
-        return true
-      } else return false
+        if((term.min ?? 1) > 0) return false
+      }
+      return false
     }
     else if("conditions" in rule) {
       const {min, max, conditions} = rule
@@ -491,6 +502,12 @@ export class Schema {
     if(typeof selector === "object") {
       return node.nodeType === nodeTypeMap[selector.type]
     }
+    else if(node instanceof Element && selector.includes("|")) {
+      const [namespace, localName] = selector.split("|")
+      const namespaceURL = this.namespaceTypes[namespace]?.contentNamespace
+      const nodeLocalName = node.localName || node.tagName.toLowerCase()
+      return namespaceURL === node.namespaceURI && (localName === "*" || localName.toLowerCase() === nodeLocalName.toLowerCase())
+    }
     else if(node instanceof Element) {
       return node.matches(selector)
     }
@@ -534,13 +551,19 @@ export class Schema {
   fixInvalidContent(el: Element, invalidNodes=this.getInvalidChildNodes(el)) {
     if(this.isContentValid(el)) return;
     let newChildNodes = Array.from(el.childNodes) as (Node | Node[] | undefined)[]
-    // For every invalid node, attempt: lift, wrap, move & wrap, delete
-    for(const invalidNode of invalidNodes) {
+    // For every consecutive invalid run, attempt: lift, wrap, move & wrap, delete
+    for(let invalidNodeIndex = 0; invalidNodeIndex < invalidNodes.length;) {
+      const invalidNode = invalidNodes[invalidNodeIndex]
+      const invalidRun = [invalidNode]
+      while(invalidNodes[invalidNodeIndex + invalidRun.length] === invalidRun.at(-1)!.nextSibling) {
+        invalidRun.push(invalidNodes[invalidNodeIndex + invalidRun.length])
+      }
       const i = newChildNodes.indexOf(invalidNode as Node)
       let wrapping, liftTarget, moveIndex
-      if(wrapping = this.findWrapping(el, [invalidNode])) {
-        wrapping.append(invalidNode)
+      if(wrapping = this.findWrapping(el, invalidRun)) {
+        wrapping.append(...invalidRun)
         newChildNodes[i] = wrapping
+        invalidRun.slice(1).forEach(node => newChildNodes[newChildNodes.indexOf(node)] = undefined)
       }
       else if(liftTarget=this.getLiftTarget(invalidNode)) {
         const [depth, replacement] = liftTarget
@@ -555,6 +578,7 @@ export class Schema {
       else {
         newChildNodes[i] = undefined
       }
+      invalidNodeIndex += invalidRun.length
     }
     newChildNodes = newChildNodes.filter(n => n).flat()
     // For every still missing node, attempt: fill

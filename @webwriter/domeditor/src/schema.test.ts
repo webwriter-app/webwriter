@@ -633,7 +633,7 @@ describe("Schema methods", () => {
       expect(schema.findWrapping(el("ul"), [text("hello")])).toBeInstanceOf(HTMLLIElement)
     })
     it("returns no wrapping when nothing fits", () => {
-      expect(schema.findWrapping(el("p"), [el("div")])).toBeUndefined()
+      expect(schema.findWrapping(el("p"), [el("html")])).toBeUndefined()
     })
   })
 
