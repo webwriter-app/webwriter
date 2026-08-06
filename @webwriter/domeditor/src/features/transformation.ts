@@ -869,7 +869,7 @@ export class TransformationFeature extends EditorFeature {
   /** The transform overlay element, created lazily and added to the editor
    * appendix on first access. */
   get overlay() {
-    const existing = this.editor.appendix.querySelector("#◆transform-overlay")
+    const existing = this.editor.appendix.querySelector("#◆transform-overlay") as HTMLElement | null
     if(!existing) {
       const overlay = this.#createOverlay()
       this.editor.addAppendix(overlay)
