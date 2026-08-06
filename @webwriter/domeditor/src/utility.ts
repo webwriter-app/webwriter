@@ -1,5 +1,17 @@
 import { Schema } from "./schema"
 
+export function createStylesheet(content: string) {
+  const stylesheet = new CSSStyleSheet()
+  stylesheet.replaceSync(content)
+  return stylesheet
+}
+
+export function adoptStylesheet(root: Document | ShadowRoot, stylesheet: CSSStyleSheet) {
+  if(!root.adoptedStyleSheets.includes(stylesheet)) {
+    root.adoptedStyleSheets = [...root.adoptedStyleSheets, stylesheet]
+  }
+}
+
 /** Unit for caret movement and extension (see Selection.modify). */
 type Granularity = "character" | "word" | "line"
 /** Direction for caret movement and extension (see Selection.modify). */
@@ -663,7 +675,7 @@ export function createsStackingContext(node: HTMLElement) {
   const display = parseDisplayStyle(style.display)
   const [,inside] = display
   const isDocumentElement = node === document.documentElement
-  const isZPositioned = (style.position === "relative" || style.position === "absolute") && style.zIndex !== "auto"
+  const isZPositioned = (style.position === "relative" || style.position === "absolute") && !["", "auto"].includes(style.zIndex)
   const isFixedOrSticky = style.position === "fixed" || style.position === "sticky"
   const isContainer = style.containerType === "size" || style.containerType === "inline-size"
   const isFlexWithZ = Array.isArray(display) && inside === "flex" && style.zIndex !== "auto"

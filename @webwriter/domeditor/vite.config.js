@@ -4,6 +4,9 @@ import { defineConfig } from 'vite'
 
 export default defineConfig({
     publicDir: "../../static",
+    test: {
+      css: true,
+    },
     build: {
         emptyOutDir: true,
         chunkSizeWarningLimit: 1000,
