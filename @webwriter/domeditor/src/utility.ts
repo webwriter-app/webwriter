@@ -12,6 +12,16 @@ export function adoptStylesheet(root: Document | ShadowRoot, stylesheet: CSSStyl
   }
 }
 
+export function setPart(element: Element, part: string, enabled = true) {
+  const parts = new Set((element.getAttribute("part") ?? "").split(/\s+/).filter(Boolean))
+  enabled ? parts.add(part) : parts.delete(part)
+  if(parts.size) {
+    element.setAttribute("part", Array.from(parts).join(" "))
+  } else {
+    element.removeAttribute("part")
+  }
+}
+
 /** Unit for caret movement and extension (see Selection.modify). */
 type Granularity = "character" | "word" | "line"
 /** Direction for caret movement and extension (see Selection.modify). */

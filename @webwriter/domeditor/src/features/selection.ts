@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import {$, getContainer, isElement, modifierKeyDown} from "../utility"
+import {$, getContainer, isElement, modifierKeyDown, setPart} from "../utility"
 
 /** Editing feature that visualizes the current selection. It classifies every
  * selection change into an editing-relevant kind (element, text, gap, empty)
@@ -30,6 +30,7 @@ export class SelectionFeature extends EditorFeature {
   #createGapCaret() {
     const node = document.createElement("div")
     node.classList.add("◆gap-caret")
+    node.setAttribute("part", "gap-caret gap-caret-hidden")
     node.contentEditable = "false"
     this.editor.addAppendix(node)
     return node
@@ -55,6 +56,11 @@ export class SelectionFeature extends EditorFeature {
       }
     })
     this.gapCaret?.setAttribute("visibility", "hidden")
+    document.body.classList.remove("◆gap-caret-visible")
+    if(this.gapCaret) {
+      setPart(this.gapCaret, "gap-caret-hidden")
+      ;["gap-before-selected", "gap-after-selected", "drop-caret-before", "drop-caret-after"].forEach(state => setPart(this.gapCaret!, `gap-caret-${state}`, false))
+    }
     document.querySelectorAll(".◆element-selected").forEach(el => {
       el.classList.remove("◆element-selected")
       if(!Array.from(el.classList).some(k => k !== "◆" && k.startsWith("◆"))) {
@@ -102,6 +108,9 @@ export class SelectionFeature extends EditorFeature {
         const gapCaret = this.gapCaret ?? this.#createGapCaret()
         element?.classList?.add("◆", `◆gap-${placement}-selected`)
         gapCaret.classList.add(`◆gap-${placement}-selected`)
+        setPart(gapCaret, `gap-caret-gap-${placement}-selected`)
+        setPart(gapCaret, "gap-caret-hidden", false)
+        document.body.classList.add("◆gap-caret-visible")
         gapCaret.removeAttribute("visibility")
       }
       

@@ -10,10 +10,8 @@ import { TransformationFeature } from "./features/transformation"
 import { Schema } from "./schema"
 import { $, adoptStylesheet, createStylesheet, isElement } from "./utility"
 import editorStyleString from "./editor.css?raw"
-import editorShadowStyleString from "./editor-shadow.css?raw"
 
 const editorStylesheet = createStylesheet(editorStyleString)
-const editorShadowStylesheet = createStylesheet(editorShadowStyleString)
 
 /** DOMEditor
  * Core (transactions, schema, communication)
@@ -159,7 +157,6 @@ export class DOMEditor {
 
   get appendix() {
     const shadowRoot = document.body.shadowRoot ?? document.body.attachShadow({mode: "open"})
-    adoptStylesheet(shadowRoot, editorShadowStylesheet)
     const slot = shadowRoot.querySelector("slot") ?? document.createElement("slot")
     shadowRoot.appendChild(slot)
     return shadowRoot

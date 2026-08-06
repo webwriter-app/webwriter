@@ -3,6 +3,7 @@ import { describe, it, expect } from "vitest"
 import '@testing-library/jest-dom/vitest'
 
 import { DOMEditor } from "./domeditor"
+import editorStyleString from "./editor.css?raw"
 
 const hasSelector = (stylesheet: CSSStyleSheet, selector: string) =>
   Array.from(stylesheet.cssRules).some(rule =>
@@ -24,24 +25,27 @@ describe("DOMEditor stylesheets", () => {
     expect(hasExactSelector(stylesheet!, "#◆transform-overlay")).toBe(false)
   })
 
-  it("mounts the shadow-DOM stylesheet on the editor appendix", () => {
+  it("uses the main-DOM stylesheet to style exposed shadow parts", () => {
     const appendix = editor.appendix
-    const stylesheet = appendix.adoptedStyleSheets.find(sheet => hasSelector(sheet, "#◆transform-overlay"))
+    const overlay = editor.features.transformation.overlay
+    const stylesheet = document.adoptedStyleSheets.find(sheet => hasSelector(sheet, "html"))
 
     expect(stylesheet).toBeInstanceOf(CSSStyleSheet)
-    expect(appendix.adoptedStyleSheets).toContain(stylesheet)
-    expect(document.adoptedStyleSheets).not.toContain(stylesheet)
-    expect(hasSelector(stylesheet!, ".◆gap-caret")).toBe(true)
+    expect(appendix.adoptedStyleSheets).toHaveLength(0)
+    expect(editorStyleString).toContain("body::part(transform-overlay)")
+    expect(overlay.getAttribute("part")).toContain("transform-overlay")
+    expect(overlay.querySelector("#◆transform-overlay-scale-up-left")?.getAttribute("part"))
+      .toContain("transform-overlay-scale-up-left")
   })
 
   it("does not duplicate constructed stylesheets", () => {
     const documentSheetCount = document.adoptedStyleSheets.filter(sheet => hasSelector(sheet, "html")).length
     const appendix = editor.appendix
-    const appendixSheetCount = appendix.adoptedStyleSheets.filter(sheet => hasSelector(sheet, "#◆transform-overlay")).length
+    const appendixSheetCount = appendix.adoptedStyleSheets.length
 
     new DOMEditor().appendix
 
     expect(document.adoptedStyleSheets.filter(sheet => hasSelector(sheet, "html"))).toHaveLength(documentSheetCount)
-    expect(appendix.adoptedStyleSheets.filter(sheet => hasSelector(sheet, "#◆transform-overlay"))).toHaveLength(appendixSheetCount)
+    expect(appendix.adoptedStyleSheets).toHaveLength(appendixSheetCount)
   })
 })

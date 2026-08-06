@@ -1,6 +1,6 @@
 import { DocumentListenerMap, EditorFeature } from "."
 import { DOMEditor } from "../domeditor"
-import { $, angleOnCircle, distanceBetweenPoints, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, getZPos, intersectionPoint, isElement, midpoint, modifierKeyDown, rotatePoint, roundByDPR, roundTo } from "../utility"
+import { $, angleOnCircle, distanceBetweenPoints, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, getZPos, intersectionPoint, isElement, midpoint, modifierKeyDown, rotatePoint, roundByDPR, roundTo, setPart } from "../utility"
 
 /**
  * On border click, overlay transform
@@ -93,6 +93,7 @@ export class TransformationFeature extends EditorFeature {
     const point = document.createElement("div")
     point.id = `◆transform-overlay-scale-${direction}`
     point.classList.add("◆transform-overlay-scale")
+    point.setAttribute("part", `transform-overlay-scale transform-overlay-scale-${direction}`)
     point.draggable = true
     point.addEventListener("dragstart", ev => this.handleScaleStart(ev), {passive: true})
     point.addEventListener("drag", ev => this.handleScaleDrag(ev), {passive: true})
@@ -105,6 +106,7 @@ export class TransformationFeature extends EditorFeature {
     const restorer = document.createElement("button")
     restorer.id = `◆transform-overlay-restorer`
     restorer.classList.add("◆transform-overlay-button")
+    restorer.setAttribute("part", "transform-overlay-button transform-overlay-restorer transform-overlay-restorer-hidden")
     restorer.addEventListener("click", ev => {this.restore(); ev.stopImmediatePropagation()})
     return restorer
   }
@@ -115,9 +117,11 @@ export class TransformationFeature extends EditorFeature {
     const arranger = document.createElement("button")
     arranger.id = `◆transform-overlay-arranger`
     arranger.classList.add("◆transform-overlay-button")
+    arranger.setAttribute("part", "transform-overlay-button transform-overlay-arranger transform-overlay-arranger-hidden")
     arranger.addEventListener("click", ev => {
       if(!this.isNarrow) {
         arranger.toggleAttribute("data-open")
+        this.#syncControlParts()
       }
       else {
         const list = this.#floatValues
@@ -126,7 +130,12 @@ export class TransformationFeature extends EditorFeature {
       }
       ev.stopPropagation()
     })
-    arranger.addEventListener("blur", (ev) => isElement(ev.relatedTarget) && ev.relatedTarget.parentElement?.parentElement !== arranger && arranger.toggleAttribute("data-open", false), {passive: true})
+    arranger.addEventListener("blur", (ev) => {
+      if(isElement(ev.relatedTarget) && ev.relatedTarget.parentElement?.parentElement !== arranger) {
+        arranger.toggleAttribute("data-open", false)
+        this.#syncControlParts()
+      }
+    }, {passive: true})
     const menu = this.#createArrangerMenu()
     arranger.append(menu)
     return arranger
@@ -138,6 +147,7 @@ export class TransformationFeature extends EditorFeature {
     this.target.style.float = value === "none"? "": value
     this.arranger?.setAttribute("data-float", value)
     this.arranger?.toggleAttribute("data-open", false)
+    this.#syncControlParts()
   }
 
   get #float() {
@@ -162,21 +172,25 @@ export class TransformationFeature extends EditorFeature {
   #createArrangerMenu() {
     const floatNone = document.createElement("button")
     floatNone.id = `◆transform-overlay-float-none`
+    floatNone.setAttribute("part", "transform-overlay-button transform-overlay-float-none")
     floatNone.addEventListener("click", ev => {this.#float = "none"; ev.stopPropagation()})
     floatNone.classList.add("◆transform-overlay-button")
     
     const floatLeft = document.createElement("button")
     floatLeft.id = `◆transform-overlay-float-left`
+    floatLeft.setAttribute("part", "transform-overlay-button transform-overlay-float-left")
     floatLeft.addEventListener("click", ev => {this.#float = "left"; ev.stopPropagation()})
     floatLeft.classList.add("◆transform-overlay-button")
     
     const floatRight = document.createElement("button") 
     floatRight.id = `◆transform-overlay-float-right`
+    floatRight.setAttribute("part", "transform-overlay-button transform-overlay-float-right")
     floatRight.addEventListener("click", ev => {this.#float = "right"; ev.stopPropagation()})
     floatRight.classList.add("◆transform-overlay-button")
     
     const menu = document.createElement("div")
     menu.id = "◆transform-overlay-arranger-menu"
+    menu.setAttribute("part", "transform-overlay-arranger-menu transform-overlay-arranger-menu-hidden")
     menu.append(floatNone, floatLeft, floatRight)
     return menu
   }
@@ -187,9 +201,11 @@ export class TransformationFeature extends EditorFeature {
     const orderer = document.createElement("button")
     orderer.id = `◆transform-overlay-orderer`
     orderer.classList.add("◆transform-overlay-button")
+    orderer.setAttribute("part", "transform-overlay-button transform-overlay-orderer transform-overlay-orderer-hidden transform-overlay-orderer-closed")
     orderer.addEventListener("click", ev => {
       if(!this.isNarrow) {
         orderer.toggleAttribute("data-open")
+        this.#syncControlParts()
       }
       else if(ev.altKey) {
         this.moveZ(this.target, false)
@@ -199,7 +215,12 @@ export class TransformationFeature extends EditorFeature {
       }
       ev.stopPropagation()
     })
-    orderer.addEventListener("blur", (ev) => isElement(ev.relatedTarget) && ev.relatedTarget.parentElement?.parentElement !== orderer && orderer.toggleAttribute("data-open", false), {passive: true})
+    orderer.addEventListener("blur", (ev) => {
+      if(isElement(ev.relatedTarget) && ev.relatedTarget.parentElement?.parentElement !== orderer) {
+        orderer.toggleAttribute("data-open", false)
+        this.#syncControlParts()
+      }
+    }, {passive: true})
     const menu = this.#createOrdererMenu()
     orderer.append(menu)
     return orderer
@@ -210,6 +231,7 @@ export class TransformationFeature extends EditorFeature {
   #createOrdererMenu() {
     const zBack = document.createElement("button")
     zBack.id = `◆transform-overlay-z-back`
+    zBack.setAttribute("part", "transform-overlay-button transform-overlay-z-back")
     zBack.addEventListener("click", ev => {
       this.moveZ(this.target, true, true)
       ev.stopPropagation()
@@ -218,6 +240,7 @@ export class TransformationFeature extends EditorFeature {
     
     const zForward = document.createElement("button")
     zForward.id = `◆transform-overlay-z-forward`
+    zForward.setAttribute("part", "transform-overlay-button transform-overlay-z-forward")
     zForward.addEventListener("click", ev => {
       this.moveZ(this.target, true, ev.shiftKey)
       ev.stopPropagation()
@@ -226,6 +249,7 @@ export class TransformationFeature extends EditorFeature {
     
     const zBackward = document.createElement("button")
     zBackward.id = `◆transform-overlay-z-backward`
+    zBackward.setAttribute("part", "transform-overlay-button transform-overlay-z-backward")
     zBackward.addEventListener("click", ev => {
       this.moveZ(this.target, false, ev.shiftKey)
       ev.stopPropagation()
@@ -234,6 +258,7 @@ export class TransformationFeature extends EditorFeature {
 
     const zFront = document.createElement("button")
     zFront.id = `◆transform-overlay-z-front`
+    zFront.setAttribute("part", "transform-overlay-button transform-overlay-z-front")
     zFront.addEventListener("click", ev => {
       this.moveZ(this.target, true, true)
       ev.stopPropagation()
@@ -242,6 +267,7 @@ export class TransformationFeature extends EditorFeature {
     
     const menu = document.createElement("div")
     menu.id = "◆transform-overlay-orderer-menu"
+    menu.setAttribute("part", "transform-overlay-orderer-menu transform-overlay-orderer-menu-hidden")
     menu.append(zForward, zBackward)
     return menu
   }
@@ -251,6 +277,7 @@ export class TransformationFeature extends EditorFeature {
     const rotator = document.createElement("div")
     rotator.id = `◆transform-overlay-rotator`
     rotator.classList.add("◆transform-overlay-button")
+    rotator.setAttribute("part", "transform-overlay-button transform-overlay-rotator")
     rotator.draggable = true
     rotator.addEventListener("dragstart", ev => this.handleRotateStart(ev), {passive: true})
     rotator.addEventListener("drag", ev => this.handleRotateDrag(ev), {passive: true})
@@ -263,6 +290,9 @@ export class TransformationFeature extends EditorFeature {
   #createAnchor() {
     const anchor = document.createElement("div")
     anchor.id = `◆transform-overlay-anchor`
+    anchor.setAttribute("part", "transform-overlay-anchor transform-overlay-anchor-hidden")
+    anchor.addEventListener("mouseenter", () => this.#syncControlParts())
+    anchor.addEventListener("mouseleave", () => this.#syncControlParts())
     // anchor.draggable = true
     anchor.contentEditable = "false"
     anchor.setAttribute("visibility", "hidden")
@@ -271,6 +301,7 @@ export class TransformationFeature extends EditorFeature {
     const sticky = document.createElement("button")
     sticky.classList.add("◆transform-overlay-button")
     sticky.id = `◆transform-overlay-anchor-sticky`
+    sticky.setAttribute("part", "transform-overlay-button transform-overlay-anchor-sticky transform-overlay-anchor-sticky-hidden")
     sticky.addEventListener("click", ev => {this.toggleSticky(); ev.stopPropagation()})
     anchor.appendChild(sticky)
 
@@ -282,6 +313,7 @@ export class TransformationFeature extends EditorFeature {
   #createOverlay() {
     const overlay = document.createElement("div")
     overlay.id = "◆transform-overlay"
+    overlay.setAttribute("part", "transform-overlay")
     overlay.contentEditable = "false"
     overlay.draggable = true
     overlay.addEventListener("dragstart", ev => this.handleMoveStart(ev), {passive: true})
@@ -297,6 +329,44 @@ export class TransformationFeature extends EditorFeature {
       this.#createEmptyDrag(),
     )
     return overlay
+  }
+
+  #syncControlParts() {
+    const overlay = this.overlay
+    setPart(overlay, "transform-overlay-hidden", overlay.hasAttribute("visibility"))
+    setPart(overlay, "transform-overlay-changed", overlay.classList.contains("◆transform-overlay-changed"))
+    setPart(overlay, "transform-overlay-narrow", overlay.classList.contains("◆transform-overlay-narrow"))
+
+    const restorer = overlay.querySelector("#◆transform-overlay-restorer")
+    restorer && setPart(restorer, "transform-overlay-restorer-hidden", !overlay.classList.contains("◆transform-overlay-changed"))
+
+    const arranger = this.arranger
+    const arrangerPosition = arranger.getAttribute("data-position")
+    const arrangerFloat = arranger.getAttribute("data-float") ?? "none"
+    setPart(arranger, "transform-overlay-arranger-hidden", arrangerPosition !== "static")
+    ;["none", "left", "right"].forEach(float => setPart(arranger, `transform-overlay-arranger-float-${float}`, arrangerFloat === float))
+    ;["none", "left", "right"].forEach(float => setPart(
+      overlay.querySelector(`#◆transform-overlay-float-${float}`)!,
+      `transform-overlay-float-${float}-hidden`,
+      arrangerFloat === float,
+    ))
+    setPart(this.editor.appendix.querySelector("#◆transform-overlay-arranger-menu")!, "transform-overlay-arranger-menu-hidden", !arranger.hasAttribute("data-open"))
+
+    const orderer = this.orderer
+    setPart(orderer, "transform-overlay-orderer-hidden", orderer.getAttribute("data-position") === "static")
+    setPart(orderer, "transform-overlay-orderer-open", orderer.hasAttribute("data-open"))
+    setPart(orderer, "transform-overlay-orderer-closed", !orderer.hasAttribute("data-open"))
+    setPart(orderer, "transform-overlay-orderer-narrow", overlay.classList.contains("◆transform-overlay-narrow"))
+    setPart(this.editor.appendix.querySelector("#◆transform-overlay-orderer-menu")!, "transform-overlay-orderer-menu-hidden", !orderer.hasAttribute("data-open"))
+
+    const anchor = this.anchor
+    const position = anchor.getAttribute("data-position")
+    setPart(anchor, "transform-overlay-anchor-hidden", anchor.hasAttribute("visibility"))
+    setPart(anchor, "transform-overlay-anchor-relative", position === "relative")
+    setPart(anchor, "transform-overlay-anchor-sticky", position === "sticky")
+    const sticky = anchor.querySelector("#◆transform-overlay-anchor-sticky")!
+    setPart(sticky, "transform-overlay-anchor-sticky-hidden", position !== "sticky" && !(position === "relative" && anchor.matches(":hover")))
+    setPart(sticky, "transform-overlay-anchor-sticky-active", position === "sticky")
   }
 
   /** Snapping strategies for the drag interactions. */
@@ -638,9 +708,12 @@ export class TransformationFeature extends EditorFeature {
               el.classList.remove(`◆drop-caret-${pos === "before"? "after": "before"}`)
             }
           })
-          this.editor.features.selection.gapCaret!.classList.remove("◆drop-caret-before", "◆drop-caret-before")
+          this.editor.features.selection.gapCaret!.classList.remove("◆drop-caret-before", "◆drop-caret-after")
+          setPart(this.editor.features.selection.gapCaret!, "gap-caret-drop-caret-before", false)
+          setPart(this.editor.features.selection.gapCaret!, "gap-caret-drop-caret-after", false)
           bgEl.classList.add("◆", `◆drop-caret-${pos}`)
           this.editor.features.selection.gapCaret!.classList.add(`◆drop-caret-${pos}`)
+          setPart(this.editor.features.selection.gapCaret!, `gap-caret-drop-caret-${pos}`)
         }
         else {
           document.body.querySelectorAll(":is(.◆drop-caret-before, .◆drop-caret-after)").forEach(el => {
@@ -649,7 +722,9 @@ export class TransformationFeature extends EditorFeature {
               el.classList.remove("◆")
             }
           })
-          this.editor.features.selection.gapCaret!.classList.remove("◆drop-caret-before", "◆drop-caret-before")
+          this.editor.features.selection.gapCaret!.classList.remove("◆drop-caret-before", "◆drop-caret-after")
+          setPart(this.editor.features.selection.gapCaret!, "gap-caret-drop-caret-before", false)
+          setPart(this.editor.features.selection.gapCaret!, "gap-caret-drop-caret-after", false)
         }
       }
       else {
@@ -659,7 +734,9 @@ export class TransformationFeature extends EditorFeature {
             el.classList.remove("◆")
           }
         })
-        this.editor.features.selection.gapCaret!.classList.remove("◆drop-caret-before", "◆drop-caret-before")
+        this.editor.features.selection.gapCaret!.classList.remove("◆drop-caret-before", "◆drop-caret-after")
+        setPart(this.editor.features.selection.gapCaret!, "gap-caret-drop-caret-before", false)
+        setPart(this.editor.features.selection.gapCaret!, "gap-caret-drop-caret-after", false)
       }
     }
     
@@ -712,7 +789,9 @@ export class TransformationFeature extends EditorFeature {
           el.classList.remove("◆")
         }
       })
-      this.editor.features.selection.gapCaret!.classList.remove("◆drop-caret-before", "◆drop-caret-before")
+      this.editor.features.selection.gapCaret!.classList.remove("◆drop-caret-before", "◆drop-caret-after")
+      setPart(this.editor.features.selection.gapCaret!, "gap-caret-drop-caret-before", false)
+      setPart(this.editor.features.selection.gapCaret!, "gap-caret-drop-caret-after", false)
     }
   }
 
@@ -900,6 +979,7 @@ export class TransformationFeature extends EditorFeature {
       this.#containingBlock = findContainingBlock(target, (elStyle.position || "static") as "static" | "relative" | "sticky" | "absolute" | "fixed")
       if(this.#containingBlock instanceof Element) {
         this.#containingBlock.classList.add("◆", "◆transform-containing-block")
+        this.#containingBlock.classList.toggle("◆transform-containing-block-no-outline", ["fixed", "static", "relative"].includes(elStyle.position))
       }
       this.#scrollingAncestor = findScrollingAncestor(target)
       if(this.#scrollingAncestor) {
@@ -947,9 +1027,11 @@ export class TransformationFeature extends EditorFeature {
         this.anchor.style.positionAnchor = this.anchor.style.top = this.anchor.style.left = this.anchor.style.width = this.anchor.style.height = ""
         this.anchor.setAttribute("visibility", "hidden")
       }
+      this.#syncControlParts()
     }
     else {
       this.overlay.classList.remove("◆transform-overlay-changed")
+      this.#syncControlParts()
     }
   }
 
@@ -970,7 +1052,7 @@ export class TransformationFeature extends EditorFeature {
     document.querySelectorAll(".◆transform-target")
       .forEach(el => el.classList.remove("◆transform-target"))
     document.querySelectorAll(".◆transform-containing-block")
-      .forEach(el => el.classList.remove("◆transform-containing-block"))
+      .forEach(el => el.classList.remove("◆transform-containing-block", "◆transform-containing-block-no-outline"))
     document.querySelectorAll(".◆transform-scrolling-ancestor")
       .forEach(el => el.classList.remove("◆transform-scrolling-ancestor"))
     document.querySelectorAll(".◆transform-stacking-container")
@@ -981,6 +1063,7 @@ export class TransformationFeature extends EditorFeature {
     this.overlay.style.rotate = ""
     this.arranger?.toggleAttribute("data-open", false)
     this.orderer?.toggleAttribute("data-open", false)
+    this.#syncControlParts()
   }
 
   /** Keyboard/clipboard behavior while a target is active: Delete/Backspace
