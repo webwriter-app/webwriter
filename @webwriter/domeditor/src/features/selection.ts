@@ -34,10 +34,14 @@ function isCaretAtStartOf(element: Element) {
  * selection). */
 export class SelectionFeature extends EditorFeature {
 
-  /** Clamps selection endpoints outside the editable body to the nearest body boundary. */
+  /** Clamps collapsed selection endpoints outside the editable body to the nearest body boundary. */
   #constrainSelectionToBody() {
     const selection = document.getSelection()
-    if(!selection?.anchorNode || !selection.focusNode) {
+    // Non-collapsed ranges can be browser-generated document-wide selections
+    // (e.g. Select all), whose endpoints may temporarily be outside BODY.
+    // Rewriting those endpoints can collapse the range into the gap before
+    // the first element.
+    if(!selection?.isCollapsed || !selection.anchorNode || !selection.focusNode) {
       return
     }
     const body = document.body
@@ -246,7 +250,12 @@ export class SelectionFeature extends EditorFeature {
    * pointerup ends the drag selection. */
   activeListeners: DocumentListenerMap = {
     "keydown": ev => {
-      if(ev.key === "ArrowUp" && ev.altKey) {
+      if(ev.key.toLowerCase() === "a" && modifierKeyDown(ev)) {
+        ev.preventDefault()
+        $.selectRange(document.body, 0, document.body, document.body.childNodes.length)
+        this.processSelection()
+      }
+      else if(ev.key === "ArrowUp" && ev.altKey) {
 
       } 
       else if(ev.key === "ArrowUp" && modifierKeyDown(ev)) {
