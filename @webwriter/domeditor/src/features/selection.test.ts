@@ -71,6 +71,14 @@ describe("processSelection()", () => {
     feature.processSelection()
     expect(p1.classList.contains("◆gap-before-selected")).toBe(true)
   })
+  it("marks the first body element when whitespace precedes the gap", () => {
+    document.body.innerHTML = "\n<p>a</p>"
+    const p = document.body.firstElementChild!
+    $.selectDocumentStart()
+    feature.processSelection()
+    expect(p.classList.contains("◆gap-before-selected")).toBe(true)
+    expect(feature.gapCaret!.getAttribute("visibility")).not.toBe("hidden")
+  })
   it("clears previous markers when the selection changes", () => {
     const p1 = el("p", "a"); const p2 = el("p", "b")
     $.selectRange(p1.firstChild!, 0, p1.firstChild!, 1)
@@ -158,5 +166,30 @@ describe("document listeners", () => {
     feature.isInDragSelection = true
     document.dispatchEvent(new MouseEvent("pointerup", {bubbles: true}))
     expect(feature.isInDragSelection).toBe(false)
+  })
+  it("shows the gap before the first body element on ArrowUp", () => {
+    const p = el("p", "hello")
+    $.move(p.firstChild!, 0)
+    const event = new KeyboardEvent("keydown", {key: "ArrowUp", bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(0)
+    expect(p.classList.contains("◆gap-before-selected")).toBe(true)
+  })
+  it("clamps a selection before the body to its start", () => {
+    const p = el("p", "hello")
+    $.selectRange(document.documentElement, 0)
+    feature.processSelection()
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(0)
+    expect(p.classList.contains("◆gap-before-selected")).toBe(true)
+  })
+  it("clamps a selection after the body to its end", () => {
+    el("p", "hello")
+    $.selectRange(document.documentElement, document.documentElement.childNodes.length)
+    feature.processSelection()
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(document.body.childNodes.length)
   })
 })

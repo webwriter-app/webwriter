@@ -73,17 +73,41 @@ export class EditingSelection {
   /** Moves (or with `extend`, extends) the selection to the document position at the given viewport coordinates, snapping to element gaps at text boundaries. Requires layout (caretPositionFromPoint). */
   static selectCoords(x: number, y: number, extend=false) {
     window.focus()
-    const el = document.elementFromPoint(x, y)
     const {offset, offsetNode} = document.caretPositionFromPoint(x, y) ?? {}
+    const firstBodyElement = document.body.firstElementChild
+    const firstBodyElementIndex = firstBodyElement? Array.from(document.body.childNodes).indexOf(firstBodyElement): -1
+    if(!offsetNode) {
+      if(!extend && firstBodyElement && y < firstBodyElement.getBoundingClientRect().top) {
+        this.selectGap(firstBodyElement, "before")
+      }
+      return
+    }
+    const isBeforeFirstBodyElement = offsetNode === document.body && typeof offset === "number" && firstBodyElementIndex >= 0 && offset <= firstBodyElementIndex &&
+      y < firstBodyElement.getBoundingClientRect().top
+    if(!extend && isBeforeFirstBodyElement) {
+      this.selectGap(firstBodyElement, "before")
+      return
+    }
     const caretAtEndOrStart = offsetNode instanceof Text && (offset === 0 || offsetNode.length === offset)
     const container: HTMLElement = offsetNode instanceof Text? offsetNode.parentElement!: offsetNode as HTMLElement
     const containerRect = container.getBoundingClientRect()
-    const isBefore = y < containerRect.top
+    let boundaryRect = containerRect
+    if(offsetNode instanceof Text && offsetNode.length && typeof document.createRange().getBoundingClientRect === "function") {
+      const boundaryRange = document.createRange()
+      const boundaryOffset = offset === 0? 0: offset - 1
+      boundaryRange.setStart(offsetNode, boundaryOffset)
+      boundaryRange.setEnd(offsetNode, offset === 0? 1: offset)
+      const rangeRect = boundaryRange.getBoundingClientRect()
+      if(rangeRect.top || rangeRect.bottom || rangeRect.left || rangeRect.right) {
+        boundaryRect = rangeRect
+      }
+    }
+    const isBefore = y < boundaryRect.top
     // A click just outside the inline text box can still resolve to the
     // text's first/last caret position. It is only a gap click when it is
     // vertically outside the text container; clicks beside the text within
     // the block must keep the boundary caret position.
-    const isAtGap = caretAtEndOrStart && el !== offsetNode.parentElement && (y < containerRect.top || y > containerRect.bottom)
+    const isAtGap = caretAtEndOrStart && (y < boundaryRect.top || y > boundaryRect.bottom)
     if(!extend && isAtGap) {
       this.selectGap(offsetNode.parentElement!, isBefore? "before": "after")
     }
@@ -105,9 +129,16 @@ export class EditingSelection {
     return this.#selection.isCollapsed
   }
 
-  /** Whether the caret sits in a gap between elements: collapsed, anchored in an element without text children, and not in an empty container. */
+  /** Whether the caret sits in a gap between elements: collapsed, anchored in an element without text children, and not in an empty container. A body boundary before its first element is also a gap when any preceding text is only whitespace. */
   static get isGapSelection() {
-    return isElement(this.anchor) && this.isEmpty && !Array.from(this.anchor.childNodes).some(node => isText(node)) && !this.isEmptySelection
+    const firstBodyElement = document.body.firstElementChild
+    const firstBodyElementIndex = firstBodyElement? Array.from(document.body.childNodes).indexOf(firstBodyElement): -1
+    const isBodyBoundaryBeforeFirstElement = this.anchor === document.body &&
+      firstBodyElementIndex >= 0 &&
+      this.anchorOffset <= firstBodyElementIndex &&
+      Array.from(document.body.childNodes).slice(this.anchorOffset, firstBodyElementIndex).every(node => !isText(node) || !node.textContent?.trim())
+    return isElement(this.anchor) && this.isEmpty && !this.isEmptySelection &&
+      (!Array.from(this.anchor.childNodes).some(node => isText(node)) || isBodyBoundaryBeforeFirstElement)
   }
 
   /** Whether exactly one element is selected (anchored in its parent,

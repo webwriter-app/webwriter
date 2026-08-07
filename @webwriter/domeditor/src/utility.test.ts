@@ -91,13 +91,15 @@ describe("selectDocumentStart()", () => {
 describe("selectCoords()", () => {
   const originalElementFromPoint = document.elementFromPoint
   const originalCaretPositionFromPoint = document.caretPositionFromPoint
+  const originalRangeGetBoundingClientRect = Range.prototype.getBoundingClientRect
 
   afterEach(() => {
     Object.defineProperty(document, "elementFromPoint", {configurable: true, value: originalElementFromPoint})
     Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: originalCaretPositionFromPoint})
+    Object.defineProperty(Range.prototype, "getBoundingClientRect", {configurable: true, value: originalRangeGetBoundingClientRect})
   })
 
-  function mockHitTest(text: Text, offset: number, element: Element = document.body) {
+  function mockHitTest(text: Text | Element, offset: number, element: Element = document.body) {
     Object.defineProperty(document, "elementFromPoint", {configurable: true, value: () => element})
     Object.defineProperty(document, "caretPositionFromPoint", {
       configurable: true,
@@ -107,6 +109,13 @@ describe("selectCoords()", () => {
 
   function setBlockRect(block: Element, top: number, bottom: number) {
     Object.defineProperty(block, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({top, bottom})
+    })
+  }
+
+  function setTextRect(top: number, bottom: number) {
+    Object.defineProperty(Range.prototype, "getBoundingClientRect", {
       configurable: true,
       value: () => ({top, bottom})
     })
@@ -150,6 +159,60 @@ describe("selectCoords()", () => {
     expect($.anchor).toBe(document.body)
     expect($.anchorOffset).toBe(0)
   })
+
+  it("selects a gap when the block receives the hit test above its text", () => {
+    setBody("<p>hello</p><p>world</p>")
+    const block = document.body.firstElementChild!
+    const text = block.firstChild as Text
+    setBlockRect(block, 100, 120)
+    mockHitTest(text, 0, block)
+
+    $.selectCoords(0, 90)
+
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(0)
+  })
+
+  it("selects a gap above the text even when it is inside the block box", () => {
+    setBody("<p>hello</p><p>world</p>")
+    const block = document.body.firstElementChild!
+    const text = block.firstChild as Text
+    setBlockRect(block, 100, 140)
+    setTextRect(120, 140)
+    mockHitTest(text, 0, block)
+
+    $.selectCoords(0, 110)
+
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(0)
+  })
+
+  it("selects a gap when the browser returns BODY at the document start", () => {
+    setBody("<p>hello</p><p>world</p>")
+    const block = document.body.firstElementChild!
+    setBlockRect(block, 100, 140)
+    mockHitTest(document.body, 0)
+
+    $.selectCoords(0, 90)
+
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(0)
+  })
+
+  it("selects a gap when no caret position is returned above the body", () => {
+    setBody("<p>hello</p><p>world</p>")
+    const block = document.body.firstElementChild!
+    setBlockRect(block, 100, 140)
+    Object.defineProperty(document, "caretPositionFromPoint", {
+      configurable: true,
+      value: () => null
+    })
+
+    $.selectCoords(0, 90)
+
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(0)
+  })
 })
 
 describe("range", () => {
@@ -179,6 +242,11 @@ describe("isGapSelection", () => {
   it("is true for a caret between elements", () => {
     setBody("<p>a</p><p>b</p>")
     $.selectGap(document.body.firstElementChild!)
+    expect($.isGapSelection).toBe(true)
+  })
+  it("is true before the first body element", () => {
+    setBody("\n<p>a</p>")
+    $.selectGap(document.body.firstElementChild!, "before")
     expect($.isGapSelection).toBe(true)
   })
   it("is false for a caret in text", () => {

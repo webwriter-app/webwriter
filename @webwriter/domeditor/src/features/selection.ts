@@ -1,6 +1,31 @@
 import { DocumentListenerMap, EditorFeature } from "."
 import {$, getContainer, isElement, modifierKeyDown, setPart} from "../utility"
 
+function isCaretAtStartOf(element: Element) {
+  const selection = document.getSelection()
+  if(!selection?.isCollapsed || !selection.rangeCount) {
+    return false
+  }
+  let node: Node | null = selection.anchorNode
+  let offset = selection.anchorOffset
+  while(node && node !== element) {
+    if(offset !== 0 || !element.contains(node)) {
+      return false
+    }
+    const parent = node.parentNode
+    if(!parent) {
+      return false
+    }
+    const index = Array.from(parent.childNodes).indexOf(node)
+    if(Array.from(parent.childNodes).slice(0, index).some(previous => previous.nodeType === Node.ELEMENT_NODE || previous.textContent)) {
+      return false
+    }
+    node = parent
+    offset = index
+  }
+  return node === element && offset === 0
+}
+
 /** Editing feature that visualizes the current selection. It classifies every
  * selection change into an editing-relevant kind (element, text, gap, empty)
  * and applies the corresponding `◆…-selected` marker classes, manages the gap
@@ -8,6 +33,35 @@ import {$, getContainer, isElement, modifierKeyDown, setPart} from "../utility"
  * pointer-based selection (drag selection, modifier-click element
  * selection). */
 export class SelectionFeature extends EditorFeature {
+
+  /** Clamps selection endpoints outside the editable body to the nearest body boundary. */
+  #constrainSelectionToBody() {
+    const selection = document.getSelection()
+    if(!selection?.anchorNode || !selection.focusNode) {
+      return
+    }
+    const body = document.body
+    const bodyRange = document.createRange()
+    bodyRange.selectNodeContents(body)
+    const clamp = (node: Node, offset: number): [Node, number] => {
+      if(node === body || body.contains(node)) {
+        return [node, offset]
+      }
+      let relation: number
+      try {
+        relation = bodyRange.comparePoint(node, offset)
+      }
+      catch {
+        relation = -1
+      }
+      return relation < 0? [body, 0]: [body, body.childNodes.length]
+    }
+    const anchor = clamp(selection.anchorNode, selection.anchorOffset)
+    const focus = clamp(selection.focusNode, selection.focusOffset)
+    if(anchor[0] !== selection.anchorNode || anchor[1] !== selection.anchorOffset || focus[0] !== selection.focusNode || focus[1] !== selection.focusOffset) {
+      selection.setBaseAndExtent(anchor[0], anchor[1], focus[0], focus[1])
+    }
+  }
 
   /** Enables the feature and places the selection at the document start. */
   enable() {
@@ -96,15 +150,20 @@ export class SelectionFeature extends EditorFeature {
    * the text container (`◆text-selected`) or the empty container
    * (`◆empty-selected`). Previous markers are cleared first. */
   processSelection(inDragSelection=false) {
+    this.#constrainSelectionToBody()
     const sel = document.getSelection()!
     this.#clearSelections()
     if($.isGapSelection) {
       const children = sel.anchorNode!.childNodes
       if(children.length) {
         const i = sel.anchorOffset
-        const placement = i > 0? "after": "before"
+        const firstBodyElement = document.body.firstElementChild
+        const firstBodyElementIndex = firstBodyElement? Array.from(children).indexOf(firstBodyElement): -1
+        const isBeforeFirstBodyElement = sel.anchorNode === document.body && firstBodyElementIndex >= 0 && i <= firstBodyElementIndex &&
+          Array.from(children).slice(i, firstBodyElementIndex).every(node => node.nodeType !== Node.TEXT_NODE || !node.textContent?.trim())
+        const placement = i === 0 || isBeforeFirstBodyElement? "before": "after"
         const offset = placement === "after"? -1: 0
-        const element = children.item(i + offset) as Element
+        const element = isBeforeFirstBodyElement? firstBodyElement: children.item(i + offset) as Element
         const gapCaret = this.gapCaret ?? this.#createGapCaret()
         element?.classList?.add("◆", `◆gap-${placement}-selected`)
         gapCaret.classList.add(`◆gap-${placement}-selected`)
@@ -194,7 +253,12 @@ export class SelectionFeature extends EditorFeature {
 
       }
       else if(ev.key === "ArrowUp") {
-        
+        const firstBodyElement = document.body.firstElementChild
+        if(!ev.shiftKey && firstBodyElement && isCaretAtStartOf(firstBodyElement)) {
+          ev.preventDefault()
+          $.selectGap(firstBodyElement, "before")
+          this.processSelection()
+        }
       }
       else if(ev.key === "ArrowDown" && ev.altKey) {
 
