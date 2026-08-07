@@ -292,6 +292,46 @@ body.◆transform-rotating, body.◆transform-rotating * {
   }
 }
 
+:is(
+  address,
+  article,
+  aside,
+  blockquote,
+  body,
+  caption,
+  dd,
+  details,
+  dialog,
+  div,
+  dt,
+  fieldset,
+  figcaption,
+  figure,
+  footer,
+  form,
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  header,
+  legend,
+  li,
+  main,
+  nav,
+  p,
+  pre,
+  search,
+  section,
+  summary,
+  td,
+  th
+):empty::after {
+  content: "\200B";
+  visibility: hidden;
+}
+
 :is(ul, ol, menu):empty {
   min-height: 1lh;
 
