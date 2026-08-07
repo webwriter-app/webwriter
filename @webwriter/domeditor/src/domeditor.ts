@@ -6,6 +6,7 @@ import { ManipulationFeature } from "./features/manipulation"
 import { MarkFeature } from "./features/mark"
 import { PlaceholderFeature } from "./features/placeholder"
 import { SelectionFeature } from "./features/selection"
+import { SlashFeature } from "./features/slash"
 import { TransformationFeature } from "./features/transformation"
 import { Schema } from "./schema"
 import { $, adoptStylesheet, createStylesheet, isElement } from "./utility"
@@ -45,6 +46,7 @@ export class DOMEditor {
   
   features = {
     "dependency": new DependencyFeature(this),
+    "slash": new SlashFeature(this),
     "history": new HistoryFeature(this),
     "manipulation": new ManipulationFeature(this),
     "transformation": new TransformationFeature(this),
