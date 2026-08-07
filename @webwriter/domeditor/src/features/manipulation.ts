@@ -5,6 +5,39 @@ import { SelectionFeature } from "./selection"
 /** Unit by which a collapsed selection is extended before deleting. */
 type Granularity = "character" | "word" | "line" | "block"
 
+function isCaretAtBoundary(element: Element, boundary: "start" | "end") {
+  const selection = document.getSelection()
+  if(!selection?.isCollapsed || !selection.anchorNode) {
+    return false
+  }
+  let node: Node | null = selection.anchorNode
+  let offset = selection.anchorOffset
+  while(node && node !== element) {
+    if(!element.contains(node)) {
+      return false
+    }
+    const parent = node.parentNode
+    if(!parent) {
+      return false
+    }
+    const index = Array.from(parent.childNodes).indexOf(node)
+    if(boundary === "start") {
+      if(offset !== 0 || Array.from(parent.childNodes).slice(0, index).some(sibling => sibling.nodeType === Node.ELEMENT_NODE || sibling.textContent)) {
+        return false
+      }
+    }
+    else {
+      const length = node instanceof Text? node.length: node.childNodes.length
+      if(offset !== length || Array.from(parent.childNodes).slice(index + 1).some(sibling => sibling.nodeType === Node.ELEMENT_NODE || sibling.textContent)) {
+        return false
+      }
+    }
+    node = parent
+    offset = boundary === "start"? index: index + 1
+  }
+  return node === element && offset === (boundary === "start"? 0: element.childNodes.length)
+}
+
 /** Editing feature implementing content manipulation: inserting, deleting,
  * wrapping and lifting nodes, clipboard interaction (copy/cut/paste), and
  * setting attributes or styles on the selected elements. All operations work
@@ -167,6 +200,15 @@ export class ManipulationFeature extends EditorFeature {
    * following element's content into the preceding element, forward the
    * reverse. */
   delete(direction?: "forward" | "backward", granularity:Granularity="character", strict=false) {
+    const container = $.anchorContainer
+    if(direction === "backward" && container?.textContent && isCaretAtBoundary(container, "start") && container.previousElementSibling && !container.previousElementSibling.textContent) {
+      container.previousElementSibling.remove()
+      return
+    }
+    if(direction === "forward" && container?.textContent && isCaretAtBoundary(container, "end") && container.nextElementSibling && !container.nextElementSibling.textContent) {
+      container.nextElementSibling.remove()
+      return
+    }
     if(!$.commonAncestor.textContent && !["HTML", "BODY"].includes($.commonAncestor.nodeName)) {
       $.delete()
       const prev = $.commonAncestor.previousSibling as Node
@@ -183,17 +225,29 @@ export class ManipulationFeature extends EditorFeature {
     }
     if($.isGapSelection && $.elementBefore && $.elementAfter && direction === "backward") {
       const {elementBefore, elementAfter} = $
-      elementBefore.append(...elementAfter.childNodes)
-      $.move(elementBefore.lastChild!)
-      elementBefore.normalize()
-      elementAfter.remove()
+      if(!elementBefore.textContent) {
+        elementBefore.remove()
+        $.selectGap(elementAfter, "before")
+      }
+      else {
+        elementBefore.append(...elementAfter.childNodes)
+        $.move(elementBefore.lastChild!)
+        elementBefore.normalize()
+        elementAfter.remove()
+      }
     }
     else if($.isGapSelection && $.elementBefore && $.elementAfter && direction === "forward") {
       const {elementBefore, elementAfter} = $
-      elementAfter.prepend(...elementBefore.childNodes)
-      $.move(elementAfter.lastChild!)
-      elementAfter.normalize()
-      elementBefore.remove()
+      if(!elementAfter.textContent) {
+        elementAfter.remove()
+        $.selectGap(elementBefore)
+      }
+      else {
+        elementAfter.prepend(...elementBefore.childNodes)
+        $.move(elementAfter.lastChild!)
+        elementAfter.normalize()
+        elementBefore.remove()
+      }
     }
   }
 

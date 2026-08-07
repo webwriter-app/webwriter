@@ -122,6 +122,30 @@ describe("delete()", () => {
     editor.features.manipulation.delete("forward")
     expectBodyToBe("<p>helloworld</p>")
   })
+  it("removes only an empty previous element on backward delete", () => {
+    document.body.innerHTML = "<p>a</p><p></p><h1>b</h1>"
+    $.selectGap(document.body.children[1])
+    editor.features.manipulation.delete("backward")
+    expectBodyToBe("<p>a</p><h1>b</h1>")
+  })
+  it("removes only an empty next element on forward delete", () => {
+    document.body.innerHTML = "<p>a</p><h1></h1><p>b</p>"
+    $.selectGap(document.body.children[1], "before")
+    editor.features.manipulation.delete("forward")
+    expectBodyToBe("<p>a</p><p>b</p>")
+  })
+  it("removes an empty previous element when deleting backward at the next element's start", () => {
+    document.body.innerHTML = "<p>a</p><p></p><h1>b</h1>"
+    $.move(document.body.lastElementChild!.firstChild!, 0)
+    editor.features.manipulation.delete("backward")
+    expectBodyToBe("<p>a</p><h1>b</h1>")
+  })
+  it("removes an empty next element when deleting forward at the previous element's end", () => {
+    document.body.innerHTML = "<p>a</p><h1></h1><p>b</p>"
+    $.move(document.body.firstElementChild!.firstChild!, 1)
+    editor.features.manipulation.delete("forward")
+    expectBodyToBe("<p>a</p><p>b</p>")
+  })
   it("deletes from block start to the caret with block granularity", () => {
     document.body.innerHTML = "<p>hello world</p>"
     $.move(document.body.firstElementChild!.firstChild!, 5)
