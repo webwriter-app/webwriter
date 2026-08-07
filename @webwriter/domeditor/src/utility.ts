@@ -77,8 +77,13 @@ export class EditingSelection {
     const {offset, offsetNode} = document.caretPositionFromPoint(x, y) ?? {}
     const caretAtEndOrStart = offsetNode instanceof Text && (offset === 0 || offsetNode.length === offset)
     const container: HTMLElement = offsetNode instanceof Text? offsetNode.parentElement!: offsetNode as HTMLElement
-    const isBefore = y < container.offsetTop
-    const isAtGap = caretAtEndOrStart && el !== offsetNode.parentElement
+    const containerRect = container.getBoundingClientRect()
+    const isBefore = y < containerRect.top
+    // A click just outside the inline text box can still resolve to the
+    // text's first/last caret position. It is only a gap click when it is
+    // vertically outside the text container; clicks beside the text within
+    // the block must keep the boundary caret position.
+    const isAtGap = caretAtEndOrStart && el !== offsetNode.parentElement && (y < containerRect.top || y > containerRect.bottom)
     if(!extend && isAtGap) {
       this.selectGap(offsetNode.parentElement!, isBefore? "before": "after")
     }

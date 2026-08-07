@@ -88,6 +88,70 @@ describe("selectDocumentStart()", () => {
   })
 })
 
+describe("selectCoords()", () => {
+  const originalElementFromPoint = document.elementFromPoint
+  const originalCaretPositionFromPoint = document.caretPositionFromPoint
+
+  afterEach(() => {
+    Object.defineProperty(document, "elementFromPoint", {configurable: true, value: originalElementFromPoint})
+    Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: originalCaretPositionFromPoint})
+  })
+
+  function mockHitTest(text: Text, offset: number, element: Element = document.body) {
+    Object.defineProperty(document, "elementFromPoint", {configurable: true, value: () => element})
+    Object.defineProperty(document, "caretPositionFromPoint", {
+      configurable: true,
+      value: () => ({offsetNode: text, offset})
+    })
+  }
+
+  function setBlockRect(block: Element, top: number, bottom: number) {
+    Object.defineProperty(block, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({top, bottom})
+    })
+  }
+
+  it("selects the first text position when clicking beside the block", () => {
+    setBody("<p>hello</p>")
+    const block = document.body.firstElementChild!
+    const text = block.firstChild as Text
+    setBlockRect(block, 100, 120)
+    mockHitTest(text, 0)
+
+    $.selectCoords(0, 110)
+
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(0)
+  })
+
+  it("selects the last text position when clicking beside the block", () => {
+    setBody("<p>hello</p>")
+    const block = document.body.firstElementChild!
+    const text = block.firstChild as Text
+    setBlockRect(block, 100, 120)
+    mockHitTest(text, text.length)
+
+    $.selectCoords(100, 110)
+
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(text.length)
+  })
+
+  it("keeps selecting a gap when clicking outside the block vertically", () => {
+    setBody("<p>hello</p><p>world</p>")
+    const block = document.body.firstElementChild!
+    const text = block.firstChild as Text
+    setBlockRect(block, 100, 120)
+    mockHitTest(text, 0)
+
+    $.selectCoords(0, 90)
+
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(0)
+  })
+})
+
 describe("range", () => {
   it("reflects the current selection", () => {
     setBody("<p>hello</p>")
