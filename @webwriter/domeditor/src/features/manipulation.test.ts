@@ -356,6 +356,33 @@ describe("setAttributes()", () => {
     expect(document.body.children.item(1)).toHaveAttribute("title", "test")
     expect(document.body.children.item(2)).not.toHaveAttribute("title")
   })
+
+  it("normalizes adjacent text nodes after a command", () => {
+    document.body.innerHTML = "<p>a</p>"
+    const p = document.body.firstElementChild!
+    const first = p.firstChild!
+    p.append(document.createTextNode("b"))
+    $.move(first, 1)
+
+    editor.features.manipulation.setAttributes({title: "test"})
+
+    expect(p.childNodes).toHaveLength(1)
+    expect(p.textContent).toBe("ab")
+  })
+})
+
+describe("text input normalization", () => {
+  it("normalizes adjacent text nodes after text input", () => {
+    document.body.innerHTML = "<p>ab</p>"
+    const p = document.body.firstElementChild!
+    const second = (p.firstChild as Text).splitText(1)
+    $.move(second, 0)
+
+    document.dispatchEvent(new Event("input", {bubbles: true}))
+
+    expect(p.childNodes).toHaveLength(1)
+    expect(p.textContent).toBe("ab")
+  })
 })
 describe("setStyle()", () => {
   it("can set a style property", () => {

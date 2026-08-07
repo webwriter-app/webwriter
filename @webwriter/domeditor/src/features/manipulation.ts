@@ -44,6 +44,19 @@ function isCaretAtBoundary(element: Element, boundary: "start" | "end") {
  * on the current selection (see `EditingSelection`/`$`). */
 export class ManipulationFeature extends EditorFeature {
 
+  /** Runs a command and normalizes both the command's original surroundings
+   * and the surroundings of the resulting selection. */
+  private withNormalization<T>(command: () => T) {
+    const selection = document.getSelection()
+    const originalNodes = [selection?.anchorNode, selection?.focusNode]
+    try {
+      return command()
+    }
+    finally {
+      this.editor.normalizeSurroundingElements(...originalNodes)
+    }
+  }
+
   /** Action handlers, addressable by action type through the editor. */
   actions = {
     insert: ({html, strict}: {type: "insert", html: string, strict?: boolean}) => {
@@ -60,13 +73,13 @@ export class ManipulationFeature extends EditorFeature {
       this.lift()
     },
     copy: ({}: {type: "copy"}) => {
-      this.copy()
+      return this.copy()
     },
     cut: ({}: {type: "cut"}) => {
-      this.cut()
+      return this.cut()
     },
     paste: ({}: {type: "paste"}) => {
-      this.paste()
+      return this.paste()
     },
     setAttributes: ({attrs}: {type: "setAttributes", attrs: Record<string, string>}) => {
       this.setAttributes(attrs)
@@ -171,25 +184,27 @@ export class ManipulationFeature extends EditorFeature {
    * container as a clone — with `strict`, inseperable containers (e.g.
    * headings) continue as a new default node (<p>) instead. */
   insert(node?: Node, splitDepth=0, strict=false) {
-    if(true) {
-      node? $.replace(node): $.delete()
-      let locus = $.commonAncestor
-      for(let i = 0; i <= splitDepth; i++) {
-        $.isTextSelection && ($.start! as Text).splitText($.startOffset)
-        let container = getContainer(locus)
-        if(container.nodeName === "BODY" || container.nodeName === "HTML") {continue}
-        const [,right] = getSidesOfPoint($.range)
-        const schema = this.editor.schema.get(container)
-        const next = (strict && schema.inseperable? this.editor.schema.create(): container.cloneNode()) as Element
-        container.after(next)
-        next.append(...right)
-        node? $.move(node, -1): $.move(next, 0)
+    return this.withNormalization(() => {
+      if(true) {
+        node? $.replace(node): $.delete()
+        let locus = $.commonAncestor
+        for(let i = 0; i <= splitDepth; i++) {
+          $.isTextSelection && ($.start! as Text).splitText($.startOffset)
+          let container = getContainer(locus)
+          if(container.nodeName === "BODY" || container.nodeName === "HTML") {continue}
+          const [,right] = getSidesOfPoint($.range)
+          const schema = this.editor.schema.get(container)
+          const next = (strict && schema.inseperable? this.editor.schema.create(): container.cloneNode()) as Element
+          container.after(next)
+          next.append(...right)
+          node? $.move(node, -1): $.move(next, 0)
+        }
+        return
       }
-      return
     }/*
-    else if(node) {
-      this.#smartInsert(node)
-    }*/
+      else if(node) {
+        this.#smartInsert(node)
+      }*/)
   }
 
   /** Deletes content at the selection. A selection in an empty container
@@ -200,55 +215,57 @@ export class ManipulationFeature extends EditorFeature {
    * following element's content into the preceding element, forward the
    * reverse. */
   delete(direction?: "forward" | "backward", granularity:Granularity="character", strict=false) {
-    const container = $.anchorContainer
-    if(direction === "backward" && container?.textContent && isCaretAtBoundary(container, "start") && container.previousElementSibling && !container.previousElementSibling.textContent) {
-      container.previousElementSibling.remove()
-      return
-    }
-    if(direction === "forward" && container?.textContent && isCaretAtBoundary(container, "end") && container.nextElementSibling && !container.nextElementSibling.textContent) {
-      container.nextElementSibling.remove()
-      return
-    }
-    if(!$.commonAncestor.textContent && !["HTML", "BODY"].includes($.commonAncestor.nodeName)) {
-      $.delete()
-      const prev = $.commonAncestor.previousSibling as Node
-      ($.commonAncestor as Element | Text).remove()
-      prev && $.move(prev, -1)
-      return
-    }
-    else if($.isEmpty && !$.isGapSelection) {
-      granularity === "block"? $.extend($.commonAncestor, 0): $.extendBy(granularity, direction)
-      $.delete()
-    }
-    else {
-      $.delete()
-    }
-    if($.isGapSelection && $.elementBefore && $.elementAfter && direction === "backward") {
-      const {elementBefore, elementAfter} = $
-      if(!elementBefore.textContent) {
-        elementBefore.remove()
-        $.selectGap(elementAfter, "before")
+    return this.withNormalization(() => {
+      const container = $.anchorContainer
+      if(direction === "backward" && container?.textContent && isCaretAtBoundary(container, "start") && container.previousElementSibling && !container.previousElementSibling.textContent) {
+        container.previousElementSibling.remove()
+        return
+      }
+      if(direction === "forward" && container?.textContent && isCaretAtBoundary(container, "end") && container.nextElementSibling && !container.nextElementSibling.textContent) {
+        container.nextElementSibling.remove()
+        return
+      }
+      if(!$.commonAncestor.textContent && !["HTML", "BODY"].includes($.commonAncestor.nodeName)) {
+        $.delete()
+        const prev = $.commonAncestor.previousSibling as Node
+        ($.commonAncestor as Element | Text).remove()
+        prev && $.move(prev, -1)
+        return
+      }
+      else if($.isEmpty && !$.isGapSelection) {
+        granularity === "block"? $.extend($.commonAncestor, 0): $.extendBy(granularity, direction)
+        $.delete()
       }
       else {
-        elementBefore.append(...elementAfter.childNodes)
-        $.move(elementBefore.lastChild!)
-        elementBefore.normalize()
-        elementAfter.remove()
+        $.delete()
       }
-    }
-    else if($.isGapSelection && $.elementBefore && $.elementAfter && direction === "forward") {
-      const {elementBefore, elementAfter} = $
-      if(!elementAfter.textContent) {
-        elementAfter.remove()
-        $.selectGap(elementBefore)
+      if($.isGapSelection && $.elementBefore && $.elementAfter && direction === "backward") {
+        const {elementBefore, elementAfter} = $
+        if(!elementBefore.textContent) {
+          elementBefore.remove()
+          $.selectGap(elementAfter, "before")
+        }
+        else {
+          elementBefore.append(...elementAfter.childNodes)
+          $.move(elementBefore.lastChild!)
+          elementBefore.normalize()
+          elementAfter.remove()
+        }
       }
-      else {
-        elementAfter.prepend(...elementBefore.childNodes)
-        $.move(elementAfter.lastChild!)
-        elementAfter.normalize()
-        elementBefore.remove()
+      else if($.isGapSelection && $.elementBefore && $.elementAfter && direction === "forward") {
+        const {elementBefore, elementAfter} = $
+        if(!elementAfter.textContent) {
+          elementAfter.remove()
+          $.selectGap(elementBefore)
+        }
+        else {
+          elementAfter.prepend(...elementBefore.childNodes)
+          $.move(elementAfter.lastChild!)
+          elementAfter.normalize()
+          elementBefore.remove()
+        }
       }
-    }
+    })
   }
 
   /** Wraps the selection. Given a `wrapping` element (or a fragment, whose
@@ -258,20 +275,22 @@ export class ManipulationFeature extends EditorFeature {
    * the previous one), which is returned — or undefined if there is none.
    * No schema validation is performed. */
   wrap(wrapping?: DocumentFragment | Element, strict=false) {
-    if(wrapping) {
-      const wrapper = wrapping instanceof DocumentFragment? wrapping.firstElementChild!: wrapping
-      wrapper.append($.slice)
-      $.replace(wrapper)
-      return wrapper
-    }
-    else {
-      const wrapper = $.elementBefore ?? $.elementAfter
-      if(!wrapper) {
-        return
+    return this.withNormalization(() => {
+      if(wrapping) {
+        const wrapper = wrapping instanceof DocumentFragment? wrapping.firstElementChild!: wrapping
+        wrapper.append($.slice)
+        $.replace(wrapper)
+        return wrapper
       }
-      wrapper.append($.anchorContainer)
-      return wrapper
-    }
+      else {
+        const wrapper = $.elementBefore ?? $.elementAfter
+        if(!wrapper) {
+          return
+        }
+        wrapper.append($.anchorContainer)
+        return wrapper
+      }
+    })
   }
 
   /** Lifts the selected element (or the element containing the caret) out of
@@ -279,23 +298,25 @@ export class ManipulationFeature extends EditorFeature {
    * it has siblings. Schema-validated: does nothing when no valid lift target
    * exists (see Schema.getLiftTarget). */
   lift(depth=1, strict=false) {
-    const node = $.selectedElement ?? $.anchorContainer
-    if(!node) {
-      return
-    }
-    for(let i = 0; i < depth; i++) {
-      const target = this.editor.schema.getLiftTarget(node)
-      if(!target) {
+    return this.withNormalization(() => {
+      const node = $.selectedElement ?? $.anchorContainer
+      if(!node) {
         return
       }
-      const [liftDepth, replacement] = target
-      let toReplace = node.parentElement!
-      for(let j = 1; j < liftDepth && toReplace.parentElement; j++) {
-        toReplace = toReplace.parentElement
+      for(let i = 0; i < depth; i++) {
+        const target = this.editor.schema.getLiftTarget(node)
+        if(!target) {
+          return
+        }
+        const [liftDepth, replacement] = target
+        let toReplace = node.parentElement!
+        for(let j = 1; j < liftDepth && toReplace.parentElement; j++) {
+          toReplace = toReplace.parentElement
+        }
+        toReplace.replaceWith(...replacement)
       }
-      toReplace.replaceWith(...replacement)
-    }
-    $.selectElement(node)
+      $.selectElement(node)
+    })
   }
 
   /** Writes the selected content to the clipboard as text/html and text/plain.
@@ -310,8 +331,10 @@ export class ManipulationFeature extends EditorFeature {
    * Currently the content is removed even if writing to the clipboard fails
    * (e.g. for plain text selections). */
   async cut() {
-    const item = this.#fragmentToClipboardItem($.cut())
-    navigator.clipboard.write([item])
+    return this.withNormalization(() => {
+      const item = this.#fragmentToClipboardItem($.cut())
+      return navigator.clipboard.write([item])
+    })
   }
 
   /** Inserts the clipboard's text/html content at the selection. Currently a
@@ -325,14 +348,18 @@ export class ManipulationFeature extends EditorFeature {
   /** Sets the given attributes on every element in the selection (see
    * `EditingSelection.nodesBetween`); a null value removes the attribute. */
   setAttributes(attrs: Record<string, string | null>) {
-    $.nodesBetween.filter(isElement).forEach(n => Object.keys(attrs).forEach(k => attrs[k]? n.setAttribute(k, attrs[k]): n.removeAttribute(k)))
+    return this.withNormalization(() => {
+      $.nodesBetween.filter(isElement).forEach(n => Object.keys(attrs).forEach(k => attrs[k]? n.setAttribute(k, attrs[k]): n.removeAttribute(k)))
+    })
   }
 
   /** Assigns the given inline style properties on every element in the
    * selection, merging with existing styles; an empty string clears a
    * property. */
   setStyle(style: Record<string, string>) {
-    $.nodesBetween.filter(isElement).forEach(n => Object.assign((n as HTMLElement).style, style))
+    return this.withNormalization(() => {
+      $.nodesBetween.filter(isElement).forEach(n => Object.assign((n as HTMLElement).style, style))
+    })
   }
 
   /** Replaces the selection's container with `el`, moving the children over

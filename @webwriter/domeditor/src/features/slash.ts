@@ -7,6 +7,8 @@ export class SlashFeature extends EditorFeature {
   /** The command range starts before the slash and grows as the user types
    * the search text in the editable document. */
   private commandRange: Range | null = null
+  private commandBlock: Element | null = null
+  private commandStartOffset = 0
   private emptyTextBlock: Element | null = null
   private commandObserver = new MutationObserver(() => this.updateQuery())
 
@@ -80,6 +82,11 @@ export class SlashFeature extends EditorFeature {
 
       ev.preventDefault()
       const range = selection.getRangeAt(0)
+      this.commandBlock = this.closestBlock(range.startContainer)
+      const blockStart = document.createRange()
+      blockStart.selectNodeContents(this.commandBlock)
+      blockStart.setEnd(range.startContainer, range.startOffset)
+      this.commandStartOffset = blockStart.toString().length
       this.emptyTextBlock = this.findEmptyTextBlock(range.startContainer)
       range.deleteContents()
       const slash = document.createTextNode("/")
@@ -103,13 +110,14 @@ export class SlashFeature extends EditorFeature {
     const selection = document.getSelection()
     const start = this.commandRange
     if(!this.menu.open || !start || !selection?.isCollapsed || !selection.anchorNode) return
-    if(!start.startContainer.isConnected) {
+    const point = this.commandStartPoint()
+    if(!point && !start.startContainer.isConnected) {
       this.close(false)
       return
     }
     const range = document.createRange()
     try {
-      range.setStart(start.startContainer, start.startOffset)
+      point? range.setStart(...point): range.setStart(start.startContainer, start.startOffset)
       range.setEnd(selection.anchorNode, selection.anchorOffset)
     }
     catch {
@@ -180,7 +188,15 @@ export class SlashFeature extends EditorFeature {
   }
 
   private insert(item: SlashMenuItem) {
-    const range = this.commandRange
+    let range = this.commandRange
+    const selection = document.getSelection()
+    const point = this.commandStartPoint()
+    if(point && selection?.anchorNode) {
+      range = document.createRange()
+      range.setStart(...point)
+      range.setEnd(selection.anchorNode, selection.anchorOffset)
+      this.commandRange = range
+    }
     if(!range?.startContainer.isConnected) {
       this.close()
       return
@@ -210,6 +226,29 @@ export class SlashFeature extends EditorFeature {
       $.move(this.commandRange.endContainer, this.commandRange.endOffset)
     }
     this.commandRange = null
+    this.commandBlock = null
+    this.commandStartOffset = 0
     this.emptyTextBlock = null
+  }
+
+  /** Resolves the command's logical start after normalize() has merged the
+   * text node that originally contained the slash. */
+  private commandStartPoint(): [Node, number] | null {
+    const block = this.commandBlock
+    if(!block?.isConnected) return null
+    let remaining = this.commandStartOffset
+    const find = (node: Node): [Node, number] | null => {
+      if(isText(node)) {
+        if(remaining <= node.length) return [node, remaining]
+        remaining -= node.length
+        return null
+      }
+      for(const child of Array.from(node.childNodes)) {
+        const point = find(child)
+        if(point) return point
+      }
+      return null
+    }
+    return find(block) ?? [block, block.childNodes.length]
   }
 }

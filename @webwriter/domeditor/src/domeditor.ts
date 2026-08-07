@@ -64,6 +64,75 @@ export class DOMEditor {
     return allHandlers[key] as CallableFunction
   }
 
+  /** Merges adjacent text nodes in the elements surrounding the given nodes
+   * and the current selection. The explicit nodes cover command operations
+   * whose original selection may have been replaced or moved. */
+  normalizeSurroundingElements(...nodes: (Node | null | undefined)[]) {
+    const selection = document.getSelection()
+    const savedSelection = selection?.anchorNode instanceof Text && selection.focusNode instanceof Text
+      ? {
+          anchor: this.saveTextPoint(selection.anchorNode, selection.anchorOffset),
+          focus: this.saveTextPoint(selection.focusNode, selection.focusOffset),
+        }
+      : null
+    const elements = new Set<Element>()
+    for(const node of [
+      ...nodes,
+      selection?.anchorNode,
+      selection?.focusNode,
+    ]) {
+      if(!node) continue
+      const element = isElement(node)? node: node.parentElement
+      element && elements.add(element)
+    }
+    elements.forEach(element => element.normalize())
+    if(selection && savedSelection) {
+      const anchor = this.restoreTextPoint(savedSelection.anchor)
+      const focus = this.restoreTextPoint(savedSelection.focus)
+      if(anchor && focus) {
+        selection.setBaseAndExtent(anchor[0], anchor[1], focus[0], focus[1])
+      }
+    }
+  }
+
+  private saveTextPoint(node: Node, offset: number) {
+    if(!(node instanceof Text) || !node.parentElement) {
+      return {node, offset}
+    }
+    const range = document.createRange()
+    range.selectNodeContents(node.parentElement)
+    range.setEnd(node, offset)
+    return {element: node.parentElement, textOffset: range.toString().length}
+  }
+
+  private restoreTextPoint(point: {node: Node, offset: number} | {element: Element, textOffset: number}): [Node, number] | null {
+    if("element" in point) {
+      if(!point.element.isConnected) return null
+      let remaining = point.textOffset
+      let lastText: Text | null = null
+      const find = (node: Node): [Node, number] | null => {
+        if(node instanceof Text) {
+          lastText = node
+          if(remaining <= node.length) return [node, remaining]
+          remaining -= node.length
+          return null
+        }
+        for(const child of Array.from(node.childNodes)) {
+          const found = find(child)
+          if(found) return found
+        }
+        return null
+      }
+      const found = find(point.element)
+      if(found) return found
+      const fallback = lastText as Text | null
+      return fallback === null? [point.element, 0]: [fallback, fallback.length]
+    }
+    if(!point.node.isConnected) return null
+    const maxOffset = point.node instanceof Text? point.node.length: point.node.childNodes.length
+    return [point.node, Math.min(point.offset, maxOffset)]
+  }
+
   constructor() {
     // this.schema.checkAndCorrect()
     adoptStylesheet(document, editorStylesheet)
@@ -77,6 +146,9 @@ export class DOMEditor {
       // this.doc = new SharedDOMDoc(undefined, undefined, this.ignoreAttrs, this.ignoreClasses)
     }
     Object.values(this.features).forEach(feat => feat.enable())
+    document.addEventListener("input", ev => {
+      this.normalizeSurroundingElements(ev.target instanceof Node? ev.target: undefined)
+    })
     this.observer.observe(document, {attributes: true, attributeOldValue: true, characterData: true, characterDataOldValue: true, childList: true, subtree: true})
     document.addEventListener("selectionchange", () => {
       const selection = document.getSelection()
@@ -97,7 +169,19 @@ export class DOMEditor {
         const handle = this.getActionHandler(ev.data.type)
         if(!handle) {
           throw TypeError(`No handler registered for message '${ev.data.type}'`)
-        } else handle(ev.data)
+        }
+        else {
+          const result = handle(ev.data)
+          if(result && typeof result.then === "function") {
+            Promise.resolve(result).then(
+              () => this.normalizeSurroundingElements(),
+              () => this.normalizeSurroundingElements(),
+            )
+          }
+          else {
+            this.normalizeSurroundingElements()
+          }
+        }
       }
     })
   }
