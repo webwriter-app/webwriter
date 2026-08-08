@@ -1,5 +1,5 @@
 import { LitElement, css, html } from "lit"
-import { ribbonIcon } from "./ribbon-icons"
+import { ribbonIcon } from "../ribbon-icons"
 
 export type RibbonMenuGroup = {
   label: string

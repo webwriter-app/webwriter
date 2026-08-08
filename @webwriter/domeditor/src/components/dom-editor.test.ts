@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {DomEditor} from "./dom-editor"
-import {executeCompleteEvent, executeFailureEvent} from "./editor-bridge"
+import {executeCompleteEvent, executeFailureEvent} from "../editor-bridge"
 
 async function mountEditor() {
   const editor = new DomEditor()

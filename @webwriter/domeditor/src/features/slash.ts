@@ -1,5 +1,5 @@
 import { EditorFeature } from "."
-import { SlashMenu, type SlashMenuItem } from "../slash-menu"
+import { SlashMenu, type SlashMenuItem } from "../components/slash-menu"
 import { $, getContainer, isElement, isText, modifierKeyDown } from "../utility"
 
 type SlashAddButton = HTMLButtonElement & {slashBlock?: Element}

@@ -1,6 +1,6 @@
 import { LitElement, css, html } from "lit"
 import type { AppRibbon } from "./ribbon"
-import type { EditingAction } from "./domeditor"
+import type { EditingAction } from "../domeditor"
 import { slashMenuItems } from "./slash-menu"
 import {
   executeCompleteEvent,
@@ -8,7 +8,7 @@ import {
   isExecuteResponse,
   type ExecuteCompleteDetail,
   type ExecuteFailureDetail,
-} from "./editor-bridge"
+} from "../editor-bridge"
 import "./ribbon"
 
 const escapeAttribute = (value: string) => value
