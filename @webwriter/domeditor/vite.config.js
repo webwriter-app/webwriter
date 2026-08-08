@@ -14,6 +14,10 @@ export default defineConfig({
         rollupOptions: {
           input: {
             index: fileURLToPath(new URL("./index.html", import.meta.url)),
+            "editor-entry": fileURLToPath(new URL("./src/editor-entry.ts", import.meta.url)),
+          },
+          output: {
+            entryFileNames: "assets/[name].js",
           },
         },
     }

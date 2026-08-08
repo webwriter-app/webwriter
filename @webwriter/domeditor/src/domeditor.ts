@@ -291,9 +291,3 @@ export class DOMEditor {
 
 
 }
-
-// RUN ////////////////////////////////////////////////////////////////////////
-document.body.innerHTML = "<p>hello world</p><p>How are you?</p><p>I am great</p><ul><li>test</li></ul>"
-const editor = new DOMEditor()
-/* @ts-ignore */
-window.editor = editor
