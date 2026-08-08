@@ -62,9 +62,22 @@ export class RibbonButton extends LitElement {
 
   label = "Placeholder"
 
+  private handleClick() {
+    this.dispatchEvent(new CustomEvent<{label: string}>("ribbon-button-click", {
+      detail: {label: this.label},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
   render() {
     return html`
-      <button type="button" aria-label=${this.label} title=${this.label}>
+      <button
+        type="button"
+        aria-label=${this.label}
+        title=${this.label}
+        @click=${this.handleClick}
+      >
         <span class="button-icon" aria-hidden="true"></span>
         <span class="button-label">${this.label}</span>
       </button>

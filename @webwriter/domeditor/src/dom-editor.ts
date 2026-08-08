@@ -1,6 +1,7 @@
 import { LitElement, css, html } from "lit"
 import type { AppRibbon } from "./ribbon"
 import type { EditingAction } from "./domeditor"
+import { slashMenuItems } from "./slash-menu"
 import {
   executeCompleteEvent,
   executeFailureEvent,
@@ -79,6 +80,17 @@ export class DomEditor extends LitElement {
 
   private handleEditorPointerDown = () => {
     this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.dismissCollapsedMenu()
+  }
+
+  private handleRibbonButtonClick = (event: Event) => {
+    const label = (event as CustomEvent<{label?: string}>).detail?.label
+    const item = slashMenuItems.find(candidate => candidate.name === label)
+    if(!item) return
+
+    void this.execute({
+      type: "insert",
+      html: `<${item.tag}></${item.tag}>`,
+    })
   }
 
   private handleEditorMessage = (event: MessageEvent) => {
@@ -173,7 +185,10 @@ export class DomEditor extends LitElement {
   render() {
     return html`
       <header class="app-bar">
-        <app-ribbon logo-url=${appIconUrl}></app-ribbon>
+        <app-ribbon
+          logo-url=${appIconUrl}
+          @ribbon-button-click=${this.handleRibbonButtonClick}
+        ></app-ribbon>
       </header>
       <iframe title="DOM editor" srcdoc=${this.editorSrcdoc} @load=${this.handleEditorFrameLoad}></iframe>
     `

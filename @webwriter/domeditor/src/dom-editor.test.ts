@@ -58,4 +58,38 @@ describe("DomEditor.execute()", () => {
       message: "Clipboard access denied",
     })
   })
+
+  it("executes the matching insert action from the expanded Insert ribbon", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    const insertTab = ribbon.shadowRoot!.querySelector('ribbon-tab[label="Insert"]')!
+
+    insertTab.shadowRoot!.querySelector("button")!.click()
+    await ribbon.updateComplete
+
+    const paragraph = ribbon.shadowRoot!.querySelector('ribbon-group[label="Text"] ribbon-button[label="Paragraph"]')!
+    await paragraph.updateComplete
+    paragraph.shadowRoot!.querySelector("button")!.click()
+
+    expect(execute).toHaveBeenCalledWith({type: "insert", html: "<p></p>"})
+  })
+
+  it("executes the matching insert action from the collapsed Insert menu", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    ribbon.expanded = false
+    await ribbon.updateComplete
+    const insertTab = ribbon.shadowRoot!.querySelector('ribbon-tab[label="Insert"]')!
+
+    insertTab.shadowRoot!.querySelector("button")!.click()
+    await ribbon.updateComplete
+    const menu = ribbon.shadowRoot!.querySelector("ribbon-menu")!
+    await menu.updateComplete
+    const paragraph = menu.shadowRoot!.querySelector('button[title="Paragraph"]')!
+    paragraph.click()
+
+    expect(execute).toHaveBeenCalledWith({type: "insert", html: "<p></p>"})
+  })
 })

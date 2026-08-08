@@ -69,13 +69,27 @@ export class RibbonMenu extends LitElement {
 
   groups: RibbonMenuGroup[] = []
 
+  private handleClick(label: string) {
+    this.dispatchEvent(new CustomEvent<{label: string}>("ribbon-button-click", {
+      detail: {label},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
   render() {
     return html`
       <div class="menu" role="menu">
         ${this.groups.map(group => html`
           <section aria-label=${group.label}>
             ${group.buttons.map(button => html`
-              <button class="item" type="button" role="menuitem" title=${button}>${button}</button>
+              <button
+                class="item"
+                type="button"
+                role="menuitem"
+                title=${button}
+                @click=${() => this.handleClick(button)}
+              >${button}</button>
             `)}
           </section>
         `)}

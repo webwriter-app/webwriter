@@ -25,6 +25,11 @@ beforeEach(() => {
 
 
 describe("insert()", () => { // deletes selection => selection = caret/gap
+  it("inserts HTML through its action handler", () => {
+    editor.features.manipulation.actions.insert({type: "insert", html: "<p></p>"})
+    expectBodyToBe("<p></p>")
+  })
+
   it("can insert <p> at document start", () => {
     const p = document.createElement("p")
     editor.features.manipulation.insert(p)
