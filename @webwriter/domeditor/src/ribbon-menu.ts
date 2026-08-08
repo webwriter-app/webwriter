@@ -1,4 +1,5 @@
 import { LitElement, css, html } from "lit"
+import { ribbonIcon } from "./ribbon-icons"
 
 export type RibbonMenuGroup = {
   label: string
@@ -44,7 +45,9 @@ export class RibbonMenu extends LitElement {
     }
 
     .item {
-      display: block;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
       width: 100%;
       padding: 0.35rem 0.45rem;
       border: 0;
@@ -64,6 +67,20 @@ export class RibbonMenu extends LitElement {
     .item:focus-visible {
       outline: 2px solid #3977c7;
       outline-offset: -2px;
+    }
+
+    .item-icon {
+      display: block;
+      flex: 0 0 1rem;
+      width: 1rem;
+      height: 1rem;
+      color: #526b86;
+    }
+
+    .item-icon svg {
+      display: block;
+      width: 100%;
+      height: 100%;
     }
   `
 
@@ -89,7 +106,10 @@ export class RibbonMenu extends LitElement {
                 role="menuitem"
                 title=${button}
                 @click=${() => this.handleClick(button)}
-              >${button}</button>
+              >
+                <span class="item-icon" aria-hidden="true">${ribbonIcon(button)}</span>
+                <span>${button}</span>
+              </button>
             `)}
           </section>
         `)}

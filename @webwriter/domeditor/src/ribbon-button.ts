@@ -1,6 +1,7 @@
 import { LitElement, css, html } from "lit"
+import { ribbonIcon } from "./ribbon-icons"
 
-/** A compact placeholder action used inside a ribbon group. */
+/** A compact action used inside a ribbon group. */
 export class RibbonButton extends LitElement {
   static properties = {
     label: {type: String},
@@ -44,11 +45,15 @@ export class RibbonButton extends LitElement {
 
     .button-icon {
       display: block;
-      width: 0.7rem;
-      height: 0.7rem;
-      border: 1px solid #6e8195;
-      border-radius: 0.2rem;
-      background: linear-gradient(135deg, #dce7f2 50%, #ffffff 50%);
+      width: 1rem;
+      height: 1rem;
+      color: #526b86;
+    }
+
+    .button-icon svg {
+      display: block;
+      width: 100%;
+      height: 100%;
     }
 
     .button-label {
@@ -78,7 +83,7 @@ export class RibbonButton extends LitElement {
         title=${this.label}
         @click=${this.handleClick}
       >
-        <span class="button-icon" aria-hidden="true"></span>
+        <span class="button-icon" aria-hidden="true">${ribbonIcon(this.label)}</span>
         <span class="button-label">${this.label}</span>
       </button>
     `
