@@ -1,4 +1,5 @@
 import { LitElement, css, html } from "lit"
+import { ribbonIcon } from "../ribbon-icons"
 import { slashMenuItems } from "./slash-menu"
 import { type RibbonButton } from "./ribbon-button"
 import "./ribbon-button"
@@ -215,6 +216,42 @@ export class AppRibbon extends LitElement {
       cursor: pointer;
     }
 
+    .history-button {
+      display: grid;
+      flex: 0 0 2rem;
+      place-items: center;
+      width: 2rem;
+      height: 40px;
+      padding: 0;
+      border: 0;
+      border-radius: 0.35rem;
+      color: #5e6977;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .history-button:hover {
+      color: #243447;
+      background: #e8eef5;
+    }
+
+    .history-button:focus-visible {
+      outline: 2px solid #3977c7;
+      outline-offset: -2px;
+    }
+
+    .history-icon {
+      display: block;
+      width: 1rem;
+      height: 1rem;
+    }
+
+    .history-icon svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
     .ribbon-toggle:hover {
       color: #243447;
       background: #e8eef5;
@@ -362,6 +399,14 @@ export class AppRibbon extends LitElement {
     if(!this.expanded) this.selectStart()
   }
 
+  private handleHistoryButtonClick(action: "Undo" | "Redo") {
+    this.dispatchEvent(new CustomEvent<{label: string}>("ribbon-button-click", {
+      detail: {label: action},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
   private selectStart() {
     this.activeMenu = "Start"
     this.menuOpen = false
@@ -439,6 +484,24 @@ export class AppRibbon extends LitElement {
               <ribbon-tab label=${tab} .active=${this.activeMenu === tab}></ribbon-tab>
             `)}
           </nav>
+          <button
+            class="history-button"
+            type="button"
+            aria-label="Undo"
+            title="Undo"
+            @click=${() => this.handleHistoryButtonClick("Undo")}
+          >
+            <span class="history-icon" aria-hidden="true">${ribbonIcon("Undo")}</span>
+          </button>
+          <button
+            class="history-button"
+            type="button"
+            aria-label="Redo"
+            title="Redo"
+            @click=${() => this.handleHistoryButtonClick("Redo")}
+          >
+            <span class="history-icon" aria-hidden="true">${ribbonIcon("Redo")}</span>
+          </button>
           <button
             class="ribbon-toggle"
             type="button"

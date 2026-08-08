@@ -208,6 +208,14 @@ export class DomEditor extends LitElement {
 
   private handleRibbonButtonClick = (event: Event) => {
     const label = (event as CustomEvent<{label?: string}>).detail?.label
+    if(label === "Undo") {
+      void this.execute({type: "undo"}).finally(() => this.focusEditor())
+      return
+    }
+    if(label === "Redo") {
+      void this.execute({type: "redo"}).finally(() => this.focusEditor())
+      return
+    }
     const item = slashMenuItems.find(candidate => candidate.name === label)
     if(!item) {
       this.focusEditor()

@@ -1,5 +1,7 @@
 import {unsafeSVG} from "lit/directives/unsafe-svg.js"
 
+import arrowBackUp from "@tabler/icons/outline/arrow-back-up.svg?raw"
+import arrowForwardUp from "@tabler/icons/outline/arrow-forward-up.svg?raw"
 import arrowsMove from "@tabler/icons/outline/arrows-move.svg?raw"
 import alignLeft from "@tabler/icons/outline/align-left.svg?raw"
 import bold from "@tabler/icons/outline/bold.svg?raw"
@@ -52,6 +54,8 @@ import worldWww from "@tabler/icons/outline/world-www.svg?raw"
 import zoomIn from "@tabler/icons/outline/zoom-in.svg?raw"
 
 const icons: Record<string, string> = {
+  Undo: arrowBackUp,
+  Redo: arrowForwardUp,
   New: filePlus,
   Open: folderOpen,
   Save: deviceFloppy,

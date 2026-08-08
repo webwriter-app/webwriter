@@ -75,6 +75,27 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith({type: "insert", html: "<p></p>"})
   })
 
+  it("executes undo and redo from the top ribbon controls", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    const historyButtons = Array.from(ribbon.shadowRoot!.querySelectorAll<HTMLButtonElement>(".history-button"))
+
+    expect(historyButtons.map(button => button.getAttribute("aria-label"))).toEqual([
+      "Undo",
+      "Redo",
+    ])
+    expect(historyButtons[0].querySelector(".icon-tabler-arrow-back-up")).not.toBeNull()
+    expect(historyButtons[1].querySelector(".icon-tabler-arrow-forward-up")).not.toBeNull()
+    expect(historyButtons[1].nextElementSibling?.getAttribute("aria-label")).toBe("Collapse ribbon")
+
+    historyButtons[0].click()
+    historyButtons[1].click()
+
+    expect(execute).toHaveBeenNthCalledWith(1, {type: "undo"})
+    expect(execute).toHaveBeenNthCalledWith(2, {type: "redo"})
+  })
+
   it("prevents pointer interactions from focusing ribbon controls", async () => {
     const {editor} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
