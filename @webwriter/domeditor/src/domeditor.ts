@@ -10,6 +10,7 @@ import { SlashFeature } from "./features/slash"
 import { TransformationFeature } from "./features/transformation"
 import { Schema } from "./schema"
 import { $, adoptStylesheet, createStylesheet, isElement } from "./utility"
+import { executeCompleteEvent, executeFailureEvent, type SerializedError } from "./editor-bridge"
 import editorStyleString from "./editor.css?raw"
 
 const editorStylesheet = createStylesheet(editorStyleString)
@@ -35,7 +36,7 @@ type ActionKeyMap = {
   }
 }
 type ActionFlatMap = Exclude<ActionKeyMap[keyof ActionKeyMap], Record<string, never>>
-type EditingAction = ActionFlatMap[keyof ActionFlatMap]
+export type EditingAction = ActionFlatMap[keyof ActionFlatMap]
 
 export class DOMEditor {
   
@@ -164,26 +165,87 @@ export class DOMEditor {
       }])
     })
     document.addEventListener("copy", this.#onCopy)
-    window.addEventListener("message", ev => {
-      if("type" in ev.data) {
-        const handle = this.getActionHandler(ev.data.type)
-        if(!handle) {
-          throw TypeError(`No handler registered for message '${ev.data.type}'`)
-        }
-        else {
-          const result = handle(ev.data)
-          if(result && typeof result.then === "function") {
-            Promise.resolve(result).then(
-              () => this.normalizeSurroundingElements(),
-              () => this.normalizeSurroundingElements(),
-            )
-          }
-          else {
-            this.normalizeSurroundingElements()
-          }
-        }
+    window.addEventListener("message", this.handleMessage)
+  }
+
+  private handleMessage = (ev: MessageEvent) => {
+    if(!ev.data || typeof ev.data !== "object" || typeof ev.data.type !== "string") {
+      return
+    }
+
+    // Responses are posted to the parent window. In a non-iframe environment
+    // (for example, a unit test), they can arrive back at this listener too.
+    if(ev.data.type === executeCompleteEvent || ev.data.type === executeFailureEvent) {
+      return
+    }
+
+    const requestId = typeof ev.data.requestId === "string"? ev.data.requestId: undefined
+    const handle = this.getActionHandler(ev.data.type)
+    if(!handle) {
+      const error = TypeError(`No handler registered for message '${ev.data.type}'`)
+      if(requestId) {
+        this.postExecutionEvent(executeFailureEvent, {
+          requestId,
+          error: this.serializeError(error),
+        })
+        return
       }
-    })
+      throw error
+    }
+
+    let result: unknown
+    try {
+      result = handle(ev.data)
+    }
+    catch(error) {
+      this.normalizeSurroundingElements()
+      if(requestId) {
+        this.postExecutionEvent(executeFailureEvent, {
+          requestId,
+          error: this.serializeError(error),
+        })
+      }
+      else {
+        throw error
+      }
+      return
+    }
+
+    Promise.resolve(result).then(
+      value => {
+        this.normalizeSurroundingElements()
+        if(requestId) {
+          this.postExecutionEvent(executeCompleteEvent, {requestId, result: value})
+        }
+      },
+      error => {
+        this.normalizeSurroundingElements()
+        if(requestId) {
+          this.postExecutionEvent(executeFailureEvent, {
+            requestId,
+            error: this.serializeError(error),
+          })
+        }
+      },
+    )
+  }
+
+  private serializeError(error: unknown): SerializedError {
+    if(error instanceof Error) {
+      return {
+        name: error.name,
+        message: error.message,
+        ...(error.stack? {stack: error.stack}: {}),
+      }
+    }
+    return {name: "Error", message: String(error)}
+  }
+
+  private postExecutionEvent<T extends object>(type: string, detail: T) {
+    const event = new CustomEvent(type, {detail})
+    window.dispatchEvent(event)
+    const target = window.parent === window? window: window.parent
+    target.postMessage({type: event.type, detail: event.detail}, "*")
   }
 
   startTransform(el: HTMLElement) {
