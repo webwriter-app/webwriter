@@ -122,6 +122,24 @@ describe("delete()", () => {
     editor.features.manipulation.delete("forward")
     expectBodyToBe("<p>helloworld</p>")
   })
+  it("moves to the end of the last block on backward delete at the final gap", () => {
+    document.body.innerHTML = "<p>hello</p>"
+    const block = document.body.firstElementChild!
+    $.selectGap(block)
+    editor.features.manipulation.delete("backward")
+    expectBodyToBe("<p>hello</p>")
+    expect($.anchor).toBe(block)
+    expect($.anchorOffset).toBe(block.childNodes.length)
+  })
+  it("moves to the start of the first block on forward delete at the initial gap", () => {
+    document.body.innerHTML = "<p>hello</p>"
+    const block = document.body.firstElementChild!
+    $.selectGap(block, "before")
+    editor.features.manipulation.delete("forward")
+    expectBodyToBe("<p>hello</p>")
+    expect($.anchor).toBe(block)
+    expect($.anchorOffset).toBe(0)
+  })
   it("removes only an empty previous element on backward delete", () => {
     document.body.innerHTML = "<p>a</p><p></p><h1>b</h1>"
     $.selectGap(document.body.children[1])

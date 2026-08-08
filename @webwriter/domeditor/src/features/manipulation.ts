@@ -213,9 +213,18 @@ export class ManipulationFeature extends EditorFeature {
    * extends to the container start; the others use `Selection.modify`). A
    * caret in the gap between two elements merges them: backward moves the
    * following element's content into the preceding element, forward the
-   * reverse. */
+   * reverse. At the document boundaries, Backspace/Delete move the caret to
+   * the end/start of the adjacent block. */
   delete(direction?: "forward" | "backward", granularity:Granularity="character", strict=false) {
     return this.withNormalization(() => {
+      if($.isGapSelection && direction === "backward" && !$.elementAfter && $.elementBefore) {
+        $.move($.elementBefore, -1)
+        return
+      }
+      if($.isGapSelection && direction === "forward" && !$.elementBefore && $.elementAfter) {
+        $.move($.elementAfter)
+        return
+      }
       const container = $.anchorContainer
       if(direction === "backward" && container?.textContent && isCaretAtBoundary(container, "start") && container.previousElementSibling && !container.previousElementSibling.textContent) {
         container.previousElementSibling.remove()
