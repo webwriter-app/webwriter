@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, modifierKeyDown, getContainer, getSidesOfPoint, htmlToFragment, isElement } from "../utility"
+import { $, modifierKeyDown, getContainer, getIndexBefore, getSidesOfPoint, htmlToFragment, isElement } from "../utility"
 import { SelectionFeature } from "./selection"
 
 /** Unit by which a collapsed selection is extended before deleting. */
@@ -57,6 +57,30 @@ export class ManipulationFeature extends EditorFeature {
     }
   }
 
+  /** Inserts a new element at the current gap, choosing the default node when
+   * it is allowed there and otherwise the first schema-conformant element. */
+  private insertElementAtGap() {
+    const container = getContainer($.range.startContainer)
+    const index = getIndexBefore($.range) + 1
+    const validTypes = this.editor.schema.findValidTypesToInsert()
+    const candidateTypes = [
+      this.editor.schema.defaultNodeKey,
+      ...validTypes.filter(type => type !== this.editor.schema.defaultNodeKey),
+    ].filter(type => !type.startsWith("#") && validTypes.includes(type))
+    const type = candidateTypes.find(type => {
+      const element = this.editor.schema.create(type)
+      return this.editor.schema.canInsert(container, element, index)
+    })
+    if(!type) {
+      return
+    }
+    const element = this.editor.schema.create(type)
+    this.withNormalization(() => {
+      $.replace(element)
+      $.move(element)
+    })
+  }
+
   /** Action handlers, addressable by action type through the editor. */
   actions = {
     insert: ({html, strict}: {type: "insert", html: string, strict?: boolean}) => {
@@ -98,9 +122,7 @@ export class ManipulationFeature extends EditorFeature {
   activeListeners: DocumentListenerMap = {
     "beforeinput": ev => {
       if($.isGapSelection && SelectionFeature.gapAnchor) {
-        const node = SelectionFeature.gapAnchor.cloneNode()
-        this.insert(node)
-        $.move(node)
+        this.insertElementAtGap()
       }
       else if($.commonAncestor.nodeName === "BODY" && $.isEmptyDocumentSelection) {
         const el = this.editor.schema.create()
@@ -115,9 +137,7 @@ export class ManipulationFeature extends EditorFeature {
       if(ev.key === "Enter") {
         ev.preventDefault()
         if($.isGapSelection && SelectionFeature.gapAnchor) {
-          const el = this.editor.schema.create()
-          document.body.prepend(el)
-          $.move(el)
+          this.insertElementAtGap()
         }
         else if(ev.shiftKey && ev.altKey) {
           this.insert(document.createElement("wbr"))

@@ -36,6 +36,22 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     editor.features.manipulation.insert(document.createElement("hr"))
     expectBodyToBe("<p>a</p><hr><p>b</p>")
   })
+  it("inserts a schema-conformant default element at a gap", () => {
+    document.body.innerHTML = "<p>a</p><p>b</p>"
+    $.selectGap(document.body.firstElementChild!)
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+
+    expectBodyToBe("<p>a</p><p></p><p>b</p>")
+  })
+  it("uses the element required by the schema at a gap", () => {
+    document.body.innerHTML = "<ul><li>a</li><li>b</li></ul>"
+    $.selectGap(document.querySelector("li")!)
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+
+    expectBodyToBe("<ul><li>a</li><li></li><li>b</li></ul>")
+  })
   it("replaces the selected element", () => {
     document.body.innerHTML = "<p>old</p>"
     $.selectElement(document.body.firstElementChild!)
