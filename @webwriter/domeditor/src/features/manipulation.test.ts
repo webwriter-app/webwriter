@@ -110,6 +110,26 @@ describe("delete()", () => {
     editor.features.manipulation.delete()
     expectBodyToBe("")
   })
+  it("moves the caret to the next element when deleting an empty first element", () => {
+    document.body.innerHTML = "<p></p><p>hello</p>"
+    const next = document.body.lastElementChild!
+    $.move(document.body.firstElementChild!, 0)
+
+    editor.features.manipulation.delete("forward")
+
+    expectBodyToBe("<p>hello</p>")
+    expect($.anchor).toBe(next)
+    expect($.anchorOffset).toBe(0)
+  })
+  it("keeps Enter working after deleting an empty first element", () => {
+    document.body.innerHTML = "<p></p><p>hello</p>"
+    $.move(document.body.firstElementChild!, 0)
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Delete", bubbles: true, cancelable: true}))
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+
+    expectBodyToBe("<p></p><p>hello</p>")
+  })
   it("merges two blocks on backward delete at the gap between them", () => {
     document.body.innerHTML = "<p>hello</p><p>world</p>"
     $.selectGap(document.body.firstElementChild!)

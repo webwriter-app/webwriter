@@ -235,10 +235,23 @@ export class ManipulationFeature extends EditorFeature {
         return
       }
       if(!$.commonAncestor.textContent && !["HTML", "BODY"].includes($.commonAncestor.nodeName)) {
+        const emptyContainer = $.commonAncestor
+        const previous = emptyContainer.previousSibling
+        const next = emptyContainer.nextSibling
         $.delete()
-        const prev = $.commonAncestor.previousSibling as Node
-        ($.commonAncestor as Element | Text).remove()
-        prev && $.move(prev, -1)
+        emptyContainer.remove()
+        if(direction === "forward" && next) {
+          $.move(next)
+        }
+        else if(previous) {
+          $.move(previous, -1)
+        }
+        else if(next) {
+          $.move(next)
+        }
+        else {
+          $.move(document.body)
+        }
         return
       }
       else if($.isEmpty && !$.isGapSelection) {
