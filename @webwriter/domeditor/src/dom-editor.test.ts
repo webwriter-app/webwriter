@@ -75,6 +75,74 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith({type: "insert", html: "<p></p>"})
   })
 
+  it("prevents pointer interactions from focusing ribbon controls", async () => {
+    const {editor} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    const tab = ribbon.shadowRoot!.querySelector('ribbon-tab[label="Insert"]')!
+    const button = tab.shadowRoot!.querySelector("button")!
+    const event = new MouseEvent("pointerdown", {bubbles: true, cancelable: true, composed: true, button: 0})
+
+    expect(button.dispatchEvent(event)).toBe(false)
+    expect(event.defaultPrevented).toBe(true)
+  })
+
+  it("allows ribbon inputs to receive pointer focus", async () => {
+    const {editor} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    const root = ribbon.shadowRoot!.querySelector(".ribbon")!
+    const input = document.createElement("input")
+    root.append(input)
+    const event = new MouseEvent("pointerdown", {bubbles: true, cancelable: true, composed: true, button: 0})
+
+    expect(input.dispatchEvent(event)).toBe(true)
+    expect(event.defaultPrevented).toBe(false)
+  })
+
+  it("restores the editor selection after a ribbon input loses focus", async () => {
+    const {editor, iframe} = await mountEditor()
+    const frameDocument = iframe.contentDocument!
+    frameDocument.body.innerHTML = "<p>hello</p>"
+    const text = frameDocument.querySelector("p")!.firstChild!
+    const selection = frameDocument.getSelection()!
+    selection.setBaseAndExtent(text, 1, text, 4)
+    iframe.focus()
+    iframe.dispatchEvent(new Event("blur"))
+
+    const focus = vi.spyOn(iframe, "focus")
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    const root = ribbon.shadowRoot!.querySelector(".ribbon")!
+    const input = document.createElement("input")
+    root.append(input)
+
+    input.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, cancelable: true, composed: true, button: 0}))
+    input.dispatchEvent(new FocusEvent("focusin", {bubbles: true, composed: true}))
+    input.dispatchEvent(new FocusEvent("focusout", {bubbles: true, composed: true, relatedTarget: null}))
+    await Promise.resolve()
+
+    expect(focus).toHaveBeenCalledWith({preventScroll: true})
+    expect(selection.anchorNode).toBe(text)
+    expect(selection.anchorOffset).toBe(1)
+    expect(selection.focusNode).toBe(text)
+    expect(selection.focusOffset).toBe(4)
+  })
+
+  it("restores iframe focus after a ribbon command", async () => {
+    const {editor, iframe} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const focus = vi.spyOn(iframe, "focus")
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    const insertTab = ribbon.shadowRoot!.querySelector('ribbon-tab[label="Insert"]')!
+
+    insertTab.shadowRoot!.querySelector("button")!.click()
+    await ribbon.updateComplete
+    const paragraph = ribbon.shadowRoot!.querySelector('ribbon-group[label="Text"] ribbon-button[label="Paragraph"]')!
+    await paragraph.updateComplete
+    paragraph.shadowRoot!.querySelector("button")!.click()
+    await execute.mock.results[0].value
+
+    expect(focus).toHaveBeenCalledWith({preventScroll: true})
+  })
+
   it("uses one Heading ribbon button with a submenu for the other heading levels", async () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)

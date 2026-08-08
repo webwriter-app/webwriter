@@ -9,6 +9,25 @@ import "./ribbon-tab"
 
 type RibbonMenuName = "File" | "Start" | "Insert" | "Format" | "Layout"
 
+type RibbonInputEventDetail = {
+  input: HTMLElement
+  relatedTarget?: EventTarget | null
+  relatedTargetIsInput?: boolean
+}
+
+const isRibbonInput = (target: EventTarget | null): target is HTMLElement => {
+  if(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) {
+    return true
+  }
+  return target instanceof HTMLElement && (
+    target.isContentEditable ||
+    target.getAttribute("contenteditable") !== null && target.getAttribute("contenteditable") !== "false" ||
+    target.getAttribute("role") === "textbox"
+  )
+}
+
+const ribbonInputFromEvent = (event: Event) => event.composedPath().find(isRibbonInput)
+
 const menuTabs: RibbonMenuName[] = ["File", "Insert", "Format", "Layout"]
 const dropdownMenus: RibbonMenuName[] = ["File", "Insert", "Format", "Layout"]
 
@@ -264,6 +283,69 @@ export class AppRibbon extends LitElement {
     this.selectStart()
   }
 
+  private readonly handleRibbonPointerDown = (event: MouseEvent) => {
+    if(event.button !== 0) return
+
+    const input = ribbonInputFromEvent(event)
+    if(input) {
+      this.dispatchEvent(new CustomEvent<RibbonInputEventDetail>("ribbon-input-pointerdown", {
+        detail: {input},
+        bubbles: true,
+        composed: true,
+      }))
+      return
+    }
+
+    // Keep the editor iframe as the active element while the ribbon is used
+    // with a pointer. The click event still performs the ribbon action.
+    event.preventDefault()
+  }
+
+  private readonly handleRibbonInputFocusIn = (event: FocusEvent) => {
+    const input = ribbonInputFromEvent(event)
+    if(!input) return
+    this.dispatchEvent(new CustomEvent<RibbonInputEventDetail>("ribbon-input-focus", {
+      detail: {input},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private readonly handleRibbonInputFocusOut = (event: FocusEvent) => {
+    const input = ribbonInputFromEvent(event)
+    if(!input) return
+    this.dispatchEvent(new CustomEvent<RibbonInputEventDetail>("ribbon-input-blur", {
+      detail: {
+        input,
+        relatedTarget: event.relatedTarget,
+        relatedTargetIsInput: isRibbonInput(event.relatedTarget),
+      },
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private readonly handleRibbonInputChange = (event: Event) => {
+    const input = ribbonInputFromEvent(event)
+    if(!input) return
+    this.dispatchEvent(new CustomEvent<RibbonInputEventDetail>("ribbon-input-commit", {
+      detail: {input},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private readonly handleRibbonInputKeydown = (event: KeyboardEvent) => {
+    if(event.key !== "Escape") return
+    const input = ribbonInputFromEvent(event)
+    if(!input) return
+    this.dispatchEvent(new CustomEvent<RibbonInputEventDetail>("ribbon-input-cancel", {
+      detail: {input},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
   connectedCallback() {
     super.connectedCallback()
     document.addEventListener("pointerdown", this.handleDocumentPointerDown)
@@ -332,7 +414,16 @@ export class AppRibbon extends LitElement {
 
   render() {
     return html`
-      <div class="ribbon" @ribbon-tab-select=${this.selectMenu}>
+      <div
+        class="ribbon"
+        @pointerdown=${this.handleRibbonPointerDown}
+        @mousedown=${this.handleRibbonPointerDown}
+        @focusin=${this.handleRibbonInputFocusIn}
+        @focusout=${this.handleRibbonInputFocusOut}
+        @change=${this.handleRibbonInputChange}
+        @keydown=${this.handleRibbonInputKeydown}
+        @ribbon-tab-select=${this.selectMenu}
+      >
         <div class="ribbon-top">
           <button
             class="brand"

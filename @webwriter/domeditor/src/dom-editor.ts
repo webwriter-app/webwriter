@@ -19,6 +19,18 @@ const escapeAttribute = (value: string) => value
 const editorEntryUrl = `${import.meta.env.BASE_URL}${import.meta.env.DEV ? "src/editor-entry.ts" : "assets/editor-entry.js"}`
 const appIconUrl = `${import.meta.env.BASE_URL}assets/app-icon-transparent.svg`
 
+type SelectionBookmark = {
+  anchorNode: Node
+  anchorOffset: number
+  focusNode: Node
+  focusOffset: number
+}
+
+type RibbonInputEventDetail = {
+  relatedTarget?: EventTarget | null
+  relatedTargetIsInput?: boolean
+}
+
 /** The iframe-backed editor element. The iframe gets its own document and
  * runs the editor module there, keeping editor styles, selection and DOM
  * mutations isolated from the host document. */
@@ -29,6 +41,9 @@ export class DomEditor extends LitElement {
   private editorReadyResolve: ((editorWindow: Window) => void) | null = null
   private editorReadyReject: ((reason: unknown) => void) | null = null
   private requestSequence = 0
+  private savedEditorSelection: SelectionBookmark | null = null
+  private ribbonInputSession = false
+  private restoreEditorAfterRibbonInput = false
   private pendingExecutions = new Map<string, {
     resolve: (value: unknown) => void
     reject: (reason?: unknown) => void
@@ -65,11 +80,16 @@ export class DomEditor extends LitElement {
   private handleEditorFrameLoad = (event: Event) => {
     this.editorDocument?.removeEventListener("pointerdown", this.handleEditorPointerDown)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
+    const previousIframe = event.currentTarget as HTMLIFrameElement
+    previousIframe.removeEventListener("focus", this.handleEditorFrameFocus)
+    previousIframe.removeEventListener("blur", this.handleEditorFrameBlur)
     const iframe = event.currentTarget as HTMLIFrameElement
     this.editorDocument = iframe.contentDocument
     this.editorWindow = iframe.contentWindow
     this.editorDocument?.addEventListener("pointerdown", this.handleEditorPointerDown)
     this.editorDocument?.addEventListener("focusin", this.handleEditorFocus)
+    iframe.addEventListener("focus", this.handleEditorFrameFocus)
+    iframe.addEventListener("blur", this.handleEditorFrameBlur)
     if(this.editorWindow) {
       this.editorReadyResolve?.(this.editorWindow)
     }
@@ -88,15 +108,116 @@ export class DomEditor extends LitElement {
     this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.dismissCollapsedMenu()
   }
 
+  private handleEditorFrameFocus = () => {
+    this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.dismissCollapsedMenu()
+  }
+
+  private handleEditorFrameBlur = () => {
+    this.saveEditorSelection()
+  }
+
+  private editorIframe() {
+    return this.renderRoot.querySelector<HTMLIFrameElement>("iframe")
+  }
+
+  private isEditorFocused() {
+    const iframe = this.editorIframe()
+    return iframe !== null && document.activeElement === iframe
+  }
+
+  private saveEditorSelection() {
+    const selection = this.editorDocument?.getSelection()
+    const body = this.editorDocument?.body
+    if(!selection?.anchorNode || !selection.focusNode || !body) return
+
+    const isInEditor = (node: Node) => node === body || body.contains(node)
+    if(!isInEditor(selection.anchorNode) || !isInEditor(selection.focusNode)) return
+
+    this.savedEditorSelection = {
+      anchorNode: selection.anchorNode,
+      anchorOffset: selection.anchorOffset,
+      focusNode: selection.focusNode,
+      focusOffset: selection.focusOffset,
+    }
+  }
+
+  private restoreEditorSelection() {
+    const bookmark = this.savedEditorSelection
+    this.savedEditorSelection = null
+    const selection = this.editorDocument?.getSelection()
+    const body = this.editorDocument?.body
+    if(!bookmark || !selection || !body) return
+
+    const isInEditor = (node: Node) => node === body || body.contains(node)
+    if(!isInEditor(bookmark.anchorNode) || !isInEditor(bookmark.focusNode)) return
+
+    const offset = (node: Node, value: number) => Math.min(
+      value,
+      node.nodeType === Node.TEXT_NODE ? node.textContent?.length ?? 0 : node.childNodes.length,
+    )
+    try {
+      selection.setBaseAndExtent(
+        bookmark.anchorNode,
+        offset(bookmark.anchorNode, bookmark.anchorOffset),
+        bookmark.focusNode,
+        offset(bookmark.focusNode, bookmark.focusOffset),
+      )
+    }
+    catch {
+      // The command may have removed a bookmarked node. In that case the
+      // editor's current selection is safer than restoring a stale bookmark.
+    }
+  }
+
+  private focusEditor(restoreSelection = false) {
+    const iframe = this.editorIframe()
+    iframe?.focus({preventScroll: true})
+    this.editorWindow?.focus()
+    if(restoreSelection) this.restoreEditorSelection()
+    else this.savedEditorSelection = null
+  }
+
+  private handleRibbonInputPointerDown = () => {
+    if(this.ribbonInputSession) return
+    this.ribbonInputSession = true
+    this.restoreEditorAfterRibbonInput = this.isEditorFocused() || this.savedEditorSelection !== null
+    if(this.isEditorFocused()) this.saveEditorSelection()
+  }
+
+  private handleRibbonInputFocus = () => {
+    if(this.ribbonInputSession) return
+    this.ribbonInputSession = true
+    this.restoreEditorAfterRibbonInput = this.savedEditorSelection !== null
+  }
+
+  private finishRibbonInput = () => {
+    const shouldRestore = this.restoreEditorAfterRibbonInput
+    this.ribbonInputSession = false
+    this.restoreEditorAfterRibbonInput = false
+    if(shouldRestore) this.focusEditor(true)
+    else this.savedEditorSelection = null
+  }
+
+  private handleRibbonInputBlur = (event: Event) => {
+    const detail = (event as CustomEvent<RibbonInputEventDetail>).detail
+    if(detail?.relatedTargetIsInput) return
+    queueMicrotask(() => {
+      if(this.ribbonInputSession) this.finishRibbonInput()
+    })
+  }
+
   private handleRibbonButtonClick = (event: Event) => {
     const label = (event as CustomEvent<{label?: string}>).detail?.label
     const item = slashMenuItems.find(candidate => candidate.name === label)
-    if(!item) return
+    if(!item) {
+      this.focusEditor()
+      return
+    }
 
     void this.execute({
       type: "insert",
       html: `<${item.tag}></${item.tag}>`,
-    })
+    }).finally(() => this.focusEditor())
   }
 
   private handleEditorMessage = (event: MessageEvent) => {
@@ -177,8 +298,14 @@ export class DomEditor extends LitElement {
     window.removeEventListener("message", this.handleEditorMessage)
     this.editorDocument?.removeEventListener("pointerdown", this.handleEditorPointerDown)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
+    const iframe = this.editorIframe()
+    iframe?.removeEventListener("focus", this.handleEditorFrameFocus)
+    iframe?.removeEventListener("blur", this.handleEditorFrameBlur)
     this.editorDocument = null
     this.editorWindow = null
+    this.savedEditorSelection = null
+    this.ribbonInputSession = false
+    this.restoreEditorAfterRibbonInput = false
     this.editorReadyReject?.(new Error("The DOM editor component was disconnected"))
     this.editorReadyPromise = null
     this.editorReadyResolve = null
@@ -195,6 +322,11 @@ export class DomEditor extends LitElement {
         <app-ribbon
           logo-url=${appIconUrl}
           @ribbon-button-click=${this.handleRibbonButtonClick}
+          @ribbon-input-pointerdown=${this.handleRibbonInputPointerDown}
+          @ribbon-input-focus=${this.handleRibbonInputFocus}
+          @ribbon-input-blur=${this.handleRibbonInputBlur}
+          @ribbon-input-commit=${this.finishRibbonInput}
+          @ribbon-input-cancel=${this.finishRibbonInput}
         ></app-ribbon>
       </header>
       <iframe title="DOM editor" srcdoc=${this.editorSrcdoc} @load=${this.handleEditorFrameLoad}></iframe>
