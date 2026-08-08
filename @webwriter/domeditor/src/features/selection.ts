@@ -298,7 +298,7 @@ export class SelectionFeature extends EditorFeature {
       }
     },
     "pointerdown": ev => {
-      if((isElement(ev.target) && ev.target.closest(".◆editor-only")) || this.hasDoubleClicked || ev.button === 2) {
+      if((isElement(ev.target) && ev.target.closest(".◆editor-only")) || this.hasDoubleClicked || ev.button === 2 || $.isEmptyDocumentSelection) {
         return
       }
       if(modifierKeyDown(ev)) {

@@ -162,6 +162,13 @@ describe("document listeners", () => {
     expect($.anchor).toBe(p.firstChild)
     expect($.anchorOffset).toBe(2)
   })
+  it("lets the browser focus an empty document on pointerdown", () => {
+    $.selectDocumentStart()
+    const event = new MouseEvent("pointerdown", {bubbles: true, cancelable: true})
+    document.body.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+    expect(feature.isInDragSelection).toBe(false)
+  })
   it("ends the drag selection on pointerup", () => {
     feature.isInDragSelection = true
     document.dispatchEvent(new MouseEvent("pointerup", {bubbles: true}))
