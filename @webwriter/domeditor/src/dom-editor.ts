@@ -64,10 +64,12 @@ export class DomEditor extends LitElement {
 
   private handleEditorFrameLoad = (event: Event) => {
     this.editorDocument?.removeEventListener("pointerdown", this.handleEditorPointerDown)
+    this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     const iframe = event.currentTarget as HTMLIFrameElement
     this.editorDocument = iframe.contentDocument
     this.editorWindow = iframe.contentWindow
     this.editorDocument?.addEventListener("pointerdown", this.handleEditorPointerDown)
+    this.editorDocument?.addEventListener("focusin", this.handleEditorFocus)
     if(this.editorWindow) {
       this.editorReadyResolve?.(this.editorWindow)
     }
@@ -79,6 +81,10 @@ export class DomEditor extends LitElement {
   }
 
   private handleEditorPointerDown = () => {
+    this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.dismissCollapsedMenu()
+  }
+
+  private handleEditorFocus = () => {
     this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.dismissCollapsedMenu()
   }
 
@@ -170,6 +176,7 @@ export class DomEditor extends LitElement {
   disconnectedCallback() {
     window.removeEventListener("message", this.handleEditorMessage)
     this.editorDocument?.removeEventListener("pointerdown", this.handleEditorPointerDown)
+    this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument = null
     this.editorWindow = null
     this.editorReadyReject?.(new Error("The DOM editor component was disconnected"))

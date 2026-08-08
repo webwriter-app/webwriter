@@ -3,15 +3,17 @@ import { ribbonIcon } from "./ribbon-icons"
 
 export type RibbonMenuGroup = {
   label: string
-  buttons: string[]
+  buttons: RibbonMenuButton[]
+}
+
+export type RibbonMenuButton = string | {
+  label: string
+  action?: string
+  submenu?: string[]
 }
 
 /** A dropdown view of the commands in a collapsed ribbon menu. */
 export class RibbonMenu extends LitElement {
-  static properties = {
-    groups: {attribute: false},
-  }
-
   static styles = css`
     :host {
       position: absolute;
@@ -25,6 +27,18 @@ export class RibbonMenu extends LitElement {
 
     :host([hidden]) {
       display: none;
+    }
+
+    :host([variant="button"]) {
+      position: fixed;
+      top: auto;
+      left: auto;
+      z-index: 2147483647;
+      max-width: min(200px, calc(100vw - 1rem));
+    }
+
+    :host([variant="button"]) .menu {
+      border-radius: 0.35rem;
     }
 
     .menu {
@@ -60,6 +74,85 @@ export class RibbonMenu extends LitElement {
       cursor: pointer;
     }
 
+    .item-row {
+      display: flex;
+      align-items: stretch;
+    }
+
+    .item-row > .item {
+      flex: 1 1 auto;
+    }
+
+    .item-container {
+      position: relative;
+    }
+
+    .submenu-toggle {
+      display: grid;
+      flex: 0 0 1.5rem;
+      place-items: center;
+      padding: 0;
+      border: 0;
+      border-radius: 0.25rem;
+      color: #526b86;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .submenu-toggle:hover {
+      background: #eef4fb;
+    }
+
+    .submenu-toggle:focus-visible {
+      outline: 2px solid #3977c7;
+      outline-offset: -2px;
+    }
+
+    .submenu-toggle-chevron {
+      display: block;
+      width: 0.35rem;
+      height: 0.35rem;
+      border-right: 1.5px solid currentColor;
+      border-bottom: 1.5px solid currentColor;
+      transform: rotate(45deg);
+      transition: transform 120ms ease;
+    }
+
+    .submenu-toggle[aria-expanded="true"] .submenu-toggle-chevron {
+      transform: rotate(225deg);
+    }
+
+    .submenu {
+      position: absolute;
+      top: calc(100% + 0.25rem);
+      left: 0;
+      z-index: 1;
+      box-sizing: border-box;
+      width: 200px;
+      max-width: calc(100vw - 1rem);
+      max-height: min(24rem, calc(100vh - 1rem));
+      overflow: auto;
+      padding: 0.35rem;
+      border: 1px solid #a8a8a8;
+      border-radius: 0.35rem;
+      background: #ffffff;
+      box-shadow: 0 0.4rem 1rem rgb(0 0 0 / 16%);
+    }
+
+    .submenu .item {
+      padding-left: 0.45rem;
+    }
+
+    @supports (top: anchor(top)) and (left: anchor(right)) {
+      .submenu {
+        position: fixed;
+        top: anchor(top);
+        left: anchor(right);
+        margin-left: 0.25rem;
+        position-try-fallbacks: flip-inline, bottom span-left;
+      }
+    }
+
     .item:hover {
       background: #eef4fb;
     }
@@ -85,8 +178,30 @@ export class RibbonMenu extends LitElement {
   `
 
   groups: RibbonMenuGroup[] = []
+  variant = "ribbon"
+  private openSubmenu: string | null = null
 
-  private handleClick(label: string) {
+  static properties = {
+    groups: {attribute: false},
+    variant: {type: String, reflect: true},
+    openSubmenu: {state: true},
+  }
+
+  private buttonLabel(button: RibbonMenuButton) {
+    return typeof button === "string" ? button : button.label
+  }
+
+  private buttonSubmenu(button: RibbonMenuButton) {
+    return typeof button === "string" ? [] : button.submenu ?? []
+  }
+
+  private buttonAction(button: RibbonMenuButton) {
+    return typeof button === "string" ? button : button.action ?? button.label
+  }
+
+  private handleClick(button: RibbonMenuButton) {
+    const label = this.buttonAction(button)
+    this.openSubmenu = null
     this.dispatchEvent(new CustomEvent<{label: string}>("ribbon-button-click", {
       detail: {label},
       bubbles: true,
@@ -94,23 +209,78 @@ export class RibbonMenu extends LitElement {
     }))
   }
 
+  private toggleSubmenu(label: string, event: Event) {
+    event.stopPropagation()
+    this.openSubmenu = this.openSubmenu === label ? null : label
+  }
+
+  closeSubmenus() {
+    this.openSubmenu = null
+  }
+
   render() {
     return html`
       <div class="menu" role="menu">
-        ${this.groups.map(group => html`
+        ${this.groups.map((group, groupIndex) => html`
           <section aria-label=${group.label}>
-            ${group.buttons.map(button => html`
-              <button
-                class="item"
-                type="button"
-                role="menuitem"
-                title=${button}
-                @click=${() => this.handleClick(button)}
-              >
-                <span class="item-icon" aria-hidden="true">${ribbonIcon(button)}</span>
-                <span>${button}</span>
-              </button>
-            `)}
+            ${group.buttons.map((button, buttonIndex) => {
+              const label = this.buttonLabel(button)
+              const action = this.buttonAction(button)
+              const submenu = this.buttonSubmenu(button)
+              const hasSubmenu = submenu.length > 0
+              const isOpen = this.openSubmenu === label
+              const anchorName = `--ribbon-submenu-${groupIndex}-${buttonIndex}`
+              return html`
+                <div class="item-container">
+                  <div class="item-row" style=${hasSubmenu ? `anchor-name: ${anchorName}` : ""}>
+                    <button
+                      class="item"
+                      type="button"
+                      role="menuitem"
+                      title=${label}
+                      @click=${() => this.handleClick(button)}
+                    >
+                      <span class="item-icon" aria-hidden="true">${ribbonIcon(action)}</span>
+                      <span>${label}</span>
+                    </button>
+                    ${hasSubmenu ? html`
+                      <button
+                        class="submenu-toggle"
+                        type="button"
+                        aria-label=${`Show more ${label} options`}
+                        title=${`Show more ${label} options`}
+                        aria-haspopup="menu"
+                        aria-expanded=${isOpen}
+                        @click=${(event: Event) => this.toggleSubmenu(label, event)}
+                      >
+                        <span class="submenu-toggle-chevron" aria-hidden="true"></span>
+                      </button>
+                    ` : ""}
+                  </div>
+                  ${hasSubmenu && isOpen ? html`
+                    <div
+                      class="submenu"
+                      role="menu"
+                      aria-label=${`${label} options`}
+                      style=${`position-anchor: ${anchorName}`}
+                    >
+                      ${submenu.map(submenuButton => html`
+                        <button
+                          class="item"
+                          type="button"
+                          role="menuitem"
+                          title=${submenuButton}
+                          @click=${() => this.handleClick(submenuButton)}
+                        >
+                          <span class="item-icon" aria-hidden="true">${ribbonIcon(submenuButton)}</span>
+                          <span>${submenuButton}</span>
+                        </button>
+                      `)}
+                    </div>
+                  ` : ""}
+                </div>
+              `
+            })}
           </section>
         `)}
       </div>

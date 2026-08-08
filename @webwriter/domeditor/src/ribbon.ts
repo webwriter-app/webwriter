@@ -1,8 +1,9 @@
 import { LitElement, css, html } from "lit"
 import { slashMenuItems } from "./slash-menu"
+import { type RibbonButton } from "./ribbon-button"
 import "./ribbon-button"
 import "./ribbon-group"
-import { type RibbonMenuGroup } from "./ribbon-menu"
+import { type RibbonMenu, type RibbonMenuButton, type RibbonMenuGroup } from "./ribbon-menu"
 import "./ribbon-menu"
 import "./ribbon-tab"
 
@@ -15,7 +16,19 @@ const slashMenuGroup = (section: "Text" | "Media"): RibbonMenuGroup => ({
   label: section,
   buttons: slashMenuItems
     .filter(item => item.section === section)
-    .map(item => item.name),
+    .flatMap(item => {
+      if(item.tag === "h1") {
+        return [{
+          label: "Heading",
+          action: item.name,
+          submenu: slashMenuItems
+            .filter(submenuItem => submenuItem.section === section && /^h[2-6]$/.test(submenuItem.tag))
+            .map(submenuItem => submenuItem.name),
+        } satisfies RibbonMenuButton]
+      }
+      if(/^h[2-6]$/.test(item.tag)) return []
+      return [item.name]
+    }),
 })
 
 const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
@@ -273,6 +286,8 @@ export class AppRibbon extends LitElement {
   }
 
   dismissCollapsedMenu() {
+    this.renderRoot.querySelector<RibbonMenu>("ribbon-menu")?.closeSubmenus()
+    this.renderRoot.querySelectorAll<RibbonButton>("ribbon-button").forEach(button => button.closeSubmenu())
     if(!this.expanded && this.menuOpen) this.selectStart()
   }
 
@@ -292,10 +307,25 @@ export class AppRibbon extends LitElement {
     }
   }
 
+  protected updated(changed: Map<string, unknown>) {
+    if((changed.has("menuOpen") && !this.menuOpen) || changed.has("activeMenu")) {
+      this.renderRoot.querySelector<RibbonMenu>("ribbon-menu")?.closeSubmenus()
+    }
+  }
+
   private renderGroups() {
     return menuGroups[this.activeMenu].map(group => html`
       <ribbon-group label=${group.label}>
-        ${group.buttons.map(button => html`<ribbon-button label=${button}></ribbon-button>`)}
+        ${group.buttons.map(button => {
+          const item = typeof button === "string" ? {label: button} : button
+          return html`
+            <ribbon-button
+              label=${item.label}
+              .action=${item.action ?? item.label}
+              .submenu=${item.submenu ?? []}
+            ></ribbon-button>
+          `
+        })}
       </ribbon-group>
     `)
   }
