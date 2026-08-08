@@ -27,6 +27,27 @@ beforeEach(() => {
 })
 
 describe("slash menu", () => {
+  it("shows a plus button in empty text blocks which opens the slash menu", async () => {
+    document.body.innerHTML = "<p></p><p>Text</p>"
+    const block = document.querySelector("p")!
+    $.move(block)
+    editor.features.selection.processSelection()
+    await Promise.resolve()
+
+    const button = editor.appendix.querySelector<HTMLButtonElement>(".◆slash-add")
+    expect(button).not.toBeNull()
+    expect(editor.appendix.querySelectorAll(".◆slash-add")).toHaveLength(1)
+    expect(block.classList.contains("◆empty-selected")).toBe(true)
+    expect(block.hasAttribute("style")).toBe(false)
+    expect(button!.hasAttribute("style")).toBe(false)
+
+    button!.click()
+    await editor.features.slash.menu.updateComplete
+
+    expect(editor.features.slash.menu.open).toBe(true)
+    expect(editorHTML()).toBe("<p>/</p><p>Text</p>")
+  })
+
   it("opens after a slash at the end of a text block and exposes every requested section", async () => {
     document.body.innerHTML = "<p></p>"
     $.move(document.querySelector("p")!)

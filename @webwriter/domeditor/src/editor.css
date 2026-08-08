@@ -332,6 +332,10 @@ body.◆transform-rotating, body.◆transform-rotating * {
   visibility: hidden;
 }
 
+.◆empty-selected {
+  anchor-name: --empty-selected;
+}
+
 :is(ul, ol, menu):empty {
   min-height: 1lh;
 
@@ -399,6 +403,43 @@ body::part(gap-caret)::after {
     margin-top: calc(-0.4 * var(--size));
     background: currentColor;
     animation: blink 1s step-end 0s infinite;
+}
+body::part(slash-add) {
+  position: fixed;
+  position-anchor: --empty-selected;
+  left: anchor(left);
+  top: anchor(center);
+  transform: translate(2px, -50%);
+  z-index: 2147483647;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.25rem;
+  color: darkgray;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: all;
+  user-select: auto;
+  -webkit-user-select: auto;
+  place-items: center;
+  outline: none;
+  display: none;
+}
+body:has(.◆empty-selected)::part(slash-add) {
+  display: inline-grid;
+}
+body::part(slash-add)::before {
+  content: "";
+  width: 0.75rem;
+  height: 0.75rem;
+  background:
+    linear-gradient(currentColor, currentColor) center / 100% 2px no-repeat,
+    linear-gradient(currentColor, currentColor) center / 2px 100% no-repeat;
+}
+body::part(slash-add):hover {
+  color: #4b5563;
+  background: #e5e7eb;
 }
 body::part(transform-overlay) {
   position: fixed;

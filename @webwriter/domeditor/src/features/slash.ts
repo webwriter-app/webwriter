@@ -2,6 +2,8 @@ import { EditorFeature } from "."
 import { SlashMenu, type SlashMenuItem } from "../slash-menu"
 import { $, getContainer, isElement, isText, modifierKeyDown } from "../utility"
 
+type SlashAddButton = HTMLButtonElement & {slashBlock?: Element}
+
 /** Element insertion through a slash-triggered menu. */
 export class SlashFeature extends EditorFeature {
   /** The command range starts before the slash and grows as the user types
@@ -11,6 +13,26 @@ export class SlashFeature extends EditorFeature {
   private commandStartOffset = 0
   private emptyTextBlock: Element | null = null
   private commandObserver = new MutationObserver(() => this.updateQuery())
+  private emptyBlockObserver = new MutationObserver(() => this.updateEmptyTextBlockButton())
+  private emptyTextBlockButton: SlashAddButton | null = null
+
+  enable() {
+    super.enable()
+    this.createEmptyTextBlockButton()
+    this.updateEmptyTextBlockButton()
+    this.emptyBlockObserver.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["class"],
+      characterData: true,
+      childList: true,
+      subtree: true,
+    })
+  }
+
+  disable() {
+    this.emptyBlockObserver.disconnect()
+    super.disable()
+  }
 
   constructor(editor: EditorFeature["editor"]) {
     super(editor)
@@ -81,27 +103,35 @@ export class SlashFeature extends EditorFeature {
       if(!selection?.rangeCount || !selection.anchorNode || this.hasContentDirectlyAfterCaret()) return
 
       ev.preventDefault()
-      const range = selection.getRangeAt(0)
-      this.commandBlock = this.closestBlock(range.startContainer)
-      const blockStart = document.createRange()
-      blockStart.selectNodeContents(this.commandBlock)
-      blockStart.setEnd(range.startContainer, range.startOffset)
-      this.commandStartOffset = blockStart.toString().length
-      this.emptyTextBlock = this.findEmptyTextBlock(range.startContainer)
-      range.deleteContents()
-      const slash = document.createTextNode("/")
-      range.insertNode(slash)
-      $.move(slash, 1)
-
-      this.commandRange = document.createRange()
-      this.commandRange.setStart(slash, 0)
-      this.commandRange.setEnd(slash, 1)
-      const rect = this.commandRange.getBoundingClientRect()
-      this.menu.showAt(rect.left, rect.bottom + 6)
-      this.commandObserver.observe(document.body, {characterData: true, childList: true, subtree: true})
+      this.openSlash()
     },
     input: () => this.updateQuery(),
     keyup: () => this.updateQuery(),
+  }
+
+  /** Opens the slash menu at the current caret and inserts its trigger. */
+  private openSlash() {
+    const selection = document.getSelection()
+    if(!selection?.rangeCount || !selection.anchorNode) return
+
+    const range = selection.getRangeAt(0)
+    this.commandBlock = this.closestBlock(range.startContainer)
+    const blockStart = document.createRange()
+    blockStart.selectNodeContents(this.commandBlock)
+    blockStart.setEnd(range.startContainer, range.startOffset)
+    this.commandStartOffset = blockStart.toString().length
+    this.emptyTextBlock = this.findEmptyTextBlock(range.startContainer)
+    range.deleteContents()
+    const slash = document.createTextNode("/")
+    range.insertNode(slash)
+    $.move(slash, 1)
+
+    this.commandRange = document.createRange()
+    this.commandRange.setStart(slash, 0)
+    this.commandRange.setEnd(slash, 1)
+    const rect = this.commandRange.getBoundingClientRect()
+    this.menu.showAt(rect.left, rect.bottom + 6)
+    this.commandObserver.observe(document.body, {characterData: true, childList: true, subtree: true})
   }
 
   /** Syncs the picker with the text following its slash trigger. Typing stays
@@ -180,11 +210,51 @@ export class SlashFeature extends EditorFeature {
 
   private findEmptyTextBlock(node: Node) {
     const block = this.closestBlock(node)
-    const children = Array.from(block.childNodes)
-    return block !== document.body && this.editor.schema.isBlock(block) &&
-      (children.length === 0 || children.length === 1 && isText(children[0]) && !children[0].data)
-      ? block
-      : null
+    return this.isEmptyTextBlock(block)? block: null
+  }
+
+  private isEmptyTextBlock(block: Element) {
+    if(block === document.body || !this.editor.schema.isBlock(block)) return false
+    return !Array.from(block.childNodes).some(node => {
+      if(isElement(node) && node.matches(".◆editor-only")) return false
+      return !isText(node) || Boolean(node.data)
+    })
+  }
+
+  /** Keeps the clickable slash affordance in sync with the selected empty block. */
+  private updateEmptyTextBlockButton() {
+    const selected = document.querySelector(".◆empty-selected")
+    this.emptyTextBlockButton!.slashBlock = selected && this.isEmptyTextBlock(selected)? selected: undefined
+  }
+
+  private createEmptyTextBlockButton() {
+    const existing = this.editor.appendix.querySelector<SlashAddButton>(".◆slash-add")
+    if(existing) {
+      this.emptyTextBlockButton = existing
+      return
+    }
+
+    const button = document.createElement("button") as SlashAddButton
+    button.classList.add("◆", "◆editor-only", "◆slash-add")
+    button.type = "button"
+    button.contentEditable = "false"
+    button.setAttribute("aria-label", "Insert element")
+    button.title = "Insert element"
+    button.setAttribute("part", "slash-add")
+    button.addEventListener("pointerdown", ev => {
+      ev.preventDefault()
+      ev.stopPropagation()
+    })
+    button.addEventListener("click", ev => {
+      ev.preventDefault()
+      ev.stopPropagation()
+      const block = button.slashBlock
+      if(!block || !this.isEmptyTextBlock(block)) return
+      $.move(block)
+      this.openSlash()
+    })
+    this.editor.appendix.append(button)
+    this.emptyTextBlockButton = button
   }
 
   private insert(item: SlashMenuItem) {
