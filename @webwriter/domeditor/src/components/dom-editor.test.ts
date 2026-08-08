@@ -96,6 +96,17 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenNthCalledWith(2, {type: "redo"})
   })
 
+  it("renders the preview control before undo with the filled play icon", async () => {
+    const {editor} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    const previewButton = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!
+
+    expect(previewButton.getAttribute("aria-label")).toBe("Preview")
+    expect(previewButton.nextElementSibling?.getAttribute("aria-label")).toBe("Undo")
+    expect(previewButton.querySelector(".preview-icon")).not.toBeNull()
+    expect(previewButton.querySelector(".icon-tabler-player-play.icons-tabler-filled")).not.toBeNull()
+  })
+
   it("prevents pointer interactions from focusing ribbon controls", async () => {
     const {editor} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!

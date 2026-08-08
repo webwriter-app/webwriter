@@ -230,6 +230,30 @@ export class AppRibbon extends LitElement {
       cursor: pointer;
     }
 
+    .preview-button {
+      display: grid;
+      flex: 0 0 2rem;
+      place-items: center;
+      width: 2rem;
+      height: 40px;
+      padding: 0;
+      border: 0;
+      border-radius: 0.35rem;
+      color: #5e6977;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .preview-button:hover {
+      color: #243447;
+      background: #e8eef5;
+    }
+
+    .preview-button:focus-visible {
+      outline: 2px solid #3977c7;
+      outline-offset: -2px;
+    }
+
     .history-button:hover {
       color: #243447;
       background: #e8eef5;
@@ -247,6 +271,23 @@ export class AppRibbon extends LitElement {
     }
 
     .history-icon svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .preview-icon {
+      box-sizing: border-box;
+      display: grid;
+      place-items: center;
+      width: 1.5rem;
+      height: 1.5rem;
+      padding: 0.2rem;
+      border: 1.5px solid currentColor;
+      border-radius: 50%;
+    }
+
+    .preview-icon svg {
       display: block;
       width: 100%;
       height: 100%;
@@ -399,7 +440,7 @@ export class AppRibbon extends LitElement {
     if(!this.expanded) this.selectStart()
   }
 
-  private handleHistoryButtonClick(action: "Undo" | "Redo") {
+  private handleTopButtonClick(action: "Preview" | "Undo" | "Redo") {
     this.dispatchEvent(new CustomEvent<{label: string}>("ribbon-button-click", {
       detail: {label: action},
       bubbles: true,
@@ -485,11 +526,20 @@ export class AppRibbon extends LitElement {
             `)}
           </nav>
           <button
+            class="preview-button"
+            type="button"
+            aria-label="Preview"
+            title="Preview"
+            @click=${() => this.handleTopButtonClick("Preview")}
+          >
+            <span class="preview-icon" aria-hidden="true">${ribbonIcon("Preview")}</span>
+          </button>
+          <button
             class="history-button"
             type="button"
             aria-label="Undo"
             title="Undo"
-            @click=${() => this.handleHistoryButtonClick("Undo")}
+            @click=${() => this.handleTopButtonClick("Undo")}
           >
             <span class="history-icon" aria-hidden="true">${ribbonIcon("Undo")}</span>
           </button>
@@ -498,7 +548,7 @@ export class AppRibbon extends LitElement {
             type="button"
             aria-label="Redo"
             title="Redo"
-            @click=${() => this.handleHistoryButtonClick("Redo")}
+            @click=${() => this.handleTopButtonClick("Redo")}
           >
             <span class="history-icon" aria-hidden="true">${ribbonIcon("Redo")}</span>
           </button>

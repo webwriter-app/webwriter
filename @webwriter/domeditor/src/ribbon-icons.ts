@@ -37,6 +37,7 @@ import maximize from "@tabler/icons/outline/maximize.svg?raw"
 import palette from "@tabler/icons/outline/palette.svg?raw"
 import photo from "@tabler/icons/outline/photo.svg?raw"
 import pilcrow from "@tabler/icons/outline/pilcrow.svg?raw"
+import playerPlay from "@tabler/icons/filled/player-play.svg?raw"
 import printer from "@tabler/icons/outline/printer.svg?raw"
 import rulerMeasure from "@tabler/icons/outline/ruler-measure.svg?raw"
 import scissors from "@tabler/icons/outline/scissors.svg?raw"
@@ -54,6 +55,7 @@ import worldWww from "@tabler/icons/outline/world-www.svg?raw"
 import zoomIn from "@tabler/icons/outline/zoom-in.svg?raw"
 
 const icons: Record<string, string> = {
+  Preview: playerPlay,
   Undo: arrowBackUp,
   Redo: arrowForwardUp,
   New: filePlus,
