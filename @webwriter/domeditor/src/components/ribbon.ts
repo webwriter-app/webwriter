@@ -280,9 +280,9 @@ export class AppRibbon extends LitElement {
       box-sizing: border-box;
       display: grid;
       place-items: center;
-      width: 1.5rem;
-      height: 1.5rem;
-      padding: 0.2rem;
+      width: 1.2rem;
+      height: 1.2rem;
+      padding: 0.1rem;
       border: 1.5px solid currentColor;
       border-radius: 50%;
     }
@@ -526,15 +526,6 @@ export class AppRibbon extends LitElement {
             `)}
           </nav>
           <button
-            class="preview-button"
-            type="button"
-            aria-label="Preview"
-            title="Preview"
-            @click=${() => this.handleTopButtonClick("Preview")}
-          >
-            <span class="preview-icon" aria-hidden="true">${ribbonIcon("Preview")}</span>
-          </button>
-          <button
             class="history-button"
             type="button"
             aria-label="Undo"
@@ -551,6 +542,15 @@ export class AppRibbon extends LitElement {
             @click=${() => this.handleTopButtonClick("Redo")}
           >
             <span class="history-icon" aria-hidden="true">${ribbonIcon("Redo")}</span>
+          </button>
+          <button
+            class="preview-button"
+            type="button"
+            aria-label="Preview"
+            title="Preview"
+            @click=${() => this.handleTopButtonClick("Preview")}
+          >
+            <span class="preview-icon" aria-hidden="true">${ribbonIcon("Preview")}</span>
           </button>
           <button
             class="ribbon-toggle"

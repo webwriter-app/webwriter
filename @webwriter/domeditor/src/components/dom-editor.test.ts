@@ -87,7 +87,7 @@ describe("DomEditor.execute()", () => {
     ])
     expect(historyButtons[0].querySelector(".icon-tabler-arrow-back-up")).not.toBeNull()
     expect(historyButtons[1].querySelector(".icon-tabler-arrow-forward-up")).not.toBeNull()
-    expect(historyButtons[1].nextElementSibling?.getAttribute("aria-label")).toBe("Collapse ribbon")
+    expect(historyButtons[1].nextElementSibling?.getAttribute("aria-label")).toBe("Preview")
 
     historyButtons[0].click()
     historyButtons[1].click()
@@ -96,13 +96,14 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenNthCalledWith(2, {type: "redo"})
   })
 
-  it("renders the preview control before undo with the filled play icon", async () => {
+  it("renders the preview control after redo with the filled play icon", async () => {
     const {editor} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
     const previewButton = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!
 
     expect(previewButton.getAttribute("aria-label")).toBe("Preview")
-    expect(previewButton.nextElementSibling?.getAttribute("aria-label")).toBe("Undo")
+    expect(previewButton.previousElementSibling?.getAttribute("aria-label")).toBe("Redo")
+    expect(previewButton.nextElementSibling?.getAttribute("aria-label")).toBe("Collapse ribbon")
     expect(previewButton.querySelector(".preview-icon")).not.toBeNull()
     expect(previewButton.querySelector(".icon-tabler-player-play.icons-tabler-filled")).not.toBeNull()
   })
