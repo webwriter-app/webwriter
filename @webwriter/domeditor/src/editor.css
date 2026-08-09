@@ -104,6 +104,73 @@ body.◆key-mod-down, body.◆key-mod-down * {
   cursor: pointer;
 }
 
+.◆presence-document-anchor {
+  anchor-name: --presence-document;
+}
+
+body::part(presence-users) {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: center;
+  pointer-events: none;
+  z-index: 2147483647;
+}
+
+body::part(presence-user) {
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  margin-left: -3px;
+  border: 2px solid white;
+  border-radius: 50%;
+  background: var(--presence-color);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 25%);
+}
+
+body::part(presence-caret) {
+  position: fixed;
+  box-sizing: border-box;
+  width: 2px;
+  height: var(--presence-caret-height, 1lh);
+  border-radius: 1px;
+  background: var(--presence-color);
+  pointer-events: none;
+  z-index: 2147483647;
+}
+
+body::part(presence-caret-label) {
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  max-width: 14rem;
+  padding: 1px 4px;
+  overflow: hidden;
+  border-radius: 3px 3px 3px 0;
+  color: white;
+  background: var(--presence-color);
+  font: 10px/1.4 system-ui, sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@supports (anchor-name: --presence-document) {
+  body::part(presence-users) {
+    position-anchor: --presence-document;
+    top: calc(anchor(top) + 12px);
+    right: auto;
+    left: calc(anchor(right) - 12px);
+    translate: -100% 0;
+  }
+
+  body::part(presence-caret) {
+    left: calc(anchor(left) + var(--presence-caret-x));
+    top: calc(anchor(top) + var(--presence-caret-y));
+  }
+}
+
 @keyframes blink {
   50% {
     opacity: 0.0;

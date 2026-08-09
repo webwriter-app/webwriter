@@ -1,5 +1,5 @@
-// import { SharedDOMDoc, EditingMutation } from "./domdoc"
-import type { EditingMutation } from "./domdoc"
+import {SharedDOMDoc, type EditingMutation} from "./domdoc"
+import {CollaborationFeature} from "./features/collaboration"
 import { DependencyFeature } from "./features/dependencies"
 import { HistoryFeature } from "./features/history"
 import { ManipulationFeature } from "./features/manipulation"
@@ -51,10 +51,9 @@ export type EditingAction = {
 
 export class DOMEditor {
   
-  // doc: SharedDOMDoc
+  doc: SharedDOMDoc
   parser = new DOMParser()
   schema = new Schema()
-  observer = new MutationObserver(m => this.handleMutations(m))
   
   features = {
     "dependency": new DependencyFeature(this),
@@ -65,6 +64,7 @@ export class DOMEditor {
     "selection": new SelectionFeature(this),
     "placeholder": new PlaceholderFeature(this),
     "mark": new MarkFeature(this),
+    "collaboration": new CollaborationFeature(this),
   } as const
 
   ignoreAttrs = ["contenteditable", "spellcheck"]
@@ -150,35 +150,41 @@ export class DOMEditor {
     adoptStylesheet(document, editorStylesheet)
     document.designMode = "on"
     document.body.spellcheck = false
-    if("SYNC_URL" in window && SYNC_URL) {
-      const syncUrl = new URL(SYNC_URL)
-      // this.doc = new SharedDOMDoc(syncUrl.origin, syncUrl.searchParams.get("session")!, this.ignoreAttrs)
+    if(globalThis.SYNC_URL) {
+      const syncUrl = new URL(globalThis.SYNC_URL)
+      const sessionId = syncUrl.searchParams.get("session") ?? syncUrl.pathname.split("/").filter(Boolean).at(-1)
+      this.doc = new SharedDOMDoc(syncUrl.origin, sessionId, this.ignoreAttrs, this.ignoreClasses)
     }
     else {
-      // this.doc = new SharedDOMDoc(undefined, undefined, this.ignoreAttrs, this.ignoreClasses)
+      this.doc = new SharedDOMDoc(undefined, undefined, this.ignoreAttrs, this.ignoreClasses)
     }
     Object.values(this.features).forEach(feat => feat.enable())
-    document.addEventListener("input", ev => {
-      this.normalizeSurroundingElements(ev.target instanceof Node? ev.target: undefined)
-    })
-    this.observer.observe(document, {attributes: true, attributeOldValue: true, characterData: true, characterDataOldValue: true, childList: true, subtree: true})
+    document.addEventListener("input", this.#handleInput)
     document.addEventListener("selectionchange", this.handleSelectionChange)
+    this.doc.updateLocalSelection()
     this.postSelectionPath()
     document.addEventListener("copy", this.#onCopy)
     window.addEventListener("message", this.handleMessage)
+  }
+
+  #handleInput = (ev: Event) => {
+    this.normalizeSurroundingElements(ev.target instanceof Node ? ev.target : undefined)
+  }
+
+  destroy() {
+    Object.values(this.features).forEach(feature => feature.disable())
+    document.removeEventListener("input", this.#handleInput)
+    document.removeEventListener("selectionchange", this.handleSelectionChange)
+    document.removeEventListener("copy", this.#onCopy)
+    window.removeEventListener("message", this.handleMessage)
+    this.doc.destroy()
   }
 
   private handleSelectionChange = () => {
     const selection = document.getSelection()
     if(!selection?.anchorNode) return
 
-    this.handleMutations([{
-      type: "selection",
-      anchorNode: selection.anchorNode,
-      anchorOffset: selection.anchorOffset,
-      focusNode: selection.focusNode ?? selection.anchorNode,
-      focusOffset: selection.focusOffset ?? selection.anchorOffset,
-    }])
+    this.doc.updateLocalSelection(selection)
     this.postSelectionPath()
   }
 
@@ -325,51 +331,8 @@ export class DOMEditor {
     this.features.transformation.startTransform(el)
   }
 
-  isCorrecting = false
-
   handleMutations(mutations: EditingMutation[]) {
-    let filteredMutations = mutations.map(m => {
-      if(m.type === "selection" || m.type === "characterData") {
-        return m
-      }
-      
-      const isInternalClassChange = m.type === "attributes" && m.attributeName?.startsWith("◆")
-      const isInternalElementChange = isElement(m.target) && m.target.matches(".◆editor-only")
-      const isBuiltinEditingAttributeChange = m.type === "attributes" && this.ignoreAttrs.includes(m.attributeName!)
-      
-      if(isInternalClassChange || isInternalElementChange || isBuiltinEditingAttributeChange) {
-        return null
-      }
-      else {
-        const addedNodes = Array.from(m.addedNodes).filter(node => !isElement(node) || !node.matches(".◆editor-only"))
-        const removedNodes = Array.from(m.removedNodes).filter(node => !isElement(node) || !node.matches(".◆editor-only"))
-        const {type, target, nextSibling, previousSibling} = m
-        return addedNodes.length || removedNodes.length? {
-          type, addedNodes, removedNodes, target, previousSibling, nextSibling
-        }: null
-      }
-    }).filter(m => m) as EditingMutation[]
-    if(!this.isCorrecting) {
-      const possiblyInvalidNodes = Array.from(new Set(filteredMutations.flatMap(mut => {
-        if(mut.type === "childList") {
-          return [mut.target, ...mut.addedNodes]
-        }
-        else if(mut.type === "attributes") {
-          return [mut.target]
-        }
-        else if(mut.type === "characterData") {
-          return [mut.target]
-        }
-      }))).filter(node => node && node.isConnected)
-      if(possiblyInvalidNodes.length) {
-        return
-        this.isCorrecting = true
-        console.log(`Correcting ${possiblyInvalidNodes.map(node => node?.nodeName.toLowerCase()).join(", ")}`)
-        possiblyInvalidNodes.forEach(node => this.schema.checkAndCorrect(node))
-        setTimeout(() => this.isCorrecting = false, 0)
-      }
-    }
-    // filteredMutations.length && this.doc.readDomMutation(filteredMutations)
+    this.doc.readDomMutation(mutations)
   }
 
   postAction(action: EditingAction) {
@@ -385,6 +348,16 @@ export class DOMEditor {
 
   addAppendix(el: Element) {
     this.appendix.append(el)
+  }
+
+  /** Adds a rule to the document's constructed editor stylesheet. */
+  addMainDOMStyleRule(cssText: string) {
+    const index = editorStylesheet.insertRule(cssText)
+    const rule = editorStylesheet.cssRules[index]
+    return () => {
+      const currentIndex = Array.from(editorStylesheet.cssRules).indexOf(rule)
+      if(currentIndex >= 0) editorStylesheet.deleteRule(currentIndex)
+    }
   }
 
   toHTML(innerBody=false) {
@@ -409,7 +382,11 @@ export class DOMEditor {
       node.body.removeAttribute("contenteditable")
       node.body.removeAttribute("spellcheck")
     }
-    node.querySelectorAll(".◆").forEach(el => {
+    const editingElements = Array.from(node.querySelectorAll(".◆"))
+    if(node instanceof Document && node.body.classList.contains("◆")) {
+      editingElements.unshift(node.body)
+    }
+    editingElements.forEach(el => {
       el.outerHTML
       if(el.classList.contains("◆editor-only")) {
         el.remove()

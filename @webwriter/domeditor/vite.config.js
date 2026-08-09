@@ -4,8 +4,16 @@ import { defineConfig } from 'vite'
 
 export default defineConfig({
     publicDir: "../../static",
+    resolve: {
+      dedupe: ["yjs"],
+    },
     test: {
       css: true,
+      server: {
+        deps: {
+          inline: ["y-protocols", "y-websocket", "lib0"],
+        },
+      },
     },
     build: {
         emptyOutDir: true,
