@@ -37,6 +37,20 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expect($.anchorOffset).toBe(0)
   })
 
+  it("creates a new paragraph before printable input is committed at a trailing gap", () => {
+    document.body.innerHTML = "<p>existing</p>"
+    $.selectGap(document.body.firstElementChild!)
+    editor.features.selection.processSelection()
+    const event = new KeyboardEvent("keydown", {key: "a", bubbles: true, cancelable: true})
+
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(false)
+    expectBodyToBe("<p>existing</p><p></p>")
+    expect($.anchor).toBe(document.body.lastElementChild)
+    expect($.anchorOffset).toBe(0)
+  })
+
   it("creates a real editing target before an IME composition starts", () => {
     document.dispatchEvent(new CompositionEvent("compositionstart", {bubbles: true, data: ""}))
 

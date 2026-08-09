@@ -55,6 +55,17 @@ export class ManipulationFeature extends EditorFeature {
     return element
   }
 
+  /** Creates an editable target for native text input when the selection is
+   * at a document gap or in a completely empty document. */
+  private prepareTextInput() {
+    if($.isGapSelection && SelectionFeature.gapAnchor) {
+      this.insertElementAtGap()
+    }
+    else {
+      this.prepareEmptyDocument()
+    }
+  }
+
   /** Runs a command and normalizes both the command's original surroundings
    * and the surroundings of the resulting selection. */
   private withNormalization<T>(command: () => T) {
@@ -131,16 +142,11 @@ export class ManipulationFeature extends EditorFeature {
    * block, Alt+modifier: line), Tab wraps into the previous element and
    * Shift+Tab lifts. */
   activeListeners: DocumentListenerMap = {
-    "beforeinput": ev => {
-      if($.isGapSelection && SelectionFeature.gapAnchor) {
-        this.insertElementAtGap()
-      }
-      else if($.commonAncestor.nodeName === "BODY" && $.isEmptyDocumentSelection) {
-        this.prepareEmptyDocument()
-      }
+    "beforeinput": () => {
+      this.prepareTextInput()
     },
     "compositionstart": () => {
-      this.prepareEmptyDocument()
+      this.prepareTextInput()
     },
     "keydown": ev => {
       if(this.editor.features.transformation.target) {
@@ -149,7 +155,7 @@ export class ManipulationFeature extends EditorFeature {
       const isAltGraph = ev.getModifierState("AltGraph")
       const isPrintable = ev.key.length === 1 && !ev.metaKey && (!ev.ctrlKey || isAltGraph)
       if(!ev.defaultPrevented && isPrintable) {
-        this.prepareEmptyDocument()
+        this.prepareTextInput()
       }
       if(ev.key === "Enter") {
         ev.preventDefault()
