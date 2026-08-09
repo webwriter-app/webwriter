@@ -12,6 +12,7 @@ html {
 }
 
 body {
+  margin: 1em;
   pointer-events: auto;
   user-select: text;
   -webkit-user-select: text;
