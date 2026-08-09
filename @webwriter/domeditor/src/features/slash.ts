@@ -116,6 +116,7 @@ export class SlashFeature extends EditorFeature {
 
   /** Opens the slash menu at the current caret and inserts its trigger. */
   private openSlash() {
+    this.editor.features.manipulation.ensureTextBlock()
     const selection = document.getSelection()
     if(!selection?.rangeCount || !selection.anchorNode) return
 

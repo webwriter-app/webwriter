@@ -1,6 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
 import { $, modifierKeyDown, getContainer, getIndexBefore, getSidesOfPoint, htmlToFragment, isElement } from "../utility"
-import { SelectionFeature } from "./selection"
 
 /** Unit by which a collapsed selection is extended before deleting. */
 type Granularity = "character" | "word" | "line" | "block"
@@ -44,26 +43,13 @@ function isCaretAtBoundary(element: Element, boundary: "start" | "end") {
  * on the current selection (see `EditingSelection`/`$`). */
 export class ManipulationFeature extends EditorFeature {
 
-  /** Creates the first schema block before the browser commits input. This
-   * gives key, IME, and beforeinput paths a real editable target instead of
-   * relying on a collapsed selection directly in an empty BODY. */
-  private prepareEmptyDocument() {
-    if(!$.isEmptyDocumentSelection) return null
-    const element = this.editor.schema.create()
-    document.body.prepend(element)
-    $.move(element)
-    return element
-  }
-
-  /** Creates an editable target for native text input when the selection is
-   * at a document gap or in a completely empty document. */
-  private prepareTextInput() {
-    if($.isGapSelection && SelectionFeature.gapAnchor) {
-      this.insertElementAtGap()
-    }
-    else {
-      this.prepareEmptyDocument()
-    }
+  /** Materializes the virtual insertion point used for an empty document or
+   * an element gap as a real schema-conformant text block. Returns the block
+   * when one was created and null for an ordinary editing selection. */
+  ensureTextBlock() {
+    return $.isGapSelection || $.isEmptyDocumentSelection
+      ? this.insertTextBlockAtSelection() ?? null
+      : null
   }
 
   /** Runs a command and normalizes both the command's original surroundings
@@ -79,11 +65,12 @@ export class ManipulationFeature extends EditorFeature {
     }
   }
 
-  /** Inserts a new element at the current gap, choosing the default node when
-   * it is allowed there and otherwise the first schema-conformant element. */
-  private insertElementAtGap() {
+  /** Inserts a new element at an empty-document or gap selection, choosing
+   * the default node when allowed and otherwise the first schema-conformant
+   * element. */
+  private insertTextBlockAtSelection() {
     const container = getContainer($.range.startContainer)
-    const index = getIndexBefore($.range) + 1
+    const index = Math.max(0, getIndexBefore($.range) + 1)
     const validTypes = this.editor.schema.findValidTypesToInsert()
     const candidateTypes = [
       this.editor.schema.defaultNodeKey,
@@ -97,10 +84,44 @@ export class ManipulationFeature extends EditorFeature {
       return
     }
     const element = this.editor.schema.create(type)
-    this.withNormalization(() => {
+    return this.withNormalization(() => {
       $.replace(element)
       $.move(element)
+      return element
     })
+  }
+
+  /** Replaces the current selection with nodes and leaves the caret at the
+   * end of the inserted content without splitting its containing block. */
+  private insertAtSelection(...nodes: Node[]) {
+    if(!nodes.length) return
+    return this.withNormalization(() => {
+      $.replace(...nodes)
+      const last = nodes.at(-1)!
+      if(last instanceof Text || isElement(last) && this.editor.schema.findValidContentTypes(last).includes("#text")) {
+        $.move(last, -1)
+      }
+      else if(last.parentNode) {
+        $.move(last.parentNode, Array.from(last.parentNode.childNodes).indexOf(last as ChildNode) + 1)
+      }
+    })
+  }
+
+  /** Inserts clipboard content at a virtual body/gap position. Inline-only
+   * content is placed in a text block; block content remains at the gap. */
+  private insertClipboardFragment(fragment: DocumentFragment) {
+    const nodes = Array.from(fragment.childNodes)
+    if(!nodes.length) return
+    const isVirtualSelection = $.isGapSelection || $.isEmptyDocumentSelection
+    if(!isVirtualSelection) {
+      this.insert(fragment)
+      return
+    }
+    const isInlineContent = nodes.every(node => this.editor.schema.isPhrasing(node))
+    if(isInlineContent && !this.ensureTextBlock()) {
+      return
+    }
+    this.insertAtSelection(...nodes)
   }
 
   /** Action handlers, addressable by action type through the editor. */
@@ -142,11 +163,55 @@ export class ManipulationFeature extends EditorFeature {
    * block, Alt+modifier: line), Tab wraps into the previous element and
    * Shift+Tab lifts. */
   activeListeners: DocumentListenerMap = {
-    "beforeinput": () => {
-      this.prepareTextInput()
+    "beforeinput": ev => {
+      const isVirtualSelection = $.isGapSelection || $.isEmptyDocumentSelection
+      if(!isVirtualSelection) return
+
+      if(ev.inputType === "insertParagraph") {
+        ev.preventDefault()
+        this.insert()
+      }
+      else if(ev.inputType === "insertLineBreak") {
+        const target = this.ensureTextBlock()
+        if(target) {
+          ev.preventDefault()
+          this.insertAtSelection(document.createElement("br"))
+        }
+      }
+      else if(["insertText", "insertReplacementText"].includes(ev.inputType) && ev.data !== null) {
+        const target = this.ensureTextBlock()
+        if(target) {
+          ev.preventDefault()
+          this.insertAtSelection(document.createTextNode(ev.data))
+        }
+      }
+      else if(["insertFromPaste", "insertFromDrop"].includes(ev.inputType)) {
+        const fragment = this.#dataTransferToFragment(ev.dataTransfer)
+        if(fragment) {
+          ev.preventDefault()
+          this.insertClipboardFragment(fragment)
+        }
+        else {
+          this.ensureTextBlock()
+        }
+      }
+      else if(ev.inputType.startsWith("insert")) {
+        this.ensureTextBlock()
+      }
     },
     "compositionstart": () => {
-      this.prepareTextInput()
+      this.ensureTextBlock()
+    },
+    "paste": ev => {
+      if(!$.isGapSelection && !$.isEmptyDocumentSelection) return
+      const fragment = this.#dataTransferToFragment(ev.clipboardData)
+      if(fragment) {
+        ev.preventDefault()
+        this.insertClipboardFragment(fragment)
+      }
+      else {
+        this.ensureTextBlock()
+      }
     },
     "keydown": ev => {
       if(this.editor.features.transformation.target) {
@@ -155,18 +220,17 @@ export class ManipulationFeature extends EditorFeature {
       const isAltGraph = ev.getModifierState("AltGraph")
       const isPrintable = ev.key.length === 1 && !ev.metaKey && (!ev.ctrlKey || isAltGraph)
       if(!ev.defaultPrevented && isPrintable) {
-        this.prepareTextInput()
+        this.ensureTextBlock()
       }
       if(ev.key === "Enter") {
         ev.preventDefault()
-        if($.isGapSelection && SelectionFeature.gapAnchor) {
-          this.insertElementAtGap()
-        }
-        else if(ev.shiftKey && ev.altKey) {
-          this.insert(document.createElement("wbr"))
+        if(ev.shiftKey && ev.altKey) {
+          this.ensureTextBlock()
+          this.insertAtSelection(document.createElement("wbr"))
         }
         else if(ev.shiftKey) {
-          this.insert(document.createElement("br"))
+          this.ensureTextBlock()
+          this.insertAtSelection(document.createElement("br"))
         }
         else if(modifierKeyDown(ev)) {
           this.insert(undefined, 1)
@@ -227,6 +291,9 @@ export class ManipulationFeature extends EditorFeature {
    * container as a clone — with `strict`, inseperable containers (e.g.
    * headings) continue as a new default node (<p>) instead. */
   insert(node?: Node, splitDepth=0, strict=false) {
+    if(!node && this.ensureTextBlock()) {
+      return
+    }
     return this.withNormalization(() => {
       if(true) {
         node? $.replace(node): $.delete()
@@ -402,12 +469,11 @@ export class ManipulationFeature extends EditorFeature {
     })
   }
 
-  /** Inserts the clipboard's text/html content at the selection. Currently a
-   * clipboard without a text/html flavor inserts the literal string
-   * "undefined". */
+  /** Inserts the clipboard's HTML or plain-text content at the selection.
+   * Inline content at an empty document or gap is wrapped in a text block. */
   async paste() {
     const fragment = await this.#clipboardToFragment()
-    this.insert(fragment)
+    this.insertClipboardFragment(fragment)
   }
 
   /** Sets the given attributes on every element in the selection (see
@@ -447,15 +513,35 @@ export class ManipulationFeature extends EditorFeature {
     })
   }
 
-  /** Reads the first clipboard item with a text/html flavor and parses it into  a fragment. */
-  async #clipboardToFragment() {
-    const htmlItem = (await navigator.clipboard.read()).find(item => item.types.includes("text/html"))
-    let html = await (await htmlItem?.getType("text/html"))?.text()
-    if(!html) {
-      const textItem = (await navigator.clipboard.read()).find(item => item.types.includes("text/plain"))
-      html = await (await textItem?.getType("text/plain"))?.text()
+  /** Parses HTML preferentially and otherwise preserves clipboard text as a
+   * text node, so text containing markup characters is never interpreted as
+   * HTML. */
+  #clipboardContentToFragment(html: string, text: string) {
+    if(html) {
+      return htmlToFragment(html)
     }
-    return document.createRange().createContextualFragment(html!)
+    const fragment = document.createDocumentFragment()
+    if(text) fragment.append(document.createTextNode(text))
+    return fragment
+  }
+
+  /** Reads clipboard data available synchronously on paste/beforeinput. */
+  #dataTransferToFragment(data: DataTransfer | null) {
+    if(!data) return null
+    const html = data.getData("text/html")
+    const text = data.getData("text/plain")
+    return html || text? this.#clipboardContentToFragment(html, text): null
+  }
+
+  /** Reads the first available HTML or plain-text item from the async
+   * clipboard API. */
+  async #clipboardToFragment() {
+    const items = await navigator.clipboard.read()
+    const htmlItem = items.find(item => item.types.includes("text/html"))
+    const textItem = items.find(item => item.types.includes("text/plain"))
+    const html = htmlItem? await (await htmlItem.getType("text/html")).text(): ""
+    const text = !html && textItem? await (await textItem.getType("text/plain")).text(): ""
+    return this.#clipboardContentToFragment(html, text)
   }
 
   /** Schema-aware insertion (currently unused by insert()): depending on what the schema allows, replaces the parent, splits the container, inserts in place or wraps the insertee. */

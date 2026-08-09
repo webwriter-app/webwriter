@@ -58,6 +58,51 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expect($.anchor).toBe(document.body.firstElementChild)
   })
 
+  it("creates the first paragraph when Enter is pressed in an empty document", () => {
+    const event = new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
+
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expectBodyToBe("<p></p>")
+    expect($.anchor).toBe(document.body.firstElementChild)
+    expect($.anchorOffset).toBe(0)
+  })
+
+  it("splits the initial paragraph when Enter is pressed again", () => {
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+
+    expectBodyToBe("<p></p><p></p>")
+    expect($.anchor).toBe(document.body.lastElementChild)
+    expect($.anchorOffset).toBe(0)
+  })
+
+  it("handles insertParagraph beforeinput without a preceding key event", () => {
+    const event = new InputEvent("beforeinput", {
+      bubbles: true,
+      cancelable: true,
+      inputType: "insertParagraph",
+    })
+
+    document.body.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expectBodyToBe("<p></p>")
+  })
+
+  it("inserts a line break into a text block from an empty document", () => {
+    const event = new KeyboardEvent("keydown", {key: "Enter", shiftKey: true, bubbles: true, cancelable: true})
+
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expectBodyToBe("<p><br></p>")
+    expect($.anchor).toBe(document.body.firstElementChild)
+    expect($.anchorOffset).toBe(1)
+  })
+
   it("does not create content for a keyboard shortcut", () => {
     document.dispatchEvent(new KeyboardEvent("keydown", {key: "b", ctrlKey: true, bubbles: true, cancelable: true}))
 
@@ -67,19 +112,21 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
   it("prepares an empty document for native text input and synchronizes the result", async () => {
     $.selectDocumentStart()
 
-    document.body.dispatchEvent(new InputEvent("beforeinput", {
+    const event = new InputEvent("beforeinput", {
       bubbles: true,
       cancelable: true,
       data: "a",
       inputType: "insertText",
-    }))
+    })
+    document.body.dispatchEvent(event)
 
     const paragraph = document.body.firstElementChild
+    expect(event.defaultPrevented).toBe(true)
     expect(paragraph?.tagName).toBe("P")
-    expect($.anchor).toBe(paragraph)
-    expect($.anchorOffset).toBe(0)
+    expect(paragraph?.textContent).toBe("a")
+    expect($.anchor).toBe(paragraph?.firstChild)
+    expect($.anchorOffset).toBe(1)
 
-    paragraph!.append("a")
     await new Promise(resolve => setTimeout(resolve))
     expect(editor.doc.body.firstChild?.toString()).toBe("<p>a</p>")
   })
@@ -411,6 +458,43 @@ describe("cut()", () => {
   })
 })
 describe("paste()", () => {
+  it("handles a native plain-text paste into an empty document", () => {
+    const clipboardData = new DataTransfer()
+    clipboardData.setData("text/plain", "pasted text")
+    const event = new ClipboardEvent("paste", {bubbles: true, cancelable: true, clipboardData})
+
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expectBodyToBe("<p>pasted text</p>")
+    expect($.anchor).toBe(document.querySelector("p")?.firstChild)
+    expect($.anchorOffset).toBe(11)
+  })
+
+  it("handles a native plain-text paste at a trailing gap", () => {
+    document.body.innerHTML = "<p>existing</p>"
+    $.selectGap(document.body.firstElementChild!)
+    const clipboardData = new DataTransfer()
+    clipboardData.setData("text/plain", "pasted")
+    const event = new ClipboardEvent("paste", {bubbles: true, cancelable: true, clipboardData})
+
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expectBodyToBe("<p>existing</p><p>pasted</p>")
+  })
+
+  it("keeps block HTML at the document root on native paste", () => {
+    const clipboardData = new DataTransfer()
+    clipboardData.setData("text/html", "<h1>Heading</h1>")
+    const event = new ClipboardEvent("paste", {bubbles: true, cancelable: true, clipboardData})
+
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expectBodyToBe("<h1>Heading</h1>")
+  })
+
   it("fills the DOM with correct HTML clipboard content", async () => {
     await navigator.clipboard.write([new ClipboardItem({
       "text/plain": "test",
@@ -430,13 +514,24 @@ describe("paste()", () => {
     await editor.features.manipulation.paste()
     expectBodyToBe("<p>new</p>")
   })
-  it("does insert text node if clipboard has no html but plain text", async () => {
+  it("wraps plain-text clipboard content in a paragraph at an empty document", async () => {
     await navigator.clipboard.write([new ClipboardItem({
       "text/plain": "test"
     })])
     $.selectDocumentStart()
     await editor.features.manipulation.paste()
-    expectBodyToBe("test")
+    expectBodyToBe("<p>test</p>")
+  })
+
+  it("does not parse markup characters from a plain-text clipboard flavor", async () => {
+    await navigator.clipboard.write([new ClipboardItem({
+      "text/plain": "<b>text</b>"
+    })])
+    $.selectDocumentStart()
+
+    await editor.features.manipulation.paste()
+
+    expectBodyToBe("<p>&lt;b&gt;text&lt;/b&gt;</p>")
   })
 })
 describe("setAttributes()", () => {

@@ -40,7 +40,7 @@ describe("slash menu", () => {
     await editor.features.slash.menu.updateComplete
 
     expect(editor.features.slash.menu.open).toBe(true)
-    expect(editorHTML()).toBe("/")
+    expect(editorHTML()).toBe("<p>/</p>")
 
     editor.features.slash.menu.dispatchEvent(new Event("slash-menu-close", {bubbles: true, composed: true}))
   })
