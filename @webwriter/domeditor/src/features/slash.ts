@@ -20,13 +20,17 @@ export class SlashFeature extends EditorFeature {
     super.enable()
     this.createEmptyTextBlockButton()
     this.updateEmptyTextBlockButton()
-    this.emptyBlockObserver.observe(document.body, {
-      attributes: true,
-      attributeFilter: ["class"],
-      characterData: true,
-      childList: true,
-      subtree: true,
-    })
+    queueMicrotask(() => this.updateEmptyTextBlockButton())
+    const body = document.body
+    if(body) {
+      this.emptyBlockObserver.observe(body, {
+        attributes: true,
+        attributeFilter: ["class"],
+        characterData: true,
+        childList: true,
+        subtree: true,
+      })
+    }
   }
 
   disable() {
@@ -53,6 +57,7 @@ export class SlashFeature extends EditorFeature {
   }
 
   activeListeners = {
+    selectionchange: () => queueMicrotask(() => this.updateEmptyTextBlockButton()),
     keydown: (ev: KeyboardEvent) => {
       if(this.menu.open) {
         if(ev.key === "ArrowDown") {
@@ -214,7 +219,8 @@ export class SlashFeature extends EditorFeature {
   }
 
   private isEmptyTextBlock(block: Element) {
-    if(block === document.body || !this.editor.schema.isBlock(block)) return false
+    if(block === document.body) return block.childNodes.length === 0
+    if(!this.editor.schema.isBlock(block)) return false
     return !Array.from(block.childNodes).some(node => {
       if(isElement(node) && node.matches(".◆editor-only")) return false
       return !isText(node) || Boolean(node.data)
@@ -273,7 +279,7 @@ export class SlashFeature extends EditorFeature {
     }
     range.deleteContents()
     const element = this.editor.schema.create(item.tag) as Element
-    const replacement = this.emptyTextBlock?.isConnected && !this.emptyTextBlock.textContent && this.emptyTextBlock
+    const replacement = this.emptyTextBlock?.isConnected && this.emptyTextBlock !== document.body && !this.emptyTextBlock.textContent && this.emptyTextBlock
     if(replacement) {
       replacement.replaceWith(element)
     }

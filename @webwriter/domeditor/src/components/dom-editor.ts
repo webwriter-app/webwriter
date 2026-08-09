@@ -135,6 +135,7 @@ export class DomEditor extends LitElement {
   }
 
   private handleEditorPointerDown = () => {
+    this.focusEditor()
     this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.dismissCollapsedMenu()
   }
 

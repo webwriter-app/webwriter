@@ -11,6 +11,13 @@ html {
   -webkit-user-select: none;
 }
 
+body {
+  pointer-events: auto;
+  user-select: text;
+  -webkit-user-select: text;
+  caret-color: currentColor;
+}
+
 a:not([href]) {
   text-decoration: underline;
   color: #0000ee;
@@ -399,8 +406,42 @@ body.◆transform-rotating, body.◆transform-rotating * {
   visibility: hidden;
 }
 
+/* An empty body needs a visible zero-width editing position so the native
+ * caret can be painted before the first inserted element. */
+body:empty::after {
+  visibility: visible;
+}
+
 .◆empty-selected {
   anchor-name: --empty-selected;
+}
+
+/* BODY is both the document anchor and the empty-block anchor when the
+ * document has no content. Preserve both names instead of letting the later
+ * empty-selection rule displace the presence indicator's anchor. */
+.◆presence-document-anchor.◆empty-selected {
+  anchor-name: --presence-document, --empty-selected;
+}
+
+body::part(empty-document-caret) {
+  display: none;
+  position: fixed;
+  position-anchor: --empty-selected;
+  left: anchor(left);
+  top: anchor(top);
+  box-sizing: border-box;
+  width: 1px;
+  height: 1lh;
+  min-height: 16px;
+  background: currentColor;
+  pointer-events: none;
+  user-select: none;
+  z-index: 2147483646;
+  animation: blink 1s step-end infinite;
+}
+
+body.◆empty-selected::part(empty-document-caret) {
+  display: block;
 }
 
 :is(ul, ol, menu):empty {
@@ -493,6 +534,7 @@ body::part(slash-add) {
   outline: none;
   display: none;
 }
+body.◆empty-selected::part(slash-add),
 body:has(.◆empty-selected)::part(slash-add) {
   display: inline-grid;
 }

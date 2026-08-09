@@ -44,6 +44,17 @@ function isCaretAtBoundary(element: Element, boundary: "start" | "end") {
  * on the current selection (see `EditingSelection`/`$`). */
 export class ManipulationFeature extends EditorFeature {
 
+  /** Creates the first schema block before the browser commits input. This
+   * gives key, IME, and beforeinput paths a real editable target instead of
+   * relying on a collapsed selection directly in an empty BODY. */
+  private prepareEmptyDocument() {
+    if(!$.isEmptyDocumentSelection) return null
+    const element = this.editor.schema.create()
+    document.body.prepend(element)
+    $.move(element)
+    return element
+  }
+
   /** Runs a command and normalizes both the command's original surroundings
    * and the surroundings of the resulting selection. */
   private withNormalization<T>(command: () => T) {
@@ -125,14 +136,20 @@ export class ManipulationFeature extends EditorFeature {
         this.insertElementAtGap()
       }
       else if($.commonAncestor.nodeName === "BODY" && $.isEmptyDocumentSelection) {
-        const el = this.editor.schema.create()
-        document.body.prepend(el)
-        $.move(el)
+        this.prepareEmptyDocument()
       }
+    },
+    "compositionstart": () => {
+      this.prepareEmptyDocument()
     },
     "keydown": ev => {
       if(this.editor.features.transformation.target) {
         return
+      }
+      const isAltGraph = ev.getModifierState("AltGraph")
+      const isPrintable = ev.key.length === 1 && !ev.metaKey && (!ev.ctrlKey || isAltGraph)
+      if(!ev.defaultPrevented && isPrintable) {
+        this.prepareEmptyDocument()
       }
       if(ev.key === "Enter") {
         ev.preventDefault()

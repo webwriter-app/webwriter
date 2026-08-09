@@ -67,6 +67,8 @@ export class EditingSelection {
 
   /** Places a collapsed selection at the start of the body. */
   static selectDocumentStart() {
+    window.focus()
+    document.body.focus({preventScroll: true})
     this.selectRange(document.body)
   }
 

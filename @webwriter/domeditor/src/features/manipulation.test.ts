@@ -20,11 +20,56 @@ function expectBodyToBe(html: string) {
 
 beforeEach(() => {
   document.body.innerHTML = ""
+  $.selectDocumentStart()
 })
 
 
 
 describe("insert()", () => { // deletes selection => selection = caret/gap
+  it("creates a real editing target before the first printable key is committed", () => {
+    const event = new KeyboardEvent("keydown", {key: "a", bubbles: true, cancelable: true})
+
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(false)
+    expectBodyToBe("<p></p>")
+    expect($.anchor).toBe(document.body.firstElementChild)
+    expect($.anchorOffset).toBe(0)
+  })
+
+  it("creates a real editing target before an IME composition starts", () => {
+    document.dispatchEvent(new CompositionEvent("compositionstart", {bubbles: true, data: ""}))
+
+    expectBodyToBe("<p></p>")
+    expect($.anchor).toBe(document.body.firstElementChild)
+  })
+
+  it("does not create content for a keyboard shortcut", () => {
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "b", ctrlKey: true, bubbles: true, cancelable: true}))
+
+    expectBodyToBe("")
+  })
+
+  it("prepares an empty document for native text input and synchronizes the result", async () => {
+    $.selectDocumentStart()
+
+    document.body.dispatchEvent(new InputEvent("beforeinput", {
+      bubbles: true,
+      cancelable: true,
+      data: "a",
+      inputType: "insertText",
+    }))
+
+    const paragraph = document.body.firstElementChild
+    expect(paragraph?.tagName).toBe("P")
+    expect($.anchor).toBe(paragraph)
+    expect($.anchorOffset).toBe(0)
+
+    paragraph!.append("a")
+    await new Promise(resolve => setTimeout(resolve))
+    expect(editor.doc.body.firstChild?.toString()).toBe("<p>a</p>")
+  })
+
   it("inserts HTML through its action handler", () => {
     editor.features.manipulation.actions.insert({type: "insert", html: "<p></p>"})
     expectBodyToBe("<p></p>")

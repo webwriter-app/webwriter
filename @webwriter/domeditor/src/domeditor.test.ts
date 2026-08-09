@@ -38,6 +38,20 @@ describe("DOMEditor stylesheets", () => {
       .toContain("transform-overlay-scale-up-left")
   })
 
+  it("keeps the empty editing surface interactive and its caret in the shadow appendix", () => {
+    const bodyRule = Array.from(document.adoptedStyleSheets.flatMap(sheet => Array.from(sheet.cssRules)))
+      .find(rule => (rule as CSSStyleRule).selectorText === "body") as CSSStyleRule | undefined
+
+    expect(bodyRule?.style.pointerEvents).toBe("auto")
+    expect(bodyRule?.style.userSelect).toBe("text")
+    expect(document.body).toHaveAttribute("contenteditable", "true")
+    expect(editor.doc.body.getAttribute("contenteditable")).toBeUndefined()
+    expect(editor.toHTML()).not.toContain("contenteditable")
+    expect(editor.features.selection.emptyDocumentCaret?.getRootNode()).toBe(editor.appendix)
+    expect(editorStyleString).toContain("body::part(empty-document-caret)")
+    expect(editorStyleString).toContain("anchor-name: --presence-document, --empty-selected")
+  })
+
   it("does not duplicate constructed stylesheets", () => {
     const documentSheetCount = document.adoptedStyleSheets.filter(sheet => hasSelector(sheet, "html")).length
     const appendix = editor.appendix

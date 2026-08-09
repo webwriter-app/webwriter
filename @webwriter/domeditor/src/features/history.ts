@@ -14,9 +14,10 @@ export class HistoryFeature extends EditorFeature {
 
   activeListeners: DocumentListenerMap = {
       "keydown": ev => {
-        const isUndo = ev.key === "z" && modifierKeyDown(ev)
-        const isMacRedo = isOnApple() && ev.key === "z" && modifierKeyDown(ev) && ev.shiftKey
-        const isWinLinuxRedo = !isOnApple() && ev.key === "y" && modifierKeyDown(ev)
+        const key = ev.key.toLowerCase()
+        const isUndo = key === "z" && modifierKeyDown(ev) && !ev.shiftKey
+        const isMacRedo = isOnApple() && key === "z" && modifierKeyDown(ev) && ev.shiftKey
+        const isWinLinuxRedo = !isOnApple() && key === "y" && modifierKeyDown(ev)
         if(isUndo) {
           ev.preventDefault()
           this.editor.doc.undo()

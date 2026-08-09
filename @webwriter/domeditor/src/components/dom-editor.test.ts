@@ -310,6 +310,7 @@ describe("DomEditor.execute()", () => {
 
   it("keeps the open tree on editor pointer interaction", async () => {
     const {editor, iframe} = await mountEditor()
+    const focus = vi.spyOn(iframe, "focus")
     iframe.contentDocument!.body.innerHTML = "<div><p></p></div>"
     const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
     await breadcrumb.updateComplete
@@ -323,6 +324,7 @@ describe("DomEditor.execute()", () => {
     await breadcrumb.updateComplete
 
     expect(breadcrumb.treeOpen).toBe(true)
+    expect(focus).toHaveBeenCalledWith({preventScroll: true})
   })
 
   it("selects the node represented by a clicked breadcrumb item", async () => {

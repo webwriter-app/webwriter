@@ -34,6 +34,17 @@ function isCaretAtStartOf(element: Element) {
  * selection). */
 export class SelectionFeature extends EditorFeature {
 
+  #sharedRefreshQueued = false
+
+  readonly #handleSharedChange = () => {
+    if(this.#sharedRefreshQueued) return
+    this.#sharedRefreshQueued = true
+    queueMicrotask(() => {
+      this.#sharedRefreshQueued = false
+      if(this.isEnabled) this.processSelection()
+    })
+  }
+
   /** Clamps collapsed selection endpoints outside the editable body to the nearest body boundary. */
   #constrainSelectionToBody() {
     const selection = document.getSelection()
@@ -69,8 +80,17 @@ export class SelectionFeature extends EditorFeature {
 
   /** Enables the feature and places the selection at the document start. */
   enable() {
+    if(this.isEnabled) return
     $.selectDocumentStart()
     super.enable()
+    this.editor.doc.doc.on("afterTransaction", this.#handleSharedChange)
+    this.processSelection()
+  }
+
+  disable() {
+    if(!this.isEnabled) return
+    this.editor.doc.doc.off("afterTransaction", this.#handleSharedChange)
+    super.disable()
   }
 
   /** Selects the element addressed by a child-node path from BODY. */
@@ -117,6 +137,25 @@ export class SelectionFeature extends EditorFeature {
    * has not been created yet. */
   get gapCaret() {
     return this.editor.appendix.querySelector(".◆gap-caret")
+  }
+
+  /** Creates the virtual caret used only for a completely empty document.
+   * Chromium keeps a valid BODY@0 selection in that state but does not paint
+   * its native caret consistently. The visual element stays in the shadow
+   * appendix and is positioned from the BODY selection marker. */
+  #createEmptyDocumentCaret() {
+    const node = document.createElement("div")
+    node.classList.add("◆", "◆editor-only", "◆empty-document-caret")
+    node.setAttribute("part", "empty-document-caret")
+    node.setAttribute("aria-hidden", "true")
+    node.contentEditable = "false"
+    this.editor.addAppendix(node)
+    return node
+  }
+
+  /** The shadow-DOM visual caret for an empty document, if created. */
+  get emptyDocumentCaret() {
+    return this.editor.appendix.querySelector(".◆empty-document-caret")
   }
 
   /** Removes all selection marker classes (gap, element, text, empty) from
@@ -174,8 +213,15 @@ export class SelectionFeature extends EditorFeature {
    * (`◆empty-selected`). Previous markers are cleared first. */
   processSelection(inDragSelection=false) {
     this.#constrainSelectionToBody()
-    const sel = document.getSelection()!
+    let sel = document.getSelection()
+    const isInBody = (node: Node | null) => node === document.body || Boolean(node && document.body.contains(node))
+    if(sel?.isCollapsed && (!isInBody(sel.anchorNode) || !isInBody(sel.focusNode))) {
+      $.selectDocumentStart()
+      sel = document.getSelection()
+    }
     this.#clearSelections()
+    if(!sel?.anchorNode || !sel.focusNode) return
+    const anchorContainer = getContainer(sel.anchorNode)
     if($.isGapSelection) {
       const children = sel.anchorNode!.childNodes
       if(children.length) {
@@ -199,15 +245,19 @@ export class SelectionFeature extends EditorFeature {
     }
     else if($.isElementSelection && !inDragSelection) {
       const element = sel.anchorNode!.childNodes.item(Math.min(sel.anchorOffset, sel.focusOffset)) as Element
-      element.classList.add("◆", "◆element-selected")
+      element?.classList?.add("◆", "◆element-selected")
     }
-    else if($.isTextSelection) {
+    else if(anchorContainer && $.isTextSelection) {
       const element = getContainer($.commonAncestor)
-      element.classList.add("◆", "◆text-selected")
+      element?.classList.add("◆", "◆text-selected")
     }
-    else if($.isEmptySelection) {
+    else if(anchorContainer && $.isEmptySelection) {
       const element = getContainer($.commonAncestor)
+      if(!element) return
       element.classList.add("◆", "◆empty-selected")
+      if(element === document.body && !this.emptyDocumentCaret) {
+        this.#createEmptyDocumentCaret()
+      }
     }
   }
 
@@ -317,7 +367,16 @@ export class SelectionFeature extends EditorFeature {
       }
     },
     "pointerdown": ev => {
-      if((isElement(ev.target) && ev.target.closest(".◆editor-only")) || this.hasDoubleClicked || ev.button === 2 || $.isEmptyDocumentSelection) {
+      if((isElement(ev.target) && ev.target.closest(".◆editor-only")) || this.hasDoubleClicked || ev.button === 2) {
+        return
+      }
+      if($.isEmptyDocumentSelection) {
+        // Browsers focus an empty design-mode body on pointerdown but do not
+        // consistently create a DOM selection for it. Restore the editing
+        // position explicitly; pointerup restores it after the browser's
+        // default focus action has completed.
+        $.selectDocumentStart()
+        this.processSelection()
         return
       }
       if(modifierKeyDown(ev)) {
@@ -350,6 +409,10 @@ export class SelectionFeature extends EditorFeature {
     },
     "pointerup": ev => {
       this.isInDragSelection = false
+      if(document.body.childNodes.length === 0) {
+        $.selectDocumentStart()
+        this.processSelection()
+      }
     }
   }
 }

@@ -59,6 +59,42 @@ describe("DOMEditor collaboration wiring", () => {
   })
 })
 
+describe("collaboration history shortcuts", () => {
+  const originalPlatform = navigator.platform
+
+  afterEach(() => {
+    Object.defineProperty(navigator, "platform", {value: originalPlatform, configurable: true})
+  })
+
+  it("undoes and redoes with Apple shortcuts, including uppercase Shift+Cmd+Z", async () => {
+    Object.defineProperty(navigator, "platform", {value: "MacIntel", configurable: true})
+    document.querySelector("p")!.textContent = "Changed"
+    await mutationsDelivered()
+
+    const undo = new KeyboardEvent("keydown", {key: "z", metaKey: true, bubbles: true, cancelable: true})
+    document.dispatchEvent(undo)
+    expect(undo.defaultPrevented).toBe(true)
+    expect(document.querySelector("p")!.textContent).toBe("Hello")
+
+    const redo = new KeyboardEvent("keydown", {key: "Z", metaKey: true, shiftKey: true, bubbles: true, cancelable: true})
+    document.dispatchEvent(redo)
+    expect(redo.defaultPrevented).toBe(true)
+    expect(document.querySelector("p")!.textContent).toBe("Changed")
+  })
+
+  it("undoes and redoes with non-Apple shortcuts", async () => {
+    Object.defineProperty(navigator, "platform", {value: "Win32", configurable: true})
+    document.querySelector("p")!.textContent = "Changed"
+    await mutationsDelivered()
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "z", ctrlKey: true, bubbles: true, cancelable: true}))
+    expect(document.querySelector("p")!.textContent).toBe("Hello")
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "y", ctrlKey: true, bubbles: true, cancelable: true}))
+    expect(document.querySelector("p")!.textContent).toBe("Changed")
+  })
+})
+
 describe("collaboration presence", () => {
   it("shows every active user as a colored dot at the document anchor", () => {
     const remoteClientId = addRemoteUser("Ada", "#ff3366")

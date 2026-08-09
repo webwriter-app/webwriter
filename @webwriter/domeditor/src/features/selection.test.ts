@@ -134,6 +134,17 @@ describe("enable()", () => {
     expect($.anchorOffset).toBe(0)
     fresh.disable()
   })
+
+  it("marks an empty document selection", () => {
+    const fresh = new SelectionFeature(editor)
+    fresh.enable()
+    expect(document.body.classList.contains("◆empty-selected")).toBe(true)
+    expect(fresh.emptyDocumentCaret).toBeInstanceOf(HTMLElement)
+    expect(fresh.emptyDocumentCaret).toHaveClass("◆editor-only")
+    expect(fresh.emptyDocumentCaret).toHaveAttribute("part", "empty-document-caret")
+    expect(fresh.emptyDocumentCaret?.getRootNode()).toBe(document.body.shadowRoot)
+    fresh.disable()
+  })
 })
 
 describe("document listeners", () => {
@@ -145,6 +156,22 @@ describe("document listeners", () => {
     $.move(p.firstChild!, 2)
     await new Promise(resolve => setTimeout(resolve))
     expect(p.classList.contains("◆text-selected")).toBe(true)
+  })
+
+  it("restores the empty-document caret when a shared change removes the final node", async () => {
+    const p = el("p", "hello")
+    await new Promise<void>(resolve => queueMicrotask(resolve))
+    $.move(p.firstChild!, 2)
+    feature.processSelection()
+
+    editor.doc.doc.transact(() => editor.doc.body.delete(0, editor.doc.body.length), "remote-test")
+    await new Promise<void>(resolve => queueMicrotask(resolve))
+
+    expect(document.body.innerHTML).toBe("")
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(0)
+    expect(document.body).toHaveClass("◆empty-selected")
+    expect(feature.emptyDocumentCaret).toHaveAttribute("part", "empty-document-caret")
   })
 
   it("posts a user-facing selection path through the bridge", () => {
@@ -214,6 +241,8 @@ describe("document listeners", () => {
     document.body.dispatchEvent(event)
     expect(event.defaultPrevented).toBe(false)
     expect(feature.isInDragSelection).toBe(false)
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(0)
   })
   it("ends the drag selection on pointerup", () => {
     feature.isInDragSelection = true

@@ -148,6 +148,7 @@ export class DOMEditor {
   constructor() {
     // this.schema.checkAndCorrect()
     adoptStylesheet(document, editorStylesheet)
+    document.body.contentEditable = "true"
     document.designMode = "on"
     document.body.spellcheck = false
     if(globalThis.SYNC_URL) {
@@ -378,13 +379,14 @@ export class DOMEditor {
   }
   
   clearEditingArtifacts(node: Document | DocumentFragment = document) {
-    if(node instanceof Document) {
-      node.body.removeAttribute("contenteditable")
-      node.body.removeAttribute("spellcheck")
+    const documentNode = node.nodeType === Node.DOCUMENT_NODE? node as Document: null
+    if(documentNode) {
+      documentNode.body.removeAttribute("contenteditable")
+      documentNode.body.removeAttribute("spellcheck")
     }
     const editingElements = Array.from(node.querySelectorAll(".◆"))
-    if(node instanceof Document && node.body.classList.contains("◆")) {
-      editingElements.unshift(node.body)
+    if(documentNode?.body.classList.contains("◆")) {
+      editingElements.unshift(documentNode.body)
     }
     editingElements.forEach(el => {
       el.outerHTML
