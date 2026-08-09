@@ -73,6 +73,25 @@ export class SelectionFeature extends EditorFeature {
     super.enable()
   }
 
+  /** Selects the element addressed by a child-node path from BODY. */
+  actions = {
+    selectNode: ({path}: {type: "selectNode", path: number[]}) => {
+      let node: Node = document.body
+      for(const index of path) {
+        const child = node.childNodes.item(index)
+        if(!child) {
+          throw new RangeError(`Cannot select missing node at path [${path.join(", ")}]`)
+        }
+        node = child
+      }
+      if(!isElement(node)) {
+        throw new TypeError("A breadcrumb path must resolve to an element")
+      }
+      $.selectElement(node)
+      this.processSelection()
+    },
+  } as const
+
   /** Whether a pointer-driven drag selection is in progress. */
   isInDragSelection = false
 

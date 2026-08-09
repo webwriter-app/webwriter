@@ -10,7 +10,16 @@ import { SlashFeature } from "./features/slash"
 import { TransformationFeature } from "./features/transformation"
 import { Schema } from "./schema"
 import { $, adoptStylesheet, createStylesheet, isElement } from "./utility"
-import { executeCompleteEvent, executeFailureEvent, type SerializedError } from "./editor-bridge"
+import {
+  executeCompleteEvent,
+  executeFailureEvent,
+  selectionChangeEvent,
+  type SelectionChangeDetail,
+  type SelectionGap,
+  type SelectionPathItem,
+  type SerializedError,
+} from "./editor-bridge"
+import { getElementPresentation } from "./element-names"
 import editorStyleString from "./editor.css?raw"
 
 const editorStylesheet = createStylesheet(editorStyleString)
@@ -30,13 +39,15 @@ declare global {
   var SYNC_URL: string | undefined
 }
 
-type ActionKeyMap = {
-  [F in keyof DOMEditor["features"]]: { // @ts-ignore
-    [K in keyof DOMEditor["features"][F]["actions"]]: Parameters<DOMEditor["features"][F]["actions"][K]>[0]
-  }
-}
-type ActionFlatMap = Exclude<ActionKeyMap[keyof ActionKeyMap], Record<string, never>>
-export type EditingAction = ActionFlatMap[keyof ActionFlatMap]
+type FeatureActions<F extends keyof DOMEditor["features"]> = NonNullable<DOMEditor["features"][F]["actions"]>
+type FeatureAction<F extends keyof DOMEditor["features"]> = {
+  [K in keyof FeatureActions<F>]: FeatureActions<F>[K] extends (...args: infer Parameters) => unknown
+    ? Parameters[0]
+    : never
+}[keyof FeatureActions<F>]
+export type EditingAction = {
+  [F in keyof DOMEditor["features"]]: FeatureAction<F>
+}[keyof DOMEditor["features"]]
 
 export class DOMEditor {
   
@@ -151,21 +162,24 @@ export class DOMEditor {
       this.normalizeSurroundingElements(ev.target instanceof Node? ev.target: undefined)
     })
     this.observer.observe(document, {attributes: true, attributeOldValue: true, characterData: true, characterDataOldValue: true, childList: true, subtree: true})
-    document.addEventListener("selectionchange", () => {
-      const selection = document.getSelection()
-      if(!selection?.anchorNode) {
-        return
-      }
-      this.handleMutations([{
-        type: "selection",
-        anchorNode: selection.anchorNode,
-        anchorOffset: selection?.anchorOffset,
-        focusNode: selection.focusNode ?? selection.anchorNode,
-        focusOffset: selection?.focusOffset ?? selection?.anchorOffset
-      }])
-    })
+    document.addEventListener("selectionchange", this.handleSelectionChange)
+    this.postSelectionPath()
     document.addEventListener("copy", this.#onCopy)
     window.addEventListener("message", this.handleMessage)
+  }
+
+  private handleSelectionChange = () => {
+    const selection = document.getSelection()
+    if(!selection?.anchorNode) return
+
+    this.handleMutations([{
+      type: "selection",
+      anchorNode: selection.anchorNode,
+      anchorOffset: selection.anchorOffset,
+      focusNode: selection.focusNode ?? selection.anchorNode,
+      focusOffset: selection.focusOffset ?? selection.anchorOffset,
+    }])
+    this.postSelectionPath()
   }
 
   private handleMessage = (ev: MessageEvent) => {
@@ -176,6 +190,9 @@ export class DOMEditor {
     // Responses are posted to the parent window. In a non-iframe environment
     // (for example, a unit test), they can arrive back at this listener too.
     if(ev.data.type === executeCompleteEvent || ev.data.type === executeFailureEvent) {
+      return
+    }
+    if(ev.data.type === selectionChangeEvent) {
       return
     }
 
@@ -241,11 +258,67 @@ export class DOMEditor {
     return {name: "Error", message: String(error)}
   }
 
-  private postExecutionEvent<T extends object>(type: string, detail: T) {
+  private postBridgeEvent<T extends object>(type: string, detail: T) {
     const event = new CustomEvent(type, {detail})
     window.dispatchEvent(event)
     const target = window.parent === window? window: window.parent
     target.postMessage({type: event.type, detail: event.detail}, "*")
+  }
+
+  private postExecutionEvent<T extends object>(type: string, detail: T) {
+    this.postBridgeEvent(type, detail)
+  }
+
+  private selectedElementForPath() {
+    const selectedElement = $.selectedElement
+    if(selectedElement?.isConnected) return selectedElement
+
+    const anchor = $.anchor
+    if(anchor instanceof Text) return anchor.parentElement
+    if(isElement(anchor)) return anchor
+    return document.body
+  }
+
+  private pathToElement(element: Element) {
+    const body = document.body
+    if(element === body) return []
+
+    const path: number[] = []
+    let current: Element | null = element
+    while(current && current !== body) {
+      const parent: Element | null = current.parentElement
+      if(!parent) return []
+      path.unshift(Array.from(parent.childNodes).indexOf(current))
+      current = parent
+    }
+    return current === body? path: []
+  }
+
+  /** Sends the current element path to the host application through the bridge. */
+  postSelectionPath() {
+    const body = document.body
+    const selected = this.selectedElementForPath()
+    const element = selected && (selected === body || body.contains(selected))? selected: body
+    const elements: Element[] = []
+    let current: Element | null = element
+    while(current && current !== body) {
+      elements.unshift(current)
+      current = current.parentElement
+    }
+    elements.unshift(body)
+
+    const path: SelectionPathItem[] = elements.map(currentElement => ({
+      path: this.pathToElement(currentElement),
+      ...getElementPresentation(currentElement),
+    }))
+    const gap: SelectionGap | undefined = $.isGapSelection && isElement($.anchor)
+      ? {parentPath: this.pathToElement($.anchor), offset: $.anchorOffset}
+      : undefined
+    const detail: SelectionChangeDetail = {
+      path,
+      ...(gap ? {gap} : {}),
+    }
+    this.postBridgeEvent(selectionChangeEvent, detail)
   }
 
   startTransform(el: HTMLElement) {

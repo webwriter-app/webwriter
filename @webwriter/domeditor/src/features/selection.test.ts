@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach } from "vitest"
+import { describe, it, expect, beforeEach, vi } from "vitest"
 import '@testing-library/jest-dom/vitest'
 
 import { DOMEditor } from "../domeditor"
 import { SelectionFeature } from "./selection"
 import { $ } from "../utility"
+import { selectionChangeEvent } from "../editor-bridge"
 
 var editor = new DOMEditor()
 const feature = editor.features.selection
@@ -97,6 +98,15 @@ describe("processSelection()", () => {
     feature.processSelection()
     expect(feature.gapCaret!.getAttribute("visibility")).toBe("hidden")
   })
+
+  it("selects an element from a BODY-relative breadcrumb path", () => {
+    document.body.innerHTML = "<div><p>hello</p></div>"
+    const paragraph = document.querySelector("p")!
+
+    feature.actions.selectNode({type: "selectNode", path: [0, 0]})
+
+    expect($.selectedElement).toBe(paragraph)
+  })
 })
 
 describe("gapAnchor", () => {
@@ -135,6 +145,42 @@ describe("document listeners", () => {
     $.move(p.firstChild!, 2)
     await new Promise(resolve => setTimeout(resolve))
     expect(p.classList.contains("◆text-selected")).toBe(true)
+  })
+
+  it("posts a user-facing selection path through the bridge", () => {
+    document.body.innerHTML = "<div><p>hello</p></div>"
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph.firstChild!, 2)
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => {})
+
+    editor.postSelectionPath()
+
+    expect(postMessage).toHaveBeenCalledWith({
+      type: selectionChangeEvent,
+      detail: {
+        path: [
+          {path: [], name: "Document", icon: "Document"},
+          {path: [0], name: "Section", icon: "Section"},
+          {path: [0, 0], name: "Paragraph", icon: "Paragraph"},
+        ],
+      },
+      }, "*")
+  })
+  it("posts a gap position through the bridge", () => {
+    document.body.innerHTML = "<p>a</p><p>b</p>"
+    const firstParagraph = document.querySelector("p")!
+    $.selectGap(firstParagraph)
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => {})
+
+    editor.postSelectionPath()
+
+    expect(postMessage).toHaveBeenLastCalledWith({
+      type: selectionChangeEvent,
+      detail: {
+        path: [{path: [], name: "Document", icon: "Document"}],
+        gap: {parentPath: [], offset: 1},
+      },
+    }, "*")
   })
   it("tracks modifier keys on the body", () => {
     document.dispatchEvent(new KeyboardEvent("keydown", {ctrlKey: true, altKey: true, shiftKey: true}))

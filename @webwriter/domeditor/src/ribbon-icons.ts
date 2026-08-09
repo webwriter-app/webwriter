@@ -4,17 +4,21 @@ import arrowBackUp from "@tabler/icons/outline/arrow-back-up.svg?raw"
 import arrowForwardUp from "@tabler/icons/outline/arrow-forward-up.svg?raw"
 import arrowsMove from "@tabler/icons/outline/arrows-move.svg?raw"
 import alignLeft from "@tabler/icons/outline/align-left.svg?raw"
+import article from "@tabler/icons/outline/file-text.svg?raw"
 import bold from "@tabler/icons/outline/bold.svg?raw"
 import boxMargin from "@tabler/icons/outline/box-margin.svg?raw"
+import button from "@tabler/icons/outline/rectangle.svg?raw"
 import clearFormatting from "@tabler/icons/outline/clear-formatting.svg?raw"
 import clipboard from "@tabler/icons/outline/clipboard.svg?raw"
 import code from "@tabler/icons/outline/code.svg?raw"
 import columns3 from "@tabler/icons/outline/columns-3.svg?raw"
 import colorSwatch from "@tabler/icons/outline/color-swatch.svg?raw"
 import copy from "@tabler/icons/outline/copy.svg?raw"
+import chevronRight from "@tabler/icons/outline/chevron-right.svg?raw"
 import deviceFloppy from "@tabler/icons/outline/device-floppy.svg?raw"
 import dots from "@tabler/icons/outline/dots.svg?raw"
 import download from "@tabler/icons/outline/download.svg?raw"
+import fileDescription from "@tabler/icons/outline/file-description.svg?raw"
 import fileOrientation from "@tabler/icons/outline/file-orientation.svg?raw"
 import filePlus from "@tabler/icons/outline/file-plus.svg?raw"
 import folderOpen from "@tabler/icons/outline/folder-open.svg?raw"
@@ -28,12 +32,15 @@ import heading from "@tabler/icons/outline/heading.svg?raw"
 import highlight from "@tabler/icons/outline/highlight.svg?raw"
 import italic from "@tabler/icons/outline/italic.svg?raw"
 import layersUnion from "@tabler/icons/outline/layers-union.svg?raw"
+import layout from "@tabler/icons/outline/layout.svg?raw"
+import link from "@tabler/icons/outline/link.svg?raw"
 import lineHeight from "@tabler/icons/outline/line-height.svg?raw"
 import list from "@tabler/icons/outline/list.svg?raw"
 import listDetails from "@tabler/icons/outline/list-details.svg?raw"
 import listNumbers from "@tabler/icons/outline/list-numbers.svg?raw"
 import math from "@tabler/icons/outline/math.svg?raw"
 import maximize from "@tabler/icons/outline/maximize.svg?raw"
+import menu2 from "@tabler/icons/outline/menu-2.svg?raw"
 import palette from "@tabler/icons/outline/palette.svg?raw"
 import photo from "@tabler/icons/outline/photo.svg?raw"
 import pilcrow from "@tabler/icons/outline/pilcrow.svg?raw"
@@ -53,8 +60,24 @@ import video from "@tabler/icons/outline/video.svg?raw"
 import volume from "@tabler/icons/outline/volume.svg?raw"
 import worldWww from "@tabler/icons/outline/world-www.svg?raw"
 import zoomIn from "@tabler/icons/outline/zoom-in.svg?raw"
+import forms from "@tabler/icons/outline/forms.svg?raw"
+import input from "@tabler/icons/outline/input-search.svg?raw"
+import quote from "@tabler/icons/outline/quote.svg?raw"
+import section from "@tabler/icons/outline/section.svg?raw"
 
 const icons: Record<string, string> = {
+  Document: fileDescription,
+  ChevronRight: chevronRight,
+  Section: section,
+  Article: article,
+  Layout: layout,
+  Link: link,
+  Quote: quote,
+  Form: forms,
+  Label: menu2,
+  Button: button,
+  Input: input,
+  Text: typography,
   Preview: playerPlay,
   Undo: arrowBackUp,
   Redo: arrowForwardUp,

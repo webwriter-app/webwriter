@@ -114,7 +114,7 @@ export class AppRibbon extends LitElement {
       flex-direction: column;
       position: relative;
       height: 100%;
-      border-bottom: 0.5px solid #a8a8a8;
+      border-bottom: 0.5px solid #d8dee6;
       background: #ffffff;
       transition: background-color 180ms ease;
     }

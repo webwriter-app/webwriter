@@ -1,14 +1,21 @@
 import { LitElement, css, html } from "lit"
 import type { AppRibbon } from "./ribbon"
+import type { DocumentTreeItem } from "./breadcrumb"
 import type { EditingAction } from "../domeditor"
 import { slashMenuItems } from "./slash-menu"
+import { getElementPresentation } from "../element-names"
 import {
   executeCompleteEvent,
   executeFailureEvent,
   isExecuteResponse,
+  isSelectionChangeMessage,
+  selectionChangeEvent,
   type ExecuteCompleteDetail,
   type ExecuteFailureDetail,
+  type SelectionGap,
+  type SelectionPathItem,
 } from "../editor-bridge"
+import "./breadcrumb"
 import "./ribbon"
 
 const escapeAttribute = (value: string) => value
@@ -35,8 +42,15 @@ type RibbonInputEventDetail = {
  * runs the editor module there, keeping editor styles, selection and DOM
  * mutations isolated from the host document. */
 export class DomEditor extends LitElement {
+  static properties = {
+    selectionPath: {attribute: false, state: true},
+    selectionGap: {attribute: false, state: true},
+    documentTree: {attribute: false, state: true},
+  }
+
   private editorDocument: Document | null = null
   private editorWindow: Window | null = null
+  private documentTreeObserver: MutationObserver | null = null
   private editorReadyPromise: Promise<Window> | null = null
   private editorReadyResolve: ((editorWindow: Window) => void) | null = null
   private editorReadyReject: ((reason: unknown) => void) | null = null
@@ -44,6 +58,10 @@ export class DomEditor extends LitElement {
   private savedEditorSelection: SelectionBookmark | null = null
   private ribbonInputSession = false
   private restoreEditorAfterRibbonInput = false
+  private selectionPath: SelectionPathItem[] = []
+  private selectionGap: SelectionGap | null = null
+  private documentTree: DocumentTreeItem | null = null
+  private treeViewOpen = false
   private pendingExecutions = new Map<string, {
     resolve: (value: unknown) => void
     reject: (reason?: unknown) => void
@@ -64,6 +82,10 @@ export class DomEditor extends LitElement {
       width: 100%;
     }
 
+    app-ribbon:not([expanded]) + dom-editor-breadcrumb {
+      display: none;
+    }
+
     iframe {
       display: block;
       flex: 1 1 auto;
@@ -78,6 +100,8 @@ export class DomEditor extends LitElement {
   }
 
   private handleEditorFrameLoad = (event: Event) => {
+    this.documentTreeObserver?.disconnect()
+    this.documentTreeObserver = null
     this.editorDocument?.removeEventListener("pointerdown", this.handleEditorPointerDown)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     const previousIframe = event.currentTarget as HTMLIFrameElement
@@ -86,6 +110,16 @@ export class DomEditor extends LitElement {
     const iframe = event.currentTarget as HTMLIFrameElement
     this.editorDocument = iframe.contentDocument
     this.editorWindow = iframe.contentWindow
+    this.documentTree = this.buildDocumentTree()
+    const body = this.editorDocument?.body
+    if(body) {
+      this.documentTreeObserver = new MutationObserver(mutations => {
+        if(mutations.some(mutation => mutation.type === "childList")) {
+          this.documentTree = this.buildDocumentTree()
+        }
+      })
+      this.documentTreeObserver.observe(body, {childList: true, subtree: true})
+    }
     this.editorDocument?.addEventListener("pointerdown", this.handleEditorPointerDown)
     this.editorDocument?.addEventListener("focusin", this.handleEditorFocus)
     iframe.addEventListener("focus", this.handleEditorFrameFocus)
@@ -228,9 +262,69 @@ export class DomEditor extends LitElement {
     }).finally(() => this.focusEditor())
   }
 
+  private handleBreadcrumbItemSelect = (event: Event) => {
+    const item = (event as CustomEvent<SelectionPathItem>).detail
+    if(!item || !Array.isArray(item.path)) return
+
+    void this.execute({
+      type: "selectNode",
+      path: [...item.path],
+    }).finally(() => this.focusEditor())
+  }
+
+  private buildDocumentTree() {
+    const body = this.editorDocument?.body
+    if(!body) return null
+
+    const build = (element: Element, path: number[]): DocumentTreeItem => ({
+      path: [...path],
+      ...getElementPresentation(element),
+      children: Array.from(element.children).flatMap(child => {
+        const index = Array.from(element.childNodes).indexOf(child)
+        return index < 0? []: [build(child, [...path, index])]
+      }),
+    })
+
+    return build(body, [])
+  }
+
+  private handleBreadcrumbTreeToggle = (event: Event) => {
+    const open = (event as CustomEvent<{open?: unknown}>).detail?.open === true
+    this.treeViewOpen = open
+    this.documentTree = this.buildDocumentTree()
+  }
+
+  private isEditorMessage(event: MessageEvent) {
+    const iframe = this.editorIframe()
+    return !event.source || event.source === this.editorWindow || event.source === iframe?.contentWindow
+  }
+
   private handleEditorMessage = (event: MessageEvent) => {
+    if(isSelectionChangeMessage(event.data)) {
+      if(!this.isEditorMessage(event)) return
+      const path = event.data.detail.path.map(item => ({
+        ...item,
+        path: [...item.path],
+      }))
+      const gap = event.data.detail.gap
+      const selectionGap = gap
+        ? {parentPath: [...gap.parentPath], offset: gap.offset}
+        : null
+      this.selectionPath = path
+      this.selectionGap = selectionGap
+      this.documentTree = this.buildDocumentTree()
+      this.dispatchEvent(new CustomEvent(selectionChangeEvent, {
+        detail: {
+          path,
+          ...(selectionGap ? {gap: selectionGap} : {}),
+        },
+        bubbles: true,
+        composed: true,
+      }))
+      return
+    }
     if(!isExecuteResponse(event.data)) return
-    if(event.source && event.source !== this.editorWindow) return
+    if(!this.isEditorMessage(event)) return
 
     const detail = event.data.detail
     const pending = this.pendingExecutions.get(detail.requestId)
@@ -304,6 +398,8 @@ export class DomEditor extends LitElement {
 
   disconnectedCallback() {
     window.removeEventListener("message", this.handleEditorMessage)
+    this.documentTreeObserver?.disconnect()
+    this.documentTreeObserver = null
     this.editorDocument?.removeEventListener("pointerdown", this.handleEditorPointerDown)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     const iframe = this.editorIframe()
@@ -314,10 +410,14 @@ export class DomEditor extends LitElement {
     this.savedEditorSelection = null
     this.ribbonInputSession = false
     this.restoreEditorAfterRibbonInput = false
+    this.treeViewOpen = false
+    this.documentTree = null
     this.editorReadyReject?.(new Error("The DOM editor component was disconnected"))
     this.editorReadyPromise = null
     this.editorReadyResolve = null
     this.editorReadyReject = null
+    this.selectionPath = []
+    this.selectionGap = null
     const error = new Error("The DOM editor component was disconnected")
     this.pendingExecutions.forEach(({reject}) => reject(error))
     this.pendingExecutions.clear()
@@ -336,6 +436,13 @@ export class DomEditor extends LitElement {
           @ribbon-input-commit=${this.finishRibbonInput}
           @ribbon-input-cancel=${this.finishRibbonInput}
         ></app-ribbon>
+        <dom-editor-breadcrumb
+          .path=${this.selectionPath}
+          .gap=${this.selectionGap}
+          .tree=${this.documentTree}
+          @breadcrumb-tree-toggle=${this.handleBreadcrumbTreeToggle}
+          @breadcrumb-item-select=${this.handleBreadcrumbItemSelect}
+        ></dom-editor-breadcrumb>
       </header>
       <iframe title="DOM editor" srcdoc=${this.editorSrcdoc} @load=${this.handleEditorFrameLoad}></iframe>
     `
