@@ -68,7 +68,9 @@ export class CollaborationFeature extends EditorFeature {
 
   renderPresence() {
     if(!this.isEnabled) return
-    const states = Array.from(this.editor.doc.awareness.getStates()).sort(([a], [b]) => a - b)
+    const states = Array.from(this.editor.doc.awareness.getStates())
+      .filter(([clientId]) => clientId !== this.editor.doc.awareness.clientID)
+      .sort(([a], [b]) => a - b)
     const users = this.usersElement
     const carets: CaretLayout[] = []
 

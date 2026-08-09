@@ -101,10 +101,11 @@ describe("collaboration presence", () => {
     const users = editor.appendix.querySelector<HTMLElement>(".◆presence-users")!
     const dots = users.querySelectorAll<HTMLElement>(".◆presence-user")
 
-    expect(dots).toHaveLength(2)
+    expect(dots).toHaveLength(1)
     expect(users.parentNode).toBe(document.body.shadowRoot)
     expect(document.body.classList.contains("◆presence-document-anchor")).toBe(true)
     expect(users.getAttribute("part")).toContain("presence-users")
+    expect(users.querySelector(`[data-client-id="${editor.doc.awareness.clientID}"]`)).toBeNull()
     const remoteDot = users.querySelector<HTMLElement>(`[data-client-id="${remoteClientId}"]`)!
     expect(remoteDot.title).toBe("Ada")
     expect(remoteDot.style.getPropertyValue("--presence-color")).toBe("#ff3366")
@@ -161,7 +162,7 @@ describe("collaboration presence", () => {
 
     removeAwarenessStates(editor.doc.awareness, [remoteClientId], "remote-disconnect")
 
-    expect(editor.appendix.querySelectorAll(".◆presence-user")).toHaveLength(1)
+    expect(editor.appendix.querySelectorAll(".◆presence-user")).toHaveLength(0)
     expect(editor.appendix.querySelector(".◆presence-caret")).toBeNull()
     expect(paragraph.classList.contains(anchorClass)).toBe(false)
     expect(document.adoptedStyleSheets.some(sheet =>
