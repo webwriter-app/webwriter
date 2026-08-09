@@ -357,6 +357,26 @@ describe("DomEditor.execute()", () => {
     expect(getComputedStyle(breadcrumb).display).toBe("none")
   })
 
+  it("collapses the breadcrumb tree when the ribbon is collapsed", async () => {
+    const {editor, iframe} = await mountEditor()
+    iframe.contentDocument!.body.innerHTML = "<div><p></p></div>"
+
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    await breadcrumb.updateComplete
+    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
+    await editor.updateComplete
+    await breadcrumb.updateComplete
+    expect(breadcrumb.treeOpen).toBe(true)
+
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    ribbon.expanded = false
+    await ribbon.updateComplete
+    await editor.updateComplete
+    await breadcrumb.updateComplete
+
+    expect(breadcrumb.treeOpen).toBe(false)
+  })
+
   it("prevents pointer interactions from focusing ribbon controls", async () => {
     const {editor} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!

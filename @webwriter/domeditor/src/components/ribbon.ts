@@ -476,6 +476,9 @@ export class AppRibbon extends LitElement {
   }
 
   protected updated(changed: Map<string, unknown>) {
+    if(changed.has("expanded") && !this.expanded) {
+      this.dispatchEvent(new Event("ribbon-collapse", {bubbles: true, composed: true}))
+    }
     if((changed.has("menuOpen") && !this.menuOpen) || changed.has("activeMenu")) {
       this.renderRoot.querySelector<RibbonMenu>("ribbon-menu")?.closeSubmenus()
     }

@@ -1,6 +1,6 @@
 import { LitElement, css, html } from "lit"
 import type { AppRibbon } from "./ribbon"
-import type { DocumentTreeItem } from "./breadcrumb"
+import type { DomEditorBreadcrumb, DocumentTreeItem } from "./breadcrumb"
 import type { EditingAction } from "../domeditor"
 import { slashMenuItems } from "./slash-menu"
 import { getElementPresentation } from "../element-names"
@@ -262,6 +262,10 @@ export class DomEditor extends LitElement {
     }).finally(() => this.focusEditor())
   }
 
+  private handleRibbonCollapse = () => {
+    this.renderRoot.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")?.collapseTree()
+  }
+
   private handleBreadcrumbItemSelect = (event: Event) => {
     const item = (event as CustomEvent<SelectionPathItem>).detail
     if(!item || !Array.isArray(item.path)) return
@@ -430,6 +434,7 @@ export class DomEditor extends LitElement {
         <app-ribbon
           logo-url=${appIconUrl}
           @ribbon-button-click=${this.handleRibbonButtonClick}
+          @ribbon-collapse=${this.handleRibbonCollapse}
           @ribbon-input-pointerdown=${this.handleRibbonInputPointerDown}
           @ribbon-input-focus=${this.handleRibbonInputFocus}
           @ribbon-input-blur=${this.handleRibbonInputBlur}

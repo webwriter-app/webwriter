@@ -514,6 +514,20 @@ export class DomEditorBreadcrumb extends LitElement {
     if(height !== this.treeHeight) this.treeHeight = height
   }
 
+  collapseTree() {
+    if(!this.treeOpen) return
+    const path = [...this.treeRootPath]
+    this.treeOpen = false
+    this.treeRootPath = []
+    this.treeAnimating = true
+    this.scheduleTreeCollapse()
+    this.dispatchEvent(new CustomEvent<{open: boolean, path: number[]}>("breadcrumb-tree-toggle", {
+      detail: {open: false, path},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
   private toggleTree(item: SelectionPathItem) {
     const isSameTree = this.treeOpen && this.pathsEqual(this.treeRootPath, item.path)
     this.treeOpen = !isSameTree
