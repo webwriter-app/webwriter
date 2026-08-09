@@ -96,7 +96,11 @@ export class DomEditor extends LitElement {
   `
 
   private get editorSrcdoc() {
-    return `<script type="module" src="${escapeAttribute(editorEntryUrl)}"></script>`
+    const syncUrl = new URL(`ws://${location.hostname}:1234`)
+    const outerUrl = new URL(location.href)
+    outerUrl.searchParams.forEach((value, key) => syncUrl.searchParams.set(key, value))
+    const syncUrlLiteral = JSON.stringify(syncUrl.href).replaceAll("<", "\\u003C")
+    return `<script>globalThis.SYNC_URL = ${syncUrlLiteral}</script><script type="module" src="${escapeAttribute(editorEntryUrl)}"></script>`
   }
 
   private handleEditorFrameLoad = (event: Event) => {

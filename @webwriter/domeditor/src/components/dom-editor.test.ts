@@ -18,6 +18,23 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+describe("DomEditor iframe setup", () => {
+  it("passes the outer URL parameters to the editor as SYNC_URL", async () => {
+    const originalUrl = location.href
+    history.replaceState({}, "", "/?session=collab-demo&source=local")
+
+    try {
+      const {iframe} = await mountEditor()
+      expect(iframe.getAttribute("srcdoc")).toContain(
+        '<script>globalThis.SYNC_URL = "ws://localhost:1234/?session=collab-demo&source=local"</script>',
+      )
+    }
+    finally {
+      history.replaceState({}, "", originalUrl)
+    }
+  })
+})
+
 describe("DomEditor.execute()", () => {
   it("posts an action and resolves with the completion result", async () => {
     const {editor, iframe, editorWindow} = await mountEditor()
