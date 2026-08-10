@@ -156,6 +156,25 @@ describe("insertion menu", () => {
     expect($.anchorOffset).toBe(0)
   })
 
+  it("closes when a space is inserted directly after ++", async () => {
+    document.body.innerHTML = "<p></p>"
+    $.move(document.querySelector("p")!)
+    typeCommand()
+    const menu = editor.features.insertion.menu
+    await menu.updateComplete
+
+    const space = new KeyboardEvent("keydown", {key: " ", bubbles: true, cancelable: true})
+    document.dispatchEvent(space)
+
+    expect(space.defaultPrevented).toBe(false)
+    expect(menu.open).toBe(false)
+
+    typeText(" ")
+
+    expect(menu.open).toBe(false)
+    expect(editorHTML()).toBe("<p>++ </p>")
+  })
+
   it("updates the filter as command text is removed", async () => {
     document.body.innerHTML = "<p></p>"
     $.move(document.querySelector("p")!)
@@ -219,7 +238,7 @@ describe("insertion menu", () => {
     expect($.selectedElement?.tagName).toBe("TABLE")
   })
 
-  it("does not confirm until an option is selected", async () => {
+  it("closes on Enter and lets the editor handle it when no option is selected", async () => {
     document.body.innerHTML = "<p></p>"
     $.move(document.querySelector("p")!)
     typeCommand()
@@ -229,11 +248,11 @@ describe("insertion menu", () => {
 
     document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
 
-    expect(menu.open).toBe(true)
-    expect(editorHTML()).toBe("<p>++table</p>")
+    expect(menu.open).toBe(false)
+    expect(editorHTML()).toBe("<p>++table</p><p></p>")
   })
 
-  it("keeps the menu open when the filter has no option", async () => {
+  it("closes on Enter when the filter has no option", async () => {
     document.body.innerHTML = "<p></p>"
     $.move(document.querySelector("p")!)
     typeCommand()
@@ -244,7 +263,23 @@ describe("insertion menu", () => {
 
     document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
 
-    expect(menu.open).toBe(true)
-    expect(editorHTML()).toBe("<p>++unknown</p>")
+    expect(menu.open).toBe(false)
+    expect(editorHTML()).toBe("<p>++unknown</p><p></p>")
+  })
+
+  it("closes when the selection moves out of the command area", async () => {
+    document.body.innerHTML = "<p></p>"
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph)
+    typeCommand()
+    typeText("table")
+    const menu = editor.features.insertion.menu
+    await menu.updateComplete
+
+    $.move(paragraph.firstChild!, 0)
+    await Promise.resolve()
+
+    expect(menu.open).toBe(false)
+    expect(editorHTML()).toBe("<p>++table</p>")
   })
 })

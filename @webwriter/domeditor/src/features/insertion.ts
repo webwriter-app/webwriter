@@ -68,10 +68,18 @@ export class InsertionFeature extends EditorFeature {
           ev.stopImmediatePropagation()
           return
         }
+        if(ev.key === " " && this.commandTriggerLength > 0 && !this.menu.query) {
+          this.close()
+          return
+        }
         if(ev.key === "Enter") {
+          if(!this.menu.activeItem) {
+            this.close()
+            return
+          }
           ev.preventDefault()
           ev.stopImmediatePropagation()
-          if(this.menu.activeItem) this.menu.selectActive()
+          this.menu.selectActive()
           return
         }
         if(ev.key === "Escape") {
@@ -99,9 +107,10 @@ export class InsertionFeature extends EditorFeature {
     },
     input: () => {
       if(!this.menu.open) this.openTypedTrigger(2)
-      this.updateQuery()
+      this.updateQuery(true)
     },
     keyup: () => this.updateQuery(),
+    selectionchange: () => queueMicrotask(() => this.updateQuery()),
   }
 
   /** Opens the command menu at the current caret without inserting a visible
@@ -141,10 +150,26 @@ export class InsertionFeature extends EditorFeature {
 
   /** Syncs the picker with the text following its command trigger. Typing stays
    * in the document, so the regular editor caret remains visible and usable. */
-  private updateQuery() {
+  private updateQuery(allowInputExtension = false) {
     const selection = document.getSelection()
     const start = this.commandRange
-    if(!this.menu.open || !start || !selection?.isCollapsed || !selection.anchorNode) return
+    if(!this.menu.open) return
+    if(!start || !selection?.isCollapsed || !selection.anchorNode) {
+      this.close(false)
+      return
+    }
+    if(!allowInputExtension) {
+      try {
+        if(start.comparePoint(selection.anchorNode, selection.anchorOffset) !== 0) {
+          this.close(false)
+          return
+        }
+      }
+      catch {
+        this.close(false)
+        return
+      }
+    }
     const point = this.commandStartPoint()
     if(!point && !start.startContainer.isConnected) {
       this.close(false)
@@ -165,8 +190,13 @@ export class InsertionFeature extends EditorFeature {
       this.close(false)
       return
     }
+    const query = trigger? text.slice(trigger.length): text
+    if(trigger && query.startsWith(" ")) {
+      this.close(false)
+      return
+    }
     this.commandRange = range
-    this.menu.query = trigger? text.slice(trigger.length): text
+    this.menu.query = query
     const rect = this.commandPositionRect(range)
     this.menu.setPosition(rect.left, rect.bottom + 6)
   }
