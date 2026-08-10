@@ -1,5 +1,6 @@
 import { LitElement, css, html } from "lit"
 import { property, state } from "lit/decorators.js"
+import { ribbonIcon } from "../ribbon-icons"
 
 export type InsertionMenuItem = {
   tag: string
@@ -66,13 +67,15 @@ export class InsertionMenu extends LitElement {
     }
 
     .menu { position: relative; }
-    .close:hover { background: #f3f4f6; color: #111827; }
-    .sections { max-height: min(24rem, calc(100vh - 6rem)); overflow: auto; padding: 0.35rem; }
+    .close:hover { background: transparent; color: #111827; }
+    .sections { max-height: min(24rem, calc(100vh - 6rem)); overflow: auto; scrollbar-width: thin; padding: 0.35rem; }
     section + section { margin-top: 0.25rem; }
     h2 { margin: 0.45rem 0.4rem 0.2rem; color: #6b7280; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
 
     .item {
-      display: block;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
       width: 100%;
       border: 0;
       border-radius: 0.25rem;
@@ -84,7 +87,22 @@ export class InsertionMenu extends LitElement {
       cursor: pointer;
     }
 
+    .item:hover { background: #eef4fb; }
     .item[data-active] { color: #0c4a6e; background: #e0f2fe; }
+
+    .item-icon {
+      display: block;
+      flex: 0 0 1rem;
+      width: 1rem;
+      height: 1rem;
+      color: #526b86;
+    }
+
+    .item-icon svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
   `
 
   @property({type: Boolean, reflect: true}) open = false
@@ -141,6 +159,18 @@ export class InsertionMenu extends LitElement {
     }))
   }
 
+  private chooseFromPointer(event: PointerEvent, item: InsertionMenuItem) {
+    event.preventDefault()
+    event.stopPropagation()
+    this.choose(item)
+  }
+
+  private closeFromPointer(event: PointerEvent) {
+    event.preventDefault()
+    event.stopPropagation()
+    this.close()
+  }
+
   private close() {
     this.dispatchEvent(new Event("insertion-menu-close", {bubbles: true, composed: true}))
   }
@@ -149,13 +179,29 @@ export class InsertionMenu extends LitElement {
     const items = this.filteredItems
     return html`
       <div class="menu" ?hidden=${!this.open}>
-        <button class="close" aria-label="Close element menu" title="Close" @click=${this.close}>×</button>
+        <button
+          class="close"
+          type="button"
+          aria-label="Close element menu"
+          title="Close"
+          @pointerdown=${this.closeFromPointer}
+          @click=${this.close}
+        >×</button>
         <div class="sections">
           ${(["Text", "Media"] as const).map(section => html`
             <section aria-label=${section}>
               <h2>${section}</h2>
               ${items.filter(item => item.section === section).map(item => html`
-                <button class="item" ?data-active=${items[this.activeIndex] === item} @click=${() => this.choose(item)}>${item.name}</button>
+                <button
+                  class="item"
+                  type="button"
+                  ?data-active=${items[this.activeIndex] === item}
+                  @pointerdown=${(event: PointerEvent) => this.chooseFromPointer(event, item)}
+                  @click=${() => this.choose(item)}
+                >
+                  <span class="item-icon" aria-hidden="true">${ribbonIcon(item.name)}</span>
+                  <span>${item.name}</span>
+                </button>
               `)}
             </section>
           `)}

@@ -134,6 +134,24 @@ describe("insertion menu", () => {
     expect(editorHTML()).toBe("<p>++text</p>")
   })
 
+  it("inserts the selected item when it is activated by a pointer", async () => {
+    document.body.innerHTML = "<p></p>"
+    $.move(document.querySelector("p")!)
+    typeCommand()
+    typeText("table")
+    const menu = editor.features.insertion.menu
+    await menu.updateComplete
+
+    const item = menu.shadowRoot?.querySelector<HTMLButtonElement>(".item")!
+    const pointerDown = new Event("pointerdown", {bubbles: true, cancelable: true})
+    item.dispatchEvent(pointerDown)
+    item.click()
+
+    expect(pointerDown.defaultPrevented).toBe(true)
+    expect(editorHTML()).toBe("<table></table>")
+    expect(menu.open).toBe(false)
+  })
+
   it("filters from the text after ++, then navigates and confirms with Enter", async () => {
     document.body.innerHTML = "<p></p>"
     $.move(document.querySelector("p")!)
