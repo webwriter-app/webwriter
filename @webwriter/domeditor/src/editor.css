@@ -12,11 +12,15 @@ html {
 }
 
 body {
-  margin: 1em;
+  margin: 1.25rem;
   pointer-events: auto;
   user-select: text;
   -webkit-user-select: text;
   caret-color: currentColor;
+}
+
+body > * + * {
+  margin-block-start: 1.25rem;
 }
 
 a:not([href]) {
@@ -112,32 +116,6 @@ body.◆key-mod-down, body.◆key-mod-down * {
   cursor: pointer;
 }
 
-.◆presence-document-anchor {
-  anchor-name: --presence-document;
-}
-
-body::part(presence-users) {
-  position: fixed;
-  top: 12px;
-  right: 12px;
-  display: flex;
-  flex-direction: row-reverse;
-  align-items: center;
-  pointer-events: none;
-  z-index: 2147483647;
-}
-
-body::part(presence-user) {
-  box-sizing: border-box;
-  width: 12px;
-  height: 12px;
-  margin-left: -3px;
-  border: 2px solid white;
-  border-radius: 50%;
-  background: var(--presence-color);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 25%);
-}
-
 body::part(presence-caret) {
   position: fixed;
   box-sizing: border-box;
@@ -145,38 +123,49 @@ body::part(presence-caret) {
   height: var(--presence-caret-height, 1lh);
   border-radius: 1px;
   background: var(--presence-color);
+  opacity: 0.8;
   pointer-events: none;
   z-index: 2147483647;
 }
 
 body::part(presence-caret-label) {
   position: absolute;
+  box-sizing: border-box;
   left: 0;
   bottom: 100%;
-  max-width: 14rem;
-  padding: 1px 4px;
+  width: 1.125rem;
+  padding: 1px 2px;
   overflow: hidden;
   border-radius: 3px 3px 3px 0;
   color: white;
   background: var(--presence-color);
-  font: 10px/1.4 system-ui, sans-serif;
-  text-overflow: ellipsis;
+  font: 8px/1.25 system-ui, sans-serif;
+  text-align: center;
   white-space: nowrap;
 }
 
-@supports (anchor-name: --presence-document) {
-  body::part(presence-users) {
-    position-anchor: --presence-document;
-    top: calc(anchor(top) + 12px);
-    right: auto;
-    left: calc(anchor(right) - 12px);
-    translate: -100% 0;
-  }
+/* Remote gap carets reuse the same arrow pseudo-element as the local gap
+ * caret, but keep their own color and a little transparency. */
+body::part(presence-gap-caret) {
+  color: var(--presence-color);
+  opacity: 0.8;
+}
 
-  body::part(presence-caret) {
-    left: calc(anchor(left) + var(--presence-caret-x));
-    top: calc(anchor(top) + var(--presence-caret-y));
-  }
+body::part(presence-element-selection) {
+  position: fixed;
+  box-sizing: border-box;
+  outline: 2px solid var(--presence-color);
+  outline-offset: 2px;
+  opacity: 0.8;
+  pointer-events: none;
+  z-index: 2147483646;
+}
+
+body::part(presence-element-selection-label) {
+  left: auto;
+  right: -4px;
+  bottom: calc(100% + 4px);
+  border-radius: 3px 3px 0 3px;
 }
 
 @keyframes blink {
@@ -417,13 +406,6 @@ body:empty::after {
   anchor-name: --empty-selected;
 }
 
-/* BODY is both the document anchor and the empty-block anchor when the
- * document has no content. Preserve both names instead of letting the later
- * empty-selection rule displace the presence indicator's anchor. */
-.◆presence-document-anchor.◆empty-selected {
-  anchor-name: --presence-document, --empty-selected;
-}
-
 body::part(empty-document-caret) {
   display: none;
   position: fixed;
@@ -512,6 +494,28 @@ body::part(gap-caret)::after {
     margin-top: calc(-0.4 * var(--size));
     background: currentColor;
     animation: blink 1s step-end 0s infinite;
+}
+/* Match the slightly heavier stroke used by remote text and element carets
+ * while preserving the local gap caret's arrow footprint. This must follow
+ * the base gap-caret rule so the remote shape override wins. */
+body::part(presence-gap-caret)::after {
+    animation: none;
+    clip-path: polygon(
+      26% 50%,
+      0 24%,
+      3% 13%,
+      30% 44%,
+      100% 44%,
+      100% 56%,
+      30% 56%,
+      3% 87%,
+      0 76%
+    );
+}
+body::part(presence-gap-caret-label) {
+    left: calc(-0.05 * var(--presence-gap-caret-size));
+    bottom: calc(100% + 0.27 * var(--presence-gap-caret-size));
+    transform: translateX(-100%);
 }
 body::part(slash-add) {
   position: fixed;

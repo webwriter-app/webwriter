@@ -42,6 +42,7 @@ describe("DOMEditor stylesheets", () => {
     const bodyRule = Array.from(document.adoptedStyleSheets.flatMap(sheet => Array.from(sheet.cssRules)))
       .find(rule => (rule as CSSStyleRule).selectorText === "body") as CSSStyleRule | undefined
 
+    expect(bodyRule?.style.margin).toBe("1.25rem")
     expect(bodyRule?.style.pointerEvents).toBe("auto")
     expect(bodyRule?.style.userSelect).toBe("text")
     expect(document.body).toHaveAttribute("contenteditable", "true")
@@ -49,7 +50,17 @@ describe("DOMEditor stylesheets", () => {
     expect(editor.toHTML()).not.toContain("contenteditable")
     expect(editor.features.selection.emptyDocumentCaret?.getRootNode()).toBe(editor.appendix)
     expect(editorStyleString).toContain("body::part(empty-document-caret)")
-    expect(editorStyleString).toContain("anchor-name: --presence-document, --empty-selected")
+    expect(editorStyleString).toContain("body::part(presence-caret)")
+    expect(editorStyleString).toContain("body::part(presence-element-selection)")
+    expect(editorStyleString).toContain("body::part(presence-element-selection-label)")
+    expect(editorStyleString).toMatch(/body::part\(presence-element-selection\)[\s\S]*?outline:\s*2px solid var\(--presence-color\);/)
+    expect(editorStyleString).toMatch(/body\s*>\s*\*\s*\+\s*\*\s*\{[\s\S]*?margin-block-start:\s*1\.25rem;/)
+    expect(editorStyleString).toMatch(/body::part\(presence-caret-label\)[\s\S]*?width:\s*1\.125rem;/)
+    expect(editorStyleString).toMatch(/body::part\(presence-caret-label\)[\s\S]*?font:\s*8px\/1\.25/)
+    expect(editorStyleString).toContain("body::part(presence-gap-caret-label)")
+    expect(editorStyleString).toMatch(/body::part\(presence-gap-caret-label\)[\s\S]*?transform:\s*translateX\(-100%\)/)
+
+    expect(editorStyleString).toMatch(/body::part\(presence-gap-caret\)::after\s*\{[\s\S]*?animation:\s*none;/)
   })
 
   it("does not duplicate constructed stylesheets", () => {
