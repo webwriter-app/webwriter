@@ -90,6 +90,28 @@ describe("insertion menu", () => {
     expect(menu.shadowRoot?.textContent).toContain("Website")
   })
 
+  it("resets the filter and scroll position for a new insertion", async () => {
+    document.body.innerHTML = "<p></p>"
+    $.move(document.querySelector("p")!)
+    typeCommand()
+    const menu = editor.features.insertion.menu
+    await menu.updateComplete
+    typeText("table")
+    await menu.updateComplete
+
+    const sections = menu.shadowRoot?.querySelector<HTMLElement>(".sections")!
+    sections.scrollTop = 100
+    menu.dispatchEvent(new Event("insertion-menu-close", {bubbles: true, composed: true}))
+
+    document.body.innerHTML = "<p></p>"
+    $.move(document.querySelector("p")!)
+    typeCommand()
+    await menu.updateComplete
+
+    expect(menu.query).toBe("")
+    expect(sections.scrollTop).toBe(0)
+  })
+
   it("anchors the initial typed command to an empty block", async () => {
     document.body.innerHTML = "<p></p>"
     const block = document.querySelector("p")!

@@ -122,6 +122,7 @@ export class InsertionMenu extends LitElement {
     this.setPosition(x, y)
     this.query = ""
     this.activeIndex = -1
+    this.resetScrollPosition()
     this.open = true
   }
 
@@ -149,6 +150,15 @@ export class InsertionMenu extends LitElement {
     if(changed.has("query")) {
       this.activeIndex = -1
     }
+  }
+
+  protected updated(changed: Map<string, unknown>) {
+    if(changed.has("open") && this.open) this.resetScrollPosition()
+  }
+
+  private resetScrollPosition() {
+    const sections = this.shadowRoot?.querySelector<HTMLElement>(".sections")
+    if(sections) sections.scrollTop = 0
   }
 
   private choose(item: InsertionMenuItem) {
