@@ -487,7 +487,11 @@ export class DomEditor extends LitElement {
           @breadcrumb-item-hover=${this.handleBreadcrumbItemHover}
         ></dom-editor-breadcrumb>
       </header>
-      <iframe title="DOM editor" srcdoc=${this.editorSrcdoc} @load=${this.handleEditorFrameLoad}></iframe>
+      <iframe
+        title="DOM editor"
+        srcdoc=${this.editorSrcdoc}
+        @load=${this.handleEditorFrameLoad}
+      ></iframe>
     `
   }
 }

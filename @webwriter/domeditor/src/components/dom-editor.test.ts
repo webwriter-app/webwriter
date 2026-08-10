@@ -19,6 +19,12 @@ afterEach(() => {
 })
 
 describe("DomEditor iframe setup", () => {
+  it("does not sandbox the editor iframe", async () => {
+    const {iframe} = await mountEditor()
+
+    expect(iframe.hasAttribute("sandbox")).toBe(false)
+  })
+
   it("passes the outer URL parameters to the editor as SYNC_URL", async () => {
     const originalUrl = location.href
     history.replaceState({}, "", "/?session=collab-demo&source=local")
