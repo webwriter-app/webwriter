@@ -1,10 +1,13 @@
 import { LitElement, css, html } from "lit"
 import type {PresenceUser} from "../editor-bridge"
+import type {MarkName} from "../marks"
 import { ribbonIcon } from "../ribbon-icons"
 import { insertionMenuItems } from "./insertion-menu"
 import { type RibbonButton } from "./ribbon-button"
 import "./ribbon-button"
 import "./ribbon-group"
+import {type MarkRibbonGroup} from "./mark-ribbon-group"
+import "./mark-ribbon-group"
 import { type RibbonMenu, type RibbonMenuButton, type RibbonMenuGroup } from "./ribbon-menu"
 import "./ribbon-menu"
 import "./ribbon-tab"
@@ -59,7 +62,7 @@ const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
   ],
   Start: [
     {label: "Clipboard", buttons: ["Paste", "Cut", "Copy"]},
-    {label: "Text", buttons: ["Bold", "Italic", "Underline"]},
+    {label: "Marks", buttons: []},
     {label: "Paragraph", buttons: ["Align", "Lists", "Spacing"]},
   ],
   Insert: [
@@ -85,6 +88,8 @@ export class AppRibbon extends LitElement {
     expanded: {type: Boolean, reflect: true},
     menuOpen: {type: Boolean, reflect: true},
     logoUrl: {type: String, attribute: "logo-url"},
+    canMark: {type: Boolean, attribute: "can-mark"},
+    marks: {attribute: false},
     presenceUsers: {attribute: false},
   }
 
@@ -403,6 +408,11 @@ export class AppRibbon extends LitElement {
       min-width: 13rem;
     }
 
+    .ribbon-content > mark-ribbon-group {
+      flex: 0 0 auto;
+      min-width: 13rem;
+    }
+
     @media (max-width: 36rem) {
       .ribbon-top {
         gap: 0.35rem;
@@ -414,6 +424,8 @@ export class AppRibbon extends LitElement {
   expanded = true
   menuOpen = false
   logoUrl = ""
+  canMark = false
+  marks: MarkName[] = []
   presenceUsers: PresenceUser[] = []
 
   private readonly handleDocumentPointerDown = (event: PointerEvent) => {
@@ -501,6 +513,7 @@ export class AppRibbon extends LitElement {
   private toggleExpanded() {
     this.expanded = !this.expanded
     this.menuOpen = false
+    this.renderRoot.querySelector<MarkRibbonGroup>("mark-ribbon-group")?.closeDrawer()
     if(!this.expanded) this.selectStart()
   }
 
@@ -521,6 +534,10 @@ export class AppRibbon extends LitElement {
     this.renderRoot.querySelector<RibbonMenu>("ribbon-menu")?.closeSubmenus()
     this.renderRoot.querySelectorAll<RibbonButton>("ribbon-button").forEach(button => button.closeSubmenu())
     if(!this.expanded && this.menuOpen) this.selectStart()
+  }
+
+  dismissMarkDrawer() {
+    this.renderRoot.querySelector<MarkRibbonGroup>("mark-ribbon-group")?.closeDrawer()
   }
 
   private selectMenu(event: Event) {
@@ -549,20 +566,30 @@ export class AppRibbon extends LitElement {
   }
 
   private renderGroups() {
-    return menuGroups[this.activeMenu].map(group => html`
-      <ribbon-group label=${group.label}>
-        ${group.buttons.map(button => {
-          const item = typeof button === "string" ? {label: button} : button
-          return html`
-            <ribbon-button
-              label=${item.label}
-              .action=${item.action ?? item.label}
-              .submenu=${item.submenu ?? []}
-            ></ribbon-button>
-          `
-        })}
-      </ribbon-group>
-    `)
+    return menuGroups[this.activeMenu].map(group => {
+      if(this.activeMenu === "Start" && group.label === "Marks") {
+        return html`
+          <mark-ribbon-group
+            .marks=${this.marks}
+            ?disabled=${!this.canMark}
+          ></mark-ribbon-group>
+        `
+      }
+      return html`
+        <ribbon-group label=${group.label}>
+          ${group.buttons.map(button => {
+            const item = typeof button === "string" ? {label: button} : button
+            return html`
+              <ribbon-button
+                label=${item.label}
+                .action=${item.action ?? item.label}
+                .submenu=${item.submenu ?? []}
+              ></ribbon-button>
+            `
+          })}
+        </ribbon-group>
+      `
+    })
   }
 
   private renderPresence() {

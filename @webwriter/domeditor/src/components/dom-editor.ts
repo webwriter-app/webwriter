@@ -4,12 +4,15 @@ import type { DomEditorBreadcrumb, DocumentTreeItem } from "./breadcrumb"
 import type { EditingAction } from "../domeditor"
 import { insertionMenuItems } from "./insertion-menu"
 import { getElementPresentation } from "../element-names"
+import {canonicalMarkName, type MarkName} from "../marks"
 import {
   executeCompleteEvent,
   executeFailureEvent,
   isExecuteResponse,
+  isMarkStateChangeMessage,
   isSelectionChangeMessage,
   isPresenceChangeMessage,
+  markStateChangeEvent,
   selectionChangeEvent,
   type ExecuteCompleteDetail,
   type ExecuteFailureDetail,
@@ -48,6 +51,8 @@ export class DomEditor extends LitElement {
     selectionPath: {attribute: false, state: true},
     selectionGap: {attribute: false, state: true},
     documentTree: {attribute: false, state: true},
+    canMark: {attribute: false, state: true},
+    marks: {attribute: false, state: true},
     presenceUsers: {attribute: false, state: true},
   }
 
@@ -64,6 +69,8 @@ export class DomEditor extends LitElement {
   private selectionPath: SelectionPathItem[] = []
   private selectionGap: SelectionGap | null = null
   private documentTree: DocumentTreeItem | null = null
+  private canMark = false
+  private marks: MarkName[] = []
   private presenceUsers: PresenceUser[] = []
   private treeViewOpen = false
   private breadcrumbHoverPath: number[] | null = null
@@ -151,7 +158,9 @@ export class DomEditor extends LitElement {
 
   private handleEditorPointerDown = () => {
     this.focusEditor()
-    this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.dismissCollapsedMenu()
+    const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
+    ribbon?.dismissCollapsedMenu()
+    ribbon?.dismissMarkDrawer()
   }
 
   private handleEditorFocus = () => {
@@ -266,6 +275,16 @@ export class DomEditor extends LitElement {
       void this.execute({type: "redo"}).finally(() => this.focusEditor())
       return
     }
+    if(label === "removeMarks") {
+      void this.execute({type: "removeMarks"}).finally(() => this.focusEditor())
+      return
+    }
+    if(label?.startsWith("mark:")) {
+      const mark = canonicalMarkName(label.slice("mark:".length))
+      if(mark) void this.execute({type: "toggleMark", mark}).finally(() => this.focusEditor())
+      else this.focusEditor()
+      return
+    }
     const item = insertionMenuItems.find(candidate => candidate.name === label)
     if(!item) {
       this.focusEditor()
@@ -333,6 +352,17 @@ export class DomEditor extends LitElement {
   }
 
   private handleEditorMessage = (event: MessageEvent) => {
+    if(isMarkStateChangeMessage(event.data)) {
+      if(!this.isEditorMessage(event)) return
+      this.canMark = event.data.detail.canMark
+      this.marks = [...event.data.detail.marks]
+      this.dispatchEvent(new CustomEvent(markStateChangeEvent, {
+        detail: {canMark: this.canMark, marks: [...this.marks]},
+        bubbles: true,
+        composed: true,
+      }))
+      return
+    }
     if(isSelectionChangeMessage(event.data)) {
       if(!this.isEditorMessage(event)) return
       const path = event.data.detail.path.map(item => ({
@@ -458,6 +488,8 @@ export class DomEditor extends LitElement {
     this.editorReadyReject = null
     this.selectionPath = []
     this.selectionGap = null
+    this.canMark = false
+    this.marks = []
     const error = new Error("The DOM editor component was disconnected")
     this.pendingExecutions.forEach(({reject}) => reject(error))
     this.pendingExecutions.clear()
@@ -469,6 +501,8 @@ export class DomEditor extends LitElement {
       <header class="app-bar">
         <app-ribbon
           logo-url=${appIconUrl}
+          .canMark=${this.canMark}
+          .marks=${this.marks}
           .presenceUsers=${this.presenceUsers}
           @ribbon-button-click=${this.handleRibbonButtonClick}
           @ribbon-collapse=${this.handleRibbonCollapse}

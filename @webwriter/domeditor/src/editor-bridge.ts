@@ -1,6 +1,9 @@
+import {canonicalMarkName, type MarkName} from "./marks"
+
 export const executeCompleteEvent = "dom-editor-execute-complete"
 export const executeFailureEvent = "dom-editor-execute-failure"
 export const selectionChangeEvent = "dom-editor-selection-change"
+export const markStateChangeEvent = "dom-editor-mark-state-change"
 export const presenceChangeEvent = "dom-editor-presence-change"
 
 export type SelectionPathItem = {
@@ -27,6 +30,18 @@ export type SelectionChangeDetail = {
 export type SelectionChangeMessage = {
   type: typeof selectionChangeEvent
   detail: SelectionChangeDetail
+}
+
+export type MarkStateChangeDetail = {
+  /** True only while the live DOM selection contains markable text. */
+  canMark: boolean
+  /** Canonical marks found anywhere in that text selection. */
+  marks: MarkName[]
+}
+
+export type MarkStateChangeMessage = {
+  type: typeof markStateChangeEvent
+  detail: MarkStateChangeDetail
 }
 
 export type PresenceUser = {
@@ -90,14 +105,29 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
   })) return false
 
   const gap = message.detail.gap as Partial<SelectionGap> | null | undefined
-  return gap === undefined || (
+  const gapIsValid = gap === undefined || (
     !!gap
     && typeof gap === "object"
     && Array.isArray(gap.parentPath)
     && gap.parentPath.every(index => Number.isInteger(index) && index >= 0)
+    && typeof gap.offset === "number"
     && Number.isInteger(gap.offset)
     && gap.offset >= 0
   )
+  if(!gapIsValid) return false
+
+  return true
+}
+
+export function isMarkStateChangeMessage(value: unknown): value is MarkStateChangeMessage {
+  if(!value || typeof value !== "object") return false
+  const message = value as Partial<MarkStateChangeMessage>
+  return message.type === markStateChangeEvent
+    && !!message.detail
+    && typeof message.detail === "object"
+    && typeof message.detail.canMark === "boolean"
+    && Array.isArray(message.detail.marks)
+    && message.detail.marks.every(mark => typeof mark === "string" && canonicalMarkName(mark) === mark)
 }
 
 export function isPresenceChangeMessage(value: unknown): value is PresenceChangeMessage {

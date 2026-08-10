@@ -65,6 +65,23 @@ import forms from "@tabler/icons/outline/forms.svg?raw"
 import input from "@tabler/icons/outline/input-search.svg?raw"
 import quote from "@tabler/icons/outline/quote.svg?raw"
 import section from "@tabler/icons/outline/section.svg?raw"
+import bracketsAngle from "@tabler/icons/outline/brackets-angle.svg?raw"
+import calendarTime from "@tabler/icons/outline/calendar-time.svg?raw"
+import command from "@tabler/icons/outline/command.svg?raw"
+import database from "@tabler/icons/outline/database.svg?raw"
+import languageHiragana from "@tabler/icons/outline/language-hiragana.svg?raw"
+import letterASmall from "@tabler/icons/outline/letter-a-small.svg?raw"
+import letterC from "@tabler/icons/outline/letter-c.svg?raw"
+import pencilMinus from "@tabler/icons/outline/pencil-minus.svg?raw"
+import pencilPlus from "@tabler/icons/outline/pencil-plus.svg?raw"
+import strikethrough from "@tabler/icons/outline/strikethrough.svg?raw"
+import subscript from "@tabler/icons/outline/subscript.svg?raw"
+import terminal2 from "@tabler/icons/outline/terminal-2.svg?raw"
+import textDecrease from "@tabler/icons/outline/text-decrease.svg?raw"
+import textDirectionLtr from "@tabler/icons/outline/text-direction-ltr.svg?raw"
+import textDirectionRtl from "@tabler/icons/outline/text-direction-rtl.svg?raw"
+import variable from "@tabler/icons/outline/variable.svg?raw"
+import vocabulary from "@tabler/icons/outline/vocabulary.svg?raw"
 
 const icons: Record<string, string> = {
   Document: fileDescription,
@@ -134,6 +151,32 @@ const icons: Record<string, string> = {
   Zoom: zoomIn,
   Guides: rulerMeasure,
   Fullscreen: maximize,
+  MarkBold: bold,
+  MarkItalic: italic,
+  MarkUnderline: underline,
+  MarkStrikethrough: strikethrough,
+  MarkLink: link,
+  MarkSuperscript: superscript,
+  MarkSubscript: subscript,
+  MarkSmall: textDecrease,
+  MarkCode: code,
+  MarkQuotation: quote,
+  MarkKeyboard: command,
+  MarkAbbreviation: letterASmall,
+  MarkBdi: textDirectionLtr,
+  MarkBdo: textDirectionRtl,
+  MarkCite: letterC,
+  MarkData: database,
+  MarkDeletion: pencilMinus,
+  MarkInsertion: pencilPlus,
+  MarkDefinition: vocabulary,
+  MarkRuby: languageHiragana,
+  MarkSample: terminal2,
+  MarkTime: calendarTime,
+  MarkVariable: variable,
+  MarkSpan: bracketsAngle,
+  RemoveMarks: clearFormatting,
+  MoreMarks: dots,
 }
 
 const fallbackIcon = dots

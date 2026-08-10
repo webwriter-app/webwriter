@@ -13,6 +13,7 @@ import { $, adoptStylesheet, createStylesheet, isElement } from "./utility"
 import {
   executeCompleteEvent,
   executeFailureEvent,
+  markStateChangeEvent,
   selectionChangeEvent,
   presenceChangeEvent,
   type PresenceUser,
@@ -168,6 +169,7 @@ export class DOMEditor {
     document.addEventListener("input", this.#handleInput)
     document.addEventListener("selectionchange", this.handleSelectionChange)
     this.doc.updateLocalSelection()
+    this.postMarkState()
     this.postSelectionPath()
     document.addEventListener("copy", this.#onCopy)
     window.addEventListener("message", this.handleMessage)
@@ -191,6 +193,7 @@ export class DOMEditor {
     if(!selection?.anchorNode) return
 
     this.doc.updateLocalSelection(selection)
+    this.postMarkState()
     this.postSelectionPath()
   }
 
@@ -201,7 +204,7 @@ export class DOMEditor {
 
     // Responses are posted to the parent window. In a non-iframe environment
     // (for example, a unit test), they can arrive back at this listener too.
-    if(ev.data.type === executeCompleteEvent || ev.data.type === executeFailureEvent || ev.data.type === presenceChangeEvent) {
+    if(ev.data.type === executeCompleteEvent || ev.data.type === executeFailureEvent || ev.data.type === presenceChangeEvent || ev.data.type === markStateChangeEvent) {
       return
     }
     if(ev.data.type === selectionChangeEvent) {
@@ -335,6 +338,11 @@ export class DOMEditor {
       ...(gap ? {gap} : {}),
     }
     this.postBridgeEvent(selectionChangeEvent, detail)
+  }
+
+  /** Sends mark availability and active marks as a DOM-derived bridge event. */
+  postMarkState() {
+    this.postBridgeEvent(markStateChangeEvent, this.features.mark.getState())
   }
 
   startTransform(el: HTMLElement) {

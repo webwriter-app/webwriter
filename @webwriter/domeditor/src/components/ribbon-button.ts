@@ -1,4 +1,4 @@
-import { LitElement, css, html } from "lit"
+import {LitElement, css, html, nothing} from "lit"
 import { ribbonIcon } from "../ribbon-icons"
 import "./ribbon-menu"
 import type { RibbonMenu } from "./ribbon-menu"
@@ -8,8 +8,14 @@ export class RibbonButton extends LitElement {
   static properties = {
     label: {type: String},
     action: {type: String},
+    active: {type: Boolean, reflect: true},
+    compact: {type: Boolean, reflect: true},
+    disabled: {type: Boolean, reflect: true},
+    icon: {type: String},
+    shortcut: {type: String},
     submenu: {attribute: false},
     submenuOpen: {state: true},
+    toggle: {type: Boolean, reflect: true},
   }
 
   static styles = css`
@@ -17,6 +23,12 @@ export class RibbonButton extends LitElement {
       display: block;
       flex: 1 1 3rem;
       min-width: 3rem;
+    }
+
+    :host([compact]) {
+      flex: 0 0 1.75rem;
+      min-width: 1.75rem;
+      width: 1.75rem;
     }
 
     .button-row {
@@ -32,6 +44,19 @@ export class RibbonButton extends LitElement {
     .button-row:hover {
       border-color: #c8d2df;
       background: #eef4fb;
+    }
+
+    :host([active]) .button-row {
+      border-color: #8eb6df;
+      background: #dcecff;
+      box-shadow: inset 0 0 0 1px rgb(57 119 199 / 12%);
+    }
+
+    :host([disabled]) .button-row,
+    :host([disabled]) .button-row:hover {
+      border-color: transparent;
+      background: transparent;
+      box-shadow: none;
     }
 
     button {
@@ -51,6 +76,23 @@ export class RibbonButton extends LitElement {
       font: inherit;
       font-size: 0.6rem;
       cursor: pointer;
+    }
+
+    button:disabled {
+      color: #9aa4b1;
+      cursor: default;
+      opacity: 0.55;
+    }
+
+    :host([compact]) button {
+      width: 1.75rem;
+      min-height: 1.75rem;
+      height: 1.75rem;
+      padding: 0.25rem;
+    }
+
+    :host([compact]) .button-label {
+      display: none;
     }
 
     .main-button {
@@ -101,6 +143,14 @@ export class RibbonButton extends LitElement {
       color: #526b86;
     }
 
+    :host([active]) .button-icon {
+      color: #1e5d9d;
+    }
+
+    :host([disabled]) .button-icon {
+      color: currentColor;
+    }
+
     .button-icon svg {
       display: block;
       width: 100%;
@@ -119,7 +169,13 @@ export class RibbonButton extends LitElement {
 
   label = "Placeholder"
   action = ""
+  active = false
+  compact = false
+  disabled = false
+  icon = ""
+  shortcut = ""
   submenu: string[] = []
+  toggle = false
   private submenuOpen = false
 
   private readonly handleDocumentPointerDown = (event: PointerEvent) => {
@@ -187,16 +243,19 @@ export class RibbonButton extends LitElement {
   }
 
   render() {
+    const title = this.shortcut? `${this.label} (${this.shortcut})`: this.label
     return html`
       <div class="button-row">
         <button
           class="main-button"
           type="button"
           aria-label=${this.label}
-          title=${this.label}
+          aria-pressed=${this.toggle? String(this.active): nothing}
+          title=${title}
+          ?disabled=${this.disabled}
           @click=${this.handleClick}
         >
-          <span class="button-icon" aria-hidden="true">${ribbonIcon(this.action || this.label)}</span>
+          <span class="button-icon" aria-hidden="true">${ribbonIcon(this.icon || this.action || this.label)}</span>
           <span class="button-label">${this.label}</span>
         </button>
         ${this.submenu.length ? html`
