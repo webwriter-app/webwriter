@@ -483,14 +483,14 @@ body.◆transform-rotating, body.◆transform-rotating * {
   summary,
   td,
   th
-):empty::after {
+):empty::before {
   content: "\200B";
   visibility: hidden;
 }
 
 /* An empty body needs a visible zero-width editing position so the native
  * caret can be painted before the first inserted element. */
-body:empty::after {
+body:empty::before {
   visibility: visible;
 }
 
@@ -527,6 +527,7 @@ body.◆empty-selected::part(empty-document-caret) {
       content: "";
       display: list-item;
       color: gray;
+      visibility: visible;
     }
   }
 }
@@ -639,6 +640,7 @@ body::part(slash-add)::before {
   content: "";
   width: 0.75rem;
   height: 0.75rem;
+  visibility: visible;
   background:
     linear-gradient(currentColor, currentColor) center / 100% 2px no-repeat,
     linear-gradient(currentColor, currentColor) center / 2px 100% no-repeat;

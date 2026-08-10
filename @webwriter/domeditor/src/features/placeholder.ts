@@ -24,7 +24,7 @@ export class PlaceholderFeature extends EditorFeature {
       const {emptySelector, emptyStyle, placeholderStyle} = this.editor.schema.get(k)
       const sel = emptySelector
       const elStyle = emptyStyle && this.styleMapToCssString(emptyStyle)
-      const beforeStyle = placeholderStyle && this.styleMapToCssString(placeholderStyle)
+      const beforeStyle = placeholderStyle && `${this.styleMapToCssString(placeholderStyle)};visibility: visible`
       return `${sel} {& {${elStyle ?? ""}} &::before {${beforeStyle ?? ""}}}`
     })
     const styleSheet = new CSSStyleSheet()
