@@ -54,6 +54,7 @@ describe("DOMEditor stylesheets", () => {
     expect(editor.toHTML()).not.toContain("contenteditable")
     expect(editor.features.selection.emptyDocumentCaret?.getRootNode()).toBe(editor.appendix)
     expect(editorStyleString).toContain("body::part(empty-document-caret)")
+    expect(editorStyleString).toMatch(/body::part\(empty-document-caret\)[\s\S]*?left:\s*calc\(anchor\(left\) \+ var\(--body-padding\)\);/)
     expect(editorStyleString).toContain("body::part(presence-caret)")
     expect(editorStyleString).toContain("body::part(presence-element-selection)")
     expect(editorStyleString).toContain("body::part(presence-element-selection-label)")

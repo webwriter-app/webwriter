@@ -501,7 +501,7 @@ body::part(empty-document-caret) {
   display: none;
   position: fixed;
   position-anchor: --empty-selected;
-  left: anchor(left);
+  left: calc(anchor(left) + var(--body-padding));
   top: anchor(top);
   box-sizing: border-box;
   width: 1px;
