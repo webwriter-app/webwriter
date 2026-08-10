@@ -27,26 +27,28 @@ beforeEach(() => {
 })
 
 describe("insertion menu", () => {
-  it("shows a plus button in an empty document and opens the insertion menu", async () => {
+  it("shows a ++ trigger in an empty document and opens it like typed ++", async () => {
     $.selectDocumentStart()
     editor.features.selection.processSelection()
     await Promise.resolve()
 
     const button = editor.appendix.querySelector<HTMLButtonElement>(".◆insertion-add")
     expect(button).not.toBeNull()
+    expect(button!.textContent).toBe("++")
     expect(document.body.classList.contains("◆empty-selected")).toBe(true)
 
-    button!.click()
+    const activation = new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
+    expect(button!.dispatchEvent(activation)).toBe(false)
     await editor.features.insertion.menu.updateComplete
 
     expect(editor.features.insertion.menu.open).toBe(true)
-    expect(editorHTML()).toBe("<p></p>")
-    expect(document.body.classList.contains("◆insertion-trigger")).toBe(false)
+    expect(editorHTML()).toBe("<p>++</p>")
+    expect(document.body.classList.contains("◆insertion-trigger")).toBe(true)
 
     editor.features.insertion.menu.dispatchEvent(new Event("insertion-menu-close", {bubbles: true, composed: true}))
   })
 
-  it("shows a plus button in empty text blocks which opens the insertion menu", async () => {
+  it("shows a ++ trigger inside empty text blocks which opens like typed ++", async () => {
     document.body.innerHTML = "<p></p><p>Text</p>"
     const block = document.querySelector("p")!
     $.move(block)
@@ -64,7 +66,8 @@ describe("insertion menu", () => {
     await editor.features.insertion.menu.updateComplete
 
     expect(editor.features.insertion.menu.open).toBe(true)
-    expect(editorHTML()).toBe("<p></p><p>Text</p>")
+    expect(editorHTML()).toBe("<p>++</p><p>Text</p>")
+    expect(document.body.classList.contains("◆insertion-trigger")).toBe(true)
   })
 
   it("opens after ++ at the end of a text block and exposes every requested section", async () => {

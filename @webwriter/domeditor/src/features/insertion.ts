@@ -2,7 +2,6 @@ import { EditorFeature } from "."
 import { InsertionMenu, type InsertionMenuItem } from "../components/insertion-menu"
 import { $, getContainer, isElement, isText, modifierKeyDown } from "../utility"
 
-type InsertionAddButton = HTMLButtonElement & {insertionBlock?: Element}
 type CustomHighlightRegistry = {
   delete(name: string): void
   set(name: string, highlight: Highlight): void
@@ -20,28 +19,13 @@ export class InsertionFeature extends EditorFeature {
   private triggerBodyMarkerAdded = false
   private emptyTextBlock: Element | null = null
   private commandObserver = new MutationObserver(() => this.updateQuery())
-  private emptyBlockObserver = new MutationObserver(() => this.updateEmptyTextBlockButton())
-  private emptyTextBlockButton: InsertionAddButton | null = null
 
   enable() {
     super.enable()
     this.createEmptyTextBlockButton()
-    this.updateEmptyTextBlockButton()
-    queueMicrotask(() => this.updateEmptyTextBlockButton())
-    const body = document.body
-    if(body) {
-      this.emptyBlockObserver.observe(body, {
-        attributes: true,
-        attributeFilter: ["class"],
-        characterData: true,
-        childList: true,
-        subtree: true,
-      })
-    }
   }
 
   disable() {
-    this.emptyBlockObserver.disconnect()
     this.clearTriggerHighlight()
     super.disable()
   }
@@ -65,7 +49,6 @@ export class InsertionFeature extends EditorFeature {
   }
 
   activeListeners = {
-    selectionchange: () => queueMicrotask(() => this.updateEmptyTextBlockButton()),
     keydown: (ev: KeyboardEvent) => {
       if(this.menu.open) {
         if(ev.key === "ArrowDown") {
@@ -346,40 +329,42 @@ export class InsertionFeature extends EditorFeature {
     })
   }
 
-  /** Keeps the clickable insertion affordance in sync with the selected empty block. */
-  private updateEmptyTextBlockButton() {
-    const selected = document.querySelector(".◆empty-selected")
-    this.emptyTextBlockButton!.insertionBlock = selected && this.isEmptyTextBlock(selected)? selected: undefined
-  }
-
   private createEmptyTextBlockButton() {
-    const existing = this.editor.appendix.querySelector<InsertionAddButton>(".◆insertion-add")
-    if(existing) {
-      this.emptyTextBlockButton = existing
-      return
-    }
+    if(this.editor.appendix.querySelector(".◆insertion-add")) return
 
-    const button = document.createElement("button") as InsertionAddButton
+    const button = document.createElement("button")
     button.classList.add("◆", "◆editor-only", "◆insertion-add")
     button.type = "button"
     button.contentEditable = "false"
     button.setAttribute("aria-label", "Insert element")
     button.title = "Insert element"
     button.setAttribute("part", "insertion-add")
+    button.textContent = "++"
     button.addEventListener("pointerdown", ev => {
       ev.preventDefault()
       ev.stopPropagation()
     })
-    button.addEventListener("click", ev => {
+    const activate = (ev: Event) => {
       ev.preventDefault()
       ev.stopPropagation()
-      const block = button.insertionBlock
+      const block = document.querySelector(".◆empty-selected")
       if(!block || !this.isEmptyTextBlock(block)) return
       $.move(block)
-      this.openMenu()
+      const target = this.editor.features.manipulation.ensureTextBlock() ?? block
+      $.move(target)
+      const selection = document.getSelection()
+      if(!selection?.rangeCount) return
+      const range = selection.getRangeAt(0)
+      const trigger = document.createTextNode("++")
+      range.insertNode(trigger)
+      $.move(trigger, trigger.length)
+      this.openTypedTrigger(2)
+    }
+    button.addEventListener("keydown", ev => {
+      if(ev.key === "Enter" || ev.key === " ") activate(ev)
     })
+    button.addEventListener("click", activate)
     this.editor.appendix.append(button)
-    this.emptyTextBlockButton = button
   }
 
   private insert(item: InsertionMenuItem) {

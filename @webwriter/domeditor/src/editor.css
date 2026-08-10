@@ -612,22 +612,20 @@ body::part(presence-gap-caret-label) {
 body::part(insertion-add) {
   position: fixed;
   position-anchor: --empty-selected;
-  left: anchor(--body-anchor left);
-  top: anchor(center);
-  transform: translate(-4px, -50%);
+  left: anchor(left);
+  top: anchor(top);
   z-index: 2147483647;
-  width: 1.5rem;
-  height: 1.5rem;
   padding: 0;
   border: 0;
-  border-radius: 0.25rem;
   color: darkgray;
   background: transparent;
+  font: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
   cursor: pointer;
   pointer-events: all;
-  user-select: auto;
-  -webkit-user-select: auto;
-  place-items: center;
+  user-select: none;
+  -webkit-user-select: none;
   outline: none;
   display: none;
 }
@@ -636,24 +634,10 @@ body:has(.◆empty-selected)::part(insertion-add) {
   display: inline-grid;
 }
 body.◆empty-selected::part(insertion-add) {
-  left: anchor(left);
-  top: anchor(center);
+  left: calc(anchor(left) + var(--body-padding));
 }
 body.◆insertion-trigger::part(insertion-add) {
   display: none;
-}
-body::part(insertion-add)::before {
-  content: "";
-  width: 0.75rem;
-  height: 0.75rem;
-  visibility: visible;
-  background:
-    linear-gradient(currentColor, currentColor) center / 100% 2px no-repeat,
-    linear-gradient(currentColor, currentColor) center / 2px 100% no-repeat;
-}
-body::part(insertion-add):hover {
-  color: #4b5563;
-  background: #e5e7eb;
 }
 ::highlight(insertion-trigger) {
   color: darkgray;
