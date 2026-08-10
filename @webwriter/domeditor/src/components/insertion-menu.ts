@@ -1,13 +1,13 @@
 import { LitElement, css, html } from "lit"
 import { property, state } from "lit/decorators.js"
 
-export type SlashMenuItem = {
+export type InsertionMenuItem = {
   tag: string
   name: string
   section: "Text" | "Media"
 }
 
-export const slashMenuItems: SlashMenuItem[] = [
+export const insertionMenuItems: InsertionMenuItem[] = [
   {section: "Text", tag: "p", name: "Paragraph"},
   {section: "Text", tag: "pre", name: "Preformatted Text"},
   {section: "Text", tag: "h1", name: "Heading 1"},
@@ -28,9 +28,9 @@ export const slashMenuItems: SlashMenuItem[] = [
   {section: "Media", tag: "math", name: "Formula"},
 ]
 
-/** A searchable element picker for the editor's slash command. The editor
- * supplies the query from the text directly following the slash. */
-export class SlashMenu extends LitElement {
+/** A searchable element picker for the editor's element command. The editor
+ * supplies the query from the text typed after the command trigger. */
+export class InsertionMenu extends LitElement {
   static styles = css`
     :host {
       position: fixed;
@@ -89,11 +89,11 @@ export class SlashMenu extends LitElement {
 
   @property({type: Boolean, reflect: true}) open = false
   @property({type: String}) query = ""
-  @state() private activeIndex = 0
+  @state() private activeIndex = -1
 
   get filteredItems() {
     const query = this.query.trim().toLowerCase()
-    return slashMenuItems.filter(item => !query || item.name.toLowerCase().includes(query) || item.tag.includes(query))
+    return insertionMenuItems.filter(item => !query || item.name.toLowerCase().includes(query) || item.tag.includes(query))
   }
 
   get activeItem() {
@@ -103,7 +103,7 @@ export class SlashMenu extends LitElement {
   showAt(x: number, y: number) {
     this.setPosition(x, y)
     this.query = ""
-    this.activeIndex = 0
+    this.activeIndex = -1
     this.open = true
   }
 
@@ -113,9 +113,13 @@ export class SlashMenu extends LitElement {
   }
 
   moveActive(direction: 1 | -1) {
-    if(this.filteredItems.length) {
-      this.activeIndex = (this.activeIndex + direction + this.filteredItems.length) % this.filteredItems.length
+    const items = this.filteredItems
+    if(!items.length) return
+    if(this.activeIndex < 0) {
+      this.activeIndex = direction === 1? 0: items.length - 1
+      return
     }
+    this.activeIndex = (this.activeIndex + direction + items.length) % items.length
   }
 
   selectActive() {
@@ -123,14 +127,14 @@ export class SlashMenu extends LitElement {
     if(item) this.choose(item)
   }
 
-  protected updated(changed: Map<string, unknown>) {
-    if(changed.has("query") && this.activeIndex >= this.filteredItems.length) {
-      this.activeIndex = 0
+  protected willUpdate(changed: Map<string, unknown>) {
+    if(changed.has("query")) {
+      this.activeIndex = -1
     }
   }
 
-  private choose(item: SlashMenuItem) {
-    this.dispatchEvent(new CustomEvent<SlashMenuItem>("slash-menu-select", {
+  private choose(item: InsertionMenuItem) {
+    this.dispatchEvent(new CustomEvent<InsertionMenuItem>("insertion-menu-select", {
       detail: item,
       bubbles: true,
       composed: true,
@@ -138,7 +142,7 @@ export class SlashMenu extends LitElement {
   }
 
   private close() {
-    this.dispatchEvent(new Event("slash-menu-close", {bubbles: true, composed: true}))
+    this.dispatchEvent(new Event("insertion-menu-close", {bubbles: true, composed: true}))
   }
 
   render() {
@@ -164,12 +168,12 @@ export class SlashMenu extends LitElement {
   }
 }
 
-if(!customElements.get("domeditor-slash-menu")) {
-  customElements.define("domeditor-slash-menu", SlashMenu)
+if(!customElements.get("domeditor-insertion-menu")) {
+  customElements.define("domeditor-insertion-menu", InsertionMenu)
 }
 
 declare global {
   interface HTMLElementTagNameMap {
-    "domeditor-slash-menu": SlashMenu
+    "domeditor-insertion-menu": InsertionMenu
   }
 }

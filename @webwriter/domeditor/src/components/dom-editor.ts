@@ -2,7 +2,7 @@ import { LitElement, css, html } from "lit"
 import type { AppRibbon } from "./ribbon"
 import type { DomEditorBreadcrumb, DocumentTreeItem } from "./breadcrumb"
 import type { EditingAction } from "../domeditor"
-import { slashMenuItems } from "./slash-menu"
+import { insertionMenuItems } from "./insertion-menu"
 import { getElementPresentation } from "../element-names"
 import {
   executeCompleteEvent,
@@ -266,7 +266,7 @@ export class DomEditor extends LitElement {
       void this.execute({type: "redo"}).finally(() => this.focusEditor())
       return
     }
-    const item = slashMenuItems.find(candidate => candidate.name === label)
+    const item = insertionMenuItems.find(candidate => candidate.name === label)
     if(!item) {
       this.focusEditor()
       return

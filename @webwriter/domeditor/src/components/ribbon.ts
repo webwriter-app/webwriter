@@ -1,7 +1,7 @@
 import { LitElement, css, html } from "lit"
 import type {PresenceUser} from "../editor-bridge"
 import { ribbonIcon } from "../ribbon-icons"
-import { slashMenuItems } from "./slash-menu"
+import { insertionMenuItems } from "./insertion-menu"
 import { type RibbonButton } from "./ribbon-button"
 import "./ribbon-button"
 import "./ribbon-group"
@@ -33,16 +33,16 @@ const ribbonInputFromEvent = (event: Event) => event.composedPath().find(isRibbo
 const menuTabs: RibbonMenuName[] = ["File", "Insert", "Format", "Layout"]
 const dropdownMenus: RibbonMenuName[] = ["File", "Insert", "Format", "Layout"]
 
-const slashMenuGroup = (section: "Text" | "Media"): RibbonMenuGroup => ({
+const insertionMenuGroup = (section: "Text" | "Media"): RibbonMenuGroup => ({
   label: section,
-  buttons: slashMenuItems
+  buttons: insertionMenuItems
     .filter(item => item.section === section)
     .flatMap(item => {
       if(item.tag === "h1") {
         return [{
           label: "Heading",
           action: item.name,
-          submenu: slashMenuItems
+          submenu: insertionMenuItems
             .filter(submenuItem => submenuItem.section === section && /^h[2-6]$/.test(submenuItem.tag))
             .map(submenuItem => submenuItem.name),
         } satisfies RibbonMenuButton]
@@ -63,8 +63,8 @@ const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
     {label: "Paragraph", buttons: ["Align", "Lists", "Spacing"]},
   ],
   Insert: [
-    slashMenuGroup("Text"),
-    slashMenuGroup("Media"),
+    insertionMenuGroup("Text"),
+    insertionMenuGroup("Media"),
   ],
   Format: [
     {label: "Styles", buttons: ["Heading", "Theme", "Clear"]},
