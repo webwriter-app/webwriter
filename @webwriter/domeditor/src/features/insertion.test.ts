@@ -23,7 +23,7 @@ function typeText(text: string) {
 
 beforeEach(() => {
   document.body.innerHTML = ""
-  editor.features.insertion.menu.open = false
+  editor.features.insertion.menu.dispatchEvent(new Event("insertion-menu-close", {bubbles: true, composed: true}))
 })
 
 describe("insertion menu", () => {
@@ -41,6 +41,7 @@ describe("insertion menu", () => {
 
     expect(editor.features.insertion.menu.open).toBe(true)
     expect(editorHTML()).toBe("<p></p>")
+    expect(document.body.classList.contains("◆insertion-trigger")).toBe(false)
 
     editor.features.insertion.menu.dispatchEvent(new Event("insertion-menu-close", {bubbles: true, composed: true}))
   })
@@ -75,7 +76,8 @@ describe("insertion menu", () => {
     await menu.updateComplete
 
     expect(menu.open).toBe(true)
-    expect(editorHTML()).toBe("<p></p>")
+    expect(editorHTML()).toBe("<p>++</p>")
+    expect(document.body.classList.contains("◆insertion-trigger")).toBe(true)
     expect(menu.activeItem).toBeUndefined()
     expect(menu.shadowRoot?.querySelector(".item[data-active]")).toBeNull()
     expect(menu.shadowRoot?.textContent).toContain("Text")
@@ -102,7 +104,7 @@ describe("insertion menu", () => {
     expect(menu.style.top).toBe("126px")
   })
 
-  it("opens when the second plus key is typed and consumes both pluses", async () => {
+  it("opens when the second plus key is typed and keeps both pluses", async () => {
     document.body.innerHTML = "<p></p>"
     $.move(document.querySelector("p")!)
     typeText("+")
@@ -112,7 +114,7 @@ describe("insertion menu", () => {
     await menu.updateComplete
 
     expect(menu.open).toBe(true)
-    expect(editorHTML()).toBe("<p></p>")
+    expect(editorHTML()).toBe("<p>++</p>")
   })
 
   it("opens before whitespace but not before content", () => {
@@ -166,7 +168,7 @@ describe("insertion menu", () => {
     await Promise.resolve()
     expect(menu.query).toBe("tabl")
 
-    expect(editorHTML()).toBe("<p>tabl</p>")
+    expect(editorHTML()).toBe("<p>++tabl</p>")
   })
 
   it("keeps the query and restores its caret when the close button is clicked", async () => {
@@ -179,9 +181,9 @@ describe("insertion menu", () => {
 
     menu.shadowRoot?.querySelector<HTMLButtonElement>(".close")?.click()
 
-    expect(editorHTML()).toBe("<p>table</p>")
-    expect($.anchor?.textContent).toBe("table")
-    expect($.anchorOffset).toBe(5)
+    expect(editorHTML()).toBe("<p>++table</p>")
+    expect($.anchor?.textContent).toBe("++table")
+    expect($.anchorOffset).toBe(7)
   })
 
   it("closes on Escape", async () => {
@@ -196,7 +198,8 @@ describe("insertion menu", () => {
     }))
 
     expect(menu.open).toBe(false)
-    expect(editorHTML()).toBe("<p></p>")
+    expect(document.body.classList.contains("◆insertion-trigger")).toBe(false)
+    expect(editorHTML()).toBe("<p>++</p>")
   })
 
   it("selects elements which cannot contain text", async () => {
@@ -224,7 +227,7 @@ describe("insertion menu", () => {
     document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
 
     expect(menu.open).toBe(true)
-    expect(editorHTML()).toBe("<p>table</p>")
+    expect(editorHTML()).toBe("<p>++table</p>")
   })
 
   it("keeps the menu open when the filter has no option", async () => {
@@ -239,6 +242,6 @@ describe("insertion menu", () => {
     document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
 
     expect(menu.open).toBe(true)
-    expect(editorHTML()).toBe("<p>unknown</p>")
+    expect(editorHTML()).toBe("<p>++unknown</p>")
   })
 })

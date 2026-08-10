@@ -3,6 +3,10 @@ import { InsertionMenu, type InsertionMenuItem } from "../components/insertion-m
 import { $, getContainer, isElement, isText, modifierKeyDown } from "../utility"
 
 type InsertionAddButton = HTMLButtonElement & {insertionBlock?: Element}
+type CustomHighlightRegistry = {
+  delete(name: string): void
+  set(name: string, highlight: Highlight): void
+}
 
 /** Element insertion through the editor's `++` command menu. */
 export class InsertionFeature extends EditorFeature {
@@ -11,6 +15,9 @@ export class InsertionFeature extends EditorFeature {
   private commandRange: Range | null = null
   private commandBlock: Element | null = null
   private commandStartOffset = 0
+  private commandTriggerLength = 0
+  private commandTrigger: Range | null = null
+  private triggerBodyMarkerAdded = false
   private emptyTextBlock: Element | null = null
   private commandObserver = new MutationObserver(() => this.updateQuery())
   private emptyBlockObserver = new MutationObserver(() => this.updateEmptyTextBlockButton())
@@ -35,6 +42,7 @@ export class InsertionFeature extends EditorFeature {
 
   disable() {
     this.emptyBlockObserver.disconnect()
+    this.clearTriggerHighlight()
     super.disable()
   }
 
@@ -101,13 +109,13 @@ export class InsertionFeature extends EditorFeature {
       const selection = document.getSelection()
       if(!selection?.rangeCount || !selection.anchorNode || this.hasContentDirectlyAfterCaret()) return
 
-      if(this.consumeTypedTrigger(1)) {
+      if(this.openTypedTriggerFromKeydown()) {
         ev.preventDefault()
         ev.stopImmediatePropagation()
       }
     },
     input: () => {
-      if(!this.menu.open) this.consumeTypedTrigger(2)
+      if(!this.menu.open) this.openTypedTrigger(2)
       this.updateQuery()
     },
     keyup: () => this.updateQuery(),
@@ -115,25 +123,34 @@ export class InsertionFeature extends EditorFeature {
 
   /** Opens the command menu at the current caret without inserting a visible
    * trigger. */
-  private openMenu() {
+  private openMenu(triggerLength = 0) {
     this.editor.features.manipulation.ensureTextBlock()
     const selection = document.getSelection()
     if(!selection?.rangeCount || !selection.anchorNode) return
+    if(!triggerLength) {
+      this.commandTrigger = null
+      this.clearTriggerHighlight()
+    }
 
     const range = selection.getRangeAt(0)
     this.commandBlock = this.closestBlock(range.startContainer)
     const blockStart = document.createRange()
     blockStart.selectNodeContents(this.commandBlock)
     blockStart.setEnd(range.startContainer, range.startOffset)
-    this.commandStartOffset = blockStart.toString().length
-    this.emptyTextBlock = this.findEmptyTextBlock(range.startContainer)
+    this.commandStartOffset = Math.max(0, blockStart.toString().length - triggerLength)
+    this.commandTriggerLength = triggerLength
+    const triggerText = "+".repeat(triggerLength)
+    this.emptyTextBlock = triggerLength > 0 && this.commandBlock.textContent === triggerText && this.commandStartOffset === 0
+      ? this.commandBlock
+      : this.findEmptyTextBlock(range.startContainer)
     range.deleteContents()
     range.collapse(true)
     $.move(range.startContainer, range.startOffset)
 
     this.commandRange = document.createRange()
-    this.commandRange.setStart(range.startContainer, range.startOffset)
-    this.commandRange.collapse(true)
+    const commandStart = this.commandStartPoint() ?? [range.startContainer, range.startOffset] as [Node, number]
+    this.commandRange.setStart(...commandStart)
+    this.commandRange.setEnd(range.startContainer, range.startOffset)
     const rect = this.commandPositionRect(this.commandRange)
     this.menu.showAt(rect.left, rect.bottom + 6)
     this.commandObserver.observe(document.body, {characterData: true, childList: true, subtree: true})
@@ -160,8 +177,13 @@ export class InsertionFeature extends EditorFeature {
       return
     }
     const text = range.toString()
+    const trigger = "+".repeat(this.commandTriggerLength)
+    if(trigger && !text.startsWith(trigger)) {
+      this.close(false)
+      return
+    }
     this.commandRange = range
-    this.menu.query = text
+    this.menu.query = trigger? text.slice(trigger.length): text
     const rect = this.commandPositionRect(range)
     this.menu.setPosition(rect.left, rect.bottom + 6)
   }
@@ -170,17 +192,20 @@ export class InsertionFeature extends EditorFeature {
    * report the document origin. Anchor the initial picker to the block in
    * that case; once the user types a query, the range follows the caret. */
   private commandPositionRect(range: Range) {
-    if(this.emptyTextBlock?.isConnected && this.isEmptyTextBlock(this.emptyTextBlock)) {
+    const triggerText = "+".repeat(this.commandTriggerLength)
+    if(this.emptyTextBlock?.isConnected && (
+      this.isEmptyTextBlock(this.emptyTextBlock) || range.toString() === triggerText
+    )) {
       return this.emptyTextBlock.getBoundingClientRect()
     }
     return range.getBoundingClientRect()
   }
 
-  /** Consumes a just-typed command trigger and opens the menu. With a keydown
-   * event the second `+` has not been inserted yet, so only the preceding
-   * plus is consumed. An input event can consume both pluses at once, which
-   * also supports pasted or programmatically inserted `++`. */
-  private consumeTypedTrigger(length: 1 | 2) {
+  /** Completes a just-typed command trigger and opens the menu. With a
+   * keydown event the second `+` has not been inserted yet, so add it before
+   * opening. An input event can contain both pluses at once, which also
+   * supports pasted or programmatically inserted `++`. */
+  private openTypedTriggerFromKeydown() {
     if(this.menu.open) return false
     const selection = document.getSelection()
     if(!selection?.isCollapsed || !selection.anchorNode || this.hasContentDirectlyAfterCaret()) return false
@@ -195,10 +220,36 @@ export class InsertionFeature extends EditorFeature {
       return false
     }
     const text = beforeCaret.toString()
-    const trigger = "+".repeat(length)
-    if(!text.endsWith(trigger)) return false
+    if(!text.endsWith("+")) return false
 
-    const start = this.pointAtTextOffset(block, text.length - length)
+    const range = selection.getRangeAt(0)
+    const plus = document.createTextNode("+")
+    range.insertNode(plus)
+    $.move(plus, 1)
+    return this.openTypedTrigger(2)
+  }
+
+  /** Keeps the typed `++` as ordinary document text and marks its range with
+   * the Custom Highlight API while the insertion menu is active. */
+  private openTypedTrigger(length: 2) {
+    if(this.menu.open) return false
+    const selection = document.getSelection()
+    if(!selection?.isCollapsed || !selection.anchorNode || this.hasContentDirectlyAfterCaret()) return false
+
+    const block = this.closestBlock(selection.anchorNode)
+    const beforeCaret = document.createRange()
+    try {
+      beforeCaret.selectNodeContents(block)
+      beforeCaret.setEnd(selection.anchorNode, selection.anchorOffset)
+    }
+    catch {
+      return false
+    }
+    const text = beforeCaret.toString()
+    const triggerText = "+".repeat(length)
+    if(!text.endsWith(triggerText)) return false
+
+    const start = this.pointAtTextOffset(block, text.length - triggerText.length)
     if(!start) return false
     const triggerRange = document.createRange()
     try {
@@ -208,10 +259,34 @@ export class InsertionFeature extends EditorFeature {
     catch {
       return false
     }
-    triggerRange.deleteContents()
-    $.move(triggerRange.startContainer, triggerRange.startOffset)
-    this.openMenu()
+    this.commandTrigger = triggerRange.cloneRange()
+    this.setTriggerHighlight(this.commandTrigger)
+    if(!document.body.classList.contains("◆")) {
+      document.body.classList.add("◆")
+      this.triggerBodyMarkerAdded = true
+    }
+    document.body.classList.add("◆insertion-trigger")
+    this.openMenu(length)
     return true
+  }
+
+  private setTriggerHighlight(range: Range) {
+    if(typeof CSS === "undefined" || typeof Highlight === "undefined" || !CSS.highlights) return
+    const highlights = CSS.highlights as unknown as CustomHighlightRegistry
+    highlights.delete("insertion-trigger")
+    highlights.set("insertion-trigger", new Highlight(range))
+  }
+
+  private clearTriggerHighlight() {
+    if(typeof CSS !== "undefined" && CSS.highlights) {
+      const highlights = CSS.highlights as unknown as CustomHighlightRegistry
+      highlights.delete("insertion-trigger")
+    }
+    document.body.classList.remove("◆insertion-trigger")
+    if(this.triggerBodyMarkerAdded) {
+      document.body.classList.remove("◆")
+      this.triggerBodyMarkerAdded = false
+    }
   }
 
   /** True when the next content in the current text block is non-whitespace.
@@ -345,9 +420,12 @@ export class InsertionFeature extends EditorFeature {
     if(restoreSelection && this.commandRange?.endContainer.isConnected) {
       $.move(this.commandRange.endContainer, this.commandRange.endOffset)
     }
+    this.clearTriggerHighlight()
     this.commandRange = null
     this.commandBlock = null
     this.commandStartOffset = 0
+    this.commandTriggerLength = 0
+    this.commandTrigger = null
     this.emptyTextBlock = null
   }
 
@@ -356,6 +434,9 @@ export class InsertionFeature extends EditorFeature {
   private commandStartPoint(): [Node, number] | null {
     const block = this.commandBlock
     if(!block?.isConnected) return null
+    if(this.commandTrigger?.startContainer.isConnected) {
+      return [this.commandTrigger.startContainer, this.commandTrigger.startOffset]
+    }
     return this.pointAtTextOffset(block, this.commandStartOffset)
   }
 

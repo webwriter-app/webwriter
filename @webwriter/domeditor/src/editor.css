@@ -639,6 +639,9 @@ body.◆empty-selected::part(insertion-add) {
   left: anchor(left);
   top: anchor(center);
 }
+body.◆insertion-trigger::part(insertion-add) {
+  display: none;
+}
 body::part(insertion-add)::before {
   content: "";
   width: 0.75rem;
@@ -651,6 +654,9 @@ body::part(insertion-add)::before {
 body::part(insertion-add):hover {
   color: #4b5563;
   background: #e5e7eb;
+}
+::highlight(insertion-trigger) {
+  color: darkgray;
 }
 body::part(transform-overlay) {
   position: fixed;
