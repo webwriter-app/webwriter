@@ -90,27 +90,43 @@ export class SelectionFeature extends EditorFeature {
   disable() {
     if(!this.isEnabled) return
     this.editor.doc.doc.off("afterTransaction", this.#handleSharedChange)
+    this.#clearElementHover()
     super.disable()
   }
 
   /** Selects the element addressed by a child-node path from BODY. */
   actions = {
     selectNode: ({path}: {type: "selectNode", path: number[]}) => {
-      let node: Node = document.body
-      for(const index of path) {
-        const child = node.childNodes.item(index)
-        if(!child) {
-          throw new RangeError(`Cannot select missing node at path [${path.join(", ")}]`)
-        }
-        node = child
-      }
-      if(!isElement(node)) {
-        throw new TypeError("A breadcrumb path must resolve to an element")
-      }
+      const node = this.#elementAtPath(path)
       $.selectElement(node)
       this.processSelection()
     },
+    hoverNode: ({path}: {type: "hoverNode", path: number[] | null}) => {
+      this.#clearElementHover()
+      if(path === null) return
+
+      const element = this.#elementAtPath(path)
+      if(element.classList.contains("◆element-selected")) return
+      element.classList.add("◆", "◆element-hovered")
+      setPart(this.elementHoverCaret ?? this.#createElementHoverCaret(), "element-hover-caret-hidden", false)
+    },
   } as const
+
+  /** Resolves a BODY-relative child-node path to an element. */
+  #elementAtPath(path: number[]) {
+    let node: Node = document.body
+    for(const index of path) {
+      const child = node.childNodes.item(index)
+      if(!child) {
+        throw new RangeError(`Cannot select missing node at path [${path.join(", ")}]`)
+      }
+      node = child
+    }
+    if(!isElement(node)) {
+      throw new TypeError("A breadcrumb path must resolve to an element")
+    }
+    return node
+  }
 
   /** Whether a pointer-driven drag selection is in progress. */
   isInDragSelection = false
@@ -153,6 +169,51 @@ export class SelectionFeature extends EditorFeature {
   /** The shadow-DOM caret that outlines the selected element, if created. */
   get elementCaret() {
     return this.editor.appendix.querySelector(".◆element-caret")
+  }
+
+  /** Creates the transparent, static bracket caret used for breadcrumb hover. */
+  #createElementHoverCaret() {
+    const node = document.createElement("div")
+    node.classList.add("◆", "◆editor-only", "◆element-hover-caret")
+    node.setAttribute("part", "element-hover-caret element-hover-caret-hidden")
+    node.setAttribute("aria-hidden", "true")
+    node.contentEditable = "false"
+    this.editor.addAppendix(node)
+    return node
+  }
+
+  /** The shadow-DOM caret that marks the element currently hovered in the breadcrumb. */
+  get elementHoverCaret() {
+    return this.editor.appendix.querySelector(".◆element-hover-caret")
+  }
+
+  #clearElementHover() {
+    if(this.elementHoverCaret) {
+      setPart(this.elementHoverCaret, "element-hover-caret-hidden")
+    }
+    const hoveredElements = Array.from(document.querySelectorAll(".◆element-hovered"))
+    if(document.body.classList.contains("◆element-hovered")) {
+      hoveredElements.unshift(document.body)
+    }
+    hoveredElements.forEach(el => {
+      el.classList.remove("◆element-hovered")
+      if(!Array.from(el.classList).some(k => k !== "◆" && k.startsWith("◆"))) {
+        el.classList.remove("◆")
+      }
+      if(el.classList.length === 0) {
+        el.removeAttribute("class")
+      }
+    })
+  }
+
+  #clearElementHoverIfSelected() {
+    const selectedElements = Array.from(document.querySelectorAll(".◆element-selected"))
+    if(document.body.classList.contains("◆element-selected")) {
+      selectedElements.unshift(document.body)
+    }
+    if(selectedElements.some(el => el.classList.contains("◆element-hovered"))) {
+      this.#clearElementHover()
+    }
   }
 
   /** Creates the virtual caret used only for a completely empty document.
@@ -281,6 +342,7 @@ export class SelectionFeature extends EditorFeature {
         this.#createEmptyDocumentCaret()
       }
     }
+    this.#clearElementHoverIfSelected()
   }
 
   /** Observing behavior: re-apply markers on every selection change, extend

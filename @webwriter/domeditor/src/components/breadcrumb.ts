@@ -353,6 +353,7 @@ export class DomEditorBreadcrumb extends LitElement {
   private treeHeight = 0
   private treeAnimating = false
   private treeCollapseTimer: ReturnType<typeof setTimeout> | null = null
+  private hoveredPath: number[] | null = null
 
   private get displayPath() {
     return this.path.length
@@ -504,6 +505,10 @@ export class DomEditorBreadcrumb extends LitElement {
   }
 
   protected updated(changedProperties: Map<PropertyKey, unknown>) {
+    if(this.hoveredPath && !this.hasRenderedItem(this.hoveredPath)) {
+      this.clearHover()
+    }
+
     if(!changedProperties.has("treeOpen")
       && !changedProperties.has("tree")
       && !changedProperties.has("expandedPaths")) return
@@ -514,7 +519,40 @@ export class DomEditorBreadcrumb extends LitElement {
     if(height !== this.treeHeight) this.treeHeight = height
   }
 
+  private hasRenderedItem(path: number[]) {
+    const key = path.join(",")
+    return Array.from(this.renderRoot.querySelectorAll<HTMLElement>("[data-path]"))
+      .some(item => item.dataset.path === key)
+  }
+
+  private dispatchHover(item: SelectionPathItem | null) {
+    this.dispatchEvent(new CustomEvent<SelectionPathItem | null>("breadcrumb-item-hover", {
+      detail: item
+        ? {
+            path: [...item.path],
+            name: item.name,
+            ...(item.icon ? {icon: item.icon} : {}),
+          }
+        : null,
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private hover(item: SelectionPathItem) {
+    this.hoveredPath = [...item.path]
+    this.dispatchHover(item)
+  }
+
+  private clearHover(item?: SelectionPathItem) {
+    if(this.hoveredPath === null) return
+    if(item && !this.pathsEqual(this.hoveredPath, item.path)) return
+    this.hoveredPath = null
+    this.dispatchHover(null)
+  }
+
   collapseTree() {
+    this.clearHover()
     if(!this.treeOpen) return
     const path = [...this.treeRootPath]
     this.treeOpen = false
@@ -538,6 +576,7 @@ export class DomEditorBreadcrumb extends LitElement {
       this.setTreeRoot(item.path)
     }
     else {
+      this.clearHover()
       this.treeRootPath = []
       this.treeAnimating = true
       this.scheduleTreeCollapse()
@@ -635,6 +674,8 @@ export class DomEditorBreadcrumb extends LitElement {
             title=${`Select ${item.name}`}
             aria-label=${`Select ${item.name}`}
             aria-current=${this.isSelected(item) ? "true" : "false"}
+            @mouseenter=${() => this.hover(item)}
+            @mouseleave=${() => this.clearHover(item)}
             @click=${() => this.select(item)}
           >
             <span class="item-icon" aria-hidden="true">${ribbonIcon(item.icon ?? item.name)}</span>
@@ -685,8 +726,11 @@ export class DomEditorBreadcrumb extends LitElement {
         <button
           class="item"
           type="button"
+          data-path=${entry.item.path.join(",")}
           title=${`Select ${entry.item.name}`}
           aria-label=${`Select ${entry.item.name}`}
+          @mouseenter=${() => this.hover(entry.item)}
+          @mouseleave=${() => this.clearHover(entry.item)}
           @click=${() => this.select(entry.item)}
         >
           <span class="item-icon" aria-hidden="true">${ribbonIcon(entry.item.icon ?? entry.item.name)}</span>
@@ -729,6 +773,7 @@ export class DomEditorBreadcrumb extends LitElement {
   }
 
   disconnectedCallback() {
+    this.clearHover()
     if(this.treeCollapseTimer !== null) clearTimeout(this.treeCollapseTimer)
     this.treeCollapseTimer = null
     super.disconnectedCallback()

@@ -156,6 +156,55 @@ body::part(element-caret-hidden) {
   display: none;
 }
 
+.◆element-hovered {
+  anchor-name: --element-hover-caret-anchor;
+}
+
+.◆element-hovered, .◆element-hovered:hover {
+  outline: none;
+}
+
+body::part(element-hover-caret) {
+  position: fixed;
+  position-anchor: --element-hover-caret-anchor;
+  top: anchor(top);
+  right: anchor(right);
+  bottom: anchor(bottom);
+  left: anchor(left);
+  box-sizing: border-box;
+  color: #2563eb;
+  opacity: 0.5;
+  pointer-events: none;
+  user-select: none;
+  z-index: 2147483645;
+  animation: none;
+}
+
+body::part(element-hover-caret)::before,
+body::part(element-hover-caret)::after {
+  content: "";
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 8px;
+  box-sizing: border-box;
+  border: 1px solid currentColor;
+}
+
+body::part(element-hover-caret)::before {
+  left: -2px;
+  border-right: 0;
+}
+
+body::part(element-hover-caret)::after {
+  right: -2px;
+  border-left: 0;
+}
+
+body::part(element-hover-caret-hidden) {
+  display: none;
+}
+
 body.◆key-mod-down, body.◆key-mod-down * {
   cursor: pointer;
 }

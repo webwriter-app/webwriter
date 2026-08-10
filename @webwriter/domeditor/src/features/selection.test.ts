@@ -110,6 +110,51 @@ describe("processSelection()", () => {
     feature.processSelection()
     expect(feature.elementCaret).toHaveAttribute("part", "element-caret element-caret-hidden")
   })
+  it("shows and clears a static hover caret for a breadcrumb path", () => {
+    const p = el("p", "hello")
+
+    feature.actions.hoverNode({type: "hoverNode", path: [0]})
+
+    expect(p).toHaveClass("◆element-hovered")
+    expect(feature.elementHoverCaret).toHaveClass("◆editor-only")
+    expect(feature.elementHoverCaret).toHaveAttribute("part", "element-hover-caret")
+
+    feature.actions.hoverNode({type: "hoverNode", path: null})
+
+    expect(p).not.toHaveClass("◆element-hovered")
+    expect(feature.elementHoverCaret).toHaveAttribute("part", "element-hover-caret element-hover-caret-hidden")
+  })
+  it("clears a document hover without leaving a body marker", () => {
+    feature.actions.hoverNode({type: "hoverNode", path: []})
+    expect(document.body).toHaveClass("◆element-hovered")
+
+    feature.actions.hoverNode({type: "hoverNode", path: null})
+
+    expect(document.body).not.toHaveClass("◆element-hovered")
+  })
+  it("does not add a hover caret to an already selected element", () => {
+    const p = el("p", "hello")
+    $.selectElement(p)
+    feature.processSelection()
+
+    feature.actions.hoverNode({type: "hoverNode", path: [0]})
+
+    expect(p).toHaveClass("◆element-selected")
+    expect(p).not.toHaveClass("◆element-hovered")
+    expect(feature.elementHoverCaret).toHaveAttribute("part", "element-hover-caret element-hover-caret-hidden")
+  })
+  it("removes the hover caret when its element becomes selected", () => {
+    const p = el("p", "hello")
+    feature.actions.hoverNode({type: "hoverNode", path: [0]})
+    expect(p).toHaveClass("◆element-hovered")
+
+    $.selectElement(p)
+    feature.processSelection()
+
+    expect(p).toHaveClass("◆element-selected")
+    expect(p).not.toHaveClass("◆element-hovered")
+    expect(feature.elementHoverCaret).toHaveAttribute("part", "element-hover-caret element-hover-caret-hidden")
+  })
 
   it("selects an element from a BODY-relative breadcrumb path", () => {
     document.body.innerHTML = "<div><p>hello</p></div>"

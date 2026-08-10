@@ -69,6 +69,8 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/body::part\(presence-gap-caret-label\)[\s\S]*?transform:\s*translateX\(-100%\)/)
 
     expect(editorStyleString).toMatch(/body::part\(presence-gap-caret\)::after\s*\{[\s\S]*?animation:\s*none;/)
+    expect(editorStyleString).toMatch(/\.◆element-hovered\s*\{[\s\S]*?anchor-name:\s*--element-hover-caret-anchor;/)
+    expect(editorStyleString).toMatch(/body::part\(element-hover-caret\)[\s\S]*?color:\s*#2563eb;[\s\S]*?opacity:\s*0\.5;[\s\S]*?animation:\s*none;/)
   })
 
   it("does not duplicate constructed stylesheets", () => {

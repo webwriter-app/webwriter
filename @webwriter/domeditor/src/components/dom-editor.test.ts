@@ -363,6 +363,20 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith({type: "selectNode", path: [0]})
   })
 
+  it("starts and ends an element hover from a breadcrumb item", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    await breadcrumb.updateComplete
+    const item = breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>("button.item")!
+
+    item.dispatchEvent(new MouseEvent("mouseenter"))
+    item.dispatchEvent(new MouseEvent("mouseleave"))
+
+    expect(execute).toHaveBeenNthCalledWith(1, {type: "hoverNode", path: []})
+    expect(execute).toHaveBeenNthCalledWith(2, {type: "hoverNode", path: null})
+  })
+
   it("hides the breadcrumb when the ribbon is collapsed", async () => {
     const {editor} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!

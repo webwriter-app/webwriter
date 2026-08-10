@@ -62,6 +62,7 @@ export class DomEditor extends LitElement {
   private selectionGap: SelectionGap | null = null
   private documentTree: DocumentTreeItem | null = null
   private treeViewOpen = false
+  private breadcrumbHoverPath: number[] | null = null
   private pendingExecutions = new Map<string, {
     resolve: (value: unknown) => void
     reject: (reason?: unknown) => void
@@ -114,6 +115,12 @@ export class DomEditor extends LitElement {
     const iframe = event.currentTarget as HTMLIFrameElement
     this.editorDocument = iframe.contentDocument
     this.editorWindow = iframe.contentWindow
+    if(this.breadcrumbHoverPath !== null) {
+      void this.execute({
+        type: "hoverNode",
+        path: [...this.breadcrumbHoverPath],
+      }).catch(() => {})
+    }
     this.documentTree = this.buildDocumentTree()
     const body = this.editorDocument?.body
     if(body) {
@@ -281,6 +288,19 @@ export class DomEditor extends LitElement {
     }).finally(() => this.focusEditor())
   }
 
+  private handleBreadcrumbItemHover = (event: Event) => {
+    const item = (event as CustomEvent<SelectionPathItem | null>).detail
+    const path = item && Array.isArray(item.path) ? [...item.path] : null
+    this.breadcrumbHoverPath = path
+    void this.execute({
+      type: "hoverNode",
+      path,
+    }).catch(() => {
+      // Hover is best-effort; the editor may be unloading while the pointer
+      // leaves the breadcrumb.
+    })
+  }
+
   private buildDocumentTree() {
     const body = this.editorDocument?.body
     if(!body) return null
@@ -420,6 +440,7 @@ export class DomEditor extends LitElement {
     this.ribbonInputSession = false
     this.restoreEditorAfterRibbonInput = false
     this.treeViewOpen = false
+    this.breadcrumbHoverPath = null
     this.documentTree = null
     this.editorReadyReject?.(new Error("The DOM editor component was disconnected"))
     this.editorReadyPromise = null
@@ -452,6 +473,7 @@ export class DomEditor extends LitElement {
           .tree=${this.documentTree}
           @breadcrumb-tree-toggle=${this.handleBreadcrumbTreeToggle}
           @breadcrumb-item-select=${this.handleBreadcrumbItemSelect}
+          @breadcrumb-item-hover=${this.handleBreadcrumbItemHover}
         ></dom-editor-breadcrumb>
       </header>
       <iframe title="DOM editor" srcdoc=${this.editorSrcdoc} @load=${this.handleEditorFrameLoad}></iframe>
