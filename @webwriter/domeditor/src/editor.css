@@ -12,7 +12,10 @@ html {
 }
 
 body {
-  margin: 1.25rem;
+  --body-padding: 1.25rem;
+  margin: 1.25rem auto;
+  padding: 0 var(--body-padding);
+  max-width: calc(960px + var(--body-padding) + var(--body-padding));
   pointer-events: auto;
   user-select: text;
   -webkit-user-select: text;

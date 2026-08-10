@@ -42,7 +42,10 @@ describe("DOMEditor stylesheets", () => {
     const bodyRule = Array.from(document.adoptedStyleSheets.flatMap(sheet => Array.from(sheet.cssRules)))
       .find(rule => (rule as CSSStyleRule).selectorText === "body") as CSSStyleRule | undefined
 
-    expect(bodyRule?.style.margin).toBe("1.25rem")
+    expect(bodyRule?.style.margin).toBe("1.25rem auto")
+    expect(bodyRule?.style.getPropertyValue("--body-padding")).toBe("1.25rem")
+    expect(bodyRule?.style.padding).toBe("0px var(--body-padding)")
+    expect(bodyRule?.style.maxWidth).toBe("calc(960px + var(--body-padding) + var(--body-padding))")
     expect(bodyRule?.style.pointerEvents).toBe("auto")
     expect(bodyRule?.style.userSelect).toBe("text")
     expect(document.body).toHaveAttribute("contenteditable", "true")
