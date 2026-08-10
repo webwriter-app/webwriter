@@ -13,6 +13,7 @@ html {
 
 body {
   --body-padding: 1.25rem;
+  anchor-name: --body-anchor;
   margin: 1.25rem auto;
   padding: 0 var(--body-padding);
   max-width: calc(960px + var(--body-padding) + var(--body-padding));
@@ -215,8 +216,7 @@ body::part(presence-caret) {
   width: 2px;
   height: var(--presence-caret-height, 1lh);
   border-radius: 1px;
-  background: var(--presence-color);
-  opacity: 0.8;
+  background: color-mix(in srgb, var(--presence-color) 40%, transparent);
   pointer-events: none;
   z-index: 2147483647;
 }
@@ -231,24 +231,23 @@ body::part(presence-caret-label) {
   overflow: hidden;
   border-radius: 3px 3px 3px 0;
   color: white;
-  background: var(--presence-color);
+  background: color-mix(in srgb, var(--presence-color) 40%, transparent);
   font: 8px/1.25 system-ui, sans-serif;
   text-align: center;
+  user-select: none;
   white-space: nowrap;
 }
 
 /* Remote gap carets reuse the same arrow pseudo-element as the local gap
  * caret, but keep their own color and a little transparency. */
 body::part(presence-gap-caret) {
-  color: var(--presence-color);
-  opacity: 0.8;
+  color: color-mix(in srgb, var(--presence-color) 40%, transparent);
 }
 
 body::part(presence-element-selection) {
   position: fixed;
   box-sizing: border-box;
-  color: var(--presence-color);
-  opacity: 0.8;
+  color: color-mix(in srgb, var(--presence-color) 40%, transparent);
   pointer-events: none;
   z-index: 2147483646;
 }
@@ -613,9 +612,9 @@ body::part(presence-gap-caret-label) {
 body::part(slash-add) {
   position: fixed;
   position-anchor: --empty-selected;
-  left: anchor(left);
+  left: anchor(--body-anchor left);
   top: anchor(center);
-  transform: translate(2px, -50%);
+  transform: translate(-4px, -50%);
   z-index: 2147483647;
   width: 1.5rem;
   height: 1.5rem;
@@ -635,6 +634,10 @@ body::part(slash-add) {
 body.◆empty-selected::part(slash-add),
 body:has(.◆empty-selected)::part(slash-add) {
   display: inline-grid;
+}
+body.◆empty-selected::part(slash-add) {
+  left: anchor(left);
+  top: anchor(center);
 }
 body::part(slash-add)::before {
   content: "";

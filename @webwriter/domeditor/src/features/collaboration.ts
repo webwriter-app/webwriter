@@ -134,13 +134,11 @@ export class CollaborationFeature extends EditorFeature {
       element.dataset.clientId = String(caret.clientId)
       element.title = caret.name
       element.style.setProperty("--presence-color", caret.color)
-      element.style.setProperty("opacity", "0.8")
       if(isElementSelection) {
         element.style.setProperty("width", `${caret.rect.width}px`)
         element.style.setProperty("height", `${caret.rect.height}px`)
       }
       else if(isGapCaret) {
-        element.style.setProperty("color", caret.color)
         element.style.setProperty("--presence-gap-caret-size", getComputedStyle(document.body).fontSize || "16px")
         element.style.setProperty("position-anchor", "auto")
       }

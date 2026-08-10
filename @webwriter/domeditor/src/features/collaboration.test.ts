@@ -125,7 +125,7 @@ describe("collaboration presence", () => {
     expect(caret.title).toBe("Ada")
     expect(caret.querySelector(".◆presence-caret-label")?.textContent).toBe("AD")
     expect(caret.style.getPropertyValue("--presence-color")).toBe("#ff3366")
-    expect(caret.style.opacity).toBe("0.8")
+    expect(caret.style.opacity).toBe("")
   })
 
   it("renders a remote relative selection as a colored virtual caret in the shadow DOM", () => {
@@ -179,8 +179,8 @@ describe("collaboration presence", () => {
     expect(parts).toContain("presence-gap-caret")
     expect(parts).not.toContain("presence-caret")
     expect(caret.querySelector(".◆presence-caret-label")?.textContent).toBe("AL")
-    expect(caret.style.color).toBe("#ff3366")
-    expect(caret.style.opacity).toBe("0.8")
+    expect(caret.style.color).toBe("")
+    expect(caret.style.opacity).toBe("")
     expect(caret.style.getPropertyValue("--presence-gap-caret-size")).toBe("16px")
     expect(caret.style.getPropertyValue("position-anchor")).toBe("auto")
     const labelParts = caret.querySelector(".◆presence-caret-label")?.getAttribute("part")?.split(/\s+/) ?? []
@@ -196,7 +196,7 @@ describe("collaboration presence", () => {
     expect(selection?.classList.contains("◆presence-caret")).toBe(true)
     expect(selection?.getAttribute("part")).toContain("presence-element-selection")
     expect(selection?.style.getPropertyValue("--presence-color")).toBe("#3366ff")
-    expect(selection?.style.opacity).toBe("0.8")
+    expect(selection?.style.opacity).toBe("")
     expect(label?.textContent).toBe("GH")
     expect(label?.getAttribute("part")).toContain("presence-element-selection-label")
     expect(document.querySelector(".◆element-selected")).toBeNull()
