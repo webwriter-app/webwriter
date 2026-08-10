@@ -9,11 +9,13 @@ import {
   executeFailureEvent,
   isExecuteResponse,
   isSelectionChangeMessage,
+  isPresenceChangeMessage,
   selectionChangeEvent,
   type ExecuteCompleteDetail,
   type ExecuteFailureDetail,
   type SelectionGap,
   type SelectionPathItem,
+  type PresenceUser,
 } from "../editor-bridge"
 import "./breadcrumb"
 import "./ribbon"
@@ -46,6 +48,7 @@ export class DomEditor extends LitElement {
     selectionPath: {attribute: false, state: true},
     selectionGap: {attribute: false, state: true},
     documentTree: {attribute: false, state: true},
+    presenceUsers: {attribute: false, state: true},
   }
 
   private editorDocument: Document | null = null
@@ -61,6 +64,7 @@ export class DomEditor extends LitElement {
   private selectionPath: SelectionPathItem[] = []
   private selectionGap: SelectionGap | null = null
   private documentTree: DocumentTreeItem | null = null
+  private presenceUsers: PresenceUser[] = []
   private treeViewOpen = false
   private breadcrumbHoverPath: number[] | null = null
   private pendingExecutions = new Map<string, {
@@ -352,6 +356,11 @@ export class DomEditor extends LitElement {
       }))
       return
     }
+    if(isPresenceChangeMessage(event.data)) {
+      if(!this.isEditorMessage(event)) return
+      this.presenceUsers = event.data.detail.users.map(user => ({...user}))
+      return
+    }
     if(!isExecuteResponse(event.data)) return
     if(!this.isEditorMessage(event)) return
 
@@ -442,6 +451,7 @@ export class DomEditor extends LitElement {
     this.treeViewOpen = false
     this.breadcrumbHoverPath = null
     this.documentTree = null
+    this.presenceUsers = []
     this.editorReadyReject?.(new Error("The DOM editor component was disconnected"))
     this.editorReadyPromise = null
     this.editorReadyResolve = null
@@ -459,6 +469,7 @@ export class DomEditor extends LitElement {
       <header class="app-bar">
         <app-ribbon
           logo-url=${appIconUrl}
+          .presenceUsers=${this.presenceUsers}
           @ribbon-button-click=${this.handleRibbonButtonClick}
           @ribbon-collapse=${this.handleRibbonCollapse}
           @ribbon-input-pointerdown=${this.handleRibbonInputPointerDown}

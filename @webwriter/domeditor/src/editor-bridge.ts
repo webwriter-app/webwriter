@@ -1,6 +1,7 @@
 export const executeCompleteEvent = "dom-editor-execute-complete"
 export const executeFailureEvent = "dom-editor-execute-failure"
 export const selectionChangeEvent = "dom-editor-selection-change"
+export const presenceChangeEvent = "dom-editor-presence-change"
 
 export type SelectionPathItem = {
   /** The child-node path from BODY to this element. */
@@ -26,6 +27,22 @@ export type SelectionChangeDetail = {
 export type SelectionChangeMessage = {
   type: typeof selectionChangeEvent
   detail: SelectionChangeDetail
+}
+
+export type PresenceUser = {
+  clientId: number
+  name: string
+  initials: string
+  color: string
+}
+
+export type PresenceChangeDetail = {
+  users: PresenceUser[]
+}
+
+export type PresenceChangeMessage = {
+  type: typeof presenceChangeEvent
+  detail: PresenceChangeDetail
 }
 
 export type SerializedError = {
@@ -81,4 +98,19 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
     && Number.isInteger(gap.offset)
     && gap.offset >= 0
   )
+}
+
+export function isPresenceChangeMessage(value: unknown): value is PresenceChangeMessage {
+  if(!value || typeof value !== "object") return false
+  const message = value as Partial<PresenceChangeMessage>
+  if(message.type !== presenceChangeEvent || !message.detail || typeof message.detail !== "object") return false
+  if(!Array.isArray(message.detail.users)) return false
+  return message.detail.users.every(user => {
+    if(!user || typeof user !== "object") return false
+    const presenceUser = user as Partial<PresenceUser>
+    return Number.isInteger(presenceUser.clientId)
+      && typeof presenceUser.name === "string"
+      && typeof presenceUser.initials === "string"
+      && typeof presenceUser.color === "string"
+  })
 }

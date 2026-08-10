@@ -2,7 +2,7 @@
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {DomEditor} from "./dom-editor"
 import type {DomEditorBreadcrumb} from "./breadcrumb"
-import {executeCompleteEvent, executeFailureEvent, selectionChangeEvent} from "../editor-bridge"
+import {executeCompleteEvent, executeFailureEvent, presenceChangeEvent, selectionChangeEvent} from "../editor-bridge"
 
 async function mountEditor() {
   const editor = new DomEditor()
@@ -112,6 +112,71 @@ describe("DomEditor.execute()", () => {
 
     expect(execute).toHaveBeenNthCalledWith(1, {type: "undo"})
     expect(execute).toHaveBeenNthCalledWith(2, {type: "redo"})
+  })
+
+  it("renders presence circles before undo and overlaps up to three collaborators", async () => {
+    const {editor, editorWindow} = await mountEditor()
+
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {
+        type: presenceChangeEvent,
+        detail: {
+          users: [
+            {clientId: 1, name: "Ada Lovelace", initials: "AL", color: "#e11d48"},
+            {clientId: 2, name: "Grace Hopper", initials: "GH", color: "#2563eb"},
+            {clientId: 3, name: "Lin", initials: "LI", color: "#059669"},
+          ],
+        },
+      },
+      source: editorWindow,
+    }))
+    await editor.updateComplete
+
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    await ribbon.updateComplete
+    const users = ribbon.shadowRoot!.querySelector<HTMLElement>(".presence-users")!
+    const circles = Array.from(users.querySelectorAll<HTMLElement>(".presence-user"))
+
+    expect(circles).toHaveLength(3)
+    expect(circles.map(circle => circle.textContent)).toEqual(["AL", "GH", "LI"])
+    expect(circles.map(circle => circle.style.getPropertyValue("--presence-color"))).toEqual([
+      "#e11d48",
+      "#2563eb",
+      "#059669",
+    ])
+    expect(users.querySelector(".presence-more")).toBeNull()
+    expect(users.nextElementSibling?.getAttribute("aria-label")).toBe("Undo")
+  })
+
+  it("adds a smaller Tabler plus circle with the connected peer count", async () => {
+    const {editor, editorWindow} = await mountEditor()
+
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {
+        type: presenceChangeEvent,
+        detail: {
+          users: [1, 2, 3, 4].map(clientId => ({
+            clientId,
+            name: `User ${clientId}`,
+            initials: `U${clientId}`,
+            color: "#2563eb",
+          })),
+        },
+      },
+      source: editorWindow,
+    }))
+    await editor.updateComplete
+
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    await ribbon.updateComplete
+    const users = ribbon.shadowRoot!.querySelector<HTMLElement>(".presence-users")!
+    const more = users.querySelector<HTMLElement>(".presence-more")!
+
+    expect(users.querySelectorAll(".presence-user")).toHaveLength(3)
+    expect(more.querySelector(".icon-tabler-plus")).not.toBeNull()
+    expect(more.querySelector(".presence-more-count")?.textContent).toBe("4")
+    expect(more.getAttribute("aria-label")).toBe("+ 4 peers connected")
+    expect(users.dataset.userCount).toBe("4")
   })
 
   it("renders the preview control after redo with the filled play icon", async () => {

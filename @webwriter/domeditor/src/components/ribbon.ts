@@ -1,4 +1,5 @@
 import { LitElement, css, html } from "lit"
+import type {PresenceUser} from "../editor-bridge"
 import { ribbonIcon } from "../ribbon-icons"
 import { slashMenuItems } from "./slash-menu"
 import { type RibbonButton } from "./ribbon-button"
@@ -84,6 +85,7 @@ export class AppRibbon extends LitElement {
     expanded: {type: Boolean, reflect: true},
     menuOpen: {type: Boolean, reflect: true},
     logoUrl: {type: String, attribute: "logo-url"},
+    presenceUsers: {attribute: false},
   }
 
   static styles = css`
@@ -230,6 +232,67 @@ export class AppRibbon extends LitElement {
       cursor: pointer;
     }
 
+    .presence-users {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      height: 40px;
+      margin: 0 0.35rem 0 0.5rem;
+    }
+
+    .presence-user,
+    .presence-more {
+      box-sizing: border-box;
+      display: grid;
+      flex: 0 0 1.5rem;
+      place-items: center;
+      width: 1.5rem;
+      height: 1.5rem;
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 1px 3px rgb(0 0 0 / 25%);
+    }
+
+    .presence-user {
+      margin-left: -0.45rem;
+      color: #ffffff;
+      background: var(--presence-color);
+      font-size: 0.55rem;
+      font-weight: 700;
+      line-height: 1;
+      text-align: center;
+      text-transform: uppercase;
+    }
+
+    .presence-user:first-child {
+      margin-left: 0;
+    }
+
+    .presence-more {
+      margin-left: -0.45rem;
+      flex-basis: 1.25rem;
+      width: 1.25rem;
+      height: 1.25rem;
+      color: #5e6977;
+      background: #e8eef5;
+      font-size: 0.45rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .presence-more-content {
+      display: flex;
+      align-items: center;
+      gap: 0.02rem;
+    }
+
+    .presence-more-icon,
+    .presence-more-icon svg {
+      display: block;
+      width: 0.45rem;
+      height: 0.45rem;
+    }
+
     .preview-button {
       display: grid;
       flex: 0 0 2rem;
@@ -351,6 +414,7 @@ export class AppRibbon extends LitElement {
   expanded = true
   menuOpen = false
   logoUrl = ""
+  presenceUsers: PresenceUser[] = []
 
   private readonly handleDocumentPointerDown = (event: PointerEvent) => {
     if(!this.menuOpen || this.expanded) return
@@ -501,6 +565,40 @@ export class AppRibbon extends LitElement {
     `)
   }
 
+  private renderPresence() {
+    if(!this.presenceUsers.length) return ""
+    const visibleUsers = this.presenceUsers.slice(0, 3)
+    return html`
+      <div
+        class="presence-users"
+        role="group"
+        aria-label="Active collaborators"
+        data-user-count=${this.presenceUsers.length}
+      >
+        ${visibleUsers.map(user => html`
+          <span
+            class="presence-user"
+            style=${`--presence-color: ${user.color}`}
+            title=${user.name}
+            aria-label=${user.name}
+          >${user.initials}</span>
+        `)}
+        ${this.presenceUsers.length >= 4 ? html`
+          <span
+            class="presence-more"
+            title=${`+ ${this.presenceUsers.length} peers connected`}
+            aria-label=${`+ ${this.presenceUsers.length} peers connected`}
+          >
+            <span class="presence-more-content">
+              <span class="presence-more-icon" aria-hidden="true">${ribbonIcon("Plus")}</span>
+              <span class="presence-more-count">${this.presenceUsers.length}</span>
+            </span>
+          </span>
+        ` : ""}
+      </div>
+    `
+  }
+
   render() {
     return html`
       <div
@@ -528,6 +626,7 @@ export class AppRibbon extends LitElement {
               <ribbon-tab label=${tab} .active=${this.activeMenu === tab}></ribbon-tab>
             `)}
           </nav>
+          ${this.renderPresence()}
           <button
             class="history-button"
             type="button"

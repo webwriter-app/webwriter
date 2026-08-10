@@ -45,6 +45,7 @@ import palette from "@tabler/icons/outline/palette.svg?raw"
 import photo from "@tabler/icons/outline/photo.svg?raw"
 import pilcrow from "@tabler/icons/outline/pilcrow.svg?raw"
 import playerPlay from "@tabler/icons/filled/player-play.svg?raw"
+import plus from "@tabler/icons/outline/plus.svg?raw"
 import printer from "@tabler/icons/outline/printer.svg?raw"
 import rulerMeasure from "@tabler/icons/outline/ruler-measure.svg?raw"
 import scissors from "@tabler/icons/outline/scissors.svg?raw"
@@ -79,6 +80,7 @@ const icons: Record<string, string> = {
   Input: input,
   Text: typography,
   Preview: playerPlay,
+  Plus: plus,
   Undo: arrowBackUp,
   Redo: arrowForwardUp,
   New: filePlus,

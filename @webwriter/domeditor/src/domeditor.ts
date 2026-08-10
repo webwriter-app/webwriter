@@ -14,6 +14,8 @@ import {
   executeCompleteEvent,
   executeFailureEvent,
   selectionChangeEvent,
+  presenceChangeEvent,
+  type PresenceUser,
   type SelectionChangeDetail,
   type SelectionGap,
   type SelectionPathItem,
@@ -196,7 +198,7 @@ export class DOMEditor {
 
     // Responses are posted to the parent window. In a non-iframe environment
     // (for example, a unit test), they can arrive back at this listener too.
-    if(ev.data.type === executeCompleteEvent || ev.data.type === executeFailureEvent) {
+    if(ev.data.type === executeCompleteEvent || ev.data.type === executeFailureEvent || ev.data.type === presenceChangeEvent) {
       return
     }
     if(ev.data.type === selectionChangeEvent) {
@@ -274,6 +276,10 @@ export class DOMEditor {
 
   private postExecutionEvent<T extends object>(type: string, detail: T) {
     this.postBridgeEvent(type, detail)
+  }
+
+  postPresence(users: PresenceUser[]) {
+    this.postBridgeEvent(presenceChangeEvent, {users})
   }
 
   private selectedElementForPath() {

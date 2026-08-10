@@ -1,4 +1,5 @@
 import type {CollaborationUser} from "../domdoc"
+import type {PresenceUser} from "../editor-bridge"
 import {isElement} from "../utility"
 import {EditorFeature} from "."
 
@@ -47,7 +48,7 @@ function textNodes(element: Element, direction: "first" | "last") {
  * editor appendix using the viewport rectangle returned by the same DOM Range
  * APIs the browser uses for the native caret. */
 export class CollaborationFeature extends EditorFeature {
-  readonly #handleAwarenessChange = () => this.renderPresence()
+  readonly #handleAwarenessChange = () => this.renderPresence(true)
   readonly #handleSharedChange = () => this.renderPresence()
   readonly #handleLayoutChange = () => this.renderPresence()
 
@@ -58,7 +59,7 @@ export class CollaborationFeature extends EditorFeature {
     this.editor.doc.doc.on("afterTransaction", this.#handleSharedChange)
     window.addEventListener("resize", this.#handleLayoutChange)
     document.addEventListener("scroll", this.#handleLayoutChange, true)
-    this.renderPresence()
+    this.renderPresence(true)
   }
 
   disable() {
@@ -67,15 +68,22 @@ export class CollaborationFeature extends EditorFeature {
     this.editor.doc.doc.off("afterTransaction", this.#handleSharedChange)
     window.removeEventListener("resize", this.#handleLayoutChange)
     document.removeEventListener("scroll", this.#handleLayoutChange, true)
+    this.editor.postPresence([])
     this.editor.appendix.querySelectorAll(".◆presence-caret").forEach(caret => caret.remove())
     super.disable()
   }
 
-  renderPresence() {
+  renderPresence(notify = false) {
     if(!this.isEnabled) return
     const states = Array.from(this.editor.doc.awareness.getStates())
       .filter(([clientId]) => clientId !== this.editor.doc.awareness.clientID)
       .sort(([a], [b]) => a - b)
+    const users = states.map(([clientId, state]) => ({
+      clientId,
+      ...this.#user(clientId, state.user),
+    } satisfies PresenceUser))
+    const usersByClientId = new Map(users.map(user => [user.clientId, user]))
+    if(notify) this.editor.postPresence(users)
     const carets: CaretLayout[] = []
 
     this.editor.appendix.querySelectorAll(".◆presence-caret").forEach(caret => caret.remove())
@@ -87,7 +95,7 @@ export class CollaborationFeature extends EditorFeature {
       const point = {node: selection.focusNode, offset: selection.focusOffset}
       if(!isElement(point.node) && !(point.node instanceof Text)) continue
       if(point.node !== document.body && !document.body.contains(point.node)) continue
-      const user = this.#user(clientId, state.user)
+      const user = usersByClientId.get(clientId)!
       const elementSelection = selection.anchorNode === selection.focusNode &&
         isElement(selection.anchorNode) &&
         Math.abs(selection.anchorOffset - selection.focusOffset) === 1
