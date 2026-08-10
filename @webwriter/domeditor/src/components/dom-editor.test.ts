@@ -415,6 +415,28 @@ describe("DomEditor.execute()", () => {
     expect(focus).toHaveBeenCalledWith({preventScroll: true})
   })
 
+  it("prevents breadcrumb pointer interactions from focusing its controls", async () => {
+    const {editor, iframe} = await mountEditor()
+    iframe.contentDocument!.body.innerHTML = "<div><p></p></div>"
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    await breadcrumb.updateComplete
+
+    const expectPointerDownToBePrevented = (button: HTMLButtonElement) => {
+      const event = new MouseEvent("pointerdown", {bubbles: true, cancelable: true, composed: true, button: 0})
+      expect(button.dispatchEvent(event)).toBe(false)
+      expect(event.defaultPrevented).toBe(true)
+    }
+
+    Array.from(breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>("button"))
+      .forEach(expectPointerDownToBePrevented)
+
+    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
+    await breadcrumb.updateComplete
+
+    Array.from(breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>("button"))
+      .forEach(expectPointerDownToBePrevented)
+  })
+
   it("selects the node represented by a clicked breadcrumb item", async () => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)

@@ -519,6 +519,14 @@ export class DomEditorBreadcrumb extends LitElement {
     if(height !== this.treeHeight) this.treeHeight = height
   }
 
+  private readonly handlePointerDown = (event: PointerEvent) => {
+    if(event.button !== 0) return
+
+    // Keep the editor iframe as the active element while the breadcrumb is
+    // used with a pointer. The click event still performs the breadcrumb action.
+    event.preventDefault()
+  }
+
   private hasRenderedItem(path: number[]) {
     const key = path.join(",")
     return Array.from(this.renderRoot.querySelectorAll<HTMLElement>("[data-path]"))
@@ -750,7 +758,11 @@ export class DomEditorBreadcrumb extends LitElement {
 
   render() {
     return html`
-      <nav class=${this.treeOpen || this.treeAnimating ? "tree-nav" : "breadcrumb-nav"} aria-label=${this.treeOpen ? "Document tree" : "Current selection path"}>
+      <nav
+        class=${this.treeOpen || this.treeAnimating ? "tree-nav" : "breadcrumb-nav"}
+        aria-label=${this.treeOpen ? "Document tree" : "Current selection path"}
+        @pointerdown=${this.handlePointerDown}
+      >
         ${this.renderBreadcrumbList()}
         ${this.tree ? html`
           <div
