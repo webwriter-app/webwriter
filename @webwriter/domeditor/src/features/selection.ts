@@ -29,8 +29,8 @@ function isCaretAtStartOf(element: Element) {
 /** Editing feature that visualizes the current selection. It classifies every
  * selection change into an editing-relevant kind (element, text, gap, empty)
  * and applies the corresponding `◆…-selected` marker classes, manages the gap
- * caret element, mirrors modifier key state onto the body, and implements
- * pointer-based selection (drag selection, modifier-click element
+ * and element caret elements, mirrors modifier key state onto the body, and
+ * implements pointer-based selection (drag selection, modifier-click element
  * selection). */
 export class SelectionFeature extends EditorFeature {
 
@@ -139,6 +139,22 @@ export class SelectionFeature extends EditorFeature {
     return this.editor.appendix.querySelector(".◆gap-caret")
   }
 
+  /** Creates the element caret that paints the outline of a selected element. */
+  #createElementCaret() {
+    const node = document.createElement("div")
+    node.classList.add("◆", "◆editor-only", "◆element-caret")
+    node.setAttribute("part", "element-caret element-caret-hidden")
+    node.setAttribute("aria-hidden", "true")
+    node.contentEditable = "false"
+    this.editor.addAppendix(node)
+    return node
+  }
+
+  /** The shadow-DOM caret that outlines the selected element, if created. */
+  get elementCaret() {
+    return this.editor.appendix.querySelector(".◆element-caret")
+  }
+
   /** Creates the virtual caret used only for a completely empty document.
    * Chromium keeps a valid BODY@0 selection in that state but does not paint
    * its native caret consistently. The visual element stays in the shadow
@@ -159,8 +175,8 @@ export class SelectionFeature extends EditorFeature {
   }
 
   /** Removes all selection marker classes (gap, element, text, empty) from
-   * the document, dropping emptied class attributes, and hides the gap
-   * caret. */
+   * the document, dropping emptied class attributes, and hides the gap and
+   * element carets. */
   #clearSelections() {
     document.querySelectorAll(".◆gap-before-selected, .◆gap-after-selected").forEach(el => {
       el.classList.remove("◆gap-before-selected", "◆gap-after-selected")
@@ -176,6 +192,9 @@ export class SelectionFeature extends EditorFeature {
     if(this.gapCaret) {
       setPart(this.gapCaret, "gap-caret-hidden")
       ;["gap-before-selected", "gap-after-selected", "drop-caret-before", "drop-caret-after"].forEach(state => setPart(this.gapCaret!, `gap-caret-${state}`, false))
+    }
+    if(this.elementCaret) {
+      setPart(this.elementCaret, "element-caret-hidden")
     }
     document.querySelectorAll(".◆element-selected").forEach(el => {
       el.classList.remove("◆element-selected")
@@ -208,9 +227,9 @@ export class SelectionFeature extends EditorFeature {
 
   /** Re-applies the selection markers for the current selection: the gap
    * anchor and caret for gap selections (`◆gap-before/after-selected`), the
-   * selected element (`◆element-selected`, skipped during drag selections),
-   * the text container (`◆text-selected`) or the empty container
-   * (`◆empty-selected`). Previous markers are cleared first. */
+   * selected element and its caret (`◆element-selected`, skipped during drag
+   * selections), the text container (`◆text-selected`) or the empty
+   * container (`◆empty-selected`). Previous markers are cleared first. */
   processSelection(inDragSelection=false) {
     this.#constrainSelectionToBody()
     let sel = document.getSelection()
@@ -245,7 +264,10 @@ export class SelectionFeature extends EditorFeature {
     }
     else if($.isElementSelection && !inDragSelection) {
       const element = sel.anchorNode!.childNodes.item(Math.min(sel.anchorOffset, sel.focusOffset)) as Element
-      element?.classList?.add("◆", "◆element-selected")
+      if(isElement(element)) {
+        element.classList.add("◆", "◆element-selected")
+        setPart(this.elementCaret ?? this.#createElementCaret(), "element-caret-hidden", false)
+      }
     }
     else if(anchorContainer && $.isTextSelection) {
       const element = getContainer($.commonAncestor)

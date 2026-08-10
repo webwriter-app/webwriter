@@ -32,6 +32,9 @@ describe("processSelection()", () => {
     $.selectElement(p)
     feature.processSelection()
     expect(p.classList.contains("◆element-selected")).toBe(true)
+    expect(feature.elementCaret).toHaveClass("◆editor-only")
+    expect(feature.elementCaret).toHaveAttribute("part", "element-caret")
+    expect(feature.elementCaret?.getRootNode()).toBe(document.body.shadowRoot)
   })
   it("skips element markers during drag selection", () => {
     const p = el("p", "hello")
@@ -97,6 +100,15 @@ describe("processSelection()", () => {
     $.move(p1.firstChild!, 0)
     feature.processSelection()
     expect(feature.gapCaret!.getAttribute("visibility")).toBe("hidden")
+  })
+  it("hides the element caret when leaving an element selection", () => {
+    const p = el("p", "hello")
+    $.selectElement(p)
+    feature.processSelection()
+    expect(feature.elementCaret).toHaveAttribute("part", "element-caret")
+    $.move(p.firstChild!, 0)
+    feature.processSelection()
+    expect(feature.elementCaret).toHaveAttribute("part", "element-caret element-caret-hidden")
   })
 
   it("selects an element from a BODY-relative breadcrumb path", () => {

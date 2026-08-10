@@ -93,15 +93,12 @@ body
   outline-offset: 2px;
 }
 
-*:is(:not(.ww-inline), math).◆element-selected:hover {
-  outline: 2px dotted var(--sl-color-primary-400);
-  outline-offset: 2px;
+.◆element-selected {
+  anchor-name: --element-caret-anchor;
 }
 
-.◆element-selected {
-  outline: 2px solid var(--sl-color-primary-400);
-  outline-offset: 2px;
-  z-index: 2147483646;
+.◆element-selected, .◆element-selected:hover {
+  outline: none;
 }
 
 .◆element-selected, .◆element-selected * {
@@ -110,6 +107,50 @@ body
 
 .◆element-selected::selection {
   background: transparent;
+}
+
+body::part(element-caret) {
+  position: fixed;
+  position-anchor: --element-caret-anchor;
+  top: anchor(top);
+  right: anchor(right);
+  bottom: anchor(bottom);
+  left: anchor(left);
+  box-sizing: border-box;
+  color: black;
+  pointer-events: none;
+  user-select: none;
+  z-index: 2147483646;
+  animation: blink 1s step-end 0s infinite;
+}
+
+body::part(element-caret)::before,
+body::part(element-caret)::after,
+body::part(presence-element-selection)::before,
+body::part(presence-element-selection)::after {
+  content: "";
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 8px;
+  box-sizing: border-box;
+  border: 1px solid currentColor;
+}
+
+body::part(element-caret)::before,
+body::part(presence-element-selection)::before {
+  left: -2px;
+  border-right: 0;
+}
+
+body::part(element-caret)::after,
+body::part(presence-element-selection)::after {
+  right: -2px;
+  border-left: 0;
+}
+
+body::part(element-caret-hidden) {
+  display: none;
 }
 
 body.◆key-mod-down, body.◆key-mod-down * {
@@ -154,8 +195,7 @@ body::part(presence-gap-caret) {
 body::part(presence-element-selection) {
   position: fixed;
   box-sizing: border-box;
-  outline: 2px solid var(--presence-color);
-  outline-offset: 2px;
+  color: var(--presence-color);
   opacity: 0.8;
   pointer-events: none;
   z-index: 2147483646;
