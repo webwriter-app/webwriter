@@ -41,7 +41,11 @@ export class SelectionFeature extends EditorFeature {
     this.#sharedRefreshQueued = true
     queueMicrotask(() => {
       this.#sharedRefreshQueued = false
-      if(this.isEnabled) this.processSelection()
+      if(!this.isEnabled) return
+      this.processSelection()
+      // Shared DOM changes can clamp a detached selection without firing a
+      // native selectionchange event, so refresh the host breadcrumb as well.
+      this.editor.postSelectionPath()
     })
   }
 
