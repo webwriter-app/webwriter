@@ -640,7 +640,7 @@ body.◆insertion-trigger::part(insertion-add) {
   display: none;
 }
 ::highlight(insertion-trigger) {
-  color: darkgray;
+  color: #5279a2;
 }
 body::part(transform-overlay) {
   position: fixed;

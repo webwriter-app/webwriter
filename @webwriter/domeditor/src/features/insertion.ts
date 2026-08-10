@@ -143,6 +143,7 @@ export class InsertionFeature extends EditorFeature {
     const commandStart = this.commandStartPoint() ?? [range.startContainer, range.startOffset] as [Node, number]
     this.commandRange.setStart(...commandStart)
     this.commandRange.setEnd(range.startContainer, range.startOffset)
+    this.setTriggerHighlight(this.commandRange)
     const rect = this.commandPositionRect(this.commandRange)
     this.menu.showAt(rect.left, rect.bottom + 6)
     this.commandObserver.observe(document.body, {characterData: true, childList: true, subtree: true})
@@ -196,6 +197,7 @@ export class InsertionFeature extends EditorFeature {
       return
     }
     this.commandRange = range
+    this.setTriggerHighlight(this.commandRange)
     this.menu.query = query
     const rect = this.commandPositionRect(range)
     this.menu.setPosition(rect.left, rect.bottom + 6)
@@ -273,7 +275,6 @@ export class InsertionFeature extends EditorFeature {
       return false
     }
     this.commandTrigger = triggerRange.cloneRange()
-    this.setTriggerHighlight(this.commandTrigger)
     if(!document.body.classList.contains("◆")) {
       document.body.classList.add("◆")
       this.triggerBodyMarkerAdded = true
