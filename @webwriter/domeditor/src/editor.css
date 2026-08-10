@@ -630,7 +630,7 @@ body::part(insertion-add) {
   display: none;
 }
 body.◆empty-selected::part(insertion-add),
-body:has(.◆empty-selected)::part(insertion-add) {
+body:has(p.◆empty-selected)::part(insertion-add) {
   display: inline-grid;
 }
 body.◆empty-selected::part(insertion-add) {

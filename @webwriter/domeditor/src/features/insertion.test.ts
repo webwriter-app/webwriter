@@ -156,6 +156,31 @@ describe("insertion menu", () => {
     expect(editorHTML()).toBe("<p>++text</p>")
   })
 
+  it("opens the menu for typed ++ in non-paragraph blocks", () => {
+    document.body.innerHTML = "<h1>Heading</h1>"
+    const heading = document.querySelector("h1")!
+    $.move(heading.firstChild!, heading.textContent!.length)
+
+    typeCommand()
+
+    expect(editor.features.insertion.menu.open).toBe(true)
+    expect(editorHTML()).toBe("<h1>Heading++</h1>")
+  })
+
+  it("does not activate the empty-block trigger in non-paragraph blocks", async () => {
+    document.body.innerHTML = "<h1></h1>"
+    const heading = document.querySelector("h1")!
+    $.move(heading)
+    editor.features.selection.processSelection()
+    await Promise.resolve()
+
+    const button = editor.appendix.querySelector<HTMLButtonElement>(".◆insertion-add")!
+    button.click()
+
+    expect(editor.features.insertion.menu.open).toBe(false)
+    expect(editorHTML()).toBe("<h1></h1>")
+  })
+
   it("inserts the selected item when it is activated by a pointer", async () => {
     document.body.innerHTML = "<p></p>"
     $.move(document.querySelector("p")!)

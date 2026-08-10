@@ -147,6 +147,7 @@ export class InsertionFeature extends EditorFeature {
     const rect = this.commandPositionRect(this.commandRange)
     this.menu.showAt(rect.left, rect.bottom + 6)
     this.commandObserver.observe(document.body, {characterData: true, childList: true, subtree: true})
+    return true
   }
 
   /** Syncs the picker with the text following its command trigger. Typing stays
@@ -280,7 +281,10 @@ export class InsertionFeature extends EditorFeature {
       this.triggerBodyMarkerAdded = true
     }
     document.body.classList.add("◆insertion-trigger")
-    this.openMenu(length)
+    if(!this.openMenu(length)) {
+      this.close(false)
+      return false
+    }
     return true
   }
 
@@ -360,6 +364,10 @@ export class InsertionFeature extends EditorFeature {
     })
   }
 
+  private isInsertionMenuBlock(block: Element) {
+    return block.matches("p") || this.isEmptyTextBlock(block) && block === document.body
+  }
+
   private createEmptyTextBlockButton() {
     if(this.editor.appendix.querySelector(".◆insertion-add")) return
 
@@ -379,7 +387,7 @@ export class InsertionFeature extends EditorFeature {
       ev.preventDefault()
       ev.stopPropagation()
       const block = document.querySelector(".◆empty-selected")
-      if(!block || !this.isEmptyTextBlock(block)) return
+      if(!block || !this.isEmptyTextBlock(block) || !this.isInsertionMenuBlock(block)) return
       $.move(block)
       const target = this.editor.features.manipulation.ensureTextBlock() ?? block
       $.move(target)
