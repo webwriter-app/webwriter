@@ -25,6 +25,7 @@ import { getElementPresentation } from "./element-names"
 import editorStyleString from "./editor.css?raw"
 
 const editorStylesheet = createStylesheet(editorStyleString)
+const featuresDisabledByDefault = new Set(["placeholder"])
 
 /** DOMEditor
  * Core (transactions, schema, communication)
@@ -161,7 +162,9 @@ export class DOMEditor {
     else {
       this.doc = new SharedDOMDoc(undefined, undefined, this.ignoreAttrs, this.ignoreClasses)
     }
-    Object.values(this.features).forEach(feat => feat.enable())
+    Object.entries(this.features)
+      .filter(([key]) => !featuresDisabledByDefault.has(key))
+      .forEach(([, feat]) => feat.enable())
     document.addEventListener("input", this.#handleInput)
     document.addEventListener("selectionchange", this.handleSelectionChange)
     this.doc.updateLocalSelection()

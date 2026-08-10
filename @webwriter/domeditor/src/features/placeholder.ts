@@ -10,7 +10,7 @@ export class PlaceholderFeature extends EditorFeature {
   }
 
   disable(): void {
-    this.placeholderStylesheet.disabled = true
+    this.#placeholderStylesheet && (this.#placeholderStylesheet.disabled = true)
     super.disable()
   }
 

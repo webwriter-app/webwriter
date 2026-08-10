@@ -16,6 +16,12 @@ const hasExactSelector = (stylesheet: CSSStyleSheet, selector: string) =>
 describe("DOMEditor stylesheets", () => {
   const editor = new DOMEditor()
 
+  it("does not enable placeholder text by default", () => {
+    const placeholderStylesheet = editor.features.placeholder.placeholderStylesheet
+
+    expect(document.adoptedStyleSheets).not.toContain(placeholderStylesheet)
+  })
+
   it("mounts the main-DOM stylesheet on the document", () => {
     const stylesheet = document.adoptedStyleSheets.find(sheet => hasSelector(sheet, "html"))
 
