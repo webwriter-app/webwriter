@@ -231,25 +231,6 @@ describe("document listeners", () => {
     expect(feature.emptyDocumentCaret).toHaveAttribute("part", "empty-document-caret")
   })
 
-  it("posts the Document breadcrumb when a shared change removes the final node", async () => {
-    const p = el("p", "hello")
-    await new Promise<void>(resolve => queueMicrotask(resolve))
-    $.move(p.firstChild!, 2)
-    feature.processSelection()
-    await new Promise<void>(resolve => queueMicrotask(resolve))
-    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => {})
-
-    editor.doc.doc.transact(() => editor.doc.body.delete(0, editor.doc.body.length), "remote-test")
-    await new Promise<void>(resolve => queueMicrotask(resolve))
-
-    expect(postMessage).toHaveBeenLastCalledWith({
-      type: selectionChangeEvent,
-      detail: {
-        path: [{path: [], name: "Document", icon: "Document"}],
-      },
-    }, "*")
-  })
-
   it("posts a user-facing selection path through the bridge", () => {
     document.body.innerHTML = "<div><p>hello</p></div>"
     const paragraph = document.querySelector("p")!

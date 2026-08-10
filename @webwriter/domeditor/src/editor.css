@@ -629,17 +629,6 @@ body::part(insertion-add) {
   outline: none;
   display: none;
 }
-/* Keep the empty-document affordance available even before the selection
- * marker has been restored. */
-body:empty::part(insertion-add) {
-  position-anchor: --body-anchor;
-  left: calc(anchor(left) + var(--body-padding));
-  top: anchor(top);
-}
-body:empty.◆empty-selected::part(insertion-add) {
-  position-anchor: --empty-selected;
-}
-body:empty::part(insertion-add),
 body.◆empty-selected::part(insertion-add),
 body:has(.◆empty-selected)::part(insertion-add) {
   display: inline-grid;
