@@ -136,6 +136,7 @@ export const markOptions = [...primaryMarkOptions, ...secondaryMarkOptions] as c
 export const markNames = [...primaryMarkNames, ...secondaryMarkNames] as const
 
 const markNameSet = new Set<string>(markNames)
+const htmlNamespace = "http://www.w3.org/1999/xhtml"
 
 /** Maps equivalent semantic tags onto the button which controls them. */
 export function canonicalMarkName(name: string): MarkName | null {
@@ -143,6 +144,53 @@ export function canonicalMarkName(name: string): MarkName | null {
   if(normalized === "strong") return "b"
   if(normalized === "em") return "i"
   return markNameSet.has(normalized)? normalized as MarkName: null
+}
+
+/** Whether an element is an HTML wrapper controlled by the marks feature.
+ * `strong` and `em` are included as the DOM aliases of bold and italic. */
+export function isMarkElement(node: unknown) {
+  if(!node || typeof node !== "object") return false
+  const element = node as Partial<Element>
+  return element.nodeType === 1
+    && element.namespaceURI === htmlNamespace
+    && typeof element.localName === "string"
+    && canonicalMarkName(element.localName) !== null
+}
+
+function normalizedMarkAttributes(element: Element) {
+  return Array.from(element.attributes).flatMap(attribute => {
+    if(attribute.name !== "class") return [[attribute.name, attribute.value] as const]
+    const classes = attribute.value.split(/\s+/).filter(name => name && !name.startsWith("◆")).sort()
+    return classes.length? [[attribute.name, classes.join(" ")] as const]: []
+  }).sort(([first], [second]) => first.localeCompare(second))
+}
+
+/** Whether adjacent mark wrappers may be joined without changing meaning. */
+export function areEquivalentMarkElements(first: Element, second: Element) {
+  if(!isMarkElement(first) || !isMarkElement(second) || first.localName !== second.localName) return false
+  const firstAttributes = normalizedMarkAttributes(first)
+  const secondAttributes = normalizedMarkAttributes(second)
+  return firstAttributes.length === secondAttributes.length
+    && firstAttributes.every(([name, value], index) =>
+      secondAttributes[index]?.[0] === name && secondAttributes[index]?.[1] === value,
+    )
+}
+
+/** Recursively joins adjacent equivalent mark runs, like `Node.normalize()`
+ * joins adjacent text nodes. */
+export function normalizeMarkElements(root: Element) {
+  for(const child of Array.from(root.children)) normalizeMarkElements(child)
+  let current: ChildNode | null = root.firstChild
+  while(current) {
+    const next: ChildNode | null = current.nextSibling
+    if(current instanceof Element && next instanceof Element && areEquivalentMarkElements(current, next)) {
+      current.append(...Array.from(next.childNodes))
+      next.remove()
+      current.normalize()
+      continue
+    }
+    current = next
+  }
 }
 
 export function markTagNames(name: MarkName) {

@@ -282,6 +282,13 @@ describe("isElementSelection", () => {
     $.selectGap(document.body.firstElementChild!)
     expect($.isElementSelection).toBe(false)
   })
+  it("does not classify a selected mark wrapper as an element", () => {
+    setBody("<p><b>hello</b></p>")
+    $.selectElement(document.querySelector("b")!)
+    expect($.isElementSelection).toBe(false)
+    expect($.selectedElement).toBeUndefined()
+    expect($.isTextSelection).toBe(true)
+  })
 })
 
 describe("isTextSelection", () => {
@@ -304,6 +311,19 @@ describe("isTextSelection", () => {
     setBody("<p>a</p><p>b</p>")
     $.selectRange(firstText(), 0, firstText(document.body.lastElementChild), 1)
     expect($.isTextSelection).toBe(false)
+  })
+  it("is true across text nodes separated only by marks", () => {
+    setBody("<p>one <b>two</b> <i>three</i></p>")
+    const paragraph = document.querySelector("p")!
+    $.selectRange(paragraph.firstChild!, 1, paragraph.querySelector("i")!.firstChild!, 3)
+    expect($.isTextSelection).toBe(true)
+  })
+  it("is true for a caret at a mark boundary in its text container", () => {
+    setBody("<p><b>hello</b> world</p>")
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph, 1)
+    expect($.isTextSelection).toBe(true)
+    expect($.isGapSelection).toBe(false)
   })
 })
 
@@ -430,6 +450,11 @@ describe("anchorContainer/focusContainer", () => {
     setBody("<p>hello</p>")
     $.move(document.body.firstElementChild!, 0)
     expect($.anchorContainer).toBe(document.body.firstElementChild)
+  })
+  it("skips nested mark wrappers for text anchors", () => {
+    setBody("<p><b><i>hello</i></b></p>")
+    $.move(document.querySelector("i")!.firstChild!, 2)
+    expect($.anchorContainer).toBe(document.querySelector("p"))
   })
 })
 
@@ -620,6 +645,11 @@ describe("getContainer()", () => {
   it("returns an element itself", () => {
     setBody("<p>hello</p>")
     expect(getContainer(document.body.firstElementChild!)).toBe(document.body.firstElementChild)
+  })
+  it("treats nested mark wrappers as part of their text container", () => {
+    setBody("<p><b><span>hello</span></b></p>")
+    expect(getContainer(document.querySelector("span")!.firstChild!)).toBe(document.querySelector("p"))
+    expect(getContainer(document.querySelector("b")!)).toBe(document.querySelector("p"))
   })
 })
 

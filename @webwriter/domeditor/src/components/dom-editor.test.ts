@@ -268,9 +268,28 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith({type: "selectNode", path: [0, 0]})
   })
 
+  it("omits mark wrappers from the document tree while retaining real descendants", async () => {
+    const {editor, iframe} = await mountEditor()
+    iframe.contentDocument!.body.innerHTML = "<p><b>bold</b><span><img></span></p>"
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    await breadcrumb.updateComplete
+
+    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
+    await editor.updateComplete
+    await breadcrumb.updateComplete
+    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-expander")!.click()
+    await breadcrumb.updateComplete
+
+    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".tree-item")).map(item => item.textContent?.trim())).toEqual([
+      "Paragraph",
+      "Image",
+    ])
+    expect(breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.tree-item[data-path="0,1,0"]')).not.toBeNull()
+  })
+
   it("opens the subtree represented by another breadcrumb separator", async () => {
     const {editor, iframe, editorWindow} = await mountEditor()
-    iframe.contentDocument!.body.innerHTML = "<section><p></p><span></span></section>"
+    iframe.contentDocument!.body.innerHTML = "<section><p></p><aside></aside></section>"
 
     window.dispatchEvent(new MessageEvent("message", {
       data: {
@@ -279,7 +298,7 @@ describe("DomEditor.execute()", () => {
           path: [
             {path: [], name: "Document", icon: "Document"},
             {path: [0], name: "Section", icon: "Section"},
-            {path: [0, 1], name: "Text", icon: "Text"},
+            {path: [0, 1], name: "Sidebar", icon: "Layout"},
           ],
         },
       },
@@ -303,14 +322,14 @@ describe("DomEditor.execute()", () => {
     ])
     expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".tree-item")).map(item => item.textContent?.trim())).toEqual([
       "Paragraph",
-      "Text",
+      "Sidebar",
     ])
     expect(breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.tree-item[data-path="0,0"]')?.closest(".tree-row")?.getAttribute("style")).toContain("--tree-depth: 0")
   })
 
   it("shows a gap selection between tree items without adding a row", async () => {
     const {editor, iframe, editorWindow} = await mountEditor()
-    iframe.contentDocument!.body.innerHTML = "<section><p></p><span></span></section>"
+    iframe.contentDocument!.body.innerHTML = "<section><p></p><aside></aside></section>"
 
     window.dispatchEvent(new MessageEvent("message", {
       data: {

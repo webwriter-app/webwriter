@@ -9,7 +9,8 @@ import { SelectionFeature } from "./features/selection"
 import { InsertionFeature } from "./features/insertion"
 import { TransformationFeature } from "./features/transformation"
 import { Schema } from "./schema"
-import { $, adoptStylesheet, createStylesheet, isElement } from "./utility"
+import { $, adoptStylesheet, createStylesheet, getContainer, isElement } from "./utility"
+import {isMarkElement, normalizeMarkElements} from "./marks"
 import {
   executeCompleteEvent,
   executeFailureEvent,
@@ -98,10 +99,14 @@ export class DOMEditor {
       selection?.focusNode,
     ]) {
       if(!node) continue
-      const element = isElement(node)? node: node.parentElement
+      const element = getContainer(node)
       element && elements.add(element)
     }
-    elements.forEach(element => element.normalize())
+    elements.forEach(element => {
+      element.normalize()
+      normalizeMarkElements(element)
+      element.normalize()
+    })
     if(selection && savedSelection) {
       const anchor = this.restoreTextPoint(savedSelection.anchor)
       const focus = this.restoreTextPoint(savedSelection.focus)
@@ -116,9 +121,10 @@ export class DOMEditor {
       return {node, offset}
     }
     const range = document.createRange()
-    range.selectNodeContents(node.parentElement)
+    const element = getContainer(node)
+    range.selectNodeContents(element)
     range.setEnd(node, offset)
-    return {element: node.parentElement, textOffset: range.toString().length}
+    return {element, textOffset: range.toString().length}
   }
 
   private restoreTextPoint(point: {node: Node, offset: number} | {element: Element, textOffset: number}): [Node, number] | null {
@@ -293,8 +299,7 @@ export class DOMEditor {
     if(selectedElement?.isConnected) return selectedElement
 
     const anchor = $.anchor
-    if(anchor instanceof Text) return anchor.parentElement
-    if(isElement(anchor)) return anchor
+    if(anchor instanceof Text || isElement(anchor)) return getContainer(anchor)
     return document.body
   }
 
@@ -321,7 +326,7 @@ export class DOMEditor {
     const elements: Element[] = []
     let current: Element | null = element
     while(current && current !== body) {
-      elements.unshift(current)
+      if(!isMarkElement(current)) elements.unshift(current)
       current = current.parentElement
     }
     elements.unshift(body)

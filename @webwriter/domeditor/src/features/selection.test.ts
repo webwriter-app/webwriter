@@ -54,6 +54,16 @@ describe("processSelection()", () => {
     feature.processSelection()
     expect(p.classList.contains("◆text-selected")).toBe(true)
   })
+  it("treats an exactly selected mark as text in its containing block", () => {
+    document.body.innerHTML = "<p><b>hello</b></p>"
+    const p = document.querySelector("p")!
+    const bold = document.querySelector("b")!
+    $.selectElement(bold)
+    feature.processSelection()
+    expect($.isElementSelection).toBe(false)
+    expect(p).toHaveClass("◆text-selected")
+    expect(bold).not.toHaveClass("◆element-selected")
+  })
   it("marks an empty element containing the caret", () => {
     const p = el("p")
     $.move(p, 0)
@@ -158,6 +168,14 @@ describe("processSelection()", () => {
 
   it("selects an element from a BODY-relative breadcrumb path", () => {
     document.body.innerHTML = "<div><p>hello</p></div>"
+    const paragraph = document.querySelector("p")!
+
+    feature.actions.selectNode({type: "selectNode", path: [0, 0]})
+
+    expect($.selectedElement).toBe(paragraph)
+  })
+  it("resolves a stale mark breadcrumb path to its containing block", () => {
+    document.body.innerHTML = "<p><b>hello</b></p>"
     const paragraph = document.querySelector("p")!
 
     feature.actions.selectNode({type: "selectNode", path: [0, 0]})
@@ -269,6 +287,24 @@ describe("document listeners", () => {
       },
       }, "*")
   })
+  it("omits mark wrappers from the posted selection path", () => {
+    document.body.innerHTML = "<section><p><strong><span>hello</span></strong></p></section>"
+    $.move(document.querySelector("span")!.firstChild!, 2)
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => {})
+
+    editor.postSelectionPath()
+
+    expect(postMessage).toHaveBeenLastCalledWith({
+      type: selectionChangeEvent,
+      detail: {
+        path: [
+          {path: [], name: "Document", icon: "Document"},
+          {path: [0], name: "Section", icon: "Section"},
+          {path: [0, 0], name: "Paragraph", icon: "Paragraph"},
+        ],
+      },
+    }, "*")
+  })
   it("posts a gap position through the bridge", () => {
     document.body.innerHTML = "<p>a</p><p>b</p>"
     const firstParagraph = document.querySelector("p")!
@@ -301,6 +337,13 @@ describe("document listeners", () => {
     p.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true}))
     expect($.selectedElement).toBe(p)
     expect(p.classList.contains("◆element-selected")).toBe(true)
+  })
+  it("selects the containing block rather than a clicked mark on modifier pointerdown", () => {
+    document.body.innerHTML = "<p><b>hello</b></p>"
+    const p = document.querySelector("p")!
+    document.querySelector("b")!.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true}))
+    expect($.selectedElement).toBe(p)
+    expect(p).toHaveClass("◆element-selected")
   })
   it("ignores pointerdown on editor-only elements", () => {
     const p = el("p", "hello")

@@ -129,7 +129,7 @@ export class SelectionFeature extends EditorFeature {
     if(!isElement(node)) {
       throw new TypeError("A breadcrumb path must resolve to an element")
     }
-    return node
+    return getContainer(node)
   }
 
   /** Whether a pointer-driven drag selection is in progress. */
@@ -355,9 +355,12 @@ export class SelectionFeature extends EditorFeature {
   passiveListeners: DocumentListenerMap = {
     "selectionchange": () => this.processSelection(this.isInDragSelection),
     "pointermove": ev => {
-      const inPageX = 0 <= ev.pageX && ev.pageX <= document.body.offsetWidth
-      const inPageY = 0 <= ev.pageY && ev.pageY <= document.body.offsetHeight
-      if(this.isInDragSelection && inPageX && inPageY) {
+      // Pointer coordinates are viewport-relative. Comparing page coordinates
+      // with BODY dimensions breaks as soon as BODY has margins (and for a
+      // one-line document its offsetHeight can be smaller than pageY).
+      const inViewportX = 0 <= ev.clientX && ev.clientX <= window.innerWidth
+      const inViewportY = 0 <= ev.clientY && ev.clientY <= window.innerHeight
+      if(this.isInDragSelection && inViewportX && inViewportY) {
         $.selectCoords(ev.x, ev.y, true)
       }
     },

@@ -4,7 +4,7 @@ import type { DomEditorBreadcrumb, DocumentTreeItem } from "./breadcrumb"
 import type { EditingAction } from "../domeditor"
 import { insertionMenuItems } from "./insertion-menu"
 import { getElementPresentation } from "../element-names"
-import {canonicalMarkName, isStyleMarkName, type MarkName, type StyleMarkValues} from "../marks"
+import {canonicalMarkName, isMarkElement, isStyleMarkName, type MarkName, type StyleMarkValues} from "../marks"
 import {
   executeCompleteEvent,
   executeFailureEvent,
@@ -377,13 +377,18 @@ export class DomEditor extends LitElement {
     const body = this.editorDocument?.body
     if(!body) return null
 
+    const buildChildren = (element: Element, path: number[]): DocumentTreeItem[] =>
+      Array.from(element.childNodes).flatMap((child, index) => {
+        if(child.nodeType !== Node.ELEMENT_NODE) return []
+        const childElement = child as Element
+        const childPath = [...path, index]
+        return isMarkElement(childElement)? buildChildren(childElement, childPath): [build(childElement, childPath)]
+      })
+
     const build = (element: Element, path: number[]): DocumentTreeItem => ({
       path: [...path],
       ...getElementPresentation(element),
-      children: Array.from(element.children).flatMap(child => {
-        const index = Array.from(element.childNodes).indexOf(child)
-        return index < 0? []: [build(child, [...path, index])]
-      }),
+      children: buildChildren(element, path),
     })
 
     return build(body, [])

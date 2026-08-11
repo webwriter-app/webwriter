@@ -2,6 +2,7 @@ import type {CollaborationUser} from "../domdoc"
 import type {PresenceUser} from "../editor-bridge"
 import {isElement} from "../utility"
 import {EditorFeature} from "."
+import {isMarkElement} from "../marks"
 
 type CaretLayout = {
   clientId: number
@@ -101,7 +102,9 @@ export class CollaborationFeature extends EditorFeature {
         Math.abs(selection.anchorOffset - selection.focusOffset) === 1
         ? selection.anchorNode.childNodes.item(Math.min(selection.anchorOffset, selection.focusOffset))
         : undefined
-      const selectedElement = elementSelection instanceof Element ? elementSelection : undefined
+      const selectedElement = elementSelection instanceof Element && !isMarkElement(elementSelection)
+        ? elementSelection
+        : undefined
       const gapPlacement = !selectedElement && selection.anchorNode === selection.focusNode &&
         selection.anchorOffset === selection.focusOffset
         ? this.#gapPlacement(point.node, point.offset)

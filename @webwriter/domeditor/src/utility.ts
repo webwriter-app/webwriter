@@ -1,4 +1,5 @@
 import { Schema } from "./schema"
+import {isMarkElement} from "./marks"
 
 export function createStylesheet(content: string) {
   const stylesheet = new CSSStyleSheet()
@@ -140,19 +141,34 @@ export class EditingSelection {
       this.anchorOffset <= firstBodyElementIndex &&
       Array.from(document.body.childNodes).slice(this.anchorOffset, firstBodyElementIndex).every(node => !isText(node) || !node.textContent?.trim())
     return isElement(this.anchor) && this.isEmpty && !this.isEmptySelection &&
-      (!Array.from(this.anchor.childNodes).some(node => isText(node)) || isBodyBoundaryBeforeFirstElement)
+      (!Array.from(this.anchor.childNodes).some(node => isText(node) || isMarkElement(node)) || isBodyBoundaryBeforeFirstElement)
   }
 
   /** Whether exactly one element is selected (anchored in its parent,
    * spanning one child). */
   static get isElementSelection() {
-    return isElement(this.anchor) && Math.abs(this.#selection.anchorOffset - this.#selection.focusOffset) === 1
+    if(!isElement(this.anchor) || Math.abs(this.#selection.anchorOffset - this.#selection.focusOffset) !== 1) return false
+    const index = Math.min(this.#selection.anchorOffset, this.#selection.focusOffset)
+    return isElement(this.anchor.childNodes.item(index)) && !isMarkElement(this.anchor.childNodes.item(index))
   }
 
-  /** Whether the selection lies within a single non-empty text node. Also
-   * true for a collapsed caret inside text. */
+  /** Whether the selection consists only of text and mark wrappers within one
+   * editing container. Also true for a collapsed caret inside either. */
   static get isTextSelection() {
-    return !this.isEmptySelection && !this.isCrossNodeSelection && this.anchor instanceof Text
+    if(this.isEmptySelection || this.isElementSelection) return false
+    if(this.isEmpty) {
+      if(this.anchor instanceof Text || isMarkElement(this.anchor)) return true
+      if(isElement(this.anchor)) {
+        return [
+          this.anchor.childNodes.item(this.anchorOffset - 1),
+          this.anchor.childNodes.item(this.anchorOffset),
+        ].some(node => node instanceof Text || isMarkElement(node))
+      }
+      return false
+    }
+    const fragment = this.range.cloneContents()
+    return Boolean(fragment.textContent)
+      && !Array.from(fragment.querySelectorAll("*")).some(element => !isMarkElement(element))
   }
 
   /** Whether the caret is at offset 0 of a container that has no content (no children, or a single empty text node). */
@@ -231,29 +247,18 @@ export class EditingSelection {
 
   /** The selected element for element selections, else undefined. */
   static get selectedElement() {
-    isElement(this.anchor) && Math.abs(this.#selection.anchorOffset - this.#selection.focusOffset) === 1
     const i = Math.min(this.#selection.anchorOffset, this.#selection.focusOffset)
     return this.isElementSelection? this.anchor?.childNodes.item(i) as Element: undefined
   }
 
   /** The anchor as an element (a text anchor's parent element). */
   static get anchorContainer() {
-    if(this.anchor instanceof Text) {
-      return this.anchor?.parentElement!
-    }
-    else {
-      return this.anchor as Element
-    }
+    return this.anchor? getContainer(this.anchor): null
   }
 
   /** The focus as an element (a text focus' parent element). */
   static get focusContainer() {
-    if(this.focus instanceof Text) {
-      return this.focus?.parentElement!
-    }
-    else {
-      return this.focus as Element
-    }
+    return this.focus? getContainer(this.focus): null
   }
 
   /** Child nodes of the common ancestor (empty when it is a text node). */
@@ -273,6 +278,9 @@ export class EditingSelection {
   }
   else if(this.isElementSelection) {
     return [this.selectedElement!]
+  }
+  else if(this.isTextSelection) {
+    return []
   }
   return this.siblings.filter(node => this.range.intersectsNode(node))
   }
@@ -388,14 +396,12 @@ export class EditingSelection {
 export const $ = EditingSelection
 
 
-/** The node itself for elements, the parent element for text nodes. */
+/** The nearest non-mark element containing the node (the node itself when it
+ * is already a non-mark element). */
 export function getContainer(node: Node) {
-  if(node instanceof Text) {
-    return node.parentElement!
-  }
-  else {
-    return node as Element
-  }
+  let element = node instanceof Text? node.parentElement: node as Element
+  while(element && isMarkElement(element)) element = element.parentElement
+  return element!
 }
 
 /** Splits the children of the point's container into those before the point

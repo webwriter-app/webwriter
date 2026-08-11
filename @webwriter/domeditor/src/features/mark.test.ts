@@ -77,6 +77,14 @@ describe("MarkFeature DOM state", () => {
 
     expect(feature.getState()).toEqual({canMark: true, marks: ["b", "i"]})
   })
+  it("allows mark commands when an entire mark wrapper is selected", () => {
+    const paragraph = setContent("<p><b>Text</b></p>")
+    $.selectElement(paragraph.querySelector("b")!)
+
+    expect(feature.getState()).toEqual({canMark: true, marks: ["b"]})
+    expect(feature.removeMark("b")).toBe(true)
+    expect(cleanHTML()).toBe("<p>Text</p>")
+  })
 
   it("re-reads externally replaced markup without relying on command history", () => {
     const paragraph = setContent("<p>Text</p>")

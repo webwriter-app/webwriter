@@ -1,5 +1,6 @@
 import { DocumentListenerMap, EditorFeature } from "."
 import { $, modifierKeyDown, getContainer, getIndexBefore, getSidesOfPoint, htmlToFragment, isElement } from "../utility"
+import {isMarkElement} from "../marks"
 
 /** Unit by which a collapsed selection is extended before deleting. */
 type Granularity = "character" | "word" | "line" | "block"
@@ -122,6 +123,96 @@ export class ManipulationFeature extends EditorFeature {
       return
     }
     this.insertAtSelection(...nodes)
+  }
+
+  private firstTextDescendant(node: Node): Text | null {
+    if(node instanceof Text) return node
+    for(const child of Array.from(node.childNodes)) {
+      const text = this.firstTextDescendant(child)
+      if(text) return text
+    }
+    return null
+  }
+
+  /** Places the caret at a node's logical text start, descending through mark
+   * wrappers so typing retains the formatting at a split or join boundary. */
+  private moveToStart(node: Node) {
+    const text = this.firstTextDescendant(node)
+    $.move(text ?? node, 0)
+  }
+
+  /** Promotes a DOM point through nested mark wrappers to an offset in the
+   * containing non-mark element, splitting text and marks only when the point
+   * is actually inside them. */
+  private splitTextLikePoint(container: Element) {
+    const range = $.range
+    let pointNode: Node = range.startContainer
+    let pointOffset = range.startOffset
+
+    if(pointNode instanceof Text) {
+      const parent = pointNode.parentElement
+      if(!parent) throw new TypeError("Cannot split a detached text selection")
+      const index = Array.from(parent.childNodes).indexOf(pointNode)
+      if(pointOffset === 0) {
+        pointOffset = index
+      }
+      else if(pointOffset === pointNode.length) {
+        pointOffset = index + 1
+      }
+      else {
+        const right = pointNode.splitText(pointOffset)
+        pointOffset = Array.from(parent.childNodes).indexOf(right)
+      }
+      pointNode = parent
+    }
+
+    while(pointNode !== container) {
+      if(!isElement(pointNode) || !isMarkElement(pointNode)) {
+        throw new TypeError("A text-like split may only cross mark elements")
+      }
+      const parent = pointNode.parentElement
+      if(!parent) throw new TypeError("Cannot split a detached mark selection")
+      const index = Array.from(parent.childNodes).indexOf(pointNode)
+      if(pointOffset === 0) {
+        pointOffset = index
+      }
+      else if(pointOffset === pointNode.childNodes.length) {
+        pointOffset = index + 1
+      }
+      else {
+        const right = pointNode.cloneNode(false) as Element
+        right.append(...Array.from(pointNode.childNodes).slice(pointOffset))
+        pointNode.after(right)
+        pointOffset = Array.from(parent.childNodes).indexOf(right)
+      }
+      pointNode = parent
+    }
+    return pointOffset
+  }
+
+  /** Splits the logical block at the current caret and, for a deeper split,
+   * promotes the split through its ancestors. The first right-hand block is
+   * retained as the editing target. */
+  private splitAtSelection(splitDepth: number, strict: boolean) {
+    let container = getContainer($.range.startContainer)
+    let offset = this.splitTextLikePoint(container)
+    let target: Element | null = null
+
+    for(let depth = 0; depth <= splitDepth; depth++) {
+      if(container.nodeName === "BODY" || container.nodeName === "HTML") break
+      const parent = container.parentElement
+      if(!parent) break
+      const schema = this.editor.schema.get(container)
+      const next = (strict && schema.inseperable? this.editor.schema.create(): container.cloneNode(false)) as Element
+      container.after(next)
+      next.append(...Array.from(container.childNodes).slice(offset))
+      target ??= next
+
+      offset = Array.from(parent.childNodes).indexOf(next)
+      container = parent
+    }
+
+    if(target) this.moveToStart(target)
   }
 
   /** Action handlers, addressable by action type through the editor. */
@@ -297,9 +388,13 @@ export class ManipulationFeature extends EditorFeature {
     return this.withNormalization(() => {
       if(true) {
         node? $.replace(node): $.delete()
+        if(!node) {
+          this.splitAtSelection(splitDepth, strict)
+          return
+        }
         let locus = $.commonAncestor
         for(let i = 0; i <= splitDepth; i++) {
-          $.isTextSelection && ($.start! as Text).splitText($.startOffset)
+          $.start instanceof Text && $.start.splitText($.startOffset)
           let container = getContainer(locus)
           if(container.nodeName === "BODY" || container.nodeName === "HTML") {continue}
           const [,right] = getSidesOfPoint($.range)
@@ -344,8 +439,9 @@ export class ManipulationFeature extends EditorFeature {
         container.nextElementSibling.remove()
         return
       }
-      if(!$.commonAncestor.textContent && !["HTML", "BODY"].includes($.commonAncestor.nodeName)) {
-        const emptyContainer = $.commonAncestor
+      const commonContainer = getContainer($.commonAncestor)
+      if(!commonContainer.textContent && !["HTML", "BODY"].includes(commonContainer.nodeName)) {
+        const emptyContainer = commonContainer
         const previous = emptyContainer.previousSibling
         const next = emptyContainer.nextSibling
         $.delete()
@@ -365,7 +461,7 @@ export class ManipulationFeature extends EditorFeature {
         return
       }
       else if($.isEmpty && !$.isGapSelection) {
-        granularity === "block"? $.extend($.commonAncestor, 0): $.extendBy(granularity, direction)
+        granularity === "block"? $.extend($.anchorContainer!, 0): $.extendBy(granularity, direction)
         $.delete()
       }
       else {
@@ -378,8 +474,9 @@ export class ManipulationFeature extends EditorFeature {
           $.selectGap(elementAfter, "before")
         }
         else {
+          const joinTarget = elementAfter.firstChild
           elementBefore.append(...elementAfter.childNodes)
-          $.move(elementBefore.lastChild!)
+          if(joinTarget) this.moveToStart(joinTarget)
           elementBefore.normalize()
           elementAfter.remove()
         }
@@ -391,8 +488,9 @@ export class ManipulationFeature extends EditorFeature {
           $.selectGap(elementBefore)
         }
         else {
+          const joinTarget = elementAfter.firstChild
           elementAfter.prepend(...elementBefore.childNodes)
-          $.move(elementAfter.lastChild!)
+          if(joinTarget) this.moveToStart(joinTarget)
           elementAfter.normalize()
           elementBefore.remove()
         }
@@ -419,7 +517,7 @@ export class ManipulationFeature extends EditorFeature {
         if(!wrapper) {
           return
         }
-        wrapper.append($.anchorContainer)
+        if($.anchorContainer) wrapper.append($.anchorContainer)
         return wrapper
       }
     })

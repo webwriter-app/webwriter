@@ -2,6 +2,7 @@ import {EditorFeature, type DocumentListenerMap} from "."
 import {
   canonicalMarkName,
   fontSizeOptions,
+  isMarkElement,
   isStyleMarkName,
   markNames,
   markTagNames,
@@ -630,7 +631,7 @@ export class MarkFeature extends EditorFeature {
     const selectedChild = selectedChildIndex >= 0 && Math.abs(selection.anchorOffset - selection.focusOffset) === 1
       ? selection.anchorNode.childNodes.item(selectedChildIndex)
       : null
-    if(selectedChild instanceof Element) return null
+    if(selectedChild instanceof Element && !isMarkElement(selectedChild)) return null
     const startBlock = this.closestBlock(range.startContainer)
     const endBlock = this.closestBlock(range.endContainer)
     if(!startBlock || startBlock !== endBlock || !document.body.contains(startBlock)) return null

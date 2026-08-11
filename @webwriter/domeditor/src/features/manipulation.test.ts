@@ -177,6 +177,20 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     editor.features.manipulation.insert()
     expectBodyToBe("<p>hello</p><p> world</p>")
   })
+  it("splits nested marks with their containing block", () => {
+    document.body.innerHTML = "<p><b><i>hello</i></b> world</p>"
+    $.move(document.querySelector("i")!.firstChild!, 2)
+    editor.features.manipulation.insert()
+    expectBodyToBe("<p><b><i>he</i></b></p><p><b><i>llo</i></b> world</p>")
+    expect($.anchor).toBe(document.querySelectorAll("i")[1].firstChild)
+    expect($.anchorOffset).toBe(0)
+  })
+  it("does not leave empty mark wrappers when splitting at a mark boundary", () => {
+    document.body.innerHTML = "<p><b>hello</b></p>"
+    $.move(document.querySelector("b")!.firstChild!, 0)
+    editor.features.manipulation.insert()
+    expectBodyToBe("<p></p><p><b>hello</b></p>")
+  })
   it("splits at the start of a block, leaving an empty block", () => {
     document.body.innerHTML = "<p>hello world</p>"
     $.move(document.body.firstElementChild!.firstChild!, 0)
@@ -262,6 +276,14 @@ describe("delete()", () => {
     $.selectGap(document.body.firstElementChild!)
     editor.features.manipulation.delete("backward")
     expectBodyToBe("<p>helloworld</p>")
+  })
+  it("joins equivalent mark runs when merging blocks", () => {
+    document.body.innerHTML = "<p><b>hello</b></p><p><b>world</b></p>"
+    $.selectGap(document.body.firstElementChild!)
+    editor.features.manipulation.delete("backward")
+    expectBodyToBe("<p><b>helloworld</b></p>")
+    expect($.anchor).toBe(document.querySelector("b")!.firstChild)
+    expect($.anchorOffset).toBe(5)
   })
   it("merges two blocks on forward delete at the gap between them", () => {
     document.body.innerHTML = "<p>hello</p><p>world</p>"
@@ -373,6 +395,12 @@ describe("lift()", () => {
     $.move(document.querySelector("p")!.firstChild!, 2)
     editor.features.manipulation.lift()
     expectBodyToBe(`<p>hello</p>`)
+  })
+  it("lifts the block rather than a mark containing the caret", () => {
+    document.body.innerHTML = "<div><p><b>hello</b></p></div>"
+    $.move(document.querySelector("b")!.firstChild!, 2)
+    editor.features.manipulation.lift()
+    expectBodyToBe("<p><b>hello</b></p>")
   })
   it("splits the parent around a lifted element with siblings", () => {
     document.body.innerHTML = "<div><p>a</p><p>b</p><p>c</p></div>"
