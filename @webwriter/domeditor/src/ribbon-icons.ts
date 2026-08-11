@@ -2,12 +2,17 @@ import {unsafeSVG} from "lit/directives/unsafe-svg.js"
 
 import arrowBackUp from "@tabler/icons/outline/arrow-back-up.svg?raw"
 import arrowForwardUp from "@tabler/icons/outline/arrow-forward-up.svg?raw"
+import arrowLeft from "@tabler/icons/outline/arrow-left.svg?raw"
+import arrowRight from "@tabler/icons/outline/arrow-right.svg?raw"
 import arrowsMove from "@tabler/icons/outline/arrows-move.svg?raw"
 import alignLeft from "@tabler/icons/outline/align-left.svg?raw"
+import accessible from "@tabler/icons/outline/accessible.svg?raw"
+import adjustments from "@tabler/icons/outline/adjustments.svg?raw"
 import article from "@tabler/icons/outline/file-text.svg?raw"
 import bold from "@tabler/icons/outline/bold.svg?raw"
 import boxMargin from "@tabler/icons/outline/box-margin.svg?raw"
 import button from "@tabler/icons/outline/rectangle.svg?raw"
+import check from "@tabler/icons/outline/check.svg?raw"
 import clearFormatting from "@tabler/icons/outline/clear-formatting.svg?raw"
 import clipboard from "@tabler/icons/outline/clipboard.svg?raw"
 import code from "@tabler/icons/outline/code.svg?raw"
@@ -30,7 +35,11 @@ import h5 from "@tabler/icons/outline/h-5.svg?raw"
 import h6 from "@tabler/icons/outline/h-6.svg?raw"
 import heading from "@tabler/icons/outline/heading.svg?raw"
 import highlight from "@tabler/icons/outline/highlight.svg?raw"
+import historyToggle from "@tabler/icons/outline/history-toggle.svg?raw"
 import italic from "@tabler/icons/outline/italic.svg?raw"
+import infoCircle from "@tabler/icons/outline/info-circle.svg?raw"
+import keyboard from "@tabler/icons/outline/keyboard.svg?raw"
+import language from "@tabler/icons/outline/language.svg?raw"
 import layersUnion from "@tabler/icons/outline/layers-union.svg?raw"
 import layout from "@tabler/icons/outline/layout.svg?raw"
 import link from "@tabler/icons/outline/link.svg?raw"
@@ -41,12 +50,14 @@ import listNumbers from "@tabler/icons/outline/list-numbers.svg?raw"
 import math from "@tabler/icons/outline/math.svg?raw"
 import maximize from "@tabler/icons/outline/maximize.svg?raw"
 import menu2 from "@tabler/icons/outline/menu-2.svg?raw"
+import messagePlus from "@tabler/icons/outline/message-plus.svg?raw"
 import palette from "@tabler/icons/outline/palette.svg?raw"
 import photo from "@tabler/icons/outline/photo.svg?raw"
 import pilcrow from "@tabler/icons/outline/pilcrow.svg?raw"
 import playerPlay from "@tabler/icons/filled/player-play.svg?raw"
 import plus from "@tabler/icons/outline/plus.svg?raw"
 import printer from "@tabler/icons/outline/printer.svg?raw"
+import puzzle from "@tabler/icons/outline/puzzle.svg?raw"
 import rulerMeasure from "@tabler/icons/outline/ruler-measure.svg?raw"
 import scissors from "@tabler/icons/outline/scissors.svg?raw"
 import share3 from "@tabler/icons/outline/share-3.svg?raw"
@@ -65,6 +76,7 @@ import forms from "@tabler/icons/outline/forms.svg?raw"
 import input from "@tabler/icons/outline/input-search.svg?raw"
 import quote from "@tabler/icons/outline/quote.svg?raw"
 import section from "@tabler/icons/outline/section.svg?raw"
+import settings from "@tabler/icons/outline/settings.svg?raw"
 import bracketsAngle from "@tabler/icons/outline/brackets-angle.svg?raw"
 import calendarTime from "@tabler/icons/outline/calendar-time.svg?raw"
 import command from "@tabler/icons/outline/command.svg?raw"
@@ -81,8 +93,11 @@ import textDecrease from "@tabler/icons/outline/text-decrease.svg?raw"
 import textIncrease from "@tabler/icons/outline/text-increase.svg?raw"
 import textDirectionLtr from "@tabler/icons/outline/text-direction-ltr.svg?raw"
 import textDirectionRtl from "@tabler/icons/outline/text-direction-rtl.svg?raw"
+import textGrammar from "@tabler/icons/outline/text-grammar.svg?raw"
+import textSpellcheck from "@tabler/icons/outline/text-spellcheck.svg?raw"
 import variable from "@tabler/icons/outline/variable.svg?raw"
 import vocabulary from "@tabler/icons/outline/vocabulary.svg?raw"
+import x from "@tabler/icons/outline/x.svg?raw"
 
 const icons: Record<string, string> = {
   Document: fileDescription,
@@ -101,6 +116,8 @@ const icons: Record<string, string> = {
   Plus: plus,
   Undo: arrowBackUp,
   Redo: arrowForwardUp,
+  Previous: arrowLeft,
+  Next: arrowRight,
   New: filePlus,
   Open: folderOpen,
   Save: deviceFloppy,
@@ -143,6 +160,19 @@ const icons: Record<string, string> = {
   Highlight: highlight,
   Superscript: superscript,
   More: dots,
+  Spelling: textSpellcheck,
+  Grammar: textGrammar,
+  Translate: language,
+  "New Comment": messagePlus,
+  "Track Changes": historyToggle,
+  Accept: check,
+  Reject: x,
+  General: settings,
+  Shortcuts: keyboard,
+  Accessibility: accessible,
+  Preferences: adjustments,
+  Extensions: puzzle,
+  About: infoCircle,
   Margins: boxMargin,
   Columns: columns3,
   Orientation: fileOrientation,

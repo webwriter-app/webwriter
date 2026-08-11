@@ -36,6 +36,38 @@ const primaryButtons = (drawer: RibbonDrawer) => Array.from(
 )
 
 describe("mark ribbon controls", () => {
+  it("keeps Format in the main ribbon and groups Marks with the layout drawers", async () => {
+    const {ribbon} = await mountRibbon()
+    const tabs = Array.from(ribbon.shadowRoot!.querySelectorAll("ribbon-tab"))
+
+    expect(tabs.map(tab => tab.label)).toEqual([
+      "File",
+      "Insert",
+      "Format",
+      "Review",
+      "Settings",
+    ])
+
+    tabs.find(tab => tab.label === "Format")!.shadowRoot!.querySelector("button")!.click()
+    await ribbon.updateComplete
+
+    expect(Array.from(ribbon.shadowRoot!.querySelectorAll(".ribbon-content > ribbon-drawer"))
+      .map(drawer => drawer.getAttribute("label")))
+      .toEqual(["Marks", "Styles", "Font", "Effects", "Page", "Arrange", "View"])
+
+    tabs.find(tab => tab.label === "Review")!.shadowRoot!.querySelector("button")!.click()
+    await ribbon.updateComplete
+    expect(Array.from(ribbon.shadowRoot!.querySelectorAll(".ribbon-content > ribbon-drawer"))
+      .map(drawer => drawer.getAttribute("label")))
+      .toEqual(["Proofing", "Comments", "Changes"])
+
+    tabs.find(tab => tab.label === "Settings")!.shadowRoot!.querySelector("button")!.click()
+    await ribbon.updateComplete
+    expect(Array.from(ribbon.shadowRoot!.querySelectorAll(".ribbon-content > ribbon-drawer"))
+      .map(drawer => drawer.getAttribute("label")))
+      .toEqual(["Editor", "Appearance", "Advanced"])
+  })
+
   it("uses a ribbon drawer with two fixed primary rows and optional more marks", async () => {
     const {ribbon, drawer} = await mountRibbon()
     const controls = drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!

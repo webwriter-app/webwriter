@@ -24,7 +24,7 @@ import { type RibbonMenu, type RibbonMenuButton, type RibbonMenuGroup } from "./
 import "./ribbon-menu"
 import "./ribbon-tab"
 
-type RibbonMenuName = "File" | "Start" | "Insert" | "Format" | "Layout"
+type RibbonMenuName = "File" | "Start" | "Insert" | "Format" | "Review" | "Settings"
 
 type RibbonInputEventDetail = {
   input: HTMLElement
@@ -45,8 +45,8 @@ const isRibbonInput = (target: EventTarget | null): target is HTMLElement => {
 
 const ribbonInputFromEvent = (event: Event) => event.composedPath().find(isRibbonInput)
 
-const menuTabs: RibbonMenuName[] = ["File", "Insert", "Format", "Layout"]
-const dropdownMenus: RibbonMenuName[] = ["File", "Insert", "Format", "Layout"]
+const menuTabs: RibbonMenuName[] = ["File", "Insert", "Format", "Review", "Settings"]
+const dropdownMenus: RibbonMenuName[] = ["File", "Insert", "Format", "Review", "Settings"]
 
 const insertionMenuGroup = (section: "Text" | "Media"): RibbonMenuGroup => ({
   label: section,
@@ -82,14 +82,23 @@ const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
     insertionMenuGroup("Media"),
   ],
   Format: [
+    {label: "Marks", buttons: []},
     {label: "Styles", buttons: ["Heading", "Theme", "Clear"]},
     {label: "Font", buttons: ["Family", "Size", "Color"]},
     {label: "Effects", buttons: ["Highlight", "Superscript", "More"]},
-  ],
-  Layout: [
     {label: "Page", buttons: ["Margins", "Columns", "Orientation"]},
     {label: "Arrange", buttons: ["Position", "Order", "Group"]},
     {label: "View", buttons: ["Zoom", "Guides", "Fullscreen"]},
+  ],
+  Review: [
+    {label: "Proofing", buttons: ["Spelling", "Grammar", "Translate"]},
+    {label: "Comments", buttons: ["New Comment", "Previous", "Next"]},
+    {label: "Changes", buttons: ["Track Changes", "Accept", "Reject"]},
+  ],
+  Settings: [
+    {label: "Editor", buttons: ["General", "Shortcuts", "Accessibility"]},
+    {label: "Appearance", buttons: ["Theme", "Zoom", "Fullscreen"]},
+    {label: "Advanced", buttons: ["Preferences", "Extensions", "About"]},
   ],
 }
 
@@ -735,7 +744,7 @@ export class AppRibbon extends LitElement {
 
   private renderDrawers() {
     return menuGroups[this.activeMenu].map(drawer => {
-      if(this.activeMenu === "Start" && drawer.label === "Marks") return this.renderMarkDrawer()
+      if(drawer.label === "Marks") return this.renderMarkDrawer()
       const representative = drawer.buttons[0]
       const icon = typeof representative === "string"
         ? representative
