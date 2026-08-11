@@ -162,7 +162,7 @@ export class DomEditor extends LitElement {
     this.focusEditor()
     const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
     ribbon?.dismissCollapsedMenu()
-    if(!this.editorTargetSharesTextSelection(event.target)) ribbon?.dismissMarkDrawer()
+    if(!this.editorTargetSharesTextSelection(event.target)) ribbon?.dismissDrawers()
   }
 
   /** Keeps the mark area open while the pointer starts another text selection

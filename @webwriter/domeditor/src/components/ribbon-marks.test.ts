@@ -2,11 +2,11 @@
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {markStateChangeEvent} from "../editor-bridge"
 import {primaryMarkOptions, secondaryMarkOptions} from "../marks"
-import {AppRibbon} from "./ribbon"
 import {DomEditor} from "./dom-editor"
-import type {MarkRibbonGroup} from "./mark-ribbon-group"
+import {AppRibbon} from "./ribbon"
 import type {RibbonButton} from "./ribbon-button"
 import type {RibbonCombobox} from "./ribbon-combobox"
+import type {RibbonDrawer} from "./ribbon-drawer"
 
 afterEach(() => {
   document.body.replaceChildren()
@@ -17,9 +17,9 @@ async function mountRibbon() {
   const ribbon = new AppRibbon()
   document.body.append(ribbon)
   await ribbon.updateComplete
-  const group = ribbon.shadowRoot!.querySelector<MarkRibbonGroup>("mark-ribbon-group")!
-  await group.updateComplete
-  return {ribbon, group}
+  const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Marks"]')!
+  await drawer.updateComplete
+  return {ribbon, drawer}
 }
 
 async function mountEditor() {
@@ -31,21 +31,29 @@ async function mountEditor() {
   return {editor, iframe, editorWindow: iframe.contentWindow!}
 }
 
-describe("mark ribbon controls", () => {
-  it("renders the requested two fixed rows before the expandable marks", async () => {
-    const {group} = await mountRibbon()
-    const controls = group.shadowRoot!.querySelector(".controls")!
-    const buttons = Array.from(controls.querySelectorAll<RibbonButton>("ribbon-button"))
-    const comboboxes = Array.from(controls.querySelectorAll<RibbonCombobox>("ribbon-combobox"))
+const primaryButtons = (drawer: RibbonDrawer) => Array.from(
+  drawer.querySelectorAll<RibbonButton>('ribbon-button:not([slot="more"])'),
+)
 
+describe("mark ribbon controls", () => {
+  it("uses a ribbon drawer with two fixed primary rows and optional more marks", async () => {
+    const {ribbon, drawer} = await mountRibbon()
+    const controls = drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!
+    const moreSlot = drawer.shadowRoot!.querySelector<HTMLSlotElement>('slot[name="more"]')!
+    const buttons = primaryButtons(drawer)
+    const comboboxes = Array.from(drawer.querySelectorAll<RibbonCombobox>("ribbon-combobox"))
+
+    expect(ribbon.shadowRoot!.querySelector("mark-ribbon-drawer")).toBeNull()
+    expect(ribbon.shadowRoot!.querySelectorAll("ribbon-drawer")).toHaveLength(3)
+    expect(drawer.layout).toBe("marks")
+    expect(drawer.expandable).toBe(true)
+    expect(moreSlot.hidden).toBe(true)
     expect(comboboxes.map(combobox => combobox.name)).toEqual([
       "font-family",
       "font-size",
       "color",
       "background-color",
     ])
-    expect(getComputedStyle(comboboxes[0]).gridColumn).toBe("span 4")
-    expect(getComputedStyle(comboboxes[1]).gridColumn).toBe("span 2")
     expect(buttons.map(button => button.label)).toEqual([
       "Increase font size",
       "Decrease font size",
@@ -59,8 +67,10 @@ describe("mark ribbon controls", () => {
     expect(buttons.slice(2, 7).every(button => button.compact && button.toggle)).toBe(true)
     expect(buttons.every(button => button.disabled)).toBe(true)
     expect(comboboxes.every(combobox => combobox.disabled)).toBe(true)
-    expect(controls.querySelector('ribbon-button[action="mark:sup"]')).toBeNull()
-    expect(controls.querySelector('ribbon-button[action="mark:time"]')).toBeNull()
+    expect(getComputedStyle(controls).gridAutoFlow).toBe("row")
+    expect(getComputedStyle(controls).gridTemplateColumns).toBe("repeat(8, 1.75rem)")
+    expect(drawer.querySelector('ribbon-button[action="mark:sup"]')!.slot).toBe("more")
+    expect(drawer.querySelector('ribbon-button[action="mark:time"]')!.slot).toBe("more")
 
     await buttons[2].updateComplete
     expect(buttons[2].shadowRoot!.querySelector("button")!.getAttribute("aria-label")).toBe("Bold")
@@ -69,30 +79,31 @@ describe("mark ribbon controls", () => {
     expect(getComputedStyle(buttons[2].shadowRoot!.querySelector<HTMLElement>(".button-label")!).display).toBe("none")
   })
 
-  it("flows all marks through one expanding grid without shifting the primary rows", async () => {
-    const {ribbon, group} = await mountRibbon()
-    const toggle = group.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!
-    const controls = group.shadowRoot!.querySelector<HTMLElement>(".controls")!
-    const chevron = group.shadowRoot!.querySelector<HTMLElement>(".drawer-icon")!
+  it("flows all marks through the same drawer grid without shifting the primary rows", async () => {
+    const {ribbon, drawer} = await mountRibbon()
+    const toggle = drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!
+    const controls = drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!
+    const moreSlot = drawer.shadowRoot!.querySelector<HTMLSlotElement>('slot[name="more"]')!
+    const chevron = drawer.shadowRoot!.querySelector<HTMLElement>(".drawer-icon")!
     const collapsedChevronTransform = getComputedStyle(chevron).transform
 
     toggle.click()
-    await group.updateComplete
+    await drawer.updateComplete
 
-    const buttons = Array.from(controls.querySelectorAll<RibbonButton>("ribbon-button"))
-    const section = group.shadowRoot!.querySelector<HTMLElement>(".group")!
+    const buttons = Array.from(drawer.querySelectorAll<RibbonButton>("ribbon-button"))
+    const section = drawer.shadowRoot!.querySelector<HTMLElement>(".drawer")!
     const ribbonContent = ribbon.shadowRoot!.querySelector<HTMLElement>(".ribbon-content")!
     expect(toggle.getAttribute("aria-expanded")).toBe("true")
+    expect(toggle.getAttribute("aria-label")).toBe("More marks")
     expect(section.classList.contains("expanded")).toBe(true)
-    expect(group.shadowRoot!.querySelector(".drawer")).toBeNull()
-    expect(getComputedStyle(controls).gridAutoFlow).toBe("row")
-    expect(getComputedStyle(controls).gridTemplateColumns).toBe("repeat(8, 1.75rem)")
-    expect(getComputedStyle(group).minWidth).toBe("266px")
+    expect(moreSlot.hidden).toBe(false)
+    expect(getComputedStyle(drawer).minWidth).toBe("266px")
     expect(getComputedStyle(controls).alignContent).toBe("start")
     expect(getComputedStyle(controls).paddingTop).toBe("0px")
     expect(getComputedStyle(controls).paddingBottom).toBe("6px")
     expect(getComputedStyle(controls).gap).toBe("0.2rem")
     expect(getComputedStyle(controls).overflowX).toBe("hidden")
+    expect(getComputedStyle(ribbonContent).justifyContent).toBe("flex-start")
     expect(getComputedStyle(ribbonContent).overflowX).toBe("clip")
     expect(getComputedStyle(ribbonContent).overflowY).toBe("visible")
     const sectionStyle = getComputedStyle(section)
@@ -118,8 +129,8 @@ describe("mark ribbon controls", () => {
       "#d8dee6",
       "#d8dee6",
     ])
-    expect(getComputedStyle(section).boxShadow).not.toBe("none")
-    expect(getComputedStyle(section).clipPath).not.toBe("none")
+    expect(sectionStyle.boxShadow).not.toBe("none")
+    expect(sectionStyle.clipPath).not.toBe("none")
     expect(getComputedStyle(toggle).position).toBe("absolute")
     expect(getComputedStyle(toggle).left).toBe("calc(50% + 1px)")
     expect(getComputedStyle(toggle).bottom).toBe("-9px")
@@ -139,30 +150,74 @@ describe("mark ribbon controls", () => {
     expect(buttons.filter(button => button.action.startsWith("mark:")).every(button => button.toggle)).toBe(true)
   })
 
-  it("animates closing before removing the expanded controls", async () => {
-    const {group} = await mountRibbon()
-    const toggle = group.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!
+  it("reuses the complete marks grid in a fixed-width drawer when horizontally collapsed", async () => {
+    const {ribbon, drawer} = await mountRibbon()
+    drawer.collapsed = true
+    await drawer.updateComplete
+
+    const section = drawer.shadowRoot!.querySelector<HTMLElement>(".drawer")!
+    const summary = drawer.shadowRoot!.querySelector<HTMLElement>(".summary")!
+    const controls = drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!
+    const moreSlot = drawer.shadowRoot!.querySelector<HTMLSlotElement>('slot[name="more"]')!
+    const toggle = drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!
+
+    expect(drawer.layoutWidths).toEqual({collapsed: 80, expanded: 266})
+    expect(getComputedStyle(drawer).minWidth).toBe("80px")
+    expect(getComputedStyle(summary).display).toBe("flex")
+    expect(summary.textContent).toContain("Marks")
+    expect(toggle.getAttribute("aria-label")).toBe("Show Marks controls")
 
     toggle.click()
-    await group.updateComplete
-    toggle.click()
-    await group.updateComplete
+    await drawer.updateComplete
 
-    const section = group.shadowRoot!.querySelector<HTMLElement>(".group")!
-    const controls = group.shadowRoot!.querySelector<HTMLElement>(".controls")!
-    expect(group.hasAttribute("drawer-open")).toBe(false)
-    expect(group.hasAttribute("drawer-visible")).toBe(true)
+    expect(toggle.getAttribute("aria-label")).toBe("Hide Marks controls")
+    expect(getComputedStyle(section).maxHeight).toBe("100%")
+    expect(getComputedStyle(section).boxShadow).toBe("none")
+    expect(getComputedStyle(controls).width).toBe("266px")
+    expect(getComputedStyle(controls).boxShadow).not.toBe("none")
+    expect(getComputedStyle(controls).borderColor).toBe("#d8dee6")
+    expect(getComputedStyle(controls).paddingTop).toBe("6px")
+    expect(getComputedStyle(controls).paddingBottom).toBe("6px")
+    expect(getComputedStyle(controls).visibility).toBe("visible")
+    expect(getComputedStyle(controls).transition).not.toContain("opacity")
+    expect(moreSlot.hidden).toBe(false)
+    expect(getComputedStyle(ribbon).height).toBe("120px")
+
+    toggle.click()
+    await drawer.updateComplete
+
+    expect(drawer.hasAttribute("drawer-open")).toBe(false)
+    expect(drawer.hasAttribute("drawer-visible")).toBe(true)
+    expect(getComputedStyle(controls).maxHeight).toBe("0")
+    expect(getComputedStyle(controls).visibility).toBe("visible")
+    expect(getComputedStyle(controls).paddingTop).toBe("0px")
+    expect(getComputedStyle(controls).paddingBottom).toBe("0px")
+  })
+
+  it("keeps more controls mounted until the closing slide completes", async () => {
+    const {drawer} = await mountRibbon()
+    const toggle = drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!
+    const moreSlot = drawer.shadowRoot!.querySelector<HTMLSlotElement>('slot[name="more"]')!
+
+    toggle.click()
+    await drawer.updateComplete
+    toggle.click()
+    await drawer.updateComplete
+
+    const section = drawer.shadowRoot!.querySelector<HTMLElement>(".drawer")!
+    expect(drawer.hasAttribute("drawer-open")).toBe(false)
+    expect(drawer.hasAttribute("drawer-visible")).toBe(true)
     expect(section.classList.contains("closing")).toBe(true)
     expect(getComputedStyle(section).maxHeight).toBe("100%")
-    expect(controls.querySelector('ribbon-button[action="mark:time"]')).not.toBeNull()
+    expect(moreSlot.hidden).toBe(false)
 
     const transitionEnd = new Event("transitionend", {bubbles: true})
     Object.defineProperty(transitionEnd, "propertyName", {value: "max-height"})
     section.dispatchEvent(transitionEnd)
-    await group.updateComplete
+    await drawer.updateComplete
 
-    expect(group.hasAttribute("drawer-visible")).toBe(false)
-    expect(controls.querySelector('ribbon-button[action="mark:time"]')).toBeNull()
+    expect(drawer.hasAttribute("drawer-visible")).toBe(false)
+    expect(moreSlot.hidden).toBe(true)
   })
 
   it("reflects DOM-derived enabled and active state on primary and secondary buttons", async () => {
@@ -170,19 +225,19 @@ describe("mark ribbon controls", () => {
     ribbon.canMark = true
     ribbon.marks = ["b", "time"]
     await ribbon.updateComplete
-    const group = ribbon.shadowRoot!.querySelector<MarkRibbonGroup>("mark-ribbon-group")!
-    await group.updateComplete
+    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Marks"]')!
+    await drawer.updateComplete
 
-    const bold = group.shadowRoot!.querySelector<RibbonButton>('ribbon-button[action="mark:b"]')!
+    const bold = drawer.querySelector<RibbonButton>('ribbon-button[action="mark:b"]')!
     expect(bold.disabled).toBe(false)
     expect(bold.active).toBe(true)
     await bold.updateComplete
     expect(bold.shadowRoot!.querySelector("button")!.getAttribute("aria-pressed")).toBe("true")
 
-    group.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!.click()
-    await group.updateComplete
-    const time = group.shadowRoot!.querySelector<RibbonButton>('ribbon-button[action="mark:time"]')!
-    const variable = group.shadowRoot!.querySelector<RibbonButton>('ribbon-button[action="mark:var"]')!
+    drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!.click()
+    await drawer.updateComplete
+    const time = drawer.querySelector<RibbonButton>('ribbon-button[action="mark:time"]')!
+    const variable = drawer.querySelector<RibbonButton>('ribbon-button[action="mark:var"]')!
     expect(time.active).toBe(true)
     expect(variable.active).toBe(false)
     expect(time.disabled).toBe(false)
@@ -193,14 +248,14 @@ describe("mark ribbon controls", () => {
     try {
       Object.defineProperty(navigator, "platform", {value: "MacIntel", configurable: true})
       let mounted = await mountRibbon()
-      let bold = mounted.group.shadowRoot!.querySelector<RibbonButton>('ribbon-button[action="mark:b"]')!
+      let bold = mounted.drawer.querySelector<RibbonButton>('ribbon-button[action="mark:b"]')!
       await bold.updateComplete
       expect(bold.shadowRoot!.querySelector("button")!.title).toBe("Bold (⌥⇧B)")
 
       mounted.ribbon.remove()
       Object.defineProperty(navigator, "platform", {value: "Win32", configurable: true})
       mounted = await mountRibbon()
-      bold = mounted.group.shadowRoot!.querySelector<RibbonButton>('ribbon-button[action="mark:b"]')!
+      bold = mounted.drawer.querySelector<RibbonButton>('ribbon-button[action="mark:b"]')!
       await bold.updateComplete
       expect(bold.shadowRoot!.querySelector("button")!.title).toBe("Bold (Alt+Shift+B)")
     }
@@ -210,13 +265,13 @@ describe("mark ribbon controls", () => {
   })
 
   it("opens custom listboxes and emits the selected style mark", async () => {
-    const {ribbon, group} = await mountRibbon()
+    const {ribbon, drawer} = await mountRibbon()
     ribbon.canMark = true
     await ribbon.updateComplete
-    await group.updateComplete
+    await drawer.updateComplete
     const changed = vi.fn()
-    group.addEventListener("ribbon-combobox-change", changed)
-    const family = group.shadowRoot!.querySelector<RibbonCombobox>('ribbon-combobox[name="font-family"]')!
+    drawer.addEventListener("ribbon-combobox-change", changed)
+    const family = drawer.querySelector<RibbonCombobox>('ribbon-combobox[name="font-family"]')!
     await family.updateComplete
 
     family.shadowRoot!.querySelector<HTMLButtonElement>(".combobox")!.click()
@@ -249,12 +304,12 @@ describe("mark ribbon bridge", () => {
 
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     await ribbon.updateComplete
-    const group = ribbon.shadowRoot!.querySelector<MarkRibbonGroup>("mark-ribbon-group")!
-    await group.updateComplete
-    const bold = group.shadowRoot!.querySelector<RibbonButton>('ribbon-button[action="mark:b"]')!
-    const clear = group.shadowRoot!.querySelector<RibbonButton>('ribbon-button[action="removeMarks"]')!
-    const increase = group.shadowRoot!.querySelector<RibbonButton>('ribbon-button[action="increaseFontSize"]')!
-    const size = group.shadowRoot!.querySelector<RibbonCombobox>('ribbon-combobox[name="font-size"]')!
+    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Marks"]')!
+    await drawer.updateComplete
+    const bold = drawer.querySelector<RibbonButton>('ribbon-button[action="mark:b"]')!
+    const clear = drawer.querySelector<RibbonButton>('ribbon-button[action="removeMarks"]')!
+    const increase = drawer.querySelector<RibbonButton>('ribbon-button[action="increaseFontSize"]')!
+    const size = drawer.querySelector<RibbonCombobox>('ribbon-combobox[name="font-size"]')!
     await Promise.all([bold.updateComplete, clear.updateComplete, increase.updateComplete, size.updateComplete])
 
     expect(bold.active).toBe(true)

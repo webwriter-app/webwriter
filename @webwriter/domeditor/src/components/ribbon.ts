@@ -1,13 +1,25 @@
 import { LitElement, css, html } from "lit"
 import type {PresenceUser} from "../editor-bridge"
-import type {MarkName, StyleMarkValues} from "../marks"
+import {
+  backgroundColorOptions,
+  fontFamilyOptions,
+  fontSizeOptions,
+  markShortcutLabel,
+  primaryMarkOptions,
+  secondaryMarkOptions,
+  textColorOptions,
+  type MarkName,
+  type MarkOption,
+  type StyleMarkValues,
+} from "../marks"
 import { ribbonIcon } from "../ribbon-icons"
+import {isOnApple} from "../utility"
 import { insertionMenuItems } from "./insertion-menu"
 import { type RibbonButton } from "./ribbon-button"
 import "./ribbon-button"
-import "./ribbon-group"
-import {type MarkRibbonGroup} from "./mark-ribbon-group"
-import "./mark-ribbon-group"
+import "./ribbon-combobox"
+import {type RibbonDrawer} from "./ribbon-drawer"
+import "./ribbon-drawer"
 import { type RibbonMenu, type RibbonMenuButton, type RibbonMenuGroup } from "./ribbon-menu"
 import "./ribbon-menu"
 import "./ribbon-tab"
@@ -176,7 +188,8 @@ export class AppRibbon extends LitElement {
       flex: 1 1 auto;
       align-items: end;
       min-width: 0;
-      overflow: visible;
+      overflow-x: auto;
+      overflow-y: hidden;
       scrollbar-width: thin;
       --ribbon-active-tab-background: #f2f2f2;
       --ribbon-active-tab-border: #d8dee6;
@@ -394,6 +407,7 @@ export class AppRibbon extends LitElement {
       flex: 1 1 auto;
       flex-wrap: nowrap;
       align-items: stretch;
+      justify-content: flex-start;
       gap: 0;
       min-height: 0;
       overflow-x: clip;
@@ -407,14 +421,9 @@ export class AppRibbon extends LitElement {
       display: none;
     }
 
-    .ribbon-content > ribbon-group {
-      flex: 1 0 13rem;
-      min-width: 13rem;
-    }
-
-    .ribbon-content > mark-ribbon-group {
-      flex: 0 0 auto;
-      min-width: 16.625rem;
+    .ribbon-content > ribbon-drawer:not(:first-child) {
+      --ribbon-drawer-inline-start: auto;
+      --ribbon-drawer-inline-end: 0;
     }
 
     @media (max-width: 36rem) {
@@ -432,6 +441,10 @@ export class AppRibbon extends LitElement {
   marks: MarkName[] = []
   markStyles: StyleMarkValues = {}
   presenceUsers: PresenceUser[] = []
+  private ribbonContentObserver: ResizeObserver | undefined
+  private responsiveLayoutQueued = false
+
+  private readonly handleWindowResize = () => this.scheduleResponsiveLayout()
 
   private readonly handleDocumentPointerDown = (event: PointerEvent) => {
     if(!this.menuOpen || this.expanded) return
@@ -508,17 +521,71 @@ export class AppRibbon extends LitElement {
   connectedCallback() {
     super.connectedCallback()
     document.addEventListener("pointerdown", this.handleDocumentPointerDown)
+    window.addEventListener("resize", this.handleWindowResize)
   }
 
   disconnectedCallback() {
+    this.ribbonContentObserver?.disconnect()
+    this.ribbonContentObserver = undefined
     document.removeEventListener("pointerdown", this.handleDocumentPointerDown)
+    window.removeEventListener("resize", this.handleWindowResize)
     super.disconnectedCallback()
+  }
+
+  protected firstUpdated() {
+    const content = this.renderRoot.querySelector<HTMLElement>(".ribbon-content")
+    if(content && typeof ResizeObserver !== "undefined") {
+      this.ribbonContentObserver = new ResizeObserver(() => this.scheduleResponsiveLayout())
+      this.ribbonContentObserver.observe(content)
+    }
+    this.scheduleResponsiveLayout()
+  }
+
+  private scheduleResponsiveLayout() {
+    if(this.responsiveLayoutQueued) return
+    this.responsiveLayoutQueued = true
+    queueMicrotask(async () => {
+      this.responsiveLayoutQueued = false
+      const drawers = Array.from(
+        this.renderRoot.querySelectorAll<RibbonDrawer>(
+          ".ribbon-content > ribbon-drawer",
+        ),
+      )
+      await Promise.all(drawers.map(drawer => drawer.updateComplete))
+      this.updateResponsiveLayout(drawers)
+    })
+  }
+
+  private updateResponsiveLayout(drawers: RibbonDrawer[]) {
+    const content = this.renderRoot.querySelector<HTMLElement>(".ribbon-content")
+    if(!content || content.hidden || !drawers.length) return
+
+    const contentStyle = getComputedStyle(content)
+    const inlinePadding =
+      (Number.parseFloat(contentStyle.paddingLeft) || 0) +
+      (Number.parseFloat(contentStyle.paddingRight) || 0)
+    const availableWidth = content.clientWidth - inlinePadding
+    if(availableWidth <= 0) return
+
+    const widths = drawers.map(drawer => drawer.layoutWidths)
+    let requiredWidth = widths.reduce((total, width) => total + width.expanded, 0)
+    const collapsed = drawers.map(() => false)
+
+    for(let index = drawers.length - 1; index >= 0 && requiredWidth > availableWidth + 0.5; index--) {
+      collapsed[index] = true
+      requiredWidth -= widths[index].expanded - widths[index].collapsed
+    }
+
+    drawers.forEach((drawer, index) => {
+      drawer.collapsed = collapsed[index]
+    })
   }
 
   private toggleExpanded() {
     this.expanded = !this.expanded
     this.menuOpen = false
-    this.renderRoot.querySelector<MarkRibbonGroup>("mark-ribbon-group")?.closeDrawer()
+    this.renderRoot.querySelectorAll<RibbonDrawer>("ribbon-drawer")
+      .forEach(drawer => drawer.closeDrawer())
     if(!this.expanded) this.selectStart()
   }
 
@@ -541,8 +608,9 @@ export class AppRibbon extends LitElement {
     if(!this.expanded && this.menuOpen) this.selectStart()
   }
 
-  dismissMarkDrawer() {
-    this.renderRoot.querySelector<MarkRibbonGroup>("mark-ribbon-group")?.closeDrawer()
+  dismissDrawers() {
+    this.renderRoot.querySelectorAll<RibbonDrawer>("ribbon-drawer")
+      .forEach(drawer => drawer.closeDrawer())
   }
 
   private selectMenu(event: Event) {
@@ -568,22 +636,113 @@ export class AppRibbon extends LitElement {
     if((changed.has("menuOpen") && !this.menuOpen) || changed.has("activeMenu")) {
       this.renderRoot.querySelector<RibbonMenu>("ribbon-menu")?.closeSubmenus()
     }
+    if(changed.has("activeMenu") || changed.has("expanded")) this.scheduleResponsiveLayout()
   }
 
-  private renderGroups() {
-    return menuGroups[this.activeMenu].map(group => {
-      if(this.activeMenu === "Start" && group.label === "Marks") {
-        return html`
-          <mark-ribbon-group
-            .marks=${this.marks}
-            .styles=${this.markStyles}
-            ?disabled=${!this.canMark}
-          ></mark-ribbon-group>
-        `
-      }
+  private markButton(option: MarkOption, slot = "") {
+    const shortcut = markShortcutLabel(option, isOnApple())
+    return html`
+      <ribbon-button
+        slot=${slot}
+        compact
+        toggle
+        label=${option.label}
+        action=${`mark:${option.name}`}
+        icon=${option.icon}
+        shortcut=${shortcut}
+        ?active=${this.marks.includes(option.name)}
+        ?disabled=${!this.canMark}
+      ></ribbon-button>
+    `
+  }
+
+  private visibleMarkButton(name: MarkName) {
+    const option = primaryMarkOptions.find(candidate => candidate.name === name)!
+    return this.markButton(option)
+  }
+
+  private renderMarkDrawer() {
+    return html`
+      <ribbon-drawer
+        label="Marks"
+        icon="MarkBold"
+        layout="marks"
+        expandable
+      >
+        <ribbon-combobox
+          class="font-family"
+          name="font-family"
+          label="Font family"
+          .options=${fontFamilyOptions}
+          .value=${this.markStyles["font-family"] ?? ""}
+          ?disabled=${!this.canMark}
+        ></ribbon-combobox>
+        <ribbon-combobox
+          class="font-size"
+          name="font-size"
+          label="Font size"
+          .options=${fontSizeOptions}
+          .value=${this.markStyles["font-size"] ?? ""}
+          ?disabled=${!this.canMark}
+        ></ribbon-combobox>
+        <ribbon-button
+          compact
+          label="Increase font size"
+          action="increaseFontSize"
+          icon="IncreaseFontSize"
+          ?disabled=${!this.canMark}
+        ></ribbon-button>
+        <ribbon-button
+          compact
+          label="Decrease font size"
+          action="decreaseFontSize"
+          icon="DecreaseFontSize"
+          ?disabled=${!this.canMark}
+        ></ribbon-button>
+        <ribbon-combobox
+          name="color"
+          label="Text color"
+          variant="color"
+          .options=${textColorOptions}
+          .value=${this.markStyles.color ?? ""}
+          ?disabled=${!this.canMark}
+        ></ribbon-combobox>
+        <ribbon-combobox
+          name="background-color"
+          label="Text background color"
+          variant="color"
+          .options=${backgroundColorOptions}
+          .value=${this.markStyles["background-color"] ?? ""}
+          ?disabled=${!this.canMark}
+        ></ribbon-combobox>
+        ${this.visibleMarkButton("b")}
+        ${this.visibleMarkButton("i")}
+        ${this.visibleMarkButton("u")}
+        ${this.visibleMarkButton("s")}
+        ${this.visibleMarkButton("a")}
+        <ribbon-button
+          compact
+          label="Remove formatting"
+          action="removeMarks"
+          icon="RemoveMarks"
+          ?disabled=${!this.canMark}
+        ></ribbon-button>
+        ${primaryMarkOptions.slice(5).map(option => this.markButton(option, "more"))}
+        ${secondaryMarkOptions.map(option => this.markButton(option, "more"))}
+      </ribbon-drawer>
+    `
+  }
+
+  private renderDrawers() {
+    return menuGroups[this.activeMenu].map(drawer => {
+      if(this.activeMenu === "Start" && drawer.label === "Marks") return this.renderMarkDrawer()
+      const representative = drawer.buttons[0]
+      const icon = typeof representative === "string"
+        ? representative
+        : representative?.action ?? representative?.label ?? drawer.label
       return html`
-        <ribbon-group label=${group.label}>
-          ${group.buttons.map(button => {
+        <ribbon-drawer label=${drawer.label} icon=${icon}>
+          ${drawer.buttons.map(button => {
             const item = typeof button === "string" ? {label: button} : button
             return html`
               <ribbon-button
@@ -593,7 +752,7 @@ export class AppRibbon extends LitElement {
               ></ribbon-button>
             `
           })}
-        </ribbon-group>
+        </ribbon-drawer>
       `
     })
   }
@@ -710,7 +869,7 @@ export class AppRibbon extends LitElement {
           aria-label=${this.activeMenu}
           ?hidden=${!this.expanded}
         >
-          ${this.renderGroups()}
+          ${this.renderDrawers()}
         </div>
       </div>
     `

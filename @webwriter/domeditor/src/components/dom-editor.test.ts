@@ -2,6 +2,8 @@
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {DomEditor} from "./dom-editor"
 import type {DomEditorBreadcrumb} from "./breadcrumb"
+import type {RibbonButton} from "./ribbon-button"
+import type {RibbonDrawer} from "./ribbon-drawer"
 import {executeCompleteEvent, executeFailureEvent, markStateChangeEvent, presenceChangeEvent, selectionChangeEvent} from "../editor-bridge"
 
 async function mountEditor() {
@@ -92,7 +94,7 @@ describe("DomEditor.execute()", () => {
     insertTab.shadowRoot!.querySelector("button")!.click()
     await ribbon.updateComplete
 
-    const paragraph = ribbon.shadowRoot!.querySelector('ribbon-group[label="Text"] ribbon-button[label="Paragraph"]')!
+    const paragraph = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Text"] ribbon-button[label="Paragraph"]')!
     await paragraph.updateComplete
     paragraph.shadowRoot!.querySelector("button")!.click()
 
@@ -565,18 +567,18 @@ describe("DomEditor.execute()", () => {
     await editor.updateComplete
 
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
-    const group = ribbon.shadowRoot!.querySelector("mark-ribbon-group")!
-    group.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!.click()
-    await group.updateComplete
-    expect(group.hasAttribute("drawer-open")).toBe(true)
+    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Marks"]')!
+    drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!.click()
+    await drawer.updateComplete
+    expect(drawer.hasAttribute("drawer-open")).toBe(true)
 
     firstParagraph.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, button: 0}))
-    expect(group.hasAttribute("drawer-open")).toBe(true)
+    expect(drawer.hasAttribute("drawer-open")).toBe(true)
 
     selection.setBaseAndExtent(secondParagraph.firstChild!, 0, secondParagraph.firstChild!, 3)
     secondParagraph.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, button: 0}))
-    await group.updateComplete
-    expect(group.hasAttribute("drawer-open")).toBe(false)
+    await drawer.updateComplete
+    expect(drawer.hasAttribute("drawer-open")).toBe(false)
   })
 
   it("allows ribbon inputs to receive pointer focus", async () => {
@@ -628,7 +630,7 @@ describe("DomEditor.execute()", () => {
 
     insertTab.shadowRoot!.querySelector("button")!.click()
     await ribbon.updateComplete
-    const paragraph = ribbon.shadowRoot!.querySelector('ribbon-group[label="Text"] ribbon-button[label="Paragraph"]')!
+    const paragraph = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Text"] ribbon-button[label="Paragraph"]')!
     await paragraph.updateComplete
     paragraph.shadowRoot!.querySelector("button")!.click()
     await execute.mock.results[0].value
@@ -645,8 +647,8 @@ describe("DomEditor.execute()", () => {
     insertTab.shadowRoot!.querySelector("button")!.click()
     await ribbon.updateComplete
 
-    const heading = ribbon.shadowRoot!.querySelector('ribbon-group[label="Text"] ribbon-button[label="Heading"]')!
-    expect(ribbon.shadowRoot!.querySelector('ribbon-group[label="Text"] ribbon-button[label="Heading 2"]')).toBeNull()
+    const heading = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Text"] ribbon-button[label="Heading"]')!
+    expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Text"] ribbon-button[label="Heading 2"]')).toBeNull()
     await heading.updateComplete
 
     heading.shadowRoot!.querySelector('button[title="Heading"]')!.click()
@@ -668,7 +670,7 @@ describe("DomEditor.execute()", () => {
 
     insertTab.shadowRoot!.querySelector("button")!.click()
     await ribbon.updateComplete
-    const heading = ribbon.shadowRoot!.querySelector('ribbon-group[label="Text"] ribbon-button[label="Heading"]')!
+    const heading = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Text"] ribbon-button[label="Heading"]')!
     await heading.updateComplete
     heading.shadowRoot!.querySelector('button[aria-label="Show more Heading options"]')!.click()
     await heading.updateComplete
