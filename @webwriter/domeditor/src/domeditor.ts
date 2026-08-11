@@ -342,7 +342,10 @@ export class DOMEditor {
 
   /** Sends mark availability and active marks as a DOM-derived bridge event. */
   postMarkState() {
-    this.postBridgeEvent(markStateChangeEvent, this.features.mark.getState())
+    this.postBridgeEvent(markStateChangeEvent, {
+      ...this.features.mark.getState(),
+      styles: this.features.mark.getStyleState(),
+    })
   }
 
   startTransform(el: HTMLElement) {

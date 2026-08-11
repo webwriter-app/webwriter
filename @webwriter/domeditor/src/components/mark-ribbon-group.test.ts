@@ -6,6 +6,7 @@ import {AppRibbon} from "./ribbon"
 import {DomEditor} from "./dom-editor"
 import type {MarkRibbonGroup} from "./mark-ribbon-group"
 import type {RibbonButton} from "./ribbon-button"
+import type {RibbonCombobox} from "./ribbon-combobox"
 
 afterEach(() => {
   document.body.replaceChildren()
@@ -31,24 +32,41 @@ async function mountEditor() {
 }
 
 describe("mark ribbon controls", () => {
-  it("renders every primary mark as a compact, unlabelled icon toggle", async () => {
+  it("renders the requested two fixed rows before the expandable marks", async () => {
     const {group} = await mountRibbon()
     const controls = group.shadowRoot!.querySelector(".controls")!
     const buttons = Array.from(controls.querySelectorAll<RibbonButton>("ribbon-button"))
+    const comboboxes = Array.from(controls.querySelectorAll<RibbonCombobox>("ribbon-combobox"))
 
-    expect(buttons.slice(0, primaryMarkOptions.length).map(button => button.label))
-      .toEqual(primaryMarkOptions.map(option => option.label))
-    expect(buttons).toHaveLength(primaryMarkOptions.length + 4)
-    expect(buttons.slice(primaryMarkOptions.length + 1).map(button => button.label))
-      .toEqual(secondaryMarkOptions.slice(0, 3).map(option => option.label))
-    expect(buttons.slice(0, primaryMarkOptions.length).every(button => button.compact && button.toggle)).toBe(true)
+    expect(comboboxes.map(combobox => combobox.name)).toEqual([
+      "font-family",
+      "font-size",
+      "color",
+      "background-color",
+    ])
+    expect(getComputedStyle(comboboxes[0]).gridColumn).toBe("span 4")
+    expect(getComputedStyle(comboboxes[1]).gridColumn).toBe("span 2")
+    expect(buttons.map(button => button.label)).toEqual([
+      "Increase font size",
+      "Decrease font size",
+      "Bold",
+      "Italic",
+      "Underline",
+      "Strikethrough",
+      "Link",
+      "Remove formatting",
+    ])
+    expect(buttons.slice(2, 7).every(button => button.compact && button.toggle)).toBe(true)
     expect(buttons.every(button => button.disabled)).toBe(true)
+    expect(comboboxes.every(combobox => combobox.disabled)).toBe(true)
+    expect(controls.querySelector('ribbon-button[action="mark:sup"]')).toBeNull()
+    expect(controls.querySelector('ribbon-button[action="mark:time"]')).toBeNull()
 
-    await buttons[0].updateComplete
-    expect(buttons[0].shadowRoot!.querySelector("button")!.getAttribute("aria-label")).toBe("Bold")
-    expect(buttons[0].shadowRoot!.querySelector("button")!.getAttribute("aria-pressed")).toBe("false")
-    expect(buttons[0].shadowRoot!.querySelector(".icon-tabler-bold")).not.toBeNull()
-    expect(getComputedStyle(buttons[0].shadowRoot!.querySelector<HTMLElement>(".button-label")!).display).toBe("none")
+    await buttons[2].updateComplete
+    expect(buttons[2].shadowRoot!.querySelector("button")!.getAttribute("aria-label")).toBe("Bold")
+    expect(buttons[2].shadowRoot!.querySelector("button")!.getAttribute("aria-pressed")).toBe("false")
+    expect(buttons[2].shadowRoot!.querySelector(".icon-tabler-bold")).not.toBeNull()
+    expect(getComputedStyle(buttons[2].shadowRoot!.querySelector<HTMLElement>(".button-label")!).display).toBe("none")
   })
 
   it("flows all marks through one expanding grid without shifting the primary rows", async () => {
@@ -79,7 +97,7 @@ describe("mark ribbon controls", () => {
     expect(getComputedStyle(ribbonContent).overflowY).toBe("visible")
     const sectionStyle = getComputedStyle(section)
     expect(sectionStyle.backgroundColor).toBe("#f2f2f2")
-    expect(sectionStyle.maxHeight).toBe("calc(100% + 60.8px)")
+    expect(sectionStyle.maxHeight).toBe("calc(100% + 93.6px)")
     expect(sectionStyle.transition).toContain("max-height 180ms ease")
     expect(sectionStyle.marginLeft).toBe("-1px")
     expect(sectionStyle.paddingLeft).toBe("calc(8px + 1px)")
@@ -110,8 +128,11 @@ describe("mark ribbon controls", () => {
     expect(collapsedChevronTransform).toBe("rotate(45deg)")
     expect(getComputedStyle(chevron).transform).toBe("rotate(225deg)")
     expect(buttons.map(button => button.label)).toEqual([
-      ...primaryMarkOptions.map(option => option.label),
-      "Remove marks",
+      "Increase font size",
+      "Decrease font size",
+      ...primaryMarkOptions.slice(0, 5).map(option => option.label),
+      "Remove formatting",
+      ...primaryMarkOptions.slice(5).map(option => option.label),
       ...secondaryMarkOptions.map(option => option.label),
     ])
     expect(buttons.every(button => button.compact)).toBe(true)
@@ -187,10 +208,30 @@ describe("mark ribbon controls", () => {
       Object.defineProperty(navigator, "platform", {value: originalPlatform, configurable: true})
     }
   })
+
+  it("opens custom listboxes and emits the selected style mark", async () => {
+    const {ribbon, group} = await mountRibbon()
+    ribbon.canMark = true
+    await ribbon.updateComplete
+    await group.updateComplete
+    const changed = vi.fn()
+    group.addEventListener("ribbon-combobox-change", changed)
+    const family = group.shadowRoot!.querySelector<RibbonCombobox>('ribbon-combobox[name="font-family"]')!
+    await family.updateComplete
+
+    family.shadowRoot!.querySelector<HTMLButtonElement>(".combobox")!.click()
+    await family.updateComplete
+    expect(family.shadowRoot!.querySelector("[role=listbox]")).not.toBeNull()
+    family.shadowRoot!.querySelector<HTMLButtonElement>('.option[aria-label="Arial"]')!.click()
+
+    expect(changed).toHaveBeenCalledWith(expect.objectContaining({
+      detail: {name: "font-family", value: "Arial, sans-serif"},
+    }))
+  })
 })
 
 describe("mark ribbon bridge", () => {
-  it("updates controls from selection messages and routes toggle and clear commands", async () => {
+  it("updates controls from selection messages and routes style, toggle, size, and clear commands", async () => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     window.dispatchEvent(new MessageEvent("message", {
@@ -199,6 +240,7 @@ describe("mark ribbon bridge", () => {
         detail: {
           canMark: true,
           marks: ["b"],
+          styles: {"font-size": "18px"},
         },
       },
       source: editorWindow,
@@ -211,14 +253,23 @@ describe("mark ribbon bridge", () => {
     await group.updateComplete
     const bold = group.shadowRoot!.querySelector<RibbonButton>('ribbon-button[action="mark:b"]')!
     const clear = group.shadowRoot!.querySelector<RibbonButton>('ribbon-button[action="removeMarks"]')!
-    await Promise.all([bold.updateComplete, clear.updateComplete])
+    const increase = group.shadowRoot!.querySelector<RibbonButton>('ribbon-button[action="increaseFontSize"]')!
+    const size = group.shadowRoot!.querySelector<RibbonCombobox>('ribbon-combobox[name="font-size"]')!
+    await Promise.all([bold.updateComplete, clear.updateComplete, increase.updateComplete, size.updateComplete])
 
     expect(bold.active).toBe(true)
     expect(bold.disabled).toBe(false)
+    expect(size.value).toBe("18px")
     bold.shadowRoot!.querySelector<HTMLButtonElement>("button")!.click()
+    increase.shadowRoot!.querySelector<HTMLButtonElement>("button")!.click()
+    size.shadowRoot!.querySelector<HTMLButtonElement>(".combobox")!.click()
+    await size.updateComplete
+    size.shadowRoot!.querySelector<HTMLButtonElement>('.option[aria-label="24 px"]')!.click()
     clear.shadowRoot!.querySelector<HTMLButtonElement>("button")!.click()
 
     expect(execute).toHaveBeenNthCalledWith(1, {type: "toggleMark", mark: "b"})
-    expect(execute).toHaveBeenNthCalledWith(2, {type: "removeMarks"})
+    expect(execute).toHaveBeenNthCalledWith(2, {type: "increaseFontSize"})
+    expect(execute).toHaveBeenNthCalledWith(3, {type: "setStyleMark", property: "font-size", value: "24px"})
+    expect(execute).toHaveBeenNthCalledWith(4, {type: "removeMarks"})
   })
 })

@@ -1,4 +1,4 @@
-import {canonicalMarkName, type MarkName} from "./marks"
+import {canonicalMarkName, isStyleMarkName, type MarkName, type StyleMarkValues} from "./marks"
 
 export const executeCompleteEvent = "dom-editor-execute-complete"
 export const executeFailureEvent = "dom-editor-execute-failure"
@@ -37,6 +37,8 @@ export type MarkStateChangeDetail = {
   canMark: boolean
   /** Canonical marks found in the range or effective for the caret. */
   marks: MarkName[]
+  /** Inline style marks shared by the selection or effective at the caret. */
+  styles?: StyleMarkValues
 }
 
 export type MarkStateChangeMessage = {
@@ -122,12 +124,19 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
 export function isMarkStateChangeMessage(value: unknown): value is MarkStateChangeMessage {
   if(!value || typeof value !== "object") return false
   const message = value as Partial<MarkStateChangeMessage>
-  return message.type === markStateChangeEvent
+  const validBase = message.type === markStateChangeEvent
     && !!message.detail
     && typeof message.detail === "object"
     && typeof message.detail.canMark === "boolean"
     && Array.isArray(message.detail.marks)
     && message.detail.marks.every(mark => typeof mark === "string" && canonicalMarkName(mark) === mark)
+  if(!validBase) return false
+  const styles = message.detail!.styles
+  if(styles === undefined) return true
+  if(!styles || typeof styles !== "object" || Array.isArray(styles)) return false
+  return Object.entries(styles).every(([property, styleValue]) =>
+    isStyleMarkName(property) && typeof styleValue === "string",
+  )
 }
 
 export function isPresenceChangeMessage(value: unknown): value is PresenceChangeMessage {

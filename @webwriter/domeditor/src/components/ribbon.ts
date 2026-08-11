@@ -1,6 +1,6 @@
 import { LitElement, css, html } from "lit"
 import type {PresenceUser} from "../editor-bridge"
-import type {MarkName} from "../marks"
+import type {MarkName, StyleMarkValues} from "../marks"
 import { ribbonIcon } from "../ribbon-icons"
 import { insertionMenuItems } from "./insertion-menu"
 import { type RibbonButton } from "./ribbon-button"
@@ -90,6 +90,7 @@ export class AppRibbon extends LitElement {
     logoUrl: {type: String, attribute: "logo-url"},
     canMark: {type: Boolean, attribute: "can-mark"},
     marks: {attribute: false},
+    markStyles: {attribute: false},
     presenceUsers: {attribute: false},
   }
 
@@ -429,6 +430,7 @@ export class AppRibbon extends LitElement {
   logoUrl = ""
   canMark = false
   marks: MarkName[] = []
+  markStyles: StyleMarkValues = {}
   presenceUsers: PresenceUser[] = []
 
   private readonly handleDocumentPointerDown = (event: PointerEvent) => {
@@ -574,6 +576,7 @@ export class AppRibbon extends LitElement {
         return html`
           <mark-ribbon-group
             .marks=${this.marks}
+            .styles=${this.markStyles}
             ?disabled=${!this.canMark}
           ></mark-ribbon-group>
         `

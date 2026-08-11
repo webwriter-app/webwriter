@@ -1,10 +1,15 @@
 import {EditorFeature, type DocumentListenerMap} from "."
 import {
   canonicalMarkName,
+  fontSizeOptions,
+  isStyleMarkName,
   markNames,
   markTagNames,
   primaryMarkOptions,
+  styleMarkNames,
   type MarkName,
+  type StyleMarkName,
+  type StyleMarkValues,
 } from "../marks"
 import {$} from "../utility"
 
@@ -52,12 +57,18 @@ export class MarkFeature extends EditorFeature {
   private stateRefreshQueued = false
   /** `null` inherits the live DOM marks; a Set is an explicit typing state. */
   private storedMarks: Set<MarkName> | null = null
+  /** `null` inherits inline styles; an object is an explicit typing state. */
+  private storedStyles: StyleMarkValues | null = null
   private storedSelection: StoredSelection | null = null
 
   actions = {
     addMark: ({mark}: {type: "addMark", mark: MarkName}) => this.addMark(mark),
     removeMark: ({mark}: {type: "removeMark", mark: MarkName}) => this.removeMark(mark),
     toggleMark: ({mark}: {type: "toggleMark", mark: MarkName}) => this.toggleMark(mark),
+    setStyleMark: ({property, value}: {type: "setStyleMark", property: StyleMarkName, value: string}) =>
+      this.setStyleMark(property, value),
+    increaseFontSize: ({}: {type: "increaseFontSize"}) => this.adjustFontSize(1),
+    decreaseFontSize: ({}: {type: "decreaseFontSize"}) => this.adjustFontSize(-1),
     removeMarks: ({}: {type: "removeMarks"}) => this.removeMarks(),
   } as const
 
@@ -70,6 +81,8 @@ export class MarkFeature extends EditorFeature {
   enable() {
     super.enable()
     this.observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["style"],
       childList: true,
       characterData: true,
       subtree: true,
@@ -100,6 +113,22 @@ export class MarkFeature extends EditorFeature {
       this.marksAt(node, context.block).forEach(mark => marks.add(mark))
     }
     return {canMark: true, marks: markNames.filter(mark => marks.has(mark))}
+  }
+
+  /** Inline span style values shared by the entire selection, or effective at a caret. */
+  getStyleState(): StyleMarkValues {
+    this.clearStoredMarksIfSelectionChanged()
+    const caret = this.getCaret()
+    if(caret) return {...(this.storedStyles ?? this.stylesAt(caret.range.startContainer, caret.block))}
+
+    const context = this.getSelection()
+    if(!context) return {}
+    const styles: StyleMarkValues = {}
+    for(const property of styleMarkNames) {
+      const values = context.text.map(({node}) => this.stylesAt(node, context.block)[property] ?? "")
+      if(values.length && values[0] && values.every(value => value === values[0])) styles[property] = values[0]
+    }
+    return styles
   }
 
   addMark(mark: MarkName) {
@@ -149,12 +178,75 @@ export class MarkFeature extends EditorFeature {
     return state.marks.includes(mark)? this.removeMark(mark): this.addMark(mark)
   }
 
+  /** Sets one inline CSS property on span marks, or removes it for the default option. */
+  setStyleMark(property: StyleMarkName, value: string) {
+    this.assertStyleMark(property)
+    const normalizedValue = this.normalizeStyleValue(property, value)
+    const caret = this.getCaret()
+    if(caret) return this.setStoredStyle(property, normalizedValue, caret)
+
+    const context = this.getSelection()
+    if(!context) return false
+    const currentValues = context.text.map(({node}) => this.stylesAt(node, context.block)[property] ?? "")
+    if(currentValues.every(current => current === normalizedValue)) return false
+
+    const boundary = document.createElement("span")
+    boundary.setAttribute(markerAttribute, "")
+    boundary.append(context.range.extractContents())
+    context.range.insertNode(boundary)
+
+    // Generated style spans are split at both selection boundaries. This
+    // keeps their other style properties while isolating the changed run.
+    while(true) {
+      let target = boundary.parentElement
+      while(target && target !== context.block && !this.isStyleMarkSpan(target)) {
+        target = target.parentElement
+      }
+      if(!target || target === context.block) break
+
+      while(boundary.parentElement && boundary.parentElement !== target) {
+        this.promoteBoundary(boundary, true)
+      }
+      if(boundary.parentElement === target) this.promoteStyleBoundary(boundary)
+    }
+
+    const styledDescendants = Array.from(boundary.querySelectorAll<HTMLElement>("span[style]")).reverse()
+    for(const span of styledDescendants) {
+      span.style.removeProperty(property)
+      this.removeEmptyStyleSpan(span)
+    }
+
+    if(normalizedValue) this.applyStyleToBoundary(boundary, property, normalizedValue)
+    boundary.replaceWith(...Array.from(boundary.childNodes))
+    context.block.normalize()
+    this.mergeStyleSpans(context.block)
+    context.block.normalize()
+    this.restoreSelection(context)
+    this.editor.postMarkState()
+    return true
+  }
+
+  adjustFontSize(direction: -1 | 1) {
+    const state = this.getState()
+    if(!state.canMark) return false
+    const current = Number.parseFloat(this.getStyleState()["font-size"] ?? "") || this.computedFontSize() || 16
+    const sizes = fontSizeOptions.flatMap(option => {
+      const size = Number.parseFloat(option.value)
+      return Number.isFinite(size)? [size]: []
+    })
+    const size = direction > 0
+      ? sizes.find(candidate => candidate > current)
+      : [...sizes].reverse().find(candidate => candidate < current)
+    return size === undefined? false: this.setStyleMark("font-size", `${size}px`)
+  }
+
   /** Removes every supported mark (including strong/em aliases) in one pass. */
   removeMarks() {
     const caret = this.getCaret()
     if(caret) {
-      if(!this.effectiveCaretMarks(caret).size) return false
+      if(!this.effectiveCaretMarks(caret).size && !Object.keys(this.effectiveCaretStyles(caret)).length) return false
       this.storeMarks(new Set(), caret.selection)
+      this.storeStyles({}, caret.selection)
       this.editor.postMarkState()
       return true
     }
@@ -167,6 +259,11 @@ export class MarkFeature extends EditorFeature {
     return new Set(this.storedMarks ?? this.marksAt(caret.range.startContainer, caret.block))
   }
 
+  private effectiveCaretStyles(caret: MarkCaret) {
+    this.clearStoredMarksIfSelectionChanged()
+    return {...(this.storedStyles ?? this.stylesAt(caret.range.startContainer, caret.block))}
+  }
+
   private setStoredMark(mark: MarkName, enabled: boolean, caret: MarkCaret) {
     const marks = this.effectiveCaretMarks(caret)
     if(marks.has(mark) === enabled) return false
@@ -176,9 +273,30 @@ export class MarkFeature extends EditorFeature {
     return true
   }
 
+  private setStoredStyle(property: StyleMarkName, value: string, caret: MarkCaret) {
+    const styles = this.effectiveCaretStyles(caret)
+    if((styles[property] ?? "") === value) return false
+    if(value) styles[property] = value
+    else delete styles[property]
+    this.storeStyles(styles, caret.selection)
+    this.editor.postMarkState()
+    return true
+  }
+
   private storeMarks(marks: Set<MarkName>, selection: Selection) {
     if(!selection.anchorNode || !selection.focusNode) return
     this.storedMarks = marks
+    this.storeSelection(selection)
+  }
+
+  private storeStyles(styles: StyleMarkValues, selection: Selection) {
+    if(!selection.anchorNode || !selection.focusNode) return
+    this.storedStyles = {...styles}
+    this.storeSelection(selection)
+  }
+
+  private storeSelection(selection: Selection) {
+    if(!selection.anchorNode || !selection.focusNode) return
     this.storedSelection = {
       anchorNode: selection.anchorNode,
       anchorOffset: selection.anchorOffset,
@@ -189,6 +307,7 @@ export class MarkFeature extends EditorFeature {
 
   private clearStoredMarks() {
     this.storedMarks = null
+    this.storedStyles = null
     this.storedSelection = null
   }
 
@@ -206,13 +325,14 @@ export class MarkFeature extends EditorFeature {
   private handleBeforeInput(event: InputEvent) {
     this.clearStoredMarksIfSelectionChanged()
     if(event.defaultPrevented
-      || this.storedMarks === null
+      || this.storedMarks === null && this.storedStyles === null
       || !["insertText", "insertReplacementText"].includes(event.inputType)
       || !event.data) return
 
     const caret = this.getCaret()
     if(!caret) return
-    const desired = new Set(this.storedMarks)
+    const desired = new Set(this.storedMarks ?? this.marksAt(caret.range.startContainer, caret.block))
+    const desiredStyles = {...(this.storedStyles ?? this.stylesAt(caret.range.startContainer, caret.block))}
     event.preventDefault()
 
     const text = document.createTextNode(event.data)
@@ -228,6 +348,9 @@ export class MarkFeature extends EditorFeature {
     }
     for(const mark of markNames) {
       if(desired.has(mark) && !this.getState().marks.includes(mark)) this.addMark(mark)
+    }
+    for(const property of styleMarkNames) {
+      this.setStyleMark(property, desiredStyles[property] ?? "")
     }
 
     document.getSelection()?.collapseToEnd()
@@ -302,6 +425,72 @@ export class MarkFeature extends EditorFeature {
     parent.remove()
   }
 
+  /** Splits a generated style span while retaining its other properties on the selection. */
+  private promoteStyleBoundary(boundary: Element) {
+    const parent = boundary.parentElement
+    const grandparent = parent?.parentNode
+    if(!parent || !grandparent) return
+
+    const before = parent.cloneNode(false) as Element
+    while(parent.firstChild && parent.firstChild !== boundary) before.append(parent.firstChild)
+
+    const after = parent.cloneNode(false) as Element
+    while(boundary.nextSibling) after.append(boundary.nextSibling)
+
+    const selected = parent.cloneNode(false) as Element
+    selected.append(...Array.from(boundary.childNodes))
+    boundary.append(selected)
+
+    if(this.hasContent(before)) grandparent.insertBefore(before, parent)
+    grandparent.insertBefore(boundary, parent)
+    if(this.hasContent(after)) grandparent.insertBefore(after, parent)
+    parent.remove()
+  }
+
+  private applyStyleToBoundary(boundary: Element, property: StyleMarkName, value: string) {
+    let wrapper: HTMLSpanElement | null = null
+    for(const node of Array.from(boundary.childNodes)) {
+      if(node instanceof HTMLElement && this.isStyleMarkSpan(node)) {
+        node.style.setProperty(property, value)
+        wrapper = null
+        continue
+      }
+      if(!wrapper) {
+        wrapper = document.createElement("span")
+        wrapper.style.setProperty(property, value)
+        boundary.insertBefore(wrapper, node)
+      }
+      wrapper.append(node)
+    }
+  }
+
+  private removeEmptyStyleSpan(span: HTMLElement) {
+    if(span.style.length) return
+    span.removeAttribute("style")
+    if(!Array.from(span.attributes).some(attribute =>
+      attribute.name !== "class"
+      || attribute.value.split(/\s+/).some(name => name && !name.startsWith("◆")),
+    )) span.replaceWith(...Array.from(span.childNodes))
+  }
+
+  /** Merges adjacent span runs with the same style set after range splitting. */
+  private mergeStyleSpans(root: Element) {
+    for(const child of Array.from(root.children)) this.mergeStyleSpans(child)
+    let node: ChildNode | null = root.firstChild
+    while(node) {
+      const next: ChildNode | null = node.nextSibling
+      if(node instanceof HTMLElement
+        && next instanceof HTMLElement
+        && node.localName === "span"
+        && this.elementsEquivalent(node, next)) {
+        node.append(...Array.from(next.childNodes))
+        next.remove()
+        continue
+      }
+      node = next
+    }
+  }
+
   private hasContent(element: Element) {
     return element.textContent!.length > 0 || element.children.length > 0
   }
@@ -309,22 +498,55 @@ export class MarkFeature extends EditorFeature {
   private mergeEquivalentSiblings(wrapper: Element) {
     if(!wrapper.isConnected) return
     let merged = wrapper
-    const previous = merged.previousElementSibling
-    if(previous && this.elementsEquivalent(previous, merged)) {
+    const previous = merged.previousSibling
+    if(previous instanceof Element && this.elementsEquivalent(previous, merged)) {
       previous.append(...Array.from(merged.childNodes))
       merged.remove()
       merged = previous
     }
-    const next = merged.nextElementSibling
-    if(next && this.elementsEquivalent(merged, next)) {
+    const next = merged.nextSibling
+    if(next instanceof Element && this.elementsEquivalent(merged, next)) {
       merged.append(...Array.from(next.childNodes))
       next.remove()
     }
   }
 
   private elementsEquivalent(a: Element, b: Element) {
-    if(a.localName !== b.localName || a.attributes.length !== b.attributes.length) return false
-    return Array.from(a.attributes).every(attribute => b.getAttribute(attribute.name) === attribute.value)
+    if(a.localName !== b.localName) return false
+    const aAttributes = this.normalizedAttributes(a)
+    const bAttributes = this.normalizedAttributes(b)
+    return aAttributes.length === bAttributes.length
+      && aAttributes.every(([name, value], index) =>
+        bAttributes[index]?.[0] === name && bAttributes[index]?.[1] === value,
+      )
+  }
+
+  private normalizedAttributes(element: Element): [string, string][] {
+    return Array.from(element.attributes).flatMap(attribute => {
+      if(attribute.name === "class") {
+        const classes = attribute.value.split(/\s+/).filter(name => name && !name.startsWith("◆")).sort()
+        return classes.length? [["class", classes.join(" ")] as [string, string]]: []
+      }
+      if(attribute.name === "style" && element instanceof HTMLElement) {
+        const declarations: string[] = []
+        for(let index = 0; index < element.style.length; index++) {
+          const property = element.style.item(index)
+          declarations.push(`${property}:${element.style.getPropertyValue(property).trim()}!${element.style.getPropertyPriority(property)}`)
+        }
+        return declarations.length? [["style", declarations.sort().join(";")] as [string, string]]: []
+      }
+      return [[attribute.name, attribute.value] as [string, string]]
+    }).sort(([a], [b]) => a.localeCompare(b))
+  }
+
+  private isStyleMarkSpan(element: Element) {
+    return element instanceof HTMLElement
+      && element.localName === "span"
+      && element.hasAttribute("style")
+      && Array.from(element.attributes).every(attribute => attribute.name === "style" || (
+        attribute.name === "class"
+        && attribute.value.split(/\s+/).every(name => !name || name.startsWith("◆"))
+      ))
   }
 
   private getCaret(): MarkCaret | null {
@@ -363,6 +585,38 @@ export class MarkFeature extends EditorFeature {
       element = element.parentElement
     }
     return marks
+  }
+
+  private stylesAt(node: Node, block: Element) {
+    const styles: StyleMarkValues = {}
+    let element = node instanceof Element? node: node.parentElement
+    while(element && element !== block.parentElement) {
+      if(this.isStyleMarkSpan(element)) {
+        for(const property of styleMarkNames) {
+          if(styles[property] !== undefined) continue
+          const value = element.style.getPropertyValue(property).trim()
+          if(value) styles[property] = value
+        }
+      }
+      if(element === block) break
+      element = element.parentElement
+    }
+    return styles
+  }
+
+  private computedFontSize() {
+    const selection = document.getSelection()
+    const node = selection?.rangeCount? selection.getRangeAt(0).startContainer: null
+    const element = node instanceof Element? node: node?.parentElement
+    if(!element) return 0
+    return Number.parseFloat(getComputedStyle(element).fontSize) || 0
+  }
+
+  private normalizeStyleValue(property: StyleMarkName, value: string) {
+    if(!value.trim()) return ""
+    const span = document.createElement("span")
+    span.style.setProperty(property, value)
+    return span.style.getPropertyValue(property).trim()
   }
 
   private getSelection(): MarkSelection | null {
@@ -498,6 +752,10 @@ export class MarkFeature extends EditorFeature {
 
   private assertMark(mark: string): asserts mark is MarkName {
     if(canonicalMarkName(mark) !== mark) throw new TypeError(`Unsupported mark '${mark}'`)
+  }
+
+  private assertStyleMark(property: string): asserts property is StyleMarkName {
+    if(!isStyleMarkName(property)) throw new TypeError(`Unsupported style mark '${property}'`)
   }
 
   private queueStateRefresh() {

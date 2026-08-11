@@ -182,6 +182,100 @@ describe("MarkFeature toggles", () => {
   })
 })
 
+describe("MarkFeature span styles", () => {
+  it("sets each style mark on a span and derives uniform values from the DOM", () => {
+    const paragraph = setContent("<p>Text</p>")
+    selectText(paragraph.firstChild as Text)
+
+    feature.setStyleMark("font-family", "Arial, sans-serif")
+    feature.setStyleMark("font-size", "18px")
+    feature.setStyleMark("color", "#dc2626")
+    feature.setStyleMark("background-color", "#fef08a")
+
+    expect(paragraph.querySelectorAll("span")).toHaveLength(1)
+    const span = paragraph.querySelector("span") as HTMLSpanElement
+    expect(span.style.fontFamily).toBe("Arial, sans-serif")
+    expect(span.style.fontSize).toBe("18px")
+    expect(span.style.color).toBe("#dc2626")
+    expect(span.style.backgroundColor).toBe("#fef08a")
+    expect(feature.getStyleState()).toEqual({
+      "font-family": "Arial, sans-serif",
+      "font-size": "18px",
+      color: "#dc2626",
+      "background-color": "#fef08a",
+    })
+  })
+
+  it("splits a styled span for a partial change and keeps its other styles", () => {
+    const paragraph = setContent('<p><span style="color: red; font-size: 16px">abcd</span></p>')
+    const text = paragraph.querySelector("span")!.firstChild as Text
+    selectText(text, 1, 3)
+
+    feature.setStyleMark("color", "blue")
+
+    const spans = Array.from(paragraph.querySelectorAll<HTMLSpanElement>("span"))
+    expect(spans.map(span => [span.textContent, span.style.color, span.style.fontSize])).toEqual([
+      ["a", "red", "16px"],
+      ["bc", "blue", "16px"],
+      ["d", "red", "16px"],
+    ])
+    expect(document.getSelection()!.toString()).toBe("bc")
+  })
+
+  it("removes only the chosen style and merges equivalent neighboring spans", () => {
+    const paragraph = setContent('<p><span style="color: red">ab</span><span style="color: red">cd</span></p>')
+    const first = paragraph.firstElementChild!.firstChild as Text
+    const second = paragraph.lastElementChild!.firstChild as Text
+    $.selectRange(first, 1, second, 1)
+
+    feature.setStyleMark("color", "")
+
+    expect(cleanHTML()).toBe('<p><span style="color: red">a</span>bc<span style="color: red">d</span></p>')
+    selectText(paragraph.childNodes[1] as Text)
+    feature.setStyleMark("color", "red")
+    expect(cleanHTML()).toBe('<p><span style="color: red">abcd</span></p>')
+  })
+
+  it("stores style marks at a caret and applies them to newly typed text", () => {
+    const paragraph = setContent("<p>ab</p>")
+    $.move(paragraph.firstChild!, 1)
+
+    feature.setStyleMark("font-size", "20px")
+    const event = new InputEvent("beforeinput", {
+      bubbles: true,
+      cancelable: true,
+      data: "X",
+      inputType: "insertText",
+    })
+    paragraph.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(cleanHTML()).toBe('<p>a<span style="font-size: 20px;">X</span>b</p>')
+    expect(feature.getStyleState()).toEqual({"font-size": "20px"})
+  })
+
+  it("increases and decreases through the font-size presets", () => {
+    const paragraph = setContent("<p>Text</p>")
+    selectText(paragraph.firstChild as Text)
+
+    expect(feature.adjustFontSize(1)).toBe(true)
+    expect(paragraph.querySelector<HTMLElement>("span")!.style.fontSize).toBe("18px")
+    expect(feature.adjustFontSize(-1)).toBe(true)
+    expect(paragraph.querySelector<HTMLElement>("span")!.style.fontSize).toBe("16px")
+  })
+
+  it("removes semantic and span-style formatting together", () => {
+    const paragraph = setContent('<p><b><span style="color: red">abcd</span></b></p>')
+    const text = paragraph.querySelector("span")!.firstChild as Text
+    selectText(text, 1, 3)
+
+    feature.removeMarks()
+
+    expect(cleanHTML()).toBe('<p><b><span style="color: red">a</span></b>bc<b><span style="color: red">d</span></b></p>')
+    expect(feature.getStyleState()).toEqual({})
+  })
+})
+
 describe("MarkFeature stored marks", () => {
   const typeText = (target: Element, data: string) => {
     const event = new InputEvent("beforeinput", {

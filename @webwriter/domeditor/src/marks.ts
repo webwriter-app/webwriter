@@ -32,6 +32,69 @@ export type PrimaryMarkName = typeof primaryMarkNames[number]
 export type SecondaryMarkName = typeof secondaryMarkNames[number]
 export type MarkName = PrimaryMarkName | SecondaryMarkName
 
+export const styleMarkNames = [
+  "font-family",
+  "font-size",
+  "color",
+  "background-color",
+] as const
+
+export type StyleMarkName = typeof styleMarkNames[number]
+export type StyleMarkValues = Partial<Record<StyleMarkName, string>>
+
+export type StyleMarkOption = {
+  label: string
+  value: string
+}
+
+export const fontFamilyOptions: readonly StyleMarkOption[] = [
+  {label: "Default font", value: ""},
+  {label: "Arial", value: "Arial, sans-serif"},
+  {label: "Verdana", value: "Verdana, sans-serif"},
+  {label: "Tahoma", value: "Tahoma, sans-serif"},
+  {label: "Trebuchet MS", value: '"Trebuchet MS", sans-serif'},
+  {label: "Times New Roman", value: '"Times New Roman", serif'},
+  {label: "Georgia", value: "Georgia, serif"},
+  {label: "Courier New", value: '"Courier New", monospace'},
+] as const
+
+export const fontSizeOptions: readonly StyleMarkOption[] = [
+  {label: "Default size", value: ""},
+  ...[8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 72]
+    .map(size => ({label: `${size} px`, value: `${size}px`})),
+] as const
+
+export const textColorOptions: readonly StyleMarkOption[] = [
+  {label: "Default text color", value: ""},
+  {label: "Black", value: "#000000"},
+  {label: "Dark gray", value: "#4b5563"},
+  {label: "Red", value: "#dc2626"},
+  {label: "Orange", value: "#ea580c"},
+  {label: "Gold", value: "#ca8a04"},
+  {label: "Green", value: "#16a34a"},
+  {label: "Blue", value: "#2563eb"},
+  {label: "Purple", value: "#9333ea"},
+  {label: "White", value: "#ffffff"},
+] as const
+
+export const backgroundColorOptions: readonly StyleMarkOption[] = [
+  {label: "No background color", value: ""},
+  {label: "Yellow", value: "#fef08a"},
+  {label: "Orange", value: "#fed7aa"},
+  {label: "Red", value: "#fecaca"},
+  {label: "Green", value: "#bbf7d0"},
+  {label: "Blue", value: "#bfdbfe"},
+  {label: "Purple", value: "#e9d5ff"},
+  {label: "Gray", value: "#e5e7eb"},
+  {label: "Black", value: "#000000"},
+] as const
+
+const styleMarkNameSet = new Set<string>(styleMarkNames)
+
+export function isStyleMarkName(name: string): name is StyleMarkName {
+  return styleMarkNameSet.has(name)
+}
+
 export type MarkOption = {
   name: MarkName
   label: string

@@ -1,13 +1,20 @@
 import {LitElement, css, html} from "lit"
 import {
+  backgroundColorOptions,
+  fontFamilyOptions,
+  fontSizeOptions,
   markShortcutLabel,
   primaryMarkOptions,
   secondaryMarkOptions,
+  textColorOptions,
   type MarkName,
   type MarkOption,
+  type StyleMarkValues,
 } from "../marks"
 import {isOnApple} from "../utility"
 import "./ribbon-button"
+import "./ribbon-combobox"
+import type {RibbonCombobox} from "./ribbon-combobox"
 
 /** Compact mark toggles plus a vertically expanding area of secondary marks. */
 export class MarkRibbonGroup extends LitElement {
@@ -16,6 +23,7 @@ export class MarkRibbonGroup extends LitElement {
     drawerOpen: {type: Boolean, reflect: true, attribute: "drawer-open"},
     drawerContentOpen: {type: Boolean, reflect: true, attribute: "drawer-visible"},
     marks: {attribute: false},
+    styles: {attribute: false},
   }
 
   static styles = css`
@@ -35,7 +43,7 @@ export class MarkRibbonGroup extends LitElement {
     }
 
     .group {
-      --expanded-area-height: 3.8rem;
+      --expanded-area-height: 5.85rem;
       box-sizing: border-box;
       display: flex;
       flex-direction: column;
@@ -92,6 +100,14 @@ export class MarkRibbonGroup extends LitElement {
       padding-bottom: 0.375rem;
       overflow-x: hidden;
       overflow-y: hidden;
+    }
+
+    .font-family {
+      grid-column: span 4;
+    }
+
+    .font-size {
+      grid-column: span 2;
     }
 
     .drawer-toggle {
@@ -165,6 +181,7 @@ export class MarkRibbonGroup extends LitElement {
 
   disabled = true
   marks: MarkName[] = []
+  styles: StyleMarkValues = {}
   private drawerOpen = false
   private drawerContentOpen = false
   private drawerCloseTimer: ReturnType<typeof setTimeout> | undefined
@@ -191,6 +208,8 @@ export class MarkRibbonGroup extends LitElement {
   }
 
   closeDrawer() {
+    this.renderRoot.querySelectorAll<RibbonCombobox>("ribbon-combobox")
+      .forEach(combobox => combobox.close())
     if(!this.drawerOpen) return
     this.drawerOpen = false
     this.scheduleDrawerClose()
@@ -248,6 +267,11 @@ export class MarkRibbonGroup extends LitElement {
     `
   }
 
+  private visibleMarkButton(name: MarkName) {
+    const option = primaryMarkOptions.find(candidate => candidate.name === name)!
+    return this.markButton(option)
+  }
+
   render() {
     return html`
       <section
@@ -259,15 +283,64 @@ export class MarkRibbonGroup extends LitElement {
         @ribbon-button-click=${this.closeDrawer}
       >
         <div class="controls">
-          ${primaryMarkOptions.map(option => this.markButton(option))}
+          <ribbon-combobox
+            class="font-family"
+            name="font-family"
+            label="Font family"
+            .options=${fontFamilyOptions}
+            .value=${this.styles["font-family"] ?? ""}
+            ?disabled=${this.disabled}
+          ></ribbon-combobox>
+          <ribbon-combobox
+            class="font-size"
+            name="font-size"
+            label="Font size"
+            .options=${fontSizeOptions}
+            .value=${this.styles["font-size"] ?? ""}
+            ?disabled=${this.disabled}
+          ></ribbon-combobox>
           <ribbon-button
             compact
-            label="Remove marks"
+            label="Increase font size"
+            action="increaseFontSize"
+            icon="IncreaseFontSize"
+            ?disabled=${this.disabled}
+          ></ribbon-button>
+          <ribbon-button
+            compact
+            label="Decrease font size"
+            action="decreaseFontSize"
+            icon="DecreaseFontSize"
+            ?disabled=${this.disabled}
+          ></ribbon-button>
+          <ribbon-combobox
+            name="color"
+            label="Text color"
+            variant="color"
+            .options=${textColorOptions}
+            .value=${this.styles.color ?? ""}
+            ?disabled=${this.disabled}
+          ></ribbon-combobox>
+          <ribbon-combobox
+            name="background-color"
+            label="Text background color"
+            variant="color"
+            .options=${backgroundColorOptions}
+            .value=${this.styles["background-color"] ?? ""}
+            ?disabled=${this.disabled}
+          ></ribbon-combobox>
+          ${this.visibleMarkButton("b")}
+          ${this.visibleMarkButton("i")}
+          ${this.visibleMarkButton("u")}
+          ${this.visibleMarkButton("s")}
+          ${this.visibleMarkButton("a")}
+          <ribbon-button
+            compact
+            label="Remove formatting"
             action="removeMarks"
             icon="RemoveMarks"
             ?disabled=${this.disabled}
           ></ribbon-button>
-          ${secondaryMarkOptions.slice(0, 3).map(option => this.markButton(option))}
           <button
             class="drawer-toggle"
             type="button"
@@ -278,7 +351,10 @@ export class MarkRibbonGroup extends LitElement {
           >
             <span class="drawer-icon" aria-hidden="true"></span>
           </button>
-          ${this.drawerContentOpen? secondaryMarkOptions.slice(3).map(option => this.markButton(option)): ""}
+          ${this.drawerContentOpen? html`
+            ${primaryMarkOptions.slice(5).map(option => this.markButton(option))}
+            ${secondaryMarkOptions.map(option => this.markButton(option))}
+          `: ""}
         </div>
       </section>
     `

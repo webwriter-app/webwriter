@@ -78,6 +78,7 @@ import strikethrough from "@tabler/icons/outline/strikethrough.svg?raw"
 import subscript from "@tabler/icons/outline/subscript.svg?raw"
 import terminal2 from "@tabler/icons/outline/terminal-2.svg?raw"
 import textDecrease from "@tabler/icons/outline/text-decrease.svg?raw"
+import textIncrease from "@tabler/icons/outline/text-increase.svg?raw"
 import textDirectionLtr from "@tabler/icons/outline/text-direction-ltr.svg?raw"
 import textDirectionRtl from "@tabler/icons/outline/text-direction-rtl.svg?raw"
 import variable from "@tabler/icons/outline/variable.svg?raw"
@@ -175,6 +176,8 @@ const icons: Record<string, string> = {
   MarkTime: calendarTime,
   MarkVariable: variable,
   MarkSpan: bracketsAngle,
+  IncreaseFontSize: textIncrease,
+  DecreaseFontSize: textDecrease,
   RemoveMarks: clearFormatting,
 }
 
