@@ -143,6 +143,13 @@ export class RibbonCombobox extends LitElement {
     :host([variant="color"]) .combobox {
       justify-content: center;
       padding: 0.2rem;
+      border: 0;
+      background: transparent;
+    }
+
+    :host([name="font-family"]) .combobox,
+    :host([name="font-size"]) .combobox {
+      background: transparent;
     }
 
     :host([variant="color"]) .value {
