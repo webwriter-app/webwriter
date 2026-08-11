@@ -413,7 +413,7 @@ export class AppRibbon extends LitElement {
 
     .ribbon-content > mark-ribbon-group {
       flex: 0 0 auto;
-      min-width: 14.375rem;
+      min-width: 16.625rem;
     }
 
     @media (max-width: 36rem) {

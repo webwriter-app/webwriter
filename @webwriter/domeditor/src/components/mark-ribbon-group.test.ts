@@ -38,8 +38,9 @@ describe("mark ribbon controls", () => {
 
     expect(buttons.slice(0, primaryMarkOptions.length).map(button => button.label))
       .toEqual(primaryMarkOptions.map(option => option.label))
-    expect(buttons).toHaveLength(primaryMarkOptions.length + 2)
-    expect(buttons[primaryMarkOptions.length + 1].label).toBe(secondaryMarkOptions[0].label)
+    expect(buttons).toHaveLength(primaryMarkOptions.length + 4)
+    expect(buttons.slice(primaryMarkOptions.length + 1).map(button => button.label))
+      .toEqual(secondaryMarkOptions.slice(0, 3).map(option => option.label))
     expect(buttons.slice(0, primaryMarkOptions.length).every(button => button.compact && button.toggle)).toBe(true)
     expect(buttons.every(button => button.disabled)).toBe(true)
 
@@ -67,7 +68,8 @@ describe("mark ribbon controls", () => {
     expect(section.classList.contains("expanded")).toBe(true)
     expect(group.shadowRoot!.querySelector(".drawer")).toBeNull()
     expect(getComputedStyle(controls).gridAutoFlow).toBe("row")
-    expect(getComputedStyle(controls).gridTemplateColumns).toBe("repeat(7, 1.75rem)")
+    expect(getComputedStyle(controls).gridTemplateColumns).toBe("repeat(8, 1.75rem)")
+    expect(getComputedStyle(group).minWidth).toBe("266px")
     expect(getComputedStyle(controls).alignContent).toBe("start")
     expect(getComputedStyle(controls).paddingTop).toBe("0px")
     expect(getComputedStyle(controls).paddingBottom).toBe("6px")
@@ -110,8 +112,7 @@ describe("mark ribbon controls", () => {
     expect(buttons.map(button => button.label)).toEqual([
       ...primaryMarkOptions.map(option => option.label),
       "Remove marks",
-      secondaryMarkOptions[0].label,
-      ...secondaryMarkOptions.slice(1).map(option => option.label),
+      ...secondaryMarkOptions.map(option => option.label),
     ])
     expect(buttons.every(button => button.compact)).toBe(true)
     expect(buttons.filter(button => button.action.startsWith("mark:")).every(button => button.toggle)).toBe(true)

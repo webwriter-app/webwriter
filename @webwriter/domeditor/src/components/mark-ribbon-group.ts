@@ -81,7 +81,7 @@ export class MarkRibbonGroup extends LitElement {
       box-sizing: border-box;
       display: grid;
       flex: 1 1 auto;
-      grid-template-columns: repeat(7, 1.75rem);
+      grid-template-columns: repeat(8, 1.75rem);
       grid-auto-flow: row;
       grid-auto-rows: 1.75rem;
       align-content: start;
@@ -267,7 +267,7 @@ export class MarkRibbonGroup extends LitElement {
             icon="RemoveMarks"
             ?disabled=${this.disabled}
           ></ribbon-button>
-          ${this.markButton(secondaryMarkOptions[0])}
+          ${secondaryMarkOptions.slice(0, 3).map(option => this.markButton(option))}
           <button
             class="drawer-toggle"
             type="button"
@@ -278,7 +278,7 @@ export class MarkRibbonGroup extends LitElement {
           >
             <span class="drawer-icon" aria-hidden="true"></span>
           </button>
-          ${this.drawerContentOpen? secondaryMarkOptions.slice(1).map(option => this.markButton(option)): ""}
+          ${this.drawerContentOpen? secondaryMarkOptions.slice(3).map(option => this.markButton(option)): ""}
         </div>
       </section>
     `
