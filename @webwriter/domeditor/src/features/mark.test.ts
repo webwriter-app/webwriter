@@ -10,6 +10,7 @@ const feature = editor.features.mark
 beforeEach(() => {
   document.body.innerHTML = ""
   document.getSelection()?.removeAllRanges()
+  document.dispatchEvent(new Event("selectionchange"))
   vi.restoreAllMocks()
 })
 
@@ -25,11 +26,23 @@ function selectText(node: Text, start = 0, end = node.length) {
 const cleanHTML = () => editor.toHTML(true)
 
 describe("MarkFeature DOM state", () => {
-  it("disables marks for collapsed, element, atomic, and cross-block selections", () => {
+  it("enables text carets and derives their active marks from the DOM", () => {
     let paragraph = setContent("<p>Text</p>")
     const text = paragraph.firstChild as Text
     $.move(text, 2)
-    expect(feature.getState()).toEqual({canMark: false, marks: []})
+    expect(feature.getState()).toEqual({canMark: true, marks: []})
+
+    paragraph = setContent("<p><strong><em>Text</em></strong></p>")
+    $.move(paragraph.querySelector("em")!.firstChild!, 2)
+    expect(feature.getState()).toEqual({canMark: true, marks: ["b", "i"]})
+
+    paragraph = setContent("<p></p>")
+    $.move(paragraph, 0)
+    expect(feature.getState()).toEqual({canMark: true, marks: []})
+  })
+
+  it("disables marks for element, gap, atomic, cross-block, and non-editable selections", () => {
+    let paragraph = setContent("<p>Text</p>")
 
     $.selectElement(paragraph)
     expect(feature.getState()).toEqual({canMark: false, marks: []})
@@ -40,6 +53,13 @@ describe("MarkFeature DOM state", () => {
 
     document.body.innerHTML = "<p>A</p><p>B</p>"
     $.selectRange(document.querySelector("p")!.firstChild!, 0, document.querySelector("p:last-child")!.firstChild!, 1)
+    expect(feature.getState()).toEqual({canMark: false, marks: []})
+
+    $.selectGap(document.querySelector("p")!)
+    expect(feature.getState()).toEqual({canMark: false, marks: []})
+
+    paragraph = setContent('<p><span contenteditable="false">Text</span></p>')
+    $.move(paragraph.querySelector("span")!.firstChild!, 2)
     expect(feature.getState()).toEqual({canMark: false, marks: []})
   })
 
@@ -159,6 +179,113 @@ describe("MarkFeature toggles", () => {
     const selection = document.getSelection()!
     expect(selection.toString()).toBe("ext")
     expect(selection.anchorOffset).toBeGreaterThan(selection.focusOffset)
+  })
+})
+
+describe("MarkFeature stored marks", () => {
+  const typeText = (target: Element, data: string) => {
+    const event = new InputEvent("beforeinput", {
+      bubbles: true,
+      cancelable: true,
+      data,
+      inputType: "insertText",
+    })
+    target.dispatchEvent(event)
+    return event
+  }
+
+  it("stores and unstores marks at a caret without changing the DOM", () => {
+    const paragraph = setContent("<p>Text</p>")
+    $.move(paragraph.firstChild!, 2)
+
+    expect(feature.toggleMark("b")).toBe(true)
+    expect(feature.toggleMark("i")).toBe(true)
+    expect(feature.getState()).toEqual({canMark: true, marks: ["b", "i"]})
+    expect(cleanHTML()).toBe("<p>Text</p>")
+
+    expect(feature.toggleMark("b")).toBe(true)
+    expect(feature.getState()).toEqual({canMark: true, marks: ["i"]})
+    expect(cleanHTML()).toBe("<p>Text</p>")
+  })
+
+  it("wraps the next typed text in every stored mark", () => {
+    const paragraph = setContent("<p></p>")
+    $.move(paragraph, 0)
+    feature.toggleMark("b")
+    feature.toggleMark("i")
+
+    const event = typeText(paragraph, "X")
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(cleanHTML()).toBe("<p><b><i>X</i></b></p>")
+    expect(document.getSelection()!.isCollapsed).toBe(true)
+    expect(feature.getState()).toEqual({canMark: true, marks: ["b", "i"]})
+  })
+
+  it("can explicitly turn off an inherited mark for newly typed text", () => {
+    const paragraph = setContent("<p><b>ab</b></p>")
+    const text = paragraph.querySelector("b")!.firstChild!
+    $.move(text, 1)
+    expect(feature.getState().marks).toEqual(["b"])
+
+    feature.toggleMark("b")
+    expect(feature.getState().marks).toEqual([])
+    const event = typeText(paragraph, "X")
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(cleanHTML()).toBe("<p><b>a</b>X<b>b</b></p>")
+    expect(feature.getState().marks).toEqual([])
+  })
+
+  it("clears inferred marks for newly typed text through remove marks", () => {
+    const paragraph = setContent("<p><b><i>ab</i></b></p>")
+    $.move(paragraph.querySelector("i")!.firstChild!, 1)
+
+    expect(feature.removeMarks()).toBe(true)
+    expect(feature.getState().marks).toEqual([])
+    typeText(paragraph, "X")
+
+    expect(cleanHTML()).toBe("<p><b><i>a</i></b>X<b><i>b</i></b></p>")
+    expect(feature.getState().marks).toEqual([])
+  })
+
+  it("discards stored marks after native or programmatic selection changes", () => {
+    const paragraph = setContent("<p>Text</p>")
+    const text = paragraph.firstChild!
+    $.move(text, 1)
+    feature.toggleMark("b")
+    expect(feature.getState().marks).toEqual(["b"])
+
+    $.move(text, 3)
+    document.dispatchEvent(new Event("selectionchange"))
+
+    expect(feature.getState()).toEqual({canMark: true, marks: []})
+
+    feature.toggleMark("i")
+    const liveRange = document.getSelection()!.getRangeAt(0)
+    liveRange.setStart(text, 2)
+    liveRange.collapse(true)
+
+    expect(feature.getState()).toEqual({canMark: true, marks: []})
+  })
+
+  it("stores primary marks through their keyboard shortcuts at a caret", () => {
+    const paragraph = setContent("<p>Text</p>")
+    $.move(paragraph.firstChild!, 2)
+    const event = new KeyboardEvent("keydown", {
+      key: "b",
+      code: "KeyB",
+      altKey: true,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    })
+
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(feature.getState().marks).toEqual(["b"])
+    expect(cleanHTML()).toBe("<p>Text</p>")
   })
 })
 

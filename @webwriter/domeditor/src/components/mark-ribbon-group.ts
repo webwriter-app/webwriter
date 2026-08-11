@@ -6,61 +6,117 @@ import {
   type MarkName,
   type MarkOption,
 } from "../marks"
-import {ribbonIcon} from "../ribbon-icons"
 import {isOnApple} from "../utility"
 import "./ribbon-button"
 
-/** Compact mark toggles plus a downward-opening drawer of secondary marks. */
+/** Compact mark toggles plus a vertically expanding area of secondary marks. */
 export class MarkRibbonGroup extends LitElement {
   static properties = {
     disabled: {type: Boolean, reflect: true},
-    drawerOpen: {state: true},
+    drawerOpen: {type: Boolean, reflect: true, attribute: "drawer-open"},
+    drawerContentOpen: {type: Boolean, reflect: true, attribute: "drawer-visible"},
     marks: {attribute: false},
   }
 
   static styles = css`
     :host {
       display: block;
+      position: relative;
+      z-index: 0;
       min-width: 0;
+    }
+
+    :host([drawer-open]) {
+      z-index: 2;
+    }
+
+    :host([drawer-visible]) {
+      z-index: 2;
     }
 
     .group {
+      --expanded-area-height: 3.8rem;
       box-sizing: border-box;
       display: flex;
       flex-direction: column;
+      position: relative;
       height: 100%;
+      max-height: 100%;
       min-height: 0;
       padding: 0 0.5rem;
-      border-right: 1px solid #d8dee6;
+      border: 1px solid transparent;
+      border-right-color: #d8dee6;
+      background: #f2f2f2;
+      transition: max-height 180ms ease;
+    }
+
+    .group.expanded {
+      height: calc(100% + var(--expanded-area-height));
+      max-height: calc(100% + var(--expanded-area-height));
+      margin-left: -1px;
+      padding-left: calc(0.5rem + 1px);
+      border-color: transparent;
+      border-right-color: #d8dee6;
+      border-bottom-color: #d8dee6;
+      border-left-color: #d8dee6;
+      background: #f2f2f2;
+      box-shadow: 0 0.45rem 1rem rgb(0 0 0 / 18%);
+      clip-path: polygon(
+        0 0,
+        100% 0,
+        100% calc(var(--collapsed-group-height, calc(100% - var(--expanded-area-height))) + 3px),
+        calc(100% + 1rem) calc(var(--collapsed-group-height, calc(100% - var(--expanded-area-height))) + 3px),
+        calc(100% + 1rem) calc(100% + 1rem),
+        -1rem calc(100% + 1rem),
+        -1rem calc(var(--collapsed-group-height, calc(100% - var(--expanded-area-height))) + 3px),
+        0 calc(var(--collapsed-group-height, calc(100% - var(--expanded-area-height))) + 3px)
+      );
+    }
+
+    .group.expanded.closing {
+      max-height: 100%;
     }
 
     .controls {
+      box-sizing: border-box;
       display: grid;
       flex: 1 1 auto;
-      grid-template-rows: repeat(2, 1.75rem);
-      grid-auto-flow: column;
-      grid-auto-columns: 1.75rem;
-      align-content: center;
-      gap: 0.15rem;
+      grid-template-columns: repeat(7, 1.75rem);
+      grid-auto-flow: row;
+      grid-auto-rows: 1.75rem;
+      align-content: start;
+      gap: 0.2rem;
       min-width: 0;
       min-height: 0;
-      overflow-x: auto;
+      padding-top: 0;
+      padding-bottom: 0.375rem;
+      overflow-x: hidden;
       overflow-y: hidden;
-      scrollbar-width: thin;
     }
 
     .drawer-toggle {
       box-sizing: border-box;
       display: grid;
       place-items: center;
-      width: 1.75rem;
-      height: 1.75rem;
-      padding: 0.25rem;
+      position: absolute;
+      left: calc(50% + 1px);
+      bottom: -0.2rem;
+      justify-self: center;
+      align-self: center;
+      width: 5rem;
+      height: 1.125rem;
+      padding: 0;
       border: 1px solid transparent;
-      border-radius: 0.35rem;
+      border-radius: 0.3rem;
       color: #526b86;
       background: transparent;
       cursor: pointer;
+      transform: translateX(-50%);
+    }
+
+    .group.expanded .drawer-toggle {
+      bottom: -0.5625rem;
+      z-index: 1;
     }
 
     .drawer-toggle:hover,
@@ -75,35 +131,19 @@ export class MarkRibbonGroup extends LitElement {
       outline-offset: -1px;
     }
 
-    .drawer-icon,
-    .drawer-icon svg {
+    .drawer-icon {
       display: block;
-      width: 1rem;
-      height: 1rem;
-    }
-
-    .drawer {
-      position: fixed;
-      inset: auto;
-      z-index: 2147483647;
       box-sizing: border-box;
-      display: grid;
-      grid-template-columns: repeat(2, 1.75rem);
-      grid-auto-rows: 1.75rem;
-      grid-auto-flow: column;
-      grid-template-rows: repeat(6, 1.75rem);
-      gap: 0.15rem;
-      width: max-content;
-      margin: 0;
-      padding: 0.35rem;
-      border: 1px solid #a8a8a8;
-      border-radius: 0.35rem;
-      background: #ffffff;
-      box-shadow: 0 0.4rem 1rem rgb(0 0 0 / 16%);
+      width: 0.35rem;
+      height: 0.35rem;
+      border-right: 1.25px solid currentColor;
+      border-bottom: 1.25px solid currentColor;
+      transform: rotate(45deg);
+      transition: transform 120ms ease;
     }
 
-    .drawer[hidden] {
-      display: none;
+    .drawer-toggle[aria-expanded="true"] .drawer-icon {
+      transform: rotate(225deg);
     }
 
     @media (max-width: 36rem) {
@@ -112,12 +152,22 @@ export class MarkRibbonGroup extends LitElement {
         border-right: 0;
         border-bottom: 1px solid #d8dee6;
       }
+
+      .group.expanded {
+        padding-left: calc(0.25rem + 1px);
+        border-top-color: transparent;
+        border-right: 1px solid #d8dee6;
+        border-bottom-color: #d8dee6;
+        border-left-color: #d8dee6;
+      }
     }
   `
 
   disabled = true
   marks: MarkName[] = []
   private drawerOpen = false
+  private drawerContentOpen = false
+  private drawerCloseTimer: ReturnType<typeof setTimeout> | undefined
 
   private readonly handleDocumentPointerDown = (event: PointerEvent) => {
     if(this.drawerOpen && !event.composedPath().includes(this)) this.closeDrawer()
@@ -134,15 +184,16 @@ export class MarkRibbonGroup extends LitElement {
   }
 
   disconnectedCallback() {
+    this.cancelDrawerClose()
     document.removeEventListener("pointerdown", this.handleDocumentPointerDown)
     document.removeEventListener("keydown", this.handleDocumentKeydown)
     super.disconnectedCallback()
   }
 
   closeDrawer() {
-    const drawer = this.renderRoot.querySelector<HTMLElement>(".drawer")
-    if(drawer && "hidePopover" in drawer && drawer.matches(":popover-open")) drawer.hidePopover()
+    if(!this.drawerOpen) return
     this.drawerOpen = false
+    this.scheduleDrawerClose()
   }
 
   private toggleDrawer() {
@@ -150,37 +201,35 @@ export class MarkRibbonGroup extends LitElement {
       this.closeDrawer()
       return
     }
+    this.cancelDrawerClose()
+    if(!this.drawerContentOpen) {
+      const group = this.renderRoot.querySelector<HTMLElement>(".group")
+      const collapsedHeight = group?.getBoundingClientRect().height ?? 0
+      if(collapsedHeight > 0) group?.style.setProperty("--collapsed-group-height", `${collapsedHeight}px`)
+    }
+    this.drawerContentOpen = true
     this.drawerOpen = true
-    void this.openDrawer()
   }
 
-  private async openDrawer() {
-    await this.updateComplete
-    const drawer = this.renderRoot.querySelector<HTMLElement>(".drawer")
-    if(drawer && "showPopover" in drawer) drawer.showPopover()
-    await this.positionDrawer()
+  private cancelDrawerClose() {
+    if(this.drawerCloseTimer === undefined) return
+    clearTimeout(this.drawerCloseTimer)
+    this.drawerCloseTimer = undefined
   }
 
-  private async positionDrawer() {
-    await this.updateComplete
-    if(!this.drawerOpen) return
-    const toggle = this.renderRoot.querySelector<HTMLElement>(".drawer-toggle")
-    const drawer = this.renderRoot.querySelector<HTMLElement>(".drawer")
-    if(!toggle || !drawer) return
+  private finishDrawerClose() {
+    this.cancelDrawerClose()
+    if(this.drawerOpen) return
+    this.drawerContentOpen = false
+  }
 
-    const buttonRect = toggle.getBoundingClientRect()
-    const drawerRect = drawer.getBoundingClientRect()
-    const margin = 8
-    const left = Math.min(
-      Math.max(margin, buttonRect.left),
-      Math.max(margin, window.innerWidth - drawerRect.width - margin),
-    )
-    const below = buttonRect.bottom + 4
-    const top = below + drawerRect.height <= window.innerHeight - margin
-      ? below
-      : Math.max(margin, buttonRect.top - drawerRect.height - 4)
-    drawer.style.left = `${left}px`
-    drawer.style.top = `${top}px`
+  private scheduleDrawerClose() {
+    this.cancelDrawerClose()
+    this.drawerCloseTimer = setTimeout(() => this.finishDrawerClose(), 180)
+  }
+
+  private readonly handleGroupTransitionEnd = (event: TransitionEvent) => {
+    if(event.propertyName === "max-height" && !this.drawerOpen) this.finishDrawerClose()
   }
 
   private markButton(option: MarkOption) {
@@ -201,7 +250,14 @@ export class MarkRibbonGroup extends LitElement {
 
   render() {
     return html`
-      <section class="group" aria-label="Marks" @ribbon-button-click=${this.closeDrawer}>
+      <section
+        class=${this.drawerOpen
+          ? "group expanded"
+          : this.drawerContentOpen? "group expanded closing": "group"}
+        aria-label="Marks"
+        @transitionend=${this.handleGroupTransitionEnd}
+        @ribbon-button-click=${this.closeDrawer}
+      >
         <div class="controls">
           ${primaryMarkOptions.map(option => this.markButton(option))}
           <ribbon-button
@@ -211,27 +267,18 @@ export class MarkRibbonGroup extends LitElement {
             icon="RemoveMarks"
             ?disabled=${this.disabled}
           ></ribbon-button>
+          ${this.markButton(secondaryMarkOptions[0])}
           <button
             class="drawer-toggle"
             type="button"
             aria-label="More marks"
             title="More marks"
-            aria-controls="secondary-marks"
             aria-expanded=${this.drawerOpen}
             @click=${this.toggleDrawer}
           >
-            <span class="drawer-icon" aria-hidden="true">${ribbonIcon("MoreMarks")}</span>
+            <span class="drawer-icon" aria-hidden="true"></span>
           </button>
-        </div>
-        <div
-          id="secondary-marks"
-          class="drawer"
-          popover="manual"
-          role="group"
-          aria-label="More marks"
-          ?hidden=${!this.drawerOpen}
-        >
-          ${secondaryMarkOptions.map(option => this.markButton(option))}
+          ${this.drawerContentOpen? secondaryMarkOptions.slice(1).map(option => this.markButton(option)): ""}
         </div>
       </section>
     `

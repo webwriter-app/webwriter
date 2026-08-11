@@ -176,7 +176,6 @@ const icons: Record<string, string> = {
   MarkVariable: variable,
   MarkSpan: bracketsAngle,
   RemoveMarks: clearFormatting,
-  MoreMarks: dots,
 }
 
 const fallbackIcon = dots

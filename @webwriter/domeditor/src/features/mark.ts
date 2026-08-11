@@ -6,11 +6,12 @@ import {
   primaryMarkOptions,
   type MarkName,
 } from "../marks"
+import {$} from "../utility"
 
 export type MarkState = {
-  /** Whether the current selection consists exclusively of editable text. */
+  /** Whether the current selection is a markable text range or caret. */
   canMark: boolean
-  /** Canonical mark names which occur anywhere in the selected text. */
+  /** Marks found in the range, or effective for the next input at a caret. */
   marks: MarkName[]
 }
 
@@ -30,12 +31,28 @@ type MarkSelection = {
   text: TextSlice[]
 }
 
+type MarkCaret = {
+  selection: Selection
+  range: Range
+  block: Element
+}
+
+type StoredSelection = {
+  anchorNode: Node
+  anchorOffset: number
+  focusNode: Node
+  focusOffset: number
+}
+
 const markerAttribute = "data-domeditor-mark-boundary"
 
-/** Inline formatting whose state and mutations are derived from the live DOM. */
+/** Inline formatting derived from the live DOM, with transient caret marks for typing. */
 export class MarkFeature extends EditorFeature {
   private readonly observer = new MutationObserver(() => this.queueStateRefresh())
   private stateRefreshQueued = false
+  /** `null` inherits the live DOM marks; a Set is an explicit typing state. */
+  private storedMarks: Set<MarkName> | null = null
+  private storedSelection: StoredSelection | null = null
 
   actions = {
     addMark: ({mark}: {type: "addMark", mark: MarkName}) => this.addMark(mark),
@@ -45,7 +62,9 @@ export class MarkFeature extends EditorFeature {
   } as const
 
   activeListeners: DocumentListenerMap = {
+    beforeinput: event => this.handleBeforeInput(event),
     keydown: event => this.handleShortcut(event),
+    selectionchange: () => this.clearStoredMarksIfSelectionChanged(),
   }
 
   enable() {
@@ -60,29 +79,33 @@ export class MarkFeature extends EditorFeature {
   disable() {
     this.observer.disconnect()
     this.stateRefreshQueued = false
+    this.clearStoredMarks()
     super.disable()
   }
 
   /** Reads the current selection and its ancestors afresh on every call. */
   getState(): MarkState {
+    this.clearStoredMarksIfSelectionChanged()
+    const caret = this.getCaret()
+    if(caret) {
+      const marks = this.storedMarks ?? this.marksAt(caret.range.startContainer, caret.block)
+      return {canMark: true, marks: markNames.filter(mark => marks.has(mark))}
+    }
+
     const context = this.getSelection()
     if(!context) return {canMark: false, marks: []}
 
     const marks = new Set<MarkName>()
     for(const {node} of context.text) {
-      let element = node.parentElement
-      while(element && element !== context.block.parentElement) {
-        const mark = canonicalMarkName(element.localName)
-        if(mark) marks.add(mark)
-        if(element === context.block) break
-        element = element.parentElement
-      }
+      this.marksAt(node, context.block).forEach(mark => marks.add(mark))
     }
     return {canMark: true, marks: markNames.filter(mark => marks.has(mark))}
   }
 
   addMark(mark: MarkName) {
     this.assertMark(mark)
+    const caret = this.getCaret()
+    if(caret) return this.setStoredMark(mark, true, caret)
     if(this.getState().marks.includes(mark)) return false
     const context = this.getSelection()
     if(!context) return false
@@ -107,6 +130,8 @@ export class MarkFeature extends EditorFeature {
 
   removeMark(mark: MarkName) {
     this.assertMark(mark)
+    const caret = this.getCaret()
+    if(caret) return this.setStoredMark(mark, false, caret)
     if(!this.getState().marks.includes(mark)) return false
     const tags: readonly string[] = markTagNames(mark)
     return this.removeMatching(element => tags.includes(element.localName))
@@ -114,6 +139,11 @@ export class MarkFeature extends EditorFeature {
 
   toggleMark(mark: MarkName) {
     this.assertMark(mark)
+    const caret = this.getCaret()
+    if(caret) {
+      const marks = this.effectiveCaretMarks(caret)
+      return this.setStoredMark(mark, !marks.has(mark), caret)
+    }
     const state = this.getState()
     if(!state.canMark) return false
     return state.marks.includes(mark)? this.removeMark(mark): this.addMark(mark)
@@ -121,8 +151,94 @@ export class MarkFeature extends EditorFeature {
 
   /** Removes every supported mark (including strong/em aliases) in one pass. */
   removeMarks() {
+    const caret = this.getCaret()
+    if(caret) {
+      if(!this.effectiveCaretMarks(caret).size) return false
+      this.storeMarks(new Set(), caret.selection)
+      this.editor.postMarkState()
+      return true
+    }
     if(!this.getState().marks.length) return false
     return this.removeMatching(element => canonicalMarkName(element.localName) !== null)
+  }
+
+  private effectiveCaretMarks(caret: MarkCaret) {
+    this.clearStoredMarksIfSelectionChanged()
+    return new Set(this.storedMarks ?? this.marksAt(caret.range.startContainer, caret.block))
+  }
+
+  private setStoredMark(mark: MarkName, enabled: boolean, caret: MarkCaret) {
+    const marks = this.effectiveCaretMarks(caret)
+    if(marks.has(mark) === enabled) return false
+    enabled? marks.add(mark): marks.delete(mark)
+    this.storeMarks(marks, caret.selection)
+    this.editor.postMarkState()
+    return true
+  }
+
+  private storeMarks(marks: Set<MarkName>, selection: Selection) {
+    if(!selection.anchorNode || !selection.focusNode) return
+    this.storedMarks = marks
+    this.storedSelection = {
+      anchorNode: selection.anchorNode,
+      anchorOffset: selection.anchorOffset,
+      focusNode: selection.focusNode,
+      focusOffset: selection.focusOffset,
+    }
+  }
+
+  private clearStoredMarks() {
+    this.storedMarks = null
+    this.storedSelection = null
+  }
+
+  private clearStoredMarksIfSelectionChanged() {
+    if(!this.storedSelection) return
+    const selection = document.getSelection()
+    if(selection?.anchorNode === this.storedSelection.anchorNode
+      && selection.anchorOffset === this.storedSelection.anchorOffset
+      && selection.focusNode === this.storedSelection.focusNode
+      && selection.focusOffset === this.storedSelection.focusOffset) return
+    this.clearStoredMarks()
+  }
+
+  /** Applies the explicit collapsed-caret mark set to the next typed text. */
+  private handleBeforeInput(event: InputEvent) {
+    this.clearStoredMarksIfSelectionChanged()
+    if(event.defaultPrevented
+      || this.storedMarks === null
+      || !["insertText", "insertReplacementText"].includes(event.inputType)
+      || !event.data) return
+
+    const caret = this.getCaret()
+    if(!caret) return
+    const desired = new Set(this.storedMarks)
+    event.preventDefault()
+
+    const text = document.createTextNode(event.data)
+    caret.range.insertNode(text)
+    caret.selection.setBaseAndExtent(text, 0, text, text.length)
+
+    const unwanted = new Set(this.getState().marks.filter(mark => !desired.has(mark)))
+    if(unwanted.size) {
+      this.removeMatching(element => {
+        const mark = canonicalMarkName(element.localName)
+        return mark !== null && unwanted.has(mark)
+      })
+    }
+    for(const mark of markNames) {
+      if(desired.has(mark) && !this.getState().marks.includes(mark)) this.addMark(mark)
+    }
+
+    document.getSelection()?.collapseToEnd()
+    this.clearStoredMarks()
+    caret.block.dispatchEvent(new InputEvent("input", {
+      bubbles: true,
+      composed: true,
+      data: event.data,
+      inputType: event.inputType,
+    }))
+    this.editor.postMarkState()
   }
 
   private removeMatching(matches: (element: Element) => boolean) {
@@ -209,6 +325,44 @@ export class MarkFeature extends EditorFeature {
   private elementsEquivalent(a: Element, b: Element) {
     if(a.localName !== b.localName || a.attributes.length !== b.attributes.length) return false
     return Array.from(a.attributes).every(attribute => b.getAttribute(attribute.name) === attribute.value)
+  }
+
+  private getCaret(): MarkCaret | null {
+    const selection = document.getSelection()
+    if(!selection?.rangeCount || !selection.anchorNode || !selection.focusNode || !selection.isCollapsed) return null
+    if($.isGapSelection || $.isEmptyDocumentSelection) return null
+
+    const range = selection.getRangeAt(0).cloneRange()
+    const block = this.closestBlock(range.startContainer)
+    if(!block || !document.body.contains(block) || !this.isEditableHTMLContext(range.startContainer, block)) return null
+
+    if(range.startContainer instanceof Element
+      && !this.editor.schema.findValidContentTypes(range.startContainer).includes("#text")) return null
+
+    return {selection, range, block}
+  }
+
+  private isEditableHTMLContext(node: Node, block: Element) {
+    let element = node instanceof Element? node: node.parentElement
+    while(element) {
+      if(element.namespaceURI !== "http://www.w3.org/1999/xhtml"
+        || element.getAttribute("contenteditable") === "false") return false
+      if(element === block) return true
+      element = element.parentElement
+    }
+    return false
+  }
+
+  private marksAt(node: Node, block: Element) {
+    const marks = new Set<MarkName>()
+    let element = node instanceof Element? node: node.parentElement
+    while(element && element !== block.parentElement) {
+      const mark = canonicalMarkName(element.localName)
+      if(mark) marks.add(mark)
+      if(element === block) break
+      element = element.parentElement
+    }
+    return marks
   }
 
   private getSelection(): MarkSelection | null {

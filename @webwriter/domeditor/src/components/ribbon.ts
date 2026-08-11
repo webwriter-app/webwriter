@@ -97,9 +97,12 @@ export class AppRibbon extends LitElement {
     :host {
       box-sizing: border-box;
       display: block;
+      position: relative;
+      z-index: 1;
       width: 100%;
       height: 120px;
       max-height: 120px;
+      overflow: visible;
       color: #2f3742;
       background: #ffffff;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -392,8 +395,8 @@ export class AppRibbon extends LitElement {
       align-items: stretch;
       gap: 0;
       min-height: 0;
-      overflow-x: auto;
-      overflow-y: hidden;
+      overflow-x: clip;
+      overflow-y: visible;
       padding: 0.25rem 0.5rem 0.2rem;
       border-top: 1px solid #d8dee6;
       background: #f2f2f2;
@@ -410,7 +413,7 @@ export class AppRibbon extends LitElement {
 
     .ribbon-content > mark-ribbon-group {
       flex: 0 0 auto;
-      min-width: 13rem;
+      min-width: 14.375rem;
     }
 
     @media (max-width: 36rem) {

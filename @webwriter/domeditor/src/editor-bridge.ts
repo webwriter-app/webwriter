@@ -33,9 +33,9 @@ export type SelectionChangeMessage = {
 }
 
 export type MarkStateChangeDetail = {
-  /** True only while the live DOM selection contains markable text. */
+  /** True while the live DOM selection is a markable text range or caret. */
   canMark: boolean
-  /** Canonical marks found anywhere in that text selection. */
+  /** Canonical marks found in the range or effective for the caret. */
   marks: MarkName[]
 }
 

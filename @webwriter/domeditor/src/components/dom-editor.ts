@@ -156,11 +156,41 @@ export class DomEditor extends LitElement {
     this.editorReadyReject = null
   }
 
-  private handleEditorPointerDown = () => {
+  private handleEditorPointerDown = (event: PointerEvent) => {
     this.focusEditor()
     const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
     ribbon?.dismissCollapsedMenu()
-    ribbon?.dismissMarkDrawer()
+    if(!this.editorTargetSharesTextSelection(event.target)) ribbon?.dismissMarkDrawer()
+  }
+
+  /** Keeps the mark area open while the pointer starts another text selection
+   * inside the current selection's containing element. A different editor
+   * element, a gap, or an element selection still dismisses it. */
+  private editorTargetSharesTextSelection(target: EventTarget | null) {
+    if(!this.canMark) return false
+
+    const editorDocument = this.editorDocument
+    const body = editorDocument?.body
+    const targetNode = target as Node | null
+    const selectedPath = this.selectionPath.at(-1)?.path
+    if(!body || !selectedPath?.length || !targetNode || typeof targetNode.nodeType !== "number") return false
+
+    const targetElement = targetNode.nodeType === Node.ELEMENT_NODE
+      ? targetNode as Element
+      : targetNode.parentElement
+    if(!targetElement || targetElement === body || !body.contains(targetElement)) return false
+
+    let selectionElement: Element | null = body
+    for(const index of selectedPath) {
+      const child = selectionElement.childNodes.item(index)
+      if(!child || child.nodeType !== Node.ELEMENT_NODE) return false
+      selectionElement = child as Element
+    }
+    while(selectionElement && selectionElement !== body) {
+      if(selectionElement.contains(targetElement)) return true
+      selectionElement = selectionElement.parentElement
+    }
+    return false
   }
 
   private handleEditorFocus = () => {

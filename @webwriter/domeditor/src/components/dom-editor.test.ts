@@ -2,7 +2,7 @@
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {DomEditor} from "./dom-editor"
 import type {DomEditorBreadcrumb} from "./breadcrumb"
-import {executeCompleteEvent, executeFailureEvent, presenceChangeEvent, selectionChangeEvent} from "../editor-bridge"
+import {executeCompleteEvent, executeFailureEvent, markStateChangeEvent, presenceChangeEvent, selectionChangeEvent} from "../editor-bridge"
 
 async function mountEditor() {
   const editor = new DomEditor()
@@ -512,6 +512,52 @@ describe("DomEditor.execute()", () => {
 
     expect(button.dispatchEvent(event)).toBe(false)
     expect(event.defaultPrevented).toBe(true)
+  })
+
+  it("keeps the mark area open while selecting within the same text element", async () => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    const frameDocument = iframe.contentDocument!
+    frameDocument.body.innerHTML = "<p>hello</p><p>world</p>"
+    const firstParagraph = frameDocument.querySelectorAll("p")[0]
+    const secondParagraph = frameDocument.querySelectorAll("p")[1]
+    const text = firstParagraph.firstChild!
+    const selection = frameDocument.getSelection()!
+    selection.setBaseAndExtent(text, 0, text, 3)
+
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {
+        type: markStateChangeEvent,
+        detail: {canMark: true, marks: []},
+      },
+      source: editorWindow,
+    }))
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {
+        type: selectionChangeEvent,
+        detail: {
+          path: [
+            {path: [], name: "Document"},
+            {path: [0], name: "Paragraph"},
+          ],
+        },
+      },
+      source: editorWindow,
+    }))
+    await editor.updateComplete
+
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    const group = ribbon.shadowRoot!.querySelector("mark-ribbon-group")!
+    group.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!.click()
+    await group.updateComplete
+    expect(group.hasAttribute("drawer-open")).toBe(true)
+
+    firstParagraph.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, button: 0}))
+    expect(group.hasAttribute("drawer-open")).toBe(true)
+
+    selection.setBaseAndExtent(secondParagraph.firstChild!, 0, secondParagraph.firstChild!, 3)
+    secondParagraph.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, button: 0}))
+    await group.updateComplete
+    expect(group.hasAttribute("drawer-open")).toBe(false)
   })
 
   it("allows ribbon inputs to receive pointer focus", async () => {
