@@ -723,6 +723,25 @@ export function getDescendantsInStackingOrder(node: HTMLElement, selector="*") {
   return descendants.sort(compareStackingOrder)
 }
 
+/** Whether a non-scroll interaction originated in the shadow tree of a
+ * widget mounted in the editable document. Composed events are retargeted to
+ * the widget host by the time they reach document listeners, so inspect the
+ * full path instead. Hosts in the body's own shadow tree belong to the editor
+ * appendix and are intentionally not treated as widgets. */
+export function isWidgetShadowInteraction(event: Event) {
+  if(event.type === "scroll") return false
+  const origin = event.composedPath()[0] as Node | undefined
+  if(typeof origin?.getRootNode !== "function") return false
+  let root = origin.getRootNode()
+  while(root.nodeType === Node.DOCUMENT_FRAGMENT_NODE && "host" in root) {
+    const host = (root as ShadowRoot).host
+    const body = host.ownerDocument.body
+    if(host !== body && body.contains(host)) return true
+    root = host.getRootNode()
+  }
+  return false
+}
+
 /** Whether the element creates a stacking context, per CSS rules (root element, positioned with z-index, fixed/sticky, transforms/filters, opacity < 1, isolation, top layer, will-change, contain, ...). */
 export function createsStackingContext(node: HTMLElement) {
   const style = getComputedStyle(node)

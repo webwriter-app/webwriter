@@ -12,6 +12,7 @@ import {
 } from "../packages"
 import { getElementPresentation } from "../element-names"
 import {canonicalMarkName, isMarkElement, isStyleMarkName, type MarkName, type StyleMarkValues} from "../marks"
+import {isWidgetShadowInteraction} from "../utility"
 import {
   executeCompleteEvent,
   executeFailureEvent,
@@ -200,6 +201,7 @@ export class DomEditor extends LitElement {
   }
 
   private handleEditorPointerDown = (event: PointerEvent) => {
+    if(isWidgetShadowInteraction(event)) return
     this.focusEditor()
     const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
     ribbon?.dismissCollapsedMenu()
@@ -236,7 +238,8 @@ export class DomEditor extends LitElement {
     return false
   }
 
-  private handleEditorFocus = () => {
+  private handleEditorFocus = (event: FocusEvent) => {
+    if(isWidgetShadowInteraction(event)) return
     this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.dismissCollapsedMenu()
   }
 

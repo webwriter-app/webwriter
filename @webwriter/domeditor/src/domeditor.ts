@@ -10,7 +10,7 @@ import { InsertionFeature } from "./features/insertion"
 import { TransformationFeature } from "./features/transformation"
 import { StateFeature } from "./features/state"
 import { Schema } from "./schema"
-import { $, adoptStylesheet, createStylesheet, getContainer, isElement } from "./utility"
+import { $, adoptStylesheet, createStylesheet, getContainer, isElement, isWidgetShadowInteraction } from "./utility"
 import {isMarkElement, normalizeMarkElements} from "./marks"
 import {
   executeCompleteEvent,
@@ -197,6 +197,7 @@ export class DOMEditor {
   }
 
   #handleInput = (ev: Event) => {
+    if(isWidgetShadowInteraction(ev)) return
     this.normalizeSurroundingElements(ev.target instanceof Node ? ev.target : undefined)
   }
 
@@ -408,6 +409,7 @@ export class DOMEditor {
   }
 
   #onCopy = (ev: ClipboardEvent) => {
+    if(isWidgetShadowInteraction(ev)) return
     ev.preventDefault()
     const fragment = $.copy()
     this.clearEditingArtifacts(fragment)

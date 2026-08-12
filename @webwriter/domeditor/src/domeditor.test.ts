@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import '@testing-library/jest-dom/vitest'
 
 import { DOMEditor } from "./domeditor"
@@ -97,5 +97,83 @@ describe("DOMEditor stylesheets", () => {
 
     expect(document.adoptedStyleSheets.filter(sheet => hasSelector(sheet, "html"))).toHaveLength(documentSheetCount)
     expect(appendix.adoptedStyleSheets).toHaveLength(appendixSheetCount)
+  })
+})
+
+describe("widget shadow interactions", () => {
+  const editor = new DOMEditor()
+
+  it("propagates keyboard interaction without letting the editor handle it", () => {
+    const widget = document.createElement("interactive-widget")
+    const input = document.createElement("input")
+    widget.attachShadow({mode: "open"}).append(input)
+    document.body.append(widget)
+    const propagated = vi.fn()
+    document.addEventListener("keydown", propagated)
+
+    const event = new KeyboardEvent("keydown", {
+      key: "a",
+      ctrlKey: true,
+      bubbles: true,
+      composed: true,
+      cancelable: true,
+    })
+    input.dispatchEvent(event)
+
+    expect(propagated).toHaveBeenCalledWith(event)
+    expect(event.defaultPrevented).toBe(false)
+    document.removeEventListener("keydown", propagated)
+    widget.remove()
+  })
+
+  it("continues to let the editor observe scrolling in widget shadow DOM", () => {
+    const widget = document.createElement("scrolling-widget")
+    const scroller = document.createElement("div")
+    widget.attachShadow({mode: "open"}).append(scroller)
+    document.body.append(widget)
+    const renderPresence = vi.spyOn(editor.features.collaboration, "renderPresence")
+
+    scroller.dispatchEvent(new Event("scroll", {bubbles: true, composed: true}))
+
+    expect(renderPresence).toHaveBeenCalled()
+    renderPresence.mockRestore()
+    widget.remove()
+  })
+
+  it("does not mistake the editor's shadow appendix for widget content", () => {
+    const button = document.createElement("button")
+    editor.appendix.append(button)
+
+    const event = new KeyboardEvent("keydown", {
+      key: "a",
+      ctrlKey: true,
+      bubbles: true,
+      composed: true,
+      cancelable: true,
+    })
+    button.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    button.remove()
+  })
+
+  it("continues to handle a widget's slotted light-DOM content", () => {
+    const widget = document.createElement("slotted-widget")
+    const input = document.createElement("input")
+    widget.attachShadow({mode: "open"}).append(document.createElement("slot"))
+    widget.append(input)
+    document.body.append(widget)
+
+    const event = new KeyboardEvent("keydown", {
+      key: "a",
+      ctrlKey: true,
+      bubbles: true,
+      composed: true,
+      cancelable: true,
+    })
+    input.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    widget.remove()
   })
 })

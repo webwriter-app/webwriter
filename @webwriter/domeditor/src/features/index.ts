@@ -1,5 +1,6 @@
 import type { EditingMutation } from "../domdoc"
 import { DOMEditor } from "../domeditor"
+import { isWidgetShadowInteraction } from "../utility"
 
 export type DocumentListenerMap = {[key in keyof DocumentEventMap]?: (event: DocumentEventMap[key]) => void}
 
@@ -13,16 +14,35 @@ export class EditorFeature {
   activeListeners: DocumentListenerMap = {}
   constraints: ConstraintMap = {}
   actions?: Record<string, CallableFunction>
+  private listenerWrappers = new Map<EventListener, EventListener>()
+
+  private addListeners(listeners: DocumentListenerMap, options?: AddEventListenerOptions) {
+    Object.entries(listeners).forEach(([type, listener]) => {
+      const wrapped: EventListener = event => {
+        if(!isWidgetShadowInteraction(event)) listener(event as never)
+      }
+      this.listenerWrappers.set(listener as EventListener, wrapped)
+      document.addEventListener(type, wrapped, options)
+    })
+  }
+
+  private removeListeners(listeners: DocumentListenerMap, options?: EventListenerOptions) {
+    Object.entries(listeners).forEach(([type, listener]) => {
+      const wrapped = this.listenerWrappers.get(listener as EventListener)
+      if(wrapped) document.removeEventListener(type, wrapped, options)
+      this.listenerWrappers.delete(listener as EventListener)
+    })
+  }
   
   enable() {
-    Object.keys(this.activeListeners).forEach(k => document.addEventListener(k, (this.activeListeners as any)[k]))
-    Object.keys(this.passiveListeners).forEach(k => document.addEventListener(k, (this.passiveListeners as any)[k], {passive: true}))
+    this.addListeners(this.activeListeners)
+    this.addListeners(this.passiveListeners, {passive: true})
     this.isEnabled = true
   }
   
   disable() {
-    Object.keys(this.activeListeners).forEach(k => document.removeEventListener(k, (this.activeListeners as any)[k]))
-    Object.keys(this.passiveListeners).forEach(k => document.removeEventListener(k, (this.passiveListeners as any)[k]))
+    this.removeListeners(this.activeListeners)
+    this.removeListeners(this.passiveListeners)
     this.isEnabled = false
   }
 }
