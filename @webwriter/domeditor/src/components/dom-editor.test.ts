@@ -96,7 +96,7 @@ describe("DomEditor iframe setup", () => {
     }
   })
 
-  it("sends installed widget names and versions through the bridge", async () => {
+  it("loads the scoped custom element registry polyfill before widgets", async () => {
     const editor = new DomEditor()
     ;(editor as unknown as {installedPackages: WebWriterPackage[]}).installedPackages = [demoPackage]
     document.body.append(editor)
@@ -111,7 +111,9 @@ describe("DomEditor iframe setup", () => {
       type: loadWidgetsMessage,
       widgets: [{name: "@webwriter/demo", version: "1.0.0"}],
     }, "*")
-    expect(srcdoc).not.toContain("cdn.jsdelivr.net")
+    const polyfillUrl = "https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"
+    expect(srcdoc).toContain(`<script src="${polyfillUrl}"></script>`)
+    expect(srcdoc.indexOf(polyfillUrl)).toBeLessThan(srcdoc.indexOf("editor-entry"))
     expect(srcdoc).not.toContain("Demo Widget")
   })
 })

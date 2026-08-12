@@ -41,6 +41,7 @@ const escapeAttribute = (value: string) => value
 
 const editorEntryUrl = `${import.meta.env.BASE_URL}${import.meta.env.DEV ? "src/editor-entry.ts" : "assets/editor-entry.js"}`
 const appIconUrl = `${import.meta.env.BASE_URL}assets/app-icon-transparent.svg`
+const scopedCustomElementRegistryPolyfillUrl = "https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"
 
 type SelectionBookmark = {
   anchorNode: Node
@@ -136,7 +137,7 @@ export class DomEditor extends LitElement {
   `
 
   private get editorSrcdoc() {
-    return `<!-- frame ${this.frameRevision} --><script type="module" src="${escapeAttribute(editorEntryUrl)}"></script>`
+    return `<!-- frame ${this.frameRevision} --><script src="${escapeAttribute(scopedCustomElementRegistryPolyfillUrl)}"></script><script type="module" src="${escapeAttribute(editorEntryUrl)}"></script>`
   }
 
   private get syncUrl() {
