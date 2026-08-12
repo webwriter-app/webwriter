@@ -341,6 +341,7 @@ export class EditingSelection {
 
   /** Replaces the selected content with the given nodes (inserts at the caret for collapsed selections). */
   static replace(...nodes: Node[]) {
+    nodes.forEach(markWidgetsEditable)
     const fragment = document.createDocumentFragment()
     fragment.append(...nodes)
     $.delete()
@@ -453,6 +454,19 @@ export function getIndexBefore(range: Range): number {
 /** Type guard for element nodes. */
 export function isElement(node: unknown): node is Element {
   return node instanceof Node && node.nodeType === Node.ELEMENT_NODE
+}
+
+/** Marks custom-element widgets as editable while they are still detached. */
+export function markWidgetsEditable(node: Node) {
+  const visit = (current: Node) => {
+    if(isElement(current)
+      && current.namespaceURI === "http://www.w3.org/1999/xhtml"
+      && (current.localName.includes("-") || current.hasAttribute("is"))) {
+      current.setAttribute("contenteditable", "true")
+    }
+    current.childNodes.forEach(visit)
+  }
+  visit(node)
 }
 
 /** Type guard for comment nodes. */

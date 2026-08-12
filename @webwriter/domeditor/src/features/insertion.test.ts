@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { beforeEach, describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { DOMEditor } from "../domeditor"
 import { $ } from "../utility"
 
@@ -220,8 +220,41 @@ describe("insertion menu", () => {
     menu.shadowRoot?.querySelector<HTMLButtonElement>('.item img[src="https://example.com/demo.svg"]')
       ?.closest<HTMLButtonElement>("button")?.click()
 
-    expect(editorHTML()).toBe("<webwriter-demo></webwriter-demo>")
+    expect(editorHTML()).toBe('<webwriter-demo contenteditable="true"></webwriter-demo>')
+    expect(document.querySelector("webwriter-demo")?.getAttribute("contenteditable")).toBe("true")
     expect(menu.open).toBe(false)
+  })
+
+  it("marks widgets nested inside inserted snippets editable", async () => {
+    globalThis.DOMEDITOR_PACKAGE_ITEMS = [{
+      section: "Packages",
+      name: "Demo Snippet",
+      packageName: "@webwriter/demo",
+      kind: "snippet",
+      htmlUrl: "https://example.com/demo.html",
+    }]
+    const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      text: async () => "<section><webwriter-demo></webwriter-demo><webwriter-other></webwriter-other></section>",
+    } as Response)
+
+    try {
+      document.body.innerHTML = "<p></p>"
+      $.move(document.querySelector("p")!)
+      typeCommand()
+      typeText("snippet")
+      const menu = editor.features.insertion.menu
+      await menu.updateComplete
+      menu.shadowRoot?.querySelector<HTMLButtonElement>(".item")?.click()
+
+      await vi.waitFor(() => expect(document.querySelector("webwriter-demo")).toBeTruthy())
+      expect(document.querySelector("webwriter-demo")?.getAttribute("contenteditable")).toBe("true")
+      expect(document.querySelector("webwriter-other")?.getAttribute("contenteditable")).toBe("true")
+      expect(fetcher).toHaveBeenCalledWith("https://example.com/demo.html")
+    }
+    finally {
+      fetcher.mockRestore()
+    }
   })
 
   it("filters from the text after ++, then navigates and confirms with Enter", async () => {

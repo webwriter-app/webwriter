@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, modifierKeyDown, getContainer, getIndexBefore, getSidesOfPoint, htmlToFragment, isElement } from "../utility"
+import { $, markWidgetsEditable, modifierKeyDown, getContainer, getIndexBefore, getSidesOfPoint, htmlToFragment, isElement } from "../utility"
 import {isMarkElement} from "../marks"
 
 /** Unit by which a collapsed selection is extended before deleting. */
@@ -385,6 +385,7 @@ export class ManipulationFeature extends EditorFeature {
     if(!node && this.ensureTextBlock()) {
       return
     }
+    if(node) markWidgetsEditable(node)
     return this.withNormalization(() => {
       if(true) {
         node? $.replace(node): $.delete()

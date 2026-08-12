@@ -1,6 +1,6 @@
 import { EditorFeature } from "."
 import { InsertionMenu, type InsertionMenuItem } from "../components/insertion-menu"
-import { $, getContainer, isElement, isText, modifierKeyDown } from "../utility"
+import { $, getContainer, isElement, isText, markWidgetsEditable, modifierKeyDown } from "../utility"
 
 type CustomHighlightRegistry = {
   delete(name: string): void
@@ -445,6 +445,10 @@ export class InsertionFeature extends EditorFeature {
       this.close()
       return
     }
+    nodes.forEach(node => {
+      if(item.kind === "widget" && isElement(node)) node.setAttribute("contenteditable", "true")
+      markWidgetsEditable(node)
+    })
     const replacement = this.emptyTextBlock?.isConnected && this.emptyTextBlock !== document.body && !this.emptyTextBlock.textContent && this.emptyTextBlock
     if(replacement) {
       replacement.replaceWith(...nodes)

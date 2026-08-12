@@ -135,6 +135,14 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     editor.features.manipulation.actions.insert({type: "insert", html: "<p></p>"})
     expectBodyToBe("<p></p>")
   })
+  it("marks widgets in HTML inserted through its action handler editable", () => {
+    editor.features.manipulation.actions.insert({
+      type: "insert",
+      html: "<section><webwriter-demo></webwriter-demo></section>",
+    })
+
+    expect(document.querySelector("webwriter-demo")).toHaveAttribute("contenteditable", "true")
+  })
 
   it("can insert <p> at document start", () => {
     const p = document.createElement("p")
