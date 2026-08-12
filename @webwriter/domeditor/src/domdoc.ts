@@ -2,6 +2,7 @@ import * as Y from "yjs"
 import {Awareness} from "y-protocols/awareness"
 import {WebsocketProvider} from "y-websocket"
 import {isComment, isDocument, isElement, isText} from "./utility"
+import type {EditorStateSnapshot} from "./editor-state"
 
 const INTERNAL_NODE_KIND = "__domeditor_node_kind"
 const INTERNAL_NAMESPACE = "__domeditor_namespace"
@@ -198,6 +199,40 @@ export class SharedDOMDoc {
 
   get domSelection() {
     return this.#domSelection(this.#relativeSelection)
+  }
+
+  /** Serializes the shared tree and its stable relative selection so another
+   * iframe realm can resume the same CRDT document without duplicating it. */
+  snapshot(): EditorStateSnapshot {
+    this.syncFromDOM()
+    this.updateLocalSelection()
+    const selection = this.#relativeSelection
+    return {
+      update: Array.from(Y.encodeStateAsUpdate(this.doc)),
+      ...(selection ? {
+        selection: {
+          anchor: Y.relativePositionToJSON(selection.anchor),
+          focus: Y.relativePositionToJSON(selection.focus),
+        },
+      } : {}),
+    }
+  }
+
+  /** Restores a selection serialized by snapshot() after the shared DOM has
+   * been reconstructed in a new document. */
+  restoreSelection(selection: EditorStateSnapshot["selection"]) {
+    if(!selection) return
+    try {
+      this.#relativeSelection = {
+        anchor: Y.createRelativePositionFromJSON(selection.anchor),
+        focus: Y.createRelativePositionFromJSON(selection.focus),
+      }
+      this.awareness.setLocalStateField("selection", this.#relativeSelection)
+      this.writeSelection()
+    }
+    catch {
+      this.clearSelection()
+    }
   }
 
   get isWritingToDOM() {

@@ -32,7 +32,7 @@ export class InsertionFeature extends EditorFeature {
 
   constructor(editor: EditorFeature["editor"]) {
     super(editor)
-    this.menu.addEventListener("insertion-menu-select", ev => this.insert((ev as CustomEvent<InsertionMenuItem>).detail))
+    this.menu.addEventListener("insertion-menu-select", ev => void this.insert((ev as CustomEvent<InsertionMenuItem>).detail))
     this.menu.addEventListener("insertion-menu-close", () => this.close())
   }
 
@@ -406,7 +406,24 @@ export class InsertionFeature extends EditorFeature {
     this.editor.appendix.append(button)
   }
 
-  private insert(item: InsertionMenuItem) {
+  private async insert(item: InsertionMenuItem) {
+    let html = item.tag ? `<${item.tag}></${item.tag}>` : ""
+    if(item.htmlUrl) {
+      try {
+        const response = await fetch(item.htmlUrl)
+        if(!response.ok) throw new Error(`Snippet download failed (${response.status})`)
+        html = await response.text()
+      }
+      catch {
+        this.close()
+        return
+      }
+    }
+    if(!html) {
+      this.close()
+      return
+    }
+
     let range = this.commandRange
     const selection = document.getSelection()
     const point = this.commandStartPoint()
@@ -421,19 +438,29 @@ export class InsertionFeature extends EditorFeature {
       return
     }
     range.deleteContents()
-    const element = this.editor.schema.create(item.tag) as Element
+    const template = document.createElement("template")
+    template.innerHTML = html
+    const nodes = Array.from(template.content.childNodes)
+    if(!nodes.length) {
+      this.close()
+      return
+    }
     const replacement = this.emptyTextBlock?.isConnected && this.emptyTextBlock !== document.body && !this.emptyTextBlock.textContent && this.emptyTextBlock
     if(replacement) {
-      replacement.replaceWith(element)
+      replacement.replaceWith(...nodes)
     }
     else {
-      range.insertNode(element)
+      range.insertNode(template.content)
     }
-    if(this.editor.schema.findValidContentTypes(element).includes("#text")) {
-      $.move(element)
+    const last = nodes.at(-1)!
+    if(isElement(last) && this.editor.schema.findValidContentTypes(last).includes("#text")) {
+      $.move(last)
     }
-    else if(element.parentElement) {
-      $.selectElement(element)
+    else if(nodes.length === 1 && isElement(last) && last.parentElement) {
+      $.selectElement(last)
+    }
+    else if(last.parentNode) {
+      $.move(last.parentNode, Array.from(last.parentNode.childNodes).indexOf(last as ChildNode) + 1)
     }
     this.close(false)
   }

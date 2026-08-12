@@ -9,7 +9,7 @@ export type RibbonMenuGroup = {
 export type RibbonMenuButton = string | {
   label: string
   action?: string
-  submenu?: string[]
+  submenu?: RibbonMenuButton[]
 }
 
 /** A dropdown view of the commands in a collapsed ribbon menu. */
@@ -35,6 +35,11 @@ export class RibbonMenu extends LitElement {
       left: auto;
       z-index: 2147483647;
       max-width: min(200px, calc(100vw - 1rem));
+      margin: 0;
+      padding: 0;
+      border: 0;
+      color: inherit;
+      background: transparent;
     }
 
     :host([variant="button"]) .menu {
@@ -269,11 +274,11 @@ export class RibbonMenu extends LitElement {
                           class="item"
                           type="button"
                           role="menuitem"
-                          title=${submenuButton}
+                          title=${this.buttonLabel(submenuButton)}
                           @click=${() => this.handleClick(submenuButton)}
                         >
-                          <span class="item-icon" aria-hidden="true">${ribbonIcon(submenuButton)}</span>
-                          <span>${submenuButton}</span>
+                          <span class="item-icon" aria-hidden="true">${ribbonIcon(this.buttonAction(submenuButton))}</span>
+                          <span>${this.buttonLabel(submenuButton)}</span>
                         </button>
                       `)}
                     </div>

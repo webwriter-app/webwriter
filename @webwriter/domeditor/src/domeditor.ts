@@ -8,6 +8,7 @@ import { PlaceholderFeature } from "./features/placeholder"
 import { SelectionFeature } from "./features/selection"
 import { InsertionFeature } from "./features/insertion"
 import { TransformationFeature } from "./features/transformation"
+import { StateFeature } from "./features/state"
 import { Schema } from "./schema"
 import { $, adoptStylesheet, createStylesheet, getContainer, isElement } from "./utility"
 import {isMarkElement, normalizeMarkElements} from "./marks"
@@ -25,6 +26,7 @@ import {
 } from "./editor-bridge"
 import { getElementPresentation } from "./element-names"
 import editorStyleString from "./editor.css?raw"
+import * as Y from "yjs"
 
 const editorStylesheet = createStylesheet(editorStyleString)
 const featuresDisabledByDefault = new Set(["placeholder"])
@@ -62,6 +64,7 @@ export class DOMEditor {
   
   features = {
     "dependency": new DependencyFeature(this),
+    "state": new StateFeature(this),
     "insertion": new InsertionFeature(this),
     "history": new HistoryFeature(this),
     "manipulation": new ManipulationFeature(this),
@@ -161,20 +164,31 @@ export class DOMEditor {
     document.body.contentEditable = "true"
     document.designMode = "on"
     document.body.spellcheck = false
+    const initialState = globalThis.DOMEDITOR_INITIAL_STATE
+    globalThis.DOMEDITOR_INITIAL_STATE = undefined
+    const initialYDoc = initialState?.update?.length ? new Y.Doc() : undefined
+    if(initialYDoc) {
+      Y.applyUpdate(initialYDoc, Uint8Array.from(initialState!.update))
+    }
     if(globalThis.SYNC_URL) {
       const syncUrl = new URL(globalThis.SYNC_URL)
       const sessionId = syncUrl.searchParams.get("session") ?? syncUrl.pathname.split("/").filter(Boolean).at(-1)
-      this.doc = new SharedDOMDoc(syncUrl.origin, sessionId, this.ignoreAttrs, this.ignoreClasses)
+      this.doc = new SharedDOMDoc(syncUrl.origin, sessionId, this.ignoreAttrs, this.ignoreClasses, {
+        ...(initialYDoc ? {ydoc: initialYDoc} : {}),
+      })
     }
     else {
-      this.doc = new SharedDOMDoc(undefined, undefined, this.ignoreAttrs, this.ignoreClasses)
+      this.doc = new SharedDOMDoc(undefined, undefined, this.ignoreAttrs, this.ignoreClasses, {
+        ...(initialYDoc ? {ydoc: initialYDoc} : {}),
+      })
     }
     Object.entries(this.features)
       .filter(([key]) => !featuresDisabledByDefault.has(key))
       .forEach(([, feat]) => feat.enable())
     document.addEventListener("input", this.#handleInput)
     document.addEventListener("selectionchange", this.handleSelectionChange)
-    this.doc.updateLocalSelection()
+    if(initialState?.selection) this.doc.restoreSelection(initialState.selection)
+    else this.doc.updateLocalSelection()
     this.postMarkState()
     this.postSelectionPath()
     document.addEventListener("copy", this.#onCopy)

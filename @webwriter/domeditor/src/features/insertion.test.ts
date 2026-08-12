@@ -22,6 +22,7 @@ function typeText(text: string) {
 }
 
 beforeEach(() => {
+  globalThis.DOMEDITOR_PACKAGE_ITEMS = []
   document.body.innerHTML = ""
   editor.features.insertion.menu.dispatchEvent(new Event("insertion-menu-close", {bubbles: true, composed: true}))
 })
@@ -85,7 +86,7 @@ describe("insertion menu", () => {
     expect(menu.shadowRoot?.querySelector(".item[data-active]")).toBeNull()
     expect(menu.shadowRoot?.textContent).toContain("Text")
     expect(menu.shadowRoot?.textContent).toContain("Media")
-    expect(menu.shadowRoot?.textContent).toContain("Widgets")
+    expect(menu.shadowRoot?.textContent).toContain("Packages")
     expect(menu.shadowRoot?.textContent).toContain("Paragraph")
     expect(menu.shadowRoot?.textContent).toContain("Website")
   })
@@ -196,6 +197,30 @@ describe("insertion menu", () => {
 
     expect(pointerDown.defaultPrevented).toBe(true)
     expect(editorHTML()).toBe("<table></table>")
+    expect(menu.open).toBe(false)
+  })
+
+  it("shows installed package widgets and inserts their custom elements", async () => {
+    globalThis.DOMEDITOR_PACKAGE_ITEMS = [{
+      section: "Packages",
+      name: "Demo Widget",
+      packageName: "@webwriter/demo",
+      kind: "widget",
+      tag: "webwriter-demo",
+      iconUrl: "https://example.com/demo.svg",
+    }]
+    document.body.innerHTML = "<p></p>"
+    $.move(document.querySelector("p")!)
+    typeCommand()
+    typeText("demo")
+    const menu = editor.features.insertion.menu
+    await menu.updateComplete
+
+    expect(menu.shadowRoot?.textContent).toContain("@webwriter/demo · widget")
+    menu.shadowRoot?.querySelector<HTMLButtonElement>('.item img[src="https://example.com/demo.svg"]')
+      ?.closest<HTMLButtonElement>("button")?.click()
+
+    expect(editorHTML()).toBe("<webwriter-demo></webwriter-demo>")
     expect(menu.open).toBe(false)
   })
 

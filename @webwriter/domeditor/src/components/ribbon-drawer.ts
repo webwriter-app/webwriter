@@ -19,6 +19,7 @@ export class RibbonDrawer extends LitElement {
     collapsed: {type: Boolean, reflect: true},
     drawerOpen: {type: Boolean, reflect: true, attribute: "drawer-open"},
     drawerContentOpen: {type: Boolean, reflect: true, attribute: "drawer-visible"},
+    drawerSettled: {type: Boolean, reflect: true, attribute: "drawer-settled"},
     expandable: {type: Boolean, reflect: true},
     icon: {type: String},
     label: {type: String},
@@ -48,6 +49,14 @@ export class RibbonDrawer extends LitElement {
       --ribbon-drawer-panel-padding-block: 0.375rem;
     }
 
+    :host([layout="packages"]) {
+      --ribbon-drawer-expanded-width: 16.5rem;
+      --ribbon-drawer-width: min(42rem, calc(100vw - 1rem));
+      --ribbon-drawer-height: 10rem;
+      --ribbon-drawer-more-height: 8rem;
+      flex-grow: 1;
+    }
+
     :host([collapsed]) {
       flex: 0 0 var(--ribbon-drawer-collapsed-width);
       min-width: var(--ribbon-drawer-collapsed-width);
@@ -66,7 +75,7 @@ export class RibbonDrawer extends LitElement {
       position: relative;
       anchor-name: --responsive-ribbon-drawer;
       height: 100%;
-      max-height: 100%;
+      max-height: var(--drawer-collapsed-height, 100%);
       min-height: 0;
       padding: 0 0.5rem;
       border: 1px solid transparent;
@@ -77,6 +86,10 @@ export class RibbonDrawer extends LitElement {
 
     :host(:last-child) .drawer {
       border-right-color: transparent;
+    }
+
+    :host([layout="packages"]) .drawer {
+      border-right-color: #d8dee6;
     }
 
     .drawer.expanded {
@@ -103,7 +116,7 @@ export class RibbonDrawer extends LitElement {
     }
 
     .drawer.expanded.closing {
-      max-height: 100%;
+      max-height: var(--drawer-collapsed-height, 100%);
     }
 
     .controls {
@@ -115,7 +128,8 @@ export class RibbonDrawer extends LitElement {
       grid-auto-columns: 4rem;
       align-content: stretch;
       align-items: center;
-      gap: 0.15rem;
+      gap: 0;
+      padding-bottom: 0.25rem;
       min-width: 0;
       min-height: 0;
       overflow: hidden;
@@ -144,6 +158,45 @@ export class RibbonDrawer extends LitElement {
       overflow-y: hidden;
     }
 
+    :host([layout="packages"]) .controls {
+      grid-template-columns: repeat(auto-fill, minmax(4rem, 1fr));
+      grid-template-rows: repeat(2, minmax(0, 1fr));
+      grid-auto-flow: row;
+      grid-auto-columns: minmax(4rem, 1fr);
+      grid-auto-rows: minmax(0, 1fr);
+      align-content: stretch;
+      align-items: stretch;
+    }
+
+    :host([layout="packages"]) .drawer.expanded {
+      height: var(--package-expanded-height, calc(100% + var(--ribbon-drawer-more-height)));
+      max-height: var(--package-expanded-height, calc(100% + var(--ribbon-drawer-more-height)));
+    }
+
+    :host([layout="packages"]) .drawer.expanded.closing {
+      max-height: var(--drawer-collapsed-height, 100%);
+    }
+
+    :host([layout="packages"][drawer-visible]) .controls {
+      grid-template-rows: repeat(2, var(--package-row-height, 2.45rem));
+      grid-auto-rows: var(--package-row-height, 2.45rem);
+      flex: 0 1 auto;
+      align-content: start;
+      padding-top: var(--package-expanded-grid-offset, 0);
+      padding-bottom: var(--package-expanded-grid-padding, 0.25rem);
+      overflow-x: hidden;
+      overflow-y: hidden;
+    }
+
+    :host([layout="packages"][drawer-open][drawer-settled]) .controls {
+      overflow-y: auto;
+    }
+
+    :host([layout="packages"]) ::slotted(package-search) {
+      grid-column: span 2;
+      width: 100%;
+    }
+
     :host([layout="marks"]) ::slotted(.font-family) {
       grid-column: span 4;
     }
@@ -162,7 +215,7 @@ export class RibbonDrawer extends LitElement {
       place-items: center;
       position: absolute;
       left: calc(50% + 1px);
-      bottom: -0.2rem;
+      bottom: -0.25rem;
       z-index: 1;
       justify-self: center;
       align-self: center;
@@ -178,12 +231,12 @@ export class RibbonDrawer extends LitElement {
       transition: bottom 180ms ease;
     }
 
-    .drawer-toggle[hidden] {
-      display: none;
+    .drawer.expanded .drawer-toggle {
+      bottom: -0.625rem;
     }
 
-    .drawer.expanded:not(.closing) .drawer-toggle {
-      bottom: -0.5625rem;
+    .drawer-toggle[hidden] {
+      display: none;
     }
 
     .drawer-toggle:hover,
@@ -354,7 +407,18 @@ export class RibbonDrawer extends LitElement {
   layout = "default"
   private drawerOpen = false
   private drawerContentOpen = false
+  private drawerSettled = false
+  private forcedOpen = false
   private drawerCloseTimer: ReturnType<typeof setTimeout> | undefined
+  private drawerSettleTimer: ReturnType<typeof setTimeout> | undefined
+
+  private readonly handleWindowResize = () => {
+    if(!this.drawerOpen) return
+    if(this.updatePackageDrawerSize()) {
+      this.drawerSettled = false
+      this.scheduleDrawerSettle()
+    }
+  }
 
   private readonly handleDocumentPointerDown = (event: PointerEvent) => {
     if(this.drawerOpen && !event.composedPath().includes(this)) this.closeDrawer()
@@ -366,26 +430,32 @@ export class RibbonDrawer extends LitElement {
     this.renderRoot.querySelector<HTMLButtonElement>(".drawer-toggle")?.focus()
   }
 
-  private readonly handleRibbonAction = () => this.closeDrawer()
+  private readonly handleRibbonAction = (event: Event) => {
+    const keepOpen = (event as CustomEvent<{keepDrawerOpen?: boolean}>).detail?.keepDrawerOpen
+    if(!keepOpen) this.closeDrawer()
+  }
 
   connectedCallback() {
     super.connectedCallback()
     this.addEventListener("ribbon-button-click", this.handleRibbonAction)
     document.addEventListener("pointerdown", this.handleDocumentPointerDown)
     document.addEventListener("keydown", this.handleDocumentKeydown)
+    window.addEventListener("resize", this.handleWindowResize)
   }
 
   disconnectedCallback() {
     this.cancelDrawerClose()
+    this.cancelDrawerSettle()
     this.removeEventListener("ribbon-button-click", this.handleRibbonAction)
     document.removeEventListener("pointerdown", this.handleDocumentPointerDown)
     document.removeEventListener("keydown", this.handleDocumentKeydown)
+    window.removeEventListener("resize", this.handleWindowResize)
     super.disconnectedCallback()
   }
 
   protected willUpdate(changed: Map<string, unknown>) {
     if(changed.has("collapsed") && !this.collapsed) this.closeDrawer()
-    if(changed.has("expandable") && !this.expandable && !this.collapsed) this.closeDrawer()
+    if(changed.has("expandable") && !this.expandable && !this.collapsed && !this.forcedOpen) this.closeDrawer()
   }
 
   private lengthInPixels(value: string, fallback: number) {
@@ -429,9 +499,128 @@ export class RibbonDrawer extends LitElement {
   closeDrawer() {
     this.querySelectorAll<HTMLElement & {close?: () => void}>("ribbon-combobox")
       .forEach(combobox => combobox.close?.())
+    this.forcedOpen = false
     if(!this.drawerOpen) return
+    this.cancelDrawerSettle()
+    this.drawerSettled = false
     this.drawerOpen = false
+    this.dispatchDrawerState()
     this.scheduleDrawerClose()
+  }
+
+  private captureExpandedContentOffset() {
+    if(this.layout !== "packages" || this.collapsed) return
+    const drawer = this.renderRoot.querySelector<HTMLElement>(".drawer")
+    const controls = this.renderRoot.querySelector<HTMLElement>(".controls")
+    const firstControl = Array.from(this.children).find(child => (
+      child.slot !== "more" && child.localName === "ribbon-button"
+    )) as HTMLElement | undefined
+    if(!drawer || !controls) return
+    const drawerBounds = drawer.getBoundingClientRect()
+    const controlsBounds = controls.getBoundingClientRect()
+    const controlsStyle = getComputedStyle(controls)
+    const rowGap = Number.parseFloat(controlsStyle.rowGap) || 0
+    const paddingTop = Number.parseFloat(controlsStyle.paddingTop) || 0
+    const paddingBottom = Number.parseFloat(controlsStyle.paddingBottom) || 0
+    const offset = firstControl
+      ? Math.max(0, firstControl.getBoundingClientRect().top - controlsBounds.top)
+      : 0
+    const storedRowHeight = Number.parseFloat(controlsStyle.getPropertyValue("--package-row-height")) || 0
+    const rowHeight = storedRowHeight || Math.max(
+      0,
+      (controlsBounds.height - paddingTop - paddingBottom - rowGap) / 2,
+    )
+    controls.style.setProperty("--package-expanded-grid-offset", `${offset}px`)
+    controls.style.setProperty("--package-expanded-grid-padding", `${Math.max(offset, 4)}px`)
+    if(rowHeight > 0) controls.style.setProperty("--package-row-height", `${rowHeight}px`)
+    drawer.style.setProperty(
+      "--package-drawer-chrome-height",
+      `${Math.max(0, drawerBounds.height - controlsBounds.height)}px`,
+    )
+  }
+
+  private updatePackageDrawerSize() {
+    if(this.layout !== "packages" || this.collapsed) return false
+    const drawer = this.renderRoot.querySelector<HTMLElement>(".drawer")
+    const controls = this.renderRoot.querySelector<HTMLElement>(".controls")
+    if(!drawer || !controls) return false
+    const bounds = this.getBoundingClientRect()
+    const drawerBounds = drawer.getBoundingClientRect()
+    const controlsBounds = controls.getBoundingClientRect()
+    const controlsStyle = getComputedStyle(controls)
+    const rowGap = Number.parseFloat(controlsStyle.rowGap) || 0
+    const columnGap = Number.parseFloat(controlsStyle.columnGap) || 0
+    const paddingTop = Number.parseFloat(controlsStyle.paddingTop) || 0
+    const paddingBottom = Number.parseFloat(controlsStyle.paddingBottom) || 0
+    const storedRowHeight = Number.parseFloat(controlsStyle.getPropertyValue("--package-row-height")) || 0
+    const rowHeight = storedRowHeight || Math.max(
+      0,
+      (controlsBounds.height - paddingTop - paddingBottom - rowGap) / 2,
+    )
+    const columnWidth = 64
+    const columns = Math.max(1, Math.floor((controlsBounds.width + columnGap) / (columnWidth + columnGap)))
+    const spans = Array.from(this.children)
+      .filter(child => child instanceof HTMLElement)
+      .map(child => child.localName === "package-search" ? 2 : child.localName === "ribbon-button" ? 2 : 1)
+    let row = 0
+    let column = 0
+    let rowCount = 0
+    for(const requestedSpan of spans) {
+      const span = Math.min(columns, requestedSpan)
+      if(column + span > columns) {
+        row++
+        column = 0
+      }
+      rowCount = Math.max(rowCount, row + 1)
+      column += span
+      if(column >= columns) {
+        row++
+        column = 0
+      }
+    }
+    const storedChromeHeight = Number.parseFloat(
+      drawer.style.getPropertyValue("--package-drawer-chrome-height"),
+    )
+    const chromeHeight = Number.isFinite(storedChromeHeight)
+      ? storedChromeHeight
+      : Math.max(0, drawerBounds.height - controlsBounds.height)
+    const topPadding = Number.parseFloat(
+      controlsStyle.getPropertyValue("--package-expanded-grid-offset"),
+    ) || 0
+    const bottomPadding = Number.parseFloat(
+      controlsStyle.getPropertyValue("--package-expanded-grid-padding"),
+    ) || 4
+    const contentHeight = chromeHeight + topPadding + bottomPadding + rowCount * rowHeight + Math.max(0, rowCount - 1) * rowGap
+    const available = Math.max(bounds.height, window.innerHeight - Math.max(0, bounds.top))
+    const collapsedHeight = Number.parseFloat(drawer.style.getPropertyValue("--drawer-collapsed-height")) || drawerBounds.height
+    const preferredHeight = Math.max(collapsedHeight, Math.min(contentHeight, available))
+    const currentTarget = Number.parseFloat(drawer.style.getPropertyValue("--package-expanded-height")) || 0
+    const expanded = preferredHeight
+    const changed = currentTarget <= 0 || Math.abs(expanded - currentTarget) > 0.5
+    if(changed) drawer.style.setProperty("--package-expanded-height", `${expanded}px`)
+    this.style.setProperty("--ribbon-drawer-available-height", `${available}px`)
+    return changed
+  }
+
+  openDrawer(force = false) {
+    if(force) this.forcedOpen = true
+    if(this.drawerOpen) return
+    this.captureExpandedContentOffset()
+    this.cancelDrawerClose()
+    if(!this.drawerContentOpen) {
+      const drawer = this.renderRoot.querySelector<HTMLElement>(".drawer")
+      const collapsedHeight = drawer?.getBoundingClientRect().height ?? 0
+      if(collapsedHeight > 0) {
+        drawer?.style.setProperty("--collapsed-drawer-height", `${collapsedHeight}px`)
+        drawer?.style.setProperty("--drawer-collapsed-height", `${collapsedHeight}px`)
+      }
+    }
+    this.updatePackageDrawerSize()
+    this.drawerContentOpen = true
+    this.drawerSettled = false
+    this.drawerOpen = true
+    this.dispatchDrawerState()
+    this.scheduleDrawerSettle()
   }
 
   private toggleDrawer() {
@@ -440,22 +629,37 @@ export class RibbonDrawer extends LitElement {
       this.closeDrawer()
       return
     }
-    this.cancelDrawerClose()
-    if(!this.drawerContentOpen) {
-      const drawer = this.renderRoot.querySelector<HTMLElement>(".drawer")
-      const collapsedHeight = drawer?.getBoundingClientRect().height ?? 0
-      if(collapsedHeight > 0) {
-        drawer?.style.setProperty("--collapsed-drawer-height", `${collapsedHeight}px`)
-      }
-    }
-    this.drawerContentOpen = true
-    this.drawerOpen = true
+    this.openDrawer(false)
+  }
+
+  private dispatchDrawerState() {
+    this.dispatchEvent(new CustomEvent<{label: string, open: boolean}>("ribbon-drawer-state-change", {
+      detail: {label: this.label, open: this.drawerOpen},
+      bubbles: true,
+      composed: true,
+    }))
   }
 
   private cancelDrawerClose() {
     if(this.drawerCloseTimer === undefined) return
     clearTimeout(this.drawerCloseTimer)
     this.drawerCloseTimer = undefined
+  }
+
+  private cancelDrawerSettle() {
+    if(this.drawerSettleTimer === undefined) return
+    clearTimeout(this.drawerSettleTimer)
+    this.drawerSettleTimer = undefined
+  }
+
+  private finishDrawerSettle() {
+    this.cancelDrawerSettle()
+    if(this.drawerOpen) this.drawerSettled = true
+  }
+
+  private scheduleDrawerSettle() {
+    this.cancelDrawerSettle()
+    this.drawerSettleTimer = setTimeout(() => this.finishDrawerSettle(), 180)
   }
 
   private finishDrawerClose() {
@@ -470,7 +674,9 @@ export class RibbonDrawer extends LitElement {
   }
 
   private readonly handleDrawerTransitionEnd = (event: TransitionEvent) => {
-    if(event.propertyName === "max-height" && !this.drawerOpen) this.finishDrawerClose()
+    if(event.propertyName !== "max-height") return
+    if(this.drawerOpen) this.finishDrawerSettle()
+    else this.finishDrawerClose()
   }
 
   render() {

@@ -3,6 +3,14 @@ import type { AppRibbon } from "./ribbon"
 import type { DomEditorBreadcrumb, DocumentTreeItem } from "./breadcrumb"
 import type { EditingAction } from "../domeditor"
 import { insertionMenuItems } from "./insertion-menu"
+import type {EditorStateSnapshot} from "../editor-state"
+import {
+  packageInsertionItems,
+  packageMemberAction,
+  WebWriterPackageRegistry,
+  type PackageMember,
+  type WebWriterPackage,
+} from "../packages"
 import { getElementPresentation } from "../element-names"
 import {canonicalMarkName, isMarkElement, isStyleMarkName, type MarkName, type StyleMarkValues} from "../marks"
 import {
@@ -55,6 +63,12 @@ export class DomEditor extends LitElement {
     marks: {attribute: false, state: true},
     markStyles: {attribute: false, state: true},
     presenceUsers: {attribute: false, state: true},
+    packages: {attribute: false, state: true},
+    installedPackages: {attribute: false, state: true},
+    packagesLoading: {attribute: false, state: true},
+    busyPackageNames: {attribute: false, state: true},
+    packageError: {attribute: false, state: true},
+    frameRevision: {attribute: false, state: true},
   }
 
   private editorDocument: Document | null = null
@@ -74,6 +88,15 @@ export class DomEditor extends LitElement {
   private marks: MarkName[] = []
   private markStyles: StyleMarkValues = {}
   private presenceUsers: PresenceUser[] = []
+  private packages: WebWriterPackage[] = []
+  private installedPackages: WebWriterPackage[] = []
+  private packagesLoading = false
+  private busyPackageNames: string[] = []
+  private packageError = ""
+  private frameState: EditorStateSnapshot | undefined
+  private frameRevision = 0
+  private packageCatalogRequested = false
+  private readonly packageRegistry = new WebWriterPackageRegistry()
   private treeViewOpen = false
   private breadcrumbHoverPath: number[] | null = null
   private pendingExecutions = new Map<string, {
@@ -114,7 +137,13 @@ export class DomEditor extends LitElement {
     const outerUrl = new URL(location.href)
     outerUrl.searchParams.forEach((value, key) => syncUrl.searchParams.set(key, value))
     const syncUrlLiteral = JSON.stringify(syncUrl.href).replaceAll("<", "\\u003C")
-    return `<script>globalThis.SYNC_URL = ${syncUrlLiteral}</script><script type="module" src="${escapeAttribute(editorEntryUrl)}"></script>`
+    const initialState = JSON.stringify(this.frameState ?? null).replaceAll("<", "\\u003C")
+    const packageItems = JSON.stringify(packageInsertionItems(this.installedPackages)).replaceAll("<", "\\u003C")
+    const styles = [...new Set(this.installedPackages.flatMap(pkg => pkg.styles))]
+      .map(url => `<link rel="stylesheet" href="${escapeAttribute(url)}">`).join("")
+    const scripts = [...new Set(this.installedPackages.flatMap(pkg => pkg.scripts))]
+      .map(url => `<script type="module" src="${escapeAttribute(url)}"></script>`).join("")
+    return `<!-- frame ${this.frameRevision} --><script>globalThis.SYNC_URL = ${syncUrlLiteral}</script><script>globalThis.DOMEDITOR_INITIAL_STATE = ${initialState};globalThis.DOMEDITOR_PACKAGE_ITEMS = ${packageItems}</script>${styles}${scripts}<script type="module" src="${escapeAttribute(editorEntryUrl)}"></script>`
   }
 
   private handleEditorFrameLoad = (event: Event) => {
@@ -299,6 +328,30 @@ export class DomEditor extends LitElement {
 
   private handleRibbonButtonClick = (event: Event) => {
     const label = (event as CustomEvent<{label?: string}>).detail?.label
+    if(label?.startsWith("package-member:")) {
+      const pkg = [...this.installedPackages, ...this.packages]
+        .find(candidate => candidate.members.some(member => packageMemberAction(member) === label))
+      const member = pkg?.members.find(candidate => packageMemberAction(candidate) === label)
+      if(pkg && member) void this.installAndInsertPackage(pkg, member)
+      else this.focusEditor()
+      return
+    }
+    if(label?.startsWith("package-toggle:")) {
+      const name = label.slice("package-toggle:".length)
+      const pkg = this.installedPackages.find(candidate => candidate.name === name) ??
+        this.packages.find(candidate => candidate.name === name)
+      if(pkg) void this.setPackageInstalled(pkg, !this.installedPackages.some(candidate => candidate.name === name))
+      else this.focusEditor()
+      return
+    }
+    if(label?.startsWith("package:")) {
+      const name = label.slice("package:".length)
+      const pkg = this.installedPackages.find(candidate => candidate.name === name) ??
+        this.packages.find(candidate => candidate.name === name)
+      if(pkg) void this.installAndInsertPackage(pkg)
+      else this.focusEditor()
+      return
+    }
     if(label === "Undo") {
       void this.execute({type: "undo"}).finally(() => this.focusEditor())
       return
@@ -331,6 +384,105 @@ export class DomEditor extends LitElement {
       type: "insert",
       html: `<${item.tag}></${item.tag}>`,
     }).finally(() => this.focusEditor())
+  }
+
+  private async insertPackageMember(member: PackageMember) {
+    this.packageError = ""
+    try {
+      const html = member.kind === "snippet"
+        ? await this.packageRegistry.fetchSnippet(member)
+        : member.tagName ? `<${member.tagName}></${member.tagName}>` : ""
+      if(!html) throw new Error(`Package member '${member.label}' has no insertable content`)
+      await this.execute({type: "insert", html})
+    }
+    catch(error) {
+      this.packageError = error instanceof Error ? error.message : String(error)
+    }
+    finally {
+      this.focusEditor()
+    }
+  }
+
+  private async setPackageInstalled(pkg: WebWriterPackage, installed: boolean) {
+    if(this.busyPackageNames.includes(pkg.name)) return undefined
+    this.busyPackageNames = [...this.busyPackageNames, pkg.name]
+    this.packageError = ""
+    try {
+      const resolvedPackage = installed ? await this.packageRegistry.getPackage(pkg) : pkg
+      const nextPackages = installed
+        ? [...this.installedPackages.filter(candidate => candidate.name !== pkg.name), resolvedPackage]
+        : this.installedPackages.filter(candidate => candidate.name !== pkg.name)
+      await this.reloadEditor(nextPackages)
+      this.packages = this.packages.map(candidate => candidate.name === resolvedPackage.name ? resolvedPackage : candidate)
+      return installed ? resolvedPackage : undefined
+    }
+    catch(error) {
+      this.packageError = error instanceof Error ? error.message : String(error)
+      return undefined
+    }
+    finally {
+      this.busyPackageNames = this.busyPackageNames.filter(name => name !== pkg.name)
+    }
+  }
+
+  private async installAndInsertPackage(pkg: WebWriterPackage, requestedMember?: PackageMember) {
+    const activePackage = this.installedPackages.find(candidate => candidate.name === pkg.name) ??
+      await this.setPackageInstalled(pkg, true)
+    if(!activePackage) {
+      this.focusEditor()
+      return
+    }
+    const member = requestedMember
+      ? activePackage.members.find(candidate => candidate.id === requestedMember.id || candidate.exportName === requestedMember.exportName)
+      : activePackage.members.find(candidate => candidate.insertable)
+    if(!member?.insertable) {
+      this.packageError = `Package '${activePackage.label}' has no insertable members`
+      this.focusEditor()
+      return
+    }
+    await this.insertPackageMember(member)
+  }
+
+  private async reloadEditor(nextPackages: WebWriterPackage[]) {
+    const snapshot = await this.execute({type: "snapshotState"}) as EditorStateSnapshot
+    if(!snapshot || !Array.isArray(snapshot.update)) throw new TypeError("The editor returned an invalid state snapshot")
+    const shouldRefocus = this.isEditorFocused() || this.savedEditorSelection !== null
+
+    this.documentTreeObserver?.disconnect()
+    this.documentTreeObserver = null
+    this.editorDocument?.removeEventListener("pointerdown", this.handleEditorPointerDown)
+    this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
+    this.editorDocument = null
+    this.editorWindow = null
+    this.editorReadyPromise = null
+    this.editorReadyResolve = null
+    this.editorReadyReject = null
+    this.savedEditorSelection = null
+    const reloadError = new Error("The editor iframe was reloaded for a package change")
+    this.pendingExecutions.forEach(({reject}) => reject(reloadError))
+    this.pendingExecutions.clear()
+    this.frameState = snapshot
+    this.installedPackages = nextPackages
+    this.frameRevision++
+    await this.updateComplete
+    await this.waitForEditorWindow()
+    if(shouldRefocus) this.focusEditor()
+  }
+
+  private async loadPackageCatalog() {
+    if(this.packageCatalogRequested) return
+    this.packageCatalogRequested = true
+    this.packagesLoading = true
+    this.packageError = ""
+    try {
+      this.packages = await this.packageRegistry.search()
+    }
+    catch(error) {
+      this.packageError = error instanceof Error ? error.message : String(error)
+    }
+    finally {
+      this.packagesLoading = false
+    }
   }
 
   private handleRibbonComboboxChange = (event: Event) => {
@@ -561,6 +713,11 @@ export class DomEditor extends LitElement {
           .marks=${this.marks}
           .markStyles=${this.markStyles}
           .presenceUsers=${this.presenceUsers}
+          .packages=${this.packages}
+          .installedPackages=${this.installedPackages}
+          .packagesLoading=${this.packagesLoading}
+          .busyPackageNames=${this.busyPackageNames}
+          .packageError=${this.packageError}
           @ribbon-button-click=${this.handleRibbonButtonClick}
           @ribbon-combobox-change=${this.handleRibbonComboboxChange}
           @ribbon-collapse=${this.handleRibbonCollapse}
@@ -569,6 +726,7 @@ export class DomEditor extends LitElement {
           @ribbon-input-blur=${this.handleRibbonInputBlur}
           @ribbon-input-commit=${this.finishRibbonInput}
           @ribbon-input-cancel=${this.finishRibbonInput}
+          @package-catalog-request=${this.loadPackageCatalog}
         ></app-ribbon>
         <dom-editor-breadcrumb
           .path=${this.selectionPath}

@@ -1,10 +1,43 @@
 // @vitest-environment happy-dom
-import {afterEach, describe, expect, it, vi} from "vitest"
+import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {DomEditor} from "./dom-editor"
 import type {DomEditorBreadcrumb} from "./breadcrumb"
 import type {RibbonButton} from "./ribbon-button"
 import type {RibbonDrawer} from "./ribbon-drawer"
 import {executeCompleteEvent, executeFailureEvent, markStateChangeEvent, presenceChangeEvent, selectionChangeEvent} from "../editor-bridge"
+import {WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
+
+const demoPackage: WebWriterPackage = {
+  name: "@webwriter/demo",
+  version: "1.0.0",
+  label: "Demo",
+  description: "Demo package",
+  authors: ["Ada"],
+  license: "MIT",
+  keywords: ["webwriter-widget"],
+  links: {},
+  scripts: ["https://cdn.jsdelivr.net/npm/@webwriter/demo@1.0.0/dist/demo.js"],
+  styles: ["https://cdn.jsdelivr.net/npm/@webwriter/demo@1.0.0/dist/demo.css"],
+  members: [{
+    id: "@webwriter/demo@1.0.0:./widgets/webwriter-demo",
+    packageName: "@webwriter/demo",
+    packageVersion: "1.0.0",
+    exportName: "./widgets/webwriter-demo.*",
+    kind: "widget",
+    label: "Demo Widget",
+    insertable: true,
+    tagName: "webwriter-demo",
+  }, {
+    id: "@webwriter/demo@1.0.0:./snippets/demo",
+    packageName: "@webwriter/demo",
+    packageVersion: "1.0.0",
+    exportName: "./snippets/demo.html",
+    kind: "snippet",
+    label: "Demo Snippet",
+    insertable: true,
+    htmlUrl: "https://cdn.jsdelivr.net/npm/@webwriter/demo@1.0.0/dist/demo.html",
+  }],
+}
 
 async function mountEditor() {
   const editor = new DomEditor()
@@ -18,6 +51,10 @@ async function mountEditor() {
 afterEach(() => {
   document.body.replaceChildren()
   vi.restoreAllMocks()
+})
+
+beforeEach(() => {
+  vi.spyOn(WebWriterPackageRegistry.prototype, "search").mockResolvedValue([])
 })
 
 describe("DomEditor iframe setup", () => {
@@ -40,6 +77,17 @@ describe("DomEditor iframe setup", () => {
     finally {
       history.replaceState({}, "", originalUrl)
     }
+  })
+
+  it("injects installed package assets and insertion metadata into srcdoc", async () => {
+    const editor = new DomEditor()
+    ;(editor as unknown as {installedPackages: WebWriterPackage[]}).installedPackages = [demoPackage]
+    const srcdoc = (editor as unknown as {readonly editorSrcdoc: string}).editorSrcdoc
+
+    expect(srcdoc).toContain('<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/demo@1.0.0/dist/demo.css">')
+    expect(srcdoc).toContain('<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/demo@1.0.0/dist/demo.js"></script>')
+    expect(srcdoc).toContain('"name":"Demo Widget"')
+    expect(srcdoc).toContain('"tag":"webwriter-demo"')
   })
 })
 
@@ -99,6 +147,83 @@ describe("DomEditor.execute()", () => {
     paragraph.shadowRoot!.querySelector("button")!.click()
 
     expect(execute).toHaveBeenCalledWith({type: "insert", html: "<p></p>"})
+  })
+
+  it("renders Packages as ribbon buttons with a prefixed search bar", async () => {
+    vi.mocked(WebWriterPackageRegistry.prototype.search).mockResolvedValue([demoPackage])
+    const {editor} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    ribbon.shadowRoot!.querySelector('ribbon-tab[label="Insert"]')!.shadowRoot!.querySelector("button")!.click()
+    await vi.waitFor(() => expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Packages"] ribbon-button[label="Demo"]')).not.toBeNull())
+    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')!
+    const search = drawer.querySelector("package-search")!
+    const button = drawer.querySelector<RibbonButton>('ribbon-button[label="Demo"]')!
+    await Promise.all([search.updateComplete, button.updateComplete])
+
+    expect(drawer).not.toBeNull()
+    expect(search.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Search packages"]')).not.toBeNull()
+    expect(search.shadowRoot!.querySelector(".icon-tabler-search")).not.toBeNull()
+    expect(button.shadowRoot!.querySelector('button[aria-label="Show more Demo options"]')).toBeNull()
+  })
+
+  it("installs an uninstalled package and then inserts its first member", async () => {
+    vi.mocked(WebWriterPackageRegistry.prototype.search).mockResolvedValue([demoPackage])
+    const {editor} = await mountEditor()
+    const install = vi.spyOn(editor as any, "setPackageInstalled").mockResolvedValue(demoPackage)
+    const insert = vi.spyOn(editor as any, "insertPackageMember").mockResolvedValue(undefined)
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    ribbon.shadowRoot!.querySelector('ribbon-tab[label="Insert"]')!.shadowRoot!.querySelector("button")!.click()
+    await vi.waitFor(() => expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Packages"] ribbon-button[label="Demo"]')).not.toBeNull())
+    const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Packages"] ribbon-button[label="Demo"]')!
+    await button.updateComplete
+    button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+
+    await vi.waitFor(() => expect(insert).toHaveBeenCalled())
+    expect(install).toHaveBeenCalledWith(demoPackage, true)
+    expect(insert).toHaveBeenCalledWith(demoPackage.members[0])
+  })
+
+  it("only installs or removes packages while package search is active", async () => {
+    vi.mocked(WebWriterPackageRegistry.prototype.search).mockResolvedValue([demoPackage])
+    const {editor} = await mountEditor()
+    const install = vi.spyOn(editor as any, "setPackageInstalled").mockResolvedValue(demoPackage)
+    const insert = vi.spyOn(editor as any, "insertPackageMember").mockResolvedValue(undefined)
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    ribbon.shadowRoot!.querySelector('ribbon-tab[label="Insert"]')!.shadowRoot!.querySelector("button")!.click()
+    await vi.waitFor(() => expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Packages"] ribbon-button[label="Demo"]')).not.toBeNull())
+    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')!
+    const search = drawer.querySelector("package-search")!
+    await search.updateComplete
+    const input = search.shadowRoot!.querySelector<HTMLInputElement>("input")!
+    input.value = "demo"
+    input.dispatchEvent(new InputEvent("input", {bubbles: true, composed: true}))
+    await ribbon.updateComplete
+    const button = drawer.querySelector<RibbonButton>('ribbon-button[label="Demo"]')!
+    await button.updateComplete
+    button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+
+    await vi.waitFor(() => expect(install).toHaveBeenCalled())
+    expect(install).toHaveBeenCalledWith(demoPackage, true)
+    expect(insert).not.toHaveBeenCalled()
+    expect(button.shadowRoot!.querySelector(".corner-icon")).toBeNull()
+  })
+
+  it("removes an installed package from a management-mode package action", async () => {
+    const {editor} = await mountEditor()
+    Object.defineProperty(editor, "installedPackages", {
+      value: [demoPackage],
+      writable: true,
+      configurable: true,
+    })
+    const setInstalled = vi.spyOn(editor as any, "setPackageInstalled").mockResolvedValue(undefined)
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    ribbon.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label: "package-toggle:@webwriter/demo", keepDrawerOpen: true},
+      bubbles: true,
+      composed: true,
+    }))
+
+    expect(setInstalled).toHaveBeenCalledWith(demoPackage, false)
   })
 
   it("executes undo and redo from the top ribbon controls", async () => {

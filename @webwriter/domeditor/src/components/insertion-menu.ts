@@ -1,14 +1,20 @@
 import { LitElement, css, html } from "lit"
 import { property, state } from "lit/decorators.js"
 import { ribbonIcon } from "../ribbon-icons"
+import type {PackageInsertionItem} from "../packages"
 
 export type InsertionMenuItem = {
-  tag: string
+  tag?: string
   name: string
-  section: "Text" | "Media"
+  section: "Text" | "Media" | "Packages"
+  packageName?: string
+  kind?: "widget" | "snippet"
+  description?: string
+  iconUrl?: string
+  htmlUrl?: string
 }
 
-export const insertionMenuItems: InsertionMenuItem[] = [
+export const insertionMenuItems: Array<InsertionMenuItem & {tag: string, section: "Text" | "Media"}> = [
   {section: "Text", tag: "p", name: "Paragraph"},
   {section: "Text", tag: "pre", name: "Preformatted Text"},
   {section: "Text", tag: "h1", name: "Heading 1"},
@@ -103,6 +109,18 @@ export class InsertionMenu extends LitElement {
       width: 100%;
       height: 100%;
     }
+
+    .item-icon img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      filter: grayscale(1);
+    }
+
+    .item-text { min-width: 0; }
+    .item-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .item-package { display: block; color: #6b7280; font-size: 0.65rem; }
   `
 
   @property({type: Boolean, reflect: true}) open = false
@@ -111,7 +129,12 @@ export class InsertionMenu extends LitElement {
 
   get filteredItems() {
     const query = this.query.trim().toLowerCase()
-    return insertionMenuItems.filter(item => !query || item.name.toLowerCase().includes(query) || item.tag.includes(query))
+    const items: InsertionMenuItem[] = [
+      ...insertionMenuItems,
+      ...(globalThis.DOMEDITOR_PACKAGE_ITEMS ?? []) as PackageInsertionItem[],
+    ]
+    return items.filter(item => !query || [item.name, item.tag, item.packageName, item.kind]
+      .filter(Boolean).join(" ").toLowerCase().includes(query))
   }
 
   get activeItem() {
@@ -198,7 +221,7 @@ export class InsertionMenu extends LitElement {
           @click=${this.close}
         >×</button>
         <div class="sections">
-          ${(["Text", "Media"] as const).map(section => html`
+          ${(["Text", "Media", "Packages"] as const).map(section => html`
             <section aria-label=${section}>
               <h2>${section}</h2>
               ${items.filter(item => item.section === section).map(item => html`
@@ -209,15 +232,17 @@ export class InsertionMenu extends LitElement {
                   @pointerdown=${(event: PointerEvent) => this.chooseFromPointer(event, item)}
                   @click=${() => this.choose(item)}
                 >
-                  <span class="item-icon" aria-hidden="true">${ribbonIcon(item.name)}</span>
-                  <span>${item.name}</span>
+                  <span class="item-icon" aria-hidden="true">
+                    ${item.iconUrl ? html`<img src=${item.iconUrl} alt="" />` : ribbonIcon(item.section === "Packages" ? "Packages" : item.name)}
+                  </span>
+                  <span class="item-text">
+                    <span class="item-name">${item.name}</span>
+                    ${item.packageName ? html`<span class="item-package">${item.packageName} · ${item.kind}</span>` : ""}
+                  </span>
                 </button>
               `)}
             </section>
           `)}
-          <section aria-label="Widgets">
-            <h2>Widgets</h2>
-          </section>
         </div>
       </div>
     `

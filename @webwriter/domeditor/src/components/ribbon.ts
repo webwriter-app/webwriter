@@ -15,7 +15,9 @@ import {
 import { ribbonIcon } from "../ribbon-icons"
 import {isOnApple} from "../utility"
 import { insertionMenuItems } from "./insertion-menu"
-import { type RibbonButton } from "./ribbon-button"
+import type {WebWriterPackage} from "../packages"
+import {packageAction, packageMemberAction, packageToggleAction} from "../packages"
+import { type RibbonButton, type RibbonButtonDetails } from "./ribbon-button"
 import "./ribbon-button"
 import "./ribbon-combobox"
 import {type RibbonDrawer} from "./ribbon-drawer"
@@ -23,6 +25,7 @@ import "./ribbon-drawer"
 import { type RibbonMenu, type RibbonMenuButton, type RibbonMenuGroup } from "./ribbon-menu"
 import "./ribbon-menu"
 import "./ribbon-tab"
+import "./package-search"
 
 type RibbonMenuName = "File" | "Start" | "Insert" | "Format" | "Review" | "Settings"
 
@@ -52,7 +55,7 @@ const insertionMenuGroup = (section: "Text" | "Media"): RibbonMenuGroup => ({
   label: section,
   buttons: insertionMenuItems
     .filter(item => item.section === section)
-    .flatMap(item => {
+    .flatMap<RibbonMenuButton>(item => {
       if(item.tag === "h1") {
         return [{
           label: "Heading",
@@ -113,6 +116,14 @@ export class AppRibbon extends LitElement {
     marks: {attribute: false},
     markStyles: {attribute: false},
     presenceUsers: {attribute: false},
+    packages: {attribute: false},
+    installedPackages: {attribute: false},
+    packagesLoading: {type: Boolean, attribute: "packages-loading"},
+    busyPackageNames: {attribute: false},
+    packageError: {type: String, attribute: "package-error"},
+    packageSearchQuery: {type: String, state: true},
+    packageDrawerOpen: {type: Boolean, state: true},
+    packageVisibleCount: {type: Number, state: true},
   }
 
   static styles = css`
@@ -122,8 +133,8 @@ export class AppRibbon extends LitElement {
       position: relative;
       z-index: 1;
       width: 100%;
-      height: 120px;
-      max-height: 120px;
+      height: 130px;
+      max-height: 130px;
       overflow: visible;
       color: #2f3742;
       background: #ffffff;
@@ -435,6 +446,14 @@ export class AppRibbon extends LitElement {
       --ribbon-drawer-inline-end: 0;
     }
 
+    .package-status {
+      align-self: center;
+      padding: 0.25rem;
+      color: #667085;
+      font-size: 0.66rem;
+      white-space: nowrap;
+    }
+
     @media (max-width: 36rem) {
       .ribbon-top {
         gap: 0.35rem;
@@ -450,6 +469,14 @@ export class AppRibbon extends LitElement {
   marks: MarkName[] = []
   markStyles: StyleMarkValues = {}
   presenceUsers: PresenceUser[] = []
+  packages: WebWriterPackage[] = []
+  installedPackages: WebWriterPackage[] = []
+  packagesLoading = false
+  busyPackageNames: string[] = []
+  packageError = ""
+  private packageSearchQuery = ""
+  private packageDrawerOpen = false
+  private packageVisibleCount = 2
   private ribbonContentObserver: ResizeObserver | undefined
   private responsiveLayoutQueued = false
 
@@ -562,6 +589,8 @@ export class AppRibbon extends LitElement {
       )
       await Promise.all(drawers.map(drawer => drawer.updateComplete))
       this.updateResponsiveLayout(drawers)
+      await Promise.all(drawers.map(drawer => drawer.updateComplete))
+      this.updatePackageCapacity()
     })
   }
 
@@ -588,6 +617,27 @@ export class AppRibbon extends LitElement {
     drawers.forEach((drawer, index) => {
       drawer.collapsed = collapsed[index]
     })
+  }
+
+  private updatePackageCapacity() {
+    const drawer = this.renderRoot.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')
+    const controls = drawer?.shadowRoot?.querySelector<HTMLElement>(".controls")
+    if(!drawer || !controls) return
+    const style = getComputedStyle(controls)
+    const padding = (Number.parseFloat(style.paddingLeft) || 0) + (Number.parseFloat(style.paddingRight) || 0)
+    const measuredWidth = controls.getBoundingClientRect().width || drawer.getBoundingClientRect().width || drawer.layoutWidths.expanded
+    const usableWidth = Math.max(0, measuredWidth - padding)
+    const buttonWidth = 64
+    const gap = Number.parseFloat(style.columnGap) || 0
+    const columns = Math.max(2, Math.floor((usableWidth + gap) / (buttonWidth + gap)))
+    // The two-cell search field cannot share its trailing single cell when
+    // the grid has an odd column count. Calculate each row independently so
+    // no package is accidentally placed in a clipped third row.
+    const visibleCount = Math.max(
+      0,
+      Math.floor((columns - 2) / 2) + Math.floor(columns / 2),
+    )
+    if(this.packageVisibleCount !== visibleCount) this.packageVisibleCount = visibleCount
   }
 
   private toggleExpanded() {
@@ -645,7 +695,13 @@ export class AppRibbon extends LitElement {
     if((changed.has("menuOpen") && !this.menuOpen) || changed.has("activeMenu")) {
       this.renderRoot.querySelector<RibbonMenu>("ribbon-menu")?.closeSubmenus()
     }
-    if(changed.has("activeMenu") || changed.has("expanded")) this.scheduleResponsiveLayout()
+    if(changed.has("activeMenu") && this.activeMenu === "Insert") {
+      this.dispatchEvent(new Event("package-catalog-request", {bubbles: true, composed: true}))
+    }
+    if(
+      changed.has("activeMenu") || changed.has("expanded") || changed.has("packages") ||
+      changed.has("installedPackages") || changed.has("packageSearchQuery")
+    ) this.scheduleResponsiveLayout()
   }
 
   private markButton(option: MarkOption, slot = "") {
@@ -742,9 +798,120 @@ export class AppRibbon extends LitElement {
     `
   }
 
+  private get availablePackages() {
+    const installed = new Map(this.installedPackages.map(pkg => [pkg.name, pkg]))
+    const catalogNames = new Set(this.packages.map(pkg => pkg.name))
+    return [
+      ...this.packages.map(pkg => installed.get(pkg.name) ?? pkg),
+      ...this.installedPackages.filter(pkg => !catalogNames.has(pkg.name)),
+    ]
+  }
+
+  private get filteredPackages() {
+    const words = this.packageSearchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean)
+    return this.availablePackages.filter(pkg => {
+      const haystack = [pkg.name, pkg.label, pkg.description, ...pkg.keywords].filter(Boolean).join(" ").toLowerCase()
+      return words.every(word => haystack.includes(word))
+    })
+  }
+
+  private get packageManagementMode() {
+    return Boolean(this.packageSearchQuery.trim()) || this.packageDrawerOpen
+  }
+
+  private packageDetails(pkg: WebWriterPackage): RibbonButtonDetails {
+    const widgetCount = pkg.members.filter(member => member.kind === "widget").length
+    const snippetCount = pkg.members.filter(member => member.kind === "snippet").length
+    return {
+      heading: pkg.label,
+      subheading: `${pkg.name}@${pkg.version}`,
+      description: pkg.description,
+      fields: [
+        ...(pkg.authors.length ? [{label: "By", value: pkg.authors.join(", ")}] : []),
+        ...(pkg.license ? [{label: "License", value: pkg.license}] : []),
+        {label: "Contents", value: `${widgetCount} widget${widgetCount === 1 ? "" : "s"}, ${snippetCount} snippet${snippetCount === 1 ? "" : "s"}`},
+      ],
+      keywords: pkg.keywords.slice(0, 8),
+    }
+  }
+
+  private renderPackageButton(pkg: WebWriterPackage, slot = "") {
+    const members = pkg.members.filter(member => member.insertable)
+    const installed = this.installedPackages.some(candidate => candidate.name === pkg.name)
+    const management = this.packageManagementMode
+    return html`
+      <ribbon-button
+        slot=${slot}
+        variant="package"
+        label=${pkg.label}
+        icon="Packages"
+        icon-url=${pkg.iconUrl ?? ""}
+        .action=${management ? packageToggleAction(pkg) : packageAction(pkg)}
+        .submenu=${management || !installed ? [] : members.slice(1).map(member => ({
+          label: member.label,
+          action: packageMemberAction(member),
+        }))}
+        .corner=${management && installed ? "close" : ""}
+        .cornerLabel=${installed ? `Remove ${pkg.label}` : `Add ${pkg.label}`}
+        .details=${this.packageDetails(pkg)}
+        ?active=${installed}
+        ?management=${management}
+        ?muted=${!installed}
+        ?disabled=${this.busyPackageNames.includes(pkg.name) || !management && !members.length}
+        ?keep-drawer-open=${management}
+      ></ribbon-button>
+    `
+  }
+
+  private handlePackageSearch = (event: Event) => {
+    this.packageSearchQuery = (event as CustomEvent<{query?: string}>).detail?.query ?? ""
+  }
+
+  private handlePackageDrawerState = (event: Event) => {
+    const detail = (event as CustomEvent<{label?: string, open?: boolean}>).detail
+    if(detail?.label === "Packages") this.packageDrawerOpen = detail.open === true
+  }
+
+  private handlePackageSearchFocus = () => {
+    this.renderRoot.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')?.openDrawer(true)
+  }
+
+  private renderPackageDrawer() {
+    const packages = this.filteredPackages
+    const displayPackages = this.packageManagementMode
+      ? packages
+      : [
+          ...packages.filter(pkg => this.installedPackages.some(installed => installed.name === pkg.name)),
+          ...packages.filter(pkg => !this.installedPackages.some(installed => installed.name === pkg.name)),
+        ]
+    const visiblePackages = displayPackages.slice(0, this.packageVisibleCount)
+    const overflowPackages = displayPackages.slice(this.packageVisibleCount)
+    return html`
+      <ribbon-drawer
+        label="Packages"
+        icon="Packages"
+        layout="packages"
+        ?expandable=${overflowPackages.length > 0}
+        @ribbon-drawer-state-change=${this.handlePackageDrawerState}
+      >
+        <package-search
+          .query=${this.packageSearchQuery}
+          .loading=${this.packagesLoading}
+          .error=${this.packageError}
+          @package-search-change=${this.handlePackageSearch}
+          @package-search-focus=${this.handlePackageSearchFocus}
+        ></package-search>
+        ${visiblePackages.map(pkg => this.renderPackageButton(pkg))}
+        ${overflowPackages.map(pkg => this.renderPackageButton(pkg, "more"))}
+        ${!this.packagesLoading && !displayPackages.length ? html`<span class="package-status">No packages</span>` : ""}
+      </ribbon-drawer>
+    `
+  }
+
   private renderDrawers() {
-    return menuGroups[this.activeMenu].map(drawer => {
+    return this.currentMenuGroups.map(drawer => {
       if(drawer.label === "Marks") return this.renderMarkDrawer()
+      if(drawer.label === "Packages") return this.renderPackageDrawer()
       const representative = drawer.buttons[0]
       const icon = typeof representative === "string"
         ? representative
@@ -764,6 +931,22 @@ export class AppRibbon extends LitElement {
         </ribbon-drawer>
       `
     })
+  }
+
+  private get currentMenuGroups() {
+    if(this.activeMenu !== "Insert") return menuGroups[this.activeMenu]
+    const packageButtons: RibbonMenuButton[] = this.availablePackages.map(pkg => {
+      const members = pkg.members.filter(member => member.insertable)
+      return {
+        label: pkg.label,
+        action: packageAction(pkg),
+        submenu: members.slice(1).map(member => ({label: member.label, action: packageMemberAction(member)})),
+      }
+    })
+    return [
+      ...menuGroups.Insert,
+      {label: "Packages", buttons: packageButtons},
+    ]
   }
 
   private renderPresence() {
@@ -868,7 +1051,7 @@ export class AppRibbon extends LitElement {
           </button>
         </div>
         <ribbon-menu
-          .groups=${menuGroups[this.activeMenu]}
+          .groups=${this.currentMenuGroups}
           ?hidden=${!this.menuOpen || this.expanded}
         ></ribbon-menu>
         <div

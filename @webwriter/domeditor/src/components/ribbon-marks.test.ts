@@ -165,9 +165,10 @@ describe("mark ribbon controls", () => {
     expect(sectionStyle.clipPath).not.toBe("none")
     expect(getComputedStyle(toggle).position).toBe("absolute")
     expect(getComputedStyle(toggle).left).toBe("calc(50% + 1px)")
-    expect(getComputedStyle(toggle).bottom).toBe("-9px")
+    expect(getComputedStyle(toggle).bottom).toBe("-10px")
     expect(getComputedStyle(toggle).width).toBe("80px")
     expect(getComputedStyle(toggle).padding).toBe("0px")
+    expect(getComputedStyle(drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!).gap).toBe("0.2rem")
     expect(collapsedChevronTransform).toBe("rotate(45deg)")
     expect(getComputedStyle(chevron).transform).toBe("rotate(225deg)")
     expect(buttons.map(button => button.label)).toEqual([
@@ -213,7 +214,7 @@ describe("mark ribbon controls", () => {
     expect(getComputedStyle(controls).visibility).toBe("visible")
     expect(getComputedStyle(controls).transition).not.toContain("opacity")
     expect(moreSlot.hidden).toBe(false)
-    expect(getComputedStyle(ribbon).height).toBe("120px")
+    expect(getComputedStyle(ribbon).height).toBe("130px")
 
     toggle.click()
     await drawer.updateComplete

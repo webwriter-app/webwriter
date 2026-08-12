@@ -37,6 +37,7 @@ describe("responsive ribbon drawer", () => {
     expect(getComputedStyle(controls).width).toBe("208px")
     expect(getComputedStyle(controls).boxShadow).not.toBe("none")
     expect(getComputedStyle(controls).borderColor).toBe("#d8dee6")
+    expect(getComputedStyle(controls).gap).toBe("0")
     expect(drawer.children).toHaveLength(3)
 
     toggle.click()
@@ -83,6 +84,10 @@ describe("responsive ribbon drawer", () => {
     const section = drawer.shadowRoot!.querySelector<HTMLElement>(".drawer")!
     const moreSlot = drawer.shadowRoot!.querySelector<HTMLSlotElement>('slot[name="more"]')!
 
+    expect(getComputedStyle(section).paddingBottom).toBe("0px")
+    expect(getComputedStyle(drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!).paddingBottom).toBe("4px")
+    expect(getComputedStyle(toggle).bottom).toBe("-4px")
+
     expect(toggle.hidden).toBe(false)
     expect(toggle.disabled).toBe(false)
     expect(moreSlot.hidden).toBe(true)
@@ -92,6 +97,92 @@ describe("responsive ribbon drawer", () => {
 
     expect(section.classList.contains("expanded")).toBe(true)
     expect(moreSlot.hidden).toBe(false)
+    expect(getComputedStyle(toggle).bottom).toBe("-10px")
+  })
+
+  it("caps an expanded package drawer at the viewport bottom", async () => {
+    const drawer = new RibbonDrawer()
+    drawer.layout = "packages"
+    drawer.expandable = true
+    document.body.append(drawer)
+    await drawer.updateComplete
+    Object.defineProperty(drawer, "getBoundingClientRect", {
+      value: () => ({top: 120, height: 90}),
+      configurable: true,
+    })
+
+    drawer.openDrawer()
+    await drawer.updateComplete
+
+    expect(drawer.style.getPropertyValue("--ribbon-drawer-available-height"))
+      .toBe(`${window.innerHeight - 120}px`)
+    const section = drawer.shadowRoot!.querySelector<HTMLElement>(".drawer")!
+    expect(section.style.getPropertyValue("--package-expanded-height")).toMatch(/px$/)
+    expect(RibbonDrawer.styles.toString()).toContain("height: var(--package-expanded-height")
+    expect(RibbonDrawer.styles.toString()).toContain("padding-bottom: var(--package-expanded-grid-padding")
+    expect(getComputedStyle(section).transition).toContain("max-height")
+    const controls = drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!
+    expect(getComputedStyle(controls).overflowY).toBe("hidden")
+
+    const opened = new Event("transitionend") as TransitionEvent
+    Object.defineProperty(opened, "propertyName", {value: "max-height"})
+    section.dispatchEvent(opened)
+    await drawer.updateComplete
+    expect(getComputedStyle(controls).overflowY).toBe("auto")
+
+    const expandedRows = getComputedStyle(controls).gridAutoRows
+    drawer.closeDrawer()
+    await drawer.updateComplete
+    expect(section.classList.contains("closing")).toBe(true)
+    expect(getComputedStyle(controls).gridAutoRows).toBe(expandedRows)
+    expect(getComputedStyle(controls).overflowY).toBe("hidden")
+  })
+
+  it("fits an open package drawer to reflowed content up to the viewport", async () => {
+    const drawer = new RibbonDrawer()
+    drawer.layout = "packages"
+    drawer.expandable = true
+    drawer.append(document.createElement("package-search"))
+    for(let index = 0; index < 12; index++) {
+      const button = new RibbonButton()
+      button.variant = "package"
+      button.label = `Package ${index}`
+      drawer.append(button)
+    }
+    document.body.append(drawer)
+    await drawer.updateComplete
+
+    const section = drawer.shadowRoot!.querySelector<HTMLElement>(".drawer")!
+    const controls = drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!
+    let drawerHeight = 90
+    let controlsWidth = 400
+    Object.defineProperty(drawer, "getBoundingClientRect", {
+      value: () => ({top: 120, height: 90}), configurable: true,
+    })
+    Object.defineProperty(section, "getBoundingClientRect", {
+      value: () => ({height: drawerHeight}), configurable: true,
+    })
+    Object.defineProperty(controls, "getBoundingClientRect", {
+      value: () => ({height: drawerHeight - 2, width: controlsWidth}), configurable: true,
+    })
+
+    drawer.openDrawer()
+    await drawer.updateComplete
+    const initialHeight = Number.parseFloat(section.style.getPropertyValue("--package-expanded-height"))
+    drawerHeight = initialHeight
+    const resize = (drawer as unknown as {updatePackageDrawerSize(): boolean})
+      .updatePackageDrawerSize.bind(drawer)
+
+    controlsWidth = 200
+    resize()
+    const narrowedHeight = Number.parseFloat(section.style.getPropertyValue("--package-expanded-height"))
+    expect(narrowedHeight).toBeGreaterThan(initialHeight)
+    expect(narrowedHeight).toBeLessThanOrEqual(window.innerHeight - 120)
+
+    drawerHeight = narrowedHeight
+    controlsWidth = 600
+    resize()
+    expect(Number.parseFloat(section.style.getPropertyValue("--package-expanded-height"))).toBeLessThan(narrowedHeight)
   })
 
   it("closes a compact drawer when the drawer expands again", async () => {

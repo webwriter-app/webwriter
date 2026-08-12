@@ -98,6 +98,7 @@ import textSpellcheck from "@tabler/icons/outline/text-spellcheck.svg?raw"
 import variable from "@tabler/icons/outline/variable.svg?raw"
 import vocabulary from "@tabler/icons/outline/vocabulary.svg?raw"
 import x from "@tabler/icons/outline/x.svg?raw"
+import search from "@tabler/icons/outline/search.svg?raw"
 
 const icons: Record<string, string> = {
   Document: fileDescription,
@@ -172,6 +173,8 @@ const icons: Record<string, string> = {
   Accessibility: accessible,
   Preferences: adjustments,
   Extensions: puzzle,
+  Packages: puzzle,
+  Search: search,
   About: infoCircle,
   Margins: boxMargin,
   Columns: columns3,
