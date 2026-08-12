@@ -13,7 +13,7 @@ import {
   presenceChangeEvent,
   selectionChangeEvent,
 } from "../editor-bridge"
-import {WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
+import {INSTALLED_PACKAGES_STORAGE_KEY, WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
 
 const demoPackage: WebWriterPackage = {
   name: "@webwriter/demo",
@@ -58,6 +58,7 @@ async function mountEditor() {
 
 afterEach(() => {
   document.body.replaceChildren()
+  localStorage.removeItem(INSTALLED_PACKAGES_STORAGE_KEY)
   vi.restoreAllMocks()
 })
 
@@ -66,6 +67,25 @@ beforeEach(() => {
 })
 
 describe("DomEditor iframe setup", () => {
+  it("restores installed packages and starts the package catalog fetch on mount", async () => {
+    localStorage.setItem(INSTALLED_PACKAGES_STORAGE_KEY, JSON.stringify([demoPackage]))
+    const search = vi.mocked(WebWriterPackageRegistry.prototype.search)
+    const editor = new DomEditor()
+    document.body.append(editor)
+    await editor.updateComplete
+    const iframe = editor.shadowRoot!.querySelector("iframe")!
+    const postMessage = vi.spyOn(iframe.contentWindow!, "postMessage")
+    iframe.dispatchEvent(new Event("load"))
+
+    expect(search).toHaveBeenCalledTimes(1)
+    expect((editor as unknown as {installedPackages: WebWriterPackage[]}).installedPackages).toEqual([demoPackage])
+
+    expect(postMessage).toHaveBeenCalledWith({
+      type: loadWidgetsMessage,
+      widgets: [{name: demoPackage.name, version: demoPackage.version}],
+    }, "*")
+  })
+
   it("does not sandbox the editor iframe", async () => {
     const {iframe} = await mountEditor()
 
@@ -115,6 +135,26 @@ describe("DomEditor iframe setup", () => {
     expect(srcdoc).toContain(`<script src="${polyfillUrl}"></script>`)
     expect(srcdoc.indexOf(polyfillUrl)).toBeLessThan(srcdoc.indexOf("editor-entry"))
     expect(srcdoc).not.toContain("Demo Widget")
+  })
+
+  it("persists package additions and removals", async () => {
+    const {editor} = await mountEditor()
+    vi.spyOn(editor, "execute").mockResolvedValue({update: []})
+    vi.spyOn((editor as any).packageRegistry, "getPackage").mockResolvedValue(demoPackage)
+
+    const adding = (editor as any).setPackageInstalled(demoPackage, true) as Promise<unknown>
+    await vi.waitFor(() => expect(editor.shadowRoot!.querySelector("iframe")?.getAttribute("srcdoc")).toContain("<!-- frame 1 -->"))
+    editor.shadowRoot!.querySelector("iframe")!.dispatchEvent(new Event("load"))
+    await adding
+
+    expect(JSON.parse(localStorage.getItem(INSTALLED_PACKAGES_STORAGE_KEY)!)).toEqual([demoPackage])
+
+    const removing = (editor as any).setPackageInstalled(demoPackage, false) as Promise<unknown>
+    await vi.waitFor(() => expect(editor.shadowRoot!.querySelector("iframe")?.getAttribute("srcdoc")).toContain("<!-- frame 2 -->"))
+    editor.shadowRoot!.querySelector("iframe")!.dispatchEvent(new Event("load"))
+    await removing
+
+    expect(JSON.parse(localStorage.getItem(INSTALLED_PACKAGES_STORAGE_KEY)!)).toEqual([])
   })
 })
 

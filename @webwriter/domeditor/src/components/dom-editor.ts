@@ -5,6 +5,7 @@ import type { EditingAction } from "../domeditor"
 import { insertionMenuItems } from "./insertion-menu"
 import type {EditorStateSnapshot} from "../editor-state"
 import {
+  INSTALLED_PACKAGES_STORAGE_KEY,
   packageMemberAction,
   WebWriterPackageRegistry,
   type PackageMember,
@@ -43,6 +44,33 @@ const escapeAttribute = (value: string) => value
 const editorEntryUrl = `${import.meta.env.BASE_URL}${import.meta.env.DEV ? "src/editor-entry.ts" : "assets/editor-entry.js"}`
 const appIconUrl = `${import.meta.env.BASE_URL}assets/app-icon-transparent.svg`
 const scopedCustomElementRegistryPolyfillUrl = "https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value)
+
+const isStoredPackageMember = (value: unknown): value is PackageMember => {
+  if(!isRecord(value)) return false
+  return typeof value.id === "string"
+    && typeof value.packageName === "string"
+    && typeof value.packageVersion === "string"
+    && typeof value.exportName === "string"
+    && (value.kind === "widget" || value.kind === "snippet")
+    && typeof value.label === "string"
+    && typeof value.insertable === "boolean"
+}
+
+const isStoredPackage = (value: unknown): value is WebWriterPackage => {
+  if(!isRecord(value)) return false
+  return typeof value.name === "string"
+    && typeof value.version === "string"
+    && typeof value.label === "string"
+    && Array.isArray(value.authors) && value.authors.every(author => typeof author === "string")
+    && Array.isArray(value.keywords) && value.keywords.every(keyword => typeof keyword === "string")
+    && isRecord(value.links)
+    && Array.isArray(value.members) && value.members.every(isStoredPackageMember)
+    && Array.isArray(value.scripts) && value.scripts.every(script => typeof script === "string")
+    && Array.isArray(value.styles) && value.styles.every(style => typeof style === "string")
+}
 
 type SelectionBookmark = {
   anchorNode: Node
@@ -101,6 +129,7 @@ export class DomEditor extends LitElement {
   private frameState: EditorStateSnapshot | undefined
   private frameRevision = 0
   private packageCatalogRequested = false
+  private installedPackagesRestored = false
   private readonly packageRegistry = new WebWriterPackageRegistry()
   private treeViewOpen = false
   private breadcrumbHoverPath: number[] | null = null
@@ -478,6 +507,7 @@ export class DomEditor extends LitElement {
     this.pendingExecutions.clear()
     this.frameState = snapshot
     this.installedPackages = nextPackages
+    this.persistInstalledPackages()
     this.frameRevision++
     await this.updateComplete
     await this.waitForEditorWindow()
@@ -497,6 +527,34 @@ export class DomEditor extends LitElement {
     }
     finally {
       this.packagesLoading = false
+    }
+  }
+
+  private restoreInstalledPackages() {
+    if(this.installedPackagesRestored) return
+    this.installedPackagesRestored = true
+    try {
+      const serialized = globalThis.localStorage?.getItem(INSTALLED_PACKAGES_STORAGE_KEY)
+      if(serialized === null || serialized === undefined) return
+      const stored = JSON.parse(serialized) as unknown
+      if(!Array.isArray(stored)) return
+      this.installedPackages = stored.filter(isStoredPackage)
+    }
+    catch {
+      // A malformed or unavailable local-storage entry should not prevent the
+      // editor from mounting with an empty in-memory package list.
+    }
+  }
+
+  private persistInstalledPackages() {
+    try {
+      globalThis.localStorage?.setItem(
+        INSTALLED_PACKAGES_STORAGE_KEY,
+        JSON.stringify(this.installedPackages),
+      )
+    }
+    catch {
+      // Storage can be disabled or full; package changes still work in memory.
     }
   }
 
@@ -684,6 +742,8 @@ export class DomEditor extends LitElement {
   connectedCallback() {
     super.connectedCallback()
     window.addEventListener("message", this.handleEditorMessage)
+    this.restoreInstalledPackages()
+    void this.loadPackageCatalog()
   }
 
   disconnectedCallback() {
