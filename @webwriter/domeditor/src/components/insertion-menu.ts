@@ -237,7 +237,7 @@ export class InsertionMenu extends LitElement {
                   </span>
                   <span class="item-text">
                     <span class="item-name">${item.name}</span>
-                    ${item.packageName ? html`<span class="item-package">${item.packageName} · ${item.kind}</span>` : ""}
+                    ${item.packageName ? html`<span class="item-package">${item.packageName}</span>` : ""}
                   </span>
                 </button>
               `)}

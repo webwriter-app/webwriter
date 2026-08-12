@@ -9,6 +9,8 @@ export type RibbonMenuGroup = {
 export type RibbonMenuButton = string | {
   label: string
   action?: string
+  icon?: string
+  iconUrl?: string
   submenu?: RibbonMenuButton[]
 }
 
@@ -168,6 +170,7 @@ export class RibbonMenu extends LitElement {
     }
 
     .item-icon {
+      position: relative;
       display: block;
       flex: 0 0 1rem;
       width: 1rem;
@@ -179,6 +182,19 @@ export class RibbonMenu extends LitElement {
       display: block;
       width: 100%;
       height: 100%;
+    }
+
+    .item-icon.image-icon svg {
+      visibility: hidden;
+    }
+
+    .item-icon img {
+      position: absolute;
+      inset: 0;
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
     }
   `
 
@@ -202,6 +218,30 @@ export class RibbonMenu extends LitElement {
 
   private buttonAction(button: RibbonMenuButton) {
     return typeof button === "string" ? button : button.action ?? button.label
+  }
+
+  private buttonIcon(button: RibbonMenuButton) {
+    return typeof button === "string" ? this.buttonAction(button) : button.icon ?? this.buttonAction(button)
+  }
+
+  private buttonIconUrl(button: RibbonMenuButton) {
+    return typeof button === "string" ? "" : button.iconUrl ?? ""
+  }
+
+  private handleIconError(event: Event) {
+    const image = event.currentTarget as HTMLImageElement
+    image.parentElement?.classList.remove("image-icon")
+    image.remove()
+  }
+
+  private renderButtonIcon(button: RibbonMenuButton) {
+    const iconUrl = this.buttonIconUrl(button)
+    return html`
+      <span class=${`item-icon${iconUrl ? " image-icon" : ""}`} aria-hidden="true">
+        ${ribbonIcon(this.buttonIcon(button))}
+        ${iconUrl ? html`<img src=${iconUrl} alt="" @error=${this.handleIconError} />` : ""}
+      </span>
+    `
   }
 
   private handleClick(button: RibbonMenuButton) {
@@ -230,7 +270,6 @@ export class RibbonMenu extends LitElement {
           <section aria-label=${group.label}>
             ${group.buttons.map((button, buttonIndex) => {
               const label = this.buttonLabel(button)
-              const action = this.buttonAction(button)
               const submenu = this.buttonSubmenu(button)
               const hasSubmenu = submenu.length > 0
               const isOpen = this.openSubmenu === label
@@ -245,7 +284,7 @@ export class RibbonMenu extends LitElement {
                       title=${label}
                       @click=${() => this.handleClick(button)}
                     >
-                      <span class="item-icon" aria-hidden="true">${ribbonIcon(action)}</span>
+                      ${this.renderButtonIcon(button)}
                       <span>${label}</span>
                     </button>
                     ${hasSubmenu ? html`
@@ -277,7 +316,7 @@ export class RibbonMenu extends LitElement {
                           title=${this.buttonLabel(submenuButton)}
                           @click=${() => this.handleClick(submenuButton)}
                         >
-                          <span class="item-icon" aria-hidden="true">${ribbonIcon(this.buttonAction(submenuButton))}</span>
+                          ${this.renderButtonIcon(submenuButton)}
                           <span>${this.buttonLabel(submenuButton)}</span>
                         </button>
                       `)}

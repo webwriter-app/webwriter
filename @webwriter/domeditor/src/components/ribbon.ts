@@ -17,6 +17,7 @@ import {isOnApple} from "../utility"
 import { insertionMenuItems } from "./insertion-menu"
 import type {WebWriterPackage} from "../packages"
 import {packageAction, packageMemberAction, packageToggleAction} from "../packages"
+import {packageKeywordPresentations} from "../package-keywords"
 import { type RibbonButton, type RibbonButtonDetails } from "./ribbon-button"
 import "./ribbon-button"
 import "./ribbon-combobox"
@@ -801,9 +802,13 @@ export class AppRibbon extends LitElement {
   private get availablePackages() {
     const installed = new Map(this.installedPackages.map(pkg => [pkg.name, pkg]))
     const catalogNames = new Set(this.packages.map(pkg => pkg.name))
-    return [
+    const available = [
       ...this.packages.map(pkg => installed.get(pkg.name) ?? pkg),
       ...this.installedPackages.filter(pkg => !catalogNames.has(pkg.name)),
+    ]
+    return [
+      ...available.filter(pkg => installed.has(pkg.name)),
+      ...available.filter(pkg => !installed.has(pkg.name)),
     ]
   }
 
@@ -820,18 +825,12 @@ export class AppRibbon extends LitElement {
   }
 
   private packageDetails(pkg: WebWriterPackage): RibbonButtonDetails {
-    const widgetCount = pkg.members.filter(member => member.kind === "widget").length
-    const snippetCount = pkg.members.filter(member => member.kind === "snippet").length
     return {
       heading: pkg.label,
       subheading: `${pkg.name}@${pkg.version}`,
       description: pkg.description,
-      fields: [
-        ...(pkg.authors.length ? [{label: "By", value: pkg.authors.join(", ")}] : []),
-        ...(pkg.license ? [{label: "License", value: pkg.license}] : []),
-        {label: "Contents", value: `${widgetCount} widget${widgetCount === 1 ? "" : "s"}, ${snippetCount} snippet${snippetCount === 1 ? "" : "s"}`},
-      ],
-      keywords: pkg.keywords.slice(0, 8),
+      authors: pkg.authors,
+      keywords: packageKeywordPresentations(pkg.keywords).slice(0, 8),
     }
   }
 
@@ -850,6 +849,8 @@ export class AppRibbon extends LitElement {
         .submenu=${management || !installed ? [] : members.slice(1).map(member => ({
           label: member.label,
           action: packageMemberAction(member),
+          icon: "Packages",
+          iconUrl: pkg.iconUrl,
         }))}
         .corner=${management && installed ? "close" : ""}
         .cornerLabel=${installed ? `Remove ${pkg.label}` : `Add ${pkg.label}`}
@@ -877,13 +878,7 @@ export class AppRibbon extends LitElement {
   }
 
   private renderPackageDrawer() {
-    const packages = this.filteredPackages
-    const displayPackages = this.packageManagementMode
-      ? packages
-      : [
-          ...packages.filter(pkg => this.installedPackages.some(installed => installed.name === pkg.name)),
-          ...packages.filter(pkg => !this.installedPackages.some(installed => installed.name === pkg.name)),
-        ]
+    const displayPackages = this.filteredPackages
     const visiblePackages = displayPackages.slice(0, this.packageVisibleCount)
     const overflowPackages = displayPackages.slice(this.packageVisibleCount)
     return html`

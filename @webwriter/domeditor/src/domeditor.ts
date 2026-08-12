@@ -347,10 +347,21 @@ export class DOMEditor {
     }
     elements.unshift(body)
 
-    const path: SelectionPathItem[] = elements.map(currentElement => ({
-      path: this.pathToElement(currentElement),
-      ...getElementPresentation(currentElement),
-    }))
+    const path: SelectionPathItem[] = elements.map(currentElement => {
+      const packageItem = globalThis.DOMEDITOR_PACKAGE_ITEMS?.find(item => (
+        item.kind === "widget" && item.tag?.toLowerCase() === currentElement.localName
+      ))
+      return {
+        path: this.pathToElement(currentElement),
+        ...(packageItem
+          ? {
+              name: packageItem.name,
+              icon: "Packages",
+              ...(packageItem.iconUrl ? {iconUrl: packageItem.iconUrl} : {}),
+            }
+          : getElementPresentation(currentElement)),
+      }
+    })
     const gap: SelectionGap | undefined = $.isGapSelection && isElement($.anchor)
       ? {parentPath: this.pathToElement($.anchor), offset: $.anchorOffset}
       : undefined

@@ -183,6 +183,7 @@ export class DomEditorBreadcrumb extends LitElement {
     }
 
     .item-icon {
+      position: relative;
       display: inline-flex;
       flex: 0 0 13px;
       width: 13px;
@@ -194,6 +195,19 @@ export class DomEditorBreadcrumb extends LitElement {
       display: block;
       width: 100%;
       height: 100%;
+    }
+
+    .item-icon.image-icon svg {
+      visibility: hidden;
+    }
+
+    .item-icon img {
+      position: absolute;
+      inset: 0;
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
     }
 
     .tree-list,
@@ -391,6 +405,7 @@ export class DomEditorBreadcrumb extends LitElement {
         && entry.state === other.state
         && entry.item.name === other.item.name
         && entry.item.icon === other.item.icon
+        && entry.item.iconUrl === other.item.iconUrl
         && this.pathsEqual(entry.item.path, other.item.path)
     })
   }
@@ -540,6 +555,7 @@ export class DomEditorBreadcrumb extends LitElement {
             path: [...item.path],
             name: item.name,
             ...(item.icon ? {icon: item.icon} : {}),
+            ...(item.iconUrl ? {iconUrl: item.iconUrl} : {}),
           }
         : null,
       bubbles: true,
@@ -623,6 +639,23 @@ export class DomEditorBreadcrumb extends LitElement {
     `
   }
 
+  private renderItemIcon(item: SelectionPathItem) {
+    return html`
+      <span class=${`item-icon${item.iconUrl ? " image-icon" : ""}`} aria-hidden="true">
+        ${ribbonIcon(item.icon ?? item.name)}
+        ${item.iconUrl ? html`<img
+          src=${item.iconUrl}
+          alt=""
+          @error=${(event: Event) => {
+            const image = event.currentTarget as HTMLImageElement
+            image.parentElement?.classList.remove("image-icon")
+            image.remove()
+          }}
+        />` : ""}
+      </span>
+    `
+  }
+
   private gapMarkerFor(items: DocumentTreeItem[], parentPath: number[]) {
     const gap = this.gap
     if(!gap || !items.length || !this.pathsEqual(gap.parentPath, parentPath)) return null
@@ -686,7 +719,7 @@ export class DomEditorBreadcrumb extends LitElement {
             @mouseleave=${() => this.clearHover(item)}
             @click=${() => this.select(item)}
           >
-            <span class="item-icon" aria-hidden="true">${ribbonIcon(item.icon ?? item.name)}</span>
+            ${this.renderItemIcon(item)}
             <span>${item.name}</span>
           </button>
         </div>
@@ -706,6 +739,7 @@ export class DomEditorBreadcrumb extends LitElement {
         path: [...item.path],
         name: item.name,
         ...(item.icon ? {icon: item.icon} : {}),
+        ...(item.iconUrl ? {iconUrl: item.iconUrl} : {}),
       },
       bubbles: true,
       composed: true,
@@ -741,7 +775,7 @@ export class DomEditorBreadcrumb extends LitElement {
           @mouseleave=${() => this.clearHover(entry.item)}
           @click=${() => this.select(entry.item)}
         >
-          <span class="item-icon" aria-hidden="true">${ribbonIcon(entry.item.icon ?? entry.item.name)}</span>
+          ${this.renderItemIcon(entry.item)}
           <span>${entry.item.name}</span>
         </button>
       </li>

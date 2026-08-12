@@ -2,7 +2,7 @@
 import {afterEach, describe, expect, it, vi} from "vitest"
 import type {WebWriterPackage} from "../packages"
 import {AppRibbon} from "./ribbon"
-import type {RibbonButton} from "./ribbon-button"
+import {RibbonButton} from "./ribbon-button"
 import {RibbonDrawer} from "./ribbon-drawer"
 
 const packageFixture = (name = "demo"): WebWriterPackage => ({
@@ -76,15 +76,17 @@ describe("package ribbon controls", () => {
     expect(getComputedStyle(button.shadowRoot!.querySelector(".button-row")!).height).toBe("100%")
     expect(getComputedStyle(search.shadowRoot!.querySelector(".field")!).backgroundColor).toBe("transparent")
     expect(getComputedStyle(button.shadowRoot!.querySelector(".button-label")!).fontSize).toContain("calc")
-    expect(getComputedStyle(button.shadowRoot!.querySelector(".submenu-toggle")!).top).toBe("50%")
-    expect(getComputedStyle(button.shadowRoot!.querySelector(".submenu-toggle")!).transform).toBe("translateY(-50%)")
+    expect(RibbonButton.styles.toString()).toMatch(/\.submenu-trigger\s*\{[\s\S]*?height:\s*100%/)
+    expect(RibbonButton.styles.toString()).toMatch(/\.submenu-trigger\s*\{[\s\S]*?aspect-ratio:\s*1\s*\/\s*1/)
 
     button.shadowRoot!.querySelector('button[aria-label="Show more Demo options"]')!.click()
     await button.updateComplete
     const menu = button.shadowRoot!.querySelector("ribbon-menu")!
     await menu.updateComplete
     expect(menu.getAttribute("popover")).toBe("manual")
-    expect(menu.shadowRoot!.querySelector('button[title="demo Snippet"]')).not.toBeNull()
+    const menuItem = menu.shadowRoot!.querySelector('button[title="demo Snippet"]')!
+    expect(menuItem).not.toBeNull()
+    expect(menuItem.querySelector('img[src="https://example.com/icon.svg"]')).not.toBeNull()
     expect(button.shadowRoot!.querySelector(".details")?.getAttribute("popover")).toBe("manual")
   })
 
@@ -125,7 +127,44 @@ describe("package ribbon controls", () => {
     expect(availableButton.shadowRoot!.querySelector(".submenu-chevron")).toBeNull()
   })
 
-  it("promotes installed packages only while the drawer is collapsed", async () => {
+  it("opens compact package details to the left with friendly keyword metadata", async () => {
+    const ribbon = new AppRibbon()
+    ribbon.activeMenu = "Insert"
+    const pkg = packageFixture("details")
+    pkg.authors = ["Ada", "Grace"]
+    pkg.keywords = ["webwriter-widget", "widget-practical", "isced2011-1", "iscedf2013-05"]
+    ribbon.packages = [pkg]
+    ribbon.installedPackages = [pkg]
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+
+    const button = ribbon.shadowRoot!.querySelector<RibbonButton>(
+      'ribbon-drawer[label="Packages"] ribbon-button[label="Details"]',
+    )!
+    await button.updateComplete
+    Object.defineProperty(button, "getBoundingClientRect", {
+      value: () => ({left: 400, top: 72, right: 528, bottom: 112, width: 128, height: 40}),
+      configurable: true,
+    })
+    button.shadowRoot!.querySelector<HTMLElement>(".button-row")!
+      .dispatchEvent(new MouseEvent("mouseenter"))
+    await button.updateComplete
+
+    const details = button.shadowRoot!.querySelector<HTMLElement>(".details")!
+    expect(details.style.left).toBe("122px")
+    expect(details.style.top).toBe("72px")
+    expect(details.textContent).toContain("By Ada, Grace")
+    expect(details.textContent).toContain("Primary education")
+    expect(details.textContent).toContain("Natural sciences, mathematics and statistics")
+    expect(details.textContent).not.toContain("License")
+    expect(details.textContent).not.toContain("Contents")
+    expect(details.textContent).not.toContain("webwriter-widget")
+    expect(details.querySelector(".icon-tabler-backpack")).not.toBeNull()
+    expect(details.querySelector(".icon-tabler-flask")).not.toBeNull()
+    expect(RibbonButton.styles.toString()).not.toContain("background: #f2f2f2")
+  })
+
+  it("keeps installed packages first whether the drawer is open or closed", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Insert"
     const available = packageFixture("available")
@@ -142,7 +181,7 @@ describe("package ribbon controls", () => {
     drawer.openDrawer(true)
     await drawer.updateComplete
     await ribbon.updateComplete
-    expect(labels()).toEqual(["Available", "Installed", "Another"])
+    expect(labels()).toEqual(["Installed", "Available", "Another"])
   })
 
   it("accounts for the unused cell beside search in odd-width grids", async () => {

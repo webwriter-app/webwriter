@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {DomEditor} from "./dom-editor"
-import type {DomEditorBreadcrumb} from "./breadcrumb"
+import type {DomEditorBreadcrumb, DocumentTreeItem} from "./breadcrumb"
 import type {RibbonButton} from "./ribbon-button"
 import type {RibbonDrawer} from "./ribbon-drawer"
 import {
@@ -20,6 +20,7 @@ const demoPackage: WebWriterPackage = {
   version: "1.0.0",
   label: "Demo",
   description: "Demo package",
+  iconUrl: "https://example.com/demo.svg",
   authors: ["Ada"],
   license: "MIT",
   keywords: ["webwriter-widget"],
@@ -34,6 +35,7 @@ const demoPackage: WebWriterPackage = {
     kind: "widget",
     label: "Demo Widget",
     insertable: true,
+    iconUrl: "https://example.com/demo.svg",
     tagName: "webwriter-demo",
   }, {
     id: "@webwriter/demo@1.0.0:./snippets/demo",
@@ -424,6 +426,44 @@ describe("DomEditor.execute()", () => {
     expect(buttons[0].parentElement?.nextElementSibling?.classList.contains("tree-toggle-separator")).toBe(true)
     expect(buttons[2].parentElement?.nextElementSibling).toBeNull()
     expect(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .item-icon svg")).toHaveLength(3)
+  })
+
+  it("renders package widget names and icons in breadcrumbs and the document tree", async () => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    ;(editor as unknown as {installedPackages: WebWriterPackage[]}).installedPackages = [demoPackage]
+    iframe.contentDocument!.body.innerHTML = "<webwriter-demo></webwriter-demo>"
+
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {
+        type: selectionChangeEvent,
+        detail: {
+          path: [
+            {path: [], name: "Document", icon: "Document"},
+            {
+              path: [0],
+              name: "Demo Widget",
+              icon: "Packages",
+              iconUrl: "https://example.com/demo.svg",
+            },
+          ],
+        },
+      },
+      source: editorWindow,
+    }))
+    await editor.updateComplete
+
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    await breadcrumb.updateComplete
+    const widget = Array.from(breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>("button.item"))[1]
+    expect(widget.textContent?.trim()).toBe("Demo Widget")
+    expect(widget.querySelector('img[src="https://example.com/demo.svg"]')).not.toBeNull()
+
+    const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
+    expect(tree.children[0]).toEqual(expect.objectContaining({
+      name: "Demo Widget",
+      icon: "Packages",
+      iconUrl: "https://example.com/demo.svg",
+    }))
   })
 
   it("opens an expandable document tree from the Document separator", async () => {

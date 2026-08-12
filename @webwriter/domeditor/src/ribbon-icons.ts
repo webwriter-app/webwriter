@@ -99,6 +99,26 @@ import variable from "@tabler/icons/outline/variable.svg?raw"
 import vocabulary from "@tabler/icons/outline/vocabulary.svg?raw"
 import x from "@tabler/icons/outline/x.svg?raw"
 import search from "@tabler/icons/outline/search.svg?raw"
+import babyCarriage from "@tabler/icons/outline/baby-carriage.svg?raw"
+import backpack from "@tabler/icons/outline/backpack.svg?raw"
+import bell from "@tabler/icons/outline/bell.svg?raw"
+import books from "@tabler/icons/outline/books.svg?raw"
+import briefcase from "@tabler/icons/outline/briefcase.svg?raw"
+import buildingBank from "@tabler/icons/outline/building-bank.svg?raw"
+import bulb from "@tabler/icons/outline/bulb.svg?raw"
+import certificate from "@tabler/icons/outline/certificate.svg?raw"
+import checklist from "@tabler/icons/outline/checklist.svg?raw"
+import deviceLaptop from "@tabler/icons/outline/device-laptop.svg?raw"
+import flask from "@tabler/icons/outline/flask.svg?raw"
+import news from "@tabler/icons/outline/news.svg?raw"
+import presentation from "@tabler/icons/outline/presentation.svg?raw"
+import refresh from "@tabler/icons/outline/refresh.svg?raw"
+import school from "@tabler/icons/outline/school.svg?raw"
+import stethoscope from "@tabler/icons/outline/stethoscope.svg?raw"
+import tools from "@tabler/icons/outline/tools.svg?raw"
+import tractor from "@tabler/icons/outline/tractor.svg?raw"
+import wifi from "@tabler/icons/outline/wifi.svg?raw"
+import world from "@tabler/icons/outline/world.svg?raw"
 
 const icons: Record<string, string> = {
   Document: fileDescription,
@@ -175,6 +195,32 @@ const icons: Record<string, string> = {
   Extensions: puzzle,
   Packages: puzzle,
   Search: search,
+  KeywordOnline: wifi,
+  KeywordLanguage: language,
+  KeywordPresentation: presentation,
+  KeywordPractice: checklist,
+  KeywordSimulation: refresh,
+  KeywordConcept: bulb,
+  KeywordInformation: infoCircle,
+  KeywordContext: world,
+  EducationEarlyChildhood: babyCarriage,
+  EducationPrimary: backpack,
+  EducationSecondary: school,
+  EducationPostSecondary: certificate,
+  EducationTertiary: buildingBank,
+  EducationDegree: certificate,
+  EducationOther: books,
+  EducationFieldGeneral: books,
+  EducationFieldEducation: school,
+  EducationFieldArts: palette,
+  EducationFieldSocialSciences: news,
+  EducationFieldBusiness: briefcase,
+  EducationFieldSciences: flask,
+  EducationFieldTechnology: deviceLaptop,
+  EducationFieldEngineering: tools,
+  EducationFieldAgriculture: tractor,
+  EducationFieldHealth: stethoscope,
+  EducationFieldServices: bell,
   About: infoCircle,
   Margins: boxMargin,
   Columns: columns3,

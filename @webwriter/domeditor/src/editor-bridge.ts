@@ -57,6 +57,8 @@ export type SelectionPathItem = {
   name: string
   /** The key used by the shared icon renderer. */
   icon?: string
+  /** An optional package-provided icon displayed instead of the shared icon. */
+  iconUrl?: string
 }
 
 export type SelectionGap = {
@@ -148,6 +150,7 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
       && pathItem.path.every(index => Number.isInteger(index) && index >= 0)
       && typeof pathItem.name === "string"
       && (pathItem.icon === undefined || typeof pathItem.icon === "string")
+      && (pathItem.iconUrl === undefined || typeof pathItem.iconUrl === "string")
   })) return false
 
   const gap = message.detail.gap as Partial<SelectionGap> | null | undefined

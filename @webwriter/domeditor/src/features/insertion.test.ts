@@ -216,7 +216,8 @@ describe("insertion menu", () => {
     const menu = editor.features.insertion.menu
     await menu.updateComplete
 
-    expect(menu.shadowRoot?.textContent).toContain("@webwriter/demo · widget")
+    expect(menu.shadowRoot?.textContent).toContain("@webwriter/demo")
+    expect(menu.shadowRoot?.querySelector(".item-package")?.textContent).toBe("@webwriter/demo")
     menu.shadowRoot?.querySelector<HTMLButtonElement>('.item img[src="https://example.com/demo.svg"]')
       ?.closest<HTMLButtonElement>("button")?.click()
 

@@ -102,18 +102,18 @@ export const packageAction = (pkg: Pick<WebWriterPackage, "name">) => `package:$
 export const packageToggleAction = (pkg: Pick<WebWriterPackage, "name">) => `package-toggle:${pkg.name}`
 
 export function packageInsertionItems(packages: WebWriterPackage[]): PackageInsertionItem[] {
-  return packages.flatMap(pkg => pkg.members)
+  return packages.flatMap(pkg => pkg.members
     .filter(member => member.insertable)
     .map(member => ({
-      section: "Packages",
+      section: "Packages" as const,
       name: member.label,
       packageName: member.packageName,
       kind: member.kind,
       description: member.description,
-      iconUrl: member.iconUrl,
+      iconUrl: member.iconUrl ?? pkg.iconUrl,
       ...(member.tagName ? {tag: member.tagName} : {}),
       ...(member.htmlUrl ? {htmlUrl: member.htmlUrl} : {}),
-    }))
+    })))
 }
 
 /** Resolves the installed widget tags and the editing settings that contribute

@@ -612,11 +612,28 @@ export class DomEditor extends LitElement {
 
     const build = (element: Element, path: number[]): DocumentTreeItem => ({
       path: [...path],
-      ...getElementPresentation(element),
+      ...this.elementPresentation(element),
       children: buildChildren(element, path),
     })
 
     return build(body, [])
+  }
+
+  private elementPresentation(element: Element) {
+    for(const pkg of this.installedPackages) {
+      const member = pkg.members.find(candidate => (
+        candidate.kind === "widget" && candidate.tagName?.toLowerCase() === element.localName
+      ))
+      if(member) {
+        const iconUrl = member.iconUrl ?? pkg.iconUrl
+        return {
+          name: member.label,
+          icon: "Packages",
+          ...(iconUrl ? {iconUrl} : {}),
+        }
+      }
+    }
+    return getElementPresentation(element)
   }
 
   private handleBreadcrumbTreeToggle = (event: Event) => {

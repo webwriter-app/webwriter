@@ -1,5 +1,6 @@
 import {LitElement, css, html, nothing} from "lit"
 import { ribbonIcon } from "../ribbon-icons"
+import type {PackageKeywordPresentation} from "../package-keywords"
 import "./ribbon-menu"
 import type { RibbonMenu, RibbonMenuButton } from "./ribbon-menu"
 
@@ -7,8 +8,9 @@ export type RibbonButtonDetails = {
   heading: string
   subheading?: string
   description?: string
+  authors?: string[]
   fields?: Array<{label: string, value: string}>
-  keywords?: string[]
+  keywords?: PackageKeywordPresentation[]
 }
 
 /** A compact action used inside a ribbon group. */
@@ -174,18 +176,20 @@ export class RibbonButton extends LitElement {
       height: 100%;
     }
 
-    .button-icon.icon-stack {
-      display: grid;
+    .button-icon.image-icon {
       position: relative;
-      place-items: center;
     }
 
-    .button-icon.icon-stack img {
+    .button-icon.image-icon svg {
+      visibility: hidden;
+    }
+
+    .button-icon img {
       position: absolute;
       inset: 0;
+      display: block;
       width: 100%;
       height: 100%;
-      background: #f2f2f2;
       object-fit: contain;
     }
 
@@ -207,28 +211,56 @@ export class RibbonButton extends LitElement {
       display: none;
       position: fixed;
       z-index: 2147483647;
-      width: min(19rem, calc(100vw - 1rem));
-      max-height: min(20rem, calc(100vh - 1rem));
-      padding: 0.65rem;
+      width: min(17rem, calc(100vw - 1rem));
+      max-height: min(18rem, calc(100vh - 1rem));
+      padding: 0.55rem;
       overflow: auto;
       border: 1px solid #a8a8a8;
       border-radius: 0.4rem;
       color: #2f3742;
       background: #fff;
       box-shadow: 0 0.45rem 1rem rgb(0 0 0 / 18%);
-      font-size: 0.72rem;
-      line-height: 1.35;
+      font-size: 0.7rem;
+      line-height: 1.3;
       margin: 0;
     }
 
     :host([details-open]) .details { display: block; }
-    .details h3 { margin: 0; font-size: 0.82rem; }
-    .details-subheading { color: #667085; font-size: 0.66rem; }
-    .details-description { margin: 0.55rem 0; }
+    .details h3 { margin: 0; font-size: 0.8rem; }
+    .details-subheading { color: #667085; font-size: 0.63rem; }
+    .details-authors {
+      overflow: hidden;
+      margin-top: 0.1rem;
+      color: #667085;
+      font-size: 0.64rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .details-description { margin: 0.4rem 0; }
     .details dl { display: grid; grid-template-columns: auto 1fr; gap: 0.2rem 0.55rem; margin: 0; }
     .details dt { color: #667085; font-weight: 600; }
     .details dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
-    .details-keywords { margin-top: 0.5rem; color: #667085; font-size: 0.65rem; }
+    .details-keywords {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.2rem 0.45rem;
+      margin-top: 0.4rem;
+      color: #667085;
+      font-size: 0.63rem;
+    }
+    .details-keyword {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.18rem;
+    }
+    .details-keyword-icon {
+      display: inline-flex;
+      flex: 0 0 0.72rem;
+      width: 0.72rem;
+      height: 0.72rem;
+      color: #526b86;
+    }
+    .details-keyword-icon svg { display: block; width: 100%; height: 100%; }
 
     :host([variant="package"]) {
       grid-column: span 2;
@@ -268,9 +300,24 @@ export class RibbonButton extends LitElement {
       flex: 0 0 1rem;
     }
 
-    :host([variant="package"]) .submenu-toggle {
+    :host([variant="package"]) .submenu-toggle:not(.submenu-trigger) {
       top: 50%;
       transform: translateY(-50%);
+    }
+
+    :host([variant="package"]) .button-row.has-submenu .main-button {
+      padding-right: 0.4rem;
+    }
+
+    :host([variant="package"]) .submenu-trigger {
+      position: static;
+      flex: 0 0 auto;
+      align-self: stretch;
+      width: auto;
+      height: 100%;
+      min-height: 100%;
+      aspect-ratio: 1 / 1;
+      transform: none;
     }
 
     :host([variant="package"]) .button-label {
@@ -328,7 +375,7 @@ export class RibbonButton extends LitElement {
   private detailsOpen = false
   private detailsPosition = {left: 8, top: 8}
 
-  private showPopover(element: HTMLElement | null) {
+  private showPopoverElement(element: HTMLElement | null) {
     if(typeof element?.showPopover !== "function") return
     try {
       element.showPopover()
@@ -338,7 +385,7 @@ export class RibbonButton extends LitElement {
     }
   }
 
-  private hidePopover(element: HTMLElement | null) {
+  private hidePopoverElement(element: HTMLElement | null) {
     if(typeof element?.hidePopover !== "function") return
     try {
       element.hidePopover()
@@ -349,7 +396,7 @@ export class RibbonButton extends LitElement {
   }
 
   private closeSubmenuPopover() {
-    this.hidePopover(this.renderRoot.querySelector<RibbonMenu>("ribbon-menu"))
+    this.hidePopoverElement(this.renderRoot.querySelector<RibbonMenu>("ribbon-menu"))
     this.submenuOpen = false
   }
 
@@ -395,7 +442,7 @@ export class RibbonButton extends LitElement {
         const submenu = this.renderRoot.querySelector<RibbonMenu>("ribbon-menu")
         if(!submenu) return
         await submenu.updateComplete
-        this.showPopover(submenu)
+        this.showPopoverElement(submenu)
         const button = this.getBoundingClientRect()
         const menu = submenu.getBoundingClientRect()
         const margin = 8
@@ -422,37 +469,43 @@ export class RibbonButton extends LitElement {
   }
 
   private renderIcon() {
-    return this.iconUrl
-      ? html`<span class="button-icon icon-stack" aria-hidden="true">
-          ${ribbonIcon(this.icon || this.action || this.label)}
-          <img src=${this.iconUrl} alt="" @error=${(event: Event) => (event.currentTarget as HTMLImageElement).remove()} />
-        </span>`
-      : html`<span class="button-icon" aria-hidden="true">${ribbonIcon(this.icon || this.action || this.label)}</span>`
+    const icon = this.icon || this.action || this.label
+    return html`<span class=${`button-icon${this.iconUrl ? " image-icon" : ""}`} aria-hidden="true">
+      ${ribbonIcon(icon)}
+      ${this.iconUrl ? html`<img
+        src=${this.iconUrl}
+        alt=""
+        @error=${(event: Event) => {
+          const image = event.currentTarget as HTMLImageElement
+          image.parentElement?.classList.remove("image-icon")
+          image.remove()
+        }}
+      />` : ""}
+    </span>`
   }
 
   private showDetails = () => {
     if(!this.details) return
     const rect = this.getBoundingClientRect()
-    const width = Math.min(304, window.innerWidth - 16)
-    const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8))
-    const below = rect.bottom + 6
-    const top = below + 210 <= window.innerHeight - 8 ? below : Math.max(8, rect.top - 216)
+    const width = Math.min(272, window.innerWidth - 16)
+    const left = Math.max(8, rect.left - width - 6)
+    const top = Math.max(8, rect.top)
     this.detailsPosition = {left, top}
     this.detailsOpen = true
     void this.updateComplete.then(() => {
-      this.showPopover(this.renderRoot.querySelector<HTMLElement>(".details"))
+      this.showPopoverElement(this.renderRoot.querySelector<HTMLElement>(".details"))
     })
   }
 
   private hideDetails = () => {
-    this.hidePopover(this.renderRoot.querySelector<HTMLElement>(".details"))
+    this.hidePopoverElement(this.renderRoot.querySelector<HTMLElement>(".details"))
     this.detailsOpen = false
   }
 
   render() {
     const title = this.shortcut? `${this.label} (${this.shortcut})`: this.label
     return html`
-      <div class="button-row" @mouseenter=${this.showDetails} @mouseleave=${this.hideDetails}>
+      <div class=${`button-row${this.submenu.length ? " has-submenu" : ""}`} @mouseenter=${this.showDetails} @mouseleave=${this.hideDetails}>
         <button
           class="main-button"
           type="button"
@@ -480,7 +533,7 @@ export class RibbonButton extends LitElement {
           </button>
         ` : this.submenu.length ? html`
           <button
-            class="submenu-toggle"
+            class="submenu-toggle submenu-trigger"
             type="button"
             aria-label=${`Show more ${this.label} options`}
             title=${`Show more ${this.label} options`}
@@ -510,9 +563,21 @@ export class RibbonButton extends LitElement {
         >
           <h3>${this.details.heading}</h3>
           ${this.details.subheading ? html`<div class="details-subheading">${this.details.subheading}</div>` : ""}
+          ${this.details.authors?.length ? html`
+            <div class="details-authors" title=${this.details.authors.join(", ")}>By ${this.details.authors.join(", ")}</div>
+          ` : ""}
           ${this.details.description ? html`<p class="details-description">${this.details.description}</p>` : ""}
           ${this.details.fields?.length ? html`<dl>${this.details.fields.map(field => html`<dt>${field.label}</dt><dd>${field.value}</dd>`)}</dl>` : ""}
-          ${this.details.keywords?.length ? html`<div class="details-keywords">${this.details.keywords.join(" · ")}</div>` : ""}
+          ${this.details.keywords?.length ? html`
+            <div class="details-keywords">
+              ${this.details.keywords.map(keyword => html`
+                <span class="details-keyword">
+                  ${keyword.icon ? html`<span class="details-keyword-icon" aria-hidden="true">${ribbonIcon(keyword.icon)}</span>` : ""}
+                  <span>${keyword.label}</span>
+                </span>
+              `)}
+            </div>
+          ` : ""}
         </aside>
       ` : ""}
     `
