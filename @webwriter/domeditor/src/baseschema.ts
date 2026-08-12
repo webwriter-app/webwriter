@@ -523,13 +523,13 @@ export const baseSchema = {
     content: {selector: "col", min: 0, max: Infinity}
   },
   "dd": {
-    content: {selector: "flow", min: 0, max: Infinity}
+    content: {group: "flow", min: 0, max: Infinity}
   },
   "dt": {
     content: {group: "flow", selector: hasNot("header", "footer", "h1", "h2", "h3", "h4", "h5", "h6", "article", "aside", "nav", "section"), min: 0, max: Infinity},
   },
   "figcaption": {
-    content: {selector: "flow", min: 0, max: Infinity}
+    content: {group: "flow", min: 0, max: Infinity}
   },
   "legend": {
     content: {options: [{group: "phrasing"}, {selector: "h1"}, {selector: "h2"}, {selector: "h3"}, {selector: "h4"}, {selector: "h5"}, {selector: "h6"}], min: 0, max: Infinity}
@@ -557,7 +557,7 @@ export const baseSchema = {
     content: {selector: "tr", min: 0, max: Infinity}
   },
   "td": {
-    content: {selector: "flow", min: 0, max: Infinity}
+    content: {group: "flow", min: 0, max: Infinity}
   },
   "tfoot": {
     content: {selector: "tr", min: 0, max: Infinity}
@@ -653,14 +653,14 @@ export const baseSchemaSVG = {
     ], min: 0, max: Infinity}
   },
   "svg|desc": {
-    group: ["descriptive"],
+    group: ["svg|descriptive"],
     content: {options: [
       {selector: "svg|*"},
       {selector: {type: "text"}}
     ], min: 0, max: Infinity}
   },
   "svg|ellipse": {
-    group: ["basicshape", "graphics", "shape"],
+    group: ["svg|basicshape", "svg|graphics", "svg|shape"],
     content: {options: [
       {group: "svg|animation"},
       {group: "svg|descriptive"}
@@ -770,7 +770,7 @@ export const baseSchemaSVG = {
     ], min: 0, max: Infinity}
   },
   "svg|foreignObject": {
-    groups: ["svg|graphics", "svg|renderable"],
+    group: ["svg|graphics", "svg|renderable"],
     content: {options: [
       {selector: "*|*"},
       {selector: {type: "text"}}
@@ -879,18 +879,18 @@ export const baseSchemaSVG = {
     ], min: 0, max: Infinity}
   },
   "svg|metadata": {
-    groups: ["svg|descriptive"],
+    group: ["svg|descriptive"],
     content: {options: [
       {selector: "*|*"},
       {selector: {type: "text"}}
     ], min: 0, max: Infinity}
   },
   "svg|mpath": {
-    groups: ["svg|animation"],
+    group: ["svg|animation"],
     content: {group: "svg|descriptive", min: 0, max: Infinity}
   },
   "svg|path": {
-    groups: ["svg|graphics", "svg|shape"],
+    group: ["svg|graphics", "svg|shape"],
     content: {options: [
       {group: "svg|animation"},
       {group: "svg|descriptive"}
@@ -920,14 +920,14 @@ export const baseSchemaSVG = {
     ], min: 0, max: Infinity}
   },
   "svg|polygon": {
-    groups: ["svg|graphics", "svg|shape", "svg|basicshape"],
+    group: ["svg|graphics", "svg|shape", "svg|basicshape"],
     content: {options: [
       {group: "svg|animation"},
       {group: "svg|descriptive"}
     ], min: 0, max: Infinity}
   },
   "svg|polyline": {
-    groups: ["svg|graphics", "svg|shape", "svg|basicshape"],
+    group: ["svg|graphics", "svg|shape", "svg|basicshape"],
     content: {options: [
       {group: "svg|animation"},
       {group: "svg|descriptive"}
@@ -947,7 +947,7 @@ export const baseSchemaSVG = {
     ], min: 0, max: Infinity}
   },
   "svg|rect": {
-    groups: ["svg|graphics", "svg|shape", "svg|basicshape"],
+    group: ["svg|graphics", "svg|shape", "svg|basicshape"],
     content: {options: [
       {group: "svg|animation"},
       {group: "svg|descriptive"}
@@ -957,7 +957,7 @@ export const baseSchemaSVG = {
     content: {selector: {type: "text"}}
   },
   "svg|set": {
-    groups: ["svg|animation"],
+    group: ["svg|animation"],
     content: {group: "svg|descriptive", min: 0, max: Infinity}
   },
   "svg|stop": {
@@ -1036,133 +1036,136 @@ export const baseSchemaSVG = {
     ], min: 0, max: Infinity}
   },
   "svg|text": {
-    groups: ["svg|graphics", "svg|textcontent"],
+    group: ["svg|graphics", "svg|textcontent"],
     content: {options: [
       {group: "svg|animation"},
       {group: "svg|descriptive"},
       {group: "svg|textcontentchild"},
-      {selector: "svg|a"}
+      {selector: "svg|a"},
+      {selector: {type: "text"}}
     ], min: 0, max: Infinity}
   },
   "svg|textPath": {
-    groups: ["svg|textcontent", "svg|textcontentchild"],
+    group: ["svg|textcontent", "svg|textcontentchild"],
     content: {options: [
       {group: "svg|descriptive"},
       {selector: "svg|a"},
       {selector: "svg|animate"},
       {selector: "svg|set"},
       {selector: "svg|tspan"},
+      {selector: {type: "text"}},
     ], min: 0, max: Infinity}
   },
   "svg|title": {
-    group: "descriptive",
-    content: {group: "phrasing", min: 0, max: Infinity}
+    group: ["svg|descriptive"],
+    content: {selector: {type: "text"}, min: 0, max: Infinity}
   },
   "svg|tspan": {
-    groups: ["svg|textcontent", "svg|textcontentchild"],
+    group: ["svg|textcontent", "svg|textcontentchild"],
     content: {options: [
       {group: "svg|descriptive"},
       {selector: "svg|a"},
       {selector: "svg|animate"},
       {selector: "svg|set"},
       {selector: "svg|tspan"},
+      {selector: {type: "text"}},
     ], min: 0, max: Infinity}
   },
   "svg|use": {
-    groups: ["svg|graphics", "svg|graphicsreferencing", "svg|structural"],
+    group: ["svg|graphics", "svg|graphicsreferencing", "svg|structural"],
     content: {options: [
       {group: "svg|animation"},
       {group: "svg|descriptive"}
     ], min: 0, max: Infinity}
   },
   "svg|view": {
-    content: {group: "descriptive", min: 0, max: Infinity}
+    content: {group: "svg|descriptive", min: 0, max: Infinity}
   }
 } as const
 
 export const baseSchemaMathML = {
   "math|annotation": {
-    content: {selector: {type: "text"}}
+    content: {selector: {type: "text"}, min: 0, max: Infinity}
   },
   "math|annotation-xml": {
-    content: {options: [{selector: "*|*"}, {selector: {type: "text"}}]}
+    content: {options: [{selector: "*|*"}, {selector: {type: "text"}}], min: 0, max: Infinity}
+  },
+  "math|maction": {
+    content: {selector: "math|*", min: 0, max: Infinity}
   },
   "math|merror": {
-    content: {selector: "math|*"}
+    content: {selector: "math|*", min: 0, max: Infinity}
   },
   "math|mfrac": {
-    content: {selector: "math|*"}
+    content: {selector: "math|*", min: 2, max: 2}
   },
   "math|mi": {
-    content: {selector: "math|*"}
+    content: {selector: {type: "text"}, min: 0, max: Infinity}
   },
   "math|mmultiscripts": {
-    content: {selector: "math|*"}
+    content: {selector: "math|*", min: 1, max: Infinity}
   },
   "math|mn": {
-    content: {selector: "math|*"}
+    content: {selector: {type: "text"}, min: 0, max: Infinity}
   },
   "math|mo": {
-    content: {selector: "math|*"}
+    content: {selector: {type: "text"}, min: 0, max: Infinity}
   },
   "math|mover": {
-    content: {selector: "math|*"}
+    content: {selector: "math|*", min: 2, max: 2}
   },
   "math|mpadded": {
-    content: {selector: "math|*"}
+    content: {selector: "math|*", min: 0, max: Infinity}
   },
   "math|mphantom": {
-    content: {selector: "math|*"}
+    content: {selector: "math|*", min: 0, max: Infinity}
   },
-  "math|mprescripts": {
-    content: {selector: "math|*"}
-  },
+  "math|mprescripts": {},
   "math|mroot": {
-    content: {selector: "math|*"}
+    content: {selector: "math|*", min: 2, max: 2}
   },
   "math|mrow": {
-    content: {selector: "math|*"}
+    content: {selector: "math|*", min: 0, max: Infinity}
   },
   "math|ms": {
-    content: {selector: "math|*"}
+    content: {selector: {type: "text"}, min: 0, max: Infinity}
   },
   "math|semantics": {
-    content: {selector: "math|*"}
+    content: {selector: "math|*", min: 1, max: Infinity}
   },
-  "math|mspace": {
-    content: {selector: "math|*"}
-  },
+  "math|mspace": {},
   "math|msqrt": {
-    content: {selector: "math|*"}
+    content: {selector: "math|*", min: 1, max: Infinity}
   },
   "math|mstyle": {
-    content: {selector: "math|*"}
+    content: {selector: "math|*", min: 0, max: Infinity}
   },
   "math|msub": {
-    content: {selector: "math|*"}
+    content: {selector: "math|*", min: 2, max: 2}
   },
   "math|msup": {
-    content: {selector: "math|*"}
+    content: {selector: "math|*", min: 2, max: 2}
   },
   "math|msubsup": {
-    content: {selector: "math|*"}
+    content: {selector: "math|*", min: 3, max: 3}
   },
   "math|mtable": {
-    content: {selector: "math|*"}
+    content: {selector: "math|mtr", min: 0, max: Infinity}
   },
   "math|mtd": {
-    content: {selector: "math|*"}
+    content: {selector: "math|*", min: 0, max: Infinity}
   },
   "math|mtext": {
-    content: {selector: {type: "text"}}
+    content: {selector: {type: "text"}, min: 0, max: Infinity}
   },
   "math|mtr": {
-    content: {selector: "math|*"}
+    content: {selector: "math|mtd", min: 0, max: Infinity}
   },
   "math|munder": {
-    content: {selector: "math|*"}
+    content: {selector: "math|*", min: 2, max: 2}
   },
   "math|munderover": {
-    content: {selector: "math|*"}
-  }
+    content: {selector: "math|*", min: 3, max: 3}
+  },
+  "math|none": {}
 } as const

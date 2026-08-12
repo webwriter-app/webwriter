@@ -1,12 +1,20 @@
 import { EditorFeature } from "."
 import { DOMEditor } from "../domeditor"
 import {isLoadWidgetsMessage, loadWidgetsMessage, type LoadWidgetsMessage} from "../editor-bridge"
-import {packageInsertionItems, WebWriterPackageRegistry} from "../packages"
+import {packageInsertionItems, packageWidgetSchemaDefinitions, WebWriterPackageRegistry} from "../packages"
+import {Schema} from "../schema"
+import {markWidgetsEditable} from "../utility"
 
 export class DependencyFeature extends EditorFeature {
   private readonly packageRegistry = new WebWriterPackageRegistry()
   private widgetAssets: HTMLElement[] = []
   private widgetLoadSequence = 0
+  private widgetTags = new Set<string>()
+  private readonly widgetContentObserver = new MutationObserver(mutations => {
+    mutations.forEach(mutation => mutation.addedNodes.forEach(node => {
+      markWidgetsEditable(node, this.widgetTags)
+    }))
+  })
 
   actions = {
     [loadWidgetsMessage]: (message: LoadWidgetsMessage) => this.loadWidgets(message),
@@ -29,6 +37,11 @@ export class DependencyFeature extends EditorFeature {
     const packages = await Promise.all(widgetReferences.map(widget => this.packageRegistry.getPackage(widget)))
     if(sequence !== this.widgetLoadSequence) return
     globalThis.DOMEDITOR_PACKAGE_ITEMS = packageInsertionItems(packages)
+    const widgetDefinitions = packageWidgetSchemaDefinitions(packages)
+    this.editor.schema = new Schema()
+    this.editor.schema.extendWidgets(widgetDefinitions)
+    this.widgetTags = new Set(widgetDefinitions.map(({tagName}) => tagName.toLowerCase()))
+    markWidgetsEditable(document.body, this.widgetTags)
 
     this.widgetAssets.forEach(element => element.remove())
     const styles = [...new Set(packages.flatMap(pkg => pkg.styles))].map(href => {
@@ -50,10 +63,17 @@ export class DependencyFeature extends EditorFeature {
     this.editor.features.insertion.menu.requestUpdate()
   }
 
+  enable() {
+    super.enable()
+    this.widgetContentObserver.observe(document.body, {childList: true, subtree: true})
+  }
+
   disable() {
     this.widgetLoadSequence++
+    this.widgetContentObserver.disconnect()
     this.widgetAssets.forEach(element => element.remove())
     this.widgetAssets = []
+    this.widgetTags.clear()
     globalThis.DOMEDITOR_PACKAGE_ITEMS = []
     super.disable()
   }

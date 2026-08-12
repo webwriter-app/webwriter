@@ -1,8 +1,8 @@
-import { baseSchema } from "./baseschema"
+import { baseSchema, baseSchemaMathML, baseSchemaSVG } from "./baseschema"
 import { $, getContainer, getIndexBefore, getSidesOfPoint } from "./utility"
 
 /** Defers to the parent's content rule ("transparent" content model, e.g. <a>, <ins>, <slot>), optionally restricted by an own selector. */
-type ContentRuleTransparent = {
+export type ContentRuleTransparent = {
   transparent: true,
   selector?: string,
   min?: number,
@@ -10,7 +10,7 @@ type ContentRuleTransparent = {
 }
 
 /** Matches members of a named group (e.g. "flow", "phrasing"), optionally restricted by a selector. */
-type ContentRuleGroup = {
+export type ContentRuleGroup = {
   group: string,
   selector?: string,
   min?: number,
@@ -18,38 +18,55 @@ type ContentRuleGroup = {
 }
 
 /** Matches elements by CSS selector, or text/comment nodes by type. */
-type ContentRuleSelector = {
+export type ContentRuleSelector = {
   selector: string | {type: "text"} | {type: "comment"},
   min?: number,
   max?: number
 }
 
 /** Matches the term rules in order (a sequence). */
-type ContentRuleSequence = {
+export type ContentRuleSequence = {
   terms: ContentRule[],
   min?: number,
   max?: number
 }
 
 /** Matches any one of the option rules (a choice). */
-type ContentRuleChoice = {
+export type ContentRuleChoice = {
   options: ContentRule[],
   min?: number,
   max?: number
 }
 
 /** Matches only nodes satisfying all condition rules (a conjunction). */
-type ContentRuleConjunction = {
+export type ContentRuleConjunction = {
   conditions: ContentRule[],
   min?: number,
   max?: number
 }
 
-/** A node type's content model. Every rule kind takes `min`/`max` occurrence bounds, both defaulting to 1. Rules are matched statefully: validating a node against a rule decrements its bounds in place (see `Schema.isNodeValid`). */
-type ContentRule = ContentRuleSelector | ContentRuleSequence | ContentRuleChoice | ContentRuleConjunction | ContentRuleTransparent | ContentRuleGroup
+/** A node type's content model. Native rules take `min`/`max` occurrence
+ * bounds, both defaulting to 1. Rules are matched statefully as child nodes
+ * are validated (see `Schema.isNodeValid`). */
+export type ContentExpression =
+  | {kind: "empty"}
+  | {kind: "reference", name: string, reference: "node" | "group"}
+  | {kind: "sequence", terms: ContentExpression[]}
+  | {kind: "choice", options: ContentExpression[]}
+  | {kind: "star", expression: ContentExpression}
+
+/** A compiled widget content expression. `current` is the residual expression
+ * while a sequence of child nodes is being validated. */
+export type ContentRuleExpression = {
+  expression: ContentExpression
+  source: string
+  current?: ContentExpression
+}
+
+export type ContentRule = ContentRuleSelector | ContentRuleSequence | ContentRuleChoice | ContentRuleConjunction | ContentRuleTransparent | ContentRuleGroup | ContentRuleExpression
 
 /** Describes a node type: its group memberships, content model and editing behavior (placeholders, separability, default node status, namespace). */
-type SchemaEntry = {
+export type SchemaEntry = {
   group?: string[],
   content?: ContentRule,
   headOnly?: boolean,
@@ -62,14 +79,239 @@ type SchemaEntry = {
   contentNamespace?: string
 }
 
+/** The editing-config fields that affect a widget's document-schema entry. */
+export type WidgetEditingConfig = {
+  group?: string
+  inline?: boolean
+  isolating?: boolean
+  content?: string
+}
+
+export type WidgetSchemaDefinition = {
+  tagName: string
+  editingConfig?: WidgetEditingConfig
+}
+
+const emptyExpression = (): ContentExpression => ({kind: "empty"})
+
+function expressionKey(expression: ContentExpression) {
+  return JSON.stringify(expression)
+}
+
+function sequenceExpression(terms: ContentExpression[]): ContentExpression {
+  const flattened = terms.flatMap(term => term.kind === "sequence" ? term.terms : [term])
+    .filter(term => term.kind !== "empty")
+  if(flattened.length === 0) return emptyExpression()
+  if(flattened.length === 1) return flattened[0]
+  return {kind: "sequence", terms: flattened}
+}
+
+function choiceExpression(options: ContentExpression[]): ContentExpression {
+  const flattened = options.flatMap(option => option.kind === "choice" ? option.options : [option])
+  const unique = [...new Map(flattened.map(option => [expressionKey(option), option])).values()]
+  if(unique.length === 1) return unique[0]
+  return {kind: "choice", options: unique}
+}
+
+function optionalExpression(expression: ContentExpression) {
+  return choiceExpression([emptyExpression(), expression])
+}
+
+function repeatExpression(expression: ContentExpression, min: number, max: number): ContentExpression {
+  if(!Number.isSafeInteger(min) || min < 0 || max < min || max > 1000 && max !== Infinity) {
+    throw new SyntaxError(`Invalid content-expression range {${min},${max === Infinity ? "" : max}}`)
+  }
+  const terms = Array.from({length: min}, () => expression)
+  if(max === Infinity) terms.push({kind: "star", expression})
+  else terms.push(...Array.from({length: max - min}, () => optionalExpression(expression)))
+  return sequenceExpression(terms)
+}
+
+class ContentExpressionParser {
+  readonly #tokens: string[]
+  #index = 0
+
+  constructor(
+    readonly source: string,
+    readonly resolveReference: (name: string) => "node" | "group" | undefined,
+  ) {
+    this.#tokens = this.#tokenize(source)
+  }
+
+  parse(): ContentExpression {
+    if(this.#tokens.length === 0) return emptyExpression()
+    const expression = this.#parseChoice()
+    if(this.#peek() !== undefined) this.#error(`Unexpected token '${this.#peek()}'`)
+    return expression
+  }
+
+  #tokenize(source: string) {
+    const tokens: string[] = []
+    let index = 0
+    while(index < source.length) {
+      if(/\s/.test(source[index])) {
+        index++
+        continue
+      }
+      if("()|*+?{},".includes(source[index])) {
+        tokens.push(source[index++])
+        continue
+      }
+      const start = index
+      while(index < source.length && !/\s/.test(source[index]) && !"()|*+?{},".includes(source[index])) index++
+      tokens.push(source.slice(start, index))
+    }
+    return tokens
+  }
+
+  #parseChoice(): ContentExpression {
+    const options = [this.#parseSequence()]
+    while(this.#peek() === "|") {
+      this.#index++
+      options.push(this.#parseSequence())
+    }
+    return choiceExpression(options)
+  }
+
+  #parseSequence(): ContentExpression {
+    const terms: ContentExpression[] = []
+    while(this.#peek() !== undefined && this.#peek() !== ")" && this.#peek() !== "|") {
+      terms.push(this.#parseRepeat())
+    }
+    return sequenceExpression(terms)
+  }
+
+  #parseRepeat(): ContentExpression {
+    const expression = this.#parseAtom()
+    const quantifier = this.#peek()
+    if(quantifier === "?") {
+      this.#index++
+      return optionalExpression(expression)
+    }
+    if(quantifier === "*") {
+      this.#index++
+      return {kind: "star", expression}
+    }
+    if(quantifier === "+") {
+      this.#index++
+      return repeatExpression(expression, 1, Infinity)
+    }
+    if(quantifier === "{") {
+      this.#index++
+      const min = this.#parseInteger("range minimum")
+      let max = min
+      if(this.#peek() === ",") {
+        this.#index++
+        max = this.#peek() === "}" ? Infinity : this.#parseInteger("range maximum")
+      }
+      this.#expect("}")
+      return repeatExpression(expression, min, max)
+    }
+    return expression
+  }
+
+  #parseAtom(): ContentExpression {
+    const token = this.#peek()
+    if(token === "(") {
+      this.#index++
+      const expression = this.#parseChoice()
+      this.#expect(")")
+      return expression
+    }
+    if(token === undefined || ")|*+?{},".includes(token)) {
+      this.#error(token === undefined ? "Unexpected end of expression" : `Unexpected token '${token}'`)
+    }
+    this.#index++
+    const name = token === "text" ? "#text" : token
+    const reference = this.resolveReference(name)
+    if(!reference) this.#error(`Unknown node or group '${token}'`)
+    return {kind: "reference", name, reference}
+  }
+
+  #parseInteger(label: string) {
+    const token = this.#peek()
+    if(token === undefined || !/^\d+$/.test(token)) this.#error(`Expected ${label}`)
+    this.#index++
+    return Number(token)
+  }
+
+  #expect(token: string) {
+    if(this.#peek() !== token) this.#error(`Expected '${token}'`)
+    this.#index++
+  }
+
+  #peek() {
+    return this.#tokens[this.#index]
+  }
+
+  #error(message: string): never {
+    throw new SyntaxError(`${message} in content expression '${this.source}'`)
+  }
+}
+
+function expressionNullable(expression: ContentExpression): boolean {
+  if(expression.kind === "empty") return true
+  if(expression.kind === "reference") return false
+  if(expression.kind === "star") return true
+  if(expression.kind === "choice") return expression.options.some(expressionNullable)
+  return expression.terms.every(expressionNullable)
+}
+
+function expressionDerivative(
+  expression: ContentExpression,
+  matches: (reference: Extract<ContentExpression, {kind: "reference"}>) => boolean,
+): ContentExpression | null {
+  if(expression.kind === "empty") return null
+  if(expression.kind === "reference") return matches(expression) ? emptyExpression() : null
+  if(expression.kind === "choice") {
+    const derivatives = expression.options.flatMap(option => {
+      const derivative = expressionDerivative(option, matches)
+      return derivative ? [derivative] : []
+    })
+    return derivatives.length ? choiceExpression(derivatives) : null
+  }
+  if(expression.kind === "star") {
+    const derivative = expressionDerivative(expression.expression, matches)
+    return derivative ? sequenceExpression([derivative, expression]) : null
+  }
+
+  const derivatives: ContentExpression[] = []
+  for(let index = 0; index < expression.terms.length; index++) {
+    const term = expression.terms[index]
+    const derivative = expressionDerivative(term, matches)
+    if(derivative) derivatives.push(sequenceExpression([derivative, ...expression.terms.slice(index + 1)]))
+    if(!expressionNullable(term)) break
+  }
+  return derivatives.length ? choiceExpression(derivatives) : null
+}
+
+function expressionFirstReferences(expression: ContentExpression): Array<Extract<ContentExpression, {kind: "reference"}>> {
+  if(expression.kind === "empty") return []
+  if(expression.kind === "reference") return [expression]
+  if(expression.kind === "choice") return expression.options.flatMap(expressionFirstReferences)
+  if(expression.kind === "star") return expressionFirstReferences(expression.expression)
+
+  const references: Array<Extract<ContentExpression, {kind: "reference"}>> = []
+  for(const term of expression.terms) {
+    references.push(...expressionFirstReferences(term))
+    if(!expressionNullable(term)) break
+  }
+  return references
+}
+
 /** Defines which nodes are allowed where in the document — a content model like HTML's, expressed as `ContentRule`s per node type. Provides queries (canInsert, canReplace, canWrap, ...) and corrections (fixInvalidContent, fillByRule, ...) based on it. */
 export class Schema {
 
-  /** The default HTML schema. */
-  static baseSchema: Record<string, SchemaEntry> = baseSchema as any
+  /** The complete default HTML, SVG and MathML schema. */
+  static baseSchema: Record<string, SchemaEntry> = {
+    ...baseSchema,
+    ...baseSchemaSVG,
+    ...baseSchemaMathML,
+  } as unknown as Record<string, SchemaEntry>
   #schema: Record<string, SchemaEntry> = {}
   #nodes: Record<string, Node> = {}
   #groups: Record<string, string[]> = {}
+  #createdTypes = new WeakMap<Node, string>()
 
   /** Creates a schema from the given entries (defaults to the base schema). */
   constructor(baseSchema: Record<string, SchemaEntry> = Schema.baseSchema) {
@@ -78,15 +320,72 @@ export class Schema {
 
   /** Adds or replaces schema entries and registers their group memberships. */
   extend(extensionSchema: Record<string, SchemaEntry>) {
+    Object.keys(extensionSchema).forEach(key => {
+      this.#schema[key]?.group?.forEach(group => {
+        this.#groups[group] = (this.#groups[group] ?? []).filter(member => member !== key)
+      })
+    })
     this.#schema = {...this.#schema, ...extensionSchema}
-    this.#nodes = Object.fromEntries(Object.keys(extensionSchema)
-      .filter(k => k !== "#unknownelement")
-      .map(k => [k, this.create(k)])
-    )
+    Object.keys(extensionSchema).forEach(key => {
+      if(key === "#unknownelement") delete this.#nodes[key]
+      else this.#nodes[key] = this.create(key)
+    })
     Object.keys(extensionSchema)
-      .forEach(k => this.#schema[k].group?.forEach(g => {
-        this.#groups[g] = [...(this.#groups[g] ?? []), k]
+      .forEach(key => this.#schema[key].group?.forEach(group => {
+        if(!this.#groups[group]?.includes(key)) {
+          this.#groups[group] = [...(this.#groups[group] ?? []), key]
+        }
       }))
+  }
+
+  /** Extends the schema with installed widget definitions. Widget content uses
+   * the ProseMirror-style expressions published in package `editingConfig`
+   * (node/group choices, sequences, parentheses and repetition operators). */
+  extendWidgets(widgets: Iterable<WidgetSchemaDefinition>) {
+    const definitions = [...widgets].map(({tagName, editingConfig = {}}) => ({
+      tagName: tagName.toLowerCase(),
+      editingConfig,
+    }))
+    const nodeNames = new Set([...Object.keys(this.#schema), ...definitions.map(({tagName}) => tagName)])
+    const groupNames = new Set(Object.keys(this.#groups))
+    definitions.forEach(({editingConfig}) => {
+      if(typeof editingConfig.group === "string") {
+        editingConfig.group.split(/\s+/).filter(Boolean).forEach(group => groupNames.add(group))
+      }
+    })
+    groupNames.add("widget")
+    groupNames.add("widgetinline")
+
+    const extension = Object.fromEntries(definitions.map(({tagName, editingConfig}) => {
+      if(!tagName.includes("-")) throw new TypeError(`Invalid widget tag name '${tagName}'`)
+      const hasExplicitGroup = typeof editingConfig.group === "string"
+      const configuredGroups = hasExplicitGroup
+        ? editingConfig.group!.split(/\s+/).filter(Boolean)
+        : []
+      const groups = new Set([
+        ...configuredGroups,
+        editingConfig.inline ? "widgetinline" : "widget",
+      ])
+      if(!hasExplicitGroup && !editingConfig.inline) groups.add("flow")
+
+      let content: ContentRule | undefined
+      if(typeof editingConfig.content === "string") {
+        const parser = new ContentExpressionParser(editingConfig.content, name => {
+          if(nodeNames.has(name)) return "node"
+          if(groupNames.has(name)) return "group"
+        })
+        content = {
+          expression: parser.parse(),
+          source: editingConfig.content,
+        }
+      }
+      return [tagName, {
+        group: [...groups],
+        ...(content ? {content} : {}),
+        inseperable: editingConfig.isolating ?? true,
+      } satisfies SchemaEntry]
+    }))
+    this.extend(extension)
   }
 
   /** Key of the type marked `defaultNode` (in the base schema "p"), falling back to "#text". Used wherever content is created without an explicit type. */
@@ -106,19 +405,25 @@ export class Schema {
 
   /** Creates a new node of the given type: `#text`, `#comment`, a namespaced `ns|tag` or a tag name. Defaults to the default node type. */
   create(key: string = this.defaultNodeKey) {
+    let node: Node
     if(key === "#text") {
-      return document.createTextNode("")
+      node = document.createTextNode("")
     }
     else if(key === "#comment") {
-      return document.createComment("")
+      node = document.createComment("")
     }
     else {
-      return key.includes("|")
+      const contentNamespace = this.#schema[key]?.contentNamespace
+      node = key.includes("|")
         ? document.createElementNS(
           this.getNamespaceURL(key.split("|").at(0)!),
           key.split("|").at(1)!)
-        : document.createElement(key)
+        : contentNamespace
+          ? document.createElementNS(contentNamespace, key)
+          : document.createElement(key)
     }
+    this.#createdTypes.set(node, key)
+    return node
   }
 
   /** Keys of types showing a placeholder when empty (those with an
@@ -129,7 +434,7 @@ export class Schema {
 
   /** The entries defining a content namespace for their descendants
    * (in the base schema `svg` and `math`). */
-  get namespaceTypes(): SchemaEntry & {[k: string]: {contentNamespace: string}} {
+  get namespaceTypes(): Record<string, SchemaEntry & {contentNamespace: string}> {
     return Object.fromEntries(Object.entries(this.#schema)
       .filter(([,v]) => v.contentNamespace)) as any
   }
@@ -167,15 +472,30 @@ export class Schema {
   /** Resolves a node to its schema key, including detached namespaced
    * elements whose namespace cannot be inferred from an ancestor. */
   #getTypeKey(node: Node) {
+    const createdType = this.#createdTypes.get(node)
+    if(createdType && createdType in this.#schema) return createdType
     if(node instanceof Element) {
-      const namespace = this.getNamespaceNameOfElement(node)
-        ?? Object.entries(this.namespaceTypes)
-          .find(([, entry]) => entry.contentNamespace === node.namespaceURI)?.[0]
       const localName = node.localName || node.tagName.toLowerCase()
-      const key = namespace
-        ? Object.keys(this.#schema).find(key => key.startsWith(`${namespace}|`) && key.split("|")[1].toLowerCase() === localName.toLowerCase()) ?? `${namespace}|${localName}`
+      const ancestorNamespace = this.getNamespaceNameOfElement(node)
+      const namespaceRoot = !ancestorNamespace
+        ? Object.entries(this.namespaceTypes).find(([key, entry]) =>
+          key.toLowerCase() === localName.toLowerCase()
+          && entry.contentNamespace === node.namespaceURI,
+        )?.[0]
+        : undefined
+      if(namespaceRoot) return namespaceRoot
+      const namespaceFromURI = Object.entries(this.namespaceTypes)
+        .find(([, entry]) => entry.contentNamespace === node.namespaceURI)?.[0]
+      const namespace = namespaceFromURI
+        ?? (node.namespaceURI ? undefined : this.getNamespaceNameOfElement(node))
+      const customizedName = !namespace ? node.getAttribute("is")?.toLowerCase() : undefined
+      const resolvedLocalName = customizedName && customizedName in this.#schema
+        ? customizedName
         : localName
-      return namespace || key in this.#schema? key: "#unknownelement"
+      const key = namespace
+        ? Object.keys(this.#schema).find(key => key.startsWith(`${namespace}|`) && key.split("|")[1].toLowerCase() === resolvedLocalName.toLowerCase()) ?? `${namespace}|${resolvedLocalName}`
+        : resolvedLocalName
+      return key in this.#schema ? key : "#unknownelement"
     }
     else if(node.nodeType === Node.TEXT_NODE) {
       return "#text"
@@ -305,7 +625,18 @@ export class Schema {
 
   /** Whether the (partially consumed) rule still requires more nodes. */
   private hasRuleRemainingMin(rule: ContentRule) {
+    if("expression" in rule) {
+      return !expressionNullable(rule.current ?? rule.expression)
+    }
     return (rule.min ?? 1) >= 1
+  }
+
+  /** Whether a partially consumed rule can accept at least one more node. */
+  private hasRuleRemainingMax(rule: ContentRule) {
+    if("expression" in rule) {
+      return expressionFirstReferences(rule.current ?? rule.expression).length > 0
+    }
+    return (rule.max ?? 1) > 0
   }
 
   /** Whether `content` (default: the node's current children) is valid for the node (given as node or type key). Each node is validated against a shared cloned rule (see isNodeValid), and the rule's minimum must be satisfied. Non-element nodes are always valid.. */
@@ -329,6 +660,18 @@ export class Schema {
     if(!rule) {
       console.error(`${node.nodeName} invalid: No content allowed in parent`)
       return false
+    }
+    else if("expression" in rule) {
+      const current = rule.current ?? rule.expression
+      const derivative = expressionDerivative(current, reference => {
+        const key = this.#getTypeKey(node)
+        return reference.reference === "node"
+          ? key === reference.name
+          : key !== "#unknownelement" && this.getGroupMembers(reference.name).includes(key)
+      })
+      if(!derivative) return false
+      rule.current = derivative
+      return true
     }
     else if("options" in rule) {
       const {min, max, options} = rule
@@ -357,17 +700,17 @@ export class Schema {
       if(terms.length === 0) return false;
       if((max ?? 1) < 1) return false
       for(const term of terms) {
-        if((term.max ?? 1) < 1) continue
+        if(!this.hasRuleRemainingMax(term)) continue
         const candidate = structuredClone(term)
         if(this.isNodeValid(node, candidate)) {
           Object.assign(term, candidate)
-          if(terms.every(term => (term.min ?? 1) < 1)) {
+          if(terms.every(term => !this.hasRuleRemainingMin(term))) {
             rule.min = Math.max(0, (min ?? 1) - 1)
             rule.max = Math.max(0, (max ?? 1) - 1)
           }
           return true
         }
-        if((term.min ?? 1) > 0) return false
+        if(this.hasRuleRemainingMin(term)) return false
       }
       return false
     }
@@ -449,15 +792,27 @@ export class Schema {
   findValidContentTypes(
     containerOrKey: Node | string,
     rule=this.getContentRule(containerOrKey), 
-    content=containerOrKey instanceof Node? Array.from(containerOrKey.childNodes): []
+    content?: Node[]
   ): string[] {
     if(!rule || containerOrKey instanceof Node && !(containerOrKey instanceof Element)) {
       return []
     }
 
     const container = containerOrKey instanceof Node? containerOrKey: this.create(containerOrKey)
+    if(content !== undefined) {
+      rule = structuredClone(rule)
+      if(!content.every(node => this.isNodeValid(node, rule))) return []
+    }
 
-    if((rule.max ?? 1) < 1) {
+    if("expression" in rule) {
+      const references = expressionFirstReferences(rule.current ?? rule.expression)
+      return Object.keys(this.#nodes).filter(key => references.some(reference =>
+        reference.reference === "node"
+          ? key === reference.name
+          : this.getGroupMembers(reference.name).includes(key),
+      ))
+    }
+    else if((rule.max ?? 1) < 1) {
       return []
     }
     
@@ -482,8 +837,8 @@ export class Schema {
       return Object.keys(this.#nodes).filter(k => eachCondition.every(cond => cond.includes(k)))
     }
     else if("terms" in rule) {
-      const termRule = rule.terms.find(term => (term.max ?? 1) > 0)
-      return this.findValidContentTypes(container, termRule)
+      const termRule = rule.terms.find(term => this.hasRuleRemainingMax(term))
+      return termRule ? this.findValidContentTypes(container, termRule) : []
     }
     else if("selector" in rule) {
       return Object.keys(this.#nodes).filter(k => this.testSelectorRule(this.#nodes[k], rule.selector))
@@ -506,10 +861,11 @@ export class Schema {
       const [namespace, localName] = selector.split("|")
       const namespaceURL = this.namespaceTypes[namespace]?.contentNamespace
       const nodeLocalName = node.localName || node.tagName.toLowerCase()
-      return namespaceURL === node.namespaceURI && (localName === "*" || localName.toLowerCase() === nodeLocalName.toLowerCase())
+      return (namespace === "*" || namespaceURL === node.namespaceURI)
+        && (localName === "*" || localName.toLowerCase() === nodeLocalName.toLowerCase())
     }
     else if(node instanceof Element) {
-      return node.matches(selector)
+      return node.namespaceURI === document.documentElement.namespaceURI && node.matches(selector)
     }
     else return false
   }

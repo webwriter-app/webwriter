@@ -13,6 +13,10 @@ const demoPackage: WebWriterPackage = {
   links: {},
   scripts: ["https://cdn.jsdelivr.net/npm/@webwriter/demo@1.2.3/dist/demo.js"],
   styles: ["https://cdn.jsdelivr.net/npm/@webwriter/demo@1.2.3/dist/demo.css"],
+  editingConfig: {
+    "./widgets/webwriter-demo": {content: "webwriter-demo-item+"},
+    "./widgets/webwriter-demo-item": {group: "", content: "flow*", isolating: false},
+  },
   members: [{
     id: "@webwriter/demo@1.2.3:./widgets/webwriter-demo",
     packageName: "@webwriter/demo",
@@ -22,6 +26,15 @@ const demoPackage: WebWriterPackage = {
     label: "Demo Widget",
     insertable: true,
     tagName: "webwriter-demo",
+  }, {
+    id: "@webwriter/demo@1.2.3:./widgets/webwriter-demo-item",
+    packageName: "@webwriter/demo",
+    packageVersion: "1.2.3",
+    exportName: "./widgets/webwriter-demo-item.*",
+    kind: "widget",
+    label: "Demo Item",
+    insertable: false,
+    tagName: "webwriter-demo-item",
   }],
 }
 
@@ -52,6 +65,37 @@ describe("DependencyFeature", () => {
     expect(globalThis.DOMEDITOR_PACKAGE_ITEMS).toEqual([
       expect.objectContaining({name: "Demo Widget", tag: "webwriter-demo"}),
     ])
+    editor.destroy()
+  })
+
+  it("rebuilds the schema from editingConfig and makes nested widget content editable", async () => {
+    vi.spyOn(WebWriterPackageRegistry.prototype, "getPackage").mockResolvedValue(demoPackage)
+    vi.spyOn(document.head, "append").mockImplementation(() => {})
+    const editor = new DOMEditor()
+    document.body.innerHTML = "<webwriter-demo><webwriter-demo-item><p>Nested text</p></webwriter-demo-item></webwriter-demo>"
+
+    await editor.getActionHandler(loadWidgetsMessage)({
+      type: loadWidgetsMessage,
+      widgets: [{name: "@webwriter/demo", version: "1.2.3"}],
+    })
+
+    const widget = document.querySelector("webwriter-demo")!
+    const item = document.querySelector("webwriter-demo-item")!
+    expect(editor.schema.get("webwriter-demo")).toBeDefined()
+    expect(editor.schema.get("webwriter-demo-item").inseperable).toBe(false)
+    expect(editor.schema.isContentValid(widget)).toBe(true)
+    expect(editor.schema.isContentValid(item)).toBe(true)
+    expect(widget.getAttribute("contenteditable")).toBe("true")
+    expect(item.getAttribute("contenteditable")).toBe("true")
+
+    const remoteItem = document.createElement("webwriter-demo-item")
+    remoteItem.append(document.createElement("p"))
+    widget.append(remoteItem)
+    await new Promise<void>(resolve => queueMicrotask(resolve))
+    expect(remoteItem.getAttribute("contenteditable")).toBe("true")
+
+    await editor.getActionHandler(loadWidgetsMessage)({type: loadWidgetsMessage, widgets: []})
+    expect(editor.schema.get("webwriter-demo")).toBeUndefined()
     editor.destroy()
   })
 })

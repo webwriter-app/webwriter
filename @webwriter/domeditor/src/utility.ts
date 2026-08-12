@@ -341,7 +341,7 @@ export class EditingSelection {
 
   /** Replaces the selected content with the given nodes (inserts at the caret for collapsed selections). */
   static replace(...nodes: Node[]) {
-    nodes.forEach(markWidgetsEditable)
+    nodes.forEach(node => markWidgetsEditable(node))
     const fragment = document.createDocumentFragment()
     fragment.append(...nodes)
     $.delete()
@@ -456,12 +456,15 @@ export function isElement(node: unknown): node is Element {
   return node instanceof Node && node.nodeType === Node.ELEMENT_NODE
 }
 
-/** Marks custom-element widgets as editable while they are still detached. */
-export function markWidgetsEditable(node: Node) {
+/** Marks custom-element widgets as editable while they are still detached.
+ * When `widgetTags` is given, only widgets in the installed schema are marked. */
+export function markWidgetsEditable(node: Node, widgetTags?: ReadonlySet<string>) {
   const visit = (current: Node) => {
+    const widgetTag = isElement(current) ? (current.getAttribute("is") ?? current.localName).toLowerCase() : ""
     if(isElement(current)
       && current.namespaceURI === "http://www.w3.org/1999/xhtml"
-      && (current.localName.includes("-") || current.hasAttribute("is"))) {
+      && (current.localName.includes("-") || current.hasAttribute("is"))
+      && (!widgetTags || widgetTags.has(widgetTag))) {
       current.setAttribute("contenteditable", "true")
     }
     current.childNodes.forEach(visit)

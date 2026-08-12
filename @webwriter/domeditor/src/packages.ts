@@ -1,3 +1,5 @@
+import type {WidgetEditingConfig, WidgetSchemaDefinition} from "./schema"
+
 export const NPM_SEARCH_ENDPOINT = "https://registry.npmjs.org/-/v1/search"
 export const NPM_REGISTRY_ENDPOINT = "https://registry.npmjs.org"
 export const JSDELIVR_NPM_ENDPOINT = "https://cdn.jsdelivr.net/npm"
@@ -15,7 +17,7 @@ export type PackageExportTarget = string | {
   [condition: string]: PackageExportTarget | undefined
 }
 
-export type PackageEditingConfigEntry = {
+export type PackageEditingConfigEntry = WidgetEditingConfig & {
   label?: LocalizedText
   description?: LocalizedText
   uninsertable?: boolean
@@ -59,6 +61,7 @@ export type PackageMember = {
   htmlUrl?: string
   scriptUrl?: string
   styleUrl?: string
+  editingConfig?: PackageEditingConfigEntry
 }
 
 export type PackageInsertionItem = {
@@ -90,6 +93,7 @@ export type WebWriterPackage = {
   members: PackageMember[]
   scripts: string[]
   styles: string[]
+  editingConfig?: PackageEditingConfig
   manifest?: WebWriterPackageManifest
 }
 
@@ -110,6 +114,20 @@ export function packageInsertionItems(packages: WebWriterPackage[]): PackageInse
       ...(member.tagName ? {tag: member.tagName} : {}),
       ...(member.htmlUrl ? {htmlUrl: member.htmlUrl} : {}),
     }))
+}
+
+/** Resolves the installed widget tags and the editing settings that contribute
+ * their node groups and nested-content models to the document schema. */
+export function packageWidgetSchemaDefinitions(packages: WebWriterPackage[]): WidgetSchemaDefinition[] {
+  const definitions = packages.flatMap(pkg => pkg.members.flatMap(member => {
+    if(member.kind !== "widget" || !member.tagName) return []
+    const editingConfig = member.editingConfig
+      ?? pkg.editingConfig?.[configKey(member.exportName)]
+      ?? pkg.manifest?.editingConfig?.[configKey(member.exportName)]
+      ?? {}
+    return [{tagName: member.tagName, editingConfig}]
+  }))
+  return [...new Map(definitions.map(definition => [definition.tagName, definition])).values()]
 }
 
 declare global {
@@ -229,6 +247,7 @@ function packageMember(
     description: localized(config.description, locale),
     insertable: config.uninsertable !== true,
     iconUrl,
+    editingConfig: config,
   }
 
   if(isSnippet) {
@@ -382,7 +401,8 @@ export class WebWriterPackageRegistry {
       members,
       scripts: [...new Set(members.flatMap(member => member.scriptUrl ? [member.scriptUrl] : []))],
       styles: [...new Set(members.flatMap(member => member.styleUrl ? [member.styleUrl] : []))],
-      manifest,
+      editingConfig,
+      manifest: {...manifest, editingConfig},
     } satisfies WebWriterPackage
   }
 }

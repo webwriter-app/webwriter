@@ -309,6 +309,95 @@ describe("Schema methods", () => {
       schema.extend({"p": {group: ["flow"]}})
       expect(schema.get("p").content).toBeUndefined()
     })
+    it("keeps existing node prototypes available after an extension", () => {
+      schema.extend({"x-widget": {group: ["flow"]}})
+      expect(schema.findValidContentTypes("body")).toEqual(expect.arrayContaining(["p", "div", "x-widget"]))
+    })
+    it("updates rather than duplicates group membership when overriding a type", () => {
+      schema.extend({"x-widget": {group: ["flow"]}})
+      schema.extend({"x-widget": {group: ["phrasing"]}})
+      expect(schema.getGroupMembers("flow")).not.toContain("x-widget")
+      expect(schema.getGroupMembers("phrasing").filter(key => key === "x-widget")).toEqual(["x-widget"])
+    })
+  })
+
+  describe("extendWidgets()", () => {
+    it("turns widget groups and nested content expressions into schema entries", () => {
+      schema.extendWidgets([{
+        tagName: "webwriter-slides",
+        editingConfig: {content: "webwriter-slide+"},
+      }, {
+        tagName: "webwriter-slide",
+        editingConfig: {group: "", content: "(p | flow)+", isolating: false},
+      }])
+      const slides = el("webwriter-slides")
+      const first = el("webwriter-slide"); first.append(el("p"))
+      const second = el("webwriter-slide"); second.append(el("h2"), el("p"))
+      slides.append(first, second)
+
+      expect(schema.getGroupMembers("flow")).toContain("webwriter-slides")
+      expect(schema.getGroupMembers("flow")).not.toContain("webwriter-slide")
+      expect(schema.get("webwriter-slide").inseperable).toBe(false)
+      expect(schema.isContentValid(document.body, [slides])).toBe(true)
+      expect(schema.isContentValid(slides)).toBe(true)
+      expect(schema.isContentValid(first)).toBe(true)
+      expect(schema.isContentValid("webwriter-slides", [])).toBe(false)
+      expect(schema.isContentValid("webwriter-slides", [el("p")])).toBe(false)
+    })
+
+    it("supports ordered widget children, optional nodes and custom groups", () => {
+      schema.extendWidgets([{
+        tagName: "webwriter-task",
+        editingConfig: {content: "webwriter-prompt webwriter-hint? answer"},
+      }, {
+        tagName: "webwriter-prompt",
+        editingConfig: {group: "", content: "flow+"},
+      }, {
+        tagName: "webwriter-hint",
+        editingConfig: {group: "", content: "p"},
+      }, {
+        tagName: "webwriter-answer",
+        editingConfig: {group: "answer"},
+      }])
+      const prompt = el("webwriter-prompt"); prompt.append(el("p"))
+      const hint = el("webwriter-hint"); hint.append(el("p"))
+      const answer = el("webwriter-answer")
+
+      expect(schema.isContentValid("webwriter-task", [prompt, answer])).toBe(true)
+      expect(schema.isContentValid("webwriter-task", [prompt, hint, answer])).toBe(true)
+      expect(schema.isContentValid("webwriter-task", [answer, prompt])).toBe(false)
+      expect(schema.findValidContentTypes("webwriter-task")).toEqual(["webwriter-prompt"])
+      expect(schema.findValidContentTypes("webwriter-task", undefined, [prompt]))
+        .toEqual(expect.arrayContaining(["webwriter-hint", "webwriter-answer"]))
+    })
+
+    it("supports editable text content and bounded repetitions", () => {
+      schema.extendWidgets([{
+        tagName: "webwriter-labels",
+        editingConfig: {content: "webwriter-label{1,2}"},
+      }, {
+        tagName: "webwriter-label",
+        editingConfig: {group: "", content: "text*"},
+      }])
+      const label = (value: string) => {
+        const node = el("webwriter-label")
+        node.append(text(value))
+        return node
+      }
+
+      expect(schema.isContentValid("webwriter-label", [text("editable")])).toBe(true)
+      expect(schema.isContentValid("webwriter-labels", [label("one")])).toBe(true)
+      expect(schema.isContentValid("webwriter-labels", [label("one"), label("two")])).toBe(true)
+      expect(schema.isContentValid("webwriter-labels", [])).toBe(false)
+      expect(schema.isContentValid("webwriter-labels", [label("one"), label("two"), label("three")])).toBe(false)
+    })
+
+    it("rejects references to nodes or groups not present in the installed schema", () => {
+      expect(() => schema.extendWidgets([{
+        tagName: "webwriter-broken",
+        editingConfig: {content: "missing-child+"},
+      }])).toThrow(SyntaxError)
+    })
   })
 
   describe("defaultNodeKey/defaultNodeType", () => {
@@ -340,7 +429,44 @@ describe("Schema methods", () => {
       const svg = schema.create("svg") as Element
       const rect = schema.create("svg|rect") as Element
       svg.append(rect)
+      expect(schema.get("svg|rect")).toBeDefined()
       expect(schema.get(rect)).toBe(schema.get("svg|rect"))
+    })
+    it("includes complete SVG and MathML descendants in the default schema", () => {
+      const svg = schema.create("svg") as Element
+      svg.append(schema.create("svg|rect"))
+      const math = schema.create("math") as Element
+      const row = schema.create("math|mrow") as Element
+      const superscript = schema.create("math|msup") as Element
+      const identifier = schema.create("math|mi") as Element; identifier.append("a")
+      const exponent = schema.create("math|mn") as Element; exponent.append("2")
+      superscript.append(identifier, exponent)
+      row.append(superscript, schema.create("math|mo"))
+      math.append(row)
+
+      expect(schema.get("math|mrow")).toBeDefined()
+      expect(schema.isContentValid(svg)).toBe(true)
+      expect(schema.isContentValid(math)).toBe(true)
+      expect(schema.isContentValid(row)).toBe(true)
+      expect(schema.isContentValid(superscript)).toBe(true)
+      expect(schema.isContentValid(identifier)).toBe(true)
+    })
+    it("distinguishes foreign-namespace roots from their nested element types", () => {
+      const svg = schema.create("svg") as Element
+      const nestedSvg = schema.create("svg|svg") as Element
+      const math = schema.create("math") as Element
+
+      expect(svg.namespaceURI).toBe("http://www.w3.org/2000/svg")
+      expect(math.namespaceURI).toBe("http://www.w3.org/1998/Math/MathML")
+      expect(schema.get(svg)).toBe(schema.get("svg"))
+      expect(schema.get(nestedSvg)).toBe(schema.get("svg|svg"))
+      expect(schema.get(math)).toBe(schema.get("math"))
+      expect(schema.isContentValid("body", [svg, math])).toBe(true)
+
+      const parsedSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+      const parsedMath = document.createElementNS("http://www.w3.org/1998/Math/MathML", "math")
+      expect(schema.get(parsedSvg)).toBe(schema.get("svg"))
+      expect(schema.get(parsedMath)).toBe(schema.get("math"))
     })
     it("throws for unsupported node types", () => {
       expect(() => schema.get(document as any)).toThrow(TypeError)
