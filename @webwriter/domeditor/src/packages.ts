@@ -111,7 +111,7 @@ export function packageInsertionItems(packages: WebWriterPackage[]): PackageInse
 }
 
 declare global {
-  /** Installed package members passed into the editor iframe by its host. */
+  /** Installed package members resolved by the editor iframe's widget loader. */
   var DOMEDITOR_PACKAGE_ITEMS: PackageInsertionItem[] | undefined
 }
 

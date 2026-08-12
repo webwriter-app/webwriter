@@ -6,8 +6,3 @@ export type EditorStateSnapshot = {
     focus: unknown
   }
 }
-
-declare global {
-  /** Set by the iframe's srcdoc before the editor module is evaluated. */
-  var DOMEDITOR_INITIAL_STATE: EditorStateSnapshot | undefined
-}

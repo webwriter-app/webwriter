@@ -25,6 +25,7 @@ import {
   type SerializedError,
 } from "./editor-bridge"
 import { getElementPresentation } from "./element-names"
+import type {EditorStateSnapshot} from "./editor-state"
 import editorStyleString from "./editor.css?raw"
 import * as Y from "yjs"
 
@@ -42,8 +43,9 @@ const featuresDisabledByDefault = new Set(["placeholder"])
  * Live sessions including collaboration and analytics (start session, stop session)
  */
 
-declare global {
-  var SYNC_URL: string | undefined
+export type DOMEditorOptions = {
+  syncUrl?: string
+  initialState?: EditorStateSnapshot
 }
 
 type FeatureActions<F extends keyof DOMEditor["features"]> = NonNullable<DOMEditor["features"][F]["actions"]>
@@ -158,20 +160,19 @@ export class DOMEditor {
     return [point.node, Math.min(point.offset, maxOffset)]
   }
 
-  constructor() {
+  constructor(options: DOMEditorOptions = {}) {
     // this.schema.checkAndCorrect()
     adoptStylesheet(document, editorStylesheet)
     document.body.contentEditable = "true"
     document.designMode = "on"
     document.body.spellcheck = false
-    const initialState = globalThis.DOMEDITOR_INITIAL_STATE
-    globalThis.DOMEDITOR_INITIAL_STATE = undefined
+    const initialState = options.initialState
     const initialYDoc = initialState?.update?.length ? new Y.Doc() : undefined
     if(initialYDoc) {
       Y.applyUpdate(initialYDoc, Uint8Array.from(initialState!.update))
     }
-    if(globalThis.SYNC_URL) {
-      const syncUrl = new URL(globalThis.SYNC_URL)
+    if(options.syncUrl) {
+      const syncUrl = new URL(options.syncUrl)
       const sessionId = syncUrl.searchParams.get("session") ?? syncUrl.pathname.split("/").filter(Boolean).at(-1)
       this.doc = new SharedDOMDoc(syncUrl.origin, sessionId, this.ignoreAttrs, this.ignoreClasses, {
         ...(initialYDoc ? {ydoc: initialYDoc} : {}),

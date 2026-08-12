@@ -4,7 +4,15 @@ import {DomEditor} from "./dom-editor"
 import type {DomEditorBreadcrumb} from "./breadcrumb"
 import type {RibbonButton} from "./ribbon-button"
 import type {RibbonDrawer} from "./ribbon-drawer"
-import {executeCompleteEvent, executeFailureEvent, markStateChangeEvent, presenceChangeEvent, selectionChangeEvent} from "../editor-bridge"
+import {
+  executeCompleteEvent,
+  executeFailureEvent,
+  initializeEditorMessage,
+  loadWidgetsMessage,
+  markStateChangeEvent,
+  presenceChangeEvent,
+  selectionChangeEvent,
+} from "../editor-bridge"
 import {WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
 
 const demoPackage: WebWriterPackage = {
@@ -64,30 +72,47 @@ describe("DomEditor iframe setup", () => {
     expect(iframe.hasAttribute("sandbox")).toBe(false)
   })
 
-  it("passes the outer URL parameters to the editor as SYNC_URL", async () => {
+  it("passes the sync URL to the editor through the bridge", async () => {
     const originalUrl = location.href
     history.replaceState({}, "", "/?session=collab-demo&source=local")
 
     try {
-      const {iframe} = await mountEditor()
-      expect(iframe.getAttribute("srcdoc")).toContain(
-        '<script>globalThis.SYNC_URL = "ws://localhost:1234/?session=collab-demo&source=local"</script>',
-      )
+      const editor = new DomEditor()
+      document.body.append(editor)
+      await editor.updateComplete
+      const iframe = editor.shadowRoot!.querySelector("iframe")!
+      const postMessage = vi.spyOn(iframe.contentWindow!, "postMessage")
+
+      iframe.dispatchEvent(new Event("load"))
+
+      expect(postMessage).toHaveBeenCalledWith({
+        type: initializeEditorMessage,
+        syncUrl: "ws://localhost:1234/?session=collab-demo&source=local",
+      }, "*")
+      expect(iframe.getAttribute("srcdoc")).not.toContain("SYNC_URL")
     }
     finally {
       history.replaceState({}, "", originalUrl)
     }
   })
 
-  it("injects installed package assets and insertion metadata into srcdoc", async () => {
+  it("sends installed widget names and versions through the bridge", async () => {
     const editor = new DomEditor()
     ;(editor as unknown as {installedPackages: WebWriterPackage[]}).installedPackages = [demoPackage]
+    document.body.append(editor)
+    await editor.updateComplete
+    const iframe = editor.shadowRoot!.querySelector("iframe")!
+    const postMessage = vi.spyOn(iframe.contentWindow!, "postMessage")
     const srcdoc = (editor as unknown as {readonly editorSrcdoc: string}).editorSrcdoc
 
-    expect(srcdoc).toContain('<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/demo@1.0.0/dist/demo.css">')
-    expect(srcdoc).toContain('<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/demo@1.0.0/dist/demo.js"></script>')
-    expect(srcdoc).toContain('"name":"Demo Widget"')
-    expect(srcdoc).toContain('"tag":"webwriter-demo"')
+    iframe.dispatchEvent(new Event("load"))
+
+    expect(postMessage).toHaveBeenCalledWith({
+      type: loadWidgetsMessage,
+      widgets: [{name: "@webwriter/demo", version: "1.0.0"}],
+    }, "*")
+    expect(srcdoc).not.toContain("cdn.jsdelivr.net")
+    expect(srcdoc).not.toContain("Demo Widget")
   })
 })
 

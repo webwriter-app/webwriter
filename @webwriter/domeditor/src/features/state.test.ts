@@ -5,7 +5,6 @@ import type {EditorStateSnapshot} from "../editor-state"
 
 afterEach(() => {
   document.body.replaceChildren()
-  globalThis.DOMEDITOR_INITIAL_STATE = undefined
 })
 
 describe("StateFeature", () => {
@@ -18,9 +17,8 @@ describe("StateFeature", () => {
     const snapshot = editor.getActionHandler("snapshotState")({type: "snapshotState"}) as EditorStateSnapshot
     editor.destroy()
     document.body.replaceChildren()
-    globalThis.DOMEDITOR_INITIAL_STATE = snapshot
 
-    const restored = new DOMEditor()
+    const restored = new DOMEditor({initialState: snapshot})
     const restoredText = document.querySelector("strong")!.firstChild!
     const selection = document.getSelection()!
     expect(restored.toHTML(true)).toBe("<p>Hello <strong>world</strong></p><webwriter-demo value=\"7\"></webwriter-demo>")

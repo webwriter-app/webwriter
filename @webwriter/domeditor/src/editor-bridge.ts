@@ -1,10 +1,54 @@
 import {canonicalMarkName, isStyleMarkName, type MarkName, type StyleMarkValues} from "./marks"
+import type {EditorStateSnapshot} from "./editor-state"
 
 export const executeCompleteEvent = "dom-editor-execute-complete"
 export const executeFailureEvent = "dom-editor-execute-failure"
 export const selectionChangeEvent = "dom-editor-selection-change"
 export const markStateChangeEvent = "dom-editor-mark-state-change"
 export const presenceChangeEvent = "dom-editor-presence-change"
+export const initializeEditorMessage = "initialize-editor"
+export const loadWidgetsMessage = "load-widgets"
+
+export type WidgetReference = {
+  name: string
+  version: string
+}
+
+export type InitializeEditorMessage = {
+  type: typeof initializeEditorMessage
+  syncUrl: string
+  initialState?: EditorStateSnapshot
+}
+
+export type LoadWidgetsMessage = {
+  type: typeof loadWidgetsMessage
+  widgets: WidgetReference[]
+}
+
+export function isInitializeEditorMessage(value: unknown): value is InitializeEditorMessage {
+  if(!value || typeof value !== "object") return false
+  const message = value as Partial<InitializeEditorMessage>
+  return message.type === initializeEditorMessage
+    && typeof message.syncUrl === "string"
+    && (message.initialState === undefined || (
+      !!message.initialState
+      && typeof message.initialState === "object"
+      && Array.isArray(message.initialState.update)
+      && message.initialState.update.every(byte => Number.isInteger(byte) && byte >= 0 && byte <= 255)
+    ))
+}
+
+export function isLoadWidgetsMessage(value: unknown): value is LoadWidgetsMessage {
+  if(!value || typeof value !== "object") return false
+  const message = value as Partial<LoadWidgetsMessage>
+  return message.type === loadWidgetsMessage
+    && Array.isArray(message.widgets)
+    && message.widgets.every(widget => !!widget
+      && typeof widget === "object"
+      && typeof widget.name === "string"
+      && typeof widget.version === "string",
+    )
+}
 
 export type SelectionPathItem = {
   /** The child-node path from BODY to this element. */

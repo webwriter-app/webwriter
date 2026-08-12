@@ -5,7 +5,6 @@ import type { EditingAction } from "../domeditor"
 import { insertionMenuItems } from "./insertion-menu"
 import type {EditorStateSnapshot} from "../editor-state"
 import {
-  packageInsertionItems,
   packageMemberAction,
   WebWriterPackageRegistry,
   type PackageMember,
@@ -16,17 +15,21 @@ import {canonicalMarkName, isMarkElement, isStyleMarkName, type MarkName, type S
 import {
   executeCompleteEvent,
   executeFailureEvent,
+  initializeEditorMessage,
   isExecuteResponse,
   isMarkStateChangeMessage,
   isSelectionChangeMessage,
   isPresenceChangeMessage,
   markStateChangeEvent,
+  loadWidgetsMessage,
   selectionChangeEvent,
   type ExecuteCompleteDetail,
   type ExecuteFailureDetail,
   type SelectionGap,
   type SelectionPathItem,
   type PresenceUser,
+  type InitializeEditorMessage,
+  type LoadWidgetsMessage,
 } from "../editor-bridge"
 import "./breadcrumb"
 import "./ribbon"
@@ -133,17 +136,14 @@ export class DomEditor extends LitElement {
   `
 
   private get editorSrcdoc() {
+    return `<!-- frame ${this.frameRevision} --><script type="module" src="${escapeAttribute(editorEntryUrl)}"></script>`
+  }
+
+  private get syncUrl() {
     const syncUrl = new URL(`ws://${location.hostname}:1234`)
     const outerUrl = new URL(location.href)
     outerUrl.searchParams.forEach((value, key) => syncUrl.searchParams.set(key, value))
-    const syncUrlLiteral = JSON.stringify(syncUrl.href).replaceAll("<", "\\u003C")
-    const initialState = JSON.stringify(this.frameState ?? null).replaceAll("<", "\\u003C")
-    const packageItems = JSON.stringify(packageInsertionItems(this.installedPackages)).replaceAll("<", "\\u003C")
-    const styles = [...new Set(this.installedPackages.flatMap(pkg => pkg.styles))]
-      .map(url => `<link rel="stylesheet" href="${escapeAttribute(url)}">`).join("")
-    const scripts = [...new Set(this.installedPackages.flatMap(pkg => pkg.scripts))]
-      .map(url => `<script type="module" src="${escapeAttribute(url)}"></script>`).join("")
-    return `<!-- frame ${this.frameRevision} --><script>globalThis.SYNC_URL = ${syncUrlLiteral}</script><script>globalThis.DOMEDITOR_INITIAL_STATE = ${initialState};globalThis.DOMEDITOR_PACKAGE_ITEMS = ${packageItems}</script>${styles}${scripts}<script type="module" src="${escapeAttribute(editorEntryUrl)}"></script>`
+    return syncUrl.href
   }
 
   private handleEditorFrameLoad = (event: Event) => {
@@ -178,6 +178,17 @@ export class DomEditor extends LitElement {
     iframe.addEventListener("focus", this.handleEditorFrameFocus)
     iframe.addEventListener("blur", this.handleEditorFrameBlur)
     if(this.editorWindow) {
+      const initializeMessage: InitializeEditorMessage = {
+        type: initializeEditorMessage,
+        syncUrl: this.syncUrl,
+        ...(this.frameState ? {initialState: this.frameState} : {}),
+      }
+      const loadMessage: LoadWidgetsMessage = {
+        type: loadWidgetsMessage,
+        widgets: this.installedPackages.map(({name, version}) => ({name, version})),
+      }
+      this.editorWindow.postMessage(initializeMessage, "*")
+      this.editorWindow.postMessage(loadMessage, "*")
       this.editorReadyResolve?.(this.editorWindow)
     }
     else {
