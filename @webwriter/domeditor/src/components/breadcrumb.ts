@@ -21,6 +21,7 @@ export class DomEditorBreadcrumb extends LitElement {
     gap: {attribute: false},
     tree: {attribute: false},
     breadcrumbEntries: {attribute: false, state: true},
+    breadcrumbCollapseCount: {attribute: false, state: true},
     treeOpen: {attribute: "tree-open", type: Boolean, reflect: true},
     treeRootPath: {attribute: false, state: true},
     expandedPaths: {attribute: false, state: true},
@@ -57,9 +58,8 @@ export class DomEditorBreadcrumb extends LitElement {
       box-sizing: border-box;
       width: 100%;
       height: auto;
-      overflow-x: auto;
+      overflow-x: hidden;
       overflow-y: visible;
-      scrollbar-width: thin;
     }
 
     nav.tree-nav {
@@ -84,18 +84,21 @@ export class DomEditorBreadcrumb extends LitElement {
       box-sizing: border-box;
       display: flex;
       align-items: center;
-      width: max-content;
-      min-width: 100%;
+      width: 100%;
+      min-width: 0;
       height: 30px;
       margin: 0;
       padding: 0 0.35rem;
       list-style: none;
       white-space: nowrap;
+      overflow: hidden;
     }
 
     .breadcrumb-list > li {
       display: flex;
+      flex: 0 0 auto;
       align-items: center;
+      min-width: 0;
       height: 30px;
     }
 
@@ -180,6 +183,10 @@ export class DomEditorBreadcrumb extends LitElement {
     .item:focus-visible {
       outline: 2px solid #3977c7;
       outline-offset: -1px;
+    }
+
+    .item.icon-only .item-label {
+      display: none;
     }
 
     .item-icon {
@@ -368,6 +375,11 @@ export class DomEditorBreadcrumb extends LitElement {
   private treeAnimating = false
   private treeCollapseTimer: ReturnType<typeof setTimeout> | null = null
   private hoveredPath: number[] | null = null
+  private breadcrumbCollapseCount = 0
+  private breadcrumbResizeObserver: ResizeObserver | undefined
+  private responsiveLayoutQueued = false
+
+  private readonly handleWindowResize = () => this.scheduleResponsiveLayout()
 
   private get displayPath() {
     return this.path.length
@@ -524,6 +536,13 @@ export class DomEditorBreadcrumb extends LitElement {
       this.clearHover()
     }
 
+    if(changedProperties.has("path")
+      || changedProperties.has("tree")
+      || changedProperties.has("treeOpen")
+      || changedProperties.has("breadcrumbEntries")) {
+      this.scheduleResponsiveLayout()
+    }
+
     if(!changedProperties.has("treeOpen")
       && !changedProperties.has("tree")
       && !changedProperties.has("expandedPaths")) return
@@ -532,6 +551,77 @@ export class DomEditorBreadcrumb extends LitElement {
     if(!panel) return
     const height = panel.scrollHeight
     if(height !== this.treeHeight) this.treeHeight = height
+  }
+
+  connectedCallback() {
+    super.connectedCallback()
+    window.addEventListener("resize", this.handleWindowResize)
+  }
+
+  protected firstUpdated() {
+    const nav = this.renderRoot.querySelector<HTMLElement>("nav")
+    if(nav && typeof ResizeObserver !== "undefined") {
+      this.breadcrumbResizeObserver = new ResizeObserver(() => this.scheduleResponsiveLayout())
+      this.breadcrumbResizeObserver.observe(nav)
+    }
+    this.scheduleResponsiveLayout()
+  }
+
+  private scheduleResponsiveLayout() {
+    if(this.responsiveLayoutQueued) return
+    this.responsiveLayoutQueued = true
+    queueMicrotask(() => {
+      this.responsiveLayoutQueued = false
+      this.updateResponsiveLayout()
+    })
+  }
+
+  private measuredBreadcrumbWidth(list: HTMLElement) {
+    return Array.from(list.children).reduce((width, child) => {
+      const element = child as HTMLElement
+      const style = getComputedStyle(element)
+      const margin = (Number.parseFloat(style.marginLeft) || 0)
+        + (Number.parseFloat(style.marginRight) || 0)
+      return width + element.getBoundingClientRect().width + margin
+    }, 0)
+  }
+
+  private updateResponsiveLayout() {
+    const list = this.renderRoot.querySelector<HTMLElement>(".breadcrumb-list")
+    if(!list) return
+
+    const listStyle = getComputedStyle(list)
+    const padding = (Number.parseFloat(listStyle.paddingLeft) || 0)
+      + (Number.parseFloat(listStyle.paddingRight) || 0)
+    const availableWidth = list.clientWidth - padding
+    if(availableWidth <= 0) return
+
+    const items = Array.from(list.querySelectorAll<HTMLElement>(".breadcrumb-entry"))
+      .filter(item => !item.classList.contains("separator"))
+    const collapsedClass = "icon-only"
+    items.forEach(item => item.querySelector(".item")?.classList.remove(collapsedClass))
+
+    let requiredWidth = this.measuredBreadcrumbWidth(list)
+    let collapseCount = 0
+    for(const item of items) {
+      if(requiredWidth <= availableWidth + 0.5) break
+
+      const button = item.querySelector<HTMLElement>(".item")
+      if(!button) continue
+      const expandedWidth = item.getBoundingClientRect().width
+      button.classList.add(collapsedClass)
+      const collapsedWidth = item.getBoundingClientRect().width
+      requiredWidth -= expandedWidth - collapsedWidth
+      collapseCount++
+    }
+
+    items.forEach((item, index) => {
+      item.querySelector(".item")?.classList.toggle(collapsedClass, index < collapseCount)
+    })
+
+    if(this.breadcrumbCollapseCount !== collapseCount) {
+      this.breadcrumbCollapseCount = collapseCount
+    }
   }
 
   private readonly handlePointerDown = (event: PointerEvent) => {
@@ -753,6 +843,14 @@ export class DomEditorBreadcrumb extends LitElement {
     return this.displayPath.slice(0, rootIndex >= 0 ? rootIndex + 1 : 1)
   }
 
+  private isCollapsedBreadcrumbItem(entry: BreadcrumbEntry) {
+    if(entry.kind !== "item") return false
+    const itemIndex = this.breadcrumbEntries
+      .filter(candidate => candidate.kind === "item")
+      .findIndex(candidate => candidate.key === entry.key)
+    return itemIndex >= 0 && itemIndex < this.breadcrumbCollapseCount
+  }
+
   private renderBreadcrumbEntry(entry: BreadcrumbEntry) {
     const transitionClass = entry.state === "entering" ? "breadcrumb-fade-in" : ""
     if(entry.kind === "separator") {
@@ -766,7 +864,7 @@ export class DomEditorBreadcrumb extends LitElement {
     return html`
       <li class=${`breadcrumb-entry ${transitionClass}`}>
         <button
-          class="item"
+          class=${`item${this.isCollapsedBreadcrumbItem(entry) ? " icon-only" : ""}`}
           type="button"
           data-path=${entry.item.path.join(",")}
           title=${`Select ${entry.item.name}`}
@@ -776,7 +874,7 @@ export class DomEditorBreadcrumb extends LitElement {
           @click=${() => this.select(entry.item)}
         >
           ${this.renderItemIcon(entry.item)}
-          <span>${entry.item.name}</span>
+          <span class="item-label">${entry.item.name}</span>
         </button>
       </li>
     `
@@ -822,6 +920,10 @@ export class DomEditorBreadcrumb extends LitElement {
     this.clearHover()
     if(this.treeCollapseTimer !== null) clearTimeout(this.treeCollapseTimer)
     this.treeCollapseTimer = null
+    this.breadcrumbResizeObserver?.disconnect()
+    this.breadcrumbResizeObserver = undefined
+    this.responsiveLayoutQueued = false
+    window.removeEventListener("resize", this.handleWindowResize)
     super.disconnectedCallback()
   }
 }
