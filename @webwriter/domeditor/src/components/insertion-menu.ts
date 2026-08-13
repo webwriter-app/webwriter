@@ -6,7 +6,7 @@ import type {PackageInsertionItem} from "../packages"
 export type InsertionMenuItem = {
   tag?: string
   name: string
-  section: "Text" | "Media" | "Packages"
+  section: "Text" | "Lists" | "Media" | "Packages"
   packageName?: string
   kind?: "widget" | "snippet"
   description?: string
@@ -14,7 +14,7 @@ export type InsertionMenuItem = {
   htmlUrl?: string
 }
 
-export const insertionMenuItems: Array<InsertionMenuItem & {tag: string, section: "Text" | "Media"}> = [
+export const insertionMenuItems: Array<InsertionMenuItem & {tag: string, section: "Text" | "Lists" | "Media"}> = [
   {section: "Text", tag: "p", name: "Paragraph"},
   {section: "Text", tag: "pre", name: "Preformatted Text"},
   {section: "Text", tag: "h1", name: "Heading 1"},
@@ -23,9 +23,10 @@ export const insertionMenuItems: Array<InsertionMenuItem & {tag: string, section
   {section: "Text", tag: "h4", name: "Heading 4"},
   {section: "Text", tag: "h5", name: "Heading 5"},
   {section: "Text", tag: "h6", name: "Heading 6"},
-  {section: "Text", tag: "ul", name: "Bulleted List"},
-  {section: "Text", tag: "ol", name: "Numbered List"},
-  {section: "Text", tag: "details", name: "Details"},
+  {section: "Lists", tag: "ul", name: "Bulleted List"},
+  {section: "Lists", tag: "ol", name: "Numbered List"},
+  {section: "Lists", tag: "dl", name: "Description List"},
+  {section: "Lists", tag: "details", name: "Details"},
   {section: "Media", tag: "table", name: "Table"},
   {section: "Media", tag: "picture", name: "Image"},
   {section: "Media", tag: "svg", name: "Graphic"},
@@ -221,7 +222,7 @@ export class InsertionMenu extends LitElement {
           @click=${this.close}
         >×</button>
         <div class="sections">
-          ${(["Text", "Media", "Packages"] as const).map(section => html`
+          ${(["Text", "Lists", "Media", "Packages"] as const).map(section => html`
             <section aria-label=${section}>
               <h2>${section}</h2>
               ${items.filter(item => item.section === section).map(item => html`

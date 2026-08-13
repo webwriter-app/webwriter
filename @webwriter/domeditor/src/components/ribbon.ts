@@ -1,5 +1,5 @@
 import { LitElement, css, html } from "lit"
-import type {PresenceUser} from "../editor-bridge"
+import type {ListType, PresenceUser} from "../editor-bridge"
 import {
   backgroundColorOptions,
   fontFamilyOptions,
@@ -52,11 +52,17 @@ const ribbonInputFromEvent = (event: Event) => event.composedPath().find(isRibbo
 const menuTabs: RibbonMenuName[] = ["File", "Insert", "Format", "Review", "Settings"]
 const dropdownMenus: RibbonMenuName[] = ["File", "Insert", "Format", "Review", "Settings"]
 
-const insertionMenuGroup = (section: "Text" | "Media"): RibbonMenuGroup => ({
+const insertionMenuGroup = (section: "Text" | "Lists" | "Media"): RibbonMenuGroup => ({
   label: section,
   buttons: insertionMenuItems
     .filter(item => item.section === section)
     .flatMap<RibbonMenuButton>(item => {
+      if(section === "Lists") {
+        return [{
+          label: item.name,
+          action: item.tag === "details" ? "insert-details" : `toggle-list:${item.tag}`,
+        }]
+      }
       if(item.tag === "h1") {
         return [{
           label: "Heading",
@@ -79,10 +85,12 @@ const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
   Start: [
     {label: "Clipboard", buttons: ["Paste", "Cut", "Copy"]},
     {label: "Marks", buttons: []},
-    {label: "Paragraph", buttons: ["Align", "Lists", "Spacing"]},
+    {label: "Paragraph", buttons: ["Align", "Spacing"]},
+    {label: "Lists", buttons: []},
   ],
   Insert: [
     insertionMenuGroup("Text"),
+    insertionMenuGroup("Lists"),
     insertionMenuGroup("Media"),
   ],
   Format: [
@@ -125,6 +133,8 @@ export class AppRibbon extends LitElement {
     packageSearchQuery: {type: String, state: true},
     packageDrawerOpen: {type: Boolean, state: true},
     packageVisibleCount: {type: Number, state: true},
+    listType: {type: String, attribute: "list-type"},
+    listStyle: {type: String, attribute: "list-style"},
   }
 
   static styles = css`
@@ -475,6 +485,8 @@ export class AppRibbon extends LitElement {
   packagesLoading = false
   busyPackageNames: string[] = []
   packageError = ""
+  listType: ListType | null = null
+  listStyle = ""
   private packageSearchQuery = ""
   private packageDrawerOpen = false
   private packageVisibleCount = 2
@@ -903,10 +915,63 @@ export class AppRibbon extends LitElement {
     `
   }
 
+  private readonly unorderedListStyles: RibbonMenuButton[] = [
+    {label: "Disc", action: "list-style:ul:disc", icon: "Bulleted List"},
+    {label: "Circle", action: "list-style:ul:circle", icon: "Bulleted List"},
+    {label: "Square", action: "list-style:ul:square", icon: "Bulleted List"},
+    {label: "No marker", action: "list-style:ul:none", icon: "Bulleted List"},
+  ]
+
+  private readonly orderedListStyles: RibbonMenuButton[] = [
+    {label: "1, 2, 3", action: "list-style:ol:decimal", icon: "Numbered List"},
+    {label: "01, 02, 03", action: "list-style:ol:decimal-leading-zero", icon: "Numbered List"},
+    {label: "a, b, c", action: "list-style:ol:lower-alpha", icon: "Numbered List"},
+    {label: "A, B, C", action: "list-style:ol:upper-alpha", icon: "Numbered List"},
+    {label: "i, ii, iii", action: "list-style:ol:lower-roman", icon: "Numbered List"},
+    {label: "I, II, III", action: "list-style:ol:upper-roman", icon: "Numbered List"},
+    {label: "No marker", action: "list-style:ol:none", icon: "Numbered List"},
+  ]
+
+  private renderListDrawer() {
+    return html`
+      <ribbon-drawer label="Lists" icon="Lists">
+        <ribbon-button
+          toggle
+          label="Bulleted List"
+          action="toggle-list:ul"
+          icon="Bulleted List"
+          .submenu=${this.unorderedListStyles}
+          ?active=${this.listType === "ul"}
+        ></ribbon-button>
+        <ribbon-button
+          toggle
+          label="Numbered List"
+          action="toggle-list:ol"
+          icon="Numbered List"
+          .submenu=${this.orderedListStyles}
+          ?active=${this.listType === "ol"}
+        ></ribbon-button>
+        <ribbon-button
+          toggle
+          label="Description List"
+          action="toggle-list:dl"
+          icon="Description List"
+          ?active=${this.listType === "dl"}
+        ></ribbon-button>
+        <ribbon-button
+          label="Details"
+          action="insert-details"
+          icon="Details"
+        ></ribbon-button>
+      </ribbon-drawer>
+    `
+  }
+
   private renderDrawers() {
     return this.currentMenuGroups.map(drawer => {
       if(drawer.label === "Marks") return this.renderMarkDrawer()
       if(drawer.label === "Packages") return this.renderPackageDrawer()
+      if(drawer.label === "Lists") return this.renderListDrawer()
       const representative = drawer.buttons[0]
       const icon = typeof representative === "string"
         ? representative

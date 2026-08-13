@@ -7,6 +7,7 @@ import { MarkFeature } from "./features/mark"
 import { PlaceholderFeature } from "./features/placeholder"
 import { SelectionFeature } from "./features/selection"
 import { InsertionFeature } from "./features/insertion"
+import { ListFeature } from "./features/list"
 import { TransformationFeature } from "./features/transformation"
 import { StateFeature } from "./features/state"
 import { Schema } from "./schema"
@@ -69,6 +70,7 @@ export class DOMEditor {
     "state": new StateFeature(this),
     "insertion": new InsertionFeature(this),
     "history": new HistoryFeature(this),
+    "list": new ListFeature(this),
     "manipulation": new ManipulationFeature(this),
     "transformation": new TransformationFeature(this),
     "selection": new SelectionFeature(this),
@@ -268,6 +270,7 @@ export class DOMEditor {
     Promise.resolve(result).then(
       value => {
         this.normalizeSurroundingElements()
+        this.postSelectionPath()
         if(requestId) {
           this.postExecutionEvent(executeCompleteEvent, {requestId, result: value})
         }
@@ -365,9 +368,11 @@ export class DOMEditor {
     const gap: SelectionGap | undefined = $.isGapSelection && isElement($.anchor)
       ? {parentPath: this.pathToElement($.anchor), offset: $.anchorOffset}
       : undefined
+    const list = this.features.list.getState()
     const detail: SelectionChangeDetail = {
       path,
       ...(gap ? {gap} : {}),
+      ...(list.type ? {list} : {}),
     }
     this.postBridgeEvent(selectionChangeEvent, detail)
   }

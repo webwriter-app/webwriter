@@ -106,6 +106,28 @@ export class EditingSelection {
       }
     }
     const isBefore = y < boundaryRect.top
+    const item = offsetNode instanceof Text
+      ? offsetNode.parentElement?.closest("li, dt, dd")
+      : null
+    const parentList = item?.parentElement
+    const nestedList = parentList?.matches("ul, ol, dl")
+      && parentList.parentElement?.closest("li, dt, dd")
+      ? parentList
+      : null
+    const nestedListRect = nestedList?.getBoundingClientRect()
+    const isRtl = nestedList ? getComputedStyle(nestedList).direction === "rtl" : false
+    const isBeforeNestedItemContent = offsetNode instanceof Text && offset === 0
+      && Boolean(nestedListRect)
+      && boundaryRect.top <= y && y <= boundaryRect.bottom
+      && nestedListRect!.left <= x && x <= nestedListRect!.right
+      && (isRtl ? x > boundaryRect.right : x < boundaryRect.left)
+    // In a nested list, the indentation gutter represents the structural gap
+    // before that list. Chromium instead maps it to offset 0 of the first LI,
+    // which makes the nested list impossible to address with the pointer.
+    if(!extend && nestedList && isBeforeNestedItemContent) {
+      this.selectGap(nestedList, "before")
+      return
+    }
     // A click just outside the inline text box can still resolve to the
     // text's first/last caret position. It is only a gap click when it is
     // vertically outside the text container; clicks beside the text within
@@ -140,8 +162,13 @@ export class EditingSelection {
       firstBodyElementIndex >= 0 &&
       this.anchorOffset <= firstBodyElementIndex &&
       Array.from(document.body.childNodes).slice(this.anchorOffset, firstBodyElementIndex).every(node => !isText(node) || !node.textContent?.trim())
+    const isNestedListBoundary = isElement(this.anchor) && this.anchor.matches("li, dt, dd") &&
+      [this.anchor.childNodes.item(this.anchorOffset - 1), this.anchor.childNodes.item(this.anchorOffset)]
+        .some(node => isElement(node) && node.matches("ul, ol, dl"))
     return isElement(this.anchor) && this.isEmpty && !this.isEmptySelection &&
-      (!Array.from(this.anchor.childNodes).some(node => isText(node) || isMarkElement(node)) || isBodyBoundaryBeforeFirstElement)
+      (!Array.from(this.anchor.childNodes).some(node => isText(node) || isMarkElement(node))
+        || isBodyBoundaryBeforeFirstElement
+        || isNestedListBoundary)
   }
 
   /** Whether exactly one element is selected (anchored in its parent,

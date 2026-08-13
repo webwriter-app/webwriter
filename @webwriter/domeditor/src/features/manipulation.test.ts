@@ -163,13 +163,15 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
 
     expectBodyToBe("<p>a</p><p></p><p>b</p>")
   })
-  it("uses the element required by the schema at a gap", () => {
+  it("materializes a normal gap between list items on Enter", () => {
     document.body.innerHTML = "<ul><li>a</li><li>b</li></ul>"
     $.selectGap(document.querySelector("li")!)
 
     document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
 
     expectBodyToBe("<ul><li>a</li><li></li><li>b</li></ul>")
+    expect($.anchor).toBe(document.querySelectorAll("li")[1])
+    expect($.anchorOffset).toBe(0)
   })
   it("replaces the selected element", () => {
     document.body.innerHTML = "<p>old</p>"

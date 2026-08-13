@@ -259,6 +259,81 @@ body::part(presence-element-selection-label) {
   border-radius: 3px 3px 0 3px;
 }
 
+/* A prospective list item is an editor-only selection gap. Its marker lives
+ * in BODY's shadow root, so the authored list stays empty until real input. */
+body::part(virtual-list-item) {
+  position: fixed;
+  z-index: 2147483646;
+  box-sizing: border-box;
+  display: block;
+  color: #9ca3af;
+  font: inherit;
+  line-height: var(--virtual-list-line-height, 1.25em);
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+}
+
+body::part(virtual-list-item-ul),
+body::part(virtual-list-item-ol) {
+  display: list-item;
+  width: 0;
+  list-style-position: outside;
+}
+
+body::part(virtual-list-item-custom-marker)::marker {
+  content: var(--virtual-list-marker-content);
+  font-family: var(--virtual-list-marker-font-family, inherit);
+  font-size: var(--virtual-list-marker-font-size, inherit);
+  font-style: var(--virtual-list-marker-font-style, inherit);
+  font-weight: var(--virtual-list-marker-font-weight, inherit);
+}
+
+body::part(virtual-list-item-dl) {
+  font-size: 0.8em;
+  font-style: italic;
+}
+
+/* This must follow the type-specific display rules: hidden UL/OL markers keep
+ * their list type part, but must not keep painting after materialization. */
+body::part(virtual-list-item-hidden) {
+  display: none;
+}
+
+body::part(virtual-list-placeholder-hidden) {
+  display: none;
+}
+
+body::part(virtual-list-placeholder) {
+  position: absolute;
+  inset-inline-start: 0;
+  top: 0;
+}
+
+body::part(virtual-list-placeholder-secondary) {
+  inset-inline-start: 40px;
+  top: var(--virtual-list-line-height, 1.25em);
+}
+
+body::part(virtual-list-caret) {
+  position: absolute;
+  inset-inline-start: 0;
+  top: 0;
+  width: 1px;
+  height: var(--virtual-list-line-height, 1.25em);
+  min-height: 16px;
+  background: CanvasText;
+  animation: blink 1s step-end infinite;
+}
+
+body::part(virtual-list-caret-hidden) {
+  display: none;
+}
+
+.◆virtual-list-selected {
+  caret-color: transparent;
+}
+
 @keyframes blink {
   50% {
     opacity: 0.0;
@@ -487,6 +562,70 @@ body.◆transform-rotating, body.◆transform-rotating * {
   visibility: hidden;
 }
 
+/* Without an authored SUMMARY, Chromium supplies a native disclosure label
+ * reading “Details”. Keep an empty DETAILS addressable without exposing that
+ * browser placeholder; authored content restores the inherited color. */
+details:empty {
+  color: transparent;
+  min-height: 1lh;
+}
+
+/* SUMMARY's placeholder follows the native disclosure marker, keeping the
+ * caret at the real text start instead of before a generated label. */
+summary:empty::before {
+  content: none;
+}
+
+summary:is(:empty, :has(br:only-child))::after {
+  content: "Summary";
+  color: darkgray;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Chromium may paint the native caret on the marker side of an empty
+ * SUMMARY. This caret participates at the inline content origin—the exact
+ * position occupied by real summary text after the disclosure marker. */
+summary:is(:empty, :has(br:only-child)).◆empty-selected {
+  caret-color: transparent;
+}
+
+summary:is(:empty, :has(br:only-child)).◆empty-selected::before {
+  content: "";
+  visibility: visible;
+  display: inline-block;
+  box-sizing: border-box;
+  width: 1px;
+  height: 1em;
+  margin-inline-end: -1px;
+  border-inline-start: 1px solid currentColor;
+  vertical-align: -0.125em;
+  animation: blink 1s step-end infinite;
+}
+
+summary:has(> br:only-child) > br {
+  display: none;
+}
+
+/* Generated labels follow rather than precede the editable position, so an
+ * empty DT/DD retains a native caret while either half of its pair is absent. */
+dl > dt:is(:empty, :has(br:only-child))::after,
+dl > dd:is(:empty, :has(br:only-child))::after {
+  color: darkgray;
+  font-size: 0.8em;
+  font-style: italic;
+  pointer-events: none;
+  user-select: none;
+}
+
+dl > dt:is(:empty, :has(br:only-child))::after {
+  content: "Term";
+}
+
+dl > dd:is(:empty, :has(br:only-child))::after {
+  content: "Description";
+}
+
 /* An empty body needs a visible zero-width editing position so the native
  * caret can be painted before the first inserted element. */
 body:empty::before {
@@ -518,9 +657,11 @@ body.◆empty-selected::part(empty-document-caret) {
   display: block;
 }
 
-:is(ul, ol, menu):empty {
+:is(ul, ol, dl, menu):empty {
   min-height: 1lh;
+}
 
+menu:empty {
   &.◆empty-selected {
     &::before {
       content: "";

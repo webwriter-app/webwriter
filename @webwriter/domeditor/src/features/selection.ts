@@ -306,7 +306,15 @@ export class SelectionFeature extends EditorFeature {
     this.#clearSelections()
     if(!sel?.anchorNode || !sel.focusNode) return
     const anchorContainer = getContainer(sel.anchorNode)
-    if($.isGapSelection) {
+    // A collapsed point directly in a semantic list represents the next
+    // prospective item. ListFeature paints a text caret and marker for that
+    // point; treating it as an ordinary element gap would paint a second,
+    // arrow-shaped caret and suppress the editor's caret color.
+    const isVirtualListSelection = this.editor.features.list.isVirtualSelection
+    if(isVirtualListSelection) {
+      // Deliberately leave this selection to ListFeature.
+    }
+    else if($.isGapSelection) {
       const children = sel.anchorNode!.childNodes
       if(children.length) {
         const i = sel.anchorOffset
@@ -314,7 +322,11 @@ export class SelectionFeature extends EditorFeature {
         const firstBodyElementIndex = firstBodyElement? Array.from(children).indexOf(firstBodyElement): -1
         const isBeforeFirstBodyElement = sel.anchorNode === document.body && firstBodyElementIndex >= 0 && i <= firstBodyElementIndex &&
           Array.from(children).slice(i, firstBodyElementIndex).every(node => node.nodeType !== Node.TEXT_NODE || !node.textContent?.trim())
-        const placement = i === 0 || isBeforeFirstBodyElement? "before": "after"
+        const nestedListAfter = isElement(sel.anchorNode)
+          && sel.anchorNode.matches("li, dt, dd")
+          && isElement(children.item(i))
+          && (children.item(i) as Element).matches("ul, ol, dl")
+        const placement = i === 0 || isBeforeFirstBodyElement || nestedListAfter ? "before": "after"
         const offset = placement === "after"? -1: 0
         const element = isBeforeFirstBodyElement? firstBodyElement: children.item(i + offset) as Element
         const gapCaret = this.gapCaret ?? this.#createGapCaret()

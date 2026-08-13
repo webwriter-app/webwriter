@@ -197,13 +197,17 @@ export class ManipulationFeature extends EditorFeature {
     let container = getContainer($.range.startContainer)
     let offset = this.splitTextLikePoint(container)
     let target: Element | null = null
+    const splittingSummary = container.matches("summary")
+    if(splittingSummary) splitDepth = 0
 
     for(let depth = 0; depth <= splitDepth; depth++) {
       if(container.nodeName === "BODY" || container.nodeName === "HTML") break
       const parent = container.parentElement
       if(!parent) break
       const schema = this.editor.schema.get(container)
-      const next = (strict && schema.inseperable? this.editor.schema.create(): container.cloneNode(false)) as Element
+      const next = (splittingSummary || strict && schema.inseperable
+        ? this.editor.schema.create()
+        : container.cloneNode(false)) as Element
       container.after(next)
       next.append(...Array.from(container.childNodes).slice(offset))
       target ??= next
@@ -212,7 +216,11 @@ export class ManipulationFeature extends EditorFeature {
       container = parent
     }
 
-    if(target) this.moveToStart(target)
+    if(target) {
+      this.moveToStart(target)
+      const details = target.closest("details") as HTMLDetailsElement | null
+      if(details && !target.matches("summary")) details.open = true
+    }
   }
 
   /** Action handlers, addressable by action type through the editor. */
@@ -255,6 +263,12 @@ export class ManipulationFeature extends EditorFeature {
    * Shift+Tab lifts. */
   activeListeners: DocumentListenerMap = {
     "beforeinput": ev => {
+      const summary = $.anchorContainer?.closest("summary")
+      if(ev.inputType === "insertParagraph" && summary?.parentElement?.matches("details")) {
+        ev.preventDefault()
+        this.insert()
+        return
+      }
       const isVirtualSelection = $.isGapSelection || $.isEmptyDocumentSelection
       if(!isVirtualSelection) return
 

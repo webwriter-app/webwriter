@@ -407,7 +407,9 @@ export class InsertionFeature extends EditorFeature {
   }
 
   private async insert(item: InsertionMenuItem) {
-    let html = item.tag ? `<${item.tag}></${item.tag}>` : ""
+    let html = item.tag === "details"
+      ? "<details><summary></summary></details>"
+      : item.tag ? `<${item.tag}></${item.tag}>` : ""
     if(item.htmlUrl) {
       try {
         const response = await fetch(item.htmlUrl)
@@ -457,7 +459,13 @@ export class InsertionFeature extends EditorFeature {
       range.insertNode(template.content)
     }
     const last = nodes.at(-1)!
-    if(isElement(last) && this.editor.schema.findValidContentTypes(last).includes("#text")) {
+    if(isElement(last) && last.matches("ul, ol, dl")) {
+      $.move(last)
+    }
+    else if(isElement(last) && last.matches("details") && last.firstElementChild) {
+      $.move(last.firstElementChild)
+    }
+    else if(isElement(last) && this.editor.schema.findValidContentTypes(last).includes("#text")) {
       $.move(last)
     }
     else if(nodes.length === 1 && isElement(last) && last.parentElement) {

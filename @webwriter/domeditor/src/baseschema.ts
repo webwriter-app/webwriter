@@ -439,11 +439,13 @@ export const baseSchema = {
   },
   "dl": {
     group: ["flow"],
-    content: {terms: [
-      {options: [{selector: "script"}, {selector: "template"}], min: 0, max: Infinity},
+    content: {options: [
+      {selector: "dt"},
+      {selector: "dd"},
       {selector: "div"},
-      {options: [{selector: "div"}, {selector: "script"}, {selector: "template"}], min: 0, max: Infinity},
-    ]}
+      {selector: "script"},
+      {selector: "template"},
+    ], min: 0, max: Infinity}
   },
   "fieldset": {
     group: ["flow", "palpable", "formassociated", "listed"],
@@ -551,7 +553,8 @@ export const baseSchema = {
   },
   "source": {},
   "summary": {
-    content: {options: [{group: "phrasing"}, {group: "heading"}], min: 0, max: Infinity}
+    content: {options: [{group: "phrasing"}, {group: "heading"}], min: 0, max: Infinity},
+    inseperable: true
   },
   "tbody": {
     content: {selector: "tr", min: 0, max: Infinity}

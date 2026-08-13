@@ -76,7 +76,7 @@ describe("mark ribbon controls", () => {
     const comboboxes = Array.from(drawer.querySelectorAll<RibbonCombobox>("ribbon-combobox"))
 
     expect(ribbon.shadowRoot!.querySelector("mark-ribbon-drawer")).toBeNull()
-    expect(ribbon.shadowRoot!.querySelectorAll("ribbon-drawer")).toHaveLength(3)
+    expect(ribbon.shadowRoot!.querySelectorAll("ribbon-drawer")).toHaveLength(4)
     expect(drawer.layout).toBe("marks")
     expect(drawer.expandable).toBe(true)
     expect(moreSlot.hidden).toBe(true)

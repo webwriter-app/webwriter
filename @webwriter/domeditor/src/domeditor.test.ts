@@ -86,6 +86,17 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/body::part\(element-hover-caret\)[\s\S]*?color:\s*#2563eb;[\s\S]*?opacity:\s*0\.5;[\s\S]*?animation:\s*none;/)
     expect(editorStyleString).toMatch(/body::part\(insertion-add\)[\s\S]*?position-anchor:\s*--empty-selected;[\s\S]*?left:\s*anchor\(left\);[\s\S]*?top:\s*anchor\(top\);[\s\S]*?font:\s*inherit;/)
     expect(editorStyleString).toMatch(/body\.◆empty-selected::part\(insertion-add\)[\s\S]*?left:\s*calc\(anchor\(left\) \+ var\(--body-padding\)\);/)
+    expect(editorStyleString).toMatch(/summary:is\(:empty, :has\(br:only-child\)\)::after\s*\{[\s\S]*?content:\s*"Summary";/)
+    expect(editorStyleString).toContain("body::part(virtual-list-caret)")
+    expect(editorStyleString).not.toContain('content: "Content"')
+    expect(editorStyleString).toMatch(/summary:is\(:empty, :has\(br:only-child\)\)\.◆empty-selected::before[\s\S]*?display:\s*inline-block;[\s\S]*?margin-inline-end:\s*-1px;/)
+    expect(editorStyleString).toMatch(/dl > dt:is\(:empty, :has\(br:only-child\)\)::after[\s\S]*?content:\s*"Term";/)
+    expect(editorStyleString).toMatch(/dl > dd:is\(:empty, :has\(br:only-child\)\)::after[\s\S]*?content:\s*"Description";/)
+    expect(editorStyleString).not.toMatch(/:is\(ul, ol, menu\):empty[\s\S]*?display:\s*list-item;/)
+  })
+
+  it("hides Chromium's native label for an empty Details element", () => {
+    expect(editorStyleString).toMatch(/details:empty\s*\{[\s\S]*?color:\s*transparent;/)
   })
 
   it("does not duplicate constructed stylesheets", () => {

@@ -30,6 +30,7 @@ import {
   type SelectionGap,
   type SelectionPathItem,
   type PresenceUser,
+  type ListType,
   type InitializeEditorMessage,
   type LoadWidgetsMessage,
 } from "../editor-bridge"
@@ -102,6 +103,8 @@ export class DomEditor extends LitElement {
     busyPackageNames: {attribute: false, state: true},
     packageError: {attribute: false, state: true},
     frameRevision: {attribute: false, state: true},
+    listType: {attribute: false, state: true},
+    listStyle: {attribute: false, state: true},
   }
 
   private editorDocument: Document | null = null
@@ -120,6 +123,8 @@ export class DomEditor extends LitElement {
   private canMark = false
   private marks: MarkName[] = []
   private markStyles: StyleMarkValues = {}
+  private listType: ListType | null = null
+  private listStyle = ""
   private presenceUsers: PresenceUser[] = []
   private packages: WebWriterPackage[] = []
   private installedPackages: WebWriterPackage[] = []
@@ -418,9 +423,39 @@ export class DomEditor extends LitElement {
       else this.focusEditor()
       return
     }
+    if(label?.startsWith("toggle-list:")) {
+      const listType = label.slice("toggle-list:".length) as ListType
+      if(listType === "ul" || listType === "ol" || listType === "dl") {
+        void this.execute({type: "toggleList", listType}).finally(() => this.focusEditor())
+      }
+      else this.focusEditor()
+      return
+    }
+    if(label?.startsWith("list-style:")) {
+      const [, listType, style] = label.split(":")
+      if((listType === "ul" || listType === "ol" || listType === "dl") && style) {
+        void this.execute({type: "setListStyle", listType, style}).finally(() => this.focusEditor())
+      }
+      else this.focusEditor()
+      return
+    }
+    if(label === "insert-details") {
+      void this.execute({type: "insertDetails"})
+        .finally(() => this.focusEditor())
+      return
+    }
     const item = insertionMenuItems.find(candidate => candidate.name === label)
     if(!item) {
       this.focusEditor()
+      return
+    }
+
+    if(item.tag === "ul" || item.tag === "ol" || item.tag === "dl") {
+      void this.execute({type: "toggleList", listType: item.tag}).finally(() => this.focusEditor())
+      return
+    }
+    if(item.tag === "details") {
+      void this.execute({type: "insertDetails"}).finally(() => this.focusEditor())
       return
     }
 
@@ -672,11 +707,14 @@ export class DomEditor extends LitElement {
         : null
       this.selectionPath = path
       this.selectionGap = selectionGap
+      this.listType = event.data.detail.list?.type ?? null
+      this.listStyle = event.data.detail.list?.style ?? ""
       this.documentTree = this.buildDocumentTree()
       this.dispatchEvent(new CustomEvent(selectionChangeEvent, {
         detail: {
           path,
           ...(selectionGap ? {gap: selectionGap} : {}),
+          list: {type: this.listType, style: this.listStyle},
         },
         bubbles: true,
         composed: true,
@@ -804,6 +842,8 @@ export class DomEditor extends LitElement {
           .canMark=${this.canMark}
           .marks=${this.marks}
           .markStyles=${this.markStyles}
+          .listType=${this.listType}
+          .listStyle=${this.listStyle}
           .presenceUsers=${this.presenceUsers}
           .packages=${this.packages}
           .installedPackages=${this.installedPackages}

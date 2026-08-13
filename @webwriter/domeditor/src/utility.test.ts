@@ -134,6 +134,28 @@ describe("selectCoords()", () => {
     expect($.anchorOffset).toBe(0)
   })
 
+  it("selects the gap before a nested list from its indentation gutter", () => {
+    setBody("<ul><li>outer<ul><li>inner</li></ul></li></ul>")
+    const outerItem = document.querySelector("li")!
+    const nestedList = document.querySelector("ul ul")!
+    const innerText = nestedList.querySelector("li")!.firstChild as Text
+    Object.defineProperty(nestedList, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({left: 80, right: 400, top: 120, bottom: 160}),
+    })
+    Object.defineProperty(Range.prototype, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({left: 120, right: 160, top: 120, bottom: 140}),
+    })
+    mockHitTest(innerText, 0, nestedList)
+
+    $.selectCoords(90, 130)
+
+    expect($.anchor).toBe(outerItem)
+    expect($.anchorOffset).toBe(1)
+    expect($.isGapSelection).toBe(true)
+  })
+
   it("selects the last text position when clicking beside the block", () => {
     setBody("<p>hello</p>")
     const block = document.body.firstElementChild!

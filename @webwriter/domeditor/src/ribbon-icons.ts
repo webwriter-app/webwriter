@@ -20,6 +20,7 @@ import columns3 from "@tabler/icons/outline/columns-3.svg?raw"
 import colorSwatch from "@tabler/icons/outline/color-swatch.svg?raw"
 import copy from "@tabler/icons/outline/copy.svg?raw"
 import chevronRight from "@tabler/icons/outline/chevron-right.svg?raw"
+import circleChevronRight from "@tabler/icons/outline/circle-chevron-right.svg?raw"
 import deviceFloppy from "@tabler/icons/outline/device-floppy.svg?raw"
 import dots from "@tabler/icons/outline/dots.svg?raw"
 import download from "@tabler/icons/outline/download.svg?raw"
@@ -164,7 +165,8 @@ const icons: Record<string, string> = {
   "Heading 6": h6,
   "Bulleted List": list,
   "Numbered List": listNumbers,
-  Details: listDetails,
+  "Description List": listDetails,
+  Details: circleChevronRight,
   Table: table,
   Image: photo,
   Graphic: vector,
