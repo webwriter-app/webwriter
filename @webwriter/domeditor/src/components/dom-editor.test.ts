@@ -4,6 +4,7 @@ import {DomEditor} from "./dom-editor"
 import type {DomEditorBreadcrumb, DocumentTreeItem} from "./breadcrumb"
 import type {RibbonButton} from "./ribbon-button"
 import type {RibbonDrawer} from "./ribbon-drawer"
+import type {RibbonMenu} from "./ribbon-menu"
 import {
   executeCompleteEvent,
   executeFailureEvent,
@@ -893,6 +894,25 @@ describe("DomEditor.execute()", () => {
     submenu.shadowRoot!.querySelector('button[title="Heading 3"]')!.click()
 
     expect(execute).toHaveBeenLastCalledWith({type: "insert", html: "<h3></h3>"})
+  })
+
+  it("puts Preformatted Text in the Paragraph submenu", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    const insertTab = ribbon.shadowRoot!.querySelector('ribbon-tab[label="Insert"]')!
+
+    insertTab.shadowRoot!.querySelector("button")!.click()
+    await ribbon.updateComplete
+
+    const paragraph = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Text"] ribbon-button[label="Paragraph"]')!
+    await paragraph.updateComplete
+    paragraph.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Show more Paragraph options"]')!.click()
+    await paragraph.updateComplete
+    const submenu = paragraph.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    submenu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Preformatted Text"]')!.click()
+
+    expect(execute).toHaveBeenCalledWith({type: "insert", html: "<pre></pre>"})
   })
 
   it("closes expanded ribbon-button menus when the editor receives focus", async () => {

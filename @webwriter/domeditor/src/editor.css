@@ -275,7 +275,8 @@ body::part(virtual-list-item) {
 }
 
 body::part(virtual-list-item-ul),
-body::part(virtual-list-item-ol) {
+body::part(virtual-list-item-ol),
+body::part(virtual-list-item-menu) {
   display: list-item;
   width: 0;
   list-style-position: outside;
@@ -294,7 +295,7 @@ body::part(virtual-list-item-dl) {
   font-style: italic;
 }
 
-/* This must follow the type-specific display rules: hidden UL/OL markers keep
+/* This must follow the type-specific display rules: hidden list markers keep
  * their list type part, but must not keep painting after materialization. */
 body::part(virtual-list-item-hidden) {
   display: none;

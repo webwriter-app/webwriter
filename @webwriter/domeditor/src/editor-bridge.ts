@@ -68,7 +68,7 @@ export type SelectionGap = {
   offset: number
 }
 
-export type ListType = "ul" | "ol" | "dl"
+export type ListType = "ul" | "ol" | "dl" | "menu"
 
 export type ListSelectionState = {
   /** The nearest active semantic list, or null when the selection is outside a list. */
@@ -179,7 +179,7 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
   const listIsValid = list === undefined || (
     !!list
     && typeof list === "object"
-    && (list.type === null || list.type === "ul" || list.type === "ol" || list.type === "dl")
+    && (list.type === null || list.type === "ul" || list.type === "ol" || list.type === "dl" || list.type === "menu")
     && typeof list.style === "string"
   )
   if(!listIsValid) return false

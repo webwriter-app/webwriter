@@ -20,6 +20,14 @@ beforeEach(() => {
 })
 
 describe("semantic list editing", () => {
+  it("supports menu as a bulleted list type", () => {
+    editor.features.list.toggleList("menu")
+
+    expect(cleanHTML()).toBe("<menu></menu>")
+    expect($.anchor).toBe(document.querySelector("menu"))
+    expect(editor.features.list.getState().type).toBe("menu")
+  })
+
   it("inserts an empty authored list and paints its first item from the body shadow root", () => {
     editor.features.list.toggleList("ul")
 

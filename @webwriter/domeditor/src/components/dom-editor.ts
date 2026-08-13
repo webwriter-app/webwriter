@@ -425,7 +425,7 @@ export class DomEditor extends LitElement {
     }
     if(label?.startsWith("toggle-list:")) {
       const listType = label.slice("toggle-list:".length) as ListType
-      if(listType === "ul" || listType === "ol" || listType === "dl") {
+      if(listType === "ul" || listType === "ol" || listType === "dl" || listType === "menu") {
         void this.execute({type: "toggleList", listType}).finally(() => this.focusEditor())
       }
       else this.focusEditor()
@@ -433,7 +433,7 @@ export class DomEditor extends LitElement {
     }
     if(label?.startsWith("list-style:")) {
       const [, listType, style] = label.split(":")
-      if((listType === "ul" || listType === "ol" || listType === "dl") && style) {
+      if((listType === "ul" || listType === "ol" || listType === "dl" || listType === "menu") && style) {
         void this.execute({type: "setListStyle", listType, style}).finally(() => this.focusEditor())
       }
       else this.focusEditor()
@@ -450,7 +450,7 @@ export class DomEditor extends LitElement {
       return
     }
 
-    if(item.tag === "ul" || item.tag === "ol" || item.tag === "dl") {
+    if(item.tag === "ul" || item.tag === "ol" || item.tag === "dl" || item.tag === "menu") {
       void this.execute({type: "toggleList", listType: item.tag}).finally(() => this.focusEditor())
       return
     }

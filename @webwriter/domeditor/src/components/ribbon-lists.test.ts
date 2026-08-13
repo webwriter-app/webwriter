@@ -14,14 +14,14 @@ describe("list ribbon drawer", () => {
     const labels = () => Array.from(ribbon.shadowRoot!.querySelectorAll(
       'ribbon-drawer[label="Lists"] ribbon-button',
     )).map(button => button.getAttribute("label"))
-    expect(labels()).toEqual(["Bulleted List", "Numbered List", "Description List", "Details"])
+    expect(labels()).toEqual(["List", "Enumeration", "Glossary", "Details"])
     expect(ribbon.shadowRoot!.querySelector(
       'ribbon-drawer[label="Lists"] ribbon-button[label="Details"]',
     )?.shadowRoot?.querySelector(".icon-tabler-circle-chevron-right")).not.toBeNull()
 
     ribbon.activeMenu = "Insert"
     await ribbon.updateComplete
-    expect(labels()).toEqual(["Bulleted List", "Numbered List", "Description List", "Details"])
+    expect(labels()).toEqual(["List", "Enumeration", "Glossary", "Details"])
   })
 
   it("indicates the active type and exposes inline marker style actions", async () => {
@@ -32,10 +32,10 @@ describe("list ribbon drawer", () => {
     await ribbon.updateComplete
 
     const ordered = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Lists"] ribbon-button[label="Numbered List"]',
+      'ribbon-drawer[label="Lists"] ribbon-button[label="Enumeration"]',
     )!
     const unordered = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Lists"] ribbon-button[label="Bulleted List"]',
+      'ribbon-drawer[label="Lists"] ribbon-button[label="List"]',
     )!
     expect(ordered.active).toBe(true)
     expect(unordered.active).toBe(false)
@@ -43,6 +43,8 @@ describe("list ribbon drawer", () => {
       .toContain("list-style:ol:upper-roman")
     expect(unordered.submenu.map(item => typeof item === "string" ? item : item.action))
       .toContain("list-style:ul:square")
+    expect(unordered.submenu.map(item => typeof item === "string" ? item : item.action))
+      .toContain("toggle-list:menu")
   })
 
   it("dispatches a toggle action from the active list button", async () => {
@@ -53,7 +55,7 @@ describe("list ribbon drawer", () => {
     ribbon.addEventListener("ribbon-button-click", listener)
 
     const button = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Lists"] ribbon-button[label="Bulleted List"]',
+      'ribbon-drawer[label="Lists"] ribbon-button[label="List"]',
     )!
     button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
 

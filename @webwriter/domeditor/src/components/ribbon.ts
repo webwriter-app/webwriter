@@ -58,11 +58,28 @@ const insertionMenuGroup = (section: "Text" | "Lists" | "Media"): RibbonMenuGrou
     .filter(item => item.section === section)
     .flatMap<RibbonMenuButton>(item => {
       if(section === "Lists") {
+        if(item.tag === "ul") {
+          return [{
+            label: item.name,
+            action: "toggle-list:ul",
+            submenu: [{label: "Menu", action: "toggle-list:menu", icon: "List"}],
+          }]
+        }
         return [{
           label: item.name,
           action: item.tag === "details" ? "insert-details" : `toggle-list:${item.tag}`,
         }]
       }
+      if(item.tag === "p") {
+        return [{
+          label: item.name,
+          action: item.name,
+          submenu: insertionMenuItems
+            .filter(submenuItem => submenuItem.section === section && submenuItem.tag === "pre")
+            .map(submenuItem => submenuItem.name),
+        } satisfies RibbonMenuButton]
+      }
+      if(item.tag === "pre") return []
       if(item.tag === "h1") {
         return [{
           label: "Heading",
@@ -968,46 +985,47 @@ export class AppRibbon extends LitElement {
   }
 
   private readonly unorderedListStyles: RibbonMenuButton[] = [
-    {label: "Disc", action: "list-style:ul:disc", icon: "Bulleted List"},
-    {label: "Circle", action: "list-style:ul:circle", icon: "Bulleted List"},
-    {label: "Square", action: "list-style:ul:square", icon: "Bulleted List"},
-    {label: "No marker", action: "list-style:ul:none", icon: "Bulleted List"},
+    {label: "Menu", action: "toggle-list:menu", icon: "List"},
+    {label: "Disc", action: "list-style:ul:disc", icon: "List"},
+    {label: "Circle", action: "list-style:ul:circle", icon: "List"},
+    {label: "Square", action: "list-style:ul:square", icon: "List"},
+    {label: "No marker", action: "list-style:ul:none", icon: "List"},
   ]
 
   private readonly orderedListStyles: RibbonMenuButton[] = [
-    {label: "1, 2, 3", action: "list-style:ol:decimal", icon: "Numbered List"},
-    {label: "01, 02, 03", action: "list-style:ol:decimal-leading-zero", icon: "Numbered List"},
-    {label: "a, b, c", action: "list-style:ol:lower-alpha", icon: "Numbered List"},
-    {label: "A, B, C", action: "list-style:ol:upper-alpha", icon: "Numbered List"},
-    {label: "i, ii, iii", action: "list-style:ol:lower-roman", icon: "Numbered List"},
-    {label: "I, II, III", action: "list-style:ol:upper-roman", icon: "Numbered List"},
-    {label: "No marker", action: "list-style:ol:none", icon: "Numbered List"},
+    {label: "1, 2, 3", action: "list-style:ol:decimal", icon: "Enumeration"},
+    {label: "01, 02, 03", action: "list-style:ol:decimal-leading-zero", icon: "Enumeration"},
+    {label: "a, b, c", action: "list-style:ol:lower-alpha", icon: "Enumeration"},
+    {label: "A, B, C", action: "list-style:ol:upper-alpha", icon: "Enumeration"},
+    {label: "i, ii, iii", action: "list-style:ol:lower-roman", icon: "Enumeration"},
+    {label: "I, II, III", action: "list-style:ol:upper-roman", icon: "Enumeration"},
+    {label: "No marker", action: "list-style:ol:none", icon: "Enumeration"},
   ]
 
   private renderListDrawer() {
     return html`
-      <ribbon-drawer label="Lists" icon="Lists">
+      <ribbon-drawer label="Lists" icon="Lists" layout="lists">
         <ribbon-button
           toggle
-          label="Bulleted List"
+          label="List"
           action="toggle-list:ul"
-          icon="Bulleted List"
+          icon="List"
           .submenu=${this.unorderedListStyles}
-          ?active=${this.listType === "ul"}
+          ?active=${this.listType === "ul" || this.listType === "menu"}
         ></ribbon-button>
         <ribbon-button
           toggle
-          label="Numbered List"
+          label="Enumeration"
           action="toggle-list:ol"
-          icon="Numbered List"
+          icon="Enumeration"
           .submenu=${this.orderedListStyles}
           ?active=${this.listType === "ol"}
         ></ribbon-button>
         <ribbon-button
           toggle
-          label="Description List"
+          label="Glossary"
           action="toggle-list:dl"
-          icon="Description List"
+          icon="Glossary"
           ?active=${this.listType === "dl"}
         ></ribbon-button>
         <ribbon-button
@@ -1029,7 +1047,7 @@ export class AppRibbon extends LitElement {
         ? representative
         : representative?.action ?? representative?.label ?? drawer.label
       return html`
-        <ribbon-drawer label=${drawer.label} icon=${icon}>
+        <ribbon-drawer label=${drawer.label} icon=${icon} layout=${drawer.label.toLowerCase()}>
           ${drawer.buttons.map(button => {
             const item = typeof button === "string" ? {label: button} : button
             return html`

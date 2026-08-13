@@ -110,7 +110,7 @@ export class EditingSelection {
       ? offsetNode.parentElement?.closest("li, dt, dd")
       : null
     const parentList = item?.parentElement
-    const nestedList = parentList?.matches("ul, ol, dl")
+    const nestedList = parentList?.matches("ul, ol, dl, menu")
       && parentList.parentElement?.closest("li, dt, dd")
       ? parentList
       : null
@@ -164,7 +164,7 @@ export class EditingSelection {
       Array.from(document.body.childNodes).slice(this.anchorOffset, firstBodyElementIndex).every(node => !isText(node) || !node.textContent?.trim())
     const isNestedListBoundary = isElement(this.anchor) && this.anchor.matches("li, dt, dd") &&
       [this.anchor.childNodes.item(this.anchorOffset - 1), this.anchor.childNodes.item(this.anchorOffset)]
-        .some(node => isElement(node) && node.matches("ul, ol, dl"))
+        .some(node => isElement(node) && node.matches("ul, ol, dl, menu"))
     return isElement(this.anchor) && this.isEmpty && !this.isEmptySelection &&
       (!Array.from(this.anchor.childNodes).some(node => isText(node) || isMarkElement(node))
         || isBodyBoundaryBeforeFirstElement

@@ -49,6 +49,14 @@ export class RibbonDrawer extends LitElement {
       --ribbon-drawer-panel-padding-block: 0.375rem;
     }
 
+    :host([layout="text"]) {
+      --ribbon-drawer-expanded-width: 5rem;
+    }
+
+    :host([layout="lists"]) {
+      --ribbon-drawer-expanded-width: 9rem;
+    }
+
     :host([layout="packages"]) {
       --ribbon-drawer-expanded-width: 16.5rem;
       --ribbon-drawer-width: min(42rem, calc(100vw - 1rem));

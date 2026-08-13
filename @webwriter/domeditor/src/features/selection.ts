@@ -325,7 +325,7 @@ export class SelectionFeature extends EditorFeature {
         const nestedListAfter = isElement(sel.anchorNode)
           && sel.anchorNode.matches("li, dt, dd")
           && isElement(children.item(i))
-          && (children.item(i) as Element).matches("ul, ol, dl")
+          && (children.item(i) as Element).matches("ul, ol, dl, menu")
         const placement = i === 0 || isBeforeFirstBodyElement || nestedListAfter ? "before": "after"
         const offset = placement === "after"? -1: 0
         const element = isBeforeFirstBodyElement? firstBodyElement: children.item(i + offset) as Element

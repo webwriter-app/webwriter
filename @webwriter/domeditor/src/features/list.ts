@@ -2,11 +2,11 @@ import {DocumentListenerMap, EditorFeature} from "."
 import type {ListSelectionState, ListType} from "../editor-bridge"
 import {$, getContainer, isElement, modifierKeyDown, setPart} from "../utility"
 
-const listSelector = "ul, ol, dl"
+const listSelector = "ul, ol, dl, menu"
 const listItemSelector = "li, dt, dd"
 
 const isListType = (value: string): value is ListType =>
-  value === "ul" || value === "ol" || value === "dl"
+  value === "ul" || value === "ol" || value === "dl" || value === "menu"
 
 type VirtualListPoint = {
   list: HTMLElement
@@ -162,7 +162,7 @@ export class ListFeature extends EditorFeature {
     const marker = this.editor.appendix.querySelector<HTMLElement>(".◆virtual-list-item")
     if(marker) {
       setPart(marker, "virtual-list-item-hidden")
-      ;(["ul", "ol", "dl"] as const).forEach(type => setPart(marker, `virtual-list-item-${type}`, false))
+      ;(["ul", "ol", "dl", "menu"] as const).forEach(type => setPart(marker, `virtual-list-item-${type}`, false))
       setPart(marker, "virtual-list-item-custom-marker", false)
       setPart(marker.querySelector(".◆virtual-list-caret")!, "virtual-list-caret-hidden")
       marker.style.listStyleType = "none"
@@ -194,7 +194,7 @@ export class ListFeature extends EditorFeature {
     previous: HTMLElement | undefined,
   ) {
     const {list, offset} = point
-    if(!list.matches("ul, ol")) return
+    if(!list.matches("ul, ol, menu")) return
     const next = Array.from(list.childNodes).slice(offset)
       .find((node): node is HTMLElement => isElement(node) && node.matches("li"))
     const source = previous ?? next ?? list
@@ -283,7 +283,7 @@ export class ListFeature extends EditorFeature {
     setPart(secondary, "virtual-list-placeholder-hidden", !secondary.textContent)
     marker.dataset.kind = list.localName
     marker.dataset.empty = String(!previous)
-    ;(["ul", "ol", "dl"] as const).forEach(type => setPart(marker, `virtual-list-item-${type}`, list.localName === type))
+    ;(["ul", "ol", "dl", "menu"] as const).forEach(type => setPart(marker, `virtual-list-item-${type}`, list.localName === type))
     setPart(marker, "virtual-list-item-hidden", false)
     setPart(marker.querySelector(".◆virtual-list-caret")!, "virtual-list-caret-hidden", false)
     marker.style.listStyleType = "none"
