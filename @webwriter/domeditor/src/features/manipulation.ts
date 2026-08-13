@@ -144,8 +144,7 @@ export class ManipulationFeature extends EditorFeature {
   /** Promotes a DOM point through nested mark wrappers to an offset in the
    * containing non-mark element, splitting text and marks only when the point
    * is actually inside them. */
-  private splitTextLikePoint(container: Element) {
-    const range = $.range
+  private splitTextLikePoint(container: Element, range = $.range) {
     let pointNode: Node = range.startContainer
     let pointOffset = range.startOffset
 
@@ -190,13 +189,52 @@ export class ManipulationFeature extends EditorFeature {
     return pointOffset
   }
 
-  /** Splits the logical block at the current caret and, for a deeper split,
-   * promotes the split through its ancestors. The first right-hand block is
-   * retained as the editing target. */
-  private splitAtSelection(splitDepth: number, strict: boolean) {
-    let container = getContainer($.range.startContainer)
-    let offset = this.splitTextLikePoint(container)
+  /** Clones a root and maps a range into the clone so schema-sensitive
+   * commands can be tried without changing the authored document. */
+  private cloneRangeIn(root: Element, range: Range) {
+    const pathFromRoot = (node: Node) => {
+      const path: number[] = []
+      while(node !== root) {
+        const parent = node.parentNode
+        if(!parent) return null
+        const index = Array.from(parent.childNodes).indexOf(node as ChildNode)
+        if(index < 0) return null
+        path.push(index)
+        node = parent
+      }
+      return path.reverse()
+    }
+    const startPath = pathFromRoot(range.startContainer)
+    const endPath = pathFromRoot(range.endContainer)
+    if(!startPath || !endPath) return null
+
+    const clonedRoot = root.cloneNode(true) as Element
+    const resolve = (path: number[]) => path.reduce<Node | null>(
+      (node, index) => node?.childNodes.item(index) ?? null,
+      clonedRoot,
+    )
+    const start = resolve(startPath)
+    const end = resolve(endPath)
+    if(!start || !end) return null
+
+    const clonedRange = document.createRange()
+    try {
+      clonedRange.setStart(start, range.startOffset)
+      clonedRange.setEnd(end, range.endOffset)
+    }
+    catch {
+      return null
+    }
+    return {root: clonedRoot, range: clonedRange}
+  }
+
+  /** Applies the structural part of a split to any range, returning every
+   * element whose content model may have changed. */
+  private splitRange(range: Range, splitDepth: number, strict: boolean) {
+    let container = getContainer(range.startContainer)
+    let offset = this.splitTextLikePoint(container, range)
     let target: Element | null = null
+    const affected = new Set<Element>()
     const splittingSummary = container.matches("summary")
     if(splittingSummary) splitDepth = 0
 
@@ -209,12 +247,75 @@ export class ManipulationFeature extends EditorFeature {
         ? this.editor.schema.create()
         : container.cloneNode(false)) as Element
       container.after(next)
-      next.append(...Array.from(container.childNodes).slice(offset))
+      const moving = Array.from(container.childNodes).slice(offset)
+      this.editor.features.list.prepareSplitContinuation(container, next, moving)
+      next.append(...moving)
+      affected.add(container)
+      affected.add(next)
+      affected.add(parent)
       target ??= next
 
       offset = Array.from(parent.childNodes).indexOf(next)
       container = parent
     }
+
+    return {affected, target}
+  }
+
+  /** Checks both split halves and their changed parents against the schema by
+   * executing the exact operation on a detached clone. */
+  private canSplitAtSelection(splitDepth: number, strict: boolean) {
+    const simulation = this.cloneRangeIn(document.body, $.range)
+    if(!simulation) return false
+    try {
+      simulation.range.deleteContents()
+      const {affected, target} = this.splitRange(simulation.range, splitDepth, strict)
+      return Boolean(target)
+        && Array.from(affected).every(element => this.editor.schema.isContentValid(element))
+    }
+    catch {
+      return false
+    }
+  }
+
+  /** Returns the requested schema-valid split depth. A parent split falls
+   * back to splitting only the current element. */
+  private allowedSplitDepth(splitDepth: number, strict: boolean) {
+    if(this.canSplitAtSelection(splitDepth, strict)) return splitDepth
+    if(splitDepth > 0 && this.canSplitAtSelection(0, strict)) return 0
+    return null
+  }
+
+  /** Whether replacing the current selection with a node leaves its immediate
+   * content model valid. Transparent mark content resolves through its parent. */
+  private canInsertAtSelection(node: Node) {
+    const container = getContainer($.range.startContainer)
+    const simulation = this.cloneRangeIn(container, $.range)
+    if(!simulation) return false
+    try {
+      simulation.range.deleteContents()
+      const inserted = node.cloneNode(true)
+      simulation.range.insertNode(inserted)
+      return Boolean(inserted.parentElement)
+        && this.editor.schema.isContentValid(inserted.parentElement!)
+    }
+    catch {
+      return false
+    }
+  }
+
+  /** Inserts a break only when it is valid at the current selection. */
+  private insertBreak(type: "br" | "wbr") {
+    this.ensureTextBlock()
+    const element = document.createElement(type)
+    if(this.canInsertAtSelection(element)) this.insertAtSelection(element)
+  }
+
+  /** Splits the logical block at the current caret and, for a deeper split,
+   * promotes the split through its ancestors. The first right-hand block is
+   * retained as the editing target. */
+  private splitAtSelection(splitDepth: number, strict: boolean) {
+    const {target} = this.splitRange($.range, splitDepth, strict)
 
     if(target) {
       this.moveToStart(target)
@@ -257,7 +358,7 @@ export class ManipulationFeature extends EditorFeature {
   } as const
 
   /** Keyboard and input behavior: Enter splits the containing block
-   * (Shift: <br>, Shift+Alt: <wbr>, modifier: split two levels), Backspace and
+   * (Alt: <br>, Alt+Shift: <wbr>, modifier: split the parent), Backspace and
    * Delete remove by granularity (plain: character, Alt: word, modifier:
    * block, Alt+modifier: line), Tab wraps into the previous element and
    * Shift+Tab lifts. */
@@ -269,19 +370,18 @@ export class ManipulationFeature extends EditorFeature {
         this.insert()
         return
       }
+      if(ev.inputType === "insertLineBreak") {
+        ev.preventDefault()
+        this.insertBreak("br")
+        return
+      }
+
       const isVirtualSelection = $.isGapSelection || $.isEmptyDocumentSelection
       if(!isVirtualSelection) return
 
       if(ev.inputType === "insertParagraph") {
         ev.preventDefault()
         this.insert()
-      }
-      else if(ev.inputType === "insertLineBreak") {
-        const target = this.ensureTextBlock()
-        if(target) {
-          ev.preventDefault()
-          this.insertAtSelection(document.createElement("br"))
-        }
       }
       else if(["insertText", "insertReplacementText"].includes(ev.inputType) && ev.data !== null) {
         const target = this.ensureTextBlock()
@@ -329,13 +429,11 @@ export class ManipulationFeature extends EditorFeature {
       }
       if(ev.key === "Enter") {
         ev.preventDefault()
-        if(ev.shiftKey && ev.altKey) {
-          this.ensureTextBlock()
-          this.insertAtSelection(document.createElement("wbr"))
+        if(ev.altKey && ev.shiftKey) {
+          this.insertBreak("wbr")
         }
-        else if(ev.shiftKey) {
-          this.ensureTextBlock()
-          this.insertAtSelection(document.createElement("br"))
+        else if(ev.altKey) {
+          this.insertBreak("br")
         }
         else if(modifierKeyDown(ev)) {
           this.insert(undefined, 1)
@@ -399,14 +497,18 @@ export class ManipulationFeature extends EditorFeature {
     if(!node && this.ensureTextBlock()) {
       return
     }
+    if(!node) {
+      const allowedDepth = this.allowedSplitDepth(splitDepth, strict)
+      if(allowedDepth === null) return
+      return this.withNormalization(() => {
+        $.delete()
+        this.splitAtSelection(allowedDepth, strict)
+      })
+    }
     if(node) markWidgetsEditable(node)
     return this.withNormalization(() => {
       if(true) {
-        node? $.replace(node): $.delete()
-        if(!node) {
-          this.splitAtSelection(splitDepth, strict)
-          return
-        }
+        $.replace(node)
         let locus = $.commonAncestor
         for(let i = 0; i <= splitDepth; i++) {
           $.start instanceof Text && $.start.splitText($.startOffset)

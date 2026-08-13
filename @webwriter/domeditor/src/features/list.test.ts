@@ -98,9 +98,26 @@ describe("semantic list editing", () => {
   it("materializes the virtual item before a modified Enter inserts a break", () => {
     editor.features.list.toggleList("ul")
 
-    keydown("Enter", {shiftKey: true})
+    keydown("Enter", {altKey: true})
 
     expect(cleanHTML()).toBe("<ul><li><br></li></ul>")
+  })
+
+  it("materializes the virtual item before Alt+Shift+Enter inserts a word break", () => {
+    editor.features.list.toggleList("ul")
+
+    keydown("Enter", {altKey: true, shiftKey: true})
+
+    expect(cleanHTML()).toBe("<ul><li><wbr></li></ul>")
+  })
+
+  it("uses the primary modifier to split the containing list", () => {
+    document.body.innerHTML = '<ol id="steps" start="4"><li>AB</li></ol>'
+    $.move(document.querySelector("li")!.firstChild!, 1)
+
+    keydown("Enter", {ctrlKey: true, metaKey: true})
+
+    expect(cleanHTML()).toBe('<ol id="steps" start="4"><li>A</li></ol><ol start="5"><li>B</li></ol>')
   })
 
   it("uses Enter to create a real empty item, then exits a top-level list", () => {

@@ -212,6 +212,12 @@ describe("isNodeValid()", () => {
       expect(editor.schema.isNodeValid(el("p"), rule)).toBe(true)
       expect(editor.schema.isNodeValid(el("h1"), rule)).toBe(true)
     })
+    it("keeps an optional repeatable final term open after its required prefix", () => {
+      const details = el("details")
+      details.append(el("summary"), el("p"), el("p"))
+
+      expect(editor.schema.isContentValid(details)).toBe(true)
+    })
   })
 
   describe("transparent rules", () => {

@@ -258,6 +258,23 @@ export class ListFeature extends EditorFeature {
     return value
   }
 
+  /** Removes identity/editor-only state from a cloned list continuation and
+   * preserves the rendered value of its first ordered item. Called by generic
+   * parent splitting as well as list-specific exit behavior. */
+  prepareSplitContinuation(source: Element, continuation: Element, movedContent: Node[]) {
+    if(!source.matches(listSelector) || !continuation.matches(listSelector)) return
+    continuation.removeAttribute("id")
+    Array.from(continuation.classList)
+      .filter(name => name === "◆" || name.startsWith("◆"))
+      .forEach(name => continuation.classList.remove(name))
+    if(!continuation.classList.length) continuation.removeAttribute("class")
+    const firstMovedItem = movedContent.find((node): node is HTMLLIElement =>
+      isElement(node) && node.matches("li"))
+    if(source.matches("ol") && firstMovedItem) {
+      continuation.setAttribute("start", String(this.orderedValueOf(source as HTMLOListElement, firstMovedItem)))
+    }
+  }
+
   private readonly syncVirtualMarker = () => {
     this.clearVirtualMarker()
     const point = this.virtualPoint
@@ -365,7 +382,7 @@ export class ListFeature extends EditorFeature {
     if(event.defaultPrevented || this.editor.features.transformation.target) return
     const point = this.virtualPoint
 
-    if(event.key === "Enter" && !event.shiftKey && !event.altKey && !modifierKeyDown(event)) {
+    if(event.key === "Enter" && !event.altKey && !modifierKeyDown(event)) {
       if(this.liftTrailingDetailsBlock()) {
         event.preventDefault()
         event.stopImmediatePropagation()
@@ -389,7 +406,7 @@ export class ListFeature extends EditorFeature {
       return
     }
 
-    // Modified Enter inserts a real break/split through ManipulationFeature,
+    // Alt/primary-modifier Enter inserts a real break/split through ManipulationFeature,
     // so first give that command a schema-valid list item to operate on.
     if(point && event.key === "Enter") {
       this.materializeVirtualItem(point)
@@ -558,14 +575,7 @@ export class ListFeature extends EditorFeature {
 
     if(firstTrailingItem) {
       const trailingList = list.cloneNode(false) as HTMLElement
-      trailingList.removeAttribute("id")
-      Array.from(trailingList.classList)
-        .filter(name => name === "◆" || name.startsWith("◆"))
-        .forEach(name => trailingList.classList.remove(name))
-      if(!trailingList.classList.length) trailingList.removeAttribute("class")
-      if(list.matches("ol") && firstTrailingItem.matches("li")) {
-        trailingList.setAttribute("start", String(this.orderedValueOf(list, firstTrailingItem)))
-      }
+      this.prepareSplitContinuation(list, trailingList, following)
       following.forEach(node => trailingList.append(node))
       list.after(paragraph, trailingList)
       removals.forEach(node => node.remove())

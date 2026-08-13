@@ -706,11 +706,17 @@ export class Schema {
           Object.assign(term, candidate)
           if(terms.every(term => !this.hasRuleRemainingMin(term))) {
             rule.min = Math.max(0, (min ?? 1) - 1)
+          }
+          if(terms.every(term => !this.hasRuleRemainingMax(term))) {
             rule.max = Math.max(0, (max ?? 1) - 1)
           }
           return true
         }
         if(this.hasRuleRemainingMin(term)) return false
+        // Once a later term matches, sequence validation must never return to
+        // an optional or repeatable term that was skipped here.
+        if("expression" in term) term.current = emptyExpression()
+        else term.max = 0
       }
       return false
     }

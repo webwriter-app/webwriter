@@ -92,8 +92,8 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expectBodyToBe("<p></p>")
   })
 
-  it("inserts a line break into a text block from an empty document", () => {
-    const event = new KeyboardEvent("keydown", {key: "Enter", shiftKey: true, bubbles: true, cancelable: true})
+  it("inserts a line break with Alt+Enter into a text block from an empty document", () => {
+    const event = new KeyboardEvent("keydown", {key: "Enter", altKey: true, bubbles: true, cancelable: true})
 
     document.dispatchEvent(event)
 
@@ -101,6 +101,52 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expectBodyToBe("<p><br></p>")
     expect($.anchor).toBe(document.body.firstElementChild)
     expect($.anchorOffset).toBe(1)
+  })
+
+  it("inserts a word-break opportunity with Alt+Shift+Enter", () => {
+    const event = new KeyboardEvent("keydown", {
+      key: "Enter", altKey: true, shiftKey: true, bubbles: true, cancelable: true,
+    })
+
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expectBodyToBe("<p><wbr></p>")
+  })
+
+  it("uses the default split behavior for Shift+Enter", () => {
+    document.body.innerHTML = "<p>ab</p>"
+    $.move(document.querySelector("p")!.firstChild!, 1)
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Enter", shiftKey: true, bubbles: true, cancelable: true,
+    }))
+
+    expectBodyToBe("<p>a</p><p>b</p>")
+  })
+
+  it("does not insert a break where the schema allows only text", () => {
+    document.body.innerHTML = "<select><option>ab</option></select>"
+    $.move(document.querySelector("option")!.firstChild!, 1)
+    const event = new KeyboardEvent("keydown", {
+      key: "Enter", altKey: true, bubbles: true, cancelable: true,
+    })
+
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expectBodyToBe("<select><option>ab</option></select>")
+  })
+
+  it("does not insert a word break where the schema allows only text", () => {
+    document.body.innerHTML = "<select><option>ab</option></select>"
+    $.move(document.querySelector("option")!.firstChild!, 1)
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Enter", altKey: true, shiftKey: true, bubbles: true, cancelable: true,
+    }))
+
+    expectBodyToBe("<select><option>ab</option></select>")
   })
 
   it("does not create content for a keyboard shortcut", () => {
@@ -186,6 +232,36 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     $.move(document.body.firstElementChild!.firstChild!, 5)
     editor.features.manipulation.insert()
     expectBodyToBe("<p>hello</p><p> world</p>")
+  })
+  it("uses the primary modifier to split the parent", () => {
+    document.body.innerHTML = "<section><p>ab</p><p>tail</p></section>"
+    $.move(document.querySelector("p")!.firstChild!, 1)
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Enter", ctrlKey: true, metaKey: true, bubbles: true, cancelable: true,
+    }))
+
+    expectBodyToBe("<section><p>a</p></section><section><p>b</p><p>tail</p></section>")
+  })
+  it("falls back to splitting the element when its parent cannot be split validly", () => {
+    document.body.innerHTML = "<details><summary>Heading</summary><p>ab</p></details>"
+    $.move(document.querySelector("p")!.firstChild!, 1)
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Enter", ctrlKey: true, metaKey: true, bubbles: true, cancelable: true,
+    }))
+
+    expectBodyToBe("<details open=\"\"><summary>Heading</summary><p>a</p><p>b</p></details>")
+  })
+  it("does not split an element when its parent disallows another copy", () => {
+    document.body.innerHTML = "<hgroup><h1>ab</h1></hgroup>"
+    $.move(document.querySelector("h1")!.firstChild!, 1)
+    const event = new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
+
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expectBodyToBe("<hgroup><h1>ab</h1></hgroup>")
   })
   it("splits nested marks with their containing block", () => {
     document.body.innerHTML = "<p><b><i>hello</i></b> world</p>"
