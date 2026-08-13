@@ -44,8 +44,9 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="marks"]) {
-      --ribbon-drawer-expanded-width: 16.625rem;
-      --ribbon-drawer-height: 10.3rem;
+      --ribbon-drawer-expanded-width: 18.575rem;
+      --ribbon-drawer-height: 8.35rem;
+      --ribbon-drawer-more-height: 3.9rem;
       --ribbon-drawer-panel-padding-block: 0.375rem;
     }
 
@@ -100,11 +101,13 @@ export class RibbonDrawer extends LitElement {
       border-right-color: #d8dee6;
     }
 
+    :host([layout="marks"]) .drawer {
+      border-left-color: #d8dee6;
+    }
+
     .drawer.expanded {
       height: calc(100% + var(--ribbon-drawer-more-height));
       max-height: calc(100% + var(--ribbon-drawer-more-height));
-      margin-left: -1px;
-      padding-left: calc(0.5rem + 1px);
       border-color: transparent;
       border-right-color: #d8dee6;
       border-bottom-color: #d8dee6;
@@ -125,6 +128,10 @@ export class RibbonDrawer extends LitElement {
 
     .drawer.expanded.closing {
       max-height: var(--drawer-collapsed-height, 100%);
+    }
+
+    :host([layout="marks"]) .drawer.expanded {
+      height: auto;
     }
 
     .controls {
@@ -152,7 +159,7 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="marks"]) .controls {
-      grid-template-columns: repeat(8, 1.75rem);
+      grid-template-columns: repeat(9, 1.75rem);
       grid-template-rows: none;
       grid-auto-flow: row;
       grid-auto-columns: auto;
@@ -206,11 +213,15 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="marks"]) ::slotted(.font-family) {
-      grid-column: span 4;
+      grid-column: span 3;
     }
 
     :host([layout="marks"]) ::slotted(.font-size) {
       grid-column: span 2;
+    }
+
+    :host([layout="marks"]) ::slotted(.mark-details) {
+      grid-column: 1 / -1;
     }
 
     .summary {
@@ -286,6 +297,12 @@ export class RibbonDrawer extends LitElement {
       background: #f2f2f2;
       box-shadow: none;
       clip-path: none;
+    }
+
+    :host([layout="marks"][collapsed]) .drawer,
+    :host([layout="marks"][collapsed]) .drawer.expanded,
+    :host([layout="marks"][collapsed]) .drawer.expanded.closing {
+      border-left-color: #d8dee6;
     }
 
     :host([collapsed]) .summary {
@@ -429,7 +446,10 @@ export class RibbonDrawer extends LitElement {
   }
 
   private readonly handleDocumentPointerDown = (event: PointerEvent) => {
-    if(this.drawerOpen && !event.composedPath().includes(this)) this.closeDrawer()
+    if(
+      this.drawerOpen && !event.composedPath().includes(this) &&
+      !(this.layout === "marks" && this.forcedOpen)
+    ) this.closeDrawer()
   }
 
   private readonly handleDocumentKeydown = (event: KeyboardEvent) => {
@@ -439,7 +459,12 @@ export class RibbonDrawer extends LitElement {
   }
 
   private readonly handleRibbonAction = (event: Event) => {
-    const keepOpen = (event as CustomEvent<{keepDrawerOpen?: boolean}>).detail?.keepDrawerOpen
+    const detail = (event as CustomEvent<{keepDrawerOpen?: boolean, openDrawer?: boolean}>).detail
+    if(detail?.openDrawer) {
+      this.openDrawer(true)
+      return
+    }
+    const keepOpen = detail?.keepDrawerOpen
     if(!keepOpen) this.closeDrawer()
   }
 
@@ -499,7 +524,7 @@ export class RibbonDrawer extends LitElement {
       expanded: this.measuredWidth(
         ".expanded-size-probe",
         "--ribbon-drawer-expanded-width",
-        this.layout === "marks" ? 266 : 212,
+        this.layout === "marks" ? 297.2 : 212,
       ),
     }
   }
@@ -704,6 +729,7 @@ export class RibbonDrawer extends LitElement {
         <div id="drawer-controls" class="controls">
           <slot></slot>
           <slot name="more" ?hidden=${!this.drawerContentOpen}></slot>
+          <slot name="detail" ?hidden=${!this.drawerContentOpen}></slot>
         </div>
         <button
           class="drawer-toggle"

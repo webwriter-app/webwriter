@@ -29,6 +29,7 @@ export class RibbonButton extends LitElement {
     corner: {type: String},
     cornerLabel: {type: String, attribute: "corner-label"},
     keepDrawerOpen: {type: Boolean, attribute: "keep-drawer-open"},
+    openDrawer: {type: Boolean, attribute: "open-drawer"},
     management: {type: Boolean, reflect: true},
     muted: {type: Boolean, reflect: true},
     details: {attribute: false},
@@ -48,6 +49,11 @@ export class RibbonButton extends LitElement {
       flex: 0 0 1.75rem;
       min-width: 1.75rem;
       width: 1.75rem;
+    }
+
+    :host([compact]) .button-row {
+      box-sizing: border-box;
+      height: 1.75rem;
     }
 
     .button-row {
@@ -104,9 +110,9 @@ export class RibbonButton extends LitElement {
     }
 
     :host([compact]) button {
-      width: 1.75rem;
-      min-height: 1.75rem;
-      height: 1.75rem;
+      width: 100%;
+      min-height: 0;
+      height: 100%;
       padding: 0.25rem;
     }
 
@@ -366,6 +372,7 @@ export class RibbonButton extends LitElement {
   corner = ""
   cornerLabel = ""
   keepDrawerOpen = false
+  openDrawer = false
   management = false
   muted = false
   details: RibbonButtonDetails | null = null
@@ -425,8 +432,12 @@ export class RibbonButton extends LitElement {
 
   private handleClick() {
     this.closeSubmenuPopover()
-    this.dispatchEvent(new CustomEvent<{label: string, keepDrawerOpen?: boolean}>("ribbon-button-click", {
-      detail: {label: this.action || this.label, keepDrawerOpen: this.keepDrawerOpen},
+    this.dispatchEvent(new CustomEvent<{label: string, keepDrawerOpen?: boolean, openDrawer?: boolean}>("ribbon-button-click", {
+      detail: {
+        label: this.action || this.label,
+        keepDrawerOpen: this.keepDrawerOpen,
+        ...(this.openDrawer ? {openDrawer: true} : {}),
+      },
       bubbles: true,
       composed: true,
     }))

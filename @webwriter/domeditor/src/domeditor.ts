@@ -382,6 +382,7 @@ export class DOMEditor {
     this.postBridgeEvent(markStateChangeEvent, {
       ...this.features.mark.getState(),
       styles: this.features.mark.getStyleState(),
+      attributes: this.features.mark.getAttributeState(),
     })
   }
 

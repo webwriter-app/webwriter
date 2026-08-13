@@ -188,6 +188,45 @@ describe("MarkFeature toggles", () => {
     expect(selection.toString()).toBe("ext")
     expect(selection.anchorOffset).toBeGreaterThan(selection.focusOffset)
   })
+
+  it("toggles merged mark groups and switches their exact HTML type", () => {
+    let paragraph = setContent("<p><samp>Text</samp></p>")
+    selectText(paragraph.querySelector("samp")!.firstChild as Text)
+
+    expect(feature.toggleMarkGroup("code")).toBe(true)
+    expect(cleanHTML()).toBe("<p>Text</p>")
+    expect(feature.toggleMarkGroup("code")).toBe(true)
+    expect(cleanHTML()).toBe("<p><code>Text</code></p>")
+
+    paragraph = document.querySelector("p")!
+    selectText(paragraph.querySelector("code")!.firstChild as Text)
+    expect(feature.setMarkType("code", "time")).toBe(true)
+    expect(cleanHTML()).toBe("<p><time>Text</time></p>")
+    expect(feature.getState()).toEqual({canMark: true, marks: ["time"]})
+  })
+
+  it("reads, sets, and removes mark-specific attributes", () => {
+    const paragraph = setContent('<p><a href="/old" target="_blank">Text</a></p>')
+    selectText(paragraph.querySelector("a")!.firstChild as Text)
+
+    expect(feature.getAttributeState()).toEqual({
+      a: {
+        href: "/old",
+        target: "_blank",
+        download: "",
+        ping: "",
+        rel: "",
+        hreflang: "",
+        type: "",
+        referrerpolicy: "",
+      },
+    })
+    expect(feature.setMarkAttribute("a", "href", "/new")).toBe(true)
+    expect(paragraph.querySelector("a")!.getAttribute("href")).toBe("/new")
+    expect(feature.setMarkAttribute("a", "target", "")).toBe(true)
+    expect(paragraph.querySelector("a")!.hasAttribute("target")).toBe(false)
+    expect(() => feature.setMarkAttribute("a", "title", "ignored")).toThrow(TypeError)
+  })
 })
 
 describe("MarkFeature span styles", () => {
@@ -389,6 +428,29 @@ describe("MarkFeature stored marks", () => {
     expect(feature.getState().marks).toEqual(["b"])
     expect(cleanHTML()).toBe("<p>Text</p>")
   })
+
+  it("stores mark attributes at a caret and applies them to typed text", () => {
+    const paragraph = setContent("<p></p>")
+    $.move(paragraph, 0)
+    feature.toggleMark("a")
+    feature.setMarkAttribute("a", "href", "https://example.com")
+
+    typeText(paragraph, "X")
+
+    expect(cleanHTML()).toBe('<p><a href="https://example.com">X</a></p>')
+    expect(feature.getAttributeState()).toEqual({
+      a: {
+        href: "https://example.com",
+        target: "",
+        download: "",
+        ping: "",
+        rel: "",
+        hreflang: "",
+        type: "",
+        referrerpolicy: "",
+      },
+    })
+  })
 })
 
 describe("MarkFeature shortcuts", () => {
@@ -446,5 +508,23 @@ describe("MarkFeature shortcuts", () => {
 
     expect(event.defaultPrevented).toBe(true)
     expect(paragraph.querySelector("b")).not.toBeNull()
+  })
+
+  it("uses merged-group semantics for a primary mark shortcut", () => {
+    const paragraph = setContent("<p><samp>Text</samp></p>")
+    selectText(paragraph.querySelector("samp")!.firstChild as Text)
+    const event = new KeyboardEvent("keydown", {
+      key: "c",
+      code: "KeyC",
+      altKey: true,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    })
+
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(cleanHTML()).toBe("<p>Text</p>")
   })
 })

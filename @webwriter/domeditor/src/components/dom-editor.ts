@@ -12,7 +12,16 @@ import {
   type WebWriterPackage,
 } from "../packages"
 import { getElementPresentation } from "../element-names"
-import {canonicalMarkName, isMarkElement, isStyleMarkName, type MarkName, type StyleMarkValues} from "../marks"
+import {
+  canonicalMarkName,
+  isMarkAttributeName,
+  isMarkElement,
+  isStyleMarkName,
+  mergedMarkGroupFor,
+  type MarkAttributeValues,
+  type MarkName,
+  type StyleMarkValues,
+} from "../marks"
 import {isWidgetShadowInteraction} from "../utility"
 import {
   executeCompleteEvent,
@@ -96,6 +105,7 @@ export class DomEditor extends LitElement {
     canMark: {attribute: false, state: true},
     marks: {attribute: false, state: true},
     markStyles: {attribute: false, state: true},
+    markAttributes: {attribute: false, state: true},
     presenceUsers: {attribute: false, state: true},
     packages: {attribute: false, state: true},
     installedPackages: {attribute: false, state: true},
@@ -123,6 +133,7 @@ export class DomEditor extends LitElement {
   private canMark = false
   private marks: MarkName[] = []
   private markStyles: StyleMarkValues = {}
+  private markAttributes: MarkAttributeValues = {}
   private listType: ListType | null = null
   private listStyle = ""
   private presenceUsers: PresenceUser[] = []
@@ -417,10 +428,23 @@ export class DomEditor extends LitElement {
       void this.execute({type: label}).finally(() => this.focusEditor())
       return
     }
-    if(label?.startsWith("mark:")) {
-      const mark = canonicalMarkName(label.slice("mark:".length))
+    if(label?.startsWith("mark-detail:")) {
+      const mark = canonicalMarkName(label.slice("mark-detail:".length))
       if(mark) void this.execute({type: "toggleMark", mark}).finally(() => this.focusEditor())
       else this.focusEditor()
+      return
+    }
+    if(label?.startsWith("mark:")) {
+      const mark = canonicalMarkName(label.slice("mark:".length))
+      const group = mark ? mergedMarkGroupFor(mark) : undefined
+      if(!mark) this.focusEditor()
+      else if(group?.primary === mark) {
+        void this.execute({type: "toggleMarkGroup", mark}).finally(() => this.focusEditor())
+      }
+      else if(group) {
+        void this.execute({type: "setMarkType", primary: group.primary, mark}).finally(() => this.focusEditor())
+      }
+      else void this.execute({type: "toggleMark", mark}).finally(() => this.focusEditor())
       return
     }
     if(label?.startsWith("toggle-list:")) {
@@ -606,6 +630,28 @@ export class DomEditor extends LitElement {
     }).finally(() => this.focusEditor())
   }
 
+  private handleMarkAttributeChange = (event: Event) => {
+    const detail = (event as CustomEvent<{
+      mark?: unknown
+      attribute?: unknown
+      value?: unknown
+    }>).detail
+    const mark = typeof detail?.mark === "string" ? canonicalMarkName(detail.mark) : null
+    if(!mark
+      || typeof detail?.attribute !== "string"
+      || !isMarkAttributeName(mark, detail.attribute)
+      || typeof detail.value !== "string") {
+      this.focusEditor()
+      return
+    }
+    void this.execute({
+      type: "setMarkAttribute",
+      mark,
+      attribute: detail.attribute,
+      value: detail.value,
+    }).finally(() => this.focusEditor())
+  }
+
   private handleRibbonCollapse = () => {
     this.renderRoot.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")?.collapseTree()
   }
@@ -688,8 +734,16 @@ export class DomEditor extends LitElement {
       this.canMark = event.data.detail.canMark
       this.marks = [...event.data.detail.marks]
       this.markStyles = {...(event.data.detail.styles ?? {})}
+      this.markAttributes = Object.fromEntries(
+        Object.entries(event.data.detail.attributes ?? {}).map(([mark, attributes]) => [mark, {...attributes}]),
+      )
       this.dispatchEvent(new CustomEvent(markStateChangeEvent, {
-        detail: {canMark: this.canMark, marks: [...this.marks], styles: {...this.markStyles}},
+        detail: {
+          canMark: this.canMark,
+          marks: [...this.marks],
+          styles: {...this.markStyles},
+          attributes: this.markAttributes,
+        },
         bubbles: true,
         composed: true,
       }))
@@ -828,6 +882,7 @@ export class DomEditor extends LitElement {
     this.canMark = false
     this.marks = []
     this.markStyles = {}
+    this.markAttributes = {}
     const error = new Error("The DOM editor component was disconnected")
     this.pendingExecutions.forEach(({reject}) => reject(error))
     this.pendingExecutions.clear()
@@ -842,6 +897,7 @@ export class DomEditor extends LitElement {
           .canMark=${this.canMark}
           .marks=${this.marks}
           .markStyles=${this.markStyles}
+          .markAttributes=${this.markAttributes}
           .listType=${this.listType}
           .listStyle=${this.listStyle}
           .presenceUsers=${this.presenceUsers}
@@ -852,6 +908,7 @@ export class DomEditor extends LitElement {
           .packageError=${this.packageError}
           @ribbon-button-click=${this.handleRibbonButtonClick}
           @ribbon-combobox-change=${this.handleRibbonComboboxChange}
+          @mark-attribute-change=${this.handleMarkAttributeChange}
           @ribbon-collapse=${this.handleRibbonCollapse}
           @ribbon-input-pointerdown=${this.handleRibbonInputPointerDown}
           @ribbon-input-focus=${this.handleRibbonInputFocus}

@@ -3,11 +3,16 @@ import {
   canonicalMarkName,
   fontSizeOptions,
   isMarkElement,
+  isMarkAttributeName,
   isStyleMarkName,
+  markAttributeNames,
+  markAttributeOptionsFor,
   markNames,
   markTagNames,
+  mergedMarkGroupFor,
   primaryMarkOptions,
   styleMarkNames,
+  type MarkAttributeValues,
   type MarkName,
   type StyleMarkName,
   type StyleMarkValues,
@@ -60,12 +65,23 @@ export class MarkFeature extends EditorFeature {
   private storedMarks: Set<MarkName> | null = null
   /** `null` inherits inline styles; an object is an explicit typing state. */
   private storedStyles: StyleMarkValues | null = null
+  /** Element-specific attributes to apply to the next typed mark at a caret. */
+  private storedAttributes: MarkAttributeValues | null = null
   private storedSelection: StoredSelection | null = null
 
   actions = {
     addMark: ({mark}: {type: "addMark", mark: MarkName}) => this.addMark(mark),
     removeMark: ({mark}: {type: "removeMark", mark: MarkName}) => this.removeMark(mark),
     toggleMark: ({mark}: {type: "toggleMark", mark: MarkName}) => this.toggleMark(mark),
+    toggleMarkGroup: ({mark}: {type: "toggleMarkGroup", mark: MarkName}) => this.toggleMarkGroup(mark),
+    setMarkType: ({primary, mark}: {type: "setMarkType", primary: MarkName, mark: MarkName}) =>
+      this.setMarkType(primary, mark),
+    setMarkAttribute: ({mark, attribute, value}: {
+      type: "setMarkAttribute"
+      mark: MarkName
+      attribute: string
+      value: string
+    }) => this.setMarkAttribute(mark, attribute, value),
     setStyleMark: ({property, value}: {type: "setStyleMark", property: StyleMarkName, value: string}) =>
       this.setStyleMark(property, value),
     increaseFontSize: ({}: {type: "increaseFontSize"}) => this.adjustFontSize(1),
@@ -83,7 +99,7 @@ export class MarkFeature extends EditorFeature {
     super.enable()
     this.observer.observe(document.body, {
       attributes: true,
-      attributeFilter: ["style"],
+      attributeFilter: ["style", ...markAttributeNames],
       childList: true,
       characterData: true,
       subtree: true,
@@ -132,6 +148,33 @@ export class MarkFeature extends EditorFeature {
     return styles
   }
 
+  /** Element-specific attribute values shared by the selected runs. */
+  getAttributeState(): MarkAttributeValues {
+    this.clearStoredMarksIfSelectionChanged()
+    const caret = this.getCaret()
+    if(caret) {
+      const stored = this.storedAttributes
+      const attributes = this.attributesAt(caret.range.startContainer, caret.block)
+      return this.cloneAttributeValues(stored ?? attributes)
+    }
+
+    const context = this.getSelection()
+    if(!context) return {}
+    const result: MarkAttributeValues = {}
+    for(const mark of markNames) {
+      const options = markAttributeOptionsFor(mark)
+      if(!options.length) continue
+      const elements = this.markElementsForSelection(context, mark)
+      if(!elements.length) continue
+      result[mark] = Object.fromEntries(options.map(option => {
+        const values = elements.map(element => element.getAttribute(option.name) ?? "")
+        const value = values.every(candidate => candidate === values[0]) ? values[0] : ""
+        return [option.name, value]
+      }))
+    }
+    return result
+  }
+
   addMark(mark: MarkName) {
     this.assertMark(mark)
     const caret = this.getCaret()
@@ -177,6 +220,101 @@ export class MarkFeature extends EditorFeature {
     const state = this.getState()
     if(!state.canMark) return false
     return state.marks.includes(mark)? this.removeMark(mark): this.addMark(mark)
+  }
+
+  /** Toggles all exact tag variants represented by one merged drawer control. */
+  toggleMarkGroup(mark: MarkName) {
+    this.assertMark(mark)
+    const group = mergedMarkGroupFor(mark)
+    if(!group || group.primary !== mark) throw new TypeError(`'${mark}' is not a primary merged mark`)
+
+    const caret = this.getCaret()
+    if(caret) {
+      const marks = this.effectiveCaretMarks(caret)
+      const active = group.members.some(member => marks.has(member))
+      group.members.forEach(member => marks.delete(member))
+      if(!active) marks.add(group.primary)
+      this.storeMarks(marks, caret.selection)
+      this.editor.postMarkState()
+      return true
+    }
+
+    const state = this.getState()
+    if(!state.canMark) return false
+    return group.members.some(member => state.marks.includes(member))
+      ? this.removeMatching(element => group.members.includes(element.localName as MarkName))
+      : this.addMark(group.primary)
+  }
+
+  /** Replaces a merged mark's exact HTML tag while preserving the selected text. */
+  setMarkType(primary: MarkName, mark: MarkName) {
+    this.assertMark(primary)
+    this.assertMark(mark)
+    const group = mergedMarkGroupFor(primary)
+    if(!group || group.primary !== primary || !group.members.includes(mark)) {
+      throw new TypeError(`'${mark}' is not a variant of '${primary}'`)
+    }
+
+    const caret = this.getCaret()
+    if(caret) {
+      const marks = this.effectiveCaretMarks(caret)
+      if(marks.has(mark) && !group.members.some(member => member !== mark && marks.has(member))) return false
+      group.members.forEach(member => marks.delete(member))
+      marks.add(mark)
+      this.storeMarks(marks, caret.selection)
+      this.editor.postMarkState()
+      return true
+    }
+
+    const state = this.getState()
+    if(!state.canMark) return false
+    const activeMembers = group.members.filter(member => state.marks.includes(member))
+    if(activeMembers.length === 1 && activeMembers[0] === mark) return false
+    if(activeMembers.length) {
+      this.removeMatching(element => group.members.includes(element.localName as MarkName))
+    }
+    return this.addMark(mark)
+  }
+
+  /** Sets or removes one supported element-specific attribute on active mark wrappers. */
+  setMarkAttribute(mark: MarkName, attribute: string, value: string) {
+    this.assertMark(mark)
+    if(!isMarkAttributeName(mark, attribute)) {
+      throw new TypeError(`Unsupported attribute '${attribute}' for mark '${mark}'`)
+    }
+
+    const caret = this.getCaret()
+    if(caret) {
+      const element = this.markElementAt(caret.range.startContainer, caret.block, mark)
+      if(element) {
+        if((element.getAttribute(attribute) ?? "") === value) return false
+        this.applyMarkAttribute(element, attribute, value)
+      }
+      else {
+        const marks = this.effectiveCaretMarks(caret)
+        if(!marks.has(mark)) return false
+        const attributes = this.effectiveCaretAttributes(caret)
+        const markAttributes = {...(attributes[mark] ?? {})}
+        if(value) markAttributes[attribute] = value
+        else delete markAttributes[attribute]
+        if(Object.keys(markAttributes).length) attributes[mark] = markAttributes
+        else delete attributes[mark]
+        this.storeAttributes(attributes, caret.selection)
+      }
+      this.editor.postMarkState()
+      return true
+    }
+
+    const context = this.getSelection()
+    if(!context) return false
+    const elements = this.markElementsForSelection(context, mark)
+    if(!elements.length) return false
+    if(elements.every(element => (element.getAttribute(attribute) ?? "") === value)) return false
+    elements.forEach(element => this.applyMarkAttribute(element, attribute, value))
+    context.block.normalize()
+    this.restoreSelection(context)
+    this.editor.postMarkState()
+    return true
   }
 
   /** Sets one inline CSS property on span marks, or removes it for the default option. */
@@ -265,6 +403,13 @@ export class MarkFeature extends EditorFeature {
     return {...(this.storedStyles ?? this.stylesAt(caret.range.startContainer, caret.block))}
   }
 
+  private effectiveCaretAttributes(caret: MarkCaret) {
+    this.clearStoredMarksIfSelectionChanged()
+    return this.cloneAttributeValues(
+      this.storedAttributes ?? this.attributesAt(caret.range.startContainer, caret.block),
+    )
+  }
+
   private setStoredMark(mark: MarkName, enabled: boolean, caret: MarkCaret) {
     const marks = this.effectiveCaretMarks(caret)
     if(marks.has(mark) === enabled) return false
@@ -287,12 +432,23 @@ export class MarkFeature extends EditorFeature {
   private storeMarks(marks: Set<MarkName>, selection: Selection) {
     if(!selection.anchorNode || !selection.focusNode) return
     this.storedMarks = marks
+    if(this.storedAttributes) {
+      for(const mark of Object.keys(this.storedAttributes) as MarkName[]) {
+        if(!marks.has(mark)) delete this.storedAttributes[mark]
+      }
+    }
     this.storeSelection(selection)
   }
 
   private storeStyles(styles: StyleMarkValues, selection: Selection) {
     if(!selection.anchorNode || !selection.focusNode) return
     this.storedStyles = {...styles}
+    this.storeSelection(selection)
+  }
+
+  private storeAttributes(attributes: MarkAttributeValues, selection: Selection) {
+    if(!selection.anchorNode || !selection.focusNode) return
+    this.storedAttributes = this.cloneAttributeValues(attributes)
     this.storeSelection(selection)
   }
 
@@ -309,6 +465,7 @@ export class MarkFeature extends EditorFeature {
   private clearStoredMarks() {
     this.storedMarks = null
     this.storedStyles = null
+    this.storedAttributes = null
     this.storedSelection = null
   }
 
@@ -326,7 +483,7 @@ export class MarkFeature extends EditorFeature {
   private handleBeforeInput(event: InputEvent) {
     this.clearStoredMarksIfSelectionChanged()
     if(event.defaultPrevented
-      || this.storedMarks === null && this.storedStyles === null
+      || this.storedMarks === null && this.storedStyles === null && this.storedAttributes === null
       || !["insertText", "insertReplacementText"].includes(event.inputType)
       || !event.data) return
 
@@ -334,6 +491,9 @@ export class MarkFeature extends EditorFeature {
     if(!caret) return
     const desired = new Set(this.storedMarks ?? this.marksAt(caret.range.startContainer, caret.block))
     const desiredStyles = {...(this.storedStyles ?? this.stylesAt(caret.range.startContainer, caret.block))}
+    const desiredAttributes = this.cloneAttributeValues(
+      this.storedAttributes ?? this.attributesAt(caret.range.startContainer, caret.block),
+    )
     event.preventDefault()
 
     const text = document.createTextNode(event.data)
@@ -352,6 +512,11 @@ export class MarkFeature extends EditorFeature {
     }
     for(const property of styleMarkNames) {
       this.setStyleMark(property, desiredStyles[property] ?? "")
+    }
+    for(const [mark, attributes] of Object.entries(desiredAttributes) as [MarkName, Record<string, string>][]) {
+      for(const [attribute, value] of Object.entries(attributes)) {
+        if(value) this.setMarkAttribute(mark, attribute, value)
+      }
     }
 
     document.getSelection()?.collapseToEnd()
@@ -588,6 +753,50 @@ export class MarkFeature extends EditorFeature {
     return marks
   }
 
+  private markElementAt(node: Node, block: Element, mark: MarkName) {
+    let element = node instanceof Element? node: node.parentElement
+    while(element && element !== block.parentElement) {
+      if(canonicalMarkName(element.localName) === mark) return element
+      if(element === block) break
+      element = element.parentElement
+    }
+    return null
+  }
+
+  private markElementsForSelection(context: MarkSelection, mark: MarkName) {
+    const elements = new Set<Element>()
+    for(const {node} of context.text) {
+      const element = this.markElementAt(node, context.block, mark)
+      if(element) elements.add(element)
+    }
+    return [...elements]
+  }
+
+  private attributesAt(node: Node, block: Element) {
+    const attributes: MarkAttributeValues = {}
+    for(const mark of markNames) {
+      const options = markAttributeOptionsFor(mark)
+      if(!options.length) continue
+      const element = this.markElementAt(node, block, mark)
+      if(!element) continue
+      attributes[mark] = Object.fromEntries(
+        options.map(option => [option.name, element.getAttribute(option.name) ?? ""]),
+      )
+    }
+    return attributes
+  }
+
+  private cloneAttributeValues(attributes: MarkAttributeValues) {
+    return Object.fromEntries(
+      Object.entries(attributes).map(([mark, values]) => [mark, {...values}]),
+    ) as MarkAttributeValues
+  }
+
+  private applyMarkAttribute(element: Element, attribute: string, value: string) {
+    if(value) element.setAttribute(attribute, value)
+    else element.removeAttribute(attribute)
+  }
+
   private stylesAt(node: Node, block: Element) {
     const styles: StyleMarkValues = {}
     let element = node instanceof Element? node: node.parentElement
@@ -595,7 +804,7 @@ export class MarkFeature extends EditorFeature {
       if(this.isStyleMarkSpan(element)) {
         for(const property of styleMarkNames) {
           if(styles[property] !== undefined) continue
-          const value = element.style.getPropertyValue(property).trim()
+          const value = (element as HTMLElement).style.getPropertyValue(property).trim()
           if(value) styles[property] = value
         }
       }
@@ -748,7 +957,9 @@ export class MarkFeature extends EditorFeature {
 
     event.preventDefault()
     event.stopImmediatePropagation()
-    this.toggleMark(option.name)
+    const group = mergedMarkGroupFor(option.name)
+    if(group?.primary === option.name) this.toggleMarkGroup(option.name)
+    else this.toggleMark(option.name)
   }
 
   private assertMark(mark: string): asserts mark is MarkName {

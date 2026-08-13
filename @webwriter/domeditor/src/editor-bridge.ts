@@ -1,4 +1,11 @@
-import {canonicalMarkName, isStyleMarkName, type MarkName, type StyleMarkValues} from "./marks"
+import {
+  canonicalMarkName,
+  isMarkAttributeName,
+  isStyleMarkName,
+  type MarkAttributeValues,
+  type MarkName,
+  type StyleMarkValues,
+} from "./marks"
 import type {EditorStateSnapshot} from "./editor-state"
 
 export const executeCompleteEvent = "dom-editor-execute-complete"
@@ -95,6 +102,8 @@ export type MarkStateChangeDetail = {
   marks: MarkName[]
   /** Inline style marks shared by the selection or effective at the caret. */
   styles?: StyleMarkValues
+  /** Element-specific attributes shared by the selected mark wrappers. */
+  attributes?: MarkAttributeValues
 }
 
 export type MarkStateChangeMessage = {
@@ -198,11 +207,22 @@ export function isMarkStateChangeMessage(value: unknown): value is MarkStateChan
     && message.detail.marks.every(mark => typeof mark === "string" && canonicalMarkName(mark) === mark)
   if(!validBase) return false
   const styles = message.detail!.styles
-  if(styles === undefined) return true
-  if(!styles || typeof styles !== "object" || Array.isArray(styles)) return false
-  return Object.entries(styles).every(([property, styleValue]) =>
+  if(styles !== undefined && (!styles || typeof styles !== "object" || Array.isArray(styles) || !Object.entries(styles).every(([property, styleValue]) =>
     isStyleMarkName(property) && typeof styleValue === "string",
-  )
+  ))) return false
+  const attributes = message.detail!.attributes
+  if(attributes === undefined) return true
+  if(!attributes || typeof attributes !== "object" || Array.isArray(attributes)) return false
+  return Object.entries(attributes).every(([mark, values]) => {
+    const exactMark = canonicalMarkName(mark)
+    return exactMark === mark
+      && !!values
+      && typeof values === "object"
+      && !Array.isArray(values)
+      && Object.entries(values).every(([attribute, attributeValue]) =>
+        isMarkAttributeName(exactMark, attribute) && typeof attributeValue === "string",
+      )
+  })
 }
 
 export function isPresenceChangeMessage(value: unknown): value is PresenceChangeMessage {

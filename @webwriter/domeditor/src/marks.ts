@@ -102,6 +102,81 @@ export type MarkOption = {
   shortcutKey?: string
 }
 
+export type MergedMarkGroup = {
+  primary: MarkName
+  alternatives: readonly MarkName[]
+  members: readonly MarkName[]
+}
+
+const mergedMarkGroupDefinitions = [
+  {primary: "code", alternatives: ["samp", "time", "data", "var"]},
+  {primary: "ruby", alternatives: ["bdi", "bdo"]},
+  {primary: "ins", alternatives: ["del"]},
+] as const satisfies readonly {
+  primary: MarkName
+  alternatives: readonly MarkName[]
+}[]
+
+/** Mark controls which share one primary drawer button but retain their exact HTML tags. */
+export const mergedMarkGroups: readonly MergedMarkGroup[] = mergedMarkGroupDefinitions.map(group => ({
+  ...group,
+  members: [group.primary, ...group.alternatives],
+}))
+
+export function mergedMarkGroupFor(mark: MarkName) {
+  return mergedMarkGroups.find(group => group.members.includes(mark))
+}
+
+export type MarkAttributeOption = {
+  name: string
+  label: string
+  placeholder: string
+  inputType?: "text" | "url"
+}
+
+/** Element-specific attributes exposed in the mark detail row. Global HTML attributes are omitted. */
+export const markAttributeOptions: Partial<Record<MarkName, readonly MarkAttributeOption[]>> = {
+  a: [
+    {name: "href", label: "Link", placeholder: "https://…", inputType: "url"},
+    {name: "target", label: "Target", placeholder: "_blank"},
+    {name: "download", label: "Download", placeholder: "Filename"},
+    {name: "ping", label: "Ping", placeholder: "URLs"},
+    {name: "rel", label: "Relationship", placeholder: "noopener"},
+    {name: "hreflang", label: "Language", placeholder: "en"},
+    {name: "type", label: "Media type", placeholder: "text/html"},
+    {name: "referrerpolicy", label: "Referrer policy", placeholder: "Policy"},
+  ],
+  q: [{name: "cite", label: "Source", placeholder: "https://…", inputType: "url"}],
+  data: [{name: "value", label: "Value", placeholder: "Value"}],
+  time: [{name: "datetime", label: "Date/time", placeholder: "YYYY-MM-DD"}],
+  ins: [
+    {name: "cite", label: "Source", placeholder: "https://…", inputType: "url"},
+    {name: "datetime", label: "Date/time", placeholder: "YYYY-MM-DD"},
+  ],
+  del: [
+    {name: "cite", label: "Source", placeholder: "https://…", inputType: "url"},
+    {name: "datetime", label: "Date/time", placeholder: "YYYY-MM-DD"},
+  ],
+}
+
+export const markAttributeNames = [...new Set(
+  Object.values(markAttributeOptions).flatMap(options => options?.map(option => option.name) ?? []),
+)]
+
+export type MarkAttributeValues = Partial<Record<MarkName, Record<string, string>>>
+
+export function markAttributeOptionsFor(mark: MarkName) {
+  return markAttributeOptions[mark] ?? []
+}
+
+export function markHasAttributes(mark: MarkName) {
+  return markAttributeOptionsFor(mark).length > 0
+}
+
+export function isMarkAttributeName(mark: MarkName, attribute: string) {
+  return markAttributeOptionsFor(mark).some(option => option.name === attribute)
+}
+
 export const primaryMarkOptions: readonly MarkOption[] = [
   {name: "b", label: "Bold", icon: "MarkBold", shortcutKey: "b"},
   {name: "i", label: "Italic", icon: "MarkItalic", shortcutKey: "i"},
