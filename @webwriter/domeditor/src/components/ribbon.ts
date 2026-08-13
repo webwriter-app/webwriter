@@ -170,6 +170,8 @@ export class AppRibbon extends LitElement {
       height: 100%;
       border-bottom: 0.5px solid #d8dee6;
       background: #ffffff;
+      --ribbon-area-background: #f2f2f2;
+      --ribbon-area-border: #d8dee6;
       transition: background-color 180ms ease;
     }
 
@@ -189,6 +191,7 @@ export class AppRibbon extends LitElement {
     .brand {
       display: flex;
       flex: 0 0 50px;
+      position: relative;
       width: 50px;
       align-items: center;
       justify-content: center;
@@ -201,8 +204,53 @@ export class AppRibbon extends LitElement {
       cursor: pointer;
     }
 
+    .brand[active]::before,
+    .brand[active]::after,
+    .brand:hover::before,
+    .brand:hover::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      width: 0;
+      height: 0;
+      pointer-events: none;
+      transform: translateX(-50%);
+    }
+
+    .brand[active]::before {
+      bottom: -1px;
+      border-right: 8px solid transparent;
+      border-bottom: 8px solid var(--ribbon-area-border);
+      border-left: 8px solid transparent;
+    }
+
+    .brand[active]::after {
+      bottom: -1px;
+      border-right: 7px solid transparent;
+      border-bottom: 7px solid var(--ribbon-area-background);
+      border-left: 7px solid transparent;
+    }
+
     .brand:hover {
-      background: #f2f2f2;
+      background: transparent;
+    }
+
+    .brand:hover::before {
+      bottom: -1px;
+      border-right: 8px solid transparent;
+      border-bottom: 8px solid #e8eef5;
+      border-left: 8px solid transparent;
+    }
+
+    .brand:hover::after {
+      bottom: -1px;
+      border-right: 7px solid transparent;
+      border-bottom: 7px solid var(--ribbon-area-background);
+      border-left: 7px solid transparent;
+    }
+
+    .brand:hover .brand-logo {
+      opacity: 0.8;
     }
 
     .brand:focus-visible {
@@ -448,8 +496,8 @@ export class AppRibbon extends LitElement {
       overflow-x: clip;
       overflow-y: visible;
       padding: 0.25rem 0.5rem 0.2rem;
-      border-top: 1px solid #d8dee6;
-      background: #f2f2f2;
+      border-top: 1px solid var(--ribbon-area-border);
+      background: var(--ribbon-area-background);
     }
 
     .ribbon-content[hidden] {
@@ -1062,6 +1110,7 @@ export class AppRibbon extends LitElement {
         <div class="ribbon-top">
           <button
             class="brand"
+            ?active=${this.activeMenu === "Start"}
             type="button"
             aria-label="Show Start menu"
             title="Show Start menu"
