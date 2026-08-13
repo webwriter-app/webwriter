@@ -40,6 +40,10 @@ describe("mark ribbon controls", () => {
     const {ribbon} = await mountRibbon()
     const tabs = Array.from(ribbon.shadowRoot!.querySelectorAll("ribbon-tab"))
 
+    expect(Array.from(ribbon.shadowRoot!.querySelectorAll(".ribbon-content > ribbon-drawer"))
+      .map(drawer => drawer.getAttribute("label")))
+      .toEqual(["Marks", "Text", "Lists", "Media", "Packages"])
+
     expect(tabs.map(tab => tab.label)).toEqual([
       "File",
       "Insert",
@@ -76,7 +80,7 @@ describe("mark ribbon controls", () => {
     const comboboxes = Array.from(drawer.querySelectorAll<RibbonCombobox>("ribbon-combobox"))
 
     expect(ribbon.shadowRoot!.querySelector("mark-ribbon-drawer")).toBeNull()
-    expect(ribbon.shadowRoot!.querySelectorAll("ribbon-drawer")).toHaveLength(4)
+    expect(ribbon.shadowRoot!.querySelectorAll("ribbon-drawer")).toHaveLength(5)
     expect(drawer.layout).toBe("marks")
     expect(drawer.expandable).toBe(true)
     expect(moreSlot.hidden).toBe(true)

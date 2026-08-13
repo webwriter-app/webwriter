@@ -83,10 +83,10 @@ const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
     {label: "Output", buttons: ["Print", "Download", "Share"]},
   ],
   Start: [
-    {label: "Clipboard", buttons: ["Paste", "Cut", "Copy"]},
     {label: "Marks", buttons: []},
-    {label: "Paragraph", buttons: ["Align", "Spacing"]},
-    {label: "Lists", buttons: []},
+    insertionMenuGroup("Text"),
+    insertionMenuGroup("Lists"),
+    insertionMenuGroup("Media"),
   ],
   Insert: [
     insertionMenuGroup("Text"),
@@ -177,11 +177,13 @@ export class AppRibbon extends LitElement {
       box-sizing: border-box;
       display: flex;
       flex: 0 0 40px;
+      position: relative;
       align-items: center;
       height: 40px;
       min-height: 40px;
       padding: 0 0.5rem 0 0;
       gap: 0;
+      z-index: 1;
     }
 
     .brand {
@@ -217,7 +219,9 @@ export class AppRibbon extends LitElement {
     .tabs {
       display: flex;
       flex: 1 1 auto;
-      align-items: end;
+      align-items: flex-start;
+      align-self: flex-start;
+      height: 41px;
       min-width: 0;
       overflow-x: auto;
       overflow-y: hidden;
@@ -994,7 +998,7 @@ export class AppRibbon extends LitElement {
   }
 
   private get currentMenuGroups() {
-    if(this.activeMenu !== "Insert") return menuGroups[this.activeMenu]
+    if(this.activeMenu !== "Start" && this.activeMenu !== "Insert") return menuGroups[this.activeMenu]
     const packageButtons: RibbonMenuButton[] = this.availablePackages.map(pkg => {
       const members = pkg.members.filter(member => member.insertable)
       return {
@@ -1004,7 +1008,7 @@ export class AppRibbon extends LitElement {
       }
     })
     return [
-      ...menuGroups.Insert,
+      ...menuGroups[this.activeMenu],
       {label: "Packages", buttons: packageButtons},
     ]
   }

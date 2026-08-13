@@ -44,6 +44,28 @@ const packageFixture = (name = "demo"): WebWriterPackage => ({
 afterEach(() => document.body.replaceChildren())
 
 describe("package ribbon controls", () => {
+  it("fills the remaining space at the end of both Start and Insert", async () => {
+    const ribbon = new AppRibbon()
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+
+    const drawerLabels = () => Array.from(
+      ribbon.shadowRoot!.querySelectorAll<RibbonDrawer>(".ribbon-content > ribbon-drawer"),
+      drawer => drawer.label,
+    )
+    let packageDrawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')!
+
+    expect(drawerLabels()).toEqual(["Marks", "Text", "Lists", "Media", "Packages"])
+    expect(getComputedStyle(packageDrawer).flexGrow).toBe("1")
+
+    ribbon.activeMenu = "Insert"
+    await ribbon.updateComplete
+    packageDrawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')!
+
+    expect(drawerLabels()).toEqual(["Text", "Lists", "Media", "Packages"])
+    expect(getComputedStyle(packageDrawer).flexGrow).toBe("1")
+  })
+
   it("uses horizontal two-cell package buttons, a one-package search field, and member menus", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Insert"
