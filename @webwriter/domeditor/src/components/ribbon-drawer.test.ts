@@ -32,9 +32,9 @@ describe("responsive ribbon drawer", () => {
 
     expect(summary.textContent).toContain("Paragraph")
     expect(summary.querySelector(".icon-tabler-align-left")).not.toBeNull()
-    expect(drawer.layoutWidths).toEqual({collapsed: 80, expanded: 208})
+    expect(drawer.layoutWidths).toEqual({collapsed: 80, expanded: 212})
     expect(getComputedStyle(drawer).minWidth).toBe("80px")
-    expect(getComputedStyle(controls).width).toBe("208px")
+    expect(getComputedStyle(controls).width).toBe("212px")
     expect(getComputedStyle(controls).boxShadow).not.toBe("none")
     expect(getComputedStyle(controls).borderColor).toBe("#d8dee6")
     expect(getComputedStyle(controls).gap).toBe("0")
@@ -69,7 +69,7 @@ describe("responsive ribbon drawer", () => {
     expect(toggle.hidden).toBe(true)
     expect(toggle.disabled).toBe(true)
     expect(getComputedStyle(drawer).flexGrow).toBe("0")
-    expect(drawer.layoutWidths.expanded).toBe(208)
+    expect(drawer.layoutWidths.expanded).toBe(212)
   })
 
   it("uses the same component for optional vertical expansion", async () => {
@@ -196,7 +196,7 @@ describe("responsive ribbon drawer", () => {
     await drawer.updateComplete
 
     expect(drawer.hasAttribute("drawer-open")).toBe(false)
-    expect(getComputedStyle(drawer).minWidth).toBe("208px")
+    expect(getComputedStyle(drawer).minWidth).toBe("212px")
   })
 })
 
@@ -214,7 +214,7 @@ describe("responsive ribbon layout", () => {
       updateResponsiveLayout(drawers: RibbonDrawer[]): void
     }).updateResponsiveLayout.bind(ribbon)
 
-    expect(drawers.map(drawer => drawer.layoutWidths.expanded)).toEqual([266, 80, 144, 208, 264])
+    expect(drawers.map(drawer => drawer.layoutWidths.expanded)).toEqual([266, 84, 148, 212, 264])
 
     for(const [clientWidth, expected] of [
       [900, [false, false, false, false, true]],

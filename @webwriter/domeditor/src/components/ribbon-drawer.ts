@@ -28,7 +28,7 @@ export class RibbonDrawer extends LitElement {
 
   static styles = css`
     :host {
-      --ribbon-drawer-expanded-width: 13rem;
+      --ribbon-drawer-expanded-width: 13.25rem;
       --ribbon-drawer-collapsed-width: 5rem;
       --ribbon-drawer-width: var(--ribbon-drawer-expanded-width);
       --ribbon-drawer-height: 5rem;
@@ -50,11 +50,11 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="text"]) {
-      --ribbon-drawer-expanded-width: 5rem;
+      --ribbon-drawer-expanded-width: 5.25rem;
     }
 
     :host([layout="lists"]) {
-      --ribbon-drawer-expanded-width: 9rem;
+      --ribbon-drawer-expanded-width: 9.25rem;
     }
 
     :host([layout="packages"]) {
@@ -499,7 +499,7 @@ export class RibbonDrawer extends LitElement {
       expanded: this.measuredWidth(
         ".expanded-size-probe",
         "--ribbon-drawer-expanded-width",
-        this.layout === "marks" ? 266 : 208,
+        this.layout === "marks" ? 266 : 212,
       ),
     }
   }
