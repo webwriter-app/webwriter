@@ -255,6 +255,7 @@ export class RibbonButton extends LitElement {
     }
 
     .button-dropdown-content .mark-attribute input,
+    .button-dropdown-content .mark-attribute select,
     .mark-dropdown-attribute {
       box-sizing: border-box;
       width: 9rem;
@@ -270,6 +271,7 @@ export class RibbonButton extends LitElement {
     }
 
     .button-dropdown-content .mark-attribute input:focus,
+    .button-dropdown-content .mark-attribute select:focus,
     .mark-dropdown-attribute:focus {
       border-color: #3977c7;
       outline: 1px solid #3977c7;
@@ -303,6 +305,23 @@ export class RibbonButton extends LitElement {
     .button-dropdown-more:focus-visible {
       outline: 2px solid #3977c7;
       outline-offset: -1px;
+    }
+
+    .button-dropdown-more:disabled {
+      color: #9aa4b1;
+      background: #f3f4f6;
+      cursor: default;
+    }
+
+    .media-attribute-boolean input {
+      width: auto !important;
+      height: auto !important;
+      accent-color: #3977c7;
+    }
+
+    .media-dropdown-status {
+      color: #667085;
+      font-size: 0.64rem;
     }
 
     .button-dropdown-advanced {

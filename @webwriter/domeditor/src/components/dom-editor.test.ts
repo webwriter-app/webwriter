@@ -317,6 +317,43 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenNthCalledWith(2, {type: "redo"})
   })
 
+  it("routes media ribbon commands through the iframe bridge", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const focusEditor = vi.spyOn(editor as unknown as {focusEditor(): void}, "focusEditor")
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+
+    ribbon.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label: "Image"},
+      bubbles: true,
+      composed: true,
+    }))
+
+    expect(execute).toHaveBeenCalledWith({type: "insertMedia", media: "picture"})
+    await Promise.resolve()
+    focusEditor.mockClear()
+
+    ribbon.dispatchEvent(new CustomEvent("media-type-change", {
+      detail: {type: "object"},
+      bubbles: true,
+      composed: true,
+    }))
+    expect(execute).toHaveBeenCalledWith({type: "switchWebsiteType", website: "object"})
+
+    ribbon.dispatchEvent(new CustomEvent("media-attribute-change", {
+      detail: {type: "object", attribute: "data", value: "https://example.test"},
+      bubbles: true,
+      composed: true,
+    }))
+    expect(execute).toHaveBeenCalledWith({
+      type: "setMediaAttribute",
+      name: "data",
+      value: "https://example.test",
+    })
+    await Promise.resolve()
+    expect(focusEditor).not.toHaveBeenCalled()
+  })
+
   it("renders presence circles before undo and overlaps up to three collaborators", async () => {
     const {editor, editorWindow} = await mountEditor()
 
@@ -520,6 +557,19 @@ describe("DomEditor.execute()", () => {
       "Image",
     ])
     expect(breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.tree-item[data-path="0,1,0"]')).not.toBeNull()
+  })
+
+  it("hides picture implementation images and media sources from the document tree", async () => {
+    const {editor, iframe} = await mountEditor()
+    iframe.contentDocument!.body.innerHTML = `
+      <picture><source srcset="small.png"><img src="large.png"></picture>
+      <video><source src="movie.mp4"></video>
+    `
+
+    const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
+    expect(tree.children.map(child => child.name)).toEqual(["Image", "Video"])
+    expect(tree.children[0].children).toEqual([])
+    expect(tree.children[1].children).toEqual([])
   })
 
   it("opens the subtree represented by another breadcrumb separator", async () => {

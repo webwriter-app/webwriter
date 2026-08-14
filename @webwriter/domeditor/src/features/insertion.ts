@@ -1,6 +1,7 @@
 import { EditorFeature } from "."
 import { InsertionMenu, type InsertionMenuItem } from "../components/insertion-menu"
 import { $, getContainer, isElement, isText, markWidgetsEditable, modifierKeyDown } from "../utility"
+import {isMediaType, mediaDefaultHTML} from "../media"
 
 type CustomHighlightRegistry = {
   delete(name: string): void
@@ -409,6 +410,7 @@ export class InsertionFeature extends EditorFeature {
   private async insert(item: InsertionMenuItem) {
     let html = item.tag === "details"
       ? "<details><summary></summary></details>"
+      : isMediaType(item.tag) ? mediaDefaultHTML(item.tag)
       : item.tag ? `<${item.tag}></${item.tag}>` : ""
     if(item.htmlUrl) {
       try {

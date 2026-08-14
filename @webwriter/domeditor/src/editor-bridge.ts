@@ -7,6 +7,7 @@ import {
   type StyleMarkValues,
 } from "./marks"
 import type {EditorStateSnapshot} from "./editor-state"
+import {isMediaType, type MediaSelectionState} from "./media"
 
 export const executeCompleteEvent = "dom-editor-execute-complete"
 export const executeFailureEvent = "dom-editor-execute-failure"
@@ -88,6 +89,7 @@ export type SelectionChangeDetail = {
   path: SelectionPathItem[]
   gap?: SelectionGap
   list?: ListSelectionState
+  media?: MediaSelectionState
 }
 
 export type SelectionChangeMessage = {
@@ -192,6 +194,18 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
     && typeof list.style === "string"
   )
   if(!listIsValid) return false
+
+  const media = message.detail.media as Partial<MediaSelectionState> | null | undefined
+  const mediaIsValid = media === undefined || (
+    !!media
+    && typeof media === "object"
+    && isMediaType(media.type)
+    && !!media.attributes
+    && typeof media.attributes === "object"
+    && !Array.isArray(media.attributes)
+    && Object.entries(media.attributes).every(([name, value]) => typeof name === "string" && typeof value === "string")
+  )
+  if(!mediaIsValid) return false
 
   return true
 }

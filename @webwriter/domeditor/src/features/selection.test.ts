@@ -32,9 +32,12 @@ describe("processSelection()", () => {
     $.selectElement(p)
     feature.processSelection()
     expect(p.classList.contains("◆element-selected")).toBe(true)
-    expect(feature.elementCaret).toHaveClass("◆editor-only")
-    expect(feature.elementCaret).toHaveAttribute("part", "element-caret")
-    expect(feature.elementCaret?.getRootNode()).toBe(document.body.shadowRoot)
+  })
+  it.each(["webwriter-demo", "video"])("uses the element selection marker for %s", tag => {
+    const element = el(tag)
+    $.selectElement(element)
+    feature.processSelection()
+    expect(element).toHaveClass("◆element-selected")
   })
   it("skips element markers during drag selection", () => {
     const p = el("p", "hello")
@@ -111,28 +114,16 @@ describe("processSelection()", () => {
     feature.processSelection()
     expect(feature.gapCaret!.getAttribute("visibility")).toBe("hidden")
   })
-  it("hides the element caret when leaving an element selection", () => {
-    const p = el("p", "hello")
-    $.selectElement(p)
-    feature.processSelection()
-    expect(feature.elementCaret).toHaveAttribute("part", "element-caret")
-    $.move(p.firstChild!, 0)
-    feature.processSelection()
-    expect(feature.elementCaret).toHaveAttribute("part", "element-caret element-caret-hidden")
-  })
-  it("shows and clears a static hover caret for a breadcrumb path", () => {
+  it("shows and clears an outline preview for a breadcrumb path", () => {
     const p = el("p", "hello")
 
     feature.actions.hoverNode({type: "hoverNode", path: [0]})
 
     expect(p).toHaveClass("◆element-hovered")
-    expect(feature.elementHoverCaret).toHaveClass("◆editor-only")
-    expect(feature.elementHoverCaret).toHaveAttribute("part", "element-hover-caret")
 
     feature.actions.hoverNode({type: "hoverNode", path: null})
 
     expect(p).not.toHaveClass("◆element-hovered")
-    expect(feature.elementHoverCaret).toHaveAttribute("part", "element-hover-caret element-hover-caret-hidden")
   })
   it("clears a document hover without leaving a body marker", () => {
     feature.actions.hoverNode({type: "hoverNode", path: []})
@@ -142,7 +133,7 @@ describe("processSelection()", () => {
 
     expect(document.body).not.toHaveClass("◆element-hovered")
   })
-  it("does not add a hover caret to an already selected element", () => {
+  it("adds the dotted hover outline to an already selected element", () => {
     const p = el("p", "hello")
     $.selectElement(p)
     feature.processSelection()
@@ -150,10 +141,9 @@ describe("processSelection()", () => {
     feature.actions.hoverNode({type: "hoverNode", path: [0]})
 
     expect(p).toHaveClass("◆element-selected")
-    expect(p).not.toHaveClass("◆element-hovered")
-    expect(feature.elementHoverCaret).toHaveAttribute("part", "element-hover-caret element-hover-caret-hidden")
+    expect(p).toHaveClass("◆element-hovered")
   })
-  it("removes the hover caret when its element becomes selected", () => {
+  it("keeps a breadcrumb hover preview when its element becomes selected", () => {
     const p = el("p", "hello")
     feature.actions.hoverNode({type: "hoverNode", path: [0]})
     expect(p).toHaveClass("◆element-hovered")
@@ -162,8 +152,7 @@ describe("processSelection()", () => {
     feature.processSelection()
 
     expect(p).toHaveClass("◆element-selected")
-    expect(p).not.toHaveClass("◆element-hovered")
-    expect(feature.elementHoverCaret).toHaveAttribute("part", "element-hover-caret element-hover-caret-hidden")
+    expect(p).toHaveClass("◆element-hovered")
   })
 
   it("selects an element from a BODY-relative breadcrumb path", () => {
@@ -344,6 +333,47 @@ describe("document listeners", () => {
     document.querySelector("b")!.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true}))
     expect($.selectedElement).toBe(p)
     expect(p).toHaveClass("◆element-selected")
+  })
+  it("node-selects a widget without starting an editor drag from its shadow DOM", () => {
+    const widget = document.createElement("interactive-widget")
+    const button = document.createElement("button")
+    widget.attachShadow({mode: "open"}).append(button)
+    document.body.append(widget)
+    feature.isInDragSelection = true
+    const event = new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true})
+
+    button.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(false)
+    expect(feature.isInDragSelection).toBe(false)
+    expect($.selectedElement).toBe(widget)
+    expect(widget).toHaveClass("◆element-selected")
+  })
+  it("node-selects interaction retargeted from a closed widget shadow DOM", () => {
+    const widget = document.createElement("closed-widget")
+    const button = document.createElement("button")
+    widget.attachShadow({mode: "closed"}).append(button)
+    document.body.append(widget)
+
+    button.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
+
+    expect($.selectedElement).toBe(widget)
+    expect(widget).toHaveClass("◆element-selected")
+  })
+  it("keeps an editor range out of a widget's shadow text", async () => {
+    const before = el("p", "before")
+    const widget = document.createElement("interactive-widget")
+    widget.attachShadow({mode: "open"}).textContent = "shadow text"
+    document.body.append(widget)
+    const after = el("p", "after")
+
+    $.selectRange(before.firstChild!, 0, after.firstChild!, after.textContent!.length)
+    feature.processSelection()
+
+    expect(document.getSelection()?.toString()).toBe("beforeafter")
+    expect(document.getSelection()?.toString()).not.toContain("shadow text")
+    $.move(document.body, 0)
+    await Promise.resolve()
   })
   it("ignores pointerdown on editor-only elements", () => {
     const p = el("p", "hello")

@@ -64,12 +64,10 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toContain("body::part(presence-caret)")
     expect(editorStyleString).toContain("body::part(presence-element-selection)")
     expect(editorStyleString).toContain("body::part(presence-element-selection-label)")
-    expect(editorStyleString).toMatch(/body::part\(presence-element-selection\)[\s\S]*?color:\s*color-mix\(in srgb, var\(--presence-color\) 40%, transparent\);/)
-    expect(editorStyleString).toMatch(/\.◆element-selected\s*\{[\s\S]*?anchor-name:\s*--element-caret-anchor;/)
-    expect(editorStyleString).toMatch(/body::part\(element-caret\)[\s\S]*?position-anchor:\s*--element-caret-anchor;[\s\S]*?animation:\s*blink 1s step-end 0s infinite;/)
-    expect(editorStyleString).toMatch(/body::part\(element-caret\)::before,\s*body::part\(element-caret\)::after,\s*body::part\(presence-element-selection\)::before,\s*body::part\(presence-element-selection\)::after\s*\{[\s\S]*?border:\s*1px solid currentColor;/)
-    expect(editorStyleString).toMatch(/body::part\(element-caret\)::before,\s*body::part\(presence-element-selection\)::before[\s\S]*?left:\s*-2px;[\s\S]*?border-right:\s*0;/)
-    expect(editorStyleString).toMatch(/body::part\(element-caret\)::after,\s*body::part\(presence-element-selection\)::after[\s\S]*?right:\s*-2px;[\s\S]*?border-left:\s*0;/)
+    expect(editorStyleString).toMatch(/\.◆element-selected\s*\{[\s\S]*?outline:\s*2px solid var\(--sl-color-primary-400\);[\s\S]*?outline-offset:\s*2px;/)
+    expect(editorStyleString).toMatch(/\.◆element-selected:hover\s*\{[\s\S]*?outline-style:\s*dotted;/)
+    expect(editorStyleString).toMatch(/body::part\(presence-element-selection\)[\s\S]*?outline:\s*2px solid color-mix\(in srgb, var\(--presence-color\) 40%, transparent\);[\s\S]*?outline-offset:\s*2px;/)
+    expect(editorStyleString).not.toContain("body::part(element-caret)")
     expect(editorStyleString).toMatch(/body\s*>\s*\*\s*\+\s*\*\s*\{[\s\S]*?margin-block-start:\s*1\.25rem;/)
     expect(editorStyleString).toMatch(/body::part\(presence-caret-label\)[\s\S]*?width:\s*1\.125rem;/)
     expect(editorStyleString).toMatch(/body::part\(presence-caret-label\)[\s\S]*?font:\s*8px\/1\.25/)
@@ -82,8 +80,8 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/body::part\(presence-gap-caret\)[\s\S]*?color:\s*color-mix\(in srgb, var\(--presence-color\) 40%, transparent\);/)
 
     expect(editorStyleString).toMatch(/body::part\(presence-gap-caret\)::after\s*\{[\s\S]*?animation:\s*none;/)
-    expect(editorStyleString).toMatch(/\.◆element-hovered\s*\{[\s\S]*?anchor-name:\s*--element-hover-caret-anchor;/)
-    expect(editorStyleString).toMatch(/body::part\(element-hover-caret\)[\s\S]*?color:\s*#2563eb;[\s\S]*?opacity:\s*0\.5;[\s\S]*?animation:\s*none;/)
+    expect(editorStyleString).toMatch(/\.◆element-hovered,\s*\.◆element-hovered:hover\s*\{[\s\S]*?outline:\s*2px dotted var\(--sl-color-primary-400\);[\s\S]*?outline-offset:\s*2px;/)
+    expect(editorStyleString).not.toContain("body::part(element-hover-caret)")
     expect(editorStyleString).toMatch(/body::part\(insertion-add\)[\s\S]*?position-anchor:\s*--empty-selected;[\s\S]*?left:\s*anchor\(left\);[\s\S]*?top:\s*anchor\(top\);[\s\S]*?font:\s*inherit;/)
     expect(editorStyleString).toMatch(/body\.◆empty-selected::part\(insertion-add\)[\s\S]*?left:\s*calc\(anchor\(left\) \+ var\(--body-padding\)\);/)
     expect(editorStyleString).toMatch(/summary:is\(:empty, :has\(br:only-child\)\)::after\s*\{[\s\S]*?content:\s*"Summary";/)
@@ -93,6 +91,11 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/dl > dt:is\(:empty, :has\(br:only-child\)\)::after[\s\S]*?content:\s*"Term";/)
     expect(editorStyleString).toMatch(/dl > dd:is\(:empty, :has\(br:only-child\)\)::after[\s\S]*?content:\s*"Description";/)
     expect(editorStyleString).not.toMatch(/:is\(ul, ol, menu\):empty[\s\S]*?display:\s*list-item;/)
+    expect(editorStyleString).toMatch(/\.◆media-empty\s*\{[\s\S]*?border:\s*1px dashed #6b7280;/)
+    expect(editorStyleString).not.toMatch(/\.◆media-empty\.◆element-selected\s*\{/)
+    expect(editorStyleString).toMatch(/:is\(picture, audio, video\)\s*\{[\s\S]*?height:\s*auto;[\s\S]*?aspect-ratio:\s*16\s*\/\s*9;/)
+    expect(editorStyleString).toMatch(/audio\.◆media-empty::-webkit-media-controls-enclosure\s*\{[\s\S]*?display:\s*none;/)
+    expect(editorStyleString).toMatch(/body:has\(\.◆media-empty:is\(\.◆gap-before-selected, \.◆gap-after-selected\)\)::part\(gap-caret\)\s*\{[\s\S]*?display:\s*none;/)
   })
 
   it("hides Chromium's native label for an empty Details element", () => {
@@ -114,7 +117,7 @@ describe("DOMEditor stylesheets", () => {
 describe("widget shadow interactions", () => {
   const editor = new DOMEditor()
 
-  it("propagates keyboard interaction without letting the editor handle it", () => {
+  it("node-selects keyboard interaction without cancelling the widget", () => {
     const widget = document.createElement("interactive-widget")
     const input = document.createElement("input")
     widget.attachShadow({mode: "open"}).append(input)
@@ -133,6 +136,7 @@ describe("widget shadow interactions", () => {
 
     expect(propagated).toHaveBeenCalledWith(event)
     expect(event.defaultPrevented).toBe(false)
+    expect(widget).toHaveClass("◆element-selected")
     document.removeEventListener("keydown", propagated)
     widget.remove()
   })

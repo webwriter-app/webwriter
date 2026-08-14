@@ -767,23 +767,35 @@ export function getDescendantsInStackingOrder(node: HTMLElement, selector="*") {
   return descendants.sort(compareStackingOrder)
 }
 
-/** Whether a non-scroll interaction originated in the shadow tree of a
- * widget mounted in the editable document. Composed events are retargeted to
- * the widget host by the time they reach document listeners, so inspect the
- * full path instead. Hosts in the body's own shadow tree belong to the editor
- * appendix and are intentionally not treated as widgets. */
-export function isWidgetShadowInteraction(event: Event) {
-  if(event.type === "scroll") return false
+/** The editable widget host whose shadow tree originated an interaction.
+ * Composed events are retargeted to the host by the time they reach document
+ * listeners, so inspect the full path instead. Hosts in the body's own shadow
+ * tree belong to the editor appendix and are intentionally excluded. */
+export function widgetHostForShadowInteraction(event: Event) {
+  if(event.type === "scroll") return null
   const origin = event.composedPath()[0] as Node | undefined
-  if(typeof origin?.getRootNode !== "function") return false
+  if(typeof origin?.getRootNode !== "function") return null
   let root = origin.getRootNode()
   while(root.nodeType === Node.DOCUMENT_FRAGMENT_NODE && "host" in root) {
     const host = (root as ShadowRoot).host
     const body = host.ownerDocument.body
-    if(host !== body && body.contains(host)) return true
+    if(host !== body && body.contains(host)) return host
     root = host.getRootNode()
   }
-  return false
+  // A closed shadow root hides its internal nodes from composedPath() outside
+  // the root, making the mounted custom-element host the visible origin.
+  if(isElement(origin)
+    && origin.ownerDocument.body.contains(origin)
+    && origin.namespaceURI === "http://www.w3.org/1999/xhtml"
+    && (origin.localName.includes("-") || origin.hasAttribute("is"))) {
+    return origin
+  }
+  return null
+}
+
+/** Whether a non-scroll interaction originated in a mounted widget's shadow tree. */
+export function isWidgetShadowInteraction(event: Event) {
+  return widgetHostForShadowInteraction(event) !== null
 }
 
 /** Whether the element creates a stacking context, per CSS rules (root element, positioned with z-index, fixed/sticky, transforms/filters, opacity < 1, isolation, top layer, will-change, contain, ...). */

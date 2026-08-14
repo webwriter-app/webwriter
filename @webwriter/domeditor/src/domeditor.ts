@@ -10,6 +10,7 @@ import { InsertionFeature } from "./features/insertion"
 import { ListFeature } from "./features/list"
 import { TransformationFeature } from "./features/transformation"
 import { StateFeature } from "./features/state"
+import { MediaFeature } from "./features/media"
 import { Schema } from "./schema"
 import { $, adoptStylesheet, createStylesheet, getContainer, isElement, isWidgetShadowInteraction } from "./utility"
 import {isMarkElement, normalizeMarkElements} from "./marks"
@@ -77,6 +78,7 @@ export class DOMEditor {
     "placeholder": new PlaceholderFeature(this),
     "mark": new MarkFeature(this),
     "collaboration": new CollaborationFeature(this),
+    "media": new MediaFeature(this),
   } as const
 
   ignoreAttrs = ["contenteditable", "spellcheck"]
@@ -369,10 +371,12 @@ export class DOMEditor {
       ? {parentPath: this.pathToElement($.anchor), offset: $.anchorOffset}
       : undefined
     const list = this.features.list.getState()
+    const media = this.features.media.getState()
     const detail: SelectionChangeDetail = {
       path,
       ...(gap ? {gap} : {}),
       ...(list.type ? {list} : {}),
+      ...(media ? {media} : {}),
     }
     this.postBridgeEvent(selectionChangeEvent, detail)
   }

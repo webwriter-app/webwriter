@@ -1,5 +1,12 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import {$, getContainer, isElement, modifierKeyDown, setPart} from "../utility"
+import {$, getContainer, isElement, modifierKeyDown, setPart, widgetHostForShadowInteraction} from "../utility"
+import {mediaContainerForNode} from "../media"
+
+const widgetSelectionEventTypes = [
+  "pointerdown", "pointerup", "click", "focusin",
+  "keydown", "keyup", "beforeinput", "input",
+  "compositionstart", "compositionend", "copy", "cut", "paste",
+] as const
 
 function isCaretAtStartOf(element: Element) {
   const selection = document.getSelection()
@@ -29,9 +36,8 @@ function isCaretAtStartOf(element: Element) {
 /** Editing feature that visualizes the current selection. It classifies every
  * selection change into an editing-relevant kind (element, text, gap, empty)
  * and applies the corresponding `◆…-selected` marker classes, manages the gap
- * and element caret elements, mirrors modifier key state onto the body, and
- * implements pointer-based selection (drag selection, modifier-click element
- * selection). */
+ * caret element, mirrors modifier key state onto the body, and implements
+ * pointer-based selection (drag selection, modifier-click element selection). */
 export class SelectionFeature extends EditorFeature {
 
   #sharedRefreshQueued = false
@@ -82,11 +88,23 @@ export class SelectionFeature extends EditorFeature {
     }
   }
 
+  /** Media are atomic editing nodes. Any caret or range endpoint that lands
+   * inside one is promoted to a node selection of the outer media element. */
+  #constrainSelectionToMedia() {
+    const selection = document.getSelection()
+    if(!selection?.anchorNode || !selection.focusNode) return
+    const media = mediaContainerForNode(selection.anchorNode) ?? mediaContainerForNode(selection.focusNode)
+    if(!media) return
+    if($.isElementSelection && $.selectedElement === media) return
+    $.selectElement(media)
+  }
+
   /** Enables the feature and places the selection at the document start. */
   enable() {
     if(this.isEnabled) return
     $.selectDocumentStart()
     super.enable()
+    widgetSelectionEventTypes.forEach(type => document.addEventListener(type, this.#handleWidgetShadowInteraction))
     this.editor.doc.doc.on("afterTransaction", this.#handleSharedChange)
     this.processSelection()
   }
@@ -94,8 +112,24 @@ export class SelectionFeature extends EditorFeature {
   disable() {
     if(!this.isEnabled) return
     this.editor.doc.doc.off("afterTransaction", this.#handleSharedChange)
+    widgetSelectionEventTypes.forEach(type => document.removeEventListener(type, this.#handleWidgetShadowInteraction))
     this.#clearElementHover()
     super.disable()
+  }
+
+  /** Keeps widget shadow trees atomic without cancelling their own controls.
+   * Regular feature listeners ignore these events, so they cannot start or
+   * extend an editor drag selection. Reasserting the host through click and
+   * focus also wins over any native shadow-tree selection made after
+   * pointerdown. */
+  readonly #handleWidgetShadowInteraction = (event: Event) => {
+    const widget = widgetHostForShadowInteraction(event)
+    if(!widget) return
+    this.isInDragSelection = false
+    if(!($.isElementSelection && $.selectedElement === widget)) {
+      $.selectElement(widget)
+    }
+    this.processSelection()
   }
 
   /** Selects the element addressed by a child-node path from BODY. */
@@ -110,9 +144,7 @@ export class SelectionFeature extends EditorFeature {
       if(path === null) return
 
       const element = this.#elementAtPath(path)
-      if(element.classList.contains("◆element-selected")) return
       element.classList.add("◆", "◆element-hovered")
-      setPart(this.elementHoverCaret ?? this.#createElementHoverCaret(), "element-hover-caret-hidden", false)
     },
   } as const
 
@@ -159,42 +191,7 @@ export class SelectionFeature extends EditorFeature {
     return this.editor.appendix.querySelector(".◆gap-caret")
   }
 
-  /** Creates the element caret that paints the outline of a selected element. */
-  #createElementCaret() {
-    const node = document.createElement("div")
-    node.classList.add("◆", "◆editor-only", "◆element-caret")
-    node.setAttribute("part", "element-caret element-caret-hidden")
-    node.setAttribute("aria-hidden", "true")
-    node.contentEditable = "false"
-    this.editor.addAppendix(node)
-    return node
-  }
-
-  /** The shadow-DOM caret that outlines the selected element, if created. */
-  get elementCaret() {
-    return this.editor.appendix.querySelector(".◆element-caret")
-  }
-
-  /** Creates the transparent, static bracket caret used for breadcrumb hover. */
-  #createElementHoverCaret() {
-    const node = document.createElement("div")
-    node.classList.add("◆", "◆editor-only", "◆element-hover-caret")
-    node.setAttribute("part", "element-hover-caret element-hover-caret-hidden")
-    node.setAttribute("aria-hidden", "true")
-    node.contentEditable = "false"
-    this.editor.addAppendix(node)
-    return node
-  }
-
-  /** The shadow-DOM caret that marks the element currently hovered in the breadcrumb. */
-  get elementHoverCaret() {
-    return this.editor.appendix.querySelector(".◆element-hover-caret")
-  }
-
   #clearElementHover() {
-    if(this.elementHoverCaret) {
-      setPart(this.elementHoverCaret, "element-hover-caret-hidden")
-    }
     const hoveredElements = Array.from(document.querySelectorAll(".◆element-hovered"))
     if(document.body.classList.contains("◆element-hovered")) {
       hoveredElements.unshift(document.body)
@@ -208,16 +205,6 @@ export class SelectionFeature extends EditorFeature {
         el.removeAttribute("class")
       }
     })
-  }
-
-  #clearElementHoverIfSelected() {
-    const selectedElements = Array.from(document.querySelectorAll(".◆element-selected"))
-    if(document.body.classList.contains("◆element-selected")) {
-      selectedElements.unshift(document.body)
-    }
-    if(selectedElements.some(el => el.classList.contains("◆element-hovered"))) {
-      this.#clearElementHover()
-    }
   }
 
   /** Creates the virtual caret used only for a completely empty document.
@@ -240,8 +227,7 @@ export class SelectionFeature extends EditorFeature {
   }
 
   /** Removes all selection marker classes (gap, element, text, empty) from
-   * the document, dropping emptied class attributes, and hides the gap and
-   * element carets. */
+   * the document, dropping emptied class attributes, and hides the gap caret. */
   #clearSelections() {
     document.querySelectorAll(".◆gap-before-selected, .◆gap-after-selected").forEach(el => {
       el.classList.remove("◆gap-before-selected", "◆gap-after-selected")
@@ -257,9 +243,6 @@ export class SelectionFeature extends EditorFeature {
     if(this.gapCaret) {
       setPart(this.gapCaret, "gap-caret-hidden")
       ;["gap-before-selected", "gap-after-selected", "drop-caret-before", "drop-caret-after"].forEach(state => setPart(this.gapCaret!, `gap-caret-${state}`, false))
-    }
-    if(this.elementCaret) {
-      setPart(this.elementCaret, "element-caret-hidden")
     }
     document.querySelectorAll(".◆element-selected").forEach(el => {
       el.classList.remove("◆element-selected")
@@ -292,11 +275,12 @@ export class SelectionFeature extends EditorFeature {
 
   /** Re-applies the selection markers for the current selection: the gap
    * anchor and caret for gap selections (`◆gap-before/after-selected`), the
-   * selected element and its caret (`◆element-selected`, skipped during drag
-   * selections), the text container (`◆text-selected`) or the empty
-   * container (`◆empty-selected`). Previous markers are cleared first. */
+   * selected element (`◆element-selected`, skipped during drag selections),
+   * the text container (`◆text-selected`) or the empty container
+   * (`◆empty-selected`). Previous markers are cleared first. */
   processSelection(inDragSelection=false) {
     this.#constrainSelectionToBody()
+    this.#constrainSelectionToMedia()
     let sel = document.getSelection()
     const isInBody = (node: Node | null) => node === document.body || Boolean(node && document.body.contains(node))
     if(sel?.isCollapsed && (!isInBody(sel.anchorNode) || !isInBody(sel.focusNode))) {
@@ -343,7 +327,6 @@ export class SelectionFeature extends EditorFeature {
       const element = sel.anchorNode!.childNodes.item(Math.min(sel.anchorOffset, sel.focusOffset)) as Element
       if(isElement(element)) {
         element.classList.add("◆", "◆element-selected")
-        setPart(this.elementCaret ?? this.#createElementCaret(), "element-caret-hidden", false)
       }
     }
     else if(anchorContainer && $.isTextSelection) {
@@ -358,7 +341,6 @@ export class SelectionFeature extends EditorFeature {
         this.#createEmptyDocumentCaret()
       }
     }
-    this.#clearElementHoverIfSelected()
   }
 
   /** Observing behavior: re-apply markers on every selection change, extend
@@ -471,6 +453,13 @@ export class SelectionFeature extends EditorFeature {
     },
     "pointerdown": ev => {
       if((isElement(ev.target) && ev.target.closest(".◆editor-only")) || this.hasDoubleClicked || ev.button === 2) {
+        return
+      }
+      const media = ev.target instanceof Node ? mediaContainerForNode(ev.target) : null
+      if(media) {
+        ev.preventDefault()
+        $.selectElement(media)
+        this.processSelection()
         return
       }
       if($.isEmptyDocumentSelection) {

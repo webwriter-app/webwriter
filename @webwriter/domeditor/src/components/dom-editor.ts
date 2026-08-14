@@ -24,6 +24,12 @@ import {
 } from "../marks"
 import {isWidgetShadowInteraction} from "../utility"
 import {
+  isMediaType,
+  isWebsiteType,
+  mediaAttributeOptions,
+  type MediaSelectionState,
+} from "../media"
+import {
   executeCompleteEvent,
   executeFailureEvent,
   initializeEditorMessage,
@@ -115,6 +121,7 @@ export class DomEditor extends LitElement {
     frameRevision: {attribute: false, state: true},
     listType: {attribute: false, state: true},
     listStyle: {attribute: false, state: true},
+    mediaSelection: {attribute: false, state: true},
   }
 
   private editorDocument: Document | null = null
@@ -136,6 +143,7 @@ export class DomEditor extends LitElement {
   private markAttributes: MarkAttributeValues = {}
   private listType: ListType | null = null
   private listStyle = ""
+  private mediaSelection: MediaSelectionState | null = null
   private presenceUsers: PresenceUser[] = []
   private packages: WebWriterPackage[] = []
   private installedPackages: WebWriterPackage[] = []
@@ -212,13 +220,26 @@ export class DomEditor extends LitElement {
     }
     this.documentTree = this.buildDocumentTree()
     const body = this.editorDocument?.body
-    if(body) {
-      this.documentTreeObserver = new MutationObserver(mutations => {
+    const FrameMutationObserver = this.editorWindow?.MutationObserver
+    if(body && FrameMutationObserver) {
+      // Construct the observer in the iframe's realm. Chromium rejects an
+      // outer-window MutationObserver when scoped-registry initialization
+      // reloads the iframe and hands it an iframe-owned Node.
+      this.documentTreeObserver = new FrameMutationObserver(mutations => {
         if(mutations.some(mutation => mutation.type === "childList")) {
           this.documentTree = this.buildDocumentTree()
         }
       })
-      this.documentTreeObserver.observe(body, {childList: true, subtree: true})
+      try {
+        this.documentTreeObserver.observe(body, {childList: true, subtree: true})
+      }
+      catch {
+        // A preliminary iframe load can expose a body from the document being
+        // replaced. Do not let that transient realm mismatch prevent the
+        // initialization messages below from reaching the final document.
+        this.documentTreeObserver.disconnect()
+        this.documentTreeObserver = null
+      }
     }
     this.editorDocument?.addEventListener("pointerdown", this.handleEditorPointerDown)
     this.editorDocument?.addEventListener("focusin", this.handleEditorFocus)
@@ -483,6 +504,11 @@ export class DomEditor extends LitElement {
       return
     }
 
+    if(isMediaType(item.tag)) {
+      void this.execute({type: "insertMedia", media: item.tag}).finally(() => this.focusEditor())
+      return
+    }
+
     void this.execute({
       type: "insert",
       html: `<${item.tag}></${item.tag}>`,
@@ -667,6 +693,39 @@ export class DomEditor extends LitElement {
     }).finally(() => this.focusEditor())
   }
 
+  private handleMediaAttributeChange = (event: Event) => {
+    const detail = (event as CustomEvent<{
+      type?: unknown
+      attribute?: unknown
+      value?: unknown
+    }>).detail
+    if(!isMediaType(detail?.type)
+      || typeof detail?.attribute !== "string"
+      || !mediaAttributeOptions[detail.type].some(option => option.name === detail.attribute)
+      || detail.value !== null && typeof detail.value !== "string") {
+      this.focusEditor()
+      return
+    }
+    void this.execute({
+      type: "setMediaAttribute",
+      name: detail.attribute,
+      value: detail.value,
+    })
+  }
+
+  private handleMediaTypeChange = (event: Event) => {
+    const type = (event as CustomEvent<{type?: unknown}>).detail?.type
+    if(type === "picture" || type === "img") {
+      void this.execute({type: "switchImageType", image: type})
+      return
+    }
+    if(isWebsiteType(type)) {
+      void this.execute({type: "switchWebsiteType", website: type})
+      return
+    }
+    this.focusEditor()
+  }
+
   private handleRibbonCollapse = () => {
     this.renderRoot.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")?.collapseTree()
   }
@@ -702,6 +761,7 @@ export class DomEditor extends LitElement {
       Array.from(element.childNodes).flatMap((child, index) => {
         if(child.nodeType !== Node.ELEMENT_NODE) return []
         const childElement = child as Element
+        if(childElement.matches("source") || childElement.matches("img") && childElement.closest("picture")) return []
         const childPath = [...path, index]
         return isMarkElement(childElement)? buildChildren(childElement, childPath): [build(childElement, childPath)]
       })
@@ -778,12 +838,16 @@ export class DomEditor extends LitElement {
       this.selectionGap = selectionGap
       this.listType = event.data.detail.list?.type ?? null
       this.listStyle = event.data.detail.list?.style ?? ""
+      this.mediaSelection = event.data.detail.media
+        ? {type: event.data.detail.media.type, attributes: {...event.data.detail.media.attributes}}
+        : null
       this.documentTree = this.buildDocumentTree()
       this.dispatchEvent(new CustomEvent(selectionChangeEvent, {
         detail: {
           path,
           ...(selectionGap ? {gap: selectionGap} : {}),
           list: {type: this.listType, style: this.listStyle},
+          ...(this.mediaSelection ? {media: this.mediaSelection} : {}),
         },
         bubbles: true,
         composed: true,
@@ -898,6 +962,7 @@ export class DomEditor extends LitElement {
     this.marks = []
     this.markStyles = {}
     this.markAttributes = {}
+    this.mediaSelection = null
     const error = new Error("The DOM editor component was disconnected")
     this.pendingExecutions.forEach(({reject}) => reject(error))
     this.pendingExecutions.clear()
@@ -915,6 +980,7 @@ export class DomEditor extends LitElement {
           .markAttributes=${this.markAttributes}
           .listType=${this.listType}
           .listStyle=${this.listStyle}
+          .media=${this.mediaSelection}
           .presenceUsers=${this.presenceUsers}
           .packages=${this.packages}
           .installedPackages=${this.installedPackages}
@@ -924,6 +990,8 @@ export class DomEditor extends LitElement {
           @ribbon-button-click=${this.handleRibbonButtonClick}
           @ribbon-combobox-change=${this.handleRibbonComboboxChange}
           @mark-attribute-change=${this.handleMarkAttributeChange}
+          @media-attribute-change=${this.handleMediaAttributeChange}
+          @media-type-change=${this.handleMediaTypeChange}
           @ribbon-collapse=${this.handleRibbonCollapse}
           @ribbon-input-pointerdown=${this.handleRibbonInputPointerDown}
           @ribbon-input-focus=${this.handleRibbonInputFocus}

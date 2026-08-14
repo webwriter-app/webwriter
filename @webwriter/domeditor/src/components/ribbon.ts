@@ -32,6 +32,14 @@ import { type RibbonMenu, type RibbonMenuButton, type RibbonMenuGroup } from "./
 import "./ribbon-menu"
 import "./ribbon-tab"
 import "./package-search"
+import {
+  mediaAttributeOptions,
+  isWebsiteType,
+  websiteTypes,
+  type MediaAttributeOption,
+  type MediaSelectionState,
+  type MediaType,
+} from "../media"
 
 type RibbonMenuName = "File" | "Start" | "Insert" | "Edit" | "Settings"
 
@@ -161,6 +169,7 @@ export class AppRibbon extends LitElement {
     packageVisibleCount: {type: Number, state: true},
     listType: {type: String, attribute: "list-type"},
     listStyle: {type: String, attribute: "list-style"},
+    media: {attribute: false},
     linkAttributeMenuOpen: {type: Boolean, state: true},
   }
 
@@ -567,6 +576,7 @@ export class AppRibbon extends LitElement {
   packageError = ""
   listType: ListType | null = null
   listStyle = ""
+  media: MediaSelectionState | null = null
   private packageSearchQuery = ""
   private packageDrawerOpen = false
   private packageVisibleCount = 2
@@ -1275,11 +1285,153 @@ export class AppRibbon extends LitElement {
     `
   }
 
+  private mediaSelectionMatches(type: MediaType) {
+    if(type === "picture" || type === "img") return this.media?.type === "picture" || this.media?.type === "img"
+    if(isWebsiteType(type)) return isWebsiteType(this.media?.type)
+    return this.media?.type === type
+  }
+
+  private mediaLabel(type: MediaType) {
+    return isWebsiteType(type) ? "Website" : type
+  }
+
+  private dispatchMediaAttribute(type: MediaType, option: MediaAttributeOption, event: Event) {
+    const input = event.currentTarget as HTMLInputElement | HTMLSelectElement
+    const value = option.kind === "boolean"
+      ? (input as HTMLInputElement).checked ? "" : null
+      : input.value || null
+    this.dispatchEvent(new CustomEvent("media-attribute-change", {
+      detail: {type, attribute: option.name, value},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private renderMediaAttribute(type: MediaType, option: MediaAttributeOption) {
+    const active = this.mediaSelectionMatches(type)
+    const attributes = active ? this.media?.attributes ?? {} : {}
+    if(option.kind === "boolean") {
+      return html`
+        <label class="mark-attribute media-attribute media-attribute-boolean">
+          <span>${option.label}</span>
+          <input
+            type="checkbox"
+            data-ribbon-input-persistent
+            aria-label=${`${this.mediaLabel(type)}: ${option.label}`}
+            .checked=${Object.hasOwn(attributes, option.name)}
+            ?disabled=${!active}
+            @change=${(event: Event) => this.dispatchMediaAttribute(type, option, event)}
+          />
+        </label>
+      `
+    }
+    if(option.kind === "select") {
+      return html`
+        <label class="mark-attribute media-attribute">
+          <span>${option.label}</span>
+          <select
+            data-ribbon-input-persistent
+            aria-label=${`${this.mediaLabel(type)}: ${option.label}`}
+            ?disabled=${!active}
+            @change=${(event: Event) => this.dispatchMediaAttribute(type, option, event)}
+          >
+            ${option.options?.map(item => html`
+              <option value=${item.value} ?selected=${item.value === (attributes[option.name] ?? "")}>${item.label}</option>
+            `)}
+          </select>
+        </label>
+      `
+    }
+    return html`
+      <label class="mark-attribute media-attribute">
+        <span>${option.label}</span>
+        <input
+          data-ribbon-input-persistent
+          type=${option.kind === "url" ? "url" : option.kind === "number" ? "number" : "text"}
+          aria-label=${`${this.mediaLabel(type)}: ${option.label}`}
+          placeholder=${option.placeholder ?? ""}
+          .value=${attributes[option.name] ?? ""}
+          ?disabled=${!active}
+          @change=${(event: Event) => this.dispatchMediaAttribute(type, option, event)}
+        />
+      </label>
+    `
+  }
+
+  private renderMediaDropdown(type: MediaType) {
+    const active = this.mediaSelectionMatches(type)
+    const selectedImageType = this.media?.type === "img" ? "img" : "picture"
+    const selectedType = type === "iframe" && isWebsiteType(this.media?.type) ? this.media.type : type
+    return html`
+      <div class="button-dropdown-form media-dropdown-form" role="group" aria-label=${`${isWebsiteType(type) ? "website" : type} options`}>
+        ${type === "picture" ? html`
+          <button
+            class="button-dropdown-more media-type-switch"
+            type="button"
+            ?disabled=${!active}
+            @click=${() => this.dispatchEvent(new CustomEvent("media-type-change", {
+              detail: {type: selectedImageType === "picture" ? "img" : "picture"},
+              bubbles: true,
+              composed: true,
+            }))}
+          >Use &lt;${selectedImageType === "picture" ? "img" : "picture"}&gt;</button>
+        ` : ""}
+        ${type === "iframe" ? html`
+          <label class="mark-attribute media-attribute">
+            <span>Element</span>
+            <select
+              data-ribbon-input-persistent
+              aria-label="Website: Element"
+              ?disabled=${!active}
+              @change=${(event: Event) => this.dispatchEvent(new CustomEvent("media-type-change", {
+                detail: {type: (event.currentTarget as HTMLSelectElement).value},
+                bubbles: true,
+                composed: true,
+              }))}
+            >
+              ${websiteTypes.map(website => html`
+                <option value=${website} ?selected=${website === selectedType}>&lt;${website}&gt;</option>
+              `)}
+            </select>
+          </label>
+        ` : ""}
+        ${!active ? html`<span class="media-dropdown-status">Select a ${isWebsiteType(type) ? "website" : type} to edit its attributes.</span>` : ""}
+        <div class="button-dropdown-advanced" role="group" aria-label="Advanced attributes">
+          ${mediaAttributeOptions[selectedType].map(option => this.renderMediaAttribute(selectedType, option))}
+        </div>
+      </div>
+    `
+  }
+
+  private renderMediaDrawer(drawer: RibbonMenuGroup) {
+    return html`
+      <ribbon-drawer label="Media" icon="Table" layout="media">
+        ${drawer.buttons.map(button => {
+          const item = typeof button === "string" ? {label: button} : button
+          const insertion = insertionMenuItems.find(candidate => candidate.name === item.label)
+          const type = insertion?.tag === "picture" || insertion?.tag === "audio" || insertion?.tag === "video" || insertion?.tag === "iframe"
+            ? insertion.tag as MediaType
+            : null
+          return html`
+            <ribbon-button
+              label=${item.label}
+              .action=${item.action ?? item.label}
+              .submenu=${type ? [] : item.submenu ?? []}
+              .dropdown=${type ? this.renderMediaDropdown(type) : null}
+              ?active=${type ? this.mediaSelectionMatches(type) : false}
+            ></ribbon-button>
+          `
+        })}
+      </ribbon-drawer>
+    `
+  }
+
   private renderDrawers() {
     return this.currentMenuGroups.map(drawer => {
       if(drawer.label === "Marks") return this.renderMarkDrawer()
       if(drawer.label === "Packages") return this.renderPackageDrawer()
       if(drawer.label === "Lists") return this.renderListDrawer()
+      if(drawer.label === "Media") return this.renderMediaDrawer(drawer)
       const representative = drawer.buttons[0]
       const icon = typeof representative === "string"
         ? representative
