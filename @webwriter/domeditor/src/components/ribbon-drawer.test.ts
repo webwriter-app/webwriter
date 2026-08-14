@@ -38,6 +38,8 @@ describe("responsive ribbon drawer", () => {
     expect(getComputedStyle(controls).boxShadow).not.toBe("none")
     expect(getComputedStyle(controls).borderColor).toBe("#d8dee6")
     expect(getComputedStyle(controls).gap).toBe("0")
+    expect(getComputedStyle(controls).visibility).toBe("hidden")
+    expect(getComputedStyle(controls).transition).toBe("none")
     expect(drawer.children).toHaveLength(3)
 
     toggle.click()
@@ -49,6 +51,7 @@ describe("responsive ribbon drawer", () => {
     expect(getComputedStyle(controls).paddingTop).toBe("8px")
     expect(getComputedStyle(controls).paddingBottom).toBe("8px")
     expect(getComputedStyle(controls).visibility).toBe("visible")
+    expect(getComputedStyle(controls).transition).toContain("max-height")
     expect(getComputedStyle(controls).transition).not.toContain("opacity")
     expect(drawer.children).toHaveLength(3)
 
@@ -197,6 +200,19 @@ describe("responsive ribbon drawer", () => {
 
     expect(drawer.hasAttribute("drawer-open")).toBe(false)
     expect(getComputedStyle(drawer).minWidth).toBe("212px")
+  })
+
+  it("hides a closed drawer without animating when responsive layout collapses it", async () => {
+    const drawer = await mountDrawer(false)
+    const controls = drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!
+
+    drawer.collapsed = true
+    await drawer.updateComplete
+
+    expect(drawer.hasAttribute("drawer-visible")).toBe(false)
+    expect(getComputedStyle(controls).maxHeight).toBe("0")
+    expect(getComputedStyle(controls).visibility).toBe("hidden")
+    expect(getComputedStyle(controls).transition).toBe("none")
   })
 })
 

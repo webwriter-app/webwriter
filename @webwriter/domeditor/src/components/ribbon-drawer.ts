@@ -380,14 +380,14 @@ export class RibbonDrawer extends LitElement {
       visibility: hidden;
       overflow: hidden;
       pointer-events: none;
-      transition:
-        max-height 180ms ease,
-        padding 180ms ease,
-        visibility 0s linear 180ms;
+      transition: none;
     }
 
     :host([collapsed][drawer-visible]) .controls {
       visibility: visible;
+      transition:
+        max-height 180ms ease,
+        padding 180ms ease;
     }
 
     :host([collapsed][drawer-open]) .controls {
