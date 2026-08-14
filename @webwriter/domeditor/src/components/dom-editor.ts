@@ -442,7 +442,7 @@ export class DomEditor extends LitElement {
         void this.execute({type: "toggleMarkGroup", mark}).finally(() => this.focusEditor())
       }
       else if(group) {
-        void this.execute({type: "setMarkType", primary: group.primary, mark}).finally(() => this.focusEditor())
+        void this.execute({type: "toggleMark", mark}).finally(() => this.focusEditor())
       }
       else void this.execute({type: "toggleMark", mark}).finally(() => this.focusEditor())
       return
@@ -618,7 +618,22 @@ export class DomEditor extends LitElement {
   }
 
   private handleRibbonComboboxChange = (event: Event) => {
-    const detail = (event as CustomEvent<{name?: unknown, value?: unknown}>).detail
+    const detail = (event as CustomEvent<{name?: unknown, value?: unknown, values?: unknown}>).detail
+    if(detail?.name === "mark-types") {
+      const group = mergedMarkGroupFor("span")
+      if(!group || !Array.isArray(detail.values) || !detail.values.every(value => (
+        typeof value === "string" && group.members.includes(value as MarkName)
+      ))) {
+        this.focusEditor()
+        return
+      }
+      void this.execute({
+        type: "setMarkGroup",
+        primary: "span",
+        marks: detail.values as MarkName[],
+      })
+      return
+    }
     if(!detail || typeof detail.name !== "string" || !isStyleMarkName(detail.name) || typeof detail.value !== "string") {
       this.focusEditor()
       return

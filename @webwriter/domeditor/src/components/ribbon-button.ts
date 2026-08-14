@@ -1,8 +1,8 @@
-import {LitElement, css, html, nothing} from "lit"
+import {LitElement, css, html, nothing, type TemplateResult} from "lit"
 import { ribbonIcon } from "../ribbon-icons"
 import type {PackageKeywordPresentation} from "../package-keywords"
 import "./ribbon-menu"
-import type { RibbonMenu, RibbonMenuButton } from "./ribbon-menu"
+import type {RibbonMenuButton} from "./ribbon-menu"
 
 export type RibbonButtonDetails = {
   heading: string
@@ -25,6 +25,7 @@ export class RibbonButton extends LitElement {
     iconUrl: {type: String, attribute: "icon-url"},
     shortcut: {type: String},
     submenu: {attribute: false},
+    dropdown: {attribute: false},
     submenuOpen: {state: true},
     corner: {type: String},
     cornerLabel: {type: String, attribute: "corner-label"},
@@ -34,6 +35,7 @@ export class RibbonButton extends LitElement {
     muted: {type: Boolean, reflect: true},
     details: {attribute: false},
     detailsOpen: {type: Boolean, attribute: "details-open", reflect: true},
+    selectionCount: {type: Number, attribute: "selection-count"},
     toggle: {type: Boolean, reflect: true},
     variant: {type: String, reflect: true},
   }
@@ -205,11 +207,171 @@ export class RibbonButton extends LitElement {
     }
 
     .button-label {
+      display: flex;
+      align-items: baseline;
       line-height: 0.8rem;
+      min-width: 0;
       max-width: 100%;
+      white-space: nowrap;
+    }
+
+    .button-label-text {
+      min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+
+    .selection-count {
+      flex: 0 0 auto;
+      margin-left: 0.15rem;
+      color: #526b86;
+      font-size: 0.56rem;
+      font-weight: 600;
+    }
+
+    .button-dropdown-content {
+      color: #2f3742;
+      font-size: 0.7rem;
+    }
+
+    .button-dropdown-form {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .button-dropdown-content .mark-attribute {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.4rem;
+    }
+
+    .button-dropdown-content .mark-attribute > span {
+      color: #526b86;
+      font-size: 0.62rem;
+      white-space: nowrap;
+    }
+
+    .button-dropdown-content .mark-attribute input,
+    .mark-dropdown-attribute {
+      box-sizing: border-box;
+      width: 9rem;
+      min-width: 0;
+      height: 1.45rem;
+      padding: 0 0.3rem;
+      border: 1px solid #c8d2df;
+      border-radius: 0.2rem;
+      color: #2f3742;
+      background: #fff;
+      font: inherit;
+      font-size: 0.66rem;
+    }
+
+    .button-dropdown-content .mark-attribute input:focus,
+    .mark-dropdown-attribute:focus {
+      border-color: #3977c7;
+      outline: 1px solid #3977c7;
+    }
+
+    .button-dropdown-content .mark-attribute-link input {
+      width: 11rem;
+    }
+
+    .button-dropdown-more {
+      box-sizing: border-box;
+      align-self: flex-start;
+      min-height: 1.5rem;
+      padding: 0.2rem 0.35rem;
+      border: 1px solid #c8d2df;
+      border-radius: 0.2rem;
+      color: #526b86;
+      background: #fff;
+      font: inherit;
+      font-size: 0.66rem;
+      cursor: pointer;
+    }
+
+    .button-dropdown-more:hover,
+    .button-dropdown-more[aria-expanded="true"] {
+      border-color: #8eb6df;
+      color: #1e5d9d;
+      background: #eef4fb;
+    }
+
+    .button-dropdown-more:focus-visible {
+      outline: 2px solid #3977c7;
+      outline-offset: -1px;
+    }
+
+    .button-dropdown-advanced {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      padding-top: 0.35rem;
+      border-top: 1px solid #d8dee6;
+    }
+
+    .mark-dropdown-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+    }
+
+    .mark-dropdown-option {
+      box-sizing: border-box;
+      display: grid;
+      grid-template-columns: auto 1rem minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 0.35rem;
+      min-height: 2rem;
+      padding: 0.25rem 0.3rem;
+      border-radius: 0.25rem;
+    }
+
+    .mark-dropdown-option:hover,
+    .mark-dropdown-option[aria-selected="true"] {
+      background: #eef4fb;
+    }
+
+    .mark-dropdown-option > input[type="checkbox"] {
+      margin: 0;
+      accent-color: #3977c7;
+    }
+
+    .mark-dropdown-option-icon {
+      display: block;
+      width: 1rem;
+      height: 1rem;
+      color: #526b86;
+    }
+
+    .mark-dropdown-option-icon svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .mark-dropdown-option-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .mark-dropdown-attributes {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+    }
+
+    .mark-dropdown-attributes[aria-hidden="true"] {
+      visibility: hidden;
+    }
+
+    .mark-dropdown-attribute {
+      width: 7rem;
     }
 
     .details {
@@ -369,6 +531,7 @@ export class RibbonButton extends LitElement {
   iconUrl = ""
   shortcut = ""
   submenu: RibbonMenuButton[] = []
+  dropdown: TemplateResult | null = null
   corner = ""
   cornerLabel = ""
   keepDrawerOpen = false
@@ -377,6 +540,7 @@ export class RibbonButton extends LitElement {
   muted = false
   details: RibbonButtonDetails | null = null
   toggle = false
+  selectionCount = 0
   variant = "default"
   private submenuOpen = false
   private detailsOpen = false
@@ -403,7 +567,7 @@ export class RibbonButton extends LitElement {
   }
 
   private closeSubmenuPopover() {
-    this.hidePopoverElement(this.renderRoot.querySelector<RibbonMenu>("ribbon-menu"))
+    this.hidePopoverElement(this.renderRoot.querySelector<HTMLElement>("ribbon-menu"))
     this.submenuOpen = false
   }
 
@@ -450,9 +614,9 @@ export class RibbonButton extends LitElement {
     else {
       this.submenuOpen = true
       void this.updateComplete.then(async () => {
-        const submenu = this.renderRoot.querySelector<RibbonMenu>("ribbon-menu")
+        const submenu = this.renderRoot.querySelector<HTMLElement>("ribbon-menu")
         if(!submenu) return
-        await submenu.updateComplete
+        if(submenu instanceof LitElement) await submenu.updateComplete
         this.showPopoverElement(submenu)
         const button = this.getBoundingClientRect()
         const menu = submenu.getBoundingClientRect()
@@ -514,9 +678,10 @@ export class RibbonButton extends LitElement {
   }
 
   render() {
-    const title = this.shortcut? `${this.label} (${this.shortcut})`: this.label
+    const hasDropdown = this.submenu.length > 0 || this.dropdown !== null
+    const title = `${this.label}${this.selectionCount > 0 ? ` +${this.selectionCount}`: ""}${this.shortcut ? ` (${this.shortcut})`: ""}`
     return html`
-      <div class=${`button-row${this.submenu.length ? " has-submenu" : ""}`} @mouseenter=${this.showDetails} @mouseleave=${this.hideDetails}>
+      <div class=${`button-row${hasDropdown ? " has-submenu" : ""}`} @mouseenter=${this.showDetails} @mouseleave=${this.hideDetails}>
         <button
           class="main-button"
           type="button"
@@ -529,7 +694,10 @@ export class RibbonButton extends LitElement {
           @click=${this.handleClick}
         >
           ${this.renderIcon()}
-          <span class="button-label">${this.label}</span>
+          <span class="button-label">
+            <span class="button-label-text">${this.label}</span>
+            ${this.selectionCount > 0 ? html`<small class="selection-count">+${this.selectionCount}</small>`: ""}
+          </span>
         </button>
         ${this.corner === "close" ? html`
           <button
@@ -542,13 +710,13 @@ export class RibbonButton extends LitElement {
           >
             <span class="button-icon corner-icon" aria-hidden="true">${ribbonIcon("Reject")}</span>
           </button>
-        ` : this.submenu.length ? html`
+        ` : hasDropdown ? html`
           <button
             class="submenu-toggle submenu-trigger"
             type="button"
             aria-label=${`Show more ${this.label} options`}
             title=${`Show more ${this.label} options`}
-            aria-haspopup="menu"
+            aria-haspopup=${this.dropdown !== null ? "dialog" : "menu"}
             aria-expanded=${this.submenuOpen}
             @click=${this.toggleSubmenu}
           >
@@ -556,14 +724,20 @@ export class RibbonButton extends LitElement {
           </button>
         ` : ""}
       </div>
-      ${this.corner !== "close" && this.submenu.length ? html`
+      ${this.corner !== "close" && hasDropdown ? html`
         <ribbon-menu
           variant="button"
           popover="manual"
-          .groups=${[{label: `${this.label} options`, buttons: this.submenu}]}
+          .groups=${this.dropdown === null ? [{label: `${this.label} options`, buttons: this.submenu}] : []}
+          .customContent=${this.dropdown !== null}
+          .label=${`${this.label} options`}
           ?hidden=${!this.submenuOpen}
           @ribbon-button-click=${this.handleSubmenuClick}
-        ></ribbon-menu>
+        >
+          ${this.dropdown !== null ? html`
+            <div class="button-dropdown-content">${this.dropdown}</div>
+          ` : ""}
+        </ribbon-menu>
       ` : ""}
       ${this.details ? html`
         <aside

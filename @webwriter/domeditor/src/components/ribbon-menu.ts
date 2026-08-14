@@ -1,4 +1,4 @@
-import { LitElement, css, html } from "lit"
+import {LitElement, css, html, nothing} from "lit"
 import { ribbonIcon } from "../ribbon-icons"
 
 export type RibbonMenuGroup = {
@@ -44,8 +44,22 @@ export class RibbonMenu extends LitElement {
       background: transparent;
     }
 
+    :host([variant="button"][custom-content]) {
+      width: min(19rem, calc(100vw - 1rem));
+      max-width: calc(100vw - 1rem);
+    }
+
     :host([variant="button"]) .menu {
       border-radius: 0.35rem;
+    }
+
+    :host([custom-content]) .menu {
+      box-sizing: border-box;
+      padding: 0.45rem;
+    }
+
+    ::slotted(.button-dropdown-content) {
+      display: block;
     }
 
     .menu {
@@ -200,11 +214,15 @@ export class RibbonMenu extends LitElement {
 
   groups: RibbonMenuGroup[] = []
   variant = "ribbon"
+  customContent = false
+  label = ""
   private openSubmenu: string | null = null
 
   static properties = {
     groups: {attribute: false},
     variant: {type: String, reflect: true},
+    customContent: {type: Boolean, attribute: "custom-content", reflect: true},
+    label: {type: String},
     openSubmenu: {state: true},
   }
 
@@ -265,7 +283,12 @@ export class RibbonMenu extends LitElement {
 
   render() {
     return html`
-      <div class="menu" role="menu">
+      <div
+        class="menu"
+        role=${this.customContent ? "dialog" : "menu"}
+        aria-label=${this.label || nothing}
+      >
+        ${this.customContent ? html`<slot></slot>` : ""}
         ${this.groups.map((group, groupIndex) => html`
           <section aria-label=${group.label}>
             ${group.buttons.map((button, buttonIndex) => {

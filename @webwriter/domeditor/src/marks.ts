@@ -108,10 +108,38 @@ export type MergedMarkGroup = {
   members: readonly MarkName[]
 }
 
+/** Marks with a dedicated button in the fixed marks drawer row. */
+export const primaryDrawerMarkNames = [
+  "b",
+  "i",
+  "u",
+  "s",
+  "sup",
+  "sub",
+] as const satisfies readonly MarkName[]
+
+/** Secondary marks represented by the generic span control's multi-select. */
+export const advancedMarkNames = [
+  "small",
+  "code",
+  "kbd",
+  "q",
+  "abbr",
+  "bdi",
+  "bdo",
+  "cite",
+  "data",
+  "dfn",
+  "ruby",
+  "samp",
+  "time",
+  "var",
+  "del",
+  "ins",
+] as const satisfies readonly MarkName[]
+
 const mergedMarkGroupDefinitions = [
-  {primary: "code", alternatives: ["samp", "time", "data", "var"]},
-  {primary: "ruby", alternatives: ["bdi", "bdo"]},
-  {primary: "ins", alternatives: ["del"]},
+  {primary: "span", alternatives: advancedMarkNames},
 ] as const satisfies readonly {
   primary: MarkName
   alternatives: readonly MarkName[]
@@ -134,7 +162,7 @@ export type MarkAttributeOption = {
   inputType?: "text" | "url"
 }
 
-/** Element-specific attributes exposed in the mark detail row. Global HTML attributes are omitted. */
+/** Curated attributes exposed as mark details. */
 export const markAttributeOptions: Partial<Record<MarkName, readonly MarkAttributeOption[]>> = {
   a: [
     {name: "href", label: "Link", placeholder: "https://…", inputType: "url"},
@@ -146,6 +174,7 @@ export const markAttributeOptions: Partial<Record<MarkName, readonly MarkAttribu
     {name: "type", label: "Media type", placeholder: "text/html"},
     {name: "referrerpolicy", label: "Referrer policy", placeholder: "Policy"},
   ],
+  abbr: [{name: "title", label: "Title", placeholder: "Expanded abbreviation"}],
   q: [{name: "cite", label: "Source", placeholder: "https://…", inputType: "url"}],
   data: [{name: "value", label: "Value", placeholder: "Value"}],
   time: [{name: "datetime", label: "Date/time", placeholder: "YYYY-MM-DD"}],

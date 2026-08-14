@@ -189,20 +189,23 @@ describe("MarkFeature toggles", () => {
     expect(selection.anchorOffset).toBeGreaterThan(selection.focusOffset)
   })
 
-  it("toggles merged mark groups and switches their exact HTML type", () => {
+  it("toggles the span group and keeps multiple exact advanced types", () => {
     let paragraph = setContent("<p><samp>Text</samp></p>")
     selectText(paragraph.querySelector("samp")!.firstChild as Text)
 
-    expect(feature.toggleMarkGroup("code")).toBe(true)
+    expect(feature.toggleMarkGroup("span")).toBe(true)
     expect(cleanHTML()).toBe("<p>Text</p>")
-    expect(feature.toggleMarkGroup("code")).toBe(true)
-    expect(cleanHTML()).toBe("<p><code>Text</code></p>")
+    expect(feature.toggleMarkGroup("span")).toBe(true)
+    expect(cleanHTML()).toBe("<p><span>Text</span></p>")
 
     paragraph = document.querySelector("p")!
-    selectText(paragraph.querySelector("code")!.firstChild as Text)
-    expect(feature.setMarkType("code", "time")).toBe(true)
-    expect(cleanHTML()).toBe("<p><time>Text</time></p>")
-    expect(feature.getState()).toEqual({canMark: true, marks: ["time"]})
+    selectText(paragraph.querySelector("span")!.firstChild as Text)
+    expect(feature.setMarkGroup("span", ["time", "var"])).toBe(true)
+    expect(cleanHTML()).toBe("<p><time><var>Text</var></time></p>")
+    expect(feature.getState()).toEqual({canMark: true, marks: ["time", "var"]})
+    expect(feature.setMarkGroup("span", [])).toBe(true)
+    expect(cleanHTML()).toBe("<p>Text</p>")
+    expect(feature.getState()).toEqual({canMark: true, marks: []})
   })
 
   it("reads, sets, and removes mark-specific attributes", () => {
@@ -227,6 +230,17 @@ describe("MarkFeature toggles", () => {
     expect(paragraph.querySelector("a")!.hasAttribute("target")).toBe(false)
     expect(() => feature.setMarkAttribute("a", "title", "ignored")).toThrow(TypeError)
   })
+
+  it("reads, sets, and removes the abbreviation title detail", () => {
+    const paragraph = setContent('<p><abbr title="Old expansion">Text</abbr></p>')
+    selectText(paragraph.querySelector("abbr")!.firstChild as Text)
+
+    expect(feature.getAttributeState()).toEqual({abbr: {title: "Old expansion"}})
+    expect(feature.setMarkAttribute("abbr", "title", "New expansion")).toBe(true)
+    expect(paragraph.querySelector("abbr")!.getAttribute("title")).toBe("New expansion")
+    expect(feature.setMarkAttribute("abbr", "title", "")).toBe(true)
+    expect(paragraph.querySelector("abbr")!.hasAttribute("title")).toBe(false)
+  })
 })
 
 describe("MarkFeature span styles", () => {
@@ -245,12 +259,31 @@ describe("MarkFeature span styles", () => {
     expect(span.style.fontSize).toBe("18px")
     expect(span.style.color).toBe("#dc2626")
     expect(span.style.backgroundColor).toBe("#fef08a")
+    expect(feature.getState()).toEqual({canMark: true, marks: []})
     expect(feature.getStyleState()).toEqual({
       "font-family": "Arial, sans-serif",
       "font-size": "18px",
       color: "#dc2626",
       "background-color": "#fef08a",
     })
+  })
+
+  it("keeps style-only spans out of the semantic Span group", () => {
+    let paragraph = setContent('<p><span style="font-size: 18px; color: red">Text</span></p>')
+    selectText(paragraph.querySelector("span")!.firstChild as Text)
+
+    expect(feature.getState()).toEqual({canMark: true, marks: []})
+    expect(feature.getStyleState()).toEqual({"font-size": "18px", color: "red"})
+    expect(feature.setMarkGroup("span", ["q"])).toBe(true)
+    expect(paragraph.querySelector("q")!.textContent).toBe("Text")
+    expect(paragraph.querySelector<HTMLSpanElement>("span")!.style.fontSize).toBe("18px")
+    expect(feature.setMarkGroup("span", [])).toBe(true)
+    expect(paragraph.querySelector("q")).toBeNull()
+    expect(paragraph.querySelector<HTMLSpanElement>("span")!.style.fontSize).toBe("18px")
+
+    paragraph = setContent('<p><span title="Semantic" style="font-size: 18px">Text</span></p>')
+    selectText(paragraph.querySelector("span")!.firstChild as Text)
+    expect(feature.getState()).toEqual({canMark: true, marks: ["span"]})
   })
 
   it("splits a styled span for a partial change and keeps its other styles", () => {
@@ -510,7 +543,7 @@ describe("MarkFeature shortcuts", () => {
     expect(paragraph.querySelector("b")).not.toBeNull()
   })
 
-  it("uses merged-group semantics for a primary mark shortcut", () => {
+  it("toggles code independently when it is an advanced mark", () => {
     const paragraph = setContent("<p><samp>Text</samp></p>")
     selectText(paragraph.querySelector("samp")!.firstChild as Text)
     const event = new KeyboardEvent("keydown", {
@@ -525,6 +558,6 @@ describe("MarkFeature shortcuts", () => {
     document.dispatchEvent(event)
 
     expect(event.defaultPrevented).toBe(true)
-    expect(cleanHTML()).toBe("<p>Text</p>")
+    expect(cleanHTML()).toBe("<p><samp><code>Text</code></samp></p>")
   })
 })

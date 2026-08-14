@@ -768,7 +768,7 @@ describe("DomEditor.execute()", () => {
     expect(event.defaultPrevented).toBe(true)
   })
 
-  it("keeps the mark area open while selecting within the same text element", async () => {
+  it("keeps the fixed mark area mounted while selecting text", async () => {
     const {editor, iframe, editorWindow} = await mountEditor()
     const frameDocument = iframe.contentDocument!
     frameDocument.body.innerHTML = "<p>hello</p><p>world</p>"
@@ -801,12 +801,12 @@ describe("DomEditor.execute()", () => {
 
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
     const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Marks"]')!
-    drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!.click()
     await drawer.updateComplete
-    expect(drawer.hasAttribute("drawer-open")).toBe(true)
+    expect(drawer.shadowRoot!.querySelector(".drawer-toggle")).toBeNull()
+    expect(drawer.hasAttribute("drawer-open")).toBe(false)
 
     firstParagraph.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, button: 0}))
-    expect(drawer.hasAttribute("drawer-open")).toBe(true)
+    expect(drawer.hasAttribute("drawer-open")).toBe(false)
 
     selection.setBaseAndExtent(secondParagraph.firstChild!, 0, secondParagraph.firstChild!, 3)
     secondParagraph.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, button: 0}))

@@ -1,19 +1,23 @@
-import {LitElement, css, html} from "lit"
+import {LitElement, css, html, nothing} from "lit"
 import type {StyleMarkOption} from "../marks"
 
 export type RibbonComboboxChangeDetail = {
   name: string
   value: string
+  values?: string[]
 }
 
 /** A compact, keyboard-accessible ribbon picker with a custom listbox. */
 export class RibbonCombobox extends LitElement {
   static properties = {
+    defaultValueLabel: {type: String, attribute: "default-value-label"},
     disabled: {type: Boolean, reflect: true},
     label: {type: String},
+    multiple: {type: Boolean, reflect: true},
     name: {type: String, reflect: true},
     open: {type: Boolean, reflect: true},
     options: {attribute: false},
+    values: {attribute: false},
     value: {type: String},
     variant: {type: String, reflect: true},
   }
@@ -65,10 +69,20 @@ export class RibbonCombobox extends LitElement {
     }
 
     .value {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 0.15rem;
       min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+
+    .selection-count {
+      flex: 0 0 auto;
+      color: #526b86;
+      font-size: 0.58rem;
+      font-weight: 600;
     }
 
     .chevron {
@@ -210,10 +224,13 @@ export class RibbonCombobox extends LitElement {
     }
   `
 
+  defaultValueLabel = ""
   disabled = false
   label = "Choose"
+  multiple = false
   name = ""
   options: readonly StyleMarkOption[] = []
+  values: readonly string[] = []
   value = ""
   variant: "text" | "color" = "text"
   private open = false
@@ -274,7 +291,28 @@ export class RibbonCombobox extends LitElement {
     this.requestUpdate()
   }
 
+  private selectedValues() {
+    if(!this.multiple) return []
+    return [...this.values]
+  }
+
   private select(option: StyleMarkOption) {
+    if(this.multiple) {
+      const selected = this.selectedValues()
+      if(selected.length === 1 && selected[0] === option.value) return
+      const next = selected.includes(option.value)
+        ? selected.filter(value => value !== option.value)
+        : [...selected, option.value]
+      this.values = next
+      this.value = next[0] ?? ""
+      this.dispatchEvent(new CustomEvent<RibbonComboboxChangeDetail>("ribbon-combobox-change", {
+        detail: {name: this.name, value: this.value, values: next},
+        bubbles: true,
+        composed: true,
+      }))
+      return
+    }
+
     this.value = option.value
     this.close()
     this.dispatchEvent(new CustomEvent<RibbonComboboxChangeDetail>("ribbon-combobox-change", {
@@ -313,6 +351,14 @@ export class RibbonCombobox extends LitElement {
     }
   }
 
+  private selectedOptions() {
+    const selected = this.selectedValues()
+    return selected.flatMap(value => {
+      const option = this.options.find(candidate => this.valuesEqual(candidate.value, value))
+      return option ? [option] : []
+    })
+  }
+
   private valuesEqual(a: string, b: string) {
     if(a === b) return true
     if(!["color", "background-color"].includes(this.name) || !a || !b) return false
@@ -338,7 +384,12 @@ export class RibbonCombobox extends LitElement {
   }
 
   render() {
-    const selected = this.selectedOption()
+    const selected = this.multiple? this.selectedOptions(): [this.selectedOption()]
+    const firstSelected = selected[0] ?? {label: this.label, value: ""}
+    const activeLabel = !firstSelected.value && this.defaultValueLabel
+      ? this.defaultValueLabel
+      : firstSelected.label
+    const selectionCount = selected.length > 1? selected.length - 1: 0
     const listboxId = `${this.name || "ribbon"}-options`
     const style = [
       `left: ${this.listboxPosition.left}px`,
@@ -354,15 +405,16 @@ export class RibbonCombobox extends LitElement {
         aria-haspopup="listbox"
         aria-controls=${listboxId}
         aria-expanded=${this.open}
-        title=${`${this.label}: ${selected.label}`}
+        title=${`${this.label}: ${activeLabel}${selectionCount? ` +${selectionCount}`: ""}`}
         ?disabled=${this.disabled}
         @click=${this.toggle}
         @keydown=${this.handleTriggerKeydown}
       >
-        <span class="value" style=${this.name === "font-family" && selected.value? `font-family: ${selected.value}`: ""}>
+        <span class="value" style=${this.name === "font-family" && firstSelected.value? `font-family: ${firstSelected.value}`: ""}>
           ${this.variant === "color"
-            ? this.colorPreview(selected.value, selected.label)
-            : selected.label}
+            ? this.colorPreview(firstSelected.value, firstSelected.label)
+            : activeLabel}
+          ${selectionCount? html`<small class="selection-count">+${selectionCount}</small>`: ""}
         </span>
         <span class="chevron" aria-hidden="true"></span>
       </button>
@@ -372,6 +424,7 @@ export class RibbonCombobox extends LitElement {
           class="listbox"
           role="listbox"
           aria-label=${this.label}
+          aria-multiselectable=${this.multiple ? "true" : nothing}
           style=${style}
         >
           ${this.options.map(option => html`
@@ -380,7 +433,9 @@ export class RibbonCombobox extends LitElement {
               type="button"
               role="option"
               aria-label=${option.label}
-              aria-selected=${this.valuesEqual(option.value, this.value)}
+              aria-selected=${this.multiple
+                ? this.selectedValues().some(value => this.valuesEqual(option.value, value))
+                : this.valuesEqual(option.value, this.value)}
               title=${option.label}
               style=${this.name === "font-family" && option.value? `font-family: ${option.value}`: ""}
               @click=${() => this.select(option)}

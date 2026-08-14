@@ -9,7 +9,8 @@ export type RibbonDrawerLayoutWidths = {
 /**
  * A labelled ribbon drawer with an optional second tier of controls. At narrow
  * widths it exchanges its controls for a representative summary and reuses the
- * complete control grid in a fixed-width panel below the ribbon.
+ * complete control grid in a fixed-width panel below the ribbon. The marks
+ * layout is intentionally fixed and does not use the second tier.
  *
  * Widths can be tailored with `--ribbon-drawer-expanded-width`,
  * `--ribbon-drawer-collapsed-width`, and `--ribbon-drawer-width`.
@@ -44,7 +45,7 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="marks"]) {
-      --ribbon-drawer-expanded-width: 18.575rem;
+      --ribbon-drawer-expanded-width: 20.925rem;
       --ribbon-drawer-height: 8.35rem;
       --ribbon-drawer-more-height: 3.9rem;
       --ribbon-drawer-panel-padding-block: 0.375rem;
@@ -159,16 +160,16 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="marks"]) .controls {
-      grid-template-columns: repeat(9, 1.75rem);
-      grid-template-rows: none;
+      grid-template-columns: repeat(8, 1.75rem) 4rem;
+      grid-template-rows: repeat(2, minmax(0, 1fr));
       grid-auto-flow: row;
       grid-auto-columns: auto;
-      grid-auto-rows: 1.75rem;
-      align-content: start;
-      align-items: stretch;
+      grid-auto-rows: minmax(0, 1fr);
+      align-content: stretch;
+      align-items: center;
       gap: 0.2rem;
       padding-top: 0;
-      padding-bottom: 0.375rem;
+      padding-bottom: 0.25rem;
       overflow-x: hidden;
       overflow-y: hidden;
     }
@@ -220,8 +221,29 @@ export class RibbonDrawer extends LitElement {
       grid-column: span 2;
     }
 
-    :host([layout="marks"]) ::slotted(.mark-details) {
-      grid-column: 1 / -1;
+    :host([layout="marks"]) ::slotted(.mark-text-color) {
+      grid-column: 1;
+      grid-row: 2;
+    }
+
+    :host([layout="marks"]) ::slotted(.mark-background-color) {
+      grid-column: 2;
+      grid-row: 2;
+    }
+
+    :host([layout="marks"]) ::slotted(.mark-remove) {
+      grid-column: 8;
+      grid-row: 1;
+    }
+
+    :host([layout="marks"]) ::slotted(.mark-link) {
+      grid-column: 9;
+      grid-row: 1;
+    }
+
+    :host([layout="marks"]) ::slotted(.mark-span) {
+      grid-column: 9;
+      grid-row: 2;
     }
 
     .summary {
@@ -487,6 +509,7 @@ export class RibbonDrawer extends LitElement {
   }
 
   protected willUpdate(changed: Map<string, unknown>) {
+    if(this.layout === "marks" && this.collapsed) this.collapsed = false
     if(changed.has("collapsed") && !this.collapsed) this.closeDrawer()
     if(changed.has("expandable") && !this.expandable && !this.collapsed && !this.forcedOpen) this.closeDrawer()
   }
@@ -524,7 +547,7 @@ export class RibbonDrawer extends LitElement {
       expanded: this.measuredWidth(
         ".expanded-size-probe",
         "--ribbon-drawer-expanded-width",
-        this.layout === "marks" ? 297.2 : 212,
+        this.layout === "marks" ? 422 : 212,
       ),
     }
   }
@@ -636,6 +659,7 @@ export class RibbonDrawer extends LitElement {
   }
 
   openDrawer(force = false) {
+    if(this.layout === "marks") return
     if(force) this.forcedOpen = true
     if(this.drawerOpen) return
     this.captureExpandedContentOffset()
@@ -657,7 +681,7 @@ export class RibbonDrawer extends LitElement {
   }
 
   private toggleDrawer() {
-    if(!this.collapsed && !this.expandable) return
+    if(this.layout === "marks" || !this.collapsed && !this.expandable) return
     if(this.drawerOpen) {
       this.closeDrawer()
       return
@@ -713,7 +737,7 @@ export class RibbonDrawer extends LitElement {
   }
 
   render() {
-    const toggleUnavailable = !this.collapsed && !this.expandable
+    const toggleUnavailable = this.layout === "marks" || !this.collapsed && !this.expandable
     return html`
       <section
         class=${this.drawerOpen
@@ -729,9 +753,9 @@ export class RibbonDrawer extends LitElement {
         <div id="drawer-controls" class="controls">
           <slot></slot>
           <slot name="more" ?hidden=${!this.drawerContentOpen}></slot>
-          <slot name="detail" ?hidden=${!this.drawerContentOpen}></slot>
+          <slot name="detail" ?hidden=${this.layout !== "marks" && !this.drawerContentOpen}></slot>
         </div>
-        <button
+        ${this.layout === "marks" ? "" : html`<button
           class="drawer-toggle"
           type="button"
           ?hidden=${toggleUnavailable}
@@ -747,7 +771,7 @@ export class RibbonDrawer extends LitElement {
           @click=${this.toggleDrawer}
         >
           <span class="drawer-icon" aria-hidden="true"></span>
-        </button>
+        </button>`}
       </section>
       <span class="size-probe expanded-size-probe" aria-hidden="true"></span>
       <span class="size-probe collapsed-size-probe" aria-hidden="true"></span>

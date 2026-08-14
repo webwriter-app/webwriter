@@ -5,9 +5,9 @@ import {
   fontFamilyOptions,
   fontSizeOptions,
   markAttributeOptionsFor,
-  markHasAttributes,
   markShortcutLabel,
   mergedMarkGroupFor,
+  primaryDrawerMarkNames,
   primaryMarkOptions,
   secondaryMarkOptions,
   textColorOptions,
@@ -541,129 +541,6 @@ export class AppRibbon extends LitElement {
       white-space: nowrap;
     }
 
-    .mark-details {
-      box-sizing: border-box;
-      display: flex;
-      align-items: center;
-      gap: 0.2rem;
-      min-width: 0;
-      height: 1.75rem;
-      padding-top: 0.1rem;
-      border-top: 1px solid #d8dee6;
-      overflow-x: auto;
-      overflow-y: hidden;
-      scrollbar-width: none;
-    }
-
-    .mark-details::-webkit-scrollbar {
-      display: none;
-    }
-
-    .mark-attribute {
-      display: flex;
-      flex: 0 0 auto;
-      align-items: center;
-      gap: 0.15rem;
-    }
-
-    .mark-attribute span {
-      color: #526b86;
-      font-size: 0.56rem;
-      white-space: nowrap;
-    }
-
-    .mark-attribute input {
-      box-sizing: border-box;
-      width: 5.25rem;
-      min-width: 0;
-      height: 1.35rem;
-      padding: 0 0.25rem;
-      border: 1px solid #c8d2df;
-      border-radius: 0.2rem;
-      color: #2f3742;
-      background: #fff;
-      font: inherit;
-      font-size: 0.62rem;
-    }
-
-    .mark-attribute-link input {
-      width: 7.5rem;
-    }
-
-    .mark-attribute input:focus {
-      border-color: #3977c7;
-      outline: 1px solid #3977c7;
-    }
-
-    .mark-attribute-more {
-      box-sizing: border-box;
-      display: grid;
-      flex: 0 0 1.75rem;
-      place-items: center;
-      width: 1.75rem;
-      height: 1.35rem;
-      padding: 0 0 0.2rem;
-      border: 1px solid #c8d2df;
-      border-radius: 0.2rem;
-      color: #526b86;
-      background: #fff;
-      font: inherit;
-      font-size: 0.85rem;
-      line-height: 1;
-      cursor: pointer;
-      user-select: none;
-    }
-
-    .mark-attribute-more:hover,
-    .mark-attribute-more[aria-expanded="true"] {
-      border-color: #8eb6df;
-      color: #1e5d9d;
-      background: #eef4fb;
-    }
-
-    .mark-attribute-more:focus-visible {
-      outline: 2px solid #3977c7;
-      outline-offset: -1px;
-    }
-
-    .link-attribute-menu {
-      box-sizing: border-box;
-      display: none;
-      position: fixed;
-      inset: auto;
-      top: 2.5rem;
-      left: clamp(0.5rem, 19rem, calc(100vw - 15.5rem));
-      z-index: 2147483647;
-      flex-direction: column;
-      gap: 0.4rem;
-      width: min(15rem, calc(100vw - 1rem));
-      max-height: min(21rem, calc(100vh - 1rem));
-      margin: 0;
-      padding: 0.55rem;
-      overflow: auto;
-      border: 1px solid #a8a8a8;
-      border-radius: 0.4rem;
-      color: #2f3742;
-      background: #fff;
-      box-shadow: 0 0.5rem 1.25rem rgb(0 0 0 / 20%);
-    }
-
-    .link-attribute-toggle:checked + .link-attribute-menu {
-      display: flex;
-    }
-
-    .link-attribute-toggle {
-      display: none;
-    }
-
-    .link-attribute-menu .mark-attribute {
-      justify-content: space-between;
-    }
-
-    .link-attribute-menu .mark-attribute input {
-      width: 8rem;
-    }
-
     @media (max-width: 36rem) {
       .ribbon-top {
         gap: 0.35rem;
@@ -691,6 +568,8 @@ export class AppRibbon extends LitElement {
   private packageDrawerOpen = false
   private packageVisibleCount = 2
   private linkAttributeMenuOpen = false
+  private spanMarkSelection: MarkName[] = []
+  private spanMarkSelectionSynced = false
   private ribbonContentObserver: ResizeObserver | undefined
   private responsiveLayoutQueued = false
 
@@ -700,7 +579,8 @@ export class AppRibbon extends LitElement {
     if(event.key !== "Escape" || !this.linkAttributeMenuOpen) return
     event.stopImmediatePropagation()
     this.closeLinkAttributeMenu()
-    this.renderRoot.querySelector<HTMLButtonElement>(".mark-attribute-more")?.focus()
+    this.renderRoot.querySelector<RibbonButton>('ribbon-button[action="mark:a"]')
+      ?.shadowRoot?.querySelector<HTMLButtonElement>(".button-dropdown-more")?.focus()
   }
 
   private readonly handleDocumentPointerDown = (event: PointerEvent) => {
@@ -760,7 +640,7 @@ export class AppRibbon extends LitElement {
 
   private readonly handleRibbonInputChange = (event: Event) => {
     const input = ribbonInputFromEvent(event)
-    if(!input) return
+    if(!input || input.hasAttribute("data-ribbon-input-persistent")) return
     this.dispatchEvent(new CustomEvent<RibbonInputEventDetail>("ribbon-input-commit", {
       detail: {input},
       bubbles: true,
@@ -837,12 +717,13 @@ export class AppRibbon extends LitElement {
     const collapsed = drawers.map(() => false)
 
     for(let index = drawers.length - 1; index >= 0 && requiredWidth > availableWidth + 0.5; index--) {
+      if(drawers[index].layout === "marks") continue
       collapsed[index] = true
       requiredWidth -= widths[index].expanded - widths[index].collapsed
     }
 
     drawers.forEach((drawer, index) => {
-      drawer.collapsed = collapsed[index]
+      drawer.collapsed = drawer.layout === "marks" ? false : collapsed[index]
     })
   }
 
@@ -915,6 +796,10 @@ export class AppRibbon extends LitElement {
     }
   }
 
+  protected willUpdate(changed: Map<string, unknown>) {
+    if(changed.has("marks")) this.syncSpanMarkSelection()
+  }
+
   protected updated(changed: Map<string, unknown>) {
     if(changed.has("expanded") && !this.expanded) {
       this.dispatchEvent(new Event("ribbon-collapse", {bubbles: true, composed: true}))
@@ -931,55 +816,35 @@ export class AppRibbon extends LitElement {
     ) this.scheduleResponsiveLayout()
     if(changed.has("marks")) {
       if(!this.marks.includes("a")) this.closeLinkAttributeMenu()
-      if(this.marks.some(mark => this.markHasDetails(mark))) {
-        this.renderRoot.querySelector<RibbonDrawer>('ribbon-drawer[label="Marks"]')?.openDrawer(true)
-      }
     }
   }
 
-  private markHasDetails(mark: MarkName) {
-    return markHasAttributes(mark) || mergedMarkGroupFor(mark) !== undefined
-  }
-
-  private markButton(option: MarkOption, slot = "", detailButton = false) {
+  private markButton(option: MarkOption) {
     const shortcut = markShortcutLabel(option, isOnApple())
     const group = mergedMarkGroupFor(option.name)
-    const active = !detailButton && group?.primary === option.name
+    const active = group?.primary === option.name
       ? group.members.some(mark => this.marks.includes(mark))
       : this.marks.includes(option.name)
     return html`
       <ribbon-button
-        slot=${slot}
         compact
         toggle
         label=${option.label}
-        action=${`${detailButton ? "mark-detail" : "mark"}:${option.name}`}
+        action=${`mark:${option.name}`}
         icon=${option.icon}
         shortcut=${shortcut}
         ?active=${active}
         ?disabled=${!this.canMark}
-        keep-drawer-open
-        ?open-drawer=${this.markHasDetails(option.name)}
       ></ribbon-button>
     `
   }
 
   private visibleMarkButton(name: MarkName) {
-    const option = primaryMarkOptions.find(candidate => candidate.name === name)!
-    return this.markButton(option)
+    return this.markButton(this.markOption(name))
   }
 
   private markOption(name: MarkName) {
     return [...primaryMarkOptions, ...secondaryMarkOptions].find(option => option.name === name)!
-  }
-
-  private get moreMarkOptions() {
-    const fixed = new Set<MarkName>(["b", "i", "u", "s", "sup", "sub", "a", "code"])
-    return [...primaryMarkOptions, ...secondaryMarkOptions].filter(option => {
-      if(fixed.has(option.name)) return false
-      const group = mergedMarkGroupFor(option.name)
-      return !group || group.primary === option.name
-    })
   }
 
   private dispatchMarkAttribute(mark: MarkName, attribute: string, event: Event) {
@@ -992,20 +857,13 @@ export class AppRibbon extends LitElement {
   }
 
   private closeLinkAttributeMenu() {
-    const toggle = this.renderRoot.querySelector<HTMLInputElement>(".link-attribute-toggle")
-    if(toggle) toggle.checked = false
     this.linkAttributeMenuOpen = false
   }
 
   private toggleLinkAttributeMenu() {
     if(!this.canMark) return
-    const toggle = this.renderRoot.querySelector<HTMLInputElement>(".link-attribute-toggle")
-    if(!toggle) return
     if(this.linkAttributeMenuOpen) this.closeLinkAttributeMenu()
-    else {
-      toggle.checked = true
-      this.linkAttributeMenuOpen = true
-    }
+    else this.linkAttributeMenuOpen = true
   }
 
   private handleLinkAttributeMenuKeydown(event: KeyboardEvent) {
@@ -1030,67 +888,156 @@ export class AppRibbon extends LitElement {
     `
   }
 
-  private renderLinkAttributes() {
-    const [href] = markAttributeOptionsFor("a")
-    return html`
-      ${href ? this.renderMarkAttribute("a", href) : ""}
-      <button
-        class="mark-attribute-more"
-        type="button"
-        aria-label="More link attributes"
-        title="More link attributes"
-        aria-haspopup="dialog"
-        aria-expanded=${this.linkAttributeMenuOpen}
-        ?disabled=${!this.canMark}
-        @click=${this.toggleLinkAttributeMenu}
-        @keydown=${this.handleLinkAttributeMenuKeydown}
-      >…</button>
-    `
-  }
-
-  private renderLinkAttributeMenu() {
-    const [, ...advanced] = markAttributeOptionsFor("a")
+  private renderDropdownAttribute(mark: MarkName, option: MarkAttributeOption, active = true) {
     return html`
       <input
-        id="link-attribute-toggle"
-        class="link-attribute-toggle"
-        type="checkbox"
-        tabindex="-1"
-        aria-hidden="true"
-        .checked=${this.linkAttributeMenuOpen}
-        ?disabled=${!this.canMark}
+        class="mark-dropdown-attribute"
+        type=${option.inputType ?? "text"}
+        aria-label=${`${this.markOption(mark).label}: ${option.label}`}
+        placeholder=${option.placeholder}
+        title=${option.label}
+        .value=${this.markAttributes[mark]?.[option.name] ?? ""}
+        ?disabled=${!this.canMark || !active}
+        @change=${(event: Event) => this.dispatchMarkAttribute(mark, option.name, event)}
       />
-      <div
-        class="link-attribute-menu"
-        role="group"
-        aria-label="More link attributes"
-      >
-        ${advanced.map(option => this.renderMarkAttribute("a", option))}
-      </div>
     `
   }
 
-  private renderMarkDetails() {
-    const activeGroups = Array.from(new Map(this.marks.flatMap(mark => {
-      const group = mergedMarkGroupFor(mark)
-      return group ? [[group.primary, group] as const] : []
-    })).values())
-    const attributeMarks = this.marks.filter(markHasAttributes)
+  private renderLinkDropdown() {
+    const [href, ...advanced] = markAttributeOptionsFor("a")
     return html`
-      <div class="mark-details" slot="detail" aria-label="Mark details">
-        ${activeGroups.flatMap(group => group.members.map(mark =>
-          this.markButton(this.markOption(mark), "", true),
-        ))}
-        ${attributeMarks.flatMap(mark => mark === "a"
-          ? [this.renderLinkAttributes()]
-          : markAttributeOptionsFor(mark).map(option => this.renderMarkAttribute(mark, option)))}
+      <div class="button-dropdown-form" role="group" aria-label="Link options">
+        ${href ? this.renderMarkAttribute("a", href) : ""}
+        <button
+          class="button-dropdown-more"
+          type="button"
+          aria-label="More link options"
+          aria-expanded=${this.linkAttributeMenuOpen}
+          @click=${() => this.toggleLinkAttributeMenu()}
+          @keydown=${(event: KeyboardEvent) => this.handleLinkAttributeMenuKeydown(event)}
+        >More options</button>
+        ${this.linkAttributeMenuOpen ? html`
+          <div class="button-dropdown-advanced" role="group" aria-label="Advanced link options">
+            ${advanced.map(option => this.renderMarkAttribute("a", option))}
+          </div>
+        ` : ""}
       </div>
     `
   }
 
-  private handleMarkDrawerState = (event: Event) => {
-    const detail = (event as CustomEvent<{label?: string, open?: boolean}>).detail
-    if(detail?.label === "Marks" && detail.open === false) this.closeLinkAttributeMenu()
+  private spanGroupMembers() {
+    return mergedMarkGroupFor("span")?.members ?? []
+  }
+
+  private activeSpanMarks() {
+    return this.spanGroupMembers().filter(mark => this.marks.includes(mark))
+  }
+
+  private spanSelectedMarks() {
+    return this.spanMarkSelectionSynced ? this.spanMarkSelection : this.activeSpanMarks()
+  }
+
+  private sameMarkSet(first: readonly MarkName[], second: readonly MarkName[]) {
+    return first.length === second.length && first.every(mark => second.includes(mark))
+  }
+
+  private syncSpanMarkSelection() {
+    const active = this.activeSpanMarks()
+    if(!this.sameMarkSet(this.spanMarkSelection, active)) this.spanMarkSelection = active
+    this.spanMarkSelectionSynced = true
+  }
+
+  private toggleSpanMark(mark: MarkName) {
+    if(!this.canMark) return
+    const selected = this.spanSelectedMarks()
+    const next = selected.includes(mark)
+      ? selected.filter(candidate => candidate !== mark)
+      : [...selected, mark]
+    if(this.sameMarkSet(selected, next)) return
+    this.spanMarkSelection = next
+    this.spanMarkSelectionSynced = true
+    this.requestUpdate()
+    this.dispatchEvent(new CustomEvent("ribbon-combobox-change", {
+      detail: {name: "mark-types", value: next[0] ?? "", values: next},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private renderSpanMarkOption(mark: MarkName, selected: readonly MarkName[]) {
+    const option = this.markOption(mark)
+    const attributes = markAttributeOptionsFor(mark)
+    const active = selected.includes(mark)
+    return html`
+      <div
+        class="mark-dropdown-option"
+        role="option"
+        aria-selected=${active}
+      >
+        <input
+          type="checkbox"
+          data-ribbon-input-persistent
+          aria-label=${`Select ${option.label}`}
+          .checked=${active}
+          ?disabled=${!this.canMark}
+          @change=${(event: Event) => {
+            this.toggleSpanMark(mark)
+            const input = event.currentTarget as HTMLInputElement
+            input.checked = this.spanSelectedMarks().includes(mark)
+          }}
+        />
+        <span class="mark-dropdown-option-icon" aria-hidden="true">${ribbonIcon(option.icon)}</span>
+        <span class="mark-dropdown-option-name">${option.label}</span>
+        ${attributes.length ? html`
+          <span class="mark-dropdown-attributes" aria-hidden=${!active}>
+            ${attributes.map(attribute => this.renderDropdownAttribute(mark, attribute, active))}
+          </span>
+        ` : ""}
+      </div>
+    `
+  }
+
+  private renderSpanDropdown(selected: readonly MarkName[]) {
+    return html`
+      <div class="mark-dropdown-list" role="listbox" aria-label="Advanced mark types" aria-multiselectable="true">
+        ${this.spanGroupMembers().map(mark => this.renderSpanMarkOption(mark, selected))}
+      </div>
+    `
+  }
+
+  private renderLinkButton() {
+    return html`
+      <ribbon-button
+        class="mark-link"
+        style="grid-column: 9; grid-row: 1"
+        toggle
+        label="Link"
+        action="mark:a"
+        icon="MarkLink"
+        .dropdown=${this.renderLinkDropdown()}
+        ?active=${this.marks.includes("a")}
+        ?disabled=${!this.canMark}
+      ></ribbon-button>
+    `
+  }
+
+  private renderSpanButton() {
+    const selected = this.spanSelectedMarks()
+    const first = selected.length ? this.markOption(selected[0]) : {label: "More", icon: "More"}
+    return html`
+      <ribbon-button
+        class="mark-span"
+        style="grid-column: 9; grid-row: 2"
+        toggle
+        label=${first.label}
+        icon=${first.icon}
+        action="mark:span"
+        .selectionCount=${Math.max(0, selected.length - 1)}
+        .dropdown=${this.renderSpanDropdown(selected)}
+        ?active=${this.activeSpanMarks().length > 0}
+        ?disabled=${!this.canMark}
+      ></ribbon-button>
+    `
   }
 
   private renderMarkDrawer() {
@@ -1099,13 +1046,12 @@ export class AppRibbon extends LitElement {
         label="Marks"
         icon="MarkBold"
         layout="marks"
-        expandable
-        @ribbon-drawer-state-change=${this.handleMarkDrawerState}
       >
         <ribbon-combobox
           class="font-family"
           name="font-family"
           label="Font family"
+          default-value-label="Font"
           .options=${fontFamilyOptions}
           .value=${this.markStyles["font-family"] ?? ""}
           ?disabled=${!this.canMark}
@@ -1114,6 +1060,7 @@ export class AppRibbon extends LitElement {
           class="font-size"
           name="font-size"
           label="Font size"
+          default-value-label="Size"
           .options=${fontSizeOptions}
           .value=${this.markStyles["font-size"] ?? ""}
           ?disabled=${!this.canMark}
@@ -1133,6 +1080,8 @@ export class AppRibbon extends LitElement {
           ?disabled=${!this.canMark}
         ></ribbon-button>
         <ribbon-combobox
+          class="mark-text-color"
+          style="grid-column: 1; grid-row: 2"
           name="color"
           label="Text color"
           variant="color"
@@ -1141,6 +1090,8 @@ export class AppRibbon extends LitElement {
           ?disabled=${!this.canMark}
         ></ribbon-combobox>
         <ribbon-combobox
+          class="mark-background-color"
+          style="grid-column: 2; grid-row: 2"
           name="background-color"
           label="Text background color"
           variant="color"
@@ -1148,25 +1099,19 @@ export class AppRibbon extends LitElement {
           .value=${this.markStyles["background-color"] ?? ""}
           ?disabled=${!this.canMark}
         ></ribbon-combobox>
-        ${this.visibleMarkButton("b")}
-        ${this.visibleMarkButton("i")}
-        ${this.visibleMarkButton("u")}
-        ${this.visibleMarkButton("s")}
-        ${this.visibleMarkButton("sup")}
-        ${this.visibleMarkButton("sub")}
-        ${this.visibleMarkButton("a")}
-        ${this.visibleMarkButton("code")}
+        ${primaryDrawerMarkNames.map(mark => this.visibleMarkButton(mark))}
         <ribbon-button
+          class="mark-remove"
+          style="grid-column: 8; grid-row: 1"
           compact
           label="Remove formatting"
           action="removeMarks"
           icon="RemoveMarks"
           ?disabled=${!this.canMark}
         ></ribbon-button>
-        ${this.moreMarkOptions.map(option => this.markButton(option, "more"))}
-        ${this.renderMarkDetails()}
+        ${this.renderLinkButton()}
+        ${this.renderSpanButton()}
       </ribbon-drawer>
-      ${this.marks.includes("a") ? this.renderLinkAttributeMenu() : ""}
     `
   }
 

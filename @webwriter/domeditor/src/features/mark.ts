@@ -8,7 +8,6 @@ import {
   markAttributeNames,
   markAttributeOptionsFor,
   markNames,
-  markTagNames,
   mergedMarkGroupFor,
   primaryMarkOptions,
   styleMarkNames,
@@ -74,6 +73,8 @@ export class MarkFeature extends EditorFeature {
     removeMark: ({mark}: {type: "removeMark", mark: MarkName}) => this.removeMark(mark),
     toggleMark: ({mark}: {type: "toggleMark", mark: MarkName}) => this.toggleMark(mark),
     toggleMarkGroup: ({mark}: {type: "toggleMarkGroup", mark: MarkName}) => this.toggleMarkGroup(mark),
+    setMarkGroup: ({primary, marks}: {type: "setMarkGroup", primary: MarkName, marks: MarkName[]}) =>
+      this.setMarkGroup(primary, marks),
     setMarkType: ({primary, mark}: {type: "setMarkType", primary: MarkName, mark: MarkName}) =>
       this.setMarkType(primary, mark),
     setMarkAttribute: ({mark, attribute, value}: {
@@ -206,8 +207,7 @@ export class MarkFeature extends EditorFeature {
     const caret = this.getCaret()
     if(caret) return this.setStoredMark(mark, false, caret)
     if(!this.getState().marks.includes(mark)) return false
-    const tags: readonly string[] = markTagNames(mark)
-    return this.removeMatching(element => tags.includes(element.localName))
+    return this.removeMatching(element => this.semanticMarkName(element) === mark)
   }
 
   toggleMark(mark: MarkName) {
@@ -242,8 +242,43 @@ export class MarkFeature extends EditorFeature {
     const state = this.getState()
     if(!state.canMark) return false
     return group.members.some(member => state.marks.includes(member))
-      ? this.removeMatching(element => group.members.includes(element.localName as MarkName))
+      ? this.removeMatching(element => this.elementIsGroupMember(element, group.members))
       : this.addMark(group.primary)
+  }
+
+  /** Sets all exact mark tags represented by one drawer group. */
+  setMarkGroup(primary: MarkName, marks: MarkName[]) {
+    this.assertMark(primary)
+    const group = mergedMarkGroupFor(primary)
+    if(!group || group.primary !== primary) {
+      throw new TypeError(`'${primary}' is not a primary merged mark`)
+    }
+    const selected = [...new Set(marks)]
+    selected.forEach(mark => {
+      this.assertMark(mark)
+      if(!group.members.includes(mark)) {
+        throw new TypeError(`'${mark}' is not a variant of '${primary}'`)
+      }
+    })
+
+    const caret = this.getCaret()
+    if(caret) {
+      const current = this.effectiveCaretMarks(caret)
+      const next = new Set([...current].filter(mark => !group.members.includes(mark)))
+      selected.forEach(mark => next.add(mark))
+      if(next.size === current.size && [...next].every(mark => current.has(mark))) return false
+      this.storeMarks(next, caret.selection)
+      this.editor.postMarkState()
+      return true
+    }
+
+    const state = this.getState()
+    if(!state.canMark) return false
+    const active = group.members.filter(mark => state.marks.includes(mark))
+    if(active.length === selected.length && active.every(mark => selected.includes(mark))) return false
+    if(active.length) this.removeMatching(element => this.elementIsGroupMember(element, group.members))
+    selected.forEach(mark => this.addMark(mark))
+    return true
   }
 
   /** Replaces a merged mark's exact HTML tag while preserving the selected text. */
@@ -271,7 +306,7 @@ export class MarkFeature extends EditorFeature {
     const activeMembers = group.members.filter(member => state.marks.includes(member))
     if(activeMembers.length === 1 && activeMembers[0] === mark) return false
     if(activeMembers.length) {
-      this.removeMatching(element => group.members.includes(element.localName as MarkName))
+      this.removeMatching(element => this.elementIsGroupMember(element, group.members))
     }
     return this.addMark(mark)
   }
@@ -503,7 +538,7 @@ export class MarkFeature extends EditorFeature {
     const unwanted = new Set(this.getState().marks.filter(mark => !desired.has(mark)))
     if(unwanted.size) {
       this.removeMatching(element => {
-        const mark = canonicalMarkName(element.localName)
+        const mark = this.semanticMarkName(element)
         return mark !== null && unwanted.has(mark)
       })
     }
@@ -709,10 +744,24 @@ export class MarkFeature extends EditorFeature {
     return element instanceof HTMLElement
       && element.localName === "span"
       && element.hasAttribute("style")
+      && element.style.length > 0
+      && Array.from({length: element.style.length}, (_, index) => element.style.item(index))
+        .every(isStyleMarkName)
       && Array.from(element.attributes).every(attribute => attribute.name === "style" || (
         attribute.name === "class"
         && attribute.value.split(/\s+/).every(name => !name || name.startsWith("◆"))
       ))
+  }
+
+  /** Style-only spans belong to the dedicated style controls, not the semantic Span group. */
+  private semanticMarkName(element: Element) {
+    const mark = canonicalMarkName(element.localName)
+    return mark === "span" && this.isStyleMarkSpan(element) ? null : mark
+  }
+
+  private elementIsGroupMember(element: Element, members: readonly MarkName[]) {
+    const mark = this.semanticMarkName(element)
+    return mark !== null && members.includes(mark)
   }
 
   private getCaret(): MarkCaret | null {
@@ -745,7 +794,7 @@ export class MarkFeature extends EditorFeature {
     const marks = new Set<MarkName>()
     let element = node instanceof Element? node: node.parentElement
     while(element && element !== block.parentElement) {
-      const mark = canonicalMarkName(element.localName)
+      const mark = this.semanticMarkName(element)
       if(mark) marks.add(mark)
       if(element === block) break
       element = element.parentElement
@@ -756,7 +805,7 @@ export class MarkFeature extends EditorFeature {
   private markElementAt(node: Node, block: Element, mark: MarkName) {
     let element = node instanceof Element? node: node.parentElement
     while(element && element !== block.parentElement) {
-      if(canonicalMarkName(element.localName) === mark) return element
+      if(this.semanticMarkName(element) === mark) return element
       if(element === block) break
       element = element.parentElement
     }
