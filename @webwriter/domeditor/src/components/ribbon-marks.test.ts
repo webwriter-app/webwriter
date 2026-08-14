@@ -36,7 +36,7 @@ const primaryButtons = (drawer: RibbonDrawer) => Array.from(
 )
 
 describe("mark ribbon controls", () => {
-  it("keeps Format in the main ribbon and groups Marks with the layout drawers", async () => {
+  it("keeps Edit in the main ribbon and includes Review with its layout drawers", async () => {
     const {ribbon} = await mountRibbon()
     const tabs = Array.from(ribbon.shadowRoot!.querySelectorAll("ribbon-tab"))
 
@@ -47,23 +47,25 @@ describe("mark ribbon controls", () => {
     expect(tabs.map(tab => tab.label)).toEqual([
       "File",
       "Insert",
-      "Format",
-      "Review",
+      "Edit",
       "Settings",
     ])
 
-    tabs.find(tab => tab.label === "Format")!.shadowRoot!.querySelector("button")!.click()
+    tabs.find(tab => tab.label === "Edit")!.shadowRoot!.querySelector("button")!.click()
     await ribbon.updateComplete
 
     expect(Array.from(ribbon.shadowRoot!.querySelectorAll(".ribbon-content > ribbon-drawer"))
       .map(drawer => drawer.getAttribute("label")))
-      .toEqual(["Marks", "Styles", "Font", "Effects", "Page", "Arrange", "View"])
+      .toEqual(["Marks", "Styles", "Font", "Effects", "Review", "Page", "Arrange", "View"])
 
-    tabs.find(tab => tab.label === "Review")!.shadowRoot!.querySelector("button")!.click()
-    await ribbon.updateComplete
-    expect(Array.from(ribbon.shadowRoot!.querySelectorAll(".ribbon-content > ribbon-drawer"))
-      .map(drawer => drawer.getAttribute("label")))
-      .toEqual(["Proofing", "Comments", "Changes"])
+    const review = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Review"]')!
+    expect(Array.from(review.querySelectorAll<RibbonButton>("ribbon-button"))
+      .map(button => button.label))
+      .toEqual([
+        "Spelling", "Grammar", "Translate",
+        "New Comment", "Previous", "Next",
+        "Track Changes", "Accept", "Reject",
+      ])
 
     tabs.find(tab => tab.label === "Settings")!.shadowRoot!.querySelector("button")!.click()
     await ribbon.updateComplete

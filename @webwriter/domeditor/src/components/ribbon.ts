@@ -33,7 +33,7 @@ import "./ribbon-menu"
 import "./ribbon-tab"
 import "./package-search"
 
-type RibbonMenuName = "File" | "Start" | "Insert" | "Format" | "Review" | "Settings"
+type RibbonMenuName = "File" | "Start" | "Insert" | "Edit" | "Settings"
 
 type RibbonInputEventDetail = {
   input: HTMLElement
@@ -54,8 +54,8 @@ const isRibbonInput = (target: EventTarget | null): target is HTMLElement => {
 
 const ribbonInputFromEvent = (event: Event) => event.composedPath().find(isRibbonInput)
 
-const menuTabs: RibbonMenuName[] = ["File", "Insert", "Format", "Review", "Settings"]
-const dropdownMenus: RibbonMenuName[] = ["File", "Insert", "Format", "Review", "Settings"]
+const menuTabs: RibbonMenuName[] = ["File", "Insert", "Edit", "Settings"]
+const dropdownMenus: RibbonMenuName[] = ["File", "Insert", "Edit", "Settings"]
 
 const insertionMenuGroup = (section: "Text" | "Lists" | "Media"): RibbonMenuGroup => ({
   label: section,
@@ -115,19 +115,22 @@ const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
     insertionMenuGroup("Lists"),
     insertionMenuGroup("Media"),
   ],
-  Format: [
+  Edit: [
     {label: "Marks", buttons: []},
     {label: "Styles", buttons: ["Heading", "Theme", "Clear"]},
     {label: "Font", buttons: ["Family", "Size", "Color"]},
     {label: "Effects", buttons: ["Highlight", "Superscript", "More"]},
+    {
+      label: "Review",
+      buttons: [
+        "Spelling", "Grammar", "Translate",
+        "New Comment", "Previous", "Next",
+        "Track Changes", "Accept", "Reject",
+      ],
+    },
     {label: "Page", buttons: ["Margins", "Columns", "Orientation"]},
     {label: "Arrange", buttons: ["Position", "Order", "Group"]},
     {label: "View", buttons: ["Zoom", "Guides", "Fullscreen"]},
-  ],
-  Review: [
-    {label: "Proofing", buttons: ["Spelling", "Grammar", "Translate"]},
-    {label: "Comments", buttons: ["New Comment", "Previous", "Next"]},
-    {label: "Changes", buttons: ["Track Changes", "Accept", "Reject"]},
   ],
   Settings: [
     {label: "Editor", buttons: ["General", "Shortcuts", "Accessibility"]},
