@@ -10,14 +10,18 @@ export class RibbonTab extends LitElement {
   static styles = css`
     :host {
       display: block;
-      flex: 0 0 auto;
+      flex: 0 1 auto;
+      min-width: 0;
       transform: translateY(1px);
     }
 
     button {
       box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      width: 100%;
       height: 40px;
-      padding: 0.35rem 0.85rem;
+      padding: 0.35rem 0;
       border: 1px solid transparent;
       border-bottom: 0;
       border-radius: 0.45rem 0.45rem 0 0;
@@ -27,6 +31,14 @@ export class RibbonTab extends LitElement {
       font-size: 0.78rem;
       font-weight: 600;
       cursor: pointer;
+    }
+
+    button::before,
+    button::after {
+      content: "";
+      flex: 1 1 0.85rem;
+      width: 0.85rem;
+      max-width: 0.85rem;
     }
 
     button:hover {
