@@ -997,19 +997,21 @@ export class AppRibbon extends LitElement {
     this.linkAttributeMenuOpen = false
   }
 
-  private openLinkAttributeMenu() {
+  private toggleLinkAttributeMenu() {
     if(!this.canMark) return
     const toggle = this.renderRoot.querySelector<HTMLInputElement>(".link-attribute-toggle")
     if(!toggle) return
-    toggle.checked = true
-    this.linkAttributeMenuOpen = true
+    if(this.linkAttributeMenuOpen) this.closeLinkAttributeMenu()
+    else {
+      toggle.checked = true
+      this.linkAttributeMenuOpen = true
+    }
   }
 
   private handleLinkAttributeMenuKeydown(event: KeyboardEvent) {
     if(event.key !== "Enter" && event.key !== " ") return
     event.preventDefault()
-    if(this.linkAttributeMenuOpen) this.closeLinkAttributeMenu()
-    else this.openLinkAttributeMenu()
+    this.toggleLinkAttributeMenu()
   }
 
   private renderMarkAttribute(mark: MarkName, option: MarkAttributeOption) {
@@ -1040,9 +1042,7 @@ export class AppRibbon extends LitElement {
         aria-haspopup="dialog"
         aria-expanded=${this.linkAttributeMenuOpen}
         ?disabled=${!this.canMark}
-        @mouseenter=${this.openLinkAttributeMenu}
-        @focus=${this.openLinkAttributeMenu}
-        @click=${this.openLinkAttributeMenu}
+        @click=${this.toggleLinkAttributeMenu}
         @keydown=${this.handleLinkAttributeMenuKeydown}
       >…</button>
     `

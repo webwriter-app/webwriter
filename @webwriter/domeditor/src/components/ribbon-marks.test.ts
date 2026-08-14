@@ -430,6 +430,10 @@ describe("mark ribbon controls", () => {
     more.dispatchEvent(new MouseEvent("mouseenter"))
     await ribbon.updateComplete
 
+    expect(more.getAttribute("aria-expanded")).toBe("false")
+    more.click()
+    await ribbon.updateComplete
+
     expect(more.getAttribute("aria-expanded")).toBe("true")
     const advancedInputs = Array.from(advanced.querySelectorAll<HTMLInputElement>("input"))
     expect(advancedInputs.map(input => input.getAttribute("aria-label"))).toEqual([
@@ -443,6 +447,19 @@ describe("mark ribbon controls", () => {
     ])
     expect(advancedInputs[0].value).toBe("_blank")
 
+    more.click()
+    await ribbon.updateComplete
+    expect(more.getAttribute("aria-expanded")).toBe("false")
+
+    more.click()
+    await ribbon.updateComplete
+    drawer.closeDrawer()
+    await Promise.all([ribbon.updateComplete, drawer.updateComplete])
+    expect(more.getAttribute("aria-expanded")).toBe("false")
+
+    ribbon.marks = []
+    await ribbon.updateComplete
+    expect(ribbon.shadowRoot!.querySelector(".link-attribute-menu")).toBeNull()
   })
 
   it("uses platform-native shortcut notation in button tooltips", async () => {
