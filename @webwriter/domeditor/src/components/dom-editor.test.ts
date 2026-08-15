@@ -63,6 +63,7 @@ afterEach(() => {
   document.body.replaceChildren()
   localStorage.removeItem(INSTALLED_PACKAGES_STORAGE_KEY)
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 beforeEach(() => {
@@ -135,9 +136,20 @@ describe("DomEditor iframe setup", () => {
       widgets: [{name: "@webwriter/demo", version: "1.0.0"}],
     }, "*")
     const polyfillUrl = "https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"
-    expect(srcdoc).toContain(`<script src="${polyfillUrl}"></script>`)
+    expect(srcdoc).toContain(`<script data-webwriter-editor-only src="${polyfillUrl}"></script>`)
     expect(srcdoc.indexOf(polyfillUrl)).toBeLessThan(srcdoc.indexOf("editor-entry"))
     expect(srcdoc).not.toContain("Demo Widget")
+  })
+
+  it("restores original resource URLs before loading an offline document", () => {
+    const editor = new DomEditor()
+    ;(editor as any).frameDocumentHTML = '<!DOCTYPE html><html><head><script data-webwriter-original-src="/app.js">inline()</script></head><body><img data-webwriter-original-src="photo.png" src="data:image/png;base64,AQID"></body></html>'
+
+    const srcdoc = (editor as any).editorSrcdoc as string
+
+    expect(srcdoc).toContain('<script src="/app.js"></script>')
+    expect(srcdoc).toContain('src="photo.png"')
+    expect(srcdoc).not.toContain("data-webwriter-original-src")
   })
 
   it("persists package additions and removals", async () => {
@@ -158,6 +170,112 @@ describe("DomEditor iframe setup", () => {
     await removing
 
     expect(JSON.parse(localStorage.getItem(INSTALLED_PACKAGES_STORAGE_KEY)!)).toEqual([])
+  })
+})
+
+describe("DomEditor file actions", () => {
+  it("marks authored iframe mutations as unsaved", async () => {
+    const {editor, iframe} = await mountEditor()
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    iframe.contentDocument!.body.append(iframe.contentDocument!.createElement("p"))
+
+    await vi.waitFor(() => expect((editor as any).fileDirty).toBe(true))
+    await editor.updateComplete
+    expect((editor.shadowRoot!.querySelector("app-ribbon") as any).fileDirty).toBe(true)
+  })
+
+  it("saves serialized HTML through the File System Access API and clears the dirty marker", async () => {
+    const {editor} = await mountEditor()
+    const write = vi.fn().mockResolvedValue(undefined)
+    const close = vi.fn().mockResolvedValue(undefined)
+    const handle = {
+      name: "lesson.html",
+      getFile: vi.fn(),
+      createWritable: vi.fn().mockResolvedValue({write, close}),
+    }
+    const picker = vi.fn().mockResolvedValue(handle)
+    vi.stubGlobal("showSaveFilePicker", picker)
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue("<!DOCTYPE html><html><body><p>Saved</p></body></html>")
+    ;(editor as any).fileDirty = true
+
+    await (editor as any).saveDocument()
+
+    expect(picker).toHaveBeenCalledWith(expect.objectContaining({
+      suggestedName: "Untitled.html",
+      types: [
+        {description: "HTML document (.html)", accept: {"text/html": [".html", ".htm"]}},
+        {description: "Offline HTML document (.offline.html)", accept: {"text/html": [".offline.html"]}},
+      ],
+    }))
+    expect(execute).toHaveBeenCalledWith({type: "serializeDocument", offline: false})
+    expect(handle.createWritable).toHaveBeenCalledTimes(1)
+    expect(write).toHaveBeenCalledTimes(1)
+    const blob = write.mock.calls[0][0] as Blob
+    await expect(blob.text()).resolves.toContain("<p>Saved</p>")
+    expect(close).toHaveBeenCalledTimes(1)
+    expect((editor as any).fileName).toBe("lesson")
+    expect((editor as any).fileDirty).toBe(false)
+  })
+
+  it("opens an HTML file and associates its handle with the document", async () => {
+    const {editor} = await mountEditor()
+    const file = new File(["<!DOCTYPE html><html><body><p>Opened</p></body></html>"], "opened.html", {type: "text/html"})
+    const handle = {name: "opened.html", getFile: vi.fn().mockResolvedValue(file), createWritable: vi.fn()}
+    vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([handle]))
+    const reload = vi.spyOn(editor as any, "reloadDocument").mockResolvedValue(undefined)
+
+    await (editor as any).openDocument()
+
+    expect(reload).toHaveBeenCalledWith(expect.stringContaining("<p>Opened</p>"))
+    expect((editor as any).fileHandle).toBe(handle)
+    expect((editor as any).fileName).toBe("opened")
+    expect((editor as any).fileDirty).toBe(false)
+  })
+
+  it("selects the offline format through Save as and suggests its compound extension", async () => {
+    const {editor} = await mountEditor()
+    const handle = {
+      name: "lesson.offline.html",
+      getFile: vi.fn(),
+      createWritable: vi.fn().mockResolvedValue({
+        write: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+      }),
+    }
+    const picker = vi.fn().mockResolvedValue(handle)
+    vi.stubGlobal("showSaveFilePicker", picker)
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue("<html></html>")
+
+    await (editor as any).saveDocument(true, "offline")
+
+    expect(picker).toHaveBeenCalledWith(expect.objectContaining({suggestedName: "Untitled.offline.html"}))
+    expect(execute).toHaveBeenCalledWith({type: "serializeDocument", offline: true})
+    expect((editor as any).fileName).toBe("lesson")
+    expect((editor as any).fileFormat).toBe("offline")
+  })
+
+  it("requires confirmation before replacing a dirty document with a new one", async () => {
+    const {editor} = await mountEditor()
+    ;(editor as any).fileDirty = true
+    const confirm = vi.fn().mockReturnValue(false)
+    Object.defineProperty(window, "confirm", {configurable: true, value: confirm})
+    const reload = vi.spyOn(editor as any, "reloadDocument").mockResolvedValue(undefined)
+
+    await (editor as any).newDocument()
+
+    expect(reload).not.toHaveBeenCalled()
+    expect((editor as any).fileDirty).toBe(true)
+  })
+
+  it("prints only the iframe document", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const print = vi.fn()
+    Object.defineProperty(editorWindow, "print", {configurable: true, value: print})
+
+    ;(editor as any).printDocument()
+
+    expect(print).toHaveBeenCalledTimes(1)
   })
 })
 

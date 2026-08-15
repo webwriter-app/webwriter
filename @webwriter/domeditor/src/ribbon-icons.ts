@@ -23,7 +23,6 @@ import chevronRight from "@tabler/icons/outline/chevron-right.svg?raw"
 import circleChevronRight from "@tabler/icons/outline/circle-chevron-right.svg?raw"
 import deviceFloppy from "@tabler/icons/outline/device-floppy.svg?raw"
 import dots from "@tabler/icons/outline/dots.svg?raw"
-import download from "@tabler/icons/outline/download.svg?raw"
 import fileDescription from "@tabler/icons/outline/file-description.svg?raw"
 import fileOrientation from "@tabler/icons/outline/file-orientation.svg?raw"
 import filePlus from "@tabler/icons/outline/file-plus.svg?raw"
@@ -61,7 +60,6 @@ import printer from "@tabler/icons/outline/printer.svg?raw"
 import puzzle from "@tabler/icons/outline/puzzle.svg?raw"
 import rulerMeasure from "@tabler/icons/outline/ruler-measure.svg?raw"
 import scissors from "@tabler/icons/outline/scissors.svg?raw"
-import share3 from "@tabler/icons/outline/share-3.svg?raw"
 import stack from "@tabler/icons/outline/stack.svg?raw"
 import superscript from "@tabler/icons/outline/superscript.svg?raw"
 import table from "@tabler/icons/outline/table.svg?raw"
@@ -143,9 +141,8 @@ const icons: Record<string, string> = {
   New: filePlus,
   Open: folderOpen,
   Save: deviceFloppy,
+  "Save as": deviceFloppy,
   Print: printer,
-  Download: download,
-  Share: share3,
   Paste: clipboard,
   Cut: scissors,
   Copy: copy,

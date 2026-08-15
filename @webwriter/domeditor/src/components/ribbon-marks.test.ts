@@ -48,7 +48,6 @@ describe("mark ribbon controls", () => {
       "File",
       "Insert",
       "Edit",
-      "Settings",
     ])
 
     tabs.find(tab => tab.label === "Edit")!.shadowRoot!.querySelector("button")!.click()
@@ -67,11 +66,28 @@ describe("mark ribbon controls", () => {
         "Track Changes", "Accept", "Reject",
       ])
 
-    tabs.find(tab => tab.label === "Settings")!.shadowRoot!.querySelector("button")!.click()
+    tabs.find(tab => tab.label === "File")!.shadowRoot!.querySelector("button")!.click()
     await ribbon.updateComplete
     expect(Array.from(ribbon.shadowRoot!.querySelectorAll(".ribbon-content > ribbon-drawer"))
       .map(drawer => drawer.getAttribute("label")))
-      .toEqual(["Editor", "Appearance", "Advanced"])
+      .toEqual(["File", "Editor", "Appearance", "Advanced"])
+
+    const fileDrawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="File"]')!
+    expect(fileDrawer.querySelector<HTMLInputElement>('input[aria-label="File name"]')?.value).toBe("Untitled")
+    const fileButtons = Array.from(fileDrawer.querySelectorAll<RibbonButton>("ribbon-button"))
+    expect(fileButtons.map(button => button.label))
+      .toEqual(["New", "Open", "Save", "Save as", "Print"])
+    expect(fileButtons.find(button => button.label === "Save")?.submenu).toEqual([
+      {label: "HTML (.html)", action: "save:html"},
+      {label: "Offline HTML (.offline.html)", action: "save:offline"},
+    ])
+    expect(fileButtons.find(button => button.label === "Save as")?.submenu).toEqual([
+      {label: "HTML (.html)", action: "save-as:html"},
+      {label: "Offline HTML (.offline.html)", action: "save-as:offline"},
+    ])
+    expect(fileDrawer.querySelector('input[type="checkbox"]')).toBeNull()
+    expect(ribbon.shadowRoot!.querySelector('ribbon-button[label="Download"]')).toBeNull()
+    expect(ribbon.shadowRoot!.querySelector('ribbon-button[label="Share"]')).toBeNull()
   })
 
   it("keeps the marks drawer fixed with grouped controls on the right", async () => {

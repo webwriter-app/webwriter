@@ -41,7 +41,7 @@ import {
   type MediaType,
 } from "../media"
 
-type RibbonMenuName = "File" | "Start" | "Insert" | "Edit" | "Settings"
+type RibbonMenuName = "File" | "Start" | "Insert" | "Edit"
 
 type RibbonInputEventDetail = {
   input: HTMLElement
@@ -62,8 +62,8 @@ const isRibbonInput = (target: EventTarget | null): target is HTMLElement => {
 
 const ribbonInputFromEvent = (event: Event) => event.composedPath().find(isRibbonInput)
 
-const menuTabs: RibbonMenuName[] = ["File", "Insert", "Edit", "Settings"]
-const dropdownMenus: RibbonMenuName[] = ["File", "Insert", "Edit", "Settings"]
+const menuTabs: RibbonMenuName[] = ["File", "Insert", "Edit"]
+const dropdownMenus: RibbonMenuName[] = ["File", "Insert", "Edit"]
 
 const insertionMenuGroup = (section: "Text" | "Lists" | "Media"): RibbonMenuGroup => ({
   label: section,
@@ -109,8 +109,31 @@ const insertionMenuGroup = (section: "Text" | "Lists" | "Media"): RibbonMenuGrou
 
 const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
   File: [
-    {label: "Document", buttons: ["New", "Open", "Save"]},
-    {label: "Output", buttons: ["Print", "Download", "Share"]},
+    {
+      label: "File",
+      buttons: [
+        "New",
+        "Open",
+        {
+          label: "Save",
+          submenu: [
+            {label: "HTML (.html)", action: "save:html"},
+            {label: "Offline HTML (.offline.html)", action: "save:offline"},
+          ],
+        },
+        {
+          label: "Save as",
+          submenu: [
+            {label: "HTML (.html)", action: "save-as:html"},
+            {label: "Offline HTML (.offline.html)", action: "save-as:offline"},
+          ],
+        },
+        "Print",
+      ],
+    },
+    {label: "Editor", buttons: ["General", "Shortcuts", "Accessibility"]},
+    {label: "Appearance", buttons: ["Theme", "Zoom", "Fullscreen"]},
+    {label: "Advanced", buttons: ["Preferences", "Extensions", "About"]},
   ],
   Start: [
     {label: "Marks", buttons: []},
@@ -140,11 +163,6 @@ const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
     {label: "Arrange", buttons: ["Position", "Order", "Group"]},
     {label: "View", buttons: ["Zoom", "Guides", "Fullscreen"]},
   ],
-  Settings: [
-    {label: "Editor", buttons: ["General", "Shortcuts", "Accessibility"]},
-    {label: "Appearance", buttons: ["Theme", "Zoom", "Fullscreen"]},
-    {label: "Advanced", buttons: ["Preferences", "Extensions", "About"]},
-  ],
 }
 
 /** The editor's tabbed, responsive ribbon toolbar. */
@@ -170,6 +188,8 @@ export class AppRibbon extends LitElement {
     listType: {type: String, attribute: "list-type"},
     listStyle: {type: String, attribute: "list-style"},
     media: {attribute: false},
+    fileName: {type: String, attribute: "file-name"},
+    fileDirty: {type: Boolean, attribute: "file-dirty"},
     linkAttributeMenuOpen: {type: Boolean, state: true},
   }
 
@@ -553,6 +573,61 @@ export class AppRibbon extends LitElement {
       white-space: nowrap;
     }
 
+    .file-name-row {
+      box-sizing: border-box;
+      display: flex;
+      grid-column: 1 / -1;
+      grid-row: 1;
+      align-items: center;
+      min-width: 0;
+      padding: 0.1rem 0.25rem;
+    }
+
+    .file-name-field {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      min-width: 0;
+      max-width: 100%;
+    }
+
+    .file-name {
+      box-sizing: border-box;
+      field-sizing: content;
+      width: auto;
+      min-width: 4rem;
+      max-width: 17rem;
+      height: 1.55rem;
+      padding: 0 0.4rem;
+      overflow: hidden;
+      border: 1px solid #c8d2df;
+      border-radius: 0.25rem;
+      color: #2f3742;
+      background: #fff;
+      font: inherit;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .file-name:focus {
+      border-color: #3977c7;
+      outline: 1px solid #3977c7;
+    }
+
+    .file-dirty {
+      flex: 0 0 0.6rem;
+      color: #b54708;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    ribbon-button.file-action {
+      grid-row: 2;
+      min-width: 0;
+    }
+
     @media (max-width: 36rem) {
       .ribbon-top {
         gap: 0.35rem;
@@ -577,6 +652,8 @@ export class AppRibbon extends LitElement {
   listType: ListType | null = null
   listStyle = ""
   media: MediaSelectionState | null = null
+  fileName = "Untitled"
+  fileDirty = false
   private packageSearchQuery = ""
   private packageDrawerOpen = false
   private packageVisibleCount = 2
@@ -1426,8 +1503,51 @@ export class AppRibbon extends LitElement {
     `
   }
 
+  private handleFileNameInput(event: Event) {
+    const input = event.currentTarget as HTMLInputElement
+    this.dispatchEvent(new CustomEvent<{value: string}>("file-name-change", {
+      detail: {value: input.value},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private renderFileDrawer(drawer: RibbonMenuGroup) {
+    return html`
+      <ribbon-drawer label="File" icon="Save" layout="file">
+        <div class="file-name-row">
+          <span class="file-name-field">
+            <input
+              class="file-name"
+              aria-label="File name"
+              .value=${this.fileName}
+              @input=${this.handleFileNameInput}
+            />
+            <span
+              class="file-dirty"
+              aria-label=${this.fileDirty ? "Unsaved changes" : "No unsaved changes"}
+              title=${this.fileDirty ? "Unsaved changes" : "Saved"}
+            >${this.fileDirty ? "*" : ""}</span>
+          </span>
+        </div>
+        ${drawer.buttons.map(button => {
+          const item = typeof button === "string" ? {label: button} : button
+          return html`
+            <ribbon-button
+              class="file-action"
+              label=${item.label}
+              .action=${item.action ?? item.label}
+              .submenu=${item.submenu ?? []}
+            ></ribbon-button>
+          `
+        })}
+      </ribbon-drawer>
+    `
+  }
+
   private renderDrawers() {
     return this.currentMenuGroups.map(drawer => {
+      if(drawer.label === "File") return this.renderFileDrawer(drawer)
       if(drawer.label === "Marks") return this.renderMarkDrawer()
       if(drawer.label === "Packages") return this.renderPackageDrawer()
       if(drawer.label === "Lists") return this.renderListDrawer()

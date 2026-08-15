@@ -30,6 +30,7 @@ import { getElementPresentation } from "./element-names"
 import type {EditorStateSnapshot} from "./editor-state"
 import editorStyleString from "./editor.css?raw"
 import * as Y from "yjs"
+import {originalURLAttribute, serializeDoctype} from "./serialization"
 
 const editorStylesheet = createStylesheet(editorStyleString)
 const featuresDisabledByDefault = new Set(["placeholder"])
@@ -423,10 +424,126 @@ export class DOMEditor {
     }
   }
 
-  toHTML(innerBody=false) {
+  private cleanDocumentClone() {
     const root = document.cloneNode(true) as Document
     this.clearEditingArtifacts(root)
-    return innerBody? root.body.innerHTML: root.documentElement.outerHTML
+    return root
+  }
+
+  toHTML(innerBody=false) {
+    const root = this.cleanDocumentClone()
+    if(innerBody) return root.body.innerHTML
+    return `${serializeDoctype(root.doctype)}${root.documentElement.outerHTML}`
+  }
+
+  /** Serializes the authored document. Offline mode embeds fetchable media and
+   * external scripts while keeping their authored URLs as restoration metadata. */
+  async serializeHTML(offline=false) {
+    const root = this.cleanDocumentClone()
+    if(offline) await this.inlineExternalResources(root)
+    return `${serializeDoctype(root.doctype)}${root.documentElement.outerHTML}`
+  }
+
+  private async inlineExternalResources(root: Document) {
+    const jobs: Promise<void>[] = []
+    const resources: Array<[string, string]> = [
+      ["img[src]", "src"],
+      ["audio[src]", "src"],
+      ["video[src]", "src"],
+      ["source[src]", "src"],
+      ["track[src]", "src"],
+      ["iframe[src]", "src"],
+      ["input[type='image'][src]", "src"],
+      ["video[poster]", "poster"],
+      ["object[data]", "data"],
+    ]
+
+    for(const [selector, attribute] of resources) {
+      root.querySelectorAll<HTMLElement>(selector).forEach(element => {
+        jobs.push(this.inlineResourceAttribute(element, attribute))
+      })
+    }
+    root.querySelectorAll<HTMLElement>("img[srcset], source[srcset]").forEach(element => {
+      jobs.push(this.inlineSrcset(element))
+    })
+    root.querySelectorAll<HTMLScriptElement>("script[src]").forEach(script => {
+      jobs.push(this.inlineScript(script))
+    })
+    await Promise.all(jobs)
+  }
+
+  private resolvedResourceURL(value: string) {
+    try {
+      return new URL(value, document.baseURI).href
+    }
+    catch {
+      return value
+    }
+  }
+
+  private async fetchResource(value: string) {
+    const response = await fetch(this.resolvedResourceURL(value))
+    if(!response.ok && response.status !== 0) {
+      throw new Error(`Could not fetch ${value}: ${response.status} ${response.statusText}`)
+    }
+    return response
+  }
+
+  private async blobDataURL(blob: Blob) {
+    const bytes = new Uint8Array(await blob.arrayBuffer())
+    let binary = ""
+    const chunkSize = 0x8000
+    for(let offset = 0; offset < bytes.length; offset += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize))
+    }
+    return `data:${blob.type || "application/octet-stream"};base64,${btoa(binary)}`
+  }
+
+  private async inlineResourceAttribute(element: HTMLElement, attribute: string) {
+    const original = element.getAttribute(attribute)
+    if(!original || original.startsWith("data:")) return
+    try {
+      const response = await this.fetchResource(original)
+      element.setAttribute(originalURLAttribute(attribute), original)
+      element.setAttribute(attribute, await this.blobDataURL(await response.blob()))
+    }
+    catch {
+      // Cross-origin resources without CORS permission remain external.
+    }
+  }
+
+  private async inlineSrcset(element: HTMLElement) {
+    const original = element.getAttribute("srcset")
+    if(!original || original.trim().startsWith("data:")) return
+    try {
+      const candidates = original.split(",").map(candidate => candidate.trim()).filter(Boolean)
+      const inlined = await Promise.all(candidates.map(async candidate => {
+        const match = candidate.match(/^(\S+)(\s+.+)?$/)
+        if(!match || match[1].startsWith("data:")) return candidate
+        const response = await this.fetchResource(match[1])
+        return `${await this.blobDataURL(await response.blob())}${match[2] ?? ""}`
+      }))
+      element.setAttribute(originalURLAttribute("srcset"), original)
+      element.setAttribute("srcset", inlined.join(", "))
+    }
+    catch {
+      // Keep the complete authored srcset if any candidate cannot be fetched.
+    }
+  }
+
+  private async inlineScript(script: HTMLScriptElement) {
+    const original = script.getAttribute("src")
+    if(!original || original.startsWith("data:")) return
+    try {
+      const response = await this.fetchResource(original)
+      const source = await response.text()
+      script.setAttribute(originalURLAttribute("src"), original)
+      script.removeAttribute("src")
+      script.textContent = source
+    }
+    catch {
+      // Cross-origin scripts without CORS permission remain external.
+    }
   }
 
   #onCopy = (ev: ClipboardEvent) => {
@@ -446,14 +563,12 @@ export class DOMEditor {
     if(documentNode) {
       documentNode.body.removeAttribute("contenteditable")
       documentNode.body.removeAttribute("spellcheck")
+      documentNode.querySelectorAll("[data-webwriter-editor-only]").forEach(element => element.remove())
     }
-    const editingElements = Array.from(node.querySelectorAll(".◆"))
-    if(documentNode?.body.classList.contains("◆")) {
-      editingElements.unshift(documentNode.body)
-    }
+    const editingElements = Array.from(node.querySelectorAll<HTMLElement>("[class]"))
+      .filter(element => Array.from(element.classList).some(name => name.startsWith("◆")))
     editingElements.forEach(el => {
-      el.outerHTML
-      if(el.classList.contains("◆editor-only")) {
+      if(Array.from(el.classList).some(name => name === "◆editor-only")) {
         el.remove()
       }
       else {

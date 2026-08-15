@@ -59,6 +59,11 @@ export class RibbonDrawer extends LitElement {
       --ribbon-drawer-expanded-width: 9.25rem;
     }
 
+    :host([layout="file"]) {
+      --ribbon-drawer-expanded-width: 21.5rem;
+      --ribbon-drawer-width: min(21.5rem, calc(100vw - 1rem));
+    }
+
     :host([layout="packages"]) {
       --ribbon-drawer-expanded-width: 16.5rem;
       --ribbon-drawer-width: min(42rem, calc(100vw - 1rem));
@@ -182,6 +187,14 @@ export class RibbonDrawer extends LitElement {
       grid-auto-rows: minmax(0, 1fr);
       align-content: stretch;
       align-items: stretch;
+    }
+
+    :host([layout="file"]) .controls {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      grid-template-rows: repeat(2, minmax(0, 1fr));
+      grid-auto-flow: row;
+      grid-auto-columns: minmax(0, 1fr);
+      gap: 0.1rem;
     }
 
     :host([layout="packages"]) .drawer.expanded {

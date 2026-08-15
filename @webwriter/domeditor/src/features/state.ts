@@ -5,5 +5,7 @@ import {EditorFeature} from "."
 export class StateFeature extends EditorFeature {
   actions = {
     snapshotState: ({}: {type: "snapshotState"}) => this.editor.doc.snapshot(),
+    serializeDocument: ({offline = false}: {type: "serializeDocument", offline?: boolean}) =>
+      this.editor.serializeHTML(offline),
   } as const
 }

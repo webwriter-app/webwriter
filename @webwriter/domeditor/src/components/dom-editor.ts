@@ -51,6 +51,25 @@ import {
 } from "../editor-bridge"
 import "./breadcrumb"
 import "./ribbon"
+import {restoreOriginalResourceURLs, serializeDoctype} from "../serialization"
+
+type WritableFileStream = {
+  write(data: Blob): Promise<void>
+  close(): Promise<void>
+}
+
+type LocalFileHandle = {
+  readonly name: string
+  getFile(): Promise<File>
+  createWritable(): Promise<WritableFileStream>
+}
+
+type FilePickerWindow = Window & typeof globalThis & {
+  showOpenFilePicker?: (options?: object) => Promise<LocalFileHandle[]>
+  showSaveFilePicker?: (options?: object) => Promise<LocalFileHandle>
+}
+
+type FileFormat = "html" | "offline"
 
 const escapeAttribute = (value: string) => value
   .replaceAll("&", "&amp;")
@@ -122,6 +141,8 @@ export class DomEditor extends LitElement {
     listType: {attribute: false, state: true},
     listStyle: {attribute: false, state: true},
     mediaSelection: {attribute: false, state: true},
+    fileName: {attribute: false, state: true},
+    fileDirty: {attribute: false, state: true},
   }
 
   private editorDocument: Document | null = null
@@ -152,6 +173,13 @@ export class DomEditor extends LitElement {
   private packageError = ""
   private frameState: EditorStateSnapshot | undefined
   private frameRevision = 0
+  private frameDocumentHTML: string | null = null
+  private fileName = "Untitled"
+  private fileDirty = false
+  private fileFormat: FileFormat = "html"
+  private fileHandle: LocalFileHandle | null = null
+  private dirtyTrackingReady = false
+  private dirtyTrackingTimer: ReturnType<typeof setTimeout> | undefined
   private packageCatalogRequested = false
   private installedPackagesRestored = false
   private readonly packageRegistry = new WebWriterPackageRegistry()
@@ -191,7 +219,13 @@ export class DomEditor extends LitElement {
   `
 
   private get editorSrcdoc() {
-    return `<!-- frame ${this.frameRevision} --><script src="${escapeAttribute(scopedCustomElementRegistryPolyfillUrl)}"></script><script type="module" src="${escapeAttribute(editorEntryUrl)}"></script>`
+    const bootstrap = `<script data-webwriter-editor-only src="${escapeAttribute(scopedCustomElementRegistryPolyfillUrl)}"></script><script data-webwriter-editor-only type="module" src="${escapeAttribute(editorEntryUrl)}"></script>`
+    if(this.frameDocumentHTML === null) return `<!-- frame ${this.frameRevision} -->${bootstrap}`
+
+    const parsed = new DOMParser().parseFromString(this.frameDocumentHTML, "text/html")
+    restoreOriginalResourceURLs(parsed)
+    parsed.head.insertAdjacentHTML("beforeend", bootstrap)
+    return `<!-- frame ${this.frameRevision} -->${serializeDoctype(parsed.doctype)}${parsed.documentElement.outerHTML}`
   }
 
   private get syncUrl() {
@@ -202,6 +236,8 @@ export class DomEditor extends LitElement {
   }
 
   private handleEditorFrameLoad = (event: Event) => {
+    this.dirtyTrackingReady = false
+    if(this.dirtyTrackingTimer !== undefined) clearTimeout(this.dirtyTrackingTimer)
     this.documentTreeObserver?.disconnect()
     this.documentTreeObserver = null
     this.editorDocument?.removeEventListener("pointerdown", this.handleEditorPointerDown)
@@ -220,24 +256,36 @@ export class DomEditor extends LitElement {
     }
     this.documentTree = this.buildDocumentTree()
     const body = this.editorDocument?.body
-    const FrameMutationObserver = this.editorWindow?.MutationObserver
+    const FrameMutationObserver = (this.editorWindow as unknown as {
+      MutationObserver?: typeof MutationObserver
+    } | null)?.MutationObserver
     if(body && FrameMutationObserver) {
       // Construct the observer in the iframe's realm. Chromium rejects an
       // outer-window MutationObserver when scoped-registry initialization
       // reloads the iframe and hands it an iframe-owned Node.
-      this.documentTreeObserver = new FrameMutationObserver(mutations => {
+      const observer = new FrameMutationObserver((mutations: MutationRecord[]) => {
         if(mutations.some(mutation => mutation.type === "childList")) {
           this.documentTree = this.buildDocumentTree()
         }
+        if(this.dirtyTrackingReady && mutations.some(mutation => this.isAuthoredMutation(mutation))) {
+          this.fileDirty = true
+        }
       })
+      this.documentTreeObserver = observer
       try {
-        this.documentTreeObserver.observe(body, {childList: true, subtree: true})
+        observer.observe(this.editorDocument?.documentElement ?? body, {
+          attributes: true,
+          attributeOldValue: true,
+          characterData: true,
+          childList: true,
+          subtree: true,
+        })
       }
       catch {
         // A preliminary iframe load can expose a body from the document being
         // replaced. Do not let that transient realm mismatch prevent the
         // initialization messages below from reaching the final document.
-        this.documentTreeObserver.disconnect()
+        observer.disconnect()
         this.documentTreeObserver = null
       }
     }
@@ -258,12 +306,38 @@ export class DomEditor extends LitElement {
       this.editorWindow.postMessage(initializeMessage, "*")
       this.editorWindow.postMessage(loadMessage, "*")
       this.editorReadyResolve?.(this.editorWindow)
+      this.dirtyTrackingTimer = setTimeout(() => {
+        this.dirtyTrackingReady = true
+        this.dirtyTrackingTimer = undefined
+      }, 0)
     }
     else {
       this.editorReadyReject?.(new Error("The DOM editor iframe has no content window"))
     }
     this.editorReadyResolve = null
     this.editorReadyReject = null
+  }
+
+  private authoredClasses(value: string | null) {
+    return (value ?? "").split(/\s+/).filter(name => name && !name.startsWith("◆")).join(" ")
+  }
+
+  private isAuthoredMutation(mutation: MutationRecord) {
+    if(mutation.type === "characterData") return true
+    if(mutation.type === "attributes") {
+      if(mutation.attributeName === "contenteditable" || mutation.attributeName === "spellcheck") return false
+      if(mutation.attributeName === "class") {
+        const current = mutation.target.nodeType === Node.ELEMENT_NODE
+          ? (mutation.target as Element).getAttribute("class")
+          : null
+        return this.authoredClasses(mutation.oldValue) !== this.authoredClasses(current)
+      }
+      return true
+    }
+    const nodes = [...Array.from(mutation.addedNodes), ...Array.from(mutation.removedNodes)]
+    return nodes.some(node => !(
+      node.nodeType === Node.ELEMENT_NODE && (node as Element).classList.contains("◆editor-only")
+    ))
   }
 
   private handleEditorPointerDown = (event: PointerEvent) => {
@@ -407,8 +481,189 @@ export class DomEditor extends LitElement {
     })
   }
 
+  private handleFileNameChange = (event: Event) => {
+    const value = (event as CustomEvent<{value?: unknown}>).detail?.value
+    if(typeof value === "string") this.fileName = this.baseFileName(value)
+  }
+
+  private filePickerWindow() {
+    return window as FilePickerWindow
+  }
+
+  private htmlFilePickerOptions(suggestedName?: string) {
+    return {
+      ...(suggestedName ? {suggestedName} : {}),
+      types: [
+        {
+          description: "HTML document (.html)",
+          accept: {"text/html": [".html", ".htm"]},
+        },
+        {
+          description: "Offline HTML document (.offline.html)",
+          accept: {"text/html": [".offline.html"]},
+        },
+      ],
+    }
+  }
+
+  private formatForFileName(name: string, fallback: FileFormat = "html"): FileFormat {
+    const lowerName = name.toLowerCase()
+    if(lowerName.endsWith(".offline.html")) return "offline"
+    if(lowerName.endsWith(".html") || lowerName.endsWith(".htm")) return "html"
+    return fallback
+  }
+
+  private baseFileName(name: string) {
+    if(name.toLowerCase().endsWith(".offline.html")) return name.slice(0, -".offline.html".length)
+    if(name.toLowerCase().endsWith(".html")) return name.slice(0, -".html".length)
+    if(name.toLowerCase().endsWith(".htm")) return name.slice(0, -".htm".length)
+    return name
+  }
+
+  private fileNameForFormat(format: FileFormat) {
+    return `${this.fileName || "Untitled"}${format === "offline" ? ".offline.html" : ".html"}`
+  }
+
+  private isPickerCancellation(error: unknown) {
+    return error instanceof DOMException && error.name === "AbortError"
+  }
+
+  private reportFileError(error: unknown) {
+    if(this.isPickerCancellation(error)) return
+    this.dispatchEvent(new CustomEvent("file-error", {
+      detail: {error},
+      bubbles: true,
+      composed: true,
+    }))
+    console.error(error)
+  }
+
+  private confirmDiscardChanges() {
+    return !this.fileDirty || window.confirm("Discard the unsaved changes to this document?")
+  }
+
+  private async reloadDocument(htmlSource: string) {
+    this.documentTreeObserver?.disconnect()
+    this.documentTreeObserver = null
+    this.editorDocument?.removeEventListener("pointerdown", this.handleEditorPointerDown)
+    this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
+    this.editorDocument = null
+    this.editorWindow = null
+    this.editorReadyPromise = null
+    this.editorReadyResolve = null
+    this.editorReadyReject = null
+    this.savedEditorSelection = null
+    this.frameState = undefined
+    this.frameDocumentHTML = htmlSource
+    const reloadError = new Error("The editor iframe was reloaded for a document change")
+    this.pendingExecutions.forEach(({reject}) => reject(reloadError))
+    this.pendingExecutions.clear()
+    this.frameRevision++
+    await this.updateComplete
+    await this.waitForEditorWindow()
+  }
+
+  private async newDocument() {
+    if(!this.confirmDiscardChanges()) return
+    try {
+      this.fileHandle = null
+      this.fileName = "Untitled"
+      this.fileFormat = "html"
+      await this.reloadDocument("<!DOCTYPE html><html><head></head><body></body></html>")
+      this.fileDirty = false
+      this.focusEditor()
+    }
+    catch(error) {
+      this.reportFileError(error)
+    }
+  }
+
+  private async openDocument() {
+    if(!this.confirmDiscardChanges()) return
+    const picker = this.filePickerWindow().showOpenFilePicker
+    if(!picker) {
+      this.reportFileError(new Error("This browser does not support the File System Access API"))
+      return
+    }
+    try {
+      const [handle] = await picker.call(window, this.htmlFilePickerOptions())
+      if(!handle) return
+      const file = await handle.getFile()
+      const source = await file.text()
+      await this.reloadDocument(source)
+      this.fileHandle = handle
+      const openedName = file.name || handle.name
+      this.fileName = this.baseFileName(openedName)
+      this.fileFormat = this.formatForFileName(openedName)
+      this.fileDirty = false
+      this.focusEditor()
+    }
+    catch(error) {
+      this.reportFileError(error)
+    }
+  }
+
+  private async saveDocument(saveAs = false, requestedFormat: FileFormat = this.fileFormat) {
+    try {
+      const currentHandleMatches = this.fileHandle
+        && this.formatForFileName(this.fileHandle.name, requestedFormat) === requestedFormat
+        && this.baseFileName(this.fileHandle.name) === this.fileName
+      let handle = saveAs || !currentHandleMatches ? null : this.fileHandle
+      if(!handle) {
+        const picker = this.filePickerWindow().showSaveFilePicker
+        if(!picker) throw new Error("This browser does not support the File System Access API")
+        handle = await picker.call(window, this.htmlFilePickerOptions(this.fileNameForFormat(requestedFormat)))
+      }
+      const selectedFormat = this.formatForFileName(handle.name, requestedFormat)
+      const source = await this.execute({type: "serializeDocument", offline: selectedFormat === "offline"})
+      if(typeof source !== "string") throw new TypeError("The editor returned invalid HTML")
+      const writable = await handle.createWritable()
+      await writable.write(new Blob([source], {type: "text/html;charset=utf-8"}))
+      await writable.close()
+      this.fileHandle = handle
+      this.fileName = this.baseFileName(handle.name)
+      this.fileFormat = selectedFormat
+      this.fileDirty = false
+    }
+    catch(error) {
+      this.reportFileError(error)
+    }
+  }
+
+  private printDocument() {
+    this.editorWindow?.print()
+  }
+
   private handleRibbonButtonClick = (event: Event) => {
     const label = (event as CustomEvent<{label?: string}>).detail?.label
+    if(label === "New") {
+      void this.newDocument()
+      return
+    }
+    if(label === "Open") {
+      void this.openDocument()
+      return
+    }
+    if(label === "Save") {
+      void this.saveDocument()
+      return
+    }
+    if(label === "Save as") {
+      void this.saveDocument(true)
+      return
+    }
+    if(label === "save:html" || label === "save:offline") {
+      void this.saveDocument(false, label === "save:offline" ? "offline" : "html")
+      return
+    }
+    if(label === "save-as:html" || label === "save-as:offline") {
+      void this.saveDocument(true, label === "save-as:offline" ? "offline" : "html")
+      return
+    }
+    if(label === "Print") {
+      this.printDocument()
+      return
+    }
     if(label?.startsWith("package-member:")) {
       const pkg = [...this.installedPackages, ...this.packages]
         .find(candidate => candidate.members.some(member => packageMemberAction(member) === label))
@@ -936,6 +1191,9 @@ export class DomEditor extends LitElement {
 
   disconnectedCallback() {
     window.removeEventListener("message", this.handleEditorMessage)
+    if(this.dirtyTrackingTimer !== undefined) clearTimeout(this.dirtyTrackingTimer)
+    this.dirtyTrackingTimer = undefined
+    this.dirtyTrackingReady = false
     this.documentTreeObserver?.disconnect()
     this.documentTreeObserver = null
     this.editorDocument?.removeEventListener("pointerdown", this.handleEditorPointerDown)
@@ -987,7 +1245,10 @@ export class DomEditor extends LitElement {
           .packagesLoading=${this.packagesLoading}
           .busyPackageNames=${this.busyPackageNames}
           .packageError=${this.packageError}
+          .fileName=${this.fileName}
+          .fileDirty=${this.fileDirty}
           @ribbon-button-click=${this.handleRibbonButtonClick}
+          @file-name-change=${this.handleFileNameChange}
           @ribbon-combobox-change=${this.handleRibbonComboboxChange}
           @mark-attribute-change=${this.handleMarkAttributeChange}
           @media-attribute-change=${this.handleMediaAttributeChange}
