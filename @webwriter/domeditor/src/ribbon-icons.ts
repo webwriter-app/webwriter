@@ -78,8 +78,10 @@ import section from "@tabler/icons/outline/section.svg?raw"
 import settings from "@tabler/icons/outline/settings.svg?raw"
 import bracketsAngle from "@tabler/icons/outline/brackets-angle.svg?raw"
 import calendarTime from "@tabler/icons/outline/calendar-time.svg?raw"
+import cloud from "@tabler/icons/outline/cloud.svg?raw"
 import command from "@tabler/icons/outline/command.svg?raw"
 import database from "@tabler/icons/outline/database.svg?raw"
+import deviceDesktop from "@tabler/icons/outline/device-desktop.svg?raw"
 import languageHiragana from "@tabler/icons/outline/language-hiragana.svg?raw"
 import letterASmall from "@tabler/icons/outline/letter-a-small.svg?raw"
 import letterC from "@tabler/icons/outline/letter-c.svg?raw"
@@ -142,6 +144,8 @@ const icons: Record<string, string> = {
   Open: folderOpen,
   Save: deviceFloppy,
   "Save as": deviceFloppy,
+  Local: deviceDesktop,
+  Cloud: cloud,
   Print: printer,
   Paste: clipboard,
   Cut: scissors,

@@ -76,6 +76,18 @@ describe("mark ribbon controls", () => {
     const fileNameInput = fileDrawer.querySelector<HTMLInputElement>('input[aria-label="File name"]')!
     expect(fileNameInput.value).toBe("")
     expect(fileNameInput.placeholder).toBe("Unnamed File")
+    const storageLocation = fileDrawer.querySelector<HTMLSelectElement>('select[aria-label="Storage location"]')!
+    expect(storageLocation.value).toBe("local")
+    expect(Array.from(storageLocation.options).map(option => option.textContent)).toEqual([
+      "Local",
+      "Edumix Cloud",
+    ])
+    storageLocation.value = "edumix-cloud"
+    storageLocation.dispatchEvent(new Event("change", {bubbles: true}))
+    await ribbon.updateComplete
+    expect(storageLocation.value).toBe("edumix-cloud")
+    expect(fileDrawer.querySelector(".storage-location-icon svg")?.getAttribute("class"))
+      .toContain("icon-tabler-cloud")
     const fileButtons = Array.from(fileDrawer.querySelectorAll<RibbonButton>("ribbon-button"))
     expect(fileButtons.map(button => button.label))
       .toEqual(["New", "Open", "Save", "Save as", "Print"])

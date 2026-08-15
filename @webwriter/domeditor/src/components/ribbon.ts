@@ -65,6 +65,12 @@ const ribbonInputFromEvent = (event: Event) => event.composedPath().find(isRibbo
 const menuTabs: RibbonMenuName[] = ["File", "Insert", "Edit"]
 const dropdownMenus: RibbonMenuName[] = ["File", "Insert", "Edit"]
 
+const storageLocations = [
+  {label: "Local", value: "local", icon: "Local"},
+  {label: "Edumix Cloud", value: "edumix-cloud", icon: "Cloud"},
+] as const
+type StorageLocation = typeof storageLocations[number]["value"]
+
 const insertionMenuGroup = (section: "Text" | "Lists" | "Media"): RibbonMenuGroup => ({
   label: section,
   buttons: insertionMenuItems
@@ -190,6 +196,7 @@ export class AppRibbon extends LitElement {
     media: {attribute: false},
     fileName: {type: String, attribute: "file-name"},
     fileDirty: {type: Boolean, attribute: "file-dirty"},
+    storageLocation: {type: String, state: true},
     linkAttributeMenuOpen: {type: Boolean, state: true},
   }
 
@@ -585,6 +592,7 @@ export class AppRibbon extends LitElement {
 
     .file-name-field {
       display: flex;
+      flex: 1 1 auto;
       align-items: center;
       gap: 0;
       min-width: 0;
@@ -593,6 +601,7 @@ export class AppRibbon extends LitElement {
 
     .file-name {
       box-sizing: border-box;
+      flex: 1 1 auto;
       field-sizing: content;
       width: auto;
       min-width: 0;
@@ -628,6 +637,55 @@ export class AppRibbon extends LitElement {
       text-align: center;
     }
 
+    .storage-location {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 0.15rem;
+      margin-left: auto;
+      min-width: 0;
+      color: #526b86;
+    }
+
+    .storage-location-icon {
+      display: block;
+      flex: 0 0 0.9rem;
+      width: 0.9rem;
+      height: 0.9rem;
+    }
+
+    .storage-location-icon svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .storage-location-select {
+      box-sizing: border-box;
+      field-sizing: content;
+      min-width: 0;
+      max-width: 9rem;
+      height: 1.55rem;
+      padding: 0 0.2rem;
+      border: 1px solid transparent;
+      border-radius: 0.25rem;
+      color: #2f3742;
+      background: transparent;
+      font: inherit;
+      font-size: 0.7rem;
+      cursor: pointer;
+    }
+
+    .storage-location-select:hover {
+      border-color: #8eb6df;
+      background: #eef4fb;
+    }
+
+    .storage-location-select:focus {
+      border-color: #3977c7;
+      outline: 1px solid #3977c7;
+    }
+
     ribbon-button.file-action {
       grid-row: 2;
       min-width: 0;
@@ -659,6 +717,7 @@ export class AppRibbon extends LitElement {
   media: MediaSelectionState | null = null
   fileName = ""
   fileDirty = false
+  storageLocation: StorageLocation = "local"
   private packageSearchQuery = ""
   private packageDrawerOpen = false
   private packageVisibleCount = 2
@@ -1517,7 +1576,15 @@ export class AppRibbon extends LitElement {
     }))
   }
 
+  private handleStorageLocationChange(event: Event) {
+    const value = (event.currentTarget as HTMLSelectElement).value
+    if(storageLocations.some(location => location.value === value)) {
+      this.storageLocation = value as StorageLocation
+    }
+  }
+
   private renderFileDrawer(drawer: RibbonMenuGroup) {
+    const selectedStorageLocation = storageLocations.find(location => location.value === this.storageLocation) ?? storageLocations[0]
     return html`
       <ribbon-drawer label="File" icon="Save" layout="file">
         <div class="file-name-row">
@@ -1535,6 +1602,20 @@ export class AppRibbon extends LitElement {
               title=${this.fileDirty ? "Unsaved changes" : "Saved"}
             >${this.fileDirty ? "*" : ""}</span>
           </span>
+          <label class="storage-location">
+            <span class="storage-location-icon" aria-hidden="true">${ribbonIcon(selectedStorageLocation.icon)}</span>
+            <select
+              class="storage-location-select"
+              aria-label="Storage location"
+              data-ribbon-input-persistent
+              .value=${this.storageLocation}
+              @change=${this.handleStorageLocationChange}
+            >
+              ${storageLocations.map(location => html`
+                <option value=${location.value}>${location.label}</option>
+              `)}
+            </select>
+          </label>
         </div>
         ${drawer.buttons.map(button => {
           const item = typeof button === "string" ? {label: button} : button
