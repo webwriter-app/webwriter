@@ -235,8 +235,8 @@ describe("responsive ribbon layout", () => {
     for(const [clientWidth, expected] of [
       [900, [false, false, false, false, true]],
       [700, [false, false, true, true, true]],
-      [600, [false, true, true, true, true]],
-      [350, [false, true, true, true, true]],
+      [600, [true, true, true, true, true]],
+      [350, [true, true, true, true, true]],
     ] as const) {
       Object.defineProperty(content, "clientWidth", {value: clientWidth, configurable: true})
       updateLayout(drawers)

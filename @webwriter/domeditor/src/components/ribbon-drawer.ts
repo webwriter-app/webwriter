@@ -536,7 +536,6 @@ export class RibbonDrawer extends LitElement {
   }
 
   protected willUpdate(changed: Map<string, unknown>) {
-    if(this.layout === "marks" && this.collapsed) this.collapsed = false
     if(changed.has("collapsed") && !this.collapsed) this.closeDrawer()
     if(changed.has("expandable") && !this.expandable && !this.collapsed && !this.forcedOpen) this.closeDrawer()
   }

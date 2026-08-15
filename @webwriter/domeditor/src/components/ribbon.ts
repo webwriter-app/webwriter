@@ -934,13 +934,12 @@ export class AppRibbon extends LitElement {
     const collapsed = drawers.map(() => false)
 
     for(let index = drawers.length - 1; index >= 0 && requiredWidth > availableWidth + 0.5; index--) {
-      if(drawers[index].layout === "marks") continue
       collapsed[index] = true
       requiredWidth -= widths[index].expanded - widths[index].collapsed
     }
 
     drawers.forEach((drawer, index) => {
-      drawer.collapsed = drawer.layout === "marks" ? false : collapsed[index]
+      drawer.collapsed = collapsed[index]
     })
   }
 
