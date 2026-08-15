@@ -22,8 +22,10 @@ import copy from "@tabler/icons/outline/copy.svg?raw"
 import chevronRight from "@tabler/icons/outline/chevron-right.svg?raw"
 import circleChevronRight from "@tabler/icons/outline/circle-chevron-right.svg?raw"
 import deviceFloppy from "@tabler/icons/outline/device-floppy.svg?raw"
+import download from "@tabler/icons/outline/download.svg?raw"
 import dots from "@tabler/icons/outline/dots.svg?raw"
 import fileDescription from "@tabler/icons/outline/file-description.svg?raw"
+import fileExport from "@tabler/icons/outline/file-export.svg?raw"
 import fileOrientation from "@tabler/icons/outline/file-orientation.svg?raw"
 import filePlus from "@tabler/icons/outline/file-plus.svg?raw"
 import folderOpen from "@tabler/icons/outline/folder-open.svg?raw"
@@ -74,8 +76,10 @@ import zoomIn from "@tabler/icons/outline/zoom-in.svg?raw"
 import forms from "@tabler/icons/outline/forms.svg?raw"
 import input from "@tabler/icons/outline/input-search.svg?raw"
 import quote from "@tabler/icons/outline/quote.svg?raw"
+import qrcode from "@tabler/icons/outline/qrcode.svg?raw"
 import section from "@tabler/icons/outline/section.svg?raw"
 import settings from "@tabler/icons/outline/settings.svg?raw"
+import share from "@tabler/icons/outline/share.svg?raw"
 import bracketsAngle from "@tabler/icons/outline/brackets-angle.svg?raw"
 import calendarTime from "@tabler/icons/outline/calendar-time.svg?raw"
 import cloud from "@tabler/icons/outline/cloud.svg?raw"
@@ -143,10 +147,13 @@ const icons: Record<string, string> = {
   New: filePlus,
   Open: folderOpen,
   Save: deviceFloppy,
-  "Save as": deviceFloppy,
+  "Save as": fileExport,
+  Download: download,
   Local: deviceDesktop,
   Cloud: cloud,
   Print: printer,
+  QR: qrcode,
+  Share: share,
   Paste: clipboard,
   Cut: scissors,
   Copy: copy,

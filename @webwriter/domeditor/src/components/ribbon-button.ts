@@ -2,6 +2,7 @@ import {LitElement, css, html, nothing, type TemplateResult} from "lit"
 import { ribbonIcon } from "../ribbon-icons"
 import type {PackageKeywordPresentation} from "../package-keywords"
 import "./ribbon-menu"
+import "./qr-code"
 import type {RibbonMenuButton} from "./ribbon-menu"
 
 export type RibbonButtonDetails = {
@@ -23,6 +24,7 @@ export class RibbonButton extends LitElement {
     disabled: {type: Boolean, reflect: true},
     icon: {type: String},
     iconUrl: {type: String, attribute: "icon-url"},
+    qrValue: {type: String, attribute: "qr-value"},
     shortcut: {type: String},
     submenu: {attribute: false},
     dropdown: {attribute: false},
@@ -38,6 +40,8 @@ export class RibbonButton extends LitElement {
     selectionCount: {type: Number, attribute: "selection-count"},
     toggle: {type: Boolean, reflect: true},
     variant: {type: String, reflect: true},
+    notification: {attribute: false},
+    notificationVisible: {state: true},
   }
 
   static styles = css`
@@ -71,6 +75,31 @@ export class RibbonButton extends LitElement {
     .button-row:hover {
       border-color: #c8d2df;
       background: #eef4fb;
+    }
+
+    .button-notification {
+      box-sizing: border-box;
+      position: absolute;
+      z-index: 2;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 0.3rem 0.4rem;
+      border: 1px solid #8eb6df;
+      border-radius: 0.3rem;
+      color: #1e4f87;
+      background: rgb(255 255 255 / 94%);
+      font-size: 0.64rem;
+      font-weight: 600;
+      line-height: 0.85rem;
+      text-align: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 180ms ease;
+    }
+
+    .button-notification.visible {
+      opacity: 1;
     }
 
     :host([active]) .button-row {
@@ -313,6 +342,53 @@ export class RibbonButton extends LitElement {
       cursor: default;
     }
 
+    .sharing-dropdown {
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+      min-width: 0;
+    }
+
+    .sharing-link-field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+
+    .sharing-link-label {
+      color: #526b86;
+      font-size: 0.62rem;
+    }
+
+    .sharing-link-input {
+      box-sizing: border-box;
+      width: 100%;
+      min-width: 0;
+      height: 1.55rem;
+      padding: 0 0.3rem;
+      border: 1px solid #c8d2df;
+      border-radius: 0.2rem;
+      color: #2f3742;
+      background: transparent;
+      font: inherit;
+      font-size: 0.66rem;
+    }
+
+    .sharing-link-input:focus {
+      border-color: #3977c7;
+      outline: 1px solid #3977c7;
+    }
+
+    .sharing-dropdown-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .sharing-dropdown-actions .button-dropdown-more {
+      width: 100%;
+    }
+
     .media-attribute-boolean input {
       width: auto !important;
       height: auto !important;
@@ -454,6 +530,33 @@ export class RibbonButton extends LitElement {
       min-width: 0;
     }
 
+    :host([variant="qr"]) {
+      grid-column: span 1;
+      grid-row: span 2;
+      min-width: 0;
+      min-height: 0;
+    }
+
+    :host([variant="qr"]) .button-row,
+    :host([variant="qr"]) .main-button {
+      height: 100%;
+    }
+
+    :host([variant="qr"]) .main-button {
+      gap: 0.1rem;
+      padding: 0 1.15rem 0 0.15rem;
+    }
+
+    :host([variant="qr"]) .button-icon {
+      width: 3.5rem;
+      height: 3.5rem;
+    }
+
+    :host([variant="qr"]) .submenu-trigger {
+      top: 50%;
+      transform: translateY(-50%);
+    }
+
     :host([variant="package"]) .button-row {
       box-sizing: border-box;
       height: 100%;
@@ -548,6 +651,7 @@ export class RibbonButton extends LitElement {
   disabled = false
   icon = ""
   iconUrl = ""
+  qrValue = ""
   shortcut = ""
   submenu: RibbonMenuButton[] = []
   dropdown: TemplateResult | null = null
@@ -561,7 +665,10 @@ export class RibbonButton extends LitElement {
   toggle = false
   selectionCount = 0
   variant = "default"
+  notification = ""
   private submenuOpen = false
+  private notificationVisible = false
+  private notificationTimer: ReturnType<typeof setTimeout> | undefined
   private detailsOpen = false
   private detailsPosition = {left: 8, top: 8}
 
@@ -610,7 +717,18 @@ export class RibbonButton extends LitElement {
   disconnectedCallback() {
     document.removeEventListener("pointerdown", this.handleDocumentPointerDown)
     document.removeEventListener("keydown", this.handleDocumentKeydown)
+    if(this.notificationTimer !== undefined) clearTimeout(this.notificationTimer)
     super.disconnectedCallback()
+  }
+
+  showNotification(message: string, duration = 1800) {
+    if(this.notificationTimer !== undefined) clearTimeout(this.notificationTimer)
+    this.notification = message
+    this.notificationVisible = true
+    this.notificationTimer = setTimeout(() => {
+      this.notificationVisible = false
+      this.notificationTimer = undefined
+    }, duration)
   }
 
   private handleClick() {
@@ -663,6 +781,11 @@ export class RibbonButton extends LitElement {
   }
 
   private renderIcon() {
+    if(this.variant === "qr") return html`
+      <span class="button-icon" aria-hidden="true">
+        <webwriter-qr-code .value=${this.qrValue} .size=${56}></webwriter-qr-code>
+      </span>
+    `
     const icon = this.icon || this.action || this.label
     return html`<span class=${`button-icon${this.iconUrl ? " image-icon" : ""}`} aria-hidden="true">
       ${ribbonIcon(icon)}
@@ -742,6 +865,14 @@ export class RibbonButton extends LitElement {
             <span class="submenu-chevron" aria-hidden="true"></span>
           </button>
         ` : ""}
+        ${this.notification ? html`
+          <span
+            class=${`button-notification${this.notificationVisible ? " visible" : ""}`}
+            role="status"
+            aria-live="polite"
+            aria-hidden=${this.notificationVisible ? "false" : "true"}
+          >${this.notification}</span>
+        ` : nothing}
       </div>
       ${this.corner !== "close" && hasDropdown ? html`
         <ribbon-menu

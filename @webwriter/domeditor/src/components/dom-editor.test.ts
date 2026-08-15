@@ -311,6 +311,23 @@ describe("DomEditor file actions", () => {
 
     expect(print).toHaveBeenCalledTimes(1)
   })
+
+  it("downloads the serialized document with the current file name", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute")
+      .mockResolvedValue("<!DOCTYPE html><html><body><p>Downloaded</p></body></html>")
+    const createObjectURL = vi.fn().mockReturnValue("blob:test")
+    const revokeObjectURL = vi.fn()
+    vi.stubGlobal("URL", {createObjectURL, revokeObjectURL})
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {})
+    ;(editor as any).fileName = "lesson"
+
+    await (editor as any).downloadDocument()
+
+    expect(execute).toHaveBeenCalledWith({type: "serializeDocument", offline: false})
+    expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob))
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:test")
+  })
 })
 
 describe("DomEditor.execute()", () => {

@@ -25,6 +25,7 @@ import {packageAction, packageMemberAction, packageToggleAction} from "../packag
 import {packageKeywordPresentations} from "../package-keywords"
 import { type RibbonButton, type RibbonButtonDetails } from "./ribbon-button"
 import "./ribbon-button"
+import type {QRCodeElement} from "./qr-code"
 import "./ribbon-combobox"
 import {type RibbonDrawer} from "./ribbon-drawer"
 import "./ribbon-drawer"
@@ -70,6 +71,8 @@ const storageLocations = [
   {label: "Edumix Cloud", value: "edumix-cloud", icon: "Cloud"},
 ] as const
 type StorageLocation = typeof storageLocations[number]["value"]
+
+const placeholderSharingLink = "https://webwriter.app/share/placeholder"
 
 const insertionMenuGroup = (section: "Text" | "Lists" | "Media"): RibbonMenuGroup => ({
   label: section,
@@ -134,9 +137,9 @@ const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
             {label: "Offline HTML (.offline.html)", action: "save-as:offline"},
           ],
         },
-        "Print",
       ],
     },
+    {label: "Sharing", buttons: ["Share", "Print", "Download"]},
     {label: "Editor", buttons: ["General", "Shortcuts", "Accessibility"]},
     {label: "Appearance", buttons: ["Theme", "Zoom", "Fullscreen"]},
     {label: "Advanced", buttons: ["Preferences", "Extensions", "About"]},
@@ -1632,9 +1635,190 @@ export class AppRibbon extends LitElement {
     `
   }
 
+  private sharingButton() {
+    return this.renderRoot.querySelector<RibbonButton>(
+      'ribbon-drawer[label="Sharing"] ribbon-button[label="Share"]',
+    )
+  }
+
+  private sharingQRCodeElement() {
+    return this.sharingButton()?.shadowRoot?.querySelector<QRCodeElement>("webwriter-qr-code")
+  }
+
+  private async sharingQRCodeBlob() {
+    const qrCode = this.sharingQRCodeElement()
+    if(!qrCode) return null
+    await qrCode.updateComplete
+    return qrCode.toBlob()
+  }
+
+  private async copySharingContent(link: string): Promise<boolean> {
+    try {
+      if(!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+        await this.copySharingLink(link)
+        return false
+      }
+
+      const qrCode = this.sharingQRCodeElement()
+      if(!qrCode) {
+        await this.copySharingLink(link)
+        return false
+      }
+      await qrCode.updateComplete
+      const qrDataURL = qrCode.toDataURL()
+      if(!qrDataURL) {
+        await this.copySharingLink(link)
+        return false
+      }
+
+      const content = document.createElement("div")
+      const linkElement = document.createElement("a")
+      linkElement.href = link
+      linkElement.textContent = link
+      const qrImage = document.createElement("img")
+      qrImage.src = qrDataURL
+      qrImage.alt = `QR code for ${link}`
+      content.append(linkElement, document.createElement("br"), qrImage)
+
+      await navigator.clipboard.write([new ClipboardItem({
+        "text/html": content.innerHTML,
+        "text/plain": link,
+      })])
+      return true
+    }
+    catch {
+      // Clipboard access can be denied by the browser or document context.
+      return false
+    }
+  }
+
+  private async copySharingLink(link: string) {
+    try {
+      if(navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(link)
+        return
+      }
+
+      const input = document.createElement("textarea")
+      input.value = link
+      input.setAttribute("readonly", "")
+      input.style.position = "fixed"
+      input.style.opacity = "0"
+      document.body.append(input)
+      input.select()
+      document.execCommand("copy")
+      input.remove()
+    }
+    catch {
+      // Clipboard access can be denied by the browser or document context.
+    }
+  }
+
+  private async copySharingQRCode() {
+    try {
+      const blob = await this.sharingQRCodeBlob()
+      if(!blob || !navigator.clipboard?.write || typeof ClipboardItem === "undefined") return
+      await navigator.clipboard.write([new ClipboardItem({[blob.type || "image/png"]: blob})])
+    }
+    catch {
+      // Clipboard access can be denied by the browser or document context.
+    }
+  }
+
+  private async downloadSharingQRCode() {
+    try {
+      const blob = await this.sharingQRCodeBlob()
+      if(!blob) return
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `webwriter-qr-code.${blob.type === "image/svg+xml" ? "svg" : "png"}`
+      link.click()
+      URL.revokeObjectURL(url)
+    }
+    catch {
+      // QR export can fail when the browser cannot rasterize the QR code.
+    }
+  }
+
+  private handleSharingButtonClick = (event: Event) => {
+    const label = (event as CustomEvent<{label?: string}>).detail?.label
+    if(label !== "Share") return
+    event.stopPropagation()
+    void this.copySharingContent(placeholderSharingLink).then(copied => {
+      if(copied) this.sharingButton()?.showNotification("Copied QR code and link")
+    })
+  }
+
+  private renderSharingDropdown(link: string) {
+    return html`
+      <div class="sharing-dropdown" role="group" aria-label="Sharing options">
+        <label class="sharing-link-field">
+          <span class="sharing-link-label">Link</span>
+          <input
+            class="sharing-link-input"
+            aria-label="Sharing link"
+            readonly
+            .value=${link}
+            @click=${(event: Event) => (event.currentTarget as HTMLInputElement).select()}
+          />
+        </label>
+        <div class="sharing-dropdown-actions">
+          <button
+            class="button-dropdown-more"
+            type="button"
+            @click=${() => void this.copySharingLink(link)}
+          >Copy link</button>
+          <button
+            class="button-dropdown-more"
+            type="button"
+            @click=${() => void this.copySharingQRCode()}
+          >Copy QR code</button>
+          <button
+            class="button-dropdown-more"
+            type="button"
+            @click=${() => void this.downloadSharingQRCode()}
+          >Download QR code</button>
+        </div>
+      </div>
+    `
+  }
+
+  private renderSharingDrawer(drawer: RibbonMenuGroup) {
+    return html`
+      <ribbon-drawer label="Sharing" icon="Share" layout="sharing">
+        ${drawer.buttons.map(button => {
+          const item = typeof button === "string" ? {label: button} : button
+          if(item.label === "Share") return html`
+            <ribbon-button
+              class="sharing-qr"
+              label="Share"
+              action="Share"
+              variant="qr"
+              .qrValue=${placeholderSharingLink}
+              .dropdown=${this.renderSharingDropdown(placeholderSharingLink)}
+              keep-drawer-open
+              @ribbon-button-click=${this.handleSharingButtonClick}
+            ></ribbon-button>
+          `
+          return html`
+            <ribbon-button
+              class="sharing-action"
+              label=${item.label}
+              .action=${item.action ?? item.label}
+              .icon=${item.icon ?? item.label}
+              .submenu=${item.submenu ?? []}
+            ></ribbon-button>
+          `
+        })}
+      </ribbon-drawer>
+    `
+  }
+
   private renderDrawers() {
     return this.currentMenuGroups.map(drawer => {
       if(drawer.label === "File") return this.renderFileDrawer(drawer)
+      if(drawer.label === "Sharing") return this.renderSharingDrawer(drawer)
       if(drawer.label === "Marks") return this.renderMarkDrawer()
       if(drawer.label === "Packages") return this.renderPackageDrawer()
       if(drawer.label === "Lists") return this.renderListDrawer()

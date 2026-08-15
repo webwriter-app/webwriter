@@ -70,7 +70,7 @@ describe("mark ribbon controls", () => {
     await ribbon.updateComplete
     expect(Array.from(ribbon.shadowRoot!.querySelectorAll(".ribbon-content > ribbon-drawer"))
       .map(drawer => drawer.getAttribute("label")))
-      .toEqual(["File", "Editor", "Appearance", "Advanced"])
+      .toEqual(["File", "Sharing", "Editor", "Appearance", "Advanced"])
 
     const fileDrawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="File"]')!
     const fileNameInput = fileDrawer.querySelector<HTMLInputElement>('input[aria-label="File name"]')!
@@ -90,7 +90,7 @@ describe("mark ribbon controls", () => {
       .toContain("icon-tabler-cloud")
     const fileButtons = Array.from(fileDrawer.querySelectorAll<RibbonButton>("ribbon-button"))
     expect(fileButtons.map(button => button.label))
-      .toEqual(["New", "Open", "Save", "Save as", "Print"])
+      .toEqual(["New", "Open", "Save", "Save as"])
     expect(fileButtons.find(button => button.label === "Save")?.submenu).toEqual([
       {label: "HTML (.html)", action: "save:html"},
       {label: "Offline HTML (.offline.html)", action: "save:offline"},
@@ -100,8 +100,58 @@ describe("mark ribbon controls", () => {
       {label: "Offline HTML (.offline.html)", action: "save-as:offline"},
     ])
     expect(fileDrawer.querySelector('input[type="checkbox"]')).toBeNull()
-    expect(ribbon.shadowRoot!.querySelector('ribbon-button[label="Download"]')).toBeNull()
-    expect(ribbon.shadowRoot!.querySelector('ribbon-button[label="Share"]')).toBeNull()
+    expect(getComputedStyle(fileDrawer.shadowRoot!.querySelector<HTMLElement>(".controls")!).gridTemplateColumns)
+      .toBe("repeat(4, minmax(0, 1fr))")
+
+    const sharingDrawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Sharing"]')!
+    const sharingButtons = Array.from(sharingDrawer.querySelectorAll<RibbonButton>("ribbon-button"))
+    expect(sharingButtons.map(button => button.label)).toEqual(["Share", "Print", "Download"])
+    expect(getComputedStyle(sharingDrawer.shadowRoot!.querySelector<HTMLElement>(".controls")!).gridTemplateColumns)
+      .toBe("minmax(5rem, 1.15fr) minmax(0, 1fr)")
+    const shareButton = sharingButtons[0]
+    expect(shareButton.variant).toBe("qr")
+    expect(shareButton.qrValue).toBe("https://webwriter.app/share/placeholder")
+    expect(getComputedStyle(shareButton).gridColumn).toBe("span 1")
+    expect(getComputedStyle(shareButton).gridRow).toBe("span 2")
+    await shareButton.updateComplete
+    expect(shareButton.shadowRoot!.querySelector(".submenu-trigger")).not.toBeNull()
+    const qrCode = shareButton.shadowRoot!.querySelector("webwriter-qr-code")!
+    await (qrCode as HTMLElement & {updateComplete: Promise<unknown>}).updateComplete
+    expect(qrCode.shadowRoot!.querySelector(".code svg")).not.toBeNull()
+    const exportCanvas = qrCode.shadowRoot!.querySelector<HTMLCanvasElement>(".export-code canvas")
+    if(exportCanvas) {
+      expect(exportCanvas.width).toBe(512)
+      expect(exportCanvas.height).toBe(512)
+    }
+
+    shareButton.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    await shareButton.updateComplete
+    const shareMenu = shareButton.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await shareMenu.updateComplete
+    expect(shareMenu.querySelector<HTMLInputElement>('input[aria-label="Sharing link"]')?.value)
+      .toBe("https://webwriter.app/share/placeholder")
+    expect(Array.from(shareMenu.querySelectorAll("button")).map(button => button.textContent?.trim()))
+      .toEqual(["Copy link", "Copy QR code", "Download QR code"])
+
+    const toDataURL = vi.spyOn(
+      qrCode as unknown as {toDataURL: () => string | null},
+      "toDataURL",
+    ).mockReturnValue("data:image/png;base64,qr")
+    const clipboardWrite = vi.spyOn(navigator.clipboard, "write").mockResolvedValue()
+    shareButton.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    await new Promise(resolve => setTimeout(resolve))
+    expect(clipboardWrite).toHaveBeenCalledOnce()
+    const clipboardItem = clipboardWrite.mock.calls[0]![0][0]
+    expect(clipboardItem.types).toEqual(expect.arrayContaining(["text/html", "text/plain"]))
+    expect(await (await clipboardItem.getType("text/plain")).text())
+      .toBe("https://webwriter.app/share/placeholder")
+    expect(await (await clipboardItem.getType("text/html")).text()).toContain("<img")
+    await shareButton.updateComplete
+    const notification = shareButton.shadowRoot!.querySelector<HTMLElement>(".button-notification")!
+    expect(notification.textContent?.trim()).toBe("Copied QR code and link")
+    expect(notification.getAttribute("role")).toBe("status")
+    expect(notification.classList.contains("visible")).toBe(true)
+    toDataURL.mockRestore()
   })
 
   it("keeps the marks drawer fixed with grouped controls on the right", async () => {

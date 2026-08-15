@@ -656,6 +656,28 @@ export class DomEditor extends LitElement {
     this.editorWindow?.print()
   }
 
+  private async downloadDocument() {
+    try {
+      const source = await this.execute({
+        type: "serializeDocument",
+        offline: this.fileFormat === "offline",
+      })
+      if(typeof source !== "string") throw new TypeError("The editor returned invalid HTML")
+
+      const format = this.fileFormat === "offline" ? "offline" : "html"
+      const filename = this.fileNameForFormat(format) || `document${format === "offline" ? ".offline" : ""}.html`
+      const url = URL.createObjectURL(new Blob([source], {type: "text/html;charset=utf-8"}))
+      const link = document.createElement("a")
+      link.href = url
+      link.download = filename
+      link.click()
+      URL.revokeObjectURL(url)
+    }
+    catch(error) {
+      this.reportFileError(error)
+    }
+  }
+
   private handleRibbonButtonClick = (event: Event) => {
     const label = (event as CustomEvent<{label?: string}>).detail?.label
     if(label === "New") {
@@ -684,6 +706,10 @@ export class DomEditor extends LitElement {
     }
     if(label === "Print") {
       this.printDocument()
+      return
+    }
+    if(label === "Download") {
+      void this.downloadDocument()
       return
     }
     if(label?.startsWith("package-member:")) {
