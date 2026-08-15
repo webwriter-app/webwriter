@@ -1919,7 +1919,12 @@ export class AppRibbon extends LitElement {
           </button>
           <nav class="tabs" role="tablist" aria-label="Editor menus">
             ${menuTabs.map(tab => html`
-              <ribbon-tab label=${tab} .active=${this.activeMenu === tab}></ribbon-tab>
+              <ribbon-tab
+                label=${tab}
+                .active=${this.activeMenu === tab}
+                .fileName=${tab === "File" ? this.fileName : ""}
+                .fileDirty=${tab === "File" && this.fileDirty}
+              ></ribbon-tab>
             `)}
           </nav>
           ${this.renderPresence()}

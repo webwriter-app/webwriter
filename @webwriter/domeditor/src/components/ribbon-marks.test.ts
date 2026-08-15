@@ -3,6 +3,7 @@ import {afterEach, describe, expect, it, vi} from "vitest"
 import {markStateChangeEvent} from "../editor-bridge"
 import {DomEditor} from "./dom-editor"
 import {AppRibbon} from "./ribbon"
+import type {FileLabel} from "./file-label"
 import type {RibbonButton} from "./ribbon-button"
 import type {RibbonCombobox} from "./ribbon-combobox"
 import type {RibbonDrawer} from "./ribbon-drawer"
@@ -36,6 +37,55 @@ const primaryButtons = (drawer: RibbonDrawer) => Array.from(
 )
 
 describe("mark ribbon controls", () => {
+  it("renders the File tab as a rich document label without changing its ribbon", async () => {
+    const {ribbon} = await mountRibbon()
+    const saveEvents: string[] = []
+    ribbon.addEventListener("ribbon-button-click", event => {
+      saveEvents.push((event as CustomEvent<{label: string}>).detail.label)
+    })
+    ribbon.fileName = "lesson"
+    await ribbon.updateComplete
+
+    const fileTab = ribbon.shadowRoot!.querySelector('ribbon-tab[label="File"]')!
+    const fileLabel = fileTab.shadowRoot!.querySelector<FileLabel>("file-label")!
+    await fileLabel.updateComplete
+    expect(fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-name")?.textContent).toBe("lesson")
+    expect(fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-name")?.tagName).toBe("STRONG")
+    expect(fileLabel.shadowRoot!.querySelector(".location-icon")).toBeNull()
+    const dirtyButton = fileLabel.shadowRoot!.querySelector<HTMLButtonElement>(".dirty-button")!
+    expect(dirtyButton.textContent).toBe("*")
+    expect(getComputedStyle(dirtyButton).visibility).toBe("hidden")
+    const fileTabButton = fileTab.shadowRoot!.querySelector<HTMLButtonElement>("button")!
+    expect(getComputedStyle(fileTabButton).paddingLeft).toBe("0px")
+    expect(getComputedStyle(fileTabButton).paddingRight).toBe("0px")
+    expect(["0", "0px"]).toContain(getComputedStyle(
+      fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-label")!,
+    ).gap)
+
+    ribbon.activeMenu = "File"
+    await ribbon.updateComplete
+    expect(["#1e4f87", "rgb(30, 79, 135)"]).toContain(
+      getComputedStyle(fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-name")!).color,
+    )
+
+    ribbon.activeMenu = "Start"
+    await ribbon.updateComplete
+    ribbon.fileDirty = true
+    await ribbon.updateComplete
+    await fileLabel.updateComplete
+    expect(getComputedStyle(dirtyButton).visibility).toBe("visible")
+
+    dirtyButton.click()
+    expect(saveEvents).toEqual(["Save"])
+    expect(ribbon.activeMenu).toBe("Start")
+
+    fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-name")!.dispatchEvent(
+      new MouseEvent("click", {bubbles: true, composed: true}),
+    )
+    await ribbon.updateComplete
+    expect(ribbon.activeMenu).toBe("File")
+  })
+
   it("keeps Edit in the main ribbon and includes Review with its layout drawers", async () => {
     const {ribbon} = await mountRibbon()
     const tabs = Array.from(ribbon.shadowRoot!.querySelectorAll("ribbon-tab"))
