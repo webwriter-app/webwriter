@@ -268,7 +268,7 @@ export class DomEditor extends LitElement {
           this.documentTree = this.buildDocumentTree()
         }
         if(this.dirtyTrackingReady && mutations.some(mutation => this.isAuthoredMutation(mutation))) {
-          this.fileDirty = true
+          this.fileDirty = !this.isFreshDocumentUnchanged()
         }
       })
       this.documentTreeObserver = observer
@@ -320,6 +320,26 @@ export class DomEditor extends LitElement {
 
   private authoredClasses(value: string | null) {
     return (value ?? "").split(/\s+/).filter(name => name && !name.startsWith("◆")).join(" ")
+  }
+
+  private isFreshDocumentUnchanged() {
+    if(this.fileHandle !== null) return false
+    const body = this.editorDocument?.body
+    if(!body) return false
+
+    const authoredChildren = Array.from(body.childNodes).filter(node => {
+      if(node.nodeType !== Node.ELEMENT_NODE) return true
+      const element = node as Element
+      return !element.classList.contains("◆editor-only")
+        && !element.hasAttribute("data-webwriter-editor-only")
+    })
+    if(authoredChildren.length === 0) return true
+
+    const onlyChild = authoredChildren[0]
+    return authoredChildren.length === 1
+      && onlyChild?.nodeType === Node.ELEMENT_NODE
+      && (onlyChild as Element).localName === "p"
+      && onlyChild.childNodes.length === 0
   }
 
   private isAuthoredMutation(mutation: MutationRecord) {

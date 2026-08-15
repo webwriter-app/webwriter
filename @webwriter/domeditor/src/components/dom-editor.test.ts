@@ -178,11 +178,39 @@ describe("DomEditor file actions", () => {
     const {editor, iframe} = await mountEditor()
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    iframe.contentDocument!.body.append(iframe.contentDocument!.createElement("p"))
+    const paragraph = iframe.contentDocument!.createElement("p")
+    paragraph.textContent = "Content"
+    iframe.contentDocument!.body.append(paragraph)
 
     await vi.waitFor(() => expect((editor as any).fileDirty).toBe(true))
     await editor.updateComplete
     expect((editor.shadowRoot!.querySelector("app-ribbon") as any).fileDirty).toBe(true)
+  })
+
+  it("keeps a fresh document clean when it is empty or contains one empty paragraph", async () => {
+    const {editor, iframe} = await mountEditor()
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    const body = iframe.contentDocument!.body
+    const paragraph = iframe.contentDocument!.createElement("p")
+    body.append(paragraph)
+
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect((editor as any).fileDirty).toBe(false)
+
+    body.replaceChildren()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect((editor as any).fileDirty).toBe(false)
+  })
+
+  it("tracks an empty paragraph as a change once the document has been saved", async () => {
+    const {editor, iframe} = await mountEditor()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    ;(editor as any).fileHandle = {name: "saved.html"}
+
+    iframe.contentDocument!.body.append(iframe.contentDocument!.createElement("p"))
+
+    await vi.waitFor(() => expect((editor as any).fileDirty).toBe(true))
   })
 
   it("saves serialized HTML through the File System Access API and clears the dirty marker", async () => {
