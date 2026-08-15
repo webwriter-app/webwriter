@@ -73,7 +73,9 @@ describe("mark ribbon controls", () => {
       .toEqual(["File", "Editor", "Appearance", "Advanced"])
 
     const fileDrawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="File"]')!
-    expect(fileDrawer.querySelector<HTMLInputElement>('input[aria-label="File name"]')?.value).toBe("Untitled")
+    const fileNameInput = fileDrawer.querySelector<HTMLInputElement>('input[aria-label="File name"]')!
+    expect(fileNameInput.value).toBe("")
+    expect(fileNameInput.placeholder).toBe("Unnamed File")
     const fileButtons = Array.from(fileDrawer.querySelectorAll<RibbonButton>("ribbon-button"))
     expect(fileButtons.map(button => button.label))
       .toEqual(["New", "Open", "Save", "Save as", "Print"])

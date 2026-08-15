@@ -595,7 +595,7 @@ export class AppRibbon extends LitElement {
       box-sizing: border-box;
       field-sizing: content;
       width: auto;
-      min-width: 4rem;
+      min-width: 0;
       max-width: 17rem;
       height: 1.55rem;
       padding: 0 0.4rem;
@@ -603,12 +603,17 @@ export class AppRibbon extends LitElement {
       border: 1px solid #c8d2df;
       border-radius: 0.25rem;
       color: #2f3742;
-      background: #fff;
+      background: transparent;
       font: inherit;
       font-size: 0.7rem;
       font-weight: 700;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+
+    .file-name:hover {
+      border-color: #8eb6df;
+      background: #eef4fb;
     }
 
     .file-name:focus {
@@ -652,7 +657,7 @@ export class AppRibbon extends LitElement {
   listType: ListType | null = null
   listStyle = ""
   media: MediaSelectionState | null = null
-  fileName = "Untitled"
+  fileName = ""
   fileDirty = false
   private packageSearchQuery = ""
   private packageDrawerOpen = false
@@ -1520,6 +1525,7 @@ export class AppRibbon extends LitElement {
             <input
               class="file-name"
               aria-label="File name"
+              placeholder="Unnamed File"
               .value=${this.fileName}
               @input=${this.handleFileNameInput}
             />

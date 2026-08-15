@@ -174,7 +174,7 @@ export class DomEditor extends LitElement {
   private frameState: EditorStateSnapshot | undefined
   private frameRevision = 0
   private frameDocumentHTML: string | null = null
-  private fileName = "Untitled"
+  private fileName = ""
   private fileDirty = false
   private fileFormat: FileFormat = "html"
   private fileHandle: LocalFileHandle | null = null
@@ -521,7 +521,9 @@ export class DomEditor extends LitElement {
   }
 
   private fileNameForFormat(format: FileFormat) {
-    return `${this.fileName || "Untitled"}${format === "offline" ? ".offline.html" : ".html"}`
+    return this.fileName
+      ? `${this.fileName}${format === "offline" ? ".offline.html" : ".html"}`
+      : ""
   }
 
   private isPickerCancellation(error: unknown) {
@@ -567,7 +569,7 @@ export class DomEditor extends LitElement {
     if(!this.confirmDiscardChanges()) return
     try {
       this.fileHandle = null
-      this.fileName = "Untitled"
+      this.fileName = ""
       this.fileFormat = "html"
       await this.reloadDocument("<!DOCTYPE html><html><head></head><body></body></html>")
       this.fileDirty = false

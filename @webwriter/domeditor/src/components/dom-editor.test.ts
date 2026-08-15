@@ -202,12 +202,12 @@ describe("DomEditor file actions", () => {
     await (editor as any).saveDocument()
 
     expect(picker).toHaveBeenCalledWith(expect.objectContaining({
-      suggestedName: "Untitled.html",
       types: [
         {description: "HTML document (.html)", accept: {"text/html": [".html", ".htm"]}},
         {description: "Offline HTML document (.offline.html)", accept: {"text/html": [".offline.html"]}},
       ],
     }))
+    expect(picker.mock.calls[0][0]).not.toHaveProperty("suggestedName")
     expect(execute).toHaveBeenCalledWith({type: "serializeDocument", offline: false})
     expect(handle.createWritable).toHaveBeenCalledTimes(1)
     expect(write).toHaveBeenCalledTimes(1)
@@ -249,7 +249,13 @@ describe("DomEditor file actions", () => {
 
     await (editor as any).saveDocument(true, "offline")
 
-    expect(picker).toHaveBeenCalledWith(expect.objectContaining({suggestedName: "Untitled.offline.html"}))
+    expect(picker).toHaveBeenCalledWith(expect.objectContaining({
+      types: [
+        {description: "HTML document (.html)", accept: {"text/html": [".html", ".htm"]}},
+        {description: "Offline HTML document (.offline.html)", accept: {"text/html": [".offline.html"]}},
+      ],
+    }))
+    expect(picker.mock.calls[0][0]).not.toHaveProperty("suggestedName")
     expect(execute).toHaveBeenCalledWith({type: "serializeDocument", offline: true})
     expect((editor as any).fileName).toBe("lesson")
     expect((editor as any).fileFormat).toBe("offline")
