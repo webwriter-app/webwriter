@@ -143,6 +143,7 @@ export class DomEditor extends LitElement {
     mediaSelection: {attribute: false, state: true},
     fileName: {attribute: false, state: true},
     fileDirty: {attribute: false, state: true},
+    previewActive: {attribute: false, state: true},
   }
 
   private editorDocument: Document | null = null
@@ -176,9 +177,14 @@ export class DomEditor extends LitElement {
   private frameDocumentHTML: string | null = null
   private fileName = ""
   private fileDirty = false
+  private previewActive = false
+  private previewDocumentHTML: string | null = null
+  private previewSelection: SelectionBookmark | null = null
+  private previewTransition = false
   private fileFormat: FileFormat = "html"
   private fileHandle: LocalFileHandle | null = null
   private dirtyTrackingReady = false
+  private dirtyTrackingMutationPending = false
   private dirtyTrackingTimer: ReturnType<typeof setTimeout> | undefined
   private packageCatalogRequested = false
   private installedPackagesRestored = false
@@ -216,6 +222,10 @@ export class DomEditor extends LitElement {
       width: 100%;
       border: 0;
     }
+
+    iframe[hidden] {
+      display: none;
+    }
   `
 
   private get editorSrcdoc() {
@@ -228,6 +238,58 @@ export class DomEditor extends LitElement {
     return `<!-- frame ${this.frameRevision} -->${serializeDoctype(parsed.doctype)}${parsed.documentElement.outerHTML}`
   }
 
+  /** Creates a static copy for preview without bootstrapping another
+   * DOMEditor. The live editor iframe remains mounted separately so its Yjs
+   * document, undo manager, widgets, and selection stay untouched. */
+  private currentPreviewHTML() {
+    const source = this.editorDocument?.cloneNode(true) as Document | null
+    if(!source?.documentElement) throw new Error("The editor document is not ready")
+
+    source.body?.removeAttribute("contenteditable")
+    source.body?.removeAttribute("spellcheck")
+    source.querySelectorAll("[contenteditable]").forEach(element => element.removeAttribute("contenteditable"))
+    source.querySelectorAll("[data-webwriter-editor-only]").forEach(element => element.remove())
+
+    const editingElements = Array.from(source.querySelectorAll<HTMLElement>("[class]"))
+      .filter(element => Array.from(element.classList).some(name => name.startsWith("◆")))
+    editingElements.forEach(element => {
+      if(element.classList.contains("◆editor-only")) {
+        element.remove()
+        return
+      }
+      element.classList.remove(...Array.from(element.classList).filter(name => name.startsWith("◆")))
+      if(!element.classList.length) element.removeAttribute("class")
+    })
+
+    // The editor loads installed widget assets as editor-only nodes. Re-add
+    // those assets without editor markers so custom elements render in the
+    // preview copy as they do in the live document.
+    if(source.head) {
+      const styles = [...new Set(this.installedPackages.flatMap(pkg => pkg.styles))]
+        .map(href => {
+          const link = source.createElement("link")
+          link.rel = "stylesheet"
+          link.href = href
+          return link
+        })
+      const scripts = [...new Set(this.installedPackages.flatMap(pkg => pkg.scripts))]
+        .map(src => {
+          const script = source.createElement("script")
+          script.type = "module"
+          script.src = src
+          return script
+        })
+      source.head.append(...styles, ...scripts)
+    }
+
+    // `designMode` is a document property rather than serialized markup. A
+    // srcdoc that does not load editor-entry therefore starts in its default
+    // "off" state; explicitly clearing it also documents that invariant for
+    // DOM implementations that retain a cloned property.
+    source.designMode = "off"
+    return `${serializeDoctype(source.doctype)}${source.documentElement.outerHTML}`
+  }
+
   private get syncUrl() {
     const syncUrl = new URL(`ws://${location.hostname}:1234`)
     const outerUrl = new URL(location.href)
@@ -235,8 +297,17 @@ export class DomEditor extends LitElement {
     return syncUrl.href
   }
 
+  private handlePreviewFrameLoad = (event: Event) => {
+    const frame = event.currentTarget as HTMLIFrameElement
+    const previewDocument = frame.contentDocument
+    if(!previewDocument) return
+    previewDocument.designMode = "off"
+    previewDocument.body?.removeAttribute("contenteditable")
+  }
+
   private handleEditorFrameLoad = (event: Event) => {
     this.dirtyTrackingReady = false
+    this.dirtyTrackingMutationPending = false
     if(this.dirtyTrackingTimer !== undefined) clearTimeout(this.dirtyTrackingTimer)
     this.documentTreeObserver?.disconnect()
     this.documentTreeObserver = null
@@ -267,8 +338,10 @@ export class DomEditor extends LitElement {
         if(mutations.some(mutation => mutation.type === "childList")) {
           this.documentTree = this.buildDocumentTree()
         }
-        if(this.dirtyTrackingReady && mutations.some(mutation => this.isAuthoredMutation(mutation))) {
-          this.fileDirty = !this.isFreshDocumentUnchanged()
+        const hasAuthoredMutation = mutations.some(mutation => this.isAuthoredMutation(mutation))
+        if(hasAuthoredMutation) {
+          if(this.dirtyTrackingReady) this.fileDirty = !this.isFreshDocumentUnchanged()
+          else this.dirtyTrackingMutationPending = true
         }
       })
       this.documentTreeObserver = observer
@@ -308,6 +381,10 @@ export class DomEditor extends LitElement {
       this.editorReadyResolve?.(this.editorWindow)
       this.dirtyTrackingTimer = setTimeout(() => {
         this.dirtyTrackingReady = true
+        if(this.dirtyTrackingMutationPending) {
+          this.dirtyTrackingMutationPending = false
+          this.fileDirty = !this.isFreshDocumentUnchanged()
+        }
         this.dirtyTrackingTimer = undefined
       }, 0)
     }
@@ -412,7 +489,7 @@ export class DomEditor extends LitElement {
   }
 
   private editorIframe() {
-    return this.renderRoot.querySelector<HTMLIFrameElement>("iframe")
+    return this.renderRoot.querySelector<HTMLIFrameElement>("iframe.editor-frame")
   }
 
   private isEditorFocused() {
@@ -470,6 +547,39 @@ export class DomEditor extends LitElement {
     this.editorWindow?.focus()
     if(restoreSelection) this.restoreEditorSelection()
     else this.savedEditorSelection = null
+  }
+
+  private async enterPreview() {
+    if(this.previewActive || this.previewTransition) return
+    this.previewTransition = true
+    this.savedEditorSelection = null
+    this.saveEditorSelection()
+    this.previewSelection = this.savedEditorSelection
+    this.savedEditorSelection = null
+
+    try {
+      if(!this.editorDocument) await this.waitForEditorWindow()
+      this.previewDocumentHTML = this.currentPreviewHTML()
+      this.previewActive = true
+    }
+    catch(error) {
+      this.previewSelection = null
+      this.reportFileError(error)
+    }
+    finally {
+      this.previewTransition = false
+    }
+  }
+
+  private async exitPreview() {
+    if(!this.previewActive || this.previewTransition) return
+    const selection = this.previewSelection
+    this.previewSelection = null
+    this.previewDocumentHTML = null
+    this.previewActive = false
+    await this.updateComplete
+    this.savedEditorSelection = selection
+    this.focusEditor(true)
   }
 
   private handleRibbonInputPointerDown = () => {
@@ -680,6 +790,11 @@ export class DomEditor extends LitElement {
 
   private handleRibbonButtonClick = (event: Event) => {
     const label = (event as CustomEvent<{label?: string}>).detail?.label
+    if(label === "Preview") {
+      if(this.previewActive) void this.exitPreview()
+      else void this.enterPreview()
+      return
+    }
     if(label === "New") {
       void this.newDocument()
       return
@@ -816,6 +931,10 @@ export class DomEditor extends LitElement {
       type: "insert",
       html: `<${item.tag}></${item.tag}>`,
     }).finally(() => this.focusEditor())
+  }
+
+  private handleRibbonPreviewExit = () => {
+    void this.exitPreview()
   }
 
   private async insertPackageMember(member: PackageMember) {
@@ -1242,6 +1361,7 @@ export class DomEditor extends LitElement {
     if(this.dirtyTrackingTimer !== undefined) clearTimeout(this.dirtyTrackingTimer)
     this.dirtyTrackingTimer = undefined
     this.dirtyTrackingReady = false
+    this.dirtyTrackingMutationPending = false
     this.documentTreeObserver?.disconnect()
     this.documentTreeObserver = null
     this.editorDocument?.removeEventListener("pointerdown", this.handleEditorPointerDown)
@@ -1252,6 +1372,10 @@ export class DomEditor extends LitElement {
     this.editorDocument = null
     this.editorWindow = null
     this.savedEditorSelection = null
+    this.previewActive = false
+    this.previewDocumentHTML = null
+    this.previewSelection = null
+    this.previewTransition = false
     this.ribbonInputSession = false
     this.restoreEditorAfterRibbonInput = false
     this.treeViewOpen = false
@@ -1295,7 +1419,9 @@ export class DomEditor extends LitElement {
           .packageError=${this.packageError}
           .fileName=${this.fileName}
           .fileDirty=${this.fileDirty}
+          .previewActive=${this.previewActive}
           @ribbon-button-click=${this.handleRibbonButtonClick}
+          @ribbon-preview-exit=${this.handleRibbonPreviewExit}
           @file-name-change=${this.handleFileNameChange}
           @ribbon-combobox-change=${this.handleRibbonComboboxChange}
           @mark-attribute-change=${this.handleMarkAttributeChange}
@@ -1318,9 +1444,19 @@ export class DomEditor extends LitElement {
           @breadcrumb-item-hover=${this.handleBreadcrumbItemHover}
         ></dom-editor-breadcrumb>
       </header>
+      ${this.previewActive ? html`
+        <iframe
+          class="preview-frame"
+          title="Document preview"
+          srcdoc=${this.previewDocumentHTML ?? ""}
+          @load=${this.handlePreviewFrameLoad}
+        ></iframe>
+      ` : ""}
       <iframe
+        class="editor-frame"
         title="DOM editor"
         srcdoc=${this.editorSrcdoc}
+        ?hidden=${this.previewActive}
         @load=${this.handleEditorFrameLoad}
       ></iframe>
     `

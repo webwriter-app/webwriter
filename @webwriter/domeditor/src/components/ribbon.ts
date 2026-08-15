@@ -199,6 +199,8 @@ export class AppRibbon extends LitElement {
     media: {attribute: false},
     fileName: {type: String, attribute: "file-name"},
     fileDirty: {type: Boolean, attribute: "file-dirty"},
+    previewActive: {type: Boolean, attribute: "preview-active"},
+    previewTransitioning: {type: Boolean, attribute: "preview-transition", reflect: true},
     storageLocation: {type: String, state: true},
     linkAttributeMenuOpen: {type: Boolean, state: true},
   }
@@ -216,7 +218,13 @@ export class AppRibbon extends LitElement {
       color: #2f3742;
       background: #ffffff;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      transition: max-height 180ms ease;
+      transition:
+        height 180ms ease,
+        max-height 180ms ease;
+    }
+
+    :host([preview-transition]) {
+      overflow: hidden;
     }
 
     :host(:not([expanded])) {
@@ -317,6 +325,13 @@ export class AppRibbon extends LitElement {
 
     .brand:hover .brand-logo {
       opacity: 0.8;
+    }
+
+    :host(:not([expanded])) .brand::before,
+    :host(:not([expanded])) .brand::after,
+    :host([preview-transition]) .brand::before,
+    :host([preview-transition]) .brand::after {
+      display: none;
     }
 
     .brand:focus-visible {
@@ -465,9 +480,12 @@ export class AppRibbon extends LitElement {
     }
 
     .preview-button {
-      display: grid;
+      box-sizing: border-box;
+      display: flex;
       flex: 0 0 2rem;
-      place-items: center;
+      align-items: center;
+      justify-content: center;
+      gap: 0.3rem;
       width: 2rem;
       height: 40px;
       padding: 0;
@@ -478,6 +496,15 @@ export class AppRibbon extends LitElement {
       cursor: pointer;
     }
 
+    .preview-button[active] {
+      flex-basis: auto;
+      width: auto;
+      padding-inline: 0.35rem;
+      color: #1e4f87;
+      background: #dcecff;
+      box-shadow: inset 0 0 0 1px rgb(57 119 199 / 12%);
+    }
+
     .preview-button:hover {
       color: #243447;
       background: #e8eef5;
@@ -486,6 +513,17 @@ export class AppRibbon extends LitElement {
     .preview-button:focus-visible {
       outline: 2px solid #3977c7;
       outline-offset: -2px;
+    }
+
+    .preview-label {
+      display: block;
+      flex: 0 0 auto;
+      margin: 0;
+      color: #1e4f87;
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      line-height: 1;
     }
 
     .history-button:hover {
@@ -535,6 +573,13 @@ export class AppRibbon extends LitElement {
     .ribbon-toggle:focus-visible {
       outline: 2px solid #3977c7;
       outline-offset: -2px;
+    }
+
+    .ribbon-toggle:disabled {
+      color: #9aa4b1;
+      background: transparent;
+      cursor: default;
+      opacity: 0.55;
     }
 
     .chevron {
@@ -720,6 +765,7 @@ export class AppRibbon extends LitElement {
   media: MediaSelectionState | null = null
   fileName = ""
   fileDirty = false
+  previewActive = false
   storageLocation: StorageLocation = "local"
   private packageSearchQuery = ""
   private packageDrawerOpen = false
@@ -729,8 +775,20 @@ export class AppRibbon extends LitElement {
   private spanMarkSelectionSynced = false
   private ribbonContentObserver: ResizeObserver | undefined
   private responsiveLayoutQueued = false
+  private previewTransitioning = false
+  private previewExpandedBefore = true
+  private previewMenuBefore: RibbonMenuName = "Start"
+  private previewTransitionTimer: ReturnType<typeof setTimeout> | undefined
 
   private readonly handleWindowResize = () => this.scheduleResponsiveLayout()
+
+  private schedulePreviewTransitionEnd() {
+    if(this.previewTransitionTimer !== undefined) clearTimeout(this.previewTransitionTimer)
+    this.previewTransitionTimer = setTimeout(() => {
+      this.previewTransitionTimer = undefined
+      this.previewTransitioning = false
+    }, 180)
+  }
 
   private readonly handleDocumentKeydown = (event: KeyboardEvent) => {
     if(event.key !== "Escape" || !this.linkAttributeMenuOpen) return
@@ -824,6 +882,8 @@ export class AppRibbon extends LitElement {
   }
 
   disconnectedCallback() {
+    if(this.previewTransitionTimer !== undefined) clearTimeout(this.previewTransitionTimer)
+    this.previewTransitionTimer = undefined
     this.ribbonContentObserver?.disconnect()
     this.ribbonContentObserver = undefined
     document.removeEventListener("pointerdown", this.handleDocumentPointerDown)
@@ -906,6 +966,7 @@ export class AppRibbon extends LitElement {
   }
 
   private toggleExpanded() {
+    if(this.previewActive) return
     this.expanded = !this.expanded
     this.menuOpen = false
     this.renderRoot.querySelectorAll<RibbonDrawer>("ribbon-drawer")
@@ -922,9 +983,15 @@ export class AppRibbon extends LitElement {
   }
 
   private selectStart() {
+    if(this.previewActive) {
+      this.dispatchEvent(new Event("ribbon-preview-exit", {bubbles: true, composed: true}))
+      return
+    }
     this.activeMenu = "Start"
     this.menuOpen = false
   }
+
+  private handleBrandClick = () => this.selectStart()
 
   dismissCollapsedMenu() {
     this.renderRoot.querySelector<RibbonMenu>("ribbon-menu")?.closeSubmenus()
@@ -941,6 +1008,12 @@ export class AppRibbon extends LitElement {
     const label = (event as CustomEvent<{label?: string}>).detail?.label
     if(label && menuTabs.includes(label as RibbonMenuName)) {
       const nextMenu = label as RibbonMenuName
+      if(this.previewActive) {
+        if(nextMenu === "File") {
+          this.dispatchEvent(new Event("ribbon-preview-exit", {bubbles: true, composed: true}))
+        }
+        return
+      }
       if(this.expanded) {
         this.activeMenu = nextMenu
         this.menuOpen = false
@@ -954,10 +1027,31 @@ export class AppRibbon extends LitElement {
   }
 
   protected willUpdate(changed: Map<string, unknown>) {
+    const previewActiveChanged = changed.has("previewActive") && changed.get("previewActive") !== undefined
+    if(previewActiveChanged) {
+      this.previewTransitioning = true
+      if(this.previewActive) {
+        this.previewExpandedBefore = this.expanded
+        this.previewMenuBefore = this.activeMenu
+        this.expanded = false
+        this.menuOpen = false
+        this.activeMenu = "File"
+        this.renderRoot.querySelectorAll<RibbonDrawer>("ribbon-drawer")
+          .forEach(drawer => drawer.closeDrawer())
+      }
+      else if(changed.get("previewActive") === true) {
+        this.expanded = this.previewExpandedBefore
+        this.activeMenu = this.previewMenuBefore
+        this.menuOpen = false
+      }
+    }
     if(changed.has("marks")) this.syncSpanMarkSelection()
   }
 
   protected updated(changed: Map<string, unknown>) {
+    if(changed.has("previewActive") && changed.get("previewActive") !== undefined) {
+      this.schedulePreviewTransitionEnd()
+    }
     if(changed.has("expanded") && !this.expanded) {
       this.dispatchEvent(new Event("ribbon-collapse", {bubbles: true, composed: true}))
     }
@@ -1895,6 +1989,7 @@ export class AppRibbon extends LitElement {
   }
 
   render() {
+    const visibleTabs = this.previewActive ? ["File"] : menuTabs
     return html`
       <div
         class="ribbon"
@@ -1909,50 +2004,57 @@ export class AppRibbon extends LitElement {
         <div class="ribbon-top">
           <button
             class="brand"
-            ?active=${this.activeMenu === "Start"}
+            ?active=${this.activeMenu === "Start" && !this.previewActive}
             type="button"
-            aria-label="Show Start menu"
-            title="Show Start menu"
-            @click=${this.selectStart}
+            aria-label=${this.previewActive ? "Exit preview" : "Show Start menu"}
+            title=${this.previewActive ? "Exit preview" : "Show Start menu"}
+            @click=${this.handleBrandClick}
           >
             ${this.logoUrl ? html`<img class="brand-logo" src=${this.logoUrl} alt="WebWriter" />` : ""}
           </button>
           <nav class="tabs" role="tablist" aria-label="Editor menus">
-            ${menuTabs.map(tab => html`
+            ${visibleTabs.map(tab => html`
               <ribbon-tab
                 label=${tab}
                 .active=${this.activeMenu === tab}
                 .fileName=${tab === "File" ? this.fileName : ""}
                 .fileDirty=${tab === "File" && this.fileDirty}
+                .previewActive=${this.previewActive}
+                .ribbonCollapsed=${!this.expanded || this.previewTransitioning}
               ></ribbon-tab>
             `)}
           </nav>
           ${this.renderPresence()}
-          <button
-            class="history-button"
-            type="button"
-            aria-label="Undo"
-            title="Undo"
-            @click=${() => this.handleTopButtonClick("Undo")}
-          >
-            <span class="history-icon" aria-hidden="true">${ribbonIcon("Undo")}</span>
-          </button>
-          <button
-            class="history-button"
-            type="button"
-            aria-label="Redo"
-            title="Redo"
-            @click=${() => this.handleTopButtonClick("Redo")}
-          >
-            <span class="history-icon" aria-hidden="true">${ribbonIcon("Redo")}</span>
-          </button>
+          ${this.previewActive ? "" : html`
+            <button
+              class="history-button"
+              type="button"
+              aria-label="Undo"
+              title="Undo"
+              @click=${() => this.handleTopButtonClick("Undo")}
+            >
+              <span class="history-icon" aria-hidden="true">${ribbonIcon("Undo")}</span>
+            </button>
+            <button
+              class="history-button"
+              type="button"
+              aria-label="Redo"
+              title="Redo"
+              @click=${() => this.handleTopButtonClick("Redo")}
+            >
+              <span class="history-icon" aria-hidden="true">${ribbonIcon("Redo")}</span>
+            </button>
+          `}
           <button
             class="preview-button"
             type="button"
-            aria-label="Preview"
-            title="Preview"
+            ?active=${this.previewActive}
+            aria-label=${this.previewActive ? "Exit preview" : "Preview"}
+            title=${this.previewActive ? "Exit preview" : "Preview"}
+            aria-pressed=${this.previewActive}
             @click=${() => this.handleTopButtonClick("Preview")}
           >
+            ${this.previewActive ? html`<span class="preview-label" aria-hidden="true">PREVIEW</span>` : ""}
             <span class="preview-icon" aria-hidden="true">${ribbonIcon("Preview")}</span>
           </button>
           <button
@@ -1960,6 +2062,7 @@ export class AppRibbon extends LitElement {
             type="button"
             aria-controls="ribbon-content"
             aria-expanded=${this.expanded}
+            ?disabled=${this.previewActive || this.previewTransitioning}
             aria-label=${this.expanded ? "Collapse ribbon" : "Expand ribbon"}
             title=${this.expanded ? "Collapse ribbon" : "Expand ribbon"}
             @click=${this.toggleExpanded}

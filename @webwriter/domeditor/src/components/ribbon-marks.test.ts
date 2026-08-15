@@ -86,6 +86,49 @@ describe("mark ribbon controls", () => {
     expect(ribbon.activeMenu).toBe("File")
   })
 
+  it("animates ribbon collapse and hides its tab indicators", async () => {
+    const {ribbon} = await mountRibbon()
+    const fileTab = ribbon.shadowRoot!.querySelector('ribbon-tab[label="File"]')!
+
+    expect(getComputedStyle(ribbon).transition).toContain("height")
+    expect(getComputedStyle(ribbon).transition).toContain("max-height")
+    expect(fileTab.ribbonCollapsed).toBe(false)
+
+    ribbon.expanded = false
+    await ribbon.updateComplete
+    expect(fileTab.ribbonCollapsed).toBe(true)
+    expect(fileTab.hasAttribute("ribbon-collapsed")).toBe(true)
+
+    ribbon.expanded = true
+    await ribbon.updateComplete
+    expect(fileTab.ribbonCollapsed).toBe(false)
+    expect(fileTab.hasAttribute("ribbon-collapsed")).toBe(false)
+  })
+
+  it("disables the dirty save marker while preview is active", async () => {
+    const {ribbon} = await mountRibbon()
+    const saveEvents: string[] = []
+    ribbon.addEventListener("ribbon-button-click", event => {
+      saveEvents.push((event as CustomEvent<{label: string}>).detail.label)
+    })
+    ribbon.fileDirty = true
+    await ribbon.updateComplete
+
+    const fileLabel = ribbon.shadowRoot!.querySelector('ribbon-tab[label="File"]')!
+      .shadowRoot!.querySelector<FileLabel>("file-label")!
+    await fileLabel.updateComplete
+    const dirtyButton = fileLabel.shadowRoot!.querySelector<HTMLButtonElement>(".dirty-button")!
+    expect(dirtyButton.disabled).toBe(false)
+
+    ribbon.previewActive = true
+    await ribbon.updateComplete
+    await fileLabel.updateComplete
+
+    expect(dirtyButton.disabled).toBe(true)
+    dirtyButton.click()
+    expect(saveEvents).toEqual([])
+  })
+
   it("keeps Edit in the main ribbon and includes Review with its layout drawers", async () => {
     const {ribbon} = await mountRibbon()
     const tabs = Array.from(ribbon.shadowRoot!.querySelectorAll("ribbon-tab"))

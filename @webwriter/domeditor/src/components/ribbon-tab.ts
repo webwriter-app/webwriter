@@ -8,6 +8,8 @@ export class RibbonTab extends LitElement {
     label: {type: String},
     fileName: {type: String, attribute: "file-name"},
     fileDirty: {type: Boolean, attribute: "file-dirty"},
+    previewActive: {type: Boolean, attribute: "preview-active"},
+    ribbonCollapsed: {type: Boolean, attribute: "ribbon-collapsed", reflect: true},
   }
 
   static styles = css`
@@ -57,6 +59,11 @@ export class RibbonTab extends LitElement {
       border-right: 7px solid transparent;
       border-bottom: 7px solid var(--ribbon-area-background, #f2f2f2);
       border-left: 7px solid transparent;
+    }
+
+    :host([label="File"][ribbon-collapsed])::before,
+    :host([label="File"][ribbon-collapsed])::after {
+      display: none;
     }
 
     button {
@@ -133,6 +140,8 @@ export class RibbonTab extends LitElement {
   label = "Tab"
   fileName = ""
   fileDirty = false
+  previewActive = false
+  ribbonCollapsed = false
 
   private select() {
     this.dispatchEvent(new CustomEvent("ribbon-tab-select", {
@@ -169,6 +178,7 @@ export class RibbonTab extends LitElement {
         <file-label
           .fileName=${this.fileName}
           .fileDirty=${this.fileDirty}
+          .previewActive=${this.previewActive}
           @file-save=${this.saveFile}
         ></file-label>
       ` : this.label}</button>

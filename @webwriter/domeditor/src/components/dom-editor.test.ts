@@ -600,6 +600,90 @@ describe("DomEditor.execute()", () => {
     expect(previewButton.querySelector(".icon-tabler-player-play.icons-tabler-filled")).not.toBeNull()
   })
 
+  it("shows a static preview and restores the live editor selection on exit", async () => {
+    const {editor} = await mountEditor()
+    const editorFrame = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
+    const editorDocument = editorFrame.contentDocument!
+    editorDocument.body.innerHTML = '<p contenteditable="true" class="◆element-selected">Original</p>'
+    editorDocument.body.setAttribute("contenteditable", "true")
+    editorDocument.designMode = "on"
+    const text = editorDocument.querySelector("p")!.firstChild!
+    editorDocument.getSelection()!.setBaseAndExtent(text, 1, text, 4)
+
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    const previewButton = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!
+    previewButton.click()
+    await editor.updateComplete
+    await ribbon.updateComplete
+
+    const previewFrame = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.preview-frame")!
+    expect(previewFrame).not.toBe(editorFrame)
+    expect(editorFrame.hidden).toBe(true)
+    expect(previewFrame.contentDocument!.body.getAttribute("contenteditable")).toBeNull()
+    expect(previewFrame.contentDocument!.querySelector("[contenteditable]")).toBeNull()
+    expect(previewFrame.contentDocument!.designMode).not.toBe("on")
+    expect(ribbon.shadowRoot!.querySelectorAll("ribbon-tab")).toHaveLength(1)
+    expect(ribbon.shadowRoot!.querySelectorAll(".history-button")).toHaveLength(0)
+    expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ribbon-toggle")!.disabled).toBe(true)
+    expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.getAttribute("aria-label"))
+      .toBe("Exit preview")
+    expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.getAttribute("aria-pressed"))
+      .toBe("true")
+    expect(previewButton.querySelector(".preview-label")?.textContent).toBe("PREVIEW")
+
+    previewFrame.contentDocument!.body.textContent = "Preview changes are discarded"
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!.click()
+    await editor.updateComplete
+    await ribbon.updateComplete
+
+    expect(editor.shadowRoot!.querySelector("iframe.preview-frame")).toBeNull()
+    expect(editorFrame.hidden).toBe(false)
+    expect(editorFrame.contentDocument!.body.innerHTML).toContain("Original")
+    expect(editorFrame.contentDocument!.body.getAttribute("contenteditable")).toBe("true")
+    expect(editorFrame.contentDocument!.designMode).toBe("on")
+    const restored = editorFrame.contentDocument!.getSelection()!
+    expect(restored.anchorNode).toBe(text)
+    expect(restored.anchorOffset).toBe(1)
+    expect(restored.focusNode).toBe(text)
+    expect(restored.focusOffset).toBe(4)
+  })
+
+  it("exits preview from the file tab", async () => {
+    const {editor} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.click()
+    await editor.updateComplete
+    await ribbon.updateComplete
+
+    ribbon.shadowRoot!.querySelector('ribbon-tab[label="File"]')!.shadowRoot!.querySelector<HTMLButtonElement>("button")!.click()
+    await editor.updateComplete
+    await ribbon.updateComplete
+
+    expect((editor as unknown as {previewActive: boolean}).previewActive).toBe(false)
+    expect(ribbon.shadowRoot!.querySelectorAll("ribbon-tab")).toHaveLength(3)
+  })
+
+  it("keeps repeated preview toggles on the same ribbon animation path", async () => {
+    const {editor} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+
+    for(let cycle = 0; cycle < 3; cycle++) {
+      ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.click()
+      await editor.updateComplete
+      await ribbon.updateComplete
+      expect((ribbon as AppRibbon).expanded).toBe(false)
+      expect(ribbon.hasAttribute("preview-transition")).toBe(true)
+      expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")
+        ?.querySelector(".preview-label")?.textContent).toBe("PREVIEW")
+
+      ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.click()
+      await editor.updateComplete
+      await ribbon.updateComplete
+      expect((ribbon as AppRibbon).expanded).toBe(true)
+      expect(ribbon.hasAttribute("preview-transition")).toBe(true)
+    }
+  })
+
   it("renders the current selection path received from the editor bridge", async () => {
     const {editor, iframe, editorWindow} = await mountEditor()
     iframe.contentDocument!.body.innerHTML = "<section><span></span><p></p></section>"

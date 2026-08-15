@@ -5,6 +5,7 @@ export class FileLabel extends LitElement {
   static properties = {
     fileName: {type: String, attribute: "file-name"},
     fileDirty: {type: Boolean, attribute: "file-dirty"},
+    previewActive: {type: Boolean, attribute: "preview-active"},
   }
 
   static styles = css`
@@ -56,15 +57,21 @@ export class FileLabel extends LitElement {
       cursor: pointer;
     }
 
-    .dirty-button:hover {
+    .dirty-button:not(:disabled):hover {
       border-color: #c8d2df;
       color: #243447;
       background: #eef4fb;
     }
 
-    .dirty-button:active {
+    .dirty-button:not(:disabled):active {
       color: #1e4f87;
       background: #c4dcf4;
+    }
+
+    .dirty-button:disabled {
+      color: #9aa4b1;
+      cursor: default;
+      opacity: 0.55;
     }
 
     .dirty-button:focus-visible {
@@ -75,6 +82,7 @@ export class FileLabel extends LitElement {
 
   fileName = ""
   fileDirty = false
+  previewActive = false
 
   private stopLabelPointer = (event: Event) => {
     event.stopPropagation()
@@ -82,6 +90,7 @@ export class FileLabel extends LitElement {
 
   private save = (event: Event) => {
     event.stopPropagation()
+    if(this.previewActive) return
     this.dispatchEvent(new Event("file-save", {bubbles: true, composed: true}))
   }
 
@@ -100,6 +109,8 @@ export class FileLabel extends LitElement {
           type="button"
           aria-label="Save file"
           title="Save file"
+          aria-disabled=${this.previewActive}
+          ?disabled=${this.previewActive}
           style=${`visibility: ${this.fileDirty ? "visible" : "hidden"}`}
           @click=${this.save}
         >*</button>
