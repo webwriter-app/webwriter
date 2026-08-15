@@ -600,7 +600,7 @@ export class AppRibbon extends LitElement {
       height: 1.55rem;
       padding: 0 0.4rem;
       overflow: hidden;
-      border: 1px solid #c8d2df;
+      border: 1px solid transparent;
       border-radius: 0.25rem;
       color: #2f3742;
       background: transparent;
@@ -623,7 +623,7 @@ export class AppRibbon extends LitElement {
 
     .file-dirty {
       flex: 0 0 0.6rem;
-      color: #b54708;
+      color: #526b86;
       font-weight: 700;
       text-align: center;
     }
