@@ -32,8 +32,8 @@ describe("responsive ribbon drawer", () => {
 
     expect(summary.textContent).toContain("Paragraph")
     expect(summary.querySelector(".icon-tabler-align-left")).not.toBeNull()
-    expect(drawer.layoutWidths).toEqual({collapsed: 80, expanded: 212})
-    expect(getComputedStyle(drawer).minWidth).toBe("80px")
+    expect(drawer.layoutWidths).toEqual({collapsed: 84, expanded: 212})
+    expect(getComputedStyle(drawer).minWidth).toBe("84px")
     expect(getComputedStyle(controls).width).toBe("212px")
     expect(getComputedStyle(controls).boxShadow).not.toBe("none")
     expect(getComputedStyle(controls).borderColor).toBe("#d8dee6")

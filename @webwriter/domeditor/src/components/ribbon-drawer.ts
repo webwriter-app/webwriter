@@ -30,7 +30,7 @@ export class RibbonDrawer extends LitElement {
   static styles = css`
     :host {
       --ribbon-drawer-expanded-width: 13.25rem;
-      --ribbon-drawer-collapsed-width: 5rem;
+      --ribbon-drawer-collapsed-width: 5.25rem;
       --ribbon-drawer-width: var(--ribbon-drawer-expanded-width);
       --ribbon-drawer-height: 5rem;
       --ribbon-drawer-more-height: 5.85rem;
@@ -282,7 +282,7 @@ export class RibbonDrawer extends LitElement {
       display: grid;
       place-items: center;
       position: absolute;
-      left: calc(50% + 1px);
+      left: 50%;
       bottom: -0.25rem;
       z-index: 1;
       justify-self: center;
