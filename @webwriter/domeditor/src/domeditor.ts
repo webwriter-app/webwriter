@@ -12,7 +12,7 @@ import { TransformationFeature } from "./features/transformation"
 import { StateFeature } from "./features/state"
 import { MediaFeature } from "./features/media"
 import { Schema } from "./schema"
-import { $, adoptStylesheet, createStylesheet, getContainer, isElement, isWidgetShadowInteraction } from "./utility"
+import { $, adoptStylesheet, createStylesheet, focusedWidgetHost, getContainer, isElement, isWidgetShadowInteraction } from "./utility"
 import {isMarkElement, normalizeMarkElements} from "./marks"
 import {
   executeCompleteEvent,
@@ -215,7 +215,8 @@ export class DOMEditor {
     this.doc.destroy()
   }
 
-  private handleSelectionChange = () => {
+  private handleSelectionChange = (event: Event) => {
+    if(isWidgetShadowInteraction(event)) return
     const selection = document.getSelection()
     if(!selection?.anchorNode) return
 
@@ -317,6 +318,8 @@ export class DOMEditor {
   }
 
   private selectedElementForPath() {
+    const focusedWidget = focusedWidgetHost()
+    if(focusedWidget) return focusedWidget
     const selectedElement = $.selectedElement
     if(selectedElement?.isConnected) return selectedElement
 
@@ -343,6 +346,7 @@ export class DOMEditor {
   /** Sends the current element path to the host application through the bridge. */
   postSelectionPath() {
     const body = document.body
+    const focusedWidget = focusedWidgetHost()
     const selected = this.selectedElementForPath()
     const element = selected && (selected === body || body.contains(selected))? selected: body
     const elements: Element[] = []
@@ -368,7 +372,7 @@ export class DOMEditor {
           : getElementPresentation(currentElement)),
       }
     })
-    const gap: SelectionGap | undefined = $.isGapSelection && isElement($.anchor)
+    const gap: SelectionGap | undefined = !focusedWidget && $.isGapSelection && isElement($.anchor)
       ? {parentPath: this.pathToElement($.anchor), offset: $.anchorOffset}
       : undefined
     const list = this.features.list.getState()

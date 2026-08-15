@@ -221,6 +221,45 @@ describe("selectCoords()", () => {
     expect($.anchorOffset).toBe(0)
   })
 
+  it.each(["interactive-widget", "video"])("selects the gap after a %s when clicking below it", tagName => {
+    setBody(`<${tagName}></${tagName}>`)
+    const atomicElement = document.body.firstElementChild!
+    setBlockRect(atomicElement, 100, 120)
+    mockHitTest(document.body, 0)
+
+    $.selectCoords(0, 130)
+
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(1)
+    expect($.isGapSelection).toBe(true)
+  })
+
+  it("selects the widget's following gap when Chromium maps the whitespace to the next media element", () => {
+    setBody("<interactive-widget></interactive-widget><video></video>")
+    const widget = document.querySelector("interactive-widget")!
+    const video = document.querySelector("video")!
+    setBlockRect(widget, 100, 120)
+    setBlockRect(video, 160, 260)
+    mockHitTest(video, 0)
+
+    $.selectCoords(0, 130)
+
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(1)
+  })
+
+  it("ignores formatting whitespace when selecting the gap below media", () => {
+    setBody("\n<video></video>\n")
+    const video = document.querySelector("video")!
+    setBlockRect(video, 100, 120)
+    mockHitTest(document.body, 2)
+
+    $.selectCoords(0, 130)
+
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(2)
+  })
+
   it("selects a gap when no caret position is returned above the body", () => {
     setBody("<p>hello</p><p>world</p>")
     const block = document.body.firstElementChild!
@@ -269,6 +308,11 @@ describe("isGapSelection", () => {
   it("is true before the first body element", () => {
     setBody("\n<p>a</p>")
     $.selectGap(document.body.firstElementChild!, "before")
+    expect($.isGapSelection).toBe(true)
+  })
+  it("is true between elements separated by formatting whitespace", () => {
+    setBody("<p>a</p>\n<p>b</p>")
+    $.move(document.body, 2)
     expect($.isGapSelection).toBe(true)
   })
   it("is false for a caret in text", () => {

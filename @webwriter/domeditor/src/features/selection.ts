@@ -1,12 +1,6 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import {$, getContainer, isElement, modifierKeyDown, setPart, widgetHostForShadowInteraction} from "../utility"
+import {$, focusedWidgetHost, getContainer, isElement, modifierKeyDown, setPart, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
-
-const widgetSelectionEventTypes = [
-  "pointerdown", "pointerup", "click", "focusin",
-  "keydown", "keyup", "beforeinput", "input",
-  "compositionstart", "compositionend", "copy", "cut", "paste",
-] as const
 
 function isCaretAtStartOf(element: Element) {
   const selection = document.getSelection()
@@ -104,7 +98,7 @@ export class SelectionFeature extends EditorFeature {
     if(this.isEnabled) return
     $.selectDocumentStart()
     super.enable()
-    widgetSelectionEventTypes.forEach(type => document.addEventListener(type, this.#handleWidgetShadowInteraction))
+    document.addEventListener("pointerdown", this.#handleWidgetShadowInteraction, {capture: true})
     this.editor.doc.doc.on("afterTransaction", this.#handleSharedChange)
     this.processSelection()
   }
@@ -112,22 +106,22 @@ export class SelectionFeature extends EditorFeature {
   disable() {
     if(!this.isEnabled) return
     this.editor.doc.doc.off("afterTransaction", this.#handleSharedChange)
-    widgetSelectionEventTypes.forEach(type => document.removeEventListener(type, this.#handleWidgetShadowInteraction))
+    document.removeEventListener("pointerdown", this.#handleWidgetShadowInteraction, {capture: true})
     this.#clearElementHover()
     super.disable()
   }
 
   /** Keeps widget shadow trees atomic without cancelling their own controls.
    * Regular feature listeners ignore these events, so they cannot start or
-   * extend an editor drag selection. Reasserting the host through click and
-   * focus also wins over any native shadow-tree selection made after
-   * pointerdown. */
+   * extend an editor drag selection. Selecting the host before pointerdown's
+   * native action leaves that action free to establish the widget's own focus
+   * and shadow-tree caret; subsequent widget input is left untouched. */
   readonly #handleWidgetShadowInteraction = (event: Event) => {
     const widget = widgetHostForShadowInteraction(event)
     if(!widget) return
     this.isInDragSelection = false
     if(!($.isElementSelection && $.selectedElement === widget)) {
-      $.selectElement(widget)
+      $.selectElement(widget, false)
     }
     this.processSelection()
   }
@@ -279,6 +273,12 @@ export class SelectionFeature extends EditorFeature {
    * the text container (`◆text-selected`) or the empty container
    * (`◆empty-selected`). Previous markers are cleared first. */
   processSelection(inDragSelection=false) {
+    const focusedWidget = focusedWidgetHost()
+    if(focusedWidget) {
+      this.#clearSelections()
+      focusedWidget.classList.add("◆", "◆element-selected")
+      return
+    }
     this.#constrainSelectionToBody()
     this.#constrainSelectionToMedia()
     let sel = document.getSelection()

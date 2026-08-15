@@ -1,5 +1,6 @@
 import { Schema } from "./schema"
 import {isMarkElement} from "./marks"
+import {mediaElementSelector} from "./media"
 
 export function createStylesheet(content: string) {
   const stylesheet = new CSSStyleSheet()
@@ -28,6 +29,29 @@ type Granularity = "character" | "word" | "line"
 /** Direction for caret movement and extension (see Selection.modify). */
 type Direction = "left" | "right" | "forward" | "backward"
 
+/** Focuses the outer editing surface, releasing focus held inside a widget. */
+function focusEditorWindow() {
+  focusedWidgetHost()?.blur()
+  window.focus()
+}
+
+function isAtomicEditingElement(node: Node | null): node is Element {
+  return node instanceof Element
+    && (node.matches(mediaElementSelector)
+      || node.localName.includes("-")
+      || node.hasAttribute("is"))
+}
+
+function adjacentElement(nodes: NodeListOf<ChildNode>, offset: number, direction: "before" | "after") {
+  const step = direction === "before" ? -1 : 1
+  for(let index = direction === "before" ? offset - 1 : offset; 0 <= index && index < nodes.length; index += step) {
+    const node = nodes.item(index)
+    if(node instanceof Element) return node
+    if(node instanceof Text && node.textContent?.trim()) return null
+  }
+  return null
+}
+
 
 
 /** Static facade over the document's current selection, providing editing-oriented queries (kind of selection, boundaries, covered nodes) and operations (selecting, moving, extending, copying, cutting, deleting, replacing). Usually accessed through the `$` alias. */
@@ -55,9 +79,9 @@ export class EditingSelection {
   }
 
   /** Selects the element itself (the selection is anchored in its parent, spanning exactly the element). */
-  static selectElement(element: Element) {
+  static selectElement(element: Element, focus=true) {
     this.range.selectNode(element)
-    window.focus()
+    if(focus) focusEditorWindow()
   }
 
   /** Sets anchor and focus of the selection; collapses to the anchor when the focus is omitted. */
@@ -75,7 +99,7 @@ export class EditingSelection {
 
   /** Moves (or with `extend`, extends) the selection to the document position at the given viewport coordinates, snapping to element gaps at text boundaries. Requires layout (caretPositionFromPoint). */
   static selectCoords(x: number, y: number, extend=false) {
-    window.focus()
+    focusEditorWindow()
     const {offset, offsetNode} = document.caretPositionFromPoint(x, y) ?? {}
     const firstBodyElement = document.body.firstElementChild
     const firstBodyElementIndex = firstBodyElement? Array.from(document.body.childNodes).indexOf(firstBodyElement): -1
@@ -90,6 +114,38 @@ export class EditingSelection {
     if(!extend && isBeforeFirstBodyElement) {
       this.selectGap(firstBodyElement, "before")
       return
+    }
+    if(!extend && offsetNode instanceof Element && typeof offset === "number") {
+      const atomicAtCaret = isAtomicEditingElement(offsetNode) ? offsetNode : null
+      const elementBeforeCaret = adjacentElement(offsetNode.childNodes, offset, "before")
+      const elementAfterCaret = adjacentElement(offsetNode.childNodes, offset, "after")
+      const atomicBeforeCaret = isAtomicEditingElement(elementBeforeCaret) ? elementBeforeCaret : null
+      const atomicAfterCaret = isAtomicEditingElement(elementAfterCaret) ? elementAfterCaret : null
+
+      // Chromium may map whitespace around an atomic element either to the
+      // element itself or to a parent position separated by formatting text.
+      // Geometry resolves both forms to the physically adjacent gap.
+      if(atomicAtCaret) {
+        const rect = atomicAtCaret.getBoundingClientRect()
+        if(y < rect.top) {
+          const previous = atomicAtCaret.previousElementSibling
+          this.selectGap(isAtomicEditingElement(previous) && y > previous.getBoundingClientRect().bottom ? previous : atomicAtCaret,
+            isAtomicEditingElement(previous) && y > previous.getBoundingClientRect().bottom ? "after" : "before")
+          return
+        }
+        if(y > rect.bottom) {
+          this.selectGap(atomicAtCaret, "after")
+          return
+        }
+      }
+      if(atomicBeforeCaret && y > atomicBeforeCaret.getBoundingClientRect().bottom) {
+        this.selectGap(atomicBeforeCaret, "after")
+        return
+      }
+      if(atomicAfterCaret && y > atomicAfterCaret.getBoundingClientRect().bottom) {
+        this.selectGap(atomicAfterCaret, "after")
+        return
+      }
     }
     const caretAtEndOrStart = offsetNode instanceof Text && (offset === 0 || offsetNode.length === offset)
     const container: HTMLElement = offsetNode instanceof Text? offsetNode.parentElement!: offsetNode as HTMLElement
@@ -166,7 +222,7 @@ export class EditingSelection {
       [this.anchor.childNodes.item(this.anchorOffset - 1), this.anchor.childNodes.item(this.anchorOffset)]
         .some(node => isElement(node) && node.matches("ul, ol, dl, menu"))
     return isElement(this.anchor) && this.isEmpty && !this.isEmptySelection &&
-      (!Array.from(this.anchor.childNodes).some(node => isText(node) || isMarkElement(node))
+      (!Array.from(this.anchor.childNodes).some(node => (isText(node) && Boolean(node.textContent?.trim())) || isMarkElement(node))
         || isBodyBoundaryBeforeFirstElement
         || isNestedListBoundary)
   }
@@ -767,12 +823,31 @@ export function getDescendantsInStackingOrder(node: HTMLElement, selector="*") {
   return descendants.sort(compareStackingOrder)
 }
 
+/** The mounted widget host that currently owns focus in its shadow tree. */
+export function focusedWidgetHost() {
+  const activeElement = document.activeElement
+  return activeElement instanceof HTMLElement
+    && activeElement !== document.body
+    && document.body.contains(activeElement)
+    && activeElement.namespaceURI === "http://www.w3.org/1999/xhtml"
+    && (activeElement.localName.includes("-") || activeElement.hasAttribute("is"))
+    ? activeElement
+    : null
+}
+
 /** The editable widget host whose shadow tree originated an interaction.
  * Composed events are retargeted to the host by the time they reach document
  * listeners, so inspect the full path instead. Hosts in the body's own shadow
  * tree belong to the editor appendix and are intentionally excluded. */
 export function widgetHostForShadowInteraction(event: Event) {
   if(event.type === "scroll") return null
+  // Text controls report their internal caret changes as document-level
+  // selectionchange events, so the composed path cannot identify the shadow
+  // origin. While focus is inside a widget, document.activeElement is its host
+  // (also for closed roots), which preserves that boundary information.
+  if(event.type === "selectionchange") {
+    return focusedWidgetHost()
+  }
   const origin = event.composedPath()[0] as Node | undefined
   if(typeof origin?.getRootNode !== "function") return null
   let root = origin.getRootNode()

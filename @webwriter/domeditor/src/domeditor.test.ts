@@ -65,7 +65,7 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toContain("body::part(presence-element-selection)")
     expect(editorStyleString).toContain("body::part(presence-element-selection-label)")
     expect(editorStyleString).toMatch(/\.◆element-selected\s*\{[\s\S]*?outline:\s*2px solid var\(--sl-color-primary-400\);[\s\S]*?outline-offset:\s*2px;/)
-    expect(editorStyleString).toMatch(/\.◆element-selected:hover\s*\{[\s\S]*?outline-style:\s*dotted;/)
+    expect(editorStyleString).toMatch(/\.◆element-selected:hover\s*\{[\s\S]*?outline:\s*2px dotted var\(--sl-color-primary-400\);[\s\S]*?outline-offset:\s*2px;/)
     expect(editorStyleString).toMatch(/body::part\(presence-element-selection\)[\s\S]*?outline:\s*2px solid color-mix\(in srgb, var\(--presence-color\) 40%, transparent\);[\s\S]*?outline-offset:\s*2px;/)
     expect(editorStyleString).not.toContain("body::part(element-caret)")
     expect(editorStyleString).toMatch(/body\s*>\s*\*\s*\+\s*\*\s*\{[\s\S]*?margin-block-start:\s*1\.25rem;/)
@@ -117,13 +117,21 @@ describe("DOMEditor stylesheets", () => {
 describe("widget shadow interactions", () => {
   const editor = new DOMEditor()
 
-  it("node-selects keyboard interaction without cancelling the widget", () => {
+  it("keeps typing inside a selected widget without cancelling the widget", async () => {
     const widget = document.createElement("interactive-widget")
     const input = document.createElement("input")
     widget.attachShadow({mode: "open"}).append(input)
     document.body.append(widget)
     const propagated = vi.fn()
     document.addEventListener("keydown", propagated)
+
+    input.dispatchEvent(new MouseEvent("pointerdown", {
+      bubbles: true,
+      composed: true,
+      cancelable: true,
+    }))
+    input.focus()
+    await Promise.resolve()
 
     const event = new KeyboardEvent("keydown", {
       key: "a",
@@ -137,6 +145,7 @@ describe("widget shadow interactions", () => {
     expect(propagated).toHaveBeenCalledWith(event)
     expect(event.defaultPrevented).toBe(false)
     expect(widget).toHaveClass("◆element-selected")
+    expect(widget.shadowRoot?.activeElement).toBe(input)
     document.removeEventListener("keydown", propagated)
     widget.remove()
   })

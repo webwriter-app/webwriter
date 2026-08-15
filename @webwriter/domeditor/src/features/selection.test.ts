@@ -310,6 +310,22 @@ describe("document listeners", () => {
       },
     }, "*")
   })
+  it("posts the focused widget path instead of its projected outer gap", () => {
+    const widget = document.createElement("editable-widget")
+    const editable = document.createElement("div")
+    editable.contentEditable = "true"
+    widget.attachShadow({mode: "open"}).append(editable)
+    document.body.append(widget)
+    editable.focus()
+    document.getSelection()?.setPosition(document.body, 0)
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => {})
+
+    editor.postSelectionPath()
+
+    const message = postMessage.mock.lastCall?.[0] as {detail: {path: Array<{path: number[]}>, gap?: unknown}}
+    expect(message.detail.path.at(-1)?.path).toEqual([0])
+    expect(message.detail).not.toHaveProperty("gap")
+  })
   it("tracks modifier keys on the body", () => {
     document.dispatchEvent(new KeyboardEvent("keydown", {ctrlKey: true, altKey: true, shiftKey: true}))
     expect(document.body.classList.contains("◆key-mod-down")).toBe(true)
@@ -346,8 +362,16 @@ describe("document listeners", () => {
 
     expect(event.defaultPrevented).toBe(false)
     expect(feature.isInDragSelection).toBe(false)
+    button.focus()
     expect($.selectedElement).toBe(widget)
     expect(widget).toHaveClass("◆element-selected")
+    expect(widget.shadowRoot?.activeElement).toBe(button)
+
+    const keydown = new KeyboardEvent("keydown", {key: "a", bubbles: true, composed: true, cancelable: true})
+    button.dispatchEvent(keydown)
+    expect(keydown.defaultPrevented).toBe(false)
+    expect(widget).toHaveClass("◆element-selected")
+    expect(widget.shadowRoot?.activeElement).toBe(button)
   })
   it("node-selects interaction retargeted from a closed widget shadow DOM", () => {
     const widget = document.createElement("closed-widget")
@@ -359,6 +383,51 @@ describe("document listeners", () => {
 
     expect($.selectedElement).toBe(widget)
     expect(widget).toHaveClass("◆element-selected")
+  })
+  it("does not reset a widget's shadow contenteditable selection during input", () => {
+    const widget = document.createElement("editable-widget")
+    const editable = document.createElement("div")
+    editable.contentEditable = "true"
+    editable.textContent = "code"
+    widget.attachShadow({mode: "open"}).append(editable)
+    document.body.append(widget)
+    editable.addEventListener("pointerdown", event => event.stopPropagation())
+
+    editable.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
+    editable.focus()
+    const text = editable.firstChild!
+    document.getSelection()?.setPosition(text, 2)
+    const event = new InputEvent("beforeinput", {
+      bubbles: true,
+      composed: true,
+      cancelable: true,
+      data: "x",
+      inputType: "insertText",
+    })
+
+    editable.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(false)
+    expect(document.getSelection()?.anchorNode).toBe(text)
+    expect(document.getSelection()?.anchorOffset).toBe(2)
+    expect(widget).toHaveClass("◆element-selected")
+  })
+  it("keeps a focused widget selected when its shadow caret projects to an outer gap", () => {
+    const widget = document.createElement("editable-widget")
+    const editable = document.createElement("div")
+    editable.contentEditable = "true"
+    editable.textContent = "code"
+    widget.attachShadow({mode: "open"}).append(editable)
+    document.body.append(widget)
+
+    editable.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
+    editable.focus()
+    document.getSelection()?.setPosition(document.body, 0)
+
+    feature.processSelection()
+
+    expect(widget).toHaveClass("◆element-selected")
+    expect(widget).not.toHaveClass("◆gap-before-selected")
   })
   it("keeps an editor range out of a widget's shadow text", async () => {
     const before = el("p", "before")
