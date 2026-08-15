@@ -184,6 +184,9 @@ describe("mark ribbon controls", () => {
     const fileButtons = Array.from(fileDrawer.querySelectorAll<RibbonButton>("ribbon-button"))
     expect(fileButtons.map(button => button.label))
       .toEqual(["New", "Open", "Save", "Save as"])
+    expect(fileButtons.every(button => getComputedStyle(
+      button.shadowRoot!.querySelector<HTMLElement>(".button-row")!,
+    ).boxSizing === "border-box")).toBe(true)
     expect(fileButtons.find(button => button.label === "Save")?.submenu).toEqual([
       {label: "HTML (.html)", action: "save:html"},
       {label: "Offline HTML (.offline.html)", action: "save:offline"},
@@ -199,6 +202,9 @@ describe("mark ribbon controls", () => {
     const sharingDrawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Sharing"]')!
     const sharingButtons = Array.from(sharingDrawer.querySelectorAll<RibbonButton>("ribbon-button"))
     expect(sharingButtons.map(button => button.label)).toEqual(["Share", "Print", "Download"])
+    expect(sharingButtons.every(button => getComputedStyle(
+      button.shadowRoot!.querySelector<HTMLElement>(".button-row")!,
+    ).boxSizing === "border-box")).toBe(true)
     expect(getComputedStyle(sharingDrawer.shadowRoot!.querySelector<HTMLElement>(".controls")!).gridTemplateColumns)
       .toBe("minmax(5rem, 1.15fr) minmax(0, 1fr)")
     const shareButton = sharingButtons[0]
