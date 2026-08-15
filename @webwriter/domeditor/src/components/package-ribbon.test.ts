@@ -98,6 +98,7 @@ describe("package ribbon controls", () => {
     expect(getComputedStyle(button.shadowRoot!.querySelector(".button-row")!).height).toBe("100%")
     expect(getComputedStyle(search.shadowRoot!.querySelector(".field")!).backgroundColor).toBe("transparent")
     expect(getComputedStyle(button.shadowRoot!.querySelector(".button-label")!).fontSize).toContain("calc")
+    expect(getComputedStyle(button.shadowRoot!.querySelector(".button-label-text")!).whiteSpace).toBe("normal")
     expect(RibbonButton.styles.toString()).toMatch(/\.submenu-trigger\s*\{[\s\S]*?height:\s*100%/)
     expect(RibbonButton.styles.toString()).toMatch(/\.submenu-trigger\s*\{[\s\S]*?aspect-ratio:\s*1\s*\/\s*1/)
 
@@ -224,6 +225,30 @@ describe("package ribbon controls", () => {
 
     expect(drawer.querySelectorAll('ribbon-button:not([slot="more"])')).toHaveLength(5)
     expect(drawer.querySelectorAll('ribbon-button[slot="more"]')).toHaveLength(1)
+  })
+
+  it("uses the full drawer width when only one package-button column fits", async () => {
+    const ribbon = new AppRibbon()
+    ribbon.activeMenu = "Insert"
+    ribbon.packages = [packageFixture("long-package-name")]
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+
+    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')!
+    const controls = drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!
+    Object.defineProperty(controls, "getBoundingClientRect", {
+      value: () => ({width: 240}),
+      configurable: true,
+    })
+    ;(ribbon as unknown as {updatePackageCapacity(): void}).updatePackageCapacity()
+    await ribbon.updateComplete
+    await drawer.updateComplete
+
+    expect(drawer.singleColumn).toBe(true)
+    expect(drawer.querySelectorAll('ribbon-button:not([slot="more"])')).toHaveLength(1)
+    expect(drawer.hasAttribute("single-column")).toBe(true)
+    expect(RibbonDrawer.styles.toString()).toContain('[single-column]) ::slotted(ribbon-button[variant="package"])')
+    expect(RibbonDrawer.styles.toString()).toContain('[single-column]) ::slotted(package-search)')
   })
 
   it("opens management mode on search focus and only shows remove icons for installed packages", async () => {

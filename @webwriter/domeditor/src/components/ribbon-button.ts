@@ -626,6 +626,12 @@ export class RibbonButton extends LitElement {
       -webkit-line-clamp: 2;
     }
 
+    :host([variant="package"]) .button-label-text {
+      overflow-wrap: anywhere;
+      text-overflow: clip;
+      white-space: normal;
+    }
+
     :host([variant="package"][muted]) .button-row {
       color: #7c8794;
       opacity: 0.55;

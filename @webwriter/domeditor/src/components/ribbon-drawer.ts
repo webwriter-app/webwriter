@@ -25,6 +25,7 @@ export class RibbonDrawer extends LitElement {
     icon: {type: String},
     label: {type: String},
     layout: {type: String, reflect: true},
+    singleColumn: {type: Boolean, reflect: true, attribute: "single-column"},
   }
 
   static styles = css`
@@ -75,6 +76,7 @@ export class RibbonDrawer extends LitElement {
       --ribbon-drawer-width: min(42rem, calc(100vw - 1rem));
       --ribbon-drawer-height: 10rem;
       --ribbon-drawer-more-height: 8rem;
+      --ribbon-drawer-viewport-bottom-margin: 0.5rem;
       flex-grow: 1;
     }
 
@@ -238,6 +240,11 @@ export class RibbonDrawer extends LitElement {
     :host([layout="packages"]) ::slotted(package-search) {
       grid-column: span 2;
       width: 100%;
+    }
+
+    :host([layout="packages"][single-column]) ::slotted(package-search),
+    :host([layout="packages"][single-column]) ::slotted(ribbon-button[variant="package"]) {
+      grid-column: 1 / -1;
     }
 
     :host([layout="marks"]) ::slotted(.font-family) {
@@ -479,6 +486,7 @@ export class RibbonDrawer extends LitElement {
   icon = ""
   label = "Drawer"
   layout = "default"
+  singleColumn = false
   private drawerOpen = false
   private drawerContentOpen = false
   private drawerSettled = false
@@ -594,9 +602,6 @@ export class RibbonDrawer extends LitElement {
     if(this.layout !== "packages" || this.collapsed) return
     const drawer = this.renderRoot.querySelector<HTMLElement>(".drawer")
     const controls = this.renderRoot.querySelector<HTMLElement>(".controls")
-    const firstControl = Array.from(this.children).find(child => (
-      child.slot !== "more" && child.localName === "ribbon-button"
-    )) as HTMLElement | undefined
     if(!drawer || !controls) return
     const drawerBounds = drawer.getBoundingClientRect()
     const controlsBounds = controls.getBoundingClientRect()
@@ -604,16 +609,16 @@ export class RibbonDrawer extends LitElement {
     const rowGap = Number.parseFloat(controlsStyle.rowGap) || 0
     const paddingTop = Number.parseFloat(controlsStyle.paddingTop) || 0
     const paddingBottom = Number.parseFloat(controlsStyle.paddingBottom) || 0
-    const offset = firstControl
-      ? Math.max(0, firstControl.getBoundingClientRect().top - controlsBounds.top)
-      : 0
     const storedRowHeight = Number.parseFloat(controlsStyle.getPropertyValue("--package-row-height")) || 0
     const rowHeight = storedRowHeight || Math.max(
       0,
       (controlsBounds.height - paddingTop - paddingBottom - rowGap) / 2,
     )
-    controls.style.setProperty("--package-expanded-grid-offset", `${offset}px`)
-    controls.style.setProperty("--package-expanded-grid-padding", `${Math.max(offset, 4)}px`)
+    // The fixed expanded rows already reproduce the closed grid's top edge.
+    // Reusing the measured child inset as padding would apply that inset twice
+    // and make the drawer contents jump down during expansion.
+    controls.style.setProperty("--package-expanded-grid-offset", "0px")
+    controls.style.setProperty("--package-expanded-grid-padding", "4px")
     if(rowHeight > 0) controls.style.setProperty("--package-row-height", `${rowHeight}px`)
     drawer.style.setProperty(
       "--package-drawer-chrome-height",
@@ -641,9 +646,13 @@ export class RibbonDrawer extends LitElement {
     )
     const columnWidth = 64
     const columns = Math.max(1, Math.floor((controlsBounds.width + columnGap) / (columnWidth + columnGap)))
+    const singleColumn = columns < 4
     const spans = Array.from(this.children)
       .filter(child => child instanceof HTMLElement)
-      .map(child => child.localName === "package-search" ? 2 : child.localName === "ribbon-button" ? 2 : 1)
+      .map(child => {
+        const isPackageControl = child.localName === "package-search" || child.localName === "ribbon-button"
+        return isPackageControl ? singleColumn ? columns : 2 : 1
+      })
     let row = 0
     let column = 0
     let rowCount = 0
@@ -673,7 +682,14 @@ export class RibbonDrawer extends LitElement {
       controlsStyle.getPropertyValue("--package-expanded-grid-padding"),
     ) || 4
     const contentHeight = chromeHeight + topPadding + bottomPadding + rowCount * rowHeight + Math.max(0, rowCount - 1) * rowGap
-    const available = Math.max(bounds.height, window.innerHeight - Math.max(0, bounds.top))
+    const viewportBottomMargin = this.lengthInPixels(
+      getComputedStyle(this).getPropertyValue("--ribbon-drawer-viewport-bottom-margin").trim(),
+      8,
+    )
+    const available = Math.max(
+      bounds.height,
+      window.innerHeight - Math.max(0, bounds.top) - viewportBottomMargin,
+    )
     const collapsedHeight = Number.parseFloat(drawer.style.getPropertyValue("--drawer-collapsed-height")) || drawerBounds.height
     const preferredHeight = Math.max(collapsedHeight, Math.min(contentHeight, available))
     const currentTarget = Number.parseFloat(drawer.style.getPropertyValue("--package-expanded-height")) || 0

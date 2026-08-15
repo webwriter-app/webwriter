@@ -118,7 +118,7 @@ describe("responsive ribbon drawer", () => {
     await drawer.updateComplete
 
     expect(drawer.style.getPropertyValue("--ribbon-drawer-available-height"))
-      .toBe(`${window.innerHeight - 120}px`)
+      .toBe(`${window.innerHeight - 120 - 8}px`)
     const section = drawer.shadowRoot!.querySelector<HTMLElement>(".drawer")!
     expect(section.style.getPropertyValue("--package-expanded-height")).toMatch(/px$/)
     expect(RibbonDrawer.styles.toString()).toContain("height: var(--package-expanded-height")
@@ -186,6 +186,30 @@ describe("responsive ribbon drawer", () => {
     controlsWidth = 600
     resize()
     expect(Number.parseFloat(section.style.getPropertyValue("--package-expanded-height"))).toBeLessThan(narrowedHeight)
+  })
+
+  it("keeps expanded package contents anchored to the top edge", async () => {
+    const drawer = new RibbonDrawer()
+    drawer.layout = "packages"
+    const search = document.createElement("package-search")
+    const button = new RibbonButton()
+    button.variant = "package"
+    drawer.append(search, button)
+    document.body.append(drawer)
+    await drawer.updateComplete
+
+    const controls = drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!
+    const section = drawer.shadowRoot!.querySelector<HTMLElement>(".drawer")!
+    Object.defineProperty(controls, "getBoundingClientRect", {
+      value: () => ({top: 100, height: 80, width: 240}), configurable: true,
+    })
+    Object.defineProperty(section, "getBoundingClientRect", {
+      value: () => ({top: 100, height: 80}), configurable: true,
+    })
+    ;(drawer as unknown as {captureExpandedContentOffset(): void}).captureExpandedContentOffset()
+
+    expect(controls.style.getPropertyValue("--package-expanded-grid-offset")).toBe("0px")
+    expect(controls.style.getPropertyValue("--package-expanded-grid-padding")).toBe("4px")
   })
 
   it("closes a compact drawer when the drawer expands again", async () => {
