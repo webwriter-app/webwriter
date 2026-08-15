@@ -77,6 +77,11 @@ export class RibbonButton extends LitElement {
       background: #eef4fb;
     }
 
+    .button-row button:active {
+      color: #1e4f87;
+      background: #c4dcf4;
+    }
+
     .button-notification {
       box-sizing: border-box;
       position: absolute;
