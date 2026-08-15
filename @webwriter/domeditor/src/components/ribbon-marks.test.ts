@@ -315,6 +315,23 @@ describe("mark ribbon controls", () => {
     expect(getComputedStyle(buttons[2].shadowRoot!.querySelector<HTMLElement>(".button-label")!).display).toBe("none")
   })
 
+  it("shows a chevron to expand the marks drawer when it is collapsed", async () => {
+    const {drawer} = await mountRibbon()
+    drawer.collapsed = true
+    await drawer.updateComplete
+
+    const toggle = drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!
+    expect(toggle.hidden).toBe(false)
+    expect(toggle.getAttribute("aria-label")).toBe("Show Marks controls")
+    expect(toggle.querySelector(".drawer-icon")).not.toBeNull()
+
+    toggle.click()
+    await drawer.updateComplete
+
+    expect(drawer.hasAttribute("drawer-open")).toBe(true)
+    expect(toggle.getAttribute("aria-expanded")).toBe("true")
+  })
+
   it("uses the standard ribbon button and menu path for Link and Span", async () => {
     const {ribbon, drawer} = await mountRibbon()
     ribbon.canMark = true

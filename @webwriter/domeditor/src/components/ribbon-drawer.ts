@@ -701,7 +701,7 @@ export class RibbonDrawer extends LitElement {
   }
 
   openDrawer(force = false) {
-    if(this.layout === "marks") return
+    if(this.layout === "marks" && !this.collapsed) return
     if(force) this.forcedOpen = true
     if(this.drawerOpen) return
     this.captureExpandedContentOffset()
@@ -723,7 +723,7 @@ export class RibbonDrawer extends LitElement {
   }
 
   private toggleDrawer() {
-    if(this.layout === "marks" || !this.collapsed && !this.expandable) return
+    if(!this.collapsed && (this.layout === "marks" || !this.expandable)) return
     if(this.drawerOpen) {
       this.closeDrawer()
       return
@@ -779,7 +779,7 @@ export class RibbonDrawer extends LitElement {
   }
 
   render() {
-    const toggleUnavailable = this.layout === "marks" || !this.collapsed && !this.expandable
+    const toggleUnavailable = !this.collapsed && !this.expandable
     return html`
       <section
         class=${this.drawerOpen
@@ -797,7 +797,7 @@ export class RibbonDrawer extends LitElement {
           <slot name="more" ?hidden=${!this.drawerContentOpen}></slot>
           <slot name="detail" ?hidden=${this.layout !== "marks" && !this.drawerContentOpen}></slot>
         </div>
-        ${this.layout === "marks" ? "" : html`<button
+        ${this.layout === "marks" && !this.collapsed ? "" : html`<button
           class="drawer-toggle"
           type="button"
           ?hidden=${toggleUnavailable}
