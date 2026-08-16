@@ -34,7 +34,7 @@ describe("Develop ribbon tab", () => {
     const select = drawer.querySelector<HTMLSelectElement>("select.local-package-select")!
     expect(select).not.toBeNull()
     expect(select.parentElement?.parentElement?.firstElementChild).toBe(select.parentElement)
-    expect(select.parentElement?.querySelector(".icon-tabler-puzzle")).not.toBeNull()
+    expect(select.parentElement?.querySelector(".icon-tabler-package")).not.toBeNull()
     expect(getComputedStyle(select).backgroundColor).toBe("transparent")
     expect(Array.from(select.options, option => option.textContent)).toEqual([
       "@local/alpha",

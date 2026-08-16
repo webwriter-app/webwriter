@@ -59,7 +59,7 @@ import pilcrow from "@tabler/icons/outline/pilcrow.svg?raw"
 import playerPlay from "@tabler/icons/filled/player-play.svg?raw"
 import plus from "@tabler/icons/outline/plus.svg?raw"
 import printer from "@tabler/icons/outline/printer.svg?raw"
-import puzzle from "@tabler/icons/outline/puzzle.svg?raw"
+import packageIcon from "@tabler/icons/outline/package.svg?raw"
 import rulerMeasure from "@tabler/icons/outline/ruler-measure.svg?raw"
 import scissors from "@tabler/icons/outline/scissors.svg?raw"
 import stack from "@tabler/icons/outline/stack.svg?raw"
@@ -206,8 +206,8 @@ const icons: Record<string, string> = {
   Shortcuts: keyboard,
   Accessibility: accessible,
   Preferences: adjustments,
-  Extensions: puzzle,
-  Packages: puzzle,
+  Extensions: packageIcon,
+  Packages: packageIcon,
   Search: search,
   KeywordOnline: wifi,
   KeywordLanguage: language,
