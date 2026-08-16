@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {DomEditor} from "./dom-editor"
+import type {AppRibbon} from "./ribbon"
 import {DomEditorBreadcrumb, type DocumentTreeItem} from "./breadcrumb"
 import type {RibbonButton} from "./ribbon-button"
 import type {RibbonDrawer} from "./ribbon-drawer"
@@ -140,6 +141,21 @@ beforeEach(() => {
 })
 
 describe("DomEditor iframe setup", () => {
+  it("collapses the expanded AI bar when the editor receives a pointer", async () => {
+    const {editor, iframe} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const expand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-expand")!
+
+    expand.dispatchEvent(new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true}))
+    await ribbon.updateComplete
+    expect(ribbon.shadowRoot!.querySelector(".ai-chat-panel")?.hasAttribute("data-open")).toBe(true)
+
+    iframe.contentDocument!.dispatchEvent(new PointerEvent("pointerdown", {button: 0, bubbles: true}))
+    await ribbon.updateComplete
+
+    expect(ribbon.shadowRoot!.querySelector(".ai-chat-panel")?.hasAttribute("data-open")).toBe(false)
+  })
+
   it("restores installed packages and starts the package catalog fetch on mount", async () => {
     localStorage.setItem(INSTALLED_PACKAGES_STORAGE_KEY, JSON.stringify([demoPackage]))
     const search = vi.mocked(WebWriterPackageRegistry.prototype.search)

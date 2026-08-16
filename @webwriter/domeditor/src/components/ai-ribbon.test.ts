@@ -122,4 +122,35 @@ describe("AI prompt ribbon", () => {
     await ribbon.updateComplete
     expect(panel.querySelectorAll(".ai-chat-message")).toHaveLength(2)
   })
+
+  it("centers the expanded header controls and keeps the sparkle control icon-only", async () => {
+    const ribbon = await mountRibbon()
+    const expand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-expand")!
+    expand.dispatchEvent(new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true}))
+    await ribbon.updateComplete
+
+    const header = ribbon.shadowRoot!.querySelector<HTMLElement>(".ai-chat-header")!
+    const brand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-chat-brand-button")!
+    const switcher = ribbon.shadowRoot!.querySelector<HTMLSelectElement>(".ai-chat-switcher")!
+
+    expect(getComputedStyle(header).boxSizing).toBe("border-box")
+    expect(getComputedStyle(brand).borderTopWidth).toBe("0px")
+    expect(getComputedStyle(brand).backgroundColor).toBe("transparent")
+    expect(getComputedStyle(switcher).appearance).toBe("none")
+    expect(Number.parseFloat(getComputedStyle(switcher).paddingRight)).toBeGreaterThan(32)
+  })
+
+  it("collapses when the pointer goes outside the expanded bar", async () => {
+    const ribbon = await mountRibbon()
+    const expand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-expand")!
+    const panel = ribbon.shadowRoot!.querySelector<HTMLElement>(".ai-chat-panel")!
+    expand.dispatchEvent(new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true}))
+    await ribbon.updateComplete
+    expect(panel.hasAttribute("data-open")).toBe(true)
+
+    document.body.dispatchEvent(new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true}))
+    await ribbon.updateComplete
+
+    expect(panel.hasAttribute("data-open")).toBe(false)
+  })
 })

@@ -468,6 +468,7 @@ export class AppRibbon extends LitElement {
       min-width: 100px;
       height: 40px;
       min-height: 40px;
+      margin-inline: 0.35rem;
       anchor-name: --ai-bar-slot;
     }
 
@@ -673,12 +674,13 @@ export class AppRibbon extends LitElement {
       width: 2rem;
       height: 2rem;
       padding: 0.4rem;
-      border: 1px solid #c8d2df;
-      border-radius: 0.35rem;
-      background: #ffffff;
+      border: 0;
+      border-radius: 50%;
+      background: transparent;
     }
 
     .ai-chat-header {
+      box-sizing: border-box;
       display: flex;
       position: absolute;
       top: 0;
@@ -708,11 +710,16 @@ export class AppRibbon extends LitElement {
       flex: 1 1 auto;
       min-width: 0;
       height: 2rem;
-      padding: 0 1.8rem 0 0.55rem;
+      appearance: none;
+      padding: 0 2.35rem 0 0.55rem;
       border: 1px solid #c8d2df;
       border-radius: 0.35rem;
       color: #2f3742;
       background: #ffffff;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='m4 6 4 4 4-4' stroke='%23526b86' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-position: right 0.75rem center;
+      background-repeat: no-repeat;
+      background-size: 1rem;
       font: inherit;
       font-size: 0.72rem;
       font-weight: 600;
@@ -1905,6 +1912,10 @@ export class AppRibbon extends LitElement {
     if(restoreFocus) void this.updateComplete.then(() => {
       this.renderRoot.querySelector<HTMLButtonElement>(".ai-prompt-expand")?.focus()
     })
+  }
+
+  dismissAIChat() {
+    this.closeAIChat()
   }
 
   private startNewAIChat = () => {

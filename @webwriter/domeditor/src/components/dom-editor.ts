@@ -531,9 +531,10 @@ export class DomEditor extends LitElement {
   }
 
   private handleEditorPointerDown = (event: PointerEvent) => {
+    const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
+    ribbon?.dismissAIChat()
     if(isWidgetShadowInteraction(event)) return
     this.focusEditor()
-    const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
     ribbon?.dismissCollapsedMenu()
     if(!this.editorTargetSharesTextSelection(event.target)) ribbon?.dismissDrawers()
   }
