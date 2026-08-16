@@ -18,6 +18,7 @@ type BreadcrumbEntry = {
 export class DomEditorBreadcrumb extends LitElement {
   static properties = {
     path: {attribute: false},
+    capture: {type: Boolean, reflect: true},
     gap: {attribute: false},
     tree: {attribute: false},
     breadcrumbEntries: {attribute: false, state: true},
@@ -187,6 +188,14 @@ export class DomEditorBreadcrumb extends LitElement {
 
     .item.icon-only .item-label {
       display: none;
+    }
+
+    .item.capture-selected .item-label,
+    .tree-item.capture-selected .item-label {
+      text-decoration: underline;
+      text-decoration-color: #3977c7;
+      text-decoration-thickness: 2px;
+      text-underline-offset: 3px;
     }
 
     .item-icon {
@@ -365,6 +374,7 @@ export class DomEditorBreadcrumb extends LitElement {
   `
 
   path: SelectionPathItem[] = []
+  capture = false
   gap: SelectionGap | null = null
   tree: DocumentTreeItem | null = null
   private breadcrumbEntries: BreadcrumbEntry[] = []
@@ -474,6 +484,11 @@ export class DomEditorBreadcrumb extends LitElement {
     return selected !== null
       && selected.length === item.path.length
       && selected.every((index, position) => index === item.path[position])
+  }
+
+  private isCaptured(path: number[]) {
+    const selected = this.selectedPath()
+    return this.capture && selected !== null && this.pathsEqual(selected, path)
   }
 
   private setTreeRoot(path: number[]) {
@@ -799,7 +814,7 @@ export class DomEditorBreadcrumb extends LitElement {
             </button>
           ` : html`<span class="tree-expander-spacer" aria-hidden="true"></span>`}
           <button
-            class="tree-item"
+            class=${`tree-item${this.isCaptured(item.path) ? " capture-selected" : ""}`}
             type="button"
             data-path=${item.path.join(",")}
             title=${`Select ${item.name}`}
@@ -810,7 +825,7 @@ export class DomEditorBreadcrumb extends LitElement {
             @click=${() => this.select(item)}
           >
             ${this.renderItemIcon(item)}
-            <span>${item.name}</span>
+            <span class="item-label">${item.name}</span>
           </button>
         </div>
         ${gapPosition ? this.renderGapIndicator(gapPosition, depth, gapAtTreeStart) : ""}
@@ -864,7 +879,7 @@ export class DomEditorBreadcrumb extends LitElement {
     return html`
       <li class=${`breadcrumb-entry ${transitionClass}`}>
         <button
-          class=${`item${this.isCollapsedBreadcrumbItem(entry) ? " icon-only" : ""}`}
+          class=${`item${this.isCollapsedBreadcrumbItem(entry) ? " icon-only" : ""}${this.isCaptured(entry.item.path) ? " capture-selected" : ""}`}
           type="button"
           data-path=${entry.item.path.join(",")}
           title=${`Select ${entry.item.name}`}

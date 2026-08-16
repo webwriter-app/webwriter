@@ -35,6 +35,20 @@ function isCaretAtStartOf(element: Element) {
 export class SelectionFeature extends EditorFeature {
 
   #sharedRefreshQueued = false
+  #capturedWidget: Element | null = null
+
+  /** Whether the current widget node selection also captures interactions in
+   * that widget's shadow tree. Capture survives shadow-tree focus changes and
+   * is released by the next ordinary editor selection interaction. */
+  get isCaptureSelection() {
+    const widget = this.#capturedWidget
+    if(!widget?.isConnected) return false
+    return focusedWidgetHost() === widget || $.selectedElement === widget
+  }
+
+  #releaseCaptureSelection() {
+    this.#capturedWidget = null
+  }
 
   readonly #handleSharedChange = () => {
     if(this.#sharedRefreshQueued) return
@@ -98,7 +112,9 @@ export class SelectionFeature extends EditorFeature {
     if(this.isEnabled) return
     $.selectDocumentStart()
     super.enable()
-    document.addEventListener("pointerdown", this.#handleWidgetShadowInteraction, {capture: true})
+    this.#widgetInteractionEvents.forEach(type => {
+      document.addEventListener(type, this.#handleWidgetShadowInteraction, {capture: true})
+    })
     this.editor.doc.doc.on("afterTransaction", this.#handleSharedChange)
     this.processSelection()
   }
@@ -106,30 +122,42 @@ export class SelectionFeature extends EditorFeature {
   disable() {
     if(!this.isEnabled) return
     this.editor.doc.doc.off("afterTransaction", this.#handleSharedChange)
-    document.removeEventListener("pointerdown", this.#handleWidgetShadowInteraction, {capture: true})
+    this.#widgetInteractionEvents.forEach(type => {
+      document.removeEventListener(type, this.#handleWidgetShadowInteraction, {capture: true})
+    })
+    this.#releaseCaptureSelection()
     this.#clearElementHover()
     super.disable()
   }
 
+  readonly #widgetInteractionEvents = ["pointerdown", "focusin", "keydown", "beforeinput", "input", "change"] as const
+
   /** Keeps widget shadow trees atomic without cancelling their own controls.
    * Regular feature listeners ignore these events, so they cannot start or
-   * extend an editor drag selection. Selecting the host before pointerdown's
-   * native action leaves that action free to establish the widget's own focus
-   * and shadow-tree caret; subsequent widget input is left untouched. */
+   * extend an editor drag selection. The first interaction node-selects and
+   * captures the host while leaving the widget's native focus, caret, input,
+   * and event handling untouched. */
   readonly #handleWidgetShadowInteraction = (event: Event) => {
     const widget = widgetHostForShadowInteraction(event)
     if(!widget) return
     this.isInDragSelection = false
-    if(!($.isElementSelection && $.selectedElement === widget)) {
+    if(this.#capturedWidget === widget && this.isCaptureSelection) return
+    this.#capturedWidget = widget
+    // Pointerdown happens before the widget establishes its own focus/caret,
+    // so it is safe to establish the outer atomic node range here. Later
+    // focus, keyboard, and input events must not rewrite shadow selection.
+    if(event.type === "pointerdown" && !($.isElementSelection && $.selectedElement === widget)) {
       $.selectElement(widget, false)
     }
     this.processSelection()
+    this.editor.postSelectionPath()
   }
 
   /** Selects the element addressed by a child-node path from BODY. */
   actions = {
     selectNode: ({path}: {type: "selectNode", path: number[]}) => {
       const node = this.#elementAtPath(path)
+      this.#releaseCaptureSelection()
       $.selectElement(node)
       this.processSelection()
     },
@@ -238,8 +266,8 @@ export class SelectionFeature extends EditorFeature {
       setPart(this.gapCaret, "gap-caret-hidden")
       ;["gap-before-selected", "gap-after-selected", "drop-caret-before", "drop-caret-after"].forEach(state => setPart(this.gapCaret!, `gap-caret-${state}`, false))
     }
-    document.querySelectorAll(".◆element-selected").forEach(el => {
-      el.classList.remove("◆element-selected")
+    document.querySelectorAll(".◆element-selected, .◆element-capture-selected").forEach(el => {
+      el.classList.remove("◆element-selected", "◆element-capture-selected")
       if(!Array.from(el.classList).some(k => k !== "◆" && k.startsWith("◆"))) {
         el.classList.remove("◆")
       }
@@ -274,11 +302,14 @@ export class SelectionFeature extends EditorFeature {
    * (`◆empty-selected`). Previous markers are cleared first. */
   processSelection(inDragSelection=false) {
     const focusedWidget = focusedWidgetHost()
-    if(focusedWidget) {
+    if(focusedWidget) this.#capturedWidget = focusedWidget
+    const capturedWidget = this.isCaptureSelection ? this.#capturedWidget : null
+    if(capturedWidget) {
       this.#clearSelections()
-      focusedWidget.classList.add("◆", "◆element-selected")
+      capturedWidget.classList.add("◆", "◆element-selected", "◆element-capture-selected")
       return
     }
+    this.#releaseCaptureSelection()
     this.#constrainSelectionToBody()
     this.#constrainSelectionToMedia()
     let sel = document.getSelection()
@@ -404,6 +435,7 @@ export class SelectionFeature extends EditorFeature {
    * pointerup ends the drag selection. */
   activeListeners: DocumentListenerMap = {
     "keydown": ev => {
+      this.#releaseCaptureSelection()
       if(ev.key.toLowerCase() === "a" && modifierKeyDown(ev)) {
         ev.preventDefault()
         $.selectRange(document.body, 0, document.body, document.body.childNodes.length)
@@ -455,6 +487,7 @@ export class SelectionFeature extends EditorFeature {
       if((isElement(ev.target) && ev.target.closest(".◆editor-only")) || this.hasDoubleClicked || ev.button === 2) {
         return
       }
+      this.#releaseCaptureSelection()
       const media = ev.target instanceof Node ? mediaContainerForNode(ev.target) : null
       if(media) {
         ev.preventDefault()

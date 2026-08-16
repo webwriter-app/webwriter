@@ -38,6 +38,7 @@ describe("processSelection()", () => {
     $.selectElement(element)
     feature.processSelection()
     expect(element).toHaveClass("◆element-selected")
+    expect(element).not.toHaveClass("◆element-capture-selected")
   })
   it("skips element markers during drag selection", () => {
     const p = el("p", "hello")
@@ -322,8 +323,9 @@ describe("document listeners", () => {
 
     editor.postSelectionPath()
 
-    const message = postMessage.mock.lastCall?.[0] as {detail: {path: Array<{path: number[]}>, gap?: unknown}}
+    const message = postMessage.mock.lastCall?.[0] as {detail: {path: Array<{path: number[]}>, capture?: boolean, gap?: unknown}}
     expect(message.detail.path.at(-1)?.path).toEqual([0])
+    expect(message.detail.capture).toBe(true)
     expect(message.detail).not.toHaveProperty("gap")
   })
   it("tracks modifier keys on the body", () => {
@@ -350,7 +352,7 @@ describe("document listeners", () => {
     expect($.selectedElement).toBe(p)
     expect(p).toHaveClass("◆element-selected")
   })
-  it("node-selects a widget without starting an editor drag from its shadow DOM", () => {
+  it("capture-selects a widget without starting an editor drag from its shadow DOM", () => {
     const widget = document.createElement("interactive-widget")
     const button = document.createElement("button")
     widget.attachShadow({mode: "open"}).append(button)
@@ -365,6 +367,8 @@ describe("document listeners", () => {
     button.focus()
     expect($.selectedElement).toBe(widget)
     expect(widget).toHaveClass("◆element-selected")
+    expect(widget).toHaveClass("◆element-capture-selected")
+    expect(feature.isCaptureSelection).toBe(true)
     expect(widget.shadowRoot?.activeElement).toBe(button)
 
     const keydown = new KeyboardEvent("keydown", {key: "a", bubbles: true, composed: true, cancelable: true})
@@ -373,7 +377,7 @@ describe("document listeners", () => {
     expect(widget).toHaveClass("◆element-selected")
     expect(widget.shadowRoot?.activeElement).toBe(button)
   })
-  it("node-selects interaction retargeted from a closed widget shadow DOM", () => {
+  it("capture-selects interaction retargeted from a closed widget shadow DOM", () => {
     const widget = document.createElement("closed-widget")
     const button = document.createElement("button")
     widget.attachShadow({mode: "closed"}).append(button)
@@ -382,7 +386,22 @@ describe("document listeners", () => {
     button.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
 
     expect($.selectedElement).toBe(widget)
+    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
+  })
+  it("downgrades capture to node selection when the widget breadcrumb is selected", () => {
+    const widget = document.createElement("interactive-widget")
+    const button = document.createElement("button")
+    widget.attachShadow({mode: "open"}).append(button)
+    document.body.append(widget)
+    button.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
+    expect(widget).toHaveClass("◆element-capture-selected")
+
+    feature.actions.selectNode({type: "selectNode", path: [0]})
+
+    expect($.selectedElement).toBe(widget)
     expect(widget).toHaveClass("◆element-selected")
+    expect(widget).not.toHaveClass("◆element-capture-selected")
+    expect(feature.isCaptureSelection).toBe(false)
   })
   it("does not reset a widget's shadow contenteditable selection during input", () => {
     const widget = document.createElement("editable-widget")

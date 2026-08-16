@@ -379,6 +379,7 @@ export class DOMEditor {
     const media = this.features.media.getState()
     const detail: SelectionChangeDetail = {
       path,
+      ...(this.features.selection.isCaptureSelection ? {capture: true} : {}),
       ...(gap ? {gap} : {}),
       ...(list.type ? {list} : {}),
       ...(media ? {media} : {}),

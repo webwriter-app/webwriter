@@ -176,6 +176,7 @@ type RibbonInputEventDetail = {
 export class DomEditor extends LitElement {
   static properties = {
     selectionPath: {attribute: false, state: true},
+    captureSelection: {attribute: false, state: true},
     selectionGap: {attribute: false, state: true},
     documentTree: {attribute: false, state: true},
     canMark: {attribute: false, state: true},
@@ -214,6 +215,7 @@ export class DomEditor extends LitElement {
   private ribbonInputSession = false
   private restoreEditorAfterRibbonInput = false
   private selectionPath: SelectionPathItem[] = []
+  private captureSelection = false
   private selectionGap: SelectionGap | null = null
   private documentTree: DocumentTreeItem | null = null
   private canMark = false
@@ -1637,6 +1639,7 @@ export class DomEditor extends LitElement {
         ? {parentPath: [...gap.parentPath], offset: gap.offset}
         : null
       this.selectionPath = path
+      this.captureSelection = event.data.detail.capture === true
       this.selectionGap = selectionGap
       this.listType = event.data.detail.list?.type ?? null
       this.listStyle = event.data.detail.list?.style ?? ""
@@ -1647,6 +1650,7 @@ export class DomEditor extends LitElement {
       this.dispatchEvent(new CustomEvent(selectionChangeEvent, {
         detail: {
           path,
+          ...(this.captureSelection ? {capture: true} : {}),
           ...(selectionGap ? {gap: selectionGap} : {}),
           list: {type: this.listType, style: this.listStyle},
           ...(this.mediaSelection ? {media: this.mediaSelection} : {}),
@@ -1839,6 +1843,7 @@ export class DomEditor extends LitElement {
     this.editorReadyResolve = null
     this.editorReadyReject = null
     this.selectionPath = []
+    this.captureSelection = false
     this.selectionGap = null
     this.canMark = false
     this.marks = []
@@ -1896,6 +1901,7 @@ export class DomEditor extends LitElement {
         ></app-ribbon>
         <dom-editor-breadcrumb
           .path=${this.selectionPath}
+          .capture=${this.captureSelection}
           .gap=${this.selectionGap}
           .tree=${this.documentTree}
           @breadcrumb-tree-toggle=${this.handleBreadcrumbTreeToggle}

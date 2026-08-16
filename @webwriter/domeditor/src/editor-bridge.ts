@@ -100,6 +100,8 @@ export type ListSelectionState = {
 
 export type SelectionChangeDetail = {
   path: SelectionPathItem[]
+  /** True when the selected widget has captured interaction in its shadow tree. */
+  capture?: boolean
   gap?: SelectionGap
   list?: ListSelectionState
   media?: MediaSelectionState
@@ -186,6 +188,8 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
       && (pathItem.icon === undefined || typeof pathItem.icon === "string")
       && (pathItem.iconUrl === undefined || typeof pathItem.iconUrl === "string")
   })) return false
+
+  if(message.detail.capture !== undefined && typeof message.detail.capture !== "boolean") return false
 
   const gap = message.detail.gap as Partial<SelectionGap> | null | undefined
   const gapIsValid = gap === undefined || (

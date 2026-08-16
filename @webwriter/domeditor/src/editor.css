@@ -154,14 +154,9 @@ body
 }
 
 .◆element-selected {
-  outline: 2px solid var(--sl-color-primary-400);
-  outline-offset: 2px;
-  z-index: 2147483646;
-}
-
-.◆element-selected:hover {
   outline: 2px dotted var(--sl-color-primary-400);
   outline-offset: 2px;
+  z-index: 2147483646;
 }
 
 .◆element-selected * {
@@ -176,6 +171,12 @@ body
   outline: 2px dotted var(--sl-color-primary-400);
   outline-offset: 2px;
   z-index: 2147483645;
+}
+
+.◆element-capture-selected, .◆element-capture-selected:hover {
+  outline: 2px solid var(--sl-color-primary-400);
+  outline-offset: 2px;
+  z-index: 2147483646;
 }
 
 body.◆key-mod-down, body.◆key-mod-down * {

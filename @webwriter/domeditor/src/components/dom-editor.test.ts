@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {DomEditor} from "./dom-editor"
-import type {DomEditorBreadcrumb, DocumentTreeItem} from "./breadcrumb"
+import {DomEditorBreadcrumb, type DocumentTreeItem} from "./breadcrumb"
 import type {RibbonButton} from "./ribbon-button"
 import type {RibbonDrawer} from "./ribbon-drawer"
 import type {RibbonMenu} from "./ribbon-menu"
@@ -1306,6 +1306,35 @@ describe("DomEditor.execute()", () => {
     breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>("button.item")[1].click()
 
     expect(execute).toHaveBeenCalledWith({type: "selectNode", path: [0]})
+  })
+
+  it("underlines only the captured selected widget breadcrumb label", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const detail = {
+      path: [{path: [], name: "Document"}, {path: [0], name: "Widget", icon: "Packages"}],
+      capture: true,
+    }
+
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {type: selectionChangeEvent, detail},
+      source: editorWindow,
+    }))
+    await editor.updateComplete
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    await breadcrumb.updateComplete
+
+    const items = breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>("button.item")
+    expect(items[0].classList.contains("capture-selected")).toBe(false)
+    expect(items[1].classList.contains("capture-selected")).toBe(true)
+    expect((DomEditorBreadcrumb.styles as unknown as {cssText: string}).cssText).toContain("text-decoration: underline")
+
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {type: selectionChangeEvent, detail: {...detail, capture: false}},
+      source: editorWindow,
+    }))
+    await editor.updateComplete
+    await breadcrumb.updateComplete
+    expect(items[1].classList.contains("capture-selected")).toBe(false)
   })
 
   it("starts and ends an element hover from a breadcrumb item", async () => {
