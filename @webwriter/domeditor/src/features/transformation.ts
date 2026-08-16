@@ -708,12 +708,8 @@ export class TransformationFeature extends EditorFeature {
               el.classList.remove(`◆drop-caret-${pos === "before"? "after": "before"}`)
             }
           })
-          this.editor.features.selection.gapCaret!.classList.remove("◆drop-caret-before", "◆drop-caret-after")
-          setPart(this.editor.features.selection.gapCaret!, "gap-caret-drop-caret-before", false)
-          setPart(this.editor.features.selection.gapCaret!, "gap-caret-drop-caret-after", false)
           bgEl.classList.add("◆", `◆drop-caret-${pos}`)
-          this.editor.features.selection.gapCaret!.classList.add(`◆drop-caret-${pos}`)
-          setPart(this.editor.features.selection.gapCaret!, `gap-caret-drop-caret-${pos}`)
+          this.editor.features.selection.showDropCaret(pos)
         }
         else {
           document.body.querySelectorAll(":is(.◆drop-caret-before, .◆drop-caret-after)").forEach(el => {
@@ -722,9 +718,7 @@ export class TransformationFeature extends EditorFeature {
               el.classList.remove("◆")
             }
           })
-          this.editor.features.selection.gapCaret!.classList.remove("◆drop-caret-before", "◆drop-caret-after")
-          setPart(this.editor.features.selection.gapCaret!, "gap-caret-drop-caret-before", false)
-          setPart(this.editor.features.selection.gapCaret!, "gap-caret-drop-caret-after", false)
+          this.editor.features.selection.clearDropCaret()
         }
       }
       else {
@@ -734,9 +728,7 @@ export class TransformationFeature extends EditorFeature {
             el.classList.remove("◆")
           }
         })
-        this.editor.features.selection.gapCaret!.classList.remove("◆drop-caret-before", "◆drop-caret-after")
-        setPart(this.editor.features.selection.gapCaret!, "gap-caret-drop-caret-before", false)
-        setPart(this.editor.features.selection.gapCaret!, "gap-caret-drop-caret-after", false)
+        this.editor.features.selection.clearDropCaret()
       }
     }
     
@@ -789,9 +781,7 @@ export class TransformationFeature extends EditorFeature {
           el.classList.remove("◆")
         }
       })
-      this.editor.features.selection.gapCaret!.classList.remove("◆drop-caret-before", "◆drop-caret-after")
-      setPart(this.editor.features.selection.gapCaret!, "gap-caret-drop-caret-before", false)
-      setPart(this.editor.features.selection.gapCaret!, "gap-caret-drop-caret-after", false)
+      this.editor.features.selection.clearDropCaret()
     }
   }
 

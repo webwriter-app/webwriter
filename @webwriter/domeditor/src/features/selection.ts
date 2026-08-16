@@ -29,8 +29,9 @@ function isCaretAtStartOf(element: Element) {
 
 /** Editing feature that visualizes the current selection. It classifies every
  * selection change into an editing-relevant kind (element, text, gap, empty)
- * and applies the corresponding `◆…-selected` marker classes, manages the gap
- * caret element, mirrors modifier key state onto the body, and implements
+ * and applies the corresponding `◆…-selected` marker classes, manages the
+ * selection and hover overlays in BODY's shadow tree, mirrors modifier key
+ * state onto the body, and implements
  * pointer-based selection (drag selection, modifier-click element selection). */
 export class SelectionFeature extends EditorFeature {
 
@@ -112,6 +113,7 @@ export class SelectionFeature extends EditorFeature {
     if(this.isEnabled) return
     $.selectDocumentStart()
     super.enable()
+    this.#ensureHoverCaret()
     this.#widgetInteractionEvents.forEach(type => {
       document.addEventListener(type, this.#handleWidgetShadowInteraction, {capture: true})
     })
@@ -194,23 +196,109 @@ export class SelectionFeature extends EditorFeature {
   /** The element marked as the anchor of the current gap selection (the
    * element the gap caret is attached to), or null. */
   static get gapAnchor() {
-    return document.querySelector(":not(.◆gap-caret).◆gap-before-selected, :not(.◆gap-caret).◆gap-after-selected")
+    return document.querySelector(".◆gap-before-selected, .◆gap-after-selected")
   }
 
-  /** Creates the gap caret element and adds it to the editor appendix. */
-  #createGapCaret() {
+  /** Creates the shared ordinary/breadcrumb hover outline in BODY's shadow tree. */
+  #createHoverCaret() {
     const node = document.createElement("div")
-    node.classList.add("◆gap-caret")
-    node.setAttribute("part", "gap-caret gap-caret-hidden")
+    node.classList.add("◆", "◆editor-only", "◆hover-caret")
+    node.setAttribute("part", "hover-caret")
+    node.setAttribute("aria-hidden", "true")
     node.contentEditable = "false"
     this.editor.addAppendix(node)
     return node
   }
 
-  /** The gap caret element (shown in gaps between elements), or null if it
-   * has not been created yet. */
+  /** The shared native and breadcrumb hover outline. */
+  get hoverCaret() {
+    return this.editor.appendix.querySelector<HTMLElement>(".◆hover-caret")
+  }
+
+  #ensureHoverCaret() {
+    return this.hoverCaret ?? this.#createHoverCaret()
+  }
+
+  /** Creates the shared non-text selection caret in BODY's shadow tree. */
+  #createSelectionCaret() {
+    const node = document.createElement("div")
+    node.classList.add("◆", "◆editor-only", "◆selection-caret")
+    node.setAttribute("part", "selection-caret selection-caret-hidden")
+    node.setAttribute("aria-hidden", "true")
+    node.setAttribute("visibility", "hidden")
+    node.contentEditable = "false"
+    this.editor.addAppendix(node)
+    return node
+  }
+
+  /** The shared node, capture, and gap caret, or null before first use. */
+  get selectionCaret() {
+    return this.editor.appendix.querySelector<HTMLElement>(".◆selection-caret")
+  }
+
+  /** Compatibility alias used by the transformation feature for drop gaps. */
   get gapCaret() {
-    return this.editor.appendix.querySelector(".◆gap-caret")
+    return this.selectionCaret
+  }
+
+  /** Hides the shared caret and removes every selection/drop presentation. */
+  #hideSelectionCaret() {
+    const caret = this.selectionCaret
+    if(!caret) return
+    caret.setAttribute("visibility", "hidden")
+    setPart(caret, "selection-caret-hidden")
+    ;["node", "capture", "gap"].forEach(state => {
+      caret.classList.remove(`◆selection-caret-${state}`)
+      setPart(caret, `selection-caret-${state}`, false)
+    })
+    caret.classList.remove(
+      "◆gap-before-selected",
+      "◆gap-after-selected",
+      "◆drop-caret-before",
+      "◆drop-caret-after",
+    )
+    setPart(caret, "gap-caret", false)
+    ;["gap-before-selected", "gap-after-selected", "drop-caret-before", "drop-caret-after"]
+      .forEach(state => setPart(caret, `gap-caret-${state}`, false))
+  }
+
+  /** Shows the shared caret using one of its selection presentations. */
+  #showSelectionCaret(state: "node" | "capture" | "gap") {
+    const caret = this.selectionCaret ?? this.#createSelectionCaret()
+    caret.classList.add(`◆selection-caret-${state}`)
+    setPart(caret, `selection-caret-${state}`)
+    setPart(caret, "selection-caret-hidden", false)
+    if(state === "gap") setPart(caret, "gap-caret")
+    caret.removeAttribute("visibility")
+    return caret
+  }
+
+  /** Reuses the shared caret to preview a transformation drop gap. */
+  showDropCaret(placement: "before" | "after") {
+    const caret = this.#showSelectionCaret("gap")
+    caret.classList.remove("◆drop-caret-before", "◆drop-caret-after")
+    setPart(caret, "gap-caret-drop-caret-before", false)
+    setPart(caret, "gap-caret-drop-caret-after", false)
+    caret.classList.add(`◆drop-caret-${placement}`)
+    setPart(caret, `gap-caret-drop-caret-${placement}`)
+  }
+
+  /** Clears the drop presentation, restoring the underlying selection mode. */
+  clearDropCaret() {
+    const caret = this.selectionCaret
+    if(!caret) return
+    caret.classList.remove("◆drop-caret-before", "◆drop-caret-after", "◆selection-caret-gap")
+    setPart(caret, "gap-caret-drop-caret-before", false)
+    setPart(caret, "gap-caret-drop-caret-after", false)
+    setPart(caret, "selection-caret-gap", false)
+    setPart(caret, "gap-caret", false)
+    const hasSelectionPresentation = ["node", "capture"].some(state =>
+      caret.classList.contains(`◆selection-caret-${state}`),
+    )
+    if(!hasSelectionPresentation) {
+      caret.setAttribute("visibility", "hidden")
+      setPart(caret, "selection-caret-hidden")
+    }
   }
 
   #clearElementHover() {
@@ -249,7 +337,8 @@ export class SelectionFeature extends EditorFeature {
   }
 
   /** Removes all selection marker classes (gap, element, text, empty) from
-   * the document, dropping emptied class attributes, and hides the gap caret. */
+   * the document, dropping emptied class attributes, and hides the shared
+   * non-text caret. */
   #clearSelections() {
     document.querySelectorAll(".◆gap-before-selected, .◆gap-after-selected").forEach(el => {
       el.classList.remove("◆gap-before-selected", "◆gap-after-selected")
@@ -260,12 +349,8 @@ export class SelectionFeature extends EditorFeature {
         el.removeAttribute("class")
       }
     })
-    this.gapCaret?.setAttribute("visibility", "hidden")
+    this.#hideSelectionCaret()
     document.body.classList.remove("◆gap-caret-visible")
-    if(this.gapCaret) {
-      setPart(this.gapCaret, "gap-caret-hidden")
-      ;["gap-before-selected", "gap-after-selected", "drop-caret-before", "drop-caret-after"].forEach(state => setPart(this.gapCaret!, `gap-caret-${state}`, false))
-    }
     document.querySelectorAll(".◆element-selected, .◆element-capture-selected").forEach(el => {
       el.classList.remove("◆element-selected", "◆element-capture-selected")
       if(!Array.from(el.classList).some(k => k !== "◆" && k.startsWith("◆"))) {
@@ -307,6 +392,7 @@ export class SelectionFeature extends EditorFeature {
     if(capturedWidget) {
       this.#clearSelections()
       capturedWidget.classList.add("◆", "◆element-selected", "◆element-capture-selected")
+      this.#showSelectionCaret("capture")
       return
     }
     this.#releaseCaptureSelection()
@@ -344,13 +430,11 @@ export class SelectionFeature extends EditorFeature {
         const placement = i === 0 || isBeforeFirstBodyElement || nestedListAfter ? "before": "after"
         const offset = placement === "after"? -1: 0
         const element = isBeforeFirstBodyElement? firstBodyElement: children.item(i + offset) as Element
-        const gapCaret = this.gapCaret ?? this.#createGapCaret()
+        const gapCaret = this.#showSelectionCaret("gap")
         element?.classList?.add("◆", `◆gap-${placement}-selected`)
         gapCaret.classList.add(`◆gap-${placement}-selected`)
         setPart(gapCaret, `gap-caret-gap-${placement}-selected`)
-        setPart(gapCaret, "gap-caret-hidden", false)
         document.body.classList.add("◆gap-caret-visible")
-        gapCaret.removeAttribute("visibility")
       }
       
     }
@@ -358,6 +442,7 @@ export class SelectionFeature extends EditorFeature {
       const element = sel.anchorNode!.childNodes.item(Math.min(sel.anchorOffset, sel.focusOffset)) as Element
       if(isElement(element)) {
         element.classList.add("◆", "◆element-selected")
+        this.#showSelectionCaret("node")
       }
     }
     else if(anchorContainer && $.isTextSelection) {

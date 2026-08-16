@@ -149,14 +149,15 @@ body
         semantics
       )
   ):hover {
-  outline: 1px dotted var(--sl-color-gray-400);
-  outline-offset: 2px;
+  anchor-name: --hover-anchor;
 }
 
 .◆element-selected {
-  outline: 2px dotted var(--sl-color-primary-400);
-  outline-offset: 2px;
-  z-index: 2147483646;
+  anchor-name: --selection-anchor;
+}
+
+body.◆element-selected {
+  anchor-name: --body-anchor, --selection-anchor;
 }
 
 .◆element-selected * {
@@ -167,34 +168,91 @@ body
   background: transparent;
 }
 
-.◆element-hovered, .◆element-hovered:hover {
-  outline: 2px dotted var(--sl-color-primary-400);
-  outline-offset: 2px;
-  z-index: 2147483645;
+.◆element-hovered {
+  anchor-name: --hover-anchor;
 }
 
-/* Document-level hover and selection preview the whole editing surface. */
-body.◆element-hovered,
-body.◆element-hovered:hover,
-body.◆element-selected {
+/* Hover and selection visuals live in BODY's shadow tree; authored elements
+ * only carry anchor and editor-state classes. */
+.◆element-selected,
+.◆element-selected:hover {
   outline: none;
   outline-offset: 0;
 }
 
-body.◆element-hovered::after,
-body.◆element-selected::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 2147483645;
-  background: rgb(56 189 248 / 6%);
-  pointer-events: none;
+body.◆element-hovered {
+  anchor-name: --body-anchor, --hover-anchor;
 }
 
-.◆element-capture-selected, .◆element-capture-selected:hover {
-  outline: 2px solid var(--sl-color-primary-400);
+body::part(hover-caret) {
+  display: none;
+  position: fixed;
+  position-anchor: --hover-anchor;
+  left: anchor(left);
+  top: anchor(top);
+  box-sizing: border-box;
+  width: anchor-size(width);
+  height: anchor-size(height);
+  outline: 1px dotted var(--sl-color-gray-400, black);
   outline-offset: 2px;
+  pointer-events: none;
+  user-select: none;
+  z-index: 2147483645;
+}
+
+body:has(> *:hover)::part(hover-caret),
+body:has(.◆element-hovered)::part(hover-caret),
+body.◆element-hovered::part(hover-caret) {
+  display: block;
+}
+
+body:has(.◆element-hovered)::part(hover-caret) {
+  outline: 2px dotted var(--sl-color-primary-400);
+}
+
+body.◆element-hovered::part(hover-caret) {
+  position-anchor: auto;
+  inset: 0;
+  width: auto;
+  height: auto;
+  outline: none;
+  background: rgb(56 189 248 / 6%);
+}
+
+body::part(selection-caret) {
+  position: fixed;
+  position-anchor: --selection-anchor;
+  box-sizing: border-box;
+  pointer-events: none;
+  user-select: none;
   z-index: 2147483646;
+}
+
+body::part(selection-caret-hidden) {
+  display: none;
+}
+
+body::part(selection-caret-node),
+body::part(selection-caret-capture) {
+  left: anchor(left);
+  top: anchor(top);
+  width: anchor-size(width);
+  height: anchor-size(height);
+  outline: 2px dotted var(--sl-color-primary-400);
+  outline-offset: 2px;
+}
+
+body::part(selection-caret-capture) {
+  outline: 2px solid var(--sl-color-primary-400);
+}
+
+body.◆element-selected::part(selection-caret-node) {
+  position-anchor: auto;
+  inset: 0;
+  width: auto;
+  height: auto;
+  outline: none;
+  background: rgb(56 189 248 / 6%);
 }
 
 body.◆key-mod-down, body.◆key-mod-down * {
@@ -629,6 +687,36 @@ body:empty::before {
   anchor-name: --empty-selected;
 }
 
+/* Preserve every active editor anchor when the same element also supplies
+ * the shared hover overlay's anchor. */
+.◆element-selected:is(:hover, .◆element-hovered) {
+  anchor-name: --selection-anchor, --hover-anchor;
+}
+
+body.◆element-selected:is(:hover, .◆element-hovered) {
+  anchor-name: --body-anchor, --selection-anchor, --hover-anchor;
+}
+
+:is(.◆gap-before-selected, .◆gap-after-selected, .◆drop-caret-before, .◆drop-caret-after):is(:hover, .◆element-hovered) {
+  anchor-name: --gap-anchor, --hover-anchor;
+}
+
+.◆transform-target:is(:hover, .◆element-hovered) {
+  anchor-name: --transform-target, --hover-anchor;
+}
+
+.◆transform-containing-block:is(:hover, .◆element-hovered) {
+  anchor-name: --transform-containing-block, --hover-anchor;
+}
+
+.◆empty-selected:is(:hover, .◆element-hovered) {
+  anchor-name: --empty-selected, --hover-anchor;
+}
+
+body.◆empty-selected:is(:hover, .◆element-hovered) {
+  anchor-name: --body-anchor, --empty-selected, --hover-anchor;
+}
+
 body::part(empty-document-caret) {
   display: none;
   position: fixed;
@@ -665,7 +753,7 @@ menu:empty {
   }
 }
 
-body:has(.◆transform-target):not(:has(:is(.◆drop-caret-before, .◆drop-caret-after)))::part(gap-caret) {
+body:has(.◆transform-target):not(:has(:is(.◆drop-caret-before, .◆drop-caret-after)))::part(selection-caret) {
   display: none;
 }
 
@@ -679,14 +767,15 @@ body::part(gap-caret-gap-before-selected), body::part(gap-caret-gap-after-select
 body::part(gap-caret) {
   user-select: none;
   pointer-events: none;
+  inset: auto;
+  width: auto;
   height: 0;
+  outline: none;
+  background: transparent;
   overflow: visible;
   position: fixed;
   position-anchor: --gap-anchor;
   --size: 1em;
-}
-body::part(gap-caret-hidden) {
-    display: none;
 }
 body:has(.◆media-empty:is(.◆gap-before-selected, .◆gap-after-selected))::part(gap-caret) {
     display: none;

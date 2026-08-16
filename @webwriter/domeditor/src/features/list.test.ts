@@ -162,8 +162,8 @@ describe("semantic list editing", () => {
     expect(empty.matches(":empty")).toBe(true)
     expect(marker.getAttribute("part")).toContain("virtual-list-item-hidden")
     expect(document.body.classList.contains("◆gap-caret-visible")).toBe(false)
-    expect(editor.features.selection.gapCaret?.getAttribute("part") ?? "gap-caret-hidden")
-      .toContain("gap-caret-hidden")
+    expect(editor.features.selection.selectionCaret?.getAttribute("part") ?? "selection-caret-hidden")
+      .toContain("selection-caret-hidden")
   })
 
   it("matches the authored marker style for an empty list", async () => {
@@ -209,8 +209,8 @@ describe("semantic list editing", () => {
       expect(editor.appendix.querySelector(".◆virtual-list-item")?.getAttribute("part"))
         .toContain("virtual-list-item-hidden")
       expect(document.body.classList.contains("◆gap-caret-visible")).toBe(true)
-      expect(editor.features.selection.gapCaret?.getAttribute("part"))
-        .not.toContain("gap-caret-hidden")
+      expect(editor.features.selection.selectionCaret?.getAttribute("part"))
+        .not.toContain("selection-caret-hidden")
     }
   })
 

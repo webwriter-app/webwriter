@@ -32,6 +32,11 @@ describe("processSelection()", () => {
     $.selectElement(p)
     feature.processSelection()
     expect(p.classList.contains("◆element-selected")).toBe(true)
+    expect(feature.selectionCaret).toBeInstanceOf(HTMLElement)
+    expect(feature.selectionCaret?.getRootNode()).toBe(document.body.shadowRoot)
+    expect(feature.selectionCaret).toHaveAttribute("aria-hidden", "true")
+    expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-node")
+    expect(feature.selectionCaret).not.toHaveAttribute("visibility")
   })
   it.each(["webwriter-demo", "video"])("uses the element selection marker for %s", tag => {
     const element = el(tag)
@@ -80,8 +85,42 @@ describe("processSelection()", () => {
     feature.processSelection()
     expect(p1.classList.contains("◆gap-after-selected")).toBe(true)
     expect(feature.gapCaret).not.toBeNull()
+    expect(feature.gapCaret).toBe(feature.selectionCaret)
     expect(feature.gapCaret!.classList.contains("◆gap-after-selected")).toBe(true)
+    expect(feature.gapCaret!.getAttribute("part")).toContain("selection-caret-gap")
+    expect(feature.gapCaret!.getAttribute("part")).toContain("gap-caret")
     expect(feature.gapCaret!.hasAttribute("visibility")).toBe(false)
+  })
+  it("reuses one shadow caret for node and gap selections", () => {
+    const p1 = el("p", "a"); el("p", "b")
+    $.selectElement(p1)
+    feature.processSelection()
+    const caret = feature.selectionCaret
+
+    $.selectGap(p1)
+    feature.processSelection()
+
+    expect(feature.selectionCaret).toBe(caret)
+    expect(editor.appendix.querySelectorAll(".◆selection-caret")).toHaveLength(1)
+    expect(feature.selectionCaret?.getAttribute("part")).not.toContain("selection-caret-node")
+    expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-gap")
+  })
+  it("temporarily reuses the node caret for a transformation drop gap", () => {
+    const p = el("p", "a")
+    $.selectElement(p)
+    feature.processSelection()
+    const caret = feature.selectionCaret
+
+    feature.showDropCaret("before")
+    expect(feature.selectionCaret).toBe(caret)
+    expect(caret?.getAttribute("part")).toContain("selection-caret-node")
+    expect(caret?.getAttribute("part")).toContain("selection-caret-gap")
+    expect(caret?.getAttribute("part")).toContain("gap-caret-drop-caret-before")
+
+    feature.clearDropCaret()
+    expect(caret?.getAttribute("part")).toContain("selection-caret-node")
+    expect(caret?.getAttribute("part")).not.toContain("selection-caret-gap")
+    expect(caret?.getAttribute("part")).not.toContain("selection-caret-hidden")
   })
   it("marks the element after a gap at the container start", () => {
     const p1 = el("p", "a"); el("p", "b")
@@ -121,14 +160,20 @@ describe("processSelection()", () => {
     feature.actions.hoverNode({type: "hoverNode", path: [0]})
 
     expect(p).toHaveClass("◆element-hovered")
+    expect(feature.hoverCaret).toBeInstanceOf(HTMLElement)
+    expect(feature.hoverCaret?.getRootNode()).toBe(document.body.shadowRoot)
+    expect(feature.hoverCaret).toHaveAttribute("part", "hover-caret")
+    expect(feature.hoverCaret).toHaveAttribute("aria-hidden", "true")
 
     feature.actions.hoverNode({type: "hoverNode", path: null})
 
     expect(p).not.toHaveClass("◆element-hovered")
+    expect(editor.appendix.querySelectorAll(".◆hover-caret")).toHaveLength(1)
   })
   it("clears a document hover without leaving a body marker", () => {
     feature.actions.hoverNode({type: "hoverNode", path: []})
     expect(document.body).toHaveClass("◆element-hovered")
+    expect(feature.hoverCaret?.getRootNode()).toBe(document.body.shadowRoot)
 
     feature.actions.hoverNode({type: "hoverNode", path: null})
 
@@ -163,6 +208,15 @@ describe("processSelection()", () => {
     feature.actions.selectNode({type: "selectNode", path: [0, 0]})
 
     expect($.selectedElement).toBe(paragraph)
+  })
+  it("uses the shared node caret for the document breadcrumb", () => {
+    el("p", "hello")
+
+    feature.actions.selectNode({type: "selectNode", path: []})
+
+    expect($.selectedElement).toBe(document.body)
+    expect(document.body).toHaveClass("◆element-selected")
+    expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-node")
   })
   it("resolves a stale mark breadcrumb path to its containing block", () => {
     document.body.innerHTML = "<p><b>hello</b></p>"
@@ -369,6 +423,8 @@ describe("document listeners", () => {
     expect(widget).toHaveClass("◆element-selected")
     expect(widget).toHaveClass("◆element-capture-selected")
     expect(feature.isCaptureSelection).toBe(true)
+    expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-capture")
+    expect(feature.selectionCaret?.getAttribute("part")).not.toContain("selection-caret-node")
     expect(widget.shadowRoot?.activeElement).toBe(button)
 
     const keydown = new KeyboardEvent("keydown", {key: "a", bubbles: true, composed: true, cancelable: true})
