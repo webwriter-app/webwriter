@@ -233,6 +233,28 @@ describe("insertion menu", () => {
     expect(menu.open).toBe(false)
   })
 
+  it("places a block widget after a paragraph instead of inside it", async () => {
+    editor.schema.extendWidgets([{tagName: "webwriter-demo"}])
+    globalThis.DOMEDITOR_PACKAGE_ITEMS = [{
+      section: "Packages",
+      name: "Demo Widget",
+      packageName: "@webwriter/demo",
+      kind: "widget",
+      tag: "webwriter-demo",
+    }]
+    document.body.innerHTML = "<p>before</p>"
+    $.move(document.querySelector("p")!.firstChild!, -1)
+    typeCommand()
+    typeText("demo")
+    const menu = editor.features.insertion.menu
+    await menu.updateComplete
+
+    menu.shadowRoot?.querySelector<HTMLButtonElement>(".item")?.click()
+
+    expect(editorHTML()).toBe('<p>before</p><webwriter-demo contenteditable="true"></webwriter-demo>')
+    expect(document.querySelector("webwriter-demo")?.parentElement).toBe(document.body)
+  })
+
   it("marks widgets nested inside inserted snippets editable", async () => {
     globalThis.DOMEDITOR_PACKAGE_ITEMS = [{
       section: "Packages",

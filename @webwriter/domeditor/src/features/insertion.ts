@@ -453,6 +453,12 @@ export class InsertionFeature extends EditorFeature {
       if(item.kind === "widget" && isElement(node)) node.setAttribute("contenteditable", "true")
       markWidgetsEditable(node)
     })
+    if(item.kind === "widget" && nodes.length === 1 && isElement(nodes[0])) {
+      $.move(range.startContainer, range.startOffset)
+      this.editor.features.manipulation.insert(nodes[0])
+      this.close(false)
+      return
+    }
     const replacement = this.emptyTextBlock?.isConnected && this.emptyTextBlock !== document.body && !this.emptyTextBlock.textContent && this.emptyTextBlock
     if(replacement) {
       replacement.replaceWith(...nodes)
@@ -461,11 +467,7 @@ export class InsertionFeature extends EditorFeature {
       range.insertNode(template.content)
     }
     const last = nodes.at(-1)!
-    if(item.kind === "widget" && nodes.length === 1 && isElement(last)) {
-      $.selectElement(last)
-      this.editor.features.selection.processSelection()
-    }
-    else if(isElement(last) && last.matches("ul, ol, dl, menu")) {
+    if(isElement(last) && last.matches("ul, ol, dl, menu")) {
       $.move(last)
     }
     else if(isElement(last) && last.matches("details") && last.firstElementChild) {

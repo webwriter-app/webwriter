@@ -507,6 +507,10 @@ export class ManipulationFeature extends EditorFeature {
     }
     const insertedWidget = this.insertedWidget(node)
     if(node) markWidgetsEditable(node)
+    if(insertedWidget && !this.editor.schema.isPhrasing(insertedWidget)
+      && !this.canInsertAtSelection(insertedWidget)) {
+      return this.withNormalization(() => this.insertBlockWidget(insertedWidget))
+    }
     return this.withNormalization(() => {
       if(true) {
         $.replace(node)
@@ -819,5 +823,32 @@ export class ManipulationFeature extends EditorFeature {
     return element.localName.includes("-") || element.hasAttribute("is") || schemaGroups.includes("widget")
       ? element
       : null
+  }
+
+  /** Inserts a block widget beside the surrounding text block. A native range
+   * insertion would otherwise put it inside e.g. a paragraph, whose content
+   * model only permits phrasing content. */
+  private insertBlockWidget(widget: Element) {
+    $.delete()
+    const block = getContainer($.range.startContainer)
+    if(block === document.body || this.editor.schema.isPhrasing(widget)
+      || this.canInsertAtSelection(widget)) {
+      $.replace(widget)
+    }
+    else {
+      const parent = block.parentElement
+      if(!parent) return
+      const offset = this.splitTextLikePoint(block, $.range)
+      const right = block.cloneNode(false) as Element
+      right.append(...Array.from(block.childNodes).slice(offset))
+      block.normalize()
+      right.normalize()
+
+      if(block.childNodes.length) block.after(widget)
+      else block.replaceWith(widget)
+      if(right.childNodes.length) widget.after(right)
+    }
+    $.selectElement(widget)
+    this.editor.features.selection.processSelection()
   }
 }

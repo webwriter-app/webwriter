@@ -199,6 +199,26 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expect($.selectedElement).toBe(widget)
     expect(widget).toHaveClass("◆element-selected")
   })
+  it.each([
+    [0, '<webwriter-demo contenteditable="true"></webwriter-demo><p>before after</p>'],
+    [6, '<p>before</p><webwriter-demo contenteditable="true"></webwriter-demo><p> after</p>'],
+    [12, '<p>before after</p><webwriter-demo contenteditable="true"></webwriter-demo>'],
+  ] as const)("places a block widget outside a paragraph at text offset %i", (offset, expected) => {
+    editor.schema.extendWidgets([{tagName: "webwriter-demo"}])
+    document.body.innerHTML = "<p>before after</p>"
+    const text = document.querySelector("p")!.firstChild!
+    $.move(text, offset)
+
+    editor.features.manipulation.actions.insert({
+      type: "insert",
+      html: "<webwriter-demo></webwriter-demo>",
+    })
+
+    expectBodyToBe(expected)
+    const widget = document.querySelector("webwriter-demo")!
+    expect(widget.parentElement).toBe(document.body)
+    expect($.selectedElement).toBe(widget)
+  })
 
   it("can insert <p> at document start", () => {
     const p = document.createElement("p")

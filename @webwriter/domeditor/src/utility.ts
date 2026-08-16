@@ -35,7 +35,9 @@ function focusEditorWindow() {
   window.focus()
 }
 
-function isAtomicEditingElement(node: Node | null): node is Element {
+/** Whether an element is edited as one indivisible node rather than through
+ * its DOM contents. */
+export function isAtomicEditingElement(node: Node | null): node is Element {
   return node instanceof Element
     && (node.matches(mediaElementSelector)
       || node.localName.includes("-")

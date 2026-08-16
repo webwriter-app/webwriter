@@ -542,6 +542,97 @@ describe("document listeners", () => {
     document.dispatchEvent(new MouseEvent("pointerup", {bubbles: true}))
     expect(feature.isInDragSelection).toBe(false)
   })
+  it.each([
+    ["ArrowRight", "before"],
+    ["ArrowDown", "before"],
+    ["ArrowLeft", "after"],
+    ["ArrowUp", "after"],
+  ] as const)("node-selects an adjacent atomic element on %s from the %s boundary", (key, placement) => {
+    document.body.innerHTML = "<p>before</p>\n<interactive-widget></interactive-widget>\n<p>after</p>"
+    const widget = document.querySelector("interactive-widget")!
+    $.selectGap(widget, placement)
+    const event = new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true})
+
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect($.selectedElement).toBe(widget)
+    expect(widget).toHaveClass("◆element-selected")
+  })
+  it.each([
+    ["ArrowRight", "before", -1],
+    ["ArrowDown", "before", 2],
+    ["ArrowLeft", "after", 0],
+    ["ArrowUp", "after", 2],
+  ] as const)("node-selects an atomic element on %s from a neighboring paragraph", (key, paragraphPosition, textOffset) => {
+    document.body.innerHTML = "<p>before</p><interactive-widget></interactive-widget><p>after</p>"
+    const widget = document.querySelector("interactive-widget")!
+    const paragraph = paragraphPosition === "before" ? widget.previousElementSibling! : widget.nextElementSibling!
+    const text = paragraph.firstChild as Text
+    $.move(text, textOffset)
+    const event = new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true})
+
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect($.selectedElement).toBe(widget)
+  })
+  it("does not cross a paragraph boundary horizontally from the middle of its text", () => {
+    document.body.innerHTML = "<p>before</p><interactive-widget></interactive-widget>"
+    const widget = document.querySelector("interactive-widget")!
+    $.move(document.querySelector("p")!.firstChild!, 2)
+    const event = new KeyboardEvent("keydown", {key: "ArrowRight", bubbles: true, cancelable: true})
+
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(false)
+    expect($.selectedElement).not.toBe(widget)
+  })
+  it.each([
+    ["ArrowLeft", "before"],
+    ["ArrowUp", "before"],
+    ["ArrowRight", "after"],
+    ["ArrowDown", "after"],
+  ] as const)("moves %s out of an atomic node selection to the %s boundary", (key, placement) => {
+    document.body.innerHTML = "<p>before</p>\n<video></video>\n<p>after</p>"
+    const video = document.querySelector("video")!
+    $.selectElement(video)
+    const event = new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true})
+
+    document.dispatchEvent(event)
+
+    const index = Array.from(document.body.childNodes).indexOf(video)
+    expect(event.defaultPrevented).toBe(true)
+    expect($.isElementSelection).toBe(false)
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(placement === "before" ? index : index + 1)
+  })
+  it("does not arrow-select an atomic element while extending a selection", () => {
+    const widget = el("interactive-widget")
+    $.selectGap(widget, "before")
+    const event = new KeyboardEvent("keydown", {key: "ArrowRight", shiftKey: true, bubbles: true, cancelable: true})
+
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(false)
+    expect($.selectedElement).toBeUndefined()
+  })
+  it("leaves arrow navigation to a capture-selected widget", () => {
+    const widget = document.createElement("interactive-widget")
+    const button = document.createElement("button")
+    widget.attachShadow({mode: "open"}).append(button)
+    document.body.append(widget)
+    button.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
+    button.focus()
+    const event = new KeyboardEvent("keydown", {key: "ArrowRight", bubbles: true, cancelable: true})
+
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(false)
+    expect(feature.isCaptureSelection).toBe(true)
+    expect($.selectedElement).toBe(widget)
+    expect(widget).toHaveClass("◆element-capture-selected")
+  })
   it("shows the gap before the first body element on ArrowUp", () => {
     const p = el("p", "hello")
     $.move(p.firstChild!, 0)

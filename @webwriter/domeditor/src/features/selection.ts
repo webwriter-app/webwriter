@@ -1,6 +1,14 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import {$, focusedWidgetHost, getContainer, isElement, modifierKeyDown, setPart, widgetHostForShadowInteraction} from "../utility"
+import {$, focusedWidgetHost, getContainer, isAtomicEditingElement, isElement, modifierKeyDown, setPart, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
+
+function arrowDirection(key: string) {
+  return key === "ArrowUp" || key === "ArrowLeft"
+    ? "backward" as const
+    : key === "ArrowDown" || key === "ArrowRight"
+      ? "forward" as const
+      : null
+}
 
 function isCaretAtStartOf(element: Element) {
   const selection = document.getSelection()
@@ -17,7 +25,7 @@ function isCaretAtStartOf(element: Element) {
     if(!parent) {
       return false
     }
-    const index = Array.from(parent.childNodes).indexOf(node)
+    const index = Array.from(parent.childNodes).indexOf(node as ChildNode)
     if(Array.from(parent.childNodes).slice(0, index).some(previous => previous.nodeType === Node.ELEMENT_NODE || previous.textContent)) {
       return false
     }
@@ -49,6 +57,107 @@ export class SelectionFeature extends EditorFeature {
 
   #releaseCaptureSelection() {
     this.#capturedWidget = null
+  }
+
+  #selectionBlock() {
+    let node = $.anchor
+    while(node && node !== document.body) {
+      if(node instanceof Element && this.editor.schema.isBlock(node)) return node
+      node = node.parentElement
+    }
+    return null
+  }
+
+  /** Whether the caret is at the requested edge of its text block. Editor-only
+   * helpers, comments, formatting whitespace, and a browser placeholder BR do
+   * not count as content beyond the caret. */
+  #isCaretAtBlockBoundary(block: Element, direction: "backward" | "forward") {
+    const selection = document.getSelection()
+    if(!selection?.isCollapsed || !selection.anchorNode || !block.contains(selection.anchorNode)) return false
+    const remainder = document.createRange()
+    if(direction === "backward") {
+      remainder.setStart(block, 0)
+      remainder.setEnd(selection.anchorNode, selection.anchorOffset)
+    }
+    else {
+      remainder.setStart(selection.anchorNode, selection.anchorOffset)
+      remainder.setEnd(block, block.childNodes.length)
+    }
+    const hasEditingContent = (node: Node): boolean => {
+      if(node instanceof Text) return Boolean(node.textContent?.trim())
+      if(!(node instanceof Element || node instanceof DocumentFragment)) return false
+      if(node instanceof Element) {
+        if(node.matches(".◆editor-only, br")) return false
+        if(!node.childNodes.length || isAtomicEditingElement(node)) return true
+      }
+      return Array.from(node.childNodes).some(hasEditingContent)
+    }
+    return !hasEditingContent(remainder.cloneContents())
+  }
+
+  /** Finds an atomic node immediately beside the live caret or the edge of its
+   * containing block, ignoring invisible formatting nodes between siblings. */
+  #adjacentAtomicElement(direction: "backward" | "forward", fromBlockBoundary = false) {
+    const selection = document.getSelection()
+    if(!selection?.isCollapsed || !selection.anchorNode) return null
+    let node: Node = selection.anchorNode
+    let offset = selection.anchorOffset
+    if(fromBlockBoundary) {
+      const block = this.#selectionBlock()
+      const parent = block?.parentNode
+      if(!block || !parent) return null
+      const index = Array.from(parent.childNodes).indexOf(block)
+      node = parent
+      offset = direction === "backward" ? index : index + 1
+    }
+
+    while(node === document.body || document.body.contains(node)) {
+      if(node instanceof Text) {
+        const isAtBoundary = direction === "backward" ? offset === 0 : offset === node.length
+        if(!isAtBoundary) return null
+      }
+      else {
+        const step = direction === "backward" ? -1 : 1
+        for(let index = direction === "backward" ? offset - 1 : offset;
+          0 <= index && index < node.childNodes.length; index += step) {
+          const adjacent = node.childNodes.item(index)
+          if(!(adjacent instanceof Element)) {
+            if(adjacent instanceof Text && adjacent.textContent?.trim()) return null
+            continue
+          }
+          if(adjacent.matches(".◆editor-only")) continue
+          return isAtomicEditingElement(adjacent) ? adjacent : null
+        }
+      }
+
+      if(node === document.body) return null
+      const parent = node.parentNode
+      if(!parent) return null
+      const index = Array.from(parent.childNodes).indexOf(node as ChildNode)
+      node = parent
+      offset = direction === "backward" ? index : index + 1
+    }
+    return null
+  }
+
+  /** Selects an adjacent atomic node, or collapses an atomic node selection
+   * into the boundary in the requested direction. */
+  #navigateAtomicSelection(direction: "backward" | "forward", vertical = false) {
+    const selectedElement = $.selectedElement
+    if(selectedElement && isAtomicEditingElement(selectedElement)) {
+      $.selectGap(selectedElement, direction === "backward" ? "before" : "after")
+    }
+    else {
+      let adjacent = this.#adjacentAtomicElement(direction)
+      const block = this.#selectionBlock()
+      if(!adjacent && block && (vertical || this.#isCaretAtBlockBoundary(block, direction))) {
+        adjacent = this.#adjacentAtomicElement(direction, true)
+      }
+      if(!adjacent) return false
+      $.selectElement(adjacent)
+    }
+    this.processSelection()
+    return true
   }
 
   readonly #handleSharedChange = () => {
@@ -520,11 +629,19 @@ export class SelectionFeature extends EditorFeature {
    * pointerup ends the drag selection. */
   activeListeners: DocumentListenerMap = {
     "keydown": ev => {
+      const direction = arrowDirection(ev.key)
+      // Arrow keys belong to the widget while it has captured interaction.
+      // This guard also preserves capture for synthetic/document-level events.
+      if(direction && this.isCaptureSelection) return
       this.#releaseCaptureSelection()
       if(ev.key.toLowerCase() === "a" && modifierKeyDown(ev)) {
         ev.preventDefault()
         $.selectRange(document.body, 0, document.body, document.body.childNodes.length)
         this.processSelection()
+      }
+      else if(direction && !ev.defaultPrevented && !ev.altKey && !modifierKeyDown(ev) && !ev.shiftKey
+        && this.#navigateAtomicSelection(direction, ev.key === "ArrowUp" || ev.key === "ArrowDown")) {
+        ev.preventDefault()
       }
       else if(ev.key === "ArrowUp" && ev.altKey) {
 
