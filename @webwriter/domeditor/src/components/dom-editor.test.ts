@@ -15,6 +15,7 @@ import {
   selectionChangeEvent,
 } from "../editor-bridge"
 import {INSTALLED_PACKAGES_STORAGE_KEY, WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
+import {LocalPackageWorkerClient} from "../local-package-worker-client"
 
 const demoPackage: WebWriterPackage = {
   name: "@webwriter/demo",
@@ -48,6 +49,74 @@ const demoPackage: WebWriterPackage = {
     insertable: true,
     htmlUrl: "https://cdn.jsdelivr.net/npm/@webwriter/demo@1.0.0/dist/demo.html",
   }],
+}
+
+const localPackageDirectory = (withBundle: boolean | {current: boolean} = true) => {
+  const bundleAvailable = () => typeof withBundle === "boolean" ? withBundle : withBundle.current
+  const manifest = JSON.stringify({
+    name: "@local/demo",
+    version: "0.1.0",
+    keywords: ["webwriter-widget"],
+    exports: {
+      "./widgets/local-demo.*": {source: "./src/local-demo.ts", default: "./dist/local-demo.*"},
+    },
+  })
+  const file = (name: string, contents: string) => ({
+    name,
+    kind: "file",
+    getFile: async () => new File([contents], name, {type: name.endsWith(".js") ? "text/javascript" : "application/json", lastModified: 1}),
+  })
+  const dist = {
+    name: "dist",
+    kind: "directory",
+    getDirectoryHandle: async () => { throw Object.assign(new Error("Missing directory"), {name: "NotFoundError"}) },
+    getFileHandle: async (name: string) => {
+      if(bundleAvailable() && name === "local-demo.js") return file(name, "customElements.define('local-demo', class extends HTMLElement {})")
+      throw Object.assign(new Error(`Missing ${name}`), {name: "NotFoundError"})
+    },
+  }
+  return {
+    name: "demo-package",
+    kind: "directory",
+    getFileHandle: async (name: string) => {
+      if(name === "package.json") return file(name, manifest)
+      throw Object.assign(new Error(`Missing ${name}`), {name: "NotFoundError"})
+    },
+    getDirectoryHandle: async (name: string) => {
+      if(name === "dist") return dist
+      throw Object.assign(new Error(`Missing ${name}`), {name: "NotFoundError"})
+    },
+  } as unknown as FileSystemDirectoryHandle
+}
+
+const editableLocalPackageDirectory = () => {
+  const directory = localPackageDirectory() as FileSystemDirectoryHandle
+  let manifest = {
+    name: "@local/demo",
+    version: "0.1.0",
+    description: "Editable local package",
+    keywords: ["webwriter-widget"],
+    exports: {
+      "./widgets/local-demo.*": {source: "./src/local-demo.ts", default: "./dist/local-demo.*"},
+    },
+  } as Record<string, unknown>
+  const originalGetFileHandle = directory.getFileHandle.bind(directory)
+  directory.getFileHandle = async(name: string) => {
+    if(name !== "package.json") return await originalGetFileHandle(name)
+    return {
+      name,
+      kind: "file",
+      getFile: async() => new File([JSON.stringify(manifest)], name, {type: "application/json", lastModified: 1}),
+      createWritable: async() => ({
+        write: async(value: FileSystemWriteChunkType) => {
+          const text = typeof value === "string" ? value : value instanceof Blob ? await value.text() : ""
+          manifest = JSON.parse(text) as Record<string, unknown>
+        },
+        close: async() => undefined,
+      }),
+    } as unknown as FileSystemFileHandle
+  }
+  return {directory, manifest: () => manifest}
 }
 
 async function mountEditor() {
@@ -84,10 +153,12 @@ describe("DomEditor iframe setup", () => {
     expect(search).toHaveBeenCalledTimes(1)
     expect((editor as unknown as {installedPackages: WebWriterPackage[]}).installedPackages).toEqual([demoPackage])
 
-    expect(postMessage).toHaveBeenCalledWith({
+    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
       type: loadWidgetsMessage,
       widgets: [{name: demoPackage.name, version: demoPackage.version}],
-    }, "*")
+      packages: [demoPackage],
+      requestId: expect.any(String),
+    }), "*")
   })
 
   it("does not sandbox the editor iframe", async () => {
@@ -131,10 +202,12 @@ describe("DomEditor iframe setup", () => {
 
     iframe.dispatchEvent(new Event("load"))
 
-    expect(postMessage).toHaveBeenCalledWith({
+    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
       type: loadWidgetsMessage,
       widgets: [{name: "@webwriter/demo", version: "1.0.0"}],
-    }, "*")
+      packages: [demoPackage],
+      requestId: expect.any(String),
+    }), "*")
     const polyfillUrl = "https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"
     expect(srcdoc).toContain(`<script data-webwriter-editor-only src="${polyfillUrl}"></script>`)
     expect(srcdoc.indexOf(polyfillUrl)).toBeLessThan(srcdoc.indexOf("editor-entry"))
@@ -170,6 +243,228 @@ describe("DomEditor iframe setup", () => {
     await removing
 
     expect(JSON.parse(localStorage.getItem(INSTALLED_PACKAGES_STORAGE_KEY)!)).toEqual([])
+  })
+})
+
+describe("Develop local packages", () => {
+  it("picks, serves, watches, and enables a built local package", async () => {
+    const directory = localPackageDirectory()
+    vi.stubGlobal("showDirectoryPicker", vi.fn().mockResolvedValue(directory))
+    const start = vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
+    const register = vi.spyOn(LocalPackageWorkerClient.prototype, "register").mockResolvedValue(undefined)
+    const {editor} = await mountEditor()
+    const reload = vi.spyOn(editor as any, "reloadEditor").mockImplementation(async (...args: unknown[]) => {
+      ;(editor as any).installedPackages = args[0] as WebWriterPackage[]
+    })
+
+    await (editor as any).addLocalPackage()
+
+    expect(start).toHaveBeenCalledTimes(1)
+    expect(register).toHaveBeenCalledWith(expect.any(String), directory)
+    const packages = (editor as any).localPackages as WebWriterPackage[]
+    expect(packages).toHaveLength(1)
+    expect(packages[0]).toMatchObject({name: "@local/demo", version: "0.1.0"})
+    expect(packages[0].scripts[0]).toContain("/__webwriter/local-packages/")
+    expect(packages[0].scripts[0]).toContain("revision=0")
+    expect(reload).toHaveBeenCalledWith([packages[0]])
+    expect((editor as any).localPackageError).toBe("")
+    expect((editor as any).selectedLocalPackageName).toBe("@local/demo")
+  })
+
+  it("selects a local package without inserting it", async() => {
+    vi.stubGlobal("showDirectoryPicker", vi.fn().mockResolvedValue(localPackageDirectory()))
+    vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
+    vi.spyOn(LocalPackageWorkerClient.prototype, "register").mockResolvedValue(undefined)
+    const {editor} = await mountEditor()
+    vi.spyOn(editor as any, "reloadEditor").mockResolvedValue(undefined)
+    await (editor as any).addLocalPackage()
+    const insert = vi.spyOn(editor as any, "installAndInsertPackage").mockResolvedValue(undefined)
+
+    ;(editor as any).handleRibbonButtonClick(new CustomEvent("ribbon-button-click", {
+      detail: {label: "local-package-select:@local/demo"},
+    }))
+
+    expect((editor as any).selectedLocalPackageName).toBe("@local/demo")
+    expect(insert).not.toHaveBeenCalled()
+  })
+
+  it("writes editable metadata back to package.json", async() => {
+    const editable = editableLocalPackageDirectory()
+    vi.stubGlobal("showDirectoryPicker", vi.fn().mockResolvedValue(editable.directory))
+    vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
+    vi.spyOn(LocalPackageWorkerClient.prototype, "register").mockResolvedValue(undefined)
+    const {editor} = await mountEditor()
+    vi.spyOn(editor as any, "reloadEditor").mockResolvedValue(undefined)
+    await (editor as any).addLocalPackage()
+
+    await (editor as any).handleLocalPackageMetadataChange(new CustomEvent("local-package-metadata-change", {
+      detail: {field: "license", value: "MIT"},
+    }))
+
+    expect(editable.manifest().license).toBe("MIT")
+    expect((editor as any).localPackages[0].license).toBe("MIT")
+    expect((editor as any).selectedLocalPackageName).toBe("@local/demo")
+  })
+
+  it("honors the selected package's auto-reload setting", async() => {
+    vi.stubGlobal("showDirectoryPicker", vi.fn().mockResolvedValue(localPackageDirectory()))
+    vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
+    vi.spyOn(LocalPackageWorkerClient.prototype, "register").mockResolvedValue(undefined)
+    const {editor} = await mountEditor()
+    const reload = vi.spyOn(editor as any, "reloadEditor").mockResolvedValue(undefined)
+    await (editor as any).addLocalPackage()
+    reload.mockClear()
+
+    ;(editor as any).handleLocalPackageAutoReloadChange(new CustomEvent("local-package-auto-reload-change", {
+      detail: {enabled: false},
+    }))
+    await (editor as any).performLocalPackageRefresh([...(editor as any).localPackageRecords.keys()][0])
+
+    expect((editor as any).selectedLocalPackageAutoReload).toBe(false)
+    expect(reload).not.toHaveBeenCalled()
+  })
+
+  it("restores persisted directory handles and reloads their packages", async() => {
+    const directory = localPackageDirectory()
+    vi.spyOn(LocalPackageWorkerClient.prototype, "storedDirectories").mockResolvedValue([{id: "persisted", handle: directory as any}])
+    const start = vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
+    const editor = new DomEditor()
+    const watch = vi.spyOn(editor as any, "watchLocalPackage").mockResolvedValue(undefined)
+    const reload = vi.spyOn(editor as any, "reloadEditor").mockResolvedValue(undefined)
+
+    await (editor as any).restoreLocalPackages()
+
+    expect(start).toHaveBeenCalledTimes(1)
+    expect(watch).toHaveBeenCalledTimes(1)
+    expect((editor as any).localPackages).toHaveLength(1)
+    expect((editor as any).selectedLocalPackageName).toBe("@local/demo")
+    expect(reload).toHaveBeenCalledWith([expect.objectContaining({name: "@local/demo"})])
+  })
+
+  it("keeps inaccessible restored folders visible with a recovery error", async() => {
+    const directory = {
+      name: "private-package",
+      kind: "directory",
+      getFileHandle: async() => { throw Object.assign(new Error("Denied"), {name: "NotAllowedError"}) },
+      getDirectoryHandle: async() => { throw Object.assign(new Error("Denied"), {name: "NotAllowedError"}) },
+    } as unknown as FileSystemDirectoryHandle
+    vi.spyOn(LocalPackageWorkerClient.prototype, "storedDirectories").mockResolvedValue([{id: "private", handle: directory as any}])
+    vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
+    const editor = new DomEditor()
+    vi.spyOn(editor as any, "watchLocalPackage").mockResolvedValue(undefined)
+    vi.spyOn(editor as any, "reloadEditor").mockResolvedValue(undefined)
+
+    await (editor as any).restoreLocalPackages()
+
+    expect((editor as any).localPackages[0].label).toBe("private-package")
+    expect((editor as any).selectedLocalPackageName).toBe("@local/private-package")
+    expect((editor as any).localPackageError).toContain("Select the folder again")
+  })
+
+  it("keeps a package without a bundle visible and ready for its first build", async () => {
+    vi.stubGlobal("showDirectoryPicker", vi.fn().mockResolvedValue(localPackageDirectory(false)))
+    vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
+    vi.spyOn(LocalPackageWorkerClient.prototype, "register").mockResolvedValue(undefined)
+    const {editor} = await mountEditor()
+    const reload = vi.spyOn(editor as any, "reloadEditor").mockResolvedValue(undefined)
+
+    await (editor as any).addLocalPackage()
+
+    expect((editor as any).localPackages).toHaveLength(1)
+    expect((editor as any).localPackages[0].members).toEqual([])
+    expect((editor as any).localPackageError).toContain("has no bundle yet")
+    expect(reload).not.toHaveBeenCalled()
+  })
+
+  it("automatically enables the package when its first bundle appears", async () => {
+    const bundle = {current: false}
+    vi.stubGlobal("showDirectoryPicker", vi.fn().mockResolvedValue(localPackageDirectory(bundle)))
+    vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
+    vi.spyOn(LocalPackageWorkerClient.prototype, "register").mockResolvedValue(undefined)
+    const {editor} = await mountEditor()
+    const reload = vi.spyOn(editor as any, "reloadEditor").mockImplementation(async (...args: unknown[]) => {
+      ;(editor as any).installedPackages = args[0] as WebWriterPackage[]
+    })
+    await (editor as any).addLocalPackage()
+    const record = [...(editor as any).localPackageRecords.values()][0] as any
+
+    bundle.current = true
+    record.monitor.options.onChange()
+
+    await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(1))
+    const pkg = (editor as any).localPackages[0] as WebWriterPackage
+    expect(pkg.members).toHaveLength(1)
+    expect(pkg.scripts[0]).toContain("revision=1")
+    expect((editor as any).localPackageError).toBe("")
+  })
+
+  it("queues another refresh when the package changes during a reload", async () => {
+    const {editor} = await mountEditor()
+    let finishFirst!: () => void
+    const firstRefresh = new Promise<void>(resolve => { finishFirst = resolve })
+    const perform = vi.spyOn(editor as any, "performLocalPackageRefresh")
+      .mockImplementationOnce(() => firstRefresh)
+      .mockResolvedValue(undefined)
+
+    const refreshing = (editor as any).refreshLocalPackage("local-id") as Promise<void>
+    await vi.waitFor(() => expect(perform).toHaveBeenCalledTimes(1))
+    await (editor as any).refreshLocalPackage("local-id")
+    finishFirst()
+    await refreshing
+
+    expect(perform).toHaveBeenCalledTimes(2)
+  })
+
+  it("treats a cancelled folder picker as a no-op", async () => {
+    vi.stubGlobal("showDirectoryPicker", vi.fn().mockRejectedValue(new DOMException("Cancelled", "AbortError")))
+    const {editor} = await mountEditor()
+
+    await (editor as any).addLocalPackage()
+
+    expect((editor as any).localPackages).toEqual([])
+    expect((editor as any).localPackageError).toBe("")
+  })
+
+  it("reports unsupported folder access and worker registration failures", async () => {
+    vi.stubGlobal("showDirectoryPicker", undefined)
+    const {editor} = await mountEditor()
+    await (editor as any).addLocalPackage()
+    expect((editor as any).localPackageError).toContain("cannot open local package folders")
+
+    vi.stubGlobal("showDirectoryPicker", vi.fn().mockResolvedValue(localPackageDirectory()))
+    vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockRejectedValue(new Error("Worker registration failed"))
+    await (editor as any).addLocalPackage()
+    expect((editor as any).localPackageError).toBe("Worker registration failed")
+  })
+
+  it("reports denied folder access without leaving the picker busy", async () => {
+    vi.stubGlobal("showDirectoryPicker", vi.fn().mockRejectedValue(Object.assign(new Error("Denied"), {name: "NotAllowedError"})))
+    const {editor} = await mountEditor()
+
+    await (editor as any).addLocalPackage()
+
+    expect((editor as any).localPackageError).toBe("Denied")
+    expect((editor as any).localPackagesLoading).toBe(false)
+  })
+
+  it("keeps a denied package folder visible so it can recover after reauthorization", async () => {
+    const directory = {
+      name: "private-package",
+      kind: "directory",
+      getFileHandle: async () => { throw Object.assign(new Error("Denied"), {name: "NotAllowedError"}) },
+      getDirectoryHandle: async () => { throw Object.assign(new Error("Denied"), {name: "NotAllowedError"}) },
+    } as unknown as FileSystemDirectoryHandle
+    vi.stubGlobal("showDirectoryPicker", vi.fn().mockResolvedValue(directory))
+    vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
+    vi.spyOn(LocalPackageWorkerClient.prototype, "register").mockResolvedValue(undefined)
+    const {editor} = await mountEditor()
+
+    await (editor as any).addLocalPackage()
+
+    expect((editor as any).localPackages).toHaveLength(1)
+    expect((editor as any).localPackages[0].label).toBe("private-package")
+    expect((editor as any).localPackageError).toContain("Select the folder again")
+    expect([...(editor as any).localPackageRecords.values()][0].monitor).toBeTruthy()
   })
 })
 
@@ -660,7 +955,7 @@ describe("DomEditor.execute()", () => {
     await ribbon.updateComplete
 
     expect((editor as unknown as {previewActive: boolean}).previewActive).toBe(false)
-    expect(ribbon.shadowRoot!.querySelectorAll("ribbon-tab")).toHaveLength(3)
+    expect(ribbon.shadowRoot!.querySelectorAll("ribbon-tab")).toHaveLength(4)
   })
 
   it("keeps repeated preview toggles on the same ribbon animation path", async () => {

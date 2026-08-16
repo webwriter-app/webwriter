@@ -141,6 +141,7 @@ describe("mark ribbon controls", () => {
       "File",
       "Insert",
       "Edit",
+      "Develop",
     ])
 
     tabs.find(tab => tab.label === "Edit")!.shadowRoot!.querySelector("button")!.click()

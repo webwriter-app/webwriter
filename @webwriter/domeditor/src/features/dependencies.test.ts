@@ -48,7 +48,9 @@ afterEach(() => {
 describe("DependencyFeature", () => {
   it("creates pinned CDN styles and scripts for bridged widgets", async () => {
     const getPackage = vi.spyOn(WebWriterPackageRegistry.prototype, "getPackage").mockResolvedValue(demoPackage)
-    const append = vi.spyOn(document.head, "append").mockImplementation(() => {})
+    const append = vi.spyOn(document.head, "append").mockImplementation((...assets: (string | Node)[]) => {
+      queueMicrotask(() => assets.forEach(asset => asset instanceof HTMLElement && asset.dispatchEvent(new Event("load"))))
+    })
     const editor = new DOMEditor()
 
     await editor.getActionHandler(loadWidgetsMessage)({
@@ -65,6 +67,50 @@ describe("DependencyFeature", () => {
     expect(globalThis.DOMEDITOR_PACKAGE_ITEMS).toEqual([
       expect.objectContaining({name: "Demo Widget", tag: "webwriter-demo"}),
     ])
+    editor.destroy()
+  })
+
+  it("uses supplied local package metadata without querying npm", async () => {
+    const localPackage: WebWriterPackage = {
+      ...demoPackage,
+      scripts: ["https://example.test/__webwriter/local-packages/demo/dist/demo.js"],
+      styles: ["https://example.test/__webwriter/local-packages/demo/dist/demo.css"],
+    }
+    const getPackage = vi.spyOn(WebWriterPackageRegistry.prototype, "getPackage")
+    const append = vi.spyOn(document.head, "append").mockImplementation((...assets: (string | Node)[]) => {
+      queueMicrotask(() => assets.forEach(asset => asset instanceof HTMLElement && asset.dispatchEvent(new Event("load"))))
+    })
+    const editor = new DOMEditor()
+
+    await editor.getActionHandler(loadWidgetsMessage)({
+      type: loadWidgetsMessage,
+      widgets: [{name: localPackage.name, version: localPackage.version}],
+      packages: [localPackage],
+    })
+
+    expect(getPackage).not.toHaveBeenCalled()
+    const assets = append.mock.calls.flat()
+    expect(assets.find((asset): asset is HTMLScriptElement => asset instanceof HTMLScriptElement)?.src)
+      .toBe(localPackage.scripts[0])
+    editor.destroy()
+  })
+
+  it("reports a local bundle that fails to load", async () => {
+    const localPackage: WebWriterPackage = {
+      ...demoPackage,
+      scripts: ["https://example.test/__webwriter/local-packages/demo/dist/demo.js"],
+      styles: [],
+    }
+    vi.spyOn(document.head, "append").mockImplementation((...assets: (string | Node)[]) => {
+      queueMicrotask(() => assets.forEach(asset => asset instanceof HTMLScriptElement && asset.dispatchEvent(new Event("error"))))
+    })
+    const editor = new DOMEditor()
+
+    await expect(editor.getActionHandler(loadWidgetsMessage)({
+      type: loadWidgetsMessage,
+      widgets: [{name: localPackage.name, version: localPackage.version}],
+      packages: [localPackage],
+    })).rejects.toThrow("Local package script failed to load")
     editor.destroy()
   })
 

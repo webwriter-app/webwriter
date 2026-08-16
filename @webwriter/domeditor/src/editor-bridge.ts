@@ -8,6 +8,7 @@ import {
 } from "./marks"
 import type {EditorStateSnapshot} from "./editor-state"
 import {isMediaType, type MediaSelectionState} from "./media"
+import type {WebWriterPackage} from "./packages"
 
 export const executeCompleteEvent = "dom-editor-execute-complete"
 export const executeFailureEvent = "dom-editor-execute-failure"
@@ -31,6 +32,9 @@ export type InitializeEditorMessage = {
 export type LoadWidgetsMessage = {
   type: typeof loadWidgetsMessage
   widgets: WidgetReference[]
+  /** Already-resolved package metadata. Local development packages use this
+   * path because their assets cannot be resolved through the npm registry. */
+  packages?: WebWriterPackage[]
 }
 
 export function isInitializeEditorMessage(value: unknown): value is InitializeEditorMessage {
@@ -49,6 +53,7 @@ export function isInitializeEditorMessage(value: unknown): value is InitializeEd
 export function isLoadWidgetsMessage(value: unknown): value is LoadWidgetsMessage {
   if(!value || typeof value !== "object") return false
   const message = value as Partial<LoadWidgetsMessage>
+  const packages = message.packages
   return message.type === loadWidgetsMessage
     && Array.isArray(message.widgets)
     && message.widgets.every(widget => !!widget
@@ -56,6 +61,14 @@ export function isLoadWidgetsMessage(value: unknown): value is LoadWidgetsMessag
       && typeof widget.name === "string"
       && typeof widget.version === "string",
     )
+    && (packages === undefined || Array.isArray(packages) && packages.every(pkg => !!pkg
+      && typeof pkg === "object"
+      && typeof pkg.name === "string"
+      && typeof pkg.version === "string"
+      && Array.isArray(pkg.members)
+      && Array.isArray(pkg.scripts)
+      && Array.isArray(pkg.styles),
+    ))
 }
 
 export type SelectionPathItem = {

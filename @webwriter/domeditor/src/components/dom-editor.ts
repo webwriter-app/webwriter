@@ -52,6 +52,15 @@ import {
 import "./breadcrumb"
 import "./ribbon"
 import {restoreOriginalResourceURLs, serializeDoctype} from "../serialization"
+import {
+  loadLocalPackage,
+  localPackageWatchPaths,
+  type LocalPackageDirectory,
+  type LocalPackageWarning,
+} from "../local-package"
+import {LocalPackageMonitor} from "../local-package-monitor"
+import {LOCAL_PACKAGE_ROUTE_PREFIX, localPackageUrl, type LocalPackageDirectoryHandle} from "../local-package-worker"
+import {LocalPackageWorkerClient} from "../local-package-worker-client"
 
 type WritableFileStream = {
   write(data: Blob): Promise<void>
@@ -67,6 +76,7 @@ type LocalFileHandle = {
 type FilePickerWindow = Window & typeof globalThis & {
   showOpenFilePicker?: (options?: object) => Promise<LocalFileHandle[]>
   showSaveFilePicker?: (options?: object) => Promise<LocalFileHandle>
+  showDirectoryPicker?: (options?: object) => Promise<FileSystemDirectoryHandle>
 }
 
 type FileFormat = "html" | "offline"
@@ -79,9 +89,50 @@ const escapeAttribute = (value: string) => value
 const editorEntryUrl = `${import.meta.env.BASE_URL}${import.meta.env.DEV ? "src/editor-entry.ts" : "assets/editor-entry.js"}`
 const appIconUrl = `${import.meta.env.BASE_URL}assets/app-icon-transparent.svg`
 const scopedCustomElementRegistryPolyfillUrl = "https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"
+const localPackageResourcePath = LOCAL_PACKAGE_ROUTE_PREFIX
+const packageLoadTimeoutMs = 10_000
+
+type LocalPackageRecord = {
+  id: string
+  directory: FileSystemDirectoryHandle
+  package: WebWriterPackage
+  warnings: LocalPackageWarning[]
+  revision: number
+  enabled: boolean
+  monitor?: LocalPackageMonitor
+  error?: string
+  autoReload: boolean
+}
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value)
+
+const isAbortError = (error: unknown) => error instanceof DOMException
+  ? error.name === "AbortError"
+  : isRecord(error) && error.name === "AbortError"
+
+const isLocalResourcePackage = (pkg: WebWriterPackage) => [
+  pkg.iconUrl,
+  ...pkg.scripts,
+  ...pkg.styles,
+  ...pkg.members.flatMap(member => [member.iconUrl, member.htmlUrl, member.scriptUrl, member.styleUrl]),
+].some(url => url?.includes(localPackageResourcePath))
+
+const localPackageId = () => globalThis.crypto?.randomUUID?.()
+  ?? `package-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+
+const localPackagePlaceholder = (directory: FileSystemDirectoryHandle, id: string): WebWriterPackage => ({
+  name: `@local/${(directory.name || id).toLowerCase().replaceAll(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || id}`,
+  version: "0.0.0",
+  label: directory.name || "Local package",
+  description: "This local package could not be loaded yet.",
+  authors: [],
+  keywords: ["local", "development"],
+  links: {},
+  members: [],
+  scripts: [],
+  styles: [],
+})
 
 const isStoredPackageMember = (value: unknown): value is PackageMember => {
   if(!isRecord(value)) return false
@@ -137,6 +188,11 @@ export class DomEditor extends LitElement {
     packagesLoading: {attribute: false, state: true},
     busyPackageNames: {attribute: false, state: true},
     packageError: {attribute: false, state: true},
+    localPackages: {attribute: false, state: true},
+    localPackagesLoading: {attribute: false, state: true},
+    localPackageError: {attribute: false, state: true},
+    selectedLocalPackageName: {attribute: false, state: true},
+    selectedLocalPackageAutoReload: {attribute: false, state: true},
     frameRevision: {attribute: false, state: true},
     listType: {attribute: false, state: true},
     listStyle: {attribute: false, state: true},
@@ -153,6 +209,7 @@ export class DomEditor extends LitElement {
   private editorReadyResolve: ((editorWindow: Window) => void) | null = null
   private editorReadyReject: ((reason: unknown) => void) | null = null
   private requestSequence = 0
+  private packageLoadSequence = 0
   private savedEditorSelection: SelectionBookmark | null = null
   private ribbonInputSession = false
   private restoreEditorAfterRibbonInput = false
@@ -172,6 +229,15 @@ export class DomEditor extends LitElement {
   private packagesLoading = false
   private busyPackageNames: string[] = []
   private packageError = ""
+  private localPackages: WebWriterPackage[] = []
+  private localPackagesLoading = false
+  private localPackageError = ""
+  private selectedLocalPackageName = ""
+  private selectedLocalPackageAutoReload = false
+  private readonly localPackageRecords = new Map<string, LocalPackageRecord>()
+  private readonly localPackageReloads = new Set<string>()
+  private readonly localPackageReloadPending = new Set<string>()
+  private readonly localPackageWorker = new LocalPackageWorkerClient()
   private frameState: EditorStateSnapshot | undefined
   private frameRevision = 0
   private frameDocumentHTML: string | null = null
@@ -375,9 +441,33 @@ export class DomEditor extends LitElement {
       const loadMessage: LoadWidgetsMessage = {
         type: loadWidgetsMessage,
         widgets: this.installedPackages.map(({name, version}) => ({name, version})),
+        packages: this.installedPackages,
       }
       this.editorWindow.postMessage(initializeMessage, "*")
-      this.editorWindow.postMessage(loadMessage, "*")
+      const packageLoadRequestId = `packages-${++this.packageLoadSequence}`
+      const packageLoad = new Promise<unknown>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          if(!this.pendingExecutions.delete(packageLoadRequestId)) return
+          reject(new Error("The editor did not finish loading package resources"))
+        }, packageLoadTimeoutMs)
+        this.pendingExecutions.set(packageLoadRequestId, {
+          resolve: value => {
+            clearTimeout(timer)
+            resolve(value)
+          },
+          reject: reason => {
+            clearTimeout(timer)
+            reject(reason)
+          },
+        })
+      })
+      this.editorWindow.postMessage({...loadMessage, requestId: packageLoadRequestId}, "*")
+      void packageLoad.catch(error => {
+        const message = error instanceof Error ? error.message : String(error)
+        if(!this.isConnected || message === "The editor iframe was reloaded for a package change") return
+        if(this.installedPackages.some(isLocalResourcePackage)) this.localPackageError = message
+        else this.packageError = message
+      })
       this.editorReadyResolve?.(this.editorWindow)
       this.dirtyTrackingTimer = setTimeout(() => {
         this.dirtyTrackingReady = true
@@ -827,8 +917,32 @@ export class DomEditor extends LitElement {
       void this.downloadDocument()
       return
     }
+    if(label === "local-package-add") {
+      void this.addLocalPackage()
+      return
+    }
+    if(label?.startsWith("local-package-select:")) {
+      const name = label.slice("local-package-select:".length)
+      this.selectLocalPackage(name)
+      return
+    }
+    if(label?.startsWith("local-package:")) {
+      const name = label.slice("local-package:".length)
+      this.selectLocalPackage(name)
+      const pkg = this.localPackages.find(candidate => candidate.name === name)
+      if(!pkg) {
+        this.localPackageError = `Local package '${name}' is no longer available`
+        return
+      }
+      if(!pkg.members.some(member => member.insertable)) {
+        this.localPackageError = `${pkg.label} has no bundle yet. Build the package to make its exports available.`
+        return
+      }
+      void this.installAndInsertPackage(pkg)
+      return
+    }
     if(label?.startsWith("package-member:")) {
-      const pkg = [...this.installedPackages, ...this.packages]
+      const pkg = [...this.installedPackages, ...this.localPackages, ...this.packages]
         .find(candidate => candidate.members.some(member => packageMemberAction(member) === label))
       const member = pkg?.members.find(candidate => packageMemberAction(candidate) === label)
       if(pkg && member) void this.installAndInsertPackage(pkg, member)
@@ -933,8 +1047,271 @@ export class DomEditor extends LitElement {
     }).finally(() => this.focusEditor())
   }
 
+  private selectLocalPackage(name: string) {
+    const record = [...this.localPackageRecords.values()].find(candidate => candidate.package.name === name)
+    if(!record) {
+      this.localPackageError = `Local package '${name}' is no longer available`
+      return
+    }
+    this.selectedLocalPackageName = name
+    this.selectedLocalPackageAutoReload = record.autoReload
+  }
+
+  private async handleLocalPackageMetadataChange(event: Event) {
+    const detail = (event as CustomEvent<{field?: string, value?: string}>).detail
+    const record = [...this.localPackageRecords.values()].find(candidate => candidate.package.name === this.selectedLocalPackageName)
+    if(!record || !detail?.field) return
+    if(!["name", "version", "description", "license"].includes(detail.field)) return
+    try {
+      const directory = record.directory as FileSystemDirectoryHandle & {getFileHandle(name: string, options?: {create?: boolean}): Promise<any>}
+      const handle = await directory.getFileHandle("package.json")
+      const file = await handle.getFile()
+      const parsed: unknown = JSON.parse(await file.text())
+      if(!isRecord(parsed)) throw new Error("The local package.json must contain a JSON object")
+      const manifest = {...parsed}
+      const value = detail.value ?? ""
+      if((detail.field === "description" || detail.field === "license") && !value.trim()) delete manifest[detail.field]
+      else manifest[detail.field] = value
+      if(detail.field === "name") {
+        if(!/^@[^/\s]+\/[^/\s]+$/.test(value)) throw new Error("Package name must be scoped (for example @scope/name)")
+        const duplicate = [...this.localPackageRecords.values()].find(candidate => (
+          candidate.id !== record.id && candidate.package.name === value
+        ))
+        if(duplicate) throw new Error(`A local package named '${value}' is already loaded`)
+      }
+      if(detail.field === "version" && !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(value)) {
+        throw new Error("Package version must use semantic versioning")
+      }
+      const writable = await handle.createWritable()
+      await writable.write(JSON.stringify(manifest, null, 2) + "\n")
+      await writable.close()
+      await this.refreshLocalPackage(record.id)
+      const refreshed = this.localPackageRecords.get(record.id)
+      if(refreshed) this.selectLocalPackage(refreshed.package.name)
+    }
+    catch(error) {
+      this.localPackageError = error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  private handleLocalPackageAutoReloadChange = (event: Event) => {
+    const detail = (event as CustomEvent<{enabled?: boolean}>).detail
+    const record = [...this.localPackageRecords.values()].find(candidate => candidate.package.name === this.selectedLocalPackageName)
+    if(!record || typeof detail?.enabled !== "boolean") return
+    record.autoReload = detail.enabled
+    this.selectedLocalPackageAutoReload = detail.enabled
+  }
+
   private handleRibbonPreviewExit = () => {
     void this.exitPreview()
+  }
+
+  private async matchingLocalPackage(directory: FileSystemDirectoryHandle) {
+    const candidate = directory as FileSystemDirectoryHandle & {
+      isSameEntry?: (other: FileSystemHandle) => Promise<boolean>
+    }
+    if(typeof candidate.isSameEntry !== "function") return undefined
+    for(const record of this.localPackageRecords.values()) {
+      try {
+        if(await candidate.isSameEntry(record.directory)) return record
+      }
+      catch {
+        // An expired handle is not a match; loading the newly-picked handle
+        // will surface any current permission problem.
+      }
+    }
+  }
+
+  private updateLocalPackageList() {
+    this.localPackages = [...this.localPackageRecords.values()].map(record => record.package)
+  }
+
+  private replaceLocalPackageName(id: string, name: string) {
+    for(const [otherId, other] of this.localPackageRecords) {
+      if(otherId === id || other.package.name !== name) continue
+      other.monitor?.dispose()
+      this.localPackageRecords.delete(otherId)
+      void this.localPackageWorker.unregister(otherId).catch(() => {
+        // The newly selected folder is already registered; stale worker state
+        // does not prevent it from becoming the active package with this name.
+      })
+    }
+  }
+
+  private localPackageWarning(pkg: WebWriterPackage, warnings: LocalPackageWarning[]) {
+    if(!warnings.length) return ""
+    const missingBundle = warnings.find(warning => warning.code === "missing-bundle")
+    return missingBundle
+      ? `${pkg.label} has no bundle yet. Build the package to make its exports available.`
+      : `${pkg.label}: ${warnings.map(warning => warning.message).join(" ")}`
+  }
+
+  private async watchLocalPackage(record: LocalPackageRecord) {
+    const paths = localPackageWatchPaths(record.package.manifest)
+    if(record.monitor) {
+      await record.monitor.setPaths(paths)
+      return
+    }
+    const monitor = new LocalPackageMonitor(record.directory as unknown as LocalPackageDirectory, {
+      onChange: () => void this.refreshLocalPackage(record.id),
+    })
+    record.monitor = monitor
+    await monitor.start(paths)
+  }
+
+  private async refreshLocalPackage(id: string) {
+    if(this.localPackageReloads.has(id)) {
+      this.localPackageReloadPending.add(id)
+      return
+    }
+    this.localPackageReloads.add(id)
+    try {
+      do {
+        this.localPackageReloadPending.delete(id)
+        await this.performLocalPackageRefresh(id)
+      } while(this.localPackageReloadPending.has(id))
+    }
+    finally {
+      this.localPackageReloadPending.delete(id)
+      this.localPackageReloads.delete(id)
+    }
+  }
+
+  private async performLocalPackageRefresh(id: string) {
+    const previous = this.localPackageRecords.get(id)
+    if(!previous) return
+    try {
+      const revision = previous.revision + 1
+      let result: Awaited<ReturnType<typeof loadLocalPackage>>
+      try {
+        result = await loadLocalPackage(previous.directory as unknown as LocalPackageDirectory, {
+          urlFor: path => localPackageUrl(id, path, revision),
+          locale: document.documentElement.lang || navigator.language || "en",
+        })
+      }
+      catch(error) {
+        previous.error = error instanceof Error ? error.message : String(error)
+        this.localPackageError = `${previous.package.label}: ${previous.error}`
+        await this.watchLocalPackage(previous)
+        this.updateLocalPackageList()
+        return
+      }
+
+      // Build tools often replace the output file rather than updating it in
+      // place. Keep the last working package while that short missing-file
+      // window is visible, but continue polling/observing for the finished build.
+      if(!result.package.members.length && previous.package.members.length) {
+        previous.warnings = result.warnings
+        previous.error = this.localPackageWarning(result.package, result.warnings)
+        this.localPackageError = previous.error
+        await this.watchLocalPackage(previous)
+        return
+      }
+
+      const nextRecord: LocalPackageRecord = {
+        ...previous,
+        package: result.package,
+        warnings: result.warnings,
+        revision,
+        error: undefined,
+      }
+      this.replaceLocalPackageName(id, result.package.name)
+      this.localPackageRecords.set(id, nextRecord)
+      this.updateLocalPackageList()
+      await this.watchLocalPackage(nextRecord)
+      this.localPackageError = this.localPackageWarning(result.package, result.warnings)
+
+      if(nextRecord.enabled && nextRecord.autoReload && result.package.members.length) {
+        const nextPackages = this.installedPackages.filter(candidate => (
+          candidate.name !== previous.package.name && candidate.name !== result.package.name
+        ))
+        nextPackages.push(result.package)
+        await this.reloadEditor(nextPackages)
+      }
+    }
+    catch(error) {
+      this.localPackageError = error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  private async addLocalPackage() {
+    const picker = (window as FilePickerWindow).showDirectoryPicker
+    if(!picker) {
+      this.localPackageError = "This browser cannot open local package folders. Use a secure Chromium-based browser with the File System Access API."
+      return
+    }
+
+    this.localPackagesLoading = true
+    this.localPackageError = ""
+    try {
+      // The picker is deliberately the first awaited operation: browsers
+      // require it to run within the Add package button's user activation.
+      const directory = await picker.call(window, {id: "webwriter-develop-package", mode: "readwrite"})
+      const previous = await this.matchingLocalPackage(directory)
+      const id = previous?.id ?? localPackageId()
+      await this.localPackageWorker.start()
+      await this.localPackageWorker.register(id, directory as unknown as LocalPackageDirectoryHandle)
+
+      const revision = (previous?.revision ?? -1) + 1
+      let loaded: Awaited<ReturnType<typeof loadLocalPackage>>
+      try {
+        loaded = await loadLocalPackage(directory as unknown as LocalPackageDirectory, {
+          urlFor: path => localPackageUrl(id, path, revision),
+          locale: document.documentElement.lang || navigator.language || "en",
+        })
+      }
+      catch(error) {
+        const pkg = previous?.package ?? localPackagePlaceholder(directory, id)
+        const record: LocalPackageRecord = {
+          id,
+          directory,
+          package: pkg,
+          warnings: previous?.warnings ?? [],
+          revision,
+          enabled: true,
+          monitor: previous?.monitor,
+          error: error instanceof Error ? error.message : String(error),
+          autoReload: previous?.autoReload ?? true,
+        }
+        this.localPackageRecords.set(id, record)
+        this.updateLocalPackageList()
+        await this.watchLocalPackage(record)
+        this.selectLocalPackage(record.package.name)
+        this.localPackageError = `${pkg.label}: ${record.error}`
+        return
+      }
+
+      const record: LocalPackageRecord = {
+        id,
+        directory,
+        package: loaded.package,
+        warnings: loaded.warnings,
+        revision,
+        enabled: true,
+        monitor: previous?.monitor,
+        autoReload: previous?.autoReload ?? true,
+      }
+      this.replaceLocalPackageName(id, loaded.package.name)
+      this.localPackageRecords.set(id, record)
+      this.updateLocalPackageList()
+      await this.watchLocalPackage(record)
+      this.selectLocalPackage(record.package.name)
+      this.localPackageError = this.localPackageWarning(loaded.package, loaded.warnings)
+
+      if(loaded.package.members.length) {
+        const nextPackages = this.installedPackages.filter(candidate => (
+          candidate.name !== previous?.package.name && candidate.name !== loaded.package.name
+        ))
+        nextPackages.push(loaded.package)
+        await this.reloadEditor(nextPackages)
+      }
+    }
+    catch(error) {
+      if(!isAbortError(error)) this.localPackageError = error instanceof Error ? error.message : String(error)
+    }
+    finally {
+      this.localPackagesLoading = false
+    }
   }
 
   private async insertPackageMember(member: PackageMember) {
@@ -959,11 +1336,14 @@ export class DomEditor extends LitElement {
     this.busyPackageNames = [...this.busyPackageNames, pkg.name]
     this.packageError = ""
     try {
-      const resolvedPackage = installed ? await this.packageRegistry.getPackage(pkg) : pkg
+      const localPackage = this.localPackages.find(candidate => candidate.name === pkg.name)
+      const resolvedPackage = installed ? localPackage ?? await this.packageRegistry.getPackage(pkg) : pkg
       const nextPackages = installed
         ? [...this.installedPackages.filter(candidate => candidate.name !== pkg.name), resolvedPackage]
         : this.installedPackages.filter(candidate => candidate.name !== pkg.name)
       await this.reloadEditor(nextPackages)
+      const localRecord = [...this.localPackageRecords.values()].find(candidate => candidate.package.name === pkg.name)
+      if(localRecord) localRecord.enabled = installed
       this.packages = this.packages.map(candidate => candidate.name === resolvedPackage.name ? resolvedPackage : candidate)
       return installed ? resolvedPackage : undefined
     }
@@ -1057,7 +1437,7 @@ export class DomEditor extends LitElement {
     try {
       globalThis.localStorage?.setItem(
         INSTALLED_PACKAGES_STORAGE_KEY,
-        JSON.stringify(this.installedPackages),
+        JSON.stringify(this.installedPackages.filter(pkg => !isLocalResourcePackage(pkg))),
       )
     }
     catch {
@@ -1349,15 +1729,87 @@ export class DomEditor extends LitElement {
     return promise
   }
 
+  private async restoreLocalPackages() {
+    const worker = this.localPackageWorker as LocalPackageWorkerClient & {
+      storedDirectories?: () => Promise<Array<{id: string, handle: LocalPackageDirectoryHandle}>>
+    }
+    if(!worker.storedDirectories) return
+    try {
+      const stored = await worker.storedDirectories()
+      if(stored.length) await worker.start()
+      const restored = new Map<string, WebWriterPackage>()
+      for(const entry of stored) {
+        if(this.localPackageRecords.has(entry.id)) continue
+        try {
+          const result = await loadLocalPackage(entry.handle as unknown as LocalPackageDirectory, {
+            urlFor: path => localPackageUrl(entry.id, path, 0),
+            locale: document.documentElement.lang || navigator.language || "en",
+          })
+          const record: LocalPackageRecord = {
+            id: entry.id,
+            directory: entry.handle as unknown as FileSystemDirectoryHandle,
+            package: result.package,
+            warnings: result.warnings,
+            revision: 0,
+            enabled: true,
+            autoReload: true,
+          }
+          this.replaceLocalPackageName(entry.id, result.package.name)
+          this.localPackageRecords.set(entry.id, record)
+          restored.set(result.package.name, result.package)
+          await this.watchLocalPackage(record)
+        }
+        catch(error) {
+          const placeholder = localPackagePlaceholder(entry.handle as unknown as FileSystemDirectoryHandle, entry.id)
+          const record: LocalPackageRecord = {
+            id: entry.id,
+            directory: entry.handle as unknown as FileSystemDirectoryHandle,
+            package: placeholder,
+            warnings: [],
+            revision: 0,
+            enabled: true,
+            autoReload: true,
+            error: error instanceof Error ? error.message : String(error),
+          }
+          this.localPackageRecords.set(entry.id, record)
+          this.localPackageError = `${placeholder.label}: ${record.error}`
+          await this.watchLocalPackage(record)
+        }
+      }
+      this.updateLocalPackageList()
+      const firstRestored = this.localPackageRecords.values().next().value as LocalPackageRecord | undefined
+      if(!this.selectedLocalPackageName && firstRestored) this.selectLocalPackage(firstRestored.package.name)
+      if(restored.size) {
+        const restoredNames = new Set(restored.keys())
+        await this.reloadEditor([
+          ...this.installedPackages.filter(candidate => !restoredNames.has(candidate.name)),
+          ...restored.values(),
+        ])
+      }
+    }
+    catch(error) {
+      this.localPackageError = error instanceof Error ? error.message : String(error)
+    }
+  }
+
   connectedCallback() {
     super.connectedCallback()
     window.addEventListener("message", this.handleEditorMessage)
     this.restoreInstalledPackages()
     void this.loadPackageCatalog()
+    void this.restoreLocalPackages()
+    this.localPackageRecords.forEach(record => {
+      record.monitor = undefined
+      void this.watchLocalPackage(record)
+    })
   }
 
   disconnectedCallback() {
     window.removeEventListener("message", this.handleEditorMessage)
+    this.localPackageRecords.forEach(record => {
+      record.monitor?.dispose()
+      record.monitor = undefined
+    })
     if(this.dirtyTrackingTimer !== undefined) clearTimeout(this.dirtyTrackingTimer)
     this.dirtyTrackingTimer = undefined
     this.dirtyTrackingReady = false
@@ -1417,6 +1869,11 @@ export class DomEditor extends LitElement {
           .packagesLoading=${this.packagesLoading}
           .busyPackageNames=${this.busyPackageNames}
           .packageError=${this.packageError}
+          .localPackages=${this.localPackages}
+          .localPackagesLoading=${this.localPackagesLoading}
+          .localPackageError=${this.localPackageError}
+          .selectedLocalPackageName=${this.selectedLocalPackageName}
+          .selectedLocalPackageAutoReload=${this.selectedLocalPackageAutoReload}
           .fileName=${this.fileName}
           .fileDirty=${this.fileDirty}
           .previewActive=${this.previewActive}
@@ -1434,6 +1891,8 @@ export class DomEditor extends LitElement {
           @ribbon-input-commit=${this.finishRibbonInput}
           @ribbon-input-cancel=${this.finishRibbonInput}
           @package-catalog-request=${this.loadPackageCatalog}
+          @local-package-metadata-change=${this.handleLocalPackageMetadataChange}
+          @local-package-auto-reload-change=${this.handleLocalPackageAutoReloadChange}
         ></app-ribbon>
         <dom-editor-breadcrumb
           .path=${this.selectionPath}

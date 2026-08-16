@@ -4,6 +4,7 @@ import {isLoadWidgetsMessage, loadWidgetsMessage, type LoadWidgetsMessage} from 
 import {packageInsertionItems, packageWidgetSchemaDefinitions, WebWriterPackageRegistry} from "../packages"
 import {Schema} from "../schema"
 import {markWidgetsEditable} from "../utility"
+import {LOCAL_PACKAGE_ROUTE_PREFIX} from "../local-package-worker"
 
 export class DependencyFeature extends EditorFeature {
   private readonly packageRegistry = new WebWriterPackageRegistry()
@@ -30,11 +31,14 @@ export class DependencyFeature extends EditorFeature {
     if(!isLoadWidgetsMessage(message)) throw new TypeError("Invalid load-widgets message")
 
     const sequence = ++this.widgetLoadSequence
+    const suppliedPackages = new Map((message.packages ?? []).map(pkg => [`${pkg.name}@${pkg.version}`, pkg]))
     const widgetReferences = [...new Map(message.widgets.map(widget => [
       `${widget.name}@${widget.version}`,
       widget,
     ])).values()]
-    const packages = await Promise.all(widgetReferences.map(widget => this.packageRegistry.getPackage(widget)))
+    const packages = await Promise.all(widgetReferences.map(widget => (
+      suppliedPackages.get(`${widget.name}@${widget.version}`) ?? this.packageRegistry.getPackage(widget)
+    )))
     if(sequence !== this.widgetLoadSequence) return
     globalThis.DOMEDITOR_PACKAGE_ITEMS = packageInsertionItems(packages)
     const widgetDefinitions = packageWidgetSchemaDefinitions(packages)
@@ -59,7 +63,19 @@ export class DependencyFeature extends EditorFeature {
       return script
     })
     this.widgetAssets = [...styles, ...scripts]
+    const localAssetLoads = this.widgetAssets.flatMap(element => {
+      const url = element instanceof HTMLLinkElement ? element.href : (element as HTMLScriptElement).src
+      if(!new URL(url, document.baseURI).pathname.startsWith(LOCAL_PACKAGE_ROUTE_PREFIX)) return []
+      return [new Promise<void>((resolve, reject) => {
+        element.addEventListener("load", () => resolve(), {once: true})
+        element.addEventListener("error", () => reject(new Error(
+          `Local package ${element instanceof HTMLLinkElement ? "stylesheet" : "script"} failed to load: ${url}`,
+        )), {once: true})
+      })]
+    })
     document.head.append(...this.widgetAssets)
+    await Promise.all(localAssetLoads)
+    if(sequence !== this.widgetLoadSequence) return
     this.editor.features.insertion.menu.requestUpdate()
   }
 

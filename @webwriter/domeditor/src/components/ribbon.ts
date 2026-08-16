@@ -42,7 +42,7 @@ import {
   type MediaType,
 } from "../media"
 
-type RibbonMenuName = "File" | "Start" | "Insert" | "Edit"
+type RibbonMenuName = "File" | "Start" | "Insert" | "Edit" | "Develop"
 
 type RibbonInputEventDetail = {
   input: HTMLElement
@@ -63,7 +63,7 @@ const isRibbonInput = (target: EventTarget | null): target is HTMLElement => {
 
 const ribbonInputFromEvent = (event: Event) => event.composedPath().find(isRibbonInput)
 
-const menuTabs: RibbonMenuName[] = ["File", "Insert", "Edit"]
+const menuTabs: RibbonMenuName[] = ["File", "Insert", "Edit", "Develop"]
 const dropdownMenus: RibbonMenuName[] = ["File", "Insert", "Edit"]
 
 const storageLocations = [
@@ -172,6 +172,12 @@ const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
     {label: "Arrange", buttons: ["Position", "Order", "Group"]},
     {label: "View", buttons: ["Zoom", "Guides", "Fullscreen"]},
   ],
+  Develop: [
+    {label: "Local packages", buttons: []},
+    {label: "Metadata", buttons: []},
+    {label: "Development", buttons: []},
+    {label: "Exports", buttons: []},
+  ],
 }
 
 /** The editor's tabbed, responsive ribbon toolbar. */
@@ -191,6 +197,11 @@ export class AppRibbon extends LitElement {
     packagesLoading: {type: Boolean, attribute: "packages-loading"},
     busyPackageNames: {attribute: false},
     packageError: {type: String, attribute: "package-error"},
+    localPackages: {attribute: false},
+    localPackagesLoading: {type: Boolean, attribute: "local-packages-loading"},
+    localPackageError: {type: String, attribute: "local-package-error"},
+    selectedLocalPackageName: {type: String, attribute: "selected-local-package-name"},
+    selectedLocalPackageAutoReload: {type: Boolean, attribute: "selected-local-package-auto-reload"},
     packageSearchQuery: {type: String, state: true},
     packageDrawerOpen: {type: Boolean, state: true},
     packageVisibleCount: {type: Number, state: true},
@@ -620,12 +631,85 @@ export class AppRibbon extends LitElement {
       --ribbon-drawer-inline-end: 0;
     }
 
+    .local-packages-drawer {
+      --ribbon-drawer-expanded-width: 14rem;
+      flex-grow: 0;
+    }
+
+    .exports-drawer {
+      --ribbon-drawer-expanded-width: 14rem;
+      flex-grow: 0;
+    }
+
     .package-status {
       align-self: center;
       padding: 0.25rem;
       color: #667085;
       font-size: 0.66rem;
       white-space: nowrap;
+    }
+
+    .develop-fields {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-rows: repeat(2, minmax(0, 1fr));
+      gap: 0.15rem 0.35rem;
+      min-width: 0;
+      height: 100%;
+      padding: 0.1rem 0.25rem;
+    }
+
+    .develop-field {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      color: #526b86;
+      font-size: 0.65rem;
+      white-space: nowrap;
+    }
+
+    .develop-field span { flex: 0 0 3.6rem; }
+    .develop-fields .develop-field {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0;
+      min-width: 0;
+    }
+
+    .develop-fields .develop-field span {
+      flex: 0 0 auto;
+      line-height: 0.75rem;
+    }
+
+    .develop-field input[type="text"] {
+      box-sizing: border-box;
+      width: 8rem;
+      min-width: 0;
+      height: 1.45rem;
+      padding: 0 0.3rem;
+      border: 1px solid #c8d2df;
+      border-radius: 0.25rem;
+      color: #2f3742;
+      background: transparent;
+      font: inherit;
+      font-size: 0.65rem;
+    }
+
+    .develop-fields .develop-field input[type="text"] {
+      width: 100%;
+      height: 1.2rem;
+    }
+
+    .develop-field input[type="text"]:focus {
+      border-color: #3977c7;
+      outline: 1px solid #3977c7;
+    }
+
+    .develop-empty {
+      align-self: center;
+      padding: 0.25rem;
+      color: #667085;
+      font-size: 0.66rem;
     }
 
     .file-name-row {
@@ -760,6 +844,11 @@ export class AppRibbon extends LitElement {
   packagesLoading = false
   busyPackageNames: string[] = []
   packageError = ""
+  localPackages: WebWriterPackage[] = []
+  localPackagesLoading = false
+  localPackageError = ""
+  selectedLocalPackageName = ""
+  selectedLocalPackageAutoReload = false
   listType: ListType | null = null
   listStyle = ""
   media: MediaSelectionState | null = null
@@ -1065,9 +1154,13 @@ export class AppRibbon extends LitElement {
     if(changed.has("activeMenu") && this.activeMenu === "Insert") {
       this.dispatchEvent(new Event("package-catalog-request", {bubbles: true, composed: true}))
     }
+    if(changed.has("activeMenu") && this.activeMenu === "Develop") {
+      this.dispatchEvent(new Event("local-package-request", {bubbles: true, composed: true}))
+    }
     if(
       changed.has("activeMenu") || changed.has("expanded") || changed.has("packages") ||
-      changed.has("installedPackages") || changed.has("packageSearchQuery")
+      changed.has("installedPackages") || changed.has("packageSearchQuery") ||
+      changed.has("localPackages")
     ) this.scheduleResponsiveLayout()
     if(changed.has("marks")) {
       if(!this.marks.includes("a")) this.closeLinkAttributeMenu()
@@ -1446,6 +1539,138 @@ export class AppRibbon extends LitElement {
 
   private handlePackageSearchFocus = () => {
     this.renderRoot.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')?.openDrawer(true)
+  }
+
+  private get selectedLocalPackage() {
+    return this.localPackages.find(pkg => pkg.name === this.selectedLocalPackageName)
+  }
+
+  private selectLocalPackage = (event: Event) => {
+    const label = (event as CustomEvent<{label?: string}>).detail?.label
+    if(!label?.startsWith("local-package-select:")) return
+    this.selectedLocalPackageName = label.slice("local-package-select:".length)
+  }
+
+  private localPackageMetadataChange = (event: Event) => {
+    const input = event.currentTarget as HTMLInputElement
+    this.dispatchEvent(new CustomEvent<{field: string, value: string}>("local-package-metadata-change", {
+      detail: {field: input.name, value: input.value},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private localPackageAutoReloadChange = (event: Event) => {
+    const enabled = (event.currentTarget as HTMLInputElement).checked
+    this.dispatchEvent(new CustomEvent<{enabled: boolean}>("local-package-auto-reload-change", {
+      detail: {enabled},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private renderLocalPackageButton(pkg: WebWriterPackage) {
+    return html`
+      <ribbon-button
+        variant="package"
+        label=${pkg.label}
+        icon="Packages"
+        icon-url=${pkg.iconUrl ?? ""}
+        .action=${`local-package-select:${pkg.name}`}
+        .submenu=${[]}
+        .details=${this.packageDetails(pkg)}
+        ?active=${pkg.name === this.selectedLocalPackageName}
+        ?keep-drawer-open=${true}
+      ></ribbon-button>
+    `
+  }
+
+  private renderDevelopDrawer() {
+    const displayPackages = this.localPackages
+    return html`
+      <ribbon-drawer
+        class="local-packages-drawer"
+        label="Local packages"
+        icon="Packages"
+        layout="packages"
+        single-column
+        ?expandable=${displayPackages.length > 1}
+        @ribbon-drawer-state-change=${this.handlePackageDrawerState}
+      >
+        <ribbon-button
+          label="Add package"
+          action="local-package-add"
+          icon="Plus"
+          keep-drawer-open
+        ></ribbon-button>
+        ${displayPackages.map(pkg => this.renderLocalPackageButton(pkg))}
+        ${this.localPackageError ? html`<span class="package-status" role="alert">${this.localPackageError}</span>` : ""}
+        ${!this.localPackagesLoading && !displayPackages.length && !this.localPackageError
+          ? html`<span class="package-status">No local packages</span>`
+          : ""}
+      </ribbon-drawer>
+    `
+  }
+
+  private renderMetadataDrawer() {
+    const pkg = this.selectedLocalPackage
+    const fields = [
+      ["name", pkg?.name ?? ""],
+      ["version", pkg?.version ?? ""],
+      ["description", pkg?.description ?? ""],
+      ["license", pkg?.license ?? ""],
+    ] as const
+    return html`
+      <ribbon-drawer label="Metadata" icon="Properties" layout="metadata">
+        ${pkg ? html`<div class="develop-fields">
+          ${fields.map(([field, value]) => html`
+            <label class="develop-field">
+              <span>${field}</span>
+              <input type="text" name=${field} .value=${value} @change=${this.localPackageMetadataChange} />
+            </label>
+          `)}
+        </div>` : html`<span class="develop-empty">Select a package</span>`}
+      </ribbon-drawer>
+    `
+  }
+
+  private renderDevelopmentDrawer() {
+    return html`
+      <ribbon-drawer label="Development" icon="Settings" layout="development">
+        <label class="develop-field">
+          <input
+            type="checkbox"
+            .checked=${this.selectedLocalPackageAutoReload}
+            ?disabled=${!this.selectedLocalPackage}
+            @change=${this.localPackageAutoReloadChange}
+          />
+          <span>Auto-reload</span>
+        </label>
+      </ribbon-drawer>
+    `
+  }
+
+  private renderExportsDrawer() {
+    const members = this.selectedLocalPackage?.members.filter(member => member.insertable) ?? []
+    return html`
+      <ribbon-drawer
+        class="exports-drawer"
+        label="Exports"
+        icon="Packages"
+        layout="packages"
+        single-column
+        ?expandable=${members.length > 2}
+      >
+        ${members.length ? members.map(member => html`
+          <ribbon-button
+            label=${member.label}
+            icon="Packages"
+            .action=${packageMemberAction(member)}
+            .details=${{heading: member.label, subheading: this.selectedLocalPackage?.label ?? "", description: member.description}}
+          ></ribbon-button>
+        `) : html`<span class="develop-empty">${this.selectedLocalPackage ? "No insertable exports" : "Select a package"}</span>`}
+      </ribbon-drawer>
+    `
   }
 
   private renderPackageDrawer() {
@@ -1919,6 +2144,10 @@ export class AppRibbon extends LitElement {
       if(drawer.label === "Sharing") return this.renderSharingDrawer(drawer)
       if(drawer.label === "Marks") return this.renderMarkDrawer()
       if(drawer.label === "Packages") return this.renderPackageDrawer()
+      if(drawer.label === "Local packages") return this.renderDevelopDrawer()
+      if(drawer.label === "Metadata") return this.renderMetadataDrawer()
+      if(drawer.label === "Development") return this.renderDevelopmentDrawer()
+      if(drawer.label === "Exports") return this.renderExportsDrawer()
       if(drawer.label === "Lists") return this.renderListDrawer()
       if(drawer.label === "Media") return this.renderMediaDrawer(drawer)
       const representative = drawer.buttons[0]
@@ -2004,6 +2233,7 @@ export class AppRibbon extends LitElement {
         @change=${this.handleRibbonInputChange}
         @keydown=${this.handleRibbonInputKeydown}
         @ribbon-tab-select=${this.selectMenu}
+        @ribbon-button-click=${this.selectLocalPackage}
       >
         <div class="ribbon-top">
           <button
