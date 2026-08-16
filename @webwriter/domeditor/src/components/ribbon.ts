@@ -50,6 +50,27 @@ type RibbonInputEventDetail = {
   relatedTargetIsInput?: boolean
 }
 
+type AIChatMessage = {
+  id: string
+  role: "user" | "assistant"
+  content: string
+}
+
+type AIChat = {
+  id: string
+  title: string
+  messages: AIChatMessage[]
+}
+
+type AIPromptSubmitDetail = {
+  prompt: string
+  chatId: string
+  model: string
+  effort: AIEffort
+}
+
+type AIEffort = "low" | "medium" | "high"
+
 const isRibbonInput = (target: EventTarget | null): target is HTMLElement => {
   if(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) {
     return true
@@ -65,6 +86,13 @@ const ribbonInputFromEvent = (event: Event) => event.composedPath().find(isRibbo
 
 const menuTabs: RibbonMenuName[] = ["File", "Insert", "Edit", "Develop"]
 const dropdownMenus: RibbonMenuName[] = ["File", "Insert", "Edit"]
+
+const aiModels = [{label: "Dummy model", value: "dummy-model"}] as const
+const aiEfforts: {label: string, value: AIEffort}[] = [
+  {label: "Low effort", value: "low"},
+  {label: "Medium effort", value: "medium"},
+  {label: "High effort", value: "high"},
+]
 
 const storageLocations = [
   {label: "Local", value: "local", icon: "Local"},
@@ -252,6 +280,12 @@ export class AppRibbon extends LitElement {
     previewTransitioning: {type: Boolean, attribute: "preview-transition", reflect: true},
     storageLocation: {type: String, state: true},
     linkAttributeMenuOpen: {type: Boolean, state: true},
+    aiPrompt: {type: String, state: true},
+    aiChatOpen: {type: Boolean, state: true},
+    aiChats: {attribute: false, state: true},
+    activeAIChatId: {type: String, state: true},
+    aiModel: {type: String, state: true},
+    aiEffort: {type: String, state: true},
   }
 
   static styles = css`
@@ -396,7 +430,7 @@ export class AppRibbon extends LitElement {
 
     .tabs {
       display: flex;
-      flex: 1 1 auto;
+      flex: 0 1 auto;
       align-items: flex-start;
       align-self: flex-start;
       height: 41px;
@@ -424,6 +458,566 @@ export class AppRibbon extends LitElement {
 
     .tabs > ribbon-tab[active] {
       anchor-name: --active-ribbon-tab;
+    }
+
+    .ai-bar-slot {
+      box-sizing: border-box;
+      flex: 1 1 600px;
+      width: auto;
+      max-width: 600px;
+      min-width: 100px;
+      height: 40px;
+      min-height: 40px;
+      anchor-name: --ai-bar-slot;
+    }
+
+    .ai-prompt-input {
+      box-sizing: border-box;
+      flex: 1 1 auto;
+      width: 100%;
+      min-width: 0;
+      height: 100%;
+      min-height: 0;
+      padding: 2px 43px 2px 1.7rem;
+      border: 0;
+      outline: 0;
+      color: #2f3742;
+      background: transparent;
+      font: inherit;
+      font-size: 0.75rem;
+      line-height: 16px;
+      overflow: hidden;
+      resize: none;
+      transition:
+        min-height 220ms ease,
+        padding 220ms ease,
+        border-color 220ms ease,
+        border-radius 220ms ease;
+    }
+
+    .ai-prompt-input::placeholder {
+      color: #7d8998;
+    }
+
+    .ai-prompt-submit,
+    .ai-prompt-expand {
+      box-sizing: border-box;
+      display: grid;
+      position: absolute;
+      z-index: 2;
+      place-items: center;
+      width: 18px;
+      height: 18px;
+      padding: 3px;
+      border: 0;
+      border-radius: 50%;
+      color: #ffffff;
+      background: #3977c7;
+      cursor: pointer;
+      transition: background-color 120ms ease, color 120ms ease;
+    }
+
+    .ai-prompt-submit {
+      right: 22px;
+      bottom: 1px;
+    }
+
+    .ai-prompt-expand {
+      right: 2px;
+      bottom: 1px;
+      padding: 0;
+      color: #526b86;
+      background: transparent;
+    }
+
+    .ai-prompt-submit:hover {
+      background: #1e4f87;
+    }
+
+    .ai-prompt-expand:hover {
+      color: #1e4f87;
+      background: #e8eef5;
+    }
+
+    .ai-prompt-submit:focus-visible,
+    .ai-prompt-expand:focus-visible {
+      outline: 2px solid #3977c7;
+      outline-offset: 2px;
+    }
+
+    .ai-prompt-submit:disabled {
+      color: #7d8998;
+      background: #e0e5eb;
+      cursor: default;
+    }
+
+    .ai-prompt-submit svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .ai-prompt-expand-chevron {
+      display: block;
+      width: 0.32rem;
+      height: 0.32rem;
+      border-right: 1.5px solid currentColor;
+      border-bottom: 1.5px solid currentColor;
+      transform: translateY(-1px) rotate(45deg);
+      transition: transform 120ms ease;
+    }
+
+    .ai-prompt-expand[aria-expanded="true"] .ai-prompt-expand-chevron {
+      transform: translateY(1px) rotate(225deg);
+    }
+
+    .ai-chat-panel {
+      box-sizing: border-box;
+      display: block;
+      position: absolute;
+      z-index: 10;
+      top: 8px;
+      right: 7rem;
+      width: min(600px, calc(100vw - 1rem));
+      min-width: 100px;
+      max-width: 600px;
+      height: min(32rem, calc(100vh - 1rem));
+      max-height: 24px;
+      overflow: hidden;
+      border: 1px solid #c8d2df;
+      border-radius: 1rem;
+      color: #2f3742;
+      background: #ffffff;
+      box-shadow: 0 0 0 rgb(0 0 0 / 0%);
+      transition:
+        max-height 220ms ease,
+        border-color 120ms ease,
+        border-radius 220ms ease,
+        box-shadow 220ms ease;
+    }
+
+    .ai-chat-panel:hover,
+    .ai-chat-panel:focus-within {
+      border-color: #3977c7;
+    }
+
+    .ai-chat-panel:focus-within {
+      box-shadow: 0 0 0 1px #3977c7;
+    }
+
+    .ai-chat-panel[data-open] {
+      max-height: min(32rem, calc(100vh - 1rem));
+      border-color: #a8b4c2;
+      border-radius: 0.65rem;
+      box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 20%);
+    }
+
+    .ai-chat-panel[hidden] {
+      display: none;
+    }
+
+    @supports (top: anchor(top)) {
+      .ai-chat-panel {
+        position-anchor: --ai-bar-slot;
+        top: calc(anchor(top) + 8px);
+        right: anchor(right);
+        left: anchor(left);
+        width: auto;
+      }
+    }
+
+    .ai-chat-brand-button {
+      box-sizing: border-box;
+      display: grid;
+      position: absolute;
+      z-index: 3;
+      top: 1px;
+      left: 2px;
+      place-items: center;
+      width: 20px;
+      height: 20px;
+      padding: 2px;
+      border: 0;
+      border-radius: 50%;
+      color: #3977c7;
+      background: transparent;
+      cursor: pointer;
+      transition:
+        top 220ms ease,
+        left 220ms ease,
+        width 220ms ease,
+        height 220ms ease,
+        background-color 120ms ease;
+    }
+
+    .ai-chat-brand-button:hover {
+      color: #1e4f87;
+      background: #e8eef5;
+    }
+
+    .ai-chat-brand-button:focus-visible {
+      outline: 2px solid #3977c7;
+      outline-offset: 1px;
+    }
+
+    .ai-chat-brand-icon,
+    .ai-chat-brand-icon svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .ai-chat-panel[data-open] .ai-chat-brand-button {
+      top: 0.55rem;
+      left: 0.55rem;
+      width: 2rem;
+      height: 2rem;
+      padding: 0.4rem;
+      border: 1px solid #c8d2df;
+      border-radius: 0.35rem;
+      background: #ffffff;
+    }
+
+    .ai-chat-header {
+      display: flex;
+      position: absolute;
+      top: 0;
+      right: 0;
+      left: 0;
+      align-items: center;
+      gap: 0.4rem;
+      height: 3.25rem;
+      min-width: 0;
+      padding: 0.55rem 0.55rem 0.55rem 3rem;
+      border-bottom: 1px solid #d8dee6;
+      background: #f7f9fb;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(-0.5rem);
+      transition: opacity 150ms ease, transform 220ms ease;
+    }
+
+    .ai-chat-panel[data-open] .ai-chat-header {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0);
+    }
+
+    .ai-chat-switcher {
+      box-sizing: border-box;
+      flex: 1 1 auto;
+      min-width: 0;
+      height: 2rem;
+      padding: 0 1.8rem 0 0.55rem;
+      border: 1px solid #c8d2df;
+      border-radius: 0.35rem;
+      color: #2f3742;
+      background: #ffffff;
+      font: inherit;
+      font-size: 0.72rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .ai-chat-switcher:focus {
+      border-color: #3977c7;
+      outline: 1px solid #3977c7;
+    }
+
+    .ai-chat-header-button {
+      box-sizing: border-box;
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      justify-content: center;
+      gap: 0.3rem;
+      height: 2rem;
+      padding: 0 0.55rem;
+      border: 1px solid #c8d2df;
+      border-radius: 0.35rem;
+      color: #526b86;
+      background: #ffffff;
+      font: inherit;
+      font-size: 0.68rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .ai-chat-header-button:hover {
+      color: #1e4f87;
+      border-color: #8eb6df;
+      background: #eef4fb;
+    }
+
+    .ai-chat-header-button:focus-visible {
+      outline: 2px solid #3977c7;
+      outline-offset: 1px;
+    }
+
+    .ai-chat-new-icon,
+    .ai-chat-new-icon svg,
+    .ai-chat-settings-icon,
+    .ai-chat-settings-icon svg {
+      display: block;
+      width: 0.9rem;
+      height: 0.9rem;
+    }
+
+    .ai-chat-messages {
+      display: flex;
+      flex-direction: column;
+      position: absolute;
+      top: 3.25rem;
+      right: 0;
+      bottom: 7rem;
+      left: 0;
+      gap: 0.75rem;
+      min-height: 0;
+      overflow: auto;
+      padding: 1rem;
+      scrollbar-width: thin;
+      background: #ffffff;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 140ms ease 40ms;
+    }
+
+    .ai-chat-panel[data-open] .ai-chat-messages {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .ai-chat-empty {
+      display: grid;
+      flex: 1 1 auto;
+      place-items: center;
+      min-height: 8rem;
+      color: #7d8998;
+      font-size: 0.75rem;
+      text-align: center;
+    }
+
+    .ai-chat-message {
+      box-sizing: border-box;
+      max-width: 85%;
+      padding: 0.55rem 0.7rem;
+      border: 1px solid #d8dee6;
+      border-radius: 0.65rem;
+      color: #2f3742;
+      background: #f5f7fa;
+      font-size: 0.76rem;
+      line-height: 1.35;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .ai-chat-message[data-role="user"] {
+      align-self: flex-end;
+      color: #163f70;
+      border-color: #bdd5ef;
+      background: #eaf3fd;
+      border-bottom-right-radius: 0.2rem;
+    }
+
+    .ai-chat-message[data-role="assistant"] {
+      align-self: flex-start;
+      border-bottom-left-radius: 0.2rem;
+    }
+
+    .ai-chat-message-role {
+      display: block;
+      margin-bottom: 0.25rem;
+      color: #667085;
+      font-size: 0.58rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .ai-chat-composer {
+      box-sizing: border-box;
+      display: flex;
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      align-items: center;
+      height: 22px;
+      padding: 0;
+      border-top: 0 solid transparent;
+      background: #ffffff;
+      transition:
+        height 220ms ease,
+        padding 220ms ease,
+        border-color 220ms ease,
+        background-color 220ms ease;
+    }
+
+    .ai-chat-panel[data-open] .ai-chat-composer {
+      align-items: stretch;
+      height: 7rem;
+      padding: 0.65rem 2.35rem 0.65rem 0.65rem;
+      border-top-width: 1px;
+      border-top-color: #d8dee6;
+      background: #f7f9fb;
+    }
+
+    .ai-composer-surface {
+      box-sizing: border-box;
+      display: flex;
+      flex: 1 1 auto;
+      position: relative;
+      min-width: 0;
+      height: 100%;
+      overflow: hidden;
+      border: 1px solid transparent;
+      border-radius: 0.5rem;
+      background: transparent;
+      transition: border-color 220ms ease, background-color 220ms ease;
+    }
+
+    .ai-chat-panel[data-open] .ai-composer-surface {
+      border: 1px solid #c8d2df;
+      background: #ffffff;
+    }
+
+    .ai-chat-panel[data-open] .ai-composer-surface:focus-within {
+      border-color: #3977c7;
+      box-shadow: 0 0 0 1px #3977c7;
+    }
+
+    .ai-chat-panel[data-open] .ai-prompt-input {
+      padding: 0.55rem 0.65rem 2.2rem;
+      line-height: 1.35;
+      overflow: auto;
+    }
+
+    .ai-chat-panel[data-open] .ai-prompt-submit {
+      right: 0.35rem;
+      bottom: 0.35rem;
+      width: 18px;
+      height: 18px;
+      padding: 3px;
+    }
+
+    .ai-chat-panel[data-open] .ai-prompt-expand {
+      right: 0.35rem;
+      bottom: 0.75rem;
+    }
+
+    .ai-composer-toolbar {
+      box-sizing: border-box;
+      display: flex;
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      align-items: center;
+      gap: 0.2rem;
+      height: 1.9rem;
+      min-width: 0;
+      padding: 0.2rem 1.9rem 0.25rem 0.35rem;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(0.25rem);
+      transition: opacity 140ms ease 40ms, transform 220ms ease;
+    }
+
+    .ai-chat-panel[data-open] .ai-composer-toolbar {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0);
+    }
+
+    .ai-composer-attachment {
+      box-sizing: border-box;
+      display: grid;
+      flex: 0 0 1.45rem;
+      place-items: center;
+      width: 1.45rem;
+      height: 1.45rem;
+      padding: 0.25rem;
+      border: 0;
+      border-radius: 0.3rem;
+      color: #526b86;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .ai-composer-attachment:hover {
+      color: #1e4f87;
+      background: #e8eef5;
+    }
+
+    .ai-composer-attachment:focus-visible {
+      outline: 2px solid #3977c7;
+      outline-offset: 0;
+    }
+
+    .ai-composer-attachment-icon,
+    .ai-composer-attachment-icon svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .ai-composer-select {
+      box-sizing: border-box;
+      flex: 0 1 auto;
+      min-width: 0;
+      max-width: 8rem;
+      height: 1.45rem;
+      padding: 0 1.15rem 0 0.3rem;
+      border: 0;
+      border-radius: 0.3rem;
+      color: #526b86;
+      background: #f2f5f8;
+      font: inherit;
+      font-size: 0.62rem;
+      cursor: pointer;
+    }
+
+    .ai-composer-select[data-kind="effort"] {
+      max-width: 7rem;
+    }
+
+    .ai-composer-select:focus {
+      outline: 1px solid #3977c7;
+    }
+
+    @media (max-width: 42rem) {
+      .ai-chat-header-button-label {
+        display: none;
+      }
+
+      .ai-chat-header-button {
+        width: 2rem;
+        padding: 0;
+      }
+    }
+
+    @media (max-width: 28rem) {
+      .ribbon-top {
+        gap: 0;
+      }
+
+      .ai-chat-header {
+        gap: 0.25rem;
+      }
+
+      .ai-chat-header-button,
+      .ai-chat-panel[data-open] .ai-chat-brand-button {
+        width: 1.75rem;
+        height: 1.75rem;
+      }
+
+      .ai-chat-switcher {
+        height: 1.75rem;
+      }
+
+      .ai-composer-toolbar {
+        gap: 0.1rem;
+      }
     }
 
     ribbon-menu {
@@ -964,6 +1558,14 @@ export class AppRibbon extends LitElement {
   private packageDrawerOpen = false
   private packageVisibleCount = 2
   private linkAttributeMenuOpen = false
+  private aiPrompt = ""
+  private aiChatOpen = false
+  private aiChats: AIChat[] = [{id: "chat-1", title: "New chat", messages: []}]
+  private activeAIChatId = "chat-1"
+  private aiModel = aiModels[0].value
+  private aiEffort: AIEffort = "medium"
+  private aiChatSequence = 1
+  private aiMessageSequence = 0
   private spanMarkSelection: MarkName[] = []
   private spanMarkSelectionSynced = false
   private ribbonContentObserver: ResizeObserver | undefined
@@ -984,14 +1586,28 @@ export class AppRibbon extends LitElement {
   }
 
   private readonly handleDocumentKeydown = (event: KeyboardEvent) => {
-    if(event.key !== "Escape" || !this.linkAttributeMenuOpen) return
-    event.stopImmediatePropagation()
-    this.closeLinkAttributeMenu()
-    this.renderRoot.querySelector<RibbonButton>('ribbon-button[action="mark:a"]')
-      ?.shadowRoot?.querySelector<HTMLButtonElement>(".button-dropdown-more")?.focus()
+    if(event.key !== "Escape") return
+    if(this.aiChatOpen) {
+      event.stopImmediatePropagation()
+      this.closeAIChat(true)
+      return
+    }
+    if(this.linkAttributeMenuOpen) {
+      event.stopImmediatePropagation()
+      this.closeLinkAttributeMenu()
+      this.renderRoot.querySelector<RibbonButton>('ribbon-button[action="mark:a"]')
+        ?.shadowRoot?.querySelector<HTMLButtonElement>(".button-dropdown-more")?.focus()
+    }
   }
 
   private readonly handleDocumentPointerDown = (event: PointerEvent) => {
+    if(this.aiChatOpen) {
+      const path = event.composedPath()
+      const panel = this.renderRoot.querySelector(".ai-chat-panel")
+      if(!path.includes(panel as EventTarget)) {
+        this.closeAIChat()
+      }
+    }
     if(this.linkAttributeMenuOpen) {
       const path = event.composedPath()
       if(!path.includes(this)) this.closeLinkAttributeMenu()
@@ -1016,6 +1632,14 @@ export class AppRibbon extends LitElement {
       }))
       return
     }
+
+    const aiAction = event.composedPath().find(target => target instanceof HTMLElement && (
+      target.matches(
+        ".ai-prompt-submit, .ai-prompt-expand, .ai-chat-brand-button, " +
+        ".ai-chat-header-button, .ai-chat-send, .ai-composer-attachment",
+      )
+    ))
+    if(aiAction) return
 
     // Keep the editor iframe as the active element while the ribbon is used
     // with a pointer. The click event still performs the ribbon action.
@@ -1186,9 +1810,140 @@ export class AppRibbon extends LitElement {
     }
     this.activeMenu = "Start"
     this.menuOpen = false
+    this.closeAIChat()
   }
 
   private handleBrandClick = () => this.selectStart()
+
+  private updateAIPrompt(event: Event) {
+    this.aiPrompt = (event.currentTarget as HTMLTextAreaElement).value
+  }
+
+  private get activeAIChat() {
+    return this.aiChats.find(chat => chat.id === this.activeAIChatId) ?? this.aiChats[0]
+  }
+
+  private promptTitle(prompt: string) {
+    return prompt.length > 36 ? `${prompt.slice(0, 35).trimEnd()}…` : prompt
+  }
+
+  private appendAIMessage(role: AIChatMessage["role"], content: string, chatId = this.activeAIChatId) {
+    const message: AIChatMessage = {
+      id: `message-${++this.aiMessageSequence}`,
+      role,
+      content,
+    }
+    this.aiChats = this.aiChats.map(chat => chat.id === chatId ? {
+      ...chat,
+      title: chat.messages.length === 0 && role === "user" ? this.promptTitle(content) : chat.title,
+      messages: [...chat.messages, message],
+    } : chat)
+    void this.updateComplete.then(() => {
+      const messages = this.renderRoot.querySelector<HTMLElement>(".ai-chat-messages")
+      if(messages) messages.scrollTop = messages.scrollHeight
+    })
+  }
+
+  /** Adds a model response to the selected chat. */
+  appendAIResponse(content: string, chatId = this.activeAIChatId) {
+    const response = content.trim()
+    if(response && this.aiChats.some(chat => chat.id === chatId)) {
+      this.appendAIMessage("assistant", response, chatId)
+    }
+  }
+
+  private dispatchAIPrompt(prompt: string) {
+    this.appendAIMessage("user", prompt)
+    this.dispatchEvent(new CustomEvent<AIPromptSubmitDetail>("ai-prompt-submit", {
+      detail: {
+        prompt,
+        chatId: this.activeAIChatId,
+        model: this.aiModel,
+        effort: this.aiEffort,
+      },
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private submitAIPrompt(event: SubmitEvent) {
+    event.preventDefault()
+    const prompt = this.aiPrompt.trim()
+    if(!prompt) return
+    this.aiPrompt = ""
+    this.dispatchAIPrompt(prompt)
+  }
+
+  private invokeAIActionOnPointer(event: PointerEvent, action: () => void) {
+    if(event.button !== 0) return
+    event.preventDefault()
+    event.stopPropagation()
+    action()
+  }
+
+  private invokeAIActionOnClick(event: MouseEvent, action: () => void) {
+    // Keyboard and programmatic button activation produce a detail of zero.
+    // Pointer activation is handled on pointerdown before the ribbon restores
+    // focus to the editor iframe.
+    if(event.detail === 0) action()
+  }
+
+  private toggleAIChat = () => {
+    if(this.aiChatOpen) {
+      this.closeAIChat(true)
+      return
+    }
+    this.aiChatOpen = true
+    void this.updateComplete.then(() => {
+      this.renderRoot.querySelector<HTMLTextAreaElement>(".ai-prompt-input")?.focus()
+    })
+  }
+
+  private closeAIChat(restoreFocus = false) {
+    if(!this.aiChatOpen) return
+    this.aiChatOpen = false
+    if(restoreFocus) void this.updateComplete.then(() => {
+      this.renderRoot.querySelector<HTMLButtonElement>(".ai-prompt-expand")?.focus()
+    })
+  }
+
+  private startNewAIChat = () => {
+    const id = `chat-${++this.aiChatSequence}`
+    this.aiChats = [{id, title: "New chat", messages: []}, ...this.aiChats]
+    this.activeAIChatId = id
+    this.aiPrompt = ""
+    void this.updateComplete.then(() => {
+      this.renderRoot.querySelector<HTMLTextAreaElement>(".ai-prompt-input")?.focus()
+    })
+  }
+
+  private switchAIChat(event: Event) {
+    this.activeAIChatId = (event.currentTarget as HTMLSelectElement).value
+    this.aiPrompt = ""
+  }
+
+  private updateAIModel(event: Event) {
+    this.aiModel = (event.currentTarget as HTMLSelectElement).value
+  }
+
+  private updateAIEffort(event: Event) {
+    this.aiEffort = (event.currentTarget as HTMLSelectElement).value as AIEffort
+  }
+
+  private dispatchAIBarAction(action: "attachments" | "settings") {
+    this.dispatchEvent(new CustomEvent<{action: string}>("ai-bar-action", {
+      detail: {action},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private handleAIChatPromptKeydown(event: KeyboardEvent) {
+    if(event.key !== "Enter" || event.shiftKey || event.isComposing) return
+    event.preventDefault()
+    const form = (event.currentTarget as HTMLTextAreaElement).form
+    form?.requestSubmit()
+  }
 
   dismissCollapsedMenu() {
     this.renderRoot.querySelector<RibbonMenu>("ribbon-menu")?.closeSubmenus()
@@ -1205,6 +1960,7 @@ export class AppRibbon extends LitElement {
     const label = (event as CustomEvent<{label?: string}>).detail?.label
     if(label && menuTabs.includes(label as RibbonMenuName)) {
       const nextMenu = label as RibbonMenuName
+      this.closeAIChat()
       if(this.previewActive) {
         if(nextMenu === "File") {
           this.dispatchEvent(new Event("ribbon-preview-exit", {bubbles: true, composed: true}))
@@ -1214,6 +1970,7 @@ export class AppRibbon extends LitElement {
       if(this.expanded) {
         this.activeMenu = nextMenu
         this.menuOpen = false
+        this.closeAIChat()
         return
       }
 
@@ -1228,6 +1985,7 @@ export class AppRibbon extends LitElement {
     if(previewActiveChanged) {
       this.previewTransitioning = true
       if(this.previewActive) {
+        this.closeAIChat()
         this.previewExpandedBefore = this.expanded
         this.previewMenuBefore = this.activeMenu
         this.expanded = false
@@ -2300,7 +3058,7 @@ export class AppRibbon extends LitElement {
       const representative = drawer.buttons[0]
       const icon = typeof representative === "string"
         ? representative
-        : representative?.action ?? representative?.label ?? drawer.label
+        : representative?.icon ?? representative?.action ?? representative?.label ?? drawer.label
       return html`
         <ribbon-drawer label=${drawer.label} icon=${icon} layout=${drawer.label.toLowerCase()}>
           ${drawer.buttons.map(button => {
@@ -2309,6 +3067,7 @@ export class AppRibbon extends LitElement {
               <ribbon-button
                 label=${item.label}
                 .action=${item.action ?? item.label}
+                .icon=${item.icon ?? item.label}
                 .submenu=${item.submenu ?? []}
               ></ribbon-button>
             `
@@ -2405,6 +3164,7 @@ export class AppRibbon extends LitElement {
               ></ribbon-tab>
             `)}
           </nav>
+          ${this.previewActive ? "" : html`<div class="ai-bar-slot" aria-hidden="true"></div>`}
           ${this.renderPresence()}
           ${this.previewActive ? "" : html`
             <button
@@ -2451,6 +3211,148 @@ export class AppRibbon extends LitElement {
             <span class="chevron" aria-hidden="true"></span>
           </button>
         </div>
+        <section
+          id="ai-chat-panel"
+          class="ai-chat-panel"
+          role=${this.aiChatOpen ? "region" : "presentation"}
+          aria-label="AI chat"
+          ?data-open=${this.aiChatOpen}
+          ?hidden=${this.previewActive}
+        >
+          <button
+            class="ai-chat-brand-button"
+            type="button"
+            aria-label=${this.aiChatOpen ? "Collapse AI chat" : "Expand AI chat"}
+            title=${this.aiChatOpen ? "Collapse chat" : "Expand chat"}
+            aria-expanded=${this.aiChatOpen}
+            aria-controls="ai-chat-panel"
+            @pointerdown=${(event: PointerEvent) =>
+              this.invokeAIActionOnPointer(event, this.toggleAIChat)}
+            @click=${(event: MouseEvent) =>
+              this.invokeAIActionOnClick(event, this.toggleAIChat)}
+          ><span class="ai-chat-brand-icon" aria-hidden="true">${ribbonIcon("AI")}</span></button>
+          <header class="ai-chat-header" ?inert=${!this.aiChatOpen}>
+            <select
+              class="ai-chat-switcher"
+              aria-label="Current AI chat"
+              data-ribbon-input-persistent
+              .value=${this.activeAIChatId}
+              @change=${this.switchAIChat}
+            >${this.aiChats.map(chat => html`
+              <option value=${chat.id}>${chat.title}</option>
+            `)}</select>
+            <button
+              class="ai-chat-header-button"
+              type="button"
+              aria-label="New chat"
+              title="New chat"
+              @pointerdown=${(event: PointerEvent) =>
+                this.invokeAIActionOnPointer(event, this.startNewAIChat)}
+              @click=${(event: MouseEvent) =>
+                this.invokeAIActionOnClick(event, this.startNewAIChat)}
+            >
+              <span class="ai-chat-new-icon" aria-hidden="true">${ribbonIcon("Plus")}</span>
+              <span class="ai-chat-header-button-label">New chat</span>
+            </button>
+            <button
+              class="ai-chat-header-button ai-chat-settings-button"
+              type="button"
+              aria-label="AI settings"
+              title="AI settings"
+              @pointerdown=${(event: PointerEvent) =>
+                this.invokeAIActionOnPointer(event, () => this.dispatchAIBarAction("settings"))}
+              @click=${(event: MouseEvent) =>
+                this.invokeAIActionOnClick(event, () => this.dispatchAIBarAction("settings"))}
+            ><span class="ai-chat-settings-icon" aria-hidden="true">${ribbonIcon("AISettings")}</span></button>
+          </header>
+          <div
+            class="ai-chat-messages"
+            role="log"
+            aria-live="polite"
+            aria-relevant="additions"
+            ?inert=${!this.aiChatOpen}
+          >
+            ${this.activeAIChat?.messages.length ? this.activeAIChat.messages.map(message => html`
+              <article class="ai-chat-message" data-role=${message.role}>
+                <span class="ai-chat-message-role">${message.role === "user" ? "You" : "AI"}</span>
+                ${message.content}
+              </article>
+            `) : html`<div class="ai-chat-empty">Start a conversation with your AI model.</div>`}
+          </div>
+          <form
+            class="ai-chat-composer"
+            @submit=${this.submitAIPrompt}
+          >
+            <div class="ai-composer-surface">
+              <textarea
+                class="ai-prompt-input ai-chat-input"
+                aria-label=${this.aiChatOpen ? "Chat message" : "AI prompt"}
+                placeholder=${this.aiChatOpen ? "Message AI…" : "Ask AI…"}
+                .rows=${this.aiChatOpen ? 3 : 1}
+                autocomplete="off"
+                data-ribbon-input-persistent
+                .value=${this.aiPrompt}
+                @input=${this.updateAIPrompt}
+                @keydown=${this.handleAIChatPromptKeydown}
+              ></textarea>
+              <div class="ai-composer-toolbar" ?inert=${!this.aiChatOpen}>
+                <button
+                  class="ai-composer-attachment"
+                  type="button"
+                  aria-label="Add attachments"
+                  title="Attachments"
+                  @pointerdown=${(event: PointerEvent) =>
+                    this.invokeAIActionOnPointer(event, () => this.dispatchAIBarAction("attachments"))}
+                  @click=${(event: MouseEvent) =>
+                    this.invokeAIActionOnClick(event, () => this.dispatchAIBarAction("attachments"))}
+                ><span class="ai-composer-attachment-icon" aria-hidden="true">${ribbonIcon("Attachment")}</span></button>
+                <select
+                  class="ai-composer-select"
+                  aria-label="AI model"
+                  data-kind="model"
+                  data-ribbon-input-persistent
+                  .value=${this.aiModel}
+                  @change=${this.updateAIModel}
+                >${aiModels.map(model => html`
+                  <option value=${model.value} ?selected=${this.aiModel === model.value}>${model.label}</option>
+                `)}</select>
+                <select
+                  class="ai-composer-select"
+                  aria-label="AI effort"
+                  data-kind="effort"
+                  data-ribbon-input-persistent
+                  .value=${this.aiEffort}
+                  @change=${this.updateAIEffort}
+                >${aiEfforts.map(effort => html`
+                  <option value=${effort.value} ?selected=${this.aiEffort === effort.value}>${effort.label}</option>
+                `)}</select>
+              </div>
+              <button
+                class="ai-prompt-submit ai-chat-send"
+                type="button"
+                aria-label=${this.aiChatOpen ? "Send chat message" : "Enter AI prompt"}
+                title=${this.aiChatOpen ? "Send" : "Enter"}
+                ?disabled=${!this.aiPrompt.trim()}
+                @pointerdown=${(event: PointerEvent) => this.invokeAIActionOnPointer(event, () =>
+                  (event.currentTarget as HTMLButtonElement).form?.requestSubmit())}
+                @click=${(event: MouseEvent) => this.invokeAIActionOnClick(event, () =>
+                  (event.currentTarget as HTMLButtonElement).form?.requestSubmit())}
+              >${ribbonIcon("AIPromptSubmit")}</button>
+            </div>
+            <button
+              class="ai-prompt-expand"
+              type="button"
+              aria-label=${this.aiChatOpen ? "Collapse AI chat" : "Expand AI chat"}
+              title=${this.aiChatOpen ? "Collapse chat" : "Expand chat"}
+              aria-expanded=${this.aiChatOpen}
+              aria-controls="ai-chat-panel"
+              @pointerdown=${(event: PointerEvent) =>
+                this.invokeAIActionOnPointer(event, this.toggleAIChat)}
+              @click=${(event: MouseEvent) =>
+                this.invokeAIActionOnClick(event, this.toggleAIChat)}
+            ><span class="ai-prompt-expand-chevron" aria-hidden="true"></span></button>
+          </form>
+        </section>
         <ribbon-menu
           .groups=${this.currentMenuGroups}
           ?hidden=${!this.menuOpen || this.expanded}

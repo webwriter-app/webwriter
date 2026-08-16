@@ -1,6 +1,7 @@
 import {unsafeSVG} from "lit/directives/unsafe-svg.js"
 
 import arrowBackUp from "@tabler/icons/outline/arrow-back-up.svg?raw"
+import arrowBack from "@tabler/icons/outline/arrow-back.svg?raw"
 import arrowForwardUp from "@tabler/icons/outline/arrow-forward-up.svg?raw"
 import arrowLeft from "@tabler/icons/outline/arrow-left.svg?raw"
 import arrowRight from "@tabler/icons/outline/arrow-right.svg?raw"
@@ -60,6 +61,7 @@ import playerPlay from "@tabler/icons/filled/player-play.svg?raw"
 import plus from "@tabler/icons/outline/plus.svg?raw"
 import printer from "@tabler/icons/outline/printer.svg?raw"
 import packageIcon from "@tabler/icons/outline/package.svg?raw"
+import paperclip from "@tabler/icons/outline/paperclip.svg?raw"
 import rulerMeasure from "@tabler/icons/outline/ruler-measure.svg?raw"
 import scissors from "@tabler/icons/outline/scissors.svg?raw"
 import stack from "@tabler/icons/outline/stack.svg?raw"
@@ -79,6 +81,8 @@ import quote from "@tabler/icons/outline/quote.svg?raw"
 import qrcode from "@tabler/icons/outline/qrcode.svg?raw"
 import section from "@tabler/icons/outline/section.svg?raw"
 import settings from "@tabler/icons/outline/settings.svg?raw"
+import settings2 from "@tabler/icons/outline/settings-2.svg?raw"
+import sparkles2 from "@tabler/icons/outline/sparkles-2.svg?raw"
 import share from "@tabler/icons/outline/share.svg?raw"
 import bracketsAngle from "@tabler/icons/outline/brackets-angle.svg?raw"
 import calendarTime from "@tabler/icons/outline/calendar-time.svg?raw"
@@ -141,6 +145,7 @@ const icons: Record<string, string> = {
   Preview: playerPlay,
   Plus: plus,
   Undo: arrowBackUp,
+  AIPromptSubmit: arrowBack,
   Redo: arrowForwardUp,
   Previous: arrowLeft,
   Next: arrowRight,
@@ -205,6 +210,9 @@ const icons: Record<string, string> = {
   General: settings,
   Shortcuts: keyboard,
   Accessibility: accessible,
+  AI: sparkles2,
+  AISettings: settings2,
+  Attachment: paperclip,
   Preferences: adjustments,
   Extensions: packageIcon,
   Packages: packageIcon,
