@@ -66,6 +66,8 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toContain("body::part(presence-element-selection-label)")
     expect(editorStyleString).toMatch(/\.◆element-selected\s*\{[\s\S]*?outline:\s*2px solid var\(--sl-color-primary-400\);[\s\S]*?outline-offset:\s*2px;/)
     expect(editorStyleString).toMatch(/\.◆element-selected:hover\s*\{[\s\S]*?outline:\s*2px dotted var\(--sl-color-primary-400\);[\s\S]*?outline-offset:\s*2px;/)
+    expect(editorStyleString).toMatch(/\.◆element-selected\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
+    expect(editorStyleString).not.toMatch(/\.◆element-selected\s*,\s*\.◆element-selected\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
     expect(editorStyleString).toMatch(/body::part\(presence-element-selection\)[\s\S]*?outline:\s*2px solid color-mix\(in srgb, var\(--presence-color\) 40%, transparent\);[\s\S]*?outline-offset:\s*2px;/)
     expect(editorStyleString).not.toContain("body::part(element-caret)")
     expect(editorStyleString).toMatch(/body\s*>\s*\*\s*\+\s*\*\s*\{[\s\S]*?margin-block-start:\s*1\.25rem;/)

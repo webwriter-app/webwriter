@@ -164,7 +164,7 @@ body
   outline-offset: 2px;
 }
 
-.◆element-selected, .◆element-selected * {
+.◆element-selected * {
   caret-color: transparent !important;
 }
 
