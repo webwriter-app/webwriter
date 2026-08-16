@@ -487,6 +487,59 @@ describe("document listeners", () => {
     expect($.selectedElement).toBe(widget)
     expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
   })
+  it("keeps capture when a widget control projects the native selection to the gap above it", () => {
+    const widget = document.createElement("interactive-widget")
+    const button = document.createElement("button")
+    widget.attachShadow({mode: "open"}).append(button)
+    document.body.append(widget)
+    button.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
+
+    document.getSelection()?.setPosition(document.body, 0)
+    document.dispatchEvent(new Event("selectionchange"))
+
+    expect(feature.isCaptureSelection).toBe(true)
+    expect(feature.captureSelectedWidget).toBe(widget)
+    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
+    expect(widget).not.toHaveClass("◆gap-before-selected")
+    expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-capture")
+    expect(feature.selectionCaret?.getAttribute("part")).not.toContain("selection-caret-gap")
+  })
+  it("posts capture without a gap when a widget control projects the native selection above it", () => {
+    const widget = document.createElement("interactive-widget")
+    const button = document.createElement("button")
+    widget.attachShadow({mode: "open"}).append(button)
+    document.body.append(widget)
+    button.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
+    document.getSelection()?.setPosition(document.body, 0)
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => {})
+
+    editor.postSelectionPath()
+
+    const message = postMessage.mock.lastCall?.[0] as {detail: {path: Array<{path: number[]}>, capture?: boolean, gap?: unknown}}
+    expect(message.detail.path.at(-1)?.path).toEqual([0])
+    expect(message.detail.capture).toBe(true)
+    expect(message.detail).not.toHaveProperty("gap")
+  })
+  it("releases persistent capture on the next ordinary editor selection interaction", () => {
+    const widget = document.createElement("interactive-widget")
+    const button = document.createElement("button")
+    widget.attachShadow({mode: "open"}).append(button)
+    document.body.append(widget)
+    button.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
+    document.getSelection()?.setPosition(document.body, 0)
+    const paragraph = el("p", "hello")
+
+    paragraph.dispatchEvent(new MouseEvent("pointerdown", {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+    }))
+
+    expect(feature.isCaptureSelection).toBe(false)
+    expect($.selectedElement).toBe(paragraph)
+    expect(paragraph).toHaveClass("◆element-selected")
+    expect(widget).not.toHaveClass("◆element-capture-selected")
+  })
   it("downgrades capture to node selection when the widget breadcrumb is selected", () => {
     const widget = document.createElement("interactive-widget")
     const button = document.createElement("button")

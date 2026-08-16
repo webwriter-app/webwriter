@@ -52,9 +52,14 @@ export class SelectionFeature extends EditorFeature {
    * that widget's shadow tree. Capture survives shadow-tree focus changes and
    * is released by the next ordinary editor selection interaction. */
   get isCaptureSelection() {
-    const widget = this.#capturedWidget
-    if(!widget?.isConnected) return false
-    return focusedWidgetHost() === widget || $.selectedElement === widget
+    return this.captureSelectedWidget !== null
+  }
+
+  /** The connected widget whose interaction is currently captured. Native
+   * shadow-control actions may project their selection to an outer gap, so
+   * capture ownership cannot be inferred from focus or Selection alone. */
+  get captureSelectedWidget() {
+    return this.#capturedWidget?.isConnected ? this.#capturedWidget : null
   }
 
   #releaseCaptureSelection() {
@@ -554,7 +559,7 @@ export class SelectionFeature extends EditorFeature {
   processSelection(inDragSelection=false) {
     const focusedWidget = focusedWidgetHost()
     if(focusedWidget) this.#capturedWidget = focusedWidget
-    const capturedWidget = this.isCaptureSelection ? this.#capturedWidget : null
+    const capturedWidget = this.captureSelectedWidget
     let sel: Selection | null
     if(capturedWidget) {
       this.#normalizeNativeSelection()

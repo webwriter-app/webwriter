@@ -318,6 +318,8 @@ export class DOMEditor {
   }
 
   private selectedElementForPath() {
+    const capturedWidget = this.features.selection.captureSelectedWidget
+    if(capturedWidget) return capturedWidget
     const focusedWidget = focusedWidgetHost()
     if(focusedWidget) return focusedWidget
     const selectedElement = $.selectedElement
@@ -372,7 +374,8 @@ export class DOMEditor {
           : getElementPresentation(currentElement)),
       }
     })
-    const gap: SelectionGap | undefined = !focusedWidget && $.isGapSelection && isElement($.anchor)
+    const gap: SelectionGap | undefined = !this.features.selection.isCaptureSelection
+      && !focusedWidget && $.isGapSelection && isElement($.anchor)
       ? {parentPath: this.pathToElement($.anchor), offset: $.anchorOffset}
       : undefined
     const list = this.features.list.getState()
