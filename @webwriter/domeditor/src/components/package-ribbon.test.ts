@@ -187,6 +187,30 @@ describe("package ribbon controls", () => {
     expect(RibbonButton.styles.toString()).not.toContain("background: #f2f2f2")
   })
 
+  it("opens package details to the right when there is no room on the left", async () => {
+    const ribbon = new AppRibbon()
+    ribbon.activeMenu = "Insert"
+    const pkg = packageFixture("right")
+    ribbon.packages = [pkg]
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+
+    const button = ribbon.shadowRoot!.querySelector<RibbonButton>(
+      'ribbon-drawer[label="Packages"] ribbon-button[label="Right"]',
+    )!
+    await button.updateComplete
+    Object.defineProperty(button, "getBoundingClientRect", {
+      value: () => ({left: 8, top: 72, right: 136, bottom: 112, width: 128, height: 40}),
+      configurable: true,
+    })
+    button.shadowRoot!.querySelector<HTMLElement>(".button-row")!
+      .dispatchEvent(new MouseEvent("mouseenter"))
+    await button.updateComplete
+
+    const details = button.shadowRoot!.querySelector<HTMLElement>(".details")!
+    expect(Number.parseFloat(details.style.left)).toBeGreaterThanOrEqual(142)
+  })
+
   it("keeps installed packages first whether the drawer is open or closed", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Insert"

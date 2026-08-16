@@ -670,7 +670,7 @@ export class AppRibbon extends LitElement {
     }
 
     .local-packages-drawer {
-      --ribbon-drawer-expanded-width: 14rem;
+      --ribbon-drawer-expanded-width: 12rem;
       flex-grow: 0;
     }
 
@@ -685,6 +685,72 @@ export class AppRibbon extends LitElement {
       color: #667085;
       font-size: 0.66rem;
       white-space: nowrap;
+    }
+
+    .local-package-select {
+      box-sizing: border-box;
+      flex: 1 1 auto;
+      width: auto;
+      min-width: 0;
+      height: 1.55rem;
+      padding: 0 0.25rem;
+      border: 1px solid transparent;
+      border-radius: 0.25rem;
+      color: #2f3742;
+      background: transparent;
+      font: inherit;
+      font-size: 0.7rem;
+      cursor: pointer;
+    }
+
+    .local-package-select:hover {
+      border-color: #8eb6df;
+      background: transparent;
+    }
+
+    .local-package-select:focus {
+      border-color: #3977c7;
+      outline: 1px solid #3977c7;
+    }
+
+    .local-package-select:disabled {
+      color: #667085;
+      background: transparent;
+      cursor: default;
+    }
+
+    .local-package-selection {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .local-package-selection-icon {
+      display: block;
+      flex: 0 0 1rem;
+      width: 1rem;
+      height: 1rem;
+      color: #526b86;
+    }
+
+    .local-package-selection-icon svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .local-package-actions {
+      display: flex;
+      align-items: stretch;
+      gap: 0.15rem;
+      min-width: 0;
+    }
+
+    .local-package-actions > ribbon-button {
+      flex: 1 1 0;
+      min-width: 0;
     }
 
     .develop-fields {
@@ -1580,13 +1646,27 @@ export class AppRibbon extends LitElement {
   }
 
   private get selectedLocalPackage() {
-    return this.localPackages.find(pkg => pkg.name === this.selectedLocalPackageName)
+    return this.localPackages.find(pkg => pkg.name === this.selectedLocalPackageName) ?? this.localPackages[0]
+  }
+
+  private get localPackageSelectionName() {
+    return this.selectedLocalPackageName || this.localPackages[0]?.name || ""
   }
 
   private selectLocalPackage = (event: Event) => {
     const label = (event as CustomEvent<{label?: string}>).detail?.label
     if(!label?.startsWith("local-package-select:")) return
     this.selectedLocalPackageName = label.slice("local-package-select:".length)
+  }
+
+  private selectLocalPackageFromSelect = (event: Event) => {
+    const name = (event.currentTarget as HTMLSelectElement).value
+    this.selectedLocalPackageName = name
+    this.dispatchEvent(new CustomEvent<{label: string}>("ribbon-button-click", {
+      detail: {label: `local-package-select:${name}`},
+      bubbles: true,
+      composed: true,
+    }))
   }
 
   private localPackageMetadataChange = (event: Event) => {
@@ -1607,22 +1687,6 @@ export class AppRibbon extends LitElement {
     }))
   }
 
-  private renderLocalPackageButton(pkg: WebWriterPackage) {
-    return html`
-      <ribbon-button
-        variant="package"
-        label=${pkg.label}
-        icon="Packages"
-        icon-url=${pkg.iconUrl ?? ""}
-        .action=${`local-package-select:${pkg.name}`}
-        .submenu=${[]}
-        .details=${this.packageDetails(pkg)}
-        ?active=${pkg.name === this.selectedLocalPackageName}
-        ?keep-drawer-open=${true}
-      ></ribbon-button>
-    `
-  }
-
   private renderDevelopDrawer() {
     const displayPackages = this.localPackages
     return html`
@@ -1632,16 +1696,36 @@ export class AppRibbon extends LitElement {
         icon="Packages"
         layout="packages"
         single-column
-        ?expandable=${displayPackages.length > 1}
         @ribbon-drawer-state-change=${this.handlePackageDrawerState}
       >
-        <ribbon-button
-          label="Add package"
-          action="local-package-add"
-          icon="Plus"
-          keep-drawer-open
-        ></ribbon-button>
-        ${displayPackages.map(pkg => this.renderLocalPackageButton(pkg))}
+        <label class="local-package-selection">
+          <span class="local-package-selection-icon" aria-hidden="true">${ribbonIcon("Packages")}</span>
+          <select
+            class="local-package-select"
+            aria-label="Local package"
+            .value=${this.localPackageSelectionName}
+            ?disabled=${!displayPackages.length}
+            @change=${this.selectLocalPackageFromSelect}
+          >
+            ${displayPackages.length
+              ? displayPackages.map(pkg => html`<option value=${pkg.name}>${pkg.name}</option>`)
+              : html`<option value="">${this.localPackagesLoading ? "Loading packages…" : "No local packages"}</option>`}
+          </select>
+        </label>
+        <div class="local-package-actions">
+          <ribbon-button
+            label="Load package"
+            action="local-package-add"
+            icon="Open"
+            keep-drawer-open
+          ></ribbon-button>
+          <ribbon-button
+            label="New package"
+            action="local-package-new"
+            icon="New"
+            keep-drawer-open
+          ></ribbon-button>
+        </div>
         ${this.localPackageError ? html`<span class="package-status" role="alert">${this.localPackageError}</span>` : ""}
         ${!this.localPackagesLoading && !displayPackages.length && !this.localPackageError
           ? html`<span class="package-status">No local packages</span>`

@@ -816,8 +816,22 @@ export class RibbonButton extends LitElement {
   private showDetails = () => {
     if(!this.details) return
     const rect = this.getBoundingClientRect()
-    const width = Math.min(272, window.innerWidth - 16)
-    const left = Math.max(8, rect.left - width - 6)
+    const viewportWidth = Math.max(1, window.innerWidth)
+    const width = Math.min(272, Math.max(1, viewportWidth - 16))
+    const margin = 8
+    const gap = 6
+    const buttonRight = Number.isFinite(rect.right) ? rect.right : rect.left + rect.width
+    const leftPosition = rect.left - width - gap
+    const rightPosition = buttonRight + gap
+    const leftSpace = rect.left - margin - gap
+    const rightSpace = viewportWidth - buttonRight - margin - gap
+    const fitsLeft = leftPosition >= margin
+    const fitsRight = rightPosition + width <= viewportWidth - margin
+    let left = leftPosition
+    if(!fitsLeft && fitsRight) left = rightPosition
+    else if(!fitsLeft && !fitsRight && leftSpace < rightSpace) {
+      left = rightPosition
+    }
     const top = Math.max(8, rect.top)
     this.detailsPosition = {left, top}
     this.detailsOpen = true

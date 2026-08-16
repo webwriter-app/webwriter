@@ -1245,7 +1245,7 @@ export class DomEditor extends LitElement {
     this.localPackageError = ""
     try {
       // The picker is deliberately the first awaited operation: browsers
-      // require it to run within the Add package button's user activation.
+      // require it to run within the Load package button's user activation.
       const directory = await picker.call(window, {id: "webwriter-develop-package", mode: "readwrite"})
       const previous = await this.matchingLocalPackage(directory)
       const id = previous?.id ?? localPackageId()

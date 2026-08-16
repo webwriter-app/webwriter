@@ -273,9 +273,21 @@ export class RibbonDrawer extends LitElement {
       width: 100%;
     }
 
+    :host([layout="packages"]) ::slotted(select) {
+      grid-column: span 2;
+      width: 100%;
+    }
+
+    :host([layout="packages"]) ::slotted(.local-package-selection) {
+      grid-column: span 2;
+      width: 100%;
+    }
+
     :host([layout="packages"][single-column]) ::slotted(ribbon-button),
     :host([layout="packages"][single-column]) ::slotted(package-search),
-    :host([layout="packages"][single-column]) ::slotted(ribbon-button[variant="package"]) {
+    :host([layout="packages"][single-column]) ::slotted(ribbon-button[variant="package"]),
+    :host([layout="packages"][single-column]) ::slotted(select),
+    :host([layout="packages"][single-column]) ::slotted(.local-package-selection) {
       grid-column: 1 / -1;
     }
 
