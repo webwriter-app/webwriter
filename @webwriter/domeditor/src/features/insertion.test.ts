@@ -201,6 +201,10 @@ describe("insertion menu", () => {
   })
 
   it("shows installed package widgets and inserts their custom elements", async () => {
+    editor.schema.extendWidgets([{
+      tagName: "webwriter-demo",
+      editingConfig: {content: "text*"},
+    }])
     globalThis.DOMEDITOR_PACKAGE_ITEMS = [{
       section: "Packages",
       name: "Demo Widget",
@@ -222,7 +226,10 @@ describe("insertion menu", () => {
       ?.closest<HTMLButtonElement>("button")?.click()
 
     expect(editorHTML()).toBe('<webwriter-demo contenteditable="true"></webwriter-demo>')
-    expect(document.querySelector("webwriter-demo")?.getAttribute("contenteditable")).toBe("true")
+    const widget = document.querySelector("webwriter-demo")!
+    expect(widget.getAttribute("contenteditable")).toBe("true")
+    expect($.selectedElement).toBe(widget)
+    expect(widget.classList.contains("◆element-selected")).toBe(true)
     expect(menu.open).toBe(false)
   })
 

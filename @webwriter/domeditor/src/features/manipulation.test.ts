@@ -189,6 +189,16 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
 
     expect(document.querySelector("webwriter-demo")).toHaveAttribute("contenteditable", "true")
   })
+  it("node-selects a directly inserted widget", () => {
+    editor.features.manipulation.actions.insert({
+      type: "insert",
+      html: "<webwriter-demo></webwriter-demo>",
+    })
+
+    const widget = document.querySelector("webwriter-demo")!
+    expect($.selectedElement).toBe(widget)
+    expect(widget).toHaveClass("◆element-selected")
+  })
 
   it("can insert <p> at document start", () => {
     const p = document.createElement("p")

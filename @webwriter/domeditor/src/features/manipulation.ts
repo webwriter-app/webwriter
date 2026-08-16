@@ -505,6 +505,7 @@ export class ManipulationFeature extends EditorFeature {
         this.splitAtSelection(allowedDepth, strict)
       })
     }
+    const insertedWidget = this.insertedWidget(node)
     if(node) markWidgetsEditable(node)
     return this.withNormalization(() => {
       if(true) {
@@ -520,6 +521,10 @@ export class ManipulationFeature extends EditorFeature {
           container.after(next)
           next.append(...right)
           node? $.move(node, -1): $.move(next, 0)
+        }
+        if(insertedWidget?.isConnected) {
+          $.selectElement(insertedWidget)
+          this.editor.features.selection.processSelection()
         }
         return
       }
@@ -803,5 +808,16 @@ export class ManipulationFeature extends EditorFeature {
         this.editor.schema.fixInvalidContent(wrapped!)
       }
     }
+  }
+
+  private insertedWidget(node: Node) {
+    const element = node instanceof DocumentFragment && node.childNodes.length === 1
+      ? node.firstChild
+      : node
+    if(!isElement(element)) return null
+    const schemaGroups = this.editor.schema.get(element).group ?? []
+    return element.localName.includes("-") || element.hasAttribute("is") || schemaGroups.includes("widget")
+      ? element
+      : null
   }
 }

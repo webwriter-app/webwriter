@@ -461,7 +461,11 @@ export class InsertionFeature extends EditorFeature {
       range.insertNode(template.content)
     }
     const last = nodes.at(-1)!
-    if(isElement(last) && last.matches("ul, ol, dl, menu")) {
+    if(item.kind === "widget" && nodes.length === 1 && isElement(last)) {
+      $.selectElement(last)
+      this.editor.features.selection.processSelection()
+    }
+    else if(isElement(last) && last.matches("ul, ol, dl, menu")) {
       $.move(last)
     }
     else if(isElement(last) && last.matches("details") && last.firstElementChild) {
