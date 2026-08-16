@@ -1308,10 +1308,11 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith({type: "selectNode", path: [0]})
   })
 
-  it("underlines only the captured selected widget breadcrumb label", async () => {
+  it("indicates node and capture selection on breadcrumb items", async () => {
     const {editor, editorWindow} = await mountEditor()
     const detail = {
       path: [{path: [], name: "Document"}, {path: [0], name: "Widget", icon: "Packages"}],
+      nodeSelected: true,
       capture: true,
     }
 
@@ -1324,9 +1325,23 @@ describe("DomEditor.execute()", () => {
     await breadcrumb.updateComplete
 
     const items = breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>("button.item")
+    expect(items[0].classList.contains("node-selected")).toBe(false)
+    expect(items[1].classList.contains("node-selected")).toBe(true)
     expect(items[0].classList.contains("capture-selected")).toBe(false)
     expect(items[1].classList.contains("capture-selected")).toBe(true)
-    expect((DomEditorBreadcrumb.styles as unknown as {cssText: string}).cssText).toContain("text-decoration: underline")
+    const styles = (DomEditorBreadcrumb.styles as unknown as {cssText: string}).cssText
+    expect(styles).toContain("text-decoration-style: dotted")
+    expect(styles).toContain("text-decoration-style: solid")
+    expect(styles).toContain("#38bdf8")
+
+    const treeToggle = breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")
+    treeToggle?.click()
+    await breadcrumb.updateComplete
+    const treeItem = breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.tree-item[data-path="0"]')!
+    expect(treeItem.classList.contains("node-selected")).toBe(true)
+    expect(treeItem.classList.contains("capture-selected")).toBe(true)
+    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
+    await breadcrumb.updateComplete
 
     window.dispatchEvent(new MessageEvent("message", {
       data: {type: selectionChangeEvent, detail: {...detail, capture: false}},
@@ -1334,7 +1349,29 @@ describe("DomEditor.execute()", () => {
     }))
     await editor.updateComplete
     await breadcrumb.updateComplete
-    expect(items[1].classList.contains("capture-selected")).toBe(false)
+    const updatedItems = breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>("button.item")
+    expect(updatedItems[1].classList.contains("capture-selected")).toBe(false)
+    expect(updatedItems[1].classList.contains("node-selected")).toBe(true)
+    expect(treeItem.classList.contains("node-selected")).toBe(true)
+    expect(treeItem.classList.contains("capture-selected")).toBe(false)
+
+    for(const selection of [
+      {nodeSelected: false},
+      {nodeSelected: false, gap: {parentPath: [], offset: 0}},
+    ]) {
+      window.dispatchEvent(new MessageEvent("message", {
+        data: {type: selectionChangeEvent, detail: {...detail, capture: false, ...selection}},
+        source: editorWindow,
+      }))
+      await editor.updateComplete
+      await breadcrumb.updateComplete
+      const unmarkedItems = breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>("button.item")
+      const unmarkedTreeItem = breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.tree-item[data-path="0"]')!
+      expect(unmarkedItems[1].classList.contains("node-selected")).toBe(false)
+      expect(unmarkedItems[1].classList.contains("capture-selected")).toBe(false)
+      expect(unmarkedTreeItem.classList.contains("node-selected")).toBe(false)
+      expect(unmarkedTreeItem.classList.contains("capture-selected")).toBe(false)
+    }
   })
 
   it("starts and ends an element hover from a breadcrumb item", async () => {

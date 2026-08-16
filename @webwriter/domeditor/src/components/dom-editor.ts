@@ -215,6 +215,7 @@ export class DomEditor extends LitElement {
   private ribbonInputSession = false
   private restoreEditorAfterRibbonInput = false
   private selectionPath: SelectionPathItem[] = []
+  private nodeSelection = false
   private captureSelection = false
   private selectionGap: SelectionGap | null = null
   private documentTree: DocumentTreeItem | null = null
@@ -1639,6 +1640,7 @@ export class DomEditor extends LitElement {
         ? {parentPath: [...gap.parentPath], offset: gap.offset}
         : null
       this.selectionPath = path
+      this.nodeSelection = event.data.detail.nodeSelected === true || event.data.detail.capture === true
       this.captureSelection = event.data.detail.capture === true
       this.selectionGap = selectionGap
       this.listType = event.data.detail.list?.type ?? null
@@ -1650,6 +1652,7 @@ export class DomEditor extends LitElement {
       this.dispatchEvent(new CustomEvent(selectionChangeEvent, {
         detail: {
           path,
+          ...(this.nodeSelection ? {nodeSelected: true} : {}),
           ...(this.captureSelection ? {capture: true} : {}),
           ...(selectionGap ? {gap: selectionGap} : {}),
           list: {type: this.listType, style: this.listStyle},
@@ -1843,6 +1846,7 @@ export class DomEditor extends LitElement {
     this.editorReadyResolve = null
     this.editorReadyReject = null
     this.selectionPath = []
+    this.nodeSelection = false
     this.captureSelection = false
     this.selectionGap = null
     this.canMark = false
@@ -1901,6 +1905,7 @@ export class DomEditor extends LitElement {
         ></app-ribbon>
         <dom-editor-breadcrumb
           .path=${this.selectionPath}
+          .nodeSelected=${this.nodeSelection}
           .capture=${this.captureSelection}
           .gap=${this.selectionGap}
           .tree=${this.documentTree}

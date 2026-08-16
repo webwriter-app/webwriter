@@ -18,6 +18,7 @@ type BreadcrumbEntry = {
 export class DomEditorBreadcrumb extends LitElement {
   static properties = {
     path: {attribute: false},
+    nodeSelected: {type: Boolean, attribute: "node-selected", reflect: true},
     capture: {type: Boolean, reflect: true},
     gap: {attribute: false},
     tree: {attribute: false},
@@ -190,12 +191,40 @@ export class DomEditorBreadcrumb extends LitElement {
       display: none;
     }
 
+    .item.node-selected .item-label,
+    .tree-item.node-selected .item-label {
+      text-decoration: underline;
+      text-decoration-color: var(--sl-color-primary-400, #38bdf8);
+      text-decoration-style: dotted;
+      text-decoration-thickness: 2px;
+      text-underline-offset: 3px;
+    }
+
     .item.capture-selected .item-label,
     .tree-item.capture-selected .item-label {
       text-decoration: underline;
-      text-decoration-color: #3977c7;
+      text-decoration-color: var(--sl-color-primary-400, #38bdf8);
+      text-decoration-style: solid;
       text-decoration-thickness: 2px;
       text-underline-offset: 3px;
+    }
+
+    .item.icon-only {
+      position: relative;
+    }
+
+    .item.icon-only.node-selected::after,
+    .item.icon-only.capture-selected::after {
+      position: absolute;
+      right: 0.25rem;
+      bottom: 1px;
+      left: 0.25rem;
+      border-bottom: 2px dotted var(--sl-color-primary-400, #38bdf8);
+      content: "";
+    }
+
+    .item.icon-only.capture-selected::after {
+      border-bottom-style: solid;
     }
 
     .item-icon {
@@ -374,6 +403,7 @@ export class DomEditorBreadcrumb extends LitElement {
   `
 
   path: SelectionPathItem[] = []
+  nodeSelected = false
   capture = false
   gap: SelectionGap | null = null
   tree: DocumentTreeItem | null = null
@@ -479,11 +509,15 @@ export class DomEditorBreadcrumb extends LitElement {
     return this.path[this.path.length - 1]?.path ?? null
   }
 
-  private isSelected(item: DocumentTreeItem) {
+  private isSelected(item: SelectionPathItem) {
     const selected = this.selectedPath()
     return selected !== null
       && selected.length === item.path.length
       && selected.every((index, position) => index === item.path[position])
+  }
+
+  private isNodeSelected(item: SelectionPathItem) {
+    return this.nodeSelected && this.isSelected(item)
   }
 
   private isCaptured(path: number[]) {
@@ -814,7 +848,7 @@ export class DomEditorBreadcrumb extends LitElement {
             </button>
           ` : html`<span class="tree-expander-spacer" aria-hidden="true"></span>`}
           <button
-            class=${`tree-item${this.isCaptured(item.path) ? " capture-selected" : ""}`}
+            class=${`tree-item${this.isNodeSelected(item) ? " node-selected" : ""}${this.isCaptured(item.path) ? " capture-selected" : ""}`}
             type="button"
             data-path=${item.path.join(",")}
             title=${`Select ${item.name}`}
@@ -879,7 +913,7 @@ export class DomEditorBreadcrumb extends LitElement {
     return html`
       <li class=${`breadcrumb-entry ${transitionClass}`}>
         <button
-          class=${`item${this.isCollapsedBreadcrumbItem(entry) ? " icon-only" : ""}${this.isCaptured(entry.item.path) ? " capture-selected" : ""}`}
+          class=${`item${this.isCollapsedBreadcrumbItem(entry) ? " icon-only" : ""}${this.isNodeSelected(entry.item) ? " node-selected" : ""}${this.isCaptured(entry.item.path) ? " capture-selected" : ""}`}
           type="button"
           data-path=${entry.item.path.join(",")}
           title=${`Select ${entry.item.name}`}
