@@ -84,6 +84,8 @@ describe("DOMEditor stylesheets", () => {
 
     expect(editorStyleString).toMatch(/body::part\(presence-gap-caret\)::after\s*\{[\s\S]*?animation:\s*none;/)
     expect(editorStyleString).toMatch(/\.◆element-hovered,\s*\.◆element-hovered:hover\s*\{[\s\S]*?outline:\s*2px dotted var\(--sl-color-primary-400\);[\s\S]*?outline-offset:\s*2px;/)
+    expect(editorStyleString).toMatch(/body\.◆element-hovered,[\s\S]*?body\.◆element-selected\s*\{[\s\S]*?outline:\s*none;/)
+    expect(editorStyleString).toMatch(/body\.◆element-hovered::after,[\s\S]*?body\.◆element-selected::after\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?inset:\s*0;[\s\S]*?background:\s*rgb\(56 189 248 \/ 6%\);[\s\S]*?pointer-events:\s*none;/)
     expect(editorStyleString).not.toContain("body::part(element-hover-caret)")
     expect(editorStyleString).toMatch(/body::part\(insertion-add\)[\s\S]*?position-anchor:\s*--empty-selected;[\s\S]*?left:\s*anchor\(left\);[\s\S]*?top:\s*anchor\(top\);[\s\S]*?font:\s*inherit;/)
     expect(editorStyleString).toMatch(/body\.◆empty-selected::part\(insertion-add\)[\s\S]*?left:\s*calc\(anchor\(left\) \+ var\(--body-padding\)\);/)

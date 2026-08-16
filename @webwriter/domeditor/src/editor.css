@@ -173,6 +173,24 @@ body
   z-index: 2147483645;
 }
 
+/* Document-level hover and selection preview the whole editing surface. */
+body.◆element-hovered,
+body.◆element-hovered:hover,
+body.◆element-selected {
+  outline: none;
+  outline-offset: 0;
+}
+
+body.◆element-hovered::after,
+body.◆element-selected::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 2147483645;
+  background: rgb(56 189 248 / 6%);
+  pointer-events: none;
+}
+
 .◆element-capture-selected, .◆element-capture-selected:hover {
   outline: 2px solid var(--sl-color-primary-400);
   outline-offset: 2px;
