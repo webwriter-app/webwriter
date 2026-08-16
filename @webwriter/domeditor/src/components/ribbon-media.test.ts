@@ -6,8 +6,9 @@ import type {RibbonButton} from "./ribbon-button"
 beforeEach(() => document.body.replaceChildren())
 
 describe("media ribbon drawer", () => {
-  it("dispatches the Image insertion command from the main button", async () => {
+  it("dispatches the Image insertion command from an Insert media button", async () => {
     const ribbon = new AppRibbon()
+    ribbon.activeMenu = "Insert"
     const listener = vi.fn()
     ribbon.addEventListener("ribbon-button-click", listener)
     document.body.append(ribbon)
@@ -26,6 +27,7 @@ describe("media ribbon drawer", () => {
 
   it("gives every requested media command an advanced dropdown", async () => {
     const ribbon = new AppRibbon()
+    ribbon.activeMenu = "Insert"
     document.body.append(ribbon)
     await ribbon.updateComplete
 
@@ -41,6 +43,7 @@ describe("media ribbon drawer", () => {
 
   it("reflects selected attributes and offers the picture/img switch", async () => {
     const ribbon = new AppRibbon()
+    ribbon.activeMenu = "Insert"
     ribbon.media = {type: "picture", attributes: {alt: "A diagram", loading: "lazy"}}
     document.body.append(ribbon)
     await ribbon.updateComplete
@@ -57,6 +60,7 @@ describe("media ribbon drawer", () => {
 
   it("dispatches attribute and image-type changes from the dropdown", async () => {
     const ribbon = new AppRibbon()
+    ribbon.activeMenu = "Insert"
     ribbon.media = {type: "img", attributes: {}}
     document.body.append(ribbon)
     await ribbon.updateComplete
@@ -81,6 +85,7 @@ describe("media ribbon drawer", () => {
 
   it("switches Website details and renders attributes for the selected element", async () => {
     const ribbon = new AppRibbon()
+    ribbon.activeMenu = "Insert"
     ribbon.media = {type: "embed", attributes: {src: "https://example.test", type: "text/html"}}
     document.body.append(ribbon)
     await ribbon.updateComplete

@@ -55,7 +55,7 @@ describe("package ribbon controls", () => {
     )
     let packageDrawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')!
 
-    expect(drawerLabels()).toEqual(["Marks", "Text", "Lists", "Media", "Packages"])
+    expect(drawerLabels()).toEqual(["Marks", "Elements", "Packages"])
     expect(getComputedStyle(packageDrawer).flexGrow).toBe("1")
 
     ribbon.activeMenu = "Insert"

@@ -135,7 +135,7 @@ describe("mark ribbon controls", () => {
 
     expect(Array.from(ribbon.shadowRoot!.querySelectorAll(".ribbon-content > ribbon-drawer"))
       .map(drawer => drawer.getAttribute("label")))
-      .toEqual(["Marks", "Text", "Lists", "Media", "Packages"])
+      .toEqual(["Marks", "Elements", "Packages"])
 
     expect(tabs.map(tab => tab.label)).toEqual([
       "File",
@@ -345,9 +345,9 @@ describe("mark ribbon controls", () => {
     await ribbon.updateComplete
     await drawer.updateComplete
 
-    const textDrawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Text"]')!
+    const textDrawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Elements"]')!
     const paragraph = Array.from(textDrawer.querySelectorAll<RibbonButton>("ribbon-button"))
-      .find(button => button.action === "Paragraph")!
+      .find(button => button.label === "Prose")!
     const standardButtons = [
       drawer.querySelector<RibbonButton>('ribbon-button[action="mark:a"]')!,
       drawer.querySelector<RibbonButton>('ribbon-button[action="mark:span"]')!,

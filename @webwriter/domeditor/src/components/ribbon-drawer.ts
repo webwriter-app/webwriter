@@ -60,6 +60,14 @@ export class RibbonDrawer extends LitElement {
       --ribbon-drawer-expanded-width: 9.25rem;
     }
 
+    :host([layout="elements"]) {
+      --ribbon-drawer-expanded-width: 13.25rem;
+    }
+
+    :host([layout="elements"]) .controls {
+      grid-template-rows: minmax(0, 1fr);
+    }
+
     :host([layout="file"]) {
       --ribbon-drawer-expanded-width: 17.5rem;
       --ribbon-drawer-width: min(17.5rem, calc(100vw - 1rem));

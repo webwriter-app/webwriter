@@ -74,47 +74,87 @@ type StorageLocation = typeof storageLocations[number]["value"]
 
 const placeholderSharingLink = "https://webwriter.app/share/placeholder"
 
-const insertionMenuGroup = (section: "Text" | "Lists" | "Media"): RibbonMenuGroup => ({
-  label: section,
-  buttons: insertionMenuItems
-    .filter(item => item.section === section)
-    .flatMap<RibbonMenuButton>(item => {
-      if(section === "Lists") {
-        if(item.tag === "ul") {
-          return [{
-            label: item.name,
-            action: "toggle-list:ul",
-            submenu: [{label: "Menu", action: "toggle-list:menu", icon: "List"}],
-          }]
-        }
+type InsertionSection = "Text" | "Lists" | "Media"
+
+const insertionMenuButtons = (sections: readonly InsertionSection[]) => insertionMenuItems
+  .filter(item => sections.includes(item.section))
+  .flatMap<RibbonMenuButton>(item => {
+    if(item.section === "Lists") {
+      if(item.tag === "ul") {
         return [{
           label: item.name,
-          action: item.tag === "details" ? "insert-details" : `toggle-list:${item.tag}`,
+          action: "toggle-list:ul",
+          icon: "List",
+          submenu: [{label: "Menu", action: "toggle-list:menu", icon: "List"}],
         }]
       }
-      if(item.tag === "p") {
-        return [{
-          label: item.name,
-          action: item.name,
-          submenu: insertionMenuItems
-            .filter(submenuItem => submenuItem.section === section && submenuItem.tag === "pre")
-            .map(submenuItem => submenuItem.name),
-        } satisfies RibbonMenuButton]
-      }
-      if(item.tag === "pre") return []
-      if(item.tag === "h1") {
-        return [{
-          label: "Heading",
-          action: item.name,
-          submenu: insertionMenuItems
-            .filter(submenuItem => submenuItem.section === section && /^h[2-6]$/.test(submenuItem.tag))
-            .map(submenuItem => submenuItem.name),
-        } satisfies RibbonMenuButton]
-      }
-      if(/^h[2-6]$/.test(item.tag)) return []
-      return [item.name]
-    }),
+      return [{
+        label: item.name,
+        action: item.tag === "details" ? "insert-details" : `toggle-list:${item.tag}`,
+        icon: item.name,
+      }]
+    }
+    if(item.section === "Text" && item.tag === "p") {
+      return [{
+        label: item.name,
+        action: item.name,
+        submenu: insertionMenuItems
+          .filter(submenuItem => submenuItem.section === item.section && submenuItem.tag === "pre")
+          .map(submenuItem => submenuItem.name),
+      } satisfies RibbonMenuButton]
+    }
+    if(item.section === "Text" && item.tag === "pre") return []
+    if(item.section === "Text" && item.tag === "h1") {
+      return [{
+        label: "Heading",
+        action: item.name,
+        submenu: insertionMenuItems
+          .filter(submenuItem => submenuItem.section === item.section && /^h[2-6]$/.test(submenuItem.tag))
+          .map(submenuItem => submenuItem.name),
+      } satisfies RibbonMenuButton]
+    }
+    if(item.section === "Text" && /^h[2-6]$/.test(item.tag)) return []
+    return [item.name]
+  })
+
+const insertionMenuGroup = (section: InsertionSection): RibbonMenuGroup => ({
+  label: section,
+  buttons: insertionMenuButtons([section]),
 })
+
+const condensedInsertionMenuButtons = (section: InsertionSection): RibbonMenuButton[] => insertionMenuButtons([section])
+  .map(button => {
+    const item = typeof button === "string" ? {label: button} : button
+    return {
+      label: item.label,
+      action: item.action ?? item.label,
+      icon: item.icon ?? item.label,
+    }
+  })
+
+const elementInsertionMenuGroup: RibbonMenuGroup = {
+  label: "Elements",
+  buttons: [
+    {
+      label: "Prose",
+      action: "Paragraph",
+      icon: "Paragraph",
+      submenu: condensedInsertionMenuButtons("Text"),
+    },
+    {
+      label: "Lists",
+      action: "toggle-list:ul",
+      icon: "Lists",
+      submenu: condensedInsertionMenuButtons("Lists"),
+    },
+    {
+      label: "Media",
+      action: "Table",
+      icon: "Table",
+      submenu: condensedInsertionMenuButtons("Media"),
+    },
+  ],
+}
 
 const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
   File: [
@@ -146,9 +186,7 @@ const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
   ],
   Start: [
     {label: "Marks", buttons: []},
-    insertionMenuGroup("Text"),
-    insertionMenuGroup("Lists"),
-    insertionMenuGroup("Media"),
+    elementInsertionMenuGroup,
   ],
   Insert: [
     insertionMenuGroup("Text"),
@@ -1870,22 +1908,47 @@ export class AppRibbon extends LitElement {
     `
   }
 
-  private renderMediaDrawer(drawer: RibbonMenuGroup) {
+  private renderInsertionDrawer(drawer: RibbonMenuGroup) {
+    const elements = drawer.label === "Elements"
     return html`
-      <ribbon-drawer label="Media" icon="Table" layout="media">
+      <ribbon-drawer
+        label=${drawer.label}
+        icon=${elements ? "Paragraph" : "Table"}
+        layout=${elements ? "elements" : "media"}
+      >
         ${drawer.buttons.map(button => {
           const item = typeof button === "string" ? {label: button} : button
           const insertion = insertionMenuItems.find(candidate => candidate.name === item.label)
           const type = insertion?.tag === "picture" || insertion?.tag === "audio" || insertion?.tag === "video" || insertion?.tag === "iframe"
             ? insertion.tag as MediaType
             : null
+          const submenu = item.label === "List"
+            ? this.unorderedListStyles
+            : item.label === "Enumeration"
+              ? this.orderedListStyles
+              : item.submenu ?? []
+          const active = type
+            ? this.mediaSelectionMatches(type)
+            : item.label === "Lists"
+              ? this.listType !== null
+              : item.label === "Media"
+                ? this.media !== null
+                : item.label === "List"
+                  ? this.listType === "ul" || this.listType === "menu"
+                  : item.label === "Enumeration"
+                    ? this.listType === "ol"
+                    : item.label === "Glossary"
+                      ? this.listType === "dl"
+                      : false
           return html`
             <ribbon-button
               label=${item.label}
               .action=${item.action ?? item.label}
-              .submenu=${type ? [] : item.submenu ?? []}
+              .icon=${item.icon ?? item.label}
+              .submenu=${type ? [] : submenu}
               .dropdown=${type ? this.renderMediaDropdown(type) : null}
-              ?active=${type ? this.mediaSelectionMatches(type) : false}
+              ?toggle=${elements && item.label === "Lists"}
+              ?active=${active}
             ></ribbon-button>
           `
         })}
@@ -2149,7 +2212,7 @@ export class AppRibbon extends LitElement {
       if(drawer.label === "Development") return this.renderDevelopmentDrawer()
       if(drawer.label === "Exports") return this.renderExportsDrawer()
       if(drawer.label === "Lists") return this.renderListDrawer()
-      if(drawer.label === "Media") return this.renderMediaDrawer(drawer)
+      if(drawer.label === "Elements" || drawer.label === "Media") return this.renderInsertionDrawer(drawer)
       const representative = drawer.buttons[0]
       const icon = typeof representative === "string"
         ? representative
