@@ -146,7 +146,7 @@ describe("DomEditor iframe setup", () => {
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     const expand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-expand")!
 
-    expand.dispatchEvent(new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true}))
+    expand.click()
     await ribbon.updateComplete
     expect(ribbon.shadowRoot!.querySelector(".ai-chat-panel")?.hasAttribute("data-open")).toBe(true)
 

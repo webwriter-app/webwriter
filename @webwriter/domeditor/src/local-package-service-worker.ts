@@ -1,5 +1,6 @@
 import {
   createLocalPackageRequestHandler,
+  localPackageFetchResponse,
   type LocalPackageDirectoryHandle,
 } from "./local-package-worker"
 import {
@@ -162,8 +163,6 @@ worker.addEventListener("message", event => {
 })
 
 worker.addEventListener("fetch", event => {
-  event.respondWith((async() => {
-    const response = await requestHandler(event.request)
-    return response ?? fetch(event.request)
-  })())
+  const response = localPackageFetchResponse(event.request, requestHandler)
+  if(response) event.respondWith(response)
 })

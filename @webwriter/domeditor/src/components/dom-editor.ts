@@ -61,6 +61,7 @@ import {
 import {LocalPackageMonitor} from "../local-package-monitor"
 import {LOCAL_PACKAGE_ROUTE_PREFIX, localPackageUrl, type LocalPackageDirectoryHandle} from "../local-package-worker"
 import {LocalPackageWorkerClient} from "../local-package-worker-client"
+import type {AIDocumentToolCall, AIDocumentToolHandler} from "../ai-client"
 
 type WritableFileStream = {
   write(data: Blob): Promise<void>
@@ -703,6 +704,24 @@ export class DomEditor extends LitElement {
     queueMicrotask(() => {
       if(this.ribbonInputSession) this.finishRibbonInput()
     })
+  }
+
+  private readonly handleAIDocumentTool: AIDocumentToolHandler = async (call: AIDocumentToolCall) => {
+    if(call.name === "read_current_document") {
+      return await this.execute({type: "readAIDocument"})
+    }
+    if(call.name === "read_current_selection") {
+      return await this.execute({type: "readAISelection"})
+    }
+    const html = call.arguments.html
+    if(typeof html !== "string") throw new TypeError("The document tool did not provide HTML")
+    if(call.name === "replace_current_document") {
+      return await this.execute({type: "replaceAIDocument", html})
+    }
+    if(call.name === "replace_current_selection") {
+      return await this.execute({type: "replaceAISelection", html})
+    }
+    throw new TypeError(`Unsupported document tool: ${String(call.name)}`)
   }
 
   private handleFileNameChange = (event: Event) => {
@@ -1905,6 +1924,7 @@ export class DomEditor extends LitElement {
           .fileName=${this.fileName}
           .fileDirty=${this.fileDirty}
           .previewActive=${this.previewActive}
+          .aiDocumentToolHandler=${this.handleAIDocumentTool}
           @ribbon-button-click=${this.handleRibbonButtonClick}
           @ribbon-preview-exit=${this.handleRibbonPreviewExit}
           @file-name-change=${this.handleFileNameChange}

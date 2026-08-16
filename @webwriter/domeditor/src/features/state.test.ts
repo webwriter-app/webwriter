@@ -73,4 +73,40 @@ describe("StateFeature", () => {
     expect(parsed.querySelector("[data-webwriter-original-src]")).toBeNull()
     editor.destroy()
   })
+
+  it("reads document context and sanitizes an approved whole-document replacement", () => {
+    document.body.innerHTML = "<h1>Before</h1><p>Keep me informed</p>"
+    const editor = new DOMEditor()
+
+    const context = editor.getActionHandler("readAIDocument")({type: "readAIDocument"}) as {html: string, text: string}
+    expect(context.html).toContain("<h1>Before</h1>")
+    expect(context.text).toContain("Keep me informed")
+
+    const result = editor.getActionHandler("replaceAIDocument")({
+      type: "replaceAIDocument",
+      html: '<main><h1 onclick="steal()">After</h1><a href="javascript:steal()">Link</a><script>steal()</script></main>',
+    }) as {status: string, removedUnsafeItems: number}
+
+    expect(result.status).toBe("applied")
+    expect(result.removedUnsafeItems).toBeGreaterThan(0)
+    expect(editor.toHTML(true)).toBe("<main><h1>After</h1><a>Link</a></main>")
+    editor.destroy()
+  })
+
+  it("reads and safely replaces the current selection", () => {
+    document.body.innerHTML = "<p>Hello world</p>"
+    const editor = new DOMEditor()
+    const text = document.querySelector("p")!.firstChild!
+    document.getSelection()!.setBaseAndExtent(text, 6, text, 11)
+
+    const context = editor.getActionHandler("readAISelection")({type: "readAISelection"}) as {text: string, html: string}
+    expect(context).toMatchObject({text: "world", html: "world"})
+
+    editor.getActionHandler("replaceAISelection")({
+      type: "replaceAISelection",
+      html: '<strong onmouseover="steal()">WebWriter</strong>',
+    })
+    expect(editor.toHTML(true)).toBe("<p>Hello <strong>WebWriter</strong></p>")
+    editor.destroy()
+  })
 })

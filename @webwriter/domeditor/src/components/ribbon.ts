@@ -1,6 +1,15 @@
 import { LitElement, css, html } from "lit"
 import type {ListType, PresenceUser} from "../editor-bridge"
 import {
+  completeAIConversation,
+  type AIAttachment,
+  type AIConversationMessage,
+  type AIDocumentToolCall,
+  type AIDocumentToolHandler,
+  type AIEffort,
+} from "../ai-client"
+import {AIProviderStore, type AIProviderConfig} from "../ai-provider"
+import {
   backgroundColorOptions,
   fontFamilyOptions,
   fontSizeOptions,
@@ -33,6 +42,8 @@ import { type RibbonMenu, type RibbonMenuButton, type RibbonMenuGroup } from "./
 import "./ribbon-menu"
 import "./ribbon-tab"
 import "./package-search"
+import type {AISettingsDialog} from "./ai-settings"
+import "./ai-settings"
 import {
   mediaAttributeOptions,
   isWebsiteType,
@@ -54,6 +65,7 @@ type AIChatMessage = {
   id: string
   role: "user" | "assistant"
   content: string
+  attachments?: AIAttachment[]
 }
 
 type AIChat = {
@@ -65,11 +77,20 @@ type AIChat = {
 type AIPromptSubmitDetail = {
   prompt: string
   chatId: string
+  providerId: string
   model: string
   effort: AIEffort
+  attachments: {name: string, mimeType: string, size: number}[]
 }
 
-type AIEffort = "low" | "medium" | "high"
+type PendingAIEdit = {
+  call: AIDocumentToolCall
+  chatId: string
+  summary: string
+  html: string
+  applying: boolean
+  resolve: (value: unknown) => void
+}
 
 const isRibbonInput = (target: EventTarget | null): target is HTMLElement => {
   if(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) {
@@ -87,7 +108,6 @@ const ribbonInputFromEvent = (event: Event) => event.composedPath().find(isRibbo
 const menuTabs: RibbonMenuName[] = ["File", "Insert", "Edit", "Develop"]
 const dropdownMenus: RibbonMenuName[] = ["File", "Insert", "Edit"]
 
-const aiModels = [{label: "Dummy model", value: "dummy-model"}] as const
 const aiEfforts: {label: string, value: AIEffort}[] = [
   {label: "Low effort", value: "low"},
   {label: "Medium effort", value: "medium"},
@@ -286,6 +306,12 @@ export class AppRibbon extends LitElement {
     activeAIChatId: {type: String, state: true},
     aiModel: {type: String, state: true},
     aiEffort: {type: String, state: true},
+    aiProviders: {attribute: false, state: true},
+    aiAttachments: {attribute: false, state: true},
+    aiBusy: {type: Boolean, state: true},
+    aiError: {type: String, state: true},
+    pendingAIEdit: {attribute: false, state: true},
+    aiDocumentToolHandler: {attribute: false},
   }
 
   static styles = css`
@@ -841,6 +867,106 @@ export class AppRibbon extends LitElement {
       text-transform: uppercase;
     }
 
+    .ai-message-attachments {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+      margin-top: 0.45rem;
+    }
+
+    .ai-message-attachment {
+      max-width: 12rem;
+      overflow: hidden;
+      padding: 0.15rem 0.35rem;
+      border-radius: 999px;
+      color: #526b86;
+      background: rgb(255 255 255 / 68%);
+      font-size: 0.62rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .ai-chat-error,
+    .ai-edit-approval {
+      align-self: stretch;
+      padding: 0.65rem 0.75rem;
+      border: 1px solid #fecaca;
+      border-radius: 0.55rem;
+      color: #991b1b;
+      background: #fef2f2;
+      font-size: 0.72rem;
+      line-height: 1.4;
+    }
+
+    .ai-edit-approval {
+      border-color: #facc15;
+      color: #713f12;
+      background: #fefce8;
+    }
+
+    .ai-edit-approval strong,
+    .ai-edit-approval span {
+      display: block;
+    }
+
+    .ai-edit-preview {
+      margin: 0.5rem 0;
+    }
+
+    .ai-edit-preview summary {
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .ai-edit-preview pre {
+      max-height: 10rem;
+      overflow: auto;
+      margin: 0.4rem 0 0;
+      padding: 0.5rem;
+      border-radius: 0.35rem;
+      color: #334155;
+      background: #ffffff;
+      font: 0.65rem/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
+      white-space: pre-wrap;
+    }
+
+    .ai-edit-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.4rem;
+      margin-top: 0.55rem;
+    }
+
+    .ai-edit-action {
+      min-height: 1.8rem;
+      padding: 0.25rem 0.55rem;
+      border: 1px solid #d6a80d;
+      border-radius: 0.35rem;
+      color: #713f12;
+      background: #ffffff;
+      font: inherit;
+      font-size: 0.68rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .ai-edit-action[data-kind="approve"] {
+      border-color: #2563eb;
+      color: #ffffff;
+      background: #2563eb;
+    }
+
+    .ai-edit-action:disabled {
+      opacity: 0.55;
+      cursor: default;
+    }
+
+    .ai-chat-working {
+      align-self: flex-start;
+      color: #64748b;
+      font-size: 0.68rem;
+    }
+
     .ai-chat-composer {
       box-sizing: border-box;
       display: flex;
@@ -899,6 +1025,10 @@ export class AppRibbon extends LitElement {
       overflow: auto;
     }
 
+    .ai-chat-panel[data-open] .ai-composer-surface[data-has-attachments] .ai-prompt-input {
+      padding-top: 2.15rem;
+    }
+
     .ai-chat-panel[data-open] .ai-prompt-submit {
       right: 0.35rem;
       bottom: 0.35rem;
@@ -928,6 +1058,66 @@ export class AppRibbon extends LitElement {
       pointer-events: none;
       transform: translateY(0.25rem);
       transition: opacity 140ms ease 40ms, transform 220ms ease;
+    }
+
+    .ai-pending-attachments {
+      display: flex;
+      position: absolute;
+      top: 0.25rem;
+      right: 0.3rem;
+      left: 0.3rem;
+      gap: 0.25rem;
+      min-width: 0;
+      overflow-x: auto;
+      scrollbar-width: thin;
+      z-index: 1;
+    }
+
+    .ai-pending-attachment {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      max-width: 11rem;
+      height: 1.45rem;
+      padding: 0 0.15rem 0 0.4rem;
+      border: 1px solid #cbd5e1;
+      border-radius: 999px;
+      color: #475569;
+      background: #f8fafc;
+      font-size: 0.62rem;
+    }
+
+    .ai-pending-attachment-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .ai-attachment-remove {
+      display: grid;
+      flex: 0 0 1.1rem;
+      place-items: center;
+      width: 1.1rem;
+      height: 1.1rem;
+      margin-left: 0.15rem;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      color: #64748b;
+      background: transparent;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .ai-attachment-remove:hover,
+    .ai-attachment-remove:focus-visible {
+      color: #0f172a;
+      background: #e2e8f0;
+      outline: none;
+    }
+
+    .ai-attachment-input {
+      display: none;
     }
 
     .ai-chat-panel[data-open] .ai-composer-toolbar {
@@ -961,6 +1151,12 @@ export class AppRibbon extends LitElement {
       outline-offset: 0;
     }
 
+    .ai-composer-attachment:disabled,
+    .ai-composer-select:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
     .ai-composer-attachment-icon,
     .ai-composer-attachment-icon svg {
       display: block;
@@ -990,6 +1186,14 @@ export class AppRibbon extends LitElement {
 
     .ai-composer-select:focus {
       outline: 1px solid #3977c7;
+    }
+
+    .ai-stop-icon {
+      display: block;
+      width: 0.55rem;
+      height: 0.55rem;
+      border-radius: 0.08rem;
+      background: currentColor;
     }
 
     @media (max-width: 42rem) {
@@ -1565,14 +1769,23 @@ export class AppRibbon extends LitElement {
   private packageDrawerOpen = false
   private packageVisibleCount = 2
   private linkAttributeMenuOpen = false
+  aiDocumentToolHandler: AIDocumentToolHandler | undefined
+  private readonly aiProviderStore = new AIProviderStore()
   private aiPrompt = ""
   private aiChatOpen = false
   private aiChats: AIChat[] = [{id: "chat-1", title: "New chat", messages: []}]
   private activeAIChatId = "chat-1"
-  private aiModel = aiModels[0].value
+  private aiProviders: AIProviderConfig[] = this.aiProviderStore.providers
+  private aiModel = this.aiProviderStore.activeProvider?.defaultModel ?? ""
   private aiEffort: AIEffort = "medium"
+  private aiAttachments: AIAttachment[] = []
+  private aiBusy = false
+  private aiError = ""
+  private pendingAIEdit: PendingAIEdit | null = null
+  private aiAbortController: AbortController | null = null
   private aiChatSequence = 1
   private aiMessageSequence = 0
+  private aiAttachmentSequence = 0
   private spanMarkSelection: MarkName[] = []
   private spanMarkSelectionSynced = false
   private ribbonContentObserver: ResizeObserver | undefined
@@ -1583,6 +1796,18 @@ export class AppRibbon extends LitElement {
   private previewTransitionTimer: ReturnType<typeof setTimeout> | undefined
 
   private readonly handleWindowResize = () => this.scheduleResponsiveLayout()
+  private readonly handleAIProviderChange = () => {
+    this.aiProviders = this.aiProviderStore.providers
+    const provider = this.aiProviderStore.activeProvider
+    if(!provider) {
+      this.aiModel = ""
+      return
+    }
+    if(!provider.models.includes(this.aiModel)) {
+      this.aiModel = provider.defaultModel || provider.models[0] || ""
+    }
+    this.aiError = ""
+  }
 
   private schedulePreviewTransitionEnd() {
     if(this.previewTransitionTimer !== undefined) clearTimeout(this.previewTransitionTimer)
@@ -1594,6 +1819,12 @@ export class AppRibbon extends LitElement {
 
   private readonly handleDocumentKeydown = (event: KeyboardEvent) => {
     if(event.key !== "Escape") return
+    const settings = this.renderRoot.querySelector<AISettingsDialog>("ai-settings-dialog")
+    if(settings?.open) {
+      event.stopImmediatePropagation()
+      settings.close()
+      return
+    }
     if(this.aiChatOpen) {
       event.stopImmediatePropagation()
       this.closeAIChat(true)
@@ -1643,7 +1874,8 @@ export class AppRibbon extends LitElement {
     const aiAction = event.composedPath().find(target => target instanceof HTMLElement && (
       target.matches(
         ".ai-prompt-submit, .ai-prompt-expand, .ai-chat-brand-button, " +
-        ".ai-chat-header-button, .ai-chat-send, .ai-composer-attachment",
+        ".ai-chat-header-button, .ai-chat-send, .ai-composer-attachment, " +
+        ".ai-attachment-remove, .ai-edit-action",
       )
     ))
     if(aiAction) return
@@ -1700,12 +1932,16 @@ export class AppRibbon extends LitElement {
 
   connectedCallback() {
     super.connectedCallback()
+    this.aiProviderStore.addEventListener("change", this.handleAIProviderChange)
+    this.handleAIProviderChange()
     document.addEventListener("pointerdown", this.handleDocumentPointerDown)
     document.addEventListener("keydown", this.handleDocumentKeydown, true)
     window.addEventListener("resize", this.handleWindowResize)
   }
 
   disconnectedCallback() {
+    this.aiProviderStore.removeEventListener("change", this.handleAIProviderChange)
+    this.stopAIRequest()
     if(this.previewTransitionTimer !== undefined) clearTimeout(this.previewTransitionTimer)
     this.previewTransitionTimer = undefined
     this.ribbonContentObserver?.disconnect()
@@ -1830,15 +2066,25 @@ export class AppRibbon extends LitElement {
     return this.aiChats.find(chat => chat.id === this.activeAIChatId) ?? this.aiChats[0]
   }
 
+  private get activeAIProvider() {
+    return this.aiProviderStore.activeProvider
+  }
+
   private promptTitle(prompt: string) {
     return prompt.length > 36 ? `${prompt.slice(0, 35).trimEnd()}…` : prompt
   }
 
-  private appendAIMessage(role: AIChatMessage["role"], content: string, chatId = this.activeAIChatId) {
+  private appendAIMessage(
+    role: AIChatMessage["role"],
+    content: string,
+    chatId = this.activeAIChatId,
+    attachments: AIAttachment[] = [],
+  ) {
     const message: AIChatMessage = {
       id: `message-${++this.aiMessageSequence}`,
       role,
       content,
+      ...(attachments.length ? {attachments: attachments.map(attachment => ({...attachment}))} : {}),
     }
     this.aiChats = this.aiChats.map(chat => chat.id === chatId ? {
       ...chat,
@@ -1859,14 +2105,20 @@ export class AppRibbon extends LitElement {
     }
   }
 
-  private dispatchAIPrompt(prompt: string) {
-    this.appendAIMessage("user", prompt)
+  private dispatchAIPrompt(
+    prompt: string,
+    provider: AIProviderConfig,
+    attachments: AIAttachment[],
+    chatId: string,
+  ) {
     this.dispatchEvent(new CustomEvent<AIPromptSubmitDetail>("ai-prompt-submit", {
       detail: {
         prompt,
-        chatId: this.activeAIChatId,
+        chatId,
+        providerId: provider.id,
         model: this.aiModel,
         effort: this.aiEffort,
+        attachments: attachments.map(({name, mimeType, size}) => ({name, mimeType, size})),
       },
       bubbles: true,
       composed: true,
@@ -1875,24 +2127,10 @@ export class AppRibbon extends LitElement {
 
   private submitAIPrompt(event: SubmitEvent) {
     event.preventDefault()
-    const prompt = this.aiPrompt.trim()
+    if(this.aiBusy) return
+    const prompt = this.aiPrompt.trim() || (this.aiAttachments.length ? "Please review the attached file(s)." : "")
     if(!prompt) return
-    this.aiPrompt = ""
-    this.dispatchAIPrompt(prompt)
-  }
-
-  private invokeAIActionOnPointer(event: PointerEvent, action: () => void) {
-    if(event.button !== 0) return
-    event.preventDefault()
-    event.stopPropagation()
-    action()
-  }
-
-  private invokeAIActionOnClick(event: MouseEvent, action: () => void) {
-    // Keyboard and programmatic button activation produce a detail of zero.
-    // Pointer activation is handled on pointerdown before the ribbon restores
-    // focus to the editor iframe.
-    if(event.detail === 0) action()
+    void this.runAIPrompt(prompt)
   }
 
   private toggleAIChat = () => {
@@ -1931,10 +2169,20 @@ export class AppRibbon extends LitElement {
   private switchAIChat(event: Event) {
     this.activeAIChatId = (event.currentTarget as HTMLSelectElement).value
     this.aiPrompt = ""
+    this.aiError = ""
   }
 
   private updateAIModel(event: Event) {
-    this.aiModel = (event.currentTarget as HTMLSelectElement).value
+    try {
+      const [providerId, model] = JSON.parse((event.currentTarget as HTMLSelectElement).value) as unknown[]
+      if(typeof providerId !== "string" || typeof model !== "string") return
+      this.aiProviderStore.setActive(providerId)
+      this.aiModel = model
+      this.aiError = ""
+    }
+    catch {
+      // Ignore a stale option from a provider that was edited concurrently.
+    }
   }
 
   private updateAIEffort(event: Event) {
@@ -1947,6 +2195,207 @@ export class AppRibbon extends LitElement {
       bubbles: true,
       composed: true,
     }))
+  }
+
+  private showAISettings = () => {
+    this.dispatchAIBarAction("settings")
+    this.renderRoot.querySelector<AISettingsDialog>("ai-settings-dialog")?.show()
+  }
+
+  private chooseAIAttachments = () => {
+    this.dispatchAIBarAction("attachments")
+    this.renderRoot.querySelector<HTMLInputElement>(".ai-attachment-input")?.click()
+  }
+
+  private attachmentDataURL(file: File) {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.addEventListener("load", () => typeof reader.result === "string"
+        ? resolve(reader.result)
+        : reject(new Error(`Could not read ${file.name}`)))
+      reader.addEventListener("error", () => reject(reader.error ?? new Error(`Could not read ${file.name}`)))
+      reader.readAsDataURL(file)
+    })
+  }
+
+  private async attachmentFromFile(file: File): Promise<AIAttachment> {
+    const mimeType = file.type || "application/octet-stream"
+    const textType = mimeType.startsWith("text/")
+      || /\.(?:csv|css|html?|js|json|jsx|md|mjs|ts|tsx|xml|ya?ml)$/i.test(file.name)
+    return {
+      id: `attachment-${++this.aiAttachmentSequence}`,
+      name: file.name,
+      mimeType,
+      size: file.size,
+      kind: mimeType.startsWith("image/") ? "image" : textType ? "text" : "file",
+      data: textType ? await file.text() : await this.attachmentDataURL(file),
+    }
+  }
+
+  private addAIAttachments = async (event: Event) => {
+    const input = event.currentTarget as HTMLInputElement
+    const files = Array.from(input.files ?? [])
+    input.value = ""
+    if(!files.length) return
+    this.aiError = ""
+    const maximumFileSize = 10 * 1024 * 1024
+    const maximumTotalSize = 20 * 1024 * 1024
+    const accepted: File[] = []
+    let total = this.aiAttachments.reduce((sum, attachment) => sum + attachment.size, 0)
+    for(const file of files) {
+      if(this.aiAttachments.length + accepted.length >= 8) {
+        this.aiError = "You can attach up to 8 files to one message."
+        break
+      }
+      if(file.size > maximumFileSize) {
+        this.aiError = `${file.name} is larger than the 10 MB attachment limit.`
+        continue
+      }
+      if(total + file.size > maximumTotalSize) {
+        this.aiError = "Attachments for one message cannot exceed 20 MB."
+        break
+      }
+      accepted.push(file)
+      total += file.size
+    }
+    try {
+      const attachments = await Promise.all(accepted.map(file => this.attachmentFromFile(file)))
+      this.aiAttachments = [...this.aiAttachments, ...attachments]
+      this.aiChatOpen = true
+    }
+    catch(error) {
+      this.aiError = error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  private removeAIAttachment(attachmentId: string) {
+    this.aiAttachments = this.aiAttachments.filter(attachment => attachment.id !== attachmentId)
+  }
+
+  private conversationFor(chatId: string): AIConversationMessage[] {
+    const chat = this.aiChats.find(candidate => candidate.id === chatId)
+    return chat?.messages.map(message => ({
+      role: message.role,
+      content: message.content,
+      ...(message.attachments?.length
+        ? {attachments: message.attachments.map(attachment => ({...attachment}))}
+        : {}),
+    })) ?? []
+  }
+
+  private handleAIDocumentTool(call: AIDocumentToolCall, chatId: string): Promise<unknown> {
+    if(call.name === "read_current_document" || call.name === "read_current_selection") {
+      return this.aiDocumentToolHandler
+        ? this.aiDocumentToolHandler(call)
+        : Promise.resolve({status: "unavailable", message: "The document editor is not connected"})
+    }
+    const html = call.arguments.html
+    const summary = call.arguments.summary
+    if(typeof html !== "string" || typeof summary !== "string") {
+      return Promise.resolve({status: "error", message: "The proposed edit is missing its HTML or summary"})
+    }
+    return new Promise(resolve => {
+      this.pendingAIEdit?.resolve({status: "denied", message: "A newer edit replaced this proposal"})
+      this.pendingAIEdit = {call, chatId, summary, html, applying: false, resolve}
+      this.activeAIChatId = chatId
+      this.aiChatOpen = true
+      void this.updateComplete.then(() => {
+        const messages = this.renderRoot.querySelector<HTMLElement>(".ai-chat-messages")
+        if(messages) messages.scrollTop = messages.scrollHeight
+      })
+    })
+  }
+
+  private approveAIEdit = async () => {
+    const pending = this.pendingAIEdit
+    if(!pending || pending.applying) return
+    this.pendingAIEdit = {...pending, applying: true}
+    try {
+      const result = this.aiDocumentToolHandler
+        ? await this.aiDocumentToolHandler(pending.call)
+        : {status: "unavailable", message: "The document editor is not connected"}
+      pending.resolve(result)
+    }
+    catch(error) {
+      pending.resolve({status: "error", message: error instanceof Error ? error.message : String(error)})
+    }
+    finally {
+      if(this.pendingAIEdit?.call.id === pending.call.id) this.pendingAIEdit = null
+    }
+  }
+
+  private rejectAIEdit = () => {
+    const pending = this.pendingAIEdit
+    if(!pending || pending.applying) return
+    this.pendingAIEdit = null
+    pending.resolve({status: "denied", message: "The user rejected the proposed edit"})
+  }
+
+  private stopAIRequest = () => {
+    this.aiAbortController?.abort()
+    this.aiAbortController = null
+    const pending = this.pendingAIEdit
+    if(pending) {
+      this.pendingAIEdit = null
+      pending.resolve({status: "denied", message: "The request was stopped"})
+    }
+  }
+
+  private async runAIPrompt(prompt: string) {
+    const provider = this.activeAIProvider
+    if(!provider) {
+      this.aiError = "Set up an AI provider before sending a message."
+      this.aiChatOpen = true
+      this.showAISettings()
+      return
+    }
+    if(!this.aiModel) {
+      this.aiError = "Add or load a model for this provider."
+      this.aiChatOpen = true
+      this.showAISettings()
+      return
+    }
+    const apiKey = this.aiProviderStore.keyFor(provider)
+    if(provider.auth === "bearer" && !apiKey) {
+      this.aiError = this.aiProviderStore.credentialStatus(provider) === "locked"
+        ? "Unlock this provider's encrypted API key in AI settings."
+        : "Enter an API key for this provider in AI settings."
+      this.aiChatOpen = true
+      this.showAISettings()
+      return
+    }
+
+    const chatId = this.activeAIChatId
+    const attachments = this.aiAttachments.map(attachment => ({...attachment}))
+    this.appendAIMessage("user", prompt, chatId, attachments)
+    this.dispatchAIPrompt(prompt, provider, attachments, chatId)
+    this.aiPrompt = ""
+    this.aiAttachments = []
+    this.aiError = ""
+    this.aiBusy = true
+    const controller = new AbortController()
+    this.aiAbortController = controller
+    try {
+      const response = await completeAIConversation({
+        provider,
+        apiKey,
+        model: this.aiModel,
+        effort: this.aiEffort,
+        messages: this.conversationFor(chatId),
+        toolHandler: call => this.handleAIDocumentTool(call, chatId),
+        signal: controller.signal,
+      })
+      this.appendAIResponse(response, chatId)
+    }
+    catch(error) {
+      this.aiError = error instanceof DOMException && error.name === "AbortError"
+        ? "Request stopped."
+        : error instanceof Error ? error.message : String(error)
+    }
+    finally {
+      if(this.aiAbortController === controller) this.aiAbortController = null
+      this.aiBusy = false
+    }
   }
 
   private handleAIChatPromptKeydown(event: KeyboardEvent) {
@@ -3140,6 +3589,11 @@ export class AppRibbon extends LitElement {
 
   render() {
     const visibleTabs = this.previewActive ? ["File"] : menuTabs
+    const activeProvider = this.activeAIProvider
+    const selectedModelValue = activeProvider && this.aiModel
+      ? JSON.stringify([activeProvider.id, this.aiModel])
+      : ""
+    const modelCount = this.aiProviders.reduce((count, provider) => count + provider.models.length, 0)
     return html`
       <div
         class="ribbon"
@@ -3237,10 +3691,7 @@ export class AppRibbon extends LitElement {
             title=${this.aiChatOpen ? "Collapse chat" : "Expand chat"}
             aria-expanded=${this.aiChatOpen}
             aria-controls="ai-chat-panel"
-            @pointerdown=${(event: PointerEvent) =>
-              this.invokeAIActionOnPointer(event, this.toggleAIChat)}
-            @click=${(event: MouseEvent) =>
-              this.invokeAIActionOnClick(event, this.toggleAIChat)}
+            @click=${this.toggleAIChat}
           ><span class="ai-chat-brand-icon" aria-hidden="true">${ribbonIcon("AI")}</span></button>
           <header class="ai-chat-header" ?inert=${!this.aiChatOpen}>
             <select
@@ -3248,6 +3699,7 @@ export class AppRibbon extends LitElement {
               aria-label="Current AI chat"
               data-ribbon-input-persistent
               .value=${this.activeAIChatId}
+              ?disabled=${this.aiBusy}
               @change=${this.switchAIChat}
             >${this.aiChats.map(chat => html`
               <option value=${chat.id}>${chat.title}</option>
@@ -3257,10 +3709,8 @@ export class AppRibbon extends LitElement {
               type="button"
               aria-label="New chat"
               title="New chat"
-              @pointerdown=${(event: PointerEvent) =>
-                this.invokeAIActionOnPointer(event, this.startNewAIChat)}
-              @click=${(event: MouseEvent) =>
-                this.invokeAIActionOnClick(event, this.startNewAIChat)}
+              ?disabled=${this.aiBusy}
+              @click=${this.startNewAIChat}
             >
               <span class="ai-chat-new-icon" aria-hidden="true">${ribbonIcon("Plus")}</span>
               <span class="ai-chat-header-button-label">New chat</span>
@@ -3270,10 +3720,7 @@ export class AppRibbon extends LitElement {
               type="button"
               aria-label="AI settings"
               title="AI settings"
-              @pointerdown=${(event: PointerEvent) =>
-                this.invokeAIActionOnPointer(event, () => this.dispatchAIBarAction("settings"))}
-              @click=${(event: MouseEvent) =>
-                this.invokeAIActionOnClick(event, () => this.dispatchAIBarAction("settings"))}
+              @click=${this.showAISettings}
             ><span class="ai-chat-settings-icon" aria-hidden="true">${ribbonIcon("AISettings")}</span></button>
           </header>
           <div
@@ -3287,14 +3734,56 @@ export class AppRibbon extends LitElement {
               <article class="ai-chat-message" data-role=${message.role}>
                 <span class="ai-chat-message-role">${message.role === "user" ? "You" : "AI"}</span>
                 ${message.content}
+                ${message.attachments?.length ? html`
+                  <div class="ai-message-attachments" aria-label="Attachments">
+                    ${message.attachments.map(attachment => html`
+                      <span class="ai-message-attachment" title=${attachment.name}>${attachment.name}</span>
+                    `)}
+                  </div>
+                ` : ""}
               </article>
-            `) : html`<div class="ai-chat-empty">Start a conversation with your AI model.</div>`}
+            `) : html`<div class="ai-chat-empty">${this.aiProviders.length
+              ? "Start a conversation with your AI model."
+              : "Open AI settings to connect a provider."}</div>`}
+            ${this.pendingAIEdit?.chatId === this.activeAIChatId ? html`
+              <section class="ai-edit-approval" aria-label="Proposed document edit">
+                <strong>Approve document change?</strong>
+                <span>${this.pendingAIEdit.summary}</span>
+                <details class="ai-edit-preview">
+                  <summary>Review proposed HTML</summary>
+                  <pre>${this.pendingAIEdit.html}</pre>
+                </details>
+                <div class="ai-edit-actions">
+                  <button class="ai-edit-action" type="button" ?disabled=${this.pendingAIEdit.applying} @click=${this.rejectAIEdit}>Reject</button>
+                  <button class="ai-edit-action" data-kind="approve" type="button" ?disabled=${this.pendingAIEdit.applying} @click=${this.approveAIEdit}>
+                    ${this.pendingAIEdit.applying ? "Applying…" : "Approve & apply"}
+                  </button>
+                </div>
+              </section>
+            ` : ""}
+            ${this.aiBusy && !this.pendingAIEdit ? html`<div class="ai-chat-working" role="status">AI is working…</div>` : ""}
+            ${this.aiError ? html`<div class="ai-chat-error" role="alert">${this.aiError}</div>` : ""}
           </div>
           <form
             class="ai-chat-composer"
             @submit=${this.submitAIPrompt}
           >
-            <div class="ai-composer-surface">
+            <div class="ai-composer-surface" ?data-has-attachments=${this.aiAttachments.length > 0}>
+              ${this.aiAttachments.length ? html`
+                <div class="ai-pending-attachments" aria-label="Pending attachments">
+                  ${this.aiAttachments.map(attachment => html`
+                    <span class="ai-pending-attachment" title=${attachment.name}>
+                      <span class="ai-pending-attachment-name">${attachment.name}</span>
+                      <button
+                        class="ai-attachment-remove"
+                        type="button"
+                        aria-label=${`Remove ${attachment.name}`}
+                        @click=${() => this.removeAIAttachment(attachment.id)}
+                      >×</button>
+                    </span>
+                  `)}
+                </div>
+              ` : ""}
               <textarea
                 class="ai-prompt-input ai-chat-input"
                 aria-label=${this.aiChatOpen ? "Chat message" : "AI prompt"}
@@ -3306,33 +3795,43 @@ export class AppRibbon extends LitElement {
                 @input=${this.updateAIPrompt}
                 @keydown=${this.handleAIChatPromptKeydown}
               ></textarea>
+              <input
+                class="ai-attachment-input"
+                type="file"
+                multiple
+                accept="image/*,.pdf,.txt,.md,.csv,.json,.html,.css,.js,.mjs,.ts,.xml,.yaml,.yml"
+                @change=${this.addAIAttachments}
+              >
               <div class="ai-composer-toolbar" ?inert=${!this.aiChatOpen}>
                 <button
                   class="ai-composer-attachment"
                   type="button"
                   aria-label="Add attachments"
                   title="Attachments"
-                  @pointerdown=${(event: PointerEvent) =>
-                    this.invokeAIActionOnPointer(event, () => this.dispatchAIBarAction("attachments"))}
-                  @click=${(event: MouseEvent) =>
-                    this.invokeAIActionOnClick(event, () => this.dispatchAIBarAction("attachments"))}
+                  ?disabled=${this.aiBusy}
+                  @click=${this.chooseAIAttachments}
                 ><span class="ai-composer-attachment-icon" aria-hidden="true">${ribbonIcon("Attachment")}</span></button>
                 <select
                   class="ai-composer-select"
                   aria-label="AI model"
                   data-kind="model"
                   data-ribbon-input-persistent
-                  .value=${this.aiModel}
+                  .value=${selectedModelValue}
+                  ?disabled=${this.aiBusy || modelCount === 0}
                   @change=${this.updateAIModel}
-                >${aiModels.map(model => html`
-                  <option value=${model.value} ?selected=${this.aiModel === model.value}>${model.label}</option>
-                `)}</select>
+                >
+                  ${modelCount === 0 ? html`<option value="">Set up AI…</option>` : ""}
+                  ${this.aiProviders.flatMap(provider => provider.models.map(model => html`
+                    <option value=${JSON.stringify([provider.id, model])}>${provider.name} · ${model}</option>
+                  `))}
+                </select>
                 <select
                   class="ai-composer-select"
                   aria-label="AI effort"
                   data-kind="effort"
                   data-ribbon-input-persistent
                   .value=${this.aiEffort}
+                  ?disabled=${this.aiBusy}
                   @change=${this.updateAIEffort}
                 >${aiEfforts.map(effort => html`
                   <option value=${effort.value} ?selected=${this.aiEffort === effort.value}>${effort.label}</option>
@@ -3341,14 +3840,14 @@ export class AppRibbon extends LitElement {
               <button
                 class="ai-prompt-submit ai-chat-send"
                 type="button"
-                aria-label=${this.aiChatOpen ? "Send chat message" : "Enter AI prompt"}
-                title=${this.aiChatOpen ? "Send" : "Enter"}
-                ?disabled=${!this.aiPrompt.trim()}
-                @pointerdown=${(event: PointerEvent) => this.invokeAIActionOnPointer(event, () =>
-                  (event.currentTarget as HTMLButtonElement).form?.requestSubmit())}
-                @click=${(event: MouseEvent) => this.invokeAIActionOnClick(event, () =>
-                  (event.currentTarget as HTMLButtonElement).form?.requestSubmit())}
-              >${ribbonIcon("AIPromptSubmit")}</button>
+                aria-label=${this.aiBusy ? "Stop AI request" : this.aiChatOpen ? "Send chat message" : "Enter AI prompt"}
+                title=${this.aiBusy ? "Stop" : this.aiChatOpen ? "Send" : "Enter"}
+                ?data-busy=${this.aiBusy}
+                ?disabled=${!this.aiBusy && !this.aiPrompt.trim() && this.aiAttachments.length === 0}
+                @click=${(event: MouseEvent) => this.aiBusy
+                  ? this.stopAIRequest()
+                  : (event.currentTarget as HTMLButtonElement).form?.requestSubmit()}
+              >${this.aiBusy ? html`<span class="ai-stop-icon" aria-hidden="true"></span>` : ribbonIcon("AIPromptSubmit")}</button>
             </div>
             <button
               class="ai-prompt-expand"
@@ -3357,13 +3856,11 @@ export class AppRibbon extends LitElement {
               title=${this.aiChatOpen ? "Collapse chat" : "Expand chat"}
               aria-expanded=${this.aiChatOpen}
               aria-controls="ai-chat-panel"
-              @pointerdown=${(event: PointerEvent) =>
-                this.invokeAIActionOnPointer(event, this.toggleAIChat)}
-              @click=${(event: MouseEvent) =>
-                this.invokeAIActionOnClick(event, this.toggleAIChat)}
+              @click=${this.toggleAIChat}
             ><span class="ai-prompt-expand-chevron" aria-hidden="true"></span></button>
           </form>
         </section>
+        <ai-settings-dialog .store=${this.aiProviderStore}></ai-settings-dialog>
         <ribbon-menu
           .groups=${this.currentMenuGroups}
           ?hidden=${!this.menuOpen || this.expanded}

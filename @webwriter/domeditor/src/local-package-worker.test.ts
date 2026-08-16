@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
-import {describe, expect, it} from "vitest"
+import {describe, expect, it, vi} from "vitest"
 import {
   createLocalPackageRequestHandler,
+  localPackageFetchResponse,
   localPackageMimeType,
   localPackageRoutePrefix,
   localPackageUrl,
@@ -77,6 +78,24 @@ describe("local package HTTP resource handler", () => {
     const handle = createLocalPackageRequestHandler(new Map())
     expect(await handle(new Request("https://example.com/ordinary.js"))).toBeNull()
     expect(await handle(new Request("https://example.com/__webwriter/local-packages/demo/private.js"))).toBeNull()
+  })
+
+  it("only opts the service worker into reserved local-package requests", async () => {
+    const handle = vi.fn(async () => new Response("local package"))
+    const ordinaryRequest = new Request(new URL("/api/chat/completions", location.origin))
+    const externalAIRequest = new Request("https://example.com/v1/chat/completions")
+
+    expect(localPackageFetchResponse(ordinaryRequest, handle)).toBeNull()
+    expect(localPackageFetchResponse(externalAIRequest, handle)).toBeNull()
+    expect(handle).not.toHaveBeenCalled()
+
+    const localResponse = localPackageFetchResponse(
+      new Request(localPackageUrl("demo", "dist/widget.js")),
+      handle,
+    )
+    expect(localResponse).not.toBeNull()
+    expect(await localResponse).toMatchObject({status: 200})
+    expect(handle).toHaveBeenCalledTimes(1)
   })
 })
 

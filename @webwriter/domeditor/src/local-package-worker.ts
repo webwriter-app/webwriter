@@ -160,8 +160,25 @@ async function getFileHandle(root: LocalPackageDirectoryHandle, path: string) {
 export type LocalPackageRequestHandler = (request: Request) => Promise<Response | null>
 
 /**
+ * Returns a response promise only for the worker's reserved URL namespace.
+ * A synchronous null lets a service-worker fetch listener avoid calling
+ * `respondWith()`, so unrelated requests remain entirely in the browser's
+ * normal network pipeline.
+ */
+export function localPackageFetchResponse(
+  request: Request,
+  requestHandler: LocalPackageRequestHandler,
+): Promise<Response> | null {
+  if(!parseLocalPackageRoute(request)) return null
+  return requestHandler(request).then(response => response ?? new Response(
+    "Local package request was not handled",
+    {status: 500, headers: {"Content-Type": "text/plain; charset=utf-8"}},
+  ))
+}
+
+/**
  * Creates the fetch handler used by the worker. Null means unrelated request;
- * callers should then perform their normal network fetch.
+ * callers should leave the request in the browser's normal network pipeline.
  */
 export function createLocalPackageRequestHandler(
   roots: ReadonlyMap<string, LocalPackageDirectoryHandle>,
