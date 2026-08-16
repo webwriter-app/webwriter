@@ -103,6 +103,13 @@ export class ListFeature extends EditorFeature {
     return Boolean(this.virtualPoint)
   }
 
+  /** Clears virtual-list selection presentation synchronously so it cannot
+   * coexist with another newly applied selection kind. The list feature's
+   * existing deferred refresh repaints it when the canonical kind is virtual. */
+  clearSelectionPresentation() {
+    this.clearVirtualMarker()
+  }
+
   /** Only an empty authored list exposes a prospective first item. Every
    * point in a nonempty list is either a real item selection or a normal gap. */
   private get virtualPoint(): VirtualListPoint | null {

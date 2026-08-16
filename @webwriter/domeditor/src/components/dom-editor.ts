@@ -1612,6 +1612,15 @@ export class DomEditor extends LitElement {
     if(isMarkStateChangeMessage(event.data)) {
       if(!this.isEditorMessage(event)) return
       this.canMark = event.data.detail.canMark
+      // Markability identifies a text selection. Selection and mark state are
+      // delivered as separate messages, so retire any older node/gap state as
+      // soon as the newer text state arrives.
+      if(this.canMark) {
+        this.nodeSelection = false
+        this.captureSelection = false
+        this.selectionGap = null
+        this.mediaSelection = null
+      }
       this.marks = [...event.data.detail.marks]
       this.markStyles = {...(event.data.detail.styles ?? {})}
       this.markAttributes = Object.fromEntries(
@@ -1643,6 +1652,15 @@ export class DomEditor extends LitElement {
       this.nodeSelection = event.data.detail.nodeSelected === true || event.data.detail.capture === true
       this.captureSelection = event.data.detail.capture === true
       this.selectionGap = selectionGap
+      // A node or gap selection cannot simultaneously be a markable text
+      // selection. Clear the independently delivered mark state immediately
+      // so rendering never applies both selection kinds.
+      if(this.nodeSelection || this.selectionGap) {
+        this.canMark = false
+        this.marks = []
+        this.markStyles = {}
+        this.markAttributes = {}
+      }
       this.listType = event.data.detail.list?.type ?? null
       this.listStyle = event.data.detail.list?.style ?? ""
       this.mediaSelection = event.data.detail.media

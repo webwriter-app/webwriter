@@ -2,6 +2,8 @@ import { DocumentListenerMap, EditorFeature } from "."
 import {$, focusedWidgetHost, getContainer, isAtomicEditingElement, isElement, modifierKeyDown, setPart, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
 
+type SelectionKind = "none" | "capture" | "virtual" | "gap" | "element" | "text" | "empty"
+
 function arrowDirection(key: string) {
   return key === "ArrowUp" || key === "ArrowLeft"
     ? "backward" as const
@@ -459,7 +461,13 @@ export class SelectionFeature extends EditorFeature {
       }
     })
     this.#hideSelectionCaret()
-    document.body.classList.remove("◆gap-caret-visible")
+    document.body.classList.remove("◆gap-caret-visible", "◆node-selection-active")
+    if(!Array.from(document.body.classList).some(k => k !== "◆" && k.startsWith("◆"))) {
+      document.body.classList.remove("◆")
+    }
+    if(document.body.classList.length === 0) {
+      document.body.removeAttribute("class")
+    }
     document.querySelectorAll(".◆element-selected, .◆element-capture-selected").forEach(el => {
       el.classList.remove("◆element-selected", "◆element-capture-selected")
       if(!Array.from(el.classList).some(k => k !== "◆" && k.startsWith("◆"))) {
@@ -489,42 +497,94 @@ export class SelectionFeature extends EditorFeature {
     })
   }
 
-  /** Re-applies the selection markers for the current selection: the gap
-   * anchor and caret for gap selections (`◆gap-before/after-selected`), the
-   * selected element (`◆element-selected`, skipped during drag selections),
-   * the text container (`◆text-selected`) or the empty container
-   * (`◆empty-selected`). Previous markers are cleared first. */
+  /** Replaces malformed or newly entered element selections with one
+   * canonical forward range. This resets browser selection direction/state
+   * left over from a preceding text selection, regardless of who changed the
+   * document Selection. */
+  #normalizeNativeSelection() {
+    let selection = document.getSelection()
+    if(!selection?.anchorNode || !selection.focusNode) return
+    if(selection.rangeCount !== 1) {
+      selection.setBaseAndExtent(
+        selection.anchorNode,
+        selection.anchorOffset,
+        selection.focusNode,
+        selection.focusOffset,
+      )
+      selection = document.getSelection()
+      if(!selection?.anchorNode || !selection.focusNode) return
+    }
+    const element = $.selectedElement ?? null
+    if(!element) return
+    const parent = element.parentNode
+    if(!parent) return
+    const index = Array.from(parent.childNodes).indexOf(element)
+    if(index < 0) return
+    const hasCanonicalEndpoints = selection.anchorNode === parent
+      && selection.anchorOffset === index
+      && selection.focusNode === parent
+      && selection.focusOffset === index + 1
+    // Selection.direction is separate browser state that can survive an
+    // in-place Range mutation. A node selection is always represented by the
+    // forward parent range [index, index + 1].
+    const hasCanonicalDirection = selection.direction === undefined || selection.direction === "forward"
+    if(!hasCanonicalEndpoints || !hasCanonicalDirection) {
+      selection.setBaseAndExtent(parent, index, parent, index + 1)
+    }
+  }
+
+  /** Classifies the normalized live selection exactly once so only one
+   * presentation branch can be applied during this refresh. */
+  #selectionKind(inDragSelection: boolean, capturedWidget: Element | null): SelectionKind {
+    if(capturedWidget) return "capture"
+    const selection = document.getSelection()
+    if(!selection?.anchorNode || !selection.focusNode) return "none"
+    if(this.editor.features.list.isVirtualSelection) return "virtual"
+    if($.isGapSelection) return "gap"
+    if($.isElementSelection) return inDragSelection ? "none" : "element"
+    const anchorContainer = getContainer(selection.anchorNode)
+    if(anchorContainer && $.isTextSelection) return "text"
+    if(anchorContainer && $.isEmptySelection) return "empty"
+    return "none"
+  }
+
+  /** Normalizes and re-applies exactly one selection kind for the current
+   * document Selection. This is the invariant boundary used by native
+   * selectionchange events and every editor-driven refresh. */
   processSelection(inDragSelection=false) {
     const focusedWidget = focusedWidgetHost()
     if(focusedWidget) this.#capturedWidget = focusedWidget
     const capturedWidget = this.isCaptureSelection ? this.#capturedWidget : null
+    let sel: Selection | null
     if(capturedWidget) {
-      this.#clearSelections()
+      this.#normalizeNativeSelection()
+      this.editor.features.list.clearSelectionPresentation()
+      sel = document.getSelection()
+    }
+    else {
+      this.#releaseCaptureSelection()
+      this.#constrainSelectionToBody()
+      this.#constrainSelectionToMedia()
+      sel = document.getSelection()
+      const isInBody = (node: Node | null) => node === document.body || Boolean(node && document.body.contains(node))
+      if(sel?.isCollapsed && (!isInBody(sel.anchorNode) || !isInBody(sel.focusNode))) {
+        $.selectDocumentStart()
+        sel = document.getSelection()
+      }
+      this.#normalizeNativeSelection()
+      sel = document.getSelection()
+      this.editor.features.list.clearSelectionPresentation()
+    }
+    const kind = this.#selectionKind(inDragSelection, capturedWidget)
+    this.#clearSelections()
+    if(kind === "capture" && capturedWidget) {
+      document.body.classList.add("◆", "◆node-selection-active")
       capturedWidget.classList.add("◆", "◆element-selected", "◆element-capture-selected")
       this.#showSelectionCaret("capture")
       return
     }
-    this.#releaseCaptureSelection()
-    this.#constrainSelectionToBody()
-    this.#constrainSelectionToMedia()
-    let sel = document.getSelection()
-    const isInBody = (node: Node | null) => node === document.body || Boolean(node && document.body.contains(node))
-    if(sel?.isCollapsed && (!isInBody(sel.anchorNode) || !isInBody(sel.focusNode))) {
-      $.selectDocumentStart()
-      sel = document.getSelection()
-    }
-    this.#clearSelections()
     if(!sel?.anchorNode || !sel.focusNode) return
-    const anchorContainer = getContainer(sel.anchorNode)
-    // A collapsed point directly in a semantic list represents the next
-    // prospective item. ListFeature paints a text caret and marker for that
-    // point; treating it as an ordinary element gap would paint a second,
-    // arrow-shaped caret and suppress the editor's caret color.
-    const isVirtualListSelection = this.editor.features.list.isVirtualSelection
-    if(isVirtualListSelection) {
-      // Deliberately leave this selection to ListFeature.
-    }
-    else if($.isGapSelection) {
+    if(kind === "gap") {
       const children = sel.anchorNode!.childNodes
       if(children.length) {
         const i = sel.anchorOffset
@@ -547,18 +607,19 @@ export class SelectionFeature extends EditorFeature {
       }
       
     }
-    else if($.isElementSelection && !inDragSelection) {
+    else if(kind === "element") {
       const element = sel.anchorNode!.childNodes.item(Math.min(sel.anchorOffset, sel.focusOffset)) as Element
       if(isElement(element)) {
+        document.body.classList.add("◆", "◆node-selection-active")
         element.classList.add("◆", "◆element-selected")
         this.#showSelectionCaret("node")
       }
     }
-    else if(anchorContainer && $.isTextSelection) {
+    else if(kind === "text") {
       const element = getContainer($.commonAncestor)
       element?.classList.add("◆", "◆text-selected")
     }
-    else if(anchorContainer && $.isEmptySelection) {
+    else if(kind === "empty") {
       const element = getContainer($.commonAncestor)
       if(!element) return
       element.classList.add("◆", "◆empty-selected")

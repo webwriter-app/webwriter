@@ -1374,6 +1374,48 @@ describe("DomEditor.execute()", () => {
     }
   })
 
+  it("never applies text and node or gap selection states together", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    const path = [{path: [], name: "Document"}, {path: [0], name: "Paragraph"}]
+
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {type: markStateChangeEvent, detail: {canMark: true, marks: []}},
+      source: editorWindow,
+    }))
+    await editor.updateComplete
+    expect(ribbon.canMark).toBe(true)
+
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {type: selectionChangeEvent, detail: {path, nodeSelected: true}},
+      source: editorWindow,
+    }))
+    await editor.updateComplete
+    await breadcrumb.updateComplete
+    expect(ribbon.canMark).toBe(false)
+    expect(breadcrumb.nodeSelected).toBe(true)
+
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {type: markStateChangeEvent, detail: {canMark: true, marks: []}},
+      source: editorWindow,
+    }))
+    await editor.updateComplete
+    await breadcrumb.updateComplete
+    expect(ribbon.canMark).toBe(true)
+    expect(breadcrumb.nodeSelected).toBe(false)
+
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {type: selectionChangeEvent, detail: {path, gap: {parentPath: [], offset: 0}}},
+      source: editorWindow,
+    }))
+    await editor.updateComplete
+    await breadcrumb.updateComplete
+    expect(ribbon.canMark).toBe(false)
+    expect(breadcrumb.nodeSelected).toBe(false)
+    expect(breadcrumb.gap).toEqual({parentPath: [], offset: 0})
+  })
+
   it("starts and ends an element hover from a breadcrumb item", async () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)

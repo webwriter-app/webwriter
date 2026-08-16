@@ -164,7 +164,16 @@ body.◆element-selected {
   caret-color: transparent !important;
 }
 
-.◆element-selected::selection {
+/* A DOM Selection around a node still paints its focus-edge text caret in
+ * Chromium. Suppress that background caret everywhere in the editable
+ * document while the editor's node-selection overlay is active. */
+body.◆node-selection-active,
+body.◆node-selection-active * {
+  caret-color: transparent !important;
+}
+
+.◆element-selected::selection,
+.◆element-selected *::selection {
   background: transparent;
 }
 

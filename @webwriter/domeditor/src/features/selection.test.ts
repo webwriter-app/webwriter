@@ -27,11 +27,54 @@ function el(tag = "p", text = "") {
 }
 
 describe("processSelection()", () => {
+  const appliedKinds = () => [
+    Boolean(document.querySelector(".◆text-selected")),
+    Boolean(document.querySelector(".◆element-selected, .◆element-capture-selected")),
+    Boolean(document.querySelector(".◆gap-before-selected, .◆gap-after-selected")),
+    Boolean(document.querySelector(".◆empty-selected")),
+    Boolean(document.querySelector(".◆virtual-list-anchor, .◆virtual-list-selected")),
+  ].filter(Boolean).length
+
+  it("enforces one selection kind after an external selectionchange", async () => {
+    document.body.innerHTML = "<p>text</p><interactive-widget></interactive-widget>"
+    const paragraph = document.querySelector("p")!
+    const widget = document.querySelector("interactive-widget")!
+    paragraph.classList.add("◆", "◆element-selected", "◆gap-after-selected", "◆empty-selected", "◆virtual-list-anchor")
+    widget.classList.add("◆", "◆element-capture-selected", "◆virtual-list-selected")
+
+    document.getSelection()!.setBaseAndExtent(paragraph.firstChild!, 1, paragraph.firstChild!, 3)
+    document.dispatchEvent(new Event("selectionchange"))
+    await Promise.resolve()
+
+    expect(appliedKinds()).toBe(1)
+    expect(paragraph).toHaveClass("◆text-selected")
+    expect(document.body).not.toHaveClass("◆node-selection-active")
+    expect(document.querySelector(".◆element-selected, .◆element-capture-selected, .◆gap-before-selected, .◆gap-after-selected, .◆empty-selected, .◆virtual-list-anchor, .◆virtual-list-selected")).toBeNull()
+
+    document.getSelection()!.getRangeAt(0).selectNode(widget)
+    document.dispatchEvent(new Event("selectionchange"))
+    await Promise.resolve()
+
+    expect(appliedKinds()).toBe(1)
+    expect(widget).toHaveClass("◆element-selected")
+    expect(document.body).toHaveClass("◆node-selection-active")
+    expect(document.querySelector(".◆text-selected, .◆gap-before-selected, .◆gap-after-selected, .◆empty-selected, .◆virtual-list-anchor, .◆virtual-list-selected")).toBeNull()
+
+    document.getSelection()!.setBaseAndExtent(paragraph.firstChild!, 0, paragraph.firstChild!, 2)
+    document.dispatchEvent(new Event("selectionchange"))
+    await Promise.resolve()
+
+    expect(appliedKinds()).toBe(1)
+    expect(paragraph).toHaveClass("◆text-selected")
+    expect(document.body).not.toHaveClass("◆node-selection-active")
+  })
+
   it("marks a selected element", () => {
     const p = el("p", "hello")
     $.selectElement(p)
     feature.processSelection()
     expect(p.classList.contains("◆element-selected")).toBe(true)
+    expect(document.body).toHaveClass("◆node-selection-active")
     expect(feature.selectionCaret).toBeInstanceOf(HTMLElement)
     expect(feature.selectionCaret?.getRootNode()).toBe(document.body.shadowRoot)
     expect(feature.selectionCaret).toHaveAttribute("aria-hidden", "true")
@@ -570,12 +613,51 @@ describe("document listeners", () => {
     const paragraph = paragraphPosition === "before" ? widget.previousElementSibling! : widget.nextElementSibling!
     const text = paragraph.firstChild as Text
     $.move(text, textOffset)
+    feature.processSelection()
+    expect(paragraph).toHaveClass("◆text-selected")
     const event = new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true})
 
     document.dispatchEvent(event)
 
     expect(event.defaultPrevented).toBe(true)
     expect($.selectedElement).toBe(widget)
+    expect($.isTextSelection).toBe(false)
+    expect(document.querySelectorAll(".◆text-selected")).toHaveLength(0)
+    expect(document.querySelectorAll(".◆element-selected")).toHaveLength(1)
+  })
+  it("normalizes an externally installed node range to exact forward parent offsets", () => {
+    document.body.innerHTML = "<p>before</p><interactive-widget></interactive-widget>"
+    const paragraph = document.querySelector("p")!
+    const widget = document.querySelector("interactive-widget")!
+    $.move(paragraph.firstChild!, 2)
+    feature.processSelection()
+    const selection = document.getSelection()!
+    const setBaseAndExtent = vi.spyOn(selection, "setBaseAndExtent").mockImplementation(() => {})
+
+    try {
+      selection.getRangeAt(0).selectNode(widget)
+      const index = Array.from(document.body.childNodes).indexOf(widget)
+      Object.defineProperties(selection, {
+        anchorNode: {configurable: true, value: document.body},
+        anchorOffset: {configurable: true, value: index + 1},
+        focusNode: {configurable: true, value: document.body},
+        focusOffset: {configurable: true, value: index},
+        direction: {configurable: true, value: "backward"},
+      })
+      document.dispatchEvent(new Event("selectionchange"))
+
+      expect(setBaseAndExtent).toHaveBeenCalledWith(document.body, index, document.body, index + 1)
+      expect($.selectedElement).toBe(widget)
+      expect(paragraph).not.toHaveClass("◆text-selected")
+      expect(widget).toHaveClass("◆element-selected")
+      expect(document.body).toHaveClass("◆node-selection-active")
+    }
+    finally {
+      setBaseAndExtent.mockRestore()
+      for(const property of ["anchorNode", "anchorOffset", "focusNode", "focusOffset", "direction"]) {
+        delete (selection as unknown as Record<string, unknown>)[property]
+      }
+    }
   })
   it("does not cross a paragraph boundary horizontally from the middle of its text", () => {
     document.body.innerHTML = "<p>before</p><interactive-widget></interactive-widget>"
