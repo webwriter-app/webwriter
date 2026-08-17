@@ -174,12 +174,17 @@ describe("mark ribbon controls", () => {
     expect(storageLocation.value).toBe("local")
     expect(Array.from(storageLocation.options).map(option => option.textContent)).toEqual([
       "Local",
-      "Edumix Cloud",
     ])
-    storageLocation.value = "edumix-cloud"
+    ribbon.backendState = "connected"
+    await ribbon.updateComplete
+    expect(Array.from(storageLocation.options).map(option => option.textContent)).toEqual([
+      "Local",
+      "Development server",
+    ])
+    storageLocation.value = "development-server"
     storageLocation.dispatchEvent(new Event("change", {bubbles: true}))
     await ribbon.updateComplete
-    expect(storageLocation.value).toBe("edumix-cloud")
+    expect(storageLocation.value).toBe("development-server")
     expect(fileDrawer.querySelector(".storage-location-icon svg")?.getAttribute("class"))
       .toContain("icon-tabler-cloud")
     const fileButtons = Array.from(fileDrawer.querySelectorAll<RibbonButton>("ribbon-button"))

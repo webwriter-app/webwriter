@@ -62,6 +62,11 @@ import {LocalPackageMonitor} from "../local-package-monitor"
 import {LOCAL_PACKAGE_ROUTE_PREFIX, localPackageUrl, type LocalPackageDirectoryHandle} from "../local-package-worker"
 import {LocalPackageWorkerClient} from "../local-package-worker-client"
 import type {AIDocumentToolCall, AIDocumentToolHandler} from "../ai-client"
+import {
+  BackendClient,
+  probeDevelopmentBackend,
+  type BackendSession,
+} from "../backend-client"
 
 type WritableFileStream = {
   write(data: Blob): Promise<void>
@@ -81,6 +86,7 @@ type FilePickerWindow = Window & typeof globalThis & {
 }
 
 type FileFormat = "html" | "offline"
+type StorageLocation = "local" | "development-server"
 
 const escapeAttribute = (value: string) => value
   .replaceAll("&", "&amp;")
@@ -202,6 +208,9 @@ export class DomEditor extends LitElement {
     fileName: {attribute: false, state: true},
     fileDirty: {attribute: false, state: true},
     previewActive: {attribute: false, state: true},
+    backendState: {attribute: false, state: true},
+    backendClient: {attribute: false, state: true},
+    storageLocation: {attribute: false, state: true},
   }
 
   private editorDocument: Document | null = null
@@ -253,6 +262,12 @@ export class DomEditor extends LitElement {
   private previewTransition = false
   private fileFormat: FileFormat = "html"
   private fileHandle: LocalFileHandle | null = null
+  private storageLocation: StorageLocation = "local"
+  private backendState: "probing" | "connected" | "unavailable" = "probing"
+  private backendSession: BackendSession | null = null
+  private backendClient: BackendClient | null = null
+  private backendDocumentId: string | null = null
+  private backendProbeController: AbortController | null = null
   private dirtyTrackingReady = false
   private dirtyTrackingMutationPending = false
   private dirtyTrackingTimer: ReturnType<typeof setTimeout> | undefined
@@ -361,10 +376,47 @@ export class DomEditor extends LitElement {
   }
 
   private get syncUrl() {
-    const syncUrl = new URL(`ws://${location.hostname}:1234`)
+    const syncUrl = new URL(this.backendSession?.collaborationUrl ?? `ws://${location.hostname}:1234`)
     const outerUrl = new URL(location.href)
     outerUrl.searchParams.forEach((value, key) => syncUrl.searchParams.set(key, value))
     return syncUrl.href
+  }
+
+  private loginToBackend = async () => {
+    this.backendProbeController?.abort()
+    const controller = new AbortController()
+    this.backendProbeController = controller
+    this.backendState = "probing"
+    try {
+      const session = await probeDevelopmentBackend(controller.signal)
+      if(this.backendProbeController !== controller) return
+      if(!session) {
+        this.backendSession = null
+        this.backendClient = null
+        this.backendState = "unavailable"
+        this.storageLocation = "local"
+        return
+      }
+      this.backendSession = session
+      this.backendClient = new BackendClient(session)
+      this.backendState = "connected"
+      this.storageLocation = "development-server"
+    }
+    catch(error) {
+      if(controller.signal.aborted) return
+      this.backendSession = null
+      this.backendClient = null
+      this.backendState = "unavailable"
+      this.storageLocation = "local"
+      this.reportFileError(error)
+    }
+    finally {
+      if(this.backendProbeController === controller) this.backendProbeController = null
+    }
+  }
+
+  private openBackendAdmin = () => {
+    if(this.backendSession) window.open(this.backendSession.adminUrl, "_blank", "noopener,noreferrer")
   }
 
   private handlePreviewFrameLoad = (event: Event) => {
@@ -729,6 +781,13 @@ export class DomEditor extends LitElement {
     if(typeof value === "string") this.fileName = this.baseFileName(value)
   }
 
+  private handleStorageLocationChange = (event: Event) => {
+    const value = (event as CustomEvent<{value?: unknown}>).detail?.value
+    if(value === "local" || value === "development-server" && this.backendClient) {
+      this.storageLocation = value
+    }
+  }
+
   private filePickerWindow() {
     return window as FilePickerWindow
   }
@@ -812,6 +871,7 @@ export class DomEditor extends LitElement {
     if(!this.confirmDiscardChanges()) return
     try {
       this.fileHandle = null
+      this.backendDocumentId = null
       this.fileName = ""
       this.fileFormat = "html"
       await this.reloadDocument("<!DOCTYPE html><html><head></head><body></body></html>")
@@ -824,6 +884,10 @@ export class DomEditor extends LitElement {
   }
 
   private async openDocument() {
+    if(this.storageLocation === "development-server" && this.backendClient) {
+      await this.openBackendDocument()
+      return
+    }
     if(!this.confirmDiscardChanges()) return
     const picker = this.filePickerWindow().showOpenFilePicker
     if(!picker) {
@@ -836,6 +900,7 @@ export class DomEditor extends LitElement {
       const file = await handle.getFile()
       const source = await file.text()
       await this.reloadDocument(source)
+      this.backendDocumentId = null
       this.fileHandle = handle
       const openedName = file.name || handle.name
       this.fileName = this.baseFileName(openedName)
@@ -849,6 +914,10 @@ export class DomEditor extends LitElement {
   }
 
   private async saveDocument(saveAs = false, requestedFormat: FileFormat = this.fileFormat) {
+    if(this.storageLocation === "development-server" && this.backendClient) {
+      await this.saveBackendDocument(saveAs, requestedFormat)
+      return
+    }
     try {
       const currentHandleMatches = this.fileHandle
         && this.formatForFileName(this.fileHandle.name, requestedFormat) === requestedFormat
@@ -865,9 +934,60 @@ export class DomEditor extends LitElement {
       const writable = await handle.createWritable()
       await writable.write(new Blob([source], {type: "text/html;charset=utf-8"}))
       await writable.close()
+      this.backendDocumentId = null
       this.fileHandle = handle
       this.fileName = this.baseFileName(handle.name)
       this.fileFormat = selectedFormat
+      this.fileDirty = false
+    }
+    catch(error) {
+      this.reportFileError(error)
+    }
+  }
+
+  private async openBackendDocument() {
+    if(!this.backendClient || !this.confirmDiscardChanges()) return
+    try {
+      const documents = await this.backendClient.listDocuments()
+      if(!documents.length) {
+        window.alert("The development server has no documents yet. Save this document to create one.")
+        return
+      }
+      const choices = documents.map((document, index) => `${index + 1}. ${document.title}`).join("\n")
+      const selected = window.prompt(`Open a development-server document:\n\n${choices}\n\nEnter a number or document ID:`)
+      if(selected === null) return
+      const index = Number.parseInt(selected.trim(), 10) - 1
+      const summary = Number.isInteger(index) && documents[index]
+        ? documents[index]
+        : documents.find(document => document.id === selected.trim())
+      if(!summary) throw new Error("Choose one of the listed documents")
+      const document = await this.backendClient.getDocument(summary.id)
+      await this.reloadDocument(document.content)
+      this.backendDocumentId = document.id
+      this.fileHandle = null
+      this.fileName = this.baseFileName(document.title)
+      this.fileFormat = document.format
+      this.fileDirty = false
+      this.focusEditor()
+    }
+    catch(error) {
+      this.reportFileError(error)
+    }
+  }
+
+  private async saveBackendDocument(saveAs = false, requestedFormat: FileFormat = this.fileFormat) {
+    if(!this.backendClient) return
+    try {
+      const source = await this.execute({type: "serializeDocument", offline: requestedFormat === "offline"})
+      if(typeof source !== "string") throw new TypeError("The editor returned invalid HTML")
+      const title = this.fileName.trim() || "Untitled"
+      const document = !saveAs && this.backendDocumentId
+        ? await this.backendClient.updateDocument(this.backendDocumentId, {title, content: source, format: requestedFormat})
+        : await this.backendClient.createDocument({title, content: source, format: requestedFormat})
+      this.backendDocumentId = document.id
+      this.fileHandle = null
+      this.fileName = this.baseFileName(document.title)
+      this.fileFormat = document.format
       this.fileDirty = false
     }
     catch(error) {
@@ -1840,6 +1960,7 @@ export class DomEditor extends LitElement {
   connectedCallback() {
     super.connectedCallback()
     window.addEventListener("message", this.handleEditorMessage)
+    if(import.meta.env.MODE !== "test") void this.loginToBackend()
     this.restoreInstalledPackages()
     void this.loadPackageCatalog()
     void this.restoreLocalPackages()
@@ -1850,6 +1971,8 @@ export class DomEditor extends LitElement {
   }
 
   disconnectedCallback() {
+    this.backendProbeController?.abort()
+    this.backendProbeController = null
     window.removeEventListener("message", this.handleEditorMessage)
     this.localPackageRecords.forEach(record => {
       record.monitor?.dispose()
@@ -1924,10 +2047,16 @@ export class DomEditor extends LitElement {
           .fileName=${this.fileName}
           .fileDirty=${this.fileDirty}
           .previewActive=${this.previewActive}
+          .storageLocation=${this.storageLocation}
+          .backendClient=${this.backendClient}
+          .backendState=${this.backendState}
           .aiDocumentToolHandler=${this.handleAIDocumentTool}
           @ribbon-button-click=${this.handleRibbonButtonClick}
           @ribbon-preview-exit=${this.handleRibbonPreviewExit}
           @file-name-change=${this.handleFileNameChange}
+          @storage-location-change=${this.handleStorageLocationChange}
+          @backend-login-request=${this.loginToBackend}
+          @backend-admin-request=${this.openBackendAdmin}
           @ribbon-combobox-change=${this.handleRibbonComboboxChange}
           @mark-attribute-change=${this.handleMarkAttributeChange}
           @media-attribute-change=${this.handleMediaAttributeChange}

@@ -8,14 +8,18 @@
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "license": "UNLICENSED",
   "scripts": {
-    "start": "vite",
+    "start": "node dev-server/server.mjs",
+    "start:frontend": "vite",
     "test": "vitest watch --reporter=minimal",
     "vitest": "vitest"
   },
   "dependencies": {
     "@tabler/icons": "^3.46.0",
+    "@y/websocket-server": "^0.1.1",
     "lit": "^3.3.2",
+    "openai": "^4.104.0",
     "qrcodejs": "^1.0.0",
+    "ws": "^8.18.0",
     "y-protocols": "^1.0.7",
     "y-websocket": "^3.0.0",
     "yjs": "^13.6.31"

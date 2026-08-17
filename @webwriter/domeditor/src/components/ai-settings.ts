@@ -388,7 +388,7 @@ export class AISettingsDialog extends LitElement {
 
   show() {
     const active = this.store?.activeProvider
-    this.draft = active ? cloneProvider(active) : createAIProvider("openai")
+    this.draft = active ? cloneProvider(active) : this.store?.prepare(createAIProvider("openai")) ?? createAIProvider("openai")
     this.apiKey = ""
     this.passphrase = ""
     this.error = ""
@@ -416,7 +416,7 @@ export class AISettingsDialog extends LitElement {
   }
 
   private startProvider(preset: AIProviderPreset) {
-    this.draft = createAIProvider(preset)
+    this.draft = this.store?.prepare(createAIProvider(preset)) ?? createAIProvider(preset)
     this.apiKey = ""
     this.passphrase = ""
     this.error = ""
@@ -435,6 +435,11 @@ export class AISettingsDialog extends LitElement {
   private credentialText() {
     if(!this.draft || !this.store) return ""
     const status = this.store.credentialStatus(this.draft)
+    if(this.draft.managed === "backend") {
+      if(status === "not-required") return "This endpoint does not require an API key."
+      if(status === "available") return "The API key is stored by the localhost development server."
+      return "No API key is stored by the localhost development server."
+    }
     if(status === "not-required") return "This endpoint does not require an API key."
     if(status === "available") return this.draft.keyMode === "encrypted"
       ? "The encrypted key is unlocked for this tab."
@@ -478,8 +483,8 @@ export class AISettingsDialog extends LitElement {
     try {
       const provider = normalizeAIProvider(this.draft)
       const previous = this.store.provider(provider.id)
-      await this.persistCredential(provider, previous)
-      const saved = this.store.upsert(provider)
+      if(provider.managed !== "backend") await this.persistCredential(provider, previous)
+      const saved = await this.store.save(provider, this.apiKey.trim() || undefined)
       this.draft = cloneProvider(saved)
       this.apiKey = ""
       this.passphrase = ""
@@ -518,14 +523,21 @@ export class AISettingsDialog extends LitElement {
     this.notice = ""
     try {
       const provider = normalizeAIProvider(this.draft)
-      const key = this.apiKey.trim() || this.store.vault.get(provider.id)
-      const models = await listAIModels(provider, key)
-      this.draft = {
-        ...provider,
-        models,
-        defaultModel: models.includes(provider.defaultModel) ? provider.defaultModel : models[0] ?? "",
+      let source = provider
+      let key = this.apiKey.trim() || this.store.vault.get(provider.id)
+      if(provider.managed === "backend") {
+        source = await this.store.save(provider, this.apiKey.trim() || undefined)
+        key = ""
       }
-      this.notice = `${models.length} model${models.length === 1 ? "" : "s"} loaded. Save to keep this list.`
+      const models = await listAIModels(source, key)
+      const next = {
+        ...source,
+        models,
+        defaultModel: models.includes(source.defaultModel) ? source.defaultModel : models[0] ?? "",
+      }
+      this.draft = provider.managed === "backend" ? await this.store.save(next) : next
+      this.apiKey = ""
+      this.notice = `${models.length} model${models.length === 1 ? "" : "s"} loaded.${provider.managed === "backend" ? " Provider saved." : " Save to keep this list."}`
     }
     catch(error) {
       this.error = error instanceof Error ? error.message : String(error)
@@ -535,19 +547,29 @@ export class AISettingsDialog extends LitElement {
     }
   }
 
-  private removeProvider = () => {
+  private removeProvider = async () => {
     if(!this.draft || !this.store?.provider(this.draft.id)) return
     if(!this.pendingDelete) {
       this.pendingDelete = true
       return
     }
-    this.store.remove(this.draft.id)
-    const next = this.store.activeProvider
-    this.draft = next ? cloneProvider(next) : createAIProvider("openai")
-    this.pendingDelete = false
-    this.apiKey = ""
-    this.passphrase = ""
-    this.notice = "Provider deleted."
+    this.loading = true
+    this.error = ""
+    try {
+      await this.store.delete(this.draft.id)
+      const next = this.store.activeProvider
+      this.draft = next ? cloneProvider(next) : this.store.prepare(createAIProvider("openai"))
+      this.pendingDelete = false
+      this.apiKey = ""
+      this.passphrase = ""
+      this.notice = "Provider deleted."
+    }
+    catch(error) {
+      this.error = error instanceof Error ? error.message : String(error)
+    }
+    finally {
+      this.loading = false
+    }
   }
 
   private handleBackdropClick(event: MouseEvent) {
@@ -565,7 +587,7 @@ export class AISettingsDialog extends LitElement {
     if(!this.open || !this.draft) return nothing
     const providers = this.store?.providers ?? []
     const existing = Boolean(this.store?.provider(this.draft.id))
-    const encryptedStored = Boolean(this.store?.vault.hasEncrypted(this.draft.id))
+    const encryptedStored = this.draft.managed !== "backend" && Boolean(this.store?.vault.hasEncrypted(this.draft.id))
     return html`
       <div class="backdrop" @click=${this.handleBackdropClick} @keydown=${this.handleKeydown}>
         <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="ai-settings-title" tabindex="-1" @click=${(event: Event) => event.stopPropagation()}>
@@ -612,7 +634,9 @@ export class AISettingsDialog extends LitElement {
               <label>
                 OpenAI-compatible base URL
                 <input required inputmode="url" spellcheck="false" .value=${this.draft.baseUrl} @input=${(event: Event) => this.updateDraft("baseUrl", (event.currentTarget as HTMLInputElement).value)}>
-                <span class="hint">The app calls <code>/models</code> and <code>/chat/completions</code> directly from this browser.</span>
+                <span class="hint">${this.draft.managed === "backend"
+                  ? "Requests use the localhost Inference API; credentials are not sent to the browser."
+                  : html`The app calls <code>/models</code> and <code>/chat/completions</code> directly from this browser.`}</span>
               </label>
 
               ${this.draft.auth !== "none" ? html`
@@ -629,15 +653,15 @@ export class AISettingsDialog extends LitElement {
                       @input=${(event: Event) => { this.apiKey = (event.currentTarget as HTMLInputElement).value }}
                     >
                   </label>
-                  <label>
-                    Key storage
-                    <select .value=${this.draft.keyMode} @change=${(event: Event) => this.updateDraft("keyMode", (event.currentTarget as HTMLSelectElement).value as AIKeyMode)}>
-                      <option value="memory">This tab only (recommended)</option>
-                      <option value="encrypted">Encrypted on this device</option>
-                    </select>
-                    <span class="hint">Encrypted storage uses AES-GCM with a key derived from your passphrase. The passphrase is never stored, so you must unlock the key after a reload.</span>
-                  </label>
-                  ${this.draft.keyMode === "encrypted" || encryptedStored ? html`
+                  ${this.draft.managed === "backend" ? nothing : html`<label>
+                      Key storage
+                      <select .value=${this.draft.keyMode} @change=${(event: Event) => this.updateDraft("keyMode", (event.currentTarget as HTMLSelectElement).value as AIKeyMode)}>
+                        <option value="memory">This tab only (recommended)</option>
+                        <option value="encrypted">Encrypted on this device</option>
+                      </select>
+                      <span class="hint">Encrypted storage uses AES-GCM with a key derived from your passphrase. The passphrase is never stored, so you must unlock the key after a reload.</span>
+                    </label>`}
+                  ${this.draft.managed !== "backend" && (this.draft.keyMode === "encrypted" || encryptedStored) ? html`
                     <label>
                       ${encryptedStored && !this.apiKey ? "Unlock passphrase" : "Encryption passphrase"}
                       <input

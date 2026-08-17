@@ -33,6 +33,23 @@ describe("OpenAI-compatible AI client", () => {
     expect((fetch.mock.calls[0][1] as RequestInit).headers).not.toHaveProperty("Authorization")
   })
 
+  it("uses a backend inference URL without exposing the upstream credential", async () => {
+    const provider = {
+      ...createAIProvider("openai"),
+      managed: "backend" as const,
+      inferenceUrl: "http://localhost:1234/api/inference/providers/openai",
+      credentialStatus: "available" as const,
+    }
+    const fetch = vi.fn().mockResolvedValue(response({data: []}))
+
+    await listAIModels(provider, undefined, undefined, fetch)
+
+    expect(fetch).toHaveBeenCalledWith(
+      "http://localhost:1234/api/inference/providers/openai/models",
+      expect.objectContaining({headers: expect.not.objectContaining({Authorization: expect.anything()})}),
+    )
+  })
+
   it("executes document tool calls and returns their output to the model", async () => {
     const provider = {...createAIProvider("ollama"), models: ["test-model"], defaultModel: "test-model"}
     const fetch = vi.fn()

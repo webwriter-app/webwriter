@@ -141,6 +141,33 @@ beforeEach(() => {
 })
 
 describe("DomEditor iframe setup", () => {
+  it("automatically logs in when the no-auth development backend answers the probe", async () => {
+    const sessionResponse = new Response(JSON.stringify({
+      kind: "webwriter-dev-server",
+      version: 1,
+      authentication: "none",
+      user: {id: "local-development", name: "Local developer"},
+      apiBaseUrl: "http://localhost:1234/api",
+      collaborationUrl: "ws://localhost:1234",
+      adminUrl: "http://localhost:1234/admin",
+      capabilities: ["documents", "collaboration", "inference", "providers"],
+    }), {headers: {"Content-Type": "application/json"}})
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(sessionResponse)
+      .mockResolvedValue(new Response(JSON.stringify({providers: [], activeProviderId: null}), {
+        headers: {"Content-Type": "application/json"},
+      })))
+    const {editor} = await mountEditor()
+    await (editor as any).loginToBackend()
+
+    await vi.waitFor(() => expect((editor as any).backendState).toBe("connected"))
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    await ribbon.updateComplete
+
+    expect((editor as any).storageLocation).toBe("development-server")
+    expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".login-button")?.textContent).toContain("Local dev")
+  })
+
   it("collapses the expanded AI bar when the editor receives a pointer", async () => {
     const {editor, iframe} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
@@ -569,6 +596,56 @@ describe("DomEditor file actions", () => {
     expect(reload).toHaveBeenCalledWith(expect.stringContaining("<p>Opened</p>"))
     expect((editor as any).fileHandle).toBe(handle)
     expect((editor as any).fileName).toBe("opened")
+    expect((editor as any).fileDirty).toBe(false)
+  })
+
+  it("opens documents from the development backend when logged in", async () => {
+    const {editor} = await mountEditor()
+    const backend = {
+      listDocuments: vi.fn().mockResolvedValue([{id: "doc-1", title: "Server lesson"}]),
+      getDocument: vi.fn().mockResolvedValue({
+        id: "doc-1",
+        title: "Server lesson",
+        content: "<!DOCTYPE html><html><body><p>From server</p></body></html>",
+        format: "html",
+      }),
+    }
+    ;(editor as any).backendClient = backend
+    ;(editor as any).storageLocation = "development-server"
+    Object.defineProperty(window, "prompt", {configurable: true, value: vi.fn().mockReturnValue("1")})
+    const reload = vi.spyOn(editor as any, "reloadDocument").mockResolvedValue(undefined)
+
+    await (editor as any).openDocument()
+
+    expect(backend.getDocument).toHaveBeenCalledWith("doc-1")
+    expect(reload).toHaveBeenCalledWith(expect.stringContaining("From server"))
+    expect((editor as any).backendDocumentId).toBe("doc-1")
+    expect((editor as any).fileName).toBe("Server lesson")
+  })
+
+  it("saves documents through the development backend by default after login", async () => {
+    const {editor} = await mountEditor()
+    const saved = {
+      id: "doc-2",
+      title: "Lesson",
+      content: "<!DOCTYPE html><html><body><p>Saved remotely</p></body></html>",
+      format: "html",
+    }
+    const backend = {createDocument: vi.fn().mockResolvedValue(saved), updateDocument: vi.fn()}
+    ;(editor as any).backendClient = backend
+    ;(editor as any).storageLocation = "development-server"
+    ;(editor as any).fileName = "Lesson"
+    ;(editor as any).fileDirty = true
+    vi.spyOn(editor, "execute").mockResolvedValue(saved.content)
+
+    await (editor as any).saveDocument()
+
+    expect(backend.createDocument).toHaveBeenCalledWith({
+      title: "Lesson",
+      content: saved.content,
+      format: "html",
+    })
+    expect((editor as any).backendDocumentId).toBe("doc-2")
     expect((editor as any).fileDirty).toBe(false)
   })
 

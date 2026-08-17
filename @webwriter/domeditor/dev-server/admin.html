@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>WebWriter development server</title>
+    <style>
+      :root { color-scheme: light; font-family: system-ui, sans-serif; color: #172033; background: #f4f6f9; }
+      body { width: min(72rem, calc(100% - 2rem)); margin: 2rem auto; }
+      header, section { padding: 1rem 1.2rem; border: 1px solid #d7deea; border-radius: .65rem; background: white; }
+      header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+      header p, h1, h2 { margin: 0; }
+      header p { color: #5b667a; font-size: .85rem; }
+      main { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 1rem; }
+      section { min-width: 0; }
+      form, .list { display: grid; gap: .65rem; margin-top: 1rem; }
+      label { display: grid; gap: .25rem; color: #465167; font-size: .78rem; font-weight: 650; }
+      input, select, textarea, button { box-sizing: border-box; min-height: 2.25rem; padding: .45rem .6rem; border: 1px solid #bdc8d8; border-radius: .4rem; background: white; font: inherit; }
+      textarea { min-height: 9rem; resize: vertical; }
+      button { cursor: pointer; }
+      button.primary { border-color: #2563eb; color: white; background: #2563eb; }
+      button.danger { border-color: #fecaca; color: #b91c1c; }
+      .row, .actions { display: flex; gap: .5rem; }
+      .row > * { flex: 1; }
+      .actions { justify-content: flex-end; }
+      article { display: flex; align-items: center; gap: .5rem; padding: .55rem; border: 1px solid #e1e6ef; border-radius: .4rem; }
+      article span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      article small { color: #68758a; }
+      .status { min-height: 1.25rem; margin-top: .75rem; color: #526078; font-size: .8rem; }
+      @media (max-width: 48rem) { main { grid-template-columns: 1fr; } header { align-items: flex-start; flex-direction: column; } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div><h1>WebWriter development server</h1><p>Localhost only · no authentication</p></div>
+      <a href="/">Open editor</a>
+    </header>
+    <main>
+      <section>
+        <h2>Documents</h2>
+        <div id="documents" class="list"></div>
+        <form id="document-form">
+          <input name="id" type="hidden">
+          <label>Title <input name="title" required maxlength="240"></label>
+          <label>Format <select name="format"><option value="html">HTML</option><option value="offline">Offline HTML</option></select></label>
+          <label>HTML <textarea name="content" required spellcheck="false"><!DOCTYPE html><html><head></head><body></body></html></textarea></label>
+          <div class="actions"><button type="reset">New</button><button class="primary" type="submit">Save document</button></div>
+        </form>
+        <div id="document-status" class="status" role="status"></div>
+      </section>
+      <section>
+        <h2>AI providers</h2>
+        <div id="providers" class="list"></div>
+        <form id="provider-form">
+          <input name="id" type="hidden">
+          <div class="row">
+            <label>Name <input name="name" required></label>
+            <label>Preset <select name="preset"><option value="openai">OpenAI</option><option value="ollama">Ollama</option><option value="lm-studio">LM Studio</option><option value="custom">Custom</option></select></label>
+          </div>
+          <label>Base URL <input name="baseUrl" type="url" required value="https://api.openai.com/v1"></label>
+          <div class="row">
+            <label>Authentication <select name="auth"><option value="bearer">Bearer</option><option value="api-key">api-key</option><option value="x-api-key">x-api-key</option><option value="none">None</option></select></label>
+            <label>API key <input name="apiKey" type="password" autocomplete="off" placeholder="Leave blank to keep"></label>
+          </div>
+          <label>Models (one per line) <textarea name="models" spellcheck="false" style="min-height:5rem">gpt-5.6-luna</textarea></label>
+          <label>Default model <input name="defaultModel" value="gpt-5.6-luna"></label>
+          <label>Additional instructions <textarea name="customInstructions" style="min-height:5rem"></textarea></label>
+          <div class="actions"><button type="reset">New</button><button class="primary" type="submit">Save provider</button></div>
+        </form>
+        <div id="provider-status" class="status" role="status"></div>
+      </section>
+    </main>
+    <script type="module">
+      const request = async (path, init) => {
+        const response = await fetch(path, {headers: {"Content-Type": "application/json"}, ...init})
+        if(response.status === 204) return null
+        const value = await response.json()
+        if(!response.ok) throw new Error(value.error?.message || `Request failed (${response.status})`)
+        return value
+      }
+      const documentForm = document.querySelector("#document-form")
+      const providerForm = document.querySelector("#provider-form")
+      const setStatus = (kind, message) => { document.querySelector(`#${kind}-status`).textContent = message }
+      const button = (label, action, className = "") => {
+        const element = document.createElement("button")
+        element.type = "button"; element.textContent = label; element.className = className; element.addEventListener("click", action)
+        return element
+      }
+      const loadDocuments = async () => {
+        const {documents} = await request("/api/documents")
+        const list = document.querySelector("#documents"); list.replaceChildren()
+        for(const item of documents) {
+          const row = document.createElement("article")
+          const label = document.createElement("span"); label.textContent = item.title
+          const date = document.createElement("small"); date.textContent = new Date(item.updatedAt).toLocaleString()
+          row.append(label, date, button("Edit", async () => {
+            const {document: value} = await request(`/api/documents/${encodeURIComponent(item.id)}`)
+            for(const key of ["id", "title", "format", "content"]) documentForm.elements[key].value = value[key]
+          }), button("Delete", async () => {
+            if(!confirm(`Delete ${item.title}?`)) return
+            await request(`/api/documents/${encodeURIComponent(item.id)}`, {method: "DELETE"}); await loadDocuments()
+          }, "danger"))
+          list.append(row)
+        }
+      }
+      const loadProviders = async () => {
+        const {providers, activeProviderId} = await request("/api/providers")
+        const list = document.querySelector("#providers"); list.replaceChildren()
+        for(const item of providers) {
+          const row = document.createElement("article")
+          const label = document.createElement("span"); label.textContent = `${item.name}${item.id === activeProviderId ? " · active" : ""}`
+          const credential = document.createElement("small"); credential.textContent = item.credentialStatus
+          row.append(label, credential, button("Edit", () => {
+            for(const key of ["id", "name", "preset", "baseUrl", "auth", "defaultModel", "customInstructions"]) providerForm.elements[key].value = item[key] || ""
+            providerForm.elements.models.value = item.models.join("\n"); providerForm.elements.apiKey.value = ""
+          }), button("Use", async () => {
+            await request(`/api/providers/${encodeURIComponent(item.id)}/active`, {method: "PUT"}); await loadProviders()
+          }), button("Delete", async () => {
+            if(!confirm(`Delete ${item.name}?`)) return
+            await request(`/api/providers/${encodeURIComponent(item.id)}`, {method: "DELETE"}); await loadProviders()
+          }, "danger"))
+          list.append(row)
+        }
+      }
+      documentForm.addEventListener("reset", () => queueMicrotask(() => { documentForm.elements.id.value = "" }))
+      providerForm.addEventListener("reset", () => queueMicrotask(() => { providerForm.elements.id.value = "" }))
+      documentForm.addEventListener("submit", async event => {
+        event.preventDefault(); setStatus("document", "Saving…")
+        try {
+          const data = Object.fromEntries(new FormData(documentForm))
+          const path = data.id ? `/api/documents/${encodeURIComponent(data.id)}` : "/api/documents"
+          const value = await request(path, {method: data.id ? "PUT" : "POST", body: JSON.stringify(data)})
+          documentForm.elements.id.value = value.document.id; setStatus("document", "Saved."); await loadDocuments()
+        } catch(error) { setStatus("document", error.message) }
+      })
+      providerForm.addEventListener("submit", async event => {
+        event.preventDefault(); setStatus("provider", "Saving…")
+        try {
+          const data = Object.fromEntries(new FormData(providerForm)); data.models = data.models.split(/\n|,/).map(value => value.trim()).filter(Boolean)
+          const path = data.id ? `/api/providers/${encodeURIComponent(data.id)}` : "/api/providers"
+          const value = await request(path, {method: data.id ? "PUT" : "POST", body: JSON.stringify(data)})
+          providerForm.elements.id.value = value.provider.id; providerForm.elements.apiKey.value = ""; setStatus("provider", "Saved."); await loadProviders()
+        } catch(error) { setStatus("provider", error.message) }
+      })
+      await Promise.all([loadDocuments(), loadProviders()])
+    </script>
+  </body>
+</html>

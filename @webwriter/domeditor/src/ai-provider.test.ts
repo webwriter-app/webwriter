@@ -59,4 +59,32 @@ describe("AIProviderStore", () => {
     store.remove(local.id)
     expect(store.providers).toEqual([expect.objectContaining({id: custom.id})])
   })
+
+  it("uses backend provider management without copying credentials into browser storage", async () => {
+    const provider = {
+      ...createAIProvider("openai"),
+      id: "server-openai",
+      managed: "backend" as const,
+      inferenceUrl: "http://localhost:1234/api/inference/providers/server-openai",
+      credentialStatus: "available" as const,
+    }
+    const backend = {
+      listAIProviders: async () => ({providers: [provider], activeProviderId: provider.id}),
+      createAIProvider: async () => ({provider, activeProviderId: provider.id}),
+      updateAIProvider: async (updated: typeof provider) => ({provider: updated, activeProviderId: updated.id}),
+      deleteAIProvider: async () => undefined,
+      setActiveAIProvider: async () => undefined,
+    }
+    const store = new AIProviderStore(localStorage)
+
+    await store.connectBackend(backend)
+    expect(store.activeProvider).toEqual(expect.objectContaining({managed: "backend"}))
+    expect(store.credentialStatus(provider)).toBe("available")
+    expect(store.keyFor(provider)).toBe("")
+
+    await store.save({...provider, name: "Server OpenAI"}, "server-secret")
+    expect(store.activeProvider?.name).toBe("Server OpenAI")
+    expect(localStorage.getItem(AI_PROVIDERS_STORAGE_KEY)).toBeNull()
+    expect(localStorage.getItem(AI_KEYS_STORAGE_KEY)).toBeNull()
+  })
 })

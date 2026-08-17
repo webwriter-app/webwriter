@@ -12,6 +12,11 @@ export type AIProviderConfig = {
   models: string[]
   defaultModel: string
   customInstructions?: string
+  /** The provider and its credential are stored by the connected backend. */
+  managed?: "backend"
+  /** A backend proxy endpoint; the upstream base URL remains editable. */
+  inferenceUrl?: string
+  credentialStatus?: AIProviderCredentialStatus
 }
 
 export type AIProviderCredentialStatus = "not-required" | "available" | "locked" | "missing"
@@ -113,6 +118,7 @@ export const normalizeAIProvider = (value: AIProviderConfig): AIProviderConfig =
   const defaultModel = value.defaultModel.trim() || models[0] || ""
   if(defaultModel && !models.includes(defaultModel)) models.unshift(defaultModel)
   const customInstructions = value.customInstructions?.trim()
+  const inferenceUrl = value.inferenceUrl ? validBaseUrl(value.inferenceUrl.trim()) : undefined
   return {
     id,
     name,
@@ -127,6 +133,9 @@ export const normalizeAIProvider = (value: AIProviderConfig): AIProviderConfig =
     models,
     defaultModel,
     ...(customInstructions ? {customInstructions} : {}),
+    ...(value.managed === "backend" ? {managed: "backend" as const} : {}),
+    ...(inferenceUrl ? {inferenceUrl} : {}),
+    ...(value.credentialStatus ? {credentialStatus: value.credentialStatus} : {}),
   }
 }
 
@@ -316,6 +325,14 @@ export class AIProviderStore extends EventTarget {
   readonly vault: AIKeyVault
   private providerList: AIProviderConfig[] = []
   private selectedProviderId: string | null = null
+  private backend: {
+    listAIProviders(): Promise<{providers: AIProviderConfig[], activeProviderId: string | null}>
+    createAIProvider(provider: AIProviderConfig, apiKey?: string): Promise<{provider: AIProviderConfig, activeProviderId: string}>
+    updateAIProvider(provider: AIProviderConfig, apiKey?: string): Promise<{provider: AIProviderConfig, activeProviderId: string | null}>
+    deleteAIProvider(id: string): Promise<void>
+    setActiveAIProvider(id: string): Promise<void>
+  } | null = null
+  private backendSequence = 0
 
   constructor(private readonly storage: Storage | null = safeLocalStorage()) {
     super()
@@ -334,6 +351,43 @@ export class AIProviderStore extends EventTarget {
     this.selectedProviderId = this.providerList.some(provider => provider.id === active)
       ? active
       : this.providerList[0]?.id ?? null
+  }
+
+  async connectBackend(backend: NonNullable<AIProviderStore["backend"]>) {
+    const sequence = ++this.backendSequence
+    const collection = await backend.listAIProviders()
+    if(sequence !== this.backendSequence) return
+    this.backend = backend
+    this.providerList = collection.providers.flatMap(provider => {
+      try {
+        return [normalizeAIProvider({...provider, managed: "backend"})]
+      }
+      catch {
+        return []
+      }
+    })
+    this.selectedProviderId = this.providerList.some(provider => provider.id === collection.activeProviderId)
+      ? collection.activeProviderId
+      : this.providerList[0]?.id ?? null
+    this.notify()
+  }
+
+  disconnectBackend() {
+    this.backendSequence++
+    if(!this.backend) return
+    this.backend = null
+    this.providerList = []
+    this.selectedProviderId = null
+    this.load()
+    this.notify()
+  }
+
+  get usesBackend() {
+    return this.backend !== null
+  }
+
+  prepare(provider: AIProviderConfig) {
+    return this.backend ? {...provider, managed: "backend" as const} : provider
   }
 
   private persist() {
@@ -377,6 +431,22 @@ export class AIProviderStore extends EventTarget {
     return normalized
   }
 
+  async save(provider: AIProviderConfig, apiKey?: string) {
+    if(!this.backend) return this.upsert(provider)
+    const normalized = normalizeAIProvider({...provider, managed: "backend"})
+    const result = this.provider(normalized.id)
+      ? await this.backend.updateAIProvider(normalized, apiKey)
+      : await this.backend.createAIProvider(normalized, apiKey)
+    const saved = normalizeAIProvider({...result.provider, managed: "backend"})
+    const index = this.providerList.findIndex(candidate => candidate.id === saved.id)
+    this.providerList = index < 0
+      ? [...this.providerList, saved]
+      : this.providerList.map(candidate => candidate.id === saved.id ? saved : candidate)
+    this.selectedProviderId = result.activeProviderId ?? saved.id
+    this.notify()
+    return saved
+  }
+
   remove(providerId: string) {
     if(!this.providerList.some(provider => provider.id === providerId)) return
     this.providerList = this.providerList.filter(provider => provider.id !== providerId)
@@ -386,14 +456,32 @@ export class AIProviderStore extends EventTarget {
     this.notify()
   }
 
-  setActive(providerId: string) {
-    if(!this.providerList.some(provider => provider.id === providerId)) return
-    this.selectedProviderId = providerId
-    this.persist()
+  async delete(providerId: string) {
+    if(!this.backend) {
+      this.remove(providerId)
+      return
+    }
+    await this.backend.deleteAIProvider(providerId)
+    this.providerList = this.providerList.filter(provider => provider.id !== providerId)
+    if(this.selectedProviderId === providerId) this.selectedProviderId = this.providerList[0]?.id ?? null
     this.notify()
   }
 
+  setActive(providerId: string) {
+    if(!this.providerList.some(provider => provider.id === providerId)) return
+    this.selectedProviderId = providerId
+    if(!this.backend) this.persist()
+    this.notify()
+  }
+
+  async activate(providerId: string) {
+    this.setActive(providerId)
+    if(this.backend) await this.backend.setActiveAIProvider(providerId)
+  }
+
   credentialStatus(provider: AIProviderConfig): AIProviderCredentialStatus {
+    if(provider.managed === "backend") return provider.credentialStatus
+      ?? (provider.auth === "none" ? "not-required" : "missing")
     if(provider.auth === "none") return "not-required"
     if(this.vault.get(provider.id)) return "available"
     if(this.vault.hasEncrypted(provider.id)) return "locked"
@@ -401,6 +489,7 @@ export class AIProviderStore extends EventTarget {
   }
 
   keyFor(provider: AIProviderConfig) {
+    if(provider.managed === "backend") return ""
     return provider.auth === "none" ? "" : this.vault.get(provider.id)
   }
 }

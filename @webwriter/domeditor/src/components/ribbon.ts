@@ -9,6 +9,7 @@ import {
   type AIEffort,
 } from "../ai-client"
 import {AIProviderStore, type AIProviderConfig} from "../ai-provider"
+import type {BackendClient} from "../backend-client"
 import {
   backgroundColorOptions,
   fontFamilyOptions,
@@ -116,7 +117,7 @@ const aiEfforts: {label: string, value: AIEffort}[] = [
 
 const storageLocations = [
   {label: "Local", value: "local", icon: "Local"},
-  {label: "Edumix Cloud", value: "edumix-cloud", icon: "Cloud"},
+  {label: "Development server", value: "development-server", icon: "Cloud"},
 ] as const
 type StorageLocation = typeof storageLocations[number]["value"]
 
@@ -312,6 +313,8 @@ export class AppRibbon extends LitElement {
     aiError: {type: String, state: true},
     pendingAIEdit: {attribute: false, state: true},
     aiDocumentToolHandler: {attribute: false},
+    backendClient: {attribute: false},
+    backendState: {type: String, attribute: "backend-state"},
   }
 
   static styles = css`
@@ -452,6 +455,47 @@ export class AppRibbon extends LitElement {
       display: block;
       width: auto;
       height: 1.5rem;
+    }
+
+    .login-button {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 0.35rem;
+      min-width: 0;
+      height: 1.65rem;
+      margin: 0 0.35rem;
+      padding: 0 0.55rem;
+      border: 1px solid #c8d2df;
+      border-radius: 999px;
+      color: #526b86;
+      background: #ffffff;
+      font: inherit;
+      font-size: 0.66rem;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .login-button::before {
+      content: "";
+      width: 0.45rem;
+      height: 0.45rem;
+      border-radius: 50%;
+      background: #94a3b8;
+    }
+
+    .login-button[data-state="connected"] {
+      color: #166534;
+      border-color: #bbf7d0;
+      background: #f0fdf4;
+    }
+
+    .login-button[data-state="connected"]::before {
+      background: #22c55e;
+    }
+
+    .login-button[data-state="probing"]::before {
+      background: #eab308;
     }
 
     .tabs {
@@ -1770,7 +1814,10 @@ export class AppRibbon extends LitElement {
   private packageVisibleCount = 2
   private linkAttributeMenuOpen = false
   aiDocumentToolHandler: AIDocumentToolHandler | undefined
+  backendClient: BackendClient | null = null
+  backendState: "probing" | "connected" | "unavailable" = "probing"
   private readonly aiProviderStore = new AIProviderStore()
+  private backendConnectionSequence = 0
   private aiPrompt = ""
   private aiChatOpen = false
   private aiChats: AIChat[] = [{id: "chat-1", title: "New chat", messages: []}]
@@ -1807,6 +1854,18 @@ export class AppRibbon extends LitElement {
       this.aiModel = provider.defaultModel || provider.models[0] || ""
     }
     this.aiError = ""
+  }
+
+  private connectAIBackend = async (client: BackendClient | null) => {
+    const sequence = ++this.backendConnectionSequence
+    try {
+      if(client) await this.aiProviderStore.connectBackend(client)
+      else this.aiProviderStore.disconnectBackend()
+    }
+    catch(error) {
+      if(sequence !== this.backendConnectionSequence) return
+      this.aiError = error instanceof Error ? error.message : String(error)
+    }
   }
 
   private schedulePreviewTransitionEnd() {
@@ -2176,7 +2235,9 @@ export class AppRibbon extends LitElement {
     try {
       const [providerId, model] = JSON.parse((event.currentTarget as HTMLSelectElement).value) as unknown[]
       if(typeof providerId !== "string" || typeof model !== "string") return
-      this.aiProviderStore.setActive(providerId)
+      void this.aiProviderStore.activate(providerId).catch(error => {
+        this.aiError = error instanceof Error ? error.message : String(error)
+      })
       this.aiModel = model
       this.aiError = ""
     }
@@ -2356,7 +2417,7 @@ export class AppRibbon extends LitElement {
       return
     }
     const apiKey = this.aiProviderStore.keyFor(provider)
-    if(provider.auth === "bearer" && !apiKey) {
+    if(provider.managed !== "backend" && provider.auth !== "none" && !apiKey) {
       this.aiError = this.aiProviderStore.credentialStatus(provider) === "locked"
         ? "Unlock this provider's encrypted API key in AI settings."
         : "Enter an API key for this provider in AI settings."
@@ -2464,6 +2525,7 @@ export class AppRibbon extends LitElement {
   }
 
   protected updated(changed: Map<string, unknown>) {
+    if(changed.has("backendClient")) void this.connectAIBackend(this.backendClient)
     if(changed.has("previewActive") && changed.get("previewActive") !== undefined) {
       this.schedulePreviewTransitionEnd()
     }
@@ -3271,11 +3333,17 @@ export class AppRibbon extends LitElement {
     const value = (event.currentTarget as HTMLSelectElement).value
     if(storageLocations.some(location => location.value === value)) {
       this.storageLocation = value as StorageLocation
+      this.dispatchEvent(new CustomEvent<{value: StorageLocation}>("storage-location-change", {
+        detail: {value: this.storageLocation},
+        bubbles: true,
+        composed: true,
+      }))
     }
   }
 
   private renderFileDrawer(drawer: RibbonMenuGroup) {
-    const selectedStorageLocation = storageLocations.find(location => location.value === this.storageLocation) ?? storageLocations[0]
+    const availableStorageLocations = this.backendState === "connected" ? storageLocations : storageLocations.slice(0, 1)
+    const selectedStorageLocation = availableStorageLocations.find(location => location.value === this.storageLocation) ?? availableStorageLocations[0]
     return html`
       <ribbon-drawer label="File" icon="Save" layout="file">
         <div class="file-name-row">
@@ -3302,7 +3370,7 @@ export class AppRibbon extends LitElement {
               .value=${this.storageLocation}
               @change=${this.handleStorageLocationChange}
             >
-              ${storageLocations.map(location => html`
+              ${availableStorageLocations.map(location => html`
                 <option value=${location.value}>${location.label}</option>
               `)}
             </select>
@@ -3630,6 +3698,19 @@ export class AppRibbon extends LitElement {
             `)}
           </nav>
           ${this.previewActive ? "" : html`<div class="ai-bar-slot" aria-hidden="true"></div>`}
+          <button
+            class="login-button"
+            data-state=${this.backendState}
+            type="button"
+            title=${this.backendState === "connected"
+              ? "Automatically logged in to the localhost development server"
+              : this.backendState === "probing" ? "Looking for a local backend" : "Retry local backend login"}
+            ?disabled=${this.backendState === "probing"}
+            @click=${() => this.dispatchEvent(new Event(
+              this.backendState === "connected" ? "backend-admin-request" : "backend-login-request",
+              {bubbles: true, composed: true},
+            ))}
+          >${this.backendState === "connected" ? "Local dev" : this.backendState === "probing" ? "Connecting…" : "Log in"}</button>
           ${this.renderPresence()}
           ${this.previewActive ? "" : html`
             <button

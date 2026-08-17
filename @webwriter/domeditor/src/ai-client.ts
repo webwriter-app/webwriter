@@ -103,14 +103,14 @@ const documentTools = [
 const systemPrompt = `You are WebWriter's document assistant. Use the document tools whenever the request depends on the current document or selection. Read before editing. For changes, call the appropriate replace tool with clean semantic HTML and a concise summary. Preserve content the user did not ask to change. Never claim a change was applied unless the tool result says it was applied.`
 
 const endpoint = (provider: AIProviderConfig, path: string) =>
-  `${provider.baseUrl.replace(/\/$/, "")}/${path.replace(/^\//, "")}`
+  `${(provider.inferenceUrl ?? provider.baseUrl).replace(/\/$/, "")}/${path.replace(/^\//, "")}`
 
 const headersFor = (provider: AIProviderConfig, apiKey?: string) => {
   const headers: Record<string, string> = {
     Accept: "application/json",
     "Content-Type": "application/json",
   }
-  if(provider.auth !== "none") {
+  if(provider.managed !== "backend" && provider.auth !== "none") {
     if(!apiKey) throw new Error("This provider's API key is locked or missing. Open AI settings to enter or unlock it.")
     if(provider.auth === "bearer") headers.Authorization = `Bearer ${apiKey}`
     else headers[provider.auth] = apiKey
