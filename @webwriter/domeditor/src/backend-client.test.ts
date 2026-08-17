@@ -29,6 +29,20 @@ describe("development backend client", () => {
     }))
   })
 
+  it("binds the browser fetch method to its global object", async () => {
+    const fetch = vi.fn(function(this: unknown) {
+      if(this !== globalThis) throw new TypeError("Illegal invocation")
+      return Promise.resolve(response(session))
+    })
+    vi.stubGlobal("fetch", fetch)
+    try {
+      await expect(probeDevelopmentBackend()).resolves.toEqual(session)
+    }
+    finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it("ignores unrelated JSON services while probing", async () => {
     const fetch = vi.fn().mockResolvedValue(response({name: "some other server"}))
 

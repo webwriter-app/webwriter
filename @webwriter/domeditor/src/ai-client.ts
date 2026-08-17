@@ -142,7 +142,7 @@ const requestJSON = async (
   if(typeof fetchImplementation !== "function") throw new Error("Network requests are unavailable in this browser")
   let response: Response
   try {
-    response = await fetchImplementation(endpoint(provider, path), {
+    response = await fetchImplementation.call(globalThis, endpoint(provider, path), {
       ...init,
       headers: {...headersFor(provider, apiKey), ...(init.headers ?? {})},
       cache: "no-store",

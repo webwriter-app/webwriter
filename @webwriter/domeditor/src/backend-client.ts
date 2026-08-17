@@ -51,7 +51,7 @@ export class BackendClient {
     if(typeof this.fetchImplementation !== "function") throw new Error("Backend requests are unavailable in this browser")
     let response: Response
     try {
-      response = await this.fetchImplementation(`${this.apiBaseUrl}/${path.replace(/^\//, "")}`, {
+      response = await this.fetchImplementation.call(globalThis, `${this.apiBaseUrl}/${path.replace(/^\//, "")}`, {
         ...init,
         headers: {
           Accept: "application/json",
@@ -160,7 +160,7 @@ export async function probeDevelopmentBackend(
   if(typeof fetchImplementation !== "function") return null
   for(const url of backendCandidates()) {
     try {
-      const response = await fetchImplementation(url, {
+      const response = await fetchImplementation.call(globalThis, url, {
         signal,
         headers: {Accept: "application/json"},
         cache: "no-store",
