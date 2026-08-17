@@ -9,16 +9,12 @@ import {
   type AIProviderPreset,
 } from "../ai-provider"
 import {listAIModels} from "../ai-client"
+import {ribbonIcon} from "../ribbon-icons"
 
 const cloneProvider = (provider: AIProviderConfig): AIProviderConfig => ({
   ...provider,
   models: [...provider.models],
 })
-
-const modelLines = (value: string) => value
-  .split(/[\n,]/)
-  .map(model => model.trim())
-  .filter(Boolean)
 
 export class AISettingsDialog extends LitElement {
   static properties = {
@@ -56,9 +52,9 @@ export class AISettingsDialog extends LitElement {
     .dialog {
       box-sizing: border-box;
       display: grid;
-      grid-template-columns: minmax(10rem, 13rem) minmax(20rem, 34rem);
+      grid-template-columns: minmax(10rem, 13rem) minmax(20rem, 1fr);
       grid-template-rows: minmax(0, 1fr);
-      width: min(50rem, calc(100vw - 2rem));
+      width: min(47rem, calc(100vw - 2rem));
       height: min(45rem, calc(100vh - 2rem));
       height: min(45rem, calc(100dvh - 2rem));
       max-height: min(45rem, calc(100vh - 2rem));
@@ -107,8 +103,9 @@ export class AISettingsDialog extends LitElement {
     }
 
     .providers {
-      flex: 1 1 auto;
+      flex: 0 1 auto;
       min-height: 0;
+      align-content: start;
       overflow-y: auto;
       overscroll-behavior-y: contain;
       scrollbar-gutter: stable;
@@ -243,6 +240,31 @@ export class AISettingsDialog extends LitElement {
       outline: 2px solid rgb(96 165 250 / 20%);
     }
 
+    .advanced-options {
+      border: 1px solid #e2e8f0;
+      border-radius: 0.5rem;
+      background: #f8fafc;
+    }
+
+    .advanced-options summary {
+      padding: 0.65rem 0.75rem;
+      color: #334155;
+      font-size: 0.75rem;
+      font-weight: 700;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .advanced-options[open] summary {
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .advanced-options-content {
+      display: grid;
+      gap: 0.85rem;
+      padding: 0.75rem;
+    }
+
     .row {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -288,6 +310,126 @@ export class AISettingsDialog extends LitElement {
     .notice {
       color: #166534;
       background: #f0fdf4;
+    }
+
+    .models-section {
+      display: grid;
+      gap: 0.45rem;
+      min-width: 0;
+    }
+
+    .models-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      color: #334155;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .models-refresh,
+    .model-default {
+      box-sizing: border-box;
+      display: grid;
+      flex: 0 0 auto;
+      place-items: center;
+      width: 1.8rem;
+      height: 1.8rem;
+      padding: 0.35rem;
+      border: 1px solid #cbd5e1;
+      border-radius: 0.35rem;
+      color: #526b86;
+      background: #ffffff;
+      cursor: pointer;
+    }
+
+    .models-refresh:hover,
+    .models-refresh:focus-visible,
+    .model-default:hover,
+    .model-default:focus-visible {
+      border-color: #8eb6df;
+      color: #1e4f87;
+      background: #eef4fb;
+      outline: none;
+    }
+
+    .models-refresh[data-loading] .models-refresh-icon {
+      animation: ai-settings-spin 700ms linear infinite;
+    }
+
+    .models-refresh-icon,
+    .models-refresh-icon svg,
+    .model-default-icon,
+    .model-default-icon svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .model-list {
+      display: grid;
+      gap: 0.35rem;
+      min-width: 0;
+    }
+
+    .model-card {
+      box-sizing: border-box;
+      min-width: 0;
+      overflow: hidden;
+      border: 1px solid #e2e8f0;
+      border-radius: 0.4rem;
+      background: #f8fafc;
+    }
+
+    .model-card[data-default] {
+      border-color: #93c5fd;
+      background: #eff6ff;
+    }
+
+    .model-card-summary {
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      min-width: 0;
+      min-height: 2.1rem;
+      padding: 0.25rem 0.3rem 0.25rem 0.6rem;
+    }
+
+    .model-name {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      color: #334155;
+      font-size: 0.75rem;
+      font-weight: 500;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .model-default {
+      margin-left: auto;
+      border-color: transparent;
+      color: #94a3b8;
+      background: transparent;
+    }
+
+    .model-default[aria-pressed="true"] {
+      color: #d97706;
+      background: #fffbeb;
+    }
+
+    .model-empty {
+      margin: 0;
+      color: #64748b;
+      font-size: 0.68rem;
+      font-weight: 400;
+      line-height: 1.4;
+    }
+
+    @keyframes ai-settings-spin {
+      to { transform: rotate(360deg); }
     }
 
     .actions {
@@ -361,6 +503,8 @@ export class AISettingsDialog extends LitElement {
   private pendingDelete = false
   private apiKey = ""
   private passphrase = ""
+  private autoFetchTimer: ReturnType<typeof setTimeout> | undefined
+  private autoFetchSignature = ""
   private subscribedStore: AIProviderStore | null = null
   private readonly handleStoreChange = () => {
     if(this.draft && this.store?.provider(this.draft.id)) {
@@ -381,12 +525,14 @@ export class AISettingsDialog extends LitElement {
   }
 
   disconnectedCallback() {
+    this.resetAutoFetch()
     this.subscribedStore?.removeEventListener("change", this.handleStoreChange)
     this.subscribedStore = null
     super.disconnectedCallback()
   }
 
   show() {
+    this.resetAutoFetch()
     const active = this.store?.activeProvider
     this.draft = active ? cloneProvider(active) : this.store?.prepare(createAIProvider("openai")) ?? createAIProvider("openai")
     this.apiKey = ""
@@ -395,9 +541,11 @@ export class AISettingsDialog extends LitElement {
     this.notice = ""
     this.pendingDelete = false
     this.open = true
+    this.scheduleAutoFetchModels()
   }
 
   close() {
+    this.resetAutoFetch()
     this.apiKey = ""
     this.passphrase = ""
     this.open = false
@@ -407,15 +555,18 @@ export class AISettingsDialog extends LitElement {
   private selectProvider(providerId: string) {
     const provider = this.store?.provider(providerId)
     if(!provider) return
+    this.resetAutoFetch()
     this.draft = cloneProvider(provider)
     this.apiKey = ""
     this.passphrase = ""
     this.error = ""
     this.notice = ""
     this.pendingDelete = false
+    this.scheduleAutoFetchModels()
   }
 
   private startProvider(preset: AIProviderPreset) {
+    this.resetAutoFetch()
     this.draft = this.store?.prepare(createAIProvider(preset)) ?? createAIProvider(preset)
     this.apiKey = ""
     this.passphrase = ""
@@ -424,12 +575,116 @@ export class AISettingsDialog extends LitElement {
     this.pendingDelete = false
   }
 
+  private resetAutoFetch() {
+    if(this.autoFetchTimer !== undefined) {
+      clearTimeout(this.autoFetchTimer)
+      this.autoFetchTimer = undefined
+    }
+    this.autoFetchSignature = ""
+  }
+
+  private clearAutoFetchTimer() {
+    if(this.autoFetchTimer === undefined) return
+    clearTimeout(this.autoFetchTimer)
+    this.autoFetchTimer = undefined
+  }
+
+  private canFetchModels() {
+    const draft = this.draft
+    if(!draft || !this.store || !draft.name.trim()) return false
+    try {
+      const url = new URL(draft.baseUrl.trim())
+      if(url.protocol !== "http:" && url.protocol !== "https:") return false
+      if(url.username || url.password) return false
+    }
+    catch {
+      return false
+    }
+    if(draft.managed === "backend" || draft.auth === "none") return true
+    return Boolean(this.apiKey.trim() || this.store.keyFor(draft))
+  }
+
+  private modelFetchSignature() {
+    if(!this.canFetchModels() || !this.draft || !this.store) return ""
+    const credential = this.draft.managed === "backend"
+      ? "backend"
+      : this.draft.auth === "none"
+        ? "none"
+        : this.apiKey.trim() || this.store.keyFor(this.draft) || ""
+    return [this.draft.id, this.draft.baseUrl.trim(), this.draft.auth, credential].join("\u0000")
+  }
+
+  private scheduleAutoFetchModels() {
+    this.clearAutoFetchTimer()
+    if(this.loading) return
+    const signature = this.modelFetchSignature()
+    if(!signature || signature === this.autoFetchSignature) return
+    this.autoFetchTimer = setTimeout(() => {
+      this.autoFetchTimer = undefined
+      if(this.loading || !this.canFetchModels()) return
+      this.autoFetchSignature = signature
+      void this.fetchModels()
+    }, 300)
+  }
+
   private updateDraft<K extends keyof AIProviderConfig>(key: K, value: AIProviderConfig[K]) {
     if(!this.draft) return
     this.draft = {...this.draft, [key]: value}
     this.error = ""
     this.notice = ""
     this.pendingDelete = false
+  }
+
+  private updateBaseUrl(event: Event) {
+    this.updateDraft("baseUrl", (event.currentTarget as HTMLInputElement).value)
+    this.resetAutoFetch()
+    this.scheduleAutoFetchModels()
+  }
+
+  private updateAuth(event: Event) {
+    this.updateDraft("auth", (event.currentTarget as HTMLSelectElement).value as AIProviderAuth)
+    this.resetAutoFetch()
+    this.scheduleAutoFetchModels()
+  }
+
+  private updateAPIKey(event: Event) {
+    this.apiKey = (event.currentTarget as HTMLInputElement).value
+    this.error = ""
+    this.notice = ""
+    this.pendingDelete = false
+    this.resetAutoFetch()
+    this.scheduleAutoFetchModels()
+  }
+
+  private setDefaultModel(model: string) {
+    if(!this.draft?.models.includes(model)) return
+    this.updateDraft("defaultModel", model)
+  }
+
+  private renderModelCard(model: string) {
+    const isDefault = this.draft?.defaultModel === model
+    const star = html`
+      <button
+        class="model-default"
+        type="button"
+        aria-label=${isDefault ? `${model} is the default model` : `Set ${model} as default model`}
+        title=${isDefault ? "Default model" : "Set as default model"}
+        aria-pressed=${isDefault}
+        ?disabled=${this.loading}
+        @click=${(event: MouseEvent) => {
+          event.preventDefault()
+          event.stopPropagation()
+          this.setDefaultModel(model)
+        }}
+      ><span class="model-default-icon" aria-hidden="true">${ribbonIcon("Star")}</span></button>
+    `
+    const cardHeader = html`
+      <span class="model-card-summary">
+        <span class="model-name" title=${model}>${model}</span>
+        ${star}
+      </span>
+    `
+    return html`<article class="model-card" role="listitem" ?data-default=${isDefault}>${cardHeader}</article>`
   }
 
   private credentialText() {
@@ -477,6 +732,7 @@ export class AISettingsDialog extends LitElement {
   private save = async (event: SubmitEvent) => {
     event.preventDefault()
     if(!this.draft || !this.store || this.loading) return
+    this.resetAutoFetch()
     this.loading = true
     this.error = ""
     this.notice = ""
@@ -513,10 +769,12 @@ export class AISettingsDialog extends LitElement {
     }
     finally {
       this.loading = false
+      this.scheduleAutoFetchModels()
     }
   }
 
   private fetchModels = async () => {
+    this.clearAutoFetchTimer()
     if(!this.draft || !this.store || this.loading) return
     this.loading = true
     this.error = ""
@@ -524,7 +782,7 @@ export class AISettingsDialog extends LitElement {
     try {
       const provider = normalizeAIProvider(this.draft)
       let source = provider
-      let key = this.apiKey.trim() || this.store.vault.get(provider.id)
+      let key = this.apiKey.trim() || this.store.keyFor(provider)
       if(provider.managed === "backend") {
         source = await this.store.save(provider, this.apiKey.trim() || undefined)
         key = ""
@@ -536,7 +794,6 @@ export class AISettingsDialog extends LitElement {
         defaultModel: models.includes(source.defaultModel) ? source.defaultModel : models[0] ?? "",
       }
       this.draft = provider.managed === "backend" ? await this.store.save(next) : next
-      this.apiKey = ""
       this.notice = `${models.length} model${models.length === 1 ? "" : "s"} loaded.${provider.managed === "backend" ? " Provider saved." : " Save to keep this list."}`
     }
     catch(error) {
@@ -588,6 +845,7 @@ export class AISettingsDialog extends LitElement {
     const providers = this.store?.providers ?? []
     const existing = Boolean(this.store?.provider(this.draft.id))
     const encryptedStored = this.draft.managed !== "backend" && Boolean(this.store?.vault.hasEncrypted(this.draft.id))
+    const modelFetchReady = this.canFetchModels()
     return html`
       <div class="backdrop" @click=${this.handleBackdropClick} @keydown=${this.handleKeydown}>
         <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="ai-settings-title" tabindex="-1" @click=${(event: Event) => event.stopPropagation()}>
@@ -605,8 +863,6 @@ export class AISettingsDialog extends LitElement {
             <h3>Add provider</h3>
             <div class="presets">
               <button class="preset-button" type="button" @click=${() => this.startProvider("openai")}>OpenAI</button>
-              <button class="preset-button" type="button" @click=${() => this.startProvider("ollama")}>Ollama</button>
-              <button class="preset-button" type="button" @click=${() => this.startProvider("lm-studio")}>LM Studio</button>
               <button class="preset-button" type="button" @click=${() => this.startProvider("custom")}>Custom</button>
             </div>
           </aside>
@@ -616,28 +872,36 @@ export class AISettingsDialog extends LitElement {
               <button class="close" type="button" aria-label="Close AI settings" @click=${this.close}>×</button>
             </header>
             <form @submit=${this.save}>
-              <div class="row">
-                <label>
-                  Name
-                  <input required .value=${this.draft.name} @input=${(event: Event) => this.updateDraft("name", (event.currentTarget as HTMLInputElement).value)}>
-                </label>
-                <label>
-                  Authentication
-                  <select .value=${this.draft.auth} @change=${(event: Event) => this.updateDraft("auth", (event.currentTarget as HTMLSelectElement).value as AIProviderAuth)}>
-                    <option value="bearer">Bearer API key</option>
-                    <option value="api-key">api-key header</option>
-                    <option value="x-api-key">x-api-key header</option>
-                    <option value="none">No authentication</option>
-                  </select>
-                </label>
-              </div>
+              <label>
+                Name
+                <input required .value=${this.draft.name} @input=${(event: Event) => this.updateDraft("name", (event.currentTarget as HTMLInputElement).value)}>
+              </label>
               <label>
                 OpenAI-compatible base URL
-                <input required inputmode="url" spellcheck="false" .value=${this.draft.baseUrl} @input=${(event: Event) => this.updateDraft("baseUrl", (event.currentTarget as HTMLInputElement).value)}>
+                <input required inputmode="url" spellcheck="false" ?disabled=${this.loading} .value=${this.draft.baseUrl} @input=${this.updateBaseUrl}>
                 <span class="hint">${this.draft.managed === "backend"
                   ? "Requests use the localhost Inference API; credentials are not sent to the browser."
                   : html`The app calls <code>/models</code> and <code>/chat/completions</code> directly from this browser.`}</span>
               </label>
+
+              <details class="advanced-options">
+                <summary>Advanced options</summary>
+                <div class="advanced-options-content">
+                  <label>
+                    Authentication
+                    <select ?disabled=${this.loading} .value=${this.draft.auth} @change=${this.updateAuth}>
+                      <option value="bearer">Bearer API key</option>
+                      <option value="api-key">api-key header</option>
+                      <option value="x-api-key">x-api-key header</option>
+                      <option value="none">No authentication</option>
+                    </select>
+                  </label>
+                  <label>
+                    Additional model instructions (optional)
+                    <textarea ?disabled=${this.loading} .value=${this.draft.customInstructions ?? ""} @input=${(event: Event) => this.updateDraft("customInstructions", (event.currentTarget as HTMLTextAreaElement).value)}></textarea>
+                  </label>
+                </div>
+              </details>
 
               ${this.draft.auth !== "none" ? html`
                 <fieldset class="credential-panel">
@@ -650,7 +914,8 @@ export class AISettingsDialog extends LitElement {
                       autocomplete="off"
                       spellcheck="false"
                       .value=${this.apiKey}
-                      @input=${(event: Event) => { this.apiKey = (event.currentTarget as HTMLInputElement).value }}
+                      ?disabled=${this.loading}
+                      @input=${this.updateAPIKey}
                     >
                   </label>
                   ${this.draft.managed === "backend" ? nothing : html`<label>
@@ -679,32 +944,25 @@ export class AISettingsDialog extends LitElement {
                 </fieldset>
               ` : nothing}
 
-              <label>
-                Models
-                <textarea
-                  spellcheck="false"
-                  placeholder="One model ID per line"
-                  .value=${this.draft.models.join("\n")}
-                  @input=${(event: Event) => this.updateDraft("models", modelLines((event.currentTarget as HTMLTextAreaElement).value))}
-                ></textarea>
-              </label>
-              <div class="row">
-                <label>
-                  Default model
-                  <select .value=${this.draft.defaultModel} @change=${(event: Event) => this.updateDraft("defaultModel", (event.currentTarget as HTMLSelectElement).value)}>
-                    <option value="" ?selected=${!this.draft.defaultModel}>Choose a model</option>
-                    ${this.draft.models.map(model => html`<option value=${model} ?selected=${this.draft!.defaultModel === model}>${model}</option>`)}
-                  </select>
-                </label>
-                <label>
-                  <span aria-hidden="true">Provider models</span>
-                  <button class="dialog-button" type="button" ?disabled=${this.loading} @click=${this.fetchModels}>${this.loading ? "Connecting…" : "Test & load models"}</button>
-                </label>
-              </div>
-              <label>
-                Additional model instructions (optional)
-                <textarea .value=${this.draft.customInstructions ?? ""} @input=${(event: Event) => this.updateDraft("customInstructions", (event.currentTarget as HTMLTextAreaElement).value)}></textarea>
-              </label>
+              <section class="models-section" aria-labelledby="models-title">
+                <div class="models-header">
+                  <span id="models-title">Models</span>
+                  <button
+                    class="models-refresh"
+                    type="button"
+                    aria-label="Refresh models"
+                    title=${this.loading ? "Loading models…" : "Refresh models"}
+                    ?disabled=${this.loading || !modelFetchReady}
+                    ?data-loading=${this.loading}
+                    @click=${this.fetchModels}
+                  ><span class="models-refresh-icon" aria-hidden="true">${ribbonIcon("Refresh")}</span></button>
+                </div>
+                ${this.draft.models.length ? html`
+                  <div class="model-list" role="list" aria-label="Available models">
+                    ${this.draft.models.map(model => this.renderModelCard(model))}
+                  </div>
+                ` : html`<p class="model-empty">No models loaded yet. Provide the endpoint and credentials to load them.</p>`}
+              </section>
 
               ${this.error ? html`<p class="feedback error" role="alert">${this.error}</p>` : nothing}
               ${this.notice ? html`<p class="feedback notice" role="status">${this.notice}</p>` : nothing}

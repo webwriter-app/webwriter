@@ -1218,10 +1218,75 @@ export class AppRibbon extends LitElement {
       border: 0;
       border-radius: 0.3rem;
       color: #526b86;
-      background: #f2f5f8;
+      background: transparent;
       font: inherit;
       font-size: 0.62rem;
       cursor: pointer;
+    }
+
+    .ai-composer-model-control {
+      display: flex;
+      position: relative;
+      flex: 0 1 auto;
+      min-width: 0;
+      max-width: 8rem;
+    }
+
+    .ai-composer-selects {
+      display: flex;
+      flex: 0 1 auto;
+      align-items: center;
+      gap: 0.2rem;
+      min-width: 0;
+      margin-left: auto;
+    }
+
+    .ai-composer-model-control .ai-composer-select {
+      width: 100%;
+      max-width: none;
+      appearance: none;
+      color: transparent;
+    }
+
+    .ai-composer-model-control::after {
+      box-sizing: border-box;
+      display: block;
+      position: absolute;
+      top: 50%;
+      right: 0.35rem;
+      width: 0.32rem;
+      height: 0.32rem;
+      border-right: 1.5px solid #526b86;
+      border-bottom: 1.5px solid #526b86;
+      content: "";
+      pointer-events: none;
+      transform: translateY(-65%) rotate(45deg);
+    }
+
+    .ai-composer-model-control .ai-composer-select option {
+      color: #526b86;
+    }
+
+    .ai-composer-model-label {
+      display: flex;
+      position: absolute;
+      inset: 0 1.15rem 0 0.3rem;
+      align-items: center;
+      overflow: hidden;
+      color: #526b86;
+      font: inherit;
+      font-size: 0.62rem;
+      pointer-events: none;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .ai-composer-model-control[data-disabled] .ai-composer-model-label {
+      opacity: 0.5;
+    }
+
+    .ai-composer-model-control[data-disabled]::after {
+      opacity: 0.5;
     }
 
     .ai-composer-select[data-kind="effort"] {
@@ -2216,6 +2281,8 @@ export class AppRibbon extends LitElement {
   }
 
   private startNewAIChat = () => {
+    const activeChat = this.activeAIChat
+    if(activeChat?.title === "New chat" && activeChat.messages.length === 0) return
     const id = `chat-${++this.aiChatSequence}`
     this.aiChats = [{id, title: "New chat", messages: []}, ...this.aiChats]
     this.activeAIChatId = id
@@ -3892,31 +3959,39 @@ export class AppRibbon extends LitElement {
                   ?disabled=${this.aiBusy}
                   @click=${this.chooseAIAttachments}
                 ><span class="ai-composer-attachment-icon" aria-hidden="true">${ribbonIcon("Attachment")}</span></button>
-                <select
-                  class="ai-composer-select"
-                  aria-label="AI model"
-                  data-kind="model"
-                  data-ribbon-input-persistent
-                  .value=${selectedModelValue}
-                  ?disabled=${this.aiBusy || modelCount === 0}
-                  @change=${this.updateAIModel}
-                >
-                  ${modelCount === 0 ? html`<option value="">Set up AI…</option>` : ""}
-                  ${this.aiProviders.flatMap(provider => provider.models.map(model => html`
-                    <option value=${JSON.stringify([provider.id, model])}>${provider.name} · ${model}</option>
-                  `))}
-                </select>
-                <select
-                  class="ai-composer-select"
-                  aria-label="AI effort"
-                  data-kind="effort"
-                  data-ribbon-input-persistent
-                  .value=${this.aiEffort}
-                  ?disabled=${this.aiBusy}
-                  @change=${this.updateAIEffort}
-                >${aiEfforts.map(effort => html`
-                  <option value=${effort.value} ?selected=${this.aiEffort === effort.value}>${effort.label}</option>
-                `)}</select>
+                <div class="ai-composer-selects">
+                  <div
+                    class="ai-composer-model-control"
+                    ?data-disabled=${this.aiBusy || modelCount === 0}
+                  >
+                    <select
+                      class="ai-composer-select"
+                      aria-label="AI model"
+                      data-kind="model"
+                      data-ribbon-input-persistent
+                      .value=${selectedModelValue}
+                      ?disabled=${this.aiBusy || modelCount === 0}
+                      @change=${this.updateAIModel}
+                    >
+                      ${modelCount === 0 ? html`<option value="">Set up AI…</option>` : ""}
+                      ${this.aiProviders.flatMap(provider => provider.models.map(model => html`
+                        <option value=${JSON.stringify([provider.id, model])}>${model} (${provider.name})</option>
+                      `))}
+                    </select>
+                    <span class="ai-composer-model-label" aria-hidden="true">${this.aiModel || "Set up AI…"}</span>
+                  </div>
+                  <select
+                    class="ai-composer-select"
+                    aria-label="AI effort"
+                    data-kind="effort"
+                    data-ribbon-input-persistent
+                    .value=${this.aiEffort}
+                    ?disabled=${this.aiBusy}
+                    @change=${this.updateAIEffort}
+                  >${aiEfforts.map(effort => html`
+                    <option value=${effort.value} ?selected=${this.aiEffort === effort.value}>${effort.label}</option>
+                  `)}</select>
+                </div>
               </div>
               <button
                 class="ai-prompt-submit ai-chat-send"

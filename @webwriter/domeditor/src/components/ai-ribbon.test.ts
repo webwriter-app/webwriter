@@ -33,6 +33,10 @@ const assistantResponse = (content: string) => new Response(JSON.stringify({
   choices: [{message: {content}}],
 }), {headers: {"content-type": "application/json"}})
 
+const modelsResponse = (models: string[]) => new Response(JSON.stringify({
+  data: models.map(id => ({id})),
+}), {headers: {"content-type": "application/json"}})
+
 describe("AI prompt ribbon", () => {
   it("renders a self-contained 100px–600px AI bar without an AI ribbon tab", async () => {
     const ribbon = await mountRibbon()
@@ -150,6 +154,23 @@ describe("AI prompt ribbon", () => {
     expect(panel.querySelectorAll(".ai-chat-message")).toHaveLength(2)
   })
 
+  it("does not create another empty new chat", async () => {
+    const ribbon = await mountRibbon()
+    const expand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-expand")!
+    expand.click()
+    await ribbon.updateComplete
+
+    const panel = ribbon.shadowRoot!.querySelector<HTMLElement>(".ai-chat-panel")!
+    const newChat = panel.querySelector<HTMLButtonElement>('[aria-label="New chat"]')!
+    const switcher = panel.querySelector<HTMLSelectElement>(".ai-chat-switcher")!
+
+    newChat.click()
+    await ribbon.updateComplete
+
+    expect(switcher.options).toHaveLength(1)
+    expect(switcher.value).toBe("chat-1")
+  })
+
   it("centers the expanded header controls and keeps the sparkle control icon-only", async () => {
     const ribbon = await mountRibbon()
     const expand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-expand")!
@@ -196,11 +217,13 @@ describe("AI prompt ribbon", () => {
     const content = settings.shadowRoot!.querySelector<HTMLElement>(".content")!
     const providers = settings.shadowRoot!.querySelector<HTMLElement>(".providers")!
     expect(getComputedStyle(dialog).gridTemplateRows).toContain("minmax(0, 1fr)")
+    expect(getComputedStyle(dialog).gridTemplateColumns).toContain("minmax(20rem, 1fr)")
     expect(["0", "0px"]).toContain(getComputedStyle(content).minHeight)
     expect(getComputedStyle(content).overflowY).toBe("auto")
+    expect(getComputedStyle(providers).flexGrow).toBe("0")
     expect(getComputedStyle(providers).overflowY).toBe("auto")
     const presetLabels = Array.from(settings.shadowRoot!.querySelectorAll<HTMLButtonElement>(".preset-button"), button => button.textContent)
-    expect(presetLabels).toEqual(["OpenAI", "Ollama", "LM Studio", "Custom"])
+    expect(presetLabels).toEqual(["OpenAI", "Custom"])
     expect(settings.shadowRoot!.querySelector<HTMLInputElement>('input[inputmode="url"]')!.value).toBe("https://api.openai.com/v1")
     expect(settings.shadowRoot!.textContent).not.toContain("Temperature")
     expect(settings.shadowRoot!.textContent).not.toContain("Max output tokens")
@@ -216,6 +239,53 @@ describe("AI prompt ribbon", () => {
     auth.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
     await settings.updateComplete
     expect(settings.shadowRoot!.querySelector('input[type="password"]')).toBeNull()
+  })
+
+  it("automatically loads models and supports refreshing and starring a default", async () => {
+    const ribbon = await mountRibbon()
+    const fetch = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(modelsResponse(["model-b", "model-a"]))
+      .mockResolvedValueOnce(modelsResponse(["model-c"]))
+    const expand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-expand")!
+    expand.click()
+    await ribbon.updateComplete
+
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="AI settings"]')!.click()
+    const settings = ribbon.shadowRoot!.querySelector("ai-settings-dialog")!
+    await settings.updateComplete
+
+    const advanced = settings.shadowRoot!.querySelector<HTMLDetailsElement>(".advanced-options")!
+    expect(advanced.open).toBe(false)
+    expect(advanced.querySelector("summary")?.textContent).toBe("Advanced options")
+    expect(settings.shadowRoot!.querySelector('textarea[placeholder="One model ID per line"]')).toBeNull()
+
+    const key = settings.shadowRoot!.querySelector<HTMLInputElement>('input[type="password"]')!
+    key.value = "test-key"
+    key.dispatchEvent(new InputEvent("input", {bubbles: true, composed: true}))
+
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(settings.shadowRoot!.querySelectorAll(".model-card")).toHaveLength(2))
+    expect(Array.from(settings.shadowRoot!.querySelectorAll<HTMLElement>(".model-name"), model => model.textContent)).toEqual([
+      "model-a",
+      "model-b",
+    ])
+    expect(fetch).toHaveBeenCalledWith("https://api.openai.com/v1/models", expect.objectContaining({
+      headers: expect.objectContaining({Authorization: "Bearer test-key"}),
+    }))
+    expect(settings.shadowRoot!.querySelector(".icon-tabler-refresh")).not.toBeNull()
+    expect(settings.shadowRoot!.querySelector(".icon-tabler-star")).not.toBeNull()
+    expect(settings.shadowRoot!.querySelectorAll("article.model-card")).toHaveLength(2)
+    expect(settings.shadowRoot!.querySelectorAll("details.model-card")).toHaveLength(0)
+    expect(getComputedStyle(settings.shadowRoot!.querySelector<HTMLButtonElement>(".model-default")!).marginLeft).toBe("auto")
+
+    const secondStar = settings.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Set model-b as default model"]')!
+    secondStar.click()
+    await settings.updateComplete
+    expect(settings.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="model-b is the default model"]')?.getAttribute("aria-pressed")).toBe("true")
+
+    settings.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Refresh models"]')!.click()
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(settings.shadowRoot!.querySelector<HTMLElement>(".model-name")?.textContent).toBe("model-c"))
   })
 
   it("loads attachments and includes their metadata in the submitted prompt event", async () => {

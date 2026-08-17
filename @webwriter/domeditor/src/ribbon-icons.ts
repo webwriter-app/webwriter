@@ -83,6 +83,7 @@ import section from "@tabler/icons/outline/section.svg?raw"
 import settings from "@tabler/icons/outline/settings.svg?raw"
 import settings2 from "@tabler/icons/outline/settings-2.svg?raw"
 import sparkles2 from "@tabler/icons/outline/sparkles-2.svg?raw"
+import star from "@tabler/icons/outline/star.svg?raw"
 import share from "@tabler/icons/outline/share.svg?raw"
 import bracketsAngle from "@tabler/icons/outline/brackets-angle.svg?raw"
 import calendarTime from "@tabler/icons/outline/calendar-time.svg?raw"
@@ -212,6 +213,8 @@ const icons: Record<string, string> = {
   Accessibility: accessible,
   AI: sparkles2,
   AISettings: settings2,
+  Refresh: refresh,
+  Star: star,
   Attachment: paperclip,
   Preferences: adjustments,
   Extensions: packageIcon,
