@@ -9,6 +9,7 @@ import type {RibbonMenu} from "./ribbon-menu"
 import {
   executeCompleteEvent,
   executeFailureEvent,
+  aiEditReviewEvent,
   initializeEditorMessage,
   loadWidgetsMessage,
   markStateChangeEvent,
@@ -181,6 +182,22 @@ describe("DomEditor iframe setup", () => {
     await ribbon.updateComplete
 
     expect(ribbon.shadowRoot!.querySelector(".ai-chat-panel")?.hasAttribute("data-open")).toBe(false)
+  })
+
+  it("routes in-document AI review buttons to the ribbon", async () => {
+    const {editor, iframe} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const review = vi.spyOn(ribbon, "reviewPendingAIEdit")
+
+    const handled = iframe.contentWindow!.dispatchEvent(new CustomEvent(aiEditReviewEvent, {
+      detail: {action: "accept", editId: "edit-inline"},
+      bubbles: true,
+      composed: true,
+      cancelable: true,
+    }))
+
+    expect(handled).toBe(false)
+    expect(review).toHaveBeenCalledWith("accept", "edit-inline")
   })
 
   it("restores installed packages and starts the package catalog fetch on mount", async () => {
@@ -942,7 +959,7 @@ describe("DomEditor.execute()", () => {
       "#059669",
     ])
     expect(users.querySelector(".presence-more")).toBeNull()
-    expect(users.nextElementSibling?.getAttribute("aria-label")).toBe("Undo")
+    expect(users.nextElementSibling?.querySelector('[aria-label="Undo"]')).not.toBeNull()
   })
 
   it("adds a smaller Tabler plus circle with the connected peer count", async () => {

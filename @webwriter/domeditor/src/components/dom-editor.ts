@@ -30,6 +30,7 @@ import {
   type MediaSelectionState,
 } from "../media"
 import {
+  aiEditReviewEvent,
   executeCompleteEvent,
   executeFailureEvent,
   initializeEditorMessage,
@@ -435,6 +436,7 @@ export class DomEditor extends LitElement {
     if(this.dirtyTrackingTimer !== undefined) clearTimeout(this.dirtyTrackingTimer)
     this.documentTreeObserver?.disconnect()
     this.documentTreeObserver = null
+    this.editorWindow?.removeEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
     this.editorDocument?.removeEventListener("pointerdown", this.handleEditorPointerDown)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     const previousIframe = event.currentTarget as HTMLIFrameElement
@@ -488,6 +490,7 @@ export class DomEditor extends LitElement {
     }
     this.editorDocument?.addEventListener("pointerdown", this.handleEditorPointerDown)
     this.editorDocument?.addEventListener("focusin", this.handleEditorFocus)
+    this.editorWindow?.addEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
     iframe.addEventListener("focus", this.handleEditorFrameFocus)
     iframe.addEventListener("blur", this.handleEditorFrameBlur)
     if(this.editorWindow) {
@@ -868,6 +871,7 @@ export class DomEditor extends LitElement {
   private async reloadDocument(htmlSource: string) {
     this.documentTreeObserver?.disconnect()
     this.documentTreeObserver = null
+    this.editorWindow?.removeEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
     this.editorDocument?.removeEventListener("pointerdown", this.handleEditorPointerDown)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument = null
@@ -1543,6 +1547,7 @@ export class DomEditor extends LitElement {
 
     this.documentTreeObserver?.disconnect()
     this.documentTreeObserver = null
+    this.editorWindow?.removeEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
     this.editorDocument?.removeEventListener("pointerdown", this.handleEditorPointerDown)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument = null
@@ -1776,7 +1781,10 @@ export class DomEditor extends LitElement {
 
   private handleInlineAIEditReview = (event: Event) => {
     const detail = (event as CustomEvent<AIEditReviewMessage["detail"]>).detail
-    if(detail) this.routeAIEditReview(detail)
+    if(detail) {
+      event.preventDefault()
+      this.routeAIEditReview(detail)
+    }
   }
 
   private handleEditorMessage = (event: MessageEvent) => {
@@ -2020,6 +2028,7 @@ export class DomEditor extends LitElement {
     this.dirtyTrackingMutationPending = false
     this.documentTreeObserver?.disconnect()
     this.documentTreeObserver = null
+    this.editorWindow?.removeEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
     this.editorDocument?.removeEventListener("pointerdown", this.handleEditorPointerDown)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     const iframe = this.editorIframe()

@@ -314,11 +314,11 @@ describe("AI prompt ribbon", () => {
     }))
   })
 
-  it("requires approval before a model-proposed document change is applied", async () => {
+  it("previews a proposed change, blocks chat, and protocols acceptance with selective undo", async () => {
     const ribbon = await mountRibbon()
     await configureProvider(ribbon)
-    const apply = vi.fn().mockResolvedValue({status: "applied"})
-    ribbon.aiDocumentToolHandler = apply
+    const review = vi.fn(async (action: string) => ({status: action === "undo" ? "undone" : action}))
+    ribbon.aiEditReviewHandler = review
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(new Response(JSON.stringify({choices: [{message: {
         content: null,
@@ -340,11 +340,76 @@ describe("AI prompt ribbon", () => {
     ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-chat-send")!.click()
 
     await vi.waitFor(() => expect(ribbon.shadowRoot!.querySelector(".ai-edit-approval")).not.toBeNull())
-    expect(apply).not.toHaveBeenCalled()
+    expect(review).toHaveBeenCalledWith("preview", expect.objectContaining({name: "replace_current_document"}))
+    expect(ribbon.shadowRoot!.querySelector<HTMLTextAreaElement>(".ai-prompt-input")!.disabled).toBe(true)
+    expect(ribbon.shadowRoot!.querySelectorAll(".ai-prompt-review-actions button")).toHaveLength(3)
+    expect(ribbon.shadowRoot!.querySelector(".ai-prompt-submit")).toBeNull()
+    expect(ribbon.shadowRoot!.querySelector(".ai-prompt-review-actions")?.closest(".ai-composer-surface")?.nextElementSibling)
+      .toBe(ribbon.shadowRoot!.querySelector(".ai-prompt-expand"))
 
     ribbon.shadowRoot!.querySelector<HTMLButtonElement>('.ai-edit-action[data-kind="approve"]')!.click()
-    await vi.waitFor(() => expect(apply).toHaveBeenCalledOnce())
-    expect(apply).toHaveBeenCalledWith(expect.objectContaining({name: "replace_current_document"}))
+    await vi.waitFor(() => expect(review).toHaveBeenCalledWith("accept", expect.objectContaining({id: "edit-1"})))
     await vi.waitFor(() => expect(ribbon.shadowRoot!.textContent).toContain("The heading was added."))
+    expect(ribbon.shadowRoot!.textContent).toContain("Accepted: Add a heading")
+
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>('.ai-edit-action[data-kind="undo"]')!.click()
+    await vi.waitFor(() => expect(review).toHaveBeenCalledWith("undo", expect.objectContaining({id: "edit-1"})))
+    await vi.waitFor(() => expect(ribbon.shadowRoot!.textContent).toContain("Undone: Add a heading"))
+  })
+
+  it("rejects a preview from the collapsed bar and records the decision", async () => {
+    const ribbon = await mountRibbon()
+    await configureProvider(ribbon)
+    const review = vi.fn(async (action: string) => ({status: action}))
+    ribbon.aiEditReviewHandler = review
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({choices: [{message: {
+        content: null,
+        tool_calls: [{
+          id: "edit-reject",
+          type: "function",
+          function: {
+            name: "replace_current_document",
+            arguments: JSON.stringify({summary: "Remove the introduction", html: "<main></main>"}),
+          },
+        }],
+      }}]}), {headers: {"content-type": "application/json"}}))
+      .mockResolvedValueOnce(assistantResponse("I left the document unchanged."))
+
+    const input = ribbon.shadowRoot!.querySelector<HTMLTextAreaElement>(".ai-prompt-input")!
+    input.value = "Remove the introduction"
+    input.dispatchEvent(new InputEvent("input", {bubbles: true, composed: true}))
+    await ribbon.updateComplete
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-chat-send")!.click()
+
+    await vi.waitFor(() => expect(ribbon.shadowRoot!.querySelectorAll(".ai-prompt-review-actions button")).toHaveLength(3))
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Reject AI change"]')!.click()
+
+    await vi.waitFor(() => expect(review).toHaveBeenCalledWith("reject", expect.objectContaining({id: "edit-reject"})))
+    await vi.waitFor(() => expect(ribbon.shadowRoot!.textContent).toContain("Rejected: Remove the introduction"))
+    expect(ribbon.shadowRoot!.querySelector(".ai-prompt-review-actions")).toBeNull()
+  })
+
+  it("queues an in-document choice made while the preview bridge is still completing", async () => {
+    const ribbon = await mountRibbon()
+    let finishPreview!: () => void
+    const preview = new Promise<void>(resolve => { finishPreview = resolve })
+    const review = vi.fn((action: string) => action === "preview"
+      ? preview
+      : Promise.resolve({status: action}))
+    ribbon.aiEditReviewHandler = review
+    const call = {
+      id: "edit-early-choice",
+      name: "replace_current_document",
+      arguments: {summary: "Change the title", html: "<h1>New title</h1>"},
+    } as const
+
+    const result = (ribbon as any).handleAIDocumentTool(call, "chat-1") as Promise<unknown>
+    ribbon.reviewPendingAIEdit("accept", call.id)
+    expect(review).toHaveBeenCalledTimes(1)
+
+    finishPreview()
+    await vi.waitFor(() => expect(review).toHaveBeenCalledWith("accept", call))
+    await expect(result).resolves.toEqual({status: "accept"})
   })
 })

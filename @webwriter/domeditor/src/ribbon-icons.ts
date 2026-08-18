@@ -220,6 +220,7 @@ const icons: Record<string, string> = {
   Extensions: packageIcon,
   Packages: packageIcon,
   Search: search,
+  Goto: search,
   KeywordOnline: wifi,
   KeywordLanguage: language,
   KeywordPresentation: presentation,

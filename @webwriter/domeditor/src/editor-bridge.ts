@@ -17,6 +17,27 @@ export const markStateChangeEvent = "dom-editor-mark-state-change"
 export const presenceChangeEvent = "dom-editor-presence-change"
 export const initializeEditorMessage = "initialize-editor"
 export const loadWidgetsMessage = "load-widgets"
+export const aiEditReviewEvent = "dom-editor-ai-edit-review"
+
+export type AIEditReviewAction = "accept" | "reject"
+
+export type AIEditReviewMessage = {
+  type: typeof aiEditReviewEvent
+  detail: {
+    editId: string
+    action: AIEditReviewAction
+  }
+}
+
+export function isAIEditReviewMessage(value: unknown): value is AIEditReviewMessage {
+  if(!value || typeof value !== "object") return false
+  const message = value as Partial<AIEditReviewMessage>
+  return message.type === aiEditReviewEvent
+    && !!message.detail
+    && typeof message.detail === "object"
+    && typeof message.detail.editId === "string"
+    && (message.detail.action === "accept" || message.detail.action === "reject")
+}
 
 export type WidgetReference = {
   name: string

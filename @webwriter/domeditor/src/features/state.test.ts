@@ -3,6 +3,7 @@ import {afterEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
 import type {EditorStateSnapshot} from "../editor-state"
 import {restoreOriginalResourceURLs} from "../serialization"
+import {aiEditReviewEvent} from "../editor-bridge"
 
 afterEach(() => {
   document.body.replaceChildren()
@@ -107,6 +108,78 @@ describe("StateFeature", () => {
       html: '<strong onmouseover="steal()">WebWriter</strong>',
     })
     expect(editor.toHTML(true)).toBe("<p>Hello <strong>WebWriter</strong></p>")
+    editor.destroy()
+  })
+
+  it("shows a read-only in-document AI preview and restores the document when rejected", () => {
+    document.body.innerHTML = "<p>Before</p>"
+    const editor = new DOMEditor()
+
+    const preview = editor.getActionHandler("previewAIDocument")({
+      type: "previewAIDocument",
+      editId: "edit-reject",
+      summary: "Replace the paragraph",
+      html: '<p onclick="unsafe()">After</p>',
+    }) as {status: string, removedUnsafeItems: number}
+
+    expect(preview.status).toBe("previewing")
+    expect(preview.removedUnsafeItems).toBeGreaterThan(0)
+    expect(editor.toHTML(true)).toBe("<p>After</p>")
+    expect(document.body.inert).toBe(true)
+    expect(document.body.contentEditable).toBe("false")
+    expect(document.querySelector(".◆ai-review-toolbar")?.textContent).toContain("Replace the paragraph")
+    expect(document.querySelector(".◆ai-preview-change")).not.toBeNull()
+    const beforeInput = new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: "x"})
+    document.querySelector("p")!.dispatchEvent(beforeInput)
+    expect(beforeInput.defaultPrevented).toBe(true)
+    const toolbarPointer = new PointerEvent("pointerdown", {bubbles: true, cancelable: true})
+    document.querySelector(".◆ai-review-toolbar")!.dispatchEvent(toolbarPointer)
+    expect(toolbarPointer.defaultPrevented).toBe(false)
+    const reviewChoice = vi.fn((event: Event) => event.preventDefault())
+    window.addEventListener(aiEditReviewEvent, reviewChoice, {once: true})
+    document.querySelector<HTMLButtonElement>('.◆ai-review-toolbar button[data-action="reject"]')!.click()
+    expect(reviewChoice).toHaveBeenCalledWith(expect.objectContaining({
+      detail: {editId: "edit-reject", action: "reject"},
+    }))
+
+    editor.getActionHandler("rejectAIEdit")({type: "rejectAIEdit", editId: "edit-reject"})
+
+    expect(editor.toHTML(true)).toBe("<p>Before</p>")
+    expect(document.body.inert).toBe(false)
+    expect(document.body.contentEditable).toBe("true")
+    expect(document.querySelector(".◆ai-review-toolbar")).toBeNull()
+    editor.destroy()
+  })
+
+  it("accepts an AI preview and selectively undoes it without removing later edits", async () => {
+    document.body.innerHTML = "<p>Before</p>"
+    const editor = new DOMEditor()
+
+    editor.getActionHandler("previewAIDocument")({
+      type: "previewAIDocument",
+      editId: "edit-accept",
+      summary: "Replace the paragraph",
+      html: "<main>After</main>",
+    })
+    editor.getActionHandler("acceptAIEdit")({type: "acceptAIEdit", editId: "edit-accept"})
+
+    expect(editor.toHTML(true)).toBe("<main>After</main>")
+    expect(document.querySelector(".◆ai-preview-change")).toBeNull()
+    expect(document.getElementsByClassName("◆ai-edit-1")).toHaveLength(1)
+
+    const aside = document.createElement("aside")
+    aside.textContent = "Later local edit"
+    document.body.append(aside)
+    await new Promise<void>(resolve => queueMicrotask(resolve))
+
+    const undone = editor.getActionHandler("undoAIEdit")({
+      type: "undoAIEdit",
+      editId: "edit-accept",
+    }) as {status: string}
+
+    expect(undone.status).toBe("undone")
+    expect(editor.toHTML(true)).toContain("<p>Before</p>")
+    expect(editor.toHTML(true)).toContain("<aside>Later local edit</aside>")
     editor.destroy()
   })
 })

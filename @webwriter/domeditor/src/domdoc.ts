@@ -114,6 +114,7 @@ export class SharedDOMDoc {
   readonly #body: Y.XmlElement
   readonly #metadata: Y.Map<unknown>
   readonly #undoManager: Y.UndoManager
+  readonly #capturedChanges = new Map<string, Y.UndoManager>()
   readonly #observer: MutationObserver
   readonly #domOrigin = {source: "domeditor-dom"}
   readonly #initialOrigin = {source: "domeditor-initial"}
@@ -419,6 +420,50 @@ export class SharedDOMDoc {
     this.#undoManager.stopCapturing()
   }
 
+  /** Captures one DOM mutation as an isolated Yjs change. Unlike the normal
+   * local undo stack, the returned change can be undone later without
+   * rewinding unrelated edits that happened after it. */
+  captureDOMChange<T>(changeId: string, change: () => T) {
+    if(this.#capturedChanges.has(changeId)) {
+      throw new Error(`A captured change with id '${changeId}' already exists`)
+    }
+    const origin = {source: "domeditor-captured-change", changeId}
+    const undoManager = new Y.UndoManager(this.#body, {
+      trackedOrigins: new Set([origin]),
+      captureTimeout: 0,
+    })
+    this.stopObserve()
+    try {
+      const result = change()
+      this.syncFromDOM(origin)
+      undoManager.stopCapturing()
+      this.#capturedChanges.set(changeId, undoManager)
+      return result
+    }
+    catch(error) {
+      undoManager.destroy()
+      throw error
+    }
+    finally {
+      this.startObserve()
+    }
+  }
+
+  hasCapturedChange(changeId: string) {
+    return this.#capturedChanges.has(changeId)
+  }
+
+  /** Selectively undoes one captured change, preserving later local and
+   * remote Yjs transactions. A captured change can be undone only once. */
+  undoCapturedChange(changeId: string) {
+    const undoManager = this.#capturedChanges.get(changeId)
+    if(!undoManager) return false
+    undoManager.undo()
+    undoManager.destroy()
+    this.#capturedChanges.delete(changeId)
+    return true
+  }
+
   undo() {
     this.#undoManager.undo()
   }
@@ -431,6 +476,8 @@ export class SharedDOMDoc {
     this.stopObserve()
     this.#body.unobserveDeep(this.#handleYChanges)
     this.#undoManager.destroy()
+    this.#capturedChanges.forEach(undoManager => undoManager.destroy())
+    this.#capturedChanges.clear()
     this.provider?.destroy()
     this.doc.destroy()
   }
