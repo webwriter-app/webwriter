@@ -359,6 +359,7 @@ export class RibbonButton extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 0.2rem;
+      position: relative;
     }
 
     .sharing-link-label {
@@ -371,7 +372,7 @@ export class RibbonButton extends LitElement {
       width: 100%;
       min-width: 0;
       height: 1.55rem;
-      padding: 0 0.3rem;
+      padding: 0 2rem 0 0.3rem;
       border: 1px solid #c8d2df;
       border-radius: 0.2rem;
       color: #2f3742;
@@ -385,14 +386,105 @@ export class RibbonButton extends LitElement {
       outline: 1px solid #3977c7;
     }
 
-    .sharing-dropdown-actions {
-      display: flex;
-      flex-direction: column;
-      gap: 0.25rem;
+    .sharing-link-input-row {
+      position: relative;
     }
 
-    .sharing-dropdown-actions .button-dropdown-more {
+    .sharing-link-copy {
+      position: absolute;
+      top: 50%;
+      right: 0.28rem;
+      transform: translateY(-50%);
+      display: inline-grid;
+      place-items: center;
+      width: 1.15rem;
+      height: 1.15rem;
+      padding: 0;
+      border: 0;
+      color: #526b86;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .sharing-link-copy svg {
+      width: 0.72rem;
+      height: 0.72rem;
+    }
+
+    .sharing-link-copy:hover {
+      color: #1e5d9d;
+    }
+
+    .sharing-link-copy.is-active,
+    .sharing-link-copy[aria-pressed="true"] {
+      color: #174f8b;
+      background: #dbeafe;
+    }
+
+    .sharing-link-copy.is-success {
+      color: #0f7a43;
+      background: #e2f4ea;
+    }
+
+    .sharing-link-copy:focus:not(:focus-visible) {
+      outline: none;
+    }
+
+    .sharing-link-copy:focus-visible {
+      outline: 2px solid #3977c7;
+      outline-offset: -1px;
+    }
+
+    .sharing-dropdown-qr {
       width: 100%;
+      min-height: 0;
+      display: flex;
+      justify-content: center;
+      padding: 0 0.1rem;
+    }
+
+    .sharing-dropdown-qr-code {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      height: auto;
+      max-width: 100%;
+      display: block;
+      object-fit: contain;
+    }
+
+    .sharing-dropdown-actions {
+      display: flex;
+      gap: 0.3rem;
+    }
+
+    .sharing-dropdown-action {
+      width: 50%;
+      min-height: 1.5rem;
+      padding: 0.2rem;
+      display: inline-grid;
+      place-items: center;
+    }
+
+    .sharing-dropdown-action svg {
+      width: 0.78rem;
+      height: 0.78rem;
+    }
+
+    .sharing-dropdown-action.is-active,
+    .sharing-dropdown-action[aria-pressed="true"] {
+      color: #174f8b;
+      border-color: #8eb6df;
+      background: #eef4fb;
+    }
+
+    .sharing-dropdown-action.is-success {
+      color: #0f7a43;
+      border-color: #66ad78;
+      background: #e2f4ea;
+    }
+
+    .sharing-dropdown-action:focus:not(:focus-visible) {
+      outline: none;
     }
 
     .media-attribute-boolean input {

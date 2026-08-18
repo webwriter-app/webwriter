@@ -1983,6 +1983,20 @@ export class AppRibbon extends LitElement {
   table: TableSelectionState | null = null
   private tableGridRows = 2
   private tableGridColumns = 2
+  private sharingQRCodeImageDataURL = ""
+  private sharingQRCodeImageLink = ""
+  private sharingQRCodeImageLoading = false
+  private sharingQRCodeImageRetryScheduled = false
+  private sharingCopyLinkActive = false
+  private sharingCopyLinkSuccess = false
+  private sharingCopyQRActive = false
+  private sharingCopyQRSuccess = false
+  private sharingDownloadQRActive = false
+  private sharingCopyLinkActiveTimer: ReturnType<typeof setTimeout> | undefined
+  private sharingCopyQRActiveTimer: ReturnType<typeof setTimeout> | undefined
+  private sharingCopyQRSuccessTimer: ReturnType<typeof setTimeout> | undefined
+  private sharingDownloadQRActiveTimer: ReturnType<typeof setTimeout> | undefined
+  private sharingCopyLinkSuccessTimer: ReturnType<typeof setTimeout> | undefined
   fileName = ""
   fileDirty = false
   previewActive = false
@@ -2182,6 +2196,11 @@ export class AppRibbon extends LitElement {
     this.stopAIRequest()
     if(this.previewTransitionTimer !== undefined) clearTimeout(this.previewTransitionTimer)
     this.previewTransitionTimer = undefined
+    if(this.sharingCopyLinkActiveTimer !== undefined) clearTimeout(this.sharingCopyLinkActiveTimer)
+    if(this.sharingCopyLinkSuccessTimer !== undefined) clearTimeout(this.sharingCopyLinkSuccessTimer)
+    if(this.sharingCopyQRActiveTimer !== undefined) clearTimeout(this.sharingCopyQRActiveTimer)
+    if(this.sharingCopyQRSuccessTimer !== undefined) clearTimeout(this.sharingCopyQRSuccessTimer)
+    if(this.sharingDownloadQRActiveTimer !== undefined) clearTimeout(this.sharingDownloadQRActiveTimer)
     this.ribbonContentObserver?.disconnect()
     this.ribbonContentObserver = undefined
     document.removeEventListener("pointerdown", this.handleDocumentPointerDown)
@@ -3837,23 +3856,140 @@ export class AppRibbon extends LitElement {
     return qrCode.toBlob()
   }
 
+  private async ensureSharingQRCodeImage(link: string) {
+    if(this.sharingQRCodeImageLoading) return
+    if(this.sharingQRCodeImageLink === link && this.sharingQRCodeImageDataURL) return
+    if(this.sharingQRCodeImageLink !== link) {
+      this.sharingQRCodeImageDataURL = ""
+      this.sharingQRCodeImageLink = ""
+    }
+    this.sharingQRCodeImageLoading = true
+    try {
+      const qrCode = this.sharingQRCodeElement()
+      if(!qrCode) {
+        this.scheduleSharingQRCodeImageRetry(link)
+        return
+      }
+      await qrCode.updateComplete
+      const dataURL = qrCode.toDataURL()
+      if(dataURL && dataURL.startsWith("data:image/png")) {
+        this.sharingQRCodeImageDataURL = dataURL
+        this.sharingQRCodeImageLink = link
+        this.requestUpdate()
+        return
+      }
+
+      const blob = await qrCode.toBlob()
+      if(!blob) {
+        this.scheduleSharingQRCodeImageRetry(link)
+        return
+      }
+
+      const fallbackDataURL = await new Promise<string | null>(resolve => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null)
+        reader.onerror = () => resolve(null)
+        reader.readAsDataURL(blob)
+      })
+      if(!fallbackDataURL?.startsWith("data:image/png")) {
+        this.scheduleSharingQRCodeImageRetry(link)
+        return
+      }
+
+      this.sharingQRCodeImageDataURL = fallbackDataURL
+      this.sharingQRCodeImageLink = link
+      this.requestUpdate()
+    }
+    finally {
+      this.sharingQRCodeImageLoading = false
+    }
+  }
+
+  private scheduleSharingQRCodeImageRetry(link: string) {
+    if(this.sharingQRCodeImageRetryScheduled || !this.renderRoot.isConnected) return
+    this.sharingQRCodeImageRetryScheduled = true
+    requestAnimationFrame(() => {
+      this.sharingQRCodeImageRetryScheduled = false
+      void this.ensureSharingQRCodeImage(link)
+    })
+  }
+
+  private async handleSharingQRCodeImageError() {
+    if(!this.sharingQRCodeImageLink || !this.renderRoot.isConnected) return
+    this.sharingQRCodeImageDataURL = ""
+    this.scheduleSharingQRCodeImageRetry(this.sharingQRCodeImageLink)
+    this.requestUpdate()
+  }
+
+  private renderSharingDropdown(link: string) {
+    void this.ensureSharingQRCodeImage(link)
+    return html`
+      <div class="sharing-dropdown" role="group" aria-label="Sharing options">
+        <label class="sharing-link-field">
+          <span class="sharing-link-label">Link</span>
+          <span class="sharing-link-input-row">
+            <input
+              class="sharing-link-input"
+              aria-label="Sharing link"
+              readonly
+              .value=${link}
+              @click=${(event: Event) => (event.currentTarget as HTMLInputElement).select()}
+            />
+            <button
+              class=${`sharing-link-copy${this.sharingCopyLinkActive ? " is-active" : ""}${this.sharingCopyLinkSuccess ? " is-success" : ""}`}
+              type="button"
+              aria-label="Copy link"
+              aria-pressed=${this.sharingCopyLinkActive}
+              title=${this.sharingCopyLinkSuccess ? "Copied link" : "Copy link"}
+              @click=${() => void this.copySharingLinkAndShowFeedback(link)}
+            >${ribbonIcon("Copy")}</button>
+          </span>
+        </label>
+        <div class="sharing-dropdown-qr" aria-label="Sharing QR code" role="img">
+          <img
+            class="sharing-dropdown-qr-code"
+            alt="Sharing QR code"
+            draggable="true"
+            src=${this.sharingQRCodeImageDataURL || undefined}
+            @error=${() => void this.handleSharingQRCodeImageError()}
+          />
+        </div>
+        <div class="sharing-dropdown-actions">
+          <button
+            class=${`button-dropdown-more sharing-dropdown-action${this.sharingCopyQRActive ? " is-active" : ""}${this.sharingCopyQRSuccess ? " is-success" : ""}`}
+            type="button"
+            aria-pressed=${this.sharingCopyQRActive}
+            @click=${() => void this.copySharingQRCodeAndShowFeedback()}
+            aria-label="Copy"
+            title=${this.sharingCopyQRSuccess ? "Copied QR code" : "Copy"}
+          >${ribbonIcon("Copy")}</button>
+          <button
+            class=${`button-dropdown-more sharing-dropdown-action${this.sharingDownloadQRActive ? " is-active" : ""}`}
+            type="button"
+            aria-pressed=${this.sharingDownloadQRActive}
+            @click=${() => void this.downloadSharingQRCodeAndShowFeedback()}
+            aria-label="Download"
+            title="Download"
+          >${ribbonIcon("Download")}</button>
+        </div>
+      </div>
+    `
+  }
+
   private async copySharingContent(link: string): Promise<boolean> {
     try {
       if(!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
-        await this.copySharingLink(link)
-        return false
+        return await this.copySharingLink(link)
       }
 
       const qrCode = this.sharingQRCodeElement()
       if(!qrCode) {
-        await this.copySharingLink(link)
-        return false
+        return await this.copySharingLink(link)
       }
       await qrCode.updateComplete
       const qrDataURL = qrCode.toDataURL()
       if(!qrDataURL) {
-        await this.copySharingLink(link)
-        return false
+        return await this.copySharingLink(link)
       }
 
       const content = document.createElement("div")
@@ -3877,11 +4013,11 @@ export class AppRibbon extends LitElement {
     }
   }
 
-  private async copySharingLink(link: string) {
+  private async copySharingLink(link: string): Promise<boolean> {
     try {
       if(navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(link)
-        return
+        return true
       }
 
       const input = document.createElement("textarea")
@@ -3893,37 +4029,100 @@ export class AppRibbon extends LitElement {
       input.select()
       document.execCommand("copy")
       input.remove()
+      return true
     }
     catch {
       // Clipboard access can be denied by the browser or document context.
+      return false
     }
   }
 
-  private async copySharingQRCode() {
+  private async copySharingLinkAndShowFeedback(link: string) {
+    this.sharingCopyLinkActive = true
+    this.sharingCopyLinkSuccess = false
+    if(this.sharingCopyLinkActiveTimer !== undefined) clearTimeout(this.sharingCopyLinkActiveTimer)
+    if(this.sharingCopyLinkSuccessTimer !== undefined) clearTimeout(this.sharingCopyLinkSuccessTimer)
+    this.requestUpdate()
+    const copied = await this.copySharingLink(link)
+    this.sharingCopyLinkActive = false
+    this.sharingCopyLinkSuccess = copied
+    this.requestUpdate()
+    this.sharingCopyLinkActiveTimer = setTimeout(() => {
+      this.sharingCopyLinkActive = false
+      this.requestUpdate()
+    }, 140)
+    if(copied) {
+      this.sharingCopyLinkSuccessTimer = setTimeout(() => {
+        this.sharingCopyLinkSuccess = false
+        this.requestUpdate()
+      }, 900)
+    }
+  }
+
+  private async copySharingQRCode(): Promise<boolean> {
     try {
       const blob = await this.sharingQRCodeBlob()
-      if(!blob || !navigator.clipboard?.write || typeof ClipboardItem === "undefined") return
+      if(!blob || !navigator.clipboard?.write || typeof ClipboardItem === "undefined") return false
       await navigator.clipboard.write([new ClipboardItem({[blob.type || "image/png"]: blob})])
+      return true
     }
     catch {
       // Clipboard access can be denied by the browser or document context.
+      return false
     }
   }
 
-  private async downloadSharingQRCode() {
+  private async copySharingQRCodeAndShowFeedback() {
+    this.sharingCopyQRActive = true
+    this.sharingCopyQRSuccess = false
+    if(this.sharingCopyQRActiveTimer !== undefined) clearTimeout(this.sharingCopyQRActiveTimer)
+    if(this.sharingCopyQRSuccessTimer !== undefined) clearTimeout(this.sharingCopyQRSuccessTimer)
+    this.requestUpdate()
+    const copied = await this.copySharingQRCode()
+    this.sharingCopyQRActive = false
+    this.sharingCopyQRSuccess = copied
+    this.requestUpdate()
+    this.sharingCopyQRActiveTimer = setTimeout(() => {
+      this.sharingCopyQRActive = false
+      this.requestUpdate()
+    }, 140)
+    if(copied) {
+      this.sharingCopyQRSuccessTimer = setTimeout(() => {
+        this.sharingCopyQRSuccess = false
+        this.requestUpdate()
+      }, 900)
+    }
+  }
+
+  private async downloadSharingQRCode(): Promise<boolean> {
     try {
       const blob = await this.sharingQRCodeBlob()
-      if(!blob) return
+      if(!blob) return false
       const url = URL.createObjectURL(blob)
       const link = document.createElement("a")
       link.href = url
       link.download = `webwriter-qr-code.${blob.type === "image/svg+xml" ? "svg" : "png"}`
       link.click()
       URL.revokeObjectURL(url)
+      return true
     }
     catch {
       // QR export can fail when the browser cannot rasterize the QR code.
+      return false
     }
+  }
+
+  private async downloadSharingQRCodeAndShowFeedback() {
+    this.sharingDownloadQRActive = true
+    if(this.sharingDownloadQRActiveTimer !== undefined) clearTimeout(this.sharingDownloadQRActiveTimer)
+    this.requestUpdate()
+    await this.downloadSharingQRCode()
+    this.sharingDownloadQRActive = false
+    this.requestUpdate()
+    this.sharingDownloadQRActiveTimer = setTimeout(() => {
+      this.sharingDownloadQRActive = false
+      this.requestUpdate()
+    }, 140)
   }
 
   private handleSharingButtonClick = (event: Event) => {
@@ -3933,40 +4132,6 @@ export class AppRibbon extends LitElement {
     void this.copySharingContent(placeholderSharingLink).then(copied => {
       if(copied) this.sharingButton()?.showNotification("Copied QR code and link")
     })
-  }
-
-  private renderSharingDropdown(link: string) {
-    return html`
-      <div class="sharing-dropdown" role="group" aria-label="Sharing options">
-        <label class="sharing-link-field">
-          <span class="sharing-link-label">Link</span>
-          <input
-            class="sharing-link-input"
-            aria-label="Sharing link"
-            readonly
-            .value=${link}
-            @click=${(event: Event) => (event.currentTarget as HTMLInputElement).select()}
-          />
-        </label>
-        <div class="sharing-dropdown-actions">
-          <button
-            class="button-dropdown-more"
-            type="button"
-            @click=${() => void this.copySharingLink(link)}
-          >Copy link</button>
-          <button
-            class="button-dropdown-more"
-            type="button"
-            @click=${() => void this.copySharingQRCode()}
-          >Copy QR code</button>
-          <button
-            class="button-dropdown-more"
-            type="button"
-            @click=${() => void this.downloadSharingQRCode()}
-          >Download QR code</button>
-        </div>
-      </div>
-    `
   }
 
   private renderSharingDrawer(drawer: RibbonMenuGroup) {

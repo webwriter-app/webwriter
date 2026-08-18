@@ -121,11 +121,12 @@ export class QRCodeElement extends LitElement {
     const renderSize = Math.max(1, Math.round(size * pixelRatio))
     const QRCode = getQRCodeConstructor()
     const PNGQRCode = getPNGQRCodeConstructor()
+    const darkBlue = "#1e4f87"
     new PNGQRCode(exportContainer, {
       text: this.value,
       width: defaultExportSize,
       height: defaultExportSize,
-      colorDark: "#2f3742",
+      colorDark: darkBlue,
       colorLight: "transparent",
       correctLevel: PNGQRCode.CorrectLevel.H,
     })
@@ -133,7 +134,7 @@ export class QRCodeElement extends LitElement {
       text: this.value,
       width: renderSize,
       height: renderSize,
-      colorDark: "#2f3742",
+      colorDark: darkBlue,
       colorLight: "transparent",
       correctLevel: QRCode.CorrectLevel.H,
       useSVG: true,

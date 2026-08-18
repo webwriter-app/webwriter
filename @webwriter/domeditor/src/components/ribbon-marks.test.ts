@@ -235,8 +235,9 @@ describe("mark ribbon controls", () => {
     await shareMenu.updateComplete
     expect(shareMenu.querySelector<HTMLInputElement>('input[aria-label="Sharing link"]')?.value)
       .toBe("https://webwriter.app/share/placeholder")
-    expect(Array.from(shareMenu.querySelectorAll("button")).map(button => button.textContent?.trim()))
-      .toEqual(["Copy link", "Copy QR code", "Download QR code"])
+    expect(Array.from(shareMenu.querySelectorAll("button")).map(button => button.getAttribute("aria-label")))
+      .toEqual(["Copy link", "Copy", "Download"])
+    expect(shareMenu.querySelector("img.sharing-dropdown-qr-code")).not.toBeNull()
 
     const toDataURL = vi.spyOn(
       qrCode as unknown as {toDataURL: () => string | null},
