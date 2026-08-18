@@ -64,7 +64,7 @@
           </div>
           <label>Models (one per line) <textarea name="models" spellcheck="false" style="min-height:5rem">gpt-5.6-luna</textarea></label>
           <label>Default model <input name="defaultModel" value="gpt-5.6-luna"></label>
-          <label>Additional instructions <textarea name="customInstructions" style="min-height:5rem"></textarea></label>
+          <label>Additional instructions <textarea name="customInstructions" style="min-height:5rem">Fulfill every request by using the document tools to propose a document change, unless the user explicitly asks for planning only. Use clean semantic HTML with the flattest practical structure; avoid unnecessary wrappers such as &lt;div&gt;.</textarea></label>
           <div class="actions"><button type="reset">New</button><button class="primary" type="submit">Save provider</button></div>
         </form>
         <div id="provider-status" class="status" role="status"></div>

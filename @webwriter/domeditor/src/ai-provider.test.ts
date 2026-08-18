@@ -4,12 +4,17 @@ import {
   AI_KEYS_STORAGE_KEY,
   AI_PROVIDERS_STORAGE_KEY,
   AIProviderStore,
+  DEFAULT_AI_INSTRUCTIONS,
   createAIProvider,
 } from "./ai-provider"
 
 afterEach(() => localStorage.clear())
 
 describe("AIProviderStore", () => {
+  it("defaults new providers to document-editing instructions", () => {
+    expect(createAIProvider("openai").customInstructions).toBe(DEFAULT_AI_INSTRUCTIONS)
+  })
+
   it("persists provider metadata without persisting a tab-only API key", () => {
     const store = new AIProviderStore(localStorage)
     const provider = createAIProvider("openai")

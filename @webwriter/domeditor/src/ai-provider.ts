@@ -40,6 +40,7 @@ type PersistedSecrets = Record<string, EncryptedSecret>
 
 export const AI_PROVIDERS_STORAGE_KEY = "webwriter.ai.providers.v1"
 export const AI_KEYS_STORAGE_KEY = "webwriter.ai.keys.v1"
+export const DEFAULT_AI_INSTRUCTIONS = "Fulfill every request by using the document tools to propose a document change, unless the user explicitly asks for planning only. Use clean semantic HTML with the flattest practical structure; avoid unnecessary wrappers such as <div>."
 
 const encryptionIterations = 310_000
 const textEncoder = new TextEncoder()
@@ -166,7 +167,7 @@ export function createAIProvider(preset: AIProviderPreset): AIProviderConfig {
     id: randomId(),
     preset,
     keyMode: "memory" as const,
-    customInstructions: "",
+    customInstructions: DEFAULT_AI_INSTRUCTIONS,
   }
   if(preset === "openai") return {
     ...shared,

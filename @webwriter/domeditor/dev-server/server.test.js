@@ -96,6 +96,7 @@ describe("development server", () => {
     expect(created.value.provider).toEqual(expect.objectContaining({
       managed: "backend",
       credentialStatus: "available",
+      customInstructions: expect.stringContaining("propose a document change"),
     }))
 
     const listed = await request("/api/providers")

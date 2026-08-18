@@ -86,6 +86,8 @@ const normalizeBaseUrl = value => {
   return url.toString().replace(/\/$/, "")
 }
 
+const DEFAULT_AI_INSTRUCTIONS = "Fulfill every request by using the document tools to propose a document change, unless the user explicitly asks for planning only. Use clean semantic HTML with the flattest practical structure; avoid unnecessary wrappers such as <div>."
+
 const providerInput = (value, previous = {}) => {
   if(!isRecord(value)) throw Object.assign(new Error("Provider must be a JSON object"), {status: 400})
   try {
@@ -104,7 +106,7 @@ const providerInput = (value, previous = {}) => {
       : previous.apiKey ?? ""
     const customInstructions = typeof value.customInstructions === "string"
       ? value.customInstructions.trim()
-      : previous.customInstructions ?? ""
+      : previous.customInstructions ?? DEFAULT_AI_INSTRUCTIONS
     return {
       id,
       name: name.slice(0, 120),
@@ -160,7 +162,7 @@ const defaultProviderState = () => {
       auth: "bearer",
       models: ["gpt-5.6-luna"],
       defaultModel: "gpt-5.6-luna",
-      customInstructions: "",
+      customInstructions: DEFAULT_AI_INSTRUCTIONS,
       apiKey: "",
       apiKeyEnvironment: "OPENAI_API_KEY",
     })
