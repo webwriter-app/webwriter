@@ -167,16 +167,19 @@ describe("widget shadow interactions", () => {
     widget.remove()
   })
 
-  it("continues to let the editor observe scrolling in widget shadow DOM", () => {
+  it("keeps inactive widget scrolls from reaching the widget while the editor observes them", () => {
     const widget = document.createElement("scrolling-widget")
     const scroller = document.createElement("div")
     widget.attachShadow({mode: "open"}).append(scroller)
     document.body.append(widget)
     const renderPresence = vi.spyOn(editor.features.collaboration, "renderPresence")
+    const widgetScroll = vi.fn()
+    scroller.addEventListener("scroll", widgetScroll)
 
     scroller.dispatchEvent(new Event("scroll", {bubbles: true, composed: true}))
 
     expect(renderPresence).toHaveBeenCalled()
+    expect(widgetScroll).not.toHaveBeenCalled()
     renderPresence.mockRestore()
     widget.remove()
   })

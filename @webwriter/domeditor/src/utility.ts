@@ -837,19 +837,12 @@ export function focusedWidgetHost() {
     : null
 }
 
-/** The editable widget host whose shadow tree originated an interaction.
- * Composed events are retargeted to the host by the time they reach document
- * listeners, so inspect the full path instead. Hosts in the body's own shadow
- * tree belong to the editor appendix and are intentionally excluded. */
-export function widgetHostForShadowInteraction(event: Event) {
-  if(event.type === "scroll") return null
-  // Text controls report their internal caret changes as document-level
-  // selectionchange events, so the composed path cannot identify the shadow
-  // origin. While focus is inside a widget, document.activeElement is its host
-  // (also for closed roots), which preserves that boundary information.
-  if(event.type === "selectionchange") {
-    return focusedWidgetHost()
-  }
+/** The editable widget host whose own surface or shadow tree originated an
+ * event. Composed events are retargeted to the host by the time they reach
+ * document listeners, so inspect the full path instead. Hosts in the body's
+ * own shadow tree belong to the editor appendix and are intentionally
+ * excluded. */
+function widgetHostForEventPath(event: Event) {
   const origin = event.composedPath()[0] as Node | undefined
   if(typeof origin?.getRootNode !== "function") return null
   let root = origin.getRootNode()
@@ -868,6 +861,24 @@ export function widgetHostForShadowInteraction(event: Event) {
     return origin
   }
   return null
+}
+
+/** The editable widget host whose shadow tree originated an interaction. */
+export function widgetHostForShadowInteraction(event: Event) {
+  if(event.type === "scroll") return null
+  // Text controls report their internal caret changes as document-level
+  // selectionchange events, so the composed path cannot identify the shadow
+  // origin. While focus is inside a widget, document.activeElement is its host
+  // (also for closed roots), which preserves that boundary information.
+  if(event.type === "selectionchange") {
+    return focusedWidgetHost()
+  }
+  return widgetHostForEventPath(event)
+}
+
+/** The mounted widget whose own surface or shadow tree originated a scroll. */
+export function widgetHostForScrollEvent(event: Event) {
+  return event.type === "scroll" ? widgetHostForEventPath(event) : null
 }
 
 /** Whether a non-scroll interaction originated in a mounted widget's shadow tree. */

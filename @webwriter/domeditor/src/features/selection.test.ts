@@ -497,6 +497,49 @@ describe("document listeners", () => {
     expect(widget).toHaveClass("◆element-selected")
     expect(widget.shadowRoot?.activeElement).toBe(button)
   })
+  it("lets scroll events reach only a capture-selected widget", () => {
+    const widget = document.createElement("scrolling-widget")
+    const scroller = document.createElement("div")
+    widget.attachShadow({mode: "open"}).append(scroller)
+    document.body.append(widget)
+    const onScroll = vi.fn()
+    scroller.addEventListener("scroll", onScroll)
+
+    scroller.dispatchEvent(new Event("scroll", {bubbles: true, composed: true}))
+    expect(onScroll).not.toHaveBeenCalled()
+
+    scroller.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
+    scroller.dispatchEvent(new Event("scroll", {bubbles: true, composed: true}))
+
+    expect(widget).toHaveClass("◆element-capture-selected")
+    expect(onScroll).toHaveBeenCalledOnce()
+  })
+  it("routes wheel input to the document until the widget is capture-selected", () => {
+    const widget = document.createElement("map-widget")
+    const map = document.createElement("div")
+    widget.attachShadow({mode: "open"}).append(map)
+    document.body.append(widget)
+    const onWheel = vi.fn((event: WheelEvent) => event.preventDefault())
+    const scrollBy = vi.spyOn(window, "scrollBy").mockImplementation(() => {})
+    map.addEventListener("wheel", onWheel)
+
+    const documentWheel = new WheelEvent("wheel", {deltaY: 100, bubbles: true, composed: true, cancelable: true})
+    map.dispatchEvent(documentWheel)
+
+    expect(onWheel).not.toHaveBeenCalled()
+    expect(documentWheel.defaultPrevented).toBe(true)
+    expect(scrollBy).toHaveBeenCalledWith({left: 0, top: 100, behavior: "instant"})
+
+    map.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
+    const widgetWheel = new WheelEvent("wheel", {deltaY: 100, bubbles: true, composed: true, cancelable: true})
+    map.dispatchEvent(widgetWheel)
+
+    expect(widget).toHaveClass("◆element-capture-selected")
+    expect(onWheel).toHaveBeenCalledOnce()
+    expect(widgetWheel.defaultPrevented).toBe(true)
+    expect(scrollBy).toHaveBeenCalledOnce()
+    scrollBy.mockRestore()
+  })
   it("capture-selects interaction retargeted from a closed widget shadow DOM", () => {
     const widget = document.createElement("closed-widget")
     const button = document.createElement("button")

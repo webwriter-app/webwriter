@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import {$, focusedWidgetHost, getContainer, isAtomicEditingElement, isElement, modifierKeyDown, setPart, widgetHostForShadowInteraction} from "../utility"
+import {$, focusedWidgetHost, getContainer, isAtomicEditingElement, isElement, modifierKeyDown, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
 
 type SelectionKind = "none" | "capture" | "virtual" | "gap" | "element" | "text" | "empty"
@@ -233,6 +233,8 @@ export class SelectionFeature extends EditorFeature {
     this.#widgetInteractionEvents.forEach(type => {
       document.addEventListener(type, this.#handleWidgetShadowInteraction, {capture: true})
     })
+    document.addEventListener("wheel", this.#handleWidgetWheel, {capture: true, passive: false})
+    document.addEventListener("scroll", this.#handleWidgetScroll, {capture: true})
     this.editor.doc.doc.on("afterTransaction", this.#handleSharedChange)
     this.processSelection()
   }
@@ -243,12 +245,42 @@ export class SelectionFeature extends EditorFeature {
     this.#widgetInteractionEvents.forEach(type => {
       document.removeEventListener(type, this.#handleWidgetShadowInteraction, {capture: true})
     })
+    document.removeEventListener("wheel", this.#handleWidgetWheel, {capture: true})
+    document.removeEventListener("scroll", this.#handleWidgetScroll, {capture: true})
     this.#releaseCaptureSelection()
     this.#clearElementHover()
     super.disable()
   }
 
   readonly #widgetInteractionEvents = ["pointerdown", "focusin", "keydown", "beforeinput", "input", "change"] as const
+
+  /** Routes wheel input over an inactive widget to the editor document instead
+   * of letting the widget consume it (for example, to zoom a map).
+   * Capture-selected widgets retain their native wheel behavior. */
+  readonly #handleWidgetWheel = (event: WheelEvent) => {
+    const widget = widgetHostForShadowInteraction(event)
+    if(!widget || widget === this.captureSelectedWidget) return
+    event.stopPropagation()
+    // Preserve browser page zoom while still keeping the event out of the
+    // widget. Regular wheel scrolling has to be redirected explicitly because
+    // stopping propagation does not retarget the wheel's default action.
+    if(event.ctrlKey) return
+    event.preventDefault()
+    const unit = event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+      ? window.innerHeight
+      : event.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? parseFloat(getComputedStyle(document.documentElement).lineHeight) || 16
+        : 1
+    window.scrollBy({left: event.deltaX * unit, top: event.deltaY * unit, behavior: "instant"})
+  }
+
+  /** Keeps inactive widgets from observing scrolls on their own surface or in
+   * their shadow tree. Document capture listeners still receive the event so
+   * editor overlays can follow layout changes. */
+  readonly #handleWidgetScroll = (event: Event) => {
+    const widget = widgetHostForScrollEvent(event)
+    if(widget && widget !== this.captureSelectedWidget) event.stopPropagation()
+  }
 
   /** Keeps widget shadow trees atomic without cancelling their own controls.
    * Regular feature listeners ignore these events, so they cannot start or
