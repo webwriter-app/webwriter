@@ -64,9 +64,10 @@ type RibbonInputEventDetail = {
 
 type AIChatMessage = {
   id: string
-  role: "user" | "assistant"
+  role: "user" | "assistant" | "event"
   content: string
   attachments?: AIAttachment[]
+  edit?: AIEditProtocol
 }
 
 type AIChat = {
@@ -89,9 +90,22 @@ type PendingAIEdit = {
   chatId: string
   summary: string
   html: string
-  applying: boolean
+  previewing: boolean
+  deciding: boolean
+  queuedDecision?: "accept" | "reject"
   resolve: (value: unknown) => void
 }
+
+type AIEditProtocol = {
+  call: AIDocumentToolCall
+  editId: string
+  summary: string
+  decision: "accepted" | "rejected" | "undone"
+  busy?: boolean
+}
+
+export type AIEditReviewAction = "preview" | "accept" | "reject" | "goto" | "undo"
+export type AIEditReviewHandler = (action: AIEditReviewAction, call: AIDocumentToolCall) => Promise<unknown>
 
 const isRibbonInput = (target: EventTarget | null): target is HTMLElement => {
   if(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) {
@@ -313,6 +327,7 @@ export class AppRibbon extends LitElement {
     aiError: {type: String, state: true},
     pendingAIEdit: {attribute: false, state: true},
     aiDocumentToolHandler: {attribute: false},
+    aiEditReviewHandler: {attribute: false},
     backendClient: {attribute: false},
     backendState: {type: String, attribute: "backend-state"},
   }
@@ -831,6 +846,11 @@ export class AppRibbon extends LitElement {
       outline-offset: 1px;
     }
 
+    .ai-chat-header-button:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
     .ai-chat-new-icon,
     .ai-chat-new-icon svg,
     .ai-chat-settings-icon,
@@ -899,6 +919,14 @@ export class AppRibbon extends LitElement {
     .ai-chat-message[data-role="assistant"] {
       align-self: flex-start;
       border-bottom-left-radius: 0.2rem;
+    }
+
+    .ai-chat-message[data-role="event"] {
+      align-self: stretch;
+      max-width: none;
+      color: #4c1d95;
+      border-color: #c4b5fd;
+      background: #faf5ff;
     }
 
     .ai-chat-message-role {
@@ -982,6 +1010,10 @@ export class AppRibbon extends LitElement {
     }
 
     .ai-edit-action {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.3rem;
       min-height: 1.8rem;
       padding: 0.25rem 0.55rem;
       border: 1px solid #d6a80d;
@@ -1000,6 +1032,17 @@ export class AppRibbon extends LitElement {
       background: #2563eb;
     }
 
+    .ai-edit-action[data-kind="undo"] {
+      border-color: #7c3aed;
+      color: #ffffff;
+      background: #7c3aed;
+    }
+
+    .ai-edit-action svg {
+      width: 0.85rem;
+      height: 0.85rem;
+    }
+
     .ai-edit-action:disabled {
       opacity: 0.55;
       cursor: default;
@@ -1009,6 +1052,63 @@ export class AppRibbon extends LitElement {
       align-self: flex-start;
       color: #64748b;
       font-size: 0.68rem;
+    }
+
+    .ai-prompt-review-actions {
+      box-sizing: border-box;
+      display: flex;
+      position: absolute;
+      z-index: 2;
+      right: 22px;
+      bottom: 1px;
+      gap: 2px;
+      height: 18px;
+    }
+
+    .ai-prompt-review-action {
+      box-sizing: border-box;
+      display: grid;
+      place-items: center;
+      width: 18px;
+      height: 18px;
+      padding: 2px;
+      border: 0;
+      border-radius: 50%;
+      color: #6b21a8;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .ai-prompt-review-action[data-kind="approve"] {
+      color: #ffffff;
+      background: #7c3aed;
+    }
+
+    .ai-prompt-review-action:hover,
+    .ai-prompt-review-action:focus-visible {
+      background: #ede9fe;
+      outline: none;
+    }
+
+    .ai-prompt-review-action[data-kind="approve"]:hover,
+    .ai-prompt-review-action[data-kind="approve"]:focus-visible {
+      background: #6d28d9;
+    }
+
+    .ai-prompt-review-action:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    .ai-prompt-review-action svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    .ai-composer-surface[data-review-pending] .ai-prompt-input {
+      padding-right: 82px;
+      color: #6b21a8;
+      background: #faf5ff;
     }
 
     .ai-chat-composer {
@@ -1379,6 +1479,12 @@ export class AppRibbon extends LitElement {
       color: #5e6977;
       background: transparent;
       cursor: pointer;
+    }
+
+    .ribbon-top-actions {
+      display: flex;
+      align-items: center;
+      margin-left: auto;
     }
 
     .presence-users {
@@ -1879,6 +1985,7 @@ export class AppRibbon extends LitElement {
   private packageVisibleCount = 2
   private linkAttributeMenuOpen = false
   aiDocumentToolHandler: AIDocumentToolHandler | undefined
+  aiEditReviewHandler: AIEditReviewHandler | undefined
   backendClient: BackendClient | null = null
   backendState: "probing" | "connected" | "unavailable" = "probing"
   private readonly aiProviderStore = new AIProviderStore()
@@ -2216,9 +2323,36 @@ export class AppRibbon extends LitElement {
       messages: [...chat.messages, message],
     } : chat)
     void this.updateComplete.then(() => {
-      const messages = this.renderRoot.querySelector<HTMLElement>(".ai-chat-messages")
-      if(messages) messages.scrollTop = messages.scrollHeight
+      this.scrollAIChatToEnd()
     })
+  }
+
+  private scrollAIChatToEnd() {
+    const messages = this.renderRoot.querySelector<HTMLElement>(".ai-chat-messages")
+    if(messages) messages.scrollTop = messages.scrollHeight
+  }
+
+  private appendAIEditProtocol(pending: PendingAIEdit, decision: AIEditProtocol["decision"]) {
+    const content = decision === "accepted"
+      ? `Accepted: ${pending.summary}`
+      : decision === "rejected"
+        ? `Rejected: ${pending.summary}`
+        : `Undone: ${pending.summary}`
+    const message: AIChatMessage = {
+      id: `message-${++this.aiMessageSequence}`,
+      role: "event",
+      content,
+      edit: {
+        call: pending.call,
+        editId: pending.call.id,
+        summary: pending.summary,
+        decision,
+      },
+    }
+    this.aiChats = this.aiChats.map(chat => chat.id === pending.chatId
+      ? {...chat, messages: [...chat.messages, message]}
+      : chat)
+    void this.updateComplete.then(() => this.scrollAIChatToEnd())
   }
 
   /** Adds a model response to the selected chat. */
@@ -2402,13 +2536,15 @@ export class AppRibbon extends LitElement {
 
   private conversationFor(chatId: string): AIConversationMessage[] {
     const chat = this.aiChats.find(candidate => candidate.id === chatId)
-    return chat?.messages.map(message => ({
+    return chat?.messages
+      .filter((message): message is AIChatMessage & {role: "user" | "assistant"} => message.role !== "event")
+      .map(message => ({
       role: message.role,
       content: message.content,
       ...(message.attachments?.length
         ? {attachments: message.attachments.map(attachment => ({...attachment}))}
         : {}),
-    })) ?? []
+      })) ?? []
   }
 
   private handleAIDocumentTool(call: AIDocumentToolCall, chatId: string): Promise<unknown> {
@@ -2424,52 +2560,131 @@ export class AppRibbon extends LitElement {
     }
     return new Promise(resolve => {
       this.pendingAIEdit?.resolve({status: "denied", message: "A newer edit replaced this proposal"})
-      this.pendingAIEdit = {call, chatId, summary, html, applying: false, resolve}
+      this.pendingAIEdit = {call, chatId, summary, html, previewing: true, deciding: false, resolve}
       this.activeAIChatId = chatId
-      this.aiChatOpen = true
-      void this.updateComplete.then(() => {
-        const messages = this.renderRoot.querySelector<HTMLElement>(".ai-chat-messages")
-        if(messages) messages.scrollTop = messages.scrollHeight
-      })
+      const preview = this.aiEditReviewHandler
+        ? this.aiEditReviewHandler("preview", call)
+        : Promise.reject(new Error("The document editor cannot preview AI changes"))
+      void preview.then(
+        () => {
+          if(this.pendingAIEdit?.call.id === call.id) {
+            const queuedDecision = this.pendingAIEdit.queuedDecision
+            this.pendingAIEdit = {...this.pendingAIEdit, previewing: false, queuedDecision: undefined}
+            if(queuedDecision) queueMicrotask(() => this.reviewPendingAIEdit(queuedDecision, call.id))
+          }
+        },
+        error => {
+          if(this.pendingAIEdit?.call.id === call.id) this.pendingAIEdit = null
+          resolve({status: "error", message: error instanceof Error ? error.message : String(error)})
+        },
+      )
+      void this.updateComplete.then(() => this.scrollAIChatToEnd())
     })
   }
 
   private approveAIEdit = async () => {
     const pending = this.pendingAIEdit
-    if(!pending || pending.applying) return
-    this.pendingAIEdit = {...pending, applying: true}
+    if(!pending || pending.previewing || pending.deciding) return
+    this.pendingAIEdit = {...pending, deciding: true}
+    this.aiError = ""
     try {
-      const result = this.aiDocumentToolHandler
-        ? await this.aiDocumentToolHandler(pending.call)
+      const result = this.aiEditReviewHandler
+        ? await this.aiEditReviewHandler("accept", pending.call)
         : {status: "unavailable", message: "The document editor is not connected"}
+      this.appendAIEditProtocol(pending, "accepted")
+      if(this.pendingAIEdit?.call.id === pending.call.id) this.pendingAIEdit = null
       pending.resolve(result)
     }
     catch(error) {
-      pending.resolve({status: "error", message: error instanceof Error ? error.message : String(error)})
-    }
-    finally {
-      if(this.pendingAIEdit?.call.id === pending.call.id) this.pendingAIEdit = null
+      this.aiError = error instanceof Error ? error.message : String(error)
+      if(this.pendingAIEdit?.call.id === pending.call.id) this.pendingAIEdit = {...pending, deciding: false}
     }
   }
 
-  private rejectAIEdit = () => {
+  private rejectAIEdit = async () => {
     const pending = this.pendingAIEdit
-    if(!pending || pending.applying) return
-    this.pendingAIEdit = null
-    pending.resolve({status: "denied", message: "The user rejected the proposed edit"})
+    if(!pending || pending.previewing || pending.deciding) return
+    this.pendingAIEdit = {...pending, deciding: true}
+    this.aiError = ""
+    try {
+      if(this.aiEditReviewHandler) await this.aiEditReviewHandler("reject", pending.call)
+      this.appendAIEditProtocol(pending, "rejected")
+      this.pendingAIEdit = null
+      pending.resolve({status: "denied", message: "The user rejected the proposed edit"})
+    }
+    catch(error) {
+      this.aiError = error instanceof Error ? error.message : String(error)
+      if(this.pendingAIEdit?.call.id === pending.call.id) this.pendingAIEdit = {...pending, deciding: false}
+    }
+  }
+
+  private gotoPendingAIEdit = () => {
+    const pending = this.pendingAIEdit
+    if(pending && !pending.previewing) void this.aiEditReviewHandler?.("goto", pending.call)
+  }
+
+  private gotoProtocolAIEdit = (edit: AIEditProtocol) => {
+    void this.aiEditReviewHandler?.("goto", edit.call)
+  }
+
+  private undoProtocolAIEdit = async (messageId: string, edit: AIEditProtocol) => {
+    if(edit.decision !== "accepted" || edit.busy || this.pendingAIEdit) return
+    this.aiChats = this.aiChats.map(chat => ({
+      ...chat,
+      messages: chat.messages.map(message => message.id === messageId && message.edit
+        ? {...message, edit: {...message.edit, busy: true}}
+        : message),
+    }))
+    try {
+      const result = await this.aiEditReviewHandler?.("undo", edit.call) as {status?: unknown} | undefined
+      if(result?.status !== "undone") throw new Error("This AI change can no longer be undone")
+      this.aiChats = this.aiChats.map(chat => ({
+        ...chat,
+        messages: chat.messages.map(message => message.id === messageId && message.edit
+          ? {
+              ...message,
+              content: `Undone: ${message.edit.summary}`,
+              edit: {...message.edit, decision: "undone", busy: false},
+            }
+          : message),
+      }))
+    }
+    catch(error) {
+      this.aiError = error instanceof Error ? error.message : String(error)
+      this.aiChats = this.aiChats.map(chat => ({
+        ...chat,
+        messages: chat.messages.map(message => message.id === messageId && message.edit
+          ? {...message, edit: {...message.edit, busy: false}}
+          : message),
+      }))
+    }
+  }
+
+  /** Receives an Accept/Reject choice made inside the document preview. */
+  reviewPendingAIEdit(action: "accept" | "reject", editId: string) {
+    if(this.pendingAIEdit?.call.id !== editId) return
+    if(this.pendingAIEdit.previewing) {
+      this.pendingAIEdit = {...this.pendingAIEdit, queuedDecision: action}
+      return
+    }
+    if(action === "accept") void this.approveAIEdit()
+    else void this.rejectAIEdit()
   }
 
   private stopAIRequest = () => {
+    if(this.pendingAIEdit) {
+      this.aiError = "Accept or reject the pending document change before stopping the request."
+      return
+    }
     this.aiAbortController?.abort()
     this.aiAbortController = null
-    const pending = this.pendingAIEdit
-    if(pending) {
-      this.pendingAIEdit = null
-      pending.resolve({status: "denied", message: "The request was stopped"})
-    }
   }
 
   private async runAIPrompt(prompt: string) {
+    if(this.pendingAIEdit) {
+      this.aiError = "Accept or reject the pending document change before continuing the chat."
+      return
+    }
     const provider = this.activeAIProvider
     if(!provider) {
       this.aiError = "Set up an AI provider before sending a message."
@@ -3729,6 +3944,7 @@ export class AppRibbon extends LitElement {
       ? JSON.stringify([activeProvider.id, this.aiModel])
       : ""
     const modelCount = this.aiProviders.reduce((count, provider) => count + provider.models.length, 0)
+    const aiReviewPending = Boolean(this.pendingAIEdit)
     return html`
       <div
         class="ribbon"
@@ -3752,7 +3968,7 @@ export class AppRibbon extends LitElement {
           >
             ${this.logoUrl ? html`<img class="brand-logo" src=${this.logoUrl} alt="WebWriter" />` : ""}
           </button>
-          <nav class="tabs" role="tablist" aria-label="Editor menus">
+          <nav class="tabs" role="tablist" aria-label="Editor menus" ?inert=${aiReviewPending}>
             ${visibleTabs.map(tab => html`
               <ribbon-tab
                 label=${tab}
@@ -3771,7 +3987,7 @@ export class AppRibbon extends LitElement {
             type="button"
             title=${this.backendState === "connected"
               ? "Automatically logged in to the localhost development server"
-              : this.backendState === "probing" ? "Looking for a local backend" : "Retry local backend login"}
+            : this.backendState === "probing" ? "Looking for a local backend" : "Retry local backend login"}
             ?disabled=${this.backendState === "probing"}
             @click=${() => this.dispatchEvent(new Event(
               this.backendState === "connected" ? "backend-admin-request" : "backend-login-request",
@@ -3779,50 +3995,55 @@ export class AppRibbon extends LitElement {
             ))}
           >${this.backendState === "connected" ? "Local dev" : this.backendState === "probing" ? "Connecting…" : "Log in"}</button>
           ${this.renderPresence()}
-          ${this.previewActive ? "" : html`
+          <div class="ribbon-top-actions">
+            ${this.previewActive ? "" : html`
+              <button
+                class="history-button"
+                type="button"
+                aria-label="Undo"
+                title="Undo"
+                ?disabled=${aiReviewPending}
+                @click=${() => this.handleTopButtonClick("Undo")}
+              >
+                <span class="history-icon" aria-hidden="true">${ribbonIcon("Undo")}</span>
+              </button>
+              <button
+                class="history-button"
+                type="button"
+                aria-label="Redo"
+                title="Redo"
+                ?disabled=${aiReviewPending}
+                @click=${() => this.handleTopButtonClick("Redo")}
+              >
+                <span class="history-icon" aria-hidden="true">${ribbonIcon("Redo")}</span>
+              </button>
+            `}
             <button
-              class="history-button"
+              class="preview-button"
               type="button"
-              aria-label="Undo"
-              title="Undo"
-              @click=${() => this.handleTopButtonClick("Undo")}
+              ?active=${this.previewActive}
+              aria-label=${this.previewActive ? "Exit preview" : "Preview"}
+              title=${this.previewActive ? "Exit preview" : "Preview"}
+              aria-pressed=${this.previewActive}
+              ?disabled=${aiReviewPending}
+              @click=${() => this.handleTopButtonClick("Preview")}
             >
-              <span class="history-icon" aria-hidden="true">${ribbonIcon("Undo")}</span>
+              ${this.previewActive ? html`<span class="preview-label" aria-hidden="true">PREVIEW</span>` : ""}
+              <span class="preview-icon" aria-hidden="true">${ribbonIcon("Preview")}</span>
             </button>
             <button
-              class="history-button"
+              class="ribbon-toggle"
               type="button"
-              aria-label="Redo"
-              title="Redo"
-              @click=${() => this.handleTopButtonClick("Redo")}
+              aria-controls="ribbon-content"
+              aria-expanded=${this.expanded}
+              ?disabled=${this.previewActive || this.previewTransitioning || aiReviewPending}
+              aria-label=${this.expanded ? "Collapse ribbon" : "Expand ribbon"}
+              title=${this.expanded ? "Collapse ribbon" : "Expand ribbon"}
+              @click=${this.toggleExpanded}
             >
-              <span class="history-icon" aria-hidden="true">${ribbonIcon("Redo")}</span>
+              <span class="chevron" aria-hidden="true"></span>
             </button>
-          `}
-          <button
-            class="preview-button"
-            type="button"
-            ?active=${this.previewActive}
-            aria-label=${this.previewActive ? "Exit preview" : "Preview"}
-            title=${this.previewActive ? "Exit preview" : "Preview"}
-            aria-pressed=${this.previewActive}
-            @click=${() => this.handleTopButtonClick("Preview")}
-          >
-            ${this.previewActive ? html`<span class="preview-label" aria-hidden="true">PREVIEW</span>` : ""}
-            <span class="preview-icon" aria-hidden="true">${ribbonIcon("Preview")}</span>
-          </button>
-          <button
-            class="ribbon-toggle"
-            type="button"
-            aria-controls="ribbon-content"
-            aria-expanded=${this.expanded}
-            ?disabled=${this.previewActive || this.previewTransitioning}
-            aria-label=${this.expanded ? "Collapse ribbon" : "Expand ribbon"}
-            title=${this.expanded ? "Collapse ribbon" : "Expand ribbon"}
-            @click=${this.toggleExpanded}
-          >
-            <span class="chevron" aria-hidden="true"></span>
-          </button>
+          </div>
         </div>
         <section
           id="ai-chat-panel"
@@ -3841,7 +4062,7 @@ export class AppRibbon extends LitElement {
             aria-controls="ai-chat-panel"
             @click=${this.toggleAIChat}
           ><span class="ai-chat-brand-icon" aria-hidden="true">${ribbonIcon("AI")}</span></button>
-          <header class="ai-chat-header" ?inert=${!this.aiChatOpen}>
+          <header class="ai-chat-header" ?inert=${!this.aiChatOpen || Boolean(this.pendingAIEdit)}>
             <select
               class="ai-chat-switcher"
               aria-label="Current AI chat"
@@ -3868,6 +4089,7 @@ export class AppRibbon extends LitElement {
               type="button"
               aria-label="AI settings"
               title="AI settings"
+              ?disabled=${Boolean(this.pendingAIEdit)}
               @click=${this.showAISettings}
             ><span class="ai-chat-settings-icon" aria-hidden="true">${ribbonIcon("AISettings")}</span></button>
           </header>
@@ -3880,7 +4102,7 @@ export class AppRibbon extends LitElement {
           >
             ${this.activeAIChat?.messages.length ? this.activeAIChat.messages.map(message => html`
               <article class="ai-chat-message" data-role=${message.role}>
-                <span class="ai-chat-message-role">${message.role === "user" ? "You" : "AI"}</span>
+                <span class="ai-chat-message-role">${message.role === "user" ? "You" : message.role === "assistant" ? "AI" : "Document change"}</span>
                 ${message.content}
                 ${message.attachments?.length ? html`
                   <div class="ai-message-attachments" aria-label="Attachments">
@@ -3889,22 +4111,38 @@ export class AppRibbon extends LitElement {
                     `)}
                   </div>
                 ` : ""}
+                ${message.edit ? html`
+                  <div class="ai-edit-actions" aria-label="Document change actions">
+                    ${message.edit.decision === "accepted" ? html`
+                      <button
+                        class="ai-edit-action"
+                        type="button"
+                        ?disabled=${message.edit.busy || Boolean(this.pendingAIEdit)}
+                        @click=${() => this.gotoProtocolAIEdit(message.edit!)}
+                      >${ribbonIcon("Goto")}<span>Go to</span></button>
+                      <button
+                        class="ai-edit-action"
+                        data-kind="undo"
+                        type="button"
+                        ?disabled=${message.edit.busy || Boolean(this.pendingAIEdit)}
+                        @click=${() => this.undoProtocolAIEdit(message.id, message.edit!)}
+                      >${ribbonIcon("Undo")}<span>${message.edit.busy ? "Undoing…" : "Undo change"}</span></button>
+                    ` : ""}
+                  </div>
+                ` : ""}
               </article>
             `) : html`<div class="ai-chat-empty">${this.aiProviders.length
               ? "Start a conversation with your AI model."
               : "Open AI settings to connect a provider."}</div>`}
             ${this.pendingAIEdit?.chatId === this.activeAIChatId ? html`
               <section class="ai-edit-approval" aria-label="Proposed document edit">
-                <strong>Approve document change?</strong>
+                <strong>${this.pendingAIEdit.previewing ? "Preparing document preview…" : "Review document change"}</strong>
                 <span>${this.pendingAIEdit.summary}</span>
-                <details class="ai-edit-preview">
-                  <summary>Review proposed HTML</summary>
-                  <pre>${this.pendingAIEdit.html}</pre>
-                </details>
                 <div class="ai-edit-actions">
-                  <button class="ai-edit-action" type="button" ?disabled=${this.pendingAIEdit.applying} @click=${this.rejectAIEdit}>Reject</button>
-                  <button class="ai-edit-action" data-kind="approve" type="button" ?disabled=${this.pendingAIEdit.applying} @click=${this.approveAIEdit}>
-                    ${this.pendingAIEdit.applying ? "Applying…" : "Approve & apply"}
+                  <button class="ai-edit-action" type="button" ?disabled=${this.pendingAIEdit.previewing || this.pendingAIEdit.deciding} @click=${this.rejectAIEdit}>${ribbonIcon("Reject")}<span>Reject</span></button>
+                  <button class="ai-edit-action" type="button" ?disabled=${this.pendingAIEdit.previewing || this.pendingAIEdit.deciding} @click=${this.gotoPendingAIEdit}>${ribbonIcon("Goto")}<span>Go to</span></button>
+                  <button class="ai-edit-action" data-kind="approve" type="button" ?disabled=${this.pendingAIEdit.previewing || this.pendingAIEdit.deciding} @click=${this.approveAIEdit}>
+                    ${ribbonIcon("Accept")}<span>${this.pendingAIEdit.deciding ? "Saving…" : "Accept"}</span>
                   </button>
                 </div>
               </section>
@@ -3914,9 +4152,14 @@ export class AppRibbon extends LitElement {
           </div>
           <form
             class="ai-chat-composer"
+            ?inert=${Boolean(this.pendingAIEdit) && this.aiChatOpen}
             @submit=${this.submitAIPrompt}
           >
-            <div class="ai-composer-surface" ?data-has-attachments=${this.aiAttachments.length > 0}>
+            <div
+              class="ai-composer-surface"
+              ?data-has-attachments=${this.aiAttachments.length > 0}
+              ?data-review-pending=${Boolean(this.pendingAIEdit) && !this.aiChatOpen}
+            >
               ${this.aiAttachments.length ? html`
                 <div class="ai-pending-attachments" aria-label="Pending attachments">
                   ${this.aiAttachments.map(attachment => html`
@@ -3935,11 +4178,12 @@ export class AppRibbon extends LitElement {
               <textarea
                 class="ai-prompt-input ai-chat-input"
                 aria-label=${this.aiChatOpen ? "Chat message" : "AI prompt"}
-                placeholder=${this.aiChatOpen ? "Message AI…" : "Ask AI…"}
+                placeholder=${this.pendingAIEdit ? "Accept or reject the document change…" : this.aiChatOpen ? "Message AI…" : "Ask AI…"}
                 .rows=${this.aiChatOpen ? 3 : 1}
                 autocomplete="off"
                 data-ribbon-input-persistent
                 .value=${this.aiPrompt}
+                ?disabled=${Boolean(this.pendingAIEdit)}
                 @input=${this.updateAIPrompt}
                 @keydown=${this.handleAIChatPromptKeydown}
               ></textarea>
@@ -3993,17 +4237,25 @@ export class AppRibbon extends LitElement {
                   `)}</select>
                 </div>
               </div>
-              <button
-                class="ai-prompt-submit ai-chat-send"
-                type="button"
-                aria-label=${this.aiBusy ? "Stop AI request" : this.aiChatOpen ? "Send chat message" : "Enter AI prompt"}
-                title=${this.aiBusy ? "Stop" : this.aiChatOpen ? "Send" : "Enter"}
-                ?data-busy=${this.aiBusy}
-                ?disabled=${!this.aiBusy && !this.aiPrompt.trim() && this.aiAttachments.length === 0}
-                @click=${(event: MouseEvent) => this.aiBusy
-                  ? this.stopAIRequest()
-                  : (event.currentTarget as HTMLButtonElement).form?.requestSubmit()}
-              >${this.aiBusy ? html`<span class="ai-stop-icon" aria-hidden="true"></span>` : ribbonIcon("AIPromptSubmit")}</button>
+              ${this.pendingAIEdit && !this.aiChatOpen ? html`
+                <div class="ai-prompt-review-actions" aria-label="Review pending AI change">
+                  <button class="ai-prompt-review-action" type="button" aria-label="Reject AI change" title="Reject" ?disabled=${this.pendingAIEdit.previewing || this.pendingAIEdit.deciding} @click=${this.rejectAIEdit}>${ribbonIcon("Reject")}</button>
+                  <button class="ai-prompt-review-action" type="button" aria-label="Go to AI change" title="Go to change" ?disabled=${this.pendingAIEdit.previewing || this.pendingAIEdit.deciding} @click=${this.gotoPendingAIEdit}>${ribbonIcon("Goto")}</button>
+                  <button class="ai-prompt-review-action" data-kind="approve" type="button" aria-label="Accept AI change" title="Accept" ?disabled=${this.pendingAIEdit.previewing || this.pendingAIEdit.deciding} @click=${this.approveAIEdit}>${ribbonIcon("Accept")}</button>
+                </div>
+              ` : html`
+                <button
+                  class="ai-prompt-submit ai-chat-send"
+                  type="button"
+                  aria-label=${this.aiBusy ? "Stop AI request" : this.aiChatOpen ? "Send chat message" : "Enter AI prompt"}
+                  title=${this.aiBusy ? "Stop" : this.aiChatOpen ? "Send" : "Enter"}
+                  ?data-busy=${this.aiBusy}
+                  ?disabled=${Boolean(this.pendingAIEdit) || !this.aiBusy && !this.aiPrompt.trim() && this.aiAttachments.length === 0}
+                  @click=${(event: MouseEvent) => this.aiBusy
+                    ? this.stopAIRequest()
+                    : (event.currentTarget as HTMLButtonElement).form?.requestSubmit()}
+                >${this.aiBusy ? html`<span class="ai-stop-icon" aria-hidden="true"></span>` : ribbonIcon("AIPromptSubmit")}</button>
+              `}
             </div>
             <button
               class="ai-prompt-expand"
@@ -4020,6 +4272,7 @@ export class AppRibbon extends LitElement {
         <ribbon-menu
           .groups=${this.currentMenuGroups}
           ?hidden=${!this.menuOpen || this.expanded}
+          ?inert=${aiReviewPending}
         ></ribbon-menu>
         <div
           id="ribbon-content"
@@ -4027,6 +4280,7 @@ export class AppRibbon extends LitElement {
           role="tabpanel"
           aria-label=${this.activeMenu}
           ?hidden=${!this.expanded}
+          ?inert=${aiReviewPending}
         >
           ${this.renderDrawers()}
         </div>
