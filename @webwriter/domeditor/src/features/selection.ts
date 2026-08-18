@@ -271,6 +271,20 @@ export class SelectionFeature extends EditorFeature {
     this.editor.postSelectionPath()
   }
 
+  /** Returns a phrase-aware target for modifier-click node selection.
+   * Phrasing elements plus BR/WBR always bubble to their container so node
+   * selection stays on a structural element. */
+  #modifierSelectionTarget(target: EventTarget | null) {
+    if(!(target instanceof Node)) return null
+    let targetElement = getContainer(target)
+    while(targetElement && (targetElement.matches("br, wbr") || this.editor.schema.isPhrasing(targetElement))) {
+      const parent = targetElement.parentElement
+      if(!parent) break
+      targetElement = parent
+    }
+    return targetElement
+  }
+
   /** Selects the element addressed by a child-node path from BODY. */
   actions = {
     selectNode: ({path}: {type: "selectNode", path: number[]}) => {
@@ -774,7 +788,10 @@ export class SelectionFeature extends EditorFeature {
       }
       if(modifierKeyDown(ev)) {
         ev.preventDefault()
-        $.selectElement(getContainer(ev.target as Node))
+        const target = this.#modifierSelectionTarget(ev.target)
+        if(target) {
+          $.selectElement(target)
+        }
         this.processSelection(this.isInDragSelection)
       }
       else {

@@ -449,6 +449,27 @@ describe("document listeners", () => {
     expect($.selectedElement).toBe(p)
     expect(p).toHaveClass("◆element-selected")
   })
+  it("selects the containing block rather than a clicked phrase on modifier pointerdown", () => {
+    document.body.innerHTML = "<p><span>hello</span></p>"
+    const p = document.querySelector("p")!
+    document.querySelector("span")!.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true}))
+    expect($.selectedElement).toBe(p)
+    expect(p).toHaveClass("◆element-selected")
+  })
+  it.each(["br", "wbr"])("does not node-select <%s> itself on modifier pointerdown", tag => {
+    document.body.innerHTML = `<p>a<${tag}>b</p>`
+    const p = document.querySelector("p")!
+    document.querySelector(tag)!.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true}))
+    expect($.selectedElement).toBe(p)
+    expect(p).toHaveClass("◆element-selected")
+  })
+  it("selects a widget on modifier pointerdown", () => {
+    const widget = document.createElement("webwriter-demo")
+    document.body.append(widget)
+    widget.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true}))
+    expect($.selectedElement).toBe(widget)
+    expect(widget).toHaveClass("◆element-selected")
+  })
   it("capture-selects a widget without starting an editor drag from its shadow DOM", () => {
     const widget = document.createElement("interactive-widget")
     const button = document.createElement("button")
