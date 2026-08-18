@@ -24,8 +24,8 @@ Do not introduce a dependency until the platform and installed dependencies have
 
 ## Task delegation
 
-- Sol orchestrates the work and delegates simple, scoped tasks to Luna when they can be completed without reading the whole application for context.
-- Delegate rote tasks, especially making commits, to Codex 5.3 Spark.
+- Sol orchestrates the work and delegates suitable simple, scoped, context-light tasks only to Luna.
+- Sol never delegates tasks to Codex 5.3 Spark.
 
 ## Architectural invariants
 
