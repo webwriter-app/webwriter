@@ -234,6 +234,34 @@ describe("selectCoords()", () => {
     expect($.isGapSelection).toBe(true)
   })
 
+  it("selects the table's following gap when its last cell receives a hit below the table", () => {
+    setBody("<table><tbody><tr><td>A</td></tr></tbody></table>")
+    const table = document.querySelector("table")!
+    const cell = document.querySelector("td")!
+    const text = cell.firstChild as Text
+    setBlockRect(table, 100, 140)
+    mockHitTest(text, text.length, cell)
+
+    $.selectCoords(50, 150)
+
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(1)
+    expect($.isGapSelection).toBe(true)
+  })
+
+  it("selects the table's following gap when the body receives a hit below the table", () => {
+    setBody("<table><tbody><tr><td>A</td></tr></tbody></table>")
+    const table = document.querySelector("table")!
+    setBlockRect(table, 100, 140)
+    mockHitTest(document.body, 0)
+
+    $.selectCoords(50, 150)
+
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(1)
+    expect($.isGapSelection).toBe(true)
+  })
+
   it("selects the widget's following gap when Chromium maps the whitespace to the next media element", () => {
     setBody("<interactive-widget></interactive-widget><video></video>")
     const widget = document.querySelector("interactive-widget")!
@@ -707,6 +735,16 @@ describe("getContainer()", () => {
   it("returns the parent element of a text node", () => {
     setBody("<p>hello</p>")
     expect(getContainer(firstText())).toBe(document.body.firstElementChild)
+  })
+  it("returns the cell containing a text node from another document realm", () => {
+    const iframe = document.createElement("iframe")
+    document.body.append(iframe)
+    const cell = iframe.contentDocument!.createElement("td")
+    const text = iframe.contentDocument!.createTextNode("hello")
+    cell.append(text)
+
+    expect(text).not.toBeInstanceOf(Text)
+    expect(getContainer(text)).toBe(cell)
   })
   it("returns an element itself", () => {
     setBody("<p>hello</p>")

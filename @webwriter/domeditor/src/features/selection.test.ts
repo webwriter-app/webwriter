@@ -213,6 +213,29 @@ describe("processSelection()", () => {
     expect(p).not.toHaveClass("◆element-hovered")
     expect(editor.appendix.querySelectorAll(".◆hover-caret")).toHaveLength(1)
   })
+  it("promotes a table descendant hover preview to the table", () => {
+    document.body.innerHTML = "<table><tbody><tr><td><p>Cell</p></td></tr></tbody></table>"
+    const table = document.querySelector("table")!
+    const paragraph = document.querySelector("p")!
+
+    feature.actions.hoverNode({type: "hoverNode", path: [0, 0, 0, 0, 0]})
+
+    expect(table).toHaveClass("◆element-hovered")
+    expect(paragraph).not.toHaveClass("◆element-hovered")
+  })
+  it("keeps an active empty-cell text position separate from the table hover", () => {
+    document.body.innerHTML = "<table><tbody><tr><td></td></tr></tbody></table>"
+    const table = document.querySelector("table")!
+    const cell = document.querySelector("td")!
+    $.move(cell, 0)
+    feature.processSelection()
+
+    feature.actions.hoverNode({type: "hoverNode", path: [0, 0, 0, 0]})
+
+    expect(cell).toHaveClass("◆empty-selected")
+    expect(cell).not.toHaveClass("◆element-hovered")
+    expect(table).toHaveClass("◆element-hovered")
+  })
   it("clears a document hover without leaving a body marker", () => {
     feature.actions.hoverNode({type: "hoverNode", path: []})
     expect(document.body).toHaveClass("◆element-hovered")

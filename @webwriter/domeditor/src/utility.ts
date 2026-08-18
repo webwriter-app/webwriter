@@ -117,12 +117,24 @@ export class EditingSelection {
       this.selectGap(firstBodyElement, "before")
       return
     }
+    const hitElement = offsetNode instanceof Element ? offsetNode : offsetNode.parentElement
+    let outerTable = hitElement?.closest("table") ?? null
+    while(outerTable?.parentElement?.closest("table")) outerTable = outerTable.parentElement.closest("table")
+    if(!extend && outerTable) {
+      const tableRect = outerTable.getBoundingClientRect()
+      if(y < tableRect.top || y > tableRect.bottom) {
+        this.selectGap(outerTable, y < tableRect.top ? "before" : "after")
+        return
+      }
+    }
     if(!extend && offsetNode instanceof Element && typeof offset === "number") {
-      const atomicAtCaret = isAtomicEditingElement(offsetNode) ? offsetNode : null
+      const gapAddressableElement = (node: Node | null) => isAtomicEditingElement(node)
+        || node instanceof Element && node.matches("table")
+      const atomicAtCaret = gapAddressableElement(offsetNode) ? offsetNode : null
       const elementBeforeCaret = adjacentElement(offsetNode.childNodes, offset, "before")
       const elementAfterCaret = adjacentElement(offsetNode.childNodes, offset, "after")
-      const atomicBeforeCaret = isAtomicEditingElement(elementBeforeCaret) ? elementBeforeCaret : null
-      const atomicAfterCaret = isAtomicEditingElement(elementAfterCaret) ? elementAfterCaret : null
+      const atomicBeforeCaret = gapAddressableElement(elementBeforeCaret) ? elementBeforeCaret : null
+      const atomicAfterCaret = gapAddressableElement(elementAfterCaret) ? elementAfterCaret : null
 
       // Chromium may map whitespace around an atomic element either to the
       // element itself or to a parent position separated by formatting text.
@@ -486,7 +498,7 @@ export const $ = EditingSelection
 /** The nearest non-mark element containing the node (the node itself when it
  * is already a non-mark element). */
 export function getContainer(node: Node) {
-  let element = node instanceof Text? node.parentElement: node as Element
+  let element = node?.nodeType === Node.TEXT_NODE? node.parentElement: node as Element
   while(element && isMarkElement(element)) element = element.parentElement
   return element!
 }

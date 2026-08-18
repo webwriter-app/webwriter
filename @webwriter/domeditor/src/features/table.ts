@@ -18,6 +18,10 @@ import {
 type CellRectangle = {top: number, left: number, bottom: number, right: number}
 type TableSide = "above" | "below" | "left" | "right"
 type TableCellStyle = "background-color" | "border-color" | "border-style" | "border-width"
+type TableResizeEdge = {table: HTMLTableElement, column: number}
+type SelectionPoint = {node: Node, offset: number}
+
+const resizeDragThreshold = 4
 
 function cellTagForRow(row: HTMLTableRowElement) {
   const cells = Array.from(row.children).filter(child => child.matches(tableCellSelector))
@@ -47,6 +51,18 @@ function authoredClassValue(value: string | null) {
   return (value ?? "").split(/\s+/).filter(name => name && !name.startsWith("◆")).sort().join(" ")
 }
 
+function inlineWidthInPixels(element: HTMLElement) {
+  const inlineWidth = element.style.getPropertyValue("width").trim()
+  if(!inlineWidth) return null
+  const parsePixels = (value: string) => {
+    const match = value.trim().match(/^([+-]?(?:\d+(?:\.\d+)?|\.\d+))px$/i)
+    return match ? Number.parseFloat(match[1]) : null
+  }
+  const width = parsePixels(inlineWidth) ?? parsePixels(getComputedStyle(element).width)
+  if(width === null) return null
+  return Number.isFinite(width) && width > 0 ? width : null
+}
+
 /** Native-HTML table editing. The authored table remains the document model;
  * this feature stores only transient cell-selection anchors and derives a
  * fresh rowspan/colspan occupancy map immediately before every command. */
@@ -55,8 +71,15 @@ export class TableFeature extends EditorFeature {
   private focusCell: HTMLTableCellElement | null = null
   private pendingCell: HTMLTableCellElement | null = null
   private pointerSelecting = false
+  private textDragAnchor: SelectionPoint | null = null
   private observer: MutationObserver | null = null
   private refreshQueued = false
+  private resizeHover: TableResizeEdge | null = null
+  private pendingResize: {
+    edge: TableResizeEdge
+    startX: number
+    startY: number
+  } | null = null
   private resize: {
     table: HTMLTableElement
     column: number
@@ -111,7 +134,7 @@ export class TableFeature extends EditorFeature {
     this.observer = null
     this.clearCellSelection(false)
     this.stopResize()
-    document.body.classList.remove("◆table-column-edge")
+    this.setResizeHover(null)
     super.disable()
   }
 
@@ -197,6 +220,8 @@ export class TableFeature extends EditorFeature {
     this.focusCell = null
     this.pendingCell = null
     this.pointerSelecting = false
+    this.textDragAnchor = null
+    this.pendingResize = null
     this.clearCellMarkers()
     if(post && hadSelection) this.editor.postSelectionPath()
   }
@@ -432,9 +457,28 @@ export class TableFeature extends EditorFeature {
   }
 
   deleteSelection() {
-    this.selectedCells.forEach(cell => cell.replaceChildren())
-    this.applyCellMarkers()
-    this.editor.postSelectionPath()
+    const selected = this.selectedCells
+    const table = tableForNode(selected[0])
+    if(!selected.length || !table) return false
+
+    const selectedSet = new Set(selected)
+    const placements = buildTableMap(table).placements
+    const selectedIndexes = placements.flatMap(({cell}, index) => selectedSet.has(cell) ? [index] : [])
+    const first = selectedIndexes[0]
+    const last = selectedIndexes.at(-1)!
+    const nextCell = placements.slice(last + 1).find(({cell}) => !selectedSet.has(cell))?.cell
+      ?? placements.slice(0, first).reverse().find(({cell}) => !selectedSet.has(cell))?.cell
+
+    this.clearCellSelection(false)
+    selected.forEach(cell => cell.remove())
+
+    if(nextCell?.isConnected) this.selectCells(nextCell)
+    else if(table.isConnected) {
+      $.selectElement(table)
+      this.editor.features.selection.processSelection()
+      this.editor.postSelectionPath()
+    }
+    return true
   }
 
   private clipboardFragment() {
@@ -588,31 +632,103 @@ export class TableFeature extends EditorFeature {
     return columns
   }
 
-  private resizeEdge(event: PointerEvent, cell: HTMLTableCellElement) {
+  private resizeEdge(event: PointerEvent, cell: HTMLTableCellElement): TableResizeEdge | null {
     const table = tableForNode(cell)
     if(!table) return null
     const map = buildTableMap(table)
     const placement = placementForCell(map, cell)
     if(!placement) return null
     const rect = cell.getBoundingClientRect()
-    if(Math.abs(event.clientX - rect.right) <= 5) return {table, map, column: placement.column + placement.columnSpan - 1}
-    if(placement.column > 0 && Math.abs(event.clientX - rect.left) <= 5) return {table, map, column: placement.column - 1}
+    if(Math.abs(event.clientX - rect.right) <= 5) return {table, column: placement.column + placement.columnSpan - 1}
+    if(placement.column > 0 && Math.abs(event.clientX - rect.left) <= 5) return {table, column: placement.column - 1}
     return null
   }
 
-  private startResize(event: PointerEvent, cell: HTMLTableCellElement) {
-    const edge = this.resizeEdge(event, cell)
-    if(!edge) return false
-    const columns = this.normalizeColumnElements(edge.table, edge.map.width)
+  private sameResizeEdge(first: TableResizeEdge | null, second: TableResizeEdge | null) {
+    return Boolean(first && second && first.table === second.table && first.column === second.column)
+  }
+
+  private setResizeHover(edge: TableResizeEdge | null) {
+    this.resizeHover = edge
+    document.body.classList.toggle("◆table-column-edge", Boolean(edge))
+    if(edge) document.body.classList.add("◆")
+    else if(!Array.from(document.body.classList).some(name => name !== "◆" && name.startsWith("◆"))) document.body.classList.remove("◆")
+  }
+
+  private startResize(edge: TableResizeEdge, startX: number) {
+    if(!edge.table.isConnected) return false
+    const map = buildTableMap(edge.table)
+    if(edge.column < 0 || edge.column >= map.width) return false
+    const columns = this.normalizeColumnElements(edge.table, map.width)
     const columnElement = columns[edge.column]
     if(!columnElement) return false
-    const placement = edge.map.matrix.find(row => row[edge.column])?.[edge.column]
+    const placement = map.matrix.find(row => row[edge.column])?.[edge.column]
     const cellWidth = placement?.cell.getBoundingClientRect().width ?? 0
-    const startWidth = cellWidth > 0 ? cellWidth / (placement?.columnSpan ?? 1)
+    const persistedWidth = inlineWidthInPixels(columnElement)
+    const startWidth = persistedWidth ?? (cellWidth > 0 ? cellWidth / (placement?.columnSpan ?? 1)
       : Number.parseFloat(getComputedStyle(columnElement).width) || 80
-    this.resize = {table: edge.table, column: edge.column, columnElement, startX: event.clientX, startWidth}
+    )
+    this.resize = {table: edge.table, column: edge.column, columnElement, startX, startWidth}
     document.body.classList.add("◆", "◆table-column-resize")
     return true
+  }
+
+  private captureTextDragAnchor() {
+    if(this.textDragAnchor || !this.pendingCell || !this.editor.features.selection.isInDragSelection) return
+    const node = $.anchor
+    if(node && cellForNode(node) === this.pendingCell && $.isTextSelection) {
+      this.textDragAnchor = {node, offset: $.anchorOffset}
+    }
+  }
+
+  private restoreTextDragSelection() {
+    const point = this.textDragAnchor
+    const origin = this.pendingCell
+    if(!point || !origin || !point.node.isConnected || cellForNode(point.node) !== origin) return false
+    const maximumOffset = point.node instanceof Text ? point.node.length : point.node.childNodes.length
+    if(point.offset < 0 || point.offset > maximumOffset) return false
+
+    this.anchorCell = null
+    this.focusCell = null
+    this.pointerSelecting = false
+    this.clearCellMarkers()
+    $.selectRange(point.node, point.offset)
+    this.editor.features.selection.processSelection(true)
+    this.editor.postSelectionPath()
+    return true
+  }
+
+  private edgeCellAtPoint(table: HTMLTableElement, x: number, y: number) {
+    let closest: {cell: HTMLTableCellElement, distance: number} | null = null
+    for(const {cell} of buildTableMap(table).placements) {
+      const rect = cell.getBoundingClientRect()
+      const horizontalDistance = x < rect.left ? rect.left - x : x > rect.right ? x - rect.right : 0
+      const verticalDistance = y < rect.top ? rect.top - y : y > rect.bottom ? y - rect.bottom : 0
+      const distance = horizontalDistance ** 2 + verticalDistance ** 2
+      if(!closest || distance < closest.distance) closest = {cell, distance}
+    }
+    return closest?.cell ?? null
+  }
+
+  private updatePendingResize(event: PointerEvent) {
+    const pending = this.pendingResize
+    if(!pending) return false
+    const horizontalDistance = Math.abs(event.clientX - pending.startX)
+    const verticalDistance = Math.abs(event.clientY - pending.startY)
+    if(horizontalDistance < resizeDragThreshold && verticalDistance < resizeDragThreshold) return false
+    this.pendingResize = null
+    if(horizontalDistance < resizeDragThreshold || horizontalDistance < verticalDistance) {
+      this.setResizeHover(null)
+      return false
+    }
+
+    this.restoreTextDragSelection()
+    this.pendingCell = null
+    this.pointerSelecting = false
+    this.textDragAnchor = null
+    this.editor.features.selection.isInDragSelection = false
+    this.setResizeHover(null)
+    return this.startResize(pending.edge, pending.startX) && this.updateResize(event)
   }
 
   private updateResize(event: PointerEvent) {
@@ -700,23 +816,28 @@ export class TableFeature extends EditorFeature {
     pointerdown: (event: PointerEvent) => {
       const cell = cellForNode(event.target instanceof Node ? event.target : null)
       if(!cell) {
+        this.setResizeHover(null)
         this.clearCellSelection()
         return
       }
-      if(this.startResize(event, cell)) {
-        event.preventDefault()
-        event.stopImmediatePropagation()
-        return
-      }
+      const edge = this.resizeEdge(event, cell)
+      const resizeArmed = document.body.classList.contains("◆table-column-edge")
+        && this.sameResizeEdge(edge, this.resizeHover)
       if(event.shiftKey && this.hasCellSelection && tableForNode(this.anchorCell) === tableForNode(cell)) {
+        this.setResizeHover(null)
         event.preventDefault()
         event.stopImmediatePropagation()
         this.selectCells(this.anchorCell!, cell)
+        this.pendingCell = this.anchorCell
         this.pointerSelecting = true
         return
       }
+      if(!resizeArmed) this.setResizeHover(null)
       this.clearCellSelection(false)
       this.pendingCell = cell
+      if(resizeArmed && edge) {
+        this.pendingResize = {edge, startX: event.clientX, startY: event.clientY}
+      }
     },
     pointermove: (event: PointerEvent) => {
       if(this.updateResize(event)) {
@@ -724,34 +845,73 @@ export class TableFeature extends EditorFeature {
         event.stopImmediatePropagation()
         return
       }
+      this.captureTextDragAnchor()
+      if(this.updatePendingResize(event)) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        return
+      }
       if(this.pendingCell) {
-        const cell = cellForNode(event.target instanceof Node ? event.target : null)
-        if(cell && cell !== this.pendingCell && tableForNode(cell) === tableForNode(this.pendingCell)) {
-          event.preventDefault()
-          event.stopImmediatePropagation()
-          this.pointerSelecting = true
-          this.selectCells(this.pendingCell, cell)
+        if(!this.pendingCell.isConnected) {
+          this.clearCellSelection()
+          return
         }
+        const target = event.target instanceof Node ? event.target : null
+        const originRect = this.pendingCell.getBoundingClientRect()
+        const hasOriginBox = originRect.right > originRect.left || originRect.bottom > originRect.top
+        const insideOrigin = hasOriginBox
+          ? originRect.left <= event.clientX && event.clientX <= originRect.right
+            && originRect.top <= event.clientY && event.clientY <= originRect.bottom
+          : target === this.pendingCell || Boolean(target && this.pendingCell.contains(target))
+        if(insideOrigin) {
+          if(this.pointerSelecting && !this.restoreTextDragSelection()) {
+            event.preventDefault()
+            event.stopImmediatePropagation()
+          }
+          return
+        }
+        const cell = cellForNode(target)
+        const table = tableForNode(this.pendingCell)
+        const tableRect = table?.getBoundingClientRect()
+        const hasTableBox = Boolean(tableRect && (tableRect.right > tableRect.left || tableRect.bottom > tableRect.top))
+        const pointInsideTable = !hasTableBox || Boolean(tableRect
+          && tableRect.left <= event.clientX && event.clientX <= tableRect.right
+          && tableRect.top <= event.clientY && event.clientY <= tableRect.bottom)
+        const focus = pointInsideTable && cell && tableForNode(cell) === table
+          ? cell
+          : table ? this.edgeCellAtPoint(table, event.clientX, event.clientY) ?? this.pendingCell : this.pendingCell
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        this.pointerSelecting = true
+        if(this.anchorCell !== this.pendingCell || this.focusCell !== focus) this.selectCells(this.pendingCell, focus)
         return
       }
       const cell = cellForNode(event.target instanceof Node ? event.target : null)
       const edge = cell ? this.resizeEdge(event, cell) : null
-      document.body.classList.toggle("◆table-column-edge", Boolean(edge))
-      if(edge) document.body.classList.add("◆")
-      else if(!Array.from(document.body.classList).some(name => name !== "◆" && name.startsWith("◆"))) document.body.classList.remove("◆")
+      this.setResizeHover(edge)
     },
     pointerup: (event: PointerEvent) => {
       if(this.resize) {
         event.preventDefault()
-        event.stopImmediatePropagation()
         this.stopResize()
       }
       else if(this.pointerSelecting) {
         event.preventDefault()
-        event.stopImmediatePropagation()
       }
       this.pendingCell = null
       this.pointerSelecting = false
+      this.textDragAnchor = null
+      this.pendingResize = null
+      this.setResizeHover(null)
+    },
+    pointercancel: () => {
+      this.stopResize()
+      this.pendingCell = null
+      this.pointerSelecting = false
+      this.textDragAnchor = null
+      this.pendingResize = null
+      this.editor.features.selection.isInDragSelection = false
+      this.setResizeHover(null)
     },
     keydown: (event: KeyboardEvent) => {
       if((event.key === "Backspace" || event.key === "Delete") && this.hasCellSelection) {

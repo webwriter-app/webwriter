@@ -20,6 +20,7 @@ body {
   anchor-name: --body-anchor;
   margin: 1.25rem auto;
   padding: 0 var(--body-padding);
+  min-height: calc(100% - 2.5rem);
   max-width: calc(960px + var(--body-padding) + var(--body-padding));
   pointer-events: auto;
   user-select: text;
@@ -36,6 +37,24 @@ html:has(> body.◆key-mod-down) *::after {
 
 body > * + * {
   margin-block-start: 1.25rem;
+}
+
+/* Tables use the available block width and present one contiguous grid by
+ * default. Zero specificity keeps authored document styles authoritative. */
+:where(table) {
+  box-sizing: border-box;
+  width: 100%;
+  border-collapse: collapse;
+}
+
+/* HTML tables have no visible grid by default. Keep this presentation in the
+ * editor stylesheet so it makes empty cells editable without altering the
+ * authored table; zero-specificity selectors let document styles win. */
+:where(td, th) {
+  min-width: 2rem;
+  height: 1.5rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #aeb8c4;
 }
 
 :is(picture, audio, video) {
@@ -159,7 +178,13 @@ body
         none,
         semantics
       )
-  ):hover {
+  ):not(table *):hover {
+  anchor-name: --hover-anchor;
+}
+
+/* A table is the editor's selectable element; its structural descendants and
+ * cell contents must therefore share one hover outline around the table. */
+body table:hover {
   anchor-name: --hover-anchor;
 }
 
@@ -189,6 +214,19 @@ body.◆node-selection-active .◆element-capture-selected {
   caret-color: auto !important;
 }
 
+/* A cell rectangle is a top-level editor selection. Its marker highlight is
+ * authoritative, so neither a native text caret nor range highlight should
+ * remain visible behind it. */
+body.◆table-cell-selection,
+body.◆table-cell-selection * {
+  caret-color: transparent !important;
+}
+
+body.◆table-cell-selection::selection,
+body.◆table-cell-selection *::selection {
+  background: transparent;
+}
+
 /* Hide the document range behind an ordinary node selection. A capture-
  * selected widget keeps its native shadow-tree selection highlight. */
 .◆element-selected:not(.◆element-capture-selected)::selection,
@@ -201,8 +239,8 @@ body.◆node-selection-active .◆element-capture-selected {
  * marker classes touch authored cells; all structural edits remain native. */
 td.◆table-cell-selected,
 th.◆table-cell-selected {
-  box-shadow: inset 0 0 0 2px rgb(57 119 199 / 78%);
-  background-image: linear-gradient(rgb(220 236 255 / 58%), rgb(220 236 255 / 58%));
+  box-shadow: inset 0 0 0 2px var(--sl-color-primary-400);
+  background-image: linear-gradient(rgb(56 189 248 / 6%), rgb(56 189 248 / 6%));
 }
 
 body.◆table-column-edge,
@@ -531,21 +569,15 @@ svg:empty::after {
   content: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="darkgray" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-vector"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M3 3m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M17 3m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M17 17m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M3 17m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M5 7l0 10"/><path d="M19 7l0 10"/><path d="M7 5l10 0"/><path d="M7 19l10 0"/></svg>');
 }
 
-table:empty {
-  display: block;
-  background: lightgray;
-  width: 100%;
-  min-height: 100px;
-}
-
-table:empty::after {
-  position: absolute;
-  top: 0;
-  left: 0;
-  display: inline-block;
-  width: 100%;
-  height: 100%;
-  content: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="darkgray" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-vector"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M3 3m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M17 3m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M17 17m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M3 17m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M5 7l0 10"/><path d="M19 7l0 10"/><path d="M7 5l10 0"/><path d="M7 19l10 0"/></svg>');
+:where(table:not(:has(td, th)))::after {
+  display: table-cell;
+  box-sizing: border-box;
+  min-width: 2rem;
+  height: 2.2rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px dashed #aeb8c4;
+  background: rgb(174 184 196 / 10%);
+  content: "";
 }
 
 body.◆gap-caret-visible {
@@ -733,7 +765,7 @@ body:empty::before {
 
 /* Preserve every active editor anchor when the same element also supplies
  * the shared hover overlay's anchor. */
-.◆element-selected:is(:hover, .◆element-hovered) {
+.◆element-selected:is(:hover, .◆element-hovered):not(table *) {
   anchor-name: --selection-anchor, --hover-anchor;
 }
 
@@ -741,19 +773,19 @@ body.◆element-selected:is(:hover, .◆element-hovered) {
   anchor-name: --body-anchor, --selection-anchor, --hover-anchor;
 }
 
-:is(.◆gap-before-selected, .◆gap-after-selected, .◆drop-caret-before, .◆drop-caret-after):is(:hover, .◆element-hovered) {
+:is(.◆gap-before-selected, .◆gap-after-selected, .◆drop-caret-before, .◆drop-caret-after):is(:hover, .◆element-hovered):not(table *) {
   anchor-name: --gap-anchor, --hover-anchor;
 }
 
-.◆transform-target:is(:hover, .◆element-hovered) {
+.◆transform-target:is(:hover, .◆element-hovered):not(table *) {
   anchor-name: --transform-target, --hover-anchor;
 }
 
-.◆transform-containing-block:is(:hover, .◆element-hovered) {
+.◆transform-containing-block:is(:hover, .◆element-hovered):not(table *) {
   anchor-name: --transform-containing-block, --hover-anchor;
 }
 
-.◆empty-selected:is(:hover, .◆element-hovered) {
+.◆empty-selected:is(:hover, .◆element-hovered):not(table *) {
   anchor-name: --empty-selected, --hover-anchor;
 }
 

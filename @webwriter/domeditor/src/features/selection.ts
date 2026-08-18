@@ -386,7 +386,8 @@ export class SelectionFeature extends EditorFeature {
       this.#clearElementHover()
       if(path === null) return
 
-      const element = this.#elementAtPath(path)
+      const pathElement = this.#elementAtPath(path)
+      const element = pathElement.closest("table") ?? pathElement
       element.classList.add("◆", "◆element-hovered")
     },
   } as const

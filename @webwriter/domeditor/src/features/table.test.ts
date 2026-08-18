@@ -12,12 +12,23 @@ const editor = new DOMEditor()
 
 beforeEach(() => {
   editor.features.table.clearCellSelection(false)
+  editor.features.selection.isInDragSelection = false
   document.body.innerHTML = ""
+  document.body.className = ""
   $.selectDocumentStart()
 })
 
 function cells() {
   return Array.from(document.querySelectorAll<HTMLTableCellElement>("td, th"))
+}
+
+function mockCaretPosition(node: Node, offset = 0) {
+  const original = document.caretPositionFromPoint
+  Object.defineProperty(document, "caretPositionFromPoint", {
+    configurable: true,
+    value: () => ({offsetNode: node, offset, getClientRect: () => node.parentElement?.getBoundingClientRect()}),
+  })
+  return () => Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: original})
 }
 
 describe("table grid", () => {
@@ -114,24 +125,118 @@ describe("table cell selection", () => {
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 
-  it("creates a cell selection by dragging across adjacent cells", () => {
+  it("is the only active top-level selection presentation", () => {
+    document.body.innerHTML = "<p>Text</p><table><tbody><tr><td>A</td><td>B</td></tr></tbody></table>"
+    const paragraph = document.querySelector("p")!
+    $.selectElement(paragraph)
+    editor.features.selection.processSelection()
+    expect(editor.features.selection.selectionCaret?.getAttribute("part")).toContain("selection-caret-node")
+
+    $.selectRange(cells()[0].firstChild!, 0, cells()[0].firstChild!, 1)
+    editor.features.selection.processSelection()
+    editor.features.table.selectCells(cells()[0], cells()[1])
+
+    expect(document.body).toHaveClass("◆table-cell-selection")
+    expect(document.body).not.toHaveClass("◆node-selection-active")
+    expect(document.querySelector(".◆text-selected, .◆element-selected, .◆gap-before-selected, .◆gap-after-selected")).toBeNull()
+    expect(editor.features.selection.selectionCaret?.getAttribute("part")).toContain("selection-caret-hidden")
+    expect(editor.features.selection.selectionCaret).toHaveAttribute("visibility", "hidden")
+  })
+
+  it("switches a text drag to cells outside its origin and restores text when it returns", () => {
     document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr></tbody></table>"
     const [first, , , last] = cells()
+    const firstText = first.firstChild!
+    const lastText = last.firstChild!
     const rectangle = {x: 0, y: 0, left: 0, top: 0, right: 100, bottom: 30, width: 100, height: 30, toJSON: () => ({})}
     first.getBoundingClientRect = () => rectangle
     last.getBoundingClientRect = () => rectangle
     const originalCaretPositionFromPoint = document.caretPositionFromPoint
+    let caretPosition = {offsetNode: firstText, offset: 0, getClientRect: () => rectangle}
     Object.defineProperty(document, "caretPositionFromPoint", {
       configurable: true,
-      value: () => ({offsetNode: first, offset: 0, getClientRect: () => rectangle}),
+      value: () => caretPosition,
     })
 
-    first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
-    last.dispatchEvent(new PointerEvent("pointermove", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
-    document.dispatchEvent(new PointerEvent("pointerup", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
+    first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 10, clientY: 15, bubbles: true, cancelable: true}))
+    caretPosition = {offsetNode: firstText, offset: 1, getClientRect: () => rectangle}
+    first.dispatchEvent(new PointerEvent("pointermove", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
+
+    expect(editor.features.table.hasCellSelection).toBe(false)
+    expect($.anchor).toBe(firstText)
+    expect($.anchorOffset).toBe(0)
+    expect($.focus).toBe(firstText)
+    expect($.focusOffset).toBe(1)
+
+    caretPosition = {offsetNode: lastText, offset: 1, getClientRect: () => rectangle}
+    last.dispatchEvent(new PointerEvent("pointermove", {clientX: 150, clientY: 45, bubbles: true, cancelable: true}))
+
+    expect(editor.features.table.selectedCells).toHaveLength(4)
+
+    caretPosition = {offsetNode: firstText, offset: 1, getClientRect: () => rectangle}
+    first.dispatchEvent(new PointerEvent("pointermove", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
+
+    expect(editor.features.table.hasCellSelection).toBe(false)
+    expect($.anchor).toBe(firstText)
+    expect($.anchorOffset).toBe(0)
+    expect($.focus).toBe(firstText)
+    expect($.focusOffset).toBe(1)
+
+    last.dispatchEvent(new PointerEvent("pointermove", {clientX: 150, clientY: 45, bubbles: true, cancelable: true}))
+    document.dispatchEvent(new PointerEvent("pointerup", {clientX: 150, clientY: 45, bubbles: true, cancelable: true}))
     Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: originalCaretPositionFromPoint})
 
     expect(editor.features.table.selectedCells).toHaveLength(4)
+    expect(editor.features.selection.isInDragSelection).toBe(false)
+  })
+
+  it("keeps a cell selection when a non-text drag returns to its empty origin", () => {
+    document.body.innerHTML = "<table><tbody><tr><td></td><td></td></tr></tbody></table>"
+    const [first, second] = cells()
+    const restoreCaretPosition = mockCaretPosition(first)
+
+    first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
+    second.dispatchEvent(new PointerEvent("pointermove", {clientX: 150, clientY: 15, bubbles: true, cancelable: true}))
+    expect(editor.features.table.selectedCells).toEqual([first, second])
+
+    first.dispatchEvent(new PointerEvent("pointermove", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
+    document.dispatchEvent(new PointerEvent("pointerup", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
+    restoreCaretPosition()
+
+    expect(editor.features.table.selectedCells).toEqual([first, second])
+  })
+
+  it("extends a cell drag to the nearest table edge after the pointer leaves the table", () => {
+    document.body.innerHTML = `<table><tbody>
+      <tr><td>A</td><td>B</td><td>C</td></tr>
+      <tr><td>D</td><td>E</td><td>F</td></tr>
+      <tr><td>G</td><td>H</td><td>I</td></tr>
+    </tbody></table>`
+    const tableCells = cells()
+    const table = document.querySelector("table")!
+    table.getBoundingClientRect = () => ({
+      x: 0, y: 0, left: 0, right: 300, top: 0, bottom: 90,
+      width: 300, height: 90, toJSON: () => ({}),
+    })
+    tableCells.forEach((cell, index) => {
+      const row = Math.floor(index / 3)
+      const column = index % 3
+      cell.getBoundingClientRect = () => ({
+        x: column * 100, y: row * 30,
+        left: column * 100, right: column * 100 + 100,
+        top: row * 30, bottom: row * 30 + 30,
+        width: 100, height: 30, toJSON: () => ({}),
+      })
+    })
+    const origin = tableCells[4]
+    const restoreCaretPosition = mockCaretPosition(origin.firstChild!)
+
+    origin.dispatchEvent(new PointerEvent("pointerdown", {clientX: 150, clientY: 45, bubbles: true, cancelable: true}))
+    origin.dispatchEvent(new PointerEvent("pointermove", {clientX: 350, clientY: 110, bubbles: true, cancelable: true}))
+    document.dispatchEvent(new PointerEvent("pointerup", {clientX: 350, clientY: 110, bubbles: true, cancelable: true}))
+    restoreCaretPosition()
+
+    expect(editor.features.table.selectedCells).toEqual([tableCells[4], tableCells[5], tableCells[7], tableCells[8]])
   })
 
   it("navigates between cells and changes to an outer gap at a table edge", () => {
@@ -148,15 +253,30 @@ describe("table cell selection", () => {
     expect($.elementAfter).toBe(document.querySelector("table"))
   })
 
-  it("clears selected cell contents on Delete without removing cells", () => {
-    document.body.innerHTML = "<table><tbody><tr><td>A</td><td><strong>B</strong></td></tr></tbody></table>"
+  it.each(["Backspace", "Delete"])("removes selected cells on %s and selects the next surviving cell", key => {
+    document.body.innerHTML = "<table><tbody><tr><td>A</td><td><strong>B</strong></td><td>C</td></tr></tbody></table>"
     const [first, second] = cells()
     editor.features.table.selectCells(first, second)
+    const event = new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true})
+
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(cells().map(cell => cell.textContent)).toEqual(["C"])
+    expect(editor.features.table.selectedCells).toEqual(cells())
+  })
+
+  it("selects an emptied table after deleting all of its cells", () => {
+    document.body.innerHTML = "<table><tbody><tr><td>A</td></tr></tbody></table>"
+    const table = document.querySelector("table")!
+    editor.features.table.selectCells(cells()[0])
 
     document.dispatchEvent(new KeyboardEvent("keydown", {key: "Delete", bubbles: true, cancelable: true}))
 
-    expect(cells()).toHaveLength(2)
-    expect(cells().map(cell => cell.innerHTML)).toEqual(["", ""])
+    expect(cells()).toHaveLength(0)
+    expect(editor.features.table.hasCellSelection).toBe(false)
+    expect($.selectedElement).toBe(table)
+    expect(table).toHaveClass("◆element-selected")
   })
 
   it("copies a rectangular segment as table HTML and TSV text", () => {
@@ -192,14 +312,72 @@ describe("table cell selection", () => {
       x: 0, y: 0, left: 0, top: 0, right: 100, bottom: 30, width: 100, height: 30,
       toJSON: () => ({}),
     })
+    const restoreCaretPosition = mockCaretPosition(first.firstChild!)
 
-    first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 100, bubbles: true, cancelable: true}))
-    document.dispatchEvent(new PointerEvent("pointermove", {clientX: 130, bubbles: true, cancelable: true}))
-    document.dispatchEvent(new PointerEvent("pointerup", {clientX: 130, bubbles: true, cancelable: true}))
+    first.dispatchEvent(new PointerEvent("pointermove", {clientX: 100, clientY: 15, bubbles: true, cancelable: true}))
+    first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 100, clientY: 15, bubbles: true, cancelable: true}))
+    document.dispatchEvent(new PointerEvent("pointermove", {clientX: 130, clientY: 15, bubbles: true, cancelable: true}))
+    document.dispatchEvent(new PointerEvent("pointerup", {clientX: 130, clientY: 15, bubbles: true, cancelable: true}))
+    restoreCaretPosition()
 
     const columns = document.querySelectorAll<HTMLTableColElement>("colgroup > col")
     expect(columns).toHaveLength(2)
     expect(columns[0].style.width).toBe("130px")
+    expect(editor.toHTML(true)).toContain("width: 130px")
+  })
+
+  it("continues resizing from a persisted inline column width", () => {
+    document.body.innerHTML = `<table><colgroup><col style="width: 160px"><col></colgroup>
+      <tbody><tr><td>A</td><td>B</td></tr></tbody></table>`
+    const [first] = cells()
+    first.getBoundingClientRect = () => ({
+      x: 0, y: 0, left: 0, top: 0, right: 100, bottom: 30, width: 100, height: 30,
+      toJSON: () => ({}),
+    })
+    const restoreCaretPosition = mockCaretPosition(first.firstChild!)
+
+    first.dispatchEvent(new PointerEvent("pointermove", {clientX: 100, clientY: 15, bubbles: true, cancelable: true}))
+    first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 100, clientY: 15, bubbles: true, cancelable: true}))
+    document.dispatchEvent(new PointerEvent("pointermove", {clientX: 120, clientY: 15, bubbles: true, cancelable: true}))
+    document.dispatchEvent(new PointerEvent("pointerup", {clientX: 120, clientY: 15, bubbles: true, cancelable: true}))
+    restoreCaretPosition()
+
+    expect(document.querySelector<HTMLTableColElement>("col")?.style.width).toBe("180px")
+  })
+
+  it("does not resize from an unarmed edge drag", () => {
+    document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr></tbody></table>"
+    const [first] = cells()
+    first.getBoundingClientRect = () => ({
+      x: 0, y: 0, left: 0, top: 0, right: 100, bottom: 30, width: 100, height: 30,
+      toJSON: () => ({}),
+    })
+    const restoreCaretPosition = mockCaretPosition(first.firstChild!)
+
+    first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 100, clientY: 15, bubbles: true, cancelable: true}))
+    first.dispatchEvent(new PointerEvent("pointermove", {clientX: 70, clientY: 15, bubbles: true, cancelable: true}))
+    document.dispatchEvent(new PointerEvent("pointerup", {clientX: 70, clientY: 15, bubbles: true, cancelable: true}))
+    restoreCaretPosition()
+
+    expect(document.querySelector("colgroup")).toBeNull()
+  })
+
+  it("does not resize until an armed edge drag passes the horizontal threshold", () => {
+    document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr></tbody></table>"
+    const [first] = cells()
+    first.getBoundingClientRect = () => ({
+      x: 0, y: 0, left: 0, top: 0, right: 100, bottom: 30, width: 100, height: 30,
+      toJSON: () => ({}),
+    })
+    const restoreCaretPosition = mockCaretPosition(first.firstChild!)
+
+    first.dispatchEvent(new PointerEvent("pointermove", {clientX: 100, clientY: 15, bubbles: true, cancelable: true}))
+    first.dispatchEvent(new PointerEvent("pointerdown", {clientX: 100, clientY: 15, bubbles: true, cancelable: true}))
+    first.dispatchEvent(new PointerEvent("pointermove", {clientX: 102, clientY: 16, bubbles: true, cancelable: true}))
+    document.dispatchEvent(new PointerEvent("pointerup", {clientX: 102, clientY: 16, bubbles: true, cancelable: true}))
+    restoreCaretPosition()
+
+    expect(document.querySelector("colgroup")).toBeNull()
   })
 })
 

@@ -44,6 +44,23 @@ describe("DOMEditor stylesheets", () => {
       .toContain("transform-overlay-scale-up-left")
   })
 
+  it("shows a full-width contiguous editor-only grid for otherwise unstyled tables", () => {
+    const stylesheet = document.adoptedStyleSheets.find(sheet => hasSelector(sheet, "html"))!
+    const tableRule = Array.from(stylesheet.cssRules)
+      .find(rule => (rule as CSSStyleRule).selectorText === ":where(table)") as CSSStyleRule | undefined
+    const cellRule = Array.from(stylesheet.cssRules)
+      .find(rule => (rule as CSSStyleRule).selectorText === ":where(td, th)") as CSSStyleRule | undefined
+
+    expect(tableRule?.style.boxSizing).toBe("border-box")
+    expect(tableRule?.style.width).toBe("100%")
+    expect(tableRule?.style.borderCollapse).toBe("collapse")
+    expect(cellRule?.style.border).toBe("1px solid #aeb8c4")
+    expect(cellRule?.style.minWidth).toBe("2rem")
+    expect(cellRule?.style.height).toBe("1.5rem")
+    expect(cellRule?.style.padding).toBe("0.35rem 0.5rem")
+    expect(editorStyleString).toMatch(/:where\(table:not\(:has\(td, th\)\)\)::after\s*\{[\s\S]*?display:\s*table-cell;[\s\S]*?height:\s*2\.2rem;[\s\S]*?border:\s*1px dashed #aeb8c4;[\s\S]*?content:\s*"";/)
+  })
+
   it("keeps the empty editing surface interactive and its caret in the shadow appendix", () => {
     const bodyRule = Array.from(document.adoptedStyleSheets.flatMap(sheet => Array.from(sheet.cssRules)))
       .find(rule => (rule as CSSStyleRule).selectorText === "body") as CSSStyleRule | undefined
@@ -52,6 +69,7 @@ describe("DOMEditor stylesheets", () => {
     expect(bodyRule?.style.getPropertyValue("--body-padding")).toBe("1.25rem")
     expect(bodyRule?.style.getPropertyValue("anchor-name")).toBe("--body-anchor")
     expect(bodyRule?.style.padding).toBe("0px var(--body-padding)")
+    expect(bodyRule?.style.minHeight).toBe("calc(100% - 2.5rem)")
     expect(bodyRule?.style.maxWidth).toBe("calc(960px + var(--body-padding) + var(--body-padding))")
     expect(bodyRule?.style.pointerEvents).toBe("auto")
     expect(bodyRule?.style.userSelect).toBe("text")
@@ -73,6 +91,9 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/\.◆element-selected\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
     expect(editorStyleString).toMatch(/body\.◆node-selection-active,\s*body\.◆node-selection-active\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
     expect(editorStyleString).toMatch(/body\.◆node-selection-active\s+\.◆element-capture-selected\s*\{[\s\S]*?caret-color:\s*auto\s*!important;/)
+    expect(editorStyleString).toMatch(/body\.◆table-cell-selection,\s*body\.◆table-cell-selection\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
+    expect(editorStyleString).toMatch(/body\.◆table-cell-selection::selection,\s*body\.◆table-cell-selection\s+\*::selection\s*\{[\s\S]*?background:\s*transparent;/)
+    expect(editorStyleString).toMatch(/td\.◆table-cell-selected,\s*th\.◆table-cell-selected\s*\{[\s\S]*?box-shadow:\s*inset 0 0 0 2px var\(--sl-color-primary-400\);[\s\S]*?rgb\(56 189 248 \/ 6%\)/)
     expect(editorStyleString).toMatch(/\.◆element-selected:not\(\.◆element-capture-selected\)::selection,\s*\.◆element-selected:not\(\.◆element-capture-selected\)\s+\*::selection\s*\{[\s\S]*?background:\s*transparent;/)
     expect(editorStyleString).not.toMatch(/\.◆element-selected::selection[\s\S]*?background:\s*transparent;/)
     expect(editorStyleString).not.toMatch(/\.◆element-selected\s*,\s*\.◆element-selected\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
@@ -92,6 +113,10 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/body::part\(presence-gap-caret\)::after\s*\{[\s\S]*?animation:\s*none;/)
     expect(editorStyleString).toMatch(/\):hover\s*\{[\s\S]*?anchor-name:\s*--hover-anchor;/)
     expect(editorStyleString).toMatch(/\.◆element-hovered\s*\{[\s\S]*?anchor-name:\s*--hover-anchor;/)
+    expect(editorStyleString).toMatch(/\):not\(table \*\):hover\s*\{[\s\S]*?anchor-name:\s*--hover-anchor;/)
+    expect(editorStyleString).toMatch(/body table:hover\s*\{[\s\S]*?anchor-name:\s*--hover-anchor;/)
+    expect(editorStyleString).toMatch(/\.◆element-selected:is\(:hover, \.◆element-hovered\):not\(table \*\)\s*\{[\s\S]*?anchor-name:\s*--selection-anchor, --hover-anchor;/)
+    expect(editorStyleString).toMatch(/\.◆empty-selected:is\(:hover, \.◆element-hovered\):not\(table \*\)\s*\{[\s\S]*?anchor-name:\s*--empty-selected, --hover-anchor;/)
     expect(editorStyleString).toMatch(/body::part\(hover-caret\)\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?position-anchor:\s*--hover-anchor;[\s\S]*?width:\s*anchor-size\(width\);[\s\S]*?outline:\s*1px dotted var\(--sl-color-gray-400, black\);[\s\S]*?outline-offset:\s*2px;/)
     expect(editorStyleString).toMatch(/body:has\(\.◆element-hovered\)::part\(hover-caret\)\s*\{[\s\S]*?outline:\s*2px dotted var\(--sl-color-primary-400\);/)
     expect(editorStyleString).toMatch(/body\.◆element-hovered::part\(hover-caret\)\s*\{[\s\S]*?position-anchor:\s*auto;[\s\S]*?inset:\s*0;[\s\S]*?background:\s*rgb\(56 189 248 \/ 6%\);/)
