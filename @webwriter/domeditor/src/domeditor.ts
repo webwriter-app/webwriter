@@ -11,6 +11,7 @@ import { ListFeature } from "./features/list"
 import { TransformationFeature } from "./features/transformation"
 import { StateFeature } from "./features/state"
 import { MediaFeature } from "./features/media"
+import { TableFeature } from "./features/table"
 import { Schema } from "./schema"
 import { $, adoptStylesheet, createStylesheet, focusedWidgetHost, getContainer, isElement, isWidgetShadowInteraction } from "./utility"
 import {isMarkElement, normalizeMarkElements} from "./marks"
@@ -73,6 +74,7 @@ export class DOMEditor {
     "insertion": new InsertionFeature(this),
     "history": new HistoryFeature(this),
     "list": new ListFeature(this),
+    "table": new TableFeature(this),
     "manipulation": new ManipulationFeature(this),
     "transformation": new TransformationFeature(this),
     "selection": new SelectionFeature(this),
@@ -318,6 +320,8 @@ export class DOMEditor {
   }
 
   private selectedElementForPath() {
+    const selectedTable = this.features.table.selectedTable
+    if(this.features.table.hasCellSelection && selectedTable) return selectedTable
     const capturedWidget = this.features.selection.captureSelectedWidget
     if(capturedWidget) return capturedWidget
     const focusedWidget = focusedWidgetHost()
@@ -354,7 +358,8 @@ export class DOMEditor {
     const elements: Element[] = []
     let current: Element | null = element
     while(current && current !== body) {
-      if(!isMarkElement(current) && !isLineBreakElement(current)) elements.unshift(current)
+      const isTableInternal = current.matches("caption, colgroup, col, thead, tbody, tfoot, tr, td, th")
+      if(!isMarkElement(current) && !isLineBreakElement(current) && !isTableInternal) elements.unshift(current)
       current = current.parentElement
     }
     elements.unshift(body)
@@ -380,6 +385,7 @@ export class DOMEditor {
       : undefined
     const list = this.features.list.getState()
     const media = this.features.media.getState()
+    const table = this.features.table.getState()
     const detail: SelectionChangeDetail = {
       path,
       ...($.isElementSelection ? {nodeSelected: true} : {}),
@@ -387,6 +393,7 @@ export class DOMEditor {
       ...(gap ? {gap} : {}),
       ...(list.type ? {list} : {}),
       ...(media ? {media} : {}),
+      ...(table ? {table} : {}),
     }
     this.postBridgeEvent(selectionChangeEvent, detail)
   }

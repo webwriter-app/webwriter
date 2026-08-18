@@ -53,6 +53,7 @@ import {
   type MediaSelectionState,
   type MediaType,
 } from "../media"
+import type {TableSelectionState} from "../table"
 
 type RibbonMenuName = "File" | "Start" | "Insert" | "Edit" | "Develop"
 
@@ -249,6 +250,7 @@ const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
   ],
   Start: [
     {label: "Marks", buttons: []},
+    {label: "Table", buttons: []},
     elementInsertionMenuGroup,
   ],
   Insert: [
@@ -258,6 +260,7 @@ const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
   ],
   Edit: [
     {label: "Marks", buttons: []},
+    {label: "Table", buttons: []},
     {label: "Styles", buttons: ["Heading", "Theme", "Clear"]},
     {label: "Font", buttons: ["Family", "Size", "Color"]},
     {label: "Effects", buttons: ["Highlight", "Superscript", "More"]},
@@ -309,6 +312,7 @@ export class AppRibbon extends LitElement {
     listType: {type: String, attribute: "list-type"},
     listStyle: {type: String, attribute: "list-style"},
     media: {attribute: false},
+    table: {attribute: false},
     fileName: {type: String, attribute: "file-name"},
     fileDirty: {type: Boolean, attribute: "file-dirty"},
     previewActive: {type: Boolean, attribute: "preview-active"},
@@ -1976,6 +1980,9 @@ export class AppRibbon extends LitElement {
   listType: ListType | null = null
   listStyle = ""
   media: MediaSelectionState | null = null
+  table: TableSelectionState | null = null
+  private tableGridRows = 2
+  private tableGridColumns = 2
   fileName = ""
   fileDirty = false
   previewActive = false
@@ -3554,6 +3561,145 @@ export class AppRibbon extends LitElement {
     `
   }
 
+  private setTableGridSize(rows: number, columns: number) {
+    this.tableGridRows = rows
+    this.tableGridColumns = columns
+    this.requestUpdate()
+  }
+
+  private insertTableSize(rows: number, columns: number) {
+    this.dispatchEvent(new CustomEvent("table-insert", {
+      detail: {rows, columns},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private renderTableSizePicker() {
+    const size = 10
+    return html`
+      <div
+        class="table-size-picker"
+        role="group"
+        aria-label="Table size"
+        @pointerleave=${() => this.setTableGridSize(2, 2)}
+      >
+        <span class="table-size-label">${this.tableGridColumns} × ${this.tableGridRows} table</span>
+        <div class="table-size-grid">
+          ${Array.from({length: size * size}, (_, index) => {
+            const row = Math.floor(index / size) + 1
+            const column = index % size + 1
+            return html`
+              <button
+                class="table-size-cell"
+                type="button"
+                aria-label=${`Insert ${column} by ${row} table`}
+                title=${`${column} × ${row}`}
+                ?data-selected=${row <= this.tableGridRows && column <= this.tableGridColumns}
+                @pointerenter=${() => this.setTableGridSize(row, column)}
+                @focus=${() => this.setTableGridSize(row, column)}
+                @click=${() => this.insertTableSize(row, column)}
+              ></button>
+            `
+          })}
+        </div>
+      </div>
+    `
+  }
+
+  private dispatchTableStyle(property: string, value: string) {
+    this.dispatchEvent(new CustomEvent("table-style-change", {
+      detail: {property, value},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private renderTableBorderDropdown() {
+    const disabled = !this.table?.active
+    return html`
+      <div class="button-dropdown-form" role="group" aria-label="Cell borders">
+        <label class="mark-attribute">
+          <span>Style</span>
+          <select
+            data-ribbon-input-persistent
+            ?disabled=${disabled}
+            @change=${(event: Event) => this.dispatchTableStyle("border-style", (event.currentTarget as HTMLSelectElement).value)}
+          >
+            <option value="solid">Solid</option>
+            <option value="dashed">Dashed</option>
+            <option value="dotted">Dotted</option>
+            <option value="double">Double</option>
+            <option value="none">None</option>
+          </select>
+        </label>
+        <label class="mark-attribute">
+          <span>Width</span>
+          <select
+            data-ribbon-input-persistent
+            ?disabled=${disabled}
+            @change=${(event: Event) => this.dispatchTableStyle("border-width", (event.currentTarget as HTMLSelectElement).value)}
+          >
+            <option value="1px">1 px</option>
+            <option value="2px">2 px</option>
+            <option value="3px">3 px</option>
+            <option value="4px">4 px</option>
+          </select>
+        </label>
+        <label class="mark-attribute">
+          <span>Color</span>
+          <input
+            data-ribbon-input-persistent
+            type="color"
+            value="#000000"
+            ?disabled=${disabled}
+            @change=${(event: Event) => this.dispatchTableStyle("border-color", (event.currentTarget as HTMLInputElement).value)}
+          />
+        </label>
+        <button class="button-dropdown-more" type="button" ?disabled=${disabled}
+          @click=${() => this.dispatchTableStyle("border-style", "")}>Clear borders</button>
+      </div>
+    `
+  }
+
+  private renderTableBackgroundDropdown() {
+    const disabled = !this.table?.active
+    return html`
+      <div class="button-dropdown-form" role="group" aria-label="Cell background">
+        <label class="mark-attribute">
+          <span>Color</span>
+          <input
+            data-ribbon-input-persistent
+            type="color"
+            value="#ffffff"
+            ?disabled=${disabled}
+            @change=${(event: Event) => this.dispatchTableStyle("background-color", (event.currentTarget as HTMLInputElement).value)}
+          />
+        </label>
+        <button class="button-dropdown-more" type="button" ?disabled=${disabled}
+          @click=${() => this.dispatchTableStyle("background-color", "")}>Clear background</button>
+      </div>
+    `
+  }
+
+  private renderTableDrawer() {
+    const active = Boolean(this.table?.active)
+    return html`
+      <ribbon-drawer label="Table" icon="Table" layout="table">
+        <ribbon-button label="Row above" action="table-row-above" icon="Plus" ?disabled=${!active}></ribbon-button>
+        <ribbon-button label="Row below" action="table-row-below" icon="Plus" ?disabled=${!active}></ribbon-button>
+        <ribbon-button label="Column left" action="table-column-left" icon="Plus" ?disabled=${!active}></ribbon-button>
+        <ribbon-button label="Column right" action="table-column-right" icon="Plus" ?disabled=${!active}></ribbon-button>
+        <ribbon-button label="Merge cells" action="table-merge-cells" icon="Table" ?disabled=${!this.table?.canMerge}></ribbon-button>
+        <ribbon-button label="Split cells" action="table-split-cells" icon="Table" ?disabled=${!this.table?.canSplit}></ribbon-button>
+        <ribbon-button label="Split table" action="table-split" icon="Table" ?disabled=${!active}></ribbon-button>
+        <ribbon-button label="Caption" action="table-caption" icon="Text" ?disabled=${!active}></ribbon-button>
+        <ribbon-button label="Borders" icon="Table" .dropdown=${this.renderTableBorderDropdown()} ?disabled=${!active}></ribbon-button>
+        <ribbon-button label="Background" icon="Color" .dropdown=${this.renderTableBackgroundDropdown()} ?disabled=${!active}></ribbon-button>
+      </ribbon-drawer>
+    `
+  }
+
   private renderInsertionDrawer(drawer: RibbonMenuGroup) {
     const elements = drawer.label === "Elements"
     return html`
@@ -3586,13 +3732,14 @@ export class AppRibbon extends LitElement {
                     : item.label === "Glossary"
                       ? this.listType === "dl"
                       : false
+          const tableDropdown = item.label === "Table" ? this.renderTableSizePicker() : null
           return html`
             <ribbon-button
               label=${item.label}
               .action=${item.action ?? item.label}
               .icon=${item.icon ?? item.label}
-              .submenu=${type ? [] : submenu}
-              .dropdown=${type ? this.renderMediaDropdown(type) : null}
+              .submenu=${type || tableDropdown ? [] : submenu}
+              .dropdown=${type ? this.renderMediaDropdown(type) : tableDropdown}
               ?toggle=${elements && item.label === "Lists"}
               ?active=${active}
             ></ribbon-button>
@@ -3858,6 +4005,7 @@ export class AppRibbon extends LitElement {
       if(drawer.label === "File") return this.renderFileDrawer(drawer)
       if(drawer.label === "Sharing") return this.renderSharingDrawer(drawer)
       if(drawer.label === "Marks") return this.renderMarkDrawer()
+      if(drawer.label === "Table") return this.renderTableDrawer()
       if(drawer.label === "Packages") return this.renderPackageDrawer()
       if(drawer.label === "Local packages") return this.renderDevelopDrawer()
       if(drawer.label === "Metadata") return this.renderMetadataDrawer()

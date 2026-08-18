@@ -406,6 +406,47 @@ export class RibbonButton extends LitElement {
       font-size: 0.64rem;
     }
 
+    .table-size-picker {
+      display: grid;
+      gap: 0.35rem;
+      width: 11.5rem;
+    }
+
+    .table-size-label {
+      color: #526b86;
+      font-size: 0.66rem;
+      font-weight: 600;
+    }
+
+    .table-size-grid {
+      display: grid;
+      grid-template-columns: repeat(10, 1fr);
+      gap: 0.15rem;
+    }
+
+    .table-size-cell {
+      box-sizing: border-box;
+      min-height: 0;
+      width: 1rem;
+      height: 1rem;
+      padding: 0;
+      border: 1px solid #9aa4b1;
+      border-radius: 0.05rem;
+      background: #fff;
+    }
+
+    .table-size-cell[data-selected] {
+      border-color: #3977c7;
+      background: #dcecff;
+    }
+
+    .table-size-cell:focus-visible {
+      position: relative;
+      z-index: 1;
+      outline: 2px solid #3977c7;
+      outline-offset: 0;
+    }
+
     .button-dropdown-advanced {
       display: flex;
       flex-direction: column;

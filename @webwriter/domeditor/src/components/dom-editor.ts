@@ -65,6 +65,7 @@ import {LocalPackageMonitor} from "../local-package-monitor"
 import {LOCAL_PACKAGE_ROUTE_PREFIX, localPackageUrl, type LocalPackageDirectoryHandle} from "../local-package-worker"
 import {LocalPackageWorkerClient} from "../local-package-worker-client"
 import type {AIDocumentToolCall, AIDocumentToolHandler} from "../ai-client"
+import type {TableSelectionState} from "../table"
 import {
   BackendClient,
   probeDevelopmentBackend,
@@ -208,6 +209,7 @@ export class DomEditor extends LitElement {
     listType: {attribute: false, state: true},
     listStyle: {attribute: false, state: true},
     mediaSelection: {attribute: false, state: true},
+    tableSelection: {attribute: false, state: true},
     fileName: {attribute: false, state: true},
     fileDirty: {attribute: false, state: true},
     previewActive: {attribute: false, state: true},
@@ -239,6 +241,7 @@ export class DomEditor extends LitElement {
   private listType: ListType | null = null
   private listStyle = ""
   private mediaSelection: MediaSelectionState | null = null
+  private tableSelection: TableSelectionState | null = null
   private presenceUsers: PresenceUser[] = []
   private packages: WebWriterPackage[] = []
   private installedPackages: WebWriterPackage[] = []
@@ -1187,6 +1190,20 @@ export class DomEditor extends LitElement {
         .finally(() => this.focusEditor())
       return
     }
+    const tableActions = {
+      "table-row-above": {type: "insertTableRow", side: "above"},
+      "table-row-below": {type: "insertTableRow", side: "below"},
+      "table-column-left": {type: "insertTableColumn", side: "left"},
+      "table-column-right": {type: "insertTableColumn", side: "right"},
+      "table-merge-cells": {type: "mergeTableCells"},
+      "table-split-cells": {type: "splitTableCells"},
+      "table-split": {type: "splitTable"},
+      "table-caption": {type: "addTableCaption"},
+    } as const
+    if(label && Object.hasOwn(tableActions, label)) {
+      void this.execute(tableActions[label as keyof typeof tableActions]).finally(() => this.focusEditor())
+      return
+    }
     const item = insertionMenuItems.find(candidate => candidate.name === label)
     if(!item) {
       this.focusEditor()
@@ -1199,6 +1216,11 @@ export class DomEditor extends LitElement {
     }
     if(item.tag === "details") {
       void this.execute({type: "insertDetails"}).finally(() => this.focusEditor())
+      return
+    }
+
+    if(item.tag === "table") {
+      void this.execute({type: "insertTable", rows: 2, columns: 2}).finally(() => this.focusEditor())
       return
     }
 
@@ -1695,6 +1717,33 @@ export class DomEditor extends LitElement {
     this.focusEditor()
   }
 
+  private handleTableInsert = (event: Event) => {
+    const detail = (event as CustomEvent<{rows?: unknown, columns?: unknown}>).detail
+    if(!Number.isInteger(detail?.rows) || !Number.isInteger(detail?.columns)) {
+      this.focusEditor()
+      return
+    }
+    void this.execute({
+      type: "insertTable",
+      rows: detail.rows as number,
+      columns: detail.columns as number,
+    }).finally(() => this.focusEditor())
+  }
+
+  private handleTableStyleChange = (event: Event) => {
+    const detail = (event as CustomEvent<{property?: unknown, value?: unknown}>).detail
+    if(!["background-color", "border-color", "border-style", "border-width"].includes(String(detail?.property))
+      || typeof detail?.value !== "string") {
+      this.focusEditor()
+      return
+    }
+    void this.execute({
+      type: "setTableCellStyle",
+      property: detail.property as "background-color" | "border-color" | "border-style" | "border-width",
+      value: detail.value,
+    }).finally(() => this.focusEditor())
+  }
+
   private handleRibbonCollapse = () => {
     this.renderRoot.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")?.collapseTree()
   }
@@ -1740,7 +1789,7 @@ export class DomEditor extends LitElement {
     const build = (element: Element, path: number[]): DocumentTreeItem => ({
       path: [...path],
       ...this.elementPresentation(element),
-      children: buildChildren(element, path),
+      children: element.matches("table") ? [] : buildChildren(element, path),
     })
 
     return build(body, [])
@@ -1839,7 +1888,7 @@ export class DomEditor extends LitElement {
       // A node or gap selection cannot simultaneously be a markable text
       // selection. Clear the independently delivered mark state immediately
       // so rendering never applies both selection kinds.
-      if(this.nodeSelection || this.selectionGap) {
+      if(this.nodeSelection || this.selectionGap || event.data.detail.table?.cellSelection) {
         this.canMark = false
         this.marks = []
         this.markStyles = {}
@@ -1850,6 +1899,7 @@ export class DomEditor extends LitElement {
       this.mediaSelection = event.data.detail.media
         ? {type: event.data.detail.media.type, attributes: {...event.data.detail.media.attributes}}
         : null
+      this.tableSelection = event.data.detail.table ? {...event.data.detail.table} : null
       this.documentTree = this.buildDocumentTree()
       this.dispatchEvent(new CustomEvent(selectionChangeEvent, {
         detail: {
@@ -1859,6 +1909,7 @@ export class DomEditor extends LitElement {
           ...(selectionGap ? {gap: selectionGap} : {}),
           list: {type: this.listType, style: this.listStyle},
           ...(this.mediaSelection ? {media: this.mediaSelection} : {}),
+          ...(this.tableSelection ? {table: this.tableSelection} : {}),
         },
         bubbles: true,
         composed: true,
@@ -2060,6 +2111,7 @@ export class DomEditor extends LitElement {
     this.markStyles = {}
     this.markAttributes = {}
     this.mediaSelection = null
+    this.tableSelection = null
     const error = new Error("The DOM editor component was disconnected")
     this.pendingExecutions.forEach(({reject}) => reject(error))
     this.pendingExecutions.clear()
@@ -2078,6 +2130,7 @@ export class DomEditor extends LitElement {
           .listType=${this.listType}
           .listStyle=${this.listStyle}
           .media=${this.mediaSelection}
+          .table=${this.tableSelection}
           .presenceUsers=${this.presenceUsers}
           .packages=${this.packages}
           .installedPackages=${this.installedPackages}
@@ -2107,6 +2160,8 @@ export class DomEditor extends LitElement {
           @mark-attribute-change=${this.handleMarkAttributeChange}
           @media-attribute-change=${this.handleMediaAttributeChange}
           @media-type-change=${this.handleMediaTypeChange}
+          @table-insert=${this.handleTableInsert}
+          @table-style-change=${this.handleTableStyleChange}
           @ribbon-collapse=${this.handleRibbonCollapse}
           @ribbon-input-pointerdown=${this.handleRibbonInputPointerDown}
           @ribbon-input-focus=${this.handleRibbonInputFocus}

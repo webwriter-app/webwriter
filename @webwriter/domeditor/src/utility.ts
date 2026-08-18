@@ -223,7 +223,8 @@ export class EditingSelection {
     const isNestedListBoundary = isElement(this.anchor) && this.anchor.matches("li, dt, dd") &&
       [this.anchor.childNodes.item(this.anchorOffset - 1), this.anchor.childNodes.item(this.anchorOffset)]
         .some(node => isElement(node) && node.matches("ul, ol, dl, menu"))
-    return isElement(this.anchor) && this.isEmpty && !this.isEmptySelection &&
+    const isInsideTable = isElement(this.anchor) && Boolean(this.anchor.closest("table"))
+    return isElement(this.anchor) && !isInsideTable && this.isEmpty && !this.isEmptySelection &&
       (!Array.from(this.anchor.childNodes).some(node => (isText(node) && Boolean(node.textContent?.trim())) || isMarkElement(node))
         || isBodyBoundaryBeforeFirstElement
         || isNestedListBoundary)

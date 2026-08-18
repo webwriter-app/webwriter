@@ -196,7 +196,7 @@ describe("insertion menu", () => {
     item.click()
 
     expect(pointerDown.defaultPrevented).toBe(true)
-    expect(editorHTML()).toBe("<table></table>")
+    expect(editorHTML()).toBe("<table><tbody><tr><td></td><td></td></tr><tr><td></td><td></td></tr></tbody></table>")
     expect(menu.open).toBe(false)
   })
 
@@ -387,8 +387,8 @@ describe("insertion menu", () => {
     document.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true, cancelable: true}))
     document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
 
-    expect(editorHTML()).toBe("<table></table>")
-    expect($.selectedElement?.tagName).toBe("TABLE")
+    expect(editorHTML()).toBe("<table><tbody><tr><td></td><td></td></tr><tr><td></td><td></td></tr></tbody></table>")
+    expect(editor.features.table.selectedCells).toEqual([document.querySelector("td")])
   })
 
   it("closes on Enter and lets the editor handle it when no option is selected", async () => {

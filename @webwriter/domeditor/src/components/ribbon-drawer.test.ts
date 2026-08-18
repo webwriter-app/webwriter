@@ -254,13 +254,14 @@ describe("responsive ribbon layout", () => {
       updateResponsiveLayout(drawers: RibbonDrawer[]): void
     }).updateResponsiveLayout.bind(ribbon)
 
-    expect(drawers.map(drawer => drawer.layoutWidths.expanded)).toEqual([334.8, 212, 264])
+    expect(drawers.map(drawer => drawer.layoutWidths.expanded)).toEqual([334.8, 324, 212, 264])
 
     for(const [clientWidth, expected] of [
-      [900, [false, false, false]],
-      [700, [false, false, true]],
-      [600, [false, true, true]],
-      [350, [true, true, true]],
+      [1200, [false, false, false, false]],
+      [1000, [false, false, false, true]],
+      [850, [false, false, true, true]],
+      [650, [false, true, true, true]],
+      [350, [true, true, true, true]],
     ] as const) {
       Object.defineProperty(content, "clientWidth", {value: clientWidth, configurable: true})
       updateLayout(drawers)

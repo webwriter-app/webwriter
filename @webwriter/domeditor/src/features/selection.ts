@@ -2,7 +2,7 @@ import { DocumentListenerMap, EditorFeature } from "."
 import {$, focusedWidgetHost, getContainer, isAtomicEditingElement, isElement, modifierKeyDown, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
 
-type SelectionKind = "none" | "capture" | "virtual" | "gap" | "element" | "text" | "empty"
+type SelectionKind = "none" | "capture" | "virtual" | "cell" | "gap" | "element" | "text" | "empty"
 
 function arrowDirection(key: string) {
   return key === "ArrowUp" || key === "ArrowLeft"
@@ -364,6 +364,8 @@ export class SelectionFeature extends EditorFeature {
   #modifierSelectionTarget(target: EventTarget | null) {
     if(!(target instanceof Node)) return null
     let targetElement = getContainer(target)
+    const table = targetElement.closest("table")
+    if(table) return table
     while(targetElement && (targetElement.matches("br, wbr") || this.editor.schema.isPhrasing(targetElement))) {
       const parent = targetElement.parentElement
       if(!parent) break
@@ -645,6 +647,7 @@ export class SelectionFeature extends EditorFeature {
     if(capturedWidget) return "capture"
     const selection = document.getSelection()
     if(!selection?.anchorNode || !selection.focusNode) return "none"
+    if(this.editor.features.table.hasCellSelection) return "cell"
     if(this.editor.features.list.isVirtualSelection) return "virtual"
     if($.isGapSelection) return "gap"
     if($.isElementSelection) return inDragSelection ? "none" : "element"
@@ -683,6 +686,7 @@ export class SelectionFeature extends EditorFeature {
     }
     const kind = this.#selectionKind(inDragSelection, capturedWidget)
     this.#clearSelections()
+    if(kind === "cell") return
     if(kind === "capture" && capturedWidget) {
       document.body.classList.add("◆", "◆node-selection-active")
       capturedWidget.classList.add("◆", "◆element-selected", "◆element-capture-selected")

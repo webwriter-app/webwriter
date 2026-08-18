@@ -518,10 +518,12 @@ export const baseSchema = {
 
   // Non-flow elements
   "caption": {
+    directlyInsertable: false,
     content: {group: "flow", min: 0, max: Infinity}
   },
-  "col": {},
+  "col": {directlyInsertable: false},
   "colgroup": {
+    directlyInsertable: false,
     content: {selector: "col", min: 0, max: Infinity}
   },
   "dd": {
@@ -557,21 +559,27 @@ export const baseSchema = {
     inseperable: true
   },
   "tbody": {
+    directlyInsertable: false,
     content: {selector: "tr", min: 0, max: Infinity}
   },
   "td": {
+    directlyInsertable: false,
     content: {group: "flow", min: 0, max: Infinity}
   },
   "tfoot": {
+    directlyInsertable: false,
     content: {selector: "tr", min: 0, max: Infinity}
   },
   "th": {
+    directlyInsertable: false,
     content: {group: "flow", selector: hasNot("header", "footer", "h1", "h2", "h3", "h4", "h5", "h6", "article", "aside", "nav", "section"), min: 0, max: Infinity},
   },
   "thead": {
+    directlyInsertable: false,
     content: {selector: "tr", min: 0, max: Infinity}
   },
   "tr": {
+    directlyInsertable: false,
     content: {options: [{selector: "td"}, {selector: "th"}, {selector: "script"}, {selector: "template"}], min: 0, max: Infinity}
   },
   "track": {}

@@ -547,6 +547,7 @@ export class ManipulationFeature extends EditorFeature {
    * reverse. At the document boundaries, Backspace/Delete move the caret to
    * the end/start of the adjacent block. */
   delete(direction?: "forward" | "backward", granularity:Granularity="character", strict=false) {
+    if(this.editor.features.table.hasCellSelection) return this.editor.features.table.deleteSelection()
     return this.withNormalization(() => {
       if($.isGapSelection && direction === "backward" && !$.elementAfter && $.elementBefore) {
         $.move($.elementBefore, -1)
@@ -679,6 +680,7 @@ export class ManipulationFeature extends EditorFeature {
    * Currently requires the selection to contain an element — plain text
    * selections throw. */
   async copy() {
+    if(this.editor.features.table.hasCellSelection) return this.editor.features.table.copy()
     const item = this.#fragmentToClipboardItem($.copy())
     navigator.clipboard.write([item])
   }
@@ -687,6 +689,7 @@ export class ManipulationFeature extends EditorFeature {
    * Currently the content is removed even if writing to the clipboard fails
    * (e.g. for plain text selections). */
   async cut() {
+    if(this.editor.features.table.hasCellSelection) return this.editor.features.table.cut()
     return this.withNormalization(() => {
       const item = this.#fragmentToClipboardItem($.cut())
       return navigator.clipboard.write([item])
@@ -696,6 +699,7 @@ export class ManipulationFeature extends EditorFeature {
   /** Inserts the clipboard's HTML or plain-text content at the selection.
    * Inline content at an empty document or gap is wrapped in a text block. */
   async paste() {
+    if(this.editor.features.table.hasCellSelection) return this.editor.features.table.paste()
     const fragment = await this.#clipboardToFragment()
     this.insertClipboardFragment(fragment)
   }

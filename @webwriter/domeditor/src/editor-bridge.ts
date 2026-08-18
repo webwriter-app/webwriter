@@ -9,6 +9,7 @@ import {
 import type {EditorStateSnapshot} from "./editor-state"
 import {isMediaType, type MediaSelectionState} from "./media"
 import type {WebWriterPackage} from "./packages"
+import type {TableSelectionState} from "./table"
 
 export const executeCompleteEvent = "dom-editor-execute-complete"
 export const executeFailureEvent = "dom-editor-execute-failure"
@@ -128,6 +129,7 @@ export type SelectionChangeDetail = {
   gap?: SelectionGap
   list?: ListSelectionState
   media?: MediaSelectionState
+  table?: TableSelectionState
 }
 
 export type SelectionChangeMessage = {
@@ -247,6 +249,21 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
     && Object.entries(media.attributes).every(([name, value]) => typeof name === "string" && typeof value === "string")
   )
   if(!mediaIsValid) return false
+
+  const table = message.detail.table as Partial<TableSelectionState> | null | undefined
+  const tableIsValid = table === undefined || (
+    !!table
+    && typeof table === "object"
+    && typeof table.active === "boolean"
+    && typeof table.cellSelection === "boolean"
+    && typeof table.rows === "number" && Number.isInteger(table.rows) && table.rows >= 0
+    && typeof table.columns === "number" && Number.isInteger(table.columns) && table.columns >= 0
+    && typeof table.selectedCells === "number" && Number.isInteger(table.selectedCells) && table.selectedCells >= 0
+    && typeof table.canMerge === "boolean"
+    && typeof table.canSplit === "boolean"
+    && typeof table.hasCaption === "boolean"
+  )
+  if(!tableIsValid) return false
 
   return true
 }

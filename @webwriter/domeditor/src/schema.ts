@@ -77,6 +77,8 @@ export type SchemaEntry = {
   inseperable?: boolean,
   defaultNode?: boolean,
   contentNamespace?: string
+  /** Whether generic insertion UI may offer this type at a valid position. */
+  directlyInsertable?: boolean
 }
 
 /** The editing-config fields that affect a widget's document-schema entry. */
@@ -978,5 +980,6 @@ export class Schema {
     const content = allChildNodes.slice(0, index)
     
     return this.findValidContentTypes(parent, undefined, content)
+      .filter(type => this.get(type)?.directlyInsertable !== false)
   }
 }
