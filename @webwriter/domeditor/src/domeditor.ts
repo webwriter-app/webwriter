@@ -26,7 +26,7 @@ import {
   type SelectionPathItem,
   type SerializedError,
 } from "./editor-bridge"
-import { getElementPresentation } from "./element-names"
+import { getElementPresentation, isLineBreakElement } from "./element-names"
 import type {EditorStateSnapshot} from "./editor-state"
 import editorStyleString from "./editor.css?raw"
 import * as Y from "yjs"
@@ -82,7 +82,7 @@ export class DOMEditor {
     "media": new MediaFeature(this),
   } as const
 
-  ignoreAttrs = ["contenteditable", "spellcheck"]
+  ignoreAttrs = ["contenteditable", "spellcheck", "inert"]
   ignoreClasses = ["◆"]
 
 
@@ -354,7 +354,7 @@ export class DOMEditor {
     const elements: Element[] = []
     let current: Element | null = element
     while(current && current !== body) {
-      if(!isMarkElement(current)) elements.unshift(current)
+      if(!isMarkElement(current) && !isLineBreakElement(current)) elements.unshift(current)
       current = current.parentElement
     }
     elements.unshift(body)

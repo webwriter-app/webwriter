@@ -1,5 +1,5 @@
 import { LitElement, css, html } from "lit"
-import type { AppRibbon } from "./ribbon"
+import type {AppRibbon, AIEditReviewHandler} from "./ribbon"
 import type { DomEditorBreadcrumb, DocumentTreeItem } from "./breadcrumb"
 import type { EditingAction } from "../domeditor"
 import { insertionMenuItems } from "./insertion-menu"
@@ -11,7 +11,7 @@ import {
   type PackageMember,
   type WebWriterPackage,
 } from "../packages"
-import { getElementPresentation } from "../element-names"
+import { getElementPresentation, isLineBreakElement } from "../element-names"
 import {
   canonicalMarkName,
   isMarkAttributeName,
@@ -33,6 +33,7 @@ import {
   executeCompleteEvent,
   executeFailureEvent,
   initializeEditorMessage,
+  isAIEditReviewMessage,
   isExecuteResponse,
   isMarkStateChangeMessage,
   isSelectionChangeMessage,
@@ -48,6 +49,7 @@ import {
   type ListType,
   type InitializeEditorMessage,
   type LoadWidgetsMessage,
+  type AIEditReviewMessage,
 } from "../editor-bridge"
 import "./breadcrumb"
 import "./ribbon"
@@ -774,6 +776,23 @@ export class DomEditor extends LitElement {
       return await this.execute({type: "replaceAISelection", html})
     }
     throw new TypeError(`Unsupported document tool: ${String(call.name)}`)
+  }
+
+  private readonly handleAIEditReview: AIEditReviewHandler = async (action, call) => {
+    const editId = call.id
+    if(action === "accept") return await this.execute({type: "acceptAIEdit", editId})
+    if(action === "reject") return await this.execute({type: "rejectAIEdit", editId})
+    if(action === "goto") return await this.execute({type: "gotoAIEdit", editId})
+    if(action === "undo") return await this.execute({type: "undoAIEdit", editId})
+
+    const html = call.arguments.html
+    const summary = call.arguments.summary
+    if(typeof html !== "string" || typeof summary !== "string") {
+      throw new TypeError("The document tool did not provide HTML and a summary")
+    }
+    return call.name === "replace_current_document"
+      ? await this.execute({type: "previewAIDocument", editId, summary, html})
+      : await this.execute({type: "previewAISelection", editId, summary, html})
   }
 
   private handleFileNameChange = (event: Event) => {
@@ -1706,7 +1725,9 @@ export class DomEditor extends LitElement {
       Array.from(element.childNodes).flatMap((child, index) => {
         if(child.nodeType !== Node.ELEMENT_NODE) return []
         const childElement = child as Element
-        if(childElement.matches("source") || childElement.matches("img") && childElement.closest("picture")) return []
+        if(childElement.matches("source")
+          || childElement.matches("img") && childElement.closest("picture")
+          || isLineBreakElement(childElement)) return []
         const childPath = [...path, index]
         return isMarkElement(childElement)? buildChildren(childElement, childPath): [build(childElement, childPath)]
       })
@@ -1748,7 +1769,22 @@ export class DomEditor extends LitElement {
     return !event.source || event.source === this.editorWindow || event.source === iframe?.contentWindow
   }
 
+  private routeAIEditReview(detail: AIEditReviewMessage["detail"]) {
+    this.renderRoot.querySelector<AppRibbon>("app-ribbon")
+      ?.reviewPendingAIEdit(detail.action, detail.editId)
+  }
+
+  private handleInlineAIEditReview = (event: Event) => {
+    const detail = (event as CustomEvent<AIEditReviewMessage["detail"]>).detail
+    if(detail) this.routeAIEditReview(detail)
+  }
+
   private handleEditorMessage = (event: MessageEvent) => {
+    if(isAIEditReviewMessage(event.data)) {
+      if(!this.isEditorMessage(event)) return
+      this.routeAIEditReview(event.data.detail)
+      return
+    }
     if(isMarkStateChangeMessage(event.data)) {
       if(!this.isEditorMessage(event)) return
       this.canMark = event.data.detail.canMark
@@ -2051,6 +2087,7 @@ export class DomEditor extends LitElement {
           .backendClient=${this.backendClient}
           .backendState=${this.backendState}
           .aiDocumentToolHandler=${this.handleAIDocumentTool}
+          .aiEditReviewHandler=${this.handleAIEditReview}
           @ribbon-button-click=${this.handleRibbonButtonClick}
           @ribbon-preview-exit=${this.handleRibbonPreviewExit}
           @file-name-change=${this.handleFileNameChange}
@@ -2096,6 +2133,7 @@ export class DomEditor extends LitElement {
         srcdoc=${this.editorSrcdoc}
         ?hidden=${this.previewActive}
         @load=${this.handleEditorFrameLoad}
+        @dom-editor-ai-edit-review=${this.handleInlineAIEditReview}
       ></iframe>
     `
   }

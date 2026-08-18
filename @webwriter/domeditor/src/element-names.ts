@@ -3,6 +3,11 @@ export type ElementPresentation = {
   icon: string
 }
 
+export const isLineBreakElement = (elementOrTagName: Element | string): boolean => {
+  const tagName = typeof elementOrTagName === "string" ? elementOrTagName : elementOrTagName.tagName
+  return tagName.toLowerCase() === "br" || tagName.toLowerCase() === "wbr"
+}
+
 const presentations: Record<string, ElementPresentation> = {
   body: {name: "Document", icon: "Document"},
   p: {name: "Paragraph", icon: "Paragraph"},
