@@ -230,6 +230,9 @@ export class SelectionFeature extends EditorFeature {
     $.selectDocumentStart()
     super.enable()
     this.#ensureHoverCaret()
+    document.addEventListener("click", this.#handleModifierClick, {capture: true})
+    document.addEventListener("keydown", this.#handleKeyState, {capture: true})
+    document.addEventListener("keyup", this.#handleKeyState, {capture: true})
     this.#widgetInteractionEvents.forEach(type => {
       document.addEventListener(type, this.#handleWidgetShadowInteraction, {capture: true})
     })
@@ -242,6 +245,9 @@ export class SelectionFeature extends EditorFeature {
   disable() {
     if(!this.isEnabled) return
     this.editor.doc.doc.off("afterTransaction", this.#handleSharedChange)
+    document.removeEventListener("click", this.#handleModifierClick, {capture: true})
+    document.removeEventListener("keydown", this.#handleKeyState, {capture: true})
+    document.removeEventListener("keyup", this.#handleKeyState, {capture: true})
     this.#widgetInteractionEvents.forEach(type => {
       document.removeEventListener(type, this.#handleWidgetShadowInteraction, {capture: true})
     })
@@ -249,10 +255,41 @@ export class SelectionFeature extends EditorFeature {
     document.removeEventListener("scroll", this.#handleWidgetScroll, {capture: true})
     this.#releaseCaptureSelection()
     this.#clearElementHover()
+    document.body.classList.remove("◆key-mod-down", "◆key-alt-down", "◆key-shift-down")
+    if(!Array.from(document.body.classList).some(marker => marker !== "◆" && marker.startsWith("◆"))) {
+      document.body.classList.remove("◆")
+    }
+    if(!document.body.classList.length) document.body.removeAttribute("class")
     super.disable()
   }
 
   readonly #widgetInteractionEvents = ["pointerdown", "focusin", "keydown", "beforeinput", "input", "change"] as const
+
+  /** Mirrors the physical modifier state onto BODY without depending on the
+   * regular feature listeners, which intentionally ignore widget events. */
+  readonly #handleKeyState = (event: KeyboardEvent) => {
+    const states = [
+      ["◆key-mod-down", modifierKeyDown(event)],
+      ["◆key-alt-down", event.altKey],
+      ["◆key-shift-down", event.shiftKey],
+    ] as const
+    states.forEach(([marker, active]) => document.body.classList.toggle(marker, active))
+    if(states.some(([, active]) => active)) document.body.classList.add("◆")
+    else if(!Array.from(document.body.classList).some(marker => marker !== "◆" && marker.startsWith("◆"))) {
+      document.body.classList.remove("◆")
+    }
+    if(!document.body.classList.length) document.body.removeAttribute("class")
+  }
+
+  /** Cancels native modifier-click actions (navigation, activation, focus)
+   * during capture, except inside the widget that currently owns capture. */
+  readonly #handleModifierClick = (event: MouseEvent) => {
+    const widget = widgetHostForShadowInteraction(event)
+    if(event.button === 0 && modifierKeyDown(event)
+      && (!widget || widget !== this.captureSelectedWidget)) {
+      event.preventDefault()
+    }
+  }
 
   /** Routes wheel input over an inactive widget to the editor document instead
    * of letting the widget consume it (for example, to zoom a map).
@@ -290,8 +327,26 @@ export class SelectionFeature extends EditorFeature {
   readonly #handleWidgetShadowInteraction = (event: Event) => {
     const widget = widgetHostForShadowInteraction(event)
     if(!widget) return
+    if(widget === this.captureSelectedWidget) return
     this.isInDragSelection = false
-    if(this.#capturedWidget === widget && this.isCaptureSelection) return
+    if(event instanceof MouseEvent && event.type === "pointerdown"
+      && event.button === 0 && modifierKeyDown(event)) {
+      event.preventDefault()
+      const selectCapture = this.captureSelectedWidget !== widget
+        && $.isElementSelection
+        && $.selectedElement === widget
+      if(selectCapture) {
+        this.#capturedWidget = widget
+        $.selectElement(widget, false)
+      }
+      else {
+        this.#releaseCaptureSelection()
+        $.selectElement(widget)
+      }
+      this.processSelection()
+      this.editor.postSelectionPath()
+      return
+    }
     this.#capturedWidget = widget
     // Pointerdown happens before the widget establishes its own focus/caret,
     // so it is safe to establish the outer atomic node range here. Later
@@ -693,40 +748,6 @@ export class SelectionFeature extends EditorFeature {
       const inViewportY = 0 <= ev.clientY && ev.clientY <= window.innerHeight
       if(this.isInDragSelection && inViewportX && inViewportY) {
         $.selectCoords(ev.x, ev.y, true)
-      }
-    },
-    "keydown": ev => {
-      if(modifierKeyDown(ev)) {
-        document.body.classList.add("◆","◆key-mod-down")
-      }
-      if(ev.altKey) {
-        document.body.classList.add("◆", "◆key-alt-down")
-      }
-      if(ev.shiftKey) {
-        document.body.classList.add("◆", "◆key-shift-down")
-      }
-    },
-    "keyup": ev => {
-      if(!modifierKeyDown(ev)) {
-        document.body.classList.remove("◆key-mod-down")
-        if(document.body.classList.length === 1) {
-          document.body.classList.remove("◆")
-        }
-      }
-      if(!ev.altKey) {
-        document.body.classList.remove("◆key-alt-down")
-        if(document.body.classList.length === 1) {
-          document.body.classList.remove("◆")
-        }
-      }
-      if(!ev.shiftKey) {
-        document.body.classList.remove("◆key-shift-down")
-        if(document.body.classList.length === 1) {
-          document.body.classList.remove("◆")
-        }
-      }
-      if(document.body.classList.length === 0) {
-        document.body.removeAttribute("class")
       }
     }
   }

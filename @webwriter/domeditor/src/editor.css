@@ -27,6 +27,13 @@ body {
   caret-color: currentColor;
 }
 
+html:has(> body.◆key-mod-down),
+html:has(> body.◆key-mod-down) *,
+html:has(> body.◆key-mod-down) *::before,
+html:has(> body.◆key-mod-down) *::after {
+  cursor: pointer !important;
+}
+
 body > * + * {
   margin-block-start: 1.25rem;
 }

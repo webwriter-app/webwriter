@@ -430,6 +430,8 @@ describe("document listeners", () => {
     expect(document.body.classList.contains("◆key-mod-down")).toBe(true)
     expect(document.body.classList.contains("◆key-alt-down")).toBe(true)
     expect(document.body.classList.contains("◆key-shift-down")).toBe(true)
+    expect(getComputedStyle(document.documentElement).cursor).toBe("pointer")
+    expect(getComputedStyle(document.body).cursor).toBe("pointer")
   })
   it("removes the key markers on keyup", () => {
     document.dispatchEvent(new KeyboardEvent("keydown", {ctrlKey: true, altKey: true, shiftKey: true}))
@@ -438,9 +440,22 @@ describe("document listeners", () => {
   })
   it("selects an element on modifier pointerdown", () => {
     const p = el("p", "hello")
-    p.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true}))
+    const event = new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true})
+    p.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
     expect($.selectedElement).toBe(p)
     expect(p.classList.contains("◆element-selected")).toBe(true)
+  })
+  it("prevents the default modifier-click action", () => {
+    const link = document.createElement("a")
+    link.href = "#target"
+    document.body.append(link)
+    link.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true}))
+    const event = new MouseEvent("click", {bubbles: true, cancelable: true, ctrlKey: true})
+
+    link.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
   })
   it("selects the containing block rather than a clicked mark on modifier pointerdown", () => {
     document.body.innerHTML = "<p><b>hello</b></p>"
@@ -463,12 +478,50 @@ describe("document listeners", () => {
     expect($.selectedElement).toBe(p)
     expect(p).toHaveClass("◆element-selected")
   })
-  it("selects a widget on modifier pointerdown", () => {
+  it("promotes a modifier-clicked widget from node to capture selection", () => {
     const widget = document.createElement("webwriter-demo")
     document.body.append(widget)
-    widget.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true}))
+    const clickWidget = () => {
+      const pointerdown = new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true})
+      widget.dispatchEvent(pointerdown)
+      return pointerdown
+    }
+
+    expect(clickWidget().defaultPrevented).toBe(true)
     expect($.selectedElement).toBe(widget)
     expect(widget).toHaveClass("◆element-selected")
+    expect(widget).not.toHaveClass("◆element-capture-selected")
+
+    expect(clickWidget().defaultPrevented).toBe(true)
+    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
+
+    expect(clickWidget().defaultPrevented).toBe(false)
+    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
+  })
+  it("leaves modifier-clicks to a capture-selected widget", () => {
+    const widget = document.createElement("interactive-widget")
+    const button = document.createElement("button")
+    widget.attachShadow({mode: "open"}).append(button)
+    document.body.append(widget)
+    const pointerdown = () => {
+      const event = new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, ctrlKey: true})
+      button.dispatchEvent(event)
+      return event
+    }
+
+    expect(pointerdown().defaultPrevented).toBe(true)
+    expect(widget).toHaveClass("◆element-selected")
+    expect(widget).not.toHaveClass("◆element-capture-selected")
+
+    expect(pointerdown().defaultPrevented).toBe(true)
+    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
+
+    expect(pointerdown().defaultPrevented).toBe(false)
+    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
+
+    const click = new MouseEvent("click", {bubbles: true, composed: true, cancelable: true, ctrlKey: true})
+    button.dispatchEvent(click)
+    expect(click.defaultPrevented).toBe(false)
   })
   it("capture-selects a widget without starting an editor drag from its shadow DOM", () => {
     const widget = document.createElement("interactive-widget")
