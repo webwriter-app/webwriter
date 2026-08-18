@@ -365,6 +365,7 @@ export class AppRibbon extends LitElement {
     linkAttributeMenuOpen: {type: Boolean, state: true},
     aiPrompt: {type: String, state: true},
     aiChatOpen: {type: Boolean, state: true},
+    aiChatTransitioning: {type: Boolean, state: true},
     aiChats: {attribute: false, state: true},
     activeAIChatId: {type: String, state: true},
     aiModel: {type: String, state: true},
@@ -432,21 +433,22 @@ export class AppRibbon extends LitElement {
       align-items: center;
       height: 40px;
       min-height: 40px;
-      padding: 0 0.5rem 0 0;
+      padding: 0;
       gap: 0;
       z-index: 1;
     }
 
     .brand {
+      box-sizing: border-box;
       display: flex;
-      flex: 0 0 50px;
+      flex: 0 100 50px;
       position: relative;
       width: 50px;
       align-items: center;
-      justify-content: center;
-      min-width: 50px;
+      justify-content: flex-start;
+      min-width: 37px;
       height: 40px;
-      padding: 0;
+      padding: 0 0 0 13px;
       border: 0;
       color: inherit;
       background: transparent;
@@ -459,7 +461,7 @@ export class AppRibbon extends LitElement {
     .brand:hover::after {
       content: "";
       position: absolute;
-      left: 50%;
+      left: 25px;
       width: 0;
       height: 0;
       pointer-events: none;
@@ -521,7 +523,7 @@ export class AppRibbon extends LitElement {
     }
 
     .login-button {
-      display: flex;
+      display: none;
       flex: 0 0 auto;
       align-items: center;
       gap: 0.35rem;
@@ -595,10 +597,11 @@ export class AppRibbon extends LitElement {
 
     .ai-bar-slot {
       box-sizing: border-box;
-      flex: 1 1 600px;
+      /* Let the AI bar absorb almost all top-row compression before the tabs. */
+      flex: 1 100 600px;
       width: auto;
       max-width: 600px;
-      min-width: 100px;
+      min-width: 24px;
       height: 40px;
       min-height: 40px;
       margin-inline: 0.35rem;
@@ -713,7 +716,7 @@ export class AppRibbon extends LitElement {
       top: 8px;
       right: 7rem;
       width: min(600px, calc(100vw - 1rem));
-      min-width: 100px;
+      min-width: 24px;
       max-width: 600px;
       height: min(32rem, calc(100vh - 1rem));
       max-height: 24px;
@@ -723,7 +726,15 @@ export class AppRibbon extends LitElement {
       color: #2f3742;
       background: #ffffff;
       box-shadow: 0 0 0 rgb(0 0 0 / 0%);
+      container-type: inline-size;
+      transition: border-color 120ms ease;
+    }
+
+    .ai-chat-panel[data-transitioning] {
       transition:
+        width 220ms ease,
+        min-width 220ms ease,
+        right 220ms ease,
         max-height 220ms ease,
         border-color 120ms ease,
         border-radius 220ms ease,
@@ -740,6 +751,7 @@ export class AppRibbon extends LitElement {
     }
 
     .ai-chat-panel[data-open] {
+      min-width: 400px;
       max-height: min(32rem, calc(100vh - 1rem));
       border-color: #a8b4c2;
       border-radius: 0.65rem;
@@ -750,13 +762,38 @@ export class AppRibbon extends LitElement {
       display: none;
     }
 
+    @container (max-width: 124px) {
+      .ai-chat-panel:not([data-open]) .ai-chat-composer {
+        visibility: hidden;
+        opacity: 0;
+        pointer-events: none;
+      }
+    }
+
     @supports (top: anchor(top)) {
       .ai-chat-panel {
         position-anchor: --ai-bar-slot;
         top: calc(anchor(top) + 8px);
         right: anchor(right);
-        left: anchor(left);
-        width: auto;
+        left: auto;
+        width: anchor-size(width);
+      }
+
+      .ai-chat-panel[data-open] {
+        width: clamp(400px, anchor-size(width), 600px);
+      }
+    }
+
+    @media (max-width: 34rem) {
+      .ai-chat-panel[data-open] {
+        right: 0.5rem;
+      }
+    }
+
+    @media (max-width: 26rem) {
+      .ai-chat-panel[data-open] {
+        width: calc(100vw - 1rem);
+        min-width: calc(100vw - 1rem);
       }
     }
 
@@ -1171,11 +1208,15 @@ export class AppRibbon extends LitElement {
       padding: 0;
       border-top: 0 solid transparent;
       background: #ffffff;
+      visibility: visible;
+      opacity: 1;
       transition:
         height 220ms ease,
         padding 220ms ease,
         border-color 220ms ease,
-        background-color 220ms ease;
+        background-color 220ms ease,
+        visibility 120ms ease,
+        opacity 120ms ease;
     }
 
     .ai-chat-panel[data-open] .ai-chat-composer {
@@ -2058,6 +2099,8 @@ export class AppRibbon extends LitElement {
   private backendConnectionSequence = 0
   private aiPrompt = ""
   private aiChatOpen = false
+  private aiChatTransitioning = false
+  private aiChatTransitionTimer: ReturnType<typeof setTimeout> | undefined
   private aiChats: AIChat[] = [{id: "chat-1", title: "New chat", messages: []}]
   private activeAIChatId = "chat-1"
   private aiProviders: AIProviderConfig[] = this.aiProviderStore.providers
@@ -2241,6 +2284,9 @@ export class AppRibbon extends LitElement {
     this.stopAIRequest()
     if(this.previewTransitionTimer !== undefined) clearTimeout(this.previewTransitionTimer)
     this.previewTransitionTimer = undefined
+    if(this.aiChatTransitionTimer !== undefined) clearTimeout(this.aiChatTransitionTimer)
+    this.aiChatTransitionTimer = undefined
+    this.aiChatTransitioning = false
     if(this.sharingCopyLinkActiveTimer !== undefined) clearTimeout(this.sharingCopyLinkActiveTimer)
     if(this.sharingCopyLinkSuccessTimer !== undefined) clearTimeout(this.sharingCopyLinkSuccessTimer)
     if(this.sharingCopyQRActiveTimer !== undefined) clearTimeout(this.sharingCopyQRActiveTimer)
@@ -2467,6 +2513,7 @@ export class AppRibbon extends LitElement {
       this.closeAIChat(true)
       return
     }
+    this.startAIChatTransition()
     this.aiChatOpen = true
     void this.updateComplete.then(() => {
       this.renderRoot.querySelector<HTMLTextAreaElement>(".ai-prompt-input")?.focus()
@@ -2475,6 +2522,7 @@ export class AppRibbon extends LitElement {
 
   private closeAIChat(restoreFocus = false) {
     if(!this.aiChatOpen) return
+    this.startAIChatTransition()
     this.aiChatOpen = false
     if(restoreFocus) void this.updateComplete.then(() => {
       this.renderRoot.querySelector<HTMLButtonElement>(".ai-prompt-expand")?.focus()
@@ -2483,6 +2531,15 @@ export class AppRibbon extends LitElement {
 
   dismissAIChat() {
     this.closeAIChat()
+  }
+
+  private startAIChatTransition() {
+    if(this.aiChatTransitionTimer !== undefined) clearTimeout(this.aiChatTransitionTimer)
+    this.aiChatTransitioning = true
+    this.aiChatTransitionTimer = setTimeout(() => {
+      this.aiChatTransitionTimer = undefined
+      this.aiChatTransitioning = false
+    }, 220)
   }
 
   private startNewAIChat = () => {
@@ -4807,6 +4864,7 @@ export class AppRibbon extends LitElement {
           role=${this.aiChatOpen ? "region" : "presentation"}
           aria-label="AI chat"
           ?data-open=${this.aiChatOpen}
+          ?data-transitioning=${this.aiChatTransitioning}
           ?hidden=${this.previewActive}
         >
           <button

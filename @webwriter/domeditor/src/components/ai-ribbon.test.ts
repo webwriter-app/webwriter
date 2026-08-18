@@ -38,17 +38,27 @@ const modelsResponse = (models: string[]) => new Response(JSON.stringify({
 }), {headers: {"content-type": "application/json"}})
 
 describe("AI prompt ribbon", () => {
-  it("renders a self-contained 100px–600px AI bar without an AI ribbon tab", async () => {
+  it("renders a self-contained 24px–600px AI bar without an AI ribbon tab", async () => {
     const ribbon = await mountRibbon()
+    const brand = ribbon.shadowRoot!.querySelector<HTMLElement>(".brand")!
     const slot = ribbon.shadowRoot!.querySelector<HTMLElement>(".ai-bar-slot")!
     const panel = ribbon.shadowRoot!.querySelector<HTMLElement>(".ai-chat-panel")!
     const input = ribbon.shadowRoot!.querySelector<HTMLTextAreaElement>(".ai-prompt-input")!
     const submit = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-submit")!
 
-    expect(getComputedStyle(slot).minWidth).toBe("100px")
+    expect(getComputedStyle(slot).minWidth).toBe("24px")
     expect(getComputedStyle(slot).maxWidth).toBe("600px")
-    expect(getComputedStyle(panel).minWidth).toBe("100px")
+    expect(getComputedStyle(brand).minWidth).toBe("37px")
+    expect(getComputedStyle(brand).paddingLeft).toBe("13px")
+    expect(getComputedStyle(brand).justifyContent).toBe("flex-start")
+    expect(getComputedStyle(brand).flexShrink).toBe(getComputedStyle(slot).flexShrink)
+    expect(Number.parseFloat(getComputedStyle(slot).flexShrink)).toBeGreaterThan(
+      Number.parseFloat(getComputedStyle(ribbon.shadowRoot!.querySelector(".tabs")!).flexShrink),
+    )
+    expect(getComputedStyle(panel).minWidth).toBe("24px")
     expect(getComputedStyle(panel).maxWidth).toBe("600px")
+    expect(getComputedStyle(panel).containerType).toBe("inline-size")
+    expect(getComputedStyle(panel).transition).not.toContain("width")
     expect(ribbon.shadowRoot!.querySelector(".ai-prompt-tab")).toBeNull()
     expect(ribbon.shadowRoot!.querySelector(".icon-tabler-sparkles-2")).not.toBeNull()
     expect(submit.querySelector(".icon-tabler-arrow-back")).not.toBeNull()
@@ -116,6 +126,10 @@ describe("AI prompt ribbon", () => {
     const send = panel.querySelector<HTMLButtonElement>(".ai-chat-send")!
     expect(textarea).toBe(collapsedInput)
     expect(panel.hasAttribute("data-open")).toBe(true)
+    expect(panel.hasAttribute("data-transitioning")).toBe(true)
+    expect(getComputedStyle(panel).transition).toContain("width")
+    expect(getComputedStyle(panel).transition).toContain("min-width")
+    expect(getComputedStyle(panel).minWidth).toBe("400px")
     expect(getComputedStyle(panel).maxHeight).not.toBe("24px")
     expect(expand.getAttribute("aria-expanded")).toBe("true")
     expect(textarea.getAttribute("rows")).toBe("3")
@@ -200,6 +214,41 @@ describe("AI prompt ribbon", () => {
     await ribbon.updateComplete
 
     expect(panel.hasAttribute("data-open")).toBe(false)
+  })
+
+  it("only transitions panel width while expanding or collapsing", async () => {
+    vi.useFakeTimers()
+    try {
+      const ribbon = await mountRibbon()
+      const expand = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ai-prompt-expand")!
+      const panel = ribbon.shadowRoot!.querySelector<HTMLElement>(".ai-chat-panel")!
+
+      expect(panel.hasAttribute("data-transitioning")).toBe(false)
+      expect(getComputedStyle(panel).transition).not.toContain("width")
+
+      expand.click()
+      await ribbon.updateComplete
+      expect(panel.hasAttribute("data-transitioning")).toBe(true)
+      expect(getComputedStyle(panel).transition).toContain("width")
+
+      await vi.advanceTimersByTimeAsync(220)
+      await ribbon.updateComplete
+      expect(panel.hasAttribute("data-transitioning")).toBe(false)
+      expect(getComputedStyle(panel).transition).not.toContain("width")
+
+      expand.click()
+      await ribbon.updateComplete
+      expect(panel.hasAttribute("data-transitioning")).toBe(true)
+      expect(getComputedStyle(panel).transition).toContain("width")
+
+      await vi.advanceTimersByTimeAsync(220)
+      await ribbon.updateComplete
+      expect(panel.hasAttribute("data-transitioning")).toBe(false)
+      expect(getComputedStyle(panel).transition).not.toContain("width")
+    }
+    finally {
+      vi.useRealTimers()
+    }
   })
 
   it("opens provider settings and offers simplified provider presets", async () => {

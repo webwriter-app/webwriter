@@ -21,6 +21,10 @@ export class RibbonTab extends LitElement {
       transform: translateY(1px);
     }
 
+    :host([label="File"]) {
+      min-width: 6rem;
+    }
+
     :host([label="File"][active])::before,
     :host([label="File"][active])::after,
     :host([label="File"]:hover)::before,

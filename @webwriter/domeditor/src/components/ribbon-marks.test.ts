@@ -47,20 +47,37 @@ describe("mark ribbon controls", () => {
     await ribbon.updateComplete
 
     const fileTab = ribbon.shadowRoot!.querySelector('ribbon-tab[label="File"]')!
+    expect(getComputedStyle(fileTab).minWidth).toBe("96px")
     const fileLabel = fileTab.shadowRoot!.querySelector<FileLabel>("file-label")!
     await fileLabel.updateComplete
     expect(fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-name")?.textContent).toBe("lesson")
     expect(fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-name")?.tagName).toBe("STRONG")
     expect(fileLabel.shadowRoot!.querySelector(".location-icon")).toBeNull()
     const dirtyButton = fileLabel.shadowRoot!.querySelector<HTMLButtonElement>(".dirty-button")!
-    expect(dirtyButton.textContent).toBe("*")
+    const dirtyIndicator = dirtyButton.querySelector<HTMLElement>(".dirty-indicator")!
+    const dirtySaveIcon = dirtyButton.querySelector<HTMLElement>(".dirty-save-icon")!
+    expect(dirtyIndicator.textContent).toBe("*")
+    expect(getComputedStyle(dirtyIndicator).marginTop).toBe("7.2px")
+    expect(dirtySaveIcon.querySelector(".icon-tabler-device-floppy")).not.toBeNull()
+    expect(getComputedStyle(dirtyIndicator).opacity).toBe("1")
+    expect(getComputedStyle(dirtySaveIcon).opacity).toBe("0")
+    expect(getComputedStyle(dirtySaveIcon).transition).toContain("opacity")
+    expect(getComputedStyle(dirtySaveIcon).width).toBe("16px")
+    expect(getComputedStyle(dirtySaveIcon).height).toBe("16px")
+    expect(getComputedStyle(dirtySaveIcon).alignSelf).toBe("center")
+    expect(getComputedStyle(dirtySaveIcon).justifySelf).toBe("center")
     expect(getComputedStyle(dirtyButton).visibility).toBe("hidden")
+    expect(getComputedStyle(dirtyButton).position).toBe("absolute")
+    expect(getComputedStyle(dirtyButton).left).toBe("100%")
+    expect(getComputedStyle(dirtyButton).height).toBe("40px")
+    expect(getComputedStyle(dirtyButton).transform).not.toBe("none")
+    expect(getComputedStyle(dirtyButton).justifyItems).toBe("start")
     const fileTabButton = fileTab.shadowRoot!.querySelector<HTMLButtonElement>("button")!
     expect(getComputedStyle(fileTabButton).paddingLeft).toBe("0px")
     expect(getComputedStyle(fileTabButton).paddingRight).toBe("0px")
-    expect(["0", "0px"]).toContain(getComputedStyle(
-      fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-label")!,
-    ).gap)
+    const fileLabelElement = fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-label")!
+    expect(["0", "0px"]).toContain(getComputedStyle(fileLabelElement).gap)
+    expect(getComputedStyle(fileLabelElement).position).toBe("relative")
 
     ribbon.activeMenu = "File"
     await ribbon.updateComplete

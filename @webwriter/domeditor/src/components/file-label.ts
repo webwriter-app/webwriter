@@ -1,4 +1,5 @@
 import {LitElement, css, html} from "lit"
+import {ribbonIcon} from "../ribbon-icons"
 
 /** A compact, interactive document label used by the File ribbon tab. */
 export class FileLabel extends LitElement {
@@ -18,6 +19,7 @@ export class FileLabel extends LitElement {
     .file-label {
       box-sizing: border-box;
       display: flex;
+      position: relative;
       align-items: center;
       gap: 0;
       min-width: 0;
@@ -40,10 +42,14 @@ export class FileLabel extends LitElement {
     .dirty-button {
       box-sizing: border-box;
       display: inline-grid;
-      flex: 0 0 1.15rem;
-      place-items: center;
+      position: absolute;
+      top: 50%;
+      left: 100%;
+      z-index: 1;
+      align-items: start;
+      justify-items: start;
       width: 1.15rem;
-      height: 1.4rem;
+      height: 40px;
       margin: 0;
       padding: 0;
       border: 1px solid transparent;
@@ -55,12 +61,47 @@ export class FileLabel extends LitElement {
       font-weight: 700;
       line-height: 1;
       cursor: pointer;
+      transform: translateY(-50%);
     }
 
     .dirty-button:not(:disabled):hover {
       border-color: #c8d2df;
       color: #243447;
       background: #eef4fb;
+    }
+
+    .dirty-indicator,
+    .dirty-save-icon {
+      grid-area: 1 / 1;
+      transition: opacity 140ms ease;
+    }
+
+    .dirty-indicator {
+      margin-top: 0.45rem;
+      opacity: 1;
+    }
+
+    .dirty-save-icon {
+      align-self: center;
+      justify-self: center;
+      opacity: 0;
+    }
+
+    .dirty-save-icon,
+    .dirty-save-icon svg {
+      display: block;
+      width: 1rem;
+      height: 1rem;
+    }
+
+    .dirty-button:not(:disabled):hover .dirty-indicator,
+    .dirty-button:not(:disabled):focus-visible .dirty-indicator {
+      opacity: 0;
+    }
+
+    .dirty-button:not(:disabled):hover .dirty-save-icon,
+    .dirty-button:not(:disabled):focus-visible .dirty-save-icon {
+      opacity: 1;
     }
 
     .dirty-button:not(:disabled):active {
@@ -113,7 +154,10 @@ export class FileLabel extends LitElement {
           ?disabled=${this.previewActive}
           style=${`visibility: ${this.fileDirty ? "visible" : "hidden"}`}
           @click=${this.save}
-        >*</button>
+        ><span class="dirty-indicator" aria-hidden="true">*</span><span
+          class="dirty-save-icon"
+          aria-hidden="true"
+        >${ribbonIcon("Save")}</span></button>
       </span>
     `
   }

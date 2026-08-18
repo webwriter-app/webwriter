@@ -167,6 +167,7 @@ describe("DomEditor iframe setup", () => {
 
     expect((editor as any).storageLocation).toBe("development-server")
     expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".login-button")?.textContent).toContain("Local dev")
+    expect(getComputedStyle(ribbon.shadowRoot!.querySelector(".login-button")!).display).toBe("none")
   })
 
   it("collapses the expanded AI bar when the editor receives a pointer", async () => {
