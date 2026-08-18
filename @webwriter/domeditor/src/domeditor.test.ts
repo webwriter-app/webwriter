@@ -72,6 +72,7 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/body::part\(selection-caret-capture\)\s*\{[\s\S]*?outline:\s*2px solid var\(--sl-color-primary-400\);/)
     expect(editorStyleString).toMatch(/\.◆element-selected\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
     expect(editorStyleString).toMatch(/body\.◆node-selection-active,\s*body\.◆node-selection-active\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
+    expect(editorStyleString).toMatch(/body\.◆node-selection-active\s+\.◆element-capture-selected\s*\{[\s\S]*?caret-color:\s*auto\s*!important;/)
     expect(editorStyleString).toMatch(/\.◆element-selected:not\(\.◆element-capture-selected\)::selection,\s*\.◆element-selected:not\(\.◆element-capture-selected\)\s+\*::selection\s*\{[\s\S]*?background:\s*transparent;/)
     expect(editorStyleString).not.toMatch(/\.◆element-selected::selection[\s\S]*?background:\s*transparent;/)
     expect(editorStyleString).not.toMatch(/\.◆element-selected\s*,\s*\.◆element-selected\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)

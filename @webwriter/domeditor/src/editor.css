@@ -176,6 +176,12 @@ body.◆node-selection-active * {
   caret-color: transparent !important;
 }
 
+/* Capture keeps the widget's native focus and selection, so do not pass the
+ * node-selection caret suppression through its host into the shadow tree. */
+body.◆node-selection-active .◆element-capture-selected {
+  caret-color: auto !important;
+}
+
 /* Hide the document range behind an ordinary node selection. A capture-
  * selected widget keeps its native shadow-tree selection highlight. */
 .◆element-selected:not(.◆element-capture-selected)::selection,
