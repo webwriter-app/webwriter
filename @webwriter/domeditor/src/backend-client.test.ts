@@ -50,6 +50,14 @@ describe("development backend client", () => {
     expect(fetch).toHaveBeenCalledTimes(2)
   })
 
+  it("propagates cancellation instead of probing another backend candidate", async () => {
+    const abort = new DOMException("The operation was aborted", "AbortError")
+    const fetch = vi.fn().mockRejectedValue(abort)
+
+    await expect(probeDevelopmentBackend(undefined, fetch)).rejects.toBe(abort)
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
   it("uses REST document endpoints", async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(response({documents: [{id: "one", title: "One"}]}))
@@ -63,5 +71,29 @@ describe("development backend client", () => {
       "http://localhost:1234/api/documents/one",
       expect.objectContaining({method: "PATCH", body: JSON.stringify({title: "Updated"})}),
     ])
+  })
+
+  it("reports network failures and invalid JSON with backend context", async () => {
+    const networkClient = new BackendClient(session, vi.fn().mockRejectedValue(new TypeError("fetch failed")))
+    await expect(networkClient.listDocuments()).rejects.toThrow(
+      "Could not reach the development server. fetch failed",
+    )
+
+    const invalidJSON = new Response("not json", {status: 502})
+    const invalidJSONClient = new BackendClient(session, vi.fn().mockResolvedValue(invalidJSON))
+    await expect(invalidJSONClient.listDocuments()).rejects.toThrow(
+      "The development server returned invalid JSON (502)",
+    )
+  })
+
+  it("surfaces nested API errors and safely encodes document ids", async () => {
+    const fetch = vi.fn().mockResolvedValue(response({error: {message: "Document not found"}}, 404))
+    const client = new BackendClient(session, fetch)
+
+    await expect(client.getDocument("folder/item")).rejects.toThrow("Document not found")
+    expect(fetch).toHaveBeenCalledWith(
+      "http://localhost:1234/api/documents/folder%2Fitem",
+      expect.any(Object),
+    )
   })
 })
