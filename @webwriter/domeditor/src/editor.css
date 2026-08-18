@@ -176,8 +176,10 @@ body.◆node-selection-active * {
   caret-color: transparent !important;
 }
 
-.◆element-selected::selection,
-.◆element-selected *::selection {
+/* Hide the document range behind an ordinary node selection. A capture-
+ * selected widget keeps its native shadow-tree selection highlight. */
+.◆element-selected:not(.◆element-capture-selected)::selection,
+.◆element-selected:not(.◆element-capture-selected) *::selection {
   background: transparent;
 }
 
