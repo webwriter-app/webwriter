@@ -1,4 +1,4 @@
-import { LitElement, css, html } from "lit"
+import { LitElement, css, html, nothing } from "lit"
 import type {ListType, PresenceUser} from "../editor-bridge"
 import {
   completeAIConversation,
@@ -54,6 +54,12 @@ import {
   type MediaType,
 } from "../media"
 import type {TableSelectionState} from "../table"
+import {
+  graphicShapeOptions,
+  type GraphicLayerOperation,
+  type GraphicSelectionState,
+  type GraphicViewportOperation,
+} from "../graphic"
 
 type RibbonMenuName = "File" | "Start" | "Insert" | "Edit" | "Develop"
 
@@ -140,6 +146,39 @@ const placeholderSharingLink = "https://webwriter.app/share/placeholder"
 
 type InsertionSection = "Text" | "Lists" | "Media"
 
+const insertGraphicShapeButtons: RibbonMenuButton[] = graphicShapeOptions.map(option => ({
+  label: option.label,
+  action: `insert-graphic-shape:${option.type}`,
+  icon: option.icon,
+}))
+
+const addGraphicShapeButtons: RibbonMenuButton[] = graphicShapeOptions.map(option => ({
+  label: option.label,
+  action: `add-graphic-shape:${option.type}`,
+  icon: option.icon,
+}))
+
+const graphicAlignButtons: RibbonMenuButton[] = [
+  {label: "Align left", action: "arrange-graphic:align-left", icon: "Graphic align left"},
+  {label: "Align center", action: "arrange-graphic:align-center", icon: "Graphic align center"},
+  {label: "Align right", action: "arrange-graphic:align-right", icon: "Graphic align right"},
+  {label: "Align top", action: "arrange-graphic:align-top", icon: "Graphic align top"},
+  {label: "Align middle", action: "arrange-graphic:align-middle", icon: "Graphic align middle"},
+  {label: "Align bottom", action: "arrange-graphic:align-bottom", icon: "Graphic align bottom"},
+]
+
+const graphicDistributeButtons: RibbonMenuButton[] = [
+  {label: "Distribute horizontally", action: "arrange-graphic:distribute-horizontal", icon: "Distribute horizontally"},
+  {label: "Distribute vertically", action: "arrange-graphic:distribute-vertical", icon: "Distribute vertically"},
+]
+
+const graphicOrderButtons: RibbonMenuButton[] = [
+  {label: "Bring forward", action: "arrange-graphic:bring-forward", icon: "Bring forward"},
+  {label: "Send backward", action: "arrange-graphic:send-backward", icon: "Send backward"},
+  {label: "Bring to front", action: "arrange-graphic:bring-front", icon: "Bring to front"},
+  {label: "Send to back", action: "arrange-graphic:send-back", icon: "Send to back"},
+]
+
 const insertionMenuButtons = (sections: readonly InsertionSection[]) => insertionMenuItems
   .filter(item => sections.includes(item.section))
   .flatMap<RibbonMenuButton>(item => {
@@ -178,6 +217,9 @@ const insertionMenuButtons = (sections: readonly InsertionSection[]) => insertio
       } satisfies RibbonMenuButton]
     }
     if(item.section === "Text" && /^h[2-6]$/.test(item.tag)) return []
+    if(item.section === "Media" && item.tag === "svg") {
+      return [{label: item.name, action: item.name, icon: "Graphic", submenu: insertGraphicShapeButtons}]
+    }
     return [item.name]
   })
 
@@ -261,6 +303,7 @@ const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
   Edit: [
     {label: "Marks", buttons: []},
     {label: "Table", buttons: []},
+    {label: "Graphic", buttons: []},
     {label: "Styles", buttons: ["Heading", "Theme", "Clear"]},
     {label: "Font", buttons: ["Family", "Size", "Color"]},
     {label: "Effects", buttons: ["Highlight", "Superscript", "More"]},
@@ -313,6 +356,7 @@ export class AppRibbon extends LitElement {
     listStyle: {type: String, attribute: "list-style"},
     media: {attribute: false},
     table: {attribute: false},
+    graphic: {attribute: false},
     fileName: {type: String, attribute: "file-name"},
     fileDirty: {type: Boolean, attribute: "file-dirty"},
     previewActive: {type: Boolean, attribute: "preview-active"},
@@ -1981,6 +2025,7 @@ export class AppRibbon extends LitElement {
   listStyle = ""
   media: MediaSelectionState | null = null
   table: TableSelectionState | null = null
+  graphic: GraphicSelectionState | null = null
   private tableGridRows = 2
   private tableGridColumns = 2
   private sharingQRCodeImageDataURL = ""
@@ -3701,6 +3746,400 @@ export class AppRibbon extends LitElement {
     `
   }
 
+  private dispatchGraphicParameter(name: string, event: Event) {
+    const input = event.currentTarget as HTMLInputElement
+    this.dispatchGraphicParameterValue(name, input.value)
+  }
+
+  private dispatchGraphicParameterValue(name: string, value: string) {
+    this.dispatchEvent(new CustomEvent("graphic-parameter-change", {
+      detail: {name, value},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private graphicNumberInput(name: string, label: string, options: {min?: number, max?: number, step?: number} = {}) {
+    const parameters = this.graphic?.parameters ?? {}
+    const selectionCount = this.graphic?.selectionCount ?? (this.graphic?.shape ? 1 : 0)
+    const shared = name === "stroke-width" || name === "opacity"
+    return html`
+      <label class="mark-attribute graphic-parameter">
+        <span>${label}</span>
+        <input
+          data-ribbon-input-persistent
+          type="number"
+          aria-label=${`Graphic: ${label}`}
+          .value=${parameters[name] ?? ""}
+          min=${options.min ?? nothing}
+          max=${options.max ?? nothing}
+          step=${options.step ?? 1}
+          ?disabled=${shared ? selectionCount < 1 : !this.graphic?.shape}
+          @change=${(event: Event) => this.dispatchGraphicParameter(name, event)}
+        />
+      </label>
+    `
+  }
+
+  private renderGraphicPaintDropdown(kind: "fill" | "stroke") {
+    const parameters = this.graphic?.parameters ?? {}
+    const selectionCount = this.graphic?.selectionCount ?? (this.graphic?.shape ? 1 : 0)
+    const value = parameters[kind]
+    const color = /^#[0-9a-f]{6}$/i.test(value ?? "") ? value! : kind === "fill" ? "#ffffff" : "#334155"
+    const disabled = selectionCount < 1 || kind === "fill" && selectionCount === 1
+      && (this.graphic?.shape === "line" || this.graphic?.shape === "connector")
+    return html`
+      <div class="button-dropdown-form" role="group" aria-label=${`Graphic ${kind}`}>
+        <label class="mark-attribute graphic-parameter">
+          <span>Color</span>
+          <input
+            data-ribbon-input-persistent
+            type="color"
+            aria-label=${`Graphic: ${kind === "fill" ? "Fill" : "Stroke"} color`}
+            .value=${color}
+            ?disabled=${disabled}
+            @change=${(event: Event) => this.dispatchGraphicParameter(kind, event)}
+          />
+        </label>
+        ${kind === "stroke" ? this.graphicNumberInput("stroke-width", "Stroke width", {min: 0, step: 1}) : ""}
+        ${kind === "fill" ? this.graphicNumberInput("opacity", "Opacity", {min: 0, max: 1, step: 0.05}) : ""}
+      </div>
+    `
+  }
+
+  private renderGraphicGeometryDropdown() {
+    return html`
+      <div class="button-dropdown-form" role="group" aria-label="Graphic geometry">
+        ${this.graphicNumberInput("x", "X")}
+        ${this.graphicNumberInput("y", "Y")}
+        ${this.graphicNumberInput("width", "Width", {min: 1})}
+        ${this.graphicNumberInput("height", "Height", {min: 1})}
+        ${this.graphic?.shape === "rectangle"
+          ? this.graphicNumberInput("corner-radius", "Corner radius", {min: 0})
+          : ""}
+        ${this.graphic?.shape === "hexagon"
+          ? this.graphicNumberInput("inset", "Corner inset", {min: 0})
+          : ""}
+        ${this.graphic?.shape === "star"
+          ? this.graphicNumberInput("inner-radius", "Inner radius", {min: 5, max: 90, step: 1})
+          : ""}
+        ${this.graphic?.shape === "arrow" ? html`
+          ${this.graphicNumberInput("head-size", "Head size", {min: 15, max: 80, step: 1})}
+          ${this.graphicNumberInput("tail-width", "Tail width", {min: 10, max: 90, step: 1})}
+        ` : ""}
+      </div>
+    `
+  }
+
+  private renderGraphicRotationDropdown() {
+    return html`
+      <div class="button-dropdown-form" role="group" aria-label="Graphic rotation">
+        ${this.graphicNumberInput("rotation", "Degrees", {step: 1})}
+      </div>
+    `
+  }
+
+  private renderGraphicConnectorDropdown() {
+    const parameters = this.graphic?.parameters ?? {}
+    return html`
+      <div class="button-dropdown-form" role="group" aria-label="Connector settings">
+        <label class="mark-attribute graphic-parameter">
+          <span>Routing</span>
+          <select
+            data-ribbon-input-persistent
+            aria-label="Graphic: Connector routing"
+            .value=${parameters.routing ?? "orthogonal"}
+            @change=${(event: Event) => this.dispatchGraphicParameter("routing", event)}
+          >
+            <option value="straight">Straight</option>
+            <option value="orthogonal">Orthogonal</option>
+          </select>
+        </label>
+        <label class="mark-attribute graphic-parameter">
+          <span>Start arrow</span>
+          <input
+            data-ribbon-input-persistent
+            type="checkbox"
+            aria-label="Graphic: Start arrow"
+            .checked=${parameters["start-arrow"] === "true"}
+            @change=${(event: Event) => this.dispatchGraphicParameterValue(
+              "start-arrow",
+              String((event.currentTarget as HTMLInputElement).checked),
+            )}
+          />
+        </label>
+        <label class="mark-attribute graphic-parameter">
+          <span>End arrow</span>
+          <input
+            data-ribbon-input-persistent
+            type="checkbox"
+            aria-label="Graphic: End arrow"
+            .checked=${parameters["end-arrow"] === "true"}
+            @change=${(event: Event) => this.dispatchGraphicParameterValue(
+              "end-arrow",
+              String((event.currentTarget as HTMLInputElement).checked),
+            )}
+          />
+        </label>
+      </div>
+    `
+  }
+
+  private renderGraphicLabelDropdown() {
+    const parameters = this.graphic?.parameters ?? {}
+    return html`
+      <div class="button-dropdown-form" role="group" aria-label="Shape text">
+        <label class="mark-attribute graphic-parameter">
+          <span>Label</span>
+          <textarea
+            data-ribbon-input-persistent
+            rows="3"
+            aria-label="Graphic: Label"
+            .value=${parameters.label ?? ""}
+            @change=${(event: Event) => this.dispatchGraphicParameter("label", event)}
+          ></textarea>
+        </label>
+        <label class="mark-attribute graphic-parameter">
+          <span>Color</span>
+          <input
+            data-ribbon-input-persistent
+            type="color"
+            aria-label="Graphic: Text color"
+            .value=${/^#[0-9a-f]{6}$/i.test(parameters["text-color"] ?? "") ? parameters["text-color"] : "#0f172a"}
+            @change=${(event: Event) => this.dispatchGraphicParameter("text-color", event)}
+          />
+        </label>
+        ${this.graphicNumberInput("font-size", "Font size", {min: 1, step: 1})}
+      </div>
+    `
+  }
+
+  private dispatchGraphicLayer(operation: GraphicLayerOperation, index: number) {
+    this.dispatchEvent(new CustomEvent("graphic-layer-action", {
+      detail: {operation, index},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private renderGraphicLayersDropdown() {
+    const layers = [...(this.graphic?.layers ?? [])].reverse()
+    const primary = layers.find(layer => layer.primary) ?? layers.find(layer => layer.selected)
+    return html`
+      <div class="button-dropdown-form graphic-layers-dropdown" role="group" aria-label="Graphic layers">
+        <div class="graphic-layer-list" role="list">
+          ${layers.length ? layers.map(layer => html`
+            <div
+              class="graphic-layer-row"
+              role="listitem"
+              data-selected=${String(layer.selected)}
+              data-layer-index=${layer.index}
+            >
+              <button
+                class="graphic-layer-select"
+                type="button"
+                title=${layer.label}
+                aria-label=${`Select ${layer.label}`}
+                ?disabled=${layer.locked || !layer.visible}
+                @click=${() => this.dispatchGraphicLayer("select", layer.index)}
+              >
+                <span class="graphic-layer-icon">${ribbonIcon(
+                  graphicShapeOptions.find(option => option.type === layer.type)?.icon ?? "Graphic",
+                )}</span>
+                <span>${layer.label}</span>
+              </button>
+              <button
+                class="graphic-layer-action"
+                type="button"
+                aria-label=${`${layer.visible ? "Hide" : "Show"} ${layer.label}`}
+                title=${layer.visible ? "Hide layer" : "Show layer"}
+                @click=${() => this.dispatchGraphicLayer("toggle-visibility", layer.index)}
+              >${ribbonIcon(layer.visible ? "Visible" : "Hidden")}</button>
+              <button
+                class="graphic-layer-action"
+                type="button"
+                aria-label=${`${layer.locked ? "Unlock" : "Lock"} ${layer.label}`}
+                title=${layer.locked ? "Unlock layer" : "Lock layer"}
+                @click=${() => this.dispatchGraphicLayer("toggle-lock", layer.index)}
+              >${ribbonIcon(layer.locked ? "Lock" : "Unlock")}</button>
+            </div>
+          `) : html`<span class="button-dropdown-empty">This graphic has no shapes yet.</span>`}
+        </div>
+        <div class="graphic-layer-toolbar" role="group" aria-label="Layer order">
+          ${([
+            ["send-back", "Back"],
+            ["move-down", "Down"],
+            ["move-up", "Up"],
+            ["bring-front", "Front"],
+          ] as const).map(([operation, label]) => html`
+            <button
+              class="graphic-layer-order"
+              type="button"
+              aria-label=${`${label} layer`}
+              ?disabled=${!primary}
+              @click=${() => primary && this.dispatchGraphicLayer(operation, primary.index)}
+            >${label}</button>
+          `)}
+        </div>
+      </div>
+    `
+  }
+
+  private dispatchGraphicViewport(operation: GraphicViewportOperation, zoom?: number) {
+    this.dispatchEvent(new CustomEvent("graphic-viewport-action", {
+      detail: {operation, ...(zoom === undefined ? {} : {zoom})},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private renderGraphicViewportDropdown() {
+    const zoom = this.graphic?.viewport?.zoom ?? 100
+    return html`
+      <div class="button-dropdown-form graphic-zoom-dropdown" role="group" aria-label="Graphic zoom">
+        <div class="graphic-zoom-stepper">
+          <button class="graphic-zoom-action" type="button" aria-label="Zoom out"
+            @click=${() => this.dispatchGraphicViewport("zoom-out")}>−</button>
+          <output class="graphic-zoom-value" aria-live="polite">${zoom}%</output>
+          <button class="graphic-zoom-action" type="button" aria-label="Zoom in"
+            @click=${() => this.dispatchGraphicViewport("zoom-in")}>+</button>
+        </div>
+        <input
+          data-ribbon-input-persistent
+          type="range"
+          aria-label="Graphic zoom percentage"
+          min="25"
+          max="400"
+          step="5"
+          .value=${String(zoom)}
+          @change=${(event: Event) => this.dispatchGraphicViewport(
+            "set-zoom",
+            Number((event.currentTarget as HTMLInputElement).value),
+          )}
+        />
+        <div class="graphic-zoom-presets">
+          <button class="graphic-zoom-action" type="button"
+            @click=${() => this.dispatchGraphicViewport("actual-size")}>100%</button>
+          <button class="graphic-zoom-action" type="button"
+            @click=${() => this.dispatchGraphicViewport("fit-content")}>Fit content</button>
+        </div>
+        <p class="graphic-navigation-hint">
+          ${isOnApple() ? "⌘" : "Ctrl"} + wheel to zoom · Space or middle-drag to pan
+        </p>
+      </div>
+    `
+  }
+
+  private renderGraphicDrawer() {
+    if(!this.graphic?.active) return nothing
+    const captured = Boolean(this.graphic?.capture)
+    const selectionCount = this.graphic.selectionCount ?? (this.graphic.shape ? 1 : 0)
+    const shapeSelected = selectionCount === 1 && Boolean(this.graphic.shape)
+    const connectorSelected = shapeSelected && this.graphic.shape === "connector"
+    const labelableShapeSelected = shapeSelected && this.graphic.shape !== "line" && this.graphic.shape !== "connector"
+    const shapesSelected = selectionCount > 0
+    const options = this.graphic.options
+    return html`
+      <ribbon-drawer label="Graphic" icon="Graphic" layout="graphic">
+        <ribbon-button
+          label="Add shape"
+          action="add-graphic-shape:rectangle"
+          icon="Graphic"
+          .submenu=${addGraphicShapeButtons}
+          ?disabled=${!captured}
+        ></ribbon-button>
+        <ribbon-button label="Fill" icon="Fill" .dropdown=${this.renderGraphicPaintDropdown("fill")} ?disabled=${!shapesSelected}></ribbon-button>
+        <ribbon-button label="Stroke" icon="Stroke" .dropdown=${this.renderGraphicPaintDropdown("stroke")} ?disabled=${!shapesSelected}></ribbon-button>
+      </ribbon-drawer>
+      <ribbon-drawer label="Geometry" icon="Geometry" layout="graphic-geometry">
+        <ribbon-button label="Geometry" icon="Geometry" .dropdown=${this.renderGraphicGeometryDropdown()} ?disabled=${!shapeSelected}></ribbon-button>
+        <ribbon-button label="Rotate" icon="Rotate" .dropdown=${this.renderGraphicRotationDropdown()} ?disabled=${!shapeSelected || connectorSelected}></ribbon-button>
+      </ribbon-drawer>
+      <ribbon-drawer label="Text" icon="Text" layout="graphic-geometry">
+        <ribbon-button label="Label" icon="Text" .dropdown=${this.renderGraphicLabelDropdown()} ?disabled=${!labelableShapeSelected}></ribbon-button>
+      </ribbon-drawer>
+      <ribbon-drawer label="Connector" icon="Connector" layout="graphic-geometry">
+        <ribbon-button
+          label="Routing"
+          icon="Connector"
+          .dropdown=${this.renderGraphicConnectorDropdown()}
+          ?disabled=${!connectorSelected}
+        ></ribbon-button>
+      </ribbon-drawer>
+      <ribbon-drawer label="Arrange" icon="Align" layout="graphic-arrange">
+        <ribbon-button
+          label="Align"
+          action="arrange-graphic:align-left"
+          icon="Graphic align left"
+          .submenu=${graphicAlignButtons}
+          ?disabled=${selectionCount < 2}
+        ></ribbon-button>
+        <ribbon-button
+          label="Distribute"
+          action="arrange-graphic:distribute-horizontal"
+          icon="Distribute horizontally"
+          .submenu=${graphicDistributeButtons}
+          ?disabled=${selectionCount < 3}
+        ></ribbon-button>
+        <ribbon-button
+          label="Order"
+          action="arrange-graphic:bring-forward"
+          icon="Graphic order"
+          .submenu=${graphicOrderButtons}
+          ?disabled=${!shapesSelected}
+        ></ribbon-button>
+      </ribbon-drawer>
+      <ribbon-drawer label="Layers" icon="Layers" layout="graphic-layers">
+        <ribbon-button
+          label="Layers"
+          icon="Layers"
+          .dropdown=${this.renderGraphicLayersDropdown()}
+          ?disabled=${!captured}
+        ></ribbon-button>
+      </ribbon-drawer>
+      <ribbon-drawer label="Canvas" icon="Guides" layout="graphic-canvas">
+        <ribbon-button
+          label="Grid"
+          action="toggle-graphic-option:grid"
+          icon="Guides"
+          toggle
+          .active=${options?.grid ?? true}
+          ?disabled=${!captured}
+        ></ribbon-button>
+        <ribbon-button
+          label="Snap"
+          action="toggle-graphic-option:snap"
+          icon="Align"
+          toggle
+          .active=${options?.snap ?? true}
+          ?disabled=${!captured}
+        ></ribbon-button>
+        <ribbon-button
+          label="Guides"
+          action="toggle-graphic-option:guides"
+          icon="Guides"
+          toggle
+          .active=${options?.guides ?? true}
+          ?disabled=${!captured}
+        ></ribbon-button>
+      </ribbon-drawer>
+      <ribbon-drawer label="View" icon="Zoom" layout="graphic-view">
+        <ribbon-button
+          label=${`${this.graphic.viewport?.zoom ?? 100}%`}
+          icon="Zoom"
+          .dropdown=${this.renderGraphicViewportDropdown()}
+          ?disabled=${!captured}
+        ></ribbon-button>
+        <ribbon-button
+          label="Fit"
+          action="navigate-graphic:fit-content"
+          icon="Fullscreen"
+          ?disabled=${!captured}
+        ></ribbon-button>
+      </ribbon-drawer>
+    `
+  }
+
   private renderTableDrawer() {
     const active = Boolean(this.table?.active)
     return html`
@@ -4171,6 +4610,7 @@ export class AppRibbon extends LitElement {
       if(drawer.label === "Sharing") return this.renderSharingDrawer(drawer)
       if(drawer.label === "Marks") return this.renderMarkDrawer()
       if(drawer.label === "Table") return this.renderTableDrawer()
+      if(drawer.label === "Graphic") return this.renderGraphicDrawer()
       if(drawer.label === "Packages") return this.renderPackageDrawer()
       if(drawer.label === "Local packages") return this.renderDevelopDrawer()
       if(drawer.label === "Metadata") return this.renderMetadataDrawer()
@@ -4201,6 +4641,9 @@ export class AppRibbon extends LitElement {
   }
 
   private get currentMenuGroups() {
+    if(this.activeMenu === "Edit" && this.graphic?.active) {
+      return menuGroups.Edit.filter(group => group.label === "Graphic")
+    }
     if(this.activeMenu !== "Start" && this.activeMenu !== "Insert") return menuGroups[this.activeMenu]
     const packageButtons: RibbonMenuButton[] = this.availablePackages.map(pkg => {
       const members = pkg.members.filter(member => member.insertable)

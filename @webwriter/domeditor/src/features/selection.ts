@@ -46,24 +46,38 @@ function isCaretAtStartOf(element: Element) {
 export class SelectionFeature extends EditorFeature {
 
   #sharedRefreshQueued = false
-  #capturedWidget: Element | null = null
+  #capturedElement: Element | null = null
 
   /** Whether the current widget node selection also captures interactions in
    * that widget's shadow tree. Capture survives shadow-tree focus changes and
    * is released by the next ordinary editor selection interaction. */
   get isCaptureSelection() {
-    return this.captureSelectedWidget !== null
+    return this.captureSelectedElement !== null
+  }
+
+  /** The connected authored element that currently owns capture. */
+  get captureSelectedElement() {
+    return this.#capturedElement?.isConnected ? this.#capturedElement : null
   }
 
   /** The connected widget whose interaction is currently captured. Native
    * shadow-control actions may project their selection to an outer gap, so
    * capture ownership cannot be inferred from focus or Selection alone. */
   get captureSelectedWidget() {
-    return this.#capturedWidget?.isConnected ? this.#capturedWidget : null
+    return this.captureSelectedElement
   }
 
   #releaseCaptureSelection() {
-    this.#capturedWidget = null
+    this.#capturedElement = null
+  }
+
+  /** Capture-selects an authored element while keeping its internal pointer
+   * interactions available to a focused feature such as SVG graphics. */
+  captureElement(element: Element) {
+    if(!element.isConnected || element === document.body || !document.body.contains(element)) return
+    this.#capturedElement = element
+    $.selectElement(element, false)
+    this.processSelection()
   }
 
   #selectionBlock() {
@@ -174,6 +188,7 @@ export class SelectionFeature extends EditorFeature {
       this.#sharedRefreshQueued = false
       if(!this.isEnabled) return
       this.processSelection()
+      this.editor.features.graphic.refresh()
       // Shared DOM changes can clamp a detached selection without firing a
       // native selectionchange event, so refresh the host breadcrumb as well.
       this.editor.postSelectionPath()
@@ -336,7 +351,7 @@ export class SelectionFeature extends EditorFeature {
         && $.isElementSelection
         && $.selectedElement === widget
       if(selectCapture) {
-        this.#capturedWidget = widget
+        this.#capturedElement = widget
         $.selectElement(widget, false)
       }
       else {
@@ -347,7 +362,7 @@ export class SelectionFeature extends EditorFeature {
       this.editor.postSelectionPath()
       return
     }
-    this.#capturedWidget = widget
+    this.#capturedElement = widget
     // Pointerdown happens before the widget establishes its own focus/caret,
     // so it is safe to establish the outer atomic node range here. Later
     // focus, keyboard, and input events must not rewrite shadow selection.
@@ -644,8 +659,8 @@ export class SelectionFeature extends EditorFeature {
 
   /** Classifies the normalized live selection exactly once so only one
    * presentation branch can be applied during this refresh. */
-  #selectionKind(inDragSelection: boolean, capturedWidget: Element | null): SelectionKind {
-    if(capturedWidget) return "capture"
+  #selectionKind(inDragSelection: boolean, capturedElement: Element | null): SelectionKind {
+    if(capturedElement) return "capture"
     const selection = document.getSelection()
     if(!selection?.anchorNode || !selection.focusNode) return "none"
     if(this.editor.features.table.hasCellSelection) return "cell"
@@ -663,10 +678,10 @@ export class SelectionFeature extends EditorFeature {
    * selectionchange events and every editor-driven refresh. */
   processSelection(inDragSelection=false) {
     const focusedWidget = focusedWidgetHost()
-    if(focusedWidget) this.#capturedWidget = focusedWidget
-    const capturedWidget = this.captureSelectedWidget
+    if(focusedWidget) this.#capturedElement = focusedWidget
+    const capturedElement = this.captureSelectedElement
     let sel: Selection | null
-    if(capturedWidget) {
+    if(capturedElement) {
       this.#normalizeNativeSelection()
       this.editor.features.list.clearSelectionPresentation()
       sel = document.getSelection()
@@ -685,12 +700,12 @@ export class SelectionFeature extends EditorFeature {
       sel = document.getSelection()
       this.editor.features.list.clearSelectionPresentation()
     }
-    const kind = this.#selectionKind(inDragSelection, capturedWidget)
+    const kind = this.#selectionKind(inDragSelection, capturedElement)
     this.#clearSelections()
     if(kind === "cell") return
-    if(kind === "capture" && capturedWidget) {
+    if(kind === "capture" && capturedElement) {
       document.body.classList.add("◆", "◆node-selection-active")
-      capturedWidget.classList.add("◆", "◆element-selected", "◆element-capture-selected")
+      capturedElement.classList.add("◆", "◆element-selected", "◆element-capture-selected")
       this.#showSelectionCaret("capture")
       return
     }

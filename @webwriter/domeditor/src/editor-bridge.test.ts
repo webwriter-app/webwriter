@@ -124,6 +124,24 @@ describe("editor bridge message guards", () => {
         gap: {parentPath: [0], offset: 1},
         list: {type: "menu", style: "square"},
         media: {type: "picture", attributes: {src: "photo.png", alt: "Photo"}},
+        graphic: {
+          active: true,
+          capture: true,
+          selectionCount: 1,
+          shape: "rectangle",
+          parameters: {width: "800", fill: "#60a5fa"},
+          options: {grid: true, snap: true, guides: false},
+          layers: [{
+            index: 0,
+            label: "Milestone",
+            type: "rectangle",
+            selected: true,
+            primary: true,
+            visible: true,
+            locked: false,
+          }],
+          viewport: {zoom: 150},
+        },
       },
     }
     expect(isSelectionChangeMessage(message)).toBe(true)
@@ -137,6 +155,18 @@ describe("editor bridge message guards", () => {
       {...message, detail: {...message.detail, media: {type: "canvas", attributes: {}}}},
       {...message, detail: {...message.detail, media: {type: "img", attributes: []}}},
       {...message, detail: {...message.detail, media: {type: "img", attributes: {width: 640}}}},
+      {...message, detail: {...message.detail, graphic: {active: true, capture: true, shape: "path"}}},
+      {...message, detail: {...message.detail, graphic: {active: true, capture: "true"}}},
+      {...message, detail: {...message.detail, graphic: {active: true, capture: true, parameters: {width: 800}}}},
+      {...message, detail: {...message.detail, graphic: {active: true, capture: true, selectionCount: -1}}},
+      {...message, detail: {...message.detail, graphic: {active: true, capture: true, selectionCount: 1.5}}},
+      {...message, detail: {...message.detail, graphic: {active: true, capture: true, options: {grid: true, snap: "true", guides: true}}}},
+      {...message, detail: {...message.detail, graphic: {active: true, capture: true, layers: [{index: 0, label: "Shape"}]}}},
+      {...message, detail: {...message.detail, graphic: {active: true, capture: true, layers: [{
+        index: -1, label: "Shape", type: "rectangle", selected: false, primary: false, visible: true, locked: false,
+      }]}}},
+      {...message, detail: {...message.detail, graphic: {active: true, capture: true, viewport: {zoom: 10}}}},
+      {...message, detail: {...message.detail, graphic: {active: true, capture: true, viewport: {zoom: "150"}}}},
     ])
   })
 

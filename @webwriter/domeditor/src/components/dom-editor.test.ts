@@ -928,6 +928,130 @@ describe("DomEditor.execute()", () => {
     expect(focusEditor).not.toHaveBeenCalled()
   })
 
+  it("routes graphic insertion, shape, and parameter commands through the iframe bridge", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+
+    ribbon.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label: "Graphic"},
+      bubbles: true,
+      composed: true,
+    }))
+    ribbon.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label: "insert-graphic-shape:ellipse"},
+      bubbles: true,
+      composed: true,
+    }))
+    ribbon.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label: "add-graphic-shape:line"},
+      bubbles: true,
+      composed: true,
+    }))
+    ribbon.dispatchEvent(new CustomEvent("graphic-parameter-change", {
+      detail: {name: "stroke-width", value: "24"},
+      bubbles: true,
+      composed: true,
+    }))
+    ribbon.dispatchEvent(new CustomEvent("graphic-parameter-change", {
+      detail: {name: "routing", value: "orthogonal"},
+      bubbles: true,
+      composed: true,
+    }))
+    ribbon.dispatchEvent(new CustomEvent("graphic-parameter-change", {
+      detail: {name: "label", value: "Milestone"},
+      bubbles: true,
+      composed: true,
+    }))
+    ribbon.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label: "toggle-graphic-option:grid"},
+      bubbles: true,
+      composed: true,
+    }))
+    ribbon.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label: "arrange-graphic:align-middle"},
+      bubbles: true,
+      composed: true,
+    }))
+    ribbon.dispatchEvent(new CustomEvent("graphic-layer-action", {
+      detail: {operation: "toggle-lock", index: 2},
+      bubbles: true,
+      composed: true,
+    }))
+    ribbon.dispatchEvent(new CustomEvent("graphic-viewport-action", {
+      detail: {operation: "set-zoom", zoom: 175},
+      bubbles: true,
+      composed: true,
+    }))
+    ribbon.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label: "navigate-graphic:fit-content"},
+      bubbles: true,
+      composed: true,
+    }))
+
+    expect(execute).toHaveBeenNthCalledWith(1, {type: "insertGraphic"})
+    expect(execute).toHaveBeenNthCalledWith(2, {type: "insertGraphic", shape: "ellipse"})
+    expect(execute).toHaveBeenNthCalledWith(3, {type: "addGraphicShape", shape: "line"})
+    expect(execute).toHaveBeenNthCalledWith(4, {type: "setGraphicParameter", name: "stroke-width", value: "24"})
+    expect(execute).toHaveBeenNthCalledWith(5, {type: "setGraphicParameter", name: "routing", value: "orthogonal"})
+    expect(execute).toHaveBeenNthCalledWith(6, {type: "setGraphicParameter", name: "label", value: "Milestone"})
+    expect(execute).toHaveBeenNthCalledWith(7, {type: "toggleGraphicOption", name: "grid"})
+    expect(execute).toHaveBeenNthCalledWith(8, {type: "arrangeGraphicShapes", operation: "align-middle"})
+    expect(execute).toHaveBeenNthCalledWith(9, {type: "manageGraphicLayer", operation: "toggle-lock", index: 2})
+    expect(execute).toHaveBeenNthCalledWith(10, {type: "navigateGraphic", operation: "set-zoom", zoom: 175})
+    expect(execute).toHaveBeenNthCalledWith(11, {type: "navigateGraphic", operation: "fit-content"})
+
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {
+        type: selectionChangeEvent,
+        detail: {
+          path: [{path: [], name: "Document"}, {path: [0], name: "Graphic"}],
+          nodeSelected: true,
+          capture: true,
+          graphic: {
+            active: true,
+            capture: true,
+            selectionCount: 1,
+            shape: "connector",
+            parameters: {"stroke-width": "24", routing: "orthogonal"},
+            options: {grid: false, snap: true, guides: true},
+            layers: [{
+              index: 0,
+              label: "Connector 1",
+              type: "connector",
+              selected: true,
+              primary: true,
+              visible: true,
+              locked: false,
+            }],
+            viewport: {zoom: 175},
+          },
+        },
+      },
+      source: editorWindow,
+    }))
+    await editor.updateComplete
+
+    expect(ribbon.graphic).toEqual({
+      active: true,
+      capture: true,
+      selectionCount: 1,
+      shape: "connector",
+      parameters: {"stroke-width": "24", routing: "orthogonal"},
+      options: {grid: false, snap: true, guides: true},
+      layers: [{
+        index: 0,
+        label: "Connector 1",
+        type: "connector",
+        selected: true,
+        primary: true,
+        visible: true,
+        locked: false,
+      }],
+      viewport: {zoom: 175},
+    })
+  })
+
   it("renders presence circles before undo and overlaps up to three collaborators", async () => {
     const {editor, editorWindow} = await mountEditor()
 

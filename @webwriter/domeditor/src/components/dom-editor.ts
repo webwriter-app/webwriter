@@ -67,6 +67,13 @@ import {LocalPackageWorkerClient} from "../local-package-worker-client"
 import type {AIDocumentToolCall, AIDocumentToolHandler} from "../ai-client"
 import type {TableSelectionState} from "../table"
 import {
+  isGraphicArrangeOperation,
+  isGraphicLayerOperation,
+  isGraphicShapeType,
+  isGraphicViewportOperation,
+  type GraphicSelectionState,
+} from "../graphic"
+import {
   BackendClient,
   probeDevelopmentBackend,
   type BackendSession,
@@ -210,6 +217,7 @@ export class DomEditor extends LitElement {
     listStyle: {attribute: false, state: true},
     mediaSelection: {attribute: false, state: true},
     tableSelection: {attribute: false, state: true},
+    graphicSelection: {attribute: false, state: true},
     fileName: {attribute: false, state: true},
     fileDirty: {attribute: false, state: true},
     previewActive: {attribute: false, state: true},
@@ -242,6 +250,7 @@ export class DomEditor extends LitElement {
   private listStyle = ""
   private mediaSelection: MediaSelectionState | null = null
   private tableSelection: TableSelectionState | null = null
+  private graphicSelection: GraphicSelectionState | null = null
   private presenceUsers: PresenceUser[] = []
   private packages: WebWriterPackage[] = []
   private installedPackages: WebWriterPackage[] = []
@@ -1185,6 +1194,42 @@ export class DomEditor extends LitElement {
       else this.focusEditor()
       return
     }
+    if(label?.startsWith("insert-graphic-shape:")) {
+      const shape = label.slice("insert-graphic-shape:".length)
+      if(isGraphicShapeType(shape)) void this.execute({type: "insertGraphic", shape}).finally(() => this.focusEditor())
+      else this.focusEditor()
+      return
+    }
+    if(label?.startsWith("add-graphic-shape:")) {
+      const shape = label.slice("add-graphic-shape:".length)
+      if(isGraphicShapeType(shape)) void this.execute({type: "addGraphicShape", shape}).finally(() => this.focusEditor())
+      else this.focusEditor()
+      return
+    }
+    if(label?.startsWith("toggle-graphic-option:")) {
+      const name = label.slice("toggle-graphic-option:".length)
+      if(name === "grid" || name === "snap" || name === "guides") {
+        void this.execute({type: "toggleGraphicOption", name}).finally(() => this.focusEditor())
+      }
+      else this.focusEditor()
+      return
+    }
+    if(label?.startsWith("arrange-graphic:")) {
+      const operation = label.slice("arrange-graphic:".length)
+      if(isGraphicArrangeOperation(operation)) {
+        void this.execute({type: "arrangeGraphicShapes", operation}).finally(() => this.focusEditor())
+      }
+      else this.focusEditor()
+      return
+    }
+    if(label?.startsWith("navigate-graphic:")) {
+      const operation = label.slice("navigate-graphic:".length)
+      if(isGraphicViewportOperation(operation) && operation !== "set-zoom") {
+        void this.execute({type: "navigateGraphic", operation}).finally(() => this.focusEditor())
+      }
+      else this.focusEditor()
+      return
+    }
     if(label === "insert-details") {
       void this.execute({type: "insertDetails"})
         .finally(() => this.focusEditor())
@@ -1221,6 +1266,11 @@ export class DomEditor extends LitElement {
 
     if(item.tag === "table") {
       void this.execute({type: "insertTable", rows: 2, columns: 2}).finally(() => this.focusEditor())
+      return
+    }
+
+    if(item.tag === "svg") {
+      void this.execute({type: "insertGraphic"}).finally(() => this.focusEditor())
       return
     }
 
@@ -1744,6 +1794,54 @@ export class DomEditor extends LitElement {
     }).finally(() => this.focusEditor())
   }
 
+  private handleGraphicParameterChange = (event: Event) => {
+    const detail = (event as CustomEvent<{name?: unknown, value?: unknown}>).detail
+    const allowed = new Set([
+      "x", "y", "width", "height", "rotation", "fill", "stroke",
+      "stroke-width", "opacity", "corner-radius", "routing", "start-arrow", "end-arrow",
+      "label", "text-color", "font-size", "inset", "inner-radius", "head-size", "tail-width",
+    ])
+    if(typeof detail?.name !== "string" || !allowed.has(detail.name) || typeof detail.value !== "string") {
+      this.focusEditor()
+      return
+    }
+    void this.execute({
+      type: "setGraphicParameter",
+      name: detail.name,
+      value: detail.value,
+    }).finally(() => this.focusEditor())
+  }
+
+  private handleGraphicLayerAction = (event: Event) => {
+    const detail = (event as CustomEvent<{operation?: unknown, index?: unknown}>).detail
+    if(!isGraphicLayerOperation(detail?.operation)
+      || typeof detail.index !== "number" || !Number.isInteger(detail.index) || detail.index < 0) {
+      this.focusEditor()
+      return
+    }
+    void this.execute({
+      type: "manageGraphicLayer",
+      operation: detail.operation,
+      index: detail.index,
+    }).finally(() => this.focusEditor())
+  }
+
+  private handleGraphicViewportAction = (event: Event) => {
+    const detail = (event as CustomEvent<{operation?: unknown, zoom?: unknown}>).detail
+    if(!isGraphicViewportOperation(detail?.operation)
+      || detail.operation === "set-zoom" && (
+        typeof detail.zoom !== "number" || !Number.isFinite(detail.zoom) || detail.zoom < 25 || detail.zoom > 400
+      )) {
+      this.focusEditor()
+      return
+    }
+    void this.execute({
+      type: "navigateGraphic",
+      operation: detail.operation,
+      ...(detail.operation === "set-zoom" ? {zoom: detail.zoom as number} : {}),
+    }).finally(() => this.focusEditor())
+  }
+
   private handleRibbonCollapse = () => {
     this.renderRoot.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")?.collapseTree()
   }
@@ -1853,6 +1951,7 @@ export class DomEditor extends LitElement {
         this.captureSelection = false
         this.selectionGap = null
         this.mediaSelection = null
+        this.graphicSelection = null
       }
       this.marks = [...event.data.detail.marks]
       this.markStyles = {...(event.data.detail.styles ?? {})}
@@ -1900,6 +1999,15 @@ export class DomEditor extends LitElement {
         ? {type: event.data.detail.media.type, attributes: {...event.data.detail.media.attributes}}
         : null
       this.tableSelection = event.data.detail.table ? {...event.data.detail.table} : null
+      this.graphicSelection = event.data.detail.graphic ? {
+        ...event.data.detail.graphic,
+        ...(event.data.detail.graphic.parameters ? {parameters: {...event.data.detail.graphic.parameters}} : {}),
+        ...(event.data.detail.graphic.options ? {options: {...event.data.detail.graphic.options}} : {}),
+        ...(event.data.detail.graphic.layers ? {
+          layers: event.data.detail.graphic.layers.map(layer => ({...layer})),
+        } : {}),
+        ...(event.data.detail.graphic.viewport ? {viewport: {...event.data.detail.graphic.viewport}} : {}),
+      } : null
       this.documentTree = this.buildDocumentTree()
       this.dispatchEvent(new CustomEvent(selectionChangeEvent, {
         detail: {
@@ -1910,6 +2018,7 @@ export class DomEditor extends LitElement {
           list: {type: this.listType, style: this.listStyle},
           ...(this.mediaSelection ? {media: this.mediaSelection} : {}),
           ...(this.tableSelection ? {table: this.tableSelection} : {}),
+          ...(this.graphicSelection ? {graphic: this.graphicSelection} : {}),
         },
         bubbles: true,
         composed: true,
@@ -2112,6 +2221,7 @@ export class DomEditor extends LitElement {
     this.markAttributes = {}
     this.mediaSelection = null
     this.tableSelection = null
+    this.graphicSelection = null
     const error = new Error("The DOM editor component was disconnected")
     this.pendingExecutions.forEach(({reject}) => reject(error))
     this.pendingExecutions.clear()
@@ -2131,6 +2241,7 @@ export class DomEditor extends LitElement {
           .listStyle=${this.listStyle}
           .media=${this.mediaSelection}
           .table=${this.tableSelection}
+          .graphic=${this.graphicSelection}
           .presenceUsers=${this.presenceUsers}
           .packages=${this.packages}
           .installedPackages=${this.installedPackages}
@@ -2162,6 +2273,9 @@ export class DomEditor extends LitElement {
           @media-type-change=${this.handleMediaTypeChange}
           @table-insert=${this.handleTableInsert}
           @table-style-change=${this.handleTableStyleChange}
+          @graphic-parameter-change=${this.handleGraphicParameterChange}
+          @graphic-layer-action=${this.handleGraphicLayerAction}
+          @graphic-viewport-action=${this.handleGraphicViewportAction}
           @ribbon-collapse=${this.handleRibbonCollapse}
           @ribbon-input-pointerdown=${this.handleRibbonInputPointerDown}
           @ribbon-input-focus=${this.handleRibbonInputFocus}

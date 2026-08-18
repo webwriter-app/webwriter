@@ -502,6 +502,22 @@ svg {
   cursor: pointer;
 }
 
+:where(svg[viewBox="0 0 1600 900"]) {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+}
+
+svg.◆element-capture-selected {
+  cursor: crosshair;
+}
+
+svg.◆element-capture-selected :is(rect, ellipse, circle, line, polyline, polygon) {
+  cursor: move;
+}
+
 svg * {
   outline: none !important;
 }
@@ -555,18 +571,222 @@ math:has(> mtext:only-child br:only-child)::after {
   content: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-math" width="100%" height="100%" viewBox="0 0 24 24" stroke-width="2" stroke="darkgray" fill="none" stroke-linecap="round" stroke-linejoin="round" part="svg"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><path d="M19 5h-7l-4 14l-3 -6h-2"></path><path d="M14 13l6 6"></path><path d="M14 19l6 -6"></path></svg>') !important;
 }
 
-svg:empty {
-  background: lightgray;
+svg[viewBox]:empty {
+  display: block;
+  box-sizing: border-box;
+  min-height: 10rem;
+  aspect-ratio: 16 / 9;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.2rem;
+  background-color: #fff;
+  box-shadow: 0 1px 3px rgb(15 23 42 / 8%);
 }
 
-svg:empty::after {
+svg.◆graphic-grid-visible {
+  background-color: #fff;
+  background-image:
+    linear-gradient(to right, rgb(100 116 139 / 12%) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(100 116 139 / 12%) 1px, transparent 1px);
+  background-size: 3.125% 5.5556%;
+}
+
+.◆graphic-shape-locked {
+  pointer-events: none !important;
+}
+
+body.◆graphic-pan-ready svg.◆element-capture-selected {
+  cursor: grab;
+}
+
+body.◆graphic-panning,
+body.◆graphic-panning * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
+.◆graphic-preview-source {
+  visibility: hidden !important;
+}
+
+/* SVG direct-manipulation chrome is entirely inside BODY's shadow appendix.
+ * The selected authored shape carries only removable ◆ marker classes. */
+body::part(graphic-overlay) {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  box-sizing: border-box;
+  pointer-events: none;
+  user-select: none;
+  contain: layout style;
+}
+
+body::part(graphic-overlay)[hidden] {
+  display: none;
+}
+
+body::part(graphic-handle) {
   position: absolute;
-  top: 0;
-  left: 0;
-  display: inline-block;
-  width: 100%;
-  height: 100%;
-  content: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="darkgray" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-vector"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M3 3m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M17 3m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M17 17m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M3 17m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M5 7l0 10"/><path d="M19 7l0 10"/><path d="M7 5l10 0"/><path d="M7 19l10 0"/></svg>');
+  box-sizing: border-box;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  padding: 0;
+  border: 1.5px solid #2563eb;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 80%);
+  pointer-events: auto;
+  touch-action: none;
+}
+
+body::part(graphic-port) {
+  position: absolute;
+  box-sizing: border-box;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  padding: 0;
+  border: 1.5px solid white;
+  border-radius: 2px;
+  background: #2563eb;
+  box-shadow: 0 0 0 1px #2563eb, 0 1px 3px rgb(15 23 42 / 28%);
+  pointer-events: auto;
+  touch-action: none;
+  transform: rotate(45deg);
+  cursor: crosshair;
+}
+
+body::part(graphic-port):hover {
+  background: #1d4ed8;
+  box-shadow: 0 0 0 2px rgb(147 197 253 / 80%);
+}
+
+body::part(graphic-resize-nw) { cursor: nwse-resize; }
+body::part(graphic-resize-n) { cursor: ns-resize; }
+body::part(graphic-resize-ne) { cursor: nesw-resize; }
+body::part(graphic-resize-e) { cursor: ew-resize; }
+body::part(graphic-resize-se) { cursor: nwse-resize; }
+body::part(graphic-resize-s) { cursor: ns-resize; }
+body::part(graphic-resize-sw) { cursor: nesw-resize; }
+body::part(graphic-resize-w) { cursor: ew-resize; }
+
+body::part(graphic-rotate) {
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-color: white;
+  background: #2563eb;
+  box-shadow: 0 0 0 1.5px #2563eb;
+  cursor: grab;
+}
+
+body::part(graphic-preview) {
+  position: fixed;
+  z-index: 2147483645;
+  overflow: visible;
+  pointer-events: none;
+}
+
+body::part(graphic-outline) {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: visible;
+  pointer-events: none;
+}
+
+body::part(graphic-selection-outline),
+body::part(graphic-rotation-stem) {
+  fill: none;
+  stroke: #2563eb;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+body::part(graphic-individual-outline) {
+  fill: none;
+  stroke: #60a5fa;
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+}
+
+body::part(graphic-marquee) {
+  fill: rgb(37 99 235 / 10%);
+  stroke: #2563eb;
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+}
+
+body::part(graphic-port-target) {
+  fill: rgb(16 185 129 / 20%);
+  stroke: #059669;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+body::part(graphic-guide) {
+  stroke: #38bdf8;
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+}
+
+body::part(graphic-guide-canvas) {
+  stroke: #f59e0b;
+}
+
+body::part(graphic-guide-grid) {
+  stroke: #94a3b8;
+}
+
+body::part(graphic-affordance) {
+  border-color: #d97706;
+  border-radius: 50%;
+  background: #fef3c7;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 85%);
+}
+
+body::part(graphic-affordance-roundness) { cursor: ew-resize; }
+body::part(graphic-affordance-radius-x) { cursor: ew-resize; }
+body::part(graphic-affordance-radius-y) { cursor: ns-resize; }
+body::part(graphic-affordance-line-start),
+body::part(graphic-affordance-line-end),
+body::part(graphic-affordance-connector-start),
+body::part(graphic-affordance-connector-end) {
+  border-color: #059669;
+  background: #d1fae5;
+  cursor: crosshair;
+}
+
+body::part(graphic-affordance-vertex) { cursor: move; }
+
+body::part(graphic-label-editor) {
+  position: fixed;
+  z-index: 2147483647;
+  box-sizing: border-box;
+  min-width: 80px;
+  min-height: 36px;
+  margin: 0;
+  padding: 0.35rem 0.5rem;
+  overflow: hidden;
+  resize: none;
+  border: 2px solid #2563eb;
+  border-radius: 4px;
+  outline: 3px solid rgb(255 255 255 / 85%);
+  color: #0f172a;
+  background: #fff;
+  box-shadow: 0 4px 14px rgb(15 23 42 / 18%);
+  font: 500 1rem/1.2 system-ui, sans-serif;
+  text-align: center;
+  field-sizing: content;
+}
+
+body.◆graphic-manipulating,
+body.◆graphic-manipulating * {
+  user-select: none !important;
 }
 
 :where(table:not(:has(td, th)))::after {

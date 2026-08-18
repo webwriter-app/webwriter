@@ -68,6 +68,30 @@ export class RibbonDrawer extends LitElement {
       --ribbon-drawer-expanded-width: 20.25rem;
     }
 
+    :host([layout="graphic"]) {
+      --ribbon-drawer-expanded-width: 9rem;
+    }
+
+    :host([layout="graphic-geometry"]) {
+      --ribbon-drawer-expanded-width: 7rem;
+    }
+
+    :host([layout="graphic-canvas"]) {
+      --ribbon-drawer-expanded-width: 9rem;
+    }
+
+    :host([layout="graphic-layers"]) {
+      --ribbon-drawer-expanded-width: 6.5rem;
+    }
+
+    :host([layout="graphic-view"]) {
+      --ribbon-drawer-expanded-width: 7rem;
+    }
+
+    :host([layout="graphic-arrange"]) {
+      --ribbon-drawer-expanded-width: 10rem;
+    }
+
     :host([layout="elements"]) .controls {
       grid-template-rows: minmax(0, 1fr);
     }
@@ -215,6 +239,17 @@ export class RibbonDrawer extends LitElement {
       grid-auto-rows: minmax(0, 1fr);
       align-content: stretch;
       align-items: stretch;
+    }
+
+    :host([layout="graphic"]) .controls {
+      grid-template-columns: 4.5rem 3.5rem;
+      grid-template-rows: repeat(2, minmax(0, 1fr));
+      grid-auto-flow: row;
+      grid-auto-columns: 3.5rem;
+    }
+
+    :host([layout="graphic"]) ::slotted(ribbon-button:first-of-type) {
+      grid-row: 1 / 3;
     }
 
     :host([layout="packages"][single-column]) .controls {

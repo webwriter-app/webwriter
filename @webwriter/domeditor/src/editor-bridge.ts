@@ -10,6 +10,7 @@ import type {EditorStateSnapshot} from "./editor-state"
 import {isMediaType, type MediaSelectionState} from "./media"
 import type {WebWriterPackage} from "./packages"
 import type {TableSelectionState} from "./table"
+import {isGraphicShapeType, type GraphicSelectionState} from "./graphic"
 
 export const executeCompleteEvent = "dom-editor-execute-complete"
 export const executeFailureEvent = "dom-editor-execute-failure"
@@ -130,6 +131,7 @@ export type SelectionChangeDetail = {
   list?: ListSelectionState
   media?: MediaSelectionState
   table?: TableSelectionState
+  graphic?: GraphicSelectionState
 }
 
 export type SelectionChangeMessage = {
@@ -264,6 +266,54 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
     && typeof table.hasCaption === "boolean"
   )
   if(!tableIsValid) return false
+
+  const graphic = message.detail.graphic as Partial<GraphicSelectionState> | null | undefined
+  const graphicIsValid = graphic === undefined || (
+    !!graphic
+    && typeof graphic === "object"
+    && graphic.active === true
+    && typeof graphic.capture === "boolean"
+    && (graphic.selectionCount === undefined || (
+      typeof graphic.selectionCount === "number"
+      && Number.isInteger(graphic.selectionCount)
+      && graphic.selectionCount >= 0
+    ))
+    && (graphic.shape === undefined || isGraphicShapeType(graphic.shape))
+    && (graphic.parameters === undefined || (
+      !!graphic.parameters
+      && typeof graphic.parameters === "object"
+      && !Array.isArray(graphic.parameters)
+      && Object.entries(graphic.parameters).every(([name, value]) => typeof name === "string" && typeof value === "string")
+    ))
+    && (graphic.options === undefined || (
+      !!graphic.options
+      && typeof graphic.options === "object"
+      && typeof graphic.options.grid === "boolean"
+      && typeof graphic.options.snap === "boolean"
+      && typeof graphic.options.guides === "boolean"
+    ))
+    && (graphic.layers === undefined || (
+      Array.isArray(graphic.layers)
+      && graphic.layers.every(layer => !!layer
+        && typeof layer === "object"
+        && typeof layer.index === "number" && Number.isInteger(layer.index) && layer.index >= 0
+        && typeof layer.label === "string"
+        && isGraphicShapeType(layer.type)
+        && typeof layer.selected === "boolean"
+        && typeof layer.primary === "boolean"
+        && typeof layer.visible === "boolean"
+        && typeof layer.locked === "boolean")
+    ))
+    && (graphic.viewport === undefined || (
+      !!graphic.viewport
+      && typeof graphic.viewport === "object"
+      && typeof graphic.viewport.zoom === "number"
+      && Number.isFinite(graphic.viewport.zoom)
+      && graphic.viewport.zoom >= 25
+      && graphic.viewport.zoom <= 400
+    ))
+  )
+  if(!graphicIsValid) return false
 
   return true
 }

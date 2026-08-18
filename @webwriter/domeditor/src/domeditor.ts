@@ -12,6 +12,7 @@ import { TransformationFeature } from "./features/transformation"
 import { StateFeature } from "./features/state"
 import { MediaFeature } from "./features/media"
 import { TableFeature } from "./features/table"
+import { GraphicFeature } from "./features/graphic"
 import { Schema } from "./schema"
 import { $, adoptStylesheet, createStylesheet, focusedWidgetHost, getContainer, isElement, isWidgetShadowInteraction } from "./utility"
 import {isMarkElement, normalizeMarkElements} from "./marks"
@@ -77,6 +78,7 @@ export class DOMEditor {
     "table": new TableFeature(this),
     "manipulation": new ManipulationFeature(this),
     "transformation": new TransformationFeature(this),
+    "graphic": new GraphicFeature(this),
     "selection": new SelectionFeature(this),
     "placeholder": new PlaceholderFeature(this),
     "mark": new MarkFeature(this),
@@ -322,8 +324,8 @@ export class DOMEditor {
   private selectedElementForPath() {
     const selectedTable = this.features.table.selectedTable
     if(this.features.table.hasCellSelection && selectedTable) return selectedTable
-    const capturedWidget = this.features.selection.captureSelectedWidget
-    if(capturedWidget) return capturedWidget
+    const capturedElement = this.features.selection.captureSelectedElement
+    if(capturedElement) return capturedElement
     const focusedWidget = focusedWidgetHost()
     if(focusedWidget) return focusedWidget
     const selectedElement = $.selectedElement
@@ -386,6 +388,7 @@ export class DOMEditor {
     const list = this.features.list.getState()
     const media = this.features.media.getState()
     const table = this.features.table.getState()
+    const graphic = this.features.graphic.getState()
     const detail: SelectionChangeDetail = {
       path,
       ...($.isElementSelection ? {nodeSelected: true} : {}),
@@ -394,6 +397,7 @@ export class DOMEditor {
       ...(list.type ? {list} : {}),
       ...(media ? {media} : {}),
       ...(table ? {table} : {}),
+      ...(graphic ? {graphic} : {}),
     }
     this.postBridgeEvent(selectionChangeEvent, detail)
   }

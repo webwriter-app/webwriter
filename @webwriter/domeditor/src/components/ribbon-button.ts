@@ -348,6 +348,180 @@ export class RibbonButton extends LitElement {
       cursor: default;
     }
 
+    .graphic-layers-dropdown {
+      width: min(18rem, calc(100vw - 2rem));
+    }
+
+    .graphic-layer-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+      max-height: min(18rem, calc(100vh - 10rem));
+      overflow: auto;
+    }
+
+    .button-dropdown-empty {
+      padding: 0.4rem;
+      color: #64748b;
+      font-size: 0.66rem;
+    }
+
+    .graphic-layer-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 1.7rem 1.7rem;
+      gap: 0.1rem;
+      align-items: center;
+      min-height: 1.8rem;
+      padding: 0.1rem;
+      border: 1px solid transparent;
+      border-radius: 0.25rem;
+    }
+
+    .graphic-layer-row[data-selected="true"] {
+      border-color: #93b8df;
+      background: #eef5fc;
+    }
+
+    .graphic-layer-select,
+    .graphic-layer-action,
+    .graphic-layer-order,
+    .graphic-zoom-action {
+      box-sizing: border-box;
+      border: 0;
+      border-radius: 0.2rem;
+      color: #334155;
+      background: transparent;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .graphic-layer-select {
+      display: flex;
+      flex-direction: row;
+      gap: 0.4rem;
+      align-items: center;
+      justify-content: flex-start;
+      min-width: 0;
+      height: 1.55rem;
+      padding: 0 0.3rem;
+      font-size: 0.66rem;
+      line-height: 1rem;
+      text-align: left;
+    }
+
+    .graphic-layer-select span:last-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .graphic-layer-icon,
+    .graphic-layer-action,
+    .graphic-layer-order,
+    .graphic-zoom-action {
+      display: grid;
+      place-items: center;
+    }
+
+    .graphic-layer-icon {
+      flex: 0 0 auto;
+      width: 1rem;
+      height: 1rem;
+    }
+
+    .graphic-layer-icon svg,
+    .graphic-layer-action svg {
+      width: 1rem;
+      height: 1rem;
+    }
+
+    .graphic-layer-action {
+      width: 1.55rem;
+      height: 1.55rem;
+    }
+
+    .graphic-layer-select:hover,
+    .graphic-layer-action:hover,
+    .graphic-layer-order:hover,
+    .graphic-zoom-action:hover {
+      color: #1e5d9d;
+      background: #dfeefc;
+    }
+
+    .graphic-layer-select:focus-visible,
+    .graphic-layer-action:focus-visible,
+    .graphic-layer-order:focus-visible,
+    .graphic-zoom-action:focus-visible {
+      outline: 2px solid #3977c7;
+      outline-offset: -1px;
+    }
+
+    .graphic-layer-select:disabled,
+    .graphic-layer-order:disabled {
+      color: #9aa4b1;
+      cursor: default;
+    }
+
+    .graphic-layer-toolbar {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.2rem;
+      padding-top: 0.4rem;
+      border-top: 1px solid #dce4ee;
+    }
+
+    .graphic-layer-order {
+      min-height: 1.65rem;
+      padding: 0.15rem 0.25rem;
+      border: 1px solid #c8d2df;
+      background: #fff;
+      font-size: 0.62rem;
+    }
+
+    .graphic-zoom-dropdown {
+      width: 12rem;
+    }
+
+    .graphic-zoom-stepper {
+      display: grid;
+      grid-template-columns: 1.8rem 1fr 1.8rem;
+      gap: 0.25rem;
+      align-items: center;
+    }
+
+    .graphic-zoom-action {
+      min-height: 1.65rem;
+      border: 1px solid #c8d2df;
+      background: #fff;
+      font-size: 0.8rem;
+    }
+
+    .graphic-zoom-value {
+      color: #1e4f80;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    .graphic-zoom-dropdown input[type="range"] {
+      width: 100%;
+      margin: 0;
+      accent-color: #3977c7;
+    }
+
+    .graphic-zoom-presets {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.25rem;
+    }
+
+    .graphic-navigation-hint {
+      margin: 0;
+      color: #64748b;
+      font-size: 0.6rem;
+      line-height: 0.85rem;
+      text-align: center;
+    }
+
     .sharing-dropdown {
       display: flex;
       flex-direction: column;

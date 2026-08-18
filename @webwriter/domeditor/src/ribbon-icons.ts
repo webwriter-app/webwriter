@@ -7,6 +7,11 @@ import arrowLeft from "@tabler/icons/outline/arrow-left.svg?raw"
 import arrowRight from "@tabler/icons/outline/arrow-right.svg?raw"
 import arrowsMove from "@tabler/icons/outline/arrows-move.svg?raw"
 import alignLeft from "@tabler/icons/outline/align-left.svg?raw"
+import alignBoxBottomCenter from "@tabler/icons/outline/align-box-bottom-center.svg?raw"
+import alignBoxCenterMiddle from "@tabler/icons/outline/align-box-center-middle.svg?raw"
+import alignBoxLeftMiddle from "@tabler/icons/outline/align-box-left-middle.svg?raw"
+import alignBoxRightMiddle from "@tabler/icons/outline/align-box-right-middle.svg?raw"
+import alignBoxTopCenter from "@tabler/icons/outline/align-box-top-center.svg?raw"
 import accessible from "@tabler/icons/outline/accessible.svg?raw"
 import adjustments from "@tabler/icons/outline/adjustments.svg?raw"
 import article from "@tabler/icons/outline/file-text.svg?raw"
@@ -44,6 +49,10 @@ import infoCircle from "@tabler/icons/outline/info-circle.svg?raw"
 import keyboard from "@tabler/icons/outline/keyboard.svg?raw"
 import language from "@tabler/icons/outline/language.svg?raw"
 import layersUnion from "@tabler/icons/outline/layers-union.svg?raw"
+import eye from "@tabler/icons/outline/eye.svg?raw"
+import eyeOff from "@tabler/icons/outline/eye-off.svg?raw"
+import lock from "@tabler/icons/outline/lock.svg?raw"
+import lockOpen from "@tabler/icons/outline/lock-open.svg?raw"
 import layout from "@tabler/icons/outline/layout.svg?raw"
 import link from "@tabler/icons/outline/link.svg?raw"
 import lineHeight from "@tabler/icons/outline/line-height.svg?raw"
@@ -65,12 +74,27 @@ import paperclip from "@tabler/icons/outline/paperclip.svg?raw"
 import rulerMeasure from "@tabler/icons/outline/ruler-measure.svg?raw"
 import scissors from "@tabler/icons/outline/scissors.svg?raw"
 import stack from "@tabler/icons/outline/stack.svg?raw"
+import stackBack from "@tabler/icons/outline/stack-back.svg?raw"
+import stackBackward from "@tabler/icons/outline/stack-backward.svg?raw"
+import stackForward from "@tabler/icons/outline/stack-forward.svg?raw"
+import stackFront from "@tabler/icons/outline/stack-front.svg?raw"
+import spacingHorizontal from "@tabler/icons/outline/spacing-horizontal.svg?raw"
+import spacingVertical from "@tabler/icons/outline/spacing-vertical.svg?raw"
 import superscript from "@tabler/icons/outline/superscript.svg?raw"
 import table from "@tabler/icons/outline/table.svg?raw"
 import textSize from "@tabler/icons/outline/text-size.svg?raw"
 import typography from "@tabler/icons/outline/typography.svg?raw"
 import underline from "@tabler/icons/outline/underline.svg?raw"
 import vector from "@tabler/icons/outline/vector.svg?raw"
+import oval from "@tabler/icons/outline/oval.svg?raw"
+import triangle from "@tabler/icons/outline/triangle.svg?raw"
+import diamond from "@tabler/icons/outline/diamond.svg?raw"
+import hexagon from "@tabler/icons/outline/hexagon.svg?raw"
+import line from "@tabler/icons/outline/line.svg?raw"
+import polygon from "@tabler/icons/outline/polygon.svg?raw"
+import rectangle from "@tabler/icons/outline/rectangle.svg?raw"
+import route from "@tabler/icons/outline/route.svg?raw"
+import rotate from "@tabler/icons/outline/rotate.svg?raw"
 import video from "@tabler/icons/outline/video.svg?raw"
 import volume from "@tabler/icons/outline/volume.svg?raw"
 import worldWww from "@tabler/icons/outline/world-www.svg?raw"
@@ -167,6 +191,19 @@ const icons: Record<string, string> = {
   Italic: italic,
   Underline: underline,
   Align: alignLeft,
+  "Graphic align left": alignBoxLeftMiddle,
+  "Graphic align center": alignBoxCenterMiddle,
+  "Graphic align right": alignBoxRightMiddle,
+  "Graphic align top": alignBoxTopCenter,
+  "Graphic align middle": alignBoxCenterMiddle,
+  "Graphic align bottom": alignBoxBottomCenter,
+  "Distribute horizontally": spacingHorizontal,
+  "Distribute vertically": spacingVertical,
+  "Bring forward": stackForward,
+  "Send backward": stackBackward,
+  "Bring to front": stackFront,
+  "Send to back": stackBack,
+  "Graphic order": stack,
   Lists: list,
   Spacing: lineHeight,
   Paragraph: pilcrow,
@@ -188,6 +225,19 @@ const icons: Record<string, string> = {
   Table: table,
   Image: photo,
   Graphic: vector,
+  Rectangle: rectangle,
+  Ellipse: oval,
+  Triangle: triangle,
+  Diamond: diamond,
+  Hexagon: hexagon,
+  Arrow: arrowRight,
+  Line: line,
+  Connector: route,
+  Polygon: polygon,
+  Fill: colorSwatch,
+  Stroke: line,
+  Geometry: rectangle,
+  Rotate: rotate,
   Audio: volume,
   Video: video,
   Website: worldWww,
@@ -254,6 +304,11 @@ const icons: Record<string, string> = {
   Position: arrowsMove,
   Order: stack,
   Group: layersUnion,
+  Layers: layersUnion,
+  Visible: eye,
+  Hidden: eyeOff,
+  Lock: lock,
+  Unlock: lockOpen,
   Zoom: zoomIn,
   Guides: rulerMeasure,
   Fullscreen: maximize,
