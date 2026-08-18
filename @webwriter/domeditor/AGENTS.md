@@ -22,6 +22,11 @@ Before adding code, work through these questions in order:
 
 Do not introduce a dependency until the platform and installed dependencies have been ruled out.
 
+## Task delegation
+
+- Sol orchestrates the work and delegates simple, scoped tasks to Luna when they can be completed without reading the whole application for context.
+- Delegate rote tasks, especially making commits, to Codex 5.3 Spark.
+
 ## Architectural invariants
 
 ### The HTML DOM is the document state
