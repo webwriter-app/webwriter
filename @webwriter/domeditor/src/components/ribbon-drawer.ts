@@ -111,6 +111,13 @@ export class RibbonDrawer extends LitElement {
       --ribbon-drawer-expanded-width: 17rem;
     }
 
+    :host([layout="document-head"]) {
+      --ribbon-drawer-expanded-width: 36rem;
+      --ribbon-drawer-width: min(36rem, calc(100vw - 1rem));
+      --ribbon-drawer-height: min(29rem, calc(100vh - 3rem));
+      --ribbon-drawer-more-height: 24rem;
+    }
+
     :host([layout="development"]) {
       --ribbon-drawer-expanded-width: 10rem;
     }
@@ -281,6 +288,23 @@ export class RibbonDrawer extends LitElement {
       grid-auto-flow: row;
       grid-auto-columns: minmax(0, 1fr);
       grid-auto-rows: minmax(0, 1fr);
+    }
+
+    :host([layout="document-head"]) .controls {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      padding-bottom: 0.25rem;
+    }
+
+    :host([layout="document-head"]) ::slotted(document-head-editor[mode="common"]) {
+      flex: 0 0 4.6rem;
+      min-height: 0;
+    }
+
+    :host([layout="document-head"]) ::slotted(document-head-editor[mode="advanced"]) {
+      flex: 1 1 auto;
+      min-height: 0;
     }
 
     :host([layout="packages"]) .drawer.expanded {
@@ -670,7 +694,7 @@ export class RibbonDrawer extends LitElement {
   }
 
   closeDrawer() {
-    this.querySelectorAll<HTMLElement & {close?: () => void}>("ribbon-combobox")
+    this.querySelectorAll<HTMLElement & {close?: () => void}>("ribbon-combobox, document-head-combobox")
       .forEach(combobox => combobox.close?.())
     this.forcedOpen = false
     if(!this.drawerOpen) return

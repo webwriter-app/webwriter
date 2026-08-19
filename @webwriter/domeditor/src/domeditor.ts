@@ -13,6 +13,7 @@ import { StateFeature } from "./features/state"
 import { MediaFeature } from "./features/media"
 import { TableFeature } from "./features/table"
 import { GraphicFeature } from "./features/graphic"
+import { HeadFeature } from "./features/head"
 import { Schema } from "./schema"
 import { $, adoptStylesheet, createStylesheet, focusedWidgetHost, getContainer, isElement, isWidgetShadowInteraction } from "./utility"
 import {isMarkElement, normalizeMarkElements} from "./marks"
@@ -22,6 +23,7 @@ import {
   markStateChangeEvent,
   selectionChangeEvent,
   presenceChangeEvent,
+  documentHeadStateChangeEvent,
   type PresenceUser,
   type SelectionChangeDetail,
   type SelectionGap,
@@ -33,6 +35,7 @@ import type {EditorStateSnapshot} from "./editor-state"
 import editorStyleString from "./editor.css?raw"
 import * as Y from "yjs"
 import {originalURLAttribute, serializeDoctype} from "./serialization"
+import type {DocumentHeadState} from "./document-head"
 
 const editorStylesheet = createStylesheet(editorStyleString)
 const featuresDisabledByDefault = new Set(["placeholder"])
@@ -72,6 +75,7 @@ export class DOMEditor {
   features = {
     "dependency": new DependencyFeature(this),
     "state": new StateFeature(this),
+    "head": new HeadFeature(this),
     "insertion": new InsertionFeature(this),
     "history": new HistoryFeature(this),
     "list": new ListFeature(this),
@@ -236,7 +240,7 @@ export class DOMEditor {
 
     // Responses are posted to the parent window. In a non-iframe environment
     // (for example, a unit test), they can arrive back at this listener too.
-    if(ev.data.type === executeCompleteEvent || ev.data.type === executeFailureEvent || ev.data.type === presenceChangeEvent || ev.data.type === markStateChangeEvent) {
+    if(ev.data.type === executeCompleteEvent || ev.data.type === executeFailureEvent || ev.data.type === presenceChangeEvent || ev.data.type === markStateChangeEvent || ev.data.type === documentHeadStateChangeEvent) {
       return
     }
     if(ev.data.type === selectionChangeEvent) {
@@ -319,6 +323,10 @@ export class DOMEditor {
 
   postPresence(users: PresenceUser[]) {
     this.postBridgeEvent(presenceChangeEvent, {users})
+  }
+
+  postDocumentHeadState(state: DocumentHeadState) {
+    this.postBridgeEvent(documentHeadStateChangeEvent, state)
   }
 
   private selectedElementForPath() {

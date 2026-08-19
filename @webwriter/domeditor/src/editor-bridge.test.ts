@@ -6,6 +6,7 @@ import {
   initializeEditorMessage,
   isAIEditReviewMessage,
   isExecuteResponse,
+  isDocumentHeadStateChangeMessage,
   isInitializeEditorMessage,
   isLoadWidgetsMessage,
   isMarkStateChangeMessage,
@@ -15,7 +16,9 @@ import {
   markStateChangeEvent,
   presenceChangeEvent,
   selectionChangeEvent,
+  documentHeadStateChangeEvent,
 } from "./editor-bridge"
+import {emptyDocumentHeadState} from "./document-head"
 
 type MessageGuard = (value: unknown) => boolean
 
@@ -26,6 +29,31 @@ function expectAllRejected(guard: MessageGuard, values: unknown[]) {
 }
 
 describe("editor bridge message guards", () => {
+  it("validates document-head state down to attributes and move flags", () => {
+    const message = {
+      type: documentHeadStateChangeEvent,
+      detail: {
+        ...emptyDocumentHeadState(),
+        title: "Lesson",
+        elements: [{
+          id: "head-1",
+          tagName: "script",
+          label: "Script",
+          attributes: [{name: "type", value: "module"}],
+          content: "start()",
+          canMoveUp: false,
+          canMoveDown: true,
+        }],
+      },
+    }
+    expect(isDocumentHeadStateChangeMessage(message)).toBe(true)
+    expectAllRejected(isDocumentHeadStateChangeMessage, [
+      {...message, detail: {...message.detail, language: 4}},
+      {...message, detail: {...message.detail, elements: [{...message.detail.elements[0], canMoveDown: "yes"}]}},
+      {...message, detail: {...message.detail, elements: [{...message.detail.elements[0], attributes: [{name: "src", value: 4}]}]}},
+    ])
+  })
+
   it("accepts only complete AI review decisions", () => {
     expect(isAIEditReviewMessage({
       type: aiEditReviewEvent,

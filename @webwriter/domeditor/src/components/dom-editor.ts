@@ -36,6 +36,7 @@ import {
   initializeEditorMessage,
   isAIEditReviewMessage,
   isExecuteResponse,
+  isDocumentHeadStateChangeMessage,
   isMarkStateChangeMessage,
   isSelectionChangeMessage,
   isPresenceChangeMessage,
@@ -78,6 +79,13 @@ import {
   probeDevelopmentBackend,
   type BackendSession,
 } from "../backend-client"
+import {
+  WEBWRITER_GENERATOR,
+  emptyDocumentHeadState,
+  isDocumentHeadAction,
+  type DocumentHeadAction,
+  type DocumentHeadState,
+} from "../document-head"
 
 type WritableFileStream = {
   write(data: Blob): Promise<void>
@@ -224,6 +232,7 @@ export class DomEditor extends LitElement {
     backendState: {attribute: false, state: true},
     backendClient: {attribute: false, state: true},
     storageLocation: {attribute: false, state: true},
+    documentHead: {attribute: false, state: true},
   }
 
   private editorDocument: Document | null = null
@@ -278,6 +287,7 @@ export class DomEditor extends LitElement {
   private fileFormat: FileFormat = "html"
   private fileHandle: LocalFileHandle | null = null
   private storageLocation: StorageLocation = "local"
+  private documentHead: DocumentHeadState = emptyDocumentHeadState()
   private backendState: "probing" | "connected" | "unavailable" = "probing"
   private backendSession: BackendSession | null = null
   private backendClient: BackendClient | null = null
@@ -330,7 +340,9 @@ export class DomEditor extends LitElement {
 
   private get editorSrcdoc() {
     const bootstrap = `<script data-webwriter-editor-only src="${escapeAttribute(scopedCustomElementRegistryPolyfillUrl)}"></script><script data-webwriter-editor-only type="module" src="${escapeAttribute(editorEntryUrl)}"></script>`
-    if(this.frameDocumentHTML === null) return `<!-- frame ${this.frameRevision} -->${bootstrap}`
+    if(this.frameDocumentHTML === null) {
+      return `<!-- frame ${this.frameRevision} -->${bootstrap}<meta name="generator" content="${escapeAttribute(WEBWRITER_GENERATOR)}">`
+    }
 
     const parsed = new DOMParser().parseFromString(this.frameDocumentHTML, "text/html")
     restoreOriginalResourceURLs(parsed)
@@ -457,6 +469,15 @@ export class DomEditor extends LitElement {
     const iframe = event.currentTarget as HTMLIFrameElement
     this.editorDocument = iframe.contentDocument
     this.editorWindow = iframe.contentWindow
+    // Happy DOM parses the intentionally minimal initial srcdoc's metadata
+    // into the body. Browsers place it in the head, but keep the authored DOM
+    // correct in either environment before observers and bridge state start.
+    if(this.frameDocumentHTML === null) {
+      const generator = this.editorDocument?.querySelector('meta[name="generator"]')
+      if(generator && generator.parentElement !== this.editorDocument?.head) {
+        this.editorDocument?.head.prepend(generator)
+      }
+    }
     if(this.breadcrumbHoverPath !== null) {
       void this.execute({
         type: "hoverNode",
@@ -563,9 +584,26 @@ export class DomEditor extends LitElement {
   }
 
   private isFreshDocumentUnchanged() {
-    if(this.fileHandle !== null) return false
+    if(this.fileHandle !== null || this.backendDocumentId !== null) return false
     const body = this.editorDocument?.body
-    if(!body) return false
+    const head = this.editorDocument?.head
+    if(!body || !head) return false
+
+    const authoredHeadNodes = Array.from(head.childNodes).filter(node => !(
+      node.nodeType === Node.ELEMENT_NODE && (
+        (node as Element).classList.contains("◆editor-only")
+        || (node as Element).hasAttribute("data-webwriter-editor-only")
+      )
+    ))
+    const generator = authoredHeadNodes[0]
+    const headUnchanged = authoredHeadNodes.length === 1
+      && generator?.nodeType === Node.ELEMENT_NODE
+      && (generator as Element).localName === "meta"
+      && (generator as Element).getAttribute("name")?.toLowerCase() === "generator"
+      && (generator as Element).getAttribute("content") === WEBWRITER_GENERATOR
+      && (generator as Element).attributes.length === 2
+      && !this.editorDocument?.documentElement.hasAttribute("lang")
+    if(!headUnchanged) return false
 
     const authoredChildren = Array.from(body.childNodes).filter(node => {
       if(node.nodeType !== Node.ELEMENT_NODE) return true
@@ -822,6 +860,14 @@ export class DomEditor extends LitElement {
     }
   }
 
+  private handleDocumentHeadAction = (event: Event) => {
+    const action = (event as CustomEvent<DocumentHeadAction>).detail
+    if(!isDocumentHeadAction(action)) return
+    void this.execute(action).then(changed => {
+      if(changed !== false) this.fileDirty = true
+    }).catch(error => this.reportFileError(error))
+  }
+
   private filePickerWindow() {
     return window as FilePickerWindow
   }
@@ -893,6 +939,7 @@ export class DomEditor extends LitElement {
     this.editorReadyReject = null
     this.savedEditorSelection = null
     this.frameState = undefined
+    this.documentHead = emptyDocumentHeadState()
     this.frameDocumentHTML = htmlSource
     const reloadError = new Error("The editor iframe was reloaded for a document change")
     this.pendingExecutions.forEach(({reject}) => reject(reloadError))
@@ -909,7 +956,7 @@ export class DomEditor extends LitElement {
       this.backendDocumentId = null
       this.fileName = ""
       this.fileFormat = "html"
-      await this.reloadDocument("<!DOCTYPE html><html><head></head><body></body></html>")
+      await this.reloadDocument(`<!DOCTYPE html><html><head><meta name="generator" content="${escapeAttribute(WEBWRITER_GENERATOR)}"></head><body></body></html>`)
       this.fileDirty = false
       this.focusEditor()
     }
@@ -2030,6 +2077,17 @@ export class DomEditor extends LitElement {
       this.presenceUsers = event.data.detail.users.map(user => ({...user}))
       return
     }
+    if(isDocumentHeadStateChangeMessage(event.data)) {
+      if(!this.isEditorMessage(event)) return
+      this.documentHead = {
+        ...event.data.detail,
+        elements: event.data.detail.elements.map(element => ({
+          ...element,
+          attributes: element.attributes.map(attribute => ({...attribute})),
+        })),
+      }
+      return
+    }
     if(!isExecuteResponse(event.data)) return
     if(!this.isEditorMessage(event)) return
 
@@ -2222,6 +2280,7 @@ export class DomEditor extends LitElement {
     this.mediaSelection = null
     this.tableSelection = null
     this.graphicSelection = null
+    this.documentHead = emptyDocumentHeadState()
     const error = new Error("The DOM editor component was disconnected")
     this.pendingExecutions.forEach(({reject}) => reject(error))
     this.pendingExecutions.clear()
@@ -2257,6 +2316,7 @@ export class DomEditor extends LitElement {
           .fileDirty=${this.fileDirty}
           .previewActive=${this.previewActive}
           .storageLocation=${this.storageLocation}
+          .documentHead=${this.documentHead}
           .backendClient=${this.backendClient}
           .backendState=${this.backendState}
           .aiDocumentToolHandler=${this.handleAIDocumentTool}
@@ -2265,6 +2325,7 @@ export class DomEditor extends LitElement {
           @ribbon-preview-exit=${this.handleRibbonPreviewExit}
           @file-name-change=${this.handleFileNameChange}
           @storage-location-change=${this.handleStorageLocationChange}
+          @document-head-action=${this.handleDocumentHeadAction}
           @backend-login-request=${this.loginToBackend}
           @backend-admin-request=${this.openBackendAdmin}
           @ribbon-combobox-change=${this.handleRibbonComboboxChange}

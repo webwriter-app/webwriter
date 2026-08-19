@@ -11,12 +11,14 @@ import {isMediaType, type MediaSelectionState} from "./media"
 import type {WebWriterPackage} from "./packages"
 import type {TableSelectionState} from "./table"
 import {isGraphicShapeType, type GraphicSelectionState} from "./graphic"
+import type {DocumentHeadElementState, DocumentHeadState} from "./document-head"
 
 export const executeCompleteEvent = "dom-editor-execute-complete"
 export const executeFailureEvent = "dom-editor-execute-failure"
 export const selectionChangeEvent = "dom-editor-selection-change"
 export const markStateChangeEvent = "dom-editor-mark-state-change"
 export const presenceChangeEvent = "dom-editor-presence-change"
+export const documentHeadStateChangeEvent = "dom-editor-document-head-state-change"
 export const initializeEditorMessage = "initialize-editor"
 export const loadWidgetsMessage = "load-widgets"
 export const aiEditReviewEvent = "dom-editor-ai-edit-review"
@@ -169,6 +171,11 @@ export type PresenceChangeDetail = {
 export type PresenceChangeMessage = {
   type: typeof presenceChangeEvent
   detail: PresenceChangeDetail
+}
+
+export type DocumentHeadStateChangeMessage = {
+  type: typeof documentHeadStateChangeEvent
+  detail: DocumentHeadState
 }
 
 export type SerializedError = {
@@ -359,5 +366,32 @@ export function isPresenceChangeMessage(value: unknown): value is PresenceChange
       && typeof presenceUser.name === "string"
       && typeof presenceUser.initials === "string"
       && typeof presenceUser.color === "string"
+  })
+}
+
+export function isDocumentHeadStateChangeMessage(value: unknown): value is DocumentHeadStateChangeMessage {
+  if(!value || typeof value !== "object") return false
+  const message = value as Partial<DocumentHeadStateChangeMessage>
+  if(message.type !== documentHeadStateChangeEvent || !message.detail || typeof message.detail !== "object") return false
+  const detail = message.detail as Partial<DocumentHeadState>
+  if(![detail.title, detail.description, detail.keywords, detail.author, detail.license,
+    detail.language, detail.theme, detail.generator].every(field => typeof field === "string")) return false
+  if(!Array.isArray(detail.elements)) return false
+  return detail.elements.every(value => {
+    if(!value || typeof value !== "object") return false
+    const element = value as Partial<DocumentHeadElementState>
+    return typeof element.id === "string"
+      && typeof element.tagName === "string"
+      && typeof element.label === "string"
+      && typeof element.canMoveUp === "boolean"
+      && typeof element.canMoveDown === "boolean"
+      && (element.content === undefined || typeof element.content === "string")
+      && (element.contentLabel === undefined || typeof element.contentLabel === "string")
+      && (element.preset === undefined || typeof element.preset === "string")
+      && Array.isArray(element.attributes)
+      && element.attributes.every(attribute => !!attribute
+        && typeof attribute === "object"
+        && typeof attribute.name === "string"
+        && typeof attribute.value === "string")
   })
 }

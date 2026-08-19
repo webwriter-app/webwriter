@@ -14,8 +14,10 @@ import {
   loadWidgetsMessage,
   markStateChangeEvent,
   presenceChangeEvent,
+  documentHeadStateChangeEvent,
   selectionChangeEvent,
 } from "../editor-bridge"
+import {WEBWRITER_GENERATOR, emptyDocumentHeadState} from "../document-head"
 import {INSTALLED_PACKAGES_STORAGE_KEY, WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
 import {LocalPackageWorkerClient} from "../local-package-worker-client"
 
@@ -142,6 +144,38 @@ beforeEach(() => {
 })
 
 describe("DomEditor iframe setup", () => {
+  it("starts new documents with the current WebWriter generator metadata", async () => {
+    const {iframe} = await mountEditor()
+
+    expect(iframe.contentDocument!.head.querySelector('meta[name="generator"]')?.getAttribute("content"))
+      .toBe(WEBWRITER_GENERATOR)
+  })
+
+  it("routes bridged document-head state and form actions", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const nextState = {
+      ...emptyDocumentHeadState(),
+      title: "Head title",
+      generator: WEBWRITER_GENERATOR,
+    }
+    window.dispatchEvent(new MessageEvent("message", {
+      source: editorWindow,
+      data: {type: documentHeadStateChangeEvent, detail: nextState},
+    }))
+    await editor.updateComplete
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    expect(ribbon.documentHead.title).toBe("Head title")
+
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    ribbon.dispatchEvent(new CustomEvent("document-head-action", {
+      detail: {type: "setDocumentHeadField", field: "title", value: "Changed"},
+      bubbles: true,
+      composed: true,
+    }))
+    expect(execute).toHaveBeenCalledWith({type: "setDocumentHeadField", field: "title", value: "Changed"})
+    await vi.waitFor(() => expect((editor as any).fileDirty).toBe(true))
+  })
+
   it("automatically logs in when the no-auth development backend answers the probe", async () => {
     const sessionResponse = new Response(JSON.stringify({
       kind: "webwriter-dev-server",
@@ -530,6 +564,13 @@ describe("Develop local packages", () => {
 })
 
 describe("DomEditor file actions", () => {
+  it("marks authored language mutations as unsaved", async () => {
+    const {editor, iframe} = await mountEditor()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    iframe.contentDocument!.documentElement.setAttribute("lang", "de")
+    await vi.waitFor(() => expect((editor as any).fileDirty).toBe(true))
+  })
+
   it("marks authored iframe mutations as unsaved", async () => {
     const {editor, iframe} = await mountEditor()
     await new Promise(resolve => setTimeout(resolve, 0))

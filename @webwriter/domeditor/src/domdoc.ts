@@ -9,6 +9,8 @@ const INTERNAL_NAMESPACE = "__domeditor_namespace"
 const COMMENT_NODE_NAME = "domeditor-comment"
 const COMMENT_NODE_KIND = "comment"
 const INITIALIZED_KEY = "initialized"
+const HEAD_INITIALIZED_KEY = "head-initialized"
+const LANGUAGE_INITIALIZED_KEY = "language-initialized"
 
 const presenceColors = [
   "#e11d48",
@@ -112,6 +114,9 @@ export class SharedDOMDoc {
   readonly root: HTMLElement
 
   readonly #body: Y.XmlElement
+  readonly #documentHead: Y.XmlElement | null
+  readonly #headRoot: HTMLHeadElement | null
+  readonly #headMetadata: Y.Map<unknown>
   readonly #metadata: Y.Map<unknown>
   readonly #undoManager: Y.UndoManager
   readonly #capturedChanges = new Map<string, Y.UndoManager>()
@@ -138,6 +143,9 @@ export class SharedDOMDoc {
     this.#document = this.root.ownerDocument
     this.doc = options.ydoc ?? new Y.Doc()
     this.#body = this.doc.getXmlElement("body")
+    this.#headRoot = this.root === this.#document.body ? this.#document.head : null
+    this.#documentHead = this.#headRoot ? this.doc.getXmlElement("document-head") : null
+    this.#headMetadata = this.doc.getMap("head")
     this.#metadata = this.doc.getMap("domeditor")
     this.awareness = options.awareness ?? new Awareness(this.doc as any)
 
@@ -147,27 +155,45 @@ export class SharedDOMDoc {
 
     this.#addNodePair(this.root, this.#body)
     this.#body.observeDeep(this.#handleYChanges)
+    if(this.#headRoot && this.#documentHead) {
+      this.#addNodePair(this.#headRoot, this.#documentHead)
+      this.#documentHead.observeDeep(this.#handleYChanges)
+      this.#headMetadata.observe(this.#handleHeadMetadataChange)
+    }
 
     const hasSharedDOM = this.#metadata.get(INITIALIZED_KEY) === true ||
       this.#body.length > 0 || Object.keys(this.#body.getAttributes()).length > 0
-    if(hasSharedDOM) {
-      if(this.#metadata.get(INITIALIZED_KEY) !== true) {
-        this.doc.transact(() => this.#metadata.set(INITIALIZED_KEY, true), this.#initialOrigin)
-      }
-      this.#writeYToDOM()
-    }
-    else {
-      this.doc.transact(() => {
+    const hasSharedHead = Boolean(this.#documentHead) && (
+      this.#metadata.get(HEAD_INITIALIZED_KEY) === true ||
+      this.#documentHead!.length > 0 || Object.keys(this.#documentHead!.getAttributes()).length > 0
+    )
+    const hasSharedLanguage = this.#headRoot !== null && this.#metadata.get(LANGUAGE_INITIALIZED_KEY) === true
+    this.doc.transact(() => {
+      if(!hasSharedDOM) {
         this.#metadata.set(INITIALIZED_KEY, true)
         this.#reconcileYElement(this.root, this.#body)
-      }, this.#initialOrigin)
-    }
+      }
+      else if(this.#metadata.get(INITIALIZED_KEY) !== true) this.#metadata.set(INITIALIZED_KEY, true)
+      if(this.#headRoot && this.#documentHead && !hasSharedHead) {
+        this.#metadata.set(HEAD_INITIALIZED_KEY, true)
+        this.#reconcileYElement(this.#headRoot, this.#documentHead)
+      }
+      else if(hasSharedHead && this.#metadata.get(HEAD_INITIALIZED_KEY) !== true) {
+        this.#metadata.set(HEAD_INITIALIZED_KEY, true)
+      }
+      if(this.#headRoot && !hasSharedLanguage) {
+        this.#metadata.set(LANGUAGE_INITIALIZED_KEY, true)
+        this.#headMetadata.set("language", this.#document.documentElement.getAttribute("lang") ?? "")
+      }
+    }, this.#initialOrigin)
+    if(hasSharedDOM || hasSharedHead || hasSharedLanguage) this.#writeYToDOM()
 
-    this.#undoManager = new Y.UndoManager(this.#body, {
+    this.#undoManager = new Y.UndoManager(this.#undoScopes(), {
       trackedOrigins: new Set([this.#domOrigin]),
     })
 
-    this.#observer = new MutationObserver(this.#handleDOMChanges)
+    const DocumentMutationObserver = this.#document.defaultView?.MutationObserver ?? MutationObserver
+    this.#observer = new DocumentMutationObserver(this.#handleDOMChanges)
     this.startObserve()
 
     const defaultUser: CollaborationUser = {
@@ -191,7 +217,12 @@ export class SharedDOMDoc {
 
   /** Kept as a shared map for document-head metadata used by callers. */
   get head() {
-    return this.doc.getMap("head")
+    return this.#headMetadata
+  }
+
+  /** Shared authored HEAD element. Editor-only resources are excluded. */
+  get headElement() {
+    return this.#documentHead
   }
 
   get selection() {
@@ -250,6 +281,21 @@ export class SharedDOMDoc {
       childList: true,
       subtree: true,
     })
+    if(this.#headRoot) {
+      this.#observer.observe(this.#headRoot, {
+        attributes: true,
+        attributeOldValue: true,
+        characterData: true,
+        characterDataOldValue: true,
+        childList: true,
+        subtree: true,
+      })
+      this.#observer.observe(this.#document.documentElement, {
+        attributes: true,
+        attributeOldValue: true,
+        attributeFilter: ["lang"],
+      })
+    }
     this.#isObserving = true
   }
 
@@ -366,7 +412,13 @@ export class SharedDOMDoc {
   /** Reconciles the current DOM immediately; MutationObserver normally calls this. */
   syncFromDOM(origin: unknown = this.#domOrigin) {
     if(this.#isWritingToDOM) return
-    this.doc.transact(() => this.#reconcileYElement(this.root, this.#body), origin)
+    this.doc.transact(() => {
+      this.#reconcileYElement(this.root, this.#body)
+      if(this.#headRoot && this.#documentHead) {
+        this.#reconcileYElement(this.#headRoot, this.#documentHead)
+        this.#headMetadata.set("language", this.#document.documentElement.getAttribute("lang") ?? "")
+      }
+    }, origin)
     const selection = this.#document.getSelection()
     if(selection?.anchorNode && selection.focusNode &&
       (selection.anchorNode === this.root || this.root.contains(selection.anchorNode)) &&
@@ -428,7 +480,7 @@ export class SharedDOMDoc {
       throw new Error(`A captured change with id '${changeId}' already exists`)
     }
     const origin = {source: "domeditor-captured-change", changeId}
-    const undoManager = new Y.UndoManager(this.#body, {
+    const undoManager = new Y.UndoManager(this.#undoScopes(), {
       trackedOrigins: new Set([origin]),
       captureTimeout: 0,
     })
@@ -475,6 +527,8 @@ export class SharedDOMDoc {
   destroy() {
     this.stopObserve()
     this.#body.unobserveDeep(this.#handleYChanges)
+    this.#documentHead?.unobserveDeep(this.#handleYChanges)
+    if(this.#headRoot) this.#headMetadata.unobserve(this.#handleHeadMetadataChange)
     this.#undoManager.destroy()
     this.#capturedChanges.forEach(undoManager => undoManager.destroy())
     this.#capturedChanges.clear()
@@ -494,11 +548,24 @@ export class SharedDOMDoc {
     if(events.length) this.#writeYToDOM()
   }
 
+  readonly #handleHeadMetadataChange = (_event: Y.YMapEvent<unknown>, transaction: Y.Transaction) => {
+    if(transaction.origin === this.#domOrigin ||
+      transaction.origin === this.#initialOrigin ||
+      transaction.origin === this.#remoteReactionOrigin) return
+    this.#writeYToDOM()
+  }
+
   #writeYToDOM() {
     if(this.#isWritingToDOM) return
     this.#isWritingToDOM = true
     try {
       this.#reconcileDOMElement(this.#body, this.root)
+      if(this.#headRoot && this.#documentHead) {
+        this.#reconcileDOMElement(this.#documentHead, this.#headRoot)
+        const language = this.#headMetadata.get("language")
+        if(typeof language === "string" && language) this.#document.documentElement.setAttribute("lang", language)
+        else this.#document.documentElement.removeAttribute("lang")
+      }
       this.writeSelection()
       // Drop MutationRecords caused by applying the shared tree. A custom
       // element may have synchronously changed its own light DOM while being
@@ -575,7 +642,13 @@ export class SharedDOMDoc {
 
   #isInsideIgnoredElement(node: Node) {
     const element = isElement(node) ? node : node.parentElement
-    return Boolean(element?.closest(".◆editor-only"))
+    return Boolean(element?.closest(".◆editor-only, [data-webwriter-editor-only]"))
+  }
+
+  #undoScopes() {
+    return this.#documentHead
+      ? [this.#body, this.#documentHead, this.#headMetadata]
+      : [this.#body]
   }
 
   #isSyncableNode(node: Node) {

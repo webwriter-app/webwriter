@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from "vitest"
+import "@testing-library/jest-dom/vitest"
 import * as Y from "yjs"
 import {SharedDOMDoc} from "./domdoc"
 
@@ -20,6 +21,25 @@ function cloneShared(source: SharedDOMDoc, staleHTML = "") {
   const ydoc = new Y.Doc()
   Y.applyUpdate(ydoc, Y.encodeStateAsUpdate(source.doc), "initial-sync")
   return createShared(staleHTML, ydoc)
+}
+
+function createDocumentShared(headHTML = "", bodyHTML = "", language = "", ydoc?: Y.Doc) {
+  const owner = document.implementation.createHTMLDocument("")
+  owner.head.innerHTML = headHTML
+  owner.body.innerHTML = bodyHTML
+  if(language) owner.documentElement.setAttribute("lang", language)
+  const shared = new SharedDOMDoc(undefined, undefined, ["contenteditable", "spellcheck"], ["◆"], {
+    root: owner.body,
+    ydoc,
+  })
+  sharedDocs.push(shared)
+  return {owner, shared}
+}
+
+function cloneDocumentShared(source: SharedDOMDoc, staleHead = "", staleLanguage = "") {
+  const ydoc = new Y.Doc()
+  Y.applyUpdate(ydoc, Y.encodeStateAsUpdate(source.doc), "initial-sync")
+  return createDocumentShared(staleHead, "", staleLanguage, ydoc)
 }
 
 async function mutationsDelivered() {
@@ -202,6 +222,42 @@ describe("DOM to Yjs synchronization", () => {
     await mutationsDelivered()
 
     expect((shared.body.firstChild as Y.XmlElement).getAttribute("class")).toBe("after")
+  })
+})
+
+describe("document head synchronization", () => {
+  it("mirrors arbitrary authored head elements and the document language", () => {
+    const {shared} = createDocumentShared(
+      '<meta charset="utf-8"><style>body { color: red }</style><!--head note-->',
+      "<p>Body</p>",
+      "de-DE",
+    )
+    const {owner: peer} = cloneDocumentShared(shared, '<meta name="stale" content="yes">', "fr")
+
+    expect(peer.documentElement.getAttribute("lang")).toBe("de-DE")
+    expect(peer.head.innerHTML).toBe('<meta charset="utf-8"><style>body { color: red }</style><!--head note-->')
+    expect(peer.body.innerHTML).toBe("<p>Body</p>")
+  })
+
+  it("propagates direct head and language mutations without sharing editor resources", async () => {
+    const {owner, shared} = createDocumentShared('<title>Before</title>', "", "en")
+    const editorScript = owner.createElement("script")
+    editorScript.setAttribute("data-webwriter-editor-only", "")
+    owner.head.append(editorScript)
+    owner.title = "After"
+    owner.documentElement.setAttribute("lang", "nl")
+    const link = owner.createElement("link")
+    link.setAttribute("rel", "stylesheet")
+    link.setAttribute("href", "data:text/css,")
+    owner.head.insertBefore(link, editorScript)
+    await mutationsDelivered()
+
+    const {owner: peer} = cloneDocumentShared(shared)
+    expect(peer.title).toBe("After")
+    expect(peer.documentElement.getAttribute("lang")).toBe("nl")
+    expect(peer.head.querySelector('link[rel="stylesheet"]')?.getAttribute("href")).toBe("data:text/css,")
+    expect(peer.head.querySelector("[data-webwriter-editor-only]")).toBeNull()
+    expect(shared.headElement?.toString()).not.toContain("data-webwriter-editor-only")
   })
 })
 

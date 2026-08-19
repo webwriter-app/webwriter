@@ -60,6 +60,8 @@ import {
   type GraphicSelectionState,
   type GraphicViewportOperation,
 } from "../graphic"
+import {emptyDocumentHeadState, type DocumentHeadState} from "../document-head"
+import "./document-head-editor"
 
 type RibbonMenuName = "File" | "Start" | "Insert" | "Edit" | "Develop"
 
@@ -285,6 +287,7 @@ const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
         },
       ],
     },
+    {label: "Metadata", buttons: []},
     {label: "Sharing", buttons: ["Share", "Print", "Download"]},
     {label: "Editor", buttons: ["General", "Shortcuts", "Accessibility"]},
     {label: "Appearance", buttons: ["Theme", "Zoom", "Fullscreen"]},
@@ -359,6 +362,9 @@ export class AppRibbon extends LitElement {
     graphic: {attribute: false},
     fileName: {type: String, attribute: "file-name"},
     fileDirty: {type: Boolean, attribute: "file-dirty"},
+    documentHead: {attribute: false},
+    documentHeadDrawerOpen: {type: Boolean, state: true},
+    documentHeadAttributeEditorId: {type: String, state: true},
     previewActive: {type: Boolean, attribute: "preview-active"},
     previewTransitioning: {type: Boolean, attribute: "preview-transition", reflect: true},
     storageLocation: {type: String, state: true},
@@ -2085,6 +2091,9 @@ export class AppRibbon extends LitElement {
   private sharingCopyLinkSuccessTimer: ReturnType<typeof setTimeout> | undefined
   fileName = ""
   fileDirty = false
+  documentHead: DocumentHeadState = emptyDocumentHeadState()
+  private documentHeadDrawerOpen = false
+  private documentHeadAttributeEditorId = ""
   previewActive = false
   storageLocation: StorageLocation = "local"
   private packageSearchQuery = ""
@@ -4335,6 +4344,37 @@ export class AppRibbon extends LitElement {
     `
   }
 
+  private renderDocumentHeadDrawer() {
+    return html`
+      <ribbon-drawer
+        label="Metadata"
+        icon="Properties"
+        layout="document-head"
+        expandable
+        @ribbon-drawer-state-change=${(event: CustomEvent<{open: boolean}>) => {
+          this.documentHeadDrawerOpen = event.detail.open
+          if(!event.detail.open) this.documentHeadAttributeEditorId = ""
+        }}
+        @document-head-element-options-request=${(event: CustomEvent<{id: string}>) => {
+          this.documentHeadAttributeEditorId = event.detail.id
+        }}
+      >
+        <document-head-editor
+          mode="common"
+          .state=${this.documentHead}
+          .expanded=${this.documentHeadDrawerOpen}
+          .attributeEditorId=${this.documentHeadAttributeEditorId}
+        ></document-head-editor>
+        <document-head-editor
+          slot="more"
+          mode="advanced"
+          .state=${this.documentHead}
+          .attributeEditorId=${this.documentHeadAttributeEditorId}
+        ></document-head-editor>
+      </ribbon-drawer>
+    `
+  }
+
   private sharingButton() {
     return this.renderRoot.querySelector<RibbonButton>(
       'ribbon-drawer[label="Sharing"] ribbon-button[label="Share"]',
@@ -4670,7 +4710,9 @@ export class AppRibbon extends LitElement {
       if(drawer.label === "Graphic") return this.renderGraphicDrawer()
       if(drawer.label === "Packages") return this.renderPackageDrawer()
       if(drawer.label === "Local packages") return this.renderDevelopDrawer()
-      if(drawer.label === "Metadata") return this.renderMetadataDrawer()
+      if(drawer.label === "Metadata") {
+        return this.activeMenu === "File" ? this.renderDocumentHeadDrawer() : this.renderMetadataDrawer()
+      }
       if(drawer.label === "Development") return this.renderDevelopmentDrawer()
       if(drawer.label === "Exports") return this.renderExportsDrawer()
       if(drawer.label === "Lists") return this.renderListDrawer()
