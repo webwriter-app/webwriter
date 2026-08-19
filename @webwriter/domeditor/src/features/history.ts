@@ -21,7 +21,6 @@ type StoredComment = VersionHistoryComment
 
 const checkpointLimit = 60
 const checkpointDelay = 700
-const historyMarkerClasses = ["◆history-added", "◆history-removed", "◆history-modified"] as const
 
 const emptyChanges = (): VersionHistoryChanges => ({added: 0, removed: 0, modified: 0})
 
@@ -45,6 +44,8 @@ export class HistoryFeature extends EditorFeature {
   #checkpointTimer: ReturnType<typeof setTimeout> | undefined
   #previewCheckpointId: string | null = null
   #previewChanges: VersionHistoryState["preview"] = null
+  #previewCurrentSource: string | null = null
+  #currentCheckpointId: string | null = null
   #restoring = false
 
   actions = {
@@ -59,16 +60,16 @@ export class HistoryFeature extends EditorFeature {
       return this.state()
     },
     previewVersionCheckpoint: ({checkpointId}: {type: "previewVersionCheckpoint", checkpointId: string}) => {
-      this.#previewCheckpoint(checkpointId)
+      const appliedQueuedChanges = this.#previewCheckpoint(checkpointId)
       const state = this.state()
       this.postState(state)
-      return state
+      return {...state, appliedQueuedChanges}
     },
     clearVersionPreview: ({}: {type: "clearVersionPreview"}) => {
-      this.clearPreview()
+      const appliedQueuedChanges = this.clearPreview()
       const state = this.state()
       this.postState(state)
-      return state
+      return {...state, appliedQueuedChanges}
     },
     revertVersionCheckpoint: ({checkpointId}: {type: "revertVersionCheckpoint", checkpointId: string}) =>
       this.#revertCheckpoint(checkpointId),
@@ -93,13 +94,26 @@ export class HistoryFeature extends EditorFeature {
     },
   }
 
-  readonly #handleHistoryChange = () => this.postState()
+  readonly #handleHistoryChange = () => {
+    this.#synchronizeCurrentCheckpoint()
+    this.postState()
+  }
 
   readonly #handleTransaction = (transaction: Y.Transaction) => {
     if(!this.#isDocumentTransaction(transaction)) return
-    if(this.#previewCheckpointId) this.#previewCheckpoint(this.#previewCheckpointId)
-    if(transaction.local && !this.#restoring) this.#queueCheckpoint()
-    if(this.#previewCheckpointId) this.postState()
+    if(this.#previewCheckpointId) return
+    if(this.#restoring) return
+    const local = transaction.local
+    queueMicrotask(() => {
+      if(!this.isEnabled || this.#previewCheckpointId || this.#restoring) return
+      const previousCheckpointId = this.#currentCheckpointId
+      if(this.#synchronizeCurrentCheckpoint()) {
+        this.#cancelCheckpoint()
+        if(previousCheckpointId !== this.#currentCheckpointId) this.postState()
+        return
+      }
+      if(local) this.#queueCheckpoint()
+    })
   }
 
   enable() {
@@ -111,21 +125,26 @@ export class HistoryFeature extends EditorFeature {
     this.#comments.observe(this.#handleHistoryChange)
     this.editor.doc.doc.on("afterTransaction", this.#handleTransaction)
     if(this.#checkpoints.length === 0) this.#recordCheckpoint("Document created")
-    else this.postState()
+    else {
+      this.#synchronizeCurrentCheckpoint()
+      if(!this.#currentCheckpointId) this.#currentCheckpointId = this.#checkpoints.toArray().at(-1)?.id ?? null
+      this.postState()
+    }
   }
 
   disable() {
     if(!this.isEnabled) return
-    if(this.#checkpointTimer !== undefined) clearTimeout(this.#checkpointTimer)
-    this.#checkpointTimer = undefined
+    this.#cancelCheckpoint()
     this.#checkpoints.unobserve(this.#handleHistoryChange)
     this.#comments.unobserve(this.#handleHistoryChange)
     this.editor.doc.doc.off("afterTransaction", this.#handleTransaction)
     this.clearPreview()
+    this.#currentCheckpointId = null
     super.disable()
   }
 
   state(): VersionHistoryState {
+    if(this.#synchronizeCurrentCheckpoint()) this.#cancelCheckpoint()
     const comments = this.#comments.toArray()
       .map(comment => ({...comment, user: {...comment.user}}))
       .sort((left, right) => left.timestamp - right.timestamp || left.id.localeCompare(right.id))
@@ -138,11 +157,16 @@ export class HistoryFeature extends EditorFeature {
         changes: {...checkpoint.changes},
         commentCount: commentCounts.get(checkpoint.id) ?? 0,
       }))
-      .sort((left, right) => right.timestamp - left.timestamp || right.id.localeCompare(left.id))
+      .reverse()
+    if(!checkpoints.some(checkpoint => checkpoint.id === this.#currentCheckpointId)) {
+      this.#currentCheckpointId = checkpoints[0]?.id ?? null
+    }
     return {
       checkpoints,
       comments,
       preview: this.#previewChanges ? {...this.#previewChanges} : null,
+      currentCheckpointId: this.#currentCheckpointId,
+      currentUserId: this.editor.doc.awareness.clientID,
     }
   }
 
@@ -151,33 +175,56 @@ export class HistoryFeature extends EditorFeature {
   }
 
   clearPreview() {
+    const wasPreviewing = this.#previewCheckpointId !== null
     this.#previewCheckpointId = null
     this.#previewChanges = null
-    for(const element of Array.from(document.querySelectorAll<HTMLElement>("[class]"))) {
-      element.classList.remove(...historyMarkerClasses)
-      if(!element.classList.length) element.removeAttribute("class")
+    this.#previewCurrentSource = null
+    if(!wasPreviewing) return false
+    this.#restoring = true
+    try {
+      return this.editor.doc.resumeDOMSync()
+    }
+    finally {
+      this.#restoring = false
+      this.editor.unlockEditing(this)
     }
   }
 
+  allowsActionDuringPreview(type: string) {
+    return !this.#previewCheckpointId || [
+      "getVersionHistory",
+      "previewVersionCheckpoint",
+      "clearVersionPreview",
+      "revertVersionCheckpoint",
+    ].includes(type)
+  }
+
   #queueCheckpoint() {
-    if(this.#checkpointTimer !== undefined) clearTimeout(this.#checkpointTimer)
+    this.#cancelCheckpoint()
     this.#checkpointTimer = setTimeout(() => {
       this.#checkpointTimer = undefined
       this.#recordCheckpoint()
     }, checkpointDelay)
   }
 
+  #cancelCheckpoint() {
+    if(this.#checkpointTimer !== undefined) clearTimeout(this.#checkpointTimer)
+    this.#checkpointTimer = undefined
+  }
+
   #flushCheckpoint() {
     if(this.#checkpointTimer === undefined) return
-    clearTimeout(this.#checkpointTimer)
-    this.#checkpointTimer = undefined
+    this.#cancelCheckpoint()
     this.#recordCheckpoint()
   }
 
   #recordCheckpoint(label?: string) {
     const source = this.editor.toHTML()
     const previous = this.#checkpoints.toArray().at(-1)
-    if(previous?.source === source) return previous
+    if(previous?.source === source) {
+      this.#currentCheckpointId = previous.id
+      return previous
+    }
     const user = this.#localUser()
     const checkpoint: StoredCheckpoint = {
       id: this.#id("checkpoint"),
@@ -187,6 +234,7 @@ export class HistoryFeature extends EditorFeature {
       changes: previous ? this.#diff(previous.source, source) : emptyChanges(),
       source,
     }
+    this.#currentCheckpointId = checkpoint.id
     this.editor.doc.doc.transact(() => {
       this.#checkpoints.push([checkpoint])
       const overflow = this.#checkpoints.length - checkpointLimit
@@ -218,22 +266,12 @@ export class HistoryFeature extends EditorFeature {
     this.#flushCheckpoint()
     const checkpoint = this.#checkpoint(checkpointId)
     if(!checkpoint) throw new Error("That version is no longer available")
-    const restored = new DOMParser().parseFromString(checkpoint.source, "text/html")
     this.clearPreview()
     this.#restoring = true
     this.editor.doc.stopCapturing()
     this.editor.doc.stopObserve()
     try {
-      this.#replaceAttributes(document.body, restored.body)
-      document.body.replaceChildren(...Array.from(restored.body.childNodes, node => document.importNode(node, true)))
-      const editorHeadNodes = Array.from(document.head.childNodes).filter(node =>
-        node instanceof Element && node.matches(".◆editor-only, [data-webwriter-editor-only]"),
-      )
-      document.head.replaceChildren(...editorHeadNodes)
-      document.head.append(...Array.from(restored.head.childNodes, node => document.importNode(node, true)))
-      const language = restored.documentElement.getAttribute("lang")
-      if(language === null) document.documentElement.removeAttribute("lang")
-      else document.documentElement.setAttribute("lang", language)
+      this.#applySource(checkpoint.source)
       this.editor.doc.clearSelection()
       this.editor.doc.syncFromDOM()
     }
@@ -242,11 +280,24 @@ export class HistoryFeature extends EditorFeature {
       this.editor.doc.stopCapturing()
       this.#restoring = false
     }
-    const restoredCheckpoint = this.#recordCheckpoint(`Restored ${checkpoint.label}`)!
-    this.#previewCheckpoint(restoredCheckpoint.id)
+    this.#currentCheckpointId = checkpoint.id
     const state = this.state()
     this.postState(state)
     return state
+  }
+
+  #applySource(source: string) {
+    const restored = new DOMParser().parseFromString(source, "text/html")
+    this.#replaceAttributes(document.body, restored.body)
+    document.body.replaceChildren(...Array.from(restored.body.childNodes, node => document.importNode(node, true)))
+    const editorHeadNodes = Array.from(document.head.childNodes).filter(node =>
+      node instanceof Element && node.matches(".◆editor-only, [data-webwriter-editor-only]"),
+    )
+    document.head.replaceChildren(...editorHeadNodes)
+    document.head.append(...Array.from(restored.head.childNodes, node => document.importNode(node, true)))
+    const language = restored.documentElement.getAttribute("lang")
+    if(language === null) document.documentElement.removeAttribute("lang")
+    else document.documentElement.setAttribute("lang", language)
   }
 
   #replaceAttributes(target: Element, source: Element) {
@@ -266,20 +317,49 @@ export class HistoryFeature extends EditorFeature {
   }
 
   #previewCheckpoint(checkpointId: string) {
+    if(!this.#previewCheckpointId) {
+      if(this.editor.isEditingLocked && !this.editor.hasEditingLock(this)) {
+        throw new Error("Finish the pending document review before previewing a version")
+      }
+      this.editor.doc.syncFromDOM()
+      this.#flushCheckpoint()
+    }
     const checkpoint = this.#checkpoint(checkpointId)
-    this.clearPreview()
-    if(!checkpoint) return
+    if(!checkpoint) throw new Error("That version is no longer available")
+    if(checkpointId === this.#currentCheckpointId) return this.clearPreview()
+    if(!this.#previewCheckpointId) {
+      this.#previewCurrentSource = this.editor.toHTML()
+      this.editor.doc.pauseDOMSync()
+      this.editor.lockEditing(this)
+    }
     this.#previewCheckpointId = checkpointId
-    const changes = this.#diff(checkpoint.source, this.editor.toHTML(), true)
+    this.#applySource(checkpoint.source)
+    const changes = this.#diff(checkpoint.source, this.#previewCurrentSource!)
     this.#previewChanges = {
       checkpointId,
       ...changes,
       isCurrent: changes.added === 0 && changes.removed === 0 && changes.modified === 0,
     }
+    return false
   }
 
   #checkpoint(checkpointId: string) {
     return this.#checkpoints.toArray().find(checkpoint => checkpoint.id === checkpointId)
+  }
+
+  #synchronizeCurrentCheckpoint() {
+    if(this.#previewCheckpointId) return null
+    const source = this.editor.toHTML()
+    const checkpoints = this.#checkpoints.toArray()
+    let checkpointId: string | null = null
+    for(let index = checkpoints.length - 1; index >= 0; index--) {
+      if(checkpoints[index].source === source) {
+        checkpointId = checkpoints[index].id
+        break
+      }
+    }
+    if(checkpointId) this.#currentCheckpointId = checkpointId
+    return checkpointId
   }
 
   #isDocumentTransaction(transaction: Y.Transaction) {
@@ -314,21 +394,20 @@ export class HistoryFeature extends EditorFeature {
       ?? `${kind}-${this.editor.doc.doc.clientID.toString(36)}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
   }
 
-  #diff(beforeSource: string, afterSource: string, highlight = false) {
+  #diff(beforeSource: string, afterSource: string) {
     const parser = new DOMParser()
     const before = parser.parseFromString(beforeSource, "text/html")
-    const after = highlight ? document : parser.parseFromString(afterSource, "text/html")
+    const after = parser.parseFromString(afterSource, "text/html")
     const changes = emptyChanges()
     if(before.documentElement.getAttribute("lang") !== after.documentElement.getAttribute("lang")) changes.modified++
-    this.#diffElement(before.head, after.head, changes, false)
-    this.#diffElement(before.body, after.body, changes, highlight)
+    this.#diffElement(before.head, after.head, changes)
+    this.#diffElement(before.body, after.body, changes)
     return changes
   }
 
-  #diffElement(before: Element, after: Element, changes: VersionHistoryChanges, highlight: boolean) {
+  #diffElement(before: Element, after: Element, changes: VersionHistoryChanges) {
     if(this.#attributeSignature(before) !== this.#attributeSignature(after)) {
       changes.modified++
-      if(highlight) this.#mark(after, "◆history-modified")
     }
     const beforeChildren = this.#authoredChildren(before)
     const afterChildren = this.#authoredChildren(after)
@@ -341,27 +420,18 @@ export class HistoryFeature extends EditorFeature {
           && (previous.localName !== current.localName || previous.namespaceURI !== current.namespaceURI)) {
         changes.removed++
         changes.added++
-        if(highlight) {
-          this.#mark(after, "◆history-removed")
-          this.#mark(current, "◆history-added", after)
-        }
         continue
       }
       if(previous instanceof Element && current instanceof Element) {
-        this.#diffElement(previous, current, changes, highlight)
+        this.#diffElement(previous, current, changes)
       }
       else if(previous.textContent !== current.textContent) {
         changes.modified++
-        if(highlight) this.#mark(current, "◆history-modified", after)
       }
     }
-    for(const current of afterChildren.slice(sharedLength)) {
-      changes.added++
-      if(highlight) this.#mark(current, "◆history-added", after)
-    }
+    changes.added += afterChildren.length - sharedLength
     if(beforeChildren.length > sharedLength) {
       changes.removed += beforeChildren.length - sharedLength
-      if(highlight) this.#mark(after, "◆history-removed")
     }
   }
 
@@ -387,8 +457,4 @@ export class HistoryFeature extends EditorFeature {
       .join("\u0000")
   }
 
-  #mark(node: Node, className: typeof historyMarkerClasses[number], fallback?: Element) {
-    const element = node instanceof Element ? node : fallback ?? node.parentElement
-    element?.classList.add(className)
-  }
 }

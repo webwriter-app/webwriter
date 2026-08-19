@@ -40,6 +40,11 @@ import {originalURLAttribute, serializeDoctype} from "./serialization"
 import type {DocumentHeadState} from "./document-head"
 
 const editorStylesheet = createStylesheet(editorStyleString)
+const appendixStylesheet = createStylesheet(`
+  :host(.◆editing-locked) > :not(slot) {
+    display: none !important;
+  }
+`)
 const featuresDisabledByDefault = new Set(["placeholder"])
 
 /** DOMEditor
@@ -94,6 +99,68 @@ export class DOMEditor {
 
   ignoreAttrs = ["contenteditable", "spellcheck", "inert"]
   ignoreClasses = ["◆"]
+
+  readonly #editingLocks = new Set<unknown>()
+  readonly #blockedEditingEventTypes = [
+    "beforeinput", "keydown", "paste", "cut", "drop", "compositionstart",
+  ] as const
+  #editingState: {designMode: string, contentEditable: string, inert: boolean} | null = null
+
+  readonly #blockEditingInteraction = (event: Event) => {
+    if(!this.#editingLocks.size || !event.composedPath().includes(document.body)) return
+    event.preventDefault()
+    event.stopImmediatePropagation()
+  }
+
+  get isEditingLocked() {
+    return this.#editingLocks.size > 0
+  }
+
+  hasEditingLock(owner: unknown) {
+    return this.#editingLocks.has(owner)
+  }
+
+  /** Disables local authored-DOM interaction while keeping editor-owned UI
+   * outside BODY available. Multiple features may hold independent locks. */
+  lockEditing(owner: unknown) {
+    if(this.#editingLocks.has(owner)) return
+    if(this.#editingLocks.size === 0) {
+      this.#editingState = {
+        designMode: document.designMode,
+        contentEditable: document.body.contentEditable,
+        inert: document.body.inert,
+      }
+      this.#blockedEditingEventTypes.forEach(type => {
+        document.addEventListener(type, this.#blockEditingInteraction, true)
+      })
+      document.designMode = "off"
+      document.body.contentEditable = "false"
+      document.body.inert = true
+      document.body.classList.add("◆", "◆editing-locked")
+      if(document.activeElement instanceof HTMLElement && document.activeElement !== document.body) {
+        document.activeElement.blur()
+      }
+    }
+    this.#editingLocks.add(owner)
+  }
+
+  unlockEditing(owner: unknown) {
+    if(!this.#editingLocks.delete(owner) || this.#editingLocks.size > 0) return
+    this.#blockedEditingEventTypes.forEach(type => {
+      document.removeEventListener(type, this.#blockEditingInteraction, true)
+    })
+    const state = this.#editingState
+    this.#editingState = null
+    if(!state) return
+    document.body.inert = state.inert
+    document.body.contentEditable = state.contentEditable
+    document.designMode = state.designMode
+    document.body.classList.remove("◆editing-locked")
+    if(!Array.from(document.body.classList).some(name => name !== "◆" && name.startsWith("◆"))) {
+      document.body.classList.remove("◆")
+    }
+    if(!document.body.classList.length) document.body.removeAttribute("class")
+  }
 
 
   getActionHandler(key: string) {
@@ -250,6 +317,17 @@ export class DOMEditor {
     }
 
     const requestId = typeof ev.data.requestId === "string"? ev.data.requestId: undefined
+    if(!this.features.history.allowsActionDuringPreview(ev.data.type)) {
+      const error = new Error("Close the version preview before editing the document")
+      if(requestId) {
+        this.postExecutionEvent(executeFailureEvent, {
+          requestId,
+          error: this.serializeError(error),
+        })
+        return
+      }
+      throw error
+    }
     const handle = this.getActionHandler(ev.data.type)
     if(!handle) {
       const error = TypeError(`No handler registered for message '${ev.data.type}'`)
@@ -428,6 +506,7 @@ export class DOMEditor {
 
   get appendix() {
     const shadowRoot = document.body.shadowRoot ?? document.body.attachShadow({mode: "open"})
+    adoptStylesheet(shadowRoot, appendixStylesheet)
     const slot = shadowRoot.querySelector("slot") ?? document.createElement("slot")
     shadowRoot.appendChild(slot)
     return shadowRoot

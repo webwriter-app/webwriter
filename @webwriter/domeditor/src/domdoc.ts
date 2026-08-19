@@ -131,6 +131,8 @@ export class SharedDOMDoc {
   #relativeSelection: RelativeSelection | null = null
   #isWritingToDOM = false
   #isObserving = false
+  #domSyncPauseDepth = 0
+  #hasQueuedYChanges = false
 
   constructor(
     readonly serverUrl?: string,
@@ -272,7 +274,7 @@ export class SharedDOMDoc {
   }
 
   startObserve() {
-    if(this.#isObserving) return
+    if(this.#isObserving || this.#domSyncPauseDepth > 0) return
     this.#observer.observe(this.root, {
       attributes: true,
       attributeOldValue: true,
@@ -302,6 +304,31 @@ export class SharedDOMDoc {
   stopObserve() {
     this.#observer.disconnect()
     this.#isObserving = false
+  }
+
+  /** Keeps the shared Y tree live while temporarily preventing it from
+   * rendering into the authored DOM. DOM mutations are ignored until the
+   * matching resume, and remote Y changes are rendered together on resume. */
+  pauseDOMSync() {
+    this.#domSyncPauseDepth++
+    if(this.#domSyncPauseDepth === 1) this.stopObserve()
+  }
+
+  /** Resumes DOM synchronization after a temporary rendering. Returns true
+   * when shared document changes arrived while rendering was paused. */
+  resumeDOMSync() {
+    if(this.#domSyncPauseDepth === 0) return false
+    this.#domSyncPauseDepth--
+    if(this.#domSyncPauseDepth > 0) return false
+    const hadQueuedYChanges = this.#hasQueuedYChanges
+    this.#hasQueuedYChanges = false
+    try {
+      this.#writeYToDOM()
+    }
+    finally {
+      this.startObserve()
+    }
+    return hadQueuedYChanges
   }
 
   setUser(user: CollaborationUser) {
@@ -411,7 +438,7 @@ export class SharedDOMDoc {
 
   /** Reconciles the current DOM immediately; MutationObserver normally calls this. */
   syncFromDOM(origin: unknown = this.#domOrigin) {
-    if(this.#isWritingToDOM) return
+    if(this.#isWritingToDOM || this.#domSyncPauseDepth > 0) return
     this.doc.transact(() => {
       this.#reconcileYElement(this.root, this.#body)
       if(this.#headRoot && this.#documentHead) {
@@ -545,13 +572,22 @@ export class SharedDOMDoc {
     if(transaction.origin === this.#domOrigin ||
       transaction.origin === this.#initialOrigin ||
       transaction.origin === this.#remoteReactionOrigin) return
-    if(events.length) this.#writeYToDOM()
+    if(!events.length) return
+    if(this.#domSyncPauseDepth > 0) {
+      this.#hasQueuedYChanges = true
+      return
+    }
+    this.#writeYToDOM()
   }
 
   readonly #handleHeadMetadataChange = (_event: Y.YMapEvent<unknown>, transaction: Y.Transaction) => {
     if(transaction.origin === this.#domOrigin ||
       transaction.origin === this.#initialOrigin ||
       transaction.origin === this.#remoteReactionOrigin) return
+    if(this.#domSyncPauseDepth > 0) {
+      this.#hasQueuedYChanges = true
+      return
+    }
     this.#writeYToDOM()
   }
 

@@ -68,22 +68,6 @@ export class StateFeature extends EditorFeature {
   private readonly aiEditMarkers = new Map<string, string>()
   private readonly aiEditResults = new Map<string, {scope: "document" | "selection", removedUnsafeItems: number}>()
   private reviewToolbar: HTMLElement | null = null
-  private readonly blockedReviewEventTypes = [
-    "beforeinput", "keydown", "paste", "cut", "drop", "compositionstart",
-  ] as const
-
-  private blockDocumentReviewInteraction = (event: Event) => {
-    if(!this.activeAIEditId || this.reviewToolbar && event.composedPath().includes(this.reviewToolbar)) return
-    event.preventDefault()
-    event.stopImmediatePropagation()
-  }
-
-  private setDocumentReviewGuards(active: boolean) {
-    this.blockedReviewEventTypes.forEach(type => {
-      if(active) document.addEventListener(type, this.blockDocumentReviewInteraction, true)
-      else document.removeEventListener(type, this.blockDocumentReviewInteraction, true)
-    })
-  }
 
   private replaceDocument(html: string) {
     const parsed = new DOMParser().parseFromString(checkedAIHTML(html), "text/html")
@@ -166,10 +150,7 @@ export class StateFeature extends EditorFeature {
   private lockForAIReview(editId: string, summary: string) {
     this.activeAIEditId = editId
     document.documentElement.classList.add("◆ai-review-active")
-    document.designMode = "off"
-    document.body.contentEditable = "false"
-    document.body.inert = true
-    this.setDocumentReviewGuards(true)
+    this.editor.lockEditing(this)
 
     this.reviewToolbar?.remove()
     const toolbar = document.createElement("aside")
@@ -203,11 +184,8 @@ export class StateFeature extends EditorFeature {
     this.activeAIEditId = null
     this.reviewToolbar?.remove()
     this.reviewToolbar = null
-    this.setDocumentReviewGuards(false)
     document.documentElement.classList.remove("◆ai-review-active")
-    document.body.inert = false
-    document.body.contentEditable = "true"
-    document.designMode = "on"
+    this.editor.unlockEditing(this)
   }
 
   private previewAIEdit(editId: string, summary: string, scope: "document" | "selection", html: string) {
@@ -305,11 +283,11 @@ export class StateFeature extends EditorFeature {
   } as const
 
   disable() {
-    this.setDocumentReviewGuards(false)
+    this.activeAIEditId = null
     this.reviewToolbar?.remove()
     this.reviewToolbar = null
     document.documentElement.classList.remove("◆ai-review-active")
-    document.body.inert = false
+    this.editor.unlockEditing(this)
     super.disable()
   }
 }

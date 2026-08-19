@@ -7,6 +7,7 @@ import {
   isAIEditReviewMessage,
   isExecuteResponse,
   isDocumentHeadStateChangeMessage,
+  isHistoryStateChangeMessage,
   isInitializeEditorMessage,
   isLoadWidgetsMessage,
   isMarkStateChangeMessage,
@@ -17,6 +18,7 @@ import {
   presenceChangeEvent,
   selectionChangeEvent,
   documentHeadStateChangeEvent,
+  historyStateChangeEvent,
 } from "./editor-bridge"
 import {emptyDocumentHeadState} from "./document-head"
 
@@ -29,6 +31,35 @@ function expectAllRejected(guard: MessageGuard, values: unknown[]) {
 }
 
 describe("editor bridge message guards", () => {
+  it("validates version history together with the active user identifier", () => {
+    const message = {
+      type: historyStateChangeEvent,
+      detail: {
+        checkpoints: [{
+          id: "checkpoint-1",
+          timestamp: 1,
+          label: "Document created",
+          user: {clientId: 7, name: "Ada", initials: "AD", color: "#2563eb"},
+          changes: {added: 0, removed: 0, modified: 0},
+          commentCount: 0,
+        }],
+        comments: [],
+        preview: null,
+        currentCheckpointId: "checkpoint-1",
+        currentUserId: 7,
+      },
+    }
+    expect(isHistoryStateChangeMessage(message)).toBe(true)
+    expect(isHistoryStateChangeMessage({...message, detail: {...message.detail, currentUserId: null}})).toBe(true)
+    expectAllRejected(isHistoryStateChangeMessage, [
+      {...message, detail: {...message.detail, currentCheckpointId: undefined}},
+      {...message, detail: {...message.detail, currentCheckpointId: 1}},
+      {...message, detail: {...message.detail, currentUserId: undefined}},
+      {...message, detail: {...message.detail, currentUserId: "7"}},
+      {...message, detail: {...message.detail, currentUserId: 7.5}},
+    ])
+  })
+
   it("validates document-head state down to attributes and move flags", () => {
     const message = {
       type: documentHeadStateChangeEvent,

@@ -159,6 +159,8 @@ const emptyVersionHistoryState = (): VersionHistoryState => ({
   checkpoints: [],
   comments: [],
   preview: null,
+  currentCheckpointId: null,
+  currentUserId: null,
 })
 
 type InsertionSection = "Text" | "Lists" | "Media"
@@ -417,9 +419,6 @@ const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
   ],
   History: [
     {label: "Versions", buttons: []},
-    {label: "Changes", buttons: []},
-    {label: "Restore", buttons: []},
-    {label: "Comments", buttons: []},
   ],
 }
 
@@ -482,7 +481,6 @@ export class AppRibbon extends LitElement {
     historyState: {attribute: false},
     historyLoading: {type: Boolean, attribute: "history-loading"},
     historyError: {type: String, attribute: "history-error"},
-    historyCommentDraft: {type: String, state: true},
   }
 
   static styles = css`
@@ -1965,70 +1963,92 @@ export class AppRibbon extends LitElement {
       --ribbon-drawer-inline-end: 0;
     }
 
-    .history-timeline,
-    .history-change-panel,
-    .history-restore-panel,
-    .history-comments-panel {
+    .history-timeline {
       box-sizing: border-box;
+      display: flex;
       grid-row: 1 / 3;
       grid-column: 1 / -1;
-      min-width: 0;
-      min-height: 0;
-    }
-
-    .history-timeline {
-      display: flex;
+      align-self: stretch;
       align-items: stretch;
       gap: 0.35rem;
       width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
       overflow-x: auto;
       overflow-y: hidden;
-      padding: 0.1rem 0.15rem 0.25rem;
+      padding: 0.35rem 0;
       scrollbar-color: #aab6c5 transparent;
       scrollbar-width: thin;
     }
 
-    .history-checkpoint {
+    .history-version-card {
       box-sizing: border-box;
       display: grid;
-      flex: 0 0 8.25rem;
-      grid-template-columns: 1.35rem minmax(0, 1fr);
-      grid-template-rows: auto auto 1fr;
-      column-gap: 0.35rem;
-      align-content: center;
+      flex: 0 0 9rem;
+      grid-template-rows: minmax(0, 1fr) 1.35rem;
+      height: 100%;
       min-width: 0;
-      padding: 0.35rem 0.45rem;
       overflow: hidden;
       border: 1px solid #c8d2df;
       border-radius: 0.45rem;
       color: #2f3742;
       background: #ffffff;
-      font: inherit;
-      text-align: left;
-      cursor: pointer;
     }
 
-    .history-checkpoint:hover {
+    .history-version-card:hover {
       border-color: #8eb6df;
       background: #eef4fb;
     }
 
-    .history-checkpoint[aria-pressed="true"] {
+    .history-version-card[data-selected] {
       border-color: #3977c7;
       background: #dcecff;
       box-shadow: inset 0 0 0 1px rgb(57 119 199 / 12%);
     }
 
+    .history-version-card[data-after-current] {
+      border-color: #d3d8df;
+      color: #7a818b;
+      background: #eef0f2;
+      filter: grayscale(0.8);
+      opacity: 0.55;
+    }
+
+    .history-version-card[data-after-current]:hover,
+    .history-version-card[data-after-current][data-selected] {
+      border-color: #aeb6c1;
+      background: #e5e8ec;
+      opacity: 0.72;
+    }
+
+    .history-checkpoint {
+      box-sizing: border-box;
+      display: grid;
+      grid-template-columns: 1.35rem minmax(0, 1fr);
+      grid-template-rows: auto auto 1fr;
+      column-gap: 0.35rem;
+      align-content: center;
+      width: 100%;
+      min-width: 0;
+      min-height: 0;
+      padding: 0.3rem 0.45rem 0.2rem;
+      overflow: hidden;
+      border: 0;
+      color: #2f3742;
+      background: transparent;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+
     .history-checkpoint:focus-visible,
-    .history-restore-button:focus-visible,
-    .history-comment-submit:focus-visible,
-    .history-comment-input:focus-visible {
+    .history-card-restore-button:focus-visible {
       outline: 2px solid #3977c7;
       outline-offset: -2px;
     }
 
-    .history-checkpoint-avatar,
-    .history-comment-avatar {
+    .history-checkpoint-avatar {
       box-sizing: border-box;
       display: grid;
       place-items: center;
@@ -2039,9 +2059,6 @@ export class AppRibbon extends LitElement {
       box-shadow: 0 1px 3px rgb(0 0 0 / 18%);
       font-weight: 750;
       line-height: 1;
-    }
-
-    .history-checkpoint-avatar {
       grid-row: 1 / 3;
       width: 1.35rem;
       height: 1.35rem;
@@ -2101,196 +2118,41 @@ export class AppRibbon extends LitElement {
       color: #b42336;
     }
 
-    .history-change-panel {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      align-content: center;
-      gap: 0.28rem;
-      width: 100%;
-      padding: 0.15rem;
-    }
-
-    .history-change-item {
-      display: grid;
-      grid-template-columns: 0.55rem minmax(0, 1fr);
-      align-items: center;
-      gap: 0.25rem;
-      min-width: 0;
-      color: #526b86;
-      font-size: 0.56rem;
-      line-height: 1.15;
-    }
-
-    .history-change-swatch {
-      width: 0.5rem;
-      height: 0.5rem;
-      border: 1.5px solid currentColor;
-      border-radius: 0.16rem;
-      background: color-mix(in srgb, currentColor 14%, transparent);
-    }
-
-    .history-change-item[data-kind="added"] { color: #157347; }
-    .history-change-item[data-kind="removed"] { color: #b42336; }
-    .history-change-item[data-kind="modified"] { color: #9a6700; }
-
-    .history-change-value {
-      display: block;
-      font-size: 0.66rem;
-      font-weight: 750;
-    }
-
-    .history-change-caption {
-      grid-column: 1 / -1;
-      margin-top: 0.1rem;
-      color: #667085;
-      font-size: 0.55rem;
-      text-align: center;
-    }
-
-    .history-restore-panel {
-      display: grid;
-      place-items: center;
-      width: 100%;
-      padding: 0.2rem;
-    }
-
-    .history-restore-button {
+    .history-card-restore-button {
       display: flex;
-      flex-direction: column;
       align-items: center;
       justify-content: center;
       gap: 0.25rem;
       width: 100%;
-      height: 100%;
-      padding: 0.25rem;
-      border: 1px solid transparent;
-      border-radius: 0.4rem;
+      min-height: 0;
+      padding: 0.15rem 0.35rem;
+      border: 0;
+      border-top: 1px solid #d8dee6;
       color: #526b86;
-      background: transparent;
+      background: rgb(255 255 255 / 55%);
       font: inherit;
-      font-size: 0.6rem;
+      font-size: 0.56rem;
       font-weight: 700;
       cursor: pointer;
     }
 
-    .history-restore-button:hover:not(:disabled) {
-      border-color: #8eb6df;
+    .history-card-restore-button:hover:not(:disabled) {
       color: #1e4f87;
-      background: #eef4fb;
+      background: #ffffff;
     }
 
-    .history-restore-button:disabled {
+    .history-card-restore-button:disabled {
       color: #9aa4b1;
       cursor: default;
       opacity: 0.65;
     }
 
-    .history-restore-icon,
-    .history-restore-icon svg {
+    .history-card-restore-icon,
+    .history-card-restore-icon svg {
       display: block;
-      width: 1.15rem;
-      height: 1.15rem;
-    }
-
-    .history-comments-panel {
-      display: grid;
-      grid-template-columns: minmax(7rem, 1fr) minmax(6rem, 0.9fr);
-      gap: 0.4rem;
-      width: 100%;
-      padding: 0.1rem 0.15rem 0.25rem;
-    }
-
-    .history-comment-form {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 1.65rem;
-      gap: 0.25rem;
-      min-width: 0;
-    }
-
-    .history-comment-input {
-      box-sizing: border-box;
-      width: 100%;
-      min-width: 0;
-      height: 100%;
-      min-height: 3rem;
-      padding: 0.35rem 0.4rem;
-      resize: none;
-      border: 1px solid #c8d2df;
-      border-radius: 0.35rem;
-      color: #2f3742;
-      background: #ffffff;
-      font: inherit;
-      font-size: 0.62rem;
-      line-height: 1.25;
-    }
-
-    .history-comment-input::placeholder { color: #7d8998; }
-
-    .history-comment-submit {
-      display: grid;
-      place-items: center;
-      width: 1.65rem;
-      min-width: 1.65rem;
-      padding: 0;
-      border: 0;
-      border-radius: 0.35rem;
-      color: #ffffff;
-      background: #3977c7;
-      cursor: pointer;
-    }
-
-    .history-comment-submit:hover:not(:disabled) { background: #1e4f87; }
-    .history-comment-submit:disabled { background: #aab6c5; cursor: default; }
-
-    .history-comment-submit svg {
-      display: block;
-      width: 0.95rem;
-      height: 0.95rem;
-    }
-
-    .history-comment-latest {
-      min-width: 0;
-      overflow: hidden;
-      padding: 0.3rem 0.35rem;
-      border: 1px solid #d8dee6;
-      border-radius: 0.35rem;
-      background: #ffffff;
-    }
-
-    .history-comment-latest-header {
-      display: flex;
-      align-items: center;
-      gap: 0.3rem;
-      min-width: 0;
-      color: #526b86;
-      font-size: 0.55rem;
-      font-weight: 700;
-    }
-
-    .history-comment-avatar {
-      flex: 0 0 1.15rem;
-      width: 1.15rem;
-      height: 1.15rem;
-      font-size: 0.4rem;
-    }
-
-    .history-comment-latest-text {
-      display: -webkit-box;
-      margin: 0.25rem 0 0;
-      overflow: hidden;
-      color: #2f3742;
-      font-size: 0.58rem;
-      line-height: 1.25;
-      -webkit-box-orient: vertical;
-      -webkit-line-clamp: 2;
-    }
-
-    .history-comment-placeholder {
-      display: grid;
-      place-items: center;
-      color: #7d8998;
-      font-size: 0.58rem;
-      text-align: center;
+      flex: 0 0 0.7rem;
+      width: 0.7rem;
+      height: 0.7rem;
     }
 
     .local-packages-drawer {
@@ -2622,7 +2484,6 @@ export class AppRibbon extends LitElement {
   historyState = emptyVersionHistoryState()
   historyLoading = false
   historyError = ""
-  private historyCommentDraft = ""
   private readonly aiProviderStore = new AIProviderStore()
   private backendConnectionSequence = 0
   private aiPrompt = ""
@@ -3494,9 +3355,9 @@ export class AppRibbon extends LitElement {
       this.dispatchEvent(new Event("history-state-request", {bubbles: true, composed: true}))
     }
     if(changed.has("activeMenu") && changed.get("activeMenu") === "History" && this.activeMenu !== "History") {
-      this.historyCommentDraft = ""
       this.dispatchEvent(new Event("history-preview-clear", {bubbles: true, composed: true}))
     }
+    if(changed.has("historyState")) this.scrollNewHistoryCardIntoView(changed.get("historyState"))
     if(
       changed.has("activeMenu") || changed.has("expanded") || changed.has("packages") ||
       changed.has("installedPackages") || changed.has("packageSearchQuery") ||
@@ -5231,18 +5092,45 @@ export class AppRibbon extends LitElement {
   }
 
   private get selectedHistoryCheckpointId() {
-    return this.historyState.preview?.checkpointId ?? this.historyState.checkpoints[0]?.id ?? null
+    return this.historyState.preview?.checkpointId
+      ?? this.historyState.currentCheckpointId
+      ?? this.historyState.checkpoints[0]?.id
+      ?? null
+  }
+
+  private scrollNewHistoryCardIntoView(previousState: unknown) {
+    if(this.activeMenu !== "History") return
+    const previousCheckpoints = previousState && typeof previousState === "object"
+      && Array.isArray((previousState as Partial<VersionHistoryState>).checkpoints)
+      ? (previousState as VersionHistoryState).checkpoints
+      : []
+    const previousIds = new Set(previousCheckpoints.map(checkpoint => checkpoint.id))
+    const added = this.historyState.checkpoints.filter(checkpoint => !previousIds.has(checkpoint.id))
+    if(!added.length) return
+    const checkpoint = added.find(candidate => candidate.id === this.historyState.currentCheckpointId) ?? added[0]
+    const card = Array.from(this.renderRoot.querySelectorAll<HTMLElement>(".history-version-card"))
+      .find(candidate => candidate.dataset.checkpointId === checkpoint.id)
+    card?.scrollIntoView({
+      behavior: previousCheckpoints.length ? "smooth" : "auto",
+      block: "nearest",
+      inline: "nearest",
+    })
   }
 
   private historyTime(timestamp: number) {
     return new Intl.DateTimeFormat(undefined, {hour: "numeric", minute: "2-digit"}).format(new Date(timestamp))
   }
 
-  private historyDateTime(timestamp: number) {
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(new Date(timestamp))
+  private historyDate(timestamp: number) {
+    return new Intl.DateTimeFormat(undefined, {dateStyle: "medium"}).format(new Date(timestamp))
+  }
+
+  private historyTimestamp(timestamp: number) {
+    return `${this.historyTime(timestamp)} · ${this.historyDate(timestamp)}`
+  }
+
+  private historyAuthor(user: VersionHistoryState["checkpoints"][number]["user"]) {
+    return user.clientId === this.historyState.currentUserId ? "you" : user.name
   }
 
   private selectHistoryCheckpoint = (event: Event) => {
@@ -5255,8 +5143,8 @@ export class AppRibbon extends LitElement {
     }))
   }
 
-  private revertHistoryCheckpoint = () => {
-    const checkpointId = this.selectedHistoryCheckpointId
+  private revertHistoryCheckpoint = (event: Event) => {
+    const checkpointId = (event.currentTarget as HTMLElement).dataset.checkpointId
     if(!checkpointId) return
     this.dispatchEvent(new CustomEvent("history-revert", {
       detail: {checkpointId},
@@ -5265,141 +5153,66 @@ export class AppRibbon extends LitElement {
     }))
   }
 
-  private updateHistoryCommentDraft = (event: Event) => {
-    this.historyCommentDraft = (event.currentTarget as HTMLTextAreaElement).value
-  }
-
-  private submitHistoryComment = (event: Event) => {
-    event.preventDefault()
-    const checkpointId = this.selectedHistoryCheckpointId
-    const text = this.historyCommentDraft.trim()
-    if(!checkpointId || !text) return
-    this.historyCommentDraft = ""
-    this.dispatchEvent(new CustomEvent("history-comment-submit", {
-      detail: {checkpointId, text},
-      bubbles: true,
-      composed: true,
-    }))
-  }
-
   private renderHistoryVersionsDrawer() {
     const selectedId = this.selectedHistoryCheckpointId
+    const checkpoints = [...this.historyState.checkpoints].reverse()
+    const currentIndex = checkpoints.findIndex(checkpoint =>
+      checkpoint.id === this.historyState.currentCheckpointId,
+    )
     return html`
       <ribbon-drawer label="Versions" icon="History" layout="history-versions">
-        <div class="history-timeline" role="listbox" aria-label="Document versions">
+        <div class="history-timeline" role="list" aria-label="Document versions">
           ${this.historyError ? html`<div class="history-error" role="alert">${this.historyError}</div>`
           : this.historyLoading && !this.historyState.checkpoints.length
             ? html`<div class="history-loading">Loading versions…</div>`
             : !this.historyState.checkpoints.length
               ? html`<div class="history-empty">No checkpoints yet</div>`
-              : this.historyState.checkpoints.map((checkpoint, index) => html`
-                <button
-                  class="history-checkpoint"
-                  type="button"
-                  role="option"
+              : checkpoints.map((checkpoint, index) => html`
+                <div
+                  class="history-version-card"
+                  role="listitem"
                   data-checkpoint-id=${checkpoint.id}
-                  aria-selected=${selectedId === checkpoint.id}
-                  aria-pressed=${selectedId === checkpoint.id}
-                  title=${`${checkpoint.label} — ${this.historyDateTime(checkpoint.timestamp)}`}
-                  @click=${this.selectHistoryCheckpoint}
+                  ?data-selected=${selectedId === checkpoint.id}
+                  ?data-after-current=${currentIndex >= 0 && index > currentIndex}
                 >
-                  <span
-                    class="history-checkpoint-avatar"
-                    style=${`--history-user-color: ${checkpoint.user.color}`}
-                    aria-hidden="true"
-                  >${checkpoint.user.initials}</span>
-                  <span class="history-checkpoint-label">${index === 0 ? "Current · " : ""}${checkpoint.label}</span>
-                  <span class="history-checkpoint-meta">${checkpoint.user.name} · ${this.historyTime(checkpoint.timestamp)}</span>
-                  <span class="history-checkpoint-counts" aria-label=${`${checkpoint.changes.added} added, ${checkpoint.changes.removed} removed, ${checkpoint.changes.modified} changed`}>
-                    <span class="history-count" data-kind="added">+${checkpoint.changes.added}</span>
-                    <span class="history-count" data-kind="removed">−${checkpoint.changes.removed}</span>
-                    <span class="history-count" data-kind="modified">~${checkpoint.changes.modified}</span>
-                    ${checkpoint.commentCount ? html`<span class="history-count" data-kind="comments">${checkpoint.commentCount} 💬</span>` : ""}
-                  </span>
-                </button>
+                  <button
+                    class="history-checkpoint"
+                    type="button"
+                    data-checkpoint-id=${checkpoint.id}
+                    aria-pressed=${selectedId === checkpoint.id}
+                    title=${checkpoint.label}
+                    @click=${this.selectHistoryCheckpoint}
+                  >
+                    <span
+                      class="history-checkpoint-avatar"
+                      style=${`--history-user-color: ${checkpoint.user.color}`}
+                      aria-hidden="true"
+                    >${checkpoint.user.initials}</span>
+                    <span class="history-checkpoint-label">${this.historyTimestamp(checkpoint.timestamp)}</span>
+                    <span class="history-checkpoint-meta">By ${this.historyAuthor(checkpoint.user)}</span>
+                    <span class="history-checkpoint-counts" aria-label=${`${checkpoint.changes.added} added, ${checkpoint.changes.removed} removed, ${checkpoint.changes.modified} changed`}>
+                      <span class="history-count" data-kind="added">+${checkpoint.changes.added}</span>
+                      <span class="history-count" data-kind="removed">−${checkpoint.changes.removed}</span>
+                      <span class="history-count" data-kind="modified">~${checkpoint.changes.modified}</span>
+                      ${checkpoint.commentCount ? html`<span class="history-count" data-kind="comments">${checkpoint.commentCount} 💬</span>` : ""}
+                    </span>
+                  </button>
+                  <button
+                    class="history-card-restore-button"
+                    type="button"
+                    data-checkpoint-id=${checkpoint.id}
+                    aria-label=${`Restore version from ${this.historyTimestamp(checkpoint.timestamp)}`}
+                    title=${checkpoint.id === this.historyState.currentCheckpointId
+                      ? "Already active"
+                      : `Restore version from ${this.historyTimestamp(checkpoint.timestamp)}`}
+                    ?disabled=${this.historyLoading || checkpoint.id === this.historyState.currentCheckpointId}
+                    @click=${this.revertHistoryCheckpoint}
+                  >
+                    <span class="history-card-restore-icon" aria-hidden="true">${ribbonIcon("Restore")}</span>
+                    <span>Restore</span>
+                  </button>
+                </div>
               `)}
-        </div>
-      </ribbon-drawer>
-    `
-  }
-
-  private renderHistoryChangesDrawer() {
-    const changes = this.historyState.preview ?? {added: 0, removed: 0, modified: 0}
-    return html`
-      <ribbon-drawer label="Changes" icon="Changes" layout="history-changes">
-        <div class="history-change-panel" aria-label="Changes compared with the live document">
-          ${(["added", "removed", "modified"] as const).map(kind => html`
-            <span class="history-change-item" data-kind=${kind}>
-              <span class="history-change-swatch" aria-hidden="true"></span>
-              <span><strong class="history-change-value">${changes[kind]}</strong>${kind === "modified" ? "changed" : kind}</span>
-            </span>
-          `)}
-          <span class="history-change-caption">Highlighted in the document</span>
-        </div>
-      </ribbon-drawer>
-    `
-  }
-
-  private renderHistoryRestoreDrawer() {
-    const preview = this.historyState.preview
-    const disabled = this.historyLoading || !preview || preview.isCurrent
-    return html`
-      <ribbon-drawer label="Restore" icon="Restore" layout="history-restore">
-        <div class="history-restore-panel">
-          <button
-            class="history-restore-button"
-            type="button"
-            ?disabled=${disabled}
-            title=${preview?.isCurrent ? "This version matches the live document" : "Restore the selected version"}
-            @click=${this.revertHistoryCheckpoint}
-          >
-            <span class="history-restore-icon" aria-hidden="true">${ribbonIcon("Restore")}</span>
-            <span>${this.historyLoading ? "Restoring…" : "Restore version"}</span>
-          </button>
-        </div>
-      </ribbon-drawer>
-    `
-  }
-
-  private renderHistoryCommentsDrawer() {
-    const selectedId = this.selectedHistoryCheckpointId
-    const comments = this.historyState.comments.filter(comment => comment.checkpointId === selectedId)
-    const latest = comments.at(-1)
-    return html`
-      <ribbon-drawer label="Comments" icon="Comments" layout="history-comments">
-        <div class="history-comments-panel">
-          <form class="history-comment-form" @submit=${this.submitHistoryComment}>
-            <textarea
-              class="history-comment-input"
-              data-ribbon-input-persistent
-              aria-label="Comment on selected version"
-              placeholder=${selectedId ? "Comment on this version…" : "Select a version first"}
-              maxlength="2000"
-              .value=${this.historyCommentDraft}
-              ?disabled=${!selectedId || this.historyLoading}
-              @input=${this.updateHistoryCommentDraft}
-            ></textarea>
-            <button
-              class="history-comment-submit"
-              type="submit"
-              aria-label="Add history comment"
-              title="Add comment"
-              ?disabled=${!selectedId || !this.historyCommentDraft.trim() || this.historyLoading}
-            >${ribbonIcon("New Comment")}</button>
-          </form>
-          ${latest ? html`
-            <div class="history-comment-latest" title=${latest.text}>
-              <div class="history-comment-latest-header">
-                <span
-                  class="history-comment-avatar"
-                  style=${`--history-user-color: ${latest.user.color}`}
-                  aria-hidden="true"
-                >${latest.user.initials}</span>
-                <span>${latest.user.name} · ${this.historyTime(latest.timestamp)}</span>
-              </div>
-              <p class="history-comment-latest-text">${latest.text}</p>
-            </div>
-          ` : html`<div class="history-comment-placeholder">No comments on this version</div>`}
         </div>
       </ribbon-drawer>
     `
@@ -5412,9 +5225,6 @@ export class AppRibbon extends LitElement {
         : undefined
       if(styleCategory) return this.renderElementStyleDrawer(styleCategory)
       if(this.activeMenu === "History" && drawer.label === "Versions") return this.renderHistoryVersionsDrawer()
-      if(this.activeMenu === "History" && drawer.label === "Changes") return this.renderHistoryChangesDrawer()
-      if(this.activeMenu === "History" && drawer.label === "Restore") return this.renderHistoryRestoreDrawer()
-      if(this.activeMenu === "History" && drawer.label === "Comments") return this.renderHistoryCommentsDrawer()
       if(drawer.label === "File") return this.renderFileDrawer(drawer)
       if(drawer.label === "Sharing") return this.renderSharingDrawer(drawer)
       if(drawer.label === "Marks") return this.renderMarkDrawer()
@@ -5512,6 +5322,7 @@ export class AppRibbon extends LitElement {
       : ""
     const modelCount = this.aiProviders.reduce((count, provider) => count + provider.models.length, 0)
     const aiReviewPending = Boolean(this.pendingAIEdit)
+    const historyPreviewPending = this.historyState.preview !== null
     return html`
       <div
         class="ribbon"
@@ -5572,7 +5383,7 @@ export class AppRibbon extends LitElement {
                   type="button"
                   aria-label="Undo"
                   title="Undo"
-                  ?disabled=${aiReviewPending}
+                  ?disabled=${aiReviewPending || historyPreviewPending}
                   @click=${() => this.handleTopButtonClick("Undo")}
                 >
                   <span class="history-icon" aria-hidden="true">${ribbonIcon("Undo")}</span>
@@ -5595,7 +5406,7 @@ export class AppRibbon extends LitElement {
                   type="button"
                   aria-label="Redo"
                   title="Redo"
-                  ?disabled=${aiReviewPending}
+                  ?disabled=${aiReviewPending || historyPreviewPending}
                   @click=${() => this.handleTopButtonClick("Redo")}
                 >
                   <span class="history-icon" aria-hidden="true">${ribbonIcon("Redo")}</span>
@@ -5609,7 +5420,7 @@ export class AppRibbon extends LitElement {
               aria-label=${this.previewActive ? "Exit preview" : "Preview"}
               title=${this.previewActive ? "Exit preview" : "Preview"}
               aria-pressed=${this.previewActive}
-              ?disabled=${aiReviewPending}
+              ?disabled=${aiReviewPending || historyPreviewPending}
               @click=${() => this.handleTopButtonClick("Preview")}
             >
               ${this.previewActive ? html`<span class="preview-label" aria-hidden="true">PREVIEW</span>` : ""}
@@ -5637,6 +5448,7 @@ export class AppRibbon extends LitElement {
           ?data-open=${this.aiChatOpen}
           ?data-transitioning=${this.aiChatTransitioning}
           ?hidden=${this.previewActive}
+          ?inert=${historyPreviewPending}
         >
           <button
             class="ai-chat-brand-button"
@@ -5857,7 +5669,7 @@ export class AppRibbon extends LitElement {
         <ribbon-menu
           .groups=${this.currentMenuGroups}
           ?hidden=${!this.menuOpen || this.expanded}
-          ?inert=${aiReviewPending}
+          ?inert=${aiReviewPending || historyPreviewPending}
         ></ribbon-menu>
         <div
           id="ribbon-content"
@@ -5865,7 +5677,7 @@ export class AppRibbon extends LitElement {
           role="tabpanel"
           aria-label=${this.activeMenu}
           ?hidden=${!this.expanded}
-          ?inert=${aiReviewPending}
+          ?inert=${aiReviewPending || historyPreviewPending && this.activeMenu !== "History"}
         >
           ${this.renderDrawers()}
         </div>

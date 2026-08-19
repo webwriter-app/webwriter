@@ -129,21 +129,7 @@ export class RibbonDrawer extends LitElement {
     :host([layout="history-versions"]) {
       --ribbon-drawer-expanded-width: 26rem;
       --ribbon-drawer-width: min(26rem, calc(100vw - 1rem));
-    }
-
-    :host([layout="history-changes"]) {
-      --ribbon-drawer-expanded-width: 10rem;
-      --ribbon-drawer-width: min(10rem, calc(100vw - 1rem));
-    }
-
-    :host([layout="history-restore"]) {
-      --ribbon-drawer-expanded-width: 7rem;
-      --ribbon-drawer-width: min(7rem, calc(100vw - 1rem));
-    }
-
-    :host([layout="history-comments"]) {
-      --ribbon-drawer-expanded-width: 17rem;
-      --ribbon-drawer-width: min(17rem, calc(100vw - 1rem));
+      flex-grow: 1;
     }
 
     :host([layout="element-style"]) {
@@ -333,15 +319,14 @@ export class RibbonDrawer extends LitElement {
       padding-bottom: 0.25rem;
     }
 
-    :host([layout="history-versions"]) .controls,
-    :host([layout="history-changes"]) .controls,
-    :host([layout="history-restore"]) .controls,
-    :host([layout="history-comments"]) .controls {
+    :host([layout="history-versions"]) .controls {
       grid-template-columns: minmax(0, 1fr);
       grid-template-rows: minmax(0, 1fr);
       grid-auto-flow: row;
       grid-auto-columns: minmax(0, 1fr);
       grid-auto-rows: minmax(0, 1fr);
+      align-items: stretch;
+      padding-bottom: 0;
     }
 
     :host([layout="element-style"]) .controls {
@@ -543,6 +528,11 @@ export class RibbonDrawer extends LitElement {
     :host([layout="marks"][collapsed]) .drawer.expanded,
     :host([layout="marks"][collapsed]) .drawer.expanded.closing {
       border-left-color: #d8dee6;
+    }
+
+    :host([layout="history-versions"]) .drawer {
+      padding-left: 0;
+      padding-right: 0;
     }
 
     :host([collapsed]) .summary {

@@ -262,6 +262,23 @@ describe("document head synchronization", () => {
 })
 
 describe("Yjs to DOM synchronization", () => {
+  it("queues shared changes while a transient DOM rendering is active", () => {
+    const {root, shared} = createShared("<p>Hello</p>")
+    const yParagraph = shared.body.firstChild as Y.XmlElement
+    const yText = yParagraph.firstChild as Y.XmlText
+
+    shared.pauseDOMSync()
+    shared.doc.transact(() => yText.insert(yText.length, " remote"), "remote-client")
+    expect(root.innerHTML).toBe("<p>Hello</p>")
+
+    root.querySelector("p")!.textContent = "Transient preview"
+    shared.syncFromDOM()
+    expect(yParagraph.toString()).toContain("Hello remote")
+
+    expect(shared.resumeDOMSync()).toBe(true)
+    expect(root.innerHTML).toBe("<p>Hello remote</p>")
+  })
+
   it("applies remote text and attribute changes without replacing the existing DOM element", () => {
     const {root, shared} = createShared('<p title="old">Hello</p>')
     const paragraph = root.firstElementChild!

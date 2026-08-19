@@ -236,6 +236,8 @@ export type VersionHistoryState = {
   checkpoints: VersionHistoryCheckpoint[]
   comments: VersionHistoryComment[]
   preview: VersionHistoryPreview | null
+  currentCheckpointId: string | null
+  currentUserId: number | null
 }
 
 export type HistoryStateChangeMessage = {
@@ -269,8 +271,10 @@ export function isHistoryStateChangeMessage(value: unknown): value is HistorySta
   if(!value || typeof value !== "object") return false
   const message = value as Partial<HistoryStateChangeMessage>
   if(message.type !== historyStateChangeEvent || !message.detail || typeof message.detail !== "object") return false
-  const {checkpoints, comments, preview} = message.detail as Partial<VersionHistoryState>
+  const {checkpoints, comments, preview, currentCheckpointId, currentUserId} = message.detail as Partial<VersionHistoryState>
   if(!Array.isArray(checkpoints) || !Array.isArray(comments)) return false
+  if(currentCheckpointId !== null && typeof currentCheckpointId !== "string") return false
+  if(currentUserId !== null && (typeof currentUserId !== "number" || !Number.isInteger(currentUserId))) return false
   if(!checkpoints.every(checkpoint => !!checkpoint
     && typeof checkpoint === "object"
     && typeof checkpoint.id === "string"

@@ -34,6 +34,21 @@ describe("responsive ribbon drawer", () => {
     expect(styles).toMatch(/\.drawer\.expanded ::slotted\(element-style-editor\[mode="basic"\]\)\s*\{[\s\S]*?margin-right:\s*0\.5rem;/)
   })
 
+  it("uses the full inline width for full-height History version cards", async () => {
+    const drawer = new RibbonDrawer()
+    drawer.layout = "history-versions"
+    document.body.append(drawer)
+    await drawer.updateComplete
+
+    const section = drawer.shadowRoot!.querySelector<HTMLElement>(".drawer")!
+    const controls = drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!
+    expect(getComputedStyle(drawer).flexGrow).toBe("1")
+    expect(getComputedStyle(section).paddingLeft).toBe("0px")
+    expect(getComputedStyle(section).paddingRight).toBe("0px")
+    expect(getComputedStyle(controls).alignItems).toBe("stretch")
+    expect(getComputedStyle(controls).paddingBottom).toBe("0px")
+  })
+
   it("uses a representative summary while preserving the original controls in a wider drawer", async () => {
     const drawer = await mountDrawer()
     const summary = drawer.shadowRoot!.querySelector(".summary")!

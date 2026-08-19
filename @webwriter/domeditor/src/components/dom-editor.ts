@@ -206,6 +206,8 @@ const emptyVersionHistoryState = (): VersionHistoryState => ({
   checkpoints: [],
   comments: [],
   preview: null,
+  currentCheckpointId: null,
+  currentUserId: null,
 })
 
 /** The iframe-backed editor element. The iframe gets its own document and
@@ -314,6 +316,8 @@ export class DomEditor extends LitElement {
   private documentHead: DocumentHeadState = emptyDocumentHeadState()
   private historyState = emptyVersionHistoryState()
   private historyLoading = false
+  private historyOperationCount = 0
+  private historyDocumentTransitionCount = 0
   private historyError = ""
   private backendState: "probing" | "connected" | "unavailable" = "probing"
   private backendSession: BackendSession | null = null
@@ -533,8 +537,10 @@ export class DomEditor extends LitElement {
         }
         const hasAuthoredMutation = mutations.some(mutation => this.isAuthoredMutation(mutation))
         if(hasAuthoredMutation) {
-          if(this.dirtyTrackingReady) this.fileDirty = !this.isFreshDocumentUnchanged()
-          else this.dirtyTrackingMutationPending = true
+          if(this.historyDocumentTransitionCount === 0) {
+            if(this.dirtyTrackingReady) this.fileDirty = !this.isFreshDocumentUnchanged()
+            else this.dirtyTrackingMutationPending = true
+          }
           if(this.stylesVisible()) this.queueElementStyleRefresh()
         }
       })
@@ -977,6 +983,8 @@ export class DomEditor extends LitElement {
     this.documentHead = emptyDocumentHeadState()
     this.historyState = emptyVersionHistoryState()
     this.historyLoading = false
+    this.historyOperationCount = 0
+    this.historyDocumentTransitionCount = 0
     this.historyError = ""
     this.frameDocumentHTML = htmlSource
     const reloadError = new Error("The editor iframe was reloaded for a document change")
@@ -1152,11 +1160,27 @@ export class DomEditor extends LitElement {
       })),
       comments: message.detail.comments.map(comment => ({...comment, user: {...comment.user}})),
       preview: message.detail.preview ? {...message.detail.preview} : null,
+      currentCheckpointId: message.detail.currentCheckpointId,
+      currentUserId: message.detail.currentUserId,
     }
   }
 
-  private requestHistoryState = async () => {
+  private beginHistoryOperation(documentTransition = false) {
+    this.historyOperationCount++
+    if(documentTransition) this.historyDocumentTransitionCount++
     this.historyLoading = true
+  }
+
+  private endHistoryOperation(documentTransition = false) {
+    this.historyOperationCount = Math.max(0, this.historyOperationCount - 1)
+    if(documentTransition) {
+      this.historyDocumentTransitionCount = Math.max(0, this.historyDocumentTransitionCount - 1)
+    }
+    this.historyLoading = this.historyOperationCount > 0
+  }
+
+  private requestHistoryState = async () => {
+    this.beginHistoryOperation()
     this.historyError = ""
     try {
       this.updateHistoryState(await this.execute({type: "getVersionHistory"}))
@@ -1165,67 +1189,58 @@ export class DomEditor extends LitElement {
       this.historyError = error instanceof Error ? error.message : String(error)
     }
     finally {
-      this.historyLoading = false
+      this.endHistoryOperation()
     }
   }
 
   private handleHistoryCheckpointSelect = async(event: Event) => {
     const checkpointId = (event as CustomEvent<{checkpointId?: unknown}>).detail?.checkpointId
     if(typeof checkpointId !== "string") return
-    this.historyLoading = true
+    this.beginHistoryOperation(true)
     this.historyError = ""
     try {
-      this.updateHistoryState(await this.execute({type: "previewVersionCheckpoint", checkpointId}))
+      const state = await this.execute({type: "previewVersionCheckpoint", checkpointId})
+      this.updateHistoryState(state)
+      if(isRecord(state) && state.appliedQueuedChanges === true) this.fileDirty = true
     }
     catch(error) {
       this.historyError = error instanceof Error ? error.message : String(error)
     }
     finally {
-      this.historyLoading = false
+      this.endHistoryOperation(true)
     }
   }
 
   private handleHistoryRevert = async(event: Event) => {
     const checkpointId = (event as CustomEvent<{checkpointId?: unknown}>).detail?.checkpointId
     if(typeof checkpointId !== "string") return
-    this.historyLoading = true
+    this.beginHistoryOperation(true)
     this.historyError = ""
     try {
       this.updateHistoryState(await this.execute({type: "revertVersionCheckpoint", checkpointId}))
+      this.fileDirty = true
     }
     catch(error) {
       this.historyError = error instanceof Error ? error.message : String(error)
     }
     finally {
-      this.historyLoading = false
-    }
-  }
-
-  private handleHistoryCommentSubmit = async(event: Event) => {
-    const detail = (event as CustomEvent<{checkpointId?: unknown, text?: unknown}>).detail
-    if(typeof detail?.checkpointId !== "string" || typeof detail.text !== "string") return
-    this.historyLoading = true
-    this.historyError = ""
-    try {
-      this.updateHistoryState(await this.execute({
-        type: "addVersionComment",
-        checkpointId: detail.checkpointId,
-        text: detail.text,
-      }))
-    }
-    catch(error) {
-      this.historyError = error instanceof Error ? error.message : String(error)
-    }
-    finally {
-      this.historyLoading = false
+      this.endHistoryOperation(true)
     }
   }
 
   private clearHistoryPreview = () => {
+    this.beginHistoryOperation(true)
+    this.historyError = ""
     void this.execute({type: "clearVersionPreview"})
-      .then(state => this.updateHistoryState(state))
+      .then(state => {
+        this.updateHistoryState(state)
+        if(isRecord(state) && state.appliedQueuedChanges === true) this.fileDirty = true
+      })
       .catch(() => {
         // The iframe may be reloading while the ribbon switches away.
+      })
+      .finally(() => {
+        this.endHistoryOperation(true)
       })
   }
 
@@ -2526,6 +2541,8 @@ export class DomEditor extends LitElement {
     this.documentHead = emptyDocumentHeadState()
     this.historyState = emptyVersionHistoryState()
     this.historyLoading = false
+    this.historyOperationCount = 0
+    this.historyDocumentTransitionCount = 0
     this.historyError = ""
     const error = new Error("The DOM editor component was disconnected")
     this.pendingExecutions.forEach(({reject}) => reject(error))
@@ -2593,7 +2610,6 @@ export class DomEditor extends LitElement {
           @history-state-request=${this.requestHistoryState}
           @history-checkpoint-select=${this.handleHistoryCheckpointSelect}
           @history-revert=${this.handleHistoryRevert}
-          @history-comment-submit=${this.handleHistoryCommentSubmit}
           @history-preview-clear=${this.clearHistoryPreview}
           @ribbon-collapse=${this.handleRibbonCollapse}
           @ribbon-input-pointerdown=${this.handleRibbonInputPointerDown}

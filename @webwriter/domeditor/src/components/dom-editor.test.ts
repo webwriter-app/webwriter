@@ -998,44 +998,48 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenNthCalledWith(2, {type: "redo"})
   })
 
-  it("opens the History ribbon and routes checkpoint preview, restore, and comments", async () => {
+  it("opens the History ribbon with full-height version cards and card restore actions", async () => {
     const {editor} = await mountEditor()
+    const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {})
     const user = {clientId: 7, name: "Ada Lovelace", initials: "AL", color: "#e11d48"}
+    const otherUser = {clientId: 8, name: "Grace Hopper", initials: "GH", color: "#2563eb"}
+    const currentTimestamp = Date.UTC(2026, 7, 19, 14, 35)
+    const earlierTimestamp = Date.UTC(2026, 7, 18, 9, 5)
     const state: VersionHistoryState = {
       checkpoints: [{
         id: "current",
-        timestamp: 20,
+        timestamp: currentTimestamp,
         label: "Edited by Ada Lovelace",
         user,
         changes: {added: 1, removed: 0, modified: 1},
         commentCount: 0,
       }, {
         id: "earlier",
-        timestamp: 10,
+        timestamp: earlierTimestamp,
         label: "Document created",
-        user,
+        user: otherUser,
         changes: {added: 0, removed: 0, modified: 0},
         commentCount: 0,
       }],
       comments: [],
       preview: null,
+      currentCheckpointId: "current",
+      currentUserId: user.clientId,
     }
     const previewState: VersionHistoryState = {
       ...state,
       preview: {checkpointId: "earlier", added: 1, removed: 0, modified: 1, isCurrent: false},
     }
+    const restoredState: VersionHistoryState = {
+      ...state,
+      currentCheckpointId: "earlier",
+    }
+    const resumedState = {...state, appliedQueuedChanges: true}
     const execute = vi.spyOn(editor, "execute").mockImplementation(async action => {
-      if(action.type === "previewVersionCheckpoint" || action.type === "revertVersionCheckpoint") return previewState
-      if(action.type === "addVersionComment") return {
-        ...previewState,
-        comments: [{
-          id: "comment",
-          checkpointId: "earlier",
-          timestamp: 30,
-          text: "Keep this opening.",
-          user,
-        }],
+      if(action.type === "previewVersionCheckpoint") {
+        return action.checkpointId === "current" ? resumedState : previewState
       }
+      if(action.type === "revertVersionCheckpoint") return restoredState
       return state
     })
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
@@ -1049,35 +1053,92 @@ describe("DomEditor.execute()", () => {
     expect(historyButton.hasAttribute("active")).toBe(true)
     expect(historyButton.getAttribute("aria-pressed")).toBe("true")
     expect(Array.from(ribbon.shadowRoot!.querySelectorAll("ribbon-drawer")).map(drawer => drawer.getAttribute("label")))
-      .toEqual(["Versions", "Changes", "Restore", "Comments"])
+      .toEqual(["Versions"])
     const ribbonStyles = AppRibbon.styles.toString()
     expect(ribbonStyles).toContain(".history-tab-button[active]::before")
     expect(ribbonStyles).toContain("--ribbon-compact-bar-height: 24px")
     expect(ribbonStyles).toContain("height: var(--ribbon-compact-bar-height)")
     expect(ribbonStyles).toContain("background: transparent")
+    expect(ribbonStyles).toContain("padding: 0.35rem 0")
+    expect(ribbonStyles).toContain(".history-version-card[data-after-current]")
+    expect(ribbonStyles).toContain("filter: grayscale(0.8)")
+    expect(ribbon.shadowRoot!.querySelector(".history-change-panel")).toBeNull()
+    expect(ribbon.shadowRoot!.querySelector(".history-comments-panel")).toBeNull()
 
-    ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[data-checkpoint-id="earlier"]')!.click()
+    const versionCards = Array.from(ribbon.shadowRoot!.querySelectorAll<HTMLElement>(".history-version-card"))
+    expect(versionCards).toHaveLength(2)
+    expect(versionCards[0].querySelector(".history-checkpoint-label")?.textContent).toBe(
+      `${new Intl.DateTimeFormat(undefined, {hour: "numeric", minute: "2-digit"}).format(new Date(earlierTimestamp))} · ${new Intl.DateTimeFormat(undefined, {dateStyle: "medium"}).format(new Date(earlierTimestamp))}`,
+    )
+    expect(versionCards[0].querySelector(".history-checkpoint-meta")?.textContent).toBe("By Grace Hopper")
+    expect(versionCards[1].querySelector(".history-checkpoint-meta")?.textContent).toBe("By you")
+    expect(versionCards[1].textContent).not.toContain("Current")
+    expect(versionCards[0].querySelector<HTMLButtonElement>(".history-card-restore-button")!.disabled).toBe(false)
+    expect(versionCards[1].querySelector<HTMLButtonElement>(".history-card-restore-button")!.disabled).toBe(true)
+
+    versionCards[0].querySelector<HTMLButtonElement>(".history-checkpoint")!.click()
     await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({
       type: "previewVersionCheckpoint",
       checkpointId: "earlier",
     }))
     await ribbon.updateComplete
-    const restore = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".history-restore-button")!
+    const restore = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(
+      '.history-card-restore-button[data-checkpoint-id="earlier"]',
+    )!
     await vi.waitFor(() => expect(restore.disabled).toBe(false))
+    expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Undo"]')!.disabled).toBe(true)
+    expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Redo"]')!.disabled).toBe(true)
+    expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Preview"]')!.disabled).toBe(true)
+    expect(ribbon.shadowRoot!.querySelector<HTMLElement>("#ribbon-content")!.inert).toBe(false)
+
+    versionCards[1].querySelector<HTMLButtonElement>(".history-checkpoint")!.click()
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({
+      type: "previewVersionCheckpoint",
+      checkpointId: "current",
+    }))
+    await vi.waitFor(() => expect(
+      ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Undo"]')!.disabled,
+    ).toBe(false))
+    expect(editor.fileDirty).toBe(true)
+
+    versionCards[0].querySelector<HTMLButtonElement>(".history-checkpoint")!.click()
+    await vi.waitFor(() => expect(
+      ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Undo"]')!.disabled,
+    ).toBe(true))
     restore.click()
     expect(execute).toHaveBeenCalledWith({type: "revertVersionCheckpoint", checkpointId: "earlier"})
-
-    const input = ribbon.shadowRoot!.querySelector<HTMLTextAreaElement>(".history-comment-input")!
-    await vi.waitFor(() => expect(input.disabled).toBe(false))
-    input.value = "Keep this opening."
-    input.dispatchEvent(new InputEvent("input", {bubbles: true, composed: true}))
+    await vi.waitFor(() => expect(
+      ribbon.shadowRoot!.querySelector('.history-version-card[data-after-current]'),
+    ).not.toBeNull())
     await ribbon.updateComplete
-    ribbon.shadowRoot!.querySelector<HTMLFormElement>(".history-comment-form")!.requestSubmit()
-    expect(execute).toHaveBeenCalledWith({
-      type: "addVersionComment",
-      checkpointId: "earlier",
-      text: "Keep this opening.",
-    })
+    const restoredCards = Array.from(ribbon.shadowRoot!.querySelectorAll<HTMLElement>(".history-version-card"))
+    expect(restoredCards).toHaveLength(2)
+    expect(restoredCards[0].hasAttribute("data-after-current")).toBe(false)
+    expect(restoredCards[1].dataset.afterCurrent).toBe("")
+    expect(restoredCards[0].querySelector<HTMLButtonElement>(".history-card-restore-button")!.disabled).toBe(true)
+    expect(restoredCards[1].querySelector<HTMLButtonElement>(".history-card-restore-button")!.disabled).toBe(false)
+    expect(restoredCards.some(card => card.textContent?.includes("Restored"))).toBe(false)
+
+    scrollIntoView.mockClear()
+    const newestTimestamp = Date.UTC(2026, 7, 19, 15, 5)
+    ribbon.historyState = {
+      ...restoredState,
+      checkpoints: [{
+        id: "newest",
+        timestamp: newestTimestamp,
+        label: "Edited by Ada Lovelace",
+        user,
+        changes: {added: 0, removed: 0, modified: 1},
+        commentCount: 0,
+      }, ...restoredState.checkpoints],
+    }
+    await ribbon.updateComplete
+    const newestCard = ribbon.shadowRoot!.querySelector<HTMLElement>(
+      '.history-version-card[data-checkpoint-id="newest"]',
+    )!
+    expect(newestCard).toBe(restoredCards[1].nextElementSibling)
+    expect(scrollIntoView).toHaveBeenCalledWith({behavior: "smooth", block: "nearest", inline: "nearest"})
+    expect(scrollIntoView.mock.instances.at(-1)).toBe(newestCard)
 
     ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!.click()
     await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "clearVersionPreview"}))

@@ -35,9 +35,13 @@ describe("DOMEditor stylesheets", () => {
     const appendix = editor.appendix
     const overlay = editor.features.transformation.overlay
     const stylesheet = document.adoptedStyleSheets.find(sheet => hasSelector(sheet, "html"))
+    const appendixStylesheet = appendix.adoptedStyleSheets.find(sheet =>
+      hasExactSelector(sheet, ":host(.◆editing-locked) > :not(slot)"),
+    )
 
     expect(stylesheet).toBeInstanceOf(CSSStyleSheet)
-    expect(appendix.adoptedStyleSheets).toHaveLength(0)
+    expect(appendixStylesheet).toBeInstanceOf(CSSStyleSheet)
+    expect((Array.from(appendixStylesheet!.cssRules)[0] as CSSStyleRule).style.display).toBe("none")
     expect(editorStyleString).toContain("body::part(transform-overlay)")
     expect(overlay.getAttribute("part")).toContain("transform-overlay")
     expect(overlay.querySelector("#◆transform-overlay-scale-up-left")?.getAttribute("part"))
@@ -93,6 +97,8 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/body\.◆node-selection-active\s+\.◆element-capture-selected\s*\{[\s\S]*?caret-color:\s*auto\s*!important;/)
     expect(editorStyleString).toMatch(/body\.◆table-cell-selection,\s*body\.◆table-cell-selection\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
     expect(editorStyleString).toMatch(/body\.◆table-cell-selection::selection,\s*body\.◆table-cell-selection\s+\*::selection\s*\{[\s\S]*?background:\s*transparent;/)
+    expect(editorStyleString).toMatch(/body\.◆editing-locked,\s*body\.◆editing-locked\s+\*\s*\{[\s\S]*?caret-color:\s*transparent\s*!important;/)
+    expect(editorStyleString).toMatch(/body\.◆editing-locked::selection,\s*body\.◆editing-locked\s+\*::selection\s*\{[\s\S]*?background:\s*transparent\s*!important;/)
     expect(editorStyleString).toMatch(/td\.◆table-cell-selected,\s*th\.◆table-cell-selected\s*\{[\s\S]*?box-shadow:\s*inset 0 0 0 2px var\(--sl-color-primary-400\);[\s\S]*?rgb\(56 189 248 \/ 6%\)/)
     expect(editorStyleString).toMatch(/\.◆element-selected:not\(\.◆element-capture-selected\)::selection,\s*\.◆element-selected:not\(\.◆element-capture-selected\)\s+\*::selection\s*\{[\s\S]*?background:\s*transparent;/)
     expect(editorStyleString).not.toMatch(/\.◆element-selected::selection[\s\S]*?background:\s*transparent;/)
@@ -156,6 +162,17 @@ describe("DOMEditor stylesheets", () => {
 
     expect(document.adoptedStyleSheets.filter(sheet => hasSelector(sheet, "html"))).toHaveLength(documentSheetCount)
     expect(appendix.adoptedStyleSheets).toHaveLength(appendixSheetCount)
+  })
+
+  it("marks every editing lock without serializing the marker", () => {
+    const owner = {}
+    editor.lockEditing(owner)
+
+    expect(document.body).toHaveClass("◆editing-locked")
+    expect(editor.toHTML()).not.toContain("◆editing-locked")
+
+    editor.unlockEditing(owner)
+    expect(document.body).not.toHaveClass("◆editing-locked")
   })
 })
 
