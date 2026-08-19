@@ -37,10 +37,12 @@ import {
   isAIEditReviewMessage,
   isExecuteResponse,
   isDocumentHeadStateChangeMessage,
+  isHistoryStateChangeMessage,
   isMarkStateChangeMessage,
   isSelectionChangeMessage,
   isPresenceChangeMessage,
   markStateChangeEvent,
+  historyStateChangeEvent,
   loadWidgetsMessage,
   selectionChangeEvent,
   type ElementStyleMutation,
@@ -54,6 +56,7 @@ import {
   type InitializeEditorMessage,
   type LoadWidgetsMessage,
   type AIEditReviewMessage,
+  type VersionHistoryState,
 } from "../editor-bridge"
 import {elementStylePropertyNames} from "../element-styles"
 import "./breadcrumb"
@@ -199,6 +202,12 @@ type RibbonInputEventDetail = {
   relatedTargetIsInput?: boolean
 }
 
+const emptyVersionHistoryState = (): VersionHistoryState => ({
+  checkpoints: [],
+  comments: [],
+  preview: null,
+})
+
 /** The iframe-backed editor element. The iframe gets its own document and
  * runs the editor module there, keeping editor styles, selection and DOM
  * mutations isolated from the host document. */
@@ -237,6 +246,9 @@ export class DomEditor extends LitElement {
     backendClient: {attribute: false, state: true},
     storageLocation: {attribute: false, state: true},
     documentHead: {attribute: false, state: true},
+    historyState: {attribute: false, state: true},
+    historyLoading: {attribute: false, state: true},
+    historyError: {attribute: false, state: true},
   }
 
   private editorDocument: Document | null = null
@@ -300,6 +312,9 @@ export class DomEditor extends LitElement {
   private fileHandle: LocalFileHandle | null = null
   private storageLocation: StorageLocation = "local"
   private documentHead: DocumentHeadState = emptyDocumentHeadState()
+  private historyState = emptyVersionHistoryState()
+  private historyLoading = false
+  private historyError = ""
   private backendState: "probing" | "connected" | "unavailable" = "probing"
   private backendSession: BackendSession | null = null
   private backendClient: BackendClient | null = null
@@ -960,6 +975,9 @@ export class DomEditor extends LitElement {
     this.savedEditorSelection = null
     this.frameState = undefined
     this.documentHead = emptyDocumentHeadState()
+    this.historyState = emptyVersionHistoryState()
+    this.historyLoading = false
+    this.historyError = ""
     this.frameDocumentHTML = htmlSource
     const reloadError = new Error("The editor iframe was reloaded for a document change")
     this.pendingExecutions.forEach(({reject}) => reject(reloadError))
@@ -1121,6 +1139,94 @@ export class DomEditor extends LitElement {
     catch(error) {
       this.reportFileError(error)
     }
+  }
+
+  private updateHistoryState(value: unknown) {
+    const message = {type: historyStateChangeEvent, detail: value}
+    if(!isHistoryStateChangeMessage(message)) throw new TypeError("The editor returned invalid version history")
+    this.historyState = {
+      checkpoints: message.detail.checkpoints.map(checkpoint => ({
+        ...checkpoint,
+        user: {...checkpoint.user},
+        changes: {...checkpoint.changes},
+      })),
+      comments: message.detail.comments.map(comment => ({...comment, user: {...comment.user}})),
+      preview: message.detail.preview ? {...message.detail.preview} : null,
+    }
+  }
+
+  private requestHistoryState = async () => {
+    this.historyLoading = true
+    this.historyError = ""
+    try {
+      this.updateHistoryState(await this.execute({type: "getVersionHistory"}))
+    }
+    catch(error) {
+      this.historyError = error instanceof Error ? error.message : String(error)
+    }
+    finally {
+      this.historyLoading = false
+    }
+  }
+
+  private handleHistoryCheckpointSelect = async(event: Event) => {
+    const checkpointId = (event as CustomEvent<{checkpointId?: unknown}>).detail?.checkpointId
+    if(typeof checkpointId !== "string") return
+    this.historyLoading = true
+    this.historyError = ""
+    try {
+      this.updateHistoryState(await this.execute({type: "previewVersionCheckpoint", checkpointId}))
+    }
+    catch(error) {
+      this.historyError = error instanceof Error ? error.message : String(error)
+    }
+    finally {
+      this.historyLoading = false
+    }
+  }
+
+  private handleHistoryRevert = async(event: Event) => {
+    const checkpointId = (event as CustomEvent<{checkpointId?: unknown}>).detail?.checkpointId
+    if(typeof checkpointId !== "string") return
+    this.historyLoading = true
+    this.historyError = ""
+    try {
+      this.updateHistoryState(await this.execute({type: "revertVersionCheckpoint", checkpointId}))
+    }
+    catch(error) {
+      this.historyError = error instanceof Error ? error.message : String(error)
+    }
+    finally {
+      this.historyLoading = false
+    }
+  }
+
+  private handleHistoryCommentSubmit = async(event: Event) => {
+    const detail = (event as CustomEvent<{checkpointId?: unknown, text?: unknown}>).detail
+    if(typeof detail?.checkpointId !== "string" || typeof detail.text !== "string") return
+    this.historyLoading = true
+    this.historyError = ""
+    try {
+      this.updateHistoryState(await this.execute({
+        type: "addVersionComment",
+        checkpointId: detail.checkpointId,
+        text: detail.text,
+      }))
+    }
+    catch(error) {
+      this.historyError = error instanceof Error ? error.message : String(error)
+    }
+    finally {
+      this.historyLoading = false
+    }
+  }
+
+  private clearHistoryPreview = () => {
+    void this.execute({type: "clearVersionPreview"})
+      .then(state => this.updateHistoryState(state))
+      .catch(() => {
+        // The iframe may be reloading while the ribbon switches away.
+      })
   }
 
   private handleRibbonButtonClick = (event: Event) => {
@@ -2212,6 +2318,11 @@ export class DomEditor extends LitElement {
       }
       return
     }
+    if(isHistoryStateChangeMessage(event.data)) {
+      if(!this.isEditorMessage(event)) return
+      this.updateHistoryState(event.data.detail)
+      return
+    }
     if(!isExecuteResponse(event.data)) return
     if(!this.isEditorMessage(event)) return
 
@@ -2413,6 +2524,9 @@ export class DomEditor extends LitElement {
       context: {display: "", parentDisplay: ""},
     }
     this.documentHead = emptyDocumentHeadState()
+    this.historyState = emptyVersionHistoryState()
+    this.historyLoading = false
+    this.historyError = ""
     const error = new Error("The DOM editor component was disconnected")
     this.pendingExecutions.forEach(({reject}) => reject(error))
     this.pendingExecutions.clear()
@@ -2450,6 +2564,9 @@ export class DomEditor extends LitElement {
           .previewActive=${this.previewActive}
           .storageLocation=${this.storageLocation}
           .documentHead=${this.documentHead}
+          .historyState=${this.historyState}
+          .historyLoading=${this.historyLoading}
+          .historyError=${this.historyError}
           .backendClient=${this.backendClient}
           .backendState=${this.backendState}
           .aiDocumentToolHandler=${this.handleAIDocumentTool}
@@ -2473,6 +2590,11 @@ export class DomEditor extends LitElement {
           @element-style-change=${this.handleElementStyleChange}
           @element-style-target-hover=${this.handleElementStyleTargetHover}
           @element-style-state-request=${this.queueElementStyleRefresh}
+          @history-state-request=${this.requestHistoryState}
+          @history-checkpoint-select=${this.handleHistoryCheckpointSelect}
+          @history-revert=${this.handleHistoryRevert}
+          @history-comment-submit=${this.handleHistoryCommentSubmit}
+          @history-preview-clear=${this.clearHistoryPreview}
           @ribbon-collapse=${this.handleRibbonCollapse}
           @ribbon-input-pointerdown=${this.handleRibbonInputPointerDown}
           @ribbon-input-focus=${this.handleRibbonInputFocus}

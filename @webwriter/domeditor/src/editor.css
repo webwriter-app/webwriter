@@ -1164,6 +1164,27 @@ body::part(presence-gap-caret)::after {
       0 76%
     );
 }
+
+/* Version previews annotate the live authored DOM without adding wrappers or
+ * metadata. These temporary marker classes are excluded from collaboration
+ * and serialization and are removed as soon as History closes. */
+.◆history-added {
+  outline: 2px solid #1f9d68;
+  outline-offset: 2px;
+  background-color: color-mix(in srgb, #bbf7d0 24%, transparent);
+}
+
+.◆history-modified {
+  outline: 2px solid #d28a00;
+  outline-offset: 2px;
+  background-color: color-mix(in srgb, #fde68a 24%, transparent);
+}
+
+.◆history-removed {
+  outline: 2px dashed #c94b59;
+  outline-offset: 3px;
+  background-color: color-mix(in srgb, #fecdd3 20%, transparent);
+}
 body::part(presence-gap-caret-label) {
     left: calc(-0.05 * var(--presence-gap-caret-size));
     bottom: calc(100% + 0.27 * var(--presence-gap-caret-size));

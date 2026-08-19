@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {DomEditor} from "./dom-editor"
-import type {AppRibbon} from "./ribbon"
+import {AppRibbon} from "./ribbon"
 import {DomEditorBreadcrumb, type DocumentTreeItem} from "./breadcrumb"
 import type {RibbonButton} from "./ribbon-button"
 import type {RibbonDrawer} from "./ribbon-drawer"
@@ -16,6 +16,7 @@ import {
   presenceChangeEvent,
   documentHeadStateChangeEvent,
   selectionChangeEvent,
+  type VersionHistoryState,
 } from "../editor-bridge"
 import {WEBWRITER_GENERATOR, emptyDocumentHeadState} from "../document-head"
 import {INSTALLED_PACKAGES_STORAGE_KEY, WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
@@ -982,17 +983,104 @@ describe("DomEditor.execute()", () => {
 
     expect(historyButtons.map(button => button.getAttribute("aria-label"))).toEqual([
       "Undo",
+      "History",
       "Redo",
     ])
     expect(historyButtons[0].querySelector(".icon-tabler-arrow-back-up")).not.toBeNull()
-    expect(historyButtons[1].querySelector(".icon-tabler-arrow-forward-up")).not.toBeNull()
-    expect(historyButtons[1].nextElementSibling?.getAttribute("aria-label")).toBe("Preview")
+    expect(historyButtons[1].querySelector(".icon-tabler-history-toggle")).not.toBeNull()
+    expect(historyButtons[2].querySelector(".icon-tabler-arrow-forward-up")).not.toBeNull()
+    expect(historyButtons[2].parentElement?.nextElementSibling?.getAttribute("aria-label")).toBe("Preview")
 
     historyButtons[0].click()
-    historyButtons[1].click()
+    historyButtons[2].click()
 
     expect(execute).toHaveBeenNthCalledWith(1, {type: "undo"})
     expect(execute).toHaveBeenNthCalledWith(2, {type: "redo"})
+  })
+
+  it("opens the History ribbon and routes checkpoint preview, restore, and comments", async () => {
+    const {editor} = await mountEditor()
+    const user = {clientId: 7, name: "Ada Lovelace", initials: "AL", color: "#e11d48"}
+    const state: VersionHistoryState = {
+      checkpoints: [{
+        id: "current",
+        timestamp: 20,
+        label: "Edited by Ada Lovelace",
+        user,
+        changes: {added: 1, removed: 0, modified: 1},
+        commentCount: 0,
+      }, {
+        id: "earlier",
+        timestamp: 10,
+        label: "Document created",
+        user,
+        changes: {added: 0, removed: 0, modified: 0},
+        commentCount: 0,
+      }],
+      comments: [],
+      preview: null,
+    }
+    const previewState: VersionHistoryState = {
+      ...state,
+      preview: {checkpointId: "earlier", added: 1, removed: 0, modified: 1, isCurrent: false},
+    }
+    const execute = vi.spyOn(editor, "execute").mockImplementation(async action => {
+      if(action.type === "previewVersionCheckpoint" || action.type === "revertVersionCheckpoint") return previewState
+      if(action.type === "addVersionComment") return {
+        ...previewState,
+        comments: [{
+          id: "comment",
+          checkpointId: "earlier",
+          timestamp: 30,
+          text: "Keep this opening.",
+          user,
+        }],
+      }
+      return state
+    })
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const historyButton = ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="History"]')!
+
+    historyButton.click()
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "getVersionHistory"}))
+    await ribbon.updateComplete
+
+    expect(ribbon.activeMenu).toBe("History")
+    expect(historyButton.hasAttribute("active")).toBe(true)
+    expect(historyButton.getAttribute("aria-pressed")).toBe("true")
+    expect(Array.from(ribbon.shadowRoot!.querySelectorAll("ribbon-drawer")).map(drawer => drawer.getAttribute("label")))
+      .toEqual(["Versions", "Changes", "Restore", "Comments"])
+    const ribbonStyles = AppRibbon.styles.toString()
+    expect(ribbonStyles).toContain(".history-tab-button[active]::before")
+    expect(ribbonStyles).toContain("--ribbon-compact-bar-height: 24px")
+    expect(ribbonStyles).toContain("height: var(--ribbon-compact-bar-height)")
+    expect(ribbonStyles).toContain("background: transparent")
+
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[data-checkpoint-id="earlier"]')!.click()
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({
+      type: "previewVersionCheckpoint",
+      checkpointId: "earlier",
+    }))
+    await ribbon.updateComplete
+    const restore = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".history-restore-button")!
+    await vi.waitFor(() => expect(restore.disabled).toBe(false))
+    restore.click()
+    expect(execute).toHaveBeenCalledWith({type: "revertVersionCheckpoint", checkpointId: "earlier"})
+
+    const input = ribbon.shadowRoot!.querySelector<HTMLTextAreaElement>(".history-comment-input")!
+    await vi.waitFor(() => expect(input.disabled).toBe(false))
+    input.value = "Keep this opening."
+    input.dispatchEvent(new InputEvent("input", {bubbles: true, composed: true}))
+    await ribbon.updateComplete
+    ribbon.shadowRoot!.querySelector<HTMLFormElement>(".history-comment-form")!.requestSubmit()
+    expect(execute).toHaveBeenCalledWith({
+      type: "addVersionComment",
+      checkpointId: "earlier",
+      text: "Keep this opening.",
+    })
+
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!.click()
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "clearVersionPreview"}))
   })
 
   it("routes media ribbon commands through the iframe bridge", async () => {
@@ -1227,7 +1315,7 @@ describe("DomEditor.execute()", () => {
     const previewButton = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!
 
     expect(previewButton.getAttribute("aria-label")).toBe("Preview")
-    expect(previewButton.previousElementSibling?.getAttribute("aria-label")).toBe("Redo")
+    expect(previewButton.previousElementSibling?.querySelector('[aria-label="Redo"]')).not.toBeNull()
     expect(previewButton.nextElementSibling?.getAttribute("aria-label")).toBe("Collapse ribbon")
     expect(previewButton.querySelector(".preview-icon")).not.toBeNull()
     expect(previewButton.querySelector(".icon-tabler-player-play.icons-tabler-filled")).not.toBeNull()

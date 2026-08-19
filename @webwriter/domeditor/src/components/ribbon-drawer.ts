@@ -126,6 +126,26 @@ export class RibbonDrawer extends LitElement {
       --ribbon-drawer-more-height: 24rem;
     }
 
+    :host([layout="history-versions"]) {
+      --ribbon-drawer-expanded-width: 26rem;
+      --ribbon-drawer-width: min(26rem, calc(100vw - 1rem));
+    }
+
+    :host([layout="history-changes"]) {
+      --ribbon-drawer-expanded-width: 10rem;
+      --ribbon-drawer-width: min(10rem, calc(100vw - 1rem));
+    }
+
+    :host([layout="history-restore"]) {
+      --ribbon-drawer-expanded-width: 7rem;
+      --ribbon-drawer-width: min(7rem, calc(100vw - 1rem));
+    }
+
+    :host([layout="history-comments"]) {
+      --ribbon-drawer-expanded-width: 17rem;
+      --ribbon-drawer-width: min(17rem, calc(100vw - 1rem));
+    }
+
     :host([layout="element-style"]) {
       --ribbon-drawer-expanded-width: 22.5rem;
       --ribbon-drawer-width: min(33rem, calc(100vw - 1rem));
@@ -311,6 +331,17 @@ export class RibbonDrawer extends LitElement {
       flex-direction: column;
       align-items: stretch;
       padding-bottom: 0.25rem;
+    }
+
+    :host([layout="history-versions"]) .controls,
+    :host([layout="history-changes"]) .controls,
+    :host([layout="history-restore"]) .controls,
+    :host([layout="history-comments"]) .controls {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr);
+      grid-auto-flow: row;
+      grid-auto-columns: minmax(0, 1fr);
+      grid-auto-rows: minmax(0, 1fr);
     }
 
     :host([layout="element-style"]) .controls {

@@ -24,11 +24,13 @@ import {
   selectionChangeEvent,
   presenceChangeEvent,
   documentHeadStateChangeEvent,
+  historyStateChangeEvent,
   type PresenceUser,
   type SelectionChangeDetail,
   type SelectionGap,
   type SelectionPathItem,
   type SerializedError,
+  type VersionHistoryState,
 } from "./editor-bridge"
 import { getElementPresentation, isLineBreakElement } from "./element-names"
 import type {EditorStateSnapshot} from "./editor-state"
@@ -240,7 +242,7 @@ export class DOMEditor {
 
     // Responses are posted to the parent window. In a non-iframe environment
     // (for example, a unit test), they can arrive back at this listener too.
-    if(ev.data.type === executeCompleteEvent || ev.data.type === executeFailureEvent || ev.data.type === presenceChangeEvent || ev.data.type === markStateChangeEvent || ev.data.type === documentHeadStateChangeEvent) {
+    if(ev.data.type === executeCompleteEvent || ev.data.type === executeFailureEvent || ev.data.type === presenceChangeEvent || ev.data.type === markStateChangeEvent || ev.data.type === documentHeadStateChangeEvent || ev.data.type === historyStateChangeEvent) {
       return
     }
     if(ev.data.type === selectionChangeEvent) {
@@ -327,6 +329,10 @@ export class DOMEditor {
 
   postDocumentHeadState(state: DocumentHeadState) {
     this.postBridgeEvent(documentHeadStateChangeEvent, state)
+  }
+
+  postHistoryState(state: VersionHistoryState) {
+    this.postBridgeEvent(historyStateChangeEvent, state)
   }
 
   private selectedElementForPath() {

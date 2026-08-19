@@ -19,6 +19,7 @@ export const selectionChangeEvent = "dom-editor-selection-change"
 export const markStateChangeEvent = "dom-editor-mark-state-change"
 export const presenceChangeEvent = "dom-editor-presence-change"
 export const documentHeadStateChangeEvent = "dom-editor-document-head-state-change"
+export const historyStateChangeEvent = "dom-editor-history-state-change"
 export const initializeEditorMessage = "initialize-editor"
 export const loadWidgetsMessage = "load-widgets"
 export const aiEditReviewEvent = "dom-editor-ai-edit-review"
@@ -196,9 +197,102 @@ export type PresenceChangeMessage = {
   detail: PresenceChangeDetail
 }
 
+export type VersionHistoryUser = {
+  clientId: number
+  name: string
+  initials: string
+  color: string
+}
+
+export type VersionHistoryChanges = {
+  added: number
+  removed: number
+  modified: number
+}
+
+export type VersionHistoryCheckpoint = {
+  id: string
+  timestamp: number
+  label: string
+  user: VersionHistoryUser
+  changes: VersionHistoryChanges
+  commentCount: number
+}
+
+export type VersionHistoryComment = {
+  id: string
+  checkpointId: string
+  timestamp: number
+  text: string
+  user: VersionHistoryUser
+}
+
+export type VersionHistoryPreview = VersionHistoryChanges & {
+  checkpointId: string
+  isCurrent: boolean
+}
+
+export type VersionHistoryState = {
+  checkpoints: VersionHistoryCheckpoint[]
+  comments: VersionHistoryComment[]
+  preview: VersionHistoryPreview | null
+}
+
+export type HistoryStateChangeMessage = {
+  type: typeof historyStateChangeEvent
+  detail: VersionHistoryState
+}
+
 export type DocumentHeadStateChangeMessage = {
   type: typeof documentHeadStateChangeEvent
   detail: DocumentHeadState
+}
+
+const isVersionHistoryUser = (value: unknown): value is VersionHistoryUser => {
+  if(!value || typeof value !== "object") return false
+  const user = value as Partial<VersionHistoryUser>
+  return typeof user.clientId === "number"
+    && Number.isInteger(user.clientId)
+    && typeof user.name === "string"
+    && typeof user.initials === "string"
+    && typeof user.color === "string"
+}
+
+const isVersionHistoryChanges = (value: unknown): value is VersionHistoryChanges => {
+  if(!value || typeof value !== "object") return false
+  const changes = value as Partial<VersionHistoryChanges>
+  return [changes.added, changes.removed, changes.modified]
+    .every(count => typeof count === "number" && Number.isInteger(count) && count >= 0)
+}
+
+export function isHistoryStateChangeMessage(value: unknown): value is HistoryStateChangeMessage {
+  if(!value || typeof value !== "object") return false
+  const message = value as Partial<HistoryStateChangeMessage>
+  if(message.type !== historyStateChangeEvent || !message.detail || typeof message.detail !== "object") return false
+  const {checkpoints, comments, preview} = message.detail as Partial<VersionHistoryState>
+  if(!Array.isArray(checkpoints) || !Array.isArray(comments)) return false
+  if(!checkpoints.every(checkpoint => !!checkpoint
+    && typeof checkpoint === "object"
+    && typeof checkpoint.id === "string"
+    && typeof checkpoint.timestamp === "number"
+    && typeof checkpoint.label === "string"
+    && isVersionHistoryUser(checkpoint.user)
+    && isVersionHistoryChanges(checkpoint.changes)
+    && typeof checkpoint.commentCount === "number"
+    && Number.isInteger(checkpoint.commentCount)
+    && checkpoint.commentCount >= 0)) return false
+  if(!comments.every(comment => !!comment
+    && typeof comment === "object"
+    && typeof comment.id === "string"
+    && typeof comment.checkpointId === "string"
+    && typeof comment.timestamp === "number"
+    && typeof comment.text === "string"
+    && isVersionHistoryUser(comment.user))) return false
+  return preview === null || !!preview
+    && typeof preview === "object"
+    && typeof preview.checkpointId === "string"
+    && typeof preview.isCurrent === "boolean"
+    && isVersionHistoryChanges(preview)
 }
 
 export type SerializedError = {

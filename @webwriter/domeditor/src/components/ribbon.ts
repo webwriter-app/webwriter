@@ -1,5 +1,5 @@
 import { LitElement, css, html, nothing } from "lit"
-import type {ElementStyleState, ListType, PresenceUser} from "../editor-bridge"
+import type {ElementStyleState, ListType, PresenceUser, VersionHistoryState} from "../editor-bridge"
 import {
   completeAIConversation,
   type AIAttachment,
@@ -72,7 +72,7 @@ import {elementStyleCategories, type ElementStyleCategory} from "../element-styl
 import "./document-head-editor"
 import "./element-style-editor"
 
-type RibbonMenuName = "File" | "Start" | "Insert" | "Edit" | "Style" | "Develop"
+type RibbonMenuName = "File" | "Start" | "Insert" | "Edit" | "Style" | "Develop" | "History"
 
 type RibbonInputEventDetail = {
   input: HTMLElement
@@ -154,6 +154,12 @@ const storageLocations = [
 type StorageLocation = typeof storageLocations[number]["value"]
 
 const placeholderSharingLink = "https://webwriter.app/share/placeholder"
+
+const emptyVersionHistoryState = (): VersionHistoryState => ({
+  checkpoints: [],
+  comments: [],
+  preview: null,
+})
 
 type InsertionSection = "Text" | "Lists" | "Media"
 
@@ -409,6 +415,12 @@ const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
     {label: "Development", buttons: []},
     {label: "Exports", buttons: []},
   ],
+  History: [
+    {label: "Versions", buttons: []},
+    {label: "Changes", buttons: []},
+    {label: "Restore", buttons: []},
+    {label: "Comments", buttons: []},
+  ],
 }
 
 /** The editor's tabbed, responsive ribbon toolbar. */
@@ -467,6 +479,10 @@ export class AppRibbon extends LitElement {
     aiEditReviewHandler: {attribute: false},
     backendClient: {attribute: false},
     backendState: {type: String, attribute: "backend-state"},
+    historyState: {attribute: false},
+    historyLoading: {type: Boolean, attribute: "history-loading"},
+    historyError: {type: String, attribute: "history-error"},
+    historyCommentDraft: {type: String, state: true},
   }
 
   static styles = css`
@@ -510,6 +526,7 @@ export class AppRibbon extends LitElement {
       background: #ffffff;
       --ribbon-area-background: #f2f2f2;
       --ribbon-area-border: #d8dee6;
+      --ribbon-compact-bar-height: 24px;
       transition: background-color 180ms ease;
     }
 
@@ -807,7 +824,7 @@ export class AppRibbon extends LitElement {
       min-width: 24px;
       max-width: 600px;
       height: min(32rem, calc(100vh - 1rem));
-      max-height: 24px;
+      max-height: var(--ribbon-compact-bar-height);
       overflow: hidden;
       border: 1px solid #c8d2df;
       border-radius: 1rem;
@@ -1658,6 +1675,63 @@ export class AppRibbon extends LitElement {
       cursor: pointer;
     }
 
+    .history-controls {
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      height: var(--ribbon-compact-bar-height);
+      margin-inline: 0.15rem;
+      padding: 0 0.1rem;
+      border: 1px solid #c4ccd6;
+      border-radius: 0.62rem;
+      color: #5e6977;
+      background: transparent;
+    }
+
+    .history-controls .history-button {
+      height: 1.35rem;
+      border-radius: 0.45rem;
+    }
+
+    .history-controls .history-tab-button {
+      position: relative;
+      flex-basis: 1.2rem;
+      width: 1.2rem;
+      height: 1.2rem;
+      margin: 0 0.1rem;
+      border-radius: 50%;
+      color: #ffffff;
+      background: #5e6977;
+    }
+
+    .history-tab-button[active] {
+      background: #3977c7;
+      box-shadow: 0 0 0 2px #dcecff;
+    }
+
+    .history-tab-button[active]::before,
+    .history-tab-button[active]::after {
+      position: absolute;
+      left: 50%;
+      bottom: -0.65rem;
+      width: 0;
+      height: 0;
+      border-right: 0.45rem solid transparent;
+      border-bottom: 0.45rem solid var(--ribbon-area-border);
+      border-left: 0.45rem solid transparent;
+      content: "";
+      pointer-events: none;
+      transform: translateX(-50%);
+    }
+
+    .history-tab-button[active]::after {
+      bottom: -0.67rem;
+      z-index: 1;
+      border-right-width: 0.4rem;
+      border-bottom: 0.4rem solid var(--ribbon-area-background);
+      border-left-width: 0.4rem;
+    }
+
     .ribbon-top-actions {
       display: flex;
       align-items: center;
@@ -1777,6 +1851,15 @@ export class AppRibbon extends LitElement {
       background: #e8eef5;
     }
 
+    .history-controls .history-tab-button:hover {
+      color: #ffffff;
+      background: #243447;
+    }
+
+    .history-controls .history-tab-button[active]:hover {
+      background: #1e4f87;
+    }
+
     .history-button:focus-visible {
       outline: 2px solid #3977c7;
       outline-offset: -2px;
@@ -1786,6 +1869,11 @@ export class AppRibbon extends LitElement {
       display: block;
       width: 1rem;
       height: 1rem;
+    }
+
+    .history-tab-button .history-icon {
+      width: 0.75rem;
+      height: 0.75rem;
     }
 
     .history-icon svg {
@@ -1864,6 +1952,334 @@ export class AppRibbon extends LitElement {
     .ribbon-content > ribbon-drawer:not(:first-child) {
       --ribbon-drawer-inline-start: auto;
       --ribbon-drawer-inline-end: 0;
+    }
+
+    .history-timeline,
+    .history-change-panel,
+    .history-restore-panel,
+    .history-comments-panel {
+      box-sizing: border-box;
+      grid-row: 1 / 3;
+      grid-column: 1 / -1;
+      min-width: 0;
+      min-height: 0;
+    }
+
+    .history-timeline {
+      display: flex;
+      align-items: stretch;
+      gap: 0.35rem;
+      width: 100%;
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding: 0.1rem 0.15rem 0.25rem;
+      scrollbar-color: #aab6c5 transparent;
+      scrollbar-width: thin;
+    }
+
+    .history-checkpoint {
+      box-sizing: border-box;
+      display: grid;
+      flex: 0 0 8.25rem;
+      grid-template-columns: 1.35rem minmax(0, 1fr);
+      grid-template-rows: auto auto 1fr;
+      column-gap: 0.35rem;
+      align-content: center;
+      min-width: 0;
+      padding: 0.35rem 0.45rem;
+      overflow: hidden;
+      border: 1px solid #c8d2df;
+      border-radius: 0.45rem;
+      color: #2f3742;
+      background: #ffffff;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .history-checkpoint:hover {
+      border-color: #8eb6df;
+      background: #eef4fb;
+    }
+
+    .history-checkpoint[aria-pressed="true"] {
+      border-color: #3977c7;
+      background: #dcecff;
+      box-shadow: inset 0 0 0 1px rgb(57 119 199 / 12%);
+    }
+
+    .history-checkpoint:focus-visible,
+    .history-restore-button:focus-visible,
+    .history-comment-submit:focus-visible,
+    .history-comment-input:focus-visible {
+      outline: 2px solid #3977c7;
+      outline-offset: -2px;
+    }
+
+    .history-checkpoint-avatar,
+    .history-comment-avatar {
+      box-sizing: border-box;
+      display: grid;
+      place-items: center;
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+      color: #ffffff;
+      background: var(--history-user-color, #64748b);
+      box-shadow: 0 1px 3px rgb(0 0 0 / 18%);
+      font-weight: 750;
+      line-height: 1;
+    }
+
+    .history-checkpoint-avatar {
+      grid-row: 1 / 3;
+      width: 1.35rem;
+      height: 1.35rem;
+      font-size: 0.46rem;
+    }
+
+    .history-checkpoint-label {
+      overflow: hidden;
+      font-size: 0.64rem;
+      font-weight: 700;
+      line-height: 1.2;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .history-checkpoint-meta {
+      overflow: hidden;
+      color: #667085;
+      font-size: 0.56rem;
+      line-height: 1.2;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .history-checkpoint-counts {
+      display: flex;
+      grid-column: 1 / 3;
+      align-items: end;
+      gap: 0.25rem;
+      min-width: 0;
+      padding-top: 0.2rem;
+      color: #667085;
+      font-size: 0.54rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .history-count[data-kind="added"] { color: #157347; }
+    .history-count[data-kind="removed"] { color: #b42336; }
+    .history-count[data-kind="modified"] { color: #9a6700; }
+    .history-count[data-kind="comments"] { margin-left: auto; color: #526b86; }
+
+    .history-empty,
+    .history-loading,
+    .history-error {
+      display: grid;
+      flex: 1 0 100%;
+      place-items: center;
+      min-width: 12rem;
+      padding: 0.5rem;
+      color: #667085;
+      font-size: 0.68rem;
+      text-align: center;
+    }
+
+    .history-error {
+      color: #b42336;
+    }
+
+    .history-change-panel {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      align-content: center;
+      gap: 0.28rem;
+      width: 100%;
+      padding: 0.15rem;
+    }
+
+    .history-change-item {
+      display: grid;
+      grid-template-columns: 0.55rem minmax(0, 1fr);
+      align-items: center;
+      gap: 0.25rem;
+      min-width: 0;
+      color: #526b86;
+      font-size: 0.56rem;
+      line-height: 1.15;
+    }
+
+    .history-change-swatch {
+      width: 0.5rem;
+      height: 0.5rem;
+      border: 1.5px solid currentColor;
+      border-radius: 0.16rem;
+      background: color-mix(in srgb, currentColor 14%, transparent);
+    }
+
+    .history-change-item[data-kind="added"] { color: #157347; }
+    .history-change-item[data-kind="removed"] { color: #b42336; }
+    .history-change-item[data-kind="modified"] { color: #9a6700; }
+
+    .history-change-value {
+      display: block;
+      font-size: 0.66rem;
+      font-weight: 750;
+    }
+
+    .history-change-caption {
+      grid-column: 1 / -1;
+      margin-top: 0.1rem;
+      color: #667085;
+      font-size: 0.55rem;
+      text-align: center;
+    }
+
+    .history-restore-panel {
+      display: grid;
+      place-items: center;
+      width: 100%;
+      padding: 0.2rem;
+    }
+
+    .history-restore-button {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.25rem;
+      width: 100%;
+      height: 100%;
+      padding: 0.25rem;
+      border: 1px solid transparent;
+      border-radius: 0.4rem;
+      color: #526b86;
+      background: transparent;
+      font: inherit;
+      font-size: 0.6rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .history-restore-button:hover:not(:disabled) {
+      border-color: #8eb6df;
+      color: #1e4f87;
+      background: #eef4fb;
+    }
+
+    .history-restore-button:disabled {
+      color: #9aa4b1;
+      cursor: default;
+      opacity: 0.65;
+    }
+
+    .history-restore-icon,
+    .history-restore-icon svg {
+      display: block;
+      width: 1.15rem;
+      height: 1.15rem;
+    }
+
+    .history-comments-panel {
+      display: grid;
+      grid-template-columns: minmax(7rem, 1fr) minmax(6rem, 0.9fr);
+      gap: 0.4rem;
+      width: 100%;
+      padding: 0.1rem 0.15rem 0.25rem;
+    }
+
+    .history-comment-form {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 1.65rem;
+      gap: 0.25rem;
+      min-width: 0;
+    }
+
+    .history-comment-input {
+      box-sizing: border-box;
+      width: 100%;
+      min-width: 0;
+      height: 100%;
+      min-height: 3rem;
+      padding: 0.35rem 0.4rem;
+      resize: none;
+      border: 1px solid #c8d2df;
+      border-radius: 0.35rem;
+      color: #2f3742;
+      background: #ffffff;
+      font: inherit;
+      font-size: 0.62rem;
+      line-height: 1.25;
+    }
+
+    .history-comment-input::placeholder { color: #7d8998; }
+
+    .history-comment-submit {
+      display: grid;
+      place-items: center;
+      width: 1.65rem;
+      min-width: 1.65rem;
+      padding: 0;
+      border: 0;
+      border-radius: 0.35rem;
+      color: #ffffff;
+      background: #3977c7;
+      cursor: pointer;
+    }
+
+    .history-comment-submit:hover:not(:disabled) { background: #1e4f87; }
+    .history-comment-submit:disabled { background: #aab6c5; cursor: default; }
+
+    .history-comment-submit svg {
+      display: block;
+      width: 0.95rem;
+      height: 0.95rem;
+    }
+
+    .history-comment-latest {
+      min-width: 0;
+      overflow: hidden;
+      padding: 0.3rem 0.35rem;
+      border: 1px solid #d8dee6;
+      border-radius: 0.35rem;
+      background: #ffffff;
+    }
+
+    .history-comment-latest-header {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      min-width: 0;
+      color: #526b86;
+      font-size: 0.55rem;
+      font-weight: 700;
+    }
+
+    .history-comment-avatar {
+      flex: 0 0 1.15rem;
+      width: 1.15rem;
+      height: 1.15rem;
+      font-size: 0.4rem;
+    }
+
+    .history-comment-latest-text {
+      display: -webkit-box;
+      margin: 0.25rem 0 0;
+      overflow: hidden;
+      color: #2f3742;
+      font-size: 0.58rem;
+      line-height: 1.25;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+
+    .history-comment-placeholder {
+      display: grid;
+      place-items: center;
+      color: #7d8998;
+      font-size: 0.58rem;
+      text-align: center;
     }
 
     .local-packages-drawer {
@@ -2192,6 +2608,10 @@ export class AppRibbon extends LitElement {
   aiEditReviewHandler: AIEditReviewHandler | undefined
   backendClient: BackendClient | null = null
   backendState: "probing" | "connected" | "unavailable" = "probing"
+  historyState = emptyVersionHistoryState()
+  historyLoading = false
+  historyError = ""
+  private historyCommentDraft = ""
   private readonly aiProviderStore = new AIProviderStore()
   private backendConnectionSequence = 0
   private aiPrompt = ""
@@ -2489,6 +2909,14 @@ export class AppRibbon extends LitElement {
       bubbles: true,
       composed: true,
     }))
+  }
+
+  private selectHistory = () => {
+    if(this.previewActive) return
+    this.closeAIChat()
+    this.activeMenu = "History"
+    this.expanded = true
+    this.menuOpen = false
   }
 
   private selectStart() {
@@ -3051,10 +3479,17 @@ export class AppRibbon extends LitElement {
     if(changed.has("activeMenu") && this.activeMenu === "Style") {
       this.dispatchEvent(new Event("element-style-state-request", {bubbles: true, composed: true}))
     }
+    if(changed.has("activeMenu") && this.activeMenu === "History") {
+      this.dispatchEvent(new Event("history-state-request", {bubbles: true, composed: true}))
+    }
+    if(changed.has("activeMenu") && changed.get("activeMenu") === "History" && this.activeMenu !== "History") {
+      this.historyCommentDraft = ""
+      this.dispatchEvent(new Event("history-preview-clear", {bubbles: true, composed: true}))
+    }
     if(
       changed.has("activeMenu") || changed.has("expanded") || changed.has("packages") ||
       changed.has("installedPackages") || changed.has("packageSearchQuery") ||
-      changed.has("localPackages")
+      changed.has("localPackages") || changed.has("historyState")
     ) this.scheduleResponsiveLayout()
     if(changed.has("marks")) {
       if(!this.marks.includes("a")) this.closeLinkAttributeMenu()
@@ -4784,12 +5219,191 @@ export class AppRibbon extends LitElement {
     `
   }
 
+  private get selectedHistoryCheckpointId() {
+    return this.historyState.preview?.checkpointId ?? this.historyState.checkpoints[0]?.id ?? null
+  }
+
+  private historyTime(timestamp: number) {
+    return new Intl.DateTimeFormat(undefined, {hour: "numeric", minute: "2-digit"}).format(new Date(timestamp))
+  }
+
+  private historyDateTime(timestamp: number) {
+    return new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(timestamp))
+  }
+
+  private selectHistoryCheckpoint = (event: Event) => {
+    const checkpointId = (event.currentTarget as HTMLElement).dataset.checkpointId
+    if(!checkpointId) return
+    this.dispatchEvent(new CustomEvent("history-checkpoint-select", {
+      detail: {checkpointId},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private revertHistoryCheckpoint = () => {
+    const checkpointId = this.selectedHistoryCheckpointId
+    if(!checkpointId) return
+    this.dispatchEvent(new CustomEvent("history-revert", {
+      detail: {checkpointId},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private updateHistoryCommentDraft = (event: Event) => {
+    this.historyCommentDraft = (event.currentTarget as HTMLTextAreaElement).value
+  }
+
+  private submitHistoryComment = (event: Event) => {
+    event.preventDefault()
+    const checkpointId = this.selectedHistoryCheckpointId
+    const text = this.historyCommentDraft.trim()
+    if(!checkpointId || !text) return
+    this.historyCommentDraft = ""
+    this.dispatchEvent(new CustomEvent("history-comment-submit", {
+      detail: {checkpointId, text},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private renderHistoryVersionsDrawer() {
+    const selectedId = this.selectedHistoryCheckpointId
+    return html`
+      <ribbon-drawer label="Versions" icon="History" layout="history-versions">
+        <div class="history-timeline" role="listbox" aria-label="Document versions">
+          ${this.historyError ? html`<div class="history-error" role="alert">${this.historyError}</div>`
+          : this.historyLoading && !this.historyState.checkpoints.length
+            ? html`<div class="history-loading">Loading versions…</div>`
+            : !this.historyState.checkpoints.length
+              ? html`<div class="history-empty">No checkpoints yet</div>`
+              : this.historyState.checkpoints.map((checkpoint, index) => html`
+                <button
+                  class="history-checkpoint"
+                  type="button"
+                  role="option"
+                  data-checkpoint-id=${checkpoint.id}
+                  aria-selected=${selectedId === checkpoint.id}
+                  aria-pressed=${selectedId === checkpoint.id}
+                  title=${`${checkpoint.label} — ${this.historyDateTime(checkpoint.timestamp)}`}
+                  @click=${this.selectHistoryCheckpoint}
+                >
+                  <span
+                    class="history-checkpoint-avatar"
+                    style=${`--history-user-color: ${checkpoint.user.color}`}
+                    aria-hidden="true"
+                  >${checkpoint.user.initials}</span>
+                  <span class="history-checkpoint-label">${index === 0 ? "Current · " : ""}${checkpoint.label}</span>
+                  <span class="history-checkpoint-meta">${checkpoint.user.name} · ${this.historyTime(checkpoint.timestamp)}</span>
+                  <span class="history-checkpoint-counts" aria-label=${`${checkpoint.changes.added} added, ${checkpoint.changes.removed} removed, ${checkpoint.changes.modified} changed`}>
+                    <span class="history-count" data-kind="added">+${checkpoint.changes.added}</span>
+                    <span class="history-count" data-kind="removed">−${checkpoint.changes.removed}</span>
+                    <span class="history-count" data-kind="modified">~${checkpoint.changes.modified}</span>
+                    ${checkpoint.commentCount ? html`<span class="history-count" data-kind="comments">${checkpoint.commentCount} 💬</span>` : ""}
+                  </span>
+                </button>
+              `)}
+        </div>
+      </ribbon-drawer>
+    `
+  }
+
+  private renderHistoryChangesDrawer() {
+    const changes = this.historyState.preview ?? {added: 0, removed: 0, modified: 0}
+    return html`
+      <ribbon-drawer label="Changes" icon="Changes" layout="history-changes">
+        <div class="history-change-panel" aria-label="Changes compared with the live document">
+          ${(["added", "removed", "modified"] as const).map(kind => html`
+            <span class="history-change-item" data-kind=${kind}>
+              <span class="history-change-swatch" aria-hidden="true"></span>
+              <span><strong class="history-change-value">${changes[kind]}</strong>${kind === "modified" ? "changed" : kind}</span>
+            </span>
+          `)}
+          <span class="history-change-caption">Highlighted in the document</span>
+        </div>
+      </ribbon-drawer>
+    `
+  }
+
+  private renderHistoryRestoreDrawer() {
+    const preview = this.historyState.preview
+    const disabled = this.historyLoading || !preview || preview.isCurrent
+    return html`
+      <ribbon-drawer label="Restore" icon="Restore" layout="history-restore">
+        <div class="history-restore-panel">
+          <button
+            class="history-restore-button"
+            type="button"
+            ?disabled=${disabled}
+            title=${preview?.isCurrent ? "This version matches the live document" : "Restore the selected version"}
+            @click=${this.revertHistoryCheckpoint}
+          >
+            <span class="history-restore-icon" aria-hidden="true">${ribbonIcon("Restore")}</span>
+            <span>${this.historyLoading ? "Restoring…" : "Restore version"}</span>
+          </button>
+        </div>
+      </ribbon-drawer>
+    `
+  }
+
+  private renderHistoryCommentsDrawer() {
+    const selectedId = this.selectedHistoryCheckpointId
+    const comments = this.historyState.comments.filter(comment => comment.checkpointId === selectedId)
+    const latest = comments.at(-1)
+    return html`
+      <ribbon-drawer label="Comments" icon="Comments" layout="history-comments">
+        <div class="history-comments-panel">
+          <form class="history-comment-form" @submit=${this.submitHistoryComment}>
+            <textarea
+              class="history-comment-input"
+              data-ribbon-input-persistent
+              aria-label="Comment on selected version"
+              placeholder=${selectedId ? "Comment on this version…" : "Select a version first"}
+              maxlength="2000"
+              .value=${this.historyCommentDraft}
+              ?disabled=${!selectedId || this.historyLoading}
+              @input=${this.updateHistoryCommentDraft}
+            ></textarea>
+            <button
+              class="history-comment-submit"
+              type="submit"
+              aria-label="Add history comment"
+              title="Add comment"
+              ?disabled=${!selectedId || !this.historyCommentDraft.trim() || this.historyLoading}
+            >${ribbonIcon("New Comment")}</button>
+          </form>
+          ${latest ? html`
+            <div class="history-comment-latest" title=${latest.text}>
+              <div class="history-comment-latest-header">
+                <span
+                  class="history-comment-avatar"
+                  style=${`--history-user-color: ${latest.user.color}`}
+                  aria-hidden="true"
+                >${latest.user.initials}</span>
+                <span>${latest.user.name} · ${this.historyTime(latest.timestamp)}</span>
+              </div>
+              <p class="history-comment-latest-text">${latest.text}</p>
+            </div>
+          ` : html`<div class="history-comment-placeholder">No comments on this version</div>`}
+        </div>
+      </ribbon-drawer>
+    `
+  }
+
   private renderDrawers() {
     return this.currentMenuGroups.map(drawer => {
       const styleCategory = this.activeMenu === "Style"
         ? elementStyleCategories.find(category => category.label === drawer.label)
         : undefined
       if(styleCategory) return this.renderElementStyleDrawer(styleCategory)
+      if(this.activeMenu === "History" && drawer.label === "Versions") return this.renderHistoryVersionsDrawer()
+      if(this.activeMenu === "History" && drawer.label === "Changes") return this.renderHistoryChangesDrawer()
+      if(this.activeMenu === "History" && drawer.label === "Restore") return this.renderHistoryRestoreDrawer()
+      if(this.activeMenu === "History" && drawer.label === "Comments") return this.renderHistoryCommentsDrawer()
       if(drawer.label === "File") return this.renderFileDrawer(drawer)
       if(drawer.label === "Sharing") return this.renderSharingDrawer(drawer)
       if(drawer.label === "Marks") return this.renderMarkDrawer()
@@ -4939,26 +5553,41 @@ export class AppRibbon extends LitElement {
           ${this.renderPresence()}
           <div class="ribbon-top-actions">
             ${this.previewActive ? "" : html`
-              <button
-                class="history-button"
-                type="button"
-                aria-label="Undo"
-                title="Undo"
-                ?disabled=${aiReviewPending}
-                @click=${() => this.handleTopButtonClick("Undo")}
-              >
-                <span class="history-icon" aria-hidden="true">${ribbonIcon("Undo")}</span>
-              </button>
-              <button
-                class="history-button"
-                type="button"
-                aria-label="Redo"
-                title="Redo"
-                ?disabled=${aiReviewPending}
-                @click=${() => this.handleTopButtonClick("Redo")}
-              >
-                <span class="history-icon" aria-hidden="true">${ribbonIcon("Redo")}</span>
-              </button>
+              <div class="history-controls" role="group" aria-label="Undo, version history, and redo">
+                <button
+                  class="history-button"
+                  type="button"
+                  aria-label="Undo"
+                  title="Undo"
+                  ?disabled=${aiReviewPending}
+                  @click=${() => this.handleTopButtonClick("Undo")}
+                >
+                  <span class="history-icon" aria-hidden="true">${ribbonIcon("Undo")}</span>
+                </button>
+                <button
+                  class="history-button history-tab-button"
+                  type="button"
+                  ?active=${this.activeMenu === "History"}
+                  aria-label="History"
+                  title="Version history"
+                  aria-controls="ribbon-content"
+                  aria-pressed=${this.activeMenu === "History"}
+                  ?disabled=${aiReviewPending}
+                  @click=${this.selectHistory}
+                >
+                  <span class="history-icon" aria-hidden="true">${ribbonIcon("History")}</span>
+                </button>
+                <button
+                  class="history-button"
+                  type="button"
+                  aria-label="Redo"
+                  title="Redo"
+                  ?disabled=${aiReviewPending}
+                  @click=${() => this.handleTopButtonClick("Redo")}
+                >
+                  <span class="history-icon" aria-hidden="true">${ribbonIcon("Redo")}</span>
+                </button>
+              </div>
             `}
             <button
               class="preview-button"
