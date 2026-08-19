@@ -53,11 +53,11 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="text"]) {
-      --ribbon-drawer-expanded-width: 5.25rem;
+      --ribbon-drawer-expanded-width: 9.25rem;
     }
 
     :host([layout="lists"]) {
-      --ribbon-drawer-expanded-width: 9.25rem;
+      --ribbon-drawer-expanded-width: 5.25rem;
     }
 
     :host([layout="elements"]) {
@@ -65,7 +65,11 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="media"]) {
-      --ribbon-drawer-expanded-width: 21.25rem;
+      --ribbon-drawer-expanded-width: 13.25rem;
+    }
+
+    :host([layout="interactive"]) {
+      --ribbon-drawer-expanded-width: 5.25rem;
     }
 
     :host([layout="table"]) {

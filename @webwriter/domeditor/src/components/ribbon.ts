@@ -196,6 +196,37 @@ const insertionButtonForTag = (tag: string): RibbonMenuButton => {
 
 const insertionSubmenuForTags = (tags: readonly string[]) => tags.map(insertionButtonForTag)
 
+const glossaryInsertionButton: RibbonMenuButton = {
+  label: "Glossary",
+  action: "toggle-list:dl",
+  icon: "Glossary",
+}
+
+const orderedListStyles: RibbonMenuButton[] = [
+  {label: "1, 2, 3", action: "list-style:ol:decimal", icon: "Enumeration"},
+  {label: "01, 02, 03", action: "list-style:ol:decimal-leading-zero", icon: "Enumeration"},
+  {label: "a, b, c", action: "list-style:ol:lower-alpha", icon: "Enumeration"},
+  {label: "A, B, C", action: "list-style:ol:upper-alpha", icon: "Enumeration"},
+  {label: "i, ii, iii", action: "list-style:ol:lower-roman", icon: "Enumeration"},
+  {label: "I, II, III", action: "list-style:ol:upper-roman", icon: "Enumeration"},
+  {label: "No marker", action: "list-style:ol:none", icon: "Enumeration"},
+]
+
+const listInsertionOptions: RibbonMenuButton[] = [
+  {
+    label: "Enumeration",
+    action: "toggle-list:ol",
+    icon: "Enumeration",
+    submenu: orderedListStyles,
+  },
+  {label: "Menu", action: "toggle-list:menu", icon: "List"},
+  {label: "Disc", action: "list-style:ul:disc", icon: "List"},
+  {label: "Circle", action: "list-style:ul:circle", icon: "List"},
+  {label: "Square", action: "list-style:ul:square", icon: "List"},
+  {label: "No marker", action: "list-style:ul:none", icon: "List"},
+  glossaryInsertionButton,
+]
+
 const mediaInsertionSubmenuTags = (tag: string): readonly string[] | undefined => {
   if(tag === "form") return formInsertionTags
   if(tag === "section") return sectionInsertionTags
@@ -218,9 +249,10 @@ const insertionMenuButtons = (sections: readonly InsertionSection[]) => insertio
           label: item.name,
           action: "toggle-list:ul",
           icon: "List",
-          submenu: [{label: "Menu", action: "toggle-list:menu", icon: "List"}],
+          submenu: listInsertionOptions,
         }]
       }
+      if(item.tag === "ol" || item.tag === "dl") return []
       return [{
         label: item.name,
         action: item.tag === "details" ? "insert-details" : `toggle-list:${item.tag}`,
@@ -262,10 +294,22 @@ const insertionMenuButtons = (sections: readonly InsertionSection[]) => insertio
     return [item.name]
   })
 
-const insertionMenuGroup = (section: InsertionSection): RibbonMenuGroup => ({
-  label: section,
-  buttons: insertionMenuButtons([section]),
-})
+const insertionButtonLabel = (button: RibbonMenuButton) => typeof button === "string" ? button : button.label
+
+const groupedInsertionMenuGroup = (
+  label: string,
+  buttonLabels: readonly string[],
+): RibbonMenuGroup => {
+  const buttons = insertionMenuButtons(["Text", "Lists", "Media"])
+  return {
+    label,
+    buttons: buttonLabels.map(buttonLabel => {
+      const button = buttons.find(candidate => insertionButtonLabel(candidate) === buttonLabel)
+      if(!button) throw new TypeError(`Missing insertion button ${buttonLabel}`)
+      return button
+    }),
+  }
+}
 
 const condensedInsertionMenuButtons = (section: InsertionSection): RibbonMenuButton[] => insertionMenuButtons([section])
   .map(button => {
@@ -274,6 +318,7 @@ const condensedInsertionMenuButtons = (section: InsertionSection): RibbonMenuBut
       label: item.label,
       action: item.action ?? item.label,
       icon: item.icon ?? item.label,
+      ...(section === "Lists" && item.label === "List" ? {submenu: item.submenu} : {}),
     }
   })
 
@@ -336,9 +381,10 @@ const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
     elementInsertionMenuGroup,
   ],
   Insert: [
-    insertionMenuGroup("Text"),
-    insertionMenuGroup("Lists"),
-    insertionMenuGroup("Media"),
+    groupedInsertionMenuGroup("Text", ["Paragraph", "Section", "Heading", "Details"]),
+    groupedInsertionMenuGroup("Lists", ["List", "Table"]),
+    groupedInsertionMenuGroup("Media", ["Image", "Graphic", "Audio", "Website", "Video", "Formula"]),
+    groupedInsertionMenuGroup("Interactive", ["Form", "Script"]),
   ],
   Edit: [
     {label: "Marks", buttons: []},
@@ -3557,24 +3603,6 @@ export class AppRibbon extends LitElement {
     `
   }
 
-  private readonly unorderedListStyles: RibbonMenuButton[] = [
-    {label: "Menu", action: "toggle-list:menu", icon: "List"},
-    {label: "Disc", action: "list-style:ul:disc", icon: "List"},
-    {label: "Circle", action: "list-style:ul:circle", icon: "List"},
-    {label: "Square", action: "list-style:ul:square", icon: "List"},
-    {label: "No marker", action: "list-style:ul:none", icon: "List"},
-  ]
-
-  private readonly orderedListStyles: RibbonMenuButton[] = [
-    {label: "1, 2, 3", action: "list-style:ol:decimal", icon: "Enumeration"},
-    {label: "01, 02, 03", action: "list-style:ol:decimal-leading-zero", icon: "Enumeration"},
-    {label: "a, b, c", action: "list-style:ol:lower-alpha", icon: "Enumeration"},
-    {label: "A, B, C", action: "list-style:ol:upper-alpha", icon: "Enumeration"},
-    {label: "i, ii, iii", action: "list-style:ol:lower-roman", icon: "Enumeration"},
-    {label: "I, II, III", action: "list-style:ol:upper-roman", icon: "Enumeration"},
-    {label: "No marker", action: "list-style:ol:none", icon: "Enumeration"},
-  ]
-
   private renderListDrawer() {
     return html`
       <ribbon-drawer label="Lists" icon="Lists" layout="lists">
@@ -3583,29 +3611,14 @@ export class AppRibbon extends LitElement {
           label="List"
           action="toggle-list:ul"
           icon="List"
-          .submenu=${this.unorderedListStyles}
-          ?active=${this.listType === "ul" || this.listType === "menu"}
+          .submenu=${listInsertionOptions}
+          ?active=${this.listType !== null}
         ></ribbon-button>
         <ribbon-button
-          toggle
-          label="Enumeration"
-          action="toggle-list:ol"
-          icon="Enumeration"
-          .submenu=${this.orderedListStyles}
-          ?active=${this.listType === "ol"}
-        ></ribbon-button>
-        <ribbon-button
-          toggle
-          label="Glossary"
-          action="toggle-list:dl"
-          icon="Glossary"
-          ?active=${this.listType === "dl"}
-        ></ribbon-button>
-        <ribbon-button
-          label="Details"
-          action="insert-details"
-          icon="Details"
-          .submenu=${insertionSubmenuForTags(detailsInsertionTags)}
+          label="Table"
+          action="Table"
+          icon="Table"
+          .dropdown=${this.renderTableSizePicker()}
         ></ribbon-button>
       </ribbon-drawer>
     `

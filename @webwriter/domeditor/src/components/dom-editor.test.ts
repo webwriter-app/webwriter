@@ -1892,10 +1892,10 @@ describe("DomEditor.execute()", () => {
     await ribbon.updateComplete
 
     const form = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Media"] ribbon-button[label="Form"]',
+      'ribbon-drawer[label="Interactive"] ribbon-button[label="Form"]',
     )!
     const section = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Media"] ribbon-button[label="Section"]',
+      'ribbon-drawer[label="Text"] ribbon-button[label="Section"]',
     )!
     await Promise.all([form.updateComplete, section.updateComplete])
 
@@ -1927,7 +1927,7 @@ describe("DomEditor.execute()", () => {
     await ribbon.updateComplete
 
     const script = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Media"] ribbon-button[label="Script"]',
+      'ribbon-drawer[label="Interactive"] ribbon-button[label="Script"]',
     )!
     await script.updateComplete
 
@@ -1951,7 +1951,7 @@ describe("DomEditor.execute()", () => {
     await ribbon.updateComplete
 
     const details = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Lists"] ribbon-button[label="Details"]',
+      'ribbon-drawer[label="Text"] ribbon-button[label="Details"]',
     )!
     await details.updateComplete
     details.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
