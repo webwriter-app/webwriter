@@ -1,5 +1,5 @@
 import { EditorFeature } from "."
-import { InsertionMenu, type InsertionMenuItem } from "../components/insertion-menu"
+import {emptyElementHTML, InsertionMenu, type InsertionMenuItem} from "../components/insertion-menu"
 import { $, getContainer, isElement, isText, markWidgetsEditable, modifierKeyDown } from "../utility"
 import {isMediaType, mediaDefaultHTML} from "../media"
 import {createTable} from "../table"
@@ -414,7 +414,7 @@ export class InsertionFeature extends EditorFeature {
       : item.tag === "details"
       ? "<details><summary></summary></details>"
       : isMediaType(item.tag) ? mediaDefaultHTML(item.tag)
-      : item.tag ? `<${item.tag}></${item.tag}>` : ""
+      : item.tag ? emptyElementHTML(item.tag) : ""
     if(item.htmlUrl) {
       try {
         const response = await fetch(item.htmlUrl)

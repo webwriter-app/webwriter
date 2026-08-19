@@ -2,7 +2,7 @@ import { LitElement, css, html } from "lit"
 import type {AppRibbon, AIEditReviewHandler} from "./ribbon"
 import type { DomEditorBreadcrumb, DocumentTreeItem } from "./breadcrumb"
 import type { EditingAction } from "../domeditor"
-import { insertionMenuItems } from "./insertion-menu"
+import {emptyElementHTML, insertionMenuItems} from "./insertion-menu"
 import type {EditorStateSnapshot} from "../editor-state"
 import {
   INSTALLED_PACKAGES_STORAGE_KEY,
@@ -1328,7 +1328,7 @@ export class DomEditor extends LitElement {
 
     void this.execute({
       type: "insert",
-      html: `<${item.tag}></${item.tag}>`,
+      html: emptyElementHTML(item.tag),
     }).finally(() => this.focusEditor())
   }
 

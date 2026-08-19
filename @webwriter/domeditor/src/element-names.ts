@@ -27,6 +27,7 @@ const presentations: Record<string, ElementPresentation> = {
   dd: {name: "Description", icon: "Glossary"},
   details: {name: "Details", icon: "Details"},
   summary: {name: "Summary", icon: "Details"},
+  dialog: {name: "Dialog", icon: "Details"},
   table: {name: "Table", icon: "Table"},
   thead: {name: "Table Header", icon: "Table"},
   tbody: {name: "Table Body", icon: "Table"},
@@ -84,7 +85,16 @@ const presentations: Record<string, ElementPresentation> = {
   input: {name: "Text Field", icon: "Input"},
   textarea: {name: "Text Field", icon: "Input"},
   select: {name: "Dropdown", icon: "Input"},
+  meter: {name: "Meter", icon: "Input"},
+  datalist: {name: "Data List", icon: "Input"},
+  fieldset: {name: "Field Set", icon: "Form"},
+  legend: {name: "Legend", icon: "Label"},
+  optgroup: {name: "Option Group", icon: "Input"},
   option: {name: "Option", icon: "Input"},
+  output: {name: "Output", icon: "Input"},
+  progress: {name: "Progress", icon: "Input"},
+  search: {name: "Search", icon: "Search"},
+  address: {name: "Address", icon: "Section"},
 }
 
 const fallbackPresentation = {name: "Content", icon: "Section"}

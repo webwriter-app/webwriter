@@ -1,5 +1,6 @@
 import { LitElement, css, html } from "lit"
 import { property, state } from "lit/decorators.js"
+import {getElementPresentation} from "../element-names"
 import { ribbonIcon } from "../ribbon-icons"
 import type {PackageInsertionItem} from "../packages"
 
@@ -10,31 +11,59 @@ export type InsertionMenuItem = {
   packageName?: string
   kind?: "widget" | "snippet"
   description?: string
+  icon?: string
   iconUrl?: string
   htmlUrl?: string
 }
 
-export const insertionMenuItems: Array<InsertionMenuItem & {tag: string, section: "Text" | "Lists" | "Media"}> = [
-  {section: "Text", tag: "p", name: "Paragraph"},
-  {section: "Text", tag: "pre", name: "Preformatted Text"},
-  {section: "Text", tag: "h1", name: "Heading 1"},
-  {section: "Text", tag: "h2", name: "Heading 2"},
-  {section: "Text", tag: "h3", name: "Heading 3"},
-  {section: "Text", tag: "h4", name: "Heading 4"},
-  {section: "Text", tag: "h5", name: "Heading 5"},
-  {section: "Text", tag: "h6", name: "Heading 6"},
-  {section: "Lists", tag: "ul", name: "List"},
-  {section: "Lists", tag: "ol", name: "Enumeration"},
-  {section: "Lists", tag: "dl", name: "Glossary"},
-  {section: "Lists", tag: "details", name: "Details"},
-  {section: "Media", tag: "table", name: "Table"},
-  {section: "Media", tag: "picture", name: "Image"},
-  {section: "Media", tag: "svg", name: "Graphic"},
-  {section: "Media", tag: "audio", name: "Audio"},
-  {section: "Media", tag: "video", name: "Video"},
-  {section: "Media", tag: "iframe", name: "Website"},
-  {section: "Media", tag: "math", name: "Formula"},
+type BuiltinInsertionMenuItem = InsertionMenuItem & {
+  tag: string
+  section: "Text" | "Lists" | "Media"
+}
+
+const insertionMenuItem = (
+  section: BuiltinInsertionMenuItem["section"],
+  tag: string,
+  name?: string,
+): BuiltinInsertionMenuItem => {
+  const presentation = getElementPresentation(tag)
+  return {section, tag, name: name ?? presentation.name, icon: presentation.icon}
+}
+
+export const headingInsertionTags = ["h2", "h3", "h4", "h5", "h6", "hr"] as const
+export const detailsInsertionTags = ["dialog"] as const
+export const formInsertionTags = [
+  "button", "input", "select", "meter", "datalist", "fieldset", "form", "label", "legend", "optgroup", "option", "output", "progress",
+] as const
+export const sectionInsertionTags = [
+  "div", "blockquote", "article", "aside", "header", "footer", "main", "nav", "search", "address",
+] as const
+
+export const insertionMenuItems: BuiltinInsertionMenuItem[] = [
+  insertionMenuItem("Text", "p"),
+  insertionMenuItem("Text", "pre"),
+  insertionMenuItem("Text", "h1"),
+  ...headingInsertionTags.map(tag => insertionMenuItem("Text", tag)),
+  insertionMenuItem("Lists", "ul"),
+  insertionMenuItem("Lists", "ol"),
+  insertionMenuItem("Lists", "dl"),
+  insertionMenuItem("Lists", "details"),
+  ...detailsInsertionTags.map(tag => insertionMenuItem("Lists", tag)),
+  insertionMenuItem("Media", "table"),
+  insertionMenuItem("Media", "picture"),
+  insertionMenuItem("Media", "svg"),
+  insertionMenuItem("Media", "audio"),
+  insertionMenuItem("Media", "video"),
+  insertionMenuItem("Media", "iframe"),
+  insertionMenuItem("Media", "math"),
+  insertionMenuItem("Media", "form"),
+  ...formInsertionTags.filter(tag => tag !== "form").map(tag => insertionMenuItem("Media", tag)),
+  insertionMenuItem("Media", "section"),
+  ...sectionInsertionTags.map(tag => insertionMenuItem("Media", tag, tag === "div" ? "Division" : undefined)),
 ]
+
+/** Returns valid empty-element markup using the browser's HTML serializer. */
+export const emptyElementHTML = (tag: string) => document.createElement(tag).outerHTML
 
 /** A searchable element picker for the editor's element command. The editor
  * supplies the query from the text typed after the command trigger. */
@@ -234,7 +263,7 @@ export class InsertionMenu extends LitElement {
                   @click=${() => this.choose(item)}
                 >
                   <span class="item-icon" aria-hidden="true">
-                    ${item.iconUrl ? html`<img src=${item.iconUrl} alt="" />` : ribbonIcon(item.section === "Packages" ? "Packages" : item.name)}
+                    ${item.iconUrl ? html`<img src=${item.iconUrl} alt="" />` : ribbonIcon(item.section === "Packages" ? "Packages" : item.icon ?? item.name)}
                   </span>
                   <span class="item-text">
                     <span class="item-name">${item.name}</span>

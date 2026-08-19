@@ -29,7 +29,13 @@ import {
 } from "../marks"
 import { ribbonIcon } from "../ribbon-icons"
 import {isOnApple} from "../utility"
-import { insertionMenuItems } from "./insertion-menu"
+import {
+  detailsInsertionTags,
+  formInsertionTags,
+  headingInsertionTags,
+  insertionMenuItems,
+  sectionInsertionTags,
+} from "./insertion-menu"
 import type {WebWriterPackage} from "../packages"
 import {packageAction, packageMemberAction, packageToggleAction} from "../packages"
 import {packageKeywordPresentations} from "../package-keywords"
@@ -181,9 +187,18 @@ const graphicOrderButtons: RibbonMenuButton[] = [
   {label: "Send to back", action: "arrange-graphic:send-back", icon: "Send to back"},
 ]
 
+const insertionButtonForTag = (tag: string): RibbonMenuButton => {
+  const item = insertionMenuItems.find(candidate => candidate.tag === tag)
+  if(!item) throw new TypeError(`Missing insertion menu item for <${tag}>`)
+  return {label: item.name, action: item.name, icon: item.icon ?? item.name}
+}
+
+const insertionSubmenuForTags = (tags: readonly string[]) => tags.map(insertionButtonForTag)
+
 const insertionMenuButtons = (sections: readonly InsertionSection[]) => insertionMenuItems
   .filter(item => sections.includes(item.section))
   .flatMap<RibbonMenuButton>(item => {
+    if(item.section === "Lists" && detailsInsertionTags.includes(item.tag as typeof detailsInsertionTags[number])) return []
     if(item.section === "Lists") {
       if(item.tag === "ul") {
         return [{
@@ -196,7 +211,8 @@ const insertionMenuButtons = (sections: readonly InsertionSection[]) => insertio
       return [{
         label: item.name,
         action: item.tag === "details" ? "insert-details" : `toggle-list:${item.tag}`,
-        icon: item.name,
+        icon: item.icon ?? item.name,
+        ...(item.tag === "details" ? {submenu: insertionSubmenuForTags(detailsInsertionTags)} : {}),
       }]
     }
     if(item.section === "Text" && item.tag === "p") {
@@ -213,12 +229,30 @@ const insertionMenuButtons = (sections: readonly InsertionSection[]) => insertio
       return [{
         label: "Heading",
         action: item.name,
-        submenu: insertionMenuItems
-          .filter(submenuItem => submenuItem.section === item.section && /^h[2-6]$/.test(submenuItem.tag))
-          .map(submenuItem => submenuItem.name),
+        submenu: insertionSubmenuForTags(headingInsertionTags),
       } satisfies RibbonMenuButton]
     }
-    if(item.section === "Text" && /^h[2-6]$/.test(item.tag)) return []
+    if(item.section === "Text" && headingInsertionTags.includes(item.tag as typeof headingInsertionTags[number])) return []
+    if(item.section === "Media" && item.tag === "form") {
+      return [{
+        label: item.name,
+        action: item.name,
+        icon: item.icon ?? item.name,
+        submenu: insertionSubmenuForTags(formInsertionTags),
+      }]
+    }
+    if(item.section === "Media" && item.tag === "section") {
+      return [{
+        label: item.name,
+        action: item.name,
+        icon: item.icon ?? item.name,
+        submenu: insertionSubmenuForTags(sectionInsertionTags),
+      }]
+    }
+    if(item.section === "Media" && (
+      formInsertionTags.includes(item.tag as typeof formInsertionTags[number])
+      || sectionInsertionTags.includes(item.tag as typeof sectionInsertionTags[number])
+    )) return []
     if(item.section === "Media" && item.tag === "svg") {
       return [{label: item.name, action: item.name, icon: "Graphic", submenu: insertGraphicShapeButtons}]
     }
@@ -3568,6 +3602,7 @@ export class AppRibbon extends LitElement {
           label="Details"
           action="insert-details"
           icon="Details"
+          .submenu=${insertionSubmenuForTags(detailsInsertionTags)}
         ></ribbon-button>
       </ribbon-drawer>
     `

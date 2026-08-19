@@ -1876,6 +1876,67 @@ describe("DomEditor.execute()", () => {
     submenu.shadowRoot!.querySelector('button[title="Heading 3"]')!.click()
 
     expect(execute).toHaveBeenLastCalledWith({type: "insert", html: "<h3></h3>"})
+
+    heading.shadowRoot!.querySelector('button[aria-label="Show more Heading options"]')!.click()
+    await heading.updateComplete
+    submenu.shadowRoot!.querySelector('button[title="Divider"]')!.click()
+
+    expect(execute).toHaveBeenLastCalledWith({type: "insert", html: "<hr>"})
+  })
+
+  it("inserts form, section, and their grouped element choices", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    ribbon.shadowRoot!.querySelector('ribbon-tab[label="Insert"]')!.shadowRoot!.querySelector("button")!.click()
+    await ribbon.updateComplete
+
+    const form = ribbon.shadowRoot!.querySelector<RibbonButton>(
+      'ribbon-drawer[label="Media"] ribbon-button[label="Form"]',
+    )!
+    const section = ribbon.shadowRoot!.querySelector<RibbonButton>(
+      'ribbon-drawer[label="Media"] ribbon-button[label="Section"]',
+    )!
+    await Promise.all([form.updateComplete, section.updateComplete])
+
+    form.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    section.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    expect(execute).toHaveBeenNthCalledWith(1, {type: "insert", html: "<form></form>"})
+    expect(execute).toHaveBeenNthCalledWith(2, {type: "insert", html: "<section></section>"})
+
+    form.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    await form.updateComplete
+    const formMenu = form.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await formMenu.updateComplete
+    formMenu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Text Field"]')!.click()
+    expect(execute).toHaveBeenLastCalledWith({type: "insert", html: "<input>"})
+
+    section.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    await section.updateComplete
+    const sectionMenu = section.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await sectionMenu.updateComplete
+    sectionMenu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Address"]')!.click()
+    expect(execute).toHaveBeenLastCalledWith({type: "insert", html: "<address></address>"})
+  })
+
+  it("inserts dialog from the Details dropdown", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    ribbon.shadowRoot!.querySelector('ribbon-tab[label="Insert"]')!.shadowRoot!.querySelector("button")!.click()
+    await ribbon.updateComplete
+
+    const details = ribbon.shadowRoot!.querySelector<RibbonButton>(
+      'ribbon-drawer[label="Lists"] ribbon-button[label="Details"]',
+    )!
+    await details.updateComplete
+    details.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    await details.updateComplete
+    const menu = details.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await menu.updateComplete
+    menu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Dialog"]')!.click()
+
+    expect(execute).toHaveBeenCalledWith({type: "insert", html: "<dialog></dialog>"})
   })
 
   it("puts Preformatted Text in the Paragraph submenu", async () => {
