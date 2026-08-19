@@ -34,6 +34,7 @@ import {
   formInsertionTags,
   headingInsertionTags,
   insertionMenuItems,
+  scriptInsertionTags,
   sectionInsertionTags,
 } from "./insertion-menu"
 import type {WebWriterPackage} from "../packages"
@@ -195,6 +196,18 @@ const insertionButtonForTag = (tag: string): RibbonMenuButton => {
 
 const insertionSubmenuForTags = (tags: readonly string[]) => tags.map(insertionButtonForTag)
 
+const mediaInsertionSubmenuTags = (tag: string): readonly string[] | undefined => {
+  if(tag === "form") return formInsertionTags
+  if(tag === "section") return sectionInsertionTags
+  if(tag === "script") return scriptInsertionTags
+}
+
+const groupedMediaInsertionTags = new Set<string>([
+  ...formInsertionTags,
+  ...sectionInsertionTags,
+  ...scriptInsertionTags,
+])
+
 const insertionMenuButtons = (sections: readonly InsertionSection[]) => insertionMenuItems
   .filter(item => sections.includes(item.section))
   .flatMap<RibbonMenuButton>(item => {
@@ -233,26 +246,16 @@ const insertionMenuButtons = (sections: readonly InsertionSection[]) => insertio
       } satisfies RibbonMenuButton]
     }
     if(item.section === "Text" && headingInsertionTags.includes(item.tag as typeof headingInsertionTags[number])) return []
-    if(item.section === "Media" && item.tag === "form") {
+    const mediaSubmenuTags = item.section === "Media" ? mediaInsertionSubmenuTags(item.tag) : undefined
+    if(mediaSubmenuTags) {
       return [{
         label: item.name,
         action: item.name,
         icon: item.icon ?? item.name,
-        submenu: insertionSubmenuForTags(formInsertionTags),
+        submenu: insertionSubmenuForTags(mediaSubmenuTags),
       }]
     }
-    if(item.section === "Media" && item.tag === "section") {
-      return [{
-        label: item.name,
-        action: item.name,
-        icon: item.icon ?? item.name,
-        submenu: insertionSubmenuForTags(sectionInsertionTags),
-      }]
-    }
-    if(item.section === "Media" && (
-      formInsertionTags.includes(item.tag as typeof formInsertionTags[number])
-      || sectionInsertionTags.includes(item.tag as typeof sectionInsertionTags[number])
-    )) return []
+    if(item.section === "Media" && groupedMediaInsertionTags.has(item.tag)) return []
     if(item.section === "Media" && item.tag === "svg") {
       return [{label: item.name, action: item.name, icon: "Graphic", submenu: insertGraphicShapeButtons}]
     }

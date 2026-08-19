@@ -1919,6 +1919,30 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenLastCalledWith({type: "insert", html: "<address></address>"})
   })
 
+  it("inserts script and its grouped element choices", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    ribbon.shadowRoot!.querySelector('ribbon-tab[label="Insert"]')!.shadowRoot!.querySelector("button")!.click()
+    await ribbon.updateComplete
+
+    const script = ribbon.shadowRoot!.querySelector<RibbonButton>(
+      'ribbon-drawer[label="Media"] ribbon-button[label="Script"]',
+    )!
+    await script.updateComplete
+
+    script.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    expect(execute).toHaveBeenCalledWith({type: "insert", html: "<script></script>"})
+
+    script.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    await script.updateComplete
+    const menu = script.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await menu.updateComplete
+    menu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Slot"]')!.click()
+
+    expect(execute).toHaveBeenLastCalledWith({type: "insert", html: "<slot></slot>"})
+  })
+
   it("inserts dialog from the Details dropdown", async () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)

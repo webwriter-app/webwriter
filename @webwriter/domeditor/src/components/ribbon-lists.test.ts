@@ -2,6 +2,7 @@
 import {beforeEach, describe, expect, it, vi} from "vitest"
 import {AppRibbon} from "./ribbon"
 import type {RibbonButton} from "./ribbon-button"
+import type {RibbonDrawer} from "./ribbon-drawer"
 import {insertionMenuItems} from "./insertion-menu"
 
 beforeEach(() => document.body.replaceChildren())
@@ -23,7 +24,7 @@ describe("list ribbon drawer", () => {
     )).toEqual(["List", "Enumeration", "Glossary", "Details"])
     expect(elements.querySelector<RibbonButton>('ribbon-button[label="Media"]')?.submenu.map(item =>
       typeof item === "string" ? item : item.label,
-    )).toEqual(["Table", "Image", "Graphic", "Audio", "Video", "Website", "Formula", "Form", "Section"])
+    )).toEqual(["Table", "Image", "Graphic", "Audio", "Video", "Website", "Formula", "Form", "Section", "Script"])
 
     ribbon.activeMenu = "Insert"
     await ribbon.updateComplete
@@ -32,7 +33,7 @@ describe("list ribbon drawer", () => {
     )).map(button => button.getAttribute("label"))).toEqual(["List", "Enumeration", "Glossary", "Details"])
   })
 
-  it("groups form, section, divider, and dialog insertions under their primary buttons", async () => {
+  it("groups form, section, script, divider, and dialog insertions under their primary buttons", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Insert"
     document.body.append(ribbon)
@@ -52,8 +53,27 @@ describe("list ribbon drawer", () => {
     expect(submenuTags(button("Media", "Section"))).toEqual([
       "div", "blockquote", "article", "aside", "header", "footer", "main", "nav", "search", "address",
     ])
+    expect(submenuTags(button("Media", "Script"))).toEqual(["script", "style", "canvas", "template", "slot"])
     expect(submenuTags(button("Text", "Heading"))).toEqual(["h2", "h3", "h4", "h5", "h6", "hr"])
     expect(submenuTags(button("Lists", "Details"))).toEqual(["dialog"])
+  })
+
+  it("renders Form, Section, and Script as visible standalone dropdown buttons on Insert", async () => {
+    const ribbon = new AppRibbon()
+    ribbon.activeMenu = "Insert"
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+
+    const media = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Media"]')!
+    const buttons = ["Form", "Section", "Script"].map(label => media.querySelector<RibbonButton>(
+      `ribbon-button[label="${label}"]`,
+    )!)
+    await Promise.all([media.updateComplete, ...buttons.map(button => button.updateComplete)])
+
+    expect(media.layoutWidths.expanded).toBe(340)
+    for(const button of buttons) {
+      expect(button.shadowRoot!.querySelector('.submenu-trigger[aria-haspopup="menu"]')).not.toBeNull()
+    }
   })
 
   it("indicates the active type and exposes inline marker style actions", async () => {

@@ -38,6 +38,7 @@ export const formInsertionTags = [
 export const sectionInsertionTags = [
   "div", "blockquote", "article", "aside", "header", "footer", "main", "nav", "search", "address",
 ] as const
+export const scriptInsertionTags = ["script", "style", "canvas", "template", "slot"] as const
 
 export const insertionMenuItems: BuiltinInsertionMenuItem[] = [
   insertionMenuItem("Text", "p"),
@@ -60,6 +61,10 @@ export const insertionMenuItems: BuiltinInsertionMenuItem[] = [
   ...formInsertionTags.filter(tag => tag !== "form").map(tag => insertionMenuItem("Media", tag)),
   insertionMenuItem("Media", "section"),
   ...sectionInsertionTags.map(tag => insertionMenuItem("Media", tag, tag === "div" ? "Division" : undefined)),
+  insertionMenuItem("Media", "script"),
+  ...scriptInsertionTags
+    .filter(tag => tag !== "script")
+    .map(tag => insertionMenuItem("Media", tag, tag === "canvas" ? "Canvas" : undefined)),
 ]
 
 /** Returns valid empty-element markup using the browser's HTML serializer. */
