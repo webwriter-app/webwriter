@@ -1,5 +1,6 @@
 import { LitElement, css, html } from "lit"
 import type {AppRibbon, AIEditReviewHandler} from "./ribbon"
+import type {LiveLearnerRibbonItem} from "./ribbon"
 import type { DomEditorBreadcrumb, DocumentTreeItem } from "./breadcrumb"
 import type { EditingAction } from "../domeditor"
 import {emptyElementHTML, insertionMenuItems} from "./insertion-menu"
@@ -61,6 +62,8 @@ import {
 import {elementStylePropertyNames} from "../element-styles"
 import "./breadcrumb"
 import "./ribbon"
+import "./live-session-controls"
+import "./live-session-overlay"
 import {restoreOriginalResourceURLs, serializeDoctype} from "../serialization"
 import {
   loadLocalPackage,
@@ -92,6 +95,20 @@ import {
   type DocumentHeadAction,
   type DocumentHeadState,
 } from "../document-head"
+import {
+  LiveSession,
+  type LiveSessionChange,
+  type LiveSessionLearner as SessionLearner,
+  type LiveSessionLearnerState,
+  type LiveSessionRegion as SessionRegion,
+  type LiveSessionStep,
+  type LiveSessionWidgetState,
+} from "../live-session"
+import type {
+  LiveSessionLearner as OverlayLearner,
+  LiveSessionWidget as OverlayWidget,
+  LiveWidgetStateChangeDetail,
+} from "./live-session-overlay"
 
 type WritableFileStream = {
   write(data: Blob): Promise<void>
@@ -210,6 +227,39 @@ const emptyVersionHistoryState = (): VersionHistoryState => ({
   currentUserId: null,
 })
 
+const liveSessionParameter = "liveSession"
+const liveSessionIdentityKey = (sessionId: string) => `webwriter_live_session_learner_${sessionId}`
+const liveSessionColors = [
+  "#e11d48", "#db2777", "#9333ea", "#4f46e5", "#2563eb", "#0284c7",
+  "#0891b2", "#0d9488", "#059669", "#65a30d", "#ca8a04", "#ea580c",
+]
+
+const randomIdentifier = (prefix: string) => globalThis.crypto?.randomUUID?.()
+  ?? `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+
+const hashString = (value: string) => Array.from(value).reduce(
+  (hash, character) => (Math.imul(hash, 31) + character.codePointAt(0)!) | 0,
+  0,
+)
+
+const firstInitial = (value: string) => Array.from(value).find(character => /[\p{L}\p{N}]/u.test(character)) ?? ""
+
+const learnerInitials = (name: string) => {
+  const words = name.trim().split(/\s+/).filter(Boolean)
+  const value = words.length > 1
+    ? words.slice(0, 2).map(firstInitial).join("")
+    : Array.from(words[0] ?? "").map(firstInitial).join("").slice(0, 2)
+  return (value || firstInitial(name) || "?").toLocaleUpperCase().slice(0, 2)
+}
+
+const clampUnit = (value: number) => Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0))
+
+type LiveSessionIdentity = {
+  id: string
+  name: string
+  color: string
+}
+
 /** The iframe-backed editor element. The iframe gets its own document and
  * runs the editor module there, keeping editor styles, selection and DOM
  * mutations isolated from the host document. */
@@ -244,6 +294,16 @@ export class DomEditor extends LitElement {
     fileName: {attribute: false, state: true},
     fileDirty: {attribute: false, state: true},
     previewActive: {attribute: false, state: true},
+    previewDocumentHTML: {attribute: false, state: true},
+    liveSessionActive: {attribute: false, state: true},
+    liveSessionRole: {attribute: false, state: true},
+    liveSessionLink: {attribute: false, state: true},
+    liveLearners: {attribute: false, state: true},
+    liveSteps: {attribute: false, state: true},
+    liveStreamStep: {attribute: false, state: true},
+    liveStreamPlaying: {attribute: false, state: true},
+    liveOverlayLearners: {attribute: false, state: true},
+    liveOverlayWidgets: {attribute: false, state: true},
     backendState: {attribute: false, state: true},
     backendClient: {attribute: false, state: true},
     storageLocation: {attribute: false, state: true},
@@ -310,6 +370,29 @@ export class DomEditor extends LitElement {
   private previewDocumentHTML: string | null = null
   private previewSelection: SelectionBookmark | null = null
   private previewTransition = false
+  private liveSessionActive = false
+  private liveSessionRole: "host" | "learner" | "" = ""
+  private liveSessionLink = ""
+  private liveSession: LiveSession | null = null
+  private liveSessionUnsubscribe: (() => void) | null = null
+  private liveLearners: LiveLearnerRibbonItem[] = []
+  private liveSteps: LiveSessionStep[] = []
+  private liveStreamStep = 0
+  private liveStreamPlaying = false
+  private livePlaybackTimer: ReturnType<typeof setTimeout> | undefined
+  private liveOverlayLearners: OverlayLearner[] = []
+  private liveOverlayWidgets: OverlayWidget[] = []
+  private liveLearnerVisibility = new Map<string, boolean>()
+  private liveStatesAtStep = new Map<string, LiveSessionLearnerState>()
+  private liveStateCache = new Map<string, LiveSessionLearnerState>()
+  private liveStateCacheStep = 0
+  private liveSelectedWidgetLearners = new Map<string, string>()
+  private liveBaseWidgetStates = new Map<string, LiveSessionWidgetState>()
+  private liveWidgetPaths = new WeakMap<Element, number[]>()
+  private livePreviewObserver: MutationObserver | null = null
+  private livePreviewCleanup: (() => void)[] = []
+  private livePendingMutations: MutationRecord[] = []
+  private liveDocumentUpdateQueued = false
   private fileFormat: FileFormat = "html"
   private fileHandle: LocalFileHandle | null = null
   private storageLocation: StorageLocation = "local"
@@ -354,6 +437,15 @@ export class DomEditor extends LitElement {
 
     app-ribbon:not([expanded]) + dom-editor-breadcrumb {
       display: none;
+    }
+
+    .document-stage {
+      display: flex;
+      flex: 1 1 auto;
+      position: relative;
+      min-height: 0;
+      width: 100%;
+      overflow: hidden;
     }
 
     iframe {
@@ -440,6 +532,228 @@ export class DomEditor extends LitElement {
     return syncUrl.href
   }
 
+  private liveSessionIdFromURL() {
+    const value = new URL(location.href).searchParams.get(liveSessionParameter)
+    return value && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(value) ? value : null
+  }
+
+  private liveSessionShareLink(sessionId: string) {
+    const url = new URL(location.href)
+    url.searchParams.delete("session")
+    url.searchParams.delete("source")
+    url.searchParams.set(liveSessionParameter, sessionId)
+    url.searchParams.set("role", "learner")
+    return url.href
+  }
+
+  private learnerIdentity(sessionId: string): LiveSessionIdentity {
+    const storageKey = liveSessionIdentityKey(sessionId)
+    try {
+      const value = globalThis.sessionStorage?.getItem(storageKey)
+      if(value) {
+        const parsed = JSON.parse(value) as Partial<LiveSessionIdentity>
+        if(typeof parsed.id === "string" && typeof parsed.name === "string" && typeof parsed.color === "string") {
+          return {id: parsed.id, name: parsed.name, color: parsed.color}
+        }
+      }
+    }
+    catch {
+      // Private browsing or an opaque origin may make sessionStorage unavailable.
+    }
+
+    const id = randomIdentifier("learner")
+    const suffix = id.replaceAll(/[^a-zA-Z0-9]/g, "").slice(-4).toLocaleUpperCase()
+    const identity = {
+      id,
+      name: `Learner ${suffix || "?"}`,
+      color: liveSessionColors[Math.abs(hashString(id)) % liveSessionColors.length],
+    }
+    try {
+      globalThis.sessionStorage?.setItem(storageKey, JSON.stringify(identity))
+    }
+    catch {
+      // Identity persistence is a convenience; the session remains usable without it.
+    }
+    return identity
+  }
+
+  private connectLiveSession(session: LiveSession, role: "host" | "learner", link = "") {
+    this.liveSessionUnsubscribe?.()
+    this.liveSession?.destroy()
+    this.liveSession = session
+    this.liveSessionRole = role
+    this.liveSessionLink = link
+    this.liveSessionActive = true
+    this.liveSessionUnsubscribe = session.onChange(this.syncLiveSession)
+    this.syncLiveSession(session)
+  }
+
+  private syncLiveSession = (session = this.liveSession, change?: LiveSessionChange) => {
+    if(!session || session !== this.liveSession) return
+    const previousStepCount = this.liveSteps.length
+    const followedLiveEdge = this.liveStreamPlaying && this.liveStreamStep >= previousStepCount
+    let appendOnly = true
+    const steps = change ? [...this.liveSteps] : session.steps
+    change?.stepDeltas.forEach(delta => {
+      if(delta.deleteCount > 0 || delta.index !== steps.length) appendOnly = false
+      steps.splice(delta.index, delta.deleteCount, ...delta.steps)
+    })
+    if(!appendOnly) this.resetLiveStateCache()
+    this.liveSteps = steps
+
+    const sessionLearners = session.learners
+    const knownIds = new Set(sessionLearners.map(learner => learner.id))
+    sessionLearners.forEach(learner => {
+      if(!this.liveLearnerVisibility.has(learner.id)) this.liveLearnerVisibility.set(learner.id, true)
+    })
+    for(const id of this.liveLearnerVisibility.keys()) {
+      if(!knownIds.has(id)) this.liveLearnerVisibility.delete(id)
+    }
+    this.liveLearners = sessionLearners.map(learner => this.liveLearnerRibbonItem(learner))
+
+    if(followedLiveEdge) this.liveStreamStep = steps.length
+    else this.liveStreamStep = Math.max(0, Math.min(this.liveStreamStep, steps.length))
+
+    if(this.liveSessionRole === "learner" && session.baseHTML && session.baseHTML !== this.previewDocumentHTML) {
+      this.previewDocumentHTML = session.baseHTML
+      this.previewActive = true
+    }
+    if(session.status === "stopped") {
+      this.liveStreamPlaying = false
+      this.clearLivePlaybackTimer()
+      if(this.liveSessionRole === "learner") {
+        this.cleanupLivePreview()
+        queueMicrotask(() => {
+          if(this.liveSession === session && this.previewActive) void this.exitPreview()
+        })
+        return
+      }
+    }
+    this.updateLiveVisualization()
+    this.scheduleLivePlayback()
+  }
+
+  private liveLearnerRibbonItem(learner: SessionLearner): LiveLearnerRibbonItem {
+    return {
+      id: learner.id,
+      name: learner.name,
+      initials: learnerInitials(learner.name),
+      color: learner.color,
+      connected: learner.connected,
+      enabled: this.liveLearnerVisibility.get(learner.id) !== false,
+    }
+  }
+
+  private clearLivePlaybackTimer() {
+    if(this.livePlaybackTimer !== undefined) clearTimeout(this.livePlaybackTimer)
+    this.livePlaybackTimer = undefined
+  }
+
+  private scheduleLivePlayback() {
+    this.clearLivePlaybackTimer()
+    if(!this.liveStreamPlaying || this.liveStreamStep >= this.liveSteps.length) return
+    const previousTime = this.liveSteps[this.liveStreamStep - 1]?.time
+    const nextTime = this.liveSteps[this.liveStreamStep]?.time
+    const interval = previousTime === undefined || nextTime === undefined
+      ? 180
+      : Math.max(80, Math.min(750, nextTime - previousTime))
+    this.livePlaybackTimer = setTimeout(() => {
+      this.livePlaybackTimer = undefined
+      this.liveStreamStep = Math.min(this.liveSteps.length, this.liveStreamStep + 1)
+      this.updateLiveVisualization()
+      this.scheduleLivePlayback()
+    }, interval)
+  }
+
+  private playLiveSession = () => {
+    this.liveStreamPlaying = true
+    this.scheduleLivePlayback()
+  }
+
+  private pauseLiveSession = () => {
+    this.liveStreamPlaying = false
+    this.clearLivePlaybackTimer()
+  }
+
+  private seekLiveSession = (event: Event) => {
+    const step = (event as CustomEvent<{step?: unknown}>).detail?.step
+    if(typeof step !== "number" || !Number.isFinite(step)) return
+    this.pauseLiveSession()
+    this.liveStreamStep = Math.max(0, Math.min(this.liveSteps.length, Math.round(step)))
+    this.updateLiveVisualization()
+  }
+
+  private resetLiveStateCache() {
+    this.liveStateCache = new Map()
+    this.liveStateCacheStep = 0
+  }
+
+  private statesAtLiveStep(stepCount: number) {
+    if(stepCount < this.liveStateCacheStep) this.resetLiveStateCache()
+    for(const step of this.liveSteps.slice(this.liveStateCacheStep, stepCount)) {
+      if(!step.learner) continue
+      const previous = this.liveStateCache.get(step.learner)
+      this.liveStateCache.set(step.learner, {
+        ...(previous ?? {learner: step.learner}),
+        learner: step.learner,
+        time: step.time,
+        ...(step.html !== undefined ? {html: step.html} : {}),
+        ...(step.cursor !== undefined ? {cursor: {...step.cursor}} : {}),
+        ...(step.pointer !== undefined ? {pointer: {...step.pointer}} : {}),
+        ...(step.click !== undefined ? {click: {...step.click}, clickStep: step.id} : {}),
+        ...(step.scroll !== undefined ? {scroll: {...step.scroll}} : {}),
+        ...(step.regions !== undefined ? {regions: step.regions.map(region => ({...region}))} : {}),
+        ...(step.widgets !== undefined ? {widgets: step.widgets.map(widget => ({...widget}))} : {}),
+      })
+    }
+    this.liveStateCacheStep = stepCount
+    return new Map(this.liveStateCache)
+  }
+
+  private updateLiveVisualization() {
+    this.liveStatesAtStep = this.statesAtLiveStep(this.liveStreamStep)
+    this.liveOverlayLearners = this.liveLearners.flatMap<OverlayLearner>(learner => {
+      if(!learner.enabled) return []
+      const state = this.liveStatesAtStep.get(learner.id)
+      const scroll = state?.scroll
+      const scrollRange = scroll ? Math.max(0, (scroll.height ?? 0) - (scroll.viewport ?? 0)) : 0
+      const scrollPosition = scroll
+        ? scrollRange > 0 ? clampUnit(scroll.top / scrollRange) : clampUnit(scroll.top)
+        : undefined
+      const point = state?.pointer ?? state?.cursor
+      return [{
+        id: learner.id,
+        name: learner.name,
+        initials: learner.initials,
+        color: learner.color,
+        ...(point ? {cursor: {x: clampUnit(point.x), y: clampUnit(point.y)}} : {}),
+        ...(scrollPosition !== undefined ? {scroll: scrollPosition} : {}),
+        ...(state?.regions ? {regions: state.regions.map(region => ({
+          x: clampUnit(region.x),
+          y: clampUnit(region.y),
+          width: clampUnit(region.width),
+          height: clampUnit(region.height),
+        }))} : {}),
+        ...(state?.click ? {
+          click: {
+            x: clampUnit(state.click.x),
+            y: clampUnit(state.click.y),
+            sequence: state.clickStep ?? `${learner.id}-${state.click.x}-${state.click.y}`,
+          },
+        } : {}),
+      }]
+    })
+    queueMicrotask(() => {
+      this.liveSelectedWidgetLearners.forEach((learnerId, path) => {
+        if(this.widgetStateAtStep(path, learnerId)) return
+        this.liveSelectedWidgetLearners.delete(path)
+        this.applyLiveWidgetState(path, null)
+      })
+      this.syncSelectedLiveWidgetStates()
+      this.updateLiveWidgetAffordances()
+    })
+  }
+
   private loginToBackend = async () => {
     this.backendProbeController?.abort()
     const controller = new AbortController()
@@ -477,12 +791,379 @@ export class DomEditor extends LitElement {
     if(this.backendSession) window.open(this.backendSession.adminUrl, "_blank", "noopener,noreferrer")
   }
 
+  private previewElementPath(element: Element, previewDocument = element.ownerDocument) {
+    const body = previewDocument.body
+    if(!body || element === body) return []
+    const path: number[] = []
+    let current: Node | null = element
+    while(current && current !== body) {
+      const parent: Node | null = current.parentNode
+      if(!parent) return null
+      path.unshift(Array.from(parent.childNodes).indexOf(current as ChildNode))
+      current = parent
+    }
+    return current === body ? path : null
+  }
+
+  private previewElementAtPath(path: number[], previewDocument = this.renderRoot.querySelector<HTMLIFrameElement>("iframe.preview-frame")?.contentDocument) {
+    let current: Node | null = previewDocument?.body ?? null
+    for(const index of path) current = current?.childNodes.item(index) ?? null
+    return current instanceof Element ? current : null
+  }
+
+  private previewWidgetElements(previewDocument: Document) {
+    return Array.from(previewDocument.body?.querySelectorAll("*") ?? [])
+      .filter(element => element.localName.includes("-"))
+  }
+
+  private seedLiveWidgetPaths(previewDocument: Document) {
+    this.liveWidgetPaths = new WeakMap()
+    this.previewWidgetElements(previewDocument).forEach(widget => {
+      const path = this.previewElementPath(widget, previewDocument)
+      if(path) this.liveWidgetPaths.set(widget, path)
+    })
+  }
+
+  private captureWidgetPublicState(widget: Element) {
+    const state: Record<string, unknown> = {}
+    for(const key of Object.keys(widget).slice(0, 64)) {
+      if(key === "__proto__" || key === "constructor" || key === "prototype") continue
+      try {
+        const value = (widget as unknown as Record<string, unknown>)[key]
+        if(typeof value === "function" || value instanceof Node || (
+          value !== null && typeof value === "object" && typeof (value as {nodeType?: unknown}).nodeType === "number"
+        )) continue
+        const serialized = JSON.stringify(value)
+        if(serialized === undefined || serialized.length > 32_000) continue
+        state[key] = JSON.parse(serialized)
+      }
+      catch {
+        // Cyclic or host-owned fields are not part of the widget's portable state.
+      }
+    }
+    return state
+  }
+
+  private captureLiveWidgetStates(previewDocument: Document): LiveSessionWidgetState[] {
+    return this.previewWidgetElements(previewDocument).flatMap(widget => {
+      const path = this.liveWidgetPaths.get(widget) ?? this.previewElementPath(widget, previewDocument)
+      if(path && !this.liveWidgetPaths.has(widget)) this.liveWidgetPaths.set(widget, path)
+      return path ? [{path, html: widget.outerHTML, state: this.captureWidgetPublicState(widget)}] : []
+    })
+  }
+
+  private previewHTML(previewDocument: Document) {
+    return `${serializeDoctype(previewDocument.doctype)}${previewDocument.documentElement.outerHTML}`
+  }
+
+  private normalizedPreviewPoint(x: number, y: number, previewDocument: Document) {
+    const view = previewDocument.defaultView
+    const width = view?.innerWidth || previewDocument.documentElement.clientWidth || 1
+    const height = view?.innerHeight || previewDocument.documentElement.clientHeight || 1
+    return {x: clampUnit(x / width), y: clampUnit(y / height)}
+  }
+
+  private mutationRegions(mutations: MutationRecord[], previewDocument: Document): SessionRegion[] {
+    const view = previewDocument.defaultView
+    const width = view?.innerWidth || previewDocument.documentElement.clientWidth || 1
+    const height = view?.innerHeight || previewDocument.documentElement.clientHeight || 1
+    const regions = new Map<string, SessionRegion>()
+    for(const mutation of mutations) {
+      const element = mutation.target instanceof Element ? mutation.target : mutation.target.parentElement
+      if(!element || element === previewDocument.documentElement || !previewDocument.body?.contains(element)) continue
+      const path = this.previewElementPath(element, previewDocument)
+      if(!path) continue
+      const key = JSON.stringify(path)
+      const rect = element.getBoundingClientRect()
+      regions.set(key, {
+        id: key,
+        path,
+        x: clampUnit(rect.left / width),
+        y: clampUnit(rect.top / height),
+        width: clampUnit((rect.width || width) / width),
+        height: clampUnit((rect.height || Math.min(20, height)) / height),
+      })
+      if(regions.size >= 32) break
+    }
+    return [...regions.values()]
+  }
+
+  private previewScrollState(previewDocument: Document) {
+    const scroller = previewDocument.scrollingElement ?? previewDocument.documentElement
+    const view = previewDocument.defaultView
+    return {
+      top: scroller.scrollTop,
+      left: scroller.scrollLeft,
+      height: scroller.scrollHeight,
+      viewport: view?.innerHeight || previewDocument.documentElement.clientHeight,
+    }
+  }
+
+  private publishLiveLearnerStep(input: Parameters<LiveSession["publish"]>[0]) {
+    if(this.liveSessionRole !== "learner" || !this.liveSession) return
+    try {
+      this.liveSession.publish(input)
+    }
+    catch {
+      // The host may stop while a throttled browser event is being delivered.
+    }
+  }
+
+  private cleanupLivePreview() {
+    this.livePreviewObserver?.disconnect()
+    this.livePreviewObserver = null
+    this.livePreviewCleanup.splice(0).forEach(cleanup => cleanup())
+    this.livePendingMutations = []
+    this.liveDocumentUpdateQueued = false
+  }
+
+  private observeLearnerPreview(frame: HTMLIFrameElement, previewDocument: Document) {
+    const view = frame.contentWindow
+    const body = previewDocument.body
+    if(!view || !body || !this.liveSession?.baseHTML) return
+    this.seedLiveWidgetPaths(previewDocument)
+
+    const listen = (
+      target: EventTarget,
+      type: string,
+      listener: EventListener,
+      options?: AddEventListenerOptions | boolean,
+    ) => {
+      target.addEventListener(type, listener, options)
+      this.livePreviewCleanup.push(() => target.removeEventListener(type, listener, options))
+    }
+
+    let pendingPointer: {x: number, y: number} | null = null
+    let pointerTimer: ReturnType<typeof setTimeout> | undefined
+    let lastPointerTime = -Infinity
+    const flushPointer = () => {
+      pointerTimer = undefined
+      if(!pendingPointer) return
+      this.publishLiveLearnerStep({kind: "pointer", pointer: pendingPointer})
+      pendingPointer = null
+      lastPointerTime = view.performance.now()
+    }
+    const pointer = (event: Event) => {
+      const pointerEvent = event as PointerEvent
+      pendingPointer = this.normalizedPreviewPoint(pointerEvent.clientX, pointerEvent.clientY, previewDocument)
+      const delay = Math.max(0, 80 - (view.performance.now() - lastPointerTime))
+      if(delay === 0) flushPointer()
+      else if(pointerTimer === undefined) pointerTimer = setTimeout(flushPointer, delay)
+    }
+    const click = (event: Event) => {
+      const pointerEvent = event as PointerEvent
+      const point = this.normalizedPreviewPoint(pointerEvent.clientX, pointerEvent.clientY, previewDocument)
+      this.publishLiveLearnerStep({
+        kind: "click",
+        click: {...point, button: pointerEvent.button},
+        pointer: point,
+        widgets: this.captureLiveWidgetStates(previewDocument),
+      })
+    }
+    const selection = () => {
+      const selected = previewDocument.getSelection()
+      if(!selected?.focusNode) return
+      try {
+        const range = previewDocument.createRange()
+        range.setStart(selected.focusNode, selected.focusOffset)
+        range.collapse(true)
+        const rect = range.getBoundingClientRect()
+        this.publishLiveLearnerStep({
+          kind: "cursor",
+          cursor: this.normalizedPreviewPoint(rect.left, rect.top, previewDocument),
+        })
+      }
+      catch {
+        // A widget may replace the focus node while selectionchange is delivered.
+      }
+    }
+    let scrollTimer: ReturnType<typeof setTimeout> | undefined
+    const scroll = () => {
+      if(scrollTimer !== undefined) return
+      scrollTimer = setTimeout(() => {
+        scrollTimer = undefined
+        this.publishLiveLearnerStep({
+          kind: "scroll",
+          scroll: this.previewScrollState(previewDocument),
+        })
+      }, 80)
+    }
+    const widget = () => this.publishLiveLearnerStep({
+      kind: "widget",
+      widgets: this.captureLiveWidgetStates(previewDocument),
+    })
+
+    listen(previewDocument, "pointermove", pointer, {capture: true, passive: true})
+    listen(previewDocument, "pointerdown", pointer, {capture: true, passive: true})
+    listen(previewDocument, "click", click, true)
+    listen(previewDocument, "selectionchange", selection)
+    listen(previewDocument, "scroll", scroll, {capture: true, passive: true})
+    listen(view, "scroll", scroll, {passive: true})
+    listen(previewDocument, "input", widget, true)
+    listen(previewDocument, "change", widget, true)
+    this.livePreviewCleanup.push(() => {
+      if(pointerTimer !== undefined) clearTimeout(pointerTimer)
+      if(scrollTimer !== undefined) clearTimeout(scrollTimer)
+    })
+
+    const FrameMutationObserver = (view as unknown as {MutationObserver?: typeof MutationObserver}).MutationObserver
+      ?? MutationObserver
+    const observer = new FrameMutationObserver((mutations: MutationRecord[]) => {
+      this.livePendingMutations.push(...mutations)
+      if(this.liveDocumentUpdateQueued) return
+      this.liveDocumentUpdateQueued = true
+      queueMicrotask(() => {
+        this.liveDocumentUpdateQueued = false
+        const pending = this.livePendingMutations.splice(0)
+        if(!pending.length || !this.liveSessionActive) return
+        this.publishLiveLearnerStep({
+          kind: "document",
+          html: this.previewHTML(previewDocument),
+          regions: this.mutationRegions(pending, previewDocument),
+          widgets: this.captureLiveWidgetStates(previewDocument),
+          scroll: this.previewScrollState(previewDocument),
+        })
+      })
+    })
+    this.livePreviewObserver = observer
+    observer.observe(body, {
+      attributes: true,
+      characterData: true,
+      childList: true,
+      subtree: true,
+    })
+    this.publishLiveLearnerStep({
+      kind: "document",
+      html: this.previewHTML(previewDocument),
+      regions: [],
+      widgets: this.captureLiveWidgetStates(previewDocument),
+      scroll: this.previewScrollState(previewDocument),
+    })
+  }
+
+  private bindHostPreview(frame: HTMLIFrameElement, previewDocument: Document) {
+    this.liveBaseWidgetStates.clear()
+    this.seedLiveWidgetPaths(previewDocument)
+    this.previewWidgetElements(previewDocument).forEach(widget => {
+      const path = this.previewElementPath(widget, previewDocument)
+      if(path) this.liveBaseWidgetStates.set(JSON.stringify(path), {
+        path,
+        html: widget.outerHTML,
+        state: this.captureWidgetPublicState(widget),
+      })
+    })
+    const update = () => this.updateLiveWidgetAffordances()
+    frame.contentWindow?.addEventListener("scroll", update, {passive: true})
+    frame.contentWindow?.addEventListener("resize", update)
+    this.livePreviewCleanup.push(() => frame.contentWindow?.removeEventListener("scroll", update))
+    this.livePreviewCleanup.push(() => frame.contentWindow?.removeEventListener("resize", update))
+    this.updateLiveWidgetAffordances()
+  }
+
+  private updateLiveWidgetAffordances() {
+    if(!this.liveSessionActive || this.liveSessionRole !== "host") {
+      this.liveOverlayWidgets = []
+      return
+    }
+    const frame = this.renderRoot.querySelector<HTMLIFrameElement>("iframe.preview-frame")
+    const previewDocument = frame?.contentDocument
+    const view = frame?.contentWindow
+    if(!previewDocument?.body || !view) return
+    const width = view.innerWidth || previewDocument.documentElement.clientWidth || 1
+    const height = view.innerHeight || previewDocument.documentElement.clientHeight || 1
+    this.liveOverlayWidgets = this.previewWidgetElements(previewDocument).flatMap<OverlayWidget>(widget => {
+      const path = this.previewElementPath(widget, previewDocument)
+      if(!path) return []
+      const key = JSON.stringify(path)
+      const learners = this.liveLearners.flatMap(learner => {
+        if(!learner.enabled) return []
+        const hasState = this.liveStatesAtStep.get(learner.id)?.widgets?.some(state =>
+          state.path && JSON.stringify(state.path) === key && typeof state.html === "string",
+        )
+        return hasState ? [{id: learner.id, name: learner.name, color: learner.color}] : []
+      })
+      const rect = widget.getBoundingClientRect()
+      return [{
+        path: key,
+        x: clampUnit((rect.left + rect.width / 2) / width),
+        y: clampUnit(rect.top / height),
+        learners,
+        selectedLearnerId: this.liveSelectedWidgetLearners.get(key) ?? null,
+      }]
+    })
+  }
+
+  private widgetStateAtStep(pathKey: string, learnerId: string) {
+    return this.liveStatesAtStep.get(learnerId)?.widgets?.find(widget =>
+      widget.path && JSON.stringify(widget.path) === pathKey,
+    )
+  }
+
+  private applyLiveWidgetState(pathKey: string, learnerId: string | null) {
+    const frame = this.renderRoot.querySelector<HTMLIFrameElement>("iframe.preview-frame")
+    const previewDocument = frame?.contentDocument
+    if(!previewDocument) return
+    let path: number[]
+    try {
+      const value = JSON.parse(pathKey)
+      if(!Array.isArray(value) || !value.every(index => Number.isInteger(index) && index >= 0)) return
+      path = value
+    }
+    catch {
+      return
+    }
+    let current = this.previewElementAtPath(path, previewDocument)
+    const snapshot = learnerId
+      ? this.widgetStateAtStep(pathKey, learnerId)
+      : this.liveBaseWidgetStates.get(pathKey)
+    if(!current || !snapshot) return
+    if(snapshot.html && current.outerHTML !== snapshot.html) {
+      const template = previewDocument.createElement("template")
+      template.innerHTML = snapshot.html.trim()
+      const replacement = template.content.firstElementChild
+      if(!replacement) return
+      current.replaceWith(replacement)
+      current = this.previewElementAtPath(path, previewDocument)
+    }
+    if(current && isRecord(snapshot.state)) {
+      Object.entries(snapshot.state).forEach(([key, value]) => {
+        if(key === "__proto__" || key === "constructor" || key === "prototype") return
+        try {
+          (current as unknown as Record<string, unknown>)[key] = value
+        }
+        catch {
+          // A read-only public field cannot be restored and is left untouched.
+        }
+      })
+    }
+  }
+
+  private syncSelectedLiveWidgetStates() {
+    this.liveSelectedWidgetLearners.forEach((learnerId, path) => {
+      this.applyLiveWidgetState(path, learnerId)
+    })
+  }
+
+  private handleLiveWidgetStateChange = (event: Event) => {
+    const {path, learnerId} = (event as CustomEvent<LiveWidgetStateChangeDetail>).detail
+    if(typeof path !== "string") return
+    if(learnerId) this.liveSelectedWidgetLearners.set(path, learnerId)
+    else this.liveSelectedWidgetLearners.delete(path)
+    this.applyLiveWidgetState(path, learnerId)
+    this.updateLiveWidgetAffordances()
+  }
+
   private handlePreviewFrameLoad = (event: Event) => {
     const frame = event.currentTarget as HTMLIFrameElement
+    if(frame !== this.renderRoot.querySelector("iframe.preview-frame")) return
     const previewDocument = frame.contentDocument
     if(!previewDocument) return
     previewDocument.designMode = "off"
     previewDocument.body?.removeAttribute("contenteditable")
+    this.cleanupLivePreview()
+    if(!this.liveSessionActive) return
+    if(this.liveSessionRole === "learner") this.observeLearnerPreview(frame, previewDocument)
+    else this.bindHostPreview(frame, previewDocument)
   }
 
   private handleEditorFrameLoad = (event: Event) => {
@@ -792,6 +1473,53 @@ export class DomEditor extends LitElement {
     else this.savedEditorSelection = null
   }
 
+  private async joinLiveSession(sessionId: string) {
+    if(this.liveSessionActive) return
+    if(import.meta.env.MODE !== "test" && !this.backendSession) await this.loginToBackend()
+    if(!this.isConnected) return
+    const identity = this.learnerIdentity(sessionId)
+    const session = new LiveSession({
+      id: sessionId,
+      role: "learner",
+      learner: identity,
+      ...(this.backendSession?.collaborationUrl ? {serverUrl: this.backendSession.collaborationUrl} : {}),
+    })
+    this.liveStreamPlaying = true
+    this.liveStreamStep = 0
+    this.previewSelection = null
+    this.previewDocumentHTML = session.baseHTML ?? `<!doctype html><html><head><title>Joining live session</title></head><body><p>Joining live session…</p></body></html>`
+    this.previewActive = true
+    this.connectLiveSession(session, "learner")
+  }
+
+  private disposeLiveSession() {
+    this.cleanupLivePreview()
+    this.clearLivePlaybackTimer()
+    this.liveSessionUnsubscribe?.()
+    this.liveSessionUnsubscribe = null
+    const session = this.liveSession
+    this.liveSession = null
+    if(session) {
+      if(this.liveSessionRole === "host") session.stop()
+      session.destroy()
+    }
+    this.liveSessionActive = false
+    this.liveSessionRole = ""
+    this.liveSessionLink = ""
+    this.liveLearners = []
+    this.liveSteps = []
+    this.liveStreamStep = 0
+    this.liveStreamPlaying = false
+    this.liveOverlayLearners = []
+    this.liveOverlayWidgets = []
+    this.liveLearnerVisibility.clear()
+    this.liveStatesAtStep.clear()
+    this.resetLiveStateCache()
+    this.liveSelectedWidgetLearners.clear()
+    this.liveBaseWidgetStates.clear()
+    this.liveWidgetPaths = new WeakMap()
+  }
+
   private async enterPreview() {
     if(this.previewActive || this.previewTransition) return
     this.previewTransition = true
@@ -802,11 +1530,24 @@ export class DomEditor extends LitElement {
 
     try {
       if(!this.editorDocument) await this.waitForEditorWindow()
-      this.previewDocumentHTML = this.currentPreviewHTML()
+      if(import.meta.env.MODE !== "test" && this.backendState === "probing") await this.loginToBackend()
+      const previewHTML = this.currentPreviewHTML()
+      const sessionId = randomIdentifier("live")
+      const session = new LiveSession({
+        id: sessionId,
+        role: "host",
+        baseHTML: previewHTML,
+        ...(this.backendSession?.collaborationUrl ? {serverUrl: this.backendSession.collaborationUrl} : {}),
+      })
+      this.liveStreamPlaying = true
+      this.liveStreamStep = 0
+      this.connectLiveSession(session, "host", this.liveSessionShareLink(sessionId))
+      this.previewDocumentHTML = previewHTML
       this.previewActive = true
     }
     catch(error) {
       this.previewSelection = null
+      this.disposeLiveSession()
       this.reportFileError(error)
     }
     finally {
@@ -818,11 +1559,16 @@ export class DomEditor extends LitElement {
     if(!this.previewActive || this.previewTransition) return
     const selection = this.previewSelection
     this.previewSelection = null
+    this.disposeLiveSession()
     this.previewDocumentHTML = null
     this.previewActive = false
     await this.updateComplete
     this.savedEditorSelection = selection
     this.focusEditor(true)
+  }
+
+  private stopLiveSession = () => {
+    void this.exitPreview()
   }
 
   private handleRibbonInputPointerDown = () => {
@@ -1530,6 +2276,21 @@ export class DomEditor extends LitElement {
 
   private handleRibbonPreviewExit = () => {
     void this.exitPreview()
+  }
+
+  private handleLiveLearnerToggle = (event: Event) => {
+    const {id, enabled} = (event as CustomEvent<{id?: unknown, enabled?: unknown}>).detail ?? {}
+    if(typeof id !== "string" || typeof enabled !== "boolean" || !this.liveLearnerVisibility.has(id)) return
+    this.liveLearnerVisibility.set(id, enabled)
+    this.liveLearners = this.liveLearners.map(learner => learner.id === id ? {...learner, enabled} : learner)
+    if(!enabled) {
+      for(const [path, learnerId] of this.liveSelectedWidgetLearners) {
+        if(learnerId !== id) continue
+        this.liveSelectedWidgetLearners.delete(path)
+        this.applyLiveWidgetState(path, null)
+      }
+    }
+    this.updateLiveVisualization()
   }
 
   private async matchingLocalPackage(directory: FileSystemDirectoryHandle) {
@@ -2472,7 +3233,9 @@ export class DomEditor extends LitElement {
   connectedCallback() {
     super.connectedCallback()
     window.addEventListener("message", this.handleEditorMessage)
-    if(import.meta.env.MODE !== "test") void this.loginToBackend()
+    const liveSessionId = this.liveSessionIdFromURL()
+    if(liveSessionId) void this.joinLiveSession(liveSessionId)
+    else if(import.meta.env.MODE !== "test") void this.loginToBackend()
     this.restoreInstalledPackages()
     void this.loadPackageCatalog()
     void this.restoreLocalPackages()
@@ -2483,6 +3246,7 @@ export class DomEditor extends LitElement {
   }
 
   disconnectedCallback() {
+    this.disposeLiveSession()
     this.backendProbeController?.abort()
     this.backendProbeController = null
     window.removeEventListener("message", this.handleEditorMessage)
@@ -2579,6 +3343,10 @@ export class DomEditor extends LitElement {
           .fileName=${this.fileName}
           .fileDirty=${this.fileDirty}
           .previewActive=${this.previewActive}
+          .liveSessionActive=${this.liveSessionActive}
+          .liveSessionRole=${this.liveSessionRole}
+          .liveSessionLink=${this.liveSessionLink}
+          .liveLearners=${this.liveLearners}
           .storageLocation=${this.storageLocation}
           .documentHead=${this.documentHead}
           .historyState=${this.historyState}
@@ -2590,6 +3358,7 @@ export class DomEditor extends LitElement {
           .aiEditReviewHandler=${this.handleAIEditReview}
           @ribbon-button-click=${this.handleRibbonButtonClick}
           @ribbon-preview-exit=${this.handleRibbonPreviewExit}
+          @live-learner-toggle=${this.handleLiveLearnerToggle}
           @file-name-change=${this.handleFileNameChange}
           @storage-location-change=${this.handleStorageLocationChange}
           @document-head-action=${this.handleDocumentHeadAction}
@@ -2621,33 +3390,55 @@ export class DomEditor extends LitElement {
           @local-package-metadata-change=${this.handleLocalPackageMetadataChange}
           @local-package-auto-reload-change=${this.handleLocalPackageAutoReloadChange}
         ></app-ribbon>
-        <dom-editor-breadcrumb
-          .path=${this.selectionPath}
-          .nodeSelected=${this.nodeSelection}
-          .capture=${this.captureSelection}
-          .gap=${this.selectionGap}
-          .tree=${this.documentTree}
-          @breadcrumb-tree-toggle=${this.handleBreadcrumbTreeToggle}
-          @breadcrumb-item-select=${this.handleBreadcrumbItemSelect}
-          @breadcrumb-item-hover=${this.handleBreadcrumbItemHover}
-        ></dom-editor-breadcrumb>
+        ${this.liveSessionActive ? html`
+          <live-session-controls
+            .playing=${this.liveStreamPlaying}
+            .step=${this.liveStreamStep}
+            .stepCount=${this.liveSteps.length}
+            .live=${this.liveSession?.status !== "stopped" && this.liveStreamStep >= this.liveSteps.length}
+            @live-session-play=${this.playLiveSession}
+            @live-session-pause=${this.pauseLiveSession}
+            @live-session-seek=${this.seekLiveSession}
+            @live-session-stop=${this.stopLiveSession}
+          ></live-session-controls>
+        ` : html`
+          <dom-editor-breadcrumb
+            .path=${this.selectionPath}
+            .nodeSelected=${this.nodeSelection}
+            .capture=${this.captureSelection}
+            .gap=${this.selectionGap}
+            .tree=${this.documentTree}
+            @breadcrumb-tree-toggle=${this.handleBreadcrumbTreeToggle}
+            @breadcrumb-item-select=${this.handleBreadcrumbItemSelect}
+            @breadcrumb-item-hover=${this.handleBreadcrumbItemHover}
+          ></dom-editor-breadcrumb>
+        `}
       </header>
-      ${this.previewActive ? html`
+      <div class="document-stage">
+        ${this.previewActive ? html`
+          <iframe
+            class="preview-frame"
+            title=${this.liveSessionActive ? "Live document preview" : "Document preview"}
+            srcdoc=${this.previewDocumentHTML ?? ""}
+            @load=${this.handlePreviewFrameLoad}
+          ></iframe>
+        ` : ""}
         <iframe
-          class="preview-frame"
-          title="Document preview"
-          srcdoc=${this.previewDocumentHTML ?? ""}
-          @load=${this.handlePreviewFrameLoad}
+          class="editor-frame"
+          title="DOM editor"
+          srcdoc=${this.editorSrcdoc}
+          ?hidden=${this.previewActive}
+          @load=${this.handleEditorFrameLoad}
+          @dom-editor-ai-edit-review=${this.handleInlineAIEditReview}
         ></iframe>
-      ` : ""}
-      <iframe
-        class="editor-frame"
-        title="DOM editor"
-        srcdoc=${this.editorSrcdoc}
-        ?hidden=${this.previewActive}
-        @load=${this.handleEditorFrameLoad}
-        @dom-editor-ai-edit-review=${this.handleInlineAIEditReview}
-      ></iframe>
+        ${this.liveSessionActive && this.liveSessionRole === "host" ? html`
+          <live-session-overlay
+            .learners=${this.liveOverlayLearners}
+            .widgets=${this.liveOverlayWidgets}
+            @live-widget-state-change=${this.handleLiveWidgetStateChange}
+          ></live-session-overlay>
+        ` : ""}
+      </div>
     `
   }
 }

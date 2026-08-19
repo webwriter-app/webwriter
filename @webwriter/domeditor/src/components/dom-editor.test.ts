@@ -21,6 +21,9 @@ import {
 import {WEBWRITER_GENERATOR, emptyDocumentHeadState} from "../document-head"
 import {INSTALLED_PACKAGES_STORAGE_KEY, WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
 import {LocalPackageWorkerClient} from "../local-package-worker-client"
+import {LiveSession} from "../live-session"
+import type {LiveSessionOverlay} from "./live-session-overlay"
+import type {LiveSessionControls} from "./live-session-controls"
 
 const demoPackage: WebWriterPackage = {
   name: "@webwriter/demo",
@@ -1382,7 +1385,7 @@ describe("DomEditor.execute()", () => {
     expect(previewButton.querySelector(".icon-tabler-player-play.icons-tabler-filled")).not.toBeNull()
   })
 
-  it("shows a static preview and restores the live editor selection on exit", async () => {
+  it("starts a live preview session and restores the editor selection when it stops", async () => {
     const {editor} = await mountEditor()
     const editorFrame = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
     const editorDocument = editorFrame.contentDocument!
@@ -1406,12 +1409,18 @@ describe("DomEditor.execute()", () => {
     expect(previewFrame.contentDocument!.designMode).not.toBe("on")
     expect(ribbon.shadowRoot!.querySelectorAll("ribbon-tab")).toHaveLength(1)
     expect(ribbon.shadowRoot!.querySelectorAll(".history-button")).toHaveLength(0)
+    expect((ribbon as AppRibbon).expanded).toBe(true)
     expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".ribbon-toggle")!.disabled).toBe(true)
     expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.getAttribute("aria-label"))
-      .toBe("Exit preview")
+      .toBe("Stop live session")
     expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.getAttribute("aria-pressed"))
       .toBe("true")
-    expect(previewButton.querySelector(".preview-label")?.textContent).toBe("PREVIEW")
+    expect(previewButton.querySelector(".preview-label")?.textContent).toBe("LIVE")
+    expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Sharing"]')).not.toBeNull()
+    expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Learners"]')).not.toBeNull()
+    expect(editor.shadowRoot!.querySelector("live-session-controls")).not.toBeNull()
+    expect(editor.shadowRoot!.querySelector("live-session-overlay")).not.toBeNull()
+    expect(editor.shadowRoot!.querySelector("dom-editor-breadcrumb")).toBeNull()
 
     previewFrame.contentDocument!.body.textContent = "Preview changes are discarded"
     ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!.click()
@@ -1453,10 +1462,10 @@ describe("DomEditor.execute()", () => {
       ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.click()
       await editor.updateComplete
       await ribbon.updateComplete
-      expect((ribbon as AppRibbon).expanded).toBe(false)
+      expect((ribbon as AppRibbon).expanded).toBe(true)
       expect(ribbon.hasAttribute("preview-transition")).toBe(true)
       expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")
-        ?.querySelector(".preview-label")?.textContent).toBe("PREVIEW")
+        ?.querySelector(".preview-label")?.textContent).toBe("LIVE")
 
       ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.click()
       await editor.updateComplete
@@ -1464,6 +1473,126 @@ describe("DomEditor.execute()", () => {
       expect((ribbon as AppRibbon).expanded).toBe(true)
       expect(ribbon.hasAttribute("preview-transition")).toBe(true)
     }
+  })
+
+  it("keeps every learner in the live drawer and filters their combined visualization", async () => {
+    const {editor} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.click()
+    await editor.updateComplete
+    await ribbon.updateComplete
+
+    const host = (editor as unknown as {liveSession: LiveSession}).liveSession
+    const learner = new LiveSession({
+      id: host.id,
+      role: "learner",
+      learner: {id: "learner-ada", name: "Ada Lovelace", color: "#d11b60"},
+    })
+    try {
+      learner.publish({
+        kind: "document",
+        html: "<p>Answer</p>",
+        pointer: {x: 0.25, y: 0.4},
+        scroll: {top: 300, height: 1200, viewport: 600},
+        regions: [{x: 0.1, y: 0.2, width: 0.5, height: 0.1}],
+      })
+      await vi.waitFor(() => expect(ribbon.liveLearners[0]?.id).toBe("learner-ada"))
+      await editor.updateComplete
+      await ribbon.updateComplete
+
+      const share = ribbon.shadowRoot!.querySelector<RibbonButton>(
+        'ribbon-drawer[label="Sharing"] ribbon-button[label="Share"]',
+      )!
+      const shareURL = new URL(share.qrValue)
+      expect(shareURL.searchParams.get("liveSession")).toBe(host.id)
+      expect(shareURL.searchParams.get("role")).toBe("learner")
+
+      const toggle = ribbon.shadowRoot!.querySelector<HTMLButtonElement>('.learner-toggle[data-learner-id="learner-ada"]')!
+      expect(toggle).not.toBeNull()
+      expect(toggle.getAttribute("aria-pressed")).toBe("true")
+      expect(toggle.getAttribute("role")).toBeNull()
+      expect(toggle.getAttribute("aria-label")).toBe("Ada Lovelace, connected")
+      const overlay = editor.shadowRoot!.querySelector<LiveSessionOverlay>("live-session-overlay")!
+      await overlay.updateComplete
+      expect(overlay.learners).toEqual([expect.objectContaining({
+        id: "learner-ada",
+        cursor: {x: 0.25, y: 0.4},
+        scroll: 0.5,
+      })])
+      expect(editor.shadowRoot!.querySelector<LiveSessionControls>("live-session-controls")!.stepCount).toBe(1)
+
+      toggle.click()
+      await editor.updateComplete
+      await ribbon.updateComplete
+      expect(overlay.learners).toEqual([])
+
+      learner.stop()
+      await vi.waitFor(() => expect(ribbon.liveLearners[0]?.connected).toBe(false))
+      await ribbon.updateComplete
+      expect(ribbon.shadowRoot!.querySelector('.learner-toggle[data-learner-id="learner-ada"]')).not.toBeNull()
+      expect(ribbon.liveLearners[0].connected).toBe(false)
+    }
+    finally {
+      learner.destroy()
+    }
+  })
+
+  it("switches a widget between learner snapshots without changing the authored editor DOM", async () => {
+    const {editor, iframe} = await mountEditor()
+    iframe.contentDocument!.body.innerHTML = '<demo-widget data-answer="base"></demo-widget>'
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.click()
+    await editor.updateComplete
+    await ribbon.updateComplete
+
+    const previewFrame = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.preview-frame")!
+    previewFrame.dispatchEvent(new Event("load"))
+    const host = (editor as unknown as {liveSession: LiveSession}).liveSession
+    const learner = new LiveSession({
+      id: host.id,
+      role: "learner",
+      learner: {id: "learner-grace", name: "Grace Hopper", color: "#2563eb"},
+    })
+    try {
+      learner.publish({
+        kind: "widget",
+        widgets: [{
+          path: [0],
+          html: '<demo-widget data-answer="learner"></demo-widget>',
+          state: {answer: "learner"},
+        }],
+      })
+
+      const overlay = editor.shadowRoot!.querySelector<LiveSessionOverlay>("live-session-overlay")!
+      await vi.waitFor(() => expect(overlay.widgets[0]?.learners[0]?.id).toBe("learner-grace"))
+      await overlay.updateComplete
+      const switcher = overlay.shadowRoot!.querySelector<HTMLSelectElement>(".widget-affordance")!
+      switcher.value = "learner-grace"
+      switcher.dispatchEvent(new Event("change", {bubbles: true}))
+      await editor.updateComplete
+
+      const previewWidget = previewFrame.contentDocument!.querySelector<HTMLElement>("demo-widget")!
+      expect(previewWidget.getAttribute("data-answer")).toBe("learner")
+      expect((previewWidget as HTMLElement & {answer?: string}).answer).toBe("learner")
+      expect(iframe.contentDocument!.querySelector("demo-widget")?.getAttribute("data-answer")).toBe("base")
+    }
+    finally {
+      learner.destroy()
+    }
+  })
+
+  it("keeps a learner widget's session path stable when siblings are inserted", async () => {
+    const {editor, iframe} = await mountEditor()
+    const previewDocument = iframe.contentDocument!
+    previewDocument.body.innerHTML = "<demo-widget></demo-widget>"
+    const sessionEditor = editor as unknown as {
+      seedLiveWidgetPaths(document: Document): void
+      captureLiveWidgetStates(document: Document): Array<{path?: number[]}>
+    }
+    sessionEditor.seedLiveWidgetPaths(previewDocument)
+    previewDocument.body.prepend(previewDocument.createElement("p"))
+
+    expect(sessionEditor.captureLiveWidgetStates(previewDocument)[0]?.path).toEqual([0])
   })
 
   it("renders the current selection path received from the editor bridge", async () => {
