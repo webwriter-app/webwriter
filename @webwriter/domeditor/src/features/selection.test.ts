@@ -213,6 +213,30 @@ describe("processSelection()", () => {
     expect(p).not.toHaveClass("◆element-hovered")
     expect(editor.appendix.querySelectorAll(".◆hover-caret")).toHaveLength(1)
   })
+  it("shows the thin hover preview on the live style target", () => {
+    const p = el("p", "hello")
+    $.selectRange(p.firstChild!, 2)
+
+    feature.actions.hoverStyleTarget({type: "hoverStyleTarget", hovered: true})
+
+    expect(p).toHaveClass("◆style-target-hovered")
+    expect(p).not.toHaveClass("◆element-hovered")
+
+    feature.actions.hoverStyleTarget({type: "hoverStyleTarget", hovered: false})
+
+    expect(p).not.toHaveClass("◆style-target-hovered")
+  })
+  it("previews the body as the style target without a selection", () => {
+    document.getSelection()?.removeAllRanges()
+
+    feature.actions.hoverStyleTarget({type: "hoverStyleTarget", hovered: true})
+
+    expect(document.body).toHaveClass("◆style-target-hovered")
+
+    feature.actions.hoverStyleTarget({type: "hoverStyleTarget", hovered: false})
+
+    expect(document.body).not.toHaveClass("◆style-target-hovered")
+  })
   it("promotes a table descendant hover preview to the table", () => {
     document.body.innerHTML = "<table><tbody><tr><td><p>Cell</p></td></tr></tbody></table>"
     const table = document.querySelector("table")!

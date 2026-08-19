@@ -254,6 +254,10 @@ body.◆table-column-resize * {
   anchor-name: --hover-anchor;
 }
 
+.◆style-target-hovered {
+  anchor-name: --hover-anchor;
+}
+
 /* Hover and selection visuals live in BODY's shadow tree; authored elements
  * only carry anchor and editor-state classes. */
 .◆element-selected,
@@ -263,6 +267,10 @@ body.◆table-column-resize * {
 }
 
 body.◆element-hovered {
+  anchor-name: --body-anchor, --hover-anchor;
+}
+
+body.◆style-target-hovered {
   anchor-name: --body-anchor, --hover-anchor;
 }
 
@@ -284,7 +292,9 @@ body::part(hover-caret) {
 
 body:has(> *:hover)::part(hover-caret),
 body:has(.◆element-hovered)::part(hover-caret),
-body.◆element-hovered::part(hover-caret) {
+body.◆element-hovered::part(hover-caret),
+body:has(.◆style-target-hovered)::part(hover-caret),
+body.◆style-target-hovered::part(hover-caret) {
   display: block;
 }
 
@@ -989,7 +999,15 @@ body:empty::before {
   anchor-name: --selection-anchor, --hover-anchor;
 }
 
+.◆element-selected.◆style-target-hovered:not(table *) {
+  anchor-name: --selection-anchor, --hover-anchor;
+}
+
 body.◆element-selected:is(:hover, .◆element-hovered) {
+  anchor-name: --body-anchor, --selection-anchor, --hover-anchor;
+}
+
+body.◆element-selected.◆style-target-hovered {
   anchor-name: --body-anchor, --selection-anchor, --hover-anchor;
 }
 
@@ -997,7 +1015,15 @@ body.◆element-selected:is(:hover, .◆element-hovered) {
   anchor-name: --gap-anchor, --hover-anchor;
 }
 
+:is(.◆gap-before-selected, .◆gap-after-selected, .◆drop-caret-before, .◆drop-caret-after).◆style-target-hovered:not(table *) {
+  anchor-name: --gap-anchor, --hover-anchor;
+}
+
 .◆transform-target:is(:hover, .◆element-hovered):not(table *) {
+  anchor-name: --transform-target, --hover-anchor;
+}
+
+.◆transform-target.◆style-target-hovered:not(table *) {
   anchor-name: --transform-target, --hover-anchor;
 }
 
@@ -1005,11 +1031,23 @@ body.◆element-selected:is(:hover, .◆element-hovered) {
   anchor-name: --transform-containing-block, --hover-anchor;
 }
 
+.◆transform-containing-block.◆style-target-hovered:not(table *) {
+  anchor-name: --transform-containing-block, --hover-anchor;
+}
+
 .◆empty-selected:is(:hover, .◆element-hovered):not(table *) {
   anchor-name: --empty-selected, --hover-anchor;
 }
 
+.◆empty-selected.◆style-target-hovered:not(table *) {
+  anchor-name: --empty-selected, --hover-anchor;
+}
+
 body.◆empty-selected:is(:hover, .◆element-hovered) {
+  anchor-name: --body-anchor, --empty-selected, --hover-anchor;
+}
+
+body.◆empty-selected.◆style-target-hovered {
   anchor-name: --body-anchor, --empty-selected, --hover-anchor;
 }
 

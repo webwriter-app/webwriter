@@ -47,8 +47,9 @@ export class ManipulationFeature extends EditorFeature {
 
   /** The single connected authored element targeted by element-style commands.
    * Resolve this immediately before every read or mutation: retained selection
-   * endpoints may have been replaced by native, widget, or remote DOM edits. */
-  get styleTarget(): Element | null {
+   * endpoints may have been replaced by native, widget, or remote DOM edits.
+   * With no authored selection, BODY is the document-wide styling target. */
+  get styleTarget(): Element {
     const body = document.body
     const inAuthoredBody = (element: Element | null | undefined): element is Element => Boolean(
       element?.isConnected && (element === body || body.contains(element)),
@@ -66,26 +67,21 @@ export class ManipulationFeature extends EditorFeature {
     if(inAuthoredBody(focusedWidget)) return focusedWidget
 
     const selection = document.getSelection()
-    if(!selection?.anchorNode || !selection.focusNode || selection.rangeCount === 0) return null
+    if(!selection?.anchorNode || !selection.focusNode || selection.rangeCount === 0) return body
     const selectedElement = $.selectedElement
     if(inAuthoredBody(selectedElement)) return selectedElement
     const inBody = (node: Node) => node === body || body.contains(node)
     const range = selection.getRangeAt(0)
     if(!inBody(selection.anchorNode) || !inBody(selection.focusNode)) {
-      // Browser-generated Select All ranges can start outside BODY. Treat them
-      // as a body selection only when they actually intersect authored content.
-      try {
-        return range.intersectsNode(body)? body: null
-      }
-      catch {
-        return null
-      }
+      // A live selection outside authored content is equivalent to having no
+      // document selection for element styling.
+      return body
     }
 
     const common = range.commonAncestorContainer
     if(common === document || common === document.documentElement) return body
     const container = getContainer(common)
-    return inAuthoredBody(container)? container: null
+    return inAuthoredBody(container)? container: body
   }
 
   private inlineStyleOf(element: Element | null): CSSStyleDeclaration | null {

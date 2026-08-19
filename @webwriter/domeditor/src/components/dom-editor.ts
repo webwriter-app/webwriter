@@ -2065,8 +2065,6 @@ export class DomEditor extends LitElement {
       && (mutation.priority === "" || mutation.priority === "important")
     if(typeof property !== "string" || !property || property !== property.trim() || property.includes(";")
       || mutation !== null && typeof mutation !== "string" && !validDeclaration) return
-    if(!this.elementStyle.target) return
-
     const typedMutation = mutation as ElementStyleMutation
     const previousState = this.elementStyle
     const inline = {...this.elementStyle.inline}
@@ -2082,6 +2080,14 @@ export class DomEditor extends LitElement {
     }).then(() => this.refreshElementStyleState()).catch(() => {
       this.elementStyle = previousState
       return this.refreshElementStyleState()
+    })
+  }
+
+  private handleElementStyleTargetHover = (event: Event) => {
+    const hovered = (event as CustomEvent<{hovered?: unknown}>).detail?.hovered
+    if(typeof hovered !== "boolean") return
+    void this.execute({type: "hoverStyleTarget", hovered}).catch(() => {
+      // Hover is best-effort; the editor may be unloading as the pointer leaves.
     })
   }
 
@@ -2465,6 +2471,7 @@ export class DomEditor extends LitElement {
           @graphic-layer-action=${this.handleGraphicLayerAction}
           @graphic-viewport-action=${this.handleGraphicViewportAction}
           @element-style-change=${this.handleElementStyleChange}
+          @element-style-target-hover=${this.handleElementStyleTargetHover}
           @element-style-state-request=${this.queueElementStyleRefresh}
           @ribbon-collapse=${this.handleRibbonCollapse}
           @ribbon-input-pointerdown=${this.handleRibbonInputPointerDown}

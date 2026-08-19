@@ -144,14 +144,6 @@ export class ElementStyleEditor extends LitElement {
       min-height: 0;
     }
 
-    .editor-fields[disabled] {
-      opacity: 0.5;
-    }
-
-    .editor-fields[disabled] .property-label {
-      cursor: default;
-    }
-
     .style-section {
       padding: 0.45rem 0;
     }
@@ -530,6 +522,14 @@ export class ElementStyleEditor extends LitElement {
     }))
   }
 
+  private dispatchTargetHover(hovered: boolean) {
+    this.dispatchEvent(new CustomEvent("element-style-target-hover", {
+      detail: {hovered},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
   private commitValue(name: string, value: string, declaration = this.declaration(name)) {
     this.dispatchChange(name, value === "" ? null : {
       value,
@@ -864,14 +864,22 @@ export class ElementStyleEditor extends LitElement {
   render() {
     if(this.mode === "basic") {
       return html`
-        <fieldset class="editor-fields" ?disabled=${!this.state.target}>
+        <fieldset
+          class="editor-fields"
+          @mouseenter=${() => this.dispatchTargetHover(true)}
+          @mouseleave=${() => this.dispatchTargetHover(false)}
+        >
           <div class="basic-grid">${this.definitions.map(definition => this.renderProperty(definition))}</div>
         </fieldset>
       `
     }
     return html`
       <div class="advanced-divider"><span>Advanced options</span></div>
-      <fieldset class="editor-fields" ?disabled=${!this.state.target}>
+      <fieldset
+        class="editor-fields"
+        @mouseenter=${() => this.dispatchTargetHover(true)}
+        @mouseleave=${() => this.dispatchTargetHover(false)}
+      >
         <div class="advanced">
           ${sectionGroups(this.definitions).map(([, definitions]) => html`
             <div class="style-section">

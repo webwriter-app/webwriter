@@ -33,7 +33,7 @@ async function mount(
 }
 
 describe("element style controls", () => {
-  it("keeps controls visible but disabled when no style target exists", async () => {
+  it("keeps controls enabled while the body target is loading", async () => {
     const editor = await mount(elementStyleCategories[0].basic, {
       target: null,
       inline: {},
@@ -42,9 +42,23 @@ describe("element style controls", () => {
     })
 
     const fieldset = editor.shadowRoot!.querySelector<HTMLFieldSetElement>("fieldset")!
-    expect(fieldset.disabled).toBe(true)
+    expect(fieldset.disabled).toBe(false)
     expect(editor.shadowRoot!.querySelectorAll(".property")).toHaveLength(6)
     expect(editor.shadowRoot!.textContent).not.toContain("Select document content")
+  })
+
+  it("announces style-target hover while the options are hovered", async () => {
+    const editor = await mount()
+    const hovers: boolean[] = []
+    editor.addEventListener("element-style-target-hover", event => {
+      hovers.push((event as CustomEvent<{hovered: boolean}>).detail.hovered)
+    })
+    const fieldset = editor.shadowRoot!.querySelector("fieldset")!
+
+    fieldset.dispatchEvent(new MouseEvent("mouseenter"))
+    fieldset.dispatchEvent(new MouseEvent("mouseleave"))
+
+    expect(hovers).toEqual([true, false])
   })
 
   it("uses select and dimension controls and commits serializable declarations", async () => {

@@ -846,7 +846,7 @@ describe("setStyle()", () => {
 
     expect(table).toHaveStyle({borderCollapse: "collapse"})
   })
-  it("does not mutate without a live selection", () => {
+  it("styles the body without a live selection", () => {
     document.body.innerHTML = "<p>hello</p>"
     const paragraph = document.body.firstElementChild!
     $.selectElement(paragraph)
@@ -855,11 +855,14 @@ describe("setStyle()", () => {
 
     editor.features.manipulation.setStyle({color: "red"})
     const target = editor.features.manipulation.styleTarget
+    const state = editor.features.manipulation.getStyleState(["color"])
     editor.features.selection.enable()
 
-    expect(target).toBeNull()
+    expect(target).toBe(document.body)
+    expect(state.target).toMatchObject({localName: "body"})
+    expect(state.inline.color).toEqual({value: "red", priority: ""})
     expect(paragraph).not.toHaveAttribute("style")
-    expect(document.body).not.toHaveAttribute("style")
+    expect(document.body).toHaveStyle({color: "red"})
   })
   it("supports custom properties and important priority", () => {
     document.body.innerHTML = "<p>hello</p>"

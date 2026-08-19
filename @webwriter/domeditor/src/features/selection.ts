@@ -270,6 +270,7 @@ export class SelectionFeature extends EditorFeature {
     document.removeEventListener("scroll", this.#handleWidgetScroll, {capture: true})
     this.#releaseCaptureSelection()
     this.#clearElementHover()
+    this.#clearStyleTargetHover()
     document.body.classList.remove("◆key-mod-down", "◆key-alt-down", "◆key-shift-down")
     if(!Array.from(document.body.classList).some(marker => marker !== "◆" && marker.startsWith("◆"))) {
       document.body.classList.remove("◆")
@@ -399,11 +400,19 @@ export class SelectionFeature extends EditorFeature {
     },
     hoverNode: ({path}: {type: "hoverNode", path: number[] | null}) => {
       this.#clearElementHover()
+      this.#clearStyleTargetHover()
       if(path === null) return
 
       const pathElement = this.#elementAtPath(path)
       const element = pathElement.closest("table") ?? pathElement
       element.classList.add("◆", "◆element-hovered")
+    },
+    hoverStyleTarget: ({hovered}: {type: "hoverStyleTarget", hovered: boolean}) => {
+      this.#clearStyleTargetHover()
+      if(!hovered) return
+
+      this.#clearElementHover()
+      this.editor.features.manipulation.styleTarget.classList.add("◆", "◆style-target-hovered")
     },
   } as const
 
@@ -537,12 +546,20 @@ export class SelectionFeature extends EditorFeature {
   }
 
   #clearElementHover() {
-    const hoveredElements = Array.from(document.querySelectorAll(".◆element-hovered"))
-    if(document.body.classList.contains("◆element-hovered")) {
+    this.#clearHoverMarker("◆element-hovered")
+  }
+
+  #clearStyleTargetHover() {
+    this.#clearHoverMarker("◆style-target-hovered")
+  }
+
+  #clearHoverMarker(marker: "◆element-hovered" | "◆style-target-hovered") {
+    const hoveredElements = Array.from(document.querySelectorAll(`.${marker}`))
+    if(document.body.classList.contains(marker)) {
       hoveredElements.unshift(document.body)
     }
     hoveredElements.forEach(el => {
-      el.classList.remove("◆element-hovered")
+      el.classList.remove(marker)
       if(!Array.from(el.classList).some(k => k !== "◆" && k.startsWith("◆"))) {
         el.classList.remove("◆")
       }

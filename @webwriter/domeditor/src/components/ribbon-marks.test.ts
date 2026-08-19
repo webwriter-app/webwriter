@@ -203,10 +203,10 @@ describe("mark ribbon controls", () => {
     await styleDrawers[0].updateComplete
     expect(styleDrawers[0].hasAttribute("drawer-open")).toBe(true)
     expect(styleDrawers[0].shadowRoot!.querySelector<HTMLSlotElement>('slot[name="more"]')!.hidden).toBe(false)
-    const disabledStyleEditor = styleDrawers[0].querySelector("element-style-editor")!
-    await disabledStyleEditor.updateComplete
-    expect(disabledStyleEditor.shadowRoot!.querySelector("fieldset")?.hasAttribute("disabled")).toBe(true)
-    expect(disabledStyleEditor.shadowRoot!.textContent).not.toContain("Select document content")
+    const styleEditor = styleDrawers[0].querySelector("element-style-editor")!
+    await styleEditor.updateComplete
+    expect(styleEditor.shadowRoot!.querySelector("fieldset")?.hasAttribute("disabled")).toBe(false)
+    expect(styleEditor.shadowRoot!.textContent).not.toContain("Select document content")
 
     tabs.find(tab => tab.label === "File")!.shadowRoot!.querySelector("button")!.click()
     await ribbon.updateComplete

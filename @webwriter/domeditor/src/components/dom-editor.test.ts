@@ -853,6 +853,17 @@ describe("DomEditor.execute()", () => {
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     const styleTab = ribbon.shadowRoot!.querySelector('ribbon-tab[label="Style"]')!
 
+    expect(ribbon.elementStyle.target).toBeNull()
+    ribbon.dispatchEvent(new CustomEvent("element-style-change", {
+      detail: {property: "display", mutation: {value: "flex", priority: ""}},
+      bubbles: true,
+      composed: true,
+    }))
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({
+      type: "setStyle",
+      styles: {display: {value: "flex", priority: ""}},
+    }))
+
     styleTab.shadowRoot!.querySelector<HTMLButtonElement>("button")!.click()
     await vi.waitFor(() => expect(execute).toHaveBeenCalledWith(expect.objectContaining({
       type: "getStyleState",
@@ -866,7 +877,13 @@ describe("DomEditor.execute()", () => {
     const position = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Position & Form"]')!
     const basic = position.querySelector("element-style-editor")!
     await basic.updateComplete
-    expect(basic.shadowRoot!.querySelector<HTMLFieldSetElement>("fieldset")!.disabled).toBe(false)
+    const fieldset = basic.shadowRoot!.querySelector<HTMLFieldSetElement>("fieldset")!
+    expect(fieldset.disabled).toBe(false)
+
+    fieldset.dispatchEvent(new MouseEvent("mouseenter"))
+    fieldset.dispatchEvent(new MouseEvent("mouseleave"))
+    expect(execute).toHaveBeenCalledWith({type: "hoverStyleTarget", hovered: true})
+    expect(execute).toHaveBeenCalledWith({type: "hoverStyleTarget", hovered: false})
 
     ribbon.dispatchEvent(new CustomEvent("element-style-change", {
       detail: {property: "display", mutation: {value: "grid", priority: ""}},
