@@ -33,7 +33,7 @@ export class RibbonDrawer extends LitElement {
       --ribbon-drawer-expanded-width: 13.25rem;
       --ribbon-drawer-collapsed-width: 5.25rem;
       --ribbon-drawer-width: var(--ribbon-drawer-expanded-width);
-      --ribbon-drawer-height: 5rem;
+      --ribbon-drawer-height: 5.625rem;
       --ribbon-drawer-more-height: 5.85rem;
       --ribbon-drawer-panel-padding-block: 0.5rem;
       --ribbon-drawer-inline-start: 0;

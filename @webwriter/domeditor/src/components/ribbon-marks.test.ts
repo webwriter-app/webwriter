@@ -109,6 +109,7 @@ describe("mark ribbon controls", () => {
 
     expect(getComputedStyle(ribbon).transition).toContain("height")
     expect(getComputedStyle(ribbon).transition).toContain("max-height")
+    expect(getComputedStyle(ribbon).height).toBe("140px")
     expect(fileTab.ribbonCollapsed).toBe(false)
 
     ribbon.expanded = false

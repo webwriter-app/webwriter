@@ -47,7 +47,7 @@ describe("responsive ribbon drawer", () => {
 
     expect(drawer.hasAttribute("drawer-open")).toBe(true)
     expect(toggle.getAttribute("aria-expanded")).toBe("true")
-    expect(getComputedStyle(controls).maxHeight).toBe("80px")
+    expect(getComputedStyle(controls).maxHeight).toBe("90px")
     expect(getComputedStyle(controls).paddingTop).toBe("8px")
     expect(getComputedStyle(controls).paddingBottom).toBe("8px")
     expect(getComputedStyle(controls).visibility).toBe("visible")

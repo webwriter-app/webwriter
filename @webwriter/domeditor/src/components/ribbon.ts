@@ -476,8 +476,8 @@ export class AppRibbon extends LitElement {
       position: relative;
       z-index: 1;
       width: 100%;
-      height: 130px;
-      max-height: 130px;
+      height: 140px;
+      max-height: 140px;
       overflow: visible;
       color: #2f3742;
       background: #ffffff;
