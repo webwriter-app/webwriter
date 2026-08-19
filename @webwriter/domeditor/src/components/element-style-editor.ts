@@ -69,6 +69,13 @@ export class ElementStyleEditor extends LitElement {
       height: 100%;
     }
 
+    :host([mode="advanced"]) {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      min-height: 0;
+    }
+
     button,
     input,
     select {
@@ -79,38 +86,48 @@ export class ElementStyleEditor extends LitElement {
 
     .basic-grid {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       grid-template-rows: repeat(2, minmax(0, 1fr));
       height: 100%;
-      gap: 0.12rem 0.3rem;
+      gap: 0.25rem 0.3rem;
       padding: 0.1rem 0;
     }
 
     .advanced {
       box-sizing: border-box;
       height: 100%;
-      padding: 0.2rem 0.15rem 0.45rem;
+      padding: 0 0.65rem 0.45rem 0.15rem;
       overflow-x: hidden;
-      overflow-y: auto;
+      overflow-y: scroll;
       overscroll-behavior: contain;
       scrollbar-width: thin;
     }
 
-    .target {
-      position: sticky;
-      top: -0.2rem;
-      z-index: 2;
-      margin: 0 0 0.35rem;
-      padding: 0.28rem 0.35rem;
-      border-bottom: 1px solid #d8dee6;
-      color: #526b86;
-      background: #f2f2f2;
+    .advanced-divider {
+      position: relative;
+      flex: 0 0 auto;
+      margin: 1rem 0.65rem 0.15rem 0.15rem;
+      color: inherit;
       font-size: 0.64rem;
+      font-weight: 650;
+      text-align: center;
     }
 
-    .target code {
-      color: #1e4f87;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    .advanced-divider::before {
+      position: absolute;
+      top: 50%;
+      right: 0;
+      left: 0;
+      height: 2px;
+      background: #9cabbc;
+      content: "";
+      transform: translateY(-50%);
+    }
+
+    .advanced-divider span {
+      position: relative;
+      padding: 0 0.45rem;
+      background: #f2f2f2;
     }
 
     .editor-fields {
@@ -121,40 +138,38 @@ export class ElementStyleEditor extends LitElement {
       border: 0;
     }
 
+    :host([mode="advanced"]) .editor-fields {
+      flex: 1 1 auto;
+      height: auto;
+      min-height: 0;
+    }
+
     .editor-fields[disabled] {
       opacity: 0.5;
     }
 
-    .editor-fields[disabled] .property-label,
-    .editor-fields[disabled] summary {
+    .editor-fields[disabled] .property-label {
       cursor: default;
     }
 
-    details {
-      margin: 0 0 0.3rem;
-      border: 1px solid #d8dee6;
-      border-radius: 0.35rem;
-      background: #fff;
+    .style-section {
+      padding: 0.45rem 0;
     }
 
-    summary {
-      padding: 0.35rem 0.45rem;
-      color: #34465a;
-      font-weight: 650;
-      cursor: pointer;
-      user-select: none;
+    .style-section + .style-section {
+      border-top: 1px solid #d8dee6;
     }
 
     .section-controls {
       display: grid;
-      grid-template-columns: minmax(0, 1fr);
-      gap: 0.2rem;
-      padding: 0 0.35rem 0.4rem;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.25rem 0.4rem;
+      padding: 0 0.35rem;
     }
 
     .property {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto auto;
+      grid-template-columns: minmax(0, 1fr) auto;
       grid-template-rows: auto minmax(1.35rem, auto);
       min-width: 0;
       gap: 0.02rem 0.18rem;
@@ -232,12 +247,14 @@ export class ElementStyleEditor extends LitElement {
     }
 
     input:hover,
-    select:hover {
+    select:hover,
+    .color-trigger:hover {
       border-color: #9cabbc;
     }
 
     input:focus,
-    select:focus {
+    select:focus,
+    .color-trigger:focus-visible {
       border-color: #3977c7;
       box-shadow: 0 0 0 1px #3977c7;
     }
@@ -247,54 +264,140 @@ export class ElementStyleEditor extends LitElement {
       opacity: 1;
     }
 
+    input[type="number"] {
+      appearance: textfield;
+    }
+
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button {
+      margin: 0;
+      appearance: none;
+    }
+
+    select[data-computed],
+    .toggle-control[data-computed] {
+      color: #8794a3;
+    }
+
+    select option {
+      color: #2f3742;
+    }
+
+    select option[value=""] {
+      color: #8794a3;
+    }
+
     .compound {
-      display: grid;
-      grid-template-columns: minmax(2.75rem, 1fr) minmax(2.35rem, auto);
+      display: flex;
+      flex-flow: row nowrap;
+      width: 100%;
+    }
+
+    .compound select,
+    .color-popover input {
+      field-sizing: content;
+      width: auto;
+      white-space: nowrap;
     }
 
     .compound input {
+      flex: 1 1 0;
+      width: 100%;
+      min-width: 0;
       border-radius: 0.28rem 0 0 0.28rem;
     }
 
     .compound select {
+      flex: 0 0 auto;
+      min-width: 2.35rem;
       border-left: 0;
       border-radius: 0 0.28rem 0.28rem 0;
     }
 
     .color-control {
-      display: grid;
       grid-column: 1;
-      grid-template-columns: 1.55rem minmax(0, 1fr);
+      width: 1.55rem;
+    }
+
+    .color-trigger {
+      display: block;
+      width: 1.55rem;
+      height: 1.45rem;
+      padding: 0.12rem;
+      border: 1px solid #c9d0da;
+      border-radius: 0.28rem;
+      background: transparent;
+      cursor: pointer;
+      outline: none;
+    }
+
+    .color-swatch {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border-radius: 0.12rem;
+      background: var(--style-color);
+    }
+
+    .color-popover {
+      position: fixed;
+      position-try-fallbacks: flip-block, flip-inline;
+      inset: auto;
+      top: anchor(bottom);
+      left: anchor(left);
+      box-sizing: border-box;
+      width: min(14rem, calc(100vw - 1rem));
+      margin: 0.2rem 0 0;
+      padding: 0.35rem;
+      border: 1px solid #a8a8a8;
+      border-radius: 0.35rem;
+      color: #2f3742;
+      background: #fff;
+      box-shadow: 0 0.4rem 1rem rgb(0 0 0 / 16%);
+    }
+
+    .color-popover-row {
+      display: flex;
+      flex-flow: row nowrap;
       width: 100%;
       min-width: 0;
     }
 
-    .color-control input[type="color"] {
+    .color-popover input[type="color"] {
+      flex: 0 0 1.55rem;
       width: 1.55rem;
       padding: 0.12rem;
       border-radius: 0.28rem 0 0 0.28rem;
     }
 
-    .color-control input[type="text"] {
+    .color-popover input[type="text"] {
+      flex: 1 1 auto;
+      min-width: 0;
       border-left: 0;
       border-radius: 0 0.28rem 0.28rem 0;
     }
 
     .range-control {
-      display: grid;
+      display: flex;
       grid-column: 1;
-      grid-template-columns: minmax(0, 1fr) 2.7rem;
       align-items: center;
-      gap: 0.18rem;
+      width: 100%;
       min-width: 0;
     }
 
     .range-control input[type="range"] {
+      width: 100%;
+      min-width: 0;
       height: 1.2rem;
       padding: 0;
       border: 0;
       box-shadow: none;
       background: transparent;
+    }
+
+    .range-control input[type="range"][data-computed],
+    .toggle-control[data-computed] input {
+      accent-color: #8794a3;
     }
 
     .toggle-control {
@@ -305,8 +408,7 @@ export class ElementStyleEditor extends LitElement {
       width: 100%;
       height: 1.45rem;
       padding: 0 0.32rem;
-      border: 1px solid #c9d0da;
-      border-radius: 0.28rem;
+      border: 0;
       background: transparent;
     }
 
@@ -331,8 +433,7 @@ export class ElementStyleEditor extends LitElement {
       cursor: pointer;
     }
 
-    .property-action:hover:not(:disabled),
-    .property-action[aria-pressed="true"] {
+    .property-action:hover {
       border-color: #8ca7c5;
       color: #1e4f87;
       background: #e8eef5;
@@ -341,11 +442,6 @@ export class ElementStyleEditor extends LitElement {
     .property-action:focus-visible {
       outline: 2px solid #3977c7;
       outline-offset: -1px;
-    }
-
-    .property-action:disabled {
-      cursor: default;
-      opacity: 0.32;
     }
 
     .custom-form {
@@ -449,15 +545,6 @@ export class ElementStyleEditor extends LitElement {
     else this.dispatchChange(definition.name, null)
   }
 
-  private togglePriority(definition: ElementStylePropertyDefinition) {
-    const declaration = this.declaration(definition.name)
-    if(!declaration) return
-    this.dispatchChange(definition.name, {
-      value: declaration.value,
-      priority: declaration.priority === "important" ? "" : "important",
-    })
-  }
-
   private renderLabel(definition: ElementStylePropertyDefinition) {
     const declaration = this.declaration(definition.name)
     const keyword = cssWideKeywords.includes(declaration?.value as typeof cssWideKeywords[number])
@@ -486,6 +573,7 @@ export class ElementStyleEditor extends LitElement {
     return html`
       <select
         aria-labelledby=${`style-label-${definition.name}`}
+        data-computed=${!current && computed ? "" : nothing}
         .value=${current}
         @change=${(event: Event) => this.commitValue(
           definition.name,
@@ -493,7 +581,7 @@ export class ElementStyleEditor extends LitElement {
           declaration,
         )}
       >
-        <option value="">${computed ? `${computed} · computed` : "Not set"}</option>
+        <option value="">${computed || "Not set"}</option>
         ${hasUnlistedValue ? html`<option value=${current}>${current}</option>` : nothing}
         ${options.map(option => html`<option value=${option}>${option}</option>`)}
       </select>
@@ -504,12 +592,25 @@ export class ElementStyleEditor extends LitElement {
     const units = definition.units ?? []
     const authored = this.editableValue(definition.name)
     const parsed = simpleDimension(authored, units)
-    const computed = simpleDimension(this.state.computed[definition.name] ?? "", units)
+    const computedValue = this.state.computed[definition.name]?.trim() ?? ""
+    const computed = simpleDimension(computedValue, units)
     if(authored && !parsed) {
       return html`<input
         type="text"
         aria-labelledby=${`style-label-${definition.name}`}
         .value=${authored}
+        @change=${(event: Event) => this.commitValue(
+          definition.name,
+          (event.currentTarget as HTMLInputElement).value.trim(),
+          declaration,
+        )}
+      />`
+    }
+    if(!authored && computedValue && !computed) {
+      return html`<input
+        type="text"
+        aria-labelledby=${`style-label-${definition.name}`}
+        placeholder=${computedValue}
         @change=${(event: Event) => this.commitValue(
           definition.name,
           (event.currentTarget as HTMLInputElement).value.trim(),
@@ -534,6 +635,7 @@ export class ElementStyleEditor extends LitElement {
         />
         <select
           aria-label=${`${definition.label} unit`}
+          data-computed=${!parsed && computed ? "" : nothing}
           .value=${unit}
           @change=${(event: Event) => {
             const select = event.currentTarget as HTMLSelectElement
@@ -549,36 +651,58 @@ export class ElementStyleEditor extends LitElement {
   private renderColor(definition: ElementStylePropertyDefinition, declaration?: ElementStyleDeclaration) {
     const current = this.editableValue(definition.name)
     const computed = this.state.computed[definition.name]?.trim() ?? ""
+    const popupId = `style-color-${definition.name}`
+    const anchorName = `--${popupId}`
     return html`
       <span class="color-control">
-        <input
-          type="color"
-          aria-label=${`${definition.label} picker`}
-          .value=${colorHex(current || computed)}
-          @change=${(event: Event) => this.commitValue(
-            definition.name,
-            (event.currentTarget as HTMLInputElement).value,
-            declaration,
-          )}
-        />
-        <input
-          type="text"
+        <button
+          class="color-trigger"
+          type="button"
+          aria-label=${`Edit ${definition.label}`}
+          aria-haspopup="dialog"
+          popovertarget=${popupId}
+          style=${`anchor-name: ${anchorName}; --style-color: ${colorHex(current || computed)}`}
+        ><span class="color-swatch" aria-hidden="true"></span></button>
+        <div
+          id=${popupId}
+          class="color-popover"
+          popover="auto"
+          role="dialog"
           aria-labelledby=${`style-label-${definition.name}`}
-          .value=${current}
-          placeholder=${computed}
-          @change=${(event: Event) => this.commitValue(
-            definition.name,
-            (event.currentTarget as HTMLInputElement).value.trim(),
-            declaration,
-          )}
-        />
+          style=${`position-anchor: ${anchorName}`}
+        >
+          <span class="color-popover-row">
+            <input
+              type="color"
+              aria-label=${`${definition.label} picker`}
+              .value=${colorHex(current || computed)}
+              @change=${(event: Event) => this.commitValue(
+                definition.name,
+                (event.currentTarget as HTMLInputElement).value,
+                declaration,
+              )}
+            />
+            <input
+              type="text"
+              aria-label=${`${definition.label} CSS value`}
+              .value=${current}
+              placeholder=${computed}
+              @change=${(event: Event) => this.commitValue(
+                definition.name,
+                (event.currentTarget as HTMLInputElement).value.trim(),
+                declaration,
+              )}
+            />
+          </span>
+        </div>
       </span>
     `
   }
 
   private renderRange(definition: ElementStylePropertyDefinition, declaration?: ElementStyleDeclaration) {
-    const fallback = this.state.computed[definition.name]?.trim() || String(definition.min ?? 0)
-    const current = this.editableValue(definition.name) || fallback
+    const current = this.editableValue(definition.name)
+    const computed = this.state.computed[definition.name]?.trim() ?? ""
+    const effective = current || computed || String(definition.min ?? 0)
     const commit = (event: Event) => this.commitValue(
       definition.name,
       (event.currentTarget as HTMLInputElement).value,
@@ -592,16 +716,8 @@ export class ElementStyleEditor extends LitElement {
           min=${definition.min ?? 0}
           max=${definition.max ?? 100}
           step=${definition.step ?? 1}
-          .value=${current}
-          @change=${commit}
-        />
-        <input
-          type="number"
-          aria-label=${`${definition.label} value`}
-          min=${definition.min ?? 0}
-          max=${definition.max ?? 100}
-          step=${definition.step ?? 1}
-          .value=${current}
+          data-computed=${!current && computed ? "" : nothing}
+          .value=${effective}
           @change=${commit}
         />
       </span>
@@ -611,9 +727,10 @@ export class ElementStyleEditor extends LitElement {
   private renderToggle(definition: ElementStylePropertyDefinition, declaration?: ElementStyleDeclaration) {
     const [off = "none", on = "auto"] = definition.values ?? []
     const computed = this.state.computed[definition.name]?.trim()
-    const checked = (this.editableValue(definition.name) || computed) === on
+    const current = this.editableValue(definition.name)
+    const checked = (current || computed) === on
     return html`
-      <label class="toggle-control">
+      <label class="toggle-control" data-computed=${!current && computed ? "" : nothing}>
         <input
           type="checkbox"
           aria-labelledby=${`style-label-${definition.name}`}
@@ -658,15 +775,6 @@ export class ElementStyleEditor extends LitElement {
       <div class="property" data-property=${definition.name}>
         ${this.renderLabel(definition)}
         ${this.renderInput(definition, declaration)}
-        <button
-          class="property-action"
-          type="button"
-          title=${declaration?.priority === "important" ? "Remove !important" : "Set !important"}
-          aria-label=${`${declaration?.priority === "important" ? "Remove" : "Set"} !important for ${definition.label}`}
-          aria-pressed=${declaration?.priority === "important"}
-          ?disabled=${!declaration}
-          @click=${() => this.togglePriority(definition)}
-        >!</button>
         ${declaration ? html`
           <button
             class="property-action"
@@ -695,8 +803,7 @@ export class ElementStyleEditor extends LitElement {
     const declarations = Object.entries(this.state.inline)
       .filter(([name]) => !elementStylePropertyNameSet.has(name))
     return html`
-      <details open>
-        <summary>Custom & less common properties</summary>
+      <div class="style-section custom-properties">
         <form class="custom-form" @submit=${this.submitCustom}>
           <label>Property
             <input
@@ -750,7 +857,7 @@ export class ElementStyleEditor extends LitElement {
             `)}
           </div>
         ` : nothing}
-      </details>
+      </div>
     `
   }
 
@@ -763,16 +870,13 @@ export class ElementStyleEditor extends LitElement {
       `
     }
     return html`
+      <div class="advanced-divider"><span>Advanced options</span></div>
       <fieldset class="editor-fields" ?disabled=${!this.state.target}>
         <div class="advanced">
-          ${this.state.target ? html`
-            <p class="target">Advanced styles for <code>&lt;${this.state.target.localName}&gt;</code></p>
-          ` : nothing}
-          ${sectionGroups(this.definitions).map(([section, definitions]) => html`
-            <details open>
-              <summary>${section}</summary>
+          ${sectionGroups(this.definitions).map(([, definitions]) => html`
+            <div class="style-section">
               <div class="section-controls">${definitions.map(definition => this.renderProperty(definition))}</div>
-            </details>
+            </div>
           `)}
           ${this.allowCustom ? this.renderCustomProperties() : nothing}
         </div>

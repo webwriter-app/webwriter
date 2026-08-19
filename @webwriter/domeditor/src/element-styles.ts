@@ -61,19 +61,19 @@ const positionBasic = [
     "block", "inline", "inline-block", "flow-root", "flex", "inline-flex", "grid", "inline-grid", "contents", "none",
   )),
   select("position", "Position", "Position in container", values("static", "relative", "absolute", "fixed", "sticky")),
+  select("overflow", "Overflow", "Overflow & visibility", values("visible", "hidden", "clip", "scroll", "auto")),
   length("width", "Width", "Size"),
   length("height", "Height", "Size"),
+  select("box-sizing", "Box sizing", "Size", values("content-box", "border-box")),
 ] as const
 
 const positionAdvanced = [
   select("visibility", "Visibility", "Overflow & visibility", values("visible", "hidden", "collapse")),
-  select("overflow", "Overflow", "Overflow & visibility", values("visible", "hidden", "clip", "scroll", "auto")),
   select("overflow-x", "Horizontal overflow", "Overflow & visibility", values("visible", "hidden", "clip", "scroll", "auto")),
   select("overflow-y", "Vertical overflow", "Overflow & visibility", values("visible", "hidden", "clip", "scroll", "auto")),
   select("overflow-clip-margin", "Overflow clip margin", "Overflow & visibility", values("content-box", "padding-box", "border-box")),
   select("float", "Float", "Flow", values("none", "left", "right", "inline-start", "inline-end")),
   select("clear", "Clear", "Flow", values("none", "left", "right", "both", "inline-start", "inline-end")),
-  select("box-sizing", "Box sizing", "Size", values("content-box", "border-box")),
   length("min-width", "Minimum width", "Size"),
   length("max-width", "Maximum width", "Size"),
   length("min-height", "Minimum height", "Size"),
@@ -126,16 +126,16 @@ const positionAdvanced = [
 const layoutBasic = [
   length("gap", "Gap", "Spacing"),
   select("flex-direction", "Flex direction", "Flex", values("row", "row-reverse", "column", "column-reverse")),
+  select("flex-wrap", "Flex wrap", "Flex container", values("nowrap", "wrap", "wrap-reverse")),
   select("justify-content", "Justify content", "Alignment", values("normal", "start", "center", "end", "space-between", "space-around", "space-evenly", "stretch")),
   select("align-items", "Align items", "Alignment", values("normal", "stretch", "start", "center", "end", "baseline")),
+  select("align-content", "Align content", "Alignment", values("normal", "start", "center", "end", "space-between", "space-around", "space-evenly", "stretch")),
 ] as const
 
 const layoutAdvanced = [
   length("row-gap", "Row gap", "Spacing"),
   length("column-gap", "Column gap", "Spacing"),
-  select("flex-wrap", "Flex wrap", "Flex container", values("nowrap", "wrap", "wrap-reverse")),
   text("flex-flow", "Flex flow", "Flex container"),
-  select("align-content", "Align content", "Alignment", values("normal", "start", "center", "end", "space-between", "space-around", "space-evenly", "stretch")),
   select("justify-items", "Justify items", "Alignment", values("normal", "stretch", "start", "center", "end", "baseline")),
   select("align-self", "Align self", "Flex & grid item", values("auto", "normal", "stretch", "start", "center", "end", "baseline")),
   select("justify-self", "Justify self", "Flex & grid item", values("auto", "normal", "stretch", "start", "center", "end")),
@@ -173,8 +173,10 @@ const layoutAdvanced = [
 const textBasic = [
   select("font-family", "Font family", "Font", values("system-ui", "serif", "sans-serif", "monospace", "cursive", "fantasy")),
   length("font-size", "Font size", "Font"),
+  number("line-height", "Line height", "Paragraph", 0, undefined, 0.1),
   select("font-weight", "Font weight", "Font", values("normal", "bold", "lighter", "bolder", "100", "200", "300", "400", "500", "600", "700", "800", "900")),
   select("text-align", "Alignment", "Paragraph", values("start", "center", "end", "justify", "left", "right")),
+  select("white-space", "White space", "Wrapping & breaking", values("normal", "pre", "nowrap", "pre-wrap", "pre-line", "break-spaces")),
 ] as const
 
 const textAdvanced = [
@@ -184,13 +186,11 @@ const textAdvanced = [
   text("font-feature-settings", "Font features", "Font"),
   text("font-kerning", "Kerning", "Font"),
   select("font-variant-caps", "Capital variant", "Font", values("normal", "small-caps", "all-small-caps", "petite-caps", "unicase", "titling-caps")),
-  number("line-height", "Line height", "Paragraph", 0, undefined, 0.1),
   length("letter-spacing", "Letter spacing", "Paragraph"),
   length("word-spacing", "Word spacing", "Paragraph"),
   length("text-indent", "Text indent", "Paragraph"),
   select("text-align-last", "Last-line alignment", "Paragraph", values("auto", "start", "center", "end", "justify", "left", "right")),
   select("text-justify", "Justification", "Paragraph", values("auto", "inter-word", "inter-character", "none")),
-  select("white-space", "White space", "Wrapping & breaking", values("normal", "pre", "nowrap", "pre-wrap", "pre-line", "break-spaces")),
   select("text-wrap", "Text wrap", "Wrapping & breaking", values("wrap", "nowrap", "balance", "pretty", "stable")),
   select("overflow-wrap", "Overflow wrap", "Wrapping & breaking", values("normal", "anywhere", "break-word")),
   select("word-break", "Word break", "Wrapping & breaking", values("normal", "break-all", "keep-all", "auto-phrase", "break-word")),
@@ -216,19 +216,19 @@ const textAdvanced = [
 const colorBasic = [
   color("color", "Text color", "Foreground"),
   color("background-color", "Background color", "Background"),
+  text("background-image", "Background image", "Background"),
   range("opacity", "Opacity", "Visibility", 0, 1, 0.01),
   toggle("mix-blend-mode", "Blend with backdrop", "Compositing", "normal", "multiply"),
+  text("box-shadow", "Box shadow", "Effects"),
 ] as const
 
 const colorAdvanced = [
-  text("background-image", "Background image", "Background"),
   select("background-repeat", "Background repeat", "Background", values("repeat", "no-repeat", "repeat-x", "repeat-y", "space", "round")),
   text("background-position", "Background position", "Background"),
   text("background-size", "Background size", "Background"),
   select("background-attachment", "Background attachment", "Background", values("scroll", "fixed", "local")),
   select("background-origin", "Background origin", "Background", values("border-box", "padding-box", "content-box")),
   select("background-clip", "Background clip", "Background", values("border-box", "padding-box", "content-box", "text")),
-  text("box-shadow", "Box shadow", "Effects"),
   text("filter", "Filter", "Effects"),
   text("backdrop-filter", "Backdrop filter", "Effects"),
   select("background-blend-mode", "Background blend", "Compositing", values("normal", "multiply", "screen", "overlay", "darken", "lighten", "color-dodge", "color-burn", "hard-light", "soft-light", "difference", "exclusion", "hue", "saturation", "color", "luminosity")),
@@ -243,15 +243,15 @@ const colorAdvanced = [
 const interactionBasic = [
   select("cursor", "Cursor", "Pointer", values("auto", "default", "pointer", "text", "move", "grab", "grabbing", "crosshair", "help", "not-allowed", "zoom-in", "zoom-out", "none")),
   select("user-select", "Text selection", "Pointer", values("auto", "text", "none", "all")),
+  select("touch-action", "Touch action", "Pointer", values("auto", "none", "pan-x", "pan-y", "manipulation")),
   select("pointer-events", "Pointer events", "Pointer", values("auto", "none")),
   select("resize", "Resize", "Pointer", values("none", "both", "horizontal", "vertical", "block", "inline")),
+  select("appearance", "Native appearance", "Controls", values("none", "auto", "base", "textfield", "menulist-button")),
 ] as const
 
 const interactionAdvanced = [
-  select("appearance", "Native appearance", "Controls", values("none", "auto", "base", "textfield", "menulist-button")),
   color("accent-color", "Accent color", "Controls"),
   color("caret-color", "Caret color", "Controls"),
-  select("touch-action", "Touch action", "Pointer", values("auto", "none", "pan-x", "pan-y", "manipulation")),
   select("scroll-behavior", "Scroll behavior", "Scrolling", values("auto", "smooth")),
   select("overscroll-behavior", "Overscroll behavior", "Scrolling", values("auto", "contain", "none")),
   select("scrollbar-width", "Scrollbar width", "Scrolling", values("auto", "thin", "none")),
@@ -278,12 +278,13 @@ const interactionAdvanced = [
 const otherBasic = [
   select("object-fit", "Object fit", "Replaced content", values("fill", "contain", "cover", "none", "scale-down")),
   text("object-position", "Object position", "Replaced content"),
+  select("image-rendering", "Image rendering", "Replaced content", values("auto", "smooth", "high-quality", "crisp-edges", "pixelated")),
   text("content", "Generated content", "Generated content"),
   text("will-change", "Will change", "Performance"),
+  select("field-sizing", "Field sizing", "Controls", values("fixed", "content")),
 ] as const
 
 const otherAdvanced = [
-  select("image-rendering", "Image rendering", "Replaced content", values("auto", "smooth", "high-quality", "crisp-edges", "pixelated")),
   select("object-view-box", "Object view box", "Replaced content", values("none")),
   text("quotes", "Quotation marks", "Generated content"),
   text("counter-increment", "Counter increment", "Counters"),
@@ -292,7 +293,6 @@ const otherAdvanced = [
   text("contain", "Containment", "Containment"),
   text("container-name", "Container name", "Containment"),
   select("container-type", "Container type", "Containment", values("normal", "size", "inline-size", "scroll-state")),
-  select("field-sizing", "Field sizing", "Controls", values("fixed", "content")),
   select("interpolate-size", "Size interpolation", "Interpolation", values("numeric-only", "allow-keywords")),
   text("anchor-name", "Anchor name", "Anchoring"),
   text("position-anchor", "Position anchor", "Anchoring"),

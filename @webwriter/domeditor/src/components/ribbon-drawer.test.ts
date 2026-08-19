@@ -24,6 +24,16 @@ async function mountDrawer(collapsed = true) {
 }
 
 describe("responsive ribbon drawer", () => {
+  it("widens three-column Style drawers in both states", () => {
+    const styles = RibbonDrawer.styles.toString()
+
+    expect(styles).toMatch(/:host\(\[layout="element-style"\]\)\s*\{[\s\S]*?--ribbon-drawer-expanded-width:\s*22\.5rem;/)
+    expect(styles).toMatch(/:host\(\[layout="element-style"\]\)\s*\{[\s\S]*?--ribbon-drawer-width:\s*min\(33rem, calc\(100vw - 1rem\)\);/)
+    expect(styles).toMatch(/:host\(\[layout="element-style"\]\) \.drawer\.expanded \.controls\s*\{[\s\S]*?padding-bottom:\s*0;/)
+    expect(styles).toMatch(/:host\(\[layout="element-style"\]\) \.drawer\.expanded\s*\{[\s\S]*?padding-right:\s*0;/)
+    expect(styles).toMatch(/\.drawer\.expanded ::slotted\(element-style-editor\[mode="basic"\]\)\s*\{[\s\S]*?margin-right:\s*0\.5rem;/)
+  })
+
   it("uses a representative summary while preserving the original controls in a wider drawer", async () => {
     const drawer = await mountDrawer()
     const summary = drawer.shadowRoot!.querySelector(".summary")!
