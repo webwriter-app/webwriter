@@ -987,7 +987,7 @@ describe("DomEditor.execute()", () => {
       "Redo",
     ])
     expect(historyButtons[0].querySelector(".icon-tabler-arrow-back-up")).not.toBeNull()
-    expect(historyButtons[1].querySelector(".icon-tabler-history-toggle")).not.toBeNull()
+    expect(historyButtons[1].querySelector(".icon-tabler-circle-dot")).not.toBeNull()
     expect(historyButtons[2].querySelector(".icon-tabler-arrow-forward-up")).not.toBeNull()
     expect(historyButtons[2].parentElement?.nextElementSibling?.getAttribute("aria-label")).toBe("Preview")
 

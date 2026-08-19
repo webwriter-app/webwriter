@@ -48,6 +48,8 @@ describe("AI prompt ribbon", () => {
 
     expect(getComputedStyle(slot).minWidth).toBe("24px")
     expect(getComputedStyle(slot).maxWidth).toBe("600px")
+    expect(slot.parentElement?.classList.contains("ribbon-navigation")).toBe(true)
+    expect(getComputedStyle(slot).marginLeft).toBe("auto")
     expect(getComputedStyle(brand).minWidth).toBe("37px")
     expect(getComputedStyle(brand).paddingLeft).toBe("13px")
     expect(getComputedStyle(brand).justifyContent).toBe("flex-start")

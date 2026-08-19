@@ -44,6 +44,7 @@ import h6 from "@tabler/icons/outline/h-6.svg?raw"
 import heading from "@tabler/icons/outline/heading.svg?raw"
 import highlight from "@tabler/icons/outline/highlight.svg?raw"
 import historyToggle from "@tabler/icons/outline/history-toggle.svg?raw"
+import circleDot from "@tabler/icons/outline/circle-dot.svg?raw"
 import italic from "@tabler/icons/outline/italic.svg?raw"
 import infoCircle from "@tabler/icons/outline/info-circle.svg?raw"
 import keyboard from "@tabler/icons/outline/keyboard.svg?raw"
@@ -172,7 +173,7 @@ const icons: Record<string, string> = {
   Undo: arrowBackUp,
   AIPromptSubmit: arrowBack,
   Redo: arrowForwardUp,
-  History: historyToggle,
+  History: circleDot,
   Changes: historyToggle,
   Restore: refresh,
   Comments: messagePlus,

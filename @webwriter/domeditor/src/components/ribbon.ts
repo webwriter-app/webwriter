@@ -668,6 +668,15 @@ export class AppRibbon extends LitElement {
       background: #eab308;
     }
 
+    .ribbon-navigation {
+      box-sizing: border-box;
+      display: flex;
+      flex: 1 1 auto;
+      align-items: flex-start;
+      min-width: 0;
+      height: 40px;
+    }
+
     .tabs {
       display: flex;
       flex: 0 1 auto;
@@ -709,7 +718,7 @@ export class AppRibbon extends LitElement {
       min-width: 24px;
       height: 40px;
       min-height: 40px;
-      margin-inline: 0.35rem;
+      margin: 0 0.35rem 0 auto;
       anchor-name: --ai-bar-slot;
     }
 
@@ -1700,13 +1709,14 @@ export class AppRibbon extends LitElement {
       height: 1.2rem;
       margin: 0 0.1rem;
       border-radius: 50%;
-      color: #ffffff;
-      background: #5e6977;
+      color: #5e6977;
+      background: transparent;
     }
 
     .history-tab-button[active] {
-      background: #3977c7;
-      box-shadow: 0 0 0 2px #dcecff;
+      color: #3977c7;
+      background: transparent;
+      box-shadow: none;
     }
 
     .history-tab-button[active]::before,
@@ -1852,12 +1862,13 @@ export class AppRibbon extends LitElement {
     }
 
     .history-controls .history-tab-button:hover {
-      color: #ffffff;
-      background: #243447;
+      color: #243447;
+      background: transparent;
     }
 
     .history-controls .history-tab-button[active]:hover {
-      background: #1e4f87;
+      color: #1e4f87;
+      background: transparent;
     }
 
     .history-button:focus-visible {
@@ -1872,8 +1883,8 @@ export class AppRibbon extends LitElement {
     }
 
     .history-tab-button .history-icon {
-      width: 0.75rem;
-      height: 0.75rem;
+      width: 1rem;
+      height: 1rem;
     }
 
     .history-icon svg {
@@ -5524,19 +5535,21 @@ export class AppRibbon extends LitElement {
           >
             ${this.logoUrl ? html`<img class="brand-logo" src=${this.logoUrl} alt="WebWriter" />` : ""}
           </button>
-          <nav class="tabs" role="tablist" aria-label="Editor menus" ?inert=${aiReviewPending}>
-            ${visibleTabs.map(tab => html`
-              <ribbon-tab
-                label=${tab}
-                .active=${this.activeMenu === tab}
-                .fileName=${tab === "File" ? this.fileName : ""}
-                .fileDirty=${tab === "File" && this.fileDirty}
-                .previewActive=${this.previewActive}
-                .ribbonCollapsed=${!this.expanded || this.previewTransitioning}
-              ></ribbon-tab>
-            `)}
+          <nav class="ribbon-navigation" aria-label="Editor navigation">
+            <div class="tabs" role="tablist" aria-label="Editor menus" ?inert=${aiReviewPending}>
+              ${visibleTabs.map(tab => html`
+                <ribbon-tab
+                  label=${tab}
+                  .active=${this.activeMenu === tab}
+                  .fileName=${tab === "File" ? this.fileName : ""}
+                  .fileDirty=${tab === "File" && this.fileDirty}
+                  .previewActive=${this.previewActive}
+                  .ribbonCollapsed=${!this.expanded || this.previewTransitioning}
+                ></ribbon-tab>
+              `)}
+            </div>
+            ${this.previewActive ? "" : html`<div class="ai-bar-slot" aria-hidden="true"></div>`}
           </nav>
-          ${this.previewActive ? "" : html`<div class="ai-bar-slot" aria-hidden="true"></div>`}
           <button
             class="login-button"
             data-state=${this.backendState}
