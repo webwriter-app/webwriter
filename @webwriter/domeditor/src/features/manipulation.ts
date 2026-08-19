@@ -1,6 +1,7 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, markWidgetsEditable, modifierKeyDown, getContainer, getIndexBefore, getSidesOfPoint, htmlToFragment, isElement } from "../utility"
+import { $, focusedWidgetHost, markWidgetsEditable, modifierKeyDown, getContainer, getIndexBefore, getSidesOfPoint, htmlToFragment, isElement } from "../utility"
 import {isMarkElement} from "../marks"
+import type {ElementStyleDeclaration, ElementStyleMutation, ElementStyleState} from "../editor-bridge"
 
 /** Unit by which a collapsed selection is extended before deleting. */
 type Granularity = "character" | "word" | "line" | "block"
@@ -43,6 +44,88 @@ function isCaretAtBoundary(element: Element, boundary: "start" | "end") {
  * setting attributes or styles on the selected elements. All operations work
  * on the current selection (see `EditingSelection`/`$`). */
 export class ManipulationFeature extends EditorFeature {
+
+  /** The single connected authored element targeted by element-style commands.
+   * Resolve this immediately before every read or mutation: retained selection
+   * endpoints may have been replaced by native, widget, or remote DOM edits. */
+  get styleTarget(): Element | null {
+    const body = document.body
+    const inAuthoredBody = (element: Element | null | undefined): element is Element => Boolean(
+      element?.isConnected && (element === body || body.contains(element)),
+    )
+
+    const selectedTable = this.editor.features.table.hasCellSelection
+      ? this.editor.features.table.selectedTable
+      : null
+    if(inAuthoredBody(selectedTable)) return selectedTable
+
+    const captured = this.editor.features.selection.captureSelectedElement
+    if(inAuthoredBody(captured)) return captured
+
+    const focusedWidget = focusedWidgetHost()
+    if(inAuthoredBody(focusedWidget)) return focusedWidget
+
+    const selection = document.getSelection()
+    if(!selection?.anchorNode || !selection.focusNode || selection.rangeCount === 0) return null
+    const selectedElement = $.selectedElement
+    if(inAuthoredBody(selectedElement)) return selectedElement
+    const inBody = (node: Node) => node === body || body.contains(node)
+    const range = selection.getRangeAt(0)
+    if(!inBody(selection.anchorNode) || !inBody(selection.focusNode)) {
+      // Browser-generated Select All ranges can start outside BODY. Treat them
+      // as a body selection only when they actually intersect authored content.
+      try {
+        return range.intersectsNode(body)? body: null
+      }
+      catch {
+        return null
+      }
+    }
+
+    const common = range.commonAncestorContainer
+    if(common === document || common === document.documentElement) return body
+    const container = getContainer(common)
+    return inAuthoredBody(container)? container: null
+  }
+
+  private inlineStyleOf(element: Element | null): CSSStyleDeclaration | null {
+    const style = (element as (Element & {style?: CSSStyleDeclaration}) | null)?.style
+    return style && typeof style.setProperty === "function"? style: null
+  }
+
+  /** Returns authored declarations and the requested computed values without
+   * retaining or exposing a live CSSStyleDeclaration across the editor bridge. */
+  getStyleState(properties: string[] = []): ElementStyleState {
+    const target = this.styleTarget
+    const style = this.inlineStyleOf(target)
+    if(!target || !style) {
+      return {
+        target: null,
+        inline: {},
+        computed: {},
+        context: {display: "", parentDisplay: ""},
+      }
+    }
+
+    const inline: Record<string, ElementStyleDeclaration> = {}
+    for(let index = 0; index < style.length; index++) {
+      const name = style.item(index)
+      inline[name] = {
+        value: style.getPropertyValue(name),
+        priority: style.getPropertyPriority(name) === "important"? "important": "",
+      }
+    }
+    const requested = Array.from(new Set(properties.filter(name => typeof name === "string" && name.trim())))
+    const computedStyle = getComputedStyle(target)
+    const computed = Object.fromEntries(requested.map(name => [name, computedStyle.getPropertyValue(name)]))
+    const parentDisplay = target.parentElement? getComputedStyle(target.parentElement).display: ""
+    return {
+      target: {localName: target.localName, namespaceURI: target.namespaceURI},
+      inline,
+      computed,
+      context: {display: computedStyle.display, parentDisplay},
+    }
+  }
 
   /** Materializes the virtual insertion point used for an empty document or
    * an element gap as a real schema-conformant text block. Returns the block
@@ -351,7 +434,13 @@ export class ManipulationFeature extends EditorFeature {
     setAttributes: ({attrs}: {type: "setAttributes", attrs: Record<string, string>}) => {
       this.setAttributes(attrs)
     },
-    setStyle: ({styles}: {type: "setStyle", styles: Record<string, string>}) => {
+    getStyleState: ({properties}: {type: "getStyleState", properties?: string[]}) => {
+      if(properties !== undefined && (!Array.isArray(properties) || properties.some(name => typeof name !== "string"))) {
+        throw new TypeError("Style-state property names must be strings")
+      }
+      return this.getStyleState(properties)
+    },
+    setStyle: ({styles}: {type: "setStyle", styles: Record<string, ElementStyleMutation>}) => {
       this.setStyle(styles)
     },
 
@@ -712,12 +801,29 @@ export class ManipulationFeature extends EditorFeature {
     })
   }
 
-  /** Assigns the given inline style properties on every element in the
-   * selection, merging with existing styles; an empty string clears a
-   * property. */
-  setStyle(style: Record<string, string>) {
+  /** Assigns inline style properties on the single live style target, merging
+   * with existing declarations. Null or an empty string clears a property. */
+  setStyle(styles: Record<string, ElementStyleMutation>) {
     return this.withNormalization(() => {
-      $.nodesBetween.filter(isElement).forEach(n => Object.assign((n as HTMLElement).style, style))
+      const targetStyle = this.inlineStyleOf(this.styleTarget)
+      if(!targetStyle) return
+      Object.entries(styles).forEach(([name, mutation]) => {
+        if(!name || name !== name.trim() || name.includes(";")) {
+          throw new TypeError(`Invalid CSS property name '${name}'`)
+        }
+        if(mutation === null || mutation === "") {
+          targetStyle.removeProperty(name)
+          return
+        }
+        const declaration = typeof mutation === "string"
+          ? {value: mutation, priority: "" as const}
+          : mutation
+        if(!declaration || typeof declaration.value !== "string"
+          || declaration.priority !== "" && declaration.priority !== "important") {
+          throw new TypeError(`Invalid CSS declaration for '${name}'`)
+        }
+        targetStyle.setProperty(name, declaration.value, declaration.priority)
+      })
     })
   }
 

@@ -1,5 +1,5 @@
 import { LitElement, css, html, nothing } from "lit"
-import type {ListType, PresenceUser} from "../editor-bridge"
+import type {ElementStyleState, ListType, PresenceUser} from "../editor-bridge"
 import {
   completeAIConversation,
   type AIAttachment,
@@ -68,9 +68,11 @@ import {
   type GraphicViewportOperation,
 } from "../graphic"
 import {emptyDocumentHeadState, type DocumentHeadState} from "../document-head"
+import {elementStyleCategories, type ElementStyleCategory} from "../element-styles"
 import "./document-head-editor"
+import "./element-style-editor"
 
-type RibbonMenuName = "File" | "Start" | "Insert" | "Edit" | "Develop"
+type RibbonMenuName = "File" | "Start" | "Insert" | "Edit" | "Style" | "Develop"
 
 type RibbonInputEventDetail = {
   input: HTMLElement
@@ -136,8 +138,8 @@ const isRibbonInput = (target: EventTarget | null): target is HTMLElement => {
 
 const ribbonInputFromEvent = (event: Event) => event.composedPath().find(isRibbonInput)
 
-const menuTabs: RibbonMenuName[] = ["File", "Insert", "Edit", "Develop"]
-const dropdownMenus: RibbonMenuName[] = ["File", "Insert", "Edit"]
+const menuTabs: RibbonMenuName[] = ["File", "Insert", "Edit", "Style", "Develop"]
+const dropdownMenus: RibbonMenuName[] = ["File", "Insert", "Edit", "Style"]
 
 const aiEfforts: {label: string, value: AIEffort}[] = [
   {label: "Low effort", value: "low"},
@@ -390,9 +392,6 @@ const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
     {label: "Marks", buttons: []},
     {label: "Table", buttons: []},
     {label: "Graphic", buttons: []},
-    {label: "Styles", buttons: ["Heading", "Theme", "Clear"]},
-    {label: "Font", buttons: ["Family", "Size", "Color"]},
-    {label: "Effects", buttons: ["Highlight", "Superscript", "More"]},
     {
       label: "Review",
       buttons: [
@@ -401,10 +400,9 @@ const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
         "Track Changes", "Accept", "Reject",
       ],
     },
-    {label: "Page", buttons: ["Margins", "Columns", "Orientation"]},
-    {label: "Arrange", buttons: ["Position", "Order", "Group"]},
     {label: "View", buttons: ["Zoom", "Guides", "Fullscreen"]},
   ],
+  Style: elementStyleCategories.map(category => ({label: category.label, buttons: []})),
   Develop: [
     {label: "Local packages", buttons: []},
     {label: "Metadata", buttons: []},
@@ -443,6 +441,7 @@ export class AppRibbon extends LitElement {
     media: {attribute: false},
     table: {attribute: false},
     graphic: {attribute: false},
+    elementStyle: {attribute: false},
     fileName: {type: String, attribute: "file-name"},
     fileDirty: {type: Boolean, attribute: "file-dirty"},
     documentHead: {attribute: false},
@@ -2156,6 +2155,12 @@ export class AppRibbon extends LitElement {
   media: MediaSelectionState | null = null
   table: TableSelectionState | null = null
   graphic: GraphicSelectionState | null = null
+  elementStyle: ElementStyleState = {
+    target: null,
+    inline: {},
+    computed: {},
+    context: {display: "", parentDisplay: ""},
+  }
   private tableGridRows = 2
   private tableGridColumns = 2
   private sharingQRCodeImageDataURL = ""
@@ -3042,6 +3047,9 @@ export class AppRibbon extends LitElement {
     }
     if(changed.has("activeMenu") && this.activeMenu === "Develop") {
       this.dispatchEvent(new Event("local-package-request", {bubbles: true, composed: true}))
+    }
+    if(changed.has("activeMenu") && this.activeMenu === "Style") {
+      this.dispatchEvent(new Event("element-style-state-request", {bubbles: true, composed: true}))
     }
     if(
       changed.has("activeMenu") || changed.has("expanded") || changed.has("packages") ||
@@ -4752,8 +4760,36 @@ export class AppRibbon extends LitElement {
     `
   }
 
+  private renderElementStyleDrawer(category: ElementStyleCategory) {
+    return html`
+      <ribbon-drawer
+        label=${category.label}
+        icon=${category.icon}
+        layout="element-style"
+        expandable
+      >
+        <element-style-editor
+          mode="basic"
+          .definitions=${category.basic}
+          .state=${this.elementStyle}
+        ></element-style-editor>
+        <element-style-editor
+          slot="more"
+          mode="advanced"
+          .definitions=${category.advanced}
+          .state=${this.elementStyle}
+          ?allow-custom=${category.id === "other"}
+        ></element-style-editor>
+      </ribbon-drawer>
+    `
+  }
+
   private renderDrawers() {
     return this.currentMenuGroups.map(drawer => {
+      const styleCategory = this.activeMenu === "Style"
+        ? elementStyleCategories.find(category => category.label === drawer.label)
+        : undefined
+      if(styleCategory) return this.renderElementStyleDrawer(styleCategory)
       if(drawer.label === "File") return this.renderFileDrawer(drawer)
       if(drawer.label === "Sharing") return this.renderSharingDrawer(drawer)
       if(drawer.label === "Marks") return this.renderMarkDrawer()

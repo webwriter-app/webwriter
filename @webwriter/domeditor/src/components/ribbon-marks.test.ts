@@ -158,6 +158,7 @@ describe("mark ribbon controls", () => {
       "File",
       "Insert",
       "Edit",
+      "Style",
       "Develop",
     ])
 
@@ -166,7 +167,7 @@ describe("mark ribbon controls", () => {
 
     expect(Array.from(ribbon.shadowRoot!.querySelectorAll(".ribbon-content > ribbon-drawer"))
       .map(drawer => drawer.getAttribute("label")))
-      .toEqual(["Marks", "Table", "Styles", "Font", "Effects", "Review", "Page", "Arrange", "View"])
+      .toEqual(["Marks", "Table", "Review", "View"])
 
     const review = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Review"]')!
     expect(Array.from(review.querySelectorAll<RibbonButton>("ribbon-button"))
@@ -176,6 +177,35 @@ describe("mark ribbon controls", () => {
         "New Comment", "Previous", "Next",
         "Track Changes", "Accept", "Reject",
       ])
+
+    tabs.find(tab => tab.label === "Style")!.shadowRoot!.querySelector("button")!.click()
+    await ribbon.updateComplete
+    const styleDrawers = Array.from(
+      ribbon.shadowRoot!.querySelectorAll<RibbonDrawer>('.ribbon-content > ribbon-drawer[layout="element-style"]'),
+    )
+    expect(styleDrawers.map(drawer => drawer.label)).toEqual([
+      "Position & Form",
+      "Layout",
+      "Text",
+      "Color & Visibility",
+      "Interaction & Motion",
+      "Other",
+    ])
+    expect(styleDrawers.every(drawer => drawer.expandable)).toBe(true)
+    expect(styleDrawers.every(drawer => (
+      drawer.querySelectorAll("element-style-editor").length === 2
+    ))).toBe(true)
+    await styleDrawers[0].updateComplete
+    const advancedToggle = styleDrawers[0].shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!
+    expect(advancedToggle.getAttribute("aria-label")).toBe("Show advanced position & form controls")
+    advancedToggle.click()
+    await styleDrawers[0].updateComplete
+    expect(styleDrawers[0].hasAttribute("drawer-open")).toBe(true)
+    expect(styleDrawers[0].shadowRoot!.querySelector<HTMLSlotElement>('slot[name="more"]')!.hidden).toBe(false)
+    const disabledStyleEditor = styleDrawers[0].querySelector("element-style-editor")!
+    await disabledStyleEditor.updateComplete
+    expect(disabledStyleEditor.shadowRoot!.querySelector("fieldset")?.hasAttribute("disabled")).toBe(true)
+    expect(disabledStyleEditor.shadowRoot!.textContent).not.toContain("Select document content")
 
     tabs.find(tab => tab.label === "File")!.shadowRoot!.querySelector("button")!.click()
     await ribbon.updateComplete

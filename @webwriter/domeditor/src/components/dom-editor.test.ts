@@ -835,6 +835,51 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith({type: "insert", html: "<p></p>"})
   })
 
+  it("loads Style-tab state lazily and routes inline style changes", async () => {
+    const {editor} = await mountEditor()
+    let display = "block"
+    const execute = vi.spyOn(editor, "execute").mockImplementation(async action => {
+      if(action.type === "getStyleState") return {
+        target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"},
+        inline: display === "block" ? {} : {display: {value: display, priority: ""}},
+        computed: {display},
+        context: {display, parentDisplay: "block"},
+      }
+      if(action.type === "setStyle") {
+        const mutation = action.styles.display
+        display = typeof mutation === "string" ? mutation : mutation?.value ?? "block"
+      }
+    })
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const styleTab = ribbon.shadowRoot!.querySelector('ribbon-tab[label="Style"]')!
+
+    styleTab.shadowRoot!.querySelector<HTMLButtonElement>("button")!.click()
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith(expect.objectContaining({
+      type: "getStyleState",
+      properties: expect.arrayContaining(["display", "width", "color", "cursor"]),
+    })))
+    await (editor as any).refreshElementStyleState()
+    await editor.updateComplete
+    await ribbon.updateComplete
+    expect(ribbon.elementStyle.target?.localName).toBe("p")
+
+    const position = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Position & Form"]')!
+    const basic = position.querySelector("element-style-editor")!
+    await basic.updateComplete
+    expect(basic.shadowRoot!.querySelector<HTMLFieldSetElement>("fieldset")!.disabled).toBe(false)
+
+    ribbon.dispatchEvent(new CustomEvent("element-style-change", {
+      detail: {property: "display", mutation: {value: "grid", priority: ""}},
+      bubbles: true,
+      composed: true,
+    }))
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({
+      type: "setStyle",
+      styles: {display: {value: "grid", priority: ""}},
+    }))
+    await vi.waitFor(() => expect(ribbon.elementStyle.inline.display?.value).toBe("grid"))
+  })
+
   it("renders Packages as ribbon buttons with a prefixed search bar", async () => {
     vi.mocked(WebWriterPackageRegistry.prototype.search).mockResolvedValue([demoPackage])
     const {editor} = await mountEditor()
@@ -1231,7 +1276,7 @@ describe("DomEditor.execute()", () => {
     await ribbon.updateComplete
 
     expect((editor as unknown as {previewActive: boolean}).previewActive).toBe(false)
-    expect(ribbon.shadowRoot!.querySelectorAll("ribbon-tab")).toHaveLength(4)
+    expect(ribbon.shadowRoot!.querySelectorAll("ribbon-tab")).toHaveLength(5)
   })
 
   it("keeps repeated preview toggles on the same ribbon animation path", async () => {

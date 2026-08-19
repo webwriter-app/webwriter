@@ -3,6 +3,7 @@ import {afterEach, beforeEach, describe, expect, it} from "vitest"
 import * as Y from "yjs"
 import {Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates} from "y-protocols/awareness"
 import {DOMEditor} from "../domeditor"
+import {$} from "../utility"
 
 let editor: DOMEditor
 let remoteDoc: Y.Doc | null = null
@@ -76,6 +77,27 @@ describe("DOMEditor collaboration wiring", () => {
     expect(document.querySelector("p")!.textContent).toBe("Hello")
     editor.features.history.actions.redo({type: "redo"})
     expect(document.querySelector("p")!.textContent).toBe("Changed")
+  })
+
+  it("synchronizes inline style commands and includes them in undo, redo, and serialization", async () => {
+    const paragraph = document.querySelector("p")!
+    $.selectRange(paragraph.firstChild!, 2)
+
+    editor.features.manipulation.actions.setStyle({
+      type: "setStyle",
+      styles: {color: {value: "rebeccapurple", priority: "important"}},
+    })
+    await mutationsDelivered()
+
+    expect((paragraph as HTMLElement).style.getPropertyValue("color")).toBe("rebeccapurple")
+    expect((paragraph as HTMLElement).style.getPropertyPriority("color")).toBe("important")
+    expect((editor.doc.body.firstChild as Y.XmlElement).toString()).toContain("color: rebeccapurple !important")
+    expect(editor.toHTML(true)).toContain('style="color: rebeccapurple !important;"')
+
+    editor.features.history.actions.undo({type: "undo"})
+    expect(paragraph.hasAttribute("style")).toBe(false)
+    editor.features.history.actions.redo({type: "redo"})
+    expect((paragraph as HTMLElement).style.getPropertyValue("color")).toBe("rebeccapurple")
   })
 })
 

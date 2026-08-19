@@ -43,6 +43,8 @@ import {
   markStateChangeEvent,
   loadWidgetsMessage,
   selectionChangeEvent,
+  type ElementStyleMutation,
+  type ElementStyleState,
   type ExecuteCompleteDetail,
   type ExecuteFailureDetail,
   type SelectionGap,
@@ -53,6 +55,7 @@ import {
   type LoadWidgetsMessage,
   type AIEditReviewMessage,
 } from "../editor-bridge"
+import {elementStylePropertyNames} from "../element-styles"
 import "./breadcrumb"
 import "./ribbon"
 import {restoreOriginalResourceURLs, serializeDoctype} from "../serialization"
@@ -226,6 +229,7 @@ export class DomEditor extends LitElement {
     mediaSelection: {attribute: false, state: true},
     tableSelection: {attribute: false, state: true},
     graphicSelection: {attribute: false, state: true},
+    elementStyle: {attribute: false, state: true},
     fileName: {attribute: false, state: true},
     fileDirty: {attribute: false, state: true},
     previewActive: {attribute: false, state: true},
@@ -260,6 +264,14 @@ export class DomEditor extends LitElement {
   private mediaSelection: MediaSelectionState | null = null
   private tableSelection: TableSelectionState | null = null
   private graphicSelection: GraphicSelectionState | null = null
+  private elementStyle: ElementStyleState = {
+    target: null,
+    inline: {},
+    computed: {},
+    context: {display: "", parentDisplay: ""},
+  }
+  private elementStyleRefreshSequence = 0
+  private elementStyleRefreshQueued = false
   private presenceUsers: PresenceUser[] = []
   private packages: WebWriterPackage[] = []
   private installedPackages: WebWriterPackage[] = []
@@ -457,6 +469,13 @@ export class DomEditor extends LitElement {
   private handleEditorFrameLoad = (event: Event) => {
     this.dirtyTrackingReady = false
     this.dirtyTrackingMutationPending = false
+    this.elementStyleRefreshSequence++
+    this.elementStyle = {
+      target: null,
+      inline: {},
+      computed: {},
+      context: {display: "", parentDisplay: ""},
+    }
     if(this.dirtyTrackingTimer !== undefined) clearTimeout(this.dirtyTrackingTimer)
     this.documentTreeObserver?.disconnect()
     this.documentTreeObserver = null
@@ -501,6 +520,7 @@ export class DomEditor extends LitElement {
         if(hasAuthoredMutation) {
           if(this.dirtyTrackingReady) this.fileDirty = !this.isFreshDocumentUnchanged()
           else this.dirtyTrackingMutationPending = true
+          if(this.stylesVisible()) this.queueElementStyleRefresh()
         }
       })
       this.documentTreeObserver = observer
@@ -1968,6 +1988,103 @@ export class DomEditor extends LitElement {
     return !event.source || event.source === this.editorWindow || event.source === iframe?.contentWindow
   }
 
+  private stylesVisible() {
+    return this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.activeMenu === "Style"
+  }
+
+  private normalizedElementStyleState(value: unknown): ElementStyleState | null {
+    if(!isRecord(value) || !isRecord(value.inline) || !isRecord(value.computed) || !isRecord(value.context)) {
+      return null
+    }
+    const target = value.target === null
+      ? null
+      : isRecord(value.target)
+        && typeof value.target.localName === "string"
+        && (value.target.namespaceURI === null || typeof value.target.namespaceURI === "string")
+        ? {localName: value.target.localName, namespaceURI: value.target.namespaceURI}
+        : undefined
+    if(target === undefined
+      || typeof value.context.display !== "string"
+      || typeof value.context.parentDisplay !== "string") return null
+
+    const inline = Object.fromEntries(Object.entries(value.inline).flatMap(([name, declaration]) => (
+      isRecord(declaration)
+      && typeof declaration.value === "string"
+      && (declaration.priority === "" || declaration.priority === "important")
+        ? [[name, {value: declaration.value, priority: declaration.priority}]]
+        : []
+    ))) as ElementStyleState["inline"]
+    const computed = Object.fromEntries(Object.entries(value.computed).flatMap(([name, computedValue]) => (
+      typeof computedValue === "string" ? [[name, computedValue]] : []
+    )))
+    return {
+      target,
+      inline,
+      computed,
+      context: {
+        display: value.context.display,
+        parentDisplay: value.context.parentDisplay,
+      },
+    }
+  }
+
+  private refreshElementStyleState = async () => {
+    const sequence = ++this.elementStyleRefreshSequence
+    try {
+      const result = await this.execute({
+        type: "getStyleState",
+        properties: elementStylePropertyNames,
+      })
+      const state = this.normalizedElementStyleState(result)
+      if(sequence === this.elementStyleRefreshSequence && state) this.elementStyle = state
+    }
+    catch {
+      // The frame can be replaced while a queued projection is in flight.
+      // Its next selection or Style-tab request will provide current state.
+    }
+  }
+
+  private queueElementStyleRefresh = () => {
+    if(this.elementStyleRefreshQueued) return
+    this.elementStyleRefreshQueued = true
+    queueMicrotask(() => {
+      this.elementStyleRefreshQueued = false
+      void this.refreshElementStyleState()
+    })
+  }
+
+  private handleElementStyleChange = (event: Event) => {
+    const detail = (event as CustomEvent<{
+      property?: unknown
+      mutation?: unknown
+    }>).detail
+    const property = detail?.property
+    const mutation = detail?.mutation
+    const validDeclaration = isRecord(mutation)
+      && typeof mutation.value === "string"
+      && (mutation.priority === "" || mutation.priority === "important")
+    if(typeof property !== "string" || !property || property !== property.trim() || property.includes(";")
+      || mutation !== null && typeof mutation !== "string" && !validDeclaration) return
+    if(!this.elementStyle.target) return
+
+    const typedMutation = mutation as ElementStyleMutation
+    const previousState = this.elementStyle
+    const inline = {...this.elementStyle.inline}
+    if(typedMutation === null || typedMutation === "") delete inline[property]
+    else inline[property] = typeof typedMutation === "string"
+      ? {value: typedMutation, priority: ""}
+      : {...typedMutation}
+    this.elementStyle = {...this.elementStyle, inline}
+
+    void this.execute({
+      type: "setStyle",
+      styles: {[property]: typedMutation},
+    }).then(() => this.refreshElementStyleState()).catch(() => {
+      this.elementStyle = previousState
+      return this.refreshElementStyleState()
+    })
+  }
+
   private routeAIEditReview(detail: AIEditReviewMessage["detail"]) {
     this.renderRoot.querySelector<AppRibbon>("app-ribbon")
       ?.reviewPendingAIEdit(detail.action, detail.editId)
@@ -2056,6 +2173,7 @@ export class DomEditor extends LitElement {
         ...(event.data.detail.graphic.viewport ? {viewport: {...event.data.detail.graphic.viewport}} : {}),
       } : null
       this.documentTree = this.buildDocumentTree()
+      if(this.stylesVisible()) this.queueElementStyleRefresh()
       this.dispatchEvent(new CustomEvent(selectionChangeEvent, {
         detail: {
           path,
@@ -2280,6 +2398,14 @@ export class DomEditor extends LitElement {
     this.mediaSelection = null
     this.tableSelection = null
     this.graphicSelection = null
+    this.elementStyleRefreshSequence++
+    this.elementStyleRefreshQueued = false
+    this.elementStyle = {
+      target: null,
+      inline: {},
+      computed: {},
+      context: {display: "", parentDisplay: ""},
+    }
     this.documentHead = emptyDocumentHeadState()
     const error = new Error("The DOM editor component was disconnected")
     this.pendingExecutions.forEach(({reject}) => reject(error))
@@ -2301,6 +2427,7 @@ export class DomEditor extends LitElement {
           .media=${this.mediaSelection}
           .table=${this.tableSelection}
           .graphic=${this.graphicSelection}
+          .elementStyle=${this.elementStyle}
           .presenceUsers=${this.presenceUsers}
           .packages=${this.packages}
           .installedPackages=${this.installedPackages}
@@ -2337,6 +2464,8 @@ export class DomEditor extends LitElement {
           @graphic-parameter-change=${this.handleGraphicParameterChange}
           @graphic-layer-action=${this.handleGraphicLayerAction}
           @graphic-viewport-action=${this.handleGraphicViewportAction}
+          @element-style-change=${this.handleElementStyleChange}
+          @element-style-state-request=${this.queueElementStyleRefresh}
           @ribbon-collapse=${this.handleRibbonCollapse}
           @ribbon-input-pointerdown=${this.handleRibbonInputPointerDown}
           @ribbon-input-focus=${this.handleRibbonInputFocus}

@@ -20,6 +20,7 @@ function expectBodyToBe(html: string) {
 
 beforeEach(() => {
   document.body.innerHTML = ""
+  document.body.removeAttribute("style")
   $.selectDocumentStart()
 })
 
@@ -765,5 +766,134 @@ describe("setStyle()", () => {
     $.selectElement(document.body.firstElementChild!)
     editor.features.manipulation.setStyle({width: "50px"})
     expect(document.body.firstElementChild).toHaveStyle({color: "red", width: "50px"})
+  })
+  it("styles the containing element for a collapsed text selection", () => {
+    document.body.innerHTML = "<p>hello world</p>"
+    const paragraph = document.body.firstElementChild!
+    $.selectRange(paragraph.firstChild!, 4)
+
+    editor.features.manipulation.setStyle({color: "red"})
+
+    expect(paragraph).toHaveStyle({color: "red"})
+  })
+  it("styles an empty text container", () => {
+    document.body.innerHTML = "<p></p>"
+    const paragraph = document.body.firstElementChild!
+    $.selectRange(paragraph)
+
+    editor.features.manipulation.setStyle({"min-height": "20px"})
+
+    expect(paragraph).toHaveStyle({minHeight: "20px"})
+  })
+  it("styles the element containing a gap", () => {
+    document.body.innerHTML = "<section><p>one</p><p>two</p></section>"
+    const section = document.body.firstElementChild!
+    $.selectGap(section.lastElementChild!, "before")
+
+    editor.features.manipulation.setStyle({display: "grid"})
+
+    expect(section).toHaveStyle({display: "grid"})
+    expect(section.lastElementChild).not.toHaveAttribute("style")
+  })
+  it("styles the containing element for a same-node text range", () => {
+    document.body.innerHTML = "<p>hello world</p>"
+    const paragraph = document.body.firstElementChild!
+    $.selectRange(paragraph.firstChild!, 1, paragraph.firstChild!, 5)
+
+    editor.features.manipulation.setStyle({"line-height": "2"})
+
+    expect(paragraph).toHaveStyle({lineHeight: "2"})
+  })
+  it("styles the common ancestor for a cross-node text range", () => {
+    document.body.innerHTML = "<p><span>one</span><em>two</em></p>"
+    const paragraph = document.body.firstElementChild!
+    $.selectRange(paragraph.firstElementChild!.firstChild!, 1, paragraph.lastElementChild!.firstChild!, 2)
+
+    editor.features.manipulation.setStyle({"text-align": "center"})
+
+    expect(paragraph).toHaveStyle({textAlign: "center"})
+    expect(paragraph.firstElementChild).not.toHaveAttribute("style")
+    expect(paragraph.lastElementChild).not.toHaveAttribute("style")
+  })
+  it("styles a structural common ancestor across blocks", () => {
+    document.body.innerHTML = "<section><p>one</p><p>two</p></section>"
+    const section = document.body.firstElementChild!
+    $.selectRange(section.firstElementChild!.firstChild!, 0, section.lastElementChild!.firstChild!, 3)
+
+    editor.features.manipulation.setStyle({"background-color": "gold"})
+
+    expect(section).toHaveStyle({backgroundColor: "gold"})
+    expect(section.firstElementChild).not.toHaveAttribute("style")
+  })
+  it("uses the authored widget host while capture is active", () => {
+    document.body.innerHTML = "<demo-widget></demo-widget><p>other</p>"
+    const widget = document.body.firstElementChild!
+    editor.features.selection.captureElement(widget)
+    $.selectRange(document.body.lastElementChild!.firstChild!, 2)
+
+    editor.features.manipulation.setStyle({opacity: "0.5"})
+
+    expect(widget).toHaveStyle({opacity: "0.5"})
+    expect(document.body.lastElementChild).not.toHaveAttribute("style")
+  })
+  it("styles the table for an existing multi-cell selection", () => {
+    document.body.innerHTML = "<table><tbody><tr><td>one</td><td>two</td></tr></tbody></table>"
+    const table = document.body.firstElementChild as HTMLTableElement
+    const cells = table.querySelectorAll("td")
+    editor.features.table.selectCells(cells[0], cells[1])
+
+    editor.features.manipulation.setStyle({"border-collapse": "collapse"})
+
+    expect(table).toHaveStyle({borderCollapse: "collapse"})
+  })
+  it("does not mutate without a live selection", () => {
+    document.body.innerHTML = "<p>hello</p>"
+    const paragraph = document.body.firstElementChild!
+    $.selectElement(paragraph)
+    editor.features.selection.disable()
+    document.getSelection()?.removeAllRanges()
+
+    editor.features.manipulation.setStyle({color: "red"})
+    const target = editor.features.manipulation.styleTarget
+    editor.features.selection.enable()
+
+    expect(target).toBeNull()
+    expect(paragraph).not.toHaveAttribute("style")
+    expect(document.body).not.toHaveAttribute("style")
+  })
+  it("supports custom properties and important priority", () => {
+    document.body.innerHTML = "<p>hello</p>"
+    const paragraph = document.body.firstElementChild!
+    $.selectElement(paragraph)
+
+    editor.features.manipulation.setStyle({
+      "--accent": "rebeccapurple",
+      color: {value: "var(--accent)", priority: "important"},
+    })
+
+    const style = (paragraph as HTMLElement).style
+    expect(style.getPropertyValue("--accent")).toBe("rebeccapurple")
+    expect(style.getPropertyValue("color")).toBe("var(--accent)")
+    expect(style.getPropertyPriority("color")).toBe("important")
+  })
+  it("returns a serializable authored and computed style projection", () => {
+    document.body.innerHTML = '<p style="width: 20px; color: red !important">hello</p>'
+    $.selectElement(document.body.firstElementChild!)
+
+    const state = editor.features.manipulation.getStyleState(["width", "display"])
+
+    expect(state.target).toMatchObject({localName: "p"})
+    expect(state.inline.width).toEqual({value: "20px", priority: ""})
+    expect(state.inline.color).toEqual({value: "red", priority: "important"})
+    expect(state.computed.width).toBeTruthy()
+    expect(state.computed).toHaveProperty("display")
+  })
+  it("rejects malformed property names without changing authored styles", () => {
+    document.body.innerHTML = "<p>hello</p>"
+    const paragraph = document.body.firstElementChild!
+    $.selectElement(paragraph)
+
+    expect(() => editor.features.manipulation.setStyle({"color; display": "none"})).toThrow(TypeError)
+    expect(paragraph).not.toHaveAttribute("style")
   })
 })

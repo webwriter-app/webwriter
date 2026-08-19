@@ -126,6 +126,14 @@ export class RibbonDrawer extends LitElement {
       --ribbon-drawer-more-height: 24rem;
     }
 
+    :host([layout="element-style"]) {
+      --ribbon-drawer-expanded-width: 15rem;
+      --ribbon-drawer-width: min(22rem, calc(100vw - 1rem));
+      --ribbon-drawer-height: min(32rem, calc(100vh - 3rem));
+      --ribbon-drawer-more-height: min(27rem, calc(100vh - 8rem));
+      --ribbon-drawer-panel-padding-block: 0.35rem;
+    }
+
     :host([layout="development"]) {
       --ribbon-drawer-expanded-width: 10rem;
     }
@@ -305,12 +313,30 @@ export class RibbonDrawer extends LitElement {
       padding-bottom: 0.25rem;
     }
 
+    :host([layout="element-style"]) .controls {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      padding-top: 0;
+      padding-bottom: 0.25rem;
+    }
+
     :host([layout="document-head"]) ::slotted(document-head-editor[mode="common"]) {
       flex: 0 0 4.6rem;
       min-height: 0;
     }
 
     :host([layout="document-head"]) ::slotted(document-head-editor[mode="advanced"]) {
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+
+    :host([layout="element-style"]) ::slotted(element-style-editor[mode="basic"]) {
+      flex: 0 0 4.45rem;
+      min-height: 0;
+    }
+
+    :host([layout="element-style"]) ::slotted(element-style-editor[mode="advanced"]) {
       flex: 1 1 auto;
       min-height: 0;
     }
@@ -895,6 +921,11 @@ export class RibbonDrawer extends LitElement {
 
   render() {
     const toggleUnavailable = !this.collapsed && !this.expandable
+    const toggleLabel = this.collapsed
+      ? `${this.drawerOpen ? "Hide" : "Show"} ${this.label} controls`
+      : this.layout === "element-style"
+        ? `${this.drawerOpen ? "Hide" : "Show"} advanced ${this.label.toLocaleLowerCase()} controls`
+        : `More ${this.label.toLocaleLowerCase()}`
     return html`
       <section
         class=${this.drawerOpen
@@ -919,12 +950,8 @@ export class RibbonDrawer extends LitElement {
           ?disabled=${toggleUnavailable}
           aria-controls="drawer-controls"
           aria-expanded=${this.drawerOpen}
-          aria-label=${this.collapsed
-            ? `${this.drawerOpen ? "Hide" : "Show"} ${this.label} controls`
-            : `More ${this.label.toLocaleLowerCase()}`}
-          title=${this.collapsed
-            ? `${this.drawerOpen ? "Hide" : "Show"} ${this.label} controls`
-            : `More ${this.label.toLocaleLowerCase()}`}
+          aria-label=${toggleLabel}
+          title=${toggleLabel}
           @click=${this.toggleDrawer}
         >
           <span class="drawer-icon" aria-hidden="true"></span>

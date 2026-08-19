@@ -330,18 +330,7 @@ export class DOMEditor {
   }
 
   private selectedElementForPath() {
-    const selectedTable = this.features.table.selectedTable
-    if(this.features.table.hasCellSelection && selectedTable) return selectedTable
-    const capturedElement = this.features.selection.captureSelectedElement
-    if(capturedElement) return capturedElement
-    const focusedWidget = focusedWidgetHost()
-    if(focusedWidget) return focusedWidget
-    const selectedElement = $.selectedElement
-    if(selectedElement?.isConnected) return selectedElement
-
-    const anchor = $.anchor
-    if(anchor instanceof Text || isElement(anchor)) return getContainer(anchor)
-    return document.body
+    return this.features.manipulation.styleTarget ?? document.body
   }
 
   private pathToElement(element: Element) {

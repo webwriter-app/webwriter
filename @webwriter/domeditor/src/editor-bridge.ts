@@ -114,6 +114,29 @@ export type SelectionGap = {
   offset: number
 }
 
+export type ElementStyleDeclaration = {
+  value: string
+  priority: "" | "important"
+}
+
+export type ElementStyleMutation = string | null | ElementStyleDeclaration
+
+/** A serializable, DOM-derived projection of the element currently targeted
+ * by element-style commands. Computed values are limited to the property names
+ * requested by the host so ordinary selection changes stay inexpensive. */
+export type ElementStyleState = {
+  target: {
+    localName: string
+    namespaceURI: string | null
+  } | null
+  inline: Record<string, ElementStyleDeclaration>
+  computed: Record<string, string>
+  context: {
+    display: string
+    parentDisplay: string
+  }
+}
+
 export type ListType = "ul" | "ol" | "dl" | "menu"
 
 export type ListSelectionState = {
