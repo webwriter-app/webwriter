@@ -6,6 +6,7 @@ export class PlaceholderFeature extends EditorFeature {
 
   enable(): void {
     this.applyPlaceholderStylesheet()
+    this.#placeholderStylesheet.disabled = false
     super.enable()
   }
 
@@ -33,12 +34,9 @@ export class PlaceholderFeature extends EditorFeature {
   }
 
   applyPlaceholderStylesheet() {
-    if(this.#placeholderStylesheet) {
-      this.disable()
-    }
-    else {
-      document.adoptedStyleSheets.push(this.placeholderStylesheet)
-    }
+    if(this.#placeholderStylesheet) return
+    const stylesheet = this.placeholderStylesheet
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, stylesheet]
   }
 
   private styleMapToCssString(styleMap: Record<string, string>) {

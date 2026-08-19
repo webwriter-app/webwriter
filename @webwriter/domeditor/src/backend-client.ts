@@ -38,13 +38,25 @@ const errorText = (value: unknown, fallback: string) => {
   return fallback
 }
 
-const normalizedBaseUrl = (value: string) => value.replace(/\/$/, "")
+const loopbackHosts = new Set(["127.0.0.1", "[::1]", "localhost"])
+
+const validatedUrl = (value: string, protocols: string[]) => {
+  const url = new URL(value)
+  if(!protocols.includes(url.protocol) || url.username || url.password || !loopbackHosts.has(url.hostname)) {
+    throw new TypeError("The development backend returned an unsafe URL")
+  }
+  return url
+}
+
+const normalizedBaseUrl = (value: string) => validatedUrl(value, ["http:", "https:"]).toString().replace(/\/$/, "")
 
 export class BackendClient {
   readonly apiBaseUrl: string
 
   constructor(readonly session: BackendSession, private readonly fetchImplementation = globalThis.fetch) {
     this.apiBaseUrl = normalizedBaseUrl(session.apiBaseUrl)
+    validatedUrl(session.collaborationUrl, ["ws:", "wss:"])
+    validatedUrl(session.adminUrl, ["http:", "https:"])
   }
 
   private async request<T>(path: string, init: RequestInit = {}) {
@@ -143,6 +155,14 @@ const sessionFrom = (value: unknown): BackendSession | null => {
     || typeof value.collaborationUrl !== "string"
     || typeof value.adminUrl !== "string"
     || !Array.isArray(value.capabilities)) return null
+  try {
+    validatedUrl(value.apiBaseUrl, ["http:", "https:"])
+    validatedUrl(value.collaborationUrl, ["ws:", "wss:"])
+    validatedUrl(value.adminUrl, ["http:", "https:"])
+  }
+  catch {
+    return null
+  }
   return value as BackendSession
 }
 

@@ -1,51 +1,19 @@
 import {EditorFeature} from "."
 import {aiEditReviewEvent, type AIEditReviewAction} from "../editor-bridge"
+import type {DOMChangePreview} from "../domdoc"
+import {stripActiveContent} from "../active-content"
 
 const maximumAIHTMLLength = 1_000_000
-const dangerousElements = "script, iframe, object, embed, base, meta[http-equiv='refresh'], link[rel='import']"
-const urlAttributes = new Set(["href", "src", "xlink:href", "action", "formaction", "poster"])
-
-const safeURL = (value: string) => {
-  const normalized = value.trim().toLowerCase().replaceAll(/[\u0000-\u0020]+/g, "")
-  return !normalized.startsWith("javascript:")
-    && !normalized.startsWith("vbscript:")
-    && !normalized.startsWith("data:text/html")
-    && !normalized.startsWith("data:image/svg+xml")
-}
+const aiOnlyAttributes = new Set(["contenteditable", "spellcheck", "data-webwriter-editor-only"])
 
 /** Removes active content from model-authored HTML before it enters the live
  * document. Existing document code remains untouched unless the user approves
  * a full replacement, whose replacement body is sanitized here as well. */
 const sanitizeAIContent = (root: ParentNode) => {
-  let removed = 0
-  root.querySelectorAll(dangerousElements).forEach(element => {
-    element.remove()
-    removed++
+  return stripActiveContent(root, {
+    removeAttribute: attribute => aiOnlyAttributes.has(attribute.name.toLowerCase()),
+    removeClass: className => className.startsWith("◆"),
   })
-  root.querySelectorAll<HTMLElement>("*").forEach(element => {
-    for(const attribute of Array.from(element.attributes)) {
-      const name = attribute.name.toLowerCase()
-      const editorClass = name === "class"
-        ? attribute.value.split(/\s+/).filter(className => !className.startsWith("◆"))
-        : null
-      if(name.startsWith("on")
-        || name === "srcdoc"
-        || name === "contenteditable"
-        || name === "spellcheck"
-        || name === "data-webwriter-editor-only"
-        || urlAttributes.has(name) && !safeURL(attribute.value)
-        || name === "style" && /(?:expression\s*\(|javascript\s*:|data\s*:\s*text\/html)/i.test(attribute.value)) {
-        element.removeAttribute(attribute.name)
-        removed++
-      }
-      else if(editorClass) {
-        if(editorClass.length) element.setAttribute("class", editorClass.join(" "))
-        else element.removeAttribute("class")
-      }
-    }
-    if(element instanceof HTMLTemplateElement) removed += sanitizeAIContent(element.content)
-  })
-  return removed
 }
 
 const checkedAIHTML = (html: unknown) => {
@@ -68,6 +36,7 @@ export class StateFeature extends EditorFeature {
   private readonly aiEditMarkers = new Map<string, string>()
   private readonly aiEditResults = new Map<string, {scope: "document" | "selection", removedUnsafeItems: number}>()
   private reviewToolbar: HTMLElement | null = null
+  private aiPreview: DOMChangePreview | null = null
 
   private replaceDocument(html: string) {
     const parsed = new DOMParser().parseFromString(checkedAIHTML(html), "text/html")
@@ -123,6 +92,24 @@ export class StateFeature extends EditorFeature {
   private targetsForAIEdit(editId: string) {
     const marker = this.aiEditMarkers.get(editId)
     return marker ? Array.from(document.getElementsByClassName(marker)) as HTMLElement[] : []
+  }
+
+  private targetPath(target: Element) {
+    const path: number[] = []
+    let node: Node | null = target
+    while(node && node !== document.body) {
+      const parent: ParentNode | null = node.parentNode
+      if(!parent) return null
+      path.unshift(Array.from(parent.childNodes).indexOf(node as ChildNode))
+      node = parent as Node
+    }
+    return node === document.body ? path : null
+  }
+
+  private targetAtPath(path: number[]) {
+    let node: Node | null = document.body
+    for(const index of path) node = node?.childNodes.item(index) ?? null
+    return node instanceof Element ? node : node?.parentElement ?? null
   }
 
   private clearAIEditMarkers(editId: string, keepTarget = false) {
@@ -190,15 +177,23 @@ export class StateFeature extends EditorFeature {
 
   private previewAIEdit(editId: string, summary: string, scope: "document" | "selection", html: string) {
     if(this.activeAIEditId) throw new Error("Another AI document change is already awaiting review")
-    const result = this.editor.doc.captureDOMChange(editId, () => {
+    const preview = this.editor.doc.beginDOMPreview()
+    try {
       const replacement = scope === "document" ? this.replaceDocument(html) : this.replaceSelection(html)
       this.markAIEdit(editId, replacement.nodes, "fallbackTarget" in replacement ? replacement.fallbackTarget : document.body)
-      return replacement
-    })
-    this.aiEditResults.set(editId, {scope: result.scope, removedUnsafeItems: result.removedUnsafeItems})
-    this.lockForAIReview(editId, summary)
-    this.gotoAIEdit(editId)
-    return {status: "previewing", scope: result.scope, removedUnsafeItems: result.removedUnsafeItems}
+      this.aiPreview = preview
+      this.aiEditResults.set(editId, {scope: replacement.scope, removedUnsafeItems: replacement.removedUnsafeItems})
+      this.lockForAIReview(editId, summary)
+      this.gotoAIEdit(editId)
+      return {status: "previewing", scope: replacement.scope, removedUnsafeItems: replacement.removedUnsafeItems}
+    }
+    catch(error) {
+      preview.reject()
+      this.aiPreview = null
+      this.clearAIEditMarkers(editId)
+      this.aiEditResults.delete(editId)
+      throw error
+    }
   }
 
   private gotoAIEdit(editId: string) {
@@ -256,21 +251,48 @@ export class StateFeature extends EditorFeature {
     previewAISelection: ({editId, summary, html}: {type: "previewAISelection", editId: string, summary: string, html: string}) =>
       this.previewAIEdit(editId, summary, "selection", html),
     acceptAIEdit: ({editId}: {type: "acceptAIEdit", editId: string}) => {
-      if(this.activeAIEditId !== editId || !this.editor.doc.hasCapturedChange(editId)) {
+      const preview = this.aiPreview
+      if(this.activeAIEditId !== editId || !preview?.active) {
         throw new Error("This AI change is no longer awaiting review")
       }
+      const marker = this.aiEditMarkers.get(editId)
+      const targetPaths = this.targetsForAIEdit(editId).flatMap(target => {
+        const path = this.targetPath(target)
+        return path ? [path] : []
+      })
       this.clearAIEditMarkers(editId, true)
-      this.unlockAfterAIReview(editId)
-      const result = this.aiEditResults.get(editId)
-      return {status: "applied", ...result}
+      this.aiPreview = null
+      try {
+        const accepted = preview.accept(editId)
+        if(accepted && marker) {
+          const targets = targetPaths.flatMap(path => {
+            const target = this.targetAtPath(path)
+            return target ? [target] : []
+          })
+          new Set(targets.length ? targets : [document.body]).forEach(target => target.classList.add(marker))
+        }
+        const result = this.aiEditResults.get(editId)
+        return {status: accepted ? "applied" : "unavailable", ...result}
+      }
+      catch(error) {
+        if(preview.active) preview.reject()
+        this.aiEditMarkers.delete(editId)
+        this.aiEditResults.delete(editId)
+        throw error
+      }
+      finally {
+        this.unlockAfterAIReview(editId)
+      }
     },
     rejectAIEdit: ({editId}: {type: "rejectAIEdit", editId: string}) => {
-      if(this.activeAIEditId !== editId) throw new Error("This AI change is no longer awaiting review")
+      const preview = this.aiPreview
+      if(this.activeAIEditId !== editId || !preview?.active) throw new Error("This AI change is no longer awaiting review")
       this.clearAIEditMarkers(editId)
-      const undone = this.editor.doc.undoCapturedChange(editId)
+      this.aiPreview = null
+      const rejected = preview.reject()
       this.aiEditResults.delete(editId)
       this.unlockAfterAIReview(editId)
-      return {status: undone ? "rejected" : "unavailable"}
+      return {status: rejected ? "rejected" : "unavailable"}
     },
     gotoAIEdit: ({editId}: {type: "gotoAIEdit", editId: string}) => this.gotoAIEdit(editId),
     undoAIEdit: ({editId}: {type: "undoAIEdit", editId: string}) => {
@@ -283,6 +305,10 @@ export class StateFeature extends EditorFeature {
   } as const
 
   disable() {
+    this.aiPreview?.reject()
+    this.aiPreview = null
+    for(const editId of this.aiEditMarkers.keys()) this.clearAIEditMarkers(editId)
+    this.aiEditResults.clear()
     this.activeAIEditId = null
     this.reviewToolbar?.remove()
     this.reviewToolbar = null

@@ -318,6 +318,20 @@ describe("processSelection()", () => {
   })
 })
 
+describe("disable()", () => {
+  it("removes authored selection markers before stopping listeners", () => {
+    const paragraph = el("p", "selected")
+    $.selectElement(paragraph)
+    feature.processSelection()
+    expect(paragraph).toHaveClass("◆element-selected")
+
+    feature.disable()
+    expect(paragraph).not.toHaveClass("◆element-selected")
+    expect(paragraph).not.toHaveClass("◆")
+    feature.enable()
+  })
+})
+
 describe("gapAnchor", () => {
   it("returns the gap-marked element, not the caret", () => {
     const p1 = el("p", "a"); el("p", "b")
@@ -396,10 +410,11 @@ describe("document listeners", () => {
 
     expect(postMessage).toHaveBeenLastCalledWith({
       type: selectionChangeEvent,
+      bridgeNonce: editor.trustedScriptNonce,
       detail: {
         path: [{path: [], name: "Document", icon: "Document"}],
       },
-    }, "*")
+    }, window.location.origin)
   })
 
   it("posts a user-facing selection path through the bridge", () => {
@@ -412,6 +427,7 @@ describe("document listeners", () => {
 
     expect(postMessage).toHaveBeenCalledWith({
       type: selectionChangeEvent,
+      bridgeNonce: editor.trustedScriptNonce,
       detail: {
         path: [
           {path: [], name: "Document", icon: "Document"},
@@ -419,7 +435,7 @@ describe("document listeners", () => {
           {path: [0, 0], name: "Paragraph", icon: "Paragraph"},
         ],
       },
-      }, "*")
+    }, window.location.origin)
   })
   it("omits mark wrappers from the posted selection path", () => {
     document.body.innerHTML = "<section><p><strong><span>hello</span></strong></p></section>"
@@ -430,6 +446,7 @@ describe("document listeners", () => {
 
     expect(postMessage).toHaveBeenLastCalledWith({
       type: selectionChangeEvent,
+      bridgeNonce: editor.trustedScriptNonce,
       detail: {
         path: [
           {path: [], name: "Document", icon: "Document"},
@@ -437,7 +454,7 @@ describe("document listeners", () => {
           {path: [0, 0], name: "Paragraph", icon: "Paragraph"},
         ],
       },
-    }, "*")
+    }, window.location.origin)
   })
   it("posts a gap position through the bridge", () => {
     document.body.innerHTML = "<p>a</p><p>b</p>"
@@ -449,11 +466,12 @@ describe("document listeners", () => {
 
     expect(postMessage).toHaveBeenLastCalledWith({
       type: selectionChangeEvent,
+      bridgeNonce: editor.trustedScriptNonce,
       detail: {
         path: [{path: [], name: "Document", icon: "Document"}],
         gap: {parentPath: [], offset: 1},
       },
-    }, "*")
+    }, window.location.origin)
   })
   it("posts the focused widget path instead of its projected outer gap", () => {
     const widget = document.createElement("editable-widget")

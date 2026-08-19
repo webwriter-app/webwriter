@@ -6,7 +6,8 @@ import {
   type VersionHistoryState,
   type VersionHistoryUser,
 } from "../editor-bridge"
-import {modifierKeyDown, isOnApple} from "../utility"
+import {isOnApple, modifierKeyDown} from "../utility"
+import {userInitials} from "../user-identity"
 
 type StoredCheckpoint = {
   id: string
@@ -23,18 +24,6 @@ const checkpointLimit = 60
 const checkpointDelay = 700
 
 const emptyChanges = (): VersionHistoryChanges => ({added: 0, removed: 0, modified: 0})
-
-const firstInitial = (value: string) =>
-  Array.from(value).find(character => /[\p{L}\p{N}]/u.test(character)) ?? ""
-
-const userInitials = (name: string) => {
-  const words = name.trim().split(/\s+/).filter(Boolean)
-  const initials = words.length > 1
-    ? words.slice(0, 2).map(firstInitial).join("")
-    : Array.from(words[0] ?? "").map(firstInitial).join("").slice(0, 2)
-  const fallback = firstInitial(name) || "?"
-  return Array.from((initials || fallback).toLocaleUpperCase()).slice(0, 2).join("")
-}
 
 /** Collaborative document checkpoints, previews, comments, undo, and redo. */
 export class HistoryFeature extends EditorFeature {

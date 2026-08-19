@@ -97,6 +97,8 @@ describe("loadLocalPackage", () => {
       .rejects.toMatchObject({code: "invalid-manifest"})
     await expect(loadLocalPackage(directory({files: {"package.json": JSON.stringify({name: "@local/demo", version: "next"})}}), {urlFor}))
       .rejects.toMatchObject({code: "invalid-manifest"})
+    await expect(loadLocalPackage(directory({files: {"package.json": manifest({"./widgets/unsafe.js": "../outside.js"})}}), {urlFor}))
+      .rejects.toMatchObject({code: "invalid-manifest"})
   })
 
   it("preserves folder permission failures as a recoverable error", async () => {

@@ -6,6 +6,8 @@ import type {EditorStateSnapshot} from "./editor-state"
 
 const INTERNAL_NODE_KIND = "__domeditor_node_kind"
 const INTERNAL_NAMESPACE = "__domeditor_namespace"
+const INTERNAL_USER_ATTRIBUTE_PREFIX = "__domeditor_user_attribute__"
+const INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX = "__domeditor_namespaced_attribute__"
 const COMMENT_NODE_NAME = "domeditor-comment"
 const COMMENT_NODE_KIND = "comment"
 const INITIALIZED_KEY = "initialized"
@@ -55,12 +57,25 @@ export type DOMSelection = {
   focusOffset: number
 }
 
+/** A private, detached Yjs branch rendered into the live DOM for review. The
+ * source document remains unchanged until accept() merges the branch update. */
+export type DOMChangePreview = {
+  readonly active: boolean
+  accept(changeId: string): boolean
+  reject(): boolean
+}
+
 export type SharedDOMDocOptions = {
   root?: HTMLElement
   ydoc?: Y.Doc
   awareness?: Awareness
   connect?: boolean
   user?: CollaborationUser
+}
+
+type DOMAttribute = {
+  name: string
+  namespaceURI: string | null
 }
 
 /** Returns a stable, readable default color for an awareness client. */
@@ -133,6 +148,7 @@ export class SharedDOMDoc {
   #isObserving = false
   #domSyncPauseDepth = 0
   #hasQueuedYChanges = false
+  #activeDOMPreview: DOMChangePreview | null = null
 
   constructor(
     readonly serverUrl?: string,
@@ -337,9 +353,12 @@ export class SharedDOMDoc {
   }
 
   setSelection(anchorNode: YXmlNode, anchorOffset = 0, focusNode = anchorNode, focusOffset = anchorOffset) {
+    if(!this.#isSelectionNode(anchorNode) || !this.#isSelectionNode(focusNode)) {
+      throw new TypeError("Selection nodes must belong to this shared document")
+    }
     const selection = {
-      anchor: Y.createRelativePositionFromTypeIndex(anchorNode, anchorOffset),
-      focus: Y.createRelativePositionFromTypeIndex(focusNode, focusOffset),
+      anchor: Y.createRelativePositionFromTypeIndex(anchorNode, this.#selectionOffset(anchorNode, anchorOffset)),
+      focus: Y.createRelativePositionFromTypeIndex(focusNode, this.#selectionOffset(focusNode, focusOffset)),
     }
     this.#relativeSelection = selection
     this.awareness.setLocalStateField("selection", selection)
@@ -371,12 +390,12 @@ export class SharedDOMDoc {
     if(!yNode) return null
 
     if(yNode instanceof Y.XmlText) {
-      return Y.createRelativePositionFromTypeIndex(yNode, Math.min(offset, yNode.length))
+      return Y.createRelativePositionFromTypeIndex(yNode, Math.max(0, Math.min(offset, yNode.length)))
     }
     if(yNode instanceof Y.XmlElement || yNode instanceof Y.XmlFragment) {
       const children = Array.from(node.childNodes)
       const yOffset = children.slice(0, offset).filter(child => this.#isSyncableNode(child)).length
-      return Y.createRelativePositionFromTypeIndex(yNode, Math.min(yOffset, yNode.length))
+      return Y.createRelativePositionFromTypeIndex(yNode, Math.max(0, Math.min(yOffset, yNode.length)))
     }
     return null
   }
@@ -393,7 +412,7 @@ export class SharedDOMDoc {
     const node = this.#nodes.get(absolute.type as YXmlNode)
     if(!node || (node !== this.root && !this.root.contains(node))) return null
 
-    if(node instanceof Text) {
+    if(isText(node)) {
       return {node, offset: Math.min(absolute.index, node.length)}
     }
     const yContainer = absolute.type as YXmlContainer
@@ -511,6 +530,11 @@ export class SharedDOMDoc {
       trackedOrigins: new Set([origin]),
       captureTimeout: 0,
     })
+    const wasObserving = this.#isObserving
+    if(this.#domSyncPauseDepth > 0) {
+      undoManager.destroy()
+      throw new Error("Cannot capture a DOM change while DOM synchronization is paused")
+    }
     this.stopObserve()
     try {
       const result = change()
@@ -520,11 +544,97 @@ export class SharedDOMDoc {
       return result
     }
     catch(error) {
-      undoManager.destroy()
+      try {
+        this.#writeYToDOM()
+      }
+      finally {
+        undoManager.destroy()
+      }
       throw error
     }
     finally {
-      this.startObserve()
+      if(wasObserving) this.startObserve()
+    }
+  }
+
+  /** Renders a private CRDT branch into the authored DOM. Remote updates keep
+   * accumulating in the source document and are merged with the branch only
+   * if the caller accepts it. */
+  beginDOMPreview(): DOMChangePreview {
+    if(this.#activeDOMPreview || this.#domSyncPauseDepth > 0) {
+      throw new Error("Another temporary DOM rendering is already active")
+    }
+
+    const wasObserving = this.#isObserving
+    const sourceStateVector = Y.encodeStateVector(this.doc)
+    const previewYDoc = new Y.Doc()
+    Y.applyUpdate(previewYDoc, Y.encodeStateAsUpdate(this.doc))
+    this.pauseDOMSync()
+
+    let previewDoc: SharedDOMDoc
+    try {
+      const user = this.awareness.getLocalState()?.user
+      previewDoc = new SharedDOMDoc(undefined, undefined, this.ignoreAttrs, this.ignoreClasses, {
+        root: this.root,
+        ydoc: previewYDoc,
+        ...(user && typeof user === "object" ? {user: user as CollaborationUser} : {}),
+      })
+    }
+    catch(error) {
+      previewYDoc.destroy()
+      this.resumeDOMSync()
+      if(!wasObserving) this.stopObserve()
+      throw error
+    }
+
+    let active = true
+    const finish = () => {
+      if(!active) return false
+      active = false
+      previewDoc.destroy()
+      this.#activeDOMPreview = null
+      this.resumeDOMSync()
+      if(!wasObserving) this.stopObserve()
+      return true
+    }
+    const preview: DOMChangePreview = {
+      get active() {
+        return active
+      },
+      accept: changeId => {
+        if(!active) return false
+        if(this.#capturedChanges.has(changeId)) {
+          throw new Error(`A captured change with id '${changeId}' already exists`)
+        }
+        previewDoc.syncFromDOM()
+        const update = Y.encodeStateAsUpdate(previewDoc.doc, sourceStateVector)
+        finish()
+        this.#applyCapturedUpdate(changeId, update)
+        return true
+      },
+      reject: finish,
+    }
+    this.#activeDOMPreview = preview
+    return preview
+  }
+
+  #applyCapturedUpdate(changeId: string, update: Uint8Array) {
+    if(this.#capturedChanges.has(changeId)) {
+      throw new Error(`A captured change with id '${changeId}' already exists`)
+    }
+    const origin = {source: "domeditor-captured-update", changeId}
+    const undoManager = new Y.UndoManager(this.#undoScopes(), {
+      trackedOrigins: new Set([origin]),
+      captureTimeout: 0,
+    })
+    try {
+      Y.applyUpdate(this.doc, update, origin)
+      undoManager.stopCapturing()
+      this.#capturedChanges.set(changeId, undoManager)
+    }
+    catch(error) {
+      undoManager.destroy()
+      throw error
     }
   }
 
@@ -552,6 +662,7 @@ export class SharedDOMDoc {
   }
 
   destroy() {
+    this.#activeDOMPreview?.reject()
     this.stopObserve()
     this.#body.unobserveDeep(this.#handleYChanges)
     this.#documentHead?.unobserveDeep(this.#handleYChanges)
@@ -614,16 +725,38 @@ export class SharedDOMDoc {
     this.syncFromDOM(this.#remoteReactionOrigin)
   }
 
+  #isSelectionNode(node: YXmlNode) {
+    if(node.doc !== this.doc) return false
+    let current: YXmlNode | null = node
+    while(current) {
+      if(current === this.#body || current === this.#documentHead) return true
+      current = current.parent as YXmlNode | null
+    }
+    return false
+  }
+
+  #selectionOffset(node: YXmlNode, offset: number) {
+    const length = node instanceof Y.XmlText || node instanceof Y.XmlElement || node instanceof Y.XmlFragment
+      ? node.length
+      : 0
+    return Number.isFinite(offset) ? Math.max(0, Math.min(Math.trunc(offset), length)) : 0
+  }
+
   #absoluteSelection(selection: RelativeSelection | null) {
     if(!selection) return null
-    const anchor = Y.createAbsolutePositionFromRelativePosition(selection.anchor, this.doc)
-    const focus = Y.createAbsolutePositionFromRelativePosition(selection.focus, this.doc)
-    if(!anchor || !focus) return null
-    return {
-      anchorNode: anchor.type as YXmlNode,
-      anchorOffset: anchor.index,
-      focusNode: focus.type as YXmlNode,
-      focusOffset: focus.index,
+    try {
+      const anchor = Y.createAbsolutePositionFromRelativePosition(selection.anchor, this.doc)
+      const focus = Y.createAbsolutePositionFromRelativePosition(selection.focus, this.doc)
+      if(!anchor || !focus || !this.#isSelectionNode(anchor.type as YXmlNode) || !this.#isSelectionNode(focus.type as YXmlNode)) return null
+      return {
+        anchorNode: anchor.type as YXmlNode,
+        anchorOffset: anchor.index,
+        focusNode: focus.type as YXmlNode,
+        focusOffset: focus.index,
+      }
+    }
+    catch {
+      return null
     }
   }
 
@@ -648,15 +781,29 @@ export class SharedDOMDoc {
   }
 
   #isRelevantMutation(mutation: MutationRecord) {
-    if(this.#isInsideIgnoredElement(mutation.target)) return false
     if(mutation.type === "attributes") {
       const name = mutation.attributeName?.toLowerCase()
       if(!name || this.#isIgnoredAttribute(name)) return false
-      if(name === "class" && isElement(mutation.target)) {
-        return this.#filteredClassValue(mutation.oldValue ?? "") !== this.#filteredClassValue(mutation.target.getAttribute("class") ?? "")
+      if(isElement(mutation.target)) {
+        const currentIgnored = this.#isInsideIgnoredElement(mutation.target)
+        if(name === "class") {
+          const oldSelfIgnored = (mutation.oldValue ?? "").split(/\s+/).includes("◆editor-only")
+          const currentSelfIgnored = mutation.target.classList.contains("◆editor-only")
+          if(oldSelfIgnored !== currentSelfIgnored) return true
+          if(currentIgnored) return false
+          return this.#filteredClassValue(mutation.oldValue ?? "") !== this.#filteredClassValue(mutation.target.getAttribute("class") ?? "")
+        }
+        if(name === "data-webwriter-editor-only") {
+          const oldSelfIgnored = mutation.oldValue !== null
+          const currentSelfIgnored = mutation.target.hasAttribute("data-webwriter-editor-only")
+          if(oldSelfIgnored !== currentSelfIgnored) return true
+          if(currentIgnored) return false
+        }
       }
+      if(this.#isInsideIgnoredElement(mutation.target)) return false
       return true
     }
+    if(this.#isInsideIgnoredElement(mutation.target)) return false
     if(mutation.type === "childList") {
       return [...Array.from(mutation.addedNodes), ...Array.from(mutation.removedNodes)]
         .some(node => this.#isSyncableNode(node))
@@ -730,12 +877,12 @@ export class SharedDOMDoc {
     }
     for(const attribute of Array.from(node.attributes)) {
       if(this.#isIgnoredAttribute(attribute.name)) continue
-      if(attribute.name.toLowerCase() === "class") {
+      if(attribute.namespaceURI === null && attribute.name.toLowerCase() === "class") {
         const className = this.#filteredClassValue(attribute.value)
         if(className) yElement.setAttribute("class", className)
       }
       else {
-        yElement.setAttribute(attribute.name, attribute.value)
+        yElement.setAttribute(this.#encodeDOMAttribute(attribute), attribute.value)
       }
     }
     const children = Array.from(node.childNodes).flatMap(child => {
@@ -777,12 +924,13 @@ export class SharedDOMDoc {
     const desired = new Map<string, string>()
     for(const attribute of Array.from(element.attributes)) {
       if(this.#isIgnoredAttribute(attribute.name)) continue
-      if(attribute.name.toLowerCase() === "class") {
+      const key = this.#encodeDOMAttribute(attribute)
+      if(attribute.namespaceURI === null && attribute.name.toLowerCase() === "class") {
         const className = this.#filteredClassValue(attribute.value)
         if(className) desired.set("class", className)
       }
       else {
-        desired.set(attribute.name, attribute.value)
+        desired.set(key, attribute.value)
       }
     }
 
@@ -802,17 +950,78 @@ export class SharedDOMDoc {
     const internalClassNames = Array.from(element.classList).filter(name => this.#isIgnoredClass(name))
     const classNames = Array.from(new Set([...sharedClassNames, ...internalClassNames]))
 
+    const decodedAttributes = Object.entries(shared).flatMap(([name, value]) => {
+      const attribute = this.#decodeYAttribute(name)
+      return attribute ? [{...attribute, value: String(value)}] : []
+    })
+    const desiredNames = new Set(decodedAttributes.map(attribute => this.#domAttributeKey(attribute)))
+
     for(const attribute of Array.from(element.attributes)) {
       const name = attribute.name
       if(this.#isIgnoredAttribute(name) || name.toLowerCase() === "class") continue
-      if(!(name in shared)) element.removeAttribute(name)
+      if(!desiredNames.has(this.#domAttributeKey(attribute))) element.removeAttributeNS(attribute.namespaceURI, attribute.localName)
     }
-    for(const [name, value] of Object.entries(shared)) {
-      if(name === INTERNAL_NODE_KIND || name === INTERNAL_NAMESPACE || name === "class") continue
-      if(element.getAttribute(name) !== String(value)) element.setAttribute(name, String(value))
-    }
+    decodedAttributes.forEach(attribute => {
+      if(attribute.name === "class" && attribute.namespaceURI === null) return
+      if(attribute.namespaceURI === null) {
+        if(element.getAttribute(attribute.name) !== attribute.value) element.setAttribute(attribute.name, attribute.value)
+      }
+      else if(element.getAttributeNS(attribute.namespaceURI, attribute.name.split(":").at(-1)!) !== attribute.value) {
+        element.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+      }
+    })
     if(classNames.length) element.setAttribute("class", classNames.join(" "))
     else element.removeAttribute("class")
+  }
+
+  #encodeDOMAttribute(attribute: Attr) {
+    if(attribute.namespaceURI !== null) {
+      return `${INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX}${encodeURIComponent(JSON.stringify([attribute.namespaceURI, attribute.name]))}`
+    }
+    if(attribute.name === INTERNAL_NODE_KIND || attribute.name === INTERNAL_NAMESPACE ||
+      attribute.name.startsWith(INTERNAL_USER_ATTRIBUTE_PREFIX) ||
+      attribute.name.startsWith(INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX)) {
+      return `${INTERNAL_USER_ATTRIBUTE_PREFIX}${encodeURIComponent(attribute.name)}`
+    }
+    return attribute.name
+  }
+
+  #decodeYAttribute(name: string): DOMAttribute | null {
+    if(name === INTERNAL_NODE_KIND || name === INTERNAL_NAMESPACE || name === "class") return null
+    if(name.startsWith(INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX)) {
+      try {
+        const value = JSON.parse(decodeURIComponent(name.slice(INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX.length)))
+        if(Array.isArray(value) && typeof value[0] === "string" && typeof value[1] === "string") {
+          return {namespaceURI: value[0], name: value[1]}
+        }
+      }
+      catch {
+        // Ignore malformed internal metadata from an untrusted remote update.
+      }
+      return null
+    }
+    if(name.startsWith(INTERNAL_USER_ATTRIBUTE_PREFIX)) {
+      try {
+        const decoded = decodeURIComponent(name.slice(INTERNAL_USER_ATTRIBUTE_PREFIX.length))
+        return {namespaceURI: null, name: decoded}
+      }
+      catch {
+        return null
+      }
+    }
+    return {namespaceURI: null, name}
+  }
+
+  #domAttributeKey(attribute: DOMAttribute | Attr) {
+    if(attribute.namespaceURI !== null) {
+      return `${INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX}${encodeURIComponent(JSON.stringify([attribute.namespaceURI, attribute.name]))}`
+    }
+    if(attribute.name === INTERNAL_NODE_KIND || attribute.name === INTERNAL_NAMESPACE ||
+      attribute.name.startsWith(INTERNAL_USER_ATTRIBUTE_PREFIX) ||
+      attribute.name.startsWith(INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX)) {
+      return `${INTERNAL_USER_ATTRIBUTE_PREFIX}${encodeURIComponent(attribute.name)}`
+    }
+    return attribute.name
   }
 
   #reconcileYText(domText: Text, yText: Y.XmlText) {

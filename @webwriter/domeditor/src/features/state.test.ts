@@ -45,7 +45,9 @@ describe("StateFeature", () => {
   })
 
   it("embeds media and scripts for offline saves and preserves restorable source URLs", async () => {
-    document.body.innerHTML = '<img src="/photo.png"><script src="/app.js"></script>'
+    // Keep the resource fixture inert in Happy DOM while exercising the same
+    // script[src] serialization path used for executable scripts.
+    document.body.innerHTML = '<img src="/photo.png"><script type="application/json" src="/app.js"></script>'
     vi.spyOn(globalThis, "fetch").mockImplementation(async input => {
       const url = String(input)
       if(url.endsWith("app.js")) {
@@ -125,6 +127,8 @@ describe("StateFeature", () => {
     expect(preview.status).toBe("previewing")
     expect(preview.removedUnsafeItems).toBeGreaterThan(0)
     expect(editor.toHTML(true)).toBe("<p>After</p>")
+    expect(editor.doc.body.toString()).toContain("Before")
+    expect(editor.doc.body.toString()).not.toContain("After")
     expect(document.body.inert).toBe(true)
     expect(document.body.contentEditable).toBe("false")
     expect(document.querySelector(".◆ai-review-toolbar")?.textContent).toContain("Replace the paragraph")
@@ -180,6 +184,26 @@ describe("StateFeature", () => {
     expect(undone.status).toBe("undone")
     expect(editor.toHTML(true)).toContain("<p>Before</p>")
     expect(editor.toHTML(true)).toContain("<aside>Later local edit</aside>")
+    editor.destroy()
+  })
+
+  it("cleans up when accepting a preview with a duplicate captured change id fails", async () => {
+    document.body.innerHTML = "<p>Before</p>"
+    const editor = new DOMEditor()
+    const previewAction = editor.getActionHandler("previewAIDocument")
+    const acceptAction = editor.getActionHandler("acceptAIEdit")
+
+    previewAction({type: "previewAIDocument", editId: "duplicate", summary: "First", html: "<p>First</p>"})
+    acceptAction({type: "acceptAIEdit", editId: "duplicate"})
+
+    previewAction({type: "previewAIDocument", editId: "duplicate", summary: "Second", html: "<p>Second</p>"})
+    expect(() => acceptAction({type: "acceptAIEdit", editId: "duplicate"})).toThrow("already exists")
+    expect(document.body.textContent).toBe("First")
+
+    document.querySelector("p")!.textContent = "After failed preview"
+    await new Promise<void>(resolve => queueMicrotask(resolve))
+    await new Promise<void>(resolve => queueMicrotask(resolve))
+    expect(editor.doc.body.toString()).toContain("After failed preview")
     editor.destroy()
   })
 })

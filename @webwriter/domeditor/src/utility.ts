@@ -111,7 +111,8 @@ export class EditingSelection {
       }
       return
     }
-    const isBeforeFirstBodyElement = offsetNode === document.body && typeof offset === "number" && firstBodyElementIndex >= 0 && offset <= firstBodyElementIndex &&
+    if(typeof offset !== "number") return
+    const isBeforeFirstBodyElement = offsetNode === document.body && firstBodyElement !== null && firstBodyElementIndex >= 0 && offset <= firstBodyElementIndex &&
       y < firstBodyElement.getBoundingClientRect().top
     if(!extend && isBeforeFirstBodyElement) {
       this.selectGap(firstBodyElement, "before")
@@ -551,7 +552,7 @@ export function getIndexBefore(range: Range): number {
 
 /** Type guard for element nodes. */
 export function isElement(node: unknown): node is Element {
-  return node instanceof Node && node.nodeType === Node.ELEMENT_NODE
+  return Boolean(node && typeof node === "object" && (node as Node).nodeType === 1)
 }
 
 /** Marks custom-element widgets as editable while they are still detached.
@@ -572,17 +573,17 @@ export function markWidgetsEditable(node: Node, widgetTags?: ReadonlySet<string>
 
 /** Type guard for comment nodes. */
 export function isComment(node: unknown): node is Comment {
-  return node instanceof Node && node.nodeType === Node.COMMENT_NODE
+  return Boolean(node && typeof node === "object" && (node as Node).nodeType === 8)
 }
 
 /** Type guard for text nodes. */
 export function isText(node: unknown): node is Text {
-  return node instanceof Node && node.nodeType === Node.TEXT_NODE
+  return Boolean(node && typeof node === "object" && (node as Node).nodeType === 3)
 }
 
 /** Type guard for document nodes. */
 export function isDocument(node?: unknown): node is Document {
-  return node instanceof Node && node.nodeType === Node.DOCUMENT_NODE
+  return Boolean(node && typeof node === "object" && (node as Node).nodeType === 9)
 }
 
 /** Whether the platform is macOS or iOS. */

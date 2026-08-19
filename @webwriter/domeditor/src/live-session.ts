@@ -76,6 +76,8 @@ type LiveSessionOptions = {
   role: LiveSessionRole
   baseHTML?: string
   serverUrl?: string
+  /** Capability shared only through the host's learner link. */
+  token?: string
   learner?: Pick<LiveSessionLearner, "id" | "name" | "color">
 }
 
@@ -90,6 +92,7 @@ type BroadcastMessage = {
   type: "sync-request" | "sync" | "update" | "awareness"
   session: string
   sender: string
+  token?: string
   update?: number[]
   awareness?: number[]
 }
@@ -100,6 +103,15 @@ const STEPS = "live-session-steps"
 const STATES = "live-session-states"
 const transportSessions = new Map<string, Set<LiveSession>>()
 const sessionIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/
+const learnerIdPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
+
+const isLearnerIdentity = (value: unknown): value is Pick<LiveSessionLearner, "id" | "name" | "color"> => {
+  if(!value || typeof value !== "object") return false
+  const learner = value as Partial<LiveSessionLearner>
+  return typeof learner.id === "string" && learnerIdPattern.test(learner.id)
+    && typeof learner.name === "string" && learner.name.length <= 200
+    && typeof learner.color === "string" && learner.color.length <= 64
+}
 
 const clone = <T>(value: T): T => {
   if(value === undefined || value === null) return value
@@ -130,6 +142,7 @@ export class LiveSession {
   readonly #channel?: BroadcastChannel
   readonly #provider?: WebsocketProvider
   readonly #learner?: Pick<LiveSessionLearner, "id" | "name" | "color">
+  readonly #token?: string
   readonly #pendingStepDeltas: LiveSessionStepDelta[] = []
   #status: LiveSessionStatus
   #destroyed = false
@@ -139,6 +152,13 @@ export class LiveSession {
     if(!sessionIdPattern.test(options.id)) throw new TypeError("A live session needs a safe id")
     this.id = options.id
     this.role = options.role
+    if(options.token !== undefined && !/^[A-Za-z0-9_-]{24,256}$/.test(options.token)) {
+      throw new TypeError("A live session token is invalid")
+    }
+    if(options.serverUrl && !options.token) {
+      throw new TypeError("A server-backed live session requires a bearer token")
+    }
+    this.#token = options.token
     this.#status = options.serverUrl ? "connecting" : "connected"
     this.doc = new Y.Doc()
     this.awareness = new Awareness(this.doc as any)
@@ -160,7 +180,7 @@ export class LiveSession {
         name: "Learner",
         color: "#2563eb",
       }
-      if(!learner.id.trim()) throw new TypeError("A learner needs an id")
+      if(!isLearnerIdentity(learner)) throw new TypeError("A learner identity is invalid")
       this.#learner = {id: learner.id, name: learner.name, color: learner.color}
       this.#upsertLearner(this.#learner, true)
       this.awareness.setLocalStateField("liveSession", {role: this.role, learner: this.#learner})
@@ -177,6 +197,7 @@ export class LiveSession {
     if(options.serverUrl) {
       this.#provider = new WebsocketProvider(options.serverUrl, `live-session-${this.id}`, this.doc as any, {
         awareness: this.awareness,
+        ...(this.#token ? {params: {token: this.#token, role: this.role}} : {}),
       })
       this.#provider.on("status", ({status}: {status: string}) => {
         this.#status = status === "connected" ? "connected" : "connecting"
@@ -185,7 +206,8 @@ export class LiveSession {
     }
     else {
       const peers = transportSessions.get(this.id) ?? new Set<LiveSession>()
-      const source = [...peers].find(peer => peer.role === "host") ?? peers.values().next().value
+      const compatiblePeers = [...peers].filter(peer => peer.#token === this.#token)
+      const source = compatiblePeers.find(peer => peer.role === "host") ?? compatiblePeers[0]
       const sourceStateVector = source ? Y.encodeStateVector(source.doc) : new Uint8Array()
       if(source) source.#sendSync(this)
       peers.add(this)
@@ -193,7 +215,12 @@ export class LiveSession {
       if(typeof BroadcastChannel !== "undefined") {
         this.#channel = new BroadcastChannel(`webwriter-live-session:${this.id}`)
         this.#channel.addEventListener("message", this.#handleBroadcast)
-        this.#channel.postMessage({type: "sync-request", session: this.id, sender: this.#transportId} satisfies BroadcastMessage)
+        this.#channel.postMessage({
+          type: "sync-request",
+          session: this.id,
+          sender: this.#transportId,
+          ...(this.#token ? {token: this.#token} : {}),
+        } satisfies BroadcastMessage)
       }
       const joiningUpdate = source
         ? Y.encodeStateAsUpdate(this.doc, sourceStateVector)
@@ -210,6 +237,10 @@ export class LiveSession {
 
   get learners() {
     return [...this.#learnerMap.values()]
+      .filter(learner => isLearnerIdentity(learner)
+        && typeof learner.firstSeen === "number" && Number.isFinite(learner.firstSeen)
+        && typeof learner.lastSeen === "number" && Number.isFinite(learner.lastSeen)
+        && typeof learner.connected === "boolean")
       .map(learner => clone(learner))
       .sort((a, b) => a.firstSeen - b.firstSeen || a.id.localeCompare(b.id))
   }
@@ -219,7 +250,9 @@ export class LiveSession {
   }
 
   get states() {
-    return [...this.#stateMap.values()].map(state => clone(state)).sort((a, b) => a.learner.localeCompare(b.learner))
+    return [...this.#stateMap.values()]
+      .filter(state => state && typeof state.learner === "string")
+      .map(state => clone(state)).sort((a, b) => a.learner.localeCompare(b.learner))
   }
 
   get status() {
@@ -339,7 +372,7 @@ export class LiveSession {
       for(const clientId of [...added, ...updated]) {
         const state = this.awareness.getStates().get(clientId) as AwarenessState | undefined
         const learner = state?.liveSession?.learner
-        if(!learner) continue
+        if(!isLearnerIdentity(learner)) continue
         this.#clientLearners.set(clientId, learner.id)
         this.#upsertLearner(learner, true)
       }
@@ -364,9 +397,15 @@ export class LiveSession {
   #broadcastUpdate(update: Uint8Array) {
     const data = Array.from(update)
     transportSessions.get(this.id)?.forEach(peer => {
-      if(peer !== this) peer.#applyUpdate(update)
+      if(peer !== this && peer.#token === this.#token) peer.#applyUpdate(update)
     })
-    this.#channel?.postMessage({type: "update", session: this.id, sender: this.#transportId, update: data} satisfies BroadcastMessage)
+    this.#channel?.postMessage({
+      type: "update",
+      session: this.id,
+      sender: this.#transportId,
+      ...(this.#token ? {token: this.#token} : {}),
+      update: data,
+    } satisfies BroadcastMessage)
   }
 
   #sendSync(target: LiveSession) {
@@ -376,22 +415,27 @@ export class LiveSession {
   }
 
   #applyUpdate(update: Uint8Array) {
-    Y.applyUpdate(this.doc, update, this.#transportOrigin)
+    if(!(update instanceof Uint8Array) || update.byteLength > 8 * 1024 * 1024) return
+    try { Y.applyUpdate(this.doc, update, this.#transportOrigin) }
+    catch { /* Ignore malformed or oversized peer updates. */ }
   }
 
   #applyAwareness(update: Uint8Array) {
-    applyAwarenessUpdate(this.awareness, update, this.#transportOrigin)
+    if(!(update instanceof Uint8Array) || update.byteLength > 512 * 1024) return
+    try { applyAwarenessUpdate(this.awareness, update, this.#transportOrigin) }
+    catch { /* Ignore malformed peer awareness updates. */ }
   }
 
   #broadcastAwareness(clientIds = [...this.awareness.getStates().keys()]) {
     const update = encodeAwarenessUpdate(this.awareness, clientIds)
     transportSessions.get(this.id)?.forEach(peer => {
-      if(peer !== this) peer.#applyAwareness(update)
+      if(peer !== this && peer.#token === this.#token) peer.#applyAwareness(update)
     })
     this.#channel?.postMessage({
       type: "awareness",
       session: this.id,
       sender: this.#transportId,
+      ...(this.#token ? {token: this.#token} : {}),
       awareness: Array.from(update),
     } satisfies BroadcastMessage)
   }
@@ -399,18 +443,24 @@ export class LiveSession {
   #handleBroadcast = (event: MessageEvent<BroadcastMessage>) => {
     const message = event.data
     if(!message || message.session !== this.id || message.sender === this.#transportId) return
+    if(message.token !== this.#token) return
     if(message.type === "sync-request" && this.role === "host") {
       this.#channel?.postMessage({
         type: "sync",
         session: this.id,
         sender: this.#transportId,
+        ...(this.#token ? {token: this.#token} : {}),
         update: Array.from(Y.encodeStateAsUpdate(this.doc)),
         awareness: Array.from(encodeAwarenessUpdate(this.awareness, [...this.awareness.getStates().keys()])),
       } satisfies BroadcastMessage)
     }
-    else if(message.update) this.#applyUpdate(Uint8Array.from(message.update))
+    else if(Array.isArray(message.update) && message.update.every(byte => Number.isInteger(byte) && byte >= 0 && byte <= 255)) {
+      this.#applyUpdate(Uint8Array.from(message.update))
+    }
     if((message.type === "sync" || message.type === "awareness") && message.awareness) {
-      this.#applyAwareness(Uint8Array.from(message.awareness))
+      if(Array.isArray(message.awareness) && message.awareness.every(byte => Number.isInteger(byte) && byte >= 0 && byte <= 255)) {
+        this.#applyAwareness(Uint8Array.from(message.awareness))
+      }
     }
   }
 

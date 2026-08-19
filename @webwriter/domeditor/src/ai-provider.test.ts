@@ -65,6 +65,22 @@ describe("AIProviderStore", () => {
     expect(store.providers).toEqual([expect.objectContaining({id: custom.id})])
   })
 
+  it("rolls back in-memory selection when provider persistence fails", () => {
+    const storage = {
+      getItem: () => null,
+      setItem: () => { throw new Error("storage full") },
+      removeItem: () => undefined,
+      clear: () => undefined,
+      key: () => null,
+      length: 0,
+    } as unknown as Storage
+    const store = new AIProviderStore(storage)
+    const provider = createAIProvider("openai")
+    expect(() => store.upsert(provider)).toThrow("storage full")
+    expect(store.providers).toEqual([])
+    expect(store.activeProviderId).toBeNull()
+  })
+
   it("uses backend provider management without copying credentials into browser storage", async () => {
     const provider = {
       ...createAIProvider("openai"),
@@ -91,5 +107,22 @@ describe("AIProviderStore", () => {
     expect(store.activeProvider?.name).toBe("Server OpenAI")
     expect(localStorage.getItem(AI_PROVIDERS_STORAGE_KEY)).toBeNull()
     expect(localStorage.getItem(AI_KEYS_STORAGE_KEY)).toBeNull()
+  })
+
+  it("keeps the prior backend provider active when activation fails", async () => {
+    const first = {...createAIProvider("openai"), id: "first", managed: "backend" as const}
+    const second = {...createAIProvider("custom"), id: "second", managed: "backend" as const}
+    const backend = {
+      listAIProviders: async () => ({providers: [first, second], activeProviderId: first.id}),
+      createAIProvider: async () => ({provider: first, activeProviderId: first.id}),
+      updateAIProvider: async () => ({provider: first, activeProviderId: first.id}),
+      deleteAIProvider: async () => undefined,
+      setActiveAIProvider: async () => { throw new Error("backend unavailable") },
+    }
+    const store = new AIProviderStore(localStorage)
+    await store.connectBackend(backend)
+
+    await expect(store.activate(second.id)).rejects.toThrow("backend unavailable")
+    expect(store.activeProviderId).toBe(first.id)
   })
 })

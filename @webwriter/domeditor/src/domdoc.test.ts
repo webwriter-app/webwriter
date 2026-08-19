@@ -55,6 +55,17 @@ afterEach(() => {
 })
 
 describe("SharedDOMDoc initialization", () => {
+  it("supports roots owned by another document", () => {
+    const owner = document.implementation.createHTMLDocument("")
+    const root = owner.createElement("main")
+    root.innerHTML = "<p>foreign document</p>"
+    const shared = new SharedDOMDoc(undefined, undefined, [], ["◆"], {root})
+    sharedDocs.push(shared)
+
+    expect(shared.body.firstChild?.toString()).toContain("foreign document")
+    expect(shared.yxmlToDomNode(shared.body)?.ownerDocument).toBe(owner)
+  })
+
   it("always initializes a Y document from the complete editable light DOM", () => {
     const {root, shared} = createShared("text<!--note--><section id=one><p>Hello</p></section>")
     root.setAttribute("lang", "en")
@@ -126,6 +137,57 @@ describe("SharedDOMDoc initialization", () => {
 })
 
 describe("DOM to Yjs synchronization", () => {
+  it("synchronizes transitions into and out of editor-only state", async () => {
+    const {root, shared} = createShared("<p>content</p>")
+    const paragraph = root.firstElementChild!
+
+    paragraph.classList.add("◆editor-only")
+    await mutationsDelivered()
+    expect(shared.body.toArray()).toHaveLength(0)
+
+    paragraph.classList.remove("◆editor-only")
+    await mutationsDelivered()
+    expect(shared.body.toString()).toContain("<p>content</p>")
+
+    paragraph.setAttribute("data-webwriter-editor-only", "")
+    await mutationsDelivered()
+    expect(shared.body.toArray()).toHaveLength(0)
+
+    paragraph.removeAttribute("data-webwriter-editor-only")
+    await mutationsDelivered()
+    expect(shared.body.toString()).toContain("<p>content</p>")
+  })
+
+  it("round-trips reserved-looking authored attributes without treating them as metadata", () => {
+    const {root, shared} = createShared("<p>content</p>")
+    const paragraph = root.firstElementChild!
+    paragraph.setAttribute("__domeditor_node_kind", "comment")
+    paragraph.setAttribute("__domeditor_namespace", "authored-value")
+    paragraph.setAttribute("__domeditor_user_attribute__example", "user-value")
+
+    shared.syncFromDOM()
+    const {root: peerRoot} = cloneShared(shared)
+    const peerParagraph = peerRoot.firstElementChild!
+    expect(peerParagraph.localName).toBe("p")
+    expect(peerParagraph.getAttribute("__domeditor_node_kind")).toBe("comment")
+    expect(peerParagraph.getAttribute("__domeditor_namespace")).toBe("authored-value")
+    expect(peerParagraph.getAttribute("__domeditor_user_attribute__example")).toBe("user-value")
+  })
+
+  it("round-trips namespaced attributes", () => {
+    const {root, shared} = createShared()
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    const use = document.createElementNS("http://www.w3.org/2000/svg", "use")
+    use.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", "#icon")
+    svg.append(use)
+    root.append(svg)
+    shared.syncFromDOM()
+
+    const {root: peerRoot} = cloneShared(shared)
+    const peerUse = peerRoot.querySelector("use")!
+    expect(peerUse.getAttributeNS("http://www.w3.org/1999/xlink", "href")).toBe("#icon")
+  })
+
   it("captures character-data, attribute add/update/removal, and body attributes", async () => {
     const {root, shared} = createShared('<p title="old">Hello</p>')
     const paragraph = root.firstElementChild!
@@ -279,6 +341,68 @@ describe("Yjs to DOM synchronization", () => {
     expect(root.innerHTML).toBe("<p>Hello remote</p>")
   })
 
+  it("keeps a rejected DOM preview private and restores queued shared changes", async () => {
+    const {root, shared} = createShared("<p>Before</p>")
+    const preview = shared.beginDOMPreview()
+    root.innerHTML = "<article>Private preview</article>"
+    await mutationsDelivered()
+
+    expect(shared.body.toString()).toContain("Before")
+    expect(shared.body.toString()).not.toContain("Private preview")
+
+    const remote = new Y.XmlElement("aside")
+    remote.insert(0, [new Y.XmlText("Remote")])
+    shared.doc.transact(() => shared.body.insert(shared.body.length, [remote]), "remote-client")
+    expect(root.textContent).toBe("Private preview")
+
+    expect(preview.reject()).toBe(true)
+    expect(root.textContent).toContain("Before")
+    expect(root.textContent).toContain("Remote")
+    expect(preview.active).toBe(false)
+  })
+
+  it("merges an accepted DOM preview with queued changes and captures it for selective undo", async () => {
+    const {root, shared} = createShared("<p>Before</p>")
+    const preview = shared.beginDOMPreview()
+    root.innerHTML = "<article>Accepted preview</article>"
+    await mutationsDelivered()
+
+    const remote = new Y.XmlElement("aside")
+    remote.insert(0, [new Y.XmlText("Remote")])
+    shared.doc.transact(() => shared.body.insert(shared.body.length, [remote]), "remote-client")
+
+    expect(preview.accept("reviewed-change")).toBe(true)
+    expect(root.textContent).toContain("Accepted preview")
+    expect(root.textContent).toContain("Remote")
+    expect(shared.hasCapturedChange("reviewed-change")).toBe(true)
+
+    const later = document.createElement("footer")
+    later.textContent = "Later"
+    root.append(later)
+    await mutationsDelivered()
+
+    expect(shared.undoCapturedChange("reviewed-change")).toBe(true)
+    expect(root.textContent).toContain("Before")
+    expect(root.textContent).toContain("Remote")
+    expect(root.textContent).toContain("Later")
+    expect(root.textContent).not.toContain("Accepted preview")
+  })
+
+  it("keeps a preview active when accept rejects a duplicate captured change id", () => {
+    const {root, shared} = createShared("<p>Before</p>")
+    shared.captureDOMChange("existing-change", () => {
+      root.firstElementChild!.textContent = "Existing"
+    })
+
+    const preview = shared.beginDOMPreview()
+    root.innerHTML = "<p>Preview</p>"
+    expect(() => preview.accept("existing-change")).toThrow("already exists")
+    expect(preview.active).toBe(true)
+
+    expect(preview.reject()).toBe(true)
+    expect(root.textContent).toBe("Existing")
+  })
+
   it("applies remote text and attribute changes without replacing the existing DOM element", () => {
     const {root, shared} = createShared('<p title="old">Hello</p>')
     const paragraph = root.firstElementChild!
@@ -386,6 +510,50 @@ describe("Yjs to DOM synchronization", () => {
 })
 
 describe("relative selections and history", () => {
+  it("rejects foreign Y selection nodes and malformed restored selections", () => {
+    const {shared} = createShared("<p>Hello</p>")
+    expect(() => shared.setSelection(new Y.XmlText("foreign") as Y.XmlText)).toThrow(TypeError)
+
+    shared.restoreSelection({anchor: {}, focus: {}})
+    expect(shared.selection).toBeNull()
+  })
+
+  it("rolls back a throwing captured DOM change and preserves observer state", async () => {
+    const {root, shared} = createShared("<p>before</p>")
+    const paragraph = root.firstElementChild!
+
+    expect(() => shared.captureDOMChange("throwing", () => {
+      paragraph.textContent = "transient"
+      throw new Error("abort")
+    })).toThrow("abort")
+    expect(root.innerHTML).toBe("<p>before</p>")
+    expect(shared.body.toString()).toContain("<p>before</p>")
+
+    paragraph.textContent = "after"
+    await mutationsDelivered()
+    expect(shared.body.toString()).toContain("<p>after</p>")
+  })
+
+  it("does not re-enable a previously stopped observer after a captured change", async () => {
+    const {root, shared} = createShared("<p>before</p>")
+    const paragraph = root.firstElementChild!
+    shared.stopObserve()
+
+    shared.captureDOMChange("stopped", () => {
+      paragraph.textContent = "captured"
+    })
+    paragraph.textContent = "not captured"
+    await mutationsDelivered()
+    expect(shared.body.toString()).toContain("<p>captured</p>")
+    shared.startObserve()
+  })
+
+  it("removes stale attributes whose names shadow object properties", () => {
+    const source = createShared("<p>shared</p>").shared
+    const {root} = cloneShared(source, '<p toString="stale">stale</p>')
+    expect(root.firstElementChild).not.toHaveAttribute("toString")
+  })
+
   it("keeps a local caret attached to shared text across remote edits", () => {
     document.body.innerHTML = "<p>Hello</p>"
     const shared = new SharedDOMDoc(undefined, undefined, ["contenteditable", "spellcheck"], ["◆"])

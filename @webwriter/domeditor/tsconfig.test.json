@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["vitest/globals"],
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@vitest/expect": ["node_modules/vitest/node_modules/@vitest/expect"]
+    }
+  },
+  "include": ["custom.d.ts", "test-matchers.d.ts", "src/**/*.ts"],
+  "exclude": ["dist", "src/local-package-service-worker.ts"]
+}

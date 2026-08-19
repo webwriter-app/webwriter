@@ -111,6 +111,11 @@ describe("editor bridge message guards", () => {
     expect(isInitializeEditorMessage({
       type: initializeEditorMessage,
       syncUrl: "ws://localhost/session",
+      bridgeNonce: "0123456789abcdef",
+    })).toBe(true)
+    expect(isInitializeEditorMessage({
+      type: initializeEditorMessage,
+      syncUrl: "ws://localhost/session",
       initialState: {update: [0, 127, 255]},
     })).toBe(true)
 
@@ -121,6 +126,8 @@ describe("editor bridge message guards", () => {
       {type: initializeEditorMessage, syncUrl: "", initialState: {update: [-1]}},
       {type: initializeEditorMessage, syncUrl: "", initialState: {update: [1.5]}},
       {type: initializeEditorMessage, syncUrl: "", initialState: {update: [256]}},
+      {type: initializeEditorMessage, syncUrl: "file:///etc/passwd"},
+      {type: initializeEditorMessage, syncUrl: "ws://localhost/session", bridgeNonce: "short"},
     ])
   })
 
@@ -167,6 +174,8 @@ describe("editor bridge message guards", () => {
       {type: "dom-editor-execute-progress", detail: {requestId: "request-1"}},
       {type: executeCompleteEvent},
       {type: executeCompleteEvent, detail: {requestId: 1}},
+      {type: executeFailureEvent, detail: {requestId: "request-3"}},
+      {type: executeFailureEvent, detail: {requestId: "request-4", error: {name: "Error"}}},
     ])
   })
 

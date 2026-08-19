@@ -1,4 +1,4 @@
-import type {LocalPackageDirectory, LocalPackageFile} from "./local-package"
+import {normalizeLocalPackagePath, type LocalPackageDirectory, type LocalPackageFile} from "./local-package"
 
 type FileSystemObserverLike = {
   observe(target: LocalPackageDirectory, options?: {recursive?: boolean}): Promise<void> | void
@@ -18,11 +18,14 @@ type FileState = {exists: boolean, lastModified?: number, size?: number}
 const observerFromGlobal = () => (globalThis as unknown as {FileSystemObserver?: FileSystemObserverConstructor}).FileSystemObserver
 
 async function readPath(directory: LocalPackageDirectory, path: string): Promise<LocalPackageFile> {
-  const parts = path.replace(/^\.\//, "").split("/").filter(Boolean)
+  const parts = normalizeLocalPackagePath(path).split("/")
   if(!parts.length) throw new Error("The package path is empty")
   let current = directory
   for(const part of parts.slice(0, -1)) {
-    if(current.getDirectoryHandle) current = await current.getDirectoryHandle(part)
+    if(current.getDirectoryHandle) {
+      try { current = await current.getDirectoryHandle(part) }
+      catch { current = await current.getFileHandle(part) as unknown as LocalPackageDirectory }
+    }
     else current = await current.getFileHandle(part) as unknown as LocalPackageDirectory
   }
   return (await current.getFileHandle(parts.at(-1)!)).getFile()
@@ -65,7 +68,7 @@ export class LocalPackageMonitor {
   async start(paths: string[] = []) {
     if(this.started || this.disposed) return
     this.started = true
-    this.paths = [...new Set(paths)]
+    this.paths = this.normalizePaths(paths)
     await this.captureStates()
     if(this.disposed) return
     if(this.observerFactory) {
@@ -86,13 +89,20 @@ export class LocalPackageMonitor {
 
   /** Replaces the paths used by polling; newly-created files are detected. */
   async setPaths(paths: string[]) {
-    this.paths = [...new Set(paths)]
+    this.paths = this.normalizePaths(paths)
     if(this.started && !this.observer) await this.captureStates()
   }
 
   private startPolling() {
     if(this.pollTimer || this.disposed) return
     this.pollTimer = setInterval(() => void this.poll(), this.intervalMs)
+  }
+
+  private normalizePaths(paths: string[]) {
+    return [...new Set(paths.flatMap(path => {
+      try { return [normalizeLocalPackagePath(path)] }
+      catch { return [] }
+    }))]
   }
 
   private async captureStates() {

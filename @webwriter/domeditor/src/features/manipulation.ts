@@ -17,19 +17,20 @@ function isCaretAtBoundary(element: Element, boundary: "start" | "end") {
     if(!element.contains(node)) {
       return false
     }
-    const parent = node.parentNode
+    const parent: Node | null = node.parentNode
     if(!parent) {
       return false
     }
-    const index = Array.from(parent.childNodes).indexOf(node)
+    const siblings = Array.from(parent.childNodes) as ChildNode[]
+    const index = siblings.indexOf(node as ChildNode)
     if(boundary === "start") {
-      if(offset !== 0 || Array.from(parent.childNodes).slice(0, index).some(sibling => sibling.nodeType === Node.ELEMENT_NODE || sibling.textContent)) {
+      if(offset !== 0 || siblings.slice(0, index).some((sibling: ChildNode) => sibling.nodeType === Node.ELEMENT_NODE || sibling.textContent)) {
         return false
       }
     }
     else {
       const length = node instanceof Text? node.length: node.childNodes.length
-      if(offset !== length || Array.from(parent.childNodes).slice(index + 1).some(sibling => sibling.nodeType === Node.ELEMENT_NODE || sibling.textContent)) {
+      if(offset !== length || siblings.slice(index + 1).some((sibling: ChildNode) => sibling.nodeType === Node.ELEMENT_NODE || sibling.textContent)) {
         return false
       }
     }
@@ -597,30 +598,24 @@ export class ManipulationFeature extends EditorFeature {
       return this.withNormalization(() => this.insertBlockWidget(insertedWidget))
     }
     return this.withNormalization(() => {
-      if(true) {
-        $.replace(node)
-        let locus = $.commonAncestor
-        for(let i = 0; i <= splitDepth; i++) {
-          $.start instanceof Text && $.start.splitText($.startOffset)
-          let container = getContainer(locus)
-          if(container.nodeName === "BODY" || container.nodeName === "HTML") {continue}
-          const [,right] = getSidesOfPoint($.range)
-          const schema = this.editor.schema.get(container)
-          const next = (strict && schema.inseperable? this.editor.schema.create(): container.cloneNode()) as Element
-          container.after(next)
-          next.append(...right)
-          node? $.move(node, -1): $.move(next, 0)
-        }
-        if(insertedWidget?.isConnected) {
-          $.selectElement(insertedWidget)
-          this.editor.features.selection.processSelection()
-        }
-        return
+      $.replace(node)
+      let locus = $.commonAncestor
+      for(let i = 0; i <= splitDepth; i++) {
+        $.start instanceof Text && $.start.splitText($.startOffset)
+        let container = getContainer(locus)
+        if(container.nodeName === "BODY" || container.nodeName === "HTML") {continue}
+        const [,right] = getSidesOfPoint($.range)
+        const schema = this.editor.schema.get(container)
+        const next = (strict && schema.inseperable? this.editor.schema.create(): container.cloneNode()) as Element
+        container.after(next)
+        next.append(...right)
+        node? $.move(node, -1): $.move(next, 0)
       }
-    }/*
-      else if(node) {
-        this.#smartInsert(node)
-      }*/)
+      if(insertedWidget?.isConnected) {
+        $.selectElement(insertedWidget)
+        this.editor.features.selection.processSelection()
+      }
+    })
   }
 
   /** Deletes content at the selection. A selection in an empty container
@@ -823,23 +818,12 @@ export class ManipulationFeature extends EditorFeature {
     })
   }
 
-  /** Replaces the selection's container with `el`, moving the children over
-   * and selecting `el`. Refuses to replace <html> or <body>. */
-  #replaceParent(el: Element) {
-    const parent = getContainer($.commonAncestor)
-    if(parent?.tagName === "HTML" || parent?.tagName === "BODY") {
-      throw TypeError("Cannot replace <html> or <body>")
-    }
-    el.append(...Array.from(parent?.childNodes ?? []))
-    parent?.replaceWith(el)
-    $.selectElement(el)
-  }
-
   /** Converts a fragment into a ClipboardItem with a text/html (outer HTML) and a text/plain (inner text) flavor. Expects the fragment to contain an element. */
   #fragmentToClipboardItem(fragment: DocumentFragment) {
+    const text = fragment.textContent ?? ""
     return new ClipboardItem({
-      "text/plain": fragment.textContent,
-      "text/html": fragment.firstElementChild? fragment.firstElementChild!.outerHTML: fragment.textContent
+      "text/plain": text,
+      "text/html": fragment.firstElementChild? fragment.firstElementChild.outerHTML: text,
     })
   }
 
@@ -872,52 +856,6 @@ export class ManipulationFeature extends EditorFeature {
     const html = htmlItem? await (await htmlItem.getType("text/html")).text(): ""
     const text = !html && textItem? await (await textItem.getType("text/plain")).text(): ""
     return this.#clipboardContentToFragment(html, text)
-  }
-
-  /** Schema-aware insertion (currently unused by insert()): depending on what the schema allows, replaces the parent, splits the container, inserts in place or wraps the insertee. */
-  #smartInsert(node: Node) {
-    const container = $.commonAncestor instanceof Element? $.commonAncestor: $.commonAncestor.parentElement
-    const siblings = Array.from(container?.childNodes ?? [])
-    const insertee = node instanceof DocumentFragment
-      ? node.firstElementChild
-      : node as Element
-    if(!insertee) {
-      throw TypeError("Invalid fragment: Must have a root element")
-    }
-    if(!container) {
-      throw Error("Invalid selection")
-    }
-    const inserteeType = this.editor.schema.get(insertee)
-    const index = 0
-    
-    const isVoid = !inserteeType.content
-    const isValidContainer = this.editor.schema.canWrap(insertee, siblings) && this.editor.schema.canReplace(container, insertee)
-    const isValidInPlace = this.editor.schema.canInsert(container, insertee, index, index + 1)
-    const isValidSplitter = this.editor.schema.canSplit(container, insertee)
-    console.log(isVoid, isValidContainer, isValidInPlace, isValidSplitter)
-    if($.isEmpty) {
-      if(!isVoid && isValidContainer) {
-        this.#replaceParent(insertee)
-      }
-      else if(!isValidInPlace && !isValidContainer && isValidSplitter) {
-        this.insert(insertee, 1)
-      }
-      else if(isValidInPlace) {
-        this.insert(node) 
-      }
-    }
-    else {
-      if(isVoid && isValidInPlace) {
-        this.insert(node)
-      }
-      else if(!isValidInPlace && isValidSplitter) {
-        this.insert(insertee, 1)
-      }
-      else if(isValidInPlace) {
-        const wrapped = this.wrap(insertee)
-        this.editor.schema.fixInvalidContent(wrapped!)
-      }
-    }
   }
 
   private insertedWidget(node: Node) {

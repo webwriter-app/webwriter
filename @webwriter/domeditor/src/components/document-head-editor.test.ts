@@ -81,7 +81,7 @@ describe("document head form", () => {
     title.value = "New title"
     title.dispatchEvent(new Event("change", {bubbles: true}))
 
-    const language = Array.from(editor.shadowRoot!.querySelectorAll<any>("document-head-combobox"))
+    const language = Array.from(editor.shadowRoot!.querySelectorAll("document-head-combobox"))
       .find(combobox => combobox.label === "Language")!
     await language.updateComplete
     const languageInput = language.shadowRoot!.querySelector<HTMLInputElement>("input")!
@@ -104,7 +104,7 @@ describe("document head form", () => {
     const editor = await mount("common")
     const actions: DocumentHeadAction[] = []
     editor.addEventListener("document-head-action", event => actions.push((event as CustomEvent<DocumentHeadAction>).detail))
-    const picker = Array.from(editor.shadowRoot!.querySelectorAll<any>("document-head-combobox"))
+    const picker = Array.from(editor.shadowRoot!.querySelectorAll("document-head-combobox"))
       .find(combobox => combobox.label === "License")!
     await picker.updateComplete
 

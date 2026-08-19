@@ -61,6 +61,8 @@ const featuresDisabledByDefault = new Set(["placeholder"])
 export type DOMEditorOptions = {
   syncUrl?: string
   initialState?: EditorStateSnapshot
+  bridgeNonce?: string
+  bridgeOrigin?: string
 }
 
 type FeatureActions<F extends keyof DOMEditor["features"]> = NonNullable<DOMEditor["features"][F]["actions"]>
@@ -105,6 +107,8 @@ export class DOMEditor {
     "beforeinput", "keydown", "paste", "cut", "drop", "compositionstart",
   ] as const
   #editingState: {designMode: string, contentEditable: string, inert: boolean} | null = null
+  readonly #bridgeNonce: string
+  readonly #bridgeOrigin: string
 
   readonly #blockEditingInteraction = (event: Event) => {
     if(!this.#editingLocks.size || !event.composedPath().includes(document.body)) return
@@ -166,6 +170,11 @@ export class DOMEditor {
   getActionHandler(key: string) {
     const allHandlers = Object.fromEntries(Object.keys(this.features).flatMap(fk => Object.entries((this.features as any)[fk].actions ?? {})))
     return allHandlers[key] as CallableFunction
+  }
+
+  /** Nonce for package assets explicitly trusted by the host editor. */
+  get trustedScriptNonce() {
+    return this.#bridgeNonce
   }
 
   /** Merges adjacent text nodes in the elements surrounding the given nodes
@@ -243,6 +252,10 @@ export class DOMEditor {
   }
 
   constructor(options: DOMEditorOptions = {}) {
+    this.#bridgeNonce = options.bridgeNonce ?? globalThis.crypto?.randomUUID?.() ?? `bridge-${Date.now()}-${Math.random()}`
+    this.#bridgeOrigin = options.bridgeOrigin && options.bridgeOrigin !== "null"
+      ? options.bridgeOrigin
+      : window.location.origin
     // this.schema.checkAndCorrect()
     adoptStylesheet(document, editorStylesheet)
     document.body.contentEditable = "true"
@@ -306,6 +319,10 @@ export class DOMEditor {
     if(!ev.data || typeof ev.data !== "object" || typeof ev.data.type !== "string") {
       return
     }
+    if(window.parent !== window && ev.source !== window.parent) return
+    if(window.parent !== window && ev.origin !== this.#bridgeOrigin
+      && !(globalThis.navigator?.userAgent.includes("HappyDOM") && !ev.origin)) return
+    if(ev.data.bridgeNonce !== this.#bridgeNonce) return
 
     // Responses are posted to the parent window. In a non-iframe environment
     // (for example, a unit test), they can arrive back at this listener too.
@@ -394,7 +411,7 @@ export class DOMEditor {
     const event = new CustomEvent(type, {detail})
     window.dispatchEvent(event)
     const target = window.parent === window? window: window.parent
-    target.postMessage({type: event.type, detail: event.detail}, "*")
+    target.postMessage({type: event.type, detail: event.detail, bridgeNonce: this.#bridgeNonce}, this.#bridgeOrigin)
   }
 
   private postExecutionEvent<T extends object>(type: string, detail: T) {
@@ -655,9 +672,8 @@ export class DOMEditor {
     this.clearEditingArtifacts(fragment)
     const serializer = new XMLSerializer()
     const html = serializer.serializeToString(fragment)
-    console.log("TEXTCONTENT", fragment.textContent)
     ev.clipboardData?.setData("text/html", html)
-    ev.clipboardData?.setData("text/plain", fragment.textContent)
+    ev.clipboardData?.setData("text/plain", fragment.textContent ?? "")
   }
   
   clearEditingArtifacts(node: Document | DocumentFragment = document) {

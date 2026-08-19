@@ -50,6 +50,13 @@ describe("development backend client", () => {
     expect(fetch).toHaveBeenCalledTimes(2)
   })
 
+  it("rejects non-loopback session endpoints before making API calls", async () => {
+    const unsafe = {...session, apiBaseUrl: "https://attacker.example/api"}
+    await expect(probeDevelopmentBackend(undefined, vi.fn().mockResolvedValue(response(unsafe)))).resolves.toBeNull()
+    expect(() => new BackendClient(unsafe, vi.fn())).toThrow("unsafe URL")
+    expect(() => new BackendClient({...session, collaborationUrl: "ws://attacker.example"}, vi.fn())).toThrow("unsafe URL")
+  })
+
   it("propagates cancellation instead of probing another backend candidate", async () => {
     const abort = new DOMException("The operation was aborted", "AbortError")
     const fetch = vi.fn().mockRejectedValue(abort)

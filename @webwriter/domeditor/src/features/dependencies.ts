@@ -10,6 +10,7 @@ export class DependencyFeature extends EditorFeature {
   private readonly packageRegistry = new WebWriterPackageRegistry()
   private widgetAssets: HTMLElement[] = []
   private widgetLoadSequence = 0
+  private readonly pendingAssetCancellations = new Set<() => void>()
   private widgetTags = new Set<string>()
   private readonly widgetContentObserver = new MutationObserver(mutations => {
     mutations.forEach(mutation => mutation.addedNodes.forEach(node => {
@@ -23,7 +24,6 @@ export class DependencyFeature extends EditorFeature {
 
   constructor(editor: DOMEditor) {
     super(editor)
-    this.#replaceCustomElementsDefine()
   }
 
   /** Resolves pinned widget-package assets and mounts them in the iframe. */
@@ -31,6 +31,10 @@ export class DependencyFeature extends EditorFeature {
     if(!isLoadWidgetsMessage(message)) throw new TypeError("Invalid load-widgets message")
 
     const sequence = ++this.widgetLoadSequence
+    // A newer request supersedes any asset barrier from the previous request.
+    // Resolve those waits so an old action cannot remain pending forever.
+    this.pendingAssetCancellations.forEach(cancel => cancel())
+    this.pendingAssetCancellations.clear()
     const suppliedPackages = new Map((message.packages ?? []).map(pkg => [`${pkg.name}@${pkg.version}`, pkg]))
     const widgetReferences = [...new Map(message.widgets.map(widget => [
       `${widget.name}@${widget.version}`,
@@ -59,22 +63,34 @@ export class DependencyFeature extends EditorFeature {
       const script = document.createElement("script")
       script.type = "module"
       script.src = src
+      // Package bundles are an explicit trusted-code boundary. The editor
+      // frame's nonce admits these resources while blocking authored scripts.
+      script.nonce = this.editor.trustedScriptNonce
       script.classList.add("◆", "◆editor-only")
       return script
     })
     this.widgetAssets = [...styles, ...scripts]
-    const localAssetLoads = this.widgetAssets.flatMap(element => {
+    const assetLoads = this.widgetAssets.map(element => {
       const url = element instanceof HTMLLinkElement ? element.href : (element as HTMLScriptElement).src
-      if(!new URL(url, document.baseURI).pathname.startsWith(LOCAL_PACKAGE_ROUTE_PREFIX)) return []
-      return [new Promise<void>((resolve, reject) => {
-        element.addEventListener("load", () => resolve(), {once: true})
-        element.addEventListener("error", () => reject(new Error(
-          `Local package ${element instanceof HTMLLinkElement ? "stylesheet" : "script"} failed to load: ${url}`,
-        )), {once: true})
-      })]
+      const local = new URL(url, document.baseURI).pathname.startsWith(LOCAL_PACKAGE_ROUTE_PREFIX)
+      return new Promise<void>((resolve, reject) => {
+        let settled = false
+        const settle = (callback: () => void) => {
+          if(settled) return
+          settled = true
+          this.pendingAssetCancellations.delete(cancel)
+          callback()
+        }
+        const cancel = () => settle(resolve)
+        this.pendingAssetCancellations.add(cancel)
+        element.addEventListener("load", () => settle(resolve), {once: true})
+        element.addEventListener("error", () => settle(() => reject(new Error(
+          `${local ? "Local package" : "Package"} ${element instanceof HTMLLinkElement ? "stylesheet" : "script"} failed to load: ${url}`,
+        ))), {once: true})
+      })
     })
     document.head.append(...this.widgetAssets)
-    await Promise.all(localAssetLoads)
+    await Promise.all(assetLoads)
     if(sequence !== this.widgetLoadSequence) return
     this.editor.features.insertion.menu.requestUpdate()
   }
@@ -86,23 +102,13 @@ export class DependencyFeature extends EditorFeature {
 
   disable() {
     this.widgetLoadSequence++
+    this.pendingAssetCancellations.forEach(cancel => cancel())
+    this.pendingAssetCancellations.clear()
     this.widgetContentObserver.disconnect()
     this.widgetAssets.forEach(element => element.remove())
     this.widgetAssets = []
     this.widgetTags.clear()
     globalThis.DOMEDITOR_PACKAGE_ITEMS = []
     super.disable()
-  }
-
-  #replaceCustomElementsDefine() {
-    const define = customElements.define
-    customElements.define = function(tagName: string, constructor: CustomElementConstructor, options?: {extends: string}) {
-      if(customElements.get(tagName)) {
-        console.warn(`Attempted to re-register custom element tag name '${tagName}'`)
-      }
-      else {
-        define.call(this, tagName, constructor, options)
-      }
-    }
   }
 }

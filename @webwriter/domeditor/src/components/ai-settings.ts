@@ -16,6 +16,9 @@ const cloneProvider = (provider: AIProviderConfig): AIProviderConfig => ({
   models: [...provider.models],
 })
 
+const isAbortError = (error: unknown) => error instanceof DOMException && error.name === "AbortError"
+  || Boolean(error && typeof error === "object" && (error as {name?: unknown}).name === "AbortError")
+
 export class AISettingsDialog extends LitElement {
   static properties = {
     open: {type: Boolean, reflect: true},
@@ -505,6 +508,8 @@ export class AISettingsDialog extends LitElement {
   private passphrase = ""
   private autoFetchTimer: ReturnType<typeof setTimeout> | undefined
   private autoFetchSignature = ""
+  private modelFetchSequence = 0
+  private modelFetchController: AbortController | null = null
   private subscribedStore: AIProviderStore | null = null
   private readonly handleStoreChange = () => {
     if(this.draft && this.store?.provider(this.draft.id)) {
@@ -526,12 +531,14 @@ export class AISettingsDialog extends LitElement {
 
   disconnectedCallback() {
     this.resetAutoFetch()
+    this.cancelModelFetch()
     this.subscribedStore?.removeEventListener("change", this.handleStoreChange)
     this.subscribedStore = null
     super.disconnectedCallback()
   }
 
   show() {
+    this.cancelModelFetch()
     this.resetAutoFetch()
     const active = this.store?.activeProvider
     this.draft = active ? cloneProvider(active) : this.store?.prepare(createAIProvider("openai")) ?? createAIProvider("openai")
@@ -546,6 +553,7 @@ export class AISettingsDialog extends LitElement {
 
   close() {
     this.resetAutoFetch()
+    this.cancelModelFetch()
     this.apiKey = ""
     this.passphrase = ""
     this.open = false
@@ -556,6 +564,7 @@ export class AISettingsDialog extends LitElement {
     const provider = this.store?.provider(providerId)
     if(!provider) return
     this.resetAutoFetch()
+    this.cancelModelFetch()
     this.draft = cloneProvider(provider)
     this.apiKey = ""
     this.passphrase = ""
@@ -567,6 +576,7 @@ export class AISettingsDialog extends LitElement {
 
   private startProvider(preset: AIProviderPreset) {
     this.resetAutoFetch()
+    this.cancelModelFetch()
     this.draft = this.store?.prepare(createAIProvider(preset)) ?? createAIProvider(preset)
     this.apiKey = ""
     this.passphrase = ""
@@ -581,6 +591,13 @@ export class AISettingsDialog extends LitElement {
       this.autoFetchTimer = undefined
     }
     this.autoFetchSignature = ""
+  }
+
+  private cancelModelFetch() {
+    this.modelFetchSequence++
+    this.modelFetchController?.abort()
+    this.modelFetchController = null
+    this.loading = false
   }
 
   private clearAutoFetchTimer() {
@@ -776,31 +793,41 @@ export class AISettingsDialog extends LitElement {
   private fetchModels = async () => {
     this.clearAutoFetchTimer()
     if(!this.draft || !this.store || this.loading) return
+    const sequence = ++this.modelFetchSequence
+    const controller = new AbortController()
+    this.modelFetchController = controller
+    const draftAtStart = cloneProvider(this.draft)
     this.loading = true
     this.error = ""
     this.notice = ""
     try {
-      const provider = normalizeAIProvider(this.draft)
+      const provider = normalizeAIProvider(draftAtStart)
       let source = provider
       let key = this.apiKey.trim() || this.store.keyFor(provider)
       if(provider.managed === "backend") {
         source = await this.store.save(provider, this.apiKey.trim() || undefined)
         key = ""
       }
-      const models = await listAIModels(source, key)
+      const models = await listAIModels(source, key, controller.signal)
+      if(sequence !== this.modelFetchSequence || controller.signal.aborted || !this.open) return
       const next = {
         ...source,
         models,
         defaultModel: models.includes(source.defaultModel) ? source.defaultModel : models[0] ?? "",
       }
-      this.draft = provider.managed === "backend" ? await this.store.save(next) : next
+      const saved = provider.managed === "backend" ? await this.store.save(next) : next
+      if(sequence !== this.modelFetchSequence || controller.signal.aborted || !this.open) return
+      this.draft = saved
       this.notice = `${models.length} model${models.length === 1 ? "" : "s"} loaded.${provider.managed === "backend" ? " Provider saved." : " Save to keep this list."}`
     }
     catch(error) {
-      this.error = error instanceof Error ? error.message : String(error)
+      if(sequence === this.modelFetchSequence && !isAbortError(error)) this.error = error instanceof Error ? error.message : String(error)
     }
     finally {
-      this.loading = false
+      if(sequence === this.modelFetchSequence) {
+        this.modelFetchController = null
+        this.loading = false
+      }
     }
   }
 
@@ -856,14 +883,15 @@ export class AISettingsDialog extends LitElement {
                 <button
                   type="button"
                   aria-current=${provider.id === this.draft!.id}
+                  ?disabled=${this.loading}
                   @click=${() => this.selectProvider(provider.id)}
                 >${provider.name}</button>
               `) : html`<p class="hint">No providers configured yet.</p>`}
             </div>
             <h3>Add provider</h3>
             <div class="presets">
-              <button class="preset-button" type="button" @click=${() => this.startProvider("openai")}>OpenAI</button>
-              <button class="preset-button" type="button" @click=${() => this.startProvider("custom")}>Custom</button>
+              <button class="preset-button" type="button" ?disabled=${this.loading} @click=${() => this.startProvider("openai")}>OpenAI</button>
+              <button class="preset-button" type="button" ?disabled=${this.loading} @click=${() => this.startProvider("custom")}>Custom</button>
             </div>
           </aside>
           <main class="content">

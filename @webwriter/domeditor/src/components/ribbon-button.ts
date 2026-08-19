@@ -990,6 +990,7 @@ export class RibbonButton extends LitElement {
   private notificationTimer: ReturnType<typeof setTimeout> | undefined
   private detailsOpen = false
   private detailsPosition = {left: 8, top: 8}
+  private submenuTrigger: HTMLButtonElement | null = null
 
   private showPopoverElement(element: HTMLElement | null) {
     if(typeof element?.showPopover !== "function") return
@@ -1011,9 +1012,12 @@ export class RibbonButton extends LitElement {
     }
   }
 
-  private closeSubmenuPopover() {
+  private closeSubmenuPopover(restoreFocus = false) {
+    const trigger = this.submenuTrigger
+    this.submenuTrigger = null
     this.hidePopoverElement(this.renderRoot.querySelector<HTMLElement>("ribbon-menu"))
     this.submenuOpen = false
+    if(restoreFocus && trigger?.isConnected) trigger.focus()
   }
 
   private readonly handleDocumentPointerDown = (event: PointerEvent) => {
@@ -1023,7 +1027,9 @@ export class RibbonButton extends LitElement {
 
   private readonly handleDocumentKeydown = (event: KeyboardEvent) => {
     if(this.submenuOpen && event.key === "Escape") {
-      this.closeSubmenuPopover()
+      event.preventDefault()
+      event.stopPropagation()
+      this.closeSubmenuPopover(true)
     }
   }
 
@@ -1036,8 +1042,16 @@ export class RibbonButton extends LitElement {
   disconnectedCallback() {
     document.removeEventListener("pointerdown", this.handleDocumentPointerDown)
     document.removeEventListener("keydown", this.handleDocumentKeydown)
+    this.closeSubmenuPopover()
+    this.hideDetails()
     if(this.notificationTimer !== undefined) clearTimeout(this.notificationTimer)
     super.disconnectedCallback()
+  }
+
+  protected updated(changedProperties: Map<PropertyKey, unknown>) {
+    if(changedProperties.has("disabled") && this.disabled && this.submenuOpen) {
+      this.closeSubmenuPopover()
+    }
   }
 
   showNotification(message: string, duration = 1800) {
@@ -1063,11 +1077,12 @@ export class RibbonButton extends LitElement {
     }))
   }
 
-  private toggleSubmenu() {
+  private toggleSubmenu(event: Event) {
     if(this.submenuOpen) {
       this.closeSubmenuPopover()
     }
     else {
+      this.submenuTrigger = event.currentTarget as HTMLButtonElement
       this.submenuOpen = true
       void this.updateComplete.then(async () => {
         const submenu = this.renderRoot.querySelector<HTMLElement>("ribbon-menu")
@@ -1193,6 +1208,7 @@ export class RibbonButton extends LitElement {
             title=${`Show more ${this.label} options`}
             aria-haspopup=${this.dropdown !== null ? "dialog" : "menu"}
             aria-expanded=${this.submenuOpen}
+            ?disabled=${this.disabled}
             @click=${this.toggleSubmenu}
           >
             <span class="submenu-chevron" aria-hidden="true"></span>

@@ -54,7 +54,10 @@ export function localPackageWatchPaths(manifest: WebWriterPackageManifest | unde
     }
     else paths.push(resolved)
   }
-  return [...new Set(paths.map(normalizePath))]
+  return [...new Set(paths.flatMap(path => {
+    try { return [normalizePath(path)] }
+    catch { return [] }
+  }))]
 }
 
 type LocalPackageOptions = {
@@ -65,7 +68,19 @@ type LocalPackageOptions = {
 const extensionPattern = /\.(?:html?|m?js|css|ts)$/i
 const scopedPackageNamePattern = /^@[^/\s]+\/[^/\s]+$/
 const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
-const normalizePath = (value: string) => value.replace(/^\.\//, "").replace(/^\/+/, "")
+/** Normalizes a package-relative path and rejects traversal or URL-like paths. */
+export function normalizeLocalPackagePath(value: string) {
+  if(typeof value !== "string" || !value) throw new TypeError("The package path must be a non-empty string")
+  const path = value.replaceAll("\\", "/").replace(/^(?:\.\/)+/, "")
+  if(path.startsWith("/") || /^[A-Za-z]:/.test(path)) throw new TypeError(`Invalid absolute package path '${value}'`)
+  const parts = path.split("/").filter(Boolean)
+  if(!parts.length || parts.some(part => part === "." || part === "..")) {
+    throw new TypeError(`Invalid package path '${value}'`)
+  }
+  return parts.join("/")
+}
+
+const normalizePath = normalizeLocalPackagePath
 const configKey = (value: string) => value.replace(/\.\*$/, "").replace(extensionPattern, "")
 const titleCase = (value: string) => value
   .replace(/^\.\/(?:widgets|snippets)\//, "")
@@ -92,9 +107,25 @@ const personLabel = (person: WebWriterPackageManifest["author"]) => {
 const isManifest = (value: unknown): value is WebWriterPackageManifest => {
   if(!value || typeof value !== "object") return false
   const manifest = value as Partial<WebWriterPackageManifest>
+  const validExportTarget = (target: unknown): boolean => {
+    if(typeof target === "string") {
+      try { normalizePath(target); return true }
+      catch { return false }
+    }
+    if(!target || typeof target !== "object" || Array.isArray(target)) return false
+    const entries = Object.entries(target)
+    return entries.length > 0 && entries.every(([, nested]) => validExportTarget(nested))
+  }
+  const validExports = manifest.exports === undefined || (
+    typeof manifest.exports === "object" && manifest.exports !== null && !Array.isArray(manifest.exports)
+    && Object.entries(manifest.exports).every(([name, target]) => name.startsWith(".") && validExportTarget(target))
+  )
   return typeof manifest.name === "string" && manifest.name.length > 0
     && typeof manifest.version === "string" && manifest.version.length > 0
-    && (manifest.exports === undefined || (typeof manifest.exports === "object" && manifest.exports !== null && !Array.isArray(manifest.exports)))
+    && validExports
+    && (manifest.keywords === undefined || Array.isArray(manifest.keywords) && manifest.keywords.every(keyword => typeof keyword === "string"))
+    && (manifest.contributors === undefined || Array.isArray(manifest.contributors))
+    && (manifest.editingConfig === undefined || typeof manifest.editingConfig === "object" && manifest.editingConfig !== null && !Array.isArray(manifest.editingConfig))
 }
 
 async function readFile(directory: LocalPackageDirectory, path: string) {
@@ -102,7 +133,10 @@ async function readFile(directory: LocalPackageDirectory, path: string) {
   if(!parts.length) throw new Error("The package path is empty")
   let current: LocalPackageDirectory = directory
   for(const part of parts.slice(0, -1)) {
-    if(current.getDirectoryHandle) current = await current.getDirectoryHandle(part)
+    if(current.getDirectoryHandle) {
+      try { current = await current.getDirectoryHandle(part) }
+      catch { current = await current.getFileHandle(part) as unknown as LocalPackageDirectory }
+    }
     else current = await current.getFileHandle(part) as unknown as LocalPackageDirectory
   }
   return (await current.getFileHandle(parts.at(-1)!)).getFile()

@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {describe, expect, it, vi} from "vitest"
 import {
   NPM_SEARCH_ENDPOINT,
@@ -5,6 +6,7 @@ import {
   packageCdnUrl,
   packageInsertionItems,
   packageWidgetSchemaDefinitions,
+  sanitizePackageSnippet,
 } from "./packages"
 
 describe("WebWriterPackageRegistry", () => {
@@ -90,5 +92,13 @@ describe("WebWriterPackageRegistry", () => {
   it("pins scoped package assets to their selected versions", () => {
     expect(packageCdnUrl("@webwriter/demo", "2.0.1", "./dist/widget.js"))
       .toBe("https://cdn.jsdelivr.net/npm/@webwriter/demo@2.0.1/dist/widget.js")
+    expect(() => packageCdnUrl("@webwriter/demo", "2.0.1", "../../outside.js")).toThrow()
+    expect(() => packageCdnUrl("@webwriter/demo", "2.0.1", "./dist/../outside.js")).toThrow()
+  })
+
+  it("removes active content from package snippets before insertion", () => {
+    const result = sanitizePackageSnippet('<p onclick="alert(1)">Safe</p><script>alert(2)</script><a href="javascript:alert(3)" srcdoc="<script>evil()</script>" style="background:url(javascript:evil())">link</a><img src="data:image/svg+xml,<svg onload=evil()>" alt="image"><template><script>later()</script><span onmouseover="later()">template</span></template>')
+    expect(result).toBe('<p>Safe</p><a>link</a><img alt="image"><template><span>template</span></template>')
+    expect(() => sanitizePackageSnippet("x".repeat(10), 5)).toThrow("too large")
   })
 })

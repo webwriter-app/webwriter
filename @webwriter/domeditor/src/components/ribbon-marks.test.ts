@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {afterEach, describe, expect, it, vi} from "vitest"
+import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {markStateChangeEvent} from "../editor-bridge"
 import {DomEditor} from "./dom-editor"
 import {AppRibbon} from "./ribbon"
@@ -8,10 +8,16 @@ import type {RibbonButton} from "./ribbon-button"
 import type {RibbonCombobox} from "./ribbon-combobox"
 import type {RibbonDrawer} from "./ribbon-drawer"
 import type {RibbonMenu} from "./ribbon-menu"
+import type {RibbonTab} from "./ribbon-tab"
+import {WebWriterPackageRegistry} from "../packages"
 
 afterEach(() => {
   document.body.replaceChildren()
   vi.restoreAllMocks()
+})
+
+beforeEach(() => {
+  vi.spyOn(WebWriterPackageRegistry.prototype, "search").mockResolvedValue([])
 })
 
 async function mountRibbon() {
@@ -32,6 +38,15 @@ async function mountEditor() {
   return {editor, iframe, editorWindow: iframe.contentWindow!}
 }
 
+function dispatchEditorMessage(editor: DomEditor, editorWindow: Window, data: object) {
+  const bridgeNonce = (editor as unknown as {bridgeNonce: string}).bridgeNonce
+  window.dispatchEvent(new MessageEvent("message", {
+    data: {...data, bridgeNonce},
+    source: editorWindow,
+    origin: window.location.origin,
+  }))
+}
+
 const primaryButtons = (drawer: RibbonDrawer) => Array.from(
   drawer.querySelectorAll<RibbonButton>('ribbon-button:not([slot="more"])'),
 )
@@ -46,7 +61,7 @@ describe("mark ribbon controls", () => {
     ribbon.fileName = "lesson"
     await ribbon.updateComplete
 
-    const fileTab = ribbon.shadowRoot!.querySelector('ribbon-tab[label="File"]')!
+    const fileTab = ribbon.shadowRoot!.querySelector<RibbonTab>('ribbon-tab[label="File"]')!
     expect(getComputedStyle(fileTab).minWidth).toBe("96px")
     const fileLabel = fileTab.shadowRoot!.querySelector<FileLabel>("file-label")!
     await fileLabel.updateComplete
@@ -105,7 +120,7 @@ describe("mark ribbon controls", () => {
 
   it("animates ribbon collapse and hides its tab indicators", async () => {
     const {ribbon} = await mountRibbon()
-    const fileTab = ribbon.shadowRoot!.querySelector('ribbon-tab[label="File"]')!
+    const fileTab = ribbon.shadowRoot!.querySelector<RibbonTab>('ribbon-tab[label="File"]')!
 
     expect(getComputedStyle(ribbon).transition).toContain("height")
     expect(getComputedStyle(ribbon).transition).toContain("max-height")
@@ -679,17 +694,14 @@ describe("mark ribbon bridge", () => {
   it("updates controls from selection messages and routes style, toggle, size, and clear commands", async () => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
-    window.dispatchEvent(new MessageEvent("message", {
-      data: {
-        type: markStateChangeEvent,
-        detail: {
-          canMark: true,
-          marks: ["b"],
-          styles: {"font-size": "18px"},
-        },
+    dispatchEditorMessage(editor, editorWindow, {
+      type: markStateChangeEvent,
+      detail: {
+        canMark: true,
+        marks: ["b"],
+        styles: {"font-size": "18px"},
       },
-      source: editorWindow,
-    }))
+    })
     await editor.updateComplete
 
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
@@ -721,17 +733,14 @@ describe("mark ribbon bridge", () => {
   it("routes span dropdown selections and detail-attribute changes", async () => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
-    window.dispatchEvent(new MessageEvent("message", {
-      data: {
-        type: markStateChangeEvent,
-        detail: {
-          canMark: true,
-          marks: ["time"],
-          attributes: {time: {datetime: "2026-08-13"}},
-        },
+    dispatchEditorMessage(editor, editorWindow, {
+      type: markStateChangeEvent,
+      detail: {
+        canMark: true,
+        marks: ["time"],
+        attributes: {time: {datetime: "2026-08-13"}},
       },
-      source: editorWindow,
-    }))
+    })
     await editor.updateComplete
 
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!

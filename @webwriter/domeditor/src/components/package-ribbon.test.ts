@@ -102,7 +102,7 @@ describe("package ribbon controls", () => {
     expect(RibbonButton.styles.toString()).toMatch(/\.submenu-trigger\s*\{[\s\S]*?height:\s*100%/)
     expect(RibbonButton.styles.toString()).toMatch(/\.submenu-trigger\s*\{[\s\S]*?aspect-ratio:\s*1\s*\/\s*1/)
 
-    button.shadowRoot!.querySelector('button[aria-label="Show more Demo options"]')!.click()
+    button.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Show more Demo options"]')!.click()
     await button.updateComplete
     const menu = button.shadowRoot!.querySelector("ribbon-menu")!
     await menu.updateComplete

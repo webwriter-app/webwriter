@@ -46,6 +46,60 @@ afterEach(() => {
 })
 
 describe("DependencyFeature", () => {
+  it("waits for every remote asset before completing widget loading", async () => {
+    const append = vi.spyOn(document.head, "append").mockImplementation(() => {})
+    const editor = new DOMEditor()
+    let settled = false
+    const pending = editor.getActionHandler(loadWidgetsMessage)({
+      type: loadWidgetsMessage,
+      widgets: [{name: demoPackage.name, version: demoPackage.version}],
+      packages: [demoPackage],
+    }).then(() => { settled = true })
+
+    await vi.waitFor(() => expect(append).toHaveBeenCalled())
+    const assets = append.mock.calls.flat().filter((asset): asset is HTMLElement => asset instanceof HTMLElement)
+    expect(assets).toHaveLength(2)
+    await Promise.resolve()
+    expect(settled).toBe(false)
+
+    assets[0].dispatchEvent(new Event("load"))
+    await Promise.resolve()
+    expect(settled).toBe(false)
+    assets[1].dispatchEvent(new Event("load"))
+    await expect(pending).resolves.toBeUndefined()
+    editor.destroy()
+  })
+
+  it("rejects when a remote asset reports an error", async () => {
+    const append = vi.spyOn(document.head, "append").mockImplementation(() => {})
+    const editor = new DOMEditor()
+    const pending = editor.getActionHandler(loadWidgetsMessage)({
+      type: loadWidgetsMessage,
+      widgets: [{name: demoPackage.name, version: demoPackage.version}],
+      packages: [demoPackage],
+    })
+    await vi.waitFor(() => expect(append).toHaveBeenCalled())
+    const script = append.mock.calls.flat().find((asset): asset is HTMLScriptElement => asset instanceof HTMLScriptElement)!
+    script.dispatchEvent(new Event("error"))
+    await expect(pending).rejects.toThrow("Package script failed to load")
+    editor.destroy()
+  })
+
+  it("settles a superseded asset barrier", async () => {
+    vi.spyOn(document.head, "append").mockImplementation(() => {})
+    const editor = new DOMEditor()
+    const first = editor.getActionHandler(loadWidgetsMessage)({
+      type: loadWidgetsMessage,
+      widgets: [{name: demoPackage.name, version: demoPackage.version}],
+      packages: [demoPackage],
+    })
+    await Promise.resolve()
+    const second = editor.getActionHandler(loadWidgetsMessage)({type: loadWidgetsMessage, widgets: [], packages: []})
+    await expect(first).resolves.toBeUndefined()
+    await expect(second).resolves.toBeUndefined()
+    editor.destroy()
+  })
+
   it("creates pinned CDN styles and scripts for bridged widgets", async () => {
     const getPackage = vi.spyOn(WebWriterPackageRegistry.prototype, "getPackage").mockResolvedValue(demoPackage)
     const append = vi.spyOn(document.head, "append").mockImplementation((...assets: (string | Node)[]) => {
@@ -114,9 +168,30 @@ describe("DependencyFeature", () => {
     editor.destroy()
   })
 
+  it("settles pending local asset loads when the feature is destroyed", async () => {
+    const localPackage: WebWriterPackage = {
+      ...demoPackage,
+      scripts: ["https://example.test/__webwriter/local-packages/demo/dist/demo.js"],
+      styles: [],
+    }
+    vi.spyOn(document.head, "append").mockImplementation((...assets: (string | Node)[]) => {
+      queueMicrotask(() => assets.forEach(asset => asset instanceof HTMLElement && asset.dispatchEvent(new Event("load"))))
+    })
+    const editor = new DOMEditor()
+    const pending = editor.getActionHandler(loadWidgetsMessage)({
+      type: loadWidgetsMessage,
+      widgets: [{name: localPackage.name, version: localPackage.version}],
+      packages: [localPackage],
+    })
+    editor.destroy()
+    await expect(pending).resolves.toBeUndefined()
+  })
+
   it("rebuilds the schema from editingConfig and makes nested widget content editable", async () => {
     vi.spyOn(WebWriterPackageRegistry.prototype, "getPackage").mockResolvedValue(demoPackage)
-    vi.spyOn(document.head, "append").mockImplementation(() => {})
+    vi.spyOn(document.head, "append").mockImplementation((...assets: (string | Node)[]) => {
+      queueMicrotask(() => assets.forEach(asset => asset instanceof HTMLElement && asset.dispatchEvent(new Event("load"))))
+    })
     const editor = new DOMEditor()
     document.body.innerHTML = "<webwriter-demo><webwriter-demo-item><p>Nested text</p></webwriter-demo-item></webwriter-demo>"
 

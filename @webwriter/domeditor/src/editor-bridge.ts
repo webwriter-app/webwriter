@@ -52,11 +52,14 @@ export type WidgetReference = {
 export type InitializeEditorMessage = {
   type: typeof initializeEditorMessage
   syncUrl: string
+  /** Per-iframe capability used to bind postMessage traffic to this frame. */
+  bridgeNonce?: string
   initialState?: EditorStateSnapshot
 }
 
 export type LoadWidgetsMessage = {
   type: typeof loadWidgetsMessage
+  bridgeNonce?: string
   widgets: WidgetReference[]
   /** Already-resolved package metadata. Local development packages use this
    * path because their assets cannot be resolved through the npm registry. */
@@ -66,8 +69,19 @@ export type LoadWidgetsMessage = {
 export function isInitializeEditorMessage(value: unknown): value is InitializeEditorMessage {
   if(!value || typeof value !== "object") return false
   const message = value as Partial<InitializeEditorMessage>
+  let validSyncUrl = false
+  if(typeof message.syncUrl === "string" && message.syncUrl.length > 0) {
+    try {
+      const url = new URL(message.syncUrl)
+      validSyncUrl = ["http:", "https:", "ws:", "wss:"].includes(url.protocol)
+    }
+    catch {
+      validSyncUrl = false
+    }
+  }
   return message.type === initializeEditorMessage
-    && typeof message.syncUrl === "string"
+    && validSyncUrl
+    && (message.bridgeNonce === undefined || typeof message.bridgeNonce === "string" && message.bridgeNonce.length >= 16)
     && (message.initialState === undefined || (
       !!message.initialState
       && typeof message.initialState === "object"
@@ -81,6 +95,7 @@ export function isLoadWidgetsMessage(value: unknown): value is LoadWidgetsMessag
   const message = value as Partial<LoadWidgetsMessage>
   const packages = message.packages
   return message.type === loadWidgetsMessage
+    && (message.bridgeNonce === undefined || typeof message.bridgeNonce === "string" && message.bridgeNonce.length >= 16)
     && Array.isArray(message.widgets)
     && message.widgets.every(widget => !!widget
       && typeof widget === "object"
@@ -240,6 +255,14 @@ export type VersionHistoryState = {
   currentUserId: number | null
 }
 
+export const emptyVersionHistoryState = (): VersionHistoryState => ({
+  checkpoints: [],
+  comments: [],
+  preview: null,
+  currentCheckpointId: null,
+  currentUserId: null,
+})
+
 export type HistoryStateChangeMessage = {
   type: typeof historyStateChangeEvent
   detail: VersionHistoryState
@@ -323,10 +346,14 @@ export type ExecuteResponse = {
 export function isExecuteResponse(value: unknown): value is ExecuteResponse {
   if(!value || typeof value !== "object") return false
   const message = value as Partial<ExecuteResponse>
-  return (message.type === executeCompleteEvent || message.type === executeFailureEvent)
-    && !!message.detail
-    && typeof message.detail === "object"
-    && typeof (message.detail as ExecuteCompleteDetail).requestId === "string"
+  if(message.type !== executeCompleteEvent && message.type !== executeFailureEvent) return false
+  if(!message.detail || typeof message.detail !== "object") return false
+  if(typeof (message.detail as ExecuteCompleteDetail).requestId !== "string") return false
+  if(message.type === executeFailureEvent) {
+    const error = (message.detail as Partial<ExecuteFailureDetail>).error
+    if(!error || typeof error !== "object" || typeof error.name !== "string" || typeof error.message !== "string") return false
+  }
+  return true
 }
 
 export function isSelectionChangeMessage(value: unknown): value is SelectionChangeMessage {

@@ -1,4 +1,5 @@
 import type {WidgetEditingConfig, WidgetSchemaDefinition} from "./schema"
+import {stripActiveContent} from "./active-content"
 
 export const NPM_SEARCH_ENDPOINT = "https://registry.npmjs.org/-/v1/search"
 export const NPM_REGISTRY_ENDPOINT = "https://registry.npmjs.org"
@@ -165,6 +166,15 @@ const configKey = (exportName: string) => exportName
 
 const normalizePath = (value: string) => value.replace(/^\.\//, "")
 
+const packagePath = (path: string) => {
+  const normalized = normalizePath(path)
+  const segments = normalized.split("/")
+  if(!normalized || segments.some(segment => !segment || segment === "." || segment === ".." || segment.includes("\\"))) {
+    throw new TypeError("Package asset paths cannot contain traversal segments")
+  }
+  return segments
+}
+
 /** Resolves the browser-facing target of a conditional package export. */
 export function resolvePackageExport(target: PackageExportTarget | undefined): string | undefined {
   if(typeof target === "string") return target
@@ -177,8 +187,16 @@ export function resolvePackageExport(target: PackageExportTarget | undefined): s
 
 /** Builds a pinned jsDelivr URL while retaining the slash in scoped names. */
 export function packageCdnUrl(name: string, version: string, path: string) {
-  const safePath = normalizePath(path).split("/").map(encodeURIComponent).join("/")
+  const safePath = packagePath(path).map(encodeURIComponent).join("/")
   return `${JSDELIVR_NPM_ENDPOINT}/${name}@${encodeURIComponent(version)}/${safePath}`
+}
+
+/** Removes active content before a package-provided snippet enters authored DOM. */
+export function sanitizePackageSnippet(html: string, maximumLength = 1_000_000) {
+  if(html.length > maximumLength) throw new RangeError("The package snippet is too large to insert safely")
+  const parsed = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html")
+  stripActiveContent(parsed.body)
+  return parsed.body.innerHTML
 }
 
 function localized(value: LocalizedText | undefined, locale: string) {
@@ -341,7 +359,7 @@ export class WebWriterPackageRegistry {
     if(!request) {
       request = this.fetcher(member.htmlUrl).then(response => {
         if(!response.ok) throw new Error(`Snippet download failed (${response.status})`)
-        return response.text()
+        return response.text().then(html => sanitizePackageSnippet(html))
       })
       this.snippetCache.set(member.htmlUrl, request)
       request.catch(() => this.snippetCache.delete(member.htmlUrl!))

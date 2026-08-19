@@ -49,6 +49,14 @@ describe("startTransform()", () => {
     expect(document.body.classList.contains("◆transform-containing-block")).toBe(true)
     expect(document.documentElement.classList.contains("◆transform-stacking-container")).toBe(true)
   })
+  it("switches targets without leaving the previous marker", () => {
+    const first = el()
+    const second = el()
+    feature.startTransform(first)
+    feature.startTransform(second)
+    expect(first).not.toHaveClass("◆transform-target")
+    expect(second).toHaveClass("◆transform-target")
+  })
 })
 
 describe("clearTransform()", () => {
@@ -64,6 +72,22 @@ describe("clearTransform()", () => {
     feature.clearTransform()
     expect(document.body.classList.contains("◆transform-containing-block")).toBe(false)
     expect(document.documentElement.classList.contains("◆transform-stacking-container")).toBe(false)
+  })
+  it("removes the base marker and all transform markers on disable", () => {
+    const target = el()
+    feature.startTransform(target)
+    feature.disable()
+    expect(target).not.toHaveClass("◆transform-target")
+    expect(target).not.toHaveClass("◆")
+  })
+  it("clears a pending drop caret when the transform is cleared", () => {
+    const target = el()
+    const dropTarget = el()
+    dropTarget.classList.add("◆", "◆drop-caret-before")
+    feature.startTransform(target)
+    feature.clearTransform()
+    expect(dropTarget).not.toHaveClass("◆drop-caret-before")
+    expect(dropTarget).not.toHaveClass("◆")
   })
 })
 

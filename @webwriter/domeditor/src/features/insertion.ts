@@ -28,7 +28,7 @@ export class InsertionFeature extends EditorFeature {
   }
 
   disable() {
-    this.clearTriggerHighlight()
+    this.close(false)
     super.disable()
   }
 

@@ -109,10 +109,10 @@ describe("media editing", () => {
     const video = document.querySelector("video")!
     const placeholder = editor.features.media.placeholder
     const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
-    input.value = "https://example.test/movie.mp4"
+    input.value = "about:blank#movie.mp4"
     placeholder.root.querySelector<HTMLButtonElement>(".apply")!.click()
 
-    expect(video.getAttribute("src")).toBe("https://example.test/movie.mp4")
+    expect(video.getAttribute("src")).toBe("about:blank#movie.mp4")
     expect(video).toHaveAttribute("controls")
     expect(placeholder.element).not.toHaveAttribute("data-open")
     expect(video.children).toHaveLength(0)
@@ -147,20 +147,20 @@ describe("media editing", () => {
 
   it("switches website elements and keeps only attributes supported by the new type", () => {
     editor.features.media.actions.insertMedia({type: "insertMedia", media: "iframe"})
-    editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: "https://example.test"})
+    editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: "about:blank#website"})
     editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "width", value: "640"})
     editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "sandbox", value: "allow-scripts"})
 
     editor.features.media.actions.switchWebsiteType({type: "switchWebsiteType", website: "embed"})
     const embed = document.querySelector("embed")!
-    expect(embed).toHaveAttribute("src", "https://example.test")
+    expect(embed).toHaveAttribute("src", "about:blank#website")
     expect(embed).toHaveAttribute("width", "640")
     expect(embed).not.toHaveAttribute("sandbox")
 
     editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "type", value: "text/html"})
     editor.features.media.actions.switchWebsiteType({type: "switchWebsiteType", website: "object"})
     const object = document.querySelector("object")!
-    expect(object).toHaveAttribute("data", "https://example.test")
+    expect(object).toHaveAttribute("data", "about:blank#website")
     expect(object).not.toHaveAttribute("src")
     expect(object).toHaveAttribute("type", "text/html")
     expect($.selectedElement).toBe(object)

@@ -92,6 +92,19 @@ describe("LiveSession", () => {
     expect(() => new LiveSession({id: "", role: "host"})).toThrow("safe id")
   })
 
+  it("validates bearer tokens and learner identities", () => {
+    expect(() => new LiveSession({id: "lesson", role: "host", token: "short"})).toThrow("token")
+    expect(() => new LiveSession({id: "lesson", role: "learner", learner: {id: "bad/id", name: "Learner", color: "#fff"}})).toThrow("identity")
+    expect(() => new LiveSession({id: "lesson", role: "learner", learner: {id: "learner", name: "x".repeat(201), color: "#fff"}})).toThrow("identity")
+  })
+
+  it("does not exchange local transport updates across bearer tokens", () => {
+    const first = create({id: "isolated", role: "host", token: "aaaaaaaaaaaaaaaaaaaaaaaa"})
+    const second = create({id: "isolated", role: "learner", token: "bbbbbbbbbbbbbbbbbbbbbbbb", learner: {id: "learner", name: "Learner", color: "#fff"}})
+    first.publish({kind: "document", html: "<p>secret</p>"})
+    expect(second.steps).toEqual([])
+  })
+
   it("keeps a 100-learner roster and propagates incremental activity", () => {
     vi.stubGlobal("BroadcastChannel", undefined)
     const host = create({id: "scale", role: "host"})

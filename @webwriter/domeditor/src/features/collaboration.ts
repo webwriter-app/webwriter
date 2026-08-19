@@ -1,6 +1,7 @@
 import type {CollaborationUser} from "../domdoc"
 import type {PresenceUser} from "../editor-bridge"
 import {isElement} from "../utility"
+import {userInitials} from "../user-identity"
 import {EditorFeature} from "."
 import {isMarkElement} from "../marks"
 
@@ -12,22 +13,6 @@ type CaretLayout = {
   elementSelection?: Element
   gapPlacement?: "before" | "after"
   rect: DOMRect
-}
-
-function firstInitial(value: string) {
-  return Array.from(value).find(character => /[\p{L}\p{N}]/u.test(character)) ?? ""
-}
-
-/** Returns exactly two readable initials for a presence label. */
-function userInitials(name: string) {
-  const words = name.trim().split(/\s+/).filter(Boolean)
-  const initials = words.length > 1
-    ? words.slice(0, 2).map(firstInitial).join("")
-    : Array.from(words[0] ?? "").map(firstInitial).join("").slice(0, 2)
-  const fallback = firstInitial(name) || "?"
-  const uppercase = Array.from((initials || fallback).toLocaleUpperCase()).slice(0, 2).join("")
-  const padding = Array.from(fallback.toLocaleUpperCase())[0] || "?"
-  return uppercase.padEnd(2, padding).slice(0, 2)
 }
 
 /** Returns the first and last line boxes that can supply the native caret's

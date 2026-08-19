@@ -65,6 +65,7 @@ const languageName = (code: string, fallback = code) => {
 }
 
 let cachedOfficialLanguages: LanguageOption[] | undefined
+let comboboxInstanceCount = 0
 
 /** Nationally official language suggestions ordered by English display name. */
 export function officialLanguageOptions() {
@@ -250,6 +251,7 @@ class DocumentHeadCombobox extends LitElement {
   private editing = false
   private activeIndex = -1
   private position = {left: 8, top: 8}
+  private readonly listboxId = `document-head-suggestions-${++comboboxInstanceCount}`
 
   private readonly documentPointerDown = (event: PointerEvent) => {
     if(this.open && !event.composedPath().includes(this)) this.close()
@@ -394,6 +396,8 @@ class DocumentHeadCombobox extends LitElement {
           aria-autocomplete="list"
           aria-expanded=${this.open}
           aria-haspopup="listbox"
+          aria-controls=${this.listboxId}
+          aria-activedescendant=${this.open && this.activeIndex >= 0 ? `${this.listboxId}-option-${this.activeIndex}` : nothing}
           autocomplete="off"
           data-ribbon-input-persistent
           placeholder=${this.placeholder}
@@ -409,12 +413,14 @@ class DocumentHeadCombobox extends LitElement {
           tabindex="-1"
           aria-label=${`Show ${this.label.toLocaleLowerCase()} suggestions`}
           aria-expanded=${this.open}
+          aria-controls=${this.listboxId}
           @mousedown=${(event: MouseEvent) => event.preventDefault()}
           @click=${() => this.setOpen(!this.open)}
         ><span class="chevron" aria-hidden="true"></span></button>
       </span>
       ${this.open ? html`
         <div
+          id=${this.listboxId}
           class="listbox"
           role="listbox"
           aria-label=${`${this.label} suggestions`}
@@ -423,6 +429,7 @@ class DocumentHeadCombobox extends LitElement {
           ${options.length ? options.map((option, index) => html`
             ${option.dividerBefore ? html`<hr class="divider" role="separator" />` : nothing}
             <button
+              id=${`${this.listboxId}-option-${index}`}
               class="option"
               type="button"
               role="option"

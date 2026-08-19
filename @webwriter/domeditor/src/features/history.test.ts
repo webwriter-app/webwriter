@@ -70,7 +70,11 @@ describe("collaborative version history", () => {
     let failure: CustomEvent | undefined
     window.addEventListener(executeFailureEvent, event => failure = event as CustomEvent, {once: true})
     window.dispatchEvent(new MessageEvent("message", {
-      data: {type: "undo", requestId: "history-preview-undo"},
+      data: {
+        type: "undo",
+        requestId: "history-preview-undo",
+        bridgeNonce: editor.trustedScriptNonce,
+      },
     }))
     expect(failure?.detail.error.message).toContain("Close the version preview")
     expect(document.body.innerHTML).toBe("<p>Hello</p>")

@@ -145,6 +145,23 @@ afterEach(() => {
 
 beforeEach(() => {
   vi.spyOn(WebWriterPackageRegistry.prototype, "search").mockResolvedValue([])
+  // Bridge messages in these component tests are dispatched directly instead
+  // of crossing the iframe's postMessage implementation. Add the same
+  // per-editor nonce that production messages carry so tests exercise the
+  // authenticated path rather than bypassing it.
+  const dispatch = window.dispatchEvent.bind(window)
+  vi.spyOn(window, "dispatchEvent").mockImplementation(event => {
+    const editor = document.body.querySelector("dom-editor") as unknown as {bridgeNonce?: string} | null
+    if(event instanceof MessageEvent && editor && event.data && typeof event.data === "object"
+      && typeof editor.bridgeNonce === "string" && !("bridgeNonce" in event.data)) {
+      event = new MessageEvent(event.type, {
+        data: {...event.data, bridgeNonce: editor.bridgeNonce},
+        source: event.source,
+        origin: event.origin,
+      })
+    }
+    return dispatch(event)
+  })
 })
 
 describe("DomEditor iframe setup", () => {
@@ -260,10 +277,10 @@ describe("DomEditor iframe setup", () => {
     }), "*")
   })
 
-  it("does not sandbox the editor iframe", async () => {
+  it("sandboxes the editor iframe while preserving its trusted same-origin bridge", async () => {
     const {iframe} = await mountEditor()
 
-    expect(iframe.hasAttribute("sandbox")).toBe(false)
+    expect(iframe.getAttribute("sandbox")).toBe("allow-scripts allow-same-origin")
   })
 
   it("passes the sync URL to the editor through the bridge", async () => {
@@ -279,10 +296,11 @@ describe("DomEditor iframe setup", () => {
 
       iframe.dispatchEvent(new Event("load"))
 
-      expect(postMessage).toHaveBeenCalledWith({
+      expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
         type: initializeEditorMessage,
         syncUrl: "ws://localhost:1234/?session=collab-demo&source=local",
-      }, "*")
+        bridgeNonce: expect.any(String),
+      }), "*")
       expect(iframe.getAttribute("srcdoc")).not.toContain("SYNC_URL")
     }
     finally {
@@ -308,20 +326,21 @@ describe("DomEditor iframe setup", () => {
       requestId: expect.any(String),
     }), "*")
     const polyfillUrl = "https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"
-    expect(srcdoc).toContain(`<script data-webwriter-editor-only src="${polyfillUrl}"></script>`)
+    expect(srcdoc).toMatch(new RegExp(`<script class="◆ ◆editor-only" nonce="[^"]+" type="application/json" src="${polyfillUrl.replaceAll(".", "\\.")}"></script>`))
     expect(srcdoc.indexOf(polyfillUrl)).toBeLessThan(srcdoc.indexOf("editor-entry"))
     expect(srcdoc).not.toContain("Demo Widget")
   })
 
   it("restores original resource URLs before loading an offline document", () => {
     const editor = new DomEditor()
-    ;(editor as any).frameDocumentHTML = '<!DOCTYPE html><html><head><script data-webwriter-original-src="/app.js">inline()</script></head><body><img data-webwriter-original-src="photo.png" src="data:image/png;base64,AQID"></body></html>'
+    ;(editor as any).frameDocumentHTML = '<!DOCTYPE html><html><head><script type="application/json" data-webwriter-original-src="/app.js">inline()</script></head><body><img data-webwriter-original-src="photo.png" src="data:image/png;base64,AQID"></body></html>'
 
     const srcdoc = (editor as any).editorSrcdoc as string
 
-    expect(srcdoc).toContain('<script src="/app.js"></script>')
+    expect(srcdoc).toContain('<script type="application/json" src="/app.js"></script>')
     expect(srcdoc).toContain('src="photo.png"')
     expect(srcdoc).not.toContain("data-webwriter-original-src")
+    expect(srcdoc).not.toContain("<head>null")
   })
 
   it("persists package additions and removals", async () => {
@@ -797,7 +816,7 @@ describe("DomEditor.execute()", () => {
     editor.addEventListener(executeCompleteEvent, completed)
 
     await expect(editor.execute({type: "lift"})).resolves.toBe("done")
-    expect(postMessage).toHaveBeenCalledWith({type: "lift", requestId: "1"}, "*")
+    expect(postMessage).toHaveBeenCalledWith({type: "lift", requestId: "1", bridgeNonce: expect.any(String)}, window.location.origin)
     expect(completed).toHaveBeenCalledWith(expect.objectContaining({detail: {requestId: "1", result: "done"}}))
     expect(editor.shadowRoot?.contains(iframe)).toBe(true)
   })
@@ -821,6 +840,38 @@ describe("DomEditor.execute()", () => {
       name: "NotAllowedError",
       message: "Clipboard access denied",
     })
+  })
+
+  it("does not post an action aborted while the editor frame is initializing", async () => {
+    const editor = new DomEditor()
+    document.body.append(editor)
+    await editor.updateComplete
+    const iframe = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
+    const postMessage = vi.spyOn(iframe.contentWindow!, "postMessage")
+    const controller = new AbortController()
+
+    const execution = editor.execute({type: "lift"}, {signal: controller.signal})
+    controller.abort(new DOMException("Cancelled", "AbortError"))
+    iframe.dispatchEvent(new Event("load"))
+
+    await expect(execution).rejects.toMatchObject({name: "AbortError"})
+    expect(postMessage.mock.calls.some(([message]) => message?.type === "lift")).toBe(false)
+  })
+
+  it("rejects an action when the editor does not answer before the deadline", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    vi.spyOn(editorWindow, "postMessage").mockImplementation(() => undefined)
+    vi.useFakeTimers()
+    try {
+      const execution = editor.execute({type: "lift"})
+      const rejection = expect(execution).rejects.toThrow("did not respond in time")
+      await Promise.resolve()
+      await vi.advanceTimersByTimeAsync(15_000)
+      await rejection
+    }
+    finally {
+      vi.useRealTimers()
+    }
   })
 
   it("executes the matching insert action from the expanded Insert ribbon", async () => {
@@ -1102,7 +1153,7 @@ describe("DomEditor.execute()", () => {
     await vi.waitFor(() => expect(
       ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Undo"]')!.disabled,
     ).toBe(false))
-    expect(editor.fileDirty).toBe(true)
+    expect((editor as unknown as {fileDirty: boolean}).fileDirty).toBe(true)
 
     versionCards[0].querySelector<HTMLButtonElement>(".history-checkpoint")!.click()
     await vi.waitFor(() => expect(
@@ -1439,6 +1490,18 @@ describe("DomEditor.execute()", () => {
     expect(restored.focusOffset).toBe(4)
   })
 
+  it("removes authored executable content from the preview copy", async () => {
+    const {editor, iframe} = await mountEditor()
+    iframe.contentDocument!.body.innerHTML = '<button onclick="alert(1)" formaction="javascript:alert(2)" srcdoc="<script>evil()</script>" style="background:url(javascript:evil())">Run</button><script>window.evil = true</script>'
+    const previewHTML = (editor as unknown as {currentPreviewHTML(): string}).currentPreviewHTML()
+    expect(previewHTML).toContain("Run")
+    expect(previewHTML).not.toContain("onclick")
+    expect(previewHTML).not.toContain("formaction")
+    expect(previewHTML).not.toContain("srcdoc")
+    expect(previewHTML).not.toContain("style=")
+    expect(previewHTML).not.toContain("window.evil")
+  })
+
   it("exits preview from the file tab", async () => {
     const {editor} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
@@ -1483,9 +1546,11 @@ describe("DomEditor.execute()", () => {
     await ribbon.updateComplete
 
     const host = (editor as unknown as {liveSession: LiveSession}).liveSession
+    const token = new URL((editor as unknown as {liveSessionLink: string}).liveSessionLink).searchParams.get("liveToken")!
     const learner = new LiveSession({
       id: host.id,
       role: "learner",
+      token,
       learner: {id: "learner-ada", name: "Ada Lovelace", color: "#d11b60"},
     })
     try {
@@ -1548,9 +1613,11 @@ describe("DomEditor.execute()", () => {
     const previewFrame = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.preview-frame")!
     previewFrame.dispatchEvent(new Event("load"))
     const host = (editor as unknown as {liveSession: LiveSession}).liveSession
+    const token = new URL((editor as unknown as {liveSessionLink: string}).liveSessionLink).searchParams.get("liveToken")!
     const learner = new LiveSession({
       id: host.id,
       role: "learner",
+      token,
       learner: {id: "learner-grace", name: "Grace Hopper", color: "#2563eb"},
     })
     try {
@@ -2206,20 +2273,20 @@ describe("DomEditor.execute()", () => {
     expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Text"] ribbon-button[label="Heading 2"]')).toBeNull()
     await heading.updateComplete
 
-    heading.shadowRoot!.querySelector('button[title="Heading"]')!.click()
+    heading.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Heading"]')!.click()
     expect(execute).toHaveBeenCalledWith({type: "insert", html: "<h1></h1>"})
 
-    heading.shadowRoot!.querySelector('button[aria-label="Show more Heading options"]')!.click()
+    heading.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Show more Heading options"]')!.click()
     await heading.updateComplete
     const submenu = heading.shadowRoot!.querySelector("ribbon-menu")!
     await submenu.updateComplete
-    submenu.shadowRoot!.querySelector('button[title="Heading 3"]')!.click()
+    submenu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Heading 3"]')!.click()
 
     expect(execute).toHaveBeenLastCalledWith({type: "insert", html: "<h3></h3>"})
 
-    heading.shadowRoot!.querySelector('button[aria-label="Show more Heading options"]')!.click()
+    heading.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Show more Heading options"]')!.click()
     await heading.updateComplete
-    submenu.shadowRoot!.querySelector('button[title="Divider"]')!.click()
+    submenu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Divider"]')!.click()
 
     expect(execute).toHaveBeenLastCalledWith({type: "insert", html: "<hr>"})
   })
@@ -2331,7 +2398,7 @@ describe("DomEditor.execute()", () => {
     await ribbon.updateComplete
     const heading = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Text"] ribbon-button[label="Heading"]')!
     await heading.updateComplete
-    heading.shadowRoot!.querySelector('button[aria-label="Show more Heading options"]')!.click()
+    heading.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Show more Heading options"]')!.click()
     await heading.updateComplete
 
     const submenu = heading.shadowRoot!.querySelector("ribbon-menu")!
@@ -2354,7 +2421,7 @@ describe("DomEditor.execute()", () => {
     await ribbon.updateComplete
     const menu = ribbon.shadowRoot!.querySelector("ribbon-menu")!
     await menu.updateComplete
-    const paragraph = menu.shadowRoot!.querySelector('button[title="Paragraph"]')!
+    const paragraph = menu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Paragraph"]')!
     paragraph.click()
 
     expect(execute).toHaveBeenCalledWith({type: "insert", html: "<p></p>"})
@@ -2373,10 +2440,10 @@ describe("DomEditor.execute()", () => {
     const menu = ribbon.shadowRoot!.querySelector("ribbon-menu")!
     await menu.updateComplete
 
-    expect(menu.shadowRoot!.querySelector('button[title="Heading 2"]')).toBeNull()
-    menu.shadowRoot!.querySelector('button[aria-label="Show more Heading options"]')!.click()
+    expect(menu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Heading 2"]')).toBeNull()
+    menu.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Show more Heading options"]')!.click()
     await menu.updateComplete
-    menu.shadowRoot!.querySelector('button[title="Heading 2"]')!.click()
+    menu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Heading 2"]')!.click()
 
     expect(execute).toHaveBeenCalledWith({type: "insert", html: "<h2></h2>"})
   })
@@ -2392,9 +2459,9 @@ describe("DomEditor.execute()", () => {
     await ribbon.updateComplete
     const menu = ribbon.shadowRoot!.querySelector("ribbon-menu")!
     await menu.updateComplete
-    menu.shadowRoot!.querySelector('button[aria-label="Show more Heading options"]')!.click()
+    menu.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Show more Heading options"]')!.click()
     await menu.updateComplete
-    expect(menu.shadowRoot!.querySelector('button[title="Heading 2"]')).not.toBeNull()
+    expect(menu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Heading 2"]')).not.toBeNull()
 
     ribbon.menuOpen = false
     await ribbon.updateComplete
@@ -2402,6 +2469,6 @@ describe("DomEditor.execute()", () => {
     await ribbon.updateComplete
     await menu.updateComplete
 
-    expect(menu.shadowRoot!.querySelector('button[title="Heading 2"]')).toBeNull()
+    expect(menu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Heading 2"]')).toBeNull()
   })
 })

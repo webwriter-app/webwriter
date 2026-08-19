@@ -1,21 +1,22 @@
 {
-    "compilerOptions": {
-        "target": "es2022",
-        "module": "es2022",
-        "lib": ["ES2022", "DOM", "WebWorker"],
-        "types": ["@testing-library/jest-dom"],
-        "experimentalDecorators": true,
-        "esModuleInterop": true,
-        "allowSyntheticDefaultImports": true,
-        "moduleResolution": "bundler",
-        "useDefineForClassFields": false,
-        "resolveJsonModule": true,
-        "sourceMap": true,
-        "strict": true,
-        "strictPropertyInitialization": false,
-        "plugins": [
-            {"name": "ts-lit-plugin"}
-        ],
-    },
-    "exclude": ["./dist/**/*", "*.config.js"]
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "es2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": [],
+    "experimentalDecorators": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "moduleResolution": "bundler",
+    "useDefineForClassFields": false,
+    "resolveJsonModule": true,
+    "sourceMap": true,
+    "strict": true,
+    "strictPropertyInitialization": false,
+    "plugins": [
+      {"name": "ts-lit-plugin"}
+    ]
+  },
+  "include": ["custom.d.ts", "src/**/*.ts"],
+  "exclude": ["dist", "src/**/*.test.ts", "src/local-package-service-worker.ts"]
 }

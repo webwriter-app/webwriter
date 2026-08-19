@@ -21,6 +21,27 @@ const request = async (path, init) => {
   return {response, value}
 }
 
+const openWebSocket = url => new Promise((resolve, reject) => {
+  const socket = new WebSocketPackage(url)
+  const timer = setTimeout(() => {
+    socket.terminate()
+    reject(new Error("WebSocket connection timed out"))
+  }, 2_000)
+  socket.once("open", () => {
+    clearTimeout(timer)
+    resolve(socket)
+  })
+  socket.once("error", error => {
+    clearTimeout(timer)
+    reject(error)
+  })
+})
+
+const closeWebSocket = socket => new Promise(resolve => {
+  socket.once("close", resolve)
+  socket.close()
+})
+
 beforeEach(async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "webwriter-dev-server-"))
   upstreamFetch = vi.fn().mockRejectedValue(new Error("Unexpected upstream inference request"))
@@ -89,6 +110,7 @@ describe("development server", () => {
         apiKey: "secret-value",
         models: ["test-model"],
         defaultModel: "test-model",
+        apiKeyEnvironment: "PATH",
       }),
     })
     expect(created.response.status).toBe(201)
@@ -102,6 +124,20 @@ describe("development server", () => {
     const listed = await request("/api/providers")
     expect(JSON.stringify(listed.value)).not.toContain("secret-value")
     expect(listed.value.activeProviderId).toBe("test-provider")
+
+    const envOnly = await request("/api/providers", {
+      method: "POST",
+      body: JSON.stringify({
+        id: "env-only-provider",
+        name: "Environment only",
+        preset: "custom",
+        baseUrl: "https://ai.example/v1",
+        auth: "bearer",
+        apiKeyEnvironment: "PATH",
+      }),
+    })
+    expect(envOnly.response.status).toBe(201)
+    expect(envOnly.value.provider.credentialStatus).toBe("missing")
   })
 
   it("proxies inference through the OpenAI client with the server-side key", async () => {
@@ -166,5 +202,23 @@ describe("development server", () => {
       left.destroy()
       right.destroy()
     }
+  })
+
+  it("requires the host capability for live-session WebSockets and releases empty rooms", async () => {
+    const websocketUrl = baseUrl.replace(/^http/, "ws")
+    const room = "live-session-token-test"
+    const firstToken = "aaaaaaaaaaaaaaaaaaaaaaaa"
+    const secondToken = "bbbbbbbbbbbbbbbbbbbbbbbb"
+
+    await expect(openWebSocket(`${websocketUrl}/${room}?role=learner&token=${firstToken}`)).rejects.toBeInstanceOf(Error)
+
+    const host = await openWebSocket(`${websocketUrl}/${room}?role=host&token=${firstToken}`)
+    await expect(openWebSocket(`${websocketUrl}/${room}?role=learner&token=${secondToken}`)).rejects.toBeInstanceOf(Error)
+    const learner = await openWebSocket(`${websocketUrl}/${room}?role=learner&token=${firstToken}`)
+    await closeWebSocket(learner)
+    await closeWebSocket(host)
+
+    const replacementHost = await openWebSocket(`${websocketUrl}/${room}?role=host&token=${secondToken}`)
+    await closeWebSocket(replacementHost)
   })
 })

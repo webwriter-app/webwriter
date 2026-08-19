@@ -769,7 +769,7 @@ export class DomEditorBreadcrumb extends LitElement {
         type="button"
         title=${label}
         aria-label=${label}
-        aria-expanded=${this.treeOpen ? "true" : "false"}
+        aria-expanded=${isSameTree ? "true" : "false"}
         aria-controls="document-tree"
         @click=${() => this.toggleTree(item)}
       >
@@ -831,9 +831,6 @@ export class DomEditorBreadcrumb extends LitElement {
     return html`
       <li
         class="tree-node"
-        role="treeitem"
-        aria-level=${depth + 1}
-        aria-expanded=${expandable ? (expanded ? "true" : "false") : "false"}
       >
         <div class="tree-row" style=${`--tree-depth: ${depth}`}>
           ${expandable ? html`
@@ -864,7 +861,7 @@ export class DomEditorBreadcrumb extends LitElement {
         </div>
         ${gapPosition ? this.renderGapIndicator(gapPosition, depth, gapAtTreeStart) : ""}
         ${expandable && expanded ? html`
-          <ul class="tree-children" role="group">
+          <ul class="tree-children">
             ${this.renderTreeChildren(item.children, item.path, depth + 1)}
           </ul>
         ` : ""}
@@ -952,7 +949,7 @@ export class DomEditorBreadcrumb extends LitElement {
             aria-hidden=${this.treeOpen ? "false" : "true"}
             ?inert=${!this.treeOpen}
           >
-            <ul id="document-tree" class="tree-list" role="tree">
+            <ul id="document-tree" class="tree-list" aria-label="Document tree">
               ${(() => {
                 const root = this.treeItemAtPath(this.treeRootPath)
                 const treeRoot = root ?? this.tree

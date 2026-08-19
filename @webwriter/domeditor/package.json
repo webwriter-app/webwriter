@@ -11,7 +11,8 @@
     "start": "node dev-server/server.mjs",
     "start:frontend": "vite",
     "test": "vitest watch --reporter=minimal",
-    "vitest": "vitest"
+    "vitest": "vitest",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.worker.json && tsc --noEmit -p tsconfig.test.json"
   },
   "dependencies": {
     "@tabler/icons": "^3.46.0",

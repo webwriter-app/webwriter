@@ -266,3 +266,21 @@ describe("widget shadow interactions", () => {
     widget.remove()
   })
 })
+
+describe("bridge origin binding", () => {
+  it("posts bridge events to the verified initialization origin", () => {
+    const bridgeOrigin = "https://editor-host.example"
+    const bridgeNonce = "0123456789abcdef"
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => undefined)
+    const editor = new DOMEditor({bridgeOrigin, bridgeNonce})
+
+    editor.postPresence([])
+
+    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: "dom-editor-presence-change",
+      bridgeNonce,
+    }), bridgeOrigin)
+    editor.destroy()
+    postMessage.mockRestore()
+  })
+})

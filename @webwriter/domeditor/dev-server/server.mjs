@@ -66,6 +66,7 @@ const readJSONFile = async (path, fallback) => {
 }
 
 const safeId = value => typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(value)
+const safeSessionToken = value => typeof value === "string" && /^[A-Za-z0-9_-]{24,256}$/.test(value)
 
 const documentInput = (value, previous = {}) => {
   if(!isRecord(value)) throw Object.assign(new Error("Document must be a JSON object"), {status: 400})
@@ -88,7 +89,7 @@ const normalizeBaseUrl = value => {
 
 const DEFAULT_AI_INSTRUCTIONS = "Fulfill every request by using the document tools to propose a document change, unless the user explicitly asks for planning only. Use clean semantic HTML with the flattest practical structure; avoid unnecessary wrappers such as <div>."
 
-const providerInput = (value, previous = {}) => {
+const providerInput = (value, previous = {}, {allowEnvironmentReference = false} = {}) => {
   if(!isRecord(value)) throw Object.assign(new Error("Provider must be a JSON object"), {status: 400})
   try {
     const id = safeId(value.id) ? value.id : previous.id ?? randomUUID()
@@ -121,7 +122,7 @@ const providerInput = (value, previous = {}) => {
       defaultModel,
       customInstructions,
       apiKey,
-      apiKeyEnvironment: typeof value.apiKeyEnvironment === "string"
+      apiKeyEnvironment: allowEnvironmentReference && typeof value.apiKeyEnvironment === "string"
         ? value.apiKeyEnvironment.trim()
         : previous.apiKeyEnvironment ?? "",
     }
@@ -175,7 +176,7 @@ const loadProviderState = async path => {
   if(!isRecord(value) || !Array.isArray(value.providers)) return defaultProviderState()
   const providers = value.providers.flatMap(provider => {
     try {
-      return [providerInput(provider)]
+      return [providerInput(provider, {}, {allowEnvironmentReference: true})]
     }
     catch {
       return []
@@ -249,6 +250,7 @@ export async function createDevServer(options = {}) {
   await mkdir(documentsDirectory, {recursive: true})
 
   let viteServer
+  const liveSessionTokens = new Map()
   const websocketServer = new WebSocketServer({noServer: true})
   websocketServer.on("connection", (socket, request) => setupWSConnection(socket, request))
 
@@ -452,7 +454,32 @@ export async function createDevServer(options = {}) {
       socket.destroy()
       return
     }
+    const requestUrl = new URL(request.url || "/", requestOrigin(request))
+    const room = requestUrl.pathname.replace(/^\/+/, "")
+    let liveSession
+    if(room.startsWith("live-session-")) {
+      const token = requestUrl.searchParams.get("token")
+      const role = requestUrl.searchParams.get("role")
+      const knownSession = liveSessionTokens.get(room)
+      if(!safeSessionToken(token) || (role !== "host" && role !== "learner")
+        || knownSession && knownSession.token !== token
+        || role === "learner" && !knownSession) {
+        socket.destroy()
+        return
+      }
+      liveSession = knownSession ?? {token, connections: 0}
+      if(!knownSession) liveSessionTokens.set(room, liveSession)
+    }
     websocketServer.handleUpgrade(request, socket, head, webSocket => {
+      if(liveSession) {
+        liveSession.connections++
+        webSocket.once("close", () => {
+          liveSession.connections--
+          if(liveSession.connections === 0 && liveSessionTokens.get(room) === liveSession) {
+            liveSessionTokens.delete(room)
+          }
+        })
+      }
       websocketServer.emit("connection", webSocket, request)
     })
   })

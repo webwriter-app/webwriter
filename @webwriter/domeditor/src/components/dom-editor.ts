@@ -24,6 +24,7 @@ import {
   type StyleMarkValues,
 } from "../marks"
 import {isWidgetShadowInteraction} from "../utility"
+import {stripActiveContent} from "../active-content"
 import {
   isMediaType,
   isWebsiteType,
@@ -34,6 +35,7 @@ import {
   aiEditReviewEvent,
   executeCompleteEvent,
   executeFailureEvent,
+  emptyVersionHistoryState,
   initializeEditorMessage,
   isAIEditReviewMessage,
   isExecuteResponse,
@@ -65,6 +67,7 @@ import "./ribbon"
 import "./live-session-controls"
 import "./live-session-overlay"
 import {restoreOriginalResourceURLs, serializeDoctype} from "../serialization"
+import {userInitials} from "../user-identity"
 import {
   loadLocalPackage,
   localPackageWatchPaths,
@@ -140,6 +143,7 @@ const appIconUrl = `${import.meta.env.BASE_URL}assets/app-icon-transparent.svg`
 const scopedCustomElementRegistryPolyfillUrl = "https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"
 const localPackageResourcePath = LOCAL_PACKAGE_ROUTE_PREFIX
 const packageLoadTimeoutMs = 10_000
+const executeTimeoutMs = 15_000
 
 type LocalPackageRecord = {
   id: string
@@ -219,15 +223,8 @@ type RibbonInputEventDetail = {
   relatedTargetIsInput?: boolean
 }
 
-const emptyVersionHistoryState = (): VersionHistoryState => ({
-  checkpoints: [],
-  comments: [],
-  preview: null,
-  currentCheckpointId: null,
-  currentUserId: null,
-})
-
 const liveSessionParameter = "liveSession"
+const liveSessionTokenParameter = "liveToken"
 const liveSessionIdentityKey = (sessionId: string) => `webwriter_live_session_learner_${sessionId}`
 const liveSessionColors = [
   "#e11d48", "#db2777", "#9333ea", "#4f46e5", "#2563eb", "#0284c7",
@@ -241,16 +238,6 @@ const hashString = (value: string) => Array.from(value).reduce(
   (hash, character) => (Math.imul(hash, 31) + character.codePointAt(0)!) | 0,
   0,
 )
-
-const firstInitial = (value: string) => Array.from(value).find(character => /[\p{L}\p{N}]/u.test(character)) ?? ""
-
-const learnerInitials = (name: string) => {
-  const words = name.trim().split(/\s+/).filter(Boolean)
-  const value = words.length > 1
-    ? words.slice(0, 2).map(firstInitial).join("")
-    : Array.from(words[0] ?? "").map(firstInitial).join("").slice(0, 2)
-  return (value || firstInitial(name) || "?").toLocaleUpperCase().slice(0, 2)
-}
 
 const clampUnit = (value: number) => Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0))
 
@@ -315,6 +302,7 @@ export class DomEditor extends LitElement {
 
   private editorDocument: Document | null = null
   private editorWindow: Window | null = null
+  private readonly bridgeNonce = randomIdentifier("bridge")
   private documentTreeObserver: MutationObserver | null = null
   private editorReadyPromise: Promise<Window> | null = null
   private editorReadyResolve: ((editorWindow: Window) => void) | null = null
@@ -418,6 +406,8 @@ export class DomEditor extends LitElement {
   private pendingExecutions = new Map<string, {
     resolve: (value: unknown) => void
     reject: (reason?: unknown) => void
+    timer?: ReturnType<typeof setTimeout>
+    abortCleanup?: () => void
   }>()
 
   static styles = css`
@@ -462,14 +452,33 @@ export class DomEditor extends LitElement {
   `
 
   private get editorSrcdoc() {
-    const bootstrap = `<script data-webwriter-editor-only src="${escapeAttribute(scopedCustomElementRegistryPolyfillUrl)}"></script><script data-webwriter-editor-only type="module" src="${escapeAttribute(editorEntryUrl)}"></script>`
+    // Keep authored script elements in the live DOM for serialization, but
+    // give only the editor bootstrap and explicitly installed package assets
+    // execution permission in this same-origin editing frame. The nonce is
+    // also passed through the authenticated bridge, so a document script
+    // cannot learn or forge it before editor initialization.
+    const nonce = escapeAttribute(this.bridgeNonce)
+    const policy = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'; style-src 'self' https: data: blob: 'unsafe-inline'; img-src * data: blob:; font-src * data:; connect-src *; media-src * data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'`
+    const csp = `<meta class="◆ ◆editor-only" http-equiv="Content-Security-Policy" content="${escapeAttribute(policy)}">`
+    // Happy DOM deliberately disables external script execution but reports
+    // each attempted iframe load as an uncaught exception. Keep virtual test
+    // frames inert; browser builds retain the executable script types.
+    const testScriptType = import.meta.env.MODE === "test" ? ' type="application/json"' : ""
+    const editorScriptType = import.meta.env.MODE === "test" ? "application/json" : "module"
+    const bootstrapScripts = `<script class="◆ ◆editor-only" nonce="${nonce}"${testScriptType} src="${escapeAttribute(scopedCustomElementRegistryPolyfillUrl)}"></script><script class="◆ ◆editor-only" nonce="${nonce}" type="${editorScriptType}" src="${escapeAttribute(editorEntryUrl)}"></script>`
+    const bootstrap = `${csp}${bootstrapScripts}`
     if(this.frameDocumentHTML === null) {
       return `<!-- frame ${this.frameRevision} -->${bootstrap}<meta name="generator" content="${escapeAttribute(WEBWRITER_GENERATOR)}">`
     }
 
     const parsed = new DOMParser().parseFromString(this.frameDocumentHTML, "text/html")
     restoreOriginalResourceURLs(parsed)
-    parsed.head.insertAdjacentHTML("beforeend", bootstrap)
+    parsed.head.insertAdjacentHTML("beforeend", bootstrapScripts)
+    const cspElement = parsed.createElement("meta")
+    cspElement.classList.add("◆", "◆editor-only")
+    cspElement.httpEquiv = "Content-Security-Policy"
+    cspElement.content = policy
+    parsed.head.prepend(cspElement)
     return `<!-- frame ${this.frameRevision} -->${serializeDoctype(parsed.doctype)}${parsed.documentElement.outerHTML}`
   }
 
@@ -484,6 +493,13 @@ export class DomEditor extends LitElement {
     source.body?.removeAttribute("spellcheck")
     source.querySelectorAll("[contenteditable]").forEach(element => element.removeAttribute("contenteditable"))
     source.querySelectorAll("[data-webwriter-editor-only]").forEach(element => element.remove())
+
+    // Preview is a same-origin sandbox because the live-preview bridge still
+    // needs DOM access. Authored executable content is not part of that trusted
+    // boundary: remove scripts, active embeds, event handlers, and dangerous
+    // URL attributes before the document is placed in the frame. Installed
+    // package scripts are re-added below as the explicit trusted-code boundary.
+    stripActiveContent(source)
 
     const editingElements = Array.from(source.querySelectorAll<HTMLElement>("[class]"))
       .filter(element => Array.from(element.classList).some(name => name.startsWith("◆")))
@@ -510,7 +526,7 @@ export class DomEditor extends LitElement {
       const scripts = [...new Set(this.installedPackages.flatMap(pkg => pkg.scripts))]
         .map(src => {
           const script = source.createElement("script")
-          script.type = "module"
+          script.type = import.meta.env.MODE === "test" ? "application/json" : "module"
           script.src = src
           return script
         })
@@ -528,8 +544,42 @@ export class DomEditor extends LitElement {
   private get syncUrl() {
     const syncUrl = new URL(this.backendSession?.collaborationUrl ?? `ws://${location.hostname}:1234`)
     const outerUrl = new URL(location.href)
-    outerUrl.searchParams.forEach((value, key) => syncUrl.searchParams.set(key, value))
+    outerUrl.searchParams.forEach((value, key) => {
+      // Live-session bearer tokens are for the dedicated live room only; do
+      // not forward them to the ordinary document collaboration provider.
+      if(key === liveSessionTokenParameter || key === liveSessionParameter || key === "role") return
+      syncUrl.searchParams.set(key, value)
+    })
     return syncUrl.href
+  }
+
+  /** Returns the editor frame's actual origin, with a test-only fallback for
+   * happy-dom's srcdoc windows which report an opaque `null` origin. A real
+   * production frame never takes the wildcard branch. */
+  private editorTargetOrigin() {
+    const origin = this.editorWindow?.location.origin
+    if(origin && origin !== "null") return origin
+    return window.location.origin === "null" ? "*" : window.location.origin
+  }
+
+  private postToEditor(message: object) {
+    const editorWindow = this.editorWindow
+    if(!editorWindow) return
+    try {
+      editorWindow.postMessage(message, this.editorTargetOrigin())
+    }
+    catch(error) {
+      // happy-dom reports srcdoc recipients as opaque even when the browser
+      // frame is same-origin. Keep this test-only compatibility fallback
+      // nonce-bound; production same-origin frames always use the exact
+      // origin above and never send to a wildcard target.
+      const happyDom = globalThis.navigator?.userAgent.includes("HappyDOM")
+      if(happyDom && error && typeof error === "object" && (error as {name?: unknown}).name === "SecurityError") {
+        editorWindow.postMessage(message, "*")
+        return
+      }
+      throw error
+    }
   }
 
   private liveSessionIdFromURL() {
@@ -537,11 +587,12 @@ export class DomEditor extends LitElement {
     return value && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(value) ? value : null
   }
 
-  private liveSessionShareLink(sessionId: string) {
+  private liveSessionShareLink(sessionId: string, token: string) {
     const url = new URL(location.href)
     url.searchParams.delete("session")
     url.searchParams.delete("source")
     url.searchParams.set(liveSessionParameter, sessionId)
+    url.searchParams.set(liveSessionTokenParameter, token)
     url.searchParams.set("role", "learner")
     return url.href
   }
@@ -637,7 +688,7 @@ export class DomEditor extends LitElement {
     return {
       id: learner.id,
       name: learner.name,
-      initials: learnerInitials(learner.name),
+      initials: userInitials(learner.name),
       color: learner.color,
       connected: learner.connected,
       enabled: this.liveLearnerVisibility.get(learner.id) !== false,
@@ -1252,14 +1303,16 @@ export class DomEditor extends LitElement {
       const initializeMessage: InitializeEditorMessage = {
         type: initializeEditorMessage,
         syncUrl: this.syncUrl,
+        bridgeNonce: this.bridgeNonce,
         ...(this.frameState ? {initialState: this.frameState} : {}),
       }
       const loadMessage: LoadWidgetsMessage = {
         type: loadWidgetsMessage,
+        bridgeNonce: this.bridgeNonce,
         widgets: this.installedPackages.map(({name, version}) => ({name, version})),
         packages: this.installedPackages,
       }
-      this.editorWindow.postMessage(initializeMessage, "*")
+      this.postToEditor(initializeMessage)
       const packageLoadRequestId = `packages-${++this.packageLoadSequence}`
       const packageLoad = new Promise<unknown>((resolve, reject) => {
         const timer = setTimeout(() => {
@@ -1277,7 +1330,7 @@ export class DomEditor extends LitElement {
           },
         })
       })
-      this.editorWindow.postMessage({...loadMessage, requestId: packageLoadRequestId}, "*")
+      this.postToEditor({...loadMessage, requestId: packageLoadRequestId})
       void packageLoad.catch(error => {
         const message = error instanceof Error ? error.message : String(error)
         if(!this.isConnected || message === "The editor iframe was reloaded for a package change") return
@@ -1478,11 +1531,17 @@ export class DomEditor extends LitElement {
     if(import.meta.env.MODE !== "test" && !this.backendSession) await this.loginToBackend()
     if(!this.isConnected) return
     const identity = this.learnerIdentity(sessionId)
+    const token = new URL(location.href).searchParams.get(liveSessionTokenParameter) ?? ""
+    if(this.backendSession?.collaborationUrl && !/^[A-Za-z0-9_-]{24,256}$/.test(token)) {
+      this.reportFileError(new Error("This live-session link is missing its access token"))
+      return
+    }
     const session = new LiveSession({
       id: sessionId,
       role: "learner",
       learner: identity,
       ...(this.backendSession?.collaborationUrl ? {serverUrl: this.backendSession.collaborationUrl} : {}),
+      ...(token ? {token} : {}),
     })
     this.liveStreamPlaying = true
     this.liveStreamStep = 0
@@ -1533,15 +1592,17 @@ export class DomEditor extends LitElement {
       if(import.meta.env.MODE !== "test" && this.backendState === "probing") await this.loginToBackend()
       const previewHTML = this.currentPreviewHTML()
       const sessionId = randomIdentifier("live")
+      const sessionToken = randomIdentifier("live-token")
       const session = new LiveSession({
         id: sessionId,
         role: "host",
         baseHTML: previewHTML,
         ...(this.backendSession?.collaborationUrl ? {serverUrl: this.backendSession.collaborationUrl} : {}),
+        token: sessionToken,
       })
       this.liveStreamPlaying = true
       this.liveStreamStep = 0
-      this.connectLiveSession(session, "host", this.liveSessionShareLink(sessionId))
+      this.connectLiveSession(session, "host", this.liveSessionShareLink(sessionId, sessionToken))
       this.previewDocumentHTML = previewHTML
       this.previewActive = true
     }
@@ -1734,7 +1795,11 @@ export class DomEditor extends LitElement {
     this.historyError = ""
     this.frameDocumentHTML = htmlSource
     const reloadError = new Error("The editor iframe was reloaded for a document change")
-    this.pendingExecutions.forEach(({reject}) => reject(reloadError))
+    this.pendingExecutions.forEach(({reject, timer, abortCleanup}) => {
+      clearTimeout(timer)
+      abortCleanup?.()
+      reject(reloadError)
+    })
     this.pendingExecutions.clear()
     this.frameRevision++
     await this.updateComplete
@@ -2578,7 +2643,11 @@ export class DomEditor extends LitElement {
     this.editorReadyReject = null
     this.savedEditorSelection = null
     const reloadError = new Error("The editor iframe was reloaded for a package change")
-    this.pendingExecutions.forEach(({reject}) => reject(reloadError))
+    this.pendingExecutions.forEach(({reject, timer, abortCleanup}) => {
+      clearTimeout(timer)
+      abortCleanup?.()
+      reject(reloadError)
+    })
     this.pendingExecutions.clear()
     this.frameState = snapshot
     this.installedPackages = nextPackages
@@ -2867,7 +2936,11 @@ export class DomEditor extends LitElement {
 
   private isEditorMessage(event: MessageEvent) {
     const iframe = this.editorIframe()
-    return !event.source || event.source === this.editorWindow || event.source === iframe?.contentWindow
+    const sourceMatches = event.source === this.editorWindow || event.source === iframe?.contentWindow
+    const testOriginFallback = globalThis.navigator?.userAgent.includes("HappyDOM") && !event.origin
+    return sourceMatches
+      && event.data?.bridgeNonce === this.bridgeNonce
+      && (event.origin === window.location.origin || testOriginFallback)
   }
 
   private stylesVisible() {
@@ -2979,10 +3052,13 @@ export class DomEditor extends LitElement {
   }
 
   private handleInlineAIEditReview = (event: Event) => {
-    const detail = (event as CustomEvent<AIEditReviewMessage["detail"]>).detail
-    if(detail) {
+    const message = {
+      type: aiEditReviewEvent,
+      detail: (event as CustomEvent<AIEditReviewMessage["detail"]>).detail,
+    }
+    if(isAIEditReviewMessage(message)) {
       event.preventDefault()
-      this.routeAIEditReview(detail)
+      this.routeAIEditReview(message.detail)
     }
   }
 
@@ -3106,6 +3182,8 @@ export class DomEditor extends LitElement {
     const pending = this.pendingExecutions.get(detail.requestId)
     if(!pending) return
     this.pendingExecutions.delete(detail.requestId)
+    clearTimeout(pending.timer)
+    pending.abortCleanup?.()
 
     this.dispatchEvent(new CustomEvent(event.data.type, {
       detail,
@@ -3143,23 +3221,56 @@ export class DomEditor extends LitElement {
     return error
   }
 
-  async execute(action: EditingAction): Promise<unknown> {
+  async execute(action: EditingAction, options: {signal?: AbortSignal} = {}): Promise<unknown> {
     if(!this.isConnected) {
       throw new Error("The DOM editor component is not connected")
     }
     const requestId = String(++this.requestSequence)
     const promise = new Promise<unknown>((resolve, reject) => {
-      this.pendingExecutions.set(requestId, {resolve, reject})
+      const pending = {resolve, reject} as {
+        resolve: (value: unknown) => void
+        reject: (reason?: unknown) => void
+        timer?: ReturnType<typeof setTimeout>
+        abortCleanup?: () => void
+      }
+      pending.timer = setTimeout(() => {
+        if(this.pendingExecutions.get(requestId) !== pending) return
+        this.pendingExecutions.delete(requestId)
+        pending.abortCleanup?.()
+        reject(new Error("The editor did not respond in time"))
+      }, executeTimeoutMs)
+      this.pendingExecutions.set(requestId, pending)
+      if(options.signal) {
+        const abort = () => {
+          if(this.pendingExecutions.get(requestId) !== pending) return
+          this.pendingExecutions.delete(requestId)
+          clearTimeout(pending.timer)
+          reject(options.signal?.reason ?? new DOMException("The operation was aborted", "AbortError"))
+        }
+        if(options.signal.aborted) abort()
+        else {
+          options.signal.addEventListener("abort", abort, {once: true})
+          pending.abortCleanup = () => options.signal?.removeEventListener("abort", abort)
+        }
+      }
     })
 
+    if(options.signal?.aborted) return promise
     try {
-      const editorWindow = await this.waitForEditorWindow()
-      editorWindow.postMessage(Object.assign({}, action as object, {requestId}), "*")
+      await this.waitForEditorWindow()
+      // A timeout or AbortSignal can settle the request while the iframe is
+      // still initializing. Never execute a command whose caller has already
+      // stopped waiting for it.
+      if(this.pendingExecutions.has(requestId)) {
+        this.postToEditor(Object.assign({}, action as object, {requestId, bridgeNonce: this.bridgeNonce}))
+      }
     }
     catch(error) {
       const pending = this.pendingExecutions.get(requestId)
       if(pending) {
         this.pendingExecutions.delete(requestId)
+        clearTimeout(pending.timer)
+        pending.abortCleanup?.()
         pending.reject(error)
       }
     }
@@ -3309,7 +3420,11 @@ export class DomEditor extends LitElement {
     this.historyDocumentTransitionCount = 0
     this.historyError = ""
     const error = new Error("The DOM editor component was disconnected")
-    this.pendingExecutions.forEach(({reject}) => reject(error))
+    this.pendingExecutions.forEach(({reject, timer, abortCleanup}) => {
+      clearTimeout(timer)
+      abortCleanup?.()
+      reject(error)
+    })
     this.pendingExecutions.clear()
     super.disconnectedCallback()
   }
@@ -3419,6 +3534,8 @@ export class DomEditor extends LitElement {
           <iframe
             class="preview-frame"
             title=${this.liveSessionActive ? "Live document preview" : "Document preview"}
+            sandbox="allow-scripts allow-same-origin"
+            referrerpolicy="no-referrer"
             srcdoc=${this.previewDocumentHTML ?? ""}
             @load=${this.handlePreviewFrameLoad}
           ></iframe>
@@ -3426,6 +3543,8 @@ export class DomEditor extends LitElement {
         <iframe
           class="editor-frame"
           title="DOM editor"
+          sandbox="allow-scripts allow-same-origin"
+          referrerpolicy="no-referrer"
           srcdoc=${this.editorSrcdoc}
           ?hidden=${this.previewActive}
           @load=${this.handleEditorFrameLoad}

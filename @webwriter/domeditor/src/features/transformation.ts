@@ -411,9 +411,7 @@ export class TransformationFeature extends EditorFeature {
     else if(this.#mode === "scale") {
       return this.#roundingFuncs.snap10
     }
-    else {
-      return this.#roundingFuncs.identity
-    }
+    return this.#roundingFuncs.identity
   }
 
   /** Begins a scale interaction: records the target's size, center and scale,
@@ -520,43 +518,16 @@ export class TransformationFeature extends EditorFeature {
     }
   }
 
-  /** Debugging helper: renders colored dots at the given viewport
-   * coordinates. */
-  #helperDots(...coords: [number, number][]) {
-    document.querySelectorAll(".◆helper-dot").forEach(el => el.remove())
-    coords.forEach(([x, y], i) => {
-      const colors = ["purple", "red", "orange"]
-      const el = document.createElement("div")
-      el.contentEditable = "false"
-      el.classList.add("◆helper-dot")
-      el.style.left = `${x}px`
-      el.style.top = `${y}px`
-      el.style.position = "fixed"
-      el.style.width = "3px"
-      el.style.height = "3px"
-      el.style.marginLeft = "-1px"
-      el.style.marginTop = "-1px"
-      el.style.borderRadius = "100%"
-      el.style.zIndex = "2147483647"
-      el.style.background = colors.at(i) ?? "red"
-      this.editor.addAppendix(el)
-    })
-  }
-
   /** Scales the target while dragging a handle: computes the new box from
    * the fixed point and the cursor (in the rotated coordinate system) and
    * sets width/height/left/top. Modifier scales symmetrically around the
-   * center, Shift stretches via scale() instead. */
+   * center; Shift keeps the independent-axis stretch path active. */
   handleScaleDrag(ev: DragEvent) {
     if(ev.view !== window || !ev.buttons || ev.pageY < 0) {return}
     const el = ev.target as HTMLElement
     const dir = Array.from(new Set(el.id.split("-").slice(-2))).join("-")
-    const round = this.#roundingFuncs.identity || this.getRoundingFunc(ev)
-    let w: string | undefined = undefined, h: string | undefined = undefined
-    if(ev.shiftKey) {
-      w = h = ""
-    }
-    else {
+    const round = this.getRoundingFunc(ev)
+    {
       const symmetrical = modifierKeyDown(ev)
       const deg = this.#deg || 0
       const [cx, cy] = [this.#cx!, this.#cy!]
@@ -631,13 +602,13 @@ export class TransformationFeature extends EditorFeature {
       ]
 
       const {left, top} = this.targetOriginRect
-      this.target.style.left = `${Math.min(px, qx) - left}px`
-      this.target.style.top = `${Math.min(py, qy) - top}px`
+      this.target.style.left = `${round(Math.min(px, qx) - left)}px`
+      this.target.style.top = `${round(Math.min(py, qy) - top)}px`
       if(dir.includes("left") || dir.includes("right")) {
-        this.target.style.width = `${newWidth}px`
+        this.target.style.width = `${round(newWidth)}px`
       }
       if(dir.includes("up") || dir.includes("down")) {
-        this.target.style.height = `${newHeight}px`
+        this.target.style.height = `${round(newHeight)}px`
       }
       this.updateInfo()
     }
@@ -889,9 +860,9 @@ export class TransformationFeature extends EditorFeature {
     if(position === "static") {
       return new DOMRect(0, 0, window.innerWidth, window.innerHeight)
     } else if(position === "relative") {
-      const [x, y] = getStaticCoords(this.target)
+      const [top, left] = getStaticCoords(this.target)
       const {width, height} = this.targetComputedStyle
-      return new DOMRect(x, y, parseInt(width), parseInt(height))
+      return new DOMRect(left, top, parseInt(width), parseInt(height))
     } else if(position === "absolute") {
       if(this.#containingBlock === window) {
         return new DOMRect(0, 0, window.innerWidth, window.innerHeight)
@@ -1030,6 +1001,7 @@ export class TransformationFeature extends EditorFeature {
    * refused. */
   startTransform(element: HTMLElement) {
     if(element === document.documentElement || element === document.head || element === document.body) {return}
+    if(this.target && this.target !== element) this.clearTransform()
     element.classList.add("◆", "◆transform-target")
     this.overlay.removeAttribute("visibility")
     this.anchor?.removeAttribute("visibility")
@@ -1040,13 +1012,23 @@ export class TransformationFeature extends EditorFeature {
    * document, hides the overlay and anchor, and closes the menus. */
   clearTransform() {
     document.querySelectorAll(".◆transform-target")
-      .forEach(el => el.classList.remove("◆transform-target"))
+      .forEach(el => this.#removeMarkerClass(el, "◆transform-target"))
     document.querySelectorAll(".◆transform-containing-block")
-      .forEach(el => el.classList.remove("◆transform-containing-block", "◆transform-containing-block-no-outline"))
+      .forEach(el => {
+        this.#removeMarkerClass(el, "◆transform-containing-block")
+        this.#removeMarkerClass(el, "◆transform-containing-block-no-outline")
+      })
     document.querySelectorAll(".◆transform-scrolling-ancestor")
-      .forEach(el => el.classList.remove("◆transform-scrolling-ancestor"))
+      .forEach(el => this.#removeMarkerClass(el, "◆transform-scrolling-ancestor"))
     document.querySelectorAll(".◆transform-stacking-container")
-      .forEach(el => el.classList.remove("◆transform-stacking-container"))
+      .forEach(el => this.#removeMarkerClass(el, "◆transform-stacking-container"))
+    document.querySelectorAll(".◆drop-caret-before, .◆drop-caret-after")
+      .forEach(el => this.#removeMarkerClass(el, el.classList.contains("◆drop-caret-before") ? "◆drop-caret-before" : "◆drop-caret-after"))
+    this.editor.features.selection.clearDropCaret()
+    document.body.classList.remove(
+      "◆transform-moving", "◆transform-rotating", "◆transform-scaling-ew",
+      "◆transform-scaling-ns", "◆transform-scaling-nesw", "◆transform-scaling-nwse",
+    )
     this.overlay.setAttribute("visibility", "hidden")
     this.anchor?.setAttribute("visibility", "hidden")
     this.overlay.classList.remove("◆transform-overlay-changed")
@@ -1054,6 +1036,20 @@ export class TransformationFeature extends EditorFeature {
     this.arranger?.toggleAttribute("data-open", false)
     this.orderer?.toggleAttribute("data-open", false)
     this.#syncControlParts()
+  }
+
+  disable() {
+    this.#mode = undefined
+    this.clearTransform()
+    super.disable()
+  }
+
+  #removeMarkerClass(element: Element, marker: string) {
+    element.classList.remove(marker)
+    if(!Array.from(element.classList).some(name => name !== "◆" && name.startsWith("◆"))) {
+      element.classList.remove("◆")
+    }
+    if(!element.classList.length) element.removeAttribute("class")
   }
 
   /** Keyboard/clipboard behavior while a target is active: Delete/Backspace

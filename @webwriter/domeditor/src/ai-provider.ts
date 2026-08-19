@@ -334,6 +334,7 @@ export class AIProviderStore extends EventTarget {
     setActiveAIProvider(id: string): Promise<void>
   } | null = null
   private backendSequence = 0
+  private activationSequence = 0
 
   constructor(private readonly storage: Storage | null = safeLocalStorage()) {
     super()
@@ -355,6 +356,7 @@ export class AIProviderStore extends EventTarget {
   }
 
   async connectBackend(backend: NonNullable<AIProviderStore["backend"]>) {
+    this.activationSequence++
     const sequence = ++this.backendSequence
     const collection = await backend.listAIProviders()
     if(sequence !== this.backendSequence) return
@@ -374,6 +376,7 @@ export class AIProviderStore extends EventTarget {
   }
 
   disconnectBackend() {
+    this.activationSequence++
     this.backendSequence++
     if(!this.backend) return
     this.backend = null
@@ -422,12 +425,21 @@ export class AIProviderStore extends EventTarget {
 
   upsert(provider: AIProviderConfig) {
     const normalized = normalizeAIProvider(provider)
+    const previousList = this.providerList
+    const previousSelected = this.selectedProviderId
     const index = this.providerList.findIndex(candidate => candidate.id === normalized.id)
     this.providerList = index < 0
       ? [...this.providerList, normalized]
       : this.providerList.map(candidate => candidate.id === normalized.id ? normalized : candidate)
     this.selectedProviderId = normalized.id
-    this.persist()
+    try {
+      this.persist()
+    }
+    catch(error) {
+      this.providerList = previousList
+      this.selectedProviderId = previousSelected
+      throw error
+    }
     this.notify()
     return normalized
   }
@@ -450,10 +462,32 @@ export class AIProviderStore extends EventTarget {
 
   remove(providerId: string) {
     if(!this.providerList.some(provider => provider.id === providerId)) return
+    const previousList = this.providerList
+    const previousSelected = this.selectedProviderId
+    const previousSecret = this.vault.get(providerId)
     this.providerList = this.providerList.filter(provider => provider.id !== providerId)
-    this.vault.remove(providerId)
     if(this.selectedProviderId === providerId) this.selectedProviderId = this.providerList[0]?.id ?? null
-    this.persist()
+    try {
+      this.persist()
+    }
+    catch(error) {
+      this.providerList = previousList
+      this.selectedProviderId = previousSelected
+      throw error
+    }
+    try {
+      this.vault.remove(providerId)
+    }
+    catch(error) {
+      // The provider list was already persisted. Restore it if deleting the
+      // separate credential record fails so a retry cannot lose the entry.
+      this.providerList = previousList
+      this.selectedProviderId = previousSelected
+      if(previousSecret) this.vault.setMemory(providerId, previousSecret)
+      try { this.persist() }
+      catch { /* Preserve the original storage error. */ }
+      throw error
+    }
     this.notify()
   }
 
@@ -470,14 +504,30 @@ export class AIProviderStore extends EventTarget {
 
   setActive(providerId: string) {
     if(!this.providerList.some(provider => provider.id === providerId)) return
+    const previousSelected = this.selectedProviderId
     this.selectedProviderId = providerId
-    if(!this.backend) this.persist()
+    try {
+      if(!this.backend) this.persist()
+    }
+    catch(error) {
+      this.selectedProviderId = previousSelected
+      throw error
+    }
     this.notify()
   }
 
   async activate(providerId: string) {
-    this.setActive(providerId)
-    if(this.backend) await this.backend.setActiveAIProvider(providerId)
+    if(!this.providerList.some(provider => provider.id === providerId)) return
+    const sequence = ++this.activationSequence
+    const backend = this.backend
+    if(!backend) {
+      this.setActive(providerId)
+      return
+    }
+    await backend.setActiveAIProvider(providerId)
+    if(sequence !== this.activationSequence || this.backend !== backend) return
+    this.selectedProviderId = providerId
+    this.notify()
   }
 
   credentialStatus(provider: AIProviderConfig): AIProviderCredentialStatus {

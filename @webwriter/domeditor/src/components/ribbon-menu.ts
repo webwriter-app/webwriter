@@ -217,6 +217,7 @@ export class RibbonMenu extends LitElement {
   customContent = false
   label = ""
   private openSubmenu: string | null = null
+  private openSubmenuToggle: HTMLButtonElement | null = null
 
   static properties = {
     groups: {attribute: false},
@@ -265,6 +266,7 @@ export class RibbonMenu extends LitElement {
   private handleClick(button: RibbonMenuButton) {
     const label = this.buttonAction(button)
     this.openSubmenu = null
+    this.openSubmenuToggle = null
     this.dispatchEvent(new CustomEvent<{label: string}>("ribbon-button-click", {
       detail: {label},
       bubbles: true,
@@ -274,11 +276,63 @@ export class RibbonMenu extends LitElement {
 
   private toggleSubmenu(label: string, event: Event) {
     event.stopPropagation()
-    this.openSubmenu = this.openSubmenu === label ? null : label
+    const toggle = event.currentTarget as HTMLButtonElement
+    if(this.openSubmenu === label) {
+      this.openSubmenu = null
+      this.openSubmenuToggle = null
+      return
+    }
+    this.openSubmenu = label
+    this.openSubmenuToggle = toggle
+    if(this.openSubmenu === label) {
+      void this.updateComplete.then(() => {
+        const submenu = Array.from(this.renderRoot.querySelectorAll<HTMLElement>(".submenu"))
+          .find(candidate => candidate.getAttribute("aria-label") === `${label} options`)
+        if(submenu) this.menuItems(submenu)[0]?.focus()
+      })
+    }
+  }
+
+  private menuItems(menu: HTMLElement) {
+    return Array.from(menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'))
+      .filter(item => item.closest('[role="menu"]') === menu && !item.disabled)
+  }
+
+  private handleMenuKeydown(event: KeyboardEvent) {
+    // Nested menus handle their own key event first. Do not let the same
+    // Arrow key run again when it bubbles into the parent menu.
+    if(event.defaultPrevented) return
+    if(event.key === "Escape") {
+      const menu = event.currentTarget as HTMLElement
+      if(!menu.classList.contains("submenu")) return
+      event.preventDefault()
+      event.stopPropagation()
+      this.openSubmenu = null
+      const toggle = this.openSubmenuToggle
+      this.openSubmenuToggle = null
+      void this.updateComplete.then(() => toggle?.focus())
+      return
+    }
+    if(!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return
+    const menu = event.currentTarget as HTMLElement
+    const items = this.menuItems(menu)
+    if(!items.length) return
+    event.preventDefault()
+    if(menu.classList.contains("submenu")) event.stopPropagation()
+    const current = items.indexOf(event.target as HTMLButtonElement)
+    const index = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? items.length - 1
+        : event.key === "ArrowDown"
+          ? (current + 1 + items.length) % items.length
+          : (current - 1 + items.length) % items.length
+    items[index].focus()
   }
 
   closeSubmenus() {
     this.openSubmenu = null
+    this.openSubmenuToggle = null
   }
 
   render() {
@@ -287,6 +341,7 @@ export class RibbonMenu extends LitElement {
         class="menu"
         role=${this.customContent ? "dialog" : "menu"}
         aria-label=${this.label || nothing}
+        @keydown=${this.customContent ? nothing : this.handleMenuKeydown}
       >
         ${this.customContent ? html`<slot></slot>` : ""}
         ${this.groups.map((group, groupIndex) => html`
@@ -304,6 +359,7 @@ export class RibbonMenu extends LitElement {
                       class="item"
                       type="button"
                       role="menuitem"
+                      tabindex=${groupIndex === 0 && buttonIndex === 0 ? "0" : "-1"}
                       title=${label}
                       @click=${() => this.handleClick(button)}
                     >
@@ -314,6 +370,8 @@ export class RibbonMenu extends LitElement {
                       <button
                         class="submenu-toggle"
                         type="button"
+                        role="menuitem"
+                        tabindex="-1"
                         aria-label=${`Show more ${label} options`}
                         title=${`Show more ${label} options`}
                         aria-haspopup="menu"
@@ -330,12 +388,14 @@ export class RibbonMenu extends LitElement {
                       role="menu"
                       aria-label=${`${label} options`}
                       style=${`position-anchor: ${anchorName}`}
+                      @keydown=${this.handleMenuKeydown}
                     >
-                      ${submenu.map(submenuButton => html`
+                      ${submenu.map((submenuButton, submenuIndex) => html`
                         <button
                           class="item"
                           type="button"
                           role="menuitem"
+                          tabindex=${submenuIndex === 0 ? "0" : "-1"}
                           title=${this.buttonLabel(submenuButton)}
                           @click=${() => this.handleClick(submenuButton)}
                         >

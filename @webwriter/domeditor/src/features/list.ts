@@ -241,7 +241,7 @@ export class ListFeature extends EditorFeature {
     }
 
     if(list.matches("ol")) {
-      marker.setAttribute("value", String(this.orderedValueAt(list)))
+      marker.setAttribute("value", String(this.orderedValueAt(list as HTMLOListElement)))
     }
   }
 

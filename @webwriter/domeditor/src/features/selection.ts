@@ -271,6 +271,9 @@ export class SelectionFeature extends EditorFeature {
     this.#releaseCaptureSelection()
     this.#clearElementHover()
     this.#clearStyleTargetHover()
+    this.#clearSelections()
+    this.isInDragSelection = false
+    this.dragAnchor = null
     document.body.classList.remove("◆key-mod-down", "◆key-alt-down", "◆key-shift-down")
     if(!Array.from(document.body.classList).some(marker => marker !== "◆" && marker.startsWith("◆"))) {
       document.body.classList.remove("◆")
