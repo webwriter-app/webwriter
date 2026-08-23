@@ -1,5 +1,5 @@
 import { LitElement, css, html, nothing } from "lit"
-import {emptyVersionHistoryState, type ElementStyleState, type ListType, type PresenceUser, type VersionHistoryState} from "../editor-bridge"
+import {emptyVersionHistoryState, type CommentState, type ElementStyleState, type ListType, type PresenceUser, type VersionHistoryState} from "../editor-bridge"
 import {
   completeAIConversation,
   type AIAttachment,
@@ -167,6 +167,8 @@ export class AppRibbon extends LitElement {
     marks: {attribute: false},
     markStyles: {attribute: false},
     markAttributes: {attribute: false},
+    commentState: {attribute: false},
+    commentDraft: {type: String, state: true},
     presenceUsers: {attribute: false},
     packages: {attribute: false},
     installedPackages: {attribute: false},
@@ -2282,6 +2284,56 @@ export class AppRibbon extends LitElement {
       min-width: 0;
     }
 
+    .comment-editor {
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      padding: 0.15rem 0.2rem 0.1rem 0;
+      gap: 0.15rem;
+      color: #536171;
+      font-size: 0.65rem;
+    }
+
+    .comment-editor-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+
+    .comment-highlight-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.2rem;
+      white-space: nowrap;
+    }
+
+    .comment-highlight-toggle input {
+      margin: 0;
+    }
+
+    .comment-editor textarea {
+      box-sizing: border-box;
+      flex: 1 1 auto;
+      width: 100%;
+      min-height: 0;
+      resize: none;
+      padding: 0.25rem 0.35rem;
+      border: 1px solid #b9c3cf;
+      border-radius: 0.25rem;
+      color: #26313d;
+      background: #ffffff;
+      font: inherit;
+      font-size: 0.7rem;
+      line-height: 1.25;
+    }
+
+    .comment-editor textarea:focus {
+      border-color: #3977c7;
+      outline: 1px solid #3977c7;
+    }
+
     @media (max-width: 36rem) {
       .ribbon-top {
         gap: 0.35rem;
@@ -2297,6 +2349,15 @@ export class AppRibbon extends LitElement {
   marks: MarkName[] = []
   markStyles: StyleMarkValues = {}
   markAttributes: MarkAttributeValues = {}
+  commentState: CommentState = {
+    canComment: false,
+    active: false,
+    text: "",
+    activeCount: 0,
+    count: 0,
+    highlighting: true,
+  }
+  private commentDraft = ""
   presenceUsers: PresenceUser[] = []
   packages: WebWriterPackage[] = []
   installedPackages: WebWriterPackage[] = []
@@ -3206,6 +3267,7 @@ export class AppRibbon extends LitElement {
       this.menuOpen = false
     }
     if(changed.has("marks")) this.syncSpanMarkSelection()
+    if(changed.has("commentState")) this.commentDraft = this.commentState.text
   }
 
   protected updated(changed: Map<string, unknown>) {
@@ -3537,6 +3599,85 @@ export class AppRibbon extends LitElement {
         ></ribbon-button>
         ${this.renderLinkButton()}
         ${this.renderSpanButton()}
+      </ribbon-drawer>
+    `
+  }
+
+  private updateCommentDraft(event: Event) {
+    this.commentDraft = (event.currentTarget as HTMLTextAreaElement).value
+  }
+
+  private commitCommentText() {
+    if(!this.commentState.active || this.commentDraft === this.commentState.text) return
+    this.dispatchEvent(new CustomEvent("comment-action", {
+      detail: {action: "set-text", text: this.commentDraft},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private handleCommentButton(event: Event) {
+    event.stopPropagation()
+    const action = (event as CustomEvent<{label?: string}>).detail?.label
+    if(!["toggle", "remove-all", "previous", "next"].includes(action ?? "")) return
+    this.dispatchEvent(new CustomEvent("comment-action", {
+      detail: {action, text: this.commentDraft},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private changeCommentHighlighting(event: Event) {
+    this.dispatchEvent(new CustomEvent("comment-action", {
+      detail: {
+        action: "highlight",
+        enabled: (event.currentTarget as HTMLInputElement).checked,
+      },
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private renderCommentDrawer() {
+    const {active, activeCount, canComment, count, highlighting} = this.commentState
+    return html`
+      <ribbon-drawer label="Comments" icon="Comments" layout="comments" @ribbon-button-click=${this.handleCommentButton}>
+        <div class="comment-editor">
+          <span class="comment-editor-header">
+            <span>Comment${activeCount > 1 ? ` (${activeCount} selected)` : ""}</span>
+            <label class="comment-highlight-toggle">
+              <input
+                type="checkbox"
+                data-ribbon-input-persistent
+                .checked=${highlighting}
+                @change=${this.changeCommentHighlighting}
+              >
+              Highlight
+            </label>
+          </span>
+          <textarea
+            aria-label="Comment text"
+            data-ribbon-input-persistent
+            rows="2"
+            placeholder=${active ? "Comment text" : "Add a comment…"}
+            .value=${this.commentDraft}
+            ?disabled=${!canComment}
+            @input=${this.updateCommentDraft}
+            @change=${this.commitCommentText}
+          ></textarea>
+        </div>
+        <ribbon-button
+          compact
+          toggle
+          label=${active ? "Remove comment" : "Add comment"}
+          action="toggle"
+          icon="Comments"
+          ?active=${active}
+          ?disabled=${!canComment}
+        ></ribbon-button>
+        <ribbon-button compact label="Remove all" action="remove-all" icon="RemoveMarks" ?disabled=${count === 0}></ribbon-button>
+        <ribbon-button compact label="Previous comment" action="previous" icon="Previous" ?disabled=${count === 0}></ribbon-button>
+        <ribbon-button compact label="Next comment" action="next" icon="Next" ?disabled=${count === 0}></ribbon-button>
       </ribbon-drawer>
     `
   }
@@ -5156,6 +5297,7 @@ export class AppRibbon extends LitElement {
       if(drawer.label === "File") return this.renderFileDrawer(drawer)
       if(drawer.label === "Sharing") return this.renderSharingDrawer(drawer)
       if(drawer.label === "Marks") return this.renderMarkDrawer()
+      if(drawer.label === "Comments") return this.renderCommentDrawer()
       if(drawer.label === "Table") return this.renderTableDrawer()
       if(drawer.label === "Graphic") return this.renderGraphicDrawer()
       if(drawer.label === "Packages") return this.renderPackageDrawer()

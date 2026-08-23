@@ -4,6 +4,7 @@ import { DependencyFeature } from "./features/dependencies"
 import { HistoryFeature } from "./features/history"
 import { ManipulationFeature } from "./features/manipulation"
 import { MarkFeature } from "./features/mark"
+import { CommentFeature } from "./features/comment"
 import { PlaceholderFeature } from "./features/placeholder"
 import { SelectionFeature } from "./features/selection"
 import { InsertionFeature } from "./features/insertion"
@@ -21,6 +22,7 @@ import {
   executeCompleteEvent,
   executeFailureEvent,
   markStateChangeEvent,
+  commentStateChangeEvent,
   selectionChangeEvent,
   presenceChangeEvent,
   documentHeadStateChangeEvent,
@@ -43,6 +45,176 @@ const editorStylesheet = createStylesheet(editorStyleString)
 const appendixStylesheet = createStylesheet(`
   :host(.◆editing-locked) > :not(slot) {
     display: none !important;
+  }
+
+  .◆comment-bauble {
+    position: fixed;
+    z-index: 2147483645;
+    min-width: 2rem;
+    height: 2rem;
+    padding: 0 0.45rem;
+    border: 1px solid #d5ad32;
+    border-radius: 999px;
+    color: #5c4610;
+    background: #fff8c5;
+    box-shadow: 0 2px 8px rgb(38 49 61 / 22%);
+    font: 600 0.75rem/1 system-ui, sans-serif;
+    cursor: pointer;
+  }
+
+  .◆comment-bauble:hover,
+  .◆comment-bauble:focus-visible {
+    border-color: #a77c00;
+    background: #fff1a3;
+    outline: none;
+  }
+
+  .◆comment-thread-pane {
+    box-sizing: border-box;
+    position: fixed;
+    z-index: 2147483646;
+    top: 1rem;
+    right: 1rem;
+    bottom: 1rem;
+    width: min(24rem, calc(100vw - 2rem));
+    overflow: hidden;
+    border: 1px solid #c8d0da;
+    border-radius: 0.7rem;
+    color: #26313d;
+    background: #f8fafc;
+    box-shadow: 0 12px 38px rgb(15 23 42 / 25%);
+    font: 0.8rem/1.4 system-ui, sans-serif;
+  }
+
+  .◆comment-pane-header {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 3rem;
+    padding: 0.65rem 0.8rem;
+    border-bottom: 1px solid #dce2e9;
+    background: #ffffff;
+  }
+
+  .◆comment-pane-header h2,
+  .◆comment-new-thread h3 {
+    margin: 0;
+    font: 650 0.9rem/1.3 system-ui, sans-serif;
+  }
+
+  .◆comment-thread-list {
+    box-sizing: border-box;
+    height: calc(100% - 3rem);
+    overflow-y: auto;
+    padding: 0.75rem;
+  }
+
+  .◆comment-thread {
+    box-sizing: border-box;
+    margin: 0 0 0.75rem;
+    padding: 0.6rem;
+    border: 1px solid #d9dfe6;
+    border-radius: 0.55rem;
+    background: #ffffff;
+  }
+
+  .◆comment-card {
+    display: grid;
+    gap: 0.35rem;
+    padding: 0.55rem;
+    border-left: 3px solid #e1bd46;
+    background: #fffdf3;
+  }
+
+  .◆comment-card + .◆comment-card {
+    margin-top: 0.5rem;
+    border-left-color: #c8d0da;
+    background: #f8fafc;
+  }
+
+  .◆comment-card header {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .◆comment-card header span,
+  .◆comment-card time {
+    color: #697787;
+    font-size: 0.68rem;
+  }
+
+  .◆comment-card textarea,
+  .◆comment-composer textarea,
+  .◆comment-new-thread textarea {
+    box-sizing: border-box;
+    width: 100%;
+    resize: vertical;
+    padding: 0.45rem 0.5rem;
+    border: 1px solid #c8d0da;
+    border-radius: 0.35rem;
+    color: inherit;
+    background: #ffffff;
+    font: inherit;
+  }
+
+  .◆comment-card textarea:focus,
+  .◆comment-composer textarea:focus,
+  .◆comment-new-thread textarea:focus {
+    border-color: #a77c00;
+    outline: 1px solid #a77c00;
+  }
+
+  .◆comment-composer {
+    display: grid;
+    gap: 0.4rem;
+    margin-top: 0.6rem;
+    padding-top: 0.6rem;
+    border-top: 1px solid #e3e7ec;
+  }
+
+  .◆comment-pane-button {
+    justify-self: end;
+    padding: 0.35rem 0.55rem;
+    border: 1px solid #b7c0ca;
+    border-radius: 0.35rem;
+    color: #26313d;
+    background: #ffffff;
+    font: 600 0.72rem/1.2 system-ui, sans-serif;
+    cursor: pointer;
+  }
+
+  .◆comment-pane-button:hover,
+  .◆comment-pane-button:focus-visible {
+    border-color: #8d99a6;
+    background: #eef2f6;
+    outline: none;
+  }
+
+  .◆comment-pane-close {
+    width: 2rem;
+    height: 2rem;
+    overflow: hidden;
+    padding: 0;
+    border-radius: 999px;
+    font-size: 0;
+  }
+
+  .◆comment-pane-close::after {
+    content: "×";
+    font-size: 1.2rem;
+  }
+
+  .◆comment-remove {
+    color: #9f2727;
+  }
+
+  .◆comment-new-thread {
+    display: grid;
+    gap: 0.5rem;
+    border-style: dashed;
+    background: #fffdf3;
   }
 `)
 const featuresDisabledByDefault = new Set(["placeholder"])
@@ -95,6 +267,7 @@ export class DOMEditor {
     "selection": new SelectionFeature(this),
     "placeholder": new PlaceholderFeature(this),
     "mark": new MarkFeature(this),
+    "comment": new CommentFeature(this),
     "collaboration": new CollaborationFeature(this),
     "media": new MediaFeature(this),
   } as const
@@ -286,6 +459,7 @@ export class DOMEditor {
     if(initialState?.selection) this.doc.restoreSelection(initialState.selection)
     else this.doc.updateLocalSelection()
     this.postMarkState()
+    this.postCommentState()
     this.postSelectionPath()
     document.addEventListener("copy", this.#onCopy)
     window.addEventListener("message", this.handleMessage)
@@ -312,6 +486,7 @@ export class DOMEditor {
 
     this.doc.updateLocalSelection(selection)
     this.postMarkState()
+    this.postCommentState()
     this.postSelectionPath()
   }
 
@@ -326,7 +501,7 @@ export class DOMEditor {
 
     // Responses are posted to the parent window. In a non-iframe environment
     // (for example, a unit test), they can arrive back at this listener too.
-    if(ev.data.type === executeCompleteEvent || ev.data.type === executeFailureEvent || ev.data.type === presenceChangeEvent || ev.data.type === markStateChangeEvent || ev.data.type === documentHeadStateChangeEvent || ev.data.type === historyStateChangeEvent) {
+    if(ev.data.type === executeCompleteEvent || ev.data.type === executeFailureEvent || ev.data.type === presenceChangeEvent || ev.data.type === markStateChangeEvent || ev.data.type === commentStateChangeEvent || ev.data.type === documentHeadStateChangeEvent || ev.data.type === historyStateChangeEvent) {
       return
     }
     if(ev.data.type === selectionChangeEvent) {
@@ -507,6 +682,11 @@ export class DOMEditor {
       styles: this.features.mark.getStyleState(),
       attributes: this.features.mark.getAttributeState(),
     })
+  }
+
+  /** Sends in-document comment availability and active comment state. */
+  postCommentState() {
+    this.postBridgeEvent(commentStateChangeEvent, this.features.comment.getState())
   }
 
   startTransform(el: HTMLElement) {

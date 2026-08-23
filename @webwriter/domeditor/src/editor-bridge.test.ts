@@ -11,10 +11,12 @@ import {
   isInitializeEditorMessage,
   isLoadWidgetsMessage,
   isMarkStateChangeMessage,
+  isCommentStateChangeMessage,
   isPresenceChangeMessage,
   isSelectionChangeMessage,
   loadWidgetsMessage,
   markStateChangeEvent,
+  commentStateChangeEvent,
   presenceChangeEvent,
   selectionChangeEvent,
   documentHeadStateChangeEvent,
@@ -31,6 +33,29 @@ function expectAllRejected(guard: MessageGuard, values: unknown[]) {
 }
 
 describe("editor bridge message guards", () => {
+  it("validates complete in-document comment state", () => {
+    const message = {
+      type: commentStateChangeEvent,
+      detail: {
+        canComment: true,
+        active: true,
+        text: "Review",
+        activeCount: 2,
+        count: 3,
+        highlighting: true,
+      },
+    }
+    expect(isCommentStateChangeMessage(message)).toBe(true)
+    expectAllRejected(isCommentStateChangeMessage, [
+      {...message, detail: {...message.detail, canComment: "yes"}},
+      {...message, detail: {...message.detail, activeCount: -1}},
+      {...message, detail: {...message.detail, activeCount: 4}},
+      {...message, detail: {...message.detail, count: 1.5}},
+      {...message, detail: {...message.detail, text: null}},
+      {...message, detail: {...message.detail, highlighting: "yes"}},
+    ])
+  })
+
   it("validates version history together with the active user identifier", () => {
     const message = {
       type: historyStateChangeEvent,

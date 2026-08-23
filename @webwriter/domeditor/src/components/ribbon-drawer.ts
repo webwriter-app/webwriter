@@ -76,6 +76,10 @@ export class RibbonDrawer extends LitElement {
       --ribbon-drawer-expanded-width: 20.25rem;
     }
 
+    :host([layout="comments"]) {
+      --ribbon-drawer-expanded-width: 17rem;
+    }
+
     :host([layout="graphic"]) {
       --ribbon-drawer-expanded-width: 9rem;
     }
@@ -265,6 +269,20 @@ export class RibbonDrawer extends LitElement {
       padding-bottom: 0.25rem;
       overflow-x: hidden;
       overflow-y: hidden;
+    }
+
+    :host([layout="comments"]) .controls {
+      grid-template-columns: minmax(8rem, 1fr) repeat(2, 4rem);
+      grid-template-rows: repeat(2, minmax(0, 1fr));
+      grid-auto-flow: column;
+      grid-auto-columns: 4rem;
+      gap: 0.15rem;
+    }
+
+    :host([layout="comments"]) ::slotted(.comment-editor) {
+      grid-row: 1 / 3;
+      align-self: stretch;
+      min-width: 0;
     }
 
     :host([layout="packages"]) .controls {

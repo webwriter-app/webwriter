@@ -1216,6 +1216,9 @@ body.◆insertion-trigger::part(insertion-add) {
 ::highlight(insertion-trigger) {
   color: #5279a2;
 }
+::highlight(webwriter-comments) {
+  background-color: #fff3a3;
+}
 body::part(transform-overlay) {
   position: fixed;
   position-anchor: --transform-target;

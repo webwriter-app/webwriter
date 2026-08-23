@@ -183,14 +183,13 @@ describe("mark ribbon controls", () => {
 
     expect(Array.from(ribbon.shadowRoot!.querySelectorAll(".ribbon-content > ribbon-drawer"))
       .map(drawer => drawer.getAttribute("label")))
-      .toEqual(["Marks", "Table", "Review", "View"])
+      .toEqual(["Marks", "Table", "Comments", "Review", "View"])
 
     const review = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Review"]')!
     expect(Array.from(review.querySelectorAll<RibbonButton>("ribbon-button"))
       .map(button => button.label))
       .toEqual([
         "Spelling", "Grammar", "Translate",
-        "New Comment", "Previous", "Next",
         "Track Changes", "Accept", "Reject",
       ])
 

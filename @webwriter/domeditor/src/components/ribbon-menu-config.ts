@@ -267,11 +267,11 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
     {label: "Marks", buttons: []},
     {label: "Table", buttons: []},
     {label: "Graphic", buttons: []},
+    {label: "Comments", buttons: []},
     {
       label: "Review",
       buttons: [
         "Spelling", "Grammar", "Translate",
-        "New Comment", "Previous", "Next",
         "Track Changes", "Accept", "Reject",
       ],
     },

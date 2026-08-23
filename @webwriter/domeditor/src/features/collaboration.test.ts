@@ -99,6 +99,25 @@ describe("DOMEditor collaboration wiring", () => {
     editor.features.history.actions.redo({type: "redo"})
     expect((paragraph as HTMLElement).style.getPropertyValue("color")).toBe("rebeccapurple")
   })
+
+  it("synchronizes in-document comments and includes them in undo and redo", async () => {
+    const paragraph = document.querySelector("p")!
+    $.selectRange(paragraph.firstChild!, 0, paragraph.firstChild!, 5)
+    editor.features.comment.actions.toggleComment({type: "toggleComment", text: "Collaborative note"})
+    await mutationsDelivered()
+
+    expect(editor.features.comment.getState()).toMatchObject({active: true, count: 1, text: "Collaborative note"})
+    expect(editor.toHTML(true)).toContain("webwriter:comment:start:")
+    expect(editor.doc.body.toString()).toContain("webwriter:comment:start:")
+
+    editor.features.history.actions.undo({type: "undo"})
+    expect(editor.features.comment.getState().count).toBe(0)
+    expect(editor.toHTML(true)).toBe("<p>Hello</p>")
+
+    editor.features.history.actions.redo({type: "redo"})
+    expect(editor.features.comment.getState().count).toBe(1)
+    expect(editor.toHTML(true)).toContain("Collaborative%20note")
+  })
 })
 
 describe("collaboration history shortcuts", () => {

@@ -17,6 +17,7 @@ export const executeCompleteEvent = "dom-editor-execute-complete"
 export const executeFailureEvent = "dom-editor-execute-failure"
 export const selectionChangeEvent = "dom-editor-selection-change"
 export const markStateChangeEvent = "dom-editor-mark-state-change"
+export const commentStateChangeEvent = "dom-editor-comment-state-change"
 export const presenceChangeEvent = "dom-editor-presence-change"
 export const documentHeadStateChangeEvent = "dom-editor-document-head-state-change"
 export const historyStateChangeEvent = "dom-editor-history-state-change"
@@ -194,6 +195,26 @@ export type MarkStateChangeDetail = {
 export type MarkStateChangeMessage = {
   type: typeof markStateChangeEvent
   detail: MarkStateChangeDetail
+}
+
+export type CommentStateChangeMessage = {
+  type: typeof commentStateChangeEvent
+  detail: CommentState
+}
+
+export type CommentState = {
+  /** Whether the current DOM selection can be annotated. */
+  canComment: boolean
+  /** Whether one or more comments apply to the current selection. */
+  active: boolean
+  /** Plain text shared by the active comments, or an empty string when mixed. */
+  text: string
+  /** Number of comments applying to the current selection. */
+  activeCount: number
+  /** Total number of complete comments in the document. */
+  count: number
+  /** Whether authored comment ranges are visibly highlighted. */
+  highlighting: boolean
 }
 
 export type PresenceUser = {
@@ -500,6 +521,23 @@ export function isMarkStateChangeMessage(value: unknown): value is MarkStateChan
         isMarkAttributeName(exactMark, attribute) && typeof attributeValue === "string",
       )
   })
+}
+
+export function isCommentStateChangeMessage(value: unknown): value is CommentStateChangeMessage {
+  if(!value || typeof value !== "object") return false
+  const message = value as Partial<CommentStateChangeMessage>
+  if(message.type !== commentStateChangeEvent || !message.detail || typeof message.detail !== "object") return false
+  const detail = message.detail as Partial<CommentState>
+  return typeof detail.canComment === "boolean"
+    && typeof detail.active === "boolean"
+    && typeof detail.text === "string"
+    && typeof detail.activeCount === "number"
+    && Number.isInteger(detail.activeCount)
+    && detail.activeCount >= 0
+    && typeof detail.count === "number"
+    && Number.isInteger(detail.count)
+    && detail.count >= detail.activeCount
+    && typeof detail.highlighting === "boolean"
 }
 
 export function isPresenceChangeMessage(value: unknown): value is PresenceChangeMessage {

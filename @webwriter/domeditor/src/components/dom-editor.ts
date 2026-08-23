@@ -42,9 +42,11 @@ import {
   isDocumentHeadStateChangeMessage,
   isHistoryStateChangeMessage,
   isMarkStateChangeMessage,
+  isCommentStateChangeMessage,
   isSelectionChangeMessage,
   isPresenceChangeMessage,
   markStateChangeEvent,
+  commentStateChangeEvent,
   historyStateChangeEvent,
   loadWidgetsMessage,
   selectionChangeEvent,
@@ -59,6 +61,7 @@ import {
   type InitializeEditorMessage,
   type LoadWidgetsMessage,
   type AIEditReviewMessage,
+  type CommentState,
   type VersionHistoryState,
 } from "../editor-bridge"
 import {elementStylePropertyNames} from "../element-styles"
@@ -260,6 +263,7 @@ export class DomEditor extends LitElement {
     marks: {attribute: false, state: true},
     markStyles: {attribute: false, state: true},
     markAttributes: {attribute: false, state: true},
+    commentState: {attribute: false, state: true},
     presenceUsers: {attribute: false, state: true},
     packages: {attribute: false, state: true},
     installedPackages: {attribute: false, state: true},
@@ -321,6 +325,14 @@ export class DomEditor extends LitElement {
   private marks: MarkName[] = []
   private markStyles: StyleMarkValues = {}
   private markAttributes: MarkAttributeValues = {}
+  private commentState: CommentState = {
+    canComment: false,
+    active: false,
+    text: "",
+    activeCount: 0,
+    count: 0,
+    highlighting: true,
+  }
   private listType: ListType | null = null
   private listStyle = ""
   private mediaSelection: MediaSelectionState | null = null
@@ -2752,6 +2764,28 @@ export class DomEditor extends LitElement {
     }).finally(() => this.focusEditor())
   }
 
+  private handleCommentAction = (event: Event) => {
+    const detail = (event as CustomEvent<{action?: unknown, text?: unknown, enabled?: unknown}>).detail
+    if(!detail || typeof detail.action !== "string") return
+    const action = detail.action === "toggle" && typeof detail.text === "string"
+      ? {type: "toggleComment", text: detail.text} as const
+      : detail.action === "set-text" && typeof detail.text === "string"
+        ? {type: "setCommentText", text: detail.text} as const
+        : detail.action === "remove-all"
+          ? {type: "removeAllComments"} as const
+          : detail.action === "previous"
+            ? {type: "previousComment"} as const
+            : detail.action === "next"
+              ? {type: "nextComment"} as const
+              : detail.action === "highlight" && typeof detail.enabled === "boolean"
+                ? {type: "setCommentHighlighting", enabled: detail.enabled} as const
+              : null
+    if(!action) return
+    void this.execute(action).finally(() => {
+      if(detail.action !== "set-text" && detail.action !== "highlight") this.focusEditor()
+    })
+  }
+
   private handleMediaAttributeChange = (event: Event) => {
     const detail = (event as CustomEvent<{
       type?: unknown
@@ -3098,6 +3132,16 @@ export class DomEditor extends LitElement {
       }))
       return
     }
+    if(isCommentStateChangeMessage(event.data)) {
+      if(!this.isEditorMessage(event)) return
+      this.commentState = {...event.data.detail}
+      this.dispatchEvent(new CustomEvent(commentStateChangeEvent, {
+        detail: {...this.commentState},
+        bubbles: true,
+        composed: true,
+      }))
+      return
+    }
     if(isSelectionChangeMessage(event.data)) {
       if(!this.isEditorMessage(event)) return
       const path = event.data.detail.path.map(item => ({
@@ -3402,6 +3446,14 @@ export class DomEditor extends LitElement {
     this.marks = []
     this.markStyles = {}
     this.markAttributes = {}
+    this.commentState = {
+      canComment: false,
+      active: false,
+      text: "",
+      activeCount: 0,
+      count: 0,
+      highlighting: true,
+    }
     this.mediaSelection = null
     this.tableSelection = null
     this.graphicSelection = null
@@ -3438,6 +3490,7 @@ export class DomEditor extends LitElement {
           .marks=${this.marks}
           .markStyles=${this.markStyles}
           .markAttributes=${this.markAttributes}
+          .commentState=${this.commentState}
           .listType=${this.listType}
           .listStyle=${this.listStyle}
           .media=${this.mediaSelection}
@@ -3481,6 +3534,7 @@ export class DomEditor extends LitElement {
           @backend-admin-request=${this.openBackendAdmin}
           @ribbon-combobox-change=${this.handleRibbonComboboxChange}
           @mark-attribute-change=${this.handleMarkAttributeChange}
+          @comment-action=${this.handleCommentAction}
           @media-attribute-change=${this.handleMediaAttributeChange}
           @media-type-change=${this.handleMediaTypeChange}
           @table-insert=${this.handleTableInsert}
