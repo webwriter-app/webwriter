@@ -251,6 +251,10 @@ describe("mark ribbon controls", () => {
     expect(fileNameInput.value).toBe("")
     expect(fileNameInput.placeholder).toBe("Unnamed File")
     expect(getComputedStyle(fileNameInput).maxWidth).toBe("204px")
+    ribbon.fileDirty = true
+    await ribbon.updateComplete
+    expect(fileDrawer.querySelector(".file-dirty")).toBeNull()
+    expect(fileDrawer.textContent).not.toContain("*")
     const storageLocation = fileDrawer.querySelector<HTMLSelectElement>('select[aria-label="Storage location"]')!
     expect(storageLocation.value).toBe("local")
     expect(Array.from(storageLocation.options).map(option => option.textContent)).toEqual([

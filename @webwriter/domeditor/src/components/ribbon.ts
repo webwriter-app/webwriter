@@ -2227,13 +2227,6 @@ export class AppRibbon extends LitElement {
       outline: 1px solid #3977c7;
     }
 
-    .file-dirty {
-      flex: 0 0 0.6rem;
-      color: #526b86;
-      font-weight: 700;
-      text-align: center;
-    }
-
     .storage-location {
       display: flex;
       flex: 0 0 auto;
@@ -4671,11 +4664,6 @@ export class AppRibbon extends LitElement {
               .value=${this.fileName}
               @input=${this.handleFileNameInput}
             />
-            <span
-              class="file-dirty"
-              aria-label=${this.fileDirty ? "Unsaved changes" : "No unsaved changes"}
-              title=${this.fileDirty ? "Unsaved changes" : "Saved"}
-            >${this.fileDirty ? "*" : ""}</span>
           </span>
           <label class="storage-location">
             <span class="storage-location-icon" aria-hidden="true">${ribbonIcon(selectedStorageLocation.icon)}</span>
