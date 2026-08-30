@@ -252,7 +252,12 @@ export async function createDevServer(options = {}) {
   let viteServer
   const liveSessionTokens = new Map()
   const websocketServer = new WebSocketServer({noServer: true})
-  websocketServer.on("connection", (socket, request) => setupWSConnection(socket, request))
+  websocketServer.on("connection", (socket, request) => {
+    // A stale browser connection can produce a malformed frame after wake.
+    // Handle it so ws does not turn the expected disconnect into a process error.
+    socket.on("error", () => {})
+    setupWSConnection(socket, request)
+  })
 
   const requestHandler = async (request, response) => {
     applyCors(request, response)

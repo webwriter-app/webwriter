@@ -204,6 +204,30 @@ describe("development server", () => {
     }
   })
 
+  it("survives a malformed close frame from a collaboration client", async () => {
+    const websocketUrl = baseUrl.replace(/^http/, "ws")
+    const socket = await openWebSocket(`${websocketUrl}/malformed-close`)
+    try {
+      const closed = new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("Malformed connection did not close")), 2_000)
+        socket.once("close", () => {
+          clearTimeout(timer)
+          resolve()
+        })
+      })
+      // A masked close frame whose status code is 26057, outside the WebSocket range.
+      socket._socket.write(Buffer.from([0x88, 0x82, 0, 0, 0, 0, 0x65, 0xc9]))
+      await closed
+
+      expect((await request("/api/session")).response.status).toBe(200)
+      const replacement = await openWebSocket(`${websocketUrl}/malformed-close`)
+      await closeWebSocket(replacement)
+    }
+    finally {
+      socket.terminate()
+    }
+  })
+
   it("requires the host capability for live-session WebSockets and releases empty rooms", async () => {
     const websocketUrl = baseUrl.replace(/^http/, "ws")
     const room = "live-session-token-test"
