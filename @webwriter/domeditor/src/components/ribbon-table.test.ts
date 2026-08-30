@@ -23,7 +23,7 @@ describe("table controls", () => {
     await toolbox.updateComplete
     const toolboxLabels = Array.from(toolbox.shadowRoot!.querySelectorAll("ribbon-drawer"))
       .map(drawer => drawer.getAttribute("label"))
-    expect(toolboxLabels.slice(0, 2)).toEqual(["Marks", "Table"])
+    expect(toolboxLabels).toEqual(["Table"])
   })
 
   it("offers a 10 by 10 insertion grid and dispatches the chosen size", async () => {

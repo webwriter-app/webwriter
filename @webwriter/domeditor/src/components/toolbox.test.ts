@@ -148,18 +148,22 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     let drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"))
     await Promise.all(drawers.map(drawer => drawer.updateComplete))
-    expect(drawers.map(drawer => drawer.label)).toEqual(["Marks", "Table", "Comments", "View"])
+    expect(drawers.map(drawer => drawer.label)).toEqual(["Table"])
     expect(drawers.every(drawer => drawer.pane && !drawer.collapsed)).toBe(true)
 
     toolButton(toolbox, "Review").click()
     await toolbox.updateComplete
     drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"))
-    expect(drawers.map(drawer => drawer.label)).toEqual(["Review"])
-    expect(Array.from(drawers[0].querySelectorAll<RibbonButton>("ribbon-button"))
+    expect(drawers.map(drawer => drawer.label)).toEqual(["Comments", "Review"])
+    expect(drawers.every(drawer => drawer.pane && !drawer.collapsed)).toBe(true)
+    const review = drawers.find(drawer => drawer.label === "Review")!
+    expect(Array.from(review.querySelectorAll<RibbonButton>("ribbon-button"))
       .map(button => button.label)).toEqual([
         "Spelling", "Grammar", "Translate",
         "Track Changes", "Accept", "Reject",
       ])
+    expect(drawers.find(drawer => drawer.label === "Comments")!
+      .querySelector('textarea[aria-label="Comment text"]')).not.toBeNull()
 
     toolButton(toolbox, "Style").click()
     await toolbox.updateComplete

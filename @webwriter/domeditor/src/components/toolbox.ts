@@ -287,11 +287,13 @@ export class DomEditorToolbox extends AppRibbon {
   protected get currentMenuGroups(): RibbonMenuGroup[] {
     if(this.activeTool === "Style") return menuGroups.Style
     if(this.activeTool === "Review") {
-      return menuGroups.Edit.filter(group => group.label === "Review")
+      return menuGroups.Edit.filter(group => group.label === "Comments" || group.label === "Review")
     }
     if(this.activeTool === "Develop") return menuGroups.Develop
     if(this.activeTool === "Edit") {
-      const groups = menuGroups.Edit.filter(group => group.label !== "Review")
+      const groups = menuGroups.Edit.filter(group => ![
+        "Marks", "Comments", "Review", "View",
+      ].includes(group.label))
       return this.graphic?.active
         ? groups.filter(group => group.label === "Graphic")
         : groups
