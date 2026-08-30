@@ -311,11 +311,12 @@ describe("responsive ribbon layout", () => {
       updateResponsiveLayout(drawers: RibbonDrawer[]): void
     }).updateResponsiveLayout.bind(ribbon)
 
-    expect(drawers.map(drawer => drawer.layoutWidths.expanded)).toEqual([287.6, 412, 264])
+    expect(drawers.map(drawer => drawer.layoutWidths.expanded)).toEqual([287.6, 412, 192])
 
     for(const [clientWidth, expected] of [
       [1200, [false, false, false]],
       [1000, [false, false, false]],
+      [920, [false, false, false]],
       [850, [false, false, true]],
       [780, [false, true, true]],
       [650, [false, true, true]],

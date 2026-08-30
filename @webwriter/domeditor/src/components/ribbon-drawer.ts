@@ -159,7 +159,11 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="packages"]) {
-      --ribbon-drawer-expanded-width: 16.5rem;
+      /* The compact one-column package grid remains fully usable at this
+       * width. Keeping the responsive minimum in line with that layout stops
+       * the overflow coordinator from replacing Packages with its pullout
+       * before the grid needs to collapse. */
+      --ribbon-drawer-expanded-width: 12rem;
       --ribbon-drawer-width: min(42rem, calc(100vw - 1rem));
       --ribbon-drawer-height: 10rem;
       --ribbon-drawer-more-height: 8rem;
