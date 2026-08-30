@@ -48,7 +48,7 @@ export class DomEditorToolbox extends AppRibbon {
     }
 
     :host([active-tool]) {
-      width: 300px;
+      width: 200px;
       margin-left: 0;
     }
 
@@ -67,7 +67,7 @@ export class DomEditorToolbox extends AppRibbon {
       top: 0;
       right: 0;
       z-index: 2;
-      align-items: center;
+      align-items: flex-end;
       height: 30px;
       padding: 0 0.3rem;
       border: 0;
@@ -79,6 +79,10 @@ export class DomEditorToolbox extends AppRibbon {
 
     :host([breadcrumb-expanded]) .toolbox-tabs {
       border-bottom-width: 0;
+    }
+
+    :host([active-tool]) .toolbox-tabs {
+      padding-right: 4px;
     }
 
     .toolbox-tab {
@@ -95,7 +99,12 @@ export class DomEditorToolbox extends AppRibbon {
 
     .toolbox-tab[data-active] {
       width: 112px;
-      background: #dbe7f2;
+      height: 30px;
+      margin-bottom: -1px;
+      border: 1px solid #a8a8a8;
+      border-bottom-color: #f2f2f2;
+      border-radius: 0.2rem 0.2rem 0 0;
+      background: #f2f2f2;
     }
 
     .toolbox-tab-button,
@@ -123,7 +132,8 @@ export class DomEditorToolbox extends AppRibbon {
     }
 
     .toolbox-tab[data-active] .toolbox-tab-button {
-      width: 88px;
+      justify-content: flex-start;
+      width: calc(100% - 24px);
     }
 
     .toolbox-tab[data-contextual]:not([data-active]),
@@ -149,10 +159,13 @@ export class DomEditorToolbox extends AppRibbon {
     }
 
     .toolbox-tab-button:hover,
-    .toolbox-tab-button[aria-selected="true"],
     .toolbox-tab-close:hover {
       color: #243447;
       background: #dbe7f2;
+    }
+
+    .toolbox-tab-button[aria-selected="true"] {
+      color: #243447;
     }
 
     .toolbox-tab-button:focus-visible,
@@ -214,7 +227,7 @@ export class DomEditorToolbox extends AppRibbon {
       top: 30px;
       right: 0;
       bottom: 0;
-      width: 300px;
+      width: 200px;
       min-height: 0;
       border-left: 1px solid #a8a8a8;
       background: #f2f2f2;

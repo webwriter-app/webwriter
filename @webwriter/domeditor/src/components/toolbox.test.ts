@@ -47,6 +47,7 @@ describe("toolbox", () => {
     const toolbox = await mountToolbox()
     const edit = toolButton(toolbox, "Edit")
     const style = toolButton(toolbox, "Style")
+    const tablist = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-tabs")!
     const editTab = edit.closest<HTMLElement>(".toolbox-tab")!
     const styleTab = style.closest<HTMLElement>(".toolbox-tab")!
 
@@ -57,10 +58,17 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     expect(toolbox.activeTool).toBe("Edit")
     expect(toolbox.getAttribute("active-tool")).toBe("Edit")
-    expect(getComputedStyle(toolbox).width).toBe("300px")
+    expect(getComputedStyle(toolbox).width).toBe("200px")
     expect(edit.getAttribute("aria-selected")).toBe("true")
     expect(style.getAttribute("aria-selected")).toBe("false")
     expect(getComputedStyle(editTab).width).toBe("112px")
+    expect(getComputedStyle(editTab).height).toBe("30px")
+    expect(getComputedStyle(editTab).marginBottom).toBe("-1px")
+    expect(getComputedStyle(editTab).backgroundColor).toBe("#f2f2f2")
+    expect(getComputedStyle(editTab).borderLeftColor).toBe("#a8a8a8")
+    expect(getComputedStyle(editTab).borderBottomColor).toBe("#f2f2f2")
+    expect(getComputedStyle(edit).justifyContent).toBe("flex-start")
+    expect(getComputedStyle(tablist).paddingRight).toBe("4px")
     expect(getComputedStyle(editTab).transition).toContain("width")
     expect(getComputedStyle(edit.querySelector<HTMLElement>(".toolbox-tab-label")!).opacity).toBe("1")
     const editClose = editTab.querySelector<HTMLButtonElement>(".toolbox-tab-close")!
