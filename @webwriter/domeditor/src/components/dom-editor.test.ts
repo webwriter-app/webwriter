@@ -2005,7 +2005,9 @@ describe("DomEditor.execute()", () => {
     }))
     await editor.updateComplete
     const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     await breadcrumb.updateComplete
+    await toolbox.updateComplete
 
     const items = breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>("button.item")
     expect(items[0].classList.contains("node-selected")).toBe(false)
@@ -2016,6 +2018,8 @@ describe("DomEditor.execute()", () => {
     expect(styles).toContain("text-decoration-style: dotted")
     expect(styles).toContain("text-decoration-style: solid")
     expect(styles).toContain("#38bdf8")
+    expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[data-tool="Edit"]')!
+      .querySelector(".toolbox-tab-label")?.textContent).toBe("Widget")
 
     const treeToggle = breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")
     treeToggle?.click()

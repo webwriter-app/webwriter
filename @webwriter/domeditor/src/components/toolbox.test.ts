@@ -85,6 +85,62 @@ describe("toolbox", () => {
     expect(getComputedStyle(toolbox).width).toBe("122px")
   })
 
+  it("names element-specific Edit tools in the active blue", async () => {
+    const toolbox = await mountToolbox()
+    const edit = toolButton(toolbox, "Edit")
+    const editTab = edit.closest<HTMLElement>(".toolbox-tab")!
+    const label = edit.querySelector<HTMLElement>(".toolbox-tab-label")!
+    toolbox.table = {
+      active: true,
+      cellSelection: false,
+      rows: 2,
+      columns: 2,
+      selectedCells: 1,
+      canMerge: false,
+      canSplit: false,
+      hasCaption: false,
+    }
+    await toolbox.updateComplete
+    expect(label.textContent).toBe("Table")
+    expect(edit.getAttribute("aria-label")).toBe("Edit Table")
+    expect(label.hasAttribute("data-contextual")).toBe(true)
+    expect(getComputedStyle(label).color).toBe("#3977c7")
+    expect(getComputedStyle(label).opacity).toBe("1")
+    expect(getComputedStyle(edit).color).toBe("#3977c7")
+    expect(getComputedStyle(editTab).width).toBe("88px")
+
+    edit.click()
+    await toolbox.updateComplete
+    expect(getComputedStyle(editTab).width).toBe("112px")
+
+    toolButton(toolbox, "Style").click()
+    await toolbox.updateComplete
+    expect(label.textContent).toBe("Table")
+    expect(getComputedStyle(label).opacity).toBe("1")
+    expect(getComputedStyle(edit).color).toBe("#3977c7")
+    expect(getComputedStyle(editTab).width).toBe("88px")
+
+    toolbox.table = null
+    toolbox.graphic = {active: true, capture: false}
+    await toolbox.updateComplete
+    expect(label.textContent).toBe("Graphic")
+
+    toolbox.graphic = null
+    toolbox.selectionPath = [
+      {path: [], name: "Document"},
+      {path: [0], name: "Demo widget", icon: "Packages"},
+    ]
+    await toolbox.updateComplete
+    expect(label.textContent).toBe("Widget")
+    expect(edit.getAttribute("aria-label")).toBe("Edit Widget")
+
+    toolbox.selectionPath = [{path: [], name: "Document"}, {path: [0], name: "Paragraph"}]
+    await toolbox.updateComplete
+    expect(label.textContent).toBe("Edit")
+    expect(label.hasAttribute("data-contextual")).toBe(false)
+    expect(edit.getAttribute("aria-label")).toBe("Edit")
+  })
+
   it("separates Edit, Review, Style, and Develop into their pane-specific controls", async () => {
     const toolbox = await mountToolbox()
 

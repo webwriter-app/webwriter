@@ -3650,6 +3650,7 @@ export class DomEditor extends LitElement {
         .commentState=${this.commentState}
         .listType=${this.listType}
         .listStyle=${this.listStyle}
+        .selectionPath=${this.selectionPath}
         .table=${this.tableSelection}
         .graphic=${this.graphicSelection}
         .elementStyle=${this.elementStyle}

@@ -1,4 +1,5 @@
 import {css, html} from "lit"
+import type {SelectionPathItem} from "../editor-bridge"
 import {ribbonIcon} from "../ribbon-icons"
 import {AppRibbon} from "./ribbon"
 import {menuGroups} from "./ribbon-menu-config"
@@ -22,6 +23,7 @@ export class DomEditorToolbox extends AppRibbon {
   static properties = {
     ...AppRibbon.properties,
     activeTool: {type: String, attribute: "active-tool", reflect: true},
+    selectionPath: {attribute: false},
   }
 
   static styles = css`
@@ -124,6 +126,11 @@ export class DomEditorToolbox extends AppRibbon {
       width: 88px;
     }
 
+    .toolbox-tab[data-contextual]:not([data-active]),
+    .toolbox-tab[data-contextual]:not([data-active]) .toolbox-tab-button {
+      width: 88px;
+    }
+
     .toolbox-tab-close {
       width: 0;
       padding: 0;
@@ -175,12 +182,21 @@ export class DomEditorToolbox extends AppRibbon {
       transition: max-width 180ms ease, margin-left 180ms ease, opacity 90ms ease, transform 180ms ease;
     }
 
-    .toolbox-tab[data-active] .toolbox-tab-label {
+    .toolbox-tab[data-active] .toolbox-tab-label,
+    .toolbox-tab[data-contextual] .toolbox-tab-label {
       max-width: 4.5rem;
       margin-left: 0.3rem;
       opacity: 1;
       transform: translateX(0);
       transition-delay: 0ms, 0ms, 90ms, 0ms;
+    }
+
+    .toolbox-tab-label[data-contextual] {
+      color: #3977c7;
+    }
+
+    .toolbox-tab[data-contextual]:not([data-active]) .toolbox-tab-button {
+      color: #3977c7;
     }
 
     .toolbox-tab-icon svg,
@@ -259,6 +275,14 @@ export class DomEditorToolbox extends AppRibbon {
   `
 
   activeTool: ToolboxTool | null = null
+  selectionPath: SelectionPathItem[] = []
+
+  private get editTypeLabel() {
+    if(this.graphic?.active) return "Graphic"
+    if(this.table?.active) return "Table"
+    if(this.selectionPath.at(-1)?.icon === "Packages") return "Widget"
+    return null
+  }
 
   protected get currentMenuGroups(): RibbonMenuGroup[] {
     if(this.activeTool === "Style") return menuGroups.Style
@@ -320,22 +344,32 @@ export class DomEditorToolbox extends AppRibbon {
           ${tools.map(tool => {
             const active = this.activeTool === tool.label
             const tabId = `toolbox-tab-${tool.label.toLowerCase()}`
+            const contextualLabel = tool.label === "Edit" ? this.editTypeLabel : null
+            const label = contextualLabel ?? tool.label
             return html`
-              <div class="toolbox-tab" ?data-active=${active}>
+              <div
+                class="toolbox-tab"
+                ?data-active=${active}
+                ?data-contextual=${contextualLabel !== null}
+              >
                 <button
                   id=${tabId}
                   class="toolbox-tab-button"
                   data-tool=${tool.label}
                   type="button"
                   role="tab"
-                  aria-label=${tool.label}
-                  title=${tool.label}
+                  aria-label=${contextualLabel ? `Edit ${contextualLabel}` : tool.label}
+                  title=${contextualLabel ? `Edit ${contextualLabel}` : tool.label}
                   aria-controls="toolbox-pane"
                   aria-selected=${active}
                   @click=${() => this.selectTool(tool.label)}
                 >
                   <span class="toolbox-tab-icon" aria-hidden="true">${ribbonIcon(tool.icon)}</span>
-                  <span class="toolbox-tab-label" aria-hidden=${!active}>${tool.label}</span>
+                  <span
+                    class="toolbox-tab-label"
+                    ?data-contextual=${contextualLabel !== null}
+                    aria-hidden=${!active}
+                  >${label}</span>
                 </button>
                 <button
                   class="toolbox-tab-close"
