@@ -66,6 +66,7 @@ const languageName = (code: string, fallback = code) => {
 
 let cachedOfficialLanguages: LanguageOption[] | undefined
 let comboboxInstanceCount = 0
+let themePickerInstanceCount = 0
 
 /** Nationally official language suggestions ordered by English display name. */
 export function officialLanguageOptions() {
@@ -450,6 +451,260 @@ class DocumentHeadCombobox extends LitElement {
   }
 }
 
+/** Theme picker with placeholder typography and palette previews. */
+class DocumentThemePicker extends LitElement {
+  static properties = {
+    value: {type: String},
+    open: {type: Boolean, reflect: true, state: true},
+  }
+
+  static styles = css`
+    :host {
+      display: block;
+      min-width: 0;
+      height: 100%;
+      color: #2f3742;
+      font: inherit;
+    }
+
+    button:focus-visible {
+      outline: 2px solid #3977c7;
+      outline-offset: -1px;
+    }
+
+    .control,
+    .option {
+      box-sizing: border-box;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 0.15rem 0.35rem;
+      width: 100%;
+      min-width: 0;
+      border: 1px solid #c8d2df;
+      border-radius: 0.3rem;
+      color: inherit;
+      background: transparent;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .control {
+      height: 100%;
+      min-height: 3.45rem;
+      padding: 0.3rem 0.4rem;
+    }
+
+    .control:hover,
+    :host([open]) .control {
+      border-color: #8eb6df;
+    }
+
+    .theme-name {
+      min-width: 0;
+      overflow: hidden;
+      font-size: 0.64rem;
+      font-weight: 700;
+      line-height: 0.8rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .chevron {
+      width: 0.3rem;
+      height: 0.3rem;
+      margin: 0.05rem 0.1rem 0;
+      border-right: 1.25px solid currentColor;
+      border-bottom: 1.25px solid currentColor;
+      transform: rotate(45deg);
+    }
+
+    :host([open]) .chevron {
+      margin-top: 0.2rem;
+      transform: rotate(225deg);
+    }
+
+    .preview {
+      display: flex;
+      grid-column: 1 / -1;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.35rem;
+      min-width: 0;
+    }
+
+    .type-preview {
+      overflow: hidden;
+      color: #475467;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-size: 0.82rem;
+      font-weight: 650;
+      line-height: 1rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .palette {
+      display: flex;
+      flex: 0 0 auto;
+      overflow: hidden;
+      border: 1px solid #d8dee6;
+      border-radius: 999px;
+    }
+
+    .swatch {
+      width: 0.65rem;
+      height: 0.65rem;
+    }
+
+    .listbox {
+      box-sizing: border-box;
+      display: grid;
+      position: fixed;
+      z-index: 1100;
+      width: min(17rem, calc(100vw - 1rem));
+      max-height: min(26rem, calc(100vh - 1rem));
+      gap: 0.25rem;
+      padding: 0.35rem;
+      overflow: auto;
+      border: 1px solid #c8d2df;
+      border-radius: 0.35rem;
+      background: #fff;
+      box-shadow: 0 0.45rem 1rem rgb(0 0 0 / 18%);
+    }
+
+    .option {
+      padding: 0.45rem 0.55rem;
+      border-color: transparent;
+    }
+
+    .option:hover,
+    .option[aria-selected="true"] {
+      color: #174f87;
+      border-color: #c9def4;
+      background: #eef4fb;
+    }
+  `
+
+  value = ""
+  private open = false
+  private position = {left: 8, top: 8}
+  private readonly listboxId = `document-theme-options-${++themePickerInstanceCount}`
+  private readonly placeholderPalette = ["#334155", "#3977c7", "#dcecff", "#f8fafc"]
+
+  private readonly documentPointerDown = (event: PointerEvent) => {
+    if(this.open && !event.composedPath().includes(this)) this.close()
+  }
+
+  private readonly documentKeydown = (event: KeyboardEvent) => {
+    if(!this.open || event.key !== "Escape") return
+    this.close()
+    this.renderRoot.querySelector<HTMLButtonElement>(".control")?.focus()
+  }
+
+  connectedCallback() {
+    super.connectedCallback()
+    document.addEventListener("pointerdown", this.documentPointerDown)
+    document.addEventListener("keydown", this.documentKeydown)
+  }
+
+  disconnectedCallback() {
+    document.removeEventListener("pointerdown", this.documentPointerDown)
+    document.removeEventListener("keydown", this.documentKeydown)
+    super.disconnectedCallback()
+  }
+
+  close() {
+    this.open = false
+  }
+
+  private async setOpen(open: boolean) {
+    this.open = open
+    if(!open) return
+    await this.updateComplete
+    const trigger = this.renderRoot.querySelector<HTMLElement>(".control")?.getBoundingClientRect()
+      ?? this.getBoundingClientRect()
+    const listbox = this.renderRoot.querySelector<HTMLElement>(".listbox")
+    const bounds = listbox?.getBoundingClientRect()
+    const width = bounds?.width ?? 272
+    const height = bounds?.height ?? 360
+    const margin = 8
+    const left = Math.min(Math.max(margin, trigger.left), Math.max(margin, window.innerWidth - width - margin))
+    const below = trigger.bottom + 4
+    const top = below + height <= window.innerHeight - margin
+      ? below
+      : Math.max(margin, trigger.top - height - 4)
+    this.position = {left, top}
+    this.requestUpdate()
+  }
+
+  private select(value: string) {
+    this.value = value
+    this.close()
+    this.dispatchEvent(new CustomEvent<{value: string}>("theme-change", {
+      detail: {value},
+      bubbles: true,
+      composed: true,
+    }))
+    this.renderRoot.querySelector<HTMLButtonElement>(".control")?.focus()
+  }
+
+  private preview() {
+    return html`
+      <span class="preview" data-placeholder>
+        <span class="type-preview" aria-label="Default font placeholder">Aa Default</span>
+        <span class="palette" aria-label="Color palette placeholder">
+          ${this.placeholderPalette.map(color => html`<span class="swatch" style=${`background:${color}`}></span>`)}
+        </span>
+      </span>
+    `
+  }
+
+  render() {
+    const selected = documentThemes.find(theme => theme.value === this.value)
+    const options = [{value: "", label: "Not specified"}, ...documentThemes]
+    return html`
+      <button
+        class="control"
+        type="button"
+        role="combobox"
+        aria-label="Theme"
+        aria-expanded=${this.open}
+        aria-haspopup="listbox"
+        aria-controls=${this.listboxId}
+        @click=${() => this.setOpen(!this.open)}
+      >
+        <span class="theme-name">${selected?.label ?? "Not specified"}</span>
+        <span class="chevron" aria-hidden="true"></span>
+        ${this.preview()}
+      </button>
+      ${this.open ? html`
+        <div
+          id=${this.listboxId}
+          class="listbox"
+          role="listbox"
+          aria-label="Theme options"
+          style=${`left:${this.position.left}px;top:${this.position.top}px`}
+        >
+          ${options.map(option => html`
+            <button
+              class="option"
+              type="button"
+              role="option"
+              aria-selected=${this.value === option.value}
+              data-value=${option.value}
+              @click=${() => this.select(option.value)}
+            >
+              <span class="theme-name">${option.label}</span>
+              ${this.preview()}
+            </button>
+          `)}
+        </div>
+      ` : nothing}
+    `
+  }
+}
+
 /** Compact common metadata fields and the expanded, lossless head-element form. */
 export class DocumentHeadEditor extends LitElement {
   static properties = {
@@ -480,7 +735,7 @@ export class DocumentHeadEditor extends LitElement {
     .common-grid {
       box-sizing: border-box;
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(6.75rem, 0.95fr);
       grid-template-rows: repeat(2, minmax(0, 1fr));
       gap: 0.2rem 0.3rem;
       width: 100%;
@@ -493,6 +748,16 @@ export class DocumentHeadEditor extends LitElement {
       flex-direction: column;
       gap: 0.05rem;
       min-width: 0;
+    }
+
+    .theme-field {
+      grid-column: 3;
+      grid-row: 1 / 3;
+    }
+
+    .theme-field .field-control {
+      flex: 1 1 auto;
+      min-height: 0;
     }
 
     .field-label {
@@ -598,10 +863,26 @@ export class DocumentHeadEditor extends LitElement {
       border-top: 1px solid #d8dee6;
     }
 
+    .advanced-metadata {
+      display: grid;
+      flex: 0 0 auto;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.35rem;
+    }
+
+    .advanced-metadata .generator-entry {
+      grid-column: 1 / -1;
+    }
+
+    .generator-entry .generator-control {
+      justify-content: flex-start;
+      cursor: default;
+    }
+
     .add-toolbar {
       display: grid;
       flex: 0 0 auto;
-      grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(6rem, 1.25fr);
+      grid-template-columns: repeat(4, minmax(0, 1fr)) 4.25rem;
       min-height: 1.75rem;
       border: 1px solid #c8d2df;
       border-radius: 0.3rem;
@@ -623,7 +904,27 @@ export class DocumentHeadEditor extends LitElement {
     }
 
     .add-toolbar select {
+      width: 100%;
+      padding-right: 1.35rem;
       border-right: 0;
+      appearance: none;
+    }
+
+    .more-select {
+      position: relative;
+      min-width: 0;
+    }
+
+    .more-chevron {
+      position: absolute;
+      top: 50%;
+      right: 0.7rem;
+      width: 0.3rem;
+      height: 0.3rem;
+      border-right: 1.25px solid #526b86;
+      border-bottom: 1.25px solid #526b86;
+      pointer-events: none;
+      transform: translateY(-70%) rotate(45deg);
     }
 
     .add-toolbar button:hover,
@@ -811,6 +1112,10 @@ export class DocumentHeadEditor extends LitElement {
     this.setField(field, value)
   }
 
+  private handleThemeChange(event: Event) {
+    this.setField("theme", (event as CustomEvent<{value: string}>).detail.value)
+  }
+
   private entryForPreset(preset: string) {
     return this.state.elements.find(element => element.preset === preset)
   }
@@ -829,8 +1134,9 @@ export class DocumentHeadEditor extends LitElement {
     value: string,
     preset?: string,
     field?: DocumentHeadField,
+    alwaysVisible = false,
   ) {
-    if(!this.expanded || !value) return nothing
+    if((!this.expanded && !alwaysVisible) || !value) return nothing
     const entry = preset ? this.entryForPreset(preset) : undefined
     return html`
       <span class="field-actions">
@@ -875,12 +1181,9 @@ export class DocumentHeadEditor extends LitElement {
       label: license.code,
       description: license.name,
     }))
-    const generator = this.state.generator || WEBWRITER_GENERATOR
     return html`
       <div class="common-grid" aria-label="Common document metadata">
         ${this.commonTextField("Title", "title", this.state.title, "title")}
-        ${this.commonTextField("Description", "description", this.state.description, "description")}
-        ${this.commonTextField("Keywords", "keywords", this.state.keywords, "keywords")}
         ${this.commonTextField("Author", "author", this.state.author, "author")}
         <label class="common-field">
           <span class="field-label">License</span>
@@ -908,36 +1211,13 @@ export class DocumentHeadEditor extends LitElement {
             ${this.fieldActions("Language", this.state.language, undefined, "language")}
           </span>
         </label>
-        <span class="common-field">
-          <span class="field-label">Generator</span>
-          <span class="field-control">
-            <button
-              class="generator-control"
-              type="button"
-              ?data-missing=${!this.state.generator}
-              aria-label=${this.state.generator ? `Generator: ${generator}` : `Add generator ${WEBWRITER_GENERATOR}`}
-              title=${this.state.generator ? generator : `Add ${WEBWRITER_GENERATOR}`}
-              @click=${() => !this.state.generator && this.dispatchAction({type: "addDocumentHeadElement", kind: "generator"})}
-            ><code>${generator}</code>${this.state.generator ? nothing : html`<span aria-hidden="true">＋</span>`}</button>
-            ${this.fieldActions("Generator", this.state.generator, "generator")}
-          </span>
-        </span>
-        <label class="common-field">
+        <label class="common-field theme-field">
           <span class="field-label">Theme</span>
           <span class="field-control">
-            <select
-              class="common-control"
-              name="theme"
-              aria-label="Theme"
-              data-ribbon-input-persistent
+            <document-theme-picker
               .value=${this.state.theme}
-              @change=${this.handleCommonChange}
-            >
-              <option value="" ?selected=${!this.state.theme}>Not specified</option>
-              ${documentThemes.map(theme => html`
-                <option value=${theme.value} ?selected=${this.state.theme === theme.value}>${theme.label}</option>
-              `)}
-            </select>
+              @theme-change=${this.handleThemeChange}
+            ></document-theme-picker>
             ${this.fieldActions("Theme", this.state.theme, "theme", "theme")}
           </span>
         </label>
@@ -1124,22 +1404,34 @@ export class DocumentHeadEditor extends LitElement {
     )
     return html`
       <section class="advanced" aria-label="Advanced document head editor">
+        <div class="advanced-metadata" aria-label="Advanced metadata options">
+          ${this.advancedTextField("Description", "description", this.state.description, "description")}
+          ${this.advancedTextField("Keywords", "keywords", this.state.keywords, "keywords")}
+          <span class="common-field generator-entry">
+            <span class="field-label">Generator</span>
+            <span class="generator-control" role="textbox" aria-label="Generator" aria-readonly="true">
+              <code>${this.state.generator || WEBWRITER_GENERATOR}</code>
+            </span>
+          </span>
+        </div>
         <div class="add-toolbar" aria-label="Add head element">
           <button type="button" @click=${() => this.add("script")}>＋ Script</button>
           <button type="button" @click=${() => this.add("stylesheet")}>＋ Stylesheet</button>
           <button type="button" @click=${() => this.add("style")}>＋ Style</button>
           <button type="button" @click=${() => this.add("meta")}>＋ Meta</button>
-          <select aria-label="Add another head element" data-ribbon-input-persistent @change=${this.handleMoreAdd}>
-            <option value="">More…</option>
-            <option value="link">Link (&lt;link&gt;)</option>
-            <option value="base" ?disabled=${presets.has("base")}>Base URL (&lt;base&gt;)</option>
-            <option value="pragma">Pragma (&lt;meta http-equiv&gt;)</option>
-            <option value="charset" ?disabled=${presets.has("charset")}>Encoding (&lt;meta charset&gt;)</option>
-            <option value="noscript">NoScript (&lt;noscript&gt;)</option>
-            <option value="title" ?disabled=${presets.has("title")}>Title (&lt;title&gt;)</option>
-            <option value="generator" ?disabled=${presets.has("generator")}>Generator (&lt;meta&gt;)</option>
-            <option value="template">Template (&lt;template&gt;)</option>
-          </select>
+          <span class="more-select">
+            <select aria-label="Add another head element" data-ribbon-input-persistent @change=${this.handleMoreAdd}>
+              <option value="">More…</option>
+              <option value="link">Link (&lt;link&gt;)</option>
+              <option value="base" ?disabled=${presets.has("base")}>Base URL (&lt;base&gt;)</option>
+              <option value="pragma">Pragma (&lt;meta http-equiv&gt;)</option>
+              <option value="charset" ?disabled=${presets.has("charset")}>Encoding (&lt;meta charset&gt;)</option>
+              <option value="noscript">NoScript (&lt;noscript&gt;)</option>
+              <option value="title" ?disabled=${presets.has("title")}>Title (&lt;title&gt;)</option>
+              <option value="template">Template (&lt;template&gt;)</option>
+            </select>
+            <span class="more-chevron" aria-hidden="true"></span>
+          </span>
         </div>
         <div class="entries">
           ${attributeEntry ? this.renderCommonAttributeEditor(attributeEntry) : nothing}
@@ -1148,6 +1440,25 @@ export class DocumentHeadEditor extends LitElement {
             : attributeEntry ? nothing : html`<div class="empty">No additional head elements.</div>`}
         </div>
       </section>
+    `
+  }
+
+  private advancedTextField(label: string, field: "description" | "keywords", value: string, preset: string) {
+    return html`
+      <label class="common-field">
+        <span class="field-label">${label}</span>
+        <span class="field-control">
+          <input
+            class="common-control"
+            name=${field}
+            aria-label=${label}
+            data-ribbon-input-persistent
+            .value=${value}
+            @change=${this.handleCommonChange}
+          />
+          ${this.fieldActions(label, value, preset, field, true)}
+        </span>
+      </label>
     `
   }
 
@@ -1164,9 +1475,14 @@ if(!customElements.get("document-head-editor")) {
   customElements.define("document-head-editor", DocumentHeadEditor)
 }
 
+if(!customElements.get("document-theme-picker")) {
+  customElements.define("document-theme-picker", DocumentThemePicker)
+}
+
 declare global {
   interface HTMLElementTagNameMap {
     "document-head-combobox": DocumentHeadCombobox
     "document-head-editor": DocumentHeadEditor
+    "document-theme-picker": DocumentThemePicker
   }
 }

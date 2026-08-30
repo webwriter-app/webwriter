@@ -34,6 +34,13 @@ describe("responsive ribbon drawer", () => {
     expect(styles).toMatch(/\.drawer\.expanded ::slotted\(element-style-editor\[mode="basic"\]\)\s*\{[\s\S]*?margin-right:\s*0\.5rem;/)
   })
 
+  it("keeps the document Metadata drawer compact", () => {
+    const styles = RibbonDrawer.styles.toString()
+
+    expect(styles).toMatch(/:host\(\[layout="document-head"\]\)\s*\{[\s\S]*?--ribbon-drawer-expanded-width:\s*25rem;/)
+    expect(styles).toMatch(/:host\(\[layout="document-head"\]\)\s*\{[\s\S]*?--ribbon-drawer-width:\s*min\(25rem, calc\(100vw - 1rem\)\);/)
+  })
+
   it("uses the full inline width for full-height History version cards", async () => {
     const drawer = new RibbonDrawer()
     drawer.layout = "history-versions"

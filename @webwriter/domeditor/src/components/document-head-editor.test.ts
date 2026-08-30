@@ -67,7 +67,7 @@ describe("document head form", () => {
     )
   })
 
-  it("uses editable language suggestions and a true theme select", async () => {
+  it("uses editable language suggestions and a two-row theme preview picker", async () => {
     const editor = await mount("common", state({
       title: "Old",
       generator: WEBWRITER_GENERATOR,
@@ -89,15 +89,73 @@ describe("document head form", () => {
     languageInput.dispatchEvent(new InputEvent("input", {bubbles: true}))
     languageInput.dispatchEvent(new Event("change", {bubbles: true}))
 
-    const theme = editor.shadowRoot!.querySelector<HTMLSelectElement>('select[name="theme"]')!
-    theme.value = "water"
-    theme.dispatchEvent(new Event("change", {bubbles: true}))
+    const theme = editor.shadowRoot!.querySelector<HTMLElement & {updateComplete: Promise<unknown>}>("document-theme-picker")!
+    await theme.updateComplete
+    theme.shadowRoot!.querySelector<HTMLButtonElement>(".control")!.click()
+    await theme.updateComplete
+    const themeOptions = Array.from(theme.shadowRoot!.querySelectorAll<HTMLButtonElement>('[role="option"]'))
+    theme.shadowRoot!.querySelector<HTMLButtonElement>('[role="option"][data-value="water"]')!.click()
 
-    expect(theme.options).toHaveLength(documentThemes.length + 1)
+    expect(themeOptions).toHaveLength(documentThemes.length + 1)
+    expect(themeOptions.every(option => option.querySelector('[data-placeholder] .type-preview')?.textContent === "Aa Default"))
+      .toBe(true)
+    expect(themeOptions.every(option => option.querySelectorAll(".swatch").length === 4)).toBe(true)
+    expect(editor.shadowRoot!.querySelector(".theme-field"))
+      .toHaveStyle({gridColumn: "3", gridRow: "1 / 3"})
     expect(actions).toContainEqual({type: "setDocumentHeadField", field: "title", value: "New title"})
     expect(actions).toContainEqual({type: "setDocumentHeadField", field: "language", value: "x-klingon"})
     expect(actions).toContainEqual({type: "setDocumentHeadField", field: "theme", value: "water"})
-    expect(editor.shadowRoot!.querySelector(".generator-control code")?.textContent).toBe(WEBWRITER_GENERATOR)
+    expect(editor.shadowRoot!.querySelector('input[name="description"]')).toBeNull()
+    expect(editor.shadowRoot!.querySelector('input[name="keywords"]')).toBeNull()
+    expect(editor.shadowRoot!.querySelector(".generator-control")).toBeNull()
+  })
+
+  it("moves long-form metadata under more and keeps Generator read-only", async () => {
+    const editor = await mount("advanced", state({
+      description: "A short lesson",
+      keywords: "math, geometry",
+      generator: WEBWRITER_GENERATOR,
+      elements: [
+        element({id: "head-description", preset: "description", attributes: [
+          {name: "name", value: "description"},
+          {name: "content", value: "A short lesson"},
+        ]}),
+        element({id: "head-keywords", preset: "keywords", attributes: [
+          {name: "name", value: "keywords"},
+          {name: "content", value: "math, geometry"},
+        ]}),
+        element({id: "head-generator", preset: "generator", attributes: [
+          {name: "name", value: "generator"},
+          {name: "content", value: WEBWRITER_GENERATOR},
+        ]}),
+      ],
+    }))
+    const actions: DocumentHeadAction[] = []
+    editor.addEventListener("document-head-action", event => actions.push((event as CustomEvent<DocumentHeadAction>).detail))
+
+    const description = editor.shadowRoot!.querySelector<HTMLInputElement>('input[name="description"]')!
+    const keywords = editor.shadowRoot!.querySelector<HTMLInputElement>('input[name="keywords"]')!
+    const generator = editor.shadowRoot!.querySelector<HTMLElement>(".generator-entry")!
+    description.value = "Updated lesson"
+    description.dispatchEvent(new Event("change", {bubbles: true}))
+
+    expect(keywords.value).toBe("math, geometry")
+    expect(generator.querySelector("code")?.textContent).toBe(WEBWRITER_GENERATOR)
+    expect(generator.querySelector("input, button")).toBeNull()
+    expect(generator.querySelector(".generator-control")).toHaveAttribute("aria-readonly", "true")
+    expect(editor.shadowRoot!.querySelector('option[value="generator"]')).toBeNull()
+    expect(actions).toContainEqual({
+      type: "setDocumentHeadField",
+      field: "description",
+      value: "Updated lesson",
+    })
+    expect(DocumentHeadEditor.styles.toString()).toMatch(
+      /\.add-toolbar\s*\{[\s\S]*?grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\) 4\.25rem;/,
+    )
+    expect(DocumentHeadEditor.styles.toString()).toMatch(
+      /\.more-chevron\s*\{[\s\S]*?right:\s*0\.7rem;/,
+    )
+    expect(editor.shadowRoot!.querySelector(".more-select > .more-chevron")).not.toBeNull()
   })
 
   it("offers rich license suggestions while accepting a custom license", async () => {
@@ -230,6 +288,7 @@ describe("document head form", () => {
 
     expect(drawer).not.toBeNull()
     expect(drawer.expandable).toBe(true)
+    expect(drawer.layoutWidths.expanded).toBe(400)
     const common = drawer.querySelector<DocumentHeadEditor>('document-head-editor[mode="common"]')!
     expect(common.expanded).toBe(false)
     const advanced = drawer.querySelector<DocumentHeadEditor>('document-head-editor[mode="advanced"][slot="more"]')!
