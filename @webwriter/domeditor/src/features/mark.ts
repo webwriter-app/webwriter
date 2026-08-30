@@ -18,6 +18,7 @@ import {
   type StyleMarkValues,
 } from "../marks"
 import {$, modifierKeyDown} from "../utility"
+import {isSectionElement} from "../sections"
 
 export type MarkState = {
   /** Whether the current selection is a markable text range or caret. */
@@ -941,10 +942,10 @@ export class MarkFeature extends EditorFeature {
     let current: Node | null = node
     while(current && current !== document.body) {
       if(!(current instanceof Element) && !(current instanceof Text)) return null
-      if(this.editor.schema.isBlock(current)) break
+      if(this.editor.schema.isBlock(current) && !isSectionElement(current)) break
       current = current.parentElement
     }
-    return current instanceof Element && this.editor.schema.isBlock(current)? current: null
+    return current instanceof Element && this.editor.schema.isBlock(current) && !isSectionElement(current)? current: null
   }
 
   private selectedText(range: Range, block: Element) {

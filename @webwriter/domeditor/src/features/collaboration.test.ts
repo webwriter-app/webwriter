@@ -116,6 +116,22 @@ describe("DOMEditor collaboration wiring", () => {
     expect(editor.toHTML(true)).toBe("<h2>Hello</h2>")
   })
 
+  it("synchronizes section wrappers and includes them in undo and redo", async () => {
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph.firstChild!, 2)
+
+    editor.features.manipulation.actions.toggleSection({type: "toggleSection"})
+    await mutationsDelivered()
+
+    expect(editor.toHTML(true)).toBe("<section><p>Hello</p></section>")
+    expect(editor.doc.body.toString()).toContain("<section><p>Hello</p></section>")
+
+    editor.features.history.actions.undo({type: "undo"})
+    expect(editor.toHTML(true)).toBe("<p>Hello</p>")
+    editor.features.history.actions.redo({type: "redo"})
+    expect(editor.toHTML(true)).toBe("<section><p>Hello</p></section>")
+  })
+
   it("synchronizes in-document comments and includes them in undo and redo", async () => {
     const paragraph = document.querySelector("p")!
     $.selectRange(paragraph.firstChild!, 0, paragraph.firstChild!, 5)

@@ -4,6 +4,7 @@ import {getElementPresentation} from "../element-names"
 import { ribbonIcon } from "../ribbon-icons"
 import type {PackageInsertionItem} from "../packages"
 import {insertableFormElementTypes} from "../form"
+import {sectionNames} from "../sections"
 
 export type InsertionMenuItem = {
   tag?: string
@@ -34,9 +35,7 @@ const insertionMenuItem = (
 export const headingInsertionTags = ["h2", "h3", "h4", "h5", "h6", "hr"] as const
 export const detailsInsertionTags = ["dialog"] as const
 export const formInsertionTags = insertableFormElementTypes
-export const sectionInsertionTags = [
-  "div", "blockquote", "article", "aside", "header", "footer", "main", "nav", "search", "address",
-] as const
+export const sectionInsertionTags = sectionNames.filter(tag => tag !== "section")
 export const scriptInsertionTags = ["script", "style", "canvas", "template", "slot"] as const
 
 export const insertionMenuItems: BuiltinInsertionMenuItem[] = [

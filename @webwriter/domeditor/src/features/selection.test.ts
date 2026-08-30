@@ -14,8 +14,11 @@ const feature = editor.features.selection
 // (require document.caretPositionFromPoint) and double/triple click word/line
 // selection (requires Selection.modify). These are exercised in the browser.
 
-beforeEach(() => {
+beforeEach(async () => {
   document.body.innerHTML = ""
+  document.getSelection()?.removeAllRanges()
+  feature.clearSelectedSection()
+  await new Promise<void>(resolve => queueMicrotask(resolve))
   document.body.className = ""
 })
 
@@ -431,8 +434,12 @@ describe("document listeners", () => {
       detail: {
         path: [
           {path: [], name: "Document", icon: "Document"},
-          {path: [0], name: "Section", icon: "Section"},
-          {path: [0, 0], name: "Paragraph", icon: "Paragraph"},
+          {
+            path: [0, 0],
+            name: "Paragraph",
+            icon: "Paragraph",
+            sections: [{path: [0], type: "div", name: "Division", icon: "Section"}],
+          },
         ],
       },
     }, window.location.origin)
@@ -450,11 +457,59 @@ describe("document listeners", () => {
       detail: {
         path: [
           {path: [], name: "Document", icon: "Document"},
-          {path: [0], name: "Section", icon: "Section"},
-          {path: [0, 0], name: "Paragraph", icon: "Paragraph"},
+          {
+            path: [0, 0],
+            name: "Paragraph",
+            icon: "Paragraph",
+            sections: [{path: [0], type: "section", name: "Section", icon: "Section"}],
+          },
         ],
       },
     }, window.location.origin)
+  })
+  it("stacks section types on the next structural breadcrumb item", () => {
+    document.body.innerHTML = "<section><article><aside><p>hello</p></aside></article></section>"
+    $.move(document.querySelector("p")!.firstChild!, 2)
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => {})
+
+    editor.postSelectionPath()
+
+    const message = postMessage.mock.lastCall?.[0] as {detail: {path: Array<{sections?: Array<{type: string}>}>}}
+    expect(message.detail.path).toHaveLength(2)
+    expect(message.detail.path[1].sections?.map(section => section.type)).toEqual([
+      "section", "article", "aside",
+    ])
+  })
+  it("attaches empty and inline-like sections to their structural parent", () => {
+    document.body.innerHTML = "<section>inline</section>"
+    $.move(document.querySelector("section")!.firstChild!, 2)
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => {})
+
+    editor.postSelectionPath()
+
+    const message = postMessage.mock.lastCall?.[0] as {detail: {path: Array<{name: string, sections?: unknown[]}>}}
+    expect(message.detail.path).toEqual([{
+      path: [],
+      name: "Document",
+      icon: "Document",
+      sections: [{path: [0], type: "section", name: "Section", icon: "Section"}],
+    }])
+  })
+  it("selects a section only through the explicit breadcrumb action", () => {
+    document.body.innerHTML = "<section><p>hello</p></section>"
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph.firstChild!, 2)
+
+    feature.actions.selectSection({type: "selectSection", path: [0]})
+
+    expect(feature.selectedSectionElement).toBe(document.querySelector("section"))
+    expect(document.querySelector("section")).toHaveClass("◆element-selected")
+    expect($.anchor).toBe(paragraph.firstChild)
+
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(feature.selectedSectionElement).toBeNull()
+    expect(document.querySelector("section")).not.toHaveClass("◆element-selected")
+    expect(paragraph).toHaveClass("◆text-selected")
   })
   it("posts a gap position through the bridge", () => {
     document.body.innerHTML = "<p>a</p><p>b</p>"

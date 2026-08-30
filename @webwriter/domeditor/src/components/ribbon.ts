@@ -97,6 +97,7 @@ import {
 import "./document-head-editor"
 import "./element-style-editor"
 import "./settings-panel"
+import {sectionOptions, type SectionName} from "../sections"
 
 export type LiveLearnerRibbonItem = {
   id: string
@@ -179,6 +180,10 @@ export class AppRibbon extends LitElement {
     menuOpen: {type: Boolean, reflect: true},
     logoUrl: {type: String, attribute: "logo-url"},
     canMark: {type: Boolean, attribute: "can-mark"},
+    canSection: {type: Boolean, attribute: "can-section"},
+    sectionType: {type: String, attribute: "section-type"},
+    sectionActive: {type: Boolean, attribute: "section-active"},
+    sectionSelected: {type: Boolean, attribute: "section-selected"},
     marks: {attribute: false},
     markStyles: {attribute: false},
     markAttributes: {attribute: false},
@@ -2360,6 +2365,10 @@ export class AppRibbon extends LitElement {
   menuOpen = false
   logoUrl = ""
   canMark = false
+  canSection = false
+  sectionType: SectionName = "section"
+  sectionActive = false
+  sectionSelected = false
   marks: MarkName[] = []
   markStyles: StyleMarkValues = {}
   markAttributes: MarkAttributeValues = {}
@@ -3623,6 +3632,61 @@ export class AppRibbon extends LitElement {
     `
   }
 
+  private dispatchSectionType(event: Event) {
+    const section = (event.currentTarget as HTMLSelectElement).value as SectionName
+    this.dispatchEvent(new CustomEvent("section-type-change", {
+      detail: {section},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private renderSectionTypeSelect(label = "Section type") {
+    return html`
+      <label class="mark-attribute section-type-select">
+        <span>${label}</span>
+        <select
+          aria-label=${label}
+          .value=${this.sectionType}
+          ?disabled=${!this.canSection}
+          @change=${this.dispatchSectionType}
+        >
+          ${sectionOptions.map(option => html`
+            <option value=${option.value}>${option.label}</option>
+          `)}
+        </select>
+      </label>
+    `
+  }
+
+  private renderSectionDropdown() {
+    return html`
+      <div class="button-dropdown-form" role="group" aria-label="Section options">
+        ${this.renderSectionTypeSelect("Type")}
+      </div>
+    `
+  }
+
+  private renderSectionDrawer() {
+    return html`
+      <ribbon-drawer label="Section" icon="Section" layout="section">
+        ${this.renderSectionTypeSelect()}
+        <ribbon-button
+          label="Add outer section"
+          action="section-add"
+          icon="Plus"
+          ?disabled=${!this.sectionSelected}
+        ></ribbon-button>
+        <ribbon-button
+          label="Remove section"
+          action="section-remove"
+          icon="RemoveMarks"
+          ?disabled=${!this.sectionSelected}
+        ></ribbon-button>
+      </ribbon-drawer>
+    `
+  }
+
   private updateCommentDraft(event: Event) {
     this.commentDraft = (event.currentTarget as HTMLTextAreaElement).value
   }
@@ -4801,15 +4865,17 @@ export class AppRibbon extends LitElement {
             ? this.mediaSelectionMatches(type)
             : item.label === "List" && this.listType !== null
           const tableDropdown = item.label === "Table" ? this.renderTableSizePicker() : null
+          const sectionDropdown = item.label === "Section" ? this.renderSectionDropdown() : null
           return html`
             <ribbon-button
               label=${item.label}
               .action=${item.action ?? item.label}
               .icon=${item.icon ?? item.label}
-              .submenu=${type || tableDropdown ? [] : submenu}
-              .dropdown=${type ? this.renderMediaDropdown(type) : tableDropdown}
-              ?toggle=${item.label === "List"}
-              ?active=${active}
+              .submenu=${type || tableDropdown || sectionDropdown ? [] : submenu}
+              .dropdown=${type ? this.renderMediaDropdown(type) : tableDropdown ?? sectionDropdown}
+              ?toggle=${item.label === "List" || item.label === "Section"}
+              ?active=${item.label === "Section" ? this.sectionActive : active}
+              ?disabled=${item.label === "Section" && !this.canSection}
             ></ribbon-button>
           `
         })}
@@ -5483,6 +5549,7 @@ export class AppRibbon extends LitElement {
       if(drawer.label === "File") return this.renderFileDrawer(drawer)
       if(drawer.label === "Sharing") return this.renderSharingDrawer(drawer)
       if(drawer.label === "Marks") return this.renderMarkDrawer()
+      if(drawer.label === "Section") return this.renderSectionDrawer()
       if(drawer.label === "Comments") return this.renderCommentDrawer()
       if(drawer.label === "Form") return this.renderFormDrawer()
       if(drawer.label === "Table") return this.renderTableDrawer()

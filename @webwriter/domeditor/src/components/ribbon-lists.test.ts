@@ -26,7 +26,7 @@ describe("list ribbon drawer", () => {
     ])
   })
 
-  it("groups form, section, script, divider, and dialog insertions under their primary buttons", async () => {
+  it("groups form, script, divider, and dialog insertions under their primary buttons", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Start"
     document.body.append(ribbon)
@@ -43,12 +43,30 @@ describe("list ribbon drawer", () => {
     expect(submenuTags(button("Elements", "Form"))).toEqual([
       "fieldset", "label", "input", "textarea", "select", "datalist", "button", "output", "meter", "progress",
     ])
-    expect(submenuTags(button("Elements", "Section"))).toEqual([
-      "div", "blockquote", "article", "aside", "header", "footer", "main", "nav", "search", "address",
-    ])
     expect(submenuTags(button("Elements", "Script"))).toEqual(["script", "style", "canvas", "template", "slot"])
     expect(submenuTags(button("Elements", "Heading"))).toEqual(["h2", "h3", "h4", "h5", "h6", "hr"])
     expect(submenuTags(button("Elements", "Details"))).toEqual(["dialog"])
+  })
+
+  it("uses a native select for the section type dropdown", async () => {
+    const ribbon = new AppRibbon()
+    ribbon.activeMenu = "Start"
+    ribbon.canSection = true
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+
+    const section = ribbon.shadowRoot!.querySelector<RibbonButton>(
+      'ribbon-drawer[label="Elements"] ribbon-button[label="Section"]',
+    )!
+    await section.updateComplete
+    section.shadowRoot!.querySelector<HTMLButtonElement>('.submenu-trigger[aria-haspopup="dialog"]')!.click()
+    await section.updateComplete
+
+    const select = section.shadowRoot!.querySelector<HTMLSelectElement>("select[aria-label='Type']")!
+    expect(select).not.toBeNull()
+    expect(Array.from(select.options).map(option => option.value)).toEqual([
+      "section", "div", "blockquote", "article", "aside", "header", "footer", "main", "nav", "search", "address",
+    ])
   })
 
   it("renders the grouped element controls as standalone dropdown buttons on Start", async () => {
@@ -65,9 +83,11 @@ describe("list ribbon drawer", () => {
 
     expect(elements.layoutWidths.expanded).toBe(412)
     expect(getComputedStyle(elements.shadowRoot!.querySelector<HTMLElement>(".controls")!).gridAutoColumns).toBe("3.5rem")
-    for(const button of buttons) {
+    for(const button of buttons.filter(button => button.label !== "Section")) {
       expect(button.shadowRoot!.querySelector('.submenu-trigger[aria-haspopup="menu"]')).not.toBeNull()
     }
+    expect(buttons.find(button => button.label === "Section")!.shadowRoot!
+      .querySelector('.submenu-trigger[aria-haspopup="dialog"]')).not.toBeNull()
   })
 
   it("merges enumeration into List while preserving every list style action", async () => {

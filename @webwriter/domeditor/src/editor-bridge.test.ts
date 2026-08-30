@@ -210,12 +210,19 @@ describe("editor bridge message guards", () => {
       detail: {
         path: [
           {path: [], name: "Document", icon: "Document"},
-          {path: [0], name: "Example widget", iconUrl: "https://example.test/icon.svg"},
+          {
+            path: [0],
+            name: "Example widget",
+            iconUrl: "https://example.test/icon.svg",
+            sections: [{path: [0, 0], type: "article", name: "Article", icon: "Article"}],
+          },
         ],
         inserted: true,
+        canSection: true,
         nodeSelected: true,
         capture: false,
         gap: {parentPath: [0], offset: 1},
+        section: {path: [0, 0], type: "article"},
         list: {type: "menu", style: "square"},
         media: {type: "picture", attributes: {src: "photo.png", alt: "Photo"}},
         form: {
@@ -249,8 +256,12 @@ describe("editor bridge message guards", () => {
       {...message, detail: {...message.detail, path: [{path: [0, -1], name: "Paragraph"}]}},
       {...message, detail: {...message.detail, path: [{path: [0.5], name: "Paragraph"}]}},
       {...message, detail: {...message.detail, inserted: "true"}},
+      {...message, detail: {...message.detail, canSection: "true"}},
       {...message, detail: {...message.detail, nodeSelected: "true"}},
       {...message, detail: {...message.detail, gap: {parentPath: [0], offset: -1}}},
+      {...message, detail: {...message.detail, section: {path: [0, -1], type: "article"}}},
+      {...message, detail: {...message.detail, section: {path: [0], type: "figure"}}},
+      {...message, detail: {...message.detail, path: [{path: [0], name: "Paragraph", sections: [{path: [0], type: "figure", name: "Figure"}]}]}},
       {...message, detail: {...message.detail, list: {type: "table", style: ""}}},
       {...message, detail: {...message.detail, media: {type: "canvas", attributes: {}}}},
       {...message, detail: {...message.detail, media: {type: "img", attributes: []}}},

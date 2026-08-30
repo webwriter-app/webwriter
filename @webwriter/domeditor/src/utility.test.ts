@@ -383,6 +383,12 @@ describe("isElementSelection", () => {
     expect($.selectedElement).toBeUndefined()
     expect($.isTextSelection).toBe(true)
   })
+  it("does not classify a selected section wrapper as an element", () => {
+    setBody("<section><p>hello</p></section>")
+    $.selectElement(document.querySelector("section")!)
+    expect($.isElementSelection).toBe(false)
+    expect($.selectedElement).toBeUndefined()
+  })
 })
 
 describe("isTextSelection", () => {
@@ -418,6 +424,11 @@ describe("isTextSelection", () => {
     $.move(paragraph, 1)
     expect($.isTextSelection).toBe(true)
     expect($.isGapSelection).toBe(false)
+  })
+  it("treats an inline-like section around text as transparent", () => {
+    setBody("<section>hello</section>")
+    $.selectElement(document.querySelector("section")!)
+    expect($.isTextSelection).toBe(true)
   })
 })
 
@@ -608,6 +619,11 @@ describe("nodesBetween", () => {
     $.selectRange(firstText(), 0, firstText(document.body.lastElementChild), 1)
     expect($.nodesBetween).toEqual([document.body.firstElementChild, document.body.lastElementChild])
   })
+  it("returns section contents instead of selected section wrappers", () => {
+    setBody("<section><p>one</p><p>two</p></section>")
+    $.selectElement(document.querySelector("section")!)
+    expect($.nodesBetween).toEqual(Array.from(document.querySelectorAll("p")))
+  })
 })
 
 describe("elementBefore/elementAfter", () => {
@@ -764,6 +780,12 @@ describe("getContainer()", () => {
     setBody("<p><b><span>hello</span></b></p>")
     expect(getContainer(document.querySelector("span")!.firstChild!)).toBe(document.querySelector("p"))
     expect(getContainer(document.querySelector("b")!)).toBe(document.querySelector("p"))
+  })
+  it("skips stacked section wrappers around structural and inline content", () => {
+    setBody("<section><article><p>hello</p></article></section><aside>inline</aside>")
+    expect(getContainer(document.querySelector("p")!.firstChild!)).toBe(document.querySelector("p"))
+    expect(getContainer(document.querySelector("article")!)).toBe(document.body)
+    expect(getContainer(document.querySelector("aside")!.firstChild!)).toBe(document.body)
   })
 })
 

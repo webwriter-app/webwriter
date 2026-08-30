@@ -32,6 +32,7 @@ import {
   type SelectionChangeDetail,
   type SelectionGap,
   type SelectionPathItem,
+  type SelectionPathSection,
   type SerializedError,
   type VersionHistoryState,
 } from "./editor-bridge"
@@ -41,6 +42,7 @@ import editorStyleString from "./editor.css?raw"
 import * as Y from "yjs"
 import {originalURLAttribute, serializeDoctype} from "./serialization"
 import type {DocumentHeadState} from "./document-head"
+import {getSectionOption, isSectionElement} from "./sections"
 
 const editorStylesheet = createStylesheet(editorStyleString)
 const appendixStylesheet = createStylesheet(`
@@ -608,7 +610,14 @@ export class DOMEditor {
   }
 
   private selectedElementForPath() {
-    return this.features.manipulation.styleTarget ?? document.body
+    const target = this.features.manipulation.styleTarget
+    const selectedSection = this.features.selection.selectedSectionElement
+    if(target !== document.body && target !== selectedSection) return target
+    const selectedElement = $.selectedElement
+    if(selectedElement && selectedElement !== selectedSection) return selectedElement
+    const anchor = document.getSelection()?.anchorNode
+    const rawContainer = anchor instanceof Element ? anchor : anchor?.parentElement
+    return rawContainer && document.body.contains(rawContainer) ? rawContainer : document.body
   }
 
   private pathToElement(element: Element) {
@@ -635,17 +644,30 @@ export class DOMEditor {
     const elements: Element[] = []
     let current: Element | null = element
     while(current && current !== body) {
-      const isTableInternal = current.matches("caption, colgroup, col, thead, tbody, tfoot, tr, td, th")
-      if(!isMarkElement(current) && !isLineBreakElement(current) && !isTableInternal) elements.unshift(current)
+      elements.unshift(current)
       current = current.parentElement
     }
     elements.unshift(body)
 
-    const path: SelectionPathItem[] = elements.map(currentElement => {
+    const sectionPathItem = (section: Element): SelectionPathSection => ({
+      path: this.pathToElement(section),
+      type: section.localName as SelectionPathSection["type"],
+      name: getSectionOption(section.localName as SelectionPathSection["type"]).label,
+      icon: getSectionOption(section.localName as SelectionPathSection["type"]).icon,
+    })
+    const path: SelectionPathItem[] = []
+    let pendingSections: SelectionPathSection[] = []
+    elements.forEach(currentElement => {
+      const isTableInternal = currentElement.matches("caption, colgroup, col, thead, tbody, tfoot, tr, td, th")
+      if(isSectionElement(currentElement)) {
+        pendingSections.push(sectionPathItem(currentElement))
+        return
+      }
+      if(isMarkElement(currentElement) || isLineBreakElement(currentElement) || isTableInternal) return
       const packageItem = globalThis.DOMEDITOR_PACKAGE_ITEMS?.find(item => (
         item.kind === "widget" && item.tag?.toLowerCase() === currentElement.localName
       ))
-      return {
+      path.push({
         path: this.pathToElement(currentElement),
         ...(packageItem
           ? {
@@ -654,8 +676,14 @@ export class DOMEditor {
               ...(packageItem.iconUrl ? {iconUrl: packageItem.iconUrl} : {}),
             }
           : getElementPresentation(currentElement)),
-      }
+        ...(pendingSections.length ? {sections: pendingSections} : {}),
+      })
+      pendingSections = []
     })
+    if(pendingSections.length) {
+      const owner = path.at(-1)
+      if(owner) owner.sections = [...(owner.sections ?? []), ...pendingSections]
+    }
     const gap: SelectionGap | undefined = !this.features.selection.isCaptureSelection
       && !focusedWidget && $.isGapSelection && isElement($.anchor)
       ? {parentPath: this.pathToElement($.anchor), offset: $.anchorOffset}
@@ -665,11 +693,18 @@ export class DOMEditor {
     const form = this.features.form.getState()
     const table = this.features.table.getState()
     const graphic = this.features.graphic.getState()
+    const selectedSection = this.features.selection.selectedSectionElement
+    const canSection = this.features.manipulation.canSectionSelection()
     const detail: SelectionChangeDetail = {
       path,
+      ...(canSection && !path.at(-1)?.path.length ? {canSection: true} : {}),
       ...(inserted ? {inserted: true} : {}),
-      ...($.isElementSelection ? {nodeSelected: true} : {}),
+      ...($.isElementSelection && !selectedSection ? {nodeSelected: true} : {}),
       ...(this.features.selection.isCaptureSelection ? {capture: true} : {}),
+      ...(selectedSection ? {section: {
+        path: this.pathToElement(selectedSection),
+        type: selectedSection.localName as SelectionPathSection["type"],
+      }} : {}),
       ...(gap ? {gap} : {}),
       ...(list.type ? {list} : {}),
       ...(media ? {media} : {}),
@@ -682,6 +717,10 @@ export class DOMEditor {
 
   /** Sends mark availability and active marks as a DOM-derived bridge event. */
   postMarkState() {
+    if(this.features.selection.selectedSectionElement) {
+      this.postBridgeEvent(markStateChangeEvent, {canMark: false, marks: [], styles: {}, attributes: {}})
+      return
+    }
     this.postBridgeEvent(markStateChangeEvent, {
       ...this.features.mark.getState(),
       styles: this.features.mark.getStyleState(),

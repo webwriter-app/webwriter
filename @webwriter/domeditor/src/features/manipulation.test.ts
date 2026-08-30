@@ -18,11 +18,12 @@ function expectBodyToBe(html: string) {
   return expect(editor.toHTML(true)).toEqual(html)
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.restoreAllMocks()
   document.body.innerHTML = ""
   document.body.removeAttribute("style")
   $.selectDocumentStart()
+  await new Promise<void>(resolve => queueMicrotask(resolve))
 })
 
 
@@ -194,8 +195,9 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expect($.anchor).toBe(paragraph?.firstChild)
     expect($.anchorOffset).toBe(1)
 
-    await new Promise(resolve => setTimeout(resolve))
-    expect(editor.doc.body.firstChild?.toString()).toBe("<p>a</p>")
+    await vi.waitFor(() => {
+      expect(editor.doc.body.firstChild?.toString()).toBe("<p>a</p>")
+    })
   })
 
   it("keeps replacement text in a block when the selection spans body children", () => {
@@ -379,6 +381,72 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     editor.features.manipulation.insert(p, true)
     expectBodyToBe("<p>he</p><p>test</p><p>llo world</p>")
   })*/
+})
+
+describe("sections", () => {
+  it("wraps the current structural element in a section by default", () => {
+    document.body.innerHTML = "<p>hello</p>"
+    const text = document.querySelector("p")!.firstChild!
+    $.move(text, 2)
+
+    expect(editor.features.manipulation.actions.toggleSection({type: "toggleSection"})).toBe(true)
+
+    expectBodyToBe("<section><p>hello</p></section>")
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(2)
+  })
+
+  it("changes the active section type without rebuilding its contents or attributes", () => {
+    document.body.innerHTML = '<section class="authored"><p>hello</p></section>'
+    const text = document.querySelector("p")!.firstChild!
+    $.move(text, 2)
+
+    expect(editor.features.manipulation.actions.setSectionType({
+      type: "setSectionType",
+      section: "article",
+    })).toBe(true)
+
+    expectBodyToBe('<article class="authored"><p>hello</p></article>')
+    expect($.anchor).toBe(text)
+  })
+
+  it("splits a section when only one of its elements is toggled off", () => {
+    document.body.innerHTML = "<section><p>one</p><p>two</p><p>three</p></section>"
+    const middle = document.querySelectorAll("p")[1]
+    $.move(middle.firstChild!, 1)
+
+    expect(editor.features.manipulation.actions.toggleSection({type: "toggleSection"})).toBe(true)
+
+    expectBodyToBe("<section><p>one</p></section><p>two</p><section><p>three</p></section>")
+    expect($.anchor).toBe(middle.firstChild)
+  })
+
+  it("stacks a default outer section around a breadcrumb-selected section", () => {
+    document.body.innerHTML = "<article><p>hello</p></article>"
+    $.move(document.querySelector("p")!.firstChild!, 2)
+    editor.features.selection.actions.selectSection({type: "selectSection", path: [0]})
+
+    expect(editor.features.manipulation.actions.addSection({type: "addSection"})).toBe(true)
+
+    expectBodyToBe("<section><article><p>hello</p></article></section>")
+    expect(editor.features.selection.selectedSectionElement?.localName).toBe("article")
+  })
+
+  it("edits and removes empty or inline section wrappers selected from the breadcrumb", () => {
+    document.body.innerHTML = "<section></section><article>inline</article>"
+    $.selectDocumentStart()
+    editor.features.selection.actions.selectSection({type: "selectSection", path: [1]})
+
+    expect(editor.features.manipulation.actions.setSectionType({
+      type: "setSectionType",
+      section: "aside",
+    })).toBe(true)
+    expectBodyToBe("<section></section><aside>inline</aside>")
+
+    editor.features.selection.actions.selectSection({type: "selectSection", path: [0]})
+    expect(editor.features.manipulation.actions.removeSection({type: "removeSection"})).toBe(true)
+    expectBodyToBe("<aside>inline</aside>")
+  })
 })
 describe("Tab paragraph behavior", () => {
   it("indents the paragraph when Tab is pressed at its start", () => {
@@ -1117,14 +1185,15 @@ describe("setStyle()", () => {
 
     expect(paragraph).toHaveStyle({minHeight: "20px"})
   })
-  it("styles the element containing a gap", () => {
+  it("skips a section wrapper when styling the element containing a gap", () => {
     document.body.innerHTML = "<section><p>one</p><p>two</p></section>"
     const section = document.body.firstElementChild!
     $.selectGap(section.lastElementChild!, "before")
 
     editor.features.manipulation.setStyle({display: "grid"})
 
-    expect(section).toHaveStyle({display: "grid"})
+    expect(document.body).toHaveStyle({display: "grid"})
+    expect(section).not.toHaveAttribute("style")
     expect(section.lastElementChild).not.toHaveAttribute("style")
   })
   it("styles the containing element for a same-node text range", () => {
@@ -1147,14 +1216,15 @@ describe("setStyle()", () => {
     expect(paragraph.firstElementChild).not.toHaveAttribute("style")
     expect(paragraph.lastElementChild).not.toHaveAttribute("style")
   })
-  it("styles a structural common ancestor across blocks", () => {
+  it("skips a section wrapper as the structural common ancestor across blocks", () => {
     document.body.innerHTML = "<section><p>one</p><p>two</p></section>"
     const section = document.body.firstElementChild!
     $.selectRange(section.firstElementChild!.firstChild!, 0, section.lastElementChild!.firstChild!, 3)
 
     editor.features.manipulation.setStyle({"background-color": "gold"})
 
-    expect(section).toHaveStyle({backgroundColor: "gold"})
+    expect(document.body).toHaveStyle({backgroundColor: "gold"})
+    expect(section).not.toHaveAttribute("style")
     expect(section.firstElementChild).not.toHaveAttribute("style")
   })
   it("applies paragraph styles to every selected block instead of their common ancestor", () => {
@@ -1197,8 +1267,19 @@ describe("setStyle()", () => {
 
     const state = editor.features.manipulation.getStyleState(["text-align"])
 
-    expect(state.target?.localName).toBe("section")
+    expect(state.target?.localName).toBe("body")
     expect(state.inline["text-align"]).toEqual({value: "center", priority: ""})
+  })
+  it("styles a section after it is explicitly selected from the breadcrumb", () => {
+    document.body.innerHTML = "<section><p>one</p></section>"
+    const section = document.querySelector("section")!
+    $.move(document.querySelector("p")!.firstChild!, 1)
+    editor.features.selection.actions.selectSection({type: "selectSection", path: [0]})
+
+    editor.features.manipulation.setStyle({display: "grid"})
+
+    expect(section).toHaveStyle({display: "grid"})
+    expect(document.body).not.toHaveStyle({display: "grid"})
   })
   it("reports a mixed paragraph declaration as unset", () => {
     document.body.innerHTML = '<section><p style="text-align: start">one</p><p style="text-align: end">two</p></section>'

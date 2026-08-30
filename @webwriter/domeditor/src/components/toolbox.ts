@@ -291,6 +291,7 @@ export class DomEditorToolbox extends AppRibbon {
   selectionPath: SelectionPathItem[] = []
 
   private get editTypeLabel() {
+    if(this.sectionSelected) return "Section"
     if(this.graphic?.active) return "Graphic"
     if(this.table?.active) return "Table"
     if(this.form) return this.form.type === "input" ? "Input" : this.form.type === "textarea" ? "Text area" : "Form"
@@ -306,9 +307,11 @@ export class DomEditorToolbox extends AppRibbon {
     if(this.activeTool === "Develop") return menuGroups.Develop
     if(this.activeTool === "Edit") {
       const groups = menuGroups.Edit.filter(group => ![
-        "Marks", "Comments", "Review", "View",
+        "Marks", "Section", "Comments", "Review", "View",
       ].includes(group.label))
-      return this.graphic?.active
+      return this.sectionSelected
+        ? menuGroups.Edit.filter(group => group.label === "Section")
+        : this.graphic?.active
         ? groups.filter(group => group.label === "Graphic")
         : this.form
           ? groups.filter(group => group.label === "Form")

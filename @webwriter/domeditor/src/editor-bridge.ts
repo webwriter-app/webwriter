@@ -13,6 +13,7 @@ import type {TableSelectionState} from "./table"
 import {isGraphicShapeType, type GraphicSelectionState} from "./graphic"
 import type {DocumentHeadElementState, DocumentHeadState} from "./document-head"
 import {isFormElementType, type FormSelectionState} from "./form"
+import {isSectionName, type SectionName} from "./sections"
 
 export const executeCompleteEvent = "dom-editor-execute-complete"
 export const executeFailureEvent = "dom-editor-execute-failure"
@@ -123,6 +124,24 @@ export type SelectionPathItem = {
   icon?: string
   /** An optional package-provided icon displayed instead of the shared icon. */
   iconUrl?: string
+  /** Transparent section wrappers applying to this structural element. */
+  sections?: SelectionPathSection[]
+}
+
+export type SelectionPathSection = {
+  /** The child-node path from BODY to the section wrapper. */
+  path: number[]
+  /** The wrapper's semantic HTML element type. */
+  type: SectionName
+  /** The human-readable type shown beside the element name. */
+  name: string
+  /** The key used by the shared icon renderer. */
+  icon?: string
+}
+
+export type SectionSelectionState = {
+  path: number[]
+  type: SectionName
 }
 
 export type SelectionGap = {
@@ -185,6 +204,8 @@ export type ListSelectionState = {
 
 export type SelectionChangeDetail = {
   path: SelectionPathItem[]
+  /** True when a structural selection can be wrapped even if its common path is BODY. */
+  canSection?: boolean
   /** True only for the selection update emitted by a local insertion command. */
   inserted?: boolean
   /** True when the current selection is an element/node selection. */
@@ -197,6 +218,8 @@ export type SelectionChangeDetail = {
   form?: FormSelectionState
   table?: TableSelectionState
   graphic?: GraphicSelectionState
+  /** Present only when a section was explicitly selected from the breadcrumb. */
+  section?: SectionSelectionState
 }
 
 export type SelectionChangeMessage = {
@@ -413,11 +436,30 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
       && typeof pathItem.name === "string"
       && (pathItem.icon === undefined || typeof pathItem.icon === "string")
       && (pathItem.iconUrl === undefined || typeof pathItem.iconUrl === "string")
+      && (pathItem.sections === undefined || Array.isArray(pathItem.sections)
+        && pathItem.sections.every(section => !!section
+          && typeof section === "object"
+          && Array.isArray(section.path)
+          && section.path.every(index => Number.isInteger(index) && index >= 0)
+          && isSectionName(section.type)
+          && typeof section.name === "string"
+          && (section.icon === undefined || typeof section.icon === "string")))
   })) return false
 
   if(message.detail.nodeSelected !== undefined && typeof message.detail.nodeSelected !== "boolean") return false
   if(message.detail.capture !== undefined && typeof message.detail.capture !== "boolean") return false
   if(message.detail.inserted !== undefined && typeof message.detail.inserted !== "boolean") return false
+  if(message.detail.canSection !== undefined && typeof message.detail.canSection !== "boolean") return false
+
+  const section = message.detail.section as Partial<SectionSelectionState> | null | undefined
+  const sectionIsValid = section === undefined || (
+    !!section
+    && typeof section === "object"
+    && Array.isArray(section.path)
+    && section.path.every(index => Number.isInteger(index) && index >= 0)
+    && isSectionName(section.type)
+  )
+  if(!sectionIsValid) return false
 
   const gap = message.detail.gap as Partial<SelectionGap> | null | undefined
   const gapIsValid = gap === undefined || (

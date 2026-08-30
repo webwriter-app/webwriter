@@ -63,6 +63,7 @@ import {
   type ExecuteFailureDetail,
   type SelectionGap,
   type SelectionPathItem,
+  type SelectionPathSection,
   type PresenceUser,
   type ListType,
   type InitializeEditorMessage,
@@ -78,6 +79,7 @@ import "./ribbon"
 import "./live-session-controls"
 import "./live-session-overlay"
 import {restoreOriginalResourceURLs, serializeDoctype} from "../serialization"
+import {getSectionOption, isSectionElement, isSectionName, type SectionName} from "../sections"
 import {userInitials} from "../user-identity"
 import {
   loadLocalPackage,
@@ -276,6 +278,11 @@ export class DomEditor extends LitElement {
     documentTree: {attribute: false, state: true},
     treeViewOpen: {attribute: false, state: true},
     canMark: {attribute: false, state: true},
+    canSection: {attribute: false, state: true},
+    sectionType: {attribute: false, state: true},
+    sectionActive: {attribute: false, state: true},
+    sectionSelected: {attribute: false, state: true},
+    selectedSectionPath: {attribute: false, state: true},
     marks: {attribute: false, state: true},
     markStyles: {attribute: false, state: true},
     markAttributes: {attribute: false, state: true},
@@ -340,6 +347,11 @@ export class DomEditor extends LitElement {
   private selectionGap: SelectionGap | null = null
   private documentTree: DocumentTreeItem | null = null
   private canMark = false
+  private canSection = false
+  private sectionType: SectionName = "section"
+  private sectionActive = false
+  private sectionSelected = false
+  private selectedSectionPath: number[] | null = null
   private marks: MarkName[] = []
   private markStyles: StyleMarkValues = {}
   private markAttributes: MarkAttributeValues = {}
@@ -2257,6 +2269,18 @@ export class DomEditor extends LitElement {
       void this.execute({type: "removeMarks"}).finally(() => this.focusEditor())
       return
     }
+    if(label === "toggle-section") {
+      void this.execute({type: "toggleSection", section: this.sectionType}).finally(() => this.focusEditor())
+      return
+    }
+    if(label === "section-add") {
+      void this.execute({type: "addSection", section: "section"}).finally(() => this.focusEditor())
+      return
+    }
+    if(label === "section-remove") {
+      void this.execute({type: "removeSection"}).finally(() => this.focusEditor())
+      return
+    }
     if(label === "increaseFontSize" || label === "decreaseFontSize") {
       void this.execute({type: label}).finally(() => this.focusEditor())
       return
@@ -2881,6 +2905,15 @@ export class DomEditor extends LitElement {
     }).finally(() => this.focusEditor())
   }
 
+  private handleSectionTypeChange = (event: Event) => {
+    const section = (event as CustomEvent<{section?: unknown}>).detail?.section
+    if(!isSectionName(section)) {
+      this.focusEditor()
+      return
+    }
+    void this.execute({type: "setSectionType", section}).finally(() => this.focusEditor())
+  }
+
   private handleCommentAction = (event: Event) => {
     const detail = (event as CustomEvent<{action?: unknown, text?: unknown, enabled?: unknown}>).detail
     if(!detail || typeof detail.action !== "string") return
@@ -3063,6 +3096,15 @@ export class DomEditor extends LitElement {
     }).finally(() => this.focusEditor())
   }
 
+  private handleBreadcrumbSectionSelect = (event: Event) => {
+    const section = (event as CustomEvent<SelectionPathSection>).detail
+    if(!section || !Array.isArray(section.path)) return
+
+    void this.execute({type: "selectSection", path: [...section.path]}).then(() => {
+      this.openEditToolbox()
+    }).finally(() => this.focusEditor())
+  }
+
   private handleBreadcrumbItemHover = (event: Event) => {
     const item = (event as CustomEvent<SelectionPathItem | null>).detail
     const path = item && Array.isArray(item.path) ? [...item.path] : null
@@ -3076,26 +3118,67 @@ export class DomEditor extends LitElement {
     })
   }
 
+  private handleBreadcrumbSectionHover = (event: Event) => {
+    const section = (event as CustomEvent<SelectionPathSection | null>).detail
+    const path = section && Array.isArray(section.path) ? [...section.path] : null
+    this.breadcrumbHoverPath = path
+    void this.execute({type: "hoverSection", path}).catch(() => {
+      // Hover is best-effort; the editor may be unloading while the pointer
+      // leaves the breadcrumb.
+    })
+  }
+
   private buildDocumentTree() {
     const body = this.editorDocument?.body
     if(!body) return null
 
-    const buildChildren = (element: Element, path: number[]): DocumentTreeItem[] =>
-      Array.from(element.childNodes).flatMap((child, index) => {
-        if(child.nodeType !== Node.ELEMENT_NODE) return []
-        const childElement = child as Element
-        if(childElement.matches("source")
-          || childElement.matches("img") && childElement.closest("picture")
-          || isLineBreakElement(childElement)) return []
-        const childPath = [...path, index]
-        return isMarkElement(childElement)? buildChildren(childElement, childPath): [build(childElement, childPath)]
-      })
-
-    const build = (element: Element, path: number[]): DocumentTreeItem => ({
+    const sectionItem = (element: Element, path: number[]): SelectionPathSection => ({
       path: [...path],
-      ...this.elementPresentation(element),
-      children: element.matches("table") ? [] : buildChildren(element, path),
+      type: element.localName as SectionName,
+      name: getSectionOption(element.localName as SectionName).label,
+      icon: getSectionOption(element.localName as SectionName).icon,
     })
+    const addSections = (item: DocumentTreeItem, sections: SelectionPathSection[]) => {
+      const existing = item.sections ?? []
+      const paths = new Set(existing.map(section => section.path.join(".")))
+      const added = sections.filter(section => !paths.has(section.path.join(".")))
+      if(added.length) item.sections = [...existing, ...added]
+    }
+    const build = (element: Element, path: number[], sections: SelectionPathSection[] = []): DocumentTreeItem => {
+      const item: DocumentTreeItem = {
+        path: [...path],
+        ...this.elementPresentation(element),
+        ...(sections.length ? {sections: sections.map(section => ({...section, path: [...section.path]}))} : {}),
+        children: [],
+      }
+      if(element.matches("table")) return item
+
+      const appendChildren = (container: Element, containerPath: number[], inherited: SelectionPathSection[]) => {
+        Array.from(container.childNodes).forEach((child, index) => {
+          if(child.nodeType !== Node.ELEMENT_NODE) return
+          const childElement = child as Element
+          if(childElement.matches("source")
+            || childElement.matches("img") && childElement.closest("picture")
+            || isLineBreakElement(childElement)) return
+          const childPath = [...containerPath, index]
+          if(isMarkElement(childElement)) {
+            appendChildren(childElement, childPath, inherited)
+            return
+          }
+          if(isSectionElement(childElement)) {
+            const currentSection = sectionItem(childElement, childPath)
+            const nextSections = [...inherited, currentSection]
+            const childCount = item.children.length
+            appendChildren(childElement, childPath, nextSections)
+            if(item.children.length === childCount) addSections(item, [currentSection])
+            return
+          }
+          item.children.push(build(childElement, childPath, inherited))
+        })
+      }
+      appendChildren(element, path, [])
+      return item
+    }
 
     return build(body, [])
   }
@@ -3308,19 +3391,32 @@ export class DomEditor extends LitElement {
       const path = event.data.detail.path.map(item => ({
         ...item,
         path: [...item.path],
+        ...(item.sections ? {sections: item.sections.map(section => ({
+          ...section,
+          path: [...section.path],
+        }))} : {}),
       }))
       const gap = event.data.detail.gap
       const selectionGap = gap
         ? {parentPath: [...gap.parentPath], offset: gap.offset}
         : null
       this.selectionPath = path
+      const selectedSection = event.data.detail.section
+      const activeSection = path.flatMap(item => item.sections ?? []).at(-1)
+      this.sectionSelected = selectedSection !== undefined
+      this.selectedSectionPath = selectedSection ? [...selectedSection.path] : null
+      this.sectionActive = selectedSection !== undefined || activeSection !== undefined
+      this.sectionType = selectedSection?.type ?? activeSection?.type ?? "section"
+      this.canSection = event.data.detail.canSection === true
+        || this.sectionSelected
+        || Boolean(path.at(-1)?.path.length)
       this.nodeSelection = event.data.detail.nodeSelected === true || event.data.detail.capture === true
       this.captureSelection = event.data.detail.capture === true
       this.selectionGap = selectionGap
       // A node or gap selection cannot simultaneously be a markable text
       // selection. Clear the independently delivered mark state immediately
       // so rendering never applies both selection kinds.
-      if(this.nodeSelection || this.selectionGap || event.data.detail.table?.cellSelection) {
+      if(this.nodeSelection || this.sectionSelected || this.selectionGap || event.data.detail.table?.cellSelection) {
         this.canMark = false
         this.marks = []
         this.markStyles = {}
@@ -3348,6 +3444,7 @@ export class DomEditor extends LitElement {
       const hasContextualEditOptions = this.tableSelection?.active === true
         || this.graphicSelection?.active === true
         || this.formSelection !== null
+        || this.sectionSelected
         || path.at(-1)?.icon === "Packages"
       if(event.data.detail.inserted === true && hasContextualEditOptions) this.openEditToolbox()
       this.documentTree = this.buildDocumentTree()
@@ -3355,6 +3452,7 @@ export class DomEditor extends LitElement {
       this.dispatchEvent(new CustomEvent(selectionChangeEvent, {
         detail: {
           path,
+          ...(event.data.detail.canSection === true ? {canSection: true} : {}),
           ...(event.data.detail.inserted === true ? {inserted: true} : {}),
           ...(this.nodeSelection ? {nodeSelected: true} : {}),
           ...(this.captureSelection ? {capture: true} : {}),
@@ -3364,6 +3462,10 @@ export class DomEditor extends LitElement {
           ...(this.formSelection ? {form: this.formSelection} : {}),
           ...(this.tableSelection ? {table: this.tableSelection} : {}),
           ...(this.graphicSelection ? {graphic: this.graphicSelection} : {}),
+          ...(selectedSection ? {section: {
+            path: [...selectedSection.path],
+            type: selectedSection.type,
+          }} : {}),
         },
         bubbles: true,
         composed: true,
@@ -3619,6 +3721,11 @@ export class DomEditor extends LitElement {
     this.captureSelection = false
     this.selectionGap = null
     this.canMark = false
+    this.canSection = false
+    this.sectionType = "section"
+    this.sectionActive = false
+    this.sectionSelected = false
+    this.selectedSectionPath = null
     this.marks = []
     this.markStyles = {}
     this.markAttributes = {}
@@ -3664,6 +3771,10 @@ export class DomEditor extends LitElement {
         <app-ribbon
           logo-url=${appIconUrl}
           .canMark=${this.canMark}
+          .canSection=${this.canSection}
+          .sectionType=${this.sectionType}
+          .sectionActive=${this.sectionActive}
+          .sectionSelected=${this.sectionSelected}
           .marks=${this.marks}
           .markStyles=${this.markStyles}
           .markAttributes=${this.markAttributes}
@@ -3706,6 +3817,7 @@ export class DomEditor extends LitElement {
           @backend-login-request=${this.loginToBackend}
           @backend-admin-request=${this.openBackendAdmin}
           @ribbon-combobox-change=${this.handleRibbonComboboxChange}
+          @section-type-change=${this.handleSectionTypeChange}
           @mark-attribute-change=${this.handleMarkAttributeChange}
           @comment-action=${this.handleCommentAction}
           @media-attribute-change=${this.handleMediaAttributeChange}
@@ -3750,10 +3862,13 @@ export class DomEditor extends LitElement {
             .nodeSelected=${this.nodeSelection}
             .capture=${this.captureSelection}
             .gap=${this.selectionGap}
+            .selectedSectionPath=${this.selectedSectionPath}
             .tree=${this.documentTree}
             @breadcrumb-tree-toggle=${this.handleBreadcrumbTreeToggle}
             @breadcrumb-item-select=${this.handleBreadcrumbItemSelect}
             @breadcrumb-item-hover=${this.handleBreadcrumbItemHover}
+            @breadcrumb-section-select=${this.handleBreadcrumbSectionSelect}
+            @breadcrumb-section-hover=${this.handleBreadcrumbSectionHover}
           ></dom-editor-breadcrumb>
         `}
       </header>
@@ -3788,6 +3903,10 @@ export class DomEditor extends LitElement {
       </div>
       <dom-editor-toolbox
         .canMark=${this.canMark}
+        .canSection=${this.canSection}
+        .sectionType=${this.sectionType}
+        .sectionActive=${this.sectionActive}
+        .sectionSelected=${this.sectionSelected}
         .marks=${this.marks}
         .markStyles=${this.markStyles}
         .markAttributes=${this.markAttributes}
@@ -3808,6 +3927,7 @@ export class DomEditor extends LitElement {
         ?hidden=${this.previewActive || this.liveSessionActive}
         @ribbon-button-click=${this.handleRibbonButtonClick}
         @ribbon-combobox-change=${this.handleRibbonComboboxChange}
+        @section-type-change=${this.handleSectionTypeChange}
         @mark-attribute-change=${this.handleMarkAttributeChange}
         @comment-action=${this.handleCommentAction}
         @form-attribute-change=${this.handleFormAttributeChange}

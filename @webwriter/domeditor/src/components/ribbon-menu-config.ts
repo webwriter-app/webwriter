@@ -106,7 +106,6 @@ export const listInsertionOptions: RibbonMenuButton[] = [
 ]
 
 const mediaInsertionSubmenuTags = (tag: string): readonly string[] | undefined => {
-  if(tag === "section") return sectionInsertionTags
   if(tag === "script") return scriptInsertionTags
 }
 
@@ -166,6 +165,9 @@ const insertionMenuButtons = (sections: readonly InsertionSection[]) => insertio
       } satisfies RibbonMenuButton]
     }
     if(item.section === "Text" && headingInsertionTags.includes(item.tag as typeof headingInsertionTags[number])) return []
+    if(item.section === "Media" && item.tag === "section") {
+      return [{label: item.name, action: "toggle-section", icon: item.icon ?? item.name}]
+    }
     const mediaSubmenuTags = item.section === "Media" ? mediaInsertionSubmenuTags(item.tag) : undefined
     if(mediaSubmenuTags) {
       return [{
@@ -237,6 +239,7 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
   ],
   Edit: [
     {label: "Marks", buttons: []},
+    {label: "Section", buttons: []},
     {label: "Form", buttons: []},
     {label: "Table", buttons: []},
     {label: "Graphic", buttons: []},

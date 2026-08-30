@@ -2,6 +2,7 @@ import { Schema } from "./schema"
 import {isMarkElement} from "./marks"
 import {mediaElementSelector} from "./media"
 import {formControlSelector, formInteractionSelector} from "./form"
+import {isSectionElement} from "./sections"
 
 export function createStylesheet(content: string) {
   const stylesheet = new CSSStyleSheet()
@@ -311,7 +312,7 @@ export class EditingSelection {
       [this.anchor.childNodes.item(this.anchorOffset - 1), this.anchor.childNodes.item(this.anchorOffset)]
         .some(node => isElement(node) && node.matches("ul, ol, dl, menu"))
     const isInsideTable = isElement(this.anchor) && Boolean(this.anchor.closest("table"))
-    return isElement(this.anchor) && !isInsideTable && this.isEmpty && !this.isEmptySelection &&
+    return isElement(this.anchor) && !isSectionElement(this.anchor) && !isInsideTable && this.isEmpty && !this.isEmptySelection &&
       (!Array.from(this.anchor.childNodes).some(node => (isText(node) && Boolean(node.textContent?.trim())) || isMarkElement(node))
         || isBodyBoundaryBeforeFirstElement
         || isNestedListBoundary)
@@ -322,7 +323,8 @@ export class EditingSelection {
   static get isElementSelection() {
     if(!isElement(this.anchor) || Math.abs(this.#selection.anchorOffset - this.#selection.focusOffset) !== 1) return false
     const index = Math.min(this.#selection.anchorOffset, this.#selection.focusOffset)
-    return isElement(this.anchor.childNodes.item(index)) && !isMarkElement(this.anchor.childNodes.item(index))
+    const selected = this.anchor.childNodes.item(index)
+    return isElement(selected) && !isMarkElement(selected) && !isSectionElement(selected)
   }
 
   /** Whether the selection consists only of text and mark wrappers within one
@@ -331,6 +333,7 @@ export class EditingSelection {
     if(this.isEmptySelection || this.isElementSelection) return false
     if(this.isEmpty) {
       if(this.anchor instanceof Text || isMarkElement(this.anchor)) return true
+      if(isSectionElement(this.anchor)) return false
       if(isElement(this.anchor)) {
         return [
           this.anchor.childNodes.item(this.anchorOffset - 1),
@@ -341,12 +344,21 @@ export class EditingSelection {
     }
     const fragment = this.range.cloneContents()
     return Boolean(fragment.textContent)
-      && !Array.from(fragment.querySelectorAll("*")).some(element => !isMarkElement(element))
+      && !Array.from(fragment.querySelectorAll("*")).some(element => (
+        !isMarkElement(element) && !isSectionElement(element)
+      ))
   }
 
   /** Whether the caret is at offset 0 of a container that has no content (no children, or a single empty text node). */
   static get isEmptySelection() {
-    return  this.anchor && (getContainer(this.anchor).childNodes.length === 0 || getContainer(this.anchor).childNodes.length === 1 && getContainer(this.anchor).childNodes.item(0) instanceof Text && !getContainer(this.anchor).childNodes.item(0).textContent) && this.anchorOffset === 0
+    const anchor = this.anchor
+    const container = anchor ? getContainer(anchor) : null
+    return Boolean(container
+      && (container.childNodes.length === 0
+        || container.childNodes.length === 1
+          && container.childNodes.item(0) instanceof Text
+          && !container.childNodes.item(0)?.textContent)
+      && this.anchorOffset === 0)
   }
 
   /** Whether anchor and focus are different nodes. */
@@ -455,7 +467,12 @@ export class EditingSelection {
   else if(this.isTextSelection) {
     return []
   }
-  return this.siblings.filter(node => this.range.intersectsNode(node))
+  const flattenSections = (node: Node): Node[] => isSectionElement(node)
+    ? Array.from(node.childNodes).flatMap(flattenSections)
+    : [node]
+  return this.siblings
+    .filter(node => this.range.intersectsNode(node))
+    .flatMap(flattenSections)
   }
 
   /** The element adjacent to the selection: the selected element's sibling, the element beside a gap, or the text container's sibling. Undefined for other selection kinds. */
@@ -576,11 +593,11 @@ export class EditingSelection {
 export const $ = EditingSelection
 
 
-/** The nearest non-mark element containing the node (the node itself when it
- * is already a non-mark element). */
+/** The nearest structural editing element containing the node. Inline marks
+ * and semantic section wrappers are transparent to ordinary selection. */
 export function getContainer(node: Node) {
   let element = node?.nodeType === Node.TEXT_NODE? node.parentElement: node as Element
-  while(element && isMarkElement(element)) element = element.parentElement
+  while(element && (isMarkElement(element) || isSectionElement(element))) element = element.parentElement
   return element!
 }
 
@@ -607,7 +624,7 @@ export function getSidesOfPoint(point: Range) {
 /** The nearest block-level ancestor of the selection anchor, or null. */
 export function getSelectionAnchorBlock(schema: Schema) {
   let node = $.anchor
-  while(node && !schema.isBlock(node)) {
+  while(node && (!schema.isBlock(node) || isSectionElement(node))) {
     node = node.parentElement
   }
   return node
@@ -616,7 +633,7 @@ export function getSelectionAnchorBlock(schema: Schema) {
 /** The nearest block-level ancestor of the selection focus, or null. */
 export function getSelectionFocusBlock(schema: Schema) {
   let node = $.focus
-  while(node && !schema.isBlock(node)) {
+  while(node && (!schema.isBlock(node) || isSectionElement(node))) {
     node = node.parentElement
   }
   return node

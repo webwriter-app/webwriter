@@ -9,6 +9,7 @@ import {
   type ElementStyleState,
 } from "../editor-bridge"
 import {paragraphStylePropertyNameSet} from "../element-styles"
+import {isSectionElement, isSectionName, type SectionName} from "../sections"
 
 /** Unit by which a collapsed selection is extended before deleting. */
 type Granularity = "character" | "word" | "line" | "block"
@@ -59,6 +60,262 @@ function isCaretAtBoundary(element: Element, boundary: "start" | "end") {
  * on the current selection (see `EditingSelection`/`$`). */
 export class ManipulationFeature extends EditorFeature {
 
+  /** Resolves the structural elements to which a section command applies.
+   * Section wrappers themselves remain transparent here; explicitly selected
+   * wrappers are handled by the toolbox-specific commands below. */
+  private selectedSectionTargets() {
+    const selected = $.selectedElement
+
+    const selection = document.getSelection()
+    if(!selection?.rangeCount || !selection.anchorNode || !selection.focusNode
+      || !selection.anchorNode.isConnected || !selection.focusNode.isConnected) return []
+    const nearestSection = (node: Node) => {
+      let element = node instanceof Element ? node : node.parentElement
+      while(element && element !== document.body) {
+        if(isSectionElement(element)) return element
+        element = element.parentElement
+      }
+      return null
+    }
+    const activeSection = nearestSection(selection.anchorNode)
+    if(selected && selected !== document.body && !isSectionElement(selected)) {
+      if(activeSection?.contains(selected)) {
+        let directChild: Element = selected
+        while(directChild.parentElement && directChild.parentElement !== activeSection) {
+          directChild = directChild.parentElement
+        }
+        if(directChild.parentElement === activeSection && !isSectionElement(directChild)) return [directChild]
+      }
+      return [selected]
+    }
+    if(activeSection && activeSection.contains(selection.focusNode)) {
+      const directChild = (node: Node) => {
+        let child: Node = node
+        while(child.parentNode && child.parentNode !== activeSection) child = child.parentNode
+        return child.parentNode === activeSection ? child : null
+      }
+      const anchorChild = directChild(selection.anchorNode)
+      const focusChild = directChild(selection.focusNode)
+      if(anchorChild && focusChild) {
+        const children = Array.from(activeSection.childNodes)
+        const anchorIndex = children.indexOf(anchorChild as ChildNode)
+        const focusIndex = children.indexOf(focusChild as ChildNode)
+        const first = Math.min(anchorIndex, focusIndex)
+        const last = Math.max(anchorIndex, focusIndex)
+        const targets = children.slice(first, last + 1).filter((node): node is Element => (
+          node instanceof Element && !isSectionElement(node) && !isMarkElement(node)
+        ))
+        if(targets.length) return targets
+      }
+    }
+    if(selection.isCollapsed || $.isTextSelection || $.isEmptySelection) {
+      const container = getContainer(selection.anchorNode)
+      return container && container !== document.body ? [container] : []
+    }
+
+    const range = selection.getRangeAt(0)
+    let container = range.commonAncestorContainer instanceof Element
+      ? range.commonAncestorContainer
+      : range.commonAncestorContainer.parentElement
+    while(container && isMarkElement(container)) container = container.parentElement
+    if(!container || container === document.body && !range.intersectsNode(document.body)) return []
+    if(!isSectionElement(container) && container !== document.body) return [container]
+
+    const targets = Array.from(container.childNodes).flatMap(node => {
+      if(!(node instanceof Element)) return []
+      const flatten = (element: Element): Element[] => isMarkElement(element) || isSectionElement(element)
+        ? Array.from(element.children).flatMap(flatten)
+        : [element]
+      try {
+        return range.intersectsNode(node) ? flatten(node) : []
+      }
+      catch {
+        return []
+      }
+    })
+    const parent = targets[0]?.parentElement
+    return parent && targets.every(target => target.parentElement === parent) ? targets : []
+  }
+
+  canSectionSelection() {
+    return this.editor.features.selection.selectedSectionElement !== null
+      || this.selectedSectionTargets().length > 0
+  }
+
+  private assertSectionName(section: string): asserts section is SectionName {
+    if(!isSectionName(section)) throw new TypeError(`Unsupported section type '${section}'`)
+  }
+
+  private sectionNodes(targets: Element[]) {
+    const parent = targets[0]?.parentElement
+    if(!parent || !targets.length || !targets.every(target => target.parentElement === parent)) return null
+    const children = Array.from(parent.childNodes)
+    const indexes = targets.map(target => children.indexOf(target)).sort((first, second) => first - second)
+    if(indexes.some(index => index < 0)) return null
+    const first = indexes[0]
+    const last = indexes.at(-1)!
+    if(targets.some(target => {
+      const index = children.indexOf(target)
+      return index < first || index > last
+    })) return null
+    return {parent, nodes: children.slice(first, last + 1), first, last}
+  }
+
+  private canReplaceWithSection(parent: Element, first: number, last: number, section: Element) {
+    const children = Array.from(parent.childNodes)
+    const proposed = [...children]
+    proposed.splice(first, last - first + 1, section)
+    return this.editor.schema.isContentValid(section)
+      && this.editor.schema.isContentValid(parent, proposed)
+  }
+
+  private wrapTargetsInSection(targets: Element[], type: SectionName) {
+    const context = this.sectionNodes(targets)
+    if(!context) return null
+    const section = document.createElement(type)
+    context.nodes.forEach(node => section.append(node.cloneNode(true)))
+    if(!this.canReplaceWithSection(context.parent, context.first, context.last, section)) return null
+
+    const liveSection = document.createElement(type)
+    context.nodes[0].before(liveSection)
+    liveSection.append(...context.nodes)
+    return liveSection
+  }
+
+  private replaceSectionType(section: Element, type: SectionName) {
+    if(section.localName === type) return section
+    const parent = section.parentElement
+    if(!parent) return null
+    const replacement = document.createElement(type)
+    Array.from(section.attributes).forEach(attribute => replacement.setAttribute(attribute.name, attribute.value))
+    Array.from(section.childNodes).forEach(node => replacement.append(node.cloneNode(true)))
+    const index = Array.from(parent.childNodes).indexOf(section)
+    if(index < 0 || !this.canReplaceWithSection(parent, index, index, replacement)) return null
+
+    const liveReplacement = document.createElement(type)
+    Array.from(section.attributes).forEach(attribute => liveReplacement.setAttribute(attribute.name, attribute.value))
+    liveReplacement.append(...Array.from(section.childNodes))
+    section.replaceWith(liveReplacement)
+    this.editor.features.selection.replaceSelectedSection(section, liveReplacement)
+    return liveReplacement
+  }
+
+  private canUnwrapSection(section: Element) {
+    const parent = section.parentElement
+    if(!parent) return false
+    const children = Array.from(parent.childNodes)
+    const index = children.indexOf(section)
+    if(index < 0) return false
+    const proposed = [...children]
+    proposed.splice(index, 1, ...Array.from(section.childNodes))
+    return this.editor.schema.isContentValid(parent, proposed)
+  }
+
+  private unwrapSection(section: Element) {
+    if(!isSectionElement(section) || !this.canUnwrapSection(section)) return false
+    const wasSelected = this.editor.features.selection.selectedSectionElement === section
+    this.editor.features.selection.clearSelectedSection(section)
+    section.replaceWith(...Array.from(section.childNodes))
+    if(wasSelected) {
+      this.editor.features.selection.processSelection()
+      this.editor.postMarkState()
+    }
+    return true
+  }
+
+  private directSectionForTargets(targets: Element[]) {
+    const parent = targets[0]?.parentElement
+    return parent && isSectionElement(parent) && targets.every(target => target.parentElement === parent)
+      ? parent
+      : null
+  }
+
+  /** Toggles the nearest section wrapper around the selected structural
+   * elements. Adding defaults to SECTION; removing splits an existing wrapper
+   * when only some of its direct children are targeted. */
+  toggleSection(type: SectionName = "section") {
+    this.assertSectionName(type)
+    const explicitlySelected = this.editor.features.selection.selectedSectionElement
+    if(explicitlySelected) return this.unwrapSection(explicitlySelected)
+    const targets = this.selectedSectionTargets()
+    if(!targets.length) return false
+    const active = this.directSectionForTargets(targets)
+    if(!active) return Boolean(this.wrapTargetsInSection(targets, type))
+
+    const context = this.sectionNodes(targets)
+    if(!context) return false
+    const sectionChildren = Array.from(active.childNodes)
+    const first = sectionChildren.indexOf(context.nodes[0])
+    const last = sectionChildren.indexOf(context.nodes.at(-1)!)
+    if(first < 0 || last < first) return false
+    if(first === 0 && last === sectionChildren.length - 1) return this.unwrapSection(active)
+
+    const parent = active.parentElement
+    if(!parent) return false
+    const replacements: ChildNode[] = []
+    const left = sectionChildren.slice(0, first)
+    const middle = sectionChildren.slice(first, last + 1)
+    const right = sectionChildren.slice(last + 1)
+    if(left.length) {
+      const wrapper = active.cloneNode(false) as Element
+      wrapper.append(...left.map(node => node.cloneNode(true)))
+      replacements.push(wrapper)
+    }
+    replacements.push(...middle.map(node => node.cloneNode(true) as ChildNode))
+    if(right.length) {
+      const wrapper = active.cloneNode(false) as Element
+      wrapper.append(...right.map(node => node.cloneNode(true)))
+      replacements.push(wrapper)
+    }
+    const siblings = Array.from(parent.childNodes)
+    const activeIndex = siblings.indexOf(active)
+    const proposed = [...siblings]
+    proposed.splice(activeIndex, 1, ...replacements)
+    if(!this.editor.schema.isContentValid(parent, proposed)) return false
+
+    const liveReplacements: ChildNode[] = []
+    if(left.length) {
+      const wrapper = active.cloneNode(false) as Element
+      wrapper.append(...left)
+      liveReplacements.push(wrapper)
+    }
+    liveReplacements.push(...middle)
+    if(right.length) {
+      const wrapper = active.cloneNode(false) as Element
+      wrapper.append(...right)
+      liveReplacements.push(wrapper)
+    }
+    active.replaceWith(...liveReplacements)
+    return true
+  }
+
+  /** Applies a chosen type, converting the nearest active wrapper or adding a
+   * new wrapper when the target is not sectioned yet. */
+  setSectionType(type: SectionName) {
+    this.assertSectionName(type)
+    const explicitlySelected = this.editor.features.selection.selectedSectionElement
+    if(explicitlySelected) return Boolean(this.replaceSectionType(explicitlySelected, type))
+    const targets = this.selectedSectionTargets()
+    if(!targets.length) return false
+    const active = this.directSectionForTargets(targets)
+    return active
+      ? Boolean(this.replaceSectionType(active, type))
+      : Boolean(this.wrapTargetsInSection(targets, type))
+  }
+
+  /** Adds another layer even when the target already has a section wrapper. */
+  addSection(type: SectionName = "section") {
+    this.assertSectionName(type)
+    const selected = this.editor.features.selection.selectedSectionElement
+    return Boolean(this.wrapTargetsInSection(selected ? [selected] : this.selectedSectionTargets(), type))
+  }
+
+  removeSection() {
+    const selected = this.editor.features.selection.selectedSectionElement
+      ?? this.directSectionForTargets(this.selectedSectionTargets())
+    return selected ? this.unwrapSection(selected) : false
+  }
+
   /** The single connected authored element targeted by element-style commands.
    * Resolve this immediately before every read or mutation: retained selection
    * endpoints may have been replaced by native, widget, or remote DOM edits.
@@ -76,6 +333,9 @@ export class ManipulationFeature extends EditorFeature {
 
     const captured = this.editor.features.selection.captureSelectedElement
     if(inAuthoredBody(captured)) return captured
+
+    const selectedSection = this.editor.features.selection.selectedSectionElement
+    if(inAuthoredBody(selectedSection)) return selectedSection
 
     const focusedWidget = focusedWidgetHost()
     if(inAuthoredBody(focusedWidget)) return focusedWidget
@@ -107,7 +367,7 @@ export class ManipulationFeature extends EditorFeature {
    * elements and registered widgets stay atomic unless their own public
    * editing contract handles paragraph formatting. */
   private isTextBlock(element: Element): element is HTMLElement {
-    if(element === document.body) return false
+    if(element === document.body || isSectionElement(element)) return false
     for(let ancestor: Element | null = element; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
       if(ancestor.localName.includes("-") || ancestor.hasAttribute("is")
         || this.editor.schema.get(ancestor).group?.includes("widget")) return false
@@ -670,6 +930,18 @@ export class ManipulationFeature extends EditorFeature {
     },
     setBlockType: ({tag}: {type: "setBlockType", tag: BlockFormatTag}) => {
       this.setBlockType(tag)
+    },
+    toggleSection: ({section = "section"}: {type: "toggleSection", section?: SectionName}) => {
+      return this.toggleSection(section)
+    },
+    setSectionType: ({section}: {type: "setSectionType", section: SectionName}) => {
+      return this.setSectionType(section)
+    },
+    addSection: ({section = "section"}: {type: "addSection", section?: SectionName}) => {
+      return this.addSection(section)
+    },
+    removeSection: ({}: {type: "removeSection"}) => {
+      return this.removeSection()
     },
 
   } as const

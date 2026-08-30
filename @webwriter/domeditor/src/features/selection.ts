@@ -1,8 +1,9 @@
 import { DocumentListenerMap, EditorFeature } from "."
 import {$, focusedWidgetHost, getContainer, isAtomicEditingElement, isElement, modifierKeyDown, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
+import {isSectionElement} from "../sections"
 
-type SelectionKind = "none" | "capture" | "virtual" | "cell" | "gap" | "element" | "text" | "empty"
+type SelectionKind = "none" | "capture" | "section" | "virtual" | "cell" | "gap" | "element" | "text" | "empty"
 
 function arrowDirection(key: string) {
   return key === "ArrowUp" || key === "ArrowLeft"
@@ -47,6 +48,7 @@ export class SelectionFeature extends EditorFeature {
 
   #sharedRefreshQueued = false
   #capturedElement: Element | null = null
+  #selectedSection: Element | null = null
 
   /** Whether the current widget node selection also captures interactions in
    * that widget's shadow tree. Capture survives shadow-tree focus changes and
@@ -71,10 +73,31 @@ export class SelectionFeature extends EditorFeature {
     this.#capturedElement = null
   }
 
+  /** The connected section explicitly selected through the breadcrumb. This
+   * state is deliberately separate from the native Selection so ordinary
+   * editing never acquires a section wrapper as its target. */
+  get selectedSectionElement() {
+    return this.#selectedSection?.isConnected && isSectionElement(this.#selectedSection)
+      ? this.#selectedSection
+      : null
+  }
+
+  clearSelectedSection(expected?: Element) {
+    if(expected && this.#selectedSection !== expected) return
+    this.#selectedSection = null
+  }
+
+  replaceSelectedSection(previous: Element, replacement: Element) {
+    if(this.#selectedSection === previous && isSectionElement(replacement)) {
+      this.#selectedSection = replacement
+    }
+  }
+
   /** Capture-selects an authored element while keeping its internal pointer
    * interactions available to a focused feature such as SVG graphics. */
   captureElement(element: Element) {
     if(!element.isConnected || element === document.body || !document.body.contains(element)) return
+    this.clearSelectedSection()
     this.#capturedElement = element
     $.selectElement(element, false)
     this.processSelection()
@@ -83,7 +106,7 @@ export class SelectionFeature extends EditorFeature {
   #selectionBlock() {
     let node = $.anchor
     while(node && node !== document.body) {
-      if(node instanceof Element && this.editor.schema.isBlock(node)) return node
+      if(node instanceof Element && !isSectionElement(node) && this.editor.schema.isBlock(node)) return node
       node = node.parentElement
     }
     return null
@@ -269,6 +292,7 @@ export class SelectionFeature extends EditorFeature {
     document.removeEventListener("wheel", this.#handleWidgetWheel, {capture: true})
     document.removeEventListener("scroll", this.#handleWidgetScroll, {capture: true})
     this.#releaseCaptureSelection()
+    this.clearSelectedSection()
     this.#clearElementHover()
     this.#clearStyleTargetHover()
     this.#clearSelections()
@@ -347,11 +371,13 @@ export class SelectionFeature extends EditorFeature {
     const widget = widgetHostForShadowInteraction(event)
     if(!widget) return
     if(widget === this.captureSelectedWidget) return
+    this.clearSelectedSection()
     this.isInDragSelection = false
     if(event instanceof MouseEvent && event.type === "pointerdown"
       && event.button === 0 && modifierKeyDown(event)) {
       event.preventDefault()
       const selectCapture = this.captureSelectedWidget !== widget
+        && widget.classList.contains("◆element-selected")
         && $.isElementSelection
         && $.selectedElement === widget
       if(selectCapture) {
@@ -390,7 +416,7 @@ export class SelectionFeature extends EditorFeature {
       if(!parent) break
       targetElement = parent
     }
-    return targetElement
+    return targetElement === document.body ? null : targetElement
   }
 
   /** Selects the element addressed by a child-node path from BODY. */
@@ -398,8 +424,18 @@ export class SelectionFeature extends EditorFeature {
     selectNode: ({path}: {type: "selectNode", path: number[]}) => {
       const node = this.#elementAtPath(path)
       this.#releaseCaptureSelection()
+      this.clearSelectedSection()
       $.selectElement(node)
       this.processSelection()
+    },
+    selectSection: ({path}: {type: "selectSection", path: number[]}) => {
+      const section = this.#rawElementAtPath(path)
+      if(!isSectionElement(section)) throw new TypeError("A section path must resolve to a section element")
+      this.#releaseCaptureSelection()
+      this.#selectedSection = section
+      this.processSelection()
+      this.editor.postMarkState()
+      this.editor.postSelectionPath()
     },
     hoverNode: ({path}: {type: "hoverNode", path: number[] | null}) => {
       this.#clearElementHover()
@@ -409,6 +445,15 @@ export class SelectionFeature extends EditorFeature {
       const pathElement = this.#elementAtPath(path)
       const element = pathElement.closest("table") ?? pathElement
       element.classList.add("◆", "◆element-hovered")
+    },
+    hoverSection: ({path}: {type: "hoverSection", path: number[] | null}) => {
+      this.#clearElementHover()
+      this.#clearStyleTargetHover()
+      if(path === null) return
+
+      const section = this.#rawElementAtPath(path)
+      if(!isSectionElement(section)) throw new TypeError("A section path must resolve to a section element")
+      section.classList.add("◆", "◆element-hovered")
     },
     hoverStyleTarget: ({hovered}: {type: "hoverStyleTarget", hovered: boolean}) => {
       this.#clearStyleTargetHover()
@@ -421,6 +466,10 @@ export class SelectionFeature extends EditorFeature {
 
   /** Resolves a BODY-relative child-node path to an element. */
   #elementAtPath(path: number[]) {
+    return getContainer(this.#rawElementAtPath(path))
+  }
+
+  #rawElementAtPath(path: number[]) {
     let node: Node = document.body
     for(const index of path) {
       const child = node.childNodes.item(index)
@@ -432,7 +481,7 @@ export class SelectionFeature extends EditorFeature {
     if(!isElement(node)) {
       throw new TypeError("A breadcrumb path must resolve to an element")
     }
-    return getContainer(node)
+    return node
   }
 
   /** Whether a pointer-driven drag selection is in progress. */
@@ -681,6 +730,7 @@ export class SelectionFeature extends EditorFeature {
    * presentation branch can be applied during this refresh. */
   #selectionKind(inDragSelection: boolean, capturedElement: Element | null): SelectionKind {
     if(capturedElement) return "capture"
+    if(this.selectedSectionElement) return "section"
     const selection = document.getSelection()
     if(!selection?.anchorNode || !selection.focusNode) return "none"
     if(this.editor.features.table.hasCellSelection) return "cell"
@@ -727,6 +777,14 @@ export class SelectionFeature extends EditorFeature {
       document.body.classList.add("◆", "◆node-selection-active")
       capturedElement.classList.add("◆", "◆element-selected", "◆element-capture-selected")
       this.#showSelectionCaret("capture")
+      return
+    }
+    if(kind === "section") {
+      const section = this.selectedSectionElement
+      if(!section) return
+      document.body.classList.add("◆", "◆node-selection-active")
+      section.classList.add("◆", "◆element-selected")
+      this.#showSelectionCaret("node")
       return
     }
     if(!sel?.anchorNode || !sel.focusNode) return
@@ -779,7 +837,10 @@ export class SelectionFeature extends EditorFeature {
    * the drag selection on pointer moves, and mirror modifier key state onto
    * the body (`◆key-mod/alt/shift-down`). */
   passiveListeners: DocumentListenerMap = {
-    "selectionchange": () => this.processSelection(this.isInDragSelection),
+    "selectionchange": () => {
+      this.clearSelectedSection()
+      this.processSelection(this.isInDragSelection)
+    },
     "pointermove": ev => {
       // Pointer coordinates are viewport-relative. Comparing page coordinates
       // with BODY dimensions breaks as soon as BODY has margins (and for a
@@ -807,6 +868,7 @@ export class SelectionFeature extends EditorFeature {
       // This guard also preserves capture for synthetic/document-level events.
       if(direction && this.isCaptureSelection) return
       this.#releaseCaptureSelection()
+      this.clearSelectedSection()
       if(ev.key.toLowerCase() === "a" && modifierKeyDown(ev)) {
         ev.preventDefault()
         $.selectRange(document.body, 0, document.body, document.body.childNodes.length)
@@ -863,6 +925,7 @@ export class SelectionFeature extends EditorFeature {
         return
       }
       this.#releaseCaptureSelection()
+      this.clearSelectedSection()
       const media = ev.target instanceof Node ? mediaContainerForNode(ev.target) : null
       if(media) {
         ev.preventDefault()
