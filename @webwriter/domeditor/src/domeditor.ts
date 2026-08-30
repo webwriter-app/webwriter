@@ -16,7 +16,7 @@ import { TableFeature } from "./features/table"
 import { GraphicFeature } from "./features/graphic"
 import { HeadFeature } from "./features/head"
 import { Schema } from "./schema"
-import { $, adoptStylesheet, createStylesheet, focusedWidgetHost, getContainer, isElement, isWidgetShadowInteraction } from "./utility"
+import { $, adoptStylesheet, createStylesheet, focusedWidgetHost, getContainer, isElement, isWidgetShadowInteraction, plainTextFromDOM } from "./utility"
 import {isMarkElement, normalizeMarkElements} from "./marks"
 import {
   executeCompleteEvent,
@@ -853,7 +853,7 @@ export class DOMEditor {
     const serializer = new XMLSerializer()
     const html = serializer.serializeToString(fragment)
     ev.clipboardData?.setData("text/html", html)
-    ev.clipboardData?.setData("text/plain", fragment.textContent ?? "")
+    ev.clipboardData?.setData("text/plain", plainTextFromDOM(fragment, element => this.schema.isBlock(element)))
   }
   
   clearEditingArtifacts(node: Document | DocumentFragment = document) {

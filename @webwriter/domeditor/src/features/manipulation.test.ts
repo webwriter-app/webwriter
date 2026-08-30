@@ -178,6 +178,23 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expect(editor.doc.body.firstChild?.toString()).toBe("<p>a</p>")
   })
 
+  it("keeps replacement text in a block when the selection spans body children", () => {
+    document.body.innerHTML = "<p>First</p><p>Second</p>"
+    $.selectRange(document.body, 0, document.body, document.body.childNodes.length)
+    const event = new InputEvent("beforeinput", {
+      bubbles: true,
+      cancelable: true,
+      data: "Replacement",
+      inputType: "insertText",
+    })
+
+    document.body.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expectBodyToBe("<p>Replacement</p>")
+    expect(Array.from(document.body.childNodes).every(node => node instanceof Element)).toBe(true)
+  })
+
   it("inserts HTML through its action handler", () => {
     editor.features.manipulation.actions.insert({type: "insert", html: "<p></p>"})
     expectBodyToBe("<p></p>")
@@ -575,6 +592,24 @@ describe("copy()", () => {
     const item = (await navigator.clipboard.read()).find(item => item.types.includes("text/plain"))
     const text = await (await item?.getType("text/plain"))?.text()
     expect(text).toBe("hello")
+  })
+
+  it("preserves block boundaries in the plain-text flavor of a native copy", () => {
+    document.body.innerHTML = "<p>First</p><p>Second</p>"
+    $.selectRange(document.body, 0, document.body, document.body.childNodes.length)
+    const clipboardData = new DataTransfer()
+    const event = new ClipboardEvent("copy", {
+      bubbles: true,
+      cancelable: true,
+      clipboardData,
+    })
+
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(clipboardData.getData("text/html")).toContain(">First</p>")
+    expect(clipboardData.getData("text/html")).toContain(">Second</p>")
+    expect(clipboardData.getData("text/plain")).toMatch(/^First\r?\n+Second$/)
   })
 })
 describe("cut()", () => {

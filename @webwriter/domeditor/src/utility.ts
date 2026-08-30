@@ -54,6 +54,52 @@ function adjacentElement(nodes: NodeListOf<ChildNode>, offset: number, direction
   return null
 }
 
+function edgeTextDescendant(node: Node, direction: "start" | "end"): Text | null {
+  if(node instanceof Text) return node
+  const children = Array.from(node.childNodes)
+  if(direction === "end") children.reverse()
+  for(const child of children) {
+    const text = edgeTextDescendant(child, direction)
+    if(text) return text
+  }
+  return null
+}
+
+/** Converts DOM content to the plain-text clipboard flavor while retaining
+ * semantic block and line-break boundaries that Node.textContent omits. */
+export function plainTextFromDOM(root: Node, isBlock: (element: Element) => boolean) {
+  type Part = {value: string, blockBoundary?: boolean}
+  const parts: Part[] = []
+  const addBlockBoundary = () => {
+    if(parts.length && !parts.at(-1)!.value.endsWith("\n")) {
+      parts.push({value: "\n", blockBoundary: true})
+    }
+  }
+  const visit = (node: Node) => {
+    if(node instanceof Text) {
+      const previous = node.previousSibling
+      const next = node.nextSibling
+      const separatesBlocks = !node.data.trim() && [previous, next]
+        .some(sibling => sibling instanceof Element && isBlock(sibling))
+      if(!separatesBlocks) parts.push({value: node.data})
+      return
+    }
+    if(node instanceof Element && node.matches("br")) {
+      parts.push({value: "\n"})
+      return
+    }
+    const block = node instanceof Element && isBlock(node)
+    if(block) addBlockBoundary()
+    Array.from(node.childNodes).forEach(visit)
+    if(block) addBlockBoundary()
+  }
+
+  visit(root)
+  while(parts[0]?.blockBoundary) parts.shift()
+  while(parts.at(-1)?.blockBoundary) parts.pop()
+  return parts.map(part => part.value).join("")
+}
+
 
 
 /** Static facade over the document's current selection, providing editing-oriented queries (kind of selection, boundaries, covered nodes) and operations (selecting, moving, extending, copying, cutting, deleting, replacing). Usually accessed through the `$` alias. */
@@ -100,7 +146,7 @@ export class EditingSelection {
   }
 
   /** Moves (or with `extend`, extends) the selection to the document position at the given viewport coordinates, snapping to element gaps at text boundaries. Requires layout (caretPositionFromPoint). */
-  static selectCoords(x: number, y: number, extend=false) {
+  static selectCoords(x: number, y: number, extend=false, pointerTarget?: EventTarget | null) {
     focusEditorWindow()
     const {offset, offsetNode} = document.caretPositionFromPoint(x, y) ?? {}
     const firstBodyElement = document.body.firstElementChild
@@ -118,12 +164,32 @@ export class EditingSelection {
       this.selectGap(firstBodyElement, "before")
       return
     }
+    const targetElement = pointerTarget instanceof Element
+      ? pointerTarget
+      : pointerTarget instanceof Node
+        ? pointerTarget.parentElement
+        : null
+    const targetCell = targetElement?.closest("td, th") ?? null
+    const targetTable = targetCell?.closest("table") ?? null
+    if(!extend && targetCell && targetTable && !targetCell.contains(offsetNode)) {
+      const tableRect = targetTable.getBoundingClientRect()
+      const pointsInsideTable = tableRect.left <= x && x <= tableRect.right
+        && tableRect.top <= y && y <= tableRect.bottom
+      if(pointsInsideTable) {
+        const cellRect = targetCell.getBoundingClientRect()
+        const direction = cellRect.width > 0 && x > cellRect.left + cellRect.width / 2 ? "end" : "start"
+        const text = edgeTextDescendant(targetCell, direction)
+        this.selectRange(text ?? targetCell, direction === "end" && text ? text.length : 0)
+        return
+      }
+    }
     const hitElement = offsetNode instanceof Element ? offsetNode : offsetNode.parentElement
     let outerTable = hitElement?.closest("table") ?? null
     while(outerTable?.parentElement?.closest("table")) outerTable = outerTable.parentElement.closest("table")
     if(!extend && outerTable) {
       const tableRect = outerTable.getBoundingClientRect()
-      if(y < tableRect.top || y > tableRect.bottom) {
+      const hasTableBox = tableRect.right > tableRect.left || tableRect.bottom > tableRect.top
+      if(hasTableBox && (y < tableRect.top || y > tableRect.bottom)) {
         this.selectGap(outerTable, y < tableRect.top ? "before" : "after")
         return
       }
@@ -142,22 +208,27 @@ export class EditingSelection {
       // Geometry resolves both forms to the physically adjacent gap.
       if(atomicAtCaret) {
         const rect = atomicAtCaret.getBoundingClientRect()
-        if(y < rect.top) {
+        const hasBox = rect.right > rect.left || rect.bottom > rect.top
+        if(hasBox && y < rect.top) {
           const previous = atomicAtCaret.previousElementSibling
           this.selectGap(isAtomicEditingElement(previous) && y > previous.getBoundingClientRect().bottom ? previous : atomicAtCaret,
             isAtomicEditingElement(previous) && y > previous.getBoundingClientRect().bottom ? "after" : "before")
           return
         }
-        if(y > rect.bottom) {
+        if(hasBox && y > rect.bottom) {
           this.selectGap(atomicAtCaret, "after")
           return
         }
       }
-      if(atomicBeforeCaret && y > atomicBeforeCaret.getBoundingClientRect().bottom) {
+      const beforeRect = atomicBeforeCaret?.getBoundingClientRect()
+      if(atomicBeforeCaret && beforeRect && (beforeRect.right > beforeRect.left || beforeRect.bottom > beforeRect.top)
+        && y > beforeRect.bottom) {
         this.selectGap(atomicBeforeCaret, "after")
         return
       }
-      if(atomicAfterCaret && y > atomicAfterCaret.getBoundingClientRect().bottom) {
+      const afterRect = atomicAfterCaret?.getBoundingClientRect()
+      if(atomicAfterCaret && afterRect && (afterRect.right > afterRect.left || afterRect.bottom > afterRect.top)
+        && y > afterRect.bottom) {
         this.selectGap(atomicAfterCaret, "after")
         return
       }
@@ -203,7 +274,8 @@ export class EditingSelection {
     // text's first/last caret position. It is only a gap click when it is
     // vertically outside the text container; clicks beside the text within
     // the block must keep the boundary caret position.
-    const isAtGap = caretAtEndOrStart && (y < boundaryRect.top || y > boundaryRect.bottom)
+    const hasBoundaryBox = boundaryRect.right > boundaryRect.left || boundaryRect.bottom > boundaryRect.top
+    const isAtGap = caretAtEndOrStart && hasBoundaryBox && (y < boundaryRect.top || y > boundaryRect.bottom)
     if(!extend && isAtGap) {
       this.selectGap(offsetNode.parentElement!, isBefore? "before": "after")
     }

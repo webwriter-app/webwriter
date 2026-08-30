@@ -20,7 +20,7 @@ export class InsertionFeature extends EditorFeature {
   private commandTrigger: Range | null = null
   private triggerBodyMarkerAdded = false
   private emptyTextBlock: Element | null = null
-  private commandObserver = new MutationObserver(() => this.updateQuery())
+  private commandObserver: MutationObserver | null = null
 
   enable() {
     super.enable()
@@ -148,7 +148,15 @@ export class InsertionFeature extends EditorFeature {
     this.setTriggerHighlight(this.commandRange)
     const rect = this.commandPositionRect(this.commandRange)
     this.menu.showAt(rect.left, rect.bottom + 6)
-    this.commandObserver.observe(document.body, {characterData: true, childList: true, subtree: true})
+    const FrameMutationObserver = document.defaultView?.MutationObserver ?? MutationObserver
+    const observer = new FrameMutationObserver(() => this.updateQuery())
+    try {
+      observer.observe(document.body, {characterData: true, childList: true, subtree: true})
+      this.commandObserver = observer
+    }
+    catch {
+      observer.disconnect()
+    }
     return true
   }
 
@@ -499,7 +507,8 @@ export class InsertionFeature extends EditorFeature {
   }
 
   private close(restoreSelection=true) {
-    this.commandObserver.disconnect()
+    this.commandObserver?.disconnect()
+    this.commandObserver = null
     this.menu.open = false
     if(restoreSelection && this.commandRange?.endContainer.isConnected) {
       $.move(this.commandRange.endContainer, this.commandRange.endOffset)

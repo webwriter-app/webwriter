@@ -58,7 +58,7 @@ const markerAttribute = "data-domeditor-mark-boundary"
 
 /** Inline formatting derived from the live DOM, with transient caret marks for typing. */
 export class MarkFeature extends EditorFeature {
-  private readonly observer = new MutationObserver(() => this.queueStateRefresh())
+  private observer: MutationObserver | null = null
   private stateRefreshQueued = false
   /** `null` inherits the live DOM marks; a Set is an explicit typing state. */
   private storedMarks: Set<MarkName> | null = null
@@ -97,18 +97,29 @@ export class MarkFeature extends EditorFeature {
   }
 
   enable() {
+    if(this.isEnabled) return
     super.enable()
-    this.observer.observe(document.body, {
-      attributes: true,
-      attributeFilter: ["style", ...markAttributeNames],
-      childList: true,
-      characterData: true,
-      subtree: true,
-    })
+    const FrameMutationObserver = document.defaultView?.MutationObserver ?? MutationObserver
+    const observer = new FrameMutationObserver(() => this.queueStateRefresh())
+    try {
+      observer.observe(document.body, {
+        attributes: true,
+        attributeFilter: ["style", ...markAttributeNames],
+        childList: true,
+        characterData: true,
+        subtree: true,
+      })
+      this.observer = observer
+    }
+    catch {
+      observer.disconnect()
+    }
   }
 
   disable() {
-    this.observer.disconnect()
+    if(!this.isEnabled) return
+    this.observer?.disconnect()
+    this.observer = null
     this.stateRefreshQueued = false
     this.clearStoredMarks()
     super.disable()

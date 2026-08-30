@@ -3,6 +3,7 @@ import {afterEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
 import {loadWidgetsMessage} from "../editor-bridge"
 import {WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
+import {DependencyFeature} from "./dependencies"
 
 const demoPackage: WebWriterPackage = {
   name: "@webwriter/demo",
@@ -46,6 +47,48 @@ afterEach(() => {
 })
 
 describe("DependencyFeature", () => {
+  it("uses the current iframe's observer realm during feature startup", () => {
+    const outerDocument = document
+    const outerObserver = MutationObserver
+    const frame = document.createElement("iframe")
+    document.body.append(frame)
+    const frameDocument = frame.contentDocument!
+    class RejectingOuterObserver {
+      constructor(_callback: MutationCallback) {}
+      observe() {
+        throw new TypeError("An outer-realm observer cannot observe an iframe node")
+      }
+      disconnect() {}
+      takeRecords() { return [] }
+    }
+    Object.defineProperty(globalThis, "document", {configurable: true, writable: true, value: frameDocument})
+    Object.defineProperty(globalThis, "MutationObserver", {
+      configurable: true,
+      writable: true,
+      value: RejectingOuterObserver,
+    })
+
+    let feature: DependencyFeature | undefined
+    try {
+      feature = new DependencyFeature({} as DOMEditor)
+      expect(() => feature!.enable()).not.toThrow()
+    }
+    finally {
+      feature?.disable()
+      Object.defineProperty(globalThis, "document", {
+        configurable: true,
+        writable: true,
+        value: outerDocument,
+      })
+      Object.defineProperty(globalThis, "MutationObserver", {
+        configurable: true,
+        writable: true,
+        value: outerObserver,
+      })
+      frame.remove()
+    }
+  })
+
   it("waits for every remote asset before completing widget loading", async () => {
     const append = vi.spyOn(document.head, "append").mockImplementation(() => {})
     const editor = new DOMEditor()

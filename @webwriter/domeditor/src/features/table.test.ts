@@ -206,6 +206,35 @@ describe("table cell selection", () => {
     expect(editor.features.table.selectedCells).toEqual([first, second])
   })
 
+  it("places the caret in a clicked cell when Chromium reports the body boundary", () => {
+    document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr></tbody></table>"
+    const table = document.querySelector("table")!
+    const first = cells()[0]
+    table.getBoundingClientRect = () => ({
+      x: 0, y: 100, left: 0, right: 200, top: 100, bottom: 140,
+      width: 200, height: 40, toJSON: () => ({}),
+    })
+    const restoreCaretPosition = mockCaretPosition(document.body, 1)
+
+    first.dispatchEvent(new PointerEvent("pointerdown", {
+      clientX: 50,
+      clientY: 120,
+      bubbles: true,
+      cancelable: true,
+    }))
+    document.dispatchEvent(new PointerEvent("pointerup", {
+      clientX: 50,
+      clientY: 120,
+      bubbles: true,
+      cancelable: true,
+    }))
+    restoreCaretPosition()
+
+    expect(first.contains($.anchor)).toBe(true)
+    expect(table).not.toHaveClass("◆gap-after-selected")
+    expect(document.body).not.toHaveClass("◆gap-caret-visible")
+  })
+
   it("extends a cell drag to the nearest table edge after the pointer leaves the table", () => {
     document.body.innerHTML = `<table><tbody>
       <tr><td>A</td><td>B</td><td>C</td></tr>

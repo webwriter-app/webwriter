@@ -787,7 +787,7 @@ export class SelectionFeature extends EditorFeature {
       const inViewportX = 0 <= ev.clientX && ev.clientX <= window.innerWidth
       const inViewportY = 0 <= ev.clientY && ev.clientY <= window.innerHeight
       if(this.isInDragSelection && inViewportX && inViewportY) {
-        $.selectCoords(ev.x, ev.y, true)
+        $.selectCoords(ev.clientX, ev.clientY, true, ev.target)
       }
     }
   }
@@ -890,7 +890,7 @@ export class SelectionFeature extends EditorFeature {
       else {
         this.isInDragSelection = true
         ev.preventDefault()
-        $.selectCoords(ev.x, ev.y, ev.shiftKey)
+        $.selectCoords(ev.clientX, ev.clientY, ev.shiftKey, ev.target)
         this.processSelection(this.isInDragSelection)
       }
     },

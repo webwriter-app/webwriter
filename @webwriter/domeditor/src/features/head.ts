@@ -82,7 +82,8 @@ export class HeadFeature extends EditorFeature {
   private readonly ids = new WeakMap<Element, string>()
   private readonly elementsById = new Map<string, Element>()
   private idSequence = 0
-  private readonly observer = new (document.defaultView?.MutationObserver ?? MutationObserver)(mutations => {
+  private observer: MutationObserver | null = null
+  private readonly handleMutations = (mutations: MutationRecord[]) => {
     const head = document.head
     const relevant = mutations.some(mutation => (
       mutation.target === head
@@ -92,7 +93,7 @@ export class HeadFeature extends EditorFeature {
         && mutation.attributeName?.toLowerCase() === "lang"
     ))
     if(relevant) this.postState()
-  })
+  }
 
   actions = {
     setDocumentHeadField: ({field, value}: {
@@ -133,22 +134,31 @@ export class HeadFeature extends EditorFeature {
   enable() {
     if(this.isEnabled) return
     super.enable()
-    this.observer.observe(document.head, {
-      attributes: true,
-      characterData: true,
-      childList: true,
-      subtree: true,
-    })
-    this.observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["lang"],
-    })
+    const FrameMutationObserver = document.defaultView?.MutationObserver ?? MutationObserver
+    const observer = new FrameMutationObserver(this.handleMutations)
+    try {
+      observer.observe(document.head, {
+        attributes: true,
+        characterData: true,
+        childList: true,
+        subtree: true,
+      })
+      observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["lang"],
+      })
+      this.observer = observer
+    }
+    catch {
+      observer.disconnect()
+    }
     this.postState()
   }
 
   disable() {
     if(!this.isEnabled) return
-    this.observer.disconnect()
+    this.observer?.disconnect()
+    this.observer = null
     this.elementsById.clear()
     super.disable()
   }

@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, focusedWidgetHost, markWidgetsEditable, modifierKeyDown, getContainer, getIndexBefore, getSidesOfPoint, htmlToFragment, isElement } from "../utility"
+import { $, focusedWidgetHost, markWidgetsEditable, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, htmlToFragment, isElement, plainTextFromDOM } from "../utility"
 import {isMarkElement} from "../marks"
 import type {ElementStyleDeclaration, ElementStyleMutation, ElementStyleState} from "../editor-bridge"
 
@@ -443,6 +443,24 @@ export class ManipulationFeature extends EditorFeature {
 
   } as const
 
+  /** Browser text replacement may otherwise insert a bare text node between
+   * BODY children. Handle selections that cross editing blocks ourselves so
+   * a root-level insertion point is materialized as a text block. */
+  private replacesStructureWithText() {
+    if($.isEmpty) return false
+    const common = getContainer($.range.commonAncestorContainer)
+    return common === document.body
+      || getSelectionAnchorBlock(this.editor.schema) !== getSelectionFocusBlock(this.editor.schema)
+  }
+
+  private replaceStructuredSelectionWithText(text: string) {
+    return this.withNormalization(() => {
+      $.delete()
+      this.ensureTextBlock()
+      if(text) this.insertAtSelection(document.createTextNode(text))
+    })
+  }
+
   /** Keyboard and input behavior: Enter splits the containing block
    * (Alt: <br>, Alt+Shift: <wbr>, modifier: split the parent), Backspace and
    * Delete remove by granularity (plain: character, Alt: word, modifier:
@@ -459,6 +477,13 @@ export class ManipulationFeature extends EditorFeature {
       if(ev.inputType === "insertLineBreak") {
         ev.preventDefault()
         this.insertBreak("br")
+        return
+      }
+
+      if(["insertText", "insertReplacementText"].includes(ev.inputType)
+        && ev.data !== null && this.replacesStructureWithText()) {
+        ev.preventDefault()
+        this.replaceStructuredSelectionWithText(ev.data)
         return
       }
 
@@ -820,7 +845,7 @@ export class ManipulationFeature extends EditorFeature {
 
   /** Converts a fragment into a ClipboardItem with a text/html (outer HTML) and a text/plain (inner text) flavor. Expects the fragment to contain an element. */
   #fragmentToClipboardItem(fragment: DocumentFragment) {
-    const text = fragment.textContent ?? ""
+    const text = plainTextFromDOM(fragment, element => this.editor.schema.isBlock(element))
     return new ClipboardItem({
       "text/plain": text,
       "text/html": fragment.firstElementChild? fragment.firstElementChild.outerHTML: text,
