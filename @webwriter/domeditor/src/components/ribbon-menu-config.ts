@@ -223,11 +223,8 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
         },
       ],
     },
-    {label: "Metadata", buttons: []},
     {label: "Sharing", buttons: ["Share", "Print", "Download"]},
-    {label: "Editor", buttons: ["General", "Shortcuts", "Accessibility"]},
-    {label: "Appearance", buttons: ["Theme", "Zoom", "Fullscreen"]},
-    {label: "Advanced", buttons: ["Preferences", "Extensions", "About"]},
+    {label: "Metadata", buttons: []},
   ],
   Start: [
     {label: "Marks", buttons: []},
