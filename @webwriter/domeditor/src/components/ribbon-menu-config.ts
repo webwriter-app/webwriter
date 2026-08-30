@@ -212,13 +212,7 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
           submenu: [
             {label: "HTML (.html)", action: "save:html"},
             {label: "Offline HTML (.offline.html)", action: "save:offline"},
-          ],
-        },
-        {
-          label: "Save as",
-          submenu: [
-            {label: "HTML (.html)", action: "save-as:html"},
-            {label: "Offline HTML (.offline.html)", action: "save-as:offline"},
+            {label: "Save as"},
           ],
         },
       ],

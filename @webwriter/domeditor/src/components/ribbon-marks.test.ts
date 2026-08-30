@@ -250,6 +250,7 @@ describe("mark ribbon controls", () => {
     const fileNameInput = fileDrawer.querySelector<HTMLInputElement>('input[aria-label="File name"]')!
     expect(fileNameInput.value).toBe("")
     expect(fileNameInput.placeholder).toBe("Unnamed File")
+    expect(getComputedStyle(fileNameInput).maxWidth).toBe("204px")
     const storageLocation = fileDrawer.querySelector<HTMLSelectElement>('select[aria-label="Storage location"]')!
     expect(storageLocation.value).toBe("local")
     expect(Array.from(storageLocation.options).map(option => option.textContent)).toEqual([
@@ -269,21 +270,20 @@ describe("mark ribbon controls", () => {
       .toContain("icon-tabler-cloud")
     const fileButtons = Array.from(fileDrawer.querySelectorAll<RibbonButton>("ribbon-button"))
     expect(fileButtons.map(button => button.label))
-      .toEqual(["New", "Open", "Save", "Save as"])
+      .toEqual(["New", "Open", "Save"])
     expect(fileButtons.every(button => getComputedStyle(
       button.shadowRoot!.querySelector<HTMLElement>(".button-row")!,
     ).boxSizing === "border-box")).toBe(true)
     expect(fileButtons.find(button => button.label === "Save")?.submenu).toEqual([
       {label: "HTML (.html)", action: "save:html"},
       {label: "Offline HTML (.offline.html)", action: "save:offline"},
-    ])
-    expect(fileButtons.find(button => button.label === "Save as")?.submenu).toEqual([
-      {label: "HTML (.html)", action: "save-as:html"},
-      {label: "Offline HTML (.offline.html)", action: "save-as:offline"},
+      {label: "Save as"},
     ])
     expect(fileDrawer.querySelector('input[type="checkbox"]')).toBeNull()
+    expect(getComputedStyle(fileDrawer).getPropertyValue("--ribbon-drawer-expanded-width").trim())
+      .toBe("13.25rem")
     expect(getComputedStyle(fileDrawer.shadowRoot!.querySelector<HTMLElement>(".controls")!).gridTemplateColumns)
-      .toBe("repeat(4, minmax(0, 1fr))")
+      .toBe("repeat(3, minmax(0, 1fr))")
 
     const sharingDrawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Sharing"]')!
     const sharingButtons = Array.from(sharingDrawer.querySelectorAll<RibbonButton>("ribbon-button"))

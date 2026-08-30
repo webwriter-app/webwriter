@@ -2202,7 +2202,7 @@ export class AppRibbon extends LitElement {
       field-sizing: content;
       width: auto;
       min-width: 0;
-      max-width: 17rem;
+      max-width: 12.75rem;
       height: 1.55rem;
       padding: 0 0.4rem;
       overflow: hidden;
