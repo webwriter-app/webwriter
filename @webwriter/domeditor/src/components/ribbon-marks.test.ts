@@ -62,7 +62,9 @@ describe("mark ribbon controls", () => {
     await ribbon.updateComplete
 
     const fileTab = ribbon.shadowRoot!.querySelector<RibbonTab>('ribbon-tab[label="File"]')!
-    expect(getComputedStyle(fileTab).minWidth).toBe("96px")
+    expect(getComputedStyle(fileTab).width).toBe("fit-content")
+    expect(getComputedStyle(fileTab).minWidth).toBe("50px")
+    expect(getComputedStyle(fileTab).maxWidth).toBe("500px")
     const fileLabel = fileTab.shadowRoot!.querySelector<FileLabel>("file-label")!
     await fileLabel.updateComplete
     expect(fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-name")?.textContent).toBe("lesson")
@@ -83,7 +85,7 @@ describe("mark ribbon controls", () => {
     expect(getComputedStyle(dirtySaveIcon).justifySelf).toBe("center")
     expect(getComputedStyle(dirtyButton).visibility).toBe("hidden")
     expect(getComputedStyle(dirtyButton).position).toBe("absolute")
-    expect(getComputedStyle(dirtyButton).left).toBe("100%")
+    expect(getComputedStyle(dirtyButton).right).toBe("0px")
     expect(getComputedStyle(dirtyButton).height).toBe("40px")
     expect(getComputedStyle(dirtyButton).transform).not.toBe("none")
     expect(getComputedStyle(dirtyButton).justifyItems).toBe("start")
@@ -116,6 +118,28 @@ describe("mark ribbon controls", () => {
     )
     await ribbon.updateComplete
     expect(ribbon.activeMenu).toBe("File")
+  })
+
+  it("clips long file names within the File tab instead of growing past its maximum", async () => {
+    const {ribbon} = await mountRibbon()
+    const longFileName = `${"lesson-".repeat(100)}.html`
+    ribbon.fileName = longFileName
+    await ribbon.updateComplete
+
+    const fileTab = ribbon.shadowRoot!.querySelector<RibbonTab>('ribbon-tab[label="File"]')!
+    const fileLabel = fileTab.shadowRoot!.querySelector<FileLabel>("file-label")!
+    await fileLabel.updateComplete
+    const fileLabelElement = fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-label")!
+    const fileName = fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-name")!
+
+    expect(fileName.textContent).toBe(longFileName)
+    expect(getComputedStyle(fileTab).maxWidth).toBe("500px")
+    expect(getComputedStyle(fileLabel).width).toBe("fit-content")
+    expect(getComputedStyle(fileLabel).maxWidth).toBe("500px")
+    expect(getComputedStyle(fileLabelElement).maxWidth).toBe("100%")
+    expect(getComputedStyle(fileName).maxWidth).toBe("500px")
+    expect(getComputedStyle(fileName).overflow).toBe("hidden")
+    expect(getComputedStyle(fileName).textOverflow).toBe("ellipsis")
   })
 
   it("animates ribbon collapse and hides its tab indicators", async () => {

@@ -12,8 +12,9 @@ export class FileLabel extends LitElement {
   static styles = css`
     :host {
       display: block;
+      width: fit-content;
       min-width: 0;
-      max-width: 100%;
+      max-width: 500px;
     }
 
     .file-label {
@@ -29,9 +30,13 @@ export class FileLabel extends LitElement {
       white-space: nowrap;
     }
 
+    .file-label-dirty {
+      padding-right: 1.15rem;
+    }
+
     .file-name {
       min-width: 0;
-      max-width: 13rem;
+      max-width: 500px;
       overflow: hidden;
       font-size: 0.74rem;
       font-weight: 700;
@@ -44,7 +49,7 @@ export class FileLabel extends LitElement {
       display: inline-grid;
       position: absolute;
       top: 50%;
-      left: 100%;
+      right: 0;
       z-index: 1;
       align-items: start;
       justify-items: start;
@@ -139,7 +144,7 @@ export class FileLabel extends LitElement {
     const name = this.fileName || "Unnamed File"
     return html`
       <span
-        class="file-label"
+        class=${`file-label${this.fileDirty ? " file-label-dirty" : ""}`}
         aria-label=${`${name}${this.fileDirty ? " (unsaved changes)" : ""}`}
         @pointerdown=${this.stopLabelPointer}
         @mousedown=${this.stopLabelPointer}
