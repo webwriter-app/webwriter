@@ -195,6 +195,11 @@ export const insertionMenuGroups: RibbonMenuGroup[] = [
   groupedInsertionMenuGroup("Interactive", ["Form", "Script"]),
 ]
 
+const elementInsertionMenuGroup: RibbonMenuGroup = {
+  label: "Elements",
+  buttons: insertionMenuGroups.flatMap(group => group.buttons),
+}
+
 export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
   File: [
     {
@@ -226,7 +231,7 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
   ],
   Start: [
     {label: "Marks", buttons: []},
-    ...insertionMenuGroups,
+    elementInsertionMenuGroup,
   ],
   Edit: [
     {label: "Marks", buttons: []},

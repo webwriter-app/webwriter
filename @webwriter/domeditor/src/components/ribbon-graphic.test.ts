@@ -25,7 +25,7 @@ describe("graphic ribbon", () => {
     document.body.append(ribbon)
     await ribbon.updateComplete
     const graphic = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Media"] ribbon-button[label="Graphic"]',
+      'ribbon-drawer[label="Elements"] ribbon-button[label="Graphic"]',
     )!
     await graphic.updateComplete
 

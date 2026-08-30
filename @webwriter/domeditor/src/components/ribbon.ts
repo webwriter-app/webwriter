@@ -3937,27 +3937,6 @@ export class AppRibbon extends LitElement {
     `
   }
 
-  private renderListDrawer() {
-    return html`
-      <ribbon-drawer label="Lists" icon="Lists" layout="lists">
-        <ribbon-button
-          toggle
-          label="List"
-          action="toggle-list:ul"
-          icon="List"
-          .submenu=${listInsertionOptions}
-          ?active=${this.listType !== null}
-        ></ribbon-button>
-        <ribbon-button
-          label="Table"
-          action="Table"
-          icon="Table"
-          .dropdown=${this.renderTableSizePicker()}
-        ></ribbon-button>
-      </ribbon-drawer>
-    `
-  }
-
   private mediaSelectionMatches(type: MediaType) {
     if(type === "picture" || type === "img") return this.media?.type === "picture" || this.media?.type === "img"
     if(isWebsiteType(type)) return isWebsiteType(this.media?.type)
@@ -4613,8 +4592,8 @@ export class AppRibbon extends LitElement {
     return html`
       <ribbon-drawer
         label=${drawer.label}
-        icon="Table"
-        layout="media"
+        icon="Paragraph"
+        layout="elements"
       >
         ${drawer.buttons.map(button => {
           const item = typeof button === "string" ? {label: button} : button
@@ -4627,7 +4606,9 @@ export class AppRibbon extends LitElement {
             : item.label === "Enumeration"
               ? orderedListStyles
               : item.submenu ?? []
-          const active = type ? this.mediaSelectionMatches(type) : false
+          const active = type
+            ? this.mediaSelectionMatches(type)
+            : item.label === "List" && this.listType !== null
           const tableDropdown = item.label === "Table" ? this.renderTableSizePicker() : null
           return html`
             <ribbon-button
@@ -4636,6 +4617,7 @@ export class AppRibbon extends LitElement {
               .icon=${item.icon ?? item.label}
               .submenu=${type || tableDropdown ? [] : submenu}
               .dropdown=${type ? this.renderMediaDropdown(type) : tableDropdown}
+              ?toggle=${item.label === "List"}
               ?active=${active}
             ></ribbon-button>
           `
@@ -5294,8 +5276,7 @@ export class AppRibbon extends LitElement {
       }
       if(drawer.label === "Development") return this.renderDevelopmentDrawer()
       if(drawer.label === "Exports") return this.renderExportsDrawer()
-      if(drawer.label === "Lists") return this.renderListDrawer()
-      if(drawer.label === "Media") return this.renderInsertionDrawer(drawer)
+      if(drawer.label === "Elements") return this.renderInsertionDrawer(drawer)
       const representative = drawer.buttons[0]
       const icon = typeof representative === "string"
         ? representative

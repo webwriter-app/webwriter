@@ -63,7 +63,7 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="elements"]) {
-      --ribbon-drawer-expanded-width: 13.25rem;
+      --ribbon-drawer-expanded-width: 25.75rem;
     }
 
     :host([layout="media"]) {
@@ -107,7 +107,8 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="elements"]) .controls {
-      grid-template-rows: minmax(0, 1fr);
+      grid-template-rows: repeat(2, minmax(0, 1fr));
+      grid-auto-columns: 3.5rem;
     }
 
     :host([layout="file"]) {

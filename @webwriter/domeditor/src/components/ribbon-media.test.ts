@@ -14,7 +14,7 @@ describe("media ribbon drawer", () => {
     document.body.append(ribbon)
     await ribbon.updateComplete
     const image = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Media"] ribbon-button[label="Image"]',
+      'ribbon-drawer[label="Elements"] ribbon-button[label="Image"]',
     )!
     await image.updateComplete
 
@@ -33,7 +33,7 @@ describe("media ribbon drawer", () => {
 
     for(const label of ["Image", "Audio", "Video", "Website"]) {
       const button = ribbon.shadowRoot!.querySelector<RibbonButton>(
-        `ribbon-drawer[label="Media"] ribbon-button[label="${label}"]`,
+        `ribbon-drawer[label="Elements"] ribbon-button[label="${label}"]`,
       )!
       await button.updateComplete
       expect(button.shadowRoot!.querySelector("ribbon-menu[custom-content]")).not.toBeNull()
@@ -48,7 +48,7 @@ describe("media ribbon drawer", () => {
     document.body.append(ribbon)
     await ribbon.updateComplete
     const image = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Media"] ribbon-button[label="Image"]',
+      'ribbon-drawer[label="Elements"] ribbon-button[label="Image"]',
     )!
     await image.updateComplete
 
@@ -69,7 +69,7 @@ describe("media ribbon drawer", () => {
     ribbon.addEventListener("media-attribute-change", attributeListener)
     ribbon.addEventListener("media-type-change", typeListener)
     const image = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Media"] ribbon-button[label="Image"]',
+      'ribbon-drawer[label="Elements"] ribbon-button[label="Image"]',
     )!
     await image.updateComplete
     const alt = image.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="picture: Alternative text"]')!
@@ -96,7 +96,7 @@ describe("media ribbon drawer", () => {
       ribbon.media = {type, attributes: {}}
     })
     const website = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Media"] ribbon-button[label="Website"]',
+      'ribbon-drawer[label="Elements"] ribbon-button[label="Website"]',
     )!
     await website.updateComplete
 

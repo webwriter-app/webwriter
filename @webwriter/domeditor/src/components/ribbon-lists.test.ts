@@ -8,23 +8,22 @@ import {insertionMenuItems} from "./insertion-menu"
 beforeEach(() => document.body.replaceChildren())
 
 describe("list ribbon drawer", () => {
-  it("shows all former Insert drawers directly on Start", async () => {
+  it("shows all element insertion controls in one drawer on Start", async () => {
     const ribbon = new AppRibbon()
     document.body.append(ribbon)
     await ribbon.updateComplete
 
+    expect(Array.from(ribbon.shadowRoot!.querySelectorAll(".ribbon-content > ribbon-drawer"))
+      .map(drawer => drawer.getAttribute("label")))
+      .toEqual(["Marks", "Elements", "Packages"])
     expect(Array.from(ribbon.shadowRoot!.querySelectorAll(
-      'ribbon-drawer[label="Text"] ribbon-button',
-    )).map(button => button.getAttribute("label"))).toEqual(["Paragraph", "Section", "Heading", "Details"])
-    expect(Array.from(ribbon.shadowRoot!.querySelectorAll(
-      'ribbon-drawer[label="Lists"] ribbon-button',
-    )).map(button => button.getAttribute("label"))).toEqual(["List", "Table"])
-    expect(Array.from(ribbon.shadowRoot!.querySelectorAll(
-      'ribbon-drawer[label="Media"] ribbon-button',
-    )).map(button => button.getAttribute("label"))).toEqual(["Image", "Graphic", "Audio", "Website", "Video", "Formula"])
-    expect(Array.from(ribbon.shadowRoot!.querySelectorAll(
-      'ribbon-drawer[label="Interactive"] ribbon-button',
-    )).map(button => button.getAttribute("label"))).toEqual(["Form", "Script"])
+      'ribbon-drawer[label="Elements"] ribbon-button',
+    )).map(button => button.getAttribute("label"))).toEqual([
+      "Paragraph", "Section", "Heading", "Details",
+      "List", "Table",
+      "Image", "Graphic", "Audio", "Website", "Video", "Formula",
+      "Form", "Script",
+    ])
   })
 
   it("groups form, section, script, divider, and dialog insertions under their primary buttons", async () => {
@@ -41,33 +40,31 @@ describe("list ribbon drawer", () => {
       `ribbon-drawer[label="${drawer}"] ribbon-button[label="${label}"]`,
     )!
 
-    expect(submenuTags(button("Interactive", "Form"))).toEqual([
+    expect(submenuTags(button("Elements", "Form"))).toEqual([
       "button", "input", "select", "meter", "datalist", "fieldset", "form", "label", "legend", "optgroup", "option", "output", "progress",
     ])
-    expect(submenuTags(button("Text", "Section"))).toEqual([
+    expect(submenuTags(button("Elements", "Section"))).toEqual([
       "div", "blockquote", "article", "aside", "header", "footer", "main", "nav", "search", "address",
     ])
-    expect(submenuTags(button("Interactive", "Script"))).toEqual(["script", "style", "canvas", "template", "slot"])
-    expect(submenuTags(button("Text", "Heading"))).toEqual(["h2", "h3", "h4", "h5", "h6", "hr"])
-    expect(submenuTags(button("Text", "Details"))).toEqual(["dialog"])
+    expect(submenuTags(button("Elements", "Script"))).toEqual(["script", "style", "canvas", "template", "slot"])
+    expect(submenuTags(button("Elements", "Heading"))).toEqual(["h2", "h3", "h4", "h5", "h6", "hr"])
+    expect(submenuTags(button("Elements", "Details"))).toEqual(["dialog"])
   })
 
-  it("renders the Text and Interactive controls as standalone dropdown buttons on Start", async () => {
+  it("renders the grouped element controls as standalone dropdown buttons on Start", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Start"
     document.body.append(ribbon)
     await ribbon.updateComplete
 
-    const text = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Text"]')!
-    const interactive = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Interactive"]')!
-    const buttons = [
-      ...Array.from(text.querySelectorAll<RibbonButton>("ribbon-button:not([label=\"Paragraph\"])")),
-      ...Array.from(interactive.querySelectorAll<RibbonButton>("ribbon-button")),
-    ]
-    await Promise.all([text.updateComplete, interactive.updateComplete, ...buttons.map(button => button.updateComplete)])
+    const elements = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Elements"]')!
+    const buttons = ["Section", "Heading", "Details", "Form", "Script"].map(label =>
+      elements.querySelector<RibbonButton>(`ribbon-button[label="${label}"]`)!,
+    )
+    await Promise.all([elements.updateComplete, ...buttons.map(button => button.updateComplete)])
 
-    expect(text.layoutWidths.expanded).toBe(148)
-    expect(interactive.layoutWidths.expanded).toBe(84)
+    expect(elements.layoutWidths.expanded).toBe(412)
+    expect(getComputedStyle(elements.shadowRoot!.querySelector<HTMLElement>(".controls")!).gridAutoColumns).toBe("3.5rem")
     for(const button of buttons) {
       expect(button.shadowRoot!.querySelector('.submenu-trigger[aria-haspopup="menu"]')).not.toBeNull()
     }
@@ -82,10 +79,10 @@ describe("list ribbon drawer", () => {
     await ribbon.updateComplete
 
     const list = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Lists"] ribbon-button[label="List"]',
+      'ribbon-drawer[label="Elements"] ribbon-button[label="List"]',
     )!
     const enumeration = list.submenu.find(item => typeof item !== "string" && item.action === "toggle-list:ol")
-    expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Lists"] ribbon-button[label="Enumeration"]')).toBeNull()
+    expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Elements"] ribbon-button[label="Enumeration"]')).toBeNull()
     expect(list.active).toBe(true)
     expect(typeof enumeration === "string" ? [] : enumeration?.submenu?.map(item => typeof item === "string" ? item : item.action))
       .toContain("list-style:ol:upper-roman")
@@ -104,7 +101,7 @@ describe("list ribbon drawer", () => {
     document.body.append(ribbon)
     await ribbon.updateComplete
 
-    const lists = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Lists"]')!
+    const lists = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Elements"]')!
     const list = lists.querySelector<RibbonButton>('ribbon-button[label="List"]')!
     expect(lists.querySelector('ribbon-button[label="Glossary"]')).toBeNull()
     expect(list.submenu).toContainEqual({label: "Glossary", action: "toggle-list:dl", icon: "Glossary"})
@@ -120,7 +117,7 @@ describe("list ribbon drawer", () => {
     ribbon.addEventListener("ribbon-button-click", listener)
 
     const list = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Lists"] ribbon-button[label="List"]',
+      'ribbon-drawer[label="Elements"] ribbon-button[label="List"]',
     )!
     await list.updateComplete
     list.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
@@ -142,7 +139,7 @@ describe("list ribbon drawer", () => {
     ribbon.addEventListener("ribbon-button-click", listener)
 
     const button = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Lists"] ribbon-button[label="List"]',
+      'ribbon-drawer[label="Elements"] ribbon-button[label="List"]',
     )!
     button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
 

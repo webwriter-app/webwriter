@@ -34,7 +34,7 @@ describe("table controls", () => {
     document.body.append(ribbon)
     await ribbon.updateComplete
     const button = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Lists"] ribbon-button[label="Table"]',
+      'ribbon-drawer[label="Elements"] ribbon-button[label="Table"]',
     )!
     await button.updateComplete
     const options = button.shadowRoot!.querySelectorAll<HTMLButtonElement>(".table-size-cell")

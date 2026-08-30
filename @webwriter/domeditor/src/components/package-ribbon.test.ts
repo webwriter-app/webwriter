@@ -55,7 +55,7 @@ describe("package ribbon controls", () => {
     )
     const packageDrawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')!
 
-    expect(drawerLabels()).toEqual(["Marks", "Text", "Lists", "Media", "Interactive", "Packages"])
+    expect(drawerLabels()).toEqual(["Marks", "Elements", "Packages"])
     expect(getComputedStyle(packageDrawer).flexGrow).toBe("1")
   })
 

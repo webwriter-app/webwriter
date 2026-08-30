@@ -886,7 +886,7 @@ describe("DomEditor.execute()", () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
-    const paragraph = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Text"] ribbon-button[label="Paragraph"]')!
+    const paragraph = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Paragraph"]')!
     await paragraph.updateComplete
     paragraph.shadowRoot!.querySelector("button")!.click()
 
@@ -2265,7 +2265,7 @@ describe("DomEditor.execute()", () => {
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const focus = vi.spyOn(iframe, "focus")
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
-    const paragraph = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Text"] ribbon-button[label="Paragraph"]')!
+    const paragraph = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Paragraph"]')!
     await paragraph.updateComplete
     paragraph.shadowRoot!.querySelector("button")!.click()
     await execute.mock.results[0].value
@@ -2277,8 +2277,8 @@ describe("DomEditor.execute()", () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
-    const heading = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Text"] ribbon-button[label="Heading"]')!
-    expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Text"] ribbon-button[label="Heading 2"]')).toBeNull()
+    const heading = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Heading"]')!
+    expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Elements"] ribbon-button[label="Heading 2"]')).toBeNull()
     await heading.updateComplete
 
     heading.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Heading"]')!.click()
@@ -2304,10 +2304,10 @@ describe("DomEditor.execute()", () => {
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
     const form = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Interactive"] ribbon-button[label="Form"]',
+      'ribbon-drawer[label="Elements"] ribbon-button[label="Form"]',
     )!
     const section = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Text"] ribbon-button[label="Section"]',
+      'ribbon-drawer[label="Elements"] ribbon-button[label="Section"]',
     )!
     await Promise.all([form.updateComplete, section.updateComplete])
 
@@ -2336,7 +2336,7 @@ describe("DomEditor.execute()", () => {
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
     const script = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Interactive"] ribbon-button[label="Script"]',
+      'ribbon-drawer[label="Elements"] ribbon-button[label="Script"]',
     )!
     await script.updateComplete
 
@@ -2357,7 +2357,7 @@ describe("DomEditor.execute()", () => {
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
     const details = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Text"] ribbon-button[label="Details"]',
+      'ribbon-drawer[label="Elements"] ribbon-button[label="Details"]',
     )!
     await details.updateComplete
     details.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
@@ -2373,7 +2373,7 @@ describe("DomEditor.execute()", () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
-    const paragraph = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Text"] ribbon-button[label="Paragraph"]')!
+    const paragraph = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Paragraph"]')!
     await paragraph.updateComplete
     paragraph.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Show more Paragraph options"]')!.click()
     await paragraph.updateComplete
@@ -2386,7 +2386,7 @@ describe("DomEditor.execute()", () => {
   it("closes expanded ribbon-button menus when the editor receives focus", async () => {
     const {editor, iframe} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
-    const heading = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Text"] ribbon-button[label="Heading"]')!
+    const heading = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Heading"]')!
     await heading.updateComplete
     heading.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Show more Heading options"]')!.click()
     await heading.updateComplete
