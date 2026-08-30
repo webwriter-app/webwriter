@@ -19,7 +19,7 @@ describe("graphic ribbon", () => {
 
   it("inserts an empty graphic from the main button and offers standalone shapes", async () => {
     const ribbon = new AppRibbon()
-    ribbon.activeMenu = "Insert"
+    ribbon.activeMenu = "Start"
     const listener = vi.fn()
     ribbon.addEventListener("ribbon-button-click", listener)
     document.body.append(ribbon)

@@ -8,34 +8,11 @@ import {insertionMenuItems} from "./insertion-menu"
 beforeEach(() => document.body.replaceChildren())
 
 describe("list ribbon drawer", () => {
-  it("condenses the element controls on Start while keeping Insert detailed", async () => {
+  it("shows all former Insert drawers directly on Start", async () => {
     const ribbon = new AppRibbon()
     document.body.append(ribbon)
     await ribbon.updateComplete
 
-    const elements = ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Elements"]')!
-    expect(Array.from(elements.querySelectorAll("ribbon-button"), button => button.getAttribute("label")))
-      .toEqual(["Prose", "Lists", "Media"])
-    expect(elements.querySelector<RibbonButton>('ribbon-button[label="Prose"]')?.submenu.map(item =>
-      typeof item === "string" ? item : item.label,
-    )).toEqual(["Paragraph", "Heading"])
-    const condensedLists = elements.querySelector<RibbonButton>('ribbon-button[label="Lists"]')?.submenu ?? []
-    expect(condensedLists.map(item =>
-      typeof item === "string" ? item : item.label,
-    )).toEqual(["List", "Details"])
-    const condensedList = condensedLists.find(item => typeof item !== "string" && item.label === "List")
-    expect(typeof condensedList === "string" ? [] : condensedList?.submenu?.map(item =>
-      typeof item === "string" ? item : item.label,
-    )).toContain("Enumeration")
-    expect(typeof condensedList === "string" ? [] : condensedList?.submenu?.map(item =>
-      typeof item === "string" ? item : item.label,
-    )).toContain("Glossary")
-    expect(elements.querySelector<RibbonButton>('ribbon-button[label="Media"]')?.submenu.map(item =>
-      typeof item === "string" ? item : item.label,
-    )).toEqual(["Table", "Image", "Graphic", "Audio", "Website", "Video", "Formula", "Form", "Section", "Script"])
-
-    ribbon.activeMenu = "Insert"
-    await ribbon.updateComplete
     expect(Array.from(ribbon.shadowRoot!.querySelectorAll(
       'ribbon-drawer[label="Text"] ribbon-button',
     )).map(button => button.getAttribute("label"))).toEqual(["Paragraph", "Section", "Heading", "Details"])
@@ -52,7 +29,7 @@ describe("list ribbon drawer", () => {
 
   it("groups form, section, script, divider, and dialog insertions under their primary buttons", async () => {
     const ribbon = new AppRibbon()
-    ribbon.activeMenu = "Insert"
+    ribbon.activeMenu = "Start"
     document.body.append(ribbon)
     await ribbon.updateComplete
 
@@ -75,9 +52,9 @@ describe("list ribbon drawer", () => {
     expect(submenuTags(button("Text", "Details"))).toEqual(["dialog"])
   })
 
-  it("renders the Text and Interactive controls as standalone dropdown buttons on Insert", async () => {
+  it("renders the Text and Interactive controls as standalone dropdown buttons on Start", async () => {
     const ribbon = new AppRibbon()
-    ribbon.activeMenu = "Insert"
+    ribbon.activeMenu = "Start"
     document.body.append(ribbon)
     await ribbon.updateComplete
 
@@ -100,7 +77,7 @@ describe("list ribbon drawer", () => {
     const ribbon = new AppRibbon()
     ribbon.listType = "ol"
     ribbon.listStyle = "upper-roman"
-    ribbon.activeMenu = "Insert"
+    ribbon.activeMenu = "Start"
     document.body.append(ribbon)
     await ribbon.updateComplete
 
@@ -122,7 +99,7 @@ describe("list ribbon drawer", () => {
 
   it("shows Glossary only in the List dropdown and marks List active for a glossary", async () => {
     const ribbon = new AppRibbon()
-    ribbon.activeMenu = "Insert"
+    ribbon.activeMenu = "Start"
     ribbon.listType = "dl"
     document.body.append(ribbon)
     await ribbon.updateComplete
@@ -136,7 +113,7 @@ describe("list ribbon drawer", () => {
 
   it("dispatches Enumeration from the merged List dropdown", async () => {
     const ribbon = new AppRibbon()
-    ribbon.activeMenu = "Insert"
+    ribbon.activeMenu = "Start"
     document.body.append(ribbon)
     await ribbon.updateComplete
     const listener = vi.fn()
@@ -165,7 +142,7 @@ describe("list ribbon drawer", () => {
     ribbon.addEventListener("ribbon-button-click", listener)
 
     const button = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Elements"] ribbon-button[label="Lists"]',
+      'ribbon-drawer[label="Lists"] ribbon-button[label="List"]',
     )!
     button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
 

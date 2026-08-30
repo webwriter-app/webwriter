@@ -26,6 +26,7 @@ export class RibbonDrawer extends LitElement {
     icon: {type: String},
     label: {type: String},
     layout: {type: String, reflect: true},
+    pane: {type: Boolean, reflect: true},
     singleColumn: {type: Boolean, reflect: true, attribute: "single-column"},
   }
 
@@ -707,6 +708,100 @@ export class RibbonDrawer extends LitElement {
       }
     }
 
+    .pane-label {
+      display: none;
+    }
+
+    :host([pane]) {
+      --ribbon-drawer-expanded-width: 100%;
+      --ribbon-drawer-collapsed-width: 100%;
+      --ribbon-drawer-width: 100%;
+      box-sizing: border-box;
+      flex: 0 0 auto;
+      width: 100%;
+      min-width: 0;
+    }
+
+    :host([pane]) .drawer,
+    :host([pane]) .drawer.expanded,
+    :host([pane]) .drawer.expanded.closing {
+      box-sizing: border-box;
+      height: auto;
+      max-height: none;
+      min-height: 0;
+      padding: 0 0.45rem 0.45rem;
+      border: 0;
+      border-bottom: 1px solid #d8dee6;
+      background: transparent;
+      box-shadow: none;
+      clip-path: none;
+    }
+
+    :host([pane]) .pane-label {
+      display: flex;
+      align-items: center;
+      min-height: 1.9rem;
+      padding-right: 2rem;
+      color: #465465;
+      font-size: 0.68rem;
+      font-weight: 650;
+    }
+
+    :host([pane]) .controls,
+    :host([pane][layout="marks"]) .controls,
+    :host([pane][layout="comments"]) .controls,
+    :host([pane][layout="graphic"]) .controls {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-rows: none;
+      grid-auto-flow: row;
+      grid-auto-columns: auto;
+      grid-auto-rows: minmax(2.35rem, auto);
+      align-items: stretch;
+      gap: 0.2rem;
+      height: auto;
+      max-height: none;
+      padding: 0;
+      overflow: visible;
+    }
+
+    :host([pane][layout="marks"]) .controls {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    :host([pane][layout="marks"]) ::slotted(*) {
+      grid-column: auto !important;
+      grid-row: auto !important;
+    }
+
+    :host([pane][layout="marks"]) ::slotted(.font-family),
+    :host([pane][layout="marks"]) ::slotted(.font-size) {
+      grid-column: span 2 !important;
+    }
+
+    :host([pane][layout="comments"]) ::slotted(.comment-editor) {
+      grid-column: 1 / -1;
+      grid-row: auto;
+      min-height: 5rem;
+    }
+
+    :host([pane][layout="element-style"]) .controls {
+      height: auto;
+      max-height: none;
+      overflow: visible;
+    }
+
+    :host([pane]) .drawer-toggle,
+    :host([pane]) .drawer.expanded .drawer-toggle {
+      top: 0.35rem;
+      right: 0.45rem;
+      bottom: auto;
+      left: auto;
+      width: 1.6rem;
+      height: 1.35rem;
+      transform: none;
+    }
+
     @media (prefers-reduced-motion: reduce) {
       .drawer,
       .controls,
@@ -722,6 +817,7 @@ export class RibbonDrawer extends LitElement {
   icon = ""
   label = "Drawer"
   layout = "default"
+  pane = false
   singleColumn = false
   private drawerOpen = false
   private drawerContentOpen = false
@@ -1045,6 +1141,7 @@ export class RibbonDrawer extends LitElement {
           <span class="summary-icon" aria-hidden="true">${ribbonIcon(this.icon || this.label)}</span>
           <span class="summary-label">${this.label}</span>
         </div>
+        <span class="pane-label">${this.label}</span>
         <div id="drawer-controls" class="controls">
           <slot></slot>
           <slot name="more" ?hidden=${!this.drawerContentOpen}></slot>

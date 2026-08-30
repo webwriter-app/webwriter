@@ -2,6 +2,7 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {DomEditor} from "./dom-editor"
 import {AppRibbon} from "./ribbon"
+import type {DomEditorToolbox} from "./toolbox"
 import {DomEditorBreadcrumb, type DocumentTreeItem} from "./breadcrumb"
 import type {RibbonButton} from "./ribbon-button"
 import type {RibbonDrawer} from "./ribbon-drawer"
@@ -387,6 +388,13 @@ describe("Develop local packages", () => {
     expect(reload).toHaveBeenCalledWith([packages[0]])
     expect((editor as any).localPackageError).toBe("")
     expect((editor as any).selectedLocalPackageName).toBe("@local/demo")
+
+    await editor.updateComplete
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[data-tool="Develop"]')!.click()
+    await toolbox.updateComplete
+    expect(toolbox.localPackages).toEqual(packages)
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Local packages"]')).not.toBeNull()
   })
 
   it("selects a local package without inserting it", async() => {
@@ -874,15 +882,10 @@ describe("DomEditor.execute()", () => {
     }
   })
 
-  it("executes the matching insert action from the expanded Insert ribbon", async () => {
+  it("executes the matching insert action from the Start ribbon", async () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
-    const insertTab = ribbon.shadowRoot!.querySelector('ribbon-tab[label="Insert"]')!
-
-    insertTab.shadowRoot!.querySelector("button")!.click()
-    await ribbon.updateComplete
-
     const paragraph = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Text"] ribbon-button[label="Paragraph"]')!
     await paragraph.updateComplete
     paragraph.shadowRoot!.querySelector("button")!.click()
@@ -890,7 +893,7 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith({type: "insert", html: "<p></p>"})
   })
 
-  it("loads Style-tab state lazily and routes inline style changes", async () => {
+  it("loads Style-pane state lazily and routes inline style changes", async () => {
     const {editor} = await mountEditor()
     let display = "block"
     const execute = vi.spyOn(editor, "execute").mockImplementation(async action => {
@@ -905,11 +908,11 @@ describe("DomEditor.execute()", () => {
         display = typeof mutation === "string" ? mutation : mutation?.value ?? "block"
       }
     })
-    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
-    const styleTab = ribbon.shadowRoot!.querySelector('ribbon-tab[label="Style"]')!
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    const styleButton = toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[data-tool="Style"]')!
 
-    expect(ribbon.elementStyle.target).toBeNull()
-    ribbon.dispatchEvent(new CustomEvent("element-style-change", {
+    expect(toolbox.elementStyle.target).toBeNull()
+    toolbox.dispatchEvent(new CustomEvent("element-style-change", {
       detail: {property: "display", mutation: {value: "flex", priority: ""}},
       bubbles: true,
       composed: true,
@@ -919,17 +922,17 @@ describe("DomEditor.execute()", () => {
       styles: {display: {value: "flex", priority: ""}},
     }))
 
-    styleTab.shadowRoot!.querySelector<HTMLButtonElement>("button")!.click()
+    styleButton.click()
     await vi.waitFor(() => expect(execute).toHaveBeenCalledWith(expect.objectContaining({
       type: "getStyleState",
       properties: expect.arrayContaining(["display", "width", "color", "cursor"]),
     })))
     await (editor as any).refreshElementStyleState()
     await editor.updateComplete
-    await ribbon.updateComplete
-    expect(ribbon.elementStyle.target?.localName).toBe("p")
+    await toolbox.updateComplete
+    expect(toolbox.elementStyle.target?.localName).toBe("p")
 
-    const position = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Position & Form"]')!
+    const position = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Position & Form"]')!
     const basic = position.querySelector("element-style-editor")!
     await basic.updateComplete
     const fieldset = basic.shadowRoot!.querySelector<HTMLFieldSetElement>("fieldset")!
@@ -940,7 +943,7 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith({type: "hoverStyleTarget", hovered: true})
     expect(execute).toHaveBeenCalledWith({type: "hoverStyleTarget", hovered: false})
 
-    ribbon.dispatchEvent(new CustomEvent("element-style-change", {
+    toolbox.dispatchEvent(new CustomEvent("element-style-change", {
       detail: {property: "display", mutation: {value: "grid", priority: ""}},
       bubbles: true,
       composed: true,
@@ -949,14 +952,13 @@ describe("DomEditor.execute()", () => {
       type: "setStyle",
       styles: {display: {value: "grid", priority: ""}},
     }))
-    await vi.waitFor(() => expect(ribbon.elementStyle.inline.display?.value).toBe("grid"))
+    await vi.waitFor(() => expect(toolbox.elementStyle.inline.display?.value).toBe("grid"))
   })
 
   it("renders Packages as ribbon buttons with a prefixed search bar", async () => {
     vi.mocked(WebWriterPackageRegistry.prototype.search).mockResolvedValue([demoPackage])
     const {editor} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
-    ribbon.shadowRoot!.querySelector('ribbon-tab[label="Insert"]')!.shadowRoot!.querySelector("button")!.click()
     await vi.waitFor(() => expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Packages"] ribbon-button[label="Demo"]')).not.toBeNull())
     const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')!
     const search = drawer.querySelector("package-search")!
@@ -975,7 +977,6 @@ describe("DomEditor.execute()", () => {
     const install = vi.spyOn(editor as any, "setPackageInstalled").mockResolvedValue(demoPackage)
     const insert = vi.spyOn(editor as any, "insertPackageMember").mockResolvedValue(undefined)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
-    ribbon.shadowRoot!.querySelector('ribbon-tab[label="Insert"]')!.shadowRoot!.querySelector("button")!.click()
     await vi.waitFor(() => expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Packages"] ribbon-button[label="Demo"]')).not.toBeNull())
     const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Packages"] ribbon-button[label="Demo"]')!
     await button.updateComplete
@@ -992,7 +993,6 @@ describe("DomEditor.execute()", () => {
     const install = vi.spyOn(editor as any, "setPackageInstalled").mockResolvedValue(demoPackage)
     const insert = vi.spyOn(editor as any, "insertPackageMember").mockResolvedValue(undefined)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
-    ribbon.shadowRoot!.querySelector('ribbon-tab[label="Insert"]')!.shadowRoot!.querySelector("button")!.click()
     await vi.waitFor(() => expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Packages"] ribbon-button[label="Demo"]')).not.toBeNull())
     const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')!
     const search = drawer.querySelector("package-search")!
@@ -1514,7 +1514,7 @@ describe("DomEditor.execute()", () => {
     await ribbon.updateComplete
 
     expect((editor as unknown as {previewActive: boolean}).previewActive).toBe(false)
-    expect(ribbon.shadowRoot!.querySelectorAll("ribbon-tab")).toHaveLength(5)
+    expect(ribbon.shadowRoot!.querySelectorAll("ribbon-tab")).toHaveLength(1)
   })
 
   it("keeps repeated preview toggles on the same ribbon animation path", async () => {
@@ -2126,6 +2126,24 @@ describe("DomEditor.execute()", () => {
     expect(getComputedStyle(breadcrumb).display).toBe("none")
   })
 
+  it("removes the toolbox baseline while the breadcrumb tree is expanded", async () => {
+    const {editor, iframe} = await mountEditor()
+    iframe.contentDocument!.body.innerHTML = "<div><p></p></div>"
+
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    const tabs = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-tabs")!
+    expect(getComputedStyle(tabs).borderBottomWidth).toBe("0.5px")
+
+    await breadcrumb.updateComplete
+    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
+    await editor.updateComplete
+    await breadcrumb.updateComplete
+
+    expect(breadcrumb.treeOpen).toBe(true)
+    expect(getComputedStyle(tabs).borderBottomWidth).toBe("0px")
+  })
+
   it("collapses the breadcrumb tree when the ribbon is collapsed", async () => {
     const {editor, iframe} = await mountEditor()
     iframe.contentDocument!.body.innerHTML = "<div><p></p></div>"
@@ -2149,8 +2167,7 @@ describe("DomEditor.execute()", () => {
   it("prevents pointer interactions from focusing ribbon controls", async () => {
     const {editor} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
-    const tab = ribbon.shadowRoot!.querySelector('ribbon-tab[label="Insert"]')!
-    const button = tab.shadowRoot!.querySelector("button")!
+    const button = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!
     const event = new MouseEvent("pointerdown", {bubbles: true, cancelable: true, composed: true, button: 0})
 
     expect(button.dispatchEvent(event)).toBe(false)
@@ -2248,10 +2265,6 @@ describe("DomEditor.execute()", () => {
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const focus = vi.spyOn(iframe, "focus")
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
-    const insertTab = ribbon.shadowRoot!.querySelector('ribbon-tab[label="Insert"]')!
-
-    insertTab.shadowRoot!.querySelector("button")!.click()
-    await ribbon.updateComplete
     const paragraph = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Text"] ribbon-button[label="Paragraph"]')!
     await paragraph.updateComplete
     paragraph.shadowRoot!.querySelector("button")!.click()
@@ -2264,11 +2277,6 @@ describe("DomEditor.execute()", () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
-    const insertTab = ribbon.shadowRoot!.querySelector('ribbon-tab[label="Insert"]')!
-
-    insertTab.shadowRoot!.querySelector("button")!.click()
-    await ribbon.updateComplete
-
     const heading = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Text"] ribbon-button[label="Heading"]')!
     expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Text"] ribbon-button[label="Heading 2"]')).toBeNull()
     await heading.updateComplete
@@ -2295,9 +2303,6 @@ describe("DomEditor.execute()", () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
-    ribbon.shadowRoot!.querySelector('ribbon-tab[label="Insert"]')!.shadowRoot!.querySelector("button")!.click()
-    await ribbon.updateComplete
-
     const form = ribbon.shadowRoot!.querySelector<RibbonButton>(
       'ribbon-drawer[label="Interactive"] ribbon-button[label="Form"]',
     )!
@@ -2330,9 +2335,6 @@ describe("DomEditor.execute()", () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
-    ribbon.shadowRoot!.querySelector('ribbon-tab[label="Insert"]')!.shadowRoot!.querySelector("button")!.click()
-    await ribbon.updateComplete
-
     const script = ribbon.shadowRoot!.querySelector<RibbonButton>(
       'ribbon-drawer[label="Interactive"] ribbon-button[label="Script"]',
     )!
@@ -2354,9 +2356,6 @@ describe("DomEditor.execute()", () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
-    ribbon.shadowRoot!.querySelector('ribbon-tab[label="Insert"]')!.shadowRoot!.querySelector("button")!.click()
-    await ribbon.updateComplete
-
     const details = ribbon.shadowRoot!.querySelector<RibbonButton>(
       'ribbon-drawer[label="Text"] ribbon-button[label="Details"]',
     )!
@@ -2374,11 +2373,6 @@ describe("DomEditor.execute()", () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
-    const insertTab = ribbon.shadowRoot!.querySelector('ribbon-tab[label="Insert"]')!
-
-    insertTab.shadowRoot!.querySelector("button")!.click()
-    await ribbon.updateComplete
-
     const paragraph = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Text"] ribbon-button[label="Paragraph"]')!
     await paragraph.updateComplete
     paragraph.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Show more Paragraph options"]')!.click()
@@ -2392,10 +2386,6 @@ describe("DomEditor.execute()", () => {
   it("closes expanded ribbon-button menus when the editor receives focus", async () => {
     const {editor, iframe} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
-    const insertTab = ribbon.shadowRoot!.querySelector('ribbon-tab[label="Insert"]')!
-
-    insertTab.shadowRoot!.querySelector("button")!.click()
-    await ribbon.updateComplete
     const heading = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Text"] ribbon-button[label="Heading"]')!
     await heading.updateComplete
     heading.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Show more Heading options"]')!.click()
@@ -2409,66 +2399,13 @@ describe("DomEditor.execute()", () => {
     expect(submenu.hidden).toBe(true)
   })
 
-  it("executes the matching insert action from the collapsed Insert menu", async () => {
-    const {editor} = await mountEditor()
-    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
-    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
-    ribbon.expanded = false
-    await ribbon.updateComplete
-    const insertTab = ribbon.shadowRoot!.querySelector('ribbon-tab[label="Insert"]')!
-
-    insertTab.shadowRoot!.querySelector("button")!.click()
-    await ribbon.updateComplete
-    const menu = ribbon.shadowRoot!.querySelector("ribbon-menu")!
-    await menu.updateComplete
-    const paragraph = menu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Paragraph"]')!
-    paragraph.click()
-
-    expect(execute).toHaveBeenCalledWith({type: "insert", html: "<p></p>"})
-  })
-
-  it("renders heading levels 2 to 6 as a submenu in the collapsed Insert menu", async () => {
-    const {editor} = await mountEditor()
-    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
-    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
-    ribbon.expanded = false
-    await ribbon.updateComplete
-    const insertTab = ribbon.shadowRoot!.querySelector('ribbon-tab[label="Insert"]')!
-
-    insertTab.shadowRoot!.querySelector("button")!.click()
-    await ribbon.updateComplete
-    const menu = ribbon.shadowRoot!.querySelector("ribbon-menu")!
-    await menu.updateComplete
-
-    expect(menu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Heading 2"]')).toBeNull()
-    menu.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Show more Heading options"]')!.click()
-    await menu.updateComplete
-    menu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Heading 2"]')!.click()
-
-    expect(execute).toHaveBeenCalledWith({type: "insert", html: "<h2></h2>"})
-  })
-
-  it("closes Insert submenus when the collapsed ribbon menu closes", async () => {
+  it("does not expose Insert as a collapsed ribbon menu", async () => {
     const {editor} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
     ribbon.expanded = false
     await ribbon.updateComplete
-    const insertTab = ribbon.shadowRoot!.querySelector('ribbon-tab[label="Insert"]')!
 
-    insertTab.shadowRoot!.querySelector("button")!.click()
-    await ribbon.updateComplete
-    const menu = ribbon.shadowRoot!.querySelector("ribbon-menu")!
-    await menu.updateComplete
-    menu.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Show more Heading options"]')!.click()
-    await menu.updateComplete
-    expect(menu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Heading 2"]')).not.toBeNull()
-
-    ribbon.menuOpen = false
-    await ribbon.updateComplete
-    ribbon.menuOpen = true
-    await ribbon.updateComplete
-    await menu.updateComplete
-
-    expect(menu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Heading 2"]')).toBeNull()
+    expect(ribbon.shadowRoot!.querySelector('ribbon-tab[label="Insert"]')).toBeNull()
+    expect(ribbon.shadowRoot!.querySelector("ribbon-menu")?.hidden).toBe(true)
   })
 })

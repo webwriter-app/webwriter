@@ -72,6 +72,7 @@ import plus from "@tabler/icons/outline/plus.svg?raw"
 import printer from "@tabler/icons/outline/printer.svg?raw"
 import packageIcon from "@tabler/icons/outline/package.svg?raw"
 import paperclip from "@tabler/icons/outline/paperclip.svg?raw"
+import pencil from "@tabler/icons/outline/pencil.svg?raw"
 import rulerMeasure from "@tabler/icons/outline/ruler-measure.svg?raw"
 import scissors from "@tabler/icons/outline/scissors.svg?raw"
 import stack from "@tabler/icons/outline/stack.svg?raw"
@@ -249,6 +250,8 @@ const icons: Record<string, string> = {
   Formula: math,
   Heading: heading,
   Theme: palette,
+  Pencil: pencil,
+  Develop: terminal2,
   Clear: clearFormatting,
   Family: typography,
   Size: textSize,

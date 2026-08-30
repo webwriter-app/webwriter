@@ -11,10 +11,10 @@ import {
 import {type RibbonMenuButton, type RibbonMenuGroup} from "./ribbon-menu"
 import {elementStyleCategories} from "../element-styles"
 
-export type RibbonMenuName = "File" | "Start" | "Insert" | "Edit" | "Style" | "Develop" | "History"
+export type RibbonMenuName = "File" | "Start" | "Edit" | "Style" | "Develop" | "History"
 
-export const menuTabs: RibbonMenuName[] = ["File", "Insert", "Edit", "Style", "Develop"]
-export const dropdownMenus: RibbonMenuName[] = ["File", "Insert", "Edit", "Style"]
+export const menuTabs: RibbonMenuName[] = ["File"]
+export const dropdownMenus: RibbonMenuName[] = ["File"]
 
 export const aiEfforts: {label: string, value: AIEffort}[] = [
   {label: "Low effort", value: "low"},
@@ -188,40 +188,12 @@ const groupedInsertionMenuGroup = (
   }
 }
 
-const condensedInsertionMenuButtons = (section: InsertionSection): RibbonMenuButton[] => insertionMenuButtons([section])
-  .map(button => {
-    const item = typeof button === "string" ? {label: button} : button
-    return {
-      label: item.label,
-      action: item.action ?? item.label,
-      icon: item.icon ?? item.label,
-      ...(section === "Lists" && item.label === "List" ? {submenu: item.submenu} : {}),
-    }
-  })
-
-const elementInsertionMenuGroup: RibbonMenuGroup = {
-  label: "Elements",
-  buttons: [
-    {
-      label: "Prose",
-      action: "Paragraph",
-      icon: "Paragraph",
-      submenu: condensedInsertionMenuButtons("Text"),
-    },
-    {
-      label: "Lists",
-      action: "toggle-list:ul",
-      icon: "Lists",
-      submenu: condensedInsertionMenuButtons("Lists"),
-    },
-    {
-      label: "Media",
-      action: "Table",
-      icon: "Table",
-      submenu: condensedInsertionMenuButtons("Media"),
-    },
-  ],
-}
+export const insertionMenuGroups: RibbonMenuGroup[] = [
+  groupedInsertionMenuGroup("Text", ["Paragraph", "Section", "Heading", "Details"]),
+  groupedInsertionMenuGroup("Lists", ["List", "Table"]),
+  groupedInsertionMenuGroup("Media", ["Image", "Graphic", "Audio", "Website", "Video", "Formula"]),
+  groupedInsertionMenuGroup("Interactive", ["Form", "Script"]),
+]
 
 export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
   File: [
@@ -254,14 +226,7 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
   ],
   Start: [
     {label: "Marks", buttons: []},
-    {label: "Table", buttons: []},
-    elementInsertionMenuGroup,
-  ],
-  Insert: [
-    groupedInsertionMenuGroup("Text", ["Paragraph", "Section", "Heading", "Details"]),
-    groupedInsertionMenuGroup("Lists", ["List", "Table"]),
-    groupedInsertionMenuGroup("Media", ["Image", "Graphic", "Audio", "Website", "Video", "Formula"]),
-    groupedInsertionMenuGroup("Interactive", ["Form", "Script"]),
+    ...insertionMenuGroups,
   ],
   Edit: [
     {label: "Marks", buttons: []},

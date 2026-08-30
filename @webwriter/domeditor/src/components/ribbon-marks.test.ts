@@ -162,23 +162,17 @@ describe("mark ribbon controls", () => {
     expect(saveEvents).toEqual([])
   })
 
-  it("keeps Edit in the main ribbon and includes Review with its layout drawers", async () => {
+  it("keeps toolbox menus out of the main tabs and promotes the insertion drawers to Start", async () => {
     const {ribbon} = await mountRibbon()
     const tabs = Array.from(ribbon.shadowRoot!.querySelectorAll("ribbon-tab"))
 
     expect(Array.from(ribbon.shadowRoot!.querySelectorAll(".ribbon-content > ribbon-drawer"))
       .map(drawer => drawer.getAttribute("label")))
-      .toEqual(["Marks", "Table", "Elements", "Packages"])
+      .toEqual(["Marks", "Text", "Lists", "Media", "Interactive", "Packages"])
 
-    expect(tabs.map(tab => tab.label)).toEqual([
-      "File",
-      "Insert",
-      "Edit",
-      "Style",
-      "Develop",
-    ])
+    expect(tabs.map(tab => tab.label)).toEqual(["File"])
 
-    tabs.find(tab => tab.label === "Edit")!.shadowRoot!.querySelector("button")!.click()
+    ribbon.activeMenu = "Edit"
     await ribbon.updateComplete
 
     expect(Array.from(ribbon.shadowRoot!.querySelectorAll(".ribbon-content > ribbon-drawer"))
@@ -193,7 +187,7 @@ describe("mark ribbon controls", () => {
         "Track Changes", "Accept", "Reject",
       ])
 
-    tabs.find(tab => tab.label === "Style")!.shadowRoot!.querySelector("button")!.click()
+    ribbon.activeMenu = "Style"
     await ribbon.updateComplete
     const styleDrawers = Array.from(
       ribbon.shadowRoot!.querySelectorAll<RibbonDrawer>('.ribbon-content > ribbon-drawer[layout="element-style"]'),
@@ -222,7 +216,7 @@ describe("mark ribbon controls", () => {
     expect(styleEditor.shadowRoot!.querySelector("fieldset")?.hasAttribute("disabled")).toBe(false)
     expect(styleEditor.shadowRoot!.textContent).not.toContain("Select document content")
 
-    tabs.find(tab => tab.label === "File")!.shadowRoot!.querySelector("button")!.click()
+    ribbon.activeMenu = "File"
     await ribbon.updateComplete
     expect(Array.from(ribbon.shadowRoot!.querySelectorAll(".ribbon-content > ribbon-drawer"))
       .map(drawer => drawer.getAttribute("label")))
@@ -413,9 +407,9 @@ describe("mark ribbon controls", () => {
     await ribbon.updateComplete
     await drawer.updateComplete
 
-    const textDrawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Elements"]')!
+    const textDrawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Text"]')!
     const paragraph = Array.from(textDrawer.querySelectorAll<RibbonButton>("ribbon-button"))
-      .find(button => button.label === "Prose")!
+      .find(button => button.label === "Paragraph")!
     const standardButtons = [
       drawer.querySelector<RibbonButton>('ribbon-button[action="mark:a"]')!,
       drawer.querySelector<RibbonButton>('ribbon-button[action="mark:span"]')!,

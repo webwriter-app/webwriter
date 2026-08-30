@@ -2,6 +2,7 @@ import { LitElement, css, html } from "lit"
 import type {AppRibbon, AIEditReviewHandler} from "./ribbon"
 import type {LiveLearnerRibbonItem} from "./ribbon"
 import type { DomEditorBreadcrumb, DocumentTreeItem } from "./breadcrumb"
+import type {DomEditorToolbox} from "./toolbox"
 import type { EditingAction } from "../domeditor"
 import {emptyElementHTML, insertionMenuItems} from "./insertion-menu"
 import type {EditorStateSnapshot} from "../editor-state"
@@ -66,6 +67,7 @@ import {
 } from "../editor-bridge"
 import {elementStylePropertyNames} from "../element-styles"
 import "./breadcrumb"
+import "./toolbox"
 import "./ribbon"
 import "./live-session-controls"
 import "./live-session-overlay"
@@ -259,6 +261,7 @@ export class DomEditor extends LitElement {
     captureSelection: {attribute: false, state: true},
     selectionGap: {attribute: false, state: true},
     documentTree: {attribute: false, state: true},
+    treeViewOpen: {attribute: false, state: true},
     canMark: {attribute: false, state: true},
     marks: {attribute: false, state: true},
     markStyles: {attribute: false, state: true},
@@ -425,29 +428,59 @@ export class DomEditor extends LitElement {
   static styles = css`
     :host {
       box-sizing: border-box;
-      display: flex;
-      flex-direction: column;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-rows: auto auto minmax(0, 1fr);
       width: 100%;
       height: 100%;
       border: 0.5px solid #a8a8a8;
     }
 
     .app-bar {
-      flex: 0 0 auto;
-      width: 100%;
+      display: contents;
+    }
+
+    app-ribbon {
+      grid-row: 1;
+      grid-column: 1 / -1;
+    }
+
+    dom-editor-breadcrumb,
+    live-session-controls {
+      grid-row: 2;
+      grid-column: 1 / -1;
+    }
+
+    dom-editor-breadcrumb {
+      --breadcrumb-inline-end-space: 8rem;
     }
 
     app-ribbon:not([expanded]) + dom-editor-breadcrumb {
       display: none;
     }
 
+    .app-bar:has(app-ribbon:not([expanded])) ~ dom-editor-toolbox {
+      display: none;
+    }
+
     .document-stage {
       display: flex;
-      flex: 1 1 auto;
       position: relative;
+      grid-row: 3;
+      grid-column: 1;
       min-height: 0;
       width: 100%;
       overflow: hidden;
+    }
+
+    dom-editor-toolbox {
+      grid-row: 2 / 4;
+      grid-column: 2;
+      justify-self: end;
+    }
+
+    .app-bar:has(dom-editor-breadcrumb[tree-open], dom-editor-breadcrumb[tree-animating]) ~ dom-editor-toolbox {
+      --toolbox-tabs-border-bottom-width: 0px;
     }
 
     iframe {
@@ -1427,11 +1460,15 @@ export class DomEditor extends LitElement {
 
   private handleEditorPointerDown = (event: PointerEvent) => {
     const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
+    const toolbox = this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")
     ribbon?.dismissAIChat()
     if(isWidgetShadowInteraction(event)) return
     this.focusEditor()
     ribbon?.dismissCollapsedMenu()
-    if(!this.editorTargetSharesTextSelection(event.target)) ribbon?.dismissDrawers()
+    if(!this.editorTargetSharesTextSelection(event.target)) {
+      ribbon?.dismissDrawers()
+      toolbox?.dismissDrawers()
+    }
   }
 
   /** Keeps the mark area open while the pointer starts another text selection
@@ -2978,7 +3015,8 @@ export class DomEditor extends LitElement {
   }
 
   private stylesVisible() {
-    return this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.activeMenu === "Style"
+    return this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.activeTool === "Style"
+      || this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.activeMenu === "Style"
   }
 
   private normalizedElementStyleState(value: unknown): ElementStyleState | null {
@@ -3494,7 +3532,6 @@ export class DomEditor extends LitElement {
           .listType=${this.listType}
           .listStyle=${this.listStyle}
           .media=${this.mediaSelection}
-          .table=${this.tableSelection}
           .graphic=${this.graphicSelection}
           .elementStyle=${this.elementStyle}
           .presenceUsers=${this.presenceUsers}
@@ -3503,11 +3540,6 @@ export class DomEditor extends LitElement {
           .packagesLoading=${this.packagesLoading}
           .busyPackageNames=${this.busyPackageNames}
           .packageError=${this.packageError}
-          .localPackages=${this.localPackages}
-          .localPackagesLoading=${this.localPackagesLoading}
-          .localPackageError=${this.localPackageError}
-          .selectedLocalPackageName=${this.selectedLocalPackageName}
-          .selectedLocalPackageAutoReload=${this.selectedLocalPackageAutoReload}
           .fileName=${this.fileName}
           .fileDirty=${this.fileDirty}
           .previewActive=${this.previewActive}
@@ -3556,8 +3588,6 @@ export class DomEditor extends LitElement {
           @ribbon-input-commit=${this.finishRibbonInput}
           @ribbon-input-cancel=${this.finishRibbonInput}
           @package-catalog-request=${this.loadPackageCatalog}
-          @local-package-metadata-change=${this.handleLocalPackageMetadataChange}
-          @local-package-auto-reload-change=${this.handleLocalPackageAutoReloadChange}
         ></app-ribbon>
         ${this.liveSessionActive ? html`
           <live-session-controls
@@ -3612,6 +3642,44 @@ export class DomEditor extends LitElement {
           ></live-session-overlay>
         ` : ""}
       </div>
+      <dom-editor-toolbox
+        .canMark=${this.canMark}
+        .marks=${this.marks}
+        .markStyles=${this.markStyles}
+        .markAttributes=${this.markAttributes}
+        .commentState=${this.commentState}
+        .listType=${this.listType}
+        .listStyle=${this.listStyle}
+        .table=${this.tableSelection}
+        .graphic=${this.graphicSelection}
+        .elementStyle=${this.elementStyle}
+        .localPackages=${this.localPackages}
+        .localPackagesLoading=${this.localPackagesLoading}
+        .localPackageError=${this.localPackageError}
+        .selectedLocalPackageName=${this.selectedLocalPackageName}
+        .selectedLocalPackageAutoReload=${this.selectedLocalPackageAutoReload}
+        ?breadcrumb-expanded=${this.treeViewOpen}
+        ?hidden=${this.previewActive || this.liveSessionActive}
+        @ribbon-button-click=${this.handleRibbonButtonClick}
+        @ribbon-combobox-change=${this.handleRibbonComboboxChange}
+        @mark-attribute-change=${this.handleMarkAttributeChange}
+        @comment-action=${this.handleCommentAction}
+        @table-insert=${this.handleTableInsert}
+        @table-style-change=${this.handleTableStyleChange}
+        @graphic-parameter-change=${this.handleGraphicParameterChange}
+        @graphic-layer-action=${this.handleGraphicLayerAction}
+        @graphic-viewport-action=${this.handleGraphicViewportAction}
+        @element-style-change=${this.handleElementStyleChange}
+        @element-style-target-hover=${this.handleElementStyleTargetHover}
+        @element-style-state-request=${this.queueElementStyleRefresh}
+        @local-package-metadata-change=${this.handleLocalPackageMetadataChange}
+        @local-package-auto-reload-change=${this.handleLocalPackageAutoReloadChange}
+        @ribbon-input-pointerdown=${this.handleRibbonInputPointerDown}
+        @ribbon-input-focus=${this.handleRibbonInputFocus}
+        @ribbon-input-blur=${this.handleRibbonInputBlur}
+        @ribbon-input-commit=${this.finishRibbonInput}
+        @ribbon-input-cancel=${this.finishRibbonInput}
+      ></dom-editor-toolbox>
     `
   }
 }

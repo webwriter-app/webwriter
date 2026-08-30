@@ -90,7 +90,7 @@ export class DomEditorBreadcrumb extends LitElement {
       min-width: 0;
       height: 30px;
       margin: 0;
-      padding: 0 0.35rem;
+      padding: 0 var(--breadcrumb-inline-end-space, 0.35rem) 0 0.35rem;
       list-style: none;
       white-space: nowrap;
       overflow: hidden;

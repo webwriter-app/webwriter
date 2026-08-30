@@ -44,7 +44,7 @@ const packageFixture = (name = "demo"): WebWriterPackage => ({
 afterEach(() => document.body.replaceChildren())
 
 describe("package ribbon controls", () => {
-  it("fills the remaining space at the end of both Start and Insert", async () => {
+  it("fills the remaining space after the insertion drawers on Start", async () => {
     const ribbon = new AppRibbon()
     document.body.append(ribbon)
     await ribbon.updateComplete
@@ -53,22 +53,15 @@ describe("package ribbon controls", () => {
       ribbon.shadowRoot!.querySelectorAll<RibbonDrawer>(".ribbon-content > ribbon-drawer"),
       drawer => drawer.label,
     )
-    let packageDrawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')!
+    const packageDrawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')!
 
-    expect(drawerLabels()).toEqual(["Marks", "Table", "Elements", "Packages"])
-    expect(getComputedStyle(packageDrawer).flexGrow).toBe("1")
-
-    ribbon.activeMenu = "Insert"
-    await ribbon.updateComplete
-    packageDrawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')!
-
-    expect(drawerLabels()).toEqual(["Text", "Lists", "Media", "Interactive", "Packages"])
+    expect(drawerLabels()).toEqual(["Marks", "Text", "Lists", "Media", "Interactive", "Packages"])
     expect(getComputedStyle(packageDrawer).flexGrow).toBe("1")
   })
 
   it("uses horizontal two-cell package buttons, a one-package search field, and member menus", async () => {
     const ribbon = new AppRibbon()
-    ribbon.activeMenu = "Insert"
+    ribbon.activeMenu = "Start"
     const demoPackage = packageFixture()
     ribbon.packages = [demoPackage]
     ribbon.installedPackages = [demoPackage]
@@ -115,7 +108,7 @@ describe("package ribbon controls", () => {
 
   it("does not highlight installed packages outside management hover", async () => {
     const ribbon = new AppRibbon()
-    ribbon.activeMenu = "Insert"
+    ribbon.activeMenu = "Start"
     const installed = packageFixture("installed")
     ribbon.packages = [installed]
     ribbon.installedPackages = [installed]
@@ -135,7 +128,7 @@ describe("package ribbon controls", () => {
 
   it("only gives installed packages a member chevron", async () => {
     const ribbon = new AppRibbon()
-    ribbon.activeMenu = "Insert"
+    ribbon.activeMenu = "Start"
     const installed = packageFixture("installed")
     ribbon.packages = [installed, packageFixture("available")]
     ribbon.installedPackages = [installed]
@@ -152,7 +145,7 @@ describe("package ribbon controls", () => {
 
   it("opens compact package details to the left with friendly keyword metadata", async () => {
     const ribbon = new AppRibbon()
-    ribbon.activeMenu = "Insert"
+    ribbon.activeMenu = "Start"
     const pkg = packageFixture("details")
     pkg.authors = ["Ada", "Grace"]
     pkg.keywords = ["webwriter-widget", "widget-practical", "isced2011-1", "iscedf2013-05"]
@@ -189,7 +182,7 @@ describe("package ribbon controls", () => {
 
   it("opens package details to the right when there is no room on the left", async () => {
     const ribbon = new AppRibbon()
-    ribbon.activeMenu = "Insert"
+    ribbon.activeMenu = "Start"
     const pkg = packageFixture("right")
     ribbon.packages = [pkg]
     document.body.append(ribbon)
@@ -213,7 +206,7 @@ describe("package ribbon controls", () => {
 
   it("keeps installed packages first whether the drawer is open or closed", async () => {
     const ribbon = new AppRibbon()
-    ribbon.activeMenu = "Insert"
+    ribbon.activeMenu = "Start"
     const available = packageFixture("available")
     const installed = packageFixture("installed")
     ribbon.packages = [available, installed, packageFixture("another")]
@@ -233,7 +226,7 @@ describe("package ribbon controls", () => {
 
   it("accounts for the unused cell beside search in odd-width grids", async () => {
     const ribbon = new AppRibbon()
-    ribbon.activeMenu = "Insert"
+    ribbon.activeMenu = "Start"
     ribbon.packages = Array.from({length: 6}, (_, index) => packageFixture(`package-${index + 1}`))
     document.body.append(ribbon)
     await ribbon.updateComplete
@@ -253,7 +246,7 @@ describe("package ribbon controls", () => {
 
   it("uses the full drawer width when only one package-button column fits", async () => {
     const ribbon = new AppRibbon()
-    ribbon.activeMenu = "Insert"
+    ribbon.activeMenu = "Start"
     ribbon.packages = [packageFixture("long-package-name")]
     document.body.append(ribbon)
     await ribbon.updateComplete
@@ -277,7 +270,7 @@ describe("package ribbon controls", () => {
 
   it("opens management mode on search focus and only shows remove icons for installed packages", async () => {
     const ribbon = new AppRibbon()
-    ribbon.activeMenu = "Insert"
+    ribbon.activeMenu = "Start"
     const alphaPackage = packageFixture("alpha")
     ribbon.packages = [alphaPackage, packageFixture("beta"), packageFixture("gamma")]
     ribbon.installedPackages = [alphaPackage]
@@ -324,7 +317,7 @@ describe("package ribbon controls", () => {
 
   it("inserts from the package body and removes only from its corner control", async () => {
     const ribbon = new AppRibbon()
-    ribbon.activeMenu = "Insert"
+    ribbon.activeMenu = "Start"
     const alphaPackage = packageFixture("alpha")
     ribbon.packages = [alphaPackage, packageFixture("beta"), packageFixture("gamma")]
     ribbon.installedPackages = [alphaPackage]

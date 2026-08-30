@@ -2521,7 +2521,7 @@ export class AppRibbon extends LitElement {
     this.selectStart()
   }
 
-  private readonly handleRibbonPointerDown = (event: MouseEvent) => {
+  protected readonly handleRibbonPointerDown = (event: MouseEvent) => {
     if(event.button !== 0) return
 
     const input = ribbonInputFromEvent(event)
@@ -2548,7 +2548,7 @@ export class AppRibbon extends LitElement {
     event.preventDefault()
   }
 
-  private readonly handleRibbonInputFocusIn = (event: FocusEvent) => {
+  protected readonly handleRibbonInputFocusIn = (event: FocusEvent) => {
     const input = ribbonInputFromEvent(event)
     if(!input) return
     this.dispatchEvent(new CustomEvent<RibbonInputEventDetail>("ribbon-input-focus", {
@@ -2558,7 +2558,7 @@ export class AppRibbon extends LitElement {
     }))
   }
 
-  private readonly handleRibbonInputFocusOut = (event: FocusEvent) => {
+  protected readonly handleRibbonInputFocusOut = (event: FocusEvent) => {
     const input = ribbonInputFromEvent(event)
     if(!input) return
     this.dispatchEvent(new CustomEvent<RibbonInputEventDetail>("ribbon-input-blur", {
@@ -2572,7 +2572,7 @@ export class AppRibbon extends LitElement {
     }))
   }
 
-  private readonly handleRibbonInputChange = (event: Event) => {
+  protected readonly handleRibbonInputChange = (event: Event) => {
     const input = ribbonInputFromEvent(event)
     if(!input || input.hasAttribute("data-ribbon-input-persistent")) return
     this.dispatchEvent(new CustomEvent<RibbonInputEventDetail>("ribbon-input-commit", {
@@ -2582,7 +2582,7 @@ export class AppRibbon extends LitElement {
     }))
   }
 
-  private readonly handleRibbonInputKeydown = (event: KeyboardEvent) => {
+  protected readonly handleRibbonInputKeydown = (event: KeyboardEvent) => {
     if(event.key !== "Escape") return
     const input = ribbonInputFromEvent(event)
     if(!input) return
@@ -3281,7 +3281,7 @@ export class AppRibbon extends LitElement {
     if((changed.has("menuOpen") && !this.menuOpen) || changed.has("activeMenu")) {
       this.renderRoot.querySelector<RibbonMenu>("ribbon-menu")?.closeSubmenus()
     }
-    if(changed.has("activeMenu") && this.activeMenu === "Insert") {
+    if(changed.has("activeMenu") && this.activeMenu === "Start") {
       this.dispatchEvent(new Event("package-catalog-request", {bubbles: true, composed: true}))
     }
     if(changed.has("activeMenu") && this.activeMenu === "Develop") {
@@ -4610,12 +4610,11 @@ export class AppRibbon extends LitElement {
   }
 
   private renderInsertionDrawer(drawer: RibbonMenuGroup) {
-    const elements = drawer.label === "Elements"
     return html`
       <ribbon-drawer
         label=${drawer.label}
-        icon=${elements ? "Paragraph" : "Table"}
-        layout=${elements ? "elements" : "media"}
+        icon="Table"
+        layout="media"
       >
         ${drawer.buttons.map(button => {
           const item = typeof button === "string" ? {label: button} : button
@@ -4628,19 +4627,7 @@ export class AppRibbon extends LitElement {
             : item.label === "Enumeration"
               ? orderedListStyles
               : item.submenu ?? []
-          const active = type
-            ? this.mediaSelectionMatches(type)
-            : item.label === "Lists"
-              ? this.listType !== null
-              : item.label === "Media"
-                ? this.media !== null
-                : item.label === "List"
-                  ? this.listType === "ul" || this.listType === "menu"
-                  : item.label === "Enumeration"
-                    ? this.listType === "ol"
-                    : item.label === "Glossary"
-                      ? this.listType === "dl"
-                      : false
+          const active = type ? this.mediaSelectionMatches(type) : false
           const tableDropdown = item.label === "Table" ? this.renderTableSizePicker() : null
           return html`
             <ribbon-button
@@ -4649,7 +4636,6 @@ export class AppRibbon extends LitElement {
               .icon=${item.icon ?? item.label}
               .submenu=${type || tableDropdown ? [] : submenu}
               .dropdown=${type ? this.renderMediaDropdown(type) : tableDropdown}
-              ?toggle=${elements && item.label === "Lists"}
               ?active=${active}
             ></ribbon-button>
           `
@@ -5284,7 +5270,7 @@ export class AppRibbon extends LitElement {
     `
   }
 
-  private renderDrawers() {
+  protected renderDrawers() {
     if(this.previewActive && this.liveSessionActive && this.liveSessionRole === "host") {
       const sharing = menuGroups.File.find(group => group.label === "Sharing")!
       return [this.renderSharingDrawer(sharing), this.renderLearnersDrawer()]
@@ -5309,7 +5295,7 @@ export class AppRibbon extends LitElement {
       if(drawer.label === "Development") return this.renderDevelopmentDrawer()
       if(drawer.label === "Exports") return this.renderExportsDrawer()
       if(drawer.label === "Lists") return this.renderListDrawer()
-      if(drawer.label === "Elements" || drawer.label === "Media") return this.renderInsertionDrawer(drawer)
+      if(drawer.label === "Media") return this.renderInsertionDrawer(drawer)
       const representative = drawer.buttons[0]
       const icon = typeof representative === "string"
         ? representative
@@ -5332,11 +5318,11 @@ export class AppRibbon extends LitElement {
     })
   }
 
-  private get currentMenuGroups() {
+  protected get currentMenuGroups() {
     if(this.activeMenu === "Edit" && this.graphic?.active) {
       return menuGroups.Edit.filter(group => group.label === "Graphic")
     }
-    if(this.activeMenu !== "Start" && this.activeMenu !== "Insert") return menuGroups[this.activeMenu]
+    if(this.activeMenu !== "Start") return menuGroups[this.activeMenu]
     const packageButtons: RibbonMenuButton[] = this.availablePackages.map(pkg => {
       const members = pkg.members.filter(member => member.insertable)
       return {
