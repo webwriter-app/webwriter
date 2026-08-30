@@ -41,7 +41,7 @@ describe("list ribbon drawer", () => {
     )!
 
     expect(submenuTags(button("Elements", "Form"))).toEqual([
-      "button", "input", "select", "meter", "datalist", "fieldset", "form", "label", "legend", "optgroup", "option", "output", "progress",
+      "fieldset", "label", "input", "textarea", "select", "datalist", "button", "output", "meter", "progress",
     ])
     expect(submenuTags(button("Elements", "Section"))).toEqual([
       "div", "blockquote", "article", "aside", "header", "footer", "main", "nav", "search", "address",

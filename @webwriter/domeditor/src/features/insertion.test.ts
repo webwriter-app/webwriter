@@ -203,6 +203,20 @@ describe("insertion menu", () => {
     postSelectionPath.mockRestore()
   })
 
+  it("uses visible form defaults instead of inserting empty controls", async () => {
+    document.body.innerHTML = "<p></p>"
+    $.move(document.querySelector("p")!)
+    typeCommand()
+    typeText("textarea")
+    const menu = editor.features.insertion.menu
+    await menu.updateComplete
+
+    menu.shadowRoot?.querySelector<HTMLButtonElement>(".item")?.click()
+
+    expect(editorHTML()).toBe('<textarea placeholder="Enter text"></textarea>')
+    expect(menu.open).toBe(false)
+  })
+
   it("shows installed package widgets and inserts their custom elements", async () => {
     editor.schema.extendWidgets([{
       tagName: "webwriter-demo",

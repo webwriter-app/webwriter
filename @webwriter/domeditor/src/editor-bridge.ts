@@ -12,6 +12,7 @@ import type {WebWriterPackage} from "./packages"
 import type {TableSelectionState} from "./table"
 import {isGraphicShapeType, type GraphicSelectionState} from "./graphic"
 import type {DocumentHeadElementState, DocumentHeadState} from "./document-head"
+import {isFormElementType, type FormSelectionState} from "./form"
 
 export const executeCompleteEvent = "dom-editor-execute-complete"
 export const executeFailureEvent = "dom-editor-execute-failure"
@@ -193,6 +194,7 @@ export type SelectionChangeDetail = {
   gap?: SelectionGap
   list?: ListSelectionState
   media?: MediaSelectionState
+  form?: FormSelectionState
   table?: TableSelectionState
   graphic?: GraphicSelectionState
 }
@@ -449,6 +451,21 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
     && Object.entries(media.attributes).every(([name, value]) => typeof name === "string" && typeof value === "string")
   )
   if(!mediaIsValid) return false
+
+  const form = message.detail.form as Partial<FormSelectionState> | null | undefined
+  const formIsValid = form === undefined || (
+    !!form
+    && typeof form === "object"
+    && isFormElementType(form.type)
+    && !!form.attributes
+    && typeof form.attributes === "object"
+    && !Array.isArray(form.attributes)
+    && Object.entries(form.attributes).every(([name, value]) => typeof name === "string" && typeof value === "string")
+    && (form.text === undefined || typeof form.text === "string")
+    && [form.canAddField, form.canAddLegend, form.canAddOption, form.canAddOptionGroup, form.canCustomizeSelect]
+      .every(value => value === undefined || typeof value === "boolean")
+  )
+  if(!formIsValid) return false
 
   const table = message.detail.table as Partial<TableSelectionState> | null | undefined
   const tableIsValid = table === undefined || (

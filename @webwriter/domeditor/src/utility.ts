@@ -1,6 +1,7 @@
 import { Schema } from "./schema"
 import {isMarkElement} from "./marks"
 import {mediaElementSelector} from "./media"
+import {formControlSelector, formInteractionSelector} from "./form"
 
 export function createStylesheet(content: string) {
   const stylesheet = new CSSStyleSheet()
@@ -40,6 +41,7 @@ function focusEditorWindow() {
 export function isAtomicEditingElement(node: Node | null): node is Element {
   return node instanceof Element
     && (node.matches(mediaElementSelector)
+      || node.matches(formControlSelector)
       || node.localName.includes("-")
       || node.hasAttribute("is"))
 }
@@ -976,6 +978,35 @@ export function widgetHostForScrollEvent(event: Event) {
 /** Whether a non-scroll interaction originated in a mounted widget's shadow tree. */
 export function isWidgetShadowInteraction(event: Event) {
   return widgetHostForShadowInteraction(event) !== null
+}
+
+/** The authored native form control that owns an event. LABEL events resolve
+ * to their associated control so clicking a label enters the same capture as
+ * clicking the control itself. Selectionchange has no useful event target,
+ * so use the focused control in that case. */
+export function formControlForInteraction(event: Event) {
+  const origin = event.type === "selectionchange"
+    ? document.activeElement
+    : event.composedPath()[0]
+  if(!(origin instanceof Element)) return null
+  const interaction = origin.closest(formInteractionSelector)
+  if(!interaction || !document.body.contains(interaction)) return null
+  for(let ancestor = interaction.parentElement; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
+    if(ancestor.localName.includes("-") || ancestor.hasAttribute("is")) return null
+  }
+  if(interaction instanceof HTMLLabelElement) {
+    return interaction.control && document.body.contains(interaction.control)
+      ? interaction.control
+      : null
+  }
+  return interaction.matches(formControlSelector)
+    ? interaction as HTMLButtonElement | HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    : null
+}
+
+/** Whether an event belongs to a native authored form-control interaction. */
+export function isFormControlInteraction(event: Event) {
+  return formControlForInteraction(event) !== null
 }
 
 /** Whether the element creates a stacking context, per CSS rules (root element, positioned with z-index, fixed/sticky, transforms/filters, opacity < 1, isolation, top layer, will-change, contain, ...). */

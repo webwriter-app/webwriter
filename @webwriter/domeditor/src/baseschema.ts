@@ -251,7 +251,10 @@ export const baseSchema = {
   },
   "button": {
     group: ["interactive", "phrasing", "flow", "palpable", "formassociated", "listed", "labelable", "submittable"],
-    content: {group: "phrasing", selector: hasNot("audio", "embed", "fencedframe", "iframe", "video", "a", "button", "details", "input", "label", "select", "textarea", "geolocation"), min: 0, max: Infinity}
+    content: {options: [
+      {group: "phrasing", selector: hasNot("audio", "embed", "fencedframe", "iframe", "video", "a", "button", "details", "input", "label", "select", "textarea", "geolocation")},
+      {selector: "selectedcontent"},
+    ], min: 0, max: Infinity}
   },
   "details": {
     group: ["interactive", "flow", "palpable"],
@@ -262,11 +265,17 @@ export const baseSchema = {
   },
   "label": {
     group: ["interactive", "phrasing", "flow", "palpable"],
-    content: {group: "phrasing", selector: hasNot("label", "input", "select", "textarea"), min: 0, max: Infinity}
+    content: {group: "phrasing", selector: hasNot("label"), min: 0, max: Infinity}
   },
   "select": {
     group: ["interactive", "phrasing", "flow", "palpable", "formassociated", "listed", "labelable", "resettable", "submittable"],
-    content: {options: [{selector: "option"}, {selector: "optgroup"}, {selector: "hr"}, {selector: "div"}], min: 0, max: Infinity}
+    content: {terms: [
+      {selector: "button", min: 0, max: 1},
+      {options: [
+        {selector: "option"}, {selector: "optgroup"}, {selector: "hr"},
+        {selector: "div"}, {selector: "noscript"}, {group: "scriptsupporting"},
+      ], min: 0, max: Infinity},
+    ]}
   },
   "textarea": {
     group: ["interactive", "phrasing", "flow", "palpable", "formassociated", "listed", "labelable", "resettable", "submittable"],
@@ -536,16 +545,27 @@ export const baseSchema = {
     content: {group: "flow", min: 0, max: Infinity}
   },
   "legend": {
+    directlyInsertable: false,
     content: {options: [{group: "phrasing"}, {selector: "h1"}, {selector: "h2"}, {selector: "h3"}, {selector: "h4"}, {selector: "h5"}, {selector: "h6"}], min: 0, max: Infinity}
   },
   "li": {
     content: {group: "flow", min: 0, max: Infinity}
   },
   "optgroup": {
-    content: {selector: "option", min: 0, max: Infinity}
+    directlyInsertable: false,
+    content: {terms: [
+      {selector: "legend", min: 0, max: 1},
+      {options: [
+        {selector: "option"}, {selector: "div"}, {selector: "noscript"}, {group: "scriptsupporting"},
+      ], min: 0, max: Infinity},
+    ]}
   },
   "option": {
-    content: { selector: { type: "text" }, min: 0, max: Infinity }
+    directlyInsertable: false,
+    content: {selector: {type: "text"}, min: 0, max: Infinity}
+  },
+  "selectedcontent": {
+    directlyInsertable: false
   },
   "rp": {
     content: { selector: { type: "text" }, min: 0, max: Infinity }

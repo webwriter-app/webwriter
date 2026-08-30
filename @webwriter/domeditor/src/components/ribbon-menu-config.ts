@@ -10,6 +10,7 @@ import {
 } from "./insertion-menu"
 import {type RibbonMenuButton, type RibbonMenuGroup} from "./ribbon-menu"
 import {elementStyleCategories} from "../element-styles"
+import {topLevelFormElementTypes} from "../form"
 
 export type RibbonMenuName = "File" | "Start" | "Edit" | "Style" | "Develop" | "History"
 
@@ -30,7 +31,7 @@ export type StorageLocation = typeof storageLocations[number]["value"]
 
 export const placeholderSharingLink = "https://webwriter.app/share/placeholder"
 
-type InsertionSection = "Text" | "Lists" | "Media"
+type InsertionSection = "Text" | "Lists" | "Media" | "Forms"
 
 const insertGraphicShapeButtons: RibbonMenuButton[] = graphicShapeOptions.map(option => ({
   label: option.label,
@@ -105,13 +106,11 @@ export const listInsertionOptions: RibbonMenuButton[] = [
 ]
 
 const mediaInsertionSubmenuTags = (tag: string): readonly string[] | undefined => {
-  if(tag === "form") return formInsertionTags
   if(tag === "section") return sectionInsertionTags
   if(tag === "script") return scriptInsertionTags
 }
 
 const groupedMediaInsertionTags = new Set<string>([
-  ...formInsertionTags,
   ...sectionInsertionTags,
   ...scriptInsertionTags,
 ])
@@ -119,6 +118,18 @@ const groupedMediaInsertionTags = new Set<string>([
 const insertionMenuButtons = (sections: readonly InsertionSection[]) => insertionMenuItems
   .filter(item => sections.includes(item.section))
   .flatMap<RibbonMenuButton>(item => {
+    if(item.section === "Forms") {
+      if(item.tag === "form") {
+        return [{
+          label: item.name,
+          action: item.name,
+          icon: item.icon ?? item.name,
+          submenu: insertionSubmenuForTags(formInsertionTags.filter(tag => tag !== "form")),
+        }]
+      }
+      if(topLevelFormElementTypes.includes(item.tag as typeof topLevelFormElementTypes[number])) return [item.name]
+      return []
+    }
     if(item.section === "Lists" && detailsInsertionTags.includes(item.tag as typeof detailsInsertionTags[number])) return []
     if(item.section === "Lists") {
       if(item.tag === "ul") {
@@ -177,7 +188,7 @@ const groupedInsertionMenuGroup = (
   label: string,
   buttonLabels: readonly string[],
 ): RibbonMenuGroup => {
-  const buttons = insertionMenuButtons(["Text", "Lists", "Media"])
+  const buttons = insertionMenuButtons(["Text", "Lists", "Media", "Forms"])
   return {
     label,
     buttons: buttonLabels.map(buttonLabel => {
@@ -226,6 +237,7 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
   ],
   Edit: [
     {label: "Marks", buttons: []},
+    {label: "Form", buttons: []},
     {label: "Table", buttons: []},
     {label: "Graphic", buttons: []},
     {label: "Comments", buttons: []},

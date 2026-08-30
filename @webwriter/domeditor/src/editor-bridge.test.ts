@@ -218,6 +218,11 @@ describe("editor bridge message guards", () => {
         gap: {parentPath: [0], offset: 1},
         list: {type: "menu", style: "square"},
         media: {type: "picture", attributes: {src: "photo.png", alt: "Photo"}},
+        form: {
+          type: "input",
+          attributes: {type: "email", required: ""},
+          canAddOption: false,
+        },
         graphic: {
           active: true,
           capture: true,
@@ -250,6 +255,10 @@ describe("editor bridge message guards", () => {
       {...message, detail: {...message.detail, media: {type: "canvas", attributes: {}}}},
       {...message, detail: {...message.detail, media: {type: "img", attributes: []}}},
       {...message, detail: {...message.detail, media: {type: "img", attributes: {width: 640}}}},
+      {...message, detail: {...message.detail, form: {type: "unknown", attributes: {}}}},
+      {...message, detail: {...message.detail, form: {type: "input", attributes: []}}},
+      {...message, detail: {...message.detail, form: {type: "input", attributes: {required: true}}}},
+      {...message, detail: {...message.detail, form: {type: "input", attributes: {}, canAddField: "yes"}}},
       {...message, detail: {...message.detail, graphic: {active: true, capture: true, shape: "path"}}},
       {...message, detail: {...message.detail, graphic: {active: true, capture: "true"}}},
       {...message, detail: {...message.detail, graphic: {active: true, capture: true, parameters: {width: 800}}}},

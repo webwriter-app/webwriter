@@ -33,6 +33,11 @@ import {
   type MediaSelectionState,
 } from "../media"
 import {
+  formAttributeOptions,
+  isFormElementType,
+  type FormSelectionState,
+} from "../form"
+import {
   aiEditReviewEvent,
   executeCompleteEvent,
   executeFailureEvent,
@@ -290,6 +295,7 @@ export class DomEditor extends LitElement {
     listType: {attribute: false, state: true},
     listStyle: {attribute: false, state: true},
     mediaSelection: {attribute: false, state: true},
+    formSelection: {attribute: false, state: true},
     tableSelection: {attribute: false, state: true},
     graphicSelection: {attribute: false, state: true},
     elementStyle: {attribute: false, state: true},
@@ -348,6 +354,7 @@ export class DomEditor extends LitElement {
   private listType: ListType | null = null
   private listStyle = ""
   private mediaSelection: MediaSelectionState | null = null
+  private formSelection: FormSelectionState | null = null
   private tableSelection: TableSelectionState | null = null
   private graphicSelection: GraphicSelectionState | null = null
   private elementStyle: ElementStyleState = {
@@ -2347,6 +2354,17 @@ export class DomEditor extends LitElement {
       void this.execute(tableActions[label as keyof typeof tableActions]).finally(() => this.focusEditor())
       return
     }
+    const formActions = {
+      "form-add-field": {type: "addFormField"},
+      "form-add-legend": {type: "addFormLegend"},
+      "form-add-option": {type: "addFormOption"},
+      "form-add-option-group": {type: "addFormOptionGroup"},
+      "form-customize-select": {type: "customizeFormSelect"},
+    } as const
+    if(label && Object.hasOwn(formActions, label)) {
+      void this.execute(formActions[label as keyof typeof formActions]).finally(() => this.focusEditor())
+      return
+    }
     const item = insertionMenuItems.find(candidate => candidate.name === label)
     if(!item) {
       this.focusEditor()
@@ -2376,6 +2394,11 @@ export class DomEditor extends LitElement {
 
     if(isMediaType(item.tag)) {
       void this.execute({type: "insertMedia", media: item.tag}).finally(() => this.focusEditor())
+      return
+    }
+
+    if(isFormElementType(item.tag)) {
+      void this.execute({type: "insertFormElement", element: item.tag}).finally(() => this.focusEditor())
       return
     }
 
@@ -2913,6 +2936,40 @@ export class DomEditor extends LitElement {
     this.focusEditor()
   }
 
+  private handleFormAttributeChange = (event: Event) => {
+    const detail = (event as CustomEvent<{
+      type?: unknown
+      attribute?: unknown
+      value?: unknown
+    }>).detail
+    if(!isFormElementType(detail?.type)
+      || typeof detail?.attribute !== "string"
+      || detail.value !== null && typeof detail.value !== "string") {
+      this.focusEditor()
+      return
+    }
+    const known = formAttributeOptions[detail.type].some(option => option.name === detail.attribute)
+    const custom = detail.attribute.length > 0 && detail.attribute === detail.attribute.trim()
+    if(!known && !custom) {
+      this.focusEditor()
+      return
+    }
+    void this.execute({
+      type: "setFormAttribute",
+      name: detail.attribute,
+      value: detail.value,
+    })
+  }
+
+  private handleFormTextChange = (event: Event) => {
+    const detail = (event as CustomEvent<{type?: unknown, value?: unknown}>).detail
+    if(!isFormElementType(detail?.type) || typeof detail.value !== "string") {
+      this.focusEditor()
+      return
+    }
+    void this.execute({type: "setFormText", value: detail.value})
+  }
+
   private handleTableInsert = (event: Event) => {
     const detail = (event as CustomEvent<{rows?: unknown, columns?: unknown}>).detail
     if(!Number.isInteger(detail?.rows) || !Number.isInteger(detail?.columns)) {
@@ -3274,6 +3331,10 @@ export class DomEditor extends LitElement {
       this.mediaSelection = event.data.detail.media
         ? {type: event.data.detail.media.type, attributes: {...event.data.detail.media.attributes}}
         : null
+      this.formSelection = event.data.detail.form ? {
+        ...event.data.detail.form,
+        attributes: {...event.data.detail.form.attributes},
+      } : null
       this.tableSelection = event.data.detail.table ? {...event.data.detail.table} : null
       this.graphicSelection = event.data.detail.graphic ? {
         ...event.data.detail.graphic,
@@ -3286,6 +3347,7 @@ export class DomEditor extends LitElement {
       } : null
       const hasContextualEditOptions = this.tableSelection?.active === true
         || this.graphicSelection?.active === true
+        || this.formSelection !== null
         || path.at(-1)?.icon === "Packages"
       if(event.data.detail.inserted === true && hasContextualEditOptions) this.openEditToolbox()
       this.documentTree = this.buildDocumentTree()
@@ -3299,6 +3361,7 @@ export class DomEditor extends LitElement {
           ...(selectionGap ? {gap: selectionGap} : {}),
           list: {type: this.listType, style: this.listStyle},
           ...(this.mediaSelection ? {media: this.mediaSelection} : {}),
+          ...(this.formSelection ? {form: this.formSelection} : {}),
           ...(this.tableSelection ? {table: this.tableSelection} : {}),
           ...(this.graphicSelection ? {graphic: this.graphicSelection} : {}),
         },
@@ -3568,6 +3631,7 @@ export class DomEditor extends LitElement {
       highlighting: true,
     }
     this.mediaSelection = null
+    this.formSelection = null
     this.tableSelection = null
     this.graphicSelection = null
     this.elementStyleRefreshSequence++
@@ -3607,6 +3671,7 @@ export class DomEditor extends LitElement {
           .listType=${this.listType}
           .listStyle=${this.listStyle}
           .media=${this.mediaSelection}
+          .form=${this.formSelection}
           .graphic=${this.graphicSelection}
           .elementStyle=${this.elementStyle}
           .presenceUsers=${this.presenceUsers}
@@ -3645,6 +3710,8 @@ export class DomEditor extends LitElement {
           @comment-action=${this.handleCommentAction}
           @media-attribute-change=${this.handleMediaAttributeChange}
           @media-type-change=${this.handleMediaTypeChange}
+          @form-attribute-change=${this.handleFormAttributeChange}
+          @form-text-change=${this.handleFormTextChange}
           @table-insert=${this.handleTableInsert}
           @table-style-change=${this.handleTableStyleChange}
           @graphic-parameter-change=${this.handleGraphicParameterChange}
@@ -3728,6 +3795,7 @@ export class DomEditor extends LitElement {
         .listType=${this.listType}
         .listStyle=${this.listStyle}
         .selectionPath=${this.selectionPath}
+        .form=${this.formSelection}
         .table=${this.tableSelection}
         .graphic=${this.graphicSelection}
         .elementStyle=${this.elementStyle}
@@ -3742,6 +3810,8 @@ export class DomEditor extends LitElement {
         @ribbon-combobox-change=${this.handleRibbonComboboxChange}
         @mark-attribute-change=${this.handleMarkAttributeChange}
         @comment-action=${this.handleCommentAction}
+        @form-attribute-change=${this.handleFormAttributeChange}
+        @form-text-change=${this.handleFormTextChange}
         @table-insert=${this.handleTableInsert}
         @table-style-change=${this.handleTableStyleChange}
         @graphic-parameter-change=${this.handleGraphicParameterChange}

@@ -57,6 +57,67 @@ body > * + * {
   border: 1px solid #aeb8c4;
 }
 
+/* Forms have little useful authoring presentation without a site stylesheet.
+ * These zero-specificity editor defaults keep controls legible and make
+ * structural containers easy to address while authored CSS remains able to
+ * override every value. */
+:where(form, fieldset) {
+  box-sizing: border-box;
+  display: grid;
+  gap: 0.75rem;
+}
+
+:where(form > label, fieldset > label) {
+  display: grid;
+  gap: 0.25rem;
+}
+
+:where(input, textarea, select, button) {
+  box-sizing: border-box;
+  max-width: 100%;
+  font: inherit;
+}
+
+:where(textarea) {
+  min-height: 4lh;
+  resize: vertical;
+}
+
+/* DATALIST and hidden controls are normally invisible, which would make them
+ * impossible to select in the live DOM editor. This affects editing only. */
+:where(datalist) {
+  display: grid;
+  gap: 0.25rem;
+  min-height: 1.75rem;
+  padding: 0.4rem;
+  border: 1px dashed #aeb8c4;
+}
+
+:where(datalist)::before {
+  content: "Data list";
+  color: #6b7280;
+  font: 600 0.75rem/1.2 system-ui, sans-serif;
+}
+
+:where(datalist > option) {
+  display: block;
+}
+
+:where(input[type="hidden"]) {
+  display: inline-block;
+  width: 8rem;
+  min-height: 1.75rem;
+  border: 1px dashed #aeb8c4;
+  background: repeating-linear-gradient(135deg, #f8fafc, #f8fafc 0.35rem, #eef2f7 0.35rem, #eef2f7 0.7rem);
+}
+
+:where(selectedcontent:empty)::before {
+  content: "Selected option";
+  color: darkgray;
+  pointer-events: none;
+  user-select: none;
+}
+
 :is(picture, audio, video) {
   display: block;
   width: 100%;

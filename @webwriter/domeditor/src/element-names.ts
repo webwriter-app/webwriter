@@ -87,7 +87,7 @@ const presentations: Record<string, ElementPresentation> = {
   label: {name: "Label", icon: "Label"},
   button: {name: "Button", icon: "Button"},
   input: {name: "Text Field", icon: "Input"},
-  textarea: {name: "Text Field", icon: "Input"},
+  textarea: {name: "Text Area", icon: "Input"},
   select: {name: "Dropdown", icon: "Input"},
   meter: {name: "Meter", icon: "Input"},
   datalist: {name: "Data List", icon: "Input"},
@@ -97,6 +97,7 @@ const presentations: Record<string, ElementPresentation> = {
   option: {name: "Option", icon: "Input"},
   output: {name: "Output", icon: "Input"},
   progress: {name: "Progress", icon: "Input"},
+  selectedcontent: {name: "Selected Content", icon: "Input"},
   search: {name: "Search", icon: "Search"},
   address: {name: "Address", icon: "Section"},
 }

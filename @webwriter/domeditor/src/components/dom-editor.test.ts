@@ -2422,7 +2422,7 @@ describe("DomEditor.execute()", () => {
 
     form.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
     section.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
-    expect(execute).toHaveBeenNthCalledWith(1, {type: "insert", html: "<form></form>"})
+    expect(execute).toHaveBeenNthCalledWith(1, {type: "insertFormElement", element: "form"})
     expect(execute).toHaveBeenNthCalledWith(2, {type: "insert", html: "<section></section>"})
 
     form.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
@@ -2430,7 +2430,7 @@ describe("DomEditor.execute()", () => {
     const formMenu = form.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
     await formMenu.updateComplete
     formMenu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Text Field"]')!.click()
-    expect(execute).toHaveBeenLastCalledWith({type: "insert", html: "<input>"})
+    expect(execute).toHaveBeenLastCalledWith({type: "insertFormElement", element: "input"})
 
     section.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
     await section.updateComplete

@@ -3,11 +3,12 @@ import { property, state } from "lit/decorators.js"
 import {getElementPresentation} from "../element-names"
 import { ribbonIcon } from "../ribbon-icons"
 import type {PackageInsertionItem} from "../packages"
+import {insertableFormElementTypes} from "../form"
 
 export type InsertionMenuItem = {
   tag?: string
   name: string
-  section: "Text" | "Lists" | "Media" | "Packages"
+  section: "Text" | "Lists" | "Media" | "Forms" | "Packages"
   packageName?: string
   kind?: "widget" | "snippet"
   description?: string
@@ -18,7 +19,7 @@ export type InsertionMenuItem = {
 
 type BuiltinInsertionMenuItem = InsertionMenuItem & {
   tag: string
-  section: "Text" | "Lists" | "Media"
+  section: "Text" | "Lists" | "Media" | "Forms"
 }
 
 const insertionMenuItem = (
@@ -32,9 +33,7 @@ const insertionMenuItem = (
 
 export const headingInsertionTags = ["h2", "h3", "h4", "h5", "h6", "hr"] as const
 export const detailsInsertionTags = ["dialog"] as const
-export const formInsertionTags = [
-  "button", "input", "select", "meter", "datalist", "fieldset", "form", "label", "legend", "optgroup", "option", "output", "progress",
-] as const
+export const formInsertionTags = insertableFormElementTypes
 export const sectionInsertionTags = [
   "div", "blockquote", "article", "aside", "header", "footer", "main", "nav", "search", "address",
 ] as const
@@ -57,8 +56,7 @@ export const insertionMenuItems: BuiltinInsertionMenuItem[] = [
   insertionMenuItem("Media", "iframe"),
   insertionMenuItem("Media", "video"),
   insertionMenuItem("Media", "math"),
-  insertionMenuItem("Media", "form"),
-  ...formInsertionTags.filter(tag => tag !== "form").map(tag => insertionMenuItem("Media", tag)),
+  ...formInsertionTags.map(tag => insertionMenuItem("Forms", tag)),
   insertionMenuItem("Media", "section"),
   ...sectionInsertionTags.map(tag => insertionMenuItem("Media", tag, tag === "div" ? "Division" : undefined)),
   insertionMenuItem("Media", "script"),
@@ -256,7 +254,7 @@ export class InsertionMenu extends LitElement {
           @click=${this.close}
         >×</button>
         <div class="sections">
-          ${(["Text", "Lists", "Media", "Packages"] as const).map(section => html`
+          ${(["Text", "Lists", "Media", "Forms", "Packages"] as const).map(section => html`
             <section aria-label=${section}>
               <h2>${section}</h2>
               ${items.filter(item => item.section === section).map(item => html`

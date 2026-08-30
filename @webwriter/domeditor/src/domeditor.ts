@@ -15,8 +15,9 @@ import { MediaFeature } from "./features/media"
 import { TableFeature } from "./features/table"
 import { GraphicFeature } from "./features/graphic"
 import { HeadFeature } from "./features/head"
+import { FormFeature } from "./features/form"
 import { Schema } from "./schema"
-import { $, adoptStylesheet, createStylesheet, focusedWidgetHost, getContainer, isElement, isWidgetShadowInteraction, plainTextFromDOM } from "./utility"
+import { $, adoptStylesheet, createStylesheet, focusedWidgetHost, getContainer, isElement, isFormControlInteraction, isWidgetShadowInteraction, plainTextFromDOM } from "./utility"
 import {isMarkElement, normalizeMarkElements} from "./marks"
 import {
   executeCompleteEvent,
@@ -264,6 +265,7 @@ export class DOMEditor {
     "manipulation": new ManipulationFeature(this),
     "transformation": new TransformationFeature(this),
     "graphic": new GraphicFeature(this),
+    "form": new FormFeature(this),
     "selection": new SelectionFeature(this),
     "placeholder": new PlaceholderFeature(this),
     "mark": new MarkFeature(this),
@@ -466,7 +468,7 @@ export class DOMEditor {
   }
 
   #handleInput = (ev: Event) => {
-    if(isWidgetShadowInteraction(ev)) return
+    if(isWidgetShadowInteraction(ev) || isFormControlInteraction(ev)) return
     this.normalizeSurroundingElements(ev.target instanceof Node ? ev.target : undefined)
   }
 
@@ -480,7 +482,7 @@ export class DOMEditor {
   }
 
   private handleSelectionChange = (event: Event) => {
-    if(isWidgetShadowInteraction(event)) return
+    if(isWidgetShadowInteraction(event) || isFormControlInteraction(event)) return
     const selection = document.getSelection()
     if(!selection?.anchorNode) return
 
@@ -660,6 +662,7 @@ export class DOMEditor {
       : undefined
     const list = this.features.list.getState()
     const media = this.features.media.getState()
+    const form = this.features.form.getState()
     const table = this.features.table.getState()
     const graphic = this.features.graphic.getState()
     const detail: SelectionChangeDetail = {
@@ -670,6 +673,7 @@ export class DOMEditor {
       ...(gap ? {gap} : {}),
       ...(list.type ? {list} : {}),
       ...(media ? {media} : {}),
+      ...(form ? {form} : {}),
       ...(table ? {table} : {}),
       ...(graphic ? {graphic} : {}),
     }
@@ -858,7 +862,7 @@ export class DOMEditor {
   }
 
   #onCopy = (ev: ClipboardEvent) => {
-    if(isWidgetShadowInteraction(ev) || !ev.clipboardData || $.isEmpty) return
+    if(isWidgetShadowInteraction(ev) || isFormControlInteraction(ev) || !ev.clipboardData || $.isEmpty) return
     ev.preventDefault()
     const {html, text} = this.serializeClipboardFragment($.copy())
     ev.clipboardData.setData("text/html", html)

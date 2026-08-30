@@ -1,6 +1,6 @@
 import type { EditingMutation } from "../domdoc"
 import { DOMEditor } from "../domeditor"
-import { isWidgetShadowInteraction } from "../utility"
+import {isFormControlInteraction, isWidgetShadowInteraction} from "../utility"
 
 export type DocumentListenerMap = {[key in keyof DocumentEventMap]?: (event: DocumentEventMap[key]) => void}
 
@@ -14,12 +14,18 @@ export class EditorFeature {
   activeListeners: DocumentListenerMap = {}
   constraints: ConstraintMap = {}
   actions?: Record<string, CallableFunction>
+  /** FormFeature opts in so all other editor features leave captured native
+   * control events to the browser and the form-state synchronizer. */
+  protected handlesFormControlInteractions = false
   private listenerWrappers = new Map<EventListener, EventListener>()
 
   private addListeners(listeners: DocumentListenerMap, options?: AddEventListenerOptions) {
     Object.entries(listeners).forEach(([type, listener]) => {
       const wrapped: EventListener = event => {
-        if(!isWidgetShadowInteraction(event)) listener(event as never)
+        if(!isWidgetShadowInteraction(event)
+          && (this.handlesFormControlInteractions || !isFormControlInteraction(event))) {
+          listener(event as never)
+        }
       }
       this.listenerWrappers.set(listener as EventListener, wrapped)
       document.addEventListener(type, wrapped, options)

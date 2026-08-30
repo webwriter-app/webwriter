@@ -293,6 +293,7 @@ export class DomEditorToolbox extends AppRibbon {
   private get editTypeLabel() {
     if(this.graphic?.active) return "Graphic"
     if(this.table?.active) return "Table"
+    if(this.form) return this.form.type === "input" ? "Input" : this.form.type === "textarea" ? "Text area" : "Form"
     if(this.selectionPath.at(-1)?.icon === "Packages") return "Widget"
     return null
   }
@@ -309,6 +310,8 @@ export class DomEditorToolbox extends AppRibbon {
       ].includes(group.label))
       return this.graphic?.active
         ? groups.filter(group => group.label === "Graphic")
+        : this.form
+          ? groups.filter(group => group.label === "Form")
         : groups
     }
     return []
