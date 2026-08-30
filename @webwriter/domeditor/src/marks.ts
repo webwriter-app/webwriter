@@ -114,12 +114,12 @@ export const primaryDrawerMarkNames = [
   "i",
   "u",
   "s",
-  "sup",
-  "sub",
 ] as const satisfies readonly MarkName[]
 
-/** Secondary marks represented by the generic span control's multi-select. */
+/** Marks represented by the generic More control's multi-select. */
 export const advancedMarkNames = [
+  "sup",
+  "sub",
   "small",
   "code",
   "kbd",

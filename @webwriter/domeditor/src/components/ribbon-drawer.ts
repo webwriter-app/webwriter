@@ -48,7 +48,7 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="marks"]) {
-      --ribbon-drawer-expanded-width: 20.925rem;
+      --ribbon-drawer-expanded-width: 17.975rem;
       --ribbon-drawer-height: 8.35rem;
       --ribbon-drawer-more-height: 3.9rem;
       --ribbon-drawer-panel-padding-block: 0.375rem;
@@ -259,7 +259,7 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="marks"]) .controls {
-      grid-template-columns: repeat(8, 1.75rem) 4rem;
+      grid-template-columns: repeat(7, 1.75rem) 3rem;
       grid-template-rows: repeat(2, minmax(0, 1fr));
       grid-auto-flow: row;
       grid-auto-columns: auto;
@@ -498,17 +498,17 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="marks"]) ::slotted(.mark-remove) {
+      grid-column: 7;
+      grid-row: 2;
+    }
+
+    :host([layout="marks"]) ::slotted(.mark-link) {
       grid-column: 8;
       grid-row: 1;
     }
 
-    :host([layout="marks"]) ::slotted(.mark-link) {
-      grid-column: 9;
-      grid-row: 1;
-    }
-
     :host([layout="marks"]) ::slotted(.mark-span) {
-      grid-column: 9;
+      grid-column: 8;
       grid-row: 2;
     }
 

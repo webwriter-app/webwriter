@@ -341,22 +341,20 @@ describe("mark ribbon controls", () => {
       "Italic",
       "Underline",
       "Strikethrough",
-      "Superscript",
-      "Subscript",
       "Remove formatting",
       "Link",
       "More",
     ])
     expect(drawer.querySelectorAll('ribbon-button[slot="more"]')).toHaveLength(0)
-    expect(buttons.slice(2, 8).every(button => button.compact && button.toggle)).toBe(true)
-    expect(buttons[8].compact).toBe(true)
-    expect(buttons[8].toggle).toBe(false)
-    expect(buttons.slice(9).every(button => !button.compact)).toBe(true)
-    expect(buttons.slice(9).every(button => button.toggle)).toBe(true)
+    expect(buttons.slice(2, 6).every(button => button.compact && button.toggle)).toBe(true)
+    expect(buttons[6].compact).toBe(true)
+    expect(buttons[6].toggle).toBe(false)
+    expect(buttons.slice(7).every(button => !button.compact)).toBe(true)
+    expect(buttons.slice(7).every(button => button.toggle)).toBe(true)
     expect(buttons.every(button => button.disabled)).toBe(true)
     expect(comboboxes.every(combobox => combobox.disabled)).toBe(true)
     expect(getComputedStyle(controls).gridAutoFlow).toBe("row")
-    expect(getComputedStyle(controls).gridTemplateColumns).toBe("repeat(8, 1.75rem) 4rem")
+    expect(getComputedStyle(controls).gridTemplateColumns).toBe("repeat(7, 1.75rem) 3rem")
     expect(getComputedStyle(controls).gridTemplateRows).toBe("repeat(2, minmax(0, 1fr))")
     expect(getComputedStyle(controls).gap).toBe("0.2rem")
     for(const action of ["mark:code", "mark:kbd", "mark:q"]) {
@@ -367,12 +365,12 @@ describe("mark ribbon controls", () => {
     expect(getComputedStyle(comboboxes[2]).gridRow).toBe("2")
     expect(getComputedStyle(comboboxes[3]).gridColumn).toBe("2")
     expect(getComputedStyle(comboboxes[3]).gridRow).toBe("2")
-    expect(getComputedStyle(buttons[8]).gridColumn).toBe("8")
-    expect(getComputedStyle(buttons[8]).gridRow).toBe("1")
+    expect(getComputedStyle(buttons[6]).gridColumn).toBe("7")
+    expect(getComputedStyle(buttons[6]).gridRow).toBe("2")
 
     for(const action of ["mark:a", "mark:span"]) {
       const button = drawer.querySelector<RibbonButton>(`ribbon-button[action="${action}"]`)!
-      expect(getComputedStyle(button).gridColumn).toBe("9")
+      expect(getComputedStyle(button).gridColumn).toBe("8")
       expect(getComputedStyle(button).gridRow).toBe(action === "mark:a" ? "1" : "2")
       expect(button.shadowRoot!.querySelector(".submenu-trigger")).not.toBeNull()
     }
@@ -473,6 +471,8 @@ describe("mark ribbon controls", () => {
     expect(Array.from(dropdown.querySelectorAll<HTMLElement>(".mark-dropdown-option-name")).map(option => option.textContent))
       .toEqual([
         "Span",
+        "Superscript",
+        "Subscript",
         "Side Comment",
         "Code",
         "Keyboard Shortcut",

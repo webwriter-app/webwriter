@@ -3497,7 +3497,7 @@ export class AppRibbon extends LitElement {
     return html`
       <ribbon-button
         class="mark-link"
-        style="grid-column: 9; grid-row: 1"
+        style="grid-column: 8; grid-row: 1"
         toggle
         label="Link"
         action="mark:a"
@@ -3515,7 +3515,7 @@ export class AppRibbon extends LitElement {
     return html`
       <ribbon-button
         class="mark-span"
-        style="grid-column: 9; grid-row: 2"
+        style="grid-column: 8; grid-row: 2"
         toggle
         label=${first.label}
         icon=${first.icon}
@@ -3590,7 +3590,7 @@ export class AppRibbon extends LitElement {
         ${primaryDrawerMarkNames.map(mark => this.visibleMarkButton(mark))}
         <ribbon-button
           class="mark-remove"
-          style="grid-column: 8; grid-row: 1"
+          style="grid-column: 7; grid-row: 2"
           compact
           label="Remove formatting"
           action="removeMarks"
