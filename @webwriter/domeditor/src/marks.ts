@@ -221,6 +221,14 @@ export const primaryMarkOptions: readonly MarkOption[] = [
   {name: "abbr", label: "Abbreviation", icon: "MarkAbbreviation", shortcutKey: "a"},
 ] as const
 
+/** Word/platform-standard primary-modifier shortcuts. Other mark shortcuts
+ * retain the editor's legacy Alt/Option+Shift mapping. */
+export const standardMarkShortcutNames = ["b", "i", "u", "a"] as const satisfies readonly MarkName[]
+
+export function hasStandardMarkShortcut(option: MarkOption) {
+  return standardMarkShortcutNames.includes(option.name as typeof standardMarkShortcutNames[number])
+}
+
 export const secondaryMarkOptions: readonly MarkOption[] = [
   {name: "bdi", label: "Bidirectional Isolate", icon: "MarkBdi"},
   {name: "bdo", label: "Bidirectional Override", icon: "MarkBdo"},
@@ -303,9 +311,10 @@ export function markTagNames(name: MarkName) {
   return [name] as const
 }
 
-/** The legacy editor keymap, displayed with platform-native modifier names. */
+/** The active editor keymap, displayed with platform-native modifier names. */
 export function markShortcutLabel(option: MarkOption, applePlatform: boolean) {
   if(!option.shortcutKey) return ""
   const key = option.shortcutKey.toUpperCase()
+  if(hasStandardMarkShortcut(option)) return applePlatform? `⌘${key}`: `Ctrl+${key}`
   return applePlatform? `⌥⇧${key}`: `Alt+Shift+${key}`
 }

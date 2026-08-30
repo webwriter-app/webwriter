@@ -38,6 +38,7 @@ import {
   executeFailureEvent,
   emptyVersionHistoryState,
   initializeEditorMessage,
+  isBlockFormatTag,
   isAIEditReviewMessage,
   isExecuteResponse,
   isDocumentHeadStateChangeMessage,
@@ -65,7 +66,7 @@ import {
   type CommentState,
   type VersionHistoryState,
 } from "../editor-bridge"
-import {elementStylePropertyNames} from "../element-styles"
+import {elementStylePropertyNames, paragraphStylePropertyNameSet} from "../element-styles"
 import "./breadcrumb"
 import "./toolbox"
 import "./ribbon"
@@ -2244,7 +2245,10 @@ export class DomEditor extends LitElement {
     }
     if(label?.startsWith("insert-graphic-shape:")) {
       const shape = label.slice("insert-graphic-shape:".length)
-      if(isGraphicShapeType(shape)) void this.execute({type: "insertGraphic", shape}).finally(() => this.focusEditor())
+      if(isGraphicShapeType(shape)) {
+        void this.execute({type: "insertGraphic", shape})
+          .finally(() => this.focusEditor())
+      }
       else this.focusEditor()
       return
     }
@@ -2313,17 +2317,24 @@ export class DomEditor extends LitElement {
     }
 
     if(item.tag === "table") {
-      void this.execute({type: "insertTable", rows: 2, columns: 2}).finally(() => this.focusEditor())
+      void this.execute({type: "insertTable", rows: 2, columns: 2})
+        .finally(() => this.focusEditor())
       return
     }
 
     if(item.tag === "svg") {
-      void this.execute({type: "insertGraphic"}).finally(() => this.focusEditor())
+      void this.execute({type: "insertGraphic"})
+        .finally(() => this.focusEditor())
       return
     }
 
     if(isMediaType(item.tag)) {
       void this.execute({type: "insertMedia", media: item.tag}).finally(() => this.focusEditor())
+      return
+    }
+
+    if(isBlockFormatTag(item.tag)) {
+      void this.execute({type: "setBlockType", tag: item.tag}).finally(() => this.focusEditor())
       return
     }
 
@@ -2869,6 +2880,10 @@ export class DomEditor extends LitElement {
     }).finally(() => this.focusEditor())
   }
 
+  private openEditToolbox() {
+    this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.selectTool("Edit")
+  }
+
   private handleTableStyleChange = (event: Event) => {
     const detail = (event as CustomEvent<{property?: unknown, value?: unknown}>).detail
     if(!["background-color", "border-color", "border-style", "border-width"].includes(String(detail?.property))
@@ -3101,7 +3116,12 @@ export class DomEditor extends LitElement {
       : {...typedMutation}
     this.elementStyle = {...this.elementStyle, inline}
 
-    void this.execute({
+    const paragraphSelection = paragraphStylePropertyNameSet.has(property)
+      && !this.nodeSelection && !this.selectionGap && !this.tableSelection?.cellSelection
+    void this.execute(paragraphSelection ? {
+      type: "setBlockStyle",
+      styles: {[property]: typedMutation},
+    } : {
       type: "setStyle",
       styles: {[property]: typedMutation},
     }).then(() => this.refreshElementStyleState()).catch(() => {
@@ -3218,11 +3238,16 @@ export class DomEditor extends LitElement {
         } : {}),
         ...(event.data.detail.graphic.viewport ? {viewport: {...event.data.detail.graphic.viewport}} : {}),
       } : null
+      const hasContextualEditOptions = this.tableSelection?.active === true
+        || this.graphicSelection?.active === true
+        || path.at(-1)?.icon === "Packages"
+      if(event.data.detail.inserted === true && hasContextualEditOptions) this.openEditToolbox()
       this.documentTree = this.buildDocumentTree()
       if(this.stylesVisible()) this.queueElementStyleRefresh()
       this.dispatchEvent(new CustomEvent(selectionChangeEvent, {
         detail: {
           path,
+          ...(event.data.detail.inserted === true ? {inserted: true} : {}),
           ...(this.nodeSelection ? {nodeSelected: true} : {}),
           ...(this.captureSelection ? {capture: true} : {}),
           ...(selectionGap ? {gap: selectionGap} : {}),

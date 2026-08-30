@@ -2,6 +2,7 @@ import {EditorFeature, type DocumentListenerMap} from "."
 import {
   canonicalMarkName,
   fontSizeOptions,
+  hasStandardMarkShortcut,
   isMarkElement,
   isMarkAttributeName,
   isStyleMarkName,
@@ -16,7 +17,7 @@ import {
   type StyleMarkName,
   type StyleMarkValues,
 } from "../marks"
-import {$} from "../utility"
+import {$, modifierKeyDown} from "../utility"
 
 export type MarkState = {
   /** Whether the current selection is a markable text range or caret. */
@@ -1005,7 +1006,7 @@ export class MarkFeature extends EditorFeature {
   }
 
   private handleShortcut(event: KeyboardEvent) {
-    if(event.defaultPrevented || !event.altKey || !event.shiftKey || event.ctrlKey || event.metaKey) return
+    if(event.defaultPrevented) return
     // Option can transform event.key into a symbol on macOS. Prefer the
     // physical letter code so the displayed Option+Shift shortcut still
     // works, then fall back for synthetic and older keyboard events.
@@ -1013,7 +1014,10 @@ export class MarkFeature extends EditorFeature {
       ? event.code.slice(3).toLowerCase()
       : event.key.toLowerCase()
     const option = primaryMarkOptions.find(candidate => candidate.shortcutKey === key)
-    if(!option || !this.getState().canMark) return
+    const standard = Boolean(option && hasStandardMarkShortcut(option)
+      && modifierKeyDown(event) && !event.altKey && !event.shiftKey)
+    const legacy = Boolean(option && event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey)
+    if(!option || !standard && !legacy || !this.getState().canMark) return
 
     event.preventDefault()
     event.stopImmediatePropagation()

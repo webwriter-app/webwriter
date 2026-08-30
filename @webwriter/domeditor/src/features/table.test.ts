@@ -412,6 +412,7 @@ describe("table cell selection", () => {
 
 describe("table actions", () => {
   it("inserts a requested table size as the top-level element", () => {
+    const postSelectionPath = vi.spyOn(editor, "postSelectionPath")
     editor.features.table.actions.insertTable({type: "insertTable", rows: 3, columns: 4})
 
     const table = document.body.firstElementChild as HTMLTableElement
@@ -419,6 +420,7 @@ describe("table actions", () => {
     expect(table.localName).toBe("table")
     expect(map.rows).toHaveLength(3)
     expect(map.width).toBe(4)
+    expect(postSelectionPath).toHaveBeenLastCalledWith(true)
   })
 
   it("lifts an inserted table out of a text-only paragraph", () => {

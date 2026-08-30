@@ -1,10 +1,23 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, focusedWidgetHost, markWidgetsEditable, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, htmlToFragment, isElement, plainTextFromDOM } from "../utility"
+import { $, focusedWidgetHost, markWidgetsEditable, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, htmlToFragment, isElement, isOnApple } from "../utility"
 import {isMarkElement} from "../marks"
-import type {ElementStyleDeclaration, ElementStyleMutation, ElementStyleState} from "../editor-bridge"
+import {
+  isBlockFormatTag,
+  type BlockFormatTag,
+  type ElementStyleDeclaration,
+  type ElementStyleMutation,
+  type ElementStyleState,
+} from "../editor-bridge"
+import {paragraphStylePropertyNameSet} from "../element-styles"
 
 /** Unit by which a collapsed selection is extended before deleting. */
 type Granularity = "character" | "word" | "line" | "block"
+
+type ValidatedStyleEntry = {
+  name: string
+  value: string | null
+  priority: "" | "important"
+}
 
 function isCaretAtBoundary(element: Element, boundary: "start" | "end") {
   const selection = document.getSelection()
@@ -90,6 +103,123 @@ export class ManipulationFeature extends EditorFeature {
     return style && typeof style.setProperty === "function"? style: null
   }
 
+  /** Whether an element is an authored, text-bearing editing block. Custom
+   * elements and registered widgets stay atomic unless their own public
+   * editing contract handles paragraph formatting. */
+  private isTextBlock(element: Element): element is HTMLElement {
+    if(element === document.body) return false
+    for(let ancestor: Element | null = element; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
+      if(ancestor.localName.includes("-") || ancestor.hasAttribute("is")
+        || this.editor.schema.get(ancestor).group?.includes("widget")) return false
+    }
+    return this.editor.schema.isBlock(element)
+  }
+
+  /** Resolves the deepest text blocks covered by the live selection. A
+   * collapsed caret uses its nearest block; a structural range returns every
+   * leaf block it intersects, never their common section/list container. */
+  private selectedTextBlocks() {
+    const selection = document.getSelection()
+    if(!selection?.rangeCount || !selection.anchorNode || !selection.focusNode) return []
+
+    const selected = $.selectedElement
+    if(selected) return this.isTextBlock(selected) ? [selected] : []
+
+    if(selection.isCollapsed) {
+      let element: Element | null = getContainer(selection.anchorNode)
+      while(element && element !== document.body) {
+        if(this.isTextBlock(element)) return [element]
+        element = element.parentElement
+      }
+      return []
+    }
+
+    const range = selection.getRangeAt(0)
+    const candidates = Array.from(document.body.querySelectorAll("*"))
+      .filter((element): element is HTMLElement => {
+        if(!this.isTextBlock(element)) return false
+        try {
+          return range.intersectsNode(element)
+        }
+        catch {
+          return false
+        }
+      })
+    return candidates.filter(candidate => !candidates.some(
+      other => other !== candidate && candidate.contains(other),
+    ))
+  }
+
+  /** Changes only the selected text blocks' element type, moving their live
+   * children and retaining all authored attributes. Invalid replacements are
+   * skipped independently so irregular surrounding DOM is never rebuilt. */
+  private canReplaceTextBlock(block: Element, candidate: Element) {
+    if(this.editor.schema.canReplace(block, candidate)) return true
+    const parent = block.parentElement
+    if(!parent) return false
+    // An unfamiliar but valid sibling can make the whole parent unverifiable
+    // to the installed schema. Neutralize only those unknown sibling types,
+    // then require both the existing and proposed local content shapes to be
+    // valid. This retains ordered/selector constraints such as UL and ADDRESS.
+    const unknown = this.editor.schema.get("#unknownelement")
+    const children = Array.from(parent.childNodes).map(node => (
+      isElement(node) && this.editor.schema.get(node) === unknown
+        ? document.createElement("span")
+        : node
+    ))
+    const index = Array.from(parent.childNodes).indexOf(block)
+    if(index < 0 || !this.editor.schema.isContentValid(parent, children)) return false
+    const proposed = [...children]
+    proposed[index] = candidate
+    return this.editor.schema.isContentValid(parent, proposed)
+  }
+
+  setBlockType(tag: BlockFormatTag) {
+    if(!isBlockFormatTag(tag)) throw new TypeError(`Unsupported block format '${tag}'`)
+    this.ensureTextBlock()
+    const blocks = this.selectedTextBlocks()
+    const selection = document.getSelection()
+    const saved = selection?.anchorNode && selection.focusNode ? {
+      anchorNode: selection.anchorNode,
+      anchorOffset: selection.anchorOffset,
+      focusNode: selection.focusNode,
+      focusOffset: selection.focusOffset,
+    } : null
+    const replacements = new Map<Node, Element>()
+
+    const count = this.withNormalization(() => blocks.reduce((converted, block) => {
+      if(block.localName === tag || !block.isConnected) return converted
+      const candidate = document.createElement(tag)
+      Array.from(block.attributes).forEach(attribute => candidate.setAttribute(attribute.name, attribute.value))
+      if(!this.editor.schema.isContentValid(candidate, Array.from(block.childNodes))
+        || !this.canReplaceTextBlock(block, candidate)) {
+        return converted
+      }
+
+      const replacement = document.createElement(tag)
+      Array.from(block.attributes).forEach(attribute => replacement.setAttribute(attribute.name, attribute.value))
+      replacement.append(...Array.from(block.childNodes))
+      block.replaceWith(replacement)
+      replacements.set(block, replacement)
+      return converted + 1
+    }, 0))
+
+    if(saved && selection) {
+      const anchorNode = replacements.get(saved.anchorNode) ?? saved.anchorNode
+      const focusNode = replacements.get(saved.focusNode) ?? saved.focusNode
+      if(anchorNode.isConnected && focusNode.isConnected) {
+        const maximumOffset = (node: Node) => node.nodeType === Node.TEXT_NODE
+          ? (node as Text).length
+          : node.childNodes.length
+        selection.setBaseAndExtent(
+          anchorNode, Math.min(saved.anchorOffset, maximumOffset(anchorNode)),
+          focusNode, Math.min(saved.focusOffset, maximumOffset(focusNode)),
+        )
+      }
+    }
+    return count
+  }
+
   /** Returns authored declarations and the requested computed values without
    * retaining or exposing a live CSSStyleDeclaration across the editor bridge. */
   getStyleState(properties: string[] = []): ElementStyleState {
@@ -115,6 +245,26 @@ export class ManipulationFeature extends EditorFeature {
     const requested = Array.from(new Set(properties.filter(name => typeof name === "string" && name.trim())))
     const computedStyle = getComputedStyle(target)
     const computed = Object.fromEntries(requested.map(name => [name, computedStyle.getPropertyValue(name)]))
+    const paragraphProperties = requested.filter(name => paragraphStylePropertyNameSet.has(name))
+    const blocks = paragraphProperties.length ? this.selectedTextBlocks() : []
+    paragraphProperties.forEach(name => {
+      if(!blocks.length) return
+      delete inline[name]
+      const declarations = blocks.map(block => {
+        const blockStyle = this.inlineStyleOf(block)
+        return {
+          value: blockStyle?.getPropertyValue(name) ?? "",
+          priority: blockStyle?.getPropertyPriority(name) === "important" ? "important" as const : "" as const,
+        }
+      })
+      const firstDeclaration = declarations[0]
+      if(firstDeclaration.value && declarations.every(declaration => (
+        declaration.value === firstDeclaration.value && declaration.priority === firstDeclaration.priority
+      ))) inline[name] = firstDeclaration
+
+      const values = blocks.map(block => getComputedStyle(block).getPropertyValue(name))
+      computed[name] = values.every(value => value === values[0]) ? values[0] : ""
+    })
     const parentDisplay = target.parentElement? getComputedStyle(target.parentElement).display: ""
     return {
       target: {localName: target.localName, namespaceURI: target.namespaceURI},
@@ -178,12 +328,87 @@ export class ManipulationFeature extends EditorFeature {
     if(!nodes.length) return
     return this.withNormalization(() => {
       $.replace(...nodes)
-      const last = nodes.at(-1)!
-      if(last instanceof Text || isElement(last) && this.editor.schema.findValidContentTypes(last).includes("#text")) {
-        $.move(last, -1)
+      this.moveAfterInsertedNode(nodes.at(-1)!)
+    })
+  }
+
+  private moveAfterInsertedNode(node: Node) {
+    if(node.nodeType === Node.TEXT_NODE
+      || isElement(node) && this.editor.schema.findValidContentTypes(node).includes("#text")) {
+      $.move(node, -1)
+    }
+    else if(node.parentNode) {
+      $.move(node.parentNode, Array.from(node.parentNode.childNodes).indexOf(node as ChildNode) + 1)
+    }
+  }
+
+  private isInlineClipboardNode(node: Node) {
+    return node.nodeType === Node.TEXT_NODE || node.nodeType === Node.COMMENT_NODE
+      || isElement(node) && this.editor.schema.isPhrasing(node)
+  }
+
+  /** Groups top-level inline runs beside block clipboard content into normal
+   * text blocks. Formatting whitespace between source blocks is discarded. */
+  private normalizeClipboardTopLevel(nodes: ChildNode[]): ChildNode[] {
+    if(nodes.every(node => this.isInlineClipboardNode(node))) return nodes
+    const normalized: ChildNode[] = []
+    let textBlock: Element | null = null
+    nodes.forEach(node => {
+      if(this.isInlineClipboardNode(node)) {
+        if(node.nodeType === Node.TEXT_NODE && !node.textContent?.trim()) return
+        if(!textBlock) textBlock = this.editor.schema.create() as Element
+        const activeTextBlock = textBlock
+        activeTextBlock.append(node)
+        if(!normalized.includes(activeTextBlock)) normalized.push(activeTextBlock)
       }
-      else if(last.parentNode) {
-        $.move(last.parentNode, Array.from(last.parentNode.childNodes).indexOf(last as ChildNode) + 1)
+      else {
+        textBlock = null
+        normalized.push(node)
+      }
+    })
+    return normalized
+  }
+
+  /** Inserts top-level block clipboard nodes beside the current text block,
+   * retaining left and right block halves. If the surrounding content model
+   * cannot accept that shape (for example a direct LI selection), paste falls
+   * back to the source text rather than creating invalid DOM. */
+  private insertClipboardBlocks(nodes: ChildNode[]) {
+    return this.withNormalization(() => {
+      $.delete()
+      const block = getContainer($.range.startContainer)
+      if(block === document.body) {
+        $.replace(...nodes)
+        this.moveAfterInsertedNode(nodes.at(-1)!)
+        return
+      }
+      const parent = block.parentElement
+      if(!parent) return
+      const blockIndex = Array.from(parent.childNodes).indexOf(block)
+      const proposed = Array.from(parent.childNodes)
+      proposed.splice(blockIndex + 1, 0, ...nodes, block.cloneNode(false) as ChildNode)
+      const containsWidget = nodes.some(node => Boolean(this.insertedWidget(node)))
+      if(!containsWidget && !this.editor.schema.isContentValid(parent, proposed)) {
+        const fallback = this.plainTextClipboardFragment(nodes.map(node => node.textContent ?? "").join("\n"))
+        this.insertAtSelection(...Array.from(fallback.childNodes))
+        return
+      }
+
+      const offset = this.splitTextLikePoint(block, $.range)
+      const right = block.cloneNode(false) as Element
+      right.append(...Array.from(block.childNodes).slice(offset))
+      block.normalize()
+      right.normalize()
+
+      if(block.childNodes.length) block.after(...nodes)
+      else block.replaceWith(...nodes)
+      const last = nodes.at(-1)!
+      if(right.childNodes.length) {
+        last.after(right)
+        this.moveToStart(right)
+      }
+      else {
+        this.moveAfterInsertedNode(last)
       }
     })
   }
@@ -191,18 +416,18 @@ export class ManipulationFeature extends EditorFeature {
   /** Inserts clipboard content at a virtual body/gap position. Inline-only
    * content is placed in a text block; block content remains at the gap. */
   private insertClipboardFragment(fragment: DocumentFragment) {
-    const nodes = Array.from(fragment.childNodes)
+    const nodes = this.normalizeClipboardTopLevel(Array.from(fragment.childNodes))
     if(!nodes.length) return
     const isVirtualSelection = $.isGapSelection || $.isEmptyDocumentSelection
-    if(!isVirtualSelection) {
-      this.insert(fragment)
+    const isInlineContent = nodes.every(node => this.isInlineClipboardNode(node))
+    const widget = nodes.length === 1 ? this.insertedWidget(nodes[0]) : null
+    if(widget && !this.editor.schema.isPhrasing(widget)) {
+      this.withNormalization(() => this.insertBlockWidget(widget))
       return
     }
-    const isInlineContent = nodes.every(node => this.editor.schema.isPhrasing(node))
-    if(isInlineContent && !this.ensureTextBlock()) {
-      return
-    }
-    this.insertAtSelection(...nodes)
+    if(isVirtualSelection && isInlineContent && !this.ensureTextBlock()) return
+    if(isVirtualSelection || isInlineContent) this.insertAtSelection(...nodes)
+    else this.insertClipboardBlocks(nodes)
   }
 
   private firstTextDescendant(node: Node): Text | null {
@@ -440,6 +665,12 @@ export class ManipulationFeature extends EditorFeature {
     setStyle: ({styles}: {type: "setStyle", styles: Record<string, ElementStyleMutation>}) => {
       this.setStyle(styles)
     },
+    setBlockStyle: ({styles}: {type: "setBlockStyle", styles: Record<string, ElementStyleMutation>}) => {
+      this.setBlockStyle(styles)
+    },
+    setBlockType: ({tag}: {type: "setBlockType", tag: BlockFormatTag}) => {
+      this.setBlockType(tag)
+    },
 
   } as const
 
@@ -461,11 +692,49 @@ export class ManipulationFeature extends EditorFeature {
     })
   }
 
+  /** Word/platform deletion conventions: Option deletes a word and Command
+   * deletes to the line boundary on Apple platforms; Ctrl deletes a word on
+   * other platforms. Block deletion remains available as an explicit action. */
+  private deletionGranularity(event: KeyboardEvent): Granularity {
+    if(isOnApple()) {
+      if(event.metaKey) return "line"
+      if(event.altKey) return "word"
+    }
+    else if(event.ctrlKey) return "word"
+    return "character"
+  }
+
+  /** Applies a conservative two-em paragraph indent at a block boundary or
+   * across a block selection. Existing non-em author values are left alone
+   * rather than rewritten into editor-specific metadata. */
+  private adjustSelectedBlockIndent(direction: -1 | 1) {
+    const selection = document.getSelection()
+    const blocks = this.selectedTextBlocks()
+    if(!selection || !blocks.length) return false
+    if(selection.isCollapsed && direction > 0 && !isCaretAtBoundary(blocks[0], "start")) return false
+
+    let changed = false
+    this.withNormalization(() => blocks.forEach(block => {
+      const style = this.inlineStyleOf(block)
+      if(!style) return
+      const authored = style.getPropertyValue("margin-inline-start").trim()
+      const zero = !authored || /^[-+]?0(?:[a-z%]+)?$/i.test(authored)
+      const match = authored.match(/^([-+]?(?:\d+(?:\.\d+)?|\.\d+))em$/i)
+      if(!zero && !match) return
+      const current = zero ? 0 : Number.parseFloat(match![1])
+      const next = Math.max(0, current + direction * 2)
+      if(next === current) return
+      if(next === 0) style.removeProperty("margin-inline-start")
+      else style.setProperty("margin-inline-start", `${next}em`)
+      changed = true
+    }))
+    return changed
+  }
+
   /** Keyboard and input behavior: Enter splits the containing block
-   * (Alt: <br>, Alt+Shift: <wbr>, modifier: split the parent), Backspace and
-   * Delete remove by granularity (plain: character, Alt: word, modifier:
-   * block, Alt+modifier: line), Tab wraps into the previous element and
-   * Shift+Tab lifts. */
+   * (Shift/Alt: <br>, Alt+Shift: <wbr>, modifier: split the parent), deletion
+   * follows platform word/line modifiers, and Tab adjusts paragraph indent
+   * only where list/table handlers have not already supplied semantics. */
   activeListeners: DocumentListenerMap = {
     "beforeinput": ev => {
       const summary = $.anchorContainer?.closest("summary")
@@ -519,13 +788,13 @@ export class ManipulationFeature extends EditorFeature {
       this.ensureTextBlock()
     },
     "paste": ev => {
-      if(!$.isGapSelection && !$.isEmptyDocumentSelection) return
+      if(ev.defaultPrevented || this.editor.features.transformation.target) return
       const fragment = this.#dataTransferToFragment(ev.clipboardData)
       if(fragment) {
         ev.preventDefault()
         this.insertClipboardFragment(fragment)
       }
-      else {
+      else if($.isGapSelection || $.isEmptyDocumentSelection) {
         this.ensureTextBlock()
       }
     },
@@ -546,6 +815,9 @@ export class ManipulationFeature extends EditorFeature {
         else if(ev.altKey) {
           this.insertBreak("br")
         }
+        else if(ev.shiftKey && !modifierKeyDown(ev)) {
+          this.insertBreak("br")
+        }
         else if(modifierKeyDown(ev)) {
           this.insert(undefined, 1)
         }
@@ -556,44 +828,16 @@ export class ManipulationFeature extends EditorFeature {
 
       else if(ev.key === "Backspace") {
         ev.preventDefault()
-        if(ev.altKey && modifierKeyDown(ev)) {
-          this.delete("backward", "line")
-        }
-        else if(ev.altKey) {
-          this.delete("backward", "word")
-        }
-        else if(modifierKeyDown(ev)) {
-          this.delete("backward", "block")
-        }
-        else {
-          this.delete("backward", "character")
-        }
+        this.delete("backward", this.deletionGranularity(ev))
       }
 
       else if(ev.key === "Delete") {
         ev.preventDefault()
-        if(ev.altKey && modifierKeyDown(ev)) {
-          this.delete("forward", "line")
-        }
-        else if(ev.altKey) {
-          this.delete("forward", "word")
-        }
-        else if(modifierKeyDown(ev)) {
-          this.delete("forward", "block")
-        }
-        else {
-          this.delete("forward", "character")
-        }
+        this.delete("forward", this.deletionGranularity(ev))
       }
 
       else if(ev.key === "Tab") {
-        ev.preventDefault()
-        if(ev.shiftKey) {
-          this.lift(1)
-        }
-        else {
-          this.wrap()
-        }
+        if(this.adjustSelectedBlockIndent(ev.shiftKey ? -1 : 1)) ev.preventDefault()
       }
     }
   }
@@ -639,6 +883,7 @@ export class ManipulationFeature extends EditorFeature {
       if(insertedWidget?.isConnected) {
         $.selectElement(insertedWidget)
         this.editor.features.selection.processSelection()
+        this.editor.postSelectionPath(true)
       }
     })
   }
@@ -781,23 +1026,33 @@ export class ManipulationFeature extends EditorFeature {
     })
   }
 
-  /** Writes the selected content to the clipboard as text/html and text/plain.
-   * Currently requires the selection to contain an element — plain text
-   * selections throw. */
+  /** Writes the complete selected fragment as text/html and text/plain. */
   async copy() {
     if(this.editor.features.table.hasCellSelection) return this.editor.features.table.copy()
     const item = this.#fragmentToClipboardItem($.copy())
-    navigator.clipboard.write([item])
+    await navigator.clipboard.write([item])
+    return true
   }
 
-  /** Like copy(), but also removes the selected content from the document.
-   * Currently the content is removed even if writing to the clipboard fails
-   * (e.g. for plain text selections). */
+  /** Writes a stable clone first and removes its captured live Range only
+   * after the clipboard accepts it. A failed write never destroys content. */
   async cut() {
     if(this.editor.features.table.hasCellSelection) return this.editor.features.table.cut()
+    const selection = document.getSelection()
+    if(!selection?.rangeCount || selection.isCollapsed || !selection.anchorNode || !selection.focusNode) return false
+    const captured = {
+      anchorNode: selection.anchorNode,
+      anchorOffset: selection.anchorOffset,
+      focusNode: selection.focusNode,
+      focusOffset: selection.focusOffset,
+    }
+    const item = this.#fragmentToClipboardItem(selection.getRangeAt(0).cloneContents())
+    await navigator.clipboard.write([item])
+    if(selection.anchorNode !== captured.anchorNode || selection.anchorOffset !== captured.anchorOffset
+      || selection.focusNode !== captured.focusNode || selection.focusOffset !== captured.focusOffset) return false
     return this.withNormalization(() => {
-      const item = this.#fragmentToClipboardItem($.cut())
-      return navigator.clipboard.write([item])
+      $.delete()
+      return true
     })
   }
 
@@ -817,50 +1072,84 @@ export class ManipulationFeature extends EditorFeature {
     })
   }
 
-  /** Assigns inline style properties on the single live style target, merging
-   * with existing declarations. Null or an empty string clears a property. */
-  setStyle(styles: Record<string, ElementStyleMutation>) {
-    return this.withNormalization(() => {
-      const targetStyle = this.inlineStyleOf(this.styleTarget)
-      if(!targetStyle) return
-      Object.entries(styles).forEach(([name, mutation]) => {
-        if(!name || name !== name.trim() || name.includes(";")) {
-          throw new TypeError(`Invalid CSS property name '${name}'`)
-        }
-        if(mutation === null || mutation === "") {
-          targetStyle.removeProperty(name)
-          return
-        }
-        const declaration = typeof mutation === "string"
-          ? {value: mutation, priority: "" as const}
-          : mutation
-        if(!declaration || typeof declaration.value !== "string"
-          || declaration.priority !== "" && declaration.priority !== "important") {
-          throw new TypeError(`Invalid CSS declaration for '${name}'`)
-        }
-        targetStyle.setProperty(name, declaration.value, declaration.priority)
-      })
+  private validatedStyleEntries(styles: Record<string, ElementStyleMutation>) {
+    return Object.entries(styles).map(([name, mutation]) => {
+      if(!name || name !== name.trim() || name.includes(";")) {
+        throw new TypeError(`Invalid CSS property name '${name}'`)
+      }
+      if(mutation === null || mutation === "") {
+        return {name, value: null, priority: "" as const}
+      }
+      const declaration = typeof mutation === "string"
+        ? {value: mutation, priority: "" as const}
+        : mutation
+      if(!declaration || typeof declaration.value !== "string"
+        || declaration.priority !== "" && declaration.priority !== "important") {
+        throw new TypeError(`Invalid CSS declaration for '${name}'`)
+      }
+      return {name, value: declaration.value, priority: declaration.priority}
     })
   }
 
-  /** Converts a fragment into a ClipboardItem with a text/html (outer HTML) and a text/plain (inner text) flavor. Expects the fragment to contain an element. */
+  private applyStyleEntries(
+    target: Element,
+    entries: ValidatedStyleEntry[],
+  ) {
+    const style = this.inlineStyleOf(target)
+    if(!style) return false
+    entries.forEach(({name, value, priority}) => {
+      if(value === null) style.removeProperty(name)
+      else style.setProperty(name, value, priority)
+    })
+    return true
+  }
+
+  /** Assigns inline style properties on the single live style target, merging
+   * with existing declarations. Null or an empty string clears a property. */
+  setStyle(styles: Record<string, ElementStyleMutation>) {
+    const entries = this.validatedStyleEntries(styles)
+    return this.withNormalization(() => this.applyStyleEntries(this.styleTarget, entries))
+  }
+
+  /** Applies paragraph declarations independently to every selected text
+   * block instead of styling their structural common ancestor. */
+  setBlockStyle(styles: Record<string, ElementStyleMutation>) {
+    const entries = this.validatedStyleEntries(styles)
+    this.ensureTextBlock()
+    const blocks = this.selectedTextBlocks()
+    return this.withNormalization(() => blocks.reduce(
+      (count, block) => count + (this.applyStyleEntries(block, entries) ? 1 : 0),
+      0,
+    ))
+  }
+
+  /** Converts every selected sibling into one shared pair of clipboard
+   * flavors after removing transient editing artifacts. */
   #fragmentToClipboardItem(fragment: DocumentFragment) {
-    const text = plainTextFromDOM(fragment, element => this.editor.schema.isBlock(element))
+    const {html, text} = this.editor.serializeClipboardFragment(fragment)
     return new ClipboardItem({
       "text/plain": text,
-      "text/html": fragment.firstElementChild? fragment.firstElementChild.outerHTML: text,
+      "text/html": html || text,
     })
+  }
+
+  private plainTextClipboardFragment(text: string) {
+    const fragment = document.createDocumentFragment()
+    const lines = text.replace(/\r\n?/g, "\n").split("\n")
+    lines.forEach((line, index) => {
+      if(index) fragment.append(document.createElement("br"))
+      if(line) fragment.append(document.createTextNode(line))
+    })
+    return fragment
   }
 
   /** Parses HTML preferentially and otherwise preserves clipboard text as a
    * text node, so text containing markup characters is never interpreted as
    * HTML. */
   #clipboardContentToFragment(html: string, text: string) {
-    if(html) {
-      return htmlToFragment(html)
-    }
-    const fragment = document.createDocumentFragment()
-    if(text) fragment.append(document.createTextNode(text))
+    const fragment = html ? htmlToFragment(html) : this.plainTextClipboardFragment(text)
+    this.editor.clearEditingArtifacts(fragment)
+    markWidgetsEditable(fragment)
     return fragment
   }
 
@@ -919,5 +1208,6 @@ export class ManipulationFeature extends EditorFeature {
     }
     $.selectElement(widget)
     this.editor.features.selection.processSelection()
+    this.editor.postSelectionPath(true)
   }
 }

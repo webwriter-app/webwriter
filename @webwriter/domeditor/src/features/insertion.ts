@@ -503,6 +503,9 @@ export class InsertionFeature extends EditorFeature {
     else if(last.parentNode) {
       $.move(last.parentNode, Array.from(last.parentNode.childNodes).indexOf(last as ChildNode) + 1)
     }
+    if(isElement(last) && last.isConnected && (last.matches("table") || last.matches("svg"))) {
+      this.editor.postSelectionPath(true)
+    }
     this.close(false)
   }
 

@@ -316,3 +316,20 @@ export const elementStylePropertyNames = Array.from(new Set(
 ))
 
 export const elementStylePropertyNameSet = new Set(elementStylePropertyNames)
+
+/** Properties whose authored value belongs to each selected text block rather
+ * than to their structural common ancestor. The Style UI routes these through
+ * the selection-aware paragraph command. */
+export const paragraphStylePropertyNames = [
+  "line-height",
+  "text-align",
+  "letter-spacing",
+  "word-spacing",
+  "text-indent",
+  "text-align-last",
+  "text-justify",
+  "hyphens",
+  "direction",
+] as const
+
+export const paragraphStylePropertyNameSet = new Set<string>(paragraphStylePropertyNames)

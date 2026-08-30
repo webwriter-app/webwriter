@@ -301,7 +301,7 @@ export class DomEditorToolbox extends AppRibbon {
     return []
   }
 
-  private selectTool(tool: ToolboxTool | null) {
+  selectTool(tool: ToolboxTool | null) {
     const nextTool = tool
     if(this.activeTool === nextTool) return
     const previousMenu = this.activeMenu

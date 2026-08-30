@@ -183,6 +183,7 @@ describe("insertion menu", () => {
   })
 
   it("inserts the selected item when it is activated by a pointer", async () => {
+    const postSelectionPath = vi.spyOn(editor, "postSelectionPath")
     document.body.innerHTML = "<p></p>"
     $.move(document.querySelector("p")!)
     typeCommand()
@@ -198,6 +199,8 @@ describe("insertion menu", () => {
     expect(pointerDown.defaultPrevented).toBe(true)
     expect(editorHTML()).toBe("<table><tbody><tr><td></td><td></td></tr><tr><td></td><td></td></tr></tbody></table>")
     expect(menu.open).toBe(false)
+    expect(postSelectionPath).toHaveBeenLastCalledWith(true)
+    postSelectionPath.mockRestore()
   })
 
   it("shows installed package widgets and inserts their custom elements", async () => {

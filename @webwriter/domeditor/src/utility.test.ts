@@ -580,6 +580,16 @@ describe("slice/copy()", () => {
     expect(fragment.firstElementChild?.outerHTML).toBe("<p>hello</p>")
     expect(document.body.innerHTML).toBe("<p>hello</p>")
   })
+  it("retains inline wrappers around a partial text selection", () => {
+    setBody("<p><b>hello</b></p>")
+    const text = document.querySelector("b")!.firstChild!
+    $.selectRange(text, 1, text, 4)
+
+    const fragment = $.copy()
+
+    expect(fragment.firstElementChild?.outerHTML).toBe("<b>ell</b>")
+    expect(document.body.innerHTML).toBe("<p><b>hello</b></p>")
+  })
 })
 
 describe("nodesBetween", () => {

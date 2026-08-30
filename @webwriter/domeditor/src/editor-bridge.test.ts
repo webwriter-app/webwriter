@@ -212,6 +212,7 @@ describe("editor bridge message guards", () => {
           {path: [], name: "Document", icon: "Document"},
           {path: [0], name: "Example widget", iconUrl: "https://example.test/icon.svg"},
         ],
+        inserted: true,
         nodeSelected: true,
         capture: false,
         gap: {parentPath: [0], offset: 1},
@@ -242,6 +243,7 @@ describe("editor bridge message guards", () => {
     expectAllRejected(isSelectionChangeMessage, [
       {...message, detail: {...message.detail, path: [{path: [0, -1], name: "Paragraph"}]}},
       {...message, detail: {...message.detail, path: [{path: [0.5], name: "Paragraph"}]}},
+      {...message, detail: {...message.detail, inserted: "true"}},
       {...message, detail: {...message.detail, nodeSelected: "true"}},
       {...message, detail: {...message.detail, gap: {parentPath: [0], offset: -1}}},
       {...message, detail: {...message.detail, list: {type: "table", style: ""}}},

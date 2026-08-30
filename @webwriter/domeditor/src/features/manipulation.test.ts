@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach, beforeAll } from "vitest"
+import { describe, it, expect, beforeEach, beforeAll, vi } from "vitest"
 import "happy-dom"
 import '@testing-library/jest-dom/vitest'
 
@@ -19,6 +19,7 @@ function expectBodyToBe(html: string) {
 }
 
 beforeEach(() => {
+  vi.restoreAllMocks()
   document.body.innerHTML = ""
   document.body.removeAttribute("style")
   $.selectDocumentStart()
@@ -115,15 +116,34 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expectBodyToBe("<p><wbr></p>")
   })
 
-  it("uses the default split behavior for Shift+Enter", () => {
+  it("inserts a Word-compatible soft line break with Shift+Enter", () => {
     document.body.innerHTML = "<p>ab</p>"
     $.move(document.querySelector("p")!.firstChild!, 1)
 
-    document.dispatchEvent(new KeyboardEvent("keydown", {
+    const event = new KeyboardEvent("keydown", {
       key: "Enter", shiftKey: true, bubbles: true, cancelable: true,
-    }))
+    })
+    document.dispatchEvent(event)
 
-    expectBodyToBe("<p>a</p><p>b</p>")
+    expect(event.defaultPrevented).toBe(true)
+    expectBodyToBe("<p>a<br>b</p>")
+    expect($.anchor).toBe(document.querySelector("p"))
+    expect($.anchorOffset).toBe(2)
+  })
+
+  it("handles native insertLineBreak input inside a non-empty paragraph", () => {
+    document.body.innerHTML = "<p>ab</p>"
+    $.move(document.querySelector("p")!.firstChild!, 1)
+    const event = new InputEvent("beforeinput", {
+      bubbles: true,
+      cancelable: true,
+      inputType: "insertLineBreak",
+    })
+
+    document.body.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expectBodyToBe("<p>a<br>b</p>")
   })
 
   it("does not insert a break where the schema allows only text", () => {
@@ -360,7 +380,98 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expectBodyToBe("<p>he</p><p>test</p><p>llo world</p>")
   })*/
 })
+describe("Tab paragraph behavior", () => {
+  it("indents the paragraph when Tab is pressed at its start", () => {
+    document.body.innerHTML = "<p>text</p>"
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph.firstChild!, 0)
+    const event = new KeyboardEvent("keydown", {key: "Tab", bubbles: true, cancelable: true})
+
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(paragraph).toHaveStyle({marginInlineStart: "2em"})
+  })
+
+  it("outdents an indented paragraph with Shift+Tab", () => {
+    document.body.innerHTML = '<p style="margin-inline-start: 2em">text</p>'
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph.firstChild!, 2)
+    const event = new KeyboardEvent("keydown", {
+      key: "Tab", shiftKey: true, bubbles: true, cancelable: true,
+    })
+
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(paragraph.style.marginInlineStart).toBe("")
+  })
+
+  it("indents every paragraph in a cross-block selection", () => {
+    document.body.innerHTML = "<p>one</p><p>two</p>"
+    const paragraphs = Array.from(document.querySelectorAll<HTMLElement>("p"))
+    $.selectRange(paragraphs[0].firstChild!, 1, paragraphs[1].firstChild!, 2)
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Tab", bubbles: true, cancelable: true}))
+
+    expect(paragraphs.every(paragraph => paragraph.style.marginInlineStart === "2em")).toBe(true)
+  })
+
+  it("does not structurally wrap content when Tab is pressed mid-paragraph", () => {
+    document.body.innerHTML = "<p>text</p>"
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph.firstChild!, 2)
+    const event = new KeyboardEvent("keydown", {key: "Tab", bubbles: true, cancelable: true})
+
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(false)
+    expectBodyToBe("<p>text</p>")
+  })
+})
 describe("delete()", () => {
+  it("uses Ctrl for word deletion on non-Apple platforms", () => {
+    const originalPlatform = navigator.platform
+    try {
+      Object.defineProperty(navigator, "platform", {value: "Win32", configurable: true})
+      const deletion = vi.spyOn(editor.features.manipulation, "delete").mockImplementation(() => undefined)
+
+      document.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "Backspace", ctrlKey: true, bubbles: true, cancelable: true,
+      }))
+      document.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "Delete", ctrlKey: true, bubbles: true, cancelable: true,
+      }))
+
+      expect(deletion).toHaveBeenNthCalledWith(1, "backward", "word")
+      expect(deletion).toHaveBeenNthCalledWith(2, "forward", "word")
+    }
+    finally {
+      Object.defineProperty(navigator, "platform", {value: originalPlatform, configurable: true})
+    }
+  })
+
+  it("uses Option for words and Command for line boundaries on Apple platforms", () => {
+    const originalPlatform = navigator.platform
+    try {
+      Object.defineProperty(navigator, "platform", {value: "MacIntel", configurable: true})
+      const deletion = vi.spyOn(editor.features.manipulation, "delete").mockImplementation(() => undefined)
+
+      document.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "Backspace", altKey: true, bubbles: true, cancelable: true,
+      }))
+      document.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "Delete", metaKey: true, bubbles: true, cancelable: true,
+      }))
+
+      expect(deletion).toHaveBeenNthCalledWith(1, "backward", "word")
+      expect(deletion).toHaveBeenNthCalledWith(2, "forward", "line")
+    }
+    finally {
+      Object.defineProperty(navigator, "platform", {value: originalPlatform, configurable: true})
+    }
+  })
+
   it("deletes the selected text range", () => {
     document.body.innerHTML = "<p>hello world</p>"
     $.selectRange(document.body.firstElementChild!.firstChild!, 0, document.body.firstElementChild!.firstChild!, 6)
@@ -611,6 +722,18 @@ describe("copy()", () => {
     expect(clipboardData.getData("text/html")).toContain(">Second</p>")
     expect(clipboardData.getData("text/plain")).toMatch(/^First\r?\n+Second$/)
   })
+  it("serializes every selected sibling into the programmatic HTML flavor", async () => {
+    document.body.innerHTML = "<p>First</p><p>Second</p>"
+    $.selectRange(document.body, 0, document.body, 2)
+
+    await editor.features.manipulation.copy()
+
+    const item = (await navigator.clipboard.read()).find(candidate => candidate.types.includes("text/html"))!
+    const html = await (await item.getType("text/html")).text()
+    expect(html).toContain("<p>First</p>")
+    expect(html).toContain("<p>Second</p>")
+    expect(html.indexOf("First")).toBeLessThan(html.indexOf("Second"))
+  })
 })
 describe("cut()", () => {
   it("fills the clipboard with correct HTML", async () => {
@@ -635,6 +758,31 @@ describe("cut()", () => {
     const item = (await navigator.clipboard.read()).find(item => item.types.includes("text/plain"))
     const text = await (await item?.getType("text/plain"))?.text()
     expect(text).toBe("hello")
+  })
+  it("does not delete content when the clipboard write fails", async () => {
+    document.body.innerHTML = "<p>keep me</p>"
+    $.selectElement(document.body.firstElementChild!)
+    const write = navigator.clipboard.write
+    try {
+      Object.defineProperty(navigator.clipboard, "write", {
+        value: vi.fn().mockRejectedValueOnce(new Error("Clipboard denied")),
+        configurable: true,
+      })
+
+      let rejection: unknown
+      try {
+        await editor.features.manipulation.cut()
+      }
+      catch(error) {
+        rejection = error
+      }
+
+      expect(rejection).toMatchObject({message: "Clipboard denied"})
+      expectBodyToBe("<p>keep me</p>")
+    }
+    finally {
+      Object.defineProperty(navigator.clipboard, "write", {value: write, configurable: true})
+    }
   })
 })
 describe("paste()", () => {
@@ -713,6 +861,67 @@ describe("paste()", () => {
 
     expectBodyToBe("<p>&lt;b&gt;text&lt;/b&gt;</p>")
   })
+  it("replaces inline text without splitting its paragraph", async () => {
+    await navigator.clipboard.write([new ClipboardItem({
+      "text/plain": "new",
+      "text/html": "<b>new</b>",
+    })])
+    document.body.innerHTML = "<p>hello</p>"
+    const text = document.querySelector("p")!.firstChild!
+    $.selectRange(text, 1, text, 4)
+
+    await editor.features.manipulation.paste()
+
+    expectBodyToBe("<p>h<b>new</b>o</p>")
+  })
+  it("places pasted blocks beside the split paragraph", async () => {
+    await navigator.clipboard.write([new ClipboardItem({
+      "text/plain": "Title",
+      "text/html": "<h1>Title</h1>",
+    })])
+    document.body.innerHTML = "<p>hello</p>"
+    $.move(document.querySelector("p")!.firstChild!, 2)
+
+    await editor.features.manipulation.paste()
+
+    expectBodyToBe("<p>he</p><h1>Title</h1><p>llo</p>")
+  })
+  it("preserves a pasted custom element as an atomic block widget", async () => {
+    await navigator.clipboard.write([new ClipboardItem({
+      "text/plain": "Widget",
+      "text/html": "<demo-widget>Widget</demo-widget>",
+    })])
+    document.body.innerHTML = "<p>hello</p>"
+    $.move(document.querySelector("p")!.firstChild!, 2)
+
+    await editor.features.manipulation.paste()
+
+    expectBodyToBe('<p>he</p><demo-widget contenteditable="true">Widget</demo-widget><p>llo</p>')
+    expect(document.querySelector("demo-widget")).toHaveAttribute("contenteditable", "true")
+    expect($.selectedElement).toBe(document.querySelector("demo-widget"))
+  })
+  it("preserves plain-text line boundaries as soft breaks", async () => {
+    await navigator.clipboard.write([new ClipboardItem({"text/plain": "one\ntwo"})])
+    $.selectDocumentStart()
+
+    await editor.features.manipulation.paste()
+
+    expectBodyToBe("<p>one<br>two</p>")
+  })
+  it("handles native paste consistently inside an ordinary text selection", () => {
+    document.body.innerHTML = "<p>hello</p>"
+    const text = document.querySelector("p")!.firstChild!
+    $.selectRange(text, 1, text, 4)
+    const clipboardData = new DataTransfer()
+    clipboardData.setData("text/html", '<i class="◆text-selected external">new</i>')
+    clipboardData.setData("text/plain", "new")
+    const event = new ClipboardEvent("paste", {bubbles: true, cancelable: true, clipboardData})
+
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expectBodyToBe('<p>h<i class="external">new</i>o</p>')
+  })
 })
 describe("setAttributes()", () => {
   it("can set a title attribute", () => {
@@ -775,6 +984,94 @@ describe("text input normalization", () => {
 
     expect(p.childNodes).toHaveLength(1)
     expect(p.textContent).toBe("ab")
+  })
+})
+describe("setBlockType()", () => {
+  it("converts a block while preserving authored attributes, inline DOM, and selection", () => {
+    document.body.innerHTML = '<p id="intro" class="lead"><b>hello</b></p>'
+    const text = document.querySelector("b")!.firstChild!
+    $.selectRange(text, 1, text, 4)
+
+    const count = editor.features.manipulation.setBlockType("h2")
+
+    expect(count).toBe(1)
+    expectBodyToBe('<h2 id="intro" class="lead"><b>hello</b></h2>')
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(1)
+    expect($.focus).toBe(text)
+    expect($.focusOffset).toBe(4)
+  })
+
+  it("converts every selected leaf block without rebuilding their container", () => {
+    document.body.innerHTML = "<section><p>one</p><h1>two</h1><pre>three</pre></section>"
+    const section = document.querySelector("section")!
+    const first = section.firstElementChild!.firstChild!
+    const last = section.lastElementChild!.firstChild!
+    $.selectRange(first, 1, last, 3)
+
+    editor.features.manipulation.setBlockType("h3")
+
+    expectBodyToBe("<section><h3>one</h3><h3>two</h3><h3>three</h3></section>")
+    expect(document.querySelector("section")).toBe(section)
+  })
+
+  it("converts paragraphs nested in list items while preserving list structure", () => {
+    document.body.innerHTML = "<ol><li><p>one</p></li><li><p>two</p></li></ol>"
+    const paragraphs = document.querySelectorAll("p")
+    $.selectRange(paragraphs[0].firstChild!, 0, paragraphs[1].firstChild!, 3)
+
+    editor.features.manipulation.setBlockType("h2")
+
+    expectBodyToBe("<ol><li><h2>one</h2></li><li><h2>two</h2></li></ol>")
+  })
+
+  it("skips a replacement that would violate the parent content model", () => {
+    document.body.innerHTML = "<ul><li>item</li></ul>"
+    $.move(document.querySelector("li")!.firstChild!, 2)
+
+    const count = editor.features.manipulation.setBlockType("p")
+
+    expect(count).toBe(0)
+    expectBodyToBe("<ul><li>item</li></ul>")
+  })
+
+  it("treats a selected custom element as atomic", () => {
+    document.body.innerHTML = "<demo-widget><p>inside</p></demo-widget><p>outside</p>"
+    $.selectElement(document.querySelector("demo-widget")!)
+
+    const count = editor.features.manipulation.setBlockType("h2")
+
+    expect(count).toBe(0)
+    expectBodyToBe("<demo-widget><p>inside</p></demo-widget><p>outside</p>")
+  })
+
+  it("does not format light-DOM descendants of a custom element in a spanning selection", () => {
+    document.body.innerHTML = "<p>before</p><demo-widget><p>inside</p></demo-widget><p>after</p>"
+    $.selectRange(document.body, 0, document.body, 3)
+
+    const count = editor.features.manipulation.setBlockType("h2")
+
+    expect(count).toBe(2)
+    expectBodyToBe("<h2>before</h2><demo-widget><p>inside</p></demo-widget><h2>after</h2>")
+  })
+
+  it("retains parent selector constraints when unfamiliar siblings are present", () => {
+    document.body.innerHTML = "<address><p>contact</p><demo-widget></demo-widget></address>"
+    $.move(document.querySelector("p")!.firstChild!, 2)
+
+    const count = editor.features.manipulation.setBlockType("h2")
+
+    expect(count).toBe(0)
+    expectBodyToBe("<address><p>contact</p><demo-widget></demo-widget></address>")
+  })
+
+  it("materializes and formats a block at an empty-document selection", () => {
+    $.selectDocumentStart()
+
+    editor.features.manipulation.actions.setBlockType({type: "setBlockType", tag: "h1"})
+
+    expectBodyToBe("<h1></h1>")
+    expect($.anchor).toBe(document.querySelector("h1"))
   })
 })
 describe("setStyle()", () => {
@@ -859,6 +1156,59 @@ describe("setStyle()", () => {
 
     expect(section).toHaveStyle({backgroundColor: "gold"})
     expect(section.firstElementChild).not.toHaveAttribute("style")
+  })
+  it("applies paragraph styles to every selected block instead of their common ancestor", () => {
+    document.body.innerHTML = '<section><p style="color: red">one</p><p>two</p></section>'
+    const section = document.querySelector("section")!
+    const paragraphs = Array.from(document.querySelectorAll<HTMLElement>("p"))
+    $.selectRange(paragraphs[0].firstChild!, 1, paragraphs[1].firstChild!, 2)
+
+    const count = editor.features.manipulation.setBlockStyle({"text-align": "center", "line-height": "1.5"})
+
+    expect(count).toBe(2)
+    expect(section).not.toHaveAttribute("style")
+    expect(paragraphs[0]).toHaveStyle({color: "red", textAlign: "center", lineHeight: "1.5"})
+    expect(paragraphs[1]).toHaveStyle({textAlign: "center", lineHeight: "1.5"})
+  })
+  it("materializes a paragraph when formatting an empty document", () => {
+    $.selectDocumentStart()
+
+    const count = editor.features.manipulation.setBlockStyle({"text-align": "center"})
+
+    expect(count).toBe(1)
+    expect(document.querySelector("p")).toHaveStyle({textAlign: "center"})
+  })
+  it("removes a paragraph style from every selected block", () => {
+    document.body.innerHTML = '<p style="text-indent: 2em">one</p><p style="text-indent: 2em">two</p>'
+    const paragraphs = Array.from(document.querySelectorAll<HTMLElement>("p"))
+    $.selectRange(document.body, 0, document.body, 2)
+
+    editor.features.manipulation.actions.setBlockStyle({
+      type: "setBlockStyle",
+      styles: {"text-indent": ""},
+    })
+
+    expect(paragraphs.every(paragraph => paragraph.style.textIndent === "")).toBe(true)
+  })
+  it("projects a shared paragraph declaration from a multi-block selection", () => {
+    document.body.innerHTML = '<section><p style="text-align: center">one</p><p style="text-align: center">two</p></section>'
+    const paragraphs = document.querySelectorAll("p")
+    $.selectRange(paragraphs[0].firstChild!, 0, paragraphs[1].firstChild!, 3)
+
+    const state = editor.features.manipulation.getStyleState(["text-align"])
+
+    expect(state.target?.localName).toBe("section")
+    expect(state.inline["text-align"]).toEqual({value: "center", priority: ""})
+  })
+  it("reports a mixed paragraph declaration as unset", () => {
+    document.body.innerHTML = '<section><p style="text-align: start">one</p><p style="text-align: end">two</p></section>'
+    const paragraphs = document.querySelectorAll("p")
+    $.selectRange(paragraphs[0].firstChild!, 0, paragraphs[1].firstChild!, 3)
+
+    const state = editor.features.manipulation.getStyleState(["text-align"])
+
+    expect(state.inline).not.toHaveProperty("text-align")
+    expect(state.computed["text-align"]).toBe("")
   })
   it("uses the authored widget host while capture is active", () => {
     document.body.innerHTML = "<demo-widget></demo-widget><p>other</p>"

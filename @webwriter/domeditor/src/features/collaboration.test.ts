@@ -100,6 +100,22 @@ describe("DOMEditor collaboration wiring", () => {
     expect((paragraph as HTMLElement).style.getPropertyValue("color")).toBe("rebeccapurple")
   })
 
+  it("synchronizes block-format conversion and includes it in undo and redo", async () => {
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph.firstChild!, 2)
+
+    editor.features.manipulation.actions.setBlockType({type: "setBlockType", tag: "h2"})
+    await mutationsDelivered()
+
+    expect(editor.toHTML(true)).toBe("<h2>Hello</h2>")
+    expect(editor.doc.body.toString()).toContain("<h2>Hello</h2>")
+
+    editor.features.history.actions.undo({type: "undo"})
+    expect(editor.toHTML(true)).toBe("<p>Hello</p>")
+    editor.features.history.actions.redo({type: "redo"})
+    expect(editor.toHTML(true)).toBe("<h2>Hello</h2>")
+  })
+
   it("synchronizes in-document comments and includes them in undo and redo", async () => {
     const paragraph = document.querySelector("p")!
     $.selectRange(paragraph.firstChild!, 0, paragraph.firstChild!, 5)

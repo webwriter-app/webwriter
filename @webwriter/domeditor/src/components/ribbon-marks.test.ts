@@ -661,14 +661,14 @@ describe("mark ribbon controls", () => {
       let mounted = await mountRibbon()
       let bold = mounted.drawer.querySelector<RibbonButton>('ribbon-button[action="mark:b"]')!
       await bold.updateComplete
-      expect(bold.shadowRoot!.querySelector("button")!.title).toBe("Bold (⌥⇧B)")
+      expect(bold.shadowRoot!.querySelector("button")!.title).toBe("Bold (⌘B)")
 
       mounted.ribbon.remove()
       Object.defineProperty(navigator, "platform", {value: "Win32", configurable: true})
       mounted = await mountRibbon()
       bold = mounted.drawer.querySelector<RibbonButton>('ribbon-button[action="mark:b"]')!
       await bold.updateComplete
-      expect(bold.shadowRoot!.querySelector("button")!.title).toBe("Bold (Alt+Shift+B)")
+      expect(bold.shadowRoot!.querySelector("button")!.title).toBe("Bold (Ctrl+B)")
     }
     finally {
       Object.defineProperty(navigator, "platform", {value: originalPlatform, configurable: true})

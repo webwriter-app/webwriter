@@ -882,7 +882,7 @@ describe("DomEditor.execute()", () => {
     }
   })
 
-  it("executes the matching insert action from the Start ribbon", async () => {
+  it("executes the paragraph-format action from the Start ribbon", async () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
@@ -890,7 +890,49 @@ describe("DomEditor.execute()", () => {
     await paragraph.updateComplete
     paragraph.shadowRoot!.querySelector("button")!.click()
 
-    expect(execute).toHaveBeenCalledWith({type: "insert", html: "<p></p>"})
+    expect(execute).toHaveBeenCalledWith({type: "setBlockType", tag: "p"})
+  })
+
+  it("opens Edit after inserting an element with contextual edit options", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    const selectInserted = (detail: object) => window.dispatchEvent(new MessageEvent("message", {
+      data: {type: selectionChangeEvent, detail: {inserted: true, ...detail}},
+      source: editorWindow,
+    }))
+
+    selectInserted({
+      path: [{path: [], name: "Document"}, {path: [0], name: "Table"}],
+      table: {
+        active: true,
+        cellSelection: true,
+        rows: 2,
+        columns: 2,
+        selectedCells: 1,
+        canMerge: false,
+        canSplit: false,
+        hasCaption: false,
+      },
+    })
+    expect(toolbox.activeTool).toBe("Edit")
+
+    toolbox.selectTool(null)
+    selectInserted({
+      path: [{path: [], name: "Document"}, {path: [0], name: "Graphic"}],
+      graphic: {active: true, capture: false},
+    })
+    expect(toolbox.activeTool).toBe("Edit")
+
+    toolbox.selectTool(null)
+    selectInserted({
+      path: [{path: [], name: "Document"}, {path: [0], name: "Widget", icon: "Packages"}],
+      nodeSelected: true,
+    })
+    expect(toolbox.activeTool).toBe("Edit")
+
+    toolbox.selectTool(null)
+    selectInserted({path: [{path: [], name: "Document"}, {path: [0], name: "Form"}]})
+    expect(toolbox.activeTool).toBeNull()
   })
 
   it("loads Style-pane state lazily and routes inline style changes", async () => {
@@ -953,6 +995,16 @@ describe("DomEditor.execute()", () => {
       styles: {display: {value: "grid", priority: ""}},
     }))
     await vi.waitFor(() => expect(toolbox.elementStyle.inline.display?.value).toBe("grid"))
+
+    toolbox.dispatchEvent(new CustomEvent("element-style-change", {
+      detail: {property: "text-align", mutation: "center"},
+      bubbles: true,
+      composed: true,
+    }))
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({
+      type: "setBlockStyle",
+      styles: {"text-align": "center"},
+    }))
   })
 
   it("renders Packages as ribbon buttons with a prefixed search bar", async () => {
@@ -2286,7 +2338,7 @@ describe("DomEditor.execute()", () => {
     await heading.updateComplete
 
     heading.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Heading"]')!.click()
-    expect(execute).toHaveBeenCalledWith({type: "insert", html: "<h1></h1>"})
+    expect(execute).toHaveBeenCalledWith({type: "setBlockType", tag: "h1"})
 
     heading.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Show more Heading options"]')!.click()
     await heading.updateComplete
@@ -2294,7 +2346,7 @@ describe("DomEditor.execute()", () => {
     await submenu.updateComplete
     submenu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Heading 3"]')!.click()
 
-    expect(execute).toHaveBeenLastCalledWith({type: "insert", html: "<h3></h3>"})
+    expect(execute).toHaveBeenLastCalledWith({type: "setBlockType", tag: "h3"})
 
     heading.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Show more Heading options"]')!.click()
     await heading.updateComplete
@@ -2384,7 +2436,7 @@ describe("DomEditor.execute()", () => {
     const submenu = paragraph.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
     submenu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Preformatted Text"]')!.click()
 
-    expect(execute).toHaveBeenCalledWith({type: "insert", html: "<pre></pre>"})
+    expect(execute).toHaveBeenCalledWith({type: "setBlockType", tag: "pre"})
   })
 
   it("closes expanded ribbon-button menus when the editor receives focus", async () => {

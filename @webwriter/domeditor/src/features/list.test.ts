@@ -103,6 +103,24 @@ describe("semantic list editing", () => {
     expect(cleanHTML()).toBe("<ul><li><br></li></ul>")
   })
 
+  it("uses Shift+Enter for a soft break instead of creating another list item", () => {
+    document.body.innerHTML = "<ul><li>AB</li></ul>"
+    $.move(document.querySelector("li")!.firstChild!, 1)
+
+    keydown("Enter", {shiftKey: true})
+
+    expect(cleanHTML()).toBe("<ul><li>A<br>B</li></ul>")
+    expect(document.querySelectorAll("li")).toHaveLength(1)
+  })
+
+  it("materializes a virtual item before Shift+Enter inserts a soft break", () => {
+    editor.features.list.toggleList("ul")
+
+    keydown("Enter", {shiftKey: true})
+
+    expect(cleanHTML()).toBe("<ul><li><br></li></ul>")
+  })
+
   it("materializes the virtual item before Alt+Shift+Enter inserts a word break", () => {
     editor.features.list.toggleList("ul")
 

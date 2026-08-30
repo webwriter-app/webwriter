@@ -76,19 +76,19 @@ export function plainTextFromDOM(root: Node, isBlock: (element: Element) => bool
     }
   }
   const visit = (node: Node) => {
-    if(node instanceof Text) {
+    if(isText(node)) {
       const previous = node.previousSibling
       const next = node.nextSibling
       const separatesBlocks = !node.data.trim() && [previous, next]
-        .some(sibling => sibling instanceof Element && isBlock(sibling))
+        .some(sibling => isElement(sibling) && isBlock(sibling))
       if(!separatesBlocks) parts.push({value: node.data})
       return
     }
-    if(node instanceof Element && node.matches("br")) {
+    if(isElement(node) && node.matches("br")) {
       parts.push({value: "\n"})
       return
     }
-    const block = node instanceof Element && isBlock(node)
+    const block = isElement(node) && isBlock(node)
     if(block) addBlockBoundary()
     Array.from(node.childNodes).forEach(visit)
     if(block) addBlockBoundary()
@@ -490,11 +490,17 @@ export class EditingSelection {
   /** Returns a clone of the selected content, leaving the document
    * unchanged. */
   static copy() {
-    if(this.isTextSelection) {
-      const str = this.#selection.toString()
-      return this.range.createContextualFragment(str)
+    let fragment = this.range.cloneContents()
+    const commonAncestor = this.range.commonAncestorContainer
+    let sharedMark = isElement(commonAncestor)? commonAncestor: commonAncestor.parentElement
+    while(sharedMark && isMarkElement(sharedMark)) {
+      const wrapper = sharedMark.cloneNode(false) as Element
+      wrapper.append(fragment)
+      fragment = sharedMark.ownerDocument.createDocumentFragment()
+      fragment.append(wrapper)
+      sharedMark = sharedMark.parentElement
     }
-    else return this.range.cloneContents()
+    return fragment
   }
 
   /** Deletes the selected content (a no-op for collapsed selections). */

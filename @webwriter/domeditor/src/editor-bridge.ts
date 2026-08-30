@@ -138,6 +138,25 @@ export type ElementStyleDeclaration = {
 
 export type ElementStyleMutation = string | null | ElementStyleDeclaration
 
+/** Text-bearing HTML block types exposed as paragraph-format choices. */
+export const blockFormatTags = [
+  "p",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "pre",
+  "blockquote",
+] as const
+
+export type BlockFormatTag = typeof blockFormatTags[number]
+
+export function isBlockFormatTag(value: string): value is BlockFormatTag {
+  return blockFormatTags.includes(value as BlockFormatTag)
+}
+
 /** A serializable, DOM-derived projection of the element currently targeted
  * by element-style commands. Computed values are limited to the property names
  * requested by the host so ordinary selection changes stay inexpensive. */
@@ -165,6 +184,8 @@ export type ListSelectionState = {
 
 export type SelectionChangeDetail = {
   path: SelectionPathItem[]
+  /** True only for the selection update emitted by a local insertion command. */
+  inserted?: boolean
   /** True when the current selection is an element/node selection. */
   nodeSelected?: boolean
   /** True when the selected widget has captured interaction in its shadow tree. */
@@ -394,6 +415,7 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
 
   if(message.detail.nodeSelected !== undefined && typeof message.detail.nodeSelected !== "boolean") return false
   if(message.detail.capture !== undefined && typeof message.detail.capture !== "boolean") return false
+  if(message.detail.inserted !== undefined && typeof message.detail.inserted !== "boolean") return false
 
   const gap = message.detail.gap as Partial<SelectionGap> | null | undefined
   const gapIsValid = gap === undefined || (

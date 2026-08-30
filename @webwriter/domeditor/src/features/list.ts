@@ -389,7 +389,7 @@ export class ListFeature extends EditorFeature {
     if(event.defaultPrevented || this.editor.features.transformation.target) return
     const point = this.virtualPoint
 
-    if(event.key === "Enter" && !event.altKey && !modifierKeyDown(event)) {
+    if(event.key === "Enter" && !event.altKey && !event.shiftKey && !modifierKeyDown(event)) {
       if(this.liftTrailingDetailsBlock()) {
         event.preventDefault()
         event.stopImmediatePropagation()

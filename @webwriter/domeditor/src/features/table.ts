@@ -294,6 +294,7 @@ export class TableFeature extends EditorFeature {
     const firstCell = table.querySelector<HTMLTableCellElement>(tableCellSelector)
     if(firstCell) this.selectCells(firstCell)
     else if(table.isConnected) $.selectElement(table)
+    if(table.isConnected) this.editor.postSelectionPath(true)
     return table
   }
 

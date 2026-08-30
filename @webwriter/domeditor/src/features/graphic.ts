@@ -570,6 +570,7 @@ export class GraphicFeature extends EditorFeature {
       if(graphic.isConnected) {
         $.selectElement(graphic)
         this.editor.features.selection.processSelection()
+        this.editor.postSelectionPath(true)
       }
     },
     addGraphicShape: ({shape}: {type: "addGraphicShape", shape: GraphicShapeType}) => {

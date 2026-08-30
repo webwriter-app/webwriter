@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import {beforeEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
-import {markNames, primaryMarkOptions} from "../marks"
+import {markNames, primaryMarkOptions, standardMarkShortcutNames} from "../marks"
 import {$} from "../utility"
 
 const editor = new DOMEditor()
@@ -487,6 +487,27 @@ describe("MarkFeature stored marks", () => {
 })
 
 describe("MarkFeature shortcuts", () => {
+  it("handles the standard primary-modifier shortcuts for bold, italic, underline, and link", () => {
+    for(const name of standardMarkShortcutNames) {
+      const option = primaryMarkOptions.find(candidate => candidate.name === name)!
+      const paragraph = setContent("<p>Text</p>")
+      selectText(paragraph.firstChild as Text)
+      const event = new KeyboardEvent("keydown", {
+        key: option.shortcutKey,
+        code: `Key${option.shortcutKey!.toUpperCase()}`,
+        ctrlKey: true,
+        metaKey: true,
+        bubbles: true,
+        cancelable: true,
+      })
+
+      document.dispatchEvent(event)
+
+      expect(event.defaultPrevented, name).toBe(true)
+      expect(paragraph.querySelector(name), name).not.toBeNull()
+    }
+  })
+
   it("provides and handles a unique Alt/Option+Shift shortcut for every primary mark", () => {
     expect(new Set(primaryMarkOptions.map(option => option.shortcutKey)).size).toBe(primaryMarkOptions.length)
 

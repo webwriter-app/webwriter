@@ -625,7 +625,7 @@ export class DOMEditor {
   }
 
   /** Sends the current element path to the host application through the bridge. */
-  postSelectionPath() {
+  postSelectionPath(inserted = false) {
     const body = document.body
     const focusedWidget = focusedWidgetHost()
     const selected = this.selectedElementForPath()
@@ -664,6 +664,7 @@ export class DOMEditor {
     const graphic = this.features.graphic.getState()
     const detail: SelectionChangeDetail = {
       path,
+      ...(inserted ? {inserted: true} : {}),
       ...($.isElementSelection ? {nodeSelected: true} : {}),
       ...(this.features.selection.isCaptureSelection ? {capture: true} : {}),
       ...(gap ? {gap} : {}),
@@ -845,15 +846,23 @@ export class DOMEditor {
     }
   }
 
-  #onCopy = (ev: ClipboardEvent) => {
-    if(isWidgetShadowInteraction(ev)) return
-    ev.preventDefault()
-    const fragment = $.copy()
+  /** Produces the two clipboard flavors from one cleaned selection clone so
+   * native and programmatic copy cannot diverge or leak editing markers. */
+  serializeClipboardFragment(fragment: DocumentFragment) {
     this.clearEditingArtifacts(fragment)
-    const serializer = new XMLSerializer()
-    const html = serializer.serializeToString(fragment)
-    ev.clipboardData?.setData("text/html", html)
-    ev.clipboardData?.setData("text/plain", plainTextFromDOM(fragment, element => this.schema.isBlock(element)))
+    const text = plainTextFromDOM(fragment, element => this.schema.isBlock(element))
+    const container = document.createElement("div")
+    container.append(fragment)
+    const html = container.innerHTML
+    return {html, text}
+  }
+
+  #onCopy = (ev: ClipboardEvent) => {
+    if(isWidgetShadowInteraction(ev) || !ev.clipboardData || $.isEmpty) return
+    ev.preventDefault()
+    const {html, text} = this.serializeClipboardFragment($.copy())
+    ev.clipboardData.setData("text/html", html)
+    ev.clipboardData.setData("text/plain", text)
   }
   
   clearEditingArtifacts(node: Document | DocumentFragment = document) {
