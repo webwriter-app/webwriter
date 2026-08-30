@@ -181,7 +181,7 @@ export class AppRibbon extends LitElement {
     selectedLocalPackageName: {type: String, attribute: "selected-local-package-name"},
     selectedLocalPackageAutoReload: {type: Boolean, attribute: "selected-local-package-auto-reload"},
     packageSearchQuery: {type: String, state: true},
-    packageDrawerOpen: {type: Boolean, state: true},
+    packageDrawerOpen: {type: Boolean, reflect: true, attribute: "package-drawer-open"},
     packageVisibleCount: {type: Number, state: true},
     listType: {type: String, attribute: "list-type"},
     listStyle: {type: String, attribute: "list-style"},
@@ -248,6 +248,10 @@ export class AppRibbon extends LitElement {
     :host(:not([expanded])) {
       height: 120px;
       max-height: 40px;
+    }
+
+    :host([package-drawer-open]) {
+      z-index: 3;
     }
 
     :host(:not([expanded])) .ribbon {
@@ -2688,14 +2692,14 @@ export class AppRibbon extends LitElement {
     // A package button normally spans two grid tracks. Fewer than four tracks
     // therefore means that only one package-button column fits.
     drawer.singleColumn = columns < 4
-    // The two-cell search field cannot share its trailing single cell when
-    // the grid has an odd column count. Calculate each row independently so
-    // no package is accidentally placed in a clipped third row.
-    const visibleCount = columns < 2
-      ? 1
+    // In the single-column layout, search uses the first row and packages
+    // occupy the remaining two. Wider grids reserve two tracks for search,
+    // then use every available package cell across all three rows.
+    const visibleCount = drawer.singleColumn
+      ? 2
       : Math.max(
         0,
-        Math.floor((columns - 2) / 2) + Math.floor(columns / 2),
+        Math.floor((columns - 2) / 2) + Math.floor(columns / 2) * 2,
       )
     if(this.packageVisibleCount !== visibleCount) this.packageVisibleCount = visibleCount
   }
@@ -3754,7 +3758,12 @@ export class AppRibbon extends LitElement {
 
   private handlePackageDrawerState = (event: Event) => {
     const detail = (event as CustomEvent<{label?: string, open?: boolean}>).detail
-    if(detail?.label === "Packages") this.packageDrawerOpen = detail.open === true
+    if(detail?.label === "Packages" && detail.open) this.packageDrawerOpen = true
+  }
+
+  private handlePackageDrawerClose = (event: Event) => {
+    const detail = (event as CustomEvent<{label?: string}>).detail
+    if(detail?.label === "Packages") this.packageDrawerOpen = false
   }
 
   private handlePackageSearchFocus = () => {
@@ -3922,6 +3931,7 @@ export class AppRibbon extends LitElement {
         layout="packages"
         ?expandable=${overflowPackages.length > 0}
         @ribbon-drawer-state-change=${this.handlePackageDrawerState}
+        @ribbon-drawer-close-complete=${this.handlePackageDrawerClose}
       >
         <package-search
           .query=${this.packageSearchQuery}

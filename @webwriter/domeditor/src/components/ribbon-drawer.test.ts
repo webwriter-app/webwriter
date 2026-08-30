@@ -155,9 +155,6 @@ describe("responsive ribbon drawer", () => {
       /:host\(\[layout="packages"\]\) \.controls\s*\{[\s\S]*?scrollbar-gutter:\s*stable;/,
     )
     expect(RibbonDrawer.styles.toString()).toMatch(
-      /:host\(\[layout="packages"\]\[drawer-visible\]\) \.drawer\s*\{[\s\S]*?padding-inline-end:\s*0;/,
-    )
-    expect(RibbonDrawer.styles.toString()).toMatch(
       /\.controls::-webkit-scrollbar\s*\{[\s\S]*?width:\s*0\.375rem;/,
     )
     expect(RibbonDrawer.styles.toString()).toMatch(
@@ -177,6 +174,14 @@ describe("responsive ribbon drawer", () => {
     await drawer.updateComplete
     expect(drawer.hasAttribute("drawer-scrollable")).toBe(false)
     expect(getComputedStyle(controls).overflowY).toBe("hidden")
+
+    const rounding = new Event("transitionend") as TransitionEvent
+    Object.defineProperty(rounding, "propertyName", {value: "max-height"})
+    Object.defineProperty(controls, "scrollHeight", {value: 101, configurable: true})
+    Object.defineProperty(controls, "clientHeight", {value: 100, configurable: true})
+    section.dispatchEvent(rounding)
+    await drawer.updateComplete
+    expect(drawer.hasAttribute("drawer-scrollable")).toBe(false)
 
     const overflowing = new Event("transitionend") as TransitionEvent
     Object.defineProperty(overflowing, "propertyName", {value: "max-height"})
@@ -265,8 +270,28 @@ describe("responsive ribbon drawer", () => {
     expect(controls.style.getPropertyValue("--package-expanded-grid-offset")).toBe("0px")
     expect(controls.style.getPropertyValue("--package-expanded-grid-padding")).toBe("4px")
     expect(controls.style.getPropertyValue("--package-grid-template-columns")).not.toBe("")
+    expect(controls.style.getPropertyValue("--package-expanded-controls-width")).toBe("240px")
     expect(RibbonDrawer.styles.toString()).toContain("--package-grid-template-columns")
+    expect(RibbonDrawer.styles.toString()).toContain("--package-expanded-controls-width")
     expect(RibbonDrawer.styles.toString()).toContain("grid-auto-rows: var(--package-row-height, 2.45rem)")
+  })
+
+  it("captures a compact package pullout's closed width before opening", async () => {
+    const drawer = new RibbonDrawer()
+    drawer.layout = "packages"
+    drawer.collapsed = true
+    document.body.append(drawer)
+    await drawer.updateComplete
+
+    const controls = drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!
+    Object.defineProperty(controls, "getBoundingClientRect", {
+      value: () => ({width: 240, height: 2}), configurable: true,
+    })
+
+    ;(drawer as unknown as {captureExpandedContentOffset(): void}).captureExpandedContentOffset()
+
+    expect(controls.style.getPropertyValue("--package-expanded-controls-width")).toBe("240px")
+    expect(controls.style.getPropertyValue("--package-grid-template-columns")).not.toBe("")
   })
 
   it("closes a compact drawer when the drawer expands again", async () => {

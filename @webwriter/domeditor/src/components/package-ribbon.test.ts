@@ -86,7 +86,7 @@ describe("package ribbon controls", () => {
     expect(getComputedStyle(controls).gap).toBe("0")
     expect(getComputedStyle(controls).paddingBottom).toBe("4px")
     expect(RibbonDrawer.styles.toString()).toContain("grid-column: span 2")
-    expect(getComputedStyle(controls).gridTemplateRows).toBe("repeat(2, minmax(0, 1fr))")
+    expect(getComputedStyle(controls).gridTemplateRows).toBe("repeat(3, minmax(0, 1fr))")
     expect(getComputedStyle(search).height).toBe("calc(100% - 4px)")
     expect(getComputedStyle(button.shadowRoot!.querySelector(".button-row")!).height).toBe("100%")
     expect(getComputedStyle(search.shadowRoot!.querySelector(".field")!).backgroundColor).toBe("transparent")
@@ -224,10 +224,37 @@ describe("package ribbon controls", () => {
     expect(labels()).toEqual(["Installed", "Available", "Another"])
   })
 
+  it("raises an open Packages drawer above the toolbox", async () => {
+    const ribbon = new AppRibbon()
+    ribbon.activeMenu = "Start"
+    ribbon.packages = [packageFixture("one"), packageFixture("two"), packageFixture("three")]
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+
+    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')!
+    drawer.dispatchEvent(new CustomEvent("ribbon-drawer-state-change", {
+      detail: {label: "Packages", open: true}, bubbles: true, composed: true,
+    }))
+    await ribbon.updateComplete
+
+    expect(ribbon.hasAttribute("package-drawer-open")).toBe(true)
+    drawer.dispatchEvent(new CustomEvent("ribbon-drawer-state-change", {
+      detail: {label: "Packages", open: false}, bubbles: true, composed: true,
+    }))
+    await ribbon.updateComplete
+    expect(ribbon.hasAttribute("package-drawer-open")).toBe(true)
+    drawer.dispatchEvent(new CustomEvent("ribbon-drawer-close-complete", {
+      detail: {label: "Packages"}, bubbles: true, composed: true,
+    }))
+    await ribbon.updateComplete
+    expect(ribbon.hasAttribute("package-drawer-open")).toBe(false)
+    expect(AppRibbon.styles.toString()).toContain(':host([package-drawer-open])')
+  })
+
   it("accounts for the unused cell beside search in odd-width grids", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Start"
-    ribbon.packages = Array.from({length: 6}, (_, index) => packageFixture(`package-${index + 1}`))
+    ribbon.packages = Array.from({length: 9}, (_, index) => packageFixture(`package-${index + 1}`))
     document.body.append(ribbon)
     await ribbon.updateComplete
 
@@ -240,14 +267,18 @@ describe("package ribbon controls", () => {
     ;(ribbon as unknown as {updatePackageCapacity(): void}).updatePackageCapacity()
     await ribbon.updateComplete
 
-    expect(drawer.querySelectorAll('ribbon-button:not([slot="more"])')).toHaveLength(5)
+    expect(drawer.querySelectorAll('ribbon-button:not([slot="more"])')).toHaveLength(8)
     expect(drawer.querySelectorAll('ribbon-button[slot="more"]')).toHaveLength(1)
   })
 
   it("uses the full drawer width when only one package-button column fits", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Start"
-    ribbon.packages = [packageFixture("long-package-name")]
+    ribbon.packages = [
+      packageFixture("long-package-name"),
+      packageFixture("second-package"),
+      packageFixture("third-package"),
+    ]
     document.body.append(ribbon)
     await ribbon.updateComplete
 
@@ -262,8 +293,12 @@ describe("package ribbon controls", () => {
     await drawer.updateComplete
 
     expect(drawer.singleColumn).toBe(true)
-    expect(drawer.querySelectorAll('ribbon-button:not([slot="more"])')).toHaveLength(1)
+    expect(drawer.querySelectorAll('ribbon-button:not([slot="more"])')).toHaveLength(2)
+    expect(drawer.querySelectorAll('ribbon-button[slot="more"]')).toHaveLength(1)
     expect(drawer.hasAttribute("single-column")).toBe(true)
+    expect(RibbonDrawer.styles.toString()).toContain(
+      'grid-template-columns: var(--package-grid-template-columns, minmax(0, 1fr))',
+    )
     expect(RibbonDrawer.styles.toString()).toContain('[single-column]) ::slotted(ribbon-button[variant="package"])')
     expect(RibbonDrawer.styles.toString()).toContain('[single-column]) ::slotted(package-search)')
   })
