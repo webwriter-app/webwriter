@@ -25,6 +25,7 @@ import {LocalPackageWorkerClient} from "../local-package-worker-client"
 import {LiveSession} from "../live-session"
 import type {LiveSessionOverlay} from "./live-session-overlay"
 import type {LiveSessionControls} from "./live-session-controls"
+import {APP_SETTINGS_STORAGE_KEY, defaultAppSettings} from "../app-settings"
 
 const demoPackage: WebWriterPackage = {
   name: "@webwriter/demo",
@@ -140,6 +141,7 @@ async function mountEditor() {
 afterEach(() => {
   document.body.replaceChildren()
   localStorage.removeItem(INSTALLED_PACKAGES_STORAGE_KEY)
+  localStorage.removeItem(APP_SETTINGS_STORAGE_KEY)
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
@@ -171,6 +173,57 @@ describe("DomEditor iframe setup", () => {
 
     expect(iframe.contentDocument!.head.querySelector('meta[name="generator"]')?.getAttribute("content"))
       .toBe(WEBWRITER_GENERATOR)
+    expect(iframe.contentDocument!.documentElement.lang).toBe("en")
+  })
+
+  it("runs configured shortcuts in the editor frame and suppresses replaced defaults", async () => {
+    const {editor, iframe} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const defaults = defaultAppSettings()
+    const settings = {
+      ...defaults,
+      shortcuts: {...defaults.shortcuts, "editor.undo": "Alt+U"},
+    }
+    editor.shadowRoot!.querySelector("app-ribbon")!.dispatchEvent(new CustomEvent("app-settings-change", {
+      detail: settings,
+      bubbles: true,
+      composed: true,
+    }))
+
+    const configured = new KeyboardEvent("keydown", {
+      key: "u", code: "KeyU", altKey: true, bubbles: true, cancelable: true,
+    })
+    iframe.contentDocument!.dispatchEvent(configured)
+    expect(configured.defaultPrevented).toBe(true)
+    expect(execute).toHaveBeenCalledWith({type: "undo"})
+
+    execute.mockClear()
+    const old = defaults.shortcuts["editor.undo"]
+    const replaced = new KeyboardEvent("keydown", {
+      key: "z",
+      code: "KeyZ",
+      metaKey: old.includes("Meta"),
+      ctrlKey: old.includes("Ctrl"),
+      bubbles: true,
+      cancelable: true,
+    })
+    iframe.contentDocument!.dispatchEvent(replaced)
+    expect(replaced.defaultPrevented).toBe(true)
+    expect(execute).not.toHaveBeenCalled()
+  })
+
+  it("applies the language setting to the active document when requested", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
+    const settings = {...defaultAppSettings(), language: "de"}
+    editor.shadowRoot!.querySelector("app-ribbon")!.dispatchEvent(new CustomEvent("app-settings-change", {
+      detail: settings,
+      bubbles: true,
+      composed: true,
+    }))
+
+    expect(editor.lang).toBe("de")
+    expect(execute).toHaveBeenCalledWith({type: "setDocumentHeadField", field: "language", value: "de"})
   })
 
   it("routes bridged document-head state and form actions", async () => {

@@ -118,6 +118,13 @@ import type {
   LiveSessionWidget as OverlayWidget,
   LiveWidgetStateChangeDetail,
 } from "./live-session-overlay"
+import {
+  appCommands,
+  builtinShortcuts,
+  loadAppSettings,
+  shortcutFromEvent,
+  type AppSettings,
+} from "../app-settings"
 
 type WritableFileStream = {
   write(data: Blob): Promise<void>
@@ -306,6 +313,7 @@ export class DomEditor extends LitElement {
     historyState: {attribute: false, state: true},
     historyLoading: {attribute: false, state: true},
     historyError: {attribute: false, state: true},
+    settings: {attribute: false, state: true},
   }
 
   private editorDocument: Document | null = null
@@ -406,6 +414,7 @@ export class DomEditor extends LitElement {
   private historyOperationCount = 0
   private historyDocumentTransitionCount = 0
   private historyError = ""
+  private settings: AppSettings = loadAppSettings()
   private backendState: "probing" | "connected" | "unavailable" = "probing"
   private backendSession: BackendSession | null = null
   private backendClient: BackendClient | null = null
@@ -1279,6 +1288,7 @@ export class DomEditor extends LitElement {
     this.editorWindow?.removeEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
     this.editorDocument?.removeEventListener("pointerdown", this.handleEditorPointerDown)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
+    this.editorDocument?.removeEventListener("keydown", this.handleConfiguredShortcut, true)
     const previousIframe = event.currentTarget as HTMLIFrameElement
     previousIframe.removeEventListener("focus", this.handleEditorFrameFocus)
     previousIframe.removeEventListener("blur", this.handleEditorFrameBlur)
@@ -1293,6 +1303,7 @@ export class DomEditor extends LitElement {
       if(generator && generator.parentElement !== this.editorDocument?.head) {
         this.editorDocument?.head.prepend(generator)
       }
+      this.editorDocument?.documentElement.setAttribute("lang", this.settings.language)
     }
     if(this.breadcrumbHoverPath !== null) {
       void this.execute({
@@ -1342,6 +1353,7 @@ export class DomEditor extends LitElement {
     }
     this.editorDocument?.addEventListener("pointerdown", this.handleEditorPointerDown)
     this.editorDocument?.addEventListener("focusin", this.handleEditorFocus)
+    this.editorDocument?.addEventListener("keydown", this.handleConfiguredShortcut, true)
     this.editorWindow?.addEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
     iframe.addEventListener("focus", this.handleEditorFrameFocus)
     iframe.addEventListener("blur", this.handleEditorFrameBlur)
@@ -1423,7 +1435,7 @@ export class DomEditor extends LitElement {
       && (generator as Element).getAttribute("name")?.toLowerCase() === "generator"
       && (generator as Element).getAttribute("content") === WEBWRITER_GENERATOR
       && (generator as Element).attributes.length === 2
-      && !this.editorDocument?.documentElement.hasAttribute("lang")
+      && this.editorDocument?.documentElement.getAttribute("lang") === this.settings.language
     if(!headUnchanged) return false
 
     const authoredChildren = Array.from(body.childNodes).filter(node => {
@@ -1766,6 +1778,40 @@ export class DomEditor extends LitElement {
     }).catch(error => this.reportFileError(error))
   }
 
+  private handleAppSettingsChange = (event: Event) => {
+    const settings = (event as CustomEvent<AppSettings>).detail
+    if(!settings || typeof settings.language !== "string" || typeof settings.updateDocumentLanguage !== "boolean") return
+    const previous = this.settings
+    this.settings = {...settings, shortcuts: {...settings.shortcuts}}
+    this.lang = settings.language
+    if(settings.updateDocumentLanguage && (
+      settings.language !== previous.language || !previous.updateDocumentLanguage
+    )) {
+      void this.execute({
+        type: "setDocumentHeadField",
+        field: "language",
+        value: settings.language,
+      }).then(changed => {
+        if(changed !== false) this.fileDirty = true
+      }).catch(error => this.reportFileError(error))
+    }
+  }
+
+  private readonly handleConfiguredShortcut = (event: KeyboardEvent) => {
+    if(event.defaultPrevented || event.isComposing) return
+    if(event.composedPath().some(target => target instanceof HTMLElement && target.localName === "settings-panel")) return
+    const shortcut = shortcutFromEvent(event)
+    if(!shortcut) return
+    const command = appCommands.find(candidate => this.settings.shortcuts[candidate.id] === shortcut)
+    if(!command && !builtinShortcuts().has(shortcut)) return
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    if(!command || event.repeat) return
+    this.handleRibbonButtonClick(new CustomEvent("ribbon-button-click", {
+      detail: {label: command.action},
+    }))
+  }
+
   private filePickerWindow() {
     return window as FilePickerWindow
   }
@@ -1863,7 +1909,7 @@ export class DomEditor extends LitElement {
       this.backendDocumentId = null
       this.fileName = ""
       this.fileFormat = "html"
-      await this.reloadDocument(`<!DOCTYPE html><html><head><meta name="generator" content="${escapeAttribute(WEBWRITER_GENERATOR)}"></head><body></body></html>`)
+      await this.reloadDocument(`<!DOCTYPE html><html lang="${escapeAttribute(this.settings.language)}"><head><meta name="generator" content="${escapeAttribute(WEBWRITER_GENERATOR)}"></head><body></body></html>`)
       this.fileDirty = false
       this.focusEditor()
     }
@@ -3450,7 +3496,9 @@ export class DomEditor extends LitElement {
 
   connectedCallback() {
     super.connectedCallback()
+    this.lang = this.settings.language
     window.addEventListener("message", this.handleEditorMessage)
+    document.addEventListener("keydown", this.handleConfiguredShortcut, true)
     const liveSessionId = this.liveSessionIdFromURL()
     if(liveSessionId) void this.joinLiveSession(liveSessionId)
     else if(import.meta.env.MODE !== "test") void this.loginToBackend()
@@ -3468,6 +3516,7 @@ export class DomEditor extends LitElement {
     this.backendProbeController?.abort()
     this.backendProbeController = null
     window.removeEventListener("message", this.handleEditorMessage)
+    document.removeEventListener("keydown", this.handleConfiguredShortcut, true)
     this.localPackageRecords.forEach(record => {
       record.monitor?.dispose()
       record.monitor = undefined
@@ -3481,6 +3530,7 @@ export class DomEditor extends LitElement {
     this.editorWindow?.removeEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
     this.editorDocument?.removeEventListener("pointerdown", this.handleEditorPointerDown)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
+    this.editorDocument?.removeEventListener("keydown", this.handleConfiguredShortcut, true)
     const iframe = this.editorIframe()
     iframe?.removeEventListener("focus", this.handleEditorFrameFocus)
     iframe?.removeEventListener("blur", this.handleEditorFrameBlur)
@@ -3577,6 +3627,7 @@ export class DomEditor extends LitElement {
           .historyState=${this.historyState}
           .historyLoading=${this.historyLoading}
           .historyError=${this.historyError}
+          .settings=${this.settings}
           .backendClient=${this.backendClient}
           .backendState=${this.backendState}
           .aiDocumentToolHandler=${this.handleAIDocumentTool}
@@ -3613,6 +3664,7 @@ export class DomEditor extends LitElement {
           @ribbon-input-commit=${this.finishRibbonInput}
           @ribbon-input-cancel=${this.finishRibbonInput}
           @package-catalog-request=${this.loadPackageCatalog}
+          @app-settings-change=${this.handleAppSettingsChange}
         ></app-ribbon>
         ${this.liveSessionActive ? html`
           <live-session-controls

@@ -267,6 +267,8 @@ const icons: Record<string, string> = {
   Accept: check,
   Reject: x,
   General: settings,
+  Settings: settings,
+  Language: language,
   Shortcuts: keyboard,
   Accessibility: accessible,
   AI: sparkles2,

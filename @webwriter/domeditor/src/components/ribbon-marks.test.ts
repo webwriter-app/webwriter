@@ -244,7 +244,7 @@ describe("mark ribbon controls", () => {
     await ribbon.updateComplete
     expect(Array.from(ribbon.shadowRoot!.querySelectorAll(".ribbon-content > ribbon-drawer"))
       .map(drawer => drawer.getAttribute("label")))
-      .toEqual(["File", "Sharing", "Metadata"])
+      .toEqual(["Settings", "File", "Sharing", "Metadata"])
 
     const fileDrawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="File"]')!
     const fileNameInput = fileDrawer.querySelector<HTMLInputElement>('input[aria-label="File name"]')!

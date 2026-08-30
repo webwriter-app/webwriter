@@ -116,6 +116,14 @@ export class RibbonDrawer extends LitElement {
       --ribbon-drawer-width: min(13.25rem, calc(100vw - 1rem));
     }
 
+    :host([layout="settings"]) {
+      --ribbon-drawer-expanded-width: 3.25rem;
+      --ribbon-drawer-collapsed-width: 3.25rem;
+      --ribbon-drawer-width: min(44rem, calc(100vw - 1rem));
+      --ribbon-drawer-height: min(42rem, calc(100vh - 9rem));
+      --ribbon-drawer-panel-padding-block: 0;
+    }
+
     :host([layout="sharing"]) {
       --ribbon-drawer-expanded-width: 10.25rem;
       --ribbon-drawer-width: min(10.25rem, calc(100vw - 1rem));
@@ -360,6 +368,10 @@ export class RibbonDrawer extends LitElement {
       flex-direction: column;
       align-items: stretch;
       padding-bottom: 0.25rem;
+    }
+
+    :host([layout="settings"]) .controls {
+      display: block;
     }
 
     :host([layout="history-versions"]) .controls {
@@ -613,6 +625,14 @@ export class RibbonDrawer extends LitElement {
       text-align: center;
     }
 
+    :host([layout="settings"][collapsed]) .summary {
+      padding-bottom: 0.75rem;
+    }
+
+    :host([layout="settings"][collapsed]) .summary-label {
+      display: none;
+    }
+
     .summary-icon {
       display: block;
       flex: 0 0 1.25rem;
@@ -670,6 +690,11 @@ export class RibbonDrawer extends LitElement {
       visibility: visible;
       pointer-events: auto;
       transition-delay: 0s;
+    }
+
+    :host([layout="settings"][collapsed]) .controls,
+    :host([layout="settings"][collapsed][drawer-open]) .controls {
+      padding: 0;
     }
 
     :host([collapsed]) .drawer-toggle {

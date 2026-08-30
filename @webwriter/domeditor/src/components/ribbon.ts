@@ -30,6 +30,13 @@ import {
 import { ribbonIcon } from "../ribbon-icons"
 import {isOnApple} from "../utility"
 import {
+  appCommands,
+  defaultAppSettings,
+  formatShortcut,
+  persistAppSettings,
+  type AppSettings,
+} from "../app-settings"
+import {
   insertionMenuItems,
 } from "./insertion-menu"
 import type {WebWriterPackage} from "../packages"
@@ -82,6 +89,7 @@ import {
 } from "./ribbon-menu-config"
 import "./document-head-editor"
 import "./element-style-editor"
+import "./settings-panel"
 
 export type LiveLearnerRibbonItem = {
   id: string
@@ -221,6 +229,7 @@ export class AppRibbon extends LitElement {
     historyState: {attribute: false},
     historyLoading: {type: Boolean, attribute: "history-loading"},
     historyError: {type: String, attribute: "history-error"},
+    settings: {attribute: false},
   }
 
   static styles = css`
@@ -2442,6 +2451,7 @@ export class AppRibbon extends LitElement {
   private previewExpandedBefore = true
   private previewMenuBefore: RibbonMenuName = "Start"
   private previewTransitionTimer: ReturnType<typeof setTimeout> | undefined
+  settings: AppSettings = defaultAppSettings()
 
   private readonly handleWindowResize = () => this.scheduleResponsiveLayout()
   private readonly handleAIProviderChange = () => {
@@ -2658,10 +2668,13 @@ export class AppRibbon extends LitElement {
     if(availableWidth <= 0) return
 
     const widths = drawers.map(drawer => drawer.layoutWidths)
-    let requiredWidth = widths.reduce((total, width) => total + width.expanded, 0)
-    const collapsed = drawers.map(() => false)
+    const collapsed = drawers.map(drawer => drawer.layout === "settings")
+    let requiredWidth = widths.reduce((total, width, index) => (
+      total + (collapsed[index] ? width.collapsed : width.expanded)
+    ), 0)
 
     for(let index = drawers.length - 1; index >= 0 && requiredWidth > availableWidth + 0.5; index--) {
+      if(collapsed[index]) continue
       collapsed[index] = true
       requiredWidth -= widths[index].expanded - widths[index].collapsed
     }
@@ -3305,7 +3318,8 @@ export class AppRibbon extends LitElement {
   }
 
   private markButton(option: MarkOption) {
-    const shortcut = markShortcutLabel(option, isOnApple())
+    const shortcut = this.commandShortcut(`mark:${option.name}`)
+      || markShortcutLabel(option, isOnApple())
     const group = mergedMarkGroupFor(option.name)
     const active = group?.primary === option.name
       ? group.members.some(mark => this.marks.includes(mark))
@@ -4688,9 +4702,40 @@ export class AppRibbon extends LitElement {
               label=${item.label}
               .action=${item.action ?? item.label}
               .submenu=${item.submenu ?? []}
+              shortcut=${this.commandShortcut(item.action ?? item.label)}
             ></ribbon-button>
           `
         })}
+      </ribbon-drawer>
+    `
+  }
+
+  private commandShortcut(action: string) {
+    const command = appCommands.find(candidate => candidate.action === action)
+    return command ? formatShortcut(this.settings.shortcuts[command.id] ?? "") : ""
+  }
+
+  private handleSettingsChange(event: CustomEvent<AppSettings>) {
+    event.stopPropagation()
+    this.settings = {
+      ...event.detail,
+      shortcuts: {...event.detail.shortcuts},
+    }
+    persistAppSettings(this.settings)
+    this.dispatchEvent(new CustomEvent<AppSettings>("app-settings-change", {
+      detail: this.settings,
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private renderSettingsDrawer() {
+    return html`
+      <ribbon-drawer label="Settings" icon="Settings" layout="settings" collapsed>
+        <settings-panel
+          .settings=${this.settings}
+          @settings-change=${this.handleSettingsChange}
+        ></settings-panel>
       </ribbon-drawer>
     `
   }
@@ -5255,7 +5300,7 @@ export class AppRibbon extends LitElement {
       const sharing = menuGroups.File.find(group => group.label === "Sharing")!
       return [this.renderSharingDrawer(sharing), this.renderLearnersDrawer()]
     }
-    return this.currentMenuGroups.map(drawer => {
+    const drawers = this.currentMenuGroups.map(drawer => {
       const styleCategory = this.activeMenu === "Style"
         ? elementStyleCategories.find(category => category.label === drawer.label)
         : undefined
@@ -5295,6 +5340,7 @@ export class AppRibbon extends LitElement {
         </ribbon-drawer>
       `
     })
+    return this.activeMenu === "File" ? [this.renderSettingsDrawer(), ...drawers] : drawers
   }
 
   protected get currentMenuGroups() {
