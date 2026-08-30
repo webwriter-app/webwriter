@@ -298,7 +298,8 @@ describe("package ribbon controls", () => {
     await alpha.updateComplete
     await beta.updateComplete
     expect(drawer.hasAttribute("drawer-open")).toBe(true)
-    expect(alpha.action).toBe("package-toggle:@webwriter/alpha")
+    expect(alpha.action).toBe("package:@webwriter/alpha")
+    expect(alpha.cornerAction).toBe("package-toggle:@webwriter/alpha")
     expect(alpha.keepDrawerOpen).toBe(true)
     expect(alpha.shadowRoot!.querySelector(".corner-icon .icon-tabler-x")).not.toBeNull()
     expect(alpha.shadowRoot!.querySelector(".submenu-chevron")).toBeNull()
@@ -321,7 +322,7 @@ describe("package ribbon controls", () => {
     expect(drawer.hasAttribute("drawer-open")).toBe(true)
   })
 
-  it("keeps an expanded package drawer open for management clicks", async () => {
+  it("inserts from the package body and removes only from its corner control", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Insert"
     const alphaPackage = packageFixture("alpha")
@@ -342,8 +343,16 @@ describe("package ribbon controls", () => {
     await drawer.updateComplete
 
     expect(action).toHaveBeenCalledWith(expect.objectContaining({
-      detail: {label: "package-toggle:@webwriter/alpha", keepDrawerOpen: true},
+      detail: {label: "package:@webwriter/alpha", keepDrawerOpen: true},
     }))
     expect(drawer.hasAttribute("drawer-open")).toBe(true)
+
+    button.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Remove Alpha"]')!.click()
+    expect(action).toHaveBeenLastCalledWith(expect.objectContaining({
+      detail: {label: "package-toggle:@webwriter/alpha", keepDrawerOpen: true},
+    }))
+    expect(RibbonButton.styles.toString()).toMatch(
+      /:host\(\[variant="package"\]\) \.corner-trigger\s*\{[\s\S]*?aspect-ratio:\s*1\s*\/\s*1;/,
+    )
   })
 })

@@ -986,7 +986,7 @@ describe("DomEditor.execute()", () => {
     expect(insert).toHaveBeenCalledWith(demoPackage.members[0])
   })
 
-  it("only installs or removes packages while package search is active", async () => {
+  it("installs and inserts packages while package search is active", async () => {
     vi.mocked(WebWriterPackageRegistry.prototype.search).mockResolvedValue([demoPackage])
     const {editor} = await mountEditor()
     const install = vi.spyOn(editor as any, "setPackageInstalled").mockResolvedValue(demoPackage)
@@ -1007,7 +1007,7 @@ describe("DomEditor.execute()", () => {
 
     await vi.waitFor(() => expect(install).toHaveBeenCalled())
     expect(install).toHaveBeenCalledWith(demoPackage, true)
-    expect(insert).not.toHaveBeenCalled()
+    expect(insert).toHaveBeenCalledWith(demoPackage.members[0])
     expect(button.shadowRoot!.querySelector(".corner-icon")).toBeNull()
   })
 

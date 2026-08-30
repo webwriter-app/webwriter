@@ -31,6 +31,7 @@ export class RibbonButton extends LitElement {
     submenuOpen: {state: true},
     corner: {type: String},
     cornerLabel: {type: String, attribute: "corner-label"},
+    cornerAction: {type: String, attribute: "corner-action"},
     keepDrawerOpen: {type: Boolean, attribute: "keep-drawer-open"},
     openDrawer: {type: Boolean, attribute: "open-drawer"},
     management: {type: Boolean, reflect: true},
@@ -903,16 +904,18 @@ export class RibbonButton extends LitElement {
       flex: 0 0 1rem;
     }
 
-    :host([variant="package"]) .submenu-toggle:not(.submenu-trigger) {
+    :host([variant="package"]) .submenu-toggle:not(.submenu-trigger):not(.corner-trigger) {
       top: 50%;
       transform: translateY(-50%);
     }
 
-    :host([variant="package"]) .button-row.has-submenu .main-button {
+    :host([variant="package"]) .button-row.has-submenu .main-button,
+    :host([variant="package"]) .button-row.has-corner .main-button {
       padding-right: 0.4rem;
     }
 
-    :host([variant="package"]) .submenu-trigger {
+    :host([variant="package"]) .submenu-trigger,
+    :host([variant="package"]) .corner-trigger {
       position: static;
       flex: 0 0 auto;
       align-self: stretch;
@@ -949,15 +952,12 @@ export class RibbonButton extends LitElement {
       opacity: 0.8;
     }
 
-    :host([variant="package"][management][active]) .button-row:hover {
-      border-color: #9f1239;
-      color: #7f1d1d;
+    :host([variant="package"][management][active]) .corner-trigger:hover {
       background: #fee2e2;
-      box-shadow: inset 0 0 0 1px rgb(159 18 57 / 12%);
+      color: #991b1b;
     }
 
-    :host([variant="package"][management][active]) .button-row:hover .button-icon,
-    :host([variant="package"][management][active]) .button-row:hover .submenu-toggle {
+    :host([variant="package"][management][active]) .corner-trigger:hover .corner-icon {
       color: #991b1b;
     }
 
@@ -976,6 +976,7 @@ export class RibbonButton extends LitElement {
   dropdown: TemplateResult | null = null
   corner = ""
   cornerLabel = ""
+  cornerAction = ""
   keepDrawerOpen = false
   openDrawer = false
   management = false
@@ -1064,17 +1065,25 @@ export class RibbonButton extends LitElement {
     }, duration)
   }
 
-  private handleClick() {
+  private dispatchClick(action: string) {
     this.closeSubmenuPopover()
     this.dispatchEvent(new CustomEvent<{label: string, keepDrawerOpen?: boolean, openDrawer?: boolean}>("ribbon-button-click", {
       detail: {
-        label: this.action || this.label,
+        label: action || this.label,
         keepDrawerOpen: this.keepDrawerOpen,
         ...(this.openDrawer ? {openDrawer: true} : {}),
       },
       bubbles: true,
       composed: true,
     }))
+  }
+
+  private handleClick() {
+    this.dispatchClick(this.action)
+  }
+
+  private handleCornerClick() {
+    this.dispatchClick(this.cornerAction || this.action)
   }
 
   private toggleSubmenu(event: Event) {
@@ -1171,7 +1180,7 @@ export class RibbonButton extends LitElement {
     const hasDropdown = this.submenu.length > 0 || this.dropdown !== null
     const title = `${this.label}${this.selectionCount > 0 ? ` +${this.selectionCount}`: ""}${this.shortcut ? ` (${this.shortcut})`: ""}`
     return html`
-      <div class=${`button-row${hasDropdown ? " has-submenu" : ""}`} @mouseenter=${this.showDetails} @mouseleave=${this.hideDetails}>
+      <div class=${`button-row${hasDropdown ? " has-submenu" : ""}${this.corner ? " has-corner" : ""}`} @mouseenter=${this.showDetails} @mouseleave=${this.hideDetails}>
         <button
           class="main-button"
           type="button"
@@ -1191,12 +1200,12 @@ export class RibbonButton extends LitElement {
         </button>
         ${this.corner === "close" ? html`
           <button
-            class="submenu-toggle"
+            class="submenu-toggle corner-trigger"
             type="button"
             aria-label=${this.cornerLabel || `Manage ${this.label}`}
             title=${this.cornerLabel || `Manage ${this.label}`}
             ?disabled=${this.disabled}
-            @click=${this.handleClick}
+            @click=${this.handleCornerClick}
           >
             <span class="button-icon corner-icon" aria-hidden="true">${ribbonIcon("Reject")}</span>
           </button>

@@ -151,11 +151,40 @@ describe("responsive ribbon drawer", () => {
     expect(getComputedStyle(section).transition).toContain("max-height")
     const controls = drawer.shadowRoot!.querySelector<HTMLElement>(".controls")!
     expect(getComputedStyle(controls).overflowY).toBe("hidden")
+    expect(RibbonDrawer.styles.toString()).toMatch(
+      /:host\(\[layout="packages"\]\) \.controls\s*\{[\s\S]*?scrollbar-gutter:\s*stable;/,
+    )
+    expect(RibbonDrawer.styles.toString()).toMatch(
+      /:host\(\[layout="packages"\]\[drawer-visible\]\) \.drawer\s*\{[\s\S]*?padding-inline-end:\s*0;/,
+    )
+    expect(RibbonDrawer.styles.toString()).toMatch(
+      /\.controls::-webkit-scrollbar\s*\{[\s\S]*?width:\s*0\.375rem;/,
+    )
+    expect(RibbonDrawer.styles.toString()).toMatch(
+      /\[drawer-open\]\[drawer-settled\]\[drawer-scrollable\]\) \.controls::-webkit-scrollbar-thumb\s*\{[\s\S]*?background:\s*#b8c1cc;/,
+    )
+
+    const nestedTransition = new Event("transitionend", {bubbles: true}) as TransitionEvent
+    Object.defineProperty(nestedTransition, "propertyName", {value: "max-height"})
+    controls.dispatchEvent(nestedTransition)
+    await drawer.updateComplete
+    expect(drawer.hasAttribute("drawer-settled")).toBe(false)
+    expect(getComputedStyle(controls).overflowY).toBe("hidden")
 
     const opened = new Event("transitionend") as TransitionEvent
     Object.defineProperty(opened, "propertyName", {value: "max-height"})
     section.dispatchEvent(opened)
     await drawer.updateComplete
+    expect(drawer.hasAttribute("drawer-scrollable")).toBe(false)
+    expect(getComputedStyle(controls).overflowY).toBe("hidden")
+
+    const overflowing = new Event("transitionend") as TransitionEvent
+    Object.defineProperty(overflowing, "propertyName", {value: "max-height"})
+    Object.defineProperty(controls, "scrollHeight", {value: 200, configurable: true})
+    Object.defineProperty(controls, "clientHeight", {value: 100, configurable: true})
+    section.dispatchEvent(overflowing)
+    await drawer.updateComplete
+    expect(drawer.hasAttribute("drawer-scrollable")).toBe(true)
     expect(getComputedStyle(controls).overflowY).toBe("auto")
 
     const expandedRows = getComputedStyle(controls).gridAutoRows
@@ -235,6 +264,9 @@ describe("responsive ribbon drawer", () => {
 
     expect(controls.style.getPropertyValue("--package-expanded-grid-offset")).toBe("0px")
     expect(controls.style.getPropertyValue("--package-expanded-grid-padding")).toBe("4px")
+    expect(controls.style.getPropertyValue("--package-grid-template-columns")).not.toBe("")
+    expect(RibbonDrawer.styles.toString()).toContain("--package-grid-template-columns")
+    expect(RibbonDrawer.styles.toString()).toContain("grid-auto-rows: var(--package-row-height, 2.45rem)")
   })
 
   it("closes a compact drawer when the drawer expands again", async () => {

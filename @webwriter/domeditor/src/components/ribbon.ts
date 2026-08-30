@@ -3728,7 +3728,7 @@ export class AppRibbon extends LitElement {
         label=${pkg.label}
         icon="Packages"
         icon-url=${pkg.iconUrl ?? ""}
-        .action=${management ? packageToggleAction(pkg) : packageAction(pkg)}
+        .action=${packageAction(pkg)}
         .submenu=${management || !installed ? [] : members.slice(1).map(member => ({
           label: member.label,
           action: packageMemberAction(member),
@@ -3737,6 +3737,7 @@ export class AppRibbon extends LitElement {
         }))}
         .corner=${management && installed ? "close" : ""}
         .cornerLabel=${installed ? `Remove ${pkg.label}` : `Add ${pkg.label}`}
+        .cornerAction=${management && installed ? packageToggleAction(pkg) : ""}
         .details=${this.packageDetails(pkg)}
         ?active=${installed}
         ?management=${management}
