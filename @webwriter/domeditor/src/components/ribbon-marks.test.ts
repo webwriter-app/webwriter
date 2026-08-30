@@ -378,7 +378,7 @@ describe("mark ribbon controls", () => {
     expect(buttons.every(button => button.disabled)).toBe(true)
     expect(comboboxes.every(combobox => combobox.disabled)).toBe(true)
     expect(getComputedStyle(controls).gridAutoFlow).toBe("row")
-    expect(getComputedStyle(controls).gridTemplateColumns).toBe("repeat(7, 1.75rem) 3rem")
+    expect(getComputedStyle(controls).gridTemplateColumns).toBe("repeat(7, 1.75rem) 3.5rem")
     expect(getComputedStyle(controls).gridTemplateRows).toBe("repeat(2, minmax(0, 1fr))")
     expect(getComputedStyle(controls).gap).toBe("0.2rem")
     for(const action of ["mark:code", "mark:kbd", "mark:q"]) {

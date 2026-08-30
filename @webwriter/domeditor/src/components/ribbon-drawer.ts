@@ -48,7 +48,7 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="marks"]) {
-      --ribbon-drawer-expanded-width: 17.975rem;
+      --ribbon-drawer-expanded-width: 18.475rem;
       --ribbon-drawer-height: 8.35rem;
       --ribbon-drawer-more-height: 3.9rem;
       --ribbon-drawer-panel-padding-block: 0.375rem;
@@ -264,7 +264,7 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="marks"]) .controls {
-      grid-template-columns: repeat(7, 1.75rem) 3rem;
+      grid-template-columns: repeat(7, 1.75rem) 3.5rem;
       grid-template-rows: repeat(2, minmax(0, 1fr));
       grid-auto-flow: row;
       grid-auto-columns: auto;
