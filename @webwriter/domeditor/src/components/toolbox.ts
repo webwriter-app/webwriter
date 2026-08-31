@@ -66,10 +66,12 @@ export class DomEditorToolbox extends AppRibbon {
       position: absolute;
       top: 0;
       right: 0;
+      left: 0;
       z-index: 2;
       align-items: flex-end;
+      justify-content: flex-end;
       height: 30px;
-      padding: 0 0.3rem;
+      padding: 0 4px;
       border: 0;
       border-bottom-width: var(--toolbox-tabs-border-bottom-width, 0.5px);
       border-bottom-style: solid;
@@ -79,10 +81,6 @@ export class DomEditorToolbox extends AppRibbon {
 
     :host([breadcrumb-expanded]) .toolbox-tabs {
       border-bottom-width: 0;
-    }
-
-    :host([active-tool]) .toolbox-tabs {
-      padding-right: 4px;
     }
 
     .toolbox-tab {
@@ -98,7 +96,7 @@ export class DomEditorToolbox extends AppRibbon {
     }
 
     .toolbox-tab[data-active] {
-      width: 112px;
+      width: 108px;
       height: 30px;
       margin-bottom: -1px;
       border: 1px solid #a8a8a8;
@@ -257,6 +255,10 @@ export class DomEditorToolbox extends AppRibbon {
       min-width: 0;
     }
 
+    .toolbox-pane-content > ribbon-drawer[layout="element-style"] {
+      flex-basis: auto;
+    }
+
     @supports (grid-template-rows: subgrid) {
       :host {
         display: grid;
@@ -289,6 +291,10 @@ export class DomEditorToolbox extends AppRibbon {
 
   activeTool: ToolboxTool | null = null
   selectionPath: SelectionPathItem[] = []
+
+  protected get elementStyleEditorOrientation(): "vertical" {
+    return "vertical"
+  }
 
   private get editTypeLabel() {
     if(this.sectionSelected) return "Section"

@@ -593,6 +593,10 @@ export class RibbonDrawer extends LitElement {
       transform: rotate(225deg);
     }
 
+    .drawer-toggle-label {
+      display: none;
+    }
+
     :host([collapsed]) .drawer,
     :host([collapsed]) .drawer.expanded,
     :host([collapsed]) .drawer.expanded.closing {
@@ -762,7 +766,7 @@ export class RibbonDrawer extends LitElement {
       height: auto;
       max-height: none;
       min-height: 0;
-      padding: 0 0.45rem 0.45rem;
+      padding: 0 0.7rem 0.75rem;
       border: 0;
       border-bottom: 1px solid #d8dee6;
       background: transparent;
@@ -773,10 +777,10 @@ export class RibbonDrawer extends LitElement {
     :host([pane]) .pane-label {
       display: flex;
       align-items: center;
-      min-height: 1.9rem;
+      min-height: 2.15rem;
       padding-right: 2rem;
       color: #465465;
-      font-size: 0.68rem;
+      font-size: 0.72rem;
       font-weight: 650;
     }
 
@@ -819,9 +823,23 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([pane][layout="element-style"]) .controls {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0;
       height: auto;
       max-height: none;
       overflow: visible;
+    }
+
+    :host([pane][layout="element-style"]) ::slotted(element-style-editor) {
+      flex: 0 0 auto;
+      width: 100%;
+      min-width: 0;
+    }
+
+    :host([pane][layout="element-style"]) ::slotted(element-style-editor[mode="basic"]) {
+      height: auto;
     }
 
     :host([pane]) .drawer-toggle,
@@ -833,6 +851,35 @@ export class RibbonDrawer extends LitElement {
       width: 1.6rem;
       height: 1.35rem;
       transform: none;
+    }
+
+    :host([pane][layout="element-style"]) .drawer-toggle,
+    :host([pane][layout="element-style"]) .drawer.expanded .drawer-toggle {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      justify-content: space-between;
+      position: static;
+      width: 100%;
+      height: 1.75rem;
+      margin: 0.35rem 0 0;
+      padding: 0 0.45rem;
+      border-color: transparent;
+      background: transparent;
+      transform: none;
+      transition: border-color 120ms ease, color 120ms ease, background-color 120ms ease;
+    }
+
+    :host([pane][layout="element-style"]) .drawer-toggle:hover {
+      border-color: transparent;
+      background: #e8eef5;
+    }
+
+    :host([pane][layout="element-style"]) .drawer-toggle-label {
+      display: block;
+      font-size: 0.68rem;
+      font-weight: 650;
+      line-height: 1;
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -1177,6 +1224,21 @@ export class RibbonDrawer extends LitElement {
       : this.layout === "element-style"
         ? `${this.drawerOpen ? "Hide" : "Show"} advanced ${this.label.toLocaleLowerCase()} controls`
         : `More ${this.label.toLocaleLowerCase()}`
+    const stylePaneToggle = this.pane && this.layout === "element-style"
+    const toggle = this.layout === "marks" && !this.collapsed ? "" : html`<button
+      class="drawer-toggle"
+      type="button"
+      ?hidden=${toggleUnavailable}
+      ?disabled=${toggleUnavailable}
+      aria-controls="drawer-controls"
+      aria-expanded=${this.drawerOpen}
+      aria-label=${toggleLabel}
+      title=${toggleLabel}
+      @click=${this.toggleDrawer}
+    >
+      <span class="drawer-toggle-label">Advanced options</span>
+      <span class="drawer-icon" aria-hidden="true"></span>
+    </button>`
     return html`
       <section
         class=${this.drawerOpen
@@ -1192,22 +1254,11 @@ export class RibbonDrawer extends LitElement {
         <span class="pane-label">${this.label}</span>
         <div id="drawer-controls" class="controls">
           <slot></slot>
+          ${stylePaneToggle ? toggle : ""}
           <slot name="more" ?hidden=${!this.drawerContentOpen}></slot>
           <slot name="detail" ?hidden=${this.layout !== "marks" && !this.drawerContentOpen}></slot>
         </div>
-        ${this.layout === "marks" && !this.collapsed ? "" : html`<button
-          class="drawer-toggle"
-          type="button"
-          ?hidden=${toggleUnavailable}
-          ?disabled=${toggleUnavailable}
-          aria-controls="drawer-controls"
-          aria-expanded=${this.drawerOpen}
-          aria-label=${toggleLabel}
-          title=${toggleLabel}
-          @click=${this.toggleDrawer}
-        >
-          <span class="drawer-icon" aria-hidden="true"></span>
-        </button>`}
+        ${stylePaneToggle ? "" : toggle}
       </section>
       <span class="size-probe expanded-size-probe" aria-hidden="true"></span>
       <span class="size-probe collapsed-size-probe" aria-hidden="true"></span>

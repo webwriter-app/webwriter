@@ -5726,18 +5726,24 @@ export class AppRibbon extends LitElement {
       >
         <element-style-editor
           mode="basic"
+          .orientation=${this.elementStyleEditorOrientation}
           .definitions=${category.basic}
           .state=${this.elementStyle}
         ></element-style-editor>
         <element-style-editor
           slot="more"
           mode="advanced"
+          .orientation=${this.elementStyleEditorOrientation}
           .definitions=${category.advanced}
           .state=${this.elementStyle}
           ?allow-custom=${category.id === "other"}
         ></element-style-editor>
       </ribbon-drawer>
     `
+  }
+
+  protected get elementStyleEditorOrientation(): "horizontal" | "vertical" {
+    return "horizontal"
   }
 
   private get selectedHistoryCheckpointId() {

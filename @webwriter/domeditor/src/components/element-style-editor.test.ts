@@ -176,6 +176,7 @@ describe("element style controls", () => {
     expect(styles).toMatch(/\.compound\s*\{[\s\S]*?display:\s*flex;[\s\S]*?flex-flow:\s*row nowrap;[\s\S]*?width:\s*100%;/)
     expect(styles).toMatch(/\.compound select,[\s\S]*?\.color-popover input\s*\{[\s\S]*?field-sizing:\s*content;/)
     expect(styles).toMatch(/\.compound input\s*\{[\s\S]*?flex:\s*1 1 0;[\s\S]*?width:\s*100%;[\s\S]*?min-width:\s*0;/)
+    expect(styles).toMatch(/\.compound select\s*\{[\s\S]*?appearance:\s*none;[\s\S]*?min-width:\s*1\.8rem;[\s\S]*?padding-inline:\s*0\.15rem;/)
     expect(styles).toMatch(/\.color-popover-row\s*\{[\s\S]*?display:\s*flex;[\s\S]*?flex-flow:\s*row nowrap;/)
   })
 
@@ -199,6 +200,27 @@ describe("element style controls", () => {
 
     expect(styles).toMatch(/\.basic-grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\);/)
     expect(styles).toMatch(/\.basic-grid\s*\{[\s\S]*?gap:\s*0\.25rem 0\.3rem;/)
+  })
+
+  it("reflows vertical drawers into readable two-column rows without nested scrolling", async () => {
+    const editor = await mount(elementStyleCategories[0].basic, state(), "basic")
+    editor.orientation = "vertical"
+    await editor.updateComplete
+
+    const grid = editor.shadowRoot!.querySelector<HTMLElement>(".basic-grid")!
+    expect(getComputedStyle(grid).gridTemplateColumns).toBe("repeat(2, minmax(0, 1fr))")
+    expect(getComputedStyle(grid).gridTemplateRows).toBe("repeat(3, minmax(2.6rem, auto))")
+    const styles = (ElementStyleEditor.styles as unknown as {cssText: string}).cssText
+    expect(styles).toMatch(/:host\(\[orientation="vertical"\]\[mode="basic"\]\),[\s\S]*?height:\s*auto;/)
+
+    editor.mode = "advanced"
+    editor.definitions = elementStyleCategories[0].advanced
+    await editor.updateComplete
+    const advanced = editor.shadowRoot!.querySelector<HTMLElement>(".advanced")!
+    const controls = editor.shadowRoot!.querySelector<HTMLElement>(".section-controls")!
+    expect(getComputedStyle(editor).display).toBe("block")
+    expect(getComputedStyle(advanced).overflow).toBe("visible")
+    expect(getComputedStyle(controls).gridTemplateColumns).toBe("repeat(2, minmax(0, 1fr))")
   })
 
   it("exposes six distinct primary controls per Style category", () => {

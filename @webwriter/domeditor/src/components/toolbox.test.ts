@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it} from "vitest"
 import {DomEditorToolbox} from "./toolbox"
+import type {ElementStyleEditor} from "./element-style-editor"
 import type {RibbonButton} from "./ribbon-button"
-import type {RibbonDrawer} from "./ribbon-drawer"
+import {RibbonDrawer} from "./ribbon-drawer"
 
 afterEach(() => {
   document.body.replaceChildren()
@@ -61,7 +62,7 @@ describe("toolbox", () => {
     expect(getComputedStyle(toolbox).width).toBe("200px")
     expect(edit.getAttribute("aria-selected")).toBe("true")
     expect(style.getAttribute("aria-selected")).toBe("false")
-    expect(getComputedStyle(editTab).width).toBe("112px")
+    expect(getComputedStyle(editTab).width).toBe("108px")
     expect(getComputedStyle(editTab).height).toBe("30px")
     expect(getComputedStyle(editTab).marginBottom).toBe("-1px")
     expect(getComputedStyle(editTab).backgroundColor).toBe("#f2f2f2")
@@ -69,6 +70,9 @@ describe("toolbox", () => {
     expect(getComputedStyle(editTab).borderBottomColor).toBe("#f2f2f2")
     expect(getComputedStyle(edit).justifyContent).toBe("flex-start")
     expect(getComputedStyle(tablist).paddingRight).toBe("4px")
+    const tabWidth = Array.from(tablist.querySelectorAll<HTMLElement>(".toolbox-tab"))
+      .reduce((width, tab) => width + Number.parseFloat(getComputedStyle(tab).width), 0)
+    expect(tabWidth + 8).toBe(200)
     expect(getComputedStyle(editTab).transition).toContain("width")
     expect(getComputedStyle(edit.querySelector<HTMLElement>(".toolbox-tab-label")!).opacity).toBe("1")
     const editClose = editTab.querySelector<HTMLButtonElement>(".toolbox-tab-close")!
@@ -82,8 +86,12 @@ describe("toolbox", () => {
     expect(edit.getAttribute("aria-selected")).toBe("false")
     expect(style.getAttribute("aria-selected")).toBe("true")
     expect(getComputedStyle(editTab).width).toBe("28px")
-    expect(getComputedStyle(styleTab).width).toBe("112px")
+    expect(getComputedStyle(styleTab).width).toBe("108px")
     expect(editClose.disabled).toBe(true)
+
+    const pane = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!
+    expect(getComputedStyle(toolbox).width).toBe("200px")
+    expect(getComputedStyle(pane).width).toBe("200px")
 
     styleTab.querySelector<HTMLButtonElement>(".toolbox-tab-close")!.click()
     await toolbox.updateComplete
@@ -119,7 +127,7 @@ describe("toolbox", () => {
 
     edit.click()
     await toolbox.updateComplete
-    expect(getComputedStyle(editTab).width).toBe("112px")
+    expect(getComputedStyle(editTab).width).toBe("108px")
 
     toolButton(toolbox, "Style").click()
     await toolbox.updateComplete
@@ -191,6 +199,36 @@ describe("toolbox", () => {
       "Other",
     ])
     expect(drawers.every(drawer => drawer.querySelectorAll("element-style-editor").length === 2)).toBe(true)
+    await Promise.all(drawers.map(drawer => drawer.updateComplete))
+    const position = drawers[0]
+    const controls = position.shadowRoot!.querySelector<HTMLElement>(".controls")!
+    const basic = position.querySelector<ElementStyleEditor>("element-style-editor[mode=basic]")!
+    const basicGrid = basic.shadowRoot!.querySelector<HTMLElement>(".basic-grid")!
+    expect(basic.orientation).toBe("vertical")
+    expect(getComputedStyle(controls).display).toBe("flex")
+    expect(getComputedStyle(controls).flexDirection).toBe("column")
+    expect(getComputedStyle(basicGrid).gridTemplateColumns).toBe("repeat(2, minmax(0, 1fr))")
+    expect(getComputedStyle(basicGrid).gridTemplateRows).toBe("repeat(3, minmax(2.6rem, auto))")
+    expect(RibbonDrawer.styles.toString()).toMatch(
+      /:host\(\[pane\]\[layout="element-style"\]\) ::slotted\(element-style-editor\)\s*\{[\s\S]*?width:\s*100%;/,
+    )
+    const toggle = position.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!
+    expect(toggle.parentElement).toBe(controls)
+    expect(toggle.querySelector(".drawer-toggle-label")?.textContent).toBe("Advanced options")
+    expect(toggle.nextElementSibling?.getAttribute("name")).toBe("more")
+    expect(getComputedStyle(toggle).position).toBe("static")
+    expect(getComputedStyle(toggle).width).toBe("100%")
+    expect(getComputedStyle(toggle).backgroundColor).toBe("transparent")
+    expect(getComputedStyle(toggle).borderColor).toBe("transparent")
+    toggle.click()
+    await position.updateComplete
+    const advanced = position.querySelector<ElementStyleEditor>("element-style-editor[mode=advanced]")!
+    const advancedContent = advanced.shadowRoot!.querySelector<HTMLElement>(".advanced")!
+    expect(position.hasAttribute("drawer-open")).toBe(true)
+    expect(toggle.querySelector(".drawer-toggle-label")?.textContent).toBe("Advanced options")
+    expect(advanced.orientation).toBe("vertical")
+    expect(getComputedStyle(advancedContent).overflow).toBe("visible")
+    expect(getComputedStyle(advanced.shadowRoot!.querySelector<HTMLElement>(".advanced-divider")!).display).toBe("none")
 
     toolButton(toolbox, "Develop").click()
     await toolbox.updateComplete

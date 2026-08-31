@@ -50,6 +50,7 @@ export class ElementStyleEditor extends LitElement {
     definitions: {attribute: false},
     state: {attribute: false},
     mode: {type: String, reflect: true},
+    orientation: {type: String, reflect: true},
     allowCustom: {type: Boolean, attribute: "allow-custom"},
     customProperty: {type: String, state: true},
     customValue: {type: String, state: true},
@@ -76,6 +77,19 @@ export class ElementStyleEditor extends LitElement {
       min-height: 0;
     }
 
+    :host([orientation="vertical"]) {
+      font-size: 0.7rem;
+    }
+
+    :host([orientation="vertical"][mode="basic"]),
+    :host([orientation="vertical"][mode="advanced"]) {
+      height: auto;
+    }
+
+    :host([orientation="vertical"][mode="advanced"]) {
+      display: block;
+    }
+
     button,
     input,
     select {
@@ -93,6 +107,14 @@ export class ElementStyleEditor extends LitElement {
       padding: 0.1rem 0;
     }
 
+    :host([orientation="vertical"]) .basic-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-rows: repeat(3, minmax(2.6rem, auto));
+      height: auto;
+      gap: 0.45rem 0.65rem;
+      padding: 0.15rem 0 0.25rem;
+    }
+
     .advanced {
       box-sizing: border-box;
       height: 100%;
@@ -103,6 +125,12 @@ export class ElementStyleEditor extends LitElement {
       scrollbar-width: thin;
     }
 
+    :host([orientation="vertical"]) .advanced {
+      height: auto;
+      padding: 0 0 0.2rem;
+      overflow: visible;
+    }
+
     .advanced-divider {
       position: relative;
       flex: 0 0 auto;
@@ -111,6 +139,10 @@ export class ElementStyleEditor extends LitElement {
       font-size: 0.64rem;
       font-weight: 650;
       text-align: center;
+    }
+
+    :host([orientation="vertical"]) .advanced-divider {
+      display: none;
     }
 
     .advanced-divider::before {
@@ -159,6 +191,12 @@ export class ElementStyleEditor extends LitElement {
       padding: 0 0.35rem;
     }
 
+    :host([orientation="vertical"]) .section-controls {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.45rem 0.65rem;
+      padding: 0;
+    }
+
     .property {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
@@ -169,6 +207,11 @@ export class ElementStyleEditor extends LitElement {
 
     :host([mode="basic"]) .property {
       grid-template-rows: 0.88rem minmax(1.25rem, auto);
+    }
+
+    :host([orientation="vertical"]) .property {
+      grid-template-rows: 1rem minmax(1.65rem, auto);
+      gap: 0.08rem 0.2rem;
     }
 
     :host([mode="basic"]) .property-action {
@@ -227,6 +270,15 @@ export class ElementStyleEditor extends LitElement {
       width: 100%;
       min-width: 0;
       height: 1.45rem;
+    }
+
+    :host([orientation="vertical"]) input,
+    :host([orientation="vertical"]) select,
+    :host([orientation="vertical"]) .compound,
+    :host([orientation="vertical"]) .color-trigger,
+    :host([orientation="vertical"]) .toggle-control,
+    :host([orientation="vertical"]) .property-action {
+      height: 1.65rem;
     }
 
     input,
@@ -300,10 +352,13 @@ export class ElementStyleEditor extends LitElement {
     }
 
     .compound select {
+      appearance: none;
       flex: 0 0 auto;
-      min-width: 2.35rem;
+      min-width: 1.8rem;
+      padding-inline: 0.15rem;
       border-left: 0;
       border-radius: 0 0.28rem 0.28rem 0;
+      text-align: center;
     }
 
     .color-control {
@@ -444,6 +499,20 @@ export class ElementStyleEditor extends LitElement {
       padding: 0 0.35rem 0.4rem;
     }
 
+    :host([orientation="vertical"]) .custom-form {
+      grid-template-columns: minmax(0, 1fr) auto;
+      padding: 0 0 0.5rem;
+    }
+
+    :host([orientation="vertical"]) .custom-form label {
+      grid-column: 1 / -1;
+    }
+
+    :host([orientation="vertical"]) .custom-form .important {
+      grid-column: 1;
+      justify-self: start;
+    }
+
     .custom-form label {
       display: grid;
       min-width: 0;
@@ -474,11 +543,19 @@ export class ElementStyleEditor extends LitElement {
       padding: 0 0.35rem 0.4rem;
     }
 
+    :host([orientation="vertical"]) .custom-declarations {
+      padding: 0 0 0.5rem;
+    }
+
     .custom-declaration {
       display: grid;
       grid-template-columns: minmax(4.5rem, 0.9fr) minmax(5rem, 1.4fr) auto;
       align-items: center;
       gap: 0.25rem;
+    }
+
+    :host([orientation="vertical"]) .custom-declaration {
+      grid-template-columns: minmax(3.5rem, 0.75fr) minmax(0, 1.25fr) auto;
     }
 
     .custom-declaration code {
@@ -500,6 +577,7 @@ export class ElementStyleEditor extends LitElement {
   definitions: readonly ElementStylePropertyDefinition[] = []
   state: ElementStyleState = emptyStyleState()
   mode: "basic" | "advanced" = "basic"
+  orientation: "horizontal" | "vertical" = "horizontal"
   allowCustom = false
   private customProperty = ""
   private customValue = ""
