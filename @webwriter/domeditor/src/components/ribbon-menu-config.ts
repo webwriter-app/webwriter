@@ -39,12 +39,6 @@ const insertGraphicShapeButtons: RibbonMenuButton[] = graphicShapeOptions.map(op
   icon: option.icon,
 }))
 
-export const addGraphicShapeButtons: RibbonMenuButton[] = graphicShapeOptions.map(option => ({
-  label: option.label,
-  action: `add-graphic-shape:${option.type}`,
-  icon: option.icon,
-}))
-
 export const graphicAlignButtons: RibbonMenuButton[] = [
   {label: "Align left", action: "arrange-graphic:align-left", icon: "Graphic align left"},
   {label: "Align center", action: "arrange-graphic:align-center", icon: "Graphic align center"},

@@ -155,6 +155,18 @@ const cleanNumber = (value: number) => {
 }
 
 const polygonShapeTypes = new Set<GraphicShapeType>(["triangle", "diamond", "hexagon", "star", "arrow", "polygon"])
+const naturalGraphicShapeSize: Record<GraphicShapeType, {width: number, height: number}> = {
+  rectangle: {width: 240, height: 240},
+  ellipse: {width: 240, height: 240},
+  triangle: {width: 240, height: 240},
+  diamond: {width: 240, height: 240},
+  hexagon: {width: 240, height: 240},
+  star: {width: 240, height: 240},
+  arrow: {width: 240, height: 240},
+  polygon: {width: 240, height: 240},
+  line: {width: 320, height: 0},
+  connector: {width: 320, height: 180},
+}
 const isPolygonShape = (shape: Element | null) => {
   const type = graphicShapeType(shape)
   return Boolean(type && polygonShapeTypes.has(type))
@@ -563,14 +575,14 @@ export class GraphicFeature extends EditorFeature {
       if(shape !== undefined && !isGraphicShapeType(shape)) throw new TypeError(`Unsupported graphic shape '${String(shape)}'`)
       const graphic = this.#createGraphic()
       if(shape) {
-        const element = this.#createShape(shape)
+        const element = this.#createShape(shape, 0, graphic)
         graphic.append(element)
         this.#fitStandaloneGraphic(graphic, element)
       }
       this.editor.features.manipulation.insert(graphic)
       if(graphic.isConnected) {
-        $.selectElement(graphic)
-        this.editor.features.selection.processSelection()
+        this.editor.features.selection.captureElement(graphic)
+        this.#refresh()
         this.editor.postSelectionPath(true)
       }
     },
@@ -578,7 +590,7 @@ export class GraphicFeature extends EditorFeature {
       if(!isGraphicShapeType(shape)) throw new TypeError(`Unsupported graphic shape '${String(shape)}'`)
       const graphic = this.#capturedGraphic()
       if(!graphic) return
-      const element = this.#createShape(shape, graphicShapeRoots(graphic).length)
+      const element = this.#createShape(shape, graphicShapeRoots(graphic).length, graphic)
       graphic.append(element)
       this.#selectShape(element)
       this.#refresh()
@@ -815,38 +827,39 @@ export class GraphicFeature extends EditorFeature {
     return graphic
   }
 
-  #createShape(type: GraphicShapeType, index = 0) {
-    const offset = index ? (index % 6) * 36 : 0
+  #createShape(type: GraphicShapeType, index = 0, graphic?: SVGSVGElement) {
+    const bounds = this.#shapeInsertionBounds(type, index, graphic)
     let shape: SVGGraphicsElement
     if(type === "rectangle") {
       shape = document.createElementNS(SVG_NAMESPACE, "rect")
-      shape.setAttribute("x", cleanNumber(620 + offset))
-      shape.setAttribute("y", cleanNumber(360 + offset))
-      shape.setAttribute("width", "360")
-      shape.setAttribute("height", "180")
-      shape.setAttribute("rx", "12")
+      shape.setAttribute("x", cleanNumber(bounds.x))
+      shape.setAttribute("y", cleanNumber(bounds.y))
+      shape.setAttribute("width", cleanNumber(bounds.width))
+      shape.setAttribute("height", cleanNumber(bounds.height))
+      shape.setAttribute("rx", cleanNumber(bounds.width / naturalGraphicShapeSize.rectangle.width * 12))
+      shape.setAttribute("ry", cleanNumber(bounds.height / naturalGraphicShapeSize.rectangle.height * 12))
     }
     else if(type === "ellipse") {
       shape = document.createElementNS(SVG_NAMESPACE, "ellipse")
-      shape.setAttribute("cx", cleanNumber(800 + offset))
-      shape.setAttribute("cy", cleanNumber(450 + offset))
-      shape.setAttribute("rx", "180")
-      shape.setAttribute("ry", "110")
+      shape.setAttribute("cx", cleanNumber(bounds.x + bounds.width / 2))
+      shape.setAttribute("cy", cleanNumber(bounds.y + bounds.height / 2))
+      shape.setAttribute("rx", cleanNumber(bounds.width / 2))
+      shape.setAttribute("ry", cleanNumber(bounds.height / 2))
     }
     else if(type === "line") {
       shape = document.createElementNS(SVG_NAMESPACE, "line")
-      shape.setAttribute("x1", cleanNumber(560 + offset))
-      shape.setAttribute("y1", cleanNumber(450 + offset))
-      shape.setAttribute("x2", cleanNumber(1040 + offset))
-      shape.setAttribute("y2", cleanNumber(450 + offset))
+      shape.setAttribute("x1", cleanNumber(bounds.x))
+      shape.setAttribute("y1", cleanNumber(bounds.y))
+      shape.setAttribute("x2", cleanNumber(bounds.x + bounds.width))
+      shape.setAttribute("y2", cleanNumber(bounds.y))
       shape.setAttribute("fill", "none")
       shape.setAttribute("stroke-linecap", "round")
     }
     else if(type === "connector") {
       shape = document.createElementNS(SVG_NAMESPACE, "polyline")
       setPoints(shape, connectorPoints(
-        {x: 560 + offset, y: 360 + offset},
-        {x: 1040 + offset, y: 540 + offset},
+        {x: bounds.x, y: bounds.y},
+        {x: bounds.x + bounds.width, y: bounds.y + bounds.height},
         "orthogonal",
         "horizontal",
       ))
@@ -856,7 +869,6 @@ export class GraphicFeature extends EditorFeature {
     }
     else {
       shape = document.createElementNS(SVG_NAMESPACE, "polygon")
-      const bounds = {x: 590 + offset, y: 330 + offset, width: 420, height: 240}
       const points = type === "triangle" ? regularPolygonPoints(bounds, 3)
         : type === "diamond" ? regularPolygonPoints(bounds, 4)
           : type === "hexagon" ? hexagonPoints(bounds)
@@ -868,7 +880,40 @@ export class GraphicFeature extends EditorFeature {
     if(type !== "line" && type !== "connector") shape.setAttribute("fill", "#ffffff")
     shape.setAttribute("stroke", "#334155")
     shape.setAttribute("stroke-width", type === "line" || type === "connector" ? "6" : "4")
+    shape.setAttribute("vector-effect", "non-scaling-stroke")
     return shape
+  }
+
+  /** Converts a stable screen-space insertion size into authored SVG units.
+   * The natural form is only reduced when the rendered graphic cannot fit it. */
+  #shapeInsertionBounds(type: GraphicShapeType, index: number, graphic?: SVGSVGElement): Bounds {
+    const viewBox = graphic ? graphicViewBox(graphic) : {x: 0, y: 0, width: 1600, height: 900}
+    const matrix = graphic?.isConnected ? this.#baseScreenMatrix(graphic) : {a: 1, b: 0, c: 0, d: 1, e: 0, f: 0}
+    const xScale = Math.max(0.0001, Math.hypot(matrix.a, matrix.b))
+    const yScale = Math.max(0.0001, Math.hypot(matrix.c, matrix.d))
+    const natural = naturalGraphicShapeSize[type]
+    const screenWidth = viewBox.width * xScale
+    const screenHeight = viewBox.height * yScale
+    const margin = Math.min(32, screenWidth * 0.1, screenHeight * 0.1)
+    const fit = Math.min(
+      1,
+      natural.width ? Math.max(1, screenWidth - margin * 2) / natural.width : 1,
+      natural.height ? Math.max(1, screenHeight - margin * 2) / natural.height : 1,
+    )
+    const width = natural.width * fit / xScale
+    const height = natural.height * fit / yScale
+    const marginX = margin / xScale
+    const marginY = margin / yScale
+    const offset = index ? (index % 6) * 36 * fit : 0
+    const preferredX = viewBox.x + viewBox.width / 2 + offset / xScale
+    const preferredY = viewBox.y + viewBox.height / 2 + offset / yScale
+    const minimumX = viewBox.x + marginX + width / 2
+    const maximumX = viewBox.x + viewBox.width - marginX - width / 2
+    const minimumY = viewBox.y + marginY + height / 2
+    const maximumY = viewBox.y + viewBox.height - marginY - height / 2
+    const centerX = minimumX <= maximumX ? Math.min(maximumX, Math.max(minimumX, preferredX)) : viewBox.x + viewBox.width / 2
+    const centerY = minimumY <= maximumY ? Math.min(maximumY, Math.max(minimumY, preferredY)) : viewBox.y + viewBox.height / 2
+    return {x: centerX - width / 2, y: centerY - height / 2, width, height}
   }
 
   #fitStandaloneGraphic(graphic: SVGSVGElement, shape: SVGGraphicsElement) {
@@ -1296,6 +1341,7 @@ export class GraphicFeature extends EditorFeature {
     marquee.setAttribute("y", cleanNumber(screenBounds.y))
     marquee.setAttribute("width", cleanNumber(screenBounds.width))
     marquee.setAttribute("height", cleanNumber(screenBounds.height))
+    marquee.removeAttribute("display")
     marquee.removeAttribute("hidden")
     const selectionOutline = overlay.querySelector<SVGGraphicsElement>(".◆graphic-selection-outline")
     const rotationStem = overlay.querySelector<SVGGraphicsElement>(".◆graphic-rotation-stem")
@@ -1306,7 +1352,9 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #hideMarquee() {
-    this.#overlay?.querySelector(".◆graphic-marquee")?.setAttribute("hidden", "")
+    const marquee = this.#overlay?.querySelector(".◆graphic-marquee")
+    marquee?.setAttribute("display", "none")
+    marquee?.setAttribute("hidden", "")
     const selectionOutline = this.#overlay?.querySelector<SVGGraphicsElement>(".◆graphic-selection-outline")
     const rotationStem = this.#overlay?.querySelector<SVGGraphicsElement>(".◆graphic-rotation-stem")
     if(selectionOutline) selectionOutline.style.removeProperty("display")
@@ -1561,12 +1609,13 @@ export class GraphicFeature extends EditorFeature {
       return snapped.guides
     }
     if(interaction.kind === "resize") {
-      const direction = interaction.handle.slice("resize-".length)
-      let next = this.#resizeBounds(point, direction, interaction)
-      if(interaction.latest.shiftKey && direction.length === 2 && interaction.bounds.width && interaction.bounds.height) {
-        next = this.#constrainResize(next, direction, interaction.bounds)
+      const originalDirection = interaction.handle.slice("resize-".length)
+      const resized = this.#resizeBounds(point, originalDirection, interaction)
+      let next = resized.bounds
+      if(interaction.latest.shiftKey && originalDirection.length === 2 && interaction.bounds.width && interaction.bounds.height) {
+        next = this.#constrainResize(next, resized.direction, interaction.bounds, interaction.latest.metaKey || interaction.latest.ctrlKey)
       }
-      const snapped = this.#snapResize(next, direction, interaction)
+      const snapped = this.#snapResize(next, resized.direction, originalDirection, interaction)
       const scaleX = interaction.bounds.width ? snapped.bounds.width / interaction.bounds.width : 1
       const scaleY = interaction.bounds.height ? snapped.bounds.height / interaction.bounds.height : 1
       shapes.forEach((shape, index) => {
@@ -1591,8 +1640,7 @@ export class GraphicFeature extends EditorFeature {
       }
       const startAngle = Math.atan2(interaction.start.y - center.y, interaction.start.x - center.x) * 180 / Math.PI
       const currentAngle = Math.atan2(point.y - center.y, point.x - center.x) * 180 / Math.PI
-      let delta = currentAngle - startAngle
-      if(interaction.latest.shiftKey) delta = Math.round(delta / 15) * 15
+      const delta = this.#snapRotation(currentAngle - startAngle, interaction.latest)
       shapes.forEach((shape, index) => {
         const item = interaction.items[index]
         const initialCenter = {
@@ -1642,7 +1690,7 @@ export class GraphicFeature extends EditorFeature {
       const startAngle = Math.atan2(interaction.start.y - center.y, interaction.start.x - center.x) * 180 / Math.PI
       const currentAngle = Math.atan2(point.y - center.y, point.x - center.x) * 180 / Math.PI
       const angle = interaction.rotation + currentAngle - startAngle
-      setRotation(shape, latest.shiftKey ? Math.round(angle / 15) * 15 : angle)
+      setRotation(shape, this.#snapRotation(angle, latest))
       return {}
     }
     if(interaction.kind === "roundness") {
@@ -1698,57 +1746,95 @@ export class GraphicFeature extends EditorFeature {
       return snapped.guides
     }
     if(interaction.kind === "resize") {
-      const direction = interaction.handle.slice("resize-".length)
-      let next = this.#resizeBounds(point, direction, interaction)
-      if(latest.shiftKey && direction.length === 2 && interaction.bounds.width && interaction.bounds.height) {
-        next = this.#constrainResize(next, direction, interaction.bounds)
+      const originalDirection = interaction.handle.slice("resize-".length)
+      const resized = this.#resizeBounds(point, originalDirection, interaction)
+      let next = resized.bounds
+      if(latest.shiftKey && originalDirection.length === 2 && interaction.bounds.width && interaction.bounds.height) {
+        next = this.#constrainResize(next, resized.direction, interaction.bounds, latest.metaKey || latest.ctrlKey)
       }
-      const snapped = this.#snapResize(next, direction, interaction)
-      setShapeBounds(shape, snapped.bounds, interaction.bounds, interaction.points)
+      const snapped = this.#snapResize(next, resized.direction, originalDirection, interaction)
+      const stable = this.#stabilizeRotatedResize(snapped.bounds, originalDirection, interaction)
+      setShapeBounds(shape, stable, interaction.bounds, interaction.points)
       setRotation(shape, interaction.rotation)
       return snapped.guides
     }
     return {}
   }
 
+  /** Normalizes the dragged and fixed coordinates into positive bounds and
+   * reports which visual handle direction owns the moving edges after any
+   * horizontal or vertical crossing. */
   #resizeBounds(point: Point, direction: string, interaction: Interaction) {
     const initial = interaction.bounds
     const next = {...initial}
     const fromCenter = interaction.latest.metaKey || interaction.latest.ctrlKey
     const center = {x: initial.x + initial.width / 2, y: initial.y + initial.height / 2}
-    if(fromCenter && (direction.includes("w") || direction.includes("e"))) {
-      next.width = Math.max(1, Math.abs(point.x - center.x) * 2)
-      next.x = center.x - next.width / 2
+    let horizontal = ""
+    let vertical = ""
+    if(direction.includes("w") || direction.includes("e")) {
+      const fixed = fromCenter ? center.x : direction.includes("w") ? initial.x + initial.width : initial.x
+      const delta = point.x - fixed
+      horizontal = delta < 0 ? "w" : delta > 0 ? "e" : direction.includes("w") ? "w" : "e"
+      next.width = Math.max(1, Math.abs(delta) * (fromCenter ? 2 : 1))
+      next.x = fromCenter ? center.x - next.width / 2 : horizontal === "w" ? fixed - next.width : fixed
     }
-    else if(direction.includes("w")) {
-      next.x = Math.min(point.x, initial.x + initial.width - 1)
-      next.width = initial.x + initial.width - next.x
+    if(direction.includes("n") || direction.includes("s")) {
+      const fixed = fromCenter ? center.y : direction.includes("n") ? initial.y + initial.height : initial.y
+      const delta = point.y - fixed
+      vertical = delta < 0 ? "n" : delta > 0 ? "s" : direction.includes("n") ? "n" : "s"
+      next.height = Math.max(1, Math.abs(delta) * (fromCenter ? 2 : 1))
+      next.y = fromCenter ? center.y - next.height / 2 : vertical === "n" ? fixed - next.height : fixed
     }
-    else if(direction.includes("e")) next.width = Math.max(1, point.x - initial.x)
-    if(fromCenter && (direction.includes("n") || direction.includes("s"))) {
-      next.height = Math.max(1, Math.abs(point.y - center.y) * 2)
-      next.y = center.y - next.height / 2
-    }
-    else if(direction.includes("n")) {
-      next.y = Math.min(point.y, initial.y + initial.height - 1)
-      next.height = initial.y + initial.height - next.y
-    }
-    else if(direction.includes("s")) next.height = Math.max(1, point.y - initial.y)
-    return next
+    return {bounds: next, direction: `${vertical}${horizontal}`}
   }
 
-  #constrainResize(next: Bounds, direction: string, initial: Bounds) {
+  /** Keeps the opposite resize handle fixed when the shape's rotation center
+   * moves with its resized bounds. This is the SVG equivalent of deriving a
+   * rotated scale box from the fixed and dragged handles. */
+  #stabilizeRotatedResize(next: Bounds, direction: string, interaction: Interaction) {
+    const fromCenter = interaction.latest.metaKey || interaction.latest.ctrlKey
+    if(!interaction.rotation || fromCenter) return next
+    const initial = interaction.bounds
+    const initialCenter = {
+      x: initial.x + initial.width / 2,
+      y: initial.y + initial.height / 2,
+    }
+    const nextCenter = {
+      x: next.x + next.width / 2,
+      y: next.y + next.height / 2,
+    }
+    const anchor = {
+      x: direction.includes("w") ? initial.x + initial.width
+        : direction.includes("e") ? initial.x
+          : initialCenter.x,
+      y: direction.includes("n") ? initial.y + initial.height
+        : direction.includes("s") ? initial.y
+          : initialCenter.y,
+    }
+    const fixed = rotateAround(anchor, initialCenter, interaction.rotation)
+    const displaced = rotateAround(anchor, nextCenter, interaction.rotation)
+    return {
+      ...next,
+      x: next.x + fixed.x - displaced.x,
+      y: next.y + fixed.y - displaced.y,
+    }
+  }
+
+  #constrainResize(next: Bounds, direction: string, initial: Bounds, fromCenter = false) {
     const ratio = initial.width / initial.height
     const widthScale = next.width / initial.width
     const heightScale = next.height / initial.height
+    const center = {x: initial.x + initial.width / 2, y: initial.y + initial.height / 2}
     if(Math.abs(widthScale - 1) >= Math.abs(heightScale - 1)) {
       const height = Math.max(1, next.width / ratio)
-      if(direction.includes("n")) next.y = initial.y + initial.height - height
+      if(fromCenter) next.y = center.y - height / 2
+      else if(direction.includes("n")) next.y = initial.y + initial.height - height
       next.height = height
     }
     else {
       const width = Math.max(1, next.height * ratio)
-      if(direction.includes("w")) next.x = initial.x + initial.width - width
+      if(fromCenter) next.x = center.x - width / 2
+      else if(direction.includes("w")) next.x = initial.x + initial.width - width
       next.width = width
     }
     return next
@@ -1767,33 +1853,25 @@ export class GraphicFeature extends EditorFeature {
     }
   }
 
-  #snapResize(bounds: Bounds, direction: string, interaction: Interaction) {
-    if(!this.#options.snap || interaction.latest.altKey) return {bounds, guides: {}}
+  #snapResize(bounds: Bounds, direction: string, originalDirection: string, interaction: Interaction) {
+    if(!this.#options.snap || interaction.latest.altKey) return {bounds, direction, guides: {}}
     const threshold = this.#snapThreshold(interaction.matrix)
-    const next = {...bounds}
+    const moving = {
+      x: direction.includes("w") ? bounds.x : bounds.x + bounds.width,
+      y: direction.includes("n") ? bounds.y : bounds.y + bounds.height,
+    }
     let x: {delta: number, target: SnapTarget} | null = null
     let y: {delta: number, target: SnapTarget} | null = null
     if(direction.includes("w") || direction.includes("e")) {
-      const edge = direction.includes("w") ? next.x : next.x + next.width
-      x = this.#bestSnap([edge], interaction.candidates.x, threshold.x) ?? this.#gridSnap(edge, threshold.x)
-      if(x && direction.includes("w")) {
-        next.x += x.delta
-        next.width -= x.delta
-      }
-      else if(x) next.width += x.delta
+      x = this.#bestSnap([moving.x], interaction.candidates.x, threshold.x) ?? this.#gridSnap(moving.x, threshold.x)
+      moving.x += x?.delta ?? 0
     }
     if(direction.includes("n") || direction.includes("s")) {
-      const edge = direction.includes("n") ? next.y : next.y + next.height
-      y = this.#bestSnap([edge], interaction.candidates.y, threshold.y) ?? this.#gridSnap(edge, threshold.y)
-      if(y && direction.includes("n")) {
-        next.y += y.delta
-        next.height -= y.delta
-      }
-      else if(y) next.height += y.delta
+      y = this.#bestSnap([moving.y], interaction.candidates.y, threshold.y) ?? this.#gridSnap(moving.y, threshold.y)
+      moving.y += y?.delta ?? 0
     }
-    next.width = Math.max(1, next.width)
-    next.height = Math.max(1, next.height)
-    return {bounds: next, guides: {x: x?.target, y: y?.target}}
+    const resized = this.#resizeBounds(moving, originalDirection, interaction)
+    return {bounds: resized.bounds, direction: resized.direction, guides: {x: x?.target, y: y?.target}}
   }
 
   #snapPoint(point: Point, interaction: Interaction) {
@@ -1805,6 +1883,11 @@ export class GraphicFeature extends EditorFeature {
       point: {x: point.x + (x?.delta ?? 0), y: point.y + (y?.delta ?? 0)},
       guides: {x: x?.target, y: y?.target},
     }
+  }
+
+  #snapRotation(angle: number, pointer: PointerSnapshot) {
+    const step = pointer.shiftKey ? 15 : this.#options.snap && !pointer.altKey ? 5 : 0
+    return step ? Math.round(angle / step) * step : angle
   }
 
   #bestSnap(anchors: number[], targets: SnapTarget[], threshold: number) {
@@ -2424,11 +2507,13 @@ export class GraphicFeature extends EditorFeature {
     const marquee = document.createElementNS(SVG_NAMESPACE, "rect")
     marquee.classList.add("◆", "◆editor-only", "◆graphic-marquee")
     marquee.setAttribute("part", "graphic-marquee")
+    marquee.setAttribute("display", "none")
     marquee.setAttribute("hidden", "")
     const portTarget = document.createElementNS(SVG_NAMESPACE, "circle")
     portTarget.classList.add("◆", "◆editor-only", "◆graphic-port-target")
     portTarget.setAttribute("part", "graphic-port-target")
     portTarget.setAttribute("r", "7")
+    portTarget.setAttribute("display", "none")
     portTarget.setAttribute("hidden", "")
     const stem = document.createElementNS(SVG_NAMESPACE, "line")
     stem.classList.add("◆", "◆editor-only", "◆graphic-rotation-stem")
@@ -2437,11 +2522,13 @@ export class GraphicFeature extends EditorFeature {
     guideX.classList.add("◆", "◆editor-only", "◆graphic-guide")
     guideX.setAttribute("part", "graphic-guide graphic-guide-x")
     guideX.dataset.axis = "x"
+    guideX.setAttribute("display", "none")
     guideX.setAttribute("hidden", "")
     const guideY = document.createElementNS(SVG_NAMESPACE, "line")
     guideY.classList.add("◆", "◆editor-only", "◆graphic-guide")
     guideY.setAttribute("part", "graphic-guide graphic-guide-y")
     guideY.dataset.axis = "y"
+    guideY.setAttribute("display", "none")
     guideY.setAttribute("hidden", "")
     outline.append(guideX, guideY, individualOutlines, polygon, stem, marquee, portTarget)
     const handles = ["nw", "n", "ne", "e", "se", "s", "sw", "w"].map(direction => this.#createHandle(`resize-${direction}`, `Resize ${direction}`, `graphic-resize graphic-resize-${direction}`))
@@ -2660,11 +2747,13 @@ export class GraphicFeature extends EditorFeature {
   #setPortTarget(target: PortTarget | null | undefined) {
     const marker = this.#overlay?.querySelector<SVGCircleElement>(".◆graphic-port-target")
     if(!marker || !target) {
+      marker?.setAttribute("display", "none")
       marker?.setAttribute("hidden", "")
       return
     }
     marker.setAttribute("cx", cleanNumber(target.client.x))
     marker.setAttribute("cy", cleanNumber(target.client.y))
+    marker.removeAttribute("display")
     marker.removeAttribute("hidden")
   }
 
@@ -2677,6 +2766,7 @@ export class GraphicFeature extends EditorFeature {
       const line = overlay.querySelector<SVGLineElement>(`.◆graphic-guide[data-axis="${axis}"]`)
       const guide = guides[axis]
       if(!line || !guide || !viewBox || !screenMatrix || !this.#options.guides) {
+        line?.setAttribute("display", "none")
         line?.setAttribute("hidden", "")
         return
       }
@@ -2692,6 +2782,7 @@ export class GraphicFeature extends EditorFeature {
       line.setAttribute("y2", cleanNumber(end.y))
       line.dataset.kind = guide.kind
       line.setAttribute("part", `graphic-guide graphic-guide-${axis} graphic-guide-${guide.kind}`)
+      line.removeAttribute("display")
       line.removeAttribute("hidden")
     })
   }

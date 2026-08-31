@@ -83,27 +83,27 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="graphic"]) {
-      --ribbon-drawer-expanded-width: 9rem;
+      --ribbon-drawer-expanded-width: 18.5rem;
     }
 
     :host([layout="graphic-geometry"]) {
-      --ribbon-drawer-expanded-width: 7rem;
+      --ribbon-drawer-expanded-width: 24rem;
+    }
+
+    :host([layout="graphic-text"]) {
+      --ribbon-drawer-expanded-width: 13rem;
+    }
+
+    :host([layout="graphic-connector"]) {
+      --ribbon-drawer-expanded-width: 12.5rem;
     }
 
     :host([layout="graphic-canvas"]) {
-      --ribbon-drawer-expanded-width: 9rem;
-    }
-
-    :host([layout="graphic-layers"]) {
-      --ribbon-drawer-expanded-width: 6.5rem;
-    }
-
-    :host([layout="graphic-view"]) {
-      --ribbon-drawer-expanded-width: 7rem;
+      --ribbon-drawer-expanded-width: 13rem;
     }
 
     :host([layout="graphic-arrange"]) {
-      --ribbon-drawer-expanded-width: 10rem;
+      --ribbon-drawer-expanded-width: 25rem;
     }
 
     :host([layout="elements"]) .controls {
@@ -313,14 +313,20 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="graphic"]) .controls {
-      grid-template-columns: 4.5rem 3.5rem;
       grid-template-rows: repeat(2, minmax(0, 1fr));
-      grid-auto-flow: row;
+      grid-auto-flow: column;
       grid-auto-columns: 3.5rem;
     }
 
-    :host([layout="graphic"]) ::slotted(ribbon-button:first-of-type) {
-      grid-row: 1 / 3;
+    :host([layout="graphic-geometry"]) .controls,
+    :host([layout="graphic-text"]) .controls,
+    :host([layout="graphic-connector"]) .controls,
+    :host([layout="graphic-arrange"]) .controls {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr);
+      grid-auto-flow: row;
+      grid-auto-columns: minmax(0, 1fr);
+      align-items: stretch;
     }
 
     :host([layout="packages"][single-column]) .controls {

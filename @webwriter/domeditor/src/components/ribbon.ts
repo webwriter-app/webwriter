@@ -79,7 +79,6 @@ import {
 import {emptyDocumentHeadState, type DocumentHeadState} from "../document-head"
 import {elementStyleCategories, type ElementStyleCategory} from "../element-styles"
 import {
-  addGraphicShapeButtons,
   aiEfforts,
   dropdownMenus,
   graphicAlignButtons,
@@ -2353,6 +2352,339 @@ export class AppRibbon extends LitElement {
       outline: 1px solid #3977c7;
     }
 
+    .graphic-inline-controls {
+      box-sizing: border-box;
+      grid-column: 1 / -1;
+      grid-row: 1 / -1;
+      width: 100%;
+      min-width: 0;
+      min-height: 0;
+      height: 100%;
+      color: #2f3742;
+      font-size: 0.66rem;
+    }
+
+    .graphic-inline-controls .graphic-parameter {
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      justify-content: center;
+      gap: 0.08rem;
+      min-width: 0;
+      min-height: 0;
+    }
+
+    .graphic-inline-controls .graphic-parameter > span {
+      overflow: hidden;
+      color: #526b86;
+      font-size: 0.56rem;
+      line-height: 0.7rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .graphic-inline-controls .graphic-parameter input,
+    .graphic-inline-controls .graphic-parameter select,
+    .graphic-inline-controls .graphic-parameter textarea {
+      box-sizing: border-box;
+      width: 100%;
+      min-width: 0;
+      height: 1.35rem;
+      padding: 0 0.22rem;
+      border: 1px solid #c8d2df;
+      border-radius: 0.2rem;
+      color: #2f3742;
+      background: #fff;
+      font: inherit;
+      font-size: 0.62rem;
+    }
+
+    .graphic-inline-controls .graphic-parameter input:focus,
+    .graphic-inline-controls .graphic-parameter select:focus,
+    .graphic-inline-controls .graphic-parameter textarea:focus {
+      border-color: #3977c7;
+      outline: 1px solid #3977c7;
+    }
+
+    .graphic-inline-controls .graphic-parameter input:disabled,
+    .graphic-inline-controls .graphic-parameter select:disabled,
+    .graphic-inline-controls .graphic-parameter textarea:disabled {
+      color: #8b96a4;
+      background: #edf0f3;
+    }
+
+    .graphic-inline-controls .graphic-parameter input[type="color"] {
+      padding: 0.1rem;
+    }
+
+    .graphic-inline-controls .graphic-parameter input[type="checkbox"] {
+      align-self: center;
+      width: 1rem;
+      height: 1rem;
+      margin: 0.15rem 0 0;
+      padding: 0;
+      accent-color: #3977c7;
+    }
+
+    .graphic-geometry-controls {
+      display: grid;
+      grid-template-rows: repeat(2, minmax(0, 1fr));
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(3.25rem, 1fr);
+      gap: 0.12rem 0.28rem;
+      align-items: stretch;
+      padding: 0.08rem 0;
+    }
+
+    .graphic-text-controls {
+      display: grid;
+      grid-template-columns: minmax(6.5rem, 1fr) 4rem;
+      grid-template-rows: repeat(2, minmax(0, 1fr));
+      gap: 0.12rem 0.35rem;
+      padding: 0.08rem 0;
+    }
+
+    .graphic-text-controls .graphic-label-parameter {
+      grid-row: 1 / 3;
+    }
+
+    .graphic-text-controls .graphic-label-parameter textarea {
+      flex: 1 1 auto;
+      height: auto;
+      min-height: 0;
+      padding-block: 0.18rem;
+      resize: none;
+    }
+
+    .graphic-connector-controls {
+      display: grid;
+      grid-template-columns: minmax(5rem, 1fr) 3rem 3rem;
+      gap: 0.3rem;
+      align-items: center;
+      padding: 0.08rem 0;
+    }
+
+    .graphic-connector-controls .graphic-boolean-parameter > span {
+      text-align: center;
+    }
+
+    .graphic-arrange-controls {
+      display: grid;
+      grid-template-columns: auto minmax(10rem, 1fr);
+      gap: 0.45rem;
+      align-items: stretch;
+      padding: 0.08rem 0;
+    }
+
+    .graphic-arrange-actions {
+      display: grid;
+      grid-template-columns: repeat(3, auto);
+      gap: 0.3rem;
+      align-items: center;
+      min-width: 0;
+    }
+
+    .graphic-arrange-action-group {
+      display: grid;
+      gap: 0.08rem;
+      align-content: center;
+    }
+
+    .graphic-align-actions {
+      grid-template-columns: repeat(3, 1.75rem);
+    }
+
+    .graphic-distribute-actions {
+      grid-template-columns: 1.75rem;
+    }
+
+    .graphic-order-actions {
+      grid-template-columns: repeat(2, 1.75rem);
+    }
+
+    .graphic-layers-inline {
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) auto;
+      gap: 0.15rem;
+      min-width: 0;
+      min-height: 0;
+      padding-inline-start: 0.4rem;
+      border-inline-start: 1px solid #d8dee6;
+    }
+
+    .graphic-layer-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.08rem;
+      min-height: 0;
+      overflow: auto;
+    }
+
+    .graphic-layer-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 1.35rem 1.35rem;
+      gap: 0.08rem;
+      align-items: center;
+      min-height: 1.4rem;
+      padding: 0.03rem;
+      border: 1px solid transparent;
+      border-radius: 0.2rem;
+    }
+
+    .graphic-layer-row[data-selected="true"] {
+      border-color: #93b8df;
+      background: #eef5fc;
+    }
+
+    .graphic-layer-select,
+    .graphic-layer-action,
+    .graphic-layer-order {
+      box-sizing: border-box;
+      border: 0;
+      border-radius: 0.2rem;
+      color: #334155;
+      background: transparent;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .graphic-layer-select {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      min-width: 0;
+      height: 1.25rem;
+      padding: 0 0.2rem;
+      font-size: 0.58rem;
+      text-align: left;
+    }
+
+    .graphic-layer-select span:last-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .graphic-layer-icon,
+    .graphic-layer-action {
+      display: grid;
+      place-items: center;
+    }
+
+    .graphic-layer-icon {
+      flex: 0 0 auto;
+      width: 0.75rem;
+      height: 0.75rem;
+    }
+
+    .graphic-layer-icon svg,
+    .graphic-layer-action svg {
+      display: block;
+      width: 0.75rem;
+      height: 0.75rem;
+    }
+
+    .graphic-layer-action {
+      width: 1.25rem;
+      height: 1.25rem;
+    }
+
+    .graphic-layer-select:hover,
+    .graphic-layer-action:hover,
+    .graphic-layer-order:hover {
+      color: #1e5d9d;
+      background: #dfeefc;
+    }
+
+    .graphic-layer-select:focus-visible,
+    .graphic-layer-action:focus-visible,
+    .graphic-layer-order:focus-visible {
+      outline: 2px solid #3977c7;
+      outline-offset: -1px;
+    }
+
+    .graphic-layer-select:disabled,
+    .graphic-layer-action:disabled,
+    .graphic-layer-order:disabled {
+      color: #9aa4b1;
+      cursor: default;
+    }
+
+    .graphic-layer-toolbar {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0.12rem;
+    }
+
+    .graphic-layer-order {
+      min-height: 1.25rem;
+      padding: 0.05rem 0.15rem;
+      border: 1px solid #c8d2df;
+      background: #fff;
+      font-size: 0.54rem;
+    }
+
+    .button-dropdown-empty {
+      align-self: center;
+      color: #64748b;
+      font-size: 0.58rem;
+    }
+
+    ribbon-drawer[pane] .graphic-inline-controls {
+      grid-row: auto;
+      height: auto;
+    }
+
+    ribbon-drawer[pane] .graphic-geometry-controls {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-rows: none;
+      grid-auto-flow: row;
+      grid-auto-columns: auto;
+      grid-auto-rows: minmax(2.25rem, auto);
+      gap: 0.2rem 0.35rem;
+    }
+
+    ribbon-drawer[pane] .graphic-text-controls {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-rows: none;
+      grid-auto-rows: minmax(2.25rem, auto);
+      gap: 0.2rem 0.35rem;
+    }
+
+    ribbon-drawer[pane] .graphic-text-controls .graphic-label-parameter {
+      grid-column: 1 / -1;
+      grid-row: auto;
+      min-height: 4rem;
+    }
+
+    ribbon-drawer[pane] .graphic-connector-controls {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.25rem 0.35rem;
+    }
+
+    ribbon-drawer[pane] .graphic-connector-controls .graphic-parameter:first-child {
+      grid-column: 1 / -1;
+    }
+
+    ribbon-drawer[pane] .graphic-arrange-controls {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0.4rem;
+    }
+
+    ribbon-drawer[pane] .graphic-arrange-actions {
+      justify-content: space-between;
+      gap: 0.2rem;
+    }
+
+    ribbon-drawer[pane] .graphic-layers-inline {
+      min-height: 4.25rem;
+      padding-block-start: 0.4rem;
+      padding-inline-start: 0;
+      border-block-start: 1px solid #d8dee6;
+      border-inline-start: 0;
+    }
+
     @media (max-width: 36rem) {
       .ribbon-top {
         gap: 0.35rem;
@@ -4429,7 +4761,12 @@ export class AppRibbon extends LitElement {
     }))
   }
 
-  private graphicNumberInput(name: string, label: string, options: {min?: number, max?: number, step?: number} = {}) {
+  private graphicNumberInput(name: string, label: string, options: {
+    min?: number
+    max?: number
+    step?: number
+    disabled?: boolean
+  } = {}) {
     const parameters = this.graphic?.parameters ?? {}
     const selectionCount = this.graphic?.selectionCount ?? (this.graphic?.shape ? 1 : 0)
     const shared = name === "stroke-width" || name === "opacity"
@@ -4444,14 +4781,14 @@ export class AppRibbon extends LitElement {
           min=${options.min ?? nothing}
           max=${options.max ?? nothing}
           step=${options.step ?? 1}
-          ?disabled=${shared ? selectionCount < 1 : !this.graphic?.shape}
+          ?disabled=${options.disabled || (shared ? selectionCount < 1 : !this.graphic?.shape)}
           @change=${(event: Event) => this.dispatchGraphicParameter(name, event)}
         />
       </label>
     `
   }
 
-  private renderGraphicPaintDropdown(kind: "fill" | "stroke") {
+  private renderGraphicPaintControls(kind: "fill" | "stroke") {
     const parameters = this.graphic?.parameters ?? {}
     const selectionCount = this.graphic?.selectionCount ?? (this.graphic?.shape ? 1 : 0)
     const value = parameters[kind]
@@ -4459,31 +4796,33 @@ export class AppRibbon extends LitElement {
     const disabled = selectionCount < 1 || kind === "fill" && selectionCount === 1
       && (this.graphic?.shape === "line" || this.graphic?.shape === "connector")
     return html`
-      <div class="button-dropdown-form" role="group" aria-label=${`Graphic ${kind}`}>
-        <label class="mark-attribute graphic-parameter">
-          <span>Color</span>
-          <input
-            data-ribbon-input-persistent
-            type="color"
-            aria-label=${`Graphic: ${kind === "fill" ? "Fill" : "Stroke"} color`}
-            .value=${color}
-            ?disabled=${disabled}
-            @change=${(event: Event) => this.dispatchGraphicParameter(kind, event)}
-          />
-        </label>
-        ${kind === "stroke" ? this.graphicNumberInput("stroke-width", "Stroke width", {min: 0, step: 1}) : ""}
-        ${kind === "fill" ? this.graphicNumberInput("opacity", "Opacity", {min: 0, max: 1, step: 0.05}) : ""}
-      </div>
+      <label class="mark-attribute graphic-parameter">
+        <span>${kind === "fill" ? "Fill" : "Stroke"}</span>
+        <input
+          data-ribbon-input-persistent
+          type="color"
+          aria-label=${`Graphic: ${kind === "fill" ? "Fill" : "Stroke"} color`}
+          .value=${color}
+          ?disabled=${disabled}
+          @change=${(event: Event) => this.dispatchGraphicParameter(kind, event)}
+        />
+      </label>
+      ${kind === "stroke" ? this.graphicNumberInput("stroke-width", "Stroke width", {min: 0, step: 1}) : ""}
+      ${kind === "fill" ? this.graphicNumberInput("opacity", "Opacity", {min: 0, max: 1, step: 0.05}) : ""}
     `
   }
 
-  private renderGraphicGeometryDropdown() {
+  private renderGraphicGeometryControls() {
+    const connectorSelected = this.graphic?.shape === "connector"
     return html`
-      <div class="button-dropdown-form" role="group" aria-label="Graphic geometry">
+      <div class="graphic-inline-controls graphic-geometry-controls" role="group" aria-label="Graphic geometry">
+        ${this.renderGraphicPaintControls("fill")}
+        ${this.renderGraphicPaintControls("stroke")}
         ${this.graphicNumberInput("x", "X")}
         ${this.graphicNumberInput("y", "Y")}
         ${this.graphicNumberInput("width", "Width", {min: 1})}
         ${this.graphicNumberInput("height", "Height", {min: 1})}
+        ${this.graphicNumberInput("rotation", "Rotation", {step: 1, disabled: connectorSelected})}
         ${this.graphic?.shape === "rectangle"
           ? this.graphicNumberInput("corner-radius", "Corner radius", {min: 0})
           : ""}
@@ -4501,50 +4840,45 @@ export class AppRibbon extends LitElement {
     `
   }
 
-  private renderGraphicRotationDropdown() {
-    return html`
-      <div class="button-dropdown-form" role="group" aria-label="Graphic rotation">
-        ${this.graphicNumberInput("rotation", "Degrees", {step: 1})}
-      </div>
-    `
-  }
-
-  private renderGraphicConnectorDropdown() {
+  private renderGraphicConnectorControls(disabled: boolean) {
     const parameters = this.graphic?.parameters ?? {}
     return html`
-      <div class="button-dropdown-form" role="group" aria-label="Connector settings">
+      <div class="graphic-inline-controls graphic-connector-controls" role="group" aria-label="Connector settings">
         <label class="mark-attribute graphic-parameter">
           <span>Routing</span>
           <select
             data-ribbon-input-persistent
             aria-label="Graphic: Connector routing"
             .value=${parameters.routing ?? "orthogonal"}
+            ?disabled=${disabled}
             @change=${(event: Event) => this.dispatchGraphicParameter("routing", event)}
           >
             <option value="straight">Straight</option>
             <option value="orthogonal">Orthogonal</option>
           </select>
         </label>
-        <label class="mark-attribute graphic-parameter">
+        <label class="mark-attribute graphic-parameter graphic-boolean-parameter">
           <span>Start arrow</span>
           <input
             data-ribbon-input-persistent
             type="checkbox"
             aria-label="Graphic: Start arrow"
             .checked=${parameters["start-arrow"] === "true"}
+            ?disabled=${disabled}
             @change=${(event: Event) => this.dispatchGraphicParameterValue(
               "start-arrow",
               String((event.currentTarget as HTMLInputElement).checked),
             )}
           />
         </label>
-        <label class="mark-attribute graphic-parameter">
+        <label class="mark-attribute graphic-parameter graphic-boolean-parameter">
           <span>End arrow</span>
           <input
             data-ribbon-input-persistent
             type="checkbox"
             aria-label="Graphic: End arrow"
             .checked=${parameters["end-arrow"] === "true"}
+            ?disabled=${disabled}
             @change=${(event: Event) => this.dispatchGraphicParameterValue(
               "end-arrow",
               String((event.currentTarget as HTMLInputElement).checked),
@@ -4555,17 +4889,18 @@ export class AppRibbon extends LitElement {
     `
   }
 
-  private renderGraphicLabelDropdown() {
+  private renderGraphicLabelControls(disabled: boolean) {
     const parameters = this.graphic?.parameters ?? {}
     return html`
-      <div class="button-dropdown-form" role="group" aria-label="Shape text">
-        <label class="mark-attribute graphic-parameter">
+      <div class="graphic-inline-controls graphic-text-controls" role="group" aria-label="Shape text">
+        <label class="mark-attribute graphic-parameter graphic-label-parameter">
           <span>Label</span>
           <textarea
             data-ribbon-input-persistent
             rows="3"
             aria-label="Graphic: Label"
             .value=${parameters.label ?? ""}
+            ?disabled=${disabled}
             @change=${(event: Event) => this.dispatchGraphicParameter("label", event)}
           ></textarea>
         </label>
@@ -4576,10 +4911,11 @@ export class AppRibbon extends LitElement {
             type="color"
             aria-label="Graphic: Text color"
             .value=${/^#[0-9a-f]{6}$/i.test(parameters["text-color"] ?? "") ? parameters["text-color"] : "#0f172a"}
+            ?disabled=${disabled}
             @change=${(event: Event) => this.dispatchGraphicParameter("text-color", event)}
           />
         </label>
-        ${this.graphicNumberInput("font-size", "Font size", {min: 1, step: 1})}
+        ${this.graphicNumberInput("font-size", "Font size", {min: 1, step: 1, disabled})}
       </div>
     `
   }
@@ -4592,11 +4928,11 @@ export class AppRibbon extends LitElement {
     }))
   }
 
-  private renderGraphicLayersDropdown() {
+  private renderGraphicLayersControls(disabled: boolean) {
     const layers = [...(this.graphic?.layers ?? [])].reverse()
     const primary = layers.find(layer => layer.primary) ?? layers.find(layer => layer.selected)
     return html`
-      <div class="button-dropdown-form graphic-layers-dropdown" role="group" aria-label="Graphic layers">
+      <div class="graphic-layers-inline" role="group" aria-label="Graphic layers">
         <div class="graphic-layer-list" role="list">
           ${layers.length ? layers.map(layer => html`
             <div
@@ -4610,7 +4946,7 @@ export class AppRibbon extends LitElement {
                 type="button"
                 title=${layer.label}
                 aria-label=${`Select ${layer.label}`}
-                ?disabled=${layer.locked || !layer.visible}
+                ?disabled=${disabled || layer.locked || !layer.visible}
                 @click=${() => this.dispatchGraphicLayer("select", layer.index)}
               >
                 <span class="graphic-layer-icon">${ribbonIcon(
@@ -4623,6 +4959,7 @@ export class AppRibbon extends LitElement {
                 type="button"
                 aria-label=${`${layer.visible ? "Hide" : "Show"} ${layer.label}`}
                 title=${layer.visible ? "Hide layer" : "Show layer"}
+                ?disabled=${disabled}
                 @click=${() => this.dispatchGraphicLayer("toggle-visibility", layer.index)}
               >${ribbonIcon(layer.visible ? "Visible" : "Hidden")}</button>
               <button
@@ -4630,6 +4967,7 @@ export class AppRibbon extends LitElement {
                 type="button"
                 aria-label=${`${layer.locked ? "Unlock" : "Lock"} ${layer.label}`}
                 title=${layer.locked ? "Unlock layer" : "Lock layer"}
+                ?disabled=${disabled}
                 @click=${() => this.dispatchGraphicLayer("toggle-lock", layer.index)}
               >${ribbonIcon(layer.locked ? "Lock" : "Unlock")}</button>
             </div>
@@ -4646,11 +4984,42 @@ export class AppRibbon extends LitElement {
               class="graphic-layer-order"
               type="button"
               aria-label=${`${label} layer`}
-              ?disabled=${!primary}
+              ?disabled=${disabled || !primary}
               @click=${() => primary && this.dispatchGraphicLayer(operation, primary.index)}
             >${label}</button>
           `)}
         </div>
+      </div>
+    `
+  }
+
+  private renderGraphicArrangeControls(selectionCount: number, shapesSelected: boolean, captured: boolean) {
+    const actionGroup = (
+      label: string,
+      className: string,
+      buttons: typeof graphicAlignButtons,
+      disabled: boolean,
+    ) => html`
+      <div class=${`graphic-arrange-action-group ${className}`} role="group" aria-label=${label}>
+        ${buttons.map(button => typeof button === "string" ? nothing : html`
+          <ribbon-button
+            compact
+            label=${button.label}
+            action=${button.action}
+            icon=${button.icon}
+            ?disabled=${disabled}
+          ></ribbon-button>
+        `)}
+      </div>
+    `
+    return html`
+      <div class="graphic-inline-controls graphic-arrange-controls">
+        <div class="graphic-arrange-actions" aria-label="Arrange shapes">
+          ${actionGroup("Align shapes", "graphic-align-actions", graphicAlignButtons, selectionCount < 2)}
+          ${actionGroup("Distribute shapes", "graphic-distribute-actions", graphicDistributeButtons, selectionCount < 3)}
+          ${actionGroup("Order shapes", "graphic-order-actions", graphicOrderButtons, !shapesSelected)}
+        </div>
+        ${this.renderGraphicLayersControls(!captured)}
       </div>
     `
   }
@@ -4711,61 +5080,26 @@ export class AppRibbon extends LitElement {
     const options = this.graphic.options
     return html`
       <ribbon-drawer label="Graphic" icon="Graphic" layout="graphic">
-        <ribbon-button
-          label="Add shape"
-          action="add-graphic-shape:rectangle"
-          icon="Graphic"
-          .submenu=${addGraphicShapeButtons}
-          ?disabled=${!captured}
-        ></ribbon-button>
-        <ribbon-button label="Fill" icon="Fill" .dropdown=${this.renderGraphicPaintDropdown("fill")} ?disabled=${!shapesSelected}></ribbon-button>
-        <ribbon-button label="Stroke" icon="Stroke" .dropdown=${this.renderGraphicPaintDropdown("stroke")} ?disabled=${!shapesSelected}></ribbon-button>
+        ${graphicShapeOptions.map(option => html`
+          <ribbon-button
+            label=${option.label}
+            action=${`add-graphic-shape:${option.type}`}
+            icon=${option.icon}
+            ?disabled=${!captured}
+          ></ribbon-button>
+        `)}
       </ribbon-drawer>
       <ribbon-drawer label="Geometry" icon="Geometry" layout="graphic-geometry">
-        <ribbon-button label="Geometry" icon="Geometry" .dropdown=${this.renderGraphicGeometryDropdown()} ?disabled=${!shapeSelected}></ribbon-button>
-        <ribbon-button label="Rotate" icon="Rotate" .dropdown=${this.renderGraphicRotationDropdown()} ?disabled=${!shapeSelected || connectorSelected}></ribbon-button>
+        ${this.renderGraphicGeometryControls()}
       </ribbon-drawer>
-      <ribbon-drawer label="Text" icon="Text" layout="graphic-geometry">
-        <ribbon-button label="Label" icon="Text" .dropdown=${this.renderGraphicLabelDropdown()} ?disabled=${!labelableShapeSelected}></ribbon-button>
+      <ribbon-drawer label="Text" icon="Text" layout="graphic-text">
+        ${this.renderGraphicLabelControls(!labelableShapeSelected)}
       </ribbon-drawer>
-      <ribbon-drawer label="Connector" icon="Connector" layout="graphic-geometry">
-        <ribbon-button
-          label="Routing"
-          icon="Connector"
-          .dropdown=${this.renderGraphicConnectorDropdown()}
-          ?disabled=${!connectorSelected}
-        ></ribbon-button>
+      <ribbon-drawer label="Connector" icon="Connector" layout="graphic-connector">
+        ${this.renderGraphicConnectorControls(!connectorSelected)}
       </ribbon-drawer>
       <ribbon-drawer label="Arrange" icon="Align" layout="graphic-arrange">
-        <ribbon-button
-          label="Align"
-          action="arrange-graphic:align-left"
-          icon="Graphic align left"
-          .submenu=${graphicAlignButtons}
-          ?disabled=${selectionCount < 2}
-        ></ribbon-button>
-        <ribbon-button
-          label="Distribute"
-          action="arrange-graphic:distribute-horizontal"
-          icon="Distribute horizontally"
-          .submenu=${graphicDistributeButtons}
-          ?disabled=${selectionCount < 3}
-        ></ribbon-button>
-        <ribbon-button
-          label="Order"
-          action="arrange-graphic:bring-forward"
-          icon="Graphic order"
-          .submenu=${graphicOrderButtons}
-          ?disabled=${!shapesSelected}
-        ></ribbon-button>
-      </ribbon-drawer>
-      <ribbon-drawer label="Layers" icon="Layers" layout="graphic-layers">
-        <ribbon-button
-          label="Layers"
-          icon="Layers"
-          .dropdown=${this.renderGraphicLayersDropdown()}
-          ?disabled=${!captured}
-        ></ribbon-button>
+        ${this.renderGraphicArrangeControls(selectionCount, shapesSelected, captured)}
       </ribbon-drawer>
       <ribbon-drawer label="Canvas" icon="Guides" layout="graphic-canvas">
         <ribbon-button
@@ -4792,8 +5126,6 @@ export class AppRibbon extends LitElement {
           .active=${options?.guides ?? true}
           ?disabled=${!captured}
         ></ribbon-button>
-      </ribbon-drawer>
-      <ribbon-drawer label="View" icon="Zoom" layout="graphic-view">
         <ribbon-button
           label=${`${this.graphic.viewport?.zoom ?? 100}%`}
           icon="Zoom"

@@ -62,6 +62,9 @@ describe("graphic editing", () => {
     expect(graphic).toHaveAttribute("width", "100%")
     expect(graphic.children).toHaveLength(0)
     expect($.selectedElement).toBe(graphic)
+    expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+    expect(graphic).toHaveClass("◆element-selected", "◆element-capture-selected")
+    expect(editor.features.graphic.getState()).toMatchObject({active: true, capture: true})
     expect(editor.toHTML(true)).toBe('<svg viewBox="0 0 1600 900" width="100%"></svg>')
   })
 
@@ -77,6 +80,7 @@ describe("graphic editing", () => {
     expect(shape.localName).toBe(option.type === "rectangle" ? "rect" : option.type === "connector" ? "polyline" : polygonal ? "polygon" : option.type)
     expect(shape).toHaveAttribute("stroke")
     expect($.selectedElement).toBe(graphic)
+    expect(editor.features.selection.captureSelectedElement).toBe(graphic)
   })
 
   it("capture-selects a drawing-area click and adds a shape to that live SVG", () => {
@@ -101,13 +105,103 @@ describe("graphic editing", () => {
       active: true,
       capture: true,
       shape: "rectangle",
-      parameters: {x: "620", y: "360", width: "360", height: "180"},
+      parameters: {x: "680", y: "330", width: "240", height: "240"},
+    })
+  })
+
+  it.each(graphicShapeOptions)("preserves the rendered form and size of an added $label", option => {
+    const createGraphic = (xScale: number, yScale: number) => {
+      const graphic = document.createElementNS(SVG_NAMESPACE, "svg")
+      graphic.setAttribute("viewBox", "0 0 1600 900")
+      Object.defineProperty(graphic, "getScreenCTM", {
+        configurable: true,
+        value: () => ({a: xScale, b: 0, c: 0, d: yScale, e: 0, f: 0}),
+      })
+      document.body.append(graphic)
+      editor.features.selection.captureElement(graphic)
+      return graphic
+    }
+    const baselineGraphic = createGraphic(1, 1)
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: option.type})
+    const baseline = editor.features.graphic.getState()!.parameters!
+    const transformedGraphic = createGraphic(1, 0.5)
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: option.type})
+    const transformed = editor.features.graphic.getState()!.parameters!
+    const baselineShape = graphicShapeRoots(baselineGraphic)[0]
+    const transformedShape = graphicShapeRoots(transformedGraphic)[0]
+
+    expect(Number(transformed.width)).toBeCloseTo(Number(baseline.width), 2)
+    expect(Number(transformed.height) * 0.5).toBeCloseTo(Number(baseline.height), 2)
+    expect(baselineShape).toHaveAttribute("vector-effect", "non-scaling-stroke")
+    expect(transformedShape).toHaveAttribute("vector-effect", "non-scaling-stroke")
+    if(option.type === "rectangle") {
+      expect(Number(transformedShape.getAttribute("rx"))).toBeCloseTo(Number(baselineShape.getAttribute("rx")), 2)
+      expect(Number(transformedShape.getAttribute("ry")) * 0.5).toBeCloseTo(Number(baselineShape.getAttribute("ry")), 2)
+    }
+  })
+
+  it("centers shapes at their natural size in differently sized viewBoxes", () => {
+    const graphic = document.createElementNS(SVG_NAMESPACE, "svg")
+    graphic.setAttribute("viewBox", "100 50 800 400")
+    Object.defineProperty(graphic, "getScreenCTM", {
+      configurable: true,
+      value: () => ({a: 1, b: 0, c: 0, d: 1, e: 0, f: 0}),
+    })
+    document.body.append(graphic)
+    editor.features.selection.captureElement(graphic)
+
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
+
+    expect(editor.features.graphic.getState()?.parameters).toMatchObject({
+      x: "380", y: "130", width: "240", height: "240",
+    })
+  })
+
+  it("uniformly reduces a natural shape only when the rendered graphic is too small", () => {
+    const graphic = document.createElementNS(SVG_NAMESPACE, "svg")
+    graphic.setAttribute("viewBox", "0 0 1600 900")
+    Object.defineProperty(graphic, "getScreenCTM", {
+      configurable: true,
+      value: () => ({a: 0.1, b: 0, c: 0, d: 0.1, e: 0, f: 0}),
+    })
+    document.body.append(graphic)
+    editor.features.selection.captureElement(graphic)
+
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
+    const parameters = editor.features.graphic.getState()!.parameters!
+    const renderedWidth = Number(parameters.width) * 0.1
+    const renderedHeight = Number(parameters.height) * 0.1
+
+    expect(renderedWidth).toBeLessThan(240)
+    expect(renderedHeight).toBeLessThan(240)
+    expect(renderedWidth / renderedHeight).toBeCloseTo(1)
+    expect(Number(parameters.x)).toBeGreaterThanOrEqual(0)
+    expect(Number(parameters.y)).toBeGreaterThanOrEqual(0)
+    expect(Number(parameters.x) + Number(parameters.width)).toBeLessThanOrEqual(1600)
+    expect(Number(parameters.y) + Number(parameters.height)).toBeLessThanOrEqual(900)
+  })
+
+  it("inserts every closed shape without flattening its natural form", () => {
+    const graphic = document.createElementNS(SVG_NAMESPACE, "svg")
+    graphic.setAttribute("viewBox", "0 0 1600 900")
+    document.body.append(graphic)
+    editor.features.selection.captureElement(graphic)
+
+    graphicShapeOptions.filter(option => option.type !== "line" && option.type !== "connector").forEach(option => {
+      editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: option.type})
+      const parameters = editor.features.graphic.getState()!.parameters!
+      const ratio = Number(parameters.width) / Number(parameters.height)
+      expect(ratio, `${option.label} should retain its natural form`).toBeGreaterThanOrEqual(0.85)
+      expect(ratio, `${option.label} should retain its natural form`).toBeLessThanOrEqual(1.2)
     })
   })
 
   it("does not add a shape to a merely node-selected graphic", () => {
-    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
-    const graphic = document.querySelector("svg")!
+    const graphic = document.createElementNS(SVG_NAMESPACE, "svg")
+    graphic.setAttribute("viewBox", "0 0 1600 900")
+    document.body.append(graphic)
+    $.selectElement(graphic)
+    editor.features.selection.processSelection()
 
     editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "ellipse"})
 
@@ -146,15 +240,15 @@ describe("graphic editing", () => {
       clientY: 300,
     }))
 
-    expect(rectangle).toHaveAttribute("x", "620")
-    expect(rectangle).toHaveAttribute("y", "360")
+    expect(rectangle).toHaveAttribute("x", "680")
+    expect(rectangle).toHaveAttribute("y", "330")
     expect(rectangle).toHaveClass("◆graphic-preview-source")
     expect(editor.appendix.querySelector(".◆graphic-preview")).not.toBeNull()
 
     document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
 
-    expect(rectangle).toHaveAttribute("x", "720")
-    expect(rectangle).toHaveAttribute("y", "410")
+    expect(rectangle).toHaveAttribute("x", "780")
+    expect(rectangle).toHaveAttribute("y", "380")
     expect(rectangle).not.toHaveClass("◆graphic-preview-source")
     expect(editor.appendix.querySelector(".◆graphic-preview")).toBeNull()
     const overlay = editor.appendix.querySelector<HTMLElement>(".◆graphic-overlay")!
@@ -210,7 +304,7 @@ describe("graphic editing", () => {
     editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "fill", value: "#dbeafe"})
     editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "font-size", value: "56"})
 
-    expect(text).toHaveAttribute("x", "980")
+    expect(text).toHaveAttribute("x", "1040")
     expect(text).toHaveAttribute("font-size", "56")
     expect(group.getAttribute("transform")).toMatch(/^rotate\(30 /)
     expect(rectangle).not.toHaveAttribute("transform")
@@ -268,8 +362,8 @@ describe("graphic editing", () => {
     expect(editor.appendix.querySelector(".◆graphic-preview g text")).toHaveTextContent("Move me")
     document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
 
-    expect(rectangle).toHaveAttribute("x", "720")
-    expect(rectangle).toHaveAttribute("y", "410")
+    expect(rectangle).toHaveAttribute("x", "780")
+    expect(rectangle).toHaveAttribute("y", "380")
     expect(text).toHaveAttribute("x", "900")
     expect(text).toHaveAttribute("y", "500")
   })
@@ -299,10 +393,10 @@ describe("graphic editing", () => {
 
     editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "hexagon"})
     const hexagon = graphic.querySelectorAll("polygon")[0]
-    expect(editor.features.graphic.getState()).toMatchObject({shape: "hexagon", parameters: {inset: "105"}})
+    expect(editor.features.graphic.getState()).toMatchObject({shape: "hexagon", parameters: {inset: "60"}})
     expect(editor.appendix.querySelectorAll('[data-graphic-handle^="vertex-"]')).toHaveLength(6)
     editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "inset", value: "60"})
-    expect(hexagon.getAttribute("points")!.split(" ")[0]).toBe("650,330")
+    expect(hexagon.getAttribute("points")!.split(" ")[0]).toBe("740,330")
 
     editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "star"})
     editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "inner-radius", value: "30"})
@@ -342,21 +436,59 @@ describe("graphic editing", () => {
     document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, buttons: 1, clientX: 1400, clientY: 750}))
     document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
 
-    expect(rectangle).toHaveAttribute("width", "780")
-    expect(rectangle).toHaveAttribute("height", "390")
+    expect(rectangle).toHaveAttribute("width", "720")
+    expect(rectangle).toHaveAttribute("height", "420")
 
     const rotate = overlay.querySelector<HTMLButtonElement>('[data-graphic-handle="rotate"]')!
     rotate.dispatchEvent(new PointerEvent("pointerdown", {
       bubbles: true,
       composed: true,
       button: 0,
-      clientX: 1400,
-      clientY: 555,
+      clientX: 1040,
+      clientY: 306,
     }))
-    document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, buttons: 1, clientX: 1010, clientY: 945}))
+    document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, buttons: 1, clientX: 1274, clientY: 540}))
     document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
 
     expect(rectangle.getAttribute("transform")).toMatch(/^rotate\(90 /)
+  })
+
+  it.each([
+    {label: "snaps to 5° when Snap is on", snap: true, altKey: false, expected: 15},
+    {label: "does not snap when Snap is off", snap: false, altKey: false, expected: 13},
+    {label: "temporarily bypasses Snap with Alt", snap: true, altKey: true, expected: 13},
+  ])("$label while rotating one shape", ({snap, altKey, expected}) => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    const graphic = document.querySelector("svg")!
+    const rectangle = graphic.querySelector("rect")!
+    Object.defineProperty(graphic, "getBoundingClientRect", {
+      configurable: true,
+      value: () => new DOMRect(0, 0, 1600, 900),
+    })
+    if(!snap) editor.features.graphic.actions.toggleGraphicOption({type: "toggleGraphicOption", name: "snap"})
+    clickShape(rectangle)
+
+    const center = {x: 800, y: 450}
+    const radius = 144
+    const radians = (-90 + 13) * Math.PI / 180
+    const rotate = editor.appendix.querySelector<HTMLButtonElement>('[data-graphic-handle="rotate"]')!
+    rotate.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true,
+      composed: true,
+      button: 0,
+      clientX: center.x,
+      clientY: center.y - radius,
+    }))
+    document.dispatchEvent(new PointerEvent("pointermove", {
+      bubbles: true,
+      buttons: 1,
+      clientX: center.x + Math.cos(radians) * radius,
+      clientY: center.y + Math.sin(radians) * radius,
+      altKey,
+    }))
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
+
+    expect(rectangle).toHaveAttribute("transform", `rotate(${expected} 800 450)`)
   })
 
   it("resizes a rotated shape in its local axes", () => {
@@ -373,6 +505,8 @@ describe("graphic editing", () => {
     rectangle.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0}))
     document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
 
+    const outline = editor.appendix.querySelector<SVGPolygonElement>(".◆graphic-selection-outline")!
+    const fixedNorthwest = outline.getAttribute("points")!.split(" ")[0]
     const southeast = editor.appendix.querySelector<HTMLButtonElement>('[data-graphic-handle="resize-se"]')!
     southeast.dispatchEvent(new PointerEvent("pointerdown", {
       bubbles: true,
@@ -390,9 +524,123 @@ describe("graphic editing", () => {
     }))
     document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
 
-    expect(rectangle).toHaveAttribute("width", "410")
-    expect(rectangle).toHaveAttribute("height", "230")
+    expect(rectangle).toHaveAttribute("x", "615")
+    expect(rectangle).toHaveAttribute("y", "375")
+    expect(rectangle).toHaveAttribute("width", "350")
+    expect(rectangle).toHaveAttribute("height", "260")
     expect(rectangle.getAttribute("transform")).toMatch(/^rotate\(90 /)
+    expect(outline.getAttribute("points")!.split(" ")[0]).toBe(fixedNorthwest)
+  })
+
+  it("keeps the opposite edge fixed while resizing a rotated shape", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    Object.defineProperty(graphic, "getBoundingClientRect", {
+      configurable: true,
+      value: () => new DOMRect(0, 0, 1600, 900),
+    })
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
+    const rectangle = graphic.querySelector("rect")!
+    editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "rotation", value: "90"})
+
+    const west = editor.appendix.querySelector<HTMLButtonElement>('[data-graphic-handle="resize-w"]')!
+    const east = editor.appendix.querySelector<HTMLButtonElement>('[data-graphic-handle="resize-e"]')!
+    const fixedEast = {left: east.style.left, top: east.style.top}
+    west.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true,
+      composed: true,
+      button: 0,
+      clientX: 800,
+      clientY: 270,
+    }))
+    document.dispatchEvent(new PointerEvent("pointermove", {
+      bubbles: true,
+      buttons: 1,
+      clientX: 800,
+      clientY: 220,
+      altKey: true,
+    }))
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
+
+    expect(rectangle).toHaveAttribute("x", "625")
+    expect(rectangle).toHaveAttribute("y", "275")
+    expect(rectangle).toHaveAttribute("width", "350")
+    expect(rectangle).toHaveAttribute("height", "240")
+    expect({left: east.style.left, top: east.style.top}).toEqual(fixedEast)
+  })
+
+  it("switches a crossed corner and snaps its new moving edges", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    Object.defineProperty(graphic, "getBoundingClientRect", {
+      configurable: true,
+      value: () => new DOMRect(0, 0, 1600, 900),
+    })
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
+    const rectangle = graphic.querySelector("rect")!
+    const northwest = editor.appendix.querySelector<HTMLButtonElement>('[data-graphic-handle="resize-nw"]')!
+    const southeast = editor.appendix.querySelector<HTMLButtonElement>('[data-graphic-handle="resize-se"]')!
+
+    northwest.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true,
+      composed: true,
+      button: 0,
+      clientX: 620,
+      clientY: 360,
+    }))
+    document.dispatchEvent(new PointerEvent("pointermove", {
+      bubbles: true,
+      buttons: 1,
+      clientX: 1047,
+      clientY: 597,
+    }))
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
+
+    expect(rectangle).toHaveAttribute("x", "920")
+    expect(rectangle).toHaveAttribute("y", "570")
+    expect(rectangle).toHaveAttribute("width", "130")
+    expect(rectangle).toHaveAttribute("height", "30")
+    expect({left: northwest.style.left, top: northwest.style.top}).toEqual({left: "920px", top: "570px"})
+    expect({left: southeast.style.left, top: southeast.style.top}).toEqual({left: "1050px", top: "600px"})
+  })
+
+  it("switches crossed corners around the fixed anchor of a rotated shape", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    Object.defineProperty(graphic, "getBoundingClientRect", {
+      configurable: true,
+      value: () => new DOMRect(0, 0, 1600, 900),
+    })
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
+    const rectangle = graphic.querySelector("rect")!
+    editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "rotation", value: "90"})
+    const outline = editor.appendix.querySelector<SVGPolygonElement>(".◆graphic-selection-outline")!
+    const fixedSoutheast = outline.getAttribute("points")!.split(" ")[2]
+    const northwest = editor.appendix.querySelector<HTMLButtonElement>('[data-graphic-handle="resize-nw"]')!
+
+    northwest.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true,
+      composed: true,
+      button: 0,
+      clientX: 890,
+      clientY: 270,
+    }))
+    document.dispatchEvent(new PointerEvent("pointermove", {
+      bubbles: true,
+      buttons: 1,
+      clientX: 660,
+      clientY: 680,
+      altKey: true,
+    }))
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
+
+    expect(rectangle).toHaveAttribute("x", "615")
+    expect(rectangle).toHaveAttribute("y", "615")
+    expect(rectangle).toHaveAttribute("width", "110")
+    expect(rectangle).toHaveAttribute("height", "20")
+    const corners = outline.getAttribute("points")!.split(" ")
+    expect(corners[0]).toBe(fixedSoutheast)
+    expect(corners[2]).toBe("660,680")
   })
 
   it("shows endpoint and vertex affordances for lines and polygons", () => {
@@ -422,8 +670,8 @@ describe("graphic editing", () => {
     document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, buttons: 1, clientX: 400, clientY: 475}))
     document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
 
-    expect(line).toHaveAttribute("x1", "610")
-    expect(line).toHaveAttribute("x2", "1090")
+    expect(line).toHaveAttribute("x1", "690")
+    expect(line).toHaveAttribute("x2", "1010")
     expect(line).toHaveAttribute("y1", "475")
     expect(line).toHaveAttribute("y2", "475")
   })
@@ -446,8 +694,8 @@ describe("graphic editing", () => {
     }))
     document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
 
-    expect(rectangle).toHaveAttribute("x", "620")
-    expect(rectangle).toHaveAttribute("y", "360")
+    expect(rectangle).toHaveAttribute("x", "680")
+    expect(rectangle).toHaveAttribute("y", "330")
     expect(editor.appendix.querySelector(".◆graphic-preview")).toBeNull()
   })
 
@@ -519,6 +767,7 @@ describe("graphic editing", () => {
     expect(editor.features.graphic.selectedShapes).toEqual(rectangles.slice(0, 2))
     const marquee = editor.appendix.querySelector<SVGRectElement>(".◆graphic-marquee")!
     expect(marquee).not.toHaveAttribute("hidden")
+    expect(marquee).not.toHaveAttribute("display")
     expect(marquee).toHaveAttribute("x", "50")
     expect(editor.appendix.querySelector(".◆graphic-selection-outline")).toHaveStyle({display: "none"})
     expect(editor.appendix.querySelectorAll(".◆graphic-handle:not([hidden])")).toHaveLength(0)
@@ -527,6 +776,7 @@ describe("graphic editing", () => {
     document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
 
     expect(marquee).toHaveAttribute("hidden")
+    expect(marquee).toHaveAttribute("display", "none")
     expect(editor.appendix.querySelector(".◆graphic-selection-outline")).not.toHaveStyle({display: "none"})
     expect(editor.appendix.querySelectorAll(".◆graphic-handle:not([hidden])")).toHaveLength(9)
     expect(editor.features.graphic.getState()).toMatchObject({selectionCount: 2})
@@ -718,6 +968,48 @@ describe("graphic editing", () => {
     expect(second.getAttribute("transform")).toMatch(/^rotate\(90 /)
   })
 
+  it("snaps a multi-selection rotation to 5°", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    Object.defineProperty(graphic, "getBoundingClientRect", {
+      configurable: true,
+      value: () => new DOMRect(0, 0, 1600, 900),
+    })
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
+    const [first, second] = Array.from(graphic.querySelectorAll("rect"))
+    ;[first, second].forEach((shape, index) => {
+      shape.setAttribute("x", String(100 + index * 200))
+      shape.setAttribute("y", "100")
+      shape.setAttribute("width", "100")
+      shape.setAttribute("height", "100")
+    })
+    clickShape(first)
+    clickShape(second, true)
+
+    const center = {x: 250, y: 150}
+    const radius = 100
+    const radians = (-90 + 13) * Math.PI / 180
+    const rotate = editor.appendix.querySelector<HTMLButtonElement>('[data-graphic-handle="rotate"]')!
+    rotate.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true,
+      composed: true,
+      button: 0,
+      clientX: center.x,
+      clientY: center.y - radius,
+    }))
+    document.dispatchEvent(new PointerEvent("pointermove", {
+      bubbles: true,
+      buttons: 1,
+      clientX: center.x + Math.cos(radians) * radius,
+      clientY: center.y + Math.sin(radians) * radius,
+    }))
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
+
+    expect(first.getAttribute("transform")).toMatch(/^rotate\(15 /)
+    expect(second.getAttribute("transform")).toMatch(/^rotate\(15 /)
+  })
+
   it("aligns, distributes, and reorders selected shapes as grouped commands", () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const graphic = document.querySelector("svg")!
@@ -790,8 +1082,14 @@ describe("graphic editing", () => {
     expect(preview.querySelector("rect")).toHaveAttribute("x", "500")
     const guide = editor.appendix.querySelector<SVGLineElement>('.◆graphic-guide[data-axis="x"]')!
     expect(guide).not.toHaveAttribute("hidden")
+    expect(guide).not.toHaveAttribute("display")
     expect(guide.dataset.kind).toBe("object")
     expect(guide.getAttribute("part")).toContain("graphic-guide-object")
+
+    editor.features.graphic.actions.toggleGraphicOption({type: "toggleGraphicOption", name: "guides"})
+    expect(guide).toHaveAttribute("hidden")
+    expect(guide).toHaveAttribute("display", "none")
+    expect(editor.features.graphic.getState()?.options?.guides).toBe(false)
 
     document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
 
