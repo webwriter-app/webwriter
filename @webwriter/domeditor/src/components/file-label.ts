@@ -1,12 +1,10 @@
 import {LitElement, css, html} from "lit"
-import {ribbonIcon} from "../ribbon-icons"
 
 /** A compact, interactive document label used by the File ribbon tab. */
 export class FileLabel extends LitElement {
   static properties = {
     fileName: {type: String, attribute: "file-name"},
     fileDirty: {type: Boolean, attribute: "file-dirty"},
-    previewActive: {type: Boolean, attribute: "preview-active"},
   }
 
   static styles = css`
@@ -30,10 +28,6 @@ export class FileLabel extends LitElement {
       white-space: nowrap;
     }
 
-    .file-label-dirty {
-      padding-right: 1.15rem;
-    }
-
     .file-name {
       min-width: 0;
       max-width: 500px;
@@ -44,125 +38,40 @@ export class FileLabel extends LitElement {
       white-space: nowrap;
     }
 
-    .dirty-button {
-      box-sizing: border-box;
-      display: inline-grid;
-      position: absolute;
-      top: 50%;
-      right: 0;
-      z-index: 1;
-      align-items: start;
-      justify-items: start;
-      width: 1.15rem;
-      height: 40px;
-      margin: 0;
-      padding: 0;
-      border: 1px solid transparent;
-      border-radius: 0.25rem;
+    .dirty-indicator {
+      flex: 0 0 auto;
+      align-self: flex-start;
+      width: 0.55rem;
+      margin-top: -0.16rem;
       color: #526b86;
-      background: transparent;
-      font: inherit;
       font-size: 0.82rem;
       font-weight: 700;
       line-height: 1;
-      cursor: pointer;
-      transform: translateY(-50%);
-    }
-
-    .dirty-button:not(:disabled):hover {
-      border-color: #c8d2df;
-      color: #243447;
-      background: #eef4fb;
-    }
-
-    .dirty-indicator,
-    .dirty-save-icon {
-      grid-area: 1 / 1;
-      transition: opacity 140ms ease;
-    }
-
-    .dirty-indicator {
-      margin-top: 0.45rem;
-      opacity: 1;
-    }
-
-    .dirty-save-icon {
-      align-self: center;
-      justify-self: center;
-      opacity: 0;
-    }
-
-    .dirty-save-icon,
-    .dirty-save-icon svg {
-      display: block;
-      width: 1rem;
-      height: 1rem;
-    }
-
-    .dirty-button:not(:disabled):hover .dirty-indicator,
-    .dirty-button:not(:disabled):focus-visible .dirty-indicator {
-      opacity: 0;
-    }
-
-    .dirty-button:not(:disabled):hover .dirty-save-icon,
-    .dirty-button:not(:disabled):focus-visible .dirty-save-icon {
-      opacity: 1;
-    }
-
-    .dirty-button:not(:disabled):active {
-      color: #1e4f87;
-      background: #c4dcf4;
-    }
-
-    .dirty-button:disabled {
-      color: #9aa4b1;
-      cursor: default;
-      opacity: 0.55;
-    }
-
-    .dirty-button:focus-visible {
-      outline: 2px solid #3977c7;
-      outline-offset: -2px;
     }
   `
 
   fileName = ""
   fileDirty = false
-  previewActive = false
 
   private stopLabelPointer = (event: Event) => {
     event.stopPropagation()
-  }
-
-  private save = (event: Event) => {
-    event.stopPropagation()
-    if(this.previewActive) return
-    this.dispatchEvent(new Event("file-save", {bubbles: true, composed: true}))
   }
 
   render() {
     const name = this.fileName || "Unnamed File"
     return html`
       <span
-        class=${`file-label${this.fileDirty ? " file-label-dirty" : ""}`}
+        class="file-label"
         aria-label=${`${name}${this.fileDirty ? " (unsaved changes)" : ""}`}
         @pointerdown=${this.stopLabelPointer}
         @mousedown=${this.stopLabelPointer}
       >
         <strong class="file-name" title=${name}>${name}</strong>
-        <button
-          class="dirty-button"
-          type="button"
-          aria-label="Save file"
-          title="Save file"
-          aria-disabled=${this.previewActive}
-          ?disabled=${this.previewActive}
-          style=${`visibility: ${this.fileDirty ? "visible" : "hidden"}`}
-          @click=${this.save}
-        ><span class="dirty-indicator" aria-hidden="true">*</span><span
-          class="dirty-save-icon"
+        <span
+          class="dirty-indicator"
           aria-hidden="true"
-        >${ribbonIcon("Save")}</span></button>
+          style=${`visibility: ${this.fileDirty ? "visible" : "hidden"}`}
+        >*</span>
       </span>
     `
   }

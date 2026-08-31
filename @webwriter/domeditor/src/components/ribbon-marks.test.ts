@@ -70,31 +70,25 @@ describe("mark ribbon controls", () => {
     expect(fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-name")?.textContent).toBe("lesson")
     expect(fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-name")?.tagName).toBe("STRONG")
     expect(fileLabel.shadowRoot!.querySelector(".location-icon")).toBeNull()
-    const dirtyButton = fileLabel.shadowRoot!.querySelector<HTMLButtonElement>(".dirty-button")!
-    const dirtyIndicator = dirtyButton.querySelector<HTMLElement>(".dirty-indicator")!
-    const dirtySaveIcon = dirtyButton.querySelector<HTMLElement>(".dirty-save-icon")!
-    expect(dirtyIndicator.textContent).toBe("*")
-    expect(getComputedStyle(dirtyIndicator).marginTop).toBe("7.2px")
-    expect(dirtySaveIcon.querySelector(".icon-tabler-device-floppy")).not.toBeNull()
-    expect(getComputedStyle(dirtyIndicator).opacity).toBe("1")
-    expect(getComputedStyle(dirtySaveIcon).opacity).toBe("0")
-    expect(getComputedStyle(dirtySaveIcon).transition).toContain("opacity")
-    expect(getComputedStyle(dirtySaveIcon).width).toBe("16px")
-    expect(getComputedStyle(dirtySaveIcon).height).toBe("16px")
-    expect(getComputedStyle(dirtySaveIcon).alignSelf).toBe("center")
-    expect(getComputedStyle(dirtySaveIcon).justifySelf).toBe("center")
-    expect(getComputedStyle(dirtyButton).visibility).toBe("hidden")
-    expect(getComputedStyle(dirtyButton).position).toBe("absolute")
-    expect(getComputedStyle(dirtyButton).right).toBe("0px")
-    expect(getComputedStyle(dirtyButton).height).toBe("40px")
-    expect(getComputedStyle(dirtyButton).transform).not.toBe("none")
-    expect(getComputedStyle(dirtyButton).justifyItems).toBe("start")
+    expect(fileLabel.shadowRoot!.querySelector("button")).toBeNull()
+    const reservedDirtyIndicator = fileLabel.shadowRoot!.querySelector<HTMLElement>(".dirty-indicator")!
+    expect(reservedDirtyIndicator.textContent).toBe("*")
+    expect(getComputedStyle(reservedDirtyIndicator).visibility).toBe("hidden")
+    expect(getComputedStyle(reservedDirtyIndicator).width).toBe("8.8px")
     const fileTabButton = fileTab.shadowRoot!.querySelector<HTMLButtonElement>("button")!
     expect(getComputedStyle(fileTabButton).paddingLeft).toBe("0px")
     expect(getComputedStyle(fileTabButton).paddingRight).toBe("0px")
     const fileLabelElement = fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-label")!
     expect(["0", "0px"]).toContain(getComputedStyle(fileLabelElement).gap)
     expect(getComputedStyle(fileLabelElement).position).toBe("relative")
+    const quickActions = fileTab.nextElementSibling as HTMLElement
+    expect(quickActions.classList.contains("file-quick-actions")).toBe(true)
+    const quickButtons = Array.from(quickActions.querySelectorAll<RibbonButton>("ribbon-button"))
+    await Promise.all(quickButtons.map(button => button.updateComplete))
+    expect(quickButtons.map(button => button.label)).toEqual(["Save", "Share"])
+    expect(quickButtons.every(button => button.compact)).toBe(true)
+    expect(quickButtons[0].shadowRoot!.querySelector(".icon-tabler-device-floppy")).not.toBeNull()
+    expect(quickButtons[1].shadowRoot!.querySelector(".icon-tabler-share")).not.toBeNull()
 
     ribbon.activeMenu = "File"
     await ribbon.updateComplete
@@ -107,11 +101,38 @@ describe("mark ribbon controls", () => {
     ribbon.fileDirty = true
     await ribbon.updateComplete
     await fileLabel.updateComplete
-    expect(getComputedStyle(dirtyButton).visibility).toBe("visible")
+    const dirtyIndicator = fileLabel.shadowRoot!.querySelector<HTMLElement>(".dirty-indicator")!
+    expect(dirtyIndicator).toBe(reservedDirtyIndicator)
+    expect(dirtyIndicator.textContent).toBe("*")
+    expect(dirtyIndicator.closest("button")).toBeNull()
+    expect(getComputedStyle(dirtyIndicator).visibility).toBe("visible")
 
-    dirtyButton.click()
+    quickButtons[0].shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
     expect(saveEvents).toEqual(["Save"])
     expect(ribbon.activeMenu).toBe("Start")
+
+    quickButtons[1].shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    await quickButtons[1].updateComplete
+    expect(quickButtons[1].shadowRoot!.querySelector(".submenu-trigger")).toBeNull()
+    expect(quickButtons[1].shadowRoot!.querySelector(".main-button")?.getAttribute("aria-haspopup")).toBe("dialog")
+    expect(quickButtons[1].shadowRoot!.querySelector(".main-button")?.getAttribute("aria-expanded")).toBe("true")
+    const quickShareMenu = quickButtons[1].shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await quickShareMenu.updateComplete
+    expect(quickShareMenu.hidden).toBe(false)
+    expect(quickShareMenu.noScroll).toBe(true)
+    expect(getComputedStyle(quickShareMenu.shadowRoot!.querySelector<HTMLElement>(".menu")!).overflow)
+      .toBe("hidden")
+    expect(quickShareMenu.querySelector<HTMLInputElement>('input[aria-label="Sharing link"]')?.value)
+      .toBe("https://webwriter.app/share/placeholder")
+    const qrGenerator = quickShareMenu.querySelector<HTMLElement>("webwriter-qr-code")!
+    expect(getComputedStyle(qrGenerator).display).toBe("none")
+    expect(quickShareMenu.querySelectorAll("img.sharing-dropdown-qr-code")).toHaveLength(1)
+    const linkRow = quickShareMenu.querySelector<HTMLElement>(".sharing-link-input-row")!
+    const linkCopy = quickShareMenu.querySelector<HTMLElement>(".sharing-link-copy")!
+    expect(getComputedStyle(linkRow).display).toBe("block")
+    expect(getComputedStyle(linkRow).width).toBe("100%")
+    expect(getComputedStyle(linkCopy).position).toBe("absolute")
+    expect(getComputedStyle(linkCopy).right).toBe("4.48px")
 
     fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-name")!.dispatchEvent(
       new MouseEvent("click", {bubbles: true, composed: true}),
@@ -162,7 +183,7 @@ describe("mark ribbon controls", () => {
     expect(fileTab.hasAttribute("ribbon-collapsed")).toBe(false)
   })
 
-  it("disables the dirty save marker while preview is active", async () => {
+  it("disables the quick Save button while preview is active", async () => {
     const {ribbon} = await mountRibbon()
     const saveEvents: string[] = []
     ribbon.addEventListener("ribbon-button-click", event => {
@@ -171,18 +192,16 @@ describe("mark ribbon controls", () => {
     ribbon.fileDirty = true
     await ribbon.updateComplete
 
-    const fileLabel = ribbon.shadowRoot!.querySelector('ribbon-tab[label="File"]')!
-      .shadowRoot!.querySelector<FileLabel>("file-label")!
-    await fileLabel.updateComplete
-    const dirtyButton = fileLabel.shadowRoot!.querySelector<HTMLButtonElement>(".dirty-button")!
-    expect(dirtyButton.disabled).toBe(false)
+    const saveButton = ribbon.shadowRoot!.querySelector<RibbonButton>("ribbon-button.file-save-action")!
+    await saveButton.updateComplete
+    expect(saveButton.disabled).toBe(false)
 
     ribbon.previewActive = true
     await ribbon.updateComplete
-    await fileLabel.updateComplete
+    await saveButton.updateComplete
 
-    expect(dirtyButton.disabled).toBe(true)
-    dirtyButton.click()
+    expect(saveButton.disabled).toBe(true)
+    saveButton.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
     expect(saveEvents).toEqual([])
   })
 
@@ -317,6 +336,7 @@ describe("mark ribbon controls", () => {
     await shareButton.updateComplete
     const shareMenu = shareButton.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
     await shareMenu.updateComplete
+    expect(shareMenu.noScroll).toBe(true)
     expect(shareMenu.querySelector<HTMLInputElement>('input[aria-label="Sharing link"]')?.value)
       .toBe("https://webwriter.app/share/placeholder")
     expect(Array.from(shareMenu.querySelectorAll("button")).map(button => button.getAttribute("aria-label")))

@@ -28,6 +28,9 @@ export class RibbonButton extends LitElement {
     shortcut: {type: String},
     submenu: {attribute: false},
     dropdown: {attribute: false},
+    dropdownOnClick: {type: Boolean, attribute: "dropdown-on-click"},
+    lazyDropdown: {type: Boolean, attribute: "lazy-dropdown"},
+    dropdownNoScroll: {type: Boolean, attribute: "dropdown-no-scroll"},
     submenuOpen: {state: true},
     corner: {type: String},
     cornerLabel: {type: String, attribute: "corner-label"},
@@ -530,6 +533,10 @@ export class RibbonButton extends LitElement {
       min-width: 0;
     }
 
+    .sharing-dropdown webwriter-qr-code[hidden] {
+      display: none;
+    }
+
     .sharing-link-field {
       display: flex;
       flex-direction: column;
@@ -562,7 +569,9 @@ export class RibbonButton extends LitElement {
     }
 
     .sharing-link-input-row {
+      display: block;
       position: relative;
+      width: 100%;
     }
 
     .sharing-link-copy {
@@ -975,6 +984,9 @@ export class RibbonButton extends LitElement {
   shortcut = ""
   submenu: RibbonMenuButton[] = []
   dropdown: TemplateResult | null = null
+  dropdownOnClick = false
+  lazyDropdown = false
+  dropdownNoScroll = false
   corner = ""
   cornerLabel = ""
   cornerAction = ""
@@ -1079,7 +1091,11 @@ export class RibbonButton extends LitElement {
     }))
   }
 
-  private handleClick() {
+  private handleClick(event: Event) {
+    if(this.dropdownOnClick && (this.submenu.length > 0 || this.dropdown !== null)) {
+      this.toggleSubmenu(event)
+      return
+    }
     this.dispatchClick(this.action)
   }
 
@@ -1094,6 +1110,7 @@ export class RibbonButton extends LitElement {
     else {
       this.submenuTrigger = event.currentTarget as HTMLButtonElement
       this.submenuOpen = true
+      this.dispatchEvent(new CustomEvent("ribbon-dropdown-open", {bubbles: true, composed: true}))
       void this.updateComplete.then(async () => {
         const submenu = this.renderRoot.querySelector<HTMLElement>("ribbon-menu")
         if(!submenu) return
@@ -1187,6 +1204,8 @@ export class RibbonButton extends LitElement {
           type="button"
           aria-label=${this.label}
           aria-pressed=${this.toggle? String(this.active): nothing}
+          aria-haspopup=${this.dropdownOnClick && hasDropdown ? this.dropdown !== null ? "dialog" : "menu" : nothing}
+          aria-expanded=${this.dropdownOnClick && hasDropdown ? String(this.submenuOpen) : nothing}
           title=${title}
           ?disabled=${this.disabled}
           @focus=${this.showDetails}
@@ -1210,7 +1229,7 @@ export class RibbonButton extends LitElement {
           >
             <span class="button-icon corner-icon" aria-hidden="true">${ribbonIcon("Reject")}</span>
           </button>
-        ` : hasDropdown ? html`
+        ` : hasDropdown && !this.dropdownOnClick ? html`
           <button
             class="submenu-toggle submenu-trigger"
             type="button"
@@ -1240,10 +1259,11 @@ export class RibbonButton extends LitElement {
           .groups=${this.dropdown === null ? [{label: `${this.label} options`, buttons: this.submenu}] : []}
           .customContent=${this.dropdown !== null}
           .label=${`${this.label} options`}
+          ?no-scroll=${this.dropdownNoScroll}
           ?hidden=${!this.submenuOpen}
           @ribbon-button-click=${this.handleSubmenuClick}
         >
-          ${this.dropdown !== null ? html`
+          ${this.dropdown !== null && (!this.lazyDropdown || this.submenuOpen) ? html`
             <div class="button-dropdown-content">${this.dropdown}</div>
           ` : ""}
         </ribbon-menu>

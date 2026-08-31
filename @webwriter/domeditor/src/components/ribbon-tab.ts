@@ -8,7 +8,6 @@ export class RibbonTab extends LitElement {
     label: {type: String},
     fileName: {type: String, attribute: "file-name"},
     fileDirty: {type: Boolean, attribute: "file-dirty"},
-    previewActive: {type: Boolean, attribute: "preview-active"},
     ribbonCollapsed: {type: Boolean, attribute: "ribbon-collapsed", reflect: true},
   }
 
@@ -146,7 +145,6 @@ export class RibbonTab extends LitElement {
   label = "Tab"
   fileName = ""
   fileDirty = false
-  previewActive = false
   ribbonCollapsed = false
 
   private select() {
@@ -154,15 +152,6 @@ export class RibbonTab extends LitElement {
       bubbles: true,
       composed: true,
       detail: {label: this.label},
-    }))
-  }
-
-  private saveFile(event: Event) {
-    event.stopPropagation()
-    this.dispatchEvent(new CustomEvent<{label: string}>("ribbon-button-click", {
-      detail: {label: "Save"},
-      bubbles: true,
-      composed: true,
     }))
   }
 
@@ -184,8 +173,6 @@ export class RibbonTab extends LitElement {
         <file-label
           .fileName=${this.fileName}
           .fileDirty=${this.fileDirty}
-          .previewActive=${this.previewActive}
-          @file-save=${this.saveFile}
         ></file-label>
       ` : this.label}</button>
     `

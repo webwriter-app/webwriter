@@ -727,6 +727,30 @@ describe("DomEditor file actions", () => {
     expect((editor as any).fileDirty).toBe(false)
   })
 
+  it("routes the quick Save button to Save As for a document without a file handle", async () => {
+    const {editor} = await mountEditor()
+    const handle = {
+      name: "quick-save.html",
+      getFile: vi.fn(),
+      createWritable: vi.fn().mockResolvedValue({
+        write: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+      }),
+    }
+    const picker = vi.fn().mockResolvedValue(handle)
+    vi.stubGlobal("showSaveFilePicker", picker)
+    vi.spyOn(editor, "execute").mockResolvedValue("<!DOCTYPE html><html><body></body></html>")
+
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    await ribbon.updateComplete
+    const save = ribbon.shadowRoot!.querySelector<RibbonButton>("ribbon-button.file-save-action")!
+    await save.updateComplete
+    save.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+
+    await vi.waitFor(() => expect((editor as any).fileHandle).toBe(handle))
+    expect(picker).toHaveBeenCalledOnce()
+  })
+
   it("opens an HTML file and associates its handle with the document", async () => {
     const {editor} = await mountEditor()
     const file = new File(["<!DOCTYPE html><html><body><p>Opened</p></body></html>"], "opened.html", {type: "text/html"})

@@ -472,6 +472,23 @@ export class AppRibbon extends LitElement {
       anchor-name: --active-ribbon-tab;
     }
 
+    .file-quick-actions {
+      box-sizing: border-box;
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      align-self: flex-start;
+      gap: 0.1rem;
+      height: 40px;
+      padding: 0 0.2rem;
+    }
+
+    ribbon-button.file-quick-action {
+      flex: 0 0 1.75rem;
+      min-width: 1.75rem;
+      width: 1.75rem;
+    }
+
     .ai-bar-slot {
       box-sizing: border-box;
       /* Let the AI bar absorb almost all top-row compression before the tabs. */
@@ -5346,7 +5363,7 @@ export class AppRibbon extends LitElement {
   private sharingButton() {
     return this.renderRoot.querySelector<RibbonButton>(
       'ribbon-drawer[label="Sharing"] ribbon-button[label="Share"]',
-    )
+    ) ?? this.renderRoot.querySelector<RibbonButton>("ribbon-button.file-share-action")
   }
 
   private sharingQRCodeElement() {
@@ -5426,9 +5443,9 @@ export class AppRibbon extends LitElement {
   }
 
   private renderSharingDropdown(link: string) {
-    void this.ensureSharingQRCodeImage(link)
     return html`
       <div class="sharing-dropdown" role="group" aria-label="Sharing options">
+        <webwriter-qr-code hidden .value=${link} .size=${56}></webwriter-qr-code>
         <label class="sharing-link-field">
           <span class="sharing-link-label">Link</span>
           <span class="sharing-link-input-row">
@@ -5659,7 +5676,9 @@ export class AppRibbon extends LitElement {
               .qrValue=${link}
               .dropdown=${this.renderSharingDropdown(link)}
               keep-drawer-open
+              dropdown-no-scroll
               @ribbon-button-click=${this.handleSharingButtonClick}
+              @ribbon-dropdown-open=${() => void this.ensureSharingQRCodeImage(link)}
             ></ribbon-button>
           `
           return html`
@@ -6019,9 +6038,31 @@ export class AppRibbon extends LitElement {
                   .active=${this.activeMenu === tab && !this.previewActive}
                   .fileName=${tab === "File" ? this.fileName : ""}
                   .fileDirty=${tab === "File" && this.fileDirty}
-                  .previewActive=${this.previewActive}
                   .ribbonCollapsed=${!this.expanded || this.previewTransitioning}
                 ></ribbon-tab>
+                ${tab === "File" ? html`
+                  <div class="file-quick-actions" role="group" aria-label="File actions" ?inert=${aiReviewPending}>
+                    <ribbon-button
+                      class="file-quick-action file-save-action"
+                      label="Save"
+                      action="Save"
+                      compact
+                      ?disabled=${this.previewActive || historyPreviewPending}
+                    ></ribbon-button>
+                    <ribbon-button
+                      class="file-quick-action file-share-action"
+                      label="Share"
+                      action="Share"
+                      compact
+                      dropdown-on-click
+                      lazy-dropdown
+                      dropdown-no-scroll
+                      .qrValue=${this.sharingLink}
+                      .dropdown=${this.renderSharingDropdown(this.sharingLink)}
+                      @ribbon-dropdown-open=${() => void this.ensureSharingQRCodeImage(this.sharingLink)}
+                    ></ribbon-button>
+                  </div>
+                ` : ""}
               `)}
             </div>
             ${this.previewActive ? "" : html`<div class="ai-bar-slot" aria-hidden="true"></div>`}

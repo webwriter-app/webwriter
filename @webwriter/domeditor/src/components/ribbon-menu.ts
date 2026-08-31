@@ -58,6 +58,12 @@ export class RibbonMenu extends LitElement {
       padding: 0.45rem;
     }
 
+    :host([no-scroll]) .menu {
+      max-height: none;
+      overflow: hidden;
+      scrollbar-width: none;
+    }
+
     ::slotted(.button-dropdown-content) {
       display: block;
     }
@@ -215,6 +221,7 @@ export class RibbonMenu extends LitElement {
   groups: RibbonMenuGroup[] = []
   variant = "ribbon"
   customContent = false
+  noScroll = false
   label = ""
   private openSubmenu: string | null = null
   private openSubmenuToggle: HTMLButtonElement | null = null
@@ -223,6 +230,7 @@ export class RibbonMenu extends LitElement {
     groups: {attribute: false},
     variant: {type: String, reflect: true},
     customContent: {type: Boolean, attribute: "custom-content", reflect: true},
+    noScroll: {type: Boolean, attribute: "no-scroll", reflect: true},
     label: {type: String},
     openSubmenu: {state: true},
   }
