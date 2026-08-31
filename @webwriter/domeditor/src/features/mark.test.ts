@@ -131,15 +131,19 @@ describe("MarkFeature toggles", () => {
   })
 
   it("removes a partially selected ancestor while preserving other marks and both outer sides", () => {
-    const paragraph = setContent("<p><b><i>abcd</i></b></p>")
+    const paragraph = setContent('<p><b class="authored ◆temporary"><i>abcd</i></b></p>')
     const text = paragraph.querySelector("i")!.firstChild as Text
     selectText(text, 1, 3)
 
     feature.toggleMark("b")
 
-    expect(cleanHTML()).toBe("<p><b><i>a</i></b><i>bc</i><b><i>d</i></b></p>")
+    expect(cleanHTML()).toBe('<p><b class="authored"><i>a</i></b><i>bc</i><b class="authored"><i>d</i></b></p>')
     expect(document.getSelection()!.toString()).toBe("bc")
     expect(feature.getState()).toEqual({canMark: true, marks: ["i"]})
+    expect(Array.from(paragraph.querySelectorAll("b")).every(element => (
+      element.classList.contains("authored")
+      && !Array.from(element.classList).some(name => name.startsWith("◆"))
+    ))).toBe(true)
   })
 
   it("removes an active mark wherever it occurs in a mixed selection", () => {
@@ -352,6 +356,17 @@ describe("MarkFeature span styles", () => {
     feature.removeMarks()
 
     expect(cleanHTML()).toBe('<p><b><span style="color: red">a</span></b>bc<b><span style="color: red">d</span></b></p>')
+    expect(feature.getStyleState()).toEqual({})
+  })
+
+  it("removes formatting from a style-only selection", () => {
+    const paragraph = setContent('<p><span style="color: red">abcd</span></p>')
+    const text = paragraph.querySelector("span")!.firstChild as Text
+    selectText(text, 1, 3)
+
+    expect(feature.removeMarks()).toBe(true)
+
+    expect(cleanHTML()).toBe('<p><span style="color: red">a</span>bc<span style="color: red">d</span></p>')
     expect(feature.getStyleState()).toEqual({})
   })
 })

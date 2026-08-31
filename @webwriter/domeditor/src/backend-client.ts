@@ -38,6 +38,9 @@ const errorText = (value: unknown, fallback: string) => {
   return fallback
 }
 
+const isAbortError = (value: unknown) =>
+  Boolean(value) && typeof value === "object" && (value as {name?: unknown}).name === "AbortError"
+
 const loopbackHosts = new Set(["127.0.0.1", "[::1]", "localhost"])
 
 const validatedUrl = (value: string, protocols: string[]) => {
@@ -191,7 +194,7 @@ export async function probeDevelopmentBackend(
       if(session) return session
     }
     catch(error) {
-      if(error instanceof DOMException && error.name === "AbortError") throw error
+      if(isAbortError(error)) throw error
     }
   }
   return null

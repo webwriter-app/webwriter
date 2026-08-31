@@ -488,12 +488,7 @@ export class EditingSelection {
     else if(this.isTextSelection) {
       return this.anchorContainer?.[siblingGetter]
     }
-    else if(direction === "next") {
-      
-    }
-    else {
-
-    }
+    return undefined
   }
 
   /** The element preceding the selection (see #getAdjacentElement). */
@@ -699,7 +694,7 @@ export function getPathTo(element: Element | null): string {
     return ""
   }
   else if (element.id !== '') {
-    return `id("${element.id}")`
+    return `id(${JSON.stringify(element.id)})`
   }
   else if (element === document.body) {
     return element.tagName
@@ -722,6 +717,30 @@ export function getPathTo(element: Element | null): string {
 /** Parses an HTML string into a DocumentFragment. */
 export function htmlToFragment(html: string) {
   return document.createRange().createContextualFragment(html)
+}
+
+/** Removes transient editor marker classes from a node and all descendants,
+ * including inert template contents, while preserving authored classes. */
+export function clearEditorMarkerClasses(root: Node) {
+  const visit = (node: Node) => {
+    if(node.nodeType === Node.ELEMENT_NODE) {
+      const element = node as Element
+      const markers = Array.from(element.classList).filter(name => name.startsWith("◆"))
+      if(markers.length) element.classList.remove(...markers)
+      if(!element.classList.length) element.removeAttribute("class")
+      if(element.localName === "template" && "content" in element) {
+        Array.from((element as HTMLTemplateElement).content.childNodes).forEach(visit)
+      }
+    }
+    Array.from(node.childNodes).forEach(visit)
+  }
+  visit(root)
+  return root
+}
+
+/** Clones a node without copying transient editor marker classes. */
+export function cloneWithoutEditorMarkers<T extends Node>(node: T, deep=false) {
+  return clearEditorMarkerClasses(node.cloneNode(deep)) as T
 }
 
 /** Round a given value to the device pixel ratio. */
@@ -778,18 +797,6 @@ export function intersectionPoint(x1: number, y1: number, x2: number, y2: number
   const t = (+b_dx * (y1 - y3) - b_dy * (x1 - x3)) / (-b_dx * a_dy + a_dx * b_dy)
   return (s >= 0 && s <= 1 && t >= 0 && t <= 1)? [x1 + t * a_dx, y1 + t * a_dy]: false
 }
-
-
-/** A DOMMatrix translating by (x, y). */
-function translationMatrix(x: number, y: number) {
-  return DOMMatrix.fromMatrix({a: 1, b: 0, c: x, d: 0, e: 1, f: y})
-}
-
-/** A DOMMatrix rotating by `angle` degrees. */
-function rotationMatrix(angle: number) {
-  const rad = angle * (Math.PI / 180)
-  return DOMMatrix.fromMatrix({a: Math.cos(rad), b: -Math.sin(rad), c: 0, d: Math.sin(rad), e: Math.cos(rad), f: 0})
-} 
 
 
 /** The closest ancestor-or-self of `el` matching the filter, or undefined. */
@@ -1105,25 +1112,21 @@ function parseDisplayStyle(display: string): DisplayTuple | DisplayBox | Display
   }
 }
 
-/** The [top, left] viewport coordinates of the element's static position, measured by temporarily inserting a marker text before it (the document is left unchanged). Requires layout. */
+/** The [top, left] viewport coordinates of the element's static position.
+ * A collaboration-filtered marker class temporarily disables positioning;
+ * no editor-owned nodes or inline styles enter the authored DOM. */
 export function getStaticCoords(el: HTMLElement): [number, number] {
-  const range = document.createRange()
-  range.setStartBefore(el)
-  range.insertNode(new Text("_"))
-  const {top, left} = range.getBoundingClientRect()
-  range.deleteContents()
-  return [top, left]
-  /*if(el.previousSibling) {
-
-  }
-  else if(el.parentElement) {
-    const rect = el.parentElement.getBoundingClientRect()
-    const style = getComputedStyle(el.parentElement)
-    const top = rect.top + parseInt(style.borderTopWidth || "0") + parseInt(style.marginTop || "0")
-    const left = rect.left + parseInt(style.borderLeftWidth || "0") + parseInt(style.marginLeft || "0")
+  const marker = "◆measure-static-position"
+  const hadMarker = el.classList.contains(marker)
+  if(!hadMarker) el.classList.add(marker)
+  try {
+    const {top, left} = el.getBoundingClientRect()
     return [top, left]
   }
-  else {
-
-  }*/
+  finally {
+    if(!hadMarker) {
+      el.classList.remove(marker)
+      if(!el.classList.length) el.removeAttribute("class")
+    }
+  }
 }

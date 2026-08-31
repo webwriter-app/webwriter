@@ -65,6 +65,14 @@ describe("development backend client", () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 
+  it("recognizes AbortError by name across realms and error types", async () => {
+    const abort = {name: "AbortError", message: "The operation was aborted"}
+    const fetch = vi.fn().mockRejectedValue(abort)
+
+    await expect(probeDevelopmentBackend(undefined, fetch)).rejects.toBe(abort)
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
   it("uses REST document endpoints", async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(response({documents: [{id: "one", title: "One"}]}))

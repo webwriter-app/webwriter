@@ -41,6 +41,9 @@ export default defineConfig({
     },
     test: {
       css: true,
+      // Happy DOM's asynchronous observers and FileReader tasks become
+      // unreliable when every available CPU is saturated by test workers.
+      maxWorkers: "50%",
       server: {
         deps: {
           inline: ["y-protocols", "y-websocket", "lib0"],

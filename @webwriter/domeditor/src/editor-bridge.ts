@@ -69,6 +69,26 @@ export type LoadWidgetsMessage = {
   packages?: WebWriterPackage[]
 }
 
+const isOptionalString = (value: unknown) => value === undefined || typeof value === "string"
+
+const isPackageMember = (value: unknown) => {
+  if(!value || typeof value !== "object" || Array.isArray(value)) return false
+  const member = value as Record<string, unknown>
+  return typeof member.id === "string"
+    && typeof member.packageName === "string"
+    && typeof member.packageVersion === "string"
+    && typeof member.exportName === "string"
+    && (member.kind === "widget" || member.kind === "snippet")
+    && typeof member.label === "string"
+    && typeof member.insertable === "boolean"
+    && isOptionalString(member.description)
+    && isOptionalString(member.iconUrl)
+    && isOptionalString(member.tagName)
+    && isOptionalString(member.htmlUrl)
+    && isOptionalString(member.scriptUrl)
+    && isOptionalString(member.styleUrl)
+}
+
 export function isInitializeEditorMessage(value: unknown): value is InitializeEditorMessage {
   if(!value || typeof value !== "object") return false
   const message = value as Partial<InitializeEditorMessage>
@@ -76,7 +96,7 @@ export function isInitializeEditorMessage(value: unknown): value is InitializeEd
   if(typeof message.syncUrl === "string" && message.syncUrl.length > 0) {
     try {
       const url = new URL(message.syncUrl)
-      validSyncUrl = ["http:", "https:", "ws:", "wss:"].includes(url.protocol)
+      validSyncUrl = ["ws:", "wss:"].includes(url.protocol)
     }
     catch {
       validSyncUrl = false
@@ -111,7 +131,10 @@ export function isLoadWidgetsMessage(value: unknown): value is LoadWidgetsMessag
       && typeof pkg.version === "string"
       && Array.isArray(pkg.members)
       && Array.isArray(pkg.scripts)
-      && Array.isArray(pkg.styles),
+      && Array.isArray(pkg.styles)
+      && pkg.members.every(isPackageMember)
+      && pkg.scripts.every(script => typeof script === "string")
+      && pkg.styles.every(style => typeof style === "string"),
     ))
 }
 

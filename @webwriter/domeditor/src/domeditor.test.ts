@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, vi } from "vitest"
+import { afterAll, beforeAll, describe, it, expect, vi } from "vitest"
 import '@testing-library/jest-dom/vitest'
 
 import { DOMEditor } from "./domeditor"
@@ -14,7 +14,10 @@ const hasExactSelector = (stylesheet: CSSStyleSheet, selector: string) =>
   Array.from(stylesheet.cssRules).some(rule => (rule as CSSStyleRule).selectorText === selector)
 
 describe("DOMEditor stylesheets", () => {
-  const editor = new DOMEditor()
+  let editor: DOMEditor
+
+  beforeAll(() => editor = new DOMEditor())
+  afterAll(() => editor.destroy())
 
   it("does not enable placeholder text by default", () => {
     const placeholderStylesheet = editor.features.placeholder.placeholderStylesheet
@@ -36,7 +39,7 @@ describe("DOMEditor stylesheets", () => {
     const overlay = editor.features.transformation.overlay
     const stylesheet = document.adoptedStyleSheets.find(sheet => hasSelector(sheet, "html"))
     const appendixStylesheet = appendix.adoptedStyleSheets.find(sheet =>
-      hasExactSelector(sheet, ":host(.◆editing-locked) > :not(slot)"),
+      hasExactSelector(sheet, ":host(.◆editing-locked) > :not(slot):not(.◆ai-review-toolbar)"),
     )
 
     expect(stylesheet).toBeInstanceOf(CSSStyleSheet)
@@ -149,16 +152,25 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/body:has\(\.◆media-empty:is\(\.◆gap-before-selected, \.◆gap-after-selected\)\)::part\(gap-caret\)\s*\{[\s\S]*?display:\s*none;/)
   })
 
+  it("removes nested editing attributes from serialized widgets", () => {
+    document.body.innerHTML = '<webwriter-demo contenteditable="true" spellcheck="false" value="7"></webwriter-demo>'
+      + '<template><span class="authored ◆text-selected">Template</span><i class="◆editor-only">helper</i></template>'
+
+    expect(editor.toHTML(true)).toBe('<webwriter-demo value="7"></webwriter-demo>'
+      + '<template><span class="authored">Template</span></template>')
+    document.body.replaceChildren()
+  })
+
   it("hides Chromium's native label for an empty Details element", () => {
     expect(editorStyleString).toMatch(/details:empty\s*\{[\s\S]*?color:\s*transparent;/)
   })
 
-  it("does not duplicate constructed stylesheets", () => {
+  it("does not duplicate constructed stylesheets when the appendix is revisited", () => {
     const documentSheetCount = document.adoptedStyleSheets.filter(sheet => hasSelector(sheet, "html")).length
     const appendix = editor.appendix
     const appendixSheetCount = appendix.adoptedStyleSheets.length
 
-    new DOMEditor().appendix
+    editor.appendix
 
     expect(document.adoptedStyleSheets.filter(sheet => hasSelector(sheet, "html"))).toHaveLength(documentSheetCount)
     expect(appendix.adoptedStyleSheets).toHaveLength(appendixSheetCount)
@@ -167,17 +179,46 @@ describe("DOMEditor stylesheets", () => {
   it("marks every editing lock without serializing the marker", () => {
     const owner = {}
     editor.lockEditing(owner)
+    const slot = Array.from(editor.appendix.children)
+      .find(element => element.localName === "slot" && !element.hasAttribute("name")) as HTMLSlotElement
 
     expect(document.body).toHaveClass("◆editing-locked")
+    expect(document.body.inert).toBe(false)
+    expect(slot.inert).toBe(true)
     expect(editor.toHTML()).not.toContain("◆editing-locked")
+    expect(editor.toHTML()).not.toContain(" inert")
 
     editor.unlockEditing(owner)
     expect(document.body).not.toHaveClass("◆editing-locked")
+    expect(slot.inert).toBe(false)
+  })
+
+  it("creates a direct default slot without moving a nested slot", () => {
+    const appendix = editor.appendix
+    Array.from(appendix.children)
+      .filter(element => element.localName === "slot" && !element.hasAttribute("name"))
+      .forEach(element => element.remove())
+    const container = document.createElement("div")
+    const nested = document.createElement("slot")
+    container.append(nested)
+    editor.addAppendix(container)
+
+    const refreshed = editor.appendix
+    const directSlots = Array.from(refreshed.children).filter(element => (
+      element.localName === "slot" && !element.hasAttribute("name")
+    ))
+
+    expect(directSlots).toHaveLength(1)
+    expect(nested.parentElement).toBe(container)
+    container.remove()
   })
 })
 
 describe("widget shadow interactions", () => {
-  const editor = new DOMEditor()
+  let editor: DOMEditor
+
+  beforeAll(() => editor = new DOMEditor())
+  afterAll(() => editor.destroy())
 
   it("keeps typing inside a selected widget without cancelling the widget", async () => {
     const widget = document.createElement("interactive-widget")
@@ -280,6 +321,19 @@ describe("bridge origin binding", () => {
       type: "dom-editor-presence-change",
       bridgeNonce,
     }), bridgeOrigin)
+    editor.destroy()
+    postMessage.mockRestore()
+  })
+
+  it("posts actions through the authenticated parent bridge", () => {
+    const bridgeOrigin = "https://editor-host.example"
+    const bridgeNonce = "0123456789abcdef"
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => undefined)
+    const editor = new DOMEditor({bridgeOrigin, bridgeNonce})
+
+    editor.postAction({type: "undo"})
+
+    expect(postMessage).toHaveBeenCalledWith({type: "undo", bridgeNonce}, bridgeOrigin)
     editor.destroy()
     postMessage.mockRestore()
   })

@@ -242,7 +242,7 @@ describe("insertion menu", () => {
     menu.shadowRoot?.querySelector<HTMLButtonElement>('.item img[src="https://example.com/demo.svg"]')
       ?.closest<HTMLButtonElement>("button")?.click()
 
-    expect(editorHTML()).toBe('<webwriter-demo contenteditable="true"></webwriter-demo>')
+    expect(editorHTML()).toBe("<webwriter-demo></webwriter-demo>")
     const widget = document.querySelector("webwriter-demo")!
     expect(widget.getAttribute("contenteditable")).toBe("true")
     expect($.selectedElement).toBe(widget)
@@ -268,7 +268,7 @@ describe("insertion menu", () => {
 
     menu.shadowRoot?.querySelector<HTMLButtonElement>(".item")?.click()
 
-    expect(editorHTML()).toBe('<p>before</p><webwriter-demo contenteditable="true"></webwriter-demo>')
+    expect(editorHTML()).toBe("<p>before</p><webwriter-demo></webwriter-demo>")
     expect(document.querySelector("webwriter-demo")?.parentElement).toBe(document.body)
   })
 
@@ -298,6 +298,46 @@ describe("insertion menu", () => {
       expect(document.querySelector("webwriter-demo")?.getAttribute("contenteditable")).toBe("true")
       expect(document.querySelector("webwriter-other")?.getAttribute("contenteditable")).toBe("true")
       expect(fetcher).toHaveBeenCalledWith("https://example.com/demo.html")
+    }
+    finally {
+      fetcher.mockRestore()
+    }
+  })
+
+  it("does not apply a downloaded snippet after its command was replaced", async () => {
+    globalThis.DOMEDITOR_PACKAGE_ITEMS = [{
+      section: "Packages",
+      name: "Slow Snippet",
+      packageName: "@webwriter/demo",
+      kind: "snippet",
+      htmlUrl: "https://example.com/slow.html",
+    }]
+    let resolveResponse!: (response: Response) => void
+    const response = new Promise<Response>(resolve => resolveResponse = resolve)
+    const fetcher = vi.spyOn(globalThis, "fetch").mockReturnValue(response)
+
+    try {
+      document.body.innerHTML = "<p></p>"
+      $.move(document.querySelector("p")!)
+      typeCommand()
+      typeText("slow")
+      const menu = editor.features.insertion.menu
+      await menu.updateComplete
+      menu.shadowRoot?.querySelector<HTMLButtonElement>(".item")?.click()
+
+      menu.dispatchEvent(new Event("insertion-menu-close", {bubbles: true, composed: true}))
+      document.body.innerHTML = "<p></p>"
+      $.move(document.querySelector("p")!)
+      typeCommand()
+      await menu.updateComplete
+
+      resolveResponse(new Response("<section>Stale</section>"))
+      await response
+      await Promise.resolve()
+
+      expect(editorHTML()).toBe("<p>++</p>")
+      expect(menu.open).toBe(true)
+      expect(document.querySelector("section")).toBeNull()
     }
     finally {
       fetcher.mockRestore()

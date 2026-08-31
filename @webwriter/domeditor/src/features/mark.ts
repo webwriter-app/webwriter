@@ -17,7 +17,7 @@ import {
   type StyleMarkName,
   type StyleMarkValues,
 } from "../marks"
-import {$, modifierKeyDown} from "../utility"
+import {$, cloneWithoutEditorMarkers, modifierKeyDown} from "../utility"
 import {isSectionElement} from "../sections"
 
 export type MarkState = {
@@ -437,7 +437,7 @@ export class MarkFeature extends EditorFeature {
       this.editor.postMarkState()
       return true
     }
-    if(!this.getState().marks.length) return false
+    if(!this.getState().marks.length && !Object.keys(this.getStyleState()).length) return false
     return this.removeMatching(element => canonicalMarkName(element.localName) !== null)
   }
 
@@ -621,14 +621,14 @@ export class MarkFeature extends EditorFeature {
     const grandparent = parent?.parentNode
     if(!parent || !grandparent) return
 
-    const before = parent.cloneNode(false) as Element
+    const before = cloneWithoutEditorMarkers(parent, false) as Element
     while(parent.firstChild && parent.firstChild !== boundary) before.append(parent.firstChild)
 
-    const after = parent.cloneNode(false) as Element
+    const after = cloneWithoutEditorMarkers(parent, false) as Element
     while(boundary.nextSibling) after.append(boundary.nextSibling)
 
     if(preserveParent) {
-      const selectedParent = parent.cloneNode(false) as Element
+      const selectedParent = cloneWithoutEditorMarkers(parent, false) as Element
       selectedParent.append(...Array.from(boundary.childNodes))
       boundary.append(selectedParent)
     }
@@ -645,13 +645,13 @@ export class MarkFeature extends EditorFeature {
     const grandparent = parent?.parentNode
     if(!parent || !grandparent) return
 
-    const before = parent.cloneNode(false) as Element
+    const before = cloneWithoutEditorMarkers(parent, false) as Element
     while(parent.firstChild && parent.firstChild !== boundary) before.append(parent.firstChild)
 
-    const after = parent.cloneNode(false) as Element
+    const after = cloneWithoutEditorMarkers(parent, false) as Element
     while(boundary.nextSibling) after.append(boundary.nextSibling)
 
-    const selected = parent.cloneNode(false) as Element
+    const selected = cloneWithoutEditorMarkers(parent, false) as Element
     selected.append(...Array.from(boundary.childNodes))
     boundary.append(selected)
 

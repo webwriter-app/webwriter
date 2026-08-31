@@ -54,13 +54,16 @@ describe("collaborative version history", () => {
     expect(document.head.innerHTML).toBe("")
     expect(document.documentElement.hasAttribute("lang")).toBe(false)
     expect(editor.doc.body.toString()).toContain("Changed")
-    expect(document.body.inert).toBe(true)
+    const slot = Array.from(editor.appendix.children)
+      .find(element => element.localName === "slot" && !element.hasAttribute("name")) as HTMLSlotElement
+    expect(document.body.inert).toBe(false)
+    expect(slot.inert).toBe(true)
     expect(document.body.contentEditable).toBe("false")
     expect(document.designMode).toBe("off")
     expect(document.body).toHaveClass("◆editing-locked")
     const lockedAffordanceRule = editor.appendix.adoptedStyleSheets
       .flatMap(stylesheet => Array.from(stylesheet.cssRules))
-      .find(rule => (rule as CSSStyleRule).selectorText === ":host(.◆editing-locked) > :not(slot)") as CSSStyleRule
+      .find(rule => (rule as CSSStyleRule).selectorText === ":host(.◆editing-locked) > :not(slot):not(.◆ai-review-toolbar)") as CSSStyleRule
     expect(lockedAffordanceRule.style.display).toBe("none")
 
     const beforeInput = new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText"})
@@ -85,6 +88,7 @@ describe("collaborative version history", () => {
     expect(document.head.innerHTML).toBe("<title>Changed title</title>")
     expect(document.documentElement.lang).toBe("de")
     expect(document.body.inert).toBe(false)
+    expect(slot.inert).toBe(false)
     expect(document.body.contentEditable).toBe("true")
     expect(document.designMode).toBe("on")
     expect(document.body).not.toHaveClass("◆editing-locked")

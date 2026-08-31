@@ -129,19 +129,30 @@ describe("StateFeature", () => {
     expect(editor.toHTML(true)).toBe("<p>After</p>")
     expect(editor.doc.body.toString()).toContain("Before")
     expect(editor.doc.body.toString()).not.toContain("After")
-    expect(document.body.inert).toBe(true)
+    const slot = Array.from(editor.appendix.children)
+      .find(element => element.localName === "slot" && !element.hasAttribute("name")) as HTMLSlotElement
+    expect(document.body.inert).toBe(false)
+    expect(slot.inert).toBe(true)
     expect(document.body.contentEditable).toBe("false")
-    expect(document.querySelector(".◆ai-review-toolbar")?.textContent).toContain("Replace the paragraph")
+    expect(document.querySelector(".◆ai-review-toolbar")).toBeNull()
+    expect(editor.appendix.querySelector(".◆ai-review-toolbar")?.textContent).toContain("Replace the paragraph")
     expect(document.querySelector(".◆ai-preview-change")).not.toBeNull()
     const beforeInput = new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: "x"})
-    document.querySelector("p")!.dispatchEvent(beforeInput)
+    const paragraph = document.querySelector("p")!
+    Object.defineProperty(beforeInput, "composedPath", {
+      value: () => [paragraph, slot, editor.appendix, document.body, document.documentElement, document, window],
+    })
+    paragraph.dispatchEvent(beforeInput)
     expect(beforeInput.defaultPrevented).toBe(true)
     const toolbarPointer = new PointerEvent("pointerdown", {bubbles: true, cancelable: true})
-    document.querySelector(".◆ai-review-toolbar")!.dispatchEvent(toolbarPointer)
+    editor.appendix.querySelector(".◆ai-review-toolbar")!.dispatchEvent(toolbarPointer)
     expect(toolbarPointer.defaultPrevented).toBe(false)
+    const toolbarKey = new KeyboardEvent("keydown", {key: "Enter", bubbles: true, composed: true, cancelable: true})
+    editor.appendix.querySelector('.◆ai-review-toolbar button[data-action="reject"]')!.dispatchEvent(toolbarKey)
+    expect(toolbarKey.defaultPrevented).toBe(false)
     const reviewChoice = vi.fn((event: Event) => event.preventDefault())
     window.addEventListener(aiEditReviewEvent, reviewChoice, {once: true})
-    document.querySelector<HTMLButtonElement>('.◆ai-review-toolbar button[data-action="reject"]')!.click()
+    editor.appendix.querySelector<HTMLButtonElement>('.◆ai-review-toolbar button[data-action="reject"]')!.click()
     expect(reviewChoice).toHaveBeenCalledWith(expect.objectContaining({
       detail: {editId: "edit-reject", action: "reject"},
     }))
@@ -150,8 +161,35 @@ describe("StateFeature", () => {
 
     expect(editor.toHTML(true)).toBe("<p>Before</p>")
     expect(document.body.inert).toBe(false)
+    expect(slot.inert).toBe(false)
     expect(document.body.contentEditable).toBe("true")
-    expect(document.querySelector(".◆ai-review-toolbar")).toBeNull()
+    expect(editor.appendix.querySelector(".◆ai-review-toolbar")).toBeNull()
+    editor.destroy()
+  })
+
+  it("authenticates the fallback AI review message to the host", () => {
+    document.body.innerHTML = "<p>Before</p>"
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => undefined)
+    const editor = new DOMEditor({
+      bridgeNonce: "0123456789abcdef",
+      bridgeOrigin: "https://editor-host.example",
+    })
+    postMessage.mockClear()
+    editor.getActionHandler("previewAIDocument")({
+      type: "previewAIDocument",
+      editId: "edit-fallback",
+      summary: "Replace the paragraph",
+      html: "<p>After</p>",
+    })
+
+    editor.appendix.querySelector<HTMLButtonElement>('.◆ai-review-toolbar button[data-action="accept"]')!.click()
+
+    expect(postMessage).toHaveBeenCalledWith({
+      type: aiEditReviewEvent,
+      detail: {editId: "edit-fallback", action: "accept"},
+      bridgeNonce: "0123456789abcdef",
+    }, "https://editor-host.example")
+    editor.getActionHandler("rejectAIEdit")({type: "rejectAIEdit", editId: "edit-fallback"})
     editor.destroy()
   })
 

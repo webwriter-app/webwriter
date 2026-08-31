@@ -194,6 +194,7 @@ export class CommentFeature extends EditorFeature {
   }
 
   disable() {
+    if(!this.isEnabled) return
     this.observer?.disconnect()
     this.observer = null
     window.removeEventListener("resize", this.repositionCommentUI)
@@ -480,7 +481,7 @@ export class CommentFeature extends EditorFeature {
       event.stopPropagation()
       this.openThreadPane(context.range)
     })
-    appendix.append(button)
+    this.editor.addAppendix(button)
     this.positionBauble(button, context.range)
   }
 
@@ -538,7 +539,7 @@ export class CommentFeature extends EditorFeature {
       pane.addEventListener("focusout", () => queueMicrotask(() => {
         if(this.paneOpen && !this.threadPaneHasFocus()) this.renderThreadPane(this.comments())
       }))
-      appendix.append(pane)
+      this.editor.addAppendix(pane)
     }
 
     const threads = this.threads(comments).filter(thread =>

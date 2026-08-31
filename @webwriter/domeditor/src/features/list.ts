@@ -1,6 +1,6 @@
 import {DocumentListenerMap, EditorFeature} from "."
 import type {ListSelectionState, ListType} from "../editor-bridge"
-import {$, getContainer, isElement, modifierKeyDown, setPart} from "../utility"
+import {$, cloneWithoutEditorMarkers, getContainer, isElement, modifierKeyDown, setPart} from "../utility"
 
 const listSelector = "ul, ol, dl, menu"
 const listItemSelector = "li, dt, dd"
@@ -21,6 +21,7 @@ export class ListFeature extends EditorFeature {
   private readonly selectedListClass = "◆virtual-list-selected"
 
   enable() {
+    if(this.isEnabled) return
     super.enable()
     window.addEventListener("resize", this.syncVirtualMarker)
     window.addEventListener("scroll", this.syncVirtualMarker, true)
@@ -29,6 +30,7 @@ export class ListFeature extends EditorFeature {
   }
 
   disable() {
+    if(!this.isEnabled) return
     window.removeEventListener("resize", this.syncVirtualMarker)
     window.removeEventListener("scroll", this.syncVirtualMarker, true)
     window.removeEventListener("blur", this.handleWindowBlur)
@@ -581,7 +583,7 @@ export class ListFeature extends EditorFeature {
     const paragraph = document.createElement("p")
 
     if(firstTrailingItem) {
-      const trailingList = list.cloneNode(false) as HTMLElement
+      const trailingList = cloneWithoutEditorMarkers(list, false) as HTMLElement
       this.prepareSplitContinuation(list, trailingList, following)
       following.forEach(node => trailingList.append(node))
       list.after(paragraph, trailingList)
@@ -921,7 +923,7 @@ export class ListFeature extends EditorFeature {
     const after = children.slice(lastIndex + 1)
     const replacement: Node[] = []
     if(before.length) {
-      const left = list.cloneNode(false) as HTMLElement
+      const left = cloneWithoutEditorMarkers(list, false) as HTMLElement
       left.append(...before)
       replacement.push(left)
     }
@@ -929,7 +931,7 @@ export class ListFeature extends EditorFeature {
       ? this.itemToBlocks(node as HTMLElement)
       : [node]))
     if(after.length) {
-      const right = list.cloneNode(false) as HTMLElement
+      const right = cloneWithoutEditorMarkers(list, false) as HTMLElement
       right.append(...after)
       replacement.push(right)
     }

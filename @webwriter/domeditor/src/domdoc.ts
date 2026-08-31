@@ -147,6 +147,7 @@ export class SharedDOMDoc {
   #isWritingToDOM = false
   #isObserving = false
   #domSyncPauseDepth = 0
+  #wasObservingBeforePause = false
   #hasQueuedYChanges = false
   #activeDOMPreview: DOMChangePreview | null = null
 
@@ -327,7 +328,10 @@ export class SharedDOMDoc {
    * matching resume, and remote Y changes are rendered together on resume. */
   pauseDOMSync() {
     this.#domSyncPauseDepth++
-    if(this.#domSyncPauseDepth === 1) this.stopObserve()
+    if(this.#domSyncPauseDepth === 1) {
+      this.#wasObservingBeforePause = this.#isObserving
+      if(this.#wasObservingBeforePause) this.stopObserve()
+    }
   }
 
   /** Resumes DOM synchronization after a temporary rendering. Returns true
@@ -337,12 +341,14 @@ export class SharedDOMDoc {
     this.#domSyncPauseDepth--
     if(this.#domSyncPauseDepth > 0) return false
     const hadQueuedYChanges = this.#hasQueuedYChanges
+    const wasObserving = this.#wasObservingBeforePause
+    this.#wasObservingBeforePause = false
     this.#hasQueuedYChanges = false
     try {
       this.#writeYToDOM()
     }
     finally {
-      this.startObserve()
+      if(wasObserving) this.startObserve()
     }
     return hadQueuedYChanges
   }
@@ -388,13 +394,14 @@ export class SharedDOMDoc {
     if(node !== this.root && !this.root.contains(node)) return null
     const yNode = this.#xmlNodes.get(node)
     if(!yNode) return null
+    const normalizedOffset = this.#domSelectionOffset(node, offset)
 
     if(yNode instanceof Y.XmlText) {
-      return Y.createRelativePositionFromTypeIndex(yNode, Math.max(0, Math.min(offset, yNode.length)))
+      return Y.createRelativePositionFromTypeIndex(yNode, Math.min(normalizedOffset, yNode.length))
     }
     if(yNode instanceof Y.XmlElement || yNode instanceof Y.XmlFragment) {
       const children = Array.from(node.childNodes)
-      const yOffset = children.slice(0, offset).filter(child => this.#isSyncableNode(child)).length
+      const yOffset = children.slice(0, normalizedOffset).filter(child => this.#isSyncableNode(child)).length
       return Y.createRelativePositionFromTypeIndex(yNode, Math.max(0, Math.min(yOffset, yNode.length)))
     }
     return null
@@ -680,18 +687,15 @@ export class SharedDOMDoc {
   }
 
   readonly #handleYChanges = (events: Y.YEvent<YXmlNode>[], transaction: Y.Transaction) => {
-    if(transaction.origin === this.#domOrigin ||
-      transaction.origin === this.#initialOrigin ||
-      transaction.origin === this.#remoteReactionOrigin) return
     if(!events.length) return
-    if(this.#domSyncPauseDepth > 0) {
-      this.#hasQueuedYChanges = true
-      return
-    }
-    this.#writeYToDOM()
+    this.#handleSharedYChange(transaction)
   }
 
   readonly #handleHeadMetadataChange = (_event: Y.YMapEvent<unknown>, transaction: Y.Transaction) => {
+    this.#handleSharedYChange(transaction)
+  }
+
+  #handleSharedYChange(transaction: Y.Transaction) {
     if(transaction.origin === this.#domOrigin ||
       transaction.origin === this.#initialOrigin ||
       transaction.origin === this.#remoteReactionOrigin) return
@@ -733,6 +737,13 @@ export class SharedDOMDoc {
       current = current.parent as YXmlNode | null
     }
     return false
+  }
+
+  #domSelectionOffset(node: Node, offset: number) {
+    const length = isText(node) ? node.length : node.childNodes.length
+    return Number.isFinite(offset)
+      ? Math.max(0, Math.min(Math.trunc(offset), length))
+      : 0
   }
 
   #selectionOffset(node: YXmlNode, offset: number) {
@@ -846,7 +857,9 @@ export class SharedDOMDoc {
     if(isText(domNode)) return yNode instanceof Y.XmlText
     if(isComment(domNode)) return this.#isYComment(yNode)
     if(!isElement(domNode) || !(yNode instanceof Y.XmlElement) || this.#isYComment(yNode)) return false
-    const namespace = yNode.getAttribute(INTERNAL_NAMESPACE) || this.#document.documentElement.namespaceURI
+    const namespace = yNode.hasAttribute(INTERNAL_NAMESPACE)
+      ? (yNode.getAttribute(INTERNAL_NAMESPACE) || null)
+      : this.#document.documentElement.namespaceURI
     return domNode.localName === yNode.nodeName && domNode.namespaceURI === namespace
   }
 
@@ -872,8 +885,8 @@ export class SharedDOMDoc {
     if(!isElement(node) || this.#isInsideIgnoredElement(node)) return null
 
     const yElement = new Y.XmlElement(node.localName)
-    if(node.namespaceURI && node.namespaceURI !== this.#document.documentElement.namespaceURI) {
-      yElement.setAttribute(INTERNAL_NAMESPACE, node.namespaceURI)
+    if(node.namespaceURI !== this.#document.documentElement.namespaceURI) {
+      yElement.setAttribute(INTERNAL_NAMESPACE, node.namespaceURI ?? "")
     }
     for(const attribute of Array.from(node.attributes)) {
       if(this.#isIgnoredAttribute(attribute.name)) continue
@@ -907,10 +920,23 @@ export class SharedDOMDoc {
       return comment
     }
 
-    const namespace = yNode.getAttribute(INTERNAL_NAMESPACE)
-    const element = namespace
-      ? this.#document.createElementNS(namespace, yNode.nodeName)
-      : this.#document.createElement(yNode.nodeName)
+    const explicitNamespace = yNode.hasAttribute(INTERNAL_NAMESPACE)
+      ? yNode.getAttribute(INTERNAL_NAMESPACE)
+      : undefined
+    const namespace = explicitNamespace === ""
+      ? null
+      : explicitNamespace ?? this.#document.documentElement.namespaceURI
+    let element: Element
+    try {
+      element = explicitNamespace !== undefined
+        ? this.#document.createElementNS(namespace, yNode.nodeName)
+        : this.#document.createElement(yNode.nodeName)
+    }
+    catch {
+      // A remote client can place arbitrary names in the shared tree. Skip a
+      // node that the DOM cannot represent without aborting sibling updates.
+      return null
+    }
     this.#copyYAttributesToDOM(yNode, element)
     element.append(...yNode.toArray().flatMap(child => {
       const domChild = this.#createDOMNode(child as YXmlNode, addPair)
@@ -962,12 +988,17 @@ export class SharedDOMDoc {
       if(!desiredNames.has(this.#domAttributeKey(attribute))) element.removeAttributeNS(attribute.namespaceURI, attribute.localName)
     }
     decodedAttributes.forEach(attribute => {
-      if(attribute.name === "class" && attribute.namespaceURI === null) return
-      if(attribute.namespaceURI === null) {
-        if(element.getAttribute(attribute.name) !== attribute.value) element.setAttribute(attribute.name, attribute.value)
+      try {
+        if(attribute.name === "class" && attribute.namespaceURI === null) return
+        if(attribute.namespaceURI === null) {
+          if(element.getAttribute(attribute.name) !== attribute.value) element.setAttribute(attribute.name, attribute.value)
+        }
+        else if(element.getAttributeNS(attribute.namespaceURI, attribute.name.split(":").at(-1)!) !== attribute.value) {
+          element.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+        }
       }
-      else if(element.getAttributeNS(attribute.namespaceURI, attribute.name.split(":").at(-1)!) !== attribute.value) {
-        element.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+      catch {
+        // Ignore malformed attribute metadata from an untrusted remote update.
       }
     })
     if(classNames.length) element.setAttribute("class", classNames.join(" "))
@@ -1110,11 +1141,14 @@ export class SharedDOMDoc {
     this.#copyYAttributesToDOM(yElement, domElement)
 
     const yChildren = yElement.toArray() as YXmlNode[]
-    const desiredDOMChildren = yChildren.map(yChild => {
+    const renderableChildren = yChildren.flatMap(yChild => {
       const mapped = this.#nodes.get(yChild)
-      if(mapped && mapped.parentNode === domElement && this.#isCompatiblePair(mapped, yChild)) return mapped
-      return this.#createDOMNode(yChild)!
+      const domChild = mapped && mapped.parentNode === domElement && this.#isCompatiblePair(mapped, yChild)
+        ? mapped
+        : this.#createDOMNode(yChild)
+      return domChild ? [{yChild, domChild}] : []
     })
+    const desiredDOMChildren = renderableChildren.map(({domChild}) => domChild)
 
     desiredDOMChildren.forEach((desiredChild, index) => {
       const current = Array.from(domElement.childNodes).filter(child => this.#isSyncableNode(child))[index]
@@ -1125,8 +1159,7 @@ export class SharedDOMDoc {
       .filter(child => this.#isSyncableNode(child) && !desiredSet.has(child))
       .forEach(child => child.remove())
 
-    yChildren.forEach((yChild, index) => {
-      const domChild = desiredDOMChildren[index]
+    renderableChildren.forEach(({yChild, domChild}) => {
       if(yChild instanceof Y.XmlText && isText(domChild)) this.#reconcileDOMText(yChild, domChild)
       else if(this.#isYComment(yChild) && isComment(domChild)) this.#reconcileDOMComment(yChild, domChild)
       else if(yChild instanceof Y.XmlElement && isElement(domChild)) this.#reconcileDOMElement(yChild, domChild)

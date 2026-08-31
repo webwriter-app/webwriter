@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {describe, expect, it} from "vitest"
-import {serializeDoctype} from "./serialization"
+import {restoreOriginalResourceURLs, serializeDoctype} from "./serialization"
 
 describe("serializeDoctype()", () => {
   it("omits a missing doctype", () => {
@@ -16,5 +16,18 @@ describe("serializeDoctype()", () => {
     const doctype = document.implementation.createDocumentType(name, publicId, systemId)
 
     expect(serializeDoctype(doctype)).toBe(expected)
+  })
+})
+
+describe("restoreOriginalResourceURLs()", () => {
+  it("restores a marker on the root element", () => {
+    const image = document.createElement("img")
+    image.setAttribute("data-webwriter-original-src", "/photo.png")
+    image.setAttribute("src", "data:image/png;base64,AQID")
+
+    restoreOriginalResourceURLs(image)
+
+    expect(image.getAttribute("src")).toBe("/photo.png")
+    expect(image.hasAttribute("data-webwriter-original-src")).toBe(false)
   })
 })

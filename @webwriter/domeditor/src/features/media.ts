@@ -212,6 +212,7 @@ export class MediaFeature extends EditorFeature {
   }
 
   disable() {
+    if(!this.isEnabled) return
     this.observer?.disconnect()
     this.observer = null
     window.removeEventListener("resize", this.scheduleRefresh)

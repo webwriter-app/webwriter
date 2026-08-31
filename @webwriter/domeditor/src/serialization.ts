@@ -6,7 +6,12 @@ export const restorableResourceAttributes = ["src", "srcset", "poster", "data"] 
 export function restoreOriginalResourceURLs(root: ParentNode) {
   for(const name of restorableResourceAttributes) {
     const marker = originalURLAttribute(name)
-    root.querySelectorAll<HTMLElement>(`[${marker}]`).forEach(element => {
+    const selector = `[${marker}]`
+    const rootElement = root.nodeType === Node.ELEMENT_NODE ? root as Element : null
+    const elements = rootElement?.matches(selector)
+      ? [rootElement, ...rootElement.querySelectorAll<HTMLElement>(selector)]
+      : Array.from(root.querySelectorAll<HTMLElement>(selector))
+    elements.forEach(element => {
       const original = element.getAttribute(marker)
       if(original === null) return
       if(element instanceof HTMLScriptElement && name === "src") element.textContent = ""

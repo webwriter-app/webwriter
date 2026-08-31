@@ -1,3 +1,5 @@
+import {clearEditorMarkerClasses} from "./utility"
+
 export const tableCellSelector = "td, th"
 export const tableInternalSelector = "caption, colgroup, col, thead, tbody, tfoot, tr, td, th"
 
@@ -147,8 +149,5 @@ export function createTable(rows: number, columns: number) {
 
 /** Removes editor marker classes from detached clipboard content. */
 export function clearTableMarkers(root: ParentNode) {
-  root.querySelectorAll<HTMLElement>("[class]").forEach(element => {
-    element.classList.remove(...Array.from(element.classList).filter(name => name.startsWith("◆")))
-    if(!element.classList.length) element.removeAttribute("class")
-  })
+  clearEditorMarkerClasses(root as Node)
 }

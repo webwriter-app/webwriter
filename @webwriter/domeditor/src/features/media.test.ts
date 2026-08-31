@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {afterEach, beforeEach, describe, expect, it} from "vitest"
+import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import "@testing-library/jest-dom/vitest"
 import {DOMEditor} from "../domeditor"
 import {$} from "../utility"
@@ -124,9 +124,9 @@ describe("media editing", () => {
     const picker = editor.features.media.placeholder.root.querySelector<HTMLInputElement>(".picker")!
     Object.defineProperty(picker, "files", {configurable: true, value: [new File(["image"], "photo.png", {type: "image/png"})]})
     picker.dispatchEvent(new Event("change"))
-    await new Promise(resolve => setTimeout(resolve, 20))
-
-    expect(image.getAttribute("src")).toMatch(/^data:image\/png;base64,/)
+    await vi.waitFor(() => {
+      expect(image.getAttribute("src")).toMatch(/^data:image\/png;base64,/)
+    }, {timeout: 5_000})
   })
 
   it("edits advanced attributes and switches between picture and img", () => {

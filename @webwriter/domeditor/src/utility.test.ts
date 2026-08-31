@@ -5,7 +5,7 @@ import '@testing-library/jest-dom/vitest'
 import {
   $, getContainer, getSidesOfPoint, getSelectionAnchorBlock, getSelectionFocusBlock,
   getIndexBefore, isElement, isComment, isText, isDocument, isOnApple, modifierKeyDown,
-  getPathTo, htmlToFragment, roundByDPR, roundTo, angleOnCircle, rotatePoint,
+  getPathTo, htmlToFragment, cloneWithoutEditorMarkers, roundByDPR, roundTo, angleOnCircle, rotatePoint,
   distanceBetweenPoints, midpoint, intersectionPoint, findClosest, findContainingBlock,
   findScrollingAncestor, compareStackingOrder, getDescendantsInStackingOrder,
   createsStackingContext, findStackingContainer, getZPos, getStaticCoords
@@ -894,6 +894,12 @@ describe("getPathTo()", () => {
     setBody(`<div id="foo"></div>`)
     expect(getPathTo(document.body.firstElementChild)).toBe(`id("foo")`)
   })
+  it("escapes quotes and backslashes in id anchors", () => {
+    const element = document.createElement("div")
+    element.id = 'a"b\\c'
+    document.body.append(element)
+    expect(getPathTo(element)).toBe('id("a\\"b\\\\c")')
+  })
   it("returns BODY for the body element", () => {
     expect(getPathTo(document.body)).toBe("BODY")
   })
@@ -920,6 +926,16 @@ describe("htmlToFragment()", () => {
     const fragment = htmlToFragment("hello")
     expect(fragment.firstChild).toBeInstanceOf(Text)
     expect(fragment.textContent).toBe("hello")
+  })
+  it("clones authored classes while removing markers inside template content", () => {
+    const template = document.createElement("template")
+    template.className = "authored ◆template-marker"
+    template.innerHTML = '<span class="nested ◆nested-marker">content</span>'
+
+    const clone = cloneWithoutEditorMarkers(template, true) as HTMLTemplateElement
+
+    expect(clone.className).toBe("authored")
+    expect(clone.content.querySelector("span")?.className).toBe("nested")
   })
 })
 
@@ -1141,11 +1157,24 @@ describe("getZPos()", () => {
 })
 
 describe("getStaticCoords()", () => {
-  it("returns coordinates and leaves the document unchanged", () => {
-    setBody("<p>hello</p><p>world</p>")
-    const coords = getStaticCoords(document.body.lastElementChild as HTMLElement)
-    expect(coords).toHaveLength(2)
-    coords.forEach(c => expect(typeof c).toBe("number"))
-    expect(document.body.innerHTML).toBe("<p>hello</p><p>world</p>")
+  it("measures with a temporary marker class and never inserts authored nodes", async () => {
+    setBody('<p>hello</p><p class="authored">world</p>')
+    const target = document.body.lastElementChild as HTMLElement
+    Object.defineProperty(target, "getBoundingClientRect", {
+      configurable: true,
+      value: () => target.classList.contains("◆measure-static-position")
+        ? {top: 12, left: 34}
+        : {top: 56, left: 78},
+    })
+    const mutations: MutationRecord[] = []
+    const observer = new MutationObserver(records => mutations.push(...records))
+    observer.observe(document.body, {attributes: true, childList: true, characterData: true, subtree: true})
+
+    expect(getStaticCoords(target)).toEqual([12, 34])
+    await Promise.resolve()
+    observer.disconnect()
+
+    expect(document.body.innerHTML).toBe('<p>hello</p><p class="authored">world</p>')
+    expect(mutations.some(mutation => mutation.type === "childList" || mutation.type === "characterData")).toBe(false)
   })
 })

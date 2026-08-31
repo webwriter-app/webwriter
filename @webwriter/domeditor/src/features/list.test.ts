@@ -311,10 +311,12 @@ describe("semantic list editing", () => {
     $.move(document.querySelector("li")!.firstChild!, 1)
 
     keydown("Enter")
+    document.querySelector("ol")!.classList.add("authored", "◆temporary")
     keydown("Enter")
 
-    expect(cleanHTML()).toBe('<ol id="steps" start="4"><li>A</li></ol><p></p><ol start="6"><li>B</li></ol>')
+    expect(cleanHTML()).toBe('<ol id="steps" start="4" class="authored"><li>A</li></ol><p></p><ol start="6" class="authored"><li>B</li></ol>')
     expect(document.querySelectorAll("#steps")).toHaveLength(1)
+    expect(document.querySelectorAll("ol")[1].classList.contains("◆temporary")).toBe(false)
   })
 
   it("replaces an entirely empty list with a paragraph when Enter exits it", () => {

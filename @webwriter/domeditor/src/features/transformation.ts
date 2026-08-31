@@ -1,5 +1,4 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import { DOMEditor } from "../domeditor"
 import { $, angleOnCircle, distanceBetweenPoints, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, getZPos, intersectionPoint, isElement, midpoint, modifierKeyDown, rotatePoint, roundByDPR, roundTo, setPart } from "../utility"
 
 /**
@@ -79,13 +78,6 @@ export class TransformationFeature extends EditorFeature {
   /** The empty drag image element (hides the browser's drag ghost). */
   get emptyDrag() {
     return this.overlay.querySelector("#◆transform-overlay-empty-drag")!
-  }
-
-  /** Creates the feature and adds the position anchor to the editor
-   * appendix. */
-  constructor(editor: DOMEditor) {
-    super(editor)
-    editor.addAppendix(this.#createAnchor())
   }
 
   /** Creates one of the eight draggable scale handles. */
@@ -872,7 +864,8 @@ export class TransformationFeature extends EditorFeature {
     } else if(position === "fixed") {
       return new DOMRect(0, 0, window.innerWidth, window.innerHeight)
     } else if(position === "sticky") {
-      return (this.#scrollingAncestor as HTMLElement).getBoundingClientRect()
+      return this.#scrollingAncestor?.getBoundingClientRect()
+        ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight)
     } else {
       throw Error("Invalid position")
     }
@@ -890,7 +883,11 @@ export class TransformationFeature extends EditorFeature {
 
   /** The position anchor element. */
   get anchor() {
-    return this.editor.appendix.querySelector("#◆transform-overlay-anchor") as HTMLElement
+    const existing = this.editor.appendix.querySelector("#◆transform-overlay-anchor") as HTMLElement | null
+    if(existing) return existing
+    const anchor = this.#createAnchor()
+    this.editor.addAppendix(anchor)
+    return anchor
   }
 
   /** The target's computed style. */
@@ -913,13 +910,17 @@ export class TransformationFeature extends EditorFeature {
    * `cycle` wrapping around. Renumbers the z-indexes of all non-editor
    * elements in the container sequentially. */
   moveZ(el: HTMLElement, forward=true, toFrontOrBack=false, cycle=false) {
+    if(!el.isConnected) return
     const stackingContainer = findStackingContainer(el)
     let descendants: (HTMLElement | undefined)[] = getDescendantsInStackingOrder(stackingContainer)
     const n = descendants.length
     const i = descendants.indexOf(el)
+    if(i < 0 || n < 1) return
     const d = forward? (toFrontOrBack? n: 1): (toFrontOrBack? -n: -1)
-    const j = cycle? Math.max(0, i + d) % n: Math.min(Math.max(0, forward? i + d + 1: i + d), n)
-    descendants[i] = undefined
+    descendants.splice(i, 1)
+    const j = cycle
+      ? ((i + d) % n + n) % n
+      : Math.min(Math.max(0, i + d), descendants.length)
     descendants.splice(j, 0, el)
     descendants = descendants.filter(node => node)
     descendants.forEach((node,i) => node!.style.zIndex = String(i + 1))
@@ -932,6 +933,7 @@ export class TransformationFeature extends EditorFeature {
    * z-order, changed/narrow markers) and positions the anchor for
    * relative/sticky targets. */
   updateInfo(deg?: number) {
+    this.#clearContextMarkers()
     const {target, targetRect} = this
     if(target) {
       const elStyle = getComputedStyle(target)
@@ -1013,15 +1015,7 @@ export class TransformationFeature extends EditorFeature {
   clearTransform() {
     document.querySelectorAll(".◆transform-target")
       .forEach(el => this.#removeMarkerClass(el, "◆transform-target"))
-    document.querySelectorAll(".◆transform-containing-block")
-      .forEach(el => {
-        this.#removeMarkerClass(el, "◆transform-containing-block")
-        this.#removeMarkerClass(el, "◆transform-containing-block-no-outline")
-      })
-    document.querySelectorAll(".◆transform-scrolling-ancestor")
-      .forEach(el => this.#removeMarkerClass(el, "◆transform-scrolling-ancestor"))
-    document.querySelectorAll(".◆transform-stacking-container")
-      .forEach(el => this.#removeMarkerClass(el, "◆transform-stacking-container"))
+    this.#clearContextMarkers()
     document.querySelectorAll(".◆drop-caret-before, .◆drop-caret-after")
       .forEach(el => this.#removeMarkerClass(el, el.classList.contains("◆drop-caret-before") ? "◆drop-caret-before" : "◆drop-caret-after"))
     this.editor.features.selection.clearDropCaret()
@@ -1029,13 +1023,18 @@ export class TransformationFeature extends EditorFeature {
       "◆transform-moving", "◆transform-rotating", "◆transform-scaling-ew",
       "◆transform-scaling-ns", "◆transform-scaling-nesw", "◆transform-scaling-nwse",
     )
-    this.overlay.setAttribute("visibility", "hidden")
-    this.anchor?.setAttribute("visibility", "hidden")
-    this.overlay.classList.remove("◆transform-overlay-changed")
-    this.overlay.style.rotate = ""
-    this.arranger?.toggleAttribute("data-open", false)
-    this.orderer?.toggleAttribute("data-open", false)
-    this.#syncControlParts()
+    const appendix = document.body.shadowRoot
+    const overlay = appendix?.querySelector<HTMLElement>("#◆transform-overlay") ?? null
+    const anchor = appendix?.querySelector<HTMLElement>("#◆transform-overlay-anchor") ?? null
+    overlay?.setAttribute("visibility", "hidden")
+    anchor?.setAttribute("visibility", "hidden")
+    if(overlay) {
+      overlay.classList.remove("◆transform-overlay-changed")
+      overlay.style.rotate = ""
+      overlay.querySelector("#◆transform-overlay-arranger")?.toggleAttribute("data-open", false)
+      overlay.querySelector("#◆transform-overlay-orderer")?.toggleAttribute("data-open", false)
+      this.#syncControlParts()
+    }
   }
 
   disable() {
@@ -1052,41 +1051,54 @@ export class TransformationFeature extends EditorFeature {
     if(!element.classList.length) element.removeAttribute("class")
   }
 
-  /** Keyboard/clipboard behavior while a target is active: Delete/Backspace
-   * removes the target; copy/cut put the target's cleaned HTML (without
-   * editor artifacts) on the clipboard, cut also removes it. */
-  passiveListeners: DocumentListenerMap = {
-    "keydown": ev => {
-      if((ev.key === "Delete" || ev.key === "Backspace") && this.target) {
-        this.target.remove()
-        this.clearTransform()
-        ev.stopImmediatePropagation()
-      }
-    },
-    "copy": ev => {
-      if(!this.target) {return}
-      const copy = this.target.cloneNode(true) as HTMLElement
-      const fragment = document.createDocumentFragment()
-      fragment.append(copy)
-      this.editor.clearEditingArtifacts(fragment)
-      const item = new ClipboardItem({"text/html": copy.outerHTML, "text/plain": copy.innerText})
-      navigator.clipboard.write([item])
-    },
-    "cut": ev => {
-      if(!this.target) {return}
-      const copy = this.target.cloneNode(true) as HTMLElement
-      const fragment = document.createDocumentFragment()
-      fragment.append(copy)
-      this.editor.clearEditingArtifacts(fragment)
-      const item = new ClipboardItem({"text/html": copy.outerHTML, "text/plain": copy.innerText})
-      navigator.clipboard.write([item])
-      this.target.remove()
+  /** Removes context markers before recalculating them, so changes to the
+   * target's positioning or ancestor structure cannot leave stale markers. */
+  #clearContextMarkers() {
+    document.querySelectorAll(".◆transform-containing-block")
+      .forEach(el => {
+        this.#removeMarkerClass(el, "◆transform-containing-block")
+        this.#removeMarkerClass(el, "◆transform-containing-block-no-outline")
+      })
+    document.querySelectorAll(".◆transform-scrolling-ancestor")
+      .forEach(el => this.#removeMarkerClass(el, "◆transform-scrolling-ancestor"))
+    document.querySelectorAll(".◆transform-stacking-container")
+      .forEach(el => this.#removeMarkerClass(el, "◆transform-stacking-container"))
+  }
+
+  private writeTargetToClipboard(event: ClipboardEvent, cut: boolean) {
+    const target = this.target
+    if(!target || !event.clipboardData) return false
+    const fragment = document.createDocumentFragment()
+    fragment.append(target.cloneNode(true))
+    const {html, text} = this.editor.serializeClipboardFragment(fragment)
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    event.clipboardData.setData("text/html", html)
+    event.clipboardData.setData("text/plain", text)
+    if(cut) {
+      target.remove()
+      this.clearTransform()
     }
+    return true
   }
 
   /** Pointer behavior: a click outside the overlay ends the transform; a
    * modifier double click on a selected element starts one. */
   activeListeners: DocumentListenerMap = {
+    "keydown": ev => {
+      if((ev.key === "Delete" || ev.key === "Backspace") && this.target) {
+        ev.preventDefault()
+        ev.stopImmediatePropagation()
+        this.target.remove()
+        this.clearTransform()
+      }
+    },
+    "copy": ev => {
+      this.writeTargetToClipboard(ev, false)
+    },
+    "cut": ev => {
+      this.writeTargetToClipboard(ev, true)
+    },
     "click": ev => {
       if(isElement(ev.target) && ev.target.id !== "◆transform-overlay") {
         this.clearTransform()

@@ -106,8 +106,9 @@ describe("table cell selection", () => {
     expect(postSelectionPath).toHaveBeenCalledTimes(synchronousCalls)
 
     cells()[0].setAttribute("title", "authored change")
-    await new Promise(resolve => setTimeout(resolve, 0))
-    expect(postSelectionPath.mock.calls.length).toBeGreaterThan(synchronousCalls)
+    await vi.waitFor(() => {
+      expect(postSelectionPath.mock.calls.length).toBeGreaterThan(synchronousCalls)
+    }, {timeout: 5_000})
     postSelectionPath.mockRestore()
   })
 
@@ -322,6 +323,55 @@ describe("table cell selection", () => {
     expect(data.getData("text/html")).not.toContain("◆")
   })
 
+  it("does not cut selected cells when a programmatic clipboard write fails", async () => {
+    document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr></tbody></table>"
+    editor.features.table.selectCells(cells()[0])
+    const write = navigator.clipboard.write
+    Object.defineProperty(navigator.clipboard, "write", {
+      configurable: true,
+      value: vi.fn().mockRejectedValueOnce(new Error("Clipboard denied")),
+    })
+    try {
+      let rejection: unknown
+      try {
+        await editor.features.table.cut()
+      }
+      catch(error) {
+        rejection = error
+      }
+      expect(rejection).toMatchObject({message: "Clipboard denied"})
+      expect(cells().map(cell => cell.textContent)).toEqual(["A", "B"])
+      expect(editor.features.table.hasCellSelection).toBe(true)
+    }
+    finally {
+      Object.defineProperty(navigator.clipboard, "write", {configurable: true, value: write})
+    }
+  })
+
+  it("propagates a programmatic clipboard read failure without changing cells", async () => {
+    document.body.innerHTML = "<table><tbody><tr><td>A</td></tr></tbody></table>"
+    editor.features.table.selectCells(cells()[0])
+    const read = navigator.clipboard.read
+    Object.defineProperty(navigator.clipboard, "read", {
+      configurable: true,
+      value: vi.fn().mockRejectedValueOnce(new Error("Clipboard denied")),
+    })
+    try {
+      let rejection: unknown
+      try {
+        await editor.features.table.paste()
+      }
+      catch(error) {
+        rejection = error
+      }
+      expect(rejection).toMatchObject({message: "Clipboard denied"})
+      expect(cells()[0].textContent).toBe("A")
+    }
+    finally {
+      Object.defineProperty(navigator.clipboard, "read", {configurable: true, value: read})
+    }
+  })
+
   it("pastes TSV segments starting at the selected cell and grows the table", () => {
     document.body.innerHTML = "<table><tbody><tr><td>A</td></tr></tbody></table>"
     editor.features.table.selectCells(cells()[0])
@@ -474,8 +524,8 @@ describe("table actions", () => {
   })
 
   it("splits a table at the selection and retains column definitions", () => {
-    document.body.innerHTML = `<table class="data"><colgroup><col><col></colgroup><thead><tr><th>A</th><th>B</th></tr></thead>
-      <tbody><tr><td>C</td><td>D</td></tr><tr><td>E</td><td>F</td></tr></tbody></table>`
+    document.body.innerHTML = `<table class="data ◆table-marker"><colgroup class="columns ◆column-marker"><col><col></colgroup><thead><tr><th>A</th><th>B</th></tr></thead>
+      <tbody class="rows ◆row-marker"><tr><td>C</td><td>D</td></tr><tr><td>E</td><td>F</td></tr></tbody></table>`
     editor.features.table.selectCells(cells()[2])
 
     editor.features.table.actions.splitTable({type: "splitTable"})
@@ -486,6 +536,11 @@ describe("table actions", () => {
     expect(tables[1].querySelectorAll("tr")).toHaveLength(2)
     expect(tables[1].querySelectorAll("col")).toHaveLength(2)
     expect(tables[1]).toHaveClass("data")
+    expect(tables[1]).not.toHaveClass("◆table-marker")
+    expect(tables[1].querySelector("colgroup")).toHaveClass("columns")
+    expect(tables[1].querySelector("colgroup")).not.toHaveClass("◆column-marker")
+    expect(tables[1].querySelector("tbody")).toHaveClass("rows")
+    expect(tables[1].querySelector("tbody")).not.toHaveClass("◆row-marker")
   })
 
   it("adds a caption and applies cell border and background styles", () => {

@@ -1,5 +1,5 @@
 import {EditorFeature} from "."
-import {$, modifierKeyDown} from "../utility"
+import {$, cloneWithoutEditorMarkers, modifierKeyDown} from "../utility"
 import {
   buildTableMap,
   cellForNode,
@@ -130,6 +130,7 @@ export class TableFeature extends EditorFeature {
   }
 
   disable() {
+    if(!this.isEnabled) return
     this.observer?.disconnect()
     this.observer = null
     this.clearCellSelection(false)
@@ -412,10 +413,11 @@ export class TableFeature extends EditorFeature {
     const map = this.normalizeTable(table)
     const first = this.selectedPlacement(map, "first")
     if(!first || first.row === 0) return
-    const next = table.cloneNode(false) as HTMLTableElement
+    const next = cloneWithoutEditorMarkers(table, false) as HTMLTableElement
     clearTableMarkers(next)
     next.removeAttribute("id")
-    Array.from(table.children).filter(child => child.matches("colgroup")).forEach(group => next.append(group.cloneNode(true)))
+    Array.from(table.children).filter(child => child.matches("colgroup"))
+      .forEach(group => next.append(cloneWithoutEditorMarkers(group, true)))
     const sectionClones = new Map<Element, Element>()
     map.rows.slice(first.row).forEach(row => {
       const parent = row.parentElement!
@@ -423,7 +425,7 @@ export class TableFeature extends EditorFeature {
       else {
         let section = sectionClones.get(parent)
         if(!section) {
-          section = parent.cloneNode(false) as Element
+          section = cloneWithoutEditorMarkers(parent, false) as Element
           sectionClones.set(parent, section)
           next.append(section)
         }
@@ -495,7 +497,7 @@ export class TableFeature extends EditorFeature {
           && placement.column + placement.columnSpan - 1 >= rectangle.left)
         .sort((a, b) => a.column - b.column)
         .forEach(placement => {
-          const clone = placement.cell.cloneNode(true) as HTMLTableCellElement
+          const clone = cloneWithoutEditorMarkers(placement.cell, true) as HTMLTableCellElement
           const rowSpan = Math.min(placement.rowSpan, rectangle.bottom - placement.row + 1)
           const columnSpan = Math.min(placement.columnSpan, rectangle.right - placement.column + 1)
           rowSpan > 1 ? clone.setAttribute("rowspan", String(rowSpan)) : clone.removeAttribute("rowspan")
@@ -512,9 +514,11 @@ export class TableFeature extends EditorFeature {
     return {table, html: table.outerHTML, plain}
   }
 
+  /** Missing clipboard capabilities return false. Permission and runtime
+   * failures reject so command callers receive an actionable failure. */
   async copy() {
     const content = this.clipboardFragment()
-    if(!content) return false
+    if(!content || typeof ClipboardItem !== "function" || !navigator.clipboard?.write) return false
     await navigator.clipboard.write([new ClipboardItem({
       "text/html": content.html,
       "text/plain": content.plain,
@@ -537,7 +541,7 @@ export class TableFeature extends EditorFeature {
         const map = buildTableMap(table)
         return map.matrix.map(row => Array.from({length: map.width}, (_, column) => {
           const cell = row[column]?.cell
-          return cell ? Array.from(cell.childNodes).map(node => node.cloneNode(true)) : []
+          return cell ? Array.from(cell.childNodes).map(node => cloneWithoutEditorMarkers(node, true)) : []
         }))
       }
     }
@@ -577,7 +581,7 @@ export class TableFeature extends EditorFeature {
         const target = map.matrix[rectangle.top + rowOffset]?.[rectangle.left + columnOffset]?.cell
         const source = matrix[rowOffset % sourceRows]?.[columnOffset % sourceColumns] ?? []
         if(!target || changed.has(target)) continue
-        target.replaceChildren(...source.map(node => node.cloneNode(true)))
+        target.replaceChildren(...source.map(node => cloneWithoutEditorMarkers(node, true)))
         changed.add(target)
       }
     }
@@ -587,8 +591,10 @@ export class TableFeature extends EditorFeature {
     return true
   }
 
+  /** Missing clipboard capabilities return false; supported API failures are
+   * deliberately propagated without changing the selected cells. */
   async paste() {
-    if(!this.hasCellSelection) return false
+    if(!this.hasCellSelection || !navigator.clipboard?.read) return false
     const items = await navigator.clipboard.read()
     const htmlItem = items.find(item => item.types.includes("text/html"))
     const textItem = items.find(item => item.types.includes("text/plain"))
@@ -618,7 +624,7 @@ export class TableFeature extends EditorFeature {
         column.removeAttribute("span")
         columns.push(column)
         for(let index = 1; index < span; index++) {
-          const clone = column.cloneNode(false) as HTMLTableColElement
+          const clone = cloneWithoutEditorMarkers(column, false) as HTMLTableColElement
           column.after(clone)
           columns.push(clone)
         }

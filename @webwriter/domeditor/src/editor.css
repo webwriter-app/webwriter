@@ -1697,9 +1697,18 @@ body::part(transform-overlay-z-front)::before {
 body::part(transform-overlay-restorer-hidden) {
   display: none;
 }
-/* AI edits are committed to the shared Yjs tree immediately, but remain a
- * visually distinct, read-only proposal until the user accepts or rejects
- * them. All marker classes are editor-only and excluded from serialization. */
+/* AI edits are staged in a private Yjs branch and remain a visually distinct,
+ * read-only proposal until the user accepts or rejects them. All marker
+ * classes are editor-only and excluded from serialization. */
+.◆measure-static-position {
+  position: static !important;
+  inset: auto !important;
+  translate: none !important;
+  rotate: none !important;
+  scale: none !important;
+  transform: none !important;
+}
+
 .◆ai-preview-change {
   outline: 3px solid #7c3aed !important;
   outline-offset: 3px;
@@ -1713,71 +1722,4 @@ body::part(transform-overlay-restorer-hidden) {
 @keyframes ◆ai-preview-pulse {
   0%, 35% { box-shadow: 0 0 0 6px rgb(124 58 237 / 30%); }
   100% { box-shadow: 0 0 0 18px rgb(124 58 237 / 0%); }
-}
-
-.◆ai-review-toolbar {
-  box-sizing: border-box;
-  display: flex;
-  position: fixed;
-  z-index: 2147483647;
-  pointer-events: auto;
-  user-select: auto;
-  -webkit-user-select: auto;
-  right: 1rem;
-  bottom: 1rem;
-  left: 1rem;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  max-width: 46rem;
-  margin-inline: auto;
-  padding: 0.75rem;
-  border: 1px solid #c4b5fd;
-  border-radius: 0.75rem;
-  color: #2e1065;
-  background: rgb(250 245 255 / 97%);
-  box-shadow: 0 1rem 2.5rem rgb(46 16 101 / 24%);
-  font: 14px/1.35 system-ui, sans-serif;
-}
-
-.◆ai-review-copy {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.◆ai-review-copy span {
-  overflow: hidden;
-  color: #6b21a8;
-  font-size: 0.82em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.◆ai-review-actions {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 0.5rem;
-}
-
-.◆ai-review-actions button {
-  min-height: 2.25rem;
-  padding: 0.35rem 0.8rem;
-  border: 1px solid #7c3aed;
-  border-radius: 0.45rem;
-  color: #5b21b6;
-  background: #fff;
-  font: inherit;
-  font-weight: 650;
-  cursor: pointer;
-}
-
-.◆ai-review-actions button[data-action="accept"] {
-  color: #fff;
-  background: #7c3aed;
-}
-
-.◆ai-review-actions button:focus-visible {
-  outline: 3px solid #a78bfa;
-  outline-offset: 2px;
 }

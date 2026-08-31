@@ -46,8 +46,75 @@ import {getSectionOption, isSectionElement} from "./sections"
 
 const editorStylesheet = createStylesheet(editorStyleString)
 const appendixStylesheet = createStylesheet(`
-  :host(.◆editing-locked) > :not(slot) {
+  :host(.◆editing-locked) > :not(slot):not(.◆ai-review-toolbar) {
     display: none !important;
+  }
+
+  .◆ai-review-toolbar {
+    box-sizing: border-box;
+    display: flex;
+    position: fixed;
+    z-index: 2147483647;
+    pointer-events: auto;
+    user-select: auto;
+    -webkit-user-select: auto;
+    right: 1rem;
+    bottom: 1rem;
+    left: 1rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    max-width: 46rem;
+    margin-inline: auto;
+    padding: 0.75rem;
+    border: 1px solid #c4b5fd;
+    border-radius: 0.75rem;
+    color: #2e1065;
+    background: rgb(250 245 255 / 97%);
+    box-shadow: 0 1rem 2.5rem rgb(46 16 101 / 24%);
+    font: 14px/1.35 system-ui, sans-serif;
+  }
+
+  .◆ai-review-copy {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .◆ai-review-copy span {
+    overflow: hidden;
+    color: #6b21a8;
+    font-size: 0.82em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .◆ai-review-actions {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 0.5rem;
+  }
+
+  .◆ai-review-actions button {
+    min-height: 2.25rem;
+    padding: 0.35rem 0.8rem;
+    border: 1px solid #7c3aed;
+    border-radius: 0.45rem;
+    color: #5b21b6;
+    background: #fff;
+    font: inherit;
+    font-weight: 650;
+    cursor: pointer;
+  }
+
+  .◆ai-review-actions button[data-action="accept"] {
+    color: #fff;
+    background: #7c3aed;
+  }
+
+  .◆ai-review-actions button:focus-visible {
+    outline: 3px solid #a78bfa;
+    outline-offset: 2px;
   }
 
   .◆comment-bauble {
@@ -240,6 +307,24 @@ export type DOMEditorOptions = {
   bridgeOrigin?: string
 }
 
+type HostDocumentState = {
+  designMode: string
+  contentEditable: string
+  spellcheck: boolean
+  inert: boolean
+}
+
+type DocumentEditorSession = {
+  state: HostDocumentState
+  hadEditorStylesheet: boolean
+  initialAppendix: ShadowRoot | null
+  hadAppendixStylesheet: boolean
+  hadDefaultSlot: boolean
+  createdDefaultSlot: HTMLSlotElement | null
+}
+
+const documentEditorSessions = new WeakMap<Document, DocumentEditorSession>()
+
 type FeatureActions<F extends keyof DOMEditor["features"]> = NonNullable<DOMEditor["features"][F]["actions"]>
 type FeatureAction<F extends keyof DOMEditor["features"]> = {
   [K in keyof FeatureActions<F>]: FeatureActions<F>[K] extends (...args: infer Parameters) => unknown
@@ -250,11 +335,30 @@ export type EditingAction = {
   [F in keyof DOMEditor["features"]]: FeatureAction<F>
 }[keyof DOMEditor["features"]]
 
+/** Orchestrates the one live editor for the current browser document. Feature
+ * listeners, authored selection, and the BODY shadow appendix are document-
+ * global, so a second active instance is rejected until the first is destroyed. */
 export class DOMEditor {
   
   doc: SharedDOMDoc
   parser = new DOMParser()
   schema = new Schema()
+  readonly #originalDocumentState = {
+    designMode: document.designMode,
+    contentEditable: document.body.contentEditable,
+    spellcheck: document.body.spellcheck,
+    inert: document.body.inert,
+  }
+  readonly #initialAppendix = document.body.shadowRoot
+  readonly #hadEditorStylesheet = document.adoptedStyleSheets.includes(editorStylesheet)
+  readonly #hadAppendixStylesheet = this.#initialAppendix?.adoptedStyleSheets.includes(appendixStylesheet) ?? false
+  readonly #hadDefaultSlot = Boolean(this.#initialAppendix && Array.from(this.#initialAppendix.children).some(element => (
+    element.localName === "slot" && !element.hasAttribute("name")
+  )))
+  readonly #appendixElements = new Set<WeakRef<Element>>()
+  #createdDefaultSlot: HTMLSlotElement | null = null
+  #documentSession: DocumentEditorSession | null = null
+  #destroyed = false
   
   features = {
     "dependency": new DependencyFeature(this),
@@ -276,19 +380,30 @@ export class DOMEditor {
     "media": new MediaFeature(this),
   } as const
 
-  ignoreAttrs = ["contenteditable", "spellcheck", "inert"]
+  ignoreAttrs = ["contenteditable", "spellcheck"]
   ignoreClasses = ["◆"]
 
   readonly #editingLocks = new Set<unknown>()
   readonly #blockedEditingEventTypes = [
     "beforeinput", "keydown", "paste", "cut", "drop", "compositionstart",
   ] as const
-  #editingState: {designMode: string, contentEditable: string, inert: boolean} | null = null
+  #editingState: {
+    designMode: string
+    contentEditable: string
+    bodyInert: boolean
+    slotInert: boolean
+  } | null = null
   readonly #bridgeNonce: string
   readonly #bridgeOrigin: string
 
   readonly #blockEditingInteraction = (event: Event) => {
-    if(!this.#editingLocks.size || !event.composedPath().includes(document.body)) return
+    const path = event.composedPath()
+    const appendix = document.body.shadowRoot
+    const target = path[0]
+    const comesFromAppendix = Boolean(appendix
+      && target instanceof Node
+      && target.getRootNode() === appendix)
+    if(!this.#editingLocks.size || !path.includes(document.body) || comesFromAppendix) return
     event.preventDefault()
     event.stopImmediatePropagation()
   }
@@ -302,21 +417,24 @@ export class DOMEditor {
   }
 
   /** Disables local authored-DOM interaction while keeping editor-owned UI
-   * outside BODY available. Multiple features may hold independent locks. */
+   * in BODY's shadow appendix available. Multiple features may hold locks. */
   lockEditing(owner: unknown) {
     if(this.#editingLocks.has(owner)) return
     if(this.#editingLocks.size === 0) {
+      const slot = this.defaultAppendixSlot
       this.#editingState = {
         designMode: document.designMode,
         contentEditable: document.body.contentEditable,
-        inert: document.body.inert,
+        bodyInert: document.body.inert,
+        slotInert: slot.inert,
       }
       this.#blockedEditingEventTypes.forEach(type => {
         document.addEventListener(type, this.#blockEditingInteraction, true)
       })
       document.designMode = "off"
       document.body.contentEditable = "false"
-      document.body.inert = true
+      document.body.inert = false
+      slot.inert = true
       document.body.classList.add("◆", "◆editing-locked")
       if(document.activeElement instanceof HTMLElement && document.activeElement !== document.body) {
         document.activeElement.blur()
@@ -333,7 +451,8 @@ export class DOMEditor {
     const state = this.#editingState
     this.#editingState = null
     if(!state) return
-    document.body.inert = state.inert
+    this.defaultAppendixSlot.inert = state.slotInert
+    document.body.inert = state.bodyInert
     document.body.contentEditable = state.contentEditable
     document.designMode = state.designMode
     document.body.classList.remove("◆editing-locked")
@@ -428,45 +547,134 @@ export class DOMEditor {
     return [point.node, Math.min(point.offset, maxOffset)]
   }
 
+  private cleanupUnregisteredAppendix() {
+    this.#appendixElements.forEach(reference => reference.deref()?.remove())
+    this.#appendixElements.clear()
+    const appendix = document.body.shadowRoot
+    if(appendix && !this.#hadAppendixStylesheet) {
+      appendix.adoptedStyleSheets = appendix.adoptedStyleSheets.filter(sheet => sheet !== appendixStylesheet)
+    }
+    if(this.#initialAppendix && !this.#hadDefaultSlot && this.#createdDefaultSlot?.parentNode === this.#initialAppendix) {
+      this.#createdDefaultSlot.remove()
+    }
+  }
+
+  private registerDocumentSession() {
+    if(documentEditorSessions.has(document)) {
+      throw new Error("Only one DOMEditor can be active in a document")
+    }
+    const session = {
+      state: {...this.#originalDocumentState},
+      hadEditorStylesheet: this.#hadEditorStylesheet,
+      initialAppendix: this.#initialAppendix,
+      hadAppendixStylesheet: this.#hadAppendixStylesheet,
+      hadDefaultSlot: this.#hadDefaultSlot,
+      createdDefaultSlot: this.#createdDefaultSlot,
+    }
+    documentEditorSessions.set(document, session)
+    this.#documentSession = session
+  }
+
+  private releaseDocumentSession() {
+    const session = this.#documentSession
+    this.#documentSession = null
+    if(!session || documentEditorSessions.get(document) !== session) return
+    documentEditorSessions.delete(document)
+    document.body.inert = session.state.inert
+    document.body.contentEditable = session.state.contentEditable
+    document.body.spellcheck = session.state.spellcheck
+    document.designMode = session.state.designMode
+    if(!session.hadEditorStylesheet) {
+      document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== editorStylesheet)
+    }
+    const appendix = document.body.shadowRoot
+    if(appendix && !session.hadAppendixStylesheet) {
+      appendix.adoptedStyleSheets = appendix.adoptedStyleSheets.filter(sheet => sheet !== appendixStylesheet)
+    }
+    // A ShadowRoot cannot be detached. Keep its default slot when the editor
+    // created the root, otherwise authored light-DOM children would disappear.
+    // For a pre-existing appendix, remove only the slot this editor added.
+    if(session.initialAppendix && !session.hadDefaultSlot
+      && session.createdDefaultSlot?.parentNode === session.initialAppendix) {
+      session.createdDefaultSlot.remove()
+    }
+  }
+
   constructor(options: DOMEditorOptions = {}) {
     this.#bridgeNonce = options.bridgeNonce ?? globalThis.crypto?.randomUUID?.() ?? `bridge-${Date.now()}-${Math.random()}`
     this.#bridgeOrigin = options.bridgeOrigin && options.bridgeOrigin !== "null"
       ? options.bridgeOrigin
       : window.location.origin
-    // this.schema.checkAndCorrect()
-    adoptStylesheet(document, editorStylesheet)
-    document.body.contentEditable = "true"
-    document.designMode = "on"
-    document.body.spellcheck = false
+    let syncUrl: URL | undefined
+    if(options.syncUrl) {
+      try {
+        syncUrl = new URL(options.syncUrl)
+        if(syncUrl.protocol !== "ws:" && syncUrl.protocol !== "wss:") {
+          throw new TypeError("The collaboration URL must use ws: or wss:")
+        }
+      }
+      catch(error) {
+        this.cleanupUnregisteredAppendix()
+        throw error
+      }
+    }
     const initialState = options.initialState
     const initialYDoc = initialState?.update?.length ? new Y.Doc() : undefined
     if(initialYDoc) {
-      Y.applyUpdate(initialYDoc, Uint8Array.from(initialState!.update))
+      try {
+        Y.applyUpdate(initialYDoc, Uint8Array.from(initialState!.update))
+      }
+      catch(error) {
+        this.cleanupUnregisteredAppendix()
+        throw new TypeError("The initial editor state contains an invalid Yjs update", {cause: error})
+      }
     }
-    if(options.syncUrl) {
-      const syncUrl = new URL(options.syncUrl)
-      const sessionId = syncUrl.searchParams.get("session") ?? syncUrl.pathname.split("/").filter(Boolean).at(-1)
-      this.doc = new SharedDOMDoc(syncUrl.origin, sessionId, this.ignoreAttrs, this.ignoreClasses, {
-        ...(initialYDoc ? {ydoc: initialYDoc} : {}),
-      })
+    try {
+      this.registerDocumentSession()
     }
-    else {
-      this.doc = new SharedDOMDoc(undefined, undefined, this.ignoreAttrs, this.ignoreClasses, {
-        ...(initialYDoc ? {ydoc: initialYDoc} : {}),
-      })
+    catch(error) {
+      initialYDoc?.destroy()
+      this.cleanupUnregisteredAppendix()
+      throw error
     }
-    Object.entries(this.features)
-      .filter(([key]) => !featuresDisabledByDefault.has(key))
-      .forEach(([, feat]) => feat.enable())
-    document.addEventListener("input", this.#handleInput)
-    document.addEventListener("selectionchange", this.handleSelectionChange)
-    if(initialState?.selection) this.doc.restoreSelection(initialState.selection)
-    else this.doc.updateLocalSelection()
-    this.postMarkState()
-    this.postCommentState()
-    this.postSelectionPath()
-    document.addEventListener("copy", this.#onCopy)
-    window.addEventListener("message", this.handleMessage)
+    try {
+      adoptStylesheet(document, editorStylesheet)
+      document.body.contentEditable = "true"
+      document.designMode = "on"
+      document.body.spellcheck = false
+      if(syncUrl) {
+        const sessionId = syncUrl.searchParams.get("session") ?? syncUrl.pathname.split("/").filter(Boolean).at(-1)
+        this.doc = new SharedDOMDoc(syncUrl.origin, sessionId, this.ignoreAttrs, this.ignoreClasses, {
+          ...(initialYDoc ? {ydoc: initialYDoc} : {}),
+        })
+      }
+      else {
+        this.doc = new SharedDOMDoc(undefined, undefined, this.ignoreAttrs, this.ignoreClasses, {
+          ...(initialYDoc ? {ydoc: initialYDoc} : {}),
+        })
+      }
+      Object.entries(this.features)
+        .filter(([key]) => !featuresDisabledByDefault.has(key))
+        .forEach(([, feat]) => feat.enable())
+      document.addEventListener("input", this.#handleInput)
+      document.addEventListener("selectionchange", this.handleSelectionChange)
+      if(initialState?.selection) this.doc.restoreSelection(initialState.selection)
+      else this.doc.updateLocalSelection()
+      this.postMarkState()
+      this.postCommentState()
+      this.postSelectionPath()
+      document.addEventListener("copy", this.#onCopy)
+      window.addEventListener("message", this.handleMessage)
+    }
+    catch(error) {
+      try {
+        this.destroy()
+      }
+      catch {
+        // Preserve the initialization failure after best-effort teardown.
+      }
+      throw error
+    }
   }
 
   #handleInput = (ev: Event) => {
@@ -475,12 +683,28 @@ export class DOMEditor {
   }
 
   destroy() {
-    Object.values(this.features).forEach(feature => feature.disable())
+    if(this.#destroyed) return
+    this.#destroyed = true
+    let teardownError: unknown
+    const attempt = (callback: () => void) => {
+      try {
+        callback()
+      }
+      catch(error) {
+        teardownError ??= error
+      }
+    }
+    for(const owner of Array.from(this.#editingLocks)) attempt(() => this.unlockEditing(owner))
+    Object.values(this.features).forEach(feature => attempt(() => feature.disable()))
     document.removeEventListener("input", this.#handleInput)
     document.removeEventListener("selectionchange", this.handleSelectionChange)
     document.removeEventListener("copy", this.#onCopy)
     window.removeEventListener("message", this.handleMessage)
-    this.doc.destroy()
+    if(this.doc) attempt(() => this.doc.destroy())
+    this.#appendixElements.forEach(reference => reference.deref()?.remove())
+    this.#appendixElements.clear()
+    this.releaseDocumentSession()
+    if(teardownError) throw teardownError
   }
 
   private handleSelectionChange = (event: Event) => {
@@ -589,8 +813,13 @@ export class DOMEditor {
   private postBridgeEvent<T extends object>(type: string, detail: T) {
     const event = new CustomEvent(type, {detail})
     window.dispatchEvent(event)
+    this.postHostMessage({type: event.type, detail: event.detail})
+  }
+
+  /** Sends an authenticated message to the configured host window. */
+  postHostMessage(message: object) {
     const target = window.parent === window? window: window.parent
-    target.postMessage({type: event.type, detail: event.detail, bridgeNonce: this.#bridgeNonce}, this.#bridgeOrigin)
+    target.postMessage({...message, bridgeNonce: this.#bridgeNonce}, this.#bridgeOrigin)
   }
 
   private postExecutionEvent<T extends object>(type: string, detail: T) {
@@ -742,18 +971,43 @@ export class DOMEditor {
   }
 
   postAction(action: EditingAction) {
-    postMessage(action)
+    this.postHostMessage(action)
   }
 
   get appendix() {
     const shadowRoot = document.body.shadowRoot ?? document.body.attachShadow({mode: "open"})
-    adoptStylesheet(shadowRoot, appendixStylesheet)
-    const slot = shadowRoot.querySelector("slot") ?? document.createElement("slot")
-    shadowRoot.appendChild(slot)
+    if(!this.#destroyed) {
+      adoptStylesheet(shadowRoot, appendixStylesheet)
+      this.ensureDefaultAppendixSlot(shadowRoot)
+    }
     return shadowRoot
   }
 
+  private ensureDefaultAppendixSlot(shadowRoot: ShadowRoot) {
+    const slot = Array.from(shadowRoot.children).find(element => (
+      element.localName === "slot" && !element.hasAttribute("name")
+    )) as HTMLSlotElement | undefined
+    if(slot) return slot
+    const created = document.createElement("slot")
+    this.#createdDefaultSlot = created
+    if(this.#documentSession && !this.#documentSession.createdDefaultSlot) {
+      this.#documentSession.createdDefaultSlot = created
+    }
+    shadowRoot.append(created)
+    return created
+  }
+
+  private get defaultAppendixSlot() {
+    return this.ensureDefaultAppendixSlot(this.appendix)
+  }
+
   addAppendix(el: Element) {
+    if(this.#destroyed) return
+    this.#appendixElements.forEach(reference => {
+      const element = reference.deref()
+      if(!element || element === el) this.#appendixElements.delete(reference)
+    })
+    this.#appendixElements.add(new WeakRef(el))
     this.appendix.append(el)
   }
 
@@ -909,26 +1163,20 @@ export class DOMEditor {
   }
   
   clearEditingArtifacts(node: Document | DocumentFragment = document) {
-    const documentNode = node.nodeType === Node.DOCUMENT_NODE? node as Document: null
-    if(documentNode) {
-      documentNode.body.removeAttribute("contenteditable")
-      documentNode.body.removeAttribute("spellcheck")
-      documentNode.querySelectorAll("[data-webwriter-editor-only]").forEach(element => element.remove())
-    }
-    const editingElements = Array.from(node.querySelectorAll<HTMLElement>("[class]"))
-      .filter(element => Array.from(element.classList).some(name => name.startsWith("◆")))
-    editingElements.forEach(el => {
-      if(Array.from(el.classList).some(name => name === "◆editor-only")) {
-        el.remove()
+    const clean = (root: ParentNode) => Array.from(root.childNodes).forEach(child => {
+      if(!(child instanceof Element)) return
+      if(child.hasAttribute("data-webwriter-editor-only") || child.classList.contains("◆editor-only")) {
+        child.remove()
+        return
       }
-      else {
-        const classes = Array.from(el.classList)
-        el.classList.remove(...classes.filter(cls => cls.startsWith("◆")))
-        if(!el.classList.length) {
-          el.removeAttribute("class")
-        }
-      }
+      this.ignoreAttrs.forEach(attribute => child.removeAttribute(attribute))
+      const markers = Array.from(child.classList).filter(name => name.startsWith("◆"))
+      if(markers.length) child.classList.remove(...markers)
+      if(!child.classList.length) child.removeAttribute("class")
+      if(child instanceof HTMLTemplateElement) clean(child.content)
+      clean(child)
     })
+    clean(node)
   }
 
 

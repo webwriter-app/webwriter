@@ -206,4 +206,27 @@ describe("form editing", () => {
     expect(select.options[0]).not.toHaveAttribute("selected")
     expect(select.options[1]).toHaveAttribute("selected")
   })
+
+  it("does not serialize password values", () => {
+    document.body.innerHTML = '<input type="password" value="placeholder">'
+    const password = document.querySelector<HTMLInputElement>('input[type="password"]')!
+    password.value = "secret"
+    password.dispatchEvent(new Event("input", {bubbles: true}))
+
+    expect(password).toHaveAttribute("value", "placeholder")
+    expect(editor.toHTML(true)).not.toContain("secret")
+  })
+
+  it("keeps unnamed radio buttons independent", () => {
+    document.body.innerHTML = '<input type="radio"><input type="radio">'
+    const radios = document.querySelectorAll<HTMLInputElement>('input[type="radio"]')
+
+    radios[0].checked = true
+    radios[0].dispatchEvent(new Event("input", {bubbles: true}))
+    radios[1].checked = true
+    radios[1].dispatchEvent(new Event("input", {bubbles: true}))
+
+    expect(radios[0]).toHaveAttribute("checked")
+    expect(radios[1]).toHaveAttribute("checked")
+  })
 })

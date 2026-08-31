@@ -386,38 +386,42 @@ describe("document listeners", () => {
 
   it("restores the empty-document caret when a shared change removes the final node", async () => {
     const p = el("p", "hello")
-    await new Promise<void>(resolve => queueMicrotask(resolve))
+    await vi.waitFor(() => {
+      expect(editor.doc.body.firstChild?.toString()).toBe("<p>hello</p>")
+    }, {timeout: 5_000})
     $.move(p.firstChild!, 2)
     feature.processSelection()
 
     editor.doc.doc.transact(() => editor.doc.body.delete(0, editor.doc.body.length), "remote-test")
-    await new Promise<void>(resolve => queueMicrotask(resolve))
-
-    expect(document.body.innerHTML).toBe("")
-    expect($.anchor).toBe(document.body)
-    expect($.anchorOffset).toBe(0)
-    expect(document.body).toHaveClass("◆empty-selected")
-    expect(feature.emptyDocumentCaret).toHaveAttribute("part", "empty-document-caret")
+    await vi.waitFor(() => {
+      expect(document.body.innerHTML).toBe("")
+      expect($.anchor).toBe(document.body)
+      expect($.anchorOffset).toBe(0)
+      expect(document.body).toHaveClass("◆empty-selected")
+      expect(feature.emptyDocumentCaret).toHaveAttribute("part", "empty-document-caret")
+    }, {timeout: 5_000})
   })
 
   it("posts the Document breadcrumb when a shared change removes the final node", async () => {
     const p = el("p", "hello")
-    await new Promise<void>(resolve => queueMicrotask(resolve))
+    await vi.waitFor(() => {
+      expect(editor.doc.body.firstChild?.toString()).toBe("<p>hello</p>")
+    }, {timeout: 5_000})
     $.move(p.firstChild!, 2)
     feature.processSelection()
     await new Promise<void>(resolve => queueMicrotask(resolve))
     const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => {})
 
     editor.doc.doc.transact(() => editor.doc.body.delete(0, editor.doc.body.length), "remote-test")
-    await new Promise<void>(resolve => queueMicrotask(resolve))
-
-    expect(postMessage).toHaveBeenLastCalledWith({
-      type: selectionChangeEvent,
-      bridgeNonce: editor.trustedScriptNonce,
-      detail: {
-        path: [{path: [], name: "Document", icon: "Document"}],
-      },
-    }, window.location.origin)
+    await vi.waitFor(() => {
+      expect(postMessage).toHaveBeenLastCalledWith({
+        type: selectionChangeEvent,
+        bridgeNonce: editor.trustedScriptNonce,
+        detail: {
+          path: [{path: [], name: "Document", icon: "Document"}],
+        },
+      }, window.location.origin)
+    }, {timeout: 5_000})
   })
 
   it("posts a user-facing selection path through the bridge", () => {

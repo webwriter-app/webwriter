@@ -183,12 +183,60 @@ describe("moveZ()", () => {
     expect(d1.style.zIndex).toBe("2")
     expect(d3.style.zIndex).toBe("3")
   })
+  it("moves an element forward exactly one step", () => {
+    const [d1, d2, d3, d4] = [el(), el(), el(), el()]
+    feature.moveZ(d2, true)
+    expect(d1.style.zIndex).toBe("1")
+    expect(d3.style.zIndex).toBe("2")
+    expect(d2.style.zIndex).toBe("3")
+    expect(d4.style.zIndex).toBe("4")
+  })
+  it("does nothing for a disconnected element", () => {
+    const target = document.createElement("div")
+    expect(() => feature.moveZ(target, true)).not.toThrow()
+    expect(target.style.zIndex).toBe("")
+  })
   it("cycles from the top back to the bottom", () => {
     const [d1, d2, d3] = [el(), el(), el()]
     feature.moveZ(d3, true, false, true)
     expect(d3.style.zIndex).toBe("1")
     expect(d1.style.zIndex).toBe("2")
     expect(d2.style.zIndex).toBe("3")
+  })
+  it("cycles from the bottom back to the top", () => {
+    const [d1, d2, d3] = [el(), el(), el()]
+    feature.moveZ(d1, false, false, true)
+    expect(d2.style.zIndex).toBe("1")
+    expect(d3.style.zIndex).toBe("2")
+    expect(d1.style.zIndex).toBe("3")
+  })
+})
+
+describe("transform context", () => {
+  it("falls back to the viewport for sticky elements without a scrolling ancestor", () => {
+    const target = el()
+    target.style.position = "sticky"
+    feature.startTransform(target)
+
+    expect(feature.targetOriginRect.width).toBe(window.innerWidth)
+    expect(feature.targetOriginRect.height).toBe(window.innerHeight)
+  })
+
+  it("replaces stale context markers when the stacking container changes", () => {
+    const container = document.createElement("div")
+    const target = document.createElement("div")
+    container.append(target)
+    document.body.append(container)
+
+    feature.startTransform(target)
+    expect(document.documentElement).toHaveClass("◆transform-stacking-container")
+
+    container.style.position = "relative"
+    container.style.zIndex = "1"
+    feature.updateInfo()
+
+    expect(container).toHaveClass("◆transform-stacking-container")
+    expect(document.documentElement).not.toHaveClass("◆transform-stacking-container")
   })
 })
 
@@ -215,38 +263,48 @@ describe("document listeners", () => {
     expect(document.body.contains(target)).toBe(false)
     expect(document.querySelector(".◆transform-target")).toBeNull()
   })
-  it("copies the target without editor-only elements", async () => {
+  it("copies the target without editor-only elements", () => {
     const target = el("div", "hi")
     const helper = document.createElement("span")
     helper.classList.add("◆", "◆editor-only")
     helper.textContent = "HELPER"
     target.append(helper)
     feature.startTransform(target)
-    document.dispatchEvent(new Event("copy"))
-    await new Promise(resolve => setTimeout(resolve))
-    const item = (await navigator.clipboard.read()).find(item => item.types.includes("text/html"))
-    const html = await (await item?.getType("text/html"))?.text()
+    const data = new DataTransfer()
+    document.dispatchEvent(new ClipboardEvent("copy", {clipboardData: data, bubbles: true, cancelable: true}))
+    const html = data.getData("text/html")
     expect(html).toContain("hi")
     expect(html).not.toContain("HELPER")
   })
-  it("copies the target without marker classes", async () => {
+  it("copies the target without marker classes", () => {
     const target = el("div", "hi")
     feature.startTransform(target)
-    document.dispatchEvent(new Event("copy"))
-    await new Promise(resolve => setTimeout(resolve))
-    const item = (await navigator.clipboard.read()).find(item => item.types.includes("text/html"))
-    const html = await (await item?.getType("text/html"))?.text()
+    const data = new DataTransfer()
+    document.dispatchEvent(new ClipboardEvent("copy", {clipboardData: data, bubbles: true, cancelable: true}))
+    const html = data.getData("text/html")
     expect(html).not.toContain("◆")
   })
-  it("cuts the target out of the document", async () => {
+  it("does not copy marker classes from template contents", () => {
+    const target = el("div", "hi")
+    const template = document.createElement("template")
+    template.innerHTML = '<span class="authored ◆nested-marker">nested</span><i class="◆ ◆editor-only">hidden</i>'
+    target.append(template)
+    feature.startTransform(target)
+
+    const data = new DataTransfer()
+    document.dispatchEvent(new ClipboardEvent("copy", {clipboardData: data, bubbles: true, cancelable: true}))
+    const html = data.getData("text/html")
+    expect(html).toContain('class="authored"')
+    expect(html).not.toContain("◆nested-marker")
+    expect(html).not.toContain("hidden")
+  })
+  it("cuts the target out of the document", () => {
     const target = el("div", "hi")
     feature.startTransform(target)
-    document.dispatchEvent(new Event("cut"))
-    await new Promise(resolve => setTimeout(resolve))
+    const data = new DataTransfer()
+    document.dispatchEvent(new ClipboardEvent("cut", {clipboardData: data, bubbles: true, cancelable: true}))
     expect(document.body.contains(target)).toBe(false)
-    const item = (await navigator.clipboard.read()).find(item => item.types.includes("text/html"))
-    const html = await (await item?.getType("text/html"))?.text()
-    expect(html).toContain("hi")
+    expect(data.getData("text/html")).toContain("hi")
   })
   it("clears the transform on a click outside the overlay", () => {
     const target = el()

@@ -130,8 +130,7 @@ export class StateFeature extends EditorFeature {
       cancelable: true,
     }))
     if(handled) return
-    const target = window.parent === window ? window : window.parent
-    target.postMessage({type: aiEditReviewEvent, detail}, "*")
+    this.editor.postHostMessage({type: aiEditReviewEvent, detail})
   }
 
   private lockForAIReview(editId: string, summary: string) {
@@ -144,6 +143,7 @@ export class StateFeature extends EditorFeature {
     toolbar.className = "◆editor-only ◆ai-review-toolbar"
     toolbar.setAttribute("role", "dialog")
     toolbar.setAttribute("aria-label", "Review AI document change")
+    toolbar.addEventListener("keydown", event => event.stopPropagation())
     const copy = document.createElement("div")
     copy.className = "◆ai-review-copy"
     const label = document.createElement("strong")
@@ -162,7 +162,7 @@ export class StateFeature extends EditorFeature {
       actions.append(button)
     }
     toolbar.append(copy, actions)
-    document.documentElement.append(toolbar)
+    this.editor.addAppendix(toolbar)
     this.reviewToolbar = toolbar
   }
 
@@ -305,6 +305,7 @@ export class StateFeature extends EditorFeature {
   } as const
 
   disable() {
+    if(!this.isEnabled) return
     this.aiPreview?.reject()
     this.aiPreview = null
     for(const editId of this.aiEditMarkers.keys()) this.clearAIEditMarkers(editId)

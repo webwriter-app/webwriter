@@ -152,6 +152,8 @@ describe("editor bridge message guards", () => {
       {type: initializeEditorMessage, syncUrl: "", initialState: {update: [1.5]}},
       {type: initializeEditorMessage, syncUrl: "", initialState: {update: [256]}},
       {type: initializeEditorMessage, syncUrl: "file:///etc/passwd"},
+      {type: initializeEditorMessage, syncUrl: "http://localhost/session"},
+      {type: initializeEditorMessage, syncUrl: "https://localhost/session"},
       {type: initializeEditorMessage, syncUrl: "ws://localhost/session", bridgeNonce: "short"},
     ])
   })
@@ -163,7 +165,16 @@ describe("editor bridge message guards", () => {
       packages: [{
         name: "@webwriter/example",
         version: "1.2.3",
-        members: [],
+        members: [{
+          id: "@webwriter/example@1.2.3:./widget",
+          packageName: "@webwriter/example",
+          packageVersion: "1.2.3",
+          exportName: "./widget",
+          kind: "widget",
+          label: "Example",
+          insertable: true,
+          tagName: "webwriter-example",
+        }],
         scripts: [],
         styles: [],
       }],
@@ -181,6 +192,34 @@ describe("editor bridge message guards", () => {
         members: {},
         scripts: [],
         styles: [],
+      }]},
+      {type: loadWidgetsMessage, widgets: [], packages: [{
+        name: "example",
+        version: "1.0.0",
+        members: [null],
+        scripts: [],
+        styles: [],
+      }]},
+      {type: loadWidgetsMessage, widgets: [], packages: [{
+        name: "example",
+        version: "1.0.0",
+        members: [{}],
+        scripts: [],
+        styles: [],
+      }]},
+      {type: loadWidgetsMessage, widgets: [], packages: [{
+        name: "example",
+        version: "1.0.0",
+        members: [{}],
+        scripts: [null],
+        styles: [],
+      }]},
+      {type: loadWidgetsMessage, widgets: [], packages: [{
+        name: "example",
+        version: "1.0.0",
+        members: [{}],
+        scripts: [],
+        styles: [{}],
       }]},
     ])
   })

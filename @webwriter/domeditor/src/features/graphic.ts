@@ -538,6 +538,7 @@ export class GraphicFeature extends EditorFeature {
   }
 
   disable() {
+    if(!this.isEnabled) return
     window.removeEventListener("resize", this.#scheduleRefresh)
     window.removeEventListener("blur", this.#handleWindowBlur)
     document.removeEventListener("scroll", this.#scheduleRefresh, true)

@@ -196,9 +196,12 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expect($.anchorOffset).toBe(1)
 
     await vi.waitFor(() => {
-      expect(editor.doc.body.firstChild?.toString()).toBe("<p>a</p>")
-    })
-  })
+      expect({
+        dom: editor.toHTML(true),
+        shared: editor.doc.body.firstChild?.toString(),
+      }).toEqual({dom: "<p>a</p>", shared: "<p>a</p>"})
+    }, {timeout: 5_000})
+  }, 10_000)
 
   it("keeps replacement text in a block when the selection spans body children", () => {
     document.body.innerHTML = "<p>First</p><p>Second</p>"
@@ -240,9 +243,9 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expect(widget).toHaveClass("◆element-selected")
   })
   it.each([
-    [0, '<webwriter-demo contenteditable="true"></webwriter-demo><p>before after</p>'],
-    [6, '<p>before</p><webwriter-demo contenteditable="true"></webwriter-demo><p> after</p>'],
-    [12, '<p>before after</p><webwriter-demo contenteditable="true"></webwriter-demo>'],
+    [0, '<webwriter-demo></webwriter-demo><p>before after</p>'],
+    [6, '<p>before</p><webwriter-demo></webwriter-demo><p> after</p>'],
+    [12, '<p>before after</p><webwriter-demo></webwriter-demo>'],
   ] as const)("places a block widget outside a paragraph at text offset %i", (offset, expected) => {
     editor.schema.extendWidgets([{tagName: "webwriter-demo"}])
     document.body.innerHTML = "<p>before after</p>"
@@ -409,6 +412,21 @@ describe("sections", () => {
     expectBodyToBe('<article class="authored"><p>hello</p></article>')
     expect($.anchor).toBe(text)
   })
+  it("does not copy editor marker classes when changing section type", () => {
+    document.body.innerHTML = '<section class="authored ◆stale-marker"><p>hello</p></section>'
+    const section = document.querySelector("section")!
+    const text = section.querySelector("p")!.firstChild!
+    $.move(text, 2)
+
+    expect(editor.features.manipulation.actions.setSectionType({
+      type: "setSectionType",
+      section: "article",
+    })).toBe(true)
+
+    const replacement = document.querySelector("article")!
+    expect(replacement).toHaveClass("authored")
+    expect(replacement).not.toHaveClass("◆stale-marker")
+  })
 
   it("splits a section when only one of its elements is toggled off", () => {
     document.body.innerHTML = "<section><p>one</p><p>two</p><p>three</p></section>"
@@ -419,6 +437,20 @@ describe("sections", () => {
 
     expectBodyToBe("<section><p>one</p></section><p>two</p><section><p>three</p></section>")
     expect($.anchor).toBe(middle.firstChild)
+  })
+  it("does not copy editor marker classes to split section wrappers", () => {
+    document.body.innerHTML = '<section class="authored ◆stale-marker"><p>one</p><p>two</p><p>three</p></section>'
+    const middle = document.querySelectorAll("p")[1]
+    $.move(middle.firstChild!, 1)
+
+    expect(editor.features.manipulation.actions.toggleSection({type: "toggleSection"})).toBe(true)
+
+    const wrappers = document.querySelectorAll("section")
+    expect(wrappers).toHaveLength(2)
+    wrappers.forEach(wrapper => {
+      expect(wrapper).toHaveClass("authored")
+      expect(wrapper).not.toHaveClass("◆stale-marker")
+    })
   })
 
   it("stacks a default outer section around a breadcrumb-selected section", () => {
@@ -675,6 +707,15 @@ describe("wrap()", () => {
     $.selectElement(document.body.firstElementChild!)
     editor.features.manipulation.wrap(htmlToFragment("<section></section>"))
     expectBodyToBe(`<section><p>a</p></section>`)
+  })
+  it("does nothing for an empty or text-only fragment wrapper", () => {
+    document.body.innerHTML = "<p>a</p>"
+    $.selectElement(document.body.firstElementChild!)
+
+    expect(() => editor.features.manipulation.wrap(htmlToFragment(""))).not.toThrow()
+    expectBodyToBe("<p>a</p>")
+    expect(() => editor.features.manipulation.wrap(htmlToFragment("text"))).not.toThrow()
+    expectBodyToBe("<p>a</p>")
   })
   it("wraps multiple selected blocks", () => {
     document.body.innerHTML = "<p>a</p><p>b</p>"
@@ -964,7 +1005,7 @@ describe("paste()", () => {
 
     await editor.features.manipulation.paste()
 
-    expectBodyToBe('<p>he</p><demo-widget contenteditable="true">Widget</demo-widget><p>llo</p>')
+    expectBodyToBe("<p>he</p><demo-widget>Widget</demo-widget><p>llo</p>")
     expect(document.querySelector("demo-widget")).toHaveAttribute("contenteditable", "true")
     expect($.selectedElement).toBe(document.querySelector("demo-widget"))
   })
@@ -1003,6 +1044,12 @@ describe("setAttributes()", () => {
     $.selectElement(document.body.firstElementChild!)
     editor.features.manipulation.setAttributes({title: null})
     expect((document.body.firstElementChild as HTMLElement)).not.toHaveAttribute("title")
+  })
+  it("accepts null removal through the action payload", () => {
+    document.body.innerHTML = `<p title="test">hello world</p>`
+    $.selectElement(document.body.firstElementChild!)
+    editor.features.manipulation.actions.setAttributes({type: "setAttributes", attrs: {title: null}})
+    expect(document.body.firstElementChild).not.toHaveAttribute("title")
   })
   it("can set and remove attributes in the same call", () => {
     document.body.innerHTML = `<p id="old">hello world</p>`
@@ -1068,6 +1115,30 @@ describe("setBlockType()", () => {
     expect($.anchorOffset).toBe(1)
     expect($.focus).toBe(text)
     expect($.focusOffset).toBe(4)
+  })
+  it("does not copy editor marker classes to a replacement block", () => {
+    document.body.innerHTML = '<p class="authored ◆stale-marker"><b>hello</b></p>'
+    const text = document.querySelector("b")!.firstChild!
+    $.selectRange(text, 1, text, 4)
+
+    expect(editor.features.manipulation.setBlockType("h2")).toBe(1)
+
+    const replacement = document.querySelector("h2")!
+    expect(replacement).toHaveClass("authored")
+    expect(replacement).not.toHaveClass("◆stale-marker")
+  })
+
+  it("preserves namespaced attributes on a replacement block", () => {
+    document.body.innerHTML = "<p>hello</p>"
+    const paragraph = document.querySelector("p")!
+    paragraph.setAttributeNS("http://www.w3.org/XML/1998/namespace", "xml:lang", "de")
+    $.move(paragraph.firstChild!, 1)
+
+    expect(editor.features.manipulation.setBlockType("h2")).toBe(1)
+
+    const language = document.querySelector("h2")!.getAttributeNode("xml:lang")
+    expect(language?.namespaceURI).toBe("http://www.w3.org/XML/1998/namespace")
+    expect(language?.value).toBe("de")
   })
 
   it("converts every selected leaf block without rebuilding their container", () => {

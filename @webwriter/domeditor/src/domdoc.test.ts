@@ -125,6 +125,42 @@ describe("SharedDOMDoc initialization", () => {
     expect(svg.lastElementChild?.namespaceURI).toBe("http://www.w3.org/2000/svg")
   })
 
+  it("preserves an explicit null element namespace during hydration and remote rendering", async () => {
+    const {root, shared} = createShared()
+    const element = document.createElementNS(null, "custom-node")
+    element.append("content")
+    root.append(element)
+    await mutationsDelivered()
+
+    expect((shared.body.toArray().at(-1) as Y.XmlElement).getAttribute("__domeditor_namespace")).toBe("")
+    const {root: peerRoot} = cloneShared(shared)
+    expect(peerRoot.lastElementChild?.namespaceURI).toBeNull()
+
+    const yElement = shared.body.toArray().at(-1) as Y.XmlElement
+    const yText = yElement.firstChild as Y.XmlText
+    shared.doc.transact(() => yText.insert(yText.length, " updated"), "remote-client")
+
+    expect(root.lastElementChild).toBe(element)
+    expect(element.namespaceURI).toBeNull()
+    expect(element.textContent).toBe("content updated")
+  })
+
+  it("skips malformed remote element and attribute names without aborting reconciliation", () => {
+    const {root, shared} = createShared("<p>content</p>")
+    const paragraph = shared.body.firstChild as Y.XmlElement
+    const malformed = new Y.XmlElement("")
+    const valid = new Y.XmlElement("aside")
+    valid.insert(0, [new Y.XmlText("valid sibling")])
+
+    expect(() => shared.doc.transact(() => {
+      paragraph.setAttribute("bad name", "ignored")
+      shared.body.insert(shared.body.length, [malformed, valid])
+    }, "remote-client")).not.toThrow()
+
+    expect(Array.from(root.firstElementChild!.attributes).some(attribute => attribute.name === "bad name")).toBe(false)
+    expect(root.querySelector("aside")?.textContent).toBe("valid sibling")
+  })
+
   it("shares the same Y document and awareness instance with its websocket provider", () => {
     const root = document.createElement("main")
     const shared = new SharedDOMDoc("ws://localhost:1234", "room", [], ["◆"], {root, connect: false})
@@ -324,6 +360,19 @@ describe("document head synchronization", () => {
 })
 
 describe("Yjs to DOM synchronization", () => {
+  it("does not reactivate a stopped observer when DOM synchronization resumes", async () => {
+    const {root, shared} = createShared("<p>Hello</p>")
+    shared.stopObserve()
+    shared.pauseDOMSync()
+    shared.resumeDOMSync()
+
+    root.firstElementChild!.textContent = "Changed while stopped"
+    await mutationsDelivered()
+
+    expect(shared.body.toString()).toContain("Hello")
+    shared.startObserve()
+  })
+
   it("queues shared changes while a transient DOM rendering is active", () => {
     const {root, shared} = createShared("<p>Hello</p>")
     const yParagraph = shared.body.firstChild as Y.XmlElement
@@ -510,6 +559,25 @@ describe("Yjs to DOM synchronization", () => {
 })
 
 describe("relative selections and history", () => {
+  it("normalizes invalid DOM selection offsets consistently", () => {
+    const {root, shared} = createShared("<p>Hello</p>")
+    const paragraph = root.firstElementChild!
+    const text = paragraph.firstChild!
+
+    expect(shared.domPointFromRelativePosition(shared.relativePositionFromDOMPoint(text, -1)!)).toMatchObject({
+      node: text,
+      offset: 0,
+    })
+    expect(shared.domPointFromRelativePosition(shared.relativePositionFromDOMPoint(text, 2.9)!)).toMatchObject({
+      node: text,
+      offset: 2,
+    })
+    expect(shared.domPointFromRelativePosition(shared.relativePositionFromDOMPoint(paragraph, Infinity)!)).toMatchObject({
+      node: paragraph,
+      offset: 0,
+    })
+  })
+
   it("rejects foreign Y selection nodes and malformed restored selections", () => {
     const {shared} = createShared("<p>Hello</p>")
     expect(() => shared.setSelection(new Y.XmlText("foreign") as Y.XmlText)).toThrow(TypeError)

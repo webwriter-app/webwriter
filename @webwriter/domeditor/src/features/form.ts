@@ -120,11 +120,16 @@ export class FormFeature extends EditorFeature {
         control.toggleAttribute("checked", control.checked)
       }
       else if(control.type === "radio") {
-        Array.from(document.querySelectorAll<HTMLInputElement>('input[type="radio"]'))
-          .filter(candidate => candidate.name === control.name && candidate.form === control.form)
-          .forEach(candidate => candidate.toggleAttribute("checked", candidate.checked))
+        if(control.name) {
+          Array.from(document.querySelectorAll<HTMLInputElement>('input[type="radio"]'))
+            .filter(candidate => candidate.name === control.name && candidate.form === control.form)
+            .forEach(candidate => candidate.toggleAttribute("checked", candidate.checked))
+        }
+        else {
+          control.toggleAttribute("checked", control.checked)
+        }
       }
-      else if(control.type !== "file") {
+      else if(control.type !== "file" && control.type !== "password") {
         control.setAttribute("value", control.value)
       }
     }

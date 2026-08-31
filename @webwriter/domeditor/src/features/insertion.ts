@@ -22,21 +22,30 @@ export class InsertionFeature extends EditorFeature {
   private triggerBodyMarkerAdded = false
   private emptyTextBlock: Element | null = null
   private commandObserver: MutationObserver | null = null
+  private commandGeneration = 0
+  private readonly handleMenuSelect = (event: Event) => {
+    void this.insert((event as CustomEvent<InsertionMenuItem>).detail)
+  }
+  private readonly handleMenuClose = () => this.close()
 
   enable() {
+    if(this.isEnabled) return
+    this.menu.addEventListener("insertion-menu-select", this.handleMenuSelect)
+    this.menu.addEventListener("insertion-menu-close", this.handleMenuClose)
     super.enable()
     this.createEmptyTextBlockButton()
   }
 
   disable() {
+    if(!this.isEnabled) return
+    this.menu.removeEventListener("insertion-menu-select", this.handleMenuSelect)
+    this.menu.removeEventListener("insertion-menu-close", this.handleMenuClose)
     this.close(false)
     super.disable()
   }
 
   constructor(editor: EditorFeature["editor"]) {
     super(editor)
-    this.menu.addEventListener("insertion-menu-select", ev => void this.insert((ev as CustomEvent<InsertionMenuItem>).detail))
-    this.menu.addEventListener("insertion-menu-close", () => this.close())
   }
 
   get menu() {
@@ -148,6 +157,7 @@ export class InsertionFeature extends EditorFeature {
     this.commandRange.setEnd(range.startContainer, range.startOffset)
     this.setTriggerHighlight(this.commandRange)
     const rect = this.commandPositionRect(this.commandRange)
+    this.commandGeneration++
     this.menu.showAt(rect.left, rect.bottom + 6)
     const FrameMutationObserver = document.defaultView?.MutationObserver ?? MutationObserver
     const observer = new FrameMutationObserver(() => this.updateQuery())
@@ -414,10 +424,12 @@ export class InsertionFeature extends EditorFeature {
       if(ev.key === "Enter" || ev.key === " ") activate(ev)
     })
     button.addEventListener("click", activate)
-    this.editor.appendix.append(button)
+    this.editor.addAppendix(button)
   }
 
   private async insert(item: InsertionMenuItem) {
+    const generation = this.commandGeneration
+    const isCurrentCommand = () => generation === this.commandGeneration && this.menu.open
     let html = item.tag === "table"
       ? createTable(2, 2).outerHTML
       : item.tag === "details"
@@ -428,14 +440,17 @@ export class InsertionFeature extends EditorFeature {
     if(item.htmlUrl) {
       try {
         const response = await fetch(item.htmlUrl)
+        if(!isCurrentCommand()) return
         if(!response.ok) throw new Error(`Snippet download failed (${response.status})`)
         html = await response.text()
+        if(!isCurrentCommand()) return
       }
       catch {
-        this.close()
+        if(isCurrentCommand()) this.close()
         return
       }
     }
+    if(!isCurrentCommand()) return
     if(!html) {
       this.close()
       return
@@ -512,6 +527,7 @@ export class InsertionFeature extends EditorFeature {
   }
 
   private close(restoreSelection=true) {
+    this.commandGeneration++
     this.commandObserver?.disconnect()
     this.commandObserver = null
     this.menu.open = false

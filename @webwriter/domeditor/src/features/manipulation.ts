@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, focusedWidgetHost, markWidgetsEditable, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, htmlToFragment, isElement, isOnApple } from "../utility"
+import { $, cloneWithoutEditorMarkers, focusedWidgetHost, markWidgetsEditable, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, htmlToFragment, isElement, isOnApple } from "../utility"
 import {isMarkElement} from "../marks"
 import {
   isBlockFormatTag,
@@ -59,6 +59,20 @@ function isCaretAtBoundary(element: Element, boundary: "start" | "end") {
  * setting attributes or styles on the selected elements. All operations work
  * on the current selection (see `EditingSelection`/`$`). */
 export class ManipulationFeature extends EditorFeature {
+
+  /** Copies all authored attributes, excluding transient editor marker
+   * classes, to a newly created replacement element. */
+  private copyAuthoredAttributes(source: Element, target: Element) {
+    Array.from(source.attributes).forEach(attribute => {
+      if(attribute.name !== "class") {
+        if(attribute.namespaceURI) target.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+        else target.setAttribute(attribute.name, attribute.value)
+        return
+      }
+      const classes = attribute.value.split(/\s+/).filter(name => name && !name.startsWith("◆"))
+      if(classes.length) target.setAttribute("class", classes.join(" "))
+    })
+  }
 
   /** Resolves the structural elements to which a section command applies.
    * Section wrappers themselves remain transparent here; explicitly selected
@@ -173,7 +187,7 @@ export class ManipulationFeature extends EditorFeature {
     const context = this.sectionNodes(targets)
     if(!context) return null
     const section = document.createElement(type)
-    context.nodes.forEach(node => section.append(node.cloneNode(true)))
+    context.nodes.forEach(node => section.append(cloneWithoutEditorMarkers(node, true)))
     if(!this.canReplaceWithSection(context.parent, context.first, context.last, section)) return null
 
     const liveSection = document.createElement(type)
@@ -187,13 +201,13 @@ export class ManipulationFeature extends EditorFeature {
     const parent = section.parentElement
     if(!parent) return null
     const replacement = document.createElement(type)
-    Array.from(section.attributes).forEach(attribute => replacement.setAttribute(attribute.name, attribute.value))
-    Array.from(section.childNodes).forEach(node => replacement.append(node.cloneNode(true)))
+    this.copyAuthoredAttributes(section, replacement)
+    Array.from(section.childNodes).forEach(node => replacement.append(cloneWithoutEditorMarkers(node, true)))
     const index = Array.from(parent.childNodes).indexOf(section)
     if(index < 0 || !this.canReplaceWithSection(parent, index, index, replacement)) return null
 
     const liveReplacement = document.createElement(type)
-    Array.from(section.attributes).forEach(attribute => liveReplacement.setAttribute(attribute.name, attribute.value))
+    this.copyAuthoredAttributes(section, liveReplacement)
     liveReplacement.append(...Array.from(section.childNodes))
     section.replaceWith(liveReplacement)
     this.editor.features.selection.replaceSelectedSection(section, liveReplacement)
@@ -257,14 +271,14 @@ export class ManipulationFeature extends EditorFeature {
     const middle = sectionChildren.slice(first, last + 1)
     const right = sectionChildren.slice(last + 1)
     if(left.length) {
-      const wrapper = active.cloneNode(false) as Element
-      wrapper.append(...left.map(node => node.cloneNode(true)))
+      const wrapper = cloneWithoutEditorMarkers(active, false) as Element
+      wrapper.append(...left.map(node => cloneWithoutEditorMarkers(node, true)))
       replacements.push(wrapper)
     }
-    replacements.push(...middle.map(node => node.cloneNode(true) as ChildNode))
+    replacements.push(...middle.map(node => cloneWithoutEditorMarkers(node, true) as ChildNode))
     if(right.length) {
-      const wrapper = active.cloneNode(false) as Element
-      wrapper.append(...right.map(node => node.cloneNode(true)))
+      const wrapper = cloneWithoutEditorMarkers(active, false) as Element
+      wrapper.append(...right.map(node => cloneWithoutEditorMarkers(node, true)))
       replacements.push(wrapper)
     }
     const siblings = Array.from(parent.childNodes)
@@ -275,13 +289,13 @@ export class ManipulationFeature extends EditorFeature {
 
     const liveReplacements: ChildNode[] = []
     if(left.length) {
-      const wrapper = active.cloneNode(false) as Element
+      const wrapper = cloneWithoutEditorMarkers(active, false) as Element
       wrapper.append(...left)
       liveReplacements.push(wrapper)
     }
     liveReplacements.push(...middle)
     if(right.length) {
-      const wrapper = active.cloneNode(false) as Element
+      const wrapper = cloneWithoutEditorMarkers(active, false) as Element
       wrapper.append(...right)
       liveReplacements.push(wrapper)
     }
@@ -450,14 +464,14 @@ export class ManipulationFeature extends EditorFeature {
     const count = this.withNormalization(() => blocks.reduce((converted, block) => {
       if(block.localName === tag || !block.isConnected) return converted
       const candidate = document.createElement(tag)
-      Array.from(block.attributes).forEach(attribute => candidate.setAttribute(attribute.name, attribute.value))
+      this.copyAuthoredAttributes(block, candidate)
       if(!this.editor.schema.isContentValid(candidate, Array.from(block.childNodes))
         || !this.canReplaceTextBlock(block, candidate)) {
         return converted
       }
 
       const replacement = document.createElement(tag)
-      Array.from(block.attributes).forEach(attribute => replacement.setAttribute(attribute.name, attribute.value))
+      this.copyAuthoredAttributes(block, replacement)
       replacement.append(...Array.from(block.childNodes))
       block.replaceWith(replacement)
       replacements.set(block, replacement)
@@ -646,7 +660,7 @@ export class ManipulationFeature extends EditorFeature {
       if(!parent) return
       const blockIndex = Array.from(parent.childNodes).indexOf(block)
       const proposed = Array.from(parent.childNodes)
-      proposed.splice(blockIndex + 1, 0, ...nodes, block.cloneNode(false) as ChildNode)
+      proposed.splice(blockIndex + 1, 0, ...nodes, cloneWithoutEditorMarkers(block, false) as ChildNode)
       const containsWidget = nodes.some(node => Boolean(this.insertedWidget(node)))
       if(!containsWidget && !this.editor.schema.isContentValid(parent, proposed)) {
         const fallback = this.plainTextClipboardFragment(nodes.map(node => node.textContent ?? "").join("\n"))
@@ -655,7 +669,7 @@ export class ManipulationFeature extends EditorFeature {
       }
 
       const offset = this.splitTextLikePoint(block, $.range)
-      const right = block.cloneNode(false) as Element
+      const right = cloneWithoutEditorMarkers(block, false) as Element
       right.append(...Array.from(block.childNodes).slice(offset))
       block.normalize()
       right.normalize()
@@ -744,7 +758,7 @@ export class ManipulationFeature extends EditorFeature {
         pointOffset = index + 1
       }
       else {
-        const right = pointNode.cloneNode(false) as Element
+        const right = cloneWithoutEditorMarkers(pointNode, false) as Element
         right.append(...Array.from(pointNode.childNodes).slice(pointOffset))
         pointNode.after(right)
         pointOffset = Array.from(parent.childNodes).indexOf(right)
@@ -773,7 +787,7 @@ export class ManipulationFeature extends EditorFeature {
     const endPath = pathFromRoot(range.endContainer)
     if(!startPath || !endPath) return null
 
-    const clonedRoot = root.cloneNode(true) as Element
+    const clonedRoot = cloneWithoutEditorMarkers(root, true) as Element
     const resolve = (path: number[]) => path.reduce<Node | null>(
       (node, index) => node?.childNodes.item(index) ?? null,
       clonedRoot,
@@ -810,7 +824,7 @@ export class ManipulationFeature extends EditorFeature {
       const schema = this.editor.schema.get(container)
       const next = (splittingSummary || strict && schema.inseperable
         ? this.editor.schema.create()
-        : container.cloneNode(false)) as Element
+        : cloneWithoutEditorMarkers(container, false)) as Element
       container.after(next)
       const moving = Array.from(container.childNodes).slice(offset)
       this.editor.features.list.prepareSplitContinuation(container, next, moving)
@@ -859,7 +873,7 @@ export class ManipulationFeature extends EditorFeature {
     if(!simulation) return false
     try {
       simulation.range.deleteContents()
-      const inserted = node.cloneNode(true)
+      const inserted = cloneWithoutEditorMarkers(node, true)
       simulation.range.insertNode(inserted)
       return Boolean(inserted.parentElement)
         && this.editor.schema.isContentValid(inserted.parentElement!)
@@ -913,7 +927,7 @@ export class ManipulationFeature extends EditorFeature {
     paste: ({}: {type: "paste"}) => {
       return this.paste()
     },
-    setAttributes: ({attrs}: {type: "setAttributes", attrs: Record<string, string>}) => {
+    setAttributes: ({attrs}: {type: "setAttributes", attrs: Record<string, string | null>}) => {
       this.setAttributes(attrs)
     },
     getStyleState: ({properties}: {type: "getStyleState", properties?: string[]}) => {
@@ -1147,7 +1161,9 @@ export class ManipulationFeature extends EditorFeature {
         if(container.nodeName === "BODY" || container.nodeName === "HTML") {continue}
         const [,right] = getSidesOfPoint($.range)
         const schema = this.editor.schema.get(container)
-        const next = (strict && schema.inseperable? this.editor.schema.create(): container.cloneNode()) as Element
+        const next = (strict && schema.inseperable
+          ? this.editor.schema.create()
+          : cloneWithoutEditorMarkers(container, false)) as Element
         container.after(next)
         next.append(...right)
         node? $.move(node, -1): $.move(next, 0)
@@ -1256,7 +1272,8 @@ export class ManipulationFeature extends EditorFeature {
   wrap(wrapping?: DocumentFragment | Element, strict=false) {
     return this.withNormalization(() => {
       if(wrapping) {
-        const wrapper = wrapping instanceof DocumentFragment? wrapping.firstElementChild!: wrapping
+        const wrapper = wrapping instanceof DocumentFragment? wrapping.firstElementChild: wrapping
+        if(!wrapper) return
         wrapper.append($.slice)
         $.replace(wrapper)
         return wrapper
@@ -1298,9 +1315,12 @@ export class ManipulationFeature extends EditorFeature {
     })
   }
 
-  /** Writes the complete selected fragment as text/html and text/plain. */
+  /** Writes the complete selected fragment as text/html and text/plain.
+   * Missing capabilities return false; permission and runtime failures reject
+   * so the action bridge can report them to its caller. */
   async copy() {
     if(this.editor.features.table.hasCellSelection) return this.editor.features.table.copy()
+    if(typeof ClipboardItem !== "function" || !navigator.clipboard?.write) return false
     const item = this.#fragmentToClipboardItem($.copy())
     await navigator.clipboard.write([item])
     return true
@@ -1310,6 +1330,7 @@ export class ManipulationFeature extends EditorFeature {
    * after the clipboard accepts it. A failed write never destroys content. */
   async cut() {
     if(this.editor.features.table.hasCellSelection) return this.editor.features.table.cut()
+    if(typeof ClipboardItem !== "function" || !navigator.clipboard?.write) return false
     const selection = document.getSelection()
     if(!selection?.rangeCount || selection.isCollapsed || !selection.anchorNode || !selection.focusNode) return false
     const captured = {
@@ -1329,11 +1350,14 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   /** Inserts the clipboard's HTML or plain-text content at the selection.
-   * Inline content at an empty document or gap is wrapped in a text block. */
+   * Inline content at an empty document or gap is wrapped in a text block.
+   * Missing capabilities return false; supported API failures reject. */
   async paste() {
     if(this.editor.features.table.hasCellSelection) return this.editor.features.table.paste()
+    if(!navigator.clipboard?.read) return false
     const fragment = await this.#clipboardToFragment()
     this.insertClipboardFragment(fragment)
+    return true
   }
 
   /** Sets the given attributes on every element in the selection (see
@@ -1469,7 +1493,7 @@ export class ManipulationFeature extends EditorFeature {
       const parent = block.parentElement
       if(!parent) return
       const offset = this.splitTextLikePoint(block, $.range)
-      const right = block.cloneNode(false) as Element
+      const right = cloneWithoutEditorMarkers(block, false) as Element
       right.append(...Array.from(block.childNodes).slice(offset))
       block.normalize()
       right.normalize()

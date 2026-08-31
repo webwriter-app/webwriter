@@ -5,13 +5,19 @@ export class PlaceholderFeature extends EditorFeature {
   #placeholderStylesheet: CSSStyleSheet
 
   enable(): void {
+    if(this.isEnabled) return
     this.applyPlaceholderStylesheet()
     this.#placeholderStylesheet.disabled = false
     super.enable()
   }
 
   disable(): void {
-    this.#placeholderStylesheet && (this.#placeholderStylesheet.disabled = true)
+    if(!this.isEnabled) return
+    if(this.#placeholderStylesheet) {
+      this.#placeholderStylesheet.disabled = true
+      document.adoptedStyleSheets = document.adoptedStyleSheets
+        .filter(stylesheet => stylesheet !== this.#placeholderStylesheet)
+    }
     super.disable()
   }
 
@@ -34,9 +40,10 @@ export class PlaceholderFeature extends EditorFeature {
   }
 
   applyPlaceholderStylesheet() {
-    if(this.#placeholderStylesheet) return
     const stylesheet = this.placeholderStylesheet
-    document.adoptedStyleSheets = [...document.adoptedStyleSheets, stylesheet]
+    if(!document.adoptedStyleSheets.includes(stylesheet)) {
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, stylesheet]
+    }
   }
 
   private styleMapToCssString(styleMap: Record<string, string>) {
