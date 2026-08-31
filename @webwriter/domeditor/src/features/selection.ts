@@ -583,17 +583,26 @@ export class SelectionFeature extends EditorFeature {
   clearDropCaret() {
     const caret = this.selectionCaret
     if(!caret) return
-    caret.classList.remove("◆drop-caret-before", "◆drop-caret-after", "◆selection-caret-gap")
+    caret.classList.remove("◆drop-caret-before", "◆drop-caret-after")
     setPart(caret, "gap-caret-drop-caret-before", false)
     setPart(caret, "gap-caret-drop-caret-after", false)
-    setPart(caret, "selection-caret-gap", false)
-    setPart(caret, "gap-caret", false)
+    const hasGapSelection = caret.classList.contains("◆gap-before-selected")
+      || caret.classList.contains("◆gap-after-selected")
+    if(!hasGapSelection) {
+      caret.classList.remove("◆selection-caret-gap")
+      setPart(caret, "selection-caret-gap", false)
+      setPart(caret, "gap-caret", false)
+    }
     const hasSelectionPresentation = ["node", "capture"].some(state =>
       caret.classList.contains(`◆selection-caret-${state}`),
-    )
+    ) || hasGapSelection
     if(!hasSelectionPresentation) {
       caret.setAttribute("visibility", "hidden")
       setPart(caret, "selection-caret-hidden")
+    }
+    else {
+      caret.removeAttribute("visibility")
+      setPart(caret, "selection-caret-hidden", false)
     }
   }
 
@@ -792,17 +801,14 @@ export class SelectionFeature extends EditorFeature {
       const children = sel.anchorNode!.childNodes
       if(children.length) {
         const i = sel.anchorOffset
-        const firstBodyElement = document.body.firstElementChild
-        const firstBodyElementIndex = firstBodyElement? Array.from(children).indexOf(firstBodyElement): -1
-        const isBeforeFirstBodyElement = sel.anchorNode === document.body && firstBodyElementIndex >= 0 && i <= firstBodyElementIndex &&
-          Array.from(children).slice(i, firstBodyElementIndex).every(node => node.nodeType !== Node.TEXT_NODE || !node.textContent?.trim())
+        const before = Array.from(children).slice(0, i).reverse().find(isElement)
+        const after = Array.from(children).slice(i).find(isElement)
         const nestedListAfter = isElement(sel.anchorNode)
           && sel.anchorNode.matches("li, dt, dd")
           && isElement(children.item(i))
           && (children.item(i) as Element).matches("ul, ol, dl, menu")
-        const placement = i === 0 || isBeforeFirstBodyElement || nestedListAfter ? "before": "after"
-        const offset = placement === "after"? -1: 0
-        const element = isBeforeFirstBodyElement? firstBodyElement: children.item(i + offset) as Element
+        const placement = !before || nestedListAfter ? "before": "after"
+        const element = placement === "after" ? before : after
         const gapCaret = this.#showSelectionCaret("gap")
         element?.classList?.add("◆", `◆gap-${placement}-selected`)
         gapCaret.classList.add(`◆gap-${placement}-selected`)

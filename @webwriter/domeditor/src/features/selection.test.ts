@@ -168,6 +168,22 @@ describe("processSelection()", () => {
     expect(caret?.getAttribute("part")).not.toContain("selection-caret-gap")
     expect(caret?.getAttribute("part")).not.toContain("selection-caret-hidden")
   })
+  it("restores an underlying gap selection after clearing a drop caret", () => {
+    const p = el("p", "a"); el("p", "b")
+    $.selectGap(p)
+    feature.processSelection()
+    const caret = feature.selectionCaret
+
+    feature.showDropCaret("before")
+    feature.clearDropCaret()
+
+    expect(p).toHaveClass("◆gap-after-selected")
+    expect(caret).toHaveClass("◆selection-caret-gap", "◆gap-after-selected")
+    expect(caret?.getAttribute("part")).toContain("selection-caret-gap")
+    expect(caret?.getAttribute("part")).toContain("gap-caret")
+    expect(caret?.getAttribute("part")).not.toContain("selection-caret-hidden")
+    expect(caret).not.toHaveAttribute("visibility")
+  })
   it("marks the element after a gap at the container start", () => {
     const p1 = el("p", "a"); el("p", "b")
     $.selectGap(p1, "before")
@@ -181,6 +197,20 @@ describe("processSelection()", () => {
     feature.processSelection()
     expect(p.classList.contains("◆gap-before-selected")).toBe(true)
     expect(feature.gapCaret!.getAttribute("visibility")).not.toBe("hidden")
+  })
+  it("keeps a gap anchored across formatting whitespace after selection refreshes", async () => {
+    document.body.innerHTML = "<p>a</p>\n<p>b</p>"
+    const [first, second] = Array.from(document.body.children)
+    $.selectGap(second, "before")
+
+    document.dispatchEvent(new Event("selectionchange"))
+    await Promise.resolve()
+
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(2)
+    expect(first).toHaveClass("◆gap-after-selected")
+    expect(document.body).toHaveClass("◆gap-caret-visible")
+    expect(feature.gapCaret).not.toHaveAttribute("visibility")
   })
   it("clears previous markers when the selection changes", () => {
     const p1 = el("p", "a"); const p2 = el("p", "b")
