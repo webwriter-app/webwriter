@@ -12,6 +12,15 @@ type ListenerRegistration = {
   capture: boolean
 }
 
+const capturedInteractionEvents = new Set([
+  "beforeinput",
+  "compositionstart",
+  "input",
+  "keydown",
+  "keyup",
+  "paste",
+])
+
 export class EditorFeature {
 
   constructor(readonly editor: DOMEditor) {}
@@ -23,13 +32,19 @@ export class EditorFeature {
   /** FormFeature opts in so all other editor features leave captured native
    * control events to the browser and the form-state synchronizer. */
   protected handlesFormControlInteractions = false
+  /** Interactive authored elements own editing input while capture-selected,
+   * just as widget shadow trees own their native keyboard and text events. */
+  protected handlesCapturedElementInteractions = false
   private listenerRegistrations: ListenerRegistration[] = []
 
   private addListeners(listeners: DocumentListenerMap, options?: AddEventListenerOptions) {
     if(this.listenerRegistrations.some(registration => registration.owner === listeners)) return
     Object.entries(listeners).forEach(([type, listener]) => {
       const wrapped: EventListener = event => {
-        if(!isWidgetShadowInteraction(event)
+        const captureOwnsInteraction = capturedInteractionEvents.has(type)
+          && Boolean(this.editor.features?.selection?.isCaptureSelection)
+        if((!captureOwnsInteraction || this.handlesCapturedElementInteractions)
+          && !isWidgetShadowInteraction(event)
           && (this.handlesFormControlInteractions || !isFormControlInteraction(event))) {
           listener(event as never)
         }

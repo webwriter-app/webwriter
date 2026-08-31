@@ -1,5 +1,5 @@
 import {EditorFeature, type DocumentListenerMap} from "."
-import {$} from "../utility"
+import {$, modifierKeyDown} from "../utility"
 import {
   SVG_NAMESPACE,
   graphicContainerForNode,
@@ -524,6 +524,7 @@ const setShapeBounds = (shape: Element, next: Bounds, initial: Bounds, initialPo
 /** Native SVG insertion and direct manipulation. Authored geometry stays in
  * SVG attributes; every handle and control is placed in the shadow appendix. */
 export class GraphicFeature extends EditorFeature {
+  protected handlesCapturedElementInteractions = true
   #selectedShapes = new Set<SVGGraphicsElement>()
   #primaryShape: SVGGraphicsElement | null = null
   #interaction: Interaction | null = null
@@ -711,7 +712,12 @@ export class GraphicFeature extends EditorFeature {
     pointerup: event => this.#finishPointer(event),
     pointercancel: event => this.#cancelPointer(event),
     wheel: event => this.#handleWheel(event),
+    beforeinput: event => this.#blockCapturedEditingEvent(event),
+    compositionstart: event => this.#blockCapturedEditingEvent(event),
+    paste: event => this.#blockCapturedEditingEvent(event),
     keydown: event => {
+      const graphic = this.#capturedGraphic()
+      if(!graphic) return
       if(this.#handleSpaceDown(event)) return
       if(event.key === "Escape" && this.#labelEditor) {
         event.preventDefault()
@@ -728,18 +734,45 @@ export class GraphicFeature extends EditorFeature {
         return
       }
       const shapes = this.selectedShapes
-      if(!shapes.length) return
-      if(event.key === "Delete" || event.key === "Backspace") {
+      if(event.key === "Escape" && shapes.length) {
         event.preventDefault()
         event.stopImmediatePropagation()
-        const attached = this.#captureAttachedConnectors(this.#capturedGraphic(), shapes)
-        const connectors = new Set(attached.map(item => item.source))
-        this.editor.doc.stopCapturing()
-        connectors.forEach(connector => connector.remove())
-        shapes.forEach(shape => shape.remove())
-        this.editor.doc.stopCapturing()
         this.#clearShapeSelection()
+        this.#refresh()
         this.editor.postSelectionPath()
+        return
+      }
+      if(event.key.toLowerCase() === "a" && modifierKeyDown(event)) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        const selectable = graphicShapeRoots(graphic).filter(shape => !this.#isLocked(shape))
+        this.#setShapeSelection(selectable, selectable.at(-1) ?? null)
+        this.#refresh()
+        this.editor.postSelectionPath()
+        return
+      }
+      if(event.key === "Enter" && !event.altKey && !event.shiftKey && !modifierKeyDown(event) && shapes.length === 1) {
+        const shape = shapes[0]
+        const type = graphicShapeType(shape)
+        if(type && type !== "line" && type !== "connector" && !this.#isLocked(shape)) {
+          event.preventDefault()
+          event.stopImmediatePropagation()
+          this.#openLabelEditor(shape)
+          return
+        }
+      }
+      if(event.key === "Delete" || event.key === "Backspace") {
+        this.#claimKeyboardEvent(event)
+        if(shapes.length) {
+          const attached = this.#captureAttachedConnectors(graphic, shapes)
+          const connectors = new Set(attached.map(item => item.source))
+          this.editor.doc.stopCapturing()
+          connectors.forEach(connector => connector.remove())
+          shapes.forEach(shape => shape.remove())
+          this.editor.doc.stopCapturing()
+          this.#clearShapeSelection()
+          this.editor.postSelectionPath()
+        }
         return
       }
       const step = event.shiftKey ? 50 : 1
@@ -749,18 +782,34 @@ export class GraphicFeature extends EditorFeature {
             : event.key === "ArrowDown" ? {x: 0, y: step}
               : null
       if(movement) {
-        event.preventDefault()
-        event.stopImmediatePropagation()
-        const attached = this.#captureAttachedConnectors(this.#capturedGraphic(), shapes)
-        this.editor.doc.stopCapturing()
-        shapes.forEach(shape => this.#moveShape(shape, movement.x, movement.y))
-        this.#applyAttachedConnectors(attached)
-        this.editor.doc.stopCapturing()
-        this.#refresh()
-        this.editor.postSelectionPath()
+        this.#claimKeyboardEvent(event)
+        if(shapes.length) {
+          const attached = this.#captureAttachedConnectors(graphic, shapes)
+          this.editor.doc.stopCapturing()
+          shapes.forEach(shape => this.#moveShape(shape, movement.x, movement.y))
+          this.#applyAttachedConnectors(attached)
+          this.editor.doc.stopCapturing()
+          this.#refresh()
+          this.editor.postSelectionPath()
+        }
+        return
       }
+      const isAltGraph = event.getModifierState("AltGraph")
+      const isPrintable = event.key.length === 1 && !event.metaKey && (!event.ctrlKey || isAltGraph)
+      if(event.key === "Enter" || isPrintable) this.#claimKeyboardEvent(event)
     },
     keyup: event => this.#handleSpaceUp(event),
+  }
+
+  #blockCapturedEditingEvent(event: Event) {
+    if(!this.#capturedGraphic()) return
+    event.preventDefault()
+    event.stopImmediatePropagation()
+  }
+
+  #claimKeyboardEvent(event: KeyboardEvent) {
+    event.preventDefault()
+    event.stopImmediatePropagation()
   }
 
   passiveListeners: DocumentListenerMap = {

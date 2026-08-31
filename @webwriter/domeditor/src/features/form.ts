@@ -15,6 +15,7 @@ import {$, formControlForInteraction, isElement} from "../utility"
  * mirrored back into authored attributes/text for collaboration. */
 export class FormFeature extends EditorFeature {
   protected handlesFormControlInteractions = true
+  protected handlesCapturedElementInteractions = true
 
   activeListeners = {
     pointerdown: (event: PointerEvent) => {

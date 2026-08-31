@@ -343,6 +343,52 @@ describe("graphic editing", () => {
     expect(editor.toHTML(true)).not.toContain("graphic-label-editor")
   })
 
+  it("opens the selected shape label editor with Enter and retains graphic capture on Escape", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    const graphic = document.querySelector("svg")!
+    const rectangle = graphic.querySelector("rect")!
+    clickShape(rectangle)
+
+    const enter = new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "Enter"})
+    document.dispatchEvent(enter)
+
+    expect(enter.defaultPrevented).toBe(true)
+    expect(editor.appendix.querySelector(".◆graphic-label-editor")).not.toBeNull()
+
+    editor.appendix.querySelector(".◆graphic-label-editor")!.dispatchEvent(
+      new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "Escape"}),
+    )
+
+    expect(editor.appendix.querySelector(".◆graphic-label-editor")).toBeNull()
+    expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+    expect(graphic).toHaveClass("◆element-capture-selected")
+  })
+
+  it("owns text and navigation input while capture-selected", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    const events = [
+      new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "a"}),
+      new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "Enter"}),
+      new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "ArrowRight"}),
+      new InputEvent("beforeinput", {
+        bubbles: true,
+        cancelable: true,
+        data: "a",
+        inputType: "insertText",
+      }),
+      new Event("paste", {bubbles: true, cancelable: true}),
+    ]
+
+    events.forEach(event => document.dispatchEvent(event))
+
+    events.forEach(event => expect(event.defaultPrevented).toBe(true))
+    expect(document.body.children).toHaveLength(1)
+    expect(graphic).toBe(document.body.firstElementChild)
+    expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+    expect(graphic).toHaveClass("◆element-capture-selected")
+  })
+
   it("moves labeled shapes and their text together through the preview path", () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const graphic = document.querySelector("svg")!
@@ -1289,9 +1335,13 @@ describe("graphic editing", () => {
     connector.setAttribute("points", "200,150 300,150")
     clickShape(rectangle)
 
-    document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, key: "Delete"}))
+    const deletion = new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "Delete"})
+    document.dispatchEvent(deletion)
     await mutationsDelivered()
 
+    expect(deletion.defaultPrevented).toBe(true)
+    expect(graphic.isConnected).toBe(true)
+    expect(editor.features.selection.captureSelectedElement).toBe(graphic)
     expect(rectangle.isConnected).toBe(false)
     expect(connector.isConnected).toBe(false)
     expect(document.querySelector("rect")).toBeNull()

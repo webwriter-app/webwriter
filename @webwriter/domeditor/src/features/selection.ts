@@ -864,9 +864,10 @@ export class SelectionFeature extends EditorFeature {
   activeListeners: DocumentListenerMap = {
     "keydown": ev => {
       const direction = arrowDirection(ev.key)
-      // Arrow keys belong to the widget while it has captured interaction.
-      // This guard also preserves capture for synthetic/document-level events.
-      if(direction && this.isCaptureSelection) return
+      // Captured widgets and interactive authored elements own their keyboard
+      // events. The shared listener router normally enforces this guard; keep
+      // it here as the direct-call invariant as well.
+      if(this.isCaptureSelection) return
       this.#releaseCaptureSelection()
       this.clearSelectedSection()
       if(ev.key.toLowerCase() === "a" && modifierKeyDown(ev)) {
