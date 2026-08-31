@@ -118,6 +118,47 @@ describe("media editing", () => {
     expect(video.children).toHaveLength(0)
   })
 
+  it("keeps the empty-media affordance open while its URL input has focus", async () => {
+    editor.features.media.actions.insertMedia({type: "insertMedia", media: "video"})
+    const video = document.querySelector("video")!
+    const placeholder = editor.features.media.placeholder
+    const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
+
+    input.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true}))
+    getSelection()!.removeAllRanges()
+    input.focus()
+    document.dispatchEvent(new Event("selectionchange"))
+    await Promise.resolve()
+
+    expect(placeholder.root.activeElement).toBe(input)
+    expect(placeholder.target).toBe(video)
+    expect(placeholder.element).toHaveAttribute("data-open")
+    expect(video).toHaveClass("◆element-selected")
+  })
+
+  it("keeps the empty-media affordance open when the file picker returns without a file", async () => {
+    editor.features.media.actions.insertMedia({type: "insertMedia", media: "audio"})
+    const audio = document.querySelector("audio")!
+    const placeholder = editor.features.media.placeholder
+    const fileButton = placeholder.root.querySelector<HTMLButtonElement>(".file")!
+    const picker = placeholder.root.querySelector<HTMLInputElement>(".picker")!
+    vi.spyOn(picker, "click").mockImplementation(() => {})
+
+    fileButton.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true}))
+    getSelection()!.removeAllRanges()
+    fileButton.focus()
+    fileButton.click()
+    picker.dispatchEvent(new Event("cancel"))
+    document.dispatchEvent(new Event("selectionchange"))
+    await Promise.resolve()
+
+    expect(picker.click).toHaveBeenCalledOnce()
+    expect(placeholder.root.activeElement).toBe(fileButton)
+    expect(placeholder.target).toBe(audio)
+    expect(placeholder.element).toHaveAttribute("data-open")
+    expect(audio).toHaveClass("◆element-selected")
+  })
+
   it("reads uploaded files as data URLs", async () => {
     editor.features.media.actions.insertMedia({type: "insertMedia", media: "img"})
     const image = document.querySelector("img")!

@@ -708,7 +708,8 @@ export class DOMEditor {
   }
 
   private handleSelectionChange = (event: Event) => {
-    if(isWidgetShadowInteraction(event) || isFormControlInteraction(event)) return
+    if(isWidgetShadowInteraction(event) || isFormControlInteraction(event)
+      || this.features.media.isPlaceholderInteraction) return
     const selection = document.getSelection()
     if(!selection?.anchorNode) return
 

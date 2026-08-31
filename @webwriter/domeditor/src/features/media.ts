@@ -23,6 +23,14 @@ class MediaPlaceholder {
   readonly root: ShadowRoot
   target: Element | null = null
   onSource: ((target: Element, source: string) => void) | null = null
+  onInteractionChange: (() => void) | null = null
+  private focusWithin = false
+  private pickerOpen = false
+  private interactionActive = false
+
+  get isInteracting() {
+    return this.element.isConnected && this.interactionActive
+  }
 
   constructor() {
     this.element.classList.add("◆", "◆editor-only", "◆media-placeholder")
@@ -114,7 +122,27 @@ class MediaPlaceholder {
 
     const picker = root.querySelector<HTMLInputElement>(".picker")!
     const url = root.querySelector<HTMLInputElement>(".url")!
-    root.querySelector<HTMLButtonElement>(".file")!.addEventListener("click", () => picker.click())
+    const file = root.querySelector<HTMLButtonElement>(".file")!
+    root.addEventListener("pointerdown", event => {
+      if(!(event.target instanceof Element) || !event.target.closest("button, input")) return
+      this.beginInteraction()
+    })
+    root.addEventListener("focusin", () => {
+      this.focusWithin = true
+      this.beginInteraction()
+    })
+    root.addEventListener("focusout", () => {
+      this.focusWithin = false
+      queueMicrotask(() => {
+        if(this.focusWithin || this.pickerOpen) return
+        this.interactionActive = false
+        this.onInteractionChange?.()
+      })
+    })
+    file.addEventListener("click", () => {
+      this.pickerOpen = true
+      picker.click()
+    })
     root.querySelector<HTMLButtonElement>(".apply")!.addEventListener("click", () => this.applyUrl())
     url.addEventListener("keydown", event => {
       if(event.key !== "Enter") return
@@ -122,6 +150,7 @@ class MediaPlaceholder {
       this.applyUrl()
     })
     picker.addEventListener("change", () => {
+      this.pickerOpen = false
       const file = picker.files?.[0]
       if(!file || !this.target) return
       const target = this.target
@@ -132,7 +161,17 @@ class MediaPlaceholder {
       reader.readAsDataURL(file)
       picker.value = ""
     })
+    picker.addEventListener("cancel", () => {
+      this.pickerOpen = false
+      file.focus({preventScroll: true})
+      this.beginInteraction()
+    })
     this.element.addEventListener("pointerdown", event => event.stopPropagation())
+  }
+
+  private beginInteraction() {
+    this.interactionActive = true
+    this.onInteractionChange?.()
   }
 
   private applyUrl() {
@@ -180,10 +219,15 @@ export class MediaFeature extends EditorFeature {
   private refreshQueued = false
   private mediaPlaceholder: MediaPlaceholder | null = null
 
+  get isPlaceholderInteraction() {
+    return this.mediaPlaceholder?.isInteracting ?? false
+  }
+
   get placeholder() {
     if(!this.mediaPlaceholder) {
       this.mediaPlaceholder = new MediaPlaceholder()
       this.mediaPlaceholder.onSource = (target, source) => this.setSource(target, source)
+      this.mediaPlaceholder.onInteractionChange = this.scheduleRefresh
       this.editor.addAppendix(this.mediaPlaceholder.element)
     }
     return this.mediaPlaceholder
@@ -360,7 +404,11 @@ export class MediaFeature extends EditorFeature {
       const empty = isEmptyMedia(element) && !(element.matches("img") && element.closest("picture"))
       if(element.classList.contains("◆media-empty") !== empty) this.setEmptyMarker(element, empty)
     })
-    const selected = this.selectedMedia()
+    // A control pointerdown can clear the authored Selection before focusin.
+    // Keep the affordance bound to its existing media for the full interaction
+    // without restoring the Selection, which would steal focus from the input.
+    const retained = this.mediaPlaceholder?.isInteracting ? this.mediaPlaceholder.target : null
+    const selected = retained ?? this.selectedMedia()
     if(selected?.isConnected && isEmptyMedia(selected)) this.placeholder.showFor(selected)
     else this.placeholder.hide()
   }

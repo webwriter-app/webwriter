@@ -844,6 +844,7 @@ export class SelectionFeature extends EditorFeature {
    * the body (`◆key-mod/alt/shift-down`). */
   passiveListeners: DocumentListenerMap = {
     "selectionchange": () => {
+      if(this.editor.features.media.isPlaceholderInteraction) return
       this.clearSelectedSection()
       this.processSelection(this.isInDragSelection)
     },
