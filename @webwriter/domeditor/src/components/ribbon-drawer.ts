@@ -856,6 +856,14 @@ export class RibbonDrawer extends LitElement {
       min-height: 5rem;
     }
 
+    :host([pane][layout="media"]) .controls {
+      display: block;
+    }
+
+    :host([pane][layout="media"]) ::slotted(.media-toolbox-controls) {
+      width: 100%;
+    }
+
     :host([pane][layout="element-style"]) .controls {
       display: flex;
       flex-direction: column;

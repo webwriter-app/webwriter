@@ -671,16 +671,10 @@ export class RibbonButton extends LitElement {
       outline: none;
     }
 
-    .media-attribute-boolean input,
     .form-attribute-boolean input {
       width: auto !important;
       height: auto !important;
       accent-color: #3977c7;
-    }
-
-    .media-dropdown-status {
-      color: #667085;
-      font-size: 0.64rem;
     }
 
     .table-size-picker {

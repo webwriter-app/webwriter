@@ -2,6 +2,7 @@
 import {beforeEach, describe, expect, it, vi} from "vitest"
 import {AppRibbon} from "./ribbon"
 import type {RibbonButton} from "./ribbon-button"
+import {DomEditorToolbox} from "./toolbox"
 
 beforeEach(() => document.body.replaceChildren())
 
@@ -25,7 +26,7 @@ describe("media ribbon drawer", () => {
     }))
   })
 
-  it("gives every requested media command an advanced dropdown", async () => {
+  it("keeps media insertion buttons free of option dropdowns", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Start"
     document.body.append(ribbon)
@@ -36,96 +37,84 @@ describe("media ribbon drawer", () => {
         `ribbon-drawer[label="Elements"] ribbon-button[label="${label}"]`,
       )!
       await button.updateComplete
-      expect(button.shadowRoot!.querySelector("ribbon-menu[custom-content]")).not.toBeNull()
-      expect(button.shadowRoot!.querySelector('.submenu-trigger[aria-haspopup="dialog"]')).not.toBeNull()
+      expect(button.shadowRoot!.querySelector("ribbon-menu[custom-content]")).toBeNull()
+      expect(button.shadowRoot!.querySelector(".submenu-trigger")).toBeNull()
     }
   })
 
-  it("reflects selected attributes and offers the picture/img switch", async () => {
-    const ribbon = new AppRibbon()
-    ribbon.activeMenu = "Start"
-    ribbon.media = {type: "picture", attributes: {alt: "A diagram", loading: "lazy"}}
-    document.body.append(ribbon)
-    await ribbon.updateComplete
-    const image = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Elements"] ribbon-button[label="Image"]',
-    )!
-    await image.updateComplete
+  it.each([
+    ["picture", "Image"],
+    ["audio", "Audio"],
+    ["video", "Video"],
+    ["iframe", "Website"],
+  ] as const)("renders the selected %s options in a dedicated %s toolbox", async (type, label) => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.media = {type, attributes: {}}
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    document.body.append(toolbox)
+    await toolbox.updateComplete
 
-    expect(image.active).toBe(true)
-    expect(image.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="picture: Alternative text"]')?.value).toBe("A diagram")
-    expect(image.shadowRoot!.querySelector<HTMLSelectElement>('select[aria-label="picture: Loading"]')?.value).toBe("lazy")
-    expect(image.shadowRoot!.querySelector<HTMLButtonElement>(".media-type-switch")?.textContent).toContain("<img>")
+    expect(getComputedStyle(toolbox).width).toBe("200px")
+    expect(toolbox.shadowRoot!.querySelector('[data-tool="Edit"] .toolbox-tab-label')?.textContent).toBe(label)
+    expect(toolbox.shadowRoot!.querySelector(`ribbon-drawer[label="${label}"]`)).not.toBeNull()
+    const controls = toolbox.shadowRoot!.querySelector<HTMLElement>(".media-toolbox-controls")!
+    expect(getComputedStyle(controls).flexDirection).toBe("column")
+    expect(Array.from(controls.querySelectorAll("input, select"))
+      .every(control => control.getAttribute("type") === "checkbox" || getComputedStyle(control).width === "100%"))
+      .toBe(true)
+    expect(toolbox.shadowRoot!.querySelector("ribbon-menu[custom-content]")).toBeNull()
   })
 
-  it("dispatches attribute and image-type changes from the dropdown", async () => {
-    const ribbon = new AppRibbon()
-    ribbon.activeMenu = "Start"
-    ribbon.media = {type: "img", attributes: {}}
-    document.body.append(ribbon)
-    await ribbon.updateComplete
+  it("reflects image attributes and dispatches edits directly from its toolbox", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    toolbox.media = {type: "img", attributes: {alt: "A diagram", loading: "lazy"}}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
     const attributeListener = vi.fn()
     const typeListener = vi.fn()
-    ribbon.addEventListener("media-attribute-change", attributeListener)
-    ribbon.addEventListener("media-type-change", typeListener)
-    const image = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Elements"] ribbon-button[label="Image"]',
-    )!
-    await image.updateComplete
-    const alt = image.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="picture: Alternative text"]')!
+    toolbox.addEventListener("media-attribute-change", attributeListener)
+    toolbox.addEventListener("media-type-change", typeListener)
+    const alt = toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Image: Alternative text"]')!
+    expect(alt.value).toBe("A diagram")
+    expect(toolbox.shadowRoot!.querySelector<HTMLSelectElement>('select[aria-label="Image: Loading"]')?.value).toBe("lazy")
     alt.value = "A photo"
     alt.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
-    image.shadowRoot!.querySelector<HTMLButtonElement>(".media-type-switch")!.click()
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".media-type-switch")!.click()
 
     expect(attributeListener).toHaveBeenCalledWith(expect.objectContaining({
-      detail: {type: "picture", attribute: "alt", value: "A photo"},
+      detail: {type: "img", attribute: "alt", value: "A photo"},
     }))
     expect(typeListener).toHaveBeenCalledWith(expect.objectContaining({detail: {type: "picture"}}))
   })
 
-  it("switches Website details and renders attributes for the selected element", async () => {
-    const ribbon = new AppRibbon()
-    ribbon.activeMenu = "Start"
-    ribbon.media = {type: "embed", attributes: {src: "https://example.test", type: "text/html"}}
-    document.body.append(ribbon)
-    await ribbon.updateComplete
+  it("switches Website details and renders attributes directly in the toolbox", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    toolbox.media = {type: "embed", attributes: {src: "https://example.test", type: "text/html"}}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
     const typeListener = vi.fn()
-    ribbon.addEventListener("media-type-change", typeListener)
-    ribbon.addEventListener("media-type-change", event => {
+    toolbox.addEventListener("media-type-change", typeListener)
+    toolbox.addEventListener("media-type-change", event => {
       const type = (event as CustomEvent<{type: "iframe" | "embed" | "object"}>).detail.type
-      ribbon.media = {type, attributes: {}}
+      toolbox.media = {type, attributes: {}}
     })
-    const website = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Elements"] ribbon-button[label="Website"]',
-    )!
-    await website.updateComplete
-
-    const element = website.shadowRoot!.querySelector<HTMLSelectElement>('select[aria-label="Website: Element"]')!
-    const trigger = website.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!
-    const menu = website.shadowRoot!.querySelector<HTMLElement>("ribbon-menu[custom-content]")!
-    expect(website.active).toBe(true)
+    const element = toolbox.shadowRoot!.querySelector<HTMLSelectElement>('select[aria-label="Website: Element"]')!
     expect(element.value).toBe("embed")
     expect(element.hasAttribute("data-ribbon-input-persistent")).toBe(true)
-    expect(website.shadowRoot!.querySelector('input[aria-label="Website: MIME type"]')).not.toBeNull()
-    expect(website.shadowRoot!.querySelector('input[aria-label="Website: Sandbox"]')).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: MIME type"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: Sandbox"]')).toBeNull()
 
-    trigger.click()
-    await website.updateComplete
-    expect(trigger.getAttribute("aria-expanded")).toBe("true")
-    expect(menu.hasAttribute("hidden")).toBe(false)
-
-    const commitListener = vi.fn()
-    ribbon.addEventListener("ribbon-input-commit", commitListener)
     element.value = "object"
     element.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
     expect(typeListener).toHaveBeenCalledWith(expect.objectContaining({detail: {type: "object"}}))
-    expect(commitListener).not.toHaveBeenCalled()
-    await ribbon.updateComplete
-    await website.updateComplete
-    expect(website.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")?.getAttribute("aria-expanded")).toBe("true")
-    expect(website.shadowRoot!.querySelector<HTMLElement>("ribbon-menu[custom-content]")?.hasAttribute("hidden")).toBe(false)
-    expect(website.shadowRoot!.querySelector('input[aria-label="Website: Data URL"]')).not.toBeNull()
-    expect(website.shadowRoot!.querySelector('input[aria-label="Website: MIME type"]')).not.toBeNull()
-    expect(website.shadowRoot!.querySelector('input[aria-label="Website: Sandbox"]')).toBeNull()
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: Data URL"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: MIME type"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: Sandbox"]')).toBeNull()
   })
 })

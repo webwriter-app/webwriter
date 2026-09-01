@@ -2444,6 +2444,85 @@ export class AppRibbon extends LitElement {
       accent-color: #3977c7;
     }
 
+    .media-toolbox-controls {
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .media-toolbox-controls .media-attribute {
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 0.08rem;
+      min-width: 0;
+      color: #526b86;
+      font-size: 0.56rem;
+      line-height: 0.7rem;
+    }
+
+    .media-toolbox-controls .media-attribute input,
+    .media-toolbox-controls .media-attribute select {
+      box-sizing: border-box;
+      width: 100%;
+      min-width: 0;
+      height: 1.55rem;
+      padding: 0 0.3rem;
+      border: 1px solid #c8d2df;
+      border-radius: 0.2rem;
+      color: #2f3742;
+      background: #fff;
+      font: inherit;
+      font-size: 0.66rem;
+    }
+
+    .media-toolbox-controls .media-attribute input:focus,
+    .media-toolbox-controls .media-attribute select:focus {
+      border-color: #3977c7;
+      outline: 1px solid #3977c7;
+    }
+
+    .media-toolbox-controls .media-attribute-boolean {
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 1.55rem;
+    }
+
+    .media-toolbox-controls .media-attribute-boolean input {
+      width: auto;
+      height: auto;
+      margin: 0;
+      accent-color: #3977c7;
+    }
+
+    .media-type-switch {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 1.55rem;
+      padding: 0.25rem 0.4rem;
+      border: 1px solid #c8d2df;
+      border-radius: 0.2rem;
+      color: #526b86;
+      background: #fff;
+      font: inherit;
+      font-size: 0.64rem;
+      cursor: pointer;
+    }
+
+    .media-type-switch:hover {
+      color: #243447;
+      background: #e8eef5;
+    }
+
+    .media-type-switch:focus-visible {
+      outline: 2px solid #3977c7;
+      outline-offset: -1px;
+    }
+
     .graphic-geometry-controls {
       display: grid;
       grid-template-rows: repeat(2, minmax(0, 1fr));
@@ -4556,7 +4635,10 @@ export class AppRibbon extends LitElement {
   }
 
   private mediaLabel(type: MediaType) {
-    return isWebsiteType(type) ? "Website" : type
+    if(type === "picture" || type === "img") return "Image"
+    if(type === "audio") return "Audio"
+    if(type === "video") return "Video"
+    return "Website"
   }
 
   private dispatchMediaAttribute(type: MediaType, option: MediaAttributeOption, event: Event) {
@@ -4622,48 +4704,45 @@ export class AppRibbon extends LitElement {
     `
   }
 
-  private renderMediaDropdown(type: MediaType) {
-    const active = this.mediaSelectionMatches(type)
-    const selectedImageType = this.media?.type === "img" ? "img" : "picture"
-    const selectedType = type === "iframe" && isWebsiteType(this.media?.type) ? this.media.type : type
+  private renderMediaDrawer() {
+    if(!this.media) return nothing
+    const selectedType = this.media.type
+    const label = this.mediaLabel(selectedType)
     return html`
-      <div class="button-dropdown-form media-dropdown-form" role="group" aria-label=${`${isWebsiteType(type) ? "website" : type} options`}>
-        ${type === "picture" ? html`
-          <button
-            class="button-dropdown-more media-type-switch"
-            type="button"
-            ?disabled=${!active}
-            @click=${() => this.dispatchEvent(new CustomEvent("media-type-change", {
-              detail: {type: selectedImageType === "picture" ? "img" : "picture"},
-              bubbles: true,
-              composed: true,
-            }))}
-          >Use &lt;${selectedImageType === "picture" ? "img" : "picture"}&gt;</button>
-        ` : ""}
-        ${type === "iframe" ? html`
-          <label class="mark-attribute media-attribute">
-            <span>Element</span>
-            <select
-              data-ribbon-input-persistent
-              aria-label="Website: Element"
-              ?disabled=${!active}
-              @change=${(event: Event) => this.dispatchEvent(new CustomEvent("media-type-change", {
-                detail: {type: (event.currentTarget as HTMLSelectElement).value},
+      <ribbon-drawer label=${label} icon=${label} layout="media">
+        <div class="media-toolbox-controls" role="group" aria-label=${`${label} options`}>
+          ${selectedType === "picture" || selectedType === "img" ? html`
+            <button
+              class="media-type-switch"
+              type="button"
+              @click=${() => this.dispatchEvent(new CustomEvent("media-type-change", {
+                detail: {type: selectedType === "picture" ? "img" : "picture"},
                 bubbles: true,
                 composed: true,
               }))}
-            >
-              ${websiteTypes.map(website => html`
-                <option value=${website} ?selected=${website === selectedType}>&lt;${website}&gt;</option>
-              `)}
-            </select>
-          </label>
-        ` : ""}
-        ${!active ? html`<span class="media-dropdown-status">Select a ${isWebsiteType(type) ? "website" : type} to edit its attributes.</span>` : ""}
-        <div class="button-dropdown-advanced" role="group" aria-label="Advanced attributes">
+            >Use &lt;${selectedType === "picture" ? "img" : "picture"}&gt;</button>
+          ` : ""}
+          ${isWebsiteType(selectedType) ? html`
+            <label class="mark-attribute media-attribute">
+              <span>Element</span>
+              <select
+                data-ribbon-input-persistent
+                aria-label="Website: Element"
+                @change=${(event: Event) => this.dispatchEvent(new CustomEvent("media-type-change", {
+                  detail: {type: (event.currentTarget as HTMLSelectElement).value},
+                  bubbles: true,
+                  composed: true,
+                }))}
+              >
+                ${websiteTypes.map(website => html`
+                  <option value=${website} ?selected=${website === selectedType}>&lt;${website}&gt;</option>
+                `)}
+              </select>
+            </label>
+          ` : ""}
           ${mediaAttributeOptions[selectedType].map(option => this.renderMediaAttribute(selectedType, option))}
         </div>
-      </div>
+      </ribbon-drawer>
     `
   }
 
@@ -5261,7 +5340,7 @@ export class AppRibbon extends LitElement {
           .action=${item.action ?? item.label}
           .icon=${item.icon ?? item.label}
           .submenu=${type || tableDropdown || sectionDropdown ? [] : submenu}
-          .dropdown=${type ? this.renderMediaDropdown(type) : tableDropdown ?? sectionDropdown}
+          .dropdown=${tableDropdown ?? sectionDropdown}
           ?toggle=${item.label === "List" || item.label === "Section"}
           ?active=${item.label === "Section" ? this.sectionActive : active}
           ?disabled=${item.label === "Section" && !this.canSection}
@@ -5955,6 +6034,7 @@ export class AppRibbon extends LitElement {
       if(drawer.label === "Sharing") return this.renderSharingDrawer(drawer)
       if(drawer.label === "Marks") return this.renderMarkDrawer()
       if(drawer.label === "Section") return this.renderSectionDrawer()
+      if(drawer.label === "Media") return this.renderMediaDrawer()
       if(drawer.label === "Comments") return this.renderCommentDrawer()
       if(drawer.label === "Form") return this.renderFormDrawer()
       if(drawer.label === "Table") return this.renderTableDrawer()
@@ -5991,6 +6071,9 @@ export class AppRibbon extends LitElement {
   }
 
   protected get currentMenuGroups() {
+    if(this.activeMenu === "Edit" && this.media) {
+      return menuGroups.Edit.filter(group => group.label === "Media")
+    }
     if(this.activeMenu === "Edit" && this.form) {
       return menuGroups.Edit.filter(group => group.label === "Form")
     }

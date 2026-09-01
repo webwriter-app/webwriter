@@ -303,6 +303,13 @@ export class DomEditorToolbox extends AppRibbon {
     if(this.sectionSelected) return "Section"
     if(this.graphic?.active) return "Graphic"
     if(this.table?.active) return "Table"
+    if(this.media) return this.media.type === "picture" || this.media.type === "img"
+      ? "Image"
+      : this.media.type === "audio"
+        ? "Audio"
+        : this.media.type === "video"
+          ? "Video"
+          : "Website"
     if(this.form) return this.form.type === "input" ? "Input" : this.form.type === "textarea" ? "Text area" : "Form"
     if(this.selectionPath.at(-1)?.icon === "Packages") return "Widget"
     return null
@@ -323,6 +330,8 @@ export class DomEditorToolbox extends AppRibbon {
         ? menuGroups.Edit.filter(group => group.label === "Section")
         : this.graphic?.active
         ? groups.filter(group => group.label === "Graphic")
+        : this.media
+          ? groups.filter(group => group.label === "Media")
         : this.form
           ? groups.filter(group => group.label === "Form")
         : groups

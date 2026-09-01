@@ -1002,6 +1002,18 @@ describe("DomEditor.execute()", () => {
 
     toolbox.selectTool(null)
     selectInserted({
+      path: [{path: [], name: "Document"}, {path: [0], name: "Image"}],
+      nodeSelected: true,
+      media: {type: "picture", attributes: {alt: "Diagram"}},
+    })
+    expect(toolbox.activeTool).toBe("Edit")
+    await editor.updateComplete
+    await toolbox.updateComplete
+    expect(toolbox.media).toEqual({type: "picture", attributes: {alt: "Diagram"}})
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Image"]')).not.toBeNull()
+
+    toolbox.selectTool(null)
+    selectInserted({
       path: [{path: [], name: "Document"}, {path: [0], name: "Widget", icon: "Packages"}],
       nodeSelected: true,
     })
@@ -1332,6 +1344,7 @@ describe("DomEditor.execute()", () => {
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const focusEditor = vi.spyOn(editor as unknown as {focusEditor(): void}, "focusEditor")
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    const toolbox = editor.shadowRoot!.querySelector("dom-editor-toolbox")!
 
     ribbon.dispatchEvent(new CustomEvent("ribbon-button-click", {
       detail: {label: "Image"},
@@ -1343,14 +1356,14 @@ describe("DomEditor.execute()", () => {
     await Promise.resolve()
     focusEditor.mockClear()
 
-    ribbon.dispatchEvent(new CustomEvent("media-type-change", {
+    toolbox.dispatchEvent(new CustomEvent("media-type-change", {
       detail: {type: "object"},
       bubbles: true,
       composed: true,
     }))
     expect(execute).toHaveBeenCalledWith({type: "switchWebsiteType", website: "object"})
 
-    ribbon.dispatchEvent(new CustomEvent("media-attribute-change", {
+    toolbox.dispatchEvent(new CustomEvent("media-attribute-change", {
       detail: {type: "object", attribute: "data", value: "https://example.test"},
       bubbles: true,
       composed: true,

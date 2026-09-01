@@ -3456,6 +3456,7 @@ export class DomEditor extends LitElement {
       } : null
       const hasContextualEditOptions = this.tableSelection?.active === true
         || this.graphicSelection?.active === true
+        || this.mediaSelection !== null
         || this.formSelection !== null
         || this.sectionSelected
         || path.at(-1)?.icon === "Packages"
@@ -3928,6 +3929,7 @@ export class DomEditor extends LitElement {
         .listStyle=${this.listStyle}
         .selectionPath=${this.selectionPath}
         .documentSelected=${this.nodeSelection && !this.captureSelection && this.selectionPath.length === 1}
+        .media=${this.mediaSelection}
         .form=${this.formSelection}
         .table=${this.tableSelection}
         .graphic=${this.graphicSelection}
@@ -3944,6 +3946,8 @@ export class DomEditor extends LitElement {
         @section-type-change=${this.handleSectionTypeChange}
         @mark-attribute-change=${this.handleMarkAttributeChange}
         @comment-action=${this.handleCommentAction}
+        @media-attribute-change=${this.handleMediaAttributeChange}
+        @media-type-change=${this.handleMediaTypeChange}
         @form-attribute-change=${this.handleFormAttributeChange}
         @form-text-change=${this.handleFormTextChange}
         @table-insert=${this.handleTableInsert}
