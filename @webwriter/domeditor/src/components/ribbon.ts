@@ -3035,19 +3035,42 @@ export class AppRibbon extends LitElement {
     if(availableWidth <= 0) return
 
     const widths = drawers.map(drawer => drawer.layoutWidths)
-    const collapsed = drawers.map(drawer => drawer.layout === "settings")
-    let requiredWidth = widths.reduce((total, width, index) => (
-      total + (collapsed[index] ? width.collapsed : width.expanded)
-    ), 0)
+    const layouts: Array<"collapsed" | "compact" | "expanded"> = drawers
+      .map(drawer => drawer.layout === "settings" ? "collapsed" : "expanded")
+    const effectiveWidths = widths.map((width, index) => (
+      layouts[index] === "collapsed" ? width.collapsed : width.expanded
+    ))
+    let requiredWidth = effectiveWidths.reduce((total, width) => total + width, 0)
+
+    // Prefer each drawer's purpose-built compact layout before squeezing
+    // flexible drawers or replacing any drawer with its pullout summary.
+    for(let index = drawers.length - 1; index >= 0 && requiredWidth > availableWidth + 0.5; index--) {
+      const compactWidth = widths[index].compact
+      if(layouts[index] !== "expanded" || compactWidth === undefined || compactWidth >= effectiveWidths[index]) continue
+      layouts[index] = "compact"
+      requiredWidth -= effectiveWidths[index] - compactWidth
+      effectiveWidths[index] = compactWidth
+    }
+
+    // Flexible drawers, currently Packages, may then give up width gradually
+    // down to the minimum that still supports their authored compact layout.
+    for(let index = drawers.length - 1; index >= 0 && requiredWidth > availableWidth + 0.5; index--) {
+      const minimumWidth = widths[index].minimum
+      if(layouts[index] === "collapsed" || minimumWidth === undefined || minimumWidth >= effectiveWidths[index]) continue
+      requiredWidth -= effectiveWidths[index] - minimumWidth
+      effectiveWidths[index] = minimumWidth
+    }
 
     for(let index = drawers.length - 1; index >= 0 && requiredWidth > availableWidth + 0.5; index--) {
-      if(collapsed[index]) continue
-      collapsed[index] = true
-      requiredWidth -= widths[index].expanded - widths[index].collapsed
+      if(layouts[index] === "collapsed") continue
+      layouts[index] = "collapsed"
+      requiredWidth -= effectiveWidths[index] - widths[index].collapsed
+      effectiveWidths[index] = widths[index].collapsed
     }
 
     drawers.forEach((drawer, index) => {
-      drawer.collapsed = collapsed[index]
+      drawer.compact = layouts[index] === "compact"
+      drawer.collapsed = layouts[index] === "collapsed"
     })
   }
 
@@ -5193,41 +5216,66 @@ export class AppRibbon extends LitElement {
   }
 
   private renderInsertionDrawer(drawer: RibbonMenuGroup) {
+    const buttonLabel = (button: RibbonMenuButton) => typeof button === "string" ? button : button.label
+    const buttonByLabel = (label: string) => {
+      const button = drawer.buttons.find(candidate => buttonLabel(candidate) === label)
+      if(!button) throw new TypeError(`Missing insertion button ${label}`)
+      return button
+    }
+    const groupedButton = (label: string, icon: string, labels: string[]): RibbonMenuButton => {
+      const submenu = labels.map(buttonByLabel)
+      const representative = submenu[0]
+      return {
+        label,
+        icon,
+        action: typeof representative === "string" ? representative : representative.action ?? representative.label,
+        submenu,
+      }
+    }
+    const compactButtons: RibbonMenuButton[] = [
+      groupedButton("Text", "Text", ["Paragraph", "Section", "Heading", "List"]),
+      groupedButton("Media", "Image", ["Image", "Audio", "Video", "Graphic", "Formula", "Website"]),
+      buttonByLabel("Table"),
+      groupedButton("Other", "More", ["Form", "Script", "Details"]),
+    ]
+    const renderButton = (button: RibbonMenuButton, slot = "") => {
+      const item = typeof button === "string" ? {label: button} : button
+      const insertion = insertionMenuItems.find(candidate => candidate.name === item.label)
+      const type = insertion?.tag === "picture" || insertion?.tag === "audio" || insertion?.tag === "video" || insertion?.tag === "iframe"
+        ? insertion.tag as MediaType
+        : null
+      const submenu = item.label === "List"
+        ? listInsertionOptions
+        : item.label === "Enumeration"
+          ? orderedListStyles
+          : item.submenu ?? []
+      const active = type
+        ? this.mediaSelectionMatches(type)
+        : item.label === "List" && this.listType !== null
+      const tableDropdown = item.label === "Table" ? this.renderTableSizePicker() : null
+      const sectionDropdown = item.label === "Section" ? this.renderSectionDropdown() : null
+      return html`
+        <ribbon-button
+          slot=${slot}
+          label=${item.label}
+          .action=${item.action ?? item.label}
+          .icon=${item.icon ?? item.label}
+          .submenu=${type || tableDropdown || sectionDropdown ? [] : submenu}
+          .dropdown=${type ? this.renderMediaDropdown(type) : tableDropdown ?? sectionDropdown}
+          ?toggle=${item.label === "List" || item.label === "Section"}
+          ?active=${item.label === "Section" ? this.sectionActive : active}
+          ?disabled=${item.label === "Section" && !this.canSection}
+        ></ribbon-button>
+      `
+    }
     return html`
       <ribbon-drawer
         label=${drawer.label}
         icon="Paragraph"
         layout="elements"
       >
-        ${drawer.buttons.map(button => {
-          const item = typeof button === "string" ? {label: button} : button
-          const insertion = insertionMenuItems.find(candidate => candidate.name === item.label)
-          const type = insertion?.tag === "picture" || insertion?.tag === "audio" || insertion?.tag === "video" || insertion?.tag === "iframe"
-            ? insertion.tag as MediaType
-            : null
-          const submenu = item.label === "List"
-            ? listInsertionOptions
-            : item.label === "Enumeration"
-              ? orderedListStyles
-              : item.submenu ?? []
-          const active = type
-            ? this.mediaSelectionMatches(type)
-            : item.label === "List" && this.listType !== null
-          const tableDropdown = item.label === "Table" ? this.renderTableSizePicker() : null
-          const sectionDropdown = item.label === "Section" ? this.renderSectionDropdown() : null
-          return html`
-            <ribbon-button
-              label=${item.label}
-              .action=${item.action ?? item.label}
-              .icon=${item.icon ?? item.label}
-              .submenu=${type || tableDropdown || sectionDropdown ? [] : submenu}
-              .dropdown=${type ? this.renderMediaDropdown(type) : tableDropdown ?? sectionDropdown}
-              ?toggle=${item.label === "List" || item.label === "Section"}
-              ?active=${item.label === "Section" ? this.sectionActive : active}
-              ?disabled=${item.label === "Section" && !this.canSection}
-            ></ribbon-button>
-          `
-        })}
+        ${drawer.buttons.map(button => renderButton(button))}
+        ${compactButtons.map(button => renderButton(button, "compact"))}
       </ribbon-drawer>
     `
   }

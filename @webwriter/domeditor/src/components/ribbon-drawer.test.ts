@@ -330,7 +330,7 @@ describe("responsive ribbon drawer", () => {
 })
 
 describe("responsive ribbon layout", () => {
-  it("collapses drawers from right to left as space decreases", async () => {
+  it("uses the compact Elements layout before collapsing drawers", async () => {
     const ribbon = new AppRibbon()
     document.body.append(ribbon)
     await ribbon.updateComplete
@@ -345,18 +345,25 @@ describe("responsive ribbon layout", () => {
 
     expect(drawers.map(drawer => drawer.layoutWidths.expanded)).toEqual([295.6, 412, 192])
 
-    for(const [clientWidth, expected] of [
-      [1200, [false, false, false]],
-      [1000, [false, false, false]],
-      [920, [false, false, false]],
-      [850, [false, false, true]],
-      [780, [false, true, true]],
-      [650, [false, true, true]],
+    expect(drawers.map(drawer => drawer.layoutWidths.compact)).toEqual([undefined, 128, undefined])
+    expect(drawers.map(drawer => drawer.layoutWidths.minimum)).toEqual([undefined, undefined, 128])
+
+    for(const [clientWidth, expectedCollapsed, expectedCompact] of [
+      [1200, [false, false, false], [false, false, false]],
+      [1000, [false, false, false], [false, false, false]],
+      [920, [false, false, false], [false, false, false]],
+      [850, [false, false, false], [false, true, false]],
+      [780, [false, false, false], [false, true, false]],
+      [650, [false, false, false], [false, true, false]],
+      [600, [false, false, false], [false, true, false]],
+      [550, [false, false, true], [false, true, false]],
+      [500, [false, true, true], [false, false, false]],
     ] as const) {
       Object.defineProperty(content, "clientWidth", {value: clientWidth, configurable: true})
       updateLayout(drawers)
       await Promise.all(drawers.map(drawer => drawer.updateComplete))
-      expect(drawers.map(drawer => drawer.collapsed)).toEqual(expected)
+      expect(drawers.map(drawer => drawer.collapsed)).toEqual(expectedCollapsed)
+      expect(drawers.map(drawer => drawer.compact)).toEqual(expectedCompact)
     }
   })
 })

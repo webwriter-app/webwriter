@@ -57,6 +57,8 @@ describe("package ribbon controls", () => {
 
     expect(drawerLabels()).toEqual(["Marks", "Elements", "Packages"])
     expect(getComputedStyle(packageDrawer).flexGrow).toBe("1")
+    expect(getComputedStyle(packageDrawer).flexShrink).toBe("1")
+    expect(packageDrawer.layoutWidths.minimum).toBe(128)
   })
 
   it("uses horizontal two-cell package buttons, a one-package search field, and member menus", async () => {

@@ -17,13 +17,57 @@ describe("list ribbon drawer", () => {
       .map(drawer => drawer.getAttribute("label")))
       .toEqual(["Marks", "Elements", "Packages"])
     expect(Array.from(ribbon.shadowRoot!.querySelectorAll(
-      'ribbon-drawer[label="Elements"] ribbon-button',
+      'ribbon-drawer[label="Elements"] ribbon-button:not([slot="compact"])',
     )).map(button => button.getAttribute("label"))).toEqual([
       "Paragraph", "Section", "Heading", "Details",
       "List", "Table",
       "Image", "Graphic", "Audio", "Website", "Video", "Formula",
       "Form", "Script",
     ])
+  })
+
+  it("groups element insertions at the intermediate drawer width", async () => {
+    const ribbon = new AppRibbon()
+    ribbon.activeMenu = "Start"
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+
+    const elements = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Elements"]')!
+    elements.compact = true
+    await elements.updateComplete
+    const controls = elements.shadowRoot!.querySelector<HTMLElement>(".controls")!
+    const defaultSlot = elements.shadowRoot!.querySelector<HTMLSlotElement>('slot:not([name])')!
+    const compactSlot = elements.shadowRoot!.querySelector<HTMLSlotElement>('slot[name="compact"]')!
+    const buttons = Array.from(elements.querySelectorAll<RibbonButton>('ribbon-button[slot="compact"]'))
+    const button = (label: string) => buttons.find(candidate => candidate.label === label)!
+
+    expect(elements.layoutWidths.compact).toBe(128)
+    expect(defaultSlot.hidden).toBe(true)
+    expect(compactSlot.hidden).toBe(false)
+    expect(buttons.map(candidate => candidate.label)).toEqual(["Text", "Media", "Table", "Other"])
+    expect(getComputedStyle(controls).gridTemplateColumns).toBe("repeat(2, minmax(0, 1fr))")
+    expect(button("Text").submenu.map(item => typeof item === "string" ? item : item.label))
+      .toEqual(["Paragraph", "Section", "Heading", "List"])
+    expect(button("Media").submenu.map(item => typeof item === "string" ? item : item.label))
+      .toEqual(["Image", "Audio", "Video", "Graphic", "Formula", "Website"])
+    expect(button("Other").submenu.map(item => typeof item === "string" ? item : item.label))
+      .toEqual(["Form", "Script", "Details"])
+    expect(button("Media").action).toBe("Image")
+    expect(button("Media").dropdownOnClick).toBe(false)
+
+    const listener = vi.fn()
+    ribbon.addEventListener("ribbon-button-click", listener)
+    await button("Media").updateComplete
+    button("Media").shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    await button("Media").updateComplete
+    const menu = button("Media").shadowRoot!.querySelector("ribbon-menu")!
+    await menu.updateComplete
+    expect(button("Media").shadowRoot!.querySelector(".submenu-trigger")!.getAttribute("aria-expanded")).toBe("true")
+    expect(menu.hidden).toBe(false)
+    menu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Image"]')!.click()
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
+      detail: {label: "Image"},
+    }))
   })
 
   it("groups form, script, divider, and dialog insertions under their primary buttons", async () => {

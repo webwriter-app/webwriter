@@ -3,7 +3,9 @@ import {ribbonIcon} from "../ribbon-icons"
 
 export type RibbonDrawerLayoutWidths = {
   collapsed: number
+  compact?: number
   expanded: number
+  minimum?: number
 }
 
 /**
@@ -13,11 +15,13 @@ export type RibbonDrawerLayoutWidths = {
  * layout is intentionally fixed and does not use the second tier.
  *
  * Widths can be tailored with `--ribbon-drawer-expanded-width`,
- * `--ribbon-drawer-collapsed-width`, and `--ribbon-drawer-width`.
+ * `--ribbon-drawer-compact-width`, `--ribbon-drawer-collapsed-width`,
+ * `--ribbon-drawer-min-width`, and `--ribbon-drawer-width`.
  */
 export class RibbonDrawer extends LitElement {
   static properties = {
     collapsed: {type: Boolean, reflect: true},
+    compact: {type: Boolean, reflect: true},
     drawerOpen: {type: Boolean, reflect: true, attribute: "drawer-open"},
     drawerContentOpen: {type: Boolean, reflect: true, attribute: "drawer-visible"},
     drawerSettled: {type: Boolean, reflect: true, attribute: "drawer-settled"},
@@ -33,7 +37,9 @@ export class RibbonDrawer extends LitElement {
   static styles = css`
     :host {
       --ribbon-drawer-expanded-width: 13.25rem;
+      --ribbon-drawer-compact-width: var(--ribbon-drawer-expanded-width);
       --ribbon-drawer-collapsed-width: 5.25rem;
+      --ribbon-drawer-min-width: var(--ribbon-drawer-expanded-width);
       --ribbon-drawer-width: var(--ribbon-drawer-expanded-width);
       --ribbon-drawer-height: 5.625rem;
       --ribbon-drawer-more-height: 5.85rem;
@@ -44,7 +50,7 @@ export class RibbonDrawer extends LitElement {
       flex: 0 0 var(--ribbon-drawer-expanded-width);
       position: relative;
       z-index: 0;
-      min-width: var(--ribbon-drawer-expanded-width);
+      min-width: var(--ribbon-drawer-min-width);
     }
 
     :host([layout="marks"]) {
@@ -64,6 +70,7 @@ export class RibbonDrawer extends LitElement {
 
     :host([layout="elements"]) {
       --ribbon-drawer-expanded-width: 25.75rem;
+      --ribbon-drawer-compact-width: 8rem;
     }
 
     :host([layout="media"]) {
@@ -109,6 +116,13 @@ export class RibbonDrawer extends LitElement {
     :host([layout="elements"]) .controls {
       grid-template-rows: repeat(2, minmax(0, 1fr));
       grid-auto-columns: 3.5rem;
+    }
+
+    :host([layout="elements"][compact]) .controls {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-rows: repeat(2, minmax(0, 1fr));
+      grid-auto-flow: row;
+      grid-auto-columns: minmax(0, 1fr);
     }
 
     :host([layout="file"]) {
@@ -172,11 +186,18 @@ export class RibbonDrawer extends LitElement {
        * the overflow coordinator from replacing Packages with its pullout
        * before the grid needs to collapse. */
       --ribbon-drawer-expanded-width: 12rem;
+      --ribbon-drawer-min-width: 8rem;
       --ribbon-drawer-width: min(42rem, calc(100vw - 1rem));
       --ribbon-drawer-height: 10rem;
       --ribbon-drawer-more-height: 8rem;
       --ribbon-drawer-viewport-bottom-margin: 0.5rem;
       flex-grow: 1;
+      flex-shrink: 1;
+    }
+
+    :host([compact]) {
+      flex: 0 0 var(--ribbon-drawer-compact-width);
+      min-width: var(--ribbon-drawer-compact-width);
     }
 
     :host([collapsed]) {
@@ -732,6 +753,14 @@ export class RibbonDrawer extends LitElement {
       --probe-width: var(--ribbon-drawer-expanded-width);
     }
 
+    .compact-size-probe {
+      --probe-width: var(--ribbon-drawer-compact-width);
+    }
+
+    .minimum-size-probe {
+      --probe-width: var(--ribbon-drawer-min-width);
+    }
+
     .collapsed-size-probe {
       --probe-width: var(--ribbon-drawer-collapsed-width);
     }
@@ -898,6 +927,7 @@ export class RibbonDrawer extends LitElement {
   `
 
   collapsed = false
+  compact = false
   expandable = false
   icon = ""
   label = "Drawer"
@@ -991,7 +1021,7 @@ export class RibbonDrawer extends LitElement {
 
   /** Fixed widths used by the ribbon's overflow coordinator. */
   get layoutWidths(): RibbonDrawerLayoutWidths {
-    return {
+    const widths: RibbonDrawerLayoutWidths = {
       collapsed: this.measuredWidth(
         ".collapsed-size-probe",
         "--ribbon-drawer-collapsed-width",
@@ -1003,6 +1033,21 @@ export class RibbonDrawer extends LitElement {
         this.layout === "marks" ? 422 : 212,
       ),
     }
+    if(this.layout === "elements") {
+      widths.compact = this.measuredWidth(
+        ".compact-size-probe",
+        "--ribbon-drawer-compact-width",
+        widths.expanded,
+      )
+    }
+    if(this.layout === "packages") {
+      widths.minimum = this.measuredWidth(
+        ".minimum-size-probe",
+        "--ribbon-drawer-min-width",
+        widths.expanded,
+      )
+    }
+    return widths
   }
 
   closeDrawer() {
@@ -1262,7 +1307,8 @@ export class RibbonDrawer extends LitElement {
         </div>
         <span class="pane-label">${this.label}</span>
         <div id="drawer-controls" class="controls">
-          <slot></slot>
+          <slot ?hidden=${this.compact}></slot>
+          <slot name="compact" ?hidden=${!this.compact}></slot>
           ${stylePaneToggle ? toggle : ""}
           <slot name="more" ?hidden=${!this.drawerContentOpen}></slot>
           <slot name="detail" ?hidden=${this.layout !== "marks" && !this.drawerContentOpen}></slot>
@@ -1270,6 +1316,8 @@ export class RibbonDrawer extends LitElement {
         ${stylePaneToggle ? "" : toggle}
       </section>
       <span class="size-probe expanded-size-probe" aria-hidden="true"></span>
+      <span class="size-probe compact-size-probe" aria-hidden="true"></span>
+      <span class="size-probe minimum-size-probe" aria-hidden="true"></span>
       <span class="size-probe collapsed-size-probe" aria-hidden="true"></span>
     `
   }
