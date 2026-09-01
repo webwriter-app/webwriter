@@ -224,6 +224,39 @@ describe("toolbox", () => {
     expect(buttons.map(button => button.action)).toEqual(["set-document-template:body"])
   })
 
+  it("offers universal attributes alongside specialized tools and for uncommon elements", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    toolbox.media = {type: "img", attributes: {alt: "Diagram"}}
+    toolbox.elementAttributes = {
+      path: [0],
+      localName: "img",
+      namespaceURI: "http://www.w3.org/1999/xhtml",
+      name: "Image",
+      icon: "Image",
+      attributes: {alt: "Diagram", fetchpriority: "high"},
+    }
+    await toolbox.updateComplete
+
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Image"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Attributes"] element-attribute-editor')).not.toBeNull()
+
+    toolbox.media = null
+    toolbox.elementAttributes = {
+      path: [1],
+      localName: "blockquote",
+      namespaceURI: "http://www.w3.org/1999/xhtml",
+      name: "Quote",
+      icon: "Quote",
+      attributes: {cite: "source.html"},
+    }
+    await toolbox.updateComplete
+    expect(toolButton(toolbox, "Edit").getAttribute("aria-label")).toBe("Edit Quote")
+    expect(toolbox.shadowRoot!.querySelectorAll("ribbon-drawer")).toHaveLength(1)
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Attributes"]')).not.toBeNull()
+  })
+
   it("separates Edit, Review, Style, and Develop into their pane-specific controls", async () => {
     const toolbox = await mountToolbox()
 

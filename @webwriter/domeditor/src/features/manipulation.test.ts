@@ -1109,6 +1109,12 @@ describe("setAttributes()", () => {
     editor.features.manipulation.setAttributes({title: null})
     expect((document.body.firstElementChild as HTMLElement)).not.toHaveAttribute("title")
   })
+  it("preserves an empty value for boolean authored attributes", () => {
+    document.body.innerHTML = "<details><summary>More</summary></details>"
+    $.selectElement(document.body.firstElementChild!)
+    editor.features.manipulation.setAttributes({open: ""})
+    expect(document.body.firstElementChild).toHaveAttribute("open", "")
+  })
   it("accepts null removal through the action payload", () => {
     document.body.innerHTML = `<p title="test">hello world</p>`
     $.selectElement(document.body.firstElementChild!)

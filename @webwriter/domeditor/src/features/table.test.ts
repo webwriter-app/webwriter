@@ -82,7 +82,7 @@ describe("table grid", () => {
   })
 
   it("reports only BODY and TABLE in the breadcrumb path for a cell selection", () => {
-    document.body.innerHTML = "<table><tbody><tr><td>A</td></tr></tbody></table>"
+    document.body.innerHTML = '<table><tbody><tr><td headers="name">A</td></tr></tbody></table>'
     let detail: SelectionChangeDetail | undefined
     const listener = (event: Event) => detail = (event as CustomEvent<SelectionChangeDetail>).detail
     window.addEventListener(selectionChangeEvent, listener, {once: true})
@@ -90,6 +90,12 @@ describe("table grid", () => {
     editor.features.table.selectCells(cells()[0])
 
     expect(detail?.path.map(item => item.path)).toEqual([[], [0]])
+    expect(detail?.element).toEqual(expect.objectContaining({
+      path: [0, 0, 0, 0],
+      localName: "td",
+      name: "Table Cell",
+      attributes: {headers: "name"},
+    }))
   })
 })
 

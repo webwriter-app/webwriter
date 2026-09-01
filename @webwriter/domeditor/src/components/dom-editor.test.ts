@@ -1027,6 +1027,7 @@ describe("DomEditor.execute()", () => {
     toolbox.selectTool(null)
     selectInserted({path: [{path: [], name: "Document"}, {path: [0], name: "Form"}]})
     expect(toolbox.activeTool).toBeNull()
+
   })
 
   it("loads Style-pane state lazily and routes inline style changes", async () => {
@@ -1380,6 +1381,35 @@ describe("DomEditor.execute()", () => {
     })
     await Promise.resolve()
     expect(focusEditor).not.toHaveBeenCalled()
+  })
+
+  it("routes exact element attribute mutations through the iframe bridge", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const toolbox = editor.shadowRoot!.querySelector("dom-editor-toolbox")!
+
+    toolbox.dispatchEvent(new CustomEvent("element-attribute-change", {
+      detail: {
+        path: [0, 1],
+        localName: "blockquote",
+        namespaceURI: "http://www.w3.org/1999/xhtml",
+        name: "data-source",
+        previousName: "cite",
+        value: "curriculum",
+      },
+      bubbles: true,
+      composed: true,
+    }))
+
+    expect(execute).toHaveBeenCalledWith({
+      type: "setElementAttribute",
+      path: [0, 1],
+      localName: "blockquote",
+      namespaceURI: "http://www.w3.org/1999/xhtml",
+      name: "data-source",
+      previousName: "cite",
+      value: "curriculum",
+    })
   })
 
   it("routes graphic insertion, shape, and parameter commands through the iframe bridge", async () => {

@@ -98,6 +98,8 @@ import "./document-head-editor"
 import "./element-style-editor"
 import "./settings-panel"
 import {sectionOptions, type SectionName} from "../sections"
+import type {ElementAttributeState} from "../element-attributes"
+import "./element-attribute-editor"
 
 export type LiveLearnerRibbonItem = {
   id: string
@@ -211,6 +213,7 @@ export class AppRibbon extends LitElement {
     table: {attribute: false},
     graphic: {attribute: false},
     elementStyle: {attribute: false},
+    elementAttributes: {attribute: false},
     fileName: {type: String, attribute: "file-name"},
     fileDirty: {type: Boolean, attribute: "file-dirty"},
     documentHead: {attribute: false},
@@ -2983,6 +2986,7 @@ export class AppRibbon extends LitElement {
   dialog: DialogSelectionState | null = null
   table: TableSelectionState | null = null
   graphic: GraphicSelectionState | null = null
+  elementAttributes: ElementAttributeState | null = null
   elementStyle: ElementStyleState = {
     target: null,
     inline: {},
@@ -5549,6 +5553,15 @@ export class AppRibbon extends LitElement {
     `
   }
 
+  private renderElementAttributesDrawer() {
+    if(!this.elementAttributes) return nothing
+    return html`
+      <ribbon-drawer label="Attributes" icon=${this.elementAttributes.icon ?? "Develop"} layout="attributes">
+        <element-attribute-editor .state=${this.elementAttributes}></element-attribute-editor>
+      </ribbon-drawer>
+    `
+  }
+
   private renderInsertionDrawer(drawer: RibbonMenuGroup) {
     const buttonLabel = (button: RibbonMenuButton) => typeof button === "string" ? button : button.label
     const buttonByLabel = (label: string) => {
@@ -6289,6 +6302,7 @@ export class AppRibbon extends LitElement {
       if(drawer.label === "Sharing") return this.renderSharingDrawer(drawer)
       if(drawer.label === "Marks") return this.renderMarkDrawer()
       if(drawer.label === "Section") return this.renderSectionDrawer()
+      if(drawer.label === "Attributes") return this.renderElementAttributesDrawer()
       if(drawer.label === "Media") return this.renderMediaDrawer()
       if(drawer.label === "Dialog") return this.renderDialogDrawer()
       if(drawer.label === "Comments") return this.renderCommentDrawer()
@@ -6328,16 +6342,21 @@ export class AppRibbon extends LitElement {
 
   protected get currentMenuGroups() {
     if(this.activeMenu === "Edit" && this.media) {
-      return menuGroups.Edit.filter(group => group.label === "Media")
+      return menuGroups.Edit.filter(group => group.label === "Media" || Boolean(this.elementAttributes) && group.label === "Attributes")
     }
     if(this.activeMenu === "Edit" && this.dialog) {
-      return menuGroups.Edit.filter(group => group.label === "Dialog" || Boolean(this.form) && group.label === "Form")
+      return menuGroups.Edit.filter(group => group.label === "Dialog"
+        || Boolean(this.form) && group.label === "Form"
+        || Boolean(this.elementAttributes) && group.label === "Attributes")
     }
     if(this.activeMenu === "Edit" && this.form) {
-      return menuGroups.Edit.filter(group => group.label === "Form")
+      return menuGroups.Edit.filter(group => group.label === "Form" || Boolean(this.elementAttributes) && group.label === "Attributes")
     }
     if(this.activeMenu === "Edit" && this.graphic?.active) {
-      return menuGroups.Edit.filter(group => group.label === "Graphic")
+      return menuGroups.Edit.filter(group => group.label === "Graphic" || Boolean(this.elementAttributes) && group.label === "Attributes")
+    }
+    if(this.activeMenu === "Edit" && this.elementAttributes) {
+      return menuGroups.Edit.filter(group => group.label === "Attributes")
     }
     if(this.activeMenu !== "Start") return menuGroups[this.activeMenu]
     const packageButtons: RibbonMenuButton[] = this.availablePackages.map(pkg => {

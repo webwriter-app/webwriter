@@ -38,6 +38,7 @@ import {
   type FormSelectionState,
 } from "../form"
 import type {DialogSelectionState} from "../dialog"
+import type {ElementAttributeState} from "../element-attributes"
 import {
   aiEditReviewEvent,
   executeCompleteEvent,
@@ -308,6 +309,7 @@ export class DomEditor extends LitElement {
     dialogSelection: {attribute: false, state: true},
     tableSelection: {attribute: false, state: true},
     graphicSelection: {attribute: false, state: true},
+    elementAttributes: {attribute: false, state: true},
     elementStyle: {attribute: false, state: true},
     fileName: {attribute: false, state: true},
     fileDirty: {attribute: false, state: true},
@@ -377,6 +379,7 @@ export class DomEditor extends LitElement {
   private dialogSelection: DialogSelectionState | null = null
   private tableSelection: TableSelectionState | null = null
   private graphicSelection: GraphicSelectionState | null = null
+  private elementAttributes: ElementAttributeState | null = null
   private elementStyle: ElementStyleState = {
     target: null,
     inline: {},
@@ -3001,6 +3004,37 @@ export class DomEditor extends LitElement {
     })
   }
 
+  private handleElementAttributeChange = (event: Event) => {
+    const detail = (event as CustomEvent<{
+      path?: unknown
+      localName?: unknown
+      namespaceURI?: unknown
+      name?: unknown
+      previousName?: unknown
+      value?: unknown
+    }>).detail
+    const pathIsValid = detail?.path === null || Array.isArray(detail?.path)
+      && detail.path.every(index => Number.isInteger(index) && index >= 0)
+    if(!pathIsValid
+      || typeof detail?.localName !== "string"
+      || detail.namespaceURI !== null && typeof detail.namespaceURI !== "string"
+      || typeof detail.name !== "string"
+      || detail.previousName !== undefined && typeof detail.previousName !== "string"
+      || detail.value !== null && typeof detail.value !== "string") {
+      this.focusEditor()
+      return
+    }
+    void this.execute({
+      type: "setElementAttribute",
+      path: detail.path as number[] | null,
+      localName: detail.localName,
+      namespaceURI: detail.namespaceURI,
+      name: detail.name,
+      ...(detail.previousName ? {previousName: detail.previousName} : {}),
+      value: detail.value,
+    })
+  }
+
   private handleMediaTypeChange = (event: Event) => {
     const type = (event as CustomEvent<{type?: unknown}>).detail?.type
     if(type === "picture" || type === "img") {
@@ -3528,6 +3562,7 @@ export class DomEditor extends LitElement {
         this.selectionGap = null
         this.mediaSelection = null
         this.graphicSelection = null
+        this.elementAttributes = null
       }
       this.marks = [...event.data.detail.marks]
       this.markStyles = {...(event.data.detail.styles ?? {})}
@@ -3615,6 +3650,11 @@ export class DomEditor extends LitElement {
         } : {}),
         ...(event.data.detail.graphic.viewport ? {viewport: {...event.data.detail.graphic.viewport}} : {}),
       } : null
+      this.elementAttributes = event.data.detail.element ? {
+        ...event.data.detail.element,
+        path: event.data.detail.element.path ? [...event.data.detail.element.path] : null,
+        attributes: {...event.data.detail.element.attributes},
+      } : null
       const hasContextualEditOptions = this.tableSelection?.active === true
         || this.graphicSelection?.active === true
         || this.mediaSelection !== null
@@ -3639,6 +3679,7 @@ export class DomEditor extends LitElement {
           ...(this.dialogSelection ? {dialog: this.dialogSelection} : {}),
           ...(this.tableSelection ? {table: this.tableSelection} : {}),
           ...(this.graphicSelection ? {graphic: this.graphicSelection} : {}),
+          ...(this.elementAttributes ? {element: this.elementAttributes} : {}),
           ...(selectedSection ? {section: {
             path: [...selectedSection.path],
             type: selectedSection.type,
@@ -3897,6 +3938,7 @@ export class DomEditor extends LitElement {
     this.selectionPath = []
     this.nodeSelection = false
     this.captureSelection = false
+    this.elementAttributes = null
     this.selectionGap = null
     this.canMark = false
     this.canSection = false
@@ -3972,6 +4014,7 @@ export class DomEditor extends LitElement {
           .form=${this.formSelection}
           .dialog=${this.dialogSelection}
           .graphic=${this.graphicSelection}
+          .elementAttributes=${this.elementAttributes}
           .elementStyle=${this.elementStyle}
           .presenceUsers=${this.presenceUsers}
           .packages=${this.packages}
@@ -4009,6 +4052,7 @@ export class DomEditor extends LitElement {
           @mark-attribute-change=${this.handleMarkAttributeChange}
           @comment-action=${this.handleCommentAction}
           @media-attribute-change=${this.handleMediaAttributeChange}
+          @element-attribute-change=${this.handleElementAttributeChange}
           @media-type-change=${this.handleMediaTypeChange}
           @form-attribute-change=${this.handleFormAttributeChange}
           @form-text-change=${this.handleFormTextChange}
@@ -4114,6 +4158,7 @@ export class DomEditor extends LitElement {
         .dialog=${this.dialogSelection}
         .table=${this.tableSelection}
         .graphic=${this.graphicSelection}
+        .elementAttributes=${this.elementAttributes}
         .elementStyle=${this.elementStyle}
         .localPackages=${this.localPackages}
         .localPackagesLoading=${this.localPackagesLoading}
@@ -4128,6 +4173,7 @@ export class DomEditor extends LitElement {
         @mark-attribute-change=${this.handleMarkAttributeChange}
         @comment-action=${this.handleCommentAction}
         @media-attribute-change=${this.handleMediaAttributeChange}
+        @element-attribute-change=${this.handleElementAttributeChange}
         @media-type-change=${this.handleMediaTypeChange}
         @form-attribute-change=${this.handleFormAttributeChange}
         @form-text-change=${this.handleFormTextChange}

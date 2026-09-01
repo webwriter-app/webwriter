@@ -353,6 +353,36 @@ describe("processSelection()", () => {
     expect(document.body).toHaveClass("◆element-selected")
     expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-node")
   })
+  it("addresses document-level attributes on the HTML element", () => {
+    document.documentElement.setAttribute("lang", "de")
+    try {
+      feature.actions.selectNode({type: "selectNode", path: []})
+      const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => {})
+
+      editor.postSelectionPath()
+
+      const message = postMessage.mock.lastCall?.[0] as {detail: {element?: unknown}}
+      expect(message.detail.element).toEqual(expect.objectContaining({
+        path: null,
+        localName: "html",
+        name: "Document",
+        attributes: expect.objectContaining({lang: "de"}),
+      }))
+      editor.features.manipulation.actions.setElementAttribute({
+        type: "setElementAttribute",
+        path: null,
+        localName: "html",
+        namespaceURI: "http://www.w3.org/1999/xhtml",
+        name: "dir",
+        value: "rtl",
+      })
+      expect(document.documentElement).toHaveAttribute("dir", "rtl")
+    }
+    finally {
+      document.documentElement.removeAttribute("lang")
+      document.documentElement.removeAttribute("dir")
+    }
+  })
   it("treats a template as the document editing root", () => {
     document.body.innerHTML = '<demo-widget role="document"></demo-widget>'
     const template = document.body.firstElementChild!
@@ -604,8 +634,91 @@ describe("document listeners", () => {
       detail: {
         path: [{path: [0], name: "Content", icon: "Section"}],
         nodeSelected: true,
+        element: {
+          path: [0],
+          localName: "demo-widget",
+          namespaceURI: "http://www.w3.org/1999/xhtml",
+          name: "Content",
+          icon: "Section",
+          attributes: {role: "document"},
+        },
       },
     }, window.location.origin)
+  })
+
+  it("posts authored attributes only for an exact element selection", () => {
+    document.body.innerHTML = '<blockquote cite="source.html" class="authored ◆stale-marker" contenteditable="false" spellcheck="true">Quote</blockquote>'
+    const quote = document.querySelector("blockquote")!
+    feature.actions.selectSection({type: "selectSection", path: [0]})
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => {})
+
+    editor.postSelectionPath()
+
+    const message = postMessage.mock.lastCall?.[0] as {detail: {element?: unknown}}
+    expect(message.detail.element).toEqual({
+      path: [0],
+      localName: "blockquote",
+      namespaceURI: "http://www.w3.org/1999/xhtml",
+      name: "Quote",
+      icon: "Quote",
+      attributes: {cite: "source.html", class: "authored"},
+    })
+
+    feature.clearSelectedSection()
+    $.move(quote.firstChild!, 2)
+    editor.postSelectionPath()
+    const textMessage = postMessage.mock.lastCall?.[0] as {detail: {element?: unknown}}
+    expect(textMessage.detail.element).toBeUndefined()
+  })
+
+  it("edits, renames, and removes attributes without losing selection markers", () => {
+    document.body.innerHTML = '<blockquote cite="source.html" class="authored"></blockquote>'
+    const quote = document.querySelector("blockquote")!
+    quote.classList.add("◆", "◆element-selected")
+    const target = {
+      path: [0],
+      localName: "blockquote",
+      namespaceURI: "http://www.w3.org/1999/xhtml",
+    }
+
+    editor.features.manipulation.actions.setElementAttribute({...target, type: "setElementAttribute", name: "open", value: ""})
+    editor.features.manipulation.actions.setElementAttribute({
+      ...target,
+      type: "setElementAttribute",
+      name: "data-cite",
+      previousName: "cite",
+      value: "source.html",
+    })
+    editor.features.manipulation.actions.setElementAttribute({...target, type: "setElementAttribute", name: "class", value: "changed ◆injected"})
+
+    expect(quote).toHaveAttribute("open", "")
+    expect(quote).not.toHaveAttribute("cite")
+    expect(quote).toHaveAttribute("data-cite", "source.html")
+    expect(quote).toHaveClass("changed", "◆", "◆element-selected")
+    expect(quote).not.toHaveClass("◆injected")
+
+    editor.features.manipulation.actions.setElementAttribute({...target, type: "setElementAttribute", name: "class", value: null})
+    expect(quote).not.toHaveClass("changed")
+    expect(quote).toHaveClass("◆", "◆element-selected")
+  })
+
+  it("rejects active attributes, unsafe URLs, and stale element paths", () => {
+    document.body.innerHTML = "<blockquote></blockquote>"
+    const target = {
+      path: [0],
+      localName: "blockquote",
+      namespaceURI: "http://www.w3.org/1999/xhtml",
+      type: "setElementAttribute" as const,
+    }
+
+    expect(() => editor.features.manipulation.actions.setElementAttribute({...target, name: "onclick", value: "alert(1)"})).toThrow()
+    expect(() => editor.features.manipulation.actions.setElementAttribute({...target, name: "cite", value: "javascript:alert(1)"})).toThrow()
+    expect(() => editor.features.manipulation.actions.setElementAttribute({...target, name: "srcdoc", value: "<script></script>"})).toThrow()
+
+    document.body.innerHTML = "<div></div>"
+    expect(() => editor.features.manipulation.actions.setElementAttribute({...target, name: "title", value: "Quote"})).toThrow(
+      "selected element changed",
+    )
   })
   it("omits mark wrappers from the posted selection path", () => {
     document.body.innerHTML = "<section><p><strong><span>hello</span></strong></p></section>"

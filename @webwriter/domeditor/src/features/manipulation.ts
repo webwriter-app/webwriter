@@ -11,6 +11,11 @@ import {
 import {paragraphStylePropertyNameSet} from "../element-styles"
 import {isSectionElement, isSectionName, type SectionName} from "../sections"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
+import {
+  elementAttributeEditability,
+  isUnsafeElementAttributeValue,
+  sanitizeAuthoredClass,
+} from "../element-attributes"
 
 /** Unit by which a collapsed selection is extended before deleting. */
 type Granularity = "character" | "word" | "line" | "block"
@@ -933,6 +938,22 @@ export class ManipulationFeature extends EditorFeature {
     setAttributes: ({attrs}: {type: "setAttributes", attrs: Record<string, string | null>}) => {
       this.setAttributes(attrs)
     },
+    setElementAttribute: ({
+      path,
+      localName,
+      namespaceURI,
+      name,
+      previousName,
+      value,
+    }: {
+      type: "setElementAttribute"
+      path: number[] | null
+      localName: string
+      namespaceURI: string | null
+      name: string
+      previousName?: string
+      value: string | null
+    }) => this.setElementAttribute(path, localName, namespaceURI, name, value, previousName),
     getStyleState: ({properties}: {type: "getStyleState", properties?: string[]}) => {
       if(properties !== undefined && (!Array.isArray(properties) || properties.some(name => typeof name !== "string"))) {
         throw new TypeError("Style-state property names must be strings")
@@ -1385,8 +1406,58 @@ export class ManipulationFeature extends EditorFeature {
    * `EditingSelection.nodesBetween`); a null value removes the attribute. */
   setAttributes(attrs: Record<string, string | null>) {
     return this.withNormalization(() => {
-      $.nodesBetween.filter(isElement).forEach(n => Object.keys(attrs).forEach(k => attrs[k]? n.setAttribute(k, attrs[k]): n.removeAttribute(k)))
+      $.nodesBetween.filter(isElement).forEach(n => Object.keys(attrs).forEach(k => (
+        attrs[k] === null ? n.removeAttribute(k) : n.setAttribute(k, attrs[k]!)
+      )))
     })
+  }
+
+  /** Sets one attribute on the live element addressed by the selection bridge.
+   * The expected identity prevents a delayed UI event from mutating a node
+   * that concurrently replaced the selected element. */
+  private setElementAttribute(
+    path: number[] | null,
+    localName: string,
+    namespaceURI: string | null,
+    name: string,
+    value: string | null,
+    previousName?: string,
+  ) {
+    let node: Node = path === null ? document.documentElement : document.body
+    for(const index of path ?? []) {
+      const child = node.childNodes.item(index)
+      if(!child) throw new RangeError(`Cannot edit a missing element at path [${path?.join(", ")}]`)
+      node = child
+    }
+    if(!(node instanceof Element) || node.localName !== localName || node.namespaceURI !== namespaceURI) {
+      throw new Error("The selected element changed before its attribute could be edited")
+    }
+    if(!name || name !== name.trim()) throw new TypeError("An attribute name cannot be empty or padded")
+    if(!elementAttributeEditability(name).editable) throw new TypeError(`The ${name} attribute is not editable here`)
+    if(previousName && !elementAttributeEditability(previousName).editable) {
+      throw new TypeError(`The ${previousName} attribute is not editable here`)
+    }
+    if(value !== null && isUnsafeElementAttributeValue(name, value)) {
+      throw new TypeError(`The ${name} attribute contains an unsafe URL`)
+    }
+
+    const setClass = (nextValue: string | null) => {
+      const markers = Array.from(node.classList).filter(className => className.startsWith("◆"))
+      const authored = nextValue === null ? [] : sanitizeAuthoredClass(nextValue).split(/\s+/).filter(Boolean)
+      const classes = [...new Set([...authored, ...markers])]
+      if(classes.length) node.setAttribute("class", classes.join(" "))
+      else node.removeAttribute("class")
+    }
+    const set = (attributeName: string, nextValue: string | null) => {
+      if(attributeName.toLowerCase() === "class") setClass(nextValue)
+      else if(nextValue === null) node.removeAttribute(attributeName)
+      else node.setAttribute(attributeName, nextValue)
+    }
+
+    // Set the new name before removing the old one so an invalid XML name
+    // cannot turn a failed rename into data loss.
+    set(name, value)
+    if(previousName && previousName !== name) set(previousName, null)
   }
 
   private validatedStyleEntries(styles: Record<string, ElementStyleMutation>) {

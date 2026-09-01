@@ -9,6 +9,7 @@ export const isLineBreakElement = (elementOrTagName: Element | string): boolean 
 }
 
 const presentations: Record<string, ElementPresentation> = {
+  html: {name: "Document", icon: "Document"},
   body: {name: "Document", icon: "Document"},
   p: {name: "Paragraph", icon: "Paragraph"},
   pre: {name: "Preformatted Text", icon: "Preformatted Text"},

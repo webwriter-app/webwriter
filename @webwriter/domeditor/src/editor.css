@@ -51,6 +51,7 @@ body.◆template-active > [role~="document"]:only-child {
   padding: 0 var(--body-padding);
 }
 
+html.◆key-mod-down,
 html:has(> body.◆key-mod-down),
 html:has(> body.◆key-mod-down) *,
 html:has(> body.◆key-mod-down) *::before,

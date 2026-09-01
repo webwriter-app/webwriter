@@ -300,11 +300,13 @@ export class SelectionFeature extends EditorFeature {
     this.#clearSelections()
     this.isInDragSelection = false
     this.dragAnchor = null
-    document.body.classList.remove("◆key-mod-down", "◆key-alt-down", "◆key-shift-down")
-    if(!Array.from(document.body.classList).some(marker => marker !== "◆" && marker.startsWith("◆"))) {
-      document.body.classList.remove("◆")
-    }
-    if(!document.body.classList.length) document.body.removeAttribute("class")
+    ;[document.documentElement, document.body].forEach(element => {
+      element.classList.remove("◆key-mod-down", "◆key-alt-down", "◆key-shift-down")
+      if(!Array.from(element.classList).some(marker => marker !== "◆" && marker.startsWith("◆"))) {
+        element.classList.remove("◆")
+      }
+      if(!element.classList.length) element.removeAttribute("class")
+    })
     super.disable()
   }
 
@@ -318,11 +320,14 @@ export class SelectionFeature extends EditorFeature {
       ["◆key-alt-down", event.altKey],
       ["◆key-shift-down", event.shiftKey],
     ] as const
-    states.forEach(([marker, active]) => document.body.classList.toggle(marker, active))
-    if(states.some(([, active]) => active)) document.body.classList.add("◆")
-    else if(!Array.from(document.body.classList).some(marker => marker !== "◆" && marker.startsWith("◆"))) {
-      document.body.classList.remove("◆")
-    }
+    ;[document.documentElement, document.body].forEach(element => {
+      states.forEach(([marker, active]) => element.classList.toggle(marker, active))
+      if(states.some(([, active]) => active)) element.classList.add("◆")
+      else if(!Array.from(element.classList).some(marker => marker !== "◆" && marker.startsWith("◆"))) {
+        element.classList.remove("◆")
+      }
+      if(!element.classList.length) element.removeAttribute("class")
+    })
     if(!document.body.classList.length) document.body.removeAttribute("class")
   }
 

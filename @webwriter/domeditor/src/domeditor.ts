@@ -47,6 +47,7 @@ import type {DocumentHeadState} from "./document-head"
 import {getSectionOption, isSectionElement} from "./sections"
 import {getDocumentRoot} from "./document-template"
 import {stripActiveContent} from "./active-content"
+import {elementAttributeState} from "./element-attributes"
 
 const editorStylesheet = createStylesheet(editorStyleString)
 const appendixStylesheet = createStylesheet(`
@@ -881,6 +882,19 @@ export class DOMEditor {
     return current === body? path: []
   }
 
+  /** Returns an exact, explicitly selected authored element. Text selections
+   * deliberately have no generic attribute target. */
+  private selectedAttributeElement() {
+    const selectedSection = this.features.selection.selectedSectionElement
+    if(selectedSection) return selectedSection
+    if(this.features.table.hasCellSelection) return this.features.table.selectionFocusCell
+    const selected = this.features.selection.captureSelectedElement ?? ($.isElementSelection ? $.selectedElement : null)
+    if(!selected) return null
+    const root = getDocumentRoot()
+    if(selected === document.body || selected === root && root === document.body) return document.documentElement
+    return selected === root || root.contains(selected) ? selected : null
+  }
+
   /** Sends the current element path to the host application through the bridge. */
   postSelectionPath(inserted = false) {
     const body = document.body
@@ -944,6 +958,13 @@ export class DOMEditor {
     const table = this.features.table.getState()
     const graphic = this.features.graphic.getState()
     const selectedSection = this.features.selection.selectedSectionElement
+    const attributeElement = this.selectedAttributeElement()
+    const elementState = attributeElement
+      ? elementAttributeState(
+        attributeElement,
+        attributeElement === document.documentElement ? null : this.pathToElement(attributeElement),
+      )
+      : null
     const canSection = this.features.manipulation.canSectionSelection()
     const detail: SelectionChangeDetail = {
       path,
@@ -962,6 +983,7 @@ export class DOMEditor {
       ...(dialog ? {dialog} : {}),
       ...(table ? {table} : {}),
       ...(graphic ? {graphic} : {}),
+      ...(elementState ? {element: elementState} : {}),
     }
     this.postBridgeEvent(selectionChangeEvent, detail)
   }

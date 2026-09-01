@@ -456,6 +456,7 @@ export class DomEditorToolbox extends AppRibbon {
     if(this.dialog && !this.form) return "Dialog"
     if(this.form) return this.form.type === "input" ? "Input" : this.form.type === "textarea" ? "Text area" : "Form"
     if(this.selectionPath.at(-1)?.icon === "Packages") return "Widget"
+    if(this.elementAttributes) return this.elementAttributes.name
     return null
   }
 
@@ -466,21 +467,29 @@ export class DomEditorToolbox extends AppRibbon {
     }
     if(this.activeTool === "Develop") return menuGroups.Develop
     if(this.activeTool === "Edit") {
-      if(this.documentSelected) return menuGroups.Edit.filter(group => group.label === "Document")
+      if(this.documentSelected) return menuGroups.Edit.filter(group => group.label === "Document"
+        || Boolean(this.elementAttributes) && group.label === "Attributes")
       const groups = menuGroups.Edit.filter(group => ![
         "Marks", "Document", "Section", "Comments", "Review", "View",
       ].includes(group.label))
       return this.sectionSelected
-        ? menuGroups.Edit.filter(group => group.label === "Section")
+        ? menuGroups.Edit.filter(group => group.label === "Section"
+          || Boolean(this.elementAttributes) && group.label === "Attributes")
         : this.graphic?.active
-        ? groups.filter(group => group.label === "Graphic")
+        ? groups.filter(group => group.label === "Graphic" || Boolean(this.elementAttributes) && group.label === "Attributes")
+        : this.table?.active
+          ? groups.filter(group => group.label === "Layout" || Boolean(this.elementAttributes) && group.label === "Attributes")
         : this.media
-          ? groups.filter(group => group.label === "Media")
+          ? groups.filter(group => group.label === "Media" || Boolean(this.elementAttributes) && group.label === "Attributes")
         : this.dialog
-          ? groups.filter(group => group.label === "Dialog" || Boolean(this.form) && group.label === "Form")
+          ? groups.filter(group => group.label === "Dialog"
+            || Boolean(this.form) && group.label === "Form"
+            || Boolean(this.elementAttributes) && group.label === "Attributes")
         : this.form
-          ? groups.filter(group => group.label === "Form")
-        : groups
+          ? groups.filter(group => group.label === "Form" || Boolean(this.elementAttributes) && group.label === "Attributes")
+        : this.elementAttributes
+          ? groups.filter(group => group.label === "Attributes")
+          : groups
     }
     return []
   }

@@ -15,6 +15,7 @@ import type {DocumentHeadElementState, DocumentHeadState} from "./document-head"
 import {isFormElementType, type FormSelectionState} from "./form"
 import {isDialogClosedBy, type DialogSelectionState} from "./dialog"
 import {isSectionName, type SectionName} from "./sections"
+import type {ElementAttributeState} from "./element-attributes"
 
 export const executeCompleteEvent = "dom-editor-execute-complete"
 export const executeFailureEvent = "dom-editor-execute-failure"
@@ -243,6 +244,8 @@ export type SelectionChangeDetail = {
   dialog?: DialogSelectionState
   table?: TableSelectionState
   graphic?: GraphicSelectionState
+  /** Authored attributes for the exact element-like selection, when any. */
+  element?: ElementAttributeState
   /** Present only when a section was explicitly selected from the breadcrumb. */
   section?: SectionSelectionState
 }
@@ -506,6 +509,23 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
     && typeof list.style === "string"
   )
   if(!listIsValid) return false
+
+  const element = message.detail.element as Partial<ElementAttributeState> | null | undefined
+  const elementIsValid = element === undefined || (
+    !!element
+    && typeof element === "object"
+    && (element.path === null || Array.isArray(element.path)
+      && element.path.every(index => Number.isInteger(index) && index >= 0))
+    && typeof element.localName === "string"
+    && (element.namespaceURI === null || typeof element.namespaceURI === "string")
+    && typeof element.name === "string"
+    && (element.icon === undefined || typeof element.icon === "string")
+    && !!element.attributes
+    && typeof element.attributes === "object"
+    && !Array.isArray(element.attributes)
+    && Object.entries(element.attributes).every(([name, value]) => typeof name === "string" && typeof value === "string")
+  )
+  if(!elementIsValid) return false
 
   const media = message.detail.media as Partial<MediaSelectionState> | null | undefined
   const mediaIsValid = media === undefined || (
