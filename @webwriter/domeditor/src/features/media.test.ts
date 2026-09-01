@@ -336,6 +336,148 @@ describe("media editing", () => {
     expect(video.querySelector("source")).toHaveAttribute("src", "remote.webm")
   })
 
+  it("adds and removes an image map beside a picture without disturbing its figure", () => {
+    document.body.innerHTML = '<figure><picture><img src="diagram.png" alt="Diagram"></picture><figcaption>Overview</figcaption></figure>'
+    const picture = document.querySelector("picture")!
+    const image = picture.querySelector("img")!
+    const caption = document.querySelector("figcaption")!
+    $.selectElement(picture)
+    editor.features.selection.processSelection()
+
+    expect(editor.features.media.getState()?.imageMap).toBeNull()
+    expect(editor.features.media.actions.addImageMap({type: "addImageMap"})).toBe(true)
+
+    const map = document.querySelector("map")!
+    expect(image).toHaveAttribute("usemap", "#image-map")
+    expect(map).toHaveAttribute("name", "image-map")
+    expect(map.previousElementSibling).toBe(picture)
+    expect(map.nextElementSibling).toBe(caption)
+    expect(editor.features.media.getState()?.imageMap).toEqual({name: "image-map", shared: false, areas: []})
+    expect(editor.toHTML(true)).toContain('<map name="image-map"></map>')
+
+    expect(editor.features.media.actions.removeImageMap({type: "removeImageMap"})).toEqual({removedMap: true})
+    expect(image).not.toHaveAttribute("usemap")
+    expect(map.isConnected).toBe(false)
+    expect(document.querySelector("figcaption")).toBe(caption)
+  })
+
+  it("edits nested hotspots by guarded paths and preserves irregular map structure", () => {
+    document.body.innerHTML = `
+      <img src="campus.png" usemap="#campus" alt="Campus">
+      <map name="campus" data-origin="imported"><span data-group><area shape="rect" coords="1,2,30,40" href="old.html" alt="Library"></span></map>
+    `
+    const image = document.querySelector("img")!
+    const map = document.querySelector("map")!
+    const wrapper = map.querySelector("span")!
+    $.selectElement(image)
+    editor.features.selection.processSelection()
+
+    let areaState = editor.features.media.getState()!.imageMap!.areas[0]
+    expect(areaState.path).toHaveLength(2)
+    expect(editor.features.media.actions.setImageMapAreaAttribute({
+      type: "setImageMapAreaAttribute",
+      path: areaState.path,
+      expected: areaState.attributes,
+      name: "href",
+      value: "library.html",
+    })).toBe(true)
+    expect(map.querySelector("area")).toHaveAttribute("href", "library.html")
+    expect(map.querySelector("span")).toBe(wrapper)
+    expect(map).toHaveAttribute("data-origin", "imported")
+
+    areaState = editor.features.media.getState()!.imageMap!.areas[0]
+    wrapper.prepend(document.createComment("remote shift"))
+    expect(editor.features.media.actions.removeImageMapArea({
+      type: "removeImageMapArea",
+      path: areaState.path,
+      expected: areaState.attributes,
+    })).toBe(false)
+    expect(map.querySelector("area")).not.toBeNull()
+
+    areaState = editor.features.media.getState()!.imageMap!.areas[0]
+    expect(editor.features.media.actions.removeImageMapArea({
+      type: "removeImageMapArea",
+      path: areaState.path,
+      expected: areaState.attributes,
+    })).toBe(true)
+    expect(map.querySelector("area")).toBeNull()
+    expect(map.querySelector("span")).toBe(wrapper)
+  })
+
+  it("unlinks a shared image map without deleting it for other images", () => {
+    document.body.innerHTML = '<img id="first" usemap="#shared"><img id="second" usemap="#shared"><map name="shared"><area shape="default" href="home.html" alt="Home"></map>'
+    const first = document.querySelector<HTMLImageElement>("#first")!
+    const second = document.querySelector<HTMLImageElement>("#second")!
+    const map = document.querySelector("map")!
+    $.selectElement(first)
+    editor.features.selection.processSelection()
+
+    expect(editor.features.media.getState()?.imageMap?.shared).toBe(true)
+    expect(editor.features.media.actions.removeImageMap({type: "removeImageMap"})).toEqual({removedMap: false})
+    expect(first).not.toHaveAttribute("usemap")
+    expect(second).toHaveAttribute("usemap", "#shared")
+    expect(map.isConnected).toBe(true)
+  })
+
+  it("draws rectangle, circle, and polygon hotspots in intrinsic image coordinates", () => {
+    document.body.innerHTML = '<img src="plan.png" usemap="#plan"><map name="plan"></map>'
+    const image = document.querySelector<HTMLImageElement>("img")!
+    Object.defineProperty(image, "naturalWidth", {configurable: true, value: 200})
+    Object.defineProperty(image, "naturalHeight", {configurable: true, value: 100})
+    vi.spyOn(image, "getBoundingClientRect").mockReturnValue({
+      x: 10, y: 20, left: 10, top: 20, right: 110, bottom: 70, width: 100, height: 50, toJSON: () => ({}),
+    })
+    $.selectElement(image)
+    editor.features.selection.processSelection()
+    const overlay = editor.features.media.imageMapOverlay
+    const svg = overlay.root.querySelector<SVGSVGElement>("svg")!
+    expect(overlay.element.getRootNode()).toBe(editor.appendix)
+
+    expect(editor.features.media.actions.startImageMapDrawing({type: "startImageMapDrawing", shape: "rect"})).toBe(true)
+    svg.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0, clientX: 20, clientY: 30}))
+    svg.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, clientX: 60, clientY: 50}))
+    svg.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, clientX: 60, clientY: 50}))
+
+    expect(editor.features.media.actions.startImageMapDrawing({type: "startImageMapDrawing", shape: "circle"})).toBe(true)
+    svg.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0, clientX: 35, clientY: 45}))
+    svg.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, clientX: 60, clientY: 45}))
+
+    expect(editor.features.media.actions.startImageMapDrawing({type: "startImageMapDrawing", shape: "poly"})).toBe(true)
+    for(const [clientX, clientY] of [[20, 30], [60, 30], [40, 60]]) {
+      svg.dispatchEvent(new MouseEvent("click", {bubbles: true, detail: 1, clientX, clientY}))
+    }
+    overlay.root.querySelector<HTMLButtonElement>(".finish")!.click()
+
+    expect(Array.from(document.querySelectorAll("area"), area => ({
+      shape: area.getAttribute("shape"), coords: area.getAttribute("coords"), alt: area.getAttribute("alt"),
+    }))).toEqual([
+      {shape: "rect", coords: "20,20,100,60", alt: ""},
+      {shape: "circle", coords: "50,50,50", alt: ""},
+      {shape: "poly", coords: "20,20,100,20,60,80", alt: ""},
+    ])
+    expect(editor.toHTML(true)).not.toContain("image-map-overlay")
+  })
+
+  it("cancels hotspot drawing when the image geometry changes", () => {
+    document.body.innerHTML = '<img src="plan.png" usemap="#plan"><map name="plan"></map>'
+    const image = document.querySelector<HTMLImageElement>("img")!
+    let width = 100
+    vi.spyOn(image, "getBoundingClientRect").mockImplementation(() => ({
+      x: 0, y: 0, left: 0, top: 0, right: width, bottom: 100, width, height: 100, toJSON: () => ({}),
+    }))
+    $.selectElement(image)
+    editor.features.selection.processSelection()
+    expect(editor.features.media.actions.startImageMapDrawing({type: "startImageMapDrawing", shape: "rect"})).toBe(true)
+    const overlay = editor.features.media.imageMapOverlay
+    const svg = overlay.root.querySelector<SVGSVGElement>("svg")!
+    svg.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0, clientX: 10, clientY: 10}))
+    width = 200
+    svg.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, clientX: 60, clientY: 60}))
+
+    expect(document.querySelector("area")).toBeNull()
+    expect(overlay.isDrawing).toBe(false)
+  })
+
   it("converts selected media to a figure without replacing an existing semantic ancestor", () => {
     document.body.innerHTML = '<article data-origin="remote"><img src="diagram.png" alt="Diagram"><p>Explanation</p></article>'
     const image = document.querySelector("img")!

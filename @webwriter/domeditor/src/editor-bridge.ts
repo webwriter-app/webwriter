@@ -589,6 +589,20 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
       && Number.isInteger(resource.index)
       && resource.index >= 0
       && mediaAttributesAreValid(resource.attributes))
+  const imageMap = media?.imageMap
+  const imageMapIsValid = imageMap === undefined || imageMap === null || (
+    !!imageMap
+    && typeof imageMap === "object"
+    && typeof imageMap.name === "string"
+    && imageMap.name.length > 0
+    && typeof imageMap.shared === "boolean"
+    && Array.isArray(imageMap.areas)
+    && imageMap.areas.every(area => !!area
+      && typeof area === "object"
+      && Array.isArray(area.path)
+      && area.path.every(index => Number.isInteger(index) && index >= 0)
+      && mediaAttributesAreValid(area.attributes))
+  )
   const mediaIsValid = media === undefined || (
     !!media
     && typeof media === "object"
@@ -597,8 +611,10 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
     && mediaResourcesAreValid(media.sources)
     && mediaResourcesAreValid(media.tracks)
     && (media.fallbackHTML === undefined || typeof media.fallbackHTML === "string")
+    && imageMapIsValid
     && (media.type === "audio" || media.type === "video"
       || media.sources === undefined && media.tracks === undefined && media.fallbackHTML === undefined)
+    && (media.type === "picture" || media.type === "img" || media.imageMap === undefined)
   )
   if(!mediaIsValid) return false
 

@@ -57,10 +57,13 @@ import type {AISettingsDialog} from "./ai-settings"
 import "./ai-settings"
 import {
   mediaAttributeOptions,
+  imageMapAreaAttributeOptions,
   isWebsiteType,
   timedMediaResourceAttributeOptions,
   websiteTypes,
   type MediaAttributeOption,
+  type ImageMapAreaState,
+  type ImageMapHotspotShape,
   type MediaSelectionState,
   type MediaType,
   type TimedMediaResourceState,
@@ -2783,6 +2786,44 @@ export class AppRibbon extends LitElement {
       outline: 1px solid #3977c7;
     }
 
+    .image-map-draw-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.2rem;
+    }
+
+    .image-map-draw {
+      box-sizing: border-box;
+      min-width: 0;
+      min-height: 2.2rem;
+      padding: 0.2rem;
+      border: 1px solid #c8d2df;
+      border-radius: 0.2rem;
+      color: #526b86;
+      background: #fff;
+      font: inherit;
+      font-size: 0.58rem;
+      line-height: 0.7rem;
+      cursor: pointer;
+    }
+
+    .image-map-draw:hover {
+      color: #243447;
+      background: #e8eef5;
+    }
+
+    .image-map-draw:focus-visible {
+      outline: 2px solid #3977c7;
+      outline-offset: -1px;
+    }
+
+    .image-map-note {
+      margin: 0;
+      color: #6d7d8f;
+      font-size: 0.56rem;
+      line-height: 0.72rem;
+    }
+
     .graphic-geometry-controls {
       display: grid;
       grid-template-rows: repeat(2, minmax(0, 1fr));
@@ -5283,6 +5324,119 @@ export class AppRibbon extends LitElement {
     `
   }
 
+  private dispatchImageMapAction(detail: Record<string, unknown>) {
+    this.dispatchEvent(new CustomEvent("image-map-action", {
+      detail: {type: this.media?.type, ...detail},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private dispatchImageMapAreaAttribute(area: ImageMapAreaState, option: MediaAttributeOption, event: Event) {
+    const input = event.currentTarget as HTMLInputElement | HTMLSelectElement
+    this.dispatchImageMapAction({
+      action: "set-area-attribute",
+      path: area.path,
+      expected: area.attributes,
+      attribute: option.name,
+      value: input.value || null,
+    })
+  }
+
+  private renderImageMapAreaAttribute(area: ImageMapAreaState, option: MediaAttributeOption) {
+    const label = `Hotspot: ${option.label}`
+    if(option.kind === "select") return html`
+      <label class="media-attribute">
+        <span>${option.label}</span>
+        <select
+          data-ribbon-input-persistent
+          aria-label=${label}
+          @change=${(event: Event) => this.dispatchImageMapAreaAttribute(area, option, event)}
+        >
+          ${option.options?.map(item => html`
+            <option
+              value=${item.value}
+              ?selected=${item.value === (area.attributes[option.name] ?? (option.name === "shape" ? "rect" : ""))}
+            >${item.label}</option>
+          `)}
+        </select>
+      </label>
+    `
+    return html`
+      <label class="media-attribute">
+        <span>${option.label}</span>
+        <input
+          data-ribbon-input-persistent
+          type=${option.kind === "url" ? "url" : "text"}
+          aria-label=${label}
+          placeholder=${option.placeholder ?? ""}
+          .value=${area.attributes[option.name] ?? ""}
+          @change=${(event: Event) => this.dispatchImageMapAreaAttribute(area, option, event)}
+        />
+      </label>
+    `
+  }
+
+  private renderImageMapControls() {
+    if(!this.media || this.media.type !== "picture" && this.media.type !== "img") return nothing
+    const map = this.media.imageMap
+    if(!map) return html`
+      <section class="media-resource-editor" aria-label="Image map">
+        <div class="media-resource-heading"><span>Interactive hotspots</span></div>
+        <button
+          class="media-type-switch"
+          type="button"
+          @click=${() => this.dispatchImageMapAction({action: "add-map"})}
+        >Add image map</button>
+        <p class="image-map-note">Create linked regions over this image.</p>
+      </section>
+    `
+    return html`
+      <section class="media-resource-editor" aria-label="Image map">
+        <div class="media-resource-heading">
+          <span>Hotspots · ${map.name}</span>
+          <button
+            class="media-resource-add"
+            type="button"
+            @click=${() => this.dispatchImageMapAction({action: "remove-map"})}
+          >${map.shared ? "Unlink" : "Remove map"}</button>
+        </div>
+        ${map.shared ? html`
+          <p class="image-map-note">This map is shared. Unlinking keeps it available to the other images.</p>
+        ` : ""}
+        <div class="image-map-draw-grid" role="group" aria-label="Draw hotspot">
+          ${([
+            ["rect", "Rectangle"],
+            ["circle", "Circle"],
+            ["poly", "Polygon"],
+          ] as Array<[ImageMapHotspotShape, string]>).map(([shape, label]) => html`
+            <button
+              class="image-map-draw"
+              type="button"
+              @click=${() => this.dispatchImageMapAction({action: "draw", shape})}
+            >${label}</button>
+          `)}
+        </div>
+        ${map.areas.length ? map.areas.map((area, position) => html`
+          <div class="media-resource-card image-map-area">
+            <div class="media-resource-card-heading">
+              <span>Hotspot ${position + 1}</span>
+              <button
+                class="media-resource-action"
+                type="button"
+                aria-label=${`Remove hotspot ${position + 1}`}
+                @click=${() => this.dispatchImageMapAction({
+                  action: "remove-area", path: area.path, expected: area.attributes,
+                })}
+              >×</button>
+            </div>
+            ${imageMapAreaAttributeOptions.map(option => this.renderImageMapAreaAttribute(area, option))}
+          </div>
+        `) : html`<p class="image-map-note">Draw a shape to add the first hotspot.</p>`}
+      </section>
+    `
+  }
+
   private renderMediaDrawer() {
     if(!this.media) return nothing
     const selectedType = this.media.type
@@ -5324,6 +5478,7 @@ export class AppRibbon extends LitElement {
           ` : ""}
           ${mediaAttributeOptions[selectedType].map(option => this.renderMediaAttribute(selectedType, option))}
           ${this.renderTimedMediaResources()}
+          ${this.renderImageMapControls()}
         </div>
       </ribbon-drawer>
     `

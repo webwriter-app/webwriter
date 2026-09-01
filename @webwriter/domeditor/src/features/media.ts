@@ -3,6 +3,7 @@ import {stripActiveContent} from "../active-content"
 import {$, adoptStylesheet, createStylesheet, getContainer, isElement} from "../utility"
 import {
   isEmptyMedia,
+  isImageMapHotspotShape,
   isMediaType,
   isTimedMediaResourceType,
   isWebsiteType,
@@ -10,12 +11,15 @@ import {
   mediaContainerForNode,
   mediaDefaultHTML,
   mediaElementSelector,
+  imageMapAreaAttributeOptions,
   mediaSourceAttribute,
   mediaSourceTarget,
   timedMediaResourceAttributeOptions,
   websiteTypes,
   type MediaSelectionState,
   type MediaType,
+  type ImageMapAreaState,
+  type ImageMapHotspotShape,
   type TimedMediaResourceState,
   type TimedMediaResourceType,
   type WebsiteType,
@@ -240,12 +244,399 @@ class MediaPlaceholder {
   }
 }
 
+const imageMapOverlayStylesheet = createStylesheet(`
+  :host {
+    position: fixed;
+    z-index: 2147483643;
+    display: none;
+    box-sizing: border-box;
+    pointer-events: none;
+  }
+  :host([data-open]) { display: block; }
+  :host([data-drawing]) { pointer-events: auto; cursor: crosshair; }
+  svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .hotspot {
+    fill: rgb(37 99 235 / 16%);
+    stroke: #2563eb;
+    stroke-width: 2;
+    vector-effect: non-scaling-stroke;
+    pointer-events: none;
+  }
+  .preview {
+    fill: rgb(245 158 11 / 22%);
+    stroke: #f59e0b;
+    stroke-width: 2;
+    stroke-dasharray: 5 4;
+    vector-effect: non-scaling-stroke;
+    pointer-events: none;
+  }
+  .vertex {
+    fill: #f59e0b;
+    stroke: white;
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+    pointer-events: none;
+  }
+  .panel {
+    position: absolute;
+    top: .5rem;
+    left: .5rem;
+    display: none;
+    align-items: center;
+    gap: .4rem;
+    max-width: calc(100% - 1rem);
+    padding: .35rem .45rem;
+    border-radius: .3rem;
+    color: white;
+    background: rgb(31 41 55 / 94%);
+    box-shadow: 0 2px 8px rgb(0 0 0 / 28%);
+    font: 12px/1.3 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    cursor: default;
+    pointer-events: auto;
+  }
+  :host([data-drawing]) .panel { display: flex; }
+  .instruction { min-width: 0; }
+  button {
+    flex: 0 0 auto;
+    min-height: 1.65rem;
+    padding: .2rem .45rem;
+    border: 1px solid #c7c9ce;
+    border-radius: .25rem;
+    color: #343740;
+    background: white;
+    font: inherit;
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: #eef4fb; }
+  button:focus-visible { outline: 2px solid #60a5fa; outline-offset: 1px; }
+  button:disabled { opacity: .5; cursor: default; }
+`)
+
+type ImageMapGeometry = {
+  left: number
+  top: number
+  width: number
+  height: number
+  coordinateWidth: number
+  coordinateHeight: number
+}
+
+type ImageMapDrawingSession = {
+  image: HTMLImageElement
+  map: HTMLMapElement
+  shape: ImageMapHotspotShape
+  geometry: ImageMapGeometry
+}
+
+const imageMapGeometry = (image: HTMLImageElement): ImageMapGeometry | null => {
+  const rect = image.getBoundingClientRect()
+  if(!Number.isFinite(rect.left) || !Number.isFinite(rect.top)
+    || !Number.isFinite(rect.width) || !Number.isFinite(rect.height)
+    || rect.width <= 0 || rect.height <= 0) return null
+  const authoredWidth = Number(image.getAttribute("width"))
+  const authoredHeight = Number(image.getAttribute("height"))
+  const coordinateWidth = image.naturalWidth || (authoredWidth > 0 ? authoredWidth : rect.width)
+  const coordinateHeight = image.naturalHeight || (authoredHeight > 0 ? authoredHeight : rect.height)
+  if(!Number.isFinite(coordinateWidth) || !Number.isFinite(coordinateHeight)
+    || coordinateWidth <= 0 || coordinateHeight <= 0) return null
+  return {left: rect.left, top: rect.top, width: rect.width, height: rect.height, coordinateWidth, coordinateHeight}
+}
+
+const equalImageMapGeometry = (left: ImageMapGeometry | null, right: ImageMapGeometry) => !!left
+  && (["left", "top", "width", "height", "coordinateWidth", "coordinateHeight"] as const)
+    .every(name => Math.abs(left[name] - right[name]) < 0.5)
+
+class ImageMapOverlay {
+  readonly element = document.createElement("div")
+  readonly root: ShadowRoot
+  image: HTMLImageElement | null = null
+  map: HTMLMapElement | null = null
+  onCommit: ((session: ImageMapDrawingSession, coords: string) => boolean) | null = null
+  private session: ImageMapDrawingSession | null = null
+  private startPoint: [number, number] | null = null
+  private currentPoint: [number, number] | null = null
+  private polygonPoints: Array<[number, number]> = []
+
+  constructor() {
+    this.element.classList.add("◆", "◆editor-only", "◆image-map-overlay")
+    this.element.contentEditable = "false"
+    this.element.tabIndex = -1
+    this.element.setAttribute("part", "image-map-overlay")
+    this.element.setAttribute("aria-hidden", "true")
+    this.root = this.element.attachShadow({mode: "open"})
+    adoptStylesheet(this.root, imageMapOverlayStylesheet)
+    this.root.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <g class="areas"></g>
+        <g class="preview-layer"></g>
+      </svg>
+      <div class="panel">
+        <span class="instruction"></span>
+        <button class="finish" type="button">Finish polygon</button>
+        <button class="cancel" type="button">Cancel</button>
+      </div>
+    `
+    const svg = this.root.querySelector<SVGSVGElement>("svg")!
+    svg.addEventListener("pointerdown", this.handlePointerDown)
+    svg.addEventListener("pointermove", this.handlePointerMove)
+    svg.addEventListener("pointerup", this.handlePointerUp)
+    svg.addEventListener("click", this.handleClick)
+    svg.addEventListener("dblclick", event => {
+      if(this.session?.shape !== "poly") return
+      event.preventDefault()
+      this.finishPolygon()
+    })
+    this.root.querySelector<HTMLButtonElement>(".finish")!.addEventListener("click", () => this.finishPolygon())
+    this.root.querySelector<HTMLButtonElement>(".cancel")!.addEventListener("click", () => this.cancelDrawing())
+    this.element.addEventListener("keydown", event => {
+      if(event.key === "Escape") {
+        event.preventDefault()
+        this.cancelDrawing()
+      }
+      else if(event.key === "Enter" && this.session?.shape === "poly") {
+        event.preventDefault()
+        this.finishPolygon()
+      }
+    })
+  }
+
+  get isDrawing() {
+    return this.session !== null
+  }
+
+  showFor(image: HTMLImageElement, map: HTMLMapElement) {
+    this.image = image
+    this.map = map
+    const geometry = imageMapGeometry(image)
+    if(!geometry) {
+      this.element.removeAttribute("data-open")
+      this.element.setAttribute("aria-hidden", "true")
+      return
+    }
+    Object.assign(this.element.style, {
+      left: `${geometry.left}px`,
+      top: `${geometry.top}px`,
+      width: `${geometry.width}px`,
+      height: `${geometry.height}px`,
+    })
+    const svg = this.root.querySelector<SVGSVGElement>("svg")!
+    svg.setAttribute("viewBox", `0 0 ${geometry.coordinateWidth} ${geometry.coordinateHeight}`)
+    this.element.setAttribute("data-open", "")
+    this.element.removeAttribute("aria-hidden")
+    this.renderAreas(geometry)
+  }
+
+  hide() {
+    this.cancelDrawing()
+    this.image = null
+    this.map = null
+    this.element.removeAttribute("data-open")
+    this.element.setAttribute("aria-hidden", "true")
+  }
+
+  startDrawing(shape: ImageMapHotspotShape) {
+    if(!isImageMapHotspotShape(shape) || !this.image || !this.map) return false
+    const geometry = imageMapGeometry(this.image)
+    if(!geometry || !this.image.isConnected || !this.map.isConnected) return false
+    this.session = {image: this.image, map: this.map, shape, geometry}
+    this.startPoint = null
+    this.currentPoint = null
+    this.polygonPoints = []
+    this.element.setAttribute("data-drawing", shape)
+    this.element.removeAttribute("aria-hidden")
+    const instruction = shape === "rect" ? "Drag across the rectangular hotspot."
+      : shape === "circle" ? "Drag from the hotspot centre to its edge."
+      : "Click each polygon corner, then finish or double-click."
+    this.root.querySelector<HTMLElement>(".instruction")!.textContent = instruction
+    const finish = this.root.querySelector<HTMLButtonElement>(".finish")!
+    finish.hidden = shape !== "poly"
+    finish.disabled = true
+    this.renderPreview()
+    this.element.focus({preventScroll: true})
+    return true
+  }
+
+  private pointForEvent(event: PointerEvent): [number, number] | null {
+    const geometry = this.session?.geometry
+    if(!geometry) return null
+    const x = Math.max(0, Math.min(geometry.coordinateWidth,
+      (event.clientX - geometry.left) * geometry.coordinateWidth / geometry.width))
+    const y = Math.max(0, Math.min(geometry.coordinateHeight,
+      (event.clientY - geometry.top) * geometry.coordinateHeight / geometry.height))
+    return [Math.round(x), Math.round(y)]
+  }
+
+  private handlePointerDown = (event: PointerEvent) => {
+    if(!this.session || this.session.shape === "poly" || event.button !== 0) return
+    const point = this.pointForEvent(event)
+    if(!point) return
+    event.preventDefault()
+    this.startPoint = point
+    this.currentPoint = point
+    ;(event.currentTarget as SVGSVGElement).setPointerCapture?.(event.pointerId)
+    this.renderPreview()
+  }
+
+  private handlePointerMove = (event: PointerEvent) => {
+    if(!this.session || this.session.shape === "poly" || !this.startPoint) return
+    const point = this.pointForEvent(event)
+    if(!point) return
+    this.currentPoint = point
+    this.renderPreview()
+  }
+
+  private handlePointerUp = (event: PointerEvent) => {
+    if(!this.session || this.session.shape === "poly" || !this.startPoint) return
+    const point = this.pointForEvent(event)
+    if(point) this.currentPoint = point
+    const coords = this.currentShapeCoordinates()
+    if(coords) this.commit(coords)
+    else this.cancelDrawing()
+  }
+
+  private handleClick = (event: MouseEvent) => {
+    if(!this.session || this.session.shape !== "poly" || event.detail > 1) return
+    const point = this.pointForEvent(event as PointerEvent)
+    if(!point) return
+    event.preventDefault()
+    this.polygonPoints.push(point)
+    this.root.querySelector<HTMLButtonElement>(".finish")!.disabled = this.polygonPoints.length < 3
+    this.renderPreview()
+  }
+
+  private finishPolygon() {
+    if(this.session?.shape !== "poly" || this.polygonPoints.length < 3) return
+    this.commit(this.polygonPoints.flat().join(","))
+  }
+
+  private currentShapeCoordinates() {
+    if(!this.session || !this.startPoint || !this.currentPoint) return null
+    const [startX, startY] = this.startPoint
+    const [endX, endY] = this.currentPoint
+    if(this.session.shape === "rect") {
+      const left = Math.min(startX, endX)
+      const top = Math.min(startY, endY)
+      const right = Math.max(startX, endX)
+      const bottom = Math.max(startY, endY)
+      return right > left && bottom > top ? [left, top, right, bottom].join(",") : null
+    }
+    const radius = Math.round(Math.hypot(endX - startX, endY - startY))
+    return radius > 0 ? [startX, startY, radius].join(",") : null
+  }
+
+  private commit(coords: string) {
+    const session = this.session
+    const committed = Boolean(session && equalImageMapGeometry(imageMapGeometry(session.image), session.geometry)
+      && this.onCommit?.(session, coords))
+    this.clearDrawing()
+    if(committed && this.image && this.map) this.showFor(this.image, this.map)
+    else if(!committed) this.hide()
+  }
+
+  private cancelDrawing() {
+    this.clearDrawing()
+    if(this.image && this.map) this.showFor(this.image, this.map)
+  }
+
+  private clearDrawing() {
+    this.session = null
+    this.startPoint = null
+    this.currentPoint = null
+    this.polygonPoints = []
+    this.element.removeAttribute("data-drawing")
+    this.root.querySelector<SVGElement>(".preview-layer")!.replaceChildren()
+  }
+
+  private renderAreas(geometry: ImageMapGeometry) {
+    const group = this.root.querySelector<SVGElement>(".areas")!
+    const shapes = Array.from(this.map?.querySelectorAll("area") ?? []).flatMap(area => {
+      const shape = area.getAttribute("shape")?.toLowerCase() || "rect"
+      const coords = (area.getAttribute("coords") ?? "").split(",").map(value => Number(value.trim()))
+      if(coords.some(value => !Number.isFinite(value))) return []
+      let element: SVGElement | null = null
+      if(shape === "rect" && coords.length === 4) {
+        element = document.createElementNS("http://www.w3.org/2000/svg", "rect")
+        element.setAttribute("x", String(Math.min(coords[0], coords[2])))
+        element.setAttribute("y", String(Math.min(coords[1], coords[3])))
+        element.setAttribute("width", String(Math.abs(coords[2] - coords[0])))
+        element.setAttribute("height", String(Math.abs(coords[3] - coords[1])))
+      }
+      else if(shape === "circle" && coords.length === 3) {
+        element = document.createElementNS("http://www.w3.org/2000/svg", "circle")
+        element.setAttribute("cx", String(coords[0]))
+        element.setAttribute("cy", String(coords[1]))
+        element.setAttribute("r", String(Math.max(0, coords[2])))
+      }
+      else if(shape === "poly" && coords.length >= 6 && coords.length % 2 === 0) {
+        element = document.createElementNS("http://www.w3.org/2000/svg", "polygon")
+        element.setAttribute("points", Array.from({length: coords.length / 2}, (_, index) => (
+          `${coords[index * 2]},${coords[index * 2 + 1]}`
+        )).join(" "))
+      }
+      else if(shape === "default") {
+        element = document.createElementNS("http://www.w3.org/2000/svg", "rect")
+        element.setAttribute("x", "0")
+        element.setAttribute("y", "0")
+        element.setAttribute("width", String(geometry.coordinateWidth))
+        element.setAttribute("height", String(geometry.coordinateHeight))
+      }
+      if(!element) return []
+      element.classList.add("hotspot")
+      return [element]
+    })
+    group.replaceChildren(...shapes)
+  }
+
+  private renderPreview() {
+    const group = this.root.querySelector<SVGElement>(".preview-layer")!
+    const elements: SVGElement[] = []
+    if(this.session?.shape === "poly") {
+      if(this.polygonPoints.length) {
+        const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polyline")
+        polygon.setAttribute("points", this.polygonPoints.map(point => point.join(",")).join(" "))
+        polygon.classList.add("preview")
+        elements.push(polygon)
+        this.polygonPoints.forEach(([x, y]) => {
+          const vertex = document.createElementNS("http://www.w3.org/2000/svg", "circle")
+          vertex.setAttribute("cx", String(x))
+          vertex.setAttribute("cy", String(y))
+          vertex.setAttribute("r", "4")
+          vertex.classList.add("vertex")
+          elements.push(vertex)
+        })
+      }
+    }
+    else {
+      const coords = this.currentShapeCoordinates()?.split(",").map(Number)
+      if(coords && this.session?.shape === "rect") {
+        const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect")
+        rect.setAttribute("x", String(coords[0]))
+        rect.setAttribute("y", String(coords[1]))
+        rect.setAttribute("width", String(coords[2] - coords[0]))
+        rect.setAttribute("height", String(coords[3] - coords[1]))
+        rect.classList.add("preview")
+        elements.push(rect)
+      }
+      else if(coords && this.session?.shape === "circle") {
+        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle")
+        circle.setAttribute("cx", String(coords[0]))
+        circle.setAttribute("cy", String(coords[1]))
+        circle.setAttribute("r", String(coords[2]))
+        circle.classList.add("preview")
+        elements.push(circle)
+      }
+    }
+    group.replaceChildren(...elements)
+  }
+}
+
 /** Media insertion and editing. Empty media are marked only with editor
  * classes; their interactive UI lives in the BODY shadow appendix. */
 export class MediaFeature extends EditorFeature {
   private observer: MutationObserver | null = null
   private refreshQueued = false
   private mediaPlaceholder: MediaPlaceholder | null = null
+  private imageMapOverlayController: ImageMapOverlay | null = null
 
   get isPlaceholderInteraction() {
     return this.mediaPlaceholder?.isInteracting ?? false
@@ -259,6 +650,15 @@ export class MediaFeature extends EditorFeature {
       this.editor.addAppendix(this.mediaPlaceholder.element)
     }
     return this.mediaPlaceholder
+  }
+
+  get imageMapOverlay() {
+    if(!this.imageMapOverlayController) {
+      this.imageMapOverlayController = new ImageMapOverlay()
+      this.imageMapOverlayController.onCommit = (session, coords) => this.commitImageMapArea(session, coords)
+      this.editor.addAppendix(this.imageMapOverlayController.element)
+    }
+    return this.imageMapOverlayController
   }
 
   enable() {
@@ -291,6 +691,8 @@ export class MediaFeature extends EditorFeature {
     document.removeEventListener("scroll", this.scheduleRefresh, true)
     this.mediaPlaceholder?.element.remove()
     this.mediaPlaceholder = null
+    this.imageMapOverlayController?.element.remove()
+    this.imageMapOverlayController = null
     document.querySelectorAll(".◆media-empty").forEach(element => this.setEmptyMarker(element, false))
     super.disable()
   }
@@ -419,6 +821,65 @@ export class MediaFeature extends EditorFeature {
       this.finishTimedMediaChange()
       return {changed: true, removedUnsafeItems}
     },
+    addImageMap: ({}: {type: "addImageMap"}) => {
+      const image = this.selectedImage(true)
+      if(!image || this.associatedImageMap(image)) return false
+      const authoredName = image.getAttribute("usemap")?.trim()
+      const requestedName = authoredName?.startsWith("#") ? authoredName.slice(1).trim() : ""
+      const name = requestedName || this.uniqueImageMapName()
+      const map = document.createElement("map")
+      map.setAttribute("name", name)
+      const media = mediaContainerForNode(image) ?? image
+      let anchor: Element = media
+      if(anchor.parentElement?.matches("a")) anchor = anchor.parentElement
+      if(!anchor.parentNode) return false
+      anchor.after(map)
+      image.setAttribute("usemap", `#${name}`)
+      this.finishImageMapChange()
+      return true
+    },
+    removeImageMap: ({}: {type: "removeImageMap"}) => {
+      const image = this.selectedImage(false)
+      const map = image ? this.associatedImageMap(image) : null
+      if(!image || !map) return false
+      image.removeAttribute("usemap")
+      const shared = this.imagesUsingMap(map).length > 0
+      if(!shared) map.remove()
+      this.finishImageMapChange()
+      return {removedMap: !shared}
+    },
+    startImageMapDrawing: ({shape}: {type: "startImageMapDrawing", shape: ImageMapHotspotShape}) => {
+      if(!isImageMapHotspotShape(shape)) throw new TypeError(`Unsupported hotspot shape '${String(shape)}'`)
+      const image = this.selectedImage(false)
+      const map = image ? this.associatedImageMap(image) : null
+      if(!image || !map) return false
+      this.imageMapOverlay.showFor(image, map)
+      return this.imageMapOverlay.startDrawing(shape)
+    },
+    setImageMapAreaAttribute: ({path, expected, name, value}: {
+      type: "setImageMapAreaAttribute"
+      path: number[]
+      expected: Record<string, string>
+      name: string
+      value: string | null
+    }) => {
+      const area = this.selectedImageMapArea(path, expected)
+      if(!area || !imageMapAreaAttributeOptions.some(option => option.name === name)) return false
+      value === null ? area.removeAttribute(name) : area.setAttribute(name, value)
+      this.finishImageMapChange()
+      return true
+    },
+    removeImageMapArea: ({path, expected}: {
+      type: "removeImageMapArea"
+      path: number[]
+      expected: Record<string, string>
+    }) => {
+      const area = this.selectedImageMapArea(path, expected)
+      if(!area) return false
+      area.remove()
+      this.finishImageMapChange()
+      return true
+    },
     wrapMediaInFigure: ({}: {type: "wrapMediaInFigure"}) => {
       const selected = this.selectedMedia()
       if(!selected || selected.closest("figure")) return false
@@ -487,6 +948,15 @@ export class MediaFeature extends EditorFeature {
       state.tracks = this.resourceState(element, "track")
       state.fallbackHTML = this.fallbackHTML(element)
     }
+    if(element.matches("picture, img")) {
+      const image = this.imageForMedia(element, false)
+      const map = image ? this.associatedImageMap(image) : null
+      state.imageMap = image && map ? {
+        name: map.getAttribute("name") ?? "",
+        shared: this.imagesUsingMap(map).some(candidate => candidate !== image),
+        areas: this.imageMapAreaState(map),
+      } : null
+    }
     return state
   }
 
@@ -495,6 +965,105 @@ export class MediaFeature extends EditorFeature {
     if(selected?.matches(mediaSelector)) return mediaContainerForNode(selected)
     const container = $.anchorContainer
     return isElement(container) ? mediaContainerForNode(container) : null
+  }
+
+  private imageForMedia(media: Element, create: boolean) {
+    const target = mediaSourceTarget(media, create)
+    return target.matches("img") && target.namespaceURI === htmlNamespace
+      ? target as HTMLImageElement
+      : null
+  }
+
+  private selectedImage(create: boolean) {
+    const media = this.selectedMedia()
+    return media?.matches("picture, img") ? this.imageForMedia(media, create) : null
+  }
+
+  private associatedImageMap(image: HTMLImageElement) {
+    const usemap = image.getAttribute("usemap")?.trim()
+    if(!usemap?.startsWith("#") || usemap.length < 2) return null
+    const name = usemap.slice(1)
+    return Array.from(document.querySelectorAll<HTMLMapElement>("map[name]"))
+      .find(map => map.namespaceURI === htmlNamespace && map.getAttribute("name") === name) ?? null
+  }
+
+  private imagesUsingMap(map: HTMLMapElement) {
+    const name = map.getAttribute("name")
+    if(!name) return []
+    return Array.from(document.querySelectorAll<HTMLImageElement>("img[usemap]"))
+      .filter(image => image.namespaceURI === htmlNamespace && image.getAttribute("usemap")?.trim() === `#${name}`)
+  }
+
+  private uniqueImageMapName() {
+    const names = new Set(Array.from(document.querySelectorAll("map[name]"), map => map.getAttribute("name")))
+    let name = "image-map"
+    let suffix = 2
+    while(names.has(name)) name = `image-map-${suffix++}`
+    return name
+  }
+
+  private pathFrom(root: Node, node: Node) {
+    const path: number[] = []
+    let current: Node | null = node
+    while(current && current !== root) {
+      const parent: ParentNode | null = current.parentNode
+      if(!parent) return null
+      const index = Array.from(parent.childNodes).indexOf(current as ChildNode)
+      if(index < 0) return null
+      path.unshift(index)
+      current = parent as Node
+    }
+    return current === root ? path : null
+  }
+
+  private nodeAtPath(root: Node, path: number[]) {
+    return path.reduce<Node | null>((node, index) => node?.childNodes.item(index) ?? null, root)
+  }
+
+  private imageMapAreaState(map: HTMLMapElement): ImageMapAreaState[] {
+    return Array.from(map.querySelectorAll("area")).flatMap(area => {
+      if(area.namespaceURI !== htmlNamespace) return []
+      const path = this.pathFrom(map, area)
+      return path ? [{path, attributes: stateAttributes(area)}] : []
+    })
+  }
+
+  private selectedImageMapArea(path: number[], expected: Record<string, string>) {
+    if(!Array.isArray(path) || path.some(index => !Number.isInteger(index) || index < 0)
+      || !expected || typeof expected !== "object" || Array.isArray(expected)
+      || Object.entries(expected).some(([name, value]) => !name || typeof value !== "string")) return null
+    const image = this.selectedImage(false)
+    const map = image ? this.associatedImageMap(image) : null
+    const area = map ? this.nodeAtPath(map, path) : null
+    return area instanceof Element
+      && area.namespaceURI === htmlNamespace
+      && area.localName === "area"
+      && equalAttributes(area, expected)
+      ? area as HTMLAreaElement
+      : null
+  }
+
+  private commitImageMapArea(session: ImageMapDrawingSession, coords: string) {
+    if(!session.image.isConnected || !session.map.isConnected
+      || this.associatedImageMap(session.image) !== session.map
+      || !isImageMapHotspotShape(session.shape)) return false
+    const area = document.createElement("area")
+    area.setAttribute("shape", session.shape)
+    area.setAttribute("coords", coords)
+    area.setAttribute("alt", "")
+    session.map.append(area)
+    const media = mediaContainerForNode(session.image)
+    if(media) {
+      $.selectElement(media)
+      this.editor.features.selection.processSelection()
+    }
+    this.finishImageMapChange()
+    return true
+  }
+
+  private finishImageMapChange() {
+    this.refresh()
+    this.editor.postSelectionPath()
   }
 
   private selectedTimedMedia() {
@@ -583,5 +1152,10 @@ export class MediaFeature extends EditorFeature {
     const selected = retained ?? this.selectedMedia()
     if(selected?.isConnected && isEmptyMedia(selected)) this.placeholder.showFor(selected)
     else this.placeholder.hide()
+
+    const image = selected?.matches("picture, img") ? this.imageForMedia(selected, false) : null
+    const map = image ? this.associatedImageMap(image) : null
+    if(image?.isConnected && map?.isConnected) this.imageMapOverlay.showFor(image, map)
+    else this.imageMapOverlayController?.hide()
   }
 }

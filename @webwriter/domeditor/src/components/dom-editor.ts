@@ -27,6 +27,8 @@ import {
 import {isWidgetShadowInteraction} from "../utility"
 import {stripActiveContent} from "../active-content"
 import {
+  imageMapAreaAttributeOptions,
+  isImageMapHotspotShape,
   isMediaType,
   isTimedMediaResourceType,
   isWebsiteType,
@@ -3141,6 +3143,64 @@ export class DomEditor extends LitElement {
     this.focusEditor()
   }
 
+  private handleImageMapAction = (event: Event) => {
+    const detail = (event as CustomEvent<{
+      type?: unknown
+      action?: unknown
+      shape?: unknown
+      path?: unknown
+      expected?: unknown
+      attribute?: unknown
+      value?: unknown
+    }>).detail
+    if((detail?.type !== "picture" && detail?.type !== "img") || typeof detail.action !== "string") {
+      this.focusEditor()
+      return
+    }
+    if(detail.action === "add-map") {
+      void this.execute({type: "addImageMap"})
+      return
+    }
+    if(detail.action === "remove-map") {
+      void this.execute({type: "removeImageMap"})
+      return
+    }
+    if(detail.action === "draw" && isImageMapHotspotShape(detail.shape)) {
+      void this.execute({type: "startImageMapDrawing", shape: detail.shape})
+      return
+    }
+    const pathIsValid = Array.isArray(detail.path)
+      && detail.path.every(index => Number.isInteger(index) && index >= 0)
+    const expectedIsValid = !!detail.expected
+      && typeof detail.expected === "object"
+      && !Array.isArray(detail.expected)
+      && Object.entries(detail.expected).every(([name, value]) => Boolean(name) && typeof value === "string")
+    if(!pathIsValid || !expectedIsValid) {
+      this.focusEditor()
+      return
+    }
+    const path = detail.path as number[]
+    const expected = detail.expected as Record<string, string>
+    if(detail.action === "remove-area") {
+      void this.execute({type: "removeImageMapArea", path, expected})
+      return
+    }
+    if(detail.action === "set-area-attribute"
+      && typeof detail.attribute === "string"
+      && imageMapAreaAttributeOptions.some(option => option.name === detail.attribute)
+      && (detail.value === null || typeof detail.value === "string")) {
+      void this.execute({
+        type: "setImageMapAreaAttribute",
+        path,
+        expected,
+        name: detail.attribute,
+        value: detail.value,
+      })
+      return
+    }
+    this.focusEditor()
+  }
+
   private handleElementAttributeChange = (event: Event) => {
     const detail = (event as CustomEvent<{
       path?: unknown
@@ -4211,6 +4271,7 @@ export class DomEditor extends LitElement {
           @comment-action=${this.handleCommentAction}
           @media-attribute-change=${this.handleMediaAttributeChange}
           @media-resource-action=${this.handleMediaResourceAction}
+          @image-map-action=${this.handleImageMapAction}
           @element-attribute-change=${this.handleElementAttributeChange}
           @media-type-change=${this.handleMediaTypeChange}
           @form-attribute-change=${this.handleFormAttributeChange}
@@ -4338,6 +4399,7 @@ export class DomEditor extends LitElement {
         @comment-action=${this.handleCommentAction}
         @media-attribute-change=${this.handleMediaAttributeChange}
         @media-resource-action=${this.handleMediaResourceAction}
+        @image-map-action=${this.handleImageMapAction}
         @element-attribute-change=${this.handleElementAttributeChange}
         @media-type-change=${this.handleMediaTypeChange}
         @form-attribute-change=${this.handleFormAttributeChange}

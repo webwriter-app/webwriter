@@ -181,6 +181,63 @@ describe("media ribbon drawer", () => {
     }}))
   })
 
+  it("offers image-map lifecycle, drawing, and hotspot attribute controls", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    toolbox.media = {type: "img", attributes: {src: "plan.png"}, imageMap: null}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const listener = vi.fn()
+    toolbox.addEventListener("image-map-action", listener)
+
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".media-resource-editor .media-type-switch")!.click()
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {type: "img", action: "add-map"}}))
+
+    toolbox.media = {
+      type: "img",
+      attributes: {src: "plan.png", usemap: "#plan"},
+      imageMap: {
+        name: "plan",
+        shared: false,
+        areas: [{
+          path: [0],
+          attributes: {shape: "rect", coords: "1,2,30,40", href: "old.html", alt: "Library"},
+        }],
+      },
+    }
+    await toolbox.updateComplete
+
+    const rectangle = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLButtonElement>(".image-map-draw"))
+      .find(button => button.textContent === "Rectangle")!
+    rectangle.click()
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {
+      type: "img", action: "draw", shape: "rect",
+    }}))
+
+    const href = toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Hotspot: Link URL"]')!
+    expect(href.value).toBe("old.html")
+    href.value = "library.html"
+    href.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {
+      type: "img",
+      action: "set-area-attribute",
+      path: [0],
+      expected: {shape: "rect", coords: "1,2,30,40", href: "old.html", alt: "Library"},
+      attribute: "href",
+      value: "library.html",
+    }}))
+
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Remove hotspot 1"]')!.click()
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: expect.objectContaining({
+      type: "img", action: "remove-area", path: [0],
+    })}))
+    const removeMap = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLButtonElement>(".media-resource-add"))
+      .find(button => button.textContent === "Remove map")!
+    removeMap.click()
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {type: "img", action: "remove-map"}}))
+  })
+
   it("switches Website details and renders attributes directly in the toolbox", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"

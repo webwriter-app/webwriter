@@ -1423,6 +1423,37 @@ describe("DomEditor.execute()", () => {
       html: "<p>Download audio</p>",
       expected: "",
     })
+    toolbox.dispatchEvent(new CustomEvent("image-map-action", {
+      detail: {type: "img", action: "add-map"},
+      bubbles: true,
+      composed: true,
+    }))
+    expect(execute).toHaveBeenCalledWith({type: "addImageMap"})
+    toolbox.dispatchEvent(new CustomEvent("image-map-action", {
+      detail: {type: "picture", action: "draw", shape: "poly"},
+      bubbles: true,
+      composed: true,
+    }))
+    expect(execute).toHaveBeenCalledWith({type: "startImageMapDrawing", shape: "poly"})
+    toolbox.dispatchEvent(new CustomEvent("image-map-action", {
+      detail: {
+        type: "img",
+        action: "set-area-attribute",
+        path: [1, 0],
+        expected: {shape: "rect", coords: "1,2,3,4"},
+        attribute: "alt",
+        value: "Library",
+      },
+      bubbles: true,
+      composed: true,
+    }))
+    expect(execute).toHaveBeenCalledWith({
+      type: "setImageMapAreaAttribute",
+      path: [1, 0],
+      expected: {shape: "rect", coords: "1,2,3,4"},
+      name: "alt",
+      value: "Library",
+    })
     await Promise.resolve()
     expect(focusEditor).not.toHaveBeenCalled()
     for(const [label, action] of [

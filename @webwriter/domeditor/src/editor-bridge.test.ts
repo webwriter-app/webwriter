@@ -318,6 +318,15 @@ describe("editor bridge message guards", () => {
       },
     }
     expect(isSelectionChangeMessage(message)).toBe(true)
+    expect(isSelectionChangeMessage({...message, detail: {...message.detail, media: {
+      type: "img",
+      attributes: {src: "plan.png", usemap: "#plan"},
+      imageMap: {
+        name: "plan",
+        shared: false,
+        areas: [{path: [0, 1], attributes: {shape: "rect", coords: "1,2,30,40"}}],
+      },
+    }}})).toBe(true)
 
     expectAllRejected(isSelectionChangeMessage, [
       {...message, detail: {...message.detail, path: [{path: [0, -1], name: "Paragraph"}]}},
@@ -345,6 +354,11 @@ describe("editor bridge message guards", () => {
       {...message, detail: {...message.detail, media: {type: "video", attributes: {}, sources: [{index: -1, attributes: {}}]}}},
       {...message, detail: {...message.detail, media: {type: "video", attributes: {}, tracks: [{index: 0, attributes: {src: 4}}]}}},
       {...message, detail: {...message.detail, media: {type: "audio", attributes: {}, fallbackHTML: 4}}},
+      {...message, detail: {...message.detail, media: {type: "video", attributes: {}, imageMap: null}}},
+      {...message, detail: {...message.detail, media: {type: "img", attributes: {}, imageMap: {name: "", shared: false, areas: []}}}},
+      {...message, detail: {...message.detail, media: {type: "img", attributes: {}, imageMap: {name: "plan", shared: "no", areas: []}}}},
+      {...message, detail: {...message.detail, media: {type: "img", attributes: {}, imageMap: {name: "plan", shared: false, areas: [{path: [-1], attributes: {}}]}}}},
+      {...message, detail: {...message.detail, media: {type: "img", attributes: {}, imageMap: {name: "plan", shared: false, areas: [{path: [0], attributes: {coords: 4}}]}}}},
       {...message, detail: {...message.detail, form: {type: "unknown", attributes: {}}}},
       {...message, detail: {...message.detail, form: {type: "input", attributes: []}}},
       {...message, detail: {...message.detail, form: {type: "input", attributes: {required: true}}}},

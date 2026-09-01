@@ -18,6 +18,23 @@ export type TimedMediaResourceState = {
   attributes: Record<string, string>
 }
 
+export const imageMapHotspotShapes = ["rect", "circle", "poly"] as const
+
+export type ImageMapHotspotShape = typeof imageMapHotspotShapes[number]
+
+export type ImageMapAreaState = {
+  /** Current child-node path from MAP. Commands fail safely if it is stale. */
+  path: number[]
+  attributes: Record<string, string>
+}
+
+export type ImageMapSelectionState = {
+  name: string
+  /** True when another authored image also refers to this map. */
+  shared: boolean
+  areas: ImageMapAreaState[]
+}
+
 export type MediaSelectionState = {
   type: MediaType
   attributes: Record<string, string>
@@ -26,6 +43,8 @@ export type MediaSelectionState = {
   tracks?: TimedMediaResourceState[]
   /** Authored non-resource children, serialized without editing artifacts. */
   fallbackHTML?: string
+  /** Present for images; null means the image has no associated authored map. */
+  imageMap?: ImageMapSelectionState | null
 }
 
 export type MediaAttributeOption = {
@@ -56,6 +75,31 @@ export const timedMediaResourceAttributeOptions: Record<TimedMediaResourceType, 
     {name: "default", label: "Default", kind: "boolean"},
   ],
 }
+
+export const imageMapAreaAttributeOptions: MediaAttributeOption[] = [
+  {name: "shape", label: "Shape", kind: "select", options: [
+    {label: "Rectangle", value: "rect"},
+    {label: "Circle", value: "circle"},
+    {label: "Polygon", value: "poly"},
+    {label: "Whole image", value: "default"},
+  ]},
+  {name: "coords", label: "Coordinates", placeholder: "0,0,100,100"},
+  {name: "href", label: "Link URL", kind: "url", placeholder: "https://…"},
+  {name: "alt", label: "Alternative text", placeholder: "Describe the destination"},
+  {name: "target", label: "Open in", placeholder: "_blank or frame name"},
+  {name: "rel", label: "Link relationship", placeholder: "noopener noreferrer"},
+  {name: "referrerpolicy", label: "Referrer policy", kind: "select", options: [
+    {label: "Browser default", value: ""},
+    {label: "No referrer", value: "no-referrer"},
+    {label: "No referrer when downgraded", value: "no-referrer-when-downgrade"},
+    {label: "Origin", value: "origin"},
+    {label: "Origin when cross-origin", value: "origin-when-cross-origin"},
+    {label: "Same origin", value: "same-origin"},
+    {label: "Strict origin", value: "strict-origin"},
+    {label: "Strict origin when cross-origin", value: "strict-origin-when-cross-origin"},
+    {label: "Unsafe URL", value: "unsafe-url"},
+  ]},
+]
 
 const imageAttributes: MediaAttributeOption[] = [
   {name: "src", label: "Source URL", kind: "url", placeholder: "https://…"},
@@ -155,6 +199,10 @@ export function isWebsiteType(value: unknown): value is WebsiteType {
 
 export function isTimedMediaResourceType(value: unknown): value is TimedMediaResourceType {
   return typeof value === "string" && (timedMediaResourceTypes as readonly string[]).includes(value)
+}
+
+export function isImageMapHotspotShape(value: unknown): value is ImageMapHotspotShape {
+  return typeof value === "string" && (imageMapHotspotShapes as readonly string[]).includes(value)
 }
 
 export function mediaContainerForNode(node: Node | null) {
