@@ -14,6 +14,8 @@ import {
   styleMarkNames,
   type MarkAttributeValues,
   type MarkName,
+  type RubyComponentState,
+  type RubyState,
   type StyleMarkName,
   type StyleMarkValues,
 } from "../marks"
@@ -85,6 +87,21 @@ export class MarkFeature extends EditorFeature {
       attribute: string
       value: string
     }) => this.setMarkAttribute(mark, attribute, value),
+    createRuby: ({annotation, fallback}: {type: "createRuby", annotation: string, fallback: boolean}) =>
+      this.createRuby(annotation, fallback),
+    setRubyAnnotation: ({index, expected, value}: {
+      type: "setRubyAnnotation", index: number, expected: string, value: string
+    }) => this.setRubyComponent("rt", index, expected, value),
+    addRubyAnnotation: ({value}: {type: "addRubyAnnotation", value: string}) => this.addRubyAnnotation(value),
+    removeRubyAnnotation: ({index, expected}: {
+      type: "removeRubyAnnotation", index: number, expected: string
+    }) => this.removeRubyAnnotation(index, expected),
+    addRubyFallback: ({}: {type: "addRubyFallback"}) => this.addRubyFallback(),
+    setRubyFallback: ({index, expected, value}: {
+      type: "setRubyFallback", index: number, expected: string, value: string
+    }) => this.setRubyComponent("rp", index, expected, value),
+    removeRubyFallback: ({}: {type: "removeRubyFallback"}) => this.removeRubyFallback(),
+    removeRuby: ({}: {type: "removeRuby"}) => this.removeRuby(),
     setStyleMark: ({property, value}: {type: "setStyleMark", property: StyleMarkName, value: string}) =>
       this.setStyleMark(property, value),
     increaseFontSize: ({}: {type: "increaseFontSize"}) => this.adjustFontSize(1),
@@ -189,8 +206,187 @@ export class MarkFeature extends EditorFeature {
     return result
   }
 
+  /** Structured state for the ruby element resolved from the current live selection. */
+  getRubyState(): RubyState {
+    const ruby = this.selectedRuby()
+    const context = this.getSelection()
+    if(!ruby) return {
+      active: false,
+      canCreate: !!context && !this.selectionContainsRuby(context),
+      base: context?.range.toString() ?? "",
+      annotations: [],
+      fallbacks: [],
+    }
+
+    const component = (node: ChildNode, index: number): RubyComponentState => ({
+      index,
+      text: node.textContent ?? "",
+      hasMarkup: node instanceof Element && node.children.length > 0,
+    })
+    const children = Array.from(ruby.childNodes)
+    const annotations = children.flatMap((node, index) =>
+      node instanceof HTMLElement && node.localName === "rt" ? [component(node, index)] : [],
+    )
+    const fallbacks = children.flatMap((node, index) =>
+      node instanceof HTMLElement && node.localName === "rp" ? [component(node, index)] : [],
+    )
+    const base = children
+      .filter(node => !(node instanceof HTMLElement) || node.localName !== "rt" && node.localName !== "rp")
+      .map(node => node instanceof Element || node instanceof Text ? node.textContent ?? "" : "")
+      .join("")
+    return {active: true, canCreate: false, base, annotations, fallbacks}
+  }
+
+  /** Wraps the selected phrasing DOM as one ruby base and appends its first annotation. */
+  createRuby(annotation = "", fallback = false) {
+    if(typeof annotation !== "string" || typeof fallback !== "boolean") return false
+    const context = this.getSelection()
+    if(!context || this.selectionContainsRuby(context)) return false
+
+    const ruby = document.createElement("ruby")
+    const rt = document.createElement("rt")
+    rt.textContent = annotation
+    const boundaryAncestors = new Set<Element>()
+    for(const point of [context.range.startContainer, context.range.endContainer]) {
+      let ancestor = point instanceof Element ? point : point.parentElement
+      while(ancestor && ancestor !== context.block) {
+        boundaryAncestors.add(ancestor)
+        ancestor = ancestor.parentElement
+      }
+    }
+    ruby.append(context.range.extractContents())
+    if(fallback) {
+      const open = document.createElement("rp")
+      open.textContent = "("
+      ruby.append(open)
+    }
+    ruby.append(rt)
+    if(fallback) {
+      const close = document.createElement("rp")
+      close.textContent = ")"
+      ruby.append(close)
+    }
+    context.range.insertNode(ruby)
+    boundaryAncestors.forEach(element => {
+      if(element.isConnected && !element.textContent && !element.children.length) element.remove()
+    })
+    context.block.normalize()
+    this.restoreSelection(context)
+    this.editor.postMarkState()
+    return true
+  }
+
+  /** Replaces the text of one guarded direct rt/rp child, leaving all other ruby DOM untouched. */
+  setRubyComponent(type: "rt" | "rp", index: number, expected: string, value: string) {
+    if(!Number.isInteger(index) || index < 0 || typeof expected !== "string" || typeof value !== "string") return false
+    const ruby = this.selectedRuby()
+    if(!ruby) return false
+    const component = ruby.childNodes.item(index)
+    if(!(component instanceof HTMLElement)
+      || component.parentElement !== ruby
+      || component.localName !== type
+      || component.textContent !== expected
+      || component.textContent === value && component.children.length === 0) return false
+
+    const selectionWasInside = this.selectionInside(component)
+    component.replaceChildren(document.createTextNode(value))
+    if(selectionWasInside) this.selectRubyBase(ruby)
+    this.editor.postMarkState()
+    return true
+  }
+
+  addRubyAnnotation(value = "") {
+    if(typeof value !== "string") return false
+    const ruby = this.selectedRuby()
+    if(!ruby) return false
+    const annotation = document.createElement("rt")
+    annotation.textContent = value
+    const children = Array.from(ruby.children)
+    const lastAnnotation = [...children].reverse().find(element => element.localName === "rt")
+    const closingFallback = lastAnnotation
+      ? children.slice(children.indexOf(lastAnnotation) + 1).find(element => element.localName === "rp")
+      : undefined
+    ruby.insertBefore(annotation, closingFallback ?? null)
+    this.editor.postMarkState()
+    return true
+  }
+
+  removeRubyAnnotation(index: number, expected: string) {
+    if(!Number.isInteger(index) || index < 0 || typeof expected !== "string") return false
+    const ruby = this.selectedRuby()
+    if(!ruby) return false
+    const annotation = ruby.childNodes.item(index)
+    if(!(annotation instanceof HTMLElement)
+      || annotation.parentElement !== ruby
+      || annotation.localName !== "rt"
+      || annotation.textContent !== expected) return false
+    if(Array.from(ruby.children).filter(element => element.localName === "rt").length === 1) {
+      return this.removeRuby()
+    }
+    const selectionWasInside = this.selectionInside(annotation)
+    annotation.remove()
+    if(selectionWasInside) this.selectRubyBase(ruby)
+    this.editor.postMarkState()
+    return true
+  }
+
+  addRubyFallback() {
+    const ruby = this.selectedRuby()
+    if(!ruby || Array.from(ruby.children).some(element => element.localName === "rp")) return false
+    const annotations = Array.from(ruby.children).filter(element => element.localName === "rt")
+    if(!annotations.length) return false
+    const open = document.createElement("rp")
+    const close = document.createElement("rp")
+    open.textContent = "("
+    close.textContent = ")"
+    ruby.insertBefore(open, annotations[0])
+    annotations.at(-1)!.after(close)
+    this.editor.postMarkState()
+    return true
+  }
+
+  removeRubyFallback() {
+    const ruby = this.selectedRuby()
+    if(!ruby) return false
+    const fallbacks = Array.from(ruby.children).filter(element => element.localName === "rp")
+    if(!fallbacks.length) return false
+    const selectionWasInside = fallbacks.some(element => this.selectionInside(element))
+    fallbacks.forEach(element => element.remove())
+    if(selectionWasInside) this.selectRubyBase(ruby)
+    this.editor.postMarkState()
+    return true
+  }
+
+  /** Removes ruby semantics while preserving the authored base subtree exactly. */
+  removeRuby() {
+    const ruby = this.selectedRuby()
+    if(!ruby?.parentNode) return false
+    const base = Array.from(ruby.childNodes).filter(node =>
+      !(node instanceof HTMLElement) || node.localName !== "rt" && node.localName !== "rp",
+    )
+    const parent = ruby.parentNode
+    const offset = Array.prototype.indexOf.call(parent.childNodes, ruby) as number
+    ruby.replaceWith(...base)
+    const selection = document.getSelection()
+    if(selection) {
+      if(base.length) {
+        this.selectNodes(base)
+      }
+      else {
+        const range = document.createRange()
+        range.setStart(parent, offset)
+        range.collapse(true)
+        selection.removeAllRanges()
+        selection.addRange(range)
+      }
+    }
+    this.editor.postMarkState()
+    return true
+  }
+
   addMark(mark: MarkName) {
     this.assertMark(mark)
+    if(mark === "ruby") return this.createRuby("", false)
     const caret = this.getCaret()
     if(caret) return this.setStoredMark(mark, true, caret)
     if(this.getState().marks.includes(mark)) return false
@@ -217,6 +413,7 @@ export class MarkFeature extends EditorFeature {
 
   removeMark(mark: MarkName) {
     this.assertMark(mark)
+    if(mark === "ruby") return this.removeRuby()
     const caret = this.getCaret()
     if(caret) return this.setStoredMark(mark, false, caret)
     if(!this.getState().marks.includes(mark)) return false
@@ -225,6 +422,7 @@ export class MarkFeature extends EditorFeature {
 
   toggleMark(mark: MarkName) {
     this.assertMark(mark)
+    if(mark === "ruby") return this.selectedRuby() ? this.removeRuby() : this.createRuby("", false)
     const caret = this.getCaret()
     if(caret) {
       const marks = this.effectiveCaretMarks(caret)
@@ -433,16 +631,17 @@ export class MarkFeature extends EditorFeature {
 
   /** Removes every supported mark (including strong/em aliases) in one pass. */
   removeMarks() {
+    const removedRuby = this.selectedRuby() ? this.removeRuby() : false
     const caret = this.getCaret()
     if(caret) {
-      if(!this.effectiveCaretMarks(caret).size && !Object.keys(this.effectiveCaretStyles(caret)).length) return false
+      if(!this.effectiveCaretMarks(caret).size && !Object.keys(this.effectiveCaretStyles(caret)).length) return removedRuby
       this.storeMarks(new Set(), caret.selection)
       this.storeStyles({}, caret.selection)
       this.editor.postMarkState()
       return true
     }
-    if(!this.getState().marks.length && !Object.keys(this.getStyleState()).length) return false
-    return this.removeMatching(element => canonicalMarkName(element.localName) !== null)
+    if(!this.getState().marks.length && !Object.keys(this.getStyleState()).length) return removedRuby
+    return this.removeMatching(element => canonicalMarkName(element.localName) !== null) || removedRuby
   }
 
   private effectiveCaretMarks(caret: MarkCaret) {
@@ -845,6 +1044,83 @@ export class MarkFeature extends EditorFeature {
       element = element.parentElement
     }
     return null
+  }
+
+  private rubyAt(node: Node | null) {
+    let element = node instanceof Element ? node : node?.parentElement
+    while(element && element !== document.body) {
+      if(element.namespaceURI === "http://www.w3.org/1999/xhtml" && element.localName === "ruby") return element
+      element = element.parentElement
+    }
+    return null
+  }
+
+  /** Resolves only one ruby element; selections spanning separate ruby runs are deliberately ambiguous. */
+  private selectedRuby() {
+    const selection = document.getSelection()
+    if(!selection?.rangeCount || !selection.anchorNode || !selection.focusNode) return null
+    if(selection.anchorNode === selection.focusNode && selection.anchorNode instanceof Element
+      && Math.abs(selection.anchorOffset - selection.focusOffset) === 1) {
+      const index = Math.min(selection.anchorOffset, selection.focusOffset)
+      const selected = selection.anchorNode.childNodes.item(index)
+      if(selected instanceof HTMLElement && selected.localName === "ruby") return selected
+    }
+    const anchor = this.rubyAt(selection.anchorNode)
+    const focus = this.rubyAt(selection.focusNode)
+    return anchor && anchor === focus ? anchor : null
+  }
+
+  private selectionContainsRuby(context: MarkSelection) {
+    return context.text.some(({node}) => this.rubyAt(node) !== null)
+      || !!context.range.cloneContents().querySelector?.("ruby")
+  }
+
+  private selectionInside(element: Element) {
+    const selection = document.getSelection()
+    return !!selection?.anchorNode && element.contains(selection.anchorNode)
+      || !!selection?.focusNode && element.contains(selection.focusNode)
+  }
+
+  private selectRubyBase(ruby: Element) {
+    const base = Array.from(ruby.childNodes).filter(node =>
+      !(node instanceof HTMLElement) || node.localName !== "rt" && node.localName !== "rp",
+    )
+    const selection = document.getSelection()
+    if(!selection) return
+    if(base.length) {
+      this.selectNodes(base)
+    }
+    else {
+      const range = document.createRange()
+      range.selectNodeContents(ruby)
+      range.collapse(true)
+      selection.removeAllRanges()
+      selection.addRange(range)
+    }
+  }
+
+  private selectNodes(nodes: Node[]) {
+    const textNodes: Text[] = []
+    for(const node of nodes) {
+      if(node instanceof Text) {
+        textNodes.push(node)
+        continue
+      }
+      const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT)
+      while(walker.nextNode()) textNodes.push(walker.currentNode as Text)
+    }
+    const selection = document.getSelection()
+    if(!selection) return
+    if(textNodes.length) {
+      const last = textNodes.at(-1)!
+      selection.setBaseAndExtent(textNodes[0], 0, last, last.length)
+      return
+    }
+    const range = document.createRange()
+    range.setStartBefore(nodes[0])
+    range.setEndAfter(nodes.at(-1)!)
+    selection.removeAllRanges()
+    selection.addRange(range)
   }
 
   private markElementsForSelection(context: MarkSelection, mark: MarkName) {

@@ -13,6 +13,7 @@ import {AIProviderStore, type AIProviderConfig} from "../ai-provider"
 import type {BackendClient} from "../backend-client"
 import {
   backgroundColorOptions,
+  emptyRubyState,
   fontFamilyOptions,
   fontSizeOptions,
   markAttributeOptionsFor,
@@ -26,6 +27,7 @@ import {
   type MarkAttributeValues,
   type MarkName,
   type MarkOption,
+  type RubyState,
   type StyleMarkValues,
 } from "../marks"
 import { ribbonIcon } from "../ribbon-icons"
@@ -195,6 +197,7 @@ export class AppRibbon extends LitElement {
     marks: {attribute: false},
     markStyles: {attribute: false},
     markAttributes: {attribute: false},
+    ruby: {attribute: false},
     commentState: {attribute: false},
     commentDraft: {type: String, state: true},
     presenceUsers: {attribute: false},
@@ -3201,6 +3204,7 @@ export class AppRibbon extends LitElement {
   marks: MarkName[] = []
   markStyles: StyleMarkValues = {}
   markAttributes: MarkAttributeValues = {}
+  ruby: RubyState = {...emptyRubyState}
   commentState: CommentState = {
     canComment: false,
     active: false,
@@ -3297,6 +3301,8 @@ export class AppRibbon extends LitElement {
   private aiAttachmentSequence = 0
   private spanMarkSelection: MarkName[] = []
   private spanMarkSelectionSynced = false
+  private rubyAnnotationDraft = ""
+  private rubyFallbackDraft = false
   private ribbonContentObserver: ResizeObserver | undefined
   private responsiveLayoutQueued = false
   private previewTransitioning = false
@@ -4190,6 +4196,13 @@ export class AppRibbon extends LitElement {
     if(changed.has("marks")) {
       if(!this.marks.includes("a")) this.closeLinkAttributeMenu()
     }
+    if(changed.has("ruby")) {
+      const previous = changed.get("ruby") as RubyState | undefined
+      if(previous?.base !== this.ruby.base || previous?.active !== this.ruby.active) {
+        this.rubyAnnotationDraft = ""
+        this.rubyFallbackDraft = false
+      }
+    }
   }
 
   private markButton(option: MarkOption) {
@@ -4410,6 +4423,112 @@ export class AppRibbon extends LitElement {
     `
   }
 
+  private dispatchRubyAction(detail: Record<string, unknown>) {
+    this.dispatchEvent(new CustomEvent("ruby-action", {detail, bubbles: true, composed: true}))
+  }
+
+  private renderRubyDropdown() {
+    if(!this.ruby.active) return html`
+      <div class="button-dropdown-form ruby-dropdown" role="group" aria-label="Add ruby annotation">
+        <p class="ruby-base-preview"><span>Base</span> ${this.ruby.base || "Selected text"}</p>
+        <label class="mark-attribute">
+          <span>Annotation</span>
+          <input data-ribbon-input-persistent type="text" aria-label="Ruby annotation"
+            placeholder="Pronunciation or note"
+            @input=${(event: Event) => this.rubyAnnotationDraft = (event.currentTarget as HTMLInputElement).value} />
+        </label>
+        <label class="ruby-fallback-toggle">
+          <input data-ribbon-input-persistent type="checkbox"
+            @change=${(event: Event) => this.rubyFallbackDraft = (event.currentTarget as HTMLInputElement).checked} />
+          <span>Include fallback parentheses</span>
+        </label>
+        <button class="button-dropdown-more" type="button" ?disabled=${!this.ruby.canCreate}
+          @click=${() => {
+            this.dispatchRubyAction({
+              action: "create",
+              annotation: this.rubyAnnotationDraft,
+              fallback: this.rubyFallbackDraft,
+            })
+            this.rubyAnnotationDraft = ""
+            this.rubyFallbackDraft = false
+          }}>Add annotation</button>
+      </div>
+    `
+    return html`
+      <div class="button-dropdown-form ruby-dropdown" role="group" aria-label="Edit ruby annotation">
+        <p class="ruby-base-preview"><span>Base</span> ${this.ruby.base || "Empty base"}</p>
+        <div class="ruby-component-list" aria-label="Ruby text annotations">
+          ${this.ruby.annotations.map((annotation, position) => html`
+            <div class="ruby-component-row">
+              <label class="mark-attribute">
+                <span>${this.ruby.annotations.length > 1 ? `Annotation ${position + 1}` : "Annotation"}</span>
+                <input data-ribbon-input-persistent type="text"
+                  aria-label=${`Ruby annotation ${position + 1}`}
+                  .value=${annotation.text}
+                  title=${annotation.hasMarkup ? "Editing replaces formatting inside this annotation" : "Ruby annotation text"}
+                  @change=${(event: Event) => this.dispatchRubyAction({
+                    action: "set-annotation",
+                    index: annotation.index,
+                    expected: annotation.text,
+                    value: (event.currentTarget as HTMLInputElement).value,
+                  })} />
+              </label>
+              <button class="ruby-component-remove" type="button" aria-label=${`Remove ruby annotation ${position + 1}`}
+                @click=${() => this.dispatchRubyAction({
+                  action: "remove-annotation", index: annotation.index, expected: annotation.text,
+                })}>Remove</button>
+              ${annotation.hasMarkup ? html`<small>Editing this text replaces its inline formatting.</small>` : ""}
+            </div>
+          `)}
+          <button class="button-dropdown-more" type="button"
+            @click=${() => this.dispatchRubyAction({action: "add-annotation", value: ""})}>Add another annotation</button>
+        </div>
+        <label class="ruby-fallback-toggle">
+          <input data-ribbon-input-persistent type="checkbox" .checked=${this.ruby.fallbacks.length > 0}
+            @change=${(event: Event) => this.dispatchRubyAction({
+              action: (event.currentTarget as HTMLInputElement).checked ? "add-fallback" : "remove-fallback",
+            })} />
+          <span>Fallback text for browsers without ruby support</span>
+        </label>
+        ${this.ruby.fallbacks.length ? html`
+          <div class="ruby-component-list" aria-label="Ruby fallback text">
+            ${this.ruby.fallbacks.map((fallback, position) => html`
+              <label class="mark-attribute">
+                <span>${position === 0 ? "Before" : position === this.ruby.fallbacks.length - 1 ? "After" : `Part ${position + 1}`}</span>
+                <input data-ribbon-input-persistent type="text"
+                  aria-label=${`Ruby fallback ${position + 1}`}
+                  .value=${fallback.text}
+                  @change=${(event: Event) => this.dispatchRubyAction({
+                    action: "set-fallback",
+                    index: fallback.index,
+                    expected: fallback.text,
+                    value: (event.currentTarget as HTMLInputElement).value,
+                  })} />
+              </label>
+            `)}
+          </div>
+        ` : ""}
+        <button class="button-dropdown-more ruby-remove" type="button"
+          @click=${() => this.dispatchRubyAction({action: "remove-ruby"})}>Remove ruby annotation</button>
+      </div>
+    `
+  }
+
+  private renderRubyButton() {
+    return html`
+      <ribbon-button
+        class="mark-ruby"
+        toggle
+        label="Ruby annotation"
+        icon="MarkRuby"
+        .dropdown=${this.renderRubyDropdown()}
+        .dropdownOnClick=${true}
+        ?active=${this.ruby.active}
+        ?disabled=${!this.ruby.active && !this.ruby.canCreate}
+      ></ribbon-button>
+    `
+  }
+
   private renderSpanButton() {
     const selected = this.spanSelectedMarks()
     const first = selected.length ? this.markOption(selected[0]) : {label: "More", icon: "More"}
@@ -4500,6 +4619,7 @@ export class AppRibbon extends LitElement {
         ></ribbon-button>
         ${this.renderLinkButton()}
         ${this.renderSpanButton()}
+        ${this.renderRubyButton()}
       </ribbon-drawer>
     `
   }

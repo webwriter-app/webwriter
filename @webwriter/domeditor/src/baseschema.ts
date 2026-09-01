@@ -569,9 +569,11 @@ export const baseSchema = {
     directlyInsertable: false
   },
   "rp": {
+    directlyInsertable: false,
     content: { selector: { type: "text" }, min: 0, max: Infinity }
   },
   "rt": {
+    directlyInsertable: false,
     content: {group: "phrasing", min: 0, max: Infinity}
   },
   "source": {},

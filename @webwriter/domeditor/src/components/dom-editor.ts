@@ -16,12 +16,14 @@ import {
 import { getElementPresentation, isLineBreakElement } from "../element-names"
 import {
   canonicalMarkName,
+  emptyRubyState,
   isMarkAttributeName,
   isMarkElement,
   isStyleMarkName,
   mergedMarkGroupFor,
   type MarkAttributeValues,
   type MarkName,
+  type RubyState,
   type StyleMarkValues,
 } from "../marks"
 import {isWidgetShadowInteraction} from "../utility"
@@ -296,6 +298,7 @@ export class DomEditor extends LitElement {
     marks: {attribute: false, state: true},
     markStyles: {attribute: false, state: true},
     markAttributes: {attribute: false, state: true},
+    ruby: {attribute: false, state: true},
     commentState: {attribute: false, state: true},
     presenceUsers: {attribute: false, state: true},
     packages: {attribute: false, state: true},
@@ -374,6 +377,7 @@ export class DomEditor extends LitElement {
   private marks: MarkName[] = []
   private markStyles: StyleMarkValues = {}
   private markAttributes: MarkAttributeValues = {}
+  private ruby: RubyState = {...emptyRubyState}
   private commentState: CommentState = {
     canComment: false,
     active: false,
@@ -2988,6 +2992,64 @@ export class DomEditor extends LitElement {
     }).finally(() => this.focusEditor())
   }
 
+  private handleRubyAction = (event: Event) => {
+    const detail = (event as CustomEvent<{
+      action?: unknown
+      annotation?: unknown
+      fallback?: unknown
+      index?: unknown
+      expected?: unknown
+      value?: unknown
+    }>).detail
+    if(detail?.action === "create" && typeof detail.annotation === "string" && typeof detail.fallback === "boolean") {
+      void this.execute({type: "createRuby", annotation: detail.annotation, fallback: detail.fallback})
+      return
+    }
+    if(detail?.action === "add-annotation" && typeof detail.value === "string") {
+      void this.execute({type: "addRubyAnnotation", value: detail.value})
+      return
+    }
+    const guardedComponent = Number.isInteger(detail?.index) && (detail.index as number) >= 0
+      && typeof detail?.expected === "string"
+    if(detail?.action === "set-annotation" && guardedComponent && typeof detail.value === "string") {
+      void this.execute({
+        type: "setRubyAnnotation",
+        index: detail.index as number,
+        expected: detail.expected as string,
+        value: detail.value,
+      })
+      return
+    }
+    if(detail?.action === "remove-annotation" && guardedComponent) {
+      void this.execute({
+        type: "removeRubyAnnotation", index: detail.index as number, expected: detail.expected as string,
+      })
+      return
+    }
+    if(detail?.action === "set-fallback" && guardedComponent && typeof detail.value === "string") {
+      void this.execute({
+        type: "setRubyFallback",
+        index: detail.index as number,
+        expected: detail.expected as string,
+        value: detail.value,
+      })
+      return
+    }
+    if(detail?.action === "add-fallback") {
+      void this.execute({type: "addRubyFallback"})
+      return
+    }
+    if(detail?.action === "remove-fallback") {
+      void this.execute({type: "removeRubyFallback"})
+      return
+    }
+    if(detail?.action === "remove-ruby") {
+      void this.execute({type: "removeRuby"})
+      return
+    }
+    this.focusEditor()
+  }
+
   private handleListAttributeChange = (event: Event) => {
     const detail = (event as CustomEvent<{name?: unknown, value?: unknown}>).detail
     if(!detail || !["start", "reversed", "type", "value"].includes(String(detail.name))
@@ -3855,12 +3917,18 @@ export class DomEditor extends LitElement {
       this.markAttributes = Object.fromEntries(
         Object.entries(event.data.detail.attributes ?? {}).map(([mark, attributes]) => [mark, {...attributes}]),
       )
+      this.ruby = event.data.detail.ruby ? {
+        ...event.data.detail.ruby,
+        annotations: event.data.detail.ruby.annotations.map(component => ({...component})),
+        fallbacks: event.data.detail.ruby.fallbacks.map(component => ({...component})),
+      } : {...emptyRubyState}
       this.dispatchEvent(new CustomEvent(markStateChangeEvent, {
         detail: {
           canMark: this.canMark,
           marks: [...this.marks],
           styles: {...this.markStyles},
           attributes: this.markAttributes,
+          ruby: this.ruby,
         },
         bubbles: true,
         composed: true,
@@ -3912,6 +3980,7 @@ export class DomEditor extends LitElement {
         this.marks = []
         this.markStyles = {}
         this.markAttributes = {}
+        this.ruby = {...emptyRubyState}
       }
       this.listType = event.data.detail.list?.type ?? null
       this.listStyle = event.data.detail.list?.style ?? ""
@@ -4246,6 +4315,7 @@ export class DomEditor extends LitElement {
     this.marks = []
     this.markStyles = {}
     this.markAttributes = {}
+    this.ruby = {...emptyRubyState}
     this.listType = null
     this.listStyle = ""
     this.orderedList = undefined
@@ -4309,6 +4379,7 @@ export class DomEditor extends LitElement {
           .marks=${this.marks}
           .markStyles=${this.markStyles}
           .markAttributes=${this.markAttributes}
+          .ruby=${this.ruby}
           .commentState=${this.commentState}
           .listType=${this.listType}
           .listStyle=${this.listStyle}
@@ -4355,6 +4426,7 @@ export class DomEditor extends LitElement {
           @ribbon-combobox-change=${this.handleRibbonComboboxChange}
           @section-type-change=${this.handleSectionTypeChange}
           @mark-attribute-change=${this.handleMarkAttributeChange}
+          @ruby-action=${this.handleRubyAction}
           @list-attribute-change=${this.handleListAttributeChange}
           @heading-group-level-change=${this.handleHeadingGroupLevelChange}
           @comment-action=${this.handleCommentAction}
@@ -4454,6 +4526,7 @@ export class DomEditor extends LitElement {
         .marks=${this.marks}
         .markStyles=${this.markStyles}
         .markAttributes=${this.markAttributes}
+        .ruby=${this.ruby}
         .commentState=${this.commentState}
         .listType=${this.listType}
         .listStyle=${this.listStyle}
@@ -4484,6 +4557,7 @@ export class DomEditor extends LitElement {
         @ribbon-combobox-change=${this.handleRibbonComboboxChange}
         @section-type-change=${this.handleSectionTypeChange}
         @mark-attribute-change=${this.handleMarkAttributeChange}
+        @ruby-action=${this.handleRubyAction}
         @list-attribute-change=${this.handleListAttributeChange}
         @heading-group-level-change=${this.handleHeadingGroupLevelChange}
         @comment-action=${this.handleCommentAction}

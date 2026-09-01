@@ -320,6 +320,72 @@ export class RibbonButton extends LitElement {
       width: 11rem;
     }
 
+    .ruby-dropdown {
+      width: min(17rem, calc(100vw - 2.2rem));
+    }
+
+    .ruby-base-preview {
+      margin: 0;
+      padding-bottom: 0.35rem;
+      overflow-wrap: anywhere;
+      border-bottom: 1px solid #d8dee6;
+    }
+
+    .ruby-base-preview > span {
+      margin-right: 0.3rem;
+      color: #526b86;
+      font-size: 0.62rem;
+      font-weight: 600;
+    }
+
+    .ruby-fallback-toggle {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.35rem;
+      color: #526b86;
+      font-size: 0.62rem;
+      line-height: 1rem;
+    }
+
+    .ruby-fallback-toggle input {
+      margin: 0.1rem 0 0;
+      accent-color: #3977c7;
+    }
+
+    .ruby-component-list,
+    .ruby-component-row {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+
+    .ruby-component-row {
+      padding-bottom: 0.35rem;
+      border-bottom: 1px solid #e5eaf0;
+    }
+
+    .ruby-component-row small {
+      color: #8a5a1f;
+      font-size: 0.58rem;
+      line-height: 0.8rem;
+    }
+
+    .ruby-component-remove {
+      align-self: flex-end;
+      padding: 0;
+      border: 0;
+      color: #8b3040;
+      background: transparent;
+      font: inherit;
+      font-size: 0.6rem;
+      cursor: pointer;
+    }
+
+    .ruby-remove {
+      color: #8b3040;
+      border-color: #d8a8b0;
+    }
+
     .button-dropdown-more {
       box-sizing: border-box;
       align-self: flex-start;

@@ -415,6 +415,13 @@ describe("editor bridge message guards", () => {
         marks: ["b", "a"],
         styles: {"font-family": "serif", color: "#123456"},
         attributes: {a: {href: "https://example.test", target: "_blank"}},
+        ruby: {
+          active: true,
+          canCreate: false,
+          base: "漢",
+          annotations: [{index: 2, text: "かん", hasMarkup: false}],
+          fallbacks: [{index: 1, text: "(", hasMarkup: false}],
+        },
       },
     }
     expect(isMarkStateChangeMessage(message)).toBe(true)
@@ -426,6 +433,10 @@ describe("editor bridge message guards", () => {
       {...message, detail: {...message.detail, attributes: {strong: {href: "https://example.test"}}}},
       {...message, detail: {...message.detail, attributes: {a: {onclick: "alert(1)"}}}},
       {...message, detail: {...message.detail, attributes: {a: {href: 42}}}},
+      {...message, detail: {...message.detail, ruby: {...message.detail.ruby, active: "true"}}},
+      {...message, detail: {...message.detail, ruby: {...message.detail.ruby, annotations: [{index: -1, text: "かん", hasMarkup: false}]}}},
+      {...message, detail: {...message.detail, ruby: {...message.detail.ruby, fallbacks: [{index: 1, text: 42, hasMarkup: false}]}}},
+      {...message, detail: {...message.detail, ruby: {...message.detail.ruby, fallbacks: [{index: 2, text: "(", hasMarkup: false}]}}},
     ])
   })
 

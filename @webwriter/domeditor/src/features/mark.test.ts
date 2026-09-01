@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import {beforeEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
-import {markNames, primaryMarkOptions, standardMarkShortcutNames} from "../marks"
+import {markNames, normalizeMarkElements, primaryMarkOptions, standardMarkShortcutNames} from "../marks"
 import {$} from "../utility"
 
 const editor = new DOMEditor()
@@ -132,13 +132,116 @@ describe("MarkFeature toggles", () => {
       expect(feature.toggleMark(mark)).toBe(true)
       expect(cleanHTML()).toBe(mark === "bdo"
         ? '<p><bdo dir="ltr">Text</bdo></p>'
-        : `<p><${mark}>Text</${mark}></p>`)
+        : mark === "ruby"
+          ? "<p><ruby>Text<rt></rt></ruby></p>"
+          : `<p><${mark}>Text</${mark}></p>`)
       expect(feature.getState().marks).toEqual([mark])
 
       expect(feature.toggleMark(mark)).toBe(true)
       expect(cleanHTML()).toBe("<p>Text</p>")
       expect(feature.getState().marks).toEqual([])
     }
+  })
+
+  it("creates one ruby base from rich phrasing content with an editable annotation and fallback", () => {
+    const paragraph = setContent("<p><em>漢</em>字 example</p>")
+    $.selectRange(paragraph.querySelector("em")!.firstChild!, 0, paragraph.childNodes[1], 1)
+
+    expect(feature.createRuby("かんじ", true)).toBe(true)
+
+    expect(cleanHTML()).toBe("<p><ruby><em>漢</em>字<rp>(</rp><rt>かんじ</rt><rp>)</rp></ruby> example</p>")
+    expect(document.getSelection()?.toString()).toBe("漢字")
+    expect(feature.getRubyState()).toEqual({
+      active: true,
+      canCreate: false,
+      base: "漢字",
+      annotations: [{index: 3, text: "かんじ", hasMarkup: false}],
+      fallbacks: [
+        {index: 2, text: "(", hasMarkup: false},
+        {index: 4, text: ")", hasMarkup: false},
+      ],
+    })
+  })
+
+  it("reads and edits multiple authored rt children without normalizing unrelated ruby DOM", () => {
+    const paragraph = setContent('<p><ruby data-source="external">東<rt><em>とう</em></rt><!--keep--><rt>east</rt></ruby></p>')
+    selectText(paragraph.querySelector("ruby")!.firstChild as Text)
+    const original = cleanHTML()
+
+    let state = feature.getRubyState()
+    expect(state.base).toBe("東")
+    expect(state.annotations).toEqual([
+      {index: 1, text: "とう", hasMarkup: true},
+      {index: 3, text: "east", hasMarkup: false},
+    ])
+    expect(cleanHTML()).toBe(original)
+
+    const first = state.annotations[0]
+    paragraph.querySelector("rt")!.textContent = "changed remotely"
+    expect(feature.setRubyComponent("rt", first.index, first.text, "ひがし")).toBe(false)
+    expect(paragraph.querySelector("rt")?.textContent).toBe("changed remotely")
+
+    state = feature.getRubyState()
+    expect(feature.setRubyComponent("rt", state.annotations[0].index, "changed remotely", "ひがし")).toBe(true)
+    expect(paragraph.querySelector("rt")?.innerHTML).toBe("ひがし")
+    expect(paragraph.querySelector("ruby")?.getAttribute("data-source")).toBe("external")
+    expect(Array.from(paragraph.querySelector("ruby")!.childNodes).some(node => node.nodeType === Node.COMMENT_NODE)).toBe(true)
+  })
+
+  it("adds, removes, and customizes rt and rp components through guarded live state", () => {
+    const paragraph = setContent("<p><ruby>漢<rt>かん</rt></ruby></p>")
+    selectText(paragraph.querySelector("ruby")!.firstChild as Text)
+
+    expect(feature.addRubyAnnotation("Chinese")).toBe(true)
+    expect(cleanHTML()).toBe("<p><ruby>漢<rt>かん</rt><rt>Chinese</rt></ruby></p>")
+    expect(feature.addRubyFallback()).toBe(true)
+    expect(cleanHTML()).toBe("<p><ruby>漢<rp>(</rp><rt>かん</rt><rt>Chinese</rt><rp>)</rp></ruby></p>")
+
+    let state = feature.getRubyState()
+    expect(feature.setRubyComponent("rp", state.fallbacks[0].index, "(", "[")).toBe(true)
+    state = feature.getRubyState()
+    expect(feature.removeRubyAnnotation(state.annotations[1].index, "Chinese")).toBe(true)
+    expect(cleanHTML()).toBe("<p><ruby>漢<rp>[</rp><rt>かん</rt><rp>)</rp></ruby></p>")
+    expect(feature.removeRubyFallback()).toBe(true)
+    expect(cleanHTML()).toBe("<p><ruby>漢<rt>かん</rt></ruby></p>")
+  })
+
+  it("removes ruby semantics and annotation components while preserving the exact base subtree", () => {
+    const paragraph = setContent('<p>Before <ruby class="reading"><strong data-origin="author">漢</strong>字<rp>(</rp><rt>かんじ</rt><rp>)</rp></ruby> after</p>')
+    selectText(paragraph.querySelector("strong")!.firstChild as Text)
+
+    expect(feature.removeRuby()).toBe(true)
+
+    expect(cleanHTML()).toBe('<p>Before <strong data-origin="author">漢</strong>字 after</p>')
+    expect(document.getSelection()?.toString()).toBe("漢字")
+  })
+
+  it("removes ruby as semantics without leaking annotation text through Remove formatting", () => {
+    const paragraph = setContent("<p><ruby><strong>漢</strong><rt>かん</rt></ruby></p>")
+    selectText(paragraph.querySelector("strong")!.firstChild as Text)
+
+    expect(feature.removeMarks()).toBe(true)
+
+    expect(cleanHTML()).toBe("<p>漢</p>")
+    expect(document.getSelection()?.toString()).toBe("漢")
+  })
+
+  it("keeps adjacent ruby sequences independent during generic mark normalization", () => {
+    const paragraph = setContent("<p><ruby>漢<rt>かん</rt></ruby><ruby>字<rt>じ</rt></ruby></p>")
+
+    normalizeMarkElements(paragraph)
+
+    expect(paragraph.querySelectorAll("ruby")).toHaveLength(2)
+    expect(cleanHTML()).toBe("<p><ruby>漢<rt>かん</rt></ruby><ruby>字<rt>じ</rt></ruby></p>")
+  })
+
+  it("does not create nested ruby or combine a selection containing an existing ruby", () => {
+    const paragraph = setContent("<p><ruby>漢<rt>かん</rt></ruby>字</p>")
+    $.selectRange(paragraph.querySelector("ruby")!.firstChild!, 0, paragraph.lastChild!, 1)
+
+    expect(feature.getRubyState().canCreate).toBe(false)
+    expect(feature.createRuby("かんじ", false)).toBe(false)
+    expect(document.querySelectorAll("ruby")).toHaveLength(1)
   })
 
   it("adds a mark across inline boundaries without flattening other markup", () => {

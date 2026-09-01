@@ -804,5 +804,16 @@ describe("Schema methods", () => {
       expect(types).toContain("p")
       expect(types).toContain("div")
     })
+
+    it("keeps ruby internals available to structured commands but out of generic insertion", () => {
+      document.body.innerHTML = "<p><ruby>漢</ruby></p>"
+      const ruby = document.querySelector("ruby")!
+      $.move(ruby, 1)
+
+      expect(schema.findValidContentTypes(ruby, undefined, Array.from(ruby.childNodes)))
+        .toEqual(expect.arrayContaining(["rt", "rp"]))
+      expect(schema.findValidTypesToInsert()).not.toContain("rt")
+      expect(schema.findValidTypesToInsert()).not.toContain("rp")
+    })
   })
 })

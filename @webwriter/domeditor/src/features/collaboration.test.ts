@@ -122,6 +122,27 @@ describe("DOMEditor collaboration wiring", () => {
     expect(document.querySelector("th")?.getAttribute("scope")).toBe("col")
   })
 
+  it("synchronizes structured ruby annotations through undo, redo, and serialization", async () => {
+    document.body.innerHTML = "<p>漢字</p>"
+    await mutationsDelivered()
+    editor.doc.stopCapturing()
+    const text = document.querySelector("p")!.firstChild as Text
+    $.selectRange(text, 0, text, 2)
+
+    expect(editor.features.mark.createRuby("かんじ", true)).toBe(true)
+    await mutationsDelivered()
+
+    const rubyHTML = "<ruby>漢字<rp>(</rp><rt>かんじ</rt><rp>)</rp></ruby>"
+    expect(editor.toHTML(true)).toContain(rubyHTML)
+    expect(editor.doc.body.toString()).toContain(rubyHTML)
+
+    editor.features.history.actions.undo({type: "undo"})
+    expect(document.querySelector("ruby")).toBeNull()
+    expect(document.querySelector("p")?.textContent).toBe("漢字")
+    editor.features.history.actions.redo({type: "redo"})
+    expect(document.querySelector("ruby")?.outerHTML).toBe(rubyHTML)
+  })
+
   it("synchronizes authored dialog state while excluding its editing marker", async () => {
     document.body.innerHTML = '<dialog id="notice"><p>Notice</p></dialog>'
     await mutationsDelivered()

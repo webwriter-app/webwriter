@@ -33,6 +33,55 @@ export type PrimaryMarkName = typeof primaryMarkNames[number]
 export type SecondaryMarkName = typeof secondaryMarkNames[number]
 export type MarkName = PrimaryMarkName | SecondaryMarkName
 
+export type RubyComponentState = {
+  /** Child-node index inside the live ruby element, used as a stale-state guard. */
+  index: number
+  text: string
+  /** Editing the text will intentionally replace authored inline markup. */
+  hasMarkup: boolean
+}
+
+export type RubyState = {
+  /** Whether the current selection resolves to one live ruby element. */
+  active: boolean
+  /** Whether the current non-collapsed selection can become a new ruby base. */
+  canCreate: boolean
+  /** Plain-text preview of the base content. */
+  base: string
+  /** Direct rt children, preserving their authored order and structure. */
+  annotations: RubyComponentState[]
+  /** Direct rp children, preserving custom fallback text until explicitly edited. */
+  fallbacks: RubyComponentState[]
+}
+
+export const emptyRubyState: RubyState = {
+  active: false,
+  canCreate: false,
+  base: "",
+  annotations: [],
+  fallbacks: [],
+}
+
+export function isRubyState(value: unknown): value is RubyState {
+  if(!value || typeof value !== "object" || Array.isArray(value)) return false
+  const state = value as Partial<RubyState>
+  const componentsValid = (components: unknown): components is RubyComponentState[] => Array.isArray(components)
+    && components.every(component => !!component
+      && typeof component === "object"
+      && Number.isInteger((component as RubyComponentState).index)
+      && (component as RubyComponentState).index >= 0
+      && typeof (component as RubyComponentState).text === "string"
+      && typeof (component as RubyComponentState).hasMarkup === "boolean")
+  const valid = typeof state.active === "boolean"
+    && typeof state.canCreate === "boolean"
+    && typeof state.base === "string"
+    && componentsValid(state.annotations)
+    && componentsValid(state.fallbacks)
+  if(!valid) return false
+  const indexes = [...state.annotations!, ...state.fallbacks!].map(component => component.index)
+  return new Set(indexes).size === indexes.length
+}
+
 export const styleMarkNames = [
   "font-family",
   "font-size",
@@ -132,7 +181,6 @@ export const advancedMarkNames = [
   "cite",
   "data",
   "dfn",
-  "ruby",
   "samp",
   "time",
   "var",
@@ -294,6 +342,8 @@ function normalizedMarkAttributes(element: Element) {
 /** Whether adjacent mark wrappers may be joined without changing meaning. */
 export function areEquivalentMarkElements(first: Element, second: Element) {
   if(!isMarkElement(first) || !isMarkElement(second) || first.localName !== second.localName) return false
+  // Adjacent ruby elements represent independent base/annotation sequences.
+  if(first.localName === "ruby") return false
   const firstAttributes = normalizedMarkAttributes(first)
   const secondAttributes = normalizedMarkAttributes(second)
   return firstAttributes.length === secondAttributes.length

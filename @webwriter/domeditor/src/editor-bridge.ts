@@ -1,9 +1,11 @@
 import {
   canonicalMarkName,
   isMarkAttributeName,
+  isRubyState,
   isStyleMarkName,
   type MarkAttributeValues,
   type MarkName,
+  type RubyState,
   type StyleMarkValues,
 } from "./marks"
 import type {EditorStateSnapshot} from "./editor-state"
@@ -286,6 +288,8 @@ export type MarkStateChangeDetail = {
   styles?: StyleMarkValues
   /** Element-specific attributes shared by the selected mark wrappers. */
   attributes?: MarkAttributeValues
+  /** Structured ruby base, rt annotation, and rp fallback state. */
+  ruby?: RubyState
 }
 
 export type MarkStateChangeMessage = {
@@ -761,9 +765,8 @@ export function isMarkStateChangeMessage(value: unknown): value is MarkStateChan
     isStyleMarkName(property) && typeof styleValue === "string",
   ))) return false
   const attributes = message.detail!.attributes
-  if(attributes === undefined) return true
-  if(!attributes || typeof attributes !== "object" || Array.isArray(attributes)) return false
-  return Object.entries(attributes).every(([mark, values]) => {
+  if(attributes !== undefined && (!attributes || typeof attributes !== "object" || Array.isArray(attributes))) return false
+  if(attributes !== undefined && !Object.entries(attributes).every(([mark, values]) => {
     const exactMark = canonicalMarkName(mark)
     return exactMark === mark
       && !!values
@@ -772,7 +775,8 @@ export function isMarkStateChangeMessage(value: unknown): value is MarkStateChan
       && Object.entries(values).every(([attribute, attributeValue]) =>
         isMarkAttributeName(exactMark, attribute) && typeof attributeValue === "string",
       )
-  })
+  })) return false
+  return message.detail!.ruby === undefined || isRubyState(message.detail!.ruby)
 }
 
 export function isCommentStateChangeMessage(value: unknown): value is CommentStateChangeMessage {

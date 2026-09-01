@@ -398,6 +398,7 @@ describe("mark ribbon controls", () => {
       "Remove formatting",
       "Link",
       "More",
+      "Ruby annotation",
     ])
     expect(drawer.querySelectorAll('ribbon-button[slot="more"]')).toHaveLength(0)
     expect(buttons.slice(2, 6).every(button => button.compact && button.toggle)).toBe(true)
@@ -408,7 +409,7 @@ describe("mark ribbon controls", () => {
     expect(buttons.every(button => button.disabled)).toBe(true)
     expect(comboboxes.every(combobox => combobox.disabled)).toBe(true)
     expect(getComputedStyle(controls).gridAutoFlow).toBe("row")
-    expect(getComputedStyle(controls).gridTemplateColumns).toBe("repeat(7, 1.75rem) 3.5rem")
+    expect(getComputedStyle(controls).gridTemplateColumns).toBe("repeat(7, 1.75rem) repeat(2, 3.5rem)")
     expect(getComputedStyle(controls).gridTemplateRows).toBe("repeat(2, minmax(0, 1fr))")
     expect(getComputedStyle(controls).gap).toBe("0.2rem")
     for(const action of ["mark:code", "mark:kbd", "mark:q"]) {
@@ -538,7 +539,6 @@ describe("mark ribbon controls", () => {
         "Citation Source",
         "Data Annotation",
         "Defined Term",
-        "Ruby Annotation",
         "Sample Output",
         "Date/Time Annotation",
         "Variable",
@@ -602,6 +602,76 @@ describe("mark ribbon controls", () => {
     expect(span.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!.hidden).toBe(false)
     expect(span.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!
       .getAttribute("aria-expanded")).toBe("true")
+  })
+
+  it("creates and edits ruby annotations through a dedicated understandable control", async () => {
+    const {ribbon, drawer} = await mountRibbon()
+    const actions = vi.fn()
+    ribbon.addEventListener("ruby-action", actions)
+    ribbon.canMark = true
+    ribbon.ruby = {
+      active: false,
+      canCreate: true,
+      base: "漢字",
+      annotations: [],
+      fallbacks: [],
+    }
+    await ribbon.updateComplete
+    await drawer.updateComplete
+
+    const button = drawer.querySelector<RibbonButton>("ribbon-button.mark-ruby")!
+    expect(button.label).toBe("Ruby annotation")
+    expect(button.disabled).toBe(false)
+    expect(button.active).toBe(false)
+    await button.updateComplete
+    button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    await button.updateComplete
+    let dropdown = button.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
+    expect(dropdown.hidden).toBe(false)
+    expect(dropdown.querySelector(".ruby-base-preview")?.textContent).toContain("漢字")
+    const annotation = dropdown.querySelector<HTMLInputElement>('input[aria-label="Ruby annotation"]')!
+    annotation.value = "かんじ"
+    annotation.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
+    dropdown.querySelector<HTMLInputElement>('.ruby-fallback-toggle input')!.click()
+    dropdown.querySelector<HTMLButtonElement>(".button-dropdown-more")!.click()
+    expect(actions).toHaveBeenLastCalledWith(expect.objectContaining({
+      detail: {action: "create", annotation: "かんじ", fallback: true},
+    }))
+
+    ribbon.ruby = {
+      active: true,
+      canCreate: false,
+      base: "漢字",
+      annotations: [{index: 2, text: "かんじ", hasMarkup: true}],
+      fallbacks: [
+        {index: 1, text: "(", hasMarkup: false},
+        {index: 3, text: ")", hasMarkup: false},
+      ],
+    }
+    ribbon.marks = ["ruby"]
+    await ribbon.updateComplete
+    await button.updateComplete
+    dropdown = button.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
+    expect(button.active).toBe(true)
+    expect(dropdown.textContent).toContain("Editing this text replaces its inline formatting")
+    const existing = dropdown.querySelector<HTMLInputElement>('input[aria-label="Ruby annotation 1"]')!
+    existing.value = "kanji"
+    existing.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+    expect(actions).toHaveBeenLastCalledWith(expect.objectContaining({
+      detail: {action: "set-annotation", index: 2, expected: "かんじ", value: "kanji"},
+    }))
+    dropdown.querySelector<HTMLButtonElement>('[aria-label="Remove ruby annotation 1"]')!.click()
+    expect(actions).toHaveBeenLastCalledWith(expect.objectContaining({
+      detail: {action: "remove-annotation", index: 2, expected: "かんじ"},
+    }))
+    const fallback = dropdown.querySelector<HTMLInputElement>('input[aria-label="Ruby fallback 1"]')!
+    fallback.value = "["
+    fallback.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+    expect(actions).toHaveBeenLastCalledWith(expect.objectContaining({
+      detail: {action: "set-fallback", index: 1, expected: "(", value: "["},
+    }))
+    dropdown.querySelector<HTMLButtonElement>("button.ruby-remove")!.click()
+    expect(actions).toHaveBeenLastCalledWith(expect.objectContaining({detail: {action: "remove-ruby"}}))
   })
 
   it("shows secondary mark attributes inside the span dropdown", async () => {
@@ -782,6 +852,59 @@ describe("mark ribbon bridge", () => {
     expect(execute).toHaveBeenNthCalledWith(2, {type: "increaseFontSize"})
     expect(execute).toHaveBeenNthCalledWith(3, {type: "setStyleMark", property: "font-size", value: "24px"})
     expect(execute).toHaveBeenNthCalledWith(4, {type: "removeMarks"})
+  })
+
+  it("propagates ruby state and routes guarded ruby actions through the iframe bridge", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    dispatchEditorMessage(editor, editorWindow, {
+      type: markStateChangeEvent,
+      detail: {
+        canMark: true,
+        marks: ["ruby"],
+        ruby: {
+          active: true,
+          canCreate: false,
+          base: "漢",
+          annotations: [{index: 1, text: "かん", hasMarkup: false}],
+          fallbacks: [],
+        },
+      },
+    })
+    await editor.updateComplete
+
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const toolbox = editor.shadowRoot!.querySelector<AppRibbon>("dom-editor-toolbox")!
+    await Promise.all([ribbon.updateComplete, toolbox.updateComplete])
+    expect(ribbon.ruby).toEqual(expect.objectContaining({active: true, base: "漢"}))
+    expect(toolbox.ruby).toEqual(ribbon.ruby)
+
+    const dispatch = (detail: object) => ribbon.dispatchEvent(new CustomEvent("ruby-action", {
+      detail,
+      bubbles: true,
+      composed: true,
+    }))
+    dispatch({action: "create", annotation: "かん", fallback: true})
+    dispatch({action: "set-annotation", index: 1, expected: "かん", value: "kan"})
+    dispatch({action: "add-annotation", value: "Chinese"})
+    dispatch({action: "remove-annotation", index: 1, expected: "かん"})
+    dispatch({action: "add-fallback"})
+    dispatch({action: "set-fallback", index: 2, expected: "(", value: "["})
+    dispatch({action: "remove-fallback"})
+    dispatch({action: "remove-ruby"})
+
+    expect(execute).toHaveBeenNthCalledWith(1, {type: "createRuby", annotation: "かん", fallback: true})
+    expect(execute).toHaveBeenNthCalledWith(2, {
+      type: "setRubyAnnotation", index: 1, expected: "かん", value: "kan",
+    })
+    expect(execute).toHaveBeenNthCalledWith(3, {type: "addRubyAnnotation", value: "Chinese"})
+    expect(execute).toHaveBeenNthCalledWith(4, {type: "removeRubyAnnotation", index: 1, expected: "かん"})
+    expect(execute).toHaveBeenNthCalledWith(5, {type: "addRubyFallback"})
+    expect(execute).toHaveBeenNthCalledWith(6, {
+      type: "setRubyFallback", index: 2, expected: "(", value: "[",
+    })
+    expect(execute).toHaveBeenNthCalledWith(7, {type: "removeRubyFallback"})
+    expect(execute).toHaveBeenNthCalledWith(8, {type: "removeRuby"})
   })
 
   it("routes span dropdown selections and detail-attribute changes", async () => {

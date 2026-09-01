@@ -995,13 +995,20 @@ export class DOMEditor {
   /** Sends mark availability and active marks as a DOM-derived bridge event. */
   postMarkState() {
     if(this.features.selection.selectedSectionElement) {
-      this.postBridgeEvent(markStateChangeEvent, {canMark: false, marks: [], styles: {}, attributes: {}})
+      this.postBridgeEvent(markStateChangeEvent, {
+        canMark: false,
+        marks: [],
+        styles: {},
+        attributes: {},
+        ruby: {active: false, canCreate: false, base: "", annotations: [], fallbacks: []},
+      })
       return
     }
     this.postBridgeEvent(markStateChangeEvent, {
       ...this.features.mark.getState(),
       styles: this.features.mark.getStyleState(),
       attributes: this.features.mark.getAttributeState(),
+      ruby: this.features.mark.getRubyState(),
     })
   }
 
