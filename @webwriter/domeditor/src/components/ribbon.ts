@@ -2369,6 +2369,160 @@ export class AppRibbon extends LitElement {
       outline: 1px solid #3977c7;
     }
 
+    .table-caption-toggle {
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.2rem;
+      min-width: 0;
+      min-height: 1.75rem;
+      padding: 0.05rem 0.25rem;
+      border: 1px solid transparent;
+      border-radius: 0.35rem;
+      color: #2f3742;
+      font-size: 0.6rem;
+      cursor: pointer;
+    }
+
+    .table-caption-toggle:hover {
+      border-color: #c8d2df;
+      background: #eef4fb;
+    }
+
+    .table-caption-toggle:has(input:checked) {
+      border-color: #8eb6df;
+      color: #1e4f87;
+      background: #dcecff;
+    }
+
+    .table-caption-toggle:has(input:disabled) {
+      border-color: transparent;
+      color: #9aa4b1;
+      background: transparent;
+      cursor: default;
+      opacity: 0.55;
+    }
+
+    .table-caption-toggle > span:last-child {
+      display: flex;
+      align-items: center;
+      gap: 0.15rem;
+      white-space: nowrap;
+    }
+
+    .table-caption-toggle input {
+      width: 0.75rem;
+      height: 0.75rem;
+      margin: 0;
+      accent-color: #3977c7;
+    }
+
+    .table-caption-icon {
+      display: block;
+      width: 1.1rem;
+      height: 1.1rem;
+    }
+
+    .table-caption-icon svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .table-inline-controls {
+      box-sizing: border-box;
+      display: grid;
+      grid-column: 1 / -1;
+      grid-row: 1 / -1;
+      align-items: end;
+      gap: 0.25rem;
+      width: 100%;
+      min-width: 0;
+      min-height: 0;
+      height: 100%;
+      color: #2f3742;
+      font-size: 0.62rem;
+    }
+
+    .table-border-controls {
+      grid-template-columns: minmax(4.5rem, 1.4fr) minmax(3.25rem, 0.8fr) 2.5rem minmax(4.75rem, 1fr);
+    }
+
+    .table-background-controls {
+      grid-template-columns: 2.5rem minmax(5.5rem, 1fr);
+    }
+
+    .table-parameter {
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 0.08rem;
+      min-width: 0;
+    }
+
+    .table-parameter > span {
+      overflow: hidden;
+      color: #526b86;
+      font-size: 0.56rem;
+      line-height: 0.7rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .table-parameter input,
+    .table-parameter select,
+    .table-clear-button {
+      box-sizing: border-box;
+      width: 100%;
+      min-width: 0;
+      height: 1.45rem;
+      padding: 0 0.25rem;
+      border: 1px solid #c8d2df;
+      border-radius: 0.2rem;
+      color: #2f3742;
+      background: #fff;
+      font: inherit;
+      font-size: 0.62rem;
+    }
+
+    .table-parameter input[type="color"] {
+      padding: 0.1rem;
+    }
+
+    .table-clear-button {
+      color: #526b86;
+      cursor: pointer;
+    }
+
+    .table-parameter input:focus,
+    .table-parameter select:focus,
+    .table-clear-button:focus-visible {
+      border-color: #3977c7;
+      outline: 1px solid #3977c7;
+    }
+
+    .table-clear-button:hover {
+      border-color: #8eb6df;
+      color: #1e5d9d;
+      background: #eef4fb;
+    }
+
+    .table-parameter input:disabled,
+    .table-parameter select:disabled,
+    .table-clear-button:disabled {
+      color: #9aa4b1;
+      background: #edf0f3;
+      cursor: default;
+    }
+
+    ribbon-drawer[pane] .table-inline-controls {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      height: auto;
+    }
+
     .graphic-inline-controls {
       box-sizing: border-box;
       grid-column: 1 / -1;
@@ -4800,11 +4954,11 @@ export class AppRibbon extends LitElement {
     }))
   }
 
-  private renderTableBorderDropdown() {
+  private renderTableBorderControls() {
     const disabled = !this.table?.active
     return html`
-      <div class="button-dropdown-form" role="group" aria-label="Cell borders">
-        <label class="mark-attribute">
+      <div class="table-inline-controls table-border-controls" role="group" aria-label="Cell borders">
+        <label class="table-parameter">
           <span>Style</span>
           <select
             data-ribbon-input-persistent
@@ -4818,7 +4972,7 @@ export class AppRibbon extends LitElement {
             <option value="none">None</option>
           </select>
         </label>
-        <label class="mark-attribute">
+        <label class="table-parameter">
           <span>Width</span>
           <select
             data-ribbon-input-persistent
@@ -4831,7 +4985,7 @@ export class AppRibbon extends LitElement {
             <option value="4px">4 px</option>
           </select>
         </label>
-        <label class="mark-attribute">
+        <label class="table-parameter">
           <span>Color</span>
           <input
             data-ribbon-input-persistent
@@ -4841,17 +4995,17 @@ export class AppRibbon extends LitElement {
             @change=${(event: Event) => this.dispatchTableStyle("border-color", (event.currentTarget as HTMLInputElement).value)}
           />
         </label>
-        <button class="button-dropdown-more" type="button" ?disabled=${disabled}
+        <button class="table-clear-button" type="button" ?disabled=${disabled}
           @click=${() => this.dispatchTableStyle("border-style", "")}>Clear borders</button>
       </div>
     `
   }
 
-  private renderTableBackgroundDropdown() {
+  private renderTableBackgroundControls() {
     const disabled = !this.table?.active
     return html`
-      <div class="button-dropdown-form" role="group" aria-label="Cell background">
-        <label class="mark-attribute">
+      <div class="table-inline-controls table-background-controls" role="group" aria-label="Cell background">
+        <label class="table-parameter">
           <span>Color</span>
           <input
             data-ribbon-input-persistent
@@ -4861,10 +5015,18 @@ export class AppRibbon extends LitElement {
             @change=${(event: Event) => this.dispatchTableStyle("background-color", (event.currentTarget as HTMLInputElement).value)}
           />
         </label>
-        <button class="button-dropdown-more" type="button" ?disabled=${disabled}
+        <button class="table-clear-button" type="button" ?disabled=${disabled}
           @click=${() => this.dispatchTableStyle("background-color", "")}>Clear background</button>
       </div>
     `
+  }
+
+  private toggleTableCaption = () => {
+    this.dispatchEvent(new CustomEvent<{label: string}>("ribbon-button-click", {
+      detail: {label: "table-caption"},
+      bubbles: true,
+      composed: true,
+    }))
   }
 
   private dispatchGraphicParameter(name: string, event: Event) {
@@ -5261,20 +5423,33 @@ export class AppRibbon extends LitElement {
     `
   }
 
-  private renderTableDrawer() {
+  private renderTableDrawers() {
     const active = Boolean(this.table?.active)
     return html`
-      <ribbon-drawer label="Table" icon="Table" layout="table">
-        <ribbon-button label="Row above" action="table-row-above" icon="Plus" ?disabled=${!active}></ribbon-button>
-        <ribbon-button label="Row below" action="table-row-below" icon="Plus" ?disabled=${!active}></ribbon-button>
-        <ribbon-button label="Column left" action="table-column-left" icon="Plus" ?disabled=${!active}></ribbon-button>
-        <ribbon-button label="Column right" action="table-column-right" icon="Plus" ?disabled=${!active}></ribbon-button>
-        <ribbon-button label="Merge cells" action="table-merge-cells" icon="Table" ?disabled=${!this.table?.canMerge}></ribbon-button>
-        <ribbon-button label="Split cells" action="table-split-cells" icon="Table" ?disabled=${!this.table?.canSplit}></ribbon-button>
-        <ribbon-button label="Split table" action="table-split" icon="Table" ?disabled=${!active}></ribbon-button>
-        <ribbon-button label="Caption" action="table-caption" icon="Text" ?disabled=${!active}></ribbon-button>
-        <ribbon-button label="Borders" icon="Table" .dropdown=${this.renderTableBorderDropdown()} ?disabled=${!active}></ribbon-button>
-        <ribbon-button label="Background" icon="Color" .dropdown=${this.renderTableBackgroundDropdown()} ?disabled=${!active}></ribbon-button>
+      <ribbon-drawer label="Layout" icon="TableLayout" layout="table-layout">
+        <ribbon-button label="Row above" action="table-row-above" icon="TableRowAbove" ?disabled=${!active}></ribbon-button>
+        <ribbon-button label="Row below" action="table-row-below" icon="TableRowBelow" ?disabled=${!active}></ribbon-button>
+        <ribbon-button label="Column left" action="table-column-left" icon="TableColumnLeft" ?disabled=${!active}></ribbon-button>
+        <ribbon-button label="Column right" action="table-column-right" icon="TableColumnRight" ?disabled=${!active}></ribbon-button>
+        <ribbon-button label="Merge cells" action="table-merge-cells" icon="TableMergeCells" ?disabled=${!this.table?.canMerge}></ribbon-button>
+        <ribbon-button label="Split cells" action="table-split-cells" icon="TableSplitCells" ?disabled=${!this.table?.canSplit}></ribbon-button>
+        <ribbon-button label="Split table" action="table-split" icon="TableSplit" ?disabled=${!active}></ribbon-button>
+        <label class="table-caption-toggle">
+          <span class="table-caption-icon" aria-hidden="true">${ribbonIcon("TableCaption")}</span>
+          <span><input
+            type="checkbox"
+            data-ribbon-input-persistent
+            .checked=${this.table?.hasCaption ?? false}
+            ?disabled=${!active}
+            @change=${this.toggleTableCaption}
+          /> Caption</span>
+        </label>
+      </ribbon-drawer>
+      <ribbon-drawer label="Borders" icon="TableBorders" layout="table-borders">
+        ${this.renderTableBorderControls()}
+      </ribbon-drawer>
+      <ribbon-drawer label="Background" icon="TableBackground" layout="table-background">
+        ${this.renderTableBackgroundControls()}
       </ribbon-drawer>
     `
   }
@@ -6037,7 +6212,7 @@ export class AppRibbon extends LitElement {
       if(drawer.label === "Media") return this.renderMediaDrawer()
       if(drawer.label === "Comments") return this.renderCommentDrawer()
       if(drawer.label === "Form") return this.renderFormDrawer()
-      if(drawer.label === "Table") return this.renderTableDrawer()
+      if(drawer.label === "Layout") return this.renderTableDrawers()
       if(drawer.label === "Graphic") return this.renderGraphicDrawer()
       if(drawer.label === "Packages") return this.renderPackageDrawer()
       if(drawer.label === "Local packages") return this.renderDevelopDrawer()

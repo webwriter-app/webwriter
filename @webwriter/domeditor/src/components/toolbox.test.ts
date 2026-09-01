@@ -188,7 +188,7 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     let drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"))
     await Promise.all(drawers.map(drawer => drawer.updateComplete))
-    expect(drawers.map(drawer => drawer.label)).toEqual(["Table"])
+    expect(drawers.map(drawer => drawer.label)).toEqual(["Layout", "Borders", "Background"])
     expect(drawers.every(drawer => drawer.pane && !drawer.collapsed)).toBe(true)
 
     toolButton(toolbox, "Review").click()

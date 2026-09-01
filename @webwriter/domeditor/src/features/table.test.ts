@@ -543,15 +543,18 @@ describe("table actions", () => {
     expect(tables[1].querySelector("tbody")).not.toHaveClass("◆row-marker")
   })
 
-  it("adds a caption and applies cell border and background styles", () => {
+  it("toggles a caption and applies cell border and background styles", () => {
     document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr></tbody></table>"
     editor.features.table.selectCells(cells()[0], cells()[1])
     editor.features.table.actions.setTableCellStyle({type: "setTableCellStyle", property: "border-style", value: "solid"})
     editor.features.table.actions.setTableCellStyle({type: "setTableCellStyle", property: "background-color", value: "#ff0000"})
-    editor.features.table.actions.addTableCaption({type: "addTableCaption"})
+    editor.features.table.actions.toggleTableCaption({type: "toggleTableCaption"})
 
     expect(document.querySelector("table")?.firstElementChild?.localName).toBe("caption")
     expect(cells().every(cell => cell.style.borderStyle === "solid")).toBe(true)
     expect(cells().every(cell => cell.style.backgroundColor === "#ff0000")).toBe(true)
+
+    editor.features.table.actions.toggleTableCaption({type: "toggleTableCaption"})
+    expect(document.querySelector("caption")).toBeNull()
   })
 })

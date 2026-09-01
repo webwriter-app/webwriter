@@ -449,6 +449,24 @@ export class TableFeature extends EditorFeature {
     this.editor.postSelectionPath()
   }
 
+  private toggleCaption() {
+    const table = this.selectedTable
+    if(!table) return
+    const caption = table.caption
+    if(!caption) {
+      this.addCaption()
+      return
+    }
+    const selectionWasInCaption = Boolean($.anchor && caption.contains($.anchor))
+    caption.remove()
+    if(selectionWasInCaption) {
+      const cell = table.querySelector<HTMLTableCellElement>(tableCellSelector)
+      cell ? $.move(cell, 0) : $.selectElement(table)
+    }
+    this.editor.features.selection.processSelection()
+    this.editor.postSelectionPath()
+  }
+
   private setCellStyle(property: TableCellStyle, value: string) {
     const table = this.selectedTable
     if(!table) return
@@ -801,6 +819,7 @@ export class TableFeature extends EditorFeature {
     splitTableCells: ({}: {type: "splitTableCells"}) => this.splitCells(),
     splitTable: ({}: {type: "splitTable"}) => this.splitTable(),
     addTableCaption: ({}: {type: "addTableCaption"}) => this.addCaption(),
+    toggleTableCaption: ({}: {type: "toggleTableCaption"}) => this.toggleCaption(),
     setTableCellStyle: ({property, value}: {type: "setTableCellStyle", property: TableCellStyle, value: string}) => {
       if(!["background-color", "border-color", "border-style", "border-width"].includes(property)) {
         throw new TypeError(`Unsupported table cell style '${String(property)}'`)

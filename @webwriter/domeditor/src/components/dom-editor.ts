@@ -2381,7 +2381,7 @@ export class DomEditor extends LitElement {
       "table-merge-cells": {type: "mergeTableCells"},
       "table-split-cells": {type: "splitTableCells"},
       "table-split": {type: "splitTable"},
-      "table-caption": {type: "addTableCaption"},
+      "table-caption": {type: "toggleTableCaption"},
     } as const
     if(label && Object.hasOwn(tableActions, label)) {
       void this.execute(tableActions[label as keyof typeof tableActions]).finally(() => this.focusEditor())

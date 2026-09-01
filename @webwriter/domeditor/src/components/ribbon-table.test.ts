@@ -7,7 +7,7 @@ import {DomEditorToolbox} from "./toolbox"
 beforeEach(() => document.body.replaceChildren())
 
 describe("table controls", () => {
-  it("removes the Table drawer from Start and keeps it in the Edit toolbox", async () => {
+  it("keeps the table controls in dedicated Edit toolbox drawers", async () => {
     const ribbon = new AppRibbon()
     document.body.append(ribbon)
     await ribbon.updateComplete
@@ -23,7 +23,16 @@ describe("table controls", () => {
     await toolbox.updateComplete
     const toolboxLabels = Array.from(toolbox.shadowRoot!.querySelectorAll("ribbon-drawer"))
       .map(drawer => drawer.getAttribute("label"))
-    expect(toolboxLabels).toEqual(["Table"])
+    expect(toolboxLabels).toEqual(["Layout", "Borders", "Background"])
+
+    const actionIcons = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonButton>("ribbon-button"))
+      .map(button => button.icon)
+    expect(actionIcons).toEqual([
+      "TableRowAbove", "TableRowBelow", "TableColumnLeft", "TableColumnRight",
+      "TableMergeCells", "TableSplitCells", "TableSplit",
+    ])
+    expect(new Set(actionIcons).size).toBe(actionIcons.length)
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Layout"] input[type="checkbox"]')).not.toBeNull()
   })
 
   it("offers a 10 by 10 insertion grid and dispatches the chosen size", async () => {
@@ -65,10 +74,10 @@ describe("table controls", () => {
     document.body.append(toolbox)
     await toolbox.updateComplete
     const merge = toolbox.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Table"] ribbon-button[label="Merge cells"]',
+      'ribbon-drawer[label="Layout"] ribbon-button[label="Merge cells"]',
     )!
     const split = toolbox.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Table"] ribbon-button[label="Split cells"]',
+      'ribbon-drawer[label="Layout"] ribbon-button[label="Split cells"]',
     )!
     await merge.updateComplete
 
@@ -80,7 +89,28 @@ describe("table controls", () => {
     }))
   })
 
-  it("dispatches cell border and background style changes", async () => {
+  it("renders Caption as a checkbox reflecting and toggling table state", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    toolbox.table = {
+      active: true, cellSelection: true, rows: 1, columns: 1, selectedCells: 1,
+      canMerge: false, canSplit: false, hasCaption: true,
+    }
+    const listener = vi.fn()
+    toolbox.addEventListener("ribbon-button-click", listener)
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+
+    const caption = toolbox.shadowRoot!.querySelector<HTMLInputElement>(
+      'ribbon-drawer[label="Layout"] input[type="checkbox"]',
+    )!
+    expect(caption.checked).toBe(true)
+    caption.click()
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {label: "table-caption"}}))
+  })
+
+  it("shows cell border and background options top-level and dispatches changes", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.activeMenu = "Edit"
@@ -92,18 +122,18 @@ describe("table controls", () => {
     toolbox.addEventListener("table-style-change", listener)
     document.body.append(toolbox)
     await toolbox.updateComplete
-    const border = toolbox.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Table"] ribbon-button[label="Borders"]',
+    const border = toolbox.shadowRoot!.querySelector<HTMLElement>(
+      'ribbon-drawer[label="Borders"]',
     )!
-    const background = toolbox.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Table"] ribbon-button[label="Background"]',
+    const background = toolbox.shadowRoot!.querySelector<HTMLElement>(
+      'ribbon-drawer[label="Background"]',
     )!
-    await border.updateComplete
-    await background.updateComplete
-    const style = border.shadowRoot!.querySelector<HTMLSelectElement>('select')!
+    expect(border.querySelector("ribbon-button")).toBeNull()
+    expect(background.querySelector("ribbon-button")).toBeNull()
+    const style = border.querySelector<HTMLSelectElement>('select')!
     style.value = "dashed"
     style.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
-    const color = background.shadowRoot!.querySelector<HTMLInputElement>('input[type="color"]')!
+    const color = background.querySelector<HTMLInputElement>('input[type="color"]')!
     color.value = "#ff0000"
     color.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
 

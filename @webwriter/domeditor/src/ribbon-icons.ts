@@ -16,13 +16,17 @@ import accessible from "@tabler/icons/outline/accessible.svg?raw"
 import adjustments from "@tabler/icons/outline/adjustments.svg?raw"
 import article from "@tabler/icons/outline/file-text.svg?raw"
 import bold from "@tabler/icons/outline/bold.svg?raw"
+import borderAll from "@tabler/icons/outline/border-all.svg?raw"
 import boxMargin from "@tabler/icons/outline/box-margin.svg?raw"
+import bucket from "@tabler/icons/outline/bucket.svg?raw"
 import button from "@tabler/icons/outline/rectangle.svg?raw"
 import check from "@tabler/icons/outline/check.svg?raw"
 import clearFormatting from "@tabler/icons/outline/clear-formatting.svg?raw"
 import clipboard from "@tabler/icons/outline/clipboard.svg?raw"
 import code from "@tabler/icons/outline/code.svg?raw"
 import columns3 from "@tabler/icons/outline/columns-3.svg?raw"
+import columnInsertLeft from "@tabler/icons/outline/column-insert-left.svg?raw"
+import columnInsertRight from "@tabler/icons/outline/column-insert-right.svg?raw"
 import colorSwatch from "@tabler/icons/outline/color-swatch.svg?raw"
 import copy from "@tabler/icons/outline/copy.svg?raw"
 import chevronRight from "@tabler/icons/outline/chevron-right.svg?raw"
@@ -55,6 +59,7 @@ import eyeOff from "@tabler/icons/outline/eye-off.svg?raw"
 import lock from "@tabler/icons/outline/lock.svg?raw"
 import lockOpen from "@tabler/icons/outline/lock-open.svg?raw"
 import layout from "@tabler/icons/outline/layout.svg?raw"
+import layoutGrid from "@tabler/icons/outline/layout-grid.svg?raw"
 import link from "@tabler/icons/outline/link.svg?raw"
 import lineHeight from "@tabler/icons/outline/line-height.svg?raw"
 import list from "@tabler/icons/outline/list.svg?raw"
@@ -75,6 +80,8 @@ import paperclip from "@tabler/icons/outline/paperclip.svg?raw"
 import pencil from "@tabler/icons/outline/pencil.svg?raw"
 import rulerMeasure from "@tabler/icons/outline/ruler-measure.svg?raw"
 import scissors from "@tabler/icons/outline/scissors.svg?raw"
+import arrowsJoin from "@tabler/icons/outline/arrows-join.svg?raw"
+import arrowsSplit from "@tabler/icons/outline/arrows-split.svg?raw"
 import stack from "@tabler/icons/outline/stack.svg?raw"
 import stackBack from "@tabler/icons/outline/stack-back.svg?raw"
 import stackBackward from "@tabler/icons/outline/stack-backward.svg?raw"
@@ -84,6 +91,9 @@ import spacingHorizontal from "@tabler/icons/outline/spacing-horizontal.svg?raw"
 import spacingVertical from "@tabler/icons/outline/spacing-vertical.svg?raw"
 import superscript from "@tabler/icons/outline/superscript.svg?raw"
 import table from "@tabler/icons/outline/table.svg?raw"
+import rowInsertBottom from "@tabler/icons/outline/row-insert-bottom.svg?raw"
+import rowInsertTop from "@tabler/icons/outline/row-insert-top.svg?raw"
+import textCaption from "@tabler/icons/outline/text-caption.svg?raw"
 import textSize from "@tabler/icons/outline/text-size.svg?raw"
 import typography from "@tabler/icons/outline/typography.svg?raw"
 import underline from "@tabler/icons/outline/underline.svg?raw"
@@ -155,6 +165,17 @@ import tools from "@tabler/icons/outline/tools.svg?raw"
 import tractor from "@tabler/icons/outline/tractor.svg?raw"
 import wifi from "@tabler/icons/outline/wifi.svg?raw"
 import world from "@tabler/icons/outline/world.svg?raw"
+
+const iconContents = (icon: string) => icon.match(/<svg[^>]*>([\s\S]*?)<\/svg>/)?.[1] ?? ""
+
+/** A table-specific cut symbol assembled from the two Tabler glyphs. */
+const splitTable = `
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <g transform="translate(-1 -1) scale(.78)">${iconContents(table)}</g>
+    <g transform="translate(9 9) scale(.58)">${iconContents(scissors)}</g>
+  </svg>
+`
 
 const icons: Record<string, string> = {
   Document: fileDescription,
@@ -229,6 +250,17 @@ const icons: Record<string, string> = {
   Menu: list,
   Details: circleChevronRight,
   Table: table,
+  TableLayout: layoutGrid,
+  TableRowAbove: rowInsertTop,
+  TableRowBelow: rowInsertBottom,
+  TableColumnLeft: columnInsertLeft,
+  TableColumnRight: columnInsertRight,
+  TableMergeCells: arrowsJoin,
+  TableSplitCells: arrowsSplit,
+  TableSplit: splitTable,
+  TableCaption: textCaption,
+  TableBorders: borderAll,
+  TableBackground: bucket,
   Image: photo,
   Graphic: vector,
   Rectangle: rectangle,

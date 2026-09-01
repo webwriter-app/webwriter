@@ -81,8 +81,16 @@ export class RibbonDrawer extends LitElement {
       --ribbon-drawer-expanded-width: 5.25rem;
     }
 
-    :host([layout="table"]) {
-      --ribbon-drawer-expanded-width: 20.25rem;
+    :host([layout="table-layout"]) {
+      --ribbon-drawer-expanded-width: 16.25rem;
+    }
+
+    :host([layout="table-borders"]) {
+      --ribbon-drawer-expanded-width: 16.25rem;
+    }
+
+    :host([layout="table-background"]) {
+      --ribbon-drawer-expanded-width: 9.25rem;
     }
 
     :host([layout="comments"]) {
