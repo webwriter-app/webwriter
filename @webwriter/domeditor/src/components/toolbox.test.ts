@@ -62,7 +62,7 @@ describe("toolbox", () => {
     expect(getComputedStyle(toolbox).width).toBe("200px")
     expect(edit.getAttribute("aria-selected")).toBe("true")
     expect(style.getAttribute("aria-selected")).toBe("false")
-    expect(getComputedStyle(editTab).width).toBe("108px")
+    expect(getComputedStyle(editTab).width).toBe("112px")
     expect(getComputedStyle(editTab).height).toBe("30px")
     expect(getComputedStyle(editTab).marginBottom).toBe("-1px")
     expect(getComputedStyle(editTab).backgroundColor).toBe("#f2f2f2")
@@ -72,7 +72,7 @@ describe("toolbox", () => {
     expect(getComputedStyle(tablist).paddingRight).toBe("4px")
     const tabWidth = Array.from(tablist.querySelectorAll<HTMLElement>(".toolbox-tab"))
       .reduce((width, tab) => width + Number.parseFloat(getComputedStyle(tab).width), 0)
-    expect(tabWidth + 8).toBe(200)
+    expect(tabWidth + Number.parseFloat(getComputedStyle(tablist).paddingRight)).toBe(200)
     expect(getComputedStyle(editTab).transition).toContain("width")
     expect(getComputedStyle(edit.querySelector<HTMLElement>(".toolbox-tab-label")!).opacity).toBe("1")
     const editClose = editTab.querySelector<HTMLButtonElement>(".toolbox-tab-close")!
@@ -86,7 +86,7 @@ describe("toolbox", () => {
     expect(edit.getAttribute("aria-selected")).toBe("false")
     expect(style.getAttribute("aria-selected")).toBe("true")
     expect(getComputedStyle(editTab).width).toBe("28px")
-    expect(getComputedStyle(styleTab).width).toBe("108px")
+    expect(getComputedStyle(styleTab).width).toBe("112px")
     expect(editClose.disabled).toBe(true)
 
     const pane = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!
@@ -170,14 +170,14 @@ describe("toolbox", () => {
 
     edit.click()
     await toolbox.updateComplete
-    expect(getComputedStyle(editTab).width).toBe("108px")
+    expect(getComputedStyle(editTab).width).toBe("112px")
 
     toolButton(toolbox, "Style").click()
     await toolbox.updateComplete
     expect(label.textContent).toBe("Table")
-    expect(getComputedStyle(label).opacity).toBe("1")
+    expect(getComputedStyle(label).opacity).toBe("0")
     expect(getComputedStyle(edit).color).toBe("#3977c7")
-    expect(getComputedStyle(editTab).width).toBe("88px")
+    expect(getComputedStyle(editTab).width).toBe("28px")
 
     toolbox.table = null
     toolbox.graphic = {active: true, capture: false}

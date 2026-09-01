@@ -105,7 +105,7 @@ export class DomEditorToolbox extends AppRibbon {
     }
 
     .toolbox-tab[data-active] {
-      width: 108px;
+      width: 112px;
       height: 30px;
       margin-bottom: -1px;
       border: 1px solid #a8a8a8;
@@ -143,8 +143,8 @@ export class DomEditorToolbox extends AppRibbon {
       width: calc(100% - 24px);
     }
 
-    .toolbox-tab[data-contextual]:not([data-active]),
-    .toolbox-tab[data-contextual]:not([data-active]) .toolbox-tab-button {
+    .toolbox-tab[data-available],
+    .toolbox-tab[data-available] .toolbox-tab-button {
       width: 88px;
     }
 
@@ -203,7 +203,7 @@ export class DomEditorToolbox extends AppRibbon {
     }
 
     .toolbox-tab[data-active] .toolbox-tab-label,
-    .toolbox-tab[data-contextual] .toolbox-tab-label {
+    .toolbox-tab[data-available] .toolbox-tab-label {
       max-width: 4.5rem;
       margin-left: 0.3rem;
       opacity: 1;
@@ -602,6 +602,7 @@ export class DomEditorToolbox extends AppRibbon {
                 class="toolbox-tab"
                 ?data-active=${active}
                 ?data-contextual=${contextualLabel !== null}
+                ?data-available=${contextualLabel !== null && this.activeTool === null}
               >
                 <button
                   id=${tabId}
