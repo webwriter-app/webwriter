@@ -1042,6 +1042,21 @@ details:empty {
   min-height: 1lh;
 }
 
+/* A closed authored dialog remains closed in the saved document. Its active
+ * editing marker exposes the live element in ordinary flow without invoking
+ * modal/top-layer behavior or adding a helper wrapper to authored content. */
+dialog.◆dialog-editing {
+  display: block !important;
+  position: static !important;
+  inset: auto !important;
+  max-width: 100%;
+  margin-block: 1rem;
+}
+
+dialog.◆dialog-editing::backdrop {
+  display: none;
+}
+
 /* SUMMARY's placeholder follows the native disclosure marker, keeping the
  * caret at the real text start instead of before a generated label. */
 summary:empty::before {

@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import "@testing-library/jest-dom/vitest"
 import { DOMEditor } from "../domeditor"
 import { $ } from "../utility"
 
@@ -215,6 +216,25 @@ describe("insertion menu", () => {
     menu.shadowRoot?.querySelector<HTMLButtonElement>(".item")?.click()
 
     expect(editorHTML()).toBe('<textarea placeholder="Enter text"></textarea>')
+    expect(menu.open).toBe(false)
+  })
+
+  it("inserts a complete declarative dialog pattern and selects the closed dialog", async () => {
+    document.body.innerHTML = "<p></p>"
+    $.move(document.querySelector("p")!)
+    typeCommand()
+    typeText("dialog")
+    const menu = editor.features.insertion.menu
+    await menu.updateComplete
+
+    menu.shadowRoot?.querySelector<HTMLButtonElement>(".item")?.click()
+
+    const dialog = document.querySelector<HTMLDialogElement>("dialog")!
+    expect(document.querySelector('button[command="show-modal"]')).toHaveAttribute("commandfor", dialog.id)
+    expect(dialog.querySelector('button[command="close"]')).toHaveAttribute("commandfor", dialog.id)
+    expect(dialog).toHaveClass("◆dialog-editing")
+    expect(dialog).not.toHaveAttribute("open")
+    expect(editorHTML()).not.toContain("◆")
     expect(menu.open).toBe(false)
   })
 

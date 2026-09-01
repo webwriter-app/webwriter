@@ -253,6 +253,7 @@ export const baseSchema = {
     group: ["interactive", "phrasing", "flow", "palpable", "formassociated", "listed", "labelable", "submittable"],
     content: {options: [
       {group: "phrasing", selector: hasNot("audio", "embed", "fencedframe", "iframe", "video", "a", "button", "details", "input", "label", "select", "textarea", "geolocation")},
+      {selector: {type: "text"}},
       {selector: "selectedcontent"},
     ], min: 0, max: Infinity}
   },

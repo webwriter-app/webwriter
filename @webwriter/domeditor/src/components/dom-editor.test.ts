@@ -2622,7 +2622,7 @@ describe("DomEditor.execute()", () => {
     await menu.updateComplete
     menu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Dialog"]')!.click()
 
-    expect(execute).toHaveBeenCalledWith({type: "insert", html: "<dialog></dialog>"})
+    expect(execute).toHaveBeenCalledWith({type: "insertDialog"})
   })
 
   it("puts Preformatted Text in the Paragraph submenu", async () => {

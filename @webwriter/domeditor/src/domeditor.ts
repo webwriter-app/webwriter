@@ -16,6 +16,7 @@ import { TableFeature } from "./features/table"
 import { GraphicFeature } from "./features/graphic"
 import { HeadFeature } from "./features/head"
 import { FormFeature } from "./features/form"
+import { DialogFeature } from "./features/dialog"
 import { TemplateFeature } from "./features/template"
 import { Schema } from "./schema"
 import { $, adoptStylesheet, createStylesheet, focusedWidgetHost, getContainer, isAppendixInteraction, isElement, isFormControlInteraction, isWidgetShadowInteraction, plainTextFromDOM } from "./utility"
@@ -376,6 +377,7 @@ export class DOMEditor {
     "transformation": new TransformationFeature(this),
     "graphic": new GraphicFeature(this),
     "form": new FormFeature(this),
+    "dialog": new DialogFeature(this),
     "selection": new SelectionFeature(this),
     "placeholder": new PlaceholderFeature(this),
     "mark": new MarkFeature(this),
@@ -938,6 +940,7 @@ export class DOMEditor {
     const list = this.features.list.getState()
     const media = this.features.media.getState()
     const form = this.features.form.getState()
+    const dialog = this.features.dialog.getState()
     const table = this.features.table.getState()
     const graphic = this.features.graphic.getState()
     const selectedSection = this.features.selection.selectedSectionElement
@@ -956,6 +959,7 @@ export class DOMEditor {
       ...(list.type ? {list} : {}),
       ...(media ? {media} : {}),
       ...(form ? {form} : {}),
+      ...(dialog ? {dialog} : {}),
       ...(table ? {table} : {}),
       ...(graphic ? {graphic} : {}),
     }

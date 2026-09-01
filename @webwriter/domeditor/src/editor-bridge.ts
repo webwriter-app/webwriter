@@ -13,6 +13,7 @@ import type {TableSelectionState} from "./table"
 import {isGraphicShapeType, type GraphicSelectionState} from "./graphic"
 import type {DocumentHeadElementState, DocumentHeadState} from "./document-head"
 import {isFormElementType, type FormSelectionState} from "./form"
+import {isDialogClosedBy, type DialogSelectionState} from "./dialog"
 import {isSectionName, type SectionName} from "./sections"
 
 export const executeCompleteEvent = "dom-editor-execute-complete"
@@ -239,6 +240,7 @@ export type SelectionChangeDetail = {
   list?: ListSelectionState
   media?: MediaSelectionState
   form?: FormSelectionState
+  dialog?: DialogSelectionState
   table?: TableSelectionState
   graphic?: GraphicSelectionState
   /** Present only when a section was explicitly selected from the breadcrumb. */
@@ -531,6 +533,22 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
       .every(value => value === undefined || typeof value === "boolean")
   )
   if(!formIsValid) return false
+
+  const dialog = message.detail.dialog as Partial<DialogSelectionState> | null | undefined
+  const dialogIsValid = dialog === undefined || (
+    !!dialog
+    && typeof dialog === "object"
+    && !!dialog.attributes
+    && typeof dialog.attributes === "object"
+    && !Array.isArray(dialog.attributes)
+    && Object.entries(dialog.attributes).every(([name, value]) => typeof name === "string" && typeof value === "string")
+    && typeof dialog.initiallyOpen === "boolean"
+    && (dialog.closedBy === "" || isDialogClosedBy(dialog.closedBy))
+    && typeof dialog.openerCount === "number" && Number.isInteger(dialog.openerCount) && dialog.openerCount >= 0
+    && typeof dialog.closeControlCount === "number" && Number.isInteger(dialog.closeControlCount) && dialog.closeControlCount >= 0
+    && typeof dialog.hasDialogForm === "boolean"
+  )
+  if(!dialogIsValid) return false
 
   const table = message.detail.table as Partial<TableSelectionState> | null | undefined
   const tableIsValid = table === undefined || (

@@ -70,6 +70,7 @@ import {
   type FormElementType,
   type FormSelectionState,
 } from "../form"
+import {dialogClosedByValues, type DialogSelectionState} from "../dialog"
 import {
   graphicShapeOptions,
   type GraphicLayerOperation,
@@ -206,6 +207,7 @@ export class AppRibbon extends LitElement {
     listStyle: {type: String, attribute: "list-style"},
     media: {attribute: false},
     form: {attribute: false},
+    dialog: {attribute: false},
     table: {attribute: false},
     graphic: {attribute: false},
     elementStyle: {attribute: false},
@@ -2978,6 +2980,7 @@ export class AppRibbon extends LitElement {
   listStyle = ""
   media: MediaSelectionState | null = null
   form: FormSelectionState | null = null
+  dialog: DialogSelectionState | null = null
   table: TableSelectionState | null = null
   graphic: GraphicSelectionState | null = null
   elementStyle: ElementStyleState = {
@@ -5469,6 +5472,83 @@ export class AppRibbon extends LitElement {
     `
   }
 
+  private dispatchDialogAttribute(attribute: string, value: string | null) {
+    this.dispatchEvent(new CustomEvent("dialog-attribute-change", {
+      detail: {attribute, value},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private renderDialogEditor() {
+    const state = this.dialog
+    if(!state) return nothing
+    return html`
+      <div class="button-dropdown-form form-dropdown-form" role="group" aria-label="Dialog options">
+        <label class="mark-attribute form-attribute form-attribute-boolean">
+          <span>Initially open (non-modal)</span>
+          <input
+            type="checkbox"
+            data-ribbon-input-persistent
+            aria-label="Dialog: Initially open (non-modal)"
+            .checked=${state.initiallyOpen}
+            @change=${(event: Event) => this.dispatchDialogAttribute(
+              "open",
+              (event.currentTarget as HTMLInputElement).checked ? "" : null,
+            )}
+          />
+        </label>
+        <label class="mark-attribute form-attribute">
+          <span>Close behavior</span>
+          <select
+            data-ribbon-input-persistent
+            aria-label="Dialog: Close behavior"
+            .value=${state.closedBy}
+            @change=${(event: Event) => this.dispatchDialogAttribute(
+              "closedby",
+              (event.currentTarget as HTMLSelectElement).value || null,
+            )}
+          >
+            <option value="" ?selected=${state.closedBy === ""}>Browser default</option>
+            ${dialogClosedByValues.map(value => html`<option value=${value} ?selected=${state.closedBy === value}>${value}</option>`)}
+          </select>
+        </label>
+        ${[
+          ["id", "ID", "dialog-id"],
+          ["aria-label", "Accessible label", "Dialog title"],
+          ["aria-labelledby", "Labelled by", "heading-id"],
+          ["title", "Title", ""],
+        ].map(([attribute, label, placeholder]) => html`
+          <label class="mark-attribute form-attribute">
+            <span>${label}</span>
+            <input
+              data-ribbon-input-persistent
+              type="text"
+              aria-label=${`Dialog: ${label}`}
+              placeholder=${placeholder}
+              .value=${state.attributes[attribute] ?? ""}
+              @change=${(event: Event) => this.dispatchDialogAttribute(
+                attribute,
+                (event.currentTarget as HTMLInputElement).value || null,
+              )}
+            />
+          </label>
+        `)}
+      </div>
+    `
+  }
+
+  private renderDialogDrawer() {
+    if(!this.dialog) return nothing
+    return html`
+      <ribbon-drawer label="Dialog" icon="Details" layout="form">
+        <ribbon-button label="Attributes" icon="Settings" .dropdown=${this.renderDialogEditor()}></ribbon-button>
+        <ribbon-button label="Add opener" action="dialog-add-invoker" icon="Plus"></ribbon-button>
+        <ribbon-button label="Add close button" action="dialog-add-close" icon="Plus"></ribbon-button>
+      </ribbon-drawer>
+    `
+  }
+
   private renderInsertionDrawer(drawer: RibbonMenuGroup) {
     const buttonLabel = (button: RibbonMenuButton) => typeof button === "string" ? button : button.label
     const buttonByLabel = (label: string) => {
@@ -6210,6 +6290,7 @@ export class AppRibbon extends LitElement {
       if(drawer.label === "Marks") return this.renderMarkDrawer()
       if(drawer.label === "Section") return this.renderSectionDrawer()
       if(drawer.label === "Media") return this.renderMediaDrawer()
+      if(drawer.label === "Dialog") return this.renderDialogDrawer()
       if(drawer.label === "Comments") return this.renderCommentDrawer()
       if(drawer.label === "Form") return this.renderFormDrawer()
       if(drawer.label === "Layout") return this.renderTableDrawers()
@@ -6248,6 +6329,9 @@ export class AppRibbon extends LitElement {
   protected get currentMenuGroups() {
     if(this.activeMenu === "Edit" && this.media) {
       return menuGroups.Edit.filter(group => group.label === "Media")
+    }
+    if(this.activeMenu === "Edit" && this.dialog) {
+      return menuGroups.Edit.filter(group => group.label === "Dialog" || Boolean(this.form) && group.label === "Form")
     }
     if(this.activeMenu === "Edit" && this.form) {
       return menuGroups.Edit.filter(group => group.label === "Form")

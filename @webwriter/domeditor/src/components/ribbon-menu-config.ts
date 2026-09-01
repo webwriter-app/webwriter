@@ -229,6 +229,7 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
     },
     {label: "Section", buttons: []},
     {label: "Media", buttons: []},
+    {label: "Dialog", buttons: []},
     {label: "Form", buttons: []},
     {label: "Layout", buttons: []},
     {label: "Graphic", buttons: []},

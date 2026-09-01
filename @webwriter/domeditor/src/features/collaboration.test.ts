@@ -100,6 +100,32 @@ describe("DOMEditor collaboration wiring", () => {
     expect((paragraph as HTMLElement).style.getPropertyValue("color")).toBe("rebeccapurple")
   })
 
+  it("synchronizes authored dialog state while excluding its editing marker", async () => {
+    document.body.innerHTML = '<dialog id="notice"><p>Notice</p></dialog>'
+    await mutationsDelivered()
+    editor.doc.stopCapturing()
+    const dialog = document.querySelector<HTMLDialogElement>("dialog")!
+    $.selectElement(dialog)
+    editor.features.dialog.refresh()
+
+    editor.features.dialog.actions.setDialogAttribute({
+      type: "setDialogAttribute",
+      name: "closedby",
+      value: "any",
+    })
+    await mutationsDelivered()
+
+    expect(dialog.classList.contains("◆dialog-editing")).toBe(true)
+    expect(editor.doc.body.toString()).toContain('closedby="any"')
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    expect(editor.toHTML(true)).toBe('<dialog id="notice" closedby="any"><p>Notice</p></dialog>')
+
+    editor.features.history.actions.undo({type: "undo"})
+    expect(document.querySelector("dialog")?.hasAttribute("closedby")).toBe(false)
+    editor.features.history.actions.redo({type: "redo"})
+    expect(document.querySelector("dialog")?.getAttribute("closedby")).toBe("any")
+  })
+
   it("synchronizes block-format conversion and includes it in undo and redo", async () => {
     const paragraph = document.querySelector("p")!
     $.move(paragraph.firstChild!, 2)
