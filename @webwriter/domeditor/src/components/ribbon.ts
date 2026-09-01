@@ -3065,14 +3065,14 @@ export class AppRibbon extends LitElement {
     // A package button normally spans two grid tracks. Fewer than four tracks
     // therefore means that only one package-button column fits.
     drawer.singleColumn = columns < 4
-    // In the single-column layout, search uses the first row and packages
-    // occupy the remaining two. Wider grids reserve two tracks for search,
-    // then use every available package cell across all three rows.
+    // In the single-column layout, search uses the first of three rows and
+    // packages occupy the remaining two. Wider grids use two rows total and
+    // reserve two tracks in the first row for search.
     const visibleCount = drawer.singleColumn
       ? 2
       : Math.max(
         0,
-        Math.floor((columns - 2) / 2) + Math.floor(columns / 2) * 2,
+        Math.floor((columns - 2) / 2) + Math.floor(columns / 2),
       )
     if(this.packageVisibleCount !== visibleCount) this.packageVisibleCount = visibleCount
   }

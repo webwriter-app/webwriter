@@ -86,7 +86,7 @@ describe("package ribbon controls", () => {
     expect(getComputedStyle(controls).gap).toBe("0")
     expect(getComputedStyle(controls).paddingBottom).toBe("4px")
     expect(RibbonDrawer.styles.toString()).toContain("grid-column: span 2")
-    expect(getComputedStyle(controls).gridTemplateRows).toBe("repeat(3, minmax(0, 1fr))")
+    expect(getComputedStyle(controls).gridTemplateRows).toBe("repeat(2, minmax(0, 1fr))")
     expect(getComputedStyle(search).height).toBe("calc(100% - 4px)")
     expect(getComputedStyle(button.shadowRoot!.querySelector(".button-row")!).height).toBe("100%")
     expect(getComputedStyle(search.shadowRoot!.querySelector(".field")!).backgroundColor).toBe("transparent")
@@ -267,8 +267,8 @@ describe("package ribbon controls", () => {
     ;(ribbon as unknown as {updatePackageCapacity(): void}).updatePackageCapacity()
     await ribbon.updateComplete
 
-    expect(drawer.querySelectorAll('ribbon-button:not([slot="more"])')).toHaveLength(8)
-    expect(drawer.querySelectorAll('ribbon-button[slot="more"]')).toHaveLength(1)
+    expect(drawer.querySelectorAll('ribbon-button:not([slot="more"])')).toHaveLength(5)
+    expect(drawer.querySelectorAll('ribbon-button[slot="more"]')).toHaveLength(4)
   })
 
   it("uses the full drawer width when only one package-button column fits", async () => {
@@ -296,6 +296,7 @@ describe("package ribbon controls", () => {
     expect(drawer.querySelectorAll('ribbon-button:not([slot="more"])')).toHaveLength(2)
     expect(drawer.querySelectorAll('ribbon-button[slot="more"]')).toHaveLength(1)
     expect(drawer.hasAttribute("single-column")).toBe(true)
+    expect(getComputedStyle(controls).gridTemplateRows).toBe("repeat(3, minmax(0, 1fr))")
     expect(RibbonDrawer.styles.toString()).toContain(
       'grid-template-columns: var(--package-grid-template-columns, minmax(0, 1fr))',
     )

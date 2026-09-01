@@ -302,7 +302,7 @@ export class RibbonDrawer extends LitElement {
 
     :host([layout="packages"]) .controls {
       grid-template-columns: var(--package-grid-template-columns, repeat(auto-fill, minmax(4rem, 1fr)));
-      grid-template-rows: repeat(3, minmax(0, 1fr));
+      grid-template-rows: repeat(2, minmax(0, 1fr));
       grid-auto-flow: row;
       grid-auto-columns: minmax(4rem, 1fr);
       grid-auto-rows: minmax(0, 1fr);
@@ -331,6 +331,7 @@ export class RibbonDrawer extends LitElement {
 
     :host([layout="packages"][single-column]) .controls {
       grid-template-columns: var(--package-grid-template-columns, minmax(0, 1fr));
+      grid-template-rows: repeat(3, minmax(0, 1fr));
       grid-auto-columns: minmax(0, 1fr);
       grid-auto-flow: row;
     }
@@ -440,7 +441,7 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="packages"][drawer-visible]) .controls {
-      grid-template-rows: repeat(3, var(--package-row-height, 2.45rem));
+      grid-template-rows: repeat(2, var(--package-row-height, 2.45rem));
       grid-auto-rows: var(--package-row-height, 2.45rem);
       flex: 0 1 auto;
       width: var(--package-expanded-controls-width, 100%);
@@ -452,6 +453,10 @@ export class RibbonDrawer extends LitElement {
       overflow-y: hidden;
       scrollbar-color: transparent transparent;
       scrollbar-width: thin;
+    }
+
+    :host([layout="packages"][single-column][drawer-visible]) .controls {
+      grid-template-rows: repeat(3, var(--package-row-height, 2.45rem));
     }
 
     :host([layout="packages"][drawer-open][drawer-settled][drawer-scrollable]) .controls {
@@ -1030,9 +1035,11 @@ export class RibbonDrawer extends LitElement {
     const rowGap = Number.parseFloat(controlsStyle.rowGap) || 0
     const paddingTop = Number.parseFloat(controlsStyle.paddingTop) || 0
     const paddingBottom = Number.parseFloat(controlsStyle.paddingBottom) || 0
+    const collapsedRowCount = this.singleColumn ? 3 : 2
     const rowHeight = Math.max(
       0,
-      (controlsBounds.height - paddingTop - paddingBottom - rowGap * 2) / 3,
+      (controlsBounds.height - paddingTop - paddingBottom - rowGap * (collapsedRowCount - 1)) /
+        collapsedRowCount,
     )
     // The fixed expanded rows already reproduce the closed grid's top edge.
     // Reusing the measured child inset as padding would apply that inset twice
@@ -1060,9 +1067,11 @@ export class RibbonDrawer extends LitElement {
     const paddingTop = Number.parseFloat(controlsStyle.paddingTop) || 0
     const paddingBottom = Number.parseFloat(controlsStyle.paddingBottom) || 0
     const storedRowHeight = Number.parseFloat(controlsStyle.getPropertyValue("--package-row-height")) || 0
+    const collapsedRowCount = this.singleColumn ? 3 : 2
     const rowHeight = storedRowHeight || Math.max(
       0,
-      (controlsBounds.height - paddingTop - paddingBottom - rowGap * 2) / 3,
+      (controlsBounds.height - paddingTop - paddingBottom - rowGap * (collapsedRowCount - 1)) /
+        collapsedRowCount,
     )
     const columnWidth = 64
     const columns = Math.max(1, Math.floor((controlsBounds.width + columnGap) / (columnWidth + columnGap)))
