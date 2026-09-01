@@ -457,6 +457,7 @@ export class DomEditorToolbox extends AppRibbon {
           : "Website"
     if(this.dialog && !this.form) return "Dialog"
     if(this.form) return this.form.type === "input" ? "Input" : this.form.type === "textarea" ? "Text area" : "Form"
+    if(this.figure) return "Figure"
     if(this.selectionPath.at(-1)?.icon === "Packages") return "Widget"
     if(this.elementAttributes) return this.elementAttributes.name
     return null
@@ -495,6 +496,9 @@ export class DomEditorToolbox extends AppRibbon {
             || Boolean(this.elementAttributes) && group.label === "Attributes")
         : this.form
           ? groups.filter(group => group.label === "Form" || Boolean(this.elementAttributes) && group.label === "Attributes")
+        : this.figure
+          ? menuGroups.Edit.filter(group => group.label === "Section"
+            || Boolean(this.elementAttributes) && group.label === "Attributes")
         : this.elementAttributes
           ? groups.filter(group => group.label === "Attributes")
           : groups

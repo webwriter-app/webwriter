@@ -1,6 +1,6 @@
 import { LitElement, css, html, nothing } from "lit"
 import {ref} from "lit/directives/ref.js"
-import {emptyVersionHistoryState, type CommentState, type ElementStyleState, type HeadingGroupSelectionState, type ListSelectionState, type ListType, type PresenceUser, type VersionHistoryState} from "../editor-bridge"
+import {emptyVersionHistoryState, type CommentState, type ElementStyleState, type FigureSelectionState, type HeadingGroupSelectionState, type ListSelectionState, type ListType, type PresenceUser, type VersionHistoryState} from "../editor-bridge"
 import {
   completeAIConversation,
   type AIAttachment,
@@ -209,6 +209,7 @@ export class AppRibbon extends LitElement {
     listStyle: {type: String, attribute: "list-style"},
     orderedList: {attribute: false},
     headingGroup: {attribute: false},
+    figure: {attribute: false},
     media: {attribute: false},
     form: {attribute: false},
     dialog: {attribute: false},
@@ -2985,6 +2986,7 @@ export class AppRibbon extends LitElement {
   listStyle = ""
   orderedList: ListSelectionState["ordered"] = undefined
   headingGroup: HeadingGroupSelectionState | null = null
+  figure: FigureSelectionState | null = null
   media: MediaSelectionState | null = null
   form: FormSelectionState | null = null
   dialog: DialogSelectionState | null = null
@@ -4325,7 +4327,17 @@ export class AppRibbon extends LitElement {
             />
           </label>
         ` : ""}
+        ${this.sectionType === "figure" && this.figure ? this.renderFigureCaptionControls() : ""}
       </ribbon-drawer>
+    `
+  }
+
+  private renderFigureCaptionControls() {
+    return this.figure?.hasCaption ? html`
+      <ribbon-button label="Edit caption" action="figure-caption-edit" icon="Pencil"></ribbon-button>
+    ` : html`
+      <ribbon-button label="Add caption above" action="figure-caption-before" icon="Plus"></ribbon-button>
+      <ribbon-button label="Add caption below" action="figure-caption-after" icon="Plus"></ribbon-button>
     `
   }
 
@@ -5021,6 +5033,9 @@ export class AppRibbon extends LitElement {
     return html`
       <ribbon-drawer label=${label} icon=${label} layout="media">
         <div class="media-toolbox-controls" role="group" aria-label=${`${label} options`}>
+          ${this.figure ? this.renderFigureCaptionControls() : html`
+            <ribbon-button label="Convert to figure" action="media-to-figure" icon="Section"></ribbon-button>
+          `}
           ${selectedType === "picture" || selectedType === "img" ? html`
             <button
               class="media-type-switch"
@@ -6517,6 +6532,10 @@ export class AppRibbon extends LitElement {
     }
     if(this.activeMenu === "Edit" && this.elementAttributes?.localName === "details") {
       return menuGroups.Edit.filter(group => group.label === "Disclosure" || group.label === "Attributes")
+    }
+    if(this.activeMenu === "Edit" && this.figure) {
+      return menuGroups.Edit.filter(group => group.label === "Section"
+        || Boolean(this.elementAttributes) && group.label === "Attributes")
     }
     if(this.activeMenu === "Edit" && this.elementAttributes) {
       return menuGroups.Edit.filter(group => group.label === "Attributes")

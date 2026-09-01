@@ -6,6 +6,7 @@ export const sectionNames = [
   "section",
   "div",
   "blockquote",
+  "figure",
   "article",
   "aside",
   "header",

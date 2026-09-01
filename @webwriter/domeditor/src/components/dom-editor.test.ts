@@ -1381,6 +1381,19 @@ describe("DomEditor.execute()", () => {
     })
     await Promise.resolve()
     expect(focusEditor).not.toHaveBeenCalled()
+    for(const [label, action] of [
+      ["media-to-figure", {type: "wrapMediaInFigure"}],
+      ["figure-caption-before", {type: "addFigureCaption", position: "before"}],
+      ["figure-caption-after", {type: "addFigureCaption", position: "after"}],
+      ["figure-caption-edit", {type: "editFigureCaption"}],
+    ] as const) {
+      toolbox.dispatchEvent(new CustomEvent("ribbon-button-click", {
+        detail: {label},
+        bubbles: true,
+        composed: true,
+      }))
+      expect(execute).toHaveBeenCalledWith(action)
+    }
   })
 
   it("routes exact element attribute mutations through the iframe bridge", async () => {
@@ -2599,6 +2612,10 @@ describe("DomEditor.execute()", () => {
     sectionType.value = "address"
     sectionType.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
     expect(execute).toHaveBeenLastCalledWith({type: "setSectionType", section: "address"})
+
+    sectionType.value = "figure"
+    sectionType.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+    expect(execute).toHaveBeenLastCalledWith({type: "setSectionType", section: "figure"})
   })
 
   it("opens the double-width HTML Edit toolbox from the Code insert button", async () => {

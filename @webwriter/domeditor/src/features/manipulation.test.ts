@@ -447,6 +447,37 @@ describe("heading groups", () => {
   })
 })
 
+describe("figures", () => {
+  it("adds a caption at either valid edge while preserving irregular authored children", () => {
+    document.body.innerHTML = '<figure data-origin="remote"><x-media></x-media><img src="photo.png"><p>Notes</p></figure>'
+    const figure = document.querySelector("figure")!
+    $.selectElement(document.querySelector("img")!)
+
+    expect(editor.features.manipulation.getFigureState()).toEqual({hasCaption: false})
+    expect(editor.features.manipulation.addFigureCaption("before")).toBe(true)
+
+    expectBodyToBe('<figure data-origin="remote"><figcaption></figcaption><x-media></x-media><img src="photo.png"><p>Notes</p></figure>')
+    expect($.anchor).toBe(figure.firstElementChild)
+    expect(editor.features.manipulation.getFigureState()).toEqual({hasCaption: true})
+    expect(editor.features.manipulation.addFigureCaption("after")).toBe(false)
+    expect(figure.querySelectorAll(":scope > figcaption")).toHaveLength(1)
+  })
+
+  it("adds a trailing caption to a breadcrumb-selected figure and focuses an existing caption", () => {
+    document.body.innerHTML = "<figure><img src=photo.png></figure>"
+    $.selectDocumentStart()
+    editor.features.selection.actions.selectSection({type: "selectSection", path: [0]})
+
+    expect(editor.features.manipulation.addFigureCaption("after")).toBe(true)
+    expectBodyToBe('<figure><img src="photo.png"><figcaption></figcaption></figure>')
+    expect(editor.features.selection.selectedSectionElement).toBeNull()
+
+    $.selectElement(document.querySelector("img")!)
+    expect(editor.features.manipulation.editFigureCaption()).toBe(true)
+    expect($.anchor).toBe(document.querySelector("figcaption"))
+  })
+})
+
 describe("document template protection", () => {
   it.each(["backward", "forward"] as const)("%s deletion clears a selected template without removing it", direction => {
     document.body.innerHTML = '<demo-widget role="document"><p>Template content</p></demo-widget>'

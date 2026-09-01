@@ -953,6 +953,7 @@ export class DOMEditor {
       : undefined
     const list = this.features.list.getState()
     const headingGroup = this.features.manipulation.getHeadingGroupState()
+    const figure = this.features.manipulation.getFigureState()
     const media = this.features.media.getState()
     const form = this.features.form.getState()
     const dialog = this.features.dialog.getState()
@@ -980,6 +981,7 @@ export class DOMEditor {
       ...(gap ? {gap} : {}),
       ...(list.type ? {list} : {}),
       ...(headingGroup ? {headingGroup} : {}),
+      ...(figure ? {figure} : {}),
       ...(media ? {media} : {}),
       ...(form ? {form} : {}),
       ...(dialog ? {dialog} : {}),

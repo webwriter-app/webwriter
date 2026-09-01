@@ -90,6 +90,34 @@ describe("media ribbon drawer", () => {
     expect(typeListener).toHaveBeenCalledWith(expect.objectContaining({detail: {type: "picture"}}))
   })
 
+  it("offers figure conversion and caption actions from the media toolbox", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    toolbox.media = {type: "img", attributes: {src: "diagram.png"}}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const actions = vi.fn()
+    toolbox.addEventListener("ribbon-button-click", actions)
+
+    const convert = toolbox.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Convert to figure"]')!
+    expect(convert).not.toBeNull()
+    await convert.updateComplete
+    convert.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    expect(actions).toHaveBeenCalledWith(expect.objectContaining({detail: expect.objectContaining({label: "media-to-figure"})}))
+
+    toolbox.figure = {hasCaption: false}
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector('ribbon-button[label="Convert to figure"]')).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('ribbon-button[label="Add caption above"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('ribbon-button[label="Add caption below"]')).not.toBeNull()
+
+    toolbox.figure = {hasCaption: true}
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector('ribbon-button[label="Edit caption"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('ribbon-button[label^="Add caption"]')).toBeNull()
+  })
+
   it("switches Website details and renders attributes directly in the toolbox", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"

@@ -63,6 +63,7 @@ import {
   type ElementStyleState,
   type ExecuteCompleteDetail,
   type ExecuteFailureDetail,
+  type FigureSelectionState,
   type SelectionGap,
   type SelectionPathItem,
   type SelectionPathSection,
@@ -308,6 +309,7 @@ export class DomEditor extends LitElement {
     listStyle: {attribute: false, state: true},
     orderedList: {attribute: false, state: true},
     headingGroup: {attribute: false, state: true},
+    figure: {attribute: false, state: true},
     mediaSelection: {attribute: false, state: true},
     formSelection: {attribute: false, state: true},
     dialogSelection: {attribute: false, state: true},
@@ -380,6 +382,7 @@ export class DomEditor extends LitElement {
   private listStyle = ""
   private orderedList: ListSelectionState["ordered"] = undefined
   private headingGroup: HeadingGroupSelectionState | null = null
+  private figure: FigureSelectionState | null = null
   private mediaSelection: MediaSelectionState | null = null
   private formSelection: FormSelectionState | null = null
   private dialogSelection: DialogSelectionState | null = null
@@ -2361,6 +2364,21 @@ export class DomEditor extends LitElement {
       }).finally(() => this.focusEditor())
       return
     }
+    if(label === "media-to-figure") {
+      void this.execute({type: "wrapMediaInFigure"}).finally(() => this.focusEditor())
+      return
+    }
+    if(label === "figure-caption-before" || label === "figure-caption-after") {
+      void this.execute({
+        type: "addFigureCaption",
+        position: label.endsWith("before") ? "before" : "after",
+      }).finally(() => this.focusEditor())
+      return
+    }
+    if(label === "figure-caption-edit") {
+      void this.execute({type: "editFigureCaption"}).finally(() => this.focusEditor())
+      return
+    }
     if(label?.startsWith("insert-graphic-shape:")) {
       const shape = label.slice("insert-graphic-shape:".length)
       if(isGraphicShapeType(shape)) {
@@ -3674,6 +3692,7 @@ export class DomEditor extends LitElement {
       this.listStyle = event.data.detail.list?.style ?? ""
       this.orderedList = event.data.detail.list?.ordered ? {...event.data.detail.list.ordered} : undefined
       this.headingGroup = event.data.detail.headingGroup ? {...event.data.detail.headingGroup} : null
+      this.figure = event.data.detail.figure ? {...event.data.detail.figure} : null
       this.mediaSelection = event.data.detail.media
         ? {type: event.data.detail.media.type, attributes: {...event.data.detail.media.attributes}}
         : null
@@ -3707,6 +3726,7 @@ export class DomEditor extends LitElement {
         || this.dialogSelection !== null
         || this.sectionSelected
         || this.headingGroup !== null
+        || this.figure !== null
         || path.at(-1)?.icon === "Packages"
       if(event.data.detail.inserted === true && hasContextualEditOptions) this.openEditToolbox()
       this.documentTree = this.buildDocumentTree()
@@ -3725,6 +3745,7 @@ export class DomEditor extends LitElement {
             ...(this.orderedList ? {ordered: {...this.orderedList}} : {}),
           },
           ...(this.headingGroup ? {headingGroup: {...this.headingGroup}} : {}),
+          ...(this.figure ? {figure: {...this.figure}} : {}),
           ...(this.mediaSelection ? {media: this.mediaSelection} : {}),
           ...(this.formSelection ? {form: this.formSelection} : {}),
           ...(this.dialogSelection ? {dialog: this.dialogSelection} : {}),
@@ -4004,6 +4025,7 @@ export class DomEditor extends LitElement {
     this.listStyle = ""
     this.orderedList = undefined
     this.headingGroup = null
+    this.figure = null
     this.commentState = {
       canComment: false,
       active: false,
@@ -4067,6 +4089,7 @@ export class DomEditor extends LitElement {
           .listStyle=${this.listStyle}
           .orderedList=${this.orderedList}
           .headingGroup=${this.headingGroup}
+          .figure=${this.figure}
           .media=${this.mediaSelection}
           .form=${this.formSelection}
           .dialog=${this.dialogSelection}
@@ -4208,6 +4231,7 @@ export class DomEditor extends LitElement {
         .listStyle=${this.listStyle}
         .orderedList=${this.orderedList}
         .headingGroup=${this.headingGroup}
+        .figure=${this.figure}
         .selectionPath=${this.selectionPath}
         .documentSelected=${this.nodeSelection && !this.captureSelection && this.selectionPath.length === 1}
         .htmlMode=${this.htmlMode}

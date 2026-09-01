@@ -313,6 +313,27 @@ describe("toolbox", () => {
     }))
   })
 
+  it("offers caption controls for an active or breadcrumb-selected figure", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    toolbox.sectionType = "figure"
+    toolbox.figure = {hasCaption: false}
+    await toolbox.updateComplete
+
+    expect(toolButton(toolbox, "Edit").getAttribute("aria-label")).toBe("Edit Figure")
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Section"] ribbon-button[label="Add caption above"]'))
+      .not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Section"] ribbon-button[label="Add caption below"]'))
+      .not.toBeNull()
+
+    toolbox.sectionSelected = true
+    toolbox.figure = {hasCaption: true}
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Section"] ribbon-button[label="Edit caption"]'))
+      .not.toBeNull()
+  })
+
   it("separates Edit, Review, Style, and Develop into their pane-specific controls", async () => {
     const toolbox = await mountToolbox()
 

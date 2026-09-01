@@ -7,6 +7,7 @@ import {
   type ElementStyleDeclaration,
   type ElementStyleMutation,
   type ElementStyleState,
+  type FigureSelectionState,
   type HeadingGroupSelectionState,
 } from "../editor-bridge"
 import {paragraphStylePropertyNameSet} from "../element-styles"
@@ -66,6 +67,47 @@ function isCaretAtBoundary(element: Element, boundary: "start" | "end") {
  * setting attributes or styles on the selected elements. All operations work
  * on the current selection (see `EditingSelection`/`$`). */
 export class ManipulationFeature extends EditorFeature {
+
+  private activeFigure() {
+    const selectedSection = this.editor.features.selection.selectedSectionElement
+    if(selectedSection?.localName === "figure") return selectedSection as HTMLElement
+    const selected = $.selectedElement
+    const anchor = $.anchor
+    const element = selected ?? (anchor ? getContainer(anchor) : null)
+    if(!isElement(element) || isDocumentRoot(element)) return null
+    return (element.matches("figure") ? element : element.closest("figure")) as HTMLElement | null
+  }
+
+  private directFigureCaption(figure: HTMLElement) {
+    return Array.from(figure.children).find(child => child.localName === "figcaption") as HTMLElement | undefined
+  }
+
+  getFigureState(): FigureSelectionState | null {
+    const figure = this.activeFigure()
+    return figure ? {hasCaption: Boolean(this.directFigureCaption(figure))} : null
+  }
+
+  addFigureCaption(position: "before" | "after") {
+    const figure = this.activeFigure()
+    if(!figure || this.directFigureCaption(figure)) return false
+    const caption = document.createElement("figcaption")
+    position === "before" ? figure.prepend(caption) : figure.append(caption)
+    this.editor.features.selection.clearSelectedSection(figure)
+    $.move(caption)
+    this.editor.features.selection.processSelection()
+    return true
+  }
+
+  editFigureCaption() {
+    const figure = this.activeFigure()
+    if(!figure) return false
+    const caption = this.directFigureCaption(figure)
+    if(!caption) return false
+    this.editor.features.selection.clearSelectedSection(figure)
+    $.move(caption)
+    this.editor.features.selection.processSelection()
+    return true
+  }
 
   private activeHeadingGroup() {
     const selected = $.selectedElement
@@ -1052,6 +1094,11 @@ export class ManipulationFeature extends EditorFeature {
       if(position !== "before" && position !== "after") throw new TypeError("Unsupported heading-group text position")
       this.addHeadingGroupText(position)
     },
+    addFigureCaption: ({position}: {type: "addFigureCaption", position: "before" | "after"}) => {
+      if(position !== "before" && position !== "after") throw new TypeError("Unsupported figure-caption position")
+      return this.addFigureCaption(position)
+    },
+    editFigureCaption: ({}: {type: "editFigureCaption"}) => this.editFigureCaption(),
     toggleSection: ({section = "section"}: {type: "toggleSection", section?: SectionName}) => {
       return this.toggleSection(section)
     },

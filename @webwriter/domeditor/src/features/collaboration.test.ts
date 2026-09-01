@@ -161,6 +161,26 @@ describe("DOMEditor collaboration wiring", () => {
     expect(editor.toHTML(true)).toBe('<ol start="5" reversed=""><li value="8">Hello</li></ol>')
   })
 
+  it("synchronizes figure conversion and captions through undo, redo, and serialization", async () => {
+    document.body.innerHTML = '<img src="diagram.png" alt="Diagram">'
+    await mutationsDelivered()
+    editor.doc.stopCapturing()
+    const image = document.querySelector("img")!
+    $.selectElement(image)
+    editor.features.selection.processSelection()
+
+    editor.features.media.actions.wrapMediaInFigure({type: "wrapMediaInFigure"})
+    editor.features.manipulation.actions.addFigureCaption({type: "addFigureCaption", position: "after"})
+    await mutationsDelivered()
+
+    expect(editor.toHTML(true)).toBe('<figure><img src="diagram.png" alt="Diagram"><figcaption></figcaption></figure>')
+    expect(editor.doc.body.toString()).toContain('<figure><img alt="Diagram" src="diagram.png"></img><figcaption></figcaption></figure>')
+    editor.features.history.actions.undo({type: "undo"})
+    expect(editor.toHTML(true)).toBe('<img src="diagram.png" alt="Diagram">')
+    editor.features.history.actions.redo({type: "redo"})
+    expect(editor.toHTML(true)).toBe('<figure><img src="diagram.png" alt="Diagram"><figcaption></figcaption></figure>')
+  })
+
   it("synchronizes section wrappers and includes them in undo and redo", async () => {
     const paragraph = document.querySelector("p")!
     $.move(paragraph.firstChild!, 2)

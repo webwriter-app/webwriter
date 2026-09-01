@@ -195,6 +195,21 @@ describe("media editing", () => {
     expect(document.querySelector("picture > img")).toHaveAttribute("alt", "A diagram")
   })
 
+  it("converts selected media to a figure without replacing an existing semantic ancestor", () => {
+    document.body.innerHTML = '<article data-origin="remote"><img src="diagram.png" alt="Diagram"><p>Explanation</p></article>'
+    const image = document.querySelector("img")!
+    $.selectElement(image)
+    editor.features.selection.processSelection()
+
+    expect(editor.features.media.actions.wrapMediaInFigure({type: "wrapMediaInFigure"})).toBe(true)
+
+    expect(editor.toHTML(true)).toBe('<article data-origin="remote"><figure><img src="diagram.png" alt="Diagram"></figure><p>Explanation</p></article>')
+    expect($.selectedElement).toBe(image)
+    expect(editor.features.manipulation.getFigureState()).toEqual({hasCaption: false})
+    expect(editor.features.media.actions.wrapMediaInFigure({type: "wrapMediaInFigure"})).toBe(false)
+    expect(document.querySelectorAll("figure")).toHaveLength(1)
+  })
+
   it("switches website elements and keeps only attributes supported by the new type", () => {
     editor.features.media.actions.insertMedia({type: "insertMedia", media: "iframe"})
     editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: "about:blank#website"})

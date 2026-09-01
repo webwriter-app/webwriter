@@ -113,7 +113,7 @@ describe("list ribbon drawer", () => {
     const select = section.shadowRoot!.querySelector<HTMLSelectElement>("select[aria-label='Type']")!
     expect(select).not.toBeNull()
     expect(Array.from(select.options).map(option => option.value)).toEqual([
-      "section", "div", "blockquote", "article", "aside", "header", "footer", "main", "nav", "search", "address",
+      "section", "div", "blockquote", "figure", "article", "aside", "header", "footer", "main", "nav", "search", "address",
     ])
   })
 

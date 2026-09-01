@@ -242,6 +242,11 @@ export type HeadingGroupSelectionState = {
   afterCount: number
 }
 
+export type FigureSelectionState = {
+  /** Whether the figure already has a direct FIGCAPTION child. */
+  hasCaption: boolean
+}
+
 export type SelectionChangeDetail = {
   path: SelectionPathItem[]
   /** True when a structural selection can be wrapped even if its common path is BODY. */
@@ -255,6 +260,7 @@ export type SelectionChangeDetail = {
   gap?: SelectionGap
   list?: ListSelectionState
   headingGroup?: HeadingGroupSelectionState
+  figure?: FigureSelectionState
   media?: MediaSelectionState
   form?: FormSelectionState
   dialog?: DialogSelectionState
@@ -546,6 +552,14 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
     && Number.isInteger(headingGroup.afterCount) && (headingGroup.afterCount ?? -1) >= 0
   )
   if(!headingGroupIsValid) return false
+
+  const figure = message.detail.figure as Partial<FigureSelectionState> | null | undefined
+  const figureIsValid = figure === undefined || (
+    !!figure
+    && typeof figure === "object"
+    && typeof figure.hasCaption === "boolean"
+  )
+  if(!figureIsValid) return false
 
   const element = message.detail.element as Partial<ElementAttributeState> | null | undefined
   const elementIsValid = element === undefined || (

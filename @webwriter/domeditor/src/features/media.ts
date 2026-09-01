@@ -308,6 +308,16 @@ export class MediaFeature extends EditorFeature {
       value === null ? target.removeAttribute(name) : target.setAttribute(name, value)
       this.refresh()
     },
+    wrapMediaInFigure: ({}: {type: "wrapMediaInFigure"}) => {
+      const selected = this.selectedMedia()
+      if(!selected || selected.closest("figure")) return false
+      const wrapped = this.editor.features.manipulation.addSection("figure")
+      if(!wrapped || !selected.isConnected) return false
+      $.selectElement(selected)
+      this.editor.features.selection.processSelection()
+      this.refresh()
+      return true
+    },
     switchImageType: ({image}: {type: "switchImageType", image: "picture" | "img"}) => {
       if(image !== "picture" && image !== "img") throw new TypeError(`Unsupported image type '${String(image)}'`)
       const selected = this.selectedMedia()
