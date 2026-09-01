@@ -150,7 +150,7 @@ export class RibbonButton extends LitElement {
       opacity: 0.55;
     }
 
-    :host([compact]) button {
+    :host([compact]) .button-row > button {
       width: 100%;
       min-height: 0;
       height: 100%;
@@ -582,11 +582,12 @@ export class RibbonButton extends LitElement {
       display: inline-grid;
       place-items: center;
       width: 1.15rem;
+      min-height: 0;
       height: 1.15rem;
       padding: 0;
       border: 0;
       color: #526b86;
-      background: transparent;
+      background: rgba(255, 255, 255, 0.5);
       cursor: pointer;
     }
 

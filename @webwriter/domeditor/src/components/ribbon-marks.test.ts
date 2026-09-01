@@ -133,6 +133,9 @@ describe("mark ribbon controls", () => {
     expect(getComputedStyle(linkRow).width).toBe("100%")
     expect(getComputedStyle(linkCopy).position).toBe("absolute")
     expect(getComputedStyle(linkCopy).right).toBe("4.48px")
+    expect(getComputedStyle(linkCopy).width).toBe("18.4px")
+    expect(getComputedStyle(linkCopy).height).toBe("18.4px")
+    expect(getComputedStyle(linkCopy).backgroundColor).toBe("rgba(255, 255, 255, 0.5)")
 
     fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-name")!.dispatchEvent(
       new MouseEvent("click", {bubbles: true, composed: true}),
