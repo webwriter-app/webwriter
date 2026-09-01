@@ -132,6 +132,7 @@ import {
   shortcutFromEvent,
   type AppSettings,
 } from "../app-settings"
+import {getDocumentRoot} from "../document-template"
 
 type WritableFileStream = {
   write(data: Blob): Promise<void>
@@ -2269,6 +2270,14 @@ export class DomEditor extends LitElement {
       void this.execute({type: "removeMarks"}).finally(() => this.focusEditor())
       return
     }
+    if(label?.startsWith("set-document-template:")) {
+      const template = label.slice("set-document-template:".length)
+      if(template === "body") {
+        void this.execute({type: "setDocumentTemplate", template}).finally(() => this.focusEditor())
+      }
+      else this.focusEditor()
+      return
+    }
     if(label === "toggle-section") {
       void this.execute({type: "toggleSection", section: this.sectionType}).finally(() => this.focusEditor())
       return
@@ -3131,6 +3140,7 @@ export class DomEditor extends LitElement {
   private buildDocumentTree() {
     const body = this.editorDocument?.body
     if(!body) return null
+    const root = getDocumentRoot(body)
 
     const sectionItem = (element: Element, path: number[]): SelectionPathSection => ({
       path: [...path],
@@ -3180,7 +3190,10 @@ export class DomEditor extends LitElement {
       return item
     }
 
-    return build(body, [])
+    const rootPath = root === body
+      ? []
+      : [Array.from(body.childNodes).indexOf(root as ChildNode)]
+    return build(root, rootPath)
   }
 
   private elementPresentation(element: Element) {
@@ -3914,6 +3927,7 @@ export class DomEditor extends LitElement {
         .listType=${this.listType}
         .listStyle=${this.listStyle}
         .selectionPath=${this.selectionPath}
+        .documentSelected=${this.nodeSelection && !this.captureSelection && this.selectionPath.length === 1}
         .form=${this.formSelection}
         .table=${this.tableSelection}
         .graphic=${this.graphicSelection}

@@ -1,6 +1,7 @@
 import {DocumentListenerMap, EditorFeature} from "."
 import type {ListSelectionState, ListType} from "../editor-bridge"
 import {$, cloneWithoutEditorMarkers, getContainer, isElement, modifierKeyDown, setPart} from "../utility"
+import {isDocumentRoot} from "../document-template"
 
 const listSelector = "ul, ol, dl, menu"
 const listItemSelector = "li, dt, dd"
@@ -95,7 +96,7 @@ export class ListFeature extends EditorFeature {
     const selected = $.selectedElement
     const anchor = $.anchor
     const element = selected ?? (anchor ? getContainer(anchor) : null)
-    if(!isElement(element)) return null
+    if(!isElement(element) || isDocumentRoot(element)) return null
     return (element.matches(listSelector) ? element : element.closest(listSelector)) as HTMLElement | null
   }
 
@@ -117,7 +118,7 @@ export class ListFeature extends EditorFeature {
   private get virtualPoint(): VirtualListPoint | null {
     const selection = document.getSelection()
     const anchor = selection?.anchorNode
-    if(!selection?.isCollapsed || !isElement(anchor) || !anchor.matches(listSelector)) return null
+    if(!selection?.isCollapsed || !isElement(anchor) || isDocumentRoot(anchor) || !anchor.matches(listSelector)) return null
     const point = {
       list: anchor as HTMLElement,
       offset: Math.max(0, Math.min(selection.anchorOffset, anchor.childNodes.length)),

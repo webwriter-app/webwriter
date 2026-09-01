@@ -24,6 +24,7 @@ export class DomEditorToolbox extends AppRibbon {
     ...AppRibbon.properties,
     activeTool: {type: String, attribute: "active-tool", reflect: true},
     selectionPath: {attribute: false},
+    documentSelected: {type: Boolean, attribute: "document-selected"},
   }
 
   static styles = css`
@@ -291,12 +292,14 @@ export class DomEditorToolbox extends AppRibbon {
 
   activeTool: ToolboxTool | null = null
   selectionPath: SelectionPathItem[] = []
+  documentSelected = false
 
   protected get elementStyleEditorOrientation(): "vertical" {
     return "vertical"
   }
 
   private get editTypeLabel() {
+    if(this.documentSelected) return "Document"
     if(this.sectionSelected) return "Section"
     if(this.graphic?.active) return "Graphic"
     if(this.table?.active) return "Table"
@@ -312,8 +315,9 @@ export class DomEditorToolbox extends AppRibbon {
     }
     if(this.activeTool === "Develop") return menuGroups.Develop
     if(this.activeTool === "Edit") {
+      if(this.documentSelected) return menuGroups.Edit.filter(group => group.label === "Document")
       const groups = menuGroups.Edit.filter(group => ![
-        "Marks", "Section", "Comments", "Review", "View",
+        "Marks", "Document", "Section", "Comments", "Review", "View",
       ].includes(group.label))
       return this.sectionSelected
         ? menuGroups.Edit.filter(group => group.label === "Section")

@@ -1,5 +1,6 @@
 import { DocumentListenerMap, EditorFeature } from "."
 import { $, angleOnCircle, distanceBetweenPoints, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, getZPos, intersectionPoint, isElement, midpoint, modifierKeyDown, rotatePoint, roundByDPR, roundTo, setPart } from "../utility"
+import {isDocumentRoot} from "../document-template"
 
 /**
  * On border click, overlay transform
@@ -1002,7 +1003,7 @@ export class TransformationFeature extends EditorFeature {
    * shows the overlay and anchor. The document root, head and body are
    * refused. */
   startTransform(element: HTMLElement) {
-    if(element === document.documentElement || element === document.head || element === document.body) {return}
+    if(element === document.documentElement || element === document.head || isDocumentRoot(element)) {return}
     if(this.target && this.target !== element) this.clearTransform()
     element.classList.add("◆", "◆transform-target")
     this.overlay.removeAttribute("visibility")
@@ -1068,15 +1069,18 @@ export class TransformationFeature extends EditorFeature {
   private writeTargetToClipboard(event: ClipboardEvent, cut: boolean) {
     const target = this.target
     if(!target || !event.clipboardData) return false
+    const targetIsRoot = isDocumentRoot(target)
     const fragment = document.createDocumentFragment()
-    fragment.append(target.cloneNode(true))
+    if(targetIsRoot) fragment.append(...Array.from(target.childNodes, node => node.cloneNode(true)))
+    else fragment.append(target.cloneNode(true))
     const {html, text} = this.editor.serializeClipboardFragment(fragment)
     event.preventDefault()
     event.stopImmediatePropagation()
     event.clipboardData.setData("text/html", html)
     event.clipboardData.setData("text/plain", text)
     if(cut) {
-      target.remove()
+      if(targetIsRoot) target.replaceChildren()
+      else target.remove()
       this.clearTransform()
     }
     return true
@@ -1089,7 +1093,8 @@ export class TransformationFeature extends EditorFeature {
       if((ev.key === "Delete" || ev.key === "Backspace") && this.target) {
         ev.preventDefault()
         ev.stopImmediatePropagation()
-        this.target.remove()
+        if(isDocumentRoot(this.target)) this.target.replaceChildren()
+        else this.target.remove()
         this.clearTransform()
       }
     },

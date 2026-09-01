@@ -42,6 +42,8 @@ describe("startTransform()", () => {
     feature.startTransform(document.documentElement)
     feature.startTransform(document.head as unknown as HTMLElement)
     feature.startTransform(document.body)
+    document.body.innerHTML = '<demo-widget role="document"></demo-widget>'
+    feature.startTransform(document.body.firstElementChild as HTMLElement)
     expect(document.querySelector(".◆transform-target")).toBeNull()
   })
   it("marks the containing block and stacking container", () => {

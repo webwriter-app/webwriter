@@ -16,6 +16,7 @@ import { TableFeature } from "./features/table"
 import { GraphicFeature } from "./features/graphic"
 import { HeadFeature } from "./features/head"
 import { FormFeature } from "./features/form"
+import { TemplateFeature } from "./features/template"
 import { Schema } from "./schema"
 import { $, adoptStylesheet, createStylesheet, focusedWidgetHost, getContainer, isElement, isFormControlInteraction, isWidgetShadowInteraction, plainTextFromDOM } from "./utility"
 import {isMarkElement, normalizeMarkElements} from "./marks"
@@ -43,6 +44,7 @@ import * as Y from "yjs"
 import {originalURLAttribute, serializeDoctype} from "./serialization"
 import type {DocumentHeadState} from "./document-head"
 import {getSectionOption, isSectionElement} from "./sections"
+import {getDocumentRoot} from "./document-template"
 
 const editorStylesheet = createStylesheet(editorStyleString)
 const appendixStylesheet = createStylesheet(`
@@ -364,6 +366,7 @@ export class DOMEditor {
     "dependency": new DependencyFeature(this),
     "state": new StateFeature(this),
     "head": new HeadFeature(this),
+    "template": new TemplateFeature(this),
     "insertion": new InsertionFeature(this),
     "history": new HistoryFeature(this),
     "list": new ListFeature(this),
@@ -840,14 +843,15 @@ export class DOMEditor {
   }
 
   private selectedElementForPath() {
+    const root = getDocumentRoot()
     const target = this.features.manipulation.styleTarget
     const selectedSection = this.features.selection.selectedSectionElement
-    if(target !== document.body && target !== selectedSection) return target
+    if(target !== document.body && target !== root && target !== selectedSection) return target
     const selectedElement = $.selectedElement
     if(selectedElement && selectedElement !== selectedSection) return selectedElement
     const anchor = document.getSelection()?.anchorNode
     const rawContainer = anchor instanceof Element ? anchor : anchor?.parentElement
-    return rawContainer && document.body.contains(rawContainer) ? rawContainer : document.body
+    return rawContainer && root.contains(rawContainer) ? rawContainer : root
   }
 
   private pathToElement(element: Element) {
@@ -868,16 +872,19 @@ export class DOMEditor {
   /** Sends the current element path to the host application through the bridge. */
   postSelectionPath(inserted = false) {
     const body = document.body
+    const root = getDocumentRoot(body)
     const focusedWidget = focusedWidgetHost()
     const selected = this.selectedElementForPath()
-    const element = selected && (selected === body || body.contains(selected))? selected: body
+    const element = selected === body
+      ? root
+      : selected && (selected === root || root.contains(selected)) ? selected : root
     const elements: Element[] = []
     let current: Element | null = element
-    while(current && current !== body) {
+    while(current && current !== root) {
       elements.unshift(current)
       current = current.parentElement
     }
-    elements.unshift(body)
+    elements.unshift(root)
 
     const sectionPathItem = (section: Element): SelectionPathSection => ({
       path: this.pathToElement(section),
@@ -889,11 +896,11 @@ export class DOMEditor {
     let pendingSections: SelectionPathSection[] = []
     elements.forEach(currentElement => {
       const isTableInternal = currentElement.matches("caption, colgroup, col, thead, tbody, tfoot, tr, td, th")
-      if(isSectionElement(currentElement)) {
+      if(currentElement !== root && isSectionElement(currentElement)) {
         pendingSections.push(sectionPathItem(currentElement))
         return
       }
-      if(isMarkElement(currentElement) || isLineBreakElement(currentElement) || isTableInternal) return
+      if(currentElement !== root && (isMarkElement(currentElement) || isLineBreakElement(currentElement) || isTableInternal)) return
       const packageItem = globalThis.DOMEDITOR_PACKAGE_ITEMS?.find(item => (
         item.kind === "widget" && item.tag?.toLowerCase() === currentElement.localName
       ))
@@ -927,7 +934,7 @@ export class DOMEditor {
     const canSection = this.features.manipulation.canSectionSelection()
     const detail: SelectionChangeDetail = {
       path,
-      ...(canSection && !path.at(-1)?.path.length ? {canSection: true} : {}),
+      ...(canSection && path.at(-1)?.path.join(".") === this.pathToElement(root).join(".") ? {canSection: true} : {}),
       ...(inserted ? {inserted: true} : {}),
       ...($.isElementSelection && !selectedSection ? {nodeSelected: true} : {}),
       ...(this.features.selection.isCaptureSelection ? {capture: true} : {}),

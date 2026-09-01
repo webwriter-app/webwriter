@@ -1832,6 +1832,37 @@ describe("DomEditor.execute()", () => {
     expect(getComputedStyle(section).fontSize).toBe("8px")
   })
 
+  it("uses a document template as the breadcrumb tree root and exposes the Document toolbox", async () => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    iframe.contentDocument!.body.innerHTML = '<demo-widget role="document"><p>Slide</p></demo-widget>'
+    await Promise.resolve()
+
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {
+        type: selectionChangeEvent,
+        detail: {
+          path: [{path: [0], name: "Content", icon: "Section"}],
+          nodeSelected: true,
+        },
+      },
+      source: editorWindow,
+    }))
+    await editor.updateComplete
+
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    await breadcrumb.updateComplete
+    await toolbox.updateComplete
+
+    expect(breadcrumb.tree?.path).toEqual([0])
+    expect(breadcrumb.tree?.children).toHaveLength(1)
+    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>("button.item"))
+      .map(button => button.textContent?.trim())).toEqual(["Content"])
+    expect(toolbox.documentSelected).toBe(true)
+    expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[data-tool="Edit"]')!
+      .getAttribute("aria-label")).toBe("Edit Document")
+  })
+
   it("selects a breadcrumb section explicitly and opens its section toolbox", async () => {
     const {editor, iframe, editorWindow} = await mountEditor()
     iframe.contentDocument!.body.innerHTML = "<section><p>hello</p></section>"

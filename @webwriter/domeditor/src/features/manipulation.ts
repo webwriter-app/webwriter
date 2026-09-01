@@ -10,6 +10,7 @@ import {
 } from "../editor-bridge"
 import {paragraphStylePropertyNameSet} from "../element-styles"
 import {isSectionElement, isSectionName, type SectionName} from "../sections"
+import {getDocumentRoot, isDocumentRoot} from "../document-template"
 
 /** Unit by which a collapsed selection is extended before deleting. */
 type Granularity = "character" | "word" | "line" | "block"
@@ -78,21 +79,23 @@ export class ManipulationFeature extends EditorFeature {
    * Section wrappers themselves remain transparent here; explicitly selected
    * wrappers are handled by the toolbox-specific commands below. */
   private selectedSectionTargets() {
+    const root = getDocumentRoot()
     const selected = $.selectedElement
 
     const selection = document.getSelection()
     if(!selection?.rangeCount || !selection.anchorNode || !selection.focusNode
       || !selection.anchorNode.isConnected || !selection.focusNode.isConnected) return []
+    if(selected === root || selected === document.body) return []
     const nearestSection = (node: Node) => {
       let element = node instanceof Element ? node : node.parentElement
-      while(element && element !== document.body) {
+      while(element && element !== root) {
         if(isSectionElement(element)) return element
         element = element.parentElement
       }
       return null
     }
     const activeSection = nearestSection(selection.anchorNode)
-    if(selected && selected !== document.body && !isSectionElement(selected)) {
+    if(selected && selected !== root && selected !== document.body && !isSectionElement(selected)) {
       if(activeSection?.contains(selected)) {
         let directChild: Element = selected
         while(directChild.parentElement && directChild.parentElement !== activeSection) {
@@ -124,7 +127,7 @@ export class ManipulationFeature extends EditorFeature {
     }
     if(selection.isCollapsed || $.isTextSelection || $.isEmptySelection) {
       const container = getContainer(selection.anchorNode)
-      return container && container !== document.body ? [container] : []
+      return container && container !== root && container !== document.body ? [container] : []
     }
 
     const range = selection.getRangeAt(0)
@@ -132,8 +135,8 @@ export class ManipulationFeature extends EditorFeature {
       ? range.commonAncestorContainer
       : range.commonAncestorContainer.parentElement
     while(container && isMarkElement(container)) container = container.parentElement
-    if(!container || container === document.body && !range.intersectsNode(document.body)) return []
-    if(!isSectionElement(container) && container !== document.body) return [container]
+    if(!container || container === root && !range.intersectsNode(root)) return []
+    if(!isSectionElement(container) && container !== root && container !== document.body) return [container]
 
     const targets = Array.from(container.childNodes).flatMap(node => {
       if(!(node instanceof Element)) return []
@@ -336,6 +339,7 @@ export class ManipulationFeature extends EditorFeature {
    * With no authored selection, BODY is the document-wide styling target. */
   get styleTarget(): Element {
     const body = document.body
+    const root = getDocumentRoot(body)
     const inAuthoredBody = (element: Element | null | undefined): element is Element => Boolean(
       element?.isConnected && (element === body || body.contains(element)),
     )
@@ -355,7 +359,7 @@ export class ManipulationFeature extends EditorFeature {
     if(inAuthoredBody(focusedWidget)) return focusedWidget
 
     const selection = document.getSelection()
-    if(!selection?.anchorNode || !selection.focusNode || selection.rangeCount === 0) return body
+    if(!selection?.anchorNode || !selection.focusNode || selection.rangeCount === 0) return root
     const selectedElement = $.selectedElement
     if(inAuthoredBody(selectedElement)) return selectedElement
     const inBody = (node: Node) => node === body || body.contains(node)
@@ -363,11 +367,11 @@ export class ManipulationFeature extends EditorFeature {
     if(!inBody(selection.anchorNode) || !inBody(selection.focusNode)) {
       // A live selection outside authored content is equivalent to having no
       // document selection for element styling.
-      return body
+      return root
     }
 
     const common = range.commonAncestorContainer
-    if(common === document || common === document.documentElement) return body
+    if(common === document || common === document.documentElement || common === body) return root
     const container = getContainer(common)
     return inAuthoredBody(container)? container: body
   }
@@ -381,8 +385,9 @@ export class ManipulationFeature extends EditorFeature {
    * elements and registered widgets stay atomic unless their own public
    * editing contract handles paragraph formatting. */
   private isTextBlock(element: Element): element is HTMLElement {
-    if(element === document.body || isSectionElement(element)) return false
-    for(let ancestor: Element | null = element; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
+    const root = getDocumentRoot()
+    if(element === root || element === document.body || isSectionElement(element)) return false
+    for(let ancestor: Element | null = element; ancestor && ancestor !== root; ancestor = ancestor.parentElement) {
       if(ancestor.localName.includes("-") || ancestor.hasAttribute("is")
         || this.editor.schema.get(ancestor).group?.includes("widget")) return false
     }
@@ -400,8 +405,9 @@ export class ManipulationFeature extends EditorFeature {
     if(selected) return this.isTextBlock(selected) ? [selected] : []
 
     if(selection.isCollapsed) {
+      const root = getDocumentRoot()
       let element: Element | null = getContainer(selection.anchorNode)
-      while(element && element !== document.body) {
+      while(element && element !== root) {
         if(this.isTextBlock(element)) return [element]
         element = element.parentElement
       }
@@ -651,7 +657,7 @@ export class ManipulationFeature extends EditorFeature {
     return this.withNormalization(() => {
       $.delete()
       const block = getContainer($.range.startContainer)
-      if(block === document.body) {
+      if(isDocumentRoot(block)) {
         $.replace(...nodes)
         this.moveAfterInsertedNode(nodes.at(-1)!)
         return
@@ -818,7 +824,7 @@ export class ManipulationFeature extends EditorFeature {
     if(splittingSummary) splitDepth = 0
 
     for(let depth = 0; depth <= splitDepth; depth++) {
-      if(container.nodeName === "BODY" || container.nodeName === "HTML") break
+      if(isDocumentRoot(container) || container.nodeName === "HTML") break
       const parent = container.parentElement
       if(!parent) break
       const schema = this.editor.schema.get(container)
@@ -844,7 +850,7 @@ export class ManipulationFeature extends EditorFeature {
   /** Checks both split halves and their changed parents against the schema by
    * executing the exact operation on a detached clone. */
   private canSplitAtSelection(splitDepth: number, strict: boolean) {
-    const simulation = this.cloneRangeIn(document.body, $.range)
+    const simulation = this.cloneRangeIn(getDocumentRoot(), $.range)
     if(!simulation) return false
     try {
       simulation.range.deleteContents()
@@ -965,8 +971,10 @@ export class ManipulationFeature extends EditorFeature {
    * a root-level insertion point is materialized as a text block. */
   private replacesStructureWithText() {
     if($.isEmpty) return false
+    const selected = $.selectedElement
+    if(selected === getDocumentRoot() || selected === document.body) return true
     const common = getContainer($.range.commonAncestorContainer)
-    return common === document.body
+    return isDocumentRoot(common)
       || getSelectionAnchorBlock(this.editor.schema) !== getSelectionFocusBlock(this.editor.schema)
   }
 
@@ -1023,6 +1031,12 @@ export class ManipulationFeature extends EditorFeature {
    * only where list/table handlers have not already supplied semantics. */
   activeListeners: DocumentListenerMap = {
     "beforeinput": ev => {
+      const selected = $.selectedElement
+      if(ev.inputType.startsWith("delete") && (selected === getDocumentRoot() || selected === document.body)) {
+        ev.preventDefault()
+        this.delete(ev.inputType.toLowerCase().includes("backward") ? "backward" : "forward")
+        return
+      }
       const summary = $.anchorContainer?.closest("summary")
       if(ev.inputType === "insertParagraph" && summary?.parentElement?.matches("details")) {
         ev.preventDefault()
@@ -1083,6 +1097,15 @@ export class ManipulationFeature extends EditorFeature {
       else if($.isGapSelection || $.isEmptyDocumentSelection) {
         this.ensureTextBlock()
       }
+    },
+    "cut": ev => {
+      const selected = $.selectedElement
+      if(selected !== getDocumentRoot() && selected !== document.body || !ev.clipboardData) return
+      ev.preventDefault()
+      const {html, text} = this.editor.serializeClipboardFragment($.copy())
+      ev.clipboardData.setData("text/html", html)
+      ev.clipboardData.setData("text/plain", text)
+      $.delete()
     },
     "keydown": ev => {
       if(this.editor.features.transformation.target) {
@@ -1158,7 +1181,7 @@ export class ManipulationFeature extends EditorFeature {
       for(let i = 0; i <= splitDepth; i++) {
         $.start instanceof Text && $.start.splitText($.startOffset)
         let container = getContainer(locus)
-        if(container.nodeName === "BODY" || container.nodeName === "HTML") {continue}
+        if(isDocumentRoot(container) || container.nodeName === "HTML") {continue}
         const [,right] = getSidesOfPoint($.range)
         const schema = this.editor.schema.get(container)
         const next = (strict && schema.inseperable
@@ -1205,7 +1228,8 @@ export class ManipulationFeature extends EditorFeature {
         return
       }
       const commonContainer = getContainer($.commonAncestor)
-      if(!commonContainer.textContent && !["HTML", "BODY"].includes(commonContainer.nodeName)) {
+      if(!commonContainer.textContent && commonContainer !== document.body
+        && !isDocumentRoot(commonContainer) && commonContainer.nodeName !== "HTML") {
         const emptyContainer = commonContainer
         const previous = emptyContainer.previousSibling
         const next = emptyContainer.nextSibling
@@ -1221,7 +1245,7 @@ export class ManipulationFeature extends EditorFeature {
           $.move(next)
         }
         else {
-          $.move(document.body)
+          $.move(getDocumentRoot())
         }
         return
       }
@@ -1485,7 +1509,7 @@ export class ManipulationFeature extends EditorFeature {
   private insertBlockWidget(widget: Element) {
     $.delete()
     const block = getContainer($.range.startContainer)
-    if(block === document.body || this.editor.schema.isPhrasing(widget)
+    if(isDocumentRoot(block) || this.editor.schema.isPhrasing(widget)
       || this.canInsertAtSelection(widget)) {
       $.replace(widget)
     }

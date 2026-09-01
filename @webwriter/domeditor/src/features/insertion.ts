@@ -4,6 +4,7 @@ import { $, getContainer, isElement, isText, markWidgetsEditable, modifierKeyDow
 import {isMediaType, mediaDefaultHTML} from "../media"
 import {createTable} from "../table"
 import {formDefaultHTML, isFormElementType} from "../form"
+import {getDocumentRoot, isDocumentRoot} from "../document-template"
 
 type CustomHighlightRegistry = {
   delete(name: string): void
@@ -366,8 +367,9 @@ export class InsertionFeature extends EditorFeature {
   }
 
   private closestBlock(node: Node) {
+    const root = getDocumentRoot()
     let element = getContainer(node)
-    while(element !== document.body && !this.editor.schema.isBlock(element)) element = element.parentElement ?? document.body
+    while(element !== root && !this.editor.schema.isBlock(element)) element = element.parentElement ?? root
     return element
   }
 
@@ -377,7 +379,7 @@ export class InsertionFeature extends EditorFeature {
   }
 
   private isEmptyTextBlock(block: Element) {
-    if(block === document.body) return block.childNodes.length === 0
+    if(isDocumentRoot(block)) return block.childNodes.length === 0
     if(!this.editor.schema.isBlock(block)) return false
     return !Array.from(block.childNodes).some(node => {
       if(isElement(node) && node.matches(".◆editor-only")) return false
@@ -386,7 +388,7 @@ export class InsertionFeature extends EditorFeature {
   }
 
   private isInsertionMenuBlock(block: Element) {
-    return block.matches("p") || this.isEmptyTextBlock(block) && block === document.body
+    return block.matches("p") || this.isEmptyTextBlock(block) && isDocumentRoot(block)
   }
 
   private createEmptyTextBlockButton() {
@@ -487,7 +489,7 @@ export class InsertionFeature extends EditorFeature {
       this.close(false)
       return
     }
-    const replacement = this.emptyTextBlock?.isConnected && this.emptyTextBlock !== document.body && !this.emptyTextBlock.textContent && this.emptyTextBlock
+    const replacement = this.emptyTextBlock?.isConnected && !isDocumentRoot(this.emptyTextBlock) && !this.emptyTextBlock.textContent && this.emptyTextBlock
     if(replacement) {
       replacement.replaceWith(...nodes)
     }

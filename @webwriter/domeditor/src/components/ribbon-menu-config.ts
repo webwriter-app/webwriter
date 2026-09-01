@@ -233,6 +233,12 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
   ],
   Edit: [
     {label: "Marks", buttons: []},
+    {
+      label: "Document",
+      buttons: [
+        {label: "Default", action: "set-document-template:body", icon: "Document"},
+      ],
+    },
     {label: "Section", buttons: []},
     {label: "Form", buttons: []},
     {label: "Table", buttons: []},

@@ -341,6 +341,28 @@ describe("processSelection()", () => {
     expect(document.body).toHaveClass("◆element-selected")
     expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-node")
   })
+  it("treats a template as the document editing root", () => {
+    document.body.innerHTML = '<demo-widget role="document"></demo-widget>'
+    const template = document.body.firstElementChild!
+
+    $.selectDocumentStart()
+    feature.processSelection()
+
+    expect($.anchor).toBe(template)
+    expect(template).toHaveClass("◆empty-selected")
+    expect(feature.emptyDocumentCaret).toHaveAttribute("part", "empty-document-caret")
+  })
+  it("does not reinterpret a list template as an empty authored list", () => {
+    document.body.innerHTML = '<ul is="list-widget" role="document"></ul>'
+    const template = document.body.firstElementChild!
+
+    $.selectDocumentStart()
+    feature.processSelection()
+
+    expect(template).toHaveClass("◆empty-selected")
+    expect(editor.features.list.isVirtualSelection).toBe(false)
+    expect(feature.emptyDocumentCaret).toHaveAttribute("part", "empty-document-caret")
+  })
   it("resolves a stale mark breadcrumb path to its containing block", () => {
     document.body.innerHTML = "<p><b>hello</b></p>"
     const paragraph = document.querySelector("p")!
@@ -475,6 +497,25 @@ describe("document listeners", () => {
             sections: [{path: [0], type: "div", name: "Division", icon: "Section"}],
           },
         ],
+      },
+    }, window.location.origin)
+  })
+  it("posts the template instead of BODY as the top-level breadcrumb item", () => {
+    document.body.innerHTML = '<demo-widget role="document"></demo-widget>'
+    const template = document.body.firstElementChild!
+    $.selectElement(template)
+    feature.processSelection()
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => {})
+    postMessage.mockClear()
+
+    editor.postSelectionPath()
+
+    expect(postMessage).toHaveBeenCalledWith({
+      type: selectionChangeEvent,
+      bridgeNonce: editor.trustedScriptNonce,
+      detail: {
+        path: [{path: [0], name: "Content", icon: "Section"}],
+        nodeSelected: true,
       },
     }, window.location.origin)
   })

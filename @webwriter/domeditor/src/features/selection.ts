@@ -2,6 +2,7 @@ import { DocumentListenerMap, EditorFeature } from "."
 import {$, focusedWidgetHost, getContainer, isAtomicEditingElement, isElement, modifierKeyDown, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
 import {isSectionElement} from "../sections"
+import {getDocumentRoot, isDocumentRoot} from "../document-template"
 
 type SelectionKind = "none" | "capture" | "section" | "virtual" | "cell" | "gap" | "element" | "text" | "empty"
 
@@ -104,8 +105,9 @@ export class SelectionFeature extends EditorFeature {
   }
 
   #selectionBlock() {
+    const root = getDocumentRoot()
     let node = $.anchor
-    while(node && node !== document.body) {
+    while(node && node !== root) {
       if(node instanceof Element && !isSectionElement(node) && this.editor.schema.isBlock(node)) return node
       node = node.parentElement
     }
@@ -228,21 +230,21 @@ export class SelectionFeature extends EditorFeature {
     if(!selection?.isCollapsed || !selection.anchorNode || !selection.focusNode) {
       return
     }
-    const body = document.body
-    const bodyRange = document.createRange()
-    bodyRange.selectNodeContents(body)
+    const root = getDocumentRoot()
+    const rootRange = document.createRange()
+    rootRange.selectNodeContents(root)
     const clamp = (node: Node, offset: number): [Node, number] => {
-      if(node === body || body.contains(node)) {
+      if(node === root || root.contains(node)) {
         return [node, offset]
       }
       let relation: number
       try {
-        relation = bodyRange.comparePoint(node, offset)
+        relation = rootRange.comparePoint(node, offset)
       }
       catch {
         relation = -1
       }
-      return relation < 0? [body, 0]: [body, body.childNodes.length]
+      return relation < 0? [root, 0]: [root, root.childNodes.length]
     }
     const anchor = clamp(selection.anchorNode, selection.anchorOffset)
     const focus = clamp(selection.focusNode, selection.focusOffset)
@@ -416,7 +418,7 @@ export class SelectionFeature extends EditorFeature {
       if(!parent) break
       targetElement = parent
     }
-    return targetElement === document.body ? null : targetElement
+    return isDocumentRoot(targetElement) ? targetElement : targetElement === document.body ? null : targetElement
   }
 
   /** Selects the element addressed by a child-node path from BODY. */
@@ -770,8 +772,9 @@ export class SelectionFeature extends EditorFeature {
       this.#constrainSelectionToBody()
       this.#constrainSelectionToMedia()
       sel = document.getSelection()
-      const isInBody = (node: Node | null) => node === document.body || Boolean(node && document.body.contains(node))
-      if(sel?.isCollapsed && (!isInBody(sel.anchorNode) || !isInBody(sel.focusNode))) {
+      const root = getDocumentRoot()
+      const isInRoot = (node: Node | null) => node === root || Boolean(node && root.contains(node))
+      if(sel?.isCollapsed && (!isInRoot(sel.anchorNode) || !isInRoot(sel.focusNode))) {
         $.selectDocumentStart()
         sel = document.getSelection()
       }
@@ -833,7 +836,7 @@ export class SelectionFeature extends EditorFeature {
       const element = getContainer($.commonAncestor)
       if(!element) return
       element.classList.add("◆", "◆empty-selected")
-      if(element === document.body && !this.emptyDocumentCaret) {
+      if(isDocumentRoot(element) && !this.emptyDocumentCaret) {
         this.#createEmptyDocumentCaret()
       }
     }
@@ -879,7 +882,8 @@ export class SelectionFeature extends EditorFeature {
       this.clearSelectedSection()
       if(ev.key.toLowerCase() === "a" && modifierKeyDown(ev)) {
         ev.preventDefault()
-        $.selectRange(document.body, 0, document.body, document.body.childNodes.length)
+        const root = getDocumentRoot()
+        $.selectRange(root, 0, root, root.childNodes.length)
         this.processSelection()
       }
       else if(direction && !ev.defaultPrevented && !ev.altKey && !modifierKeyDown(ev) && !ev.shiftKey
@@ -893,10 +897,10 @@ export class SelectionFeature extends EditorFeature {
 
       }
       else if(ev.key === "ArrowUp") {
-        const firstBodyElement = document.body.firstElementChild
-        if(!ev.shiftKey && firstBodyElement && isCaretAtStartOf(firstBodyElement)) {
+        const firstRootElement = getDocumentRoot().firstElementChild
+        if(!ev.shiftKey && firstRootElement && isCaretAtStartOf(firstRootElement)) {
           ev.preventDefault()
-          $.selectGap(firstBodyElement, "before")
+          $.selectGap(firstRootElement, "before")
           this.processSelection()
         }
       }
@@ -983,7 +987,7 @@ export class SelectionFeature extends EditorFeature {
     },
     "pointerup": ev => {
       this.isInDragSelection = false
-      if(document.body.childNodes.length === 0) {
+      if(getDocumentRoot().childNodes.length === 0) {
         $.selectDocumentStart()
         this.processSelection()
       }

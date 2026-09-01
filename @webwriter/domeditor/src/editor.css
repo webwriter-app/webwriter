@@ -28,6 +28,29 @@ body {
   caret-color: currentColor;
 }
 
+/* A sole role=document widget is the authored document template. BODY keeps
+ * hosting the shadow appendix but stops generating a scrolling layout box;
+ * the widget inherits the ordinary document width while its height follows
+ * its content. */
+html:has(> body.◆template-active),
+body.◆template-active {
+  overflow: hidden;
+}
+
+body.◆template-active {
+  display: contents;
+}
+
+body.◆template-active > [role~="document"]:only-child {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: calc(960px + var(--body-padding) + var(--body-padding));
+  margin: 1.25rem auto;
+  padding: 0 var(--body-padding);
+}
+
 html:has(> body.◆key-mod-down),
 html:has(> body.◆key-mod-down) *,
 html:has(> body.◆key-mod-down) *::before,
@@ -418,6 +441,14 @@ body.◆element-selected::part(selection-caret-node) {
   width: auto;
   height: auto;
   outline: none;
+  background: rgb(56 189 248 / 6%);
+}
+
+/* Template roots use the same quiet document-selection fill as BODY while
+ * retaining the template's own content-sized box. */
+body.◆template-active:has(> [role~="document"].◆element-selected:only-child)::part(selection-caret-node) {
+  outline: none;
+  outline-offset: 0;
   background: rgb(56 189 248 / 6%);
 }
 

@@ -163,6 +163,24 @@ describe("toolbox", () => {
     expect(edit.getAttribute("aria-label")).toBe("Edit")
   })
 
+  it("offers template switching in the Document toolbox for a selected document root", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.selectionPath = [{path: [0], name: "Graphic", icon: "Graphic"}]
+    toolbox.documentSelected = true
+    await toolbox.updateComplete
+
+    const edit = toolButton(toolbox, "Edit")
+    expect(edit.getAttribute("aria-label")).toBe("Edit Document")
+    expect(edit.querySelector(".toolbox-tab-label")?.textContent).toBe("Document")
+
+    edit.click()
+    await toolbox.updateComplete
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Document"]')!
+    const buttons = Array.from(drawer.querySelectorAll<RibbonButton>("ribbon-button"))
+    expect(buttons.map(button => button.label)).toEqual(["Default"])
+    expect(buttons.map(button => button.action)).toEqual(["set-document-template:body"])
+  })
+
   it("separates Edit, Review, Style, and Develop into their pane-specific controls", async () => {
     const toolbox = await mountToolbox()
 

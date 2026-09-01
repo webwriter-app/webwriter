@@ -386,6 +386,53 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
   })*/
 })
 
+describe("document template protection", () => {
+  it.each(["backward", "forward"] as const)("%s deletion clears a selected template without removing it", direction => {
+    document.body.innerHTML = '<demo-widget role="document"><p>Template content</p></demo-widget>'
+    const template = document.body.firstElementChild!
+    $.selectElement(template)
+    editor.features.selection.processSelection()
+
+    editor.features.manipulation.delete(direction)
+
+    expect(document.body.firstElementChild).toBe(template)
+    expect(template).toHaveAttribute("role", "document")
+    expect(template).toBeEmptyDOMElement()
+    expect($.anchor).toBe(template)
+    expect($.anchorOffset).toBe(0)
+  })
+
+  it("protects an empty widget template from keyboard deletion", () => {
+    document.body.innerHTML = '<demo-widget role="document"></demo-widget>'
+    const template = document.body.firstElementChild!
+    $.selectElement(template)
+    editor.features.selection.processSelection()
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Delete", bubbles: true, cancelable: true}))
+
+    expect(document.body.firstElementChild).toBe(template)
+    expect(document.body.children).toHaveLength(1)
+  })
+
+  it("replaces a selected template's contents without replacing its wrapper", () => {
+    document.body.innerHTML = '<demo-widget role="document"><p>Old content</p></demo-widget>'
+    const template = document.body.firstElementChild!
+    $.selectElement(template)
+    editor.features.selection.processSelection()
+
+    document.dispatchEvent(new InputEvent("beforeinput", {
+      inputType: "insertText",
+      data: "New content",
+      bubbles: true,
+      cancelable: true,
+    }))
+
+    expect(document.body.firstElementChild).toBe(template)
+    expect(template).toHaveAttribute("role", "document")
+    expect(template).toHaveTextContent("New content")
+  })
+})
+
 describe("sections", () => {
   it("wraps the current structural element in a section by default", () => {
     document.body.innerHTML = "<p>hello</p>"

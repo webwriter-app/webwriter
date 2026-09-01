@@ -3,6 +3,7 @@ import {isMarkElement} from "./marks"
 import {mediaElementSelector} from "./media"
 import {formControlSelector, formInteractionSelector} from "./form"
 import {isSectionElement} from "./sections"
+import {getDocumentRoot} from "./document-template"
 
 export function createStylesheet(content: string) {
   const stylesheet = new CSSStyleSheet()
@@ -141,30 +142,32 @@ export class EditingSelection {
     window.focus()
   }
 
-  /** Places a collapsed selection at the start of the body. */
+  /** Places a collapsed selection at the start of the body-equivalent root. */
   static selectDocumentStart() {
+    const root = getDocumentRoot()
     window.focus()
     document.body.focus({preventScroll: true})
-    this.selectRange(document.body)
+    this.selectRange(root)
   }
 
   /** Moves (or with `extend`, extends) the selection to the document position at the given viewport coordinates, snapping to element gaps at text boundaries. Requires layout (caretPositionFromPoint). */
   static selectCoords(x: number, y: number, extend=false, pointerTarget?: EventTarget | null) {
     focusEditorWindow()
     const {offset, offsetNode} = document.caretPositionFromPoint(x, y) ?? {}
-    const firstBodyElement = document.body.firstElementChild
-    const firstBodyElementIndex = firstBodyElement? Array.from(document.body.childNodes).indexOf(firstBodyElement): -1
+    const root = getDocumentRoot()
+    const firstRootElement = root.firstElementChild
+    const firstRootElementIndex = firstRootElement? Array.from(root.childNodes).indexOf(firstRootElement): -1
     if(!offsetNode) {
-      if(!extend && firstBodyElement && y < firstBodyElement.getBoundingClientRect().top) {
-        this.selectGap(firstBodyElement, "before")
+      if(!extend && firstRootElement && y < firstRootElement.getBoundingClientRect().top) {
+        this.selectGap(firstRootElement, "before")
       }
       return
     }
     if(typeof offset !== "number") return
-    const isBeforeFirstBodyElement = offsetNode === document.body && firstBodyElement !== null && firstBodyElementIndex >= 0 && offset <= firstBodyElementIndex &&
-      y < firstBodyElement.getBoundingClientRect().top
-    if(!extend && isBeforeFirstBodyElement) {
-      this.selectGap(firstBodyElement, "before")
+    const isBeforeFirstRootElement = offsetNode === root && firstRootElement !== null && firstRootElementIndex >= 0 && offset <= firstRootElementIndex &&
+      y < firstRootElement.getBoundingClientRect().top
+    if(!extend && isBeforeFirstRootElement) {
+      this.selectGap(firstRootElement, "before")
       return
     }
     const targetElement = pointerTarget instanceof Element
@@ -302,19 +305,20 @@ export class EditingSelection {
 
   /** Whether the caret sits in a gap between elements: collapsed, anchored in an element without text children, and not in an empty container. A body boundary before its first element is also a gap when any preceding text is only whitespace. */
   static get isGapSelection() {
-    const firstBodyElement = document.body.firstElementChild
-    const firstBodyElementIndex = firstBodyElement? Array.from(document.body.childNodes).indexOf(firstBodyElement): -1
-    const isBodyBoundaryBeforeFirstElement = this.anchor === document.body &&
-      firstBodyElementIndex >= 0 &&
-      this.anchorOffset <= firstBodyElementIndex &&
-      Array.from(document.body.childNodes).slice(this.anchorOffset, firstBodyElementIndex).every(node => !isText(node) || !node.textContent?.trim())
+    const root = getDocumentRoot()
+    const firstRootElement = root.firstElementChild
+    const firstRootElementIndex = firstRootElement? Array.from(root.childNodes).indexOf(firstRootElement): -1
+    const isRootBoundaryBeforeFirstElement = this.anchor === root &&
+      firstRootElementIndex >= 0 &&
+      this.anchorOffset <= firstRootElementIndex &&
+      Array.from(root.childNodes).slice(this.anchorOffset, firstRootElementIndex).every(node => !isText(node) || !node.textContent?.trim())
     const isNestedListBoundary = isElement(this.anchor) && this.anchor.matches("li, dt, dd") &&
       [this.anchor.childNodes.item(this.anchorOffset - 1), this.anchor.childNodes.item(this.anchorOffset)]
         .some(node => isElement(node) && node.matches("ul, ol, dl, menu"))
     const isInsideTable = isElement(this.anchor) && Boolean(this.anchor.closest("table"))
     return isElement(this.anchor) && !isSectionElement(this.anchor) && !isInsideTable && this.isEmpty && !this.isEmptySelection &&
       (!Array.from(this.anchor.childNodes).some(node => (isText(node) && Boolean(node.textContent?.trim())) || isMarkElement(node))
-        || isBodyBoundaryBeforeFirstElement
+        || isRootBoundaryBeforeFirstElement
         || isNestedListBoundary)
   }
 
@@ -324,7 +328,8 @@ export class EditingSelection {
     if(!isElement(this.anchor) || Math.abs(this.#selection.anchorOffset - this.#selection.focusOffset) !== 1) return false
     const index = Math.min(this.#selection.anchorOffset, this.#selection.focusOffset)
     const selected = this.anchor.childNodes.item(index)
-    return isElement(selected) && !isMarkElement(selected) && !isSectionElement(selected)
+    return isElement(selected) && (selected === getDocumentRoot()
+      || !isMarkElement(selected) && !isSectionElement(selected))
   }
 
   /** Whether the selection consists only of text and mark wrappers within one
@@ -366,9 +371,14 @@ export class EditingSelection {
     return this.anchor !== this.focus
   }
 
-  /** Whether the selection is collapsed and the body contains no editable elements (contenteditable=false elements are ignored). */
+  /** Whether the selection is collapsed in an empty body-equivalent root
+   * (contenteditable=false elements are ignored). */
   static get isEmptyDocumentSelection() {
-    return this.isEmpty && !document.querySelectorAll("body > :not([contenteditable=false])").length
+    const root = getDocumentRoot()
+    const anchor = this.anchor
+    const inRoot = anchor === root || Boolean(anchor && root.contains(anchor))
+    return this.isEmpty && inRoot
+      && !Array.from(root.children).some(element => element.getAttribute("contenteditable") !== "false")
   }
 
   /** The selection's anchor node (where it started). */
@@ -504,7 +514,11 @@ export class EditingSelection {
   /** Returns a clone of the selected content, leaving the document
    * unchanged. */
   static copy() {
-    let fragment = this.range.cloneContents()
+    const root = getDocumentRoot()
+    const copyingRoot = this.selectedElement === root || this.selectedElement === document.body
+    const range = copyingRoot ? document.createRange() : this.range
+    if(copyingRoot) range.selectNodeContents(root)
+    let fragment = range.cloneContents()
     const commonAncestor = this.range.commonAncestorContainer
     let sharedMark = isElement(commonAncestor)? commonAncestor: commonAncestor.parentElement
     while(sharedMark && isMarkElement(sharedMark)) {
@@ -519,13 +533,32 @@ export class EditingSelection {
 
   /** Deletes the selected content (a no-op for collapsed selections). */
   static delete() {
-    this.range.deleteContents()
+    const root = getDocumentRoot()
+    if(this.selectedElement === root || this.selectedElement === document.body) {
+      root.replaceChildren()
+      this.#selection.setPosition(root, 0)
+      window.focus()
+      return
+    }
+    const range = this.range
+    range.deleteContents()
+    if(range.startContainer === root) range.collapse(true)
     window.focus()
   }
 
   /** Removes the selected content from the document and returns it. */
   static cut() {
-    const fragment = this.range.extractContents()
+    const root = getDocumentRoot()
+    if(this.selectedElement === root || this.selectedElement === document.body) {
+      const fragment = document.createDocumentFragment()
+      fragment.append(...Array.from(root.childNodes))
+      this.#selection.setPosition(root, 0)
+      window.focus()
+      return fragment
+    }
+    const range = this.range
+    const fragment = range.extractContents()
+    if(range.startContainer === root) range.collapse(true)
     window.focus()
     return fragment
   }
