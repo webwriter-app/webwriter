@@ -6,12 +6,18 @@ import {
   clearTableMarkers,
   completeCellRectangle,
   createTable,
+  isTableCellRole,
+  isTableRowGroupType,
   placementForCell,
   placementsInRectangle,
   tableCellSelector,
   tableForNode,
   type TableCellPlacement,
+  type TableCellRole,
+  type TableColumnGroupState,
   type TableMap,
+  type TableRowGroupState,
+  type TableRowGroupType,
   type TableSelectionState,
 } from "../table"
 
@@ -49,6 +55,54 @@ function removeMarker(element: Element, marker: string) {
 
 function authoredClassValue(value: string | null) {
   return (value ?? "").split(/\s+/).filter(name => name && !name.startsWith("◆")).sort().join(" ")
+}
+
+function stateAttributes(element: Element) {
+  return Object.fromEntries(Array.from(element.attributes).flatMap(attribute => {
+    if(attribute.name !== "class") return [[attribute.name, attribute.value]]
+    const classes = attribute.value.split(/\s+/).filter(name => name && !name.startsWith("◆"))
+    return classes.length ? [["class", classes.join(" ")]] : []
+  }))
+}
+
+function equalAttributes(element: Element, expected: Record<string, string>) {
+  const current = stateAttributes(element)
+  const names = Object.keys(current)
+  return names.length === Object.keys(expected).length && names.every(name => current[name] === expected[name])
+}
+
+function pathFrom(root: Node, node: Node) {
+  const path: number[] = []
+  let current: Node | null = node
+  while(current && current !== root) {
+    const parent: ParentNode | null = current.parentNode
+    if(!parent) return null
+    const index = Array.from(parent.childNodes).indexOf(current as ChildNode)
+    if(index < 0) return null
+    path.unshift(index)
+    current = parent as Node
+  }
+  return current === root ? path : null
+}
+
+function nodeAtPath(root: Node, path: number[]) {
+  return path.reduce<Node | null>((node, index) => node?.childNodes.item(index) ?? null, root)
+}
+
+function sharedCellAttribute(cells: HTMLTableCellElement[], name: string) {
+  const values = new Set(cells.map(cell => cell.getAttribute(name) ?? ""))
+  return values.size === 1 ? values.values().next().value as string : null
+}
+
+function roleForCell(cell: HTMLTableCellElement): TableCellRole {
+  if(cell.localName === "td") return "data"
+  switch(cell.getAttribute("scope")?.toLowerCase()) {
+    case "col": return "column-header"
+    case "row": return "row-header"
+    case "colgroup": return "column-group-header"
+    case "rowgroup": return "row-group-header"
+    default: return "header"
+  }
 }
 
 function inlineWidthInPixels(element: HTMLElement) {
@@ -247,11 +301,52 @@ export class TableFeature extends EditorFeature {
     return true
   }
 
+  private actionRows(map: TableMap) {
+    const rectangle = this.actionRectangle(map)
+    return rectangle ? map.rows.slice(rectangle.top, rectangle.bottom + 1) : []
+  }
+
+  private rowGroupState(table: HTMLTableElement): TableRowGroupState[] {
+    return Array.from(table.childNodes).flatMap((node, index) => (
+      node instanceof Element && isTableRowGroupType(node.localName)
+        ? [{
+          index,
+          type: node.localName,
+          rows: Array.from(node.children).filter(child => child.localName === "tr").length,
+          attributes: stateAttributes(node),
+        }]
+        : []
+    ))
+  }
+
+  private columnGroupState(table: HTMLTableElement): TableColumnGroupState[] {
+    return Array.from(table.children).flatMap(group => {
+      if(group.localName !== "colgroup") return []
+      const groupPath = pathFrom(table, group)
+      if(!groupPath) return []
+      return [{
+        path: groupPath,
+        attributes: stateAttributes(group),
+        columns: Array.from(group.children).flatMap(column => {
+          if(column.localName !== "col") return []
+          const path = pathFrom(table, column)
+          return path ? [{path, attributes: stateAttributes(column)}] : []
+        }),
+      }]
+    })
+  }
+
   getState(): TableSelectionState | undefined {
     const map = this.selectionMap()
     if(!map) return
     const cells = this.actionCells(map)
     const selected = this.selectedCells
+    const rows = this.actionRows(map)
+    const rowGroupTypes = new Set(rows.map(row => {
+      const parent = row.parentElement
+      return parent && isTableRowGroupType(parent.localName) ? parent.localName : "direct"
+    }))
+    const cellRoles = new Set(cells.map(roleForCell))
     return {
       active: true,
       cellSelection: this.hasCellSelection,
@@ -264,6 +359,18 @@ export class TableFeature extends EditorFeature {
         return Boolean(placement && (placement.rowSpan > 1 || placement.columnSpan > 1))
       }),
       hasCaption: Boolean(map.table.caption),
+      selectedRowGroup: rowGroupTypes.size === 1
+        ? rowGroupTypes.values().next().value as TableRowGroupType | "direct"
+        : "mixed",
+      rowGroups: this.rowGroupState(map.table),
+      canAddHeaderGroup: !Array.from(map.table.children).some(child => child.localName === "thead"),
+      canAddFooterGroup: !Array.from(map.table.children).some(child => child.localName === "tfoot"),
+      columnGroups: this.columnGroupState(map.table),
+      cellSemantics: {
+        role: cellRoles.size === 1 ? cellRoles.values().next().value as TableCellRole : "mixed",
+        headers: sharedCellAttribute(cells, "headers"),
+        abbr: sharedCellAttribute(cells, "abbr"),
+      },
     }
   }
 
@@ -480,6 +587,261 @@ export class TableFeature extends EditorFeature {
       ? cell.style.setProperty(property, value)
       : cell.style.removeProperty(property))
     this.editor.postSelectionPath()
+  }
+
+  private rowGroupShell(source: Element, type: TableRowGroupType, keepId: boolean) {
+    const group = cloneWithoutEditorMarkers(source, false) as HTMLTableSectionElement
+    const replacement = document.createElement(type)
+    Array.from(group.attributes).forEach(attribute => replacement.setAttribute(attribute.name, attribute.value))
+    if(!keepId) replacement.removeAttribute("id")
+    return replacement
+  }
+
+  private convertRowSegment(rows: HTMLTableRowElement[], type: TableRowGroupType) {
+    const first = rows[0]
+    const last = rows.at(-1)
+    if(!first || !last || first.parentElement !== last.parentElement) return
+    const parent = first.parentElement
+    const table = tableForNode(first)
+    if(!parent || !table) return
+    if(parent === table) {
+      const group = document.createElement(type)
+      first.before(group)
+      rows.forEach(row => group.append(row))
+      return
+    }
+    if(!isTableRowGroupType(parent.localName) || parent.localName === type) return
+    const directRows = Array.from(parent.children).filter((child): child is HTMLTableRowElement => child.localName === "tr")
+    const firstPosition = directRows.indexOf(first)
+    const lastPosition = directRows.indexOf(last)
+    if(firstPosition < 0 || lastPosition < firstPosition) return
+    const nodes = Array.from(parent.childNodes)
+    const firstIndex = nodes.indexOf(first)
+    const lastIndex = nodes.indexOf(last)
+    const hasPrefix = firstPosition > 0
+    const hasSuffix = lastPosition < directRows.length - 1
+    const prefixNodes = hasPrefix ? nodes.slice(0, firstIndex) : []
+    const selectedNodes = nodes.slice(hasPrefix ? firstIndex : 0, hasSuffix ? lastIndex + 1 : nodes.length)
+    const suffixNodes = hasSuffix ? nodes.slice(lastIndex + 1) : []
+    const groups: HTMLTableSectionElement[] = []
+    if(hasPrefix) {
+      const prefix = this.rowGroupShell(parent, parent.localName, true)
+      prefix.append(...prefixNodes)
+      groups.push(prefix)
+    }
+    const selected = this.rowGroupShell(parent, type, !hasPrefix)
+    selected.append(...selectedNodes)
+    groups.push(selected)
+    if(hasSuffix) {
+      const suffix = this.rowGroupShell(parent, parent.localName, false)
+      suffix.append(...suffixNodes)
+      groups.push(suffix)
+    }
+    parent.replaceWith(...groups)
+  }
+
+  private convertSelectedRows(type: TableRowGroupType) {
+    const table = this.selectedTable
+    if(!table || !isTableRowGroupType(type)) return false
+    const rows = this.actionRows(buildTableMap(table))
+    if(!rows.length) return false
+    const segments: HTMLTableRowElement[][] = []
+    rows.forEach(row => {
+      const segment = segments.at(-1)
+      if(segment?.at(-1)?.parentElement === row.parentElement) segment.push(row)
+      else segments.push([row])
+    })
+    segments.forEach(segment => this.convertRowSegment(segment, type))
+    if(this.anchorCell?.isConnected && this.focusCell?.isConnected) this.applyCellMarkers()
+    this.editor.postSelectionPath()
+    return true
+  }
+
+  private rowGroupAt(index: number, expected: Record<string, string>) {
+    if(!Number.isInteger(index) || index < 0 || !expected || typeof expected !== "object" || Array.isArray(expected)) return null
+    const table = this.selectedTable
+    const group = table?.childNodes.item(index)
+    return group instanceof Element && isTableRowGroupType(group.localName) && equalAttributes(group, expected)
+      ? group as HTMLTableSectionElement
+      : null
+  }
+
+  private insertRowGroup(type: TableRowGroupType) {
+    const table = this.selectedTable
+    if(!table || !isTableRowGroupType(type)) return false
+    if(type !== "tbody" && Array.from(table.children).some(child => child.localName === type)) return false
+    const group = document.createElement(type)
+    const row = document.createElement("tr")
+    const width = Math.max(1, buildTableMap(table).width)
+    for(let index = 0; index < width; index++) row.append(document.createElement(type === "thead" ? "th" : "td"))
+    group.append(row)
+    const children = Array.from(table.children)
+    const reference = type === "thead"
+      ? children.find(child => child.matches("thead, tbody, tfoot, tr")) ?? null
+      : type === "tbody"
+        ? children.find(child => child.localName === "tfoot") ?? null
+        : null
+    table.insertBefore(group, reference)
+    const cells = Array.from(row.children) as HTMLTableCellElement[]
+    if(cells.length) this.selectCells(cells[0], cells.at(-1)!)
+    else this.editor.postSelectionPath()
+    return true
+  }
+
+  private removeRowGroup(index: number, expected: Record<string, string>) {
+    const group = this.rowGroupAt(index, expected)
+    if(!group) return false
+    group.replaceWith(...Array.from(group.childNodes))
+    if(this.anchorCell?.isConnected && this.focusCell?.isConnected) this.applyCellMarkers()
+    this.editor.postSelectionPath()
+    return true
+  }
+
+  private moveRowGroup(index: number, expected: Record<string, string>, direction: -1 | 1) {
+    if(direction !== -1 && direction !== 1) throw new TypeError("Row groups can only move up or down")
+    const group = this.rowGroupAt(index, expected)
+    const table = this.selectedTable
+    if(!group || !table) return false
+    const groups = Array.from(table.children).filter((child): child is HTMLTableSectionElement => isTableRowGroupType(child.localName))
+    const position = groups.indexOf(group)
+    const neighbour = groups[position + direction]
+    if(!neighbour) return false
+    direction < 0 ? table.insertBefore(group, neighbour) : table.insertBefore(group, neighbour.nextSibling)
+    this.editor.postSelectionPath()
+    return true
+  }
+
+  private columnElement(path: number[], expected: Record<string, string>) {
+    if(!Array.isArray(path) || path.some(index => !Number.isInteger(index) || index < 0)
+      || !expected || typeof expected !== "object" || Array.isArray(expected)) return null
+    const table = this.selectedTable
+    const element = table ? nodeAtPath(table, path) : null
+    return element instanceof Element
+      && (element.localName === "colgroup" || element.localName === "col")
+      && equalAttributes(element, expected)
+      ? element as HTMLTableColElement
+      : null
+  }
+
+  private addColumnGroup() {
+    const table = this.selectedTable
+    if(!table) return false
+    const group = document.createElement("colgroup")
+    group.setAttribute("span", "1")
+    const groups = Array.from(table.children).filter(child => child.localName === "colgroup")
+    const reference = groups.at(-1)?.nextSibling
+      ?? Array.from(table.children).find(child => child.matches("thead, tbody, tfoot, tr"))
+      ?? null
+    table.insertBefore(group, reference)
+    this.editor.postSelectionPath()
+    return true
+  }
+
+  private removeColumnGroup(path: number[], expected: Record<string, string>) {
+    const group = this.columnElement(path, expected)
+    if(!group || group.localName !== "colgroup" || group.parentElement !== this.selectedTable) return false
+    group.remove()
+    this.editor.postSelectionPath()
+    return true
+  }
+
+  private moveColumnGroup(path: number[], expected: Record<string, string>, direction: -1 | 1) {
+    if(direction !== -1 && direction !== 1) throw new TypeError("Column groups can only move up or down")
+    const group = this.columnElement(path, expected)
+    const table = this.selectedTable
+    if(!group || group.localName !== "colgroup" || group.parentElement !== table || !table) return false
+    const groups = Array.from(table.children).filter((child): child is HTMLTableColElement => child.localName === "colgroup")
+    const position = groups.indexOf(group)
+    const neighbour = groups[position + direction]
+    if(!neighbour) return false
+    direction < 0 ? table.insertBefore(group, neighbour) : table.insertBefore(group, neighbour.nextSibling)
+    this.editor.postSelectionPath()
+    return true
+  }
+
+  private addColumn(path: number[], expected: Record<string, string>) {
+    const group = this.columnElement(path, expected)
+    if(!group || group.localName !== "colgroup") return false
+    const columns = Array.from(group.children).filter(child => child.localName === "col")
+    if(!columns.length) {
+      const span = Math.max(1, Number.parseInt(group.getAttribute("span") ?? "1", 10) || 1)
+      group.removeAttribute("span")
+      for(let index = 0; index < span; index++) group.append(document.createElement("col"))
+    }
+    else group.append(document.createElement("col"))
+    this.editor.postSelectionPath()
+    return true
+  }
+
+  private removeColumn(path: number[], expected: Record<string, string>) {
+    const column = this.columnElement(path, expected)
+    if(!column || column.localName !== "col" || column.parentElement?.localName !== "colgroup") return false
+    const group = column.parentElement
+    column.remove()
+    if(group && !Array.from(group.children).some(child => child.localName === "col")) group.setAttribute("span", "1")
+    this.editor.postSelectionPath()
+    return true
+  }
+
+  private setColumnSpan(path: number[], expected: Record<string, string>, value: string | null) {
+    const element = this.columnElement(path, expected)
+    if(!element) return false
+    if(value !== null && (!/^[1-9]\d*$/.test(value) || Number(value) > 1000)) throw new RangeError("Column span must be between 1 and 1000")
+    if(element.localName === "colgroup" && element.querySelector(":scope > col") && value !== null) return false
+    value === null ? element.removeAttribute("span") : element.setAttribute("span", value)
+    this.editor.postSelectionPath()
+    return true
+  }
+
+  private replaceCell(cell: HTMLTableCellElement, tag: "td" | "th", scope: string | null) {
+    const replacement = document.createElement(tag) as HTMLTableCellElement
+    Array.from(cell.attributes).forEach(attribute => {
+      if(attribute.name === "class") {
+        const classes = attribute.value.split(/\s+/).filter(name => name && !name.startsWith("◆"))
+        if(classes.length) replacement.setAttribute("class", classes.join(" "))
+      }
+      else replacement.setAttribute(attribute.name, attribute.value)
+    })
+    if(tag === "td") {
+      replacement.removeAttribute("scope")
+      replacement.removeAttribute("abbr")
+    }
+    else if(scope) replacement.setAttribute("scope", scope)
+    else replacement.removeAttribute("scope")
+    replacement.append(...Array.from(cell.childNodes))
+    cell.replaceWith(replacement)
+    return replacement
+  }
+
+  private setCellRole(role: TableCellRole) {
+    if(!isTableCellRole(role)) throw new TypeError(`Unsupported table cell role '${String(role)}'`)
+    const table = this.selectedTable
+    if(!table) return false
+    const cells = this.actionCells(buildTableMap(table))
+    if(!cells.length) return false
+    const tag = role === "data" ? "td" : "th"
+    const scope = role === "column-header" ? "col"
+      : role === "row-header" ? "row"
+        : role === "column-group-header" ? "colgroup"
+          : role === "row-group-header" ? "rowgroup"
+            : null
+    const replacements = new Map<HTMLTableCellElement, HTMLTableCellElement>()
+    cells.forEach(cell => replacements.set(cell, this.replaceCell(cell, tag, scope)))
+    const anchor = this.anchorCell ? replacements.get(this.anchorCell) ?? this.anchorCell : null
+    const focus = this.focusCell ? replacements.get(this.focusCell) ?? this.focusCell : null
+    if(anchor?.isConnected && focus?.isConnected) this.selectCells(anchor, focus)
+    else this.editor.postSelectionPath()
+    return true
+  }
+
+  private setCellSemanticAttribute(name: "headers" | "abbr", value: string | null) {
+    const table = this.selectedTable
+    if(!table) return false
+    const cells = this.actionCells(buildTableMap(table))
+    if(!cells.length || name === "abbr" && cells.some(cell => cell.localName !== "th")) return false
+    cells.forEach(cell => value === null ? cell.removeAttribute(name) : cell.setAttribute(name, value))
+    this.editor.postSelectionPath()
+    return true
   }
 
   deleteSelection() {
@@ -825,6 +1187,34 @@ export class TableFeature extends EditorFeature {
     splitTable: ({}: {type: "splitTable"}) => this.splitTable(),
     addTableCaption: ({}: {type: "addTableCaption"}) => this.addCaption(),
     toggleTableCaption: ({}: {type: "toggleTableCaption"}) => this.toggleCaption(),
+    convertTableRows: ({group}: {type: "convertTableRows", group: TableRowGroupType}) => this.convertSelectedRows(group),
+    insertTableRowGroup: ({group}: {type: "insertTableRowGroup", group: TableRowGroupType}) => this.insertRowGroup(group),
+    removeTableRowGroup: ({index, expected}: {
+      type: "removeTableRowGroup", index: number, expected: Record<string, string>
+    }) => this.removeRowGroup(index, expected),
+    moveTableRowGroup: ({index, expected, direction}: {
+      type: "moveTableRowGroup", index: number, expected: Record<string, string>, direction: -1 | 1
+    }) => this.moveRowGroup(index, expected, direction),
+    addTableColumnGroup: ({}: {type: "addTableColumnGroup"}) => this.addColumnGroup(),
+    removeTableColumnGroup: ({path, expected}: {
+      type: "removeTableColumnGroup", path: number[], expected: Record<string, string>
+    }) => this.removeColumnGroup(path, expected),
+    moveTableColumnGroup: ({path, expected, direction}: {
+      type: "moveTableColumnGroup", path: number[], expected: Record<string, string>, direction: -1 | 1
+    }) => this.moveColumnGroup(path, expected, direction),
+    addTableColumnDefinition: ({path, expected}: {
+      type: "addTableColumnDefinition", path: number[], expected: Record<string, string>
+    }) => this.addColumn(path, expected),
+    removeTableColumnDefinition: ({path, expected}: {
+      type: "removeTableColumnDefinition", path: number[], expected: Record<string, string>
+    }) => this.removeColumn(path, expected),
+    setTableColumnSpan: ({path, expected, value}: {
+      type: "setTableColumnSpan", path: number[], expected: Record<string, string>, value: string | null
+    }) => this.setColumnSpan(path, expected, value),
+    setTableCellRole: ({role}: {type: "setTableCellRole", role: TableCellRole}) => this.setCellRole(role),
+    setTableCellSemanticAttribute: ({name, value}: {
+      type: "setTableCellSemanticAttribute", name: "headers" | "abbr", value: string | null
+    }) => this.setCellSemanticAttribute(name, value),
     setTableCellStyle: ({property, value}: {type: "setTableCellStyle", property: TableCellStyle, value: string}) => {
       if(!["background-color", "border-color", "border-style", "border-width"].includes(property)) {
         throw new TypeError(`Unsupported table cell style '${String(property)}'`)

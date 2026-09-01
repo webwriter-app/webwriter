@@ -158,6 +158,12 @@ describe("toolbox", () => {
       canMerge: false,
       canSplit: false,
       hasCaption: false,
+      selectedRowGroup: "tbody",
+      rowGroups: [],
+      canAddHeaderGroup: true,
+      canAddFooterGroup: true,
+      columnGroups: [],
+      cellSemantics: {role: "data", headers: "", abbr: ""},
     }
     await toolbox.updateComplete
     expect(label.textContent).toBe("Table")
@@ -341,7 +347,7 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     let drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"))
     await Promise.all(drawers.map(drawer => drawer.updateComplete))
-    expect(drawers.map(drawer => drawer.label)).toEqual(["Layout", "Borders", "Background"])
+    expect(drawers.map(drawer => drawer.label)).toEqual(["Layout", "Borders", "Background", "Semantics"])
     expect(drawers.every(drawer => drawer.pane && !drawer.collapsed)).toBe(true)
 
     toolButton(toolbox, "Review").click()

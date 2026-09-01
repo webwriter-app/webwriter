@@ -19,6 +19,42 @@ export type TableMap = {
   width: number
 }
 
+export const tableRowGroupTypes = ["thead", "tbody", "tfoot"] as const
+
+export type TableRowGroupType = typeof tableRowGroupTypes[number]
+
+export const tableCellRoles = [
+  "data", "header", "column-header", "row-header", "column-group-header", "row-group-header",
+] as const
+
+export type TableCellRole = typeof tableCellRoles[number]
+
+export type TableRowGroupState = {
+  index: number
+  type: TableRowGroupType
+  rows: number
+  attributes: Record<string, string>
+}
+
+export type TableColumnState = {
+  path: number[]
+  attributes: Record<string, string>
+}
+
+export type TableColumnGroupState = {
+  path: number[]
+  attributes: Record<string, string>
+  columns: TableColumnState[]
+}
+
+export type TableCellSemanticsState = {
+  role: TableCellRole | "mixed"
+  /** Empty means absent on every target; null means the targets differ. */
+  headers: string | null
+  /** Empty means absent on every target; null means the targets differ. */
+  abbr: string | null
+}
+
 export type TableSelectionState = {
   active: boolean
   cellSelection: boolean
@@ -28,6 +64,20 @@ export type TableSelectionState = {
   canMerge: boolean
   canSplit: boolean
   hasCaption: boolean
+  selectedRowGroup: TableRowGroupType | "direct" | "mixed"
+  rowGroups: TableRowGroupState[]
+  canAddHeaderGroup: boolean
+  canAddFooterGroup: boolean
+  columnGroups: TableColumnGroupState[]
+  cellSemantics: TableCellSemanticsState
+}
+
+export function isTableRowGroupType(value: unknown): value is TableRowGroupType {
+  return typeof value === "string" && (tableRowGroupTypes as readonly string[]).includes(value)
+}
+
+export function isTableCellRole(value: unknown): value is TableCellRole {
+  return typeof value === "string" && (tableCellRoles as readonly string[]).includes(value)
 }
 
 export function tableForNode(node: Node | null) {

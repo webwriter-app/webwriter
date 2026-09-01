@@ -100,6 +100,28 @@ describe("DOMEditor collaboration wiring", () => {
     expect((paragraph as HTMLElement).style.getPropertyValue("color")).toBe("rebeccapurple")
   })
 
+  it("synchronizes semantic table cells through undo, redo, and serialization", async () => {
+    document.body.innerHTML = '<table><tbody><tr><td id="name"><strong>Name</strong></td></tr></tbody></table>'
+    await mutationsDelivered()
+    editor.doc.stopCapturing()
+    editor.features.table.selectCells(document.querySelector("td")!)
+
+    expect(editor.features.table.actions.setTableCellRole({
+      type: "setTableCellRole", role: "column-header",
+    })).toBe(true)
+    await mutationsDelivered()
+
+    expect(document.querySelector("th")?.getAttribute("scope")).toBe("col")
+    expect(document.querySelector("th")?.innerHTML).toBe("<strong>Name</strong>")
+    expect(editor.toHTML(true)).toContain('<th id="name" scope="col"><strong>Name</strong></th>')
+    expect((editor.doc.body.firstChild as Y.XmlElement).toString()).toContain('scope="col"')
+
+    editor.features.history.actions.undo({type: "undo"})
+    expect(document.querySelector("td")?.innerHTML).toBe("<strong>Name</strong>")
+    editor.features.history.actions.redo({type: "redo"})
+    expect(document.querySelector("th")?.getAttribute("scope")).toBe("col")
+  })
+
   it("synchronizes authored dialog state while excluding its editing marker", async () => {
     document.body.innerHTML = '<dialog id="notice"><p>Notice</p></dialog>'
     await mutationsDelivered()

@@ -563,4 +563,153 @@ describe("table actions", () => {
     editor.features.table.actions.toggleTableCaption({type: "toggleTableCaption"})
     expect(document.querySelector("caption")).toBeNull()
   })
+
+  it("reports row groups, column definitions, and shared cell semantics without changing the table", () => {
+    document.body.innerHTML = `<table><colgroup span="2" data-size="wide"></colgroup>
+      <thead><tr><th scope="col" headers="group">A</th><th scope="col" headers="group">B</th></tr></thead>
+      <tbody><tr><td>C</td><td>D</td></tr></tbody></table>`
+    const original = editor.toHTML(true)
+    editor.features.table.selectCells(cells()[0], cells()[1])
+
+    const state = editor.features.table.getState()!
+    expect(state.selectedRowGroup).toBe("thead")
+    expect(state.rowGroups.map(group => ({type: group.type, rows: group.rows}))).toEqual([
+      {type: "thead", rows: 1}, {type: "tbody", rows: 1},
+    ])
+    expect(state.canAddHeaderGroup).toBe(false)
+    expect(state.canAddFooterGroup).toBe(true)
+    expect(state.columnGroups).toEqual([expect.objectContaining({
+      attributes: {span: "2", "data-size": "wide"}, columns: [],
+    })])
+    expect(state.cellSemantics).toEqual({role: "column-header", headers: "group", abbr: ""})
+    expect(editor.toHTML(true)).toBe(original)
+  })
+
+  it("converts only selected rows and splits an existing group without losing its authored metadata", () => {
+    document.body.innerHTML = `<table><tbody id="records" data-source="remote">
+      <tr><td>A</td></tr><!--between--><tr><td>B</td></tr><tr><td>C</td></tr>
+    </tbody></table>`
+    editor.features.table.selectCells(cells()[1])
+
+    expect(editor.features.table.actions.convertTableRows({type: "convertTableRows", group: "thead"})).toBe(true)
+
+    const groups = Array.from(document.querySelector("table")!.children)
+    expect(groups.map(group => group.localName)).toEqual(["tbody", "thead", "tbody"])
+    expect(groups.map(group => group.querySelector("tr")?.textContent?.trim())).toEqual(["A", "B", "C"])
+    expect(groups[0]).toHaveAttribute("id", "records")
+    expect(groups[1]).not.toHaveAttribute("id")
+    expect(groups[2]).not.toHaveAttribute("id")
+    expect(groups.every(group => group.getAttribute("data-source") === "remote")).toBe(true)
+    expect(Array.from(groups[0].childNodes).some(node => node.nodeType === Node.COMMENT_NODE)).toBe(true)
+    expect(editor.features.table.selectedCells[0]?.textContent).toBe("B")
+  })
+
+  it("inserts, moves, and unwraps row groups through guarded live state", () => {
+    document.body.innerHTML = '<table><caption>Data</caption><tbody data-part="first"><tr><td>A</td></tr></tbody></table>'
+    editor.features.table.selectCells(cells()[0])
+    expect(editor.features.table.actions.insertTableRowGroup({type: "insertTableRowGroup", group: "thead"})).toBe(true)
+    expect(document.querySelector("table")!.children[1].localName).toBe("thead")
+    expect(document.querySelectorAll("thead th")).toHaveLength(1)
+
+    let state = editor.features.table.getState()!
+    const body = state.rowGroups.find(group => group.type === "tbody")!
+    expect(editor.features.table.actions.moveTableRowGroup({
+      type: "moveTableRowGroup", index: body.index, expected: body.attributes, direction: -1,
+    })).toBe(true)
+    expect(Array.from(document.querySelectorAll("table > thead, table > tbody"), group => group.localName))
+      .toEqual(["tbody", "thead"])
+
+    state = editor.features.table.getState()!
+    const header = state.rowGroups.find(group => group.type === "thead")!
+    expect(editor.features.table.actions.removeTableRowGroup({
+      type: "removeTableRowGroup", index: header.index, expected: header.attributes,
+    })).toBe(true)
+    expect(document.querySelector("thead")).toBeNull()
+    expect(document.querySelector("table > tr > th")).not.toBeNull()
+  })
+
+  it("manages column groups and spans without changing table cells", () => {
+    document.body.innerHTML = '<table><colgroup span="2" data-columns="main"></colgroup><tbody><tr><td>A</td><td>B</td></tr></tbody></table>'
+    editor.features.table.selectCells(cells()[0])
+    const originalCells = cells()
+    let group = editor.features.table.getState()!.columnGroups[0]
+
+    expect(editor.features.table.actions.setTableColumnSpan({
+      type: "setTableColumnSpan", path: group.path, expected: group.attributes, value: "3",
+    })).toBe(true)
+    group = editor.features.table.getState()!.columnGroups[0]
+    expect(editor.features.table.actions.addTableColumnDefinition({
+      type: "addTableColumnDefinition", path: group.path, expected: group.attributes,
+    })).toBe(true)
+    expect(document.querySelectorAll("colgroup > col")).toHaveLength(3)
+    expect(document.querySelector("colgroup")).not.toHaveAttribute("span")
+
+    group = editor.features.table.getState()!.columnGroups[0]
+    const column = group.columns[1]
+    expect(editor.features.table.actions.setTableColumnSpan({
+      type: "setTableColumnSpan", path: column.path, expected: column.attributes, value: "2",
+    })).toBe(true)
+    expect(document.querySelectorAll("col")[1]).toHaveAttribute("span", "2")
+    expect(cells()).toEqual(originalCells)
+
+    expect(editor.features.table.actions.addTableColumnGroup({type: "addTableColumnGroup"})).toBe(true)
+    let groups = editor.features.table.getState()!.columnGroups
+    expect(groups).toHaveLength(2)
+    expect(editor.features.table.actions.moveTableColumnGroup({
+      type: "moveTableColumnGroup",
+      path: groups[1].path,
+      expected: groups[1].attributes,
+      direction: -1,
+    })).toBe(true)
+    groups = editor.features.table.getState()!.columnGroups
+    expect(groups[0].attributes.span).toBe("1")
+    expect(editor.features.table.actions.removeTableColumnGroup({
+      type: "removeTableColumnGroup", path: groups[0].path, expected: groups[0].attributes,
+    })).toBe(true)
+    expect(document.querySelectorAll("colgroup")).toHaveLength(1)
+  })
+
+  it("rejects row and column group actions after their guarded DOM state changes", () => {
+    document.body.innerHTML = '<table><colgroup span="1"></colgroup><tbody data-version="1"><tr><td>A</td></tr></tbody></table>'
+    editor.features.table.selectCells(cells()[0])
+    const state = editor.features.table.getState()!
+    const rowGroup = state.rowGroups[0]
+    const columnGroup = state.columnGroups[0]
+
+    document.querySelector("tbody")!.setAttribute("data-version", "2")
+    document.querySelector("colgroup")!.setAttribute("span", "2")
+
+    expect(editor.features.table.actions.removeTableRowGroup({
+      type: "removeTableRowGroup", index: rowGroup.index, expected: rowGroup.attributes,
+    })).toBe(false)
+    expect(editor.features.table.actions.removeTableColumnGroup({
+      type: "removeTableColumnGroup", path: columnGroup.path, expected: columnGroup.attributes,
+    })).toBe(false)
+    expect(document.querySelector("tbody")).toHaveAttribute("data-version", "2")
+    expect(document.querySelector("colgroup")).toHaveAttribute("span", "2")
+  })
+
+  it("converts selected cells to understandable header roles and edits accessibility relationships", () => {
+    document.body.innerHTML = '<table><tbody><tr><td id="name"><strong>Name</strong></td><td>Value</td></tr></tbody></table>'
+    editor.features.table.selectCells(cells()[0], cells()[1])
+
+    expect(editor.features.table.actions.setTableCellRole({type: "setTableCellRole", role: "column-header"})).toBe(true)
+    expect(cells().every(cell => cell.localName === "th" && cell.getAttribute("scope") === "col")).toBe(true)
+    expect(cells()[0].innerHTML).toBe("<strong>Name</strong>")
+    expect(cells()[0]).toHaveAttribute("id", "name")
+
+    expect(editor.features.table.actions.setTableCellSemanticAttribute({
+      type: "setTableCellSemanticAttribute", name: "headers", value: "group-heading",
+    })).toBe(true)
+    expect(editor.features.table.actions.setTableCellSemanticAttribute({
+      type: "setTableCellSemanticAttribute", name: "abbr", value: "Val",
+    })).toBe(true)
+    expect(cells().every(cell => cell.getAttribute("headers") === "group-heading")).toBe(true)
+    expect(cells().every(cell => cell.getAttribute("abbr") === "Val")).toBe(true)
+
+    expect(editor.features.table.actions.setTableCellRole({type: "setTableCellRole", role: "data"})).toBe(true)
+    expect(cells().every(cell => cell.localName === "td")).toBe(true)
+    expect(cells().every(cell => !cell.hasAttribute("scope") && !cell.hasAttribute("abbr"))).toBe(true)
+    expect(cells().every(cell => cell.getAttribute("headers") === "group-heading")).toBe(true)
+  })
 })

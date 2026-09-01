@@ -100,7 +100,7 @@ import {LocalPackageMonitor} from "../local-package-monitor"
 import {LOCAL_PACKAGE_ROUTE_PREFIX, localPackageUrl, type LocalPackageDirectoryHandle} from "../local-package-worker"
 import {LocalPackageWorkerClient} from "../local-package-worker-client"
 import type {AIDocumentToolCall, AIDocumentToolHandler} from "../ai-client"
-import type {TableSelectionState} from "../table"
+import {isTableCellRole, isTableRowGroupType, type TableSelectionState} from "../table"
 import {
   isGraphicArrangeOperation,
   isGraphicLayerOperation,
@@ -3431,6 +3431,95 @@ export class DomEditor extends LitElement {
     }).finally(() => this.focusEditor())
   }
 
+  private handleTableSemanticAction = (event: Event) => {
+    const detail = (event as CustomEvent<{
+      action?: unknown
+      group?: unknown
+      index?: unknown
+      path?: unknown
+      expected?: unknown
+      direction?: unknown
+      value?: unknown
+      role?: unknown
+      attribute?: unknown
+    }>).detail
+    if(typeof detail?.action !== "string") {
+      this.focusEditor()
+      return
+    }
+    if(detail.action === "convert-rows" && isTableRowGroupType(detail.group)) {
+      void this.execute({type: "convertTableRows", group: detail.group})
+      return
+    }
+    if(detail.action === "add-row-group" && isTableRowGroupType(detail.group)) {
+      void this.execute({type: "insertTableRowGroup", group: detail.group})
+      return
+    }
+    if(detail.action === "add-column-group") {
+      void this.execute({type: "addTableColumnGroup"})
+      return
+    }
+    if(detail.action === "set-cell-role" && isTableCellRole(detail.role)) {
+      void this.execute({type: "setTableCellRole", role: detail.role})
+      return
+    }
+    if(detail.action === "set-cell-attribute"
+      && (detail.attribute === "headers" || detail.attribute === "abbr")
+      && (detail.value === null || typeof detail.value === "string")) {
+      void this.execute({type: "setTableCellSemanticAttribute", name: detail.attribute, value: detail.value})
+      return
+    }
+    const expectedIsValid = !!detail.expected
+      && typeof detail.expected === "object"
+      && !Array.isArray(detail.expected)
+      && Object.entries(detail.expected).every(([name, value]) => Boolean(name) && typeof value === "string")
+    if(!expectedIsValid) {
+      this.focusEditor()
+      return
+    }
+    const expected = detail.expected as Record<string, string>
+    if(detail.action === "remove-row-group" && Number.isInteger(detail.index) && (detail.index as number) >= 0) {
+      void this.execute({type: "removeTableRowGroup", index: detail.index as number, expected})
+      return
+    }
+    if(detail.action === "move-row-group"
+      && Number.isInteger(detail.index) && (detail.index as number) >= 0
+      && (detail.direction === -1 || detail.direction === 1)) {
+      void this.execute({
+        type: "moveTableRowGroup", index: detail.index as number, expected, direction: detail.direction,
+      })
+      return
+    }
+    const pathIsValid = Array.isArray(detail.path)
+      && detail.path.every(index => Number.isInteger(index) && index >= 0)
+    if(!pathIsValid) {
+      this.focusEditor()
+      return
+    }
+    const path = detail.path as number[]
+    if(detail.action === "remove-column-group") {
+      void this.execute({type: "removeTableColumnGroup", path, expected})
+      return
+    }
+    if(detail.action === "move-column-group" && (detail.direction === -1 || detail.direction === 1)) {
+      void this.execute({type: "moveTableColumnGroup", path, expected, direction: detail.direction})
+      return
+    }
+    if(detail.action === "add-column") {
+      void this.execute({type: "addTableColumnDefinition", path, expected})
+      return
+    }
+    if(detail.action === "remove-column") {
+      void this.execute({type: "removeTableColumnDefinition", path, expected})
+      return
+    }
+    if(detail.action === "set-column-span" && (detail.value === null || typeof detail.value === "string")) {
+      void this.execute({type: "setTableColumnSpan", path, expected, value: detail.value})
+      return
+    }
+    this.focusEditor()
+  }
+
   private handleGraphicParameterChange = (event: Event) => {
     const detail = (event as CustomEvent<{name?: unknown, value?: unknown}>).detail
     const allowed = new Set([
@@ -4279,6 +4368,7 @@ export class DomEditor extends LitElement {
           @dialog-attribute-change=${this.handleDialogAttributeChange}
           @table-insert=${this.handleTableInsert}
           @table-style-change=${this.handleTableStyleChange}
+          @table-semantic-action=${this.handleTableSemanticAction}
           @graphic-parameter-change=${this.handleGraphicParameterChange}
           @graphic-layer-action=${this.handleGraphicLayerAction}
           @graphic-viewport-action=${this.handleGraphicViewportAction}
@@ -4407,6 +4497,7 @@ export class DomEditor extends LitElement {
         @dialog-attribute-change=${this.handleDialogAttributeChange}
         @table-insert=${this.handleTableInsert}
         @table-style-change=${this.handleTableStyleChange}
+        @table-semantic-action=${this.handleTableSemanticAction}
         @graphic-parameter-change=${this.handleGraphicParameterChange}
         @graphic-layer-action=${this.handleGraphicLayerAction}
         @graphic-viewport-action=${this.handleGraphicViewportAction}

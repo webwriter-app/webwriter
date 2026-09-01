@@ -9,7 +9,7 @@ import {
 import type {EditorStateSnapshot} from "./editor-state"
 import {isMediaType, type MediaSelectionState} from "./media"
 import type {WebWriterPackage} from "./packages"
-import type {TableSelectionState} from "./table"
+import {isTableCellRole, isTableRowGroupType, type TableSelectionState} from "./table"
 import {isGraphicShapeType, type GraphicSelectionState} from "./graphic"
 import type {DocumentHeadElementState, DocumentHeadState} from "./document-head"
 import {isFormElementType, type FormSelectionState} from "./form"
@@ -650,6 +650,12 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
   if(!dialogIsValid) return false
 
   const table = message.detail.table as Partial<TableSelectionState> | null | undefined
+  const tableAttributesAreValid = (attributes: unknown) => !!attributes
+    && typeof attributes === "object"
+    && !Array.isArray(attributes)
+    && Object.entries(attributes).every(([name, value]) => typeof name === "string" && typeof value === "string")
+  const tablePathIsValid = (path: unknown) => Array.isArray(path)
+    && path.every(index => Number.isInteger(index) && index >= 0)
   const tableIsValid = table === undefined || (
     !!table
     && typeof table === "object"
@@ -661,6 +667,31 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
     && typeof table.canMerge === "boolean"
     && typeof table.canSplit === "boolean"
     && typeof table.hasCaption === "boolean"
+    && (table.selectedRowGroup === "direct" || table.selectedRowGroup === "mixed" || isTableRowGroupType(table.selectedRowGroup))
+    && Array.isArray(table.rowGroups)
+    && table.rowGroups.every(group => !!group
+      && typeof group === "object"
+      && Number.isInteger(group.index) && group.index >= 0
+      && isTableRowGroupType(group.type)
+      && Number.isInteger(group.rows) && group.rows >= 0
+      && tableAttributesAreValid(group.attributes))
+    && typeof table.canAddHeaderGroup === "boolean"
+    && typeof table.canAddFooterGroup === "boolean"
+    && Array.isArray(table.columnGroups)
+    && table.columnGroups.every(group => !!group
+      && typeof group === "object"
+      && tablePathIsValid(group.path)
+      && tableAttributesAreValid(group.attributes)
+      && Array.isArray(group.columns)
+      && group.columns.every(column => !!column
+        && typeof column === "object"
+        && tablePathIsValid(column.path)
+        && tableAttributesAreValid(column.attributes)))
+    && !!table.cellSemantics
+    && typeof table.cellSemantics === "object"
+    && (table.cellSemantics.role === "mixed" || isTableCellRole(table.cellSemantics.role))
+    && (table.cellSemantics.headers === null || typeof table.cellSemantics.headers === "string")
+    && (table.cellSemantics.abbr === null || typeof table.cellSemantics.abbr === "string")
   )
   if(!tableIsValid) return false
 

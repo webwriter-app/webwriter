@@ -224,7 +224,7 @@ describe("mark ribbon controls", () => {
     expect(Array.from(ribbon.shadowRoot!.querySelectorAll(".ribbon-content > ribbon-drawer"))
       .map(drawer => drawer.getAttribute("label")))
       .toEqual([
-        "Marks", "Document", "Section", "Layout", "Borders", "Background",
+        "Marks", "Document", "Section", "Layout", "Borders", "Background", "Semantics",
         "Comments", "Review", "View",
       ])
 
