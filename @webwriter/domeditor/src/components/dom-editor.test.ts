@@ -1379,6 +1379,50 @@ describe("DomEditor.execute()", () => {
       name: "data",
       value: "https://example.test",
     })
+    toolbox.dispatchEvent(new CustomEvent("media-resource-action", {
+      detail: {type: "video", action: "add", resource: "source"},
+      bubbles: true,
+      composed: true,
+    }))
+    expect(execute).toHaveBeenCalledWith({type: "addTimedMediaResource", resource: "source"})
+
+    toolbox.dispatchEvent(new CustomEvent("media-resource-action", {
+      detail: {
+        type: "video",
+        action: "set-attribute",
+        resource: "track",
+        index: 2,
+        expected: {src: "captions.vtt"},
+        attribute: "label",
+        value: "English",
+      },
+      bubbles: true,
+      composed: true,
+    }))
+    expect(execute).toHaveBeenCalledWith({
+      type: "setTimedMediaResourceAttribute",
+      resource: "track",
+      index: 2,
+      expected: {src: "captions.vtt"},
+      name: "label",
+      value: "English",
+    })
+
+    toolbox.dispatchEvent(new CustomEvent("media-resource-action", {
+      detail: {
+        type: "audio",
+        action: "set-fallback",
+        html: "<p>Download audio</p>",
+        expectedHTML: "",
+      },
+      bubbles: true,
+      composed: true,
+    }))
+    expect(execute).toHaveBeenCalledWith({
+      type: "setTimedMediaFallbackHTML",
+      html: "<p>Download audio</p>",
+      expected: "",
+    })
     await Promise.resolve()
     expect(focusEditor).not.toHaveBeenCalled()
     for(const [label, action] of [

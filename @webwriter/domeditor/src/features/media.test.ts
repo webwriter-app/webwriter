@@ -195,6 +195,147 @@ describe("media editing", () => {
     expect(document.querySelector("picture > img")).toHaveAttribute("alt", "A diagram")
   })
 
+  it("manages direct sources and tracks without rebuilding fallback content", () => {
+    document.body.innerHTML = `<audio controls>
+      <source src="first.mp3" type="audio/mpeg">
+      <template data-keep><span>Player helper</span></template>
+      <source src="second.ogg" type="audio/ogg">
+      <track kind="captions" src="captions.vtt" srclang="en" label="English">
+      <p data-fallback>Download the recording.</p>
+    </audio>`
+    const audio = document.querySelector("audio")!
+    const fallback = audio.querySelector("p")!
+    const helper = audio.querySelector("template")!
+    $.selectElement(audio)
+    editor.features.selection.processSelection()
+
+    let state = editor.features.media.getState()!
+    expect(state.sources?.map(source => source.attributes.src)).toEqual(["first.mp3", "second.ogg"])
+    expect(state.tracks?.[0].attributes).toEqual(expect.objectContaining({kind: "captions", srclang: "en"}))
+    expect(state.fallbackHTML).toContain('<p data-fallback="">Download the recording.</p>')
+
+    expect(editor.features.media.actions.addTimedMediaResource({
+      type: "addTimedMediaResource", resource: "source",
+    })).toBe(true)
+    expect(audio.querySelectorAll(":scope > source")).toHaveLength(3)
+    expect(audio.querySelectorAll(":scope > track")).toHaveLength(1)
+    expect(audio.querySelector("p")).toBe(fallback)
+    expect(audio.querySelector("template")).toBe(helper)
+
+    state = editor.features.media.getState()!
+    const added = state.sources!.at(-1)!
+    expect(editor.features.media.actions.setTimedMediaResourceAttribute({
+      type: "setTimedMediaResourceAttribute",
+      resource: "source",
+      index: added.index,
+      expected: added.attributes,
+      name: "src",
+      value: "third.wav",
+    })).toBe(true)
+
+    state = editor.features.media.getState()!
+    const third = state.sources!.at(-1)!
+    expect(editor.features.media.actions.moveTimedMediaResource({
+      type: "moveTimedMediaResource",
+      resource: "source",
+      index: third.index,
+      expected: third.attributes,
+      direction: -1,
+    })).toBe(true)
+    expect(Array.from(audio.querySelectorAll(":scope > source"), source => source.getAttribute("src")))
+      .toEqual(["first.mp3", "third.wav", "second.ogg"])
+
+    state = editor.features.media.getState()!
+    const first = state.sources![0]
+    expect(editor.features.media.actions.removeTimedMediaResource({
+      type: "removeTimedMediaResource",
+      resource: "source",
+      index: first.index,
+      expected: first.attributes,
+    })).toBe(true)
+    expect(Array.from(audio.querySelectorAll(":scope > source"), source => source.getAttribute("src")))
+      .toEqual(["third.wav", "second.ogg"])
+
+    expect(editor.features.media.actions.addTimedMediaResource({
+      type: "addTimedMediaResource", resource: "track",
+    })).toBe(true)
+    state = editor.features.media.getState()!
+    const addedTrack = state.tracks!.at(-1)!
+    expect(addedTrack.attributes.kind).toBe("subtitles")
+    expect(editor.features.media.actions.setTimedMediaResourceAttribute({
+      type: "setTimedMediaResourceAttribute",
+      resource: "track",
+      index: addedTrack.index,
+      expected: addedTrack.attributes,
+      name: "srclang",
+      value: "de",
+    })).toBe(true)
+    state = editor.features.media.getState()!
+    const germanTrack = state.tracks!.at(-1)!
+    expect(editor.features.media.actions.moveTimedMediaResource({
+      type: "moveTimedMediaResource",
+      resource: "track",
+      index: germanTrack.index,
+      expected: germanTrack.attributes,
+      direction: -1,
+    })).toBe(true)
+    expect(Array.from(audio.querySelectorAll(":scope > track"), track => track.getAttribute("srclang")))
+      .toEqual(["de", "en"])
+    state = editor.features.media.getState()!
+    const englishTrack = state.tracks![1]
+    expect(editor.features.media.actions.removeTimedMediaResource({
+      type: "removeTimedMediaResource",
+      resource: "track",
+      index: englishTrack.index,
+      expected: englishTrack.attributes,
+    })).toBe(true)
+    expect(audio.querySelectorAll(":scope > track")).toHaveLength(1)
+    expect(audio.querySelector("p")).toBe(fallback)
+    expect(audio.querySelector("template")).toBe(helper)
+  })
+
+  it("edits scoped fallback HTML while preserving resources and stripping active content", () => {
+    document.body.innerHTML = '<video controls><source src="movie.mp4"><track src="captions.vtt"><p>Old fallback</p></video>'
+    const video = document.querySelector("video")!
+    const source = video.querySelector("source")!
+    const track = video.querySelector("track")!
+    $.selectElement(video)
+    editor.features.selection.processSelection()
+    const expected = editor.features.media.getState()!.fallbackHTML!
+
+    expect(editor.features.media.actions.setTimedMediaFallbackHTML({
+      type: "setTimedMediaFallbackHTML",
+      expected,
+      html: '<p class="download">Download <a href="movie.mp4">the movie</a>.</p><script>alert(1)</script>',
+    })).toEqual({changed: true, removedUnsafeItems: 1})
+
+    expect(video.querySelector("source")).toBe(source)
+    expect(video.querySelector("track")).toBe(track)
+    expect(video.querySelector("script")).toBeNull()
+    expect(video.querySelector("p.download")?.textContent).toBe("Download the movie.")
+    expect($.selectedElement).toBe(video)
+  })
+
+  it("fails safely when a resource row changed after its state was read", () => {
+    document.body.innerHTML = '<video><source src="movie.mp4"></video>'
+    const video = document.querySelector("video")!
+    $.selectElement(video)
+    editor.features.selection.processSelection()
+    const sourceState = editor.features.media.getState()!.sources![0]
+    video.querySelector("source")!.setAttribute("src", "remote.webm")
+
+    expect(editor.features.media.actions.setTimedMediaResourceAttribute({
+      type: "setTimedMediaResourceAttribute",
+      resource: "source",
+      index: sourceState.index,
+      expected: sourceState.attributes,
+      name: "type",
+      value: "video/mp4",
+    })).toBe(false)
+    expect(video.querySelector("source")).not.toHaveAttribute("type")
+    expect(video.querySelector("source")).toHaveAttribute("src", "remote.webm")
+  })
+
   it("converts selected media to a figure without replacing an existing semantic ancestor", () => {
     document.body.innerHTML = '<article data-origin="remote"><img src="diagram.png" alt="Diagram"><p>Explanation</p></article>'
     const image = document.querySelector("img")!

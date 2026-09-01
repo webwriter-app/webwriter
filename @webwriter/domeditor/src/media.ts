@@ -8,9 +8,24 @@ export type WebsiteType = typeof websiteTypes[number]
 
 export const mediaElementSelector = mediaTypes.join(", ")
 
+export const timedMediaResourceTypes = ["source", "track"] as const
+
+export type TimedMediaResourceType = typeof timedMediaResourceTypes[number]
+
+export type TimedMediaResourceState = {
+  /** Current direct child-node offset. Commands fail safely if it is stale. */
+  index: number
+  attributes: Record<string, string>
+}
+
 export type MediaSelectionState = {
   type: MediaType
   attributes: Record<string, string>
+  /** Direct child resources, present only for AUDIO and VIDEO. */
+  sources?: TimedMediaResourceState[]
+  tracks?: TimedMediaResourceState[]
+  /** Authored non-resource children, serialized without editing artifacts. */
+  fallbackHTML?: string
 }
 
 export type MediaAttributeOption = {
@@ -19,6 +34,27 @@ export type MediaAttributeOption = {
   kind?: "text" | "url" | "number" | "boolean" | "select"
   placeholder?: string
   options?: Array<{label: string, value: string}>
+}
+
+export const timedMediaResourceAttributeOptions: Record<TimedMediaResourceType, MediaAttributeOption[]> = {
+  source: [
+    {name: "src", label: "Source URL", kind: "url", placeholder: "https://…"},
+    {name: "type", label: "MIME type", placeholder: "video/mp4"},
+    {name: "media", label: "Media query", placeholder: "(min-width: 800px)"},
+  ],
+  track: [
+    {name: "kind", label: "Kind", kind: "select", options: [
+      {label: "Subtitles", value: "subtitles"},
+      {label: "Captions", value: "captions"},
+      {label: "Descriptions", value: "descriptions"},
+      {label: "Chapters", value: "chapters"},
+      {label: "Metadata", value: "metadata"},
+    ]},
+    {name: "srclang", label: "Language", placeholder: "en"},
+    {name: "label", label: "Label", placeholder: "English"},
+    {name: "src", label: "Track URL", kind: "url", placeholder: "captions.vtt"},
+    {name: "default", label: "Default", kind: "boolean"},
+  ],
 }
 
 const imageAttributes: MediaAttributeOption[] = [
@@ -115,6 +151,10 @@ export function isMediaType(value: unknown): value is MediaType {
 
 export function isWebsiteType(value: unknown): value is WebsiteType {
   return typeof value === "string" && (websiteTypes as readonly string[]).includes(value)
+}
+
+export function isTimedMediaResourceType(value: unknown): value is TimedMediaResourceType {
+  return typeof value === "string" && (timedMediaResourceTypes as readonly string[]).includes(value)
 }
 
 export function mediaContainerForNode(node: Node | null) {

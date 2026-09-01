@@ -58,10 +58,13 @@ import "./ai-settings"
 import {
   mediaAttributeOptions,
   isWebsiteType,
+  timedMediaResourceAttributeOptions,
   websiteTypes,
   type MediaAttributeOption,
   type MediaSelectionState,
   type MediaType,
+  type TimedMediaResourceState,
+  type TimedMediaResourceType,
 } from "../media"
 import type {TableSelectionState} from "../table"
 import {
@@ -2685,6 +2688,101 @@ export class AppRibbon extends LitElement {
       outline-offset: -1px;
     }
 
+    .media-resource-editor {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      padding-top: 0.35rem;
+      border-top: 1px solid #d8e0e9;
+    }
+
+    .media-resource-heading,
+    .media-resource-card-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.25rem;
+      color: #526b86;
+      font-size: 0.64rem;
+      font-weight: 600;
+    }
+
+    .media-resource-add,
+    .media-resource-action {
+      box-sizing: border-box;
+      min-height: 1.35rem;
+      padding: 0.15rem 0.35rem;
+      border: 1px solid #c8d2df;
+      border-radius: 0.2rem;
+      color: #526b86;
+      background: #fff;
+      font: inherit;
+      font-size: 0.6rem;
+      cursor: pointer;
+    }
+
+    .media-resource-action {
+      min-width: 1.35rem;
+      padding: 0.1rem 0.2rem;
+    }
+
+    .media-resource-add:hover,
+    .media-resource-action:hover:not(:disabled) {
+      color: #243447;
+      background: #e8eef5;
+    }
+
+    .media-resource-add:focus-visible,
+    .media-resource-action:focus-visible {
+      outline: 2px solid #3977c7;
+      outline-offset: -1px;
+    }
+
+    .media-resource-action:disabled {
+      opacity: 0.45;
+      cursor: default;
+    }
+
+    .media-resource-card {
+      display: flex;
+      flex-direction: column;
+      gap: 0.28rem;
+      padding: 0.35rem;
+      border: 1px solid #d8e0e9;
+      border-radius: 0.25rem;
+      background: #f7f9fb;
+    }
+
+    .media-resource-card-actions {
+      display: flex;
+      gap: 0.15rem;
+    }
+
+    .media-fallback-help {
+      margin: -0.15rem 0 0;
+      color: #6d7d8f;
+      font-size: 0.56rem;
+      line-height: 0.72rem;
+    }
+
+    .media-toolbox-controls .media-fallback-input {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 3.5rem;
+      resize: vertical;
+      padding: 0.3rem;
+      border: 1px solid #c8d2df;
+      border-radius: 0.2rem;
+      color: #2f3742;
+      background: #fff;
+      font: 0.62rem/0.8rem ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    .media-toolbox-controls .media-fallback-input:focus {
+      border-color: #3977c7;
+      outline: 1px solid #3977c7;
+    }
+
     .graphic-geometry-controls {
       display: grid;
       grid-template-rows: repeat(2, minmax(0, 1fr));
@@ -5026,6 +5124,165 @@ export class AppRibbon extends LitElement {
     `
   }
 
+  private dispatchMediaResourceAction(detail: Record<string, unknown>) {
+    this.dispatchEvent(new CustomEvent("media-resource-action", {
+      detail: {type: this.media?.type, ...detail},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private dispatchMediaResourceAttribute(
+    resource: TimedMediaResourceType,
+    row: TimedMediaResourceState,
+    option: MediaAttributeOption,
+    event: Event,
+  ) {
+    const input = event.currentTarget as HTMLInputElement | HTMLSelectElement
+    const value = option.kind === "boolean"
+      ? (input as HTMLInputElement).checked ? "" : null
+      : input.value || null
+    this.dispatchMediaResourceAction({
+      action: "set-attribute",
+      resource,
+      index: row.index,
+      expected: row.attributes,
+      attribute: option.name,
+      value,
+    })
+  }
+
+  private renderMediaResourceAttribute(
+    resource: TimedMediaResourceType,
+    row: TimedMediaResourceState,
+    option: MediaAttributeOption,
+  ) {
+    const label = `${resource === "source" ? "Source" : "Track"}: ${option.label}`
+    if(option.kind === "boolean") return html`
+      <label class="media-attribute media-attribute-boolean">
+        <span>${option.label}</span>
+        <input
+          type="checkbox"
+          data-ribbon-input-persistent
+          aria-label=${label}
+          .checked=${Object.hasOwn(row.attributes, option.name)}
+          @change=${(event: Event) => this.dispatchMediaResourceAttribute(resource, row, option, event)}
+        />
+      </label>
+    `
+    if(option.kind === "select") return html`
+      <label class="media-attribute">
+        <span>${option.label}</span>
+        <select
+          data-ribbon-input-persistent
+          aria-label=${label}
+          @change=${(event: Event) => this.dispatchMediaResourceAttribute(resource, row, option, event)}
+        >
+          ${option.options?.map(item => html`
+            <option
+              value=${item.value}
+              ?selected=${item.value === (row.attributes[option.name] ?? option.options?.[0]?.value)}
+            >${item.label}</option>
+          `)}
+        </select>
+      </label>
+    `
+    return html`
+      <label class="media-attribute">
+        <span>${option.label}</span>
+        <input
+          data-ribbon-input-persistent
+          type=${option.kind === "url" ? "url" : "text"}
+          aria-label=${label}
+          placeholder=${option.placeholder ?? ""}
+          .value=${row.attributes[option.name] ?? ""}
+          @change=${(event: Event) => this.dispatchMediaResourceAttribute(resource, row, option, event)}
+        />
+      </label>
+    `
+  }
+
+  private renderMediaResourceList(resource: TimedMediaResourceType, rows: TimedMediaResourceState[]) {
+    const singular = resource === "source" ? "source" : "track"
+    const heading = resource === "source" ? "Sources" : "Text tracks"
+    return html`
+      <section class="media-resource-editor" aria-label=${heading}>
+        <div class="media-resource-heading">
+          <span>${heading}</span>
+          <button
+            class="media-resource-add"
+            type="button"
+            @click=${() => this.dispatchMediaResourceAction({action: "add", resource})}
+          >Add ${singular}</button>
+        </div>
+        ${rows.map((row, position) => html`
+          <div class="media-resource-card" data-resource=${resource}>
+            <div class="media-resource-card-heading">
+              <span>${resource === "source" ? "Source" : "Track"} ${position + 1}</span>
+              <span class="media-resource-card-actions">
+                <button
+                  class="media-resource-action"
+                  type="button"
+                  aria-label=${`Move ${singular} ${position + 1} up`}
+                  ?disabled=${position === 0}
+                  @click=${() => this.dispatchMediaResourceAction({
+                    action: "move", resource, index: row.index, expected: row.attributes, direction: -1,
+                  })}
+                >↑</button>
+                <button
+                  class="media-resource-action"
+                  type="button"
+                  aria-label=${`Move ${singular} ${position + 1} down`}
+                  ?disabled=${position === rows.length - 1}
+                  @click=${() => this.dispatchMediaResourceAction({
+                    action: "move", resource, index: row.index, expected: row.attributes, direction: 1,
+                  })}
+                >↓</button>
+                <button
+                  class="media-resource-action"
+                  type="button"
+                  aria-label=${`Remove ${singular} ${position + 1}`}
+                  @click=${() => this.dispatchMediaResourceAction({
+                    action: "remove", resource, index: row.index, expected: row.attributes,
+                  })}
+                >×</button>
+              </span>
+            </div>
+            ${timedMediaResourceAttributeOptions[resource]
+              .map(option => this.renderMediaResourceAttribute(resource, row, option))}
+          </div>
+        `)}
+      </section>
+    `
+  }
+
+  private renderTimedMediaResources() {
+    if(!this.media || this.media.type !== "audio" && this.media.type !== "video") return nothing
+    const fallbackHTML = this.media.fallbackHTML ?? ""
+    return html`
+      ${this.renderMediaResourceList("source", this.media.sources ?? [])}
+      ${this.renderMediaResourceList("track", this.media.tracks ?? [])}
+      <section class="media-resource-editor" aria-label="Fallback content">
+        <label class="media-attribute">
+          <span>Fallback content</span>
+          <textarea
+            class="media-fallback-input"
+            data-ribbon-input-persistent
+            aria-label="Fallback content"
+            placeholder="Content shown when this media cannot be played"
+            .value=${fallbackHTML}
+            @change=${(event: Event) => this.dispatchMediaResourceAction({
+              action: "set-fallback",
+              html: (event.currentTarget as HTMLTextAreaElement).value,
+              expectedHTML: fallbackHTML,
+            })}
+          ></textarea>
+        </label>
+        <p class="media-fallback-help">Shown when the browser cannot play this media. Basic HTML is supported.</p>
+      </section>
+    `
+  }
+
   private renderMediaDrawer() {
     if(!this.media) return nothing
     const selectedType = this.media.type
@@ -5066,6 +5323,7 @@ export class AppRibbon extends LitElement {
             </label>
           ` : ""}
           ${mediaAttributeOptions[selectedType].map(option => this.renderMediaAttribute(selectedType, option))}
+          ${this.renderTimedMediaResources()}
         </div>
       </ribbon-drawer>
     `

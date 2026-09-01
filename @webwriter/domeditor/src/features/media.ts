@@ -1,8 +1,10 @@
 import {EditorFeature} from "."
+import {stripActiveContent} from "../active-content"
 import {$, adoptStylesheet, createStylesheet, getContainer, isElement} from "../utility"
 import {
   isEmptyMedia,
   isMediaType,
+  isTimedMediaResourceType,
   isWebsiteType,
   mediaAttributeOptions,
   mediaContainerForNode,
@@ -10,13 +12,37 @@ import {
   mediaElementSelector,
   mediaSourceAttribute,
   mediaSourceTarget,
+  timedMediaResourceAttributeOptions,
   websiteTypes,
   type MediaSelectionState,
   type MediaType,
+  type TimedMediaResourceState,
+  type TimedMediaResourceType,
   type WebsiteType,
 } from "../media"
 
 const mediaSelector = mediaElementSelector
+const htmlNamespace = "http://www.w3.org/1999/xhtml"
+const maximumMediaFallbackLength = 1_000_000
+
+const isTimedResourceElement = (node: Node, resource?: TimedMediaResourceType): node is Element => (
+  node instanceof Element
+  && node.namespaceURI === htmlNamespace
+  && (resource ? node.localName === resource : isTimedMediaResourceType(node.localName))
+)
+
+const stateAttributes = (element: Element) => Object.fromEntries(Array.from(element.attributes).flatMap(attribute => {
+  if(attribute.name !== "class") return [[attribute.name, attribute.value]]
+  const classes = attribute.value.split(/\s+/).filter(name => name && !name.startsWith("◆"))
+  return classes.length ? [["class", classes.join(" ")]] : []
+}))
+
+const equalAttributes = (element: Element, expected: Record<string, string>) => {
+  const current = stateAttributes(element)
+  const names = Object.keys(current)
+  return names.length === Object.keys(expected).length
+    && names.every(name => current[name] === expected[name])
+}
 
 const mediaPlaceholderStylesheet = createStylesheet(`
   :host {
@@ -308,6 +334,91 @@ export class MediaFeature extends EditorFeature {
       value === null ? target.removeAttribute(name) : target.setAttribute(name, value)
       this.refresh()
     },
+    addTimedMediaResource: ({resource}: {type: "addTimedMediaResource", resource: TimedMediaResourceType}) => {
+      if(!isTimedMediaResourceType(resource)) throw new TypeError(`Unsupported media resource '${String(resource)}'`)
+      const media = this.selectedTimedMedia()
+      if(!media) return false
+      const element = document.createElement(resource)
+      if(resource === "track") element.setAttribute("kind", "subtitles")
+      const resources = this.directResources(media, resource)
+      const reference = resources.at(-1)?.nextSibling
+        ?? (resource === "source" ? this.directResources(media, "track")[0] : null)
+        ?? Array.from(media.childNodes).find(node => !isTimedResourceElement(node))
+        ?? null
+      media.insertBefore(element, reference)
+      this.finishTimedMediaChange()
+      return true
+    },
+    setTimedMediaResourceAttribute: ({resource, index, expected, name, value}: {
+      type: "setTimedMediaResourceAttribute"
+      resource: TimedMediaResourceType
+      index: number
+      expected: Record<string, string>
+      name: string
+      value: string | null
+    }) => {
+      const target = this.timedMediaResource(resource, index, expected)
+      if(!target || !timedMediaResourceAttributeOptions[resource].some(option => option.name === name)) return false
+      value === null ? target.removeAttribute(name) : target.setAttribute(name, value)
+      this.finishTimedMediaChange()
+      return true
+    },
+    moveTimedMediaResource: ({resource, index, expected, direction}: {
+      type: "moveTimedMediaResource"
+      resource: TimedMediaResourceType
+      index: number
+      expected: Record<string, string>
+      direction: -1 | 1
+    }) => {
+      if(direction !== -1 && direction !== 1) throw new TypeError("Media resources can only move up or down")
+      const target = this.timedMediaResource(resource, index, expected)
+      const media = this.selectedTimedMedia()
+      if(!target || !media || target.parentElement !== media) return false
+      const resources = this.directResources(media, resource)
+      const position = resources.indexOf(target)
+      const neighbour = resources[position + direction]
+      if(!neighbour) return false
+      if(direction < 0) media.insertBefore(target, neighbour)
+      else media.insertBefore(target, neighbour.nextSibling)
+      this.finishTimedMediaChange()
+      return true
+    },
+    removeTimedMediaResource: ({resource, index, expected}: {
+      type: "removeTimedMediaResource"
+      resource: TimedMediaResourceType
+      index: number
+      expected: Record<string, string>
+    }) => {
+      const target = this.timedMediaResource(resource, index, expected)
+      if(!target) return false
+      target.remove()
+      this.finishTimedMediaChange()
+      return true
+    },
+    setTimedMediaFallbackHTML: ({html, expected}: {
+      type: "setTimedMediaFallbackHTML"
+      html: string
+      expected: string
+    }) => {
+      if(typeof html !== "string" || typeof expected !== "string") throw new TypeError("Media fallback content must be HTML")
+      if(html.length > maximumMediaFallbackLength) throw new RangeError("Media fallback content is too large")
+      const media = this.selectedTimedMedia()
+      if(!media || this.fallbackHTML(media) !== expected) return false
+      const template = document.createElement("template")
+      template.innerHTML = html
+      this.editor.clearEditingArtifacts(template.content)
+      const removedUnsafeItems = stripActiveContent(template.content)
+      const fragment = template.content
+      if(fragment.querySelector("source, track, audio, video")) {
+        throw new TypeError("Media fallback content cannot contain media resources or nested timed media")
+      }
+      Array.from(media.childNodes)
+        .filter(node => !isTimedResourceElement(node))
+        .forEach(node => node.remove())
+      media.append(fragment)
+      this.finishTimedMediaChange()
+      return {changed: true, removedUnsafeItems}
+    },
     wrapMediaInFigure: ({}: {type: "wrapMediaInFigure"}) => {
       const selected = this.selectedMedia()
       if(!selected || selected.closest("figure")) return false
@@ -367,12 +478,16 @@ export class MediaFeature extends EditorFeature {
     const element = this.selectedMedia()
     if(!element) return
     const target = mediaSourceTarget(element, false)
-    return {
+    const state: MediaSelectionState = {
       type: element.localName as MediaType,
-      attributes: Object.fromEntries(Array.from(target.attributes).flatMap(attribute => (
-        attribute.name === "class" ? [] : [[attribute.name, attribute.value]]
-      ))),
+      attributes: stateAttributes(target),
     }
+    if(element.matches("audio, video")) {
+      state.sources = this.resourceState(element, "source")
+      state.tracks = this.resourceState(element, "track")
+      state.fallbackHTML = this.fallbackHTML(element)
+    }
+    return state
   }
 
   private selectedMedia() {
@@ -380,6 +495,51 @@ export class MediaFeature extends EditorFeature {
     if(selected?.matches(mediaSelector)) return mediaContainerForNode(selected)
     const container = $.anchorContainer
     return isElement(container) ? mediaContainerForNode(container) : null
+  }
+
+  private selectedTimedMedia() {
+    const media = this.selectedMedia()
+    return media?.matches("audio, video") ? media : null
+  }
+
+  private directResources(media: Element, resource: TimedMediaResourceType) {
+    return Array.from(media.children).filter(child => isTimedResourceElement(child, resource))
+  }
+
+  private resourceState(media: Element, resource: TimedMediaResourceType): TimedMediaResourceState[] {
+    return Array.from(media.childNodes).flatMap((node, index) => (
+      isTimedResourceElement(node, resource)
+        ? [{index, attributes: stateAttributes(node)}]
+        : []
+    ))
+  }
+
+  private timedMediaResource(resource: TimedMediaResourceType, index: number, expected: Record<string, string>) {
+    if(!isTimedMediaResourceType(resource)
+      || !Number.isInteger(index) || index < 0
+      || !expected || typeof expected !== "object" || Array.isArray(expected)
+      || Object.entries(expected).some(([name, value]) => !name || typeof value !== "string")) return null
+    const media = this.selectedTimedMedia()
+    const target = media?.childNodes.item(index)
+    return target && isTimedResourceElement(target, resource) && equalAttributes(target, expected)
+      ? target
+      : null
+  }
+
+  private fallbackHTML(media: Element) {
+    const fragment = document.createDocumentFragment()
+    Array.from(media.childNodes).forEach(node => {
+      if(!isTimedResourceElement(node)) fragment.append(node.cloneNode(true))
+    })
+    this.editor.clearEditingArtifacts(fragment)
+    const container = document.createElement("div")
+    container.append(fragment)
+    return container.innerHTML
+  }
+
+  private finishTimedMediaChange() {
+    this.refresh()
+    this.editor.postSelectionPath()
   }
 
   private setSource(element: Element, source: string) {

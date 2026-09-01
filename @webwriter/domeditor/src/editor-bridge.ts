@@ -579,14 +579,26 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
   if(!elementIsValid) return false
 
   const media = message.detail.media as Partial<MediaSelectionState> | null | undefined
+  const mediaAttributesAreValid = (attributes: unknown) => !!attributes
+    && typeof attributes === "object"
+    && !Array.isArray(attributes)
+    && Object.entries(attributes).every(([name, value]) => typeof name === "string" && typeof value === "string")
+  const mediaResourcesAreValid = (resources: unknown) => resources === undefined || Array.isArray(resources)
+    && resources.every(resource => !!resource
+      && typeof resource === "object"
+      && Number.isInteger(resource.index)
+      && resource.index >= 0
+      && mediaAttributesAreValid(resource.attributes))
   const mediaIsValid = media === undefined || (
     !!media
     && typeof media === "object"
     && isMediaType(media.type)
-    && !!media.attributes
-    && typeof media.attributes === "object"
-    && !Array.isArray(media.attributes)
-    && Object.entries(media.attributes).every(([name, value]) => typeof name === "string" && typeof value === "string")
+    && mediaAttributesAreValid(media.attributes)
+    && mediaResourcesAreValid(media.sources)
+    && mediaResourcesAreValid(media.tracks)
+    && (media.fallbackHTML === undefined || typeof media.fallbackHTML === "string")
+    && (media.type === "audio" || media.type === "video"
+      || media.sources === undefined && media.tracks === undefined && media.fallbackHTML === undefined)
   )
   if(!mediaIsValid) return false
 

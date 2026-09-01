@@ -28,8 +28,10 @@ import {isWidgetShadowInteraction} from "../utility"
 import {stripActiveContent} from "../active-content"
 import {
   isMediaType,
+  isTimedMediaResourceType,
   isWebsiteType,
   mediaAttributeOptions,
+  timedMediaResourceAttributeOptions,
   type MediaSelectionState,
 } from "../media"
 import {
@@ -3065,6 +3067,80 @@ export class DomEditor extends LitElement {
     })
   }
 
+  private handleMediaResourceAction = (event: Event) => {
+    const detail = (event as CustomEvent<{
+      type?: unknown
+      action?: unknown
+      resource?: unknown
+      index?: unknown
+      expected?: unknown
+      attribute?: unknown
+      value?: unknown
+      direction?: unknown
+      html?: unknown
+      expectedHTML?: unknown
+    }>).detail
+    if((detail?.type !== "audio" && detail?.type !== "video") || typeof detail.action !== "string") {
+      this.focusEditor()
+      return
+    }
+    if(detail.action === "set-fallback") {
+      if(typeof detail.html !== "string" || typeof detail.expectedHTML !== "string") {
+        this.focusEditor()
+        return
+      }
+      void this.execute({type: "setTimedMediaFallbackHTML", html: detail.html, expected: detail.expectedHTML})
+      return
+    }
+    if(!isTimedMediaResourceType(detail.resource)) {
+      this.focusEditor()
+      return
+    }
+    if(detail.action === "add") {
+      void this.execute({type: "addTimedMediaResource", resource: detail.resource})
+      return
+    }
+    const expectedIsValid = !!detail.expected
+      && typeof detail.expected === "object"
+      && !Array.isArray(detail.expected)
+      && Object.entries(detail.expected).every(([name, value]) => Boolean(name) && typeof value === "string")
+    if(!Number.isInteger(detail.index) || (detail.index as number) < 0 || !expectedIsValid) {
+      this.focusEditor()
+      return
+    }
+    const index = detail.index as number
+    const expected = detail.expected as Record<string, string>
+    if(detail.action === "remove") {
+      void this.execute({type: "removeTimedMediaResource", resource: detail.resource, index, expected})
+      return
+    }
+    if(detail.action === "move" && (detail.direction === -1 || detail.direction === 1)) {
+      void this.execute({
+        type: "moveTimedMediaResource",
+        resource: detail.resource,
+        index,
+        expected,
+        direction: detail.direction,
+      })
+      return
+    }
+    if(detail.action === "set-attribute"
+      && typeof detail.attribute === "string"
+      && timedMediaResourceAttributeOptions[detail.resource].some(option => option.name === detail.attribute)
+      && (detail.value === null || typeof detail.value === "string")) {
+      void this.execute({
+        type: "setTimedMediaResourceAttribute",
+        resource: detail.resource,
+        index,
+        expected,
+        name: detail.attribute,
+        value: detail.value,
+      })
+      return
+    }
+    this.focusEditor()
+  }
+
   private handleElementAttributeChange = (event: Event) => {
     const detail = (event as CustomEvent<{
       path?: unknown
@@ -4134,6 +4210,7 @@ export class DomEditor extends LitElement {
           @heading-group-level-change=${this.handleHeadingGroupLevelChange}
           @comment-action=${this.handleCommentAction}
           @media-attribute-change=${this.handleMediaAttributeChange}
+          @media-resource-action=${this.handleMediaResourceAction}
           @element-attribute-change=${this.handleElementAttributeChange}
           @media-type-change=${this.handleMediaTypeChange}
           @form-attribute-change=${this.handleFormAttributeChange}
@@ -4260,6 +4337,7 @@ export class DomEditor extends LitElement {
         @heading-group-level-change=${this.handleHeadingGroupLevelChange}
         @comment-action=${this.handleCommentAction}
         @media-attribute-change=${this.handleMediaAttributeChange}
+        @media-resource-action=${this.handleMediaResourceAction}
         @element-attribute-change=${this.handleElementAttributeChange}
         @media-type-change=${this.handleMediaTypeChange}
         @form-attribute-change=${this.handleFormAttributeChange}
