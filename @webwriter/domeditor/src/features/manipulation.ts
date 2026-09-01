@@ -911,15 +911,12 @@ export class ManipulationFeature extends EditorFeature {
 
   /** Action handlers, addressable by action type through the editor. */
   actions = {
-    insert: ({html, strict}: {type: "insert", html: string, strict?: boolean}) => {
-      const frag = htmlToFragment(html)
-      this.insert(frag, 0, strict)
-    },
+    insert: ({html, strict}: {type: "insert", html: string, strict?: boolean}) => this.insertHTML(html, strict),
     delete: ({direction}: {type: "delete", direction?: "forward" | "backward"}) => {
       this.delete(direction)
     },
     wrap: ({wrapper}: {type: "wrap", wrapper: string}) => {
-      this.wrap(htmlToFragment(wrapper))
+      this.wrap(this.editor.parseHTMLFragment(wrapper).fragment)
     },
     lift: ({}: {type: "lift"}) => {
       this.lift()
@@ -1467,10 +1464,20 @@ export class ManipulationFeature extends EditorFeature {
    * text node, so text containing markup characters is never interpreted as
    * HTML. */
   #clipboardContentToFragment(html: string, text: string) {
-    const fragment = html ? htmlToFragment(html) : this.plainTextClipboardFragment(text)
-    this.editor.clearEditingArtifacts(fragment)
+    const fragment = html
+      ? this.editor.parseHTMLFragment(html).fragment
+      : this.plainTextClipboardFragment(text)
     markWidgetsEditable(fragment)
     return fragment
+  }
+
+  /** Sanitizes, schema-corrects, and inserts arbitrary HTML through the same
+   * structural placement path as HTML clipboard content. */
+  insertHTML(html: string, strict=false) {
+    const {fragment} = this.editor.parseHTMLFragment(html)
+    markWidgetsEditable(fragment)
+    if(strict) this.insert(fragment, 0, true)
+    else this.insertClipboardFragment(fragment)
   }
 
   /** Reads clipboard data available synchronously on paste/beforeinput. */

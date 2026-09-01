@@ -25,6 +25,10 @@ export class DomEditorToolbox extends AppRibbon {
     activeTool: {type: String, attribute: "active-tool", reflect: true},
     selectionPath: {attribute: false},
     documentSelected: {type: Boolean, attribute: "document-selected"},
+    htmlMode: {type: Boolean, attribute: "html-mode", reflect: true},
+    htmlSource: {type: String, attribute: false},
+    htmlPending: {type: Boolean, attribute: "html-pending", reflect: true},
+    htmlSourceError: {type: String, attribute: false},
   }
 
   static styles = css`
@@ -51,6 +55,10 @@ export class DomEditorToolbox extends AppRibbon {
     :host([active-tool]) {
       width: 200px;
       margin-left: 0;
+    }
+
+    :host([html-mode]) {
+      width: 400px;
     }
 
     :host([hidden]) {
@@ -226,7 +234,7 @@ export class DomEditorToolbox extends AppRibbon {
       top: 30px;
       right: 0;
       bottom: 0;
-      width: 200px;
+      width: 100%;
       min-height: 0;
       border-left: 1px solid #a8a8a8;
       background: #f2f2f2;
@@ -258,6 +266,137 @@ export class DomEditorToolbox extends AppRibbon {
 
     .toolbox-pane-content > ribbon-drawer[layout="element-style"] {
       flex-basis: auto;
+    }
+
+    .html-source-editor {
+      box-sizing: border-box;
+      display: flex;
+      flex: 1 1 auto;
+      flex-direction: column;
+      min-height: 0;
+      padding: 0.65rem;
+    }
+
+    .html-source-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 0 0 0.45rem;
+      color: #52606d;
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+
+    .html-source-status {
+      color: #0f766e;
+      font-weight: 500;
+    }
+
+    .html-source-input {
+      box-sizing: border-box;
+      flex: 1 1 auto;
+      width: 100%;
+      min-height: 8rem;
+      padding: 0.65rem;
+      border: 1px solid #c7ccd1;
+      border-radius: 0.35rem;
+      outline: none;
+      color: #1f2937;
+      background: #fafafa;
+      font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+      resize: none;
+      tab-size: 2;
+    }
+
+    .html-source-input:focus {
+      border-color: #6388ad;
+      box-shadow: 0 0 0 2px rgb(57 119 199 / 14%);
+    }
+
+    .html-source-error {
+      margin: 0.45rem 0 0;
+      color: #b42318;
+      font-size: 0.7rem;
+    }
+
+    .edit-mode-footer {
+      box-sizing: border-box;
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 0.35rem;
+      min-height: 38px;
+      padding: 0.35rem 0.45rem;
+      border-top: 1px solid #c8c8c8;
+      background: #e9e9e9;
+    }
+
+    .html-mode-toggle,
+    .html-source-action {
+      box-sizing: border-box;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35rem;
+      min-height: 28px;
+      margin: 0;
+      padding: 0.3rem 0.5rem;
+      border: 1px solid transparent;
+      border-radius: 0.25rem;
+      color: #46576a;
+      background: transparent;
+      font: 600 0.72rem/1 system-ui, sans-serif;
+      cursor: pointer;
+    }
+
+    .html-mode-toggle[aria-pressed="true"] {
+      border-color: #8ba5be;
+      color: #153b5c;
+      background: #dbe7f2;
+    }
+
+    .html-mode-toggle:hover:not(:disabled),
+    .html-source-action:hover:not(:disabled) {
+      background: #dbe7f2;
+    }
+
+    .html-mode-toggle:focus-visible,
+    .html-source-action:focus-visible {
+      outline: 2px solid #3977c7;
+      outline-offset: 1px;
+    }
+
+    .html-mode-toggle:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+
+    .toolbox-tab-button:disabled,
+    .toolbox-tab-close:disabled {
+      opacity: 0.45;
+      cursor: default;
+    }
+
+    .html-mode-toggle svg,
+    .html-source-action svg {
+      display: block;
+      width: 15px;
+      height: 15px;
+    }
+
+    .html-source-actions {
+      display: flex;
+      gap: 0.2rem;
+      margin-left: auto;
+    }
+
+    .html-source-action.apply {
+      color: white;
+      background: #0f766e;
+    }
+
+    .html-source-action.apply:hover:not(:disabled) {
+      background: #115e59;
     }
 
     @supports (grid-template-rows: subgrid) {
@@ -293,6 +432,10 @@ export class DomEditorToolbox extends AppRibbon {
   activeTool: ToolboxTool | null = null
   selectionPath: SelectionPathItem[] = []
   documentSelected = false
+  htmlMode = false
+  htmlSource = ""
+  htmlPending = false
+  htmlSourceError = ""
 
   protected get elementStyleEditorOrientation(): "vertical" {
     return "vertical"
@@ -341,6 +484,7 @@ export class DomEditorToolbox extends AppRibbon {
 
   selectTool(tool: ToolboxTool | null) {
     const nextTool = tool
+    if(this.htmlPending && nextTool !== "Edit") return
     if(this.activeTool === nextTool) return
     const previousMenu = this.activeMenu
     this.dismissDrawers()
@@ -359,6 +503,73 @@ export class DomEditorToolbox extends AppRibbon {
       bubbles: true,
       composed: true,
     }))
+  }
+
+  private toggleHTMLMode() {
+    if(this.htmlPending) return
+    this.dispatchEvent(new CustomEvent<{enabled: boolean}>("html-mode-change", {
+      detail: {enabled: !this.htmlMode},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private changeHTMLSource(event: Event) {
+    const value = (event.currentTarget as HTMLTextAreaElement).value
+    this.dispatchEvent(new CustomEvent<{value: string}>("html-source-change", {
+      detail: {value},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private renderHTMLSourceEditor() {
+    return html`
+      <section class="html-source-editor" aria-label="Selected HTML source">
+        <div class="html-source-heading">
+          <span>Selected HTML</span>
+          ${this.htmlPending ? html`<span class="html-source-status">Pending change</span>` : ""}
+        </div>
+        <textarea
+          class="html-source-input"
+          aria-label="Selected HTML"
+          .value=${this.htmlSource}
+          spellcheck="false"
+          @input=${this.changeHTMLSource}
+        ></textarea>
+        ${this.htmlSourceError ? html`<p class="html-source-error" role="alert">${this.htmlSourceError}</p>` : ""}
+      </section>
+    `
+  }
+
+  private renderEditModeFooter() {
+    return html`
+      <footer class="edit-mode-footer">
+        <button
+          class="html-mode-toggle"
+          type="button"
+          aria-label=${this.htmlMode ? "Show visual editing tools" : "Edit selection as HTML"}
+          title=${this.htmlMode ? "Visual editing" : "Edit HTML"}
+          aria-pressed=${this.htmlMode}
+          ?disabled=${this.htmlPending}
+          @click=${this.toggleHTMLMode}
+        >${ribbonIcon("Code")}<span>HTML</span></button>
+        ${this.htmlMode && this.htmlPending ? html`
+          <div class="html-source-actions">
+            <button
+              class="html-source-action discard"
+              type="button"
+              @click=${() => this.dispatchEvent(new CustomEvent("html-source-discard", {bubbles: true, composed: true}))}
+            >${ribbonIcon("Reject")}<span>Discard</span></button>
+            <button
+              class="html-source-action apply"
+              type="button"
+              @click=${() => this.dispatchEvent(new CustomEvent("html-source-apply", {bubbles: true, composed: true}))}
+            >${ribbonIcon("Accept")}<span>Apply</span></button>
+          </div>
+        ` : ""}
+      </footer>
+    `
   }
 
   protected updated(changed: Map<string, unknown>) {
@@ -402,6 +613,7 @@ export class DomEditorToolbox extends AppRibbon {
                   title=${contextualLabel ? `Edit ${contextualLabel}` : tool.label}
                   aria-controls="toolbox-pane"
                   aria-selected=${active}
+                  ?disabled=${this.htmlPending && tool.label !== "Edit"}
                   @click=${() => this.selectTool(tool.label)}
                 >
                   <span class="toolbox-tab-icon" aria-hidden="true">${ribbonIcon(tool.icon)}</span>
@@ -418,7 +630,7 @@ export class DomEditorToolbox extends AppRibbon {
                   title="Close"
                   aria-hidden=${!active}
                   tabindex=${active ? 0 : -1}
-                  ?disabled=${!active}
+                  ?disabled=${!active || this.htmlPending}
                   @click=${() => this.selectTool(null)}
                 >${ribbonIcon("Reject")}</button>
               </div>
@@ -434,8 +646,11 @@ export class DomEditorToolbox extends AppRibbon {
           ?hidden=${this.activeTool === null}
         >
           <div class="toolbox-pane-content">
-            ${this.activeTool ? this.renderDrawers() : ""}
+            ${this.activeTool === "Edit" && this.htmlMode
+              ? this.renderHTMLSourceEditor()
+              : this.activeTool ? this.renderDrawers() : ""}
           </div>
+          ${this.activeTool === "Edit" ? this.renderEditModeFooter() : ""}
         </aside>
       </div>
     `

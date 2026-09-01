@@ -224,6 +224,23 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     editor.features.manipulation.actions.insert({type: "insert", html: "<p></p>"})
     expectBodyToBe("<p></p>")
   })
+  it("sanitizes arbitrary HTML while preserving safe inline styles", () => {
+    editor.features.manipulation.actions.insert({
+      type: "insert",
+      html: '<style>body { display: none }</style><link rel="stylesheet"><p style="color: red" onclick="evil()">Safe<script>while(true) {}</script></p>',
+    })
+
+    expectBodyToBe('<p style="color: red">Safe</p>')
+    expect(document.querySelector("script, style, link[rel~='stylesheet']")).toBeNull()
+  })
+  it("schema-corrects arbitrary HTML before insertion", () => {
+    const correct = vi.spyOn(editor.schema, "checkAndCorrect")
+
+    editor.features.manipulation.actions.insert({type: "insert", html: "<ul><p>Item</p></ul>"})
+
+    expect(correct).toHaveBeenCalledWith(expect.any(HTMLBodyElement), true)
+    expect(document.querySelector("ul")?.firstElementChild?.localName).toBe("li")
+  })
   it("marks widgets in HTML inserted through its action handler editable", () => {
     editor.features.manipulation.actions.insert({
       type: "insert",

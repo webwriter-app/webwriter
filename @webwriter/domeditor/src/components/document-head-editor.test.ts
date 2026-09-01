@@ -11,7 +11,6 @@ import {
   type DocumentHeadElementState,
   type DocumentHeadState,
 } from "../document-head"
-import {documentThemes} from "../document-themes"
 import type {RibbonDrawer} from "./ribbon-drawer"
 
 const state = (values: Partial<DocumentHeadState> = {}): DocumentHeadState => ({
@@ -67,12 +66,11 @@ describe("document head form", () => {
     )
   })
 
-  it("uses editable language suggestions and a two-row theme preview picker", async () => {
+  it("uses editable language suggestions without offering authored themes", async () => {
     const editor = await mount("common", state({
       title: "Old",
       generator: WEBWRITER_GENERATOR,
       language: "de",
-      theme: "base",
     }))
     const actions: DocumentHeadAction[] = []
     editor.addEventListener("document-head-action", event => actions.push((event as CustomEvent<DocumentHeadAction>).detail))
@@ -89,22 +87,9 @@ describe("document head form", () => {
     languageInput.dispatchEvent(new InputEvent("input", {bubbles: true}))
     languageInput.dispatchEvent(new Event("change", {bubbles: true}))
 
-    const theme = editor.shadowRoot!.querySelector<HTMLElement & {updateComplete: Promise<unknown>}>("document-theme-picker")!
-    await theme.updateComplete
-    theme.shadowRoot!.querySelector<HTMLButtonElement>(".control")!.click()
-    await theme.updateComplete
-    const themeOptions = Array.from(theme.shadowRoot!.querySelectorAll<HTMLButtonElement>('[role="option"]'))
-    theme.shadowRoot!.querySelector<HTMLButtonElement>('[role="option"][data-value="water"]')!.click()
-
-    expect(themeOptions).toHaveLength(documentThemes.length + 1)
-    expect(themeOptions.every(option => option.querySelector('[data-placeholder] .type-preview')?.textContent === "Aa Default"))
-      .toBe(true)
-    expect(themeOptions.every(option => option.querySelectorAll(".swatch").length === 4)).toBe(true)
-    expect(editor.shadowRoot!.querySelector(".theme-field"))
-      .toHaveStyle({gridColumn: "3", gridRow: "1 / 3"})
+    expect(editor.shadowRoot!.querySelector("document-theme-picker")).toBeNull()
     expect(actions).toContainEqual({type: "setDocumentHeadField", field: "title", value: "New title"})
     expect(actions).toContainEqual({type: "setDocumentHeadField", field: "language", value: "x-klingon"})
-    expect(actions).toContainEqual({type: "setDocumentHeadField", field: "theme", value: "water"})
     expect(editor.shadowRoot!.querySelector('input[name="description"]')).toBeNull()
     expect(editor.shadowRoot!.querySelector('input[name="keywords"]')).toBeNull()
     expect(editor.shadowRoot!.querySelector(".generator-control")).toBeNull()
@@ -236,15 +221,11 @@ describe("document head form", () => {
     expect(editor.shadowRoot!.querySelector('[data-head-id="head-title"]')).toBeNull()
     expect(editor.shadowRoot!.querySelector('[data-head-id="head-title-duplicate"]')).not.toBeNull()
     expect(editor.shadowRoot!.querySelectorAll(".entry")).toHaveLength(2)
-    const content = editor.shadowRoot!.querySelector<HTMLTextAreaElement>('[data-head-id="head-script"] .content')!
-    content.value = "updated()"
-    content.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(editor.shadowRoot!.querySelector('[data-head-id="head-script"] .content')).toBeNull()
+    expect(editor.shadowRoot!.querySelector('[data-head-id="head-script"] .blocked-content')).not.toBeNull()
     editor.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Remove Script"]')!.click()
 
-    expect(actions).toEqual([
-      {type: "setDocumentHeadElementContent", id: "head-script", value: "updated()"},
-      {type: "removeDocumentHeadElement", id: "head-script"},
-    ])
+    expect(actions).toEqual([{type: "removeDocumentHeadElement", id: "head-script"}])
   })
 
   it("opens only the extra attributes for a common field", async () => {

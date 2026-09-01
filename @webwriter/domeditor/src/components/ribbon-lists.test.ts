@@ -22,7 +22,7 @@ describe("list ribbon drawer", () => {
       "Paragraph", "Section", "Heading", "Details",
       "List", "Table",
       "Image", "Graphic", "Audio", "Website", "Video", "Formula",
-      "Form", "Script",
+      "Form", "HTML",
     ])
   })
 
@@ -51,7 +51,7 @@ describe("list ribbon drawer", () => {
     expect(button("Media").submenu.map(item => typeof item === "string" ? item : item.label))
       .toEqual(["Image", "Audio", "Video", "Graphic", "Formula", "Website"])
     expect(button("Other").submenu.map(item => typeof item === "string" ? item : item.label))
-      .toEqual(["Form", "Script", "Details"])
+      .toEqual(["Form", "HTML", "Details"])
     expect(button("Media").action).toBe("Image")
     expect(button("Media").dropdownOnClick).toBe(false)
 
@@ -70,7 +70,7 @@ describe("list ribbon drawer", () => {
     }))
   })
 
-  it("groups form, script, divider, and dialog insertions under their primary buttons", async () => {
+  it("groups form, heading, and dialog insertions while keeping HTML direct", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Start"
     document.body.append(ribbon)
@@ -87,7 +87,9 @@ describe("list ribbon drawer", () => {
     expect(submenuTags(button("Elements", "Form"))).toEqual([
       "fieldset", "label", "input", "textarea", "select", "datalist", "button", "output", "meter", "progress",
     ])
-    expect(submenuTags(button("Elements", "Script"))).toEqual(["script", "style", "canvas", "template", "slot"])
+    expect(button("Elements", "HTML").icon).toBe("Code")
+    expect(button("Elements", "HTML").submenu).toEqual([])
+    expect(button("Elements", "Script")).toBeNull()
     expect(submenuTags(button("Elements", "Heading"))).toEqual(["h2", "h3", "h4", "h5", "h6", "hr"])
     expect(submenuTags(button("Elements", "Details"))).toEqual(["dialog"])
   })
@@ -120,16 +122,17 @@ describe("list ribbon drawer", () => {
     await ribbon.updateComplete
 
     const elements = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Elements"]')!
-    const buttons = ["Section", "Heading", "Details", "Form", "Script"].map(label =>
+    const buttons = ["Section", "Heading", "Details", "Form", "HTML"].map(label =>
       elements.querySelector<RibbonButton>(`ribbon-button[label="${label}"]`)!,
     )
     await Promise.all([elements.updateComplete, ...buttons.map(button => button.updateComplete)])
 
     expect(elements.layoutWidths.expanded).toBe(412)
     expect(getComputedStyle(elements.shadowRoot!.querySelector<HTMLElement>(".controls")!).gridAutoColumns).toBe("3.5rem")
-    for(const button of buttons.filter(button => button.label !== "Section")) {
+    for(const button of buttons.filter(button => button.label !== "Section" && button.label !== "HTML")) {
       expect(button.shadowRoot!.querySelector('.submenu-trigger[aria-haspopup="menu"]')).not.toBeNull()
     }
+    expect(buttons.find(button => button.label === "HTML")!.shadowRoot!.querySelector(".submenu-trigger")).toBeNull()
     expect(buttons.find(button => button.label === "Section")!.shadowRoot!
       .querySelector('.submenu-trigger[aria-haspopup="dialog"]')).not.toBeNull()
   })

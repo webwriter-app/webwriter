@@ -157,10 +157,12 @@ describe("DependencyFeature", () => {
 
     expect(getPackage).toHaveBeenCalledWith({name: "@webwriter/demo", version: "1.2.3"})
     const assets = append.mock.calls.flat()
-    expect(assets.find((asset): asset is HTMLLinkElement => asset instanceof HTMLLinkElement)?.href)
-      .toBe("https://cdn.jsdelivr.net/npm/@webwriter/demo@1.2.3/dist/demo.css")
-    expect(assets.find((asset): asset is HTMLScriptElement => asset instanceof HTMLScriptElement)?.src)
-      .toBe("https://cdn.jsdelivr.net/npm/@webwriter/demo@1.2.3/dist/demo.js")
+    const style = assets.find((asset): asset is HTMLLinkElement => asset instanceof HTMLLinkElement)!
+    const script = assets.find((asset): asset is HTMLScriptElement => asset instanceof HTMLScriptElement)!
+    expect(style.href).toBe("https://cdn.jsdelivr.net/npm/@webwriter/demo@1.2.3/dist/demo.css")
+    expect(script.src).toBe("https://cdn.jsdelivr.net/npm/@webwriter/demo@1.2.3/dist/demo.js")
+    expect(style.nonce).toBe(editor.trustedScriptNonce)
+    expect(script.nonce).toBe(editor.trustedScriptNonce)
     expect(globalThis.DOMEDITOR_PACKAGE_ITEMS).toEqual([
       expect.objectContaining({name: "Demo Widget", tag: "webwriter-demo"}),
     ])

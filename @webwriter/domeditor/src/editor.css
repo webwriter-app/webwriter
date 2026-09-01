@@ -1746,6 +1746,14 @@ body::part(transform-overlay-restorer-hidden) {
   background-image: linear-gradient(rgb(124 58 237 / 8%), rgb(124 58 237 / 8%));
 }
 
+/* Source edits stay outside the authored DOM until explicitly applied. The
+ * current replacement target remains visible but read-only while pending. */
+.◆html-source-pending {
+  outline: 3px solid #0f766e !important;
+  outline-offset: 3px;
+  background-image: linear-gradient(rgb(13 148 136 / 10%), rgb(13 148 136 / 10%));
+}
+
 .◆ai-preview-pulse {
   animation: ◆ai-preview-pulse 1.2s ease-out;
 }

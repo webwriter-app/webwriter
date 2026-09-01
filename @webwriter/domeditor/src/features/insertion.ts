@@ -472,9 +472,8 @@ export class InsertionFeature extends EditorFeature {
       return
     }
     range.deleteContents()
-    const template = document.createElement("template")
-    template.innerHTML = html
-    const nodes = Array.from(template.content.childNodes)
+    const fragment = this.editor.parseHTMLFragment(html).fragment
+    const nodes = Array.from(fragment.childNodes)
     if(!nodes.length) {
       this.close()
       return
@@ -494,7 +493,7 @@ export class InsertionFeature extends EditorFeature {
       replacement.replaceWith(...nodes)
     }
     else {
-      range.insertNode(template.content)
+      range.insertNode(fragment)
     }
     const last = nodes.at(-1)!
     if(isElement(last) && last.matches("ul, ol, dl, menu")) {

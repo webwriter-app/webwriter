@@ -3,7 +3,8 @@ import {afterEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
 import type {EditorStateSnapshot} from "../editor-state"
 import {restoreOriginalResourceURLs} from "../serialization"
-import {aiEditReviewEvent} from "../editor-bridge"
+import {aiEditReviewEvent, executeFailureEvent} from "../editor-bridge"
+import {markNames} from "../marks"
 
 afterEach(() => {
   document.body.replaceChildren()
@@ -87,12 +88,12 @@ describe("StateFeature", () => {
 
     const result = editor.getActionHandler("replaceAIDocument")({
       type: "replaceAIDocument",
-      html: '<main><h1 onclick="steal()">After</h1><a href="javascript:steal()">Link</a><script>steal()</script></main>',
+      html: '<style>body{display:none}</style><link rel="stylesheet"><main style="color: red"><h1 onclick="steal()">After</h1><a href="javascript:steal()">Link</a><script>steal()</script></main>',
     }) as {status: string, removedUnsafeItems: number}
 
     expect(result.status).toBe("applied")
     expect(result.removedUnsafeItems).toBeGreaterThan(0)
-    expect(editor.toHTML(true)).toBe("<main><h1>After</h1><a>Link</a></main>")
+    expect(editor.toHTML(true)).toBe('<main style="color: red"><h1>After</h1></main>')
     editor.destroy()
   })
 
@@ -110,6 +111,126 @@ describe("StateFeature", () => {
       html: '<strong onmouseover="steal()">WebWriter</strong>',
     })
     expect(editor.toHTML(true)).toBe("<p>Hello <strong>WebWriter</strong></p>")
+    editor.destroy()
+  })
+
+  it("uses the element outside nested mark-drawer wrappers as a collapsed selection's HTML root", () => {
+    document.body.innerHTML = '<p class="authored ◆element-selected">Hello <b><i>world</i></b></p>'
+    const editor = new DOMEditor()
+    const text = document.querySelector("i")!.firstChild!
+    document.getSelection()!.setBaseAndExtent(text, 2, text, 2)
+
+    const result = editor.getActionHandler("beginHTMLSelectionEdit")({
+      type: "beginHTMLSelectionEdit",
+    }) as {html: string}
+
+    expect(result.html).toBe('<p class="authored">Hello <b><i>world</i></b></p>')
+    expect(result.html).not.toContain("◆")
+    editor.getActionHandler("discardHTMLSelectionEdit")({type: "discardHTMLSelectionEdit"})
+    editor.destroy()
+  })
+
+  it("never uses any mark-drawer element as the saved-path HTML root", () => {
+    for(const tag of [...markNames, "strong", "em"]) {
+      document.body.replaceChildren()
+      const paragraph = document.createElement("p")
+      const mark = document.createElement(tag)
+      mark.textContent = "Selected"
+      paragraph.append(mark)
+      document.body.append(paragraph)
+      const editor = new DOMEditor()
+      document.getSelection()!.setPosition(document.body, 0)
+
+      const result = editor.getActionHandler("beginHTMLSelectionEdit")({
+        type: "beginHTMLSelectionEdit",
+        path: [0, 0],
+      }) as {html: string}
+
+      expect(result.html, tag).toBe(`<p><${tag}>Selected</${tag}></p>`)
+      editor.getActionHandler("discardHTMLSelectionEdit")({type: "discardHTMLSelectionEdit"})
+      editor.destroy()
+    }
+  })
+
+  it("uses the host selection path when focus leaves only an empty body selection", () => {
+    document.body.innerHTML = "<p>First</p><section><p>Selected</p></section>"
+    const editor = new DOMEditor()
+    document.getSelection()!.setPosition(document.body, 0)
+
+    const result = editor.getActionHandler("beginHTMLSelectionEdit")({
+      type: "beginHTMLSelectionEdit",
+      path: [1],
+    }) as {html: string}
+
+    expect(result.html).toBe("<section><p>Selected</p></section>")
+    editor.getActionHandler("discardHTMLSelectionEdit")({type: "discardHTMLSelectionEdit"})
+    editor.destroy()
+  })
+
+  it("holds a sanitized HTML selection change pending until it is applied", () => {
+    document.body.innerHTML = "<p>Before</p>"
+    const editor = new DOMEditor()
+    const paragraph = document.querySelector("p")!
+    document.getSelection()!.setPosition(paragraph.firstChild!, 3)
+    const begin = editor.getActionHandler("beginHTMLSelectionEdit")({
+      type: "beginHTMLSelectionEdit",
+    }) as {html: string}
+    expect(begin.html).toBe("<p>Before</p>")
+
+    editor.getActionHandler("setHTMLSelectionEditPending")({
+      type: "setHTMLSelectionEditPending",
+      pending: true,
+    })
+
+    expect(editor.features.state.isHTMLSelectionEditPending).toBe(true)
+    expect(editor.isEditingLocked).toBe(true)
+    expect(paragraph.classList.contains("◆html-source-pending")).toBe(true)
+    expect(editor.toHTML(true)).toBe("<p>Before</p>")
+    const beforeInput = new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText"})
+    paragraph.dispatchEvent(beforeInput)
+    expect(beforeInput.defaultPrevented).toBe(true)
+    let failure: CustomEvent | undefined
+    window.addEventListener(executeFailureEvent, event => failure = event as CustomEvent, {once: true})
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {
+        type: "undo",
+        requestId: "html-pending-undo",
+        bridgeNonce: editor.trustedScriptNonce,
+      },
+    }))
+    expect(failure?.detail.error.message).toContain("Apply or discard")
+
+    const result = editor.getActionHandler("applyHTMLSelectionEdit")({
+      type: "applyHTMLSelectionEdit",
+      html: '<section style="color: red" onclick="evil()"><p>After</p><style>body{display:none}</style><script>while(true){}</script></section>',
+    }) as {status: string, removedUnsafeItems: number}
+
+    expect(result.status).toBe("applied")
+    expect(result.removedUnsafeItems).toBeGreaterThan(0)
+    expect(editor.toHTML(true)).toBe('<section style="color: red"><p>After</p></section>')
+    expect(document.querySelector(".◆html-source-pending")).toBeNull()
+    expect(editor.isEditingLocked).toBe(false)
+    editor.destroy()
+  })
+
+  it("discards a pending HTML selection change without touching the document", () => {
+    document.body.innerHTML = "<p>Keep</p>"
+    const editor = new DOMEditor()
+    document.getSelection()!.setPosition(document.querySelector("p")!.firstChild!, 2)
+    editor.getActionHandler("beginHTMLSelectionEdit")({type: "beginHTMLSelectionEdit"})
+    editor.getActionHandler("setHTMLSelectionEditPending")({
+      type: "setHTMLSelectionEditPending",
+      pending: true,
+    })
+
+    const result = editor.getActionHandler("discardHTMLSelectionEdit")({
+      type: "discardHTMLSelectionEdit",
+    }) as {status: string}
+
+    expect(result.status).toBe("discarded")
+    expect(editor.toHTML(true)).toBe("<p>Keep</p>")
+    expect(editor.features.state.isHTMLSelectionEditPending).toBe(false)
+    expect(editor.isEditingLocked).toBe(false)
     editor.destroy()
   })
 

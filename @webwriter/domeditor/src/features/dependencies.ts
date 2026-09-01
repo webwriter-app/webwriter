@@ -57,6 +57,7 @@ export class DependencyFeature extends EditorFeature {
       const link = document.createElement("link")
       link.rel = "stylesheet"
       link.href = href
+      link.nonce = this.editor.trustedScriptNonce
       link.classList.add("◆", "◆editor-only")
       return link
     })

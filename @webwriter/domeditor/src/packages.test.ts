@@ -97,8 +97,8 @@ describe("WebWriterPackageRegistry", () => {
   })
 
   it("removes active content from package snippets before insertion", () => {
-    const result = sanitizePackageSnippet('<p onclick="alert(1)">Safe</p><script>alert(2)</script><a href="javascript:alert(3)" srcdoc="<script>evil()</script>" style="background:url(javascript:evil())">link</a><img src="data:image/svg+xml,<svg onload=evil()>" alt="image"><template><script>later()</script><span onmouseover="later()">template</span></template>')
-    expect(result).toBe('<p>Safe</p><a>link</a><img alt="image"><template><span>template</span></template>')
+    const result = sanitizePackageSnippet('<style>body{display:none}</style><link rel="stylesheet"><p onclick="alert(1)" style="color: red">Safe</p><script>alert(2)</script><a href="javascript:alert(3)" srcdoc="<script>evil()</script>" style="background:url(javascript:evil())">link</a><img src="data:image/svg+xml,<svg onload=evil()>" alt="image"><template><script>later()</script><style>p{display:none}</style><span onmouseover="later()">template</span></template>')
+    expect(result).toBe('<p style="color: red">Safe</p><a>link</a><img alt="image"><template><span>template</span></template>')
     expect(() => sanitizePackageSnippet("x".repeat(10), 5)).toThrow("too large")
   })
 })

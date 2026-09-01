@@ -965,8 +965,9 @@ export class Schema {
   /** Fixes the root element's content (see fixInvalidContent), and with `deep` all descendants too. Non-element roots are ignored. */
   checkAndCorrect(root: Node = document.documentElement, deep=false) {
     if(!(root instanceof Element)) return;
+    if(this.#getTypeKey(root) === "#unknownelement") return;
     this.fixInvalidContent(root)
-    if(deep) root.childNodes.forEach(node => this.checkAndCorrect(node, true));
+    if(deep) Array.from(root.childNodes).forEach(node => this.checkAndCorrect(node, true));
   }
 
   /** Lists the type keys insertable at the given range (default: the current selection), considering the content before it. */

@@ -69,7 +69,7 @@ describe("media editing", () => {
     expect(Array.from(placeholderController.root.querySelector(".content")!.children)).toContain(
       placeholderController.root.querySelector(".url-row"),
     )
-    const style = placeholderController.root.querySelector("style")!.textContent
+    const style = Array.from(placeholderController.root.adoptedStyleSheets[0].cssRules, rule => rule.cssText).join("\n")
     expect(style).toMatch(/\.content\s*\{[\s\S]*?display:\s*flex;/)
     expect(style).toMatch(/@container \(max-width:\s*34rem\)[\s\S]*?\.content\s*\{[\s\S]*?display:\s*grid;/)
     expect(document.body.children).toHaveLength(1)
@@ -102,6 +102,15 @@ describe("media editing", () => {
     expect(insertionButton).not.toBeNull()
     expect(insertionButton?.textContent).toBe("++")
     expect(editor.appendix.querySelector(".◆insertion-add")).toBe(insertionButton)
+  })
+
+  it("keeps the inactive media placeholder hidden under the editing CSP", () => {
+    const placeholder = editor.features.media.placeholder
+
+    expect(placeholder.root.querySelector("style")).toBeNull()
+    expect(placeholder.root.adoptedStyleSheets.length).toBeGreaterThan(0)
+    expect(getComputedStyle(placeholder.element).display).toBe("none")
+    expect(placeholder.element).not.toHaveAttribute("data-open")
   })
 
   it("applies direct URLs without adding helper nodes to the authored media", () => {

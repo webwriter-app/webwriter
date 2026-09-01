@@ -332,9 +332,14 @@ describe("DomEditor iframe setup", () => {
   })
 
   it("sandboxes the editor iframe while preserving its trusted same-origin bridge", async () => {
-    const {iframe} = await mountEditor()
+    const {editor, iframe} = await mountEditor()
+    const srcdoc = (editor as unknown as {readonly editorSrcdoc: string}).editorSrcdoc
 
     expect(iframe.getAttribute("sandbox")).toBe("allow-scripts allow-same-origin")
+    expect(srcdoc).toMatch(/script-src 'nonce-[^']+' 'strict-dynamic'/)
+    expect(srcdoc).toMatch(/style-src 'none'/)
+    expect(srcdoc).toMatch(/style-src-elem 'nonce-[^']+'/)
+    expect(srcdoc).toContain("style-src-attr 'unsafe-inline'")
   })
 
   it("passes the sync URL to the editor through the bridge", async () => {
@@ -1634,13 +1639,15 @@ describe("DomEditor.execute()", () => {
 
   it("removes authored executable content from the preview copy", async () => {
     const {editor, iframe} = await mountEditor()
-    iframe.contentDocument!.body.innerHTML = '<button onclick="alert(1)" formaction="javascript:alert(2)" srcdoc="<script>evil()</script>" style="background:url(javascript:evil())">Run</button><script>window.evil = true</script>'
+    iframe.contentDocument!.body.innerHTML = '<style>body { display: none }</style><link rel="stylesheet"><button onclick="alert(1)" formaction="javascript:alert(2)" srcdoc="<script>evil()</script>" style="color: red">Run</button><script>window.evil = true</script>'
     const previewHTML = (editor as unknown as {currentPreviewHTML(): string}).currentPreviewHTML()
     expect(previewHTML).toContain("Run")
     expect(previewHTML).not.toContain("onclick")
     expect(previewHTML).not.toContain("formaction")
     expect(previewHTML).not.toContain("srcdoc")
-    expect(previewHTML).not.toContain("style=")
+    expect(previewHTML).toContain('style="color: red"')
+    expect(previewHTML).not.toContain("display: none")
+    expect(previewHTML).not.toContain('rel="stylesheet"')
     expect(previewHTML).not.toContain("window.evil")
   })
 
@@ -2564,25 +2571,41 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenLastCalledWith({type: "setSectionType", section: "address"})
   })
 
-  it("inserts script and its grouped element choices", async () => {
+  it("opens the double-width HTML Edit toolbox from the Code insert button", async () => {
     const {editor} = await mountEditor()
-    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const execute = vi.spyOn(editor, "execute").mockImplementation(async action => (
+      action.type === "beginHTMLSelectionEdit" ? {html: "<p>Selected</p>"} : undefined
+    ))
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
-    const script = ribbon.shadowRoot!.querySelector<RibbonButton>(
-      'ribbon-drawer[label="Elements"] ribbon-button[label="Script"]',
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    const html = ribbon.shadowRoot!.querySelector<RibbonButton>(
+      'ribbon-drawer[label="Elements"] ribbon-button[label="HTML"]',
     )!
-    await script.updateComplete
+    await html.updateComplete
 
-    script.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
-    expect(execute).toHaveBeenCalledWith({type: "insert", html: "<script></script>"})
+    expect(html.icon).toBe("Code")
+    expect(html.shadowRoot!.querySelector(".submenu-trigger")).toBeNull()
+    html.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    await vi.waitFor(() => expect(toolbox.htmlMode).toBe(true))
+    await toolbox.updateComplete
+    expect(toolbox.activeTool).toBe("Edit")
+    expect(getComputedStyle(toolbox).width).toBe("400px")
+    expect(toolbox.shadowRoot!.querySelector<HTMLTextAreaElement>(".html-source-input")?.value)
+      .toBe("<p>Selected</p>")
+    expect(execute).toHaveBeenCalledWith({type: "beginHTMLSelectionEdit"})
 
-    script.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
-    await script.updateComplete
-    const menu = script.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
-    await menu.updateComplete
-    menu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Slot"]')!.click()
+    const input = toolbox.shadowRoot!.querySelector<HTMLTextAreaElement>(".html-source-input")!
+    input.value = "<p>Changed</p>"
+    input.dispatchEvent(new InputEvent("input", {bubbles: true, composed: true}))
+    await vi.waitFor(() => expect(toolbox.htmlPending).toBe(true))
+    expect(execute).toHaveBeenCalledWith({type: "setHTMLSelectionEditPending", pending: true})
+    expect(ribbon.inert).toBe(true)
 
-    expect(execute).toHaveBeenLastCalledWith({type: "insert", html: "<slot></slot>"})
+    await toolbox.updateComplete
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".html-source-action.discard")!.click()
+    await vi.waitFor(() => expect(toolbox.htmlPending).toBe(false))
+    expect(execute).toHaveBeenCalledWith({type: "discardHTMLSelectionEdit"})
+    expect(ribbon.inert).toBe(false)
   })
 
   it("inserts dialog from the Details dropdown", async () => {

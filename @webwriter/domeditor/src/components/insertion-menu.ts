@@ -11,7 +11,7 @@ export type InsertionMenuItem = {
   name: string
   section: "Text" | "Lists" | "Media" | "Forms" | "Packages"
   packageName?: string
-  kind?: "widget" | "snippet"
+  kind?: "widget" | "snippet" | "html"
   description?: string
   icon?: string
   iconUrl?: string
@@ -36,9 +36,9 @@ export const headingInsertionTags = ["h2", "h3", "h4", "h5", "h6", "hr"] as cons
 export const detailsInsertionTags = ["dialog"] as const
 export const formInsertionTags = insertableFormElementTypes
 export const sectionInsertionTags = sectionNames.filter(tag => tag !== "section")
-export const scriptInsertionTags = ["script", "style", "canvas", "template", "slot"] as const
+export const hiddenRibbonInsertionTags = ["canvas", "template", "slot"] as const
 
-export const insertionMenuItems: BuiltinInsertionMenuItem[] = [
+export const insertionMenuItems: InsertionMenuItem[] = [
   insertionMenuItem("Text", "p"),
   insertionMenuItem("Text", "pre"),
   insertionMenuItem("Text", "h1"),
@@ -58,10 +58,9 @@ export const insertionMenuItems: BuiltinInsertionMenuItem[] = [
   ...formInsertionTags.map(tag => insertionMenuItem("Forms", tag)),
   insertionMenuItem("Media", "section"),
   ...sectionInsertionTags.map(tag => insertionMenuItem("Media", tag, tag === "div" ? "Division" : undefined)),
-  insertionMenuItem("Media", "script"),
-  ...scriptInsertionTags
-    .filter(tag => tag !== "script")
+  ...hiddenRibbonInsertionTags
     .map(tag => insertionMenuItem("Media", tag, tag === "canvas" ? "Canvas" : undefined)),
+  {section: "Media", name: "HTML", icon: "Code", kind: "html"},
 ]
 
 /** Returns valid empty-element markup using the browser's HTML serializer. */
@@ -162,7 +161,7 @@ export class InsertionMenu extends LitElement {
   get filteredItems() {
     const query = this.query.trim().toLowerCase()
     const items: InsertionMenuItem[] = [
-      ...insertionMenuItems,
+      ...insertionMenuItems.filter(item => item.kind !== "html"),
       ...(globalThis.DOMEDITOR_PACKAGE_ITEMS ?? []) as PackageInsertionItem[],
     ]
     return items.filter(item => !query || [item.name, item.tag, item.packageName, item.kind]

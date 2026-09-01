@@ -89,6 +89,7 @@ describe("insertion menu", () => {
     expect(menu.shadowRoot?.textContent).toContain("Packages")
     expect(menu.shadowRoot?.textContent).toContain("Paragraph")
     expect(menu.shadowRoot?.textContent).toContain("Website")
+    expect(menu.shadowRoot?.textContent).not.toContain("HTML")
   })
 
   it("resets the filter and scroll position for a new insertion", async () => {

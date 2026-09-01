@@ -3,7 +3,6 @@ import {afterEach, beforeEach, describe, expect, it} from "vitest"
 import "@testing-library/jest-dom/vitest"
 import {DOMEditor} from "../domeditor"
 import {WEBWRITER_GENERATOR, creativeCommonsLicenses} from "../document-head"
-import {documentTheme} from "../document-themes"
 
 let editor: DOMEditor
 
@@ -29,7 +28,6 @@ describe("document head editing", () => {
     set({type: "setDocumentHeadField", field: "keywords", value: "math, geometry"})
     set({type: "setDocumentHeadField", field: "author", value: "Ada"})
     set({type: "setDocumentHeadField", field: "language", value: "de-DE"})
-    set({type: "setDocumentHeadField", field: "theme", value: "base"})
     set({type: "setDocumentHeadField", field: "license", value: creativeCommonsLicenses[1].url})
 
     expect(document.title).toBe("Lesson")
@@ -37,7 +35,7 @@ describe("document head editing", () => {
     expect(document.head.querySelector('meta[name="keywords"]')).toHaveAttribute("content", "math, geometry")
     expect(document.head.querySelector('meta[name="author"]')).toHaveAttribute("content", "Ada")
     expect(document.documentElement).toHaveAttribute("lang", "de-DE")
-    expect(document.head.querySelector('style[data-ww-theme="base"]')?.textContent).toBe(documentTheme("base")!.source)
+    expect(document.head.querySelector("style")).toBeNull()
     expect(document.head.querySelector('link[rel="license"]')).toHaveAttribute("href", creativeCommonsLicenses[1].url)
 
     const state = editor.features.head.state()
@@ -47,10 +45,9 @@ describe("document head editing", () => {
       keywords: "math, geometry",
       author: "Ada",
       language: "de-DE",
-      theme: "base",
+      theme: "",
       license: creativeCommonsLicenses[1].url,
     })
-    expect(state.elements.find(element => element.preset === "theme")).not.toHaveProperty("content")
   })
 
   it("removes a common field without rebuilding unrelated head elements", () => {
@@ -71,76 +68,51 @@ describe("document head editing", () => {
     expect(document.head.querySelector("style")).toBe(style)
   })
 
-  it("applies built-in themes without replacing an unfamiliar authored theme style", () => {
-    const custom = document.createElement("style")
-    custom.setAttribute("data-ww-theme", "custom-theme")
-    custom.textContent = "body { border: 1px solid; }"
-    document.head.append(custom)
+  it("preserves existing authored scripts and styles but blocks creating or editing them", () => {
+    document.head.innerHTML = '<script type="module">start()</script><style>body { color: red }</style><link rel="stylesheet"><link rel="alternate" href="feed.xml">'
     editor.doc.syncFromDOM()
-    editor.features.head.postState()
-
-    editor.features.head.actions.setDocumentHeadField({
-      type: "setDocumentHeadField",
-      field: "theme",
-      value: "water",
-    })
-
-    expect(custom.isConnected).toBe(true)
-    expect(custom.textContent).toBe("body { border: 1px solid; }")
-    expect(document.head.querySelector('style[data-ww-theme="water"]')?.textContent).toBe(documentTheme("water")!.source)
-    const customState = editor.features.head.state().elements.find(element =>
-      element.attributes.some(attribute => attribute.name === "data-ww-theme" && attribute.value === "custom-theme"),
-    )
-    expect(customState?.preset).toBe("style")
-  })
-
-  it("adds, edits, reorders, and removes scripts and stylesheets as live elements", () => {
     const add = editor.features.head.actions.addDocumentHeadElement
-    add({type: "addDocumentHeadElement", kind: "script"})
-    const scriptId = editor.features.head.state().elements.at(-1)!.id
-    add({type: "addDocumentHeadElement", kind: "stylesheet"})
-    const stylesheetId = editor.features.head.state().elements.at(-1)!.id
-    add({type: "addDocumentHeadElement", kind: "style"})
-    const styleId = editor.features.head.state().elements.at(-1)!.id
+    expect(add({type: "addDocumentHeadElement", kind: "script"})).toBe(false)
+    expect(add({type: "addDocumentHeadElement", kind: "stylesheet"})).toBe(false)
+    expect(add({type: "addDocumentHeadElement", kind: "style"})).toBe(false)
+    expect(editor.features.head.actions.setDocumentHeadField({
+      type: "setDocumentHeadField", field: "theme", value: "base",
+    })).toBe(false)
 
-    editor.features.head.actions.setDocumentHeadElementAttribute({
+    const state = editor.features.head.state()
+    const scriptId = state.elements.find(element => element.preset === "script")!.id
+    const styleId = state.elements.find(element => element.preset === "style")!.id
+    const stylesheetId = state.elements.find(element => element.preset === "stylesheet")!.id
+    const alternateId = state.elements.find(element => element.preset === "link")!.id
+    expect(editor.features.head.actions.setDocumentHeadElementAttribute({
       type: "setDocumentHeadElementAttribute",
       id: scriptId,
       name: "type",
-      value: "module",
-    })
-    editor.features.head.actions.setDocumentHeadElementContent({
+      value: "text/plain",
+    })).toBe(false)
+    expect(editor.features.head.actions.setDocumentHeadElementContent({
       type: "setDocumentHeadElementContent",
-      id: scriptId,
-      value: "globalThis.lessonReady = true",
-    })
-    editor.features.head.actions.setDocumentHeadElementAttribute({
+      id: styleId,
+      value: "body { color: blue }",
+    })).toBe(false)
+    expect(editor.features.head.actions.setDocumentHeadElementAttribute({
       type: "setDocumentHeadElementAttribute",
       id: stylesheetId,
       name: "media",
       value: "screen",
-    })
-    editor.features.head.actions.setDocumentHeadElementContent({
-      type: "setDocumentHeadElementContent",
-      id: styleId,
-      value: "body { color: rebeccapurple; }",
-    })
-    editor.features.head.actions.moveDocumentHeadElement({
-      type: "moveDocumentHeadElement",
-      id: styleId,
-      direction: "up",
-    })
-
-    const authored = Array.from(document.head.children)
-    expect(authored.map(element => element.localName)).toEqual(["script", "style", "link"])
-    expect(authored[0]).toHaveAttribute("type", "module")
-    expect(authored[0].textContent).toBe("globalThis.lessonReady = true")
-    expect(authored[1].textContent).toBe("body { color: rebeccapurple; }")
-    expect(authored[2]).toHaveAttribute("rel", "stylesheet")
-    expect(authored[2]).toHaveAttribute("media", "screen")
+    })).toBe(false)
+    expect(editor.features.head.actions.setDocumentHeadElementAttribute({
+      type: "setDocumentHeadElementAttribute",
+      id: alternateId,
+      name: "rel",
+      value: "stylesheet",
+    })).toBe(false)
 
     editor.features.head.actions.removeDocumentHeadElement({type: "removeDocumentHeadElement", id: stylesheetId})
-    expect(document.head.querySelector("link")).toBeNull()
+    expect(document.head.querySelector('link[rel="stylesheet"]')).toBeNull()
+    expect(document.head.querySelector("script")?.textContent).toBe("start()")
+    expect(document.head.querySelector("style")?.textContent).toContain("color: red")
+    expect(document.head.querySelector('link[rel="alternate"]')).toBeTruthy()
   })
 
   it("uses the package version for newly added generator metadata", () => {

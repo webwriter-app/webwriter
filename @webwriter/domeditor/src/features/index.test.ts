@@ -72,4 +72,22 @@ describe("EditorFeature listener lifecycle", () => {
     ordinary.disable()
     captureOwner.disable()
   })
+
+  it("does not route shadow-appendix interactions to document features", () => {
+    const appendix = document.body.shadowRoot ?? document.body.attachShadow({mode: "open"})
+    const input = document.createElement("textarea")
+    appendix.append(input)
+    const feature = new ListenerProbeFeature({} as DOMEditor)
+    feature.enable()
+
+    input.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, composed: true}))
+    input.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true}))
+
+    expect(feature.calls).toEqual([])
+    document.dispatchEvent(new MouseEvent("click", {bubbles: true}))
+    expect(feature.calls).toEqual(["click"])
+
+    feature.disable()
+    input.remove()
+  })
 })

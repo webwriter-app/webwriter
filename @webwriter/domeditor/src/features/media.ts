@@ -1,5 +1,5 @@
 import {EditorFeature} from "."
-import {$, getContainer, isElement} from "../utility"
+import {$, adoptStylesheet, createStylesheet, getContainer, isElement} from "../utility"
 import {
   isEmptyMedia,
   isMediaType,
@@ -17,6 +17,76 @@ import {
 } from "../media"
 
 const mediaSelector = mediaElementSelector
+
+const mediaPlaceholderStylesheet = createStylesheet(`
+  :host {
+    position: fixed;
+    z-index: 2147483644;
+    display: none;
+    box-sizing: border-box;
+    place-items: center;
+    overflow: auto;
+    padding: 1.25rem;
+    color: #f3f4f6;
+    background: rgb(31 41 55 / 94%);
+    font: 14px/1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    pointer-events: auto;
+    user-select: none;
+    container-type: inline-size;
+  }
+  :host([data-open]) { display: grid; }
+  .content {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: min(48rem, 100%);
+    gap: .65rem;
+  }
+  button, input { box-sizing: border-box; font: inherit; }
+  .file {
+    flex: 0 0 auto;
+    min-height: 2.75rem;
+    padding: .65rem 1rem;
+    border: 1px solid #c7c9ce;
+    border-radius: .35rem;
+    color: #343740;
+    background: white;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .file:hover, .apply:hover { background: #eef4fb; }
+  .or { flex: 0 0 auto; color: #d1d5db; font-size: 1rem; }
+  .url-row { display: flex; flex: 1 1 20rem; min-width: 0; gap: .4rem; }
+  .url {
+    min-width: 0;
+    min-height: 2.6rem;
+    flex: 1 1 auto;
+    padding: .55rem .7rem;
+    border: 1px solid #c7c9ce;
+    border-radius: .35rem;
+    color: #343740;
+    background: white;
+  }
+  .apply {
+    flex: 0 0 auto;
+    padding: .55rem .8rem;
+    border: 1px solid #c7c9ce;
+    border-radius: .35rem;
+    color: #343740;
+    background: white;
+    cursor: pointer;
+  }
+  input:focus, button:focus-visible { outline: 2px solid #60a5fa; outline-offset: 1px; }
+  @container (max-width: 34rem) {
+    .content {
+      display: grid;
+      width: min(32rem, 100%);
+      gap: .75rem;
+      justify-items: center;
+    }
+    .url-row { width: 100%; }
+  }
+`)
 
 class MediaPlaceholder {
   readonly element = document.createElement("div")
@@ -39,76 +109,8 @@ class MediaPlaceholder {
     this.element.setAttribute("aria-hidden", "true")
     const root = this.element.attachShadow({mode: "open"})
     this.root = root
+    adoptStylesheet(root, mediaPlaceholderStylesheet)
     root.innerHTML = `
-      <style>
-        :host {
-          position: fixed;
-          z-index: 2147483644;
-          display: none;
-          box-sizing: border-box;
-          place-items: center;
-          overflow: auto;
-          padding: 1.25rem;
-          color: #f3f4f6;
-          background: rgb(31 41 55 / 94%);
-          font: 14px/1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-          pointer-events: auto;
-          user-select: none;
-          container-type: inline-size;
-        }
-        :host([data-open]) { display: grid; }
-        .content {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: min(48rem, 100%);
-          gap: .65rem;
-        }
-        button, input { box-sizing: border-box; font: inherit; }
-        .file {
-          flex: 0 0 auto;
-          min-height: 2.75rem;
-          padding: .65rem 1rem;
-          border: 1px solid #c7c9ce;
-          border-radius: .35rem;
-          color: #343740;
-          background: white;
-          font-weight: 600;
-          cursor: pointer;
-        }
-        .file:hover, .apply:hover { background: #eef4fb; }
-        .or { flex: 0 0 auto; color: #d1d5db; font-size: 1rem; }
-        .url-row { display: flex; flex: 1 1 20rem; min-width: 0; gap: .4rem; }
-        .url {
-          min-width: 0;
-          min-height: 2.6rem;
-          flex: 1 1 auto;
-          padding: .55rem .7rem;
-          border: 1px solid #c7c9ce;
-          border-radius: .35rem;
-          color: #343740;
-          background: white;
-        }
-        .apply {
-          flex: 0 0 auto;
-          padding: .55rem .8rem;
-          border: 1px solid #c7c9ce;
-          border-radius: .35rem;
-          color: #343740;
-          background: white;
-          cursor: pointer;
-        }
-        input:focus, button:focus-visible { outline: 2px solid #60a5fa; outline-offset: 1px; }
-        @container (max-width: 34rem) {
-          .content {
-            display: grid;
-            width: min(32rem, 100%);
-            gap: .75rem;
-            justify-items: center;
-          }
-          .url-row { width: 100%; }
-        }
-      </style>
       <div class="content">
         <button class="file" type="button"></button>
         <input class="picker" type="file" hidden />

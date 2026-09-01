@@ -4,8 +4,8 @@ import {
   detailsInsertionTags,
   formInsertionTags,
   headingInsertionTags,
+  hiddenRibbonInsertionTags,
   insertionMenuItems,
-  scriptInsertionTags,
   sectionInsertionTags,
 } from "./insertion-menu"
 import {type RibbonMenuButton, type RibbonMenuGroup} from "./ribbon-menu"
@@ -99,17 +99,13 @@ export const listInsertionOptions: RibbonMenuButton[] = [
   glossaryInsertionButton,
 ]
 
-const mediaInsertionSubmenuTags = (tag: string): readonly string[] | undefined => {
-  if(tag === "script") return scriptInsertionTags
-}
-
 const groupedMediaInsertionTags = new Set<string>([
   ...sectionInsertionTags,
-  ...scriptInsertionTags,
+  ...hiddenRibbonInsertionTags,
 ])
 
 const insertionMenuButtons = (sections: readonly InsertionSection[]) => insertionMenuItems
-  .filter(item => sections.includes(item.section))
+  .filter(item => (sections as readonly string[]).includes(item.section))
   .flatMap<RibbonMenuButton>(item => {
     if(item.section === "Forms") {
       if(item.tag === "form") {
@@ -124,6 +120,7 @@ const insertionMenuButtons = (sections: readonly InsertionSection[]) => insertio
       return []
     }
     if(item.section === "Lists" && detailsInsertionTags.includes(item.tag as typeof detailsInsertionTags[number])) return []
+    if(!item.tag) return [{label: item.name, action: item.name, icon: item.icon ?? item.name}]
     if(item.section === "Lists") {
       if(item.tag === "ul") {
         return [{
@@ -162,15 +159,6 @@ const insertionMenuButtons = (sections: readonly InsertionSection[]) => insertio
     if(item.section === "Media" && item.tag === "section") {
       return [{label: item.name, action: "toggle-section", icon: item.icon ?? item.name}]
     }
-    const mediaSubmenuTags = item.section === "Media" ? mediaInsertionSubmenuTags(item.tag) : undefined
-    if(mediaSubmenuTags) {
-      return [{
-        label: item.name,
-        action: item.name,
-        icon: item.icon ?? item.name,
-        submenu: insertionSubmenuForTags(mediaSubmenuTags),
-      }]
-    }
     if(item.section === "Media" && groupedMediaInsertionTags.has(item.tag)) return []
     if(item.section === "Media" && item.tag === "svg") {
       return [{label: item.name, action: item.name, icon: "Graphic", submenu: insertGraphicShapeButtons}]
@@ -199,7 +187,7 @@ export const insertionMenuGroups: RibbonMenuGroup[] = [
   groupedInsertionMenuGroup("Text", ["Paragraph", "Section", "Heading", "Details"]),
   groupedInsertionMenuGroup("Lists", ["List", "Table"]),
   groupedInsertionMenuGroup("Media", ["Image", "Graphic", "Audio", "Website", "Video", "Formula"]),
-  groupedInsertionMenuGroup("Interactive", ["Form", "Script"]),
+  groupedInsertionMenuGroup("Interactive", ["Form", "HTML"]),
 ]
 
 const elementInsertionMenuGroup: RibbonMenuGroup = {

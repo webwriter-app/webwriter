@@ -1037,6 +1037,27 @@ export function isWidgetShadowInteraction(event: Event) {
   return widgetHostForShadowInteraction(event) !== null
 }
 
+/** Whether an interaction originated in the editor-owned shadow appendix.
+ * Composed events are retargeted to BODY at document listeners, so inspect
+ * their original node. Selectionchange has no useful path; in that case the
+ * appendix's focused element preserves the boundary. */
+export function isAppendixInteraction(event: Event) {
+  const appendix = document.body.shadowRoot
+  if(!appendix) return false
+  let origin: EventTarget | null | undefined
+  try {
+    origin = event.type === "selectionchange"
+      ? appendix.activeElement
+      : event.composedPath()[0]
+  }
+  catch {
+    // Synthetic DOMs may not be able to resolve ShadowRoot.activeElement
+    // while another shadow tree is being disconnected.
+    return false
+  }
+  return origin instanceof Node && origin.getRootNode() === appendix
+}
+
 /** The authored native form control that owns an event. LABEL events resolve
  * to their associated control so clicking a label enters the same capture as
  * clicking the control itself. Selectionchange has no useful event target,

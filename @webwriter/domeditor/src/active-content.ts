@@ -1,4 +1,4 @@
-const unsafeElementSelector = "script, iframe, object, embed, base, meta[http-equiv='refresh'], link[rel='import']"
+const unsafeElementSelector = "script, style, iframe, object, embed, base, meta[http-equiv='refresh'], link[rel='import'], link[rel~='stylesheet']"
 const URL_ATTRIBUTES = new Set(["href", "src", "xlink:href", "action", "formaction", "poster"])
 const unsafeURL = (value: string) => {
   const normalized = value.trim().toLowerCase().replaceAll(/[\u0000-\u0020]+/g, "")

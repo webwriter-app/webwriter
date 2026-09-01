@@ -18,7 +18,7 @@ import { HeadFeature } from "./features/head"
 import { FormFeature } from "./features/form"
 import { TemplateFeature } from "./features/template"
 import { Schema } from "./schema"
-import { $, adoptStylesheet, createStylesheet, focusedWidgetHost, getContainer, isElement, isFormControlInteraction, isWidgetShadowInteraction, plainTextFromDOM } from "./utility"
+import { $, adoptStylesheet, createStylesheet, focusedWidgetHost, getContainer, isAppendixInteraction, isElement, isFormControlInteraction, isWidgetShadowInteraction, plainTextFromDOM } from "./utility"
 import {isMarkElement, normalizeMarkElements} from "./marks"
 import {
   executeCompleteEvent,
@@ -45,6 +45,7 @@ import {originalURLAttribute, serializeDoctype} from "./serialization"
 import type {DocumentHeadState} from "./document-head"
 import {getSectionOption, isSectionElement} from "./sections"
 import {getDocumentRoot} from "./document-template"
+import {stripActiveContent} from "./active-content"
 
 const editorStylesheet = createStylesheet(editorStyleString)
 const appendixStylesheet = createStylesheet(`
@@ -401,12 +402,7 @@ export class DOMEditor {
 
   readonly #blockEditingInteraction = (event: Event) => {
     const path = event.composedPath()
-    const appendix = document.body.shadowRoot
-    const target = path[0]
-    const comesFromAppendix = Boolean(appendix
-      && target instanceof Node
-      && target.getRootNode() === appendix)
-    if(!this.#editingLocks.size || !path.includes(document.body) || comesFromAppendix) return
+    if(!this.#editingLocks.size || !path.includes(document.body) || isAppendixInteraction(event)) return
     event.preventDefault()
     event.stopImmediatePropagation()
   }
@@ -681,7 +677,7 @@ export class DOMEditor {
   }
 
   #handleInput = (ev: Event) => {
-    if(isWidgetShadowInteraction(ev) || isFormControlInteraction(ev)) return
+    if(isAppendixInteraction(ev) || isWidgetShadowInteraction(ev) || isFormControlInteraction(ev)) return
     this.normalizeSurroundingElements(ev.target instanceof Node ? ev.target : undefined)
   }
 
@@ -711,7 +707,7 @@ export class DOMEditor {
   }
 
   private handleSelectionChange = (event: Event) => {
-    if(isWidgetShadowInteraction(event) || isFormControlInteraction(event)
+    if(isAppendixInteraction(event) || isWidgetShadowInteraction(event) || isFormControlInteraction(event)
       || this.features.media.isPlaceholderInteraction) return
     const selection = document.getSelection()
     if(!selection?.anchorNode) return
@@ -741,6 +737,17 @@ export class DOMEditor {
     }
 
     const requestId = typeof ev.data.requestId === "string"? ev.data.requestId: undefined
+    if(!this.features.state.allowsActionDuringHTMLSelectionEdit(ev.data.type)) {
+      const error = new Error("Apply or discard the pending HTML change before editing the document")
+      if(requestId) {
+        this.postExecutionEvent(executeFailureEvent, {
+          requestId,
+          error: this.serializeError(error),
+        })
+        return
+      }
+      throw error
+    }
     if(!this.features.history.allowsActionDuringPreview(ev.data.type)) {
       const error = new Error("Close the version preview before editing the document")
       if(requestId) {
@@ -786,7 +793,10 @@ export class DOMEditor {
     Promise.resolve(result).then(
       value => {
         this.normalizeSurroundingElements()
-        this.postSelectionPath()
+        // Reading the HTML selection does not change it. Reposting the same
+        // selection here makes the host start another HTML-source read before
+        // this response arrives, so every valid response becomes stale.
+        if(ev.data.type !== "beginHTMLSelectionEdit") this.postSelectionPath()
         if(requestId) {
           this.postExecutionEvent(executeCompleteEvent, {requestId, result: value})
         }
@@ -1163,7 +1173,7 @@ export class DOMEditor {
   }
 
   #onCopy = (ev: ClipboardEvent) => {
-    if(isWidgetShadowInteraction(ev) || isFormControlInteraction(ev) || !ev.clipboardData || $.isEmpty) return
+    if(isAppendixInteraction(ev) || isWidgetShadowInteraction(ev) || isFormControlInteraction(ev) || !ev.clipboardData || $.isEmpty) return
     ev.preventDefault()
     const {html, text} = this.serializeClipboardFragment($.copy())
     ev.clipboardData.setData("text/html", html)
@@ -1185,6 +1195,41 @@ export class DOMEditor {
       clean(child)
     })
     clean(node)
+  }
+
+  /** Sanitizes detached authored HTML and repairs it with the active schema
+   * before any part of it enters the live document. Inline style attributes
+   * remain authored content; executable and stylesheet elements do not. */
+  prepareHTMLFragment(fragment: DocumentFragment) {
+    this.clearEditingArtifacts(fragment)
+    const removedUnsafeItems = stripActiveContent(fragment)
+    const stagingBody = document.createElement("body")
+    stagingBody.append(fragment)
+    const unknownElements = Array.from(stagingBody.querySelectorAll("*"))
+      .filter(element => this.schema.get(element) === this.schema.get("#unknownelement"))
+      .map(element => ({
+        element,
+        contenteditable: element.getAttribute("contenteditable"),
+      }))
+    unknownElements.forEach(({element}) => element.setAttribute("contenteditable", "false"))
+    try {
+      this.schema.checkAndCorrect(stagingBody, true)
+    }
+    finally {
+      unknownElements.forEach(({element, contenteditable}) => {
+        if(contenteditable === null) element.removeAttribute("contenteditable")
+        else element.setAttribute("contenteditable", contenteditable)
+      })
+    }
+    const prepared = document.createDocumentFragment()
+    prepared.append(...Array.from(stagingBody.childNodes))
+    return {fragment: prepared, removedUnsafeItems}
+  }
+
+  parseHTMLFragment(html: string) {
+    const template = document.createElement("template")
+    template.innerHTML = html
+    return this.prepareHTMLFragment(template.content)
   }
 
 

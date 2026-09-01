@@ -91,7 +91,7 @@ describe("toolbox", () => {
 
     const pane = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!
     expect(getComputedStyle(toolbox).width).toBe("200px")
-    expect(getComputedStyle(pane).width).toBe("200px")
+    expect(getComputedStyle(pane).width).toBe("100%")
 
     styleTab.querySelector<HTMLButtonElement>(".toolbox-tab-close")!.click()
     await toolbox.updateComplete
@@ -99,6 +99,49 @@ describe("toolbox", () => {
     expect(toolbox.hasAttribute("active-tool")).toBe(false)
     expect(getComputedStyle(styleTab).width).toBe("28px")
     expect(getComputedStyle(toolbox).width).toBe("122px")
+  })
+
+  it("keeps an HTML toggle at the bottom of Edit and doubles the toolbox width in HTML mode", async () => {
+    const toolbox = await mountToolbox()
+    toolButton(toolbox, "Edit").click()
+    await toolbox.updateComplete
+    const toggle = toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".html-mode-toggle")!
+    let requestedMode: boolean | undefined
+    toolbox.addEventListener("html-mode-change", event => {
+      requestedMode = (event as CustomEvent<{enabled: boolean}>).detail.enabled
+    })
+
+    expect(toggle.querySelector(".icon-tabler-code")).not.toBeNull()
+    expect(toggle.getAttribute("aria-pressed")).toBe("false")
+    expect(toolbox.shadowRoot!.querySelector(".edit-mode-footer")).not.toBeNull()
+    toggle.click()
+    expect(requestedMode).toBe(true)
+
+    toolbox.htmlMode = true
+    toolbox.htmlSource = "<p>Hello</p>"
+    await toolbox.updateComplete
+    const pane = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!
+    const input = toolbox.shadowRoot!.querySelector<HTMLTextAreaElement>(".html-source-input")!
+    expect(getComputedStyle(toolbox).width).toBe("400px")
+    expect(getComputedStyle(pane).width).toBe("100%")
+    expect(input.value).toBe("<p>Hello</p>")
+    expect(toolbox.shadowRoot!.querySelector("ribbon-drawer")).toBeNull()
+
+    let source = ""
+    toolbox.addEventListener("html-source-change", event => {
+      source = (event as CustomEvent<{value: string}>).detail.value
+    })
+    input.value = "<p>Changed</p>"
+    input.dispatchEvent(new InputEvent("input", {bubbles: true, composed: true}))
+    expect(source).toBe("<p>Changed</p>")
+
+    toolbox.htmlPending = true
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector(".html-source-status")?.textContent).toBe("Pending change")
+    expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".html-mode-toggle")!.disabled).toBe(true)
+    expect(toolbox.shadowRoot!.querySelector(".html-source-action.apply")).not.toBeNull()
+    toolbox.selectTool("Style")
+    expect(toolbox.activeTool).toBe("Edit")
   })
 
   it("names element-specific Edit tools in the active blue", async () => {

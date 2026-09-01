@@ -5490,7 +5490,7 @@ export class AppRibbon extends LitElement {
       groupedButton("Text", "Text", ["Paragraph", "Section", "Heading", "List"]),
       groupedButton("Media", "Image", ["Image", "Audio", "Video", "Graphic", "Formula", "Website"]),
       buttonByLabel("Table"),
-      groupedButton("Other", "More", ["Form", "Script", "Details"]),
+      groupedButton("Other", "More", ["Form", "HTML", "Details"]),
     ]
     const renderButton = (button: RibbonMenuButton, slot = "") => {
       const item = typeof button === "string" ? {label: button} : button

@@ -24,6 +24,10 @@ const relTokens = (element: Element) => (element.getAttribute("rel") ?? "")
 const isEditorOnly = (element: Element) => element.matches(editorOnlySelector)
   || element.closest(editorOnlySelector) !== null
 
+const isBlockedAuthoredContent = (element: Element) => element.localName === "script"
+  || element.localName === "style"
+  || element.localName === "link" && relTokens(element).includes("stylesheet")
+
 const presetFor = (element: Element) => {
   if(element.localName === "title") return "title"
   if(element.localName === "base") return "base"
@@ -337,14 +341,7 @@ export class HeadFeature extends EditorFeature {
           current.remove()
           return true
         }
-        const theme = documentTheme(value)
-        if(!theme) return false
-        if(current?.getAttribute("data-ww-theme") === theme.value && current.textContent === theme.source) return false
-        const style = current ?? document.createElement("style")
-        if(!current) this.insertAuthored(style)
-        style.setAttribute("data-ww-theme", theme.value)
-        style.textContent = theme.source
-        return true
+        return false
       }
       const names: Record<Exclude<DocumentHeadField, "title" | "license" | "language" | "theme">, string> = {
         description: "description",
@@ -390,6 +387,7 @@ export class HeadFeature extends EditorFeature {
   }
 
   private addElement(kind: DocumentHeadElementKind) {
+    if(kind === "script" || kind === "style" || kind === "stylesheet") return false
     return this.commit(() => {
       const singletonPreset = kind === "charset" || kind === "title" || kind === "generator" || kind === "base"
         ? kind
@@ -439,7 +437,7 @@ export class HeadFeature extends EditorFeature {
   private setElementContent(id: string, value: string) {
     return this.commit(() => {
       const element = this.target(id)
-      if(!element || !textContentElements.has(element.localName)) return false
+      if(!element || isBlockedAuthoredContent(element) || !textContentElements.has(element.localName)) return false
       if(element instanceof HTMLTemplateElement) {
         if(element.innerHTML === value) return false
         element.innerHTML = value
@@ -456,7 +454,10 @@ export class HeadFeature extends EditorFeature {
     return this.commit(() => {
       const element = this.target(id)
       const nextName = name.trim()
-      if(!element || !nextName || nextName.toLowerCase() === "data-webwriter-editor-only") return false
+      if(!element || isBlockedAuthoredContent(element) || !nextName
+        || nextName.toLowerCase() === "data-webwriter-editor-only"
+        || element.localName === "link" && nextName.toLowerCase() === "rel"
+          && value.toLowerCase().split(/\s+/).includes("stylesheet")) return false
       if(nextName.toLowerCase() === "class") {
         value = value.split(/\s+/).filter(className => className && !className.startsWith("◆")).join(" ")
         if(!value) {
@@ -478,7 +479,7 @@ export class HeadFeature extends EditorFeature {
   private removeElementAttribute(id: string, name: string) {
     return this.commit(() => {
       const element = this.target(id)
-      if(!element?.hasAttribute(name)) return false
+      if(!element?.hasAttribute(name) || isBlockedAuthoredContent(element)) return false
       element.removeAttribute(name)
       return true
     })

@@ -27,7 +27,6 @@ const commonElementPresets = new Set([
   "author",
   "license",
   "generator",
-  "theme",
 ])
 
 const primaryAttributesByPreset: Record<string, ReadonlySet<string>> = {
@@ -1211,16 +1210,6 @@ export class DocumentHeadEditor extends LitElement {
             ${this.fieldActions("Language", this.state.language, undefined, "language")}
           </span>
         </label>
-        <label class="common-field theme-field">
-          <span class="field-label">Theme</span>
-          <span class="field-control">
-            <document-theme-picker
-              .value=${this.state.theme}
-              @theme-change=${this.handleThemeChange}
-            ></document-theme-picker>
-            ${this.fieldActions("Theme", this.state.theme, "theme", "theme")}
-          </span>
-        </label>
       </div>
     `
   }
@@ -1318,6 +1307,9 @@ export class DocumentHeadEditor extends LitElement {
   }
 
   private renderEntry(entry: DocumentHeadElementState) {
+    const blocked = entry.tagName === "script" || entry.tagName === "style"
+      || entry.tagName === "link" && entry.attributes.some(attribute => attribute.name.toLowerCase() === "rel"
+        && attribute.value.toLowerCase().split(/\s+/).includes("stylesheet"))
     return html`
       <article class="entry" data-head-id=${entry.id}>
         <header class="entry-header">
@@ -1346,8 +1338,10 @@ export class DocumentHeadEditor extends LitElement {
             @click=${() => this.dispatchAction({type: "removeDocumentHeadElement", id: entry.id})}
           >×</button>
         </header>
-        ${this.renderAttributes(entry)}
-        ${entry.content === undefined ? nothing : html`
+        ${blocked ? html`
+          <p class="blocked-content">Authored scripts and styles are blocked while editing. This element is preserved but cannot be edited.</p>
+        ` : this.renderAttributes(entry)}
+        ${blocked || entry.content === undefined ? nothing : html`
           <label class="content-field">
             <span class="field-label">${entry.contentLabel ?? "Content"}</span>
             <textarea
@@ -1415,9 +1409,6 @@ export class DocumentHeadEditor extends LitElement {
           </span>
         </div>
         <div class="add-toolbar" aria-label="Add head element">
-          <button type="button" @click=${() => this.add("script")}>＋ Script</button>
-          <button type="button" @click=${() => this.add("stylesheet")}>＋ Stylesheet</button>
-          <button type="button" @click=${() => this.add("style")}>＋ Style</button>
           <button type="button" @click=${() => this.add("meta")}>＋ Meta</button>
           <span class="more-select">
             <select aria-label="Add another head element" data-ribbon-input-persistent @change=${this.handleMoreAdd}>

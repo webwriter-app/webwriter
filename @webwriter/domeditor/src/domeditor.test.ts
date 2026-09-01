@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, it, expect, vi } from "vitest"
 import '@testing-library/jest-dom/vitest'
 
 import { DOMEditor } from "./domeditor"
+import {executeCompleteEvent, selectionChangeEvent} from "./editor-bridge"
 import editorStyleString from "./editor.css?raw"
 
 const hasSelector = (stylesheet: CSSStyleSheet, selector: string) =>
@@ -275,7 +276,7 @@ describe("widget shadow interactions", () => {
     widget.remove()
   })
 
-  it("does not mistake the editor's shadow appendix for widget content", () => {
+  it("keeps authored-document shortcuts out of the editor's shadow appendix", () => {
     const button = document.createElement("button")
     editor.appendix.append(button)
 
@@ -288,7 +289,7 @@ describe("widget shadow interactions", () => {
     })
     button.dispatchEvent(event)
 
-    expect(event.defaultPrevented).toBe(true)
+    expect(event.defaultPrevented).toBe(false)
     button.remove()
   })
 
@@ -339,6 +340,31 @@ describe("bridge origin binding", () => {
     editor.postAction({type: "undo"})
 
     expect(postMessage).toHaveBeenCalledWith({type: "undo", bridgeNonce}, bridgeOrigin)
+    editor.destroy()
+    postMessage.mockRestore()
+  })
+
+  it("returns selected HTML without reposting an unchanged selection", async () => {
+    document.body.innerHTML = "<p>Hello world</p>"
+    const text = document.querySelector("p")!.firstChild!
+    document.getSelection()!.setBaseAndExtent(text, 0, text, 5)
+    const bridgeNonce = "0123456789abcdef"
+    const editor = new DOMEditor({bridgeNonce})
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => undefined)
+
+    window.dispatchEvent(new MessageEvent("message", {data: {
+      type: "beginHTMLSelectionEdit",
+      requestId: "html-source",
+      bridgeNonce,
+    }}))
+
+    await vi.waitFor(() => expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: executeCompleteEvent,
+      detail: {requestId: "html-source", result: {html: "<p>Hello world</p>"}},
+    }), window.location.origin))
+    expect(postMessage.mock.calls.some(([message]) => message.type === selectionChangeEvent)).toBe(false)
+
+    editor.getActionHandler("discardHTMLSelectionEdit")({type: "discardHTMLSelectionEdit"})
     editor.destroy()
     postMessage.mockRestore()
   })

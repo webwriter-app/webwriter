@@ -1,6 +1,6 @@
 import type { EditingMutation } from "../domdoc"
 import { DOMEditor } from "../domeditor"
-import {isFormControlInteraction, isWidgetShadowInteraction} from "../utility"
+import {isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction} from "../utility"
 
 export type DocumentListenerMap = {[key in keyof DocumentEventMap]?: (event: DocumentEventMap[key]) => void}
 
@@ -35,6 +35,9 @@ export class EditorFeature {
   /** Interactive authored elements own editing input while capture-selected,
    * just as widget shadow trees own their native keyboard and text events. */
   protected handlesCapturedElementInteractions = false
+  /** Direct-manipulation features may opt in when their own controls live in
+   * the shadow appendix. Ordinary document features must ignore that UI. */
+  protected handlesAppendixInteractions = false
   private listenerRegistrations: ListenerRegistration[] = []
 
   private addListeners(listeners: DocumentListenerMap, options?: AddEventListenerOptions) {
@@ -44,6 +47,7 @@ export class EditorFeature {
         const captureOwnsInteraction = capturedInteractionEvents.has(type)
           && Boolean(this.editor.features?.selection?.isCaptureSelection)
         if((!captureOwnsInteraction || this.handlesCapturedElementInteractions)
+          && (this.handlesAppendixInteractions || !isAppendixInteraction(event))
           && !isWidgetShadowInteraction(event)
           && (this.handlesFormControlInteractions || !isFormControlInteraction(event))) {
           listener(event as never)

@@ -327,6 +327,10 @@ export class DomEditor extends LitElement {
     historyState: {attribute: false, state: true},
     historyLoading: {attribute: false, state: true},
     historyError: {attribute: false, state: true},
+    htmlMode: {attribute: false, state: true},
+    htmlSource: {attribute: false, state: true},
+    htmlPending: {attribute: false, state: true},
+    htmlSourceError: {attribute: false, state: true},
     settings: {attribute: false, state: true},
   }
 
@@ -378,6 +382,13 @@ export class DomEditor extends LitElement {
   }
   private elementStyleRefreshSequence = 0
   private elementStyleRefreshQueued = false
+  private htmlMode = false
+  private htmlSource = ""
+  private htmlOriginalSource = ""
+  private htmlPending = false
+  private htmlSourceError = ""
+  private htmlSourceRefreshSequence = 0
+  private htmlSourceRefreshQueued = false
   private presenceUsers: PresenceUser[] = []
   private packages: WebWriterPackage[] = []
   private installedPackages: WebWriterPackage[] = []
@@ -533,7 +544,7 @@ export class DomEditor extends LitElement {
     // also passed through the authenticated bridge, so a document script
     // cannot learn or forge it before editor initialization.
     const nonce = escapeAttribute(this.bridgeNonce)
-    const policy = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'; style-src 'self' https: data: blob: 'unsafe-inline'; img-src * data: blob:; font-src * data:; connect-src *; media-src * data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'`
+    const policy = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'; style-src 'none'; style-src-elem 'nonce-${nonce}'; style-src-attr 'unsafe-inline'; img-src * data: blob:; font-src * data:; connect-src *; media-src * data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'`
     const csp = `<meta class="◆ ◆editor-only" http-equiv="Content-Security-Policy" content="${escapeAttribute(policy)}">`
     // Happy DOM deliberately disables external script execution but reports
     // each attempted iframe load as an uncaught exception. Keep virtual test
@@ -1819,6 +1830,8 @@ export class DomEditor extends LitElement {
 
   private readonly handleConfiguredShortcut = (event: KeyboardEvent) => {
     if(event.defaultPrevented || event.isComposing) return
+    if(event.composedPath().some(target => target instanceof HTMLElement
+      && target.classList.contains("html-source-input"))) return
     if(event.composedPath().some(target => target instanceof HTMLElement && target.localName === "settings-panel")) return
     const shortcut = shortcutFromEvent(event)
     if(!shortcut) return
@@ -2403,6 +2416,14 @@ export class DomEditor extends LitElement {
       this.focusEditor()
       return
     }
+
+    if(item.kind === "html") {
+      this.restoreEditorSelection()
+      this.openEditToolbox()
+      void this.setHTMLMode(true)
+      return
+    }
+    if(!item.tag) return
 
     if(item.tag === "ul" || item.tag === "ol" || item.tag === "dl" || item.tag === "menu") {
       void this.execute({type: "toggleList", listType: item.tag}).finally(() => this.focusEditor())
@@ -3029,6 +3050,112 @@ export class DomEditor extends LitElement {
     this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.selectTool("Edit")
   }
 
+  private async refreshHTMLSource() {
+    if(!this.htmlMode || this.htmlPending) return
+    const sequence = ++this.htmlSourceRefreshSequence
+    try {
+      this.restoreEditorSelection()
+      const path = this.selectionPath.at(-1)?.path
+      const result = await this.execute({
+        type: "beginHTMLSelectionEdit",
+        ...(path ? {path: [...path]} : {}),
+      }) as {html?: unknown}
+      if(sequence !== this.htmlSourceRefreshSequence || !this.htmlMode || this.htmlPending) return
+      if(typeof result?.html !== "string") throw new TypeError("The editor did not return selected HTML")
+      this.htmlSource = result.html
+      this.htmlOriginalSource = result.html
+      this.htmlSourceError = ""
+    }
+    catch(error) {
+      if(sequence !== this.htmlSourceRefreshSequence || !this.htmlMode) return
+      this.htmlSourceError = error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  private queueHTMLSourceRefresh() {
+    if(this.htmlSourceRefreshQueued || !this.htmlMode || this.htmlPending) return
+    this.htmlSourceRefreshQueued = true
+    queueMicrotask(() => {
+      this.htmlSourceRefreshQueued = false
+      void this.refreshHTMLSource()
+    })
+  }
+
+  private async setHTMLMode(enabled: boolean) {
+    if(enabled === this.htmlMode) return
+    if(!enabled && this.htmlPending) return
+    this.htmlSourceRefreshSequence++
+    if(!enabled) {
+      try {
+        await this.execute({type: "discardHTMLSelectionEdit"})
+      }
+      catch {
+        // The iframe may have replaced a clean source session after a remote
+        // selection change; leaving the visual mode must still succeed.
+      }
+      this.htmlMode = false
+      this.htmlSource = ""
+      this.htmlOriginalSource = ""
+      this.htmlSourceError = ""
+      return
+    }
+    this.htmlMode = true
+    this.htmlSource = ""
+    this.htmlOriginalSource = ""
+    this.htmlSourceError = ""
+    await this.refreshHTMLSource()
+  }
+
+  private handleHTMLModeChange = (event: Event) => {
+    const enabled = (event as CustomEvent<{enabled?: unknown}>).detail?.enabled
+    if(typeof enabled === "boolean") void this.setHTMLMode(enabled)
+  }
+
+  private handleToolboxChange = (event: Event) => {
+    const tool = (event as CustomEvent<{tool?: unknown}>).detail?.tool
+    if(tool !== "Edit" && this.htmlMode && !this.htmlPending) void this.setHTMLMode(false)
+  }
+
+  private handleHTMLSourceChange = (event: Event) => {
+    const value = (event as CustomEvent<{value?: unknown}>).detail?.value
+    if(typeof value !== "string" || !this.htmlMode) return
+    const pending = value !== this.htmlOriginalSource
+    const pendingChanged = pending !== this.htmlPending
+    this.htmlSource = value
+    this.htmlPending = pending
+    this.htmlSourceError = ""
+    if(!pendingChanged) return
+    void this.execute({type: "setHTMLSelectionEditPending", pending}).catch(error => {
+      this.htmlPending = !pending
+      this.htmlSourceError = error instanceof Error ? error.message : String(error)
+    })
+  }
+
+  private handleHTMLSourceApply = () => {
+    if(!this.htmlMode || !this.htmlPending) return
+    void this.execute({type: "applyHTMLSelectionEdit", html: this.htmlSource}).then(() => {
+      this.htmlPending = false
+      this.htmlOriginalSource = this.htmlSource
+      this.htmlSourceError = ""
+      this.fileDirty = true
+      return this.refreshHTMLSource()
+    }).catch(error => {
+      this.htmlSourceError = error instanceof Error ? error.message : String(error)
+    })
+  }
+
+  private handleHTMLSourceDiscard = () => {
+    if(!this.htmlMode || !this.htmlPending) return
+    void this.execute({type: "discardHTMLSelectionEdit"}).then(() => {
+      this.htmlPending = false
+      this.htmlSource = this.htmlOriginalSource
+      this.htmlSourceError = ""
+      return this.refreshHTMLSource()
+    }).catch(error => {
+      this.htmlSourceError = error instanceof Error ? error.message : String(error)
+    })
+  }
+
   private handleTableStyleChange = (event: Event) => {
     const detail = (event as CustomEvent<{property?: unknown, value?: unknown}>).detail
     if(!["background-color", "border-color", "border-style", "border-width"].includes(String(detail?.property))
@@ -3484,6 +3611,7 @@ export class DomEditor extends LitElement {
         bubbles: true,
         composed: true,
       }))
+      this.queueHTMLSourceRefresh()
       return
     }
     if(isPresenceChangeMessage(event.data)) {
@@ -3757,6 +3885,13 @@ export class DomEditor extends LitElement {
     this.graphicSelection = null
     this.elementStyleRefreshSequence++
     this.elementStyleRefreshQueued = false
+    this.htmlSourceRefreshSequence++
+    this.htmlSourceRefreshQueued = false
+    this.htmlMode = false
+    this.htmlSource = ""
+    this.htmlOriginalSource = ""
+    this.htmlPending = false
+    this.htmlSourceError = ""
     this.elementStyle = {
       target: null,
       inline: {},
@@ -3783,6 +3918,7 @@ export class DomEditor extends LitElement {
     return html`
       <header class="app-bar">
         <app-ribbon
+          ?inert=${this.htmlPending}
           logo-url=${appIconUrl}
           .canMark=${this.canMark}
           .canSection=${this.canSection}
@@ -3872,6 +4008,7 @@ export class DomEditor extends LitElement {
           ></live-session-controls>
         ` : html`
           <dom-editor-breadcrumb
+            ?inert=${this.htmlPending}
             .path=${this.selectionPath}
             .nodeSelected=${this.nodeSelection}
             .capture=${this.captureSelection}
@@ -3929,6 +4066,10 @@ export class DomEditor extends LitElement {
         .listStyle=${this.listStyle}
         .selectionPath=${this.selectionPath}
         .documentSelected=${this.nodeSelection && !this.captureSelection && this.selectionPath.length === 1}
+        .htmlMode=${this.htmlMode}
+        .htmlSource=${this.htmlSource}
+        .htmlPending=${this.htmlPending}
+        .htmlSourceError=${this.htmlSourceError}
         .media=${this.mediaSelection}
         .form=${this.formSelection}
         .table=${this.tableSelection}
@@ -3965,6 +4106,11 @@ export class DomEditor extends LitElement {
         @ribbon-input-blur=${this.handleRibbonInputBlur}
         @ribbon-input-commit=${this.finishRibbonInput}
         @ribbon-input-cancel=${this.finishRibbonInput}
+        @toolbox-change=${this.handleToolboxChange}
+        @html-mode-change=${this.handleHTMLModeChange}
+        @html-source-change=${this.handleHTMLSourceChange}
+        @html-source-apply=${this.handleHTMLSourceApply}
+        @html-source-discard=${this.handleHTMLSourceDiscard}
       ></dom-editor-toolbox>
     `
   }

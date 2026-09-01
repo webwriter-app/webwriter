@@ -235,6 +235,7 @@ const icons: Record<string, string> = {
   Spacing: lineHeight,
   Paragraph: pilcrow,
   "Preformatted Text": code,
+  Code: code,
   "Heading 1": h1,
   "Heading 2": h2,
   "Heading 3": h3,

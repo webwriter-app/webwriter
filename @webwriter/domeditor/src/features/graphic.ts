@@ -524,6 +524,8 @@ const setShapeBounds = (shape: Element, next: Bounds, initial: Bounds, initialPo
 /** Native SVG insertion and direct manipulation. Authored geometry stays in
  * SVG attributes; every handle and control is placed in the shadow appendix. */
 export class GraphicFeature extends EditorFeature {
+  protected handlesAppendixInteractions = true
+
   protected handlesCapturedElementInteractions = true
   #selectedShapes = new Set<SVGGraphicsElement>()
   #primaryShape: SVGGraphicsElement | null = null

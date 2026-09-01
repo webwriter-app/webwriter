@@ -50,6 +50,7 @@ import {isDocumentRoot} from "../document-template"
  * double click on a selected element (see activeListeners); the target is
  * marked with `◆transform-target`. */
 export class TransformationFeature extends EditorFeature {
+  protected handlesAppendixInteractions = true
 
   /** The transform interaction currently in progress. */
   #mode: "move" | "scale" | "rotate" | undefined
