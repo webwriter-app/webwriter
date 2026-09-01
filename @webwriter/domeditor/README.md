@@ -22,3 +22,15 @@ Data is stored in the ignored `.webwriter-dev/` directory. Provider files have o
 - `ws://127.0.0.1:1234/:room` — Yjs collaboration using `@y/websocket-server`
 
 Set `WEBWRITER_DEV_PORT` to use another port. `WEBWRITER_DEV_HOST` accepts only `127.0.0.1`, `::1`, or `localhost`.
+
+## HTML editing capability coverage
+
+The authoritative editing-support inventory is
+[`src/html-element-capabilities.ts`](src/html-element-capabilities.ts). It tracks every conforming entry in the
+WHATWG HTML Living Standard element index, including MathML, SVG, and autonomous custom elements, without acting as
+an editor schema. Each entry records its overall support, visual insertion path, content/attribute/structure support,
+intentional restrictions, owning feature, and a short user-facing explanation.
+
+The current reviewed snapshot contains 116 entries: 103 with full support, 11 with partial support, and 2 deliberately
+unsupported active-content elements. [`src/html-element-capabilities.test.ts`](src/html-element-capabilities.test.ts)
+requires complete coverage and keeps the manifest aligned with built-in insertion and intentional-limitation policies.
