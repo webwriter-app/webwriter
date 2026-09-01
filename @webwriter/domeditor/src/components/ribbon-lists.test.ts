@@ -90,7 +90,9 @@ describe("list ribbon drawer", () => {
     expect(button("Elements", "HTML").icon).toBe("Code")
     expect(button("Elements", "HTML").submenu).toEqual([])
     expect(button("Elements", "Script")).toBeNull()
-    expect(submenuTags(button("Elements", "Heading"))).toEqual(["h2", "h3", "h4", "h5", "h6", "hr"])
+    expect(submenuTags(button("Elements", "Heading"))).toEqual(["h2", "h3", "h4", "h5", "h6", "hgroup", "hr"])
+    expect(insertionMenuItems.find(item => item.tag === "hgroup")?.html)
+      .toBe("<hgroup><h1></h1><p></p></hgroup>")
     expect(submenuTags(button("Elements", "Details"))).toEqual(["dialog"])
   })
 
@@ -159,6 +161,27 @@ describe("list ribbon drawer", () => {
       .toContain("toggle-list:menu")
     expect(list.submenu.map(item => typeof item === "string" ? item : item.action))
       .toContain("toggle-list:dl")
+  })
+
+  it("shows native ordered-list and direct item controls in Edit", async () => {
+    const ribbon = new AppRibbon()
+    ribbon.activeMenu = "Edit"
+    ribbon.listType = "ol"
+    ribbon.orderedList = {start: "4", reversed: true, numbering: "I", itemValue: "9"}
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+
+    const drawer = ribbon.shadowRoot!.querySelector('ribbon-drawer[label="List"]')!
+    expect(drawer).not.toBeNull()
+    expect(Array.from(drawer.querySelectorAll("label > span")).map(label => label.textContent))
+      .toEqual(["Start at", "Numbering", "Count backwards", "Item number"])
+
+    const changed = vi.fn()
+    ribbon.addEventListener("list-attribute-change", changed)
+    const start = drawer.querySelector<HTMLInputElement>('input[type="number"]')!
+    start.value = "6"
+    start.dispatchEvent(new Event("change"))
+    expect(changed).toHaveBeenCalledWith(expect.objectContaining({detail: {name: "start", value: "6"}}))
   })
 
   it("shows Glossary only in the List dropdown and marks List active for a glossary", async () => {

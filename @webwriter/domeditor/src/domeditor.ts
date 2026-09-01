@@ -952,6 +952,7 @@ export class DOMEditor {
       ? {parentPath: this.pathToElement($.anchor), offset: $.anchorOffset}
       : undefined
     const list = this.features.list.getState()
+    const headingGroup = this.features.manipulation.getHeadingGroupState()
     const media = this.features.media.getState()
     const form = this.features.form.getState()
     const dialog = this.features.dialog.getState()
@@ -978,6 +979,7 @@ export class DOMEditor {
       }} : {}),
       ...(gap ? {gap} : {}),
       ...(list.type ? {list} : {}),
+      ...(headingGroup ? {headingGroup} : {}),
       ...(media ? {media} : {}),
       ...(form ? {form} : {}),
       ...(dialog ? {dialog} : {}),

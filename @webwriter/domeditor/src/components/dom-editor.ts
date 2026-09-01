@@ -67,6 +67,8 @@ import {
   type SelectionPathItem,
   type SelectionPathSection,
   type PresenceUser,
+  type HeadingGroupSelectionState,
+  type ListSelectionState,
   type ListType,
   type InitializeEditorMessage,
   type LoadWidgetsMessage,
@@ -304,6 +306,8 @@ export class DomEditor extends LitElement {
     frameRevision: {attribute: false, state: true},
     listType: {attribute: false, state: true},
     listStyle: {attribute: false, state: true},
+    orderedList: {attribute: false, state: true},
+    headingGroup: {attribute: false, state: true},
     mediaSelection: {attribute: false, state: true},
     formSelection: {attribute: false, state: true},
     dialogSelection: {attribute: false, state: true},
@@ -374,6 +378,8 @@ export class DomEditor extends LitElement {
   }
   private listType: ListType | null = null
   private listStyle = ""
+  private orderedList: ListSelectionState["ordered"] = undefined
+  private headingGroup: HeadingGroupSelectionState | null = null
   private mediaSelection: MediaSelectionState | null = null
   private formSelection: FormSelectionState | null = null
   private dialogSelection: DialogSelectionState | null = null
@@ -2348,6 +2354,13 @@ export class DomEditor extends LitElement {
       else this.focusEditor()
       return
     }
+    if(label === "heading-group-add-before" || label === "heading-group-add-after") {
+      void this.execute({
+        type: "addHeadingGroupText",
+        position: label.endsWith("before") ? "before" : "after",
+      }).finally(() => this.focusEditor())
+      return
+    }
     if(label?.startsWith("insert-graphic-shape:")) {
       const shape = label.slice("insert-graphic-shape:".length)
       if(isGraphicShapeType(shape)) {
@@ -2481,7 +2494,7 @@ export class DomEditor extends LitElement {
 
     void this.execute({
       type: "insert",
-      html: emptyElementHTML(item.tag),
+      html: item.html ?? emptyElementHTML(item.tag),
     }).finally(() => this.focusEditor())
   }
 
@@ -2950,6 +2963,36 @@ export class DomEditor extends LitElement {
       mark,
       attribute: detail.attribute,
       value: detail.value,
+    }).finally(() => this.focusEditor())
+  }
+
+  private handleListAttributeChange = (event: Event) => {
+    const detail = (event as CustomEvent<{name?: unknown, value?: unknown}>).detail
+    if(!detail || !["start", "reversed", "type", "value"].includes(String(detail.name))
+      || detail.value !== null && typeof detail.value !== "string") {
+      this.focusEditor()
+      return
+    }
+    if(detail.name === "value") {
+      void this.execute({type: "setOrderedListItemValue", value: detail.value}).finally(() => this.focusEditor())
+      return
+    }
+    void this.execute({
+      type: "setOrderedListAttribute",
+      name: detail.name as "start" | "reversed" | "type",
+      value: detail.value,
+    }).finally(() => this.focusEditor())
+  }
+
+  private handleHeadingGroupLevelChange = (event: Event) => {
+    const level = (event as CustomEvent<{level?: unknown}>).detail?.level
+    if(typeof level !== "string" || !/^h[1-6]$/.test(level)) {
+      this.focusEditor()
+      return
+    }
+    void this.execute({
+      type: "setHeadingGroupLevel",
+      level: level as HeadingGroupSelectionState["heading"],
     }).finally(() => this.focusEditor())
   }
 
@@ -3629,6 +3672,8 @@ export class DomEditor extends LitElement {
       }
       this.listType = event.data.detail.list?.type ?? null
       this.listStyle = event.data.detail.list?.style ?? ""
+      this.orderedList = event.data.detail.list?.ordered ? {...event.data.detail.list.ordered} : undefined
+      this.headingGroup = event.data.detail.headingGroup ? {...event.data.detail.headingGroup} : null
       this.mediaSelection = event.data.detail.media
         ? {type: event.data.detail.media.type, attributes: {...event.data.detail.media.attributes}}
         : null
@@ -3661,6 +3706,7 @@ export class DomEditor extends LitElement {
         || this.formSelection !== null
         || this.dialogSelection !== null
         || this.sectionSelected
+        || this.headingGroup !== null
         || path.at(-1)?.icon === "Packages"
       if(event.data.detail.inserted === true && hasContextualEditOptions) this.openEditToolbox()
       this.documentTree = this.buildDocumentTree()
@@ -3673,7 +3719,12 @@ export class DomEditor extends LitElement {
           ...(this.nodeSelection ? {nodeSelected: true} : {}),
           ...(this.captureSelection ? {capture: true} : {}),
           ...(selectionGap ? {gap: selectionGap} : {}),
-          list: {type: this.listType, style: this.listStyle},
+          list: {
+            type: this.listType,
+            style: this.listStyle,
+            ...(this.orderedList ? {ordered: {...this.orderedList}} : {}),
+          },
+          ...(this.headingGroup ? {headingGroup: {...this.headingGroup}} : {}),
           ...(this.mediaSelection ? {media: this.mediaSelection} : {}),
           ...(this.formSelection ? {form: this.formSelection} : {}),
           ...(this.dialogSelection ? {dialog: this.dialogSelection} : {}),
@@ -3949,6 +4000,10 @@ export class DomEditor extends LitElement {
     this.marks = []
     this.markStyles = {}
     this.markAttributes = {}
+    this.listType = null
+    this.listStyle = ""
+    this.orderedList = undefined
+    this.headingGroup = null
     this.commentState = {
       canComment: false,
       active: false,
@@ -4010,6 +4065,8 @@ export class DomEditor extends LitElement {
           .commentState=${this.commentState}
           .listType=${this.listType}
           .listStyle=${this.listStyle}
+          .orderedList=${this.orderedList}
+          .headingGroup=${this.headingGroup}
           .media=${this.mediaSelection}
           .form=${this.formSelection}
           .dialog=${this.dialogSelection}
@@ -4050,6 +4107,8 @@ export class DomEditor extends LitElement {
           @ribbon-combobox-change=${this.handleRibbonComboboxChange}
           @section-type-change=${this.handleSectionTypeChange}
           @mark-attribute-change=${this.handleMarkAttributeChange}
+          @list-attribute-change=${this.handleListAttributeChange}
+          @heading-group-level-change=${this.handleHeadingGroupLevelChange}
           @comment-action=${this.handleCommentAction}
           @media-attribute-change=${this.handleMediaAttributeChange}
           @element-attribute-change=${this.handleElementAttributeChange}
@@ -4147,6 +4206,8 @@ export class DomEditor extends LitElement {
         .commentState=${this.commentState}
         .listType=${this.listType}
         .listStyle=${this.listStyle}
+        .orderedList=${this.orderedList}
+        .headingGroup=${this.headingGroup}
         .selectionPath=${this.selectionPath}
         .documentSelected=${this.nodeSelection && !this.captureSelection && this.selectionPath.length === 1}
         .htmlMode=${this.htmlMode}
@@ -4171,6 +4232,8 @@ export class DomEditor extends LitElement {
         @ribbon-combobox-change=${this.handleRibbonComboboxChange}
         @section-type-change=${this.handleSectionTypeChange}
         @mark-attribute-change=${this.handleMarkAttributeChange}
+        @list-attribute-change=${this.handleListAttributeChange}
+        @heading-group-level-change=${this.handleHeadingGroupLevelChange}
         @comment-action=${this.handleCommentAction}
         @media-attribute-change=${this.handleMediaAttributeChange}
         @element-attribute-change=${this.handleElementAttributeChange}

@@ -434,7 +434,48 @@ describe("semantic list editing", () => {
     editor.features.list.setListStyle("ol", "upper-roman")
 
     expect(cleanHTML()).toBe('<ol style="list-style-type: upper-roman;"><li>A</li></ol>')
-    expect(editor.features.list.getState()).toEqual({type: "ol", style: "upper-roman"})
+    expect(editor.features.list.getState()).toEqual({
+      type: "ol",
+      style: "upper-roman",
+      ordered: {start: "", reversed: false, numbering: "", itemValue: ""},
+    })
+  })
+
+  it("edits native ordered-list and direct item numbering without normalizing the list", () => {
+    document.body.innerHTML = '<ol data-origin="remote"><li>A</li><li><span>B</span></li><div>preserve</div></ol>'
+    const text = document.querySelector("span")!.firstChild!
+    $.move(text, 1)
+
+    editor.features.list.setOrderedListAttribute("start", "4")
+    editor.features.list.setOrderedListAttribute("reversed", "")
+    editor.features.list.setOrderedListAttribute("type", "I")
+    editor.features.list.setOrderedListItemValue("9")
+
+    expect(cleanHTML()).toBe('<ol data-origin="remote" start="4" reversed="" type="I"><li>A</li><li value="9"><span>B</span></li><div>preserve</div></ol>')
+    expect(editor.features.list.getState()).toEqual({
+      type: "ol",
+      style: "",
+      ordered: {start: "4", reversed: true, numbering: "I", itemValue: "9"},
+    })
+
+    editor.features.list.setOrderedListAttribute("start", null)
+    editor.features.list.setOrderedListAttribute("reversed", null)
+    editor.features.list.setOrderedListAttribute("type", null)
+    editor.features.list.setOrderedListItemValue(null)
+
+    expect(cleanHTML()).toBe('<ol data-origin="remote"><li>A</li><li><span>B</span></li><div>preserve</div></ol>')
+  })
+
+  it("does not expose or change an outer item override from a nested ordered list", () => {
+    document.body.innerHTML = '<ol><li value="8">Outer<ol start="2"><li>Inner</li></ol></li></ol>'
+    $.move(document.querySelector("ol ol li")!.firstChild!, 2)
+
+    expect(editor.features.list.getState().ordered).toEqual({
+      start: "2", reversed: false, numbering: "", itemValue: "",
+    })
+    editor.features.list.setOrderedListItemValue("3")
+
+    expect(cleanHTML()).toBe('<ol><li value="8">Outer<ol start="2"><li value="3">Inner</li></ol></li></ol>')
   })
 
   it("alternates description terms and descriptions as virtual items materialize", () => {

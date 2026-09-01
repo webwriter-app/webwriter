@@ -532,6 +532,7 @@ describe("mark ribbon controls", () => {
         "Keyboard Shortcut",
         "Quotation",
         "Abbreviation",
+        "Semantic Highlight",
         "Bidirectional Isolate",
         "Bidirectional Override",
         "Citation Source",
@@ -550,6 +551,12 @@ describe("mark ribbon controls", () => {
     expect(dropdown.querySelector('input[aria-label="Quotation: Source"]')).not.toBeNull()
     expect(dropdown.querySelector('input[aria-label="Data Annotation: Value"]')).not.toBeNull()
     expect(dropdown.querySelector('input[aria-label="Date/Time Annotation: Date/time"]')).not.toBeNull()
+    expect(Array.from(dropdown.querySelectorAll<HTMLOptionElement>('select[aria-label="Bidirectional Override: Direction"] option'))
+      .map(option => [option.textContent, option.value])).toEqual([
+        ["Choose direction", ""],
+        ["Left to right", "ltr"],
+        ["Right to left", "rtl"],
+      ])
 
     dropdown.querySelector<HTMLInputElement>('[role="option"] input[aria-label="Select Data Annotation"]')!.click()
     expect(changed).toHaveBeenCalledWith(expect.objectContaining({

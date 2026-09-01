@@ -433,7 +433,7 @@ export class InsertionFeature extends EditorFeature {
   private async insert(item: InsertionMenuItem) {
     const generation = this.commandGeneration
     const isCurrentCommand = () => generation === this.commandGeneration && this.menu.open
-    let html = item.tag === "table"
+    let html = item.html ?? (item.tag === "table"
       ? createTable(2, 2).outerHTML
       : item.tag === "details"
       ? "<details><summary></summary></details>"
@@ -441,7 +441,7 @@ export class InsertionFeature extends EditorFeature {
       ? dialogDefaultHTML(document).html
       : isMediaType(item.tag) ? mediaDefaultHTML(item.tag)
       : isFormElementType(item.tag) ? formDefaultHTML(item.tag)
-      : item.tag ? emptyElementHTML(item.tag) : ""
+      : item.tag ? emptyElementHTML(item.tag) : "")
     if(item.htmlUrl) {
       try {
         const response = await fetch(item.htmlUrl)

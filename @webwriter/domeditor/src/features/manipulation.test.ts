@@ -403,6 +403,50 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
   })*/
 })
 
+describe("heading groups", () => {
+  it("reports and changes the direct heading while preserving attributes and irregular children", () => {
+    document.body.innerHTML = '<hgroup data-origin="remote"><p>Eyebrow</p><h2 id="title"><em>Title</em></h2><x-note></x-note><p>Deck</p></hgroup>'
+    const group = document.querySelector("hgroup")!
+    $.move(document.querySelector("em")!.firstChild!, 2)
+
+    expect(editor.features.manipulation.getHeadingGroupState()).toEqual({
+      heading: "h2", beforeCount: 1, afterCount: 1,
+    })
+    editor.features.manipulation.setHeadingGroupLevel("h3")
+
+    expectBodyToBe('<hgroup data-origin="remote"><p>Eyebrow</p><h3 id="title"><em>Title</em></h3><x-note></x-note><p>Deck</p></hgroup>')
+    expect($.anchor).toBe(document.querySelector("em")!.firstChild)
+    expect($.anchorOffset).toBe(2)
+  })
+
+  it("adds supporting paragraphs on either side without rebuilding unrelated content", () => {
+    document.body.innerHTML = "<hgroup><x-note></x-note><h1>Title</h1><p>Deck</p><x-widget></x-widget></hgroup>"
+    $.selectElement(document.querySelector("hgroup")!)
+
+    editor.features.manipulation.addHeadingGroupText("before")
+    expect($.anchor).toBe(document.querySelector("hgroup > p:first-of-type"))
+
+    editor.features.manipulation.addHeadingGroupText("after")
+
+    expectBodyToBe("<hgroup><x-note></x-note><p></p><h1>Title</h1><p>Deck</p><p></p><x-widget></x-widget></hgroup>")
+    expect(editor.features.manipulation.getHeadingGroupState()).toEqual({
+      heading: "h1", beforeCount: 1, afterCount: 2,
+    })
+  })
+
+  it("repairs only the missing heading when an irregular group has none", () => {
+    document.body.innerHTML = "<hgroup><p>Supporting text</p><custom-title></custom-title></hgroup>"
+    $.selectElement(document.querySelector("hgroup")!)
+
+    expect(editor.features.manipulation.getHeadingGroupState()).toEqual({
+      heading: null, beforeCount: 0, afterCount: 1,
+    })
+    editor.features.manipulation.setHeadingGroupLevel("h4")
+
+    expectBodyToBe("<hgroup><h4></h4><p>Supporting text</p><custom-title></custom-title></hgroup>")
+  })
+})
+
 describe("document template protection", () => {
   it.each(["backward", "forward"] as const)("%s deletion clears a selected template without removing it", direction => {
     document.body.innerHTML = '<demo-widget role="document"><p>Template content</p></demo-widget>'

@@ -7,6 +7,7 @@ import {
   type ElementStyleDeclaration,
   type ElementStyleMutation,
   type ElementStyleState,
+  type HeadingGroupSelectionState,
 } from "../editor-bridge"
 import {paragraphStylePropertyNameSet} from "../element-styles"
 import {isSectionElement, isSectionName, type SectionName} from "../sections"
@@ -65,6 +66,81 @@ function isCaretAtBoundary(element: Element, boundary: "start" | "end") {
  * setting attributes or styles on the selected elements. All operations work
  * on the current selection (see `EditingSelection`/`$`). */
 export class ManipulationFeature extends EditorFeature {
+
+  private activeHeadingGroup() {
+    const selected = $.selectedElement
+    const anchor = $.anchor
+    const element = selected ?? (anchor ? getContainer(anchor) : null)
+    if(!isElement(element) || isDocumentRoot(element)) return null
+    return (element.matches("hgroup") ? element : element.closest("hgroup")) as HTMLElement | null
+  }
+
+  getHeadingGroupState(): HeadingGroupSelectionState | null {
+    const group = this.activeHeadingGroup()
+    if(!group) return null
+    const heading = Array.from(group.children).find(child => /^h[1-6]$/.test(child.localName)) ?? null
+    const children = Array.from(group.children)
+    const headingIndex = heading ? children.indexOf(heading) : -1
+    return {
+      heading: heading?.localName as HeadingGroupSelectionState["heading"] ?? null,
+      beforeCount: children.filter((child, index) => child.localName === "p" && headingIndex >= 0 && index < headingIndex).length,
+      afterCount: children.filter((child, index) => child.localName === "p" && (headingIndex < 0 || index > headingIndex)).length,
+    }
+  }
+
+  private directHeading(group: HTMLElement) {
+    return Array.from(group.children).find(child => /^h[1-6]$/.test(child.localName)) as HTMLElement | undefined
+  }
+
+  setHeadingGroupLevel(level: HeadingGroupSelectionState["heading"]) {
+    if(!level) throw new TypeError("A heading group requires a heading level")
+    const group = this.activeHeadingGroup()
+    if(!group) return
+    const heading = this.directHeading(group)
+    if(!heading) {
+      const created = document.createElement(level)
+      group.prepend(created)
+      $.move(created)
+      return
+    }
+    if(heading.localName === level) return
+    const replacement = document.createElement(level)
+    this.copyAuthoredAttributes(heading, replacement)
+    replacement.append(...Array.from(heading.childNodes))
+    const selection = document.getSelection()
+    const anchorWasHeading = selection?.anchorNode === heading
+    const focusWasHeading = selection?.focusNode === heading
+    const anchorOffset = selection?.anchorOffset ?? 0
+    const focusOffset = selection?.focusOffset ?? 0
+    heading.replaceWith(replacement)
+    if(selection && (anchorWasHeading || focusWasHeading)) {
+      const anchorNode = anchorWasHeading ? replacement : selection.anchorNode
+      const focusNode = focusWasHeading ? replacement : selection.focusNode
+      if(anchorNode && focusNode) selection.setBaseAndExtent(
+        anchorNode, Math.min(anchorOffset, anchorNode.childNodes.length),
+        focusNode, Math.min(focusOffset, focusNode.childNodes.length),
+      )
+    }
+  }
+
+  addHeadingGroupText(position: "before" | "after") {
+    const group = this.activeHeadingGroup()
+    if(!group) return
+    let heading = this.directHeading(group)
+    if(!heading) {
+      heading = document.createElement("h1")
+      group.prepend(heading)
+    }
+    const paragraph = document.createElement("p")
+    if(position === "before") heading.before(paragraph)
+    else {
+      const following = Array.from(group.children).filter(child => child.localName === "p" && child.compareDocumentPosition(heading!) & Node.DOCUMENT_POSITION_PRECEDING)
+      const lastFollowing = following.at(-1)
+      if(lastFollowing) lastFollowing.after(paragraph)
+      else heading.after(paragraph)
+    }
+    $.move(paragraph)
+  }
 
   /** Copies all authored attributes, excluding transient editor marker
    * classes, to a newly created replacement element. */
@@ -968,6 +1044,13 @@ export class ManipulationFeature extends EditorFeature {
     },
     setBlockType: ({tag}: {type: "setBlockType", tag: BlockFormatTag}) => {
       this.setBlockType(tag)
+    },
+    setHeadingGroupLevel: ({level}: {type: "setHeadingGroupLevel", level: HeadingGroupSelectionState["heading"]}) => {
+      this.setHeadingGroupLevel(level)
+    },
+    addHeadingGroupText: ({position}: {type: "addHeadingGroupText", position: "before" | "after"}) => {
+      if(position !== "before" && position !== "after") throw new TypeError("Unsupported heading-group text position")
+      this.addHeadingGroupText(position)
     },
     toggleSection: ({section = "section"}: {type: "toggleSection", section?: SectionName}) => {
       return this.toggleSection(section)

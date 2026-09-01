@@ -14,6 +14,7 @@ export const primaryMarkNames = [
 ] as const
 
 export const secondaryMarkNames = [
+  "mark",
   "bdi",
   "bdo",
   "cite",
@@ -125,6 +126,7 @@ export const advancedMarkNames = [
   "kbd",
   "q",
   "abbr",
+  "mark",
   "bdi",
   "bdo",
   "cite",
@@ -160,6 +162,7 @@ export type MarkAttributeOption = {
   label: string
   placeholder: string
   inputType?: "text" | "url"
+  options?: readonly StyleMarkOption[]
 }
 
 /** Curated attributes exposed as mark details. */
@@ -176,6 +179,16 @@ export const markAttributeOptions: Partial<Record<MarkName, readonly MarkAttribu
   ],
   abbr: [{name: "title", label: "Title", placeholder: "Expanded abbreviation"}],
   q: [{name: "cite", label: "Source", placeholder: "https://…", inputType: "url"}],
+  bdo: [{
+    name: "dir",
+    label: "Direction",
+    placeholder: "Direction",
+    options: [
+      {label: "Choose direction", value: ""},
+      {label: "Left to right", value: "ltr"},
+      {label: "Right to left", value: "rtl"},
+    ],
+  }],
   data: [{name: "value", label: "Value", placeholder: "Value"}],
   time: [{name: "datetime", label: "Date/time", placeholder: "YYYY-MM-DD"}],
   ins: [
@@ -230,6 +243,7 @@ export function hasStandardMarkShortcut(option: MarkOption) {
 }
 
 export const secondaryMarkOptions: readonly MarkOption[] = [
+  {name: "mark", label: "Semantic Highlight", icon: "Highlight"},
   {name: "bdi", label: "Bidirectional Isolate", icon: "MarkBdi"},
   {name: "bdo", label: "Bidirectional Override", icon: "MarkBdo"},
   {name: "cite", label: "Citation Source", icon: "MarkCite"},

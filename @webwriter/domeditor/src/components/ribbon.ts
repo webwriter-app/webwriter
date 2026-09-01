@@ -1,6 +1,6 @@
 import { LitElement, css, html, nothing } from "lit"
 import {ref} from "lit/directives/ref.js"
-import {emptyVersionHistoryState, type CommentState, type ElementStyleState, type ListType, type PresenceUser, type VersionHistoryState} from "../editor-bridge"
+import {emptyVersionHistoryState, type CommentState, type ElementStyleState, type HeadingGroupSelectionState, type ListSelectionState, type ListType, type PresenceUser, type VersionHistoryState} from "../editor-bridge"
 import {
   completeAIConversation,
   type AIAttachment,
@@ -207,6 +207,8 @@ export class AppRibbon extends LitElement {
     packageVisibleCount: {type: Number, state: true},
     listType: {type: String, attribute: "list-type"},
     listStyle: {type: String, attribute: "list-style"},
+    orderedList: {attribute: false},
+    headingGroup: {attribute: false},
     media: {attribute: false},
     form: {attribute: false},
     dialog: {attribute: false},
@@ -2981,6 +2983,8 @@ export class AppRibbon extends LitElement {
   selectedLocalPackageAutoReload = false
   listType: ListType | null = null
   listStyle = ""
+  orderedList: ListSelectionState["ordered"] = undefined
+  headingGroup: HeadingGroupSelectionState | null = null
   media: MediaSelectionState | null = null
   form: FormSelectionState | null = null
   dialog: DialogSelectionState | null = null
@@ -3977,7 +3981,7 @@ export class AppRibbon extends LitElement {
   }
 
   private dispatchMarkAttribute(mark: MarkName, attribute: string, event: Event) {
-    const value = (event.currentTarget as HTMLInputElement).value
+    const value = (event.currentTarget as HTMLInputElement | HTMLSelectElement).value
     this.dispatchEvent(new CustomEvent("mark-attribute-change", {
       detail: {mark, attribute, value},
       bubbles: true,
@@ -4005,19 +4009,34 @@ export class AppRibbon extends LitElement {
     return html`
       <label class=${`mark-attribute${mark === "a" && option.name === "href" ? " mark-attribute-link" : ""}`}>
         <span>${option.label}</span>
-        <input
+        ${option.options ? html`<select
+          aria-label=${`${this.markOption(mark).label}: ${option.label}`}
+          .value=${this.markAttributes[mark]?.[option.name] ?? option.options[0]?.value ?? ""}
+          ?disabled=${!this.canMark}
+          @change=${(event: Event) => this.dispatchMarkAttribute(mark, option.name, event)}
+        >${option.options.map(item => html`<option value=${item.value}>${item.label}</option>`)}</select>` : html`<input
           type=${option.inputType ?? "text"}
           aria-label=${`${this.markOption(mark).label}: ${option.label}`}
           placeholder=${option.placeholder}
           .value=${this.markAttributes[mark]?.[option.name] ?? ""}
           ?disabled=${!this.canMark}
           @change=${(event: Event) => this.dispatchMarkAttribute(mark, option.name, event)}
-        />
+        />`}
       </label>
     `
   }
 
   private renderDropdownAttribute(mark: MarkName, option: MarkAttributeOption, active = true) {
+    if(option.options) return html`
+      <select
+        class="mark-dropdown-attribute"
+        aria-label=${`${this.markOption(mark).label}: ${option.label}`}
+        title=${option.label}
+        .value=${this.markAttributes[mark]?.[option.name] ?? option.options[0]?.value ?? ""}
+        ?disabled=${!this.canMark || !active}
+        @change=${(event: Event) => this.dispatchMarkAttribute(mark, option.name, event)}
+      >${option.options.map(item => html`<option value=${item.value}>${item.label}</option>`)}</select>
+    `
     return html`
       <input
         class="mark-dropdown-attribute"
@@ -4295,6 +4314,136 @@ export class AppRibbon extends LitElement {
           icon="RemoveMarks"
           ?disabled=${!this.sectionSelected}
         ></ribbon-button>
+        ${this.sectionType === "blockquote" && this.elementAttributes?.localName === "blockquote" ? html`
+          <label class="mark-attribute">
+            <span>Citation</span>
+            <input
+              type="url"
+              placeholder="https://…"
+              .value=${this.elementAttributes.attributes.cite ?? ""}
+              @change=${(event: Event) => this.dispatchSelectedElementAttribute("cite", (event.currentTarget as HTMLInputElement).value)}
+            />
+          </label>
+        ` : ""}
+      </ribbon-drawer>
+    `
+  }
+
+  private dispatchSelectedElementAttribute(name: string, value: string | null) {
+    if(!this.elementAttributes) return
+    this.dispatchEvent(new CustomEvent("element-attribute-change", {
+      detail: {
+        path: this.elementAttributes.path,
+        localName: this.elementAttributes.localName,
+        namespaceURI: this.elementAttributes.namespaceURI,
+        name,
+        value,
+      },
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private dispatchListAttribute(name: "start" | "reversed" | "type" | "value", value: string | null) {
+    this.dispatchEvent(new CustomEvent("list-attribute-change", {
+      detail: {name, value},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private renderListDrawer() {
+    if(this.listType !== "ol" || !this.orderedList) return nothing
+    return html`
+      <ribbon-drawer label="List" icon="Enumeration" layout="form">
+        <label class="mark-attribute">
+          <span>Start at</span>
+          <input
+            type="number"
+            .value=${this.orderedList.start}
+            placeholder="Automatic"
+            @change=${(event: Event) => this.dispatchListAttribute("start", (event.currentTarget as HTMLInputElement).value)}
+          />
+        </label>
+        <label class="mark-attribute">
+          <span>Numbering</span>
+          <select
+            .value=${this.orderedList.numbering}
+            @change=${(event: Event) => this.dispatchListAttribute("type", (event.currentTarget as HTMLSelectElement).value)}
+          >
+            <option value="">Automatic</option>
+            <option value="1">1, 2, 3</option>
+            <option value="a">a, b, c</option>
+            <option value="A">A, B, C</option>
+            <option value="i">i, ii, iii</option>
+            <option value="I">I, II, III</option>
+          </select>
+        </label>
+        <label class="mark-attribute">
+          <span>Count backwards</span>
+          <input
+            type="checkbox"
+            .checked=${this.orderedList.reversed}
+            @change=${(event: Event) => this.dispatchListAttribute("reversed", (event.currentTarget as HTMLInputElement).checked ? "" : null)}
+          />
+        </label>
+        ${this.orderedList.itemValue !== undefined ? html`
+          <label class="mark-attribute">
+            <span>Item number</span>
+            <input
+              type="number"
+              .value=${this.orderedList.itemValue}
+              placeholder="Continue sequence"
+              @change=${(event: Event) => this.dispatchListAttribute("value", (event.currentTarget as HTMLInputElement).value)}
+            />
+          </label>
+        ` : ""}
+      </ribbon-drawer>
+    `
+  }
+
+  private renderHeadingGroupDrawer() {
+    if(!this.headingGroup) return nothing
+    return html`
+      <ribbon-drawer label="Heading group" icon="Heading" layout="form">
+        <label class="mark-attribute">
+          <span>Heading level</span>
+          <select
+            .value=${this.headingGroup.heading ?? "h1"}
+            @change=${(event: Event) => this.dispatchEvent(new CustomEvent("heading-group-level-change", {
+              detail: {level: (event.currentTarget as HTMLSelectElement).value},
+              bubbles: true,
+              composed: true,
+            }))}
+          >${[1, 2, 3, 4, 5, 6].map(level => html`<option value=${`h${level}`}>Heading ${level}</option>`)}</select>
+        </label>
+        <ribbon-button label="Add text above" action="heading-group-add-before" icon="Plus"></ribbon-button>
+        <ribbon-button label="Add text below" action="heading-group-add-after" icon="Plus"></ribbon-button>
+      </ribbon-drawer>
+    `
+  }
+
+  private renderDisclosureDrawer() {
+    if(this.elementAttributes?.localName !== "details") return nothing
+    return html`
+      <ribbon-drawer label="Disclosure" icon="Details" layout="form">
+        <label class="mark-attribute">
+          <span>Group</span>
+          <input
+            type="text"
+            placeholder="Independent"
+            .value=${this.elementAttributes.attributes.name ?? ""}
+            @change=${(event: Event) => this.dispatchSelectedElementAttribute("name", (event.currentTarget as HTMLInputElement).value)}
+          />
+        </label>
+        <label class="mark-attribute">
+          <span>Initially open</span>
+          <input
+            type="checkbox"
+            .checked=${Object.hasOwn(this.elementAttributes.attributes, "open")}
+            @change=${(event: Event) => this.dispatchSelectedElementAttribute("open", (event.currentTarget as HTMLInputElement).checked ? "" : null)}
+          />
+        </label>
       </ribbon-drawer>
     `
   }
@@ -6302,6 +6451,9 @@ export class AppRibbon extends LitElement {
       if(drawer.label === "Sharing") return this.renderSharingDrawer(drawer)
       if(drawer.label === "Marks") return this.renderMarkDrawer()
       if(drawer.label === "Section") return this.renderSectionDrawer()
+      if(drawer.label === "Heading group") return this.renderHeadingGroupDrawer()
+      if(drawer.label === "List") return this.renderListDrawer()
+      if(drawer.label === "Disclosure") return this.renderDisclosureDrawer()
       if(drawer.label === "Attributes") return this.renderElementAttributesDrawer()
       if(drawer.label === "Media") return this.renderMediaDrawer()
       if(drawer.label === "Dialog") return this.renderDialogDrawer()
@@ -6354,6 +6506,17 @@ export class AppRibbon extends LitElement {
     }
     if(this.activeMenu === "Edit" && this.graphic?.active) {
       return menuGroups.Edit.filter(group => group.label === "Graphic" || Boolean(this.elementAttributes) && group.label === "Attributes")
+    }
+    if(this.activeMenu === "Edit" && this.headingGroup) {
+      return menuGroups.Edit.filter(group => group.label === "Heading group"
+        || Boolean(this.elementAttributes) && group.label === "Attributes")
+    }
+    if(this.activeMenu === "Edit" && this.listType === "ol") {
+      return menuGroups.Edit.filter(group => group.label === "List"
+        || Boolean(this.elementAttributes) && group.label === "Attributes")
+    }
+    if(this.activeMenu === "Edit" && this.elementAttributes?.localName === "details") {
+      return menuGroups.Edit.filter(group => group.label === "Disclosure" || group.label === "Attributes")
     }
     if(this.activeMenu === "Edit" && this.elementAttributes) {
       return menuGroups.Edit.filter(group => group.label === "Attributes")

@@ -8,6 +8,8 @@ import {sectionNames} from "../sections"
 
 export type InsertionMenuItem = {
   tag?: string
+  /** Complete authored markup used instead of an empty element. */
+  html?: string
   name: string
   section: "Text" | "Lists" | "Media" | "Forms" | "Packages"
   packageName?: string
@@ -32,7 +34,7 @@ const insertionMenuItem = (
   return {section, tag, name: name ?? presentation.name, icon: presentation.icon}
 }
 
-export const headingInsertionTags = ["h2", "h3", "h4", "h5", "h6", "hr"] as const
+export const headingInsertionTags = ["h2", "h3", "h4", "h5", "h6", "hgroup", "hr"] as const
 export const detailsInsertionTags = ["dialog"] as const
 export const formInsertionTags = insertableFormElementTypes
 export const sectionInsertionTags = sectionNames.filter(tag => tag !== "section")
@@ -62,6 +64,9 @@ export const insertionMenuItems: InsertionMenuItem[] = [
     .map(tag => insertionMenuItem("Media", tag, tag === "canvas" ? "Canvas" : undefined)),
   {section: "Media", name: "HTML", icon: "Code", kind: "html"},
 ]
+
+const headingGroupItem = insertionMenuItems.find(item => item.tag === "hgroup")
+if(headingGroupItem) headingGroupItem.html = "<hgroup><h1></h1><p></p></hgroup>"
 
 /** Returns valid empty-element markup using the browser's HTML serializer. */
 export const emptyElementHTML = (tag: string) => document.createElement(tag).outerHTML

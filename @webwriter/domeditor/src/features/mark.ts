@@ -196,7 +196,6 @@ export class MarkFeature extends EditorFeature {
     if(this.getState().marks.includes(mark)) return false
     const context = this.getSelection()
     if(!context) return false
-
     const wrappers: Element[] = []
     for(const slice of [...context.text].reverse()) {
       let selected = slice.node
@@ -204,6 +203,7 @@ export class MarkFeature extends EditorFeature {
       if(slice.start > 0) selected = selected.splitText(slice.start)
 
       const wrapper = document.createElement(mark)
+      if(mark === "bdo") wrapper.setAttribute("dir", "ltr")
       selected.parentNode!.insertBefore(wrapper, selected)
       wrapper.append(selected)
       wrappers.push(wrapper)
@@ -329,6 +329,10 @@ export class MarkFeature extends EditorFeature {
     this.assertMark(mark)
     if(!isMarkAttributeName(mark, attribute)) {
       throw new TypeError(`Unsupported attribute '${attribute}' for mark '${mark}'`)
+    }
+    const option = markAttributeOptionsFor(mark).find(candidate => candidate.name === attribute)
+    if(value && option?.options && !option.options.some(candidate => candidate.value === value)) {
+      throw new TypeError(`Unsupported value '${value}' for ${mark} ${attribute}`)
     }
 
     const caret = this.getCaret()
@@ -480,6 +484,12 @@ export class MarkFeature extends EditorFeature {
   private storeMarks(marks: Set<MarkName>, selection: Selection) {
     if(!selection.anchorNode || !selection.focusNode) return
     this.storedMarks = marks
+    if(marks.has("bdo") && !this.storedAttributes?.bdo?.dir) {
+      this.storedAttributes = {
+        ...(this.storedAttributes ?? {}),
+        bdo: {...(this.storedAttributes?.bdo ?? {}), dir: "ltr"},
+      }
+    }
     if(this.storedAttributes) {
       for(const mark of Object.keys(this.storedAttributes) as MarkName[]) {
         if(!marks.has(mark)) delete this.storedAttributes[mark]
@@ -581,7 +591,13 @@ export class MarkFeature extends EditorFeature {
   private removeMatching(matches: (element: Element) => boolean) {
     const context = this.getSelection()
     if(!context) return false
-
+    const originalElements = new Set(context.block.querySelectorAll("*"))
+    const originalContainers = new Set<Element>()
+    context.text.forEach(slice => {
+      for(let element = slice.node.parentElement; element && element !== context.block; element = element.parentElement) {
+        originalContainers.add(element)
+      }
+    })
     const boundary = document.createElement("span")
     boundary.setAttribute(markerAttribute, "")
     boundary.append(context.range.extractContents())
@@ -609,6 +625,12 @@ export class MarkFeature extends EditorFeature {
     descendants.forEach(element => element.replaceWith(...Array.from(element.childNodes)))
 
     boundary.replaceWith(...Array.from(boundary.childNodes))
+    originalContainers.forEach(element => {
+      if(element.isConnected && isMarkElement(element) && !this.hasContent(element)) element.remove()
+    })
+    Array.from(context.block.querySelectorAll("*")).reverse().forEach(element => {
+      if(!originalElements.has(element) && isMarkElement(element) && !this.hasContent(element)) element.remove()
+    })
     context.block.normalize()
     this.restoreSelection(context)
     this.editor.postMarkState()

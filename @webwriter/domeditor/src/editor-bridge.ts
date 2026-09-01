@@ -225,6 +225,21 @@ export type ListSelectionState = {
   type: ListType | null
   /** The list's authored inline list-style-type value. */
   style: string
+  /** Native numbering controls for the active ordered list. */
+  ordered?: {
+    start: string
+    reversed: boolean
+    numbering: string
+    /** Missing outside a direct LI; empty when the active LI has no override. */
+    itemValue?: string
+  }
+}
+
+export type HeadingGroupSelectionState = {
+  /** The direct heading child, or null for an irregular group without one. */
+  heading: "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | null
+  beforeCount: number
+  afterCount: number
 }
 
 export type SelectionChangeDetail = {
@@ -239,6 +254,7 @@ export type SelectionChangeDetail = {
   capture?: boolean
   gap?: SelectionGap
   list?: ListSelectionState
+  headingGroup?: HeadingGroupSelectionState
   media?: MediaSelectionState
   form?: FormSelectionState
   dialog?: DialogSelectionState
@@ -507,8 +523,29 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
     && typeof list === "object"
     && (list.type === null || list.type === "ul" || list.type === "ol" || list.type === "dl" || list.type === "menu")
     && typeof list.style === "string"
+    && (list.ordered === undefined || (
+      !!list.ordered
+      && typeof list.ordered === "object"
+      && typeof list.ordered.start === "string"
+      && (list.ordered.start === "" || /^-?\d+$/.test(list.ordered.start))
+      && typeof list.ordered.reversed === "boolean"
+      && typeof list.ordered.numbering === "string"
+      && ["", "1", "a", "A", "i", "I"].includes(list.ordered.numbering)
+      && (list.ordered.itemValue === undefined || typeof list.ordered.itemValue === "string"
+        && (list.ordered.itemValue === "" || /^-?\d+$/.test(list.ordered.itemValue)))
+    ))
   )
   if(!listIsValid) return false
+
+  const headingGroup = message.detail.headingGroup as Partial<HeadingGroupSelectionState> | null | undefined
+  const headingGroupIsValid = headingGroup === undefined || (
+    !!headingGroup
+    && typeof headingGroup === "object"
+    && (headingGroup.heading === null || ["h1", "h2", "h3", "h4", "h5", "h6"].includes(headingGroup.heading ?? ""))
+    && Number.isInteger(headingGroup.beforeCount) && (headingGroup.beforeCount ?? -1) >= 0
+    && Number.isInteger(headingGroup.afterCount) && (headingGroup.afterCount ?? -1) >= 0
+  )
+  if(!headingGroupIsValid) return false
 
   const element = message.detail.element as Partial<ElementAttributeState> | null | undefined
   const elementIsValid = element === undefined || (

@@ -46,6 +46,14 @@ export class ListFeature extends EditorFeature {
     setListStyle: ({listType, style}: {type: "setListStyle", listType: ListType, style: string}) => {
       this.setListStyle(listType, style)
     },
+    setOrderedListAttribute: ({name, value}: {
+      type: "setOrderedListAttribute"
+      name: "start" | "reversed" | "type"
+      value: string | null
+    }) => this.setOrderedListAttribute(name, value),
+    setOrderedListItemValue: ({value}: {type: "setOrderedListItemValue", value: string | null}) => {
+      this.setOrderedListItemValue(value)
+    },
     insertDetails: ({}: {type: "insertDetails"}) => {
       this.insertDetails()
     },
@@ -86,9 +94,18 @@ export class ListFeature extends EditorFeature {
   /** State mirrored to the host ribbon with each selection update. */
   getState(): ListSelectionState {
     const list = this.activeList
+    const item = this.activeItem()
     return {
       type: list && isListType(list.localName) ? list.localName : null,
       style: list?.style.listStyleType ?? "",
+      ...(list?.localName === "ol" ? {ordered: {
+        start: list.getAttribute("start") ?? "",
+        reversed: list.hasAttribute("reversed"),
+        numbering: list.getAttribute("type") ?? "",
+        ...(item?.localName === "li" && item.parentElement === list
+          ? {itemValue: item.getAttribute("value") ?? ""}
+          : {}),
+      }} : {}),
     }
   }
 
@@ -716,6 +733,36 @@ export class ListFeature extends EditorFeature {
     if(this.activeList?.localName !== type) this.toggleList(type)
     const list = this.activeList
     if(list?.localName === type) list.style.listStyleType = style
+  }
+
+  setOrderedListAttribute(name: "start" | "reversed" | "type", value: string | null) {
+    const list = this.activeList
+    if(list?.localName !== "ol") return
+    if(name === "start") {
+      if(value !== null && value !== "" && !/^-?\d+$/.test(value)) throw new TypeError("List start must be an integer")
+      if(value === null || value === "") list.removeAttribute("start")
+      else list.setAttribute("start", value)
+      return
+    }
+    if(name === "reversed") {
+      if(value === null) list.removeAttribute("reversed")
+      else list.setAttribute("reversed", "")
+      return
+    }
+    if(value !== null && value !== "" && !["1", "a", "A", "i", "I"].includes(value)) {
+      throw new TypeError("Unsupported ordered-list numbering type")
+    }
+    if(value === null || value === "") list.removeAttribute("type")
+    else list.setAttribute("type", value)
+  }
+
+  setOrderedListItemValue(value: string | null) {
+    const list = this.activeList
+    const item = this.activeItem()
+    if(list?.localName !== "ol" || item?.localName !== "li" || item.parentElement !== list) return
+    if(value !== null && value !== "" && !/^-?\d+$/.test(value)) throw new TypeError("List item value must be an integer")
+    if(value === null || value === "") item.removeAttribute("value")
+    else item.setAttribute("value", value)
   }
 
   insertDetails() {

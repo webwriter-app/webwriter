@@ -19,6 +19,7 @@ const presentations: Record<string, ElementPresentation> = {
   h4: {name: "Heading 4", icon: "Heading 4"},
   h5: {name: "Heading 5", icon: "Heading 5"},
   h6: {name: "Heading 6", icon: "Heading 6"},
+  hgroup: {name: "Heading Group", icon: "Heading"},
   ul: {name: "List", icon: "List"},
   ol: {name: "Enumeration", icon: "Enumeration"},
   dl: {name: "Glossary", icon: "Glossary"},

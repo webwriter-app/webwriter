@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {afterEach, describe, expect, it} from "vitest"
+import {afterEach, describe, expect, it, vi} from "vitest"
 import {DomEditorToolbox} from "./toolbox"
 import type {ElementStyleEditor} from "./element-style-editor"
 import type {RibbonButton} from "./ribbon-button"
@@ -255,6 +255,62 @@ describe("toolbox", () => {
     expect(toolButton(toolbox, "Edit").getAttribute("aria-label")).toBe("Edit Quote")
     expect(toolbox.shadowRoot!.querySelectorAll("ribbon-drawer")).toHaveLength(1)
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Attributes"]')).not.toBeNull()
+  })
+
+  it("offers understandable disclosure and heading-group tools alongside universal attributes", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    toolbox.elementAttributes = {
+      path: [0],
+      localName: "details",
+      namespaceURI: "http://www.w3.org/1999/xhtml",
+      name: "Details",
+      icon: "Details",
+      attributes: {name: "faq", open: ""},
+    }
+    await toolbox.updateComplete
+
+    expect(Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer")).map(drawer => drawer.label))
+      .toEqual(["Disclosure", "Attributes"])
+    const disclosure = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Disclosure"]')!
+    expect(disclosure.querySelector<HTMLInputElement>('input[type="text"]')!.value).toBe("faq")
+    expect(disclosure.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked).toBe(true)
+
+    toolbox.elementAttributes = null
+    toolbox.headingGroup = {heading: "h2", beforeCount: 1, afterCount: 1}
+    await toolbox.updateComplete
+    expect(toolButton(toolbox, "Edit").getAttribute("aria-label")).toBe("Edit Heading group")
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Heading group"]')).not.toBeNull()
+  })
+
+  it("exposes a selected block quotation citation in the section tools", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    toolbox.sectionSelected = true
+    toolbox.sectionType = "blockquote"
+    toolbox.elementAttributes = {
+      path: [0],
+      localName: "blockquote",
+      namespaceURI: "http://www.w3.org/1999/xhtml",
+      name: "Quote",
+      icon: "Quote",
+      attributes: {cite: "source.html"},
+    }
+    await toolbox.updateComplete
+
+    const citation = toolbox.shadowRoot!.querySelector<HTMLInputElement>(
+      'ribbon-drawer[label="Section"] input[type="url"]',
+    )!
+    expect(citation.value).toBe("source.html")
+    const changed = vi.fn()
+    toolbox.addEventListener("element-attribute-change", changed)
+    citation.value = "https://example.test/source"
+    citation.dispatchEvent(new Event("change"))
+    expect(changed).toHaveBeenCalledWith(expect.objectContaining({
+      detail: expect.objectContaining({name: "cite", value: "https://example.test/source"}),
+    }))
   })
 
   it("separates Edit, Review, Style, and Develop into their pane-specific controls", async () => {

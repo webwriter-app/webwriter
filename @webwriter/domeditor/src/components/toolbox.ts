@@ -444,6 +444,8 @@ export class DomEditorToolbox extends AppRibbon {
   private get editTypeLabel() {
     if(this.documentSelected) return "Document"
     if(this.sectionSelected) return "Section"
+    if(this.headingGroup) return "Heading group"
+    if(this.listType === "ol") return "List"
     if(this.graphic?.active) return "Graphic"
     if(this.table?.active) return "Table"
     if(this.media) return this.media.type === "picture" || this.media.type === "img"
@@ -475,6 +477,12 @@ export class DomEditorToolbox extends AppRibbon {
       return this.sectionSelected
         ? menuGroups.Edit.filter(group => group.label === "Section"
           || Boolean(this.elementAttributes) && group.label === "Attributes")
+        : this.headingGroup
+          ? groups.filter(group => group.label === "Heading group" || Boolean(this.elementAttributes) && group.label === "Attributes")
+        : this.listType === "ol"
+          ? groups.filter(group => group.label === "List" || Boolean(this.elementAttributes) && group.label === "Attributes")
+        : this.elementAttributes?.localName === "details"
+          ? groups.filter(group => group.label === "Disclosure" || group.label === "Attributes")
         : this.graphic?.active
         ? groups.filter(group => group.label === "Graphic" || Boolean(this.elementAttributes) && group.label === "Attributes")
         : this.table?.active

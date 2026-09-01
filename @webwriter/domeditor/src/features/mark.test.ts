@@ -26,6 +26,28 @@ function selectText(node: Text, start = 0, end = node.length) {
 const cleanHTML = () => editor.toHTML(true)
 
 describe("MarkFeature DOM state", () => {
+  it("uses semantic mark independently of background color and preserves nested authored marks", () => {
+    const paragraph = setContent('<p><em data-source="remote">one <b>two</b></em> three</p>')
+    const first = paragraph.querySelector("em")!.firstChild!
+    const second = paragraph.querySelector("b")!.firstChild!
+    $.selectRange(first, 0, second, second.textContent!.length)
+
+    expect(feature.toggleMark("mark")).toBe(true)
+
+    expect(cleanHTML()).toBe('<p><em data-source="remote"><mark>one </mark><b><mark>two</mark></b></em> three</p>')
+    expect(document.querySelector("mark")?.getAttribute("style")).toBeNull()
+    expect(feature.toggleMark("mark")).toBe(true)
+    expect(cleanHTML()).toBe('<p><em data-source="remote">one <b>two</b></em> three</p>')
+  })
+
+  it("restricts bidirectional override direction to HTML's enumerated values", () => {
+    const paragraph = setContent("<p><bdo dir=rtl>Text</bdo></p>")
+    selectText(paragraph.querySelector("bdo")!.firstChild as Text)
+
+    expect(feature.setMarkAttribute("bdo", "dir", "ltr")).toBe(true)
+    expect(cleanHTML()).toBe('<p><bdo dir="ltr">Text</bdo></p>')
+    expect(() => feature.setMarkAttribute("bdo", "dir", "auto")).toThrow(TypeError)
+  })
   it("enables text carets and derives their active marks from the DOM", () => {
     let paragraph = setContent("<p>Text</p>")
     const text = paragraph.firstChild as Text
@@ -108,7 +130,9 @@ describe("MarkFeature toggles", () => {
       selectText(paragraph.firstChild as Text)
 
       expect(feature.toggleMark(mark)).toBe(true)
-      expect(cleanHTML()).toBe(`<p><${mark}>Text</${mark}></p>`)
+      expect(cleanHTML()).toBe(mark === "bdo"
+        ? '<p><bdo dir="ltr">Text</bdo></p>'
+        : `<p><${mark}>Text</${mark}></p>`)
       expect(feature.getState().marks).toEqual([mark])
 
       expect(feature.toggleMark(mark)).toBe(true)

@@ -142,6 +142,25 @@ describe("DOMEditor collaboration wiring", () => {
     expect(editor.toHTML(true)).toBe("<h2>Hello</h2>")
   })
 
+  it("synchronizes ordered-list metadata and includes it in undo, redo, and serialization", async () => {
+    document.body.innerHTML = "<ol><li>Hello</li></ol>"
+    await mutationsDelivered()
+    editor.doc.stopCapturing()
+    $.move(document.querySelector("li")!.firstChild!, 2)
+
+    editor.features.list.actions.setOrderedListAttribute({type: "setOrderedListAttribute", name: "start", value: "5"})
+    editor.features.list.actions.setOrderedListAttribute({type: "setOrderedListAttribute", name: "reversed", value: ""})
+    editor.features.list.actions.setOrderedListItemValue({type: "setOrderedListItemValue", value: "8"})
+    await mutationsDelivered()
+
+    expect(editor.toHTML(true)).toBe('<ol start="5" reversed=""><li value="8">Hello</li></ol>')
+    expect(editor.doc.body.toString()).toContain('<ol reversed="" start="5"><li value="8">Hello</li></ol>')
+    editor.features.history.actions.undo({type: "undo"})
+    expect(editor.toHTML(true)).toBe("<ol><li>Hello</li></ol>")
+    editor.features.history.actions.redo({type: "redo"})
+    expect(editor.toHTML(true)).toBe('<ol start="5" reversed=""><li value="8">Hello</li></ol>')
+  })
+
   it("synchronizes section wrappers and includes them in undo and redo", async () => {
     const paragraph = document.querySelector("p")!
     $.move(paragraph.firstChild!, 2)

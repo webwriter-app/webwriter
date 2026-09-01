@@ -387,6 +387,22 @@ describe("insertion menu", () => {
     expect($.anchorOffset).toBe(0)
   })
 
+  it("inserts a complete heading-group template from the typed menu", async () => {
+    document.body.innerHTML = "<p></p>"
+    $.move(document.querySelector("p")!)
+    typeCommand()
+    typeText("heading group")
+    const menu = editor.features.insertion.menu
+    await menu.updateComplete
+
+    menu.shadowRoot?.querySelector<HTMLButtonElement>(".item")?.click()
+
+    expect(editorHTML()).toBe("<hgroup><h1></h1><p></p></hgroup>")
+    expect(editor.features.manipulation.getHeadingGroupState()).toEqual({
+      heading: "h1", beforeCount: 0, afterCount: 1,
+    })
+  })
+
   it("closes when a space is inserted directly after ++", async () => {
     document.body.innerHTML = "<p></p>"
     $.move(document.querySelector("p")!)
