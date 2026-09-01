@@ -1,6 +1,6 @@
 import type {CollaborationUser} from "../domdoc"
 import type {PresenceUser} from "../editor-bridge"
-import {isElement} from "../utility"
+import {caretRect, isElement} from "../utility"
 import {userInitials} from "../user-identity"
 import {EditorFeature} from "."
 import {isMarkElement} from "../marks"
@@ -13,21 +13,6 @@ type CaretLayout = {
   elementSelection?: Element
   gapPlacement?: "before" | "after"
   rect: DOMRect
-}
-
-/** Returns the first and last line boxes that can supply the native caret's
- * height when a collapsed range at an element boundary has no rectangle. */
-function textNodes(element: Element, direction: "first" | "last") {
-  const nodes: Text[] = []
-  const visit = (node: Node) => {
-    if(node instanceof Text) {
-      if(node.length) nodes.push(node)
-      return
-    }
-    Array.from(node.childNodes).forEach(visit)
-  }
-  visit(element)
-  return direction === "first" ? nodes[0] : nodes.at(-1)
 }
 
 /** Awareness-backed virtual remote carets. The caret is positioned in the
@@ -105,7 +90,7 @@ export class CollaborationFeature extends EditorFeature {
           ? selectedElement.getBoundingClientRect()
           : gapPlacement
           ? this.#gapRect(point.node, point.offset, gapPlacement)
-          : this.#caretRect(point.node, point.offset),
+          : caretRect(point.node, point.offset),
       })
     }
 
@@ -220,73 +205,7 @@ export class CollaborationFeature extends EditorFeature {
         return new DOMRect(rect.left, placement === "before" ? rect.top : rect.bottom, 0, 0)
       }
     }
-    return this.#caretRect(node, offset)
-  }
-
-  #caretRect(node: Node, offset: number) {
-    const maxOffset = node instanceof Text ? node.length : node.childNodes.length
-    const clampedOffset = Math.max(0, Math.min(offset, maxOffset))
-    const range = document.createRange()
-    range.setStart(node, clampedOffset)
-    range.collapse(true)
-    const rect = range.getBoundingClientRect()
-    if(rect.height > 0) return rect
-
-    if(node instanceof Text && node.length) {
-      const character = document.createRange()
-      const start = clampedOffset === node.length ? Math.max(0, clampedOffset - 1) : clampedOffset
-      const end = Math.min(node.length, start + 1)
-      character.setStart(node, start)
-      character.setEnd(node, end)
-      const characterRect = character.getBoundingClientRect()
-      if(characterRect.height > 0) {
-        const direction = getComputedStyle(node.parentElement ?? document.body).direction
-        const left = clampedOffset === node.length
-          ? direction === "rtl" ? characterRect.left : characterRect.right
-          : direction === "rtl" ? characterRect.right : characterRect.left
-        return new DOMRect(left, characterRect.top, 0, characterRect.height)
-      }
-    }
-
-    if(isElement(node)) {
-      return this.#elementBoundaryCaret(node, clampedOffset)
-    }
-
-    const target = node.parentElement ?? document.body
-    const targetRect = target.getBoundingClientRect()
-    return new DOMRect(targetRect.left, targetRect.top, 0, this.#lineHeight(target))
-  }
-
-  #elementBoundaryCaret(container: Element, offset: number) {
-    const children = Array.from(container.childNodes)
-    const next = children.slice(offset).find(child => this.#hasRect(child))
-    const previous = children.slice(0, offset).reverse().find(child => this.#hasRect(child))
-    const adjacent = next ?? previous
-
-    if(adjacent) {
-      const useNext = Boolean(next)
-      const rect = this.#nodeRect(adjacent, useNext ? "first" : "last")
-      const isBlock = adjacent instanceof Element && this.#isBlockLike(adjacent)
-      const left = isBlock ? rect.left : useNext ? rect.left : rect.right
-      const top = isBlock ? useNext ? rect.top : rect.bottom : rect.top
-      const height = this.#lineHeight(
-        adjacent instanceof Element ? adjacent : container,
-        useNext ? "first" : "last",
-      )
-      return new DOMRect(left, top, 0, height)
-    }
-
-    const rect = container.getBoundingClientRect()
-    const computed = getComputedStyle(container)
-    const left = rect.left + parseFloat(computed.borderLeftWidth || "0") + parseFloat(computed.paddingLeft || "0")
-    const top = rect.top + parseFloat(computed.borderTopWidth || "0") + parseFloat(computed.paddingTop || "0")
-    return new DOMRect(left, top, 0, this.#lineHeight(container))
-  }
-
-  #hasRect(node: Node) {
-    if(node instanceof Text && !node.textContent?.trim()) return false
-    const rect = this.#nodeRect(node)
-    return rect.width > 0 || rect.height > 0
+    return caretRect(node, offset)
   }
 
   #nodeRect(node: Node, edge: "first" | "last" = "first") {
@@ -300,29 +219,4 @@ export class CollaborationFeature extends EditorFeature {
     return edge === "last" ? rects.at(-1) ?? range.getBoundingClientRect() : rects[0] ?? range.getBoundingClientRect()
   }
 
-  #isBlockLike(element: Element) {
-    const display = getComputedStyle(element).display
-    return display === "block" || display === "flow-root" || display === "list-item" ||
-      display === "table" || display === "table-row" || display === "table-row-group" ||
-      display === "flex" || display === "grid"
-  }
-
-  #lineHeight(element: Element, direction: "first" | "last" = "first") {
-    const text = textNodes(element, direction)
-    if(text) {
-      const range = document.createRange()
-      const offset = direction === "first" ? 0 : text.length
-      range.setStart(text, offset)
-      range.collapse(true)
-      const rect = range.getBoundingClientRect()
-      if(rect.height > 0) return rect.height
-    }
-
-    const rect = element.getBoundingClientRect()
-    const computed = getComputedStyle(element)
-    const lineHeight = parseFloat(computed.lineHeight)
-    if(Number.isFinite(lineHeight) && lineHeight > 0) return lineHeight
-    const fontSize = parseFloat(computed.fontSize)
-    return Number.isFinite(fontSize) && fontSize > 0 ? fontSize * 1.2 : Math.max(rect.height, 1)
-  }
 }

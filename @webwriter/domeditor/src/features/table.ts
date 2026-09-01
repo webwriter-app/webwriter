@@ -93,6 +93,11 @@ export class TableFeature extends EditorFeature {
       && tableForNode(this.anchorCell) === tableForNode(this.focusCell))
   }
 
+  /** The connected logical focus of a rectangular cell selection. */
+  get selectionFocusCell() {
+    return this.hasCellSelection ? this.focusCell : null
+  }
+
   get selectedTable() {
     if(this.hasCellSelection) return tableForNode(this.anchorCell)
     const selected = $.selectedElement

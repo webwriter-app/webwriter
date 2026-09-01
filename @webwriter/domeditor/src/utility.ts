@@ -104,7 +104,110 @@ export function plainTextFromDOM(root: Node, isBlock: (element: Element) => bool
   return parts.map(part => part.value).join("")
 }
 
+/** Returns the viewport rectangle painted by a caret at a DOM point. Native
+ * collapsed ranges have no rectangle at some element boundaries, so adjacent
+ * content and the container's line metrics provide the same fallback used by
+ * editor-drawn carets. */
+export function caretRect(node: Node, offset: number) {
+  const maxOffset = node instanceof Text ? node.length : node.childNodes.length
+  const clampedOffset = Math.max(0, Math.min(offset, maxOffset))
+  const range = document.createRange()
+  range.setStart(node, clampedOffset)
+  range.collapse(true)
+  const rect = range.getBoundingClientRect()
+  if(rect.height > 0) return rect
 
+  if(node instanceof Text && node.length) {
+    const character = document.createRange()
+    const start = clampedOffset === node.length ? Math.max(0, clampedOffset - 1) : clampedOffset
+    const end = Math.min(node.length, start + 1)
+    character.setStart(node, start)
+    character.setEnd(node, end)
+    const characterRect = character.getBoundingClientRect()
+    if(characterRect.height > 0) {
+      const direction = getComputedStyle(node.parentElement ?? document.body).direction
+      const left = clampedOffset === node.length
+        ? direction === "rtl" ? characterRect.left : characterRect.right
+        : direction === "rtl" ? characterRect.right : characterRect.left
+      return new DOMRect(left, characterRect.top, 0, characterRect.height)
+    }
+  }
+
+  if(isElement(node)) return elementBoundaryCaretRect(node, clampedOffset)
+
+  const target = node.parentElement ?? document.body
+  const targetRect = target.getBoundingClientRect()
+  return new DOMRect(targetRect.left, targetRect.top, 0, caretLineHeight(target))
+}
+
+function elementBoundaryCaretRect(container: Element, offset: number) {
+  const children = Array.from(container.childNodes)
+  const next = children.slice(offset).find(hasLayoutRect)
+  const previous = children.slice(0, offset).reverse().find(hasLayoutRect)
+  const adjacent = next ?? previous
+
+  if(adjacent) {
+    const useNext = Boolean(next)
+    const rect = nodeEdgeRect(adjacent, useNext ? "first" : "last")
+    const isBlock = adjacent instanceof Element && isBlockLike(adjacent)
+    const left = isBlock ? rect.left : useNext ? rect.left : rect.right
+    const top = isBlock ? useNext ? rect.top : rect.bottom : rect.top
+    const height = caretLineHeight(
+      adjacent instanceof Element ? adjacent : container,
+      useNext ? "first" : "last",
+    )
+    return new DOMRect(left, top, 0, height)
+  }
+
+  const rect = container.getBoundingClientRect()
+  const computed = getComputedStyle(container)
+  const left = rect.left + parseFloat(computed.borderLeftWidth || "0") + parseFloat(computed.paddingLeft || "0")
+  const top = rect.top + parseFloat(computed.borderTopWidth || "0") + parseFloat(computed.paddingTop || "0")
+  return new DOMRect(left, top, 0, caretLineHeight(container))
+}
+
+function hasLayoutRect(node: Node) {
+  if(node instanceof Text && !node.textContent?.trim()) return false
+  const rect = nodeEdgeRect(node)
+  return rect.width > 0 || rect.height > 0
+}
+
+function nodeEdgeRect(node: Node, edge: "first" | "last" = "first") {
+  if(isElement(node)) {
+    const rects = Array.from(node.getClientRects())
+    return edge === "last" ? rects.at(-1) ?? node.getBoundingClientRect() : rects[0] ?? node.getBoundingClientRect()
+  }
+  const range = document.createRange()
+  range.selectNode(node)
+  const rects = Array.from(range.getClientRects())
+  return edge === "last" ? rects.at(-1) ?? range.getBoundingClientRect() : rects[0] ?? range.getBoundingClientRect()
+}
+
+function isBlockLike(element: Element) {
+  const display = getComputedStyle(element).display
+  return display === "block" || display === "flow-root" || display === "list-item" ||
+    display === "table" || display === "table-row" || display === "table-row-group" ||
+    display === "flex" || display === "grid"
+}
+
+function caretLineHeight(element: Element, direction: "first" | "last" = "first") {
+  const text = edgeTextDescendant(element, direction === "first" ? "start" : "end")
+  if(text?.length) {
+    const range = document.createRange()
+    const offset = direction === "first" ? 0 : text.length
+    range.setStart(text, offset)
+    range.collapse(true)
+    const rect = range.getBoundingClientRect()
+    if(rect.height > 0) return rect.height
+  }
+
+  const rect = element.getBoundingClientRect()
+  const computed = getComputedStyle(element)
+  const lineHeight = parseFloat(computed.lineHeight)
+  if(Number.isFinite(lineHeight) && lineHeight > 0) return lineHeight
+  const fontSize = parseFloat(computed.fontSize)
+  return Number.isFinite(fontSize) && fontSize > 0 ? fontSize * 1.2 : Math.max(rect.height, 1)
+}
 
 /** Static facade over the document's current selection, providing editing-oriented queries (kind of selection, boundaries, covered nodes) and operations (selecting, moving, extending, copying, cutting, deleting, replacing). Usually accessed through the `$` alias. */
 export class EditingSelection {

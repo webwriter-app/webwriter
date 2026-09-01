@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import {$, focusedWidgetHost, getContainer, isAtomicEditingElement, isElement, modifierKeyDown, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
+import {$, caretRect, focusedWidgetHost, getContainer, isAtomicEditingElement, isElement, modifierKeyDown, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
 import {isSectionElement} from "../sections"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
@@ -754,6 +754,87 @@ export class SelectionFeature extends EditorFeature {
     return "none"
   }
 
+  /** Smoothly reveals the selection's logical focus. Node-like selections
+   * reveal their authored element. Caret-like selections scroll each nested
+   * scrolling box and then the viewport by only the distance needed to expose
+   * the focus caret. */
+  #scrollSelectionIntoView(kind: SelectionKind, selection: Selection | null, capturedElement: Element | null) {
+    const selectedElement = kind === "capture" ? capturedElement
+      : kind === "section" ? this.selectedSectionElement
+        : kind === "element" ? $.selectedElement
+          : kind === "cell" ? this.editor.features.table.selectionFocusCell
+            : null
+    if(selectedElement) {
+      selectedElement.scrollIntoView({behavior: "smooth", block: "nearest", inline: "nearest"})
+      return
+    }
+    if(!selection?.focusNode || !["virtual", "gap", "text", "empty"].includes(kind)) return
+
+    const rect = caretRect(selection.focusNode, selection.focusOffset)
+    let predicted = {
+      left: rect.left,
+      right: rect.right > rect.left ? rect.right : rect.left + 1,
+      top: rect.top,
+      bottom: rect.bottom > rect.top ? rect.bottom : rect.top + 1,
+    }
+    const nearestDelta = (start: number, end: number, visibleStart: number, visibleEnd: number) => {
+      if(start < visibleStart && end > visibleEnd) {
+        const startDelta = start - visibleStart
+        const endDelta = end - visibleEnd
+        return Math.abs(startDelta) <= Math.abs(endDelta) ? startDelta : endDelta
+      }
+      if(start < visibleStart) return start - visibleStart
+      if(end > visibleEnd) return end - visibleEnd
+      return 0
+    }
+    const scroll = (target: Element, left: number, top: number) => {
+      const maxLeft = Math.max(0, target.scrollWidth - target.clientWidth)
+      const maxTop = Math.max(0, target.scrollHeight - target.clientHeight)
+      const rtl = getComputedStyle(target).direction === "rtl"
+      const minScrollLeft = rtl ? -maxLeft : 0
+      const maxScrollLeft = rtl ? 0 : maxLeft
+      const nextScrollLeft = Math.max(minScrollLeft, Math.min(target.scrollLeft + left, maxScrollLeft))
+      left = nextScrollLeft - target.scrollLeft
+      top = Math.max(-target.scrollTop, Math.min(top, maxTop - target.scrollTop))
+      if(!left && !top) return
+      target.scrollBy({left, top, behavior: "smooth"})
+      predicted = {
+        left: predicted.left - left,
+        right: predicted.right - left,
+        top: predicted.top - top,
+        bottom: predicted.bottom - top,
+      }
+    }
+
+    let ancestor = selection.focusNode instanceof Element
+      ? selection.focusNode
+      : selection.focusNode.parentElement
+    while(ancestor && ancestor !== document.body && ancestor !== document.documentElement) {
+      const style = getComputedStyle(ancestor)
+      const canScrollX = ancestor.scrollWidth > ancestor.clientWidth
+        && style.overflowX !== "visible" && style.overflowX !== "clip"
+      const canScrollY = ancestor.scrollHeight > ancestor.clientHeight
+        && style.overflowY !== "visible" && style.overflowY !== "clip"
+      if(canScrollX || canScrollY) {
+        const viewport = ancestor.getBoundingClientRect()
+        const visibleLeft = viewport.left + ancestor.clientLeft
+        const visibleTop = viewport.top + ancestor.clientTop
+        const left = canScrollX
+          ? nearestDelta(predicted.left, predicted.right, visibleLeft, visibleLeft + ancestor.clientWidth)
+          : 0
+        const top = canScrollY
+          ? nearestDelta(predicted.top, predicted.bottom, visibleTop, visibleTop + ancestor.clientHeight)
+          : 0
+        scroll(ancestor, left, top)
+      }
+      ancestor = ancestor.parentElement
+    }
+
+    const left = nearestDelta(predicted.left, predicted.right, 0, window.innerWidth)
+    const top = nearestDelta(predicted.top, predicted.bottom, 0, window.innerHeight)
+    if(left || top) window.scrollBy({left, top, behavior: "smooth"})
+  }
+
   /** Normalizes and re-applies exactly one selection kind for the current
    * document Selection. This is the invariant boundary used by native
    * selectionchange events and every editor-driven refresh. */
@@ -784,6 +865,7 @@ export class SelectionFeature extends EditorFeature {
     }
     const kind = this.#selectionKind(inDragSelection, capturedElement)
     this.#clearSelections()
+    this.#scrollSelectionIntoView(kind, sel, capturedElement)
     if(kind === "cell") return
     if(kind === "virtual") {
       this.editor.features.list.refreshSelectionPresentation()

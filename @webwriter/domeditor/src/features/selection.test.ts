@@ -385,6 +385,82 @@ describe("processSelection()", () => {
   })
 })
 
+describe("scrolling selections into view", () => {
+  const options = {behavior: "smooth", block: "nearest", inline: "nearest"} as const
+
+  it("smoothly reveals ordinary, capture, section, and cell element selections", () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {})
+    try {
+      const paragraph = el("p", "selected")
+      $.selectElement(paragraph)
+      feature.processSelection()
+      expect(scrollIntoView).toHaveBeenLastCalledWith(options)
+      expect(scrollIntoView.mock.instances.at(-1)).toBe(paragraph)
+
+      document.body.innerHTML = "<interactive-widget></interactive-widget>"
+      const widget = document.querySelector("interactive-widget")!
+      feature.captureElement(widget)
+      expect(scrollIntoView).toHaveBeenLastCalledWith(options)
+      expect(scrollIntoView.mock.instances.at(-1)).toBe(widget)
+
+      document.body.innerHTML = "<section><p>inside</p></section>"
+      const section = document.querySelector("section")!
+      feature.actions.selectSection({type: "selectSection", path: [0]})
+      expect(scrollIntoView).toHaveBeenLastCalledWith(options)
+      expect(scrollIntoView.mock.instances.at(-1)).toBe(section)
+
+      feature.clearSelectedSection()
+      document.body.innerHTML = "<table><tbody><tr><td>a</td><td>b</td></tr></tbody></table>"
+      const cells = Array.from(document.querySelectorAll<HTMLTableCellElement>("td"))
+      editor.features.table.selectCells(cells[0], cells[1])
+      expect(scrollIntoView).toHaveBeenLastCalledWith(options)
+      expect(scrollIntoView.mock.instances.at(-1)).toBe(cells[1])
+    }
+    finally {
+      scrollIntoView.mockRestore()
+      editor.features.table.clearCellSelection(false)
+    }
+  })
+
+  it("smoothly reveals the focus caret for text, empty, gap, and virtual-list selections", () => {
+    const nativeRect = Range.prototype.getBoundingClientRect
+    const scrollBy = vi.spyOn(window, "scrollBy").mockImplementation(() => {})
+    Object.defineProperty(Range.prototype, "getBoundingClientRect", {
+      configurable: true,
+      value: () => new DOMRect(10, window.innerHeight + 40, 0, 20),
+    })
+    const expectMinimalScroll = () => {
+      scrollBy.mockClear()
+      feature.processSelection()
+      expect(scrollBy).toHaveBeenCalledOnce()
+      expect(scrollBy).toHaveBeenCalledWith({left: 0, top: 60, behavior: "smooth"})
+    }
+
+    try {
+      document.body.innerHTML = "<p>text</p>"
+      const text = document.querySelector("p")!.firstChild!
+      $.selectRange(text, 0, text, 2)
+      expectMinimalScroll()
+
+      document.body.innerHTML = "<p></p>"
+      $.move(document.querySelector("p")!, 0)
+      expectMinimalScroll()
+
+      document.body.innerHTML = "<p>a</p><p>b</p>"
+      $.selectGap(document.querySelector("p")!, "after")
+      expectMinimalScroll()
+
+      document.body.innerHTML = "<ul></ul>"
+      $.move(document.querySelector("ul")!, 0)
+      expectMinimalScroll()
+    }
+    finally {
+      Object.defineProperty(Range.prototype, "getBoundingClientRect", {configurable: true, value: nativeRect})
+      scrollBy.mockRestore()
+    }
+  })
+})
+
 describe("disable()", () => {
   it("removes authored selection markers before stopping listeners", () => {
     const paragraph = el("p", "selected")
