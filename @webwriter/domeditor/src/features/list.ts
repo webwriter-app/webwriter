@@ -107,10 +107,16 @@ export class ListFeature extends EditorFeature {
   }
 
   /** Clears virtual-list selection presentation synchronously so it cannot
-   * coexist with another newly applied selection kind. The list feature's
-   * existing deferred refresh repaints it when the canonical kind is virtual. */
+   * coexist with another newly applied selection kind. */
   clearSelectionPresentation() {
     this.clearVirtualMarker()
+  }
+
+  /** Repaints the current virtual item after SelectionFeature has cleared all
+   * stale selection presentation. This must be synchronous because selection
+   * refreshes are not always accompanied by a native selectionchange event. */
+  refreshSelectionPresentation() {
+    this.syncVirtualMarker()
   }
 
   /** Only an empty authored list exposes a prospective first item. Every

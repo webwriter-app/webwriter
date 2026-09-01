@@ -785,6 +785,10 @@ export class SelectionFeature extends EditorFeature {
     const kind = this.#selectionKind(inDragSelection, capturedElement)
     this.#clearSelections()
     if(kind === "cell") return
+    if(kind === "virtual") {
+      this.editor.features.list.refreshSelectionPresentation()
+      return
+    }
     if(kind === "capture" && capturedElement) {
       document.body.classList.add("◆", "◆node-selection-active")
       capturedElement.classList.add("◆", "◆element-selected", "◆element-capture-selected")

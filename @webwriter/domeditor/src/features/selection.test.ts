@@ -125,6 +125,18 @@ describe("processSelection()", () => {
     feature.processSelection()
     expect(p.classList.contains("◆empty-selected")).toBe(true)
   })
+  it("repaints an empty list placeholder during a canonical selection refresh", () => {
+    editor.features.list.toggleList("ul")
+    const list = document.querySelector("ul")!
+    const marker = editor.appendix.querySelector(".◆virtual-list-item")!
+
+    feature.processSelection()
+
+    expect(editor.features.list.isVirtualSelection).toBe(true)
+    expect(list).toHaveClass("◆virtual-list-anchor", "◆virtual-list-selected")
+    expect(marker.getAttribute("part")).not.toContain("virtual-list-item-hidden")
+    expect(appliedKinds()).toBe(1)
+  })
   it("marks the element before a gap and shows the gap caret", () => {
     const p1 = el("p", "a"); el("p", "b")
     $.selectGap(p1)
