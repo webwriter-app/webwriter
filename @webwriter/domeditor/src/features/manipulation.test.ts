@@ -1219,6 +1219,15 @@ describe("setAttributes()", () => {
     expect(document.body.children.item(2)).not.toHaveAttribute("title")
   })
 
+  it.each(["script", "style"])("does not mutate a selected <%s> through the bulk attribute command", localName => {
+    const element = document.createElement(localName)
+    document.body.replaceChildren(element)
+    $.selectElement(element)
+
+    expect(() => editor.features.manipulation.setAttributes({title: "changed"})).toThrow("not editable")
+    expect(element).not.toHaveAttribute("title")
+  })
+
   it("normalizes adjacent text nodes after a command", () => {
     document.body.innerHTML = "<p>a</p>"
     const p = document.body.firstElementChild!

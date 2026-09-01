@@ -720,6 +720,23 @@ describe("document listeners", () => {
       "selected element changed",
     )
   })
+
+  it.each(["script", "style"])("keeps <%s> and all of its attributes read-only", localName => {
+    document.body.replaceChildren(document.createElement(localName))
+    const target = {
+      path: [0],
+      localName,
+      namespaceURI: "http://www.w3.org/1999/xhtml",
+      type: "setElementAttribute" as const,
+    }
+
+    expect(() => editor.features.manipulation.actions.setElementAttribute({
+      ...target,
+      name: localName === "script" ? "src" : "media",
+      value: "example",
+    })).toThrow("not editable")
+    expect(document.body.firstElementChild?.attributes).toHaveLength(0)
+  })
   it("omits mark wrappers from the posted selection path", () => {
     document.body.innerHTML = "<section><p><strong><span>hello</span></strong></p></section>"
     $.move(document.querySelector("span")!.firstChild!, 2)

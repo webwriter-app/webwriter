@@ -38,7 +38,7 @@ export const headingInsertionTags = ["h2", "h3", "h4", "h5", "h6", "hgroup", "hr
 export const detailsInsertionTags = ["dialog"] as const
 export const formInsertionTags = insertableFormElementTypes
 export const sectionInsertionTags = sectionNames.filter(tag => tag !== "section")
-export const hiddenRibbonInsertionTags = ["canvas", "template", "slot"] as const
+export const deliberatelyUnsupportedInsertionTags = ["canvas", "template", "slot"] as const
 
 export const insertionMenuItems: InsertionMenuItem[] = [
   insertionMenuItem("Text", "p"),
@@ -60,8 +60,6 @@ export const insertionMenuItems: InsertionMenuItem[] = [
   ...formInsertionTags.map(tag => insertionMenuItem("Forms", tag)),
   insertionMenuItem("Media", "section"),
   ...sectionInsertionTags.map(tag => insertionMenuItem("Media", tag, tag === "div" ? "Division" : undefined)),
-  ...hiddenRibbonInsertionTags
-    .map(tag => insertionMenuItem("Media", tag, tag === "canvas" ? "Canvas" : undefined)),
   {section: "Media", name: "HTML", icon: "Code", kind: "html"},
 ]
 

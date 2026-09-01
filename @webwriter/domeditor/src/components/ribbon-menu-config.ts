@@ -4,7 +4,6 @@ import {
   detailsInsertionTags,
   formInsertionTags,
   headingInsertionTags,
-  hiddenRibbonInsertionTags,
   insertionMenuItems,
   sectionInsertionTags,
 } from "./insertion-menu"
@@ -101,7 +100,6 @@ export const listInsertionOptions: RibbonMenuButton[] = [
 
 const groupedMediaInsertionTags = new Set<string>([
   ...sectionInsertionTags,
-  ...hiddenRibbonInsertionTags,
 ])
 
 const insertionMenuButtons = (sections: readonly InsertionSection[]) => insertionMenuItems

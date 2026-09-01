@@ -1536,8 +1536,20 @@ export class ManipulationFeature extends EditorFeature {
    * `EditingSelection.nodesBetween`); a null value removes the attribute. */
   setAttributes(attrs: Record<string, string | null>) {
     return this.withNormalization(() => {
-      $.nodesBetween.filter(isElement).forEach(n => Object.keys(attrs).forEach(k => (
-        attrs[k] === null ? n.removeAttribute(k) : n.setAttribute(k, attrs[k]!)
+      const elements = $.nodesBetween.filter(isElement)
+      const entries = Object.entries(attrs)
+      for(const element of elements) {
+        for(const [name, value] of entries) {
+          if(!elementAttributeEditability(name, element.localName, element.namespaceURI).editable) {
+            throw new TypeError(`The ${name} attribute is not editable here`)
+          }
+          if(value !== null && isUnsafeElementAttributeValue(name, value)) {
+            throw new TypeError(`The ${name} attribute contains an unsafe URL`)
+          }
+        }
+      }
+      elements.forEach(element => entries.forEach(([name, value]) => (
+        value === null ? element.removeAttribute(name) : element.setAttribute(name, value)
       )))
     })
   }
@@ -1563,8 +1575,10 @@ export class ManipulationFeature extends EditorFeature {
       throw new Error("The selected element changed before its attribute could be edited")
     }
     if(!name || name !== name.trim()) throw new TypeError("An attribute name cannot be empty or padded")
-    if(!elementAttributeEditability(name).editable) throw new TypeError(`The ${name} attribute is not editable here`)
-    if(previousName && !elementAttributeEditability(previousName).editable) {
+    if(!elementAttributeEditability(name, node.localName, node.namespaceURI).editable) {
+      throw new TypeError(`The ${name} attribute is not editable here`)
+    }
+    if(previousName && !elementAttributeEditability(previousName, node.localName, node.namespaceURI).editable) {
       throw new TypeError(`The ${previousName} attribute is not editable here`)
     }
     if(value !== null && isUnsafeElementAttributeValue(name, value)) {

@@ -18,6 +18,82 @@ export type ElementAttributeOption = {
   options?: readonly {label: string, value: string}[]
 }
 
+export type ElementEditingLimitation = {
+  title: string
+  description: string
+  guidance: string
+  attributes: "editable" | "read-only"
+}
+
+/** Elements whose specialized visual authoring is intentionally outside the
+ * editor. Existing DOM is preserved; the per-element policy below describes
+ * which safe, generic editing remains available. */
+export const deliberatelyUnsupportedElementNames = [
+  "script",
+  "style",
+  "canvas",
+  "template",
+  "noscript",
+  "slot",
+] as const
+
+const limitationsByElement: Readonly<Record<typeof deliberatelyUnsupportedElementNames[number], ElementEditingLimitation>> = {
+  script: {
+    title: "Executable code is read-only",
+    description: "Scripts are preserved, but creating or editing executable code is deliberately unsupported for safety.",
+    guidance: "Add behavior through a managed package or dependency.",
+    attributes: "read-only",
+  },
+  style: {
+    title: "Embedded CSS is read-only",
+    description: "Style elements are preserved, but arbitrary CSS editing is deliberately unsupported.",
+    guidance: "Use themes, the Style tools, or styles supplied by a managed package.",
+    attributes: "read-only",
+  },
+  canvas: {
+    title: "Canvas drawings are not editable",
+    description: "This canvas, its attributes, and fallback content are preserved, but its pixels and drawing commands are not DOM content.",
+    guidance: "Use an SVG graphic when the drawing needs visual editing.",
+    attributes: "editable",
+  },
+  template: {
+    title: "Template contents are not visually editable",
+    description: "The inert template subtree is preserved, but scoped template source editing is deliberately unsupported.",
+    guidance: "Use ordinary document content or a package-provided component.",
+    attributes: "editable",
+  },
+  noscript: {
+    title: "No-script content is not visually editable",
+    description: "Body no-script behavior depends on the browser's scripting state and is deliberately not represented as ordinary editable content.",
+    guidance: "Use ordinary fallback content; head metadata remains available under File.",
+    attributes: "editable",
+  },
+  slot: {
+    title: "Slot behavior is component-managed",
+    description: "Slots are preserved, but authoring shadow-tree contracts is deliberately unsupported.",
+    guidance: "Edit fallback content normally and use package controls to configure component slots.",
+    attributes: "editable",
+  },
+}
+
+const htmlNamespace = "http://www.w3.org/1999/xhtml"
+
+/** Returns the user-facing policy for an intentionally limited HTML element. */
+export function elementEditingLimitation(localName: string, namespaceURI: string | null = htmlNamespace) {
+  if(namespaceURI !== htmlNamespace) return null
+  const known = limitationsByElement[localName as keyof typeof limitationsByElement]
+  if(known) return known
+  if(localName.includes("-")) {
+    return {
+      title: "Component editing depends on its package",
+      description: "Custom elements are preserved and treated as atomic; their internals are not generically editable.",
+      guidance: "Use package-provided controls when available. Generic attributes remain editable.",
+      attributes: "editable",
+    } satisfies ElementEditingLimitation
+  }
+  return null
+}
+
 const commonAttributeOptions: readonly ElementAttributeOption[] = [
   {name: "id", label: "ID"},
   {name: "class", label: "Classes"},
@@ -114,7 +190,9 @@ export function isEditorOnlyElementAttribute(name: string) {
   return editorOnlyAttributes.has(name.toLowerCase())
 }
 
-export function elementAttributeEditability(name: string) {
+export function elementAttributeEditability(name: string, localName?: string, namespaceURI?: string | null) {
+  const limitation = localName ? elementEditingLimitation(localName, namespaceURI) : null
+  if(limitation?.attributes === "read-only") return {editable: false, reason: "Read-only by policy"} as const
   const normalized = name.toLowerCase()
   if(normalized === "style") return {editable: false, reason: "Use the Style tools"} as const
   if(blockedAttributes.has(normalized) || normalized.startsWith("on")) {

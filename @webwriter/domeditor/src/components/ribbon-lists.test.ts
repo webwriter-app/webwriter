@@ -3,7 +3,7 @@ import {beforeEach, describe, expect, it, vi} from "vitest"
 import {AppRibbon} from "./ribbon"
 import type {RibbonButton} from "./ribbon-button"
 import type {RibbonDrawer} from "./ribbon-drawer"
-import {insertionMenuItems} from "./insertion-menu"
+import {deliberatelyUnsupportedInsertionTags, insertionMenuItems} from "./insertion-menu"
 
 beforeEach(() => document.body.replaceChildren())
 
@@ -94,6 +94,10 @@ describe("list ribbon drawer", () => {
     expect(insertionMenuItems.find(item => item.tag === "hgroup")?.html)
       .toBe("<hgroup><h1></h1><p></p></hgroup>")
     expect(submenuTags(button("Elements", "Details"))).toEqual(["dialog"])
+    expect(deliberatelyUnsupportedInsertionTags).toEqual(["canvas", "template", "slot"])
+    expect(insertionMenuItems.filter(item => (
+      item.tag && (deliberatelyUnsupportedInsertionTags as readonly string[]).includes(item.tag)
+    ))).toEqual([])
   })
 
   it("uses a native select for the section type dropdown", async () => {
