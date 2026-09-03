@@ -101,6 +101,7 @@ import {
 import {LocalPackageMonitor} from "../local-package-monitor"
 import {LOCAL_PACKAGE_ROUTE_PREFIX, localPackageUrl, type LocalPackageDirectoryHandle} from "../local-package-worker"
 import {LocalPackageWorkerClient} from "../local-package-worker-client"
+import {defaultDocumentTheme, documentTheme} from "../document-themes"
 import type {AIDocumentToolCall, AIDocumentToolHandler} from "../ai-client"
 import {isTableCellRole, isTableRowGroupType, type TableSelectionState} from "../table"
 import {
@@ -169,6 +170,23 @@ const escapeAttribute = (value: string) => value
   .replaceAll("&", "&amp;")
   .replaceAll("\"", "&quot;")
   .replaceAll("<", "&lt;")
+
+const ensureDefaultDocumentTheme = (root: Document) => {
+  const hasTheme = Array.from(root.head.querySelectorAll<HTMLStyleElement>("style[data-ww-theme]"))
+    .some(style => documentTheme(style.getAttribute("data-ww-theme") ?? ""))
+  if(hasTheme) return
+  const style = root.createElement("style")
+  style.setAttribute("data-ww-theme", defaultDocumentTheme.value)
+  style.setAttribute("blocking", "render")
+  style.textContent = defaultDocumentTheme.source
+  root.head.append(style)
+}
+
+const defaultDocumentThemeHTML = () => {
+  const root = document.implementation.createHTMLDocument()
+  ensureDefaultDocumentTheme(root)
+  return root.head.querySelector("style")!.outerHTML
+}
 
 const editorEntryUrl = `${import.meta.env.BASE_URL}${import.meta.env.DEV ? "src/editor-entry.ts" : "assets/editor-entry.js"}`
 const appIconUrl = `${import.meta.env.BASE_URL}assets/app-icon-transparent.svg`
@@ -577,11 +595,12 @@ export class DomEditor extends LitElement {
     const bootstrapScripts = `<script class="◆ ◆editor-only" nonce="${nonce}"${testScriptType} src="${escapeAttribute(scopedCustomElementRegistryPolyfillUrl)}"></script><script class="◆ ◆editor-only" nonce="${nonce}" type="${editorScriptType}" src="${escapeAttribute(editorEntryUrl)}"></script>`
     const bootstrap = `${csp}${bootstrapScripts}`
     if(this.frameDocumentHTML === null) {
-      return `<!-- frame ${this.frameRevision} -->${bootstrap}<meta name="generator" content="${escapeAttribute(WEBWRITER_GENERATOR)}">`
+      return `<!-- frame ${this.frameRevision} -->${bootstrap}<meta name="generator" content="${escapeAttribute(WEBWRITER_GENERATOR)}">${defaultDocumentThemeHTML()}`
     }
 
     const parsed = new DOMParser().parseFromString(this.frameDocumentHTML, "text/html")
     restoreOriginalResourceURLs(parsed)
+    ensureDefaultDocumentTheme(parsed)
     parsed.head.insertAdjacentHTML("beforeend", bootstrapScripts)
     const cspElement = parsed.createElement("meta")
     cspElement.classList.add("◆", "◆editor-only")
@@ -1357,6 +1376,10 @@ export class DomEditor extends LitElement {
       if(generator && generator.parentElement !== this.editorDocument?.head) {
         this.editorDocument?.head.prepend(generator)
       }
+      const theme = this.editorDocument?.querySelector('style[data-ww-theme]')
+      if(theme && theme.parentElement !== this.editorDocument?.head) {
+        this.editorDocument?.head.append(theme)
+      }
       this.editorDocument?.documentElement.setAttribute("lang", this.settings.language)
     }
     if(this.breadcrumbHoverPath !== null) {
@@ -1483,12 +1506,17 @@ export class DomEditor extends LitElement {
       )
     ))
     const generator = authoredHeadNodes[0]
-    const headUnchanged = authoredHeadNodes.length === 1
+    const theme = authoredHeadNodes[1]
+    const headUnchanged = authoredHeadNodes.length === 2
       && generator?.nodeType === Node.ELEMENT_NODE
       && (generator as Element).localName === "meta"
       && (generator as Element).getAttribute("name")?.toLowerCase() === "generator"
       && (generator as Element).getAttribute("content") === WEBWRITER_GENERATOR
       && (generator as Element).attributes.length === 2
+      && theme?.nodeType === Node.ELEMENT_NODE
+      && (theme as Element).localName === "style"
+      && (theme as Element).getAttribute("data-ww-theme") === defaultDocumentTheme.value
+      && (theme as Element).textContent === defaultDocumentTheme.source
       && this.editorDocument?.documentElement.getAttribute("lang") === this.settings.language
     if(!headUnchanged) return false
 

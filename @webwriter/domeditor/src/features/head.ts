@@ -7,7 +7,12 @@ import {
   type DocumentHeadField,
   type DocumentHeadState,
 } from "../document-head"
-import {documentTheme} from "../document-themes"
+import {
+  defaultDocumentTheme,
+  documentTheme,
+  editingDocumentThemeSource,
+} from "../document-themes"
+import {adoptStylesheet, createStylesheet} from "../utility"
 
 const editorOnlySelector = ".◆editor-only, [data-webwriter-editor-only]"
 const textContentElements = new Set(["script", "style", "title", "noscript", "template"])
@@ -81,12 +86,24 @@ const contentLabelFor = (element: Element) => {
   return "Content"
 }
 
+const editingThemeStylesheets = new Map<string, CSSStyleSheet>()
+
+const editingThemeStylesheet = (name: string) => {
+  const theme = documentTheme(name) ?? defaultDocumentTheme
+  const existing = editingThemeStylesheets.get(theme.value)
+  if(existing) return existing
+  const stylesheet = createStylesheet(editingDocumentThemeSource(theme))
+  editingThemeStylesheets.set(theme.value, stylesheet)
+  return stylesheet
+}
+
 /** Direct, DOM-native editing of authored document-head elements. */
 export class HeadFeature extends EditorFeature {
   private readonly ids = new WeakMap<Element, string>()
   private readonly elementsById = new Map<string, Element>()
   private idSequence = 0
   private observer: MutationObserver | null = null
+  private activeThemeStylesheet: CSSStyleSheet | null = null
   private readonly handleMutations = (mutations: MutationRecord[]) => {
     const head = document.head
     const relevant = mutations.some(mutation => (
@@ -96,7 +113,10 @@ export class HeadFeature extends EditorFeature {
         && mutation.target === document.documentElement
         && mutation.attributeName?.toLowerCase() === "lang"
     ))
-    if(relevant) this.postState()
+    if(relevant) {
+      this.syncEditingTheme()
+      this.postState()
+    }
   }
 
   actions = {
@@ -138,6 +158,7 @@ export class HeadFeature extends EditorFeature {
   enable() {
     if(this.isEnabled) return
     super.enable()
+    this.syncEditingTheme()
     const FrameMutationObserver = document.defaultView?.MutationObserver ?? MutationObserver
     const observer = new FrameMutationObserver(this.handleMutations)
     try {
@@ -164,7 +185,27 @@ export class HeadFeature extends EditorFeature {
     this.observer?.disconnect()
     this.observer = null
     this.elementsById.clear()
+    if(this.activeThemeStylesheet) {
+      document.adoptedStyleSheets = document.adoptedStyleSheets
+        .filter(stylesheet => stylesheet !== this.activeThemeStylesheet)
+      this.activeThemeStylesheet = null
+    }
     super.disable()
+  }
+
+  /** Authored style elements stay blocked by the editing iframe's CSP. Apply
+   * only the canonical bundled theme as an editor-owned constructed sheet;
+   * theme-less documents receive the default. */
+  private syncEditingTheme() {
+    const name = this.firstTheme()?.getAttribute("data-ww-theme") ?? defaultDocumentTheme.value
+    const stylesheet = editingThemeStylesheet(name)
+    if(stylesheet === this.activeThemeStylesheet) return
+    if(this.activeThemeStylesheet) {
+      document.adoptedStyleSheets = document.adoptedStyleSheets
+        .filter(current => current !== this.activeThemeStylesheet)
+    }
+    this.activeThemeStylesheet = stylesheet
+    adoptStylesheet(document, stylesheet)
   }
 
   state(): DocumentHeadState {

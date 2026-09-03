@@ -21,6 +21,10 @@ afterEach(() => {
 })
 
 describe("document head editing", () => {
+  it("applies the default theme as an editor-owned stylesheet", () => {
+    expect(document.adoptedStyleSheets).toHaveLength(2)
+  })
+
   it("maps the common form fields onto standard authored HTML", () => {
     const set = editor.features.head.actions.setDocumentHeadField
     set({type: "setDocumentHeadField", field: "title", value: "Lesson"})

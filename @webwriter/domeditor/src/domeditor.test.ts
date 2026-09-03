@@ -173,6 +173,11 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/details:empty\s*\{[\s\S]*?color:\s*transparent;/)
   })
 
+  it("keeps a selected closed dialog in editable document flow", () => {
+    expect(editorStyleString).toMatch(/dialog\.◆dialog-editing\s*\{[\s\S]*?display:\s*block\s*!important;[\s\S]*?position:\s*static\s*!important;[\s\S]*?z-index:\s*auto\s*!important;[\s\S]*?min-width:\s*0\s*!important;[\s\S]*?max-height:\s*none\s*!important;[\s\S]*?overflow:\s*visible\s*!important;/)
+    expect(editorStyleString).toMatch(/dialog\.◆dialog-editing::backdrop\s*\{[\s\S]*?display:\s*none\s*!important;/)
+  })
+
   it("does not duplicate constructed stylesheets when the appendix is revisited", () => {
     const documentSheetCount = document.adoptedStyleSheets.filter(sheet => hasSelector(sheet, "html")).length
     const appendix = editor.appendix

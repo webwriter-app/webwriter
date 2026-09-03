@@ -15,5 +15,16 @@ export const documentThemes = [
 ] as const
 
 export type DocumentThemeName = typeof documentThemes[number]["value"]
+export type DocumentTheme = typeof documentThemes[number]
+
+export const defaultDocumentTheme = documentThemes[0]
 
 export const documentTheme = (value: string) => documentThemes.find(theme => theme.value === value)
+
+/** Keeps trusted theme presentation below authored and editor CSS. Older
+ * bundled themes predate cascade layers, while the default already owns its
+ * layer so it can be embedded directly in authored documents. */
+export const editingDocumentThemeSource = (theme: DocumentTheme) =>
+  theme.value === defaultDocumentTheme.value
+    ? theme.source
+    : `@layer webwriter-theme {\n${theme.source.replace(/^@charset\s+[^;]+;\s*/i, "")}\n}`

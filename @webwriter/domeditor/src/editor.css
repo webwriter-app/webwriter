@@ -1050,12 +1050,20 @@ dialog.◆dialog-editing {
   display: block !important;
   position: static !important;
   inset: auto !important;
-  max-width: 100%;
-  margin-block: 1rem;
+  z-index: auto !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  margin: 1rem 0 !important;
+  overflow: visible !important;
+  backdrop-filter: none !important;
 }
 
 dialog.◆dialog-editing::backdrop {
-  display: none;
+  display: none !important;
 }
 
 /* SUMMARY's placeholder follows the native disclosure marker, keeping the

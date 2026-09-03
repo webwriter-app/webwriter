@@ -340,6 +340,28 @@ describe("DomEditor iframe setup", () => {
     expect(srcdoc).toMatch(/style-src 'none'/)
     expect(srcdoc).toMatch(/style-src-elem 'nonce-[^']+'/)
     expect(srcdoc).toContain("style-src-attr 'unsafe-inline'")
+    expect(srcdoc).toContain('data-ww-theme="base"')
+    expect(srcdoc).toContain("Pico CSS ✨ v2.1.1")
+  })
+
+  it("adds the default theme to opened documents that do not specify one", () => {
+    const editor = new DomEditor()
+    ;(editor as any).frameDocumentHTML = "<!doctype html><html><head><title>Lesson</title></head><body></body></html>"
+
+    const srcdoc = (editor as any).editorSrcdoc as string
+
+    expect(srcdoc).toContain('<style data-ww-theme="base" blocking="render">')
+    expect(srcdoc.match(/data-ww-theme="base"/g)).toHaveLength(1)
+  })
+
+  it("preserves an explicitly selected document theme", () => {
+    const editor = new DomEditor()
+    ;(editor as any).frameDocumentHTML = "<!doctype html><html><head><style data-ww-theme='water'>custom source</style></head><body></body></html>"
+
+    const srcdoc = (editor as any).editorSrcdoc as string
+
+    expect(srcdoc).toContain('data-ww-theme="water"')
+    expect(srcdoc).not.toContain('data-ww-theme="base"')
   })
 
   it("passes the sync URL to the editor through the bridge", async () => {
