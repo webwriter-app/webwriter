@@ -4409,6 +4409,7 @@ export class AppRibbon extends LitElement {
       <div class="mark-dropdown-list" role="listbox" aria-label="Advanced mark types" aria-multiselectable="true">
         ${this.spanGroupMembers().map(mark => this.renderSpanMarkOption(mark, selected))}
       </div>
+      ${this.renderRubyDropdown()}
     `
   }
 
@@ -4519,21 +4520,6 @@ export class AppRibbon extends LitElement {
     `
   }
 
-  private renderRubyButton() {
-    return html`
-      <ribbon-button
-        class="mark-ruby"
-        toggle
-        label="Ruby annotation"
-        icon="MarkRuby"
-        .dropdown=${this.renderRubyDropdown()}
-        .dropdownOnClick=${true}
-        ?active=${this.ruby.active}
-        ?disabled=${!this.ruby.active && !this.ruby.canCreate}
-      ></ribbon-button>
-    `
-  }
-
   private renderSpanButton() {
     const selected = this.spanSelectedMarks()
     const first = selected.length ? this.markOption(selected[0]) : {label: "More", icon: "More"}
@@ -4624,7 +4610,6 @@ export class AppRibbon extends LitElement {
         ></ribbon-button>
         ${this.renderLinkButton()}
         ${this.renderSpanButton()}
-        ${this.renderRubyButton()}
       </ribbon-drawer>
     `
   }

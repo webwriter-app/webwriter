@@ -181,6 +181,7 @@ export const advancedMarkNames = [
   "cite",
   "data",
   "dfn",
+  "ruby",
   "samp",
   "time",
   "var",

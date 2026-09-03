@@ -380,6 +380,7 @@ describe("mark ribbon controls", () => {
     expect(ribbon.shadowRoot!.querySelector("mark-ribbon-drawer")).toBeNull()
     expect(drawer.layout).toBe("marks")
     expect(drawer.expandable).toBe(false)
+    expect(getComputedStyle(drawer).getPropertyValue("--ribbon-drawer-expanded-width").trim()).toBe("18.475rem")
     expect(drawer.shadowRoot!.querySelector(".drawer-toggle")).toBeNull()
     expect(moreSlot.hidden).toBe(true)
     expect(comboboxes.map(combobox => combobox.name)).toEqual([
@@ -398,7 +399,6 @@ describe("mark ribbon controls", () => {
       "Remove formatting",
       "Link",
       "More",
-      "Ruby annotation",
     ])
     expect(drawer.querySelectorAll('ribbon-button[slot="more"]')).toHaveLength(0)
     expect(buttons.slice(2, 6).every(button => button.compact && button.toggle)).toBe(true)
@@ -409,7 +409,7 @@ describe("mark ribbon controls", () => {
     expect(buttons.every(button => button.disabled)).toBe(true)
     expect(comboboxes.every(combobox => combobox.disabled)).toBe(true)
     expect(getComputedStyle(controls).gridAutoFlow).toBe("row")
-    expect(getComputedStyle(controls).gridTemplateColumns).toBe("repeat(7, 1.75rem) repeat(2, 3.5rem)")
+    expect(getComputedStyle(controls).gridTemplateColumns).toBe("repeat(7, 1.75rem) 3.5rem")
     expect(getComputedStyle(controls).gridTemplateRows).toBe("repeat(2, minmax(0, 1fr))")
     expect(getComputedStyle(controls).gap).toBe("0.2rem")
     for(const action of ["mark:code", "mark:kbd", "mark:q"]) {
@@ -539,6 +539,7 @@ describe("mark ribbon controls", () => {
         "Citation Source",
         "Data Annotation",
         "Defined Term",
+        "Ruby Annotation",
         "Sample Output",
         "Date/Time Annotation",
         "Variable",
@@ -604,7 +605,7 @@ describe("mark ribbon controls", () => {
       .getAttribute("aria-expanded")).toBe("true")
   })
 
-  it("creates and edits ruby annotations through a dedicated understandable control", async () => {
+  it("creates and edits ruby annotations through More", async () => {
     const {ribbon, drawer} = await mountRibbon()
     const actions = vi.fn()
     ribbon.addEventListener("ruby-action", actions)
@@ -619,15 +620,14 @@ describe("mark ribbon controls", () => {
     await ribbon.updateComplete
     await drawer.updateComplete
 
-    const button = drawer.querySelector<RibbonButton>("ribbon-button.mark-ruby")!
-    expect(button.label).toBe("Ruby annotation")
-    expect(button.disabled).toBe(false)
-    expect(button.active).toBe(false)
+    expect(drawer.querySelector("ribbon-button.mark-ruby")).toBeNull()
+    const button = drawer.querySelector<RibbonButton>('ribbon-button[action="mark:span"]')!
     await button.updateComplete
-    button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    button.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
     await button.updateComplete
     let dropdown = button.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
     expect(dropdown.hidden).toBe(false)
+    expect(dropdown.querySelector<HTMLInputElement>('input[aria-label="Select Ruby Annotation"]')).not.toBeNull()
     expect(dropdown.querySelector(".ruby-base-preview")?.textContent).toContain("漢字")
     const annotation = dropdown.querySelector<HTMLInputElement>('input[aria-label="Ruby annotation"]')!
     annotation.value = "かんじ"
@@ -652,7 +652,7 @@ describe("mark ribbon controls", () => {
     await ribbon.updateComplete
     await button.updateComplete
     dropdown = button.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
-    expect(button.active).toBe(true)
+    expect(button.label).toBe("Ruby Annotation")
     expect(dropdown.textContent).toContain("Editing this text replaces its inline formatting")
     const existing = dropdown.querySelector<HTMLInputElement>('input[aria-label="Ruby annotation 1"]')!
     existing.value = "kanji"
