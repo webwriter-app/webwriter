@@ -16,10 +16,19 @@ type AttributeChangeDetail = {
   value: string | null
 }
 
+const emptyAttributeState: ElementAttributeState = {
+  path: null,
+  localName: "",
+  namespaceURI: null,
+  name: "Element",
+  attributes: {},
+}
+
 /** A schema-free attribute editor for the currently selected authored element. */
 export class ElementAttributeEditor extends LitElement {
   static properties = {
     state: {attribute: false},
+    disabled: {type: Boolean, reflect: true},
   }
 
   static styles = css`
@@ -28,6 +37,10 @@ export class ElementAttributeEditor extends LitElement {
       min-width: 0;
       color: #2f3742;
       font: 0.64rem/1.25 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    :host([disabled]) {
+      opacity: 0.55;
     }
 
     .fields,
@@ -159,8 +172,10 @@ export class ElementAttributeEditor extends LitElement {
   `
 
   state: ElementAttributeState | null = null
+  disabled = false
 
   private dispatchAttribute(name: string, value: string | null, previousName?: string) {
+    if(this.disabled) return
     const state = this.state
     if(!state) return
     this.dispatchEvent(new CustomEvent<AttributeChangeDetail>("element-attribute-change", {
@@ -185,8 +200,7 @@ export class ElementAttributeEditor extends LitElement {
     this.dispatchAttribute(option.name, value)
   }
 
-  private renderPrimary(option: ElementAttributeOption) {
-    const state = this.state!
+  private renderPrimary(option: ElementAttributeOption, state: ElementAttributeState) {
     const value = state.attributes[option.name] ?? ""
     const editability = elementAttributeEditability(option.name, state.localName, state.namespaceURI)
     if(option.kind === "boolean") {
@@ -198,7 +212,7 @@ export class ElementAttributeEditor extends LitElement {
             type="checkbox"
             aria-label=${`${state.name}: ${option.label}`}
             .checked=${Object.hasOwn(state.attributes, option.name)}
-            ?disabled=${!editability.editable}
+            ?disabled=${this.disabled || !editability.editable}
             @change=${(event: Event) => this.dispatchPrimary(option, event)}
           />
         </label>
@@ -211,7 +225,7 @@ export class ElementAttributeEditor extends LitElement {
           <select
             data-ribbon-input-persistent
             aria-label=${`${state.name}: ${option.label}`}
-            ?disabled=${!editability.editable}
+            ?disabled=${this.disabled || !editability.editable}
             @change=${(event: Event) => this.dispatchPrimary(option, event)}
           >
             ${option.options?.map(item => html`
@@ -230,7 +244,7 @@ export class ElementAttributeEditor extends LitElement {
           aria-label=${`${state.name}: ${option.label}`}
           placeholder=${option.placeholder ?? ""}
           .value=${value}
-          ?disabled=${!editability.editable}
+          ?disabled=${this.disabled || !editability.editable}
           @change=${(event: Event) => this.dispatchPrimary(option, event)}
         />
       </label>
@@ -254,7 +268,7 @@ export class ElementAttributeEditor extends LitElement {
   }
 
   render() {
-    const state = this.state
+    const state = this.state ?? (this.disabled ? emptyAttributeState : null)
     if(!state) return nothing
     const options = elementAttributeOptions(state.localName)
     const limitation = elementEditingLimitation(state.localName, state.namespaceURI)
@@ -267,7 +281,7 @@ export class ElementAttributeEditor extends LitElement {
         </aside>
       ` : nothing}
       <div class="fields" role="group" aria-label=${`${state.name} common attributes`}>
-        ${options.map(option => this.renderPrimary(option))}
+        ${options.map(option => this.renderPrimary(option, state))}
       </div>
       <details>
         <summary>All attributes (${Object.keys(state.attributes).length})</summary>
@@ -275,23 +289,23 @@ export class ElementAttributeEditor extends LitElement {
           ${Object.entries(state.attributes).map(([name, value]) => {
             const editability = elementAttributeEditability(name, state.localName, state.namespaceURI)
             return html`
-              <div class="attribute-row" ?data-locked=${!editability.editable}>
+              <div class="attribute-row" ?data-locked=${this.disabled || !editability.editable}>
                 <input
                   class="attribute-name"
                   data-ribbon-input-persistent
                   aria-label=${`Rename ${name}`}
                   .value=${name}
-                  ?disabled=${!editability.editable}
+                  ?disabled=${this.disabled || !editability.editable}
                   @change=${(event: Event) => this.renameAttribute(name, value, event)}
                 />
                 <input
                   data-ribbon-input-persistent
                   aria-label=${`${state.name}: ${name}`}
                   .value=${value}
-                  ?disabled=${!editability.editable}
+                  ?disabled=${this.disabled || !editability.editable}
                   @change=${(event: Event) => this.dispatchAttribute(name, (event.currentTarget as HTMLInputElement).value)}
                 />
-                ${editability.editable ? html`
+                ${!this.disabled && editability.editable ? html`
                   <button type="button" aria-label=${`Remove ${name}`} @click=${() => this.dispatchAttribute(name, null)}>×</button>
                 ` : nothing}
                 ${editability.reason ? html`<span class="attribute-reason">${editability.reason}</span>` : nothing}
@@ -301,9 +315,11 @@ export class ElementAttributeEditor extends LitElement {
         </div>
         ${limitation?.attributes === "read-only" ? nothing : html`
           <form class="add-attribute" aria-label="Add attribute" @submit=${this.submitAttribute}>
-            <input data-ribbon-input-persistent name="name" aria-label="Attribute name" placeholder="data-name" />
-            <input data-ribbon-input-persistent name="value" aria-label="Attribute value" placeholder="Value" />
-            <button type="submit">Add</button>
+            <input data-ribbon-input-persistent name="name" aria-label="Attribute name" placeholder="data-name"
+              ?disabled=${this.disabled} />
+            <input data-ribbon-input-persistent name="value" aria-label="Attribute value" placeholder="Value"
+              ?disabled=${this.disabled} />
+            <button type="submit" ?disabled=${this.disabled}>Add</button>
           </form>
         `}
       </details>

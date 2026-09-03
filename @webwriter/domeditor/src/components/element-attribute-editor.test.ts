@@ -33,6 +33,20 @@ describe("element attribute editor", () => {
     expect(editor.shadowRoot!.querySelector("summary")?.textContent).toContain("All attributes (3)")
   })
 
+  it("shows disabled global attributes without a selected element", async () => {
+    const editor = new ElementAttributeEditor()
+    editor.disabled = true
+    document.body.append(editor)
+    await editor.updateComplete
+
+    expect(Array.from(editor.shadowRoot!.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>(
+      "input, select, button",
+    )).every(control => control.disabled)).toBe(true)
+    expect(editor.shadowRoot!.querySelector('[aria-label="Element: ID"]')).not.toBeNull()
+    expect(editor.shadowRoot!.querySelector('[aria-label="Element: Classes"]')).not.toBeNull()
+    expect(editor.shadowRoot!.querySelector('[aria-label="Element: Language"]')).not.toBeNull()
+  })
+
   it("dispatches boolean, custom, rename, value, and removal mutations", async () => {
     const editor = await mount("details", {"data-kind": "faq"})
     const listener = vi.fn()

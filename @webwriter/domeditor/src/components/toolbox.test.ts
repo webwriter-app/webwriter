@@ -348,8 +348,14 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     let drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"))
     await Promise.all(drawers.map(drawer => drawer.updateComplete))
-    expect(drawers.map(drawer => drawer.label)).toEqual(["Layout", "Borders", "Background", "Semantics"])
+    expect(drawers.map(drawer => drawer.label)).toEqual(["Attributes"])
     expect(drawers.every(drawer => drawer.pane && !drawer.collapsed)).toBe(true)
+    const defaultAttributes = drawers[0].querySelector("element-attribute-editor")!
+    await defaultAttributes.updateComplete
+    expect(defaultAttributes.disabled).toBe(true)
+    expect(Array.from(defaultAttributes.shadowRoot!.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>(
+      "input, select, button",
+    )).every(control => control.disabled)).toBe(true)
 
     toolButton(toolbox, "Review").click()
     await toolbox.updateComplete

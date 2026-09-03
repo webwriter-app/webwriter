@@ -29,6 +29,17 @@ describe("table controls", () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.activeMenu = "Edit"
+    toolbox.table = {
+      ...semanticTableState,
+      active: true,
+      cellSelection: false,
+      rows: 2,
+      columns: 2,
+      selectedCells: 1,
+      canMerge: false,
+      canSplit: false,
+      hasCaption: false,
+    }
     document.body.append(toolbox)
     await toolbox.updateComplete
     const toolboxLabels = Array.from(toolbox.shadowRoot!.querySelectorAll("ribbon-drawer"))

@@ -499,11 +499,21 @@ export class DomEditorToolbox extends AppRibbon {
         : this.figure
           ? menuGroups.Edit.filter(group => group.label === "Section"
             || Boolean(this.elementAttributes) && group.label === "Attributes")
-        : this.elementAttributes
-          ? groups.filter(group => group.label === "Attributes")
-          : groups
+        : groups.filter(group => group.label === "Attributes")
     }
     return []
+  }
+
+  protected renderDrawers() {
+    if(this.activeTool === "Edit" && !this.elementAttributes
+      && this.currentMenuGroups.length === 1 && this.currentMenuGroups[0].label === "Attributes") {
+      return [html`
+        <ribbon-drawer label="Attributes" icon="Develop" layout="attributes">
+          <element-attribute-editor disabled></element-attribute-editor>
+        </ribbon-drawer>
+      `]
+    }
+    return super.renderDrawers()
   }
 
   selectTool(tool: ToolboxTool | null) {
