@@ -245,7 +245,8 @@ describe("toolbox", () => {
     }
     await toolbox.updateComplete
 
-    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Image"]')).not.toBeNull()
+    expect(Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"), drawer => drawer.label))
+      .toEqual(["Image", "Attributes"])
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Attributes"] element-attribute-editor')).not.toBeNull()
 
     toolbox.media = null

@@ -229,7 +229,6 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
     {label: "Heading group", buttons: []},
     {label: "List", buttons: []},
     {label: "Disclosure", buttons: []},
-    {label: "Attributes", buttons: []},
     {label: "Media", buttons: []},
     {label: "Dialog", buttons: []},
     {label: "Form", buttons: []},
@@ -244,6 +243,7 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
       ],
     },
     {label: "View", buttons: ["Zoom", "Guides", "Fullscreen"]},
+    {label: "Attributes", buttons: []},
   ],
   Style: elementStyleCategories.map(category => ({label: category.label, buttons: []})),
   Develop: [

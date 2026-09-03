@@ -853,6 +853,11 @@ export class RibbonDrawer extends LitElement {
       grid-template-columns: repeat(4, minmax(0, 1fr));
     }
 
+    :host([pane][layout="table-layout"]) .controls {
+      grid-auto-rows: minmax(3rem, auto);
+      gap: 0.5rem;
+    }
+
     :host([pane][layout="marks"]) ::slotted(*) {
       grid-column: auto !important;
       grid-row: auto !important;

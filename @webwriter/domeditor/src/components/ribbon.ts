@@ -2540,6 +2540,11 @@ export class AppRibbon extends LitElement {
       height: auto;
     }
 
+    ribbon-drawer[pane] .table-semantic-controls,
+    ribbon-drawer[pane] element-attribute-editor {
+      grid-column: 1 / -1;
+    }
+
     .table-semantic-controls,
     .table-semantic-section,
     .table-semantic-card {

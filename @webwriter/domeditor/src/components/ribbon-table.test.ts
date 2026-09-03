@@ -2,6 +2,7 @@
 import {beforeEach, describe, expect, it, vi} from "vitest"
 import {AppRibbon} from "./ribbon"
 import type {RibbonButton} from "./ribbon-button"
+import type {RibbonDrawer} from "./ribbon-drawer"
 import {DomEditorToolbox} from "./toolbox"
 
 beforeEach(() => document.body.replaceChildren())
@@ -42,6 +43,48 @@ describe("table controls", () => {
     ])
     expect(new Set(actionIcons).size).toBe(actionIcons.length)
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Layout"] input[type="checkbox"]')).not.toBeNull()
+  })
+
+  it("spaces table layout actions and keeps universal attributes at the bottom", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    toolbox.table = {
+      ...semanticTableState,
+      active: true,
+      cellSelection: true,
+      rows: 2,
+      columns: 2,
+      selectedCells: 1,
+      canMerge: false,
+      canSplit: false,
+      hasCaption: false,
+    }
+    toolbox.elementAttributes = {
+      path: [0, 0, 0],
+      localName: "td",
+      namespaceURI: "http://www.w3.org/1999/xhtml",
+      name: "Table Cell",
+      icon: "Table",
+      attributes: {},
+    }
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+
+    const drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"))
+    await Promise.all(drawers.map(drawer => drawer.updateComplete))
+    expect(drawers.map(drawer => drawer.label)).toEqual([
+      "Layout", "Borders", "Background", "Semantics", "Attributes",
+    ])
+    const controls = drawers[0].shadowRoot!.querySelector<HTMLElement>(".controls")!
+    expect(getComputedStyle(controls).gridAutoRows).toBe("minmax(3rem, auto)")
+    expect(getComputedStyle(controls).gap).toBe("0.5rem")
+    const semantics = drawers.find(drawer => drawer.label === "Semantics")!
+    expect(getComputedStyle(semantics.querySelector<HTMLElement>(".table-semantic-controls")!).gridColumn)
+      .toBe("1 / -1")
+    const attributes = drawers.find(drawer => drawer.label === "Attributes")!
+    expect(getComputedStyle(attributes.querySelector<HTMLElement>("element-attribute-editor")!).gridColumn)
+      .toBe("1 / -1")
   })
 
   it("offers a 10 by 10 insertion grid and dispatches the chosen size", async () => {
