@@ -363,6 +363,7 @@ export class DOMEditor {
   readonly #appendixElements = new Set<WeakRef<Element>>()
   #createdDefaultSlot: HTMLSlotElement | null = null
   #documentSession: DocumentEditorSession | null = null
+  #bodySchemaObserver: MutationObserver | null = null
   #destroyed = false
   
   features = {
@@ -501,6 +502,7 @@ export class DOMEditor {
       normalizeMarkElements(element)
       element.normalize()
     })
+    if(this.#ensureDocumentContent()) return
     if(selection && savedSelection) {
       const anchor = this.restoreTextPoint(savedSelection.anchor)
       const focus = this.restoreTextPoint(savedSelection.focus)
@@ -644,6 +646,10 @@ export class DOMEditor {
       document.body.contentEditable = "true"
       document.designMode = "on"
       document.body.spellcheck = false
+      const DocumentMutationObserver = document.defaultView?.MutationObserver ?? MutationObserver
+      this.#bodySchemaObserver = new DocumentMutationObserver(this.#handleBodySchemaChanges)
+      this.#bodySchemaObserver.observe(document.body, {childList: true})
+      if(!initialYDoc) this.#ensureDocumentContent()
       if(syncUrl) {
         const sessionId = syncUrl.searchParams.get("session") ?? syncUrl.pathname.split("/").filter(Boolean).at(-1)
         this.doc = new SharedDOMDoc(syncUrl.origin, sessionId, this.ignoreAttrs, this.ignoreClasses, {
@@ -655,6 +661,7 @@ export class DOMEditor {
           ...(initialYDoc ? {ydoc: initialYDoc} : {}),
         })
       }
+      this.#ensureDocumentContent()
       Object.entries(this.features)
         .filter(([key]) => !featuresDisabledByDefault.has(key))
         .forEach(([, feat]) => feat.enable())
@@ -684,6 +691,26 @@ export class DOMEditor {
     this.normalizeSurroundingElements(ev.target instanceof Node ? ev.target : undefined)
   }
 
+  #handleBodySchemaChanges = () => {
+    this.#ensureDocumentContent()
+  }
+
+  /** Restores the schema's required default flow child after the body's last
+   * authored node is removed. A selection left at BODY or in removed content
+   * becomes a normal collapsed selection in the new paragraph. */
+  #ensureDocumentContent() {
+    if(document.body.childNodes.length || this.schema.isContentValid(document.body)) return null
+    const selection = document.getSelection()
+    const moveSelection = !selection?.anchorNode || !selection.focusNode
+      || selection.anchorNode === document.body || selection.focusNode === document.body
+      || !selection.anchorNode.isConnected || !selection.focusNode.isConnected
+    const content = this.schema.fillByRule(document.body)
+    document.body.replaceChildren(...content)
+    const defaultBlock = document.body.firstElementChild
+    if(moveSelection && defaultBlock) $.move(defaultBlock)
+    return defaultBlock
+  }
+
   destroy() {
     if(this.#destroyed) return
     this.#destroyed = true
@@ -702,6 +729,8 @@ export class DOMEditor {
     document.removeEventListener("selectionchange", this.handleSelectionChange)
     document.removeEventListener("copy", this.#onCopy)
     window.removeEventListener("message", this.handleMessage)
+    this.#bodySchemaObserver?.disconnect()
+    this.#bodySchemaObserver = null
     if(this.doc) attempt(() => this.doc.destroy())
     this.#appendixElements.forEach(reference => reference.deref()?.remove())
     this.#appendixElements.clear()

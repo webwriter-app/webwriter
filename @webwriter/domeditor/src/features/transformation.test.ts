@@ -8,15 +8,17 @@ import { $ } from "../utility"
 
 var editor = new DOMEditor()
 let feature: TransformationFeature
+let initialParagraph: Element | null = null
 
 // The drag-based handlers (handleScaleDrag, handleMoveDrag, handleRotateDrag)
 // require DragEvents with real coordinates and layout, which happy-dom does
 // not provide — they are exercised in the browser instead.
 
 beforeEach(() => {
-  document.body.innerHTML = ""
+  document.body.innerHTML = "<p></p>"
   document.body.className = ""
   document.documentElement.className = ""
+  initialParagraph = document.body.firstElementChild
   // The editor appendix lives in the body's shadow root. All element getters
   // resolve through that root, so this instance and the editor's enabled
   // instance operate on the same controls.
@@ -26,7 +28,11 @@ beforeEach(() => {
 function el(tag = "div", text = "") {
   const element = document.createElement(tag)
   element.textContent = text
-  document.body.append(element)
+  if(initialParagraph?.parentElement === document.body) {
+    initialParagraph.replaceWith(element)
+    initialParagraph = null
+  }
+  else document.body.append(element)
   return element
 }
 

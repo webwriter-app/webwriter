@@ -22,8 +22,8 @@ beforeEach(async () => {
   vi.restoreAllMocks()
   document.body.innerHTML = ""
   document.body.removeAttribute("style")
-  $.selectDocumentStart()
   await new Promise<void>(resolve => queueMicrotask(resolve))
+  $.move(document.body.firstElementChild!)
 })
 
 
@@ -61,23 +61,23 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expect($.anchor).toBe(document.body.firstElementChild)
   })
 
-  it("creates the first paragraph when Enter is pressed in an empty document", () => {
+  it("splits the schema-provided initial paragraph when Enter is pressed", () => {
     const event = new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
 
     document.dispatchEvent(event)
 
     expect(event.defaultPrevented).toBe(true)
-    expectBodyToBe("<p></p>")
-    expect($.anchor).toBe(document.body.firstElementChild)
+    expectBodyToBe("<p></p><p></p>")
+    expect($.anchor).toBe(document.body.lastElementChild)
     expect($.anchorOffset).toBe(0)
   })
 
-  it("splits the initial paragraph when Enter is pressed again", () => {
+  it("can repeatedly split the initial paragraph", () => {
     document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
 
     document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
 
-    expectBodyToBe("<p></p><p></p>")
+    expectBodyToBe("<p></p><p></p><p></p>")
     expect($.anchor).toBe(document.body.lastElementChild)
     expect($.anchorOffset).toBe(0)
   })
@@ -91,11 +91,11 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
 
     document.body.dispatchEvent(event)
 
-    expect(event.defaultPrevented).toBe(true)
+    expect(event.defaultPrevented).toBe(false)
     expectBodyToBe("<p></p>")
   })
 
-  it("inserts a line break with Alt+Enter into a text block from an empty document", () => {
+  it("inserts a line break with Alt+Enter into the initial text block", () => {
     const event = new KeyboardEvent("keydown", {key: "Enter", altKey: true, bubbles: true, cancelable: true})
 
     document.dispatchEvent(event)
@@ -174,25 +174,23 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
   it("does not create content for a keyboard shortcut", () => {
     document.dispatchEvent(new KeyboardEvent("keydown", {key: "b", ctrlKey: true, bubbles: true, cancelable: true}))
 
-    expectBodyToBe("")
+    expectBodyToBe("<p></p>")
   })
 
-  it("prepares an empty document for native text input and synchronizes the result", async () => {
-    $.selectDocumentStart()
-
-    const event = new InputEvent("beforeinput", {
+  it("synchronizes native text input in the schema-provided paragraph", async () => {
+    const paragraph = document.body.firstElementChild!
+    const text = document.createTextNode("a")
+    paragraph.append(text)
+    $.move(text, 1)
+    document.body.dispatchEvent(new InputEvent("input", {
       bubbles: true,
-      cancelable: true,
-      data: "a",
       inputType: "insertText",
-    })
-    document.body.dispatchEvent(event)
+      data: "a",
+    }))
 
-    const paragraph = document.body.firstElementChild
-    expect(event.defaultPrevented).toBe(true)
-    expect(paragraph?.tagName).toBe("P")
-    expect(paragraph?.textContent).toBe("a")
-    expect($.anchor).toBe(paragraph?.firstChild)
+    expect(paragraph.tagName).toBe("P")
+    expect(paragraph.textContent).toBe("a")
+    expect($.anchor).toBe(text)
     expect($.anchorOffset).toBe(1)
 
     await vi.waitFor(() => {
@@ -282,6 +280,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
 
   it("can insert <p> at document start", () => {
     const p = document.createElement("p")
+    $.selectGap(document.body.firstElementChild!, "before")
     editor.features.manipulation.insert(p)
     expect(document.body.firstElementChild).toBe(p)
   })
@@ -465,7 +464,7 @@ describe("figures", () => {
 
   it("adds a trailing caption to a breadcrumb-selected figure and focuses an existing caption", () => {
     document.body.innerHTML = "<figure><img src=photo.png></figure>"
-    $.selectDocumentStart()
+    $.move(document.body.firstElementChild!)
     editor.features.selection.actions.selectSection({type: "selectSection", path: [0]})
 
     expect(editor.features.manipulation.addFigureCaption("after")).toBe(true)
@@ -605,7 +604,7 @@ describe("sections", () => {
 
   it("edits and removes empty or inline section wrappers selected from the breadcrumb", () => {
     document.body.innerHTML = "<section></section><article>inline</article>"
-    $.selectDocumentStart()
+    $.move(document.body.firstElementChild!)
     editor.features.selection.actions.selectSection({type: "selectSection", path: [1]})
 
     expect(editor.features.manipulation.actions.setSectionType({
@@ -721,7 +720,7 @@ describe("delete()", () => {
     document.body.innerHTML = "<p>hello</p>"
     $.selectElement(document.body.firstElementChild!)
     editor.features.manipulation.delete()
-    expectBodyToBe("")
+    expectBodyToBe("<p></p>")
   })
   it("removes an empty element and moves the caret to the previous node", () => {
     document.body.innerHTML = "<p>a</p><p></p>"
@@ -733,7 +732,7 @@ describe("delete()", () => {
     document.body.innerHTML = "<p></p>"
     $.move(document.body.firstElementChild!, 0)
     editor.features.manipulation.delete()
-    expectBodyToBe("")
+    expectBodyToBe("<p></p>")
   })
   it("moves the caret to the next element when deleting an empty first element", () => {
     document.body.innerHTML = "<p></p><p>hello</p>"
@@ -996,7 +995,7 @@ describe("cut()", () => {
     document.body.innerHTML = "<p>hello world</p>"
     $.selectElement(document.body.firstElementChild!)
     await editor.features.manipulation.cut()
-    expectBodyToBe("")
+    expectBodyToBe("<p></p>")
   })
   it("cuts a partial text selection", async () => {
     document.body.innerHTML = "<p>hello world</p>"
@@ -1076,7 +1075,7 @@ describe("paste()", () => {
       "text/plain": "test",
       "text/html": "<p>hello world</p>"
     })])
-    $.selectDocumentStart()
+    $.move(document.body.firstElementChild!)
     await editor.features.manipulation.paste()
     expectBodyToBe("<p>hello world</p>")
   })
@@ -1090,11 +1089,11 @@ describe("paste()", () => {
     await editor.features.manipulation.paste()
     expectBodyToBe("<p>new</p>")
   })
-  it("wraps plain-text clipboard content in a paragraph at an empty document", async () => {
+  it("pastes plain text into the initial paragraph", async () => {
     await navigator.clipboard.write([new ClipboardItem({
       "text/plain": "test"
     })])
-    $.selectDocumentStart()
+    $.move(document.body.firstElementChild!)
     await editor.features.manipulation.paste()
     expectBodyToBe("<p>test</p>")
   })
@@ -1103,7 +1102,7 @@ describe("paste()", () => {
     await navigator.clipboard.write([new ClipboardItem({
       "text/plain": "<b>text</b>"
     })])
-    $.selectDocumentStart()
+    $.move(document.body.firstElementChild!)
 
     await editor.features.manipulation.paste()
 
@@ -1150,7 +1149,7 @@ describe("paste()", () => {
   })
   it("preserves plain-text line boundaries as soft breaks", async () => {
     await navigator.clipboard.write([new ClipboardItem({"text/plain": "one\ntwo"})])
-    $.selectDocumentStart()
+    $.move(document.body.firstElementChild!)
 
     await editor.features.manipulation.paste()
 
@@ -1358,8 +1357,8 @@ describe("setBlockType()", () => {
     expectBodyToBe("<address><p>contact</p><demo-widget></demo-widget></address>")
   })
 
-  it("materializes and formats a block at an empty-document selection", () => {
-    $.selectDocumentStart()
+  it("formats the schema-provided initial paragraph", () => {
+    $.move(document.body.firstElementChild!)
 
     editor.features.manipulation.actions.setBlockType({type: "setBlockType", tag: "h1"})
 
@@ -1465,8 +1464,8 @@ describe("setStyle()", () => {
     expect(paragraphs[0]).toHaveStyle({color: "red", textAlign: "center", lineHeight: "1.5"})
     expect(paragraphs[1]).toHaveStyle({textAlign: "center", lineHeight: "1.5"})
   })
-  it("materializes a paragraph when formatting an empty document", () => {
-    $.selectDocumentStart()
+  it("formats the schema-provided initial paragraph", () => {
+    $.move(document.body.firstElementChild!)
 
     const count = editor.features.manipulation.setBlockStyle({"text-align": "center"})
 

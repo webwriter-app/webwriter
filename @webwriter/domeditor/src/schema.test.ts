@@ -13,7 +13,7 @@ function expectBodyToBe(html: string) {
 }
 
 beforeEach(() => {
-  document.body.innerHTML = ""
+  document.body.innerHTML = "<p></p>"
 })
 
 describe("create()", () => {
@@ -39,23 +39,17 @@ describe("findWrapping()", () => {
 describe("fixInvalidContent()", () => {
   // it("can fix an invalid tree by lifting", () => {})
   it("can fix an invalid element by wrapping", () => {
-    document.body.insertAdjacentHTML("afterbegin", 
-      `<ul><p>hello</p></ul>`
-    )
+    document.body.innerHTML = `<ul><p>hello</p></ul>`
     editor.schema.fixInvalidContent(document.querySelector("ul")!)
     expectBodyToBe(`<ul><li><p>hello</p></li></ul>`)
   })
   it("can fix an invalid text node by wrapping", () => {
-    document.body.insertAdjacentHTML("afterbegin", 
-      `<ul>hello</ul>`
-    )
+    document.body.innerHTML = `<ul>hello</ul>`
     editor.schema.fixInvalidContent(document.querySelector("ul")!)
     expectBodyToBe(`<ul><li>hello</li></ul>`)
   })
   it("can fix invalid mixed inline content by wrapping", () => {
-    document.body.insertAdjacentHTML("afterbegin", 
-      `<ul>hello <b>world</b></ul>`
-    )
+    document.body.innerHTML = `<ul>hello <b>world</b></ul>`
     editor.schema.fixInvalidContent(document.querySelector("ul")!)
     expectBodyToBe(`<ul><li>hello <b>world</b></li></ul>`)
   })
@@ -126,6 +120,12 @@ describe("isNodeValid()", () => {
     it("matches comment nodes through the '#comment' group entry", () => {
       expect(editor.schema.isNodeValid(comment(), {group: "flow", max: Infinity})).toBe(true)
       expect(editor.schema.isNodeValid(comment(), {group: "phrasing", max: Infinity})).toBe(false)
+    })
+    it("counts an atomic noneditable element toward a required group", () => {
+      const widget = el("my-widget", {contenteditable: "false"})
+      const rule = {group: "flow", min: 1, max: Infinity}
+      expect(editor.schema.isNodeValid(widget, rule)).toBe(true)
+      expect(rule.min).toBe(0)
     })
     it("rejects unknown elements (group matching is by tag name)", () => {
       expect(editor.schema.isNodeValid(el("my-widget"), {group: "flow", max: Infinity})).toBe(false)
@@ -696,6 +696,7 @@ describe("Schema methods", () => {
     it("enforces the minimum content count", () => {
       expect(schema.isContentValid("html", [])).toBe(false)
       expect(schema.isContentValid("html", [el("head"), el("body")])).toBe(true)
+      expect(schema.isContentValid("body", [])).toBe(false)
     })
     it("treats an empty element without a content rule as valid", () => {
       expect(schema.isContentValid(el("br"))).toBe(true)
@@ -706,6 +707,9 @@ describe("Schema methods", () => {
     it("fills required content", () => {
       const content = schema.fillByRule("html")
       expect(content.map(n => n.nodeName)).toEqual(["HEAD", "BODY"])
+    })
+    it("fills an empty body with its default paragraph", () => {
+      expect(schema.fillByRule("body").map(node => node.nodeName)).toEqual(["P"])
     })
     it("completes partial content", () => {
       const head = el("head")

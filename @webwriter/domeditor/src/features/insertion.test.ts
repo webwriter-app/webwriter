@@ -24,20 +24,20 @@ function typeText(text: string) {
 
 beforeEach(() => {
   globalThis.DOMEDITOR_PACKAGE_ITEMS = []
-  document.body.innerHTML = ""
+  document.body.innerHTML = "<p></p>"
+  $.move(document.body.firstElementChild!)
   editor.features.insertion.menu.dispatchEvent(new Event("insertion-menu-close", {bubbles: true, composed: true}))
 })
 
 describe("insertion menu", () => {
-  it("shows a ++ trigger in an empty document and opens it like typed ++", async () => {
-    $.selectDocumentStart()
+  it("shows a ++ trigger in the initial paragraph and opens it like typed ++", async () => {
     editor.features.selection.processSelection()
     await Promise.resolve()
 
     const button = editor.appendix.querySelector<HTMLButtonElement>(".◆insertion-add")
     expect(button).not.toBeNull()
     expect(button!.textContent).toBe("++")
-    expect(document.body.classList.contains("◆empty-selected")).toBe(true)
+    expect(document.body.firstElementChild?.classList.contains("◆empty-selected")).toBe(true)
 
     const activation = new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
     expect(button!.dispatchEvent(activation)).toBe(false)

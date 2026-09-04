@@ -26,8 +26,7 @@ function clickShape(shape: Element, shiftKey = false) {
 beforeEach(() => {
   document.body.replaceChildren()
   editor = new DOMEditor()
-  document.body.replaceChildren()
-  $.selectDocumentStart()
+  $.move(document.body.firstElementChild!)
 })
 
 afterEach(() => editor.destroy())

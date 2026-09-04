@@ -5,6 +5,7 @@ import '@testing-library/jest-dom/vitest'
 import { DOMEditor } from "./domeditor"
 import {executeCompleteEvent, selectionChangeEvent} from "./editor-bridge"
 import editorStyleString from "./editor.css?raw"
+import {$} from "./utility"
 
 const hasSelector = (stylesheet: CSSStyleSheet, selector: string) =>
   Array.from(stylesheet.cssRules).some(rule =>
@@ -69,7 +70,7 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/:where\(table:not\(:has\(td, th\)\)\)::after\s*\{[\s\S]*?display:\s*table-cell;[\s\S]*?height:\s*2\.2rem;[\s\S]*?border:\s*1px dashed #aeb8c4;[\s\S]*?content:\s*"";/)
   })
 
-  it("keeps the empty editing surface interactive and its caret in the shadow appendix", () => {
+  it("starts with an editable default paragraph", () => {
     const bodyRule = Array.from(document.adoptedStyleSheets.flatMap(sheet => Array.from(sheet.cssRules)))
       .find(rule => (rule as CSSStyleRule).selectorText === "body") as CSSStyleRule | undefined
 
@@ -84,7 +85,9 @@ describe("DOMEditor stylesheets", () => {
     expect(document.body).toHaveAttribute("contenteditable", "true")
     expect(editor.doc.body.getAttribute("contenteditable")).toBeUndefined()
     expect(editor.toHTML()).not.toContain("contenteditable")
-    expect(editor.features.selection.emptyDocumentCaret?.getRootNode()).toBe(editor.appendix)
+    expect(editor.toHTML(true)).toBe("<p></p>")
+    expect($.anchor).toBe(document.body.firstElementChild)
+    expect(editor.features.selection.emptyDocumentCaret).toBeNull()
     expect(editor.features.selection.hoverCaret?.getRootNode()).toBe(editor.appendix)
     expect(editorStyleString).toContain("body::part(empty-document-caret)")
     expect(editorStyleString).toMatch(/body::part\(empty-document-caret\)[\s\S]*?left:\s*calc\(anchor\(left\) \+ var\(--body-padding\)\);/)
@@ -158,6 +161,28 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/:is\(picture, audio, video\)\s*\{[\s\S]*?height:\s*auto;[\s\S]*?aspect-ratio:\s*16\s*\/\s*9;/)
     expect(editorStyleString).toMatch(/audio\.◆media-empty::-webkit-media-controls-enclosure\s*\{[\s\S]*?display:\s*none;/)
     expect(editorStyleString).toMatch(/body:has\(\.◆media-empty:is\(\.◆gap-before-selected, \.◆gap-after-selected\)\)::part\(gap-caret\)\s*\{[\s\S]*?display:\s*none;/)
+  })
+
+  it("restores the default paragraph after a direct DOM change empties the body", async () => {
+    document.body.replaceChildren()
+
+    await new Promise<void>(resolve => queueMicrotask(resolve))
+
+    expect(editor.toHTML(true)).toBe("<p></p>")
+  })
+
+  it("moves a user-editing selection into the restored paragraph", () => {
+    document.body.replaceChildren()
+    document.body.dispatchEvent(new InputEvent("input", {
+      bubbles: true,
+      inputType: "deleteContentBackward",
+    }))
+
+    const paragraph = document.body.firstElementChild
+    expect(editor.toHTML(true)).toBe("<p></p>")
+    expect($.anchor).toBe(paragraph)
+    expect($.anchorOffset).toBe(0)
+    expect($.isEmptyDocumentSelection).toBe(false)
   })
 
   it("removes nested editing attributes from serialized widgets", () => {

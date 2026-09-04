@@ -25,7 +25,7 @@ export const baseSchema = {
     content: {group: "metadata", min: 0, max: Infinity}
   },
   "body": {
-    content: {group: "flow", min: 0, max: Infinity}
+    content: {group: "flow", min: 1, max: Infinity}
   },
 
   // Metadata elements

@@ -772,11 +772,10 @@ export class ManipulationFeature extends EditorFeature {
     return normalized
   }
 
-  /** Inserts top-level block clipboard nodes beside the current text block,
-   * retaining left and right block halves. If the surrounding content model
-   * cannot accept that shape (for example a direct LI selection), paste falls
-   * back to the source text rather than creating invalid DOM. */
-  private insertClipboardBlocks(nodes: ChildNode[]) {
+  /** Inserts block nodes beside the current text block, retaining non-empty
+   * left and right halves. If the surrounding content model cannot accept
+   * that shape, their text is inserted instead of creating invalid DOM. */
+  private insertBlocks(nodes: ChildNode[]) {
     return this.withNormalization(() => {
       $.delete()
       const block = getContainer($.range.startContainer)
@@ -830,7 +829,7 @@ export class ManipulationFeature extends EditorFeature {
     }
     if(isVirtualSelection && isInlineContent && !this.ensureTextBlock()) return
     if(isVirtualSelection || isInlineContent) this.insertAtSelection(...nodes)
-    else this.insertClipboardBlocks(nodes)
+    else this.insertBlocks(nodes)
   }
 
   private firstTextDescendant(node: Node): Text | null {
@@ -1319,9 +1318,33 @@ export class ManipulationFeature extends EditorFeature {
     }
     const insertedWidget = this.insertedWidget(node)
     if(node) markWidgetsEditable(node)
+    const insertedElement = isElement(node)
+      ? node
+      : node instanceof DocumentFragment && node.childNodes.length === 1 && isElement(node.firstChild)
+        ? node.firstChild
+        : null
+    const emptyDefaultBlock = $.anchorContainer
+    if(insertedElement && document.getSelection()?.isCollapsed
+      && emptyDefaultBlock?.localName === this.editor.schema.defaultNodeKey
+      && !emptyDefaultBlock.childNodes.length
+      && this.editor.schema.get(insertedElement).group?.includes("flow")) {
+      return this.withNormalization(() => {
+        emptyDefaultBlock.replaceWith(insertedElement)
+        if(insertedWidget) {
+          $.selectElement(insertedWidget)
+          this.editor.features.selection.processSelection()
+          this.editor.postSelectionPath(true)
+        }
+        else this.moveAfterInsertedNode(insertedElement)
+      })
+    }
     if(insertedWidget && !this.editor.schema.isPhrasing(insertedWidget)
       && !this.canInsertAtSelection(insertedWidget)) {
       return this.withNormalization(() => this.insertBlockWidget(insertedWidget))
+    }
+    if(insertedElement && !this.editor.schema.isPhrasing(insertedElement)
+      && !this.canInsertAtSelection(insertedElement)) {
+      return this.insertBlocks([insertedElement])
     }
     return this.withNormalization(() => {
       $.replace(node)

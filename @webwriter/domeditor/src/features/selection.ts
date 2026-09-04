@@ -267,7 +267,10 @@ export class SelectionFeature extends EditorFeature {
   /** Enables the feature and places the selection at the document start. */
   enable() {
     if(this.isEnabled) return
-    $.selectDocumentStart()
+    const first = document.body.firstElementChild
+    if(first?.localName === this.editor.schema.defaultNodeKey
+      && document.body.childNodes.length === 1 && !first.childNodes.length) $.move(first)
+    else $.selectDocumentStart()
     super.enable()
     this.#ensureHoverCaret()
     document.addEventListener("click", this.#handleModifierClick, {capture: true})

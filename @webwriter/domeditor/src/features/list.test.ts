@@ -15,8 +15,8 @@ const keydown = (key: string, init: KeyboardEventInit = {}) => {
 }
 
 beforeEach(() => {
-  document.body.innerHTML = ""
-  $.selectDocumentStart()
+  document.body.innerHTML = "<p></p>"
+  $.move(document.body.firstElementChild!)
 })
 
 describe("semantic list editing", () => {
@@ -39,13 +39,14 @@ describe("semantic list editing", () => {
       .not.toContain("virtual-list-item-hidden")
   })
 
-  it("toggles an empty active list back off without leaving an authored placeholder", () => {
+  it("toggles an empty active list back to the required default paragraph", async () => {
     editor.features.list.toggleList("ul")
 
     editor.features.list.toggleList("ul")
+    await new Promise<void>(resolve => queueMicrotask(resolve))
 
-    expect(cleanHTML()).toBe("")
-    expect($.anchor).toBe(document.body)
+    expect(cleanHTML()).toBe("<p></p>")
+    expect($.anchor).toBe(document.querySelector("p"))
     expect($.anchorOffset).toBe(0)
   })
 

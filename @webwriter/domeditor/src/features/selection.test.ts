@@ -9,6 +9,7 @@ import { selectionChangeEvent } from "../editor-bridge"
 
 var editor = new DOMEditor()
 const feature = editor.features.selection
+let initialParagraph: Element | null = null
 
 // Not testable in happy-dom: plain pointerdown drag selection and pointermove
 // (require document.caretPositionFromPoint) and double/triple click word/line
@@ -19,13 +20,22 @@ beforeEach(async () => {
   document.getSelection()?.removeAllRanges()
   feature.clearSelectedSection()
   await new Promise<void>(resolve => queueMicrotask(resolve))
+  initialParagraph = document.body.firstElementChild
   document.body.className = ""
 })
+
+function appendToBody(...nodes: Node[]) {
+  if(initialParagraph?.parentElement === document.body) {
+    initialParagraph.replaceWith(...nodes)
+    initialParagraph = null
+  }
+  else document.body.append(...nodes)
+}
 
 function el(tag = "p", text = "") {
   const element = document.createElement(tag)
   element.textContent = text
-  document.body.append(element)
+  appendToBody(element)
   return element
 }
 
@@ -531,14 +541,12 @@ describe("enable()", () => {
     fresh.disable()
   })
 
-  it("marks an empty document selection", () => {
+  it("marks the schema-provided empty paragraph selection", () => {
     const fresh = new SelectionFeature(editor)
     fresh.enable()
-    expect(document.body.classList.contains("◆empty-selected")).toBe(true)
-    expect(fresh.emptyDocumentCaret).toBeInstanceOf(HTMLElement)
-    expect(fresh.emptyDocumentCaret).toHaveClass("◆editor-only")
-    expect(fresh.emptyDocumentCaret).toHaveAttribute("part", "empty-document-caret")
-    expect(fresh.emptyDocumentCaret?.getRootNode()).toBe(document.body.shadowRoot)
+    expect(document.body.firstElementChild).toHaveClass("◆empty-selected")
+    expect($.anchor).toBe(document.body.firstElementChild)
+    expect(document.body).not.toHaveClass("◆empty-selected")
     fresh.disable()
   })
 })
@@ -554,7 +562,7 @@ describe("document listeners", () => {
     expect(p.classList.contains("◆text-selected")).toBe(true)
   })
 
-  it("restores the empty-document caret when a shared change removes the final node", async () => {
+  it("restores the default paragraph when a shared change removes the final node", async () => {
     const p = el("p", "hello")
     await vi.waitFor(() => {
       expect(editor.doc.body.firstChild?.toString()).toBe("<p>hello</p>")
@@ -564,15 +572,14 @@ describe("document listeners", () => {
 
     editor.doc.doc.transact(() => editor.doc.body.delete(0, editor.doc.body.length), "remote-test")
     await vi.waitFor(() => {
-      expect(document.body.innerHTML).toBe("")
-      expect($.anchor).toBe(document.body)
+      expect(editor.toHTML(true)).toBe("<p></p>")
+      expect($.anchor).toBe(document.body.firstElementChild)
       expect($.anchorOffset).toBe(0)
-      expect(document.body).toHaveClass("◆empty-selected")
-      expect(feature.emptyDocumentCaret).toHaveAttribute("part", "empty-document-caret")
+      expect($.isEmptyDocumentSelection).toBe(false)
     }, {timeout: 5_000})
   })
 
-  it("posts the Document breadcrumb when a shared change removes the final node", async () => {
+  it("posts the default paragraph breadcrumb when a shared change removes the final node", async () => {
     const p = el("p", "hello")
     await vi.waitFor(() => {
       expect(editor.doc.body.firstChild?.toString()).toBe("<p>hello</p>")
@@ -588,7 +595,10 @@ describe("document listeners", () => {
         type: selectionChangeEvent,
         bridgeNonce: editor.trustedScriptNonce,
         detail: {
-          path: [{path: [], name: "Document", icon: "Document"}],
+          path: [
+            {path: [], name: "Document", icon: "Document"},
+            {path: [0], name: "Paragraph", icon: "Paragraph"},
+          ],
         },
       }, window.location.origin)
     }, {timeout: 5_000})
@@ -649,6 +659,7 @@ describe("document listeners", () => {
   it("posts authored attributes only for an exact element selection", () => {
     document.body.innerHTML = '<blockquote cite="source.html" class="authored ◆stale-marker" contenteditable="false" spellcheck="true">Quote</blockquote>'
     const quote = document.querySelector("blockquote")!
+    $.move(quote.firstChild!, 2)
     feature.actions.selectSection({type: "selectSection", path: [0]})
     const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => {})
 
@@ -826,7 +837,7 @@ describe("document listeners", () => {
     const editable = document.createElement("div")
     editable.contentEditable = "true"
     widget.attachShadow({mode: "open"}).append(editable)
-    document.body.append(widget)
+    appendToBody(widget)
     editable.focus()
     document.getSelection()?.setPosition(document.body, 0)
     const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => {})
@@ -862,7 +873,7 @@ describe("document listeners", () => {
   it("prevents the default modifier-click action", () => {
     const link = document.createElement("a")
     link.href = "#target"
-    document.body.append(link)
+    appendToBody(link)
     link.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true}))
     const event = new MouseEvent("click", {bubbles: true, cancelable: true, ctrlKey: true})
 
@@ -893,7 +904,7 @@ describe("document listeners", () => {
   })
   it("promotes a modifier-clicked widget from node to capture selection", () => {
     const widget = document.createElement("webwriter-demo")
-    document.body.append(widget)
+    appendToBody(widget)
     const clickWidget = () => {
       const pointerdown = new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true})
       widget.dispatchEvent(pointerdown)
@@ -915,7 +926,7 @@ describe("document listeners", () => {
     const widget = document.createElement("interactive-widget")
     const button = document.createElement("button")
     widget.attachShadow({mode: "open"}).append(button)
-    document.body.append(widget)
+    appendToBody(widget)
     const pointerdown = () => {
       const event = new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, ctrlKey: true})
       button.dispatchEvent(event)
@@ -940,7 +951,7 @@ describe("document listeners", () => {
     const widget = document.createElement("interactive-widget")
     const button = document.createElement("button")
     widget.attachShadow({mode: "open"}).append(button)
-    document.body.append(widget)
+    appendToBody(widget)
     feature.isInDragSelection = true
     const event = new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true})
 
@@ -967,7 +978,7 @@ describe("document listeners", () => {
     const widget = document.createElement("scrolling-widget")
     const scroller = document.createElement("div")
     widget.attachShadow({mode: "open"}).append(scroller)
-    document.body.append(widget)
+    appendToBody(widget)
     const onScroll = vi.fn()
     scroller.addEventListener("scroll", onScroll)
 
@@ -984,7 +995,7 @@ describe("document listeners", () => {
     const widget = document.createElement("map-widget")
     const map = document.createElement("div")
     widget.attachShadow({mode: "open"}).append(map)
-    document.body.append(widget)
+    appendToBody(widget)
     const onWheel = vi.fn((event: WheelEvent) => event.preventDefault())
     const scrollBy = vi.spyOn(window, "scrollBy").mockImplementation(() => {})
     map.addEventListener("wheel", onWheel)
@@ -1010,7 +1021,7 @@ describe("document listeners", () => {
     const widget = document.createElement("closed-widget")
     const button = document.createElement("button")
     widget.attachShadow({mode: "closed"}).append(button)
-    document.body.append(widget)
+    appendToBody(widget)
 
     button.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
 
@@ -1021,7 +1032,7 @@ describe("document listeners", () => {
     const widget = document.createElement("interactive-widget")
     const button = document.createElement("button")
     widget.attachShadow({mode: "open"}).append(button)
-    document.body.append(widget)
+    appendToBody(widget)
     button.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
 
     document.getSelection()?.setPosition(document.body, 0)
@@ -1038,7 +1049,7 @@ describe("document listeners", () => {
     const widget = document.createElement("interactive-widget")
     const button = document.createElement("button")
     widget.attachShadow({mode: "open"}).append(button)
-    document.body.append(widget)
+    appendToBody(widget)
     button.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
     document.getSelection()?.setPosition(document.body, 0)
     const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => {})
@@ -1054,7 +1065,7 @@ describe("document listeners", () => {
     const widget = document.createElement("interactive-widget")
     const button = document.createElement("button")
     widget.attachShadow({mode: "open"}).append(button)
-    document.body.append(widget)
+    appendToBody(widget)
     button.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
     document.getSelection()?.setPosition(document.body, 0)
     const paragraph = el("p", "hello")
@@ -1074,7 +1085,7 @@ describe("document listeners", () => {
     const widget = document.createElement("interactive-widget")
     const button = document.createElement("button")
     widget.attachShadow({mode: "open"}).append(button)
-    document.body.append(widget)
+    appendToBody(widget)
     button.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
     expect(widget).toHaveClass("◆element-capture-selected")
 
@@ -1091,7 +1102,7 @@ describe("document listeners", () => {
     editable.contentEditable = "true"
     editable.textContent = "code"
     widget.attachShadow({mode: "open"}).append(editable)
-    document.body.append(widget)
+    appendToBody(widget)
     editable.addEventListener("pointerdown", event => event.stopPropagation())
 
     editable.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
@@ -1119,7 +1130,7 @@ describe("document listeners", () => {
     editable.contentEditable = "true"
     editable.textContent = "code"
     widget.attachShadow({mode: "open"}).append(editable)
-    document.body.append(widget)
+    appendToBody(widget)
 
     editable.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
     editable.focus()
@@ -1134,7 +1145,7 @@ describe("document listeners", () => {
     const before = el("p", "before")
     const widget = document.createElement("interactive-widget")
     widget.attachShadow({mode: "open"}).textContent = "shadow text"
-    document.body.append(widget)
+    appendToBody(widget)
     const after = el("p", "after")
 
     $.selectRange(before.firstChild!, 0, after.firstChild!, after.textContent!.length)
@@ -1153,15 +1164,6 @@ describe("document listeners", () => {
     helper.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true}))
     expect($.anchor).toBe(p.firstChild)
     expect($.anchorOffset).toBe(2)
-  })
-  it("lets the browser focus an empty document on pointerdown", () => {
-    $.selectDocumentStart()
-    const event = new MouseEvent("pointerdown", {bubbles: true, cancelable: true})
-    document.body.dispatchEvent(event)
-    expect(event.defaultPrevented).toBe(false)
-    expect(feature.isInDragSelection).toBe(false)
-    expect($.anchor).toBe(document.body)
-    expect($.anchorOffset).toBe(0)
   })
   it("ends the drag selection on pointerup", () => {
     feature.isInDragSelection = true
@@ -1286,7 +1288,7 @@ describe("document listeners", () => {
     const widget = document.createElement("interactive-widget")
     const button = document.createElement("button")
     widget.attachShadow({mode: "open"}).append(button)
-    document.body.append(widget)
+    appendToBody(widget)
     button.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
     button.focus()
     const event = new KeyboardEvent("keydown", {key: "ArrowRight", bubbles: true, cancelable: true})

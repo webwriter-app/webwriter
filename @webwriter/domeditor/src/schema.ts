@@ -657,6 +657,10 @@ export class Schema {
   /** Whether `node` is valid as the next piece of content under `rule`. Stateful: A successful match decrements the rule's min/max in place, so calling this repeatedly with the same rule object consumes it across a sequence of nodes — which is how isContentValid uses it. Elements with `contenteditable=false` are always valid. Throws for malformed rules. */
   isNodeValid(node: Node, rule=this.getContentRule(node.parentElement!)): boolean {
     if(node instanceof Element && node.getAttribute("contenteditable") === "false") {
+      if(rule && "group" in rule) {
+        rule.min = Math.max(0, (rule.min ?? 1) - 1)
+        rule.max = Math.max(0, (rule.max ?? 1) - 1)
+      }
       return true
     }
     if(!rule) {
@@ -787,7 +791,10 @@ export class Schema {
       else {
         const validContentTypes = this.findValidContentTypes(container, rule)
         if(!validContentTypes.length) throw Error("No possible fill for node");
-        const newNode = this.create(validContentTypes.at(0)!)
+        const defaultType = validContentTypes.includes(this.defaultNodeKey)
+          ? this.defaultNodeKey
+          : validContentTypes.at(0)!
+        const newNode = this.create(defaultType)
         if(this.isNodeValid(newNode, rule)) {
           newContent = [...newContent, newNode];
         }

@@ -9,8 +9,7 @@ let editor: DOMEditor
 beforeEach(() => {
   document.body.replaceChildren()
   editor = new DOMEditor()
-  document.body.replaceChildren()
-  $.selectDocumentStart()
+  $.move(document.body.firstElementChild!)
 })
 
 afterEach(() => editor.destroy())
