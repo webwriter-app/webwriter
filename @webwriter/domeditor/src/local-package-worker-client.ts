@@ -12,6 +12,18 @@ export type StoredLocalPackageDirectory = {
   readonly handle: LocalPackageDirectoryHandle
 }
 
+/**
+ * Restored File System Access handles commonly return `prompt` after a page
+ * reload. Checking first avoids an unnecessary prompt when the browser kept
+ * the grant; requesting afterwards lets Chromium restore persisted access.
+ */
+export async function requestLocalPackageDirectoryPermission(handle: LocalPackageDirectoryHandle) {
+  if(typeof handle.queryPermission !== "function" || typeof handle.requestPermission !== "function") return true
+  const descriptor = {mode: "readwrite"} as const
+  if(await handle.queryPermission(descriptor) === "granted") return true
+  return await handle.requestPermission(descriptor) === "granted"
+}
+
 /** Runtime guard for records read from IndexedDB (which is untrusted input). */
 export function isStoredLocalPackageDirectory(value: unknown): value is StoredLocalPackageDirectory {
   if(!value || typeof value !== "object") return false
@@ -173,9 +185,12 @@ export class LocalPackageWorkerClient {
 
   async register(id: string, handle: LocalPackageDirectoryHandle) {
     if(!id) throw new TypeError("A local package id is required")
+    // Save the picker result before worker setup. Besides making IndexedDB the
+    // durable source of truth, this preserves the handle when worker startup
+    // fails or the page is reloaded while registration is in progress.
+    await saveDirectory({id, handle})
     await this.registration()
     await this.send({type: "register-local-package", id, handle})
-    await saveDirectory({id, handle})
   }
 
   async unregister(id: string) {

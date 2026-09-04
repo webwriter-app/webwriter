@@ -35,6 +35,8 @@ export type LocalPackageDirectoryHandle = {
   readonly kind?: string
   getDirectoryHandle(name: string): Promise<LocalPackageDirectoryHandle>
   getFileHandle(name: string): Promise<LocalPackageFileHandle>
+  queryPermission?(descriptor?: {mode?: "read" | "readwrite"}): Promise<PermissionState>
+  requestPermission?(descriptor?: {mode?: "read" | "readwrite"}): Promise<PermissionState>
 }
 
 export type LocalPackageFileHandle = {

@@ -3,6 +3,7 @@ import {afterEach, describe, expect, it, vi} from "vitest"
 import {
   isStoredLocalPackageDirectory,
   LocalPackageWorkerClient,
+  requestLocalPackageDirectoryPermission,
   type StoredLocalPackageDirectory,
 } from "./local-package-worker-client"
 import type {LocalPackageDirectoryHandle} from "./local-package-worker"
@@ -125,6 +126,55 @@ describe("LocalPackageWorkerClient stored directory handles", () => {
     await client.register("demo", handle)
 
     expect(put).toHaveBeenCalledWith({id: "demo", handle})
+  })
+
+  it("loads persisted handles and restores them into a restarted worker", async() => {
+    const handle = directoryHandle()
+    stubIndexedDb([{id: "persisted", handle}])
+    const {active} = stubServiceWorker()
+    const client = new LocalPackageWorkerClient()
+
+    await client.start()
+
+    expect(active.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: "register-local-package",
+      id: "persisted",
+      handle,
+    }), expect.any(Array))
+  })
+
+  it("persists a handle before worker registration can fail", async() => {
+    const {put} = stubIndexedDb([])
+    vi.stubGlobal("navigator", {
+      serviceWorker: {register: vi.fn().mockRejectedValue(new Error("Worker registration failed"))},
+    })
+    const handle = directoryHandle()
+    const client = new LocalPackageWorkerClient()
+
+    await expect(client.register("demo", handle)).rejects.toThrow("Worker registration failed")
+
+    expect(put).toHaveBeenCalledWith({id: "demo", handle})
+  })
+
+  it("restores permission on a directory handle loaded from IndexedDB", async() => {
+    const queryPermission = vi.fn().mockResolvedValue("prompt")
+    const requestPermission = vi.fn().mockResolvedValue("granted")
+    const handle = {...directoryHandle(), queryPermission, requestPermission}
+
+    await expect(requestLocalPackageDirectoryPermission(handle)).resolves.toBe(true)
+
+    expect(queryPermission).toHaveBeenCalledWith({mode: "readwrite"})
+    expect(requestPermission).toHaveBeenCalledWith({mode: "readwrite"})
+  })
+
+  it("does not prompt again when persisted directory permission is still granted", async() => {
+    const queryPermission = vi.fn().mockResolvedValue("granted")
+    const requestPermission = vi.fn()
+    const handle = {...directoryHandle(), queryPermission, requestPermission}
+
+    await expect(requestLocalPackageDirectoryPermission(handle)).resolves.toBe(true)
+
+    expect(requestPermission).not.toHaveBeenCalled()
   })
 })
 

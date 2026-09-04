@@ -100,7 +100,7 @@ import {
 } from "../local-package"
 import {LocalPackageMonitor} from "../local-package-monitor"
 import {LOCAL_PACKAGE_ROUTE_PREFIX, localPackageUrl, type LocalPackageDirectoryHandle} from "../local-package-worker"
-import {LocalPackageWorkerClient} from "../local-package-worker-client"
+import {LocalPackageWorkerClient, requestLocalPackageDirectoryPermission} from "../local-package-worker-client"
 import {defaultDocumentTheme, documentTheme} from "../document-themes"
 import type {AIDocumentToolCall, AIDocumentToolHandler} from "../ai-client"
 import {isTableCellRole, isTableRowGroupType, type TableSelectionState} from "../table"
@@ -4221,6 +4221,9 @@ export class DomEditor extends LitElement {
       for(const entry of stored) {
         if(this.localPackageRecords.has(entry.id)) continue
         try {
+          if(!await requestLocalPackageDirectoryPermission(entry.handle)) {
+            throw new Error("Permission to read this package folder was denied. Grant access to the saved folder to continue.")
+          }
           const result = await loadLocalPackage(entry.handle as unknown as LocalPackageDirectory, {
             urlFor: path => localPackageUrl(entry.id, path, 0),
             locale: document.documentElement.lang || navigator.language || "en",

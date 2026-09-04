@@ -531,7 +531,9 @@ describe("Develop local packages", () => {
   })
 
   it("restores persisted directory handles and reloads their packages", async() => {
-    const directory = localPackageDirectory()
+    const queryPermission = vi.fn().mockResolvedValue("prompt")
+    const requestPermission = vi.fn().mockResolvedValue("granted")
+    const directory = Object.assign(localPackageDirectory(), {queryPermission, requestPermission})
     vi.spyOn(LocalPackageWorkerClient.prototype, "storedDirectories").mockResolvedValue([{id: "persisted", handle: directory as any}])
     const start = vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
     const editor = new DomEditor()
@@ -545,6 +547,8 @@ describe("Develop local packages", () => {
     expect((editor as any).localPackages).toHaveLength(1)
     expect((editor as any).selectedLocalPackageName).toBe("@local/demo")
     expect(reload).toHaveBeenCalledWith([expect.objectContaining({name: "@local/demo"})])
+    expect(queryPermission).toHaveBeenCalledWith({mode: "readwrite"})
+    expect(requestPermission).toHaveBeenCalledWith({mode: "readwrite"})
   })
 
   it("keeps inaccessible restored folders visible with a recovery error", async() => {
@@ -565,6 +569,25 @@ describe("Develop local packages", () => {
     expect((editor as any).localPackages[0].label).toBe("private-package")
     expect((editor as any).selectedLocalPackageName).toBe("@local/private-package")
     expect((editor as any).localPackageError).toContain("Select the folder again")
+  })
+
+  it("keeps a restored folder visible when renewed permission is denied", async() => {
+    const directory = Object.assign(localPackageDirectory(), {
+      queryPermission: vi.fn().mockResolvedValue("prompt"),
+      requestPermission: vi.fn().mockResolvedValue("denied"),
+    })
+    const getFileHandle = vi.spyOn(directory, "getFileHandle")
+    vi.spyOn(LocalPackageWorkerClient.prototype, "storedDirectories").mockResolvedValue([{id: "private", handle: directory as any}])
+    vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
+    const editor = new DomEditor()
+    vi.spyOn(editor as any, "watchLocalPackage").mockResolvedValue(undefined)
+    vi.spyOn(editor as any, "reloadEditor").mockResolvedValue(undefined)
+
+    await (editor as any).restoreLocalPackages()
+
+    expect(getFileHandle).not.toHaveBeenCalled()
+    expect((editor as any).localPackages[0].label).toBe("demo-package")
+    expect((editor as any).localPackageError).toContain("Grant access")
   })
 
   it("keeps a package without a bundle visible and ready for its first build", async () => {
