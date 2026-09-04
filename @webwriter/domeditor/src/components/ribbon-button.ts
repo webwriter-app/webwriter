@@ -915,6 +915,29 @@ export class RibbonButton extends LitElement {
       min-width: 0;
     }
 
+    :host([variant="toolbar"]) {
+      flex: 1 1 0;
+      min-width: 0;
+    }
+
+    :host([variant="toolbar"]) .button-row,
+    :host([variant="toolbar"]) .main-button {
+      height: 1.55rem;
+      min-height: 1.55rem;
+    }
+
+    :host([variant="toolbar"]) .main-button {
+      flex-direction: row;
+      gap: 0.3rem;
+      padding: 0 0.45rem;
+    }
+
+    :host([variant="toolbar"]) .button-icon {
+      flex: 0 0 0.85rem;
+      width: 0.85rem;
+      height: 0.85rem;
+    }
+
     :host([variant="qr"]) {
       grid-column: span 1;
       grid-row: span 2;

@@ -418,7 +418,7 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"))
     expect(drawers.map(drawer => drawer.label)).toEqual([
-      "Local packages", "Metadata", "Development", "Exports",
+      "Local packages", "Metadata",
     ])
   })
 })

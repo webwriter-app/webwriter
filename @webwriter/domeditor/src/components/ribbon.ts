@@ -42,8 +42,14 @@ import {
 import {
   insertionMenuItems,
 } from "./insertion-menu"
-import type {WebWriterPackage} from "../packages"
-import {packageAction, packageMemberAction, packageToggleAction} from "../packages"
+import type {WebWriterPackage, WebWriterPackageExportType} from "../packages"
+import {
+  describePackageExport,
+  packageAction,
+  packageMemberAction,
+  packageToggleAction,
+  webWriterPackageExportTypes,
+} from "../packages"
 import {packageKeywordPresentations} from "../package-keywords"
 import { type RibbonButton, type RibbonButtonDetails } from "./ribbon-button"
 import "./ribbon-button"
@@ -181,6 +187,17 @@ const isRibbonInput = (target: EventTarget | null): target is HTMLElement => {
 }
 
 const ribbonInputFromEvent = (event: Event) => event.composedPath().find(isRibbonInput)
+
+const packageMetadataText = (value: unknown) => value === undefined
+  ? ""
+  : typeof value === "string" ? value : JSON.stringify(value, null, 2)
+
+const packagePersonText = (value: unknown) => value === undefined
+  ? ""
+  : typeof value === "string" ? value : JSON.stringify(value)
+
+const scopedPackageNamePattern = "@[^/\\s]+/[^/\\s]+"
+const semanticVersionPattern = "(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?"
 
 /** The editor's tabbed, responsive ribbon toolbar. */
 export class AppRibbon extends LitElement {
@@ -2090,11 +2107,6 @@ export class AppRibbon extends LitElement {
       flex-grow: 0;
     }
 
-    .exports-drawer {
-      --ribbon-drawer-expanded-width: 14rem;
-      flex-grow: 0;
-    }
-
     .package-status {
       align-self: center;
       padding: 0.25rem;
@@ -2110,10 +2122,10 @@ export class AppRibbon extends LitElement {
       min-width: 0;
       height: 1.55rem;
       padding: 0 0.25rem;
-      border: 1px solid transparent;
+      border: 1px solid #c8d2df;
       border-radius: 0.25rem;
       color: #2f3742;
-      background: transparent;
+      background: #ffffff;
       font: inherit;
       font-size: 0.7rem;
       cursor: pointer;
@@ -2121,7 +2133,7 @@ export class AppRibbon extends LitElement {
 
     .local-package-select:hover {
       border-color: #8eb6df;
-      background: transparent;
+      background: #ffffff;
     }
 
     .local-package-select:focus {
@@ -2131,16 +2143,21 @@ export class AppRibbon extends LitElement {
 
     .local-package-select:disabled {
       color: #667085;
-      background: transparent;
+      background: #f7f8fa;
       cursor: default;
     }
 
     .local-package-selection {
+      box-sizing: border-box;
       display: flex;
       align-items: center;
       gap: 0.25rem;
       width: 100%;
       min-width: 0;
+      padding: 0.2rem 0.3rem;
+      border: 1px solid #d8dee6;
+      border-radius: 0.35rem;
+      background: #e8eef5;
     }
 
     .local-package-selection-icon {
@@ -2161,6 +2178,7 @@ export class AppRibbon extends LitElement {
       display: flex;
       align-items: stretch;
       gap: 0.15rem;
+      width: 100%;
       min-width: 0;
     }
 
@@ -2169,60 +2187,246 @@ export class AppRibbon extends LitElement {
       min-width: 0;
     }
 
+    .develop-field.local-package-auto-reload {
+      flex-direction: row;
+      align-items: center;
+      min-height: 1.45rem;
+      padding: 0 0.25rem;
+      color: #465465;
+      font-size: 0.68rem;
+      white-space: nowrap;
+    }
+
     .develop-fields {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      grid-template-rows: repeat(2, minmax(0, 1fr));
-      gap: 0.15rem 0.35rem;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 0.9rem;
+      width: 100%;
       min-width: 0;
+      padding: 0.2rem 0 0.35rem;
+    }
+
+    .develop-section {
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+      min-width: 0;
+      padding-bottom: 0.9rem;
+      border-bottom: 1px solid #d8dee6;
+    }
+
+    .develop-section:last-child {
+      padding-bottom: 0;
+      border-bottom: 0;
+    }
+
+    .develop-section-title {
+      color: #465465;
+      font-size: 0.68rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .develop-section-title-row,
+    .develop-export-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.4rem;
+    }
+
+    .develop-icon-button {
+      box-sizing: border-box;
+      display: inline-grid;
+      flex: 0 0 1.55rem;
+      place-items: center;
+      width: 1.55rem;
+      height: 1.55rem;
+      padding: 0.28rem;
+      border: 1px solid transparent;
+      border-radius: 0.25rem;
+      color: #526b86;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .develop-icon-button:hover {
+      border-color: #c8d2df;
+      color: #1e4f87;
+      background: #eef4fb;
+    }
+
+    .develop-icon-button:focus-visible {
+      outline: 2px solid #3977c7;
+      outline-offset: 1px;
+    }
+
+    .develop-icon-button svg {
+      display: block;
+      width: 100%;
       height: 100%;
-      padding: 0.1rem 0.25rem;
+    }
+
+    .develop-export-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+    }
+
+    .develop-export-card {
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+      min-width: 0;
+      padding: 0.5rem;
+      border: 1px solid #d8dee6;
+      border-radius: 0.4rem;
+      background: rgb(255 255 255 / 55%);
+    }
+
+    .develop-export-card-title {
+      min-width: 0;
+      color: #52606d;
+      font-size: 0.61rem;
+      font-weight: 650;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .develop-field {
       display: flex;
-      align-items: center;
-      gap: 0.35rem;
-      color: #526b86;
-      font-size: 0.65rem;
-      white-space: nowrap;
-    }
-
-    .develop-field span { flex: 0 0 3.6rem; }
-    .develop-fields .develop-field {
       flex-direction: column;
       align-items: stretch;
-      gap: 0;
+      gap: 0.2rem;
       min-width: 0;
+      color: #526b86;
+      font-size: 0.65rem;
     }
 
-    .develop-fields .develop-field span {
-      flex: 0 0 auto;
-      line-height: 0.75rem;
+    .develop-field-label {
+      font-weight: 600;
+      line-height: 0.85rem;
     }
 
-    .develop-field input[type="text"] {
+    .develop-field-help {
+      color: #748094;
+      font-size: 0.58rem;
+      line-height: 0.78rem;
+    }
+
+    .develop-field input[type="text"],
+    .develop-field textarea,
+    .develop-field select,
+    .develop-contributor-row input {
       box-sizing: border-box;
-      width: 8rem;
+      width: 100%;
       min-width: 0;
-      height: 1.45rem;
-      padding: 0 0.3rem;
+      min-height: 1.75rem;
+      padding: 0.3rem 0.4rem;
       border: 1px solid #c8d2df;
       border-radius: 0.25rem;
       color: #2f3742;
-      background: transparent;
+      background: #ffffff;
       font: inherit;
       font-size: 0.65rem;
     }
 
-    .develop-fields .develop-field input[type="text"] {
-      width: 100%;
-      height: 1.2rem;
+    .develop-field input[type="text"]:invalid {
+      border-color: #c2413a;
+      box-shadow: 0 0 0 1px rgb(194 65 58 / 10%);
     }
 
-    .develop-field input[type="text"]:focus {
+    .develop-field textarea {
+      min-height: 3.6rem;
+      line-height: 1.3;
+      resize: vertical;
+    }
+
+    .develop-field textarea[data-json] {
+      min-height: 6.5rem;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 0.6rem;
+      tab-size: 2;
+    }
+
+    .develop-field input[type="text"]:focus,
+    .develop-field textarea:focus,
+    .develop-field select:focus,
+    .develop-contributor-row input:focus {
       border-color: #3977c7;
       outline: 1px solid #3977c7;
+    }
+
+    .develop-export-source-row {
+      display: flex;
+      align-items: center;
+      gap: 0.2rem;
+    }
+
+    .develop-export-source-row input {
+      flex: 1 1 auto;
+    }
+
+    .develop-compact-details {
+      min-width: 0;
+      border: 1px solid #d8dee6;
+      border-radius: 0.3rem;
+      background: rgb(255 255 255 / 45%);
+    }
+
+    .develop-compact-details summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 1.7rem;
+      padding: 0 0.4rem;
+      color: #526b86;
+      font-size: 0.65rem;
+      font-weight: 600;
+      cursor: pointer;
+      list-style: none;
+    }
+
+    .develop-compact-details summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .develop-compact-details summary::after {
+      content: "›";
+      font-size: 0.9rem;
+      transform: rotate(90deg);
+      transition: transform 120ms ease;
+    }
+
+    .develop-compact-details[open] summary::after {
+      transform: rotate(270deg);
+    }
+
+    .develop-compact-details .develop-field {
+      padding: 0 0.4rem 0.4rem;
+    }
+
+    .develop-compact-details textarea {
+      min-height: 3rem;
+    }
+
+    .develop-contributors {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+
+    .develop-contributor-row {
+      display: flex;
+      align-items: center;
+      gap: 0.2rem;
+    }
+
+    .develop-contributor-row input {
+      flex: 1 1 auto;
     }
 
     .develop-empty {
@@ -4997,9 +5201,66 @@ export class AppRibbon extends LitElement {
   }
 
   private localPackageMetadataChange = (event: Event) => {
-    const input = event.currentTarget as HTMLInputElement
+    const input = event.currentTarget as HTMLInputElement | HTMLTextAreaElement
+    if(input instanceof HTMLInputElement && !input.checkValidity()) {
+      input.reportValidity()
+      return
+    }
     this.dispatchEvent(new CustomEvent<{field: string, value: string}>("local-package-metadata-change", {
       detail: {field: input.name, value: input.value},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private localPackageExportChange = (
+    exportName: string,
+    field: "type" | "name" | "source",
+    event: Event,
+  ) => {
+    const value = (event.currentTarget as HTMLInputElement | HTMLSelectElement).value
+    this.dispatchEvent(new CustomEvent("local-package-export-change", {
+      detail: {exportName, field, value},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private addLocalPackageExport = () => {
+    this.dispatchEvent(new Event("local-package-export-add", {bubbles: true, composed: true}))
+  }
+
+  private deleteLocalPackageExport = (exportName: string) => {
+    this.dispatchEvent(new CustomEvent("local-package-export-delete", {
+      detail: {exportName},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private pickLocalPackageExportFile = (exportName: string) => {
+    this.dispatchEvent(new CustomEvent("local-package-export-file-pick", {
+      detail: {exportName},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private localPackageContributorChange = (index: number, event: Event) => {
+    this.dispatchEvent(new CustomEvent("local-package-contributor-change", {
+      detail: {index, value: (event.currentTarget as HTMLInputElement).value},
+      bubbles: true,
+      composed: true,
+    }))
+  }
+
+  private addLocalPackageContributor = () => {
+    this.dispatchEvent(new Event("local-package-contributor-add", {bubbles: true, composed: true}))
+  }
+
+  private deleteLocalPackageContributor = (index: number) => {
+    this.dispatchEvent(new CustomEvent("local-package-contributor-delete", {
+      detail: {index},
       bubbles: true,
       composed: true,
     }))
@@ -5022,6 +5283,7 @@ export class AppRibbon extends LitElement {
         label="Local packages"
         icon="Packages"
         layout="packages"
+        hide-pane-label
         single-column
         @ribbon-drawer-state-change=${this.handlePackageDrawerState}
       >
@@ -5041,18 +5303,29 @@ export class AppRibbon extends LitElement {
         </label>
         <div class="local-package-actions">
           <ribbon-button
-            label="Load package"
+            label="Load"
             action="local-package-add"
             icon="Open"
+            variant="toolbar"
             keep-drawer-open
           ></ribbon-button>
           <ribbon-button
-            label="New package"
+            label="New"
             action="local-package-new"
             icon="New"
+            variant="toolbar"
             keep-drawer-open
           ></ribbon-button>
         </div>
+        <label class="develop-field local-package-auto-reload">
+          <input
+            type="checkbox"
+            .checked=${this.selectedLocalPackageAutoReload}
+            ?disabled=${!this.selectedLocalPackage}
+            @change=${this.localPackageAutoReloadChange}
+          />
+          <span>Auto-reload</span>
+        </label>
         ${this.localPackageError ? html`<span class="package-status" role="alert">${this.localPackageError}</span>` : ""}
         ${!this.localPackagesLoading && !displayPackages.length && !this.localPackageError
           ? html`<span class="package-status">No local packages</span>`
@@ -5063,61 +5336,145 @@ export class AppRibbon extends LitElement {
 
   private renderMetadataDrawer() {
     const pkg = this.selectedLocalPackage
-    const fields = [
-      ["name", pkg?.name ?? ""],
-      ["version", pkg?.version ?? ""],
-      ["description", pkg?.description ?? ""],
-      ["license", pkg?.license ?? ""],
-    ] as const
+    const manifest = pkg?.manifest
+    const author = manifest ? manifest.author : pkg?.authors[0]
+    const keywords = manifest?.keywords ?? pkg?.keywords ?? []
+    const contributors = manifest?.contributors ?? []
+    const packageExports = Object.entries(manifest?.exports ?? {})
     return html`
-      <ribbon-drawer label="Metadata" icon="Properties" layout="metadata">
+      <ribbon-drawer label="Metadata" icon="Properties" layout="metadata" hide-pane-label>
         ${pkg ? html`<div class="develop-fields">
-          ${fields.map(([field, value]) => html`
+          <section class="develop-section" aria-labelledby="develop-package-fields">
+            <span id="develop-package-fields" class="develop-section-title">Package</span>
             <label class="develop-field">
-              <span>${field}</span>
-              <input type="text" name=${field} .value=${value} @change=${this.localPackageMetadataChange} />
+              <span class="develop-field-label">Name</span>
+              <input type="text" name="name" .value=${pkg.name} .pattern=${scopedPackageNamePattern} required @change=${this.localPackageMetadataChange} />
             </label>
-          `)}
+            <label class="develop-field">
+              <span class="develop-field-label">Version</span>
+              <input type="text" name="version" .value=${pkg.version} .pattern=${semanticVersionPattern} required @change=${this.localPackageMetadataChange} />
+              <span class="develop-field-help">Semantic version, for example 1.2.0</span>
+            </label>
+            <label class="develop-field">
+              <span class="develop-field-label">Description</span>
+              <textarea name="description" .value=${manifest ? manifest.description ?? "" : pkg.description ?? ""} @change=${this.localPackageMetadataChange}></textarea>
+            </label>
+            <label class="develop-field">
+              <span class="develop-field-label">License</span>
+              <input type="text" name="license" .value=${manifest?.license ?? pkg.license ?? ""} placeholder="SPDX identifier" @change=${this.localPackageMetadataChange} />
+            </label>
+            <details class="develop-compact-details">
+              <summary><span>Keywords</span><span>${keywords.length}</span></summary>
+              <label class="develop-field">
+                <textarea name="keywords" aria-label="Keywords" .value=${keywords.join("\n")} @change=${this.localPackageMetadataChange}></textarea>
+                <span class="develop-field-help">One per line; webwriter-widget is required</span>
+              </label>
+            </details>
+            <div class="develop-section-title-row">
+              <span class="develop-field-label">Author</span>
+              <button class="develop-icon-button" type="button" aria-label="Add contributor" title="Add contributor" @click=${this.addLocalPackageContributor}>${ribbonIcon("Plus")}</button>
+            </div>
+            <label class="develop-field">
+              <input type="text" name="author" .value=${packagePersonText(author)} placeholder="Name &lt;email&gt;" @change=${this.localPackageMetadataChange} />
+            </label>
+            ${contributors.length ? html`<div class="develop-contributors">
+              ${contributors.map((contributor, index) => html`
+                <div class="develop-contributor-row">
+                  <input
+                    type="text"
+                    aria-label=${`Contributor ${index + 1}`}
+                    .value=${packagePersonText(contributor)}
+                    placeholder="Name &lt;email&gt;"
+                    @change=${(event: Event) => this.localPackageContributorChange(index, event)}
+                  />
+                  <button
+                    class="develop-icon-button"
+                    type="button"
+                    aria-label=${`Delete contributor ${index + 1}`}
+                    title="Delete contributor"
+                    @click=${() => this.deleteLocalPackageContributor(index)}
+                  >${ribbonIcon("Delete")}</button>
+                </div>
+              `)}
+            </div>` : ""}
+          </section>
+
+          <section class="develop-section" aria-labelledby="develop-export-fields">
+            <div class="develop-section-title-row">
+              <span id="develop-export-fields" class="develop-section-title">Exports</span>
+              <button class="develop-icon-button" type="button" aria-label="Create export" title="Create export" @click=${this.addLocalPackageExport}>${ribbonIcon("Plus")}</button>
+            </div>
+            <div class="develop-export-list">
+              ${packageExports.length ? packageExports.map(([exportName, target]) => {
+                const descriptor = describePackageExport(exportName, target)
+                const fixedName = ["migration", "icon", "editing-config", "custom-elements"].includes(descriptor.type)
+                return html`
+                  <article class="develop-export-card" data-export-name=${exportName}>
+                    <div class="develop-export-card-header">
+                      <span class="develop-export-card-title" title=${exportName}>${exportName}</span>
+                      <button
+                        class="develop-icon-button"
+                        type="button"
+                        aria-label=${`Delete export ${exportName}`}
+                        title="Delete export"
+                        @click=${() => this.deleteLocalPackageExport(exportName)}
+                      >${ribbonIcon("Delete")}</button>
+                    </div>
+                    <label class="develop-field">
+                      <span class="develop-field-label">Type</span>
+                      <select .value=${descriptor.type} @change=${(event: Event) => this.localPackageExportChange(exportName, "type", event)}>
+                        ${webWriterPackageExportTypes.map(type => html`<option value=${type.value} ?selected=${type.value === descriptor.type}>${type.label}</option>`)}
+                      </select>
+                    </label>
+                    <label class="develop-field">
+                      <span class="develop-field-label">Name</span>
+                      <input
+                        type="text"
+                        .value=${descriptor.name}
+                        ?disabled=${fixedName}
+                        title=${fixedName ? "This export type has a fixed package name" : ""}
+                        required
+                        @change=${(event: Event) => this.localPackageExportChange(exportName, "name", event)}
+                      />
+                    </label>
+                    <label class="develop-field">
+                      <span class="develop-field-label">Source path</span>
+                      <span class="develop-export-source-row">
+                        <input
+                          type="text"
+                          .value=${descriptor.source}
+                          placeholder="./src/file.ts"
+                          required
+                          @change=${(event: Event) => this.localPackageExportChange(exportName, "source", event)}
+                        />
+                        <button
+                          class="develop-icon-button"
+                          type="button"
+                          aria-label=${`Choose source file for ${exportName}`}
+                          title="Choose source file"
+                          @click=${() => this.pickLocalPackageExportFile(exportName)}
+                        >${ribbonIcon("Open")}</button>
+                      </span>
+                    </label>
+                  </article>
+                `
+              }) : html`<span class="develop-empty">No exports</span>`}
+            </div>
+            <label class="develop-field">
+              <span class="develop-field-label">Custom elements manifest</span>
+              <input type="text" name="customElements" .value=${manifest?.customElements ?? ""} placeholder="custom-elements.json" @change=${this.localPackageMetadataChange} />
+            </label>
+          </section>
+
+          <section class="develop-section" aria-labelledby="develop-editing-fields">
+            <span id="develop-editing-fields" class="develop-section-title">Editing</span>
+            <label class="develop-field">
+              <span class="develop-field-label">Inline editing config</span>
+              <textarea data-json name="editingConfig" .value=${packageMetadataText(manifest?.editingConfig)} placeholder="{}" spellcheck="false" @change=${this.localPackageMetadataChange}></textarea>
+              <span class="develop-field-help">JSON keyed by “.” or an exported package member</span>
+            </label>
+          </section>
         </div>` : html`<span class="develop-empty">Select a package</span>`}
-      </ribbon-drawer>
-    `
-  }
-
-  private renderDevelopmentDrawer() {
-    return html`
-      <ribbon-drawer label="Development" icon="Settings" layout="development">
-        <label class="develop-field">
-          <input
-            type="checkbox"
-            .checked=${this.selectedLocalPackageAutoReload}
-            ?disabled=${!this.selectedLocalPackage}
-            @change=${this.localPackageAutoReloadChange}
-          />
-          <span>Auto-reload</span>
-        </label>
-      </ribbon-drawer>
-    `
-  }
-
-  private renderExportsDrawer() {
-    const members = this.selectedLocalPackage?.members.filter(member => member.insertable) ?? []
-    return html`
-      <ribbon-drawer
-        class="exports-drawer"
-        label="Exports"
-        icon="Packages"
-        layout="packages"
-        single-column
-        ?expandable=${members.length > 2}
-      >
-        ${members.length ? members.map(member => html`
-          <ribbon-button
-            label=${member.label}
-            icon="Packages"
-            .action=${packageMemberAction(member)}
-            .details=${{heading: member.label, subheading: this.selectedLocalPackage?.label ?? "", description: member.description}}
-          ></ribbon-button>
-        `) : html`<span class="develop-empty">${this.selectedLocalPackage ? "No insertable exports" : "Select a package"}</span>`}
       </ribbon-drawer>
     `
   }
@@ -7318,8 +7675,6 @@ export class AppRibbon extends LitElement {
       if(drawer.label === "Metadata") {
         return this.activeMenu === "File" ? this.renderDocumentHeadDrawer() : this.renderMetadataDrawer()
       }
-      if(drawer.label === "Development") return this.renderDevelopmentDrawer()
-      if(drawer.label === "Exports") return this.renderExportsDrawer()
       if(drawer.label === "Elements") return this.renderInsertionDrawer(drawer)
       const representative = drawer.buttons[0]
       const icon = typeof representative === "string"

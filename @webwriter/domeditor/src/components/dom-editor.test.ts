@@ -494,7 +494,7 @@ describe("Develop local packages", () => {
     expect(insert).not.toHaveBeenCalled()
   })
 
-  it("writes editable metadata back to package.json", async() => {
+  it("writes all WebWriter metadata shapes back to package.json", async() => {
     const editable = editableLocalPackageDirectory()
     vi.stubGlobal("showDirectoryPicker", vi.fn().mockResolvedValue(editable.directory))
     vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
@@ -503,13 +503,135 @@ describe("Develop local packages", () => {
     vi.spyOn(editor as any, "reloadEditor").mockResolvedValue(undefined)
     await (editor as any).addLocalPackage()
 
-    await (editor as any).handleLocalPackageMetadataChange(new CustomEvent("local-package-metadata-change", {
-      detail: {field: "license", value: "MIT"},
-    }))
+    const updates = [
+      ["license", "MIT"],
+      ["keywords", "webwriter-widget\nwidget-lang-en\nwidget-practical"],
+      ["author", '{"name":"Ada Lovelace","email":"ada@example.test"}'],
+      ["contributors", '["Grace Hopper <grace@example.test>"]'],
+      ["customElements", "custom-elements.json"],
+      ["editingConfig", '{".":{"label":{"_":"Demo package"}}}'],
+    ]
+    for(const [field, value] of updates) {
+      await (editor as any).handleLocalPackageMetadataChange(new CustomEvent("local-package-metadata-change", {
+        detail: {field, value},
+      }))
+    }
 
     expect(editable.manifest().license).toBe("MIT")
+    expect(editable.manifest().keywords).toEqual(["webwriter-widget", "widget-lang-en", "widget-practical"])
+    expect(editable.manifest().author).toEqual({name: "Ada Lovelace", email: "ada@example.test"})
+    expect(editable.manifest().contributors).toEqual(["Grace Hopper <grace@example.test>"])
+    expect(editable.manifest().customElements).toBe("custom-elements.json")
+    expect(editable.manifest().editingConfig).toEqual({".": {label: {_: "Demo package"}}})
     expect((editor as any).localPackages[0].license).toBe("MIT")
     expect((editor as any).selectedLocalPackageName).toBe("@local/demo")
+  })
+
+  it("does not overwrite package metadata with invalid structured values", async() => {
+    const editable = editableLocalPackageDirectory()
+    vi.stubGlobal("showDirectoryPicker", vi.fn().mockResolvedValue(editable.directory))
+    vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
+    vi.spyOn(LocalPackageWorkerClient.prototype, "register").mockResolvedValue(undefined)
+    const {editor} = await mountEditor()
+    vi.spyOn(editor as any, "reloadEditor").mockResolvedValue(undefined)
+    await (editor as any).addLocalPackage()
+    const originalContributors = editable.manifest().contributors
+
+    await (editor as any).handleLocalPackageMetadataChange(new CustomEvent("local-package-metadata-change", {
+      detail: {field: "contributors", value: "{not json}"},
+    }))
+
+    expect(editable.manifest().contributors).toEqual(originalContributors)
+    expect((editor as any).localPackageError).toBe("Contributors must be valid JSON")
+  })
+
+  it("adds, edits, and removes compact contributor entries", async() => {
+    const editable = editableLocalPackageDirectory()
+    vi.stubGlobal("showDirectoryPicker", vi.fn().mockResolvedValue(editable.directory))
+    vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
+    vi.spyOn(LocalPackageWorkerClient.prototype, "register").mockResolvedValue(undefined)
+    const {editor} = await mountEditor()
+    vi.spyOn(editor as any, "reloadEditor").mockResolvedValue(undefined)
+    await (editor as any).addLocalPackage()
+
+    await (editor as any).handleLocalPackageContributorAdd()
+    expect(editable.manifest().contributors).toEqual([""])
+
+    await (editor as any).handleLocalPackageContributorChange(new CustomEvent("local-package-contributor-change", {
+      detail: {index: 0, value: '{"name":"Grace Hopper","email":"grace@example.test"}'},
+    }))
+    expect(editable.manifest().contributors).toEqual([{name: "Grace Hopper", email: "grace@example.test"}])
+
+    await (editor as any).handleLocalPackageContributorDelete(new CustomEvent("local-package-contributor-delete", {
+      detail: {index: 0},
+    }))
+    expect(editable.manifest().contributors).toBeUndefined()
+  })
+
+  it("creates, edits, changes the type of, and deletes package export cards", async() => {
+    const editable = editableLocalPackageDirectory()
+    vi.stubGlobal("showDirectoryPicker", vi.fn().mockResolvedValue(editable.directory))
+    vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
+    vi.spyOn(LocalPackageWorkerClient.prototype, "register").mockResolvedValue(undefined)
+    const {editor} = await mountEditor()
+    vi.spyOn(editor as any, "reloadEditor").mockResolvedValue(undefined)
+    await (editor as any).addLocalPackage()
+
+    await (editor as any).handleLocalPackageExportAdd()
+    expect(editable.manifest().exports).toMatchObject({
+      "./widgets/new-widget.*": {
+        source: "./src/widgets/new-widget.ts",
+        default: "./dist/widgets/new-widget.*",
+      },
+    })
+
+    await (editor as any).handleLocalPackageExportChange(new CustomEvent("local-package-export-change", {
+      detail: {exportName: "./widgets/new-widget.*", field: "name", value: "secondary"},
+    }))
+    await (editor as any).handleLocalPackageExportChange(new CustomEvent("local-package-export-change", {
+      detail: {exportName: "./widgets/secondary.*", field: "source", value: "./src/widgets/secondary.ts"},
+    }))
+    await (editor as any).handleLocalPackageExportChange(new CustomEvent("local-package-export-change", {
+      detail: {exportName: "./widgets/secondary.*", field: "type", value: "test"},
+    }))
+    expect(editable.manifest().exports).toMatchObject({
+      "./tests/secondary.*": {
+        source: "./src/widgets/secondary.ts",
+        default: "./dist/widgets/new-widget.*",
+      },
+    })
+    expect((editable.manifest().exports as Record<string, unknown>)["./widgets/new-widget.*"]).toBeUndefined()
+
+    await (editor as any).handleLocalPackageExportDelete(new CustomEvent("local-package-export-delete", {
+      detail: {exportName: "./tests/secondary.*"},
+    }))
+    expect((editable.manifest().exports as Record<string, unknown>)["./tests/secondary.*"]).toBeUndefined()
+  })
+
+  it("picks an export source file relative to the package folder", async() => {
+    const editable = editableLocalPackageDirectory()
+    const fileHandle = {name: "picked.ts", kind: "file"}
+    const resolve = vi.fn().mockResolvedValue(["src", "widgets", "picked.ts"])
+    Object.assign(editable.directory, {resolve})
+    vi.stubGlobal("showDirectoryPicker", vi.fn().mockResolvedValue(editable.directory))
+    vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([fileHandle]))
+    vi.spyOn(LocalPackageWorkerClient.prototype, "start").mockResolvedValue({} as never)
+    vi.spyOn(LocalPackageWorkerClient.prototype, "register").mockResolvedValue(undefined)
+    const {editor} = await mountEditor()
+    vi.spyOn(editor as any, "reloadEditor").mockResolvedValue(undefined)
+    await (editor as any).addLocalPackage()
+
+    await (editor as any).handleLocalPackageExportFilePick(new CustomEvent("local-package-export-file-pick", {
+      detail: {exportName: "./widgets/local-demo.*"},
+    }))
+
+    expect(resolve).toHaveBeenCalledWith(fileHandle)
+    expect(editable.manifest().exports).toMatchObject({
+      "./widgets/local-demo.*": {
+        source: "./src/widgets/picked.ts",
+        default: "./dist/local-demo.*",
+      },
+    })
   })
 
   it("honors the selected package's auto-reload setting", async() => {

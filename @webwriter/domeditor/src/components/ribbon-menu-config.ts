@@ -249,8 +249,6 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
   Develop: [
     {label: "Local packages", buttons: []},
     {label: "Metadata", buttons: []},
-    {label: "Development", buttons: []},
-    {label: "Exports", buttons: []},
   ],
   History: [
     {label: "Versions", buttons: []},

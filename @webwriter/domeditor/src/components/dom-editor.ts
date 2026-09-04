@@ -7,11 +7,16 @@ import type { EditingAction } from "../domeditor"
 import {emptyElementHTML, insertionMenuItems} from "./insertion-menu"
 import type {EditorStateSnapshot} from "../editor-state"
 import {
+  describePackageExport,
   INSTALLED_PACKAGES_STORAGE_KEY,
   packageMemberAction,
   WebWriterPackageRegistry,
+  webWriterPackageExportName,
+  withPackageExportSource,
   type PackageMember,
+  type PackageExportTarget,
   type WebWriterPackage,
+  type WebWriterPackageExportType,
 } from "../packages"
 import { getElementPresentation, isLineBreakElement } from "../element-names"
 import {
@@ -95,6 +100,7 @@ import {userInitials} from "../user-identity"
 import {
   loadLocalPackage,
   localPackageWatchPaths,
+  normalizeLocalPackagePath,
   type LocalPackageDirectory,
   type LocalPackageWarning,
 } from "../local-package"
@@ -209,6 +215,92 @@ type LocalPackageRecord = {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value)
+
+const localPackageMetadataFields = new Set([
+  "name", "version", "description", "license", "keywords", "author", "contributors",
+  "customElements", "editingConfig",
+])
+
+const localPackageExportTypes = new Set<WebWriterPackageExportType>([
+  "widget", "test", "migration", "snippet", "theme", "icon", "editing-config", "custom-elements", "other",
+])
+
+const defaultPackageExportSource = (type: WebWriterPackageExportType, name: string) => {
+  if(type === "test") return `./tests/${name}.test.ts`
+  if(type === "migration") return "./src/migrate.ts"
+  if(type === "snippet") return `./src/snippets/${name}.html`
+  if(type === "theme") return `./src/themes/${name}.css`
+  if(type === "icon") return "./src/icon.svg"
+  if(type === "editing-config") return "./editing-config.json"
+  if(type === "custom-elements") return "./custom-elements.json"
+  if(type === "other") return `./src/${name}`
+  return `./src/widgets/${name}.ts`
+}
+
+type LocalPackageMetadataUpdate = {remove: true} | {remove: false, value: unknown}
+
+const optionalPackageMetadata = (value: string): LocalPackageMetadataUpdate => value.trim()
+  ? {remove: false, value}
+  : {remove: true}
+
+const parsePackageMetadataJSON = (field: string, value: string) => {
+  try { return JSON.parse(value) as unknown }
+  catch { throw new Error(`${field} must be valid JSON`) }
+}
+
+const isPersonMetadata = (value: unknown) => typeof value === "string" || isRecord(value)
+  && Object.values(value).every(part => typeof part === "string")
+
+const parsePackagePerson = (label: string, value: string) => {
+  const trimmed = value.trim()
+  const person = trimmed.startsWith("{") ? parsePackageMetadataJSON(label, trimmed) : trimmed
+  if(!isPersonMetadata(person)) throw new Error(`${label} must be a name or a JSON person object`)
+  return person
+}
+
+function isPackageExportTarget(value: unknown): boolean {
+  if(typeof value === "string") {
+    try { normalizeLocalPackagePath(value); return true }
+    catch { return false }
+  }
+  return isRecord(value) && Object.keys(value).length > 0
+    && Object.values(value).every(isPackageExportTarget)
+}
+
+const parseLocalPackageMetadata = (field: string, value: string): LocalPackageMetadataUpdate => {
+  if(field === "customElements") {
+    if(!value.trim()) return {remove: true}
+    normalizeLocalPackagePath(value.trim())
+    return {remove: false, value: value.trim()}
+  }
+  if(field === "description" || field === "license") {
+    return optionalPackageMetadata(value)
+  }
+  if(field === "keywords") {
+    const keywords = [...new Set(value.split(/\r?\n|,/).map(keyword => keyword.trim()).filter(Boolean))]
+    if(!keywords.includes("webwriter-widget")) throw new Error("Keywords must include webwriter-widget")
+    return {remove: false, value: keywords}
+  }
+  if(field === "author") {
+    if(!value.trim()) return {remove: true}
+    return {remove: false, value: parsePackagePerson("Author", value)}
+  }
+  if(field === "contributors") {
+    if(!value.trim()) return {remove: true}
+    const contributors = parsePackageMetadataJSON("Contributors", value)
+    if(!Array.isArray(contributors) || !contributors.every(isPersonMetadata)) {
+      throw new Error("Contributors must be a JSON array of names or person objects")
+    }
+    return {remove: false, value: contributors}
+  }
+  if(field === "editingConfig") {
+    if(!value.trim()) return {remove: true}
+    const editingConfig = parsePackageMetadataJSON("Editing config", value)
+    if(!isRecord(editingConfig)) throw new Error("Editing config must be a JSON object")
+    return {remove: false, value: editingConfig}
+  }
+  return {remove: false, value}
+}
 
 const isAbortError = (error: unknown) => error instanceof DOMException
   ? error.name === "AbortError"
@@ -2562,21 +2654,36 @@ export class DomEditor extends LitElement {
     this.selectedLocalPackageAutoReload = record.autoReload
   }
 
+  private get selectedLocalPackageRecord() {
+    return [...this.localPackageRecords.values()].find(candidate => candidate.package.name === this.selectedLocalPackageName)
+  }
+
+  private async updateLocalPackageManifest(
+    record: LocalPackageRecord,
+    update: (manifest: Record<string, unknown>) => void,
+  ) {
+    const directory = record.directory as FileSystemDirectoryHandle & {getFileHandle(name: string, options?: {create?: boolean}): Promise<any>}
+    const handle = await directory.getFileHandle("package.json")
+    const file = await handle.getFile()
+    const parsed: unknown = JSON.parse(await file.text())
+    if(!isRecord(parsed)) throw new Error("The local package.json must contain a JSON object")
+    const manifest = {...parsed}
+    update(manifest)
+    const writable = await handle.createWritable()
+    await writable.write(JSON.stringify(manifest, null, 2) + "\n")
+    await writable.close()
+    await this.refreshLocalPackage(record.id)
+    const refreshed = this.localPackageRecords.get(record.id)
+    if(refreshed) this.selectLocalPackage(refreshed.package.name)
+  }
+
   private async handleLocalPackageMetadataChange(event: Event) {
     const detail = (event as CustomEvent<{field?: string, value?: string}>).detail
-    const record = [...this.localPackageRecords.values()].find(candidate => candidate.package.name === this.selectedLocalPackageName)
+    const record = this.selectedLocalPackageRecord
     if(!record || !detail?.field) return
-    if(!["name", "version", "description", "license"].includes(detail.field)) return
+    if(!localPackageMetadataFields.has(detail.field)) return
     try {
-      const directory = record.directory as FileSystemDirectoryHandle & {getFileHandle(name: string, options?: {create?: boolean}): Promise<any>}
-      const handle = await directory.getFileHandle("package.json")
-      const file = await handle.getFile()
-      const parsed: unknown = JSON.parse(await file.text())
-      if(!isRecord(parsed)) throw new Error("The local package.json must contain a JSON object")
-      const manifest = {...parsed}
       const value = detail.value ?? ""
-      if((detail.field === "description" || detail.field === "license") && !value.trim()) delete manifest[detail.field]
-      else manifest[detail.field] = value
       if(detail.field === "name") {
         if(!/^@[^/\s]+\/[^/\s]+$/.test(value)) throw new Error("Package name must be scoped (for example @scope/name)")
         const duplicate = [...this.localPackageRecords.values()].find(candidate => (
@@ -2587,15 +2694,174 @@ export class DomEditor extends LitElement {
       if(detail.field === "version" && !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(value)) {
         throw new Error("Package version must use semantic versioning")
       }
-      const writable = await handle.createWritable()
-      await writable.write(JSON.stringify(manifest, null, 2) + "\n")
-      await writable.close()
-      await this.refreshLocalPackage(record.id)
-      const refreshed = this.localPackageRecords.get(record.id)
-      if(refreshed) this.selectLocalPackage(refreshed.package.name)
+      const update = parseLocalPackageMetadata(detail.field, value)
+      await this.updateLocalPackageManifest(record, manifest => {
+        if(update.remove) delete manifest[detail.field!]
+        else manifest[detail.field!] = update.value
+      })
     }
     catch(error) {
       this.localPackageError = error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  private async handleLocalPackageContributorAdd() {
+    const record = this.selectedLocalPackageRecord
+    if(!record) return
+    try {
+      await this.updateLocalPackageManifest(record, manifest => {
+        const contributors = Array.isArray(manifest.contributors) ? [...manifest.contributors] : []
+        contributors.push("")
+        manifest.contributors = contributors
+      })
+    }
+    catch(error) {
+      this.localPackageError = error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  private async handleLocalPackageContributorChange(event: Event) {
+    const detail = (event as CustomEvent<{index?: number, value?: string}>).detail
+    const record = this.selectedLocalPackageRecord
+    const {index, value: inputValue} = detail ?? {}
+    if(!record || typeof index !== "number" || !Number.isInteger(index) || index < 0 || inputValue === undefined) return
+    try {
+      const value = inputValue.trim() ? parsePackagePerson("Contributor", inputValue) : ""
+      await this.updateLocalPackageManifest(record, manifest => {
+        const contributors = Array.isArray(manifest.contributors) ? [...manifest.contributors] : []
+        if(index >= contributors.length) throw new Error("Contributor is no longer available")
+        contributors[index] = value
+        manifest.contributors = contributors
+      })
+    }
+    catch(error) {
+      this.localPackageError = error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  private async handleLocalPackageContributorDelete(event: Event) {
+    const index = (event as CustomEvent<{index?: number}>).detail?.index
+    const record = this.selectedLocalPackageRecord
+    if(!record || typeof index !== "number" || !Number.isInteger(index) || index < 0) return
+    try {
+      await this.updateLocalPackageManifest(record, manifest => {
+        const contributors = Array.isArray(manifest.contributors) ? [...manifest.contributors] : []
+        if(index >= contributors.length) throw new Error("Contributor is no longer available")
+        contributors.splice(index, 1)
+        if(contributors.length) manifest.contributors = contributors
+        else delete manifest.contributors
+      })
+    }
+    catch(error) {
+      this.localPackageError = error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  private async handleLocalPackageExportChange(event: Event) {
+    const detail = (event as CustomEvent<{
+      exportName?: string
+      field?: "type" | "name" | "source"
+      value?: string
+    }>).detail
+    const record = this.selectedLocalPackageRecord
+    if(!record || !detail?.exportName || !detail.field || detail.value === undefined) return
+    const {exportName, field, value} = detail
+    try {
+      await this.updateLocalPackageManifest(record, manifest => {
+        const exports = isRecord(manifest.exports) ? {...manifest.exports} as Record<string, PackageExportTarget> : {}
+        const target = exports[exportName]
+        if(!target || !isPackageExportTarget(target)) throw new Error(`Export '${exportName}' is no longer available`)
+        if(field === "source") {
+          normalizeLocalPackagePath(value)
+          exports[exportName] = withPackageExportSource(target, value)
+          if(exportName === "./custom-elements.json") manifest.customElements = value.replace(/^\.\//, "")
+        }
+        else {
+          const descriptor = describePackageExport(exportName, target)
+          const type = field === "type" ? value as WebWriterPackageExportType : descriptor.type
+          if(!localPackageExportTypes.has(type)) throw new Error("Unknown package export type")
+          const name = field === "name" ? value : descriptor.name
+          if(!name.trim()) throw new Error("Export name cannot be empty")
+          const nextName = webWriterPackageExportName(type, name)
+          if(nextName !== exportName && nextName in exports) throw new Error(`Export '${nextName}' already exists`)
+          delete exports[exportName]
+          exports[nextName] = target
+          if(descriptor.type === "custom-elements" && type !== "custom-elements") delete manifest.customElements
+          if(type === "custom-elements" && descriptor.source) manifest.customElements = descriptor.source.replace(/^\.\//, "")
+        }
+        manifest.exports = exports
+      })
+    }
+    catch(error) {
+      this.localPackageError = error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  private async handleLocalPackageExportAdd() {
+    const record = this.selectedLocalPackageRecord
+    if(!record) return
+    try {
+      await this.updateLocalPackageManifest(record, manifest => {
+        const exports = isRecord(manifest.exports) ? {...manifest.exports} as Record<string, PackageExportTarget> : {}
+        let name = "new-widget"
+        let exportName = webWriterPackageExportName("widget", name)
+        for(let index = 2; exportName in exports; index++) {
+          name = `new-widget-${index}`
+          exportName = webWriterPackageExportName("widget", name)
+        }
+        exports[exportName] = {
+          source: defaultPackageExportSource("widget", name),
+          default: `./dist/widgets/${name}.*`,
+        }
+        manifest.exports = exports
+      })
+    }
+    catch(error) {
+      this.localPackageError = error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  private async handleLocalPackageExportDelete(event: Event) {
+    const exportName = (event as CustomEvent<{exportName?: string}>).detail?.exportName
+    const record = this.selectedLocalPackageRecord
+    if(!record || !exportName) return
+    try {
+      await this.updateLocalPackageManifest(record, manifest => {
+        const exports = isRecord(manifest.exports) ? {...manifest.exports} : {}
+        if(!(exportName in exports)) throw new Error(`Export '${exportName}' is no longer available`)
+        delete exports[exportName]
+        if(exportName === "./custom-elements.json") delete manifest.customElements
+        manifest.exports = exports
+      })
+    }
+    catch(error) {
+      this.localPackageError = error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  private async handleLocalPackageExportFilePick(event: Event) {
+    const exportName = (event as CustomEvent<{exportName?: string}>).detail?.exportName
+    const record = this.selectedLocalPackageRecord
+    if(!record || !exportName) return
+    const picker = this.filePickerWindow().showOpenFilePicker
+    const directory = record.directory as FileSystemDirectoryHandle & {
+      resolve?: (possibleDescendant: FileSystemHandle) => Promise<string[] | null>
+    }
+    if(!picker || typeof directory.resolve !== "function") {
+      this.localPackageError = "This browser cannot pick package export files"
+      return
+    }
+    try {
+      const [handle] = await picker.call(window, {id: "webwriter-package-export", startIn: record.directory, multiple: false})
+      if(!handle) return
+      const parts = await directory.resolve(handle as unknown as FileSystemHandle)
+      if(!parts?.length) throw new Error("Choose a file inside the selected package folder")
+      await this.handleLocalPackageExportChange(new CustomEvent("local-package-export-change", {
+        detail: {exportName, field: "source", value: `./${parts.join("/")}`},
+      }))
+    }
+    catch(error) {
+      if(!isAbortError(error)) this.localPackageError = error instanceof Error ? error.message : String(error)
     }
   }
 
@@ -2765,7 +3031,7 @@ export class DomEditor extends LitElement {
     this.localPackageError = ""
     try {
       // The picker is deliberately the first awaited operation: browsers
-      // require it to run within the Load package button's user activation.
+      // require it to run within the Load button's user activation.
       const directory = await picker.call(window, {id: "webwriter-develop-package", mode: "readwrite"})
       const previous = await this.matchingLocalPackage(directory)
       const id = previous?.id ?? localPackageId()
@@ -4611,6 +4877,13 @@ export class DomEditor extends LitElement {
         @element-style-state-request=${this.queueElementStyleRefresh}
         @local-package-metadata-change=${this.handleLocalPackageMetadataChange}
         @local-package-auto-reload-change=${this.handleLocalPackageAutoReloadChange}
+        @local-package-contributor-change=${this.handleLocalPackageContributorChange}
+        @local-package-contributor-add=${this.handleLocalPackageContributorAdd}
+        @local-package-contributor-delete=${this.handleLocalPackageContributorDelete}
+        @local-package-export-change=${this.handleLocalPackageExportChange}
+        @local-package-export-add=${this.handleLocalPackageExportAdd}
+        @local-package-export-delete=${this.handleLocalPackageExportDelete}
+        @local-package-export-file-pick=${this.handleLocalPackageExportFilePick}
         @ribbon-input-pointerdown=${this.handleRibbonInputPointerDown}
         @ribbon-input-focus=${this.handleRibbonInputFocus}
         @ribbon-input-blur=${this.handleRibbonInputBlur}

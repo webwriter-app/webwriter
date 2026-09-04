@@ -276,7 +276,7 @@ export async function loadLocalPackage(directory: LocalPackageDirectory, options
     scripts: [...new Set(members.flatMap(member => member.scriptUrl ? [member.scriptUrl] : []))],
     styles: [...new Set(members.flatMap(member => member.styleUrl ? [member.styleUrl] : []))],
     editingConfig,
-    manifest: {...manifest, editingConfig},
+    manifest: {...manifest},
   }
   return {package: pkg, warnings}
 }

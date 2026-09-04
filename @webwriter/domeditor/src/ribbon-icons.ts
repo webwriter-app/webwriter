@@ -91,6 +91,7 @@ import spacingHorizontal from "@tabler/icons/outline/spacing-horizontal.svg?raw"
 import spacingVertical from "@tabler/icons/outline/spacing-vertical.svg?raw"
 import superscript from "@tabler/icons/outline/superscript.svg?raw"
 import table from "@tabler/icons/outline/table.svg?raw"
+import trash from "@tabler/icons/outline/trash.svg?raw"
 import rowInsertBottom from "@tabler/icons/outline/row-insert-bottom.svg?raw"
 import rowInsertTop from "@tabler/icons/outline/row-insert-top.svg?raw"
 import textCaption from "@tabler/icons/outline/text-caption.svg?raw"
@@ -202,6 +203,7 @@ const icons: Record<string, string> = {
   Previous: arrowLeft,
   Next: arrowRight,
   New: filePlus,
+  Delete: trash,
   Open: folderOpen,
   Save: deviceFloppy,
   "Save as": fileExport,

@@ -18,6 +18,66 @@ export type PackageExportTarget = string | {
   [condition: string]: PackageExportTarget | undefined
 }
 
+export const webWriterPackageExportTypes = [
+  {value: "widget", label: "Widget"},
+  {value: "test", label: "Test"},
+  {value: "migration", label: "Migration"},
+  {value: "snippet", label: "Snippet"},
+  {value: "theme", label: "Theme"},
+  {value: "icon", label: "Package icon"},
+  {value: "editing-config", label: "Editing config"},
+  {value: "custom-elements", label: "Custom elements"},
+  {value: "other", label: "Other"},
+] as const
+
+export type WebWriterPackageExportType = typeof webWriterPackageExportTypes[number]["value"]
+
+export type WebWriterPackageExportDescriptor = {
+  type: WebWriterPackageExportType
+  name: string
+  source: string
+}
+
+const exportNameWithoutExtension = (value: string) => value.replace(/\.\*$/, "").replace(/\.(?:html?|m?js|css|ts|json)$/i, "")
+
+/** Presents package export keys as the fields used by the Develop toolbox. */
+export function describePackageExport(exportName: string, target: PackageExportTarget): WebWriterPackageExportDescriptor {
+  let type: WebWriterPackageExportType = "other"
+  let name = exportName
+  if(exportName === "./migrate.js") [type, name] = ["migration", "migrate"]
+  else if(exportName === "./icon") [type, name] = ["icon", "icon"]
+  else if(exportName === "./editing-config.json") [type, name] = ["editing-config", "editing-config"]
+  else if(exportName === "./custom-elements.json") [type, name] = ["custom-elements", "custom-elements"]
+  else if(exportName.startsWith("./widgets/")) [type, name] = ["widget", exportNameWithoutExtension(exportName.slice(10))]
+  else if(exportName.startsWith("./tests/")) [type, name] = ["test", exportNameWithoutExtension(exportName.slice(8))]
+  else if(exportName.startsWith("./snippets/")) [type, name] = ["snippet", exportNameWithoutExtension(exportName.slice(11))]
+  else if(exportName.startsWith("./themes/")) [type, name] = ["theme", exportNameWithoutExtension(exportName.slice(9))]
+
+  const source = typeof target === "string"
+    ? target
+    : resolvePackageExport(target.source) ?? resolvePackageExport(target) ?? ""
+  return {type, name, source}
+}
+
+/** Builds the documented export key for a toolbox type/name pair. */
+export function webWriterPackageExportName(type: WebWriterPackageExportType, name: string) {
+  const trimmed = name.trim().replace(/^\.\//, "")
+  if(type === "migration") return "./migrate.js"
+  if(type === "icon") return "./icon"
+  if(type === "editing-config") return "./editing-config.json"
+  if(type === "custom-elements") return "./custom-elements.json"
+  if(type === "widget") return `./widgets/${exportNameWithoutExtension(trimmed)}.*`
+  if(type === "test") return `./tests/${exportNameWithoutExtension(trimmed)}.*`
+  if(type === "snippet") return `./snippets/${exportNameWithoutExtension(trimmed)}.html`
+  if(type === "theme") return `./themes/${exportNameWithoutExtension(trimmed)}.html`
+  return name.trim().startsWith(".") ? name.trim() : `./${name.trim()}`
+}
+
+/** Changes the source condition without discarding build/default conditions. */
+export function withPackageExportSource(target: PackageExportTarget, source: string): PackageExportTarget {
+  return typeof target === "string" ? source : {...target, source}
+}
+
 export type PackageEditingConfigEntry = WidgetEditingConfig & {
   label?: LocalizedText
   description?: LocalizedText
@@ -38,6 +98,7 @@ export type WebWriterPackageManifest = {
   homepage?: string
   repository?: string | {url?: string}
   exports?: Record<string, PackageExportTarget>
+  customElements?: string
   editingConfig?: PackageEditingConfig
 }
 
@@ -420,7 +481,7 @@ export class WebWriterPackageRegistry {
       scripts: [...new Set(members.flatMap(member => member.scriptUrl ? [member.scriptUrl] : []))],
       styles: [...new Set(members.flatMap(member => member.styleUrl ? [member.styleUrl] : []))],
       editingConfig,
-      manifest: {...manifest, editingConfig},
+      manifest: {...manifest},
     } satisfies WebWriterPackage
   }
 }

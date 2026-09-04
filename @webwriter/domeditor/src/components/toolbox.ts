@@ -264,6 +264,14 @@ export class DomEditorToolbox extends AppRibbon {
       min-width: 0;
     }
 
+    .toolbox-pane-content > .local-packages-drawer {
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      background: #f2f2f2;
+      box-shadow: 0 0.2rem 0.45rem rgb(31 41 55 / 8%);
+    }
+
     .toolbox-pane-content > ribbon-drawer[layout="element-style"] {
       flex-basis: auto;
     }

@@ -29,6 +29,7 @@ export class RibbonDrawer extends LitElement {
     expandable: {type: Boolean, reflect: true},
     icon: {type: String},
     label: {type: String},
+    hidePaneLabel: {type: Boolean, reflect: true, attribute: "hide-pane-label"},
     layout: {type: String, reflect: true},
     pane: {type: Boolean, reflect: true},
     singleColumn: {type: Boolean, reflect: true, attribute: "single-column"},
@@ -826,6 +827,22 @@ export class RibbonDrawer extends LitElement {
       font-weight: 650;
     }
 
+    :host([pane][hide-pane-label]) .pane-label {
+      display: none;
+    }
+
+    :host([pane][hide-pane-label]) .drawer,
+    :host([pane][hide-pane-label]) .drawer.expanded,
+    :host([pane][hide-pane-label]) .drawer.expanded.closing {
+      padding-top: 0.7rem;
+    }
+
+    :host([pane][layout="packages"][single-column][hide-pane-label]) .drawer,
+    :host([pane][layout="packages"][single-column][hide-pane-label]) .drawer.expanded,
+    :host([pane][layout="packages"][single-column][hide-pane-label]) .drawer.expanded.closing {
+      padding: 0.35rem 0.7rem 0.45rem;
+    }
+
     :host([pane]) .controls,
     :host([pane][layout="marks"]) .controls,
     :host([pane][layout="comments"]) .controls,
@@ -846,6 +863,18 @@ export class RibbonDrawer extends LitElement {
 
     :host([pane][layout="marks"]) .controls {
       grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    :host([pane][layout="metadata"]) .controls,
+    :host([pane][layout="packages"][single-column]) .controls {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    :host([pane][layout="packages"][single-column]) .controls {
+      grid-template-rows: none;
+      grid-auto-rows: auto;
+      align-content: start;
+      gap: 0.3rem;
     }
 
     :host([pane][layout="table-layout"]) .controls {
@@ -952,6 +981,7 @@ export class RibbonDrawer extends LitElement {
   expandable = false
   icon = ""
   label = "Drawer"
+  hidePaneLabel = false
   layout = "default"
   pane = false
   singleColumn = false
