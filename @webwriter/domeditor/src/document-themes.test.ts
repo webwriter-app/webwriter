@@ -33,6 +33,17 @@ describe("document themes", () => {
     expect(source).toMatch(/dialog:not\(\[open\]\), dialog\[open=false\]\s*\{[\s\S]*?display:\s*none;/)
   })
 
+  it("preserves native list markers at every nesting depth", () => {
+    const source = documentTheme("base")!.source
+    const rules = source.replaceAll(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)
+
+    for(const [, selector, declarations] of rules) {
+      if(/\b(?:ul|ol|li)\b/.test(selector) && !selector.trim().startsWith("nav ")) {
+        expect(declarations).not.toMatch(/list-style(?:-type)?\s*:/)
+      }
+    }
+  })
+
   it("layers older themes before applying them to the editing document", () => {
     const water = documentTheme("water")!
 
