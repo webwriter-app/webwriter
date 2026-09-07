@@ -180,6 +180,23 @@ beforeEach(() => {
 })
 
 describe("DomEditor iframe setup", () => {
+  it("warns before unloading unsaved work and removes the guard on disconnect", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const clean = new Event("beforeunload", {cancelable: true})
+    window.dispatchEvent(clean)
+    expect(clean.defaultPrevented).toBe(false)
+    host.fileDirty = true
+    const dirty = new Event("beforeunload", {cancelable: true})
+    window.dispatchEvent(dirty)
+    expect(dirty.defaultPrevented).toBe(true)
+    editor.remove()
+    const detached = new Event("beforeunload", {cancelable: true})
+    window.dispatchEvent(detached)
+    expect(detached.defaultPrevented).toBe(false)
+  })
+
+
   it.each(["local", "development-server"])("keeps edits dirty during %s saves and excludes overlapping file actions", async storageLocation => {
     const {editor, iframe} = await mountEditor()
     const host = editor as any

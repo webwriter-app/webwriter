@@ -2051,6 +2051,12 @@ export class DomEditor extends LitElement {
     console.error(error)
   }
 
+  private readonly handleBeforeUnload = (event: BeforeUnloadEvent) => {
+    if(!this.fileDirty && !this.fileOperationActive) return
+    event.preventDefault()
+    event.returnValue = ""
+  }
+
   private confirmDiscardChanges() {
     return !this.fileDirty || window.confirm("Discard the unsaved changes to this document?")
   }
@@ -4590,6 +4596,7 @@ export class DomEditor extends LitElement {
     super.connectedCallback()
     this.lang = this.settings.language
     window.addEventListener("message", this.handleEditorMessage)
+    window.addEventListener("beforeunload", this.handleBeforeUnload)
     document.addEventListener("keydown", this.handleConfiguredShortcut, true)
     const liveSessionId = this.liveSessionIdFromURL()
     if(liveSessionId) void this.joinLiveSession(liveSessionId)
@@ -4608,6 +4615,7 @@ export class DomEditor extends LitElement {
     this.backendProbeController?.abort()
     this.backendProbeController = null
     window.removeEventListener("message", this.handleEditorMessage)
+    window.removeEventListener("beforeunload", this.handleBeforeUnload)
     document.removeEventListener("keydown", this.handleConfiguredShortcut, true)
     this.localPackageRecords.forEach(record => {
       record.monitor?.dispose()
