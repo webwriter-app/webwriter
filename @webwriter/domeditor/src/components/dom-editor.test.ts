@@ -180,6 +180,21 @@ beforeEach(() => {
 })
 
 describe("DomEditor iframe setup", () => {
+  it("sanitizes incoming live HTML and permits only trusted package scripts", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.installedPackages = [{...demoPackage, styles: []}]
+    const parsed = new DOMParser().parseFromString('<p onclick="bad()">Keep</p><script>bad()</script><iframe srcdoc="bad"></iframe><template><img src="x" onerror="bad()"></template>', "text/html")
+    const html = host.preparePreviewDocument(parsed) as string
+    const preview = new DOMParser().parseFromString(html, "text/html")
+    expect(preview.querySelector("[onclick], [onerror], [srcdoc]")).toBeNull()
+    expect(preview.querySelector("template")!.content.querySelector("[onerror]")).toBeNull()
+    expect([...preview.querySelectorAll("script")].every(script => script.src && !script.textContent)).toBe(true)
+    expect(preview.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute("content")).toContain("strict-dynamic")
+    expect(preview.querySelector("p")!.textContent).toBe("Keep")
+  })
+
+
   it("warns before unloading unsaved work and removes the guard on disconnect", async () => {
     const {editor} = await mountEditor()
     const host = editor as any

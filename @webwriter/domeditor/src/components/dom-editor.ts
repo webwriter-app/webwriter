@@ -547,6 +547,7 @@ export class DomEditor extends LitElement {
   private documentChangeSequence = 0
   private previewActive = false
   private previewDocumentHTML: string | null = null
+  private livePreviewSource: string | null = null
   private previewSelection: SelectionBookmark | null = null
   private previewTransition = false
   private liveSessionActive = false
@@ -711,7 +712,11 @@ export class DomEditor extends LitElement {
   private currentPreviewHTML() {
     const source = this.editorDocument?.cloneNode(true) as Document | null
     if(!source?.documentElement) throw new Error("The editor document is not ready")
+    return this.preparePreviewDocument(source)
+  }
 
+  private preparePreviewDocument(source: Document) {
+    const nonce = crypto.randomUUID()
     source.body?.removeAttribute("contenteditable")
     source.body?.removeAttribute("spellcheck")
     source.querySelectorAll("[contenteditable]").forEach(element => element.removeAttribute("contenteditable"))
@@ -739,6 +744,10 @@ export class DomEditor extends LitElement {
     // those assets without editor markers so custom elements render in the
     // preview copy as they do in the live document.
     if(source.head) {
+      const policy = source.createElement("meta")
+      policy.httpEquiv = "Content-Security-Policy"
+      policy.content = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'; style-src * data: 'unsafe-inline'; img-src * data: blob:; font-src * data:; media-src * data: blob:; connect-src * data: blob:; frame-src https:; object-src 'none'; base-uri 'none'; form-action 'none'`
+      source.head.prepend(policy)
       const styles = [...new Set(this.installedPackages.flatMap(pkg => pkg.styles))]
         .map(href => {
           const link = source.createElement("link")
@@ -750,10 +759,12 @@ export class DomEditor extends LitElement {
         .map(src => {
           const script = source.createElement("script")
           script.type = import.meta.env.MODE === "test" ? "application/json" : "module"
+          script.nonce = nonce
           script.src = src
           return script
         })
       source.head.append(...styles, ...scripts)
+      source.head.querySelectorAll("script").forEach(script => { script.nonce = nonce })
     }
 
     // `designMode` is a document property rather than serialized markup. A
@@ -888,8 +899,9 @@ export class DomEditor extends LitElement {
     if(followedLiveEdge) this.liveStreamStep = steps.length
     else this.liveStreamStep = Math.max(0, Math.min(this.liveStreamStep, steps.length))
 
-    if(this.liveSessionRole === "learner" && session.baseHTML && session.baseHTML !== this.previewDocumentHTML) {
-      this.previewDocumentHTML = session.baseHTML
+    if(this.liveSessionRole === "learner" && session.baseHTML && session.baseHTML !== this.livePreviewSource) {
+      this.livePreviewSource = session.baseHTML
+      this.previewDocumentHTML = this.preparePreviewDocument(new DOMParser().parseFromString(session.baseHTML, "text/html"))
       this.previewActive = true
     }
     if(session.status === "stopped") {
@@ -1394,14 +1406,16 @@ export class DomEditor extends LitElement {
     if(snapshot.html && current.outerHTML !== snapshot.html) {
       const template = previewDocument.createElement("template")
       template.innerHTML = snapshot.html.trim()
+      stripActiveContent(template.content)
       const replacement = template.content.firstElementChild
-      if(!replacement) return
+      if(!replacement || replacement.localName !== current.localName || replacement.namespaceURI !== current.namespaceURI) return
       current.replaceWith(replacement)
       current = this.previewElementAtPath(path, previewDocument)
     }
     if(current && isRecord(snapshot.state)) {
       Object.entries(snapshot.state).forEach(([key, value]) => {
-        if(key === "__proto__" || key === "constructor" || key === "prototype") return
+        const nativePrototype = (previewDocument.defaultView as unknown as {HTMLElement?: typeof HTMLElement} | null)?.HTMLElement?.prototype ?? HTMLElement.prototype
+        if(key.startsWith("on") || key === "__proto__" || key === "constructor" || key === "prototype" || key in nativePrototype) return
         try {
           (current as unknown as Record<string, unknown>)[key] = value
         }
@@ -1792,6 +1806,7 @@ export class DomEditor extends LitElement {
   }
 
   private disposeLiveSession() {
+    this.livePreviewSource = null
     this.cleanupLivePreview()
     this.clearLivePlaybackTimer()
     this.liveSessionUnsubscribe?.()
