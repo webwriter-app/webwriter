@@ -2225,7 +2225,10 @@ describe("DomEditor.execute()", () => {
   })
 
   it("keeps repeated preview toggles on the same ribbon animation path", async () => {
-    const {editor} = await mountEditor()
+    const {editor, iframe} = await mountEditor()
+    // Theme fidelity is covered separately; these repeated transitions need
+    // only a small stylesheet rather than parsing the full theme each time.
+    iframe.contentDocument!.querySelector('style[data-ww-theme="base"]')!.textContent = "p { color: black }"
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
 
     for(let cycle = 0; cycle < 3; cycle++) {

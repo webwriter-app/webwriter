@@ -41,6 +41,7 @@ export default defineConfig({
     },
     test: {
       css: true,
+      setupFiles: ["./tests/setup-happy-dom.mjs"],
       // Happy DOM's asynchronous observers and FileReader tasks become
       // unreliable when every available CPU is saturated by test workers.
       maxWorkers: "50%",
