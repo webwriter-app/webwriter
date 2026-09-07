@@ -55,6 +55,20 @@ afterEach(() => {
 })
 
 describe("SharedDOMDoc initialization", () => {
+  it("reconciles wide documents without materializing the sibling array for each child", () => {
+    const {root, shared} = createShared("<p>text</p>".repeat(1000))
+    const first = root.firstElementChild!
+    const siblings = vi.spyOn(shared.body, "toArray")
+    first.textContent = "edited"
+    shared.syncFromDOM()
+    expect(siblings.mock.calls.length).toBeLessThan(5)
+    expect(shared.body.firstChild?.toString()).toContain("edited")
+    shared.undo()
+    expect(root.firstElementChild).toBe(first)
+    expect(first.textContent).toBe("text")
+    expect(root.children).toHaveLength(1000)
+  })
+
   it("round trips nested template contents, namespaces and comments", () => {
     const html = '<template><section><!--note--><template><svg><circle r="2"></circle></svg></template></section></template>'
     const {shared} = createDocumentShared(html, '<template><review-widget value="yes"></review-widget></template>')

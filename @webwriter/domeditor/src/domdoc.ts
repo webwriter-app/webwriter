@@ -1129,9 +1129,10 @@ export class SharedDOMDoc {
 
     const domChildren = Array.from(childContainer(domElement).childNodes).filter(child => this.#isSyncableNode(child))
     const currentYChildren = yElement.toArray() as YXmlNode[]
+    const currentYSet = new Set(currentYChildren)
     const desiredExisting = domChildren.flatMap(child => {
       const mapped = this.#xmlNodes.get(child)
-      return mapped && currentYChildren.includes(mapped) && this.#isCompatiblePair(child, mapped) ? [mapped] : []
+      return mapped && currentYSet.has(mapped) && this.#isCompatiblePair(child, mapped) ? [mapped] : []
     })
     const retained = longestOrderedSubset(currentYChildren, desiredExisting)
     const desiredYChildren = domChildren.map(child => {
@@ -1144,7 +1145,7 @@ export class SharedDOMDoc {
       if(!retained.has(currentYChildren[index])) yElement.delete(index, 1)
     }
     desiredYChildren.forEach((yChild, index) => {
-      if(yElement.toArray()[index] !== yChild) {
+      if(!retained.has(yChild)) {
         yElement.insert(index, [yChild as Y.XmlElement | Y.XmlText])
       }
     })
@@ -1184,9 +1185,11 @@ export class SharedDOMDoc {
     })
     const desiredDOMChildren = renderableChildren.map(({domChild}) => domChild)
 
-    desiredDOMChildren.forEach((desiredChild, index) => {
-      const current = Array.from(container.childNodes).filter(child => this.#isSyncableNode(child))[index]
+    let current = container.firstChild
+    desiredDOMChildren.forEach(desiredChild => {
+      while(current && !this.#isSyncableNode(current)) current = current.nextSibling
       if(current !== desiredChild) container.insertBefore(desiredChild, current ?? null)
+      else current = current.nextSibling
     })
     const desiredSet = new Set(desiredDOMChildren)
     Array.from(container.childNodes)
