@@ -48,6 +48,8 @@ import {getSectionOption, isSectionElement} from "./sections"
 import {getDocumentRoot} from "./document-template"
 import {stripActiveContent} from "./active-content"
 import {elementAttributeState} from "./element-attributes"
+import {parse as parseModule} from "es-module-lexer/js"
+import {tokenize as tokenizeCSS, TokenType} from "@csstools/css-tokenizer"
 
 const editorStylesheet = createStylesheet(editorStyleString)
 const appendixStylesheet = createStylesheet(`
@@ -1106,63 +1108,60 @@ export class DOMEditor {
     return `${serializeDoctype(root.doctype)}${root.documentElement.outerHTML}`
   }
 
-  /** Serializes the authored document. Offline mode embeds fetchable media and
-   * external scripts while keeping their authored URLs as restoration metadata. */
+  /** Serializes the authored document. Offline mode embeds declared resources
+   * and fails explicitly when dependencies cannot be made self-contained. */
   async serializeHTML(offline=false) {
     const root = this.cleanDocumentClone()
     this.features.dependency.appendSerializedAssets(root)
-    if(offline) await this.inlineExternalResources(root, true)
+    if(offline) await this.inlineExternalResources(root)
     return `${serializeDoctype(root.doctype)}${root.documentElement.outerHTML}`
   }
 
-  private async inlineExternalResources(root: Document, strict=false) {
+  private async inlineExternalResources(root: Document | DocumentFragment) {
     const jobs: Promise<void>[] = []
     const resources: Array<[string, string]> = [
-      ["img[src]", "src"],
-      ["audio[src]", "src"],
-      ["video[src]", "src"],
-      ["source[src]", "src"],
-      ["track[src]", "src"],
-      ["iframe[src]", "src"],
-      ["input[type='image'][src]", "src"],
+      ["img[src], audio[src], video[src], source[src], track[src], input[type='image'][src]", "src"],
       ["video[poster]", "poster"],
       ["object[data]", "data"],
     ]
-
+    // A downloaded HTML frame can still fetch its own scripts and resources.
+    // Do not present that document as a self-contained offline export.
+    if(root.querySelector("iframe[src], iframe[srcdoc]")) {
+      throw new Error("Offline export cannot embed an iframe's resource dependencies. Use HTML format for this document.")
+    }
     for(const [selector, attribute] of resources) {
       root.querySelectorAll<HTMLElement>(selector).forEach(element => {
-        jobs.push(this.inlineResourceAttribute(element, attribute, strict))
+        jobs.push(this.inlineResourceAttribute(element, attribute))
       })
     }
     root.querySelectorAll<HTMLElement>("img[srcset], source[srcset]").forEach(element => {
-      jobs.push(this.inlineSrcset(element, strict))
+      jobs.push(this.inlineSrcset(element))
     })
-    root.querySelectorAll<HTMLScriptElement>("script[src]").forEach(script => {
-      jobs.push(this.inlineScript(script, strict))
+    root.querySelectorAll<HTMLScriptElement>("script").forEach(script => {
+      jobs.push(this.inlineScript(script))
     })
-    root.querySelectorAll<HTMLLinkElement>("link[rel='stylesheet'][href]").forEach(link => {
-      jobs.push(this.inlineStylesheet(link, strict))
+    root.querySelectorAll<HTMLLinkElement>("link[rel~='stylesheet'][href]").forEach(link => {
+      jobs.push(this.inlineStylesheet(link))
     })
     root.querySelectorAll<HTMLElement>("[style]").forEach(element => {
-      jobs.push(this.inlineStyleAttribute(element, strict))
+      jobs.push(this.inlineStyleAttribute(element))
+    })
+    root.querySelectorAll<HTMLStyleElement>("style").forEach(style => {
+      jobs.push(this.inlineStyleElement(style))
+    })
+    root.querySelectorAll<HTMLTemplateElement>("template").forEach(template => {
+      jobs.push(this.inlineExternalResources(template.content))
     })
     await Promise.all(jobs)
   }
 
   private resolvedResourceURL(value: string, base = document.baseURI) {
-    try {
-      return new URL(value, base).href
-    }
-    catch {
-      return value
-    }
+    return new URL(value, base).href
   }
 
   private async fetchResource(value: string, base = document.baseURI) {
     const response = await fetch(this.resolvedResourceURL(value, base))
-    if(!response.ok && response.status !== 0) {
-      throw new Error(`Could not fetch ${value}: ${response.status} ${response.statusText}`)
-    }
+    if(!response.ok) throw new Error(`Could not fetch ${value}: ${response.status} ${response.statusText}`)
     return response
   }
 
@@ -1176,121 +1175,169 @@ export class DOMEditor {
     return `data:${blob.type || "application/octet-stream"};base64,${btoa(binary)}`
   }
 
-  private async inlineResourceAttribute(element: HTMLElement, attribute: string, strict=false) {
+  private async resourceDataURL(value: string, base = document.baseURI) {
+    if(value.startsWith("#") || /^data:/i.test(value)) return value
+    const url = new URL(value, base)
+    const fragment = url.hash
+    url.hash = ""
+    return await this.blobDataURL(await (await this.fetchResource(url.href)).blob()) + fragment
+  }
+
+  private async inlineResourceAttribute(element: HTMLElement, attribute: string) {
     const original = element.getAttribute(attribute)
-    if(!original || original.startsWith("data:")) return
+    if(!original || /^data:/i.test(original)) return
     try {
-      const response = await this.fetchResource(original)
+      const data = await this.resourceDataURL(original)
       element.setAttribute(originalURLAttribute(attribute), original)
-      element.setAttribute(attribute, await this.blobDataURL(await response.blob()))
+      element.setAttribute(attribute, data)
     }
     catch(error) {
-      // Cross-origin resources without CORS permission remain external.
-      if(strict) throw new Error(`Could not inline ${original} for offline export: ${error instanceof Error ? error.message : String(error)}`)
+      throw new Error(`Could not inline ${original} for offline export: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
-  private async inlineSrcset(element: HTMLElement, strict=false) {
+  private async inlineSrcset(element: HTMLElement) {
     const original = element.getAttribute("srcset")
-    if(!original || original.trim().startsWith("data:")) return
-    try {
-      const candidates = original.split(",").map(candidate => candidate.trim()).filter(Boolean)
-      const inlined = await Promise.all(candidates.map(async candidate => {
-        const match = candidate.match(/^(\S+)(\s+.+)?$/)
-        if(!match || match[1].startsWith("data:")) return candidate
-        const response = await this.fetchResource(match[1])
-        return `${await this.blobDataURL(await response.blob())}${match[2] ?? ""}`
-      }))
-      element.setAttribute(originalURLAttribute("srcset"), original)
-      element.setAttribute("srcset", inlined.join(", "))
-    }
-    catch(error) {
-      // Keep the complete authored srcset if any candidate cannot be fetched.
-      if(strict) throw new Error(`Could not inline srcset for offline export: ${error instanceof Error ? error.message : String(error)}`)
-    }
-  }
-
-  private async inlineScript(script: HTMLScriptElement, strict=false) {
-    const original = script.getAttribute("src")
-    if(!original || original.startsWith("data:")) return
-    try {
-      const response = await this.fetchResource(original)
-      const source = await response.text()
-      if(strict && script.type === "module" && /\bimport\s*(?:\(|["']|[^;\n]*\bfrom\s*["'])/.test(source)) {
-        throw new Error(`Could not inline module dependency graph ${original} for offline export`)
+    if(!original) return
+    // URLs may contain commas (notably data URLs). A candidate URL ends at
+    // whitespace; only trailing commas or commas after descriptors separate it.
+    const inlined: string[] = []
+    let offset = 0
+    while(offset < original.length) {
+      while(/[\t\n\f\r ,]/.test(original[offset] ?? "") && offset < original.length) offset++
+      const start = offset
+      while(offset < original.length && !/[\t\n\f\r ]/.test(original[offset])) offset++
+      let url = original.slice(start, offset)
+      if(!url) break
+      let descriptors = ""
+      if(url.endsWith(",")) url = url.replace(/,+$/, "")
+      else {
+        const descriptorStart = offset
+        let parentheses = 0
+        while(offset < original.length) {
+          const character = original[offset]
+          if(character === "," && !parentheses) break
+          if(character === "(") parentheses++
+          if(character === ")") parentheses = Math.max(0, parentheses - 1)
+          offset++
+        }
+        descriptors = original.slice(descriptorStart, offset).trim()
+        offset++
       }
+      inlined.push(`${await this.resourceDataURL(url)}${descriptors ? ` ${descriptors}` : ""}`)
+    }
+    element.setAttribute(originalURLAttribute("srcset"), original)
+    element.setAttribute("srcset", inlined.join(", "))
+  }
+
+  private async inlineScript(script: HTMLScriptElement) {
+    const original = script.getAttribute("src")
+    try {
+      const source = original ? await (await this.fetchResource(original)).text() : script.textContent ?? ""
+      const type = script.type.trim().toLowerCase()
+      if(!type || type === "module" || /^(?:text|application)\/(?:java|ecma)script$/.test(type)) {
+        const [imports] = parseModule(source)
+        if(imports.length) throw new Error("Offline export cannot bundle this module dependency graph. Use HTML format for this document.")
+      }
+      if(!original) return
       script.setAttribute(originalURLAttribute("src"), original)
-      script.removeAttribute("src")
-      script.textContent = source
+      // Keep external script semantics and avoid HTML raw-text terminators in
+      // JavaScript strings being interpreted as markup on reopening.
+      script.src = await this.blobDataURL(new Blob([source], {type: "text/javascript"}))
+      script.textContent = ""
     }
     catch(error) {
-      // Cross-origin scripts without CORS permission remain external.
-      if(strict) throw new Error(`Could not inline ${original} for offline export: ${error instanceof Error ? error.message : String(error)}`)
+      throw new Error(`Could not inline ${original || "inline script"} for offline export: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
-  private async inlineStylesheet(link: HTMLLinkElement, strict=false) {
+  private async inlineStylesheet(link: HTMLLinkElement) {
     const original = link.getAttribute("href")
     if(!original) return
-    const base = this.resolvedResourceURL(original)
     try {
-      const css = await this.fetchResource(original).then(response => response.text())
-      const withImports = await this.inlineCssImports(css, base)
-      const rewritten = await this.replaceCssURLs(withImports, base)
-      const style = link.ownerDocument!.createElement("style")
-      style.setAttribute(originalURLAttribute("href"), original)
-      for(const name of ["media", "title"]) {
-        const value = link.getAttribute(name)
-        if(value !== null) style.setAttribute(name, value)
+      const response = await this.fetchResource(original)
+      const base = response.url || this.resolvedResourceURL(original)
+      const css = await this.inlineCSS(await response.text(), base, new Set([base]))
+      link.setAttribute(originalURLAttribute("href"), original)
+      link.href = await this.blobDataURL(new Blob([css], {type: "text/css"}))
+      // The embedded stylesheet has different bytes after its URLs are changed.
+      if(link.hasAttribute("integrity")) {
+        link.setAttribute(originalURLAttribute("integrity"), link.getAttribute("integrity")!)
+        link.removeAttribute("integrity")
       }
-      if(link.hasAttribute("disabled")) style.setAttribute("disabled", "")
-      style.textContent = rewritten
-      link.replaceWith(style)
     }
     catch(error) {
-      if(strict) throw new Error(`Could not inline stylesheet ${original} for offline export: ${error instanceof Error ? error.message : String(error)}`)
+      throw new Error(`Could not inline stylesheet ${original} for offline export: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
-  private async inlineCssImports(css: string, base: string, seen = new Set<string>()) {
-    const pattern = /@import\s+(?:url\(\s*)?(?:(['"])([^'"]+)\1|([^\s;)]+))\s*\)?(\s*[^;]*;?)/gi
-    const matches = [...css.matchAll(pattern)]
-    const replacements = await Promise.all(matches.map(async match => {
-      const href = this.resolvedResourceURL(match[2] ?? match[3], base)
-      if(seen.has(href)) return [match[0], match[4]] as const
-      seen.add(href)
-      const imported = await this.fetchResource(href).then(response => response.text())
-      const nested = await this.inlineCssImports(imported, href, seen)
-      const condition = match[4].trim().replace(/;$/, "")
-      const wrapped = condition.startsWith("layer")
-        ? `@${condition}{${nested}}`
-        : condition ? `@media ${condition}{${nested}}` : nested
-      return [match[0], wrapped] as const
-    }))
-    let result = css
-    replacements.forEach(([from, to]) => { result = result.replace(from, to) })
-    return result
-  }
-
-  private async inlineStyleAttribute(element: HTMLElement, strict=false) {
+  private async inlineStyleAttribute(element: HTMLElement) {
     const original = element.getAttribute("style")
-    if(!original || !/url\(/i.test(original)) return
-    try { element.setAttribute("style", await this.replaceCssURLs(original, document.baseURI)) }
-    catch(error) {
-      if(strict) throw new Error(`Could not inline style attribute for offline export: ${error instanceof Error ? error.message : String(error)}`)
-    }
+    if(!original) return
+    const rewritten = await this.inlineCSS(original, document.baseURI)
+    if(rewritten === original) return
+    element.setAttribute(originalURLAttribute("style"), original)
+    element.setAttribute("style", rewritten)
   }
 
-  private async replaceCssURLs(css: string, base: string) {
-    const matches = [...css.matchAll(/url\(\s*(["']?)([^"')]+)\1\s*\)/gi)]
-    const replacements = await Promise.all(matches.map(async match => {
-      const value = match[2].trim()
-      if(!value || value.startsWith("data:") || value.startsWith("#")) return [match[0], match[0]] as const
-      const data = await this.fetchResource(value, base).then(response => response.blob()).then(blob => this.blobDataURL(blob))
-      return [match[0], `url(${data})`] as const
-    }))
+  private async inlineStyleElement(style: HTMLStyleElement) {
+    const original = style.textContent ?? ""
+    const rewritten = await this.inlineCSS(original, document.baseURI)
+    if(rewritten === original) return
+    style.setAttribute(originalURLAttribute("text"), original)
+    style.textContent = rewritten
+  }
+
+  private async inlineCSS(css: string, base: string, ancestors = new Set<string>()): Promise<string> {
+    // Tokenization handles escapes, comments, quoted parentheses and modern
+    // @import qualifiers without normalizing any unrelated authored CSS.
+    const tokens = tokenizeCSS({css}).filter(token => ![TokenType.Whitespace, TokenType.Comment, TokenType.EOF].includes(token[0]))
+    const replacements: Array<Promise<{start: number, end: number, value: string}>> = []
+    const functions: string[] = []
+    for(let index = 0; index < tokens.length; index++) {
+      let token = tokens[index]
+      let end = token[3] + 1
+      const previous = tokens[index - 1]
+      const isImport = previous?.[0] === TokenType.AtKeyword && previous[4].value.toLowerCase() === "import"
+      let value: string | undefined
+      if(token[0] === TokenType.URL) value = token[4].value
+      else if(token[0] === TokenType.Function && token[4].value.toLowerCase() === "url") {
+        const argument = tokens[index + 1]
+        const close = tokens[index + 2]
+        if(argument?.[0] === TokenType.String && close?.[0] === TokenType.CloseParen) {
+          value = argument[4].value
+          end = close[3] + 1
+          index += 2
+        }
+      }
+      else if(token[0] === TokenType.String && (isImport || /^(?:-webkit-)?image-set$/.test(functions.at(-1) ?? ""))) {
+        value = token[4].value
+      }
+      if(value !== undefined) {
+        const start = token[2]
+        const url = value
+        replacements.push((async () => {
+          if(!isImport) return {start, end, value: `url("${await this.resourceDataURL(url, base)}")`}
+          const href = this.resolvedResourceURL(url, base)
+          let imported = ""
+          if(!ancestors.has(href)) {
+            const response = await this.fetchResource(href)
+            const redirected = response.url || href
+            if(!ancestors.has(redirected)) {
+              imported = await this.inlineCSS(await response.text(), redirected, new Set([...ancestors, href, redirected]))
+            }
+          }
+          const data = await this.blobDataURL(new Blob([imported], {type: "text/css"}))
+          return {start, end, value: `url("${data}")`}
+        })())
+      }
+      else if(token[0] === TokenType.Function) functions.push(token[4].value.toLowerCase())
+      else if(token[0] === TokenType.OpenParen) functions.push("")
+      else if(token[0] === TokenType.CloseParen) functions.pop()
+    }
+    const resolved = await Promise.all(replacements)
     let result = css
-    replacements.forEach(([from, to]) => { result = result.replace(from, to) })
+    resolved.reverse().forEach(({start, end, value}) => { result = result.slice(0, start) + value + result.slice(end) })
     return result
   }
 

@@ -202,8 +202,10 @@
       "name": "@webwriter/domeditor",
       "version": "0.0.1",
       "dependencies": {
+        "@csstools/css-tokenizer": "^3.0.4",
         "@tabler/icons": "^3.46.0",
         "@y/websocket-server": "^0.1.1",
+        "es-module-lexer": "^1.7.0",
         "lit": "^3.3.2",
         "openai": "^4.104.0",
         "qrcodejs": "^1.0.0",

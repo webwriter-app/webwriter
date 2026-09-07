@@ -1,6 +1,6 @@
 export const originalURLAttribute = (name: string) => `data-webwriter-original-${name}`
 
-export const restorableResourceAttributes = ["src", "srcset", "poster", "data"] as const
+export const restorableResourceAttributes = ["src", "srcset", "poster", "data", "href", "style", "integrity"] as const
 
 /** Restores authored resource URLs from a document produced by an offline save. */
 export function restoreOriginalResourceURLs(root: ParentNode) {
@@ -19,6 +19,11 @@ export function restoreOriginalResourceURLs(root: ParentNode) {
       element.removeAttribute(marker)
     })
   }
+  root.querySelectorAll<HTMLStyleElement>(`style[${originalURLAttribute("text")}]`).forEach(style => {
+    style.textContent = style.getAttribute(originalURLAttribute("text"))
+    style.removeAttribute(originalURLAttribute("text"))
+  })
+  root.querySelectorAll<HTMLTemplateElement>("template").forEach(template => restoreOriginalResourceURLs(template.content))
 }
 
 export function serializeDoctype(doctype: DocumentType | null) {

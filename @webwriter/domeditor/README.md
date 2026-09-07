@@ -34,3 +34,7 @@ intentional restrictions, owning feature, and a short user-facing explanation.
 The current reviewed snapshot contains 116 entries: 103 with full support, 11 with partial support, and 2 deliberately
 unsupported active-content elements. [`src/html-element-capabilities.test.ts`](src/html-element-capabilities.test.ts)
 requires complete coverage and keeps the manifest aligned with built-in insertion and intentional-limitation policies.
+
+## Offline HTML
+
+Offline export embeds media, stylesheets, imported CSS and its assets, and standalone scripts. It preserves original resource URLs for reopening in the editor. Failed downloads, JavaScript module dependencies and embedded iframe documents produce a visible error; use regular HTML for those documents. Arbitrary network requests made by widget code are outside the resource export.
