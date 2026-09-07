@@ -353,14 +353,24 @@ export function areEquivalentMarkElements(first: Element, second: Element) {
     )
 }
 
+/** Widgets own their child DOM and are atomic to document-level normalization. */
+function isWidgetElement(element: Element) {
+  return element.localName.includes("-") || element.hasAttribute("is")
+}
+
 /** Recursively joins adjacent equivalent mark runs, like `Node.normalize()`
  * joins adjacent text nodes. */
 export function normalizeMarkElements(root: Element) {
-  for(const child of Array.from(root.children)) normalizeMarkElements(child)
+  if(isWidgetElement(root)) return
+  for(const child of Array.from(root.children)) {
+    if(!isWidgetElement(child)) normalizeMarkElements(child)
+  }
   let current: ChildNode | null = root.firstChild
   while(current) {
     const next: ChildNode | null = current.nextSibling
-    if(current instanceof Element && next instanceof Element && areEquivalentMarkElements(current, next)) {
+    if(current instanceof Element && next instanceof Element
+      && !isWidgetElement(current) && !isWidgetElement(next)
+      && areEquivalentMarkElements(current, next)) {
       current.append(...Array.from(next.childNodes))
       next.remove()
       current.normalize()

@@ -235,6 +235,14 @@ describe("MarkFeature toggles", () => {
     expect(cleanHTML()).toBe("<p><ruby>漢<rt>かん</rt></ruby><ruby>字<rt>じ</rt></ruby></p>")
   })
 
+  it("treats custom elements and customized built-ins as atomic during mark normalization", () => {
+    const paragraph = setContent('<p><demo-widget><b>one</b><b>two</b></demo-widget><b>three</b><b>four</b><b is="demo-widget"><i>five</i><i>six</i></b></p>')
+
+    normalizeMarkElements(paragraph)
+
+    expect(paragraph.innerHTML).toBe('<demo-widget><b>one</b><b>two</b></demo-widget><b>threefour</b><b is="demo-widget"><i>five</i><i>six</i></b>')
+  })
+
   it("does not create nested ruby or combine a selection containing an existing ruby", () => {
     const paragraph = setContent("<p><ruby>漢<rt>かん</rt></ruby>字</p>")
     $.selectRange(paragraph.querySelector("ruby")!.firstChild!, 0, paragraph.lastChild!, 1)
