@@ -93,7 +93,7 @@ describe("StateFeature", () => {
 
     expect(result.status).toBe("applied")
     expect(result.removedUnsafeItems).toBeGreaterThan(0)
-    expect(editor.toHTML(true)).toBe('<main style="color: red"><h1>After</h1></main>')
+    expect(editor.toHTML(true)).toBe('<main style="color: red"><h1>After</h1><a>Link</a></main>')
     editor.destroy()
   })
 

@@ -642,13 +642,21 @@ export class Schema {
   }
 
   /** Whether `content` (default: the node's current children) is valid for the node (given as node or type key). Each node is validated against a shared cloned rule (see isNodeValid), and the rule's minimum must be satisfied. Non-element nodes are always valid.. */
-  isContentValid(node: Node | string, content?: Node[], rule=this.getContentRule(node)) {
+  isContentValid(node: Node | string, content?: Node[], rule=this.getContentRule(node)): boolean {
     let nodeToCheck = typeof node === "string"? this.create(node): node
     
     if(!(nodeToCheck instanceof Element)) return true;
     if(!rule && (content ?? Array.from(nodeToCheck.childNodes)).length) return false
     else if(!rule && !content?.length) return true
     const contentToCheck = content ?? Array.from(nodeToCheck.childNodes)
+    if(rule && "transparent" in rule) {
+      const parent = nodeToCheck.parentElement
+      const matchesSelector = !rule.selector || contentToCheck.every(child =>
+        typeof rule.selector === "string" && !(child instanceof Element)
+          || this.testSelectorRule(child, rule.selector!),
+      )
+      return Boolean(parent && matchesSelector && this.isContentValid(parent, contentToCheck))
+    }
     const everyNodeValid = contentToCheck.every(node => this.isNodeValid(node, rule))
     const hasRemainingMin = this.hasRuleRemainingMin(rule!)
     return everyNodeValid && !hasRemainingMin
@@ -747,7 +755,7 @@ export class Schema {
           current = current.parentElement!
           continue
         }
-        else if("selector" in rule) {
+        else if("selector" in rule && (node instanceof Element || typeof rule.selector !== "string")) {
           const nonTransparentRule = {selector: rule.selector!, min: rule.min, max: rule.max}
           const resolvedRule = {conditions: [nonTransparentRule, parentRule]}
           return this.isNodeValid(node, resolvedRule)
@@ -842,7 +850,9 @@ export class Schema {
       }
       const parentRule = this.getContentRule(parent)
       const validParentContentTypes = this.findValidContentTypes(parent, parentRule)
-      return Object.keys(this.#nodes).filter(k => validParentContentTypes.includes(k) && (!rule.selector || this.testSelectorRule(this.#nodes[k], rule.selector)))
+      return Object.keys(this.#nodes).filter(k => validParentContentTypes.includes(k) && (!rule.selector
+        || typeof rule.selector === "string" && !(this.#nodes[k] instanceof Element)
+        || this.testSelectorRule(this.#nodes[k], rule.selector)))
     }
     else if("options" in rule) {
       return Array.from(new Set(rule.options.flatMap(optRule => this.findValidContentTypes(container, optRule))))

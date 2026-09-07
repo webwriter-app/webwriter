@@ -295,6 +295,13 @@ body::part(atomic-selection-overlay) {
   z-index: 2147483645;
 }
 
+body::part(node-drag-surface) {
+  position: fixed;
+  cursor: grab;
+  user-select: none;
+  z-index: 2147483646;
+}
+
 /* Replaced elements can also receive native selection paint. Avoid applying
  * the translucent selection color twice beneath their appendix overlay. */
 .◆atomic-range-selected::selection,
@@ -1306,6 +1313,28 @@ body::part(gap-caret)::after {
     margin-top: calc(-0.4 * var(--size));
     background: currentColor;
     animation: blink 1s step-end 0s infinite;
+}
+
+body.◆drop-selection-active,
+body.◆drop-selection-active * {
+  caret-color: transparent !important;
+}
+
+body::part(selection-caret-text) {
+  position-anchor: auto;
+  width: 2px;
+  background: currentColor;
+}
+
+body.◆drop-selection-active::part(selection-caret-text),
+body.◆drop-selection-active::part(selection-caret-gap),
+body.◆drop-selection-active::part(empty-document-caret) {
+  color: var(--sl-color-primary-400, #0078d7);
+  animation: none;
+}
+
+body.◆drop-selection-active::part(selection-caret-gap)::after {
+  animation: none;
 }
 /* Match the slightly heavier stroke used by remote text and element carets
  * while preserving the local gap caret's arrow footprint. This must follow

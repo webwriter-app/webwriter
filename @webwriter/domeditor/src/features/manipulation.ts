@@ -68,6 +68,192 @@ function isCaretAtBoundary(element: Element, boundary: "start" | "end") {
  * on the current selection (see `EditingSelection`/`$`). */
 export class ManipulationFeature extends EditorFeature {
 
+  private dragTarget: Element | null = null
+  private dragSurface: HTMLDivElement | null = null
+  private dragFrame: number | null = null
+  private nodeDrag: {element: Element, token: string} | null = null
+  private originalDropSelection: Range | null = null
+  private readonly dragType = "application/x-webwriter-node"
+
+  /** A native draggable surface lives in the appendix, leaving authored
+   * attributes (including an author's own draggable value) untouched. */
+  refreshNodeDragTarget(element: Element | null) {
+    if(this.nodeDrag) return
+    if(!this.isEnabled || element === document.body || element === getDocumentRoot()
+      || !element?.isConnected || !getDocumentRoot().contains(element)
+      || this.editor.features.transformation.target) element = null
+    if(element === this.dragTarget) return
+    this.clearNodeDragSurface()
+    if(!element) return
+    this.dragTarget = element
+    const surface = document.createElement("div")
+    surface.classList.add("◆", "◆editor-only")
+    surface.setAttribute("part", "node-drag-surface")
+    surface.setAttribute("aria-hidden", "true")
+    surface.contentEditable = "false"
+    surface.draggable = true
+    surface.addEventListener("dragstart", event => this.startNodeDrag(event, element))
+    surface.addEventListener("dragend", () => this.endNodeDrag())
+    surface.addEventListener("dragover", event => this.dragOver(event))
+    surface.addEventListener("dragleave", event => this.dragLeave(event))
+    surface.addEventListener("drop", event => this.drop(event))
+    this.editor.addAppendix(surface)
+    this.dragSurface = surface
+    const position = () => {
+      this.dragFrame = null
+      if(!element.isConnected || !getDocumentRoot().contains(element)) {
+        if(this.nodeDrag) surface.style.display = "none"
+        else this.endNodeDrag()
+        return
+      }
+      const rect = element.getBoundingClientRect()
+      Object.assign(surface.style, {
+        left: `${rect.left}px`, top: `${rect.top}px`,
+        width: `${rect.width}px`, height: `${rect.height}px`,
+      })
+      this.dragFrame = requestAnimationFrame(position)
+    }
+    position()
+  }
+
+  private clearNodeDragSurface() {
+    if(this.dragFrame !== null) cancelAnimationFrame(this.dragFrame)
+    this.dragFrame = null
+    this.dragSurface?.remove()
+    this.dragSurface = null
+    this.dragTarget = null
+  }
+
+  endNodeDrag(refresh=true) {
+    this.clearDropSelection(refresh)
+    this.nodeDrag = null
+    this.clearNodeDragSurface()
+    if(refresh && this.isEnabled && !this.editor.features.selection.isCaptureSelection) this.refreshNodeDragTarget($.selectedElement ?? null)
+  }
+
+  disable() {
+    this.endNodeDrag(false)
+    super.disable()
+  }
+
+  private startNodeDrag(event: DragEvent, element: Element) {
+    if(!this.isEnabled || event.defaultPrevented || !event.dataTransfer || element !== $.selectedElement
+      || !getDocumentRoot().contains(element) || element === getDocumentRoot()) {
+      event.preventDefault()
+      return
+    }
+    const fragment = document.createDocumentFragment()
+    fragment.append(cloneWithoutEditorMarkers(element, true))
+    const {html, text} = this.editor.serializeClipboardFragment(fragment, element instanceof HTMLElement ? element.innerText : undefined)
+    const token = crypto.randomUUID()
+    event.dataTransfer.setData("text/html", html)
+    event.dataTransfer.setData("text/plain", text)
+    event.dataTransfer.setData(this.dragType, token)
+    event.dataTransfer.effectAllowed = "copyMove"
+    event.dataTransfer.setDragImage?.(element, 0, 0)
+    // Keep the source hit-testable: Chromium cancels native dragging if its
+    // pointer-events becomes none during dragstart. Its own drop listeners
+    // already handle hovering back over the source surface.
+    this.nodeDrag = {element, token}
+  }
+
+  private acceptsDrop(event: DragEvent) {
+    return !event.defaultPrevented && !this.editor.features.transformation.target
+      && Boolean(event.dataTransfer && Array.from(event.dataTransfer.types)
+        .some(type => ["text/html", "text/plain", this.dragType].includes(type)))
+  }
+
+  private dragOver(event: DragEvent) {
+    if(!this.acceptsDrop(event)) return
+    event.preventDefault()
+    const range = this.dropRange(event, this.nodeDrag?.element ?? null)
+    if(!range) {
+      event.dataTransfer!.dropEffect = "none"
+      this.clearDropSelection(true)
+      return
+    }
+    if(!document.body.classList.contains("◆drop-selection-active")) {
+      const selection = document.getSelection()
+      this.originalDropSelection = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null
+    }
+    document.body.classList.add("◆drop-selection-active")
+    this.editor.features.selection.selectDropRange(range)
+    event.dataTransfer!.dropEffect = this.nodeDrag && !event.ctrlKey && !event.altKey ? "move" : "copy"
+  }
+
+  private dragLeave(event: DragEvent) {
+    if(event.relatedTarget instanceof Node && (getDocumentRoot().contains(event.relatedTarget)
+      || this.editor.appendix.contains(event.relatedTarget))) return
+    if(event.target === document || event.target === document.body || event.target === document.documentElement
+      || event.clientX <= 0 || event.clientY <= 0 || event.clientX >= window.innerWidth || event.clientY >= window.innerHeight) {
+      this.clearDropSelection(true)
+    }
+  }
+
+  private clearDropSelection(restore=false) {
+    const active = document.body.classList.contains("◆drop-selection-active")
+    document.body.classList.remove("◆drop-selection-active")
+    if(active) this.editor.features.selection.clearDropCaret()
+    const range = this.originalDropSelection
+    this.originalDropSelection = null
+    if(restore && range && getDocumentRoot().contains(range.startContainer)
+      && getDocumentRoot().contains(range.endContainer)) {
+      $.selectRange(range.startContainer, range.startOffset, range.endContainer, range.endOffset)
+      this.editor.features.selection.processSelection()
+    }
+  }
+
+  /** Hover and drop resolve the same text or structural insertion point. */
+  private dropRange(event: DragEvent, source: Element | null) {
+    if(source && !getDocumentRoot().contains(source)) return null
+    const point = $.pointFromCoords(event.clientX, event.clientY, event.target)
+    if(!point || !getDocumentRoot().contains(point.node) || source?.contains(point.node)) return null
+    const range = document.createRange()
+    range.setStart(point.node, point.offset)
+    range.collapse(true)
+    if(source && !this.editor.schema.isPhrasing(source)) {
+      let block = getContainer(point.node)
+      while(block !== getDocumentRoot() && this.editor.schema.isPhrasing(block) && block.parentElement) block = block.parentElement
+      if(this.isTextBlock(block) && !this.editor.schema.canInsert(block, source, block.childNodes.length)) {
+        const rect = block.getBoundingClientRect()
+        if(event.clientY < rect.top + rect.height / 2) range.setStartBefore(block)
+        else range.setStartAfter(block)
+        range.collapse(true)
+      }
+    }
+    return source?.contains(range.startContainer) ? null : range
+  }
+
+  private drop(event: DragEvent) {
+    if(!this.acceptsDrop(event)) return
+    event.preventDefault()
+    let dropped = false
+    try {
+      const data = event.dataTransfer!
+      // Only this live drag session can bypass import processing. An external
+      // application cannot grant trust merely by supplying our MIME type.
+      const source = this.nodeDrag?.token === data.getData(this.dragType) ? this.nodeDrag.element : null
+      const range = this.dropRange(event, source)
+      if(!range) return
+      if(source) {
+        const inserted = event.ctrlKey || event.altKey ? cloneWithoutEditorMarkers(source, true) : source
+        range.insertNode(inserted)
+        if(getDocumentRoot().contains(inserted)) $.selectElement(inserted)
+      }
+      else {
+        const fragment = this.#dataTransferToFragment(data)
+        if(!fragment?.childNodes.length) return
+        $.move(range.startContainer, range.startOffset)
+        this.insertClipboardFragment(fragment)
+      }
+      dropped = true
+    }
+    finally {
+      this.endNodeDrag(!dropped)
+      this.editor.features.selection.processSelection()
+    }
+  }
+
   private activeFigure() {
     const selectedSection = this.editor.features.selection.selectedSectionElement
     if(selectedSection?.localName === "figure") return selectedSection as HTMLElement
@@ -1177,7 +1363,22 @@ export class ManipulationFeature extends EditorFeature {
    * follows platform word/line modifiers, and Tab adjusts paragraph indent
    * only where list/table handlers have not already supplied semantics. */
   activeListeners: DocumentListenerMap = {
+    "dragstart": event => {
+      const selected = $.selectedElement
+      if(selected && event.target instanceof Node && selected.contains(event.target)) this.startNodeDrag(event, selected)
+    },
+    "dragend": () => this.endNodeDrag(),
+    "dragover": event => this.dragOver(event),
+    "dragleave": event => this.dragLeave(event),
+    "drop": event => this.drop(event),
     "beforeinput": ev => {
+      if(ev.defaultPrevented) return
+      if(["insertFromPaste", "insertFromDrop"].includes(ev.inputType)) {
+        ev.preventDefault()
+        const fragment = this.#dataTransferToFragment(ev.dataTransfer)
+        if(fragment) this.insertClipboardFragment(fragment)
+        return
+      }
       const selected = $.selectedElement
       if(ev.inputType.startsWith("delete") && (selected === getDocumentRoot() || selected === document.body)) {
         ev.preventDefault()
@@ -1216,16 +1417,6 @@ export class ManipulationFeature extends EditorFeature {
         if(target) {
           ev.preventDefault()
           this.insertAtSelection(document.createTextNode(ev.data))
-        }
-      }
-      else if(["insertFromPaste", "insertFromDrop"].includes(ev.inputType)) {
-        const fragment = this.#dataTransferToFragment(ev.dataTransfer)
-        if(fragment) {
-          ev.preventDefault()
-          this.insertClipboardFragment(fragment)
-        }
-        else {
-          this.ensureTextBlock()
         }
       }
       else if(ev.inputType.startsWith("insert")) {
@@ -1682,10 +1873,10 @@ export class ManipulationFeature extends EditorFeature {
   /** Converts every selected sibling into one shared pair of clipboard
    * flavors after removing transient editing artifacts. */
   #fragmentToClipboardItem(fragment: DocumentFragment) {
-    const {html, text} = this.editor.serializeClipboardFragment(fragment)
+    const {html, text} = this.editor.serializeClipboardFragment(fragment, $.selectedElement instanceof HTMLElement ? $.selectedElement.innerText : undefined)
     return new ClipboardItem({
       "text/plain": text,
-      "text/html": html || text,
+      "text/html": html,
     })
   }
 
@@ -1704,7 +1895,7 @@ export class ManipulationFeature extends EditorFeature {
    * HTML. */
   #clipboardContentToFragment(html: string, text: string) {
     const fragment = html
-      ? this.editor.parseHTMLFragment(html).fragment
+      ? this.editor.parseHTMLFragment(html, true).fragment
       : this.plainTextClipboardFragment(text)
     markWidgetsEditable(fragment)
     return fragment

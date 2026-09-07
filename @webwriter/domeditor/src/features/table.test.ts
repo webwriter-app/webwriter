@@ -390,6 +390,17 @@ describe("table cell selection", () => {
     expect(cells().map(cell => cell.textContent)).toEqual(["1", "2", "3", "4"])
   })
 
+  it("sanitizes and canonizes HTML pasted into a cell selection", () => {
+    document.body.innerHTML = "<table><tbody><tr><td>A</td></tr></tbody></table>"
+    editor.features.table.selectCells(cells()[0])
+    const data = new DataTransfer()
+    data.setData("text/html", '<table><tbody><tr><td><strong class="external" style="color:red" onclick="bad()">safe</strong><script>bad()</script><style>td{color:red}</style></td></tr></tbody></table>')
+
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+
+    expect(cells()[0].innerHTML).toBe("<b>safe</b>")
+  })
+
   it("resizes a native table column by dragging a cell edge", () => {
     document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr></tbody></table>"
     const [first] = cells()

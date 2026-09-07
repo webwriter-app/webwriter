@@ -919,9 +919,8 @@ export class TableFeature extends EditorFeature {
 
   private clipboardMatrix(html: string, plain: string) {
     if(html) {
-      const template = document.createElement("template")
-      template.innerHTML = html
-      const table = template.content.querySelector<HTMLTableElement>("table")
+      const {fragment} = this.editor.parseHTMLFragment(html, true)
+      const table = fragment.querySelector<HTMLTableElement>("table")
       if(table) {
         const map = buildTableMap(table)
         return map.matrix.map(row => Array.from({length: map.width}, (_, column) => {

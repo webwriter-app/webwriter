@@ -370,6 +370,7 @@ export class SelectionFeature extends EditorFeature {
     this.#clearStyleTargetHover()
     this.#clearSelections()
     this.selectionCaret?.remove()
+    this.editor.features.manipulation.endNodeDrag(false)
     this.hoverCaret?.remove()
     this.emptyDocumentCaret?.remove()
     ;[document.documentElement, document.body].forEach(element => {
@@ -722,7 +723,7 @@ export class SelectionFeature extends EditorFeature {
     return node
   }
 
-  /** The shared node, capture, and gap caret, or null before first use. */
+  /** The shared node, capture, gap, and drag text caret, or null before first use. */
   get selectionCaret() {
     return this.editor.appendix.querySelector<HTMLElement>(".◆selection-caret")
   }
@@ -741,7 +742,7 @@ export class SelectionFeature extends EditorFeature {
     caret.style.removeProperty("left")
     caret.style.removeProperty("top")
     caret.style.removeProperty("height")
-    ;["node", "capture", "gap"].forEach(state => {
+    ;["node", "capture", "gap", "text"].forEach(state => {
       caret.classList.remove(`◆selection-caret-${state}`)
       setPart(caret, `selection-caret-${state}`, false)
     })
@@ -757,7 +758,7 @@ export class SelectionFeature extends EditorFeature {
   }
 
   /** Shows the shared caret using one of its selection presentations. */
-  #showSelectionCaret(state: "node" | "capture" | "gap") {
+  #showSelectionCaret(state: "node" | "capture" | "gap" | "text") {
     const caret = this.selectionCaret ?? this.#createSelectionCaret()
     caret.classList.add(`◆selection-caret-${state}`)
     setPart(caret, `selection-caret-${state}`)
@@ -765,6 +766,18 @@ export class SelectionFeature extends EditorFeature {
     if(state === "gap") setPart(caret, "gap-caret")
     caret.removeAttribute("visibility")
     return caret
+  }
+
+  /** Drag hover owns a collapsed document selection, even if a widget or a
+   * table previously owned editing focus. Existing caret rendering follows it. */
+  selectDropRange(range: Range) {
+    if(focusedWidgetHost() && document.activeElement instanceof HTMLElement) document.activeElement.blur()
+    this.#releaseCaptureSelection()
+    this.clearSelectedSection()
+    this.#endDrag()
+    this.editor.features.table.clearCellSelection(false)
+    $.move(range.startContainer, range.startOffset)
+    this.processSelection()
   }
 
   /** Reuses the shared caret to preview a transformation drop gap. */
@@ -1039,6 +1052,7 @@ export class SelectionFeature extends EditorFeature {
     }
     const kind = this.#selectionKind(inDragSelection, capturedElement)
     this.#clearSelections()
+    this.editor.features.manipulation.refreshNodeDragTarget(kind === "element" ? $.selectedElement ?? null : null)
     this.#scrollSelectionIntoView(kind, sel, capturedElement)
     if(kind === "cell") return
     if(kind === "virtual") {
@@ -1103,6 +1117,16 @@ export class SelectionFeature extends EditorFeature {
       if(element === getDocumentRoot() && !this.emptyDocumentCaret) {
         this.#createEmptyDocumentCaret()
       }
+    }
+    // Native text carets can disappear while another app owns the drag.
+    // Reuse the shared appendix caret at the collapsed selection's geometry.
+    if(document.body.classList.contains("◆drop-selection-active")
+      && (kind === "text" || kind === "empty") && !$.isEmptyDocumentSelection) {
+      const rect = caretRect(sel.focusNode, sel.focusOffset)
+      const caret = this.#showSelectionCaret("text")
+      caret.style.left = `${rect.left}px`
+      caret.style.top = `${rect.top}px`
+      caret.style.height = `${rect.height}px`
     }
   }
 

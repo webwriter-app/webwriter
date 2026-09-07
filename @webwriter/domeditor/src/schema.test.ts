@@ -221,10 +221,17 @@ describe("isNodeValid()", () => {
   })
 
   describe("transparent rules", () => {
-    // Note: validating an actual child of a transparent element (e.g. a node
-    // inside <a> or <slot>) currently loops forever in isNodeValid, since the
-    // parent lookup never advances past the transparent rule. These tests pass
-    // the transparent rule explicitly for nodes whose parent has a concrete rule.
+    it("preserves text and mixed phrasing inside links during correction", () => {
+      const p = el("p")
+      p.innerHTML = '<a href="https://example.com">one <b>two</b> three</a>'
+      const link = p.firstElementChild!
+      expect(editor.schema.isContentValid(link)).toBe(true)
+      expect(editor.schema.findValidContentTypes(link)).toContain("#text")
+      editor.schema.checkAndCorrect(p, true)
+      expect(p.innerHTML).toBe('<a href="https://example.com">one <b>two</b> three</a>')
+      link.append(document.createElement("button"))
+      expect(editor.schema.isContentValid(link)).toBe(false)
+    })
     it("resolves against the parent's content rule", () => {
       const p = el("p"); const b = el("b"); p.append(b)
       expect(editor.schema.isNodeValid(b, {transparent: true})).toBe(true)

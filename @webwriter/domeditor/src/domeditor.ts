@@ -20,7 +20,7 @@ import { DialogFeature } from "./features/dialog"
 import { TemplateFeature } from "./features/template"
 import { Schema } from "./schema"
 import { $, adoptStylesheet, createStylesheet, focusedWidgetHost, getContainer, isAppendixInteraction, isElement, isFormControlInteraction, isWidgetShadowInteraction, plainTextFromDOM } from "./utility"
-import {isMarkElement, normalizeMarkElements} from "./marks"
+import {canonicalMarkName, isMarkElement, normalizeMarkElements} from "./marks"
 import {
   executeCompleteEvent,
   executeFailureEvent,
@@ -1229,9 +1229,9 @@ export class DOMEditor {
 
   /** Produces the two clipboard flavors from one cleaned selection clone so
    * native and programmatic copy cannot diverge or leak editing markers. */
-  serializeClipboardFragment(fragment: DocumentFragment) {
+  serializeClipboardFragment(fragment: DocumentFragment, innerText?: string) {
     this.clearEditingArtifacts(fragment)
-    const text = plainTextFromDOM(fragment, element => this.schema.isBlock(element))
+    const text = innerText ?? plainTextFromDOM(fragment, element => this.schema.isBlock(element))
     const container = document.createElement("div")
     container.append(fragment)
     const html = container.innerHTML
@@ -1241,7 +1241,7 @@ export class DOMEditor {
   #onCopy = (ev: ClipboardEvent) => {
     if(isAppendixInteraction(ev) || isWidgetShadowInteraction(ev) || isFormControlInteraction(ev) || !ev.clipboardData || $.isEmpty) return
     ev.preventDefault()
-    const {html, text} = this.serializeClipboardFragment($.copy())
+    const {html, text} = this.serializeClipboardFragment($.copy(), $.selectedElement instanceof HTMLElement ? $.selectedElement.innerText : undefined)
     ev.clipboardData.setData("text/html", html)
     ev.clipboardData.setData("text/plain", text)
   }
@@ -1264,11 +1264,15 @@ export class DOMEditor {
   }
 
   /** Sanitizes detached authored HTML and repairs it with the active schema
-   * before any part of it enters the live document. Inline style attributes
-   * remain authored content; executable and stylesheet elements do not. */
-  prepareHTMLFragment(fragment: DocumentFragment) {
+   * before any part of it enters the live document. Transfers additionally
+   * strip styling and section wrappers and canonize aliases; explicit HTML
+   * edits retain authored structure and styles. */
+  prepareHTMLFragment(fragment: DocumentFragment, transfer=false) {
     this.clearEditingArtifacts(fragment)
-    const removedUnsafeItems = stripActiveContent(fragment)
+    const removedUnsafeItems = stripActiveContent(fragment, transfer ? {
+      removeAttribute: attribute => ["style", "class"].includes(attribute.name.toLowerCase()),
+    } : {})
+    if(transfer) this.canonizeTransferredContent(fragment)
     const stagingBody = document.createElement("body")
     stagingBody.append(fragment)
     const unknownElements = Array.from(stagingBody.querySelectorAll("*"))
@@ -1292,10 +1296,40 @@ export class DOMEditor {
     return {fragment: prepared, removedUnsafeItems}
   }
 
-  parseHTMLFragment(html: string) {
+  /** Canonical aliases apply only to incoming content, never to live DOM.
+   * Widget contents remain atomic; sanitization still visits their children. */
+  private canonizeTransferredContent(root: ParentNode) {
+    Array.from(root.children).forEach(element => {
+      if(element.namespaceURI !== "http://www.w3.org/1999/xhtml"
+        || element.localName.includes("-") || element.hasAttribute("is")) return
+      const name = canonicalMarkName(element.localName)
+        ?? (element.localName === "strike" ? "s" : element.localName)
+      if(name !== element.localName) {
+        const replacement = document.createElement(name)
+        Array.from(element.attributes).forEach(attribute => replacement.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value))
+        replacement.append(...Array.from(element.childNodes))
+        element.replaceWith(replacement)
+        element = replacement
+      }
+      if(element.localName === "img" && element.parentElement?.localName !== "picture") {
+        const picture = document.createElement("picture")
+        element.replaceWith(picture)
+        picture.append(element)
+      }
+      if(element instanceof HTMLTemplateElement) this.canonizeTransferredContent(element.content)
+      this.canonizeTransferredContent(element)
+      // Captions lose their figure context when section wrappers are removed.
+      // Unwrap them too so schema repair does not recreate a figure around them.
+      if(isSectionElement(element) || element.localName === "figcaption") {
+        element.replaceWith(...Array.from(element.childNodes))
+      }
+    })
+  }
+
+  parseHTMLFragment(html: string, transfer=false) {
     const template = document.createElement("template")
     template.innerHTML = html
-    return this.prepareHTMLFragment(template.content)
+    return this.prepareHTMLFragment(template.content, transfer)
   }
 
 

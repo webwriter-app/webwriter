@@ -5,6 +5,7 @@ import '@testing-library/jest-dom/vitest'
 
 import { DOMEditor } from "../domeditor"
 import { $, htmlToFragment } from "../utility"
+import {sectionNames} from "../sections"
 
 var editor = new DOMEditor()
 
@@ -20,8 +21,9 @@ function expectBodyToBe(html: string) {
 
 beforeEach(async () => {
   vi.restoreAllMocks()
-  document.body.innerHTML = ""
+  document.body.innerHTML = "<p></p>"
   document.body.removeAttribute("style")
+  $.move(document.body.firstElementChild!)
   await new Promise<void>(resolve => queueMicrotask(resolve))
   $.move(document.body.firstElementChild!)
 })
@@ -1201,7 +1203,7 @@ describe("paste()", () => {
     document.dispatchEvent(event)
 
     expect(event.defaultPrevented).toBe(true)
-    expectBodyToBe('<p>h<i class="external">new</i>o</p>')
+    expectBodyToBe('<p>h<i>new</i>o</p>')
   })
 })
 describe("setAttributes()", () => {
@@ -1622,5 +1624,317 @@ describe("setStyle()", () => {
 
     expect(() => editor.features.manipulation.setStyle({"color; display": "none"})).toThrow(TypeError)
     expect(paragraph).not.toHaveAttribute("style")
+  })
+})
+
+// Native drag data is unavailable on Happy DOM's DragEvent constructor.
+function transferEvent(type: string, dataTransfer: DataTransfer, extra: Record<string, unknown> = {}) {
+  const event = new Event(type, {bubbles: true, cancelable: true, composed: true})
+  Object.assign(event, {dataTransfer, clientX: 10, clientY: 10, ...extra})
+  return event
+}
+
+describe("unified content transfer", () => {
+  beforeEach(() => {
+    vi.spyOn(DataTransfer.prototype, "setDragImage").mockImplementation(() => {})
+  })
+
+  function beginDrag(element: Element) {
+    $.selectElement(element)
+    editor.features.selection.processSelection()
+    const surface = editor.appendix.querySelector<HTMLElement>('[part="node-drag-surface"]')!
+    expect(surface).not.toBeNull()
+    const data = new DataTransfer()
+    surface.dispatchEvent(transferEvent("dragstart", data))
+    return {data, surface}
+  }
+
+  function dropAt(data: DataTransfer, node: Node, offset: number, extra: Record<string, unknown> = {}) {
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node, offset})
+    const event = transferEvent("drop", data, extra)
+    document.body.dispatchEvent(event)
+    return event
+  }
+
+  it("uses the same HTML and innerText for native copy, programmatic copy and node drag", async () => {
+    document.body.innerHTML = '<p class="authored" style="color: red"><b>hello</b><br>world</p><p>end</p>'
+    const element = document.body.firstElementChild! as HTMLElement
+    const {data, surface} = beginDrag(element)
+    const copied = new DataTransfer()
+    document.dispatchEvent(new ClipboardEvent("copy", {clipboardData: copied, cancelable: true}))
+    await editor.features.manipulation.copy()
+    const [item] = await navigator.clipboard.read()
+    for(const type of ["text/html", "text/plain"]) {
+      expect(data.getData(type)).toBe(copied.getData(type))
+      expect(await (await item.getType(type)).text()).toBe(data.getData(type))
+    }
+    expect(data.getData("text/plain")).toBe(element.innerText)
+    expect(data.getData("text/html")).toContain('class="authored"')
+    expect(data.getData("text/html")).not.toContain("◆")
+    expect(element.hasAttribute("draggable")).toBe(false)
+    expect(document.body.contains(surface)).toBe(false)
+    surface.dispatchEvent(transferEvent("dragend", data))
+  })
+
+  it.each(["paste", "drop", "beforeinput", "async paste"])("sanitizes and canonizes external %s", async method => {
+    document.body.innerHTML = ""
+    const data = new DataTransfer()
+    const html = '<script>bad()</script><style>p{color:red}</style><p class="external" style="color:red" onclick="bad()"><strong>bold</strong> <em>italic</em> <strike>old</strike><a href="javascript:bad()">link</a></p><img src="photo.png" class="photo" style="width:10px">'
+    data.setData("text/html", html)
+    data.setData("text/plain", "fallback")
+    $.selectDocumentStart()
+    if(method === "drop") dropAt(data, document.body, 0)
+    else if(method === "paste") document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, cancelable: true}))
+    else if(method === "beforeinput") {
+      const event = new InputEvent("beforeinput", {inputType: "insertFromPaste", cancelable: true})
+      Object.defineProperty(event, "dataTransfer", {value: data})
+      document.dispatchEvent(event)
+    }
+    else {
+      await navigator.clipboard.write([new ClipboardItem({"text/html": html})])
+      await editor.features.manipulation.paste()
+    }
+    expectBodyToBe('<p><b>bold</b> <i>italic</i> <s>old</s><a>link</a></p><picture><img src="photo.png"></picture>')
+  })
+
+  it("sanitizes widget and template contents without canonizing a widget's private structure", () => {
+    const {fragment} = editor.parseHTMLFragment('<test-widget class="external"><strong style="color:red">keep alias</strong><script>bad()</script><template><style>bad</style><span class="external" onclick="bad()">safe</span></template></test-widget>', true)
+    const widget = fragment.querySelector("test-widget")!
+    expect(widget.outerHTML).toBe('<test-widget><strong>keep alias</strong><template><span>safe</span></template></test-widget>')
+  })
+
+  it.each(sectionNames)("unwraps external <%s> sections while preserving non-section content", name => {
+    const {fragment} = editor.parseHTMLFragment(`<${name} id="wrapper"><p>first</p><!--keep--><p><strong>second</strong></p></${name}>`, true)
+    const container = document.createElement("div")
+    container.append(fragment)
+    expect(container.innerHTML).toBe('<p>first</p><!--keep--><p><b>second</b></p>')
+  })
+
+  it.each(["paste", "drop", "async paste"])("flattens nested external sections and retains picture captions on %s", async method => {
+    document.body.innerHTML = ""
+    const html = '<article><div><h2>Title</h2><section><p><strong>Bold</strong></p></section><figure><img src="photo.png"><figcaption><em>Caption</em></figcaption></figure><blockquote><ul><li>Item</li></ul></blockquote></div></article>'
+    const data = new DataTransfer()
+    data.setData("text/html", html)
+    $.selectDocumentStart()
+    if(method === "drop") dropAt(data, document.body, 0)
+    else if(method === "paste") document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, cancelable: true}))
+    else {
+      await navigator.clipboard.write([new ClipboardItem({"text/html": html})])
+      await editor.features.manipulation.paste()
+    }
+    expectBodyToBe('<h2>Title</h2><p><b>Bold</b></p><picture><img src="photo.png"></picture><p><i>Caption</i></p><ul><li>Item</li></ul>')
+  })
+
+  it("keeps widget-owned sections atomic while unwrapping their external containers", () => {
+    const {fragment} = editor.parseHTMLFragment('<div><test-widget><section><div>widget structure</div></section></test-widget></div>', true)
+    expect(fragment.firstElementChild?.outerHTML).toBe('<test-widget><section><div>widget structure</div></section></test-widget>')
+    expect(fragment.childNodes).toHaveLength(1)
+  })
+
+  it("retains sections in explicit HTML edits and internal node drops", () => {
+    const {fragment} = editor.parseHTMLFragment('<div><section><p>authored</p></section></div>')
+    expect(fragment.firstElementChild?.outerHTML).toBe('<div><section><p>authored</p></section></div>')
+    document.body.innerHTML = '<test-widget><div><section>authored</section></div></test-widget><p>target</p>'
+    const widget = document.body.firstElementChild!
+    const {data} = beginDrag(widget)
+    dropAt(data, document.body, 2)
+    expect(document.body.lastElementChild).toBe(widget)
+    expect(widget.innerHTML).toBe('<div><section>authored</section></div>')
+  })
+
+  it("moves the actual widget between irregular siblings and supports collaboration undo/redo", () => {
+    document.body.innerHTML = '<section><p>first</p><!--keep--><test-widget class="authored" style="color:red"><strong>unchanged</strong></test-widget><p>last</p></section>'
+    const widget = document.querySelector("test-widget")!
+    const section = document.querySelector("section")!
+    const clicked = vi.fn()
+    widget.addEventListener("custom-action", clicked)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const {data} = beginDrag(widget)
+    expect(dropAt(data, section, 0).defaultPrevented).toBe(true)
+    expect(section.firstElementChild).toBe(widget)
+    widget.dispatchEvent(new Event("custom-action"))
+    expect(clicked).toHaveBeenCalledOnce()
+    expect(widget.querySelector("strong")).not.toBeNull()
+    expect(widget).toHaveClass("authored")
+    expect(widget.getAttribute("style")).toBe("color:red")
+    editor.doc.syncFromDOM()
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    expect(editor.doc.body.toString()).not.toContain("node-drag-surface")
+    editor.doc.undo()
+    expect(document.querySelector("section")!.childNodes[2].nodeName).toBe("TEST-WIDGET")
+    editor.doc.redo()
+    expect(document.querySelector("section")!.firstElementChild!.nodeName).toBe("TEST-WIDGET")
+  })
+
+  it("treats spoofed editor data as an external drop", () => {
+    document.body.innerHTML = ""
+    const data = new DataTransfer()
+    data.setData("application/x-webwriter-node", "untrusted")
+    data.setData("text/html", '<p class="external" style="color:red"><strong>safe</strong><script>bad()</script></p>')
+    dropAt(data, document.body, 0)
+    expectBodyToBe("<p><b>safe</b></p>")
+  })
+
+  it("rejects drops into the dragged node and does not delete a concurrently replaced source", () => {
+    document.body.innerHTML = '<test-widget><p>source</p></test-widget><p>end</p>'
+    const source = document.body.firstElementChild!
+    let {data} = beginDrag(source)
+    dropAt(data, source.firstChild!, 0)
+    expectBodyToBe('<test-widget><p>source</p></test-widget><p>end</p>')
+    ;({data} = beginDrag(source))
+    source.replaceWith(document.createElement("hr"))
+    dropAt(data, document.body, 2)
+    expectBodyToBe('<hr><p>end</p>')
+  })
+
+  it("copies on a modified internal drop and keeps plain text literal on external drop", () => {
+    document.body.innerHTML = '<p class="authored">source</p>'
+    const source = document.body.firstElementChild!
+    const {data} = beginDrag(source)
+    dropAt(data, document.body, 1, {ctrlKey: true})
+    expectBodyToBe('<p class="authored">source</p><p class="authored">source</p>')
+    expect(document.body.firstElementChild).toBe(source)
+    const plain = new DataTransfer()
+    plain.setData("text/plain", "<b>literal</b>\nnext")
+    dropAt(plain, document.body, 2)
+    expect(document.body.lastElementChild!.innerHTML).toBe('&lt;b&gt;literal&lt;/b&gt;<br>next')
+  })
+
+  it("removes the drag surface on deselection and disable", () => {
+    document.body.innerHTML = '<p>source</p>'
+    const {surface, data} = beginDrag(document.body.firstElementChild!)
+    surface.dispatchEvent(transferEvent("dragend", data))
+    $.move(document.body.firstElementChild!.firstChild!, 1)
+    editor.features.selection.processSelection()
+    expect(editor.appendix.querySelector('[part="node-drag-surface"]')).toBeNull()
+    beginDrag(document.body.firstElementChild!)
+    editor.features.manipulation.disable()
+    editor.features.selection.processSelection()
+    expect(editor.appendix.querySelector('[part="node-drag-surface"]')).toBeNull()
+    editor.features.manipulation.enable()
+  })
+
+  it("accepts external drops over the selection's drag surface", () => {
+    document.body.innerHTML = '<p>selected</p><p>end</p>'
+    $.selectElement(document.body.firstElementChild!)
+    editor.features.selection.processSelection()
+    const surface = editor.appendix.querySelector('[part="node-drag-surface"]')!
+    const data = new DataTransfer()
+    data.setData("text/html", '<p class="external"><em>safe</em><script>bad()</script></p>')
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: document.body, offset: 1})
+    const over = transferEvent("dragover", data)
+    surface.dispatchEvent(over)
+    expect(over.defaultPrevented).toBe(true)
+    surface.dispatchEvent(transferEvent("drop", data))
+    expectBodyToBe('<p>selected</p><p><i>safe</i></p><p>end</p>')
+  })
+
+  it("moves a paragraph into a list item's flow content without rebuilding the list", () => {
+    document.body.innerHTML = '<p>source</p><ul><li>target</li></ul>'
+    const paragraph = document.body.firstElementChild!
+    const list = document.querySelector("ul")!
+    const item = document.querySelector("li")!
+    const {data} = beginDrag(paragraph)
+    dropAt(data, item.firstChild!, 3)
+    expect(document.body.firstElementChild).toBe(list)
+    expect(item.children[0]).toBe(paragraph)
+    expectBodyToBe('<ul><li>tar<p>source</p>get</li></ul>')
+  })
+
+  it("moves a collapsed drop selection between text and gaps, then removes its blue state on drop", () => {
+    document.body.innerHTML = '<p>first</p><p>last</p>'
+    const text = document.querySelector("p")!.firstChild!
+    const data = new DataTransfer()
+    data.setData("text/plain", "inserted")
+    const point = vi.spyOn($, "pointFromCoords").mockReturnValue({node: text, offset: 2})
+    vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 0, 18))
+    document.body.dispatchEvent(transferEvent("dragover", data))
+    expect(document.getSelection()!.isCollapsed).toBe(true)
+    expect($.isTextSelection).toBe(true)
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(2)
+    expect(document.body).toHaveClass("◆drop-selection-active")
+    const caret = editor.features.selection.selectionCaret!
+    expect(caret.getAttribute("part")).toContain("selection-caret-text")
+    expect(caret.style.left).toBe("20px")
+    expect(caret.style.top).toBe("30px")
+    expect(caret.style.height).toBe("18px")
+
+    point.mockReturnValue({node: document.body, offset: 1})
+    document.body.dispatchEvent(transferEvent("dragover", data))
+    expect(document.getSelection()!.isCollapsed).toBe(true)
+    expect($.isGapSelection).toBe(true)
+    expect($.anchorOffset).toBe(1)
+    expect(editor.features.selection.selectionCaret!.getAttribute("part")).toContain("gap-caret")
+    editor.doc.syncFromDOM()
+    expect(editor.doc.body.toString()).not.toContain("◆drop-selection-active")
+    expect(editor.toHTML(true)).not.toContain("◆drop-selection-active")
+    document.body.dispatchEvent(transferEvent("drop", data))
+    expectBodyToBe('<p>first</p><p>inserted</p><p>last</p>')
+    expect(document.body).not.toHaveClass("◆drop-selection-active")
+  })
+
+  it("previews the actual internal block drop gap while retaining the drag source", () => {
+    document.body.innerHTML = '<p>source</p><p>target</p>'
+    const source = document.body.firstElementChild!
+    const target = document.body.lastElementChild!
+    const {data} = beginDrag(source)
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: target.firstChild!, offset: 2})
+    document.body.dispatchEvent(transferEvent("dragover", data))
+    expect($.isGapSelection).toBe(true)
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(2)
+    document.body.dispatchEvent(transferEvent("drop", data))
+    expect(document.body.lastElementChild).toBe(source)
+    expectBodyToBe('<p>target</p><p>source</p>')
+    expect(document.body).not.toHaveClass("◆drop-selection-active")
+  })
+
+  it("keeps the native drag source connected and hit-testable until drop", () => {
+    document.body.innerHTML = '<p>source</p><p>target</p>'
+    const source = document.body.firstElementChild!
+    const {data, surface} = beginDrag(source)
+    expect(surface.isConnected).toBe(true)
+    expect(getComputedStyle(surface).pointerEvents).not.toBe("none")
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: document.body, offset: 2})
+    document.body.dispatchEvent(transferEvent("dragover", data))
+    expect(editor.appendix.querySelector('[part="node-drag-surface"]')).toBe(surface)
+    expect(getComputedStyle(surface).pointerEvents).not.toBe("none")
+    document.body.dispatchEvent(transferEvent("drop", data))
+    expect(document.body.lastElementChild).toBe(source)
+    expect(surface.isConnected).toBe(false)
+  })
+
+  it.each(["dragend", "dragleave", "disable"])("cleans up the drop indicator and handles %s", ending => {
+    document.body.innerHTML = '<p>source</p><p>target</p>'
+    const source = document.body.firstElementChild!
+    const {data, surface} = beginDrag(source)
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: document.body, offset: 2})
+    document.body.dispatchEvent(transferEvent("dragover", data))
+    if(ending === "disable") editor.features.manipulation.disable()
+    else if(ending === "dragend") surface.dispatchEvent(transferEvent("dragend", data))
+    else {
+      document.body.dispatchEvent(transferEvent("dragleave", data, {relatedTarget: null, clientX: -1}))
+      surface.dispatchEvent(transferEvent("dragend", data))
+    }
+    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expectBodyToBe('<p>source</p><p>target</p>')
+    if(ending !== "disable") expect($.selectedElement).toBe(source)
+    editor.features.manipulation.enable()
+  })
+
+  it("hides the text drop caret when transfer handling is disabled", () => {
+    document.body.innerHTML = '<p>target</p>'
+    const data = new DataTransfer()
+    data.setData("text/plain", "text")
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: document.querySelector("p")!.firstChild!, offset: 2})
+    document.body.dispatchEvent(transferEvent("dragover", data))
+    const caret = editor.features.selection.selectionCaret!
+    expect(caret.getAttribute("part")).toContain("selection-caret-text")
+    editor.features.manipulation.disable()
+    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(caret.getAttribute("part")).toContain("selection-caret-hidden")
+    editor.features.manipulation.enable()
   })
 })
