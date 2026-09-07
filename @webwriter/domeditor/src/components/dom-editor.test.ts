@@ -180,6 +180,23 @@ beforeEach(() => {
 })
 
 describe("DomEditor iframe setup", () => {
+  it("shows and dismisses file errors outside the authored document", async () => {
+    const {editor, iframe} = await mountEditor()
+    vi.spyOn(console, "error").mockImplementation(() => {})
+    const listener = vi.fn()
+    editor.addEventListener("file-error", listener)
+    ;(editor as any).reportFileError(new Error("The disk is full"))
+    await editor.updateComplete
+    const alert = editor.shadowRoot!.querySelector('[role="alert"]')!
+    expect(alert.textContent).toContain("The disk is full")
+    expect(listener).toHaveBeenCalledOnce()
+    expect(iframe.contentDocument!.querySelector('[role="alert"]')).toBeNull()
+    alert.querySelector("button")!.click()
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector('[role="alert"]')).toBeNull()
+  })
+
+
   it("sanitizes incoming live HTML and permits only trusted package scripts", async () => {
     const {editor} = await mountEditor()
     const host = editor as any

@@ -437,6 +437,7 @@ export class DomEditor extends LitElement {
     elementStyle: {attribute: false, state: true},
     fileName: {attribute: false, state: true},
     fileDirty: {attribute: false, state: true},
+    fileError: {attribute: false, state: true},
     previewActive: {attribute: false, state: true},
     previewDocumentHTML: {attribute: false, state: true},
     liveSessionActive: {attribute: false, state: true},
@@ -543,6 +544,7 @@ export class DomEditor extends LitElement {
   private frameDocumentHTML: string | null = null
   private fileName = ""
   private fileDirty = false
+  private fileError = ""
   private fileOperationActive = false
   private documentChangeSequence = 0
   private previewActive = false
@@ -639,6 +641,21 @@ export class DomEditor extends LitElement {
 
     .app-bar:has(app-ribbon:not([expanded])) ~ dom-editor-toolbox {
       display: none;
+    }
+
+    .file-error {
+      position: absolute;
+      inset: 0.5rem 0.5rem auto;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.75rem;
+      border: 1px solid #b42318;
+      background: #fff4f2;
+      color: #8a1c13;
+      font: 0.875rem system-ui;
     }
 
     .document-stage {
@@ -2058,6 +2075,7 @@ export class DomEditor extends LitElement {
 
   private reportFileError(error: unknown) {
     if(this.isPickerCancellation(error)) return
+    this.fileError = error instanceof Error ? error.message : String(error)
     this.dispatchEvent(new CustomEvent("file-error", {
       detail: {error},
       bubbles: true,
@@ -2111,6 +2129,7 @@ export class DomEditor extends LitElement {
   private async runFileOperation(operation: () => Promise<void>) {
     if(this.fileOperationActive) return
     this.fileOperationActive = true
+    this.fileError = ""
     try { await operation() }
     finally { this.fileOperationActive = false }
   }
@@ -4854,6 +4873,12 @@ export class DomEditor extends LitElement {
         `}
       </header>
       <div class="document-stage">
+        ${this.fileError ? html`
+          <div class="file-error" role="alert">
+            <span>${this.fileError}</span>
+            <button type="button" @click=${() => { this.fileError = "" }}>Dismiss</button>
+          </div>
+        ` : ""}
         ${this.previewActive ? html`
           <iframe
             class="preview-frame"
