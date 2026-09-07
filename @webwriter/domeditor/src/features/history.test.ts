@@ -28,6 +28,26 @@ afterEach(() => {
 })
 
 describe("collaborative version history", () => {
+  it("previews and restores document-level direction, classes and styles", async () => {
+    const history = editor.features.history
+    const initial = history.actions.getVersionHistory({type: "getVersionHistory"})
+    document.documentElement.setAttribute("dir", "rtl")
+    document.documentElement.classList.add("theme")
+    document.documentElement.setAttribute("style", "color: red")
+    await mutationsDelivered()
+    history.actions.previewVersionCheckpoint({type: "previewVersionCheckpoint", checkpointId: initial.checkpoints[0].id})
+    expect(document.documentElement.hasAttribute("dir")).toBe(false)
+    expect(document.documentElement.classList.contains("theme")).toBe(false)
+    expect(document.documentElement.hasAttribute("style")).toBe(false)
+    history.clearPreview()
+    expect(document.documentElement.getAttribute("dir")).toBe("rtl")
+    expect(document.documentElement.classList.contains("theme")).toBe(true)
+    expect(document.documentElement.getAttribute("style")).toBe("color: red")
+    document.documentElement.removeAttribute("dir")
+    document.documentElement.classList.remove("theme")
+    document.documentElement.removeAttribute("style")
+  })
+
   it("transiently applies a checkpoint and blocks local editing until the preview is cleared", async () => {
     const history = editor.features.history
     const initial = history.actions.getVersionHistory({type: "getVersionHistory"})

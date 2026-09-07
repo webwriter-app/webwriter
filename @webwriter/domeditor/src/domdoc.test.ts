@@ -55,6 +55,26 @@ afterEach(() => {
 })
 
 describe("SharedDOMDoc initialization", () => {
+  it("synchronizes document attributes independently and preserves markers on undo", async () => {
+    const {owner, shared} = createDocumentShared("", "<p>Body</p>", "en")
+    owner.documentElement.setAttribute("dir", "rtl")
+    owner.documentElement.setAttribute("class", "theme ◆local")
+    owner.documentElement.setAttribute("style", "color: red")
+    owner.documentElement.setAttributeNS("http://www.w3.org/XML/1998/namespace", "xml:space", "preserve")
+    await mutationsDelivered()
+    const restored = cloneDocumentShared(shared).owner.documentElement
+    expect(restored.getAttribute("dir")).toBe("rtl")
+    expect(restored.className).toBe("theme")
+    expect(restored.getAttribute("style")).toBe("color: red")
+    expect(restored.getAttributeNS("http://www.w3.org/XML/1998/namespace", "space")).toBe("preserve")
+    expect(restored.lang).toBe("en")
+    shared.undo()
+    expect(owner.documentElement.hasAttribute("dir")).toBe(false)
+    expect(owner.documentElement.className).toBe("◆local")
+    shared.redo()
+    expect(owner.documentElement.getAttribute("dir")).toBe("rtl")
+  })
+
   it("reconciles wide documents without materializing the sibling array for each child", () => {
     const {root, shared} = createShared("<p>text</p>".repeat(1000))
     const first = root.firstElementChild!

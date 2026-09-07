@@ -277,6 +277,7 @@ export class HistoryFeature extends EditorFeature {
 
   #applySource(source: string) {
     const restored = new DOMParser().parseFromString(source, "text/html")
+    this.#replaceAttributes(document.documentElement, restored.documentElement)
     this.#replaceAttributes(document.body, restored.body)
     document.body.replaceChildren(...Array.from(restored.body.childNodes, node => document.importNode(node, true)))
     const editorHeadNodes = Array.from(document.head.childNodes).filter(node =>
@@ -284,9 +285,6 @@ export class HistoryFeature extends EditorFeature {
     )
     document.head.replaceChildren(...editorHeadNodes)
     document.head.append(...Array.from(restored.head.childNodes, node => document.importNode(node, true)))
-    const language = restored.documentElement.getAttribute("lang")
-    if(language === null) document.documentElement.removeAttribute("lang")
-    else document.documentElement.setAttribute("lang", language)
   }
 
   #replaceAttributes(target: Element, source: Element) {

@@ -13,6 +13,7 @@ const COMMENT_NODE_KIND = "comment"
 const INITIALIZED_KEY = "initialized"
 const HEAD_INITIALIZED_KEY = "head-initialized"
 const LANGUAGE_INITIALIZED_KEY = "language-initialized"
+const ROOT_INITIALIZED_KEY = "root-attributes-initialized"
 
 const presenceColors = [
   "#e11d48",
@@ -135,6 +136,7 @@ export class SharedDOMDoc {
 
   readonly #body: Y.XmlElement
   readonly #documentHead: Y.XmlElement | null
+  readonly #documentAttributes: Y.XmlElement | null
   readonly #headRoot: HTMLHeadElement | null
   readonly #headMetadata: Y.Map<unknown>
   readonly #metadata: Y.Map<unknown>
@@ -170,6 +172,7 @@ export class SharedDOMDoc {
     this.#body = this.doc.getXmlElement("body")
     this.#headRoot = this.root === this.#document.body ? this.#document.head : null
     this.#documentHead = this.#headRoot ? this.doc.getXmlElement("document-head") : null
+    this.#documentAttributes = this.#headRoot ? this.doc.getXmlElement("document-attributes") : null
     this.#headMetadata = this.doc.getMap("head")
     this.#metadata = this.doc.getMap("domeditor")
     this.awareness = options.awareness ?? new Awareness(this.doc as any)
@@ -183,6 +186,7 @@ export class SharedDOMDoc {
     if(this.#headRoot && this.#documentHead) {
       this.#addNodePair(this.#headRoot, this.#documentHead)
       this.#documentHead.observeDeep(this.#handleYChanges)
+      this.#documentAttributes!.observeDeep(this.#handleYChanges)
       this.#headMetadata.observe(this.#handleHeadMetadataChange)
     }
 
@@ -193,6 +197,7 @@ export class SharedDOMDoc {
       this.#documentHead!.length > 0 || Object.keys(this.#documentHead!.getAttributes()).length > 0
     )
     const hasSharedLanguage = this.#headRoot !== null && this.#metadata.get(LANGUAGE_INITIALIZED_KEY) === true
+    const hasSharedAttributes = this.#documentAttributes !== null && this.#metadata.get(ROOT_INITIALIZED_KEY) === true
     this.doc.transact(() => {
       if(!hasSharedDOM) {
         this.#metadata.set(INITIALIZED_KEY, true)
@@ -210,8 +215,12 @@ export class SharedDOMDoc {
         this.#metadata.set(LANGUAGE_INITIALIZED_KEY, true)
         this.#headMetadata.set("language", this.#document.documentElement.getAttribute("lang") ?? "")
       }
+      if(this.#documentAttributes && !hasSharedAttributes) {
+        this.#metadata.set(ROOT_INITIALIZED_KEY, true)
+        this.#copyDOMAttributesToY(this.#document.documentElement, this.#documentAttributes, ["lang"])
+      }
     }, this.#initialOrigin)
-    if(hasSharedDOM || hasSharedHead || hasSharedLanguage) this.#writeYToDOM()
+    if(hasSharedDOM || hasSharedHead || hasSharedLanguage || hasSharedAttributes) this.#writeYToDOM()
 
     this.#undoManager = new Y.UndoManager(this.#undoScopes(), {
       trackedOrigins: new Set([this.#domOrigin]),
@@ -318,7 +327,6 @@ export class SharedDOMDoc {
       this.#observer.observe(this.#document.documentElement, {
         attributes: true,
         attributeOldValue: true,
-        attributeFilter: ["lang"],
       })
     }
     this.#isObserving = true
@@ -496,6 +504,7 @@ export class SharedDOMDoc {
       if(this.#headRoot && this.#documentHead) {
         this.#reconcileYElement(this.#headRoot, this.#documentHead)
         this.#headMetadata.set("language", this.#document.documentElement.getAttribute("lang") ?? "")
+        this.#copyDOMAttributesToY(this.#document.documentElement, this.#documentAttributes!, ["lang"])
       }
     }, origin)
     if(this.#isObserving) {
@@ -706,6 +715,7 @@ export class SharedDOMDoc {
     this.stopObserve()
     this.#body.unobserveDeep(this.#handleYChanges)
     this.#documentHead?.unobserveDeep(this.#handleYChanges)
+    this.#documentAttributes?.unobserveDeep(this.#handleYChanges)
     if(this.#headRoot) this.#headMetadata.unobserve(this.#handleHeadMetadataChange)
     this.#undoManager.destroy()
     this.#capturedChanges.forEach(undoManager => undoManager.destroy())
@@ -746,6 +756,7 @@ export class SharedDOMDoc {
       this.#reconcileDOMElement(this.#body, this.root)
       if(this.#headRoot && this.#documentHead) {
         this.#reconcileDOMElement(this.#documentHead, this.#headRoot)
+        this.#copyYAttributesToDOM(this.#documentAttributes!, this.#document.documentElement, ["lang"])
         const language = this.#headMetadata.get("language")
         if(typeof language === "string" && language) this.#document.documentElement.setAttribute("lang", language)
         else this.#document.documentElement.removeAttribute("lang")
@@ -874,7 +885,7 @@ export class SharedDOMDoc {
 
   #undoScopes() {
     return this.#documentHead
-      ? [this.#body, this.#documentHead, this.#headMetadata]
+      ? [this.#body, this.#documentHead, this.#headMetadata, this.#documentAttributes!]
       : [this.#body]
   }
 
@@ -979,10 +990,10 @@ export class SharedDOMDoc {
     return element
   }
 
-  #copyDOMAttributesToY(element: Element, yElement: Y.XmlElement) {
+  #copyDOMAttributesToY(element: Element, yElement: Y.XmlElement, excluded: string[] = []) {
     const desired = new Map<string, string>()
     for(const attribute of Array.from(element.attributes)) {
-      if(this.#isIgnoredAttribute(attribute.name)) continue
+      if(this.#isIgnoredAttribute(attribute.name) || excluded.includes(attribute.name)) continue
       const key = this.#encodeDOMAttribute(attribute)
       if(attribute.namespaceURI === null && attribute.name.toLowerCase() === "class") {
         const className = this.#filteredClassValue(attribute.value)
@@ -1003,7 +1014,7 @@ export class SharedDOMDoc {
     })
   }
 
-  #copyYAttributesToDOM(yElement: Y.XmlElement, element: Element) {
+  #copyYAttributesToDOM(yElement: Y.XmlElement, element: Element, excluded: string[] = []) {
     const shared = yElement.getAttributes()
     const sharedClassNames = String(shared.class ?? "").split(/\s+/).filter(Boolean)
     const internalClassNames = Array.from(element.classList).filter(name => this.#isIgnoredClass(name))
@@ -1011,13 +1022,13 @@ export class SharedDOMDoc {
 
     const decodedAttributes = Object.entries(shared).flatMap(([name, value]) => {
       const attribute = this.#decodeYAttribute(name)
-      return attribute ? [{...attribute, value: String(value)}] : []
+      return attribute && !excluded.includes(attribute.name) ? [{...attribute, value: String(value)}] : []
     })
     const desiredNames = new Set(decodedAttributes.map(attribute => this.#domAttributeKey(attribute)))
 
     for(const attribute of Array.from(element.attributes)) {
       const name = attribute.name
-      if(this.#isIgnoredAttribute(name) || name.toLowerCase() === "class") continue
+      if(this.#isIgnoredAttribute(name) || name.toLowerCase() === "class" || excluded.includes(name)) continue
       if(!desiredNames.has(this.#domAttributeKey(attribute))) element.removeAttributeNS(attribute.namespaceURI, attribute.localName)
     }
     decodedAttributes.forEach(attribute => {
