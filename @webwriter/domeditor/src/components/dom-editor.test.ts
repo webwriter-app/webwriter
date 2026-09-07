@@ -2159,6 +2159,22 @@ describe("DomEditor.execute()", () => {
     expect(previewHTML).not.toContain("window.evil")
   })
 
+  it("includes the scoped registry before widget modules in preview", async () => {
+    const {editor, iframe} = await mountEditor()
+    ;(editor as unknown as {installedPackages: WebWriterPackage[]}).installedPackages = [demoPackage]
+    iframe.contentDocument!.body.innerHTML = '<demo-widget contenteditable="true"></demo-widget>'
+    const previewHTML = (editor as unknown as {currentPreviewHTML(): string}).currentPreviewHTML()
+    const parsed = new DOMParser().parseFromString(previewHTML, "text/html")
+    const scripts = Array.from(parsed.querySelectorAll("script"))
+    const policy = parsed.querySelector('meta[http-equiv="Content-Security-Policy"]')!.getAttribute("content")!
+    const nonce = /'nonce-([^']+)'/.exec(policy)![1]
+    expect(scripts.every(script => script.getAttribute("nonce") === nonce)).toBe(true)
+    expect(scripts[0].src).toContain("@webcomponents/scoped-custom-element-registry@0.0.10/")
+    expect(scripts.slice(1).map(script => script.src)).toEqual(demoPackage.scripts)
+    expect(parsed.querySelector("demo-widget")?.getAttribute("contenteditable")).toBe("true")
+    expect(previewHTML).not.toContain("◆")
+  })
+
   it("exits preview from the file tab", async () => {
     const {editor} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!

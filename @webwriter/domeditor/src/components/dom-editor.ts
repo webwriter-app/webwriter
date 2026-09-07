@@ -777,8 +777,16 @@ export class DomEditor extends LitElement {
           script.src = src
           return script
         })
+      if(scripts.length) {
+        const polyfill = source.createElement("script")
+        polyfill.src = scopedCustomElementRegistryPolyfillUrl
+        if(import.meta.env.MODE === "test") polyfill.type = "application/json"
+        source.head.append(polyfill)
+      }
       source.head.append(...styles, ...scripts)
-      source.head.querySelectorAll("script").forEach(script => { script.nonce = nonce })
+      // Set the serialized attribute after connecting the nodes to the cloned
+      // document; a frame's nonce-hiding machinery can clear it on insertion.
+      source.head.querySelectorAll("script").forEach(script => script.setAttribute("nonce", nonce))
     }
 
     // `designMode` is a document property rather than serialized markup. A
