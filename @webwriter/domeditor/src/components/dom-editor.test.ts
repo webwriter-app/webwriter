@@ -180,6 +180,29 @@ beforeEach(() => {
 })
 
 describe("DomEditor iframe setup", () => {
+  it("settles cancellation and timeouts while iframe initialization is stalled", async () => {
+    const {editor} = await mountEditor()
+    let ready!: (value: Window) => void
+    vi.spyOn(editor as unknown as {waitForEditorWindow(): Promise<Window>}, "waitForEditorWindow")
+      .mockReturnValue(new Promise(resolve => { ready = resolve }))
+    const controller = new AbortController()
+    const aborted = editor.execute({type: "undo"}, {signal: controller.signal})
+    controller.abort()
+    await expect(aborted).rejects.toMatchObject({name: "AbortError"})
+    vi.useFakeTimers()
+    try {
+      const timedOut = editor.execute({type: "undo"})
+      const assertion = expect(timedOut).rejects.toThrow("did not respond in time")
+      await vi.advanceTimersByTimeAsync(15_001)
+      await assertion
+    }
+    finally { vi.useRealTimers() }
+    const post = vi.spyOn(editor as unknown as {postToEditor(value: unknown): void}, "postToEditor")
+    ready(window)
+    await Promise.resolve()
+    expect(post).not.toHaveBeenCalled()
+  })
+
   it("starts new documents with the current WebWriter generator metadata", async () => {
     const {iframe} = await mountEditor()
 

@@ -4471,16 +4471,14 @@ export class DomEditor extends LitElement {
     })
 
     if(options.signal?.aborted) return promise
-    try {
-      await this.waitForEditorWindow()
+    void this.waitForEditorWindow().then(() => {
       // A timeout or AbortSignal can settle the request while the iframe is
       // still initializing. Never execute a command whose caller has already
       // stopped waiting for it.
       if(this.pendingExecutions.has(requestId)) {
         this.postToEditor(Object.assign({}, action as object, {requestId, bridgeNonce: this.bridgeNonce}))
       }
-    }
-    catch(error) {
+    }).catch(error => {
       const pending = this.pendingExecutions.get(requestId)
       if(pending) {
         this.pendingExecutions.delete(requestId)
@@ -4488,7 +4486,7 @@ export class DomEditor extends LitElement {
         pending.abortCleanup?.()
         pending.reject(error)
       }
-    }
+    })
 
     return promise
   }
