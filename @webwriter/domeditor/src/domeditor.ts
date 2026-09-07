@@ -1254,10 +1254,10 @@ export class DOMEditor {
   }
 
   private async inlineCssImports(css: string, base: string) {
-    const pattern = /@import\s+(?:url\(\s*)?(["'])([^"']+)\1\s*\)?\s*;?/gi
+    const pattern = /@import\s+(?:url\(\s*)?(?:(['"])([^'"]+)\1|([^\s;)]+))\s*\)?\s*;?/gi
     const matches = [...css.matchAll(pattern)]
     const replacements = await Promise.all(matches.map(async match => {
-      const href = this.resolvedResourceURL(match[2], base)
+      const href = this.resolvedResourceURL(match[2] ?? match[3], base)
       const imported = await this.fetchResource(href).then(response => response.text())
       return [match[0], await this.inlineCssImports(imported, href)] as const
     }))
