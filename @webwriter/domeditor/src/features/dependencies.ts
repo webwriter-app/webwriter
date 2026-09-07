@@ -10,12 +10,6 @@ export class DependencyFeature extends EditorFeature {
   private widgetAssets: HTMLElement[] = []
   private widgetLoadSequence = 0
   private readonly pendingAssetCancellations = new Set<() => void>()
-  private widgetTags = new Set<string>()
-  private widgetContentObserver: MutationObserver | null = null
-  private readonly handleWidgetContent = (mutations: MutationRecord[]) => {
-    mutations.forEach(mutation => mutation.addedNodes.forEach(node => {
-    }))
-  }
 
   actions = {
     [loadWidgetsMessage]: (message: LoadWidgetsMessage) => this.loadWidgets(message),
@@ -76,7 +70,6 @@ export class DependencyFeature extends EditorFeature {
     const widgetDefinitions = packageWidgetSchemaDefinitions(packages)
     this.editor.schema = new Schema()
     this.editor.schema.extendWidgets(widgetDefinitions)
-    this.widgetTags = new Set(widgetDefinitions.map(({tagName}) => tagName.toLowerCase()))
 
     this.widgetAssets.forEach(element => element.remove())
     const styles = [...new Set(packages.flatMap(pkg => pkg.styles))].map(href => {
@@ -126,18 +119,6 @@ export class DependencyFeature extends EditorFeature {
   enable() {
     if(this.isEnabled) return
     super.enable()
-    const FrameMutationObserver = document.defaultView?.MutationObserver ?? MutationObserver
-    const observer = new FrameMutationObserver(this.handleWidgetContent)
-    try {
-      observer.observe(document.body, {childList: true, subtree: true})
-      this.widgetContentObserver = observer
-    }
-    catch {
-      // Scoped-registry initialization can replace the iframe document while
-      // features are being constructed. A stale target must not abort the
-      // remaining editor and bridge initialization.
-      observer.disconnect()
-    }
   }
 
   disable() {
@@ -145,11 +126,8 @@ export class DependencyFeature extends EditorFeature {
     this.widgetLoadSequence++
     this.pendingAssetCancellations.forEach(cancel => cancel())
     this.pendingAssetCancellations.clear()
-    this.widgetContentObserver?.disconnect()
-    this.widgetContentObserver = null
     this.widgetAssets.forEach(element => element.remove())
     this.widgetAssets = []
-    this.widgetTags.clear()
     globalThis.DOMEDITOR_PACKAGE_ITEMS = []
     super.disable()
   }

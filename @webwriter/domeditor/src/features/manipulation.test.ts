@@ -275,13 +275,13 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expect(correct).toHaveBeenCalledWith(expect.any(HTMLBodyElement), true)
     expect(document.querySelector("ul")?.firstElementChild?.localName).toBe("li")
   })
-  it("marks widgets in HTML inserted through its action handler editable", () => {
+  it("preserves widget attributes in HTML inserted through its action handler", () => {
     editor.features.manipulation.actions.insert({
       type: "insert",
       html: "<section><webwriter-demo></webwriter-demo></section>",
     })
 
-    expect(document.querySelector("webwriter-demo")).toHaveAttribute("contenteditable", "true")
+    expect(document.querySelector("webwriter-demo")).not.toHaveAttribute("contenteditable")
   })
   it("node-selects a directly inserted widget", () => {
     editor.features.manipulation.actions.insert({
@@ -1180,7 +1180,7 @@ describe("paste()", () => {
     await editor.features.manipulation.paste()
 
     expectBodyToBe("<p>he</p><demo-widget>Widget</demo-widget><p>llo</p>")
-    expect(document.querySelector("demo-widget")).toHaveAttribute("contenteditable", "true")
+    expect(document.querySelector("demo-widget")).not.toHaveAttribute("contenteditable")
     expect($.selectedElement).toBe(document.querySelector("demo-widget"))
   })
   it("preserves plain-text line boundaries as soft breaks", async () => {
