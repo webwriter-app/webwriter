@@ -40,6 +40,129 @@ function el(tag = "p", text = "") {
 }
 
 describe("processSelection()", () => {
+  const atomicOverlays = () => editor.appendix.querySelectorAll<HTMLElement>('[part="atomic-selection-overlay"]')
+
+  it("overlays atomic hosts once in a mixed range without changing authored content", () => {
+    document.body.innerHTML = '<p>before<img><span><test-widget><img></test-widget></span><input>after</p>'
+    const paragraph = document.querySelector("p")!
+    const authored = paragraph.innerHTML
+    $.selectRange(paragraph.firstChild!, 2, paragraph.lastChild!, 3)
+    feature.processSelection(true)
+
+    expect(atomicOverlays()).toHaveLength(3)
+    expect(editor.toHTML(true)).not.toContain("atomic-selection-overlay")
+    expect(editor.toHTML(true)).not.toContain("◆atomic-range-selected")
+    for(const overlay of atomicOverlays()) {
+      expect(overlay.getRootNode()).toBe(editor.appendix)
+      expect(overlay).toHaveAttribute("aria-hidden", "true")
+    }
+    $.move(paragraph.firstChild!, 0)
+    feature.processSelection()
+    expect(paragraph.innerHTML).toBe(authored)
+  })
+
+  it.each(["test-widget", "img", "video", "input", "select", "textarea", "button", "svg"])("overlays a selected %s and removes the overlay on collapse", tag => {
+    const element = tag === "svg" ? document.createElementNS("http://www.w3.org/2000/svg", "svg") : el(tag)
+    if(tag === "svg") appendToBody(element)
+    $.selectElement(element)
+    feature.processSelection()
+    expect(atomicOverlays()).toHaveLength(1)
+
+    $.selectGap(element, "after")
+    feature.processSelection()
+    expect(atomicOverlays()).toHaveLength(0)
+  })
+
+  it("excludes atomic elements merely touching a range edge in either direction", () => {
+    document.body.innerHTML = '<p><img>text<input></p>'
+    const paragraph = document.querySelector("p")!
+    $.selectRange(paragraph, 1, paragraph, 2)
+    feature.processSelection(true)
+    expect(atomicOverlays()).toHaveLength(0)
+    document.getSelection()!.setBaseAndExtent(paragraph, 2, paragraph, 0)
+    feature.processSelection(true)
+    expect(atomicOverlays()).toHaveLength(1)
+  })
+
+  it.each([false, true])("overlays a fully included table once in a mixed range (backward: %s)", backward => {
+    document.body.innerHTML = '<p>before</p><table><tbody><tr><td><img><test-widget></test-widget></td></tr></tbody></table><p>after</p>'
+    const before = document.body.firstElementChild!.firstChild!
+    const after = document.body.lastElementChild!.firstChild!
+    const table = document.querySelector("table")!
+    document.getSelection()!.setBaseAndExtent(backward ? after : before, 2, backward ? before : after, 2)
+    feature.processSelection()
+
+    expect(table).toHaveClass("◆atomic-range-selected")
+    expect(table.querySelector(".◆atomic-range-selected")).toBeNull()
+    expect(atomicOverlays()).toHaveLength(1)
+    expect(editor.toHTML(true)).not.toContain("◆atomic-range-selected")
+
+    $.move(before, 0)
+    feature.processSelection()
+    expect(table).not.toHaveClass("◆atomic-range-selected")
+    expect(atomicOverlays()).toHaveLength(0)
+  })
+
+  it("keeps partial table selections native while overlaying fully selected cell widgets", () => {
+    document.body.innerHTML = '<table><tbody><tr><td>before<img>after</td><td>outside</td></tr></tbody></table>'
+    const table = document.querySelector("table")!
+    const cell = document.querySelector("td")!
+    $.selectRange(cell.firstChild!, 2, cell.lastChild!, 2)
+    feature.processSelection()
+
+    expect(table).not.toHaveClass("◆atomic-range-selected")
+    expect(cell.querySelector("img")).toHaveClass("◆atomic-range-selected")
+    expect(atomicOverlays()).toHaveLength(1)
+
+    $.selectRange(cell.firstChild!, 0, cell.firstChild!, 2)
+    feature.processSelection()
+    expect(atomicOverlays()).toHaveLength(0)
+  })
+
+  it("does not overlay captured controls or a widget's internal text selection", () => {
+    const widget = el("test-widget", "content")
+    $.selectRange(widget.firstChild!, 0, widget.firstChild!, 3)
+    feature.processSelection(true)
+    expect(atomicOverlays()).toHaveLength(0)
+    feature.captureElement(widget)
+    expect(atomicOverlays()).toHaveLength(0)
+  })
+
+  it("updates overlay geometry and cleans up removed nodes and disabled selections", () => {
+    const frames: FrameRequestCallback[] = []
+    const request = vi.spyOn(window, "requestAnimationFrame").mockImplementation(callback => {
+      frames.push(callback)
+      return frames.length
+    })
+    const cancel = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {})
+    try {
+      const element = el("img")
+      const rect = vi.spyOn(element, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 20, 30, 40))
+      $.selectElement(element)
+      feature.processSelection()
+      const overlay = atomicOverlays()[0]
+      expect(overlay.style.left).toBe("10px")
+      expect(overlay.style.height).toBe("40px")
+      rect.mockReturnValue(new DOMRect(50, 60, 70, 80))
+      frames.shift()!(0)
+      expect(overlay.style.left).toBe("50px")
+      expect(overlay.style.width).toBe("70px")
+      element.remove()
+      frames.shift()!(0)
+      expect(atomicOverlays()).toHaveLength(0)
+      appendToBody(element)
+      $.selectElement(element)
+      feature.processSelection()
+      feature.disable()
+      expect(atomicOverlays()).toHaveLength(0)
+      expect(cancel).toHaveBeenCalled()
+    }
+    finally {
+      request.mockRestore()
+      cancel.mockRestore()
+    }
+  })
+
   const appliedKinds = () => [
     Boolean(document.querySelector(".◆text-selected")),
     Boolean(document.querySelector(".◆element-selected, .◆element-capture-selected")),

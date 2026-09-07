@@ -283,6 +283,30 @@ body table:hover {
   anchor-name: --hover-anchor;
 }
 
+/* One translucent blue for native ranges and selected atomic boxes. */
+body {
+  --editor-selection-background: rgb(0 120 215 / 30%);
+}
+
+::selection {
+  background-color: var(--editor-selection-background, rgb(0 120 215 / 30%));
+}
+
+body::part(atomic-selection-overlay) {
+  position: fixed;
+  pointer-events: none;
+  user-select: none;
+  background-color: var(--editor-selection-background);
+  z-index: 2147483645;
+}
+
+/* Replaced elements can also receive native selection paint. Avoid applying
+ * the translucent selection color twice beneath their appendix overlay. */
+.◆atomic-range-selected::selection,
+.◆atomic-range-selected *::selection {
+  background: transparent;
+}
+
 .◆element-selected {
   anchor-name: --selection-anchor;
 }

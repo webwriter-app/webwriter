@@ -53,6 +53,69 @@ export class SelectionFeature extends EditorFeature {
   #selectedSection: Element | null = null
   #drag: {anchor: Range, focus: Range, x: number, y: number, nativeClick: boolean, moved: boolean, target: Element, pointerId?: number} | null = null
   #selectionMarkers = new Set<Element>()
+  #atomicOverlays = new Map<Element, HTMLElement>()
+  #atomicOverlayFrame: number | null = null
+
+  #clearAtomicOverlays() {
+    if(this.#atomicOverlayFrame !== null) cancelAnimationFrame(this.#atomicOverlayFrame)
+    this.#atomicOverlayFrame = null
+    this.#atomicOverlays.forEach(overlay => overlay.remove())
+    this.#atomicOverlays.clear()
+  }
+
+  /** Measure live boxes while selected, including scrolling, resizing and
+   * widget-driven layout changes that do not mutate the authored DOM. */
+  readonly #positionAtomicOverlays = () => {
+    this.#atomicOverlayFrame = null
+    this.#atomicOverlays.forEach((overlay, element) => {
+      if(!document.body.contains(element)) {
+        overlay.remove()
+        this.#atomicOverlays.delete(element)
+        return
+      }
+      const rect = element.getBoundingClientRect()
+      overlay.style.left = `${rect.left}px`
+      overlay.style.top = `${rect.top}px`
+      overlay.style.width = `${rect.width}px`
+      overlay.style.height = `${rect.height}px`
+    })
+    if(this.#atomicOverlays.size) {
+      this.#atomicOverlayFrame = requestAnimationFrame(this.#positionAtomicOverlays)
+    }
+  }
+
+  #showAtomicOverlays(selection: Selection) {
+    if(selection.isCollapsed || !selection.rangeCount) return
+    const range = selection.getRangeAt(0)
+    const visit = (element: Element) => {
+      if(!range.intersectsNode(element)) return
+      const children = element.children
+      const isTable = element.localName === "table"
+      if(isTable || isAtomicEditingElement(element)) {
+        const parent = element.parentNode!
+        const index = Array.from(parent.childNodes).indexOf(element)
+        // Touching an edge or selecting a control's internal text is not a
+        // selection of that host. Fully selected tables also use one overlay
+        // instead of highlighting their atomic descendants twice.
+        if(range.comparePoint(parent, index) === 0 && range.comparePoint(parent, index + 1) === 0) {
+          this.#markSelection(element, "◆atomic-range-selected")
+          const overlay = document.createElement("div")
+          overlay.classList.add("◆", "◆editor-only")
+          overlay.setAttribute("part", "atomic-selection-overlay")
+          overlay.setAttribute("aria-hidden", "true")
+          overlay.contentEditable = "false"
+          this.editor.addAppendix(overlay)
+          this.#atomicOverlays.set(element, overlay)
+          return
+        }
+        // A partial table range can still fully select atomic cell contents.
+        if(!isTable) return
+      }
+      Array.from(children).forEach(visit)
+    }
+    Array.from(getDocumentRoot().children).forEach(visit)
+    this.#positionAtomicOverlays()
+  }
 
   /** Whether the current widget node selection also captures interactions in
    * that widget's shadow tree. Capture survives shadow-tree focus changes and
@@ -791,9 +854,10 @@ export class SelectionFeature extends EditorFeature {
 
   /** Clears the previous presentation, including markers on removed nodes. */
   #clearSelections() {
+    this.#clearAtomicOverlays()
     const markers = ["◆gap-before-selected", "◆gap-after-selected", "◆element-selected",
       "◆element-capture-selected", "◆text-selected", "◆empty-selected",
-      "◆gap-caret-visible", "◆node-selection-active"]
+      "◆gap-caret-visible", "◆node-selection-active", "◆atomic-range-selected"]
     const elements = new Set([...this.#selectionMarkers,
       ...document.querySelectorAll(markers.map(marker => `.${marker}`).join(","))])
     elements.forEach(element => {
@@ -995,6 +1059,7 @@ export class SelectionFeature extends EditorFeature {
       return
     }
     if(!sel?.anchorNode || !sel.focusNode) return
+    if(kind === "text" || kind === "element") this.#showAtomicOverlays(sel)
     if(kind === "gap") {
       const children = sel.anchorNode!.childNodes
       if(children.length) {
