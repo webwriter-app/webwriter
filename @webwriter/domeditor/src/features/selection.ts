@@ -1,6 +1,7 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import {$, caretRect, focusedWidgetHost, getContainer, isAtomicEditingElement, isElement, modifierKeyDown, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
+import {$, atomicEditingContainer, caretRect, isAppendixInteraction, focusedWidgetHost, getContainer, isAtomicEditingElement, isElement, modifierKeyDown, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
+import {graphicContainerForNode} from "../graphic"
 import {isSectionElement} from "../sections"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 
@@ -50,6 +51,8 @@ export class SelectionFeature extends EditorFeature {
   #sharedRefreshQueued = false
   #capturedElement: Element | null = null
   #selectedSection: Element | null = null
+  #drag: {anchor: Range, focus: Range, x: number, y: number, nativeClick: boolean, moved: boolean, target: Element, pointerId?: number} | null = null
+  #selectionMarkers = new Set<Element>()
 
   /** Whether the current widget node selection also captures interactions in
    * that widget's shadow tree. Capture survives shadow-tree focus changes and
@@ -60,7 +63,7 @@ export class SelectionFeature extends EditorFeature {
 
   /** The connected authored element that currently owns capture. */
   get captureSelectedElement() {
-    return this.#capturedElement?.isConnected ? this.#capturedElement : null
+    return this.#capturedElement && document.body.contains(this.#capturedElement) ? this.#capturedElement : null
   }
 
   /** The connected widget whose interaction is currently captured. Native
@@ -253,15 +256,27 @@ export class SelectionFeature extends EditorFeature {
     }
   }
 
-  /** Media are atomic editing nodes. Any caret or range endpoint that lands
-   * inside one is promoted to a node selection of the outer media element. */
-  #constrainSelectionToMedia() {
+  /** Media, SVG interiors and uncaptured shadow endpoints are atomic. Move only
+   * the affected endpoints to their host boundaries, preserving outer ranges. */
+  #constrainSelectionToAtomicContent() {
     const selection = document.getSelection()
     if(!selection?.anchorNode || !selection.focusNode) return
-    const media = mediaContainerForNode(selection.anchorNode) ?? mediaContainerForNode(selection.focusNode)
-    if(!media) return
-    if($.isElementSelection && $.selectedElement === media) return
-    $.selectElement(media)
+    const atomic = (node: Node) => node.getRootNode() instanceof ShadowRoot
+      ? atomicEditingContainer(node) : mediaContainerForNode(node) ?? (graphicContainerForNode(node) ? atomicEditingContainer(node) : null)
+    const anchor = atomic(selection.anchorNode)
+    const focus = atomic(selection.focusNode)
+    if(!anchor && !focus) return
+    if(anchor && anchor === focus && !this.isInDragSelection) {
+      $.selectElement(anchor)
+      return
+    }
+    const backward = $.isBackwards
+    const outside = (element: Element | null, node: Node, offset: number, after: boolean): [Node, number] => {
+      if(!element?.parentNode) return [node, offset]
+      return [element.parentNode, Array.from(element.parentNode.childNodes).indexOf(element) + (after ? 1 : 0)]
+    }
+    selection.setBaseAndExtent(...outside(anchor, selection.anchorNode, selection.anchorOffset, backward),
+      ...outside(focus, selection.focusNode, selection.focusOffset, !backward))
   }
 
   /** Enables the feature and places the selection at the document start. */
@@ -273,14 +288,8 @@ export class SelectionFeature extends EditorFeature {
     else $.selectDocumentStart()
     super.enable()
     this.#ensureHoverCaret()
-    document.addEventListener("click", this.#handleModifierClick, {capture: true})
-    document.addEventListener("keydown", this.#handleKeyState, {capture: true})
-    document.addEventListener("keyup", this.#handleKeyState, {capture: true})
-    this.#widgetInteractionEvents.forEach(type => {
-      document.addEventListener(type, this.#handleWidgetShadowInteraction, {capture: true})
-    })
-    document.addEventListener("wheel", this.#handleWidgetWheel, {capture: true, passive: false})
-    document.addEventListener("scroll", this.#handleWidgetScroll, {capture: true})
+    window.addEventListener("focus", this.#handleWindowFocus)
+    window.addEventListener("blur", this.#endDrag)
     this.editor.doc.doc.on("afterTransaction", this.#handleSharedChange)
     this.processSelection()
   }
@@ -288,21 +297,17 @@ export class SelectionFeature extends EditorFeature {
   disable() {
     if(!this.isEnabled) return
     this.editor.doc.doc.off("afterTransaction", this.#handleSharedChange)
-    document.removeEventListener("click", this.#handleModifierClick, {capture: true})
-    document.removeEventListener("keydown", this.#handleKeyState, {capture: true})
-    document.removeEventListener("keyup", this.#handleKeyState, {capture: true})
-    this.#widgetInteractionEvents.forEach(type => {
-      document.removeEventListener(type, this.#handleWidgetShadowInteraction, {capture: true})
-    })
-    document.removeEventListener("wheel", this.#handleWidgetWheel, {capture: true})
-    document.removeEventListener("scroll", this.#handleWidgetScroll, {capture: true})
+    window.removeEventListener("focus", this.#handleWindowFocus)
+    window.removeEventListener("blur", this.#endDrag)
+    this.#endDrag()
     this.#releaseCaptureSelection()
     this.clearSelectedSection()
     this.#clearElementHover()
     this.#clearStyleTargetHover()
     this.#clearSelections()
-    this.isInDragSelection = false
-    this.dragAnchor = null
+    this.selectionCaret?.remove()
+    this.hoverCaret?.remove()
+    this.emptyDocumentCaret?.remove()
     ;[document.documentElement, document.body].forEach(element => {
       element.classList.remove("◆key-mod-down", "◆key-alt-down", "◆key-shift-down")
       if(!Array.from(element.classList).some(marker => marker !== "◆" && marker.startsWith("◆"))) {
@@ -313,7 +318,123 @@ export class SelectionFeature extends EditorFeature {
     super.disable()
   }
 
-  readonly #widgetInteractionEvents = ["pointerdown", "focusin", "keydown", "beforeinput", "input", "change"] as const
+  readonly #handleWindowFocus = () => {
+    if(!this.editor.features.media.isPlaceholderInteraction) this.processSelection()
+  }
+
+  /** Pointer capture keeps the whole editor drag in the outer document, even
+   * when crossing a widget, native media controls, or a child frame. */
+  readonly #endDrag = () => {
+    const pointerId = this.#drag?.pointerId
+    const target = this.#drag?.target
+    this.#drag = null
+    this.dragAnchor = null
+    this.isInDragSelection = false
+    document.body.classList.remove("◆selection-dragging")
+    if(pointerId !== undefined && target?.hasPointerCapture?.(pointerId)) {
+      target.releasePointerCapture(pointerId)
+    }
+  }
+
+  readonly #finishDrag = (event: PointerEvent) => {
+    if(this.#drag?.pointerId !== undefined && this.#drag.pointerId !== event.pointerId) return
+    const dragging = this.isInDragSelection
+    this.#endDrag()
+    if(dragging) this.processSelection()
+  }
+
+  #beginDrag(event: PointerEvent, nativeClick: boolean) {
+    const selection = document.getSelection()
+    if(!selection?.anchorNode || !selection.focusNode) return
+    const anchor = document.createRange()
+    anchor.setStart(selection.anchorNode, selection.anchorOffset)
+    anchor.collapse(true)
+    const focus = document.createRange()
+    focus.setStart(selection.focusNode, selection.focusOffset)
+    focus.collapse(true)
+    const target = event.target instanceof Element ? event.target : document.body
+    this.#drag = {anchor, focus, x: event.clientX + window.scrollX, y: event.clientY + window.scrollY,
+      nativeClick, moved: false, target, pointerId: event.pointerId}
+    this.dragAnchor = {node: selection.anchorNode, offset: selection.anchorOffset}
+    this.isInDragSelection = true
+    // Keep the original click target and native mouse default, while keeping
+    // subsequent moves in this document even if the first move enters a frame.
+    if(event.pointerId !== undefined) {
+      try { target.setPointerCapture(event.pointerId) } catch { /* Synthetic or already cancelled pointer. */ }
+    }
+  }
+
+  readonly #extendDrag = (event: PointerEvent) => {
+    if(!this.isInDragSelection) return
+    const drag = this.#drag
+    if(!drag || drag.pointerId !== undefined && event.pointerId !== drag.pointerId) return
+    // Live Ranges track inserts/removals at the saved endpoints. Revalidate
+    // their current roots before using them after a concurrent DOM mutation.
+    const root = getDocumentRoot()
+    if(!root.contains(drag.anchor.startContainer) || !root.contains(drag.focus.startContainer)) {
+      this.#endDrag()
+      this.processSelection()
+      return
+    }
+    const atOrigin = Math.abs(event.clientX + window.scrollX - drag.x) <= 2
+      && Math.abs(event.clientY + window.scrollY - drag.y) <= 2
+    if(!drag.moved && atOrigin) return
+    if(!drag.moved) {
+      drag.moved = true
+      document.body.classList.add("◆", "◆selection-dragging")
+    }
+    const point = atOrigin
+      ? {node: drag.focus.startContainer, offset: drag.focus.startOffset}
+      : $.pointFromCoords(Math.max(0, Math.min(event.clientX, window.innerWidth - 1)),
+        Math.max(0, Math.min(event.clientY, window.innerHeight - 1)), event.target)
+    if(!point) return
+    document.getSelection()?.setBaseAndExtent(drag.anchor.startContainer, drag.anchor.startOffset, point.node, point.offset)
+    this.processSelection(true)
+  }
+
+  captureListeners: DocumentListenerMap = {
+    pointerdown: event => this.#handleWidgetShadowInteraction(event),
+    pointermove: event => {
+      if(this.isInDragSelection) event.preventDefault()
+      if(widgetHostForShadowInteraction(event) || isAppendixInteraction(event)) this.#extendDrag(event)
+    },
+    pointerup: this.#finishDrag,
+    pointercancel: this.#finishDrag,
+    lostpointercapture: this.#finishDrag,
+    // Native clicks establish editing focus and paint the blinking text caret.
+    // Only structural gaps and an actual drag override the browser selection.
+    mousedown: event => {
+      const drag = this.#drag
+      if(!drag) return
+      if(!drag.nativeClick) event.preventDefault()
+      else queueMicrotask(() => {
+        // Save the browser's actual click endpoints after its default action
+        // (including bidi affinity and Shift-click direction).
+        const selection = document.getSelection()
+        const root = getDocumentRoot()
+        if(this.#drag !== drag || drag.moved || !selection?.anchorNode || !selection.focusNode
+          || !root.contains(selection.anchorNode) || !root.contains(selection.focusNode)) return
+        drag.anchor.setStart(selection.anchorNode, selection.anchorOffset)
+        drag.anchor.collapse(true)
+        drag.focus.setStart(selection.focusNode, selection.focusOffset)
+        drag.focus.collapse(true)
+        this.dragAnchor = {node: selection.anchorNode, offset: selection.anchorOffset}
+      })
+    },
+    selectstart: event => { if(this.#drag && (!this.#drag.nativeClick || this.#drag.moved)) event.preventDefault() },
+    click: event => this.#handleModifierClick(event),
+    focusin: event => {
+      this.#handleWidgetShadowInteraction(event)
+      if(!isAppendixInteraction(event) && !this.editor.features.media.isPlaceholderInteraction) this.processSelection()
+    },
+    keydown: event => { this.#handleKeyState(event); this.#handleWidgetShadowInteraction(event) },
+    keyup: event => this.#handleKeyState(event),
+    beforeinput: event => this.#handleWidgetShadowInteraction(event),
+    input: event => this.#handleWidgetShadowInteraction(event),
+    change: event => this.#handleWidgetShadowInteraction(event),
+    wheel: event => this.#handleWidgetWheel(event),
+    scroll: event => this.#handleWidgetScroll(event),
+  }
 
   /** Mirrors the physical modifier state onto BODY without depending on the
    * regular feature listeners, which intentionally ignore widget events. */
@@ -382,7 +503,7 @@ export class SelectionFeature extends EditorFeature {
     if(!widget) return
     if(widget === this.captureSelectedWidget) return
     this.clearSelectedSection()
-    this.isInDragSelection = false
+    this.#endDrag()
     if(event instanceof MouseEvent && event.type === "pointerdown"
       && event.button === 0 && modifierKeyDown(event)) {
       event.preventDefault()
@@ -525,7 +646,7 @@ export class SelectionFeature extends EditorFeature {
     return this.hoverCaret ?? this.#createHoverCaret()
   }
 
-  /** Creates the shared non-text selection caret in BODY's shadow tree. */
+  /** Creates the shared selection caret in BODY's shadow tree. */
   #createSelectionCaret() {
     const node = document.createElement("div")
     node.classList.add("◆", "◆editor-only", "◆selection-caret")
@@ -553,6 +674,9 @@ export class SelectionFeature extends EditorFeature {
     if(!caret) return
     caret.setAttribute("visibility", "hidden")
     setPart(caret, "selection-caret-hidden")
+    caret.style.removeProperty("left")
+    caret.style.removeProperty("top")
+    caret.style.removeProperty("height")
     ;["node", "capture", "gap"].forEach(state => {
       caret.classList.remove(`◆selection-caret-${state}`)
       setPart(caret, `selection-caret-${state}`, false)
@@ -659,54 +783,28 @@ export class SelectionFeature extends EditorFeature {
     return this.editor.appendix.querySelector(".◆empty-document-caret")
   }
 
-  /** Removes all selection marker classes (gap, element, text, empty) from
-   * the document, dropping emptied class attributes, and hides the shared
-   * non-text caret. */
+  /** Retains marker owners so removal also cleans disconnected content. */
+  #markSelection(element: Element, ...markers: string[]) {
+    element.classList.add("◆", ...markers)
+    this.#selectionMarkers.add(element)
+  }
+
+  /** Clears the previous presentation, including markers on removed nodes. */
   #clearSelections() {
-    document.querySelectorAll(".◆gap-before-selected, .◆gap-after-selected").forEach(el => {
-      el.classList.remove("◆gap-before-selected", "◆gap-after-selected")
-      if(!Array.from(el.classList).some(k => k !== "◆" && k.startsWith("◆"))) {
-        el.classList.remove("◆")
+    const markers = ["◆gap-before-selected", "◆gap-after-selected", "◆element-selected",
+      "◆element-capture-selected", "◆text-selected", "◆empty-selected",
+      "◆gap-caret-visible", "◆node-selection-active"]
+    const elements = new Set([...this.#selectionMarkers,
+      ...document.querySelectorAll(markers.map(marker => `.${marker}`).join(","))])
+    elements.forEach(element => {
+      element.classList.remove(...markers)
+      if(!Array.from(element.classList).some(marker => marker !== "◆" && marker.startsWith("◆"))) {
+        element.classList.remove("◆")
       }
-      if(el.classList.length === 0) {
-        el.removeAttribute("class")
-      }
+      if(!element.classList.length) element.removeAttribute("class")
     })
+    this.#selectionMarkers.clear()
     this.#hideSelectionCaret()
-    document.body.classList.remove("◆gap-caret-visible", "◆node-selection-active")
-    if(!Array.from(document.body.classList).some(k => k !== "◆" && k.startsWith("◆"))) {
-      document.body.classList.remove("◆")
-    }
-    if(document.body.classList.length === 0) {
-      document.body.removeAttribute("class")
-    }
-    document.querySelectorAll(".◆element-selected, .◆element-capture-selected").forEach(el => {
-      el.classList.remove("◆element-selected", "◆element-capture-selected")
-      if(!Array.from(el.classList).some(k => k !== "◆" && k.startsWith("◆"))) {
-        el.classList.remove("◆")
-      }
-      if(el.classList.length === 0) {
-        el.removeAttribute("class")
-      }
-    })
-    document.querySelectorAll(".◆text-selected").forEach(el => {
-      el.classList.remove("◆text-selected")
-      if(!Array.from(el.classList).some(k => k !== "◆" && k.startsWith("◆"))) {
-        el.classList.remove("◆")
-      }
-      if(el.classList.length === 0) {
-        el.removeAttribute("class")
-      }
-    })
-    document.querySelectorAll(".◆empty-selected").forEach(el => {
-      el.classList.remove("◆empty-selected")
-      if(!Array.from(el.classList).some(k => k !== "◆" && k.startsWith("◆"))) {
-        el.classList.remove("◆")
-      }
-      if(el.classList.length === 0) {
-        el.removeAttribute("class")
-      }
-    })
   }
 
   /** Replaces malformed or newly entered element selections with one
@@ -755,11 +853,11 @@ export class SelectionFeature extends EditorFeature {
     if(this.editor.features.table.hasCellSelection) return "cell"
     if(this.editor.features.list.isVirtualSelection) return "virtual"
     if($.isGapSelection) return "gap"
-    if($.isElementSelection) return inDragSelection ? "none" : "element"
+    if($.isElementSelection && !inDragSelection) return "element"
     const anchorContainer = getContainer(selection.anchorNode)
     if(anchorContainer && $.isTextSelection) return "text"
     if(anchorContainer && $.isEmptySelection) return "empty"
-    return "none"
+    return "text"
   }
 
   /** Smoothly reveals the selection's logical focus. Node-like selections
@@ -779,6 +877,9 @@ export class SelectionFeature extends EditorFeature {
     if(!selection?.focusNode || !["virtual", "gap", "text", "empty"].includes(kind)) return
 
     const rect = caretRect(selection.focusNode, selection.focusOffset)
+    // Gap arrows extend above their zero-height DOM point. Reveal them
+    // immediately; smooth scrolling may be cancelled by native focus scrolls.
+    const behavior = kind === "gap" ? "instant" as const : "smooth" as const
     let predicted = {
       left: rect.left,
       right: rect.right > rect.left ? rect.right : rect.left + 1,
@@ -805,7 +906,7 @@ export class SelectionFeature extends EditorFeature {
       left = nextScrollLeft - target.scrollLeft
       top = Math.max(-target.scrollTop, Math.min(top, maxTop - target.scrollTop))
       if(!left && !top) return
-      target.scrollBy({left, top, behavior: "smooth"})
+      target.scrollBy({left, top, behavior})
       predicted = {
         left: predicted.left - left,
         right: predicted.right - left,
@@ -840,15 +941,15 @@ export class SelectionFeature extends EditorFeature {
 
     const left = nearestDelta(predicted.left, predicted.right, 0, window.innerWidth)
     const top = nearestDelta(predicted.top, predicted.bottom, 0, window.innerHeight)
-    if(left || top) window.scrollBy({left, top, behavior: "smooth"})
+    if(left || top) window.scrollBy({left, top, behavior})
   }
 
   /** Normalizes and re-applies exactly one selection kind for the current
    * document Selection. This is the invariant boundary used by native
    * selectionchange events and every editor-driven refresh. */
-  processSelection(inDragSelection=false) {
+  processSelection(inDragSelection=this.isInDragSelection) {
     const focusedWidget = focusedWidgetHost()
-    if(focusedWidget) this.#capturedElement = focusedWidget
+    if(focusedWidget && !this.isInDragSelection) this.#capturedElement = focusedWidget
     const capturedElement = this.captureSelectedElement
     let sel: Selection | null
     if(capturedElement) {
@@ -859,15 +960,15 @@ export class SelectionFeature extends EditorFeature {
     else {
       this.#releaseCaptureSelection()
       this.#constrainSelectionToBody()
-      this.#constrainSelectionToMedia()
+      this.#constrainSelectionToAtomicContent()
       sel = document.getSelection()
       const root = getDocumentRoot()
       const isInRoot = (node: Node | null) => node === root || Boolean(node && root.contains(node))
-      if(sel?.isCollapsed && (!isInRoot(sel.anchorNode) || !isInRoot(sel.focusNode))) {
+      if(!sel?.rangeCount || sel.isCollapsed && (!isInRoot(sel.anchorNode) || !isInRoot(sel.focusNode))) {
         $.selectDocumentStart()
         sel = document.getSelection()
       }
-      this.#normalizeNativeSelection()
+      if(!inDragSelection) this.#normalizeNativeSelection()
       sel = document.getSelection()
       this.editor.features.list.clearSelectionPresentation()
     }
@@ -881,7 +982,7 @@ export class SelectionFeature extends EditorFeature {
     }
     if(kind === "capture" && capturedElement) {
       document.body.classList.add("◆", "◆node-selection-active")
-      capturedElement.classList.add("◆", "◆element-selected", "◆element-capture-selected")
+      this.#markSelection(capturedElement, "◆element-selected", "◆element-capture-selected")
       this.#showSelectionCaret("capture")
       return
     }
@@ -889,7 +990,7 @@ export class SelectionFeature extends EditorFeature {
       const section = this.selectedSectionElement
       if(!section) return
       document.body.classList.add("◆", "◆node-selection-active")
-      section.classList.add("◆", "◆element-selected")
+      this.#markSelection(section, "◆element-selected")
       this.#showSelectionCaret("node")
       return
     }
@@ -906,8 +1007,11 @@ export class SelectionFeature extends EditorFeature {
           && (children.item(i) as Element).matches("ul, ol, dl, menu")
         const placement = !before || nestedListAfter ? "before": "after"
         const element = placement === "after" ? before : after
+        if(!element) {
+          return
+        }
         const gapCaret = this.#showSelectionCaret("gap")
-        element?.classList?.add("◆", `◆gap-${placement}-selected`)
+        if(element) this.#markSelection(element, `◆gap-${placement}-selected`)
         gapCaret.classList.add(`◆gap-${placement}-selected`)
         setPart(gapCaret, `gap-caret-gap-${placement}-selected`)
         document.body.classList.add("◆gap-caret-visible")
@@ -918,19 +1022,19 @@ export class SelectionFeature extends EditorFeature {
       const element = sel.anchorNode!.childNodes.item(Math.min(sel.anchorOffset, sel.focusOffset)) as Element
       if(isElement(element)) {
         document.body.classList.add("◆", "◆node-selection-active")
-        element.classList.add("◆", "◆element-selected")
+        this.#markSelection(element, "◆element-selected")
         this.#showSelectionCaret("node")
       }
     }
     else if(kind === "text") {
       const element = getContainer($.commonAncestor)
-      element?.classList.add("◆", "◆text-selected")
+      if(isElement(element)) this.#markSelection(element, "◆text-selected")
     }
     else if(kind === "empty") {
       const element = getContainer($.commonAncestor)
       if(!element) return
-      element.classList.add("◆", "◆empty-selected")
-      if(isDocumentRoot(element) && !this.emptyDocumentCaret) {
+      this.#markSelection(element, "◆empty-selected")
+      if(element === getDocumentRoot() && !this.emptyDocumentCaret) {
         this.#createEmptyDocumentCaret()
       }
     }
@@ -940,21 +1044,13 @@ export class SelectionFeature extends EditorFeature {
    * the drag selection on pointer moves, and mirror modifier key state onto
    * the body (`◆key-mod/alt/shift-down`). */
   passiveListeners: DocumentListenerMap = {
+    "pointermove": event => this.#extendDrag(event),
     "selectionchange": () => {
       if(this.editor.features.media.isPlaceholderInteraction) return
       this.clearSelectedSection()
       this.processSelection(this.isInDragSelection)
     },
-    "pointermove": ev => {
-      // Pointer coordinates are viewport-relative. Comparing page coordinates
-      // with BODY dimensions breaks as soon as BODY has margins (and for a
-      // one-line document its offsetHeight can be smaller than pageY).
-      const inViewportX = 0 <= ev.clientX && ev.clientX <= window.innerWidth
-      const inViewportY = 0 <= ev.clientY && ev.clientY <= window.innerHeight
-      if(this.isInDragSelection && inViewportX && inViewportY) {
-        $.selectCoords(ev.clientX, ev.clientY, true, ev.target)
-      }
-    }
+
   }
 
   /** Whether the last click was part of a double click (suppresses the
@@ -1027,18 +1123,24 @@ export class SelectionFeature extends EditorFeature {
       }
     },
     "pointerdown": ev => {
-      if((isElement(ev.target) && ev.target.closest(".◆editor-only")) || this.hasDoubleClicked || ev.button === 2) {
+      if((isElement(ev.target) && ev.target.closest(".◆editor-only")) || this.hasDoubleClicked || ev.button !== 0) {
         return
       }
-      this.#releaseCaptureSelection()
+      this.#endDrag()
       this.clearSelectedSection()
       const media = ev.target instanceof Node ? mediaContainerForNode(ev.target) : null
       if(media) {
-        ev.preventDefault()
-        $.selectElement(media)
-        this.processSelection()
+        if(this.captureSelectedElement === media) return
+        if(modifierKeyDown(ev) && $.selectedElement !== media) {
+          ev.preventDefault()
+          this.#releaseCaptureSelection()
+          $.selectElement(media)
+          this.processSelection()
+        }
+        else this.captureElement(media)
         return
       }
+      this.#releaseCaptureSelection()
       if($.isEmptyDocumentSelection) {
         // Browsers focus an empty design-mode body on pointerdown but do not
         // consistently create a DOM selection for it. Restore the editing
@@ -1057,10 +1159,12 @@ export class SelectionFeature extends EditorFeature {
         this.processSelection(this.isInDragSelection)
       }
       else {
-        this.isInDragSelection = true
-        ev.preventDefault()
-        $.selectCoords(ev.clientX, ev.clientY, ev.shiftKey, ev.target)
-        this.processSelection(this.isInDragSelection)
+        const point = $.selectCoords(ev.clientX, ev.clientY, ev.shiftKey, ev.target)
+        const nativeClick = (!point || !$.isGapSelection)
+          && !atomicEditingContainer(ev.target instanceof Node ? ev.target : null)
+        if(!nativeClick) ev.preventDefault()
+        this.#beginDrag(ev, nativeClick)
+        this.processSelection(true)
       }
     },
     "click": ev => {

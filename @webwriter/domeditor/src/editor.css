@@ -1211,6 +1211,11 @@ body.◆empty-selected::part(empty-document-caret) {
   display: block;
 }
 
+body:has(> [role~="document"].◆empty-selected)::part(empty-document-caret) {
+  display: block;
+  left: anchor(left);
+}
+
 :is(ul, ol, dl, menu):empty {
   min-height: 1lh;
 }
@@ -1249,9 +1254,6 @@ body::part(gap-caret) {
   position: fixed;
   position-anchor: --gap-anchor;
   --size: 1em;
-}
-body:has(.◆media-empty:is(.◆gap-before-selected, .◆gap-after-selected))::part(gap-caret) {
-    display: none;
 }
 body::part(gap-caret-drop-caret-before), body::part(gap-caret-drop-caret-after) {
     color: var(--sl-color-primary-400);

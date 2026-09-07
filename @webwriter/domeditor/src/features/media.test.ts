@@ -512,4 +512,163 @@ describe("media editing", () => {
     expect(object).toHaveAttribute("type", "text/html")
     expect($.selectedElement).toBe(object)
   })
+
+  it("captures interactive media through an appendix shield and blocks same-click activation", async () => {
+    document.body.innerHTML = '<iframe src="about:blank#frame"></iframe><audio src="sound.mp3"></audio>'
+    const [iframe, audio] = Array.from(document.body.children)
+    const rect = {x: 0, y: 0, left: 0, top: 0, right: 160, bottom: 80, width: 160, height: 80, toJSON: () => ({})}
+    vi.spyOn(iframe, "getBoundingClientRect").mockReturnValue(rect)
+    vi.spyOn(audio, "getBoundingClientRect").mockReturnValue(rect)
+    await vi.waitFor(() => expect(editor.appendix.querySelectorAll(".◆media-interaction-shield")).toHaveLength(2))
+
+    const shield = editor.appendix.querySelector<HTMLElement>(".◆media-interaction-shield")!
+    const nativeActivation = vi.fn()
+    iframe.addEventListener("click", nativeActivation)
+    const pointerdown = new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0})
+    shield.dispatchEvent(pointerdown)
+    shield.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, cancelable: true, button: 0}))
+    shield.dispatchEvent(new MouseEvent("click", {bubbles: true, cancelable: true}))
+    await vi.waitFor(() => expect(shield.isConnected).toBe(false))
+
+    expect(pointerdown.defaultPrevented).toBe(true)
+    expect(nativeActivation).not.toHaveBeenCalled()
+    expect($.selectedElement).toBe(iframe)
+    expect(editor.features.selection.isCaptureSelection).toBe(true)
+    expect(editor.toHTML(true)).toBe('<iframe src="about:blank#frame"></iframe><audio src="sound.mp3"></audio>')
+  })
+
+  it("does not shield empty timed media, widget-owned media, or nested media", async () => {
+    document.body.innerHTML = `
+      <audio src="outer.mp3"><video src="nested.mp4"></video></audio>
+      <media-widget><iframe src="about:blank#widget"></iframe></media-widget>
+      <video></video>
+    `
+    await vi.waitFor(() => expect(editor.appendix.querySelectorAll(".◆media-interaction-shield")).toHaveLength(1))
+    const shield = editor.appendix.querySelector<HTMLElement>(".◆media-interaction-shield")!
+    expect(shield.isConnected).toBe(true)
+    expect(document.querySelector("audio > .◆media-interaction-shield")).toBeNull()
+    expect(document.querySelector("media-widget iframe")?.classList.contains("◆media-interaction-shield")).toBe(false)
+    expect(document.querySelector("video:not([src])")?.classList.contains("◆media-interaction-shield")).toBe(false)
+  })
+
+  it("treats a srcdoc-only iframe as interactive while keeping a blank iframe on the placeholder path", async () => {
+    document.body.innerHTML = ""
+    const contentFrame = document.createElement("iframe")
+    contentFrame.srcdoc = "<p>child content</p>"
+    const blankFrame = document.createElement("iframe")
+    document.body.append(contentFrame, blankFrame)
+    const rect = {x: 0, y: 0, left: 0, top: 0, right: 160, bottom: 80, width: 160, height: 80, toJSON: () => ({})}
+    vi.spyOn(contentFrame, "getBoundingClientRect").mockReturnValue(rect)
+    vi.spyOn(blankFrame, "getBoundingClientRect").mockReturnValue(rect)
+
+    await vi.waitFor(() => expect(editor.appendix.querySelectorAll(".◆media-interaction-shield")).toHaveLength(2))
+    expect(contentFrame).not.toHaveClass("◆media-empty")
+    expect(blankFrame).toHaveClass("◆media-empty")
+
+    $.selectElement(blankFrame)
+    editor.features.selection.processSelection()
+    document.dispatchEvent(new Event("selectionchange"))
+    await vi.waitFor(() => expect(editor.features.media.placeholder.target).toBe(blankFrame))
+
+    const shield = editor.appendix.querySelector<HTMLElement>(".◆media-interaction-shield")!
+    shield.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0}))
+    expect($.selectedElement).toBe(contentFrame)
+    expect(editor.features.selection.isCaptureSelection).toBe(true)
+  })
+
+  it.each(['<iframe></iframe>', '<iframe srcdoc=""></iframe>'])(
+    "captures an empty iframe through its surface and opens the source controls: %s", async html => {
+      document.body.innerHTML = `<p>text</p>${html}`
+      const frame = document.querySelector("iframe")!
+      vi.spyOn(frame, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 60, 320, 180))
+      await vi.waitFor(() => expect(editor.appendix.querySelector(".◆media-interaction-shield")).not.toBeNull())
+      const shield = editor.appendix.querySelector<HTMLElement>(".◆media-interaction-shield")!
+
+      const down = new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0})
+      shield.dispatchEvent(down)
+      shield.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, composed: true, cancelable: true, button: 0}))
+      shield.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true, cancelable: true}))
+      await vi.waitFor(() => expect(shield.isConnected).toBe(false))
+
+      expect(down.defaultPrevented).toBe(true)
+      expect(editor.features.selection.captureSelectedElement).toBe(frame)
+      expect(frame).toHaveClass("◆element-capture-selected", "◆media-empty")
+      const placeholder = editor.features.media.placeholder
+      expect(placeholder.target).toBe(frame)
+      expect(placeholder.element).toHaveAttribute("data-open")
+      expect(editor.toHTML(true)).toBe(`<p>text</p>${html}`)
+
+      editor.features.selection.actions.selectNode({type: "selectNode", path: [0]})
+      document.dispatchEvent(new Event("selectionchange"))
+      await vi.waitFor(() => expect(editor.appendix.querySelector(".◆media-interaction-shield")).not.toBeNull())
+      expect(placeholder.element).not.toHaveAttribute("data-open")
+    },
+  )
+
+  it("does not let invisible media shields intercept clicks and hides zero-sized surfaces", async () => {
+    document.body.innerHTML = `
+      <p>before</p>
+      <iframe src="about:blank#hidden" hidden></iframe>
+      <audio src="sound.mp3" style="visibility: hidden"></audio>
+      <video src="movie.mp4" style="visibility: collapse"></video>
+      <embed src="movie.swf" style="display: none">
+      <iframe src="about:blank#zero"></iframe>
+    `
+    const zero = document.querySelector<HTMLIFrameElement>("iframe:last-of-type")!
+    vi.spyOn(zero, "getBoundingClientRect").mockReturnValue({
+      x: 0, y: 0, left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0, toJSON: () => ({}),
+    })
+    await vi.waitFor(() => expect(editor.appendix.querySelectorAll(".◆media-interaction-shield")).toHaveLength(1))
+
+    const shield = editor.appendix.querySelector<HTMLElement>(".◆media-interaction-shield")!
+    expect(shield.hidden).toBe(true)
+    expect(getComputedStyle(shield).display).toBe("none")
+    expect(document.querySelector("iframe[hidden]")?.classList.contains("◆media-empty")).toBe(false)
+    expect(document.querySelector("audio")?.classList.contains("◆media-empty")).toBe(false)
+  })
+
+  it("removes shields when media is removed or the feature is disabled", async () => {
+    document.body.innerHTML = '<iframe src="about:blank#frame"></iframe>'
+    const iframe = document.querySelector("iframe")!
+    vi.spyOn(iframe, "getBoundingClientRect").mockReturnValue({
+      x: 0, y: 0, left: 0, top: 0, right: 100, bottom: 50, width: 100, height: 50, toJSON: () => ({}),
+    })
+    await vi.waitFor(() => expect(editor.appendix.querySelectorAll(".◆media-interaction-shield")).toHaveLength(1))
+    iframe.remove()
+    await vi.waitFor(() => expect(editor.appendix.querySelectorAll(".◆media-interaction-shield")).toHaveLength(0))
+
+    document.body.innerHTML = '<audio src="sound.mp3"></audio>'
+    await vi.waitFor(() => expect(editor.appendix.querySelectorAll(".◆media-interaction-shield")).toHaveLength(1))
+    editor.features.media.disable()
+    expect(editor.appendix.querySelectorAll(".◆media-interaction-shield")).toHaveLength(0)
+  })
+
+  it("repositions shields on layout refresh and restores the previous media shield after capture switches", async () => {
+    document.body.innerHTML = '<iframe src="about:blank#frame"></iframe><audio src="sound.mp3"></audio>'
+    const [iframe, audio] = Array.from(document.body.children)
+    let width = 100
+    vi.spyOn(iframe, "getBoundingClientRect").mockImplementation(() => ({
+      x: 0, y: 0, left: 0, top: 0, right: width, bottom: 50, width, height: 50, toJSON: () => ({}),
+    }))
+    vi.spyOn(audio, "getBoundingClientRect").mockReturnValue({
+      x: 0, y: 60, left: 0, top: 60, right: 100, bottom: 110, width: 100, height: 50, toJSON: () => ({}),
+    })
+    await vi.waitFor(() => expect(editor.appendix.querySelectorAll(".◆media-interaction-shield")).toHaveLength(2))
+
+    const iframeShield = editor.appendix.querySelector<HTMLElement>(".◆media-interaction-shield")!
+    width = 220
+    window.dispatchEvent(new Event("resize"))
+    await vi.waitFor(() => expect(iframeShield.style.width).toBe("220px"))
+
+    iframeShield.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0}))
+    iframeShield.dispatchEvent(new MouseEvent("click", {bubbles: true, cancelable: true}))
+    await vi.waitFor(() => expect($.selectedElement).toBe(iframe))
+
+    const audioShield = Array.from(editor.appendix.querySelectorAll<HTMLElement>(".◆media-interaction-shield"))
+      .find(shield => shield !== iframeShield)!
+    audioShield.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0}))
+    expect($.selectedElement).toBe(audio)
+    expect(editor.features.selection.isCaptureSelection).toBe(true)
+    await vi.waitFor(() => expect(editor.appendix.querySelectorAll(".◆media-interaction-shield")).toHaveLength(2))
+  })
 })

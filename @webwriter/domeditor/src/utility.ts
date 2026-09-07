@@ -4,6 +4,7 @@ import {mediaElementSelector} from "./media"
 import {formControlSelector, formInteractionSelector} from "./form"
 import {isSectionElement} from "./sections"
 import {getDocumentRoot} from "./document-template"
+import {SVG_NAMESPACE} from "./graphic"
 
 export function createStylesheet(content: string) {
   const stylesheet = new CSSStyleSheet()
@@ -43,9 +44,22 @@ function focusEditorWindow() {
 export function isAtomicEditingElement(node: Node | null): node is Element {
   return node instanceof Element
     && (node.matches(mediaElementSelector)
+      || node.namespaceURI === SVG_NAMESPACE && node.localName === "svg"
       || node.matches(formControlSelector)
       || node.localName.includes("-")
       || node.hasAttribute("is"))
+}
+
+/** Outermost authored atomic host, including points reported inside open or
+ * closed widget shadow trees. The document template remains an editing root. */
+export function atomicEditingContainer(node: Node | null) {
+  const root = getDocumentRoot()
+  let atomic: Element | null = null
+  while(node && node !== root && node !== document.body) {
+    if(isAtomicEditingElement(node)) atomic = node
+    node = node.parentNode ?? (node instanceof ShadowRoot ? node.host : null)
+  }
+  return node ? atomic : null
 }
 
 function adjacentElement(nodes: NodeListOf<ChildNode>, offset: number, direction: "before" | "after") {
@@ -235,7 +249,13 @@ export class EditingSelection {
 
   /** Selects the element itself (the selection is anchored in its parent, spanning exactly the element). */
   static selectElement(element: Element, focus=true) {
-    this.range.selectNode(element)
+    if(!element.parentNode) return
+    if(this.#selection.rangeCount) this.range.selectNode(element)
+    else {
+      const range = document.createRange()
+      range.selectNode(element)
+      this.#selection.addRange(range)
+    }
     if(focus) focusEditorWindow()
   }
 
@@ -256,22 +276,52 @@ export class EditingSelection {
   /** Moves (or with `extend`, extends) the selection to the document position at the given viewport coordinates, snapping to element gaps at text boundaries. Requires layout (caretPositionFromPoint). */
   static selectCoords(x: number, y: number, extend=false, pointerTarget?: EventTarget | null) {
     focusEditorWindow()
+    const point = this.pointFromCoords(x, y, pointerTarget)
+    if(!point) return
+    if(extend) this.extend(point.node, point.offset)
+    else this.selectRange(point.node, point.offset)
+    return point
+  }
+
+  /** Resolves text and structural gaps identically for clicks and drags,
+   * without ever installing an intermediate selection inside a widget. */
+  static pointFromCoords(x: number, y: number, pointerTarget?: EventTarget | null) {
     const {offset, offsetNode} = document.caretPositionFromPoint(x, y) ?? {}
     const root = getDocumentRoot()
+    const point = (node: Node, offset: number) => ({node, offset})
+    const gap = (element: Element, placement: "before" | "after") => {
+      const parent = element.parentNode!
+      return point(parent, Array.from(parent.childNodes).indexOf(element) + (placement === "after" ? 1 : 0))
+    }
+    // Pointer capture retargets moves to BODY. Hit-test the authored stack
+    // beneath appendix shields so iframe/audio positions still resolve even
+    // when caretPositionFromPoint sees the overlay instead of the media.
+    const hit = document.elementsFromPoint?.(x, y).find(element => element !== document.body
+      && element !== document.documentElement && root.contains(element))
+    const atomic = atomicEditingContainer(hit ?? (pointerTarget instanceof Node ? pointerTarget : null))
+      ?? atomicEditingContainer(offsetNode ?? null)
+    if(atomic) {
+      const rect = atomic.getBoundingClientRect()
+      const inline = getComputedStyle(atomic).display.startsWith("inline")
+      const after = y > rect.bottom || y >= rect.top && (inline
+        ? x > rect.left + rect.width / 2
+        : y > rect.top + rect.height / 2)
+      return gap(atomic, after ? "after" : "before")
+    }
+    if(offsetNode && offsetNode !== root && !root.contains(offsetNode)) return
     const firstRootElement = root.firstElementChild
     const firstRootElementIndex = firstRootElement? Array.from(root.childNodes).indexOf(firstRootElement): -1
     if(!offsetNode) {
-      if(!extend && firstRootElement && y < firstRootElement.getBoundingClientRect().top) {
-        this.selectGap(firstRootElement, "before")
+      if(firstRootElement && y < firstRootElement.getBoundingClientRect().top) {
+        return gap(firstRootElement, "before")
       }
       return
     }
     if(typeof offset !== "number") return
     const isBeforeFirstRootElement = offsetNode === root && firstRootElement !== null && firstRootElementIndex >= 0 && offset <= firstRootElementIndex &&
       y < firstRootElement.getBoundingClientRect().top
-    if(!extend && isBeforeFirstRootElement) {
-      this.selectGap(firstRootElement, "before")
-      return
+    if(isBeforeFirstRootElement) {
+      return gap(firstRootElement, "before")
     }
     const targetElement = pointerTarget instanceof Element
       ? pointerTarget
@@ -280,7 +330,7 @@ export class EditingSelection {
         : null
     const targetCell = targetElement?.closest("td, th") ?? null
     const targetTable = targetCell?.closest("table") ?? null
-    if(!extend && targetCell && targetTable && !targetCell.contains(offsetNode)) {
+    if(targetCell && targetTable && !targetCell.contains(offsetNode)) {
       const tableRect = targetTable.getBoundingClientRect()
       const pointsInsideTable = tableRect.left <= x && x <= tableRect.right
         && tableRect.top <= y && y <= tableRect.bottom
@@ -288,22 +338,20 @@ export class EditingSelection {
         const cellRect = targetCell.getBoundingClientRect()
         const direction = cellRect.width > 0 && x > cellRect.left + cellRect.width / 2 ? "end" : "start"
         const text = edgeTextDescendant(targetCell, direction)
-        this.selectRange(text ?? targetCell, direction === "end" && text ? text.length : 0)
-        return
+        return point(text ?? targetCell, direction === "end" && text ? text.length : 0)
       }
     }
     const hitElement = offsetNode instanceof Element ? offsetNode : offsetNode.parentElement
     let outerTable = hitElement?.closest("table") ?? null
     while(outerTable?.parentElement?.closest("table")) outerTable = outerTable.parentElement.closest("table")
-    if(!extend && outerTable) {
+    if(outerTable) {
       const tableRect = outerTable.getBoundingClientRect()
       const hasTableBox = tableRect.right > tableRect.left || tableRect.bottom > tableRect.top
       if(hasTableBox && (y < tableRect.top || y > tableRect.bottom)) {
-        this.selectGap(outerTable, y < tableRect.top ? "before" : "after")
-        return
+        return gap(outerTable, y < tableRect.top ? "before" : "after")
       }
     }
-    if(!extend && offsetNode instanceof Element && typeof offset === "number") {
+    if(offsetNode instanceof Element && typeof offset === "number") {
       const gapAddressableElement = (node: Node | null) => isAtomicEditingElement(node)
         || node instanceof Element && node.matches("table")
       const atomicAtCaret = gapAddressableElement(offsetNode) ? offsetNode : null
@@ -320,26 +368,22 @@ export class EditingSelection {
         const hasBox = rect.right > rect.left || rect.bottom > rect.top
         if(hasBox && y < rect.top) {
           const previous = atomicAtCaret.previousElementSibling
-          this.selectGap(isAtomicEditingElement(previous) && y > previous.getBoundingClientRect().bottom ? previous : atomicAtCaret,
+          return gap(isAtomicEditingElement(previous) && y > previous.getBoundingClientRect().bottom ? previous : atomicAtCaret,
             isAtomicEditingElement(previous) && y > previous.getBoundingClientRect().bottom ? "after" : "before")
-          return
         }
         if(hasBox && y > rect.bottom) {
-          this.selectGap(atomicAtCaret, "after")
-          return
+          return gap(atomicAtCaret, "after")
         }
       }
       const beforeRect = atomicBeforeCaret?.getBoundingClientRect()
       if(atomicBeforeCaret && beforeRect && (beforeRect.right > beforeRect.left || beforeRect.bottom > beforeRect.top)
         && y > beforeRect.bottom) {
-        this.selectGap(atomicBeforeCaret, "after")
-        return
+        return gap(atomicBeforeCaret, "after")
       }
       const afterRect = atomicAfterCaret?.getBoundingClientRect()
       if(atomicAfterCaret && afterRect && (afterRect.right > afterRect.left || afterRect.bottom > afterRect.top)
         && y > afterRect.bottom) {
-        this.selectGap(atomicAfterCaret, "after")
-        return
+        return gap(atomicAfterCaret, "after")
       }
     }
     const caretAtEndOrStart = offsetNode instanceof Text && (offset === 0 || offsetNode.length === offset)
@@ -375,9 +419,8 @@ export class EditingSelection {
     // In a nested list, the indentation gutter represents the structural gap
     // before that list. Chromium instead maps it to offset 0 of the first LI,
     // which makes the nested list impossible to address with the pointer.
-    if(!extend && nestedList && isBeforeNestedItemContent) {
-      this.selectGap(nestedList, "before")
-      return
+    if(nestedList && isBeforeNestedItemContent) {
+      return gap(nestedList, "before")
     }
     // A click just outside the inline text box can still resolve to the
     // text's first/last caret position. It is only a gap click when it is
@@ -385,20 +428,10 @@ export class EditingSelection {
     // the block must keep the boundary caret position.
     const hasBoundaryBox = boundaryRect.right > boundaryRect.left || boundaryRect.bottom > boundaryRect.top
     const isAtGap = caretAtEndOrStart && hasBoundaryBox && (y < boundaryRect.top || y > boundaryRect.bottom)
-    if(!extend && isAtGap) {
-      this.selectGap(offsetNode.parentElement!, isBefore? "before": "after")
+    if(isAtGap) {
+      return gap(offsetNode.parentElement!, isBefore? "before": "after")
     }
-    else if(extend && isAtGap) {
-      return
-    }
-    else {
-      if(extend) {
-        this.extend(offsetNode!, offset)
-      }
-      else {
-        this.selectRange(offsetNode!, offset)
-      }
-    }
+    return point(offsetNode, offset)
   }
 
   /** Whether the selection is collapsed (a caret). */
@@ -428,7 +461,7 @@ export class EditingSelection {
   /** Whether exactly one element is selected (anchored in its parent,
    * spanning one child). */
   static get isElementSelection() {
-    if(!isElement(this.anchor) || Math.abs(this.#selection.anchorOffset - this.#selection.focusOffset) !== 1) return false
+    if(this.anchor !== this.focus || !isElement(this.anchor) || Math.abs(this.#selection.anchorOffset - this.#selection.focusOffset) !== 1) return false
     const index = Math.min(this.#selection.anchorOffset, this.#selection.focusOffset)
     const selected = this.anchor.childNodes.item(index)
     return isElement(selected) && (selected === getDocumentRoot()
@@ -531,7 +564,7 @@ export class EditingSelection {
       return this.anchorOffset > this.focusOffset
     }
     else if(this.anchor && this.focus) {
-      return this.anchor.compareDocumentPosition(this.focus) === Node.DOCUMENT_POSITION_PRECEDING
+      return Boolean(this.anchor.compareDocumentPosition(this.focus) & Node.DOCUMENT_POSITION_PRECEDING)
     }
     else {
       return false
@@ -1158,7 +1191,13 @@ export function isAppendixInteraction(event: Event) {
     // while another shadow tree is being disconnected.
     return false
   }
-  return origin instanceof Node && origin.getRootNode() === appendix
+  if(!(origin instanceof Node)) return false
+  let root = origin.getRootNode()
+  while(root instanceof ShadowRoot) {
+    if(root === appendix) return true
+    root = root.host.getRootNode()
+  }
+  return false
 }
 
 /** The authored native form control that owns an event. LABEL events resolve

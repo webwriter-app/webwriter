@@ -25,6 +25,8 @@ export class EditorFeature {
 
   constructor(readonly editor: DOMEditor) {}
   protected isEnabled = false
+  /** Boundary listeners inspect composed origins themselves before feature routing. */
+  captureListeners: DocumentListenerMap = {}
   passiveListeners: DocumentListenerMap = {}
   activeListeners: DocumentListenerMap = {}
   constraints: ConstraintMap = {}
@@ -44,6 +46,10 @@ export class EditorFeature {
     if(this.listenerRegistrations.some(registration => registration.owner === listeners)) return
     Object.entries(listeners).forEach(([type, listener]) => {
       const wrapped: EventListener = event => {
+        if(listeners === this.captureListeners) {
+          listener(event as never)
+          return
+        }
         const captureOwnsInteraction = capturedInteractionEvents.has(type)
           && Boolean(this.editor.features?.selection?.isCaptureSelection)
         if((!captureOwnsInteraction || this.handlesCapturedElementInteractions)
@@ -68,6 +74,7 @@ export class EditorFeature {
   
   enable() {
     if(this.isEnabled) return
+    this.addListeners(this.captureListeners, {capture: true, passive: false})
     this.addListeners(this.activeListeners)
     this.addListeners(this.passiveListeners, {passive: true})
     this.isEnabled = true
@@ -75,6 +82,7 @@ export class EditorFeature {
   
   disable() {
     if(!this.isEnabled) return
+    this.removeListeners(this.captureListeners)
     this.removeListeners(this.activeListeners)
     this.removeListeners(this.passiveListeners)
     this.isEnabled = false

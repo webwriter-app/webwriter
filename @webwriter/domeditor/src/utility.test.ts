@@ -121,6 +121,24 @@ describe("selectCoords()", () => {
     })
   }
 
+  it("resolves media beneath an appendix shield during a captured drag", () => {
+    setBody('<p>before</p><iframe src="about:blank"></iframe>')
+    const frame = document.querySelector("iframe")!
+    mockHitTest(document.body, 0)
+    const rect = new DOMRect(0, 100, 200, 100)
+    frame.getBoundingClientRect = () => rect
+    const hitStack = Object.getOwnPropertyDescriptor(document, "elementsFromPoint")
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: () => [document.body, frame]})
+    try {
+      expect($.pointFromCoords(50, 180, document.body)).toEqual({node: document.body, offset: 2})
+      expect($.pointFromCoords(50, 120, document.body)).toEqual({node: document.body, offset: 1})
+    }
+    finally {
+      if(hitStack) Object.defineProperty(document, "elementsFromPoint", hitStack)
+      else Reflect.deleteProperty(document, "elementsFromPoint")
+    }
+  })
+
   it("selects the first text position when clicking beside the block", () => {
     setBody("<p>hello</p>")
     const block = document.body.firstElementChild!
@@ -361,6 +379,16 @@ describe("isGapSelection", () => {
 })
 
 describe("isElementSelection", () => {
+  it("does not mistake matching offsets in different parents for a node selection", () => {
+    setBody("<div><p>first</p><p>second</p></div><section><p>third</p></section>")
+    const first = document.querySelector("div")!
+    const last = document.querySelector("section")!
+    $.selectRange(first, 0, last, 1)
+    expect($.isElementSelection).toBe(false)
+    expect($.anchor).toBe(first)
+    expect($.focus).toBe(last)
+  })
+
   it("is true when an element is selected", () => {
     setBody("<p>hello</p>")
     $.selectElement(document.body.firstElementChild!)

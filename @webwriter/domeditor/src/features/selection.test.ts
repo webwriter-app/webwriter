@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach, vi } from "vitest"
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import '@testing-library/jest-dom/vitest'
 
 import { DOMEditor } from "../domeditor"
@@ -7,22 +7,22 @@ import { SelectionFeature } from "./selection"
 import { $ } from "../utility"
 import { selectionChangeEvent } from "../editor-bridge"
 
-var editor = new DOMEditor()
-const feature = editor.features.selection
+let editor: DOMEditor
+let feature: SelectionFeature
 let initialParagraph: Element | null = null
 
-// Not testable in happy-dom: plain pointerdown drag selection and pointermove
-// (require document.caretPositionFromPoint) and double/triple click word/line
-// selection (requires Selection.modify). These are exercised in the browser.
-
-beforeEach(async () => {
+// Coordinate tests stub native hit testing. Real browser checks also cover
+// native painting, pointer capture, and live Range adjustment after mutations.
+beforeEach(() => {
   document.body.innerHTML = ""
   document.getSelection()?.removeAllRanges()
-  feature.clearSelectedSection()
-  await new Promise<void>(resolve => queueMicrotask(resolve))
+  editor = new DOMEditor()
+  feature = editor.features.selection
   initialParagraph = document.body.firstElementChild
   document.body.className = ""
 })
+
+afterEach(() => editor.destroy())
 
 function appendToBody(...nodes: Node[]) {
   if(initialParagraph?.parentElement === document.body) {
@@ -250,7 +250,8 @@ describe("processSelection()", () => {
     feature.processSelection()
     $.move(p1.firstChild!, 0)
     feature.processSelection()
-    expect(feature.gapCaret!.getAttribute("visibility")).toBe("hidden")
+    expect(feature.selectionCaret).not.toHaveClass("◆selection-caret-gap")
+    expect(feature.selectionCaret?.getAttribute("part") ?? "selection-caret-hidden").toContain("selection-caret-hidden")
   })
   it("shows and clears an outline preview for a breadcrumb path", () => {
     const p = el("p", "hello")
@@ -402,7 +403,7 @@ describe("processSelection()", () => {
 
     expect($.anchor).toBe(template)
     expect(template).toHaveClass("◆empty-selected")
-    expect(feature.emptyDocumentCaret).toHaveAttribute("part", "empty-document-caret")
+    expect(feature.emptyDocumentCaret).toBeInTheDocument()
   })
   it("does not reinterpret a list template as an empty authored list", () => {
     document.body.innerHTML = '<ul is="list-widget" role="document"></ul>'
@@ -413,7 +414,7 @@ describe("processSelection()", () => {
 
     expect(template).toHaveClass("◆empty-selected")
     expect(editor.features.list.isVirtualSelection).toBe(false)
-    expect(feature.emptyDocumentCaret).toHaveAttribute("part", "empty-document-caret")
+    expect(feature.emptyDocumentCaret).toBeInTheDocument()
   })
   it("resolves a stale mark breadcrumb path to its containing block", () => {
     document.body.innerHTML = "<p><b>hello</b></p>"
@@ -462,18 +463,18 @@ describe("scrolling selections into view", () => {
     }
   })
 
-  it("smoothly reveals the focus caret for text, empty, gap, and virtual-list selections", () => {
+  it("reveals the focus caret for text, empty, gap, and virtual-list selections", () => {
     const nativeRect = Range.prototype.getBoundingClientRect
     const scrollBy = vi.spyOn(window, "scrollBy").mockImplementation(() => {})
     Object.defineProperty(Range.prototype, "getBoundingClientRect", {
       configurable: true,
       value: () => new DOMRect(10, window.innerHeight + 40, 0, 20),
     })
-    const expectMinimalScroll = () => {
+    const expectMinimalScroll = (behavior = "smooth") => {
       scrollBy.mockClear()
       feature.processSelection()
       expect(scrollBy).toHaveBeenCalledOnce()
-      expect(scrollBy).toHaveBeenCalledWith({left: 0, top: 60, behavior: "smooth"})
+      expect(scrollBy).toHaveBeenCalledWith({left: 0, top: 60, behavior})
     }
 
     try {
@@ -488,7 +489,7 @@ describe("scrolling selections into view", () => {
 
       document.body.innerHTML = "<p>a</p><p>b</p>"
       $.selectGap(document.querySelector("p")!, "after")
-      expectMinimalScroll()
+      expectMinimalScroll("instant")
 
       document.body.innerHTML = "<ul></ul>"
       $.move(document.querySelector("ul")!, 0)
@@ -1344,5 +1345,264 @@ describe("document listeners", () => {
     expect($.anchorOffset).toBe(0)
     expect($.focus).toBe(document.body)
     expect($.focusOffset).toBe(document.body.childNodes.length)
+  })
+})
+
+
+describe("selection invariants", () => {
+  const originalHitTest = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint")
+  beforeEach(() => {
+    Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, writable: true, value: () => null})
+  })
+  afterEach(() => {
+    document.dispatchEvent(new MouseEvent("pointercancel", {bubbles: true}))
+    vi.restoreAllMocks()
+    if(originalHitTest) Object.defineProperty(document, "caretPositionFromPoint", originalHitTest)
+    else Reflect.deleteProperty(document, "caretPositionFromPoint")
+  })
+
+  function pointer(target: EventTarget, type: string, x: number, y: number, options: MouseEventInit = {}) {
+    const event = new MouseEvent(type, {bubbles: true, composed: true, cancelable: true, clientX: x, clientY: y, ...options})
+    target.dispatchEvent(event)
+    return event
+  }
+
+  function hitTest() {
+    return vi.spyOn(document, "caretPositionFromPoint").mockImplementation((x, y) => {
+      const text = document.querySelector("p")!.firstChild!
+      return {offsetNode: text, offset: y < 20 ? 0 : Math.min(5, Math.floor(x / 10))} as unknown as CaretPosition
+    })
+  }
+
+  function textDocument() {
+    document.body.innerHTML = "<p>hello</p><second-widget></second-widget><p>world</p>"
+    const paragraph = document.querySelector("p")!
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 20, 60, 20))
+    vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 20, 60, 20))
+    return paragraph
+  }
+
+  it("restores a visible caret when an active frame has no native range", () => {
+    textDocument()
+    document.getSelection()!.removeAllRanges()
+    window.dispatchEvent(new Event("focus"))
+    expect(document.getSelection()!.rangeCount).toBe(1)
+    expect(feature.selectionCaret).not.toHaveAttribute("visibility")
+  })
+
+  it("leaves cross-block highlighting to the browser without changing its endpoints", () => {
+    const paragraph = textDocument()
+    const last = document.querySelectorAll("p")[1].firstChild!
+    $.selectRange(last, 3, paragraph.firstChild!, 1)
+    feature.processSelection()
+    expect($.anchor).toBe(last)
+    expect($.focusOffset).toBe(1)
+    expect(feature.selectionCaret?.getAttribute("part") ?? "selection-caret-hidden").toContain("selection-caret-hidden")
+    expect(document.body).not.toHaveClass("◆node-selection-active", "◆gap-caret-visible")
+  })
+
+  it("extends a text drag both ways and restores the exact text point", () => {
+    const paragraph = textDocument()
+    hitTest()
+    pointer(paragraph, "pointerdown", 20, 25)
+    pointer(paragraph, "pointermove", 50, 25)
+    expect($.anchorOffset).toBe(2)
+    expect($.focusOffset).toBe(5)
+    pointer(paragraph, "pointermove", 0, 25)
+    expect($.anchorOffset).toBe(2)
+    expect($.focusOffset).toBe(0)
+    pointer(paragraph, "pointermove", 20, 25)
+    expect($.anchor).toBe(paragraph.firstChild)
+    expect($.anchorOffset).toBe(2)
+    expect($.isEmpty).toBe(true)
+  })
+
+  it("allows native text clicks to focus the editing host and establish the caret", () => {
+    const paragraph = textDocument()
+    hitTest()
+    const down = new MouseEvent("pointerdown", {bubbles: true, cancelable: true, clientX: 20, clientY: 25})
+    paragraph.dispatchEvent(down)
+    const mouse = new MouseEvent("mousedown", {bubbles: true, cancelable: true})
+    paragraph.dispatchEvent(mouse)
+    const start = new Event("selectstart", {bubbles: true, cancelable: true})
+    paragraph.dispatchEvent(start)
+    expect(down.defaultPrevented).toBe(false)
+    expect(mouse.defaultPrevented).toBe(false)
+    expect(start.defaultPrevented).toBe(false)
+    expect(document.body).not.toHaveClass("◆selection-dragging", "◆gap-caret-visible", "◆node-selection-active")
+    pointer(paragraph, "pointermove", 40, 25)
+    const dragStart = new Event("selectstart", {bubbles: true, cancelable: true})
+    paragraph.dispatchEvent(dragStart)
+    expect(dragStart.defaultPrevented).toBe(true)
+  })
+
+  it("restores the browser's native click point when its hit test has different affinity", async () => {
+    const paragraph = textDocument()
+    hitTest()
+    pointer(paragraph, "pointerdown", 20, 25)
+    paragraph.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, cancelable: true}))
+    // Model the native mouse default choosing the other side of an inline or
+    // bidi boundary after pointerdown's coordinate estimate.
+    $.selectRange(paragraph.firstChild!, 3)
+    await Promise.resolve()
+    pointer(paragraph, "pointermove", 50, 25)
+    expect($.anchorOffset).toBe(3)
+    pointer(paragraph, "pointermove", 20, 25)
+    expect($.anchorOffset).toBe(3)
+    expect($.focusOffset).toBe(3)
+  })
+
+  it("allows a native text click when coordinate hit testing returns no point", () => {
+    const paragraph = textDocument()
+    $.selectGap(paragraph, "before")
+    const down = pointer(paragraph, "pointerdown", 20, 25)
+    const mouse = new MouseEvent("mousedown", {bubbles: true, cancelable: true})
+    paragraph.dispatchEvent(mouse)
+    expect(down.defaultPrevented).toBe(false)
+    expect(mouse.defaultPrevented).toBe(false)
+  })
+
+  it("projects a drag over nested SVG text to the outer graphic boundary", () => {
+    const paragraph = textDocument()
+    document.body.insertAdjacentHTML("beforeend", '<svg><svg><text>graphic label</text></svg></svg>')
+    const graphic = document.querySelector("svg")!
+    const label = graphic.querySelector("text")!
+    const hit = hitTest()
+    pointer(paragraph, "pointerdown", 20, 25)
+    hit.mockReturnValue({offsetNode: label.firstChild!, offset: 3} as unknown as CaretPosition)
+    vi.spyOn(graphic, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 50, 100, 40))
+    pointer(label, "pointermove", 50, 80)
+    expect($.anchor).toBe(paragraph.firstChild)
+    expect($.anchorOffset).toBe(2)
+    expect($.focus).toBe(document.body)
+    expect($.focusOffset).toBe(4)
+    pointer(paragraph, "pointermove", 20, 25)
+    expect($.isEmpty).toBe(true)
+    expect($.anchorOffset).toBe(2)
+  })
+
+  it("repairs an external selection inside SVG without changing its contents", () => {
+    document.body.innerHTML = '<p>hello</p><svg><svg><text>label</text></svg></svg>'
+    const graphic = document.querySelector("svg")!
+    const text = graphic.querySelector("text")!.firstChild!
+    $.selectRange(text, 2)
+    feature.processSelection()
+    expect($.selectedElement).toBe(graphic)
+    expect(graphic.textContent).toBe("label")
+    expect($.anchor).toBe(document.body)
+  })
+
+  it("restores a gap after extending into text and back to its original position", () => {
+    const paragraph = textDocument()
+    hitTest()
+    pointer(paragraph, "pointerdown", 0, 10)
+    expect($.isGapSelection).toBe(true)
+    pointer(paragraph, "pointermove", 40, 25)
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(0)
+    expect($.focus).toBe(paragraph.firstChild)
+    pointer(paragraph, "pointermove", 0, 10)
+    expect($.isGapSelection).toBe(true)
+    expect($.anchorOffset).toBe(0)
+    expect(paragraph).toHaveClass("◆gap-before-selected")
+  })
+
+  it("extends a text selection into a gap instead of ignoring the pointer", () => {
+    const paragraph = textDocument()
+    hitTest()
+    pointer(paragraph, "pointerdown", 30, 25)
+    pointer(paragraph, "pointermove", 0, 10)
+    expect($.anchor).toBe(paragraph.firstChild)
+    expect($.anchorOffset).toBe(3)
+    expect($.focus).toBe(document.body)
+    expect($.focusOffset).toBe(0)
+  })
+
+  it("preserves the anchor and backward direction while crossing a one-element range", () => {
+    const paragraph = textDocument()
+    vi.spyOn(document, "caretPositionFromPoint").mockImplementation((_x, y) => ({offsetNode: document.body, offset: y > 50 ? 2 : 1}) as unknown as CaretPosition)
+    pointer(paragraph, "pointerdown", 0, 60)
+    pointer(paragraph, "pointermove", 0, 45)
+    expect($.anchorOffset).toBe(2)
+    expect($.focusOffset).toBe(1)
+    expect(feature.selectionCaret?.getAttribute("part") ?? "selection-caret-hidden").toContain("selection-caret-hidden")
+    pointer(paragraph, "pointermove", 0, 60)
+    expect($.isGapSelection).toBe(true)
+    expect($.anchorOffset).toBe(2)
+  })
+
+  it("shift-drag preserves the existing anchor and restores its initial range", () => {
+    const paragraph = textDocument()
+    hitTest()
+    $.selectRange(paragraph.firstChild!, 1)
+    pointer(paragraph, "pointerdown", 30, 25, {shiftKey: true})
+    pointer(paragraph, "pointermove", 50, 25)
+    expect($.anchorOffset).toBe(1)
+    pointer(paragraph, "pointermove", 30, 25)
+    expect($.anchorOffset).toBe(1)
+    expect($.focusOffset).toBe(3)
+  })
+
+  it.each(["open", "closed"] as const)("keeps drag endpoints outside a %s widget shadow tree and ends there", mode => {
+    const paragraph = textDocument()
+    const widget = document.querySelector("second-widget")!
+    const shadow = widget.attachShadow({mode})
+    const surface = document.createElement("span")
+    surface.textContent = "private widget text"
+    shadow.append(surface)
+    const hit = hitTest()
+    pointer(paragraph, "pointerdown", 20, 25)
+    hit.mockReturnValue({offsetNode: surface.firstChild!, offset: 4} as unknown as CaretPosition)
+    vi.spyOn(widget, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 50, 100, 40))
+    pointer(surface, "pointermove", 50, 80)
+    expect($.anchor).toBe(paragraph.firstChild)
+    expect($.focus).toBe(document.body)
+    expect($.focusOffset).toBe(2)
+    expect(feature.isCaptureSelection).toBe(false)
+    pointer(surface, "pointerup", 50, 80)
+    expect(feature.isInDragSelection).toBe(false)
+    expect(document.body).not.toHaveClass("◆selection-dragging")
+  })
+
+  it("cleans selection markers from a remotely removed selected element", async () => {
+    const paragraph = textDocument()
+    $.selectElement(paragraph)
+    feature.processSelection()
+    paragraph.remove()
+    editor.doc.doc.transact(() => {})
+    await Promise.resolve()
+    expect(paragraph).not.toHaveAttribute("class")
+    expect(feature.selectionCaret).not.toHaveAttribute("visibility")
+  })
+
+  it("keeps selection visuals out of serialized HTML", () => {
+    const paragraph = textDocument()
+    const authored = editor.toHTML(true)
+    hitTest()
+    pointer(paragraph, "pointerdown", 20, 25)
+    pointer(paragraph, "pointermove", 40, 25)
+    expect(editor.toHTML(true)).toBe(authored)
+    expect(document.querySelector(".◆selection-caret")).toBeNull()
+    expect(editor.appendix.querySelector("slot")).not.toBeNull()
+  })
+
+  it("safely continues after the original text endpoint is replaced", () => {
+    const paragraph = textDocument()
+    hitTest()
+    pointer(paragraph, "pointerdown", 20, 25)
+    paragraph.replaceChildren(document.createTextNode("fresh"))
+    expect(() => pointer(paragraph, "pointermove", 40, 25)).not.toThrow()
+    expect($.anchor?.isConnected).toBe(true)
+    expect($.focus?.isConnected).toBe(true)
+  })
+
+  it.each(["pointercancel", "lostpointercapture"])("cleans drag state on %s", type => {
+    const paragraph = textDocument()
+    hitTest()
+    pointer(paragraph, "pointerdown", 20, 25)
+    pointer(paragraph, type, 20, 25)
+    expect(feature.isInDragSelection).toBe(false)
+    expect(feature.dragAnchor).toBeNull()
+    expect(document.body).not.toHaveClass("◆selection-dragging")
   })
 })

@@ -250,5 +250,6 @@ export function isEmptyMedia(element: Element) {
     return !element.getAttribute("src")?.trim()
       && !Array.from(element.querySelectorAll(":scope > source[src]")).some(source => source.getAttribute("src")?.trim())
   }
+  if(element.matches("iframe") && element.getAttribute("srcdoc")?.trim()) return false
   return !element.getAttribute(mediaSourceAttribute(element))?.trim() && !element.getAttribute("srcset")?.trim()
 }

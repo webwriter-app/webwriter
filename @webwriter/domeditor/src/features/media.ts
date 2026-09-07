@@ -1,6 +1,6 @@
 import {EditorFeature} from "."
 import {stripActiveContent} from "../active-content"
-import {$, adoptStylesheet, createStylesheet, getContainer, isElement} from "../utility"
+import {$, atomicEditingContainer, adoptStylesheet, createStylesheet, getContainer, isElement, modifierKeyDown} from "../utility"
 import {
   isEmptyMedia,
   isImageMapHotspotShape,
@@ -28,6 +28,18 @@ import {
 const mediaSelector = mediaElementSelector
 const htmlNamespace = "http://www.w3.org/1999/xhtml"
 const maximumMediaFallbackLength = 1_000_000
+
+const mediaInteractionShieldStylesheet = createStylesheet(`
+  :host {
+    position: fixed;
+    display: block;
+    z-index: 2147483642;
+    pointer-events: auto;
+    background: transparent;
+    touch-action: none;
+  }
+  :host([hidden]) { display: none; }
+`)
 
 const isTimedResourceElement = (node: Node, resource?: TimedMediaResourceType): node is Element => (
   node instanceof Element
@@ -630,13 +642,113 @@ class ImageMapOverlay {
   }
 }
 
+/** A transparent appendix surface that turns the first interaction with an
+ * authored media element into an editor capture. Keeping the surface mounted
+ * through click prevents the media's native activation from leaking through;
+ * the following click reaches the media after capture has been released. */
+class MediaInteractionShield {
+  readonly element = document.createElement("div")
+  private target: Element | null = null
+  private onActivate: ((target: Element, event: PointerEvent) => void) | null = null
+  private onFinish: ((target: Element) => void) | null = null
+  private pointerUpSeen = false
+
+  constructor(
+    onActivate: (target: Element, event: PointerEvent) => void,
+    onFinish: (target: Element) => void,
+  ) {
+    this.onActivate = onActivate
+    this.onFinish = onFinish
+    this.element.classList.add("◆", "◆editor-only", "◆media-interaction-shield")
+    this.element.contentEditable = "false"
+    this.element.setAttribute("part", "media-interaction-shield")
+    this.element.setAttribute("aria-hidden", "true")
+    adoptStylesheet(this.element.attachShadow({mode: "open"}), mediaInteractionShieldStylesheet)
+    this.element.addEventListener("pointerdown", this.handlePointerDown)
+    this.element.addEventListener("pointerup", this.handlePointerUp)
+    this.element.addEventListener("pointercancel", this.handlePointerCancel)
+    this.element.addEventListener("lostpointercapture", this.handleLostPointerCapture)
+    this.element.addEventListener("click", this.handleClick)
+  }
+
+  setTarget(target: Element) {
+    this.target = target
+    const rect = target.getBoundingClientRect()
+    Object.assign(this.element.style, {
+      left: `${rect.left}px`,
+      top: `${rect.top}px`,
+      width: `${Math.max(0, rect.width)}px`,
+      height: `${Math.max(0, rect.height)}px`,
+    })
+    this.element.hidden = rect.width <= 0 || rect.height <= 0
+  }
+
+  get media() {
+    return this.target
+  }
+
+  remove() {
+    this.target = null
+    this.element.remove()
+  }
+
+  private stop(event: Event) {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+  }
+
+  private handlePointerDown = (event: PointerEvent) => {
+    if(event.button !== 0 || !this.target) return
+    this.stop(event)
+    this.pointerUpSeen = false
+    try {
+      this.element.setPointerCapture?.(event.pointerId)
+    }
+    catch {
+      // Synthetic events and disconnected overlays cannot acquire capture.
+    }
+    this.onActivate?.(this.target, event)
+  }
+
+  private handlePointerUp = (event: PointerEvent) => {
+    if(!this.target) return
+    this.stop(event)
+    this.pointerUpSeen = true
+    // Keep the shield until click so a browser-generated activation cannot
+    // retarget the newly captured media during the same pointer sequence.
+  }
+
+  private handlePointerCancel = (event: PointerEvent) => {
+    if(!this.target) return
+    this.stop(event)
+    this.onFinish?.(this.target)
+  }
+
+  private handleLostPointerCapture = (event: Event) => {
+    if(!this.target || this.pointerUpSeen) return
+    this.stop(event)
+    this.onFinish?.(this.target)
+  }
+
+  private handleClick = (event: MouseEvent) => {
+    if(!this.target) return
+    this.stop(event)
+    this.onFinish?.(this.target)
+  }
+}
+
 /** Media insertion and editing. Empty media are marked only with editor
  * classes; their interactive UI lives in the BODY shadow appendix. */
 export class MediaFeature extends EditorFeature {
   private observer: MutationObserver | null = null
+  private resizeObserver: ResizeObserver | null = null
   private refreshQueued = false
   private mediaPlaceholder: MediaPlaceholder | null = null
   private imageMapOverlayController: ImageMapOverlay | null = null
+  private readonly interactionShields = new Map<Element, MediaInteractionShield>()
+  private readonly shieldReleasePending = new Set<Element>()
+  private readonly observedShieldTargets = new Set<Element>()
+  private bodyResizeObserved = false
 
   get isPlaceholderInteraction() {
     return this.mediaPlaceholder?.isInteracting ?? false
@@ -661,6 +773,107 @@ export class MediaFeature extends EditorFeature {
     return this.imageMapOverlayController
   }
 
+  private isShieldEligible(element: Element) {
+    const style = getComputedStyle(element)
+    if(!element.matches("iframe, audio, video, embed, object")
+      || !element.isConnected
+      // Even an empty iframe has its own browsing context: clicks on its
+      // surface cannot reach the document's empty-media pointer handler.
+      || isEmptyMedia(element) && !element.matches("iframe")
+      || element.hasAttribute("hidden")
+      || style.display === "none"
+      || style.visibility === "hidden"
+      || style.visibility === "collapse"
+      || atomicEditingContainer(element.parentElement)
+      || element.parentElement?.closest(mediaSelector)) return false
+    return true
+  }
+
+  private shouldShield(element: Element) {
+    if(!this.isShieldEligible(element)) return false
+    const selection = this.editor.features.selection
+    return selection.captureSelectedElement !== element
+  }
+
+  private releaseShield = (target: Element) => {
+    this.shieldReleasePending.delete(target)
+    this.scheduleRefresh()
+  }
+
+  private activateShield = (target: Element, event: PointerEvent) => {
+    if(!target.isConnected) {
+      this.releaseShield(target)
+      return
+    }
+    this.shieldReleasePending.clear()
+    this.shieldReleasePending.add(target)
+    const selection = this.editor.features.selection
+    const alreadyNodeSelected = $.isElementSelection && $.selectedElement === target
+    if(modifierKeyDown(event)) {
+      // Modifier-click follows the same two-step node-then-capture gesture as
+      // widgets: the first click establishes the node selection, the second
+      // one enters capture and lets the media own subsequent input.
+      if(alreadyNodeSelected) selection.captureElement(target)
+      else {
+        const path = this.pathFrom(document.body, target)
+        if(path) selection.actions.selectNode({type: "selectNode", path})
+        else {
+          $.selectElement(target)
+          selection.processSelection()
+        }
+      }
+    }
+    else selection.captureElement(target)
+    this.editor.postSelectionPath()
+    this.refresh()
+  }
+
+  private syncInteractionShields() {
+    this.shieldReleasePending.forEach(target => {
+      if(!this.isShieldEligible(target)) this.shieldReleasePending.delete(target)
+    })
+    const desired = new Set<Element>()
+    document.querySelectorAll<Element>("iframe, audio, video, embed, object").forEach(element => {
+      if(this.shouldShield(element) || this.shieldReleasePending.has(element)) desired.add(element)
+    })
+
+    this.interactionShields.forEach((shield, target) => {
+      if(!desired.has(target)) {
+        shield.remove()
+        this.interactionShields.delete(target)
+        this.resizeObserver?.unobserve(target)
+        this.observedShieldTargets.delete(target)
+      }
+    })
+    desired.forEach(target => {
+      let shield = this.interactionShields.get(target)
+      if(!shield) {
+        shield = new MediaInteractionShield(this.activateShield, this.releaseShield)
+        this.interactionShields.set(target, shield)
+        this.editor.addAppendix(shield.element)
+      }
+      shield.setTarget(target)
+    })
+
+    if(this.resizeObserver) {
+      if(!this.bodyResizeObserved) {
+        this.resizeObserver.observe(document.body)
+        this.bodyResizeObserved = true
+      }
+      desired.forEach(target => {
+        if(this.observedShieldTargets.has(target)) return
+        this.resizeObserver!.observe(target)
+        this.observedShieldTargets.add(target)
+      })
+    }
+  }
+
+  private cancelPendingShield = () => {
+    if(!this.shieldReleasePending.size) return
+    this.shieldReleasePending.clear()
+    this.scheduleRefresh()
+  }
+
   enable() {
     if(this.isEnabled) return
     super.enable()
@@ -678,7 +891,10 @@ export class MediaFeature extends EditorFeature {
         this.observer = null
       }
     }
+    const FrameResizeObserver = document.defaultView?.ResizeObserver
+    if(FrameResizeObserver) this.resizeObserver = new FrameResizeObserver(this.scheduleRefresh)
     window.addEventListener("resize", this.scheduleRefresh)
+    window.addEventListener("blur", this.cancelPendingShield)
     document.addEventListener("scroll", this.scheduleRefresh, true)
     this.refresh()
   }
@@ -687,12 +903,20 @@ export class MediaFeature extends EditorFeature {
     if(!this.isEnabled) return
     this.observer?.disconnect()
     this.observer = null
+    this.resizeObserver?.disconnect()
+    this.resizeObserver = null
+    this.observedShieldTargets.clear()
+    this.bodyResizeObserved = false
     window.removeEventListener("resize", this.scheduleRefresh)
+    window.removeEventListener("blur", this.cancelPendingShield)
     document.removeEventListener("scroll", this.scheduleRefresh, true)
     this.mediaPlaceholder?.element.remove()
     this.mediaPlaceholder = null
     this.imageMapOverlayController?.element.remove()
     this.imageMapOverlayController = null
+    this.interactionShields.forEach(shield => shield.remove())
+    this.interactionShields.clear()
+    this.shieldReleasePending.clear()
     document.querySelectorAll(".◆media-empty").forEach(element => this.setEmptyMarker(element, false))
     super.disable()
   }
@@ -1157,5 +1381,6 @@ export class MediaFeature extends EditorFeature {
     const map = image ? this.associatedImageMap(image) : null
     if(image?.isConnected && map?.isConnected) this.imageMapOverlay.showFor(image, map)
     else this.imageMapOverlayController?.hide()
+    this.syncInteractionShields()
   }
 }

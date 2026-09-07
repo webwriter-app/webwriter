@@ -160,7 +160,7 @@ describe("semantic list editing", () => {
     expect($.anchorOffset).toBe(0)
   })
 
-  it("uses the native empty-item caret after a nonempty item", () => {
+  it("keeps a visible empty-item caret after a nonempty item", () => {
     document.body.innerHTML = "<ul><li>A</li></ul>"
     const list = document.querySelector("ul")!
     const item = document.querySelector("li")!
