@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach, beforeAll, vi } from "vitest"
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import "happy-dom"
 import '@testing-library/jest-dom/vitest'
 
@@ -7,7 +7,7 @@ import { DOMEditor } from "../domeditor"
 import { $, htmlToFragment } from "../utility"
 import {sectionNames} from "../sections"
 
-var editor = new DOMEditor()
+let editor: DOMEditor
 
 /*
 Selection: caret, gap, node, text, span (reversed)
@@ -23,12 +23,14 @@ beforeEach(async () => {
   vi.restoreAllMocks()
   document.body.innerHTML = "<p></p>"
   document.body.removeAttribute("style")
+  editor = new DOMEditor()
   $.move(document.body.firstElementChild!)
   await new Promise<void>(resolve => queueMicrotask(resolve))
   $.move(document.body.firstElementChild!)
 })
 
 
+afterEach(() => editor.destroy())
 
 describe("insert()", () => { // deletes selection => selection = caret/gap
   it("creates a real editing target before the first printable key is committed", () => {

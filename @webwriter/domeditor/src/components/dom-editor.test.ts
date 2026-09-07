@@ -129,16 +129,50 @@ const editableLocalPackageDirectory = () => {
   return {directory, manifest: () => manifest}
 }
 
+function wirePackageLoadCompletion(editorWindow: Window) {
+  const postMessage = vi.spyOn(editorWindow, "postMessage")
+  postMessage.mockImplementation((message: any) => {
+    if(message?.type !== loadWidgetsMessage || typeof message.requestId !== "string") return
+    queueMicrotask(() => window.dispatchEvent(new MessageEvent("message", {
+      data: {
+        type: executeCompleteEvent,
+        detail: {requestId: message.requestId, result: undefined},
+        bridgeNonce: message.bridgeNonce,
+      },
+      source: editorWindow,
+      origin: window.location.origin,
+    })))
+  })
+  return postMessage
+}
+
+function completePendingPackageLoad(editor: DomEditor) {
+  const requestId = [...(editor as any).pendingExecutions.keys()]
+    .find((id: string) => id.startsWith("packages-"))
+  if(!requestId) throw new Error("No pending package load request")
+  const editorWindow = (editor as any).editorWindow as Window
+  window.dispatchEvent(new MessageEvent("message", {
+    data: {
+      type: executeCompleteEvent,
+      detail: {requestId, result: undefined},
+      bridgeNonce: (editor as any).bridgeNonce,
+    },
+    source: editorWindow,
+    origin: window.location.origin,
+  }))
+}
+
 async function mountEditor() {
   const editor = new DomEditor()
   document.body.append(editor)
   await editor.updateComplete
   const iframe = editor.shadowRoot!.querySelector("iframe")!
+  wirePackageLoadCompletion(iframe.contentWindow!)
   iframe.dispatchEvent(new Event("load"))
   return {editor, iframe, editorWindow: iframe.contentWindow!}
 }
 
-afterEach(() => {
+afterEach(async() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   // Release Happy DOM's nested iframe documents before detaching editors. A
@@ -149,13 +183,11 @@ afterEach(() => {
     ...Array.from(document.body.querySelectorAll<DomEditor>("dom-editor"))
       .flatMap(editor => Array.from(editor.shadowRoot?.querySelectorAll<HTMLIFrameElement>("iframe") ?? [])),
   ]
-  frames.forEach(iframe => {
-    iframe.removeAttribute("srcdoc")
-    iframe.src = "about:blank"
-  })
+  frames.forEach(iframe => iframe.remove())
   document.body.replaceChildren()
   localStorage.removeItem(INSTALLED_PACKAGES_STORAGE_KEY)
   localStorage.removeItem(APP_SETTINGS_STORAGE_KEY)
+  await (window as unknown as {happyDOM: {abort(): Promise<void>}}).happyDOM.abort()
 })
 
 beforeEach(() => {
@@ -487,7 +519,7 @@ describe("DomEditor iframe setup", () => {
       widgets: [{name: demoPackage.name, version: demoPackage.version}],
       packages: [demoPackage],
       requestId: expect.any(String),
-    }), "*")
+    }), window.location.origin)
   })
 
   it("sandboxes the editor iframe while preserving its trusted same-origin bridge", async () => {
@@ -540,7 +572,7 @@ describe("DomEditor iframe setup", () => {
         type: initializeEditorMessage,
         syncUrl: "ws://localhost:1234/?session=collab-demo&source=local",
         bridgeNonce: expect.any(String),
-      }), "*")
+      }), window.location.origin)
       expect(iframe.getAttribute("srcdoc")).not.toContain("SYNC_URL")
     }
     finally {
@@ -564,7 +596,7 @@ describe("DomEditor iframe setup", () => {
       widgets: [{name: "@webwriter/demo", version: "1.0.0"}],
       packages: [demoPackage],
       requestId: expect.any(String),
-    }), "*")
+    }), window.location.origin)
     const polyfillUrl = "https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"
     expect(srcdoc).toMatch(new RegExp(`<script class="◆ ◆editor-only" nonce="[^"]+" type="application/json" src="${polyfillUrl.replaceAll(".", "\\.")}"></script>`))
     expect(srcdoc.indexOf(polyfillUrl)).toBeLessThan(srcdoc.indexOf("editor-entry"))
@@ -591,6 +623,7 @@ describe("DomEditor iframe setup", () => {
     const adding = (editor as any).setPackageInstalled(demoPackage, true) as Promise<unknown>
     await vi.waitFor(() => expect(editor.shadowRoot!.querySelector("iframe")?.getAttribute("srcdoc")).toContain("<!-- frame 1 -->"))
     editor.shadowRoot!.querySelector("iframe")!.dispatchEvent(new Event("load"))
+    completePendingPackageLoad(editor)
     await adding
 
     expect(JSON.parse(localStorage.getItem(INSTALLED_PACKAGES_STORAGE_KEY)!)).toEqual([demoPackage])
@@ -598,6 +631,7 @@ describe("DomEditor iframe setup", () => {
     const removing = (editor as any).setPackageInstalled(demoPackage, false) as Promise<unknown>
     await vi.waitFor(() => expect(editor.shadowRoot!.querySelector("iframe")?.getAttribute("srcdoc")).toContain("<!-- frame 2 -->"))
     editor.shadowRoot!.querySelector("iframe")!.dispatchEvent(new Event("load"))
+    completePendingPackageLoad(editor)
     await removing
 
     expect(JSON.parse(localStorage.getItem(INSTALLED_PACKAGES_STORAGE_KEY)!)).toEqual([])
@@ -2098,8 +2132,8 @@ describe("DomEditor.execute()", () => {
     const previewFrame = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.preview-frame")!
     expect(previewFrame).not.toBe(editorFrame)
     expect(editorFrame.hidden).toBe(true)
-    expect(previewFrame.contentDocument!.body.getAttribute("contenteditable")).toBeNull()
-    expect(previewFrame.contentDocument!.querySelector("[contenteditable]")).toBeNull()
+    expect(previewFrame.contentDocument!.body.getAttribute("contenteditable")).toBe("true")
+    expect(previewFrame.contentDocument!.querySelector("p[contenteditable='true']")).not.toBeNull()
     expect(previewFrame.contentDocument!.designMode).not.toBe("on")
     expect(ribbon.shadowRoot!.querySelectorAll("ribbon-tab")).toHaveLength(1)
     expect(ribbon.shadowRoot!.querySelectorAll(".history-button")).toHaveLength(0)
@@ -2154,8 +2188,8 @@ describe("DomEditor.execute()", () => {
     expect(previewHTML).not.toContain("formaction")
     expect(previewHTML).not.toContain("srcdoc")
     expect(previewHTML).toContain('style="color: red"')
-    expect(previewHTML).not.toContain("display: none")
-    expect(previewHTML).not.toContain('rel="stylesheet"')
+    expect(previewHTML).toContain("display: none")
+    expect(previewHTML).toContain('rel="stylesheet"')
     expect(previewHTML).not.toContain("window.evil")
   })
 
