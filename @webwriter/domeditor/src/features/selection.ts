@@ -1196,14 +1196,10 @@ export class SelectionFeature extends EditorFeature {
       this.clearSelectedSection()
       const media = ev.target instanceof Node ? mediaContainerForNode(ev.target) : null
       if(media) {
-        if(this.captureSelectedElement === media) return
-        if(modifierKeyDown(ev) && $.selectedElement !== media) {
-          ev.preventDefault()
-          this.#releaseCaptureSelection()
-          $.selectElement(media)
-          this.processSelection()
-        }
-        else this.captureElement(media)
+        ev.preventDefault()
+        this.#releaseCaptureSelection()
+        $.selectElement(media)
+        this.processSelection()
         return
       }
       this.#releaseCaptureSelection()

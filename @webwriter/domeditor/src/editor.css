@@ -155,11 +155,14 @@ body:has(> :last-child) {
 :is(picture, audio, video) {
   display: block;
   width: 100%;
+}
+
+:is(picture, video) {
   height: auto;
   aspect-ratio: 16 / 9;
 }
 
-:is(picture, img, audio, video, iframe, embed, object).◆media-empty {
+:is(picture, img, video, iframe, embed, object).◆media-empty {
   display: block;
   box-sizing: border-box;
   width: 100%;
@@ -170,7 +173,7 @@ body:has(> :last-child) {
   object-fit: contain;
 }
 
-:is(picture, audio, video).◆media-empty {
+:is(picture, video).◆media-empty {
   min-height: 0;
 }
 
@@ -178,14 +181,6 @@ body:has(> :last-child) {
 :is(picture, audio, video, object) * {
   user-select: none;
   -webkit-user-select: none;
-}
-
-audio.◆media-empty {
-  overflow: hidden;
-}
-
-audio.◆media-empty::-webkit-media-controls-enclosure {
-  display: none;
 }
 
 picture.◆media-empty {

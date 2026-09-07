@@ -1,6 +1,6 @@
 import {EditorFeature} from "."
 import {stripActiveContent} from "../active-content"
-import {$, atomicEditingContainer, adoptStylesheet, createStylesheet, getContainer, isElement, modifierKeyDown} from "../utility"
+import {$, atomicEditingContainer, adoptStylesheet, createStylesheet, getContainer, isElement} from "../utility"
 import {
   isEmptyMedia,
   isImageMapHotspotShape,
@@ -63,7 +63,7 @@ const equalAttributes = (element: Element, expected: Record<string, string>) => 
 const mediaPlaceholderStylesheet = createStylesheet(`
   :host {
     position: fixed;
-    z-index: 2147483644;
+    z-index: 2147483647;
     display: none;
     box-sizing: border-box;
     place-items: center;
@@ -72,11 +72,20 @@ const mediaPlaceholderStylesheet = createStylesheet(`
     color: #f3f4f6;
     background: rgb(31 41 55 / 94%);
     font: 14px/1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    pointer-events: auto;
+    pointer-events: none;
     user-select: none;
     container-type: inline-size;
   }
   :host([data-open]) { display: grid; }
+  :host([data-media="audio"]) {
+    padding: .25rem;
+    background: rgba(31, 41, 55, 0.5);
+  }
+  :host([data-media="audio"]) .content { min-width: 0; }
+  :host([data-media="audio"]) :is(.file, .url, .apply) {
+    min-height: 0;
+    padding: .35rem .6rem;
+  }
   .content {
     display: flex;
     align-items: center;
@@ -84,7 +93,7 @@ const mediaPlaceholderStylesheet = createStylesheet(`
     width: min(48rem, 100%);
     gap: .65rem;
   }
-  button, input { box-sizing: border-box; font: inherit; }
+  button, input { box-sizing: border-box; font: inherit; pointer-events: auto; }
   .file {
     flex: 0 0 auto;
     min-height: 2.75rem;
@@ -112,6 +121,10 @@ const mediaPlaceholderStylesheet = createStylesheet(`
     color: #343740;
     background: white;
   }
+  .url:placeholder-shown {
+    user-select: none;
+    -webkit-user-select: none;
+  }
   .url::selection {
     color: white;
     background-color: #0078d7;
@@ -125,7 +138,8 @@ const mediaPlaceholderStylesheet = createStylesheet(`
     background: white;
     cursor: pointer;
   }
-  input:focus, button:focus-visible { outline: 2px solid #60a5fa; outline-offset: 1px; }
+  input:focus { outline: none; }
+  button:focus-visible { outline: 2px solid #60a5fa; outline-offset: 1px; }
   @container (max-width: 34rem) {
     .content {
       display: grid;
@@ -134,6 +148,8 @@ const mediaPlaceholderStylesheet = createStylesheet(`
       justify-items: center;
     }
     .url-row { width: 100%; }
+    :host([data-media="audio"]) .content { display: flex; }
+    :host([data-media="audio"]) .or { display: none; }
   }
 `)
 
@@ -176,8 +192,9 @@ class MediaPlaceholder {
     const url = root.querySelector<HTMLInputElement>(".url")!
     const file = root.querySelector<HTMLButtonElement>(".file")!
     root.addEventListener("pointerdown", event => {
-      if(!(event.target instanceof Element) || !event.target.closest("button, input")) return
+      if(event.button !== 0 || !(event.target instanceof Element) || !event.target.closest("button, input")) return
       this.beginInteraction()
+      if(this.target) this.onFocus?.(this.target)
     })
     root.addEventListener("focusin", () => {
       this.focusWithin = true
@@ -236,6 +253,7 @@ class MediaPlaceholder {
   showFor(target: Element) {
     this.target = target
     const type = target.localName as MediaType
+    this.element.setAttribute("data-media", type)
     const noun = type === "picture" || type === "img" ? "image"
       : isWebsiteType(type) ? "website" : type
     const file = this.root.querySelector<HTMLButtonElement>(".file")!
@@ -791,9 +809,9 @@ export class MediaFeature extends EditorFeature {
     const style = getComputedStyle(element)
     if(!element.matches("iframe, audio, video, embed, object")
       || !element.isConnected
-      // Even an empty iframe has its own browsing context: clicks on its
-      // surface cannot reach the document's empty-media pointer handler.
-      || isEmptyMedia(element) && !element.matches("iframe")
+      // Empty frames and native media controls can consume pointer events
+      // before they reach the document's empty-media pointer handler.
+      || isEmptyMedia(element) && !element.matches("iframe, audio[controls], video[controls]")
       || element.hasAttribute("hidden")
       || style.display === "none"
       || style.visibility === "hidden"
@@ -806,7 +824,7 @@ export class MediaFeature extends EditorFeature {
   private shouldShield(element: Element) {
     if(!this.isShieldEligible(element)) return false
     const selection = this.editor.features.selection
-    return selection.captureSelectedElement !== element
+    return isEmptyMedia(element) || selection.captureSelectedElement !== element
   }
 
   private releaseShield = (target: Element) => {
@@ -814,30 +832,15 @@ export class MediaFeature extends EditorFeature {
     this.scheduleRefresh()
   }
 
-  private activateShield = (target: Element, event: PointerEvent) => {
+  private activateShield = (target: Element) => {
     if(!target.isConnected) {
       this.releaseShield(target)
       return
     }
     this.shieldReleasePending.clear()
     this.shieldReleasePending.add(target)
-    const selection = this.editor.features.selection
-    const alreadyNodeSelected = $.isElementSelection && $.selectedElement === target
-    if(modifierKeyDown(event)) {
-      // Modifier-click follows the same two-step node-then-capture gesture as
-      // widgets: the first click establishes the node selection, the second
-      // one enters capture and lets the media own subsequent input.
-      if(alreadyNodeSelected) selection.captureElement(target)
-      else {
-        const path = this.pathFrom(document.body, target)
-        if(path) selection.actions.selectNode({type: "selectNode", path})
-        else {
-          $.selectElement(target)
-          selection.processSelection()
-        }
-      }
-    }
-    else selection.captureElement(target)
+    const path = this.pathFrom(document.body, target)
+    if(path) this.editor.features.selection.actions.selectNode({type: "selectNode", path})
     this.editor.postSelectionPath()
     this.refresh()
   }
@@ -945,8 +948,8 @@ export class MediaFeature extends EditorFeature {
       if(!target || !isEmptyMedia(target)) return
       event.preventDefault()
       event.stopImmediatePropagation()
-      $.selectElement(target)
-      this.editor.features.selection.processSelection()
+      const path = this.pathFrom(document.body, target)
+      if(path) this.editor.features.selection.actions.selectNode({type: "selectNode", path})
       this.editor.postSelectionPath()
       this.refresh()
     },
@@ -1380,6 +1383,9 @@ export class MediaFeature extends EditorFeature {
 
   private refresh() {
     document.querySelectorAll(mediaSelector).forEach(element => {
+      if(element.matches("audio:not([controls])") && !atomicEditingContainer(element.parentElement)) {
+        element.setAttribute("controls", "")
+      }
       const empty = isEmptyMedia(element) && !(element.matches("img") && element.closest("picture"))
       if(element.classList.contains("◆media-empty") !== empty) this.setEmptyMarker(element, empty)
     })

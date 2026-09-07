@@ -158,8 +158,11 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).not.toMatch(/:is\(ul, ol, menu\):empty[\s\S]*?display:\s*list-item;/)
     expect(editorStyleString).toMatch(/\.◆media-empty\s*\{[\s\S]*?border:\s*1px dashed #6b7280;/)
     expect(editorStyleString).not.toMatch(/\.◆media-empty\.◆element-selected\s*\{/)
-    expect(editorStyleString).toMatch(/:is\(picture, audio, video\)\s*\{[\s\S]*?height:\s*auto;[\s\S]*?aspect-ratio:\s*16\s*\/\s*9;/)
-    expect(editorStyleString).toMatch(/audio\.◆media-empty::-webkit-media-controls-enclosure\s*\{[\s\S]*?display:\s*none;/)
+    expect(editorStyleString).toMatch(/:is\(picture, audio, video\)\s*\{[^}]*?width:\s*100%;/)
+    expect(editorStyleString).not.toMatch(/:is\(picture, audio, video\)\s*\{[^}]*?(?:height|aspect-ratio):/)
+    expect(editorStyleString).toMatch(/:is\(picture, video\)\s*\{[^}]*?height:\s*auto;[^}]*?aspect-ratio:\s*16\s*\/\s*9;/)
+    expect(editorStyleString).not.toContain("audio.◆media-empty::-webkit-media-controls-enclosure")
+    expect(editorStyleString).not.toMatch(/:is\([^)]*audio[^)]*\)\.◆media-empty\s*\{/)
     expect(editorStyleString).not.toMatch(/body:has\(\.◆media-empty:is\(\.◆gap-before-selected, \.◆gap-after-selected\)\)::part\(gap-caret\)\s*\{[\s\S]*?display:\s*none;/)
   })
 

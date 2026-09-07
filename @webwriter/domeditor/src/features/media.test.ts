@@ -2,6 +2,7 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import "@testing-library/jest-dom/vitest"
 import {DOMEditor} from "../domeditor"
+import editorStyleString from "../editor.css?raw"
 import {$} from "../utility"
 
 let editor: DOMEditor
@@ -15,6 +16,60 @@ beforeEach(() => {
 afterEach(() => editor.destroy())
 
 describe("media editing", () => {
+  it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)(
+    "node-selects the %s surface and capture-selects its placeholder controls", async media => {
+      editor.features.media.actions.insertMedia({type: "insertMedia", media})
+      const target = document.querySelector(media)!
+      const placeholder = editor.features.media.placeholder
+
+      for(const selector of [".file", ".url", ".apply"]) {
+        target.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0}))
+        expect($.selectedElement).toBe(target)
+        expect(editor.features.selection.captureSelectedElement).toBeNull()
+        expect(target).toHaveClass("◆element-selected")
+        expect(target).not.toHaveClass("◆element-capture-selected")
+
+        placeholder.root.querySelector(selector)!.dispatchEvent(new PointerEvent("pointerdown", {
+          bubbles: true, composed: true, cancelable: true, button: 0,
+        }))
+        expect(editor.features.selection.captureSelectedElement).toBe(target)
+        expect(target).toHaveClass("◆element-capture-selected")
+      }
+    },
+  )
+
+  it.each([
+    '<picture><img src="image.png"></picture>', '<img src="image.png">',
+    '<audio src="audio.mp3"></audio>', '<video src="video.mp4"></video>',
+    '<iframe src="about:blank"></iframe>', '<embed src="about:blank">',
+    '<object data="about:blank"></object>',
+  ])("node-selects populated media on repeated surface clicks: %s", html => {
+    document.body.innerHTML = html
+    const target = document.body.firstElementChild!
+    for(let click = 0; click < 2; click++) {
+      const down = new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0})
+      target.dispatchEvent(down)
+      expect(down.defaultPrevented).toBe(true)
+      expect($.selectedElement).toBe(target)
+      expect(editor.features.selection.captureSelectedElement).toBeNull()
+    }
+  })
+
+  it("enables audio controls and restores them after direct DOM changes", async () => {
+    document.body.innerHTML = '<audio></audio><audio src="sound.mp3"></audio><media-widget><audio></audio></media-widget>'
+    const [empty, populated, widgetAudio] = Array.from(document.querySelectorAll("audio"))
+
+    await vi.waitFor(() => {
+      expect(empty).toHaveAttribute("controls")
+      expect(populated).toHaveAttribute("controls")
+    })
+    expect(widgetAudio).not.toHaveAttribute("controls")
+
+    populated.removeAttribute("controls")
+    await vi.waitFor(() => expect(populated).toHaveAttribute("controls"))
+    expect(editor.toHTML(true)).toContain('<audio src="sound.mp3" controls=""></audio>')
+  })
+
   it("promotes clicks and interior selections to the outer media node", () => {
     document.body.innerHTML = `
       <picture><source srcset="small.png"><img src="large.png"></picture>
@@ -64,6 +119,10 @@ describe("media editing", () => {
     expect(audio).toHaveClass("◆media-empty")
     expect(placeholder.getRootNode()).toBe(editor.appendix)
     expect(placeholder).toHaveAttribute("data-open")
+    expect(placeholder).toHaveAttribute("data-media", "audio")
+    expect(getComputedStyle(placeholder).backgroundColor).toBe("rgba(31, 41, 55, 0.5)")
+    const selectionZIndex = editorStyleString.match(/body::part\(selection-caret\)\s*\{[^}]*z-index:\s*(\d+)/)![1]
+    expect(Number(getComputedStyle(placeholder).zIndex)).toBeGreaterThan(Number(selectionZIndex))
     expect(placeholderController.root.querySelector(".hint")).toBeNull()
     expect(Array.from(placeholderController.root.querySelector(".content")!.children)).toContain(
       placeholderController.root.querySelector(".url-row"),
@@ -91,6 +150,7 @@ describe("media editing", () => {
     expect(audio).not.toHaveClass("◆element-selected")
     expect(video).toHaveClass("◆media-empty", "◆element-selected")
     expect(editor.features.media.placeholder.target).toBe(video)
+    expect(editor.features.media.placeholder.element).toHaveAttribute("data-media", "video")
   })
 
   it("does not replace the empty-document insertion control", () => {
@@ -157,6 +217,19 @@ describe("media editing", () => {
     expect(editor.features.selection.captureSelectedElement).toBeNull()
   })
 
+  it("keeps placeholder text unselectable while allowing entered URLs to be selected", () => {
+    editor.features.media.actions.insertMedia({type: "insertMedia", media: "audio"})
+    const root = editor.features.media.placeholder.root
+    const input = root.querySelector<HTMLInputElement>(".url")!
+    const placeholderRule = Array.from(root.adoptedStyleSheets[0].cssRules)
+      .find(rule => rule instanceof CSSStyleRule && rule.selectorText === ".url:placeholder-shown") as CSSStyleRule
+
+    expect(placeholderRule.style.userSelect).toBe("none")
+    expect(placeholderRule.style.getPropertyValue("-webkit-user-select")).toBe("none")
+    input.value = "https://example.com/audio.mp3"
+    expect(getComputedStyle(input).userSelect).toBe("text")
+  })
+
   it("preserves native URL editing while the media is capture-selected", async () => {
     editor.features.media.actions.insertMedia({type: "insertMedia", media: "video"})
     const video = document.querySelector("video")!
@@ -182,6 +255,9 @@ describe("media editing", () => {
     const style = getComputedStyle(input)
     expect(style.caretColor).toBe("auto")
     expect(style.userSelect).toBe("text")
+    const focusRule = Array.from(placeholder.root.adoptedStyleSheets[0].cssRules)
+      .find(rule => rule instanceof CSSStyleRule && rule.selectorText === "input:focus") as CSSStyleRule
+    expect(focusRule.style.outlineStyle).toBe("none")
     const selectionRule = Array.from(placeholder.root.adoptedStyleSheets[0].cssRules)
       .find(rule => rule instanceof CSSStyleRule && rule.selectorText === ".url::selection") as CSSStyleRule
     expect(selectionRule.style.backgroundColor).toBe("#0078d7")
@@ -575,7 +651,7 @@ describe("media editing", () => {
     expect($.selectedElement).toBe(object)
   })
 
-  it("captures interactive media through an appendix shield and blocks same-click activation", async () => {
+  it("node-selects interactive media through an appendix shield and blocks same-click activation", async () => {
     document.body.innerHTML = '<iframe src="about:blank#frame"></iframe><audio src="sound.mp3"></audio>'
     const [iframe, audio] = Array.from(document.body.children)
     const rect = {x: 0, y: 0, left: 0, top: 0, right: 160, bottom: 80, width: 160, height: 80, toJSON: () => ({})}
@@ -590,13 +666,13 @@ describe("media editing", () => {
     shield.dispatchEvent(pointerdown)
     shield.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, cancelable: true, button: 0}))
     shield.dispatchEvent(new MouseEvent("click", {bubbles: true, cancelable: true}))
-    await vi.waitFor(() => expect(shield.isConnected).toBe(false))
+    await vi.waitFor(() => expect(shield.isConnected).toBe(true))
 
     expect(pointerdown.defaultPrevented).toBe(true)
     expect(nativeActivation).not.toHaveBeenCalled()
     expect($.selectedElement).toBe(iframe)
-    expect(editor.features.selection.isCaptureSelection).toBe(true)
-    expect(editor.toHTML(true)).toBe('<iframe src="about:blank#frame"></iframe><audio src="sound.mp3"></audio>')
+    expect(editor.features.selection.isCaptureSelection).toBe(false)
+    expect(editor.toHTML(true)).toBe('<iframe src="about:blank#frame"></iframe><audio src="sound.mp3" controls=""></audio>')
   })
 
   it("does not shield empty timed media, widget-owned media, or nested media", async () => {
@@ -635,13 +711,13 @@ describe("media editing", () => {
     const shield = editor.appendix.querySelector<HTMLElement>(".◆media-interaction-shield")!
     shield.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0}))
     expect($.selectedElement).toBe(contentFrame)
-    expect(editor.features.selection.isCaptureSelection).toBe(true)
+    expect(editor.features.selection.isCaptureSelection).toBe(false)
   })
 
-  it.each(['<iframe></iframe>', '<iframe srcdoc=""></iframe>'])(
-    "captures an empty iframe through its surface and opens the source controls: %s", async html => {
+  it.each(['<iframe></iframe>', '<iframe srcdoc=""></iframe>', '<audio controls=""></audio>', '<video controls=""></video>'])(
+    "node-selects empty native media through its surface and opens the source controls: %s", async html => {
       document.body.innerHTML = `<p>text</p>${html}`
-      const frame = document.querySelector("iframe")!
+      const frame = document.querySelector("iframe, audio, video")!
       vi.spyOn(frame, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 60, 320, 180))
       await vi.waitFor(() => expect(editor.appendix.querySelector(".◆media-interaction-shield")).not.toBeNull())
       const shield = editor.appendix.querySelector<HTMLElement>(".◆media-interaction-shield")!
@@ -650,11 +726,13 @@ describe("media editing", () => {
       shield.dispatchEvent(down)
       shield.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, composed: true, cancelable: true, button: 0}))
       shield.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true, cancelable: true}))
-      await vi.waitFor(() => expect(shield.isConnected).toBe(false))
+      await vi.waitFor(() => expect(shield.isConnected).toBe(true))
 
       expect(down.defaultPrevented).toBe(true)
-      expect(editor.features.selection.captureSelectedElement).toBe(frame)
-      expect(frame).toHaveClass("◆element-capture-selected", "◆media-empty")
+      expect($.selectedElement).toBe(frame)
+      expect(editor.features.selection.captureSelectedElement).toBeNull()
+      expect(frame).toHaveClass("◆element-selected", "◆media-empty")
+      expect(frame).not.toHaveClass("◆element-capture-selected")
       const placeholder = editor.features.media.placeholder
       expect(placeholder.target).toBe(frame)
       expect(placeholder.element).toHaveAttribute("data-open")
@@ -705,7 +783,7 @@ describe("media editing", () => {
     expect(editor.appendix.querySelectorAll(".◆media-interaction-shield")).toHaveLength(0)
   })
 
-  it("repositions shields on layout refresh and restores the previous media shield after capture switches", async () => {
+  it("repositions shields on layout refresh and keeps surfaces shielded after node selection", async () => {
     document.body.innerHTML = '<iframe src="about:blank#frame"></iframe><audio src="sound.mp3"></audio>'
     const [iframe, audio] = Array.from(document.body.children)
     let width = 100
@@ -730,7 +808,7 @@ describe("media editing", () => {
       .find(shield => shield !== iframeShield)!
     audioShield.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0}))
     expect($.selectedElement).toBe(audio)
-    expect(editor.features.selection.isCaptureSelection).toBe(true)
+    expect(editor.features.selection.isCaptureSelection).toBe(false)
     await vi.waitFor(() => expect(editor.appendix.querySelectorAll(".◆media-interaction-shield")).toHaveLength(2))
   })
 })
