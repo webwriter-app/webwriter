@@ -1155,6 +1155,9 @@ export class DOMEditor {
     root.querySelectorAll<HTMLLinkElement>("link[rel='stylesheet'][href]").forEach(link => {
       jobs.push(this.inlineStylesheet(link, strict))
     })
+    root.querySelectorAll<HTMLElement>("[style]").forEach(element => {
+      jobs.push(this.inlineStyleAttribute(element, strict))
+    })
     await Promise.all(jobs)
   }
 
@@ -1225,6 +1228,9 @@ export class DOMEditor {
     try {
       const response = await this.fetchResource(original)
       const source = await response.text()
+      if(strict && script.type === "module" && /\bimport\s*(?:\(|["']|[^;\n]*\bfrom\s*["'])/.test(source)) {
+        throw new Error(`Could not inline module dependency graph ${original} for offline export`)
+      }
       script.setAttribute(originalURLAttribute("src"), original)
       script.removeAttribute("src")
       script.textContent = source
@@ -1245,6 +1251,11 @@ export class DOMEditor {
       const rewritten = await this.replaceCssURLs(withImports, base)
       const style = link.ownerDocument!.createElement("style")
       style.setAttribute(originalURLAttribute("href"), original)
+      for(const name of ["media", "title"]) {
+        const value = link.getAttribute(name)
+        if(value !== null) style.setAttribute(name, value)
+      }
+      if(link.hasAttribute("disabled")) style.setAttribute("disabled", "")
       style.textContent = rewritten
       link.replaceWith(style)
     }
@@ -1253,17 +1264,28 @@ export class DOMEditor {
     }
   }
 
-  private async inlineCssImports(css: string, base: string) {
-    const pattern = /@import\s+(?:url\(\s*)?(?:(['"])([^'"]+)\1|([^\s;)]+))\s*\)?\s*;?/gi
+  private async inlineCssImports(css: string, base: string, seen = new Set<string>()) {
+    const pattern = /@import\s+(?:url\(\s*)?(?:(['"])([^'"]+)\1|([^\s;)]+))\s*\)?(\s*[^;]*;?)/gi
     const matches = [...css.matchAll(pattern)]
     const replacements = await Promise.all(matches.map(async match => {
       const href = this.resolvedResourceURL(match[2] ?? match[3], base)
+      if(seen.has(href)) return [match[0], match[4]] as const
+      seen.add(href)
       const imported = await this.fetchResource(href).then(response => response.text())
-      return [match[0], await this.inlineCssImports(imported, href)] as const
+      return [match[0], `${await this.inlineCssImports(imported, href, seen)}${match[4]}`] as const
     }))
     let result = css
     replacements.forEach(([from, to]) => { result = result.replace(from, to) })
     return result
+  }
+
+  private async inlineStyleAttribute(element: HTMLElement, strict=false) {
+    const original = element.getAttribute("style")
+    if(!original || !/url\(/i.test(original)) return
+    try { element.setAttribute("style", await this.replaceCssURLs(original, document.baseURI)) }
+    catch(error) {
+      if(strict) throw new Error(`Could not inline style attribute for offline export: ${error instanceof Error ? error.message : String(error)}`)
+    }
   }
 
   private async replaceCssURLs(css: string, base: string) {
@@ -1327,18 +1349,19 @@ export class DOMEditor {
     if(transfer) this.canonizeTransferredContent(fragment)
     const stagingBody = document.createElement("body")
     stagingBody.append(fragment)
-    const unknownElements = Array.from(stagingBody.querySelectorAll("*"))
-      .filter(element => this.schema.get(element) === this.schema.get("#unknownelement"))
+    const atomicElements = Array.from(stagingBody.querySelectorAll("*"))
+      .filter(element => element.localName.includes("-") || element.hasAttribute("is")
+        || this.schema.get(element) === this.schema.get("#unknownelement"))
       .map(element => ({
         element,
         contenteditable: element.getAttribute("contenteditable"),
       }))
-    unknownElements.forEach(({element}) => element.setAttribute("contenteditable", "false"))
+    atomicElements.forEach(({element}) => element.setAttribute("contenteditable", "false"))
     try {
       this.schema.checkAndCorrect(stagingBody, true)
     }
     finally {
-      unknownElements.forEach(({element, contenteditable}) => {
+      atomicElements.forEach(({element, contenteditable}) => {
         if(contenteditable === null) element.removeAttribute("contenteditable")
         else element.setAttribute("contenteditable", contenteditable)
       })
