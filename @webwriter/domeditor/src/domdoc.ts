@@ -1231,7 +1231,7 @@ export class SharedDOMDoc {
       const options = Array.from(select.options)
       if(select.multiple) options.forEach(option => { option.selected = option.hasAttribute("selected") })
       else {
-        let index = options.findLastIndex(option => option.hasAttribute("selected"))
+        let index = options.reduce((selected, option, index) => option.hasAttribute("selected") ? index : selected, -1)
         if(index < 0 && select.size <= 1) {
           index = options.findIndex(option => !option.disabled && !option.closest("optgroup[disabled]"))
         }
