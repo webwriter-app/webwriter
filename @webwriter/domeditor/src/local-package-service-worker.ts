@@ -106,6 +106,12 @@ async function restoreDirectories() {
   database.close()
 }
 
+// A worker can be restarted without running its activate handler again. Start
+// restoring as soon as this module is evaluated and make every operation wait
+// for the same read, so fetches and messages cannot observe an empty map.
+const directoriesReady = restoreDirectories()
+let messageQueue = Promise.resolve()
+
 function acknowledge(event: ExtendableMessageEvent, requestId: string | undefined, ok: boolean, error?: string) {
   if(!requestId || !event.ports[0]) return
   event.ports[0].postMessage({
@@ -120,6 +126,7 @@ async function handleMessage(event: ExtendableMessageEvent) {
   const message = event.data as Partial<LocalPackageWorkerMessage> | undefined
   if(!message || typeof message.type !== "string") return
   try {
+    await directoriesReady
     if(message.type === "register-local-package") {
       if(typeof message.id !== "string" || !isDirectoryHandle(message.handle)) {
         throw new TypeError("Invalid local package directory handle")
@@ -153,16 +160,21 @@ worker.addEventListener("install", event => {
 
 worker.addEventListener("activate", event => {
   event.waitUntil((async() => {
-    await restoreDirectories()
+    await directoriesReady
     await worker.clients.claim()
   })())
 })
 
 worker.addEventListener("message", event => {
-  event.waitUntil(handleMessage(event))
+  const operation = messageQueue.then(() => handleMessage(event))
+  messageQueue = operation.catch(() => {})
+  event.waitUntil(operation)
 })
 
 worker.addEventListener("fetch", event => {
-  const response = localPackageFetchResponse(event.request, requestHandler)
+  const response = localPackageFetchResponse(
+    event.request,
+    request => directoriesReady.then(() => requestHandler(request)),
+  )
   if(response) event.respondWith(response)
 })
