@@ -234,6 +234,54 @@ describe("StateFeature", () => {
     editor.destroy()
   })
 
+  it("rejects applying a pending edit after the selected node is replaced", () => {
+    document.body.innerHTML = "<p>Keep</p><aside>Elsewhere</aside>"
+    const editor = new DOMEditor()
+    const paragraph = document.querySelector("p")!
+    document.getSelection()!.setPosition(paragraph.firstChild!, 2)
+    editor.getActionHandler("beginHTMLSelectionEdit")({type: "beginHTMLSelectionEdit"})
+    editor.getActionHandler("setHTMLSelectionEditPending")({
+      type: "setHTMLSelectionEditPending",
+      pending: true,
+    })
+
+    paragraph.replaceWith(document.createElement("p"))
+    const apply = () => editor.getActionHandler("applyHTMLSelectionEdit")({
+      type: "applyHTMLSelectionEdit",
+      html: "<p>Changed</p>",
+    })
+
+    expect(apply).toThrow("The selected content changed before the HTML could be applied")
+    expect(editor.toHTML(true)).toBe("<p></p><aside>Elsewhere</aside>")
+    expect(editor.features.state.isHTMLSelectionEditPending).toBe(true)
+    expect(editor.isEditingLocked).toBe(true)
+    editor.getActionHandler("discardHTMLSelectionEdit")({type: "discardHTMLSelectionEdit"})
+    expect(editor.isEditingLocked).toBe(false)
+    editor.destroy()
+  })
+
+  it("allows unrelated edits while a pending HTML selection waits", () => {
+    document.body.innerHTML = "<p>Keep</p><aside>Elsewhere</aside>"
+    const editor = new DOMEditor()
+    const paragraph = document.querySelector("p")!
+    document.getSelection()!.setPosition(paragraph.firstChild!, 2)
+    editor.getActionHandler("beginHTMLSelectionEdit")({type: "beginHTMLSelectionEdit"})
+    editor.getActionHandler("setHTMLSelectionEditPending")({
+      type: "setHTMLSelectionEditPending",
+      pending: true,
+    })
+    document.querySelector("aside")!.textContent = "Updated"
+
+    const result = editor.getActionHandler("applyHTMLSelectionEdit")({
+      type: "applyHTMLSelectionEdit",
+      html: "<p>Changed</p>",
+    }) as {status: string}
+
+    expect(result.status).toBe("applied")
+    expect(editor.toHTML(true)).toBe("<p>Changed</p><aside>Updated</aside>")
+    editor.destroy()
+  })
+
   it("shows a read-only in-document AI preview and restores the document when rejected", () => {
     document.body.innerHTML = "<p>Before</p>"
     const editor = new DOMEditor()

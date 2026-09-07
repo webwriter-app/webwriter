@@ -39,6 +39,8 @@ export class StateFeature extends EditorFeature {
   private reviewToolbar: HTMLElement | null = null
   private aiPreview: DOMChangePreview | null = null
   private htmlEditRange: Range | null = null
+  private htmlEditSnapshot: string | null = null
+  private htmlEditIdentity = new Set<Node>()
   private htmlEditPending = false
   private readonly htmlEditTargets = new Set<HTMLElement>()
   private readonly htmlEditLock = {}
@@ -95,6 +97,29 @@ export class StateFeature extends EditorFeature {
     const fragment = range.cloneContents()
     this.editor.clearEditingArtifacts(fragment)
     return serializeFragment(fragment)
+  }
+
+  private captureHTMLSelectionIdentity(range: Range) {
+    const identity = new Set<Node>()
+    const visit = (node: Node) => {
+      if(node !== document.body) {
+        try {
+          if(range.intersectsNode(node)) identity.add(node)
+        }
+        catch {
+          return
+        }
+      }
+      node.childNodes.forEach(visit)
+    }
+    visit(document.body)
+    return identity
+  }
+
+  private isCurrentHTMLSelection(range: Range) {
+    if(!range.startContainer.isConnected || !range.endContainer.isConnected) return false
+    for(const node of this.htmlEditIdentity) if(!node.isConnected) return false
+    return this.htmlEditSnapshot === this.serializeHTMLRange(range)
   }
 
   private pendingHTMLTargets(range: Range) {
@@ -158,6 +183,8 @@ export class StateFeature extends EditorFeature {
     this.clearHTMLSelectionPending()
     this.restoreHTMLRange()
     this.htmlEditRange = null
+    this.htmlEditSnapshot = null
+    this.htmlEditIdentity.clear()
     return {status: "discarded" as const}
   }
 
@@ -166,7 +193,7 @@ export class StateFeature extends EditorFeature {
       throw new Error("There is no pending HTML selection change to apply")
     }
     const range = this.htmlEditRange
-    if(!range.startContainer.isConnected || !range.endContainer.isConnected) {
+    if(!this.isCurrentHTMLSelection(range)) {
       throw new Error("The selected content changed before the HTML could be applied")
     }
     const {fragment, removedUnsafeItems} = this.editor.parseHTMLFragment(checkedAIHTML(html))
@@ -190,6 +217,8 @@ export class StateFeature extends EditorFeature {
       this.editor.normalizeSurroundingElements(range.startContainer, ...nodes)
       this.editor.doc.syncFromDOM()
       this.htmlEditRange = null
+      this.htmlEditSnapshot = null
+      this.htmlEditIdentity.clear()
       return {status: "applied" as const, removedUnsafeItems}
     }
     catch(error) {
@@ -406,7 +435,9 @@ export class StateFeature extends EditorFeature {
       }
       const range = this.selectedHTMLRange(path)
       this.htmlEditRange = range
-      return {html: this.serializeHTMLRange(range)}
+      this.htmlEditSnapshot = this.serializeHTMLRange(range)
+      this.htmlEditIdentity = this.captureHTMLSelectionIdentity(range)
+      return {html: this.htmlEditSnapshot}
     },
     setHTMLSelectionEditPending: ({pending}: {type: "setHTMLSelectionEditPending", pending: boolean}) => {
       if(typeof pending !== "boolean") throw new TypeError("The pending state must be a boolean")
@@ -500,6 +531,8 @@ export class StateFeature extends EditorFeature {
     document.documentElement.classList.remove("◆ai-review-active")
     this.clearHTMLSelectionPending()
     this.htmlEditRange = null
+    this.htmlEditSnapshot = null
+    this.htmlEditIdentity.clear()
     this.editor.unlockEditing(this)
     super.disable()
   }
