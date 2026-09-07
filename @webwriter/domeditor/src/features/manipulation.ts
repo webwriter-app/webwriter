@@ -950,7 +950,7 @@ export class ManipulationFeature extends EditorFeature {
       const parent = container.parentElement
       if(!parent) break
       const schema = this.editor.schema.get(container)
-      const next = (splittingSummary || strict && schema.inseperable
+      const next = (splittingSummary || container.matches("h1, h2, h3, h4, h5, h6") || strict && schema.inseperable
         ? this.editor.schema.create()
         : cloneWithoutEditorMarkers(container, false)) as Element
       container.after(next)
@@ -1185,7 +1185,8 @@ export class ManipulationFeature extends EditorFeature {
         return
       }
       const summary = $.anchorContainer?.closest("summary")
-      if(ev.inputType === "insertParagraph" && summary?.parentElement?.matches("details")) {
+      if(ev.inputType === "insertParagraph" && (summary?.parentElement?.matches("details")
+        || $.anchorContainer?.matches("h1, h2, h3, h4, h5, h6"))) {
         ev.preventDefault()
         this.insert()
         return
@@ -1302,8 +1303,8 @@ export class ManipulationFeature extends EditorFeature {
    * `node`, splits the containing block at the caret (Enter behavior).
    * `splitDepth` is the number of additional ancestor levels to split (0 means
    * one split); <body> and <html> are never split. Splitting continues the
-   * container as a clone — with `strict`, inseperable containers (e.g.
-   * headings) continue as a new default node (<p>) instead. */
+   * container as a clone. Headings continue as a new default node (<p>),
+   * as do other inseperable containers when `strict` is set. */
   insert(node?: Node, splitDepth=0, strict=false) {
     if(!node && this.ensureTextBlock()) {
       return

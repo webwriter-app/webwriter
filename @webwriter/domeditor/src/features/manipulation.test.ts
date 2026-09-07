@@ -82,6 +82,40 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expect($.anchorOffset).toBe(0)
   })
 
+  describe.each(["h1", "h2", "h3", "h4", "h5", "h6"])("splitting %s", tag => {
+    it.each([0, 2, 5])("continues as a paragraph at offset %i", offset => {
+      document.body.innerHTML = `<${tag} id="title">hello</${tag}>`
+      const heading = document.body.firstElementChild!
+      $.move(heading.firstChild!, offset)
+
+      const event = new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
+      document.dispatchEvent(event)
+
+      expect(event.defaultPrevented).toBe(true)
+      expectBodyToBe(`<${tag} id="title">${"hello".slice(0, offset)}</${tag}><p>${"hello".slice(offset)}</p>`)
+      expect(document.body.firstElementChild).toBe(heading)
+      expect(document.querySelector("p")!.contains($.anchor)).toBe(true)
+      expect($.anchorOffset).toBe(0)
+    })
+
+    it("handles native paragraph input while preserving inline content and siblings", () => {
+      document.body.innerHTML = `<section><${tag}><b><i>hello</i></b><span> world</span></${tag}><p>after</p></section>`
+      const following = document.querySelector("p")!
+      $.move(document.querySelector("i")!.firstChild!, 2)
+      const event = new InputEvent("beforeinput", {
+        bubbles: true, cancelable: true, inputType: "insertParagraph",
+      })
+
+      document.body.dispatchEvent(event)
+
+      expect(event.defaultPrevented).toBe(true)
+      expectBodyToBe(`<section><${tag}><b><i>he</i></b></${tag}><p><b><i>llo</i></b><span> world</span></p><p>after</p></section>`)
+      expect(document.querySelectorAll("p")[1]).toBe(following)
+      expect($.anchor).toBe(document.querySelectorAll("i")[1].firstChild)
+      expect($.anchorOffset).toBe(0)
+    })
+  })
+
   it("handles insertParagraph beforeinput without a preceding key event", () => {
     const event = new InputEvent("beforeinput", {
       bubbles: true,
@@ -342,7 +376,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
 
     expectBodyToBe("<details open=\"\"><summary>Heading</summary><p>a</p><p>b</p></details>")
   })
-  it("does not split an element when its parent disallows another copy", () => {
+  it("continues a heading group with a paragraph when splitting its heading", () => {
     document.body.innerHTML = "<hgroup><h1>ab</h1></hgroup>"
     $.move(document.querySelector("h1")!.firstChild!, 1)
     const event = new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
@@ -350,7 +384,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     document.dispatchEvent(event)
 
     expect(event.defaultPrevented).toBe(true)
-    expectBodyToBe("<hgroup><h1>ab</h1></hgroup>")
+    expectBodyToBe("<hgroup><h1>a</h1><p>b</p></hgroup>")
   })
   it("splits nested marks with their containing block", () => {
     document.body.innerHTML = "<p><b><i>hello</i></b> world</p>"
@@ -372,11 +406,11 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     editor.features.manipulation.insert()
     expectBodyToBe("<p></p><p>hello world</p>")
   })
-  it("splits an inseperable element into a clone when not strict", () => {
+  it("continues a heading with a paragraph even when not strict", () => {
     document.body.innerHTML = "<h1>hello</h1>"
     $.move(document.body.firstElementChild!.firstChild!, 2)
     editor.features.manipulation.insert()
-    expectBodyToBe("<h1>he</h1><h1>llo</h1>")
+    expectBodyToBe("<h1>he</h1><p>llo</p>")
   })
   it("splits an inseperable element into a default node when strict", () => {
     document.body.innerHTML = "<h1>hello</h1>"
