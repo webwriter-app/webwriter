@@ -126,6 +126,68 @@ describe("media editing", () => {
     expect(video.children).toHaveLength(0)
   })
 
+  it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)(
+    "capture-selects %s when its placeholder controls receive keyboard focus", async media => {
+      editor.features.media.actions.insertMedia({type: "insertMedia", media})
+      const target = document.querySelector(media)!
+      const placeholder = editor.features.media.placeholder
+      const html = editor.toHTML(true)
+
+      for(const selector of [".file", ".url"]) {
+        const control = placeholder.root.querySelector<HTMLElement>(selector)!
+        control.focus()
+        await Promise.resolve()
+
+        expect(editor.features.selection.captureSelectedElement).toBe(target)
+        expect(target).toHaveClass("◆element-selected", "◆element-capture-selected")
+        expect(placeholder.root.activeElement).toBe(control)
+        expect(placeholder.element).toHaveAttribute("data-open")
+        expect(editor.toHTML(true)).toBe(html)
+      }
+    },
+  )
+
+  it("ignores placeholder focus after its media has been replaced", () => {
+    editor.features.media.actions.insertMedia({type: "insertMedia", media: "video"})
+    const placeholder = editor.features.media.placeholder
+    document.querySelector("video")!.replaceWith(document.createElement("video"))
+
+    placeholder.root.querySelector<HTMLInputElement>(".url")!.focus()
+
+    expect(editor.features.selection.captureSelectedElement).toBeNull()
+  })
+
+  it("preserves native URL editing while the media is capture-selected", async () => {
+    editor.features.media.actions.insertMedia({type: "insertMedia", media: "video"})
+    const video = document.querySelector("video")!
+    editor.features.selection.captureElement(video)
+    const placeholder = editor.features.media.placeholder
+    const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
+    input.value = "https://example.com/movie.mp4"
+    const selectElement = vi.spyOn($, "selectElement")
+    getSelection()!.removeAllRanges()
+
+    input.focus()
+    input.select()
+    document.dispatchEvent(new Event("selectionchange"))
+    editor.features.selection.processSelection()
+    await Promise.resolve()
+
+    expect(placeholder.root.activeElement).toBe(input)
+    expect(editor.features.selection.captureSelectedElement).toBe(video)
+    expect(video).toHaveClass("◆element-capture-selected")
+    expect(selectElement).not.toHaveBeenCalled()
+    expect(getSelection()!.rangeCount).toBe(0)
+    expect(editor.features.media.getState()?.type).toBe("video")
+    const style = getComputedStyle(input)
+    expect(style.caretColor).toBe("auto")
+    expect(style.userSelect).toBe("text")
+    const selectionRule = Array.from(placeholder.root.adoptedStyleSheets[0].cssRules)
+      .find(rule => rule instanceof CSSStyleRule && rule.selectorText === ".url::selection") as CSSStyleRule
+    expect(selectionRule.style.backgroundColor).toBe("#0078d7")
+    selectElement.mockRestore()
+  })
+
   it("keeps the empty-media affordance open while its URL input has focus", async () => {
     editor.features.media.actions.insertMedia({type: "insertMedia", media: "video"})
     const video = document.querySelector("video")!
@@ -141,7 +203,7 @@ describe("media editing", () => {
     expect(placeholder.root.activeElement).toBe(input)
     expect(placeholder.target).toBe(video)
     expect(placeholder.element).toHaveAttribute("data-open")
-    expect(video).toHaveClass("◆element-selected")
+    expect(video).toHaveClass("◆element-selected", "◆element-capture-selected")
   })
 
   it("keeps the empty-media affordance open when the file picker returns without a file", async () => {
@@ -164,7 +226,7 @@ describe("media editing", () => {
     expect(placeholder.root.activeElement).toBe(fileButton)
     expect(placeholder.target).toBe(audio)
     expect(placeholder.element).toHaveAttribute("data-open")
-    expect(audio).toHaveClass("◆element-selected")
+    expect(audio).toHaveClass("◆element-selected", "◆element-capture-selected")
   })
 
   it("reads uploaded files as data URLs", async () => {

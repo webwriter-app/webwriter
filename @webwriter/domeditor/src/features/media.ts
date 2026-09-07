@@ -100,6 +100,9 @@ const mediaPlaceholderStylesheet = createStylesheet(`
   .or { flex: 0 0 auto; color: #d1d5db; font-size: 1rem; }
   .url-row { display: flex; flex: 1 1 20rem; min-width: 0; gap: .4rem; }
   .url {
+    caret-color: auto;
+    user-select: text;
+    -webkit-user-select: text;
     min-width: 0;
     min-height: 2.6rem;
     flex: 1 1 auto;
@@ -108,6 +111,10 @@ const mediaPlaceholderStylesheet = createStylesheet(`
     border-radius: .35rem;
     color: #343740;
     background: white;
+  }
+  .url::selection {
+    color: white;
+    background-color: #0078d7;
   }
   .apply {
     flex: 0 0 auto;
@@ -135,6 +142,7 @@ class MediaPlaceholder {
   readonly root: ShadowRoot
   target: Element | null = null
   onSource: ((target: Element, source: string) => void) | null = null
+  onFocus: ((target: Element) => void) | null = null
   onInteractionChange: (() => void) | null = null
   private focusWithin = false
   private pickerOpen = false
@@ -174,6 +182,7 @@ class MediaPlaceholder {
     root.addEventListener("focusin", () => {
       this.focusWithin = true
       this.beginInteraction()
+      if(this.target) this.onFocus?.(this.target)
     })
     root.addEventListener("focusout", () => {
       this.focusWithin = false
@@ -758,6 +767,11 @@ export class MediaFeature extends EditorFeature {
     if(!this.mediaPlaceholder) {
       this.mediaPlaceholder = new MediaPlaceholder()
       this.mediaPlaceholder.onSource = (target, source) => this.setSource(target, source)
+      this.mediaPlaceholder.onFocus = target => {
+        if(!document.body.contains(target) || !isEmptyMedia(target)) return
+        this.editor.features.selection.captureElement(target, {preserveNativeSelection: true})
+        this.editor.postSelectionPath()
+      }
       this.mediaPlaceholder.onInteractionChange = this.scheduleRefresh
       this.editor.addAppendix(this.mediaPlaceholder.element)
     }
@@ -1185,7 +1199,7 @@ export class MediaFeature extends EditorFeature {
   }
 
   private selectedMedia() {
-    const selected = $.selectedElement
+    const selected = this.editor.features.selection.captureSelectedElement ?? $.selectedElement
     if(selected?.matches(mediaSelector)) return mediaContainerForNode(selected)
     const container = $.anchorContainer
     return isElement(container) ? mediaContainerForNode(container) : null

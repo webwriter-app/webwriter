@@ -161,12 +161,13 @@ export class SelectionFeature extends EditorFeature {
   }
 
   /** Capture-selects an authored element while keeping its internal pointer
-   * interactions available to a focused feature such as SVG graphics. */
-  captureElement(element: Element) {
+   * interactions available to a focused feature such as SVG graphics.
+   * Focused appendix controls can preserve their native text selection. */
+  captureElement(element: Element, {preserveNativeSelection = false} = {}) {
     if(!element.isConnected || element === document.body || !document.body.contains(element)) return
     this.clearSelectedSection()
     this.#capturedElement = element
-    $.selectElement(element, false)
+    if(!preserveNativeSelection) $.selectElement(element, false)
     this.processSelection()
   }
 
@@ -1017,7 +1018,7 @@ export class SelectionFeature extends EditorFeature {
     const capturedElement = this.captureSelectedElement
     let sel: Selection | null
     if(capturedElement) {
-      this.#normalizeNativeSelection()
+      if(!this.editor.features.media.isPlaceholderInteraction) this.#normalizeNativeSelection()
       this.editor.features.list.clearSelectionPresentation()
       sel = document.getSelection()
     }
