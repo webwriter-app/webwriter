@@ -36,6 +36,7 @@ import {stripActiveContent} from "../active-content"
 import {
   imageMapAreaAttributeOptions,
   isImageMapHotspotShape,
+  isMediaCaptureMode,
   isMediaType,
   isTimedMediaResourceType,
   isWebsiteType,
@@ -1824,6 +1825,11 @@ export class DomEditor extends LitElement {
     this.savedEditorSelection = null
 
     try {
+      // Preview hides the editor iframe, so close any appendix capture UI and
+      // release its device streams before the authored document is previewed.
+      void this.execute({type: "cancelMediaCapture"}).catch(() => {
+        // Cancellation is best effort while the editor frame is initializing.
+      })
       if(!this.editorDocument) await this.waitForEditorWindow()
       if(import.meta.env.MODE !== "test" && this.backendState === "probing") await this.loginToBackend()
       const previewHTML = this.currentPreviewHTML()
@@ -2420,6 +2426,18 @@ export class DomEditor extends LitElement {
     }
     if(label === "Redo") {
       void this.execute({type: "redo"}).finally(() => this.focusEditor())
+      return
+    }
+    if(label?.startsWith("media-file:")) {
+      const media = label.slice("media-file:".length)
+      if(isMediaType(media)) void this.execute({type: "insertMedia", media, selectFile: true})
+      else this.focusEditor()
+      return
+    }
+    if(label?.startsWith("media-capture:")) {
+      const mode = label.slice("media-capture:".length)
+      if(isMediaCaptureMode(mode)) void this.execute({type: "captureMedia", mode})
+      else this.focusEditor()
       return
     }
     if(label === "removeMarks") {

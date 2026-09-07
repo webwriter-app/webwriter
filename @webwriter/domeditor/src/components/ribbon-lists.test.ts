@@ -49,7 +49,12 @@ describe("list ribbon drawer", () => {
     expect(button("Text").submenu.map(item => typeof item === "string" ? item : item.label))
       .toEqual(["Paragraph", "Section", "Heading", "List"])
     expect(button("Media").submenu.map(item => typeof item === "string" ? item : item.label))
-      .toEqual(["Image", "Audio", "Video", "Graphic", "Formula", "Website"])
+      .toEqual([
+        "Image", "Audio", "Video", "Graphic", "Formula", "Website",
+        "Image: Select file", "Image: Capture screen", "Image: Record",
+        "Audio: Select file", "Audio: Capture screen", "Audio: Record",
+        "Video: Select file", "Video: Capture screen", "Video: Record",
+      ])
     expect(button("Other").submenu.map(item => typeof item === "string" ? item : item.label))
       .toEqual(["Form", "HTML", "Details"])
     expect(button("Media").action).toBe("Image")

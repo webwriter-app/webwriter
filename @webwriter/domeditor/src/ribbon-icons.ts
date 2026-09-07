@@ -73,6 +73,7 @@ import palette from "@tabler/icons/outline/palette.svg?raw"
 import photo from "@tabler/icons/outline/photo.svg?raw"
 import pilcrow from "@tabler/icons/outline/pilcrow.svg?raw"
 import playerPlay from "@tabler/icons/filled/player-play.svg?raw"
+import playerRecord from "@tabler/icons/outline/player-record.svg?raw"
 import plus from "@tabler/icons/outline/plus.svg?raw"
 import printer from "@tabler/icons/outline/printer.svg?raw"
 import packageIcon from "@tabler/icons/outline/package.svg?raw"
@@ -80,6 +81,7 @@ import paperclip from "@tabler/icons/outline/paperclip.svg?raw"
 import pencil from "@tabler/icons/outline/pencil.svg?raw"
 import rulerMeasure from "@tabler/icons/outline/ruler-measure.svg?raw"
 import scissors from "@tabler/icons/outline/scissors.svg?raw"
+import screenShare from "@tabler/icons/outline/screen-share.svg?raw"
 import arrowsJoin from "@tabler/icons/outline/arrows-join.svg?raw"
 import arrowsSplit from "@tabler/icons/outline/arrows-split.svg?raw"
 import stack from "@tabler/icons/outline/stack.svg?raw"
@@ -205,6 +207,9 @@ const icons: Record<string, string> = {
   New: filePlus,
   Delete: trash,
   Open: folderOpen,
+  "Select file": folderOpen,
+  "Capture screen": screenShare,
+  Record: playerRecord,
   Save: deviceFloppy,
   "Save as": fileExport,
   Download: download,

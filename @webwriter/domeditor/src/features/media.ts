@@ -1,8 +1,16 @@
 import {EditorFeature} from "."
+import {MediaCapture} from "../components/media-capture"
 import {stripActiveContent} from "../active-content"
+import folderOpen from "@tabler/icons/outline/folder-open.svg?raw"
+import screenShare from "@tabler/icons/outline/screen-share.svg?raw"
+import playerRecord from "@tabler/icons/outline/player-record.svg?raw"
+import arrowRight from "@tabler/icons/outline/arrow-right.svg?raw"
 import {$, atomicEditingContainer, adoptStylesheet, createStylesheet, getContainer, isElement} from "../utility"
 import {
   isEmptyMedia,
+  isMediaCaptureMode,
+  mediaCaptureModes,
+  mediaCaptureOptions,
   isImageMapHotspotShape,
   isMediaType,
   isTimedMediaResourceType,
@@ -18,6 +26,7 @@ import {
   websiteTypes,
   type MediaSelectionState,
   type MediaType,
+  type MediaCaptureMode,
   type ImageMapAreaState,
   type ImageMapHotspotShape,
   type TimedMediaResourceState,
@@ -62,13 +71,14 @@ const equalAttributes = (element: Element, expected: Record<string, string>) => 
 
 const mediaPlaceholderStylesheet = createStylesheet(`
   :host {
+    --control-height: 2.5rem;
     position: fixed;
     z-index: 2147483647;
     display: none;
     box-sizing: border-box;
     place-items: center;
     overflow: auto;
-    padding: 1.25rem;
+    padding: .5rem;
     color: #f3f4f6;
     background: rgb(31 41 55 / 94%);
     font: 14px/1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -78,44 +88,59 @@ const mediaPlaceholderStylesheet = createStylesheet(`
   }
   :host([data-open]) { display: grid; }
   :host([data-media="audio"]) {
+    --control-height: 2rem;
     padding: .25rem;
     background: rgba(31, 41, 55, 0.5);
-  }
-  :host([data-media="audio"]) .content { min-width: 0; }
-  :host([data-media="audio"]) :is(.file, .url, .apply) {
-    min-height: 0;
-    padding: .35rem .6rem;
   }
   .content {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: min(48rem, 100%);
+    width: min(52rem, 100%);
+    min-width: 0;
     gap: .65rem;
   }
   button, input { box-sizing: border-box; font: inherit; pointer-events: auto; }
-  .file {
+  [hidden] { display: none !important; }
+  .file-options {
+    display: flex;
     flex: 0 0 auto;
-    min-height: 2.75rem;
-    padding: .65rem 1rem;
+    pointer-events: auto;
+    overflow: hidden;
     border: 1px solid #c7c9ce;
     border-radius: .35rem;
+    background: white;
+  }
+  .file-options button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    gap: .4rem;
+    height: calc(var(--control-height) - 2px);
+    padding: 0 .65rem;
+    border: 0;
     color: #343740;
     background: white;
     font-weight: 600;
     cursor: pointer;
   }
-  .file:hover, .apply:hover { background: #eef4fb; }
+  .file-options button + button { border-inline-start: 1px solid #c7c9ce; }
+  .file-options button:hover, .apply:hover { background: #eef4fb; }
+  .file-options button:active, .apply:active { color: #1e4f87; background: #c4dcf4; }
+  .label { white-space: nowrap; }
+  .icon { display: flex; flex: 0 0 auto; }
+  .icon svg { display: block; width: 1.125rem; height: 1.125rem; }
   .or { flex: 0 0 auto; color: #d1d5db; font-size: 1rem; }
-  .url-row { display: flex; flex: 1 1 20rem; min-width: 0; gap: .4rem; }
+  .url-row { position: relative; flex: 1 1 20rem; min-width: 3.5rem; }
   .url {
     caret-color: auto;
     user-select: text;
     -webkit-user-select: text;
     min-width: 0;
-    min-height: 2.6rem;
-    flex: 1 1 auto;
-    padding: .55rem .7rem;
+    width: 100%;
+    height: var(--control-height);
+    padding: .35rem calc(var(--control-height) + .25rem) .35rem .65rem;
     border: 1px solid #c7c9ce;
     border-radius: .35rem;
     color: #343740;
@@ -129,27 +154,41 @@ const mediaPlaceholderStylesheet = createStylesheet(`
     color: white;
     background-color: #0078d7;
   }
+  .url[aria-invalid="true"] {
+    border-color: #dc2626;
+    box-shadow: inset 0 0 0 1px #dc2626;
+    background: #fff1f2;
+  }
   .apply {
-    flex: 0 0 auto;
-    padding: .55rem .8rem;
-    border: 1px solid #c7c9ce;
-    border-radius: .35rem;
+    position: absolute;
+    inset-inline-end: .25rem;
+    top: 50%;
+    transform: translateY(-50%);
+    display: grid;
+    place-items: center;
+    width: calc(var(--control-height) - .5rem);
+    height: calc(var(--control-height) - .5rem);
+    padding: 0;
+    border: 0;
+    border-radius: .25rem;
     color: #343740;
-    background: white;
+    background: transparent;
     cursor: pointer;
   }
   input:focus { outline: none; }
-  button:focus-visible { outline: 2px solid #60a5fa; outline-offset: 1px; }
-  @container (max-width: 34rem) {
-    .content {
-      display: grid;
-      width: min(32rem, 100%);
-      gap: .75rem;
-      justify-items: center;
-    }
-    .url-row { width: 100%; }
-    :host([data-media="audio"]) .content { display: flex; }
-    :host([data-media="audio"]) .or { display: none; }
+  button:focus-visible { outline: 2px solid #60a5fa; outline-offset: -2px; }
+  @container (max-width: 44rem) {
+    .content { --control-height: 2rem; }
+    .file-options .label { display: none; }
+    .file-options button { width: var(--control-height); padding: 0; }
+  }
+  @container (max-width: 24rem) {
+    .or { display: none; }
+    .content { gap: .35rem; }
+  }
+  @container (max-width: 10rem) {
+    .content { flex-wrap: wrap; }
+    .url-row { flex-basis: 100%; }
   }
 `)
 
@@ -158,6 +197,7 @@ class MediaPlaceholder {
   readonly root: ShadowRoot
   target: Element | null = null
   onSource: ((target: Element, source: string) => void) | null = null
+  onCapture: ((target: Element, mode: MediaCaptureMode) => void) | null = null
   onFocus: ((target: Element) => void) | null = null
   onInteractionChange: (() => void) | null = null
   private focusWithin = false
@@ -178,12 +218,24 @@ class MediaPlaceholder {
     adoptStylesheet(root, mediaPlaceholderStylesheet)
     root.innerHTML = `
       <div class="content">
-        <button class="file" type="button"></button>
+        <div class="file-options" role="group" aria-label="Media source">
+          <button class="file" type="button" aria-label="Select file" title="Select file">
+            <span class="icon" aria-hidden="true">${folderOpen}</span><span class="label">Select file</span>
+          </button>
+          <button class="screen" type="button" aria-label="Capture screen" title="Capture screen">
+            <span class="icon" aria-hidden="true">${screenShare}</span><span class="label">Capture screen</span>
+          </button>
+          <button class="record" type="button" aria-label="Record" title="Record">
+            <span class="icon" aria-hidden="true">${playerRecord}</span><span class="label">Record</span>
+          </button>
+        </div>
         <input class="picker" type="file" hidden />
         <span class="or">or</span>
         <div class="url-row">
-          <input class="url" type="url" />
-          <button class="apply" type="button">Apply</button>
+          <input class="url" type="url" required />
+          <button class="apply" type="button" aria-label="Apply URL" title="Apply URL">
+            <span class="icon" aria-hidden="true">${arrowRight}</span>
+          </button>
         </div>
       </div>
     `
@@ -192,7 +244,7 @@ class MediaPlaceholder {
     const url = root.querySelector<HTMLInputElement>(".url")!
     const file = root.querySelector<HTMLButtonElement>(".file")!
     root.addEventListener("pointerdown", event => {
-      if(event.button !== 0 || !(event.target instanceof Element) || !event.target.closest("button, input")) return
+      if((event as PointerEvent).button !== 0 || !(event.target instanceof Element) || !event.target.closest("button, input")) return
       this.beginInteraction()
       if(this.target) this.onFocus?.(this.target)
     })
@@ -209,11 +261,17 @@ class MediaPlaceholder {
         this.onInteractionChange?.()
       })
     })
-    file.addEventListener("click", () => {
-      this.pickerOpen = true
-      picker.click()
-    })
+    file.addEventListener("click", () => this.selectFile())
+    for(const source of ["screen", "record"] as const) {
+      root.querySelector<HTMLButtonElement>(`.${source}`)!.addEventListener("click", () => {
+        if(!this.target) return
+        const option = mediaCaptureOptions(this.target.localName as MediaType)
+          .find(option => option.mode.startsWith("screen-") === (source === "screen"))
+        if(option) this.onCapture?.(this.target, option.mode)
+      })
+    }
     root.querySelector<HTMLButtonElement>(".apply")!.addEventListener("click", () => this.applyUrl())
+    url.addEventListener("input", () => this.clearUrlError())
     url.addEventListener("keydown", event => {
       if(event.key !== "Enter") return
       event.preventDefault()
@@ -245,26 +303,61 @@ class MediaPlaceholder {
   }
 
   private applyUrl() {
+    if(!this.target || !document.body.contains(this.target) || !isEmptyMedia(this.target)
+      || atomicEditingContainer(this.target.parentElement)) return
     const input = this.root.querySelector<HTMLInputElement>(".url")!
     const source = input.value.trim()
-    if(this.target && source) this.onSource?.(this.target, source)
+    let url: URL | undefined
+    try { url = new URL(source) } catch {}
+    this.clearUrlError()
+    if(!url || !["http:", "https:"].includes(url.protocol)) {
+      const message = "Enter a valid http:// or https:// URL."
+      input.setCustomValidity(message)
+      input.setAttribute("aria-invalid", "true")
+      input.title = message
+      input.focus({preventScroll: true})
+      input.reportValidity()
+      return
+    }
+    this.onSource?.(this.target, url.href)
+  }
+
+  private clearUrlError() {
+    const input = this.root.querySelector<HTMLInputElement>(".url")!
+    input.setCustomValidity("")
+    input.removeAttribute("aria-invalid")
+    input.removeAttribute("title")
+  }
+
+  selectFile() {
+    if(!this.target || !document.body.contains(this.target) || !isEmptyMedia(this.target)) return
+    this.beginInteraction()
+    this.onFocus?.(this.target)
+    this.pickerOpen = true
+    this.root.querySelector<HTMLInputElement>(".picker")!.click()
   }
 
   showFor(target: Element) {
+    if(this.target !== target) {
+      this.root.querySelector<HTMLInputElement>(".url")!.value = ""
+      this.clearUrlError()
+    }
     this.target = target
     const type = target.localName as MediaType
     this.element.setAttribute("data-media", type)
     const noun = type === "picture" || type === "img" ? "image"
       : isWebsiteType(type) ? "website" : type
-    const file = this.root.querySelector<HTMLButtonElement>(".file")!
     const picker = this.root.querySelector<HTMLInputElement>(".picker")!
     const url = this.root.querySelector<HTMLInputElement>(".url")!
-    file.textContent = `Select ${noun} file`
+    const captureAvailable = mediaCaptureOptions(type).length > 0
+    this.root.querySelector<HTMLButtonElement>(".screen")!.hidden = !captureAvailable
+    this.root.querySelector<HTMLButtonElement>(".record")!.hidden = !captureAvailable
     picker.accept = type === "picture" || type === "img" ? "image/*"
       : type === "audio" ? "audio/*"
       : type === "video" ? "video/*"
       : ".html,.htm,text/html"
     url.placeholder = `Enter ${noun} URL`
+    url.setAttribute("aria-label", `${noun[0].toUpperCase()}${noun.slice(1)} URL`)
     const rect = target.getBoundingClientRect()
     Object.assign(this.element.style, {
       left: `${rect.left}px`,
@@ -771,6 +864,7 @@ export class MediaFeature extends EditorFeature {
   private resizeObserver: ResizeObserver | null = null
   private refreshQueued = false
   private mediaPlaceholder: MediaPlaceholder | null = null
+  private mediaCapture: {controller: MediaCapture, valid: () => boolean} | null = null
   private imageMapOverlayController: ImageMapOverlay | null = null
   private readonly interactionShields = new Map<Element, MediaInteractionShield>()
   private readonly shieldReleasePending = new Set<Element>()
@@ -785,6 +879,7 @@ export class MediaFeature extends EditorFeature {
     if(!this.mediaPlaceholder) {
       this.mediaPlaceholder = new MediaPlaceholder()
       this.mediaPlaceholder.onSource = (target, source) => this.setSource(target, source)
+      this.mediaPlaceholder.onCapture = (target, mode) => this.openCapture(target, mode)
       this.mediaPlaceholder.onFocus = target => {
         if(!document.body.contains(target) || !isEmptyMedia(target)) return
         this.editor.features.selection.captureElement(target, {preserveNativeSelection: true})
@@ -918,6 +1013,9 @@ export class MediaFeature extends EditorFeature {
 
   disable() {
     if(!this.isEnabled) return
+    const capture = this.mediaCapture
+    this.mediaCapture = null
+    capture?.controller.close()
     this.observer?.disconnect()
     this.observer = null
     this.resizeObserver?.disconnect()
@@ -956,7 +1054,16 @@ export class MediaFeature extends EditorFeature {
   }
 
   actions = {
-    insertMedia: ({media}: {type: "insertMedia", media: MediaType}) => {
+    captureMedia: ({mode}: {type: "captureMedia", mode: MediaCaptureMode}) => {
+      if(!this.isEnabled || !isMediaCaptureMode(mode)) return false
+      this.actions.insertMedia({type: "insertMedia", media: mediaCaptureModes[mode].media})
+      const target = this.selectedMedia()
+      return target ? this.openCapture(target, mode) : false
+    },
+    cancelMediaCapture: ({}: {type: "cancelMediaCapture"}) => {
+      this.mediaCapture?.controller.close()
+    },
+    insertMedia: ({media, selectFile = false}: {type: "insertMedia", media: MediaType, selectFile?: boolean}) => {
       if(!isMediaType(media)) throw new TypeError(`Unsupported media type '${String(media)}'`)
       const template = document.createElement("template")
       template.innerHTML = mediaDefaultHTML(media)
@@ -967,6 +1074,7 @@ export class MediaFeature extends EditorFeature {
         this.editor.features.selection.processSelection()
       }
       this.refresh()
+      if(selectFile && this.placeholder.target === element) this.placeholder.selectFile()
     },
     setMediaAttribute: ({name, value}: {type: "setMediaAttribute", name: string, value: string | null}) => {
       const element = this.selectedMedia()
@@ -1363,6 +1471,35 @@ export class MediaFeature extends EditorFeature {
     this.refresh()
   }
 
+  private openCapture(target: Element, mode: MediaCaptureMode) {
+    const sourceTarget = mediaSourceTarget(target, false)
+    const valid = () => this.isEnabled && document.body.contains(target)
+      && !atomicEditingContainer(target.parentElement)
+      && mediaCaptureOptions(target.localName as MediaType).some(option => option.mode === mode)
+      && isEmptyMedia(target) && mediaSourceTarget(target, false) === sourceTarget
+    if(!valid()) return false
+    this.mediaCapture?.controller.close()
+    const controller = new MediaCapture(mode, source => {
+      if(!valid()) return false
+      this.setSource(target, source)
+      return true
+    }, () => {
+      if(this.mediaCapture?.controller !== controller) return
+      this.mediaCapture = null
+      if(valid()) {
+        $.selectElement(target)
+        this.editor.features.selection.processSelection()
+        this.editor.postSelectionPath()
+      }
+      this.scheduleRefresh()
+    })
+    this.mediaCapture = {controller, valid}
+    this.editor.addAppendix(controller.element)
+    this.mediaPlaceholder?.hide()
+    controller.show()
+    return true
+  }
+
   private setEmptyMarker(element: Element, empty: boolean) {
     element.classList.toggle("◆media-empty", empty)
     if(empty) element.classList.add("◆")
@@ -1382,6 +1519,7 @@ export class MediaFeature extends EditorFeature {
   }
 
   private refresh() {
+    if(this.mediaCapture && !this.mediaCapture.valid()) this.mediaCapture.controller.close()
     document.querySelectorAll(mediaSelector).forEach(element => {
       if(element.matches("audio:not([controls])") && !atomicEditingContainer(element.parentElement)) {
         element.setAttribute("controls", "")
@@ -1394,7 +1532,7 @@ export class MediaFeature extends EditorFeature {
     // without restoring the Selection, which would steal focus from the input.
     const retained = this.mediaPlaceholder?.isInteracting ? this.mediaPlaceholder.target : null
     const selected = retained ?? this.selectedMedia()
-    if(selected?.isConnected && isEmptyMedia(selected)) this.placeholder.showFor(selected)
+    if(!this.mediaCapture && selected?.isConnected && isEmptyMedia(selected)) this.placeholder.showFor(selected)
     else this.placeholder.hide()
 
     const image = selected?.matches("picture, img") ? this.imageForMedia(selected, false) : null

@@ -2,6 +2,27 @@ export const mediaTypes = ["picture", "img", "audio", "video", "iframe", "embed"
 
 export type MediaType = typeof mediaTypes[number]
 
+export const mediaCaptureModes = {
+  "screen-image": {media: "picture", label: "Capture screenshot"},
+  "camera-image": {media: "picture", label: "Take photo"},
+  "screen-audio": {media: "audio", label: "Record screen audio"},
+  "microphone-audio": {media: "audio", label: "Record microphone"},
+  "screen-video": {media: "video", label: "Record screen"},
+  "camera-video": {media: "video", label: "Record camera"},
+} as const
+
+export type MediaCaptureMode = keyof typeof mediaCaptureModes
+
+export const isMediaCaptureMode = (value: unknown): value is MediaCaptureMode => (
+  typeof value === "string" && Object.hasOwn(mediaCaptureModes, value)
+)
+
+export const mediaCaptureOptions = (media: MediaType) => (
+  (Object.keys(mediaCaptureModes) as MediaCaptureMode[])
+    .filter(mode => mediaCaptureModes[mode].media === (media === "img" ? "picture" : media))
+    .map(mode => ({mode, label: mode.startsWith("screen-") ? "Capture screen" : "Record"}))
+)
+
 export const websiteTypes = ["iframe", "embed", "object"] as const
 
 export type WebsiteType = typeof websiteTypes[number]

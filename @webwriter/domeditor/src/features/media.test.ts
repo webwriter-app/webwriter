@@ -1,19 +1,27 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
+import type {Window as TestWindow} from "happy-dom"
 import "@testing-library/jest-dom/vitest"
 import {DOMEditor} from "../domeditor"
 import editorStyleString from "../editor.css?raw"
 import {$} from "../utility"
 
 let editor: DOMEditor
+const fetchSettings = (window as unknown as TestWindow).happyDOM.settings.fetch
+const originalFetchInterceptor = fetchSettings.interceptor
 
 beforeEach(() => {
+  // Source-attribute tests should not request real iframe pages.
+  fetchSettings.interceptor = {beforeAsyncRequest: async ({window}) => new window.Response("")}
   document.body.replaceChildren()
   editor = new DOMEditor()
   $.move(document.body.firstElementChild!)
 })
 
-afterEach(() => editor.destroy())
+afterEach(() => {
+  editor.destroy()
+  fetchSettings.interceptor = originalFetchInterceptor
+})
 
 describe("media editing", () => {
   it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)(
@@ -22,7 +30,7 @@ describe("media editing", () => {
       const target = document.querySelector(media)!
       const placeholder = editor.features.media.placeholder
 
-      for(const selector of [".file", ".url", ".apply"]) {
+      for(const selector of [".file", ".file svg", ".url", ".apply"]) {
         target.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0}))
         expect($.selectedElement).toBe(target)
         expect(editor.features.selection.captureSelectedElement).toBeNull()
@@ -129,7 +137,24 @@ describe("media editing", () => {
     )
     const style = Array.from(placeholderController.root.adoptedStyleSheets[0].cssRules, rule => rule.cssText).join("\n")
     expect(style).toMatch(/\.content\s*\{[\s\S]*?display:\s*flex;/)
-    expect(style).toMatch(/@container \(max-width:\s*34rem\)[\s\S]*?\.content\s*\{[\s\S]*?display:\s*grid;/)
+    expect(style).toMatch(/@container \(max-width:\s*44rem\)[\s\S]*?\.file-options \.label\s*\{[\s\S]*?display:\s*none;/)
+    const buttons = Array.from(placeholderController.root.querySelectorAll<HTMLButtonElement>(".file-options button"))
+    expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual(["Select file", "Capture screen", "Record"])
+    expect(buttons.map(button => button.querySelector("svg")?.classList.toString())).toEqual([
+      expect.stringContaining("icon-tabler-folder-open"),
+      expect.stringContaining("icon-tabler-screen-share"),
+      expect.stringContaining("icon-tabler-player-record"),
+    ])
+    expect(placeholderController.root.querySelectorAll('.icon[aria-hidden="true"] svg')).toHaveLength(4)
+    const apply = placeholderController.root.querySelector<HTMLButtonElement>(".apply")!
+    expect(apply).toHaveAccessibleName("Apply URL")
+    expect(apply.querySelector(".icon-tabler-arrow-right")).not.toBeNull()
+    expect(apply.parentElement).toBe(placeholderController.root.querySelector(".url-row"))
+    expect(getComputedStyle(apply).position).toBe("absolute")
+    expect(getComputedStyle(apply.parentElement!).position).toBe("relative")
+    expect(document.body.querySelector("svg, .file-options, .url-row")).toBeNull()
+    editor.doc.syncFromDOM()
+    expect(editor.doc.body.toString()).not.toMatch(/svg|icon-tabler|Media source/)
     expect(document.body.children).toHaveLength(1)
     expect(editor.toHTML(true)).toBe("<audio controls=\"\"></audio>")
   })
@@ -172,18 +197,102 @@ describe("media editing", () => {
     expect(placeholder.element).not.toHaveAttribute("data-open")
   })
 
-  it("applies direct URLs without adding helper nodes to the authored media", () => {
+  it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)(
+    "applies an HTTP URL to the %s source by clicking the inset arrow", media => {
+      editor.features.media.actions.insertMedia({type: "insertMedia", media})
+      const target = document.querySelector(media)!
+      const sourceTarget = media === "picture" ? target.querySelector("img")! : target
+      const placeholder = editor.features.media.placeholder
+      const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
+      input.value = "  https://example.com/media?query=1#section  "
+      placeholder.root.querySelector(".apply svg")!.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true}))
+
+      expect(sourceTarget.getAttribute(media === "object" ? "data" : "src")).toBe("https://example.com/media?query=1#section")
+      expect(placeholder.element).not.toHaveAttribute("data-open")
+      expect(document.body.querySelector("svg, button, input")).toBeNull()
+    },
+  )
+
+  it.each(["", "example.com/movie.mp4", "/movie.mp4", "//example.com/movie.mp4", "http://", "https://exa mple.com", "ftp://example.com/movie.mp4", "file:///movie.mp4", "about:blank", "data:video/mp4;base64,AAAA", "javascript:alert(1)"])(
+    "rejects a non-HTTP or malformed URL without changing the document: %s", source => {
+      editor.features.media.actions.insertMedia({type: "insertMedia", media: "video"})
+      const placeholder = editor.features.media.placeholder
+      const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
+      const before = editor.toHTML(true)
+      input.value = source
+      placeholder.root.querySelector<HTMLButtonElement>(".apply")!.click()
+
+      expect(input).toHaveAttribute("aria-invalid", "true")
+      expect(input.validity.customError).toBe(true)
+      expect(input.validationMessage).toContain("http:// or https://")
+      expect(placeholder.root.activeElement).toBe(input)
+      expect(placeholder.element).toHaveAttribute("data-open")
+      expect(editor.toHTML(true)).toBe(before)
+    },
+  )
+
+  it("clears an error on editing and applies a corrected HTTP URL with Enter", () => {
+    editor.features.media.actions.insertMedia({type: "insertMedia", media: "audio"})
+    const placeholder = editor.features.media.placeholder
+    const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
+    input.value = "invalid"
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}))
+    expect(input).toHaveAttribute("aria-invalid", "true")
+
+    input.value = "http://example.com/audio.mp3"
+    input.dispatchEvent(new Event("input", {bubbles: true}))
+    expect(input).not.toHaveAttribute("aria-invalid")
+    expect(input.validity.valid).toBe(true)
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}))
+    expect(document.querySelector("audio")).toHaveAttribute("src", "http://example.com/audio.mp3")
+  })
+
+  it("clears URL errors when switching to another empty media element", async () => {
+    document.body.innerHTML = "<audio controls></audio><video controls></video>"
+    document.querySelector("audio")!.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0}))
+    const placeholder = editor.features.media.placeholder
+    const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
+    input.value = "invalid"
+    placeholder.root.querySelector<HTMLButtonElement>(".apply")!.click()
+    input.blur()
+    await Promise.resolve()
+    document.querySelector("video")!.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0}))
+
+    expect(placeholder.target).toBe(document.querySelector("video"))
+    expect(input.value).toBe("")
+    expect(input).not.toHaveAttribute("aria-invalid")
+    expect(input.validity.customError).toBe(false)
+  })
+
+  it.each(["replace", "populate", "widget"])("does not apply a stale URL after a concurrent %s change", change => {
     editor.features.media.actions.insertMedia({type: "insertMedia", media: "video"})
     const video = document.querySelector("video")!
     const placeholder = editor.features.media.placeholder
-    const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
-    input.value = "about:blank#movie.mp4"
+    placeholder.root.querySelector<HTMLInputElement>(".url")!.value = "https://example.com/movie.mp4"
+    if(change === "replace") video.replaceWith(document.createElement("video"))
+    else if(change === "populate") video.setAttribute("src", "remote.mp4")
+    else {
+      const widget = document.createElement("media-widget")
+      video.replaceWith(widget)
+      widget.append(video)
+    }
+    const before = editor.toHTML(true)
     placeholder.root.querySelector<HTMLButtonElement>(".apply")!.click()
+    expect(editor.toHTML(true)).toBe(before)
+  })
 
-    expect(video.getAttribute("src")).toBe("about:blank#movie.mp4")
-    expect(video).toHaveAttribute("controls")
-    expect(placeholder.element).not.toHaveAttribute("data-open")
-    expect(video.children).toHaveLength(0)
+  it("opens the matching native file picker from an insertion action", () => {
+    const placeholder = editor.features.media.placeholder
+    const picker = placeholder.root.querySelector<HTMLInputElement>(".picker")!
+    const open = vi.spyOn(picker, "click").mockImplementation(() => {})
+    editor.features.media.actions.insertMedia({type: "insertMedia", media: "picture", selectFile: true})
+
+    expect(open).toHaveBeenCalledOnce()
+    expect(picker.accept).toBe("image/*")
+    expect(picker.getRootNode()).toBe(placeholder.root)
+    expect(placeholder.target).toBe(document.querySelector("picture"))
+    expect(editor.toHTML(true)).toBe("<picture><img></picture>")
+    open.mockRestore()
   })
 
   it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)(

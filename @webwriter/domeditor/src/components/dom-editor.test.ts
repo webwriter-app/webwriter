@@ -1644,6 +1644,26 @@ describe("DomEditor.execute()", () => {
     }
   })
 
+  it.each([
+    ["media-capture:screen-image", {type: "captureMedia", mode: "screen-image"}],
+    ["media-file:picture", {type: "insertMedia", media: "picture", selectFile: true}],
+  ])("routes %s without reclaiming focus", async (label, action) => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const focusEditor = vi.spyOn(editor as unknown as {focusEditor(): void}, "focusEditor")
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+
+    ribbon.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label},
+      bubbles: true,
+      composed: true,
+    }))
+
+    expect(execute).toHaveBeenCalledWith(action)
+    await Promise.resolve()
+    expect(focusEditor).not.toHaveBeenCalled()
+  })
+
   it("routes semantic table controls through the iframe bridge", async () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
@@ -1952,6 +1972,18 @@ describe("DomEditor.execute()", () => {
     expect(restored.anchorOffset).toBe(1)
     expect(restored.focusNode).toBe(text)
     expect(restored.focusOffset).toBe(4)
+  })
+
+  it("cancels media capture before hiding the editor frame for preview", async () => {
+    const {editor, iframe} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.click()
+    await editor.updateComplete
+
+    expect(execute).toHaveBeenCalledWith({type: "cancelMediaCapture"})
+    expect(iframe.hidden).toBe(true)
   })
 
   it("removes authored executable content from the preview copy", async () => {

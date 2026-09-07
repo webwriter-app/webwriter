@@ -65,6 +65,7 @@ import type {AISettingsDialog} from "./ai-settings"
 import "./ai-settings"
 import {
   mediaAttributeOptions,
+  mediaCaptureOptions,
   imageMapAreaAttributeOptions,
   isWebsiteType,
   timedMediaResourceAttributeOptions,
@@ -6927,7 +6928,7 @@ export class AppRibbon extends LitElement {
       if(!button) throw new TypeError(`Missing insertion button ${label}`)
       return button
     }
-    const groupedButton = (label: string, icon: string, labels: string[]): RibbonMenuButton => {
+    const groupedButton = (label: string, icon: string, labels: string[]) => {
       const submenu = labels.map(buttonByLabel)
       const representative = submenu[0]
       return {
@@ -6937,9 +6938,30 @@ export class AppRibbon extends LitElement {
         submenu,
       }
     }
+    const sourceButtons = (type: MediaType) => [
+      {label: "Select file", action: `media-file:${type}`, icon: "Select file"},
+      ...mediaCaptureOptions(type).map(option => ({
+        label: option.label,
+        action: `media-capture:${option.mode}`,
+        icon: option.label,
+      })),
+    ]
+    const compactSourceButtons = (type: "picture" | "audio" | "video") => sourceButtons(type).map(button => ({
+      label: `${type === "picture" ? "Image" : type === "audio" ? "Audio" : "Video"}: ${button.label}`,
+      action: button.action,
+      icon: button.icon,
+    }))
     const compactButtons: RibbonMenuButton[] = [
       groupedButton("Text", "Text", ["Paragraph", "Section", "Heading", "List"]),
-      groupedButton("Media", "Image", ["Image", "Audio", "Video", "Graphic", "Formula", "Website"]),
+      {
+        ...groupedButton("Media", "Image", ["Image", "Audio", "Video", "Graphic", "Formula", "Website"]),
+        submenu: [
+          ...(["Image", "Audio", "Video", "Graphic", "Formula", "Website"] as const).map(buttonByLabel),
+          ...compactSourceButtons("picture"),
+          ...compactSourceButtons("audio"),
+          ...compactSourceButtons("video"),
+        ],
+      },
       buttonByLabel("Table"),
       groupedButton("Other", "More", ["Form", "HTML", "Details"]),
     ]
@@ -6954,6 +6976,9 @@ export class AppRibbon extends LitElement {
         : item.label === "Enumeration"
           ? orderedListStyles
           : item.submenu ?? []
+      const sourceSubmenu = type === "picture" || type === "audio" || type === "video"
+        ? sourceButtons(type)
+        : []
       const active = type
         ? this.mediaSelectionMatches(type)
         : item.label === "List" && this.listType !== null
@@ -6965,7 +6990,7 @@ export class AppRibbon extends LitElement {
           label=${item.label}
           .action=${item.action ?? item.label}
           .icon=${item.icon ?? item.label}
-          .submenu=${type || tableDropdown || sectionDropdown ? [] : submenu}
+          .submenu=${type ? sourceSubmenu : tableDropdown || sectionDropdown ? [] : submenu}
           .dropdown=${tableDropdown ?? sectionDropdown}
           ?toggle=${item.label === "List" || item.label === "Section"}
           ?active=${item.label === "Section" ? this.sectionActive : active}

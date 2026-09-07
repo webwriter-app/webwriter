@@ -26,20 +26,86 @@ describe("media ribbon drawer", () => {
     }))
   })
 
-  it("keeps media insertion buttons free of option dropdowns", async () => {
+  it("adds capture option dropdowns to image, audio, and video insertion buttons", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Start"
     document.body.append(ribbon)
     await ribbon.updateComplete
 
-    for(const label of ["Image", "Audio", "Video", "Website"]) {
+    for(const label of ["Image", "Audio", "Video"]) {
       const button = ribbon.shadowRoot!.querySelector<RibbonButton>(
         `ribbon-drawer[label="Elements"] ribbon-button[label="${label}"]`,
       )!
       await button.updateComplete
       expect(button.shadowRoot!.querySelector("ribbon-menu[custom-content]")).toBeNull()
-      expect(button.shadowRoot!.querySelector(".submenu-trigger")).toBeNull()
+      expect(button.shadowRoot!.querySelector(".submenu-trigger")).not.toBeNull()
     }
+
+    const website = ribbon.shadowRoot!.querySelector<RibbonButton>(
+      'ribbon-drawer[label="Elements"] ribbon-button[label="Website"]',
+    )!
+    await website.updateComplete
+    expect(website.shadowRoot!.querySelector("ribbon-menu[custom-content]")).toBeNull()
+    expect(website.shadowRoot!.querySelector(".submenu-trigger")).toBeNull()
+  })
+
+  it.each([
+    ["Image", "screen-image"], ["Audio", "screen-audio"], ["Video", "screen-video"],
+  ])("matches the placeholder wording and icons in the %s chevron menu", async (label, mode) => {
+    const ribbon = new AppRibbon()
+    ribbon.activeMenu = "Start"
+    const listener = vi.fn()
+    ribbon.addEventListener("ribbon-button-click", listener)
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+
+    const image = ribbon.shadowRoot!.querySelector<RibbonButton>(
+      `ribbon-drawer[label="Elements"] ribbon-button[label="${label}"]`,
+    )!
+    await image.updateComplete
+    image.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    await image.updateComplete
+    const menu = image.shadowRoot!.querySelector("ribbon-menu")!
+    await (menu as unknown as {updateComplete: Promise<unknown>}).updateComplete
+    const options = menu.shadowRoot!.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')
+    expect(Array.from(options, option => option.textContent?.trim())).toEqual([
+      "Select file",
+      "Capture screen",
+      "Record",
+    ])
+    expect(Array.from(options, option => option.querySelector("svg")?.classList.toString())).toEqual([
+      expect.stringContaining("icon-tabler-folder-open"),
+      expect.stringContaining("icon-tabler-screen-share"),
+      expect.stringContaining("icon-tabler-player-record"),
+    ])
+    expect(menu.querySelector("svg")).toBeNull()
+    options[1].click()
+
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
+      detail: {label: `media-capture:${mode}`},
+    }))
+  })
+
+  it("exposes capture actions in the compact Media menu", async () => {
+    const ribbon = new AppRibbon()
+    ribbon.activeMenu = "Start"
+    ribbon.expanded = false
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+
+    const media = ribbon.shadowRoot!.querySelector<RibbonButton>(
+      'ribbon-drawer[label="Elements"] ribbon-button[label="Media"]',
+    )!
+    await media.updateComplete
+    media.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    await media.updateComplete
+    const menu = media.shadowRoot!.querySelector("ribbon-menu")!
+    await (menu as unknown as {updateComplete: Promise<unknown>}).updateComplete
+    const labels = Array.from(menu.shadowRoot!.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'))
+      .map(option => option.textContent?.trim())
+    expect(labels).toContain("Image: Select file")
+    expect(labels).toContain("Audio: Record")
+    expect(labels).toContain("Video: Capture screen")
   })
 
   it.each([
