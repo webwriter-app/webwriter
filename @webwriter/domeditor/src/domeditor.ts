@@ -489,7 +489,7 @@ export class DOMEditor {
     ]) {
       if(!node) continue
       const element = getContainer(node)
-      element && elements.add(element)
+      isElement(element) && elements.add(element)
     }
     elements.forEach(element => {
       element.normalize()
