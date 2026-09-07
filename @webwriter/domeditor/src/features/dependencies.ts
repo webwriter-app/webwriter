@@ -27,6 +27,35 @@ export class DependencyFeature extends EditorFeature {
     super(editor)
   }
 
+  /** Copies loaded package resources into a detached authored document. */
+  appendSerializedAssets(root: Document) {
+    const head = root.head ?? root.documentElement.insertBefore(root.createElement("head"), root.body)
+    const existing = new Set([...root.querySelectorAll<HTMLScriptElement | HTMLLinkElement>("script[src], link[rel='stylesheet'][href]")]
+      .map(element => this.resourceKey(element instanceof HTMLScriptElement ? element.src : element.href)))
+    for(const asset of this.widgetAssets) {
+      const isScript = asset instanceof HTMLScriptElement
+      const url = isScript ? asset.src : (asset as HTMLLinkElement).href
+      const key = this.resourceKey(url)
+      if(!key || existing.has(key)) continue
+      const clone = root.createElement(isScript ? "script" : "link") as HTMLScriptElement | HTMLLinkElement
+      if(isScript) {
+        clone.type = "module"
+        clone.setAttribute("src", asset.getAttribute("src") || url)
+      }
+      else {
+        ;(clone as HTMLLinkElement).rel = "stylesheet"
+        clone.setAttribute("href", asset.getAttribute("href") || url)
+      }
+      head.append(clone)
+      existing.add(key)
+    }
+  }
+
+  private resourceKey(url: string) {
+    try { return new URL(url, document.baseURI).href }
+    catch { return url }
+  }
+
   /** Resolves pinned widget-package assets and mounts them in the iframe. */
   async loadWidgets(message: LoadWidgetsMessage) {
     if(!isLoadWidgetsMessage(message)) throw new TypeError("Invalid load-widgets message")

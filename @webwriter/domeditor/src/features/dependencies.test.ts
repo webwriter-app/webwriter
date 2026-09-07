@@ -169,6 +169,31 @@ describe("DependencyFeature", () => {
     editor.destroy()
   })
 
+  it("preserves loaded package assets as ordinary serialized resources", async () => {
+    vi.spyOn(document.head, "append").mockImplementation((...assets: (string | Node)[]) => {
+      queueMicrotask(() => assets.forEach(asset => asset instanceof HTMLElement && asset.dispatchEvent(new Event("load"))))
+    })
+    const editor = new DOMEditor()
+    const authoredScript = document.createElement("script")
+    authoredScript.src = demoPackage.scripts[0]
+    document.head.appendChild(authoredScript)
+
+    await editor.getActionHandler(loadWidgetsMessage)({
+      type: loadWidgetsMessage,
+      widgets: [{name: demoPackage.name, version: demoPackage.version}],
+      packages: [demoPackage],
+    })
+
+    const output = await editor.serializeHTML()
+    const parsed = new DOMParser().parseFromString(output, "text/html")
+    expect(parsed.head.querySelectorAll(`script[src="${demoPackage.scripts[0]}"]`)).toHaveLength(1)
+    const serializedScript = parsed.head.querySelector(`script[src="${demoPackage.scripts[0]}"]`)! 
+    expect(serializedScript.getAttribute("nonce")).toBeNull()
+    expect(serializedScript.classList.contains("◆editor-only")).toBe(false)
+    expect(parsed.head.querySelector(`link[href="${demoPackage.styles[0]}"]`)).not.toBeNull()
+    editor.destroy()
+  })
+
   it("uses supplied local package metadata without querying npm", async () => {
     const localPackage: WebWriterPackage = {
       ...demoPackage,

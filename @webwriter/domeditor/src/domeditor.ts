@@ -1113,6 +1113,7 @@ export class DOMEditor {
 
   toHTML(innerBody=false) {
     const root = this.cleanDocumentClone()
+    if(!innerBody) this.features.dependency.appendSerializedAssets(root)
     if(innerBody) return root.body.innerHTML
     return `${serializeDoctype(root.doctype)}${root.documentElement.outerHTML}`
   }
@@ -1121,6 +1122,7 @@ export class DOMEditor {
    * external scripts while keeping their authored URLs as restoration metadata. */
   async serializeHTML(offline=false) {
     const root = this.cleanDocumentClone()
+    this.features.dependency.appendSerializedAssets(root)
     if(offline) await this.inlineExternalResources(root)
     return `${serializeDoctype(root.doctype)}${root.documentElement.outerHTML}`
   }
