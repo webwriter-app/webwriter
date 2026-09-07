@@ -180,6 +180,52 @@ beforeEach(() => {
 })
 
 describe("DomEditor iframe setup", () => {
+  it.each(["local", "development-server"])("keeps edits dirty during %s saves and excludes overlapping file actions", async storageLocation => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    host.storageLocation = storageLocation
+    let finish!: () => void
+    const pending = new Promise<void>(resolve => { finish = resolve })
+    const write = vi.fn(() => pending)
+    vi.stubGlobal("showSaveFilePicker", vi.fn().mockResolvedValue({
+      name: "lesson.html", createWritable: async() => ({write, close: async() => {}}),
+    }))
+    host.backendClient = {createDocument: vi.fn(async() => { await write(); return {id: "saved", title: "lesson", format: "html"} })}
+    vi.spyOn(editor, "execute").mockResolvedValue("<p>Saved snapshot</p>")
+    const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
+    const saving = host.saveDocument()
+    await vi.waitFor(() => expect(write).toHaveBeenCalledOnce())
+    iframe.contentDocument!.body.append(iframe.contentDocument!.createElement("p"))
+    await new Promise(resolve => setTimeout(resolve, 0))
+    await host.newDocument()
+    await host.saveDocument()
+    expect(reload).not.toHaveBeenCalled()
+    expect(write).toHaveBeenCalledOnce()
+    finish()
+    await saving
+    expect(host.fileDirty).toBe(true)
+  })
+
+  it("preserves edits made while an opened file is being read", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    let finish!: (source: string) => void
+    const text = vi.fn(() => new Promise<string>(resolve => { finish = resolve }))
+    vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([{getFile: async() => ({name: "opened.html", text})}]))
+    vi.stubGlobal("confirm", vi.fn().mockReturnValue(true))
+    const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
+    const error = vi.spyOn(host, "reportFileError").mockImplementation(() => {})
+    const opening = host.openDocument()
+    await vi.waitFor(() => expect(text).toHaveBeenCalledOnce())
+    iframe.contentDocument!.body.append(iframe.contentDocument!.createElement("p"))
+    await new Promise(resolve => setTimeout(resolve, 0))
+    finish("<p>Opened</p>")
+    await opening
+    expect(reload).not.toHaveBeenCalled()
+    expect(error).toHaveBeenCalledWith(expect.objectContaining({message: expect.stringContaining("changed while opening")}))
+  })
+
+
   it("resolves widget paths without relying on the outer realm's Element constructor", async () => {
     const {editor, iframe} = await mountEditor()
     const owner = iframe.contentDocument!

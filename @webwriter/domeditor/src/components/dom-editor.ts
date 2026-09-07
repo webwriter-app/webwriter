@@ -543,6 +543,8 @@ export class DomEditor extends LitElement {
   private frameDocumentHTML: string | null = null
   private fileName = ""
   private fileDirty = false
+  private fileOperationActive = false
+  private documentChangeSequence = 0
   private previewActive = false
   private previewDocumentHTML: string | null = null
   private previewSelection: SelectionBookmark | null = null
@@ -1496,6 +1498,7 @@ export class DomEditor extends LitElement {
         }
         const hasAuthoredMutation = mutations.some(mutation => this.isAuthoredMutation(mutation))
         if(hasAuthoredMutation) {
+          this.documentChangeSequence++
           if(this.historyDocumentTransitionCount === 0) {
             if(this.dirtyTrackingReady) this.fileDirty = !this.isFreshDocumentUnchanged()
             else this.dirtyTrackingMutationPending = true
@@ -2084,7 +2087,26 @@ export class DomEditor extends LitElement {
     await this.waitForEditorWindow()
   }
 
-  private async newDocument() {
+  private async runFileOperation(operation: () => Promise<void>) {
+    if(this.fileOperationActive) return
+    this.fileOperationActive = true
+    try { await operation() }
+    finally { this.fileOperationActive = false }
+  }
+
+  private newDocument() {
+    return this.runFileOperation(() => this.performNewDocument())
+  }
+
+  private openDocument() {
+    return this.runFileOperation(() => this.performOpenDocument())
+  }
+
+  private saveDocument(saveAs = false, requestedFormat: FileFormat = this.fileFormat) {
+    return this.runFileOperation(() => this.performSaveDocument(saveAs, requestedFormat))
+  }
+
+  private async performNewDocument() {
     if(!this.confirmDiscardChanges()) return
     try {
       this.fileHandle = null
@@ -2100,12 +2122,13 @@ export class DomEditor extends LitElement {
     }
   }
 
-  private async openDocument() {
+  private async performOpenDocument() {
     if(this.storageLocation === "development-server" && this.backendClient) {
       await this.openBackendDocument()
       return
     }
     if(!this.confirmDiscardChanges()) return
+    const revision = this.documentChangeSequence
     const picker = this.filePickerWindow().showOpenFilePicker
     if(!picker) {
       this.reportFileError(new Error("This browser does not support the File System Access API"))
@@ -2116,6 +2139,7 @@ export class DomEditor extends LitElement {
       if(!handle) return
       const file = await handle.getFile()
       const source = await file.text()
+      if(revision !== this.documentChangeSequence) throw new Error("The document changed while opening a file. Open it again to discard those changes.")
       await this.reloadDocument(source)
       this.backendDocumentId = null
       this.fileHandle = handle
@@ -2130,7 +2154,7 @@ export class DomEditor extends LitElement {
     }
   }
 
-  private async saveDocument(saveAs = false, requestedFormat: FileFormat = this.fileFormat) {
+  private async performSaveDocument(saveAs = false, requestedFormat: FileFormat = this.fileFormat) {
     if(this.storageLocation === "development-server" && this.backendClient) {
       await this.saveBackendDocument(saveAs, requestedFormat)
       return
@@ -2146,6 +2170,7 @@ export class DomEditor extends LitElement {
         handle = await picker.call(window, this.htmlFilePickerOptions(this.fileNameForFormat(requestedFormat)))
       }
       const selectedFormat = this.formatForFileName(handle.name, requestedFormat)
+      const revision = this.documentChangeSequence
       const source = await this.execute({type: "serializeDocument", offline: selectedFormat === "offline"})
       if(typeof source !== "string") throw new TypeError("The editor returned invalid HTML")
       const writable = await handle.createWritable()
@@ -2155,7 +2180,7 @@ export class DomEditor extends LitElement {
       this.fileHandle = handle
       this.fileName = this.baseFileName(handle.name)
       this.fileFormat = selectedFormat
-      this.fileDirty = false
+      this.fileDirty = revision !== this.documentChangeSequence
     }
     catch(error) {
       this.reportFileError(error)
@@ -2164,6 +2189,7 @@ export class DomEditor extends LitElement {
 
   private async openBackendDocument() {
     if(!this.backendClient || !this.confirmDiscardChanges()) return
+    const revision = this.documentChangeSequence
     try {
       const documents = await this.backendClient.listDocuments()
       if(!documents.length) {
@@ -2179,6 +2205,7 @@ export class DomEditor extends LitElement {
         : documents.find(document => document.id === selected.trim())
       if(!summary) throw new Error("Choose one of the listed documents")
       const document = await this.backendClient.getDocument(summary.id)
+      if(revision !== this.documentChangeSequence) throw new Error("The document changed while opening a file. Open it again to discard those changes.")
       await this.reloadDocument(document.content)
       this.backendDocumentId = document.id
       this.fileHandle = null
@@ -2194,18 +2221,20 @@ export class DomEditor extends LitElement {
 
   private async saveBackendDocument(saveAs = false, requestedFormat: FileFormat = this.fileFormat) {
     if(!this.backendClient) return
+    const revision = this.documentChangeSequence
+    const client = this.backendClient
     try {
       const source = await this.execute({type: "serializeDocument", offline: requestedFormat === "offline"})
       if(typeof source !== "string") throw new TypeError("The editor returned invalid HTML")
       const title = this.fileName.trim() || "Untitled"
       const document = !saveAs && this.backendDocumentId
-        ? await this.backendClient.updateDocument(this.backendDocumentId, {title, content: source, format: requestedFormat})
-        : await this.backendClient.createDocument({title, content: source, format: requestedFormat})
+        ? await client.updateDocument(this.backendDocumentId, {title, content: source, format: requestedFormat})
+        : await client.createDocument({title, content: source, format: requestedFormat})
       this.backendDocumentId = document.id
       this.fileHandle = null
       this.fileName = this.baseFileName(document.title)
       this.fileFormat = document.format
-      this.fileDirty = false
+      this.fileDirty = revision !== this.documentChangeSequence
     }
     catch(error) {
       this.reportFileError(error)
