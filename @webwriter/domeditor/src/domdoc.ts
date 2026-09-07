@@ -78,6 +78,11 @@ type DOMAttribute = {
   namespaceURI: string | null
 }
 
+const childContainer = (element: Element): Element | DocumentFragment =>
+  element.localName === "template" && "content" in element
+    ? (element as HTMLTemplateElement).content
+    : element
+
 /** Returns a stable, readable default color for an awareness client. */
 export function presenceColor(clientId: number) {
   return presenceColors[Math.abs(clientId) % presenceColors.length]
@@ -150,6 +155,7 @@ export class SharedDOMDoc {
   #wasObservingBeforePause = false
   #hasQueuedYChanges = false
   #activeDOMPreview: DOMChangePreview | null = null
+  #observedTemplates = new Set<DocumentFragment>()
 
   constructor(
     readonly serverUrl?: string,
@@ -316,11 +322,31 @@ export class SharedDOMDoc {
       })
     }
     this.#isObserving = true
+    this.#observedTemplates = new Set(this.#templateContents())
+    this.#observedTemplates.forEach(content => this.#observer.observe(content, {
+      attributes: true, attributeOldValue: true, characterData: true,
+      characterDataOldValue: true, childList: true, subtree: true,
+    }))
+  }
+
+  #templateContents() {
+    const contents: DocumentFragment[] = []
+    const roots: ParentNode[] = [this.root, ...(this.#headRoot ? [this.#headRoot] : [])]
+    for(let index = 0; index < roots.length; index++) {
+      roots[index].querySelectorAll("template").forEach(element => {
+        const content = childContainer(element)
+        if(content === element || this.#isInsideIgnoredElement(element)) return
+        contents.push(content as DocumentFragment)
+        roots.push(content)
+      })
+    }
+    return contents
   }
 
   stopObserve() {
     this.#observer.disconnect()
     this.#isObserving = false
+    this.#observedTemplates.clear()
   }
 
   /** Keeps the shared Y tree live while temporarily preventing it from
@@ -472,6 +498,13 @@ export class SharedDOMDoc {
         this.#headMetadata.set("language", this.#document.documentElement.getAttribute("lang") ?? "")
       }
     }, origin)
+    if(this.#isObserving) {
+      const templates = this.#templateContents()
+      if(templates.length !== this.#observedTemplates.size || templates.some(content => !this.#observedTemplates.has(content))) {
+        this.stopObserve()
+        this.startObserve()
+      }
+    }
     const selection = this.#document.getSelection()
     if(selection?.anchorNode && selection.focusNode &&
       (selection.anchorNode === this.root || this.root.contains(selection.anchorNode)) &&
@@ -898,7 +931,7 @@ export class SharedDOMDoc {
         yElement.setAttribute(this.#encodeDOMAttribute(attribute), attribute.value)
       }
     }
-    const children = Array.from(node.childNodes).flatMap(child => {
+    const children = Array.from(childContainer(node).childNodes).flatMap(child => {
       const yChild = this.#createYNode(child, addPair)
       return yChild ? [yChild as Y.XmlElement | Y.XmlText] : []
     })
@@ -938,7 +971,7 @@ export class SharedDOMDoc {
       return null
     }
     this.#copyYAttributesToDOM(yNode, element)
-    element.append(...yNode.toArray().flatMap(child => {
+    childContainer(element).append(...yNode.toArray().flatMap(child => {
       const domChild = this.#createDOMNode(child as YXmlNode, addPair)
       return domChild ? [domChild] : []
     }))
@@ -1094,7 +1127,7 @@ export class SharedDOMDoc {
     this.#addNodePair(domElement, yElement)
     this.#copyDOMAttributesToY(domElement, yElement)
 
-    const domChildren = Array.from(domElement.childNodes).filter(child => this.#isSyncableNode(child))
+    const domChildren = Array.from(childContainer(domElement).childNodes).filter(child => this.#isSyncableNode(child))
     const currentYChildren = yElement.toArray() as YXmlNode[]
     const desiredExisting = domChildren.flatMap(child => {
       const mapped = this.#xmlNodes.get(child)
@@ -1140,10 +1173,11 @@ export class SharedDOMDoc {
     this.#addNodePair(domElement, yElement)
     this.#copyYAttributesToDOM(yElement, domElement)
 
+    const container = childContainer(domElement)
     const yChildren = yElement.toArray() as YXmlNode[]
     const renderableChildren = yChildren.flatMap(yChild => {
       const mapped = this.#nodes.get(yChild)
-      const domChild = mapped && mapped.parentNode === domElement && this.#isCompatiblePair(mapped, yChild)
+      const domChild = mapped && mapped.parentNode === container && this.#isCompatiblePair(mapped, yChild)
         ? mapped
         : this.#createDOMNode(yChild)
       return domChild ? [{yChild, domChild}] : []
@@ -1151,11 +1185,11 @@ export class SharedDOMDoc {
     const desiredDOMChildren = renderableChildren.map(({domChild}) => domChild)
 
     desiredDOMChildren.forEach((desiredChild, index) => {
-      const current = Array.from(domElement.childNodes).filter(child => this.#isSyncableNode(child))[index]
-      if(current !== desiredChild) domElement.insertBefore(desiredChild, current ?? null)
+      const current = Array.from(container.childNodes).filter(child => this.#isSyncableNode(child))[index]
+      if(current !== desiredChild) container.insertBefore(desiredChild, current ?? null)
     })
     const desiredSet = new Set(desiredDOMChildren)
-    Array.from(domElement.childNodes)
+    Array.from(container.childNodes)
       .filter(child => this.#isSyncableNode(child) && !desiredSet.has(child))
       .forEach(child => child.remove())
 

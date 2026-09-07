@@ -55,6 +55,33 @@ afterEach(() => {
 })
 
 describe("SharedDOMDoc initialization", () => {
+  it("round trips nested template contents, namespaces and comments", () => {
+    const html = '<template><section><!--note--><template><svg><circle r="2"></circle></svg></template></section></template>'
+    const {shared} = createDocumentShared(html, '<template><review-widget value="yes"></review-widget></template>')
+    const {owner} = cloneDocumentShared(shared)
+    expect(owner.head.innerHTML).toBe(html)
+    expect(owner.body.querySelector("template")!.innerHTML).toBe('<review-widget value="yes"></review-widget>')
+    expect(owner.head.querySelector("template")!.content.querySelector("template")!.content.querySelector("svg")!.namespaceURI).toBe("http://www.w3.org/2000/svg")
+  })
+
+  it("observes template content edits and keeps them undoable after insertion and replacement", async () => {
+    const {root, shared} = createShared('<template><p>Before</p></template>')
+    const template = root.querySelector("template")!
+    template.content.querySelector("p")!.textContent = "After"
+    await mutationsDelivered()
+    expect(cloneShared(shared).root.querySelector("template")!.innerHTML).toBe("<p>After</p>")
+    shared.undo()
+    expect(template.innerHTML).toBe("<p>Before</p>")
+    shared.redo()
+    expect(template.innerHTML).toBe("<p>After</p>")
+    root.innerHTML = '<template><template><b>New</b></template></template>'
+    await mutationsDelivered()
+    const nested = root.querySelector("template")!.content.querySelector("template")!
+    nested.content.querySelector("b")!.textContent = "Updated"
+    await mutationsDelivered()
+    expect(cloneShared(shared).root.innerHTML).toContain("Updated")
+  })
+
   it("supports roots owned by another document", () => {
     const owner = document.implementation.createHTMLDocument("")
     const root = owner.createElement("main")
