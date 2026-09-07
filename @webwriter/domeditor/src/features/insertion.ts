@@ -1,6 +1,6 @@
 import { EditorFeature } from "."
 import {emptyElementHTML, InsertionMenu, type InsertionMenuItem} from "../components/insertion-menu"
-import { $, getContainer, isElement, isText, markWidgetsEditable, modifierKeyDown } from "../utility"
+import { $, getContainer, isElement, isText, modifierKeyDown } from "../utility"
 import {isMediaType, mediaDefaultHTML} from "../media"
 import {createTable} from "../table"
 import {formDefaultHTML, isFormElementType} from "../form"
@@ -482,8 +482,6 @@ export class InsertionFeature extends EditorFeature {
       return
     }
     nodes.forEach(node => {
-      if(item.kind === "widget" && isElement(node)) node.setAttribute("contenteditable", "true")
-      markWidgetsEditable(node)
     })
     if(item.kind === "widget" && nodes.length === 1 && isElement(nodes[0])) {
       $.move(range.startContainer, range.startOffset)

@@ -78,7 +78,7 @@ describe("collaborative version history", () => {
       .find(element => element.localName === "slot" && !element.hasAttribute("name")) as HTMLSlotElement
     expect(document.body.inert).toBe(false)
     expect(slot.inert).toBe(true)
-    expect(document.body.contentEditable).toBe("false")
+    expect(document.body.contentEditable).toBe("inherit")
     expect(document.designMode).toBe("off")
     expect(document.body).toHaveClass("◆editing-locked")
     const lockedAffordanceRule = editor.appendix.adoptedStyleSheets
@@ -109,7 +109,7 @@ describe("collaborative version history", () => {
     expect(document.documentElement.lang).toBe("de")
     expect(document.body.inert).toBe(false)
     expect(slot.inert).toBe(false)
-    expect(document.body.contentEditable).toBe("true")
+    expect(document.body.contentEditable).toBe("inherit")
     expect(document.designMode).toBe("on")
     expect(document.body).not.toHaveClass("◆editing-locked")
   })
@@ -140,7 +140,7 @@ describe("collaborative version history", () => {
     expect(document.querySelector("section")?.lastChild).toBeInstanceOf(Comment)
     expect(document.body.querySelectorAll("[data-webwriter-history]")).toHaveLength(0)
     expect(document.body.inert).toBe(false)
-    expect(document.body.contentEditable).toBe("true")
+    expect(document.body.contentEditable).toBe("inherit")
     expect(document.designMode).toBe("on")
     expect(document.querySelector("custom-widget")).not.toBeNull()
   })
@@ -179,7 +179,7 @@ describe("collaborative version history", () => {
     expect(restored.preview).toBeNull()
     expect(restored.currentUserId).toBe(editor.doc.awareness.clientID)
     expect(document.body.inert).toBe(false)
-    expect(document.body.contentEditable).toBe("true")
+    expect(document.body.contentEditable).toBe("inherit")
 
     history.actions.undo({type: "undo"})
     expect(document.body.textContent).toContain("Later")

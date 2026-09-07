@@ -302,7 +302,7 @@ describe("StateFeature", () => {
       .find(element => element.localName === "slot" && !element.hasAttribute("name")) as HTMLSlotElement
     expect(document.body.inert).toBe(false)
     expect(slot.inert).toBe(true)
-    expect(document.body.contentEditable).toBe("false")
+    expect(document.body.contentEditable).toBe("inherit")
     expect(document.querySelector(".◆ai-review-toolbar")).toBeNull()
     expect(editor.appendix.querySelector(".◆ai-review-toolbar")?.textContent).toContain("Replace the paragraph")
     expect(document.querySelector(".◆ai-preview-change")).not.toBeNull()
@@ -331,7 +331,7 @@ describe("StateFeature", () => {
     expect(editor.toHTML(true)).toBe("<p>Before</p>")
     expect(document.body.inert).toBe(false)
     expect(slot.inert).toBe(false)
-    expect(document.body.contentEditable).toBe("true")
+    expect(document.body.contentEditable).toBe("inherit")
     expect(editor.appendix.querySelector(".◆ai-review-toolbar")).toBeNull()
     editor.destroy()
   })

@@ -101,8 +101,8 @@ describe("DOMEditor lifecycle", () => {
 
     expect(() => new DOMEditor()).toThrow("Only one DOMEditor can be active")
     expect(document.designMode).toBe("on")
-    expect(document.body.contentEditable).toBe("true")
-    expect(document.body.spellcheck).toBe(false)
+    expect(document.body.contentEditable).toBe("false")
+    expect(document.body.spellcheck).toBe(true)
 
     first.destroy()
     expect(document.designMode).toBe("off")

@@ -3,7 +3,6 @@ import { DOMEditor } from "../domeditor"
 import {isLoadWidgetsMessage, loadWidgetsMessage, type LoadWidgetsMessage} from "../editor-bridge"
 import {packageInsertionItems, packageWidgetSchemaDefinitions, WebWriterPackageRegistry} from "../packages"
 import {Schema} from "../schema"
-import {markWidgetsEditable} from "../utility"
 import {LOCAL_PACKAGE_ROUTE_PREFIX} from "../local-package-worker"
 
 export class DependencyFeature extends EditorFeature {
@@ -15,7 +14,6 @@ export class DependencyFeature extends EditorFeature {
   private widgetContentObserver: MutationObserver | null = null
   private readonly handleWidgetContent = (mutations: MutationRecord[]) => {
     mutations.forEach(mutation => mutation.addedNodes.forEach(node => {
-      markWidgetsEditable(node, this.widgetTags)
     }))
   }
 
@@ -79,7 +77,6 @@ export class DependencyFeature extends EditorFeature {
     this.editor.schema = new Schema()
     this.editor.schema.extendWidgets(widgetDefinitions)
     this.widgetTags = new Set(widgetDefinitions.map(({tagName}) => tagName.toLowerCase()))
-    markWidgetsEditable(document.body, this.widgetTags)
 
     this.widgetAssets.forEach(element => element.remove())
     const styles = [...new Set(packages.flatMap(pkg => pkg.styles))].map(href => {

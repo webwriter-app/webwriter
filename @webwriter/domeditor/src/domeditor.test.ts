@@ -82,7 +82,7 @@ describe("DOMEditor stylesheets", () => {
     expect(bodyRule?.style.maxWidth).toBe("calc(960px + var(--body-padding) + var(--body-padding))")
     expect(bodyRule?.style.pointerEvents).toBe("auto")
     expect(bodyRule?.style.userSelect).toBe("text")
-    expect(document.body).toHaveAttribute("contenteditable", "true")
+    expect(document.body).not.toHaveAttribute("contenteditable")
     expect(editor.doc.body.getAttribute("contenteditable")).toBeUndefined()
     expect(editor.toHTML()).not.toContain("contenteditable")
     expect(editor.toHTML(true)).toBe("<p></p>")
@@ -188,12 +188,19 @@ describe("DOMEditor stylesheets", () => {
     expect($.isEmptyDocumentSelection).toBe(false)
   })
 
-  it("removes nested editing attributes from serialized widgets", () => {
+  it("preserves authored editing attributes in serialized widgets", () => {
     document.body.innerHTML = '<webwriter-demo contenteditable="true" spellcheck="false" value="7"></webwriter-demo>'
       + '<template><span class="authored ◆text-selected">Template</span><i class="◆editor-only">helper</i></template>'
 
-    expect(editor.toHTML(true)).toBe('<webwriter-demo value="7"></webwriter-demo>'
+    expect(editor.toHTML(true)).toBe('<webwriter-demo contenteditable="true" spellcheck="false" value="7"></webwriter-demo>'
       + '<template><span class="authored">Template</span></template>')
+    document.body.replaceChildren()
+  })
+
+  it("preserves authored editing attributes on body content and nested widgets", () => {
+    document.body.innerHTML = '<section contenteditable="false" spellcheck="true"><demo-widget contenteditable="false" spellcheck="true"></demo-widget></section>'
+
+    expect(editor.toHTML(true)).toBe('<section contenteditable="false" spellcheck="true"><demo-widget contenteditable="false" spellcheck="true"></demo-widget></section>')
     document.body.replaceChildren()
   })
 

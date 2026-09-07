@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, cloneWithoutEditorMarkers, focusedWidgetHost, markWidgetsEditable, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, htmlToFragment, isElement, isOnApple } from "../utility"
+import { $, cloneWithoutEditorMarkers, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, htmlToFragment, isElement, isOnApple } from "../utility"
 import {isMarkElement} from "../marks"
 import {
   isBlockFormatTag,
@@ -1509,7 +1509,6 @@ export class ManipulationFeature extends EditorFeature {
       })
     }
     const insertedWidget = this.insertedWidget(node)
-    if(node) markWidgetsEditable(node)
     const insertedElement = isElement(node)
       ? node
       : node instanceof DocumentFragment && node.childNodes.length === 1 && isElement(node.firstChild)
@@ -1897,7 +1896,6 @@ export class ManipulationFeature extends EditorFeature {
     const fragment = html
       ? this.editor.parseHTMLFragment(html, true).fragment
       : this.plainTextClipboardFragment(text)
-    markWidgetsEditable(fragment)
     return fragment
   }
 
@@ -1905,7 +1903,6 @@ export class ManipulationFeature extends EditorFeature {
    * structural placement path as HTML clipboard content. */
   insertHTML(html: string, strict=false) {
     const {fragment} = this.editor.parseHTMLFragment(html)
-    markWidgetsEditable(fragment)
     if(strict) this.insert(fragment, 0, true)
     else this.insertClipboardFragment(fragment)
   }

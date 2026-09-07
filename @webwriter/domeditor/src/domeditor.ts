@@ -314,8 +314,6 @@ export type DOMEditorOptions = {
 
 type HostDocumentState = {
   designMode: string
-  contentEditable: string
-  spellcheck: boolean
   inert: boolean
 }
 
@@ -350,8 +348,6 @@ export class DOMEditor {
   schema = new Schema()
   readonly #originalDocumentState = {
     designMode: document.designMode,
-    contentEditable: document.body.contentEditable,
-    spellcheck: document.body.spellcheck,
     inert: document.body.inert,
   }
   readonly #initialAppendix = document.body.shadowRoot
@@ -388,7 +384,7 @@ export class DOMEditor {
     "media": new MediaFeature(this),
   } as const
 
-  ignoreAttrs = ["contenteditable", "spellcheck"]
+  ignoreAttrs: string[] = []
   ignoreClasses = ["◆"]
 
   readonly #editingLocks = new Set<unknown>()
@@ -397,7 +393,6 @@ export class DOMEditor {
   ] as const
   #editingState: {
     designMode: string
-    contentEditable: string
     bodyInert: boolean
     slotInert: boolean
   } | null = null
@@ -427,7 +422,6 @@ export class DOMEditor {
       const slot = this.defaultAppendixSlot
       this.#editingState = {
         designMode: document.designMode,
-        contentEditable: document.body.contentEditable,
         bodyInert: document.body.inert,
         slotInert: slot.inert,
       }
@@ -435,7 +429,6 @@ export class DOMEditor {
         document.addEventListener(type, this.#blockEditingInteraction, true)
       })
       document.designMode = "off"
-      document.body.contentEditable = "false"
       document.body.inert = false
       slot.inert = true
       document.body.classList.add("◆", "◆editing-locked")
@@ -456,7 +449,6 @@ export class DOMEditor {
     if(!state) return
     this.defaultAppendixSlot.inert = state.slotInert
     document.body.inert = state.bodyInert
-    document.body.contentEditable = state.contentEditable
     document.designMode = state.designMode
     document.body.classList.remove("◆editing-locked")
     if(!Array.from(document.body.classList).some(name => name !== "◆" && name.startsWith("◆"))) {
@@ -585,8 +577,6 @@ export class DOMEditor {
     if(!session || documentEditorSessions.get(document) !== session) return
     documentEditorSessions.delete(document)
     document.body.inert = session.state.inert
-    document.body.contentEditable = session.state.contentEditable
-    document.body.spellcheck = session.state.spellcheck
     document.designMode = session.state.designMode
     if(!session.hadEditorStylesheet) {
       document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== editorStylesheet)
@@ -643,9 +633,7 @@ export class DOMEditor {
     }
     try {
       adoptStylesheet(document, editorStylesheet)
-      document.body.contentEditable = "true"
       document.designMode = "on"
-      document.body.spellcheck = false
       const DocumentMutationObserver = document.defaultView?.MutationObserver ?? MutationObserver
       this.#bodySchemaObserver = new DocumentMutationObserver(this.#handleBodySchemaChanges)
       this.#bodySchemaObserver.observe(document.body, {childList: true})
