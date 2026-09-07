@@ -249,6 +249,15 @@ export async function createDevServer(options = {}) {
   const useVite = options.vite !== false
   await mkdir(documentsDirectory, {recursive: true})
 
+  // Provider updates are read-modify-write transactions. Queue them per server
+  // so concurrent requests cannot overwrite each other's state.
+  let providerTransactionQueue = Promise.resolve()
+  const withProviderTransaction = operation => {
+    const transaction = providerTransactionQueue.then(operation)
+    providerTransactionQueue = transaction.catch(() => {})
+    return transaction
+  }
+
   let viteServer
   const liveSessionTokens = new Map()
   const websocketServer = new WebSocketServer({noServer: true})
@@ -345,47 +354,62 @@ export async function createDevServer(options = {}) {
       }
 
       if(path === "/api/providers" && request.method === "POST") {
-        const state = await loadProviderState(providerStatePath)
         const provider = providerInput(await readJSON(request))
-        if(state.providers.some(candidate => candidate.id === provider.id)) return apiError(response, 409, "Provider ID already exists")
-        state.providers.push(provider)
-        state.activeProviderId = provider.id
-        await atomicJSONWrite(providerStatePath, state)
-        return json(response, 201, {provider: publicProvider(provider, origin), activeProviderId: provider.id})
+        return await withProviderTransaction(async () => {
+          const state = await loadProviderState(providerStatePath)
+          if(state.providers.some(candidate => candidate.id === provider.id)) return apiError(response, 409, "Provider ID already exists")
+          state.providers.push(provider)
+          state.activeProviderId = provider.id
+          await atomicJSONWrite(providerStatePath, state)
+          return json(response, 201, {provider: publicProvider(provider, origin), activeProviderId: provider.id})
+        })
       }
 
       const providerMatch = path.match(/^\/api\/providers\/([^/]+)$/)
       if(providerMatch) {
         const id = decodeURIComponent(providerMatch[1])
         if(!safeId(id)) return apiError(response, 400, "Invalid provider ID")
-        const state = await loadProviderState(providerStatePath)
-        const index = state.providers.findIndex(provider => provider.id === id)
-        if(index < 0) return apiError(response, 404, "Provider not found")
-        if(request.method === "GET") return json(response, 200, {provider: publicProvider(state.providers[index], origin)})
+        if(request.method === "GET") {
+          const state = await loadProviderState(providerStatePath)
+          const index = state.providers.findIndex(provider => provider.id === id)
+          if(index < 0) return apiError(response, 404, "Provider not found")
+          return json(response, 200, {provider: publicProvider(state.providers[index], origin)})
+        }
         if(request.method === "PUT" || request.method === "PATCH") {
           const input = await readJSON(request)
-          state.providers[index] = providerInput(isRecord(input) ? {...input, id} : input, state.providers[index])
-          await atomicJSONWrite(providerStatePath, state)
-          return json(response, 200, {provider: publicProvider(state.providers[index], origin), activeProviderId: state.activeProviderId})
+          return await withProviderTransaction(async () => {
+            const state = await loadProviderState(providerStatePath)
+            const index = state.providers.findIndex(provider => provider.id === id)
+            if(index < 0) return apiError(response, 404, "Provider not found")
+            state.providers[index] = providerInput(isRecord(input) ? {...input, id} : input, state.providers[index])
+            await atomicJSONWrite(providerStatePath, state)
+            return json(response, 200, {provider: publicProvider(state.providers[index], origin), activeProviderId: state.activeProviderId})
+          })
         }
         if(request.method === "DELETE") {
-          state.providers.splice(index, 1)
-          if(state.activeProviderId === id) state.activeProviderId = state.providers[0]?.id ?? null
-          await atomicJSONWrite(providerStatePath, state)
-          response.writeHead(204)
-          response.end()
-          return
+          return await withProviderTransaction(async () => {
+            const state = await loadProviderState(providerStatePath)
+            const index = state.providers.findIndex(provider => provider.id === id)
+            if(index < 0) return apiError(response, 404, "Provider not found")
+            state.providers.splice(index, 1)
+            if(state.activeProviderId === id) state.activeProviderId = state.providers[0]?.id ?? null
+            await atomicJSONWrite(providerStatePath, state)
+            response.writeHead(204)
+            response.end()
+          })
         }
       }
 
       const activeProviderMatch = path.match(/^\/api\/providers\/([^/]+)\/active$/)
       if(activeProviderMatch && request.method === "PUT") {
         const id = decodeURIComponent(activeProviderMatch[1])
-        const state = await loadProviderState(providerStatePath)
-        if(!state.providers.some(provider => provider.id === id)) return apiError(response, 404, "Provider not found")
-        state.activeProviderId = id
-        await atomicJSONWrite(providerStatePath, state)
-        return json(response, 200, {activeProviderId: id})
+        return await withProviderTransaction(async () => {
+          const state = await loadProviderState(providerStatePath)
+          if(!state.providers.some(provider => provider.id === id)) return apiError(response, 404, "Provider not found")
+          state.activeProviderId = id
+          await atomicJSONWrite(providerStatePath, state)
+          return json(response, 200, {activeProviderId: id})
+        })
       }
 
       const inferenceMatch = path.match(/^\/api\/inference\/providers\/([^/]+)\/(models|chat\/completions|responses)$/)

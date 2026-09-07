@@ -140,6 +140,37 @@ describe("development server", () => {
     expect(envOnly.value.provider.credentialStatus).toBe("missing")
   })
 
+  it("serializes concurrent provider updates without losing fields", async () => {
+    await request("/api/providers", {
+      method: "POST",
+      body: JSON.stringify({
+        id: "concurrent-provider",
+        name: "Concurrent provider",
+        baseUrl: "https://ai.example/v1",
+        models: ["model-a"],
+        defaultModel: "model-a",
+        customInstructions: "initial",
+      }),
+    })
+
+    const [modelsUpdate, instructionsUpdate] = await Promise.all([
+      request("/api/providers/concurrent-provider", {
+        method: "PATCH",
+        body: JSON.stringify({models: ["model-a", "model-b"]}),
+      }),
+      request("/api/providers/concurrent-provider", {
+        method: "PATCH",
+        body: JSON.stringify({customInstructions: "updated concurrently"}),
+      }),
+    ])
+    expect(modelsUpdate.response.status).toBe(200)
+    expect(instructionsUpdate.response.status).toBe(200)
+
+    const final = await request("/api/providers/concurrent-provider")
+    expect(final.value.provider.models).toEqual(["model-a", "model-b"])
+    expect(final.value.provider.customInstructions).toBe("updated concurrently")
+  })
+
   it("proxies inference through the OpenAI client with the server-side key", async () => {
     await request("/api/providers", {
       method: "POST",
