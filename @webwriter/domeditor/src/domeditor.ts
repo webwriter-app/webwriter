@@ -1272,7 +1272,12 @@ export class DOMEditor {
       if(seen.has(href)) return [match[0], match[4]] as const
       seen.add(href)
       const imported = await this.fetchResource(href).then(response => response.text())
-      return [match[0], `${await this.inlineCssImports(imported, href, seen)}${match[4]}`] as const
+      const nested = await this.inlineCssImports(imported, href, seen)
+      const condition = match[4].trim().replace(/;$/, "")
+      const wrapped = condition.startsWith("layer")
+        ? `@${condition}{${nested}}`
+        : condition ? `@media ${condition}{${nested}}` : nested
+      return [match[0], wrapped] as const
     }))
     let result = css
     replacements.forEach(([from, to]) => { result = result.replace(from, to) })
