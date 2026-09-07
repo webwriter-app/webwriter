@@ -5,7 +5,9 @@ import {dirname, extname, join, resolve} from "node:path"
 import {fileURLToPath, pathToFileURL} from "node:url"
 import OpenAI from "openai"
 import WebSocketPackage from "ws"
-import {setupWSConnection} from "@y/websocket-server/utils"
+import {setupWSConnection, getYDoc, docs} from "@y/websocket-server/utils"
+import * as decoding from "lib0/decoding"
+import {acceptLearnerUpdate} from "../src/live-session-permissions.js"
 
 const serverDirectory = dirname(fileURLToPath(import.meta.url))
 const projectRoot = resolve(serverDirectory, "..")
@@ -266,6 +268,45 @@ export async function createDevServer(options = {}) {
     // Handle it so ws does not turn the expected disconnect into a process error.
     socket.on("error", () => {})
     setupWSConnection(socket, request)
+    if(request.liveRole !== "learner") return
+    const shared = getYDoc(request.liveRoom)
+    const handlers = socket.listeners("message")
+    socket.removeAllListeners("message")
+    socket.on("message", message => {
+      try {
+        const bytes = new Uint8Array(message)
+        if(bytes.byteLength > 8 * 1024 * 1024) throw new Error("Oversized live update")
+        const decoder = decoding.createDecoder(bytes)
+        const type = decoding.readVarUint(decoder)
+        if(type === 0) {
+          const syncType = decoding.readVarUint(decoder)
+          if(syncType !== 0 && (syncType > 2 || !acceptLearnerUpdate(shared, decoding.readVarUint8Array(decoder), request.liveLearner))) {
+            throw new Error("Forbidden live update")
+          }
+        }
+        else if(type === 1) {
+          const awareness = decoding.createDecoder(decoding.readVarUint8Array(decoder))
+          const count = decoding.readVarUint(awareness)
+          if(count > 1) throw new Error("Forbidden presence update")
+          for(let index = 0; index < count; index++) {
+            const client = decoding.readVarUint(awareness)
+            decoding.readVarUint(awareness)
+            const state = JSON.parse(decoding.readVarString(awareness))
+            if(request.liveClient !== undefined && request.liveClient !== client) throw new Error("Forbidden presence identity")
+            if(request.liveClient === undefined && shared.awareness.getStates().has(client)) throw new Error("Presence identity already in use")
+            if(state !== null && (state.liveSession?.role !== "learner" || state.liveSession?.learner?.id !== request.liveLearner)) {
+              throw new Error("Forbidden presence role")
+            }
+            request.liveClient = client
+          }
+        }
+        else throw new Error("Unsupported live message")
+        handlers.forEach(handler => handler.call(socket, message))
+      }
+      catch {
+        socket.close(1008, "Live session permission denied")
+      }
+    })
   })
 
   const requestHandler = async (request, response) => {
@@ -490,14 +531,23 @@ export async function createDevServer(options = {}) {
       const token = requestUrl.searchParams.get("token")
       const role = requestUrl.searchParams.get("role")
       const knownSession = liveSessionTokens.get(room)
+      const hostKey = requestUrl.searchParams.get("hostKey")
+      const learner = requestUrl.searchParams.get("learner")
+      const learnerKey = requestUrl.searchParams.get("learnerKey")
       if(!safeSessionToken(token) || (role !== "host" && role !== "learner")
         || knownSession && knownSession.token !== token
-        || role === "learner" && !knownSession) {
+        || role === "host" && (!safeSessionToken(hostKey) || knownSession && knownSession.hostKey !== hostKey)
+        || role === "learner" && (!knownSession || !safeId(learner) || !safeSessionToken(learnerKey)
+          || knownSession.learners.has(learner) && knownSession.learners.get(learner) !== learnerKey)) {
         socket.destroy()
         return
       }
-      liveSession = knownSession ?? {token, connections: 0}
+      liveSession = knownSession ?? {token, hostKey, learners: new Map(), connections: 0}
       if(!knownSession) liveSessionTokens.set(room, liveSession)
+      if(role === "learner") liveSession.learners.set(learner, learnerKey)
+      request.liveRole = role
+      request.liveRoom = room
+      request.liveLearner = learner
     }
     websocketServer.handleUpgrade(request, socket, head, webSocket => {
       if(liveSession) {
@@ -506,6 +556,9 @@ export async function createDevServer(options = {}) {
           liveSession.connections--
           if(liveSession.connections === 0 && liveSessionTokens.get(room) === liveSession) {
             liveSessionTokens.delete(room)
+            const shared = docs.get(room)
+            docs.delete(room)
+            shared?.destroy()
           }
         })
       }

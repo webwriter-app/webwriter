@@ -1,6 +1,7 @@
 import * as Y from "yjs"
 import {Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates} from "y-protocols/awareness"
 import {WebsocketProvider} from "y-websocket"
+import {acceptLearnerUpdate} from "./live-session-permissions.js"
 
 export type LiveSessionRole = "host" | "learner"
 export type LiveSessionStepKind = "document" | "cursor" | "pointer" | "click" | "scroll" | "widget"
@@ -121,6 +122,19 @@ const clone = <T>(value: T): T => {
 const identifier = (prefix: string) => globalThis.crypto?.randomUUID?.()
   ?? `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
 
+const connectionKey = (id: string, role: string, token: string, learner = "") => {
+  const storageKey = `webwriter-live-connection:${id}:${role}:${token}:${learner}`
+  let key: string | null = null
+  try { key = globalThis.sessionStorage?.getItem(storageKey) ?? null }
+  catch { /* Storage can be unavailable in opaque origins. */ }
+  if(!key || !/^[A-Za-z0-9_-]{24,256}$/.test(key)) {
+    key = Array.from(globalThis.crypto.getRandomValues(new Uint8Array(24)), byte => byte.toString(16).padStart(2, "0")).join("")
+    try { globalThis.sessionStorage?.setItem(storageKey, key) }
+    catch { /* The key remains valid for this connection and its reconnects. */ }
+  }
+  return key
+}
+
 /**
  * Durable session timeline and learner registry. The Y.Doc owned here is a
  * session log, not a second representation of the authored editor DOM.
@@ -167,7 +181,7 @@ export class LiveSession {
     this.#stepArray = this.doc.getArray(STEPS)
     this.#stateMap = this.doc.getMap(STATES)
 
-    if(options.baseHTML !== undefined && this.#meta.get("baseHTML") === undefined) {
+    if(this.role === "host" && options.baseHTML !== undefined && this.#meta.get("baseHTML") === undefined) {
       this.#meta.set("baseHTML", options.baseHTML)
     }
     if(this.role === "host" && this.#meta.get("status") === undefined) {
@@ -197,7 +211,13 @@ export class LiveSession {
     if(options.serverUrl) {
       this.#provider = new WebsocketProvider(options.serverUrl, `live-session-${this.id}`, this.doc as any, {
         awareness: this.awareness,
-        ...(this.#token ? {params: {token: this.#token, role: this.role}} : {}),
+        disableBc: true,
+        params: {
+          token: this.#token!, role: this.role,
+          ...(this.role === "host"
+            ? {hostKey: connectionKey(this.id, this.role, this.#token!)}
+            : {learner: this.#learner!.id, learnerKey: connectionKey(this.id, this.role, this.#token!, this.#learner!.id)}),
+        },
       })
       this.#provider.on("status", ({status}: {status: string}) => {
         this.#status = status === "connected" ? "connected" : "connecting"
@@ -396,8 +416,11 @@ export class LiveSession {
 
   #broadcastUpdate(update: Uint8Array) {
     const data = Array.from(update)
-    transportSessions.get(this.id)?.forEach(peer => {
-      if(peer !== this && peer.#token === this.#token) peer.#applyUpdate(update)
+    const peers = [...(transportSessions.get(this.id) ?? [])].filter(peer => peer.#token === this.#token)
+    const host = peers.find(peer => peer.role === "host")
+    if(this.role === "learner" && host && !acceptLearnerUpdate(host.doc, update, this.#learner!.id)) return
+    peers.forEach(peer => {
+      if(peer !== this) peer.#applyUpdate(update)
     })
     this.#channel?.postMessage({
       type: "update",

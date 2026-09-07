@@ -264,16 +264,54 @@ describe("development server", () => {
     const room = "live-session-token-test"
     const firstToken = "aaaaaaaaaaaaaaaaaaaaaaaa"
     const secondToken = "bbbbbbbbbbbbbbbbbbbbbbbb"
+    const hostKey = "hhhhhhhhhhhhhhhhhhhhhhhh"
+    const learnerIdentity = "&learner=ada&learnerKey=llllllllllllllllllllllll"
 
     await expect(openWebSocket(`${websocketUrl}/${room}?role=learner&token=${firstToken}`)).rejects.toBeInstanceOf(Error)
 
-    const host = await openWebSocket(`${websocketUrl}/${room}?role=host&token=${firstToken}`)
+    const host = await openWebSocket(`${websocketUrl}/${room}?role=host&token=${firstToken}&hostKey=${hostKey}`)
+    await expect(openWebSocket(`${websocketUrl}/${room}?role=host&token=${firstToken}&hostKey=${secondToken}`)).rejects.toBeInstanceOf(Error)
     await expect(openWebSocket(`${websocketUrl}/${room}?role=learner&token=${secondToken}`)).rejects.toBeInstanceOf(Error)
-    const learner = await openWebSocket(`${websocketUrl}/${room}?role=learner&token=${firstToken}`)
+    const learner = await openWebSocket(`${websocketUrl}/${room}?role=learner&token=${firstToken}${learnerIdentity}`)
+    await expect(openWebSocket(`${websocketUrl}/${room}?role=learner&token=${firstToken}&learner=ada&learnerKey=${secondToken}`)).rejects.toBeInstanceOf(Error)
     await closeWebSocket(learner)
     await closeWebSocket(host)
 
-    const replacementHost = await openWebSocket(`${websocketUrl}/${room}?role=host&token=${secondToken}`)
+    const replacementHost = await openWebSocket(`${websocketUrl}/${room}?role=host&token=${secondToken}&hostKey=${hostKey}`)
     await closeWebSocket(replacementHost)
+  })
+
+  it("accepts learner activity but rejects writes to host metadata over the actual socket", async () => {
+    const websocketUrl = baseUrl.replace(/^http/, "ws")
+    const room = "live-session-roles"
+    const token = "aaaaaaaaaaaaaaaaaaaaaaaa"
+    const hostDoc = new Y.Doc()
+    hostDoc.getMap("live-session-meta").set("baseHTML", "<p>Host</p>")
+    const host = new WebsocketProvider(websocketUrl, room, hostDoc, {
+      WebSocketPolyfill: WebSocketPackage, disableBc: true,
+      params: {role: "host", token, hostKey: "hhhhhhhhhhhhhhhhhhhhhhhh"},
+    })
+    const learnerDoc = new Y.Doc()
+    let learner
+    try {
+      await vi.waitFor(() => expect(host.synced).toBe(true))
+      learner = new WebsocketProvider(websocketUrl, room, learnerDoc, {
+        WebSocketPolyfill: WebSocketPackage, disableBc: true,
+        params: {role: "learner", token, learner: "ada", learnerKey: "llllllllllllllllllllllll"},
+      })
+      learner.awareness.setLocalState({liveSession: {role: "learner", learner: {id: "ada", name: "Ada", color: "#f00"}}})
+      await vi.waitFor(() => expect(learner.synced).toBe(true))
+      learnerDoc.getArray("live-session-steps").push([{id: "step", time: Date.now(), kind: "pointer", learner: "ada", pointer: {x: 0.2, y: 0.3}}])
+      await vi.waitFor(() => expect(hostDoc.getArray("live-session-steps").length).toBe(1))
+      learnerDoc.getMap("live-session-meta").set("baseHTML", "<script>attack</script>")
+      await vi.waitFor(() => expect(learner.wsconnected).toBe(false))
+      expect(hostDoc.getMap("live-session-meta").get("baseHTML")).toBe("<p>Host</p>")
+    }
+    finally {
+      learner?.destroy()
+      host.destroy()
+      learnerDoc.destroy()
+      hostDoc.destroy()
+    }
   })
 })

@@ -15,6 +15,13 @@ const create = (options: ConstructorParameters<typeof LiveSession>[0]) => {
 }
 
 describe("LiveSession", () => {
+  it("does not propagate direct learner mutations of host metadata", () => {
+    const host = create({id: "protected", role: "host", baseHTML: "<p>Host</p>"})
+    const learner = create({id: "protected", role: "learner", baseHTML: "<p>Untrusted</p>", learner: {id: "ada", name: "Ada", color: "#f00"}})
+    learner.doc.getMap("live-session-meta").set("baseHTML", "<script>bad()</script>")
+    expect(host.baseHTML).toBe("<p>Host</p>")
+  })
+
   it("stores base HTML, durable steps, and the latest learner state", () => {
     const host = create({id: "lesson", role: "host", baseHTML: "<p>Start</p>"})
     const learner = create({id: "lesson", role: "learner", learner: {id: "ada", name: "Ada", color: "#f00"}})
