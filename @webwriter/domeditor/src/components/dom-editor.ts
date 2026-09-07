@@ -734,9 +734,6 @@ export class DomEditor extends LitElement {
 
   private preparePreviewDocument(source: Document) {
     const nonce = crypto.randomUUID()
-    source.body?.removeAttribute("contenteditable")
-    source.body?.removeAttribute("spellcheck")
-    source.querySelectorAll("[contenteditable]").forEach(element => element.removeAttribute("contenteditable"))
     source.querySelectorAll("[data-webwriter-editor-only]").forEach(element => element.remove())
 
     // Preview is a same-origin sandbox because the live-preview bridge still
@@ -744,7 +741,7 @@ export class DomEditor extends LitElement {
     // boundary: remove scripts, active embeds, event handlers, and dangerous
     // URL attributes before the document is placed in the frame. Installed
     // package scripts are re-added below as the explicit trusted-code boundary.
-    stripActiveContent(source)
+    stripActiveContent(source, {allowStyles: true, allowIframes: true})
 
     const editingElements = Array.from(source.querySelectorAll<HTMLElement>("[class]"))
       .filter(element => Array.from(element.classList).some(name => name.startsWith("◆")))

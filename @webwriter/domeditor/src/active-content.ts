@@ -10,6 +10,10 @@ const unsafeURL = (value: string) => {
 const unsafeStyle = /(?:expression\s*\(|javascript\s*:|data\s*:\s*text\/html)/i
 
 export type ActiveContentStripOptions = {
+  /** Retain document CSS in a preview constrained by its own CSP. */
+  allowStyles?: boolean
+  /** Retain remote HTTPS embeds in an opaque-origin script sandbox. */
+  allowIframes?: boolean
   removeAttribute?: (attribute: Attr) => boolean
   removeClass?: (className: string) => boolean
 }
@@ -20,6 +24,17 @@ export type ActiveContentStripOptions = {
 export function stripActiveContent(root: ParentNode, options: ActiveContentStripOptions = {}) {
   let removed = 0
   root.querySelectorAll(unsafeElementSelector).forEach(element => {
+    if(options.allowStyles && (element.localName === "style" || element.matches("link[rel~=stylesheet]"))) return
+    if(options.allowIframes && element.localName === "iframe") {
+      try {
+        const url = new URL(element.getAttribute("src") ?? "")
+        if(url.protocol === "https:" && !url.username && !url.password) {
+          element.setAttribute("sandbox", "allow-scripts")
+          return
+        }
+      }
+      catch { /* Missing, relative and active URLs are not embeddable. */ }
+    }
     element.remove()
     removed++
   })

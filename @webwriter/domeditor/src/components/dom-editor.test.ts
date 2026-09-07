@@ -180,6 +180,20 @@ beforeEach(() => {
 })
 
 describe("DomEditor iframe setup", () => {
+  it("preserves themes, authored styles, editing attributes and isolated HTTPS embeds in preview", async () => {
+    const {editor} = await mountEditor()
+    const doc = new DOMParser().parseFromString('<html spellcheck="true"><head><style data-ww-theme="water">p { color: red }</style></head><body contenteditable="false"><p style="font-size: 2em">Text</p><iframe src="https://example.com/embed" sandbox="allow-same-origin allow-scripts"></iframe></body></html>', "text/html")
+    const html = (editor as any).preparePreviewDocument(doc) as string
+    expect(html).toContain('data-ww-theme="water"')
+    expect(html).toContain("color: red")
+    expect(html).toContain('contenteditable="false"')
+    expect(html).toContain('spellcheck="true"')
+    const preview = new DOMParser().parseFromString(html, "text/html")
+    expect(preview.querySelector("iframe")!.getAttribute("sandbox")).toBe("allow-scripts")
+    expect(preview.querySelector('meta[http-equiv="Content-Security-Policy"]')).not.toBeNull()
+  })
+
+
   it("shows and dismisses file errors outside the authored document", async () => {
     const {editor, iframe} = await mountEditor()
     vi.spyOn(console, "error").mockImplementation(() => {})
