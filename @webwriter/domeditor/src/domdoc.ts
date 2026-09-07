@@ -1201,5 +1201,31 @@ export class SharedDOMDoc {
       else if(this.#isYComment(yChild) && isComment(domChild)) this.#reconcileDOMComment(yChild, domChild)
       else if(yChild instanceof Y.XmlElement && isElement(domChild)) this.#reconcileDOMElement(yChild, domChild)
     })
+    this.#restoreControlState(domElement)
+  }
+
+  #restoreControlState(element: Element) {
+    if(element.namespaceURI !== "http://www.w3.org/1999/xhtml" || element.hasAttribute("is")) return
+    if(element.localName === "input") {
+      const input = element as HTMLInputElement
+      if(input.type === "checkbox" || input.type === "radio") input.checked = input.hasAttribute("checked")
+      else if(input.type !== "file" && input.type !== "password" && input.value !== input.defaultValue) input.value = input.defaultValue
+    }
+    else if(element.localName === "textarea") {
+      const textarea = element as HTMLTextAreaElement
+      if(textarea.value !== textarea.defaultValue) textarea.value = textarea.defaultValue
+    }
+    else if(element.localName === "select") {
+      const select = element as HTMLSelectElement
+      const options = Array.from(select.options)
+      if(select.multiple) options.forEach(option => { option.selected = option.hasAttribute("selected") })
+      else {
+        let index = options.findLastIndex(option => option.hasAttribute("selected"))
+        if(index < 0 && select.size <= 1) {
+          index = options.findIndex(option => !option.disabled && !option.closest("optgroup[disabled]"))
+        }
+        if(select.selectedIndex !== index) select.selectedIndex = index
+      }
+    }
   }
 }

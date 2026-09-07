@@ -17,6 +17,26 @@ beforeEach(() => {
 afterEach(() => editor.destroy())
 
 describe("form editing", () => {
+  it("restores dirty native control properties on undo and redo", () => {
+    editor.destroy()
+    document.body.innerHTML = '<input value="Before"><textarea>Before</textarea><input type="checkbox"><select><option selected>First</option><option>Second</option></select>'
+    editor = new DOMEditor()
+    const input = document.querySelector("input")!
+    const textarea = document.querySelector("textarea")!
+    const checkbox = document.querySelector<HTMLInputElement>('[type="checkbox"]')!
+    const select = document.querySelector("select")!
+    input.value = "After"
+    textarea.value = "After"
+    checkbox.checked = true
+    select.selectedIndex = 1
+    for(const control of [input, textarea, checkbox, select]) control.dispatchEvent(new Event("input", {bubbles: true}))
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect([input.value, textarea.value, checkbox.checked, select.selectedIndex]).toEqual(["Before", "Before", false, 0])
+    editor.doc.redo()
+    expect([input.value, textarea.value, checkbox.checked, select.selectedIndex]).toEqual(["After", "After", true, 1])
+  })
+
   it("covers every HTML form element and input type", () => {
     expect(formElementTypes).toEqual([
       "form", "fieldset", "legend", "label", "input", "textarea", "select",
