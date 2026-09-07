@@ -139,11 +139,23 @@ async function mountEditor() {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+  // Release Happy DOM's nested iframe documents before detaching editors. A
+  // preview test can leave both the editor and preview browsing contexts alive
+  // until the next GC cycle, which makes the later tests time out as a suite.
+  const frames = [
+    ...document.body.querySelectorAll<HTMLIFrameElement>("iframe"),
+    ...Array.from(document.body.querySelectorAll<DomEditor>("dom-editor"))
+      .flatMap(editor => Array.from(editor.shadowRoot?.querySelectorAll<HTMLIFrameElement>("iframe") ?? [])),
+  ]
+  frames.forEach(iframe => {
+    iframe.removeAttribute("srcdoc")
+    iframe.src = "about:blank"
+  })
   document.body.replaceChildren()
   localStorage.removeItem(INSTALLED_PACKAGES_STORAGE_KEY)
   localStorage.removeItem(APP_SETTINGS_STORAGE_KEY)
-  vi.restoreAllMocks()
-  vi.unstubAllGlobals()
 })
 
 beforeEach(() => {
