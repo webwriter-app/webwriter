@@ -2,7 +2,7 @@
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
 import {loadWidgetsMessage} from "../editor-bridge"
-import {WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
+import {SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL, WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
 import {DependencyFeature} from "./dependencies"
 
 const demoPackage: WebWriterPackage = {
@@ -191,6 +191,9 @@ describe("DependencyFeature", () => {
     expect(serializedScript.getAttribute("nonce")).toBeNull()
     expect(serializedScript.classList.contains("◆editor-only")).toBe(false)
     expect(parsed.head.querySelector(`link[href="${demoPackage.styles[0]}"]`)).not.toBeNull()
+    expect(parsed.head.querySelectorAll(`script[src="${SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL}"]`)).toHaveLength(1)
+    expect(parsed.head.querySelector("script")?.getAttribute("src")).toBe(SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL)
+    expect(parsed.head.querySelector("script")?.hasAttribute("type")).toBe(false)
     editor.destroy()
   })
 

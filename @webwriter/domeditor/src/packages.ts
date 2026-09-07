@@ -4,6 +4,7 @@ import {stripActiveContent} from "./active-content"
 export const NPM_SEARCH_ENDPOINT = "https://registry.npmjs.org/-/v1/search"
 export const NPM_REGISTRY_ENDPOINT = "https://registry.npmjs.org"
 export const JSDELIVR_NPM_ENDPOINT = "https://cdn.jsdelivr.net/npm"
+export const SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL = `${JSDELIVR_NPM_ENDPOINT}/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js`
 export const WEBWRITER_PACKAGE_QUERY = "scope:webwriter keywords:webwriter-widget"
 /** Storage key for the standalone editor's serialized installed packages. */
 export const INSTALLED_PACKAGES_STORAGE_KEY = "webwriter_domeditor_installedPackages"

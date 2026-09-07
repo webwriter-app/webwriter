@@ -1,7 +1,7 @@
 import { EditorFeature } from "."
 import { DOMEditor } from "../domeditor"
 import {isLoadWidgetsMessage, loadWidgetsMessage, type LoadWidgetsMessage} from "../editor-bridge"
-import {packageInsertionItems, packageWidgetSchemaDefinitions, WebWriterPackageRegistry} from "../packages"
+import {packageInsertionItems, packageWidgetSchemaDefinitions, SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL, WebWriterPackageRegistry} from "../packages"
 import {Schema} from "../schema"
 import {LOCAL_PACKAGE_ROUTE_PREFIX} from "../local-package-worker"
 
@@ -24,6 +24,13 @@ export class DependencyFeature extends EditorFeature {
     const head = root.head ?? root.documentElement.insertBefore(root.createElement("head"), root.body)
     const existing = new Set([...root.querySelectorAll<HTMLScriptElement | HTMLLinkElement>("script[src], link[rel='stylesheet'][href]")]
       .map(element => this.resourceKey(element instanceof HTMLScriptElement ? element.src : element.href)))
+    if(this.widgetAssets.some(asset => asset instanceof HTMLScriptElement)
+      && !existing.has(SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL)) {
+      const polyfill = root.createElement("script")
+      polyfill.src = SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL
+      head.prepend(polyfill)
+      existing.add(SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL)
+    }
     for(const asset of this.widgetAssets) {
       const isScript = asset instanceof HTMLScriptElement
       const url = isScript ? asset.src : (asset as HTMLLinkElement).href

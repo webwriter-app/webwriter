@@ -9,6 +9,7 @@ import type {EditorStateSnapshot} from "../editor-state"
 import {
   describePackageExport,
   INSTALLED_PACKAGES_STORAGE_KEY,
+  SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL as scopedCustomElementRegistryPolyfillUrl,
   packageMemberAction,
   WebWriterPackageRegistry,
   webWriterPackageExportName,
@@ -197,7 +198,6 @@ const defaultDocumentThemeHTML = () => {
 
 const editorEntryUrl = `${import.meta.env.BASE_URL}${import.meta.env.DEV ? "src/editor-entry.ts" : "assets/editor-entry.js"}`
 const appIconUrl = `${import.meta.env.BASE_URL}assets/app-icon-transparent.svg`
-const scopedCustomElementRegistryPolyfillUrl = "https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"
 const localPackageResourcePath = LOCAL_PACKAGE_ROUTE_PREFIX
 const packageLoadTimeoutMs = 10_000
 const executeTimeoutMs = 15_000
