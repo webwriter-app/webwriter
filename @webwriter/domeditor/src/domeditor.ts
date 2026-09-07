@@ -1123,11 +1123,11 @@ export class DOMEditor {
   async serializeHTML(offline=false) {
     const root = this.cleanDocumentClone()
     this.features.dependency.appendSerializedAssets(root)
-    if(offline) await this.inlineExternalResources(root)
+    if(offline) await this.inlineExternalResources(root, true)
     return `${serializeDoctype(root.doctype)}${root.documentElement.outerHTML}`
   }
 
-  private async inlineExternalResources(root: Document) {
+  private async inlineExternalResources(root: Document, strict=false) {
     const jobs: Promise<void>[] = []
     const resources: Array<[string, string]> = [
       ["img[src]", "src"],
@@ -1143,29 +1143,32 @@ export class DOMEditor {
 
     for(const [selector, attribute] of resources) {
       root.querySelectorAll<HTMLElement>(selector).forEach(element => {
-        jobs.push(this.inlineResourceAttribute(element, attribute))
+        jobs.push(this.inlineResourceAttribute(element, attribute, strict))
       })
     }
     root.querySelectorAll<HTMLElement>("img[srcset], source[srcset]").forEach(element => {
-      jobs.push(this.inlineSrcset(element))
+      jobs.push(this.inlineSrcset(element, strict))
     })
     root.querySelectorAll<HTMLScriptElement>("script[src]").forEach(script => {
-      jobs.push(this.inlineScript(script))
+      jobs.push(this.inlineScript(script, strict))
+    })
+    root.querySelectorAll<HTMLLinkElement>("link[rel='stylesheet'][href]").forEach(link => {
+      jobs.push(this.inlineStylesheet(link, strict))
     })
     await Promise.all(jobs)
   }
 
-  private resolvedResourceURL(value: string) {
+  private resolvedResourceURL(value: string, base = document.baseURI) {
     try {
-      return new URL(value, document.baseURI).href
+      return new URL(value, base).href
     }
     catch {
       return value
     }
   }
 
-  private async fetchResource(value: string) {
-    const response = await fetch(this.resolvedResourceURL(value))
+  private async fetchResource(value: string, base = document.baseURI) {
+    const response = await fetch(this.resolvedResourceURL(value, base))
     if(!response.ok && response.status !== 0) {
       throw new Error(`Could not fetch ${value}: ${response.status} ${response.statusText}`)
     }
@@ -1182,7 +1185,7 @@ export class DOMEditor {
     return `data:${blob.type || "application/octet-stream"};base64,${btoa(binary)}`
   }
 
-  private async inlineResourceAttribute(element: HTMLElement, attribute: string) {
+  private async inlineResourceAttribute(element: HTMLElement, attribute: string, strict=false) {
     const original = element.getAttribute(attribute)
     if(!original || original.startsWith("data:")) return
     try {
@@ -1190,12 +1193,13 @@ export class DOMEditor {
       element.setAttribute(originalURLAttribute(attribute), original)
       element.setAttribute(attribute, await this.blobDataURL(await response.blob()))
     }
-    catch {
+    catch(error) {
       // Cross-origin resources without CORS permission remain external.
+      if(strict) throw new Error(`Could not inline ${original} for offline export: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
-  private async inlineSrcset(element: HTMLElement) {
+  private async inlineSrcset(element: HTMLElement, strict=false) {
     const original = element.getAttribute("srcset")
     if(!original || original.trim().startsWith("data:")) return
     try {
@@ -1209,12 +1213,13 @@ export class DOMEditor {
       element.setAttribute(originalURLAttribute("srcset"), original)
       element.setAttribute("srcset", inlined.join(", "))
     }
-    catch {
+    catch(error) {
       // Keep the complete authored srcset if any candidate cannot be fetched.
+      if(strict) throw new Error(`Could not inline srcset for offline export: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
-  private async inlineScript(script: HTMLScriptElement) {
+  private async inlineScript(script: HTMLScriptElement, strict=false) {
     const original = script.getAttribute("src")
     if(!original || original.startsWith("data:")) return
     try {
@@ -1224,9 +1229,54 @@ export class DOMEditor {
       script.removeAttribute("src")
       script.textContent = source
     }
-    catch {
+    catch(error) {
       // Cross-origin scripts without CORS permission remain external.
+      if(strict) throw new Error(`Could not inline ${original} for offline export: ${error instanceof Error ? error.message : String(error)}`)
     }
+  }
+
+  private async inlineStylesheet(link: HTMLLinkElement, strict=false) {
+    const original = link.getAttribute("href")
+    if(!original) return
+    const base = this.resolvedResourceURL(original)
+    try {
+      const css = await this.fetchResource(original).then(response => response.text())
+      const withImports = await this.inlineCssImports(css, base)
+      const rewritten = await this.replaceCssURLs(withImports, base)
+      const style = link.ownerDocument!.createElement("style")
+      style.setAttribute(originalURLAttribute("href"), original)
+      style.textContent = rewritten
+      link.replaceWith(style)
+    }
+    catch(error) {
+      if(strict) throw new Error(`Could not inline stylesheet ${original} for offline export: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  private async inlineCssImports(css: string, base: string) {
+    const pattern = /@import\s+(?:url\(\s*)?(["'])([^"']+)\1\s*\)?\s*;?/gi
+    const matches = [...css.matchAll(pattern)]
+    const replacements = await Promise.all(matches.map(async match => {
+      const href = this.resolvedResourceURL(match[2], base)
+      const imported = await this.fetchResource(href).then(response => response.text())
+      return [match[0], await this.inlineCssImports(imported, href)] as const
+    }))
+    let result = css
+    replacements.forEach(([from, to]) => { result = result.replace(from, to) })
+    return result
+  }
+
+  private async replaceCssURLs(css: string, base: string) {
+    const matches = [...css.matchAll(/url\(\s*(["']?)([^"')]+)\1\s*\)/gi)]
+    const replacements = await Promise.all(matches.map(async match => {
+      const value = match[2].trim()
+      if(!value || value.startsWith("data:") || value.startsWith("#")) return [match[0], match[0]] as const
+      const data = await this.fetchResource(value, base).then(response => response.blob()).then(blob => this.blobDataURL(blob))
+      return [match[0], `url(${data})`] as const
+    }))
+    let result = css
+    replacements.forEach(([from, to]) => { result = result.replace(from, to) })
+    return result
   }
 
   /** Produces the two clipboard flavors from one cleaned selection clone so
