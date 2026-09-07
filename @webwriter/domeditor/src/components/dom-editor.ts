@@ -1080,7 +1080,7 @@ export class DomEditor extends LitElement {
   private previewElementAtPath(path: number[], previewDocument = this.renderRoot.querySelector<HTMLIFrameElement>("iframe.preview-frame")?.contentDocument) {
     let current: Node | null = previewDocument?.body ?? null
     for(const index of path) current = current?.childNodes.item(index) ?? null
-    return current instanceof Element ? current : null
+    return current?.nodeType === Node.ELEMENT_NODE ? current as Element : null
   }
 
   private previewWidgetElements(previewDocument: Document) {

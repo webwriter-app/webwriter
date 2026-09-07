@@ -180,6 +180,21 @@ beforeEach(() => {
 })
 
 describe("DomEditor iframe setup", () => {
+  it("resolves widget paths without relying on the outer realm's Element constructor", async () => {
+    const {editor, iframe} = await mountEditor()
+    const owner = iframe.contentDocument!
+    owner.body.innerHTML = "<review-widget></review-widget>text"
+    const widget = owner.body.firstElementChild
+    const resolve = (editor as unknown as {previewElementAtPath(path: number[], owner: Document): Element | null}).previewElementAtPath.bind(editor)
+    vi.stubGlobal("Element", class ForeignElement {})
+    try {
+      expect(resolve([0], owner)).toBe(widget)
+      expect(resolve([1], owner)).toBeNull()
+      expect(resolve([2], owner)).toBeNull()
+    }
+    finally { vi.unstubAllGlobals() }
+  })
+
   it("settles cancellation and timeouts while iframe initialization is stalled", async () => {
     const {editor} = await mountEditor()
     let ready!: (value: Window) => void
