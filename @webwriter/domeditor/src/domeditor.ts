@@ -330,6 +330,9 @@ type DocumentEditorSession = {
 
 const documentEditorSessions = new WeakMap<Document, DocumentEditorSession>()
 
+const isWidgetElement = (element: Element) => element.namespaceURI === "http://www.w3.org/1999/xhtml"
+  && (element.localName.includes("-") || element.hasAttribute("is"))
+
 type FeatureActions<F extends keyof DOMEditor["features"]> = NonNullable<DOMEditor["features"][F]["actions"]>
 type FeatureAction<F extends keyof DOMEditor["features"]> = {
   [K in keyof FeatureActions<F>]: FeatureActions<F>[K] extends (...args: infer Parameters) => unknown
@@ -637,7 +640,10 @@ export class DOMEditor {
       document.designMode = "on"
       const DocumentMutationObserver = document.defaultView?.MutationObserver ?? MutationObserver
       this.#bodySchemaObserver = new DocumentMutationObserver(this.#handleBodySchemaChanges)
-      this.#bodySchemaObserver.observe(document.body, {childList: true})
+      this.#bodySchemaObserver.observe(document.body, {
+        childList: true, subtree: true, attributes: true, attributeFilter: ["contenteditable", "is"],
+      })
+      this.#enableWidgetEditing(document.body)
       if(!initialYDoc) this.#ensureDocumentContent()
       if(syncUrl) {
         const sessionId = syncUrl.searchParams.get("session") ?? syncUrl.pathname.split("/").filter(Boolean).at(-1)
@@ -651,6 +657,7 @@ export class DOMEditor {
         })
       }
       this.#ensureDocumentContent()
+      this.#enableWidgetEditing(document.body)
       Object.entries(this.features)
         .filter(([key]) => !featuresDisabledByDefault.has(key))
         .forEach(([, feat]) => feat.enable())
@@ -680,8 +687,24 @@ export class DOMEditor {
     this.normalizeSurroundingElements(ev.target instanceof Node ? ev.target : undefined)
   }
 
-  #handleBodySchemaChanges = () => {
+  #handleBodySchemaChanges = (mutations: MutationRecord[]) => {
+    for(const mutation of mutations) {
+      if(!document.body.contains(mutation.target)) continue
+      if(mutation.type === "attributes") this.#enableWidgetEditing(mutation.target, false)
+      else mutation.addedNodes.forEach(node => {
+        if(document.body.contains(node)) this.#enableWidgetEditing(node)
+      })
+    }
     this.#ensureDocumentContent()
+  }
+
+  /** Covers prepared fragments and arbitrary live DOM insertions without
+   * entering widget shadow roots or changing their ordinary light-DOM content. */
+  #enableWidgetEditing(node: Node, descendants=true) {
+    if(node instanceof Element && isWidgetElement(node) && node.getAttribute("contenteditable") !== "true") {
+      node.setAttribute("contenteditable", "true")
+    }
+    if(descendants) node.childNodes.forEach(child => this.#enableWidgetEditing(child))
   }
 
   /** Restores the schema's required default flow child after the body's last
@@ -1365,6 +1388,7 @@ export class DOMEditor {
         return
       }
       this.ignoreAttrs.forEach(attribute => child.removeAttribute(attribute))
+      if(isWidgetElement(child)) child.removeAttribute("contenteditable")
       const markers = Array.from(child.classList).filter(name => name.startsWith("◆"))
       if(markers.length) child.classList.remove(...markers)
       if(!child.classList.length) child.removeAttribute("class")
@@ -1392,6 +1416,7 @@ export class DOMEditor {
     this.schema.checkAndCorrect(stagingBody, true)
     const prepared = stagingBody.ownerDocument.createDocumentFragment()
     prepared.append(...Array.from(stagingBody.childNodes))
+    this.#enableWidgetEditing(prepared)
     return {fragment: prepared, removedUnsafeItems}
   }
 

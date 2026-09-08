@@ -277,13 +277,25 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expect(correct).toHaveBeenCalledWith(expect.any(HTMLBodyElement), true)
     expect(document.querySelector("ul")?.firstElementChild?.localName).toBe("li")
   })
-  it("preserves widget attributes in HTML inserted through its action handler", () => {
+  it("enables widget editing in HTML inserted through its action handler", () => {
     editor.features.manipulation.actions.insert({
       type: "insert",
       html: "<section><webwriter-demo></webwriter-demo></section>",
     })
 
-    expect(document.querySelector("webwriter-demo")).not.toHaveAttribute("contenteditable")
+    expect(document.querySelector("webwriter-demo")).toHaveAttribute("contenteditable", "true")
+  })
+  it("keeps inserted widgets editable after undo and redo", async () => {
+    editor.features.manipulation.actions.insert({
+      type: "insert",
+      html: '<webwriter-demo contenteditable="false"></webwriter-demo>',
+    })
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(document.querySelector("webwriter-demo")).toBeNull()
+    editor.doc.redo()
+    await vi.waitFor(() => expect(document.querySelector("webwriter-demo")).toHaveAttribute("contenteditable", "true"))
+    expect(editor.toHTML(true)).toBe('<webwriter-demo></webwriter-demo>')
   })
   it("capture-selects a directly inserted widget", () => {
     editor.features.manipulation.actions.insert({
@@ -1212,7 +1224,7 @@ describe("paste()", () => {
     await editor.features.manipulation.paste()
 
     expectBodyToBe("<p>he</p><demo-widget>Widget</demo-widget><p>llo</p>")
-    expect(document.querySelector("demo-widget")).not.toHaveAttribute("contenteditable")
+    expect(document.querySelector("demo-widget")).toHaveAttribute("contenteditable", "true")
     expect($.selectedElement).toBe(document.querySelector("demo-widget"))
     expect(editor.features.selection.captureSelectedElement).toBe(document.querySelector("demo-widget"))
   })
@@ -1782,10 +1794,22 @@ describe("unified content transfer", () => {
     expectBodyToBe('<p><b>bold</b> <i>italic</i> <s>old</s><a>link</a></p><picture><img src="photo.png"></picture>')
   })
 
+  it.each(["paste", "drop"])("enables all nested widgets on native %s", method => {
+    const data = new DataTransfer()
+    data.setData("text/html", '<section><demo-widget contenteditable="false"><nested-widget></nested-widget></demo-widget><div is="custom-widget" contenteditable="plaintext-only"></div></section>')
+    if(method === "drop") dropAt(data, document.body, 0)
+    else document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, cancelable: true}))
+
+    const widgets = document.querySelectorAll("demo-widget, nested-widget, [is]")
+    expect(widgets).toHaveLength(3)
+    widgets.forEach(widget => expect(widget).toHaveAttribute("contenteditable", "true"))
+    expect(editor.toHTML(true)).not.toContain("contenteditable")
+  })
+
   it("sanitizes widget and template contents without canonizing a widget's private structure", () => {
     const {fragment} = editor.parseHTMLFragment('<test-widget class="external"><strong style="color:red">keep alias</strong><script>bad()</script><template><style>bad</style><span class="external" onclick="bad()">safe</span></template></test-widget>', true)
     const widget = fragment.querySelector("test-widget")!
-    expect(widget.outerHTML).toBe('<test-widget><strong>keep alias</strong><template><span>safe</span></template></test-widget>')
+    expect(widget.outerHTML).toBe('<test-widget contenteditable="true"><strong>keep alias</strong><template><span>safe</span></template></test-widget>')
   })
 
   it.each([false, true])("preserves installed quiz subtrees despite editing metadata (transfer=%s)", transfer => {
@@ -1797,14 +1821,16 @@ describe("unified content transfer", () => {
     const html = '<webwriter-task>\n  <webwriter-task-prompt slot="prompt"><p>Question</p></webwriter-task-prompt>\n  <!--keep--><webwriter-mark><p>Answer</p><svg viewBox="0 0 1 1"><path d="M0 0"></path></svg></webwriter-mark>\n</webwriter-task>'
     const {fragment} = editor.parseHTMLFragment(html, transfer)
 
+    expect(fragment.querySelectorAll('[contenteditable="true"]')).toHaveLength(3)
+    expect(fragment.querySelector("[class]")).toBeNull()
+    editor.clearEditingArtifacts(fragment)
     expect(fragment.firstElementChild?.outerHTML).toBe(html)
-    expect(fragment.querySelector("[contenteditable], [class]")).toBeNull()
     expect(fragment.querySelector("svg")?.namespaceURI).toBe("http://www.w3.org/2000/svg")
   })
 
   it("preserves customized built-in widget content while sanitizing active markup", () => {
     const {fragment} = editor.parseHTMLFragment('<div is="custom-quiz"><span><section>Widget layout</section></span><script>bad()</script></div>')
-    expect(fragment.firstElementChild?.outerHTML).toBe('<div is="custom-quiz"><span><section>Widget layout</section></span></div>')
+    expect(fragment.firstElementChild?.outerHTML).toBe('<div is="custom-quiz" contenteditable="true"><span><section>Widget layout</section></span></div>')
   })
 
   it.each(sectionNames)("unwraps external <%s> sections while preserving non-section content", name => {
@@ -1847,7 +1873,7 @@ describe("unified content transfer", () => {
 
   it("keeps widget-owned sections atomic while unwrapping their external containers", () => {
     const {fragment} = editor.parseHTMLFragment('<div><test-widget><section><div>widget structure</div></section></test-widget></div>', true)
-    expect(fragment.firstElementChild?.outerHTML).toBe('<test-widget><section><div>widget structure</div></section></test-widget>')
+    expect(fragment.firstElementChild?.outerHTML).toBe('<test-widget contenteditable="true"><section><div>widget structure</div></section></test-widget>')
     expect(fragment.childNodes).toHaveLength(1)
   })
 

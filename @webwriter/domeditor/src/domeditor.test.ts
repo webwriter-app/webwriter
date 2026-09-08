@@ -188,19 +188,19 @@ describe("DOMEditor stylesheets", () => {
     expect($.isEmptyDocumentSelection).toBe(false)
   })
 
-  it("preserves authored editing attributes in serialized widgets", () => {
+  it("removes widget contenteditable attributes from saved HTML", () => {
     document.body.innerHTML = '<webwriter-demo contenteditable="true" spellcheck="false" value="7"></webwriter-demo>'
       + '<template><span class="authored ◆text-selected">Template</span><i class="◆editor-only">helper</i></template>'
 
-    expect(editor.toHTML(true)).toBe('<webwriter-demo contenteditable="true" spellcheck="false" value="7"></webwriter-demo>'
+    expect(editor.toHTML(true)).toBe('<webwriter-demo spellcheck="false" value="7"></webwriter-demo>'
       + '<template><span class="authored">Template</span></template>')
     document.body.replaceChildren()
   })
 
-  it("preserves authored editing attributes on body content and nested widgets", () => {
+  it("preserves ordinary editing attributes while cleaning nested widgets", () => {
     document.body.innerHTML = '<section contenteditable="false" spellcheck="true"><demo-widget contenteditable="false" spellcheck="true"></demo-widget></section>'
 
-    expect(editor.toHTML(true)).toBe('<section contenteditable="false" spellcheck="true"><demo-widget contenteditable="false" spellcheck="true"></demo-widget></section>')
+    expect(editor.toHTML(true)).toBe('<section contenteditable="false" spellcheck="true"><demo-widget spellcheck="true"></demo-widget></section>')
     document.body.replaceChildren()
   })
 
@@ -211,6 +211,42 @@ describe("DOMEditor stylesheets", () => {
     template.content.querySelector("textarea")!.value = 'new notes'
     const {fragment} = editor.prepareHTMLFragment(template.content, true)
     expect(fragment.firstElementChild?.outerHTML).toBe('<p>&lt;b&gt;current&lt;/b&gt; / new notes</p>')
+  })
+
+  it("enforces editing on arbitrary nested DOM insertions and subsequent attribute changes", async () => {
+    document.body.innerHTML = '<section><p>Keep</p></section>'
+    const section = document.querySelector("section")!
+    section.insertAdjacentHTML("beforeend", '<demo-widget contenteditable="false"><span contenteditable="false">Keep</span><nested-widget></nested-widget></demo-widget><div is="custom-widget"></div>')
+    const widget = section.querySelector("demo-widget")!
+    const shadow = widget.attachShadow({mode: "open"})
+    shadow.innerHTML = '<private-widget contenteditable="false"></private-widget>'
+    const removed = document.createElement("removed-widget")
+    section.append(removed)
+    removed.remove()
+
+    await vi.waitFor(() => expect(widget).toHaveAttribute("contenteditable", "true"))
+    expect(section.querySelector("nested-widget")).toHaveAttribute("contenteditable", "true")
+    expect(section.querySelector("[is]")).toHaveAttribute("contenteditable", "true")
+    expect(section.querySelector("span")).toHaveAttribute("contenteditable", "false")
+    expect(shadow.firstElementChild).toHaveAttribute("contenteditable", "false")
+    expect(removed).not.toHaveAttribute("contenteditable")
+
+    widget.removeAttribute("contenteditable")
+    await vi.waitFor(() => expect(widget).toHaveAttribute("contenteditable", "true"))
+    widget.setAttribute("contenteditable", "false")
+    await vi.waitFor(() => expect(widget).toHaveAttribute("contenteditable", "true"))
+  })
+
+  it.each([false, true])("strips widget editing attributes on save, including inert templates (offline=%s)", async offline => {
+    document.body.innerHTML = '<demo-widget contenteditable="false" value="7"></demo-widget><div is="custom-widget" contenteditable="true"></div><template><nested-widget contenteditable="plaintext-only"></nested-widget></template>'
+    await vi.waitFor(() => expect(document.querySelector("demo-widget")).toHaveAttribute("contenteditable", "true"))
+
+    const saved = await editor.serializeHTML(offline)
+    expect(saved).not.toContain("contenteditable")
+    expect(saved).toContain('<demo-widget value="7"></demo-widget>')
+    expect(saved).toContain('<div is="custom-widget"></div>')
+    expect(saved).toContain('<template><nested-widget></nested-widget></template>')
+    expect(document.querySelector("demo-widget")).toHaveAttribute("contenteditable", "true")
   })
 
   it("unwraps every form element and preserves allowed nested content", () => {

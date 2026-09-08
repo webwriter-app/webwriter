@@ -265,7 +265,7 @@ describe("insertion menu", () => {
 
     expect(editorHTML()).toBe("<webwriter-demo></webwriter-demo>")
     const widget = document.querySelector("webwriter-demo")!
-    expect(widget.getAttribute("contenteditable")).toBeNull()
+    expect(widget.getAttribute("contenteditable")).toBe("true")
     expect($.selectedElement).toBe(widget)
     expect(widget.classList.contains("◆element-selected")).toBe(true)
     expect(menu.open).toBe(false)
@@ -293,7 +293,7 @@ describe("insertion menu", () => {
     expect(document.querySelector("webwriter-demo")?.parentElement).toBe(document.body)
   })
 
-  it("preserves widget attributes inside inserted snippets", async () => {
+  it("enables editing for every widget inside inserted snippets", async () => {
     globalThis.DOMEDITOR_PACKAGE_ITEMS = [{
       section: "Packages",
       name: "Demo Snippet",
@@ -303,7 +303,7 @@ describe("insertion menu", () => {
     }]
     const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
-      text: async () => "<section><webwriter-demo></webwriter-demo><webwriter-other></webwriter-other></section>",
+      text: async () => '<section><webwriter-demo contenteditable="false"></webwriter-demo><webwriter-other></webwriter-other></section>',
     } as Response)
 
     try {
@@ -316,8 +316,8 @@ describe("insertion menu", () => {
       menu.shadowRoot?.querySelector<HTMLButtonElement>(".item")?.click()
 
       await vi.waitFor(() => expect(document.querySelector("webwriter-demo")).toBeTruthy())
-      expect(document.querySelector("webwriter-demo")?.getAttribute("contenteditable")).toBeNull()
-      expect(document.querySelector("webwriter-other")?.getAttribute("contenteditable")).toBeNull()
+      expect(document.querySelector("webwriter-demo")?.getAttribute("contenteditable")).toBe("true")
+      expect(document.querySelector("webwriter-other")?.getAttribute("contenteditable")).toBe("true")
       expect(fetcher).toHaveBeenCalledWith("https://example.com/demo.html")
     }
     finally {

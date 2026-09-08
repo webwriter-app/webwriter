@@ -304,7 +304,7 @@ describe("DependencyFeature", () => {
     await expect(pending).resolves.toBeUndefined()
   })
 
-  it("rebuilds the schema from editingConfig without changing widget attributes", async () => {
+  it("rebuilds the schema from editingConfig while keeping all widgets editable", async () => {
     vi.spyOn(WebWriterPackageRegistry.prototype, "getPackage").mockResolvedValue(demoPackage)
     vi.spyOn(document.head, "append").mockImplementation((...assets: (string | Node)[]) => {
       queueMicrotask(() => assets.forEach(asset => asset instanceof HTMLElement && asset.dispatchEvent(new Event("load"))))
@@ -323,14 +323,14 @@ describe("DependencyFeature", () => {
     expect(editor.schema.get("webwriter-demo-item").inseperable).toBe(false)
     expect(editor.schema.isContentValid(widget)).toBe(true)
     expect(editor.schema.isContentValid(item)).toBe(true)
-    expect(widget.getAttribute("contenteditable")).toBeNull()
-    expect(item.getAttribute("contenteditable")).toBeNull()
+    expect(widget.getAttribute("contenteditable")).toBe("true")
+    expect(item.getAttribute("contenteditable")).toBe("true")
 
     const remoteItem = document.createElement("webwriter-demo-item")
     remoteItem.append(document.createElement("p"))
     widget.append(remoteItem)
     await new Promise<void>(resolve => queueMicrotask(resolve))
-    expect(remoteItem.getAttribute("contenteditable")).toBeNull()
+    expect(remoteItem.getAttribute("contenteditable")).toBe("true")
 
     await editor.getActionHandler(loadWidgetsMessage)({type: loadWidgetsMessage, widgets: []})
     expect(editor.schema.get("webwriter-demo")).toBeUndefined()
